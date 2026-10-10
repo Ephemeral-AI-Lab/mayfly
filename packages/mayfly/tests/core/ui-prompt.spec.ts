@@ -29,7 +29,7 @@ const address = { pagePath: [], controlId: 'p' }
 const draw = (node: Omit<MayflyPromptNode, 'kind'>, width: number, options: { readonly model?: UiPromptIntent[] | false, readonly focused?: boolean, readonly buffer?: (width: number) => string[], readonly glyphs?: 'ascii' } = {}): string[] => {
   const admitted = admit(node)
   let model: UiPromptModel | undefined = options.model === false ? undefined : createPromptModel(address, admitted)
-  if (model !== undefined) for (const intent of options.model ?? []) model = reducePrompt(model, intent).model
+  if (model !== undefined && options.model !== false) for (const intent of options.model ?? []) model = reducePrompt(model, intent).model
   const paint: PromptPaint = {
     node: admitted, model, width, focused: options.focused ?? true, colors, components,
     glyphs: options.glyphs, translate: key => key,
@@ -74,7 +74,7 @@ describe('the placeholder ladder', () => {
 describe('the first row', () => {
   it('paints the symbol, the caret, and the placeholder of an empty prompt', () => {
     const [row] = draw({ id: 'p', placeholder: LADDER }, 96)
-    expect(row).toBe(`${tone('text', '> ')}${CURSOR_MARKER}\x1b[7m \x1b[0m${tone('textMuted', LADDER[0])}`)
+    expect(row).toBe(`${tone('text', '> ')}${CURSOR_MARKER}\x1b[7m \x1b[0m${tone('textMuted', LADDER[0]!)}`)
     expect(plain([row!])[0]).toBe(`> ${' '}${LADDER[0]}`)
     expect(draw({ id: 'p', placeholder: 'Ask' }, 40, { focused: false })[0]).toBe(`${tone('text', '> ')}${tone('textMuted', 'Ask')}`)
     expect(draw({ id: 'p' }, 40)[0]).toBe(`${tone('text', '> ')}${CURSOR_MARKER}\x1b[7m \x1b[0m`)
@@ -244,6 +244,7 @@ describe('a prompt without an interaction model', () => {
   it('compiles to a read-only row set that follows the glyph mode', () => {
     const compile = (glyphs: 'unicode' | 'ascii') => {
       const result = compileMayflyUiNode(ui.prompt({ id: 'p', value: 'draft', tokens: [{ id: 't', label: 'x' }], completions: { items: [{ id: 'c', label: '/model' }] } }), {
+        emit: () => {},
         components: { ...components, presentation: { glyphs, monochrome: false, reducedMotion: false } } as never,
         colors,
         getViewport: () => ({ columns: 40, rows: 10 }),
@@ -253,7 +254,7 @@ describe('a prompt without an interaction model', () => {
       return plain(result.value.component.render(40))
     }
     expect(compile('unicode')).toEqual(['> [x ×] draft'])
-    const placeholder = compileMayflyUiNode(ui.prompt({ id: 'p', placeholder: 'Ask anything' }), { components, colors, getViewport: () => ({ columns: 40, rows: 10 }), screenMode: 'alternate' })
+    const placeholder = compileMayflyUiNode(ui.prompt({ id: 'p', placeholder: 'Ask anything' }), { emit: () => {}, components, colors, getViewport: () => ({ columns: 40, rows: 10 }), screenMode: 'alternate' })
     expect(placeholder.ok && plain(placeholder.value.component.render(40))).toEqual(['> Ask anything'])
   })
 })

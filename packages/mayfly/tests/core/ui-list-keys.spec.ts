@@ -163,7 +163,7 @@ describe('list keys', () => {
   })
 
   it('draws a node body compiled as content, once the row opens', () => {
-    const items: MayflyListItem[] = [{ id: 'a', label: 'Alpha', body: ui.stack.column([ui.text('rich body'), ui.divider({ label: 'rule' })]) }]
+    const items: MayflyListItem[] = [{ id: 'a', label: 'Alpha', body: ui.listBody([ui.text('rich body'), ui.divider({ label: 'rule' })]) }]
     const { surface, rows } = open(list({}, items))
     surface.press(KEY.enter)
     expect(rows().join('\n')).toContain('rich body')

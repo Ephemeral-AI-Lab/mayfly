@@ -6,6 +6,7 @@ import { SettingsConflictError } from '@deepseek-ai/dsh-settings'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import * as uiProvider from '../../../ui/src/provider.ts'
 import type { MayflyOverlayEntry } from '../../../ui/src/contracts.ts'
+import type { MayflyFieldValue, MayflySubmission } from '../../../ui/src/interaction.ts'
 import { providerFixture, testHomeText } from './provider-fixture.ts'
 import { buildIndex, setModelsDevLoader } from '../../src/interaction/models-dev.ts'
 import { openProviderEditor } from '../../src/interaction/provider-edit.ts'
@@ -32,21 +33,21 @@ const requestContext = (entry: MayflyOverlayEntry, actionSignal = new AbortContr
 
 function saveSubmission(entry: MayflyOverlayEntry, options: {
   source?: typeof entry.source
-  name?: unknown
+  name?: MayflyFieldValue
   includeName?: boolean
-  baseURL?: unknown
-  key?: unknown
-  extraFields?: readonly { id: string, value: unknown, change: 'set' | 'unchanged', pagePath?: readonly { controlId: string, itemId: string }[] }[]
-} = {}) {
+  baseURL?: MayflyFieldValue
+  key?: MayflyFieldValue
+  extraFields?: readonly { id: string, value: MayflyFieldValue, change: 'set' | 'unchanged', pagePath?: readonly { controlId: string, itemId: string }[] }[]
+} = {}): MayflySubmission {
   return {
-    actionId: 'save', source: options.source ?? entry.source,
+    actionId: 'save', draftRevision: 1, source: options.source ?? entry.source,
     forms: [
-      { pagePath: address('connection').pagePath, formId: 'provider', fields: [
-        ...(options.includeName === false ? [] : [{ id: 'name', value: 'name' in options ? options.name : 'Changed', change: 'set' as const }]),
-        ...('baseURL' in options ? [{ id: 'baseURL', value: options.baseURL, change: 'set' as const }] : []),
+      { pagePath: address('connection').pagePath, formId: 'provider', draftRevision: 1, fields: [
+        ...(options.includeName === false ? [] : [{ id: 'name', value: 'name' in options ? options.name! : 'Changed', change: 'set' as const }]),
+        ...('baseURL' in options ? [{ id: 'baseURL', value: options.baseURL!, change: 'set' as const }] : []),
         ...(options.extraFields ?? []).map(field => ({ id: field.id, value: field.value, change: field.change })),
       ] },
-      { pagePath: address('credentials').pagePath, formId: 'provider', fields: 'key' in options ? [{ id: 'key', value: options.key, change: 'set' as const }] : [] },
+      { pagePath: address('credentials').pagePath, formId: 'provider', draftRevision: 1, fields: 'key' in options ? [{ id: 'key', value: options.key!, change: 'set' as const }] : [] },
     ],
   }
 }
@@ -80,8 +81,8 @@ describe('provider editor', () => {
   const addModel = async (bench: Awaited<ReturnType<typeof directSetup>>, modelId: string | undefined) => {
     const entry = bench.ctx.mayflyOverlays.list().find(item => item.id === bench.entry!.id)!
     return entry.definition.onEvent!.action!({
-      kind: 'submit', submission: { actionId: 'add-model', source: entry.source,
-        forms: [{ pagePath: address('models').pagePath, formId: 'custom-model', fields: modelId === undefined ? [] : [{ id: 'model-id', value: modelId, change: 'set' as const }] }],
+      kind: 'submit', pagePath: [], controlId: 'custom-model', submission: { draftRevision: 1, actionId: 'add-model', source: entry.source,
+        forms: [{ draftRevision: 1, pagePath: address('models').pagePath, formId: 'custom-model', fields: modelId === undefined ? [] : [{ id: 'model-id', value: modelId, change: 'set' as const }] }],
         selections: [] },
     }, requestContext(entry))
   }
@@ -196,8 +197,8 @@ describe('provider editor', () => {
     expect(bench.model!.feedbackSnapshot().map(item => item.message)).toContain('Model "custom-nr" added — save to persist')
     expect(bench.settings.get('llm-pi-ai')).toMatchObject({ providers: { custom: { models: [{ id: 'one', contextWindow: 4000 }] } } })
 
-    expect(await current.definition.onEvent!.action!({ kind: 'submit', submission: {
-      actionId: 'save', source: current.source, forms: [],
+    expect(await current.definition.onEvent!.action!({ kind: 'submit', pagePath: [], controlId: 'submit', submission: {
+      actionId: 'save', draftRevision: 1, source: current.source, forms: [],
       selections: [{ pagePath: address('models').pagePath, controlId: 'advertised-models', selectedIds: ['one', 'custom-x', 'custom-nr'] }],
     } }, requestContext(current))).toMatchObject({ kind: 'accepted' })
     expect(bench.settings.get('llm-pi-ai')).toMatchObject({ providers: { custom: { models: [
@@ -225,8 +226,8 @@ describe('provider editor', () => {
     const entry = bench.entry!
     await addInline(bench, 'solo')
     const current = bench.ctx.mayflyOverlays.list().find(item => item.id === entry.id)!
-    expect(await current.definition.onEvent!.action!({ kind: 'submit', submission: {
-      actionId: 'save', source: current.source, forms: [],
+    expect(await current.definition.onEvent!.action!({ kind: 'submit', pagePath: [], controlId: 'submit', submission: {
+      actionId: 'save', draftRevision: 1, source: current.source, forms: [],
       selections: [{ pagePath: address('models').pagePath, controlId: 'advertised-models', selectedIds: ['one', 'solo'] }],
     } }, requestContext(current))).toMatchObject({ kind: 'accepted' })
     expect(bench.settings.get('llm-pi-ai')).toMatchObject({ providers: { custom: { models: [{ id: 'one', contextWindow: 4000 }, { id: 'solo' }] } } })
@@ -240,11 +241,11 @@ describe('provider editor', () => {
     const bench = await directSetup()
     const entry = bench.entry!
     const action = entry.definition.onEvent!.action!
-    const effort = (value: string) => ({ actionId: 'save', source: entry.source, forms: [{ pagePath: address('models').pagePath, formId: 'provider', fields: [{ id: 'reasoning', value, change: 'set' as const }] }] })
-    expect(await action({ kind: 'submit', submission: effort('high') }, requestContext(entry))).toMatchObject({ kind: 'accepted' })
+    const effort = (value: string): MayflySubmission => ({ actionId: 'save', draftRevision: 1, source: entry.source, forms: [{ pagePath: address('models').pagePath, formId: 'provider', draftRevision: 1, fields: [{ id: 'reasoning', value, change: 'set' }] }] })
+    expect(await action({ kind: 'submit', pagePath: [], controlId: 'submit', submission: effort('high') }, requestContext(entry))).toMatchObject({ kind: 'accepted' })
     expect(bench.settings.get('llm-pi-ai')).toMatchObject({ providers: { custom: { reasoning: 'high' } } })
     const current = bench.ctx.mayflyOverlays.list().find(item => item.id === entry.id)!
-    expect(await current.definition.onEvent!.action!({ kind: 'submit', submission: { actionId: 'save', source: current.source, forms: [{ pagePath: address('models').pagePath, formId: 'provider', fields: [{ id: 'reasoning', value: 'default', change: 'set' as const }] }] } }, requestContext(current))).toMatchObject({ kind: 'accepted' })
+    expect(await current.definition.onEvent!.action!({ kind: 'submit', pagePath: [], controlId: 'submit', submission: { actionId: 'save', draftRevision: 1, source: current.source, forms: [{ draftRevision: 1, pagePath: address('models').pagePath, formId: 'provider', fields: [{ id: 'reasoning', value: 'default', change: 'set' as const }] }] } }, requestContext(current))).toMatchObject({ kind: 'accepted' })
     expect((bench.settings.get('llm-pi-ai') as { providers: { custom: Record<string, unknown> } }).providers.custom.reasoning).toBeUndefined()
   })
 
@@ -254,7 +255,7 @@ describe('provider editor', () => {
     await flush()
     const entry = bench.ctx.mayflyOverlays.list().find(item => item.id === bench.entry!.id)!
     expect(JSON.stringify(entry.node)).toContain('solo')
-    expect(await entry.definition.onEvent!.action!({ kind: 'submit', submission: { actionId: 'save', source: entry.source, forms: [], selections: [{ pagePath: address('models').pagePath, controlId: 'advertised-models', selectedIds: ['solo'] }] } }, requestContext(entry))).toMatchObject({ kind: 'accepted' })
+    expect(await entry.definition.onEvent!.action!({ kind: 'submit', pagePath: [], controlId: 'submit', submission: { actionId: 'save', draftRevision: 1, source: entry.source, forms: [], selections: [{ pagePath: address('models').pagePath, controlId: 'advertised-models', selectedIds: ['solo'] }] } }, requestContext(entry))).toMatchObject({ kind: 'accepted' })
     expect(bench.settings.get('llm-pi-ai')).toMatchObject({ providers: { custom: { models: [{ id: 'solo', contextWindow: 64000, maxTokens: 4096 }] } } })
   })
 
@@ -267,7 +268,7 @@ describe('provider editor', () => {
     await flush()
     const entry = bench.ctx.mayflyOverlays.list().find(item => item.id === bench.entry!.id)!
     expect(JSON.stringify(entry.node)).toContain('named')
-    expect(await entry.definition.onEvent!.action!({ kind: 'submit', submission: { actionId: 'save', source: entry.source, forms: [], selections: [{ pagePath: address('models').pagePath, controlId: 'advertised-models', selectedIds: ['named', 'extra'] }] } }, requestContext(entry))).toMatchObject({ kind: 'accepted' })
+    expect(await entry.definition.onEvent!.action!({ kind: 'submit', pagePath: [], controlId: 'submit', submission: { actionId: 'save', draftRevision: 1, source: entry.source, forms: [], selections: [{ pagePath: address('models').pagePath, controlId: 'advertised-models', selectedIds: ['named', 'extra'] }] } }, requestContext(entry))).toMatchObject({ kind: 'accepted' })
     expect(bench.settings.get('llm-pi-ai')).toMatchObject({ providers: { custom: { models: [
       { id: 'named', contextWindow: 128000, maxTokens: 2048 },
       { id: 'extra' },
@@ -382,7 +383,7 @@ describe('provider editor', () => {
     const missing = new Context()
     contexts.push(missing)
     const missingBench = await providerFixture(missing, { custom: profile })
-    await missingBench.namespace.dispose()
+    await missingBench.namespace!.dispose()
     await expect(openProviderEditor(missing, 'custom')).rejects.toThrow('Provider settings are unavailable')
 
     const changing = new Context()
@@ -502,11 +503,11 @@ describe('provider editor', () => {
     )).toEqual({ kind: 'completed' })
 
     expect(await action(
-      { kind: 'submit', submission: saveSubmission(entry, { source: [] }) },
+      { kind: 'submit', pagePath: [], controlId: 'submit', submission: saveSubmission(entry, { source: [] }) },
       requestContext(entry),
     )).toMatchObject({ kind: 'conflict' })
     expect(await action(
-      { kind: 'submit', submission: saveSubmission(entry, { source: [{ resourceId: 'llm-pi-ai', revision: -1 }, { resourceId: 'credential-observation', revision: 0 }] }) },
+      { kind: 'submit', pagePath: [], controlId: 'submit', submission: saveSubmission(entry, { source: [{ resourceId: 'llm-pi-ai', revision: -1 }, { resourceId: 'credential-observation', revision: 0 }] }) },
       requestContext(entry),
     )).toMatchObject({ kind: 'conflict' })
 
@@ -627,21 +628,21 @@ describe('provider editor', () => {
     for (const baseURL of ['not a URL', 'file:///tmp/provider']) {
       const invalid = await directSetup()
       expect(await invalid.entry!.definition.onEvent!.action!(
-        { kind: 'submit', submission: saveSubmission(invalid.entry!, { baseURL }) },
+        { kind: 'submit', pagePath: [], controlId: 'submit', submission: saveSubmission(invalid.entry!, { baseURL }) },
         requestContext(invalid.entry!),
       )).toMatchObject({ kind: 'invalid' })
     }
 
     const valid = await directSetup({ profiles: { custom: { baseURL: 'https://old.example/v1', apiKeyEnv: 'CUSTOM_KEY' } } })
     expect(await valid.entry!.definition.onEvent!.action!(
-      { kind: 'submit', submission: saveSubmission(valid.entry!, { name: '   ', baseURL: 'http://new.example/v1/', key: '' }) },
+      { kind: 'submit', pagePath: [], controlId: 'submit', submission: saveSubmission(valid.entry!, { name: '   ', baseURL: 'http://new.example/v1/', key: '' }) },
       requestContext(valid.entry!),
     )).toMatchObject({ kind: 'accepted' })
     expect(valid.settings.get('llm-pi-ai')).toMatchObject({ providers: { custom: { displayName: 'custom', baseURL: 'http://new.example/v1' } } })
 
     const known = await directSetup({ llm: { listConfigurableProviders: () => [{ settingsNs: 'llm-pi-ai', provider: 'custom' }] } })
     expect(await known.entry!.definition.onEvent!.action!(
-      { kind: 'submit', submission: saveSubmission(known.entry!, { baseURL: 'https://ignored.example', key: 42 }) },
+      { kind: 'submit', pagePath: [], controlId: 'submit', submission: saveSubmission(known.entry!, { baseURL: 'https://ignored.example', key: 42 }) },
       requestContext(known.entry!),
     )).toMatchObject({ kind: 'accepted' })
     expect(known.settings.get('llm-pi-ai')).toMatchObject({ providers: { custom: { baseURL: 'https://old.example/v1' } } })
@@ -650,16 +651,16 @@ describe('provider editor', () => {
   it('ignores unchanged and malformed forged fields while allowing an empty credential update', async () => {
     const bench = await directSetup()
     const entry = bench.entry!
-    const raw = saveSubmission(entry, { includeName: false, key: '' })
-    raw.forms.push({ pagePath: [], formId: 'provider', fields: [
+    const saved = saveSubmission(entry, { includeName: false, key: '' })
+    const raw: MayflySubmission = { ...saved, forms: [...saved.forms, { pagePath: [], formId: 'provider', draftRevision: 1, fields: [
       { id: 'ignored', value: 'value', change: 'set' },
       { id: 'name', value: 42, change: 'set' },
       { id: 'baseURL', value: 42, change: 'set' },
       { id: 'key', value: 42, change: 'set' },
       { id: 'unchanged', value: 'same', change: 'unchanged' },
-    ] })
+    ] }] }
     expect(await entry.definition.onEvent!.action!(
-      { kind: 'submit', submission: raw },
+      { kind: 'submit', pagePath: [], controlId: 'submit', submission: raw },
       requestContext(entry),
     )).toMatchObject({ kind: 'accepted' })
     expect(bench.settings.writes).toBe(1)
@@ -670,7 +671,7 @@ describe('provider editor', () => {
     const readonly = await directSetup()
     vi.spyOn(readonly.credentials, 'describe').mockResolvedValue({ configured: true, writable: false, source: 'environment' })
     expect(await readonly.entry!.definition.onEvent!.action!(
-      { kind: 'submit', submission: saveSubmission(readonly.entry!, { key: 'replacement' }) },
+      { kind: 'submit', pagePath: [], controlId: 'submit', submission: saveSubmission(readonly.entry!, { key: 'replacement' }) },
       requestContext(readonly.entry!),
     )).toMatchObject({ kind: 'conflict' })
 
@@ -680,7 +681,7 @@ describe('provider editor', () => {
     await flush()
     const current = changed.ctx.mayflyOverlays.list()[0]!
     expect(await current.definition.onEvent!.action!(
-      { kind: 'submit', submission: saveSubmission(current, { source: staleSource, key: 'replacement' }) },
+      { kind: 'submit', pagePath: [], controlId: 'submit', submission: saveSubmission(current, { source: staleSource, key: 'replacement' }) },
       requestContext(current),
     )).toMatchObject({ kind: 'conflict' })
   })
@@ -692,7 +693,7 @@ describe('provider editor', () => {
     const mutate = vi.spyOn(afterSettings.settings, 'mutate').mockImplementationOnce(async (...args) => { await settingsGate.promise; return originalMutate(...args) })
     const settingsAbort = new AbortController()
     const settingsResult = afterSettings.entry!.definition.onEvent!.action!(
-      { kind: 'submit', submission: saveSubmission(afterSettings.entry!) },
+      { kind: 'submit', pagePath: [], controlId: 'submit', submission: saveSubmission(afterSettings.entry!) },
       requestContext(afterSettings.entry!, settingsAbort.signal),
     )
     await vi.waitFor(() => expect(mutate).toHaveBeenCalled())
@@ -705,7 +706,7 @@ describe('provider editor', () => {
     const set = vi.spyOn(afterCredential.credentials, 'set').mockReturnValueOnce(credentialGate.promise)
     const credentialAbort = new AbortController()
     const credentialResult = afterCredential.entry!.definition.onEvent!.action!(
-      { kind: 'submit', submission: saveSubmission(afterCredential.entry!, { includeName: false, key: 'replacement' }) },
+      { kind: 'submit', pagePath: [], controlId: 'submit', submission: saveSubmission(afterCredential.entry!, { includeName: false, key: 'replacement' }) },
       requestContext(afterCredential.entry!, credentialAbort.signal),
     )
     await vi.waitFor(() => expect(set).toHaveBeenCalled())
@@ -718,7 +719,7 @@ describe('provider editor', () => {
     const rejectedMutate = vi.spyOn(rejected.settings, 'mutate').mockReturnValueOnce(failure.promise)
     const rejectedAbort = new AbortController()
     const rejectedResult = rejected.entry!.definition.onEvent!.action!(
-      { kind: 'submit', submission: saveSubmission(rejected.entry!) },
+      { kind: 'submit', pagePath: [], controlId: 'submit', submission: saveSubmission(rejected.entry!) },
       requestContext(rejected.entry!, rejectedAbort.signal),
     )
     await vi.waitFor(() => expect(rejectedMutate).toHaveBeenCalled())
@@ -731,21 +732,21 @@ describe('provider editor', () => {
     const conflict = await directSetup()
     vi.spyOn(conflict.settings, 'mutate').mockRejectedValueOnce(new SettingsConflictError('llm-pi-ai' as never, 0, 1))
     expect(await conflict.entry!.definition.onEvent!.action!(
-      { kind: 'submit', submission: saveSubmission(conflict.entry!) },
+      { kind: 'submit', pagePath: [], controlId: 'submit', submission: saveSubmission(conflict.entry!) },
       requestContext(conflict.entry!),
     )).toMatchObject({ kind: 'conflict' })
 
     const settingsFailure = await directSetup()
     vi.spyOn(settingsFailure.settings, 'mutate').mockRejectedValueOnce(new Error('disk failed'))
     expect(await settingsFailure.entry!.definition.onEvent!.action!(
-      { kind: 'submit', submission: saveSubmission(settingsFailure.entry!) },
+      { kind: 'submit', pagePath: [], controlId: 'submit', submission: saveSubmission(settingsFailure.entry!) },
       requestContext(settingsFailure.entry!),
     )).toMatchObject({ kind: 'failed', message: 'Provider configuration could not be saved' })
 
     const credentialFailure = await directSetup()
     vi.spyOn(credentialFailure.credentials, 'set').mockRejectedValueOnce(new Error('credential failed'))
     const result = await credentialFailure.entry!.definition.onEvent!.action!(
-      { kind: 'submit', submission: saveSubmission(credentialFailure.entry!, { baseURL: 'https://new.example/v1', key: 'replacement' }) },
+      { kind: 'submit', pagePath: [], controlId: 'submit', submission: saveSubmission(credentialFailure.entry!, { baseURL: 'https://new.example/v1', key: 'replacement' }) },
       requestContext(credentialFailure.entry!),
     )
     expect(result).toMatchObject({

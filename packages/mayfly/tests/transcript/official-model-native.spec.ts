@@ -3,7 +3,7 @@
  */
 import { Context } from '@deepseek-ai/cordis'
 import { MessageId } from '@deepseek-ai/dsh-llm'
-import { SessionId, SessionStore } from '@deepseek-ai/dsh-session'
+import { SessionId, SessionSeq, SessionStore } from '@deepseek-ai/dsh-session'
 import { SessionProjectionRegistry } from '@deepseek-ai/dsh-session-projection'
 import { expect, it, vi } from 'vitest'
 import * as conversationPlugin from '../../src/conversation/index.ts'
@@ -40,7 +40,8 @@ it('handles cloned native snapshots, multi-entry settlement, retraction, and lat
   expect(values[0]!.entries[0]).toBe(baseline.entries[0])
   expect(values[1]!.entries[0]).toBe(values[0]!.entries[0])
   expect(source.snapshot().entries.map(entry => entry.kind)).toEqual(['transcript-user', 'transcript-thinking', 'transcript-assistant'])
-  const settledSeq = session.seq
+  // The seq the next append takes: the settled answer below.
+  const settledSeq = SessionSeq(session.seq)
   session.append('assistant/message', {
     turn: 0, step: 0,
     message: {

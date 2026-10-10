@@ -163,6 +163,7 @@ describe('Mayfly direct-service whole tree', () => {
       entries: [{ kind: 'assistant', id: 'assistant:1:0', seq: 1, updatedSeq: 1, turn: 1, step: 0, text: 'authoritative final', streaming: false }],
       streaming: false,
       settledSteps: ['1:0'],
+      turns: [],
     }, 1)
     emit({ type: 'end', attemptId: 'reload' as never, revision: 5, index: 3, outcome: { kind: 'committed', eventType: 'assistant/message', seq: 1 as never } })
     tree.terminal.resize(40, 24)
@@ -189,7 +190,7 @@ describe('Mayfly direct-service whole tree', () => {
           onEvent: { action: event => { seen.push(event.kind); return { kind: 'completed' } } },
         }, ui.list({ id: 'builds', role: 'choose', selectedIds: [], items: [{ id: 'one', label: 'build one' }, { id: 'two', label: 'build two' }] }))
       },
-    } as never)
+    })
     const since = (): number => tree.terminal.written.length
     tree.ctx.mayflyScreen.requestRender(true)
     await waitForRender()

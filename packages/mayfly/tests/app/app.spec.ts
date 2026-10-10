@@ -29,8 +29,9 @@ interface FakeSession {
   requestHeader(): undefined
 }
 
-interface FakeAgent extends Agent {
-  readonly session: FakeSession
+/** An Agent as the app sees it, with the scripted session and spies the tests read. */
+type FakeAgent = Agent & {
+  readonly session: Agent['session'] & FakeSession
   readonly followup: ReturnType<typeof vi.fn>
   readonly cancel: ReturnType<typeof vi.fn>
 }
@@ -147,7 +148,7 @@ async function waitForAgent(test: Bench, id?: string): Promise<FakeAgent> {
     expect(current).not.toBeNull()
     if (id !== undefined) expect(String(current?.id)).toBe(id)
   })
-  return test.ctx.mayflyCurrentAgent.current() as FakeAgent
+  return test.ctx.mayflyCurrentAgent.current() as unknown as FakeAgent
 }
 
 describe('mayfly app driver', () => {
@@ -270,7 +271,7 @@ describe('mayfly app driver', () => {
 
     test.ctx.emit('mayfly/request-new')
     await vi.waitFor(() => { expect(test.ctx.mayflyCurrentAgent.current()).not.toBe(target) })
-    const fresh = test.ctx.mayflyCurrentAgent.current() as FakeAgent
+    const fresh = test.ctx.mayflyCurrentAgent.current() as unknown as FakeAgent
     expect(fresh).not.toBe(initial)
     test.failCreate(new Error('create unavailable'))
     test.ctx.emit('mayfly/request-new')
@@ -292,7 +293,7 @@ describe('mayfly app driver', () => {
     const parent = await waitForAgent(test)
     test.ctx.emit('mayfly/request-fork')
     await vi.waitFor(() => { expect(test.ctx.mayflyCurrentAgent.current()).not.toBe(parent) })
-    const child = test.ctx.mayflyCurrentAgent.current() as FakeAgent
+    const child = test.ctx.mayflyCurrentAgent.current() as unknown as FakeAgent
     expect(test.forked[0]).toEqual({ sessionId: parent.id })
 
     test.ctx.emit('mayfly/request-rewind', 'stale', 7)
@@ -383,7 +384,7 @@ describe('mayfly app driver', () => {
       { type: 'user/message', seq: 1, data: { id: 'child-message', source: { kind: 'user' } } },
     ])
     Object.assign(child, { status: 'running' })
-    ;(child.session.surface.nodes as number[]).push(1)
+    ;(child.session.surface.nodes as unknown as number[]).push(1)
     test.live.set(String(child.id), child)
     test.ctx.mayflyConversations.open({
       kind: 'subagent',

@@ -1,6 +1,6 @@
 /** The list painter: rows from their state bits, bodies, wrapping, windowing over rows of varying height, and the strip ladder. */
 import { describe, expect, it, vi } from 'vitest'
-import { ui, type MayflyListItem } from '../../../ui/src/index.ts'
+import { ui, type MayflyListItem, type MayflyListSegment } from '../../../ui/src/index.ts'
 import { renderList, type ListRenderExtras, type PatternFocus } from '../../src/core/ui-patterns.ts'
 import type { ListRowSpec } from '../../src/core/ui-list-paint.ts'
 import { UiRowCache } from '../../src/core/ui-row-cache.ts'
@@ -9,8 +9,8 @@ import { createWorkCounters } from '../../src/core/ui-work-counters.ts'
 import { visibleWidth } from '../../src/core/width.ts'
 
 const identity = (value: string): string => value
-const colors = new Proxy({ logoGradient: [identity] }, { get: (target, key) => key === 'logoGradient' ? target.logoGradient : identity }) as MayflySemanticColors
-const tagged = new Proxy({ logoGradient: [identity] }, { get: (target, key) => key === 'logoGradient' ? target.logoGradient : (value: string) => `<${String(key)}>${value}</>` }) as MayflySemanticColors
+const colors = new Proxy({ logoGradient: [identity] }, { get: (target, key) => key === 'logoGradient' ? target.logoGradient : identity }) as unknown as MayflySemanticColors
+const tagged = new Proxy({ logoGradient: [identity] }, { get: (target, key) => key === 'logoGradient' ? target.logoGradient : (value: string) => `<${String(key)}>${value}</>` }) as unknown as MayflySemanticColors
 const plain = (rows: readonly string[]): string[] => rows.map(row => row.replace(/\x1b\[[0-9;]*m/gu, ''))
 const idle: PatternFocus = { key: '', focused: false, marker: '|' }
 const on = (key: string): PatternFocus => ({ key, focused: true, marker: '|' })
@@ -205,8 +205,8 @@ describe('list windows', () => {
 
 describe('the segment strip on a row', () => {
   const effort = (inheritedId?: string) => ({ label: 'Thinking', options: [{ id: 'min', label: 'min' }, { id: 'high', label: 'high' }, { id: 'max', label: 'max' }], ...(inheritedId === undefined ? {} : { inheritedId }) })
-  const item = (id: string, label: string, segment?: ReturnType<typeof effort>): MayflyListItem => ({ id, label, ...(segment === undefined ? {} : { segment }) })
-  const view = (pinned: string | null, segment: ReturnType<typeof effort>) => ({ segment, pinned, active: pinned ?? segment.inheritedId })
+  const item = (id: string, label: string, segment?: MayflyListSegment): MayflyListItem => ({ id, label, ...(segment === undefined ? {} : { segment }) })
+  const view = (pinned: string | null, segment: MayflyListSegment) => ({ segment, pinned, active: pinned ?? segment.inheritedId })
 
   it('rides the focused row at the right edge when it fits, with (default) first and without it second', () => {
     const items = [item('a', 'Model A', effort('high')), item('b', 'Model B')]
@@ -234,7 +234,7 @@ describe('the segment strip on a row', () => {
     const rows = plain(renderList(node, 62, 10, on('a'), colors, 0, undefined, { rows: specs(items), cursorId: 'a', segment }))
     expect(rows.slice(1)).toEqual(['', '  Thinking: min ‹ high (default) › max'])
     // The caption falls to the segment's label, then to a translated default.
-    const unlabeled = [item('a', 'DeepSeek/DeepSeek-V41-Flash [current] — 977k context', { options: effort('high').options, inheritedId: 'high' } as ReturnType<typeof effort>)]
+    const unlabeled = [item('a', 'DeepSeek/DeepSeek-V41-Flash [current] — 977k context', { options: effort('high').options, inheritedId: 'high' })]
     const bare = (row: MayflyListItem) => row.segment === undefined ? undefined : view(null, row.segment)
     expect(plain(renderList(ui.list({ id: 'u', role: 'browse', selectedIds: [], items: unlabeled }), 62, 10, on('a'), colors, 0, undefined, { rows: specs(unlabeled), cursorId: 'a', segment: bare, segmentLabel: 'Effort' })).at(-1)).toBe('  Effort: min ‹ high (default) › max')
     expect(plain(renderList(ui.list({ id: 'u', role: 'browse', selectedIds: [], items: unlabeled }), 62, 10, on('a'), colors, 0, undefined, { rows: specs(unlabeled), cursorId: 'a', segment: bare })).at(-1)).toBe('  Options: min ‹ high (default) › max')

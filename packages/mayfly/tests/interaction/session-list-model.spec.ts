@@ -16,25 +16,33 @@ import {
   sessionSpan,
   type SessionListFacts,
 } from '../../src/interaction/session-list-model.ts'
+import { withOverrides, type Overrides } from '../fixture-fields.ts'
 
 const t: MayflyTranslate = (key, values) => key.replace(/\{(\w+)\}/g, (_match, name: string) => String(values?.[name]))
 const text = (node: MayflyUiNode | ReturnType<typeof sessionListItem>): string => JSON.stringify(node)
 
 const NOW = 1_800_000_000_000
 
-const summary = (over: Partial<SessionSummary> = {}): SessionSummary => ({
+/**
+ * A listing summary. Its cached projection values are partial, as a projection cache may hold them, and its ids are
+ * plain strings.
+ */
+type SummaryFixture = Omit<Partial<SessionSummary>, 'projections' | 'parentSessionId'> & {
+  readonly projections?: { readonly kind?: 'cached' | 'sequenced', readonly asOfSeq?: number, readonly values: Readonly<Record<string, unknown>> }
+  readonly parentSessionId?: string
+}
+const summary = (over: SummaryFixture = {}): SessionSummary => ({
   sessionId: 'session-id-abcdef',
   updatedAt: NOW - 60_000,
   running: false,
   ...over,
-} as SessionSummary)
+} as unknown as SessionSummary)
 
-const header = (over: Partial<SessionHeader> = {}): SessionHeader => ({
+const header = (over: Overrides<SessionHeader> = {}): SessionHeader => withOverrides({
   id: 'session-id-abcdef',
   createdAt: NOW - 3_600_000,
   cwd: '/header/cwd',
-  ...over,
-} as SessionHeader)
+} as SessionHeader, over)
 
 const context = (over = {}) => ({ archived: false, current: false, now: NOW, ...over })
 
@@ -135,11 +143,11 @@ describe('sessionSpan and sessionLabel', () => {
 })
 
 describe('sessionListItem', () => {
-  const facts = (over: Partial<SessionListFacts> = {}): SessionListFacts => ({
+  const facts = (over: Overrides<SessionListFacts> = {}): SessionListFacts => withOverrides<SessionListFacts>({
     id: 'session-id-abcdef', title: 'Named', cwd: '/home/dev/repo', createdAt: NOW - 3_600_000,
     lastActiveAt: NOW - 3_000_000, running: false, archived: false, current: false, reminders: false,
-    tokens: { input: 1_500, cacheRead: 0, cacheWrite: 0, output: 500 }, ...over,
-  })
+    tokens: { input: 1_500, cacheRead: 0, cacheWrite: 0, output: 500 },
+  }, over)
   it('leads the detail with the span and tokens, then age and path', () => {
     const item = sessionListItem(facts(), NOW, '/home/dev', t)
     expect(item.label).toBe('Named')

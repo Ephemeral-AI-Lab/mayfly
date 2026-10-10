@@ -18,8 +18,8 @@ import type { CommandDefinition, CommandInvocation, CommandResult } from '@deeps
 import { fakeMayflyComponents } from './helpers.ts'
 import { asAgent, COLORS, FakeFactsService, type FakeAgent } from './status-fakes.ts'
 import { compileMayflyUiNode } from '../../src/core/ui-compiler.ts'
-import { conversationProjectionDefinition, foldConversationProjection, initialConversationState, type ConversationProjectionState } from '../../src/conversation/projection.ts'
-import type { ConversationProjection } from '../../src/conversation/types.ts'
+import { conversationProjectionDefinition, foldConversationProjection, initialConversationState } from '../../src/conversation/projection.ts'
+import type { ConversationProjection, ConversationProjectionState } from '../../src/conversation/types.ts'
 import { mountFakeScreenSlot } from '../core/fake-screen-slot.ts'
 
 const ANSI_OR_OSC = /\x1b(?:\][^\x07]*(?:\x07|\x1b\\)|\[[0-?]*[ -/]*[@-~]|.)/gu
@@ -66,7 +66,7 @@ export class PaneFakeScreen implements MayflyScreen {
 
   removeChild(): void {}
 
-  setFocus(): void {}
+  setFocus(_component: MayflyComponent | null): void {}
 
   showOverlay(): MayflyOverlayHandle {
     throw new Error('fake showOverlay is out of scope for pane plugin tests')
@@ -119,6 +119,7 @@ export class PaneFakeScreen implements MayflyScreen {
               colors: this.colors,
               getViewport: () => ({ columns: width, rows: this.rows }),
               screenMode: 'main',
+              emit: () => {},
             })
             const rows = compiled.ok ? compiled.value.component.render(width) : compiled.errorComponent.render(width)
             return rows.map(line => line.replace(ANSI_OR_OSC, ''))
@@ -131,6 +132,11 @@ export class PaneFakeScreen implements MayflyScreen {
       this.requestRender()
     })
   }
+
+  scrollContent(): boolean { return false }
+  contentChanged(): boolean { return false }
+  followContent(): void {}
+  setContentScrollHandler(): () => void { return () => {} }
 }
 
 /** Records keymap registrations; handlers are invoked manually by specs. */

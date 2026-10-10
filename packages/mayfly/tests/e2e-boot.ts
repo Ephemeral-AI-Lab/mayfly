@@ -89,7 +89,8 @@ class ToolServiceProbe extends Service {
   }
 }
 
-interface DirectContext extends Context {
+/** The boot's context, whose probe services stand in for the native ones. */
+interface DirectContext extends Omit<Context, 'commands' | 'sessionProjections' | 'tools'> {
   readonly commands: CommandServiceProbe
   readonly sessionProjections: ProjectionServiceProbe
   readonly tools: ToolServiceProbe
@@ -109,9 +110,7 @@ interface FakeSession {
   requestHeader(): undefined
 }
 
-interface FakeAgent extends Agent {
-  readonly session: FakeSession
-}
+type FakeAgent = Agent & { readonly session: Agent['session'] & FakeSession }
 
 function fakeAgent(id: string): FakeAgent {
   const session: FakeSession = {

@@ -65,7 +65,9 @@ export function stepsFor(plan, tier, { root = process.cwd(), coverageAdvice = fa
   const lintFiles = plan.files.filter(file => /^(?:packages|examples)\/.+\.(?:[cm]?ts|tsx)$/u.test(file) && existsSync(join(root, file)))
   if (lintFiles.length > 0) steps.push({ name: 'lint', command: 'pnpm', args: ['exec', 'oxlint', ...lintFiles] })
   if (plan.checks.build) steps.push({ ...pnpm('build', 'run', 'build:changed', '--', '--files-json', JSON.stringify(plan.files)), blocking: true })
-  else if (plan.checks.typecheck) steps.push({ ...pnpm('typecheck', 'run', 'typecheck'), blocking: true })
+  // The source build and the test typecheck are separate: a test-file change needs the typecheck without a build, and a
+  // source change needs both (the second `tsc -b` is incremental).
+  if (plan.checks.typecheck) steps.push({ ...pnpm('typecheck', 'run', 'typecheck'), blocking: true })
   if (tier === 'pr') {
     if (plan.checks.agentDocs) steps.push(pnpm('agent docs', 'run', 'check:agent-docs'))
     if (plan.checks.diagrams) steps.push(pnpm('diagrams', 'run', 'diagrams:check'))

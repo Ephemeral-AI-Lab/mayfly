@@ -711,7 +711,7 @@ describe('alternate-screen runtime', () => {
     const identity = (value: string): string => value
     const colors = new Proxy({ logoGradient: [identity] }, {
       get: (target, key) => key === 'logoGradient' ? target.logoGradient : identity,
-    }) as MayflySemanticColors
+    }) as unknown as MayflySemanticColors
     const components = { visibleWidth, wrapText: wrapTextWithAnsi, truncateToWidth } as MayflyComponents
     const pane = compileMayflyUiNode(ui.scroll(ui.stack.column(
       Array.from({ length: 20 }, (_, index) => ui.text(`pane-${String(index)}`)),
@@ -825,10 +825,10 @@ describe('alternate-screen runtime', () => {
     // A layout that changed since the lane was last measured re-plans it.
     runtime.surfaces.register({ id: 'queue', placement: 'bottom', priority: 20, component: textComponent('queue') })
     const layoutRoot = (runtime.tui as unknown as { layoutRoot: MayflyComponent & { [LAYOUT_NODE](): LayoutNode } }).layoutRoot
-    const lane = (layoutRoot[LAYOUT_NODE]() as { entries: { component: MayflyComponent & { [LAYOUT_NODE]?(): LayoutNode } }[] }).entries
+    const lane = (layoutRoot[LAYOUT_NODE]() as unknown as { entries: { component: MayflyComponent & { [LAYOUT_NODE]?(): LayoutNode } }[] }).entries
       .map(entry => entry.component)
       .find(component => component !== layoutRoot && typeof component[LAYOUT_NODE] === 'function' && component.render(40).includes('spin'))!
-    expect((lane[LAYOUT_NODE]!() as { entries: unknown[] }).entries.length).toBeGreaterThan(0)
+    expect((lane[LAYOUT_NODE]!() as unknown as { entries: unknown[] }).entries.length).toBeGreaterThan(0)
     await runtime.stop()
     terminal.dispose()
   })

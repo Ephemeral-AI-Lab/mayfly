@@ -254,8 +254,8 @@ describe('core width-scan', () => {
       }
       const mermaid = `graph LR\n  A[${text}] --> B[done]`
       for (const width of SCAN_WIDTHS) {
-        expectLinesFit(`Chart/${name}`, renderChartRows(chart, width, chartComponents, statusColors as MayflySemanticColors), width)
-        expectLinesFit(`Chart-horizontal/${name}`, renderChartRows(horizontal, width, chartComponents, statusColors as MayflySemanticColors), width)
+        expectLinesFit(`Chart/${name}`, renderChartRows(chart, width, chartComponents, statusColors as unknown as MayflySemanticColors), width)
+        expectLinesFit(`Chart-horizontal/${name}`, renderChartRows(horizontal, width, chartComponents, statusColors as unknown as MayflySemanticColors), width)
         const diagram = renderMermaidRows(mermaid, width)
         const documentRows = diagram ?? wrapTextWithAnsi(mermaid, Math.max(1, width))
         expectLinesFit(`Mermaid/${name}`, documentRows, width)
@@ -289,7 +289,7 @@ describe('core width-scan', () => {
       ])
       const model = new UiSurfaceModel('scan', { id: 'scan', revision: 0, node, source: [], scope: { kind: 'app', targetId: 'scan' }, update: { reason: 'replace' }, definition: {}, events: { prepare: async () => ({ reply: undefined, publish: () => false }) } })
       const scanComponents = { visibleWidth, wrapText: wrapTextWithAnsi, truncateToWidth, createEditor: () => scanEditor('') } as never
-      const options = { components: scanComponents, colors: statusColors as MayflySemanticColors, getViewport: () => ({ columns: 120, rows: 30 }), screenMode: 'alternate' as const, emit: () => {} }
+      const options = { components: scanComponents, colors: statusColors as unknown as MayflySemanticColors, getViewport: () => ({ columns: 120, rows: 30 }), screenMode: 'alternate' as const, emit: () => {} }
       const surface = compileMayflyUiNode(model.node, { ...options, interaction: model })
       if (!surface.ok) throw new Error(surface.message)
       model.updateChoice({ pagePath: [], controlId: 'rows' }, { kind: 'focus', id: 'n0' })
@@ -313,8 +313,8 @@ describe('core width-scan', () => {
         ],
       }
       for (const width of SCAN_WIDTHS) {
-        expectLinesFit(`ListSegment/${name}`, [renderListSegment(segment, 'b', width, statusColors as MayflySemanticColors)], width)
-        expectLinesFit(`ListSegment-none/${name}`, [renderListSegment(segment, undefined, width, statusColors as MayflySemanticColors)], width)
+        expectLinesFit(`ListSegment/${name}`, [renderListSegment(segment, 'b', width, statusColors as unknown as MayflySemanticColors)], width)
+        expectLinesFit(`ListSegment-none/${name}`, [renderListSegment(segment, undefined, width, statusColors as unknown as MayflySemanticColors)], width)
       }
     })
 
@@ -335,7 +335,7 @@ describe('core width-scan', () => {
       ]) })
       const scanComponents = { visibleWidth, wrapText: wrapTextWithAnsi, truncateToWidth, sliceByColumn, createEditor: () => scanEditor(long) } as never
       const model = new UiSurfaceModel('scan', { id: 'scan', revision: 0, node, source: [], scope: { kind: 'app', targetId: 'scan' }, update: { reason: 'replace' }, definition: {}, events: { prepare: async () => ({ reply: undefined, publish: () => false }) } })
-      const surface = compileMayflyUiSurfaceNode(model.node!, { components: scanComponents, colors: statusColors as MayflySemanticColors, getViewport: () => ({ columns: 120, rows: 60 }), screenMode: 'alternate', emit: () => {}, contextHints: { enabled: true }, surfaceRuntime: new MayflyUiSurfaceRuntime(model) })
+      const surface = compileMayflyUiSurfaceNode(model.node!, { components: scanComponents, colors: statusColors as unknown as MayflySemanticColors, getViewport: () => ({ columns: 120, rows: 60 }), screenMode: 'alternate', emit: () => {}, contextHints: { enabled: true }, surfaceRuntime: new MayflyUiSurfaceRuntime(model) })
       if (!surface.ok) throw new Error(surface.message)
       const focus = surface.value.focusTarget!
       focus.focused = true
@@ -361,7 +361,7 @@ describe('core width-scan', () => {
         ui.list({ id: 'rich', role: 'choose', mode: 'multiple', tree: true, maxRows: 6, selectedIds: ['c1'], items: [
           { id: 'p', label: long, labelSpans: [{ text: long, styles: ['strong'] }], right: [{ text: long.slice(0, 30), tone: 'muted' }], rightFocus: [{ text: long.slice(0, 30) }], expanded: true, body: long },
           { id: 'c1', label: long, parentId: 'p', detail: long, badge: long.slice(0, 20), meter: { value: 2, max: 4, width: 40 }, indent: 8 },
-          { id: 'c2', label: long, parentId: 'p', wrap: true, wrapMax: 2, body: ui.stack.column([ui.text(long), ui.divider({ label: long })]), expanded: true },
+          { id: 'c2', label: long, parentId: 'p', wrap: true, wrapMax: 2, body: ui.listBody([ui.text(long), ui.divider({ label: long })]), expanded: true },
           { id: 'rule', label: '', rule: long },
           { id: 'seg', label: long, segment: { label: long.slice(0, 40), inheritedId: 'b', options: [{ id: 'a', label: long.slice(0, 30) }, { id: 'b', label: 'default' }, { id: 'c', label: long.slice(0, 30) }] } },
           { id: 'gap', label: '', gap: true },
@@ -369,7 +369,7 @@ describe('core width-scan', () => {
         ui.list({ id: 'filtered', role: 'browse', filterable: true, filterMode: 'slash', filter: long, selectedIds: [], items: [{ id: 'x', label: long, wrap: true }] }),
       ])
       const scanComponents = { visibleWidth, wrapText: wrapTextWithAnsi, truncateToWidth, sliceByColumn, createEditor: () => scanEditor('') } as never
-      const options = { components: scanComponents, colors: statusColors as MayflySemanticColors, getViewport: () => ({ columns: 120, rows: 30 }), screenMode: 'alternate' as const, emit: () => {} }
+      const options = { components: scanComponents, colors: statusColors as unknown as MayflySemanticColors, getViewport: () => ({ columns: 120, rows: 30 }), screenMode: 'alternate' as const, emit: () => {} }
       const surface = compileMayflyUiNode(node, options)
       if (!surface.ok) throw new Error(surface.message)
       surface.value.focusTarget!.focused = true
@@ -383,7 +383,7 @@ describe('core width-scan', () => {
   for (const { name, text } of ADVERSARIAL) {
     it(`views lane strip, rule, and panel survive ${name}`, () => {
       const lane = new ViewsLane()
-      lane.bind({ colors: statusColors as MayflySemanticColors, focus: () => {}, release: () => {}, requestRender: () => {}, viewport: () => ({ columns: 120, rows: 30 }) })
+      lane.bind({ colors: statusColors as unknown as MayflySemanticColors, focus: () => {}, release: () => {}, requestRender: () => {}, viewport: () => ({ columns: 120, rows: 30 }) })
       for (const [index, id] of ['agents', 'jobs', 'goal'].entries()) {
         const panel = { render: () => [text.slice(0, 90), text], invalidate: () => {}, focused: false, handleInput: () => {} }
         lane.register({ id, title: index === 0 ? text.slice(0, 50) : id, priority: index, summary: { node: { kind: 'text', content: text }, count: text.slice(0, 20) } }).setPanel(panel, panel)

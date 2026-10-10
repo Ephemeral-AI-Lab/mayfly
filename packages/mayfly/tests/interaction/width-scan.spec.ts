@@ -264,7 +264,7 @@ describe('interaction width-scan', () => {
           if (kind !== 'questionnaire') {
             if (kind === 'plan') {
               model.emit({ kind: 'selection-accept', pagePath: [], controlId: 'decision', selectedIds: ['other'] })
-              await vi.waitFor(() => expect(model.form({ pagePath: [], formId: 'revision', fieldId: 'reason' })).toBeDefined())
+              await vi.waitFor(() => expect(model.form({ pagePath: [], formId: 'revision' })).toBeDefined())
             } else model.invoke('feedback', [{ controlId: 'approval', itemId: 'decision' }])
             const feedbackRenderer = renderRequest(model, viewport)
             for (const width of SCAN_WIDTHS) expectLinesFit(`${kind}-feedback/${name}`, feedbackRenderer.component.render(width), width)

@@ -65,7 +65,7 @@ describe('frontend assistant stream recovery', () => {
     ctx.provide('agents', { get: () => child } as never)
     const live = new LiveAssistantStreamService(ctx)
     ctx.effect(() => () => live.dispose())
-    const follow = vi.fn(async function* (): AsyncIterable<SessionFollowFrame> {
+    const follow = vi.fn(async function* (_request: SessionFollowRequest): AsyncIterable<SessionFollowFrame> {
       yield { type: 'snapshot', assistantStream: { revision: 0 } } as unknown as SessionFollowFrame
     })
     ctx.provide('sessionController', { follow } as never)

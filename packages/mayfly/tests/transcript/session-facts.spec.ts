@@ -8,7 +8,7 @@ import type { GoalPhase, GoalProjection } from '@deepseek-ai/dsh-goal'
 import type { Session } from '@deepseek-ai/dsh-session'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { initialConversationFacts } from '../../src/conversation/facts.ts'
-import { CHILD_VOLATILE_MS, projectChildSessionFacts, SessionFactsService } from '../../src/transcript/session-facts.ts'
+import { CHILD_VOLATILE_MS, projectChildSessionFacts, SessionFactsService, type ChildSessionFacts } from '../../src/transcript/session-facts.ts'
 import { LiveAssistantStreamService } from '../../src/conversation/live-stream.ts'
 
 class ProjectionFake {
@@ -297,7 +297,7 @@ describe('SessionFactsService', () => {
     ctx.reflect.provide('mayflyCurrentAgent', { subscribe(listener: (value: Agent) => void) { listener(current); return () => {} } })
     const live = new LiveAssistantStreamService(ctx)
     const service = new SessionFactsService(ctx, live)
-    const children: Array<ReadonlyArray<{ readonly id: string, readonly activity?: string }>> = []
+    const children: Array<readonly ChildSessionFacts[]> = []
     service.subscribeChildren(value => children.push(value))
     expect(children.at(-1)).toEqual([{ id: 'child', activity: 'Starting…', phase: 'waiting', tokens: 0, toolCount: 0, promptText: 'delegate' }])
     live.accept(childAgent, { type: 'start', attemptId: 'run' as never, revision: 1, turn: 1, step: 0 })
@@ -339,7 +339,7 @@ describe('SessionFactsService', () => {
       ctx.reflect.provide('mayflyCurrentAgent', { subscribe(next: (value: Agent | null) => void) { listener = next; next(current); return () => {} } })
       const live = new LiveAssistantStreamService(ctx)
       const service = new SessionFactsService(ctx, live)
-      const published: Array<ReadonlyArray<{ readonly liveChars?: number, readonly activity?: string }>> = []
+      const published: Array<readonly ChildSessionFacts[]> = []
       service.subscribeChildren(value => published.push(value))
       let revision = 0
       const chunk = (text: string, kind: 'text-delta' | 'reasoning-delta' = 'text-delta'): void => {

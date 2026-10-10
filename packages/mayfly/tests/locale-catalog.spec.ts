@@ -42,7 +42,7 @@ function sourceFiles(directory: string): string[] {
 }
 
 function placeholders(message: string): string[] {
-  return [...message.matchAll(/\{([A-Za-z][A-Za-z0-9_]*)\}/gu)].map(match => match[1]).sort()
+  return [...message.matchAll(/\{([A-Za-z][A-Za-z0-9_]*)\}/gu)].map(match => match[1]!).sort()
 }
 
 const files = sourceFiles(SRC)

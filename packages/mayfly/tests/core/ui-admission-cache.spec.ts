@@ -71,7 +71,7 @@ describe('admission cache', () => {
     // [tree, nodes validated cold, nodes validated warm]: every control-bearing node is validated again; only a passive page text is a hit.
     for (const [node, coldCount, warmCount] of [
       [ui.stack.column([ui.child(panel), ui.child(ui.actions({ id: 'a', items: [{ id: 'go', label: 'Go', key: 'ctrl+g' }] }))]), 4, 4],
-      [ui.stack.column([ui.child(panel), ui.child(ui.text('x'), { when: { minColumns: 40 } })]), 3, 3],
+      [ui.stack.column([ui.child(panel), ui.child(ui.text('x'), { when: { minWidth: 40 } })]), 3, 3],
       [ui.stack.column([ui.child(ui.tabs({ id: 't', activeId: 'one', items: [{ id: 'one', label: 'One' }] })), ui.child(ui.text('page'), { tab: { controlId: 't', itemId: 'one' } })]), 3, 2],
     ] as const) {
       const cold = createWorkCounters()

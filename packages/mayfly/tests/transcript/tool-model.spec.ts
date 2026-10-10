@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import type { MayflySemanticColors } from '../../src/core/index.ts'
+import type { ToolPresentationModel } from '../../src/frontend/index.ts'
 import { createToolPresentationModel, toolCallNode, toolResultNode, toolResultChip, ToolModelComponent } from '../../src/transcript/tool-model.ts'
 import { fakeMayflyComponents } from './helpers.ts'
 import { COLORS } from './status-fakes.ts'
@@ -39,7 +40,7 @@ describe('ToolModelComponent', () => {
     expect(edit.render(60)).toHaveLength(2)
   })
   it('contains invalid canonical nodes and degenerate viewports', () => {
-    const invalid = { kind: 'list', id: 'bad', selectedIds: [], items: [{ id: 'same', label: 'one' }, { id: 'same', label: 'two' }] } as MayflyUiNode
+    const invalid = { kind: 'list', id: 'bad', selectedIds: [], items: [{ id: 'same', label: 'one' }, { id: 'same', label: 'two' }] } as unknown as MayflyUiNode
     const component = new ToolModelComponent(() => ({ kind: 'tool', id: 'invalid', name: 'invalid', call: invalid }), { ...renderer, viewportRows: () => Number.NaN })
     expect(component.render(Number.NaN).join('')).toContain('May')
   })
@@ -92,7 +93,7 @@ describe('canonical tool presentation builder', () => {
   it('preserves terminal card row budgets without language headings', () => {
     const call = toolCallNode({ card: 'terminal', title: 'pnpm test' })
     const result = toolResultNode({ card: 'terminal', title: 'Shell', output: 'ok', exitCode: 0 }, undefined, 'tool')
-    const callRows = new ToolModelComponent(() => ({ kind: 'tool', id: 'call', name: 'call', call }), renderer).render(40)
+    const callRows = new ToolModelComponent(() => ({ kind: 'tool', id: 'call', name: 'call', call: call! }), renderer).render(40)
     const resultRows = new ToolModelComponent(() => ({ kind: 'tool', id: 'result', name: 'result', result, expanded: true }), renderer).render(40)
     expect(callRows.join('\n')).not.toContain('shell')
     expect(resultRows.join('\n')).not.toContain('console')
@@ -125,7 +126,7 @@ describe('canonical tool presentation builder', () => {
       kind: 'surface',
       child: { kind: 'stack', direction: 'column', children: [
         { node: { kind: 'scroll', child: { kind: 'diff', before: '', after: 'one' } } },
-        { node: { kind: 'list', id: 'nested-list', selectedIds: [], items: [], empty: { kind: 'diff', before: 'old', after: '' } } },
+        { node: { kind: 'list', id: 'nested-list', role: 'browse', selectedIds: [], items: [], empty: { kind: 'diff', before: 'old', after: '' } } },
         { node: { kind: 'empty', title: 'empty', actions: { kind: 'actions', id: 'nested-actions', items: [] } } },
       ] },
       footer: { kind: 'diff', before: 'same', after: 'changed' },

@@ -9,7 +9,6 @@
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { inc } from 'semver'
 import { mkdtempTracked, registerTempDirCleanup } from '../../mayfly/tests/core/temp-dir.ts'
 import { cliInternals, type SpawnOutcome } from '../src/internals.ts'
 import { main, shellVersion } from '../src/main.ts'
@@ -27,7 +26,8 @@ afterEach(() => {
 
 /** The shell's own manifest version — the pin every fixture calibrates to. */
 const PIN = '0.1.3-rc.2'
-const AHEAD = inc(PIN, 'minor')!
+/** A release one minor line ahead of the pin. */
+const AHEAD = `${PIN.split('.')[0]!}.${String(Number(PIN.split('.')[1]) + 1)}.0`
 
 /** One captured write or exit. */
 const captures: { out: string[], err: string[], exits: number[] } = { out: [], err: [], exits: [] }
@@ -36,7 +36,7 @@ const captures: { out: string[], err: string[], exits: number[] } = { out: [], e
 interface Call {
   cmd: string
   args: readonly string[]
-  env?: Record<string, string>
+  env?: Record<string, string> | undefined
 }
 
 /** A successful spawn outcome. */
@@ -174,7 +174,7 @@ describe('main', () => {
 
   it('routes a pnpm-missing bootstrap to the pnpm manual line', async () => {
     fixtureLauncher()
-    cliInternals.spawnOnce = async (cmd, args) => args[args.length - 1] === '--version'
+    cliInternals.spawnOnce = async (_cmd, args) => args[args.length - 1] === '--version'
       ? cliInternals.platform === 'win32'
         ? { code: 9009, signal: null, stdout: '', stderr: '', timedOut: false }
         : { code: null, signal: null, stdout: '', stderr: '', timedOut: false, spawnError: 'Error: spawn pnpm ENOENT' }
@@ -194,7 +194,7 @@ describe('main', () => {
 
   it('routes an unsupported pnpm major to the pnpm 11 manual line', async () => {
     fixtureLauncher()
-    cliInternals.spawnOnce = async (cmd, args) => args[args.length - 1] === '--version'
+    cliInternals.spawnOnce = async (_cmd, args) => args[args.length - 1] === '--version'
       ? { code: 0, signal: null, stdout: '10.4.1\n', stderr: '', timedOut: false }
       : OK
     await main(['task'])
@@ -216,7 +216,7 @@ describe('main', () => {
 
   it('prints the failure tail as indented lines between verdict and manual', async () => {
     fixtureLauncher()
-    cliInternals.spawnOnce = async (cmd, args) => args[args.length - 1] === '--version'
+    cliInternals.spawnOnce = async (_cmd, args) => args[args.length - 1] === '--version'
       ? OK
       : { code: 1, signal: null, stdout: '', stderr: 'first line\nsecond line\nETARGET no match\n', timedOut: false }
     await main(['task'])

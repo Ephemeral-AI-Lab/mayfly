@@ -23,7 +23,7 @@ function realKeymap(): MayflyKeymapService {
 }
 
 const identity = (value: string): string => value
-const colors = new Proxy({ logoGradient: [identity] }, { get: (target, key) => key === 'logoGradient' ? target.logoGradient : identity }) as MayflySemanticColors
+const colors = new Proxy({ logoGradient: [identity] }, { get: (target, key) => key === 'logoGradient' ? target.logoGradient : identity }) as unknown as MayflySemanticColors
 
 /** A keymap stand-in that answers `getKeys` from a table, the way the real one answers an override. */
 function keymapWith(keys: Readonly<Record<string, readonly string[]>>): MayflyKeymap {

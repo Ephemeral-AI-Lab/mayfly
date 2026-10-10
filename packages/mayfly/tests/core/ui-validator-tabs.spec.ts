@@ -28,7 +28,7 @@ describe('tab items', () => {
   })
 
   it('leaves the fields out when they are not given', () => {
-    const [item] = (accepted(tabs([{ id: 'a', label: 'A' }])) as { items: object[] }).items
+    const [item] = (accepted(tabs([{ id: 'a', label: 'A' }])) as unknown as { items: object[] }).items
     expect(Object.keys(item!)).toEqual(['id', 'label'])
     expect(Object.keys(accepted(tabs([{ id: 'a', label: 'A' }])))).toEqual(['kind', 'id', 'activeId', 'items'])
   })

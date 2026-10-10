@@ -5,7 +5,7 @@ import { Context } from '@deepseek-ai/cordis'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ui } from '../../../ui/src/index.ts'
 import * as provider from '../../../ui/src/provider.ts'
-import type { MayflyFormAddress, MayflyUiActionReply, MayflyUiEventHandlers, MayflyUiObservationReply } from '../../../ui/src/contracts.ts'
+import type { MayflyFormAddress, MayflyUiActionReply, MayflyUiEvent, MayflyUiEventHandlers, MayflyUiObservationReply } from '../../../ui/src/contracts.ts'
 import * as frontend from '../../src/frontend/index.ts'
 import { UiSurfaceModel, type UiSurfaceSnapshot } from '../../src/core/ui-interaction-surface.ts'
 
@@ -40,7 +40,7 @@ async function setup(kind: 'pane' | 'overlay', onEvent?: MayflyUiEventHandlers) 
 
 function directSurface(
   node: import('@ephemeral-ai/mayfly-ui').MayflyUiNode | null,
-  prepare: (event: import('@ephemeral-ai/mayfly-ui').MayflyUiEvent, context: import('@ephemeral-ai/mayfly-ui').MayflyUiEventContext) => Promise<{ readonly reply?: MayflyUiActionReply, readonly publish: () => boolean }>,
+  prepare: (event: import('@ephemeral-ai/mayfly-ui').MayflyUiEvent, context: import('@ephemeral-ai/mayfly-ui').MayflyUiEventContext) => Promise<{ readonly reply?: MayflyUiActionReply | undefined, readonly publish: () => boolean }>,
   bindings: ConstructorParameters<typeof UiSurfaceModel>[2] = {},
 ) {
   const snapshot = {
@@ -59,8 +59,9 @@ describe.each(['pane', 'overlay'] as const)('%s frontend interaction', kind => {
     const writes = vi.fn()
     const { model, handle } = await setup(kind, {
       observe: (event, context) => {
-        signals.set(event.formId, context.signal)
-        return event.formId === 'page' ? pending.promise : unrelated.promise
+        const formId = 'formId' in event ? event.formId : ''
+        signals.set(formId, context.signal)
+        return formId === 'page' ? pending.promise : unrelated.promise
       },
       action: () => { writes(); return { kind: 'completed' } },
     })
@@ -561,7 +562,8 @@ it('handles null snapshots and exposes an inert endpoint after disposal', async 
   const snapshot = model.registration
   expect(() => model.receive({ ...snapshot, events: { prepare: async () => ({ reply: undefined, publish: () => false }) } })).toThrow('new surface instance')
   model.moveDocument({ pagePath: [], controlId: 'missing' }, { blockId: 'missing', offset: 0, follow: 'none' })
-  handle.set(null)
+  // A nonconforming publisher sends no node at all.
+  handle.set(null as never)
   expect(model.node).toBeNull()
   model.admitVisibleControls()
   model.dispose()
@@ -1064,7 +1066,7 @@ it('cancels an acknowledgement when a hidden submitted form reveals a newer sche
 })
 
 describe('structured decisions, availability, and validation boundaries', () => {
-  const completed = async () => ({ reply: { kind: 'completed' as const }, publish: () => true })
+  const completed = async (_event: MayflyUiEvent) => ({ reply: { kind: 'completed' as const }, publish: () => true })
 
   it('renders confirmation details, labels, and danger tone with No focused first', async () => {
     const prepare = vi.fn(completed)

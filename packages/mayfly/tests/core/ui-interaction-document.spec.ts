@@ -57,7 +57,7 @@ describe('semantic document state', () => {
       ui.surface({ child: ui.text('body') }),
       ui.scroll(ui.text('scroll body')),
       ui.diagram('graph TD'),
-      ui.chart({ chart: 'sparkline', title: 'Chart', values: [1] }),
+      ui.chart({ chart: 'sparkline', label: 'Chart', values: [1] }),
       ui.chart({ chart: 'sparkline', values: [1] }),
       ui.empty({ title: 'Empty', description: 'Description' }),
       ui.empty({ title: 'Empty' }),

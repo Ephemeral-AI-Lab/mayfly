@@ -210,12 +210,13 @@ async function mount(options: {
   const fake = fakeModelRef({ provider: 'mock', model: 'mock' })
   const modelRef = options.modelRef ?? fake.ref
   const writes = options.modelRef === undefined ? fake.writes : []
-  const saveSelection = vi.fn(() => options.defaults?.saveError === undefined
+  const defaults = options.defaults === false ? undefined : options.defaults
+  const saveSelection = vi.fn(() => defaults?.saveError === undefined
     ? Promise.resolve()
-    : Promise.reject(options.defaults.saveError))
+    : Promise.reject(defaults.saveError))
   if (options.defaults !== false) {
     ctx.provide('agentDefaultModel', {
-      currentSelection: () => options.defaults?.selection ?? { provider: 'mock', model: 'mock' },
+      currentSelection: () => defaults?.selection ?? { provider: 'mock', model: 'mock' },
       saveSelection,
     } as unknown as AgentDefaultModelConfig)
   }
@@ -421,7 +422,7 @@ describe('model-family commands', () => {
     const { ctx, agent, writes } = await mount({ defaults: false })
     await ctx.commands.execute(agent, '/model', [], signal())
     const picker = selectModel(ctx, 'mock', 'mock-pro')
-    ;(ctx.get('testSession') as { current: Agent, modelRef?: TestModelRef }).modelRef = undefined
+    Reflect.deleteProperty(ctx.get('testSession') as object, 'modelRef')
     picker.invoke('default')
     await vi.waitFor(() => expect(picker.feedbackSnapshot()).toEqual(expect.arrayContaining([expect.objectContaining({ severity: 'error', message: 'no session is live yet' })])))
     expect(writes).toEqual([])
@@ -708,8 +709,8 @@ describe('model-family commands', () => {
   })
 
   it('returns quietly when the tree unloads while the catalog is in flight', async () => {
-    let release: (models: { id: string, name: string }[]) => void = () => {}
-    const gate = new Promise<void>(resolve => { release = () => resolve([{ id: 'mock', name: 'Mock' }]) })
+    let release: () => void = () => {}
+    const gate = new Promise<void>(resolve => { release = () => resolve() })
     const llm = {
       listProviders: () => [{ id: 'mock', name: 'Mock' }],
       listModels: async () => { await gate; return [{ id: 'mock', name: 'Mock' }] },
@@ -718,7 +719,7 @@ describe('model-family commands', () => {
     const { ctx, agent, screen, fiber } = await mount({ llm })
     const pending = ctx.commands.execute(agent, '/model', [], signal())
     await fiber.dispose()
-    release([])
+    release()
     expect((await pending)?.result).toEqual({ kind: 'success' })
     expect(screen.overlays).toHaveLength(0)
   })

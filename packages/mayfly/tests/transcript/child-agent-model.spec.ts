@@ -9,19 +9,19 @@ import {
 } from '../../src/transcript/child-agent-model.ts'
 import type { ChildSessionFacts } from '../../src/transcript/session-facts.ts'
 import type { TranscriptToolItem } from '../../src/transcript/types.ts'
+import { withOverrides, type Overrides } from '../fixture-fields.ts'
 
 const child: ChildSessionFacts = {
   id: '9f5c4086a0674b55b621c3eaf8b88c0e', promptText: 'survey', phase: 'running',
   tokens: 125, toolCount: 2, liveChars: 2_048, activity: 'Using read', model: 'deepseek-v4', effort: 'high',
 }
 
-function member(partial: Partial<TranscriptToolItem> = {}): TranscriptToolItem {
-  return {
+function member(overrides: Overrides<TranscriptToolItem> = {}): TranscriptToolItem {
+  return withOverrides<TranscriptToolItem>({
     kind: 'tool', seq: 1, turn: 1, step: 1, callId: 'c1', name: 'subagent',
     arguments: '{"prompt":"survey"}', parsedArguments: { prompt: 'survey' }, startedAt: 1,
     result: { text: 'started subagent 9f5c4086a0674b55b621c3eaf8b88c0e', isError: false, endedAt: 2 },
-    ...partial,
-  }
+  }, overrides)
 }
 
 describe('child agent model', () => {

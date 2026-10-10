@@ -8,6 +8,7 @@ import { setClipboardOsc52Emitter, setClipboardTextWriter } from '../../src/inte
 import { planDocumentNode } from '../../src/interaction/plan-document.ts'
 import { planReviewAction, planReviewAnswer, planReviewChoices, planReviewControls } from '../../src/interaction/plan-review-panel.ts'
 import { requestFixture, renderRequest, flushRequests } from './request-fixture.ts'
+import type { MayflyFieldValue, MayflyUiActionEvent } from '../../../ui/src/interaction.ts'
 
 const contexts: Context[] = []
 afterEach(async () => {
@@ -66,7 +67,7 @@ describe('shared plan review', () => {
     const pending = bench.ctx.userQuestions.ask({ questions: [question] })
     const model = bench.model()
     model.emit({ kind: 'selection-accept', pagePath: [], controlId: 'decision', selectedIds: ['other'] })
-    await vi.waitFor(() => expect(model.form({ pagePath: [], formId: 'revision', fieldId: 'reason' })).toBeDefined())
+    await vi.waitFor(() => expect(model.form({ pagePath: [], formId: 'revision' })).toBeDefined())
     model.edit({ pagePath: [], formId: 'revision', fieldId: 'reason' }, '  revise\nthese steps  ')
     model.invoke('send-feedback', [])
     await expect(pending).resolves.toEqual({ answers: [{ id: 'plan', selected: [], custom: '  revise\nthese steps  ' }] })
@@ -77,13 +78,13 @@ describe('shared plan review', () => {
     const pending = bench.ctx.userQuestions.ask({ questions: [question] })
     const model = bench.model()
     model.emit({ kind: 'selection-accept', pagePath: [], controlId: 'decision', selectedIds: ['other'] })
-    await vi.waitFor(() => expect(model.form({ pagePath: [], formId: 'revision', fieldId: 'reason' })).toBeDefined())
+    await vi.waitFor(() => expect(model.form({ pagePath: [], formId: 'revision' })).toBeDefined())
     model.invoke('back', [])
-    await vi.waitFor(() => expect(model.form({ pagePath: [], formId: 'revision', fieldId: 'reason' })).toBeUndefined())
+    await vi.waitFor(() => expect(model.form({ pagePath: [], formId: 'revision' })).toBeUndefined())
     model.emit({ kind: 'selection-accept', pagePath: [], controlId: 'decision', selectedIds: ['other'] })
-    await vi.waitFor(() => expect(model.form({ pagePath: [], formId: 'revision', fieldId: 'reason' })).toBeDefined())
+    await vi.waitFor(() => expect(model.form({ pagePath: [], formId: 'revision' })).toBeDefined())
     model.invoke('send-feedback', [])
-    await vi.waitFor(() => expect(model.form({ pagePath: [], formId: 'revision', fieldId: 'reason' })).toBeUndefined())
+    await vi.waitFor(() => expect(model.form({ pagePath: [], formId: 'revision' })).toBeUndefined())
     expect(model.disposed).toBe(false)
     model.requestClose()
     await expect(pending).rejects.toMatchObject({ code: 'ASK_CANCELLED' })
@@ -94,7 +95,7 @@ describe('shared plan review', () => {
     const pending = bench.ctx.userQuestions.ask({ questions: [question] })
     const model = bench.model()
     model.emit({ kind: 'activate', pagePath: [], controlId: 'other-plan', actionId: 'other-plan' })
-    await vi.waitFor(() => expect(model.form({ pagePath: [], formId: 'revision', fieldId: 'reason' })).toBeDefined())
+    await vi.waitFor(() => expect(model.form({ pagePath: [], formId: 'revision' })).toBeDefined())
     expect(model.disposed).toBe(false)
     model.requestClose()
     await expect(pending).rejects.toMatchObject({ code: 'ASK_CANCELLED' })
@@ -105,7 +106,7 @@ describe('shared plan review', () => {
     const pending = bench.ctx.userQuestions.ask({ questions: [question] })
     const model = bench.model()
     model.emit({ kind: 'activate', pagePath: [], controlId: 'other-plan', actionId: 'other-plan' })
-    await vi.waitFor(() => expect(model.form({ pagePath: [], formId: 'revision', fieldId: 'reason' })).toBeDefined())
+    await vi.waitFor(() => expect(model.form({ pagePath: [], formId: 'revision' })).toBeDefined())
     model.requestClose()
     await expect(pending).rejects.toMatchObject({ code: 'ASK_CANCELLED' })
   })
@@ -145,27 +146,29 @@ describe('shared plan review', () => {
     // The fallback is a single-question questionnaire: no wizard tabs, the
     // answer form mounts at the surface root, and no document slot mounts.
     expect(model.activeTab({ pagePath: [], controlId: 'questions' })).toBeUndefined()
-    expect(model.form({ pagePath: [], formId: 'answer', fieldId: 'selected' })).toBeDefined()
+    expect(model.form({ pagePath: [], formId: 'answer' })).toBeDefined()
     expect(bench.screen.slotTargets.has('local.mayfly.questions.1.document')).toBe(false)
     model.invoke('submit-answers')
     await expect(pending).resolves.toEqual({ answers: [{ id: 'plan', selected: [] }] })
   })
 
   it('recognizes only a valid pair and does not guess from option positions', () => {
+    const { options, ...withoutOptions } = question
+    const { detail, ...withoutDetail } = question
     expect(planReviewChoices({ id: 'q', question: 'Q' })).toBeUndefined()
-    expect(planReviewChoices({ ...question, options: undefined })).toBeUndefined()
+    expect(planReviewChoices(withoutOptions)).toBeUndefined()
     expect(planReviewChoices({ ...question, intent: { kind: 'plan-review', approve: 'missing' } })).toBeUndefined()
     expect(planReviewChoices(question)).toEqual({ approve: question.options![1], decline: question.options![0] })
     expect(planReviewChoices({ ...question, options: question.options!.toReversed() })).toEqual({ approve: question.options![1], decline: question.options![0] })
-    expect(JSON.stringify(planDocumentNode({ ...question, detail: undefined }, key => key))).toContain('"source":""')
+    expect(JSON.stringify(planDocumentNode(withoutDetail, key => key))).toContain('"source":""')
     expect(JSON.stringify(planReviewControls(question, choices, key => key))).toContain('"numbered":"focus"')
     expect(JSON.stringify(planReviewControls(question, choices, key => key))).toContain('"label":"Start implementation"')
     expect(JSON.stringify(planReviewControls(question, choices, key => key))).toContain('"label":"Other"')
     const described = planReviewChoices({ ...question, options: [{ label: 'Keep planning', description: 'stay' }, { label: 'Start implementation', description: 'go' }] })!
     expect(JSON.stringify(planReviewControls(question, described, key => key))).toContain('"detail":"go"')
     expect(planReviewAnswer(question, choices, { kind: 'activate', pagePath: [], controlId: 'noop', actionId: 'noop' })).toBeUndefined()
-    expect(planReviewAnswer(question, choices, { kind: 'submit', submission: { actionId: 'other', source: [], forms: [] } })).toBeUndefined()
-    const read = (value: unknown) => ({ kind: 'activate' as const, pagePath: [], controlId: 'send-feedback', actionId: 'send-feedback', inputs: { actionId: 'send-feedback', draftRevision: 0, source: [], forms: [{ pagePath: [], formId: 'revision', draftRevision: 0, fields: [{ id: 'reason', change: 'set' as const, value }] }] } })
+    expect(planReviewAnswer(question, choices, { kind: 'submit', pagePath: [], controlId: 'submit', submission: { draftRevision: 1, actionId: 'other', source: [], forms: [] } })).toBeUndefined()
+    const read = (value: unknown): MayflyUiActionEvent => ({ kind: 'activate', pagePath: [], controlId: 'send-feedback', actionId: 'send-feedback', inputs: { actionId: 'send-feedback', draftRevision: 0, source: [], forms: [{ pagePath: [], formId: 'revision', draftRevision: 0, fields: [{ id: 'reason', change: 'set', value: value as MayflyFieldValue }] }] } })
     expect(planReviewAnswer(question, choices, read('redo this'))).toEqual({ answers: [{ id: 'plan', selected: [], custom: 'redo this' }] })
     expect(planReviewAnswer(question, choices, read(42))).toBeUndefined()
     expect(planReviewAnswer(question, choices, read(''))).toBeUndefined()

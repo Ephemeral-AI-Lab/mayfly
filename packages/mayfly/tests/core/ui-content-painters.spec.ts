@@ -15,7 +15,7 @@ import { ADVERSARIAL } from './width-scan.ts'
 
 const tag = new Proxy({}, { get: (_target, role: string) => (text: string) => `<${role}>${text}</${role}>` }) as MayflySemanticColors
 const identity = (value: string): string => value
-const plainColors = new Proxy({ logoGradient: [identity] }, { get: (target, key) => key === 'logoGradient' ? target.logoGradient : identity }) as MayflySemanticColors
+const plainColors = new Proxy({ logoGradient: [identity] }, { get: (target, key) => key === 'logoGradient' ? target.logoGradient : identity }) as unknown as MayflySemanticColors
 const components = { visibleWidth, wrapText: wrapTextWithAnsi, truncateToWidth } as unknown as MayflyComponents
 const truecolor = (r: number, g: number, b: number) => (text: string): string => `\x1b[38;2;${String(r)};${String(g)};${String(b)}m${text}\x1b[39m`
 const rgbColors = { ...plainColors, primary: truecolor(200, 100, 50), textMuted: truecolor(100, 100, 100), muted: identity } as unknown as MayflySemanticColors

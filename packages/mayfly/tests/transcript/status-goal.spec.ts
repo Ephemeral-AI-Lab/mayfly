@@ -88,7 +88,7 @@ describe('mayfly-status-goal', () => {
     expect(harness.screen.renderRequests.length).toBe(baseline)
 
     views.set(first, goal('paused', { rounds: 4, max: 12, activation: 'disarmed' }))
-    ;(harness.ctx.get('mayflySessionFacts') as FakeFactsService).setGoal(null)
+    ;(harness.ctx.get('mayflySessionFacts') as unknown as FakeFactsService).setGoal(null)
     expect(harness.entry.render(80)).toBe('Goal paused · round 4/12 · auto-continue off')
     views.set(first, goal('blocked'))
     harness.ctx.emit('goal/changed', { agent: first } as never)

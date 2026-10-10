@@ -204,7 +204,7 @@ describe('native approval UI', () => {
     bench.ctx.mayflyConversations.selectPrimary(bench.other)
     bench.ctx.mayflyConversations.selectPrimary(bench.agent)
     await expect(bench.approve()).resolves.toBe('allowed-once')
-    bench.ctx.emit('agent/disposed' as never, { agent: bench.agent } as never)
+    bench.ctx.emit('agent/disposed', { agent: bench.agent as unknown as Agent })
     // The fixture keeps the disposed object registered, so it can be displayed again.
     bench.ctx.mayflyConversations.selectPrimary(bench.agent)
     const second = bench.approve()
@@ -236,7 +236,7 @@ describe('native approval UI', () => {
     const entry = bench.ctx.mayflyOverlays.list()[0]!
     const context = { surfaceId: entry.id, operationId: 'noop', source: entry.source, revision: entry.revision, signal: new AbortController().signal, report: vi.fn() }
     expect(await entry.definition.onEvent!.action!({ kind: 'activate', pagePath: [], controlId: 'noop', actionId: 'noop' }, context)).toEqual({ kind: 'completed' })
-    expect(await entry.definition.onEvent!.action!({ kind: 'submit', submission: { actionId: 'other', source: entry.source, forms: [] } }, context)).toEqual({ kind: 'completed' })
+    expect(await entry.definition.onEvent!.action!({ kind: 'submit', pagePath: [], controlId: 'submit', submission: { draftRevision: 1, actionId: 'other', source: entry.source, forms: [] } }, context)).toEqual({ kind: 'completed' })
     bench.model('mayfly.approval.').invoke('reject', decision)
     await expect(pending).resolves.toBe('rejected')
   })

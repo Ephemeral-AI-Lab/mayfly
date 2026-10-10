@@ -52,7 +52,7 @@ const CONTROLS: readonly GrammarControl[] = [
   { kind: 'none' }, { kind: 'scroll' }, { kind: 'toggle' }, { kind: 'submit' }, { kind: 'field-action' }, { kind: 'tab' }, { kind: 'tab', vertical: true }, { kind: 'empty-list' }, { kind: 'cancel' },
   { kind: 'action', decision: false }, { kind: 'action', decision: true },
   ...(['input', 'textarea', 'secret', 'number'] as const).flatMap(field => [true, false].flatMap(editing => [true, false].map(enterSubmits => ({ kind: 'text', field, editing, enterSubmits }) as const))),
-  ...[true, false].flatMap(multiple => [true, false].flatMap(picker => [true, false].flatMap(adjustable => [false, true].map(stuck => ({ kind: 'select', multiple, picker, adjustable, ...(stuck ? { stuckLeft: true } : {}) }) as const)))),
+  ...[true, false].flatMap(multiple => [true, false].flatMap(picker => [true, false].flatMap(adjustable => [false, true].map(stuck => ({ kind: 'select', multiple, picker, adjustable, ...(stuck ? { stuckLeft: true as const } : {}) }) as const)))),
   ...(['browse', 'choose'] as const).flatMap(role => [true, false].flatMap(multiple => [true, false].map(tree => ({ kind: 'row', role, multiple, tree }) as const))),
   { kind: 'row', role: 'browse', multiple: false, tree: false, segment: 'thinking' },
   { kind: 'row', role: 'browse', multiple: false, tree: false, segment: 'thinking', stuckLeft: true },

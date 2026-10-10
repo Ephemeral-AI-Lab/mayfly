@@ -143,12 +143,12 @@ describe('editor extension completion multiplexer', () => {
 
     const provider = editor.autocompleteProvider!
     expect(provider.triggerCharacters).toEqual(['@', '$', '/', '#'])
-    const cases = [
+    const cases: readonly { readonly text: string, readonly trigger: string, readonly query: string, readonly force?: boolean }[] = [
       { text: '/he', trigger: '/', query: 'he' },
       { text: 'open @fi', trigger: '@', query: 'fi' },
       { text: 'use #sk', trigger: '#', query: 'sk' },
       { text: 'plain', trigger: 'manual', query: 'plain', force: true },
-    ] as const
+    ]
     for (const test of cases) {
       const result = await suggestions(provider, test.text, test.force)
       expect(result?.items.map(item => item.label)).toEqual(['Base', `Extension ${test.query}`])
@@ -289,7 +289,7 @@ describe('editor extension completion multiplexer', () => {
   ])('contains hostile completion shape: %s', async (_label, result, expectedNotice) => {
     const { editor, runtime, notices } = runtimeFixture([{
       id: 'acme.hostile-completion',
-      complete: async () => result as readonly MayflyEditorCompletionItem[],
+      complete: async () => result as unknown as readonly MayflyEditorCompletionItem[],
     }])
     await expect(suggestions(editor.autocompleteProvider!, '/hostile')).resolves.toBeNull()
     expect(notices.some(notice => notice.includes(expectedNotice))).toBe(true)
@@ -1044,7 +1044,7 @@ describe('editor extension shell and actions', () => {
     // defense against a malformed external registry implementation.
     const off = vi.fn()
     const subscribe = vi.spyOn(ctx.mayflyEditorExtensions, 'subscribe').mockImplementation(listener => {
-      listener({ kind: 'upsert', entry: { id: 'acme.accessor', definition: { id: 'acme.accessor' }, decoration, revision: 0 } })
+      listener({ kind: 'upsert', entry: { id: 'acme.accessor', definition: { id: 'acme.accessor' }, decoration, revision: 0 } as never })
       return off
     })
     const notices: string[] = []
@@ -1088,17 +1088,17 @@ describe('editor extension shell and actions', () => {
       actions: [{ id: 'idle', label: 'Idle', key: 'alt+i' }],
     }]
     const { runtime, notices, replace } = runtimeFixture(entries)
-    privateDispatch(runtime, { kind: 'change', controlId: 'extension-0-0', value: 'ignored' })
-    privateDispatch(runtime, { kind: 'activate', controlId: 'missing' })
-    privateDispatch(runtime, { kind: 'activate', controlId: 'extension-1-0' })
-    for (let index = 0; index < 5; index += 1) privateDispatch(runtime, { kind: 'activate', controlId: 'extension-0-0' })
+    privateDispatch(runtime, { kind: 'value-change', pagePath: [], controlId: 'extension-0-0', formId: 'extension', value: 'ignored', draftRevision: 1 })
+    privateDispatch(runtime, { kind: 'activate', pagePath: [], controlId: 'missing', actionId: 'missing' })
+    privateDispatch(runtime, { kind: 'activate', pagePath: [], controlId: 'extension-1-0', actionId: 'extension-1-0' })
+    for (let index = 0; index < 5; index += 1) privateDispatch(runtime, { kind: 'activate', pagePath: [], controlId: 'extension-0-0', actionId: 'extension-0-0' })
     await vi.waitFor(() => expect(calls).toHaveLength(5))
     expect(notices).toEqual(expect.arrayContaining([
       'rejected action callback',
       'raw action rejection',
     ]))
 
-    privateDispatch(runtime, { kind: 'activate', controlId: 'extension-0-0' })
+    privateDispatch(runtime, { kind: 'activate', pagePath: [], controlId: 'extension-0-0', actionId: 'extension-0-0' })
     replace([], 3)
     await new Promise(resolve => setImmediate(resolve))
     runtime.dispose()
@@ -1113,7 +1113,7 @@ describe('editor extension shell and actions', () => {
         return { kind: 'failed', message: 'Action failed' }
       } },
     }])
-    privateDispatch(runtime, { kind: 'activate', controlId: 'extension-0-0' })
+    privateDispatch(runtime, { kind: 'activate', pagePath: [], controlId: 'extension-0-0', actionId: 'extension-0-0' })
     await vi.waitFor(() => expect(notices).toEqual(expect.arrayContaining(['Working', 'Action failed'])))
     runtime.dispose()
   })
@@ -1124,7 +1124,7 @@ describe('editor extension shell and actions', () => {
       actions: [{ id: 'run', label: 'Run' , key: 'ctrl+r' }],
       onEvent: { action: () => ({ kind: 'completed', feedback: { severity: 'success', message: 'Applied' } }) },
     }])
-    privateDispatch(runtime, { kind: 'activate', controlId: 'extension-0-0' })
+    privateDispatch(runtime, { kind: 'activate', pagePath: [], controlId: 'extension-0-0', actionId: 'extension-0-0' })
     await vi.waitFor(() => expect(notices).toContain('Applied'))
     runtime.dispose()
   })
@@ -1137,7 +1137,7 @@ describe('editor extension shell and actions', () => {
       actions: [{ id: 'run', label: 'Run' , key: 'ctrl+r' }],
       onEvent: { action: (_event, context) => { report = context.report; return gate.promise } },
     }])
-    privateDispatch(runtime, { kind: 'activate', controlId: 'extension-0-0' })
+    privateDispatch(runtime, { kind: 'activate', pagePath: [], controlId: 'extension-0-0', actionId: 'extension-0-0' })
     await vi.waitFor(() => expect(report).toBeDefined())
     runtime.invalidateSession()
     report({ severity: 'error', message: 'late report' })
@@ -1154,13 +1154,13 @@ describe('editor extension shell and actions', () => {
     const subscribe = vi.spyOn(ctx.mayflyEditorExtensions, 'subscribe').mockImplementation(listener => {
       listener({ kind: 'upsert', entry: {
         id: 'acme.external-action', definition: { id: 'acme.external-action' }, decoration: { actions: [{ id: 'run', label: 'Run' , key: 'ctrl+r' }] }, revision: 0, source: [],
-        events: { prepare: (_event, context) => { actionContext = context; return gate.promise } },
+        events: { prepare: (_event: unknown, context: typeof actionContext) => { actionContext = context; return gate.promise } },
       } as never })
       return () => {}
     })
     const notices: string[] = []
     const runtime = new EditorExtensionRuntime({ ctx, editor: new FakeMayflyEditor(), report: (_id, feedback) => notices.push(feedback.message), shouldTransformSubmit: () => true })
-    privateDispatch(runtime, { kind: 'activate', controlId: 'extension-0-0' })
+    privateDispatch(runtime, { kind: 'activate', pagePath: [], controlId: 'extension-0-0', actionId: 'extension-0-0' })
     await vi.waitFor(() => expect(actionContext).toBeDefined())
     runtime.invalidateSession()
     actionContext.report({ severity: 'error', message: 'late external report' })
@@ -1190,8 +1190,8 @@ describe('editor extension shell and actions', () => {
       report: () => { throw new Error('report failed') },
       shouldTransformSubmit: () => true,
     })
-    privateDispatch(runtime, { kind: 'activate', controlId: 'extension-0-0' })
-    privateDispatch(runtime, { kind: 'activate', controlId: 'extension-0-0' })
+    privateDispatch(runtime, { kind: 'activate', pagePath: [], controlId: 'extension-0-0', actionId: 'extension-0-0' })
+    privateDispatch(runtime, { kind: 'activate', pagePath: [], controlId: 'extension-0-0', actionId: 'extension-0-0' })
     await vi.waitFor(() => expect(calls).toBe(2))
     runtime.dispose()
   })
@@ -1262,7 +1262,7 @@ describe('editor extension shell and actions', () => {
       report: () => {},
       shouldTransformSubmit: () => true,
     })
-    privateDispatch(runtime, { kind: 'activate', controlId: 'extension-0-0' })
+    privateDispatch(runtime, { kind: 'activate', pagePath: [], controlId: 'extension-0-0', actionId: 'extension-0-0' })
     await vi.waitFor(() => expect(signal).toBeDefined())
     expect(signal?.aborted).toBe(false)
     gate.resolve()
@@ -1295,12 +1295,12 @@ describe('editor extension shell and actions', () => {
       shouldTransformSubmit: () => true,
     })
 
-    privateDispatch(runtime, { kind: 'activate', controlId: 'extension-0-0' })
-    privateDispatch(runtime, { kind: 'activate', controlId: 'extension-0-0' })
+    privateDispatch(runtime, { kind: 'activate', pagePath: [], controlId: 'extension-0-0', actionId: 'extension-0-0' })
+    privateDispatch(runtime, { kind: 'activate', pagePath: [], controlId: 'extension-0-0', actionId: 'extension-0-0' })
     await vi.waitFor(() => expect(dispatch).toHaveBeenCalledTimes(2))
 
     runtime.invalidateSession()
-    privateDispatch(runtime, { kind: 'activate', controlId: 'extension-0-0' })
+    privateDispatch(runtime, { kind: 'activate', pagePath: [], controlId: 'extension-0-0', actionId: 'extension-0-0' })
     await vi.waitFor(() => expect(dispatch).toHaveBeenCalledTimes(3))
     expect(dispatch.mock.calls[2]?.[0]).toEqual({ kind: 'activate', pagePath: [], controlId: 'run', actionId: 'run' })
 
@@ -1328,8 +1328,8 @@ describe('editor extension shell and actions', () => {
       shouldTransformSubmit: () => true,
     })
 
-    privateDispatch(runtime, { kind: 'activate', controlId: 'extension-0-0' })
-    privateDispatch(runtime, { kind: 'activate', controlId: 'extension-0-0' })
+    privateDispatch(runtime, { kind: 'activate', pagePath: [], controlId: 'extension-0-0', actionId: 'extension-0-0' })
+    privateDispatch(runtime, { kind: 'activate', pagePath: [], controlId: 'extension-0-0', actionId: 'extension-0-0' })
     await vi.waitFor(() => expect(dispatch).toHaveBeenCalledTimes(2))
 
     runtime.dispose()

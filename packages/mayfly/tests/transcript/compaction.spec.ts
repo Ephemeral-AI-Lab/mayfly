@@ -8,16 +8,17 @@ import { CompactionRowComponent, setCompactionTimers, type CompactionTimers } fr
 import { createTranscriptModel, TranscriptModelComponent } from '../../src/transcript/transcript-model.ts'
 import { fakeMayflyComponents } from './helpers.ts'
 import { COLORS } from './status-fakes.ts'
+import { withOverrides, type Overrides } from '../fixture-fields.ts'
 
 const colors = COLORS as MayflySemanticColors
 const strip = (row: string): string => row.replace(/\x1b\[[0-9;]*m/gu, '')
 
-function model(overrides: Partial<TranscriptCompactionModel> = {}): TranscriptCompactionModel {
-  return {
+function model(overrides: Overrides<TranscriptCompactionModel> = {}): TranscriptCompactionModel {
+  return withOverrides<TranscriptCompactionModel>({
     kind: 'transcript-compaction', id: 'compaction:c1', seq: 1, updatedSeq: 1, turn: 1,
     state: 'ok', trigger: 'manual', startedAt: 0, endedAt: 9_000,
-    shadowedCount: 47, shadowedTokens: 18_200, ...overrides,
-  }
+    shadowedCount: 47, shadowedTokens: 18_200,
+  }, overrides)
 }
 
 /** A fake timer pair that captures the live interval callback. */
@@ -156,7 +157,7 @@ describe('CompactionRowComponent', () => {
     const { timers, tick } = fakeTimers()
     setCompactionTimers(timers)
     const components = fakeMayflyComponents()
-    const entry = (overrides: Partial<TranscriptCompactionModel>): TranscriptCompactionModel => model(overrides)
+    const entry = (overrides: Overrides<TranscriptCompactionModel>): TranscriptCompactionModel => model(overrides)
     let transcript = createTranscriptModel('cmp-flow', [entry({ state: 'running', startedAt: Date.now(), endedAt: undefined })], false, 0)
     let repaints = 0
     const component = new TranscriptModelComponent(() => transcript, {

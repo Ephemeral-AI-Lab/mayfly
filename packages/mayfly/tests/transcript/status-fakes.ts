@@ -14,18 +14,27 @@ import type {
   MayflyComponent,
   MayflyOverlayHandle,
   MayflyScreen,
+  MayflySemanticColors,
 } from '../../src/core/index.ts'
 import { SessionId, type SessionEvent } from '@deepseek-ai/dsh-session'
-import { foldConversationFacts, initialConversationFacts, type ConversationFacts } from '../../src/conversation/facts.ts'
+import { foldConversationFacts, initialConversationFacts } from '../../src/conversation/facts.ts'
+import type { ConversationFacts } from '../../src/conversation/types.ts'
 import { projectChildSessionFacts, type ChildSessionFacts } from '../../src/transcript/session-facts.ts'
 import type { LiveAssistantDraft } from '../../src/conversation/live-stream.ts'
 import { compileMayflyStatusNode } from '../../src/core/ui-compiler.ts'
 import { fakeMayflyComponents } from './helpers.ts'
 import { mountFakeScreenSlot } from '../core/fake-screen-slot.ts'
 
+declare module '@deepseek-ai/cordis' {
+  interface Events {
+    /** Test-side broadcast of the bound session, for the consumers that follow it. */
+    'test/session-binding-changed'(binding: { readonly id: string, readonly session: unknown, readonly cwd?: string | undefined }): void
+  }
+}
+
 /** Identity colors so rendered assertions see structure, not escape codes. */
 const id = (text: string): string => text
-export const COLORS = {
+export const COLORS: MayflySemanticColors = {
   text: id, textStrong: id, muted: id, textMuted: id, accent: id, primary: id, border: id,
   borderFocus: id,
   success: id, error: id, warning: id, selectedBg: id, roleUser: id, shellMode: id,
@@ -62,7 +71,7 @@ export class StatusFakeScreen implements MayflyScreen {
 
   removeChild(): void {}
 
-  setFocus(): void {}
+  setFocus(_component: MayflyComponent | null): void {}
 
   showOverlay(): MayflyOverlayHandle {
     throw new Error('fake showOverlay is out of scope for status plugin tests')
@@ -83,6 +92,11 @@ export class StatusFakeScreen implements MayflyScreen {
   setTitle(title: string): void {
     this.titles.push(title)
   }
+
+  scrollContent(): boolean { return false }
+  contentChanged(): boolean { return false }
+  followContent(): void {}
+  setContentScrollHandler(): () => void { return () => {} }
 }
 
 /** Status-model facade retained for concise producer assertions. */
@@ -138,14 +152,14 @@ export class FakeFactsService {
   private readonly childDrafts = new Map<string, LiveAssistantDraft>()
   private readonly childListeners = new Set<(facts: readonly ChildSessionFacts[]) => void>()
 
-  constructor(private readonly ctx: Context, current: FakeAgent | null, private readonly titleProjection = true) {
+  constructor(ctx: Context, current: FakeAgent | null, private readonly titleProjection = true) {
     this.attach(current)
     ctx.on('test/session-changed', next => {
       const agent = next === null ? null : next as unknown as FakeAgent
       this.attach(agent)
     })
     ctx.on('session/event', (session, event) => {
-      if (session === this.binding) {
+      if ((session as unknown) === this.binding) {
         if (this.titleProjection && event.type === 'session/title') {
           this.title = event.data.title
           this.publishTitle()
@@ -323,9 +337,10 @@ export function fakeAgent(
   if (options.effort !== undefined) agentOptions.reasoningEffort = options.effort
   const headerModel = options.headerModel
   const headerEffort = options.headerEffort
-  const requestContext = options.contextWindow === undefined
+  const contextWindow = options.contextWindow
+  const requestContext = contextWindow === undefined
     ? undefined
-    : (): { contextWindow?: number } => ({ contextWindow: options.contextWindow })
+    : (): { contextWindow?: number } => ({ contextWindow })
   return {
     id: SessionId(`fake-agent-${agentCounter}`),
     status: 'idle',
@@ -377,7 +392,7 @@ export async function bootStatusPlugin(
   plugin: StatusPluginModule,
   current: FakeAgent | null = null,
   options: {
-    colors?: Record<string, (text: string) => string>
+    colors?: Partial<MayflySemanticColors>
     services?: Record<string, unknown>
     titleProjection?: boolean
   } = {},

@@ -8,7 +8,7 @@ import { openSettingsNamespace } from '../../src/interaction/settings-command.ts
 import { MemorySettings } from '../../../../examples/overlay/tests/settings.ts'
 
 export const settingsField = (...path: string[]) => ({ pagePath: [], formId: 'settings-form', fieldId: JSON.stringify(path) })
-export async function settingsFixture(ctx: Context, schema = Schema.object({
+export async function settingsFixture(ctx: Context, schema: Schema = Schema.object({
   name: Schema.string().default('base'), count: Schema.number().min(1).max(10).step(1).default(2), enabled: Schema.boolean().default(true),
   mode: Schema.union(['fast', 'slow']).default('fast'), levels: Schema.array(Schema.union(['low', 'high'])).default([]),
   secret: Schema.string().role('secret').default('private-default'), nested: Schema.object({ value: Schema.string().default('nested') }),

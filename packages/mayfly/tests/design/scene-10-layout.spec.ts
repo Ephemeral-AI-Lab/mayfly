@@ -16,7 +16,7 @@ const mu = (text: string) => S(text, 'muted')
 
 /** Paints a node at a width, with the viewport the scene's ladder reads (columns and rows). */
 function paintIn(node: MayflyUiNode, width: number, rows: number): string[] {
-  const result = compileMayflyUiNode(node, { components: probeComponents(), colors: PROBE_PALETTE, getViewport: () => ({ columns: width, rows }), screenMode: 'alternate' })
+  const result = compileMayflyUiNode(node, { emit: () => {}, components: probeComponents(), colors: PROBE_PALETTE, getViewport: () => ({ columns: width, rows }), screenMode: 'alternate' })
   if (!result.ok) throw new Error(result.message)
   return result.value.component.render(width)
 }

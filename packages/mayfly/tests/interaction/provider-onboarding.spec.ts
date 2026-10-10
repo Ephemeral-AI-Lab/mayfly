@@ -11,6 +11,7 @@ import { DEFAULT_SETTINGS } from '../../src/interaction/settings.ts'
 import { InteractionStateService } from '../../src/interaction/runtime-state.ts'
 import { DEEPSEEK_KEY } from '../../src/interaction/provider-onboarding.ts'
 import { providerFixture } from './provider-fixture.ts'
+import type { MayflyFieldValue, MayflyUiActionEvent } from '../../../ui/src/interaction.ts'
 
 const pickerCalls = vi.hoisted(() => [] as Array<string | undefined>)
 vi.mock('../../src/interaction/model-commands.ts', () => ({ openModelPicker: async (_ctx: unknown, _signal: unknown, provider?: string) => { pickerCalls.push(provider); return { kind: 'success' } } }))
@@ -182,9 +183,11 @@ describe('provider onboarding', () => {
     bench.ctx.mayflyConversations.selectPrimary(bench.agent)
     await flush()
     const entry = bench.ctx.mayflyOverlays.list().find(item => item.id === 'mayfly.provider.onboarding')!
-    const event = (value: unknown) => ({
-      kind: 'submit' as const,
-      submission: { actionId: 'save', source: [], forms: [{ pagePath: [], formId: 'onboarding', fields: [{ id: 'key', value, change: 'set' as const }] }] },
+    const event = (value: unknown): MayflyUiActionEvent => ({
+      kind: 'submit',
+      pagePath: [],
+      controlId: 'onboarding',
+      submission: { actionId: 'save', draftRevision: 1, source: [], forms: [{ pagePath: [], formId: 'onboarding', draftRevision: 1, fields: [{ id: 'key', value: value as MayflyFieldValue, change: 'set' }] }] },
     })
     const context = (actionSignal = new AbortController().signal) => ({ surfaceId: entry.id, operationId: 'test', source: [], revision: entry.revision, signal: actionSignal, report: vi.fn() })
     expect((await entry.events.prepare(event(undefined), context())).reply).toMatchObject({ kind: 'invalid' })
@@ -216,9 +219,11 @@ describe('provider onboarding', () => {
     bench.ctx.mayflyConversations.selectPrimary(bench.agent)
     await flush()
     const entry = bench.ctx.mayflyOverlays.list().find(item => item.id === 'mayfly.provider.onboarding')!
-    const event = {
-      kind: 'submit' as const,
-      submission: { actionId: 'save', source: [], forms: [{ pagePath: [], formId: 'onboarding', fields: [{ id: 'key', value: 'key', change: 'set' as const }] }] },
+    const event: MayflyUiActionEvent = {
+      kind: 'submit',
+      pagePath: [],
+      controlId: 'onboarding',
+      submission: { actionId: 'save', draftRevision: 1, source: [], forms: [{ pagePath: [], formId: 'onboarding', draftRevision: 1, fields: [{ id: 'key', value: 'key', change: 'set' }] }] },
     }
     const request = async (actionSignal: AbortSignal, operationId: string) => await entry.definition.onEvent!.action!(event, { surfaceId: entry.id, operationId, source: [], revision: entry.revision, signal: actionSignal, report: vi.fn() })
     const reading = Promise.withResolvers<{ configured: boolean, writable: boolean, source: string }>()
@@ -251,11 +256,11 @@ describe('provider onboarding', () => {
 
   it('focuses an existing fallback surface after a readiness failure', async () => {
     const bench = await setup()
-    const existing = bench.ctx.mayflyOverlays.open({ id: 'mayfly.provider.onboarding', title: 'Existing', presentation: 'editor', capturing: true }, { kind: 'text', content: 'existing' })
+    bench.ctx.mayflyOverlays.open({ id: 'mayfly.provider.onboarding', title: 'Existing', presentation: 'editor', capturing: true }, { kind: 'text', content: 'existing' })
     vi.spyOn(bench.settings, 'describe').mockImplementation(() => { throw new Error('unavailable') })
     bench.ctx.mayflyConversations.selectPrimary(bench.agent)
     await flush()
-    expect(bench.ctx.mayflyOverlays.list().find(item => item.id === existing.events.id)?.focusRevision).toBe(1)
+    expect(bench.ctx.mayflyOverlays.list().find(item => item.id === 'mayfly.provider.onboarding')?.focusRevision).toBe(1)
   })
 
   it('contains loader completion and failure after frontend unload', async () => {

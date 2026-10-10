@@ -5,14 +5,14 @@
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ui, type MayflyUiEvent, type MayflyUiNode } from '../../../ui/src/index.ts'
-import { MayflyUiSurfaceRuntime, compileMayflyUiSurfaceNode, type MayflyUiCompilerOptions } from '../../src/core/ui-compiler.ts'
+import { MayflyUiSurfaceRuntime, compileMayflyUiSurfaceNode } from '../../src/core/ui-compiler.ts'
 import type { MayflyComponents, MayflySemanticColors } from '../../src/core/types.ts'
 import { UiSurfaceModel } from '../../src/core/ui-interaction-surface.ts'
 import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/width.ts'
 import { createFakeEditor } from './fake-editor.ts'
 
 const identity = (value: string) => value
-const colors = new Proxy({ logoGradient: [identity] }, { get: (_target, key) => key === 'logoGradient' ? [identity] : identity }) as MayflySemanticColors
+const colors = new Proxy({ logoGradient: [identity] }, { get: (_target, key) => key === 'logoGradient' ? [identity] : identity }) as unknown as MayflySemanticColors
 const components = { createEditor: createFakeEditor, visibleWidth, truncateToWidth, wrapText: wrapTextWithAnsi } as MayflyComponents
 const plain = (rows: readonly string[]): string => rows.join('\n').replace(/\x1b\[[0-9;]*m/gu, '').replace(/\x1b_[^\x07]*\x07/gu, '')
 
@@ -30,16 +30,16 @@ const models: UiSurfaceModel[] = []
 afterEach(() => { for (const model of models.splice(0)) model.dispose() })
 
 /** A surface over `node`, its events, and the keys it takes. */
-function open(node: MayflyUiNode, options: { readonly columns?: number, readonly onEscape?: (() => void) | null, readonly dismissal?: 'discard' } = {}) {
+function open(node: MayflyUiNode, options: { readonly columns?: number, readonly onEscape?: (() => void) | null, readonly dismissal?: 'discard', readonly close?: () => void } = {}) {
   const events: MayflyUiEvent[] = []
   const model = new UiSurfaceModel('keys', {
     id: 'keys', revision: 0, source: [], scope: { kind: 'app', targetId: 'keys' }, update: { reason: 'data' }, node,
-    events: { prepare: async event => { events.push(event); return { reply: { kind: 'completed' as const }, publish: () => true } } },
+    events: { prepare: async (event: MayflyUiEvent) => { events.push(event); return { reply: { kind: 'completed' as const }, publish: () => true } } },
     definition: { ...options.dismissal === undefined ? {} : { dismissal: options.dismissal } },
-  } as never)
+  } as never, options.close === undefined ? {} : { close: options.close })
   models.push(model)
   const viewport = { columns: options.columns ?? 80, rows: 40 }
-  const compileOptions: MayflyUiCompilerOptions = { components, colors, getViewport: () => viewport, screenMode: 'alternate', emit: event => model.emit(event), contextHints: { enabled: true }, surfaceRuntime: new MayflyUiSurfaceRuntime(model), ...options.onEscape === null ? {} : { onUnhandledEscape: options.onEscape ?? (() => {}) } }
+  const compileOptions: Parameters<typeof compileMayflyUiSurfaceNode>[1] = { components, colors, getViewport: () => viewport, screenMode: 'alternate', emit: event => model.emit(event), contextHints: { enabled: true }, surfaceRuntime: new MayflyUiSurfaceRuntime(model), ...options.onEscape === null ? {} : { onUnhandledEscape: options.onEscape ?? (() => {}) } }
   const result = compileMayflyUiSurfaceNode(model.node!, compileOptions)
   if (!result.ok) throw new Error(result.message)
   const focus = result.value.focusTarget!
@@ -192,7 +192,7 @@ describe('Enter and Space on a form that Enter submits', () => {
 })
 
 describe('ui.save', () => {
-  const profile = (extra: Record<string, unknown> = {}, bar = save()) => ui.stack.column([
+  const profile = (extra: Record<string, unknown> = {}, bar: MayflyUiNode = save()) => ui.stack.column([
     ui.form({ id: 'form', ...extra, fields: [
       { kind: 'input', id: 'name', label: 'Name', value: 'x' },
       { kind: 'select', id: 'region', label: 'Region', value: 'us', options: [{ id: 'us', label: 'US' }, { id: 'eu', label: 'EU' }] },
@@ -272,8 +272,7 @@ describe('buttons', () => {
   it('runs cancelActionId as the outermost Escape, asking first when there are edits', () => {
     const escaped = vi.fn()
     const closed = vi.fn()
-    const surface = open(ui.form({ id: 'form', cancelActionId: 'close', fields: pair }), { onEscape: escaped })
-    surface.model.bindings.close = closed
+    const surface = open(ui.form({ id: 'form', cancelActionId: 'close', fields: pair }), { onEscape: escaped, close: closed })
     expect(surface.hint()).toBe('  ↑/↓ fields · Enter edit · Esc close')
     surface.press(ESC)
     expect(closed).toHaveBeenCalledTimes(1)
@@ -285,9 +284,8 @@ describe('buttons', () => {
   })
 
   it('closes through cancelActionId even where the host gave Escape no handler, and says so', () => {
-    const surface = open(ui.form({ id: 'form', cancelActionId: 'close', fields: pair }), { onEscape: null })
     const closed = vi.fn()
-    surface.model.bindings.close = closed
+    const surface = open(ui.form({ id: 'form', cancelActionId: 'close', fields: pair }), { onEscape: null, close: closed })
     expect(surface.hint()).toBe('  ↑/↓ fields · Enter edit · Esc cancel')
     surface.press(ESC)
     expect(closed).toHaveBeenCalledTimes(1)

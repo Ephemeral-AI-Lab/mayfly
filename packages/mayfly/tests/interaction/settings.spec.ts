@@ -82,7 +82,7 @@ function provideSessionReader(ctx: Context, session: { current: Agent | null }):
   ctx.provide('mayflyCurrentAgent', {
     current: () => session.current,
     revision: () => 0,
-    subscribe(listener) {
+    subscribe(listener: (agent: Agent | null, revision: number) => void) {
       listeners.add(listener)
       listener(session.current, 0)
       return () => { listeners.delete(listener) }
@@ -160,7 +160,7 @@ describe('mayfly-settings schema and registration', () => {
     const ctx = createContext()
     const session = { current: null as Agent | null }
     provideSessionReader(ctx, session)
-    await ctx.plugin({ name: settingsPlugin.name, inject: settingsPlugin.inject, apply: settingsPlugin.apply }, { theme: 'ocean' })
+    await ctx.plugin(settingsPlugin, { theme: 'ocean' })
     expect(settingsPlugin.currentMayflySettings(ctx)).toEqual({ ...settingsPlugin.DEFAULT_SETTINGS, theme: 'ocean' })
     await ctx.fiber.dispose()
   })

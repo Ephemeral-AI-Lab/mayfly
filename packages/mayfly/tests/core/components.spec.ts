@@ -226,7 +226,7 @@ describe('createEditor', () => {
 
     const submits: string[] = []
     editor.onSubmit = text => submits.push(text)
-    editor.handleInput('\r')
+    editor.handleInput!('\r')
     expect(submits).toEqual(['hello'])
     expect(editor.onSubmit).toBeDefined()
     editor.onSubmit = undefined
@@ -235,13 +235,13 @@ describe('createEditor', () => {
     editor.setText('draft')
     expect(editor.disableSubmit).toBe(false)
     editor.disableSubmit = true
-    editor.handleInput('\r')
+    editor.handleInput!('\r')
     expect(submits).toEqual(['hello'])
     expect(editor.getText()).toBe('draft')
 
     editor.addToHistory('earlier prompt')
     editor.setText('')
-    editor.handleInput('\x1b[A')
+    editor.handleInput!('\x1b[A')
     expect(editor.getText()).toBe('earlier prompt')
     // The history read-back (the structural cast over pi-tui's private
     // field, pinned here against 0.84.2) returns the entries oldest first.
@@ -266,17 +266,17 @@ describe('createEditor', () => {
 
     // A true result consumes the input; the pi-tui Editor never sees it.
     editor.onKey = () => true
-    editor.handleInput('x')
+    editor.handleInput!('x')
     expect(editor.getText()).toBe('')
 
     // A false result delegates normally.
     editor.onKey = () => false
-    editor.handleInput('x')
+    editor.handleInput!('x')
     expect(editor.getText()).toBe('x')
 
     // Clearing the hook restores plain delegation.
     editor.onKey = undefined
-    editor.handleInput('y')
+    editor.handleInput!('y')
     expect(editor.getText()).toBe('xy')
     stop()
   })
@@ -449,7 +449,7 @@ describe('createEditor', () => {
 
     expect(editor.isShowingAutocomplete()).toBe(false)
     // Typing '/' at the start of the buffer auto-triggers slash completion.
-    editor.handleInput('/')
+    editor.handleInput!('/')
     await waitForRender()
     expect(editor.isShowingAutocomplete()).toBe(true)
     expect(suggestionCalls).toHaveLength(1)
@@ -460,7 +460,7 @@ describe('createEditor', () => {
     expect(suggestionCalls[0]?.options.force).toBe(false)
 
     // Tab accepts the highlighted completion through the provider.
-    editor.handleInput('\t')
+    editor.handleInput!('\t')
     expect(completionCalls).toHaveLength(1)
     expect(completionCalls[0]?.lines).toEqual(['/'])
     expect(completionCalls[0]?.cursorLine).toBe(0)
@@ -473,7 +473,7 @@ describe('createEditor', () => {
 
     // Tab outside a token routes through shouldTriggerFileCompletion, forcing.
     editor.setText('open ')
-    editor.handleInput('\t')
+    editor.handleInput!('\t')
     await waitForRender()
     expect(fileChecks).toEqual([{ lines: ['open '], cursorLine: 0, cursorCol: 5 }])
     expect(suggestionCalls).toHaveLength(2)
@@ -503,13 +503,13 @@ describe('createEditor', () => {
       },
     }
     editor.setAutocompleteProvider(provider)
-    editor.handleInput('/')
+    editor.handleInput!('/')
     await waitForRender()
     expect(editor.isShowingAutocomplete()).toBe(true)
 
     // Enter applies the selected item, closes the dropdown, and falls
     // through to submit — one keystroke, not two.
-    editor.handleInput('\r')
+    editor.handleInput!('\r')
     expect(completions).toEqual([
       { item: { value: 'btw', label: '/btw', description: 'ask a side question' }, prefix: '/btw' },
     ])
@@ -533,7 +533,7 @@ describe('createEditor', () => {
       getSuggestions: suggestions,
       applyCompletion: lines => ({ lines, cursorLine: 0, cursorCol: lines[0]?.length ?? 0 }),
     })
-    editor.handleInput('/')
+    editor.handleInput!('/')
     await waitForRender()
     expect(editor.isShowingAutocomplete()).toBe(true)
     expect(suggestions).toHaveBeenCalledOnce()
@@ -568,7 +568,7 @@ describe('createEditor', () => {
     // Slash prefix: the WrappingSelectList carries the description onto a
     // second indented line, both under the selected paint (content width 42,
     // description column 26 — the probe numbers of the wrapping spec).
-    editor.handleInput('/')
+    editor.handleInput!('/')
     await waitForRender()
     const slash = editor.render(50)
     expect(slash).toHaveLength(5)
@@ -577,7 +577,7 @@ describe('createEditor', () => {
 
     // Any other prefix keeps pi-tui's stock single-row truncation.
     editor.setText('')
-    editor.handleInput('@')
+    editor.handleInput!('@')
     await waitForRender()
     const plain = editor.render(50)
     expect(plain).toHaveLength(4)
@@ -638,7 +638,7 @@ describe('createEditor', () => {
     // and eat the recalled text (the S16 dogfood garble).
     editor.addToHistory('/theme')
     editor.setGhostHint(' [dark|light]')
-    editor.handleInput('\x1b[A')
+    editor.handleInput!('\x1b[A')
     const recalled = editor.render(30).join('\n')
     expect(recalled).not.toContain('[dark|light]')
     // The recalled text itself renders whole behind the start cursor.
@@ -666,13 +666,13 @@ describe('createEditor', () => {
 
     // A paste over ten lines collapses to a marker in the buffer.
     const pasted = Array.from({ length: 12 }, (_, index) => `line ${index + 1}`).join('\n')
-    editor.handleInput(`\x1b[200~${pasted}\x1b[201~`)
+    editor.handleInput!(`\x1b[200~${pasted}\x1b[201~`)
     expect(editor.getText()).toBe('[paste #1 +12 lines]')
     expect(editor.getExpandedText()).toBe(pasted)
 
     // Small pastes stay inline; there is no marker to expand.
     editor.setText('')
-    editor.handleInput('\x1b[200~short\x1b[201~')
+    editor.handleInput!('\x1b[200~short\x1b[201~')
     expect(editor.getText()).toBe('short')
     expect(editor.getExpandedText()).toBe('short')
     stop()
@@ -683,7 +683,7 @@ describe('createEditor', () => {
     const editor = createSgrService(tui).createEditor()
     editor.setText('a界🙂z')
     editor.focused = true
-    editor.handleInput('\x1b[D')
+    editor.handleInput!('\x1b[D')
 
     const masked = editor.renderContent(40, true).join('\n')
     expect(masked).not.toContain('a')
@@ -735,7 +735,7 @@ describe('createEditor', () => {
 
     // Insertion lands at the cursor, including mid-buffer.
     editor.setText('ac')
-    editor.handleInput('\x1b[D')
+    editor.handleInput!('\x1b[D')
     editor.insertText('b')
     expect(editor.getText()).toBe('abc')
 
@@ -766,9 +766,9 @@ describe('createEditor', () => {
     editor.setSubmitBarrier(value => { attempt = value })
 
     const pasted = Array.from({ length: 12 }, (_, index) => `line ${index + 1}`).join('\n')
-    editor.handleInput(`\x1b[200~${pasted}\x1b[201~`)
+    editor.handleInput!(`\x1b[200~${pasted}\x1b[201~`)
     expect(editor.getText()).toBe('[paste #1 +12 lines]')
-    editor.handleInput('\r')
+    editor.handleInput!('\r')
 
     expect(attempt).toMatchObject({ text: pasted, revision: 1 })
     expect(attempt?.signal.aborted).toBe(false)
@@ -793,7 +793,7 @@ describe('createEditor', () => {
     editor.onSubmit = text => submits.push(text)
 
     const pasted = Array.from({ length: 12 }, (_, index) => `line ${index + 1}`).join('\n')
-    editor.handleInput(`\x1b[200~${pasted}\x1b[201~`)
+    editor.handleInput!(`\x1b[200~${pasted}\x1b[201~`)
     expect(editor.getText()).toBe('[paste #1 +12 lines]')
 
     // captureDraft snapshots without disturbing the live buffer.
@@ -803,7 +803,7 @@ describe('createEditor', () => {
     expect(editor.getText()).toBe('[paste #1 +12 lines]')
 
     // The native funnel captures the same draft, then clears the buffer.
-    editor.handleInput('\r')
+    editor.handleInput!('\r')
     expect(submits).toEqual([pasted])
     expect(editor.getText()).toBe('')
     expect(editor.consumeSubmittedDraft!()).toEqual(draft)
@@ -827,7 +827,7 @@ describe('createEditor', () => {
     editor.submit()
     expect(attempts[0]?.signal.aborted).toBe(false)
 
-    editor.handleInput('!')
+    editor.handleInput!('!')
     expect(attempts[0]?.signal.aborted).toBe(true)
     expect(attempts[0]?.commit()).toBe(false)
     editor.submit()
@@ -868,7 +868,7 @@ describe('createEditor', () => {
       applyCompletion: lines => ({ lines, cursorLine: 0, cursorCol: 0 }),
     })
     editor.setText('@name')
-    editor.handleInput('\x1b[C')
+    editor.handleInput!('\x1b[C')
     expect(suggestions).not.toHaveBeenCalled()
     stop()
   })
@@ -1060,13 +1060,13 @@ describe('createSelectList', () => {
     expect(output).toContain('«primary:')
 
     expect(list.getSelectedItem()?.value).toBe('1')
-    list.handleInput('\x1b[B')
+    list.handleInput!('\x1b[B')
     expect(changed).toEqual(['2'])
     expect(list.getSelectedItem()?.value).toBe('2')
 
-    list.handleInput('\r')
+    list.handleInput!('\r')
     expect(selected).toEqual(['2'])
-    list.handleInput('\x1b')
+    list.handleInput!('\x1b')
     expect(cancelled).toBe(1)
 
     list.invalidate()
@@ -1078,9 +1078,9 @@ describe('createSelectList', () => {
     const components = createService(tui)
     const list = components.createSelectList({ items: [] })
     expect(list.getSelectedItem()).toBeNull()
-    list.handleInput('\x1b[B')
-    list.handleInput('\r')
-    list.handleInput('\x1b')
+    list.handleInput!('\x1b[B')
+    list.handleInput!('\r')
+    list.handleInput!('\x1b')
     list.render(40)
     stop()
   })
@@ -1276,7 +1276,7 @@ describe('EditorAdapter mention drill-down reopen', () => {
     editor.setAutocompleteProvider(provider)
     // The mention sits mid-line: the reopen gate scans back over the
     // leading text to find the token boundary.
-    editor.handleInput('see @')
+    editor.handleInput!('see @')
     await vi.waitFor(() => {
       expect(getSuggestions).toHaveBeenCalledTimes(1)
     })
@@ -1285,14 +1285,14 @@ describe('EditorAdapter mention drill-down reopen', () => {
     // dropdown cancelled, and the adapter's reopen hook fires a second
     // suggestion round through 0.84.2's private tryTriggerAutocomplete
     // (the structural cast pinned here, the getHistory precedent).
-    editor.handleInput('\t')
+    editor.handleInput!('\t')
     expect(editor.getText()).toBe('see @src/')
     await vi.waitFor(() => {
       expect(getSuggestions).toHaveBeenCalledTimes(2)
     })
     // While the dropdown is showing, further input routes through the
     // editor's own update path — the hook's guard returns early.
-    editor.handleInput('x')
+    editor.handleInput!('x')
     await vi.waitFor(() => {
       expect(getSuggestions).toHaveBeenCalledTimes(3)
     })
@@ -1305,9 +1305,9 @@ describe('EditorAdapter mention drill-down reopen', () => {
     const text = 'see @"a b/"'
     const { getSuggestions, provider } = stubProvider(() => ({ lines: [text], cursorLine: 0, cursorCol: text.length - 1 }))
     editor.setAutocompleteProvider(provider)
-    editor.handleInput('see @')
+    editor.handleInput!('see @')
     await vi.waitFor(() => { expect(getSuggestions).toHaveBeenCalledTimes(1) })
-    editor.handleInput('\t')
+    editor.handleInput!('\t')
     expect(editor.getText()).toBe(text)
     await vi.waitFor(() => { expect(getSuggestions).toHaveBeenCalledTimes(2) })
     stop()
@@ -1323,11 +1323,11 @@ describe('EditorAdapter mention drill-down reopen', () => {
       cursorCol: 11,
     }))
     editor.setAutocompleteProvider(provider)
-    editor.handleInput('@')
+    editor.handleInput!('@')
     await vi.waitFor(() => {
       expect(getSuggestions).toHaveBeenCalledTimes(1)
     })
-    editor.handleInput('\t')
+    editor.handleInput!('\t')
     expect(editor.getText()).toBe('@src/a.ts ')
     await new Promise(resolve => setImmediate(resolve))
     // The file accept leaves a trailing space, not a separator: no reopen.
@@ -1345,8 +1345,8 @@ describe('EditorAdapter mention drill-down reopen', () => {
       cursorCol: item.value.length,
     }))
     editor.setAutocompleteProvider(provider)
-    editor.handleInput('a')
-    editor.handleInput('/')
+    editor.handleInput!('a')
+    editor.handleInput!('/')
     expect(editor.getText()).toBe('a/')
     expect(getSuggestions).not.toHaveBeenCalled()
     stop()
@@ -1366,7 +1366,7 @@ describe('EditorAdapter mention drill-down reopen', () => {
     // own trigger never runs; the next inert input (cursor-right) lets the
     // adapter hook open the mention dropdown on the bare '@'.
     editor.setText('@')
-    editor.handleInput('\x1b[C')
+    editor.handleInput!('\x1b[C')
     await vi.waitFor(() => {
       expect(getSuggestions).toHaveBeenCalledTimes(1)
     })

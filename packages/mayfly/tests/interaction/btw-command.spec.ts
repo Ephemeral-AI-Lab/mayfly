@@ -12,8 +12,8 @@ import { MayflyConversationsService } from '../../src/app/conversation-views.ts'
 import * as btw from '../../src/interaction/btw-command.ts'
 import { PaneFakeCommands } from '../transcript/pane-fakes.ts'
 
-interface FakeAgent extends Agent {
-  readonly session: {
+type FakeAgent = Agent & {
+  readonly session: Agent['session'] & {
     readonly header: { readonly cwd: string, readonly agentPreset: string }
     snapshotEvents(): []
     requestHeader(): undefined

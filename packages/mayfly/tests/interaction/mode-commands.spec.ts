@@ -4,8 +4,8 @@
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Agent } from '@deepseek-ai/dsh-agent'
-import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
-import CommandRuntime from '@deepseek-ai/dsh-commands'
+import SessionStore, { SessionId, type SessionSeqCursor } from '@deepseek-ai/dsh-session'
+import CommandRuntime, { type CommandResult } from '@deepseek-ai/dsh-commands'
 import { cycleMode, sessionModeSnapshot } from '../../src/interaction/mode-commands.ts'
 import { setSharedEditor } from '../../src/interaction/editor-instance.ts'
 import type { PermissionPresetsService } from '../../src/interaction/permission-panel.ts'
@@ -23,7 +23,7 @@ interface MountOptions {
   readonly currentPreset?: string
   readonly registerPlan?: boolean
   readonly registerPermission?: boolean
-  readonly resultFor?: (line: string) => { kind: 'success' | 'error', text?: string }
+  readonly resultFor?: (line: string) => CommandResult
   readonly throws?: unknown
 }
 
@@ -36,7 +36,7 @@ async function mount(options: MountOptions = {}) {
   ctx.provide('testSession', { current: options.attached === false ? null : agent })
   const plan = options.plan === false ? undefined : { active: options.plan?.active === true, pending: options.plan?.pending === true }
   vi.spyOn(ctx.sessionProjections, 'snapshot').mockImplementation(() => ({
-    asOfSeq: session.seq - 1,
+    asOfSeq: (session.seq - 1) as SessionSeqCursor,
     values: plan === undefined ? {} : { plan: { ...plan } },
   }))
 

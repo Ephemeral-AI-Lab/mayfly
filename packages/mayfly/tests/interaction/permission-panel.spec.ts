@@ -327,7 +327,7 @@ describe('openPermissionPanel', () => {
     expect(mounted.runs).toEqual([])
     const replacement = { id: mounted.agent.id, session: mounted.agent.session, status: 'idle' } as unknown as Agent
     ;(mounted.ctx.get('testSession') as { current: Agent | null }).current = replacement
-    mounted.ctx.emit('test/session-changed' as never)
+    mounted.ctx.emit('test/session-changed', replacement)
     await vi.waitFor(() => expect(mounted.overlays).toEqual([]))
   })
 })

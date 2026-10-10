@@ -9,7 +9,9 @@ import { choiceError, createChoiceState } from '../../src/core/ui-interaction-ch
 
 const address: MayflyFormAddress = { pagePath: [{ controlId: 'pages', itemId: 'connection' }], formId: 'config' }
 const form = (fields: readonly MayflyFormField[]): MayflyFormNode => ({ kind: 'form', id: 'config', fields, submitActionId: 'save', cancelActionId: 'cancel' })
-const input = (value: string, label = 'Name'): MayflyFormField => ({ kind: 'input', id: 'name', label, value })
+/** A text field: input, textarea, and secret share one member of the field union. */
+type TextField = Extract<MayflyFormField, { readonly kind: 'input' | 'textarea' | 'secret' }>
+const input = (value: string, label = 'Name'): TextField => ({ kind: 'input', id: 'name', label, value })
 
 describe('shared form editing', () => {
   it('preserves edits through equivalent snapshots and coordinates a genuine external conflict', () => {
@@ -293,7 +295,7 @@ describe('shared form editing', () => {
 })
 
 describe('pattern, display errors, decor, and number steps', () => {
-  const urlField = (extra: Partial<Extract<MayflyFormField, { readonly kind: 'input' }>> = {}): MayflyFormField => ({ kind: 'input', id: 'url', label: 'Endpoint', value: '', pattern: '^https?://\\S+$', patternMessage: 'Must be an http(s) URL', ...extra })
+  const urlField = (extra: Partial<TextField> = {}): MayflyFormField => ({ kind: 'input', id: 'url', label: 'Endpoint', value: '', pattern: '^https?://\\S+$', patternMessage: 'Must be an http(s) URL', ...extra })
 
   it('checks a pattern on a typed value, leaving the empty value to required', () => {
     let state = createFormState(address, form([urlField()]))

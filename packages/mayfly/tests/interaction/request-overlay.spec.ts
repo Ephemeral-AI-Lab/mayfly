@@ -143,16 +143,16 @@ describe('request overlay lifecycle', () => {
     const framed = { kind: 'surface' as const, chrome: 'overlay' as const, title: 'Already framed', child: bare }
     const onAction = vi.fn(async (event: MayflyUiActionEvent) => {
       if (event.kind !== 'activate') return undefined
-      if (event.actionId === 'other') return { kind: 'completed' as const, feedback: { message: 'aux' } }
+      if (event.actionId === 'other') return { kind: 'completed' as const, feedback: { message: 'aux', severity: 'info' as const } }
       if (event.actionId === 'accept') return { kind: 'accepted' as const, node: bare, source: [] }
       return { kind: 'accepted' as const, node: framed, source: [] }
     })
-    const request = requestOverlay(bench.ctx, {
+    const request = requestOverlay<'dismiss' | 'stale' | 'abort' | 'unload' | undefined>(bench.ctx, {
       id: 'request', title: 'Request', view: () => node, answer: () => undefined, onAction, cancelled: reason => reason,
     })
     const entry = bench.ctx.mayflyOverlays.list()[0]!
     const action = entry.definition.onEvent!.action!
-    expect(await action({ kind: 'activate', pagePath: [], controlId: 'other', actionId: 'other' }, context())).toEqual({ kind: 'completed', feedback: { message: 'aux' } })
+    expect(await action({ kind: 'activate', pagePath: [], controlId: 'other', actionId: 'other' }, context())).toEqual({ kind: 'completed', feedback: { message: 'aux', severity: 'info' } })
     /* Bare nodes from auxiliary replies adopt the request chrome; nodes that
        already carry a surface frame pass through untouched. */
     expect(await action({ kind: 'activate', pagePath: [], controlId: 'accept', actionId: 'accept' }, context())).toMatchObject({ kind: 'accepted', node: { kind: 'surface', title: 'Request', child: bare } })

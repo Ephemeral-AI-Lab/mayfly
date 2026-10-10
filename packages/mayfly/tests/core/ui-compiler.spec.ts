@@ -22,7 +22,7 @@ import type { MayflyUiEvent } from '../../../ui/src/index.ts'
 import { ADVERSARIAL, expectLinesFit, SCAN_WIDTHS } from './width-scan.ts'
 
 const identity = (value: string): string => value
-const colors = new Proxy({ logoGradient: [identity] }, { get: (target, key) => key === 'logoGradient' ? target.logoGradient : identity }) as MayflySemanticColors
+const colors = new Proxy({ logoGradient: [identity] }, { get: (target, key) => key === 'logoGradient' ? target.logoGradient : identity }) as unknown as MayflySemanticColors
 
 function createTestEditor(): MayflyEditor {
   let value = ''
@@ -129,7 +129,7 @@ it('keeps list selection and search across page switches between tabbed children
   const memberPath = [{ controlId: 'views', itemId: 'members' }]
   const taskPath = [{ controlId: 'views', itemId: 'tasks' }]
   const model = new UiSurfaceModel('adaptive-pages', {
-    scope: { kind: 'app', targetId: 'adaptive-pages' }, source: [], revision: 1, update: { reason: 'data' },
+    id: 'adaptive-pages', scope: { kind: 'app', targetId: 'adaptive-pages' }, source: [], revision: 1, update: { reason: 'data' },
     node: ui.stack.column([
       ui.tabs({ id: 'views', activeId: 'members', items: [{ id: 'members', label: 'Members' }, { id: 'tasks', label: 'Tasks' }] }),
       ui.stack.row([
@@ -137,7 +137,7 @@ it('keeps list selection and search across page switches between tabbed children
         ui.child(ui.list({ id: 'work', role: 'browse', selectedIds: [], items: [{ id: 'task', label: 'Review changes' }] }), { tab: taskPath[0]!, basis: 0, grow: 1 }),
       ]),
     ]),
-    events: { prepare: async event => { events.push(event); return { reply: { kind: 'completed' as const }, publish: () => true } } }, definition: { onEvent: {} },
+    events: { prepare: async (event: MayflyUiEvent) => { events.push(event); return { reply: { kind: 'completed' as const }, publish: () => true } } }, definition: { onEvent: {} },
   })
   const runtime = new MayflyUiSurfaceRuntime(model)
   const result = compileMayflyUiSurfaceNode(model.node!, { ...f.options, surfaceRuntime: runtime })
@@ -636,7 +636,7 @@ describe('compileMayflyUiNode', () => {
       node: ui.list({ id: 'pick', role: 'choose', numbered: true, filterable: true, selectedIds: [], items: [
         { id: 'one', label: 'One' }, { id: 'two', label: 'Two 2' },
       ] }),
-      events: { prepare: async event => { events.push(event); return { reply: { kind: 'completed' as const }, publish: () => true } } },
+      events: { prepare: async (event: MayflyUiEvent) => { events.push(event); return { reply: { kind: 'completed' as const }, publish: () => true } } },
       definition: {},
     })
     const f = fixture()
@@ -849,7 +849,7 @@ describe('compileMayflyUiNode', () => {
         ui.child(ui.text('nothing'), { tab: { controlId: 'pages', itemId: 'three' } }),
         ui.actions({ id: 'page-actions', items: [{ id: 'go', label: 'Go' }] }),
       ]),
-      events: { prepare: async event => { events.push(event); return { reply: { kind: 'completed' as const }, publish: () => true } } },
+      events: { prepare: async (event: MayflyUiEvent) => { events.push(event); return { reply: { kind: 'completed' as const }, publish: () => true } } },
       definition: { onEvent: {} },
     })
     const f = fixture()
@@ -1087,7 +1087,7 @@ describe('compileMayflyUiNode', () => {
     expect(refreshed.ok).toBe(true)
     if (!refreshed.ok) throw new Error(refreshed.message)
     refreshed.value.component.render(40)
-    staleChange()
+    staleChange('stale')
     staleSubmit('stale')
     expect(editor.getExpandedText()).toBe('')
     runtime.state.setEditing(undefined)
@@ -1117,7 +1117,7 @@ describe('compileMayflyUiNode', () => {
     expect(state.finishSelectEditing(select, 'missing', false)).toBeNull()
     const list = ui.list({ id: 'list', role: 'browse', selectedIds: [], items: [] })
     for (const movement of ['home', 'end', 'up', 'down', 'page-up', 'page-down'] as const) {
-      expect(runtime.moveList(list, 0, movement, 5)).toBeUndefined()
+      expect(runtime.moveList(list, movement, 5)).toBeUndefined()
     }
 
     expect(refreshed.value.focusTarget!.restoreFocusIdentity?.({ controlId: 'missing' })).toBe(false)
@@ -1778,7 +1778,7 @@ describe('compileMayflyUiSurfaceNode contextual hints', () => {
         ] } },
         { id: 'b', label: 'Beta' },
       ] }),
-      events: { prepare: async event => { events.push(event); return { reply: { kind: 'completed' as const }, publish: () => true } } },
+      events: { prepare: async (event: MayflyUiEvent) => { events.push(event); return { reply: { kind: 'completed' as const }, publish: () => true } } },
       definition: {},
     })
     const f = fixture()
@@ -1834,7 +1834,7 @@ describe('compileMayflyUiSurfaceNode contextual hints', () => {
         ui.form({ id: 'answer', enterSubmits: 'save', fields: [{ kind: 'input', id: 'value', label: 'Value', value: '' }] }),
         ui.actions({ id: 'commands', items: [{ id: 'save', label: 'Save', submit: [{ pagePath: [], formId: 'answer' }] }] }),
       ]),
-      events: { prepare: async event => { events.push(event); return { reply: { kind: 'completed' as const }, publish: () => true } } },
+      events: { prepare: async (event: MayflyUiEvent) => { events.push(event); return { reply: { kind: 'completed' as const }, publish: () => true } } },
       definition: {},
     })
     const f = fixture()
@@ -1863,7 +1863,7 @@ describe('compileMayflyUiSurfaceNode contextual hints', () => {
         ui.form({ id: 'answer', enterSubmits: 'send', fields: [{ kind: 'textarea', id: 'value', label: 'Value', value: '' }] }),
         ui.actions({ id: 'commands', items: [{ id: 'send', label: 'Send', submit: [{ pagePath: [], formId: 'answer' }] }] }),
       ]),
-      events: { prepare: async event => { events.push(event); return { reply: { kind: 'completed' as const }, publish: () => true } } },
+      events: { prepare: async (event: MayflyUiEvent) => { events.push(event); return { reply: { kind: 'completed' as const }, publish: () => true } } },
       definition: {},
     })
     const f = fixture()
@@ -2066,7 +2066,7 @@ describe('compileMayflyUiSurfaceNode contextual hints', () => {
       get: (target, key) => key === 'logoGradient'
         ? target.logoGradient
         : key === 'textMuted' ? (value: string) => `\u001b[2m${value}\u001b[22m` : identity,
-    }) as MayflySemanticColors
+    }) as unknown as MayflySemanticColors
     const ansi = compiledSurface(wideTree, fixture({ colors: ansiColors, onUnhandledEscape: () => {} }).options)
     ansi.focusTarget!.focused = true
     const ansiHint = ansi.component.render(40).at(-1)!
@@ -2400,7 +2400,7 @@ describe('compileMayflyStatusNode', () => {
         { node: { kind: 'text', content: 'tall' }, when: { minHeight: 4 } },
         { node: { kind: 'text', content: 'compact' }, when: { maxWidth: 19, maxHeight: 3 } },
       ],
-    }, statusOptions({ viewport: { columns: 80, rows: 24 }, maxRows: 3 }))
+    }, statusOptions({ getViewport: () => ({ columns: 80, rows: 24 }), maxRows: 3 }))
     expect(status.component.renderStatus(18)).toEqual({ rows: ['compact'], overflowed: false })
     expect(status.component.renderStatus(20)).toEqual({ rows: ['wide'], overflowed: false })
   })
@@ -2502,9 +2502,9 @@ describe('control walk memoization (UX-34)', () => {
   function mountList() {
     const f = fixture()
     const model = new UiSurfaceModel('memo-spec', {
-      scope: { kind: 'app', targetId: 'memo-spec' }, source: [], revision: 1, update: { reason: 'data' },
+      id: 'memo-spec', scope: { kind: 'app', targetId: 'memo-spec' }, source: [], revision: 1, update: { reason: 'data' },
       node: listNode(),
-      events: { prepare: async event => { void event; return { reply: { kind: 'completed' as const }, publish: () => true } } }, definition: { onEvent: {} },
+      events: { prepare: async (event: MayflyUiEvent) => { void event; return { reply: { kind: 'completed' as const }, publish: () => true } } }, definition: { onEvent: {} },
     })
     const runtime = new MayflyUiSurfaceRuntime(model)
     const surface = compiledSurface(model.node!, f.options, runtime)

@@ -1788,7 +1788,7 @@ The A/B and the outputs:
 | 2b.7 | in review | `feat/2b-7-perf-ab` |
 | 2b.8 | in review | `feat/2b-8-real-screenshots` |
 | 2b.6b | in review | `feat/2b-6b-app-scenes` |
-| 2b.9 | planned | — |
+| 2b.9 | in review | `feat/2b-9-typed-tests` |
 
 **2c Content at any size** (§4.2, D26). Chunked text, admission and painting when visible, append identity, the memory
 ceiling, and the gate rows. The owner reviews a 1 MB diff, a long plan, and job output following its tail in the

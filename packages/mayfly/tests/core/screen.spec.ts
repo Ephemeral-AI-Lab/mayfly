@@ -37,7 +37,7 @@ function recordingRuntime(laneRows = 0): MayflyTerminalRuntime & Recorded {
     isFocused: () => true,
   }
   const recorded: Recorded = { added: [], bottomAdded: [], dockAdded: [], removed: [], focused: [], overlays: [], renders: [], suspends: [], titles: [], scrolls: [], contentChanges: 0 }
-  return {
+  const runtime = {
     ...recorded,
     get contentChanges() { return recorded.contentChanges },
     columns: 120,
@@ -83,7 +83,9 @@ function recordingRuntime(laneRows = 0): MayflyTerminalRuntime & Recorded {
       recorded.titles.push(title)
     },
     stop: () => Promise.resolve(),
-  }
+  } satisfies Partial<MayflyTerminalRuntime> & Recorded
+  // The screen reads only these members; the rest of a terminal runtime stays out of the fake.
+  return runtime as unknown as MayflyTerminalRuntime & Recorded
 }
 
 const component: MayflyComponent = {

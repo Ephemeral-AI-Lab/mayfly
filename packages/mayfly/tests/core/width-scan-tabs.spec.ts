@@ -7,12 +7,12 @@ import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/
 import { ADVERSARIAL, SCAN_WIDTHS, expectLinesFit } from './width-scan.ts'
 
 const identity = (text: string): string => text
-const colors = new Proxy({ logoGradient: [identity] }, { get: (target, key) => key === 'logoGradient' ? target.logoGradient : identity }) as MayflySemanticColors
+const colors = new Proxy({ logoGradient: [identity] }, { get: (target, key) => key === 'logoGradient' ? target.logoGradient : identity }) as unknown as MayflySemanticColors
 const components = { visibleWidth, wrapText: wrapTextWithAnsi, truncateToWidth } as unknown as MayflyComponents
 
 /** Paints a node at `width` in a viewport `columns` wide, with the surface focused or not. */
 function paint(node: MayflyUiNode, width: number, columns: number, focused: boolean): string[] {
-  const result = compileMayflyUiNode(node, { components, colors, getViewport: () => ({ columns, rows: 30 }), screenMode: 'alternate' })
+  const result = compileMayflyUiNode(node, { emit: () => {}, components, colors, getViewport: () => ({ columns, rows: 30 }), screenMode: 'alternate' })
   if (!result.ok) throw new Error(result.message)
   if (result.value.focusTarget !== null) result.value.focusTarget.focused = focused
   return result.value.component.render(width)

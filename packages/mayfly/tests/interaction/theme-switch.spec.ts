@@ -98,9 +98,9 @@ describe('/theme command', () => {
     const entry = ctx.mayflyOverlays.list().find(candidate => candidate.id === 'mayfly.theme')!
     const action = entry.definition.onEvent!.action!
     const context = { surfaceId: entry.id, operationId: 'pick', source: entry.source, revision: entry.revision, signal: new AbortController().signal, report: () => {} }
-    const accept = (selectedIds: string[]) => action({ kind: 'selection-accept' as const, controlId: 'themes', selectedIds }, context as never)
+    const accept = (selectedIds: string[]) => action({ kind: 'selection-accept', pagePath: [], controlId: 'themes', selectedIds }, context as never)
 
-    expect(await action({ kind: 'dismiss' }, context as never)).toEqual({ kind: 'completed' })
+    expect(await action({ kind: 'dismiss', pagePath: [] }, context as never)).toEqual({ kind: 'completed' })
     expect(await accept([])).toEqual({ kind: 'completed', dismiss: true })
     expect(await accept(['dark'])).toEqual({ kind: 'completed', dismiss: true })
     expect(await accept(['custom'])).toEqual({ kind: 'completed', feedback: { severity: 'info', message: USAGE } })

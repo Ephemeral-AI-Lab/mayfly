@@ -17,6 +17,7 @@ import {
   validateMayflyStatusNode,
   validateMayflyUiNode,
 } from '../../src/core/ui-validator.ts'
+import { createWorkCounters } from '../../src/core/ui-work-counters.ts'
 
 function accepted(value: unknown): unknown {
   const result = validateMayflyUiNode(value)
@@ -94,7 +95,7 @@ describe('validateMayflyUiNode', () => {
     const handwritten = { ...all, ignored: 'metadata' }
     const result = accepted(handwritten) as typeof all & { ignored?: string }
     const expected = structuredClone(all)
-    ;((expected.children[9]!.node as { items: { detailSpans?: { text: string }[] }[] }).items[0]!.detailSpans![0]!).text = 'current'
+    ;((expected.children[9]!.node as unknown as { items: { detailSpans?: { text: string }[] }[] }).items[0]!.detailSpans![0]!).text = 'current'
     ;(expected.children[14]!.node as { value: number }).value = 10
     expect(result).toEqual(expected)
     expect(result.ignored).toBeUndefined()
@@ -748,7 +749,7 @@ describe('list rows and bodies', () => {
     // The raw scan skips holes that are not data and rows that are not objects.
     const odd = Array.from({ length: 40 }, (_, index) => index === 1 ? 'not an item' : index === 2 ? null : index === 3 ? { id: 7, label: 'x', expanded: true } : { id: `r${String(index)}`, label: 'x', ...(index === 39 ? { body } : {}) })
     expect(validateMayflyUiNode(rows(odd))).toMatchObject({ ok: true })
-    const lazyOdd = (validateMayflyUiNode(rows(odd)) as { value: { items: never } }).value.items
+    const lazyOdd = (validateMayflyUiNode(rows(odd)) as unknown as { value: { items: never } }).value.items
     expect(admittedListExpanded(lazyOdd)).toEqual([])
     expect(admittedListItem(lazyOdd, 1)).toMatchObject({ disabled: true })
   })
@@ -760,7 +761,7 @@ describe('list rows and bodies', () => {
   })
 
   it('counts the nodes of a body toward validation work', () => {
-    const counters = { nodesValidated: 0, unitsCompiled: 0, rowsPainted: 0, stringsMeasured: 0 }
+    const counters = createWorkCounters()
     validateMayflyUiNode(rows([{ id: 'a', label: 'A', body: ui.stack.column([ui.text('x'), ui.text('y')]) }]), counters)
     expect(counters.nodesValidated).toBe(1 + 1 + 3)
   })

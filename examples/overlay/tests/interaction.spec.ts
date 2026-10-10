@@ -144,21 +144,21 @@ describe('external settings overlay', () => {
     expect(await action({ kind: 'activate', pagePath: [], controlId: 'noop', actionId: 'noop' }, requestContext(entry))).toEqual({ kind: 'completed' })
     const aborted = new AbortController()
     aborted.abort()
-    expect(await action({ kind: 'submit', submission: submission(entry) as never }, requestContext(entry, aborted.signal))).toEqual({ kind: 'cancelled' })
-    expect(await action({ kind: 'submit', submission: submission(entry, [], []) as never }, requestContext(entry))).toMatchObject({ kind: 'conflict' })
+    expect(await action({ kind: 'submit', pagePath: [], controlId: 'submit', submission: submission(entry) as never }, requestContext(entry, aborted.signal))).toEqual({ kind: 'cancelled' })
+    expect(await action({ kind: 'submit', pagePath: [], controlId: 'submit', submission: submission(entry, [], []) as never }, requestContext(entry))).toMatchObject({ kind: 'conflict' })
 
     for (const forms of [
       [{ pagePath: [], formId: 'other', fields: [] }],
       [{ pagePath: [{ controlId: 'settings-pages', itemId: 'other' }], formId: 'settings', fields: [] }],
       [{ pagePath: address('connection').pagePath, formId: 'settings', fields: [{ id: 'unknown', value: 1, change: 'set' }] }],
-    ]) expect(await action({ kind: 'submit', submission: submission(entry, forms) as never }, requestContext(entry))).toMatchObject({ kind: 'failed' })
+    ]) expect(await action({ kind: 'submit', pagePath: [], controlId: 'submit', submission: submission(entry, forms) as never }, requestContext(entry))).toMatchObject({ kind: 'failed' })
 
-    const accepted = await action({ kind: 'submit', submission: submission(entry, [
+    const accepted = await action({ kind: 'submit', pagePath: [], controlId: 'submit', submission: submission(entry, [
       { pagePath: address('connection').pagePath, formId: 'settings', fields: [{ id: 'name', value: 'Default', change: 'reset' }, { id: 'enabled', value: true, change: 'unchanged' }] },
       { pagePath: address('workspace').pagePath, formId: 'settings', fields: [{ id: 'limit', value: 100, change: 'unchanged' }] },
     ]) as never }, requestContext(entry))
     expect(accepted).toMatchObject({ kind: 'accepted' })
-    expect(await action({ kind: 'submit', submission: submission(entry, [
+    expect(await action({ kind: 'submit', pagePath: [], controlId: 'submit', submission: submission(entry, [
       { pagePath: address('connection').pagePath, formId: 'settings', fields: [{ id: 'enabled', value: true, change: 'unchanged' }] },
     ]) as never }, requestContext(entry))).toMatchObject({ kind: 'accepted' })
   })
@@ -172,7 +172,7 @@ describe('external settings overlay', () => {
     const gate = Promise.withResolvers<void>()
     const mutate = vi.spyOn(cancelled.settings, 'mutate').mockImplementationOnce(async (...args) => { await gate.promise; return original(...args) })
     const controller = new AbortController()
-    const pending = cancelledEntry.definition.onEvent!.action!({ kind: 'submit', submission: submission(cancelledEntry, form) as never }, requestContext(cancelledEntry, controller.signal))
+    const pending = cancelledEntry.definition.onEvent!.action!({ kind: 'submit', pagePath: [], controlId: 'submit', submission: submission(cancelledEntry, form) as never }, requestContext(cancelledEntry, controller.signal))
     await vi.waitFor(() => expect(mutate).toHaveBeenCalled())
     controller.abort()
     gate.resolve()
@@ -185,7 +185,7 @@ describe('external settings overlay', () => {
       const bench = await setup()
       const entry = bench.ctx.mayflyOverlays.list()[0]!
       vi.spyOn(bench.settings, 'mutate').mockRejectedValueOnce(error)
-      expect(await entry.definition.onEvent!.action!({ kind: 'submit', submission: submission(entry, form) as never }, requestContext(entry))).toMatchObject({ kind })
+      expect(await entry.definition.onEvent!.action!({ kind: 'submit', pagePath: [], controlId: 'submit', submission: submission(entry, form) as never }, requestContext(entry))).toMatchObject({ kind })
     }
 
     const rejected = await setup()
@@ -193,7 +193,7 @@ describe('external settings overlay', () => {
     const failure = Promise.withResolvers<never>()
     const failedMutate = vi.spyOn(rejected.settings, 'mutate').mockReturnValueOnce(failure.promise)
     const rejectedController = new AbortController()
-    const result = rejectedEntry.definition.onEvent!.action!({ kind: 'submit', submission: submission(rejectedEntry, form) as never }, requestContext(rejectedEntry, rejectedController.signal))
+    const result = rejectedEntry.definition.onEvent!.action!({ kind: 'submit', pagePath: [], controlId: 'submit', submission: submission(rejectedEntry, form) as never }, requestContext(rejectedEntry, rejectedController.signal))
     await vi.waitFor(() => expect(failedMutate).toHaveBeenCalled())
     rejectedController.abort()
     failure.reject(new Error('cancelled'))

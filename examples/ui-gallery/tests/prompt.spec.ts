@@ -10,6 +10,9 @@ import * as gallery from '../src/index.ts'
 const contexts: Context[] = []
 afterEach(async () => { for (const ctx of contexts.splice(0)) await ctx.fiber.dispose() })
 
+/** An event as a test writes it, before the renderer adds the page it came from. */
+type Unpaged<Event> = Event extends unknown ? Omit<Event, 'pagePath'> : never
+
 async function boot() {
   const ctx = new Context()
   contexts.push(ctx)
@@ -19,8 +22,8 @@ async function boot() {
   const context = (): MayflyUiEventContext => ({ surfaceId: entry().id, operationId: 'prompt-test', source: entry().source, revision: entry().revision, signal: new AbortController().signal, report: vi.fn() })
   const promptOf = (node: unknown) => (JSON.parse(JSON.stringify(node)).children[1].node.child) as { tokens: { id: string }[], recall: { kind: string, text: string }[], completions?: { items: { id: string, label: string }[] }, reset: { rev: number, value: string } }
   const prompt = () => promptOf(entry().node)
-  const observe = async (event: Omit<MayflyUiObservationEvent, 'pagePath'>) => entry().definition.onEvent!.observe!({ ...event, pagePath: [] } as MayflyUiObservationEvent, context())
-  const act = async (event: Omit<MayflyUiActionEvent, 'pagePath'>) => entry().definition.onEvent!.action!({ ...event, pagePath: [] } as MayflyUiActionEvent, context())
+  const observe = async (event: Unpaged<MayflyUiObservationEvent>) => entry().definition.onEvent!.observe!({ ...event, pagePath: [] } as MayflyUiObservationEvent, context())
+  const act = async (event: Unpaged<MayflyUiActionEvent>) => entry().definition.onEvent!.action!({ ...event, pagePath: [] } as MayflyUiActionEvent, context())
   return { entry, prompt, promptOf, observe, act }
 }
 

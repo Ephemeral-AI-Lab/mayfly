@@ -11,9 +11,11 @@ import { registerTraceCommand, traceDetailPanelModel, tracePanelModel } from '..
 import type { TraceItem } from '../../src/interaction/trace-format.ts'
 import { mountUiRegistryObservers, UiInteractionService } from '../../src/core/ui-interaction-state.ts'
 import { MayflyLocaleService } from '../../src/frontend/locale.ts'
+import type { Agent } from '@deepseek-ai/dsh-agent'
+import type { MayflyUiActionEvent } from '../../../ui/src/interaction.ts'
 
 const record = { sessionId: SessionId('trace-test'), seq: 0, time: 1, type: 'user/message', surface: 'current' as const }
-const target = { type: 'user/message', seq: 0, time: 1, surfaceOp: 'append', data: { content: [{ type: 'text', text: 'hello' }], source: { kind: 'user' } } } as SessionEvent
+const target = { type: 'user/message', seq: 0, time: 1, surfaceOp: 'append', data: { content: [{ type: 'text', text: 'hello' }], source: { kind: 'user' } } } as unknown as SessionEvent
 const contexts: Context[] = []
 const flush = () => new Promise<void>(resolve => { setImmediate(resolve) })
 
@@ -58,12 +60,12 @@ describe('registerTraceCommand', () => {
     events?: readonly SessionEvent[]
     read?: () => Promise<{ session: object, events: readonly SessionEvent[] }>
   } = {}) {
-    const { ctx } = fakeMayflyContext({ display: options.display })
+    const { ctx } = fakeMayflyContext(options.display === undefined ? {} : { display: options.display })
     contexts.push(ctx)
     await ctx.plugin(CommandRuntime)
     await ctx.plugin(SessionStore)
     const session = ctx.sessions.create(SessionId('trace-test'))
-    const agent = { id: session.id, session, status: 'idle' } as never
+    const agent = { id: session.id, session, status: 'idle' } as unknown as Agent
     const state: { current: unknown | null } = { current: options.session === false ? null : agent }
     ctx.provide('testSession', state)
     const query = options.query === false ? undefined : {
@@ -120,7 +122,7 @@ describe('registerTraceCommand', () => {
   })
 
   it('keeps every long detail page reachable without rereading the session', async () => {
-    const long = { ...target, data: { ...target.data, payload: `${'x'.repeat(20_000)}TAIL` } } as SessionEvent
+    const long = { ...target, data: { ...target.data, payload: `${'x'.repeat(20_000)}TAIL` } } as unknown as SessionEvent
     const { ctx, agent, query, model } = await mount({ events: [long] })
     await ctx.commands.execute(agent, '/trace', [], new AbortController().signal)
     const root = model('mayfly.trace')!
@@ -128,7 +130,8 @@ describe('registerTraceCommand', () => {
     await vi.waitFor(() => expect(model('mayfly.trace.detail')?.form({ pagePath: [], formId: 'trace-page' })).toBeDefined())
     const detail = model('mayfly.trace.detail')!
     const page = { pagePath: [], formId: 'trace-page', fieldId: 'page' } as const
-    const maximum = detail.form(page)!.fields.page!.definition.kind === 'number' ? detail.form(page)!.fields.page!.definition.max! : 1
+    const field = detail.form(page)!.fields.page!.definition
+    const maximum = field.kind === 'number' ? field.max! : 1
     detail.edit(page, String(maximum))
     detail.invoke('go')
     await vi.waitFor(() => expect(JSON.stringify(detail.node)).toContain(`trace-document/${String(maximum)}`))
@@ -163,7 +166,7 @@ describe('registerTraceCommand', () => {
     await live.ctx.commands.execute(live.agent, '/trace', [], new AbortController().signal)
     await vi.waitFor(() => expect(live.model('mayfly.trace')).toBeDefined())
     live.state.current = { id: live.agent.id, session: live.agent.session, status: 'idle' }
-    live.ctx.emit('test/session-changed')
+    live.ctx.emit('test/session-changed', live.agent)
     await vi.waitFor(() => expect(live.ctx.mayflyOverlays.list()).toEqual([]))
   })
 
@@ -234,7 +237,7 @@ describe('registerTraceCommand', () => {
   })
 
   it('defends root and paged detail events and refreshes localized nodes', async () => {
-    const long = { ...target, data: { ...target.data, payload: 'x'.repeat(20_000) } } as SessionEvent
+    const long = { ...target, data: { ...target.data, payload: 'x'.repeat(20_000) } } as unknown as SessionEvent
     const bench = await mount({ events: [long] })
     await bench.ctx.commands.find(bench.agent, 'trace')!.handler({ rawInput: '', signal: new AbortController().signal } as never)
     const root = bench.ctx.mayflyOverlays.list().find(entry => entry.id === 'mayfly.trace')!
@@ -249,8 +252,8 @@ describe('registerTraceCommand', () => {
     await root.definition.onEvent!.action!({ kind: 'selection-accept', pagePath: [], controlId: 'trace-events', selectedIds: ['0'] }, context(root))
     const detail = bench.ctx.mayflyOverlays.list().find(entry => entry.id === 'mayfly.trace.detail')!
     expect(await detail.definition.onEvent!.action!({ kind: 'activate', pagePath: [], controlId: 'noop', actionId: 'noop' }, context(detail))).toEqual({ kind: 'completed' })
-    expect(await detail.definition.onEvent!.action!({ kind: 'submit', submission: { actionId: 'go', source: [], forms: [] } }, context(detail))).toMatchObject({ kind: 'failed', message: 'Invalid page' })
-    const page = (actionId: string, value: number) => ({ kind: 'submit' as const, submission: { actionId, source: [], forms: [{ pagePath: [], formId: 'trace-page', fields: [{ id: 'page', value, change: 'set' as const }] }] } })
+    expect(await detail.definition.onEvent!.action!({ kind: 'submit', pagePath: [], controlId: 'submit', submission: { draftRevision: 1, actionId: 'go', source: [], forms: [] } }, context(detail))).toMatchObject({ kind: 'failed', message: 'Invalid page' })
+    const page = (actionId: string, value: number): MayflyUiActionEvent => ({ kind: 'submit', pagePath: [], controlId: 'trace-page', submission: { actionId, draftRevision: 1, source: [], forms: [{ pagePath: [], formId: 'trace-page', draftRevision: 1, fields: [{ id: 'page', value, change: 'set' }] }] } })
     expect(await detail.definition.onEvent!.action!(page('next', 1), context(detail))).toMatchObject({ kind: 'accepted' })
     expect(await detail.definition.onEvent!.action!(page('previous', 2), context(detail))).toMatchObject({ kind: 'accepted' })
     bench.ctx.mayflyLocale.setPreference('en')

@@ -9,8 +9,9 @@
  */
 
 import { homedir } from 'node:os'
-import { describe, it } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
+import { AttachmentId } from '@deepseek-ai/dsh-attachment'
 import type { GoalProjection } from '@deepseek-ai/dsh-goal'
 import type { MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import { MayflyStatusService } from '../../../ui/src/provider.ts'
@@ -29,7 +30,7 @@ import { ThinkingComponent } from '../../src/transcript/thinking.ts'
 import { CompactionRowComponent } from '../../src/transcript/compaction.ts'
 import { ToolLineComponent } from '../../src/transcript/tool-line.ts'
 import { ProcessTitleComponent, TurnHeaderComponent } from '../../src/transcript/process-rows.ts'
-import type { TranscriptToolModel } from '../../src/frontend/models.ts'
+import type { TranscriptCommandGroupModel, TranscriptReadGroupModel, TranscriptSearchGroupModel, TranscriptToolModel } from '../../src/frontend/models.ts'
 import * as activityPane from '../../src/transcript/pane-activity.ts'
 import * as agentsPane from '../../src/transcript/pane-agents.ts'
 import { initialConversationFacts } from '../../src/conversation/facts.ts'
@@ -40,7 +41,7 @@ import { goalStatusText } from '../../src/transcript/status-goal.ts'
 import { createTranscriptModel, TranscriptModelComponent } from '../../src/transcript/transcript-model.ts'
 import { StatusFooterComponent } from '../../src/transcript/status-model.ts'
 import { bannerLayout, composeBannerLines, shortenHome } from '../../src/transcript/banner.ts'
-import type { TranscriptToolItem } from '../../src/transcript/types.ts'
+import type { TranscriptAssistantItem, TranscriptErrorItem, TranscriptToolItem, TranscriptUserItem } from '../../src/transcript/types.ts'
 import { fakeMayflyComponents } from './helpers.ts'
 import { bootPanePlugin } from './pane-fakes.ts'
 import { COLORS, fakeAgent } from './status-fakes.ts'
@@ -69,11 +70,13 @@ function bashItem(text: string): TranscriptToolItem {
     kind: 'tool',
     seq: 1,
     turn: 1,
+    step: 0,
     callId: 'c1',
     name: 'bash',
     arguments: '{}',
+    startedAt: 0,
     parsedArguments: { command: text, run_in_background: true },
-  } as TranscriptToolItem
+  }
 }
 
 /** Compile one public wire node through the renderer used by mounted panes. */
@@ -83,6 +86,7 @@ function renderNode(node: MayflyUiNode, width: number): string[] {
     colors,
     getViewport: () => ({ columns: width, rows: 24 }),
     screenMode: 'main',
+    emit: () => {},
   })
   return (compiled.ok ? compiled.value.component : compiled.errorComponent).render(width)
 }
@@ -104,7 +108,7 @@ describe('transcript width-scan', () => {
       const longUser = new UserMessageComponent({
         kind: 'user', seq: 1, turn: 1,
         text: Array.from({ length: 12 }, (_, index) => `line ${String(index)} 界🙂`).join('\n'),
-        images: [{ attachmentId: 'image', mediaType: 'image/png', bytes: 1, width: 1, height: 1 }],
+        images: [{ attachmentId: AttachmentId('image'), mediaType: 'image/png', bytes: 1, width: 1, height: 1 }],
       }, colors, components, {
         loadImage: () => new Promise(() => {}),
         t: transcriptT,
@@ -143,7 +147,7 @@ describe('transcript width-scan', () => {
   for (const { name, text } of ADVERSARIAL) {
     it(`UserMessageComponent survives ${name}`, () => {
       const components = fakeMayflyComponents()
-      const item = { kind: 'user', seq: 1, turn: 1, text, images: [] }
+      const item: TranscriptUserItem = { kind: 'user', seq: 1, turn: 1, text, images: [] }
       for (const width of SCAN_WIDTHS) {
         expectLinesFit(`UserMessage/${name}`, new UserMessageComponent(item, colors, components).render(width), width)
       }
@@ -151,7 +155,7 @@ describe('transcript width-scan', () => {
 
     it(`AssistantMessageComponent survives ${name}`, () => {
       const components = fakeMayflyComponents()
-      const item = { kind: 'assistant', seq: 1, turn: 1, step: 1, text }
+      const item: TranscriptAssistantItem = { kind: 'assistant', seq: 1, turn: 1, step: 1, text }
       for (const width of SCAN_WIDTHS) {
         expectLinesFit(`Assistant/${name}`, new AssistantMessageComponent(item, colors, components).render(width), width)
       }
@@ -181,16 +185,16 @@ describe('transcript width-scan', () => {
 
     it(`ReadGroupComponent survives ${name}`, () => {
       const components = fakeMayflyComponents()
-      const model = {
-        kind: 'transcript-read-group' as const,
+      const model: TranscriptReadGroupModel = {
+        kind: 'transcript-read-group',
         id: 'read-group:r1',
-        seq: 1,
+        seq: 1, updatedSeq: 1,
         turn: 1,
         step: 0,
         reads: [
-          { callId: 'r1', seq: 1, turn: 1, step: 0, path: text, range: { first: 1, last: 9 }, totalLines: 99, state: 'ok' as const, previewLines: [{ number: 4, text }, { number: 5, text }] },
-          { callId: 'r2', seq: 2, turn: 1, step: 0, path: text, requestedRange: { first: 10, last: 19 }, state: 'pending' as const },
-          { callId: 'r3', seq: 3, turn: 1, step: 0, path: text, state: 'error' as const, error: text },
+          { callId: 'r1', activity: 'read', detail: text, seq: 1, updatedSeq: 1, turn: 1, step: 0, path: text, range: { first: 1, last: 9 }, totalLines: 99, state: 'ok' as const, previewLines: [{ number: 4, text }, { number: 5, text }] },
+          { callId: 'r2', activity: 'read', detail: text, seq: 2, updatedSeq: 2, turn: 1, step: 0, path: text, requestedRange: { first: 10, last: 19 }, state: 'pending' as const },
+          { callId: 'r3', activity: 'read', detail: text, seq: 3, updatedSeq: 3, turn: 1, step: 0, path: text, state: 'error' as const, error: text },
         ],
       }
       for (const width of SCAN_WIDTHS) {
@@ -204,17 +208,17 @@ describe('transcript width-scan', () => {
 
     it(`SearchGroupComponent survives ${name}`, () => {
       const components = fakeMayflyComponents()
-      const model = {
-        kind: 'transcript-search-group' as const,
+      const model: TranscriptSearchGroupModel = {
+        kind: 'transcript-search-group',
         id: 'search-group:s1',
-        seq: 1,
+        seq: 1, updatedSeq: 1,
         turn: 1,
         step: 0,
         searches: [
-          { callId: 's1', seq: 1, turn: 1, step: 0, pattern: text, shape: 'matches' as const, files: [{ path: text, count: 2, previews: [{ lineNumber: 4, line: text }] }], truncated: true, total: 9, state: 'ok' as const },
-          { callId: 's2', seq: 2, turn: 1, step: 0, pattern: text, shape: 'paths' as const, paths: [text], pathsTotal: 9, total: 9, state: 'ok' as const },
-          { callId: 's3', seq: 3, turn: 1, step: 0, pattern: text, state: 'pending' as const },
-          { callId: 's4', seq: 4, turn: 1, step: 0, pattern: text, state: 'error' as const, error: text },
+          { callId: 's1', activity: 'search', detail: text, seq: 1, updatedSeq: 1, turn: 1, step: 0, pattern: text, shape: 'matches' as const, files: [{ path: text, count: 2, previews: [{ lineNumber: 4, line: text }] }], truncated: true, total: 9, state: 'ok' as const },
+          { callId: 's2', activity: 'search', detail: text, seq: 2, updatedSeq: 2, turn: 1, step: 0, pattern: text, shape: 'paths' as const, paths: [text], pathsTotal: 9, total: 9, state: 'ok' as const },
+          { callId: 's3', activity: 'search', detail: text, seq: 3, updatedSeq: 3, turn: 1, step: 0, pattern: text, state: 'pending' as const },
+          { callId: 's4', activity: 'search', detail: text, seq: 4, updatedSeq: 4, turn: 1, step: 0, pattern: text, state: 'error' as const, error: text },
         ],
       }
       for (const width of SCAN_WIDTHS) {
@@ -228,16 +232,16 @@ describe('transcript width-scan', () => {
 
     it(`CommandGroupComponent survives ${name}`, () => {
       const components = fakeMayflyComponents()
-      const model = {
-        kind: 'transcript-command-group' as const,
+      const model: TranscriptCommandGroupModel = {
+        kind: 'transcript-command-group',
         id: 'command-group:c1',
-        seq: 1,
+        seq: 1, updatedSeq: 1,
         turn: 1,
         step: 0,
         commands: [
-          { callId: 'c1', seq: 1, updatedSeq: 1, turn: 1, step: 0, command: text, state: 'ok' as const, exitCode: 0, previewLines: [text, text] },
-          { callId: 'c2', seq: 2, updatedSeq: 2, turn: 1, step: 0, command: text, state: 'pending' as const },
-          { callId: 'c3', seq: 3, updatedSeq: 3, turn: 1, step: 0, command: text, state: 'error' as const, exitCode: 1, error: text },
+          { callId: 'c1', activity: 'commands', detail: text, seq: 1, updatedSeq: 1, turn: 1, step: 0, command: text, state: 'ok' as const, exitCode: 0, previewLines: [text, text] },
+          { callId: 'c2', activity: 'commands', detail: text, seq: 2, updatedSeq: 2, turn: 1, step: 0, command: text, state: 'pending' as const },
+          { callId: 'c3', activity: 'commands', detail: text, seq: 3, updatedSeq: 3, turn: 1, step: 0, command: text, state: 'error' as const, exitCode: 1, error: text },
         ],
       }
       for (const width of SCAN_WIDTHS) {
@@ -252,7 +256,7 @@ describe('transcript width-scan', () => {
 
     it(`ErrorMessageComponent survives ${name}`, () => {
       const components = fakeMayflyComponents()
-      const item = { kind: 'error', seq: 1, turn: 1, message: text }
+      const item: TranscriptErrorItem = { kind: 'error', seq: 1, turn: 1, message: text }
       for (const width of SCAN_WIDTHS) {
         expectLinesFit(`Error/${name}`, new ErrorMessageComponent(item, colors, components).render(width), width)
       }
@@ -335,26 +339,26 @@ describe('transcript width-scan', () => {
     it(`TranscriptModelComponent semantic bridge survives ${name}`, () => {
       const components = fakeMayflyComponents()
       const model = createTranscriptModel('width-scan', [
-        { kind: 'transcript-user', id: 'user', seq: 1, turn: 1, text, images: [] },
-        { kind: 'transcript-assistant', id: 'assistant', seq: 2, turn: 1, step: 0, text, streaming: false },
-        { kind: 'transcript-thinking', id: 'thinking', seq: 3, turn: 1, step: 0, text, streaming: false },
+        { kind: 'transcript-user', id: 'user', seq: 1, updatedSeq: 1, turn: 1, text, images: [] },
+        { kind: 'transcript-assistant', id: 'assistant', seq: 2, updatedSeq: 2, turn: 1, step: 0, text, streaming: false },
+        { kind: 'transcript-thinking', id: 'thinking', seq: 3, updatedSeq: 3, turn: 1, step: 0, text, streaming: false },
         {
-          kind: 'transcript-tool', id: 'tool', seq: 4, turn: 1, step: 0, callId: 'call', name: 'custom', family: 'other',
+          kind: 'transcript-tool', id: 'tool', seq: 4, updatedSeq: 4, turn: 1, step: 0, callId: 'call', activity: 'tools', detail: '', name: 'custom', family: 'other',
           arguments: '{}', startedAt: 1, result: { text, fullText: text, isError: false, endedAt: 2 },
         },
         {
-          kind: 'transcript-tool', id: 'presented', seq: 5, turn: 1, step: 0, callId: 'presented', name: 'custom', family: 'other',
+          kind: 'transcript-tool', id: 'presented', seq: 5, updatedSeq: 5, turn: 1, step: 0, callId: 'presented', activity: 'tools', detail: '', name: 'custom', family: 'other',
           arguments: '{}', startedAt: 1, presentation: { kind: 'tool', id: 'presented', name: 'custom', result: { kind: 'text', content: text } },
         },
         {
-          kind: 'transcript-command-group', id: 'command-group:cg', seq: 8, turn: 1, step: 0,
+          kind: 'transcript-command-group', id: 'command-group:cg', seq: 8, updatedSeq: 8, turn: 1, step: 0,
           commands: [
-            { callId: 'cg1', seq: 8, updatedSeq: 8, turn: 1, step: 0, command: text, state: 'ok', previewLines: [text] },
-            { callId: 'cg2', seq: 9, updatedSeq: 9, turn: 1, step: 0, command: text, state: 'error', error: text },
+            { callId: 'cg1', activity: 'commands', detail: text, seq: 8, updatedSeq: 8, turn: 1, step: 0, command: text, state: 'ok', previewLines: [text] },
+            { callId: 'cg2', activity: 'commands', detail: text, seq: 9, updatedSeq: 9, turn: 1, step: 0, command: text, state: 'error', error: text },
           ],
         },
-        { kind: 'transcript-error', id: 'error', seq: 6, turn: 1, message: text },
-        { kind: 'transcript-interrupted', id: 'interrupted', seq: 7, turn: 1 },
+        { kind: 'transcript-error', id: 'error', seq: 6, updatedSeq: 6, turn: 1, message: text },
+        { kind: 'transcript-interrupted', id: 'interrupted', seq: 7, updatedSeq: 7, turn: 1 },
         {
           kind: 'transcript-compaction', id: 'compaction', seq: 10, updatedSeq: 10, turn: 1,
           state: 'ok', trigger: 'auto', startedAt: 0, endedAt: 1, shadowedCount: 3, shadowedTokens: 4_096, summary: text,
@@ -456,7 +460,7 @@ describe('transcript width-scan', () => {
           harness.ctx.mayflyLocale.setPreference(language)
           for (const view of ['compact', 'standard', 'detailed', 'verbose']) {
             section.value = { transcriptView: view }
-            harness.ctx.emit('settings/document-updated', 'mayfly' as never)
+            harness.ctx.emit('settings/document-updated', 'mayfly' as never, 1)
             for (const next of phases) {
               facts = { ...facts, ...next }
               listener?.(facts)
@@ -523,30 +527,26 @@ describe('transcript width-scan', () => {
       const components = fakeMayflyComponents()
       const status = new MayflyStatusService(new Context())
       const footer = new StatusFooterComponent(status, components, colors)
-      status.register({ id: 'scan-title', priority: 90, visible: true, band: 'right', node: { kind: 'text', content: text } })
-      status.register({ id: 'scan-left', priority: 10, visible: true, node: { kind: 'text', content: text } })
-      status.register({ id: 'scan-context', priority: 4, band: 'right', overflow: 'hide', node: { kind: 'text', content: 'cache 34%  context: 18% (22.9k/128k)' } })
-      status.register({ id: 'scan-center', priority: 0, band: 'center', node: { kind: 'rich-text', spans: [{ text: 'MAIN', tone: 'accent' }, { text: ` · ${text}`, tone: 'muted' }] } })
-      status.register({
-        id: 'scan-goal',
-        priority: 2,
-        visible: true,
-        overflow: 'hide',
-        node: {
-          kind: 'text',
-          content: goalStatusText({
-            id: 'goal-width' as never,
-            revision: 1,
-            objective: text,
-            phase: 'active',
-            maxGoalRounds: 256,
-            roundsStarted: 128,
-            createdAt: 1,
-            updatedAt: 2,
-            activation: 'armed',
-          }),
-        },
+      status.register({ id: 'scan-title', priority: 90, band: 'right' }, { kind: 'text', content: text })
+      status.register({ id: 'scan-left', priority: 10 }, { kind: 'text', content: text })
+      status.register({ id: 'scan-context', priority: 4, band: 'right', overflow: 'hide' }, { kind: 'text', content: 'cache 34%  context: 18% (22.9k/128k)' })
+      status.register({ id: 'scan-center', priority: 0, band: 'center' }, { kind: 'rich-text', spans: [{ text: 'MAIN', tone: 'accent' }, { text: ` · ${text}`, tone: 'muted' }] })
+      status.register({ id: 'scan-goal', priority: 2, overflow: 'hide' }, {
+        kind: 'text',
+        content: goalStatusText({
+          id: 'goal-width' as never,
+          revision: 1,
+          objective: text,
+          phase: 'active',
+          maxGoalRounds: 256,
+          roundsStarted: 128,
+          createdAt: 1,
+          updatedAt: 2,
+          activation: 'armed',
+        }),
       })
+      // The footer paints what was registered: a scan of empty rows would pass for any width.
+      expect(footer.render(120).join('')).toContain('MAIN')
       for (const width of SCAN_WIDTHS) {
         expectLinesFit(`FooterShell/${name}`, footer.render(width), width)
       }

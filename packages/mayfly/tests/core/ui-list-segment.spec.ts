@@ -7,7 +7,7 @@ import type { MayflySemanticColors } from '../../src/core/types.ts'
 import { visibleWidth } from '../../src/core/width.ts'
 
 const identity = (value: string): string => value
-const colors = new Proxy({ logoGradient: [identity] }, { get: (target, key) => key === 'logoGradient' ? target.logoGradient : identity }) as MayflySemanticColors
+const colors = new Proxy({ logoGradient: [identity] }, { get: (target, key) => key === 'logoGradient' ? target.logoGradient : identity }) as unknown as MayflySemanticColors
 const plain = (text: string): string => text.replace(/\x1b\[[0-9;]*m/gu, '')
 
 const segment: MayflyListSegment = { label: 'Thinking', options: [{ id: 'min', label: 'min' }, { id: 'high', label: 'high' }, { id: 'max', label: 'max' }], inheritedId: 'high' }
@@ -22,7 +22,7 @@ describe('segment strip painters', () => {
   })
 
   it('paints the active token bold primary and the rest muted, never promoting a disabled option', () => {
-    const tagged = new Proxy({ logoGradient: [identity] }, { get: (target, key) => key === 'logoGradient' ? target.logoGradient : (value: string) => `<${String(key)}>${value}</>` }) as MayflySemanticColors
+    const tagged = new Proxy({ logoGradient: [identity] }, { get: (target, key) => key === 'logoGradient' ? target.logoGradient : (value: string) => `<${String(key)}>${value}</>` }) as unknown as MayflySemanticColors
     expect(segmentStrip(view(null), true, tagged).text).toBe('<muted>min</> \x1b[1m<primary>‹ high (default) ›</>\x1b[22m <muted>max</>')
     const disabled: SegmentView = { segment: { options: [{ id: 'a', label: 'a', disabled: true }, { id: 'b', label: 'b' }] }, pinned: 'a', active: 'a' }
     expect(segmentStrip(disabled, true, tagged).text).toBe('<muted>‹ a ›</> <muted>b</>')
@@ -83,7 +83,7 @@ describe('the strip on a model picker row', () => {
     [84, 'inline with (default)'],
     [62, 'the reserved footer'],
     [40, 'the reserved footer, folded'],
-  ] as const)('keeps the strip on screen at %i columns: %s', (width) => {
+  ] as const)('keeps the strip on screen at %i columns: %s', (width, _description: string) => {
     const { surface } = open(width)
     const lines = rows(surface)
     for (const line of lines) expect(visibleWidth(line), line).toBeLessThanOrEqual(width)

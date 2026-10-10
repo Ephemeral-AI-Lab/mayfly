@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest'
 import type { TranscriptEntryModel, TranscriptModel, TranscriptTurnModel } from '../../src/frontend/models.ts'
 import { buildDisplay, memberFacts, runningTurnOf, type DisplayItem } from '../../src/transcript/process-groups.ts'
 import { PROCESS_POLICIES, type TranscriptViewMode } from '../../src/transcript/presentation-policy.ts'
+import { withOverrides, type Overrides } from '../fixture-fields.ts'
 
 type Entry = TranscriptModel['entries'][number]
 let seq = 0
@@ -12,11 +13,12 @@ const base = (turn: number) => ({ seq: ++seq, updatedSeq: seq, turn })
 const user = (turn: number, text = 'ask'): TranscriptEntryModel => ({ kind: 'transcript-user', id: `u${String(seq + 1)}`, ...base(turn), text, images: [] })
 const reply = (turn: number, step: number, text: string): TranscriptEntryModel => ({ kind: 'transcript-assistant', id: `a${String(seq + 1)}`, ...base(turn), step, text, streaming: false })
 const think = (turn: number, step: number, text = 'plan'): TranscriptEntryModel => ({ kind: 'transcript-thinking', id: `t${String(seq + 1)}`, ...base(turn), step, text, streaming: false })
-const tool = (turn: number, overrides: Partial<Extract<TranscriptEntryModel, { kind: 'transcript-tool' }>> = {}): TranscriptEntryModel => ({
+type ToolEntry = Extract<TranscriptEntryModel, { kind: 'transcript-tool' }>
+const tool = (turn: number, overrides: Overrides<ToolEntry> = {}): TranscriptEntryModel => withOverrides<ToolEntry>({
   kind: 'transcript-tool', id: `x${String(seq + 1)}`, ...base(turn), step: 1, callId: `c${String(seq)}`, name: 'bash', family: 'command',
-  activity: 'commands', detail: 'pnpm test', arguments: '{}', startedAt: 0, result: { text: 'ok', isError: false, endedAt: 1 }, ...overrides,
-})
-const edit = (turn: number, overrides: Partial<Extract<TranscriptEntryModel, { kind: 'transcript-tool' }>> = {}): TranscriptEntryModel =>
+  activity: 'commands', detail: 'pnpm test', arguments: '{}', startedAt: 0, result: { text: 'ok', isError: false, endedAt: 1 },
+}, overrides)
+const edit = (turn: number, overrides: Overrides<ToolEntry> = {}): TranscriptEntryModel =>
   tool(turn, { name: 'edit', family: 'edit', activity: 'edit', detail: 'src/a.ts', ...overrides })
 const reads = (turn: number, states: readonly ('ok' | 'pending' | 'error')[]): TranscriptEntryModel => ({
   kind: 'transcript-read-group', id: `r${String(seq + 1)}`, ...base(turn), step: 0,
@@ -143,10 +145,11 @@ describe('work-details display plan', () => {
   })
 
   it('keeps compaction boundary rows visible in every mode and out of process groups', () => {
-    const compaction = (overrides: Partial<Extract<TranscriptEntryModel, { kind: 'transcript-compaction' }>> = {}): TranscriptEntryModel => ({
+    type CompactionEntry = Extract<TranscriptEntryModel, { kind: 'transcript-compaction' }>
+    const compaction = (overrides: Overrides<CompactionEntry> = {}): TranscriptEntryModel => withOverrides<CompactionEntry>({
       kind: 'transcript-compaction', id: `cmp${String(seq + 1)}`, ...base(1),
-      state: 'ok', trigger: 'manual', startedAt: 0, endedAt: 1, shadowedCount: 3, shadowedTokens: 4_096, ...overrides,
-    })
+      state: 'ok', trigger: 'manual', startedAt: 0, endedAt: 1, shadowedCount: 3, shadowedTokens: 4_096,
+    }, overrides)
     seq = 0
     for (const mode of ['compact', 'standard', 'detailed'] as const) {
       expect(shape(plan([...turnOne(), compaction()], mode))).toEqual(['user', 'header:closed:folded:hint', 'assistant', 'compaction'])

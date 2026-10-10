@@ -9,7 +9,7 @@ import { ADVERSARIAL } from './width-scan.ts'
 import type { MayflyComponents, MayflySemanticColors } from '../../src/core/types.ts'
 
 const identity = (value: string): string => value
-const colors = new Proxy({ logoGradient: [identity] }, { get: (target, key) => key === 'logoGradient' ? target.logoGradient : identity }) as MayflySemanticColors
+const colors = new Proxy({ logoGradient: [identity] }, { get: (target, key) => key === 'logoGradient' ? target.logoGradient : identity }) as unknown as MayflySemanticColors
 const components = { visibleWidth, wrapText: wrapTextWithAnsi, truncateToWidth } as unknown as MayflyComponents
 
 describe('admitWidths', () => {
@@ -74,7 +74,7 @@ describe('AdmissionRow', () => {
     ui.child(ui.richText([{ text: 'cache 34%' }]), { priority: 2, band: 'right', overflow: 'hide' }),
     ui.child(ui.richText([{ text: '~/work/mayfly/packages/mayfly' }]), { priority: 1, overflow: 'truncate' }),
   ])) {
-    const result = compileMayflyUiNode(node, { components, colors, getViewport: () => ({ columns: width, rows: 20 }), screenMode: 'alternate' })
+    const result = compileMayflyUiNode(node, { emit: () => {}, components, colors, getViewport: () => ({ columns: width, rows: 20 }), screenMode: 'alternate' })
     if (!result.ok) throw new Error(result.message)
     return result.value.component.render(width).map(painted => painted.replaceAll('\x1b[0m', ''))
   }

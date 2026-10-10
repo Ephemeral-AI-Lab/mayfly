@@ -49,13 +49,13 @@ describe.each(['pane', 'overlay'] as const)('%s action publication', kind => {
 
   it('publishes accepted snapshots once after explicit admission, without a renderer', async () => {
     const accepted = { kind: 'accepted' as const, node: changed, source: [{ resourceId: 'settings', revision: 2 }] }
-    const handler = vi.fn(() => accepted)
+    const handler = vi.fn((_event: MayflyUiEvent, _ctx: MayflyUiEventContext) => accepted)
     const { current } = await setup(kind, handler)
     const entry = current()
     const result = await entry.events.prepare(submit, context())
     expect(current()).toBe(entry)
     expect(Object.isFrozen(result.reply)).toBe(true)
-    expect(Object.isFrozen(result.reply!.kind === 'accepted' && result.reply.node)).toBe(true)
+    expect(Object.isFrozen(result.reply?.kind === 'accepted' && result.reply.node)).toBe(true)
     expect(result.publish()).toBe(true)
     expect(current()).toMatchObject({
       node: changed, revision: 1, source: accepted.source,

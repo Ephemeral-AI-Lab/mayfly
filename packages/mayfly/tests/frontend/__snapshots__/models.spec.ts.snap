@@ -52,6 +52,7 @@ exports[`renderer-neutral model fixture > snapshots canonical nodes without rend
         },
       ],
       "kind": "list",
+      "role": "browse",
       "selectedIds": [
         "one",
       ],

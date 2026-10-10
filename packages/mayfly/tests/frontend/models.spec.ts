@@ -14,7 +14,7 @@ describe('renderer-neutral model fixture', () => {
       { kind: 'rich-text', spans: [{ text: 'strong', styles: ['strong'] }] },
       { kind: 'fields', rows: [{ label: 'mode', value: [{ text: 'normal' }] }] },
       { kind: 'sections', sections: [{ title: 'details', body: { kind: 'text', content: 'body' } }] },
-      { kind: 'list', id: 'fixture', items: [{ id: 'one', label: 'One' }], selectedIds: ['one'] },
+      { kind: 'list', id: 'fixture', role: 'browse', items: [{ id: 'one', label: 'One' }], selectedIds: ['one'] },
       { kind: 'code', code: 'const x = 1', language: 'ts' },
       { kind: 'diff', before: 'a', after: 'b' },
     ]

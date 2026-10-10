@@ -32,9 +32,14 @@ beforeEach(() => {
   nextSeq = 0
 })
 
+/** An event's data as the fixtures write it: an assistant message may leave out its stream. */
+type FixtureData<T extends SessionEvent['type']> = T extends 'assistant/message'
+  ? Omit<SessionEvent<T>['data'], 'stream'> & Partial<Pick<SessionEvent<T>['data'], 'stream'>>
+  : SessionEvent<T>['data']
+
 function event<T extends SessionEvent['type']>(
   type: T,
-  data: SessionEvent<T>['data'],
+  data: FixtureData<T>,
   options: { readonly append?: boolean, readonly replace?: boolean, readonly time?: number } = {},
 ): SessionEvent<T> {
   const seq = nextSeq
@@ -51,7 +56,7 @@ function event<T extends SessionEvent['type']>(
     data: resolved,
     ...(options.append ? { surfaceOp: 'append' } : {}),
     ...(options.replace ? { surfaceOp: { op: 'replace', startSeq: 0, endSeq: 0 } } : {}),
-  } as SessionEvent<T>
+  } as unknown as SessionEvent<T>
 }
 
 /** One `assistant/attempt` whose compact stream holds a single packed run. */
@@ -485,7 +490,7 @@ describe('mayflyConversation projection', () => {
       stream: [
         { type: 'chunk', time: 5, chunk: { type: 'block-end', index: 0, block: { type: 'reasoning', text: 'first' } } },
         { type: 'chunk', time: 6, chunk: { type: 'block-start', index: 1, blockType: 'text' } },
-        { type: 'chunk', time: 7, chunk: { type: 'finish', index: 2 } },
+        { type: 'chunk', time: 7, chunk: { type: 'finish', reason: { kind: 'stop' } } },
       ],
     }))
     // A later boundary-only attempt replaces the parked attempt entirely.
@@ -619,7 +624,7 @@ describe('mayflyConversation projection', () => {
 
     const badToolPair: ConversationProjectionState = {
       ...initialConversationState(),
-      entries: [{ kind: 'assistant', id: 'not-a-tool', seq: 1, turn: 1, step: 0, text: 'a', streaming: false }],
+      entries: [{ kind: 'assistant', id: 'not-a-tool', seq: 1, updatedSeq: 1, turn: 1, step: 0, text: 'a', streaming: false }],
       toolEntryIds: { paired: 'not-a-tool' },
     }
     const unchangedPair = foldConversationProjection(badToolPair, event('tool/result', {
@@ -846,7 +851,7 @@ describe('SessionProjectionRegistry integration', () => {
     })
     const floor = ctx.sessionProjections.restoreFloor(checkpoint)
     expect(floor).toBe(3)
-    const restored = ctx.sessionProjections.restore(checkpoint, session.snapshotEvents().filter(row => row.seq >= floor!), floor!)
+    const restored = ctx.sessionProjections.restore(checkpoint, session.snapshotEvents().filter(row => row.seq >= floor!), floor!, session.header, session.inheritedEventCount)
     expect(restored.snapshot).toEqual(ctx.sessionProjections.snapshot(session))
     expect(ctx.sessionProjections.stateOf(session, 'mayflyConversation')).toBeDefined()
 

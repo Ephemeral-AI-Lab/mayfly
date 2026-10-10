@@ -14,6 +14,9 @@ import { startMayflyTerminal, type MayflyTerminalRuntime } from '../../src/core/
 import type { MayflyComponents, MayflyFocusable, MayflyKeyAction, MayflySemanticColors } from '../../src/core/types.ts'
 import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/width.ts'
 import { createFakeEditor } from './fake-editor.ts'
+
+/** A focusable one-row stand-in for the prompt editor in its dock slot. */
+const promptStandIn = (): MayflyFocusable => ({ focused: false, render: () => ['prompt'], invalidate() {} })
 import { FakeTerminal } from './fake-terminal.ts'
 import * as frontend from '../../src/frontend/index.ts'
 import { MayflyScreenService } from '../../src/core/screen.ts'
@@ -228,7 +231,7 @@ it('yields scroll keys to the content region only for content-scroll overlays', 
   const bench = await fixture(80, 24)
   try {
     const scroll = vi.spyOn(bench.runtime, 'scrollContent').mockReturnValue(true)
-    const slot = bench.root.mayflyScreen.mountDockSlot('editor.prompt', { focused: false, render: () => ['prompt'], invalidate() {} })
+    const slot = bench.root.mayflyScreen.mountDockSlot('editor.prompt', promptStandIn())
     const handle = bench.open({
       id: 'scroll-doc', title: 'Document review', presentation: 'editor', capturing: true, contentScroll: true,
       render: () => ui.actions({ id: 'actions', items: [{ id: 'run', label: 'Run' }] }),
@@ -266,7 +269,7 @@ it('yields scroll keys to the content region only for content-scroll overlays', 
 it('coalesces root overlay chrome and bounds editor presentations by half the terminal with a ten-row floor', async () => {
   const bench = await fixture(80, 24)
   try {
-    const slot = bench.root.mayflyScreen.mountDockSlot('editor.prompt', { focused: false, render: () => ['prompt'], invalidate() {} })
+    const slot = bench.root.mayflyScreen.mountDockSlot('editor.prompt', promptStandIn())
     const handle = bench.open({
       id: 'bounded-editor', title: 'Command panel', presentation: 'editor', capturing: true,
       render: () => ui.surface({ title: 'Command panel', chrome: 'overlay', padding: 1, child: ui.stack.column([
@@ -303,7 +306,7 @@ it('coalesces root overlay chrome and bounds editor presentations by half the te
 it('keeps short editor presentations at their natural content height', async () => {
   const bench = await fixture(80, 24)
   try {
-    const slot = bench.root.mayflyScreen.mountDockSlot('editor.prompt', { focused: false, render: () => ['prompt'], invalidate() {} })
+    const slot = bench.root.mayflyScreen.mountDockSlot('editor.prompt', promptStandIn())
     const handle = bench.open({
       id: 'short-editor', title: 'Version', presentation: 'editor', capturing: true,
       render: () => ui.surface({ title: 'Version', chrome: 'overlay', padding: 1, child: ui.stack.column([
@@ -424,7 +427,7 @@ describe('direct overlay surface renderer', () => {
   it('orders multiple visible editor overlays by activation', async () => {
     const f = await fixture()
     try {
-      const slot = f.root.mayflyScreen.mountDockSlot('editor.prompt', { focused: false, render: () => ['prompt'], invalidate() {} })
+      const slot = f.root.mayflyScreen.mountDockSlot('editor.prompt', promptStandIn())
       const first = f.open({ id: 'editor-one', presentation: 'editor', capturing: true, render: () => ui.text('one') })
       const second = f.open({ id: 'editor-two', presentation: 'editor', capturing: true, render: () => ui.text('two') })
       await flush()
@@ -1079,7 +1082,7 @@ it('animates editor loaders independently and pauses hidden, covered, completed,
   const bench = await fixture()
   vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
   try {
-    const slot = bench.root.mayflyScreen.mountDockSlot('editor.prompt', { focused: false, render: () => ['prompt'], invalidate() {} })
+    const slot = bench.root.mayflyScreen.mountDockSlot('editor.prompt', promptStandIn())
     const handle = bench.open({ id: 'loading', presentation: 'editor', capturing: true, render: () => ui.loader({ message: 'Loading workspaces…' }) })
     await flush()
     const read = () => slot.component.render(80).map(stripTerminalSequences).join('\n')

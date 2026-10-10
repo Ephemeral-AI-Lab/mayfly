@@ -96,6 +96,8 @@ decisions; do not add tests only to reach a line.
   measures; a local changed run does not. Type-only `src/types.ts` files are
   excluded. Specs import the tested source relatively, but package-name
   imports resolve workspace `lib/`; fresh worktrees need a full build baseline.
+  `tsconfig.tests.json` typechecks every test file against the package sources,
+  and `pnpm run typecheck` runs it with `tsc -b`.
 - Every component row must fit `render(width)`. Add content renderers to the
   owning `width-scan.spec.ts`. Runtime width helpers flow through
   `mayflyComponents`; tests use `packages/mayfly/src/core/width.ts`. The frame

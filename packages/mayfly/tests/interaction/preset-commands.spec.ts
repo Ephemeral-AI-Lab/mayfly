@@ -61,7 +61,7 @@ async function setup() {
   } })
   await flushRequests()
   const run = (line = '/preset', signal = new AbortController().signal) => ctx.commands.execute(bench.agent, line, [], signal)
-  return { ...bench, rosterOwner, roster: ctx.agentPresets as FixturePresets, session, run }
+  return { ...bench, rosterOwner, roster: ctx.agentPresets as unknown as FixturePresets, session, run }
 }
 
 describe('native preset selection UI', () => {

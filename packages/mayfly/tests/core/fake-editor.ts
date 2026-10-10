@@ -43,6 +43,6 @@ export function createFakeEditor(): MayflyEditor {
     isShowingAutocomplete: () => false,
     refreshAutocomplete: () => {},
     insertText: (text: string) => { value += text; editor.onChange?.(value) },
-  } as MayflyEditor
+  } as unknown as MayflyEditor
   return editor
 }

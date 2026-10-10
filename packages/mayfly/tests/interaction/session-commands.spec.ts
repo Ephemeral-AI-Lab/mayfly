@@ -2,6 +2,7 @@
  * @module @ephemeral-ai/mayfly/tests/interaction/session-commands
  */
 import { Context } from '@deepseek-ai/cordis'
+import type { Agent } from '@deepseek-ai/dsh-agent'
 import { createAssistantMessage } from '@deepseek-ai/dsh-llm'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { sessionInfoFacts } from '../../src/interaction/session-commands.ts'
@@ -25,7 +26,7 @@ describe('native session information', () => {
     bench.session.append('assistant/message', {
       turn: 1,
       step: 0,
-      message: createAssistantMessage({ content: [], source: { kind: 'model', provider: 'p', model: 'm' } }),
+      message: createAssistantMessage({ content: [], source: { provider: 'p', model: 'm' } }),
       stream: [],
       usage: { inputTokens: 100, outputTokens: 7, cacheReadTokens: 20, cacheWriteTokens: 10 },
     }, { surfaceOp: 'append' })
@@ -112,9 +113,6 @@ describe('native session information', () => {
     await flushRequests()
     expect(JSON.stringify(model.node)).toContain('创建时间')
     expect(JSON.stringify(model.node)).toContain('运行中')
-    bench.ctx.emit('agent/status', { agent: bench.other, status: 'idle' })
-    bench.ctx.emit('session-projection/changed', bench.otherSession, 'tokenUsage' as never)
-    bench.ctx.emit('session-projection/changed', bench.session, 'unrelated' as never)
   })
 
   it('projects field values and chart data without preformatted character grids', () => {
@@ -191,7 +189,7 @@ describe('native session information', () => {
         contextPressure: { pressureTokens: 12, contextWindow: 100 },
       },
     } as never)
-    const agent = { ...bench.agent, session: { ...bench.session, header: { ...bench.session.header, cwd: undefined } } } as Agent
+    const agent = { ...bench.agent, session: { ...bench.session, header: { ...bench.session.header, cwd: undefined } } } as unknown as Agent
     expect(sessionInfoFacts(bench.ctx, agent)).toMatchObject({ model: fallback, usage: { context: { used: 12, window: 100 } } })
     expect(sessionInfoFacts(bench.ctx, agent)).not.toHaveProperty('cwd')
   })

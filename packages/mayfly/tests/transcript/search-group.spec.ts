@@ -22,6 +22,7 @@ const IDENTITY: MayflySemanticColors = {
   mdHeading: id, mdLink: id, mdLinkUrl: id, mdCode: id, mdCodeBlock: id, mdCodeBlockBorder: id,
   mdQuote: id, mdQuoteBorder: id, mdHr: id, mdListBullet: id,
   diffAdded: id, diffRemoved: id, diffAddedStrong: id, diffRemovedStrong: id, diffGutter: id, diffMeta: id, diffAddedBg: id, diffRemovedBg: id,
+  modelHighlight: id, logoGradient: [],
 }
 // Structurally satisfies MayflySemanticColors; declared where consumed.
 
@@ -34,12 +35,12 @@ function tagged(): MayflySemanticColors {
 const COMPONENTS: MayflyComponents = fakeMayflyComponents()
 
 function search(partial: Partial<SearchCallModel> & { callId: string }): SearchCallModel {
-  return { seq: 1, turn: 1, step: 0, state: 'ok', ...partial }
+  return { seq: 1, updatedSeq: 1, turn: 1, step: 0, state: 'ok', activity: 'search', detail: '', ...partial }
 }
 
 function group(searches: readonly SearchCallModel[]): TranscriptSearchGroupModel {
   const first = searches[0]!
-  return { kind: 'transcript-search-group', id: `search-group:${String(first.callId)}`, seq: first.seq, turn: first.turn, step: first.step, searches }
+  return { kind: 'transcript-search-group', id: `search-group:${String(first.callId)}`, seq: first.seq, updatedSeq: first.seq, turn: first.turn, step: first.step, searches }
 }
 
 describe('SearchGroupComponent', () => {
@@ -55,7 +56,7 @@ describe('SearchGroupComponent', () => {
       }),
       search({ callId: 'p1', pattern: 'src/**/*.ts', shape: 'paths', paths: ['src/a.ts', 'src/b.ts'], pathsTotal: 12, truncated: true, total: 12 }),
       search({ callId: 'g2', pattern: 'TODO', shape: 'matches', files: [] }),
-      search({ callId: 'g3', pattern: 'gone', state: 'error', error: 'invalid pattern' }),
+      search({ callId: 'g3', activity: 'search', detail: 'gone', pattern: 'gone', state: 'error', error: 'invalid pattern' }),
     ])
     const lines = new SearchGroupComponent(model, tagged(), COMPONENTS).render(140)
     expect(lines).toEqual([
@@ -70,14 +71,14 @@ describe('SearchGroupComponent', () => {
 
   it('renders pending and all-failed headers', () => {
     const pending = new SearchGroupComponent(group([
-      search({ callId: 'a', pattern: 'one', state: 'pending' }),
+      search({ callId: 'a', activity: 'search', detail: 'one', pattern: 'one', state: 'pending' }),
     ]), tagged(), COMPONENTS).render(80)
     expect(pending[1]).toBe('● \x1b[1m[P]Searching 1 pattern…[/P]\x1b[22m')
     expect(pending[2]).toBe('  └─ one [T]…[/T]')
 
     const failed = new SearchGroupComponent(group([
-      search({ callId: 'a', pattern: 'one', state: 'error', error: 'nope' }),
-      search({ callId: 'b', pattern: 'two', state: 'error', error: 'nope' }),
+      search({ callId: 'a', activity: 'search', detail: 'one', pattern: 'one', state: 'error', error: 'nope' }),
+      search({ callId: 'b', activity: 'search', detail: 'two', pattern: 'two', state: 'error', error: 'nope' }),
     ]), tagged(), COMPONENTS).render(80)
     expect(failed[1]).toBe('[E]✗ [/E]\x1b[1m[E]Searched 2 patterns · failed[/E]\x1b[22m')
 
@@ -162,7 +163,7 @@ describe('SearchGroupComponent', () => {
     // paths call with no page, and an expanded shape-less call's empty tail.
     const degraded = new SearchGroupComponent(group([
       search({ callId: 'c', state: 'pending' }),
-      search({ callId: 'd', pattern: 'boom', state: 'error' }),
+      search({ callId: 'd', activity: 'search', detail: 'boom', pattern: 'boom', state: 'error' }),
       search({ callId: 'e', pattern: 'thin', shape: 'paths' }),
       search({ callId: 'f', pattern: 'bare' }),
       search({ callId: 'g', pattern: 'files-less', shape: 'matches' }),
@@ -190,7 +191,7 @@ describe('SearchGroupComponent', () => {
     // A lone failure reads singular; a multi-path glob expands with inner
     // branch glyphs.
     const lone = new SearchGroupComponent(group([
-      search({ callId: 'h', pattern: 'only', state: 'error', error: 'x' }),
+      search({ callId: 'h', activity: 'search', detail: 'only', pattern: 'only', state: 'error', error: 'x' }),
     ]), IDENTITY, COMPONENTS).render(80)
     expect(lone[1]).toBe('✗ \x1b[1mSearched 1 pattern · failed\x1b[22m')
     const multi = new SearchGroupComponent(group([
@@ -234,7 +235,7 @@ describe('SearchGroupComponent', () => {
   it('reads unsettled patterns as cancelled once the turn ends, and scopes its hint', () => {
     const model = group([
       search({ callId: 'a', pattern: 'const', shape: 'matches', files: [{ path: 'a.ts', count: 2, previews: [] }] }),
-      search({ callId: 'b', pattern: 'deep', state: 'pending' }),
+      search({ callId: 'b', activity: 'search', detail: 'deep', pattern: 'deep', state: 'pending' }),
     ])
     const component = new SearchGroupComponent(model, tagged(), COMPONENTS)
     expect(component.render(140)[3]).toBe('  └─ deep [T]…[/T]')
@@ -251,11 +252,11 @@ describe('SearchGroupComponent', () => {
 
   it('replaces its immutable snapshot and invalidates cached rows', () => {
     const component = new SearchGroupComponent(group([
-      search({ callId: 'before', pattern: 'before', state: 'ok' }),
+      search({ callId: 'before', activity: 'search', detail: 'before', pattern: 'before', state: 'ok' }),
     ]), IDENTITY, COMPONENTS)
     const before = component.render(80)
     component.update(group([
-      search({ callId: 'after', pattern: 'after', state: 'ok' }),
+      search({ callId: 'after', activity: 'search', detail: 'after', pattern: 'after', state: 'ok' }),
     ]))
     const after = component.render(80)
     expect(after).not.toBe(before)

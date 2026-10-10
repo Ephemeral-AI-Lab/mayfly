@@ -5,7 +5,7 @@ import { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { JobHandle, JobOutcome } from '@deepseek-ai/dsh-jobs'
 import LocalJobRegistry from '@deepseek-ai/dsh-jobs-local'
-import { vi } from 'vitest'
+import { vi, type Mock } from 'vitest'
 import * as jobsPlugin from '../../src/interaction/jobs.ts'
 import { informationFixture } from './information-fixture.ts'
 import { flushRequests } from './request-fixture.ts'
@@ -20,7 +20,7 @@ export async function jobsFixture(ctx: Context) {
   const consumer = await ctx.plugin(jobsPlugin)
   const start = (options: { owner?: Agent | null, label?: string, output?: string, finalOnly?: boolean } = {}) => {
     const done = Promise.withResolvers<JobOutcome>()
-    const cancel = vi.fn((_reason?: string) => { done.resolve({ status: 'killed' }) })
+    const cancel: Mock<(reason?: string) => void> = vi.fn((_reason?: string) => { done.resolve({ status: 'killed' }) })
     const owner = options.owner === null ? undefined : options.owner ?? bench.agent
     let handle: JobHandle | undefined
     const id = registry.start({

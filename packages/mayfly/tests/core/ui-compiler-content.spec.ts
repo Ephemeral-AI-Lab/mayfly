@@ -11,7 +11,7 @@ import { createWorkCounters } from '../../src/core/ui-work-counters.ts'
 import { probeComponents } from '../design/probe.ts'
 
 const identity = (value: string): string => value
-const colors = new Proxy({ logoGradient: [identity] }, { get: (target, key) => key === 'logoGradient' ? target.logoGradient : identity }) as MayflySemanticColors
+const colors = new Proxy({ logoGradient: [identity] }, { get: (target, key) => key === 'logoGradient' ? target.logoGradient : identity }) as unknown as MayflySemanticColors
 
 function components(presentation: Partial<MayflyPresentation> = {}): MayflyComponents {
   const base = probeComponents()
@@ -289,13 +289,13 @@ describe('a bar with a transition', () => {
 
 describe('content nodes in a plain compile', () => {
   const paint = (node: MayflyUiNode, width = 40): string[] => {
-    const result = compileMayflyUiNode(node, { components: components(), colors, getViewport: () => ({ columns: width, rows: 20 }), screenMode: 'alternate' })
+    const result = compileMayflyUiNode(node, { emit: () => {}, components: components(), colors, getViewport: () => ({ columns: width, rows: 20 }), screenMode: 'alternate' })
     if (!result.ok) throw new Error(result.message)
     return result.value.component.render(width)
   }
 
   it('draws the main-screen scroll as its child, and a declared viewport in the alternate screen', () => {
-    const main = compileMayflyUiNode(ui.scroll(lines(3), { height: 2 }), { components: components(), colors, getViewport: () => ({ columns: 20, rows: 20 }), screenMode: 'main' })
+    const main = compileMayflyUiNode(ui.scroll(lines(3), { height: 2 }), { emit: () => {}, components: components(), colors, getViewport: () => ({ columns: 20, rows: 20 }), screenMode: 'main' })
     if (!main.ok) throw new Error(main.message)
     expect(main.value.component.render(20)).toEqual(['log line 1', 'log line 2', 'log line 3'])
     expect(paint(ui.scroll(lines(3), { height: 2, scrollbar: false }), 20).map(row => row.trimEnd())).toEqual(['log line 1', 'log line 2'])

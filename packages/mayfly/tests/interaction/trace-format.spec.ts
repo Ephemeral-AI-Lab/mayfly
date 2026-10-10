@@ -2,11 +2,14 @@
 
 import { describe, expect, it } from 'vitest'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
+import { SessionSeq } from '@deepseek-ai/dsh-session'
+import type { AssistantStreamRecord } from '@deepseek-ai/dsh-llm'
+import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import type { SessionEventRecord, SessionEventTraceObservation, SessionEventWindow } from '@deepseek-ai/dsh-session-query'
 import { attemptStreamText, formatTraceAll, formatTraceItem, toTraceItem, traceSummary, traceTitle, traceTime } from '../../src/interaction/trace-format.ts'
 
 const event = (type: string, data: unknown): SessionEvent => ({ type, seq: 3, time: 1000, data } as SessionEvent)
-const record: SessionEventRecord = { sessionId: 'session' as never, seq: 3, time: 1000, type: 'user/message', surface: 'current' }
+const record: SessionEventRecord = { sessionId: 'session' as never, seq: SessionSeq(3), time: 1000, type: 'user/message', surface: 'current' }
 
 describe('trace-format', () => {
   it('labels known and unknown event types', () => {
@@ -34,13 +37,13 @@ describe('trace-format', () => {
   })
 
   it('concatenates every record shape an attempt stream may embed', () => {
-    const stream = [
+    const stream: AssistantStreamRecord[] = [
       { type: 'text-chunks', time0: 1, index: 0, dt: [], texts: ['packed'] },
       { type: 'reasoning-chunks', time0: 2, index: 1, dt: [1], texts: ['deep ', 'thought'] },
-      { type: 'tool-call-chunks', time0: 3, index: 2, dt: [], id: 'c', name: 'read', args: ['{}'] },
+      { type: 'tool-call-chunks', time0: 3, index: 2, dt: [], id: ToolCallId('c'), name: 'read', args: ['{}'] },
       { type: 'chunk', time: 4, chunk: { type: 'reasoning-delta', index: 2, text: ' raw-r' } },
       { type: 'chunk', time: 5, chunk: { type: 'text-delta', index: 3, text: ' raw-t' } },
-      { type: 'chunk', time: 6, chunk: { type: 'finish', index: 4 } },
+      { type: 'chunk', time: 6, chunk: { type: 'finish', reason: { kind: 'stop' } } },
     ]
     expect(attemptStreamText(stream)).toEqual({ reasoning: 'deep thought raw-r', text: 'packed raw-t' })
     expect(traceSummary(event('assistant/attempt', { turn: 1, step: 1, stream }))).toContain('packed raw-t')

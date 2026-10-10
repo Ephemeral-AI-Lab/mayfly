@@ -65,10 +65,10 @@ describe('buildExportMarkdown', () => {
       kind: 'assistant', seq: 3, turn: 0, step: 0, text: '**answer** text',
     },
     {
-      kind: 'tool', seq: 4, turn: 0, step: 0, callId: 'c1', name: 'bash',
+      kind: 'tool', seq: 4, turn: 0, step: 0, callId: 'c1', name: 'bash', startedAt: 0,
       arguments: '{"command":"ls"}',
       parsedArguments: { command: 'ls' },
-      result: { text: 'summarized', fullText: 'file1\nfile2', isError: false },
+      result: { text: 'summarized', fullText: 'file1\nfile2', isError: false, endedAt: 0 },
     },
     {
       kind: 'error', seq: 5, turn: 1, message: 'endpoint 404', code: 'ENDPOINT_404',
@@ -131,9 +131,9 @@ describe('buildExportMarkdown', () => {
       { kind: 'thinking', seq: 2, turn: 0, step: 0, text: '   ', streaming: false },
       { kind: 'assistant', seq: 3, turn: 0, step: 0, text: '' },
       {
-        kind: 'tool', seq: 4, turn: 0, step: 0, callId: 'c1', name: 'read',
+        kind: 'tool', seq: 4, turn: 0, step: 0, callId: 'c1', name: 'read', startedAt: 0,
         arguments: 'not-json', parsedArguments: undefined,
-        result: { text: 'summarized only', isError: true },
+        result: { text: 'summarized only', isError: true, endedAt: 0 },
       },
     ]
     const markdown = buildExportMarkdown({
@@ -154,8 +154,8 @@ describe('buildExportMarkdown', () => {
   it('caps the overview topic at 80 characters and pluralizes the tool count', () => {
     const items: TranscriptItem[] = [
       { kind: 'user', seq: 1, turn: 0, text: `${'x'.repeat(200)} more`, images: [] },
-      { kind: 'tool', seq: 2, turn: 0, step: 0, callId: 'a', name: 'read', arguments: '{}', parsedArguments: {} },
-      { kind: 'tool', seq: 3, turn: 0, step: 0, callId: 'b', name: 'read', arguments: '{}', parsedArguments: {} },
+      { kind: 'tool', seq: 2, turn: 0, step: 0, callId: 'a', name: 'read', startedAt: 0, arguments: '{}', parsedArguments: {} },
+      { kind: 'tool', seq: 3, turn: 0, step: 0, callId: 'b', name: 'read', startedAt: 0, arguments: '{}', parsedArguments: {} },
     ]
     const markdown = buildExportMarkdown({
       sessionId: 's', workDir: undefined, items, exportedAt: new Date('2026-08-21T00:00:00.000Z'),
@@ -194,8 +194,8 @@ describe('buildExportMarkdown', () => {
 
   it('keeps the hint from non-whitelist string arguments and absent parse', () => {
     const items: TranscriptItem[] = [
-      { kind: 'tool', seq: 1, turn: 0, step: 0, callId: 'a', name: 'read', arguments: '{"path":"/x"}', parsedArguments: { path: '/x' } },
-      { kind: 'tool', seq: 2, turn: 0, step: 0, callId: 'b', name: 'read', arguments: '{"path":"/x","nested":{"file_path":"deep"}}', parsedArguments: { path: '/x', nested: { file_path: 'deep' } } },
+      { kind: 'tool', seq: 1, turn: 0, step: 0, callId: 'a', name: 'read', startedAt: 0, arguments: '{"path":"/x"}', parsedArguments: { path: '/x' } },
+      { kind: 'tool', seq: 2, turn: 0, step: 0, callId: 'b', name: 'read', startedAt: 0, arguments: '{"path":"/x","nested":{"file_path":"deep"}}', parsedArguments: { path: '/x', nested: { file_path: 'deep' } } },
     ]
     const markdown = buildExportMarkdown({
       sessionId: 's', workDir: undefined, items, exportedAt: new Date('2026-08-21T00:00:00.000Z'),
@@ -389,7 +389,7 @@ describe('buildExportMarkdown', () => {
       // An error without a machine code drops the parenthetical.
       { kind: 'error', seq: 3, turn: 0, message: 'no code' },
       // Only over-long arguments: the hint falls through both lists.
-      { kind: 'tool', seq: 6, turn: 0, step: 0, callId: 'c', name: 'x', arguments: '{"long":"zzz"}', parsedArguments: { long: 'z'.repeat(100) } },
+      { kind: 'tool', seq: 6, turn: 0, step: 0, callId: 'c', name: 'x', startedAt: 0, arguments: '{"long":"zzz"}', parsedArguments: { long: 'z'.repeat(100) } },
     ]
     const markdown = buildExportMarkdown({
       sessionId: 's', workDir: undefined, items, exportedAt: new Date('2026-08-21T00:00:00.000Z'),
@@ -571,12 +571,12 @@ describe('registerExportCommands', () => {
   }
 
   it('registers /export and /copy on the runtime and unregisters on dispose', async () => {
-    const { ctx, fiber } = await mount({ persistence: { content: singleTurnLog('hi', 'hello') } })
-    const names = ctx.commands.list().map(command => command.name)
+    const { ctx, agent, fiber } = await mount({ persistence: { content: singleTurnLog('hi', 'hello') } })
+    const names = ctx.commands.list(agent).map(command => command.name)
     expect(names).toContain('export')
     expect(names).toContain('copy')
     await fiber.dispose()
-    const after = ctx.commands.list().map(command => command.name)
+    const after = ctx.commands.list(agent).map(command => command.name)
     expect(after).not.toContain('export')
     expect(after).not.toContain('copy')
   })

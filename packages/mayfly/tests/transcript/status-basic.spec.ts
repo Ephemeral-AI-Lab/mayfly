@@ -8,6 +8,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
+import { ReasoningEffortId } from '@deepseek-ai/dsh-llm'
 import type { Session } from '@deepseek-ai/dsh-session'
 import * as basic from '../../src/transcript/status-basic-model.ts'
 import { event, userEvent } from './helpers.ts'
@@ -141,7 +142,8 @@ describe('mayfly-status-basic-model', () => {
     const { ctx, entry, dispose } = await bootStatusPlugin(basic, agent)
     expect(entry.render(80)).toBe('no model')
     ctx.emit('session/event', agent.session as unknown as Session, event('request/header', {
-      header: { config: { provider: 'deepseek', model: 'event-model', reasoningEffort: 'high' } },
+      header: { config: { provider: 'deepseek', model: 'event-model', reasoningEffort: ReasoningEffortId('high') } },
+      reason: 'change',
     }))
     expect(entry.render(80)).toBe('event-model High')
     await dispose()

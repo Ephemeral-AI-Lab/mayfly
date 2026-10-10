@@ -148,9 +148,9 @@ function auditSource(path: string, source: string): Audit {
     }
 
     if ((ts.isFunctionDeclaration(node) || ts.isVariableDeclaration(node))
-      && ts.isIdentifier(node.name)) {
+      && node.name !== undefined && ts.isIdentifier(node.name)) {
       if (widthHelperNames.has(node.name.text)) violate(node, 'local-width-helper')
-      if (node.initializer !== undefined && widthName.test(node.name.text)
+      if (ts.isVariableDeclaration(node) && node.initializer !== undefined && widthName.test(node.name.text)
         && containsLength(node.initializer)) {
         widthMath.add(record(path, source, node))
       }

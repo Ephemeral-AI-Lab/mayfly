@@ -61,7 +61,7 @@ describe('scene 13 Status area, the views lane', () => {
     const frames: Frame[] = []
     for (const [index, step] of walk.steps.entries()) {
       if (step === ALT_DOWN) expect(rigged.lane.enter()).toBe(true)
-      else if (typeof step === 'string' && step !== '\0') rigged.lane.component.handleInput(step)
+      else if (typeof step === 'string' && step !== '\0') rigged.lane.component.handleInput!(step)
       if (rigged.lane.isEntered) entered.push(index)
       frames.push({ label: stepLabel(step), rows: rigged.footer.render(WIDTH), width: WIDTH })
     }

@@ -20,10 +20,10 @@ function open(content: MayflyUiNode, width = 100, escape = true) {
   const node = content.kind === 'surface' ? content : ui.surface({ title: 'Panel', chrome: 'overlay', child: content })
   const events: MayflyUiEvent[] = []
   let escapes = 0
-  const surface = createRealSurface(node, width, {
-    components: probeComponents(), events: event => events.push(event),
-    ...(escape ? { overrides: { onUnhandledEscape: () => { escapes += 1 }, escapeHint: 'close' as const } } : {}),
-  })
+  const options = { components: probeComponents(), events: (event: MayflyUiEvent) => events.push(event) }
+  const surface = createRealSurface(node, width, escape
+    ? { ...options, overrides: { onUnhandledEscape: () => { escapes += 1 }, escapeHint: 'close' as const } }
+    : options)
   surfaces.push(surface)
   const rows = (): string[] => surface.render().map(plain)
   const hint = (): string => rows().at(-2)!.replace(/^│\s*|\s*│$/gu, '')
@@ -215,7 +215,7 @@ describe('focus levels and the tab switch', () => {
   ])
 
   it('moves between controls with Alt+↑/↓ and F4/F5 without wrapping', () => {
-    for (const [prev, next] of [[KEY.altUp, KEY.altDown], [KEY.f4, KEY.f5]]) {
+    for (const [prev, next] of [[KEY.altUp, KEY.altDown], [KEY.f4, KEY.f5]] as const) {
       const view = open(twoLists())
       const focused = (): string => view.rows().find(row => row.includes('→ ')) ?? view.rows().find(row => row.includes('[ Run ]')) ?? ''
       view.press(prev)
@@ -231,7 +231,7 @@ describe('focus levels and the tab switch', () => {
 
   it('switches tabs from the content with Alt+←/→ and F2/F3', () => {
     const page = (): MayflyUiNode => ui.list({ id: 'l', role: 'browse', selectedIds: [], items: [{ id: 'x', label: 'X' }] })
-    for (const [prev, next] of [[KEY.altLeft, KEY.altRight], [KEY.f2, KEY.f3]]) {
+    for (const [prev, next] of [[KEY.altLeft, KEY.altRight], [KEY.f2, KEY.f3]] as const) {
       const view = open(settings(page))
       view.press(KEY.right, next)
       expect(view.tabs()).toEqual(['perm'])

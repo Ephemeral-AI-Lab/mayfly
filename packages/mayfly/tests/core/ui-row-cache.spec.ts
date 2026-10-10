@@ -8,7 +8,7 @@ import { createWorkCounters } from '../../src/core/ui-work-counters.ts'
 
 const palette = (name: string): MayflySemanticColors => new Proxy({ logoGradient: [(value: string) => value] }, {
   get: (target, key) => key === 'logoGradient' ? target.logoGradient : (value: string) => `<${name}:${String(key)}>${value}</>`,
-}) as MayflySemanticColors
+}) as unknown as MayflySemanticColors
 
 const list = ui.list({
   id: 'rows', role: 'browse', mode: 'multiple', numbered: true, selectedIds: ['b'],

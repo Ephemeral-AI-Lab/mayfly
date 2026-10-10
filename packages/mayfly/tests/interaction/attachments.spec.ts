@@ -102,8 +102,19 @@ describe('FilesystemAttachmentStore', () => {
   async function mount(): Promise<FilesystemAttachmentStore> {
     fiber = await ctx.plugin(attachmentsPlugin)
     const store = ctx.attachments
-    expect(store).toBeInstanceOf(FilesystemAttachmentStore)
+    if (!(store instanceof FilesystemAttachmentStore)) throw new Error('the attachments service is not the filesystem store')
     return store
+  }
+
+  /** The attachment error a call rejects with; a call that resolves fails the test. */
+  async function rejection(call: Promise<unknown>): Promise<AttachmentError> {
+    try {
+      await call
+    } catch (error) {
+      if (error instanceof AttachmentError) return error
+      throw error
+    }
+    throw new Error('expected the call to reject with an attachment error')
   }
 
   it('registers as the attachments service through apply', async () => {
@@ -135,17 +146,17 @@ describe('FilesystemAttachmentStore', () => {
     const store = await mount()
     await expect(store.validateImage({ data: PNG_1X1, mediaType: 'image/png' })).resolves.toBeUndefined()
 
-    const unsupported = await store.validateImage({ data: PNG_1X1, mediaType: 'image/bmp' as 'image/png' }).catch(error => error as AttachmentError)
+    const unsupported = await rejection(store.validateImage({ data: PNG_1X1, mediaType: 'image/bmp' as 'image/png' }))
     expect(unsupported).toBeInstanceOf(AttachmentError)
     expect(unsupported.code).toBe('UNSUPPORTED_IMAGE_TYPE')
 
-    const undetectable = await store.validateImage({ data: GARBAGE, mediaType: 'image/png' }).catch(error => error as AttachmentError)
+    const undetectable = await rejection(store.validateImage({ data: GARBAGE, mediaType: 'image/png' }))
     expect(undetectable.code).toBe('INVALID_IMAGE')
 
-    const mismatch = await store.validateImage({ data: PNG_1X1, mediaType: 'image/gif' }).catch(error => error as AttachmentError)
+    const mismatch = await rejection(store.validateImage({ data: PNG_1X1, mediaType: 'image/gif' }))
     expect(mismatch.code).toBe('IMAGE_TYPE_MISMATCH')
 
-    const undecodable = await store.validateImage({ data: JPEG_BYTES, mediaType: 'image/jpeg' }).catch(error => error as AttachmentError)
+    const undecodable = await rejection(store.validateImage({ data: JPEG_BYTES, mediaType: 'image/jpeg' }))
     expect(undecodable.code).toBe('INVALID_IMAGE')
   })
 
@@ -157,16 +168,16 @@ describe('FilesystemAttachmentStore', () => {
     // dimension decoding is consulted.
     const oversized = new Uint8Array(70)
     oversized.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
-    const tooLarge = await capped.validateImage({ data: oversized, mediaType: 'image/png' }).catch(error => error as AttachmentError)
+    const tooLarge = await rejection(capped.validateImage({ data: oversized, mediaType: 'image/png' }))
     expect(tooLarge.code).toBe('IMAGE_TOO_LARGE')
     // The byte cap passes but the pixel cap (0) trips on the 1x1 fixture.
     const cappedPixels = new CappedStore(fakeMayflyContext().ctx, { maxImagePixels: 0 })
-    const tooMany = await cappedPixels.validateImage({ data: GIF_1X1, mediaType: 'image/gif' }).catch(error => error as AttachmentError)
+    const tooMany = await rejection(cappedPixels.validateImage({ data: GIF_1X1, mediaType: 'image/gif' }))
     expect(tooMany.code).toBe('IMAGE_TOO_MANY_PIXELS')
     // The per-side dimension cap (0.1.1's limits field) trips independently
     // of the aggregate pixel count.
     const cappedDimension = new CappedStore(fakeMayflyContext().ctx, { maxImageDimension: 0 })
-    const tooWide = await cappedDimension.validateImage({ data: GIF_1X1, mediaType: 'image/gif' }).catch(error => error as AttachmentError)
+    const tooWide = await rejection(cappedDimension.validateImage({ data: GIF_1X1, mediaType: 'image/gif' }))
     expect(tooWide.code).toBe('IMAGE_TOO_MANY_PIXELS')
   })
 
@@ -188,7 +199,7 @@ describe('FilesystemAttachmentStore', () => {
     writeFileSync(blocker, 'a regular file')
     process.env.DSH_MAYFLY_ATTACHMENT_DIR = join(blocker, 'sub')
     const store = await mount()
-    const error = await store.saveImage({ data: PNG_1X1, mediaType: 'image/png' }).catch(failure => failure as AttachmentError)
+    const error = await rejection(store.saveImage({ data: PNG_1X1, mediaType: 'image/png' }))
     expect(error.code).toBe('ATTACHMENT_WRITE_FAILED')
   })
 
@@ -209,7 +220,7 @@ describe('FilesystemAttachmentStore', () => {
       width: 0,
       height: 0,
     }
-    const error = await store.readImage(ref).catch(failure => failure as AttachmentError)
+    const error = await rejection(store.readImage(ref))
     expect(error.code).toBe('INVALID_ATTACHMENT_REF')
   })
 
@@ -222,7 +233,7 @@ describe('FilesystemAttachmentStore', () => {
       width: 0,
       height: 0,
     }
-    const error = await store.readImage(ref).catch(failure => failure as AttachmentError)
+    const error = await rejection(store.readImage(ref))
     expect(error.code).toBe('ATTACHMENT_NOT_FOUND')
   })
 
@@ -238,7 +249,7 @@ describe('FilesystemAttachmentStore', () => {
       width: 0,
       height: 0,
     }
-    const error = await store.readImage(ref).catch(failure => failure as AttachmentError)
+    const error = await rejection(store.readImage(ref))
     expect(error.code).toBe('ATTACHMENT_READ_FAILED')
   })
 

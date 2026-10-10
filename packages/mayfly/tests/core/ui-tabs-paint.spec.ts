@@ -11,11 +11,11 @@ import { visibleWidth } from '../../src/core/width.ts'
 const CODES: Readonly<Record<string, number>> = { primary: 35, muted: 90, text: 37, warning: 33, success: 32 }
 const tagged = new Proxy({ logoGradient: [(v: string) => v] }, {
   get: (target, key) => key === 'logoGradient' ? target.logoGradient : (value: string) => `\x1b[${String(CODES[String(key)] ?? 39)}m${value}\x1b[39m`,
-}) as MayflySemanticColors
+}) as unknown as MayflySemanticColors
 /** The expected look of a piece in a tone. */
 const tone = (name: keyof typeof CODES, value: string): string => `\x1b[${String(CODES[name])}m${value}\x1b[39m`
 const identity = (value: string): string => value
-const bare = new Proxy({ logoGradient: [identity] }, { get: (target, key) => key === 'logoGradient' ? target.logoGradient : identity }) as MayflySemanticColors
+const bare = new Proxy({ logoGradient: [identity] }, { get: (target, key) => key === 'logoGradient' ? target.logoGradient : identity }) as unknown as MayflySemanticColors
 const idle: TabsFocus = { key: '', focused: false, marker: '|' }
 const focus = (key: string): TabsFocus => ({ key, focused: true, marker: '|' })
 const strong = (value: string): string => `\x1b[1m${value}\x1b[22m`

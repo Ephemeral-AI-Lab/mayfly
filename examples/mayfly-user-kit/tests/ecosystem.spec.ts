@@ -49,7 +49,7 @@ describe('shared user kit', () => {
     const node = summaryMetric.render({ label: 'Context', value: '42%', detail: '12k / 28k' })
     expect(node).toMatchObject({ kind: 'surface', child: { kind: 'stack', direction: 'row' } })
     expect(Object.isFrozen(node)).toBe(true)
-    expect(Object.isFrozen(node.child)).toBe(true)
+    expect(Object.isFrozen((node as { readonly child: unknown }).child)).toBe(true)
     const packageRoot = join(import.meta.dirname, '..')
     const manifest = JSON.parse(readFileSync(join(packageRoot, 'package.json'), 'utf8')) as Record<string, unknown>
     expect(manifest.mayfly).toBeUndefined()
@@ -61,7 +61,7 @@ describe('shared user kit approval card', () => {
   it('is patterns.decisionPanel with the kit\'s options, a frozen standard tree, and the pattern\'s arm delay', () => {
     const node = approvalCard.render({ title: 'Run command?', command: 'pnpm build', detail: 'in ~/work/mayfly' })
     expect(node).toMatchObject({ kind: 'surface', chrome: 'overlay', escapeLabel: 'reject', title: 'Run command?' })
-    const list = (node as { child: { children: { node: { kind: string, id?: string, items?: { id: string }[] } }[] } }).child.children.map(child => child.node).find(child => child.kind === 'list')!
+    const list = (node as unknown as { child: { children: { node: { kind: string, id?: string, items?: { id: string }[] } }[] } }).child.children.map(child => child.node).find(child => child.kind === 'list')!
     expect(list).toMatchObject({ id: 'approval.options', items: [{ id: 'once' }, { id: 'session' }, { id: 'reject' }] })
     expect(Object.isFrozen(node)).toBe(true)
     expect(APPROVAL_ARM_MS).toBe(300)

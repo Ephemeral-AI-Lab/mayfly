@@ -14,6 +14,7 @@ import { SettingsConflictError } from '@deepseek-ai/dsh-settings'
 import { renderRequest, flushRequests } from './request-fixture.ts'
 import { mkdtempTracked, registerTempDirCleanup } from '../core/temp-dir.ts'
 import type { MayflyOverlayEntry } from '../../../ui/src/contracts.ts'
+import type { MayflySubmittedField, MayflyUiActionEvent } from '../../../ui/src/interaction.ts'
 
 const contexts: Context[] = []
 registerTempDirCleanup()
@@ -21,9 +22,11 @@ afterEach(async () => { setExternalEditorLauncher(undefined); vi.unstubAllEnvs()
 async function setup(schema?: Schema, base?: Record<string, unknown>) { const ctx = new Context(); contexts.push(ctx); return settingsFixture(ctx, schema, base) }
 const field = settingsField
 const actionContext = (entry: MayflyOverlayEntry, signal = new AbortController().signal) => ({ surfaceId: entry.id, operationId: 'settings-test', source: entry.source, revision: entry.revision, signal, report: vi.fn() })
-const save = (entry: MayflyOverlayEntry, fields: readonly { id: string, change: 'set' | 'reset' | 'unchanged', value?: unknown }[] = []) => ({
-  kind: 'submit' as const,
-  submission: { actionId: 'save', source: entry.source, forms: [{ pagePath: [], formId: 'settings-form', fields }] },
+const save = (entry: MayflyOverlayEntry, fields: readonly MayflySubmittedField[] = []): MayflyUiActionEvent => ({
+  kind: 'submit',
+  pagePath: [],
+  controlId: 'settings-form',
+  submission: { actionId: 'save', draftRevision: 1, source: entry.source, forms: [{ pagePath: [], formId: 'settings-form', draftRevision: 1, fields }] },
 })
 
 describe('native settings UI', () => {
@@ -348,7 +351,7 @@ describe('native settings UI', () => {
     aborted.abort()
     expect(await action(save(entry), actionContext(entry, aborted.signal))).toEqual({ kind: 'cancelled' })
     expect(await action(save(entry), actionContext(entry))).toMatchObject({ kind: 'accepted' })
-    expect(await action({ kind: 'submit', submission: { actionId: 'save', source: entry.source, forms: [] } }, actionContext(entry))).toMatchObject({ kind: 'failed' })
+    expect(await action({ kind: 'submit', pagePath: [], controlId: 'settings-form', submission: { draftRevision: 1, actionId: 'save', source: entry.source, forms: [] } }, actionContext(entry))).toMatchObject({ kind: 'failed' })
 
     bench.ctx.emit('settings/document-updated', 'other' as never, 1)
     await bench.owner.dispose()

@@ -5,27 +5,28 @@ import { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import UserQuestionService from '@deepseek-ai/dsh-user-questions'
 import type { ApprovalOutcome, ApprovalRequest } from '@deepseek-ai/dsh-user-approval'
-import { vi } from 'vitest'
+import { vi, type Mock } from 'vitest'
 import * as uiProvider from '../../../ui/src/provider.ts'
 import * as frontend from '../../src/frontend/index.ts'
 import { MayflyCurrentAgentService } from '../../src/app/current-agent.ts'
 import { MayflyConversationsService } from '../../src/app/conversation-views.ts'
 import { MayflyUiSurfaceRuntime, compileMayflyUiSurfaceNode } from '../../src/core/ui-compiler.ts'
 import type { UiSurfaceModel } from '../../src/core/ui-interaction-surface.ts'
-import type { MayflyComponents, MayflySemanticColors } from '../../src/core/types.ts'
+import type { MayflyComponents, MayflyMarkdownOptions, MayflySemanticColors } from '../../src/core/types.ts'
 import { visibleWidth, truncateToWidth, wrapTextWithAnsi } from '../../src/core/width.ts'
 import { createFakeEditor } from '../core/fake-editor.ts'
 import { FakeMayflyComponents, FakeMayflyMarkdown, FakeScreen, FakeTheme } from './fakes.ts'
 
 const identity = (text: string) => text
 const colors = new Proxy({}, { get: (_, key) => key === 'logoGradient' ? [identity] : identity }) as MayflySemanticColors
-const components = { createEditor: createFakeEditor, createMarkdown: options => new FakeMayflyMarkdown(options), visibleWidth, truncateToWidth, wrapText: wrapTextWithAnsi } as MayflyComponents
+const components = { createEditor: createFakeEditor, createMarkdown: (options: MayflyMarkdownOptions) => new FakeMayflyMarkdown(options), visibleWidth, truncateToWidth, wrapText: wrapTextWithAnsi } as unknown as MayflyComponents
 export const flushRequests = () => new Promise<void>(resolve => { setImmediate(resolve) })
 
 export async function requestFixture(ctx = new Context()) {
-  const steer = vi.fn()
+  const steer: Mock = vi.fn()
   const agent = { id: 'current', steer } as unknown as Agent
-  const other = { id: 'other', steer: vi.fn() } as unknown as Agent
+  const otherSteer: Mock = vi.fn()
+  const other = { id: 'other', steer: otherSteer } as unknown as Agent
   const agents = new Map([[agent.id, agent], [other.id, other]])
   ctx.provide('agents', { get: (id: Agent['id']) => agents.get(id), roots: () => [...agents.values()] } as never)
   const app = await ctx.plugin({ name: 'test-current-agent', inject: ['agents'], apply(owner: Context) { new MayflyCurrentAgentService(owner, new MayflyConversationsService(owner)) } })

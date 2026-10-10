@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { ToolCallId, createUserMessage } from '@deepseek-ai/dsh-llm'
-import { Session, SessionId } from '@deepseek-ai/dsh-session'
+import { Session, SessionId, SessionSeq } from '@deepseek-ai/dsh-session'
 import { createMayflyRequestController } from '../../src/app/request-lifecycle.ts'
 import { installRetractionService } from '../../src/app/retraction.ts'
 
@@ -61,21 +61,21 @@ describe('message retraction', () => {
     })
 
     test.ctx.emit('session/event', Session.create(SessionId('foreign')), {
-      type: 'turn/end', seq: 0, time: 0, data: { turn: 1, reason: { kind: 'aborted' } },
+      type: 'turn/end', seq: SessionSeq(0), time: 0, data: { turn: 1, reason: { kind: 'aborted', reason: { kind: 'user' } } },
     })
     expect(test.service.tryRetract(String(message.id))).toBe(true)
     expect(test.service.tryRetract(String(message.id))).toBe(false)
     test.ctx.emit('session/event', test.session, {
-      type: 'step/end', seq: 99, time: 0, data: { turn: 1, step: 1 },
+      type: 'step/end', seq: SessionSeq(99), time: 0, data: { turn: 1, step: 1 },
     })
     test.ctx.emit('session/event', test.session, {
-      type: 'turn/end', seq: 100, time: 0, data: { turn: 2, reason: { kind: 'aborted' } },
+      type: 'turn/end', seq: SessionSeq(100), time: 0, data: { turn: 2, reason: { kind: 'aborted', reason: { kind: 'user' } } },
     })
     expect(test.cancel).toHaveBeenCalledWith({ kind: 'user' }, { keepInbox: true })
     expect(lifecycle).toEqual(['started', 'aborted'])
     expect(retracted).toEqual([1])
 
-    const end = test.session.append('turn/end', { turn: 1, reason: { kind: 'aborted' } })
+    const end = test.session.append('turn/end', { turn: 1, reason: { kind: 'aborted', reason: { kind: 'user' } } })
     test.ctx.emit('session/event', test.session, end)
     await Promise.resolve()
     const marker = test.session.snapshotEvents().at(-1)!
@@ -146,6 +146,7 @@ describe('message retraction', () => {
         source: { kind: 'model', provider: 'mock', model: 'mock-model' },
         content: [{ type: 'tool-call', id: ToolCallId('call-2'), name: 'bash', arguments: '{}' }],
       },
+      stream: [],
     }, { surfaceOp: 'append' })
     expect(test.service.tryRetract(String(message.id))).toBe(false)
     await test.ctx.fiber.dispose()
@@ -160,7 +161,7 @@ describe('message retraction', () => {
     const message = enterPrompt(test.session)
     expect(test.service.tryRetract(String(message.id))).toBe(true)
     const append = test.session.append.bind(test.session)
-    const end = append('turn/end', { turn: 1, reason: { kind: 'aborted' } })
+    const end = append('turn/end', { turn: 1, reason: { kind: 'aborted', reason: { kind: 'user' } } })
     Object.defineProperty(test.session, 'append', { value: () => { throw failure } })
     test.ctx.emit('session/event', test.session, end)
     await Promise.resolve()

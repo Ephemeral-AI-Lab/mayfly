@@ -31,6 +31,7 @@ import type { MarketEntry } from '../../src/interaction/plugin-market/types.ts'
 import { mountUiRegistryObservers, UiInteractionService } from '../../src/core/ui-interaction-state.ts'
 import type { UiSurfaceModel } from '../../src/core/ui-interaction-surface.ts'
 import { renderRequest } from './request-fixture.ts'
+import { withOverrides, type Overrides } from '../fixture-fields.ts'
 
 /** The real seams, restored after every test. */
 const REAL = { ...updaterInternals }
@@ -53,8 +54,9 @@ function writeInstalledDependencies(root: string, names: readonly string[]): voi
 }
 
 /** A marketplace entry fixture with every optional field populated. */
-function entry(overrides: Partial<MarketEntry> = {}): MarketEntry {
-  return {
+/** One marketplace entry; an override of `undefined` leaves the field out, as a sparse index row does. */
+function entry(overrides: Overrides<MarketEntry> = {}): MarketEntry {
+  return withOverrides<MarketEntry>({
     id: 'loop',
     source: 'official',
     displayName: 'Loop',
@@ -81,8 +83,7 @@ function entry(overrides: Partial<MarketEntry> = {}): MarketEntry {
     capabilities: ['timer'],
     verified: { at: '2026-09-04', packages: [{ name: 'dsh-loop', version: '0.1.4' }] },
     npm: { 'dsh-loop': { latestVersion: '0.1.4' } },
-    ...overrides,
-  }
+  }, overrides)
 }
 
 /** The index document for the scripted network. */
@@ -133,7 +134,7 @@ async function mountWorld(options: {
   updaterInternals.env = { DSH_HOME: join(home, '.dsh'), DSH_BIN: '/usr/bin/dsh' }
   updaterInternals.homedir = () => home
   updaterInternals.now = () => 1_000_000
-  updaterInternals.fetchText = vi.fn(async (url: string) => {
+  updaterInternals.fetchText = vi.fn(async (url: string, _timeoutMs: number) => {
     if (options.offline === true) throw new Error(`registry responded 503 for ${url}`)
     if (url.includes('jsdelivr') || url.includes('raw.githubusercontent')) {
       if (options.index === undefined) throw new Error('no index scripted')
@@ -1056,7 +1057,7 @@ describe('/plugin surface actions', () => {
     await world.run('/plugin')
     const root = world.ctx.mayflyOverlays.list().find(item => item.id === 'mayfly.plugin-market')!
     const context = { surfaceId: root.id, operationId: 'up-to-date', source: root.source, revision: root.revision, signal: new AbortController().signal, report: vi.fn() }
-    const operation = { kind: 'activate' as const, pagePath: [], controlId: 'actions', actionId: 'install', inputs: { forms: [], source: [], selections: [{ pagePath: [], controlId: 'plugins', selectedIds: ['loop'] }] } }
+    const operation = { kind: 'activate' as const, pagePath: [], controlId: 'actions', actionId: 'install', inputs: { actionId: 'install', draftRevision: 1, forms: [], source: [], selections: [{ pagePath: [], controlId: 'plugins', selectedIds: ['loop'] }] } }
     expect(await root.definition.onEvent!.action!(operation, context)).toMatchObject({ kind: 'accepted', feedback: { message: '"Loop" is already installed and up to date' } })
     expect(world.spawns.filter(spawn => spawn.cmd === '/usr/bin/dsh')).toHaveLength(0)
     world.dispose()
@@ -1151,18 +1152,18 @@ describe('/plugin surface actions', () => {
     const root = world.ctx.mayflyOverlays.list().find(item => item.id === 'mayfly.plugin-market')!
     const reports: string[] = []
     const context = { surfaceId: root.id, operationId: 'direct', source: root.source, revision: root.revision, signal: new AbortController().signal, report: (feedback: { message: string }) => reports.push(feedback.message) }
-    const operation = (actionId: 'install' | 'remove', id: string) => ({ kind: 'activate' as const, pagePath: [], controlId: 'actions', actionId, inputs: { forms: [], source: [], selections: [{ pagePath: [], controlId: 'plugins', selectedIds: [id] }] } })
+    const operation = (actionId: 'install' | 'remove', id: string) => ({ kind: 'activate' as const, pagePath: [], controlId: 'actions', actionId, inputs: { actionId, draftRevision: 1, forms: [], source: [], selections: [{ pagePath: [], controlId: 'plugins', selectedIds: [id] }] } })
     expect(await root.definition.onEvent!.action!(operation('remove', 'loop'), context)).toMatchObject({ kind: 'failed', message: expect.stringContaining('not installed') })
     expect(await root.definition.onEvent!.action!(operation('install', 'mixed'), context)).toMatchObject({ kind: 'failed', message: expect.stringContaining('no common install source') })
     expect(await root.definition.onEvent!.action!(operation('install', 'web'), context)).toMatchObject({ kind: 'accepted' })
     expect(reports).toContain('web-only plugin: it contributes nothing in this terminal frontend')
 
-    const details = { kind: 'activate' as const, pagePath: [], controlId: 'actions', actionId: 'details', inputs: { forms: [], source: [], selections: [{ pagePath: [], controlId: 'plugins', selectedIds: ['loop'] }] } }
+    const details = { kind: 'activate' as const, pagePath: [], controlId: 'actions', actionId: 'details', inputs: { actionId: 'details', draftRevision: 1, forms: [], source: [], selections: [{ pagePath: [], controlId: 'plugins', selectedIds: ['loop'] }] } }
     await root.definition.onEvent!.action!(details, context)
     const detail = world.ctx.mayflyOverlays.list().find(item => item.id === 'mayfly.plugin-detail.loop')!
     await root.definition.onEvent!.action!(details, context)
     expect(world.ctx.mayflyOverlays.list().find(item => item.id === detail.id)!.focusRevision).toBeGreaterThan(detail.focusRevision)
-    expect(await root.definition.onEvent!.action!({ kind: 'activate', pagePath: [], controlId: 'actions', actionId: 'details', inputs: { forms: [], source: [], selections: [] } }, context)).toEqual({ kind: 'completed' })
+    expect(await root.definition.onEvent!.action!({ kind: 'activate', pagePath: [], controlId: 'actions', actionId: 'details', inputs: { actionId: 'details', draftRevision: 1, forms: [], source: [], selections: [] } }, context)).toEqual({ kind: 'completed' })
     world.dispose()
   })
 
@@ -1207,7 +1208,7 @@ describe('/plugin surface actions', () => {
     const overlay = world.ctx.mayflyOverlays.list().find(item => item.id === 'mayfly.plugin-detail.loop')!
     const reports: string[] = []
     const context = { surfaceId: overlay.id, operationId: 'detail-spec', source: overlay.source, revision: overlay.revision, signal: new AbortController().signal, report: (feedback: { message: string }) => reports.push(feedback.message) }
-    const activate = (actionId: string) => ({ kind: 'activate' as const, pagePath: [], controlId: 'plugin-detail-actions', actionId, inputs: { forms: [], source: [], selections: [] } })
+    const activate = (actionId: string) => ({ kind: 'activate' as const, pagePath: [], controlId: 'plugin-detail-actions', actionId, inputs: { actionId, draftRevision: 1, forms: [], source: [], selections: [] } })
     expect(await overlay.definition.onEvent!.action!(activate('remove'), context)).toMatchObject({ kind: 'failed', message: expect.stringContaining('not installed') })
     expect(await overlay.definition.onEvent!.action!({ kind: 'selection-accept', pagePath: [], controlId: 'plugin-detail-actions', selectedIds: ['loop'] }, context)).toEqual({ kind: 'completed' })
     expect(await overlay.definition.onEvent!.action!(activate('close'), context)).toEqual({ kind: 'completed' })
@@ -1314,7 +1315,7 @@ describe('/plugin coverage corners', () => {
     })
     const world = await mountWorld({})
     const realFetch = updaterInternals.fetchText
-    updaterInternals.fetchText = vi.fn(async (url: string) => (url.includes('jsdelivr') || url.includes('raw.githubusercontent') ? gate : realFetch(url)))
+    updaterInternals.fetchText = vi.fn(async (url: string, timeoutMs: number) => (url.includes('jsdelivr') || url.includes('raw.githubusercontent') ? gate : realFetch(url, timeoutMs)))
     await world.run('/plugin')
     let json = JSON.stringify((world.overlay() as { currentNode(): unknown }).currentNode())
     expect(json).toContain('loading catalog...')
@@ -1509,7 +1510,7 @@ describe('/plugin lifecycle and locale', () => {
     })
     const world = await mountWorld({})
     const realFetch = updaterInternals.fetchText
-    updaterInternals.fetchText = vi.fn(async (url: string) => (url.includes('jsdelivr') || url.includes('raw.githubusercontent') ? gate : realFetch(url)))
+    updaterInternals.fetchText = vi.fn(async (url: string, timeoutMs: number) => (url.includes('jsdelivr') || url.includes('raw.githubusercontent') ? gate : realFetch(url, timeoutMs)))
     await world.run('/plugin')
     const model = world.surface()!
     expect(JSON.stringify(model.node)).toContain('loading catalog...')
@@ -1559,7 +1560,7 @@ describe('/plugin lifecycle and locale', () => {
       })
       const world = await mountWorld({})
       const realFetch = updaterInternals.fetchText
-      updaterInternals.fetchText = vi.fn(async (url: string) => (url.includes('jsdelivr') || url.includes('raw.githubusercontent') ? gate : realFetch(url)))
+      updaterInternals.fetchText = vi.fn(async (url: string, timeoutMs: number) => (url.includes('jsdelivr') || url.includes('raw.githubusercontent') ? gate : realFetch(url, timeoutMs)))
       const execution = world.run(line)
       await new Promise(resolve => setTimeout(resolve, 5))
       await world.dispose()
@@ -1647,7 +1648,7 @@ describe('/plugin final coverage corners', () => {
     })
     const infoWorld = await mountWorld({})
     const realFetch = updaterInternals.fetchText
-    updaterInternals.fetchText = vi.fn(async (url: string) => (url.includes('jsdelivr') || url.includes('raw.githubusercontent') ? fetchGate : realFetch(url)))
+    updaterInternals.fetchText = vi.fn(async (url: string, timeoutMs: number) => (url.includes('jsdelivr') || url.includes('raw.githubusercontent') ? fetchGate : realFetch(url, timeoutMs)))
     const infoExecution = infoWorld.run('/plugin info loop')
     await new Promise(resolve => setTimeout(resolve, 5))
     await infoWorld.dispose()
@@ -1806,7 +1807,7 @@ describe('detail-shape arms', () => {
       release = resolve
     })
     const realFetch = updaterInternals.fetchText
-    updaterInternals.fetchText = vi.fn(async (url: string) => (url.includes('jsdelivr') || url.includes('raw.githubusercontent') ? gate : realFetch(url)))
+    updaterInternals.fetchText = vi.fn(async (url: string, timeoutMs: number) => (url.includes('jsdelivr') || url.includes('raw.githubusercontent') ? gate : realFetch(url, timeoutMs)))
     await rWorld.run('/plugin')
     const refresh = rWorld.run('/plugin refresh')
     await new Promise(resolve => setTimeout(resolve, 5))

@@ -898,7 +898,7 @@ describe('mayfly-editor-plus @ mentions', () => {
     fileMention.setFdProbe(async () => 'fd')
     const { ctx, editor, components } = await mount()
     await fileMention.detectFdPath(ctx.mayflyInteractionState.fdProbe)
-    const delegated = vi.fn(async () => ({
+    const delegated = vi.fn<MayflyAutocompleteProvider['getSuggestions']>(async () => ({
       items: [{ value: '@src/a.ts', label: 'a.ts', description: 'src/a.ts' }],
       prefix: '@sr',
     }))
@@ -923,7 +923,7 @@ describe('mayfly-editor-plus @ mentions', () => {
       items: [{ value: '@src/a.ts', label: 'a.ts' }],
       prefix: '@sr',
     })
-    components.mentionApplyCompletion = (lines, cursorLine, cursorCol) => ({
+    components.mentionApplyCompletion = (_lines, cursorLine, cursorCol) => ({
       lines: ['applied'],
       cursorLine,
       cursorCol,

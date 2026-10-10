@@ -19,7 +19,7 @@ import type { MayflySemanticColors } from '../../src/core/types.ts'
 import { visibleWidth } from '../../src/core/width.ts'
 
 const identity = (value: string): string => value
-const colors = new Proxy({ logoGradient: [identity] }, { get: (target, key) => key === 'logoGradient' ? target.logoGradient : identity }) as MayflySemanticColors
+const colors = new Proxy({ logoGradient: [identity] }, { get: (target, key) => key === 'logoGradient' ? target.logoGradient : identity }) as unknown as MayflySemanticColors
 const idle: PatternFocus = { key: '', focused: false, marker: '|' }
 
 describe('private UI pattern painters', () => {
@@ -96,7 +96,7 @@ describe('private UI pattern painters', () => {
     const primary = vi.fn(identity)
     const tracked = new Proxy(colors, { get: (target, key, receiver) => key === 'selectedBg' ? selectedBg : key === 'primary' ? primary : Reflect.get(target, key, receiver) })
     const node = ui.list({
-      id: 'list', mode: 'multiple', selectedIds: ['a', 'd'], filter: 'term',
+      id: 'list', role: 'choose', mode: 'multiple', selectedIds: ['a', 'd'], filter: 'term',
       items: [
         { id: 'a', label: 'Alpha', detail: 'detail-a', badge: 'hot', group: 'One' },
         { id: 'b', label: 'Beta', detail: 'detail-b', group: 'One', disabled: true },
@@ -119,12 +119,12 @@ describe('private UI pattern painters', () => {
     expect(selectedBg).not.toHaveBeenCalled()
     expect(renderList(node, 20, 2, { key: 'missing', focused: true, marker: '|' }, colors)[0]).toContain('/ term')
     expect(renderList(node, 20, Number.NaN, { key: 'e', focused: true, marker: '|' }, colors)).toHaveLength(1)
-    expect(renderList(ui.list({ id: 'single', selectedIds: ['x'], items: [{ id: 'x', label: 'X' }] }), 20, 3, idle, colors)).toEqual(['  X'])
-    expect(plain(renderList(ui.list({ id: 'numbered', numbered: true, selectedIds: [], items: [{ id: 'x', label: 'X' }, { id: 'y', label: 'Y', disabled: true }] }), 20, 3, idle, colors))).toEqual(['  1  X', '  2  Y'])
+    expect(renderList(ui.list({ id: 'single', role: 'choose', selectedIds: ['x'], items: [{ id: 'x', label: 'X' }] }), 20, 3, idle, colors)).toEqual(['  X'])
+    expect(plain(renderList(ui.list({ id: 'numbered', role: 'choose', numbered: true, selectedIds: [], items: [{ id: 'x', label: 'X' }, { id: 'y', label: 'Y', disabled: true }] }), 20, 3, idle, colors))).toEqual(['  1  X', '  2  Y'])
     expect(renderList(node, 80, 2, { key: 'a', focused: true, marker: '|' }, colors).join('\n')).toContain('detail-a')
     expect(renderList(node, 40, 2, { key: 'a', focused: true, marker: '|' }, colors).join('\n')).not.toContain('detail-a')
 
-    const tree = ui.list({ id: 'tree', mode: 'multiple', tree: true, selectedIds: ['p1'], items: [{ id: 'p', label: 'parent' }, { id: 'p1', label: 'one', parentId: 'p' }, { id: 'p2', label: 'two', parentId: 'p' }, { id: 'q', label: 'all' }, { id: 'q1', label: 'only', parentId: 'q' }, { id: 'r', label: 'none' }, { id: 'r1', label: 'child', parentId: 'r' }] })
+    const tree = ui.list({ id: 'tree', role: 'choose', mode: 'multiple', tree: true, selectedIds: ['p1'], items: [{ id: 'p', label: 'parent' }, { id: 'p1', label: 'one', parentId: 'p' }, { id: 'p2', label: 'two', parentId: 'p' }, { id: 'q', label: 'all' }, { id: 'q1', label: 'only', parentId: 'q' }, { id: 'r', label: 'none' }, { id: 'r1', label: 'child', parentId: 'r' }] })
     expect(plain(renderList({ ...tree, selectedIds: ['p1', 'q1', 'r'] }, 40, 20, idle, colors))).toEqual(['  ◐ parent', '  ● one', '  ○ two', '  ● all', '  ● only', '  ● none', '  ○ child'])
     expect(plain(renderList({ ...tree, selectedIds: [] }, 40, 20, idle, colors))[0]).toBe('  ○ parent')
 
@@ -133,7 +133,7 @@ describe('private UI pattern painters', () => {
       if (key === 'muted') return (value: string) => `<muted>${value}</muted>`
       return Reflect.get(target, key, receiver)
     } })
-    const disabledSelected = renderList(ui.list({ id: 'disabled', mode: 'multiple', selectedIds: ['x'], items: [{ id: 'x', label: 'X', disabled: true }] }), 80, 3, { key: 'x', focused: true, marker: '|' }, nestedPaint)[0]!
+    const disabledSelected = renderList(ui.list({ id: 'disabled', role: 'choose', mode: 'multiple', selectedIds: ['x'], items: [{ id: 'x', label: 'X', disabled: true }] }), 80, 3, { key: 'x', focused: true, marker: '|' }, nestedPaint)[0]!
     expect(disabledSelected).toBe('  <muted>●</muted> <muted>X</muted>')
   })
 
@@ -146,7 +146,7 @@ describe('private UI pattern painters', () => {
       return Reflect.get(target, key, receiver)
     } })
     const node = ui.list({
-      id: 'variants', selectedIds: ['model'], items: [{
+      id: 'variants', role: 'choose', selectedIds: ['model'], items: [{
         id: 'model', label: 'Model', detail: 'legacy detail',
         detailSpans: [
           { text: 'ctx 64k' },
@@ -171,7 +171,7 @@ describe('private UI pattern painters', () => {
     expect(focusedRow).toContain('<muted> [Low]</muted>')
     expect(focusedRow).toContain('\x1b[1m<accent> [High]</accent>\x1b[22m')
     expect(renderList(node, 40, 2, idle, tracked)[0]).not.toContain('High')
-    expect(renderList(ui.list({ id: 'empty-detail', selectedIds: [], items: [{ id: 'x', label: 'X', detailSpans: [] }] }), 80, 2, idle, tracked)[0]).toBe('  X')
+    expect(renderList(ui.list({ id: 'empty-detail', role: 'choose', selectedIds: [], items: [{ id: 'x', label: 'X', detailSpans: [] }] }), 80, 2, idle, tracked)[0]).toBe('  X')
   })
 
   it('paints a list-row segment around the selected option and degrades at narrow widths', () => {
@@ -241,7 +241,7 @@ describe('private UI pattern painters', () => {
     expect(plain(renderFormField({ kind: 'multiselect', id: 'select', label: 'Tags', value: ['a'], options: [{ id: 'a', label: 'Alpha' }, { id: 'b', label: 'Beta' }] }, 24, { key: 'select', focused: true, marker: '|' }, colors))).toEqual(['→|Tags: Alpha'])
     const editingSelect = renderFormField({ kind: 'select', id: 'select', label: 'Select', value: 'a', options: [{ id: 'a', label: 'Alpha' }] }, 20, { key: 'select', focused: true, marker: '|', editing: true }, colors)
     expect(editingSelect.join('\n')).toContain('→ ● Alpha')
-    const unfocusedEditing = renderFormField({ kind: 'select', id: 'select', label: 'Select', value: 'a', options: [{ id: 'a', label: 'Alpha' }] }, 40, { key: 'select', marker: '|', editing: true }, colors)
+    const unfocusedEditing = renderFormField({ kind: 'select', id: 'select', label: 'Select', value: 'a', options: [{ id: 'a', label: 'Alpha' }] }, 40, { key: 'select', focused: false, marker: '|', editing: true }, colors)
     expect(plain(unfocusedEditing)).toEqual(['  Select: Alpha'])
     expect(renderFormField({ kind: 'select', id: 'select', label: 'Select', value: 'missing', options: [] }, 40, idle, colors)[0]).toContain('missing')
     expect(renderFormField({ kind: 'toggle', id: 'toggle', label: 'Toggle', value: true }, 40, idle, colors)[0]).toContain('[on]')
@@ -264,7 +264,7 @@ describe('private UI pattern painters', () => {
       { id: 'busy', label: 'Wait', busy: true },
       { id: 'disabled', label: 'No', disabled: true },
     ] })
-    const vertical = renderActions(node, 40, { key: 'secondary', focused: true, marker: '|', pendingKey: 'secondary' }, colors, true)
+    const vertical = renderActions(node, 40, { key: 'secondary', focused: true, marker: '|' }, colors, true)
     expect(vertical).toHaveLength(5)
     expect(vertical.join('\n')).toContain('[ Run ]')
     expect(vertical.join('\n')).toContain('|\x1b[7m Later \x1b[27m')
@@ -272,8 +272,8 @@ describe('private UI pattern painters', () => {
     expect(renderActions(node, 40, { key: 'danger', focused: true, marker: '|' }, colors, true).join('\n')).toContain('|\x1b[7m ! Delete \x1b[27m')
     expect(vertical.join('\n')).toContain('… Wait')
     // A pending action keeps its cursor so focus does not vanish while it runs; disabled ones never hold it.
-    expect(renderActions(node, 80, { key: 'busy', focused: true, marker: '|', pendingKey: 'busy' }, colors, true).join('')).toContain('|\x1b[7m … Wait \x1b[27m')
-    expect(renderActions(node, 80, { key: 'disabled', focused: true, marker: '|', pendingKey: 'disabled' }, colors, true).join('')).not.toContain('|')
+    expect(renderActions(node, 80, { key: 'busy', focused: true, marker: '|' }, colors, true).join('')).toContain('|\x1b[7m … Wait \x1b[27m')
+    expect(renderActions(node, 80, { key: 'disabled', focused: true, marker: '|' }, colors, true).join('')).not.toContain('|')
     const reasoned = ui.actions({ id: 'reasoned', items: [{ id: 'install', label: 'Install', disabled: true, disabledReason: 'Already installed' }] })
     expect(renderActions(reasoned, 80, { key: '', focused: false, marker: '|' }, colors, false).join('')).toContain('Install — Already installed')
     const actionPalette = new Proxy(colors, { get: (target, key, receiver) => {

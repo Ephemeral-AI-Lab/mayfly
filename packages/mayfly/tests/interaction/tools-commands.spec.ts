@@ -2,6 +2,7 @@
  * @module @ephemeral-ai/mayfly/tests/interaction/tools-commands
  */
 import { Context } from '@deepseek-ai/cordis'
+import type { ToolSchema } from '@deepseek-ai/dsh-llm'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { firstSentence, openToolDetail, toolDetailNode, toolItems } from '../../src/interaction/tools-commands.ts'
 import { catalogFixture } from './catalog-fixture.ts'
@@ -25,7 +26,7 @@ describe('shared native tool catalogs', () => {
     const node = toolDetailNode(tool('schema', source), key => key)
     expect(JSON.stringify(node)).toContain(JSON.stringify(source).slice(1, -1))
     expect(JSON.stringify(node)).toContain('required')
-    expect(JSON.stringify(toolDetailNode({ name: 'empty', description: '' }, key => key))).toContain('(no parameters)')
+    expect(JSON.stringify(toolDetailNode({ name: 'empty', description: '', parameters: undefined } as unknown as ToolSchema, key => key))).toContain('(no parameters)')
   })
 
   it('opens exact-Agent choices, retains search when returning from detail, and never executes tools', async () => {

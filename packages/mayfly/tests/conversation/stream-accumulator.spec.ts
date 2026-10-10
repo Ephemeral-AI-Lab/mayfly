@@ -19,7 +19,7 @@ describe('assistant stream accumulator', () => {
     expect(state).toMatchObject({ phase: 'waiting', outputProgress: undefined })
     state = foldAssistantStreamChunk(state, { type: 'text-delta', index: 1, text: 'answer' }, 120)
     expect(state).toMatchObject({ phase: 'composing', text: 'answer', chars: 11, outputProgress: { initialChars: 6 } })
-    state = foldAssistantStreamChunk(state, { type: 'finish', reason: 'stop' }, 130)
+    state = foldAssistantStreamChunk(state, { type: 'finish', reason: { kind: 'stop' } }, 130)
     expect(state).toMatchObject({ phase: 'waiting', outputProgress: undefined, updatedAt: 130 })
   })
 

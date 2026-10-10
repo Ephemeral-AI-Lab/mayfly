@@ -12,7 +12,7 @@
     "build": "node script/clean-lib.mjs && tsc -b tsconfig.json --force && node script/prune-types.mjs && tsdown",
     "test": "vitest run",
     "test:repo-workflow": "node --test script/tests/*.test.mjs",
-    "typecheck": "tsc -b tsconfig.json",
+    "typecheck": "tsc -b tsconfig.json && tsc -p tsconfig.tests.json",
     "lint": "oxlint packages examples",
     "diagrams:sync": "node script/sync-diagrams.mjs",
     "diagrams:check": "node script/sync-diagrams.mjs --check",

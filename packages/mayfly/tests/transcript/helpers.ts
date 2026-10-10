@@ -13,7 +13,7 @@ import {
   type UserMessage,
 } from '@deepseek-ai/dsh-llm'
 import type { MayflyComponents, MayflyImage, MayflyMarkdown } from '../../src/core/index.ts'
-import type { SessionEvent } from '@deepseek-ai/dsh-session'
+import { SessionSeq, type SessionEvent } from '@deepseek-ai/dsh-session'
 
 // Width truth is pi-tui itself (D48): the fake codepoint counters that used
 // to live here were exact only for ASCII fixtures, so a CJK mis-budget that
@@ -62,6 +62,17 @@ export function fakeMayflyComponents(): MayflyComponents {
     wrapText: wrapTextWithAnsi,
     truncateToWidth,
     topRule,
+    imageProtocol: () => false,
+    imageDimensions: () => undefined,
+    createFileMentionProvider(): never {
+      throw new Error('fake createFileMentionProvider is out of scope for transcript tests')
+    },
+    fuzzyMatch(): never {
+      throw new Error('fake fuzzyMatch is out of scope for transcript tests')
+    },
+    fuzzyFilter(): never {
+      throw new Error('fake fuzzyFilter is out of scope for transcript tests')
+    },
   }
 }
 
@@ -152,11 +163,6 @@ export function imageBlock(attachment: ImageBlock['attachment']): ContentBlock {
   return { type: 'image', attachment }
 }
 
-/** A minimal image attachment ref with just the id and media type. */
-export function imageRef(id: string, mediaType = 'image/png'): ImageBlock['attachment'] {
-  return { id, mediaType } as ImageBlock['attachment']
-}
-
 /** An `assistant/attempt` carrying one durable text run. */
 export function textDelta(turn: number, step: number, text: string): SessionEvent<'assistant/attempt'> {
   return attemptDelta(turn, step, 'text-chunks', text)
@@ -194,8 +200,8 @@ export function retractionEvent(turn: number, step: number, start: number, end: 
       step,
       message: { id: MessageId(`m-${seq}`), role: 'developer', content: [], source: { kind: 'mayfly-retraction' } },
     }),
-    surfaceOp: { op: 'replace', startSeq: start, endSeq: end },
-    sourceEventSeqs: [start, end].filter((seq, index, values) => values.indexOf(seq) === index),
+    surfaceOp: { op: 'replace', startSeq: SessionSeq(start), endSeq: SessionSeq(end) },
+    sourceEventSeqs: [start, end].filter((seq, index, values) => values.indexOf(seq) === index).map(SessionSeq),
   }
 }
 

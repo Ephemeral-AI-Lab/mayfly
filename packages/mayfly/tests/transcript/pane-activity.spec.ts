@@ -29,6 +29,9 @@ import {
 } from './helpers.ts'
 import { visibleWidth } from '../../src/core/width.ts'
 import type { Context } from '@deepseek-ai/cordis'
+import type { SessionEvent } from '@deepseek-ai/dsh-session'
+// Empty type import activates the 'settings/document-updated' Events merge.
+import type {} from '@deepseek-ai/dsh-settings'
 import { MayflyLocaleService } from '../../src/frontend/locale.ts'
 import { initialConversationFacts } from '../../src/conversation/facts.ts'
 
@@ -98,8 +101,8 @@ const FIRST_TIP = buildTipRotation(STATUS_TIPS)[0]!.text
 const waiting = (frame = 0, tip = FIRST_TIP): string => `${MOON_SPINNER_FRAMES[frame]!} Deep diving · Tip: ${tip}`
 
 /** Emit one session event for the agent's session. */
-function emit2(ctx: Context, agent: FakeAgent, event: Parameters<typeof turnStart>[0]): void {
-  ctx.emit('session/event', agent.session, event)
+function emit2(ctx: Context, agent: FakeAgent, event: SessionEvent): void {
+  ctx.emit('session/event', agent.session as never, event)
 }
 
 describe('mayfly-pane-activity', () => {
@@ -276,22 +279,18 @@ describe('mayfly-pane-activity', () => {
     // No injected fake here: the default timer primitives run under vi's clock.
     const harness = await bootPanePlugin(activity, runningAgent(fakeAgent([])))
     const { ctx, screen, dispose } = harness
-    let pending = true
     vi.useFakeTimers()
     try {
       ctx.emit('mayfly/request-stop-changed', true)
       expect(screen.paneLines()).toEqual(['■ interrupting…'])
-      pending = false
       ctx.emit('mayfly/request-stop-changed', false)
       // The turn settled at once; the acknowledgment holds out its minimum.
       expect(screen.paneLines()).toEqual(['■ interrupting…'])
       // A fresh stop cancels the pending hold through the default clearTimeout.
-      pending = true
       ctx.emit('mayfly/request-stop-changed', true)
       expect(screen.paneLines()).toEqual(['■ interrupting…'])
       vi.advanceTimersByTime(600)
       expect(screen.paneLines()).toEqual(['■ interrupting…'])
-      pending = false
       ctx.emit('mayfly/request-stop-changed', false)
       vi.advanceTimersByTime(600)
       expect(screen.paneLines()[0]).toContain(' · Tip: ')
@@ -561,7 +560,7 @@ describe('mayfly-pane-activity', () => {
     agent.status = 'running'
     ctx.emit('agent/status', { agent: asAgent(agent), status: 'running' })
     const foreign = fakeAgent([])
-    ctx.emit('session/event', foreign.session, textDelta(1, 1, 'x'))
+    ctx.emit('session/event', foreign.session as never, textDelta(1, 1, 'x'))
     expect(screen.paneLines()).toEqual([waiting()])
     await dispose()
   })
@@ -636,7 +635,7 @@ describe('mayfly-pane-activity', () => {
         advance(ms: number) { now += ms },
         settings(value: Record<string, unknown>) {
           section.value = value
-          harness.ctx.emit('settings/document-updated', 'mayfly' as never)
+          harness.ctx.emit('settings/document-updated', 'mayfly' as never, 1)
         },
       }
     }
@@ -680,7 +679,7 @@ describe('mayfly-pane-activity', () => {
         expect(harness.screen.paneLines()).toEqual([`${MOON_SPINNER_FRAMES[0]!} Running commands · Tip: ${FIRST_TIP}`])
       }
       // An unrelated settings namespace changes nothing.
-      harness.ctx.emit('settings/document-updated', 'shell' as never)
+      harness.ctx.emit('settings/document-updated', 'shell' as never, 1)
       harness.push({ phase: 'thinking', activity: { kind: 'reasoning', detail: 'weigh the retry' } })
       expect(harness.screen.paneLines()[0]).toBe(`⠋ Thinking · Tip: ${buildTipRotation(STATUS_TIPS)[1]!.text}`)
       harness.settings({ transcriptView: 'standard' })

@@ -389,7 +389,8 @@ describe('direct pane surface renderer', () => {
       expect(invalid.join(' ')).toContain('This surface')
       expect(invalid.every(row => visibleWidth(row) <= 12)).toBe(true)
       const nullableComponent = entry(f.runtime.surfaces, 'nullable').component
-      expect(getLayoutNode(nullableComponent).entries.length).toBeGreaterThan(0)
+      const layout = getLayoutNode(nullableComponent)
+      expect(layout !== undefined && 'entries' in layout ? layout.entries.length : 0).toBeGreaterThan(0)
       expect((nullableComponent as MayflyFocusable).focused).toBe(false)
       nullableComponent.invalidate()
       nullable = true
@@ -1024,7 +1025,7 @@ describe('direct pane surface renderer', () => {
         f.register({ id: 'row', priority: 20, render: () => ui.stack.row([ui.divider(), ui.text('row')]) }),
         f.register({ id: 'gapped', priority: 19, render: () => ui.stack.column([ui.divider(), ui.text('gap')], { gap: 1 }) }),
         f.register({ id: 'labelled', priority: 18, render: () => ui.stack.column([ui.divider({ label: 'Label' }), ui.text('label')]) }),
-        f.register({ id: 'scoped', priority: 17, render: () => ({ kind: 'stack', direction: 'column', children: [{ node: ui.divider(), when: { minColumns: 1 } }, { node: ui.text('scoped') }] }) }),
+        f.register({ id: 'scoped', priority: 17, render: () => ({ kind: 'stack', direction: 'column', children: [{ node: ui.divider(), when: { minWidth: 1 } }, { node: ui.text('scoped') }] }) }),
         f.register({ id: 'plain', priority: 16, render: () => ui.text('plain') }),
       ]
       await flush()

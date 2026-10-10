@@ -41,6 +41,7 @@ const COLORS = {
   mdCodeBlockBorder: id, mdQuote: id, mdQuoteBorder: id, mdHr: id, mdListBullet: id,
   diffAdded: id, diffRemoved: id, diffAddedStrong: id, diffRemovedStrong: id,
   diffGutter: id, diffMeta: id, diffAddedBg: id, diffRemovedBg: id,
+  modelHighlight: id, logoGradient: [],
 }
 
 class FakeScreen implements MayflyScreen {
@@ -71,7 +72,7 @@ class FakeScreen implements MayflyScreen {
     const index = this.children.indexOf(component)
     if (index !== -1) this.children.splice(index, 1)
   }
-  setFocus(): void {}
+  setFocus(_component: MayflyComponent | null): void {}
   showOverlay(): MayflyOverlayHandle { throw new Error('overlays are out of scope') }
   requestRender(force?: boolean): void { this.renderRequests.push(force) }
   contentChanged(): boolean { this.requestRender(); return false }
@@ -79,6 +80,8 @@ class FakeScreen implements MayflyScreen {
   followContent(): void { this.follows += 1 }
   suspend<T>(fn: () => Promise<T>): Promise<T> { return fn() }
   setTitle(): void {}
+  scrollContent(): boolean { return false }
+  setContentScrollHandler(): () => void { return () => {} }
 }
 
 class FakeKeymap implements MayflyKeymap {
@@ -179,7 +182,7 @@ async function bootTranscript(
   const screen = new FakeScreen()
   const keymap = new FakeKeymap()
   const projections = new FakeProjectionService()
-  const _status = new MayflyStatusService(ctx)
+  void new MayflyStatusService(ctx)
   let active = initial
   let revision = 0
   // The displayed conversation: the primary, or a BTW with its history floor.
@@ -320,7 +323,7 @@ describe('mayfly-transcript through the real Loader', () => {
 
     const baseline = screen.renderRequests.length
     const other = fakeAgent([])
-    other.session.id = 'other'
+    Object.assign(other.session, { id: 'other' })
     ctx.emit('session/event', other.session, textDelta(2, 1, 'foreign'))
     expect(screen.renderRequests.length).toBe(baseline)
 
@@ -350,7 +353,7 @@ describe('mayfly-transcript through the real Loader', () => {
       assistantEvent(2, 1, [{ type: 'text', text: 'BTW answer' }]),
     ])
     btw.id = 'btw-child'
-    btw.session.id = 'btw-child'
+    Object.assign(btw.session, { id: 'btw-child' })
     const { ctx, screen, select, selectAuxiliary } = await bootTranscript(main)
     expect(contentLines(screen).join('\n')).toContain('main history')
 
@@ -380,7 +383,7 @@ describe('mayfly-transcript through the real Loader', () => {
       resetSeq()
       const worker = fakeAgent([turnStart(1), stepStart(1, 1), userEvent('child question'), reasoningDelta(1, 1, 'child thought')])
       worker.id = 'worker-1'
-      worker.session.id = 'worker-1'
+      Object.assign(worker.session, { id: 'worker-1' })
       const { screen, showReadonlyChild, select } = await bootTranscript(main)
       showReadonlyChild(worker)
       const child = contentLines(screen).join('\n')
@@ -409,7 +412,7 @@ describe('mayfly-transcript through the real Loader', () => {
       assistantEvent(1, 1, [{ type: 'text', text: 'session B answer' }]),
     ])
     second.id = 'parent-2'
-    second.session.id = 'parent-2'
+    Object.assign(second.session, { id: 'parent-2' })
     const { screen, select } = await bootTranscript(first)
     expect(contentLines(screen).join('\n')).toContain('session A answer')
 
@@ -509,7 +512,7 @@ describe('mayfly-transcript through the real Loader', () => {
 
     const toggle = keymap.actions.find(action => action.id === ACTION_TOGGLE_COLLAPSE)
     const baseline = screen.renderRequests.length
-    toggle?.handler()
+    toggle?.handler!()
     expect(screen.renderRequests.length).toBeGreaterThan(baseline)
     expect(screen.renderRequests.at(-1)).toBe(true)
 

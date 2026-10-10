@@ -11,7 +11,7 @@
 import { chmodSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from 'vitest'
 import type { Context } from '@deepseek-ai/cordis'
 import type { SettingsNamespace } from '@deepseek-ai/dsh-settings'
 import {
@@ -66,8 +66,8 @@ describe('mayfly-paste-image plugin', () => {
   let root: string
   let editor: FakeMayflyEditor
   let notices: string[]
-  let saveImage: ReturnType<typeof vi.fn>
-  let saveImages: ReturnType<typeof vi.fn>
+  let saveImage: Mock<(input: SaveImageAttachment) => Promise<ImageAttachmentRef>>
+  let saveImages: Mock<(inputs: readonly SaveImageAttachment[]) => Promise<ImageAttachmentRef[]>>
   let imageLimits: ImageAttachmentLimits
   let ctx: Context
   let keymap: FakeKeymap
@@ -448,8 +448,8 @@ describe('default clipboard image reader', () => {
   const savedRuntimeDir = process.env.XDG_RUNTIME_DIR
   let editor: FakeMayflyEditor
   let notices: string[]
-  let saveImage: ReturnType<typeof vi.fn>
-  let saveImages: ReturnType<typeof vi.fn>
+  let saveImage: Mock<(input: SaveImageAttachment) => Promise<ImageAttachmentRef>>
+  let saveImages: Mock<(inputs: readonly SaveImageAttachment[]) => Promise<ImageAttachmentRef[]>>
   let imageLimits: ImageAttachmentLimits
   let ctx: Context
   let fiber: { dispose(): Promise<void> } | undefined

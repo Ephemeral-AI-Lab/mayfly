@@ -13,7 +13,7 @@ import { ui, type MayflyUiEvent, type MayflyUiNode } from '../../../ui/src/index
 import { readGrid, serializeGrid } from '../../../../script/scenarios/grid.mjs'
 import { DARK_BACKGROUNDS, DARK_FOREGROUNDS } from '../../src/core/theme-dark.ts'
 import { colorsFromForegrounds } from '../../src/core/theme-palette.ts'
-import { MayflyUiSurfaceRuntime, compileMayflyUiNode, compileMayflyUiSurfaceNode, type MayflyUiCompilerOptions } from '../../src/core/ui-compiler.ts'
+import { MayflyUiSurfaceRuntime, compileMayflyUiNode, compileMayflyUiSurfaceNode } from '../../src/core/ui-compiler.ts'
 import { UiSurfaceModel } from '../../src/core/ui-interaction-surface.ts'
 import type { MayflyComponents, MayflySemanticColors } from '../../src/core/types.ts'
 import { sliceByColumn, truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/width.ts'
@@ -69,7 +69,7 @@ export interface RealSurface {
 export interface RealSurfaceOptions {
   readonly components: MayflyComponents
   readonly events?: (event: MayflyUiEvent) => void
-  readonly overrides?: Partial<MayflyUiCompilerOptions>
+  readonly overrides?: Partial<Omit<Parameters<typeof compileMayflyUiSurfaceNode>[1], 'surfaceRuntime'>>
   /** Whether the surface holds focus. Default true. */
   readonly focused?: boolean
 }
@@ -79,7 +79,7 @@ export function createRealSurface(node: unknown, width: number, options: RealSur
   const model = new UiSurfaceModel('probe', {
     scope: { kind: 'app', targetId: 'probe' }, source: [], revision: 1, update: { reason: 'data' },
     node: node as never,
-    events: { prepare: async event => { options.events?.(event); return { reply: { kind: 'completed' as const }, publish: () => true } } },
+    events: { prepare: async (event: MayflyUiEvent) => { options.events?.(event); return { reply: { kind: 'completed' as const }, publish: () => true } } },
     definition: { onEvent: {} },
   } as never)
   const runtime = new MayflyUiSurfaceRuntime(model)
@@ -114,6 +114,7 @@ export function paint(node: MayflyUiNode, width: number, components: MayflyCompo
     colors: PROBE_PALETTE,
     getViewport: () => ({ columns: width, rows: 200 }),
     screenMode: 'alternate',
+    emit: () => {},
   })
   if (!result.ok) throw new Error(result.message)
   return result.value.component.render(width)

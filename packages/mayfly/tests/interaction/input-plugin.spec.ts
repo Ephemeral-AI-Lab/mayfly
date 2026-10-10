@@ -8,7 +8,7 @@
 import { describe, expect, it, vi, afterEach, beforeEach } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
-import type { MayflyComponent, MayflyEditor, MayflyFocusable } from '../../src/core/index.ts'
+import type { MayflyComponent, MayflyFocusable } from '../../src/core/index.ts'
 import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
 import CommandRuntime, { type CommandResult } from '@deepseek-ai/dsh-commands'
 import type { UserMessage } from '@deepseek-ai/dsh-llm'
@@ -92,7 +92,11 @@ interface DisplayedFixture {
 }
 
 /** A displayed side conversation at one registry revision. */
-function sideView(side: Omit<Extract<MayflyConversationView, { readonly kind: 'btw' | 'subagent' }>, 'id' | 'residency'>, revision: number): DisplayedFixture {
+type SideView = Extract<MayflyConversationView, { readonly kind: 'btw' | 'subagent' }>
+type Unregistered<View> = View extends unknown ? Omit<View, 'id' | 'residency'> : never
+type SideFixture = Unregistered<SideView>
+
+function sideView(side: SideFixture, revision: number): DisplayedFixture {
   return { displayed: { ...side, id: `session:${side.sessionId}`, residency: 'displayed' } as MayflyConversationView, revision }
 }
 
@@ -186,7 +190,7 @@ describe('mayfly-input plugin', () => {
     // prompt symbol and the padding that reserves its columns — and the hint
     // row renders nothing at rest (the persistent tier retired with S15).
     expect(editor.promptSymbol).toBe('>')
-    expect((ctx.mayflyComponents as FakeMayflyComponents).editorOptions[0]).toEqual({ paddingX: 4 })
+    expect((ctx.mayflyComponents as unknown as FakeMayflyComponents).editorOptions[0]).toEqual({ paddingX: 4 })
     expect(hint.render(80)).toEqual([])
     hint.invalidate()
   })
@@ -334,7 +338,7 @@ describe('mayfly-input plugin', () => {
   })
 
   it('routes interactive subagent input through the native parent address', async () => {
-    const prompt = vi.fn(async () => ({ messageId: 'subagent-message' }))
+    const prompt = vi.fn(async (_request: unknown) => ({ messageId: 'subagent-message' }))
     const interruptByParent = vi.fn()
     const view = sideView({
         kind: 'subagent' as const,
@@ -359,7 +363,7 @@ describe('mayfly-input plugin', () => {
   })
 
   it('routes interactive subagent input when the editor lacks the draft seam', async () => {
-    const prompt = vi.fn(async () => ({ messageId: 'subagent-message' }))
+    const prompt = vi.fn(async (_request: unknown) => ({ messageId: 'subagent-message' }))
     const view = sideView({
         kind: 'subagent' as const,
         sessionId: 'input-spec',
@@ -369,7 +373,7 @@ describe('mayfly-input plugin', () => {
         access: 'interactive' as const,
       }, 6)
     const { editor } = await mount({ view, subagents: { prompt, interruptByParent: vi.fn() } })
-    ;(editor as MayflyEditor).consumeSubmittedDraft = undefined
+    ;(editor as { consumeSubmittedDraft?: unknown }).consumeSubmittedDraft = undefined
     type(editor, 'seamless subagent text')
     editor.handleInput(KEY.enter)
     await vi.waitFor(() => expect(prompt).toHaveBeenCalledOnce())
@@ -379,7 +383,7 @@ describe('mayfly-input plugin', () => {
   })
 
   it('converts image blocks for the native subagent prompt API', async () => {
-    const prompt = vi.fn(async () => ({ messageId: 'subagent-image-message' }))
+    const prompt = vi.fn(async (_request: unknown) => ({ messageId: 'subagent-image-message' }))
     const view = sideView({
         kind: 'subagent' as const,
         sessionId: 'input-spec',
@@ -502,7 +506,7 @@ describe('mayfly-input plugin', () => {
   })
 
   it('restores subagent images after a successful prompt is safely retracted', async () => {
-    const prompt = vi.fn(async () => ({ messageId: 'retract-subagent-message' }))
+    const prompt = vi.fn(async (_request: unknown) => ({ messageId: 'retract-subagent-message' }))
     const retract = vi.fn(() => true)
     const view = sideView({
         kind: 'subagent' as const,
@@ -531,7 +535,7 @@ describe('mayfly-input plugin', () => {
   })
 
   it('routes Ctrl-S through the subagent API and preserves a readonly target draft', async () => {
-    const prompt = vi.fn(async () => ({ messageId: 'steered-subagent-message' }))
+    const prompt = vi.fn(async (_request: unknown) => ({ messageId: 'steered-subagent-message' }))
     const interactive = sideView({
         kind: 'subagent' as const,
         sessionId: 'input-spec',
@@ -903,8 +907,8 @@ describe('mayfly-input plugin', () => {
         provider.provide('permissionPresets', {
           names: ['read-only', 'workspace-write'],
           current: () => 'workspace-write',
-          resolve: name => ({ sandbox: `${name}-sandbox`, approval: 'ask' }),
-          optionOf: name => ({ value: name, name }),
+          resolve: (name: string) => ({ sandbox: `${name}-sandbox`, approval: 'ask' }),
+          optionOf: (name: string) => ({ value: name, name }),
         })
       },
     })
@@ -939,8 +943,8 @@ describe('mayfly-input plugin', () => {
     ctx.provide('permissionPresets', {
       names: ['read-only'],
       current: () => 'read-only',
-      resolve: name => ({ sandbox: name, approval: 'ask' }),
-      optionOf: name => ({ value: name, name }),
+      resolve: (name: string) => ({ sandbox: name, approval: 'ask' }),
+      optionOf: (name: string) => ({ value: name, name }),
     })
     type(editor, '/permission read-only')
     editor.handleInput(KEY.enter)
@@ -1147,7 +1151,7 @@ describe('mayfly-input plugin', () => {
 
   it('contains synchronous hint refresh reentry from invalid extension feedback', async () => {
     const { ctx, hint } = await mount()
-    ctx.mayflyEditorExtensions.register({ id: 'input.invalid-after' }, { after: { kind: 'actions', id: 'interactive-after', items: [] } })
+    ctx.mayflyEditorExtensions.register({ id: 'input.invalid-after' }, { after: { kind: 'actions', id: 'interactive-after', items: [] } as never })
     expect(hint.render(80).join('\n')).toContain('editor extension after must be passive')
   })
 
@@ -1194,7 +1198,7 @@ describe('mayfly-input plugin', () => {
     expect(first.editor.history).toEqual(['/theme dark', 'hello'])
     await first.fiber.dispose()
     await first.ctx.plugin(inputPlugin)
-    const second = (first.ctx.mayflyComponents as FakeMayflyComponents).editors.at(-1)!
+    const second = (first.ctx.mayflyComponents as unknown as FakeMayflyComponents).editors.at(-1)!
     expect(second.history).toEqual(['/theme dark', 'hello'])
   })
 
@@ -1241,7 +1245,7 @@ describe('mayfly-input plugin', () => {
 
       // Status, command, and mode updates republish the same session. They
       // are not session switches and must not discard the receipt.
-      ctx.emit('test/session-changed')
+      ctx.emit('test/session-changed', ctx.mayflyCurrentAgent.current())
       expect(editor.onKey?.(KEY.escape)).toBe(true)
       expect(retract).toHaveBeenCalledWith(String(message.id))
       expect(editor.getText()).toBe('revise this prompt')
@@ -1841,7 +1845,7 @@ describe('mayfly-input plugin', () => {
       const inbox = fakeInbox()
       const { editor, followup } = await mount({ inbox })
       enqueueFollowups(inbox, followup)
-      ;(editor as MayflyEditor).restoreSubmittedDraft = undefined
+      ;(editor as { restoreSubmittedDraft?: unknown }).restoreSubmittedDraft = undefined
       type(editor, 'plain restore')
       editor.handleInput(KEY.enter)
       expect(editor.onKey?.(KEY.up)).toBe(true)
@@ -1851,8 +1855,8 @@ describe('mayfly-input plugin', () => {
     it('restores retraction through setText when the editor lacks the draft seam', async () => {
       const retract = vi.fn(() => true)
       const { editor, followup } = await mount({ running: true, retract })
-      ;(editor as MayflyEditor).consumeSubmittedDraft = undefined
-      ;(editor as MayflyEditor).restoreSubmittedDraft = undefined
+      ;(editor as { consumeSubmittedDraft?: unknown }).consumeSubmittedDraft = undefined
+      ;(editor as { restoreSubmittedDraft?: unknown }).restoreSubmittedDraft = undefined
       type(editor, 'retract me')
       editor.handleInput(KEY.enter)
       expect(followup).toHaveBeenCalledOnce()
@@ -1890,7 +1894,7 @@ describe('mayfly-input plugin', () => {
       type(editor, '[image #1] gone')
       editor.handleInput(KEY.enter)
       const message = inbox.nextTurn[0]!
-      ctx.emit('agent/inbox/claimed', { agent, message })
+      ctx.emit('agent/inbox/claimed', { agent, message, turn: 1 })
 
       expect(editor.onKey?.(KEY.up)).toBe(true)
       // The record is gone: no rollback ran and the image re-minted its marker.
@@ -1937,7 +1941,7 @@ describe('mayfly-input plugin', () => {
       const inbox = fakeInbox()
       const { editor, followup } = await mount({ inbox })
       enqueueFollowups(inbox, followup)
-      ;(editor as MayflyEditor).consumeSubmittedDraft = undefined
+      ;(editor as { consumeSubmittedDraft?: unknown }).consumeSubmittedDraft = undefined
       type(editor, 'no seam')
       editor.handleInput(KEY.enter)
       expect(editor.onKey?.(KEY.up)).toBe(true)
@@ -1948,7 +1952,7 @@ describe('mayfly-input plugin', () => {
       const inbox = fakeInbox()
       const { editor, steer } = await mount({ inbox, running: true })
       steer.mockImplementation((message: UserMessage) => { inbox.nextStep.push(message) })
-      ;(editor as MayflyEditor).captureDraft = undefined
+      ;(editor as { captureDraft?: unknown }).captureDraft = undefined
       type(editor, 'plain steer')
       editor.handleInput(KEY.ctrlS)
       expect(steer).toHaveBeenCalledOnce()
@@ -1965,7 +1969,7 @@ describe('the Alt+M model cycle key', () => {
     const state = { current: { provider: 'mock', model: 'mock' } }
     const modelRef = {
       get current() { return state.current },
-      set current(next: unknown) { state.current = next; writes.push(next) },
+      set current(next: { provider: string, model: string }) { state.current = next; writes.push(next) },
     }
     const { ctx, editor } = await mount({ modelRef })
     ctx.provide('llm', {

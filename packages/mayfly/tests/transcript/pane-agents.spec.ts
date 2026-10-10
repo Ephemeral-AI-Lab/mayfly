@@ -9,7 +9,8 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Agent } from '@deepseek-ai/dsh-agent'
-import type { Session, SessionEvent } from '@deepseek-ai/dsh-session'
+import { SessionSeq, type Session, type SessionEvent } from '@deepseek-ai/dsh-session'
+import type { Context } from '@deepseek-ai/cordis'
 import * as paneAgents from '../../src/transcript/pane-agents.ts'
 import {
   resetSeq,
@@ -52,8 +53,13 @@ interface Rig extends PanePluginHarness {
 async function boot(events: SessionEvent[] = []): Promise<Rig> {
   resetSeq()
   const agent = fakeAgent(events)
-  const harness = await bootPanePlugin(paneAgents, agent)
+  const harness = await bootPanePlugin(paneAgents, agent as never)
   return { ...harness, agent }
+}
+
+/** Emit a session event built by hand, malformed ones included, as the store would publish it. */
+function emitEvent(ctx: Context, session: unknown, event: unknown): void {
+  ctx.emit('session/event', session as Session, event as SessionEvent)
 }
 
 /** A fake child session the tracker admits. */
@@ -63,7 +69,7 @@ function childSession(id: string): Session {
 
 /** A child `turn/start` for the emit path. */
 function childTurnStart(): SessionEvent<'turn/start'> {
-  return { type: 'turn/start', seq: 1, time: T0 + 1_000, data: { turn: 1 } }
+  return { type: 'turn/start', seq: SessionSeq(1), time: T0 + 1_000, data: { turn: 1 } }
 }
 
 describe('mayfly-pane-agents plugin', () => {
@@ -102,7 +108,7 @@ describe('mayfly-pane-agents plugin', () => {
     ])
     expect(rig.screen.paneLines(140).join('\n')).toContain('Error: boom')
     // A same-turn notification re-queries the failed row; the cached error line serves it.
-    rig.ctx.emit('session/event', rig.agent.session, { ...stepStart(1, 2), seq: 50, time: T0 + 8_000 })
+    emitEvent(rig.ctx, rig.agent.session, { ...stepStart(1, 2), seq: 50, time: T0 + 8_000 })
     expect(rig.screen.paneLines(140).join('\n')).toContain('Error: boom')
   })
 
@@ -112,7 +118,7 @@ describe('mayfly-pane-agents plugin', () => {
       stepStart(1, 1),
       subagentCallEvent(1, 1, 'a1', 'subagent', 'Survey', 'survey', { time: T0 }),
       // An ordinary call in the same stream is not pane material.
-      toolCallEvent(1, 1, 'b1', 'bash', '{}', { time: T0 + 1_000 }),
+      toolCallEvent(1, 1, 'b1', 'bash', '{}'),
     ])
     const rows = rig.screen.paneLines(140)
     // One member: no tautological breakdown and no clock beside the row's own.
@@ -121,12 +127,12 @@ describe('mayfly-pane-agents plugin', () => {
     expect(rows.join('\n')).not.toContain('bash')
     // The turn is cut before the call answers: the member reads as cancelled
     // (never running forever) and settles the group.
-    rig.ctx.emit('session/event', rig.agent.session, { type: 'turn/end', seq: 98, time: T0 + 9_000, data: { turn: 1, reason: { kind: 'aborted', reason: { kind: 'user' } } } } as never)
+    emitEvent(rig.ctx, rig.agent.session, { type: 'turn/end', seq: 98, time: T0 + 9_000, data: { turn: 1, reason: { kind: 'aborted', reason: { kind: 'user' } } } } as never)
     const cut = rig.screen.paneLines(140).join('\n')
     expect(cut).toContain('cancelled Survey')
     expect(cut.split('\n')[1]).toBe('✓ 1 agent finished')
     // The next turn clears the settled group.
-    rig.ctx.emit('session/event', rig.agent.session, { ...turnStart(2), seq: 99, time: T0 + 10_000 })
+    emitEvent(rig.ctx, rig.agent.session, { ...turnStart(2), seq: 99, time: T0 + 10_000 })
     expect(rig.screen.paneLines(140)).toEqual([])
   })
 
@@ -135,19 +141,19 @@ describe('mayfly-pane-agents plugin', () => {
     const agent = fakeAgent([turnStart(1)])
     rig.ctx.emit('test/session-changed', agent)
     // A result whose message carries no content at all.
-    rig.ctx.emit('session/event', agent.session, {
+    emitEvent(rig.ctx, agent.session, {
       type: 'tool/result', seq: 50, time: T0 + 1_000,
       data: { turn: 1, step: 1, message: undefined } as never,
     })
     // A spawn call with unparsable arguments joins with no description.
-    rig.ctx.emit('session/event', agent.session, {
+    emitEvent(rig.ctx, agent.session, {
       type: 'tool/call', seq: 51, time: T0 + 2_000,
       data: { turn: 1, step: 1, callId: 'bad1', name: 'subagent', arguments: 'not-json' },
     })
     expect(rig.screen.paneLines(140).join('\n')).toContain('running subagent')
     // A result pairing into it with a non-text block yields empty text;
     // a message without a content field pairs the same empty way.
-    rig.ctx.emit('session/event', agent.session, {
+    emitEvent(rig.ctx, agent.session, {
       type: 'tool/result', seq: 52, time: T0 + 3_000,
       data: {
         turn: 1, step: 1,
@@ -160,11 +166,11 @@ describe('mayfly-pane-agents plugin', () => {
       },
     })
     expect(rig.screen.paneLines(140).join('\n')).toContain('done subagent')
-    rig.ctx.emit('session/event', agent.session, {
+    emitEvent(rig.ctx, agent.session, {
       type: 'tool/call', seq: 53, time: T0 + 4_000,
       data: { turn: 1, step: 1, callId: 'bad2', name: 'subagent_fork', arguments: '{}' },
     })
-    rig.ctx.emit('session/event', agent.session, {
+    emitEvent(rig.ctx, agent.session, {
       type: 'tool/result', seq: 54, time: T0 + 5_000,
       data: {
         turn: 1, step: 1,
@@ -181,7 +187,7 @@ describe('mayfly-pane-agents plugin', () => {
     // nothing (the pane's defensive guard).
     const agent = fakeAgent([turnStart(1)])
     harness.ctx.emit('test/session-changed', agent)
-    harness.ctx.emit('session/event', agent.session, {
+    emitEvent(harness.ctx, agent.session, {
       type: 'tool/result', seq: 50, time: T0 + 1_000,
       data: { turn: 1, step: 1, message: { role: 'tool', content: [] } },
     })
@@ -218,7 +224,7 @@ describe('mayfly-pane-agents plugin', () => {
       toolResultEvent(1, 1, 'a1', 'started subagent 9f5c4086a0674b55b621c3eaf8b88c0e', { time: T0 + 5_000 }),
     ])
     expect(rig.screen.paneLines(140).join('\n')).toContain('done Survey')
-    rig.ctx.emit('session/event', rig.agent.session, { ...turnStart(2), seq: 99, time: T0 + 10_000 })
+    emitEvent(rig.ctx, rig.agent.session, { ...turnStart(2), seq: 99, time: T0 + 10_000 })
     expect(rig.screen.paneLines(140)).toEqual([])
   })
 
@@ -232,12 +238,12 @@ describe('mayfly-pane-agents plugin', () => {
       toolResultEvent(1, 1, 'a2', 'started subagent bd317666afec47f4777c7ca701c1779e', { time: T0 + 5_000 }),
     ])
     const child = childSession('bd317666afec47f4777c7ca701c1779e')
-    rig.ctx.emit('session/event', child, childTurnStart())
+    emitEvent(rig.ctx, child, childTurnStart())
     // Mixed phases carry the breakdown; several members carry the group clock.
     expect(rig.screen.paneLines(140)[1]).toBe('● Running 2 agents (1 done, 1 running) · 6s')
     // a1's child never starts: it drops at the boundary while a2 stays
     // live-running — the prune keeps the survivor's cached row nodes.
-    rig.ctx.emit('session/event', rig.agent.session, { ...turnStart(2), seq: 99, time: T0 + 10_000 })
+    emitEvent(rig.ctx, rig.agent.session, { ...turnStart(2), seq: 99, time: T0 + 10_000 })
     const text = rig.screen.paneLines(140).join('\n')
     expect(text).toContain('running Map docs')
     expect(text).not.toContain('Survey')
@@ -263,15 +269,15 @@ describe('mayfly-pane-agents plugin', () => {
     const child = childSession('9f5c4086a0674b55b621c3eaf8b88c0e')
     // The ack landed but the child still runs — the live overlay is the
     // authority, so the next turn start does not clear the pane.
-    rig.ctx.emit('session/event', child, childTurnStart())
-    rig.ctx.emit('session/event', rig.agent.session, { ...turnStart(2), seq: 99, time: T0 + 10_000 })
+    emitEvent(rig.ctx, child, childTurnStart())
+    emitEvent(rig.ctx, rig.agent.session, { ...turnStart(2), seq: 99, time: T0 + 10_000 })
     const running = rig.screen.paneLines(140).join('\n')
     expect(running).toContain('running Survey')
-    rig.ctx.emit('session/event', child, {
+    emitEvent(rig.ctx, child, {
       type: 'turn/end', seq: 2, time: T0 + 30_000, data: { turn: 1, reason: { kind: 'completed' } },
     })
     expect(rig.screen.paneLines(140).join('\n')).toContain('done Survey')
-    rig.ctx.emit('session/event', rig.agent.session, { ...turnStart(3), seq: 100, time: T0 + 60_000 })
+    emitEvent(rig.ctx, rig.agent.session, { ...turnStart(3), seq: 100, time: T0 + 60_000 })
     expect(rig.screen.paneLines(140)).toEqual([])
   })
 
@@ -283,12 +289,12 @@ describe('mayfly-pane-agents plugin', () => {
       toolResultEvent(1, 1, 'a1', 'started subagent 9f5c4086a0674b55b621c3eaf8b88c0e', { time: T0 + 70 }),
     ])
     const child = childSession('9f5c4086a0674b55b621c3eaf8b88c0e')
-    rig.ctx.emit('session/event', child, childTurnStart())
-    rig.ctx.emit('session/event', child, {
+    emitEvent(rig.ctx, child, childTurnStart())
+    emitEvent(rig.ctx, child, {
       type: 'tool/call', seq: 2, time: T0 + 2_000,
       data: { turn: 1, step: 1, callId: 't1', name: 'read', arguments: '{}' },
     })
-    rig.ctx.emit('session/event', child, {
+    emitEvent(rig.ctx, child, {
       type: 'assistant/message', seq: 3, time: T0 + 3_000,
       data: {
         turn: 1, step: 1,
@@ -313,7 +319,7 @@ describe('mayfly-pane-agents plugin', () => {
       toolResultEvent(1, 1, 'a1', 'started subagent 9f5c4086a0674b55b621c3eaf8b88c0e', { time: T0 + 70 }),
     ])
     const child = childSession('9f5c4086a0674b55b621c3eaf8b88c0e')
-    rig.ctx.emit('session/event', child, childTurnStart())
+    emitEvent(rig.ctx, child, childTurnStart())
     rig.facts.setChildDraft('9f5c4086a0674b55b621c3eaf8b88c0e', {
       sessionId: '9f5c4086a0674b55b621c3eaf8b88c0e',
       attemptId: 'a1', revision: 1, turn: 1, step: 0,
@@ -351,7 +357,7 @@ describe('mayfly-pane-agents plugin', () => {
       toolResultEvent(1, 1, 'three', 'started subagent 9f5c4086a0674b55b621c3eaf8b88c0e', { time: T0 + 70 }),
       toolCallEvent(1, 1, 'four', 'subagent', JSON.stringify({ description: 'Four' })),
     ])
-    rig.ctx.emit('session/event', childSession('9f5c4086a0674b55b621c3eaf8b88c0e'), childTurnStart())
+    emitEvent(rig.ctx, childSession('9f5c4086a0674b55b621c3eaf8b88c0e'), childTurnStart())
     const screen = rig.screen
     const rows = screen.paneLines(200)
     // A crowded group folds the live activity into the member's own row.
@@ -390,7 +396,7 @@ describe('mayfly-pane-agents plugin', () => {
       toolResultEvent(1, 1, 'a1', 'started subagent 9f5c4086a0674b55b621c3eaf8b88c0e', { time: T0 + 70 }),
     ])
     const child = childSession('9f5c4086a0674b55b621c3eaf8b88c0e')
-    rig.ctx.emit('session/event', child, childTurnStart())
+    emitEvent(rig.ctx, child, childTurnStart())
     const draft = (phase: 'thinking' | 'composing') => ({
       sessionId: '9f5c4086a0674b55b621c3eaf8b88c0e',
       attemptId: 'a1', revision: 1, turn: 1, step: 0,
@@ -417,7 +423,7 @@ describe('mayfly-pane-agents plugin', () => {
       toolResultEvent(1, 1, 'a2', 'started subagent bd317666afec47f4777c7ca701c1779e', { time: T0 + 80 }),
     ])
     const child = childSession('9f5c4086a0674b55b621c3eaf8b88c0e')
-    rig.ctx.emit('session/event', child, childTurnStart())
+    emitEvent(rig.ctx, child, childTurnStart())
     const entry = () => rig.ctx.mayflyPanes.list().find(candidate => candidate.id === 'mayfly.pane.agents')!
     const draft = (chars: number) => ({
       sessionId: '9f5c4086a0674b55b621c3eaf8b88c0e',
@@ -447,7 +453,7 @@ describe('mayfly-pane-agents plugin', () => {
     expect(rig.screen.paneLines(140).join('\n')).toContain('done Survey')
     const revision = () => rig.ctx.mayflyPanes.list().find(entry => entry.id === 'mayfly.pane.agents')!.revision
     const before = revision()
-    rig.ctx.emit('session/event', rig.agent.session, { ...stepStart(1, 2), seq: 50, time: T0 + 8_000 })
+    emitEvent(rig.ctx, rig.agent.session, { ...stepStart(1, 2), seq: 50, time: T0 + 8_000 })
     expect(revision()).toBe(before)
     await rig.dispose()
   })
@@ -463,7 +469,7 @@ describe('mayfly-pane-agents plugin', () => {
       toolResultEvent(1, 1, 'a1', 'started subagent 9f5c4086a0674b55b621c3eaf8b88c0e', { time: T0 + 5_000 }),
     ])
     const child = childSession('9f5c4086a0674b55b621c3eaf8b88c0e')
-    rig.ctx.emit('session/event', child, childTurnStart())
+    emitEvent(rig.ctx, child, childTurnStart())
     expect(rig.screen.paneLines(140).join('\n')).toContain('running Queued')
     const revision = rig.ctx.mayflyPanes.list().find(entry => entry.id === 'mayfly.pane.agents')!.revision
     now += 1_000
@@ -471,7 +477,7 @@ describe('mayfly-pane-agents plugin', () => {
     expect(rig.screen.paneLines(140).join('\n')).toContain('waiting Queued')
     expect(rig.screen.paneLines(140).join('\n')).toContain('1s')
     expect(rig.ctx.mayflyPanes.list().find(entry => entry.id === 'mayfly.pane.agents')!.revision).toBeGreaterThan(revision)
-    rig.ctx.emit('session/event', child, {
+    emitEvent(rig.ctx, child, {
       type: 'tool/call', seq: 2, time: T0 + 2_000,
       data: { turn: 1, step: 1, callId: 't1', name: 'read', arguments: '{}' },
     })
@@ -484,7 +490,7 @@ describe('mayfly-pane-agents plugin', () => {
       subagentCallEvent(1, 1, 'a1', 'subagent', 'Pending', 'pending', { time: T0 }),
       toolResultEvent(1, 1, 'a1', 'started subagent 9f5c4086a0674b55b621c3eaf8b88c0e', { time: T0 + 5_000 }),
     ])
-    pending.ctx.emit('session/event', child, childTurnStart())
+    emitEvent(pending.ctx, child, childTurnStart())
     pending.screen.paneLines(140)
     const next = fakeAgent([])
     ;(next as unknown as { id: string }).id = 'parent-next'
@@ -497,7 +503,7 @@ describe('mayfly-pane-agents plugin', () => {
       subagentCallEvent(1, 1, 'a1', 'subagent', 'Unloading', 'unloading', { time: T0 }),
       toolResultEvent(1, 1, 'a1', 'started subagent 9f5c4086a0674b55b621c3eaf8b88c0e', { time: T0 + 5_000 }),
     ])
-    unloading.ctx.emit('session/event', child, childTurnStart())
+    emitEvent(unloading.ctx, child, childTurnStart())
     expect(unloading.screen.paneLines(140).join('\n')).toContain('running Unloading')
     await unloading.dispose()
   })
@@ -538,8 +544,8 @@ describe('mayfly-pane-agents plugin', () => {
       toolResultEvent(1, 1, 'a1', 'started subagent 9f5c4086a0674b55b621c3eaf8b88c0e', { time: T0 + 5_000 }),
     ])
     const child = childSession('9f5c4086a0674b55b621c3eaf8b88c0e')
-    rig.ctx.emit('session/event', child, childTurnStart())
-    rig.ctx.emit('session/event', child, {
+    emitEvent(rig.ctx, child, childTurnStart())
+    emitEvent(rig.ctx, child, {
       type: 'turn/end',
       seq: 2,
       time: T0 + 2_000,
@@ -558,7 +564,7 @@ describe('mayfly-pane-agents plugin', () => {
       toolResultEvent(1, 1, 'f1', 'started background subagent job subagent-1', { time: T0 + 5_000 }),
     ])
     const child = childSession('9c3405b971ad4baf92203564fb4d27e4')
-    rig.ctx.emit('session/event', child, {
+    emitEvent(rig.ctx, child, {
       type: 'user/message', seq: 1, time: T0 + 1_000,
       data: {
         id: 'm1', role: 'user',
@@ -566,7 +572,7 @@ describe('mayfly-pane-agents plugin', () => {
         source: { kind: 'user' },
       },
     })
-    rig.ctx.emit('session/event', child, childTurnStart())
+    emitEvent(rig.ctx, child, childTurnStart())
     expect(rig.screen.paneLines(140).join('\n')).toContain('running Map docs')
   })
 
@@ -587,7 +593,7 @@ describe('mayfly-pane-agents plugin', () => {
 
   it('ignores bindings without a string session id', async () => {
     const rig = await boot()
-    rig.ctx.emit('test/session-binding-changed', { session: { id: 42 } })
+    rig.ctx.emit('test/session-binding-changed', { session: { id: 42 } } as never)
     rig.ctx.emit('test/session-binding-changed', undefined as never)
     expect(rig.screen.paneLines(80)).toEqual([])
     await rig.dispose()

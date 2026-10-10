@@ -192,7 +192,7 @@ describe('@ephemeral-ai/mayfly-ui provider', () => {
     const gate = Promise.withResolvers<{ readonly node: { readonly kind: 'text', readonly content: string } }>()
     const pane = ctx.mayflyPanes.register({ id: 'test.late-pane', placement: 'bottom', load: () => gate.promise })
     pane.dispose()
-    gate.resolve({ kind: 'text', content: 'late' })
+    gate.resolve({ node: { kind: 'text', content: 'late' } })
     await Promise.resolve()
     expect(ctx.mayflyPanes.list()).toEqual([])
     await owner.dispose()

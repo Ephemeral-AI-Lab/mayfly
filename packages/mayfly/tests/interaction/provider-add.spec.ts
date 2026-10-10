@@ -2,11 +2,12 @@
  * @module @ephemeral-ai/mayfly/tests/interaction/provider-add
  */
 import { Context } from '@deepseek-ai/cordis'
-import AuthorizationService from '@deepseek-ai/dsh-authorization'
+import AuthorizationService, { type AuthorizationMethod } from '@deepseek-ai/dsh-authorization'
 import { credentialKey } from '@deepseek-ai/dsh-credentials'
 import { SettingsConflictError } from '@deepseek-ai/dsh-settings'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import * as uiProvider from '../../../ui/src/provider.ts'
+import type { MayflyFieldValue, MayflySubmission, MayflySubmittedField } from '../../../ui/src/interaction.ts'
 import { ENDPOINT_PROTOCOLS, openProviderSetup } from '../../src/interaction/provider-add.ts'
 import { deriveKeyRef, normalizeBaseURL, providerProfile } from '../../src/interaction/provider-profile.ts'
 import { buildIndex, setModelsDevLoader } from '../../src/interaction/models-dev.ts'
@@ -54,22 +55,22 @@ const context = (entry: ReturnType<Context['mayflyOverlays']['list']>[number], a
 })
 
 function submission(entry: ReturnType<Context['mayflyOverlays']['list']>[number], options: {
-  route?: unknown
-  key?: unknown
-  baseURL?: unknown
+  route?: MayflyFieldValue
+  key?: MayflyFieldValue
+  baseURL?: MayflyFieldValue
   selectedIds?: readonly string[]
   source?: typeof entry.source
-} = {}) {
+} = {}): MayflySubmission {
   return {
-    actionId: 'save', source: options.source ?? entry.source,
+    actionId: 'save', draftRevision: 1, source: options.source ?? entry.source,
     forms: [
-      { pagePath: address('connection').pagePath, formId: 'connection', fields: [
-        { id: 'route', value: 'route' in options ? options.route : 'gateway', change: 'set' as const },
+      { pagePath: address('connection').pagePath, formId: 'connection', draftRevision: 1, fields: [
+        { id: 'route', value: 'route' in options ? options.route! : 'gateway', change: 'set' as const },
         { id: 'protocol', value: 'openai-completions', change: 'set' as const },
-        { id: 'baseURL', value: 'baseURL' in options ? options.baseURL : 'https://gateway.example/v1', change: 'set' as const },
-        { id: 'key', value: 'key' in options ? options.key : 'private-key', change: 'set' as const },
+        { id: 'baseURL', value: 'baseURL' in options ? options.baseURL! : 'https://gateway.example/v1', change: 'set' as const },
+        { id: 'key', value: 'key' in options ? options.key! : 'private-key', change: 'set' as const },
       ] },
-      { pagePath: address('models').pagePath, formId: 'models', fields: [
+      { pagePath: address('models').pagePath, formId: 'models', draftRevision: 1, fields: [
         { id: 'context', value: null, change: 'unchanged' as const },
         { id: 'efforts', value: [], change: 'unchanged' as const },
       ] },
@@ -183,8 +184,9 @@ describe('provider creation', () => {
     const bench = await setup()
     const entry = await customEntry(bench)
     const action = entry.definition.onEvent!.action!
-    const add = (fields: { id: string, value?: unknown }[], actionSignal = new AbortController().signal) => action(
-      { kind: 'submit', submission: { actionId: 'add-model', source: entry.source, forms: [{ pagePath: address('models').pagePath, formId: 'custom-model', fields }] } },
+    // The staged fields arrive as the renderer would never send them: without their change marker.
+    const add = (fields: readonly { id: string, value?: MayflyFieldValue }[], actionSignal = new AbortController().signal) => action(
+      { kind: 'submit', pagePath: [], controlId: 'custom-model', submission: { actionId: 'add-model', draftRevision: 1, source: entry.source, forms: [{ pagePath: address('models').pagePath, formId: 'custom-model', draftRevision: 1, fields: fields as readonly MayflySubmittedField[] }] } },
       context(entry, actionSignal),
     )
     expect(await add([])).toMatchObject({ kind: 'invalid' })
@@ -389,7 +391,7 @@ describe('provider creation', () => {
     const entry = await customEntry(bench)
     const action = entry.definition.onEvent!.action!
     const missingRoute = await action(
-      { kind: 'submit', submission: submission(entry, { route: null }) },
+      { kind: 'submit', pagePath: [], controlId: 'connection', submission: submission(entry, { route: null }) },
       context(entry),
     )
     expect(missingRoute).toMatchObject({ kind: 'invalid' })
@@ -430,7 +432,7 @@ describe('provider creation', () => {
     mutate.mockImplementationOnce(async (...args) => { await settingsGate.promise; return originalMutate(...args) })
     const settingsAbort = new AbortController()
     const settingsResult = settingsEntry.definition.onEvent!.action!(
-      { kind: 'submit', submission: submission(settingsEntry) },
+      { kind: 'submit', pagePath: [], controlId: 'connection', submission: submission(settingsEntry) },
       context(settingsEntry, settingsAbort.signal),
     )
     await vi.waitFor(() => expect(mutate).toHaveBeenCalled())
@@ -444,7 +446,7 @@ describe('provider creation', () => {
     vi.spyOn(afterCredential.credentials, 'set').mockReturnValueOnce(write.promise)
     const credentialAbort = new AbortController()
     const credentialResult = credentialEntry.definition.onEvent!.action!(
-      { kind: 'submit', submission: submission(credentialEntry) },
+      { kind: 'submit', pagePath: [], controlId: 'connection', submission: submission(credentialEntry) },
       context(credentialEntry, credentialAbort.signal),
     )
     await vi.waitFor(() => expect(afterCredential.credentials.set).toHaveBeenCalled())
@@ -463,7 +465,7 @@ describe('provider creation', () => {
       const entry = await customEntry(bench)
       vi.spyOn(bench.settings, 'mutate').mockRejectedValueOnce(item.error)
       expect(await entry.definition.onEvent!.action!(
-        { kind: 'submit', submission: submission(entry) },
+        { kind: 'submit', pagePath: [], controlId: 'connection', submission: submission(entry) },
         context(entry),
       )).toMatchObject({ kind: item.expected })
     }
@@ -474,7 +476,7 @@ describe('provider creation', () => {
     vi.spyOn(bench.settings, 'mutate').mockReturnValueOnce(failure.promise)
     const abort = new AbortController()
     const result = entry.definition.onEvent!.action!(
-      { kind: 'submit', submission: submission(entry) },
+      { kind: 'submit', pagePath: [], controlId: 'connection', submission: submission(entry) },
       context(entry, abort.signal),
     )
     abort.abort()
@@ -486,12 +488,12 @@ describe('provider creation', () => {
     const stale = await setup()
     const staleEntry = await customEntry(stale)
     const missing = await staleEntry.definition.onEvent!.action!(
-      { kind: 'submit', submission: submission(staleEntry, { source: [] }) },
+      { kind: 'submit', pagePath: [], controlId: 'connection', submission: submission(staleEntry, { source: [] }) },
       context(staleEntry),
     )
     expect(missing).toMatchObject({ kind: 'conflict' })
     const old = await staleEntry.definition.onEvent!.action!(
-      { kind: 'submit', submission: submission(staleEntry, { source: [{ resourceId: 'llm-pi-ai', revision: -1 }] }) },
+      { kind: 'submit', pagePath: [], controlId: 'connection', submission: submission(staleEntry, { source: [{ resourceId: 'llm-pi-ai', revision: -1 }] }) },
       context(staleEntry),
     )
     expect(old).toMatchObject({ kind: 'conflict' })
@@ -506,13 +508,13 @@ describe('provider creation', () => {
     await flush()
     const entry = changed.ctx.mayflyOverlays.list().find(item => item.id === 'mayfly.provider.add.custom')!
     const routeChanged = await entry.definition.onEvent!.action!(
-      { kind: 'submit', submission: submission(entry, { route: 'other' }) },
+      { kind: 'submit', pagePath: [], controlId: 'connection', submission: submission(entry, { route: 'other' }) },
       context(entry),
     )
     expect(routeChanged).toMatchObject({ kind: 'conflict' })
     await changed.settings.mutate('llm-pi-ai', [{ op: 'set', path: ['providers', 'gateway', 'displayName'], value: 'External' }])
     const profileChanged = await entry.definition.onEvent!.action!(
-      { kind: 'submit', submission: submission(changed.ctx.mayflyOverlays.list().find(item => item.id === entry.id)!) },
+      { kind: 'submit', pagePath: [], controlId: 'connection', submission: submission(changed.ctx.mayflyOverlays.list().find(item => item.id === entry.id)!) },
       context(changed.ctx.mayflyOverlays.list().find(item => item.id === entry.id)!),
     )
     expect(profileChanged).toMatchObject({ kind: 'conflict' })
@@ -532,7 +534,7 @@ describe('provider creation', () => {
     const forged = await setup()
     const entry = await customEntry(forged)
     expect(await entry.definition.onEvent!.action!(
-      { kind: 'submit', submission: submission(entry, { selectedIds: ['missing'] }) },
+      { kind: 'submit', pagePath: [], controlId: 'connection', submission: submission(entry, { selectedIds: ['missing'] }) },
       context(entry),
     )).toMatchObject({ kind: 'accepted' })
     expect(forged.settings.get('llm-pi-ai')).toMatchObject({ providers: { gateway: { models: [{ id: 'missing' }] } } })
@@ -547,14 +549,14 @@ describe('provider creation', () => {
     const observe = entry.definition.onEvent!.observe!
     entry.definition.onEvent!.observe!({ kind: 'selection-toggle', pagePath: [], controlId: 'noop', selectedIds: [] }, context(entry))
     bench.ctx.mayflyOverlays.close(entry.id)
-    observe({ kind: 'value-change', pagePath: address('connection').pagePath, controlId: 'baseURL', value: 'https://late.example' }, context(entry))
+    observe({ kind: 'value-change', pagePath: address('connection').pagePath, controlId: 'baseURL', formId: 'connection', value: 'https://late.example', draftRevision: 1 }, context(entry))
     expect(bench.ctx.mayflyOverlays.list().some(item => item.id === entry.id)).toBe(false)
   })
 
   it('lists OAuth providers and completes their native authorization setup', async () => {
     const bench = await setup(undefined, () => [{ id: 'active', name: 'Active' }])
     await bench.ctx.plugin(AuthorizationService)
-    const register = (namespace: string, route: string, methods: { id: string, label: string }[]) => {
+    const register = (namespace: string, route: string, methods: readonly [AuthorizationMethod, ...AuthorizationMethod[]]) => {
       const key = credentialKey(namespace, route)
       bench.ctx.authorization.registerFlow({
         key, label: route, methods,
@@ -597,7 +599,7 @@ describe('provider creation', () => {
     const bench = await setup()
     const entry = await customEntry(bench)
     const saved = await entry.events.prepare(
-      { kind: 'submit', submission: submission(entry, { route: 'home-route' }) },
+      { kind: 'submit', pagePath: [], controlId: 'connection', submission: submission(entry, { route: 'home-route' }) },
       context(entry),
     )
     expect(saved.reply).toMatchObject({ kind: 'accepted' })

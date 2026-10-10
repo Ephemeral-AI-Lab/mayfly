@@ -43,7 +43,8 @@ function recordWarnings(ctx: Context): string[] {
 async function mount(ctx: Context, content: string | undefined, base?: 'dark' | 'light') {
   const path = join(dir, 'theme.json')
   if (content !== undefined) await writeFile(path, content)
-  const fiber = ctx.plugin({ name, Config, apply }, base === undefined ? { path } : { path, base })
+  // Without a base the schema supplies its default; the plugin's config type is the validated one.
+  const fiber = ctx.plugin({ name, Config, apply }, base === undefined ? { path } as Config : { path, base })
   await fiber
   return fiber
 }

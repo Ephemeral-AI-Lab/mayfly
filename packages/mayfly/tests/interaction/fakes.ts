@@ -28,7 +28,6 @@ import type {
   MayflyEditorOptions,
   MayflyEditorSubmitAttempt,
   MayflyFocusable,
-  MayflyFuzzyMatch,
   MayflyKeyAction,
   MayflyKeymap,
   MayflyMarkdown,
@@ -46,7 +45,7 @@ import type {
 import type { MayflyScreenService, MayflyKeymapService, MayflyComponentsService } from '../../src/core/index.ts'
 // MayflyImage/MayflyImageOptions are not root-exported by core yet; source-plane
 // tests import them straight from core's src types.
-import type { MayflyImage, MayflyImageOptions } from '../../src/core/types.ts'
+import type { MayflyFuzzyMatch, MayflyImage, MayflyImageOptions } from '../../src/core/types.ts'
 import { PromptEditorController } from '../../src/interaction/editor-instance.ts'
 import { PromptSubmitPipeline } from '../../src/interaction/prompt-submit-pipeline.ts'
 import {
@@ -220,6 +219,8 @@ function fakeColors(): MayflySemanticColors {
     diffMeta: text => `;${text};`,
     diffAddedBg: text => `[+${text}+]`,
     diffRemovedBg: text => `[-${text}-]`,
+    modelHighlight: identity,
+    logoGradient: [identity],
   }
 }
 
@@ -558,7 +559,7 @@ export class FakeMayflyMarkdown implements MayflyMarkdown {
  * tests assert only the composition around it.
  */
 export class FakeFileMentionProvider implements MayflyAutocompleteProvider {
-  triggerCharacters: string[] | undefined
+  triggerCharacters?: string[]
 
   /**
    * @param basePath - the project root the factory was called with.
@@ -576,7 +577,7 @@ export class FakeFileMentionProvider implements MayflyAutocompleteProvider {
     cursorLine: number,
     cursorCol: number,
     options: { signal: AbortSignal, force?: boolean },
-  ): Promise<ReturnType<MayflyAutocompleteProvider['getSuggestions']>> {
+  ): ReturnType<MayflyAutocompleteProvider['getSuggestions']> {
     return this.behavior.mentionGetSuggestions(lines, cursorLine, cursorCol, options)
   }
 
@@ -617,7 +618,7 @@ export class FakeMayflyComponents implements MayflyComponents {
    */
   mentionGetSuggestions: MayflyAutocompleteProvider['getSuggestions'] = async () => null
   mentionApplyCompletion: MayflyAutocompleteProvider['applyCompletion'] =
-    (lines, _cursorLine, cursorLine, cursorCol) => ({ lines: [...lines], cursorLine, cursorCol })
+    (lines, cursorLine, cursorCol) => ({ lines: [...lines], cursorLine, cursorCol })
   /** Every mention source created through this factory, in creation order. */
   readonly mentionProviders: FakeFileMentionProvider[] = []
 

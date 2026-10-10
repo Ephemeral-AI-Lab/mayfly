@@ -22,7 +22,7 @@ async function setup() {
     events: title === null ? [] : [{ type: 'session/title', seq: 0, time: 100, data: { title, messageSeqs: [], source: { kind: 'user' } } }],
     [Symbol.dispose]: vi.fn(),
   }) as unknown as SessionObservation
-  const query = { observeSession: vi.fn(async () => observation()) }
+  const query = { observeSession: vi.fn<(id: string, options: { signal: AbortSignal, projectionMode: string }) => Promise<SessionObservation>>(async () => observation()) }
   Object.assign(persistence, { open: vi.fn(async (id: string, access: string, options: { signal: AbortSignal }) => {
     expect(access).toBe('read')
     const read = await query.observeSession(id, { signal: options.signal, projectionMode: 'none' })

@@ -3,7 +3,8 @@
  */
 
 import type { Context } from '@deepseek-ai/cordis'
-import { SessionId, type Session } from '@deepseek-ai/dsh-session'
+import { SessionId, SessionSeq, type Session } from '@deepseek-ai/dsh-session'
+import type { Agent } from '@deepseek-ai/dsh-agent'
 import type {
   WorkflowAgentEndInfo,
   WorkflowAgentInfo,
@@ -222,8 +223,8 @@ describe('mayfly-pane-workflow', () => {
     startRun(rig.ctx, settled, 'child-1')
     rig.ctx.emit('workflow/end', settled, { stopReason: 'completed', agentsStarted: 1 })
     startRun(rig.ctx, runInfo('live', 'live-run'), 'child-2')
-    rig.ctx.emit('session/event', rig.agent.session as unknown as Session, { ...turnStart(2), seq: 99, time: T0 + 20_000 })
-    rig.ctx.emit('session/event', rig.agent.session as unknown as Session, { ...turnStart(2), seq: 100, time: T0 + 21_000 })
+    rig.ctx.emit('session/event', rig.agent.session as unknown as Session, { ...turnStart(2), seq: SessionSeq(99), time: T0 + 20_000 })
+    rig.ctx.emit('session/event', rig.agent.session as unknown as Session, { ...turnStart(2), seq: SessionSeq(100), time: T0 + 21_000 })
     const text = plain(rig).join('\n')
     expect(text).not.toContain('settled-run')
     expect(text).toContain('live-run')
@@ -241,11 +242,11 @@ describe('mayfly-pane-workflow', () => {
     rig.ctx.emit('test/session-changed', null)
     startRun(rig.ctx, runInfo('no-agent'), 'child-1')
     expect(plain(rig)).toEqual([])
-    rig.ctx.emit('test/session-changed', rig.agent)
+    rig.ctx.emit('test/session-changed', rig.agent as unknown as Agent)
     rig.childIds.push('child-1')
     startRun(rig.ctx, runInfo(), 'child-1')
     expect(plain(rig).join('\n')).toContain('publish-check')
-    rig.ctx.emit('test/session-changed', fakeAgent([], { cwd: '/tmp' }))
+    rig.ctx.emit('test/session-changed', fakeAgent([], { cwd: '/tmp' }) as unknown as Agent)
     expect(plain(rig)).toEqual([])
     await rig.dispose()
   })

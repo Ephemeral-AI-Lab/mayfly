@@ -3,6 +3,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import { ui } from '../../../ui/src/index.ts'
+import { withOverrides } from '../fixture-fields.ts'
 import { acknowledgeChoice, choiceError, choicePinned, choiceReportedSegment, choiceRow, choiceSegment, focusableListItem, choiceVisibleCount, choiceVisibleIndex, choiceVisiblePosition, createChoiceState, decorateChoiceItem, reconcileChoice, reduceChoice, visibleChoiceIndices } from '../../src/core/ui-interaction-choice.ts'
 
 const tree = ui.list({ id: 'tree', role: 'choose', tree: true, selectedIds: [], filterable: true, items: [
@@ -74,7 +75,7 @@ describe('shared tree choice', () => {
     expect(choiceRow(state, 0)).toMatchObject({ expandable: true, open: false })
     state = reduceChoice(state, { kind: 'expand', id: 'root' })
     expect(choiceRow(state, 0)).toMatchObject({ expandable: true, open: true })
-    expect(choiceRow({ ...state, treeIndex: undefined }, 0)).toMatchObject({ depth: 0, last: false, expandable: false })
+    expect(choiceRow(withOverrides(state, { treeIndex: undefined }), 0)).toMatchObject({ depth: 0, last: false, expandable: false })
     state = reduceChoice(state, { kind: 'focus', id: 'other' })
     state = reduceChoice(state, { kind: 'expand', id: 'root' })
     expect(state.focusedId).toBe('other')
@@ -264,9 +265,10 @@ describe('row segment drafts', () => {
     let state = reduceChoice(createChoiceState(segmented), { kind: 'segment', id: 'a', direction: -1 })
     state = reduceChoice(state, { kind: 'segment', id: 'a', direction: -1 })
     expect(choiceSegment(state, 'a')).toBe('default')
+    const kept = segmented.items[1]!.segment
     const updated = ui.list({ id: 'models', role: 'browse', selectedIds: [], items: [
       { id: 'a', label: 'A' },
-      { id: 'b', label: 'B', segment: segmented.items[1]!.segment },
+      { id: 'b', label: 'B', ...(kept === undefined ? {} : { segment: kept }) },
       { id: 'c', label: 'C' },
     ] })
     state = reconcileChoice(state, updated)

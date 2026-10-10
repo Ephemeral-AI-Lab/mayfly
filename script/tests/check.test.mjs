@@ -18,7 +18,7 @@ const scriptsOf = steps => steps.filter(step => step.command === 'pnpm' && step.
 
 test('a leaf edit in the round tier lints, builds, and runs the specs and scenarios it reaches, without coverage or checks', () => {
   const steps = stepsFor(classifyChanges(['packages/mayfly/src/transcript/status-context.ts', 'packages/mayfly/AGENTS.md']), 'round', { root: ROOT })
-  assert.deepEqual(names(steps).map(name => name.replace(/ \(\d+\)$/u, '')), ['lint', 'build', 'specs', 'scenarios'])
+  assert.deepEqual(names(steps).map(name => name.replace(/ \(\d+\)$/u, '')), ['lint', 'build', 'typecheck', 'specs', 'scenarios'])
   assert.deepEqual(commandOf(steps, 'scenarios').args.slice(0, 4), ['script/scenarios.mjs', '--png', '--sizes', 'first'])
   const specs = commandOf(steps, 'specs')
   assert.ok(specs.args.includes('packages/mayfly/tests/transcript/width-scan.spec.ts'))

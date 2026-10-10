@@ -8,7 +8,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
-import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
+import SessionStore, { SessionId, type SessionHeader } from '@deepseek-ai/dsh-session'
 import CommandRuntime from '@deepseek-ai/dsh-commands'
 import * as uiProvider from '../../../ui/src/provider.ts'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
@@ -331,6 +331,7 @@ describe('mayfly-commands plugin', () => {
         content: [{ type: 'text', text: 'login flow fixed' }],
         source: { kind: 'model', provider: 'mock', model: 'mock' },
       },
+      stream: [],
     }, { surfaceOp: 'append' })
     agent.session.append('turn/end', { turn: 1, reason: { kind: 'completed' } })
     agent.session.append('turn/start', { turn: 2 })

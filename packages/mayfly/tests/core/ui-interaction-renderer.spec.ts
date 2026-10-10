@@ -19,7 +19,7 @@ import { ACTION_CANCEL, ACTION_SUBMIT } from '../../src/core/key-actions.ts'
 const cleanups: (() => Promise<unknown>)[] = []
 afterEach(async () => { for (const cleanup of cleanups.splice(0).reverse()) await cleanup() })
 const identity = (value: string) => value
-const colors = new Proxy({ logoGradient: [identity] }, { get: (_target, key) => key === 'logoGradient' ? [identity] : identity }) as MayflySemanticColors
+const colors = new Proxy({ logoGradient: [identity] }, { get: (_target, key) => key === 'logoGradient' ? [identity] : identity }) as unknown as MayflySemanticColors
 const components = { createEditor: createFakeEditor, visibleWidth, truncateToWidth, wrapText: wrapTextWithAnsi } as MayflyComponents
 const flush = () => new Promise<void>(resolve => { setImmediate(resolve) })
 const scrollViews = (box: LayoutBox): ScrollView[] => [
@@ -765,7 +765,7 @@ describe('shared interaction compiler', () => {
     expect(frame.at(0)).toContain('Panel')
     expect(frame.length).toBeLessThanOrEqual(3)
     model.invoke('retry')
-    expect(model.feedback).toBeUndefined()
+    expect(model.feedbackSnapshot()).toEqual([])
     renderer.runtime.dispose()
   })
 

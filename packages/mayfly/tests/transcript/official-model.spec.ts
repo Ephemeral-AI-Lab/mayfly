@@ -1,17 +1,14 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { Session } from '@deepseek-ai/dsh-session'
 import type { ToolRuntime } from '@deepseek-ai/dsh-tools'
-import type { ConversationProjection, ConversationToolEntry } from '../../src/conversation/index.ts'
-import {
-  conversationTranscriptModel,
-  OfficialConversationModelSource,
-  type ConversationProjectionSource,
-} from '../../src/transcript/official-model.ts'
+import type { ConversationJson, ConversationProjection, ConversationToolEntry } from '../../src/conversation/index.ts'
+import { conversationTranscriptModel, OfficialConversationModelSource } from '../../src/transcript/official-model.ts'
+import type { ConversationProjectionSource } from '../../src/transcript/conversation-feed.ts'
 import type { ToolPresentationSource } from '../../src/transcript/present.ts'
 import { materializeTranscriptEntries } from '../../src/frontend/models.ts'
 
 function projection(entries: ConversationProjection['entries'] = [], streaming = false): ConversationProjection {
-  return { entries: entries.map(entry => ({ ...entry, updatedSeq: entry.updatedSeq ?? entry.seq })), streaming, settledSteps: [] }
+  return { entries: entries.map(entry => ({ ...entry, updatedSeq: entry.updatedSeq ?? entry.seq })), streaming, settledSteps: [], turns: [] }
 }
 
 function toolSource(options: { readonly throws?: boolean } = {}): ToolPresentationSource {
@@ -35,7 +32,7 @@ function transcriptTool(overrides: Partial<ConversationToolEntry> = {}): Convers
   return {
     kind: 'tool',
     id: 'tool-1',
-    seq: 4,
+    seq: 4, updatedSeq: 4,
     turn: 1,
     step: 0,
     callId: 'call-1',
@@ -85,7 +82,7 @@ function searchSource(): ToolPresentationSource {
   } as Pick<ToolRuntime, 'get'>
 }
 
-interface SearchMeta {
+type SearchMeta = {
   readonly shape: 'matches' | 'paths'
   readonly files?: { readonly path: string; readonly matches: { readonly lineNumber: number; readonly line: string }[] }[]
   readonly paths?: readonly string[]
@@ -99,12 +96,12 @@ function searchResult(meta: SearchMeta | undefined, isError = false): Conversati
     text: isError ? 'pattern rejected' : 'raw',
     isError,
     endedAt: 180,
-    ...(meta === undefined ? {} : { meta }),
+    ...(meta === undefined ? {} : { meta: meta as unknown as ConversationJson }),
   }
 }
 
 
-interface ReadMeta { readonly path: string; readonly offset: number; readonly lines: readonly { readonly number: number; readonly text: string }[]; readonly totalLines: number }
+type ReadMeta = { readonly path: string; readonly offset: number; readonly lines: readonly { readonly number: number; readonly text: string }[]; readonly totalLines: number }
 
 /** A registry resolving both families at once for mixed-run fixtures. */
 function combinedSource(): ToolPresentationSource {
@@ -133,7 +130,7 @@ function readResult(meta: ReadMeta | undefined, isError = false): ConversationTo
     text: isError ? 'File not found: nope.txt' : 'raw',
     isError,
     endedAt: 180,
-    ...(meta === undefined ? {} : { meta }),
+    ...(meta === undefined ? {} : { meta: meta as unknown as ConversationJson }),
   }
 }
 
@@ -169,7 +166,7 @@ describe('official conversation model mapping', () => {
     const entries = Array.from({ length: 203 }, (_, index) => ({
       kind: 'assistant' as const,
       id: `assistant-${String(index)}`,
-      seq: index,
+      seq: index, updatedSeq: index,
       turn: index,
       step: 0,
       text: `answer ${String(index)}`,
@@ -183,15 +180,15 @@ describe('official conversation model mapping', () => {
   it('maps every semantic entry and keeps pane-owned channels as process members', () => {
     const model = conversationTranscriptModel(projection([
       {
-        kind: 'user', id: 'user-1', seq: 1, turn: 1, text: 'hello', images: [{
+        kind: 'user', id: 'user-1', seq: 1, updatedSeq: 1, turn: 1, text: 'hello', images: [{
           attachmentId: 'image-1', mediaType: 'image/png', bytes: 12, width: 4, height: 3,
           name: 'plot.png', originalDimensions: { width: 8, height: 6 },
         }, {
           attachmentId: 'image-2', mediaType: 'image/jpeg', bytes: 8, width: 2, height: 2,
         }],
       },
-      { kind: 'assistant', id: 'assistant-1', seq: 2, turn: 1, step: 0, text: 'answer', streaming: true },
-      { kind: 'thinking', id: 'thinking-1', seq: 3, turn: 1, step: 0, text: 'thought', streaming: false },
+      { kind: 'assistant', id: 'assistant-1', seq: 2, updatedSeq: 2, turn: 1, step: 0, text: 'answer', streaming: true },
+      { kind: 'thinking', id: 'thinking-1', seq: 3, updatedSeq: 3, turn: 1, step: 0, text: 'thought', streaming: false },
       transcriptTool({
         result: {
           content: [{ type: 'text', text: 'raw' }],
@@ -203,9 +200,9 @@ describe('official conversation model mapping', () => {
       }),
       transcriptTool({ id: 'todo-1', callId: 'todo-1', name: 'todo_write', arguments: '{"todos":[]}', channel: 'todo' }),
       transcriptTool({ id: 'agent-1', callId: 'agent-1', name: 'subagent_codex', arguments: '{"description":"Review"}', channel: 'agents' }),
-      { kind: 'error', id: 'error-1', seq: 7, turn: 1, message: 'down', code: 'HTTP_404' },
-      { kind: 'error', id: 'error-2', seq: 8, turn: 1, message: 'unknown' },
-      { kind: 'interrupted', id: 'cut-1', seq: 9, turn: 1 },
+      { kind: 'error', id: 'error-1', seq: 7, updatedSeq: 7, turn: 1, message: 'down', code: 'HTTP_404' },
+      { kind: 'error', id: 'error-2', seq: 8, updatedSeq: 8, turn: 1, message: 'unknown' },
+      { kind: 'interrupted', id: 'cut-1', seq: 9, updatedSeq: 9, turn: 1 },
     ], true), toolSource())
 
     expect(model.streaming).toBe(true)
@@ -271,11 +268,11 @@ describe('official conversation model mapping', () => {
       totalLines: total,
     })
     const model = conversationTranscriptModel(projection([
-      { kind: 'assistant', id: 'assistant-1', seq: 1, turn: 1, step: 0, text: 'looking', streaming: false },
-      transcriptTool({ id: 'r1', callId: 'c-r1', seq: 2, arguments: '{"file_path":"src/a.ts","offset":1,"limit":100}', result: readResult(window('src/a.ts', 1, 100, 342)) }),
-      { kind: 'thinking', id: 'thinking-1', seq: 3, turn: 1, step: 1, text: 'considering', streaming: false },
-      transcriptTool({ id: 'r2', callId: 'c-r2', seq: 4, step: 1, arguments: '{"file_path":"src/a.ts","offset":101,"limit":120}', result: readResult(window('src/a.ts', 101, 120, 342)) }),
-      transcriptTool({ id: 'r3', callId: 'c-r3', seq: 5, step: 1, arguments: '{"file_path":"missing.txt"}', result: readResult(undefined, true) }),
+      { kind: 'assistant', id: 'assistant-1', seq: 1, updatedSeq: 1, turn: 1, step: 0, text: 'looking', streaming: false },
+      transcriptTool({ id: 'r1', callId: 'c-r1', seq: 2, updatedSeq: 2, arguments: '{"file_path":"src/a.ts","offset":1,"limit":100}', result: readResult(window('src/a.ts', 1, 100, 342)) }),
+      { kind: 'thinking', id: 'thinking-1', seq: 3, updatedSeq: 3, turn: 1, step: 1, text: 'considering', streaming: false },
+      transcriptTool({ id: 'r2', callId: 'c-r2', seq: 4, updatedSeq: 4, step: 1, arguments: '{"file_path":"src/a.ts","offset":101,"limit":120}', result: readResult(window('src/a.ts', 101, 120, 342)) }),
+      transcriptTool({ id: 'r3', callId: 'c-r3', seq: 5, updatedSeq: 5, step: 1, arguments: '{"file_path":"missing.txt"}', result: readResult(undefined, true) }),
     ]), readSource())
 
     // The later step's reasoning renders after the read it followed, never above it.
@@ -288,29 +285,29 @@ describe('official conversation model mapping', () => {
 
     // Reasoning recorded within the run's own step leaves the run intact.
     const sameStep = conversationTranscriptModel(projection([
-      transcriptTool({ id: 'r1', callId: 'c-r1', seq: 1, arguments: '{"file_path":"a.ts"}' }),
-      { kind: 'thinking', id: 'thinking-0', seq: 2, turn: 1, step: 0, text: 'retry', streaming: false },
-      transcriptTool({ id: 'r2', callId: 'c-r2', seq: 3, arguments: '{"file_path":"b.ts"}' }),
+      transcriptTool({ id: 'r1', callId: 'c-r1', seq: 1, updatedSeq: 1, arguments: '{"file_path":"a.ts"}' }),
+      { kind: 'thinking', id: 'thinking-0', seq: 2, updatedSeq: 2, turn: 1, step: 0, text: 'retry', streaming: false },
+      transcriptTool({ id: 'r2', callId: 'c-r2', seq: 3, updatedSeq: 3, arguments: '{"file_path":"b.ts"}' }),
     ]), readSource())
     expect(sameStep.entries.map(entry => entry.kind)).toEqual(['transcript-thinking', 'transcript-read-group'])
   })
 
   it('breaks runs on content, other tools, other turns, and pane-owned calls', () => {
     const reads = (): ConversationProjection['entries'] => [
-      transcriptTool({ id: 'r1', callId: 'c1', seq: 1 }),
-      transcriptTool({ id: 'r2', callId: 'c2', seq: 2 }),
+      transcriptTool({ id: 'r1', callId: 'c1', seq: 1 , updatedSeq: 1}),
+      transcriptTool({ id: 'r2', callId: 'c2', seq: 2 , updatedSeq: 2}),
     ]
     const kinds = conversationTranscriptModel(projection([
-      transcriptTool({ id: 'r1', callId: 'c1', seq: 1 }),
-      { kind: 'user', id: 'u1', seq: 2, turn: 2, text: 'more', images: [] },
-      transcriptTool({ id: 'r2', callId: 'c2', seq: 3, turn: 2 }),
+      transcriptTool({ id: 'r1', callId: 'c1', seq: 1 , updatedSeq: 1}),
+      { kind: 'user', id: 'u1', seq: 2, updatedSeq: 2, turn: 2, text: 'more', images: [] },
+      transcriptTool({ id: 'r2', callId: 'c2', seq: 3, updatedSeq: 3, turn: 2 }),
     ]), readSource())
     expect(kinds.entries.map(entry => entry.kind)).toEqual(['transcript-read-group', 'transcript-user', 'transcript-read-group'])
 
     const crossTool = conversationTranscriptModel(projection([
-      transcriptTool({ id: 'r1', callId: 'c1', seq: 1 }),
-      transcriptTool({ id: 'b1', callId: 'c9', seq: 2, name: 'bash', arguments: '{"command":"ls"}' }),
-      transcriptTool({ id: 'r2', callId: 'c2', seq: 3 }),
+      transcriptTool({ id: 'r1', callId: 'c1', seq: 1 , updatedSeq: 1}),
+      transcriptTool({ id: 'b1', callId: 'c9', seq: 2, updatedSeq: 2, name: 'bash', arguments: '{"command":"ls"}' }),
+      transcriptTool({ id: 'r2', callId: 'c2', seq: 3 , updatedSeq: 3}),
     ]), readSource())
     expect(crossTool.entries.map(entry => entry.kind)).toEqual(['transcript-read-group', 'transcript-tool', 'transcript-read-group'])
 
@@ -320,14 +317,14 @@ describe('official conversation model mapping', () => {
     expect(crossTurn.entries.map(entry => entry.kind)).toEqual(['transcript-read-group', 'transcript-read-group'])
 
     const invisible = conversationTranscriptModel(projection([
-      transcriptTool({ id: 'r1', callId: 'c1', seq: 1 }),
-      transcriptTool({ id: 'todo-1', callId: 't1', seq: 2, name: 'todo_write', channel: 'todo' }),
-      transcriptTool({ id: 'agent-1', callId: 'a1', seq: 3, name: 'subagent', channel: 'agents' }),
-      transcriptTool({ id: 'r2', callId: 'c2', seq: 4 }),
+      transcriptTool({ id: 'r1', callId: 'c1', seq: 1 , updatedSeq: 1}),
+      transcriptTool({ id: 'todo-1', callId: 't1', seq: 2, updatedSeq: 2, name: 'todo_write', channel: 'todo' }),
+      transcriptTool({ id: 'agent-1', callId: 'a1', seq: 3, updatedSeq: 3, name: 'subagent', channel: 'agents' }),
+      transcriptTool({ id: 'r2', callId: 'c2', seq: 4 , updatedSeq: 4}),
     ]), readSource())
     expect(invisible.entries.map(entry => entry.kind)).toEqual(['transcript-read-group', 'transcript-tool', 'transcript-tool', 'transcript-read-group'])
 
-    const single = conversationTranscriptModel(projection([transcriptTool({ id: 'r9', callId: 'c9', seq: 9 })]), readSource())
+    const single = conversationTranscriptModel(projection([transcriptTool({ id: 'r9', callId: 'c9', seq: 9 , updatedSeq: 9})]), readSource())
     expect(single.entries).toHaveLength(1)
     expect(single.entries[0]).toMatchObject({ kind: 'transcript-read-group' })
 
@@ -341,18 +338,18 @@ describe('official conversation model mapping', () => {
     const lines = Array.from({ length: 8 }, (_, index) => ({ number: 101 + index, text: `l${String(index)}` }))
     const model = conversationTranscriptModel(projection([
       transcriptTool({
-        id: 'rich', callId: 'c-rich', seq: 2, arguments: '{"file_path":"big.ts","offset":101,"limit":8}',
+        id: 'rich', callId: 'c-rich', seq: 2, updatedSeq: 2, arguments: '{"file_path":"big.ts","offset":101,"limit":8}',
         result: readResult({ path: 'big.ts', offset: 101, lines, totalLines: 400 }),
       }),
       transcriptTool({
-        id: 'pending', callId: 'c-pending', seq: 3, arguments: '{"file_path":"next.ts","offset":5,"limit":30}',
+        id: 'pending', callId: 'c-pending', seq: 3, updatedSeq: 3, arguments: '{"file_path":"next.ts","offset":5,"limit":30}',
       }),
       transcriptTool({
-        id: 'metaless', callId: 'c-metaless', seq: 4, arguments: '{"file_path":"old.txt"}',
+        id: 'metaless', callId: 'c-metaless', seq: 4, updatedSeq: 4, arguments: '{"file_path":"old.txt"}',
         result: { content: [{ type: 'text', text: 'ok' }], text: 'ok', isError: false, endedAt: 1 },
       }),
       transcriptTool({
-        id: 'noargs', callId: 'c-noargs', seq: 5, arguments: '{bad',
+        id: 'noargs', callId: 'c-noargs', seq: 5, updatedSeq: 5, arguments: '{bad',
         result: readResult(undefined, true),
       }),
     ]), readSource())
@@ -373,11 +370,11 @@ describe('official conversation model mapping', () => {
   it('falls back to the view path and the stock error line', () => {
     const model = conversationTranscriptModel(projection([
       transcriptTool({
-        id: 'viewpath', callId: 'c-viewpath', seq: 1, arguments: '{}',
+        id: 'viewpath', callId: 'c-viewpath', seq: 1, updatedSeq: 1, arguments: '{}',
         result: readResult({ path: 'from-view.ts', offset: 2, lines: [{ number: 2, text: 'x' }], totalLines: 2 }),
       }),
       transcriptTool({
-        id: 'blank', callId: 'c-blank', seq: 2, arguments: '{"file_path":"b.txt"}',
+        id: 'blank', callId: 'c-blank', seq: 2, updatedSeq: 2, arguments: '{"file_path":"b.txt"}',
         result: { content: [{ type: 'text', text: '\n  \n' }], text: '\n  \n', isError: true, endedAt: 9 },
       }),
     ]), readSource())
@@ -388,8 +385,8 @@ describe('official conversation model mapping', () => {
 
   it('keeps read-kind calls without a file as lone cards', () => {
     const model = conversationTranscriptModel(projection([
-      transcriptTool({ id: 'j1', callId: 'c-j1', seq: 1, name: 'job_output', arguments: '{"job_id":"5","wait":true}' }),
-      transcriptTool({ id: 'j2', callId: 'c-j2', seq: 2, name: 'job_output', arguments: '{"job_id":"5"}', result: { content: [{ type: 'text', text: 'chunk\n[status: running]' }], text: 'chunk\n[status: running]', isError: false, endedAt: 9 } }),
+      transcriptTool({ id: 'j1', callId: 'c-j1', seq: 1, updatedSeq: 1, name: 'job_output', arguments: '{"job_id":"5","wait":true}' }),
+      transcriptTool({ id: 'j2', callId: 'c-j2', seq: 2, updatedSeq: 2, name: 'job_output', arguments: '{"job_id":"5"}', result: { content: [{ type: 'text', text: 'chunk\n[status: running]' }], text: 'chunk\n[status: running]', isError: false, endedAt: 9 } }),
     ]), jobSource())
     expect(model.entries).toMatchObject([
       { kind: 'transcript-tool', name: 'job_output', activity: 'tools', detail: 'job_output', title: 'Read output from background job 5' },
@@ -399,8 +396,8 @@ describe('official conversation model mapping', () => {
 
   it('labels file reads without a path by their salient argument or tool name', () => {
     const model = conversationTranscriptModel(projection([
-      transcriptTool({ id: 'u1', callId: 'c-u1', seq: 1, arguments: '{"uri":"mem://x"}' }),
-      transcriptTool({ id: 'u2', callId: 'c-u2', seq: 2, arguments: `{\"payload\":\"${'x'.repeat(70)}\"}` }),
+      transcriptTool({ id: 'u1', callId: 'c-u1', seq: 1, updatedSeq: 1, arguments: '{"uri":"mem://x"}' }),
+      transcriptTool({ id: 'u2', callId: 'c-u2', seq: 2, updatedSeq: 2, arguments: `{\"payload\":\"${'x'.repeat(70)}\"}` }),
     ]), readSource())
     const group = model.entries[0] as unknown as { reads: Array<Record<string, unknown>> }
     expect(group.reads[0]).toMatchObject({ callId: 'c-u1', label: 'uri: mem://x' })
@@ -419,9 +416,9 @@ describe('official conversation model mapping', () => {
     const grep = (id: string, callId: string, seq: number, args: string, result: ConversationToolEntry['result']): ConversationToolEntry =>
       transcriptTool({ id, callId, seq, name: 'grep', arguments: args, result })
     const model = conversationTranscriptModel(projection([
-      transcriptTool({ id: 'r0', callId: 'c-r0', seq: 1, name: 'read', arguments: '{"file_path":"a.ts"}' }),
+      transcriptTool({ id: 'r0', callId: 'c-r0', seq: 1, updatedSeq: 1, name: 'read', arguments: '{"file_path":"a.ts"}' }),
       grep('s1', 'c-s1', 2, '{"pattern":"export"}', searchResult(matches)),
-      { kind: 'thinking', id: 't1', seq: 3, turn: 1, step: 1, text: 'narrow it', streaming: false },
+      { kind: 'thinking', id: 't1', seq: 3, updatedSeq: 3, turn: 1, step: 1, text: 'narrow it', streaming: false },
       { ...grep('s2', 'c-s2', 4, '{"pattern":"*.ts"}', searchResult(paths)), step: 1 },
       { ...grep('s3', 'c-s3', 5, '{"pattern":"gone"}', searchResult(undefined, true)), step: 1 },
       { ...grep('s4', 'c-s4', 6, '{"pattern":"deep"}', undefined as never), step: 1 },
@@ -458,7 +455,7 @@ describe('official conversation model mapping', () => {
     // A read between two searches splits the families apart.
     const split = conversationTranscriptModel(projection([
       grep('s1', 'c-s1', 1, '{"pattern":"a"}', searchResult(paths)),
-      transcriptTool({ id: 'r0', callId: 'c-r0', seq: 2, name: 'read', arguments: '{"file_path":"a.ts"}' }),
+      transcriptTool({ id: 'r0', callId: 'c-r0', seq: 2, updatedSeq: 2, name: 'read', arguments: '{"file_path":"a.ts"}' }),
       grep('s2', 'c-s2', 3, '{"pattern":"b"}', searchResult(paths)),
     ]), combinedSource())
     expect(split.entries.map(entry => entry.kind)).toEqual(['transcript-search-group', 'transcript-read-group', 'transcript-search-group'])
@@ -467,7 +464,7 @@ describe('official conversation model mapping', () => {
   it('groups consecutive terminal-card calls into one command group', () => {
     const model = conversationTranscriptModel(projection([
       bash('b1', 'c-b1', 1, 'pnpm test', commandResult('8 passed', { exitCode: 0 })),
-      { kind: 'thinking', id: 't1', seq: 2, turn: 1, step: 1, text: 'check git', streaming: false },
+      { kind: 'thinking', id: 't1', seq: 2, updatedSeq: 2, turn: 1, step: 1, text: 'check git', streaming: false },
       { ...bash('b2', 'c-b2', 3, 'git status', commandResult('clean', { exitCode: 0 })), step: 1 },
       { ...bash('b3', 'c-b3', 4, 'pnpm build', commandResult('error TS2304\nboom', { exitCode: 1 }, true)), step: 1 },
       { ...bash('b4', 'c-b4', 5, 'pnpm lint', undefined), step: 1 },
@@ -505,7 +502,7 @@ describe('official conversation model mapping', () => {
 
     const split = conversationTranscriptModel(projection([
       bash('b1', 'c-b1', 1, 'one', commandResult('x', {})),
-      transcriptTool({ id: 'r1', callId: 'c-r1', seq: 2, name: 'read', arguments: '{"file_path":"a.ts"}' }),
+      transcriptTool({ id: 'r1', callId: 'c-r1', seq: 2, updatedSeq: 2, name: 'read', arguments: '{"file_path":"a.ts"}' }),
       bash('b2', 'c-b2', 3, 'two', commandResult('x', {})),
       bash('b3', 'c-b3', 4, 'three', commandResult('x', {})),
     ]), combinedCommandSource())
@@ -521,10 +518,10 @@ describe('official conversation model mapping', () => {
   it('derives terminal and web facts and passes turn times through the cutoff', () => {
     const terminalOnly = conversationTranscriptModel(projection([
       // Result-only terminal view: the command falls back to the argument, then the tool name.
-      transcriptTool({ id: 'x1', callId: 'c-x1', seq: 1, name: 'shell', arguments: '{"command":"ls -la"}', result: { content: [{ type: 'text', text: 'out' }], text: 'out', isError: false, endedAt: 1 } }),
-      transcriptTool({ id: 'x2', callId: 'c-x2', seq: 2, turn: 2, name: 'shell', arguments: '{}', result: { content: [{ type: 'text', text: 'out' }], text: 'out', isError: false, endedAt: 1 } }),
-      transcriptTool({ id: 'x3', callId: 'c-x3', seq: 3, turn: 3, name: 'runner', arguments: '{"command":"make"}' }),
-      transcriptTool({ id: 'w1', callId: 'c-w1', seq: 4, turn: 4, name: 'web_search', arguments: '{"queries":["q"]}', result: { content: [{ type: 'text', text: 'r' }], text: 'r', isError: false, endedAt: 1 } }),
+      transcriptTool({ id: 'x1', callId: 'c-x1', seq: 1, updatedSeq: 1, name: 'shell', arguments: '{"command":"ls -la"}', result: { content: [{ type: 'text', text: 'out' }], text: 'out', isError: false, endedAt: 1 } }),
+      transcriptTool({ id: 'x2', callId: 'c-x2', seq: 2, updatedSeq: 2, turn: 2, name: 'shell', arguments: '{}', result: { content: [{ type: 'text', text: 'out' }], text: 'out', isError: false, endedAt: 1 } }),
+      transcriptTool({ id: 'x3', callId: 'c-x3', seq: 3, updatedSeq: 3, turn: 3, name: 'runner', arguments: '{"command":"make"}' }),
+      transcriptTool({ id: 'w1', callId: 'c-w1', seq: 4, updatedSeq: 4, turn: 4, name: 'web_search', arguments: '{"queries":["q"]}', result: { content: [{ type: 'text', text: 'r' }], text: 'r', isError: false, endedAt: 1 } }),
     ]), {
       get(name: string) {
         if (name === 'shell') return { presentResult: () => ({ card: 'terminal', output: 'out', signal: 'SIGKILL' }) } as never
@@ -539,7 +536,7 @@ describe('official conversation model mapping', () => {
       { terminal: { command: 'make', description: 'Build it' }, title: 'make' },
       { kind: 'transcript-tool', family: 'web', activity: 'webSearch', detail: 'q', web: { kind: 'search', sources: [{ url: 'https://a', title: 'A' }, { url: 'https://b' }], truncated: false } },
     ])
-    expect((terminalOnly.entries[3] as { web: { sources: object[] } }).web.sources[1]).not.toHaveProperty('title')
+    expect((terminalOnly.entries[3] as unknown as { web: { sources: object[] } }).web.sources[1]).not.toHaveProperty('title')
 
     const timed = conversationTranscriptModel({ ...projection([]), turns: [{ turn: 1, startedAt: 5, endedAt: 9, outcome: 'completed' }, { turn: 2, startedAt: 10 }] }, toolSource())
     expect(timed.turns).toEqual([{ turn: 1, startedAt: 5, endedAt: 9, outcome: 'completed' }, { turn: 2, startedAt: 10 }])
@@ -548,9 +545,9 @@ describe('official conversation model mapping', () => {
 
   it('maps lone tool cards to their presenter family', () => {
     const model = conversationTranscriptModel(projection([
-      transcriptTool({ id: 'd1', callId: 'c-d1', seq: 1, name: 'edit', result: { content: [{ type: 'text', text: 'done' }], text: 'done', isError: false, endedAt: 1 } }),
-      transcriptTool({ id: 'w1', callId: 'c-w1', seq: 2, name: 'fetch', result: { content: [{ type: 'text', text: 'html' }], text: 'html', isError: false, endedAt: 1 } }),
-      transcriptTool({ id: 'g1', callId: 'c-g1', seq: 3, name: 'misc', result: { content: [{ type: 'text', text: 'ok' }], text: 'ok', isError: false, endedAt: 1 } }),
+      transcriptTool({ id: 'd1', callId: 'c-d1', seq: 1, updatedSeq: 1, name: 'edit', result: { content: [{ type: 'text', text: 'done' }], text: 'done', isError: false, endedAt: 1 } }),
+      transcriptTool({ id: 'w1', callId: 'c-w1', seq: 2, updatedSeq: 2, name: 'fetch', result: { content: [{ type: 'text', text: 'html' }], text: 'html', isError: false, endedAt: 1 } }),
+      transcriptTool({ id: 'g1', callId: 'c-g1', seq: 3, updatedSeq: 3, name: 'misc', result: { content: [{ type: 'text', text: 'ok' }], text: 'ok', isError: false, endedAt: 1 } }),
     ]), {
       get(name: string) {
         if (name === 'edit') return { presentResult: () => ({ card: 'diff', diffs: [{ path: 'a.ts', oldText: 'a', newText: 'b' }] }) } as never
@@ -583,13 +580,13 @@ describe('official conversation model mapping', () => {
     } as Pick<ToolRuntime, 'get'>
     const titled = commandResult('out', {})
     const model = conversationTranscriptModel(projection([
-      bash('b1', 'c1', 1, 'ignored', { ...titled, meta: { output: 'out', title: 'titled run' } }),
+      bash('b1', 'c1', 1, 'ignored', { ...titled!, meta: { output: 'out', title: 'titled run' } }),
       bash('b2', 'c2', 2, 'ls -la', commandResult('out', {})),
       { ...bash('b3', 'c3', 3, 'x', commandResult('out', { signal: 'SIGTERM' })), arguments: '{}' },
       bash('b4', 'c4', 4, 'nope', commandResult('  \n', {}, true)),
       // A terminal result without its own output: the raw result text
       // becomes the preview source.
-      bash('b5', 'c5', 5, 'raw', { ...commandResult('text body', {}), meta: {} }),
+      bash('b5', 'c5', 5, 'raw', { ...commandResult('text body', {})!, meta: {} }),
     ]), resultOnly)
     const group = model.entries[0] as unknown as { commands: Array<Record<string, unknown>> }
     expect(model.entries).toHaveLength(1)
@@ -659,7 +656,7 @@ function commandResult(output: string, meta: { readonly exitCode?: number; reado
 describe('OfficialConversationModelSource', () => {
   it('coalesces a token burst before parsing history or invoking tool presenters', () => {
     const entries = projection(Array.from({ length: 300 }, (_, index) => transcriptTool({
-      id: String(index), callId: String(index), seq: index,
+      id: String(index), callId: String(index), seq: index, updatedSeq: index,
     }))).entries
     const fixture = sourceFixture(projection(entries), 299)
     const get = vi.fn(() => undefined)
@@ -705,12 +702,12 @@ describe('OfficialConversationModelSource', () => {
     const source = new OfficialConversationModelSource(fixture.source, toolSource(), () => undefined)
     source.attach(fixture.session, 0)
     fixture.emit('mayflyConversation', projection([
-      { kind: 'thinking', id: 'btw', seq: 1, turn: 0, step: 0, text: 'pending side thought', streaming: true },
+      { kind: 'thinking', id: 'btw', seq: 1, updatedSeq: 1, turn: 0, step: 0, text: 'pending side thought', streaming: true },
     ]), 1)
     const main = { id: 'main' } as unknown as Session
     source.attach(main)
     fixture.emit('mayflyConversation', projection([
-      { kind: 'thinking', id: 'late-btw', seq: 2, turn: 0, step: 0, text: 'late side thought', streaming: true },
+      { kind: 'thinking', id: 'late-btw', seq: 2, updatedSeq: 2, turn: 0, step: 0, text: 'late side thought', streaming: true },
     ]), 2)
     expect(source.snapshot()).toMatchObject({ generation: 2, entries: [] })
     fixture.emit('mayflyConversation', projection([transcriptTool()]), 3, main)
@@ -724,7 +721,7 @@ describe('OfficialConversationModelSource', () => {
 
   it.each([1_000, 10_000, 100_000])('reads and admits the complete %i-entry history', length => {
     const entries = projection(Array.from({ length }, (_, index) => ({
-      kind: 'assistant' as const, id: String(index), seq: index, turn: 0, step: 0, text: 'history', streaming: false,
+      kind: 'assistant' as const, id: String(index), seq: index, updatedSeq: index, turn: 0, step: 0, text: 'history', streaming: false,
     }))).entries
     let reads = 0
     const observed = new Proxy(entries, {
@@ -755,9 +752,9 @@ describe('OfficialConversationModelSource', () => {
 
   it('selects a complete eligible window across a sparse cutoff suffix without trusting entry order', () => {
     const eligible = Array.from({ length: 250 }, (_, index) => ({
-      kind: 'assistant' as const, id: `visible-${String(index)}`, seq: 1_000 + index, turn: 1, step: 0, text: 'visible', streaming: false,
+      kind: 'assistant' as const, id: `visible-${String(index)}`, seq: 1_000 + index, updatedSeq: 1_000 + index, turn: 1, step: 0, text: 'visible', streaming: false,
     }))
-    const excluded = { kind: 'assistant' as const, id: 'excluded', seq: 1, turn: 0, step: 0, text: 'inherited', streaming: false }
+    const excluded = { kind: 'assistant' as const, id: 'excluded', seq: 1, updatedSeq: 1, turn: 0, step: 0, text: 'inherited', streaming: false }
     const value = projection(eligible.flatMap(entry => [entry, excluded]))
     const fixture = sourceFixture(value)
     const source = new OfficialConversationModelSource(fixture.source, toolSource(), () => undefined)
@@ -774,13 +771,13 @@ describe('OfficialConversationModelSource', () => {
   it.each([
     null, undefined, 'bad', [], {}, { entries: [], streaming: 'bad' },
     { entries: [null], streaming: false },
-    { entries: [{ kind: 'assistant', seq: 1 }], streaming: false },
+    { entries: [{ kind: 'assistant', seq: 1 , updatedSeq: 1}], streaming: false },
     { entries: [null], streaming: false, settledSteps: [] },
     { entries: [42], streaming: false, settledSteps: [] },
     { entries: [{ kind: 42, seq: 1 }], streaming: false, settledSteps: [] },
     { entries: [{ kind: 'bogus', seq: 1 }], streaming: false, settledSteps: [] },
-    { entries: [{ kind: 'assistant', seq: 'x' }], streaming: false, settledSteps: [] },
-    { entries: [{ kind: 'assistant', seq: 1.5 }], streaming: false, settledSteps: [] },
+    { entries: [{ kind: 'assistant', seq: 'x' , updatedSeq: 'x'}], streaming: false, settledSteps: [] },
+    { entries: [{ kind: 'assistant', seq: 1.5 , updatedSeq: 1.5}], streaming: false, settledSteps: [] },
   ])('rejects malformed envelopes and visible entries: %j', value => {
     const fixture = sourceFixture(projection())
     const publish = vi.fn()
@@ -807,7 +804,7 @@ describe('OfficialConversationModelSource', () => {
 
   it('leaves full historical schema admission to the native producer', () => {
     const tail = projection(Array.from({ length: 200 }, (_, index) => ({
-      kind: 'assistant' as const, id: String(index), seq: index, turn: 0, step: 0, text: 'visible', streaming: false,
+      kind: 'assistant' as const, id: String(index), seq: index, updatedSeq: index, turn: 0, step: 0, text: 'visible', streaming: false,
     }))).entries
     const fixture = sourceFixture({ entries: [null, ...tail], streaming: false })
     const source = new OfficialConversationModelSource(fixture.source, toolSource(), () => undefined)
@@ -846,7 +843,7 @@ describe('OfficialConversationModelSource', () => {
     expect(presentCall).toHaveBeenCalledTimes(1)
     fixture.emit('mayflyConversation', projection([
       transcriptTool(),
-      { kind: 'assistant' as const, id: 'a-2', seq: 5, turn: 1, step: 0, text: 'follow-up', streaming: false },
+      { kind: 'assistant' as const, id: 'a-2', seq: 5, updatedSeq: 5, turn: 1, step: 0, text: 'follow-up', streaming: false },
     ]), 2)
     source.snapshot()
     expect(presentCall).toHaveBeenCalledTimes(1)
@@ -860,8 +857,8 @@ describe('OfficialConversationModelSource', () => {
 
   it('reconciles multiple changes, removals, and session switches without retaining history', () => {
     const initial = projection([
-      { kind: 'assistant', id: 'one', seq: 1, turn: 0, step: 0, text: 'first', streaming: true },
-      { kind: 'thinking', id: 'two', seq: 2, turn: 0, step: 0, text: 'thinking', streaming: true },
+      { kind: 'assistant', id: 'one', seq: 1, updatedSeq: 1, turn: 0, step: 0, text: 'first', streaming: true },
+      { kind: 'thinking', id: 'two', seq: 2, updatedSeq: 2, turn: 0, step: 0, text: 'thinking', streaming: true },
     ], true)
     const fixture = sourceFixture(initial, 2)
     const publish = vi.fn()
@@ -894,7 +891,7 @@ describe('OfficialConversationModelSource', () => {
 
   it('publishes baseline and live whole values while rejecting stale and malformed changes', () => {
     const f = sourceFixture(projection([
-      { kind: 'assistant', id: 'a-1', seq: 1, turn: 0, step: 0, text: 'baseline', streaming: false },
+      { kind: 'assistant', id: 'a-1', seq: 1, updatedSeq: 1, turn: 0, step: 0, text: 'baseline', streaming: false },
     ]), 4)
     const published: string[] = []
     const source = new OfficialConversationModelSource(f.source, toolSource(), () => {
@@ -906,7 +903,7 @@ describe('OfficialConversationModelSource', () => {
     expect(published).toEqual(['baseline'])
 
     f.emit('mayflyConversation', projection([
-      { kind: 'assistant', id: 'a-1', seq: 1, turn: 0, step: 0, text: 'baseline updated', streaming: true },
+      { kind: 'assistant', id: 'a-1', seq: 1, updatedSeq: 1, turn: 0, step: 0, text: 'baseline updated', streaming: true },
     ], true), 5)
     expect(materializeTranscriptEntries(source.snapshot())[0]).toMatchObject({ text: 'baseline updated', streaming: true })
     expect(published).toEqual(['baseline', 'baseline updated'])
@@ -917,18 +914,18 @@ describe('OfficialConversationModelSource', () => {
     expect(published).toEqual(['baseline', 'baseline updated', 'baseline updated'])
 
     f.emit('mayflyConversation', projection([
-      { kind: 'assistant', id: 'a-2', seq: 5, turn: 0, step: 0, text: 'live', streaming: true },
+      { kind: 'assistant', id: 'a-2', seq: 5, updatedSeq: 5, turn: 0, step: 0, text: 'live', streaming: true },
     ], true), 6)
     expect(source.snapshot().streaming).toBe(true)
     expect(published).toEqual(['baseline', 'baseline updated', 'baseline updated', 'live'])
 
     // Whole-value replacement must not preserve entries from the prior view.
     f.emit('mayflyConversation', projection([
-      { kind: 'assistant', id: 'a-3', seq: 7, turn: 0, step: 0, text: 'replacement', streaming: true },
+      { kind: 'assistant', id: 'a-3', seq: 7, updatedSeq: 7, turn: 0, step: 0, text: 'replacement', streaming: true },
     ], true), 7)
     expect(published.at(-1)).toBe('replacement')
     f.emit('mayflyConversation', projection([
-      { kind: 'user', id: 'u-8', seq: 8, turn: 0, text: 'user replacement', images: [] },
+      { kind: 'user', id: 'u-8', seq: 8, updatedSeq: 8, turn: 0, text: 'user replacement', images: [] },
     ], true), 8)
     expect(published.at(-1)).toBe('empty')
 
@@ -947,7 +944,7 @@ describe('OfficialConversationModelSource', () => {
   it('accepts a projection snapshot without sequence metadata', () => {
     const fixture = sourceFixture(projection(), 4)
     fixture.set(projection([
-      { kind: 'assistant', id: 'a-1', seq: 1, turn: 0, step: 0, text: 'baseline', streaming: false },
+      { kind: 'assistant', id: 'a-1', seq: 1, updatedSeq: 1, turn: 0, step: 0, text: 'baseline', streaming: false },
     ]), -1)
     const source = new OfficialConversationModelSource(fixture.source, toolSource(), () => undefined)
     source.attach(fixture.session)
@@ -973,10 +970,10 @@ describe('OfficialConversationModelSource', () => {
 
   it('hides inherited entries after an auxiliary transcript cut while retaining later updates', () => {
     const f = sourceFixture(projection([
-      { kind: 'user', id: 'history-user', seq: 1, turn: 1, text: 'main history', images: [] },
-      { kind: 'assistant', id: 'history-answer', seq: 2, turn: 1, step: 0, text: 'main answer', streaming: false },
-      { kind: 'user', id: 'btw-user', seq: 3, turn: 2, text: 'side question', images: [] },
-      { kind: 'assistant', id: 'btw-answer', seq: 4, turn: 2, step: 0, text: 'side answer', streaming: true },
+      { kind: 'user', id: 'history-user', seq: 1, updatedSeq: 1, turn: 1, text: 'main history', images: [] },
+      { kind: 'assistant', id: 'history-answer', seq: 2, updatedSeq: 2, turn: 1, step: 0, text: 'main answer', streaming: false },
+      { kind: 'user', id: 'btw-user', seq: 3, updatedSeq: 3, turn: 2, text: 'side question', images: [] },
+      { kind: 'assistant', id: 'btw-answer', seq: 4, updatedSeq: 4, turn: 2, step: 0, text: 'side answer', streaming: true },
     ], true), 4)
     const published: string[][] = []
     const source = new OfficialConversationModelSource(f.source, toolSource(), () => {
@@ -988,10 +985,10 @@ describe('OfficialConversationModelSource', () => {
       { kind: 'transcript-assistant', text: 'side answer' },
     ])
     f.emit('mayflyConversation', { ...projection([
-      { kind: 'user', id: 'history-user', seq: 1, turn: 1, text: 'main history', images: [] },
-      { kind: 'assistant', id: 'history-answer', seq: 2, turn: 1, step: 0, text: 'main answer', streaming: false },
-      { kind: 'user', id: 'btw-user', seq: 3, turn: 2, text: 'side question', images: [] },
-      { kind: 'assistant', id: 'btw-answer', seq: 4, turn: 2, step: 0, text: 'side answer updated', streaming: false },
+      { kind: 'user', id: 'history-user', seq: 1, updatedSeq: 1, turn: 1, text: 'main history', images: [] },
+      { kind: 'assistant', id: 'history-answer', seq: 2, updatedSeq: 2, turn: 1, step: 0, text: 'main answer', streaming: false },
+      { kind: 'user', id: 'btw-user', seq: 3, updatedSeq: 3, turn: 2, text: 'side question', images: [] },
+      { kind: 'assistant', id: 'btw-answer', seq: 4, updatedSeq: 4, turn: 2, step: 0, text: 'side answer updated', streaming: false },
     ], false), turns: [{ turn: 1, startedAt: 1, endedAt: 2, outcome: 'completed' }, { turn: 2, startedAt: 3, endedAt: 4, outcome: 'completed' }] }, 5)
     // Inherited turns leave the turn times with their entries.
     expect(source.snapshot().turns).toEqual([{ turn: 2, startedAt: 3, endedAt: 4, outcome: 'completed' }])

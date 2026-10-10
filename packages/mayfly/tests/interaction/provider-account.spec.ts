@@ -496,7 +496,7 @@ describe('DeepSeek account browser openers', () => {
 
   it('delivers through the real fetch to a live loopback server', async () => {
     const { createServer } = await import('node:http')
-    const server = createServer((request, response) => { response.writeHead(204).end() })
+    const server = createServer((_request, response) => { response.writeHead(204).end() })
     await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
     try {
       const address = server.address()

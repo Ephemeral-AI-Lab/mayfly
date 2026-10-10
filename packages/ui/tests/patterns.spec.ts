@@ -29,7 +29,7 @@ describe('patterns.decisionPanel', () => {
     const panel = patterns.decisionPanel({
       id: 'branch', title: 'Delete branch?', badges: [{ text: '1 of 2 waiting', tone: 'muted' }], preview: [note, ui.richText([{ text: 'warning' }])],
       options, input: { id: 'why', label: 'Note', placeholder: 'optional' }, instant: true, escapeLabel: 'cancel', chrome: 'surface',
-      accelerators: [{ id: 'copy', label: 'Copy name', key: 'c', hintLabel: 'copy name' }, { id: 'other', label: 'Other', key: 'o', hidden: false }],
+      accelerators: [{ id: 'copy', label: 'Copy name', key: 'c', hintLabel: 'copy name' }, { id: 'other', label: 'Other', key: 'o' }],
     })
     expect(panel).toMatchObject({ title: 'Delete branch?', chrome: 'surface', escapeLabel: 'cancel', badges: [{ text: '1 of 2 waiting', tone: 'muted' }] })
     const children = column(panel).children.map(child => child.node)

@@ -1,0 +1,33 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "composite": false,
+    "declaration": false,
+    "emitDeclarationOnly": false,
+    "noEmit": true,
+    "tsBuildInfoFile": "node_modules/.cache/mayfly-tsb/tests.tsbuildinfo",
+    "allowJs": true,
+    "checkJs": false,
+    "paths": {
+      "@ephemeral-ai/mayfly-ui": [
+        "./packages/ui/src/index.ts"
+      ],
+      "@ephemeral-ai/mayfly-ui/*": [
+        "./packages/ui/src/*.ts"
+      ],
+      "@ephemeral-ai/mayfly": [
+        "./packages/mayfly/src/index.ts"
+      ],
+      "@ephemeral-ai/mayfly/*": [
+        "./packages/mayfly/src/*.ts"
+      ]
+    }
+  },
+  "include": [
+    "packages/*/tests/**/*.ts",
+    "examples/*/tests/**/*.ts"
+  ],
+  "exclude": [
+    "packages/ui/tests/ui.compile.ts"
+  ]
+}

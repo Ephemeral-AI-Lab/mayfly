@@ -7,6 +7,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
+import { AttachmentId, type ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import type { MayflyComponents, MayflySemanticColors } from '../../src/core/index.ts'
 import {
   AssistantMessageComponent,
@@ -38,6 +39,7 @@ const COLORS = {
   mdCodeBlockBorder: id, mdQuote: id, mdQuoteBorder: id, mdHr: id, mdListBullet: id,
   diffAdded: id, diffRemoved: id, diffAddedStrong: id, diffRemovedStrong: id,
   diffGutter: id, diffMeta: id, diffAddedBg: id, diffRemovedBg: id,
+  modelHighlight: id, logoGradient: [],
 }
 // Structurally satisfies MayflySemanticColors; declared where consumed.
 
@@ -68,16 +70,20 @@ function presentation(overrides: Partial<typeof DEFAULT_TRANSCRIPT_PRESENTATION>
   return { presentation: () => ({ ...DEFAULT_TRANSCRIPT_PRESENTATION, ...overrides }) }
 }
 
+function imageRef(attachmentId: string, name?: string): ImageAttachmentRef {
+  return { attachmentId: AttachmentId(attachmentId), mediaType: 'image/png', bytes: 3, width: 1, height: 1, ...(name === undefined ? {} : { name }) }
+}
+
 function userItem(text: string): TranscriptUserItem {
-  return { kind: 'user', seq: 1, text }
+  return { kind: 'user', seq: 1, turn: 1, text, images: [] }
 }
 
 function assistantItem(partial: Partial<TranscriptAssistantItem> = {}): TranscriptAssistantItem {
-  return { kind: 'assistant', seq: 1, text: '', ...partial }
+  return { kind: 'assistant', seq: 1, turn: 1, step: 0, text: '', ...partial }
 }
 
 function toolItem(partial: Partial<TranscriptToolItem> = {}): TranscriptToolItem {
-  return { kind: 'tool', seq: 1, callId: 'c1', name: 'bash', arguments: '{}', ...partial }
+  return { kind: 'tool', seq: 1, turn: 1, step: 0, callId: 'c1', name: 'bash', arguments: '{}', startedAt: 0, ...partial }
 }
 
 describe('UserMessageComponent', () => {
@@ -85,15 +91,15 @@ describe('UserMessageComponent', () => {
     const calls: string[] = []
     const loaders: ((data?: Uint8Array) => void)[] = []
     const component = new UserMessageComponent(
-      { kind: 'user', seq: 1, text: 'pics', images: [
-        { id: 'a', mediaType: 'image/png', name: 'shot.png' } as never,
-        { id: 'b', mediaType: 'image/png' } as never,
+      { kind: 'user', seq: 1, turn: 1, text: 'pics', images: [
+        imageRef('a', 'shot.png'),
+        imageRef('b'),
       ] },
       tagged(),
       setup(),
       {
         loadImage: (ref) => new Promise(resolve => {
-          calls.push((ref as { id: string }).id)
+          calls.push(ref.attachmentId)
           loaders.push(resolve)
         }),
         onReady: () => {},
@@ -120,7 +126,7 @@ describe('UserMessageComponent', () => {
     ])
     // A rejected load keeps the placeholder.
     const failing = new UserMessageComponent(
-      { kind: 'user', seq: 2, text: 'x', images: [{ id: 'c' } as never] },
+      { kind: 'user', seq: 2, turn: 1, text: 'x', images: [imageRef('c')] },
       tagged(),
       setup(),
       { loadImage: () => Promise.reject(new Error('gone')) },
@@ -138,7 +144,7 @@ describe('UserMessageComponent', () => {
 
   it('keeps image placeholders when no attachment loader is available', () => {
     const lines = new UserMessageComponent({
-      kind: 'user', seq: 1, text: 'with image', images: [{ id: 'missing' } as never],
+      kind: 'user', seq: 1, turn: 1, text: 'with image', images: [imageRef('missing')],
     }, COLORS, setup()).render(80)
     expect(lines.at(-1)).toContain('[image]')
   })
@@ -257,7 +263,7 @@ describe('UserMessageComponent', () => {
   it('keeps image placeholders below a folded message', async () => {
     const text = Array.from({ length: 11 }, (_, index) => `line ${index}`).join('\n')
     const component = new UserMessageComponent(
-      { kind: 'user', seq: 1, text, images: [{ id: 'a', mediaType: 'image/png' } as never] },
+      { kind: 'user', seq: 1, turn: 1, text, images: [imageRef('a')] },
       tagged(),
       setup(),
       // A never-settling load keeps the placeholder row up.
@@ -387,14 +393,14 @@ describe('ToolCallComponent', () => {
     expect(pending).toEqual(['', '● \x1b[1m[P]Running a command[/P]\x1b[22m'])
 
     const item = toolItem()
-    item.result = { text: 'ran ok', isError: false }
+    item.result = { text: 'ran ok', isError: false, endedAt: 0 }
     const finished = new ToolCallComponent(item, tagged(), setup()).render(80)
     expect(finished[1]).toContain('[S]✓ [/S]\x1b[1m[P]Ran a command[/P]\x1b[22m')
   })
 
   it('renders a success result with the ✓ mark, lines chip, and preview', () => {
     const item = toolItem({ name: 'probe' })
-    item.result = { text: 'ok done', isError: false }
+    item.result = { text: 'ok done', isError: false, endedAt: 0 }
     const lines = new ToolCallComponent(item, tagged(), setup()).render(80)
     expect(lines).toEqual([
       '',
@@ -405,7 +411,7 @@ describe('ToolCallComponent', () => {
 
   it('renders an error result in error colors', () => {
     const item = toolItem({ name: 'probe' })
-    item.result = { text: 'nope', isError: true }
+    item.result = { text: 'nope', isError: true, endedAt: 0 }
     const lines = new ToolCallComponent(item, tagged(), setup()).render(80)
     expect(lines[1]).toContain('[E]✗ [/E]')
     expect(lines[1]).toContain('[E] · 1 line[/E]')
@@ -416,7 +422,7 @@ describe('ToolCallComponent', () => {
     // dsh-plan-mode answers a rejection by failing exit_plan_mode — a
     // user decision, not a tool failure (the S24b round-3 ruling).
     const item = toolItem({ name: 'exit_plan_mode' })
-    item.result = { text: 'The user chose to keep planning; their feedback: mojap', isError: true }
+    item.result = { text: 'The user chose to keep planning; their feedback: mojap', isError: true, endedAt: 0 }
     const lines = new ToolCallComponent(item, tagged(), setup()).render(100)
     expect(lines[1]).toContain('[W]◐ [/W]Used \x1b[1m[P]exit_plan_mode[/P]\x1b[22m')
     expect(lines[1]).toContain('[W] · plan declined[/W]')
@@ -424,12 +430,12 @@ describe('ToolCallComponent', () => {
     expect(lines[2]).toBe('  [W]The user chose to keep planning; their feedback: mojap[/W]')
     // The approve path stays the plain success card.
     const approved = toolItem({ name: 'exit_plan_mode' })
-    approved.result = { text: 'Plan approved — plan mode exited', isError: false }
+    approved.result = { text: 'Plan approved — plan mode exited', isError: false, endedAt: 0 }
     const ok = new ToolCallComponent(approved, tagged(), setup()).render(100)
     expect(ok[1]).toContain('[S]✓ [/S]')
     // Other tools failing still render the error state.
     const other = toolItem({ name: 'probe' })
-    other.result = { text: 'nope', isError: true }
+    other.result = { text: 'nope', isError: true, endedAt: 0 }
     expect(new ToolCallComponent(other, tagged(), setup()).render(80)[1]).toContain('[E]✗ [/E]')
   })
 
@@ -480,7 +486,7 @@ describe('ToolCallComponent', () => {
     const component = new ToolCallComponent(item, COLORS, setup())
     const pending = component.render(80)
     expect(component.render(80)).toBe(pending)
-    item.result = { text: 'done', isError: false }
+    item.result = { text: 'done', isError: false, endedAt: 0 }
     expect(component.render(80)).not.toBe(pending)
     component.invalidate()
     expect(component.render(80)).not.toBe(pending)
@@ -488,7 +494,7 @@ describe('ToolCallComponent', () => {
 
   it('caps the collapsed preview at three visual rows with the kimi hint', () => {
     const item = toolItem({ name: 'probe' })
-    item.result = { text: 'line one', fullText: Array.from({ length: 10 }, (_, i) => `line ${i + 1}`).join('\n'), isError: false }
+    item.result = { text: 'line one', fullText: Array.from({ length: 10 }, (_, i) => `line ${i + 1}`).join('\n'), isError: false, endedAt: 0 }
     const component = new ToolCallComponent(item, tagged(), setup())
     const collapsed = component.render(80)
     expect(collapsed.slice(2)).toEqual([
@@ -515,7 +521,7 @@ describe('ToolCallComponent', () => {
   it('collapses an XML-envelope result to its summary while collapsed', () => {
     const envelope = '<path>src/a.ts</path>\n<type>file</type>\n<content>\n1: const x = 1\n2: const y = 2\n\n(Showing lines 1-2 of 342. Use offset=3 to continue.)\n</content>'
     const item = toolItem({ name: 'probe' })
-    item.result = { text: 'envelope', fullText: envelope, isError: false }
+    item.result = { text: 'envelope', fullText: envelope, isError: false, endedAt: 0 }
     const component = new ToolCallComponent(item, tagged(), setup())
     const collapsed = component.render(80)
     expect(collapsed[2]).toBe('  [M]src/a.ts · lines 1-2 of 342[/M]')
@@ -530,7 +536,7 @@ describe('ToolCallComponent', () => {
   it('collapses a bare-JSON result (the ask-user answers shape) while collapsed', () => {
     const payload = '{"answers":[{"id":"ui_target","selected":["只是演示工具能力"]}]}'
     const item = toolItem({ name: 'ask_user_question' })
-    item.result = { text: payload, fullText: payload, isError: false }
+    item.result = { text: payload, fullText: payload, isError: false, endedAt: 0 }
     const component = new ToolCallComponent(item, tagged(), setup())
     const collapsed = component.render(80)
     expect(collapsed[2]).toBe('  [M]answers: id=ui_target, selected=只是演示工具能力[/M]')
@@ -543,7 +549,7 @@ describe('ToolCallComponent', () => {
 
   it('counts wrapped visual rows for the preview cap and hint', () => {
     const item = toolItem({ name: 'probe' })
-    item.result = { text: 'word', fullText: 'word '.repeat(30).trim(), isError: false }
+    item.result = { text: 'word', fullText: 'word '.repeat(30).trim(), isError: false, endedAt: 0 }
     // At width 20 the single long line wraps past the 3-row cap; the hint
     // counts the wrapped rows, not the raw line count.
     const components = setup()
@@ -584,7 +590,7 @@ describe('ToolCallComponent', () => {
 
   it('falls back to the text when an expanded result has no fullText', () => {
     const item = toolItem({ name: 'probe' })
-    item.result = { text: 'only summary', isError: false }
+    item.result = { text: 'only summary', isError: false, endedAt: 0 }
     const component = new ToolCallComponent(item, tagged(), setup())
     component.setExpanded(true)
     expect(component.render(80)[2]).toBe('  [M]only summary[/M]')
@@ -592,19 +598,19 @@ describe('ToolCallComponent', () => {
 
   it('suppresses the chip and the body for an empty result', () => {
     const item = toolItem({ name: 'probe' })
-    item.result = { text: '', isError: false }
+    item.result = { text: '', isError: false, endedAt: 0 }
     const lines = new ToolCallComponent(item, tagged(), setup()).render(80)
     expect(lines).toEqual(['', '[S]✓ [/S]Used \x1b[1m[P]probe[/P]\x1b[22m'])
   })
 
   it('prefers the semantic chip over the raw line count when provided', () => {
     const item = toolItem({ name: 'write', parsedArguments: { file_path: 'a.ts' } })
-    item.result = { text: '<path>a.ts</path>\n<type>file</type>\n<content>\nCreated file\n</content>', isError: false }
+    item.result = { text: '<path>a.ts</path>\n<type>file</type>\n<content>\nCreated file\n</content>', isError: false, endedAt: 0 }
     const lines = new ToolCallComponent(item, tagged(), setup(), undefined, '+3 −2').render(80)
     expect(lines[1]).toContain('[M] · +3 −2[/M]')
     expect(lines[1]).not.toContain('lines')
     const failed = new ToolCallComponent(item, tagged(), setup(), undefined, '+3 −2')
-    item.result = { text: 'boom', isError: true }
+    item.result = { text: 'boom', isError: true, endedAt: 0 }
     expect(failed.render(80)[1]).toContain('[E] · +3 −2[/E]')
 
     const dynamic = new ToolCallComponent(item, tagged(), setup(), undefined, '+1 −0')
@@ -619,7 +625,7 @@ describe('ToolCallComponent', () => {
 
   it('caps a generic result preview until expanded', () => {
     const item = toolItem({ name: 'read' })
-    item.result = { text: 'l1', fullText: 'l1\nl2\nl3\nl4', isError: false }
+    item.result = { text: 'l1', fullText: 'l1\nl2\nl3\nl4', isError: false, endedAt: 0 }
     const component = new ToolCallComponent(item, tagged(), setup())
     expect(component.render(80)).toHaveLength(1 + 1 + 3 + 1)
     component.setExpanded(true)

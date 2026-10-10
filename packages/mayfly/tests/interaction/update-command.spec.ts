@@ -34,7 +34,7 @@ import {
   updatePanelSummary,
 } from '../../src/interaction/update-command.ts'
 import * as settingsPlugin from '../../src/interaction/settings.ts'
-import { fakeMayflyContext, KEY } from './fakes.ts'
+import { fakeMayflyContext, KEY, type FakeScreen } from './fakes.ts'
 import { InteractionStateService } from '../../src/interaction/runtime-state.ts'
 import { mountUiRegistryObservers, UiInteractionService } from '../../src/core/ui-interaction-state.ts'
 import type { UiSurfaceModel } from '../../src/core/ui-interaction-surface.ts'
@@ -71,7 +71,7 @@ function ok(): SpawnOutcome {
 /** A scripted interactive child that echoes and quits on demand. */
 class FakeChild implements InteractiveChild {
   private exitedValue: SpawnOutcome | undefined
-  private readonly resolveExit: (outcome: SpawnOutcome) => void
+  private resolveExit!: (outcome: SpawnOutcome) => void
   readonly exited: Promise<SpawnOutcome>
 
   constructor() {
@@ -269,7 +269,7 @@ describe('/update guards', () => {
     expect(JSON.stringify(updatePanelModel(state, '1.0.0', '1.0.1', t))).toContain('安装')
     state.blockedMessage = 'E404 raw diagnostic'
     const blocked = updatePanelModel(state, '1.0.0', '1.0.1', t)
-    expect(blocked.title).toBe('更新 Mayfly')
+    expect(blocked).toMatchObject({ title: '更新 Mayfly' })
     expect(JSON.stringify(blocked)).toContain('E404 raw diagnostic')
     expect(updatePanelSummary(state, t)).toBe('更新无法继续，未进行任何修改')
     expect(checkCooldown('1.0.1', { publishedAt: 0, now: 60_000, cooldownMinutes: 10 }, t)).toMatchObject({
@@ -281,7 +281,7 @@ describe('/update guards', () => {
     })
     expect(repairRecipe(['@ephemeral-ai/mayfly'], '1.0.1', t)).toContain('dsh plugin --profile <name> add @ephemeral-ai/mayfly@1.0.1')
     locale.setPreference('en')
-    expect(updatePanelModel(state, '1.0.0', '1.0.1', t).title).toBe('Update Mayfly')
+    expect(updatePanelModel(state, '1.0.0', '1.0.1', t)).toMatchObject({ title: 'Update Mayfly' })
     locale.dispose()
     world.dispose()
   })

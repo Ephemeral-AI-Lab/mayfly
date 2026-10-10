@@ -353,7 +353,7 @@ describe('shared jobs browsing', () => {
       const scroll = node.child.children.find(child => child.node.kind === 'scroll')!.node
       if (scroll.kind !== 'scroll' || scroll.child.kind !== 'code') throw new Error('Missing output text')
       expect(scroll.id).toBe(`job-output-document/${String(page + 1)}`)
-      expect(output.document({ pagePath: [], controlId: scroll.id })).toBeDefined()
+      expect(output.document({ pagePath: [], controlId: scroll.id! })).toBeDefined()
       expect(scroll.child.code).toBe(pages[page])
       expect(scroll.child.code.isWellFormed()).toBe(true)
       restored += scroll.child.code

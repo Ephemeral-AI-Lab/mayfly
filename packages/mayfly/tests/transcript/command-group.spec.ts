@@ -22,6 +22,7 @@ const IDENTITY: MayflySemanticColors = {
   mdHeading: id, mdLink: id, mdLinkUrl: id, mdCode: id, mdCodeBlock: id, mdCodeBlockBorder: id,
   mdQuote: id, mdQuoteBorder: id, mdHr: id, mdListBullet: id,
   diffAdded: id, diffRemoved: id, diffAddedStrong: id, diffRemovedStrong: id, diffGutter: id, diffMeta: id, diffAddedBg: id, diffRemovedBg: id,
+  modelHighlight: id, logoGradient: [],
 }
 // Structurally satisfies MayflySemanticColors; declared where consumed.
 
@@ -34,12 +35,12 @@ function tagged(): MayflySemanticColors {
 const COMPONENTS: MayflyComponents = fakeMayflyComponents()
 
 function command(partial: Partial<CommandCallModel> & { callId: string }): CommandCallModel {
-  return { seq: 1, updatedSeq: 1, turn: 1, step: 0, command: partial.command ?? 'true', state: 'ok', ...partial }
+  return { seq: 1, updatedSeq: 1, turn: 1, step: 0, command: partial.command ?? 'true', state: 'ok', activity: 'commands', detail: '', ...partial }
 }
 
 function group(commands: readonly CommandCallModel[]): TranscriptCommandGroupModel {
   const first = commands[0]!
-  return { kind: 'transcript-command-group', id: `command-group:${String(first.callId)}`, seq: first.seq, turn: first.turn, step: first.step, commands }
+  return { kind: 'transcript-command-group', id: `command-group:${String(first.callId)}`, seq: first.seq, updatedSeq: first.seq, turn: first.turn, step: first.step, commands }
 }
 
 describe('CommandGroupComponent', () => {
@@ -47,7 +48,7 @@ describe('CommandGroupComponent', () => {
     const model = group([
       command({ callId: 'a', command: 'pnpm test', exitCode: 0 }),
       command({ callId: 'b', command: 'git status', exitCode: 0 }),
-      command({ callId: 'c', command: 'rm -rf dist', state: 'error', exitCode: 1, error: 'rm: cannot remove' }),
+      command({ callId: 'c', activity: 'commands', detail: 'rm -rf dist', command: 'rm -rf dist', state: 'error', exitCode: 1, error: 'rm: cannot remove' }),
     ])
     const lines = new CommandGroupComponent(model, tagged(), COMPONENTS).render(80)
     expect(lines).toEqual([
@@ -61,15 +62,15 @@ describe('CommandGroupComponent', () => {
 
   it('renders pending and all-failed headers', () => {
     const pending = new CommandGroupComponent(group([
-      command({ callId: 'a', command: 'pnpm build', state: 'pending' }),
+      command({ callId: 'a', activity: 'commands', detail: 'pnpm build', command: 'pnpm build', state: 'pending' }),
       command({ callId: 'b', command: 'pnpm test' }),
     ]), tagged(), COMPONENTS).render(80)
     expect(pending[1]).toBe('● \x1b[1m[P]Running 2 commands…[/P]\x1b[22m')
     expect(pending[2]).toBe('  ├─ pnpm build [T]…[/T]')
 
     const failed = new CommandGroupComponent(group([
-      command({ callId: 'a', command: 'one', state: 'error', error: 'nope' }),
-      command({ callId: 'b', command: 'two', state: 'error' }),
+      command({ callId: 'a', activity: 'commands', detail: 'one', command: 'one', state: 'error', error: 'nope' }),
+      command({ callId: 'b', activity: 'commands', detail: 'two', command: 'two', state: 'error' }),
     ]), tagged(), COMPONENTS).render(80)
     expect(failed[1]).toBe('[E]✗ [/E]\x1b[1m[E]Ran 2 commands · failed[/E]\x1b[22m')
     expect(failed[3]).toBe('  └─ two [E]✗[/E]')
@@ -109,7 +110,7 @@ describe('CommandGroupComponent', () => {
   it('reads unsettled commands as cancelled once the turn ends, and scopes its hint', () => {
     const model = group([
       command({ callId: 'a', command: 'pnpm test' }),
-      command({ callId: 'b', command: 'pnpm build', state: 'pending' }),
+      command({ callId: 'b', activity: 'commands', detail: 'pnpm build', command: 'pnpm build', state: 'pending' }),
     ])
     const component = new CommandGroupComponent(model, IDENTITY, COMPONENTS)
     expect(component.render(80)[1]).toBe('● \x1b[1mRunning 2 commands…\x1b[22m')
@@ -128,7 +129,7 @@ describe('CommandGroupComponent', () => {
 
   it('renders a single-command group with the singular noun', () => {
     const running = new CommandGroupComponent(group([
-      command({ callId: 'a', command: 'pnpm dev', state: 'pending' }),
+      command({ callId: 'a', activity: 'commands', detail: 'pnpm dev', command: 'pnpm dev', state: 'pending' }),
     ]), IDENTITY, COMPONENTS)
     expect(running.render(80)).toEqual([
       '',
@@ -143,15 +144,15 @@ describe('CommandGroupComponent', () => {
     // The width:expanded:detail cache returns the identical array.
     expect(settled.render(80)).toBe(rows)
     const failed = new CommandGroupComponent(group([
-      command({ callId: 'a', command: 'pnpm dev', state: 'error', error: 'boom' }),
+      command({ callId: 'a', activity: 'commands', detail: 'pnpm dev', command: 'pnpm dev', state: 'error', error: 'boom' }),
     ]), IDENTITY, COMPONENTS)
     expect(failed.render(80)[1]).toContain('Ran 1 command · failed')
   })
 
   it('swaps snapshots on update while preserving expansion state', () => {
     const component = new CommandGroupComponent(group([
-      command({ callId: 'a', command: 'one', state: 'pending' }),
-      command({ callId: 'b', command: 'two', state: 'pending' }),
+      command({ callId: 'a', activity: 'commands', detail: 'one', command: 'one', state: 'pending' }),
+      command({ callId: 'b', activity: 'commands', detail: 'two', command: 'two', state: 'pending' }),
     ]), IDENTITY, COMPONENTS)
     expect(component.render(80).join('\n')).toContain('Running 2 commands…')
     component.update(group([
@@ -164,7 +165,7 @@ describe('CommandGroupComponent', () => {
   it('truncates rows and sanitizes control characters at narrow widths', () => {
     const model = group([
       command({ callId: 'a', command: `cat ${'x'.repeat(200)}`, previewLines: [`out ${'y'.repeat(200)}`] }),
-      command({ callId: 'b', command: 'rm a\nb', state: 'error', error: `bad\x07${'z'.repeat(200)}` }),
+      command({ callId: 'b', activity: 'commands', detail: 'rm a\nb', command: 'rm a\nb', state: 'error', error: `bad\x07${'z'.repeat(200)}` }),
     ])
     const component = new CommandGroupComponent(model, IDENTITY, COMPONENTS)
     component.setExpanded(true)

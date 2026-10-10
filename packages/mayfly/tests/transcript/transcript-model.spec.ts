@@ -22,33 +22,33 @@ function fixture() {
   } as unknown as MayflyScreen
   return { screen, children }
 }
-const model = (id: string, entries = [{ kind: 'text' as const, content: 'entry' }], generation = 0): TranscriptModel => ({ kind: 'transcript', id, generation, entries })
+const model = (id: string, entries: TranscriptModel['entries'] = [{ kind: 'text', content: 'entry' }], generation = 0): TranscriptModel => ({ kind: 'transcript', id, generation, entries })
 
 const semanticEntries = (): TranscriptEntryModel[] => [
   {
-    kind: 'transcript-user', id: 'user', seq: 1, turn: 1, text: 'user text', images: [
+    kind: 'transcript-user', id: 'user', seq: 1, updatedSeq: 1, turn: 1, text: 'user text', images: [
       { attachmentId: 'image-1', mediaType: 'image/png', bytes: 12, width: 4, height: 3 },
       { attachmentId: 'image-2', mediaType: 'image/jpeg', bytes: 20, width: 8, height: 6, name: 'plot.jpg', originalDimensions: { width: 16, height: 12 } },
     ],
   },
-  { kind: 'transcript-assistant', id: 'assistant', seq: 2, turn: 1, step: 0, text: 'assistant text', streaming: false },
-  { kind: 'transcript-thinking', id: 'thinking', seq: 3, turn: 1, step: 0, text: 'thinking text', streaming: false },
+  { kind: 'transcript-assistant', id: 'assistant', seq: 2, updatedSeq: 2, turn: 1, step: 0, text: 'assistant text', streaming: false },
+  { kind: 'transcript-thinking', id: 'thinking', seq: 3, updatedSeq: 3, turn: 1, step: 0, text: 'thinking text', streaming: false },
   {
-    kind: 'transcript-tool', id: 'tool-result', seq: 4, turn: 1, step: 0, callId: 'call-1', name: 'read', family: 'read', arguments: '{}', startedAt: 100,
+    kind: 'transcript-tool', id: 'tool-result', seq: 4, updatedSeq: 4, turn: 1, step: 0, callId: 'call-1', activity: 'read', detail: '', name: 'read', family: 'other', arguments: '{}', startedAt: 100,
     result: { text: 'result summary', fullText: 'result full', isError: false, endedAt: 120 },
   },
   {
-    kind: 'transcript-tool', id: 'tool-text', seq: 5, turn: 1, step: 0, callId: 'call-2', name: 'bash', family: 'command', arguments: '{"command":"pwd"}', startedAt: 130,
+    kind: 'transcript-tool', id: 'tool-text', seq: 5, updatedSeq: 5, turn: 1, step: 0, callId: 'call-2', activity: 'commands', detail: '', name: 'bash', family: 'command', arguments: '{"command":"pwd"}', startedAt: 130,
     result: { text: 'text only', isError: false, endedAt: 140 },
   },
-  { kind: 'transcript-tool', id: 'tool-pending', seq: 6, turn: 1, step: 0, callId: 'call-3', name: 'custom', family: 'other', arguments: '{bad', startedAt: 150 },
+  { kind: 'transcript-tool', id: 'tool-pending', seq: 6, updatedSeq: 6, turn: 1, step: 0, callId: 'call-3', activity: 'tools', detail: '', name: 'custom', family: 'other', arguments: '{bad', startedAt: 150 },
   {
-    kind: 'transcript-tool', id: 'tool-presented', seq: 7, turn: 1, step: 0, callId: 'call-4', name: 'read', family: 'read', arguments: '{}', startedAt: 160,
+    kind: 'transcript-tool', id: 'tool-presented', seq: 7, updatedSeq: 7, turn: 1, step: 0, callId: 'call-4', activity: 'read', detail: '', name: 'read', family: 'other', arguments: '{}', startedAt: 160,
     presentation: { kind: 'tool', id: 'presentation', name: 'read', call: { kind: 'text', content: 'call view' }, result: { kind: 'text', content: 'result view' } },
   },
-  { kind: 'transcript-error', id: 'error-code', seq: 8, turn: 1, message: 'down', code: 'HTTP_404' },
-  { kind: 'transcript-error', id: 'error', seq: 9, turn: 1, message: 'unknown' },
-  { kind: 'transcript-interrupted', id: 'interrupted', seq: 10, turn: 1 },
+  { kind: 'transcript-error', id: 'error-code', seq: 8, updatedSeq: 8, turn: 1, message: 'down', code: 'HTTP_404' },
+  { kind: 'transcript-error', id: 'error', seq: 9, updatedSeq: 9, turn: 1, message: 'unknown' },
+  { kind: 'transcript-interrupted', id: 'interrupted', seq: 10, updatedSeq: 10, turn: 1 },
 ]
 
 function renderer(
@@ -179,10 +179,10 @@ describe('TranscriptController', () => {
     const envelope = '<path>src/a.ts</path>\n<type>file</type>\n<content>\n1: x\n\n(Showing lines 1-1 of 9. Use offset=2 to continue.)\n</content>'
     const entries: TranscriptEntryModel[] = [
       {
-        kind: 'transcript-tool', id: 'enveloped', seq: 1, turn: 1, step: 0, callId: 'c1', name: 'read', family: 'read', arguments: '{}', startedAt: 1,
+        kind: 'transcript-tool', id: 'enveloped', seq: 1, updatedSeq: 1, turn: 1, step: 0, callId: 'c1', activity: 'read', detail: '', name: 'read', family: 'other', arguments: '{}', startedAt: 1,
         result: { text: envelope, isError: false, endedAt: 2 },
       },
-      { kind: 'transcript-tool', id: 'argish', seq: 2, turn: 1, step: 0, callId: 'c2', name: 'write', family: 'edit', arguments: '{"file_path":"a.ts"}', startedAt: 3 },
+      { kind: 'transcript-tool', id: 'argish', seq: 2, updatedSeq: 2, turn: 1, step: 0, callId: 'c2', activity: 'edit', detail: '', name: 'write', family: 'edit', arguments: '{"file_path":"a.ts"}', startedAt: 3 },
     ]
     const rows = new TranscriptModelComponent(() => model('plain', entries), plainRenderer()).render(80)
     expect(rows).toContain('src/a.ts · lines 1-1 of 9')
@@ -192,11 +192,11 @@ describe('TranscriptController', () => {
 
   it('renders read groups through the tree component with tools-category expansion', () => {
     const groupEntry: TranscriptEntryModel = {
-      kind: 'transcript-read-group', id: 'read-group:r1', seq: 4, turn: 1, step: 0,
+      kind: 'transcript-read-group', id: 'read-group:r1', seq: 4, updatedSeq: 4, turn: 1, step: 0,
       reads: [
-        { callId: 'r1', seq: 4, turn: 1, step: 0, path: 'src/a.ts', range: { first: 1, last: 3 }, totalLines: 9, state: 'ok', previewLines: [{ number: 1, text: 'first line' }] },
-        { callId: 'r2', seq: 5, turn: 1, step: 0, path: 'src/a.ts', requestedRange: { first: 4, last: 6 }, state: 'pending' },
-        { callId: 'r3', seq: 6, turn: 1, step: 0, path: 'gone.ts', state: 'error', error: 'file not found' },
+        { callId: 'r1', activity: 'read', detail: 'src/a.ts', seq: 4, updatedSeq: 4, turn: 1, step: 0, path: 'src/a.ts', range: { first: 1, last: 3 }, totalLines: 9, state: 'ok', previewLines: [{ number: 1, text: 'first line' }] },
+        { callId: 'r2', activity: 'read', detail: 'src/a.ts', seq: 5, updatedSeq: 5, turn: 1, step: 0, path: 'src/a.ts', requestedRange: { first: 4, last: 6 }, state: 'pending' },
+        { callId: 'r3', activity: 'read', detail: 'gone.ts', seq: 6, updatedSeq: 6, turn: 1, step: 0, path: 'gone.ts', state: 'error', error: 'file not found' },
       ],
     }
     const collapsedRows = new TranscriptModelComponent(() => model('reads', [groupEntry]), renderer(() => {}, collapsedPolicy())).render(80)
@@ -213,29 +213,29 @@ describe('TranscriptController', () => {
 
     const plain = new TranscriptModelComponent(() => model('reads', [groupEntry]), plainRenderer()).render(80).join('\n')
     const plainCommands = new TranscriptModelComponent(() => model('commands', [{
-      kind: 'transcript-command-group', id: 'command-group:c1', seq: 7, turn: 1, step: 0,
+      kind: 'transcript-command-group', id: 'command-group:c1', seq: 7, updatedSeq: 7, turn: 1, step: 0,
       commands: [
-        { callId: 'c1', seq: 7, turn: 1, step: 0, command: 'one', state: 'ok' },
-        { callId: 'c2', seq: 8, turn: 1, step: 0, command: 'two', state: 'ok' },
-        { callId: 'c3', seq: 9, turn: 1, step: 0, command: 'three', state: 'ok' },
-        { callId: 'c4', seq: 10, turn: 1, step: 0, command: 'four', state: 'ok' },
+        { callId: 'c1', activity: 'commands', detail: 'one', seq: 7, updatedSeq: 7, turn: 1, step: 0, command: 'one', state: 'ok' },
+        { callId: 'c2', activity: 'commands', detail: 'two', seq: 8, updatedSeq: 8, turn: 1, step: 0, command: 'two', state: 'ok' },
+        { callId: 'c3', activity: 'commands', detail: 'three', seq: 9, updatedSeq: 9, turn: 1, step: 0, command: 'three', state: 'ok' },
+        { callId: 'c4', activity: 'commands', detail: 'four', seq: 10, updatedSeq: 10, turn: 1, step: 0, command: 'four', state: 'ok' },
       ],
     }]), plainRenderer()).render(80).join('\n')
     expect(plainCommands).toContain('Ran 4 commands: one, two, three…')
     const plainOneCommand = new TranscriptModelComponent(() => model('commands', [{
-      kind: 'transcript-command-group', id: 'command-group:c9', seq: 7, turn: 1, step: 0,
-      commands: [{ callId: 'c9', seq: 7, turn: 1, step: 0, command: 'solo', state: 'ok' }],
+      kind: 'transcript-command-group', id: 'command-group:c9', seq: 7, updatedSeq: 7, turn: 1, step: 0,
+      commands: [{ callId: 'c9', activity: 'commands', detail: 'solo', seq: 7, updatedSeq: 7, turn: 1, step: 0, command: 'solo', state: 'ok' }],
     }]), plainRenderer()).render(80).join('\n')
     expect(plainOneCommand).toContain('Ran 1 command: solo')
     expect(plain).toContain('Read 3 calls: src/a.ts, gone.ts')
     const plainSingle = new TranscriptModelComponent(() => model('reads', [{
-      kind: 'transcript-read-group', id: 'read-group:solo', seq: 1, turn: 1, step: 0,
-      reads: [{ callId: 'solo', seq: 1, turn: 1, step: 0, path: 'solo.ts', state: 'ok' }],
+      kind: 'transcript-read-group', id: 'read-group:solo', seq: 1, updatedSeq: 1, turn: 1, step: 0,
+      reads: [{ callId: 'solo', activity: 'read', detail: 'solo.ts', seq: 1, updatedSeq: 1, turn: 1, step: 0, path: 'solo.ts', state: 'ok' }],
     }]), plainRenderer()).render(80).join('\n')
     expect(plainSingle).toContain('Read 1 call: solo.ts')
     const plainPathless = new TranscriptModelComponent(() => model('reads', [{
-      kind: 'transcript-read-group', id: 'read-group:none', seq: 1, turn: 1, step: 0,
-      reads: [{ callId: 'none', seq: 1, turn: 1, step: 0, state: 'ok' }],
+      kind: 'transcript-read-group', id: 'read-group:none', seq: 1, updatedSeq: 1, turn: 1, step: 0,
+      reads: [{ callId: 'none', activity: 'read', detail: '', seq: 1, updatedSeq: 1, turn: 1, step: 0, state: 'ok' }],
     }]), plainRenderer()).render(80).join('\n')
     expect(plainPathless).toContain('Read 1 call')
     expect(plainPathless).not.toContain(':')
@@ -243,10 +243,10 @@ describe('TranscriptController', () => {
 
   it('renders search groups through the tree component with tools-category expansion', () => {
     const searchEntry: TranscriptEntryModel = {
-      kind: 'transcript-search-group', id: 'search-group:s1', seq: 3, turn: 1, step: 0,
+      kind: 'transcript-search-group', id: 'search-group:s1', seq: 3, updatedSeq: 3, turn: 1, step: 0,
       searches: [
-        { callId: 's1', seq: 3, turn: 1, step: 0, pattern: 'const', shape: 'matches', files: [{ path: 'a.ts', count: 2, previews: [{ lineNumber: 1, line: 'const hit' }] }], state: 'ok' },
-        { callId: 's2', seq: 4, turn: 1, step: 0, pattern: '*.ts', shape: 'paths', paths: ['a.ts'], pathsTotal: 2, total: 2, state: 'ok' },
+        { callId: 's1', activity: 'search', detail: 'const', seq: 3, updatedSeq: 3, turn: 1, step: 0, pattern: 'const', shape: 'matches', files: [{ path: 'a.ts', count: 2, previews: [{ lineNumber: 1, line: 'const hit' }] }], state: 'ok' },
+        { callId: 's2', activity: 'search', detail: '*.ts', seq: 4, updatedSeq: 4, turn: 1, step: 0, pattern: '*.ts', shape: 'paths', paths: ['a.ts'], pathsTotal: 2, total: 2, state: 'ok' },
       ],
     }
     const collapsedText = new TranscriptModelComponent(() => model('searches', [searchEntry]), renderer(() => {}, collapsedPolicy())).render(80).join('\n')
@@ -263,18 +263,18 @@ describe('TranscriptController', () => {
     const plain = new TranscriptModelComponent(() => model('searches', [searchEntry]), plainRenderer()).render(80).join('\n')
     expect(plain).toContain('Searched 2 times: const, *.ts')
     const plainBare = new TranscriptModelComponent(() => model('searches', [{
-      kind: 'transcript-search-group', id: 'search-group:bare', seq: 1, turn: 1, step: 0,
-      searches: [{ callId: 'bare', seq: 1, turn: 1, step: 0, state: 'ok' }],
+      kind: 'transcript-search-group', id: 'search-group:bare', seq: 1, updatedSeq: 1, turn: 1, step: 0,
+      searches: [{ callId: 'bare', activity: 'search', detail: '', seq: 1, updatedSeq: 1, turn: 1, step: 0, state: 'ok' }],
     }]), plainRenderer()).render(80).join('\n')
     expect(plainBare).toContain('Searched 1 time: search')
   })
 
   it('renders command groups through the tree component with family detail', () => {
     const groupEntry: TranscriptEntryModel = {
-      kind: 'transcript-command-group', id: 'command-group:c1', seq: 4, turn: 1, step: 0,
+      kind: 'transcript-command-group', id: 'command-group:c1', seq: 4, updatedSeq: 4, turn: 1, step: 0,
       commands: [
-        { callId: 'c1', seq: 4, updatedSeq: 4, turn: 1, step: 0, command: 'pnpm test', state: 'ok', exitCode: 0, previewLines: ['8 passed'] },
-        { callId: 'c2', seq: 5, updatedSeq: 5, turn: 1, step: 0, command: 'pnpm build', state: 'error', exitCode: 1, error: 'TS2304: nope' },
+        { callId: 'c1', activity: 'commands', detail: 'pnpm test', seq: 4, updatedSeq: 4, turn: 1, step: 0, command: 'pnpm test', state: 'ok', exitCode: 0, previewLines: ['8 passed'] },
+        { callId: 'c2', activity: 'commands', detail: 'pnpm build', seq: 5, updatedSeq: 5, turn: 1, step: 0, command: 'pnpm build', state: 'error', exitCode: 1, error: 'TS2304: nope' },
       ],
     }
     const collapsedRows = new TranscriptModelComponent(() => model('commands', [groupEntry]), renderer(() => {}, collapsedPolicy())).render(80)
@@ -297,13 +297,13 @@ describe('TranscriptController', () => {
     const policy = new TranscriptPresentationPolicy()
     policy.apply({ transcriptView: 'compact', expandTurns: 1 })
     const turn = (n: number, seq: number): TranscriptEntryModel[] => [
-      { kind: 'transcript-user', id: `u${String(n)}`, seq, turn: n, text: `ask ${String(n)}`, images: [] },
-      { kind: 'transcript-thinking', id: `t${String(n)}`, seq: seq + 1, turn: n, step: 0, text: `deep thought ${String(n)}\nline two`, streaming: false },
+      { kind: 'transcript-user', id: `u${String(n)}`, seq, updatedSeq: seq, turn: n, text: `ask ${String(n)}`, images: [] },
+      { kind: 'transcript-thinking', id: `t${String(n)}`, seq: seq + 1, updatedSeq: seq + 1, turn: n, step: 0, text: `deep thought ${String(n)}\nline two`, streaming: false },
       {
-        kind: 'transcript-read-group', id: `read-group:r${String(n)}`, seq: seq + 2, turn: n, step: 0,
-        reads: [{ callId: `r${String(n)}`, activity: 'read', detail: 'a.ts', seq: seq + 2, turn: n, step: 0, path: 'a.ts', range: { first: 1, last: 2 }, state: 'ok', previewLines: [{ number: 1, text: `preview ${String(n)}` }] }],
+        kind: 'transcript-read-group', id: `read-group:r${String(n)}`, seq: seq + 2, updatedSeq: seq + 2, turn: n, step: 0,
+        reads: [{ callId: `r${String(n)}`, activity: 'read', detail: 'a.ts', seq: seq + 2, updatedSeq: seq + 2, turn: n, step: 0, path: 'a.ts', range: { first: 1, last: 2 }, state: 'ok', previewLines: [{ number: 1, text: `preview ${String(n)}` }] }],
       },
-      { kind: 'transcript-assistant', id: `a${String(n)}`, seq: seq + 3, turn: n, step: 1, text: `answer ${String(n)}`, streaming: false },
+      { kind: 'transcript-assistant', id: `a${String(n)}`, seq: seq + 3, updatedSeq: seq + 3, turn: n, step: 1, text: `answer ${String(n)}`, streaming: false },
     ]
     const turns = [{ turn: 1, startedAt: 0, endedAt: 5_000, outcome: 'completed' }, { turn: 2, startedAt: 6_000, endedAt: 9_000, outcome: 'completed' }]
     let current = createTranscriptModel('flow', [...turn(1, 1), ...turn(2, 10)], false, 0, turns)
@@ -355,7 +355,7 @@ describe('TranscriptController', () => {
     expect(component.render(80)).not.toBe(first)
     component.invalidate()
     const entries = semanticEntries()
-    entries[1] = { kind: 'transcript-assistant', id: 'assistant', seq: 2, turn: 1, step: 0, text: 'changed answer', streaming: false }
+    entries[1] = { kind: 'transcript-assistant', id: 'assistant', seq: 2, updatedSeq: 20, turn: 1, step: 0, text: 'changed answer', streaming: false }
     current = model('semantic', [entries[1]!, entries[2]!, { kind: 'text', content: 'plain tail' }])
     const changed = component.render(80)
     expect(changed.some(row => row.includes('changed answer'))).toBe(true)
@@ -382,8 +382,8 @@ describe('TranscriptController', () => {
       renderer: renderer(() => {}, undefined, true, translate),
     })
     service.setSource(model('localized', [
-      { kind: 'transcript-user', id: 'user-long', seq: 1, turn: 1, text: Array.from({ length: 12 }, () => 'line').join('\n'), images: [] },
-      { kind: 'transcript-interrupted', id: 'interrupted', seq: 2, turn: 1 },
+      { kind: 'transcript-user', id: 'user-long', seq: 1, updatedSeq: 1, turn: 1, text: Array.from({ length: 12 }, () => 'line').join('\n'), images: [] },
+      { kind: 'transcript-interrupted', id: 'interrupted', seq: 2, updatedSeq: 2, turn: 1 },
     ]))
     const component = f.children[0] as TranscriptModelComponent
     expect(component.render(80).join('\n')).toContain('more lines')
@@ -486,7 +486,7 @@ describe('TranscriptController', () => {
     const update = vi.spyOn(ToolCallComponent.prototype, 'update')
     const view = (revision: number, settled: boolean): TranscriptModel => createTranscriptModel('tools', [{
       kind: 'transcript-tool', id: 'tool:call', seq: 1, updatedSeq: revision, turn: 1, step: 0,
-      callId: 'call', name: 'read', arguments: '{}', startedAt: 1,
+      callId: 'call', activity: 'tools', detail: '', name: 'read', family: 'other', arguments: '{}', startedAt: 1,
       ...(settled ? {
         result: { text: 'done', fullText: 'done', isError: false, endedAt: 2 },
         presentation: {
@@ -513,11 +513,11 @@ describe('TranscriptController', () => {
     const view = (revision: number, suffix: string): TranscriptModel => createTranscriptModel('groups', [
       {
         kind: 'transcript-read-group', id: 'read-group:cached', seq: 1, updatedSeq: revision, turn: 1, step: 0,
-        reads: [{ callId: 'read', seq: 1, turn: 1, step: 0, path: `${suffix}.ts`, state: 'ok' }],
+        reads: [{ callId: 'read', activity: 'read', detail: `${suffix}.ts`, seq: 1, updatedSeq: 1, turn: 1, step: 0, path: `${suffix}.ts`, state: 'ok' }],
       },
       {
         kind: 'transcript-search-group', id: 'search-group:cached', seq: 2, updatedSeq: revision, turn: 1, step: 0,
-        searches: [{ callId: 'search', seq: 2, turn: 1, step: 0, pattern: suffix, state: 'ok' }],
+        searches: [{ callId: 'search', activity: 'search', detail: suffix, seq: 2, updatedSeq: 2, turn: 1, step: 0, pattern: suffix, state: 'ok' }],
       },
     ])
     let current = view(1, 'before')
@@ -534,8 +534,9 @@ describe('TranscriptController', () => {
 
   it('renders live reasoning as a captionless tail that changes only with its text', () => {
     const requestRender = vi.fn()
+    // Each streamed revision of the block is a later update of the same entry.
     const live = (text: string): TranscriptModel => createTranscriptModel('thinking-stream', [{
-      kind: 'transcript-thinking', id: 'thinking-stream', seq: 1, turn: 1, step: 0, text, streaming: true,
+      kind: 'transcript-thinking', id: 'thinking-stream', seq: 1, updatedSeq: text.length, turn: 1, step: 0, text, streaming: true,
     }], true)
     let current = live('live')
     const component = new TranscriptModelComponent(() => current, renderer(requestRender, collapsedPolicy()))
@@ -576,9 +577,9 @@ describe('TranscriptController', () => {
     const policy = new TranscriptPresentationPolicy()
     policy.apply({ transcriptView: 'verbose', windowTurns: 2, expandTurns: 1 })
     const entries: TranscriptEntryModel[] = [
-      { kind: 'transcript-assistant', id: 'old', seq: 1, turn: 1, step: 0, text: 'old answer', streaming: false },
-      { kind: 'transcript-thinking', id: 'middle', seq: 2, turn: 2, step: 0, text: 'middle one\nmiddle two\nmiddle three\nmiddle four', streaming: false },
-      { kind: 'transcript-thinking', id: 'new', seq: 3, turn: 3, step: 0, text: 'new one\nnew two\nnew three\nnew four', streaming: false },
+      { kind: 'transcript-assistant', id: 'old', seq: 1, updatedSeq: 1, turn: 1, step: 0, text: 'old answer', streaming: false },
+      { kind: 'transcript-thinking', id: 'middle', seq: 2, updatedSeq: 2, turn: 2, step: 0, text: 'middle one\nmiddle two\nmiddle three\nmiddle four', streaming: false },
+      { kind: 'transcript-thinking', id: 'new', seq: 3, updatedSeq: 3, turn: 3, step: 0, text: 'new one\nnew two\nnew three\nnew four', streaming: false },
     ]
     const scoped = new TranscriptModelComponent(() => model('scoped', entries), renderer(() => {}, policy))
     scoped.setExpanded(true)
@@ -655,8 +656,8 @@ describe('TranscriptController', () => {
   it('anchors ephemeral local entries into the durable flow and scrolls them up with later history', () => {
     const f = fixture()
     const entries = (): TranscriptEntryModel[] => [
-      { kind: 'transcript-assistant', id: 'a1', seq: 1, turn: 1, step: 0, text: 'first', streaming: false },
-      { kind: 'transcript-assistant', id: 'a2', seq: 2, turn: 1, step: 1, text: 'second', streaming: false },
+      { kind: 'transcript-assistant', id: 'a1', seq: 1, updatedSeq: 1, turn: 1, step: 0, text: 'first', streaming: false },
+      { kind: 'transcript-assistant', id: 'a2', seq: 2, updatedSeq: 2, turn: 1, step: 1, text: 'second', streaming: false },
     ]
     let current = model('anchored', entries())
     const service = new TranscriptController(new Context(), f.screen, { renderer: plainRenderer() })
@@ -667,7 +668,7 @@ describe('TranscriptController', () => {
     // The echo lands after the durable tail, inside the transcript gutter.
     expect(component.render(40)).toEqual(['first', 'second', ' $ echo hi'])
     // Later durable entries render below it — the anchor scrolls up with history.
-    current = model('anchored', [...entries(), { kind: 'transcript-assistant', id: 'a3', seq: 3, turn: 2, step: 0, text: 'third', streaming: false }])
+    current = model('anchored', [...entries(), { kind: 'transcript-assistant', id: 'a3', seq: 3, updatedSeq: 3, turn: 2, step: 0, text: 'third', streaming: false }])
     expect(component.render(40)).toEqual(['first', 'second', ' $ echo hi', 'third'])
     remove()
     expect(component.render(40)).toEqual(['first', 'second', 'third'])
@@ -676,8 +677,8 @@ describe('TranscriptController', () => {
 
   it('anchors locals at their seq boundary, orders siblings, and drops them on generation change', () => {
     const view = (generation: number): TranscriptModel => model('gen', [
-      { kind: 'transcript-user', id: 'u', seq: 5, turn: 1, text: 'user text', images: [] },
-      { kind: 'transcript-assistant', id: 'a', seq: 9, turn: 1, step: 0, text: 'assistant text', streaming: false },
+      { kind: 'transcript-user', id: 'u', seq: 5, updatedSeq: 5, turn: 1, text: 'user text', images: [] },
+      { kind: 'transcript-assistant', id: 'a', seq: 9, updatedSeq: 9, turn: 1, step: 0, text: 'assistant text', streaming: false },
     ], generation)
     let current = view(0)
     const component = new TranscriptModelComponent(() => current, plainRenderer())
@@ -704,8 +705,8 @@ describe('TranscriptController', () => {
   it('renders anchored locals above the live overlay and within the render width', () => {
     const component = new TranscriptModelComponent(() => ({
       kind: 'transcript', id: 'live', generation: 0,
-      entries: [{ kind: 'transcript-user', id: 'u', seq: 1, turn: 1, text: 'user text', images: [] }],
-      live: { turn: 1, step: 0, entries: [{ kind: 'transcript-assistant', id: 'live-a', seq: 2, turn: 1, step: 0, text: 'streaming', streaming: true }] },
+      entries: [{ kind: 'transcript-user', id: 'u', seq: 1, updatedSeq: 1, turn: 1, text: 'user text', images: [] }],
+      live: { turn: 1, step: 0, entries: [{ kind: 'transcript-assistant', id: 'live-a', seq: 2, updatedSeq: 2, turn: 1, step: 0, text: 'streaming', streaming: true }] },
     }), plainRenderer())
     component.appendAnchored('echo', { render: width => ['x'.repeat(width)], invalidate: () => {} }, 1)
     expect(component.render(40)).toEqual(['user text', ` ${'x'.repeat(38)}`, 'streaming'])

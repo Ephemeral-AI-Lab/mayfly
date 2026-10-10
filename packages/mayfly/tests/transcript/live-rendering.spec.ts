@@ -4,7 +4,7 @@
 
 import { Context } from '@deepseek-ai/cordis'
 import type { Agent, AssistantStreamFrame } from '@deepseek-ai/dsh-agent'
-import { MessageId } from '@deepseek-ai/dsh-llm'
+import { MessageId, ToolCallId } from '@deepseek-ai/dsh-llm'
 import { SessionId, SessionStore } from '@deepseek-ai/dsh-session'
 import { SessionProjectionRegistry } from '@deepseek-ai/dsh-session-projection'
 import { expect, it, vi } from 'vitest'
@@ -200,7 +200,7 @@ it('retires a replaced live component and ignores notifications without a select
   source.dispose()
 
   const progress = { chars: 10, initialChars: 5, startedAt: 1, updatedAt: 2 }
-  expect(conversationTranscriptModel({ entries: [{ kind: 'thinking', id: 'thinking', seq: 1, updatedSeq: 1, turn: 1, step: 0, text: 'thought', streaming: false, outputProgress: progress }], streaming: false, settledSteps: [] }, { get: () => undefined }).entries[0]).toMatchObject({ outputProgress: progress })
+  expect(conversationTranscriptModel({ entries: [{ kind: 'thinking', id: 'thinking', seq: 1, updatedSeq: 1, turn: 1, step: 0, text: 'thought', streaming: false, outputProgress: progress }], streaming: false, settledSteps: [], turns: [] }, { get: () => undefined }).entries[0]).toMatchObject({ outputProgress: progress })
 })
 
 it('reuses canonical rows and safely retires a live semantic id absent from the cache', () => {
@@ -223,9 +223,9 @@ it('renders preparation and retires it when the matching native call is dispatch
   const r = await rig('preparation')
   try {
     r.start()
-    r.chunk({ type: 'tool-call-delta', index: 0, id: 'preparing-call', name: 'write', argumentsDelta: '{"content":' })
+    r.chunk({ type: 'tool-call-delta', index: 0, id: ToolCallId('preparing-call'), name: 'write', argumentsDelta: '{"content":' })
     expect(r.component.render(80).join('\n')).toContain('Preparing write')
-    r.chunk({ type: 'tool-call-delta', index: 0, id: 'preparing-call', argumentsDelta: '"hello"}' })
+    r.chunk({ type: 'tool-call-delta', index: 0, id: ToolCallId('preparing-call'), argumentsDelta: '"hello"}' })
     expect(r.component.render(80).join('\n')).toContain('19 chars')
     r.session.append('tool/call', { turn: 1, step: 0, callId: 'preparing-call' as never, name: 'write', arguments: '{}' } as never)
     expect(r.component.render(80).join('\n')).not.toContain('Preparing write')

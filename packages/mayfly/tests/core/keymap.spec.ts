@@ -273,7 +273,7 @@ describe('MayflyKeymapService', () => {
     const keymap = ctx.mayflyKeymap
     keymap.register([{ id: 'mayfly.a', keys: 'ctrl+x' }])
 
-    const snapshot = keymap.list() as MayflyKeyAction[]
+    const snapshot = keymap.list() as unknown as MayflyKeyAction[]
     snapshot.length = 0
     snapshot.push({ id: 'mayfly.injected', keys: ['f9'] })
     expect(keymap.list().map(action => action.id)).toEqual(['mayfly.a'])

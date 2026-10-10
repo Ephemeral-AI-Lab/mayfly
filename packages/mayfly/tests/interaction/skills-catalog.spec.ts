@@ -90,7 +90,7 @@ describe('skills catalog settle', () => {
     expect(userInvocableSkills(ctx).map(entry => entry.name)).toEqual(['deploy-check'])
     // The read went through snapshot with the agent's own scope and cwd.
     expect(fake.snapshots).toHaveBeenCalled()
-    const call = fake.snapshots.mock.calls[0]?.[0] as { scope: unknown, cwd: unknown }
+    const call = (fake.snapshots.mock.calls[0] as unknown[] | undefined)?.[0] as unknown as { scope: unknown, cwd: unknown }
     expect(call.scope).toBe((ctx.get('testSession') as { current: unknown }).current)
     expect(call.cwd).toBe((call.scope as { session: { header: { cwd?: string } } }).session.header.cwd)
   })
@@ -157,7 +157,7 @@ describe('skills catalog settle', () => {
     const fake = hangingSkills(['stale-agent'])
     const { ctx } = await mount({ skills: fake.service })
     const pending = refresh(ctx)
-    const state = ctx.get('testSession') as { current: { session: unknown } }
+    const state = ctx.get('testSession') as { current: { id: string, session: unknown, status: string } }
     state.current = { id: 'skills-catalog-silent-next', session: state.current.session, status: 'idle' }
     fake.release()
     await pending

@@ -9,7 +9,7 @@ import ToolRuntime from '@deepseek-ai/dsh-tools'
 import type { ToolSchema } from '@deepseek-ai/dsh-llm'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { createScope } from '@deepseek-ai/dsh-scope'
-import { vi } from 'vitest'
+import { vi, type Mock } from 'vitest'
 import { requestFixture } from './request-fixture.ts'
 import { MCP_CLIENT_MODULE, FIBER_ACTIVE } from '../../src/interaction/mcp-servers.ts'
 
@@ -34,8 +34,9 @@ export async function catalogFixture(ctx: Context) {
     owner.effect(() => () => Promise.all([agentScope.dispose(), otherScope.dispose()]))
   } })
   let sequence = 0
-  const execute = vi.fn(async () => null)
-  const register = (schema: ToolSchema, agent?: Agent) => ctx.plugin({ name: `catalog-tool-${++sequence}`, inject: ['tools'], apply(owner: Context) {
+  const execute: Mock<() => Promise<null>> = vi.fn(async () => null)
+  /** Register a tool; one that declares no parameters takes none. */
+  const register = (schema: Omit<ToolSchema, 'parameters'> & Partial<Pick<ToolSchema, 'parameters'>>, agent?: Agent) => ctx.plugin({ name: `catalog-tool-${++sequence}`, inject: ['tools'], apply(owner: Context) {
     const scope = agent === undefined ? undefined : createScope(owner, agent)
     const registration = scope?.ctx ?? owner
     registration.tools.register({ ...schema, parameters: schema.parameters ?? { type: 'object', properties: {} }, output: { schema: { type: 'null' }, render: () => [] }, execute })

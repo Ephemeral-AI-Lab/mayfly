@@ -12,6 +12,13 @@ import { SCAN_WIDTHS, expectLinesFit } from '../core/width-scan.ts'
 import { visibleWidth, wrapTextWithAnsi, truncateToWidth } from '../../src/core/width.ts'
 import type { PermissionPresetsService } from '../../src/interaction/permission-panel.ts'
 import { fakeMayflyContext } from './fakes.ts'
+import { CommandId } from '@deepseek-ai/dsh-commands'
+
+/** The sandbox knob event, declared by dsh-sandbox-policy, which Mayfly does not depend on. */
+const SANDBOX_MODE = 'sandbox/mode'
+const appendSandboxMode = (session: { append(type: never, data: never): unknown }, mode: string): void => {
+  session.append(SANDBOX_MODE as never, { mode } as never)
+}
 
 type PlanState = { active: boolean, pending?: boolean }
 
@@ -38,7 +45,7 @@ async function mount(initial: PlanState = { active: false }, withPlan = true, or
       values: !withPlan || state === undefined
         ? {}
         : { plan: { active: state.active, pending: state.pending === true } },
-    }
+    } as ReturnType<typeof ctx.sessionProjections.snapshot>
   })
   // Mirrors dsh `derive()`: a recorded preset is effective only once the
   // sandbox and approval knobs folded so far match its spec.
@@ -46,7 +53,7 @@ async function mount(initial: PlanState = { active: false }, withPlan = true, or
   ctx.on('session/event', (_target, event) => {
     const data = event.data as Record<string, string>
     if (event.type === 'permission/preset') knobs.preset = data['preset']!
-    if (event.type === 'sandbox/mode') knobs.sandbox = data['mode']!
+    if ((event.type as string) === SANDBOX_MODE) knobs.sandbox = data['mode']!
     if (event.type === 'approval/policy') knobs.approval = data['policy']!
   })
   const derived = (): string => {
@@ -153,14 +160,14 @@ describe('mayfly-status-mode', () => {
       const session = world.agent.session
       session.append('permission/preset', { preset: 'danger-full-access' })
       expect(world.entry()?.node).toBeNull()
-      session.append('sandbox/mode', { mode: 'danger-full-access' })
+      appendSandboxMode(session, 'danger-full-access')
       expect(world.entry()?.node).toBeNull()
       session.append('approval/policy', { policy: 'never' })
       expect(world.entry()?.node).toEqual(yolo)
 
       session.append('permission/preset', { preset: 'workspace-write' })
       expect(world.entry()?.node).toEqual(yolo)
-      session.append('sandbox/mode', { mode: 'workspace-write' })
+      appendSandboxMode(session, 'workspace-write')
       session.append('approval/policy', { policy: 'ask' })
       expect(world.entry()?.node).toBeNull()
     })
@@ -171,7 +178,7 @@ describe('mayfly-status-mode', () => {
       session.append('approval/policy', { policy: 'never' })
       session.append('permission/preset', { preset: 'danger-full-access' })
       expect(world.entry()?.node).toBeNull()
-      session.append('sandbox/mode', { mode: 'danger-full-access' })
+      appendSandboxMode(session, 'danger-full-access')
       expect(world.entry()?.node).toEqual(yolo)
     })
 
@@ -179,10 +186,10 @@ describe('mayfly-status-mode', () => {
       const world = await mount({ active: false }, true, true)
       const session = world.agent.session
       world.states.set(world.agent, { active: false, pending: true })
-      session.append('command/run', { commandId: 'c1', name: 'plan' })
+      session.append('command/run', { commandId: CommandId('c1'), name: 'plan', source: { kind: 'user' } })
       expect(world.entry()?.node).toMatchObject({ content: 'plan…' })
       world.states.set(world.agent, { active: false })
-      session.append('command/done', { commandId: 'c1', kind: 'success' })
+      session.append('command/done', { commandId: CommandId('c1'), kind: 'success' })
       expect(world.entry()?.node).toBeNull()
     })
   })

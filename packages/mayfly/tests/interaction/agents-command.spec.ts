@@ -22,6 +22,7 @@ import {
 import { FakeMayflyComponents, FakeKeymap, FakeScreen, FakeTheme } from './fakes.ts'
 import { renderRequest, flushRequests } from './request-fixture.ts'
 import type { MayflyComponent } from '../../src/core/types.ts'
+import { withOverrides, type Overrides } from '../fixture-fields.ts'
 
 function plain(rows: readonly string[]): readonly string[] {
   return rows.map(row => row.replace(/\x1b\[[0-9;]*m/g, '').replace(/[~^#!?@]/g, ''))
@@ -29,8 +30,9 @@ function plain(rows: readonly string[]): readonly string[] {
 
 type ChildEntry = MayflySubagentTreeEntry & { readonly kind: 'child' }
 
-function child(id: string, overrides: Partial<ChildEntry> = {}): ChildEntry {
-  return {
+/** One child row; an override of `undefined` leaves the field out. */
+function child(id: string, overrides: Overrides<ChildEntry> = {}): ChildEntry {
+  return withOverrides<ChildEntry>({
     kind: 'child',
     id: SessionId(id),
     parentId: SessionId('parent'),
@@ -39,8 +41,7 @@ function child(id: string, overrides: Partial<ChildEntry> = {}): ChildEntry {
     hasChildren: false,
     mode: 'continuable',
     label: id,
-    ...overrides,
-  }
+  }, overrides)
 }
 
 describe('agent tree models', () => {
@@ -73,7 +74,7 @@ describe('agent tree models', () => {
     expect(liveAgentDescendantCount(tree, 'missing', isLive)).toBe(0)
     expect(agentTreeItems([
       child('parent'),
-      { kind: 'diagnostic', id: SessionId('diagnostic'), parentId: SessionId('parent'), depth: 2, reason: 'broken' },
+      { kind: 'diagnostic', id: SessionId('diagnostic'), parentId: SessionId('parent'), depth: 2, reason: 'corrupt' },
     ], 0)[1]).toMatchObject({ parentId: 'parent', disabled: true })
   })
 })
@@ -556,7 +557,7 @@ describe('mayfly-agents-command', () => {
     const rig = await mountCommand()
     rig.tree = [
       child('unlabeled', { label: undefined }),
-      { kind: 'diagnostic', id: SessionId('diagnostic'), parentId: SessionId('parent'), depth: 1, reason: 'broken' },
+      { kind: 'diagnostic', id: SessionId('diagnostic'), parentId: SessionId('parent'), depth: 1, reason: 'corrupt' },
     ]
     rig.liveAgents.set('unlabeled', { id: SessionId('unlabeled') } as Agent)
     await execute(rig)
@@ -566,9 +567,9 @@ describe('mayfly-agents-command', () => {
     expect(await entry.definition.onEvent!.action!({ kind: 'selection-accept', pagePath: [], controlId: 'subagents', selectedIds: ['diagnostic'] }, context)).toEqual({ kind: 'completed' })
     expect(await entry.definition.onEvent!.action!({ kind: 'activate', pagePath: [], controlId: 'noop', actionId: 'noop' }, context)).toEqual({ kind: 'completed' })
     expect(await entry.definition.onEvent!.action!({ kind: 'activate', pagePath: [], controlId: 'subagent-actions', actionId: 'stop' }, context)).toEqual({ kind: 'failed', message: 'Select a subagent first' })
-    const diagnosticInput = { forms: [], source: [], selections: [{ pagePath: [], controlId: 'subagents', selectedIds: ['diagnostic'] }] }
+    const diagnosticInput = { actionId: 'stop', draftRevision: 1, forms: [], source: [], selections: [{ pagePath: [], controlId: 'subagents', selectedIds: ['diagnostic'] }] }
     expect(await entry.definition.onEvent!.action!({ kind: 'activate', pagePath: [], controlId: 'subagent-actions', actionId: 'stop', inputs: diagnosticInput }, context)).toEqual({ kind: 'failed', message: 'unknown subagent: diagnostic' })
-    const viewInput = { forms: [], source: [], selections: [{ pagePath: [], controlId: 'subagents', selectedIds: ['unlabeled'] }] }
+    const viewInput = { actionId: 'stop', draftRevision: 1, forms: [], source: [], selections: [{ pagePath: [], controlId: 'subagents', selectedIds: ['unlabeled'] }] }
     expect(await entry.definition.onEvent!.action!({ kind: 'activate', pagePath: [], controlId: 'subagent-actions', actionId: 'stop', inputs: viewInput }, context)).toMatchObject({ kind: 'completed', feedback: { severity: 'success', message: 'stopped subagent unlabeled' } })
     expect(rig.drain).toHaveBeenCalledWith(rig.parent, [SessionId('unlabeled')])
     expect(await entry.definition.onEvent!.action!({ kind: 'selection-accept', pagePath: [], controlId: 'subagents', selectedIds: ['unlabeled'] }, context)).toEqual({ kind: 'completed' })
@@ -675,10 +676,10 @@ describe('mayfly-agents-command', () => {
     const freshSession = { id: SessionId('fresh'), header: { origin: 'subagent', parentSession: SessionId('parent') } } as unknown as Session
     rig.tree = [child('child'), child('fresh', { label: 'fresh' })]
     rig.liveAgents.set('fresh', { id: freshSession.id, session: freshSession, status: 'running' } as unknown as Agent)
-    rig.ctx.emit('agent/created', { agent: rig.liveAgents.get('fresh') })
+    rig.ctx.emit('agent/created', { agent: rig.liveAgents.get('fresh')!, source: 'startup' })
     await vi.waitFor(() => expect(browserRows(rig)).toContain('● fresh'))
     const staleSession = { id: SessionId('stale'), header: { origin: 'subagent' } } as unknown as Session
-    rig.ctx.emit('agent/created', { agent: { id: staleSession.id, session: staleSession } as unknown as Agent })
+    rig.ctx.emit('agent/created', { agent: { id: staleSession.id, session: staleSession } as unknown as Agent, source: 'startup' })
     rig.ctx.emit('agent/disposed', { agent: { id: SessionId('elsewhere') } as unknown as Agent })
     expect(browserRows(rig)).toContain('● fresh')
     rig.liveAgents.delete('fresh')
@@ -710,9 +711,9 @@ describe('mayfly-agents-command', () => {
     await execute(rig)
     const model = browser(rig)
     const created = { id: SessionId('fresh'), session: { header: { origin: 'subagent', parentSession: SessionId('parent') } } } as unknown as Agent
-    rig.ctx.emit('agent/created', { agent: { id: SessionId('root'), session: { header: { origin: 'primary' } } } as unknown as Agent })
+    rig.ctx.emit('agent/created', { agent: { id: SessionId('root'), session: { header: { origin: 'primary' } } } as unknown as Agent, source: 'startup' })
     rig.listError = new Error('relist failed')
-    rig.ctx.emit('agent/created', { agent: created })
+    rig.ctx.emit('agent/created', { agent: created, source: 'startup' })
     await Promise.resolve()
     await Promise.resolve()
     await Promise.resolve()
@@ -720,7 +721,7 @@ describe('mayfly-agents-command', () => {
     rig.listError = undefined
     let release!: () => void
     rig.deferred = new Promise(resolve => { release = resolve })
-    rig.ctx.emit('agent/created', { agent: created })
+    rig.ctx.emit('agent/created', { agent: created, source: 'startup' })
     rig.switchAgent({ id: SessionId('replacement') } as Agent)
     release()
     await Promise.resolve()

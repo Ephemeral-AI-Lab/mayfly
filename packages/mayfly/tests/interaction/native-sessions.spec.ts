@@ -32,7 +32,7 @@ async function setup(withQuery = true) {
     title: 'Current', sessionListMetadata: { blank: false, lastPromptAt: start - 60_000 },
     tokenUsage: { uncachedInputTokens: 1200, outputTokens: 800, cacheReadTokens: 0, cacheWriteTokens: 0 },
     sessionStats: { turns: 3, steps: 5, llmMs: 12_000, toolMs: 3_000, ttftMs: 800, ttftSteps: 3, decodeMs: 9_000, decodeTokens: 800 },
-    modelSelection: { lastUsed: { provider: 'deepseek', model: 'deepseek-chat' } },
+    modelSelection: { lastUsed: { provider: 'deepseek', model: 'deepseek-chat' }, next: { provider: 'deepseek', model: 'deepseek-chat' } },
   }
   const snapshot = vi.spyOn(ctx.sessionProjections, 'snapshot').mockImplementation(session => ({ asOfSeq: 10, values: session.id === 'current' ? values : {} }) as never)
   const headers = new Map([
@@ -43,7 +43,7 @@ async function setup(withQuery = true) {
   const controller = {
     list: vi.fn(async () => { throw new Error('catalog must not call controller.list') }),
     projections: vi.fn(async ({ sessionId }: { sessionId: string }): Promise<import('@deepseek-ai/dsh-api-session-controller').SessionProjectionsValue> => ({ asOfSeq: 10, values: sessionId === 'current' ? values : {} })),
-    search: vi.fn(async () => ({ items: [{ sessionId: 'child', snippet: 'matching text' }], hasMore: true })),
+    search: vi.fn(async (_request: { query: string }, _signal?: AbortSignal) => ({ items: [{ sessionId: 'child', snippet: 'matching text' }], hasMore: true })),
   }
   const observation = (id = 'child', title?: string, revision = 'r1'): SessionObservation => ({
     header: headers.get(id) ?? { ...bench.session.header, id: SessionId(id) }, source: 'prepared', revision,
@@ -269,7 +269,7 @@ it('keeps native persistence headers when the query service is absent', async ()
 it('degrades reminder badges when the Host catalog fails', async () => {
   const bench = await setup()
   const warn = vi.spyOn(bench.ctx.logger, 'warn').mockImplementation(() => {})
-  const schedule = bench.ctx.get('schedule') as { catalog: ReturnType<typeof vi.fn> }
+  const schedule = bench.ctx.get('schedule') as unknown as { catalog: ReturnType<typeof vi.fn> }
   schedule.catalog.mockRejectedValueOnce(new Error('catalog down'))
   expect(await bench.open()).toEqual({ kind: 'success' })
   expect(warn).toHaveBeenCalledWith(expect.stringContaining('catalog down'))
@@ -280,7 +280,7 @@ it('stays quiet when the reminder catalog fails after the signal aborted', async
   const bench = await setup()
   const warn = vi.spyOn(bench.ctx.logger, 'warn').mockImplementation(() => {})
   const caller = new AbortController()
-  const schedule = bench.ctx.get('schedule') as { catalog: ReturnType<typeof vi.fn> }
+  const schedule = bench.ctx.get('schedule') as unknown as { catalog: ReturnType<typeof vi.fn> }
   schedule.catalog.mockImplementationOnce(async () => { caller.abort(); throw new Error('late catalog failure') })
   expect(await openSessions(bench.ctx, caller.signal, interactionTranslator(bench.ctx))).toEqual({ kind: 'success' })
   await flushRequests()
@@ -469,7 +469,7 @@ it.each([undefined, null, '', 'Old cached name'])('recovers the cold stored titl
   } as never)
   bench.controller.projections.mockImplementation(async ({ sessionId }) => {
     using observation = await query.observeSession(SessionId(sessionId))
-    return { asOfSeq: observation.cursor, values: observation.projections!.values }
+    return { asOfSeq: observation.cursor, values: observation.projections!.values as import('@deepseek-ai/dsh-api-session-controller').SessionProjectionValues }
   })
   const sessionsBefore = bench.ctx.sessions.list()
   const agentsBefore = [...bench.agents.values()]
@@ -533,7 +533,7 @@ it('reports incompatible retained headers without leaking the opening lifetime',
 it('closes a workspace while reminder metadata is pending', async () => {
   const bench = await setup()
   const gate = Promise.withResolvers<never[]>()
-  const schedule = bench.ctx.get('schedule') as { catalog: ReturnType<typeof vi.fn> }
+  const schedule = bench.ctx.get('schedule') as unknown as { catalog: ReturnType<typeof vi.fn> }
   schedule.catalog.mockReturnValueOnce(gate.promise)
   await bench.open()
   bench.ctx.mayflyOverlays.close('mayfly.sessions')

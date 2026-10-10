@@ -14,7 +14,7 @@ import { createWorkCounters } from '../../src/core/ui-work-counters.ts'
 import { sliceByColumn, truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/width.ts'
 
 const identity = (value: string): string => value
-const makeColors = (): MayflySemanticColors => new Proxy({ logoGradient: [identity] }, { get: (target, key) => key === 'logoGradient' ? target.logoGradient : identity }) as MayflySemanticColors
+const makeColors = (): MayflySemanticColors => new Proxy({ logoGradient: [identity] }, { get: (target, key) => key === 'logoGradient' ? target.logoGradient : identity }) as unknown as MayflySemanticColors
 const colors = makeColors()
 const components = { visibleWidth, wrapText: wrapTextWithAnsi, truncateToWidth, sliceByColumn } as unknown as MayflyComponents
 

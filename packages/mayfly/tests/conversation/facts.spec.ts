@@ -101,7 +101,7 @@ describe('mayflyConversationFacts projection', () => {
     expect(state).toMatchObject({ phase: 'waiting', active: true })
     state = foldConversationFacts(state, attempt(1, 0, 'reasoning', 'think'))
     state = foldConversationFacts(state, attempt(1, 0, 'text', 'answer'))
-    expect(foldConversationFacts(state, event('assistant/attempt', { turn: 1, step: 0, stream: [{ type: 'chunk', time: 1, chunk: { type: 'finish', reason: 'stop' } }] }))).toMatchObject({ phase: 'waiting' })
+    expect(foldConversationFacts(state, event('assistant/attempt', { turn: 1, step: 0, stream: [{ type: 'chunk', time: 1, chunk: { type: 'finish', reason: { kind: 'stop' } } }] }))).toMatchObject({ phase: 'waiting' })
     expect(state).toMatchObject({ phase: 'composing', flowDownChars: 11 })
     const settled = foldConversationFacts(state, event('assistant/message', { turn: 1, step: 0, stream: [], usage: undefined }))
     expect(settled).toMatchObject({ phase: 'waiting' })
@@ -129,7 +129,7 @@ describe('mayflyConversationFacts projection', () => {
     state = foldConversationFacts(state, event('tool/result', toolResult('agent-1', [{ type: 'text', text: 'ok' }]), 100))
     expect(state.agentCalls[0]?.result).toMatchObject({ text: 'ok', isError: false, endedAt: 100 })
     state = foldConversationFacts(state, event('tool/result', {
-      ...toolResult('agent-1', [{ type: 'text', text: 'failed' }]),
+      ...(toolResult('agent-1', [{ type: 'text', text: 'failed' }]) as object),
       error: { name: 'ToolError', code: 'FAILED' },
     }, 101))
     expect(state.agentCalls[0]?.result).toMatchObject({ text: 'failed', isError: true, endedAt: 101 })
@@ -216,7 +216,7 @@ describe('mayflyConversationFacts projection', () => {
     expect(state).toMatchObject({ flowDownChars: 0 })
     // A boundary-only stream while already waiting keeps the phase.
     state = foldConversationFacts(state, event('assistant/attempt', {
-      turn: 1, step: 1, stream: [{ type: 'chunk', time: 2, chunk: { type: 'finish', index: 0 } }],
+      turn: 1, step: 1, stream: [{ type: 'chunk', time: 2, chunk: { type: 'finish', reason: { kind: 'stop' } } }],
     }))
     expect(state.phase).toBe('waiting')
   })
@@ -256,7 +256,7 @@ describe('mayflyConversationFacts projection', () => {
     await ctx.plugin(SessionProjectionRegistry)
     const session = ctx.sessions.create(SessionId('facts-spec'))
     session.append('turn/start', { turn: 2 })
-    session.append('request/header', { header: { config: { model: 'replay', provider: 'mock' } } })
+    session.append('request/header', { header: { config: { model: 'replay', provider: 'mock' } }, reason: 'initial' })
     const fiber = await ctx.plugin(conversation)
     expect(ctx.sessionProjections.snapshot(session).values.mayflyConversationFacts).toMatchObject({ model: 'replay', provider: 'mock', turn: 2 })
     const changed: number[] = []

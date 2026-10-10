@@ -7,7 +7,7 @@
 
 /** Inputs every check depends on: a change to one runs the full gate. */
 export const GLOBAL = [
-  { pattern: /^(?:package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|tsconfig(?:\.base)?\.json|tsdown\.config\.ts|vitest\.config\.ts|\.oxlintrc\.json)$/u, reason: 'repository configuration' },
+  { pattern: /^(?:package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|tsconfig(?:\.[^/]+)?\.json|tsdown\.config\.ts|vitest\.config\.ts|\.oxlintrc\.json)$/u, reason: 'repository configuration' },
   { pattern: /^script\/package-contract\.mjs$/u, reason: 'the package and build contract' },
   { pattern: /^\.github\/workflows\//u, reason: 'a CI workflow' },
   { pattern: /^packages\/mayfly\/(?:cordis\.patch\.yml|presets\/)/u, reason: 'the shipped composition contract' },
@@ -61,5 +61,5 @@ export const STRUCTURAL = /^(?:(?:packages|examples)\/[^/]+\/(?:package\.json|ts
 
 /** Whether a path changes the package or build graph, so the incremental build must run the full one. */
 export function isStructuralBuildPath(file) {
-  return STRUCTURAL.test(file) || /^(?:package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|tsconfig(?:\.base)?\.json|tsdown\.config\.ts|script\/package-contract\.mjs)$/u.test(file)
+  return STRUCTURAL.test(file) || /^(?:package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|tsconfig(?:\.[^/]+)?\.json|tsdown\.config\.ts|script\/package-contract\.mjs)$/u.test(file)
 }

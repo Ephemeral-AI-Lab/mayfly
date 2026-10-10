@@ -10,7 +10,7 @@ import { probeComponents } from '../design/probe.ts'
 import { createFakeEditor } from './fake-editor.ts'
 
 const identity = (value: string): string => value
-const colors = new Proxy({ logoGradient: [identity] }, { get: (target, key) => key === 'logoGradient' ? target.logoGradient : identity }) as MayflySemanticColors
+const colors = new Proxy({ logoGradient: [identity] }, { get: (target, key) => key === 'logoGradient' ? target.logoGradient : identity }) as unknown as MayflySemanticColors
 const base = { components: probeComponents(), colors, getViewport: () => ({ columns: 60, rows: 20 }), screenMode: 'alternate' as const }
 
 describe('countWork', () => {

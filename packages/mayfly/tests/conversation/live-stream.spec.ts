@@ -164,7 +164,7 @@ describe('LiveAssistantStreamService', () => {
       open: async function* () {
         calls += 1
         if (calls === 1) yield { type: 'snapshot', header: {}, cursor: 0, records: [], hasMore: false, projections: {}, assistantStream: activeBaseline } as never
-        else yield { type: 'snapshot', header: {}, cursor: 0, records: [], hasMore: false, projections: {}, assistantStream: { revision: 2, activeAttempt: activeBaseline.activeAttempt } } as never
+        else yield { type: 'snapshot', header: {}, cursor: 0, records: [], hasMore: false, projections: {}, assistantStream: { revision: 2, activeAttempt: (activeBaseline as { readonly activeAttempt: unknown }).activeAttempt } } as never
       },
     }
     const dispose = service.watch(agent, follow)
@@ -236,10 +236,10 @@ describe('LiveAssistantStreamService', () => {
   it('closes the native opening iterator after consuming its snapshot', async () => {
     const agent = agentWithSessionId('iterator-close')
     const { service } = boot(agent)
-    const returned = vi.fn(async () => ({ done: true, value: undefined }))
+    const returned = vi.fn(async () => ({ done: true as const, value: undefined }))
     const snapshot = { type: 'snapshot', header: {}, cursor: 0, records: [], hasMore: false, projections: {}, assistantStream: activeBaseline } as never
     const iterator = {
-      next: async () => ({ done: false, value: snapshot }),
+      next: async () => ({ done: false as const, value: snapshot }),
       return: returned,
       [Symbol.asyncIterator]() { return this },
     }
@@ -255,7 +255,7 @@ describe('LiveAssistantStreamService', () => {
     const { service } = boot(agent)
     const snapshot = { type: 'snapshot', header: {}, cursor: 0, records: [], hasMore: false, projections: {}, assistantStream: activeBaseline } as never
     const iterator = {
-      next: async () => ({ done: false, value: snapshot }),
+      next: async () => ({ done: false as const, value: snapshot }),
       return: async () => { throw new Error('already closed') },
       [Symbol.asyncIterator]() { return this },
     }
@@ -428,7 +428,7 @@ describe('LiveAssistantStreamService', () => {
     const { service, frame } = boot(agent)
     frame({ type: 'start', attemptId: 'a1' as never, revision: 1, turn: 1, step: 0 })
     frame({ type: 'chunk', attemptId: 'a1' as never, revision: 2, index: 0, time: 1, chunk: { type: 'block-start', index: 0, blockType: 'reasoning' } })
-    frame({ type: 'chunk', attemptId: 'a1' as never, revision: 3, index: 1, time: 2, chunk: { type: 'tool-call-delta', index: 0, id: 'c' as never, delta: '' } })
+    frame({ type: 'chunk', attemptId: 'a1' as never, revision: 3, index: 1, time: 2, chunk: { type: 'tool-call-delta', index: 0, id: 'c' as never, argumentsDelta: '' } })
     const before = service.get(agent)
     // block-end of reasoning while NOT thinking leaves the phase alone.
     frame({ type: 'chunk', attemptId: 'a1' as never, revision: 4, index: 2, time: 3, chunk: { type: 'block-end', index: 0, block: { type: 'reasoning', text: '' } } })

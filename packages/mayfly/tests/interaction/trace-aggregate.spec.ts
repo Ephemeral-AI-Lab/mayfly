@@ -2,13 +2,14 @@
 
 import { describe, expect, it } from 'vitest'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
+import { SessionSeq } from '@deepseek-ai/dsh-session'
 import type { SessionEventRecord } from '@deepseek-ai/dsh-session-query'
 import { aggregateTraceItems } from '../../src/interaction/trace-aggregate.ts'
 
 const sessionId = 'trace' as never
 
 function record(seq: number, type: string): SessionEventRecord {
-  return { sessionId, seq, time: seq, type, surface: 'current' }
+  return { sessionId, seq: SessionSeq(seq), time: seq, type: type as SessionEventRecord['type'], surface: 'current' }
 }
 
 function event(seq: number, type: string, data: unknown): SessionEvent {

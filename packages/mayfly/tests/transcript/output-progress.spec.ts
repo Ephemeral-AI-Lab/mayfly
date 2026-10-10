@@ -42,7 +42,7 @@ function answer(text: string, time: number, step = 1, turn = 1): SessionEvent<'a
 }
 
 function attempt(stream: readonly AssistantStreamRecord[], time: number, step: number, turn: number): SessionEvent<'assistant/attempt'> {
-  return event('assistant/attempt', { turn, step, stream }, time)
+  return event('assistant/attempt', { turn, step, stream: [...stream] }, time)
 }
 
 describe('phase-local output', () => {
@@ -68,13 +68,13 @@ describe('phase-local output', () => {
     const presentation = new TranscriptPresentationPolicy()
     presentation.apply({ transcriptView: 'verbose' })
     const transcript = new TranscriptModelComponent(() => conversationTranscriptModel(
-      { entries: state.entries, streaming: state.active, settledSteps: state.finalizedSteps }, { get: () => undefined },
+      { entries: state.entries, streaming: state.active, settledSteps: state.finalizedSteps, turns: [] }, { get: () => undefined },
     ), {
-      colors: COLORS, components: fakeMayflyComponents(), images: () => ({}), requestRender: () => {}, presentation,
+      colors: COLORS, components: fakeMayflyComponents(), images: () => ({}), requestRender: () => {}, presentation, viewportRows: () => 24,
     })
     const send = (next: SessionEvent): void => {
       state = foldConversationProjection(state, next)
-      harness.ctx.emit('session/event', agent.session, next)
+      harness.ctx.emit('session/event', agent.session as never, next)
     }
     // Rebuild each observed prefix from one complete compact attempt. A
     // separate assistant/attempt never represents the next token of a retry.
@@ -161,7 +161,7 @@ describe('phase-local output', () => {
     expect(facts.outputProgress).toBeUndefined()
     facts = foldConversationFacts(facts, answer('next', 6_000, 2))
     expect(facts.outputProgress).toMatchObject({ chars: 4, startedAt: 6_000 })
-    const abort = event('turn/end', { turn: 1, reason: { kind: 'aborted' } })
+    const abort = event('turn/end', { turn: 1, reason: { kind: 'aborted', reason: { kind: 'user' } } })
     facts = foldConversationFacts(facts, abort)
     state = foldConversationProjection(state, abort)
     expect(facts.outputProgress).toBeUndefined()
@@ -178,7 +178,7 @@ describe('phase-local output', () => {
     { type: 'block-start', index: 1, blockType: 'text' },
     { type: 'block-start', index: 1, blockType: 'tool-call' },
     { type: 'tool-call-delta', index: 1, id: 'call' as never, name: 'read', argumentsDelta: '{}' },
-    { type: 'finish', reason: 'stop' },
+    { type: 'finish', reason: { kind: 'stop' } },
   ])('ends thinking on $type and preserves final correction', value => {
     const boundary = attempt([...reasoning('seed', 1_000).data.stream, ...chunk(value, 2_000).data.stream], 2_000, 1, 1)
     let state = foldConversationProjection(initialConversationState(), boundary)

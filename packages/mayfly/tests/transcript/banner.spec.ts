@@ -167,7 +167,7 @@ describe('composeBannerLines', () => {
   it('falls back to the accent role when a theme has no model highlight', () => {
     const accent = vi.fn((text: string) => `<accent>${text}</accent>`)
     const colors = { ...DEPS.colors, accent } as MayflySemanticColors & { modelHighlight?: (text: string) => string }
-    delete colors.modelHighlight
+    Reflect.deleteProperty(colors, 'modelHighlight')
     const lines = composeBannerLines({ ...DEPS, colors }, CONTENT, 100)
     expect(lines.join('\n')).toContain('<accent>Model:     m · p')
     expect(accent).toHaveBeenCalled()
@@ -247,7 +247,7 @@ class BannerFakeScreen implements MayflyScreen {
 
   removeChild(): void {}
 
-  setFocus(): void {}
+  setFocus(_component: MayflyComponent | null): void {}
 
   showOverlay(): MayflyOverlayHandle {
     throw new Error('fake showOverlay is out of scope for banner plugin tests')
@@ -263,6 +263,11 @@ class BannerFakeScreen implements MayflyScreen {
   }
 
   setTitle(): void {}
+
+  scrollContent(): boolean { return false }
+  contentChanged(): boolean { return false }
+  followContent(): void {}
+  setContentScrollHandler(): () => void { return () => {} }
 }
 
 /** Native current-Agent/projection pair used by the banner plugin fixture. */

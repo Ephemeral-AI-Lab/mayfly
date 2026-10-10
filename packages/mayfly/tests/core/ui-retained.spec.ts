@@ -14,7 +14,6 @@ import type { MayflyKeymap, MayflySemanticColors } from '../../src/core/types.ts
 import { createWorkCounters } from '../../src/core/ui-work-counters.ts'
 import { PROBE_PALETTE, probeComponents } from '../design/probe.ts'
 
-const KEY = { down: '\x1b[B' } as const
 const cleanups: (() => void)[] = []
 beforeEach(() => { vi.useFakeTimers() })
 afterEach(() => {

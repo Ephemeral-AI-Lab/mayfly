@@ -3,7 +3,7 @@
  */
 import { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
-import SkillRegistry, { type SkillCandidate, type SkillProviderControl } from '@deepseek-ai/dsh-skill'
+import SkillRegistry, { type SkillCandidate, type SkillLookupOptions, type SkillProviderControl } from '@deepseek-ai/dsh-skill'
 import { createScope } from '@deepseek-ai/dsh-scope'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { informationFixture } from './information-fixture.ts'
@@ -23,7 +23,7 @@ async function setup() {
   let candidates = [candidate('first', { whenToUse: 'Use for the first task.' }), candidate('user-only', { source: 'user-dsh', invocation: { userInvocable: true, modelInvocable: false } }), candidate('model-only', { invocation: { userInvocable: false, modelInvocable: true } })]
   let complete = true
   const get = vi.fn(async () => undefined)
-  const list = vi.fn(async (_options: { signal?: AbortSignal }) => ({ candidates, complete }))
+  const list = vi.fn(async (_options: SkillLookupOptions) => ({ candidates, complete }))
   const provider = await ctx.plugin({ name: 'skill-candidates', inject: ['skills'], apply(owner: Context) {
     owner.skills.registerProvider(next => { control = next; return { name: 'catalog-test', list, get } })
   } })

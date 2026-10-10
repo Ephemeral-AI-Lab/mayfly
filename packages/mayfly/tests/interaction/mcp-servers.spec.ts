@@ -25,7 +25,7 @@ import {
 
 /** A tool schema carrying only what the read layer joins on. */
 function tool(name: string): ToolSchema {
-  return { name, description: '' }
+  return { name, description: '', parameters: { type: 'object', properties: {} } }
 }
 
 /** Build a loader-entry fake with the structural fields the reader touches. */
@@ -34,7 +34,7 @@ function entry(over: {
   readonly name?: string
   readonly config?: unknown
   readonly fiberConfig?: unknown
-  readonly state?: number
+  readonly state?: number | undefined
   readonly disabled?: boolean
 }): Entry {
   return {

@@ -23,6 +23,7 @@ const IDENTITY: MayflySemanticColors = {
   mdHeading: id, mdLink: id, mdLinkUrl: id, mdCode: id, mdCodeBlock: id, mdCodeBlockBorder: id,
   mdQuote: id, mdQuoteBorder: id, mdHr: id, mdListBullet: id,
   diffAdded: id, diffRemoved: id, diffAddedStrong: id, diffRemovedStrong: id, diffGutter: id, diffMeta: id, diffAddedBg: id, diffRemovedBg: id,
+  modelHighlight: id, logoGradient: [],
 }
 // Structurally satisfies MayflySemanticColors; declared where consumed.
 
@@ -35,12 +36,12 @@ function tagged(): MayflySemanticColors {
 const COMPONENTS: MayflyComponents = fakeMayflyComponents()
 
 function read(partial: Partial<ReadCallModel> & { callId: string }): ReadCallModel {
-  return { seq: 1, turn: 1, step: 0, state: 'ok', ...partial }
+  return { seq: 1, updatedSeq: 1, turn: 1, step: 0, state: 'ok', activity: 'read', detail: '', ...partial }
 }
 
 function group(reads: readonly ReadCallModel[], partial: Partial<TranscriptReadGroupModel> = {}): TranscriptReadGroupModel {
   const first = reads[0]!
-  return { kind: 'transcript-read-group', id: `read-group:${String(first.callId)}`, seq: first.seq, turn: first.turn, step: first.step, reads, ...partial }
+  return { kind: 'transcript-read-group', id: `read-group:${String(first.callId)}`, seq: first.seq, updatedSeq: first.seq, turn: first.turn, step: first.step, reads, ...partial }
 }
 
 describe('groupReadsByFile', () => {
@@ -65,7 +66,7 @@ describe('ReadGroupComponent', () => {
       read({ callId: 'a', path: 'src/foo.ts', range: { first: 1, last: 100 } }),
       read({ callId: 'b', path: 'src/foo.ts', range: { first: 101, last: 120 }, totalLines: 342 }),
       read({ callId: 'c', path: 'src/bar.ts', range: { first: 1, last: 40 }, totalLines: 89 }),
-      read({ callId: 'd', path: 'package.json', state: 'error', error: 'file not found' }),
+      read({ callId: 'd', activity: 'read', detail: 'package.json', path: 'package.json', state: 'error', error: 'file not found' }),
     ])
     const lines = new ReadGroupComponent(model, tagged(), COMPONENTS).render(80)
     expect(lines).toEqual([
@@ -81,39 +82,39 @@ describe('ReadGroupComponent', () => {
 
   it('renders pending, all-failed, and mixed parents', () => {
     const pending = new ReadGroupComponent(group([
-      read({ callId: 'a', path: 'one.ts', state: 'pending', requestedRange: { first: 1, last: 50 } }),
+      read({ callId: 'a', activity: 'read', detail: 'one.ts', path: 'one.ts', state: 'pending', requestedRange: { first: 1, last: 50 } }),
     ]), tagged(), COMPONENTS).render(80)
     expect(pending[1]).toBe('● \x1b[1m[P]Reading 1 file…[/P]\x1b[22m')
     expect(pending[2]).toBe('  └─ one.ts · 1-50 [T]…[/T]')
 
     const failed = new ReadGroupComponent(group([
-      read({ callId: 'a', path: 'one.ts', state: 'error', error: 'nope' }),
-      read({ callId: 'b', path: 'one.ts', state: 'error', error: 'still nope' }),
+      read({ callId: 'a', activity: 'read', detail: 'one.ts', path: 'one.ts', state: 'error', error: 'nope' }),
+      read({ callId: 'b', activity: 'read', detail: 'one.ts', path: 'one.ts', state: 'error', error: 'still nope' }),
     ]), tagged(), COMPONENTS).render(80)
     expect(failed[1]).toBe('[E]✗ [/E]\x1b[1m[E]Read 1 file · failed[/E]\x1b[22m[M] · 2 reads[/M]')
     expect(failed[2]).toBe('  └─ one.ts [E]✗[/E] [E]nope[/E]')
 
     const mixed = new ReadGroupComponent(group([
       read({ callId: 'a', path: 'one.ts', range: { first: 1, last: 10 } }),
-      read({ callId: 'b', path: 'one.ts', state: 'error', error: 'gone' }),
+      read({ callId: 'b', activity: 'read', detail: 'one.ts', path: 'one.ts', state: 'error', error: 'gone' }),
     ]), tagged(), COMPONENTS).render(80)
     expect(mixed[2]).toBe('  └─ one.ts [W]◐[/W] [E]gone[/E]')
 
     // A single-window failure without detail inlines the bare mark; an
     // all-failed multi-file run pluralizes the header.
     const silent = new ReadGroupComponent(group([
-      read({ callId: 'a', path: 'one.ts', state: 'error' }),
+      read({ callId: 'a', activity: 'read', detail: 'one.ts', path: 'one.ts', state: 'error' }),
     ]), tagged(), COMPONENTS).render(80)
     expect(silent[2]).toBe('  └─ one.ts [E]✗[/E]')
     const plural = new ReadGroupComponent(group([
-      read({ callId: 'a', path: 'one.ts', state: 'error', error: 'x' }),
-      read({ callId: 'b', path: 'two.ts', state: 'error', error: 'y' }),
+      read({ callId: 'a', activity: 'read', detail: 'one.ts', path: 'one.ts', state: 'error', error: 'x' }),
+      read({ callId: 'b', activity: 'read', detail: 'two.ts', path: 'two.ts', state: 'error', error: 'y' }),
     ]), tagged(), COMPONENTS).render(80)
     expect(plural[1]).toBe('[E]✗ [/E]\x1b[1m[E]Read 2 files · failed[/E]\x1b[22m')
 
     const reading = new ReadGroupComponent(group([
       read({ callId: 'a', path: 'one.ts', range: { first: 1, last: 10 } }),
-      read({ callId: 'b', path: 'one.ts', state: 'pending', requestedRange: { first: 11, last: 20 } }),
+      read({ callId: 'b', activity: 'read', detail: 'one.ts', path: 'one.ts', state: 'pending', requestedRange: { first: 11, last: 20 } }),
     ]), tagged(), COMPONENTS).render(80)
     expect(reading[2]).toBe('  └─ one.ts[T] · reading…[/T]')
 
@@ -123,8 +124,8 @@ describe('ReadGroupComponent', () => {
 
   it('renders degraded rows: absent ranges, blank errors, and the cache', () => {
     const component = new ReadGroupComponent(group([
-      read({ callId: 'a', path: 'one.ts', state: 'error' }),
-      read({ callId: 'b', path: 'one.ts', state: 'error' }),
+      read({ callId: 'a', activity: 'read', detail: 'one.ts', path: 'one.ts', state: 'error' }),
+      read({ callId: 'b', activity: 'read', detail: 'one.ts', path: 'one.ts', state: 'error' }),
     ]), tagged(), COMPONENTS)
     const lines = component.render(80)
     expect(lines[2]).toBe('  └─ one.ts [E]✗[/E]')
@@ -200,7 +201,7 @@ describe('ReadGroupComponent', () => {
     expect(expanded.at(-1)).not.toContain('more lines')
     for (const row of expanded) expect(COMPONENTS.visibleWidth(row)).toBeLessThanOrEqual(60)
     const narrow = new ReadGroupComponent(group([
-      read({ callId: 'wide', path: 'a/very/deep/path/that/exceeds/the/columns.ts', range: { first: 1, last: 9 }, totalLines: 99, error: undefined }),
+      read({ callId: 'wide', path: 'a/very/deep/path/that/exceeds/the/columns.ts', range: { first: 1, last: 9 }, totalLines: 99 }),
     ]), IDENTITY, COMPONENTS).render(24)
     for (const row of narrow) expect(COMPONENTS.visibleWidth(row)).toBeLessThanOrEqual(24)
   })
@@ -208,8 +209,8 @@ describe('ReadGroupComponent', () => {
   it('reads unsettled members as cancelled once the turn ends, and scopes its hint', () => {
     const model = group([
       read({ callId: 'a', path: 'src/foo.ts', range: { first: 1, last: 100 } }),
-      read({ callId: 'b', path: 'src/bar.ts', state: 'pending' }),
-      read({ callId: 'c', path: 'src/bar.ts', state: 'pending' }),
+      read({ callId: 'b', activity: 'read', detail: 'src/bar.ts', path: 'src/bar.ts', state: 'pending' }),
+      read({ callId: 'c', activity: 'read', detail: 'src/bar.ts', path: 'src/bar.ts', state: 'pending' }),
     ])
     const component = new ReadGroupComponent(model, tagged(), COMPONENTS)
     expect(component.render(80)[1]).toBe('● \x1b[1m[P]Reading 2 files…[/P]\x1b[22m[M] · 3 reads[/M]')
@@ -230,11 +231,11 @@ describe('ReadGroupComponent', () => {
 
   it('replaces its immutable snapshot and invalidates cached rows', () => {
     const component = new ReadGroupComponent(group([
-      read({ callId: 'before', path: 'before.ts', state: 'ok' }),
+      read({ callId: 'before', activity: 'read', detail: 'before.ts', path: 'before.ts', state: 'ok' }),
     ]), IDENTITY, COMPONENTS)
     const before = component.render(80)
     component.update(group([
-      read({ callId: 'after', path: 'after.ts', state: 'ok' }),
+      read({ callId: 'after', activity: 'read', detail: 'after.ts', path: 'after.ts', state: 'ok' }),
     ]))
     const after = component.render(80)
     expect(after).not.toBe(before)

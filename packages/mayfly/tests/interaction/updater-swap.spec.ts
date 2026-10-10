@@ -11,6 +11,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { mkdtempTracked, registerTempDirCleanup } from '../core/temp-dir.ts'
+import { withOverrides, type Overrides } from '../fixture-fields.ts'
 
 registerTempDirCleanup()
 import type { InteractiveChild, SpawnOutcome } from '../../src/interaction/updater/io.ts'
@@ -191,16 +192,15 @@ const RC2_NAMES = ['@ephemeral-ai/mayfly']
 const RC3_NAMES = RC2_NAMES
 
 /** The standard swap input against a world. */
-function swapInput(world: ReturnType<typeof makeWorld>, overrides: Partial<Parameters<typeof performSwap>[0]> = {}) {
-  return {
+function swapInput(world: ReturnType<typeof makeWorld>, overrides: Overrides<Parameters<typeof performSwap>[0]> = {}) {
+  return withOverrides({
     root: world.root,
     profile: 'mayfly',
     dshCommand: { command: '/usr/bin/dsh', args: [] },
     fromVersion: '0.1.0-rc.2',
     toVersion: '0.1.0-rc.3',
     bootMarker: 'deepseek-chat marker',
-    ...overrides,
-  }
+  }, overrides)
 }
 
 describe('updater/swap classifyInstallFailure', () => {

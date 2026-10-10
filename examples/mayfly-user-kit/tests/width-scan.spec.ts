@@ -3,7 +3,8 @@
  */
 import { Context } from '@deepseek-ai/cordis'
 import { describe, expect, it } from 'vitest'
-import { apply as applyApi, type MayflyUiNode } from '../../../packages/ui/src/provider.ts'
+import { apply as applyApi } from '../../../packages/ui/src/provider.ts'
+import type { MayflyUiNode } from '../../../packages/ui/src/contracts.ts'
 import { MayflyComponentsService } from '../../../packages/mayfly/src/core/components.ts'
 import { DARK_COLORS } from '../../../packages/mayfly/src/core/theme-dark.ts'
 import { compileMayflyUiNode } from '../../../packages/mayfly/src/core/ui-compiler.ts'
@@ -46,7 +47,7 @@ describe('example width contracts', () => {
       }
       uiRows('example.overlay.details', ui.surface({
         chrome: 'overlay',
-        title: overlayRequest.title,
+        ...(overlayRequest.title === undefined ? {} : { title: overlayRequest.title }),
         padding: 1,
         child: overlayRequest.node,
       }))

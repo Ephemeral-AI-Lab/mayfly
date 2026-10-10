@@ -17,9 +17,10 @@ import {
   createAdmissionCache,
 } from '../../src/core/ui-validator.ts'
 import type { MayflySemanticColors } from '../../src/core/types.ts'
+import { createWorkCounters } from '../../src/core/ui-work-counters.ts'
 
 const identity = (value: string): string => value
-const colors = new Proxy({ logoGradient: [identity] }, { get: (target, key) => key === 'logoGradient' ? target.logoGradient : (value: string) => `«${String(key)}:${value}»` }) as MayflySemanticColors
+const colors = new Proxy({ logoGradient: [identity] }, { get: (target, key) => key === 'logoGradient' ? target.logoGradient : (value: string) => `«${String(key)}:${value}»` }) as unknown as MayflySemanticColors
 const PHOTO: MayflyUiImageBytes = { data: new Uint8Array([1, 2, 3]), mediaType: 'image/png', name: 'photo.png' }
 const flush = () => new Promise<void>(resolve => { setImmediate(resolve) })
 
@@ -85,7 +86,7 @@ describe('image admission', () => {
   it('refuses images in status rows and editor shells, and admits them in a responsive branch', () => {
     const image = ui.image({ attachmentId: 'a', alt: 'x' })
     expect(validateMayflyStatusNode(image)).toMatchObject({ ok: false })
-    expect(validateMayflyEditorShellNode(ui.stack.column([image, { kind: 'editor-control' }]))).toMatchObject({ ok: false })
+    expect(validateMayflyEditorShellNode(ui.stack.column([image, { kind: 'editor-control' } as never]))).toMatchObject({ ok: false })
     const responsive = ui.stack.column([ui.child(image, { when: { minWidth: 40 } })])
     expect(validateMayflyUiNode(responsive)).toMatchObject({ ok: true })
   })
@@ -305,7 +306,7 @@ describe('compiled image nodes', () => {
     images.provide(async () => PHOTO)
     const repaint = vi.fn()
     const runtime = new MayflyUiSurfaceRuntime(undefined, repaint, undefined, images)
-    const counters = { nodesValidated: 0, unitsCompiled: 0, rowsPainted: 0, stringsMeasured: 0 }
+    const counters = createWorkCounters()
     const result = compileMayflyUiSurfaceNode(ui.image({ attachmentId: 'a', alt: '[Image #1]' }), { ...base(runtime), counters })
     if (!result.ok) throw new Error(result.message)
     expect(result.value.component.render(40)).toEqual(['«textMuted:[Image #1]»'])

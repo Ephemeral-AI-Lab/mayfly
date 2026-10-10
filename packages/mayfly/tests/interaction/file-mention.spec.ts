@@ -368,7 +368,7 @@ describe('createMentionScanCache', () => {
     const root = fixture()
     const cache = createMentionScanCache()
     const reads = vi.spyOn(fsPromises, 'readdir')
-    const first = await fsMentionSuggestions(root, '@a', signal(), undefined, cache)
+    await fsMentionSuggestions(root, '@a', signal(), undefined, cache)
     const singleWalk = reads.mock.calls.length
     expect(singleWalk).toBeGreaterThan(0)
     const second = await fsMentionSuggestions(root, '@a.', signal(), undefined, cache)

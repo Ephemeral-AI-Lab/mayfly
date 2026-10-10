@@ -20,7 +20,7 @@ function open(node: MayflyUiNode, observer = true, rows = 40) {
   const counters = createWorkCounters()
   const model = new UiSurfaceModel('focus', {
     scope: { kind: 'app', targetId: 'focus' }, source: [], revision: 1, update: { reason: 'data' }, node: node as never,
-    events: { prepare: async event => { events.push(event); return { reply: { kind: 'completed' as const }, publish: () => true } } },
+    events: { prepare: async (event: MayflyUiEvent) => { events.push(event); return { reply: { kind: 'completed' as const }, publish: () => true } } },
     definition: observer ? { onEvent: {} } : {},
   } as never)
   const runtime = new MayflyUiSurfaceRuntime(model)

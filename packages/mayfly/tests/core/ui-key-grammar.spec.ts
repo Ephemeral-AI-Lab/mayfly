@@ -3,7 +3,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import { ACTION_FOCUS_NEXT, ACTION_FOCUS_PREV, ACTION_MOVE_DOWN, ACTION_MOVE_UP, ACTION_SEGMENT_LEFT, ACTION_SEGMENT_RIGHT, ACTION_SUBMIT, printableKey } from '../../src/core/key-actions.ts'
-import { grammarHints, keyGrammar, type GrammarState } from '../../src/core/ui-key-grammar.ts'
+import { grammarHints, keyGrammar, type GrammarControl, type GrammarState } from '../../src/core/ui-key-grammar.ts'
 
 function state(overrides: Partial<GrammarState>): GrammarState {
   return { mode: 'ui', expanded: false, control: { kind: 'none' }, keyed: [], tabs: false, groups: 1, siblings: 1, escape: undefined, closable: false, ...overrides }
@@ -77,7 +77,8 @@ describe('key grammar', () => {
 describe('tabs, rails, and the ← ladder in the grammar', () => {
   const intents = (overrides: Partial<GrammarState>, key: string) => keyGrammar(state(overrides)).filter(binding => binding.match.kind === 'action' && binding.match.action === key).map(binding => binding.intent.kind)
   const labels = (overrides: Partial<GrammarState>) => grammarHints(keyGrammar(state(overrides))).find(hint => hint.id === 'labels')
-  const select = (stuck: boolean, extra: object = {}) => ({ kind: 'select', multiple: false, picker: false, adjustable: true, ...(stuck ? { stuckLeft: true } : {}), ...extra }) as const
+  type SelectControl = Extract<GrammarControl, { readonly kind: 'select' }>
+  const select = (stuck: boolean, extra: Partial<SelectControl> = {}): SelectControl => ({ kind: 'select', multiple: false, picker: false, adjustable: true, ...(stuck ? { stuckLeft: true } : {}), ...extra })
 
   it('moves a rail with ↑/↓, enters its content with → or Enter, and leaves ← to nothing', () => {
     const rail = state({ control: { kind: 'tab', vertical: true }, siblings: 3 })

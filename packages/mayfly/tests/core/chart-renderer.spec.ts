@@ -6,7 +6,7 @@ import type { MayflyComponents, MayflySemanticColors } from '../../src/core/type
 import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/width.ts'
 
 const identity = (text: string): string => text
-const colors = new Proxy({ logoGradient: [identity] }, { get: (target, key) => key === 'logoGradient' ? target.logoGradient : identity }) as MayflySemanticColors
+const colors = new Proxy({ logoGradient: [identity] }, { get: (target, key) => key === 'logoGradient' ? target.logoGradient : identity }) as unknown as MayflySemanticColors
 const components = { visibleWidth, truncateToWidth, wrapText: wrapTextWithAnsi } as MayflyComponents
 
 const charts = [
@@ -46,7 +46,7 @@ describe('renderChartRows', () => {
   })
 
   it('folds horizontal normalized bars row-major into proportional tone runs', () => {
-    const tagged = new Proxy({ logoGradient: [identity] }, { get: (target, key) => key === 'logoGradient' ? target.logoGradient : (text: string) => `<${String(key)}>${text}` }) as MayflySemanticColors
+    const tagged = new Proxy({ logoGradient: [identity] }, { get: (target, key) => key === 'logoGradient' ? target.logoGradient : (text: string) => `<${String(key)}>${text}` }) as unknown as MayflySemanticColors
     const rows = renderChartRows(ui.chart({
       chart: 'bar', layout: 'normalized', orientation: 'horizontal', height: 2, title: 'T',
       categories: [''], series: [
@@ -80,7 +80,7 @@ describe('renderChartRows', () => {
   })
 
   it('paints empty series as the muted track and keeps sub-cell shares visible', () => {
-    const tagged = new Proxy({ logoGradient: [identity] }, { get: (target, key) => key === 'logoGradient' ? target.logoGradient : (text: string) => `<${String(key)}>${text}` }) as MayflySemanticColors
+    const tagged = new Proxy({ logoGradient: [identity] }, { get: (target, key) => key === 'logoGradient' ? target.logoGradient : (text: string) => `<${String(key)}>${text}` }) as unknown as MayflySemanticColors
     const rows = renderChartRows(ui.chart({
       chart: 'bar', layout: 'normalized', orientation: 'horizontal', categories: [''], series: [
         { id: 'a', tone: 'primary', values: [1] },

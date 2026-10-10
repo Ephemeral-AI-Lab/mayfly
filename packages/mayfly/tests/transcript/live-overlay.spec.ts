@@ -8,7 +8,8 @@ import type { Session } from '@deepseek-ai/dsh-session'
 import { describe, expect, it, vi } from 'vitest'
 import { LiveAssistantStreamService } from '../../src/conversation/live-stream.ts'
 import { initialConversationFacts } from '../../src/conversation/facts.ts'
-import { liveDraftsOf, OfficialConversationModelSource, type LiveDraftSource } from '../../src/transcript/official-model.ts'
+import { liveDraftsOf, OfficialConversationModelSource } from '../../src/transcript/official-model.ts'
+import type { LiveDraftSource } from '../../src/transcript/conversation-feed.ts'
 import { SessionFactsService } from '../../src/transcript/session-facts.ts'
 import type { ConversationProjection } from '../../src/conversation/types.ts'
 import { materializeTranscriptEntries } from '../../src/frontend/models.ts'
@@ -55,7 +56,7 @@ function liveAgent(ctx: Context, id: string): { agent: Agent, session: Session, 
 }
 
 function projection(entries: ConversationProjection['entries'], streaming = false, settledSteps: readonly string[] = []): ConversationProjection {
-  return { entries, streaming, settledSteps }
+  return { entries, streaming, settledSteps, turns: [] }
 }
 
 describe('live draft overlays', () => {
@@ -241,7 +242,7 @@ describe('live draft overlays', () => {
     expect(service.current).toMatchObject({ phase: 'composing', activity: { kind: 'text' }, outputProgress: { chars: 9 } })
 
     // A boundary parks the phase back onto the durable facts.
-    ctx.emit('agent/assistant-stream', { agent, frame: { type: 'chunk', attemptId: 'a' as never, revision: 4, index: 2, time: 3, chunk: { type: 'finish', index: 2 } } } as never)
+    ctx.emit('agent/assistant-stream', { agent, frame: { type: 'chunk', attemptId: 'a' as never, revision: 4, index: 2, time: 3, chunk: { type: 'finish', reason: { kind: 'stop' } } } } as never)
     await Promise.resolve()
     expect(service.current.phase).toBe('waiting')
     // The end frame drops the overlay entirely.

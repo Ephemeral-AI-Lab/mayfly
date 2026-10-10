@@ -301,7 +301,7 @@ describe('updater/registry releaseFacts', () => {
       '@ephemeral-ai/mayfly-ui': '0.1.0-rc.3',
       '@deepseek-ai/dsh-agent-preset-registry': '0.1.1-rc.3',
     }
-    updaterInternals.spawnOnce = (cmd, args) => {
+    updaterInternals.spawnOnce = (_cmd, args) => {
       queries.push([...args])
       return Promise.resolve({
         code: 0,
