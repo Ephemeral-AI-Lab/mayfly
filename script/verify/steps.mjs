@@ -88,7 +88,7 @@ export function stepsFor(plan, tier, { root = process.cwd(), coverageAdvice = fa
   }
   // The scenarios the change can show, against their goldens: the first size in a round, every size in the pr tier.
   if (plan.tests.scenarios.length > 0) {
-    steps.push({ name: `scenarios (${String(plan.tests.scenarios.length)})`, kind: 'scenarios', command: 'node', args: ['script/scenarios.mjs', '--sizes', tier === 'round' ? 'first' : 'all', ...plan.tests.scenarios] })
+    steps.push({ name: `scenarios (${String(plan.tests.scenarios.length)})`, kind: 'scenarios', command: 'node', args: ['script/scenarios.mjs', '--png', '--sizes', tier === 'round' ? 'first' : 'all', ...plan.tests.scenarios] })
   }
   if (tier === 'pr' && plan.checks.smoke) steps.push(pnpm('happy smoke', 'run', 'smoke:happy'))
   // The perf scenarios the change reaches, A/B against the merge base: reported, not gated (D28).

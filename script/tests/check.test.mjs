@@ -19,7 +19,7 @@ const scriptsOf = steps => steps.filter(step => step.command === 'pnpm' && step.
 test('a leaf edit in the round tier lints, builds, and runs the specs and scenarios it reaches, without coverage or checks', () => {
   const steps = stepsFor(classifyChanges(['packages/mayfly/src/transcript/status-context.ts', 'packages/mayfly/AGENTS.md']), 'round', { root: ROOT })
   assert.deepEqual(names(steps).map(name => name.replace(/ \(\d+\)$/u, '')), ['lint', 'build', 'specs', 'scenarios'])
-  assert.deepEqual(commandOf(steps, 'scenarios').args.slice(0, 3), ['script/scenarios.mjs', '--sizes', 'first'])
+  assert.deepEqual(commandOf(steps, 'scenarios').args.slice(0, 4), ['script/scenarios.mjs', '--png', '--sizes', 'first'])
   const specs = commandOf(steps, 'specs')
   assert.ok(specs.args.includes('packages/mayfly/tests/transcript/width-scan.spec.ts'))
   assert.ok(!specs.args.includes('--coverage'))
@@ -145,7 +145,7 @@ test('a golden runs its scenario, a covered source the scenarios that cover it, 
   assert.deepEqual(machinery.tests.scenarios, [...GOLDEN_SCENARIOS].sort())
   assert.deepEqual(machinery.tests.perf, [...PERF_SCENARIOS].sort())
   assert.equal(machinery.tests.why['scenario idle'].at(-2), 'script/scenarios.mjs')
-  assert.equal(stepsFor(classifyChanges(['packages/mayfly/src/transcript/thinking.ts']), 'pr', { root: ROOT }).find(step => step.kind === 'scenarios').args[2], 'all')
+  assert.equal(stepsFor(classifyChanges(['packages/mayfly/src/transcript/thinking.ts']), 'pr', { root: ROOT }).find(step => step.kind === 'scenarios').args[3], 'all')
 })
 
 test('a scenario report names the checkpoint, size, and rows that differ, a missing golden, a broken run, and an orphan', () => {

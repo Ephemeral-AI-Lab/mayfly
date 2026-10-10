@@ -69,8 +69,9 @@ export function scenarioFailures(results) {
     const file = `scenario ${result.name}`
     const size = `${String(result.cols)}x${String(result.rows)}`
     for (const entry of result.checkpoints) {
-      if (entry.status === 'differs') failures.push({ kind: 'scenario', file, test: `${entry.checkpoint} at ${size} differs from its golden`, message: entry.diff.join('\n') })
-      else if (entry.status === 'new') failures.push({ kind: 'scenario', file, test: `${entry.checkpoint} at ${size} has no golden`, message: 'accept it with the update command below' })
+      const look = entry.png === undefined ? '' : `\nLook: ${entry.png}${entry.basePng === undefined ? '' : ` (the merge base: ${entry.basePng})`}`
+      if (entry.status === 'differs') failures.push({ kind: 'scenario', file, test: `${entry.checkpoint} at ${size} differs from its golden`, message: `${entry.diff.join('\n')}${look}` })
+      else if (entry.status === 'new') failures.push({ kind: 'scenario', file, test: `${entry.checkpoint} at ${size} has no golden`, message: `accept it with the update command below${look}` })
     }
     for (const failure of result.failures) failures.push({ kind: 'scenario', file, test: `the run at ${size}`, message: failure })
   }

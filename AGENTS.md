@@ -160,7 +160,13 @@ action and any failure.
 driver on a control socket, the scenario clock, reduced motion, and no generated
 title, plays the script, and writes each checkpoint to
 `.artifacts/frames/<scenario>-<cols>x<rows>/` as a cell grid, its text, and an
-SVG (`--width`, `--height`, `--keys enter,down,ctrl+c`). A step settles when
+SVG (`--width`, `--height`, `--keys enter,down,ctrl+c`); `--png` also renders
+the real look in xterm.js (WebGL, the pinned JetBrains Mono) in headless Chrome,
+with keys and the mouse sent as browser events, and writes `<checkpoint>.png`,
+which you can open as an image. `pnpm run scenarios -- --png` (the round and pr
+tiers pass it) renders each checkpoint that differs or has no golden beside the
+merge base's into `.artifacts/verify/shots/` with a contact sheet; pictures
+gate nothing, the grid does. A step settles when
 the screen content stands still with no frame open and no stub request in
 flight; every run fails on a wrapped row, the overflow or crash log, a failed
 driver action, or a refused exit. Runs give identical grids, also side by side

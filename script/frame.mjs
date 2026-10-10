@@ -2,11 +2,12 @@
 /**
  * Paint a catalog scenario from the real product: the runner boots `dsh` under a PTY with the replay driver, plays the
  * scenario's script, and each checkpoint is written to `.artifacts/frames/<scenario>-<cols>x<rows>/` as a cell grid
- * (`<checkpoint>.grid`), its text (`.txt`), and an SVG (`.svg`). `--keys` sends keys after the script and captures the
- * checkpoint `keys`. The fixture scenes of the app shots (`app-*`) still paint through
+ * (`<checkpoint>.grid`), its text (`.txt`), and an SVG (`.svg`). `--png` also renders the product in xterm.js in
+ * headless Chrome (keys and the mouse through the browser) and writes the real look as `<checkpoint>.png`. `--keys`
+ * sends keys after the script and captures the checkpoint `keys`. The fixture scenes of the app shots (`app-*`) still paint through
  * `packages/mayfly/tests/workbench/frame.spec.ts` until slice 2b.6 ports them to the catalog.
  *
- *   pnpm run frame <scenario> [--width N] [--height N] [--keys enter,down,ctrl+c,...] [--no-color]
+ *   pnpm run frame <scenario> [--width N] [--height N] [--keys enter,down,ctrl+c,...] [--png] [--no-color]
  *
  * @module script/frame
  */
@@ -38,11 +39,12 @@ export function parseFrameArgs(argv) {
     else if (value === '--height') run.rows = Number(argv[++index])
     else if (value === '--keys') run.keys = (argv[++index] ?? '').split(',').filter(Boolean).map(token => (token === 'comma' ? ',' : token))
     else if (value === '--no-color') run.env.NO_COLOR = '1'
+    else if (value === '--png') run.png = true
     else if (value.startsWith('--')) return { error: `unknown option ${value}` }
     else if (run.scenario === undefined) run.scenario = value
     else return { error: `unexpected argument ${value}` }
   }
-  if (run.scenario === undefined) return { error: 'usage: pnpm run frame <scenario> [--width N] [--height N] [--keys a,b] [--no-color]' }
+  if (run.scenario === undefined) return { error: 'usage: pnpm run frame <scenario> [--width N] [--height N] [--keys a,b] [--png] [--no-color]' }
   for (const key of ['cols', 'rows']) if (run[key] !== undefined && !(Number.isInteger(run[key]) && run[key] > 0)) return { error: `--${key === 'cols' ? 'width' : 'height'} needs a positive integer` }
   return { run }
 }
@@ -70,13 +72,14 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const dir = join(root, '.artifacts/frames', `${run.scenario}-${String(cols)}x${String(rows)}`)
   mkdirSync(dir, { recursive: true })
   const result = await runScenario(run.scenario, {
-    root, dshBin, cols, rows, keys: run.keys, env,
-    onCheckpoint: async (name, screen) => {
+    root, dshBin, cols, rows, keys: run.keys, env, backend: run.png === true ? 'browser' : 'headless',
+    onCheckpoint: async (name, screen, png) => {
+      if (png !== undefined) writeFileSync(join(dir, `${name}.png`), png)
       const grid = maskGrid(screen.serialize())
       writeFileSync(join(dir, `${name}.grid`), `${grid}\n`)
       writeFileSync(join(dir, `${name}.txt`), gridText(grid))
       writeFileSync(join(dir, `${name}.svg`), await paintTerminalSvg(screen.terminal, { cols: screen.terminal.cols, rows: screen.terminal.rows }))
-      console.log(`${name}: ${relative(root, join(dir, `${name}.grid`))} (.txt, .svg)`)
+      console.log(`${name}: ${relative(root, join(dir, `${name}.grid`))} (.txt, .svg${png === undefined ? '' : ', .png'})`)
     },
   })
   result.screen.dispose()

@@ -15,6 +15,7 @@ import { setTimeout as sleep } from 'node:timers/promises'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { ensureThrowawayProfile } from '../workbench/profile.mjs'
 import { scenarioNamed } from './catalog.mjs'
+import { openBrowserTerminal } from './browser.mjs'
 import { click as clickReport, keyBytes, mouseReport } from './input.mjs'
 import { processCpuMs, processMemoryKb, spanMetrics } from './metrics.mjs'
 import { createScreen } from './screen.mjs'
@@ -110,10 +111,14 @@ export function prepareProfiles({ root, dshBin, names }) {
  *   at each checkpoint with the settled screen (to paint it).
  * @param {Record<string, string>} [options.env] - more environment for the product (`NO_COLOR`, a locale).
  * @param {string} [options.profileDir] - write a CPU profile of the product here (`--cpu-prof`).
+ * @param {'headless' | 'browser'} [options.backend] - `browser` renders the product in xterm.js in headless Chrome too:
+ *   keys and the mouse go through the browser, the page answers the terminal's queries, and each checkpoint also
+ *   captures a PNG (`png` on the checkpoint, and the third argument of `onCheckpoint`). The grid still comes from the
+ *   headless screen fed the same bytes.
  * @returns {Promise<{ name: string, cols: number, rows: number, checkpoints: { name: string, grid: string }[], failures: string[],
  *   frames: number, bootMs: number, durationMs: number, screen: ReturnType<typeof createScreen> }>} the screen is disposed by the caller.
  */
-export async function runScenario(name, { root, dshBin, cols, rows, keys = [], onCheckpoint, env: extraEnv = {}, profileDir }) {
+export async function runScenario(name, { root, dshBin, cols, rows, keys = [], onCheckpoint, env: extraEnv = {}, profileDir, backend = 'headless' }) {
   const scenario = scenarioNamed(name)
   if (scenario === undefined) throw new Error(`unknown scenario "${name}"`)
   const [width, height] = [cols ?? scenario.sizes[0][0], rows ?? scenario.sizes[0][1]]
@@ -125,14 +130,18 @@ export async function runScenario(name, { root, dshBin, cols, rows, keys = [], o
   const logs = ['mayfly-overflow.log', 'pi-crash.log'].map(file => join(profile.env.PI_CODING_AGENT_DIR, file))
   const logSizes = logs.map(sizeOf)
   const env = { ...profile.env, ...session.env, TZ: 'UTC', NODE_OPTIONS: `--import=${pathToFileURL(CLOCK).href}${profileDir === undefined ? '' : ` --cpu-prof --cpu-prof-dir=${profileDir}`}`, ...extraEnv }
+  // The page is ready before the product starts: its first bytes are the terminal queries the page answers.
+  let pty
+  const browser = backend === 'browser' ? await openBrowserTerminal({ cols: width, rows: height, write: data => pty?.write(data) }) : undefined
   const releaseBoot = await takeBootTurn()
-  const pty = require('node-pty').spawn(dshBin, ['--profile', 'bench', '--patch', session.patch], { name: 'xterm-256color', cols: width, rows: height, cwd: session.cwd, env })
-  const screen = createScreen({ cols: width, rows: height, reply: data => pty.write(data) })
+  pty = require('node-pty').spawn(dshBin, ['--profile', 'bench', '--patch', session.patch], { name: 'xterm-256color', cols: width, rows: height, cwd: session.cwd, env })
+  // With a browser, xterm.js answers the queries; the headless screen only reads.
+  const screen = createScreen({ cols: width, rows: height, reply: data => { if (browser === undefined) pty.write(data) } })
   let exitCode = null
   const exited = new Promise(resolve => pty.onExit(({ exitCode: code }) => { exitCode = code; resolve(code) }))
   // The last bytes the product wrote, for a failure report.
   let tail = ''
-  pty.onData((data) => { screen.feed(data); tail = (tail + data).slice(-6000) })
+  pty.onData((data) => { screen.feed(data); browser?.feed(data); tail = (tail + data).slice(-6000) })
 
   const failures = []
   const checkpoints = []
@@ -188,16 +197,17 @@ export async function runScenario(name, { root, dshBin, cols, rows, keys = [], o
     if (found === undefined) throw new Error(`no visible "${at.text}" to point at`)
     return found
   }
-  const mouse = (bytes) => {
-    if (screen.state.mouse === 'none' || !screen.state.sgr) throw new Error('mouse reporting is off: the product would not see this event')
-    pty.write(bytes)
-  }
+  const mouseOn = () => { if (screen.state.mouse === 'none' || !screen.state.sgr) throw new Error('mouse reporting is off: the product would not see this event') }
+  const mouse = (bytes) => { mouseOn(); pty.write(bytes) }
+  /** A key or text, through the browser when there is one. */
+  const press = async (keyName) => { if (browser === undefined) pty.write(keyBytes(keyName)); else await browser.key(keyName) }
   const capture = async (checkpointName) => {
     await settle()
     const wrapped = screen.wrappedRows()
     if (wrapped.length > 0) failures.push(`${checkpointName}: rows ${wrapped.join(', ')} are wider than the terminal`)
-    checkpoints.push({ name: checkpointName, grid: maskGrid(screen.serialize()) })
-    await onCheckpoint?.(checkpointName, screen)
+    const png = browser === undefined ? undefined : await browser.screenshot()
+    checkpoints.push({ name: checkpointName, grid: maskGrid(screen.serialize()), ...(png === undefined ? {} : { png }) })
+    await onCheckpoint?.(checkpointName, screen, png)
   }
 
   /** One timed input: written, then timed to the end of the next frame, then left until the bytes stop for 25 ms. */
@@ -212,6 +222,7 @@ export async function runScenario(name, { root, dshBin, cols, rows, keys = [], o
   }
   /** Run the steps of a perf span, with nothing waiting on the driver. */
   async function span(spanName, steps) {
+    if (browser !== undefined) throw new Error('perf spans measure the product alone: run them without the browser')
     await settle()
     const samples = []
     const [cpu0, frames0, bytes0, begin] = [processCpuMs(pty.pid), screen.state.frames.length, screen.state.bytes, performance.now()]
@@ -248,26 +259,35 @@ export async function runScenario(name, { root, dshBin, cols, rows, keys = [], o
           break
         case 'checkpoint': await capture(step.name); break
         case 'key':
-          for (let count = 0; count < step.repeat; count += 1) { pty.write(keyBytes(step.name)); await settle(80) }
+          for (let count = 0; count < step.repeat; count += 1) { await press(step.name); await settle(80) }
           break
         case 'type':
-          for (const char of step.text) { pty.write(char); await settle(40) }
+          for (const char of step.text) { await press(char); await settle(40) }
           break
-        case 'click': { const cell = cellOf(step.at); mouse(clickReport(cell.row, cell.col)); await settle(); break }
-        case 'wheel': {
+        case 'click': {
           const cell = cellOf(step.at)
-          for (let count = 0; count < step.count; count += 1) mouse(mouseReport({ type: 'wheel', direction: step.direction, ...cell }))
+          if (browser === undefined) mouse(clickReport(cell.row, cell.col))
+          else { mouseOn(); await browser.click(cell.row, cell.col) }
           await settle()
           break
         }
-        case 'resize': pty.resize(step.cols, step.rows); screen.resize(step.cols, step.rows); await settle(); break
+        case 'wheel': {
+          const cell = cellOf(step.at)
+          for (let count = 0; count < step.count; count += 1) {
+            if (browser === undefined) mouse(mouseReport({ type: 'wheel', direction: step.direction, ...cell }))
+            else { mouseOn(); await browser.wheel(cell.row, cell.col, step.direction) }
+          }
+          await settle()
+          break
+        }
+        case 'resize': pty.resize(step.cols, step.rows); screen.resize(step.cols, step.rows); await browser?.resize(step.cols, step.rows); await settle(); break
         case 'idle': await span('idle', [{ step: 'wait', ms: step.ms }]); break
         case 'measure': await span(step.name, step.steps); break
         default: throw new Error(`unknown step ${String(step.step)}`)
       }
     }
     if (keys.length > 0) {
-      for (const keyName of keys) { pty.write(keyBytes(keyName)); await settle(80) }
+      for (const keyName of keys) { await press(keyName); await settle(80) }
       await capture('keys')
     }
   } catch (error) {
@@ -290,5 +310,6 @@ export async function runScenario(name, { root, dshBin, cols, rows, keys = [], o
   if (code === undefined) { failures.push('the product did not exit on Ctrl+C'); pty.kill() } else if (exitCode !== 0) failures.push(`the product exited with ${String(exitCode)}`)
   await control.close()
   await session.close()
+  await browser?.close()
   return { name, cols: width, rows: height, checkpoints, metrics, failures, frames: screen.state.frames.length, bootMs, durationMs: Math.round(performance.now() - started), screen }
 }

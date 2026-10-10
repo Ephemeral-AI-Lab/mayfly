@@ -30,7 +30,7 @@ replace them.
 
 A review round runs on the workbench: `pnpm run dev` rebuilds and restarts the
 profile on the same session, `pnpm run scenario` opens the product on a scripted
-timeline played into the live session (no model, no tools, no quota), `pnpm run frame` runs a scenario against the real product and writes each checkpoint as a cell grid, text, and SVG, and the
+timeline played into the live session (no model, no tools, no quota), `pnpm run frame` runs a scenario against the real product and writes each checkpoint as a cell grid, text, SVG, and (with `--png`) a screenshot from xterm.js in headless Chrome, and the
 prototype runs beside it as `node docs/design/prototypes/ui-preview.mjs <scene>`
 (see the root `AGENTS.md`).
 

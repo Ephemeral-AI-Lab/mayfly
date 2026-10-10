@@ -1753,7 +1753,7 @@ The A/B and the outputs:
 | 2b.6 | Cell-grid goldens gate: `pnpm run scenarios` (`script/scenarios.mjs`, `scenarios/golden.mjs`) compares every checkpoint with `script/scenarios/golden/<scenario>/<checkpoint>@<cols>x<rows>.grid`, four runs at a time, flags missing and orphaned goldens, and `--update` accepts; selection runs a golden's own scenario, the scenarios whose `covers` name a changed source, every scenario for the scenario machinery, and a smoke set (`idle`, `tour`; `gallery` for its sources) for other product code; round runs them at their first size, pr at every size, full all of them; the summary shows each differing row with the chain that selected the scenario and the accept command. 27 goldens; all pass in 66 s | — |
 | 2b.6b | The six app-shot fixture scenes become catalog scenarios (`seed`), and app shots are painted from their goldens | `tests/app-shots.spec.ts` with `tests/app-shots/`, `script/shots/app-manifest.mjs`, `tests/workbench/{frame.spec,scenarios}.ts`, `script/smoke-pty-mouse.mjs` (a wheel scenario replaces it) |
 | 2b.7 | `pnpm run perf` (`script/perf.mjs`, `scenarios/{metrics,stats,baseline,cpuprofile}.mjs`): three perf scenarios in the catalog (`perf-focus`: idle, typing, and the cursor keys of four panels; `perf-gallery`: idle and typing beside the side pane; `perf-stream`: a streamed answer at its own pace, page keys, and the mouse wheel), `idle` and `measure` spans that time each key or wheel notch to the end of its frame without driver round trips, A/B against the merge base built once in a worktree, interleaved runs, verdicts `regressed`, `same`, `improved`, or `inconclusive` (median, twice the MAD, Mann-Whitney U), pooled key samples, `--prof` top functions with the baseline's time beside them, `--assert` ceilings scaled by `MAYFLY_PERF_SLACK`; the pr tier runs the A/B for a covered change and reports it, the full tier asserts the ceilings. An A/A run of one build is `same` on every metric, and a 0.2 ms slowdown injected into the keymap is `regressed` on key-to-paint in every span | `script/bench-pty.mjs`, `bench:pty*`, `BENCH_PTY_SLACK`, `script/workbench/mock-llm.mjs` |
-| 2b.8 | Real screenshots: the browser backend, `frame --png`, PNGs of the changed checkpoints, the contact sheet | — |
+| 2b.8 | Real screenshots (`script/scenarios/browser.mjs`, `@xterm/xterm` and `@xterm/addon-webgl` pinned): the runner's browser backend feeds the product's bytes to xterm.js (WebGL through SwiftShader, the pinned font) in headless Chrome over raw CDP, sends keys and the mouse as browser input events, lets the page answer the terminal's queries, and captures a PNG per checkpoint while the headless twin still yields the grid; `frame --png`; `scenarios --png` (passed by the round and pr tiers) renders each differing or new checkpoint beside the merge base's into `.artifacts/verify/shots/` with a contact sheet, and the summary links them. Its grids equal the headless goldens, and each key, wheel notch, and click reaches the product as the same bytes on both backends. A pixel diff of the two PNGs is left for later | — |
 | 2b.9 | Test files typechecked (`tsconfig.tests.json` maps the workspace packages to their source) and the backlog fixed | — |
 
 **Order and acceptance.**
@@ -1770,7 +1770,8 @@ The A/B and the outputs:
   - **2b.6:** the first CI run matches the local goldens; a deliberate visible change shows as a grid diff in the
     summary.
   - **2b.7:** an A/A run of the same build is `same` three times, and an injected regression is `regressed`.
-  - **2b.8:** two captures of a checkpoint are pixel-identical.
+  - **2b.8:** the browser backend's grids equal the headless goldens, both backends send the same bytes for every key
+    and mouse event, and the pictures of a deliberate visible change show it.
 - **Phase-level dry run.** A deliberate visual regression and a deliberate perf regression each appear in
   `summary.md`, the first with its grid diff and PNG and the second with its verdict, and reverting them turns the
   report green.
@@ -1785,7 +1786,8 @@ The A/B and the outputs:
 | 2b.5 | in review | `feat/2b-5-scenario-runner` |
 | 2b.6 | in review | `feat/2b-6-scenario-goldens` |
 | 2b.7 | in review | `feat/2b-7-perf-ab` |
-| 2b.6b, 2b.8, 2b.9 | planned | — |
+| 2b.8 | in review | `feat/2b-8-real-screenshots` |
+| 2b.6b, 2b.9 | planned | — |
 
 **2c Content at any size** (§4.2, D26). Chunked text, admission and painting when visible, append identity, the memory
 ceiling, and the gate rows. The owner reviews a 1 MB diff, a long plan, and job output following its tail in the
@@ -2085,7 +2087,7 @@ are allowed again, with every caller updated in the same change.
 | pr | Once per component, before it merges, and in PR CI | round, the checks the changed inputs claim, every size of the selected scenarios, perf A/B and PNGs where selected |
 | full | CI on `main` and nightly, the end of a phase, a release, and changes the root instructions route to it (composition, workflow, release) | Everything, with coverage and its floor, the smoke, the perf ceilings, and the platform matrix (`check:pack` when selected); at a phase end, also the perf report and the owner's acceptance |
 
-Until slices 2b.6b and 2b.8 land, app shots and screenshots come from `shots:sync`.
+Until slice 2b.6b lands, the Website app shots come from `shots:sync`.
 
 **Decision tests** (D25). A finalized component carries tests for what was decided, and nothing written only to reach
 a line:
