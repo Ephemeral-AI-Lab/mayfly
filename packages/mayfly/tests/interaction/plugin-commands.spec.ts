@@ -541,8 +541,6 @@ describe('installer unit seams', () => {
 
   it('reports spawn errors and timeouts distinctly', async () => {
     const root = mkdtempTracked('mayfly-install-')
-    const enoent = await installEntry({ dshCommand: { command: 'dsh', args: [] }, profile: 'p', root, entry: entry(), source: 'npm' }).catch(() => undefined)
-    void enoent
     const realSpawn = updaterInternals.spawnOnce
     updaterInternals.spawnOnce = async () => ({ code: null, signal: null, stdout: '', stderr: '', timedOut: true, spawnError: 'ENOENT' })
     const outcome = await installEntry({ dshCommand: { command: 'dsh', args: [] }, profile: 'p', root, entry: entry(), source: 'npm' })
@@ -553,8 +551,7 @@ describe('installer unit seams', () => {
     const timedOut = await uninstallEntry({ dshCommand: { command: 'dsh', args: [] }, profile: 'p', root, entry: entry(), source: 'npm' })
     updaterInternals.spawnOnce = realSpawn
     expect(timedOut).toMatchObject({ kind: 'error', text: expect.stringContaining('timed out') })
-    // The first call spawns the real `dsh` once; under a loaded full gate it outlasts the default 5 s.
-  }, 30_000)
+  })
 
   it('refuses a source the entry does not declare', async () => {
     const githubOnly = { ...entry(), install: { rows: [{ name: 'dsh-loop', github: { repo: 'a/b', ref: 'r' } }] } }
