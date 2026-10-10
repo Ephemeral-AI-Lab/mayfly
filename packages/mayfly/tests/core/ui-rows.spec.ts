@@ -11,6 +11,7 @@ import {
   rowSourceOf,
   sameMaterializedRows,
   sliceRows,
+  unclampedRows,
   virtualRows,
   type RowSource,
 } from '../../src/core/ui-rows.ts'
@@ -139,6 +140,44 @@ describe('sliceRows', () => {
     const rows = sliceRows(virtualRows(counting(4)), 2, 99)
     expect(rows.length).toBe(2)
     expect([...rows]).toEqual(['row 2', 'row 3'])
+  })
+})
+
+describe('unclampedRows', () => {
+  /** A source clamped to `cap` rows plus its elision row, like a bounded leaf's. */
+  function clamped(inner: RowSource, cap: number): RowSource {
+    return {
+      get length() { return inner.length <= cap ? inner.length : cap + 1 },
+      get unclamped() { return inner },
+      row(index) { return index < cap ? inner.row(index) : '…more' },
+    }
+  }
+
+  it('answers the same rows when the source has no bound', () => {
+    const rows = virtualRows(counting(10))
+    expect(unclampedRows(rows)).toBe(rows)
+    expect(unclampedRows(['a', 'b'])).toEqual(['a', 'b'])
+  })
+
+  it('lifts the bound through concat and map', () => {
+    const leaf = virtualRows(clamped(counting(500), 20))
+    const rows = mapRows(concatRows(['head'], leaf), row => row)
+    expect(rows.length).toBe(22)
+    const lifted = unclampedRows(rows)
+    expect(lifted.length).toBe(501)
+    expect(lifted[500]).toBe('row 499')
+  })
+
+  it('drops a slice end that covered the source, keeps a deliberate window', () => {
+    const source = clamped(counting(500), 20)
+    // A stack's allocation slice is a no-op over the reported length: the unwrap must reach the rest.
+    const rest = sliceRows(virtualRows(source), 0, 21)
+    expect(rest.length).toBe(21)
+    expect(unclampedRows(rest).length).toBe(500)
+    const window = sliceRows(virtualRows(source), 0, 10)
+    expect(unclampedRows(window).length).toBe(10)
+    const tail = sliceRows(virtualRows(source), 5)
+    expect(unclampedRows(tail).length).toBe(495)
   })
 })
 

@@ -1,5 +1,5 @@
 /**
- * The work-budget workloads W1 to W8 (docs/design/implementation-roadmap.md section 7.1), and W1 and W4 again through the
+ * The work-budget workloads W1 to W20 (docs/design/implementation-roadmap.md section 7.1), and W1 and W4 again through the
  * node slot (slice 1.10a), the path the footer and the conversation take from Phases 3 and 6. Each one builds a surface of
  * a stated shape, then runs one steady-state step that publishes, presses a key, or ticks the clock, and reports the
  * counters of that step alone. The counts are deterministic, so a spec gates them; `script/audit-performance.mjs`
@@ -163,6 +163,15 @@ class SlotScreen {
 }
 
 const reset = (counters: MayflyWorkCounters): void => { Object.assign(counters, createWorkCounters()) }
+
+/**
+ * Roughly `megabytes` of ordinary-length code lines, built once per workload. Every line is one row at the
+ * workload width, so a segment's row estimate is exact and the gates measure window size, not drift.
+ */
+export function codeDocument(megabytes: number): string {
+  const line = (index: number): string => `const value${String(index)} = compute(input, state, cache) ${String(index)}`
+  return Array.from({ length: Math.ceil((megabytes * 1_000_000) / (line(0).length + 1)) }, (_, index) => line(index)).join('\n')
+}
 
 const item = (index: number, extra = {}): { id: string, label: string, detail: string } => ({ id: `item-${String(index)}`, label: `Item number ${String(index)}`, detail: `detail ${String(index)}`, ...extra })
 
@@ -415,6 +424,33 @@ export const WORKLOADS: readonly Workload[] = [
       publish()
       reset(counters)
       return { step: publish, dispose: () => {} }
+    },
+  },
+  {
+    id: 'W18', title: 'content scroll: a megabyte of code in a declared-height scroll, PageDown',
+    setup(counters) {
+      const surface = new Surface('w18', ui.scroll(ui.code(codeDocument(1)), { height: 8, scrollbar: true }), counters)
+      surface.render()
+      reset(counters)
+      return { step: () => { surface.press('\x1b[6~') }, dispose: () => surface.dispose() }
+    },
+  },
+  {
+    id: 'W19', title: 'content resize: the same megabyte of code repainted one column narrower',
+    setup(counters) {
+      const surface = new Surface('w19', ui.scroll(ui.code(codeDocument(1)), { height: 8, scrollbar: true }), counters)
+      surface.render()
+      reset(counters)
+      return { step: () => { surface.render(99) }, dispose: () => surface.dispose() }
+    },
+  },
+  {
+    id: 'W20', title: 'content end: ten megabytes of code in a declared-height scroll, End',
+    setup(counters) {
+      const surface = new Surface('w20', ui.scroll(ui.code(codeDocument(10)), { height: 8, scrollbar: true }), counters)
+      surface.render()
+      reset(counters)
+      return { step: () => { surface.press('\x1b[F') }, dispose: () => surface.dispose() }
     },
   },
   {

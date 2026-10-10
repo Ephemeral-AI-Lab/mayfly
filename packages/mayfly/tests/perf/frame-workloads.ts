@@ -1,5 +1,5 @@
 /**
- * The frame workloads W13 to W17 (docs/design/implementation-roadmap.md section 7.1). W1 to W12 call a compiled
+ * The frame workloads W13 to W18-overlay (docs/design/implementation-roadmap.md section 7.1). W1 to W20 call a compiled
  * component's `render` directly; these mount a pane or an overlay the way the product does, through pi-tui's alternate
  * screen over a fake terminal, the surface lanes, and the surface renderer, and count one whole frame: the lane measure,
  * pi-tui's native layout, and the animation clock are all on the path. W17 counts the keymap snapshots one editor
@@ -24,7 +24,7 @@ import { EditorExtensionRuntime } from '../../src/interaction/editor-extension-r
 import { INTERACTION_KEY_ACTIONS } from '../../src/interaction/keys.ts'
 import { FakeTerminal } from '../core/fake-terminal.ts'
 import { FakeMayflyComponents, FakeMayflyEditor, FakeScreen, FakeTheme, fakeMayflyContext } from '../interaction/fakes.ts'
-import type { WorkloadEnvironment } from './workloads.ts'
+import { codeDocument, type WorkloadEnvironment } from './workloads.ts'
 
 export interface FrameRun {
   /** Runs the measured step once and paints the frames it asks for. */
@@ -227,6 +227,16 @@ export const FRAME_WORKLOADS: readonly FrameWorkload[] = [
       for (let index = 0; index < 4; index += 1) await host.press('\x1b[B')
       reset(counters)
       return { step: () => host.press('\x1b[B'), dispose: () => host.dispose() }
+    },
+  },
+  {
+    id: 'W18-overlay', title: 'content scroll in an overlay: a megabyte of code in a layout-driven scroll, PageDown',
+    async setup(counters, environment) {
+      const host = await FrameHost.boot(counters, environment)
+      host.root.mayflyOverlays.open({ id: 'perf.doc', title: 'Document', capturing: true }, ui.scroll(ui.code(codeDocument(1))))
+      await host.frames()
+      reset(counters)
+      return { step: () => host.press('\x1b[6~'), dispose: () => host.dispose() }
     },
   },
   {

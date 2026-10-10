@@ -7,7 +7,7 @@
  */
 
 import { REPLAYS } from './replays.mjs'
-import { checkpoint, idle, key, measure, play, type, wheel } from './steps.mjs'
+import { checkpoint, idle, key, measure, play, resize, type, wheel } from './steps.mjs'
 
 /** The size a scenario runs at unless it names its own. */
 export const DEFAULT_SIZE = Object.freeze([120, 40])
@@ -42,6 +42,12 @@ const COVERS = {
   edge: [`${TRANSCRIPT}tool-line.ts`, 'packages/mayfly/src/core/width.ts'],
   history: [`${TRANSCRIPT}conversation-feed.ts`, `${TRANSCRIPT}transcript-model.ts`],
   wheel: ['packages/mayfly/src/core/terminal.ts', `${TRANSCRIPT}conversation-feed.ts`],
+  content: [
+    'packages/mayfly/src/core/content-*.ts', 'packages/mayfly/src/core/width-estimate.ts', 'packages/mayfly/src/core/plugin-view.ts',
+    'packages/mayfly/src/core/ui-rows.ts', 'packages/mayfly/src/core/ui-scroll-region.ts',
+    'packages/mayfly/src/core/ui-content-cache.ts', `${INTERACTION}trace-*.ts`, `${INTERACTION}document-pages.ts`,
+    `${TRANSCRIPT}command-group.ts`, `${TRANSCRIPT}tool-line.ts`,
+  ],
 }
 
 /**
@@ -52,6 +58,13 @@ const SCRIPTS = {
   jobs: [play('running'), checkpoint('running')],
   // The wheel scrolls the transcript back: the two checkpoints differ only by the scroll.
   wheel: [play(), checkpoint('end'), wheel('up', { count: 3 }), checkpoint('wheel')],
+  // The collapsed write card, then /trace on its tool call: a document page of the megabyte content, scrolled and resized.
+  content: [
+    play(), checkpoint('card'),
+    type('/trace'), key('enter'), key('end'), key('up', { repeat: 4 }), key('enter'), checkpoint('detail'),
+    key('tab', { repeat: 2 }), key('right', { repeat: 2 }), key('enter'), checkpoint('page'),
+    key('shift+tab', { repeat: 4 }), key('pagedown'), checkpoint('paged'), key('end'), checkpoint('tail'), resize(80, 24), checkpoint('resized'),
+  ],
 }
 /** Replays that run at a size of their own. */
 const SIZES = {
@@ -152,6 +165,23 @@ const PERF = {
     sizes: [DEFAULT_SIZE],
     perf: { ceilings: {} },
     script: [measure('stream', [play(undefined, { timed: true })]), measure('scroll', [key('pageup', { repeat: 10 }), key('pagedown', { repeat: 10 })]), measure('wheel', [wheel('up', { count: 10 }), wheel('down', { count: 10 })])],
+  },
+  'perf-content': {
+    summary: 'page keys, End, and a resize inside the trace detail of a megabyte write',
+    source: { replay: 'content' },
+    covers: [
+      'packages/mayfly/src/core/content-*.ts', 'packages/mayfly/src/core/width-estimate.ts', 'packages/mayfly/src/core/plugin-view.ts',
+      'packages/mayfly/src/core/ui-rows.ts', 'packages/mayfly/src/core/ui-scroll-region.ts',
+      'packages/mayfly/src/core/ui-content-cache.ts', `${INTERACTION}trace-*.ts`, ...FRAME_PATH,
+    ],
+    sizes: [DEFAULT_SIZE],
+    perf: { ceilings: { scroll: { keyP50Ms: 20, cpuPerKeyMs: 30 }, resize: { keyP50Ms: 50, cpuPerKeyMs: 50 } } },
+    script: [
+      play(), type('/trace'), key('enter'), key('end'), key('up', { repeat: 4 }), key('enter'),
+      key('tab', { repeat: 2 }), key('right', { repeat: 2 }), key('enter'), key('shift+tab', { repeat: 4 }),
+      measure('scroll', [key('pagedown', { repeat: 8 }), key('end'), key('home')]),
+      measure('resize', [resize(80, 24), resize(120, 40)]),
+    ],
   },
 }
 

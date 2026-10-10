@@ -11,6 +11,7 @@ import type { Component } from '@earendil-works/pi-tui'
 import type { MayflyComponents, MayflySemanticColors } from './types.ts'
 import type { UiDocumentAnchor, UiDocumentState } from './ui-interaction-document.ts'
 import type { UiScrollControl } from './ui-surface-state.ts'
+import { prepareRows, unclampedRows } from './ui-rows.ts'
 import { countWork, type MayflyWorkCounters } from './ui-work-counters.ts'
 
 /** The viewport rows of a scroll that declares none of its sizes. */
@@ -128,22 +129,33 @@ export class ScrollRegion implements Component, UiScrollControl {
     const target = this.options.expanded() ? this.options.expandedHeight : this.options.height
     let barred = this.options.scrollbar && columns > BAR_COLUMNS
     let inner = barred ? columns - BAR_COLUMNS : columns
-    let lines = child.render(inner)
+    let lines = unclampedRows(child.render(inner))
     // A fitted region whose content fits the viewport at the full width shows no scrollbar at all.
     if (fit && barred) {
-      const full = child.render(columns)
+      const full = unclampedRows(child.render(columns))
       if (full.length <= target) { lines = full; inner = columns; barred = false }
     }
     this.width = inner
-    this.rows = lines.length
     this.viewport = fit ? Math.min(target, Math.max(1, lines.length)) : target
     const anchors = this.options.anchors
     const state = anchors?.state()
-    if (anchors !== undefined && state !== undefined) {
-      if (state.anchor?.follow === 'end') { this.offset = this.max; this.following = this.options.follow }
-      else { this.offset = Math.max(0, Math.min(this.max, anchors.rowOf(state, inner))); this.following = false }
-    } else if (this.following) this.offset = this.max
-    else this.offset = Math.min(this.offset, this.max)
+    const resolve = (): void => {
+      if (anchors !== undefined && state !== undefined) {
+        if (state.anchor?.follow === 'end') { this.offset = this.max; this.following = this.options.follow }
+        else { this.offset = Math.max(0, Math.min(this.max, anchors.rowOf(state, inner))); this.following = false }
+      } else if (this.following) this.offset = this.max
+      else this.offset = Math.min(this.offset, this.max)
+    }
+    // The live length comes first: resolving against the last frame's count (or a rebuilt region's zero) would
+    // clamp a restored offset to nothing before the new content is even measured. Then resolve the window the
+    // view already sat on and paint it — painted counts can grow the map — and resolve once more so a follow-end
+    // or anchored position lands on the painted rows, not on estimates that ran short.
+    this.rows = lines.length
+    resolve()
+    prepareRows(lines, this.offset, this.offset + this.viewport)
+    this.rows = lines.length
+    resolve()
+    this.rows = lines.length
     if (this.following) this.away = lines.length
     const max = this.max
     const view = lines.slice(this.offset, this.offset + this.viewport)

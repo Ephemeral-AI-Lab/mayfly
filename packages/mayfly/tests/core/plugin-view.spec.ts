@@ -1,6 +1,7 @@
 /**
  * Canonical basic-content leaf tests: sanitization, every variant, limits,
- * semantic paints, and width containment.
+ * semantic paints, and width containment. The windowed kinds render through
+ * `contentNodeRows`; `diff` stays eager until slice 2c.5.
  *
  * @module @ephemeral-ai/mayfly/core/tests/plugin-view
  */
@@ -10,13 +11,13 @@ import type { MayflySectionContentNode } from '../../../ui/src/contracts.ts'
 import {
   CODE_HIGHLIGHT_MAX_BYTES,
   CODE_HIGHLIGHT_MAX_ROWS,
-  PLUGIN_VIEW_MAX_CHARS,
   PLUGIN_VIEW_MAX_DEPTH,
   paintPluginTone,
-  renderCanonicalView,
   sanitizePluginText,
   summarizePluginView,
 } from '../../src/core/plugin-view.ts'
+import { contentNodeRows, type ContentRowsEnv, type WindowedContentNode } from '../../src/core/content-rows.ts'
+import { MayflyContentCache } from '../../src/core/ui-content-cache.ts'
 import { DARK_COLORS } from '../../src/core/theme-dark.ts'
 import type { MayflyComponents, MayflySemanticColors } from '../../src/core/types.ts'
 import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/width.ts'
@@ -32,8 +33,20 @@ const components = {
   truncateToWidth,
 } as MayflyComponents
 
-function renderView(view: MayflySectionContentNode, width: number, maxRows = 20): string[] {
-  return renderCanonicalView(view, width, components, colors, maxRows)
+function env(bound?: number, palette: MayflySemanticColors = colors): ContentRowsEnv {
+  return {
+    components,
+    colors: palette,
+    cache: new MayflyContentCache(),
+    bounded: bound !== undefined,
+    viewportRows: () => bound ?? 0,
+    elide: hidden => `  … +${String(hidden)} more rows`,
+    errorRows: message => [`<error>${message}</error>`],
+  }
+}
+
+function renderView(view: WindowedContentNode, width: number, bound?: number, palette: MayflySemanticColors = colors): string[] {
+  return [...contentNodeRows(view, width, env(bound, palette))]
 }
 
 describe('canonical basic-content leaf renderer', () => {
@@ -78,7 +91,7 @@ describe('canonical basic-content leaf renderer', () => {
     // A change is numbered and keeps its band behind the code only; a long line ends in an ellipsis.
     const { diffAdded, diffAddedBg, diffRemoved, diffRemovedBg, diffGutter, text } = DARK_COLORS
     const renderDiff = (before: string, after: string, width: number): string[] =>
-      renderCanonicalView({ kind: 'diff', before, after }, width, components, DARK_COLORS)
+      renderView({ kind: 'diff', before, after }, width, undefined, DARK_COLORS)
     expect(renderDiff('a\nb', 'a\nc', 20)).toEqual([
       `  ${diffGutter('  1   1 │')}   ${text('a')}`,
       `  ${diffGutter('  2     │')} ${diffRemovedBg(`${diffRemoved('−')} ${diffRemoved('b')}     `)}`,
@@ -101,11 +114,10 @@ describe('canonical basic-content leaf renderer', () => {
     ])
   })
 
-  it('rejects malformed and oversized view data without trusting casts', () => {
+  it('rejects malformed view data without trusting casts', () => {
     expect(() => renderView(null as never, 20)).toThrow('view must be an object')
     expect(() => renderView({ kind: 'unknown' } as never, 20)).toThrow('unknown basic content kind')
     expect(() => renderView({ kind: 'text', content: 1 } as never, 20)).toThrow('must be a string')
-    expect(() => renderView({ kind: 'text', content: 'x'.repeat(PLUGIN_VIEW_MAX_CHARS + 1) }, 20)).toThrow('exceeds')
     expect(() => renderView({ kind: 'fields', rows: null } as never, 20)).toThrow('fields rows')
     expect(() => renderView({ kind: 'fields', rows: [null] } as never, 20)).toThrow('field row')
     expect(() => renderView({ kind: 'fields', rows: [{ label: 'x', value: [null] }] } as never, 20)).toThrow('field span')
@@ -117,14 +129,19 @@ describe('canonical basic-content leaf renderer', () => {
     expect(() => renderView(nested, 20)).toThrow('view nesting exceeds')
   })
 
-  it('caps rows, summarizes every view kind, and rejects invalid summaries', () => {
+  it('bounds an outside-window leaf to the viewport plus an elision row', () => {
+    expect(renderView({ kind: 'text', content: 'a\nb\nc\nd\ne' }, 20, 2)).toEqual(['<text>a</text>', '<text>b</text>', '  … +3 more rows'])
+    // A leaf that fits reports its natural length; unbounded leaves report it always.
+    expect(renderView({ kind: 'text', content: 'a\nb' }, 20, 2).length).toBe(2)
+    expect(renderView({ kind: 'text', content: 'a\nb\nc\nd\ne' }, 20).length).toBe(5)
+  })
+
+  it('summarizes every view kind and rejects invalid summaries', () => {
     const fields: MayflySectionContentNode = { kind: 'fields', rows: [{ label: 'a', value: [{ text: 'b' }] }] }
     const sections: MayflySectionContentNode = { kind: 'sections', sections: [
       { title: 'named', body: { kind: 'text', content: 'ignored' } },
       { body: fields },
     ] }
-    expect(renderView({ kind: 'text', content: 'a\nb\nc' }, 20, 2)).toHaveLength(2)
-    expect(renderView({ kind: 'text', content: 'a' }, 20, -1)).toEqual([])
     expect(summarizePluginView({ kind: 'text', content: ' a\n b ' })).toBe('a b')
     expect(summarizePluginView(fields)).toBe('a: b')
     expect(summarizePluginView({ kind: 'code', code: 'a\n b' })).toBe('a b')
@@ -136,8 +153,9 @@ describe('canonical basic-content leaf renderer', () => {
 
   for (const fixture of ADVERSARIAL) {
     it(`keeps canonical ${fixture.name} rows inside every scanned width`, () => {
+      // The real palette emits ANSI, which `visibleWidth` ignores; the literal-tag palette would count as columns.
       for (const width of SCAN_WIDTHS) {
-        const rows = renderView({ kind: 'text', content: fixture.text, tone: 'accent' }, width)
+        const rows = renderView({ kind: 'text', content: fixture.text, tone: 'accent' }, width, undefined, DARK_COLORS)
         expectLinesFit(`content/${fixture.name}`, rows, width)
       }
     })

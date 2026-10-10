@@ -24,7 +24,10 @@
  * row — wrapping a segment, painting a diff hunk — is the source's work and the source counts it.
  */
 export interface RowSource {
-  /** The rows the facade reports. */
+  /**
+   * The rows the facade reports, read live: a segmented source raises its length as estimates become painted counts,
+   * so a scroll's `contentHeight` converges to the truth wherever windows have been.
+   */
   readonly length: number
   /** Produce row `index`, `0 <= index < length`. */
   row(index: number): string
@@ -34,6 +37,17 @@ export interface RowSource {
   readonly markerFree?: boolean
   /** The first index at or after `from` whose row contains `marker`; `-1` when none. Default scans row by row. */
   seekMarker?(marker: string, from: number): number
+  /**
+   * Warm the rows `[from, to)` before a frame reads them: a segmented painter produces the segments under the window,
+   * replacing their estimates with painted counts so the row map is exact where it is seen.
+   */
+  prepare?(from: number, to: number): void
+  /**
+   * The same rows with the outside-window elision bound removed, when this source was clamped to a viewport. A scroll
+   * reads it to reach the full content; combinators unwrap their parts, so the chain survives concatenation, mapping,
+   * and slicing.
+   */
+  readonly unclamped?: RowSource | undefined
 }
 
 interface RowsMeta {
@@ -73,8 +87,8 @@ export function materializedRows(rows: readonly string[]): number {
  * facade could never produce its unread rows, so the failure is loud instead of half-empty.
  */
 export function virtualRows(source: RowSource): string[] {
-  const length = Math.max(0, Math.floor(source.length))
-  const target = new Array<string>(length)
+  const liveLength = (): number => Math.max(Math.max(0, Math.floor(source.length)), target.length)
+  const target = new Array<string>(Math.max(0, Math.floor(source.length)))
   const materialized = new Set<number>()
   const produce = (index: number): string => {
     const known = target[index]
@@ -86,18 +100,20 @@ export function virtualRows(source: RowSource): string[] {
   }
   const rows = new Proxy<string[]>(target, {
     get(array, prop, receiver) {
+      if (prop === 'length') return liveLength()
       if (typeof prop === 'string' && ROW_INDEX.test(prop)) {
         const index = Number(prop)
-        if (index < length) return produce(index)
+        if (index < liveLength()) return produce(index)
       }
       return Reflect.get(array, prop, receiver)
     },
     has(array, prop) {
-      if (typeof prop === 'string' && ROW_INDEX.test(prop)) return Number(prop) < length || prop in array
+      if (typeof prop === 'string' && ROW_INDEX.test(prop)) return Number(prop) < liveLength() || prop in array
       return prop in array
     },
     getOwnPropertyDescriptor(array, prop) {
-      if (typeof prop === 'string' && ROW_INDEX.test(prop) && Number(prop) < length) {
+      if (prop === 'length') return { value: liveLength(), writable: true, enumerable: false, configurable: false }
+      if (typeof prop === 'string' && ROW_INDEX.test(prop) && Number(prop) < liveLength()) {
         return { value: produce(Number(prop)), writable: true, enumerable: true, configurable: true }
       }
       return Reflect.getOwnPropertyDescriptor(array, prop)
@@ -133,41 +149,70 @@ export function concatRows(...parts: readonly (readonly string[])[]): string[] {
   if (parts.length === 0) return []
   if (parts.length === 1) return parts[0] as string[]
   if (parts.every(part => !isVirtualRows(part))) return parts.flat()
-  const starts: number[] = []
-  let total = 0
-  for (const part of parts) { starts.push(total); total += part.length }
+  // Part lengths are read live: a segmented part grows as its estimates become painted counts.
   const last = parts.length - 1
-  let hint = 0
-  const locate = (index: number): number => {
-    let part = Math.min(hint, last)
-    while (part > 0 && index < starts[part]!) part -= 1
-    while (part < last && index >= starts[part + 1]!) part += 1
-    hint = part
-    return part
+  const locate = (index: number): { part: number, start: number } => {
+    let start = 0
+    for (let part = 0; part <= last; part += 1) {
+      const next = start + parts[part]!.length
+      if (index < next || part === last) return { part, start }
+      start = next
+    }
+    return { part: last, start }
   }
   const markerFree = parts.every(part => rowSourceOf(part)?.markerFree === true)
+  let unclamped: RowSource | null | undefined
   return virtualRows({
-    length: total,
+    get length() {
+      let total = 0
+      for (const part of parts) total += part.length
+      return total
+    },
     ...(markerFree ? { markerFree } : {}),
+    get unclamped() {
+      if (unclamped === undefined) {
+        const inner = parts.map(part => {
+          const source = rowSourceOf(part)?.unclamped
+          return source === undefined ? part : virtualRows(source)
+        })
+        unclamped = inner.some((part, index) => part !== parts[index]) ? rowSourceOf(concatRows(...inner))! : null
+      }
+      return unclamped ?? undefined
+    },
     seekMarker(marker, from) {
-      let index = Math.max(0, Math.min(from, total))
-      while (index < total) {
-        const part = locate(index)
-        const source = rowSourceOf(parts[part]!)
-        if (source === undefined) {
-          const hit = seekIn(parts[part]!, marker, index - starts[part]!)
-          if (hit >= 0) return starts[part]! + hit
-        } else if (source.markerFree !== true) {
-          const hit = source.seekMarker === undefined ? seekIn(parts[part]!, marker, index - starts[part]!) : source.seekMarker(marker, index - starts[part]!)
-          if (hit >= 0) return starts[part]! + hit
+      let start = 0
+      for (const part of parts) {
+        const end = start + part.length
+        if (from < end) {
+          const source = rowSourceOf(part)
+          const at = Math.max(0, from - start)
+          if (source === undefined) {
+            const hit = seekIn(part, marker, at)
+            if (hit >= 0) return start + hit
+          } else if (source.markerFree !== true) {
+            const hit = source.seekMarker === undefined ? seekIn(part, marker, at) : source.seekMarker(marker, at)
+            if (hit >= 0) return start + hit
+          }
+          from = end
         }
-        index = starts[part]! + parts[part]!.length
+        start = end
       }
       return -1
     },
+    prepare(from, to) {
+      let start = 0
+      for (const part of parts) {
+        const end = start + part.length
+        if (to > start && from < end) {
+          const source = rowSourceOf(part)
+          source?.prepare?.(Math.max(0, from - start), Math.min(part.length, to - start))
+        }
+        start = end
+      }
+    },
     row(index) {
-      const part = locate(index)
-      return parts[part]![index - starts[part]!] ?? ''
+      const { part, start } = locate(index)
+      return parts[part]![index - start] ?? ''
     },
   })
 }
@@ -187,10 +232,22 @@ export function mapRows(rows: readonly string[], map: (row: string, index: numbe
   const source = rowSourceOf(rows)
   if (source === undefined) return rows.map(map)
   const markerFree = options.markerFree ?? source.markerFree === true
+  const sourcePrepare = source.prepare?.bind(source)
+  let unclamped: RowSource | null | undefined
   return virtualRows({
-    length: rows.length,
+    get length() {
+      return rows.length
+    },
     ...(options.declaredWidth === undefined ? {} : { declaredWidth: options.declaredWidth }),
     ...(markerFree ? { markerFree } : {}),
+    get unclamped() {
+      if (unclamped === undefined) {
+        const inner = source.unclamped
+        unclamped = inner === undefined ? null : rowSourceOf(mapRows(virtualRows(inner), map, options))!
+      }
+      return unclamped ?? undefined
+    },
+    ...(sourcePrepare === undefined ? {} : { prepare: sourcePrepare }),
     row(index) {
       return map(rows[index]!, index)
     },
@@ -202,16 +259,36 @@ export function sliceRows(rows: readonly string[], start: number, end?: number):
   const source = rowSourceOf(rows)
   if (source === undefined) return rows.slice(start, end)
   const first = Math.max(0, Math.min(start, rows.length))
-  const last = Math.max(first, Math.min(end ?? rows.length, rows.length))
-  const sourceSeek = source.seekMarker
+  // An `end` that already covers the source's whole length means "the rest": it was derived from the reported
+  // length, so an `unclamped` unwrap drops it (the unclamped rest is what the slice meant). A shorter `end` is a
+  // deliberate window and keeps its bound through the unwrap.
+  const openEnd = end === undefined || end >= rows.length
+  const bound = (): number => Math.max(first, Math.min(end ?? rows.length, rows.length))
+  const sourceSeek = source.seekMarker?.bind(source)
+  const sourcePrepare = source.prepare?.bind(source)
+  let unclamped: RowSource | null | undefined
   return virtualRows({
-    length: last - first,
+    get length() {
+      return bound() - first
+    },
     ...(source.markerFree === true ? { markerFree: true } : {}),
     ...(source.declaredWidth === undefined ? {} : { declaredWidth: source.declaredWidth }),
+    get unclamped() {
+      if (unclamped === undefined) {
+        const inner = source.unclamped
+        unclamped = inner === undefined ? null : rowSourceOf(sliceRows(virtualRows(inner), first, openEnd ? undefined : end))!
+      }
+      return unclamped ?? undefined
+    },
     ...(sourceSeek === undefined ? {} : {
       seekMarker(marker: string, from: number): number {
         const hit = sourceSeek(marker, first + Math.max(0, from))
-        return hit < 0 || hit >= last ? -1 : hit - first
+        return hit < 0 || hit >= bound() ? -1 : hit - first
+      },
+    }),
+    ...(sourcePrepare === undefined ? {} : {
+      prepare(from: number, to: number): void {
+        sourcePrepare(first + Math.max(0, from), Math.min(bound(), first + to))
       },
     }),
     row(index) {
@@ -223,6 +300,28 @@ export function sliceRows(rows: readonly string[], start: number, end?: number):
 /** `n` blank rows as a facade: nothing to paint, marker-free, zero columns wide. */
 export function blankRows(n: number): string[] {
   return virtualRows({ length: n, declaredWidth: 0, markerFree: true, row: () => '' })
+}
+
+/** A trivial source over already-painted rows, so a leaf can answer every kind through one `RowSource`. */
+export function rowsSource(rows: readonly string[]): RowSource {
+  return {
+    get length() { return rows.length },
+    row(index) { return rows[index] ?? '' },
+  }
+}
+
+/** Warm the rows `[from, to)` of a possibly virtual array before a frame reads them; a no-op on real rows. */
+export function prepareRows(rows: readonly string[], from: number, to: number): void {
+  rowSourceOf(rows)?.prepare?.(from, to)
+}
+
+/**
+ * `rows` with the outside-window elision bound lifted: a scroll hands itself the unbounded facade so its window can
+ * reach every row of a leaf the viewport alone would have clamped. Real rows and unclamped facades answer themselves.
+ */
+export function unclampedRows(rows: readonly string[]): string[] {
+  const unclamped = rowSourceOf(rows)?.unclamped
+  return unclamped === undefined ? rows as string[] : virtualRows(unclamped)
 }
 
 /**

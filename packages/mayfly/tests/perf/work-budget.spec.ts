@@ -6,9 +6,11 @@
  * take their baseline rows from their first measurement; they gate with the same figures as W1 and W4, because the
  * footer and the conversation reach the screen through the node slot. `UPDATE_WORK_BASELINE=1` rewrites the baseline file after a deliberate change to the workloads.
  *
- * W13 to W17 are the frame workloads (`frame-workloads.ts`): they paint through pi-tui's alternate screen, the surface
- * lanes, and the surface renderer, and gate the counters of a whole frame (leaf renders, control walks, reconciliations,
- * layout passes, clock ticks, keymap snapshots). A budget row gates the counters it names; W1 to W12 name the first four.
+ * W13 to W18-overlay are the frame workloads (`frame-workloads.ts`): they paint through pi-tui's alternate screen, the
+ * surface lanes, and the surface renderer, and gate the counters of a whole frame (leaf renders, control walks,
+ * reconciliations, layout passes, clock ticks, keymap snapshots). W18 to W20 are the content-at-any-size gates (slice
+ * 2c.3): a PageDown, a resize, and an End inside megabyte content, bounded by the window they read. A budget row gates
+ * the counters it names; W1 to W12 name the first four.
  */
 import { readFileSync, writeFileSync } from 'node:fs'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'

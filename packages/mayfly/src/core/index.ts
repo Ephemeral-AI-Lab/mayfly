@@ -27,7 +27,6 @@ export { GutterComponent } from './gutter.ts'
 export { MayflyKeymapError, MayflyKeymapService, type MayflyKeymapErrorCode } from './keymap.ts'
 export { MayflyScreenService } from './screen.ts'
 export {
-  PLUGIN_VIEW_MAX_CHARS,
   PLUGIN_VIEW_MAX_DEPTH,
   paintPluginTone,
   sanitizePluginText,

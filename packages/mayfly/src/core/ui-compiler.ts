@@ -16,7 +16,6 @@ import type {
   MayflyInlineSpan,
   MayflyListItem,
   MayflyListNode,
-  MayflySectionContentNode,
   MayflyStatusNode,
   MayflyTone,
   MayflyUiEvent,
@@ -33,7 +32,8 @@ import { getLayoutNode, LAYOUT_NODE, type LayoutNode, type LayoutViewport } from
 import { glyphRows } from './glyphs.ts'
 import { renderChartRows } from './chart-renderer.ts'
 import { ownDataErrorMessage } from './error-message.ts'
-import { paintPluginTone, renderCanonicalView, sanitizePluginText, truncatedRow } from './plugin-view.ts'
+import { contentNodeSource, type ContentRowsEnv, type WindowedContentNode } from './content-rows.ts'
+import { paintPluginTone, renderCanonicalDiff, sanitizePluginText, truncatedRow } from './plugin-view.ts'
 import type { MayflyComponent, MayflyComponents, MayflyEditor, MayflyFocusable, MayflyFocusIdentity, MayflyKeymap, MayflySemanticColors } from './types.ts'
 import {
   renderActions,
@@ -41,6 +41,7 @@ import {
   renderEmpty,
   renderList,
   renderLoader,
+  renderOverflowRow,
   renderProgress,
   renderHintRow,
   renderSurfaceHead,
@@ -50,7 +51,7 @@ import {
   renderTabs,
   type PatternFocus,
 } from './ui-patterns.ts'
-import { concatRows, findMarkerRow, isVirtualRows, mapRows, sameMaterializedRows, sliceRows } from './ui-rows.ts'
+import { concatRows, findMarkerRow, isVirtualRows, mapRows, prepareRows, sameMaterializedRows, sliceRows, unclampedRows, virtualRows } from './ui-rows.ts'
 import { ColumnStack, RowStack, onScreen, placeChild } from './ui-stacks.ts'
 import { sliceByColumn, truncateToWidth, visibleWidth } from './width.ts'
 import { fieldActions, fieldReset, type UiFieldAction } from './ui-interaction-field-actions.ts'
@@ -78,6 +79,7 @@ import type { UiSurfaceModel } from './ui-interaction-surface.ts'
 import { feedbackSpans } from './ui-interaction-notifications.ts'
 import { admittedListItem } from './ui-validator.ts'
 import { MayflyCompileCache, type PaintOptions } from './ui-compile-cache.ts'
+import { MayflyContentCache } from './ui-content-cache.ts'
 import { actionHintLabel, actionScopeActive, effectiveItemKeys } from './ui-actions.ts'
 import { UiRowCache } from './ui-row-cache.ts'
 import { canStepLeft, railGroupFor, type TabsTraits } from './ui-focus-levels.ts'
@@ -545,11 +547,82 @@ function pureStaticComponent(render: (width: number) => string[], options: Pick<
 const PURE_STATIC_WIDTHS = 4
 
 /**
+ * A content leaf (`text`, `fields`, `code`, `sections`, `rich-text` without motion): its rows are a virtual facade
+ * over a segmented source, so layout reads a length and a scroll reads only its window. The leaf keeps the
+ * per-width facade memo a pure static leaf has; in the alternate screen the source clamps itself to the viewport
+ * plus an elision row that scrolls unwrap through `unclampedRows`.
+ */
+function contentLeafComponent(node: WindowedContentNode, options: RuntimeCompilerOptions, paint: PaintOptions): MayflyComponent {
+  const glyphs = options.components.presentation?.glyphs
+  const memo = new Map<number, string[]>()
+  const env: ContentRowsEnv = {
+    get components() { return paint.components },
+    get colors() { return paint.colors },
+    get counters() { return paint.counters },
+    cache: options.listRuntime.content,
+    bounded: options.screenMode === 'alternate' || options.listRuntime.interaction !== undefined,
+    viewportRows: () => safeViewport(options.getViewport).rows,
+    elide: hidden => paint.colors.muted(renderOverflowRow(hidden, (key, values) => coreText(options, key, values))),
+    errorRows: (message, width) => errorRows(message, width, paint.colors),
+    report: message => { paint.reportRuntimeFailure(message) },
+  }
+  return {
+    render: width => {
+      try {
+        const safeWidth = Math.max(1, Math.floor(width))
+        let rows = memo.get(safeWidth)
+        if (rows === undefined) {
+          rows = glyphRows(virtualRows(contentNodeSource(node, safeWidth, env)), glyphs)
+          if (memo.size >= PURE_STATIC_WIDTHS) memo.delete(memo.keys().next().value!)
+          memo.set(safeWidth, rows)
+          // Building the facade is the render; what reads through it materializes is counted by the source.
+          countWork(paint.counters, 'componentRenders')
+        }
+        return rows
+      } catch (error) {
+        const message = renderFailure(error)
+        paint.reportRuntimeFailure(message)
+        return errorRows(message, width, paint.colors)
+      }
+    },
+    invalidate: () => {},
+  }
+}
+
+/**
  * A ScrollView whose scrollbar column keeps laziness: the base `render` maps every child row to widen it one column,
  * which would paint a whole windowed child. The mapped rows stay a facade, so a passive render reads only the rows
  * someone asks for; the layout-driven frame never calls `render` at all.
+ *
+ * The child is wrapped so the outside-window elision a leaf applied is lifted (`unclampedRows`): the scroll's own
+ * window is what bounds the paint. The captured rows are `prepare`d on every layout, so the segments under the
+ * settled window paint before the frame reads them and the reported `contentHeight` is exact where it is seen.
  */
 class WindowScrollView extends ScrollView {
+  private readonly held: { rows?: string[] | undefined }
+
+  constructor(component: Component, options: ConstructorParameters<typeof ScrollView>[1]) {
+    const held: { rows?: string[] } = {}
+    super({
+      render: (width: number): string[] => {
+        const painted = component.render(width)
+        return held.rows = unclampedRows(painted)
+      },
+      invalidate: () => component.invalidate(),
+    }, options)
+    this.held = held
+  }
+
+  /** Paint the segments under the settled window before the frame reads the rows. */
+  protected prepareWindow(): void {
+    if (this.held.rows !== undefined) prepareRows(this.held.rows, this.scrollTop, this.scrollTop + this.viewportHeight)
+  }
+
+  override updateLayout(contentHeight: number, viewportHeight: number, requestRender: () => void): void {
+    super.updateLayout(contentHeight, viewportHeight, requestRender)
+    this.prepareWindow()
+  }
+
   override render(width: number): string[] {
     const contentWidth = this.getContentWidth(width)
     const lines = this.children[0]!.render(contentWidth)
@@ -578,6 +651,7 @@ class SemanticScrollView extends WindowScrollView {
     const state = this.model.document(this.address)
     if (state?.anchor?.follow === 'end') super.scrollToEnd()
     else if (state !== undefined) super.scrollTo(documentAnchorRow(state, this.width), { disableFollow: true })
+    this.prepareWindow()
   }
 
   private sync(): void {
@@ -1582,18 +1656,13 @@ function compileUnit(node: CompilableNode, state: FocusState, options: RuntimeCo
       state.bindControls([scopedControlKey('editor', 'editor-control')], { component, axis: 'none' })
       return component
     }
-    case 'text': return leaf(node, options, paint => pureStaticComponent(width => renderCanonicalView(
-        node,
-        width,
-        paint.components,
-        paint.colors,
-      ), paint))
-    case 'markdown': return markdownLeafComponent(node, options)
+    case 'text':
     case 'fields':
     case 'code':
-    case 'diff':
-    case 'sections': return leaf(node, options, paint => pureStaticComponent(width => renderCanonicalView(
-      node as MayflySectionContentNode,
+    case 'sections': return leaf(node, options, paint => contentLeafComponent(node, options, paint))
+    case 'markdown': return markdownLeafComponent(node, options)
+    case 'diff': return leaf(node, options, paint => pureStaticComponent(width => renderCanonicalDiff(
+      node,
       width,
       paint.components,
       paint.colors,
@@ -1604,12 +1673,7 @@ function compileUnit(node: CompilableNode, state: FocusState, options: RuntimeCo
       const presentation = options.components.presentation
       const line = paintMotionSpans(node.spans, options.colors, motionFrame(options), { glyphs: presentation?.glyphs, reducedMotion: presentation?.reducedMotion })
       return node.overflow === 'truncate' ? [truncatedRow(line, width, options.components)] : options.components.wrapText(line, Math.max(1, width))
-    }, options) : leaf(node, options, paint => pureStaticComponent(width => {
-      countWork(paint.counters, 'stringsMeasured')
-      return node.overflow === 'truncate'
-        ? [truncatedRow(joinSpans(node, paint.colors), width, paint.components)]
-        : paint.components.wrapText(joinSpans(node, paint.colors), Math.max(1, width))
-    }, paint))
+    }, options) : leaf(node, options, paint => contentLeafComponent(node, options, paint))
     case 'stack': {
       // A row whose children carry a priority admits them while they fit, one row of the children's first rows.
       if (node.direction === 'row' && node.children.some(child => child.priority !== undefined)) {
@@ -2071,6 +2135,8 @@ export class MayflyUiSurfaceRuntime {
   readonly reuse = new MayflyCompileCache()
   /** The item rows this surface's lists have painted, kept by item and state. */
   readonly rows = new UiRowCache()
+  /** The painted content segments this surface's leaves produced; the renderer's one shared cache by default. */
+  readonly content: MayflyContentCache
   /** Where this surface's scroll regions are scrolled, by control key. */
   private readonly scrolled = new Map<string, ScrollMemory>()
   /** The one-shot drains of this surface's progress bars. */
@@ -2121,7 +2187,8 @@ export class MayflyUiSurfaceRuntime {
    * @param requestFrame - asks the host for another frame and nothing else: the clock moved. A tick must not
    *   invalidate, or every retained row would be painted again for one moving cell; defaults to `requestRender`.
    */
-  constructor(readonly interaction?: UiSurfaceModel, private readonly requestRender?: () => void, clock?: UiAnimationClock, readonly images?: MayflyUiImageSource, requestFrame?: () => void) {
+  constructor(readonly interaction?: UiSurfaceModel, private readonly requestRender?: () => void, clock?: UiAnimationClock, readonly images?: MayflyUiImageSource, requestFrame?: () => void, content?: MayflyContentCache) {
+    this.content = content ?? new MayflyContentCache()
     const tick = requestFrame ?? requestRender
     this.loaderAnimation = tick === undefined ? undefined : new UiLoaderAnimation(tick, clock)
     const fieldValue = (field: MayflyFormField, key: string): MayflyFieldValue => {
