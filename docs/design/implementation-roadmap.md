@@ -9,7 +9,9 @@ foundation phase (D16-D20); §5 maps the earlier phase names onto the current on
 slice is marked done. It was revised again on 2026-10-09, after Phase 1 merged, for the phases that follow it (D21-D27):
 no compatibility layer and no legacy code, each Mayfly component and its API finalized with the owner in the running
 terminal, cost bounded by what is on screen instead of a text quota, decision tests instead of a coverage gate, and a
-whole-architecture performance phase before the finish. The Phase 1 record keeps the rules it was built under.
+whole-architecture performance phase before the finish. The same day, after the workbench (2a) landed, Phase 2b was
+rewritten as automated verification that runs only what a change can affect (D28, D29). The Phase 1 record keeps the
+rules it was built under.
 
 | Input | Role in the implementation |
 | --- | --- |
@@ -91,9 +93,11 @@ keeps its row and names its successor, because the Phase 1 record cites it.
 | D22 | **The accepted live frame is the oracle.** | Supersedes D19. The prototype is the starting sketch; the owner decides in the running terminal, and the accepted frames, captured from the real renderer, become the goldens. §2.3 closes as the Phase 1 record; Phase 2 retires the prototype parity machinery (scene ports, Δ waivers, the pending ledger) from the gate. |
 | D23 | **Finalize one component at a time.** | A component and the API it needs are developed in review rounds with the owner and fixed together when the owner accepts it (§7). The change that finalizes it deletes the code it replaces. A finalized component is reopened only at the owner's request. |
 | D24 | **Finalized components land on `main` one at a time.** | Supersedes D18 after Phase 1. `main` may show old and new surfaces side by side during a phase; no release is cut until the phase is accepted as a whole. No long-lived integration branch. |
-| D25 | **Decision tests and a coverage floor.** | Tests record what was decided: accepted frames, keys, writes, lifecycle, width, and work budgets. The per-file 100% coverage gate becomes a coverage report with a repository-wide floor (Phase 2b); a test that only reaches a line is not written. |
+| D25 | **Decision tests and a coverage floor.** | Tests record what was decided: accepted frames, keys, writes, lifecycle, width, and work budgets. The per-file 100% coverage gate becomes a coverage report with a repository-wide floor that runs in the full tier (Phase 2b); a test that only reaches a line is not written. |
 | D26 | **Cost is bounded by what is on screen.** | The whole-tree text quota (`MAYFLY_UI_MAX_TEXT`, 20,000 characters) and the paint-time string cap go. Long text is chunked, admitted, and painted as the window reaches it; one memory ceiling per surface protects the renderer (§4.2, Phase 2c). |
 | D27 | **A whole-architecture performance phase.** | Phase 7 profiles the finished product on real workloads and restructures what the measurements name, breaking anything it must, then resets the budgets and the bench ceilings (§7.1). Earlier phases fix only local problems. |
+| D28 | **Scenarios are the automated oracle of the live product.** | One catalog of scenarios drives review, frames, goldens, perf, and screenshots (Phase 2b). The gate compares cell grids read from a real `dsh` under a PTY. Screenshots from xterm.js in headless Chrome, and wall-clock perf measured A/B against the merge-base, are reported, not gated. The work-budget counters (§7.1) stay the deterministic perf gate. |
+| D29 | **Verification follows the change.** | An import graph and declared inputs select the specs, checks, and scenarios a change can affect. A file no rule claims escalates to the full tier. The full tier runs in CI on every push to `main`, nightly, at a release, and at a phase end. A local run never measures coverage. |
 
 ### 2.2 Spec §8 questions, resolved
 
@@ -513,7 +517,7 @@ product is used (D23); Phase 7 optimizes the whole architecture (D27), and Phase
 | Phase | Groups | Delivers | Prototype scenes (sketch) | Gate |
 | --- | --- | --- | --- | --- |
 | 1 Foundation | 13 slices (1.0-1.12) | The oracle, the engine, the visual language, every basic component, the key engine, the patterns, the prompt and image nodes, the host seams, the API freeze, the frame cost | 1-12, 15 (the prompt alone), 13 (the lane) | full for each slice (the Phase 1 rules) |
-| 2 Workbench and content | 4 (2a-2d) | The live review loop and frame capture, the gate tiers and decision tests, content at any size, the owner's review of the foundation | 1-13, 15 | changed per part; full at the end; owner review (2d) |
+| 2 Workbench and content | 4 (2a-2d) | The live review loop and frame capture, automated and change-precise verification (tiers, scenario goldens, perf A/B, real screenshots), content at any size, the owner's review of the foundation | 1-13, 15 | changed per part; full at the end; owner review (2d) |
 | 3 Session flow | 5 (3a-3e) | The components area; the stream and its turns, tool rows, the activity row and notices, request rows and decision cards, levels, selection, search | 14, 16-21 | per component (§7); full and owner at the end |
 | 4 Editor and command palette | 1-2 | The editor as a prompt composition, the `/` `@` `#` completion palette, queue and recall | 15, 30 p1-p2 | per component; full and owner at the end |
 | 5 Status and views | 1-2 | The two status rows and Mayfly's four views | 13, 12 | per component; full and owner at the end |
@@ -521,9 +525,10 @@ product is used (D23); Phase 7 optimizes the whole architecture (D27), and Phase
 | 7 Architecture performance | 1 | The finished product profiled on real workloads and restructured where measured; the final budgets and ceilings | — | full + bench report; owner |
 | 8 Finish | 1 | Website, skills, docs, release | — | full + pack + release preflight |
 
-*Per component* is the loop of §7: review rounds run the checks the change needs, finalization runs the gate that
-`pnpm run verify:changed -- --plan` selects, and CI runs the full gate on `main`. A phase ends with
-`pnpm run verify:full` and the owner's acceptance of the whole phase.
+*Per component* is the loop of §7: review rounds run the round tier, finalization runs the pr tier
+(`pnpm run check`), and CI runs the full tier on `main`. A phase ends with `pnpm run check -- --tier full` and the
+owner's acceptance of the whole phase. Until slice 2b.4 lands, `verify:changed` and `verify:full` stand in for the
+pr and full tiers.
 
 ```mermaid
 flowchart LR
@@ -540,7 +545,7 @@ flowchart LR
     s11 --> s12[1.12]
   end
   F --> n2a[2a Workbench] & n2c[2c Content]
-  n2a --> n2b[2b Gate tiers] & n2d[2d Foundation review]
+  n2a --> n2b[2b Automated verification] & n2d[2d Foundation review]
   n2a & n2b & n2c & n2d --> n3[3 Session flow] --> n4[4 Editor and palette] --> n5[5 Status and views] --> n6[6 Panels]
   n6 --> n7[7 Architecture performance] --> n8[8 Finish]
 ```
@@ -1586,20 +1591,192 @@ or the foundation review asks for it. Its parts are reviewed like components (§
 - *A performance glance.* `pnpm run bench:pty -- --scenario=<scenario>` reports idle CPU and key-to-paint latency for
   the surface under review, and `--prof` writes a CPU profile.
 
-**2b The gate tiers and decision tests** (D25).
+**2b Automated, change-precise verification** (D25, D28, D29). The workbench of 2a is built for a person watching.
+2b makes the same machinery run without one, and makes a change run only what it can affect. The agent that makes a
+change checks its correctness, its frames, and its cost by itself and reads the outcome from one report; the owner's
+review rounds keep the live product as the oracle (D22). Long work (coverage, the whole suite, every scenario at every
+size, the platform matrix) runs in the full tier: CI on every push to `main`, a nightly run, a release, and a phase end.
 
-- `pnpm run verify:full` builds once: the happy smoke and the PTY bench reuse that build instead of installing a
-  profile that builds again (`script/smoke-lib.mjs` through `script/install-dev.sh`).
-- `vitest.config.ts` replaces the per-file 100% threshold with a coverage report and a repository-wide floor, set from
-  the value measured when 2b lands; the root instructions change with it.
-- Prototype parity leaves the gate. Before it does, the frames the real renderer paints today for the 174 golden walks
-  are captured as goldens of the real renderer, one spec compares them, and they are the visual record of Phase 1
-  until the foundation review (2d) replaces them. Then `tests/design/parity.ts`, the hand-ported scenes
-  (`tests/design/scene-*.ts`) and their specs, `deltas.ts`, `pending.ts` with `pending.spec.ts`, and
-  `design:golden:check` with its 348 prototype files are deleted. The prototype stays runnable as the sketch.
-- `test:retained`, `shots:check`, `bench:pty:assert`, and the smoke stay in the full gate and in CI. A component syncs
-  screenshots once, when it is finalized.
-- The root, `packages/mayfly`, and `packages/ui` instructions describe the tiers and the workbench as current behavior.
+*What the 2b.0 spikes measured* (2026-10-09, one machine, `dsh` `0.2.0-rc.2`, Chrome 155):
+
+- **Boot and playback.** A `dsh` under node-pty with the replay driver paints its first frame 1.4 s after it spawns and
+  settles by 2.2 s. At speed 50 a replay ends 2.7-3.3 s after the spawn; `tour` takes 23 s at speed 1. A scenario
+  therefore costs about 3-4 s, and the round tier can run the selected scenarios four at a time.
+- **Frame boundaries.** pi-tui wraps every paint in synchronized output (`\x1b[?2026h … \x1b[?2026l`) and writes
+  nothing for an unchanged frame. A runner can count frames and time key-to-paint exactly, with no product change.
+- **Terminal queries.** At boot Mayfly sends OSC 11, the kitty keyboard push and query (`\x1b[>7u`, `\x1b[?u`), and
+  DA1. `@xterm/headless` answers only DA1, and xterm.js has no kitty protocol. Keys therefore stay in the legacy
+  encoding, and the runner answers OSC 10/11 itself with pinned colours.
+- **Presentation from the overlay.** A `- id: mayfly` row with `config:` in the `--patch` overlay sets `reducedMotion`
+  and `updateCheck`. `/settings` shows them as *inherited*, and nothing is written to the profile.
+- **Real rendering.** xterm.js `6.0.0` with `@xterm/addon-webgl` `0.19.0` renders through WebGL in headless Chrome
+  (`--use-angle=swiftshader --enable-unsafe-swiftshader`), driven over raw CDP with Node's global `WebSocket`.
+  - Keys sent as browser events reach the PTY in xterm.js's encoding (`hello`, `\x1b[A`).
+  - A wheel and a click arrive as SGR reports (`\x1b[<64;51;11M`, `\x1b[<0;51;11M`, `…m`) in the `any` tracking mode
+    the product enables.
+  - The screen text of a headless twin fed the same bytes equals the browser's.
+  - A screenshot takes 54 ms.
+- **Clock.** A module loaded with `NODE_OPTIONS=--import` replaces `Date` inside `dsh`; the stored session's
+  `createdAt` is the pinned epoch.
+- **What a golden must not see:**
+  - the git branch and the working directory in the header (a scenario's workspace sits at a fixed path outside any
+    checkout);
+  - the version line;
+  - elapsed times (`Took 0s` follows the clock);
+  - the editor title, which changes when the stub model answers the title request. Settling waits for the stub's
+    requests in flight.
+
+*The tiers.* One command, `pnpm run check [--tier round|pr|full]` (*new*), replaces `verify:changed`, `verify:full`,
+`test:coverage`, and `test:retained`. It writes `.artifacts/verify/report.json` and a short `summary.md`:
+
+- what ran, and why (the chain from each changed file to each selected spec, check, and scenario);
+- the first failure of each spec;
+- each grid diff, as text;
+- the PNG paths;
+- the perf table with its verdicts;
+- the commands that accept a golden or rerun a step.
+
+stdout keeps one line per step. CI copies the summary into the job summary and uploads `.artifacts/verify/`.
+
+| Tier | When | Runs | Leaves out |
+| --- | --- | --- | --- |
+| round | Every edit; `pnpm run dev --check` after each incremental build | `build:changed`, `tsc -b`, oxlint on the changed files, the selected specs, the selected scenarios at their first size | Coverage, perf, screenshots, the smoke, the whole suite |
+| pr (default) | Finalizing a component; PR CI | round, plus the checks the changed inputs claim (agent docs, diagrams, `check:lib`, examples, pack, the Website build), the selected scenarios at every size, perf A/B when a perf scenario is selected, and PNGs of the changed checkpoints. In CI only, the changed lines no spec ran, as advice | The whole suite, the coverage floor, the smoke, the perf ceilings |
+| full | CI on `main`, nightly, a release, a phase end | One vitest run with coverage and retained-row verification together, the repository floor, every scenario at every size, the Website shots, `smoke:happy`, the perf ceilings, the platform matrix | — |
+
+*Selection* (D29). `script/verify/` (*new*) replaces the path rules of `script/test-impact.mjs`.
+
+- **The import graph.** The selector parses a static import graph with the TypeScript parser over
+  `packages/*/{src,tests}`, `examples/*/{src,tests}`, and `script/**/*.mjs`.
+  - It resolves `.js` to `.ts`, literal dynamic `import()`, and package names. A package name goes through the
+    manifest exports to the `src/<entry>.ts` that `runtimeEntries()` names, so a `packages/ui/src` edit reaches the
+    specs that import `@ephemeral-ai/mayfly-ui`.
+  - Value edges select specs; type-only edges select only the typecheck.
+- **Data edges.** `new URL('<literal>', import.meta.url)` reads, a spec's `__snapshots__` file, and the plugin entries
+  a `cordis.patch.yml` names are edges too.
+- **Declared inputs.** Everything else is declared in `script/verify/inputs.mjs`: the input globs of each check, the
+  data no literal names, the global inputs, and the inert files.
+- **Escalation.** A change escalates to the full tier only when it touches a global input: the root manifest, the
+  lockfile, `pnpm-workspace.yaml`, `tsconfig.base.json`, `vitest.config.ts`, `tsdown.config.ts`, or
+  `script/package-contract.mjs`.
+- **The claimed-files guard.** A repository-workflow test fails when a tracked file is neither reached by the graph,
+  declared, global, nor inert. At plan time such a file escalates, and the reason is given.
+- **Deletions.** A deleted file selects the importers it leaves unresolved.
+
+*The scenario catalog and the runner* (D28). One file per scenario under `script/scenarios/catalog/` (*new*) holds:
+
+- its source: a replay timeline, the mock LLM, the gallery, or an idle session;
+- the source globs it `covers`;
+- its sizes and presentation;
+- a script of steps: `play` until a mark, `key`, `type`, `click`, `drag`, `wheel`, `resize`, `answer` an ask, `tick`
+  the clock, `checkpoint`, and `measure` a span of steps;
+- its perf ceilings.
+
+`frame`, `scenario`, `dev --scenario`, `scenarios` (the goldens), `perf`, and the Website app shots all read it. The
+24 replays move into it, and the six fixture scenes become replays through a `seed` operation that writes stored
+sessions; the fixture path over fake services goes.
+
+The runner starts the real `dsh` under node-pty with the replay driver and a presentation row in the overlay, and
+feeds the bytes into `@xterm/headless`:
+
+- **Frames and replies.** It splits frames on `?2026l`, forwards the emulator's replies, and answers the colour
+  queries.
+- **Mouse.** It encodes SGR reports in the mouse modes it has seen enabled; a click while reporting is off fails the
+  step.
+- **Settling.** A step settles when no byte has come for the quiet time, no synchronized frame is open, and the stub
+  has no request in flight.
+- **The control channel.** The driver gains one: a Unix socket named by `MAYFLY_REPLAY_CONTROL` that carries JSON
+  lines.
+  - The driver reports `ready`, each action `done`, each `mark`, a pending `ask`, `finished`, and errors.
+  - The runner sends `play` (until a mark, fast or timed), `step`, `clock`, `render`, and `quit`.
+  - Fast playback is deterministic. Every effect that waits on time (job lines, queue and notice holds) is a compiled
+    action, and the driver sets the clock to the action's timeline time.
+  - Without the variable, the driver keeps the timed autoplay a person watches.
+- **Fixed environment.** `TZ`, the locale, the terminal, the epoch, and the workspace path are pinned, and the masks
+  cover the home directory and the version.
+
+Every scenario also checks, whatever its script:
+
+- no wrapped row;
+- an empty `mayfly-overflow.log`;
+- no `pi-crash.log`;
+- no failed driver action;
+- a clean exit.
+
+A checkpoint writes these files, and `--trace` writes a grid after every action so a failure can be bisected to its
+first action:
+
+- a `.grid`: size, cursor, text rows, and run-length style runs;
+- its `.txt` and `.ansi`;
+- on failure, a bundle with the expected grid, the actual one, their diff, the PTY log, and the driver log.
+
+*Goldens and screenshots.* A component's accepted checkpoints are cell-grid goldens under `script/scenarios/golden/`,
+and they gate. The real look is captured by the browser backend:
+
+- **The page.** xterm.js with the WebGL addon and the pinned JetBrains Mono (`script/shots/assets`) runs in headless
+  Chrome, over raw CDP, in a page the runner serves.
+- **Input.** Keys and the mouse are dispatched as browser events, so xterm.js's own encoder produces the bytes.
+- **The gate stays on cells.** The headless twin reads the same stream, so the grid still gates.
+- **Advisory diffs.** PNGs, and their pixel diff against the merge-base build rendered on the same machine, go into an
+  HTML contact sheet. The agent opens the PNGs as images.
+- **Website shots.** They stay SVG. App shots are painted from accepted goldens, and component shots keep the
+  in-process render.
+
+*Performance.* `pnpm run perf <scenario>` (*new*) replaces `script/bench-pty.mjs`. It reads, per scenario:
+
+- boot time;
+- idle CPU and frames;
+- CPU, frames, and bytes per frame while a stream plays;
+- key-to-paint, from the write to the end of the next frame;
+- CPU per key;
+- RSS and its high-water mark.
+
+The A/B and the outputs:
+
+- **The baseline.** It is the merge-base, built once into `.artifacts/baseline/<sha>`.
+- **The runs.** They interleave the two builds, five each, every run from a fresh boot.
+- **The verdicts.** Each metric is judged `regressed`, `same`, or `improved` by the median, a noise band, and a rank
+  test.
+- **`--prof`.** It summarizes the CPU profile as a table of the top functions by self time, with the change against
+  the baseline.
+- **Ceilings.** Absolute ceilings move into the catalog and are only the full tier's backstop.
+- **The hard gate.** The work-budget counters (§7.1) stay the deterministic gate.
+
+| Slice | Delivers | Deletes |
+| --- | --- | --- |
+| 2b.0 | The spikes above and this text | — |
+| 2b.1 | Prototype parity leaves the gate: the 174 golden walks captured as cell grids of today's renderer (`script/scenarios/grid.mjs`, `tests/design/walks.ts`, `walks.spec.ts`), the visual record of Phase 1 until 2d replaces it | `tests/design/parity.ts`, the scene ports and their specs, `deltas.ts`, `pending.ts` with `pending.spec.ts`, `design:golden:check` with its 348 prototype files and scripts. The prototype stays runnable as the sketch |
+| 2b.2 | One suite run (vitest projects: `suite` with `MAYFLY_UI_VERIFY_MEMO=1`, `perf` without it), the repository coverage floor measured when it lands, one build for the smoke (`MAYFLY_SKIP_BUILD`) | The per-file thresholds, `script/test-retained.mjs`, the `v8 ignore` comments and the seam comments that served only the per-file gate |
+| 2b.3 | Import-graph selection with declared inputs and the claimed-files guard | `script/test-impact.mjs` |
+| 2b.4 | `pnpm run check`, the tiers, the report, `dev --check`, the CI split (a plan job, the pr tier on PRs, full on `main` and nightly) | `verify-changed.mjs`, `verification-commands.mjs`, and the `verify:changed`, `verify:full`, `test:coverage` scripts |
+| 2b.5 | The catalog and the headless runner: the control channel, fast playback, the clock, the responder, input, the invariants; `frame`, `scenario`, and `dev` read the catalog | `script/workbench/{live-scenarios,keys,replays}.mjs`, `tests/workbench/{frame.spec,scenarios}.ts` |
+| 2b.6 | Cell-grid goldens gate; app shots are painted from them | `tests/app-shots.spec.ts` with `tests/app-shots/`, `script/shots/app-manifest.mjs`, `script/smoke-pty-mouse.mjs` (a wheel scenario replaces it) |
+| 2b.7 | `pnpm run perf`: the metrics, the A/B against the merge-base, the profile summary, the ceilings in the catalog | `script/bench-pty.mjs`, `bench:pty*`, `BENCH_PTY_SLACK` |
+| 2b.8 | Real screenshots: the browser backend, `frame --png`, PNGs of the changed checkpoints, the contact sheet | — |
+| 2b.9 | Test files typechecked (`tsconfig.tests.json` maps the workspace packages to their source) and the backlog fixed | — |
+
+**Order and acceptance.**
+
+- **Order.** 2b.1-2b.4 land first, since each makes the next gate cheaper. 2b.5-2b.8 follow in order, and 2b.9 may
+  land at any point after 2b.4.
+- **Per slice.** Each slice is reviewed like a component (§7) and merges on its own. The instructions of the root and
+  each package describe a tier or command when the slice that brings it lands.
+- **Acceptance checks:**
+  - **2b.3:** a `packages/ui/src` leaf, `budgets.json`, a catalog file, a docs-only change, and a script each plan as
+    expected.
+  - **2b.4:** a round on a leaf change takes under a minute.
+  - **2b.5:** every scenario framed twice, and four at once, gives identical grids.
+  - **2b.6:** the first CI run matches the local goldens.
+  - **2b.7:** an A/A run of the same build is `same` three times, and an injected regression is `regressed`.
+  - **2b.8:** two captures of a checkpoint are pixel-identical.
+- **Phase-level dry run.** A deliberate visual regression and a deliberate perf regression each appear in
+  `summary.md`, the first with its grid diff and PNG and the second with its verdict, and reverting them turns the
+  report green.
+
+| Slice | Status | Branch |
+| --- | --- | --- |
+| 2b.0 | in review | `feat/2b-0-gate-design` |
+| 2b.1-2b.9 | planned | — |
 
 **2c Content at any size** (§4.2, D26). Chunked text, admission and painting when visible, append identity, the memory
 ceiling, and the gate rows. The owner reviews a 1 MB diff, a long plan, and job output following its tail in the
@@ -1869,49 +2046,56 @@ four steps in a dedicated worktree with its phase's profile (`PROFILE=mayfly-<ph
 
 1. **Draft** (the agent). Build the component from its spec section and §5's starting points, with the prototype scene
    as the sketch, on real data through the native services. Add the workbench scenarios for its states (§5, 2a),
-   including a narrow width and a lifecycle case. Run the incremental build and the typecheck; write no goldens and
-   chase no coverage yet.
+   including a narrow width and a lifecycle case. Run the round tier (`pnpm run check -- --tier round`, or
+   `pnpm run dev --check`) and read its `summary.md`; write no goldens and chase no coverage.
 2. **Review rounds** (the owner and the agent). The owner runs the profile or a scenario beside
-   `node docs/design/prototypes/ui-preview.mjs <scene>`; the agent shares frames at the agreed widths
-   (`pnpm run frame`), applies what the owner asks, and the change reaches the running terminal in seconds
-   (`pnpm run dev`). Any API may change in a round (D21). A performance problem seen in a round, or in the bench glance
-   for the scenario, is fixed in the round when it is local and recorded for Phase 7 when it is not. A round ends with
-   the owner's notes and the frames they refer to.
+   `node docs/design/prototypes/ui-preview.mjs <scene>`; the agent shares frames and screenshots at the agreed widths
+   (`pnpm run frame`, with `--png` for the real look), applies what the owner asks, and the change reaches the running
+   terminal in seconds (`pnpm run dev`). Any API may change in a round (D21). A performance problem seen in a round,
+   or in the perf A/B for the scenario (`pnpm run perf`), is fixed in the round when it is local and recorded for
+   Phase 7 when it is not. A round ends with the owner's notes and the frames they refer to.
 3. **Finalize** (the owner says it is accepted). In one change: the component's spec section in
    [component-library.md](./component-library.md) is rewritten as the accepted behavior and marked *Finalized*; the API
    it needs is fixed;
-   the decision tests below are added; the code it replaces is deleted; `website/plugins/ui-reference.md` and its
-   English twin, the shot manifest, and any feature page it changes are updated (`pnpm run shots:sync`); the changed
-   gate runs; the change merges to `main`, and CI runs the full gate there.
-4. **Phase gate.** When a phase's last component is finalized: `pnpm run verify:full`, the bench report against the
-   previous phase, and the owner's acceptance of the whole phase on its profile (the table below). Then the profile and
-   any preview are removed. No release is cut until a phase passes its gate.
+   the decision tests below are added, with the accepted checkpoints as goldens
+   (`pnpm run scenarios -- --update <scenario>`); the code it replaces is deleted; `website/plugins/ui-reference.md`
+   and its English twin, the shot manifest, and any feature page it changes are updated (`pnpm run shots:sync`); the
+   pr tier runs (`pnpm run check`); the change merges to `main`, and CI runs the full tier there.
+4. **Phase gate.** When a phase's last component is finalized: `pnpm run check -- --tier full`, the perf report
+   against the previous phase, and the owner's acceptance of the whole phase on its profile (the table below). Then
+   the profile and any preview are removed. No release is cut until a phase passes its gate.
 
 A finalized component is reopened only at the owner's request, and then follows the same loop; incompatible changes
 are allowed again, with every caller updated in the same change.
 
-**Gate tiers.**
+**Gate tiers** (D29). `pnpm run check` runs one of three tiers; Phase 2b states what each runs and leaves out.
 
-| Tier | When | Runs | Leaves out |
-| --- | --- | --- | --- |
-| Round | Every edit in a review round | The incremental build (`build:changed`) and typecheck; the specs of the files the edit changed when it changed logic (`vitest related`); the workbench | Coverage, goldens, screenshots, the full suite |
-| Finalize | Once per component, before it merges | `pnpm run verify:changed -- --plan` and the gate it selects, with the new decision tests | The full gate, which CI runs on `main` |
-| Phase | The end of a phase, a release, and changes the root instructions route to it (composition, workflow, release) | `pnpm run verify:full` (with `check:pack` when selected), the bench report, the owner's acceptance | — |
+| Tier | When | Runs |
+| --- | --- | --- |
+| round | Every edit in a review round | The incremental build, the typecheck, lint, and the specs and scenarios the edit can affect |
+| pr | Once per component, before it merges, and in PR CI | round, the checks the changed inputs claim, every size of the selected scenarios, perf A/B and PNGs where selected |
+| full | CI on `main` and nightly, the end of a phase, a release, and changes the root instructions route to it (composition, workflow, release) | Everything, with coverage and its floor, the smoke, the perf ceilings, and the platform matrix (`check:pack` when selected); at a phase end, also the perf report and the owner's acceptance |
 
-Until Phase 2b lands, the changed gate still selects the prototype parity specs and per-file coverage as it does today.
+Until a 2b slice lands, the commands it replaces still apply:
+
+- The changed gate keeps selecting the prototype parity specs until 2b.1, and per-file coverage until 2b.2.
+- `verify:changed` and `verify:full` stand in for the tiers until 2b.4.
+- Frames, screenshots, and the bench come from `frame`, `shots:sync`, and `bench:pty` until 2b.5-2b.8.
 
 **Decision tests** (D25). A finalized component carries tests for what was decided, and nothing written only to reach
 a line:
 
-- the accepted frames as goldens, at the widths and key walks the owner accepted, captured from the real renderer;
+- the accepted checkpoints of its catalog scenarios as cell-grid goldens, at the widths and key walks the owner
+  accepted, read from a real `dsh` (D28); their screenshots are review artifacts, not goldens;
 - its keys, actions, and writes (with the exact Agent from `mayflyCurrentAgent`), and its availability and
   confirmation rules;
 - its lifecycle: Fiber cleanup, stale results after unload, and state that survives a core reload;
 - a width-scan row for every row renderer, and English and Chinese strings (`tests/locale-catalog.spec.ts`);
-- a work-budget row (§7.1) when it sits on a hot path: the stream, a status tick, an editor key, a view tick.
+- a work-budget row (§7.1) when it sits on a hot path (the stream, a status tick, an editor key, a view tick), and a
+  perf scenario whose A/B is reported in the PR.
 
 **The acceptance record.** The PR body lists the rounds (what changed and the frames that showed it), the accepted
-scenarios and widths, the API it changed with the callers it updated, the code it deleted, and the bench glance. The
+scenarios and widths, the API it changed with the callers it updated, the code it deleted, and the perf A/B table. The
 phase acceptance message names the profile, the primary workflow, the expected result, a narrow-width or lifecycle
 case, and nearby regressions:
 
@@ -1930,7 +2114,9 @@ A budget counts work, not time: nodes validated, units compiled, and rows painte
 workload, read from the counters of slice 1.0. The counts are deterministic, so `tests/perf/work-budget.spec.ts` gates
 them in CI. Slice 1.0 records today's counts; from slice 1.1 the budgets below hold, and a slice that adds a painter
 adds its row. From Phase 2 on, a component on a hot path adds its row when it is finalized, Phase 2c adds the content
-rows of §4.2, and Phase 7 sets the final budgets and bench ceilings for the architecture it leaves (D27).
+rows of §4.2, and Phase 7 sets the final budgets and bench ceilings for the architecture it leaves (D27). From slice
+2b.7 the wall clock comes from `pnpm run perf`. It measures a catalog scenario A/B against the merge-base, and its
+absolute ceilings live in the catalog as the full tier's backstop.
 
 | Workload | Shape | One step | Budget for the step |
 | --- | --- | --- | --- |
@@ -2023,7 +2209,11 @@ the slice:
 | Review without a strict oracle misses a regression in another surface | Decision tests of every finalized component run on every change; the phase gate re-runs the owner's acceptance of the whole phase; CI runs the full gate on `main` |
 | An incompatible change breaks a plugin or an example | The change updates every caller in it (§1 rule 2): `check:examples`, the type fixtures, the shipped skills (`check:agent-docs`), and the Website reference; the breaking release is versioned as one (Phase 8) |
 | `main` shows old and new surfaces side by side | Expected within a phase (D24); no release is cut until the phase passes its gate |
-| Fewer tests let a deep bug through | Tests target decisions, lifecycle, Agent scope, and work budgets, where the deep bugs of Phase 1 were; the owner exercises real sessions in every round; `test:retained` and the bench ceilings stay in the full gate |
+| Fewer tests let a deep bug through | Tests target decisions, lifecycle, Agent scope, and work budgets, where the deep bugs of Phase 1 were; the owner exercises real sessions in every round; retained-row verification and the perf ceilings run in the full tier on every push to `main` |
+| Change-based selection misses a test | The import graph sees through package names to source; a tracked file no rule claims fails the claimed-files guard and escalates at plan time; global inputs escalate; the full tier runs on every push to `main` and nightly (D29) |
+| Scenario goldens flake | Fast playback advances action by action under a pinned clock; a step settles on the frame marker, output silence, and the stub's idle state; the workspace, locale, version, and home are pinned or masked; 2b.5 requires identical grids from repeated and parallel runs |
+| Screenshots differ between machines | They gate nothing (D28): the cell grid gates, and a PNG is compared with the merge-base build rendered on the same machine |
+| A wall-clock perf verdict is noise | Interleaved A/B runs from fresh boots with a noise band and a rank test; an A/A calibration in 2b.7; the deterministic work-budget counters stay the gate |
 | The stream as one list is slower than today's cached components | The engine (§4.1) reuses every unchanged item; W4 gates it on a synthetic stream since Phase 1 and on the real transcript in Phase 3a; memoized frozen items keep identity through `freezeWire` |
 | Lifting the text quota exposes the renderer to huge content | Cost is bounded by the rows in view (§4.2); one memory ceiling per surface names the surface that passes it; depth and the node quotas of containers that are not lazy stay |
 | Local performance fixes pile up into an incoherent architecture | Rounds fix only local problems and record the rest; Phase 7 restructures on measurement and resets the budgets (D27) |
