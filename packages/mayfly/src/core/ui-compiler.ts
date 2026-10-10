@@ -3558,7 +3558,7 @@ export function compileMayflyUiSurfaceNode(value: unknown, options: MayflyUiSurf
       const frame = validateMayflyUiNode({ kind: 'surface', chrome: 'overlay', title: options.title, padding: 1, child: { kind: 'spacer' } }, options.counters)
       if (!frame.ok || frame.value.kind !== 'surface') throw new Error('invalid surface title')
       node = admitted.value.kind === 'surface' && admitted.value.chrome === 'overlay'
-        ? { ...admitted.value, title: options.title }
+        ? { ...admitted.value, title: frame.value.title! }
         : { ...frame.value, child: node }
     }
     const surface = admittedSurface(node, options, 'ui', undefined, options.surfaceRuntime, true, contextEscapeHint)

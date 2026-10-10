@@ -20,8 +20,7 @@ function paint(node: MayflyUiNode, width: number, focused: boolean): string[] {
 describe('pattern width scan', () => {
   for (const { name, text: full } of ADVERSARIAL) {
     it(`survives ${name}`, () => {
-      // A tree admits 20000 characters of text in all; the longest fixture is cut so a pattern that repeats it stays under it.
-      const text = full.slice(0, 400)
+      const text = full
       const items = [{ id: 'a', label: text, count: 3 }, { id: 'b', label: '你好', attention: true }]
       const list = ui.list({ id: 'l', role: 'browse', marker: 'selection', selectedIds: [], items: [{ id: 'x', label: text, detail: text, right: [{ text, tone: 'muted' }] }] })
       const nodes: Record<string, MayflyUiNode> = {

@@ -43,11 +43,11 @@ export function patternMatcher(field: { readonly pattern?: string }): RegExp | u
 }
 
 /** A field's `help` and `group`, each a non-empty line of text. */
-export function admitFieldPresentation<State>(h: AdmissionHelpers<State>, object: Fields, path: string, state: State): Fields {
+export function admitFieldPresentation(h: AdmissionHelpers, object: Fields, path: string): Fields {
   const line = (key: 'help' | 'group'): string | undefined => {
     const value = h.own(object, key, path)
     if (value === undefined) return undefined
-    const result = h.text(value, `${path}.${key}`, state)
+    const result = h.label(value, `${path}.${key}`)
     if (result.trim().length === 0) h.invalid(`${path}.${key} must not be empty`)
     return result
   }
@@ -55,21 +55,21 @@ export function admitFieldPresentation<State>(h: AdmissionHelpers<State>, object
 }
 
 /** A text field's `pattern` (a regular expression of at most 256 characters), `patternMessage`, and `suggestions`. */
-export function admitTextRules<State>(h: AdmissionHelpers<State>, object: Fields, path: string, state: State): Fields {
+export function admitTextRules(h: AdmissionHelpers, object: Fields, path: string): Fields {
   const patternValue = h.own(object, 'pattern', path)
   const messageValue = h.own(object, 'patternMessage', path)
   const suggestionsValue = h.own(object, 'suggestions', path)
   let pattern: string | undefined
   if (patternValue !== undefined) {
-    pattern = h.text(patternValue, `${path}.pattern`, state)
+    pattern = h.text(patternValue, `${path}.pattern`)
     if (pattern.length > PATTERN_SOURCE_MAX) h.invalid(`${path}.pattern must be at most ${String(PATTERN_SOURCE_MAX)} characters`)
     if (compilePattern(pattern) === undefined) h.invalid(`${path}.pattern is not a valid regular expression`)
   }
-  const patternMessage = messageValue === undefined ? undefined : h.text(messageValue, `${path}.patternMessage`, state)
+  const patternMessage = messageValue === undefined ? undefined : h.label(messageValue, `${path}.patternMessage`)
   if (patternMessage !== undefined && pattern === undefined) h.invalid(`${path}.patternMessage needs a pattern`)
   let suggestions: readonly string[] | undefined
   if (suggestionsValue !== undefined) {
-    suggestions = h.collection(suggestionsValue, `${path}.suggestions`).map((item, index) => h.text(item, `${path}.suggestions[${String(index)}]`, state))
+    suggestions = h.collection(suggestionsValue, `${path}.suggestions`).map((item, index) => h.label(item, `${path}.suggestions[${String(index)}]`))
     if (suggestions.length > SUGGESTIONS_MAX) h.invalid(`${path}.suggestions must have at most ${String(SUGGESTIONS_MAX)} entries`)
     if (suggestions.some(item => item.length === 0 || item.includes('\n'))) h.invalid(`${path}.suggestions entries must be single non-empty lines`)
   }

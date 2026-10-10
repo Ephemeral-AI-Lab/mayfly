@@ -925,7 +925,7 @@ describe('editor extension shell and actions', () => {
       id: 'acme.rejected-chrome',
       before: { kind: 'actions', id: 'interactive-before', items: [] },
       after: { kind: 'unknown' },
-      hint: 'x'.repeat(20_001),
+      hint: 'rejected chrome hint',
       actions: [{ id: '', label: 'invalid action', key: 'ctrl+x' }],
     }, {
       id: 'acme.opposite-rejections',
@@ -942,7 +942,7 @@ describe('editor extension shell and actions', () => {
     expect(notices).toEqual(expect.arrayContaining([
       'editor extension before must be passive',
       expect.stringContaining('unknown Mayfly UI kind'),
-      expect.stringContaining('Mayfly UI text exceeds'),
+      expect.stringContaining('items id must not be empty'),
     ]))
     runtime.invalidate()
     runtime.dispose()

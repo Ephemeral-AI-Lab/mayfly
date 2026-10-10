@@ -1876,8 +1876,8 @@ in review at a time; 2c.7 needs 2c.4's anchors. Each slice is reviewed like a co
 | Slice | Status | Branch |
 | --- | --- | --- |
 | 2c.0 | in review | `feat/2c` |
-| 2c.1 | — | — |
-| 2c.2 | — | — |
+| 2c.1 | in review | `feat/2c` |
+| 2c.2 | in review | `feat/2c` |
 | 2c.3 | — | — |
 | 2c.4 | — | — |
 | 2c.5 | — | — |

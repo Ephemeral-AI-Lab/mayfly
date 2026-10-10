@@ -1,7 +1,7 @@
 /**
  * Admission rules for the `prompt` node (roadmap slice 1.9b). The validator hands this module its primitives, so each
  * rule reads like the ones beside it and the arm in `ui-validator.ts` stays one call. A draft, a recalled message, and a
- * placeholder ladder are bounded separately from the tree's text budget, because a prompt legitimately carries what a
+ * placeholder ladder are bounded by the shared draft budget, because a prompt legitimately carries what a
  * user typed or pasted.
  *
  * @module @ephemeral-ai/mayfly/core/ui-validator-prompt
@@ -9,8 +9,8 @@
 import type { MayflyPromptNode, MayflyTone } from '@ephemeral-ai/mayfly-ui'
 import type { AdmissionHelpers } from './ui-validator-content.ts'
 
-/** Maximum characters of a prompt's draft, recalled messages, and reset, summed over one tree. */
-export const MAYFLY_UI_MAX_PROMPT_TEXT = 100_000
+/** Maximum characters of user-editable text — prompt drafts, recalled messages, resets, and form text values — summed over one tree. */
+export const MAYFLY_UI_MAX_DRAFT_TEXT = 100_000
 /** Maximum tokens in one prompt. */
 export const MAYFLY_UI_MAX_PROMPT_TOKENS = 50
 /** Maximum characters in a token's id, label, and size. */
@@ -25,9 +25,9 @@ export const MAYFLY_UI_MAX_PROMPT_PLACEHOLDER_TEXT = 200
 
 type Fields = Record<string, unknown>
 
-/** The validator's primitives plus the prompt's own text budget. */
-export interface PromptAdmissionHelpers<State> extends AdmissionHelpers<State> {
-  /** A string charged to the prompt-text budget and stripped of terminal controls. */
+/** The validator's primitives plus the shared draft budget. */
+export interface PromptAdmissionHelpers<State> extends AdmissionHelpers {
+  /** A string charged to the draft budget and stripped of terminal controls. */
   draftText(value: unknown, path: string, state: State): string
   /** The validator's own object guard: a plain object, read once, with no cycle. */
   enter<Value>(value: unknown, path: string, state: State, visit: (object: Fields) => Value): Value
@@ -39,19 +39,19 @@ function present<Value>(key: string, value: Value | undefined): Fields {
   return value === undefined ? {} : { [key]: value }
 }
 
-function shortText<State>(h: PromptAdmissionHelpers<State>, value: unknown, path: string, state: State, maximum: number): string {
-  const result = h.text(value, path, state)
+function shortText(h: AdmissionHelpers, value: unknown, path: string, maximum: number): string {
+  const result = h.text(value, path)
   if (result.length > maximum) h.invalid(`${path} must be at most ${String(maximum)} characters`)
   return result
 }
 
-function required<State>(h: PromptAdmissionHelpers<State>, object: Fields, key: string, path: string): unknown {
+function required(h: AdmissionHelpers, object: Fields, key: string, path: string): unknown {
   const value = h.own(object, key, path)
   if (value === undefined) h.invalid(`${path}.${key} is required`)
   return value
 }
 
-function unique<State>(h: PromptAdmissionHelpers<State>, ids: readonly string[], path: string): void {
+function unique(h: AdmissionHelpers, ids: readonly string[], path: string): void {
   if (new Set(ids).size !== ids.length) h.invalid(`${path} contains duplicate ids`)
 }
 
@@ -60,13 +60,13 @@ function tokens<State>(h: PromptAdmissionHelpers<State>, value: unknown, path: s
   if (list.length > MAYFLY_UI_MAX_PROMPT_TOKENS) h.invalid(`${path} exceeds ${String(MAYFLY_UI_MAX_PROMPT_TOKENS)} tokens`)
   const admitted = list.map((item, index) => h.enter(item, `${path}[${String(index)}]`, state, object => {
     const at = `${path}[${String(index)}]`
-    const id = shortText(h, required(h, object, 'id', at), `${at}.id`, state, MAYFLY_UI_MAX_PROMPT_TOKEN_TEXT)
+    const id = shortText(h, required(h, object, 'id', at), `${at}.id`, MAYFLY_UI_MAX_PROMPT_TOKEN_TEXT)
     if (id.trim().length === 0) h.invalid(`${at}.id must not be empty`)
     const size = h.own(object, 'size', at)
     return {
       id,
-      label: shortText(h, required(h, object, 'label', at), `${at}.label`, state, MAYFLY_UI_MAX_PROMPT_TOKEN_TEXT),
-      ...present('size', size === undefined ? undefined : shortText(h, size, `${at}.size`, state, MAYFLY_UI_MAX_PROMPT_TOKEN_TEXT)),
+      label: shortText(h, required(h, object, 'label', at), `${at}.label`, MAYFLY_UI_MAX_PROMPT_TOKEN_TEXT),
+      ...present('size', size === undefined ? undefined : shortText(h, size, `${at}.size`, MAYFLY_UI_MAX_PROMPT_TOKEN_TEXT)),
     }
   }))
   unique(h, admitted.map(token => token.id), path)
@@ -83,8 +83,8 @@ function recall<State>(h: PromptAdmissionHelpers<State>, value: unknown, path: s
   }))
 }
 
-function placeholder<State>(h: PromptAdmissionHelpers<State>, value: unknown, path: string, state: State): string | readonly string[] {
-  const one = (item: unknown, at: string): string => shortText(h, item, at, state, MAYFLY_UI_MAX_PROMPT_PLACEHOLDER_TEXT)
+function placeholder(h: AdmissionHelpers, value: unknown, path: string): string | readonly string[] {
+  const one = (item: unknown, at: string): string => shortText(h, item, at, MAYFLY_UI_MAX_PROMPT_PLACEHOLDER_TEXT)
   if (typeof value === 'string') return one(value, path)
   const variants = h.collection(value, path).map((item, index) => one(item, `${path}[${String(index)}]`))
   if (variants.length === 0 || variants.length > MAYFLY_UI_MAX_PROMPT_PLACEHOLDERS) h.invalid(`${path} must hold 1 to ${String(MAYFLY_UI_MAX_PROMPT_PLACEHOLDERS)} variants`)
@@ -101,14 +101,13 @@ function completionRows<State>(h: PromptAdmissionHelpers<State>, object: Fields,
     const detail = h.own(fields, 'detail', at)
     const right = h.own(fields, 'right', at)
     return {
-      id: h.text(required(h, fields, 'id', at), `${at}.id`, state),
-      label: h.text(required(h, fields, 'label', at), `${at}.label`, state),
-      ...present('detail', detail === undefined ? undefined : h.text(detail, `${at}.detail`, state)),
-      ...present('right', right === undefined ? undefined : h.text(right, `${at}.right`, state)),
+      id: h.identifier(required(h, fields, 'id', at), `${at}.id`),
+      label: h.label(required(h, fields, 'label', at), `${at}.label`),
+      ...present('detail', detail === undefined ? undefined : h.label(detail, `${at}.detail`)),
+      ...present('right', right === undefined ? undefined : h.label(right, `${at}.right`)),
     }
   }))
   unique(h, items.map(item => item.id), `${path}.items`)
-  if (items.some(item => item.id.trim().length === 0)) h.invalid(`${path}.items id must not be empty`)
   return { items }
 }
 
@@ -136,16 +135,16 @@ export function admitPromptFields<State>(h: PromptAdmissionHelpers<State>, objec
     }))
   }
   return {
-    ...present('symbol', symbol === undefined ? undefined : shortText(h, symbol, `${path}.symbol`, state, MAYFLY_UI_MAX_PROMPT_SYMBOL)),
+    ...present('symbol', symbol === undefined ? undefined : shortText(h, symbol, `${path}.symbol`, MAYFLY_UI_MAX_PROMPT_SYMBOL)),
     ...present('symbolTone', symbolTone === undefined ? undefined : h.enumeration<MayflyTone>(symbolTone, TONES, `${path}.symbolTone`)),
     ...present('value', value === undefined ? undefined : h.draftText(value, `${path}.value`, state)),
     ...present('tokens', tokenList === undefined ? undefined : tokens(h, tokenList, `${path}.tokens`, state)),
     ...present('recall', recallList === undefined ? undefined : recall(h, recallList, `${path}.recall`, state)),
-    ...present('recallLabel', recallLabel === undefined ? undefined : shortText(h, recallLabel, `${path}.recallLabel`, state, MAYFLY_UI_MAX_PROMPT_LABEL)),
-    ...present('placeholder', ghost === undefined ? undefined : placeholder(h, ghost, `${path}.placeholder`, state)),
+    ...present('recallLabel', recallLabel === undefined ? undefined : shortText(h, recallLabel, `${path}.recallLabel`, MAYFLY_UI_MAX_PROMPT_LABEL)),
+    ...present('placeholder', ghost === undefined ? undefined : placeholder(h, ghost, `${path}.placeholder`)),
     ...present('completions', completionList === undefined ? undefined : completions(h, completionList, `${path}.completions`, state)),
     ...present('reset', resetEntry),
-    ...present('submitLabel', submitLabel === undefined ? undefined : shortText(h, submitLabel, `${path}.submitLabel`, state, MAYFLY_UI_MAX_PROMPT_LABEL)),
+    ...present('submitLabel', submitLabel === undefined ? undefined : shortText(h, submitLabel, `${path}.submitLabel`, MAYFLY_UI_MAX_PROMPT_LABEL)),
     ...present('autofocus', autofocus === undefined ? undefined : h.boolean(autofocus, `${path}.autofocus`)),
   }
 }

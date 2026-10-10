@@ -3,7 +3,6 @@ import { describe, expect, it } from 'vitest'
 import { freezeWire, ui } from '@ephemeral-ai/mayfly-ui'
 import {
   MAYFLY_UI_MAX_NODES,
-  MAYFLY_UI_MAX_TEXT,
   createAdmissionCache,
   validateMayflyEditorShellNode,
   validateMayflyStatusNode,
@@ -95,19 +94,13 @@ describe('admission cache', () => {
     for (let round = 0; round < 2; round += 1) expect(validateMayflyUiNode(tree, undefined, cache)).toMatchObject({ ok: false, message: expect.stringContaining('would swallow typed filter text') })
   })
 
-  it('replays the node, text, and chart quotas instead of skipping them', () => {
+  it('replays the node and chart quotas instead of skipping them', () => {
     const cache = createAdmissionCache()
     const block = ui.stack.column(Array.from({ length: 20 }, () => ui.child(ui.text('x'))))
     const run = (length: number): ReturnType<typeof ui.child> => ui.child(ui.stack.column(Array.from({ length }, (_, index) => ui.child(ui.text(String(index))))))
     admitted(validateMayflyUiNode(block, undefined, cache))
     expect(validateMayflyUiNode(ui.stack.column([run(150), run(90)]), undefined, cache)).toMatchObject({ ok: true })
     expect(validateMayflyUiNode(ui.stack.column([run(150), run(90), ui.child(block)]), undefined, cache)).toMatchObject({ ok: false, code: 'MAYFLY_LIMIT_EXCEEDED', message: expect.stringContaining(`${String(MAYFLY_UI_MAX_NODES)} nodes`) })
-
-    const halfLength = Math.floor(MAYFLY_UI_MAX_TEXT / 2) + 1
-    const half = ui.text('y'.repeat(halfLength))
-    admitted(validateMayflyUiNode(half, undefined, cache))
-    expect(validateMayflyUiNode(ui.stack.column([ui.child(half), ui.child(ui.text('z'.repeat(MAYFLY_UI_MAX_TEXT - halfLength)))]), undefined, cache)).toMatchObject({ ok: true })
-    expect(validateMayflyUiNode(ui.stack.column([ui.child(half), ui.child(half)]), undefined, cache)).toMatchObject({ ok: false, code: 'MAYFLY_LIMIT_EXCEEDED', message: expect.stringContaining('text') })
 
     const chart = line('a')
     admitted(validateMayflyUiNode(chart, undefined, cache))

@@ -2,7 +2,7 @@
  * @module @ephemeral-ai/mayfly/core/ui-interaction-notifications
  */
 import { freezeWire, type MayflyFeedback, type MayflyFeedbackRecord, type MayflyInlineSpan, type MayflyUiScope } from '@ephemeral-ai/mayfly-ui'
-import { validateMayflyUiNode } from './ui-validator.ts'
+import { clipLabel, validateMayflyUiNode } from './ui-validator.ts'
 
 /** `✓` success and `ℹ` info leave after this much visible time; `⚠` and `✗` stay (spec §2.4). */
 const SHORT_VISIBLE_MS = 5_000
@@ -33,7 +33,7 @@ export interface UiNotificationIdentity {
 export function admitNotificationMessage(value: unknown): string {
   const result = validateMayflyUiNode({ kind: 'text', content: value })
   if (!result.ok) throw new TypeError('UI feedback must be bounded text')
-  return (result.value as { readonly content: string }).content
+  return clipLabel((result.value as { readonly content: string }).content)
 }
 
 /** Timer-owning record store; time advances only while its presentation is visible. */

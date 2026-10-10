@@ -30,8 +30,13 @@ in a node.
 ## Shared rules and limits
 
 - A tree may contain at most 256 nodes, with the root at depth 0 and maximum
-  depth 8. Any array may contain at most 200 entries. Strings across the tree
-  may total at most 20,000 UTF-16 code units.
+  depth 8. Any array may contain at most 200 entries. Content text — `text`,
+  `markdown`, `code`, `diff`, `diagram`, rich-text spans, and string list
+  bodies — has no size limit: the renderer reads only the rows in view. Ids
+  and keys may be at most 1,024 UTF-16 code units; a longer one is rejected.
+  One-row fields — labels, titles, badges, details, reasons, hints,
+  placeholders, chart labels, `alt` — are clipped at 4,096 code units and end
+  in `…`.
 - Builders recursively copy and freeze inputs and reject cycles. Host admission
   accepts only plain objects and dense arrays and strips ANSI, C1, and unsafe
   control characters.
@@ -1543,11 +1548,10 @@ the host replies as for a form, normally `accepted` with the new node (cleared
 tokens, an updated `recall`). `reset` replaces the draft once for each new `rev`;
 it is how the host inserts a completion or restores a draft.
 
-Limits: a draft, a recalled message, and a reset share 100,000 characters per
-tree, apart from the tree's 20,000-character text budget; at most 50 tokens
-(`id`, `label`, and `size` up to 64 characters), 8 placeholder variants of up to
-200 characters, a `symbol` of up to 8 characters, and 24 for `recallLabel` and
-`submitLabel`. `prompt` is available in panes and overlays. It is not a status or
+Limits: a draft, a recalled message, a reset, and form text values share
+100,000 characters per tree; at most 50 tokens (`id`, `label`, and `size` up to
+64 characters), 8 placeholder variants of up to 200 characters, a `symbol` of up
+to 8 characters, and 24 for `recallLabel` and `submitLabel`. `prompt` is available in panes and overlays. It is not a status or
 editor-extension node.
 
 ## Focus and contextual hints

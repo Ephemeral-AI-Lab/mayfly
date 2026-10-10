@@ -1273,10 +1273,16 @@ describe('compileMayflyUiNode', () => {
     expect(() => shell.focusTarget.focusEditor?.()).not.toThrow()
   })
 
-  it('contains a title that exceeds the canonical surface budget', () => {
-    const result = compileMayflyUiSurfaceNode(ui.text('body'), {
+  it('clips an oversized title and contains an invalid one', () => {
+    const clipped = compileMayflyUiSurfaceNode(ui.text('body'), {
       ...fixture().options,
       title: 'x'.repeat(20_001),
+      surfaceRuntime: new MayflyUiSurfaceRuntime(),
+    })
+    expect(clipped).toMatchObject({ ok: true })
+    const result = compileMayflyUiSurfaceNode(ui.text('body'), {
+      ...fixture().options,
+      title: 42 as never,
       surfaceRuntime: new MayflyUiSurfaceRuntime(),
     })
     expect(result).toMatchObject({ ok: false, code: 'MAYFLY_INVALID_CONTRIBUTION' })
