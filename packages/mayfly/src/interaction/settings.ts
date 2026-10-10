@@ -185,13 +185,13 @@ async function syncTheme(ctx: Context, isUnloaded: () => boolean): Promise<void>
   const theme = currentMayflySettings(ctx).theme
   if (theme === state.lastAppliedTheme) return
   const result = await applyTheme(ctx, theme)
-  /* v8 ignore next 1 -- a fiber unload landing inside the swap's awaits is
+  /* a fiber unload landing inside the swap's awaits is
      a shutdown race no spec can stage deterministically */
   if (isUnloaded()) return
   if (result.kind === 'success') {
     state.lastAppliedTheme = theme
   } else {
-    /* v8 ignore next 1 -- the swap's error results always carry text */
+    /* the swap's error results always carry text */
     ctx.logger.warn(result.text ?? `could not apply theme "${theme}"`)
   }
 }
@@ -204,7 +204,7 @@ async function syncTheme(ctx: Context, isUnloaded: () => boolean): Promise<void>
  * @param isUnloaded - the fiber's unload flag.
  */
 async function syncPresentation(ctx: Context, isUnloaded: () => boolean): Promise<void> {
-  /* v8 ignore next 1 -- an unload landing inside a theme swap's awaits is the shutdown race syncTheme also fences */
+  /* an unload landing inside a theme swap's awaits is the shutdown race syncTheme also fences */
   if (isUnloaded()) return
   const live = ctx.get('mayflyComponents')?.presentation
   if (live === undefined || samePresentation(live, resolvePresentation(currentMayflySettings(ctx)))) return
@@ -249,7 +249,7 @@ export function apply(ctx: Context): void {
   // dropping the update.
   let swap: Promise<void> = Promise.resolve()
   const sync = (): void => {
-    /* v8 ignore next 1 -- the defensive catch; syncTheme never rejects */
+    /* the defensive catch; syncTheme never rejects */
     swap = swap.then(() => syncTheme(ctx, () => unloaded)).then(() => syncPresentation(ctx, () => unloaded)).catch(() => {})
   }
   // `settings/document-updated` commits landing before the first attach need

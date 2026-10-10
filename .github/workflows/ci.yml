@@ -3,8 +3,9 @@
 # covered by website-pages.yml's build check). Install is pinned by the
 # root packageManager field (pnpm/action-setup reads it) with a frozen
 # lockfile; node mirrors the website workflow's PRIMARY_NODE_VERSION.
-# Coverage enforces per-file 100% via vitest.config.ts thresholds, so
-# `test:coverage` failing = discipline breach, not just a broken test.
+# `test:coverage` is one vitest run: the suites with retained-row
+# verification on, the work budgets, and coverage against the repository-wide
+# floor in vitest.config.ts (roadmap D25).
 name: ci
 
 on:
@@ -87,15 +88,12 @@ jobs:
       # website/public/shots/*.svg; the committed files must match byte for
       # byte. Runs after the build because the painter needs lib/index.js.
       - run: pnpm shots:check
-      # Design goldens: the prototype's frames under a pinned clock are the oracle
-      # the real renderer is compared with; they change only with the prototype.
       # W5-C ecosystem contract: static package boundaries plus a one-project
       # packed install on this release's sole supported Harness line.
       - run: pnpm check:examples
+      # One run: every retained-row hit painted again and compared (a row that reads something the surface epoch
+      # does not track fails here instead of showing stale on a screen), the work budgets, and the coverage floor.
       - run: pnpm test:coverage
-      # The suites again with every retained-row hit painted and compared: a row that reads something the surface
-      # epoch does not track fails here instead of showing stale on a screen.
-      - run: pnpm test:retained
       # The real-process width smoke (D45): boots the built plugin tree
       # through the real dsh CLI at COLUMNS=40 against a mock LLM streaming
       # width-hostile content — any untruncated row must fail the run, not

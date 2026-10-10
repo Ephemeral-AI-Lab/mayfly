@@ -66,7 +66,7 @@ function toolFailure(command: string, error: unknown): string {
   // Every failure this pipeline produces is an Error (spawn errors and the
   // exit-code classification alike); the String arm only satisfies the
   // unknown-type contract.
-  /* v8 ignore next -- no non-Error failure can reach this pipeline */
+  /* no non-Error failure can reach this pipeline */
   return error instanceof Error ? error.message : String(error)
 }
 

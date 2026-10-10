@@ -161,7 +161,7 @@ export function parseMarketIndex(text: string): MarketIndex {
   try {
     parsed = JSON.parse(text)
   } catch (error) {
-    /* v8 ignore next -- JSON.parse only throws SyntaxError instances */
+    /* JSON.parse only throws SyntaxError instances */
     throw new Error(`market index is not valid JSON: ${error instanceof Error ? error.message : String(error)}`)
   }
   if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) throw new Error('market index is not an object')

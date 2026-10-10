@@ -10,6 +10,9 @@
 #   DSH_BIN    dsh executable to use        (default: dsh from PATH)
 #   PROFILE    target profile name          (default: mayfly-dev)
 #   DSH_HOME   dsh home directory           (default: dsh's own resolution)
+#   MAYFLY_SKIP_BUILD
+#              1 links the existing lib/ build instead of building first; the
+#              verification gate and the smokes set it after their own build.
 #   PROFILE_INSTALL_FLAGS
 #              extra flags for the profile's `pnpm install` (default: none).
 #              CI consumers pass --no-frozen-lockfile: CI=true flips pnpm's
@@ -36,8 +39,12 @@ if ! command -v "$DSH_BIN" >/dev/null 2>&1; then
   exit 1
 fi
 
-echo "==> Building Mayfly workspace"
-pnpm --dir "$REPO_ROOT" run build
+if [ "${MAYFLY_SKIP_BUILD:-}" = "1" ]; then
+  echo "==> Linking the existing Mayfly build (MAYFLY_SKIP_BUILD=1)"
+else
+  echo "==> Building Mayfly workspace"
+  pnpm --dir "$REPO_ROOT" run build
+fi
 
 echo "==> Link-installing Mayfly packages into profile '$PROFILE'"
 "$DSH_BIN" plugin --profile "$PROFILE" add \

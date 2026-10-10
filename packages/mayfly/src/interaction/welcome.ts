@@ -84,12 +84,12 @@ export async function openWelcome(ctx: Context, signal: AbortSignal): Promise<vo
       id: WELCOME_ID, title: t('Welcome to Mayfly'), presentation: 'editor', capturing: true,
       scope: { kind: 'app', targetId: 'welcome' },
       onEvent: { action: async (event): Promise<MayflyUiActionReply> => {
-        /* v8 ignore next -- Continue is the only action and it submits the form */
+        /* Continue is the only action and it submits the form */
         if (event.kind !== 'submit') return { kind: 'completed' }
         const fields = event.submission.forms[0]!.fields
         const chosenLanguage = LANGUAGES.find(item => item.id === fields.find(field => field.id === 'language')?.value)?.id
         const chosenTheme = THEMES.find(key => key === fields.find(field => field.id === 'theme')?.value)
-        /* v8 ignore next -- the selects reject unknown options; this guards a forged submission */
+        /* the selects reject unknown options; this guards a forged submission */
         if (chosenLanguage === undefined || chosenTheme === undefined) return { kind: 'failed', message: t('Choose a language and a theme') }
         await commit(ctx, chosenLanguage, chosenTheme)
         return { kind: 'accepted', node: welcomeNode(t, chosenLanguage, chosenTheme), source: [], dismiss: true }

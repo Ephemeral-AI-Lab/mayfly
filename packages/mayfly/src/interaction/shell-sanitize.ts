@@ -51,7 +51,7 @@ export function sanitizeShellOutput(text: unknown): string {
   } catch {
     // The regexes are constants, so nothing here can throw; the fallback is
     // a belt for a pathological engine, not a reachable branch.
-    /* v8 ignore next -- unreachable by construction, see above */
+    /* unreachable by construction, see above */
     return text.replace(C0_CONTROL_PATTERN, '')
   }
 }

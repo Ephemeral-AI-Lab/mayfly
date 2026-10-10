@@ -224,7 +224,7 @@ export async function cycleSessionModel(ctx: Context, cache: ModelListCache, rep
     )
     report('model-cycle', { message: result.text, severity: result.ok ? 'success' : 'warning' })
   } catch (error) {
-    /* v8 ignore next -- the catch guards only the append-failure loud path
+    /* the catch guards only the append-failure loud path
        (the cycleMode discipline); commitModelSelection itself never throws */
     ctx.logger.warn(`model cycle commit failed: ${describe(error)}`)
   }
@@ -262,7 +262,7 @@ async function catalogRows(
   const llm = ctx.get('llm')
   if (llm === undefined) return { error: t('the llm service is unavailable') }
   const providers = llm.listProviders()
-  /* v8 ignore next 3 -- callers pass routes taken from listProviders; the
+  /* callers pass routes taken from listProviders; the
      guard only trips when a route vanishes between the listing and here */
   if (filterProvider !== undefined && !providers.some(provider => provider.id === filterProvider)) {
     return { error: `provider "${filterProvider}" is not registered` }

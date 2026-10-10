@@ -90,7 +90,7 @@ function compile(
       emit: options.emit,
       ...(options.onEscape === undefined ? {} : { onUnhandledEscape: options.onEscape }),
     })
-    /* v8 ignore next -- the admitted constant fallback text cannot fail compilation. */
+    /* the admitted constant fallback text cannot fail compilation. */
     return fallback.ok ? fallback.value : { node: fallbackNode, component: fallback.errorComponent, focusTarget: null }
   }
   const compilerOptions = {
@@ -122,7 +122,7 @@ function compile(
     options.runtime.deactivate()
     const fallbackNode = safeFailureNode(kind, 'non-capturing overlays cannot contain interactive controls')
     const fallback = compileMayflyUiNode(framed(fallbackNode), compilerOptions)
-    /* v8 ignore next -- the admitted constant fallback text cannot fail compilation. */
+    /* the admitted constant fallback text cannot fail compilation. */
     return fallback.ok ? fallback.value : { node: fallbackNode, component: fallback.errorComponent, focusTarget: null }
   }
   return compiled
@@ -189,7 +189,7 @@ class PaneComponent implements MayflyFocusable {
       : getLayoutNode(this.targetValue!.component)!
   }
   replace(compiled: MayflyCompiledUi | null, leadingRule = false, overflowKeepsTail = false): void {
-    /* v8 ignore next -- record/map identity fences prevent replacement after one disposal. */
+    /* record/map identity fences prevent replacement after one disposal. */
     if (!this.live) return
     setCompiledFocus(this.targetValue, false)
     this.targetValue = compiled
@@ -198,7 +198,7 @@ class PaneComponent implements MayflyFocusable {
     setCompiledFocus(compiled, this.focusedValue)
   }
   dispose(): void {
-    /* v8 ignore next -- every record is removed before another cleanup path can observe it. */
+    /* every record is removed before another cleanup path can observe it. */
     if (!this.live) return
     this.live = false
     this.view?.dispose()
@@ -235,14 +235,14 @@ class OverlayComponent implements MayflyFocusable {
     setCompiledFocus(this.targetValue, this.focusedValue)
   }
   replace(compiled: MayflyCompiledUi): void {
-    /* v8 ignore next -- record/map identity fences prevent replacement after one disposal. */
+    /* record/map identity fences prevent replacement after one disposal. */
     if (!this.live) return
     setCompiledFocus(this.targetValue, false)
     this.targetValue = compiled
     setCompiledFocus(compiled, this.focusedValue)
   }
   dispose(): void {
-    /* v8 ignore next -- every record is removed before another cleanup path can observe it. */
+    /* every record is removed before another cleanup path can observe it. */
     if (!this.live) return
     this.live = false
     this.arm?.dispose()
@@ -610,7 +610,7 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
     reconcile(snapshot)
   }
   const schedule = (snapshot: SurfaceSnapshot): void => {
-    /* v8 ignore next -- registryRevision is private and strictly increments for every published snapshot. */
+    /* registryRevision is private and strictly increments for every published snapshot. */
     if (snapshot.revision <= appliedRevision) return
     pending = snapshot
     if (!scheduled) { scheduled = true; queueMicrotask(drain) }
@@ -621,7 +621,7 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
     const seen = new Set<string>()
     const entries = [layout.header, layout.left, layout.right, layout.bottom].flatMap(lane =>
       lane === undefined ? [] : lane.entries.flatMap(entry => {
-        /* v8 ignore next -- host admission and SurfaceManager both enforce global ids. */
+        /* host admission and SurfaceManager both enforce global ids. */
         if (seen.has(entry.id)) return []
         seen.add(entry.id)
         return focusTarget(entry) === null ? [] : [{ lane, entry }]
@@ -637,7 +637,7 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
     const current = stops.findIndex(item => item.id === currentId)
     const next = current < 0 ? (direction > 0 ? 0 : stops.length - 1) : current + direction
     if (next < 0 || next >= stops.length) {
-      /* v8 ignore else -- reaching the boundary after a focused surface always has an id. */
+      /* reaching the boundary after a focused surface always has an id. */
       if (runtime.surfaces.focusedId !== undefined) runtime.releaseSurfaceFocus(runtime.surfaces.focusedId)
       navigationId = undefined
       return

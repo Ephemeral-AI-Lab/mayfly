@@ -187,9 +187,9 @@ epoch of the surface (`MayflyUiSurfaceRuntime.epoch`). The rules a painter lives
 - Stacks are `ColumnStack` and `RowStack`: pi-tui's rows, the row each child
   starts at, and a horizontal stack that remembers composited rows.
 
-`pnpm run test:retained` runs the suites with `MAYFLY_UI_VERIFY_MEMO=1`: every
-memo hit paints again and throws when the rows differ. A stale row is a test
-failure there, not a report from a screen.
+Every spec outside `tests/perf/` runs with `MAYFLY_UI_VERIFY_MEMO=1` (the vitest
+`suite` project): every memo hit paints again and throws when the rows differ. A
+stale row is a test failure, not a report from a screen.
 
 The presentation (`core/presentation.ts`: glyph mode, monochrome, reduced
 motion, from the `mayfly` settings and `NO_COLOR`) is read when a theme provider

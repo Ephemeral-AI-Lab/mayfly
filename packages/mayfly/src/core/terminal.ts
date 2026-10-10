@@ -139,7 +139,7 @@ class FrameClampedContainer extends Container {
 function rowsLeaf(rows: readonly string[]): Component {
   return {
     render: () => [...rows],
-    /* v8 ignore next -- a leaf holds one frame's planned rows; the lane re-plans every frame */
+    /* a leaf holds one frame's planned rows; the lane re-plans every frame */
     invalidate: () => {},
   }
 }
@@ -218,7 +218,7 @@ class SurfaceLaneContainer implements Component {
       // pi-tui measures (renders) the lane before laying it out in one frame;
       // a layout that changed since then re-plans at the measured width.
       const measured = this.measured
-      /* v8 ignore next -- a bottom measurement always carries a plan and precedes any layout */
+      /* a bottom measurement always carries a plan and precedes any layout */
       const plan = measured?.layout === layout && measured.plan !== undefined ? measured.plan : planBottomLane(lane, measured?.width ?? 1, this.maxRows())
       const fixed = (size: number) => ({ basis: size, grow: 0, shrink: 1, minSize: 0, maxSize: size })
       if (plan.rule !== undefined) stack.addChild(rowsLeaf([plan.rule]), fixed(1))
@@ -719,7 +719,7 @@ export async function startMayflyTerminal(
   const bottomPinned = new Set<MayflyComponent>()
   let contentScrollHandler: ((data: string) => boolean) | undefined
   const removeContentScrollHandler = current.addInputListener(data => {
-    /* v8 ignore next -- exercised by the real PTY input path */
+    /* exercised by the real PTY input path */
     if (contentScrollHandler?.(data) === true) return { consume: true }
     return undefined
   })
@@ -933,7 +933,7 @@ export async function startMayflyTerminal(
     let dockRows = 0
     for (const child of orderedDock()) dockRows += child.render(width).length
     const boundary = lines.length - dockRows
-    /* v8 ignore next -- covered by the real-terminal and VT layout tiers */
+    /* covered by the real-terminal and VT layout tiers */
     if (lines.length >= terminal.rows) {
       // Keep the newest transcript rows visible while reserving the terminal
       // tail for the editor/status dock. Returning the full over-height frame
@@ -1075,7 +1075,7 @@ export async function startMayflyTerminal(
       if (previousSurfaceId === undefined && surfaces.focusedId !== undefined && previous !== component) surfacePreFocus = previous
       stable.setFocus(component)
     },
-    /* v8 ignore start -- exercised through the real PTY interaction path */
+    /* exercised through the real PTY interaction path */
     scrollContent(direction, amount = 1) {
       if (current instanceof TuiAltScreen) {
         const before = current.viewportTop
@@ -1125,7 +1125,6 @@ export async function startMayflyTerminal(
         if (contentScrollHandler === handler) contentScrollHandler = undefined
       }
     },
-    /* v8 ignore stop */
     showOverlay(component, options) {
       if (options?.maxWidth === undefined) return stable.showOverlay(component, options)
       const maximum = Math.max(1, Math.floor(options.maxWidth))

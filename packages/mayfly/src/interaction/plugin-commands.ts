@@ -78,7 +78,7 @@ export function registerPluginCommand(ctx: Context): () => void {
   /** The active UI locale, for entry descriptions that ship both languages. */
   const locale = (): 'zh' | 'en' => {
     const service = ctx.get('mayflyLocale')
-    /* v8 ignore next -- panels render only where the frontend ships the locale service */
+    /* panels render only where the frontend ships the locale service */
     if (service === undefined) return 'en'
     return service.snapshot.locale
   }
@@ -99,7 +99,7 @@ export function registerPluginCommand(ctx: Context): () => void {
 
   /** Entries currently on hand (empty while offline or unloaded). */
   const entries = (): readonly MarketEntry[] => {
-    /* v8 ignore next -- row paths run only after a load settled */
+    /* row paths run only after a load settled */
     if (catalog === undefined || catalog.status === 'offline') return []
     return catalog.index.entries
   }
@@ -118,14 +118,14 @@ export function registerPluginCommand(ctx: Context): () => void {
     if (entry.surfaces.tui !== undefined) parts.push('TUI')
     if (entry.surfaces.web !== undefined) parts.push('Web')
     if (entry.surfaces.server !== undefined) parts.push('Server')
-    /* v8 ignore next -- the manifest schema requires at least one surface */
+    /* the manifest schema requires at least one surface */
     return parts.length === 0 ? '—' : parts.join('+')
   }
 
   /** Composite row badge: tier, surfaces, install state, status. */
   const badgeOf = (entry: MarketEntry, state: EntryInstallState | undefined): string => {
     const pieces = [entry.source, surfaceBadge(entry)]
-    /* v8 ignore next -- states() carries every indexed entry id */
+    /* states() carries every indexed entry id */
     if (state?.installed === true) {
       pieces.push(state.updateAvailable === true ? t('update {version}', { version: state.updateVersion! }) : 'installed')
     } else if (entry.install.rows.some(row => installed.some(plugin => plugin.name === row.name))) {
@@ -173,7 +173,7 @@ export function registerPluginCommand(ctx: Context): () => void {
     operationInFlight = true
     try {
       const dshCommand = await findDshCommand()
-      /* v8 ignore next -- a fiber unload landing inside these awaits is a shutdown race */
+      /* a fiber unload landing inside these awaits is a shutdown race */
       if (unloaded) return false
       if (dshCommand === undefined) {
         report({ text: t('plugin operations need the dsh CLI on PATH (or $DSH_BIN)'), tone: 'danger' })
@@ -202,7 +202,7 @@ export function registerPluginCommand(ctx: Context): () => void {
         } }),
       }
       const outcome = action === 'install' ? await installEntry(input) : await uninstallEntry(input)
-      /* v8 ignore next -- a fiber unload landing inside these awaits is a shutdown race */
+      /* a fiber unload landing inside these awaits is a shutdown race */
       if (unloaded) return false
       if (outcome.kind === 'error') {
         report({
@@ -327,7 +327,7 @@ export function registerPluginCommand(ctx: Context): () => void {
    */
   async function runOperation(id: string, action: 'install' | 'uninstall', reporter: OperationReporter): Promise<boolean> {
     const entry = findEntry(id)
-    /* v8 ignore next -- browser actions only carry ids from indexed rows */
+    /* browser actions only carry ids from indexed rows */
     if (entry === undefined) return false
     if (action === 'uninstall' && !hasInstalledRows(entry)) {
       reporter({ text: t('"{name}" is not installed in this profile', { name: entry.displayName }), tone: 'danger' })
@@ -442,7 +442,7 @@ export function registerPluginCommand(ctx: Context): () => void {
     /** Mount the detail panel for one entry above the browse panel. */
     const openDetail = async (id: string): Promise<void> => {
       const entry = findEntry(id)
-      /* v8 ignore next -- detail actions only ever carry entry ids from rows */
+      /* detail actions only ever carry entry ids from rows */
       if (entry === undefined) return
       const detailId = `mayfly.plugin-detail.${entry.id}`
       if (ctx.mayflyOverlays.focus(detailId)) return
@@ -477,7 +477,7 @@ export function registerPluginCommand(ctx: Context): () => void {
     const refreshMarket = async (reporter: OperationReporter): Promise<boolean> => {
         reporter({ text: t('refreshing plugin catalog...'), tone: 'muted' })
         const result = await reload(true)
-          /* v8 ignore next -- a fiber unload landing inside the refresh await is a shutdown race */
+          /* a fiber unload landing inside the refresh await is a shutdown race */
           if (unloaded) return false
           if (result.status === 'offline') {
             reporter({ text: t('refresh failed: {message}', { message: result.message }), tone: 'danger' })

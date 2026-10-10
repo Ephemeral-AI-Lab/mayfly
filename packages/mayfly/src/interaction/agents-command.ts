@@ -276,7 +276,7 @@ export function apply(ctx: Context): void {
       ] }),
     ]) })
     const publish = (force: boolean): void => {
-      /* v8 ignore next -- every publish caller is closed-fenced already; these checks only narrow the handle for the view write and fence a host-driven close race */
+      /* every publish caller is closed-fenced already; these checks only narrow the handle for the view write and fence a host-driven close race */
       if (closed || handle === undefined || handle.closed) return
       const next = withLiveMetrics(ctx, listed, workflowLabels)
       if (force || !isDeepStrictEqual(next, entries)) {

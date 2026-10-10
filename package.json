@@ -13,7 +13,6 @@
     "test": "vitest run",
     "test:repo-workflow": "node --test script/tests/*.test.mjs",
     "test:coverage": "vitest run --coverage",
-    "test:retained": "node script/test-retained.mjs",
     "typecheck": "tsc -b tsconfig.json",
     "lint": "oxlint packages examples",
     "diagrams:sync": "node script/sync-diagrams.mjs",

@@ -143,7 +143,7 @@ function completionContext(
 ): { request: MayflyEditorCompletionRequest, prefix: string } | undefined {
   const before = line.slice(0, cursorCol)
   const slash = /^\/(\S*)$/u.exec(before)
-  /* v8 ignore next -- the mandatory capture exists for every successful match. */
+  /* the mandatory capture exists for every successful match. */
   if (slash !== null) return { request: { trigger: '/', query: slash[1] ?? '' }, prefix: before }
   let start = 0
   for (let index = before.length - 1; index >= 0; index -= 1) {
@@ -273,7 +273,7 @@ export class EditorExtensionRuntime implements MayflyFocusable {
       if (this.initialized) this.syncExtensions()
     })
     this.unsubscribeHost = options.ctx.mayflyPromptEditor.subscribeEditorState(() => {
-      /* v8 ignore else -- the immediate subscription replay intentionally precedes initialization. */
+      /* the immediate subscription replay intentionally precedes initialization. */
       if (this.initialized) this.syncAutocomplete()
     })
     this.initialized = true
@@ -377,7 +377,7 @@ export class EditorExtensionRuntime implements MayflyFocusable {
   }
 
   private activateShell(shell: EditorShell): void {
-    /* v8 ignore else -- reactivating the same shell needs no focus handoff. */
+    /* reactivating the same shell needs no focus handoff. */
     if (this.shell !== shell) this.focusTarget.focused = false
     this.shell = shell
     this.component = shell.component
@@ -572,7 +572,7 @@ export class EditorExtensionRuntime implements MayflyFocusable {
             if (signal.aborted || this.entries !== entries) return null
             if (outcome.kind === 'timeout') { this.report('completion', 'editor extension completion timed out'); continue }
             if (outcome.kind === 'rejected') { this.report('completion', boundedMessage(outcome.error, 'editor extension completion failed')); continue }
-            /* v8 ignore next -- an aborted entry necessarily sets the shared signal tested above. */
+            /* an aborted entry necessarily sets the shared signal tested above. */
             if (outcome.kind !== 'value') return null
             const result = completionItems(outcome.value)
             if (!result.ok) { this.report('completion', result.message); continue }
@@ -640,7 +640,7 @@ export class EditorExtensionRuntime implements MayflyFocusable {
           attempt.cancel()
           return
         }
-        /* v8 ignore next -- an aborted transform necessarily aborts the controller tested above. */
+        /* an aborted transform necessarily aborts the controller tested above. */
         if (outcome.kind !== 'value') return
         const result = submitValue(outcome.value)
         if (!result.ok) {

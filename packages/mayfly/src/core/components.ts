@@ -365,7 +365,7 @@ class EditorAdapter implements MayflyEditor {
     // The buffer always carries at least one line (pi-tui normalizes even
     // an empty setText to ['']); the fallback only satisfies the
     // index-access checker.
-    /* v8 ignore next -- defensive default, unreachable with a real editor */
+    /* defensive default, unreachable with a real editor */
     const first = this.editor.getLines()[0] ?? ''
     return col === first.length
   }
@@ -422,7 +422,7 @@ class EditorAdapter implements MayflyEditor {
     // cursor, and the prompt symbol overlays last. The bash proxy: the `!`
     // prompt symbol is the bash triple's first leg, so while it is set a
     // leading `/` is a path separator, not a command, and stays unpainted.
-    /* v8 ignore next -- the real editor always renders at least one content row between the rules, so lines[1] exists */
+    /* the real editor always renders at least one content row between the rules, so lines[1] exists */
     let row = lines[1] ?? ''
     if (this.promptSymbol !== '!' && this.editor.getText().trimStart().startsWith('/')) {
       row = highlightLeadingSlashToken(row, this.chrome.slashTokenPaint) ?? row
@@ -547,7 +547,7 @@ class EditorAdapter implements MayflyEditor {
   private reopenAutocompleteAfterInput(): void {
     if (this.editor.isShowingAutocomplete()) return
     const { line, col } = this.editor.getCursor()
-    /* v8 ignore next -- the real editor always renders the cursor line; the fallback only satisfies the index-access checker */
+    /* the real editor always renders the cursor line; the fallback only satisfies the index-access checker */
     const textBeforeCursor = (this.editor.getLines()[line] ?? '').slice(0, col)
     const token = extractMentionToken(textBeforeCursor)
     if (token === null) return
@@ -613,7 +613,7 @@ class MarkdownAdapter implements MayflyMarkdown {
         if (diagram !== undefined) return diagram
         return this.expandRules(new Markdown(segment.fallback, 0, 0, this.theme).render(contentWidth), contentWidth)
       }
-      /* v8 ignore next -- splitRichDocument omits zero-length Markdown segments. */
+      /* splitRichDocument omits zero-length Markdown segments. */
       if (segment.source.length === 0) return []
       return this.expandRules(new Markdown(segment.source, 0, 0, this.theme).render(contentWidth), contentWidth)
     })

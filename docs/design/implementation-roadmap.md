@@ -1746,7 +1746,7 @@ The A/B and the outputs:
 | --- | --- | --- |
 | 2b.0 | The spikes above and this text | — |
 | 2b.1 | Prototype parity leaves the gate: every walk and page the scene specs drive through the real renderer (13 of the prototype's 32 scenes have a real port) is compared with a cell grid of today's renderer under the probe palette (`script/scenarios/grid.mjs`, `tests/design/probe.ts`, `tests/design/walks.ts`, 84 grids under `tests/design/frames/`), the visual record of Phase 1 until 2d replaces it. The scene specs keep their key, action, and hint tests | `tests/design/parity.ts` and `scene.ts`, the prototype comparisons and waivers in the scene specs, `deltas.ts`, `pending.ts` with `pending.spec.ts`, `design:golden:check` with its 348 prototype files and scripts. The prototype stays runnable as the sketch |
-| 2b.2 | One suite run (vitest projects: `suite` with `MAYFLY_UI_VERIFY_MEMO=1`, `perf` without it), the repository coverage floor measured when it lands, one build for the smoke (`MAYFLY_SKIP_BUILD`) | The per-file thresholds, `script/test-retained.mjs`, the `v8 ignore` comments and the seam comments that served only the per-file gate |
+| 2b.2 | One suite run (vitest projects: `suite` with `MAYFLY_UI_VERIFY_MEMO=1`, `perf` without it); a repository coverage floor of 99% on each metric, measured as 99.74 / 99.48 / 99.81 / 99.92 (statements / branches / functions / lines) with the ignore comments gone; no coverage in a local changed run; one build for the smoke (`MAYFLY_SKIP_BUILD`) | The per-file thresholds, `packages/ui/vitest.config.ts`, `script/test-retained.mjs` with the `test:retained` script and CI step, the 129 `v8 ignore` directives (their reasons stay as comments), and the seam comments that cited the per-file gate |
 | 2b.3 | Import-graph selection with declared inputs and the claimed-files guard | `script/test-impact.mjs` |
 | 2b.4 | `pnpm run check`, the tiers, the report, `dev --check`, the CI split (a plan job, the pr tier on PRs, full on `main` and nightly) | `verify-changed.mjs`, `verification-commands.mjs`, and the `verify:changed`, `verify:full`, `test:coverage` scripts |
 | 2b.5 | The catalog and the headless runner: the control channel, fast playback, the clock, the responder, input, the invariants; `frame`, `scenario`, and `dev` read the catalog | `script/workbench/{live-scenarios,keys,replays}.mjs`, `tests/workbench/{frame.spec,scenarios}.ts` |
@@ -1777,7 +1777,8 @@ The A/B and the outputs:
 | --- | --- | --- |
 | 2b.0 | in review | `feat/2b-0-gate-design` |
 | 2b.1 | in review | `feat/2b-1-walk-grids` |
-| 2b.2-2b.9 | planned | — |
+| 2b.2 | in review | `feat/2b-2-one-suite-run` |
+| 2b.3-2b.9 | planned | — |
 
 **2c Content at any size** (§4.2, D26). Chunked text, admission and painting when visible, append identity, the memory
 ceiling, and the gate rows. The owner reviews a 1 MB diff, a long plan, and job output following its tail in the

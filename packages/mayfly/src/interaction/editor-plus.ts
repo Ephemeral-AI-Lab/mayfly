@@ -250,7 +250,7 @@ function createAutocompleteProvider(
       if (slash === null || mode() === 'bash') return null
       const agent = ctx.mayflyCurrentAgent.current()
       if (agent === null) return null
-      /* v8 ignore next -- a successful exec always defines the capture group */
+      /* a successful exec always defines the capture group */
       const query = slash[1] ?? ''
       // The kimi match rule: the canonical name scores first, aliases count
       // only when it misses, and an alias match labels the canonical command
@@ -521,7 +521,7 @@ function attach(ctx: Context, shared: SharedEditor, isUnloaded: () => boolean): 
     if (match === null) return undefined
     const agent = ctx.mayflyCurrentAgent.current()
     if (agent === null) return undefined
-    /* v8 ignore next -- a successful exec always defines the capture group */
+    /* a successful exec always defines the capture group */
     const name = match[1] ?? ''
     // An alias token (`/q `) resolves to its canonical command for the hint,
     // mirroring the dispatch rewrite — aliases are not registered commands.

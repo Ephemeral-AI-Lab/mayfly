@@ -201,7 +201,7 @@ export function rewriteSkillTokens(ctx: Context, text: string): string {
  */
 export function extractSkillPrefix(textBeforeCursor: string): string | null {
   const match = SKILL_PREFIX.exec(textBeforeCursor)
-  /* v8 ignore next -- a successful exec always defines the capture group */
+  /* a successful exec always defines the capture group */
   return match === null ? null : match[2] ?? ''
 }
 

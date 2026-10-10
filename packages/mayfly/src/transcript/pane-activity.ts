@@ -323,7 +323,7 @@ export function apply(ctx: Context): void {
   }
   const policy = new TranscriptPresentationPolicy()
   const factsService = ctx.get('mayflySessionFacts') as SessionFactsService | undefined
-  /* v8 ignore next -- mayflySessionFacts is an injected service; the fallback
+  /* mayflySessionFacts is an injected service; the fallback
      keeps direct thin-host construction renderer-neutral but cannot occur in
      a Cordis activation that satisfies this plugin's contract. */
   let facts: ConversationFacts = factsService?.current ?? {

@@ -61,7 +61,7 @@ async function fetchIndex(indexUrl: string): Promise<MarketIndex> {
       return parseMarketIndex(text)
     } catch (error) {
       failures.push(`${url}: ${
-        /* v8 ignore next -- fetch rejects with Error instances */
+        /* fetch rejects with Error instances */
         error instanceof Error ? error.message : String(error)}`)
     }
   }
@@ -110,7 +110,7 @@ export async function loadMarketCatalog(indexUrl: string, force = false): Promis
     writeCache(indexUrl, JSON.stringify(index))
     return { status: 'fresh', index }
   } catch (error) {
-    /* v8 ignore next -- both fetch legs and the parser throw Error instances */
+    /* both fetch legs and the parser throw Error instances */
     const message = error instanceof Error ? error.message : String(error)
     if (cached !== undefined) {
       return { status: 'stale', index: cached.index, message }

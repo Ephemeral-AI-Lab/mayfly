@@ -9,11 +9,12 @@ import { commandsForPlan } from '../verification-commands.mjs'
 
 const scripts = commands => commands.filter(([command, args]) => command === 'pnpm' && args[0] === 'run').map(([, args]) => args[1])
 
-test('a leaf change executes its focused coverage and width scan', () => {
+test('a leaf change runs its related specs and width scan, and never measures coverage', () => {
   const plan = classifyChanges(['packages/mayfly/src/transcript/status-context.ts'])
   const commands = commandsForPlan(plan)
   assert.ok(scripts(commands).includes('build:changed'))
-  assert.ok(commands.some(([command, args]) => command === 'pnpm' && args.includes('vitest') && args.includes('--coverage') && args.includes('packages/mayfly/tests/transcript/width-scan.spec.ts')))
+  assert.ok(commands.some(([command, args]) => command === 'pnpm' && args.includes('vitest') && args.includes('packages/mayfly/tests/transcript/width-scan.spec.ts')))
+  assert.ok(!commands.some(([, args]) => args.includes('--coverage')))
   assert.ok(!scripts(commands).includes('check:pack'))
 })
 
@@ -34,12 +35,12 @@ test('a shipped skill runs full validation, agent docs, and packaging', () => {
 test('a full gate retains Website selection and follows the CI deterministic checks', () => {
   const plan = promoteToFull(classifyChanges(['website/index.md']), 'requested')
   const full = scripts(commandsForPlan(plan, { smoke: true }))
-  for (const name of ['test:repo-workflow', 'typecheck', 'lint', 'diagrams:check', 'build', 'check:lib', 'shots:check', 'check:agent-docs', 'check:examples', 'website:build', 'test:coverage', 'test:retained', 'smoke:happy', 'bench:pty:assert']) {
+  for (const name of ['test:repo-workflow', 'typecheck', 'lint', 'diagrams:check', 'build', 'check:lib', 'shots:check', 'check:agent-docs', 'check:examples', 'website:build', 'test:coverage', 'smoke:happy', 'bench:pty:assert']) {
     assert.ok(full.includes(name), name)
   }
   assert.ok(!full.includes('check:pack'))
   const ci = readFileSync(`${ROOT}/.github/workflows/ci.yml`, 'utf8')
-  for (const script of ['typecheck', 'lint', 'test:repo-workflow', 'check:agent-docs', 'diagrams:check', 'build', 'check:lib', 'shots:check', 'check:examples', 'test:coverage', 'test:retained', 'smoke:happy', 'bench:pty:assert']) {
+  for (const script of ['typecheck', 'lint', 'test:repo-workflow', 'check:agent-docs', 'diagrams:check', 'build', 'check:lib', 'shots:check', 'check:examples', 'test:coverage', 'smoke:happy', 'bench:pty:assert']) {
     assert.ok(ci.includes(`- run: pnpm ${script}`), `CI must execute ${script}`)
     assert.ok(full.includes(script), `local full gate must execute ${script}`)
   }
@@ -61,12 +62,12 @@ test('a grid golden or the grid serializer reruns every spec that compares a gri
   assert.ok(classifyChanges(['script/scenarios/grid.mjs']).checks.repoWorkflowTests)
 })
 
-test('the stale-row check runs for a compiler change and the bench only with the smoke', () => {
-  const plan = classifyChanges(['packages/mayfly/src/core/ui-compiler.ts'])
-  assert.equal(plan.mode, 'changed')
-  assert.ok(commandsForPlan(plan).some(([, args]) => args.includes('test:retained')))
-  assert.ok(!scripts(commandsForPlan(promoteToFull(plan, 'requested'))).includes('bench:pty:assert'))
-  assert.ok(!commandsForPlan(classifyChanges(['packages/mayfly/src/transcript/thinking.ts'])).some(([, args]) => args.includes('test:retained')))
-  for (const file of ['script/bench-pty.mjs', 'script/test-retained.mjs']) assert.equal(classifyChanges([file]).mode, 'changed', file)
-  assert.ok(commandsForPlan(classifyChanges(['script/test-retained.mjs'])).some(([, args]) => args.includes('test:retained')))
+test('the full gate runs the suites once, and the bench only with the smoke', () => {
+  const plan = promoteToFull(classifyChanges(['packages/mayfly/src/core/ui-compiler.ts']), 'requested')
+  const full = commandsForPlan(plan, { smoke: true })
+  // Retained-row verification rides in the same run as coverage (the vitest `suite` project); no second suite run.
+  assert.deepEqual(scripts(full).filter(name => name.startsWith('test:') && name !== 'test:repo-workflow'), ['test:coverage'])
+  assert.ok(!full.some(([, args]) => args[0] === 'exec' && args[1] === 'vitest'))
+  assert.ok(!scripts(commandsForPlan(plan)).includes('bench:pty:assert'))
+  assert.equal(classifyChanges(['script/bench-pty.mjs']).mode, 'changed')
 })

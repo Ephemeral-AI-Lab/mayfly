@@ -61,11 +61,11 @@ export function probeTerminalBackground(
     // Every exit path shares the same idempotent cleanup. This includes a
     // terminal write failure after stdin has already entered raw mode.
     const settle = (rgb: MayflyRgbColor | undefined) => {
-      /* v8 ignore next -- every producer removes its listener after the first settle. */
+      /* every producer removes its listener after the first settle. */
       if (settled) return
       settled = true
       clearTimeout(timer)
-      /* v8 ignore else -- a successful listener registration is the only path that settles with listening=true. */
+      /* a successful listener registration is the only path that settles with listening=true. */
       if (listening) {
         listening = false
         try { proc.stdin.removeListener('data', onData) } catch { /* terminal already closed */ }

@@ -114,6 +114,6 @@ export function slashCommandLabel<T extends SlashCommandText>(match: SlashComman
   const { command, viaAlias } = match
   // An alias hit implies a non-empty alias list — the filter only reports
   // viaAlias when an alias scored — so the nullish fallback never fires.
-  /* v8 ignore next -- the fallback guards a shape the filter cannot produce */
+  /* the fallback guards a shape the filter cannot produce */
   return viaAlias ? `/${command.name} (${(command.aliases ?? []).join(', ')})` : `/${command.name}`
 }

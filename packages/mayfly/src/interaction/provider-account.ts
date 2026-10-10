@@ -39,7 +39,7 @@ export const accountInternals = {
         child.once('spawn', () => { child.unref(); resolve(true) })
       })
     } catch {
-      /* v8 ignore next -- node:child_process and spawn failures surface as the error event */
+      /* node:child_process and spawn failures surface as the error event */
       return false
     }
   },
@@ -190,7 +190,7 @@ export async function openAccountPanel(ctx: Context, route: string, signal?: Abo
   const lifetime = new AbortController()
   const cancellation = signal === undefined ? lifetime.signal : AbortSignal.any([lifetime.signal, signal])
   const releaseLifetime = ctx.effect(() => () => lifetime.abort())
-  /* v8 ignore next -- reassigned to the watch-disposal effect before the overlay can close */
+  /* reassigned to the watch-disposal effect before the overlay can close */
   let cleanup = (): void => {}
   /** Paint one view: while an attempt waits, accept pasted callback delivery. */
   const paint = (view: AccountView): MayflyUiNode => {
@@ -203,11 +203,11 @@ export async function openAccountPanel(ctx: Context, route: string, signal?: Abo
     id, title: t('DeepSeek Account'), presentation: 'editor', capturing: true,
     scope: { kind: 'app', targetId: `account/${route}` },
     onEvent: { action: async (event, context): Promise<MayflyUiActionReply> => {
-      /* v8 ignore next -- activate and the paste submit are the only panel events */
+      /* activate and the paste submit are the only panel events */
       if (event.kind !== 'activate' && event.kind !== 'submit') return { kind: 'completed' }
       if (event.kind === 'activate' && event.actionId === 'copy-link') {
         const url = (await service.getState()).attempt?.authorizeUrl
-        /* v8 ignore next -- the copy action only renders while a link waits */
+        /* the copy action only renders while a link waits */
         if (url === undefined) return { kind: 'completed' }
         try {
           await copyTextToClipboard(url)
@@ -227,7 +227,7 @@ export async function openAccountPanel(ctx: Context, route: string, signal?: Abo
       if (event.kind === 'submit' && event.submission.actionId === 'deliver-callback') {
         const server = ctx.get('webServer')
         const raw = event.submission.forms[0]?.fields.find(field => field.id === 'callback-url')?.value
-        /* v8 ignore next -- the paste form only renders while a webserver is composed */
+        /* the paste form only renders while a webserver is composed */
         const location = server === undefined || typeof raw !== 'string' ? undefined : parseCallbackLocation(raw, server.port)
         if (location === undefined) {
           return { kind: 'invalid', errors: [{ pagePath: [], formId: 'callback-paste', fieldId: 'callback-url', message: t('Paste the full callback address from the browser address bar') }] }
@@ -241,10 +241,10 @@ export async function openAccountPanel(ctx: Context, route: string, signal?: Abo
           return { kind: 'failed', message: t('The callback could not be delivered') }
         }
       }
-      /* v8 ignore next -- every other activate action returns in its own branch above */
+      /* every other activate action returns in its own branch above */
       if (event.kind === 'activate' && ['sign-in', 'restart-sign-in'].includes(event.actionId)) {
         const origin = callbackOrigin(ctx)
-        /* v8 ignore next -- both actions only render while a webserver is composed */
+        /* both actions only render while a webserver is composed */
         if (origin === undefined) return { kind: 'failed', message: t('Sign-in needs the local web server, which this setup does not run — use an API key instead') }
         try {
           if (event.actionId === 'restart-sign-in') {
@@ -252,11 +252,11 @@ export async function openAccountPanel(ctx: Context, route: string, signal?: Abo
             // startSignIn idempotently with its URL while it waits, so a fresh
             // authorize link requires retiring the current attempt first.
             const current = (await service.getState()).attempt
-            /* v8 ignore next -- the restart action only renders while a live attempt waits */
+            /* the restart action only renders while a live attempt waits */
             if (current !== null && !attemptTerminal(current)) await service.cancelSignIn(current.id)
             const restarted = await service.startSignIn(clientMetadata(ctx), origin, 'desktop')
             const url = restarted.attempt?.authorizeUrl
-            /* v8 ignore next -- a fresh attempt may still be initializing without its URL */
+            /* a fresh attempt may still be initializing without its URL */
             const opened = url === undefined ? false : await openUrlInBrowser(url)
             // Two state hops (retire, then fresh attempt) race the watch
             // repaint; the watch stream owns the final node, this replies
@@ -276,7 +276,7 @@ export async function openAccountPanel(ctx: Context, route: string, signal?: Abo
           return { kind: 'failed', message: t('Sign-in could not start — try again') }
         }
       }
-      /* v8 ignore next -- only the panel actions above reach activate */
+      /* only the panel actions above reach activate */
       return { kind: 'completed' }
     } },
   }, paint(await service.getState()), { signal: cancellation, reopen: 'focus', onClosed: () => {
@@ -290,7 +290,7 @@ export async function openAccountPanel(ctx: Context, route: string, signal?: Abo
   let closing = false
   const repaint = (view: AccountView): void => {
     connected = view.status === 'credential-stored'
-    /* v8 ignore next -- the watch stops with the panel; a late view races its own abort */
+    /* the watch stops with the panel; a late view races its own abort */
     if (!handle?.closed) handle?.set(paint(view))
     // Inside the guide a finished sign-in is the end of setup: show the
     // confirmation briefly, then hand the session back.

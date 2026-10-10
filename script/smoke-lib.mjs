@@ -43,8 +43,9 @@ export function assertDshVersion(dshBin) {
 }
 
 /**
- * A throwaway home with the Mayfly profile installed: builds the workspace,
- * link-installs the complete package closure via install-dev.sh, and isolates the
+ * A throwaway home with the Mayfly profile installed: link-installs the
+ * complete package closure of the existing lib/ build via install-dev.sh
+ * (the caller builds first, as the gate does), and isolates the
  * profile tree, the harness home, and pi-tui's log directory (pi-crash.log
  * and mayfly-overflow.log) under one temp root. The temp-HOME pnpm posture
  * (no purge prompts, no prepare re-builds, no frozen-lockfile refusal
@@ -77,7 +78,7 @@ export function installIntoThrowawayProfile(dshBin, profile) {
   console.log(`==> Installing Mayfly into throwaway profile '${profile}'`)
   const install = spawnSync('bash', [join(root, 'script/install-dev.sh')], {
     encoding: 'utf8',
-    env: envFor({ DSH_BIN: dshBin, PROFILE: profile, CI: 'true', PROFILE_INSTALL_FLAGS: '--no-frozen-lockfile' }),
+    env: envFor({ DSH_BIN: dshBin, PROFILE: profile, CI: 'true', PROFILE_INSTALL_FLAGS: '--no-frozen-lockfile', MAYFLY_SKIP_BUILD: '1' }),
     timeout: 300_000,
   })
   if (install.status !== 0) {
@@ -86,16 +87,6 @@ export function installIntoThrowawayProfile(dshBin, profile) {
     console.error((install.stderr ?? '').slice(-2000))
     process.exit(1)
   }
-
-  // install-dev's workspace build ran under the temp HOME; its pnpm
-  // auto-check leaves the worktree's deps-status dirty under that config,
-  // which makes later local pnpm commands refuse with a no-TTY purge
-  // prompt. Refresh the status under the ambient environment.
-  spawnSync('pnpm', ['install', '--config.confirmModulesPurge=false'], {
-    cwd: root,
-    encoding: 'utf8',
-    timeout: 120_000,
-  })
 
   return { home, dshHome, piAgent, envFor }
 }

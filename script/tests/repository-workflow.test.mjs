@@ -35,14 +35,6 @@ describe('change impact planning', () => {
     assert.ok(!classifyChanges(['packages/mayfly/src/transcript/thinking.ts']).tests.direct.includes('packages/mayfly/tests/perf/work-budget.spec.ts'))
   })
 
-  test('what a compiled surface paints from selects the stale-row check', () => {
-    for (const file of ['packages/mayfly/src/core/ui-compiler.ts', 'packages/mayfly/src/core/ui-stacks.ts', 'packages/mayfly/src/core/surface-renderer.ts', 'packages/mayfly/src/core/node-slot.ts', 'packages/mayfly/src/core/terminal.ts']) {
-      assert.equal(classifyChanges([file]).checks.retainedRows, true, file)
-    }
-    assert.equal(classifyChanges(['packages/mayfly/src/core/keymap.ts']).checks.retainedRows, false)
-    assert.equal(promoteToFull(classifyChanges(['packages/mayfly/src/core/keymap.ts']), 'test').checks.retainedRows, true)
-  })
-
   test('key tables select the key audit', () => {
     for (const file of ['packages/mayfly/src/interaction/keys.ts', 'packages/mayfly/src/core/key-actions.ts', 'packages/mayfly/src/core/keymap.ts', 'packages/mayfly/src/core/ui-key-grammar.ts']) {
       assert.ok(classifyChanges([file]).tests.direct.includes('packages/mayfly/tests/core/key-audit.spec.ts'), file)
@@ -112,11 +104,10 @@ describe('change impact planning', () => {
     assert.deepEqual(plan.tests.related, [])
   })
 
-  test('selects related coverage for an ordinary leaf implementation', () => {
+  test('selects related specs for an ordinary leaf implementation', () => {
     const plan = classifyChanges(['packages/mayfly/src/frontend/locale.ts'])
     assert.equal(plan.mode, 'changed')
     assert.equal(plan.checks.build, true)
-    assert.deepEqual(plan.tests.coverage, ['packages/mayfly/src/frontend/locale.ts'])
     assert.deepEqual(plan.tests.related, ['packages/mayfly/src/frontend/locale.ts'])
     assert.ok(plan.tests.direct.includes('packages/mayfly/tests/locale-catalog.spec.ts'))
   })

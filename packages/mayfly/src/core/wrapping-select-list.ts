@@ -46,7 +46,7 @@ export class WrappingSelectList extends SelectList {
       ...(layout.truncatePrimary === undefined ? {} : {
         truncatePrimary: (context): string => {
           const item = filteredItems[Number(context.id)]
-          /* v8 ignore next -- the canonical items come from this same indexed array */
+          /* the canonical items come from this same indexed array */
           if (item === undefined) return context.text
           return layout.truncatePrimary!({ ...context, item })
         },

@@ -52,10 +52,11 @@ The executable selection rules are in `script/test-impact.mjs`,
 
 Use `pnpm run verify:full` instead of an additional `verify:changed` for broad,
 release, architecture, composition, or workflow changes. CI runs the full
-deterministic gate. Full verification includes screenshot freshness, coverage
-once, the stale-row check (`test:retained`), happy smoke, the PTY bench against
-its ceilings (`bench:pty:assert`), and a Website build when Website files
-changed; do not precede it with redundant plain tests. Distribution changes selected by the
+deterministic gate. Full verification includes screenshot freshness, one
+vitest run (`test:coverage`: the suites with the stale-row check on, the work
+budgets, and the coverage floor), happy smoke and the PTY bench against its
+ceilings (`bench:pty:assert`) on the gate's own build, and a Website build when
+Website files changed; do not precede it with redundant plain tests. Distribution changes selected by the
 planner also run `check:pack`; a plain full gate does not pack. Release
 publication additionally requires `pnpm release:preflight <version>`, verified
 tarballs, and the human acceptance described below. Instruction and
@@ -69,11 +70,13 @@ decision tests (accepted frames, keys and writes, lifecycle, width, budgets);
 a phase ends with `verify:full`; CI runs the full gate on `main`. Tests record
 decisions; do not add tests only to reach a line.
 
-- Vitest uses fork workers and per-file 100% executable-source coverage
-  (roadmap Phase 2b replaces the per-file gate with a repository-wide floor).
-  Type-only `src/types.ts` files are excluded. Specs import the tested source
-  relatively, but package-name imports resolve workspace `lib/`; fresh
-  worktrees need a full build baseline.
+- Vitest uses fork workers and two projects: `suite` runs every spec with
+  `MAYFLY_UI_VERIFY_MEMO=1` (each retained-row hit paints again and a
+  difference fails), `perf` runs the work budgets without it. Coverage is a
+  report with a repository-wide floor (`vitest.config.ts`) that the full gate
+  measures; a local changed run does not. Type-only `src/types.ts` files are
+  excluded. Specs import the tested source relatively, but package-name
+  imports resolve workspace `lib/`; fresh worktrees need a full build baseline.
 - Every component row must fit `render(width)`. Add content renderers to the
   owning `width-scan.spec.ts`. Runtime width helpers flow through
   `mayflyComponents`; tests use `packages/mayfly/src/core/width.ts`. The frame

@@ -54,7 +54,7 @@ export class CommandAliasRegistry {
       for (const alias of previous.aliases) {
         // The conflict check above already rejected an alias held by another
         // canonical, so a replaced entry's aliases can only point back at it.
-        /* v8 ignore next -- the stale-pointer branch is unreachable */
+        /* the stale-pointer branch is unreachable */
         if (this.byAlias.get(alias) === previous) this.byAlias.delete(alias)
       }
     }

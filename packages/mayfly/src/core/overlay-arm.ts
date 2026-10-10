@@ -36,7 +36,7 @@ export class OverlayArm {
     this.started = true
     const generation = ++this.generation
     this.timer = setTimeout(() => {
-      /* v8 ignore next -- dispose() clears the timer, so a stale callback is a safety net only. */
+      /* dispose() clears the timer, so a stale callback is a safety net only. */
       if (generation !== this.generation) return
       this.timer = undefined
       this.elapsed = true

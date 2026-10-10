@@ -97,7 +97,7 @@ function describeFailure(target: string, outcome: SpawnOutcome): string {
 
 /** Text for filesystem and YAML failures. */
 function errorText(error: unknown): string {
-  /* v8 ignore next -- the default filesystem and YAML seams throw Error instances */
+  /* the default filesystem and YAML seams throw Error instances */
   return error instanceof Error ? error.message : String(error)
 }
 
@@ -216,7 +216,7 @@ function prepareProfilePatchRows(root: string, rows: readonly MarketInstallRow[]
 
 /** Prepare removal of this entry's exact `id + name` rows without writing. */
 function prepareProfilePatchRemoval(root: string, rows: readonly MarketInstallRow[]): PatchEdit | undefined {
-  /* v8 ignore next -- the manifest schema guarantees at least one row */
+  /* the manifest schema guarantees at least one row */
   if (rows.length === 0) return undefined
   const path = join(root, 'cordis.patch.yml')
   const existing = updaterInternals.readTextFile(path)
@@ -231,10 +231,10 @@ function prepareProfilePatchRemoval(root: string, rows: readonly MarketInstallRo
   doc.contents.items = doc.contents.items.filter(item => {
     if (!isMap(item) || !item.has('insert')) return true
     const insert = item.get('insert', true)
-    /* v8 ignore next -- insertionRows validated this exact node above */
+    /* insertionRows validated this exact node above */
     if (!isSeq(insert)) return true
     const kept = insert.items.filter(row => {
-      /* v8 ignore next -- insertionRows validated every nested row above */
+      /* insertionRows validated every nested row above */
       if (!isMap(row)) return true
       return !keys.has(`${String((row.get('id') as unknown) ?? '')}\0${String((row.get('name') as unknown) ?? '')}`)
     })

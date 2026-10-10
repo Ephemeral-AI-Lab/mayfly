@@ -180,7 +180,7 @@ export async function openProviderEditor(ctx: Context, route: string, signal?: A
     if (modelId === '') return { kind: 'invalid', errors: [{ ...field, message: t('Enter a model ID') }] }
     if (customModels.has(modelId)) return { kind: 'invalid', errors: [{ ...field, message: t('Already listed') }] }
     const matched = (await loadModelsDevIndex(ctx, signal))?.lookup(modelId)
-    /* v8 ignore next -- a cancellation racing the awaited catalog read is a lifetime path */
+    /* a cancellation racing the awaited catalog read is a lifetime path */
     if (signal.aborted || cancellation.aborted) return { kind: 'cancelled' }
     customModels.set(modelId, {
       ...(matched?.contextWindow === undefined ? {} : { contextWindow: matched.contextWindow }),
@@ -189,7 +189,7 @@ export async function openProviderEditor(ctx: Context, route: string, signal?: A
     })
     try {
       const view = await read()
-      /* v8 ignore next -- a submission resolving after the editor closed finds its lifetime already released */
+      /* a submission resolving after the editor closed finds its lifetime already released */
       if (!cancellation.aborted && !signal.aborted) return { kind: 'accepted', ...reply(view), feedback: { severity: 'success', message: t('Model "{model}" added — save to persist', { model: modelId }) } }
     } catch { /* staging is in-memory; a failed re-read leaves the next refresh to repaint */ }
     return { kind: 'completed', feedback: { severity: 'success', message: t('Model "{model}" added — save to persist', { model: modelId }) } }
@@ -235,13 +235,13 @@ export async function openProviderEditor(ctx: Context, route: string, signal?: A
       scope: { kind: 'app', targetId: `${NAMESPACE}/${route}` }, source: source(initial),
       onEvent: { action: async (event, context): Promise<MayflyUiActionReply> => {
         if (event.kind !== 'submit' && event.kind !== 'activate') return { kind: 'completed' }
-        /* v8 ignore next -- a cancellation racing the awaited native read is a lifetime path */
+        /* a cancellation racing the awaited native read is a lifetime path */
         if (context.signal.aborted || cancellation.aborted) return { kind: 'cancelled' }
         if (event.kind === 'submit' && event.submission.actionId === 'add-model') {
           return addModel(event.submission.forms.flatMap(form => form.fields), context.signal)
         }
         const view = await read()
-        /* v8 ignore next -- a cancellation racing the awaited native read is a lifetime path */
+        /* a cancellation racing the awaited native read is a lifetime path */
         if (context.signal.aborted || cancellation.aborted) return { kind: 'cancelled' }
         if (view.profile === undefined || view.ref !== openedRef) return { kind: 'conflict', ...reply(view), message: t('Provider configuration changed; reopen the provider') }
         const stamps = event.kind === 'submit' ? event.submission.source : context.source
@@ -256,15 +256,15 @@ export async function openProviderEditor(ctx: Context, route: string, signal?: A
               await persistProviders(settings, [{ op: 'unset', path: ['providers', route] }], expected)
               settingsRemoved = true
             }
-            /* v8 ignore next -- a cancellation racing the awaited native read is a lifetime path */
+            /* a cancellation racing the awaited native read is a lifetime path */
             if (context.signal.aborted || cancellation.aborted) return { kind: 'cancelled' }
             if (!view.credential.writable) return { kind: 'accepted', ...reply(await read()), feedback: { severity: 'warning', message: t(event.actionId === 'delete' ? 'Provider removed; its external credential remains unchanged' : 'The external credential cannot be cleared here') } }
             await credentials.unset(credentialRef(openedRef!))
-            /* v8 ignore next -- a cancellation racing the awaited native read is a lifetime path */
+            /* a cancellation racing the awaited native read is a lifetime path */
             if (context.signal.aborted || cancellation.aborted) return { kind: 'cancelled' }
             return { kind: 'accepted', ...reply(await read()), feedback: { severity: 'success', message: t(event.actionId === 'delete' ? 'Provider removed' : 'Stored API key cleared') } }
           } catch (error) {
-            /* v8 ignore next -- a cancellation racing the awaited native read is a lifetime path */
+            /* a cancellation racing the awaited native read is a lifetime path */
             if (context.signal.aborted || cancellation.aborted) return { kind: 'cancelled' }
             return error instanceof SettingsConflictError
               ? { kind: 'conflict', ...reply(await read()), message: t('Provider settings changed elsewhere') }
@@ -300,14 +300,14 @@ export async function openProviderEditor(ctx: Context, route: string, signal?: A
         let settingsWritten = false
         try {
           if (ops.length > 0) { await persistProviders(settings, ops, expected); settingsWritten = true }
-          /* v8 ignore next -- a cancellation racing the awaited native read is a lifetime path */
+          /* a cancellation racing the awaited native read is a lifetime path */
           if (context.signal.aborted || cancellation.aborted) return { kind: 'cancelled' }
           if (key !== undefined && key.length > 0) await credentials.set(credentialRef(openedRef!), key)
-          /* v8 ignore next -- a cancellation racing the awaited native read is a lifetime path */
+          /* a cancellation racing the awaited native read is a lifetime path */
           if (context.signal.aborted || cancellation.aborted) return { kind: 'cancelled' }
           return { kind: 'accepted', ...reply(await read()), feedback: { severity: 'success', message: t('provider "{route}" updated', { route }) } }
         } catch (error) {
-          /* v8 ignore next -- a cancellation racing the awaited native read is a lifetime path */
+          /* a cancellation racing the awaited native read is a lifetime path */
           if (context.signal.aborted || cancellation.aborted) return { kind: 'cancelled' }
           return error instanceof SettingsConflictError
             ? { kind: 'conflict', ...reply(await read()), message: t('Provider settings changed elsewhere') }

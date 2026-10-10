@@ -81,7 +81,7 @@ async function editInExternalEditor(initialText: string, command: string): Promi
     if (code !== 0) return undefined
     return await readFile(file, 'utf-8')
   } finally {
-    /* v8 ignore next -- best-effort cleanup; an editor wedging its own temp dir must not mask the read-back result */
+    /* best-effort cleanup; an editor wedging its own temp dir must not mask the read-back result */
     await rm(dir, { recursive: true, force: true }).catch(() => {})
   }
 }

@@ -177,7 +177,7 @@ export function apply(ctx: Context, config: Config): void {
     try {
       const agent = config.resume === undefined ? await create() : await resolve(config.resume)
       select(agent)
-      /* v8 ignore else -- the no-task startup path is covered explicitly; V8 retains a synthetic empty else arm. */
+      /* the no-task startup path is covered explicitly; V8 retains a synthetic empty else arm. */
       if (config.task !== undefined) {
         requests.begin('main')
         agent.followup(createUserMessage({

@@ -16,8 +16,8 @@
  * sent, and `mayfly.updateCheck: false` in `~/.dsh/settings.yaml` makes
  * Mayfly fully offline.
  *
- * Everything goes through the io seam, so the per-file gate drives the
- * retry ladder and cache from specs; the async body is fire-and-forget
+ * Everything goes through the io seam, so specs drive the retry ladder and
+ * cache without a network; the async body is fire-and-forget
  * with the fiber's unload flag gating every continuation (the
  * commands-plugin discipline).
  *
@@ -242,6 +242,6 @@ export function apply(ctx: Context): void {
   ctx.effect(() => () => {
     unloaded = true
   })
-  /* v8 ignore next 1 -- the defensive catch; runUpdateCheck never rejects */
+  /* the defensive catch; runUpdateCheck never rejects */
   void runUpdateCheck(ctx, () => currentMayflySettings(ctx), () => unloaded).catch(() => {})
 }

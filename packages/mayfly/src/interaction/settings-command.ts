@@ -94,7 +94,7 @@ export async function openSettingsNamespace(ctx: Context, ns: string, callerSign
       }
     } },
   }, initialSnapshot.node, { signal, reopen: 'focus', onClosed: () => teardown?.() })
-  /* v8 ignore next -- no await between the focus check and open; only a re-entrant listener could land a same-id overlay here */
+  /* no await between the focus check and open; only a re-entrant listener could land a same-id overlay here */
   if (opened === undefined) { releaseLifetime(); return true }
   handle = opened
   let scheduled = false

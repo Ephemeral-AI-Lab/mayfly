@@ -2,9 +2,9 @@
  * The updater's process seams (D52): every side effect the update family
  * performs — subprocesses, registry fetches, filesystem reads, clocks,
  * environment — goes through the `updaterInternals` object, the
- * `internals` seam pattern `@deepseek-ai/dsh-cmdline` established. The
- * per-file coverage gate makes the seam load-bearing: specs replace a
- * field, drive a branch, restore it. Two spawn shapes exist because the
+ * `internals` seam pattern `@deepseek-ai/dsh-cmdline` established. Specs
+ * replace a field, drive a branch, and restore it, so no test spawns a
+ * real subprocess or reaches a registry. Two spawn shapes exist because the
  * two uses differ: a one-shot capture (version probes, installs, the
  * import sweep) and an interactive child whose output streams while the
  * caller still writes stdin (the pipe-stdio boot smoke, which must send

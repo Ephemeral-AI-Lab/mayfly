@@ -77,7 +77,7 @@ function openThemePicker(ctx: Context): CommandResult {
       if (target === undefined) return { kind: 'failed', message: t('unknown theme "{key}"', { key }) }
       const result = await switchTheme(ctx, target)
       if (result.kind === 'error') return { kind: 'failed', message: result.text }
-      /* v8 ignore next -- switchTheme success always carries the "switched to" text */
+      /* switchTheme success always carries the "switched to" text */
       return { kind: 'completed', dismiss: true, ...(result.text === undefined ? {} : { feedback: { severity: 'success' as const, message: result.text } }) }
     } },
   }, ui.surface({ chrome: 'overlay', title: t('Select a theme'), child: ui.list({
@@ -120,7 +120,7 @@ async function switchTheme(ctx: Context, next: ThemeTarget, config?: themeCustom
     await ctx.plugin(themeDark)
     return {
       kind: 'error',
-      /* v8 ignore next -- mount failures are Error instances (config validation or service conflicts) */
+      /* mount failures are Error instances (config validation or service conflicts) */
       text: t('failed to apply theme "{key}": {error}', { key: next.key, error: error instanceof Error ? error.message : String(error) }),
     }
   }

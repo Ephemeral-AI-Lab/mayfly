@@ -250,7 +250,7 @@ export async function withStagingDir<T>(fn: (stage: string) => Promise<T>): Prom
   try {
     return await fn(stage)
   } finally {
-    /* v8 ignore next -- best-effort cleanup; losing the race leaves one bounded mayfly-paste-* dir (D55) */
+    /* best-effort cleanup; losing the race leaves one bounded mayfly-paste-* dir (D55) */
     await rm(stage, { recursive: true, force: true }).catch(() => {})
   }
 }

@@ -159,7 +159,7 @@ async function subagentPromptParts(attachments: AttachmentReader | undefined, bl
 /** Command descriptors projected through the app-owned session boundary. */
 function availableCommands(ctx: Context) {
   const agent = ctx.mayflyCurrentAgent.current()
-  /* v8 ignore next -- slashHint checks the current Agent immediately before this sole call site. */
+  /* slashHint checks the current Agent immediately before this sole call site. */
   if (agent === null) return []
   return ctx.commands.list(agent).map(command => ({
     name: command.name,
@@ -584,7 +584,7 @@ export function apply(ctx: Context): void {
       },
       (error: unknown) => {
         if (unloaded) return
-        /* v8 ignore next -- execute() normalizes handler rejections to Error before this rejection handler runs */
+        /* execute() normalizes handler rejections to Error before this rejection handler runs */
         showFeedback('command', error instanceof Error ? error.message : String(error), 'error')
       },
     )
@@ -927,7 +927,7 @@ export function apply(ctx: Context): void {
     }
     const dispose = screen.setContentScrollHandler?.(data => {
       if (!extensionRuntime.focused) return false
-      /* v8 ignore start -- exercised by the real PTY and mouse path */
+      /* exercised by the real PTY and mouse path */
       const wheel = normalizeWheelInput(data)
       if (wheel !== undefined) {
         const direction = ctx.mayflyKeymap.matches(wheel, ACTION_MOVE_UP)
@@ -941,8 +941,7 @@ export function apply(ctx: Context): void {
         ctx.mayflyScreen.scrollContent(direction, 3)
         return true
       }
-      /* v8 ignore stop */
-      /* v8 ignore start -- exercised by the real PTY and mouse path */
+      /* exercised by the real PTY and mouse path */
       const pageUp = ctx.mayflyKeymap.matches(data, ACTION_PAGE_UP)
       const pageDown = ctx.mayflyKeymap.matches(data, ACTION_PAGE_DOWN)
       if (pageUp || pageDown) {
@@ -956,12 +955,11 @@ export function apply(ctx: Context): void {
         notificationOwner.clear('transcript-follow')
         return true
       }
-      /* v8 ignore stop */
       return false
     })
     return () => dispose?.()
   })
-  /* v8 ignore start -- notification is driven by live streaming events */
+  /* notification is driven by live streaming events */
   // A reply form opened from this draft sent it: the draft left the editor.
   ctx.effect(() => ctx.on('mayfly/subagent-reply-sent', sent => {
     if (editor.getText().trim() !== sent) return
@@ -977,5 +975,4 @@ export function apply(ctx: Context): void {
     if (paused) showFeedback('transcript-follow', t('new messages available · press {key} to follow', { key: interactionKeyHint(ctx.mayflyKeymap, ACTION_END, 'End') }), 'info')
     else notificationOwner.clear('transcript-follow')
   }))
-  /* v8 ignore stop */
 }

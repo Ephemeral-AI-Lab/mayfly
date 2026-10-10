@@ -113,7 +113,7 @@ export function apply(ctx: Context): void {
         onEvent: { action: async (event, context) => {
           if (event.kind === 'activate' && event.actionId === 'sign-in' && signInRoute !== undefined) {
             const opened = await openAccountPanel(ctx, signInRoute, lifetime.signal, { onBack: open, onConnected: () => chooseModel(signInRoute!) })
-            /* v8 ignore next -- the guide only offers sign-in after the same service and route check */
+            /* the guide only offers sign-in after the same service and route check */
             if (!opened) return { kind: 'failed', message: t('Account sign-in is unavailable') }
             return { kind: 'completed', dismiss: true }
           }

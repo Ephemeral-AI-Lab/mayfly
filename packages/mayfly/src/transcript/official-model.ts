@@ -706,7 +706,7 @@ export class OfficialConversationModelSource {
  * @returns whether the draft is provably behind the durable projection.
  */
 function staleTurn(durable: TranscriptModel, turn: number): boolean {
-  /* v8 ignore next -- durable models all come from conversationTranscriptModel, which always emits turns */
+  /* durable models all come from conversationTranscriptModel, which always emits turns */
   const turns = durable.turns ?? []
   if (turns.some(item => item.turn > turn || (item.turn === turn && item.endedAt !== undefined))) return true
   const last = durable.entries.findLast((entry): entry is TranscriptEntryModel => entry.kind.startsWith('transcript-'))

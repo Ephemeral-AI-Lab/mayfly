@@ -305,17 +305,15 @@ export class MayflyScreenService extends Service implements MayflyScreen {
     return this.runtime.contentChanged()
   }
 
-  /* v8 ignore start -- exercised by End in the real input path */
+  /* exercised by End in the real input path */
   followContent = (): void => {
-    /* v8 ignore next */
     this.runtime.followContent()
   }
 
-  /* v8 ignore start -- exercised through the real terminal input boundary */
+  /* exercised through the real terminal input boundary */
   setContentScrollHandler = (handler: ((data: string) => boolean) | undefined): (() => void) => {
     return this.runtime.setContentScrollHandler(handler)
   }
-  /* v8 ignore stop */
 
   /**
    * Mount a component as an overlay above the base content.

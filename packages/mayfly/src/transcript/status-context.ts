@@ -123,7 +123,7 @@ function normalizeWindow(contextWindow: number | undefined): number | undefined 
  */
 export function apply(ctx: Context): void {
   const factsService = ctx.get('mayflySessionFacts') as SessionFactsService | undefined
-  /* v8 ignore next -- mayflySessionFacts is an injected service; the fallback
+  /* mayflySessionFacts is an injected service; the fallback
      only supports direct structural construction outside Cordis activation. */
   let facts: ConversationFacts = factsService?.current ?? {
     phase: 'idle', active: false, turn: 0, flowDownChars: 0, todos: [], contextTokens: 0, agentCalls: [],

@@ -102,7 +102,7 @@ function finiteInteger(value: number | undefined, fallback: number): number {
 }
 
 function compareId(left: string, right: string): number {
-  /* v8 ignore next -- registered ids are unique, so sort never compares equal ids */
+  /* registered ids are unique, so sort never compares equal ids */
   return left < right ? -1 : left > right ? 1 : 0
 }
 
@@ -158,7 +158,7 @@ export function renderSurfaceTabs(lane: SurfaceLaneLayout, width: number): strin
     if (kept.has(index)) continue
     const trial = [...kept, index].sort((left, right) => left - right).map(item => tokens[item]!.value)
     const hidden = tokens.length - trial.length
-    /* v8 ignore next -- the full set was already proven too wide above */
+    /* the full set was already proven too wide above */
     if (visibleWidth(`${trial.join(' ')}${hidden === 0 ? '' : ` +${String(hidden)}`}`) <= available) kept.add(index)
   }
   const ordered = [...kept].sort((left, right) => left - right).map(index => tokens[index]!.value)
@@ -698,7 +698,7 @@ export class SurfaceManager {
       if (leftOrder !== undefined || rightOrder !== undefined) {
         if (leftOrder === undefined) return 1
         if (rightOrder === undefined) return -1
-        /* v8 ignore next -- one id has one index in the user order map */
+        /* one id has one index in the user order map */
         if (leftOrder !== rightOrder) return leftOrder - rightOrder
       }
       return Number(right.pinned) - Number(left.pinned)

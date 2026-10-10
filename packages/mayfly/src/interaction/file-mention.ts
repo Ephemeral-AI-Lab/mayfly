@@ -115,7 +115,7 @@ async function collectFsMentionCandidates(root: string, signal: AbortSignal, pla
   // The abort lands in the loop condition: an aborted signal ends the walk
   // between rounds, and the entry-level check below covers mid-directory.
   while (stack.length > 0 && scanned < MAX_FALLBACK_SCAN && !signal.aborted) {
-    /* v8 ignore next -- the loop condition guarantees a non-empty stack; the fallback only satisfies the index-access checker */
+    /* the loop condition guarantees a non-empty stack; the fallback only satisfies the index-access checker */
     const relativeDir = stack.pop() ?? ''
     const absoluteDir = relativeDir.length === 0 ? root : join(root, relativeDir)
     let entries: Dirent[]

@@ -67,7 +67,7 @@ export function nodeSlotEpoch(keymap: MayflyKeymap, locale: { readonly snapshot:
 /** Slots route no events yet: an action settles without a handler, as a disposed endpoint's does. */
 const SLOT_EVENTS: MayflyUiEventEndpoint<MayflyUiNode | null> = Object.freeze({
   /* The surface never publishes a reply-less preparation. */
-  prepare: async () => Object.freeze({ reply: undefined, /* v8 ignore next */ publish: () => false }),
+  prepare: async () => Object.freeze({ reply: undefined, publish: () => false }),
 })
 
 /** Focus follows the compiled surface's focus target; a slot without controls takes no focus. */
@@ -121,7 +121,7 @@ class SlotAttachment {
         surfaceRuntime: this.runtime,
         ...(compiler.counters === undefined ? {} : { counters: compiler.counters }),
       })
-      /* v8 ignore next -- the model's own admitted node skips validation, and the surface compiler contains its failures. */
+      /* the model's own admitted node skips validation, and the surface compiler contains its failures. */
       this.compiled = result.ok ? result.value : { node, component: result.errorComponent, focusTarget: null }
     }
     this.renderedRevision = this.model.revision

@@ -4,8 +4,8 @@
  * manifest, spawning the calibration install and the booted child,
  * writing output, exiting — goes through the `cliInternals` object, the
  * `internals` seam pattern `@deepseek-ai/dsh-cmdline` established and the
- * updater family (D52) reused. The per-file coverage gate makes the seam
- * load-bearing: specs replace a field, drive a branch, restore it.
+ * updater family (D52) reused. Specs replace a field, drive a branch, and
+ * restore it, so no test spawns a real process or touches a real profile.
  *
  * Two spawn shapes exist because the two uses differ: a one-shot capture
  * (the calibration install — its output is translated into a one-line

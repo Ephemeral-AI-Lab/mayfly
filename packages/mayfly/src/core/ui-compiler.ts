@@ -2691,7 +2691,7 @@ class CompiledSurface implements MayflyEditorShellComponent {
     this.viewport = safeViewport(this.options.getViewport)
     const controls = reconcile(this.state)
     const active = controls[this.state.lastIndex]
-    /* v8 ignore next -- a live focus facade is created only for a tree with controls. */
+    /* a live focus facade is created only for a tree with controls. */
     if (active === undefined) return undefined
     const tabControlId = controlGroups(controls)
       .filter(group => group.kind === 'tabs')[this.state.lastTabGroupIndex]
@@ -2795,7 +2795,7 @@ class CompiledSurface implements MayflyEditorShellComponent {
           countWork(this.runtimeOptions.counters, 'layoutPasses')
           const frame = renderLayoutFrame(expandedComponent, safeWidth, Math.max(1, viewport.rows - hint.length), () => {})
           const lines = [...frame.lines, ...hint]
-          return { rows: lines.map(row => visibleWidth(row) <= safeWidth ? row : /* v8 ignore next -- layout frames and hint rows are already produced at the safe width */ sliceByColumn(row, 0, safeWidth, true)), overflowed: false }
+          return { rows: lines.map(row => visibleWidth(row) <= safeWidth ? row : /* layout frames and hint rows are already produced at the safe width */ sliceByColumn(row, 0, safeWidth, true)), overflowed: false }
         } finally { this.state.layoutPass = false; this.viewport = viewport }
       }
       let rows: string[]
@@ -2999,7 +2999,7 @@ class CompiledSurface implements MayflyEditorShellComponent {
 
   private controlRectangles(controls: readonly ControlDescriptor[]): Map<string, LayoutRect> {
     const rectangles = new Map<string, LayoutRect>()
-    /* v8 ignore next -- input returns before geometry lookup when no control exists. */
+    /* input returns before geometry lookup when no control exists. */
     if (controls.length === 0) return rectangles
     const width = Math.max(1, this.viewport.columns)
     // Alternate and interaction surfaces size geometry from the viewport;
@@ -3011,7 +3011,7 @@ class CompiledSurface implements MayflyEditorShellComponent {
     beginLayoutPass(this.state)
     countWork(this.runtimeOptions.counters, 'layoutPasses')
     try {
-      /* v8 ignore next -- pi-tui does not request repaint during synchronous measurement. */
+      /* pi-tui does not request repaint during synchronous measurement. */
       const frame = renderLayoutFrame(this.root, width, height, () => {})
       const boxes = layoutBoxes(frame.root)
       const byComponent = new Map<Component, ControlDescriptor[]>()
@@ -3054,7 +3054,7 @@ class CompiledSurface implements MayflyEditorShellComponent {
       const runtimeOptions = this.runtimeOptions
       const grammar = keyGrammar(grammarStateFor(this.state, runtimeOptions, controls, active, this.mode, this.escapeLabel))
       const binding = grammar.find(candidate => matchesBinding(candidate.match, data, this.options.keymap))
-      /* v8 ignore next -- every grammar ends with a catch-all binding. */
+      /* every grammar ends with a catch-all binding. */
       if (binding === undefined) return
       this.apply(binding.intent, data, controls, active)
     } finally {
@@ -3064,7 +3064,7 @@ class CompiledSurface implements MayflyEditorShellComponent {
 
   private moveTo(index: number, within: readonly ControlDescriptor[]): void {
     const control = within[index]
-    /* v8 ignore next -- every caller resolves an entry from the current control set. */
+    /* every caller resolves an entry from the current control set. */
     if (control === undefined) return
     const tabGroups = controlGroups(within).filter(group => group.kind === 'tabs')
     this.state.setEditing(undefined)
@@ -3084,7 +3084,7 @@ class CompiledSurface implements MayflyEditorShellComponent {
   private moveGroup(delta: -1 | 1, controls: readonly ControlDescriptor[], active: ControlDescriptor): void {
     const groups = controlGroups(controls)
     const current = groups.findIndex(group => group.id === active.group)
-    /* v8 ignore next -- a non-tab active control belongs to one content group above. */
+    /* a non-tab active control belongs to one content group above. */
     if (current < 0) return
     const sibling = controls[this.state.lastIndex + delta]
     if (sibling?.group === active.group && !(active.kind === 'event' && (active.role === 'tab' || active.role === 'list-single' || active.role === 'list-multiple'))) {
@@ -3140,7 +3140,7 @@ class CompiledSurface implements MayflyEditorShellComponent {
   private switchTab(delta: -1 | 1, controls: readonly ControlDescriptor[], active: ControlDescriptor | undefined): void {
     const onStrip = active?.kind === 'event' && active.role === 'tab'
     const group = selectedTabGroup(controlGroups(controls), active, this.state.lastTabGroupIndex)!
-    /* v8 ignore next -- tab groups register only tab-change event controls. */
+    /* tab groups register only tab-change event controls. */
     const tabEvent = (control: ControlDescriptor): Extract<MayflyUiEvent, { readonly kind: 'tab-change' }> | undefined =>
       control.kind === 'event' && control.event.kind === 'tab-change' ? control.event : undefined
     const entries = group.entries.filter(entry => tabEvent(entry.control) !== undefined)
@@ -3179,7 +3179,7 @@ class CompiledSurface implements MayflyEditorShellComponent {
         this.moveTo(groupTarget(controls, homeGroup(controls)!, this.state.groupActiveKeys.get(homeGroup(controls)!)), controls)
         return
       }
-      /* v8 ignore next -- an expanded view resolves Escape through its own collapse binding. */
+      /* an expanded view resolves Escape through its own collapse binding. */
       case 'collapse': this.state.expandedKey = undefined; return
       case 'cancel-work': {
         // The grammar offers this step only while a loader's cancel is among the controls.
@@ -3285,7 +3285,7 @@ class CompiledSurface implements MayflyEditorShellComponent {
       case 'expand': this.state.expandedKey = active!.key; return
       case 'scroll': {
         const scroll = this.state.scrollViews.get(this.state.expandedKey ?? active!.key)
-        /* v8 ignore next -- compiler registration creates both descriptors atomically. */
+        /* compiler registration creates both descriptors atomically. */
         if (scroll !== undefined) scrollBy(scroll, intent.movement)
         return
       }
@@ -3293,7 +3293,7 @@ class CompiledSurface implements MayflyEditorShellComponent {
       case 'close': this.closeSurface(); return
       case 'rail-back': {
         const rail = railGroupFor(controls, this.state.lastIndex)
-        /* v8 ignore next -- the grammar binds `←` to the rail only while the surface has one. */
+        /* the grammar binds `←` to the rail only while the surface has one. */
         if (rail !== undefined) this.moveTo(groupTarget(controls, rail, this.state.groupActiveKeys.get(rail)), controls)
         return
       }
@@ -3315,7 +3315,7 @@ class CompiledSurface implements MayflyEditorShellComponent {
         return
       }
     }
-    /* v8 ignore next -- every remaining intent is bound only while a control holds focus. */
+    /* every remaining intent is bound only while a control holds focus. */
     if (active === undefined) return
     switch (intent.kind) {
       case 'group': this.commitEditing(active); this.moveGroup(intent.delta, reconcile(this.state), active); return
@@ -3402,7 +3402,7 @@ class CompiledSurface implements MayflyEditorShellComponent {
       case 'picker-toggle': {
         const address = this.surfaceRuntime.fieldAddress(active.key)!
         const picker = model?.form(address)?.fields[address.fieldId]?.picker
-        /* v8 ignore next -- an open picker always has a frontend model. */
+        /* an open picker always has a frontend model. */
         if (picker === undefined) return
         if (intent.kind === 'picker-move') model!.updateForm(address, { kind: 'picker', fieldId: address.fieldId, intent: { kind: 'move', direction: intent.delta, count: 1 } })
         else if (picker.focusedId !== undefined) model!.updateForm(address, { kind: 'picker', fieldId: address.fieldId, intent: { kind: 'toggle', id: picker.focusedId } })
