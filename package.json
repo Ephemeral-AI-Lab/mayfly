@@ -27,7 +27,6 @@
     "smoke:happy": "node script/smoke-happy.mjs",
     "smoke:cli-registry": "node script/smoke-cli-local-registry.mjs",
     "smoke:pty": "node script/smoke-pty.mjs",
-    "smoke:pty:mouse": "node script/smoke-pty-mouse.mjs",
     "smoke:pty:output": "node script/smoke-pty-output-recovery.mjs",
     "check:agent-docs": "node script/check-agent-docs.mjs",
     "check": "node script/check.mjs",

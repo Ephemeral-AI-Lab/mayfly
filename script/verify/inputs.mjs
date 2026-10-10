@@ -21,7 +21,8 @@ export const CHECKS = {
   agentDocs: { entry: 'script/check-agent-docs.mjs', inputs: [/(?:^|\/)AGENTS\.md$/u, /\/SKILL\.md$/u, /^\.agents\//u, /^docs\/skills\//u, /\/mayfly-skills-plan\.md$/u] },
   diagrams: { entry: 'script/sync-diagrams.mjs', inputs: [/^docs\/diagrams\//u, /^README(?:\.zh)?\.md$/u, /^docs\/mayfly-architecture\.md$/u] },
   checkLib: { entry: 'script/check-lib-exports.mjs', inputs: [/^(?:packages|examples)\/[^/]+\/(?:package\.json|tsconfig\.json)$/u, /^packages\/ui\/src\//u, /^script\/(?:clean-lib|prune-types)\.mjs$/u] },
-  shots: { entry: 'script/shots/sync.mjs', inputs: [/^script\/shots\//u, /^website\/public\/shots\//u] },
+  // The app shots are painted from the goldens of the `app-*` scenarios.
+  shots: { entry: 'script/shots/sync.mjs', inputs: [/^script\/shots\//u, /^website\/public\/shots\//u, /^script\/scenarios\/golden\/app-/u] },
   examples: { entry: 'script/check-examples.mjs', inputs: [/^examples\//u, /^packages\/ui\/src\//u] },
   pack: { entry: 'script/check-pack.mjs', inputs: [/^packages\/[^/]+\/package\.json$/u, /^packages\/cli\/runtime\//u, /^packages\/ui\/src\//u, /^script\/(?:pack-cli-runtime|release-packages|release-preflight|registry-release)\.mjs$/u] },
   website: { inputs: [/^website\//u] },

@@ -4,7 +4,7 @@
  * replay that shows its states. See `timeline.mjs` for the builders. @module script/scenarios/replays
  */
 
-import { approval, compaction, edit, goal as goalItem, image, btw, job, mark, notify, pause, question, queue, raw, step, subagent, text, todos, tool, turn } from './timeline.mjs'
+import { approval, compaction, edit, goal as goalItem, image, btw, job, mark, notify, pause, question, queue, raw, seed, step, subagent, text, todos, tool, turn } from './timeline.mjs'
 
 /** A reply shaped like a real answer: prose, lists, a table, and fenced code in two languages. */
 function reply() {
@@ -505,4 +505,76 @@ const edge = {
   ])],
 }
 
-export const REPLAYS = { tour, toolkit, thinking, markdown, phases, prompts, errors, compaction: compactionReplay, manualCompact, context, subagents, childStream, approvals, questions, plan, goal, jobs, queued, retries, sideQuestion, notices, modes, edge, history }
+const lines60 = lines(60, n => `mouse-line-${String(n - 1).padStart(2, '0')}`)
+const wheel = {
+  summary: 'a 60-line answer in a narrow terminal, for the mouse wheel to scroll',
+  items: [turn('ping', [step({ text: lines60, textMs: 1500 })])],
+}
+
+export const REPLAYS = { tour, toolkit, thinking, markdown, phases, prompts, errors, compaction: compactionReplay, manualCompact, context, subagents, childStream, approvals, questions, plan, goal, jobs, queued, retries, sideQuestion, notices, modes, edge, history, wheel }
+
+/*
+ * The scenes of the Website's app shots. Each is the source of an `app-*` scenario of the catalog, whose goldens the
+ * shots are painted from; they are not listed as replays of their own.
+ */
+
+const HERO = turn('Update the landing page hero copy and run the tests.', [
+  step({
+    reasoning: 'The hero lives in website/index.md; read it first, then edit, then run the suite.',
+    text: 'I will update the hero copy first, then run the tests.',
+    usage: { inputTokens: 12_410, outputTokens: 96, cacheReadTokens: 8_192 },
+    tools: [tool('read', { file_path: 'website/index.md' }, { result: '# Mayfly\n\nThe terminal UI for DeepSeek Harness.\n\nShip agent UI in a keystroke.', runMs: 600 })],
+  }),
+  step({ usage: { inputTokens: 13_020, outputTokens: 40, cacheReadTokens: 8_192 }, tools: [tool('bash', { command: 'pnpm run test' }, { result: '✓ 214 tests passed (12 suites)', runMs: 3400 })] }),
+  step({ text: 'Done — the hero now reads “Ship agent UI in a keystroke”, and all 214 tests pass.', usage: { inputTokens: 15_234, outputTokens: 128, cacheReadTokens: 8_192 } }),
+])
+
+const appConversation = {
+  summary: 'a finished turn: thinking, a read and a bash tool card, and the answer',
+  items: [HERO],
+}
+
+const appAgents = {
+  summary: 'one step spawning three subagents, done, running, and waiting, shown in the agents pane',
+  items: [
+    turn('Split the rebranding into parallel tracks.', [
+      step({
+        stream: false,
+        tools: [
+          subagent('Survey shot embeds', 'Survey every website page that embeds component shots', { items: [step({ stream: false, tools: [tool('read', { file_path: 'website/features/index.md' }, { result: 'three pages reference the gallery', runMs: 600 })] }), step({ stream: false, text: 'Found three pages embedding shots.' })] }, { runMs: 800 }),
+          subagent('Rewrite README hero', 'Rewrite the README hero section around the new brand', { startMs: 500, outcome: 'open', items: [step({ stream: false, reasoning: 'Mapping the hero copy against the brand tokens…', tools: [tool('bash', { command: 'pnpm run build', description: 'Build the site' }, { result: '', runMs: 600_000 })] })] }, { runMs: 800 }),
+          subagent('Regenerate shot gallery', 'Regenerate the component shot gallery', { startMs: 1500, outcome: 'open', items: [] }, { runMs: 800 }),
+        ],
+      }),
+      pause(4000),
+      step({ text: 'The survey is done; the other two tracks are running.' }),
+    ]),
+    // The running track's build ends ten minutes later; the scene is captured before it.
+    mark('running'),
+  ],
+}
+
+const DAY = 86_400_000
+const HOUR = 3_600_000
+/** One finished turn of a stored conversation. */
+const earlier = (prompt, answer, usage) => [turn(prompt, [step({ text: answer, usage })])]
+const appSessions = {
+  summary: 'earlier conversations in this workspace and in two others, listed by /sessions',
+  items: [
+    seed([
+      { id: 'seed-branding', at: -3 * DAY, title: 'Mayfly branding exploration', items: earlier('Explore a brand for Mayfly.', 'Three directions, with the mayfly mark as the anchor.', { inputTokens: 32_000, outputTokens: 1_900, cacheReadTokens: 28_000 }) },
+      { id: 'seed-trace', at: -2 * DAY, parent: 'seed-branding', title: 'Trace panel polish', items: earlier('Tighten the trace panel rows.', 'The rows now align on the event type.', { inputTokens: 10_300, outputTokens: 400, cacheReadTokens: 9_000 }) },
+      { id: 'seed-panes', at: -DAY, parent: 'seed-branding', title: 'Sidebar panes', items: earlier('Add a side pane for todos.', 'The todo pane docks beside the transcript.', { inputTokens: 544_000, outputTokens: 12_000, cacheReadTokens: 480_000 }) },
+      { id: 'seed-hotfix', at: -4 * DAY, title: 'Hotfix release notes', items: earlier('Write the hotfix release notes.', 'Release notes drafted for 0.1.1.', { inputTokens: 4_000, outputTokens: 300, cacheReadTokens: 0 }) },
+      { id: 'seed-hotfix-2', at: -4 * DAY + HOUR, parent: 'seed-hotfix', title: 'Hotfix follow-up', items: earlier('Link the issue from the notes.', 'Linked.', { inputTokens: 2_000, outputTokens: 50, cacheReadTokens: 0 }) },
+      { id: 'seed-docs', at: -DAY, cwd: 'docs', title: 'Docs navigation', items: earlier('Reorder the docs sidebar.', 'Guide first, then reference.', { inputTokens: 3_000, outputTokens: 200, cacheReadTokens: 0 }) },
+      { id: 'seed-api', at: -2 * DAY, cwd: 'api', title: 'API pagination', items: earlier('Add cursor pagination.', 'Cursors replace page numbers.', { inputTokens: 6_000, outputTokens: 500, cacheReadTokens: 0 }) },
+    ]),
+    turn('Paint the app screenshots from the scenario goldens.', [step({ text: 'The Website app shots now come from the accepted goldens.' })]),
+  ],
+}
+
+export const SCENES = { appConversation, appAgents, appSessions }
+
+/** A replay or a scene by name. */
+export const timelineNamed = name => Object.hasOwn(REPLAYS, name) ? REPLAYS[name] : Object.hasOwn(SCENES, name) ? SCENES[name] : undefined

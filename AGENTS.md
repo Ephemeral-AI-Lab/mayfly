@@ -170,9 +170,11 @@ gate nothing, the grid does. A step settles when
 the screen content stands still with no frame open and no stub request in
 flight; every run fails on a wrapped row, the overflow or crash log, a failed
 driver action, or a refused exit. Runs give identical grids, also side by side
-(boots take turns). The app-shot fixture scenes (`app-*`) still paint through
-`tests/workbench/frame.spec.ts`. Reduced motion is a saved setting: change it in
-`/settings`.
+(boots take turns). Each run has a home, a session store, and storages of its
+own (the workspace is `~/workspace`), and a replay `seed`s stored sessions
+there. The Website's app shots are the goldens of the `app-*` scenarios painted
+as SVG (`script/shots/app.mjs`): accepting such a golden repaints its shot.
+Reduced motion is a saved setting: change it in `/settings`.
 
 Code edits apply by restart. Cordis `restart()` re-runs `apply` but the loader's
 plain `import()` returns Node's cached module; Node's internal loader cache

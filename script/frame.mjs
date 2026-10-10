@@ -4,26 +4,20 @@
  * scenario's script, and each checkpoint is written to `.artifacts/frames/<scenario>-<cols>x<rows>/` as a cell grid
  * (`<checkpoint>.grid`), its text (`.txt`), and an SVG (`.svg`). `--png` also renders the product in xterm.js in
  * headless Chrome (keys and the mouse through the browser) and writes the real look as `<checkpoint>.png`. `--keys`
- * sends keys after the script and captures the checkpoint `keys`. The fixture scenes of the app shots (`app-*`) still paint through
- * `packages/mayfly/tests/workbench/frame.spec.ts` until slice 2b.6 ports them to the catalog.
+ * sends keys after the script and captures the checkpoint `keys`.
  *
  *   pnpm run frame <scenario> [--width N] [--height N] [--keys enter,down,ctrl+c,...] [--png] [--no-color]
  *
  * @module script/frame
  */
 
-import { spawnSync } from 'node:child_process'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { scenarioNamed } from './scenarios/catalog.mjs'
-import { keyBytes } from './scenarios/input.mjs'
 import { maskGrid, runScenario } from './scenarios/runner.mjs'
 import { paintTerminalSvg } from './shots/svg.mjs'
 import { assertDshVersion, resolveDshBin, root } from './smoke-lib.mjs'
-import { APP_SCENARIOS } from './shots/app-manifest.mjs'
-
-
 
 /**
  * Parse the command line into a frame run.
@@ -56,14 +50,6 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const parsed = parseFrameArgs(process.argv.slice(2))
   if (parsed.error !== undefined) { console.error(parsed.error); process.exit(2) }
   const { env, ...run } = parsed.run
-  if (APP_SCENARIOS.some(scenario => scenario.id === run.scenario)) {
-    const result = spawnSync(process.execPath, [join(root, 'node_modules/vitest/vitest.mjs'), 'run', 'packages/mayfly/tests/workbench/frame.spec.ts'], {
-      cwd: root,
-      env: { ...process.env, ...env, MAYFLY_FRAME: JSON.stringify({ ...run, keys: (run.keys ?? []).map(keyBytes) }), LANG: 'C', LC_ALL: 'C.UTF-8', TZ: 'UTC' },
-      stdio: 'inherit',
-    })
-    process.exit(result.status ?? 1)
-  }
   if (scenarioNamed(run.scenario) === undefined) { console.error(`unknown scenario "${run.scenario}"; try pnpm run scenario --list`); process.exit(2) }
   const dshBin = resolveDshBin()
   assertDshVersion(dshBin)

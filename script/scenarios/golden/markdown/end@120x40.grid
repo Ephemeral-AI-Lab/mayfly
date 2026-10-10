@@ -38,7 +38,7 @@ grid 120x40 cursor none
 |╭──────────────────────────────────────────────────────────────────────────────────── Explain the rendering pipeline. ─╮
 |│ >                                                                                                                    │
 |╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
-| deepseek-flash High  /tmp/mayfly-scenario-xxxxxxxx                                  cache 66%  context: 3% (3.5k/128k)
+| deepseek-flash High  ~/workspace                                                    cache 66%  context: 3% (3.5k/128k)
 styles
 0: 3-4 fg:#c9c0f0
 1: 7-8 fg:#c9c0f0
@@ -67,4 +67,4 @@ styles
 36: 0-84 fg:#45406b; 85-117 fg:#5c6476; 118-119 fg:#45406b
 37: 0 fg:#45406b; 4 r; 119 fg:#45406b
 38: 0-119 fg:#45406b
-39: 1-19 fg:#ededf2; 22-50 fg:#9aa3b8; 85-118 fg:#ededf2
+39: 1-19 fg:#ededf2; 22-32 fg:#9aa3b8; 85-118 fg:#ededf2

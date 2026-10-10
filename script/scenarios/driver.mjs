@@ -16,6 +16,7 @@
 import { randomBytes } from 'node:crypto'
 import { appendFileSync, readFileSync } from 'node:fs'
 import { createConnection } from 'node:net'
+import { dirname, join } from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
 
 export const name = 'mayfly-replay-driver'
@@ -371,6 +372,36 @@ export function apply(ctx) {
             // The parent's catalog is what `/agents` lists, and it fixes the child's mode.
             parent.append('subagent/catalog', { version: 0, childId: sessionId, childCreatedAt: meta.createdAt, mode: action.mode ?? 'one-shot', ...(action.label === undefined && action.mode !== 'continuable' ? {} : { label: action.label ?? action.id }) })
             log(`child ${action.id} created (${action.mode ?? 'one-shot'}${action.live === true ? ', live' : ''})`)
+            break
+          }
+          case 'seed': {
+            // Each seeded session is built outside the store (so nothing treats it as live or checkpoints it while it
+            // is written), its events stamped at their own times, then written to the session persistence and
+            // folded once by the projection cache: the listing shows it as stored, with its title, usage, and times.
+            const persistence = ctx.get('sessionPersistence')
+            const cache = ctx.get('sessionProjectionCache')
+            if (persistence === undefined || cache === undefined) { log('no session persistence or projection cache to seed'); break }
+            const ids = new Map()
+            for (const spec of action.sessions) {
+              const cwd = spec.cwd === undefined ? main.header.cwd : join(dirname(main.header.cwd), spec.cwd)
+              const parentSession = spec.parent === undefined ? undefined : ids.get(spec.parent)
+              clock?.at(spec.createdAt)
+              const session = ctx.sessions.prepare(spec.id, { meta: { cwd, createdAt: Date.now(), ...(parentSession === undefined ? {} : { parentSession }) } })
+              for (const event of spec.events) {
+                clock?.at(event.at)
+                if (event.surface === undefined) session.append(event.type, event.data)
+                else session.append(event.type, event.data, { surfaceOp: event.surface })
+              }
+              const events = session.snapshotEvents()
+              const handle = await persistence.create(session.header)
+              await handle.append(events)
+              await handle.flush()
+              await handle.close()
+              cache.coldSnapshot(session.header, 0, events)
+              ids.set(spec.id, session.id)
+              log(`seeded ${spec.id} (${String(events.length)} events)`)
+            }
+            clock?.at(action.at)
             break
           }
           case 'ask': {

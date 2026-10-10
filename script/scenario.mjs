@@ -7,7 +7,7 @@
  *   pnpm run scenario <name> [--width N] [--height N] [--no-color] [--ascii] [--speed N]
  *   pnpm run scenario --list
  *
- * The fixture scenes of the app shots (`app-*`) only paint frames: use `pnpm run frame <name>`. @module script/scenario
+ * Like the runner, it gives the session a home, a session store, and storages of its own. @module script/scenario
  */
 
 import { fileURLToPath } from 'node:url'
@@ -15,7 +15,6 @@ import { join } from 'node:path'
 import { assertDshVersion, resolveDshBin, root } from './smoke-lib.mjs'
 import { CATALOG, scenarioNamed } from './scenarios/catalog.mjs'
 import { prepareSession } from './scenarios/session.mjs'
-import { APP_SCENARIOS } from './shots/app-manifest.mjs'
 import { ensureThrowawayProfile } from './workbench/profile.mjs'
 import { presentationEnv, superviseDsh } from './workbench/supervisor.mjs'
 
@@ -50,20 +49,16 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   if (parsed.error !== undefined) { console.error(parsed.error); process.exit(2) }
   const { options } = parsed
   if (options.list) {
-    console.log('live (pnpm run scenario <name>, pnpm run frame <name>):')
     for (const [name, scenario] of Object.entries(CATALOG)) console.log(`  ${name.padEnd(24)}${scenario.summary}`)
-    console.log('frame only (pnpm run frame <name>):')
-    for (const scenario of APP_SCENARIOS) console.log(`  ${scenario.id}`)
     process.exit(0)
   }
-  if (APP_SCENARIOS.some(scenario => scenario.id === options.name)) { console.error(`"${options.name}" is a fixture scene: it paints a frame only. Run: pnpm run frame ${options.name}`); process.exit(2) }
   const scenario = scenarioNamed(options.name)
   if (scenario === undefined) { console.error(`unknown scenario "${options.name}"; try pnpm run scenario --list`); process.exit(2) }
 
   const dshBin = resolveDshBin()
   assertDshVersion(dshBin)
   const profile = ensureThrowawayProfile({ repo: root, gallery: scenario.source.gallery === true, dshBin, artifacts: join(root, '.artifacts/bench') })
-  const replay = await prepareSession({ scenario, dir: join(root, '.artifacts/replay'), speed: options.speed })
+  const replay = await prepareSession({ scenario, dir: join(root, '.artifacts/replay'), speed: options.speed, isolate: true })
   const session = superviseDsh({
     dshBin,
     profile: 'bench',

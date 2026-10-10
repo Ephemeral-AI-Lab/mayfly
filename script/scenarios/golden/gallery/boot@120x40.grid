@@ -4,9 +4,9 @@ grid 120x40 cursor none
 | ⠀⠀⠀⠈⠻⢿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡿⠟⠁⠀⠀⠀  ephemeral agents, enduring works                          │  ── Content ───────────────────  │
 | ⠀⠀⠀⠀⠀⠀⠀⠉⠉⠁⢸⣿⡇⠈⠉⠉⠀⠀⠀⠀⠀⠀⠀                                                            │                                  │
 | ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢸⣿⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀  Send /help for help information.                          │  Plain text wraps in the theme   │
-| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⣿⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀  Directory: /tmp/mayfly-scenario-xxxxxxxx                  │  body tone.                      │
+| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⣿⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀  Directory: ~/workspace                                    │  body tone.                      │
 | ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣿⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀  Model:     deepseek-flash · deepseek-official             │                                  │
-| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⡠⠊⠀⠑⢄⠀⠀⠀⠀⠀⠀⠀⠀⠀  Version:   ##########                                     │  中文示例：文本宽度按真实列宽计  │
+| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⡠⠊⠀⠑⢄⠀⠀⠀⠀⠀⠀⠀⠀⠀  Version:   scenario                                       │  中文示例：文本宽度按真实列宽计  │
 |                                                                                    │  算。                            │
 |                                                                                    │                                  │
 |                                                                                    │  Rich text mixes tones           │
@@ -37,7 +37,7 @@ grid 120x40 cursor none
 |╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
 |│ >                                                                                                                    │
 |╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
-| deepseek-flash  /tmp/mayfly-scenario-xxxxxxxx
+| deepseek-flash  ~/workspace
 | Gallery ● 2 runs
 styles
 0: 1-23 fg:#f5f5f7; 24-25 fg:#9a86e6; 84-85 fg:#dcd7f2; 86-95 fg:#f5f5f7 b; 96-119 fg:#dcd7f2
@@ -77,5 +77,5 @@ styles
 35: 0-119 fg:#45406b
 36: 0 fg:#45406b; 4 r; 119 fg:#45406b
 37: 0-119 fg:#45406b
-38: 1-14 fg:#ededf2; 17-45 fg:#9aa3b8
+38: 1-14 fg:#ededf2; 17-27 fg:#9aa3b8
 39: 1-8 fg:#9aa3b8; 9 fg:#c9c0f0; 10-16 fg:#ededf2

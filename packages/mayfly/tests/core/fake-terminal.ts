@@ -4,13 +4,7 @@
  * through `sendInput`/`resize`.
  */
 
-import { setCapabilities } from '@earendil-works/pi-tui'
 import type { Terminal } from '@earendil-works/pi-tui'
-
-/** Keep renderer tests independent of the host terminal's hyperlink support. */
-export function pinTestTerminalCapabilities(): void {
-  setCapabilities({ images: null, trueColor: false, hyperlinks: false })
-}
 
 export class FakeTerminal implements Terminal {
   readonly written: string[] = []

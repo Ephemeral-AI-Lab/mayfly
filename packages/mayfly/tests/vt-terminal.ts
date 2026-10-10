@@ -80,15 +80,6 @@ export class VtTerminal extends FakeTerminal {
   dispose(): void {
     this.vt.dispose()
   }
-
-  /**
-   * The underlying headless terminal for the app-shot SVG painter.
-   * `paintTerminalSvg` reads viewport rows only (`baseY + row`), so exposing
-   * the live buffer never leaks scrollback into a frame.
-   */
-  get painterTerminal(): Terminal {
-    return this.vt
-  }
 }
 
 /**

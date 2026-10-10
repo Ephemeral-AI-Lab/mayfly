@@ -1,0 +1,41 @@
+grid 80x24 cursor none
+| ⠱⣦⣄⣀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⣠⣴⠎
+| ⠀⠙⢿⣿⣿⣷⣶⣤⣀⣀⣴⣶⣦⣀⣀⣤⣶⣾⣿⣿⡿⠋⠀  mayfly
+| ⠀⠀⠀⠈⠻⢿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡿⠟⠁⠀⠀⠀  ephemeral agents, enduring works
+| ⠀⠀⠀⠀⠀⠀⠀⠉⠉⠁⢸⣿⡇⠈⠉⠉⠀⠀⠀⠀⠀⠀⠀
+| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢸⣿⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀  Send /help for help information.
+| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⣿⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀  Directory: ~/workspace
+| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣿⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀  Model:     deepseek-flash · deepseek-of...
+| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⡠⠊⠀⠑⢄⠀⠀⠀⠀⠀⠀⠀⠀⠀  Version:   scenario
+|
+| » Update the landing page hero copy and run the tests.
+|
+| ▸ Took 8s · 2 tool calls · Ctrl+O to expand
+|
+| ● Done — the hero now reads “Ship agent UI in a keystroke”, and all 214 tests
+|   pass.
+|
+|
+|
+|
+|
+|╭─────────────────────────────────────────────── Update the landing page hero ─╮
+|│ >                                                                            │
+|╰──────────────────────────────────────────────────────────────────────────────╯
+| deepseek-flash High  ~/workspace          cache 34%  context: 18% (22.9k/128k)
+styles
+0: 1-23 fg:#f5f5f7; 24-25 fg:#9a86e6
+1: 1-23 fg:#e9e5f6; 24-25 fg:#9a86e6; 26-67 fg:#9a86e6 b
+2: 1-23 fg:#dbd3f0; 24-25 fg:#9a86e6; 26-67 fg:#c9c0f0
+3: 1-23 fg:#c9beea; 24-25 fg:#9a86e6
+4: 1-23 fg:#b2a1ec; 24-25 fg:#9a86e6; 26-67 fg:#9aa3b8
+5: 1-25 fg:#9a86e6; 26-67 fg:#ededf2
+6: 1-23 fg:#8371d6; 24-25 fg:#9a86e6; 26-64 fg:#e9e6f4
+7: 1-23 fg:#6c5bbf; 24-25 fg:#9a86e6; 26-67 fg:#ededf2
+9: 1-54 fg:#9a86e6 b
+11: 1-9 fg:#9aa3b8; 10-43 fg:#5c6476
+13: 1-2 fg:#ededf2
+20: 0-47 fg:#45406b; 48-77 fg:#5c6476; 78-79 fg:#45406b
+21: 0 fg:#45406b; 4 r; 79 fg:#45406b
+22: 0-79 fg:#45406b
+23: 1-19 fg:#ededf2; 22-32 fg:#9aa3b8; 43-78 fg:#ededf2

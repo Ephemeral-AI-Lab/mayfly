@@ -38,7 +38,7 @@ grid 120x40 cursor none
 |╭──────────────────────────────────────────────────────────────────────────────────────────── Add a retries option to ─╮
 |│ >                                                                                                                    │
 |╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
-| deepseek-flash High  /tmp/mayfly-scenario-xxxxxxxx                                cache 49%  context: 13% (15.6k/128k)
+| deepseek-flash High  ~/workspace                                                  cache 49%  context: 13% (15.6k/128k)
 styles
 0: 7-15 fg:#5c6476; 17 fg:#e85454 bg:#43232a; 18 bg:#43232a; 19-79 fg:#e85454 bg:#43232a; 80-118 bg:#43232a
 1: 7-15 fg:#5c6476; 17 fg:#4ec87e bg:#1e3a2b; 18 bg:#1e3a2b; 19-106 fg:#4ec87e bg:#1e3a2b; 107-118 bg:#1e3a2b
@@ -68,4 +68,4 @@ styles
 36: 0-92 fg:#45406b; 93-117 fg:#5c6476; 118-119 fg:#45406b
 37: 0 fg:#45406b; 4 r; 119 fg:#45406b
 38: 0-119 fg:#45406b
-39: 1-19 fg:#ededf2; 22-50 fg:#9aa3b8; 83-118 fg:#ededf2
+39: 1-19 fg:#ededf2; 22-32 fg:#9aa3b8; 83-118 fg:#ededf2

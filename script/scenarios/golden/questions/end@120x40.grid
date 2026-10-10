@@ -4,9 +4,9 @@ grid 120x40 cursor none
 | ⠀⠀⠀⠈⠻⢿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡿⠟⠁⠀⠀⠀  ephemeral agents, enduring works
 | ⠀⠀⠀⠀⠀⠀⠀⠉⠉⠁⢸⣿⡇⠈⠉⠉⠀⠀⠀⠀⠀⠀⠀
 | ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢸⣿⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀  Send /help for help information.
-| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⣿⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀  Directory: /tmp/mayfly-scenario-xxxxxxxx
+| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⣿⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀  Directory: ~/workspace
 | ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣿⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀  Model:     deepseek-flash · deepseek-official
-| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⡠⠊⠀⠑⢄⠀⠀⠀⠀⠀⠀⠀⠀⠀  Version:   ##########
+| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⡠⠊⠀⠑⢄⠀⠀⠀⠀⠀⠀⠀⠀⠀  Version:   scenario
 |
 | » Set up the project for me; ask me what you need.
 |
@@ -38,7 +38,7 @@ grid 120x40 cursor none
 |│  [ Submit answers ]   Cancel                                                                                         │
 |│   ↑/↓ options · 1-4 choose · Enter choose · Esc back                                                                 │
 |╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
-| deepseek-flash High  /tmp/mayfly-scenario-xxxxxxxx                                  cache 42%  context: 5% (5.5k/128k)
+| deepseek-flash High  ~/workspace                                                    cache 42%  context: 5% (5.5k/128k)
 styles
 0: 1-23 fg:#f5f5f7; 24-25 fg:#9a86e6
 1: 1-23 fg:#e9e5f6; 24-25 fg:#9a86e6; 26-107 fg:#9a86e6 b
@@ -63,4 +63,4 @@ styles
 36: 0 fg:#dcd7f2; 3-20 fg:#9a86e6; 24-29 fg:#ededf2; 119 fg:#dcd7f2
 37: 0 fg:#dcd7f2; 2-3 fg:#5c6476; 4-6 fg:#ededf2; 8-17 fg:#5c6476; 18-20 fg:#ededf2; 22-30 fg:#5c6476; 31-35 fg:#ededf2; 37-45 fg:#5c6476; 46-48 fg:#ededf2; 50-53 fg:#5c6476; 119 fg:#dcd7f2
 38: 0-119 fg:#dcd7f2
-39: 1-19 fg:#ededf2; 22-50 fg:#9aa3b8; 85-118 fg:#ededf2
+39: 1-19 fg:#ededf2; 22-32 fg:#9aa3b8; 85-118 fg:#ededf2

@@ -1,9 +1,9 @@
 /**
  * The scenario clock, preloaded into `dsh` with `NODE_OPTIONS=--import` by the scenario runner: `Date.now()` and an
- * argument-less `new Date()` read a clock that starts at a fixed epoch, so stored event times, elapsed labels, and
- * dates on screen are the same on every run. The replay driver moves it through `globalThis.__mayflyClock`: `at(ms)`
- * stands it at the epoch plus a timeline time, `freeze()` stops it, and `flow()` lets it run with real time again.
- * Timers are not touched. @module script/scenarios/clock
+ * argument-less `new Date()` read a clock that stands at a fixed epoch until the replay driver moves it, so the events
+ * written at boot, stored event times, elapsed labels, and dates on screen are the same on every run, however long the
+ * boot takes. The driver moves it through `globalThis.__mayflyClock`: `at(ms)` stands it at the epoch plus a timeline
+ * time, `freeze()` stops it, and `flow()` lets it run with real time. Timers are not touched. @module script/scenarios/clock
  */
 
 /** 2026-01-01T09:00:00Z. */
@@ -13,7 +13,7 @@ const RealDate = Date
 const realNow = () => RealDate.now()
 let base = EPOCH
 let since = realNow()
-let frozen = false
+let frozen = true
 
 const now = () => frozen ? base : base + (realNow() - since)
 

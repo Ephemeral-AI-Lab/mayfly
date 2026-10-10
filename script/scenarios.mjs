@@ -2,7 +2,8 @@
 /**
  * Check the catalog scenarios against their goldens: each scenario runs against the real product at its sizes (four at
  * a time), and every checkpoint is compared with `script/scenarios/golden/`. `--update` accepts what the product paints
- * now (and removes goldens no checkpoint writes when every scenario runs at every size). The results, with the rows of
+ * now (and removes goldens no checkpoint writes when every scenario runs at every size), and repaints the Website app
+ * shots painted from an accepted golden (`script/shots/app.mjs`). The results, with the rows of
  * each difference, go to `.artifacts/verify/scenarios.json` for `pnpm run check`. `--png` renders each checkpoint that
  * differs or has no golden in xterm.js in headless Chrome, beside the same checkpoint of the merge-base build, into
  * `.artifacts/verify/shots/` with a contact sheet (`index.html`); the pictures are for a reader and gate nothing.
@@ -18,9 +19,10 @@ import { fileURLToPath } from 'node:url'
 import { defaultBase } from './change-files.mjs'
 import { commitOf, ensureBaseline, mergeBaseOf } from './scenarios/baseline.mjs'
 import { findChrome } from './scenarios/browser.mjs'
-import { CATALOG, GOLDEN_SCENARIOS, scenarioNamed } from './scenarios/catalog.mjs'
+import { APP_SHOTS, CATALOG, GOLDEN_SCENARIOS, scenarioNamed } from './scenarios/catalog.mjs'
 import { compareGolden, goldenPath, orphanGoldens, removeGoldens, writeGolden } from './scenarios/golden.mjs'
 import { prepareProfiles, runScenario } from './scenarios/runner.mjs'
+import { paintAppShot } from './shots/app.mjs'
 import { assertDshVersion, resolveDshBin, root } from './smoke-lib.mjs'
 
 /** Where the results go for the check report. */
@@ -130,6 +132,15 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   let orphans = everything ? orphanGoldens(expected, root) : []
   if (options.update && orphans.length > 0) { removeGoldens(orphans, root); process.stdout.write(`removed ${String(orphans.length)} goldens no checkpoint writes\n`); orphans = [] }
   for (const orphan of orphans) process.stdout.write(`✗ ${orphan}: no checkpoint writes it (pnpm run scenarios -- --update removes it)\n`)
+  if (options.update) {
+    // A Website app shot is its golden: accepting the golden repaints it.
+    const accepted = new Set(results.map(result => `${result.name}@${String(result.cols)}x${String(result.rows)}`))
+    for (const shot of APP_SHOTS.filter(entry => accepted.has(`${entry.scenario}@${String(entry.cols)}x${String(entry.rows)}`))) {
+      const file = join(root, 'website/public/shots', `${shot.id}.svg`)
+      writeFileSync(file, await paintAppShot(shot))
+      process.stdout.write(`→ ${relative(root, file)} (from ${shot.scenario}/${shot.checkpoint})\n`)
+    }
+  }
   const shown = options.png && !options.update ? await renderPictures(results, dshBin) : undefined
   const passed = orphans.length === 0 && results.every(result => result.failures.length === 0 && result.checkpoints.every(entry => entry.status === 'same' || entry.status === 'updated'))
   mkdirSync(dirname(join(root, RESULTS)), { recursive: true })

@@ -24,19 +24,27 @@ import { WORKSPACE, prepareSession } from './session.mjs'
 const require = createRequire(import.meta.url)
 const CLOCK = fileURLToPath(new URL('./clock.mjs', import.meta.url))
 
-/** The settings every scenario runs with: no motion between frames, and no network check at boot. */
-export const RUNNER_PRESENTATION = Object.freeze({ reducedMotion: true, updateCheck: false })
+/**
+ * The settings every scenario runs with, by composition row: no motion between frames and no network check at boot,
+ * and a banner version that stays the same across releases (the Website's app shots paint the released one).
+ */
+export const RUNNER_CONFIG = Object.freeze({
+  'mayfly': Object.freeze({ reducedMotion: true, updateCheck: false }),
+  'mayfly-banner': Object.freeze({ displayVersion: 'scenario' }),
+})
 /** Rows the scenario overlay disables: a generated session title would land at a different moment on every run. */
 export const RUNNER_DISABLED = Object.freeze(['session-title-llm'])
 
 /**
- * Mask what differs between machines and runs without changing a row's width: the workspace tag and the version.
+ * Mask what differs between machines and runs without changing a row's width: the workspace tag, the session ids the
+ * product mints (UUIDs), and the per-process token of command ids (`cmd-<token>-<n>`).
  * @param {string} grid - a serialized grid.
  */
 export function maskGrid(grid) {
   return grid
     .replace(WORKSPACE, match => match.replace(/[0-9a-f]{8}$/u, 'xxxxxxxx'))
-    .replace(/(Version:\s+)(\S+)/gu, (_, label, value) => `${label}${'#'.repeat(value.length)}`)
+    .replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gu, 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx')
+    .replace(/\bcmd-[0-9a-f]{8}-/gu, 'cmd-xxxxxxxx-')
 }
 
 /** The runner's end of the control socket: JSON lines, one connection (the driver). */
@@ -126,7 +134,7 @@ export async function runScenario(name, { root, dshBin, cols, rows, keys = [], o
   const profile = ensureThrowawayProfile({ repo: root, gallery: scenario.source.gallery === true, dshBin, artifacts: join(root, '.artifacts/bench') })
   const socketPath = `/tmp/mayfly-replay-${randomBytes(6).toString('hex')}.sock`
   const control = await listenControl(socketPath)
-  const session = await prepareSession({ scenario, dir: join(root, '.artifacts/scenarios', `${name}-${String(width)}x${String(height)}`), control: socketPath, presentation: RUNNER_PRESENTATION, disabled: RUNNER_DISABLED })
+  const session = await prepareSession({ scenario, dir: join(root, '.artifacts/scenarios', `${name}-${String(width)}x${String(height)}`), control: socketPath, config: RUNNER_CONFIG, disabled: RUNNER_DISABLED, isolate: true })
   const logs = ['mayfly-overflow.log', 'pi-crash.log'].map(file => join(profile.env.PI_CODING_AGENT_DIR, file))
   const logSizes = logs.map(sizeOf)
   const env = { ...profile.env, ...session.env, TZ: 'UTC', NODE_OPTIONS: `--import=${pathToFileURL(CLOCK).href}${profileDir === undefined ? '' : ` --cpu-prof --cpu-prof-dir=${profileDir}`}`, ...extraEnv }

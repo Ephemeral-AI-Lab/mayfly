@@ -444,6 +444,8 @@ it('updates archive badges without rescanning the catalog', async () => {
 })
 
 
+// The first case starts the JSONL backend's compression worker: about a second alone, past five seconds on a loaded
+// full run.
 it.each([undefined, null, '', 'Old cached name'])('recovers the cold stored title before opening details when the cached title is %s', async cachedTitle => {
   const bench = await setup(false)
   class Query extends SessionQueryEngine {
@@ -479,7 +481,7 @@ it.each([undefined, null, '', 'Old cached name'])('recovers the cold stored titl
   expect(JSON.stringify(bench.model('mayfly.sessions.detail').node)).toContain('Investigate compiler crash')
   expect(bench.ctx.sessions.list()).toEqual(sessionsBefore)
   expect([...bench.agents.values()]).toEqual(agentsBefore)
-})
+}, 20_000)
 
 it('marks the displayed Agent current and reads live titles through native projections', async () => {
   const bench = await setup()

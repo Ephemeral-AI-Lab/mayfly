@@ -71,6 +71,14 @@ export const notify = (severity, message, { holdMs = 3500, detail, purpose } = {
 /** An image in a prompt: `turn([text('see'), image('shot.png')], ...)`. */
 export const text = value => ({ type: 'text', text: value })
 export const image = (name, { width = 1280, height = 720, bytes = 84_000 } = {}) => ({ type: 'image', attachment: { attachmentId: `replay-${name}`, mediaType: 'image/png', bytes, width, height, name } })
+/**
+ * Earlier conversations in the session store, written where the item stands: each session `{ id, at, items, title,
+ * cwd, parent }` is created `at` milliseconds from the start of playback (negative for the past) in the workspace, or
+ * in its sibling directory `cwd`, under the seeded session `parent`, holds the turns `items` (committed at once, at
+ * their own times) and an optional user-given `title`, and is released afterwards: `/sessions` lists it as stored, not
+ * live. Seeded sessions need an isolated session store (the scenario runner gives every run one).
+ */
+export const seed = sessions => ({ kind: 'seed', sessions })
 /** Wait before the next item. */
 export const pause = ms => ({ kind: 'pause', ms })
 /** A named point of the timeline: a scenario plays up to it (`play({ until: name })`) and takes a checkpoint there. */
@@ -148,6 +156,7 @@ export function compile(items, { provider = 'deepseek-official', model = 'deepse
       if (item.kind === 'job') { scheduleJob(item, t); t += 100; continue }
       if (item.kind === 'queue') { scheduleQueue(item, t); t += 100; continue }
       if (item.kind === 'notify') { scheduleNotice(item, t); t += item.holdMs + 300; continue }
+      if (item.kind === 'seed') { push(t, { op: 'seed', sessions: item.sessions.map(seeded) }); t += 100; continue }
       if (item.kind === 'btw') {
         // A side question: a live Agent of its own, opened as a side conversation and played like any other.
         live.add('btw')
@@ -296,6 +305,18 @@ export function compile(items, { provider = 'deepseek-official', model = 'deepse
     event(last + 100, 'step/end', { turn: turnNo, step: stepNo })
     // The gap counts from the step's end, so a small gap can never start the next step before it.
     return last + 100 + (spec.gapMs ?? 200)
+  }
+
+  /** A seeded session's events, at their own times: its turns compiled as a conversation of their own, then its title. */
+  function seeded({ id: sessionId, at, items: turns, title, cwd, parent }) {
+    const events = compile(turns.map(item => item.kind === 'turn' ? { ...item, items: item.items.map(entry => entry.kind === 'step' ? { ...entry, stream: false } : entry) } : item), { provider, model, contextWindow })
+      .map((action) => {
+        if (action.op !== 'append') throw new Error(`a seeded session holds turns only, not ${action.op}`)
+        return { at: at + action.at, type: action.type, data: action.data, ...(action.surface === undefined ? {} : { surface: action.surface }) }
+      })
+    const end = events.at(-1)?.at ?? at
+    if (title !== undefined) events.push({ at: end + 100, type: 'session/title', data: { title, messageSeqs: [], source: { kind: 'user' } } })
+    return { id: sessionId, createdAt: at, events, ...(cwd === undefined ? {} : { cwd }), ...(parent === undefined ? {} : { parent }) }
   }
 
   conversation(items, 0, null)

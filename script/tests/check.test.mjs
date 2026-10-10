@@ -137,7 +137,7 @@ test('the coverage advice reports changed lines whose statements never ran', () 
 test('a golden runs its scenario, a covered source the scenarios that cover it, other product code the smoke set, the machinery all', () => {
   const scenarios = file => classifyChanges([file]).tests.scenarios
   assert.deepEqual(scenarios('script/scenarios/golden/tour/end@120x40.grid'), ['tour'])
-  assert.deepEqual(scenarios('packages/mayfly/src/transcript/thinking.ts'), ['thinking', 'tour'])
+  assert.deepEqual(scenarios('packages/mayfly/src/transcript/thinking.ts'), ['app-conversation', 'thinking', 'tour'])
   assert.deepEqual(scenarios('packages/mayfly/src/core/ui-compiler.ts'), ['idle', 'tour'])
   assert.deepEqual(scenarios('examples/ui-gallery/src/index.ts'), ['gallery'])
   assert.deepEqual(scenarios('docs/README.md'), [])

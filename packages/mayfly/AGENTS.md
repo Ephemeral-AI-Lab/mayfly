@@ -248,9 +248,8 @@ The scenario catalog (`script/scenarios/catalog.mjs`) is the registry of live
 states behind `pnpm run scenario` and `pnpm run frame`: a component draft adds
 one scenario per state, a replay of `script/scenarios/replays.mjs` with the
 marks its script plays to, played into the real product by
-`script/scenarios/driver.mjs`. The app-shot fixture scenes of
-`tests/workbench/scenarios.ts` (scripted over `tests/app-shots/boot.ts`) paint
-frames only until roadmap slice 2b.6 ports them to the catalog.
+`script/scenarios/driver.mjs`. The Website's app shots are checkpoints of the
+`app-*` scenarios, painted from their goldens.
 
 The canonical UI pipeline takes an optional core-private work-counter sink
 (`core/ui-work-counters.ts`) through the validator and compiler options; production

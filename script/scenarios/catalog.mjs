@@ -41,6 +41,7 @@ const COVERS = {
   modes: [`${INTERACTION}mode-status.ts`, `${TRANSCRIPT}status-model.ts`],
   edge: [`${TRANSCRIPT}tool-line.ts`, 'packages/mayfly/src/core/width.ts'],
   history: [`${TRANSCRIPT}conversation-feed.ts`, `${TRANSCRIPT}transcript-model.ts`],
+  wheel: ['packages/mayfly/src/core/terminal.ts', `${TRANSCRIPT}conversation-feed.ts`],
 }
 
 /**
@@ -49,6 +50,12 @@ const COVERS = {
  */
 const SCRIPTS = {
   jobs: [play('running'), checkpoint('running')],
+  // The wheel scrolls the transcript back: the two checkpoints differ only by the scroll.
+  wheel: [play(), checkpoint('end'), wheel('up', { count: 3 }), checkpoint('wheel')],
+}
+/** Replays that run at a size of their own. */
+const SIZES = {
+  wheel: [[40, 24]],
 }
 
 /** A replay played to its end (or to the prompt that waits for an answer), captured there. */
@@ -56,9 +63,60 @@ const replayScenario = (name, replay) => ({
   summary: replay.summary,
   source: { replay: name },
   covers: COVERS[name] ?? [],
-  sizes: [DEFAULT_SIZE],
+  sizes: SIZES[name] ?? [DEFAULT_SIZE],
   script: SCRIPTS[name] ?? [play(), checkpoint('end')],
 })
+
+/** The size of the Website's app shots. */
+const APP_SIZE = Object.freeze([80, 24])
+
+/**
+ * The Website's app shots: scenes of the real product at 80x24. `shots` names, for each checkpoint, the shot under
+ * `website/public/shots/` that `pnpm run shots:sync` paints from its golden.
+ */
+const APP = {
+  'app-conversation': {
+    summary: 'the Website hero: a finished turn above the editor and the status row',
+    source: { replay: 'appConversation' },
+    covers: [`${TRANSCRIPT}transcript-model.ts`, `${TRANSCRIPT}tool-*.ts`, `${TRANSCRIPT}thinking.ts`, `${TRANSCRIPT}status-*.ts`, `${TRANSCRIPT}banner*.ts`],
+    sizes: [APP_SIZE],
+    shots: { end: 'app-conversation' },
+    script: [play(), checkpoint('end')],
+  },
+  'app-trace': {
+    summary: 'the Website shot of /trace: the finished turn\'s log with a tool result\'s raw detail open',
+    source: { replay: 'appConversation' },
+    covers: [`${INTERACTION}trace-*.ts`],
+    sizes: [APP_SIZE],
+    shots: { detail: 'app-trace' },
+    script: [play(), type('/trace'), key('enter'), key('down', { repeat: 16 }), key('enter'), checkpoint('detail')],
+  },
+  'app-permission': {
+    summary: 'the Website shot of /permission: the preset picker over the finished turn',
+    source: { replay: 'appConversation' },
+    covers: [`${INTERACTION}permission-panel.ts`],
+    sizes: [APP_SIZE],
+    shots: { picker: 'app-permission' },
+    script: [play(), type('/permission'), key('enter'), checkpoint('picker')],
+  },
+  'app-agents': {
+    summary: 'the Website shot of subagents: done, running, and waiting in the agents pane',
+    source: { replay: 'appAgents' },
+    covers: [`${TRANSCRIPT}pane-agents.ts`, `${TRANSCRIPT}child-agent-model.ts`],
+    // Six rows taller, so the agents pane is not cut to its overflow row; the width keeps the shots' scale.
+    sizes: [[80, 30]],
+    shots: { running: 'app-agents' },
+    script: [play('running'), checkpoint('running')],
+  },
+  'app-sessions': {
+    summary: 'the Website shots of /sessions: the workspaces of stored conversations, then one workspace\'s lineage',
+    source: { replay: 'appSessions' },
+    covers: [`${INTERACTION}native-sessions.ts`, `${INTERACTION}session-*.ts`],
+    sizes: [APP_SIZE],
+    shots: { workspaces: 'app-sessions', workspace: 'app-session-workspace' },
+    script: [play(), type('/sessions'), key('enter'), checkpoint('workspaces'), key('enter'), checkpoint('workspace')],
+  },
+}
 
 const SENTENCE = 'the quick brown fox jumps over the lazy dog and keeps typing until the prompt wraps onto a second row of the editor'
 /** Open a panel by its command, measure its cursor keys, and close it. */
@@ -114,8 +172,12 @@ export const CATALOG = Object.freeze({
     script: [checkpoint('boot')],
   },
   ...Object.fromEntries(Object.entries(REPLAYS).map(([name, replay]) => [name, replayScenario(name, replay)])),
+  ...APP,
   ...PERF,
 })
+
+/** Each Website app shot, with the scenario checkpoint whose golden (at the scenario's first size) it is painted from. */
+export const APP_SHOTS = Object.freeze(Object.entries(CATALOG).flatMap(([name, scenario]) => Object.entries(scenario.shots ?? {}).map(([checkpointName, id]) => ({ id, scenario: name, checkpoint: checkpointName, cols: scenario.sizes[0][0], rows: scenario.sizes[0][1] }))))
 
 /** The scenarios checked against goldens, and the perf scenarios. */
 export const GOLDEN_SCENARIOS = Object.keys(CATALOG).filter(name => CATALOG[name].perf === undefined)

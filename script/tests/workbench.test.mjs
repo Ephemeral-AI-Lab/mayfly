@@ -9,9 +9,9 @@ import { parseFrameArgs } from '../frame.mjs'
 import { scenarioNamed } from '../scenarios/catalog.mjs'
 import { apply as applyDriver } from '../scenarios/driver.mjs'
 import { keyBytes, parseKeys } from '../scenarios/input.mjs'
-import { REPLAYS } from '../scenarios/replays.mjs'
+import { REPLAYS, SCENES } from '../scenarios/replays.mjs'
 import { startStubModel } from '../scenarios/stub-model.mjs'
-import { approval, btw, compile, edit, goal, image, job, mark, notify, pause, question, queue, raw, step, subagent, todos, tool, turn } from '../scenarios/timeline.mjs'
+import { approval, btw, compile, edit, goal, image, job, mark, notify, pause, question, queue, raw, seed, step, subagent, todos, tool, turn } from '../scenarios/timeline.mjs'
 import { newestSessionId, presentationEnv, sessionSlug } from '../workbench/supervisor.mjs'
 import { parseScenarioArgs } from '../scenario.mjs'
 
@@ -135,7 +135,7 @@ test('outcomes, todos, edits, compaction, subagents, and asks compile to their e
 
 /** A fake `ctx` for the driver: a recording session, children, emitted frames, and answerers. */
 function fakeContext() {
-  const log = { appended: [], frames: [], children: [], asked: [], goals: [], jobs: [], inbox: [], agents: [], opened: [], closed: [], disposed: [], notices: [] }
+  const log = { appended: [], frames: [], children: [], asked: [], goals: [], jobs: [], inbox: [], agents: [], opened: [], closed: [], disposed: [], notices: [], stored: [], folded: [] }
   let seq = 0
   const session = id => ({ id, header: { cwd: '/work' }, requestHeader: () => undefined, snapshotEvents: () => log.appended.filter(entry => entry.id === id).map(entry => ({ type: entry.type, seq: entry.seq, surfaceOp: entry.options?.surfaceOp })), append(type, data, options) { seq += 1; log.appended.push({ id, type, data, options, seq }); return { seq } } })
   const main = session('main')
@@ -144,7 +144,10 @@ function fakeContext() {
   const answer = kind => async request => { log.asked.push({ kind, request }); return 'ok' }
   const ctx = {
     mayflyCurrentAgent: { current: () => agent },
-    sessions: { create: (id, options) => { log.children.push({ id, options }); return session(id) } },
+    sessions: {
+      create: (id, options) => { log.children.push({ id, options }); return session(id) },
+      prepare: (id, options) => ({ ...session(id), header: { id, ...options.meta } }),
+    },
     on: () => {},
     emit: (name, payload) => log.frames.push({ name, frame: payload.frame }),
     get: name => ({
@@ -162,6 +165,8 @@ function fakeContext() {
       agentDefaultModel: { currentSelection: () => ({ provider: 'p', model: 'm' }) },
       mayflyUiInteraction: { createNotificationOwner: label => ({ report: (id, scope, feedback) => log.notices.push(['report', label, id, scope.sessionId, feedback.severity, feedback.message, feedback.purpose]), clear: id => log.notices.push(['clear', id]) }) },
       mayflyConversations: { open: view => { log.opened.push(view); return `session:${view.sessionId}` }, close: id => log.closed.push(id) },
+      sessionPersistence: { create: async header => ({ append: async events => log.stored.push({ header, events }), flush: async () => {}, close: async () => {} }) },
+      sessionProjectionCache: { coldSnapshot: header => log.folded.push(header.id) },
       jobs: { start: spec => { const handle = { appended: [], progress: [], append: text => handle.appended.push(text), updateProgress: line => handle.progress.push(line) }; const hooks = spec.run(handle); log.jobs.push({ spec, handle, hooks }) } },
     })[name],
   }
@@ -199,6 +204,29 @@ test('the driver plays a replay into the session and waits for answers', async (
       if (saved[key] === undefined) delete process.env[name]
       else process.env[name] = saved[key]
     }
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('the driver writes seeded sessions to the store, at their times and under their parents, and folds each once', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'driver-seed-'))
+  try {
+    writeFileSync(join(dir, 'replay.json'), JSON.stringify(compile([seed([
+      { id: 'root', at: -86_400_000, title: 'Root', items: [turn('q', [step({ text: 'a' })])] },
+      { id: 'side', at: -3_600_000, parent: 'root', cwd: 'docs', items: [turn('r', [step({ text: 'b' })])] },
+    ])])))
+    Object.assign(process.env, { MAYFLY_REPLAY_FILE: join(dir, 'replay.json'), MAYFLY_REPLAY_LOG: join(dir, 'driver.log') })
+    const { ctx, log } = fakeContext()
+    applyDriver(ctx)
+    for (let tries = 0; tries < 200 && !readFileSyncSafe(join(dir, 'driver.log')).includes('replay finished'); tries += 1) await new Promise(resolve => setTimeout(resolve, 10))
+    assert.deepEqual(log.stored.map(entry => [entry.header.id, entry.header.cwd, entry.header.parentSession]), [['root', '/work', undefined], ['side', '/docs', 'root']])
+    assert.ok(log.stored[0].events.some(event => event.type === 'session/title'))
+    assert.deepEqual(log.folded, ['root', 'side'])
+    // Seeded sessions are not appended to the live session.
+    assert.deepEqual(log.appended.filter(entry => entry.id === 'main'), [])
+  } finally {
+    delete process.env.MAYFLY_REPLAY_FILE
+    delete process.env.MAYFLY_REPLAY_LOG
     rmSync(dir, { recursive: true, force: true })
   }
 })
@@ -244,7 +272,7 @@ test('the stub model titles sessions and notices prompts, and every replay compi
   } finally {
     await stub.close()
   }
-  for (const [name, replay] of Object.entries(REPLAYS)) {
+  for (const [name, replay] of Object.entries({ ...REPLAYS, ...SCENES })) {
     assert.ok(replay.summary && replay.items.length > 0, name)
     const actions = compile(replay.items)
     assert.ok(actions.length > 5, name)

@@ -106,10 +106,9 @@ async function subsetFontFace(file, weight, codepoints) {
 /**
  * Paint a Terminal buffer as a self-contained SVG string.
  * @param {object} term - an `@xterm/headless` Terminal with the rows written.
- *   The painter reads `baseY + row`, so a terminal with scrollback (the
- *   app-level shots' live `VtTerminal` mirror) contributes only its current
- *   viewport; component-shot terminals run with `scrollback: 0`, where
- *   `baseY` is always 0 and the output is unchanged.
+ *   The painter reads `baseY + row`, so a terminal with scrollback (a
+ *   scenario's live screen) contributes only its current viewport; the shot
+ *   terminals run with `scrollback: 0`, where `baseY` is always 0.
  * @param {object} geometry - `{ cols, rows }` of the rendered frame.
  * @returns {Promise<string>} the SVG document.
  */

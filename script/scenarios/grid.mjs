@@ -100,6 +100,46 @@ export function serializeGrid(grid) {
   return [`grid ${String(grid.cols)}x${String(grid.lines.length)} cursor ${cursor}`, ...grid.lines.map(line => `|${line}`), 'styles', ...runs].join('\n')
 }
 
+/**
+ * Read a serialized grid back.
+ * @param {string} text - a grid as `serializeGrid` wrote it.
+ * @returns {Grid}
+ */
+export function parseGrid(text) {
+  const { header, rows, styles } = gridParts(text)
+  const [, cols, cursor] = /^grid (\d+)x\d+ cursor (\S+)$/u.exec(header) ?? []
+  if (cols === undefined) throw new Error(`not a grid: ${header}`)
+  return {
+    cols: Number(cols),
+    lines: rows,
+    styles: rows.map((_, index) => (styles.get(index) ?? '').split('; ').filter(Boolean).map((run) => {
+      const [span, ...style] = run.split(' ')
+      const [from, to = from] = span.split('-').map(Number)
+      return { from, to, style: style.join(' ') }
+    })),
+    cursor: cursor === 'none' ? null : cursor.split(',').map(Number),
+  }
+}
+
+const SGR_FLAGS = { b: 1, d: 2, i: 3, u: 4, s: 9, r: 7, h: 8, k: 5, o: 53 }
+const sgrColor = (base, color) => color.startsWith('p')
+  ? `${String(base)};5;${color.slice(1)}`
+  : `${String(base)};2;${[1, 3, 5].map(at => String(Number.parseInt(color.slice(at, at + 2), 16))).join(';')}`
+
+/**
+ * The SGR sequence that sets a style of a grid (after a reset), so a grid can be written back into a terminal.
+ * @param {string} style - a run's style, as in `fg:#9a86e6 bg:p236 b`.
+ * @returns {string} the escape sequence; the empty string for the default style.
+ */
+export function styleSgr(style) {
+  const params = style.split(' ').filter(Boolean).map((part) => {
+    if (part.startsWith('fg:')) return sgrColor(38, part.slice(3))
+    if (part.startsWith('bg:')) return sgrColor(48, part.slice(3))
+    return String(SGR_FLAGS[part])
+  })
+  return params.length === 0 ? '' : `\u001b[${params.join(';')}m`
+}
+
 /** The parts of a serialized grid: its header, its text rows, and its style rows by row index. */
 function gridParts(text) {
   const lines = text.replace(/\n$/u, '').split('\n')
