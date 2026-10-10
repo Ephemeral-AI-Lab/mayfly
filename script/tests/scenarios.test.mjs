@@ -72,7 +72,7 @@ test('every scenario has a known source, real sizes, its marks, and covers globs
       const marks = new Set(compile(replay.items, replay.options).filter(action => action.op === 'mark').map(action => action.name))
       for (const step of scenario.script) if (step.step === 'play' && step.until !== undefined) assert.ok(marks.has(step.until), `${name}: no mark ${step.until}`)
     }
-    assert.ok(scenario.script.some(step => step.step === 'checkpoint'), `${name} captures nothing`)
+    assert.ok(scenario.script.some(step => step.step === (scenario.perf === undefined ? 'checkpoint' : 'measure') || step.step === 'idle'), `${name} captures nothing`)
   }
 })
 

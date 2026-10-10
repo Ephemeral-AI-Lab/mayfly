@@ -91,7 +91,7 @@ jobs:
       # file is rejected by GitHub (GITHUB_TOKEN cannot update workflows).
       - run: npm install -g "@deepseek-ai/dsh@$(node script/harness-line.mjs)"
       # A pull request also reports the changed source lines no selected spec
-      # ran (advice, not a gate). The bench slack covers a shared runner.
+      # ran (advice, not a gate). The perf slack scales the ceilings for a shared runner.
       - name: pnpm run check
         run: >-
           pnpm run check --
@@ -100,7 +100,7 @@ jobs:
           --verbose
           ${{ github.event_name == 'pull_request' && '--coverage-advice' || '' }}
         env:
-          BENCH_PTY_SLACK: '3'
+          MAYFLY_PERF_SLACK: '3'
       - name: report
         if: ${{ !cancelled() }}
         run: cat .artifacts/verify/summary.md >> "$GITHUB_STEP_SUMMARY"

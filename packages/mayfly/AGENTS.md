@@ -267,8 +267,8 @@ through the alternate layout, the lanes, and the surface renderer (leaf renders,
 control walks, reconciliations, layout passes, clock ticks, keymap snapshots): a
 budget row gates the counters it names, and a change to the frame path
 (`core/terminal.ts`, `core/surface-renderer.ts`, the keymap, the editor-extension
-runtime) runs them. `pnpm run bench:pty:assert` holds the real terminal to coarse
-ceilings in the full gate. The design scenes (`tests/design/scene-*.spec.ts`) drive
+runtime) runs them. `pnpm run perf -- --assert` holds the perf scenarios of the
+real terminal to the catalog's coarse ceilings in the full tier. The design scenes (`tests/design/scene-*.spec.ts`) drive
 the real renderer under the probe palette (`tests/design/probe.ts`) through the walks
 of `tests/design/walks.ts` and compare every frame with a cell-grid golden under
 `tests/design/frames/` (`script/scenarios/grid.mjs`); `vitest -u` rewrites a grid

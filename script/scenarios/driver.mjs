@@ -130,13 +130,16 @@ export function apply(ctx) {
     // A restart resumes the session with its history: play only into a session that has not started a turn.
     if (main.snapshotEvents().some(event => event.type === 'turn/start')) { log('session already has turns; replay skipped'); control?.send({ type: 'finished', skipped: true }); return }
     clock?.freeze()
-    // Under a runner, playback waits for `play` and pauses at the mark it names (or plays to the end).
+    // Under a runner, playback waits for `play` and pauses at the mark it names (or plays to the end), as fast as the
+    // session takes it or, `timed`, at the replay's own pace.
     let until
+    let timed = false
     const awaitPlay = async () => {
       clock?.freeze()
       const message = await control.next()
       if (message.type !== 'play') throw new Error(`unexpected control message ${JSON.stringify(message)}`)
       until = message.until ?? null
+      timed = message.timed === true
     }
     if (control !== undefined) { control.send({ type: 'ready', actions: actions.length }); await awaitPlay() }
     const children = new Map()
@@ -162,8 +165,11 @@ export function apply(ctx) {
         previous = action.at
         if (wait > 0) await sleep(wait, undefined, { signal: abort.signal }).catch(() => {})
       } else {
-        // As fast as the session takes it: yield so the action before is painted, at the action's timeline time.
-        await sleep(0)
+        // As fast as the session takes it (yielding so the action before is painted), or at the replay's pace; either
+        // way at the action's timeline time.
+        const wait = timed ? action.at - previous : 0
+        previous = action.at
+        await sleep(wait, undefined, { signal: abort.signal }).catch(() => {})
         clock?.at(action.at)
       }
       try {

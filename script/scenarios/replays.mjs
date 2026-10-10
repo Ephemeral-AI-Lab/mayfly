@@ -5,7 +5,22 @@
  */
 
 import { approval, compaction, edit, goal as goalItem, image, btw, job, mark, notify, pause, question, queue, raw, step, subagent, text, todos, tool, turn } from './timeline.mjs'
-import { reply } from '../workbench/mock-llm.mjs'
+
+/** A reply shaped like a real answer: prose, lists, a table, and fenced code in two languages. */
+function reply() {
+  const parts = []
+  for (let section = 1; section <= 8; section += 1) {
+    parts.push(`## Section ${section}: rendering pipeline notes`)
+    parts.push(`The **renderer** walks the tree once per frame and only repaints rows whose content changed since the last frame. This paragraph is long enough to wrap at ordinary widths, with \`inline code\`, *emphasis*, and a [link](https://example.com/${section}) to exercise the inline painter.`)
+    parts.push(['- first point about caches and identity', '- second point about `width` ladders', '- third point, with a nested list:', '  - nested one', '  - nested two'].join('\n'))
+    parts.push(['```ts', `export function section${section}(input: readonly string[], width: number): string[] {`, '  const rows: string[] = []', '  for (const line of input) {', "    if (line.length === 0) { rows.push(''); continue }", '    for (let at = 0; at < line.length; at += width) rows.push(line.slice(at, at + width))', '  }', "  return rows.map(row => row.padEnd(width, ' '))", '}', '```'].join('\n'))
+    if (section % 2 === 0) {
+      parts.push(['| workload | validated | compiled | rows |', '| --- | ---: | ---: | ---: |', '| W1 | 2 | 2 | 2 |', '| W2 | 0 | 0 | 1 |', '| W3 | 0 | 0 | 2 |'].join('\n'))
+      parts.push(['```python', 'def wrap(lines, width):', '    rows = []', '    for line in lines:', '        if not line:', "            rows.append('')", '            continue', '        rows.extend(line[i:i + width] for i in range(0, len(line), width))', '    return rows', '```'].join('\n'))
+    }
+  }
+  return parts.join('\n\n')
+}
 
 const SUMMARY = [
   '## Summary',

@@ -7,7 +7,7 @@
  */
 
 import { REPLAYS } from './replays.mjs'
-import { checkpoint, play } from './steps.mjs'
+import { checkpoint, idle, key, measure, play, type, wheel } from './steps.mjs'
 
 /** The size a scenario runs at unless it names its own. */
 export const DEFAULT_SIZE = Object.freeze([120, 40])
@@ -60,6 +60,43 @@ const replayScenario = (name, replay) => ({
   script: SCRIPTS[name] ?? [play(), checkpoint('end')],
 })
 
+const SENTENCE = 'the quick brown fox jumps over the lazy dog and keeps typing until the prompt wraps onto a second row of the editor'
+/** Open a panel by its command, measure its cursor keys, and close it. */
+const nav = command => [type(command), key('enter'), measure(`nav ${command}`, [key('down', { repeat: 20 }), key('up', { repeat: 20 })]), key('esc'), key('esc'), key('ctrl+c')]
+const FRAME_PATH = ['packages/mayfly/src/core/terminal.ts', 'packages/mayfly/src/core/surface-*.ts', 'packages/mayfly/src/core/keymap.ts', 'packages/mayfly/src/core/key-actions.ts', 'packages/mayfly/src/core/ui-compiler.ts', `${INTERACTION}editor-extension-runtime.ts`, `${INTERACTION}input-plugin.ts`]
+
+/**
+ * The perf scenarios: what `pnpm run perf` measures A/B against the merge base, and the absolute ceilings the full
+ * tier holds each span to (`MAYFLY_PERF_SLACK` scales them on a shared runner). A ceiling names a span (a trailing `*`
+ * matches a prefix) and a metric. They capture no checkpoints.
+ */
+const PERF = {
+  'perf-focus': {
+    summary: 'idle, typing, and the cursor keys of /settings, /model, /theme, and /help, with no pane',
+    source: { idle: true },
+    covers: FRAME_PATH,
+    sizes: [DEFAULT_SIZE],
+    perf: { ceilings: { 'idle': { cpuPct: 10 }, 'type': { keyP50Ms: 10, cpuPerKeyMs: 5 }, 'nav *': { cpuPerKeyMs: 12 } } },
+    script: [idle(4000), measure('type', [type(SENTENCE)]), key('ctrl+c'), ...nav('/settings'), ...nav('/model'), ...nav('/theme'), ...nav('/help')],
+  },
+  'perf-gallery': {
+    summary: 'idle and typing beside the gallery side pane',
+    source: { gallery: true },
+    covers: ['examples/ui-gallery/src/', 'packages/mayfly/src/core/views-lane.ts', ...FRAME_PATH],
+    sizes: [DEFAULT_SIZE],
+    perf: { ceilings: { idle: { cpuPct: 10 }, type: { keyP50Ms: 20 } } },
+    script: [idle(4000), measure('type', [type(SENTENCE)])],
+  },
+  'perf-stream': {
+    summary: 'a long streamed answer at its own pace, then page keys and the mouse wheel over the transcript',
+    source: { replay: 'markdown' },
+    covers: [`${TRANSCRIPT}conversation-feed.ts`, `${TRANSCRIPT}transcript-model.ts`, `${TRANSCRIPT}components.ts`, 'packages/mayfly/src/core/components.ts'],
+    sizes: [DEFAULT_SIZE],
+    perf: { ceilings: {} },
+    script: [measure('stream', [play(undefined, { timed: true })]), measure('scroll', [key('pageup', { repeat: 10 }), key('pagedown', { repeat: 10 })]), measure('wheel', [wheel('up', { count: 10 }), wheel('down', { count: 10 })])],
+  },
+}
+
 /** The catalog, by scenario name. */
 export const CATALOG = Object.freeze({
   idle: {
@@ -77,7 +114,12 @@ export const CATALOG = Object.freeze({
     script: [checkpoint('boot')],
   },
   ...Object.fromEntries(Object.entries(REPLAYS).map(([name, replay]) => [name, replayScenario(name, replay)])),
+  ...PERF,
 })
+
+/** The scenarios checked against goldens, and the perf scenarios. */
+export const GOLDEN_SCENARIOS = Object.keys(CATALOG).filter(name => CATALOG[name].perf === undefined)
+export const PERF_SCENARIOS = Object.keys(CATALOG).filter(name => CATALOG[name].perf !== undefined)
 
 /**
  * Look a scenario up.

@@ -16,6 +16,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import { ensureThrowawayProfile } from '../workbench/profile.mjs'
 import { scenarioNamed } from './catalog.mjs'
 import { click as clickReport, keyBytes, mouseReport } from './input.mjs'
+import { processCpuMs, processMemoryKb, spanMetrics } from './metrics.mjs'
 import { createScreen } from './screen.mjs'
 import { WORKSPACE, prepareSession } from './session.mjs'
 
@@ -108,10 +109,11 @@ export function prepareProfiles({ root, dshBin, names }) {
  * @param {(name: string, screen: ReturnType<typeof createScreen>) => Promise<void> | void} [options.onCheckpoint] - awaited
  *   at each checkpoint with the settled screen (to paint it).
  * @param {Record<string, string>} [options.env] - more environment for the product (`NO_COLOR`, a locale).
+ * @param {string} [options.profileDir] - write a CPU profile of the product here (`--cpu-prof`).
  * @returns {Promise<{ name: string, cols: number, rows: number, checkpoints: { name: string, grid: string }[], failures: string[],
  *   frames: number, bootMs: number, durationMs: number, screen: ReturnType<typeof createScreen> }>} the screen is disposed by the caller.
  */
-export async function runScenario(name, { root, dshBin, cols, rows, keys = [], onCheckpoint, env: extraEnv = {} }) {
+export async function runScenario(name, { root, dshBin, cols, rows, keys = [], onCheckpoint, env: extraEnv = {}, profileDir }) {
   const scenario = scenarioNamed(name)
   if (scenario === undefined) throw new Error(`unknown scenario "${name}"`)
   const [width, height] = [cols ?? scenario.sizes[0][0], rows ?? scenario.sizes[0][1]]
@@ -122,7 +124,7 @@ export async function runScenario(name, { root, dshBin, cols, rows, keys = [], o
   const session = await prepareSession({ scenario, dir: join(root, '.artifacts/scenarios', `${name}-${String(width)}x${String(height)}`), control: socketPath, presentation: RUNNER_PRESENTATION, disabled: RUNNER_DISABLED })
   const logs = ['mayfly-overflow.log', 'pi-crash.log'].map(file => join(profile.env.PI_CODING_AGENT_DIR, file))
   const logSizes = logs.map(sizeOf)
-  const env = { ...profile.env, ...session.env, TZ: 'UTC', NODE_OPTIONS: `--import=${pathToFileURL(CLOCK).href}`, ...extraEnv }
+  const env = { ...profile.env, ...session.env, TZ: 'UTC', NODE_OPTIONS: `--import=${pathToFileURL(CLOCK).href}${profileDir === undefined ? '' : ` --cpu-prof --cpu-prof-dir=${profileDir}`}`, ...extraEnv }
   const releaseBoot = await takeBootTurn()
   const pty = require('node-pty').spawn(dshBin, ['--profile', 'bench', '--patch', session.patch], { name: 'xterm-256color', cols: width, rows: height, cwd: session.cwd, env })
   const screen = createScreen({ cols: width, rows: height, reply: data => pty.write(data) })
@@ -134,6 +136,7 @@ export async function runScenario(name, { root, dshBin, cols, rows, keys = [], o
 
   const failures = []
   const checkpoints = []
+  const metrics = []
   let driver = 'booting'
   let bootMs = 0
   let syncs = 0
@@ -197,6 +200,41 @@ export async function runScenario(name, { root, dshBin, cols, rows, keys = [], o
     await onCheckpoint?.(checkpointName, screen)
   }
 
+  /** One timed input: written, then timed to the end of the next frame, then left until the bytes stop for 25 ms. */
+  async function timedInput(bytes, samples) {
+    const frames = screen.state.frames.length
+    const at = performance.now()
+    pty.write(bytes)
+    while (screen.state.frames.length === frames && performance.now() - at < 3000) await sleep(1)
+    const frame = screen.state.frames[frames]
+    if (frame !== undefined) samples.push(frame.at - at)
+    while (performance.now() - screen.state.lastData < 25 && performance.now() - at < 3000) await sleep(1)
+  }
+  /** Run the steps of a perf span, with nothing waiting on the driver. */
+  async function span(spanName, steps) {
+    await settle()
+    const samples = []
+    const [cpu0, frames0, bytes0, begin] = [processCpuMs(pty.pid), screen.state.frames.length, screen.state.bytes, performance.now()]
+    for (const step of steps) {
+      if (step.step === 'key') for (let count = 0; count < step.repeat; count += 1) await timedInput(keyBytes(step.name), samples)
+      else if (step.step === 'type') for (const char of step.text) await timedInput(char, samples)
+      else if (step.step === 'wheel') {
+        const cell = cellOf(step.at)
+        if (screen.state.mouse === 'none' || !screen.state.sgr) throw new Error('mouse reporting is off: the product would not see this event')
+        for (let count = 0; count < step.count; count += 1) await timedInput(mouseReport({ type: 'wheel', direction: step.direction, ...cell }), samples)
+      } else if (step.step === 'play') {
+        if (driver === 'paused') { control.send({ type: 'play', until: step.until ?? null, timed: step.timed === true }); driver = 'running' }
+        if (driver !== 'finished') await report(300_000, 'the replay to play')
+      } else if (step.step === 'wait') await sleep(step.ms)
+      else throw new Error(`a perf span cannot hold the step ${String(step.step)}`)
+    }
+    const cpu1 = processCpuMs(pty.pid)
+    metrics.push(spanMetrics({
+      name: spanName, wallMs: performance.now() - begin, cpuMs: cpu0 === null || cpu1 === null ? null : cpu1 - cpu0,
+      frames: screen.state.frames.length - frames0, bytes: screen.state.bytes - bytes0, keys: samples, memory: processMemoryKb(pty.pid),
+    }))
+  }
+
   try {
     try { await report(90_000, 'the replay driver') } finally { releaseBoot() }
     bootMs = Math.round(performance.now() - started)
@@ -223,6 +261,8 @@ export async function runScenario(name, { root, dshBin, cols, rows, keys = [], o
           break
         }
         case 'resize': pty.resize(step.cols, step.rows); screen.resize(step.cols, step.rows); await settle(); break
+        case 'idle': await span('idle', [{ step: 'wait', ms: step.ms }]); break
+        case 'measure': await span(step.name, step.steps); break
         default: throw new Error(`unknown step ${String(step.step)}`)
       }
     }
@@ -250,5 +290,5 @@ export async function runScenario(name, { root, dshBin, cols, rows, keys = [], o
   if (code === undefined) { failures.push('the product did not exit on Ctrl+C'); pty.kill() } else if (exitCode !== 0) failures.push(`the product exited with ${String(exitCode)}`)
   await control.close()
   await session.close()
-  return { name, cols: width, rows: height, checkpoints, failures, frames: screen.state.frames.length, bootMs, durationMs: Math.round(performance.now() - started), screen }
+  return { name, cols: width, rows: height, checkpoints, metrics, failures, frames: screen.state.frames.length, bootMs, durationMs: Math.round(performance.now() - started), screen }
 }

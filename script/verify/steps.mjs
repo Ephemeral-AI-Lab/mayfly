@@ -14,8 +14,8 @@ import { join } from 'node:path'
  * @property {string} command - the executable.
  * @property {string[]} args - its arguments.
  * @property {boolean} [blocking] - stop the tier when this step fails.
- * @property {'specs' | 'coverage' | 'scenarios'} [kind] - a run whose results the report reads: vitest's JSON, or the
- *   scenario results.
+ * @property {'specs' | 'coverage' | 'scenarios' | 'perf'} [kind] - a run whose results the report reads: vitest's JSON,
+ *   the scenario results, or the perf results.
  */
 
 export const TIERS = ['round', 'pr', 'full']
@@ -24,6 +24,7 @@ export const TIERS = ['round', 'pr', 'full']
 export const OUTPUT = '.artifacts/verify'
 export const VITEST_RESULTS = `${OUTPUT}/vitest.json`
 export const SCENARIO_RESULTS = `${OUTPUT}/scenarios.json`
+export const PERF_RESULTS = `${OUTPUT}/perf.json`
 
 const pnpm = (name, ...args) => ({ name, command: 'pnpm', args })
 const vitest = (name, kind, args) => ({ name, kind, command: 'pnpm', args: ['exec', 'vitest', 'run', ...args, '--reporter=dot', '--reporter=json', `--outputFile.json=${VITEST_RESULTS}`, '--silent=passed-only'] })
@@ -52,10 +53,11 @@ export function stepsFor(plan, tier, { root = process.cwd(), coverageAdvice = fa
       ...(plan.checks.website ? [pnpm('website', 'run', 'website:build')] : []),
       // One run: the suites with every retained-row hit painted again, the work budgets, and coverage against its floor.
       vitest('suites and coverage', 'coverage', ['--coverage']),
-      // The real terminal on the build above: every scenario against its goldens, the happy smoke, and the bench.
+      // The real terminal on the build above: every scenario against its goldens, the happy smoke, and every perf
+      // scenario against its ceilings.
       { name: 'scenarios', kind: 'scenarios', command: 'node', args: ['script/scenarios.mjs'] },
       pnpm('happy smoke', 'run', 'smoke:happy'),
-      pnpm('PTY bench', 'run', 'bench:pty:assert'),
+      { name: 'perf ceilings', kind: 'perf', command: 'node', args: ['script/perf.mjs', '--assert'] },
     ]
   }
   if (plan.mode === 'none') return []
@@ -89,5 +91,7 @@ export function stepsFor(plan, tier, { root = process.cwd(), coverageAdvice = fa
     steps.push({ name: `scenarios (${String(plan.tests.scenarios.length)})`, kind: 'scenarios', command: 'node', args: ['script/scenarios.mjs', '--sizes', tier === 'round' ? 'first' : 'all', ...plan.tests.scenarios] })
   }
   if (tier === 'pr' && plan.checks.smoke) steps.push(pnpm('happy smoke', 'run', 'smoke:happy'))
+  // The perf scenarios the change reaches, A/B against the merge base: reported, not gated (D28).
+  if (tier === 'pr' && plan.tests.perf.length > 0) steps.push({ name: `perf A/B (${String(plan.tests.perf.length)})`, kind: 'perf', command: 'node', args: ['script/perf.mjs', ...plan.tests.perf] })
   return steps
 }

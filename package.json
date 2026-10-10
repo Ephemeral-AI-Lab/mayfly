@@ -29,8 +29,6 @@
     "smoke:pty": "node script/smoke-pty.mjs",
     "smoke:pty:mouse": "node script/smoke-pty-mouse.mjs",
     "smoke:pty:output": "node script/smoke-pty-output-recovery.mjs",
-    "bench:pty": "node script/bench-pty.mjs",
-    "bench:pty:assert": "node script/bench-pty.mjs --scenario=gallery --assert && node script/bench-pty.mjs --scenario=focus --assert",
     "check:agent-docs": "node script/check-agent-docs.mjs",
     "check": "node script/check.mjs",
     "build:changed": "node script/build-changed.mjs",
@@ -38,6 +36,7 @@
     "frame": "node script/frame.mjs",
     "scenario": "node script/scenario.mjs",
     "scenarios": "node script/scenarios.mjs",
+    "perf": "node script/perf.mjs",
     "website:dev": "pnpm --filter @ephemeral-ai/mayfly-website run dev",
     "website:build": "pnpm --filter @ephemeral-ai/mayfly-website run build",
     "website:preview": "pnpm --filter @ephemeral-ai/mayfly-website run preview"

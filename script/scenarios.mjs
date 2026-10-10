@@ -13,7 +13,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { CATALOG, scenarioNamed } from './scenarios/catalog.mjs'
+import { CATALOG, GOLDEN_SCENARIOS, scenarioNamed } from './scenarios/catalog.mjs'
 import { compareGolden, goldenPath, orphanGoldens, removeGoldens, writeGolden } from './scenarios/golden.mjs'
 import { prepareProfiles, runScenario } from './scenarios/runner.mjs'
 import { assertDshVersion, resolveDshBin, root } from './smoke-lib.mjs'
@@ -36,6 +36,7 @@ export function parseScenariosArgs(argv) {
     else if (value === '--parallel') options.parallel = Number(argv[++index])
     else if (value.startsWith('--')) return { error: `unknown option ${value}` }
     else if (scenarioNamed(value) === undefined) return { error: `unknown scenario "${value}"` }
+    else if (!GOLDEN_SCENARIOS.includes(value)) return { error: `"${value}" is a perf scenario: run pnpm run perf -- ${value}` }
     else options.names.push(value)
   }
   if (!['all', 'first'].includes(options.sizes)) return { error: '--sizes needs all or first' }
@@ -57,7 +58,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const parsed = parseScenariosArgs(process.argv.slice(2))
   if ('error' in parsed) { console.error(parsed.error); process.exit(2) }
   const { options } = parsed
-  const names = options.names.length > 0 ? options.names : Object.keys(CATALOG)
+  const names = options.names.length > 0 ? options.names : GOLDEN_SCENARIOS
   const everything = options.names.length === 0 && options.sizes === 'all'
   const dshBin = resolveDshBin()
   assertDshVersion(dshBin)

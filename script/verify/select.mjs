@@ -49,8 +49,9 @@ function selectScenarios(graph, files) {
   for (const file of others) {
     const covered = Object.entries(CATALOG).filter(([, scenario]) => scenario.covers.some(glob => coversPath(glob, file)))
     for (const [name] of covered) add(name, [file])
+    // A source no golden scenario covers still shows on screen: the smoke set checks it (perf coverage measures cost).
     const smoke = SCENARIO_SMOKE.find(rule => rule.pattern.test(file))
-    if (covered.length === 0 && smoke !== undefined) for (const name of smoke.scenarios) add(name, [file])
+    if (!covered.some(([, scenario]) => scenario.perf === undefined) && smoke !== undefined) for (const name of smoke.scenarios) add(name, [file])
   }
   return why
 }
@@ -127,14 +128,16 @@ export function classifyChanges(inputFiles, { graph = repositoryGraph() } = {}) 
   for (const [name, check] of Object.entries(CHECKS)) if (check.entry !== undefined && reached.has(check.entry)) checks[name] = true
   const scenarioWhy = selectScenarios(graph, files)
   Object.assign(why, scenarioWhy)
-  const scenarios = Object.keys(scenarioWhy).map(key => key.slice('scenario '.length))
+  const selected = Object.keys(scenarioWhy).map(key => key.slice('scenario '.length))
+  const scenarios = selected.filter(name => CATALOG[name].perf === undefined)
+  const perf = selected.filter(name => CATALOG[name].perf !== undefined)
 
   const plan = {
     files,
     mode: full ? 'full' : files.length === 0 ? 'none' : 'changed',
     reasons: [...new Set(reasons)],
     checks,
-    tests: { specs: specs.sort(), nodeTests: nodeTests.sort(), scenarios: scenarios.sort(), why },
+    tests: { specs: specs.sort(), nodeTests: nodeTests.sort(), scenarios: scenarios.sort(), perf: perf.sort(), why },
     manualAcceptance: [...manualAcceptance],
   }
   return full ? promoteToFull(plan, 'full gate required by change classification') : plan

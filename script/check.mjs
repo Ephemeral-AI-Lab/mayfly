@@ -20,7 +20,7 @@ import { collectChangedFiles, defaultBase } from './change-files.mjs'
 import { changedLines, uncoveredChangedLines } from './verify/coverage-diff.mjs'
 import { vitestFailures, writeReport } from './verify/report.mjs'
 import { classifyChanges, promoteToFull, repositoryGraph } from './verify/select.mjs'
-import { OUTPUT, SCENARIO_RESULTS, TIERS, VITEST_RESULTS, stepsFor } from './verify/steps.mjs'
+import { OUTPUT, PERF_RESULTS, SCENARIO_RESULTS, TIERS, VITEST_RESULTS, stepsFor } from './verify/steps.mjs'
 
 /**
  * Parse the command line.
@@ -78,6 +78,14 @@ export function scenarioFailures(results) {
   return failures
 }
 
+/** The failures of a perf run: a ceiling broken, or a run that broke. */
+export function perfFailures(results) {
+  return [
+    ...(results.scenarios ?? []).flatMap(scenario => (scenario.breaches ?? []).map(breach => ({ kind: 'perf', file: `perf ${scenario.name}`, test: `${breach.span} ${breach.metric}`, message: `${String(breach.value)} is past its ceiling ${String(breach.ceiling)}` }))),
+    ...(results.failures ?? []).filter(failure => !failure.includes('past its ceiling')).map(failure => ({ kind: 'perf', message: failure })),
+  ]
+}
+
 const tail = (file, lines = 30) => readFileSync(file, 'utf8').replace(/\x1b\[[0-9;?]*[A-Za-z]/gu, '').split('\n').slice(-lines).join('\n').trim()
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
@@ -106,20 +114,28 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     const results = []
     const failures = []
     let stopped = false
+    let perf
     for (const [index, step] of steps.entries()) {
       if (stopped) { results.push({ name: step.name, status: 'skip', durationMs: 0, command: shell(step) }); continue }
       const log = join(output, 'steps', `${String(index + 1).padStart(2, '0')}-${slug(step.name)}.log`)
       const vitestResults = join(root, VITEST_RESULTS)
       const scenarioResults = join(root, SCENARIO_RESULTS)
-      if (step.kind !== undefined) { rmSync(vitestResults, { force: true }); rmSync(scenarioResults, { force: true }) }
+      const perfResults = join(root, PERF_RESULTS)
+      if (step.kind !== undefined) { rmSync(vitestResults, { force: true }); rmSync(scenarioResults, { force: true }); rmSync(perfResults, { force: true }) }
       const begin = performance.now()
       const code = await runStep(step, { root, log, verbose: options.verbose })
       const durationMs = Math.round(performance.now() - begin)
       const status = code === 0 ? 'pass' : 'fail'
       results.push({ name: step.name, status, durationMs, command: shell(step), log: relative(root, log) })
+      if (step.kind === 'perf' && existsSync(perfResults)) {
+        const measured = JSON.parse(readFileSync(perfResults, 'utf8'))
+        perf = { mode: measured.mode, baseline: measured.baseline, regressions: measured.regressions ?? [], improvements: measured.improvements ?? [] }
+      }
       process.stdout.write(`${status === 'pass' ? '✓' : '✗'} ${step.name} (${seconds(durationMs)})${status === 'fail' ? ` — ${relative(root, log)}` : ''}\n`)
       if (status === 'pass') continue
-      const specFailures = step.kind === 'scenarios'
+      const specFailures = step.kind === 'perf'
+        ? existsSync(perfResults) ? perfFailures(JSON.parse(readFileSync(perfResults, 'utf8'))) : []
+        : step.kind === 'scenarios'
         ? existsSync(scenarioResults) ? scenarioFailures(JSON.parse(readFileSync(scenarioResults, 'utf8'))) : []
         : step.kind !== undefined && existsSync(vitestResults) ? vitestFailures(JSON.parse(readFileSync(vitestResults, 'utf8')), root).map(failure => ({ kind: 'spec', ...failure })) : []
       if (specFailures.length > 0) failures.push(...specFailures.map(failure => ({ step: step.name, ...failure })))
@@ -140,7 +156,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     const verdict = results.some(result => result.status === 'fail') ? 'fail' : 'pass'
     writeReport(output, {
       tier, base, verdict, durationMs: Math.round(performance.now() - started), files: plan.files, reasons: plan.reasons,
-      manualAcceptance: plan.manualAcceptance, steps: results, tests: plan.tests, failures, uncovered, rerun,
+      manualAcceptance: plan.manualAcceptance, steps: results, tests: plan.tests, failures, uncovered, rerun, perf,
     })
     for (const failure of failures.filter(entry => entry.file !== undefined).slice(0, 10)) process.stdout.write(`  ✗ ${failure.file} › ${failure.test}\n`)
     process.stdout.write(`check: ${verdict === 'pass' ? 'PASS' : 'FAIL'} (${tier}, ${seconds(performance.now() - started)}) — ${relative(root, join(output, 'summary.md'))}\n`)

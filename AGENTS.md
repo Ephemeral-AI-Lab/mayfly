@@ -68,7 +68,7 @@ CI runs the pr tier on a pull request (with advice on changed source lines no
 selected spec ran) and the full tier on `main` and nightly. The full tier
 includes screenshot freshness, one vitest run (the suites with the stale-row
 check on, the work budgets, and the coverage floor), the happy smoke and the
-PTY bench against its ceilings (`bench:pty:assert`) on the tier's own build,
+perf scenarios against their ceilings (`perf --assert`) on the tier's own build,
 every scenario against its goldens, and a Website build when Website files
 changed; do not precede it with redundant plain tests. `pnpm run scenarios
 [-- <name>...]` compares the catalog scenarios' checkpoints with
@@ -111,11 +111,15 @@ decisions; do not add tests only to reach a line.
 - Screenshot updates use `pnpm run shots:sync` after build; `pnpm run shots:check`
   checks committed screenshots for staleness.
 - Frame cost is measured where a frame is painted. `tests/perf/frame-workloads.ts`
-  counts one frame through the alternate layout and the surface renderer, and
-  `pnpm run bench:pty` reports idle CPU and key-to-paint latency of the real CLI
-  under a PTY (`--scenario=gallery` loads a side pane, `--prof` writes a CPU
-  profile). Report the bench with a change to the frame path; a compiled
-  component's own render count is not a frame.
+  counts one frame through the alternate layout and the surface renderer (the
+  deterministic gate), and `pnpm run perf` measures the perf scenarios of the
+  catalog on the real CLI under a PTY (idle CPU, key-to-paint for keys and wheel
+  notches, CPU per key, frames, memory) A/B against the merge base, each metric
+  judged `regressed`, `same`, `improved`, or `inconclusive` (more `--runs`
+  decide it); `--prof` lists the functions with the most self time. The pr tier
+  runs it for a change the perf scenarios cover and reports without gating;
+  report it with a change to the frame path. A compiled component's own render
+  count is not a frame.
 
 ## Review loop
 

@@ -4,11 +4,11 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { parseCheckArgs, scenarioFailures } from '../check.mjs'
+import { parseCheckArgs, perfFailures, scenarioFailures } from '../check.mjs'
 import { ROOT } from '../package-contract.mjs'
 import { addedLines, uncoveredChangedLines } from '../verify/coverage-diff.mjs'
 import { renderSummary, vitestFailures } from '../verify/report.mjs'
-import { CATALOG } from '../scenarios/catalog.mjs'
+import { GOLDEN_SCENARIOS, PERF_SCENARIOS } from '../scenarios/catalog.mjs'
 import { classifyChanges } from '../verify/select.mjs'
 import { stepsFor } from '../verify/steps.mjs'
 
@@ -38,10 +38,11 @@ test('the pr tier adds the checks the change claims, builds before packing, and 
   assert.ok(advised.args.includes('--coverage.thresholds.lines=0'))
 })
 
-test('the full tier runs everything once: one vitest run with coverage, the smoke, and the bench on its own build', () => {
+test('the full tier runs everything once: one vitest run with coverage, the scenarios, the smoke, and the perf ceilings on its own build', () => {
   const steps = stepsFor(classifyChanges(['website/index.md']), 'full', { root: ROOT })
   const scripts = scriptsOf(steps)
-  for (const name of ['test:repo-workflow', 'typecheck', 'lint', 'diagrams:check', 'build', 'check:lib', 'shots:check', 'check:agent-docs', 'check:examples', 'website:build', 'smoke:happy', 'bench:pty:assert']) assert.ok(scripts.includes(name), name)
+  for (const name of ['test:repo-workflow', 'typecheck', 'lint', 'diagrams:check', 'build', 'check:lib', 'shots:check', 'check:agent-docs', 'check:examples', 'website:build', 'smoke:happy']) assert.ok(scripts.includes(name), name)
+  assert.deepEqual(commandOf(steps, 'perf ceilings').args, ['script/perf.mjs', '--assert'])
   assert.ok(!scripts.includes('check:pack'))
   const vitest = steps.filter(step => step.args.includes('vitest'))
   assert.equal(vitest.length, 1)
@@ -141,7 +142,8 @@ test('a golden runs its scenario, a covered source the scenarios that cover it, 
   assert.deepEqual(scenarios('examples/ui-gallery/src/index.ts'), ['gallery'])
   assert.deepEqual(scenarios('docs/README.md'), [])
   const machinery = classifyChanges(['script/scenarios/runner.mjs'])
-  assert.equal(machinery.tests.scenarios.length, Object.keys(CATALOG).length)
+  assert.deepEqual(machinery.tests.scenarios, [...GOLDEN_SCENARIOS].sort())
+  assert.deepEqual(machinery.tests.perf, [...PERF_SCENARIOS].sort())
   assert.equal(machinery.tests.why['scenario idle'].at(-2), 'script/scenarios.mjs')
   assert.equal(stepsFor(classifyChanges(['packages/mayfly/src/transcript/thinking.ts']), 'pr', { root: ROOT }).find(step => step.kind === 'scenarios').args[2], 'all')
 })
@@ -162,4 +164,25 @@ test('a scenario report names the checkpoint, size, and rows that differ, a miss
     ['script/scenarios/golden/old/end@80x24.grid', 'no checkpoint writes this golden'],
   ])
   assert.equal(failures[0].message, 'row 3\n- |a\n+ |b')
+})
+
+test('the pr tier measures the perf scenarios a frame-path change reaches, A/B, and the report lists their verdicts', () => {
+  const plan = classifyChanges(['packages/mayfly/src/core/keymap.ts'])
+  assert.ok(plan.tests.perf.includes('perf-focus'))
+  const perf = stepsFor(plan, 'pr', { root: ROOT }).find(step => step.kind === 'perf')
+  assert.deepEqual(perf.args.slice(0, 1), ['script/perf.mjs'])
+  assert.equal(stepsFor(plan, 'round', { root: ROOT }).some(step => step.kind === 'perf'), false)
+  const summary = renderSummary({
+    tier: 'pr', base: 'origin/main', verdict: 'pass', durationMs: 1000, files: [], reasons: [], manualAcceptance: [], steps: [], failures: [], uncovered: [], rerun: [],
+    tests: { specs: [], nodeTests: [], why: {} },
+    perf: { mode: 'ab', baseline: { sha: 'abcdef1234567890' }, regressions: [{ scenario: 'perf-focus', span: 'type', metric: 'keyP50Ms', head: 5.2, base: 1.8, delta: 188.7 }], improvements: [] },
+  })
+  assert.match(summary, /^# check: PASS \(pr, 1\.0 s\) · 1 perf regression$/mu)
+  assert.match(summary, /## Performance against abcdef1234 \(reported, not gated\)/u)
+  assert.match(summary, /- ✗ regressed: perf-focus type keyP50Ms 5\.2 vs 1\.8 \(\+188\.7%\)/u)
+  assert.match(summary, /pnpm run perf -- perf-focus --prof/u)
+  assert.deepEqual(perfFailures({ scenarios: [{ name: 'perf-focus', breaches: [{ span: 'idle', metric: 'cpuPct', value: 31, ceiling: 30 }] }], failures: ['perf-focus idle cpuPct 31 is past its ceiling 30', 'perf-gallery (head run 1): the screen did not settle'] }).map(failure => [failure.file, failure.test, failure.message]), [
+    ['perf perf-focus', 'idle cpuPct', '31 is past its ceiling 30'],
+    [undefined, undefined, 'perf-gallery (head run 1): the screen did not settle'],
+  ])
 })

@@ -1752,7 +1752,7 @@ The A/B and the outputs:
 | 2b.5 | The catalog (`script/scenarios/catalog.mjs`: every replay, an empty session, the gallery) and the headless runner (`runner.mjs`, `screen.mjs`, `session.mjs`, `clock.mjs`, `input.mjs`): the driver's control socket (`play` to a mark, `sync`, reports of marks, asks, and the end), fast playback, later effects compiled as actions instead of driver timers, the scenario clock, a screen that times frames on `?2026l`, tracks the mouse and cursor modes, and answers the colour queries, SGR mouse input, settling on screen content, the invariants, boots that take turns; `frame`, `scenario`, and `dev --replay` read the catalog. All 26 scenarios give identical grids on repeated and parallel runs (52 runs in 129 s, four at a time). It found that the activity spinner ignored reduced motion (fixed in its own commit), that two `dsh` boots on one profile race on its composition file, that pi-tui writes an empty frame (a cursor move) on every render asked for, and that a generated session title lands at a different moment each run (the runner disables it) | `script/workbench/{live-scenarios,keys,replay-run}.mjs`; timeline, replays, driver, and stub move to `script/scenarios/` |
 | 2b.6 | Cell-grid goldens gate: `pnpm run scenarios` (`script/scenarios.mjs`, `scenarios/golden.mjs`) compares every checkpoint with `script/scenarios/golden/<scenario>/<checkpoint>@<cols>x<rows>.grid`, four runs at a time, flags missing and orphaned goldens, and `--update` accepts; selection runs a golden's own scenario, the scenarios whose `covers` name a changed source, every scenario for the scenario machinery, and a smoke set (`idle`, `tour`; `gallery` for its sources) for other product code; round runs them at their first size, pr at every size, full all of them; the summary shows each differing row with the chain that selected the scenario and the accept command. 27 goldens; all pass in 66 s | — |
 | 2b.6b | The six app-shot fixture scenes become catalog scenarios (`seed`), and app shots are painted from their goldens | `tests/app-shots.spec.ts` with `tests/app-shots/`, `script/shots/app-manifest.mjs`, `tests/workbench/{frame.spec,scenarios}.ts`, `script/smoke-pty-mouse.mjs` (a wheel scenario replaces it) |
-| 2b.7 | `pnpm run perf`: the metrics, the A/B against the merge-base, the profile summary, the ceilings in the catalog | `script/bench-pty.mjs`, `bench:pty*`, `BENCH_PTY_SLACK` |
+| 2b.7 | `pnpm run perf` (`script/perf.mjs`, `scenarios/{metrics,stats,baseline,cpuprofile}.mjs`): three perf scenarios in the catalog (`perf-focus`: idle, typing, and the cursor keys of four panels; `perf-gallery`: idle and typing beside the side pane; `perf-stream`: a streamed answer at its own pace, page keys, and the mouse wheel), `idle` and `measure` spans that time each key or wheel notch to the end of its frame without driver round trips, A/B against the merge base built once in a worktree, interleaved runs, verdicts `regressed`, `same`, `improved`, or `inconclusive` (median, twice the MAD, Mann-Whitney U), pooled key samples, `--prof` top functions with the baseline's time beside them, `--assert` ceilings scaled by `MAYFLY_PERF_SLACK`; the pr tier runs the A/B for a covered change and reports it, the full tier asserts the ceilings. An A/A run of one build is `same` on every metric, and a 0.2 ms slowdown injected into the keymap is `regressed` on key-to-paint in every span | `script/bench-pty.mjs`, `bench:pty*`, `BENCH_PTY_SLACK`, `script/workbench/mock-llm.mjs` |
 | 2b.8 | Real screenshots: the browser backend, `frame --png`, PNGs of the changed checkpoints, the contact sheet | — |
 | 2b.9 | Test files typechecked (`tsconfig.tests.json` maps the workspace packages to their source) and the backlog fixed | — |
 
@@ -1784,7 +1784,8 @@ The A/B and the outputs:
 | 2b.4 | in review | `feat/2b-4-check-tiers` |
 | 2b.5 | in review | `feat/2b-5-scenario-runner` |
 | 2b.6 | in review | `feat/2b-6-scenario-goldens` |
-| 2b.6b-2b.9 | planned | — |
+| 2b.7 | in review | `feat/2b-7-perf-ab` |
+| 2b.6b, 2b.8, 2b.9 | planned | — |
 
 **2c Content at any size** (§4.2, D26). Chunked text, admission and painting when visible, append identity, the memory
 ceiling, and the gate rows. The owner reviews a 1 MB diff, a long plan, and job output following its tail in the
@@ -2084,7 +2085,7 @@ are allowed again, with every caller updated in the same change.
 | pr | Once per component, before it merges, and in PR CI | round, the checks the changed inputs claim, every size of the selected scenarios, perf A/B and PNGs where selected |
 | full | CI on `main` and nightly, the end of a phase, a release, and changes the root instructions route to it (composition, workflow, release) | Everything, with coverage and its floor, the smoke, the perf ceilings, and the platform matrix (`check:pack` when selected); at a phase end, also the perf report and the owner's acceptance |
 
-Until slices 2b.6b-2b.8 land, app shots, screenshots, and the bench come from `shots:sync` and `bench:pty`.
+Until slices 2b.6b and 2b.8 land, app shots and screenshots come from `shots:sync`.
 
 **Decision tests** (D25). A finalized component carries tests for what was decided, and nothing written only to reach
 a line:
@@ -2119,8 +2120,8 @@ workload, read from the counters of slice 1.0. The counts are deterministic, so 
 them in CI. Slice 1.0 records today's counts; from slice 1.1 the budgets below hold, and a slice that adds a painter
 adds its row. From Phase 2 on, a component on a hot path adds its row when it is finalized, Phase 2c adds the content
 rows of §4.2, and Phase 7 sets the final budgets and bench ceilings for the architecture it leaves (D27). From slice
-2b.7 the wall clock comes from `pnpm run perf`. It measures a catalog scenario A/B against the merge-base, and its
-absolute ceilings live in the catalog as the full tier's backstop.
+2b.7 the wall clock comes from `pnpm run perf`. It measures the catalog's perf scenarios A/B against the merge base,
+and their absolute ceilings live in the catalog as the full tier's backstop.
 
 | Workload | Shape | One step | Budget for the step |
 | --- | --- | --- | --- |

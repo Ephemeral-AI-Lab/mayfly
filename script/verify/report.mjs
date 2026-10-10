@@ -41,7 +41,8 @@ const seconds = ms => `${(ms / 1000).toFixed(1)} s`
  * @returns {string}
  */
 export function renderSummary(report) {
-  const lines = [`# check: ${report.verdict === 'pass' ? 'PASS' : 'FAIL'} (${report.tier}, ${seconds(report.durationMs)})`, '']
+  const regressed = report.perf?.regressions?.length ?? 0
+  const lines = [`# check: ${report.verdict === 'pass' ? 'PASS' : 'FAIL'} (${report.tier}, ${seconds(report.durationMs)})${regressed > 0 ? ` · ${String(regressed)} perf ${regressed === 1 ? 'regression' : 'regressions'}` : ''}`, '']
   const scope = [`${String(report.files.length)} changed ${report.files.length === 1 ? 'file' : 'files'} against ${report.base}`]
   if (report.tier !== 'full') scope.push(`${String(report.tests.specs.length)} specs`, `${String(report.tests.nodeTests.length)} workflow tests`)
   lines.push(scope.join(' · '))
@@ -63,6 +64,16 @@ export function renderSummary(report) {
       lines.push('```', failure.message, '```')
       if (failure.log !== undefined) lines.push(`Full output: ${failure.log}`)
     }
+  }
+  if (report.perf?.mode === 'ab') {
+    const against = report.perf.baseline?.sha === undefined ? 'the merge base' : report.perf.baseline.sha.slice(0, 10)
+    lines.push('', `## Performance against ${against} (reported, not gated)`)
+    if (report.perf.regressions.length === 0 && report.perf.improvements.length === 0) lines.push('', 'No metric changed beyond its noise.')
+    for (const entry of [...report.perf.regressions.map(item => ['✗ regressed', item]), ...report.perf.improvements.map(item => ['↓ improved', item])]) {
+      const [label, item] = entry
+      lines.push(`- ${label}: ${item.scenario} ${item.span} ${item.metric} ${String(item.head)} vs ${String(item.base)} (${item.delta === null ? 'n/a' : `${item.delta > 0 ? '+' : ''}${String(item.delta)}%`})`)
+    }
+    if (report.perf.regressions.length > 0) lines.push('', `Profile it: \`pnpm run perf -- ${report.perf.regressions[0].scenario} --prof\``)
   }
   if (report.uncovered.length > 0) {
     lines.push('', '## Changed lines no selected spec ran (advice)')
