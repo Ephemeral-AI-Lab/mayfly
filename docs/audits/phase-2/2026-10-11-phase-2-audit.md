@@ -5,6 +5,10 @@ roadmap, and a `20_000` timeout on `markdown-rows.spec.ts:188`). Report date: 20
 of that commit. It does not define current behavior. The audit itself changed no product code; the fixes live on separate
 slice branches (see "Fix slices").
 
+**Closeout.** Every dispatched fix is on `main` (PRs #5, #10, #12, #13, #14). The deferred items need owner decisions; they are
+listed in the [progress report's closeout](2026-10-11-phase-2-audit-progress.md#closeout). The "Fix slices" table below is the
+state when it was written.
+
 ## Conclusion
 
 The foundation is sound where the Phase 2 work was measured: lists, row maps, windowed scrolls, and the

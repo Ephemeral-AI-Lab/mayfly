@@ -1,8 +1,8 @@
 # Audit fix B: terminal lifecycle, sanitizer and notification correctness — fix design
 
-Design date: 2026-10-11. Issue: #7. Baseline: `main` at `7bb476a` (audit-1 merged). Status: **proposed, for owner
-approval**. This document changes no product code; the implementation is a separate pull request that follows the
-slicing in section 8.
+Design date: 2026-10-11. Issue: #7. Baseline: `main` at `7bb476a` (audit-1 merged). Status: **implemented**, merged as
+PR #14 (`9edaa44`); its commits cite R1 to R6 as shipped. This document changed no product code; the
+implementation followed the slicing in section 8.
 
 Sources: [Part 2](2026-10-11-phase-2-audit-part2.md) (P2-1, P2-3 to P2-6, P2-8, "F8 and F10 traced to the end"), the
 [audit report](2026-10-11-phase-2-audit.md) (F8, F10, F12) and its "Fix slices". The reports' "Fix direction" lines are

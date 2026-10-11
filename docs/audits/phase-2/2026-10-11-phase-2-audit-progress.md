@@ -7,6 +7,39 @@ define current behavior.
 The audit ships as one PR: the first pass and the follow-up pass are both commits on `docs/phase-2-audit`
 (`89f4c6b`, `855e7f4`, `4b1d736`). The follow-up pass that was submitted as a separate PR is folded into it.
 
+## Closeout
+
+Closed against `origin/main` at `9edaa44` (PR #14). The sections after this one are the state at submission and are kept
+as written. Index of the records: [audit records](../README.md).
+
+Results on main:
+
+| Work | Package in the dispatch below | Merged as |
+| --- | --- | --- |
+| Audit parts 1 and 2, the plan, the progress report | (audit) | PR #2 (`d346eb8`), with part 1 through PR #4 |
+| `audit-1`: F1, F2, F3, F4, F7, E1, F13 | `audit-1` (not a package) | PR #5 (`7bb476a`) |
+| Package A: P1-01, P1-03, P1-02, F6, A10, F5 with F11, T13 | A | PR #10 (`78799bc`) |
+| Package C: B1, B2, B3, B4, P2-2 (native clipboard wired), the clipboard pair of P2-9 | C | PR #12 (`ad4d654`) |
+| Package D: T1, T2, T3, T7, T10, E2, P2-11, P2-12, the E1 rows | D | PR #13 (`6291920`) |
+| Package B: P2-1 with F10, P2-3, P2-4, P2-5, P2-6, P2-8, F8, F12 | B | PR #14 (`9edaa44`); design in [the fix B design](2026-10-11-fix-b-lifecycle-design.md) |
+
+Spot-checked on main: `spanText` is gone, the `handled` notification state is gone, the timestamp in a test title is gone,
+and the native clipboard probes are imported. Every package's commits are on main.
+
+Deferred. The audit did not dispatch these, and each needs an owner decision. No code is pending for them:
+
+- B5 (exact duplicates, with the rest of P2-9) and B6 (a shared row-source base, after the content fixes).
+- P2-7: twenty module-level test hooks that the decision tests depend on.
+- T4, T6, T8 (the coverage floor, 0.02 points of headroom after T3, T6, T8), T9 (specs and frames only), T12.
+- The `invariant.ts` companions (`app`, `conversation`, `core`, `frontend`, `interaction`).
+- How far to go in the transcript path that Phase 3a replaces (measured by the audit, not reviewed).
+
+Owner items (the manual list, items 1 to 9): the owner reported them passed. No per-item acceptance record is in the repo.
+The phase 2 completion note is in the roadmap's 2d section.
+
+A `20_000` timeout on `markdown-rows.spec.ts:188` was an uncommitted local edit in the audit's working tree, flagged as an F1
+symptom. It was dropped at closeout, not committed: the spec passes all 160 tests on the default timeout. CI is not configured on the Gitea instance and was not used as evidence.
+
 ## Status
 
 The agent-auditable scope of the plan is complete (parts 1 and 2). Only the live checks and the manual part (M) remain, and the
