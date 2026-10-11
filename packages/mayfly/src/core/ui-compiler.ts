@@ -26,6 +26,7 @@ import type {
   MayflyFieldValue,
   MayflyPagePath,
 } from '@ephemeral-ai/mayfly-ui'
+import { textOf } from '@ephemeral-ai/mayfly-ui'
 import { CURSOR_MARKER, HStack, ScrollView, type Component } from '@earendil-works/pi-tui'
 import { renderLayoutFrame, type LayoutBox, type LayoutRect } from '@earendil-works/pi-tui/dist/layout.js'
 import { getLayoutNode, LAYOUT_NODE, type LayoutNode, type LayoutViewport } from '@earendil-works/pi-tui/dist/layout-node.js'
@@ -680,10 +681,11 @@ class SemanticScrollView extends WindowScrollView {
 }
 
 function diagramSource(node: MayflyDiagramNode): string {
+  const source = textOf(node.source)
   let longest = 0
-  for (const match of node.source.matchAll(/`+/gu)) longest = Math.max(longest, match[0].length)
+  for (const match of source.matchAll(/`+/gu)) longest = Math.max(longest, match[0].length)
   const fence = '`'.repeat(Math.max(3, longest + 1))
-  return `${fence}mermaid\n${node.source}\n${fence}`
+  return `${fence}mermaid\n${source}\n${fence}`
 }
 
 /** The `markdown` node a `diagram` compiles through: its fence text once, stable for the shared-source memos. */

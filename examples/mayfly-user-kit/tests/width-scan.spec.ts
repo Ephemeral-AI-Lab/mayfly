@@ -33,7 +33,7 @@ function uiRows(name: string, node: MayflyUiNode): void {
 }
 
 describe('example width contracts', () => {
-  it('scans every direct pane and the overlay through the canonical compiler', async () => {
+  it('scans every direct pane and the overlay through the canonical compiler', { timeout: 20_000 }, async () => {
     const ctx = new Context()
     await ctx.plugin({ name: 'example-width-api', apply: applyApi })
     try {

@@ -177,64 +177,137 @@ export class ContentIndex {
 }
 
 /**
+ * The line table of one text piece: starts, ends (excluding the `\n`), and estimated columns, all offsets relative to
+ * the piece. A chunk of a {@link MayflyContentField} holds one through the admission memo, so appending to a field
+ * scans only the new pieces; {@link indexMergedLines} joins the tables into the index of the whole text.
+ */
+export interface ContentLineScan {
+  /** UTF-16 units of the scanned piece. */
+  readonly units: number
+  readonly starts: Uint32Array
+  readonly ends: Uint32Array
+  readonly columns: Uint32Array
+}
+
+const EMPTY_SCAN: ContentLineScan = { units: 0, starts: new Uint32Array(0), ends: new Uint32Array(0), columns: new Uint32Array(0) }
+
+/** Scan one text piece into its line table; the last line is open whenever the piece does not end at a `\n`. */
+export function scanContentLines(text: string): ContentLineScan {
+  if (text.length === 0) return EMPTY_SCAN
+  const starts: number[] = []
+  const ends: number[] = []
+  const columns: number[] = []
+  let start = 0
+  for (;;) {
+    const newline = text.indexOf('\n', start)
+    const end = newline < 0 ? text.length : newline
+    starts.push(start)
+    ends.push(end)
+    columns.push(estimateColumns(text, start, end))
+    if (newline < 0) break
+    start = newline + 1
+  }
+  return { units: text.length, starts: Uint32Array.from(starts), ends: Uint32Array.from(ends), columns: Uint32Array.from(columns) }
+}
+
+/**
+ * Join per-chunk line scans into the line table of the whole `text` (the chunks' texts concatenated): a chunk whose
+ * text does not end at a `\n` leaves its last line open, and it merges with the next chunk's first line.
+ */
+export function indexMergedLines(scans: readonly ContentLineScan[], text: string, onLines?: (lines: number) => void): ContentIndex {
+  const lineStart: number[] = []
+  const lineEnd: number[] = []
+  const lineCols: number[] = []
+  let base = 0
+  let openStart = -1
+  let openCols = 0
+  for (const scan of scans) {
+    const lines = scan.starts.length
+    for (let line = 0; line < lines; line += 1) {
+      const terminated = line + 1 < lines
+      if (line === 0 && openStart >= 0) {
+        if (terminated) {
+          lineStart.push(openStart); lineEnd.push(base + scan.ends[0]!); lineCols.push(openCols + scan.columns[0]!)
+          openStart = -1
+        } else openCols += scan.columns[0]!
+        continue
+      }
+      if (terminated) {
+        lineStart.push(base + scan.starts[line]!); lineEnd.push(base + scan.ends[line]!); lineCols.push(scan.columns[line]!)
+      } else {
+        openStart = base + scan.starts[line]!
+        openCols = scan.columns[line]!
+      }
+    }
+    base += scan.units
+  }
+  if (openStart >= 0) {
+    lineStart.push(openStart); lineEnd.push(base); lineCols.push(openCols)
+  }
+  return planContentLines(text, lineStart, lineEnd, lineCols, onLines)
+}
+
+/**
  * Index `text` in one pass: line starts, per-line estimated columns, and the segment plan. `onLines` is called once
  * with the line count so the caller can charge its work counter.
  */
 export function indexContent(text: string, onLines?: (lines: number) => void): ContentIndex {
-  const lineStart: number[] = []
-  const lineEnd: number[] = []
-  const lineCols: number[] = []
+  const scan = scanContentLines(text)
+  return planContentLines(text, scan.starts, scan.ends, scan.columns, onLines)
+}
+
+/** The segment plan over an already-scanned line table; an empty table stands for one empty line. */
+function planContentLines(text: string, starts: ArrayLike<number>, ends: ArrayLike<number>, cols: ArrayLike<number>, onLines?: (lines: number) => void): ContentIndex {
+  const lineStart = starts.length === 0 ? [0] : starts
+  const lineEnd = ends.length === 0 ? [0] : ends
+  const lineCols = cols.length === 0 ? [0] : cols
   const kind: number[] = []
   const line0: number[] = []
   const line1: number[] = []
   const text0: number[] = []
   const text1: number[] = []
-  const cols: number[] = []
+  const cutCols: number[] = []
   let maxColumns = 0
 
   const openLineRun = (line: number): void => {
-    kind.push(0); line0.push(line); line1.push(line); text0.push(0); text1.push(0); cols.push(0)
+    kind.push(0); line0.push(line); line1.push(line); text0.push(0); text1.push(0); cutCols.push(0)
   }
   const pushCut = (line: number, start: number, end: number, columns: number): void => {
-    kind.push(1); line0.push(line); line1.push(line); text0.push(start); text1.push(end); cols.push(columns)
+    kind.push(1); line0.push(line); line1.push(line); text0.push(start); text1.push(end); cutCols.push(columns)
   }
 
   let runUnits = 0
   let runLines = 0
-  let start = 0
-  for (let lineIndex = 0; ; lineIndex += 1) {
-    const newline = text.indexOf('\n', start)
-    const end = newline < 0 ? text.length : newline
-    lineStart.push(start); lineEnd.push(end)
+  for (let lineIndex = 0; lineIndex < lineStart.length; lineIndex += 1) {
+    const start = lineStart[lineIndex]!
+    const end = lineEnd[lineIndex]!
     const units = end - start
     if (units >= CONTENT_CUT_UNITS) {
       // A long line is its own run of column samples; cut each time the estimate crosses another threshold, preferring
       // the last plain-ASCII or space boundary so a split rarely lands inside a grapheme.
-      const lineWidth = estimateColumns(text, start, end)
-      lineCols.push(lineWidth)
+      const lineWidth = lineCols[lineIndex]!
       maxColumns = Math.max(maxColumns, lineWidth)
       let cutStart = start
-      let cutCols = 0
+      let cutColsAcc = 0
       let safeEnd = start
       let position = start
       while (position < end) {
         const code = text.charCodeAt(position)
         const step = code >= 0xd800 && code <= 0xdbff && position + 1 < end ? 2 : 1
         if (code >= 0x20 && code <= 0x7e) safeEnd = position + step
-        cutCols += estimateColumns(text, position, position + step)
+        cutColsAcc += estimateColumns(text, position, position + step)
         position += step
-        if (cutCols >= CONTENT_CUT_COLUMNS) {
+        if (cutColsAcc >= CONTENT_CUT_COLUMNS) {
           const boundary = safeEnd > cutStart && safeEnd >= position - CUT_SAFE_LOOKBACK ? safeEnd : position
           pushCut(lineIndex, cutStart, boundary, estimateColumns(text, cutStart, boundary))
           cutStart = boundary
-          cutCols = 0
+          cutColsAcc = 0
         }
       }
       if (cutStart < end) pushCut(lineIndex, cutStart, end, estimateColumns(text, cutStart, end))
       runUnits = 0
       runLines = 0
     } else {
-      lineCols.push(estimateColumns(text, start, end))
       maxColumns = Math.max(maxColumns, lineCols[lineIndex]!)
       if (runLines === 0 || runUnits + units > CONTENT_SEGMENT_UNITS || runLines >= CONTENT_SEGMENT_LINES) {
         openLineRun(lineIndex)
@@ -244,8 +317,6 @@ export function indexContent(text: string, onLines?: (lines: number) => void): C
       runUnits += units
       runLines += 1
     }
-    if (newline < 0) break
-    start = newline + 1
   }
   // Whole-line segments record their line span; the text range derives from the lines at query time.
   for (let segment = 0; segment < kind.length; segment += 1) {
@@ -263,6 +334,6 @@ export function indexContent(text: string, onLines?: (lines: number) => void): C
     Uint32Array.from(lineStart),
     Uint32Array.from(lineEnd),
     Uint32Array.from(lineCols),
-    { kind: Uint8Array.from(kind), line0: Uint32Array.from(line0), line1: Uint32Array.from(line1), text0: Uint32Array.from(text0), text1: Uint32Array.from(text1), cols: Uint32Array.from(cols) },
+    { kind: Uint8Array.from(kind), line0: Uint32Array.from(line0), line1: Uint32Array.from(line1), text0: Uint32Array.from(text0), text1: Uint32Array.from(text1), cols: Uint32Array.from(cutCols) },
   )
 }

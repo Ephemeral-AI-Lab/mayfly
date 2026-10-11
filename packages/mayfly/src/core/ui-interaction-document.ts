@@ -2,7 +2,7 @@
  * @module @ephemeral-ai/mayfly/core/ui-interaction-document
  */
 import { diffChars } from 'diff'
-import { freezeWire, type MayflyScrollNode, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
+import { freezeWire, textOf, type MayflyScrollNode, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import { isDeferredUiNode, materializedDeferredUiNode } from './ui-validator.ts'
 import { indexContent, type ContentIndex } from './content-segments.ts'
 import { documentRowsSource, type ContentRowsEnv } from './content-rows.ts'
@@ -65,9 +65,9 @@ function sourceText(node: MayflyUiNode): string | undefined {
   }
   const join = (values: readonly (string | undefined)[]) => values.includes(undefined) ? undefined : values.join('\n')
   switch (node.kind) {
-    case 'text': return node.content
-    case 'markdown': return node.source
-    case 'code': return node.language === undefined ? node.code : `${node.language}\n${node.code}`
+    case 'text': return textOf(node.content)
+    case 'markdown': return textOf(node.source)
+    case 'code': return node.language === undefined ? textOf(node.code) : `${node.language}\n${textOf(node.code)}`
     case 'rich-text': return node.spans.map(span => span.text).join('')
     case 'fields': return node.rows.map(row => `${row.label}: ${row.value.map(span => span.text).join('')}`).join('\n')
     case 'diff': return `${node.before}\n${node.after}`
@@ -75,7 +75,7 @@ function sourceText(node: MayflyUiNode): string | undefined {
     case 'stack': return join(node.children.map(child => sourceText(child.node)))
     case 'surface': return join([node.title ?? '', node.subtitle ?? '', sourceText(node.child), node.footer === undefined ? '' : sourceText(node.footer)])
     case 'scroll': return sourceText(node.child)
-    case 'diagram': return node.source
+    case 'diagram': return textOf(node.source)
     case 'chart': return 'title' in node && node.title !== undefined ? node.title : ''
     case 'empty': return `${node.title}\n${node.description ?? ''}`
     case 'progress': return node.label ?? ''
@@ -163,12 +163,10 @@ function estimatedBlockSource(node: MayflyUiNode, width: number): DocumentBlockS
     source = {
       get length() { return prefix()[index.segments]! },
       rowOf(offset) {
-        if (index.segments === 0) return 0
         const segment = index.segmentAtOffset(offset)
         return prefix()[segment]! + index.rowOfOffset(segment, offset, safe, text)
       },
       offsetOf(row) {
-        if (index.segments === 0) return 0
         const bounds = prefix()
         let low = 0, high = index.segments - 1
         while (low < high) {

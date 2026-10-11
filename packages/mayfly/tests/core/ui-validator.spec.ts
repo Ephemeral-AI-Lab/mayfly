@@ -1,9 +1,11 @@
 /** Canonical UI validator quotas, narrowing, and hostile-input containment. */
 import { runInNewContext } from 'node:vm'
 import { describe, expect, it } from 'vitest'
-import type { MayflyListNode } from '@ephemeral-ai/mayfly-ui'
+import type { MayflyListNode, MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
+import { ui as uiLib } from '@ephemeral-ai/mayfly-ui'
 import { ui } from '../../../ui/src/index.ts'
 import {
+  MAYFLY_UI_MAX_CHUNKS,
   MAYFLY_UI_MAX_COLLECTION,
   MAYFLY_UI_MAX_DEPTH,
   MAYFLY_UI_MAX_ID,
@@ -13,16 +15,18 @@ import {
   admittedListExpanded,
   admittedListIndex,
   admittedListItem,
+  createAdmissionCache,
   deferredUiNodeMayHaveControls,
   materializeDeferredUiNode,
   validateMayflyEditorShellNode,
   validateMayflyStatusNode,
   validateMayflyUiNode,
 } from '../../src/core/ui-validator.ts'
-import { createWorkCounters } from '../../src/core/ui-work-counters.ts'
+import { createWorkCounters, type MayflyWorkCounters } from '../../src/core/ui-work-counters.ts'
+import type { MayflyAdmissionCache } from '../../src/core/ui-validator.ts'
 
-function accepted(value: unknown): unknown {
-  const result = validateMayflyUiNode(value)
+function accepted(value: unknown, counters?: MayflyWorkCounters, cache?: MayflyAdmissionCache): unknown {
+  const result = validateMayflyUiNode(value, counters, cache)
   expect(result).toMatchObject({ ok: true })
   if (!result.ok) throw new Error(result.message)
   return result.value
@@ -224,6 +228,78 @@ describe('validateMayflyUiNode', () => {
 
     expect(validateMayflyUiNode(ui.list({ role: 'browse', id: 'l', selectedIds: [], items: [{ id: 'i'.repeat(MAYFLY_UI_MAX_ID), label: 'x' }] })).ok).toBe(true)
     expect(validateMayflyUiNode(ui.list({ role: 'browse', id: 'l', selectedIds: [], items: [{ id: 'i'.repeat(MAYFLY_UI_MAX_ID + 1), label: 'x' }] }))).toMatchObject({ ok: false, code: 'MAYFLY_INVALID_CONTRIBUTION' })
+  })
+
+  it('admits chunked content fields of every kind and joins their text only at the wire boundary', () => {
+    const chunks = [ui.chunk('a\nb'), ui.chunk('c')]
+    const admitted = accepted(ui.stack.column([
+      ui.text(chunks),
+      ui.code(chunks, { language: 'ts' }),
+      ui.markdown(chunks),
+      ui.diagram(chunks),
+    ])) as MayflyUiNode
+    const nodes = admitted.kind === 'stack' ? admitted.children.map(child => child.node) : []
+    // Every content kind keeps the wire shape: the field is the chunk list, joined only when a consumer asks.
+    for (const node of nodes) {
+      const field = (node as { code?: unknown, content?: unknown, source?: unknown }).code
+        ?? (node as { content?: unknown }).content ?? (node as { source?: unknown }).source
+      expect(field).toHaveLength(2)
+      expect((field as readonly { text: string }[]).map(chunk => chunk.text).join('')).toBe('a\nbc')
+    }
+    // The field carries no whole-text budget: the joined size passes at any length.
+    const huge = [ui.chunk('x'.repeat(100_000)), ui.chunk('y'.repeat(100_000))]
+    expect(validateMayflyUiNode(ui.code(huge)).ok).toBe(true)
+    // Chunk texts sanitize like any content text — a sequence split across pieces can never survive.
+    const dirty = accepted(ui.code([ui.chunk('a\x1b[31mb'), ui.chunk('c\x07d')])) as { code: readonly { text: string }[] }
+    expect(dirty.code.map(chunk => chunk.text).join('')).not.toContain('\x1b')
+    expect(dirty.code.map(chunk => chunk.text).join('')).not.toContain('\x07')
+  })
+
+  it('bounds a chunked field by chunk count and contains hostile chunk input', () => {
+    const kinds = (field: unknown): unknown[] => [
+      { kind: 'text', content: field }, { kind: 'code', code: field },
+      { kind: 'markdown', source: field }, { kind: 'diagram', diagram: 'mermaid', source: field },
+    ]
+    for (const node of kinds(Array.from({ length: MAYFLY_UI_MAX_CHUNKS + 1 }, () => ui.chunk('x'))))
+      expect(validateMayflyUiNode(node)).toMatchObject({ ok: false, code: 'MAYFLY_LIMIT_EXCEEDED', message: expect.stringContaining(String(MAYFLY_UI_MAX_CHUNKS)) })
+    // The collection quota does not apply to chunks — the field has its own.
+    expect(validateMayflyUiNode(ui.code(Array.from({ length: MAYFLY_UI_MAX_COLLECTION + 1 }, (_, index) => ui.chunk(`c${String(index)}`)))).ok).toBe(true)
+
+    for (const node of [
+      { kind: 'text', content: 7 },
+      { kind: 'code', code: [7] },
+      { kind: 'code', code: ['text'] },
+      { kind: 'code', code: [{ text: 7 }] },
+      { kind: 'code', code: Object.setPrototypeOf([{ text: 'x' }], class extends Array {}.prototype) },
+      { kind: 'code', code: Object.assign([ui.chunk('a')], { 3: ui.chunk('b') }) },
+      { kind: 'code', code: Object.defineProperty([ui.chunk('a')], '0', { get: () => ui.chunk('b'), enumerable: true }) },
+    ]) expect(validateMayflyUiNode(node)).toMatchObject({ ok: false, code: expect.stringMatching(/MAYFLY_(INVALID_CONTRIBUTION|LIMIT_EXCEEDED)/) })
+    // An unknown chunk field is not an error — only the canonical `text` is kept.
+    expect(accepted({ kind: 'code', code: [{ text: 'x', extra: 'dropped' }] })).toEqual({ kind: 'code', code: [{ text: 'x' }] })
+  })
+
+  it('replays a settled chunk from the admission memo and validates only appended pieces', () => {
+    const cache = createAdmissionCache()
+    const counters = createWorkCounters()
+    // Chunks must be snapshots of the same builders module the validator checks `isWireSnapshot` against.
+    const first = uiLib.chunk('a\n')
+    const second = uiLib.chunk('b')
+    const one = accepted(uiLib.code([first], { language: 'ts' }), counters, cache) as { code: readonly { text: string }[] }
+    const validated = counters.nodesValidated
+    expect(validated).toBeGreaterThan(0)
+    // The republish shares the settled piece: the memo returns it untouched and only the new chunk validates.
+    const two = accepted(uiLib.code([first, second], { language: 'ts' }), counters, cache) as { code: readonly { text: string }[] }
+    expect(two.code[0]).toBe(one.code[0])
+    // One node + one new chunk; the settled piece replays from the memo without a count.
+    expect(counters.nodesValidated - validated).toBe(2)
+    // A fresh cache validates both pieces again — the memo is scoped to the surface's admission.
+    const other = accepted(uiLib.code([first, second], { language: 'ts' }), counters, createAdmissionCache()) as { code: readonly { text: string }[] }
+    expect(other.code[0]).not.toBe(one.code[0])
+    // Untrusted chunk objects are cloned, never memo-keyed: equal shape, no shared identity.
+    const untrusted = { code: [{ text: 'x' }] }
+    const a = accepted({ kind: 'code', ...untrusted }, counters, cache) as { code: readonly { text: string }[] }
+    const b = accepted({ kind: 'code', ...untrusted }, counters, cache) as { code: readonly { text: string }[] }
+    expect(a.code[0]).not.toBe(b.code[0])
   })
 
   it('admits large lists lazily and isolates an invalid item when it is reached', () => {

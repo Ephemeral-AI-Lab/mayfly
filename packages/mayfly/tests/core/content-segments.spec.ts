@@ -7,7 +7,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { CONTENT_CUT_UNITS, CONTENT_SEGMENT_LINES, CONTENT_SEGMENT_UNITS, indexContent } from '../../src/core/content-segments.ts'
+import { CONTENT_CUT_UNITS, CONTENT_SEGMENT_LINES, CONTENT_SEGMENT_UNITS, indexContent, indexMergedLines, scanContentLines } from '../../src/core/content-segments.ts'
 import { wrapTextWithAnsi } from '../../src/core/width.ts'
 
 /** The segment plan as readable tuples: kind, first line, lines, first unit, units, estimated columns. */
@@ -113,5 +113,96 @@ describe('indexContent', () => {
     expect(index.units).toBe(text.length)
     expect(index.lineColumns(1)).toBe(400)
     expect(index.maxColumns).toBe(400)
+  })
+
+  it('maps offsets and rows inside both segment kinds', () => {
+    const text = `aa\nbbbbb\ncc\n${'x'.repeat(CONTENT_CUT_UNITS + 40)}\nzz`
+    const index = indexContent(text)
+    const cut = 1
+    expect(index.isCut(0)).toBe(false)
+    expect(index.isCut(cut)).toBe(true)
+    // Inside a line run an offset mid-line counts its wrapped share; an offset past a line counts it whole.
+    expect(index.rowOfOffset(0, 4, 5, text)).toBe(1)
+    expect(index.rowOfOffset(0, 9, 5, text)).toBe(2)
+    // Inside a cut the map is column samples; a row past the end clamps to the segment's own end.
+    const [, cutEnd] = index.segmentText(cut)
+    expect(index.rowOfOffset(cut, cutEnd, 10, text)).toBeGreaterThan(0)
+    expect(index.offsetOfRow(cut, 9_999, 10, text)).toBe(cutEnd)
+    expect(index.offsetOfRow(0, 1, 5, text)).toBe(3)
+    // An empty line counts one row in both directions of the map.
+    const gapText = 'aa\n\nbbbbb'
+    const gaps = indexContent(gapText)
+    expect(gaps.rowOfOffset(0, 4, 5, gapText)).toBe(2)
+    expect(gaps.offsetOfRow(0, 1, 5, gapText)).toBe(3)
+    // The seek steps a surrogate pair as one position and single steps plain characters.
+    const astralText = `🙂🙂🙂\ntail`
+    const astral = indexContent(astralText)
+    expect(astral.offsetOfRow(0, 1, 2, astralText)).toBe(2)
+    expect(astral.offsetOfRow(0, 4, 2, astralText)).toBe(9)
+    expect(astral.offsetOfRow(0, 5, 2, astralText)).toBe(astralText.length)
+  })
+})
+
+describe('indexMergedLines', () => {
+  /** A merged index agrees with the one-pass index of the joined text on every line and column. */
+  function expectMerged(chunks: readonly string[], expected: string = chunks.join('')): void {
+    const merged = indexMergedLines(chunks.map(scanContentLines), expected)
+    const direct = indexContent(expected)
+    expect(merged.lines).toBe(direct.lines)
+    expect(merged.units).toBe(direct.units)
+    expect(merged.maxColumns).toBe(direct.maxColumns)
+    for (let line = 0; line < merged.lines; line += 1) {
+      expect(merged.lineText(line), `line ${String(line)}`).toEqual(direct.lineText(line))
+      expect(merged.lineColumns(line), `line ${String(line)} columns`).toBe(direct.lineColumns(line))
+      expect(expected.slice(...merged.lineText(line) as [number, number])).toBe(expected.slice(...direct.lineText(line) as [number, number]))
+    }
+  }
+
+  it.each([
+    [['a\nb', 'c\nd']],
+    [['a', 'b']],
+    [['a', 'b', 'c']],
+    [['a\nb', 'c']],
+    [['ab', 'c\nd']],
+    [['a', 'b\n', 'c']],
+    [['a', '\n', 'b']],
+    [['a\n', 'b\n']],
+    [['a\n', '\nb']],
+    [['', 'a']],
+    [['a', '']],
+    [['', '']],
+    [['a\n', '']],
+    [['\n', 'a']],
+    [['a\n\nb', 'c\n\nd\n']],
+    [['x'.repeat(CONTENT_SEGMENT_UNITS + 5), 'y']],
+    [['start', 'x'.repeat(CONTENT_CUT_UNITS + 5), 'end']],
+    [['🚀', 'a\n', '中文', 'end\n']],
+    [['🚀'.repeat(3), '\u{1F680}tail']],
+    [['tail\u{1F680}', '\u{1F680}head']],
+    [['one\r', '\ntwo']],
+  ])('joins the same lines the one-pass index finds %#', expectMerged)
+
+  it('leaves one empty line for an empty field or empty scans, like the string path', () => {
+    expectMerged([])
+    expectMerged([''])
+    const merged = indexMergedLines([], '')
+    expect(merged.lines).toBe(1)
+    expect(merged.lineText(0)).toEqual([0, 0])
+  })
+
+  it('keeps merged segments a partition of the joined text', () => {
+    const chunks = ['header\n', `${'line '.repeat(30)}\n`.repeat(70), 'open tail']
+    const text = chunks.join('')
+    const merged = indexMergedLines(chunks.map(scanContentLines), text)
+    const direct = indexContent(text)
+    expect(merged.segments).toBe(direct.segments)
+    for (let segment = 0; segment < merged.segments; segment += 1)
+      expect(merged.segmentText(segment), `segment ${String(segment)}`).toEqual(direct.segmentText(segment))
+  })
+
+  it('reports the merged line count through onLines once per index', () => {
+    let lines = -1
+    indexMergedLines(['a\n', 'b\n', 'c'].map(scanContentLines), 'a\nb\nc', count => { lines = count })
+    expect(lines).toBe(3)
   })
 })

@@ -1,5 +1,5 @@
 /**
- * The work-budget workloads W1 to W22 (docs/design/implementation-roadmap.md section 7.1), and W1 and W4 again through the
+ * The work-budget workloads W1 to W23 (docs/design/implementation-roadmap.md section 7.1), and W1 and W4 again through the
  * node slot (slice 1.10a), the path the footer and the conversation take from Phases 3 and 6. Each one builds a surface of
  * a stated shape, then runs one steady-state step that publishes, presses a key, or ticks the clock, and reports the
  * counters of that step alone. The counts are deterministic, so a spec gates them; `script/audit-performance.mjs`
@@ -480,6 +480,23 @@ export const WORKLOADS: readonly Workload[] = [
       surface.render()
       reset(counters)
       return { step: () => { surface.press('\x1b[6~') }, dispose: () => surface.dispose() }
+    },
+  },
+  {
+    id: 'W23', title: 'content chunks: a megabyte of streamed job output in a follow-tail scroll, one chunk arrives',
+    setup(counters) {
+      // Held pieces are frozen snapshots republished by identity, as the job feed does: an append admits only the
+      // new chunk and rescans nothing settled, while the merged index still walks every line of the stream.
+      const piece = (start: number, lines: number): string =>
+        Array.from({ length: lines }, (_, index) => `[worker] step ${String(start + index)} wrote ${'x'.repeat(40)} bytes`).join('\n')
+      const held = Array.from({ length: 100 }, (_, index) => ui.chunk(`${piece(index * 200, 200)}\n`))
+      const stream = (extra: string[] = []): MayflyUiNode =>
+        ui.scroll(ui.code([...held, ...extra.map(text => ui.chunk(text))]), { id: 'stream', follow: 'end', height: 8, scrollbar: true })
+      const surface = new Surface('w23', stream(), counters)
+      surface.render()
+      reset(counters)
+      let arrived = 0
+      return { step: () => { arrived += 1; surface.publish(stream([`${piece(20_000 + arrived * 4, 4)}\n`])) }, dispose: () => surface.dispose() }
     },
   },
   {

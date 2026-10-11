@@ -11,6 +11,7 @@
  */
 
 import type { MayflyContentNode, MayflyInlineSpan, MayflyTextStyle, MayflyTone } from '@ephemeral-ai/mayfly-ui'
+import { textOf } from '@ephemeral-ai/mayfly-ui'
 import type { MayflyComponents, MayflySemanticColors } from './types.ts'
 
 /** A code block highlights at most this many rows; the rest are plain text. */
@@ -87,9 +88,9 @@ export function summarizePluginView(view: BasicContentNode): string {
   if (typeof view !== 'object' || view === null) throw new TypeError('view must be an object')
   const text = (value: unknown, label: string): string => sanitizePluginText(requireText(value, label))
   switch (view.kind) {
-    case 'text': return text(view.content, 'text content').replace(/\s+/gu, ' ').trim()
+    case 'text': return sanitizePluginText(textOf(view.content)).replace(/\s+/gu, ' ').trim()
     case 'fields': return view.rows.map(row => `${text(row.label, 'field label')}: ${row.value.map(span => text(span.text, 'field span text')).join('')}`).join(' · ')
-    case 'code': return text(view.code, 'code content').replace(/\s+/gu, ' ').trim()
+    case 'code': return sanitizePluginText(textOf(view.code)).replace(/\s+/gu, ' ').trim()
     case 'diff': return 'diff contribution'
     case 'sections': return view.sections.map(section => section.title === undefined ? summarizePluginView(section.body) : text(section.title, 'section title')).join(' · ')
     default: throw new TypeError(`unknown basic content kind "${String((view as { kind?: unknown }).kind)}"`)

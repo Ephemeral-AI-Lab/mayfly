@@ -121,6 +121,8 @@ describe('canonical basic-content leaf renderer', () => {
     expect(() => renderView({ kind: 'fields', rows: null } as never, 20)).toThrow('fields rows')
     expect(() => renderView({ kind: 'fields', rows: [null] } as never, 20)).toThrow('field row')
     expect(() => renderView({ kind: 'fields', rows: [{ label: 'x', value: [null] }] } as never, 20)).toThrow('field span')
+    expect(() => renderView({ kind: 'fields', rows: [{ label: 'x', value: [42] }] } as never, 20)).toThrow('field span')
+    expect(() => renderView({ kind: 'fields', rows: [{ label: 'x', value: [{ text: 1 }] }] } as never, 20)).toThrow('span text must be a string')
     expect(() => renderView({ kind: 'sections', sections: null } as never, 20)).toThrow('sections must')
     expect(() => renderView({ kind: 'sections', sections: [null] } as never, 20)).toThrow('section is invalid')
 

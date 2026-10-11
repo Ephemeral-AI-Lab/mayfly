@@ -244,5 +244,20 @@
     "layoutPasses": 1,
     "clockTicks": 0,
     "keymapSnapshots": 0
+  },
+  "W23": {
+    "nodesValidated": 3,
+    "unitsCompiled": 2,
+    "rowsPainted": 51,
+    "rowsMaterialized": 8,
+    "segmentsPainted": 1,
+    "linesEstimated": 20005,
+    "stringsMeasured": 9,
+    "componentRenders": 1,
+    "controlWalks": 1,
+    "reconciles": 4,
+    "layoutPasses": 1,
+    "clockTicks": 0,
+    "keymapSnapshots": 0
   }
 }

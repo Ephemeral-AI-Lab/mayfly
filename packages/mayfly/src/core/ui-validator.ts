@@ -12,6 +12,8 @@ import type {
   MayflyChartLevel,
   MayflyChartPoint,
   MayflyChartSeries,
+  MayflyContentChunk,
+  MayflyContentField,
   MayflyField,
   MayflyFormField,
   MayflyInlineSpan,
@@ -53,6 +55,8 @@ export const MAYFLY_UI_MAX_DEPTH = 8
 export const MAYFLY_UI_MAX_NODES = 256
 /** Maximum entries in any wire collection. */
 export const MAYFLY_UI_MAX_COLLECTION = 200
+/** Maximum chunks in one chunked content field; a longer stream drops old pieces itself. */
+export const MAYFLY_UI_MAX_CHUNKS = 10_000
 /** Maximum `image` nodes in one tree. */
 export const MAYFLY_UI_MAX_IMAGES = 8
 /** Maximum characters in an `image` node's attachment id. */
@@ -127,11 +131,13 @@ interface AdmittedSubtree {
 export interface MayflyAdmissionCache {
   readonly subtrees: WeakMap<object, Map<string, AdmittedSubtree>>
   readonly items: WeakMap<object, MayflyListItem>
+  /** Admitted content chunks by wire-chunk identity, so an appended tail revalidates only its new pieces. */
+  readonly chunks: WeakMap<object, MayflyContentChunk>
 }
 
 /** Create an empty admission memo. */
 export function createAdmissionCache(): MayflyAdmissionCache {
-  return { subtrees: new WeakMap(), items: new WeakMap() }
+  return { subtrees: new WeakMap(), items: new WeakMap(), chunks: new WeakMap() }
 }
 
 function invalid(message: string): never {
@@ -356,6 +362,40 @@ function collection(value: unknown, path: string): readonly unknown[] {
     copy.push(descriptor.value)
   }
   return copy
+}
+
+function contentChunk(value: unknown, path: string, state: ValidationState): MayflyContentChunk {
+  // A chunk admits under the tree's own admission, so a memoized one replays nothing but its identity.
+  const cache = state.budget.cache
+  const memoized = cache !== undefined && isWireSnapshot(value) ? cache.chunks.get(value as object) : undefined
+  if (memoized !== undefined) return memoized
+  const admitted = enter(value, path, state, object => {
+    countWork(state.budget.counters, 'nodesValidated')
+    return { text: text(required(object, 'text', path), `${path}.text`) }
+  })
+  if (cache !== undefined && isWireSnapshot(value)) cache.chunks.set(value as object, freeze(admitted))
+  return admitted
+}
+
+/**
+ * A large content field as one string or an append list of chunks. Chunked fields admit each piece once per identity
+ * through the caller's memo, so republishing an appended tail validates only the new chunks.
+ */
+function contentField(value: unknown, path: string, state: ValidationState): MayflyContentField {
+  if (typeof value === 'string') return text(value, path)
+  if (!Array.isArray(value)) invalid(`${path} must be a string or a chunk list`)
+  const prototype = Object.getPrototypeOf(value)
+  if (prototype === null || !hasRealmConstructor(prototype, 'Array')) invalid(`${path} must be a plain array`)
+  const length = Object.getOwnPropertyDescriptor(value, 'length')!.value as number
+  if (length > MAYFLY_UI_MAX_CHUNKS) limit(`${path} exceeds ${String(MAYFLY_UI_MAX_CHUNKS)} chunks`)
+  const chunks: MayflyContentChunk[] = []
+  for (let index = 0; index < length; index += 1) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, String(index))
+    if (descriptor === undefined) invalid(`${path} must be a dense array`)
+    if (!('value' in descriptor)) invalid(`${path}[${String(index)}] must be data`)
+    chunks.push(contentChunk(descriptor.value, `${path}[${String(index)}]`, state))
+  }
+  return chunks
 }
 
 function optional<Value>(value: Value | undefined, key: string): { readonly [name: string]: Value } | {} {
@@ -1242,15 +1282,15 @@ function admitNode(value: unknown, path: string, state: ValidationState, depth: 
         const toneValue = own(object, 'tone', path)
         return {
           kind,
-          content: text(required(object, 'content', path), `${path}.content`),
+          content: contentField(required(object, 'content', path), `${path}.content`, state),
           ...optional(toneValue === undefined ? undefined : enumeration(toneValue, ['default', 'muted', 'primary', 'accent', 'user', 'success', 'warning', 'danger'], `${path}.tone`), 'tone'),
           ...optional(textOverflow(object, path, true), 'overflow'),
           ...admitTextStyles(ADMISSION_HELPERS, object, path),
         }
       }
-      case 'markdown': return { kind, source: text(required(object, 'source', path), `${path}.source`) }
+      case 'markdown': return { kind, source: contentField(required(object, 'source', path), `${path}.source`, state) }
       case 'fields': return { kind, rows: collection(required(object, 'rows', path), `${path}.rows`).map((item, index) => field(item, `${path}.rows[${String(index)}]`, state)) }
-      case 'code': return { kind, code: text(required(object, 'code', path), `${path}.code`), ...optional(optionalId(object, 'language', path), 'language'), ...admitCodeFields(ADMISSION_HELPERS, object, path) }
+      case 'code': return { kind, code: contentField(required(object, 'code', path), `${path}.code`, state), ...optional(optionalId(object, 'language', path), 'language'), ...admitCodeFields(ADMISSION_HELPERS, object, path) }
       case 'diff': return { kind, before: text(required(object, 'before', path), `${path}.before`), after: text(required(object, 'after', path), `${path}.after`), ...admitDiffFields(ADMISSION_HELPERS, object, path) }
       case 'sections': return { kind, sections: collection(required(object, 'sections', path), `${path}.sections`).map((item, index) => section(item, `${path}.sections[${String(index)}]`, state, depth + 1)) }
       case 'rich-text': {
@@ -1454,7 +1494,7 @@ function admitNode(value: unknown, path: string, state: ValidationState, depth: 
         }
       }
       case 'prompt': return { kind, id: identifier(required(object, 'id', path), `${path}.id`, state, true), ...admitPromptFields(PROMPT_HELPERS, object, path, state) }
-      case 'diagram': return { kind, diagram: enumeration(required(object, 'diagram', path), ['mermaid'], `${path}.diagram`), source: text(required(object, 'source', path), `${path}.source`) }
+      case 'diagram': return { kind, diagram: enumeration(required(object, 'diagram', path), ['mermaid'], `${path}.diagram`), source: contentField(required(object, 'source', path), `${path}.source`, state) }
       case 'chart': {
         const chart = enumeration(required(object, 'chart', path), ['line', 'point', 'bar', 'sparkline', 'heatmap'], `${path}.chart`)
         if (chart === 'line' || chart === 'point') {

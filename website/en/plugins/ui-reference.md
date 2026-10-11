@@ -37,6 +37,13 @@ in a node.
   One-row fields — labels, titles, badges, details, reasons, hints,
   placeholders, chart labels, `alt` — are clipped at 4,096 code units and end
   in `…`.
+- Text that grows — a streamed answer, job output, a live log — publishes as
+  a `chunks` list on the `text`, `markdown`, `code`, or `diagram` field itself
+  (`MayflyContentField` is `string | readonly MayflyContentChunk[]`): up to
+  10,000 `ui.chunk(text)` snapshots, exempt from the 200-entry collection cap.
+  Append by republishing the same chunk objects plus the new one — admission
+  validates each chunk once per identity, and a piece that ends mid-line joins
+  the next on one row. `textOf(field)` joins the field's text explicitly.
 - Builders recursively copy and freeze inputs and reject cycles. Host admission
   accepts only plain objects and dense arrays and strips ANSI, C1, and unsafe
   control characters.
@@ -84,7 +91,7 @@ key bindings.
 *A single-line hint in the danger tone (width 48).*
 
 ```ts
-ui.text(content: string, options?: {
+ui.text(content: MayflyContentField, options?: {
   tone?: MayflyTone
   overflow?: 'wrap' | 'truncate' | 'middle' | 'start'
   styles?: readonly ('strong' | 'italic' | 'strike')[]
@@ -260,7 +267,7 @@ ui.fields([
 *A multi-line code block with the `ts` language hint (width 64).*
 
 ```ts
-ui.code(value: string, options?: { language?: string, numbered?: boolean })
+ui.code(value: MayflyContentField, options?: { language?: string, numbered?: boolean })
 ```
 
 Represents code or preformatted text such as patch fragments, command output,
@@ -376,8 +383,8 @@ ui.sections([
 ### `markdown` and `diagram`
 
 ```ts
-ui.markdown(source: string)
-ui.diagram(mermaidSource: string)
+ui.markdown(source: MayflyContentField)
+ui.diagram(mermaidSource: MayflyContentField)
 ```
 
 Markdown reuses Mayfly's pi-tui adapter, including tables and fenced code.

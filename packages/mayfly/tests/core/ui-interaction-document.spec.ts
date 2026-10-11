@@ -58,10 +58,26 @@ describe('semantic document state', () => {
     expect(remapDocumentOffset('abc', 'ac', 1)).toBe(1)
     expect(remapDocumentOffset('abc', 'ac', 3)).toBe(2)
     expect(remapDocumentOffset('abc', 'abc!', 3)).toBe(4)
+    // A position inside the common prefix or suffix keeps its seat; an edit storm past the diff cap falls back
+    // to clamping the position into the new document.
+    expect(remapDocumentOffset('abc def', 'abc XYZ', 2)).toBe(2)
+    expect(remapDocumentOffset('abc', 'xbc', 2)).toBe(2)
+    const stormBefore = Array.from({ length: 1_100 }, (_, index) => `a${String(index)}`).join('')
+    const stormAfter = Array.from({ length: 1_100 }, (_, index) => `b${String(index)}`).join('')
+    expect(remapDocumentOffset(stormBefore, stormAfter, 5)).toBe(5)
     const before = `${'a'.repeat(3_000)}tail`
     const after = `${'b'.repeat(3_200)}tail`
     expect(remapDocumentOffset(before, after, before.length)).toBe(after.length)
     expect(remapDocumentOffset(before, after, 10)).toBe(10)
+  })
+
+  it('remaps positions inside added, removed, and kept changes', () => {
+    // 'aXYc' -> 'ac': the removed 'XY' swallows its positions.
+    expect(remapDocumentOffset('aXYc', 'ac', 1)).toBe(1)
+    expect(remapDocumentOffset('aXYc', 'ac', 2)).toBe(1)
+    // 'abx' -> 'aXYby': 'b' sits in a kept change after an added one, 'x' in the removed tail change.
+    expect(remapDocumentOffset('abx', 'aXYby', 1)).toBe(3)
+    expect(remapDocumentOffset('abx', 'aXYby', 2)).toBe(4)
   })
 
   it('keeps admitted nodes as blocks and derives their source text on demand', () => {
@@ -190,6 +206,54 @@ describe('semantic document state', () => {
     const row = documentAnchorRow(withAnchor({ blocks: state.blocks }, anchor), 40, resolve)
     expect(Math.abs(row - 2_000)).toBeLessThanOrEqual(1)
     expect(documentAnchorAtRow(state, source.length + 9, 40, 'end', resolve)).toEqual({ blockId: block.id, offset: documentBlockText(block).length, follow: 'end' })
+  })
+
+  it('derives block text and sources across every block kind', () => {
+    // A responsive branch the viewport has not activated yet contributes nothing to the source text.
+    const gated = validateMayflyUiNode({
+      kind: 'stack', direction: 'column', children: [
+        { id: 'ready', node: { kind: 'text', content: 'ready' } },
+        { id: 'late', when: { minWidth: 100 }, node: { kind: 'text', content: 'late' } },
+      ],
+    })
+    if (!gated.ok || gated.value.kind !== 'stack') throw new Error('expected stack')
+    const deferred = gated.value.children[1]!.node
+    expect(documentBlockText({ id: 'd', node: deferred })).toBe('')
+    expect(documentBlockText({ id: 's', node: { kind: 'stack', direction: 'row', children: [{ node: deferred }, { node: ui.text('visible') }] } })).toBe('')
+    materializeDeferredUiNode(deferred)
+    expect(documentBlockText({ id: 'd', node: deferred })).toBe('late')
+
+    // Kinds with no content source take the estimated map; its width prefix memo evicts past four entries.
+    const chart = { id: 'c', node: ui.chart({ chart: 'line', title: 'Load', series: [{ id: 'a', label: 'a', points: [{ x: 0, y: 1 }, { x: 1, y: 2 }] }] }) }
+    const wide = { id: 'w', node: ui.stack.row([ui.text(Array.from({ length: 100 }, (_, index) => `line ${String(index)}`).join('\n'))]) }
+    for (const width of [10, 20, 30, 40, 50]) expect(resolve(chart, width).length).toBeGreaterThanOrEqual(0)
+    // An image block maps its alt text; a block whose parts contribute nothing still resolves a source.
+    expect(documentBlockText({ id: 'i', node: { kind: 'image', attachmentId: 'a1', alt: '[Image #1]' } })).toBe('[Image #1]')
+    const gatedBad = validateMayflyUiNode({
+      kind: 'stack', direction: 'column', children: [
+        { id: 'bad', when: { minWidth: 100 }, node: { kind: 'text', content: 42 } },
+      ],
+    })
+    if (!gatedBad.ok || gatedBad.value.kind !== 'stack') throw new Error('expected stack')
+    const badStack = { id: 'b', node: { kind: 'stack', direction: 'column', children: [{ node: gatedBad.value.children[0]!.node }] } }
+    expect(resolve(badStack as never, 40).length).toBeGreaterThanOrEqual(0)
+    const estimated = resolve(wide, 10)
+    expect(estimated.length).toBeGreaterThanOrEqual(100)
+    expect(estimated.rowOf(50)).toBeGreaterThan(0)
+    expect(estimated.offsetOf(estimated.length - 1)).toBeGreaterThan(0)
+    expect(estimated.offsetOf(estimated.rowOf(50))).toBeLessThanOrEqual(50)
+
+    // Content kinds without a shared offset map take the proportional map over their real length.
+    const diffBlock = { id: 'd', node: ui.diff('a\nb\nc', 'a\nx\nc') }
+    const proportional = resolve(diffBlock, 20)
+    expect(proportional.length).toBeGreaterThan(1)
+    expect(proportional.rowOf(0)).toBe(0)
+    expect(proportional.offsetOf(0)).toBe(0)
+    const pastEnd = proportional.offsetOf(proportional.length + 9)
+    expect(pastEnd).toBeGreaterThan(0)
+    expect(pastEnd).toBeLessThanOrEqual(documentBlockText(diffBlock).length)
+    const oneRow = resolve({ id: 'f', node: ui.fields([{ label: 'L', value: [{ text: 'V' }] }]) }, 40)
+    expect(oneRow.rowOf(99)).toBe(0)
   })
 
   it('maps empty, missing, newline, combining, negative, and tail rows', () => {

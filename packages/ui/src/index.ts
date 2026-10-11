@@ -9,6 +9,7 @@ export {
   deepFreeze,
   freezeWire,
   isWireSnapshot,
+  textOf,
   defineMayflyComponent,
   ui,
   type MayflyComponentDefinition,

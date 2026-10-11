@@ -5,7 +5,7 @@ import { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { JobId, type JobView } from '@deepseek-ai/dsh-jobs'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { ui, type MayflyUiEvent } from '@ephemeral-ai/mayfly-ui'
+import { textOf, ui, type MayflyUiEvent } from '@ephemeral-ai/mayfly-ui'
 import * as agentOverlay from '../../src/interaction/agent-overlay.ts'
 import { formatJobDuration, isLiveJob, jobDetailsNode, jobItems, jobOutputNode, sortJobs } from '../../src/interaction/jobs.ts'
 import type { UiSurfaceModel } from '../../src/core/ui-interaction-surface.ts'
@@ -63,7 +63,7 @@ describe('shared jobs browsing', () => {
     bench.ctx.mayflyLocale.setPreference('zh')
     await flushRequests()
     expect(output.node).toBe(node)
-    expect(readAt).toHaveBeenCalledOnce()
+    expect(readAt).toHaveBeenCalledTimes(2)
   })
 
   it('relocalizes output without resetting its scroll anchor or reading again', async () => {
@@ -87,7 +87,23 @@ describe('shared jobs browsing', () => {
     await flushRequests()
     expect(JSON.stringify(output.node)).toContain('\u8bfb\u53d6\u65f6\u72b6\u6001')
     expect(output.document({ pagePath: [], controlId: 'job-output-document' })?.anchor).toEqual(anchored)
-    expect(readAt).toHaveBeenCalledOnce()
+    expect(readAt).toHaveBeenCalledTimes(2)
+  })
+
+  it('drops a chunk the feed cursor already passed', async () => {
+    const bench = await setup()
+    const source = bench.start({ output: 'early' })
+    await bench.run('/jobs')
+    select(bench.model('mayfly.jobs'), source.id)
+    await flushRequests()
+    action(bench.model('mayfly.jobs.detail'), 'read')
+    await flushRequests()
+    const spy = vi.spyOn(bench.registry, 'readAt').mockReturnValueOnce({ chunks: [{ at: 0, text: 'stale' }], next: 5, lossy: false })
+    source.append('late')
+    await flushRequests()
+    const node = JSON.stringify(bench.model('mayfly.jobs.output').node)
+    expect(node).not.toContain('stale')
+    spy.mockRestore()
   })
 
   it('marks a retained-tail read when the ring dropped earlier output', async () => {
@@ -122,7 +138,7 @@ describe('shared jobs browsing', () => {
     await source.finish({ status: 'completed' })
     expect(await prepare(detail, { kind: 'activate', pagePath: [], controlId: 'job-actions', actionId: 'stop' })).toMatchObject({ kind: 'completed' })
     expect(source.cancel).not.toHaveBeenCalled()
-    expect(readAt).toHaveBeenCalledOnce()
+    expect(readAt).toHaveBeenCalledTimes(3)
   })
 
   it('does not open detail after the exact Agent changes during native inspection', async () => {
@@ -274,11 +290,13 @@ describe('shared jobs browsing', () => {
     const output = bench.model('mayfly.jobs.output')
     expect(JSON.stringify(output.node)).toContain('first delta')
     source.append('second delta')
+    // The output event republishes the open view with the appended chunk — following the tail needs no reopen.
+    expect(JSON.stringify(output.node)).toContain('second delta')
     const rendered = renderRequest(output)
     rendered.component.render(80)
     rendered.component.render(40)
     rendered.runtime.dispose()
-    expect(readAt).toHaveBeenCalledOnce()
+    expect(readAt).toHaveBeenCalledTimes(3)
     output.requestClose()
     await flushRequests()
     action(detail, 'read')
@@ -286,7 +304,7 @@ describe('shared jobs browsing', () => {
     const second = bench.model('mayfly.jobs.output')
     expect(JSON.stringify(second.node)).toContain('first delta')
     expect(JSON.stringify(second.node)).toContain('second delta')
-    expect(readAt).toHaveBeenCalledTimes(2)
+    expect(readAt).toHaveBeenCalledTimes(5)
     const modelRead = bench.registry.read(source.id, bench.agent.id)
     expect(modelRead.chunks.map(chunk => chunk.text).join('')).toBe('first deltasecond delta')
   })
@@ -308,10 +326,57 @@ describe('shared jobs browsing', () => {
       output.requestClose()
       await flushRequests()
     }
-    expect(readAt).toHaveBeenCalledTimes(2)
+    expect(readAt).toHaveBeenCalledTimes(4)
     const modelRead = bench.registry.read(source.id, bench.agent.id)
     expect(modelRead.result).toBe('final result')
     expect(modelRead.chunks).toEqual([])
+  })
+
+  it('catches up output appended between the first read and the subscription', async () => {
+    const bench = await setup()
+    const readAt = vi.spyOn(bench.registry, 'readAt')
+    const source = bench.start({ output: 'before ' })
+    await bench.run('/jobs')
+    select(bench.model('mayfly.jobs'), source.id)
+    await flushRequests()
+    const detail = bench.model('mayfly.jobs.detail')
+    // The append lands inside the initial read, so the first result's cursor already misses it; the catch-up
+    // read (and the queued event) delivers it without a second open.
+    const real = bench.registry.readAt.bind(bench.registry)
+    readAt.mockImplementationOnce((id, from, caller) => {
+      const read = real(id, from, caller)
+      source.append('raced')
+      return read
+    })
+    action(detail, 'read')
+    await flushRequests()
+    const output = bench.model('mayfly.jobs.output')
+    expect(JSON.stringify(output.node)).toContain('before ')
+    expect(JSON.stringify(output.node)).toContain('raced')
+    expect(readAt).toHaveBeenCalledTimes(3)
+  })
+
+  it('drops held chunks and marks the banner when the ring trims below the cursor', async () => {
+    const bench = await setup()
+    const readAt = vi.spyOn(bench.registry, 'readAt')
+    const source = bench.start({ output: 'first delta' })
+    await bench.run('/jobs')
+    select(bench.model('mayfly.jobs'), source.id)
+    await flushRequests()
+    const detail = bench.model('mayfly.jobs.detail')
+    action(detail, 'read')
+    await flushRequests()
+    const output = bench.model('mayfly.jobs.output')
+    expect(JSON.stringify(output.node)).toContain('first delta')
+    // The ring evicted the bytes the feed held: the read answers lossy with only the retained tail.
+    readAt.mockReturnValueOnce({ chunks: [{ at: 20, text: 'retained tail' }], next: 33, lossy: true })
+    source.append('x')
+    await flushRequests()
+    const node = JSON.stringify(output.node)
+    expect(node).toContain('retained tail')
+    expect(node).toContain('(earlier output was dropped by retention)')
+    expect(node).not.toContain('first delta')
+    expect(readAt).toHaveBeenCalledTimes(3)
   })
 
   it('leaves the model cursor untouched by reads after terminal settlement', async () => {
@@ -350,14 +415,14 @@ describe('shared jobs browsing', () => {
     if (scroll.kind !== 'scroll' || scroll.child.kind !== 'code') throw new Error('Missing output text')
     expect(scroll.id).toBe('job-output-document')
     expect(output.document({ pagePath: [], controlId: scroll.id! })).toBeDefined()
-    expect(scroll.child.code).toBe(text)
-    expect(scroll.child.code.isWellFormed()).toBe(true)
+    expect(textOf(scroll.child.code)).toBe(text)
+    expect(textOf(scroll.child.code).isWellFormed()).toBe(true)
     const renderer = renderRequest(output)
     renderer.component.render(80)
     renderer.input('\x1b[F')
     expect(renderer.component.render(80).join('\n')).toContain(text.trimEnd().slice(-10))
     renderer.runtime.dispose()
-    expect(readAt).toHaveBeenCalledOnce()
+    expect(readAt).toHaveBeenCalledTimes(2)
   })
 
   it('confirms Stop with No selected, preserves cancellation, and follows native terminal status', async () => {
@@ -456,7 +521,7 @@ describe('shared jobs browsing', () => {
     expect(output.disposed).toBe(true)
     detail.answerDecision(true)
     expect(source.cancel).toHaveBeenCalledTimes(reason === 'provider' ? 1 : 0)
-    expect(readAt).toHaveBeenCalledOnce()
+    expect(readAt).toHaveBeenCalledTimes(2)
   })
 
   it('updates elapsed labels only while jobs are live and preserves search and confirmation', async () => {
@@ -495,16 +560,19 @@ describe('jobs readonly projections', () => {
     expect(sortJobs([job('old', 'completed', { startedAt: 2_000 }), job('new', 'completed', { startedAt: 9_000 })]).map(row => row.id)).toEqual(['new', 'old'])
   })
   it('keeps empty results and arbitrary line lengths on one scroll', () => {
-    const emptyRead = { chunks: [], next: 0, lossy: false }
-    expect(JSON.stringify(jobOutputNode(job('empty', 'completed'), emptyRead, '', key => key))).toContain('(no output)')
-    expect(JSON.stringify(jobOutputNode(job('live', 'running'), emptyRead, '', key => key))).toContain('(no output yet)')
+    const emptyFeed = { dropped: false, chunks: [] }
+    expect(JSON.stringify(jobOutputNode(job('empty', 'completed'), emptyFeed, key => key))).toContain('(no output)')
+    expect(JSON.stringify(jobOutputNode(job('live', 'running'), emptyFeed, key => key))).toContain('(no output yet)')
     for (const text of ['', '\n'.repeat(24_001), 'x'.repeat(12_000), 'x'.repeat(11_999) + '\u{1F680}', '\u{1F680}'.repeat(20_000)]) {
-      const node = jobOutputNode(job('large', 'completed'), emptyRead, text, key => key)
+      const node = jobOutputNode(job('large', 'completed'), { dropped: false, chunks: text === '' ? [] : [ui.chunk(text)] }, key => key)
       expect(validateMayflyUiNode(node).ok).toBe(true)
       expect(text.isWellFormed()).toBe(true)
       const scroll = node.kind === 'surface' && node.child.kind === 'stack' ? node.child.children.map(child => child.node).find(node => node.kind === 'scroll') : undefined
       if (text === '') expect(scroll?.child.kind).toBe('text')
-      else expect(scroll?.child).toMatchObject({ kind: 'code', code: text })
+      else {
+        expect(scroll?.child.kind).toBe('code')
+        expect(textOf(scroll?.child.kind === 'code' ? scroll.child.code : '')).toBe(text)
+      }
     }
     expect(validateMayflyUiNode(jobDetailsNode(job('done', 'completed'), key => key)).ok).toBe(true)
   })

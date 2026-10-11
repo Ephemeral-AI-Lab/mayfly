@@ -16,9 +16,10 @@
  * @module @ephemeral-ai/mayfly/core/content-rows
  */
 
-import type { MayflyContentNode, MayflyField, MayflyMarkdownNode, MayflyRichTextNode, MayflySection, MayflySectionContentNode, MayflyTextStyle, MayflyTone, MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
+import { textOf } from '@ephemeral-ai/mayfly-ui'
+import type { MayflyContentField, MayflyContentNode, MayflyField, MayflyMarkdownNode, MayflyRichTextNode, MayflySection, MayflySectionContentNode, MayflyTextStyle, MayflyTone, MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import type { MarkdownTheme } from '@earendil-works/pi-tui'
-import { CONTENT_SEGMENT_LINES, CONTENT_SEGMENT_UNITS, indexContent, type ContentIndex } from './content-segments.ts'
+import { CONTENT_SEGMENT_LINES, CONTENT_SEGMENT_UNITS, indexContent, indexMergedLines, scanContentLines, type ContentIndex, type ContentLineScan } from './content-segments.ts'
 import { alignDiffLines, diffModel, paintDiffSegment, type DiffModel, type DiffSegment } from './diff-align.ts'
 import { ownDataErrorMessage } from './error-message.ts'
 import { highlightable, highlightCodeLines } from './highlight.ts'
@@ -135,7 +136,7 @@ class SegmentedContent implements RowSource {
   }
 
   get length(): number {
-    return this.index.segments === 0 ? 0 : this.tree.sum(this.index.segments - 1)
+    return this.tree.sum(this.index.segments - 1)
   }
 
   private cacheKey(segment: number): string {
@@ -185,7 +186,6 @@ class SegmentedContent implements RowSource {
    * cover — the same model `offsetOf` inverts, so an anchor round-trips to the row it was written from.
    */
   rowOf(offset: number): number {
-    if (this.index.segments === 0) return 0
     const segment = this.index.segmentAtOffset(offset)
     const local = Math.min(this.index.rowOfOffset(segment, offset, this.wrapWidth, this.text()), this.counts[segment]! - 1)
     return this.tree.sum(segment - 1) + Math.max(0, local)
@@ -193,7 +193,6 @@ class SegmentedContent implements RowSource {
 
   /** The text offset `row` begins at: the segment under the row, then the estimated boundary inside it. */
   offsetOf(row: number): number {
-    if (this.index.segments === 0) return 0
     const segment = this.tree.locate(row)
     const local = Math.min(Math.max(0, row - this.tree.sum(segment - 1)), this.counts[segment]! - 1)
     return this.index.offsetOfRow(segment, local, this.wrapWidth, this.text())
@@ -285,7 +284,7 @@ class DiffRowsSource implements RowSource {
   }
 
   get length(): number {
-    return this.chunks.length === 0 ? 0 : this.tree.sum(this.chunks.length - 1)
+    return this.tree.sum(this.chunks.length - 1)
   }
 
   private cacheKey(chunk: number): string {
@@ -422,12 +421,10 @@ class MarkdownRowSource implements RowSource {
     return child
   }
 
-  /** The fragment rows of a `block` or `mermaid` unit, or undefined when the unit wants its raw-line child. */
-  private paintSafely(unit: number, at: MarkdownUnit): readonly string[] | undefined {
+  /** One fragment paint under the error contract: a failure reports once per unit and paints the error rows. */
+  private paintSafely(unit: number, paint: () => readonly string[] | undefined): readonly string[] | undefined {
     try {
-      if (at.kind === 'mermaid') return markdownMermaidRows(at.source, at.fallback, this.width, this.theme, this.env.colors.mdHr)
-      if (at.kind === 'block') return markdownBlockRows(this.prepared.normalized.slice(at.start, at.end), this.prepared.defs, this.width, this.theme, this.env.colors.mdHr)
-      return undefined
+      return paint()
     } catch (error) {
       const message = ownDataErrorMessage(error) ?? 'unknown render failure'
       if (!this.failures.has(unit)) {
@@ -444,9 +441,12 @@ class MarkdownRowSource implements RowSource {
     if (unit.kind === 'lines') return virtualRows(this.linesChild(at, this.prepared.normalized.slice(unit.start, unit.end)))
     let rows = this.env.cache.get(this.cacheKey(at))
     if (rows === undefined) {
-      const painted = this.paintSafely(at, unit)
+      const painted = unit.kind === 'mermaid'
+        ? this.paintSafely(at, () => markdownMermaidRows(unit.source, unit.fallback, this.width, this.theme, this.env.colors.mdHr))
+        : this.paintSafely(at, () => markdownBlockRows(this.prepared.normalized.slice(unit.start, unit.end), this.prepared.defs, this.width, this.theme, this.env.colors.mdHr))
+      // Only an oversized mermaid declines a fragment paint; its raw fence becomes the segmented child.
       if (painted === undefined) {
-        const child = this.linesChild(at, unit.kind === 'mermaid' ? unit.fallback : this.prepared.normalized.slice(unit.start, unit.end))
+        const child = this.linesChild(at, (unit as Extract<MarkdownUnit, { readonly kind: 'mermaid' }>).fallback)
         this.syncCount(at, child.length)
         return virtualRows(child)
       }
@@ -520,28 +520,56 @@ class MarkdownRowSource implements RowSource {
 const preparedMarkdowns = new WeakMap<object, PreparedMarkdown>()
 
 function markdownSource(node: MayflyMarkdownNode, width: number, env: ContentRowsEnv): RowSource {
-  const source = requireText(node.source, 'markdown source')
   let prepared = preparedMarkdowns.get(node)
   if (prepared === undefined) {
-    prepared = scanMarkdown(source)
+    prepared = scanMarkdown(textOf(node.source))
     countWork(env.counters, 'linesEstimated', prepared.lines)
     preparedMarkdowns.set(node, prepared)
   }
   return new MarkdownRowSource(prepared, Math.max(1, width), env, keyOf(node))
 }
 
-const indexes = new WeakMap<object, ContentIndex>()
+const indexedFields = new WeakMap<object, IndexedField>()
+const chunkScans = new WeakMap<object, ContentLineScan>()
 const nodeIds = new WeakMap<object, number>()
 let nextNodeId = 0
 
-/** The measure index of one node, built once from its text and shared by every width and repaint. */
-function indexFor(node: object, text: () => string, env: ContentRowsEnv): ContentIndex {
-  let index = indexes.get(node)
-  if (index === undefined) {
-    index = indexContent(text(), lines => countWork(env.counters, 'linesEstimated', lines))
-    indexes.set(node, index)
+/** The joined text and measure index of one node's content, built once and shared by every width and repaint. */
+interface IndexedField {
+  readonly text: string
+  readonly index: ContentIndex
+}
+
+/** The line scan of one admitted content chunk, kept on its identity so an appended tail scans only its new pieces. */
+function chunkScan(chunk: { readonly text: string }): ContentLineScan {
+  let scan = chunkScans.get(chunk)
+  if (scan === undefined) {
+    scan = scanContentLines(chunk.text)
+    chunkScans.set(chunk, scan)
   }
-  return index
+  return scan
+}
+
+/**
+ * The text and measure index of one node's content field. A string field indexes in one pass; a chunked field joins
+ * its per-chunk scans, each computed once per chunk identity, so a growing stream re-derives the merged index without
+ * rescanning settled pieces.
+ */
+function indexedField(node: object, field: MayflyContentField | (() => string), env: ContentRowsEnv): IndexedField {
+  let held = indexedFields.get(node)
+  if (held === undefined) {
+    if (typeof field === 'function') {
+      const text = field()
+      held = { text, index: indexContent(text, lines => countWork(env.counters, 'linesEstimated', lines)) }
+    } else if (typeof field === 'string') {
+      held = { text: field, index: indexContent(field, lines => countWork(env.counters, 'linesEstimated', lines)) }
+    } else {
+      const text = textOf(field)
+      held = { text, index: indexMergedLines(field.map(chunkScan), text, lines => countWork(env.counters, 'linesEstimated', lines)) }
+    }
+    indexedFields.set(node, held)
+  }
+  return held
 }
 
 /** The cache-key prefix of one node: an id per admitted node object, stable for the surface's life. */
@@ -599,8 +627,9 @@ const grapheme = new Intl.Segmenter('en', { granularity: 'grapheme' })
 function sgrChannel(code: string): string | undefined {
   const params = SGR_AT.exec(code)?.[1]
   if (params === undefined) return undefined
-  const first = Number(params.split(';', 1)[0] ?? '0')
-  if (first === 0 || Number.isNaN(first)) return ''
+  // The grammar only admits digits and separators, so the first field is always numeric (or empty — also 0).
+  const first = Number(params.split(';', 1)[0]!)
+  if (first === 0) return ''
   switch (first) {
     case 1: case 2: case 22: return first === 22 ? '-w' : 'w'
     case 3: case 23: return first === 23 ? '-i' : 'i'
@@ -627,8 +656,7 @@ function sgrChannel(code: string): string | undefined {
  * attributes reopen at each following row (a terminal row's styling must be self-contained), and the cut stays
  * deterministic because no word boundary is consulted.
  */
-function charWrap(text: string, width: number, components: Pick<MayflyComponents, 'visibleWidth'>): string[] {
-  if (text.length === 0) return ['']
+export function charWrap(text: string, width: number, components: Pick<MayflyComponents, 'visibleWidth'>): string[] {
   const active = new Map<string, string>()
   const rows: string[] = []
   let row = ''
@@ -655,7 +683,7 @@ function charWrap(text: string, width: number, components: Pick<MayflyComponents
       }
       continue
     }
-    const cluster = segments.containing(cursor)?.segment ?? text[cursor]!
+    const cluster = segments.containing(cursor)!.segment
     const wide = components.visibleWidth(cluster)
     if (columns + wide > width && columns > 0) { push(); continue }
     row += cluster
@@ -667,12 +695,14 @@ function charWrap(text: string, width: number, components: Pick<MayflyComponents
 }
 
 function textSource(node: Extract<MayflySectionContentNode, { readonly kind: 'text' }>, width: number, env: ContentRowsEnv): RowSource {
-  const content = requireText(node.content, 'text content')
   const tone = paintPluginTone(env.colors, node.tone)
   const painted = (row: string): string => styledText(tone(row), node.styles)
-  if (node.overflow === 'truncate') return eager([painted(truncatedRow(sanitizePluginText(content), width, env.components))], env)
-  if (node.overflow === 'middle' || node.overflow === 'start') return eager([painted(truncateMiddle(sanitizePluginText(content).replace(/[\r\n\t]+/gu, ' '), width, node.overflow))], env)
-  const index = indexFor(node, () => content, env)
+  if (node.overflow !== undefined && node.overflow !== 'wrap') {
+    const content = textOf(node.content)
+    if (node.overflow === 'truncate') return eager([painted(truncatedRow(sanitizePluginText(content), width, env.components))], env)
+    return eager([painted(truncateMiddle(sanitizePluginText(content).replace(/[\r\n\t]+/gu, ' '), width, node.overflow))], env)
+  }
+  const { text: content, index } = indexedField(node, node.content, env)
   return new SegmentedContent(index, () => content, width, (segment, at) => {
     const rows: string[] = []
     const paint = (start: number, end: number, cut: boolean): void => {
@@ -695,9 +725,8 @@ function textSource(node: Extract<MayflySectionContentNode, { readonly kind: 'te
 }
 
 function codeSource(node: Extract<MayflySectionContentNode, { readonly kind: 'code' }>, width: number, env: ContentRowsEnv): RowSource {
-  const code = requireText(node.code, 'code content')
+  const { text: code, index } = indexedField(node, node.code, env)
   const language = node.language === undefined ? '' : sanitizePluginText(requireText(node.language, 'code language'))
-  const index = indexFor(node, () => code, env)
   const digits = node.numbered === true ? String(index.lines).length : 0
   const gutter = digits === 0 ? 0 : digits + 3
   const inner = Math.max(1, width - gutter)
@@ -749,10 +778,8 @@ function codeSource(node: Extract<MayflySectionContentNode, { readonly kind: 'co
   return {
     get length() { return lifted.length },
     row: index => lifted.row(index),
-    ...(lifted.declaredWidth === undefined ? {} : { declaredWidth: lifted.declaredWidth }),
-    ...(lifted.markerFree === true ? { markerFree: true } : {}),
-    ...(lifted.seekMarker === undefined ? {} : { seekMarker: lifted.seekMarker.bind(lifted) }),
-    ...(lifted.prepare === undefined ? {} : { prepare: lifted.prepare.bind(lifted) }),
+    seekMarker: lifted.seekMarker!.bind(lifted),
+    prepare: lifted.prepare!.bind(lifted),
     get unclamped() { return lifted.unclamped },
     rowOf(offset) { return offset <= language.length ? 0 : 1 + body.rowOf(offset - language.length - 1) },
     offsetOf(row) { return row <= 0 ? 0 : language.length + 1 + body.offsetOf(row - 1) },
@@ -793,7 +820,7 @@ function fieldsSource(node: Extract<MayflySectionContentNode, { readonly kind: '
   }
   const { labels, pads, values, raw } = prepared
   // The estimate indexes one synthetic document whose lines have the painted column shape.
-  const index = indexFor(node, () => raw, env)
+  const index = indexedField(node, () => raw, env).index
   const spansOf = (line: number): SanitizedSpan[] => [
     { tone: 'muted', text: `${labels[line]!}${pads[line]!}` },
     { raw: true, text: ' ' },
@@ -846,7 +873,7 @@ function richTextSource(node: MayflyRichTextNode, width: number, env: ContentRow
   })
   if (node.overflow === 'truncate') return eager([truncatedRow(spans.map(span => paintSpan(span, env.colors)).join(''), width, env.components)], env)
   const raw = spans.map(span => span.text).join('')
-  const index = indexFor(node, () => raw, env)
+  const index = indexedField(node, () => raw, env).index
   return new SegmentedContent(index, () => raw, width, (segment, at) => {
     const [start, end] = index.segmentText(segment)
     const joined = clipSpans(spans, start, end).map(span => paintSpan(span, env.colors)).join('')

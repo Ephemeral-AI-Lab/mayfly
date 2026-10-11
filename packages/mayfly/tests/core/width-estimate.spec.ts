@@ -36,6 +36,14 @@ describe('estimateColumns', () => {
     }
   })
 
+  it('prices CJK Extension B points and lone surrogates safely', () => {
+    // U+20000 lands in the Extension B range, one cell past the last common block.
+    expect(estimate('𠀀')).toBe(visibleWidth('𠀀'))
+    // A high surrogate with no low partner prices as its own code point, never a hang.
+    expect(estimate('a\ud800b')).toBe(visibleWidth('a\ud800b'))
+    expect(estimate('x\udfffy')).toBe(visibleWidth('x\udfffy'))
+  })
+
   it('reads only the asked range', () => {
     const text = 'xx中文yy'
     expect(estimateColumns(text, 2, 4)).toBe(4)

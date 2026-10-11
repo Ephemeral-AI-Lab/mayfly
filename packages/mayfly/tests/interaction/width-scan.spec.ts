@@ -121,7 +121,7 @@ describe('interaction width-scan', () => {
       const text2 = `${text}\n`.repeat(Math.ceil(13_000 / (text.length + 1)))
       const read = { chunks: [{ at: 0, text: text2 }], next: text2.length, lossy: false }
       try {
-        const handle = bench.ctx.mayflyOverlays.open({ id: 'job-output', capturing: true }, jobOutputNode(job, read, text2, key => key))
+        const handle = bench.ctx.mayflyOverlays.open({ id: 'job-output', capturing: true }, jobOutputNode(job, { dropped: read.lossy, chunks: read.chunks.map(chunk => ui.chunk(chunk.text)) }, key => key))
         const model = bench.ctx.mayflyUiInteraction.get('overlay', 'job-output')!
         const viewport = { columns: width, rows: 20 }
         const renderer = renderRequest(model, viewport)
@@ -151,7 +151,7 @@ describe('interaction width-scan', () => {
       const nodes = [
         ui.list({ id: 'jobs', role: 'browse', selectedIds: [], items: jobItems([job], 61_000, key => key) }),
         jobDetailsNode(job, key => key),
-        jobOutputNode(job, { chunks: [{ at: 0, text }], next: text.length, lossy: false }, text, key => key),
+        jobOutputNode(job, { dropped: false, chunks: [ui.chunk(text)] }, key => key),
       ]
       try {
         for (const [index, node] of nodes.entries()) {
