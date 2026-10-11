@@ -6,7 +6,7 @@
  * @module @ephemeral-ai/mayfly/core/ui-patterns
  */
 
-import type { MayflyFormField, MayflyListSegment, MayflyTone, MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
+import type { MayflyTone, MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import type { MayflyTranslate } from '../frontend/locale.ts'
 import type { MayflySemanticColors } from './types.ts'
 import type { MayflyGlyphMode } from './glyphs.ts'
@@ -14,8 +14,6 @@ import { loaderCell } from './ui-loader-animation.ts'
 import { hintNotation } from './ui-key-grammar.ts'
 import { sanitizePluginText } from './plugin-view.ts'
 import { paintSpan, paintTone } from './ui-paint.ts'
-import { paintFormField, type FieldDecor } from './ui-form-paint.ts'
-import { segmentFooter } from './ui-list-segment.ts'
 import { paintList, type ListPaintOptions, type ListRowMemo, type ListRowSpec } from './ui-list-paint.ts'
 import { paintTabs, type TabsPaintOptions } from './ui-tabs-paint.ts'
 import { sliceByColumn, truncateMiddle, truncateToWidth, visibleWidth, wrapTextWithAnsi } from './width.ts'
@@ -270,18 +268,6 @@ export function renderList(node: ListNode, width: number, height: number, focus:
     memo,
     ...(node.filter === undefined ? {} : { lead: fit(colors.textMuted(`/ ${node.filter}`), available) }),
   })
-}
-
-/**
- * The segment strip as one footer line: the label and the whole strip when they fit, then the strip alone, without
- * `(default)`, folded into `+N`, and last the active option alone. `selectedId` is the option that applies.
- */
-export function renderListSegment(segment: MayflyListSegment, selectedId: string | undefined, width: number, colors: MayflySemanticColors, pinned: string | null = selectedId ?? null): string {
-  return segmentFooter({ segment, pinned, active: selectedId }, safeWidth(width), colors, segment.label ?? 'Options')
-}
-
-export function renderFormField(field: MayflyFormField, width: number, focus: PatternFocus, colors: MayflySemanticColors, text: (key: string) => string = key => key, decor: FieldDecor = {}, labelWidth = visibleWidth(field.label)): string[] {
-  return paintFormField({ field, decor, width, focus, colors, text, labelWidth })
 }
 
 /** One action as the kit's `actionTokens` writes it: `[ Label ]` primary, `! Label` danger, a declared key as `(c)`. */

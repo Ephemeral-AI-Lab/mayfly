@@ -21,7 +21,7 @@ import {
   type ImageAttachmentRef,
   type SaveImageAttachment,
 } from '@deepseek-ai/dsh-attachment'
-import { applyReversibleSubmitTransformers, applySubmitTransformers } from '../../src/interaction/prompt-submit-pipeline.ts'
+import { applyReversibleSubmitTransformers } from '../../src/interaction/prompt-submit-pipeline.ts'
 import { clearSharedEditor, setSharedEditor } from '../../src/interaction/editor-instance.ts'
 // The value import carries the `settings` Context merge and the
 // 'settings/document-updated' Events merge the override spec below uses.
@@ -123,7 +123,7 @@ describe('mayfly-paste-image plugin', () => {
   it('registers the ctrl+v action and the submit transformer until dispose', async () => {
     await mount()
     expect(keymap.getKeys(ACTION_IMAGE_PASTE)).toEqual(['ctrl+v'])
-    expect(applySubmitTransformers(ctx, '[image #99]')).toEqual([{ type: 'text', text: '[image #99]' }])
+    expect(ctx.mayflyPromptSubmissions.apply('[image #99]')).toEqual([{ type: 'text', text: '[image #99]' }])
     await fiber!.dispose()
     fiber = undefined
     expect(keymap.getKeys(ACTION_IMAGE_PASTE)).toEqual([])
@@ -232,21 +232,21 @@ describe('mayfly-paste-image plugin', () => {
     ])
     transformed.rollback?.()
     transformed.rollback?.()
-    expect(applySubmitTransformers(ctx, firstMarker)).toEqual([
+    expect(ctx.mayflyPromptSubmissions.apply(firstMarker)).toEqual([
       { type: 'image', attachment: expect.objectContaining({ mediaType: 'image/png' }) },
     ])
     // Consumed markers leave the map: a resubmit keeps them literal.
-    expect(applySubmitTransformers(ctx, `again ${firstMarker}`)).toEqual([
+    expect(ctx.mayflyPromptSubmissions.apply(`again ${firstMarker}`)).toEqual([
       { type: 'text', text: `again ${firstMarker}` },
     ])
     // A marker-only line yields just the image block (the third, unconsumed
     // paste).
     const thirdMarker = editor.inserted[2]!
-    expect(applySubmitTransformers(ctx, thirdMarker)).toEqual([
+    expect(ctx.mayflyPromptSubmissions.apply(thirdMarker)).toEqual([
       { type: 'image', attachment: expect.objectContaining({ mediaType: 'image/jpeg' }) },
     ])
     // No known markers at all: the fallback single text block.
-    expect(applySubmitTransformers(ctx, 'plain line')).toEqual([{ type: 'text', text: 'plain line' }])
+    expect(ctx.mayflyPromptSubmissions.apply('plain line')).toEqual([{ type: 'text', text: 'plain line' }])
   })
 
   it('reports a successful automatic backend fallback after inserting its marker', async () => {
@@ -296,7 +296,7 @@ describe('mayfly-paste-image plugin', () => {
       expect.objectContaining({ mediaType: 'image/gif', name: 'second.gif' }),
     ])
     expect(editor.inserted[0]!.match(/\[image #\d+\]/g)).toHaveLength(2)
-    expect(applySubmitTransformers(ctx, editor.inserted[0]!)).toEqual([
+    expect(ctx.mayflyPromptSubmissions.apply(editor.inserted[0]!)).toEqual([
       { type: 'image', attachment: expect.objectContaining({ mediaType: 'image/png' }) },
       { type: 'text', text: ' ' },
       { type: 'image', attachment: expect.objectContaining({ mediaType: 'image/gif' }) },

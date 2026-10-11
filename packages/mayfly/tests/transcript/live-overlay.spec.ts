@@ -8,7 +8,7 @@ import type { Session } from '@deepseek-ai/dsh-session'
 import { describe, expect, it, vi } from 'vitest'
 import { LiveAssistantStreamService } from '../../src/conversation/live-stream.ts'
 import { initialConversationFacts } from '../../src/conversation/facts.ts'
-import { liveDraftsOf, OfficialConversationModelSource } from '../../src/transcript/official-model.ts'
+import { OfficialConversationModelSource } from '../../src/transcript/official-model.ts'
 import type { LiveDraftSource } from '../../src/transcript/conversation-feed.ts'
 import { SessionFactsService } from '../../src/transcript/session-facts.ts'
 import type { ConversationProjection } from '../../src/conversation/types.ts'
@@ -279,7 +279,7 @@ describe('live draft overlays', () => {
     ctx.provide('sessionProjections', projections as never)
     ctx.provide('sessions', { list: () => [] })
     const facts = new SessionFactsService(ctx, live)
-    const source = new OfficialConversationModelSource(projections as never, { get: () => undefined }, () => {}, liveDraftsOf(ctx))
+    const source = new OfficialConversationModelSource(projections as never, { get: () => undefined }, () => {}, { subscribe: listener => live.subscribe(listener), get: agent => live.get(agent) })
     source.attach(holder.session, undefined, first)
     const emitDraft = (agent: Agent, text: string) => {
       ctx.emit('agent/assistant-stream', { agent, frame: { type: 'start', attemptId: 'same' as never, revision: 1, turn: 1, step: 0 } } as never)
@@ -313,24 +313,5 @@ describe('live draft overlays', () => {
     facts.dispose()
     live.dispose()
     await ctx.fiber.dispose()
-  })
-
-  it('adapts the optional ctx live-stream service into a draft source', async () => {
-    const bare = new Context()
-    expect(liveDraftsOf(bare as never)).toBeUndefined()
-    const ctx = new Context()
-    const live = new LiveAssistantStreamService(ctx)
-    const { agent } = liveAgent(ctx, 'overlay-adapter')
-    const drafts = liveDraftsOf(ctx)
-    expect(drafts).toBeDefined()
-    ctx.emit('agent/assistant-stream', { agent, frame: { type: 'start', attemptId: 'a' as never, revision: 1, turn: 1, step: 0 } } as never)
-    expect(drafts!.get(agent)).toMatchObject({ turn: 1, step: 0 })
-    const listener = vi.fn()
-    const off = drafts!.subscribe(listener)
-    ctx.emit('agent/assistant-stream', { agent, frame: { type: 'chunk', attemptId: 'a' as never, revision: 2, index: 0, time: 1, chunk: { type: 'text-delta', index: 0, text: 'x' } } } as never)
-    await Promise.resolve()
-    expect(listener).toHaveBeenCalled()
-    off()
-    live.dispose()
   })
 })

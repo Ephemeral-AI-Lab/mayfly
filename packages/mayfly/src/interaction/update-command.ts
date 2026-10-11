@@ -117,15 +117,6 @@ export function updatePanelModel(
   })
 }
 
-/** One-line notice emitted when the settled panel closes. */
-export function updatePanelSummary(state: UpdateProgressState, t: MayflyTranslate = interpolateLocaleMessage): string {
-  const outcome = state.outcome
-  if (outcome === undefined) return t(state.blockedMessage === undefined ? 'update panel closed' : 'update blocked — nothing was changed')
-  return outcome.kind === 'success'
-    ? t('updated to v{version} — restart dsh to apply', { version: outcome.toVersion })
-    : t('update did not complete ({kind}) — log: {path}', { kind: outcome.kind, path: outcome.logPath })
-}
-
 /**
  * Mount an explicit Yes/No confirmation and
  * await the answer.

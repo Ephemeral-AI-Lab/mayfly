@@ -63,5 +63,4 @@ export class PromptSubmitPipeline extends Service {
 }
 
 export const registerSubmitTransformer = (ctx: Context, transformer: SubmitTransformer): (() => void) => ctx.mayflyPromptSubmissions.register(transformer)
-export const applySubmitTransformers = (ctx: Context, text: string): ContentBlock[] => ctx.mayflyPromptSubmissions.apply(text)
 export const applyReversibleSubmitTransformers = (ctx: Context, text: string): SubmitTransformation => ctx.mayflyPromptSubmissions.applyReversible(text)

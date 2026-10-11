@@ -31,20 +31,3 @@ export const LOGO_ART: readonly string[] = [
 
 /** The logo's row count — the status column's vertical anchor. */
 export const LOGO_ROWS = LOGO_ART.length
-
-/**
- * The logo's brand color gradient, one hex per row: near-white at the top,
- * through the hero's brand violet at the waist, to a deep violet at the
- * bottom. Each entry maps to the same-index {@link LOGO_ART} row, so the
- * mark reads as one sweeping gradient down its body.
- */
-export const LOGO_GRADIENT: readonly string[] = [
-  '#F5F5F7',
-  '#E9E5F6',
-  '#DBD3F0',
-  '#C9BEEA',
-  '#B2A1EC',
-  '#9A86E6',
-  '#8371D6',
-  '#6C5BBF',
-]

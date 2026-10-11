@@ -4,7 +4,8 @@
 import { describe, expect, it } from 'vitest'
 import { ui } from '../../../ui/src/index.ts'
 import { withOverrides } from '../fixture-fields.ts'
-import { acknowledgeChoice, choiceError, choicePinned, choiceReportedSegment, choiceRow, choiceSegment, focusableListItem, choiceVisibleCount, choiceVisibleIndex, choiceVisiblePosition, createChoiceState, decorateChoiceItem, reconcileChoice, reduceChoice, visibleChoiceIndices } from '../../src/core/ui-interaction-choice.ts'
+import { acknowledgeChoice, choiceError, choicePinned, choiceReportedSegment, choiceRow, choiceSegment, focusableListItem, choiceVisibleCount, choiceVisibleIndex, choiceVisiblePosition, createChoiceState, reconcileChoice, reduceChoice, visibleChoiceIndices } from '../../src/core/ui-interaction-choice.ts'
+import { admittedListItem } from '../../src/core/ui-validator.ts'
 
 const tree = ui.list({ id: 'tree', role: 'choose', tree: true, selectedIds: [], filterable: true, items: [
   { id: 'root', label: 'Root' },
@@ -27,7 +28,7 @@ describe('shared tree choice', () => {
     state = reduceChoice(state, { kind: 'focus', id: 'leaf' })
     expect(visibleChoiceIndices(state)).toEqual([0, 1, 2, 3])
     // The label is never decorated: the painter draws the guides, so the label stays what a filter reads.
-    expect(decorateChoiceItem(state, 2)).toMatchObject({ id: 'leaf', label: 'Deep target' })
+    expect(admittedListItem(state.definition.items, 2)).toMatchObject({ id: 'leaf', label: 'Deep target' })
     expect(choiceRow(state, 2)).toMatchObject({ depth: 2, last: true, expandable: false, open: false })
     expect(choiceRow(state, 1)).toMatchObject({ depth: 1, last: true, expandable: true, open: true })
     state = reduceChoice(state, { kind: 'expand', id: 'root' })
@@ -99,7 +100,7 @@ describe('flat choice reducer', () => {
     expect(visibleChoiceIndices(unfiltered)).toEqual([0, 1, 2])
     const filtered = createChoiceState({ ...flat, filter: 'alias' })
     expect(filtered).toMatchObject({ focusedId: 'two', matches: [1] })
-    expect(decorateChoiceItem(filtered, 1)).toBe(filtered.definition.items[1])
+    expect(admittedListItem(filtered.definition.items, 1)).toBe(filtered.definition.items[1])
     expect(visibleChoiceIndices(filtered)).toEqual([1])
     expect(choiceVisibleCount(filtered)).toBe(1)
     expect(choiceVisibleIndex(filtered, 0)).toBe(1)

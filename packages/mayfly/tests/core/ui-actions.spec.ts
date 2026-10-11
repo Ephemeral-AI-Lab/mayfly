@@ -6,7 +6,7 @@ import { Context } from '@deepseek-ai/cordis'
 import { describe, expect, it } from 'vitest'
 import { ui, type MayflyUiEvent } from '../../../ui/src/index.ts'
 import {
-  COMMON_MEANINGS, actionHintLabel, actionNamingProblem, actionScopeActive, defaultItemKey, effectiveItemKeys, itemActionId,
+  COMMON_MEANINGS, actionHintLabel, actionNamingProblem, actionScopeActive, defaultItemKey, effectiveItemKeys,
 } from '../../src/core/ui-actions.ts'
 import { MayflyUiSurfaceRuntime, compileMayflyUiSurfaceNode, type MayflyUiCompilerOptions } from '../../src/core/ui-compiler.ts'
 import { validateMayflyEditorShellNode, validateMayflyUiNode } from '../../src/core/ui-validator.ts'
@@ -57,9 +57,6 @@ function surface(node: unknown, overrides: Partial<MayflyUiCompilerOptions> = {}
 describe('action naming', () => {
   it('names an item by its meaning or its component action', () => {
     expect(COMMON_MEANINGS).toEqual(['save', 'copy', 'delete', 'refresh', 'external', 'search'])
-    expect(itemActionId({ semantic: 'delete' })).toBe('ui.delete')
-    expect(itemActionId({ action: 'demo-plugin.install', key: 'i' })).toBe('demo-plugin.install')
-    expect(itemActionId({ key: 'ctrl+y' })).toBeUndefined()
     expect(defaultItemKey({ semantic: 'save' })).toBe('ctrl+s')
     expect(defaultItemKey({ key: 'ctrl+y' })).toBe('ctrl+y')
     expect(actionHintLabel({ label: 'Copy link', hintLabel: 'copy link' })).toBe('copy link')

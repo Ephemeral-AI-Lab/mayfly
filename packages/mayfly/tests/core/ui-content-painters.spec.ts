@@ -2,7 +2,8 @@
 import { describe, expect, it } from 'vitest'
 import { ui } from '../../../ui/src/index.ts'
 import { renderChartRows } from '../../src/core/chart-renderer.ts'
-import { contentNodeRows, type ContentRowsEnv, type WindowedContentNode } from '../../src/core/content-rows.ts'
+import { contentNodeSource, type ContentRowsEnv, type WindowedContentNode } from '../../src/core/content-rows.ts'
+import { virtualRows } from '../../src/core/ui-rows.ts'
 import { MayflyContentCache } from '../../src/core/ui-content-cache.ts'
 import type { MayflyComponents, MayflySemanticColors } from '../../src/core/types.ts'
 import {
@@ -13,6 +14,10 @@ import { renderDivider, renderEmpty, renderLoader, renderProgress, renderSurface
 import { UiProgressTransitions } from '../../src/core/ui-progress-transition.ts'
 import { truncateMiddle, truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/width.ts'
 import { ADVERSARIAL } from './width-scan.ts'
+
+/** The leaf's rows materialized through its production row source. */
+const contentNodeRows = (node: WindowedContentNode, width: number, env: ContentRowsEnv): string[] =>
+  virtualRows(contentNodeSource(node, width, env))
 
 const tag = new Proxy({}, { get: (_target, role: string) => (text: string) => `<${role}>${text}</${role}>` }) as MayflySemanticColors
 const identity = (value: string): string => value

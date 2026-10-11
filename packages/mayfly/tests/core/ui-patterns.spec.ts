@@ -5,9 +5,7 @@ import {
   renderActions,
   renderDivider,
   renderEmpty,
-  renderFormField,
   renderList,
-  renderListSegment,
   renderLoader,
   renderProgress,
   renderSurfaceHead,
@@ -15,8 +13,19 @@ import {
   renderTabs,
   type PatternFocus,
 } from '../../src/core/ui-patterns.ts'
+import { paintFormField } from '../../src/core/ui-form-paint.ts'
+import { segmentFooter } from '../../src/core/ui-list-segment.ts'
+import type { MayflyFormField, MayflyListSegment } from '@ephemeral-ai/mayfly-ui'
 import type { MayflySemanticColors } from '../../src/core/types.ts'
 import { visibleWidth } from '../../src/core/width.ts'
+
+/** The segment strip's footer line through the production painter. */
+const renderListSegment = (segment: MayflyListSegment, selectedId: string | undefined, width: number, colors: MayflySemanticColors): string =>
+  segmentFooter({ segment, pinned: selectedId ?? null, active: selectedId }, Math.max(1, width), colors, segment.label ?? 'Options')
+
+/** One field's rows through the production painter. */
+const renderFormField = (field: MayflyFormField, width: number, focus: PatternFocus, colors: MayflySemanticColors): string[] =>
+  paintFormField({ field, decor: {}, width, focus, colors, text: key => key, labelWidth: visibleWidth(field.label) })
 
 const identity = (value: string): string => value
 const colors = new Proxy({ logoGradient: [identity] }, { get: (target, key) => key === 'logoGradient' ? target.logoGradient : identity }) as unknown as MayflySemanticColors

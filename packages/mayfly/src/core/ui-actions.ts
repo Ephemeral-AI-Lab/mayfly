@@ -37,15 +37,6 @@ export function actionNamingProblem(item: ActionNaming): string | undefined {
 }
 
 /**
- * The named action an item runs as.
- * @param item - an admitted action item.
- * @returns `ui.<meaning>`, the component action, or undefined for a plain accelerator.
- */
-export function itemActionId(item: ActionNaming): string | undefined {
-  return item.semantic === undefined ? item.action : `ui.${item.semantic}`
-}
-
-/**
  * The key an item claims before any rebinding, which the validator checks per page: a meaning's default binding,
  * else the item's own key.
  * @param item - an action item.

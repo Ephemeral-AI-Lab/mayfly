@@ -274,11 +274,6 @@ export function visibleChoiceIndices(state: UiChoiceState): readonly number[] {
   return indexedVisibility(state) ?? Array.from({ length: state.definition.items.length }, (_, index) => index)
 }
 
-/** The item at a raw index; the label is never decorated, because the painter draws guides and disclosure itself. */
-export function decorateChoiceItem(state: UiChoiceState, index: number): MayflyListNode['items'][number] {
-  return admittedListItem(state.definition.items, index)!
-}
-
 /**
  * The painter's view of one visible row: its depth, whether it ends its parent's children, and whether it opens (a branch
  * or a body). A row is open when it is always open, expanded, the cursor row of an `expandFocused` list, or a search is

@@ -30,16 +30,19 @@ import {
 import { MAYFLY_VERSION } from '../../src/transcript/banner-content.ts'
 import { mountFakeScreenSlot } from '../core/fake-screen-slot.ts'
 import * as banner from '../../src/transcript/banner.ts'
-import { LOGO_COLS, LOGO_GRADIENT } from '../../src/transcript/banner-art.ts'
+import { LOGO_COLS } from '../../src/transcript/banner-art.ts'
 import { visibleWidth, truncateToWidth } from '../../src/core/width.ts'
 import { fakeMayflyComponents } from './helpers.ts'
 import { COLORS } from './status-fakes.ts'
 import { BANNER_LOCALE } from '../../src/transcript/locale.ts'
 import { MayflyLocaleService } from '../../src/frontend/locale.ts'
 
+/** The fixture gradient painted into the deps' logo rows, one hex per row. */
+const GRADIENT_HEXES = ['#F5F5F7', '#E9E5F6', '#DBD3F0', '#C9BEEA', '#B2A1EC', '#9A86E6', '#8371D6', '#6C5BBF']
+
 /** Wrap a Mayfly mark row in its brand color gradient ANSI, as the banner paints it. */
 function wrapLogo(row: string, index: number): string {
-  const hex = LOGO_GRADIENT[index]!
+  const hex = GRADIENT_HEXES[index]!
   const r = parseInt(hex.slice(1, 3), 16)
   const g = parseInt(hex.slice(3, 5), 16)
   const b = parseInt(hex.slice(5, 7), 16)
@@ -56,7 +59,7 @@ const DEPS: BannerDeps = {
   colors: {
     ...COLORS,
     modelHighlight: text => `\x1b[38;2;140;168;255m${text}\x1b[39m`,
-    logoGradient: LOGO_GRADIENT.map((_hex, index) => text => wrapLogo(text, index)),
+    logoGradient: GRADIENT_HEXES.map((_hex, index) => text => wrapLogo(text, index)),
   } as MayflySemanticColors,
   strong: text => components.strong(text),
   truncate: (text, width) => components.truncateToWidth(text, width),
