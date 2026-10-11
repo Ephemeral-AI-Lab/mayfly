@@ -74,20 +74,6 @@ export function traceSummary(event: SessionEvent): string {
   }
 }
 
-/** Convert official event metadata into a display item. */
-export function toTraceItem(record: SessionEventRecord, event?: SessionEvent): TraceItem {
-  return {
-    seq: record.seq,
-    lastSeq: record.seq,
-    eventSeqs: [record.seq],
-    time: record.time,
-    type: record.type,
-    surface: record.surface,
-    title: traceTitle(record.type),
-    summary: event === undefined ? '' : traceSummary(event),
-  }
-}
-
 /** Format a timestamp consistently across the panel and clipboard output. */
 export function traceTime(time: number): string {
   const date = new Date(time)

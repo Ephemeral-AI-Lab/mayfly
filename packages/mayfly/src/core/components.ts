@@ -116,7 +116,7 @@ interface AutocompleteListFactory {
 const SLASH_SELECT_LIST_LAYOUT = { minPrimaryColumnWidth: 12, maxPrimaryColumnWidth: 32 }
 
 /** Theme-derived paints the editor chrome overlays (S14 completion polish). */
-export interface EditorChromePaints {
+interface EditorChromePaints {
   /** Styling for the leading `/command` token (bold + `primary`). */
   readonly slashTokenPaint: (text: string) => string
   /** Styling for the argument-hint ghost (`textMuted`). */

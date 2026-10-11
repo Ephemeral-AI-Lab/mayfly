@@ -23,7 +23,7 @@ export interface MayflyPresentation {
 }
 
 /** The settings fields the presentation reads; anything else is ignored. */
-export interface MayflyPresentationSettings {
+interface MayflyPresentationSettings {
   readonly glyphs?: unknown
   readonly monochrome?: unknown
   readonly reducedMotion?: unknown

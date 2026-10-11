@@ -6,7 +6,7 @@ import { SessionSeq } from '@deepseek-ai/dsh-session'
 import type { AssistantStreamRecord } from '@deepseek-ai/dsh-llm'
 import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import type { SessionEventRecord, SessionEventTraceObservation, SessionEventWindow } from '@deepseek-ai/dsh-session-query'
-import { attemptStreamText, formatTraceAll, formatTraceItem, toTraceItem, traceSummary, traceTitle, traceTime } from '../../src/interaction/trace-format.ts'
+import { attemptStreamText, formatTraceAll, formatTraceItem, traceSummary, traceTitle, traceTime } from '../../src/interaction/trace-format.ts'
 
 const event = (type: string, data: unknown): SessionEvent => ({ type, seq: 3, time: 1000, data } as SessionEvent)
 const record: SessionEventRecord = { sessionId: 'session' as never, seq: SessionSeq(3), time: 1000, type: 'user/message', surface: 'current' }
@@ -50,8 +50,7 @@ describe('trace-format', () => {
   })
 
   it('builds items and serializes relations and raw payload', () => {
-    const item = toTraceItem(record, event('user/message', { content: [{ type: 'text', text: 'hello' }] }))
-    expect(item).toMatchObject({ seq: 3, title: 'User request', summary: 'hello' })
+    const item = { seq: SessionSeq(3), lastSeq: SessionSeq(3), eventSeqs: [SessionSeq(3)], time: 1000, type: 'user/message', surface: record.surface, title: 'User request', summary: 'hello' }
     expect(traceTime(1000)).toBe('00:00:01')
     expect(traceTime(Number.NaN)).toBe('??:??:??')
     const relation = {
@@ -72,13 +71,9 @@ describe('trace-format', () => {
     expect(formatTraceAll([item], 'session')).toContain('# Trace\n\nSession: session')
     expect(formatTraceItem({ ...item, summary: '' }, undefined, undefined)).not.toContain('raw event:')
     expect(formatTraceAll([{ ...item, summary: '' }], 'session')).not.toContain('\n\nhello')
-    const merged = { ...item, lastSeq: 5, eventSeqs: [3, 4, 5] }
+    const merged = { ...item, lastSeq: SessionSeq(5), eventSeqs: [SessionSeq(3), SessionSeq(4), SessionSeq(5)] }
     expect(formatTraceItem(merged, undefined, undefined, [event('user/message', {})])).toContain('#3-5')
     expect(formatTraceAll([merged], 'session')).toContain('#3-5')
-  })
-
-  it('supports an item without an event payload', () => {
-    expect(toTraceItem(record).summary).toBe('')
   })
 })
 

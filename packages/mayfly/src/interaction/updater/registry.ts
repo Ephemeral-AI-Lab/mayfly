@@ -42,10 +42,10 @@ export interface Packument {
 }
 
 /** Why a registry read failed — the caller picks the user-facing message. */
-export type RegistryFailure = 'network' | 'unparseable' | 'not-found'
+type RegistryFailure = 'network' | 'unparseable' | 'not-found'
 
 /** A registry read: the packument, or the failure class. */
-export type RegistryResult = { ok: true; packument: Packument } | { ok: false; reason: RegistryFailure }
+type RegistryResult = { ok: true; packument: Packument } | { ok: false; reason: RegistryFailure }
 
 /**
  * Normalize a raw npm-view or registry-API document into a
@@ -156,7 +156,7 @@ async function directFetch(): Promise<RegistryResult> {
 }
 
 /** Progress hooks for a packument read; the UI layers wire notices here. */
-export interface FetchPackumentHooks {
+interface FetchPackumentHooks {
   /**
    * Fired before each retry attempt (never for the first): `attempt` and
    * `total` are 1-based attempt numbers (2/3, 3/3).
@@ -196,7 +196,7 @@ export async function fetchPackument(hooks: FetchPackumentHooks = {}): Promise<R
 }
 
 /** What a release's own manifest says about its set and harness pin. */
-export interface ReleaseFacts {
+interface ReleaseFacts {
   /** The single package managed by the updater. */
   readonly names: readonly string[]
   /**

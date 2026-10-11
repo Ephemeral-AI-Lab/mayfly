@@ -39,7 +39,7 @@ export interface OverflowSink {
  * memory and drain through an explicit async flush, so the render path never
  * waits on the filesystem.
  */
-export interface FileOverflowSink extends OverflowSink {
+interface FileOverflowSink extends OverflowSink {
   /** Drain queued records now; never rejects. */
   flush(): Promise<void>
   /** Drain queued records, then stop accepting new ones; never rejects. */
@@ -71,7 +71,7 @@ export function clampFrame(lines: string[], width: number, sink?: OverflowSink):
 }
 
 /** A previous clamp of one source at the same width. */
-export interface ClampedRows {
+interface ClampedRows {
   /** The rows the component returned. */
   readonly source: readonly string[]
   /** The clamped rows handed to pi-tui for that source. */
@@ -138,7 +138,7 @@ export function defaultOverflowDirectory(): string {
 }
 
 /** Options for the file-backed overflow sink. */
-export interface FileOverflowSinkOptions {
+interface FileOverflowSinkOptions {
   /** Directory to create on first write; holds `mayfly-overflow.log`. */
   readonly directory: string
   /**

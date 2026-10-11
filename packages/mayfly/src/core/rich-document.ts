@@ -15,13 +15,13 @@ export const MERMAID_MAX_NON_EMPTY_LINES = 100
  * loop; oversized graphs remain available as their original code fence.
  */
 export const MERMAID_MAX_GRAPH_NODES = 25
-export const MERMAID_MAX_GRAPH_EDGES = 64
+const MERMAID_MAX_GRAPH_EDGES = 64
 /** A single very wide label can make the layout grid grow without bound. */
 export const MERMAID_MAX_LINE_CHARS = 512
-export const MERMAID_MAX_OUTPUT_LINES = 200
-export const MERMAID_MAX_OUTPUT_CELLS = 20_000
+const MERMAID_MAX_OUTPUT_LINES = 200
+const MERMAID_MAX_OUTPUT_CELLS = 20_000
 
-export type RichDocumentSegment =
+type RichDocumentSegment =
   | { readonly kind: 'markdown', readonly source: string }
   | { readonly kind: 'mermaid', readonly source: string, readonly fallback: string }
 
@@ -35,7 +35,7 @@ interface OpenFence {
 }
 
 /** The line extents of `source`: `[start, end)` offsets (end past the `\n`) and the line text without its newline. */
-export function sourceLines(source: string): readonly { readonly start: number, readonly end: number, readonly text: string }[] {
+function sourceLines(source: string): readonly { readonly start: number, readonly end: number, readonly text: string }[] {
   const lines: Array<{ start: number, end: number, text: string }> = []
   let start = 0
   while (start < source.length) {

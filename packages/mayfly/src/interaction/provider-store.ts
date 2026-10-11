@@ -22,7 +22,7 @@ import { isMap, isSeq, parseDocument, type YAMLMap, type YAMLSeq } from 'yaml'
 import { dshHome } from './updater/profile.ts'
 
 /** The configurable-provider settings namespace Mayfly owns. */
-export const PROVIDER_NAMESPACE = 'llm-pi-ai'
+const PROVIDER_NAMESPACE = 'llm-pi-ai'
 /** The home-patch row id; the dsh-base bundle owns this entry. */
 const ROW_ID = 'llm-pi-ai'
 /** The entry's package name, restored on a fresh home patch row. */

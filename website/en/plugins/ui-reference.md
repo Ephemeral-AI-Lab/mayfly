@@ -1630,8 +1630,7 @@ ui.loader({
 })
 ```
 
-`variant` defaults to `gap`; the first loaders' `braille` and `tide` stay accepted
-and draw `gap`. Without a `message` the node is a bare glyph. `elapsedMs` is a
+`variant` defaults to `gap`. Without a `message` the node is a bare glyph. `elapsedMs` is a
 non-negative millisecond hint, shown as `45s`, `2m 10s`, or `1h 5m`. The renderer
 owns the animation, one clock for every surface at a 100 ms step: `bloom` (`· ✢ ✳
 ✶ ✻ ✽`), `fill` (a braille bar that fills and drains), and `gap` (a braille

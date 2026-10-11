@@ -102,7 +102,7 @@ try {
   await sleep(500)
   // Bare /theme opens the choose-list picker; the live row carries the badge.
   term.write('/theme\r')
-  if (!(await waitFor(() => clean().includes('light [← current]'), 'the theme picker live row'))) throw new Error('theme')
+  if (!(await waitFor(() => clean().includes('light [current]'), 'the theme picker live row'))) throw new Error('theme')
   term.write('\x1b')
   await sleep(300)
   // /mode is the palette entry for the Shift+Tab plan cycle: it toggles the

@@ -43,14 +43,14 @@ const BACKGROUND_TOKEN_NAMES = ['selectedBg', 'diffAddedBg', 'diffRemovedBg'] as
 export const BACKGROUND_TOKENS: ReadonlySet<string> = new Set(BACKGROUND_TOKEN_NAMES)
 
 /** The background tokens of a palette as `#rrggbb` hexes. */
-export type MayflyBackgroundHexes = Record<typeof BACKGROUND_TOKEN_NAMES[number], string>
+type MayflyBackgroundHexes = Record<typeof BACKGROUND_TOKEN_NAMES[number], string>
 
 /**
  * The foreground tokens of a palette as `#rrggbb` hexes. The background
  * tokens and the logo gradient are excluded and passed separately to
  * {@link colorsFromForegrounds}.
  */
-export type MayflyForegroundHexes = Record<Exclude<keyof MayflySemanticColors, keyof MayflyBackgroundHexes | 'logoGradient'>, string>
+type MayflyForegroundHexes = Record<Exclude<keyof MayflySemanticColors, keyof MayflyBackgroundHexes | 'logoGradient'>, string>
 
 /** Build the renderer-neutral companion model for a semantic palette. */
 export function themeModel(id: string, name: string, dark: boolean, foregrounds: MayflyForegroundHexes, backgrounds: MayflyBackgroundHexes): Omit<ThemeModel, 'colors'> & { readonly colors: Readonly<Record<string, string>> } {
@@ -73,7 +73,7 @@ export function colorsFromForegrounds(foregrounds: MayflyForegroundHexes, backgr
 }
 
 /** Constructor shape of the `mayflyTheme` providers built by {@link defineThemeService}. */
-export type MayflyThemeServiceClass = new (ctx: Context) => Service & MayflyTheme
+type MayflyThemeServiceClass = new (ctx: Context) => Service & MayflyTheme
 
 /**
  * Build a `mayflyTheme` Service subclass around one frozen color table. The

@@ -8,7 +8,9 @@
  * the Linux stdout-form tools `wl-paste` and `xclip` in session-aware order)
  * resolves to direct image bytes tagged with the clipboard's declared type,
  * or to local image files copied through `text/uri-list` / GNOME's copied-
- * files representation. Copied files are opened without following a final
+ * files representation. On Windows and macOS the platform's native probe
+ * (`./paste-image-native.ts`) reads instead: one PowerShell staging call,
+ * or osascript's list-then-read negotiation with a sips TIFF conversion. Copied files are opened without following a final
  * symlink, bounded by the attachment deployment limits, magic-byte sniffed,
  * and admitted as one ordered batch. Otherwise the reader returns a failure
  * kind
@@ -28,17 +30,12 @@
  * @module @ephemeral-ai/mayfly/interaction/paste-image
  */
 
-import { constants as fsConstants } from 'node:fs'
-import { open } from 'node:fs/promises'
-import { basename } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import type {
   ImageAttachmentLimits,
   ImageAttachmentRef,
-  ImageMediaType,
-  SaveImageAttachment,
 } from '@deepseek-ai/dsh-attachment'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 // Empty type import carries the `settings` Context merge and the
@@ -50,7 +47,16 @@ import {
 } from './editor-instance.ts'
 import { registerSubmitTransformer, type SubmitTransformation } from './prompt-submit-pipeline.ts'
 import { ADMITTED_IMAGE_TYPES, EXT_BY_MEDIA_TYPE, sniffImageMediaType } from './attachments.ts'
-import { runTool, type FailedRun } from './clipboard-probe.ts'
+import {
+  type ClipboardImageResult,
+  classifyNativeFailure,
+  type FailedRun,
+  type FailureKind,
+  type FailureResult,
+  readCopiedPaths,
+  runTool,
+} from './clipboard-probe.ts'
+import { probeDarwin, probeWindows } from './paste-image-native.ts'
 
 /** Stable Cordis plugin name. */
 export const name = 'mayfly-paste-image'
@@ -60,8 +66,8 @@ export const inject = ['attachments', 'mayflyKeymap', 'mayflyPromptEditor', 'may
 /** Clipboard backend policy: automatic session order, or one strict backend. */
 export type ClipboardBackendPolicy = 'auto' | 'wayland' | 'x11'
 
-/** Concrete clipboard backend that produced an image. */
-export type ClipboardBackend = Exclude<ClipboardBackendPolicy, 'auto'>
+/** The display-session backend a strict policy pins and the tool table keys on. */
+type DisplayBackend = Exclude<ClipboardBackendPolicy, 'auto'>
 
 /** Plugin configuration for clipboard backend selection. */
 export interface Config {
@@ -82,30 +88,15 @@ export const Config: z<Config> = z.object({
 export const ACTION_IMAGE_PASTE = 'mayfly.image.paste'
 
 /**
- * One clipboard read: direct image bytes, an ordered copied-file image
- * batch, or a failure kind naming what is missing.
- */
-export type ClipboardImageResult =
-  | { kind: 'image'; data: Uint8Array; mediaType: ImageMediaType; backend?: ClipboardBackend; fallback?: boolean }
-  | { kind: 'images'; images: readonly SaveImageAttachment[]; backend?: ClipboardBackend; fallback?: boolean }
-  | { kind: 'no-image' }
-  | { kind: 'unsupported'; mediaType: string }
-  | { kind: 'file-failed'; detail: string }
-  | { kind: 'unreachable' }
-  | { kind: 'missing-tool' }
-  | { kind: 'timeout' }
-  | { kind: 'failed'; detail: string }
-
-/**
  * Reads the clipboard's current image, or resolves the failure kind. Never
  * rejects (the injected test readers may).
  */
-export type ClipboardImageReader = () => Promise<ClipboardImageResult>
+type ClipboardImageReader = () => Promise<ClipboardImageResult>
 
 /** How one clipboard tool lists the offered types and reads one back. */
 type ClipboardTool = {
   /** Stable backend identity used by policy selection and cooldowns. */
-  backend: ClipboardBackend
+  backend: DisplayBackend
   /** The probe command. */
   command: string
   /** stderr signature meaning "no display session is reachable". */
@@ -120,7 +111,7 @@ type ClipboardTool = {
 const FILE_URI_TYPES = ['text/uri-list', 'x-special/gnome-copied-files'] as const
 
 /** Clipboard image tools keyed by their display protocol. */
-const CLIPBOARD_TOOLS: Readonly<Record<ClipboardBackend, ClipboardTool>> = {
+const CLIPBOARD_TOOLS: Readonly<Record<DisplayBackend, ClipboardTool>> = {
   wayland: {
     backend: 'wayland',
     command: 'wl-paste',
@@ -141,7 +132,7 @@ const CLIPBOARD_TOOLS: Readonly<Record<ClipboardBackend, ClipboardTool>> = {
 const BACKEND_COOLDOWN_MS = 60_000
 
 /** Wall clock seam for deterministic cooldown specs. */
-export type ClipboardClock = () => number
+type ClipboardClock = () => number
 
 const defaultClipboardClock: ClipboardClock = () => Date.now()
 let clipboardClock: ClipboardClock = defaultClipboardClock
@@ -157,7 +148,7 @@ export function resetClipboardBackendCooldowns(ctx: Context): void {
 }
 
 /** The display identity whose failures may be reused safely. */
-function cooldownKey(backend: ClipboardBackend): string {
+function cooldownKey(backend: DisplayBackend): string {
   return [backend, process.env.DISPLAY ?? '', process.env.WAYLAND_DISPLAY ?? '', process.env.XDG_RUNTIME_DIR ?? ''].join('\0')
 }
 
@@ -169,12 +160,6 @@ function clipboardToolsFor(policy: ClipboardBackendPolicy): readonly ClipboardTo
   if ((process.env.DISPLAY ?? '') !== '') return [CLIPBOARD_TOOLS.x11, CLIPBOARD_TOOLS.wayland]
   return [CLIPBOARD_TOOLS.wayland, CLIPBOARD_TOOLS.x11]
 }
-
-/** Every unsuccessful clipboard result. */
-type FailureResult = Exclude<ClipboardImageResult, { kind: 'image' | 'images' }>
-
-/** The non-image result kinds. */
-type FailureKind = FailureResult['kind']
 
 /**
  * Failure kinds in cross-tool aggregation order: a completed clipboard query
@@ -193,33 +178,17 @@ const OUTCOME_RANK: Readonly<Record<FailureKind, number>> = {
 }
 
 /**
- * Build the raw-failure detail in the `clipboard-write` idiom: the command,
- * its exit code, and the first non-empty stderr line.
- * @param command - the tool that failed.
- * @param run - its failed run.
- * @returns the one-line detail.
- */
-function failureDetail(command: string, run: FailedRun): string {
-  const code = String(run.code)
-  const firstLine = run.stderr.split('\n').map(line => line.trim()).find(line => line.length > 0)
-  return firstLine === undefined
-    ? `${command} exited with code ${code}`
-    : `${command} exited with code ${code}: ${firstLine}`
-}
-
-/**
- * Map a failed run to the shared failure kinds: ENOENT is the missing
- * binary, `killed` is the timeout, the per-tool stderr signature is the
- * unreachable display session, and everything else keeps its raw detail.
+ * Map a failed run to the shared failure kinds: the per-tool stderr
+ * signature is the unreachable display session (Linux display tools only),
+ * and everything else classifies the native way — ENOENT is the missing
+ * binary, `killed` is the timeout, the rest keeps its raw detail.
  * @param tool - the tool that was running.
  * @param run - its failed run.
  * @returns the classified failure.
  */
-function classifyFailure(tool: ClipboardTool, run: FailedRun): ClipboardImageResult {
-  if (run.code === 'ENOENT') return { kind: 'missing-tool' }
-  if (run.killed) return { kind: 'timeout' }
-  if (tool.unreachable.test(run.stderr)) return { kind: 'unreachable' }
-  return { kind: 'failed', detail: failureDetail(tool.command, run) }
+function classifyFailure(tool: ClipboardTool, run: FailedRun): FailureResult {
+  if (run.code !== 'ENOENT' && !run.killed && tool.unreachable.test(run.stderr)) return { kind: 'unreachable' }
+  return classifyNativeFailure(tool.command, run)
 }
 
 /** A parsed local file selection, or a user-facing refusal detail. */
@@ -263,56 +232,11 @@ function parseFileUris(data: Buffer, mediaType: typeof FILE_URI_TYPES[number]): 
   return { ok: true, paths }
 }
 
-/** Read one copied local file without following a final symlink. */
-async function readCopiedImage(path: string, maxBytes: number): Promise<SaveImageAttachment | FailureResult> {
-  const displayName = basename(path) || 'copied file'
-  let handle
-  try {
-    handle = await open(path, fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW)
-  } catch (error) {
-    const code = (error as NodeJS.ErrnoException).code
-    const reason = code === 'ELOOP' ? 'symbolic links are not accepted' : `could not be opened (${String(code)})`
-    return { kind: 'file-failed', detail: `${displayName} ${reason}` }
-  }
-  try {
-    const stat = await handle.stat()
-    if (!stat.isFile()) return { kind: 'file-failed', detail: `${displayName} is not a regular file` }
-    if (stat.size > maxBytes) return { kind: 'file-failed', detail: `${displayName} exceeds the per-image byte limit` }
-    const data = await handle.readFile()
-    if (data.byteLength > maxBytes) return { kind: 'file-failed', detail: `${displayName} exceeds the per-image byte limit` }
-    const mediaType = sniffImageMediaType(data)
-    if (mediaType === undefined) {
-      return { kind: 'file-failed', detail: `${displayName} is not a supported PNG, JPEG, WebP, or GIF image` }
-    }
-    return { data, mediaType, name: displayName }
-  } catch (error) {
-    const code = (error as NodeJS.ErrnoException).code
-    return { kind: 'file-failed', detail: `${displayName} could not be read (${String(code)})` }
-  } finally {
-    await handle.close()
-  }
-}
-
 /** Read and preflight one copied-file representation as an ordered batch. */
 async function readCopiedImages(data: Buffer, mediaType: typeof FILE_URI_TYPES[number], limits: ImageAttachmentLimits): Promise<ClipboardImageResult> {
   const parsed = parseFileUris(data, mediaType)
   if (!parsed.ok) return { kind: 'file-failed', detail: parsed.detail }
-  if (parsed.paths.length === 0) return { kind: 'no-image' }
-  if (parsed.paths.length > limits.maxImagesPerMessage) {
-    return { kind: 'file-failed', detail: `copied file selection exceeds the ${limits.maxImagesPerMessage}-image limit` }
-  }
-  const images: SaveImageAttachment[] = []
-  let totalBytes = 0
-  for (const path of parsed.paths) {
-    const image = await readCopiedImage(path, limits.maxImageBytes)
-    if ('kind' in image) return image
-    totalBytes += image.data.byteLength
-    if (totalBytes > limits.maxMessageImageBytes) {
-      return { kind: 'file-failed', detail: 'copied file selection exceeds the aggregate image-byte limit' }
-    }
-    images.push(image)
-  }
-  return { kind: 'images', images }
+  return readCopiedPaths(parsed.paths, limits)
 }
 
 /**
@@ -398,11 +322,27 @@ function aggregateOutcomes(outcomes: FailureResult[]): ClipboardImageResult {
   return hasDisplaySession ? { kind: 'missing-tool' } : { kind: 'unreachable' }
 }
 
-/** The default reader: probe each policy-selected tool in order; the first
- * valid image wins, otherwise the failures aggregate into one verdict. */
+/**
+ * The native clipboard probe for platforms without the wl-paste/xclip
+ * display-session negotiation: PowerShell staging on Windows, osascript
+ * list-then-read on macOS. Undefined elsewhere, where the display tools run.
+ * @param platform - the platform to select for.
+ * @returns the native probe, or undefined.
+ */
+export function clipboardImageProbeFor(platform: NodeJS.Platform): ((limits: ImageAttachmentLimits) => Promise<ClipboardImageResult>) | undefined {
+  if (platform === 'win32') return probeWindows
+  if (platform === 'darwin') return probeDarwin
+  return undefined
+}
+
+/** The default reader: the platform's native probe on Windows and macOS
+ * under the automatic policy, else each policy-selected tool in order; the
+ * first valid image wins, otherwise the failures aggregate into one verdict. */
 async function defaultClipboardImageReader(ctx: Context, config: Config, limits: ImageAttachmentLimits): Promise<ClipboardImageResult> {
   const state = ctx.mayflyInteractionState.pasteImage
   const policy = state.backendOverride ?? config.backend
+  const nativeProbe = policy === 'auto' ? clipboardImageProbeFor(process.platform) : undefined
+  if (nativeProbe !== undefined) return nativeProbe(limits)
   const outcomes: FailureResult[] = []
   const tools = clipboardToolsFor(policy)
   for (const [index, tool] of tools.entries()) {
@@ -440,11 +380,15 @@ export function setClipboardImageReader(reader: ClipboardImageReader | undefined
  * Notice text per failure kind: each names what is missing so the user can
  * fix it (D49: diagnose, never work around).
  * @param result - the non-image reader outcome.
+ * @param platform - the platform whose tool the missing-tool notice names.
  * @returns the notice text.
  */
-function failureNotice(result: FailureResult): string {
+function failureNotice(result: FailureResult, platform: NodeJS.Platform): string {
   switch (result.kind) {
-    case 'missing-tool': return 'clipboard image tool missing: install wl-clipboard (wl-paste) or xclip'
+    case 'missing-tool':
+      if (platform === 'win32') return 'clipboard image tool missing: powershell.exe is unavailable'
+      if (platform === 'darwin') return 'clipboard image tool missing: osascript or sips is unavailable'
+      return 'clipboard image tool missing: install wl-clipboard (wl-paste) or xclip'
     case 'unreachable': return 'clipboard unreachable: DISPLAY/WAYLAND_DISPLAY is not set in this session'
     case 'no-image': return 'no image available from the clipboard'
     case 'unsupported': return `clipboard image type ${result.mediaType} is not supported`
@@ -521,7 +465,7 @@ async function pasteFlow(ctx: Context, config: Config, shared: SharedEditor, isU
   }
   if (isUnloaded()) return
   if (result.kind !== 'image' && result.kind !== 'images') {
-    report('paste-image', { message: failureNotice(result), severity: 'error' })
+    report('paste-image', { message: failureNotice(result, process.platform), severity: 'error' })
     return
   }
   try {

@@ -76,7 +76,7 @@ function padTo(line: string, width: number): string {
 }
 
 /** Cut a painted line to `width` columns; the ellipsis keeps the style the cut left open, and the row ends reset. */
-export function clipRow(line: string, width: number): string {
+function clipRow(line: string, width: number): string {
   return visibleWidth(line) <= width ? line : `${sliceByColumn(line, 0, Math.max(0, width - 1), true)}${ELLIPSIS}\x1b[0m`
 }
 

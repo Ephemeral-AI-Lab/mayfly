@@ -31,10 +31,10 @@ const TONES = ['default', 'muted', 'primary', 'accent', 'user', 'success', 'warn
 export const SCROLL_HEIGHT_MAX = 500
 
 /** The widest progress bar, in cells. */
-export const PROGRESS_WIDTH_MAX = 200
+const PROGRESS_WIDTH_MAX = 200
 
 /** The longest progress transition, in milliseconds. */
-export const PROGRESS_TRANSITION_MAX_MS = 60_000
+const PROGRESS_TRANSITION_MAX_MS = 60_000
 
 function present<Value>(key: string, value: Value | undefined): Fields {
   return value === undefined ? {} : { [key]: value }

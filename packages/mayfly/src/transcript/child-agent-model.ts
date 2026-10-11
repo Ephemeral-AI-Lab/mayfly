@@ -16,17 +16,6 @@ export function childIdOfResult(item: TranscriptToolItem): string | undefined {
   return /started subagent ([a-f0-9-]{8,})/.exec(item.result.fullText ?? item.result.text)?.[1]
 }
 
-/** Whether a parent call correlates with one projected child snapshot. */
-export function correlateChild(child: ChildSessionFacts, member: TranscriptToolItem): boolean {
-  const id = childIdOfResult(member)
-  if (id !== undefined) return id === child.id
-  const args = member.parsedArguments
-  const prompt = typeof args === 'object' && args !== null
-    ? (args as Record<string, unknown>)['prompt']
-    : undefined
-  return child.promptText !== undefined && prompt === child.promptText
-}
-
 /** Convert renderer-neutral child facts to the existing agent-card view. */
 export function childLiveSnapshot(child: ChildSessionFacts): AgentMemberLive {
   return {

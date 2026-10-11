@@ -86,7 +86,7 @@ export interface MayflySettings {
 }
 
 /** One saved key override: the keys that replace an action's defaults, and its label for when it is not loaded. */
-export interface MayflyKeybindingOverride {
+interface MayflyKeybindingOverride {
   readonly keys: readonly string[]
   readonly label?: string
 }

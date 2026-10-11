@@ -89,7 +89,7 @@ export const INTERACTION_KEY_ACTIONS: readonly MayflyKeyAction[] = [
 ]
 
 /** Whether a binding change reached the settings document or holds for this session only. */
-export type KeybindingWrite = 'saved' | 'session'
+type KeybindingWrite = 'saved' | 'session'
 
 /**
  * Write one key edit into the `mayfly` settings namespace through the

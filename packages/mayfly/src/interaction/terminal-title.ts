@@ -21,7 +21,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { SessionFactsService } from '../transcript/index.ts'
 
 /** The title shown while nothing is attached or titled yet. */
-export const PRODUCT_TITLE = 'mayfly'
+const PRODUCT_TITLE = 'mayfly'
 
 /** Stable Cordis plugin name. */
 export const name = 'mayfly-terminal-title'
@@ -36,7 +36,7 @@ export const inject = ['mayflyScreen', 'mayflySessionFacts']
  * @param title - the current renderer-neutral title fact.
  * @returns the text for the terminal title.
  */
-export function currentTitleText(title: string | undefined): string {
+function currentTitleText(title: string | undefined): string {
   return title !== undefined && title.length > 0 ? title : PRODUCT_TITLE
 }
 

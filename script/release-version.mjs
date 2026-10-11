@@ -11,13 +11,13 @@ import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { gt, valid } from 'semver'
-import { PACKAGE_DIRS, ROOT } from './package-contract.mjs'
+import { PACKAGE_DIRS, parseManifestText, ROOT } from './package-contract.mjs'
 import { advertisedVersionFiles } from './release-line.mjs'
 
 /** Validate every input and compute all replacements before writing any release file. */
 export function releaseVersionChanges(root, next) {
   if (valid(next) !== next) throw new Error('usage: release:version <semver>')
-  const old = JSON.parse(readFileSync(join(root, 'packages/mayfly/package.json'), 'utf8')).version
+  const old = parseManifestText(readFileSync(join(root, 'packages/mayfly/package.json'), 'utf8'), 'packages/mayfly/package.json').version
   if (!gt(next, old)) throw new Error(`release line must advance from ${old} to ${next}`)
   const changes = new Map()
   for (const directory of [...PACKAGE_DIRS, 'website']) {

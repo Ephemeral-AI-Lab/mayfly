@@ -7,6 +7,7 @@
 
 import { readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
+import { parseManifestText } from '../package-contract.mjs'
 import { APP_SHOTS, scenarioNamed } from '../scenarios/catalog.mjs'
 import { goldenPath } from '../scenarios/golden.mjs'
 import { parseGrid, styleSgr } from '../scenarios/grid.mjs'
@@ -18,7 +19,7 @@ const require = createRequire(import.meta.url)
 const { Terminal } = require('@xterm/headless')
 
 /** The released version a shot's banner shows. */
-export const RELEASED_VERSION = JSON.parse(readFileSync(new URL('../../packages/mayfly/package.json', import.meta.url), 'utf8')).version
+export const RELEASED_VERSION = parseManifestText(readFileSync(new URL('../../packages/mayfly/package.json', import.meta.url), 'utf8'), 'packages/mayfly/package.json').version
 
 const write = (terminal, data) => new Promise(resolve => { terminal.write(data, resolve) })
 

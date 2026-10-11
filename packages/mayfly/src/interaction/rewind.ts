@@ -4,7 +4,7 @@
 
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
 
-export interface RewindCandidate {
+interface RewindCandidate {
   readonly turn: number
   readonly boundarySeq: number
   readonly prompt: string

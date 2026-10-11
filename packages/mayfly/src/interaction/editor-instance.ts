@@ -97,5 +97,4 @@ export const setSharedEditor = (ctx: Context, value: SharedEditor): void => { ct
 export const clearSharedEditor = (ctx: Context): void => { ctx.mayflyPromptEditor.setCurrent(undefined) }
 export const getSharedEditor = (ctx: Context): SharedEditor | undefined => ctx.get('mayflyPromptEditor')?.current
 export const markEditorEnhancement = (ctx: Context, id: string): (() => void) => ctx.mayflyPromptEditor.markEnhancement(id)
-export const hasEditorEnhancement = (ctx: Context, id: string): boolean => ctx.mayflyPromptEditor.hasEnhancement(id)
 export const registerEditorAutocompleteSource = (ctx: Context, id: string, provider: MayflyAutocompleteProvider): (() => void) => ctx.mayflyPromptEditor.registerAutocompleteSource(id, provider)

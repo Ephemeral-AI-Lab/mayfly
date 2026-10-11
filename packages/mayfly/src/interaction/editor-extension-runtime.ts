@@ -88,7 +88,7 @@ type Admission<Value> =
   | { readonly ok: false, readonly message: string }
 
 /** Construction dependencies retained only for the input Fiber lifetime. */
-export interface EditorExtensionRuntimeOptions {
+interface EditorExtensionRuntimeOptions {
   readonly ctx: Context
   readonly editor: MayflyEditor
   readonly report: (id: string, feedback: MayflyFeedback) => void

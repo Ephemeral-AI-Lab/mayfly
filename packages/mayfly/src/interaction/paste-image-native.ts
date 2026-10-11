@@ -38,6 +38,15 @@ const WIN32_TOOL_TIMEOUT_MS = 10_000
 /** osascript spawns cost ~300-500ms each; the darwin probe makes up to four. */
 const DARWIN_TOOL_TIMEOUT_MS = 5_000
 
+let win32ToolTimeoutMs = WIN32_TOOL_TIMEOUT_MS
+let darwinToolTimeoutMs = DARWIN_TOOL_TIMEOUT_MS
+
+/** Replace the native probe budgets in tests; `undefined` restores both. */
+export function setNativeToolTimeouts(overrides: { win32?: number, darwin?: number } | undefined): void {
+  win32ToolTimeoutMs = overrides?.win32 ?? WIN32_TOOL_TIMEOUT_MS
+  darwinToolTimeoutMs = overrides?.darwin ?? DARWIN_TOOL_TIMEOUT_MS
+}
+
 /** Environment variable carrying the staging directory into PowerShell. */
 const POWERSHELL_STAGE_ENV = 'MAYFLY_PASTE_STAGE'
 
@@ -97,7 +106,7 @@ try {
 /** PowerShell invocation: no profile or interactivity, STA for the OLE
  * clipboard, and the script as one `-Command` argument. The native spec
  * pins this argv and the script literal against drift. */
-export const POWERSHELL_ARGS: readonly string[] = ['-NoProfile', '-NonInteractive', '-STA', '-Command', POWERSHELL_READ_SCRIPT]
+const POWERSHELL_ARGS: readonly string[] = ['-NoProfile', '-NonInteractive', '-STA', '-Command', POWERSHELL_READ_SCRIPT]
 
 /**
  * Read the staging kind marker (`image` or `files`); an unreadable or
@@ -128,7 +137,7 @@ export async function probeWindows(limits: ImageAttachmentLimits): Promise<Clipb
   return withStagingDir(async stage => {
     try {
       const run = await runTool('powershell.exe', POWERSHELL_ARGS, {
-        timeoutMs: WIN32_TOOL_TIMEOUT_MS,
+        timeoutMs: win32ToolTimeoutMs,
         env: { ...process.env, [POWERSHELL_STAGE_ENV]: stage },
       })
       if (!run.ok) {
@@ -245,7 +254,7 @@ function darwinFileListArgs(): string[] {
  */
 async function readDarwinDirect(stage: string, coercion: string, mediaType: ImageMediaType, ext: string): Promise<ClipboardImageResult> {
   const destination = join(stage, `clipboard.${ext}`)
-  const run = await runTool('osascript', darwinWriteArgs(coercion, destination), { timeoutMs: DARWIN_TOOL_TIMEOUT_MS })
+  const run = await runTool('osascript', darwinWriteArgs(coercion, destination), { timeoutMs: darwinToolTimeoutMs })
   if (!run.ok) return classifyNativeFailure('osascript', run)
   try {
     const data = await readFile(destination)
@@ -274,14 +283,14 @@ async function readDarwinTiff(stage: string): Promise<ClipboardImageResult> {
   const pngPath = join(stage, 'clipboard.png')
   const softFailures: ClipboardImageResult[] = []
   for (const coercion of ['«class TIFF»', 'TIFF picture']) {
-    const write = await runTool('osascript', darwinWriteArgs(coercion, tiffPath), { timeoutMs: DARWIN_TOOL_TIMEOUT_MS })
+    const write = await runTool('osascript', darwinWriteArgs(coercion, tiffPath), { timeoutMs: darwinToolTimeoutMs })
     if (!write.ok) {
       const failure = classifyNativeFailure('osascript', write)
       if (failure.kind !== 'failed') return failure
       softFailures.push(failure)
       continue
     }
-    const convert = await runTool('sips', ['-s', 'format', 'png', tiffPath, '--out', pngPath], { timeoutMs: DARWIN_TOOL_TIMEOUT_MS })
+    const convert = await runTool('sips', ['-s', 'format', 'png', tiffPath, '--out', pngPath], { timeoutMs: darwinToolTimeoutMs })
     if (!convert.ok) return classifyNativeFailure('sips', convert)
     try {
       const data = await readFile(pngPath)
@@ -309,7 +318,7 @@ async function readDarwinTiff(stage: string): Promise<ClipboardImageResult> {
  */
 export async function probeDarwin(limits: ImageAttachmentLimits): Promise<ClipboardImageResult> {
   return withStagingDir(async stage => {
-    const info = await runTool('osascript', ['-e', 'clipboard info'], { timeoutMs: DARWIN_TOOL_TIMEOUT_MS })
+    const info = await runTool('osascript', ['-e', 'clipboard info'], { timeoutMs: darwinToolTimeoutMs })
     if (!info.ok) return classifyNativeFailure('osascript', info)
     const classes = parseClipboardClasses(info.stdout.toString('utf8'))
     let softFailure: ClipboardImageResult | undefined
@@ -327,7 +336,7 @@ export async function probeDarwin(limits: ImageAttachmentLimits): Promise<Clipbo
       softFailure ??= tiff
     }
     if (classes.has('furl')) {
-      const list = await runTool('osascript', darwinFileListArgs(), { timeoutMs: DARWIN_TOOL_TIMEOUT_MS })
+      const list = await runTool('osascript', darwinFileListArgs(), { timeoutMs: darwinToolTimeoutMs })
       if (!list.ok) {
         const failure = classifyNativeFailure('osascript', list)
         if (failure.kind !== 'failed') return failure

@@ -156,7 +156,7 @@ export const BREATH = [0.25, 0.5, 0.8, 1, 0.8, 0.5]
 const mix = k => V.map(v => Math.round(60 + (v - 60) * k))
 const glyphFor = (variant, ctx) => {
   if (variant === 'breath') return theme.mono ? '●' : `\x1b[38;2;${mix(BREATH[Math.floor(ctx.frame / 4) % BREATH.length]).join(';')}m●\x1b[0m`
-  const set = FRAMES[variant === 'tide' || variant === 'braille' ? 'gap' : variant] ?? FRAMES.gap
+  const set = FRAMES[variant] ?? FRAMES.gap
   return paint(set[ctx.reduceMotion ? 0 : ctx.frame % set.length], 'primary')
 }
 /** The shimmer of a running tool label: a three-letter window sweeps the text. */

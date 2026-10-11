@@ -8,7 +8,7 @@ import { SettingsConflictError } from '@deepseek-ai/dsh-settings'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import * as uiProvider from '../../../ui/src/provider.ts'
 import type { MayflyFieldValue, MayflySubmission, MayflySubmittedField } from '../../../ui/src/interaction.ts'
-import { ENDPOINT_PROTOCOLS, openProviderSetup } from '../../src/interaction/provider-add.ts'
+import { openProviderSetup } from '../../src/interaction/provider-add.ts'
 import { deriveKeyRef, normalizeBaseURL, providerProfile } from '../../src/interaction/provider-profile.ts'
 import { buildIndex, setModelsDevLoader } from '../../src/interaction/models-dev.ts'
 import { providerFixture, testHomeText } from './provider-fixture.ts'
@@ -88,7 +88,6 @@ describe('provider creation', () => {
   it('keeps the conventional credential reference and supported protocols', () => {
     expect(deriveKeyRef('my-gateway')).toBe('MY_GATEWAY_API_KEY')
     expect(deriveKeyRef('anthropic')).toBe('ANTHROPIC_API_KEY')
-    expect(ENDPOINT_PROTOCOLS).toEqual(['anthropic-messages', 'openai-completions', 'openai-responses'])
     expect(normalizeBaseURL('anthropic-messages', 'https://api.example/v1/')).toBe('https://api.example')
     expect(normalizeBaseURL('openai-responses', 'https://api.example', 'https://api.example/v1')).toBe('https://api.example/v1')
     expect(normalizeBaseURL('openai-completions', 'https://api.example/')).toBe('https://api.example')

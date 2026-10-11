@@ -14,7 +14,7 @@ import { openUiOverlay } from './ui-overlay.ts'
 import { openAuthorization } from './authorization-ui.ts'
 import { interactionTranslator } from './locale.ts'
 
-export const ENDPOINT_PROTOCOLS = ['anthropic-messages', 'openai-completions', 'openai-responses'] as const
+const ENDPOINT_PROTOCOLS = ['anthropic-messages', 'openai-completions', 'openai-responses'] as const
 const THINKING_LEVELS = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'] as const
 const NAMESPACE = 'llm-pi-ai'
 const ROUTE_ID = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/u

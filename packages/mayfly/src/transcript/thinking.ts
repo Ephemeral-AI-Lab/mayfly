@@ -22,7 +22,7 @@ import { compactElapsedMs } from './agent-presentation.ts'
 export const THINKING_PREVIEW_LINES = 2
 
 /** The block's marker: distinct from the answer and tool bullets. */
-export const THINKING_MARKER = '✻ '
+const THINKING_MARKER = '✻ '
 
 /** Continuation indent: the marker's visible width, so body text aligns. */
 const THINKING_INDENT = '  '

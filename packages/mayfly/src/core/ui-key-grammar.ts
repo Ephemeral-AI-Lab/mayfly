@@ -169,7 +169,7 @@ export type GrammarMatch =
   | { readonly kind: 'any' }
 
 /** One hint fragment. `actions` render through the live keymap; `keys` is literal. */
-export interface GrammarHint {
+interface GrammarHint {
   readonly id: string
   readonly label: string
   readonly priority: number

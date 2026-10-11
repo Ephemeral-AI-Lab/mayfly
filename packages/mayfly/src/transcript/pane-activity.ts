@@ -133,7 +133,7 @@ export function setActivityClock(now: (() => number) | undefined): void {
 }
 
 /** What the pane renders; `hidden` covers the dialog hangup. */
-export type ActivityPaneMode = 'hidden' | 'waiting' | 'thinking' | 'composing' | 'tool' | 'stopping' | 'idle'
+type ActivityPaneMode = 'hidden' | 'waiting' | 'thinking' | 'composing' | 'tool' | 'stopping' | 'idle'
 
 /** The loading kinds that carry a teaching tip (kimi `loadingTipKind`). */
 type TipKind = 'moon' | 'composing'

@@ -18,7 +18,7 @@ import {
   type ConversationProjection,
   type ConversationToolEntry,
 } from '../conversation/index.ts'
-import type { LiveAssistantDraft, LiveAssistantStreamService } from '../conversation/live-stream.ts'
+import type { LiveAssistantDraft } from '../conversation/live-stream.ts'
 import {
   SessionConversationFeed,
   type ConversationFeed,
@@ -32,16 +32,6 @@ import { createTranscriptModel } from './transcript-model.ts'
 import { ellipsize, parseToolArguments, resolveCallView, resolveResultView, type ToolPresentationSource } from './present.ts'
 import { toolDetail } from '../conversation/activity-detail.ts'
 import { toolActivity } from './process-activity.ts'
-
-/** Adapt the optional ctx live-stream service into a draft source. */
-export function liveDraftsOf(ctx: { get(name: 'mayflyLiveAssistantStream'): unknown }): LiveDraftSource | undefined {
-  const service = ctx.get('mayflyLiveAssistantStream') as LiveAssistantStreamService | undefined
-  if (service === undefined) return undefined
-  return {
-    subscribe: listener => service.subscribe(listener),
-    get: agent => service.get(agent),
-  }
-}
 
 /** Preview lines a read window carries for the expanded group view. */
 export const READ_PREVIEW_LINE_LIMIT = 5
@@ -59,7 +49,7 @@ export const COMMAND_PREVIEW_LINE_LIMIT = 4
 const COMMAND_PREVIEW_LINE_MAX_CHARS = 160
 
 /** One tool entry with its presenter views resolved exactly once. */
-export interface ResolvedTool {
+interface ResolvedTool {
   readonly entry: ConversationToolEntry
   readonly args: unknown
   readonly outcome: ToolResult | undefined
@@ -683,7 +673,7 @@ export class OfficialConversationModelSource {
     if (state.kind === 'ready') return this.model
     if (this.stateModel?.state === state) return this.stateModel.model
     const node = state.kind === 'loading'
-      ? { kind: 'loader' as const, message: this.t('loading conversation...'), variant: 'braille' as const }
+      ? { kind: 'loader' as const, message: this.t('loading conversation...'), variant: 'gap' as const }
       : {
           kind: 'empty' as const,
           title: this.t('conversation unavailable'),

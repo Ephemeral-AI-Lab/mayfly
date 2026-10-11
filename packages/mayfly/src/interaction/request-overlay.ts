@@ -6,7 +6,7 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { MayflyOverlayHandle, MayflyUiActionEvent, MayflyUiActionReply, MayflyUiEventContext, MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import { observeInteractionLocale } from './locale.ts'
 
-export interface RequestOverlayOptions<Result> {
+interface RequestOverlayOptions<Result> {
   readonly id: string
   readonly title: string | (() => string)
   readonly agent?: Agent

@@ -248,7 +248,7 @@ export const WORKLOADS: readonly Workload[] = [
     id: 'W2', title: 'spinner tick: 120 static rows (the tree quota is 256 nodes) and one loader, one clock tick',
     setup(counters, environment) {
       const rows = Array.from({ length: 120 }, (_, index) => ui.child(ui.text(`static row ${String(index)}`)))
-      const surface = new Surface('w2', ui.stack.column([ui.child(ui.loader({ message: 'Working', variant: 'braille' })), ...rows]), counters)
+      const surface = new Surface('w2', ui.stack.column([ui.child(ui.loader({ message: 'Working', variant: 'gap' })), ...rows]), counters)
       surface.render()
       reset(counters)
       return { step: () => { environment.advance(100); surface.render() }, dispose: () => surface.dispose() }

@@ -59,7 +59,7 @@ export { ellipsize, parseToolArguments, summarizeToolCall, TOOL_ARG_PAIR_LIMIT, 
 export { SessionFactsService } from './session-facts.ts'
 export { createToolPresentationModel, toolCallNode, toolResultNode, toolResultChip, ToolModelComponent } from './tool-model.ts'
 export type { ToolPresentationFacts } from './tool-model.ts'
-export { appendTranscriptNode, createTranscriptModel, TRANSCRIPT_MODEL_WINDOW, TranscriptController, TranscriptLocalsService, TranscriptModelComponent } from './transcript-model.ts'
+export { appendTranscriptNode, createTranscriptModel, TranscriptController, TranscriptLocalsService, TranscriptModelComponent } from './transcript-model.ts'
 export type { TranscriptModelRenderer } from './transcript-model.ts'
 export {
   BRAILLE_SPINNER_FRAMES,

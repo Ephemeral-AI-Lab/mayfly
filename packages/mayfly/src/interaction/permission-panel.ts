@@ -30,7 +30,7 @@ import { createInteractionNotificationOwner } from './notifications.ts'
 import { ui, type MayflyListItem } from '@ephemeral-ai/mayfly-ui'
 
 /** The sandbox + approval bundle one preset resolves to. */
-export interface PermissionPresetSpec {
+interface PermissionPresetSpec {
   /** The sandbox mode the preset pins. */
   readonly sandbox: string
   /** The approval policy the preset pins. */

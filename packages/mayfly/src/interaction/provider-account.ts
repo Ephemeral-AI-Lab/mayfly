@@ -101,7 +101,7 @@ function outcomeText(attempt: SignInAttemptView, t: (key: string) => string): st
 }
 
 /** Presentation options for the account panel node. */
-export interface AccountPanelOptions {
+interface AccountPanelOptions {
   /** Render inside the first-run guide: adds the step line and the Start chatting close. */
   readonly guide?: boolean
   /** BCP 47 locale for the expiry time; the runtime default when omitted. */
@@ -160,7 +160,7 @@ export function accountPanelNode(
 export const GUIDE_CLOSE_DELAY_MS = 1500
 
 /** The way back the first-run guide hands the account panel so no path dead-ends. */
-export interface AccountGuideExits {
+interface AccountGuideExits {
   /** Closing the panel before connecting returns to the guide's choice. */
   readonly onBack: () => void
   /** A finished sign-in closed the panel: the guide continues with model selection. */

@@ -13,7 +13,6 @@ import {
   PromptEditorController,
   ENHANCEMENT_EDITOR_PLUS,
   getSharedEditor,
-  hasEditorEnhancement,
   markEditorEnhancement,
   registerEditorAutocompleteSource,
   setSharedEditor,
@@ -21,7 +20,6 @@ import {
 } from '../../src/interaction/editor-instance.ts'
 import {
   applyReversibleSubmitTransformers,
-  applySubmitTransformers,
   PromptSubmitPipeline,
   registerSubmitTransformer,
 } from '../../src/interaction/prompt-submit-pipeline.ts'
@@ -64,8 +62,8 @@ describe('editor extension host state', () => {
     ctx.mayflyPromptSubmissions.dispose()
     expect(getSharedEditor(ctx)).toBeUndefined()
     expect(ctx.mayflyPromptEditor.listAutocompleteSources()).toEqual([])
-    expect(hasEditorEnhancement(ctx, 'dispose-me')).toBe(false)
-    expect(applySubmitTransformers(ctx, 'plain')).toEqual([{ type: 'text', text: 'plain' }])
+    expect(ctx.mayflyPromptEditor.hasEnhancement('dispose-me')).toBe(false)
+    expect(ctx.mayflyPromptSubmissions.apply('plain')).toEqual([{ type: 'text', text: 'plain' }])
     setSharedEditor(ctx, shared)
     expect(notifications).toBe(notificationsBeforeDispose)
     unregisterTransformer()
@@ -143,7 +141,7 @@ describe('submit transformers', () => {
 
   it('returns the historical single text block with no transformers registered', () => {
     const ctx = editorContext()
-    expect(applySubmitTransformers(ctx, 'plain')).toEqual([{ type: 'text', text: 'plain' }])
+    expect(ctx.mayflyPromptSubmissions.apply('plain')).toEqual([{ type: 'text', text: 'plain' }])
   })
 
   it('concatenates every transformer contribution in registration order', () => {
@@ -155,7 +153,7 @@ describe('submit transformers', () => {
       { type: 'text', text: 'second-a' },
       { type: 'text', text: 'second-b' },
     ])
-    expect(applySubmitTransformers(ctx, 'x')).toEqual([
+    expect(ctx.mayflyPromptSubmissions.apply('x')).toEqual([
       { type: 'text', text: 'first:x' },
       { type: 'text', text: 'second-a' },
       { type: 'text', text: 'second-b' },
@@ -167,11 +165,11 @@ describe('submit transformers', () => {
   it('skips empty contributions and falls back to the text block when all decline', () => {
     const ctx = editorContext()
     const disposeEmpty = registerSubmitTransformer(ctx, () => [])
-    expect(applySubmitTransformers(ctx, 'untouched')).toEqual([{ type: 'text', text: 'untouched' }])
+    expect(ctx.mayflyPromptSubmissions.apply('untouched')).toEqual([{ type: 'text', text: 'untouched' }])
     const disposeReal = registerSubmitTransformer(ctx, (text): ContentBlock[] => [
       { type: 'text', text: `kept:${text}` },
     ])
-    expect(applySubmitTransformers(ctx, 'y')).toEqual([{ type: 'text', text: 'kept:y' }])
+    expect(ctx.mayflyPromptSubmissions.apply('y')).toEqual([{ type: 'text', text: 'kept:y' }])
     disposeEmpty()
     disposeReal()
   })
@@ -179,21 +177,21 @@ describe('submit transformers', () => {
   it('disposer unregisters exactly once and is safe to call twice', () => {
     const ctx = editorContext()
     const dispose = registerSubmitTransformer(ctx, text => [{ type: 'text', text: `gone:${text}` }])
-    expect(applySubmitTransformers(ctx, 'z')).toEqual([{ type: 'text', text: 'gone:z' }])
+    expect(ctx.mayflyPromptSubmissions.apply('z')).toEqual([{ type: 'text', text: 'gone:z' }])
     dispose()
     dispose()
-    expect(applySubmitTransformers(ctx, 'z')).toEqual([{ type: 'text', text: 'z' }])
+    expect(ctx.mayflyPromptSubmissions.apply('z')).toEqual([{ type: 'text', text: 'z' }])
   })
 })
 
 describe('enhancement presence marks', () => {
   it('marks attachment, reports presence, and unmarks exactly once', () => {
     const ctx = editorContext()
-    expect(hasEditorEnhancement(ctx, ENHANCEMENT_EDITOR_PLUS)).toBe(false)
+    expect(ctx.mayflyPromptEditor.hasEnhancement(ENHANCEMENT_EDITOR_PLUS)).toBe(false)
     const unmark = markEditorEnhancement(ctx, ENHANCEMENT_EDITOR_PLUS)
-    expect(hasEditorEnhancement(ctx, ENHANCEMENT_EDITOR_PLUS)).toBe(true)
+    expect(ctx.mayflyPromptEditor.hasEnhancement(ENHANCEMENT_EDITOR_PLUS)).toBe(true)
     unmark()
     unmark()
-    expect(hasEditorEnhancement(ctx, ENHANCEMENT_EDITOR_PLUS)).toBe(false)
+    expect(ctx.mayflyPromptEditor.hasEnhancement(ENHANCEMENT_EDITOR_PLUS)).toBe(false)
   })
 })

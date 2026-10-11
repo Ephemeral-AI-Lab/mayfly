@@ -11,7 +11,7 @@
  */
 
 /** A parsed `MAJOR.MINOR.PATCH[-prerelease]` version. */
-export interface ParsedVersion {
+interface ParsedVersion {
   readonly major: number
   readonly minor: number
   readonly patch: number

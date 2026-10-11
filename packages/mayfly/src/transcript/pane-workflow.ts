@@ -27,7 +27,7 @@ const WORKFLOW_PRIORITY = 60
 const WORKFLOW_TICK_MS = 1000
 
 /** One workflow child call and its eventual outcome. */
-export interface WorkflowAgentRow {
+interface WorkflowAgentRow {
   readonly seq: number
   readonly label: string
   readonly phase?: string | undefined
@@ -51,7 +51,7 @@ export interface WorkflowRunState {
 }
 
 /** Injectable timer primitives for deterministic lifecycle tests. */
-export interface WorkflowPaneTimers {
+interface WorkflowPaneTimers {
   setInterval: (callback: () => void, ms: number) => ReturnType<typeof setInterval>
   clearInterval: (handle: ReturnType<typeof setInterval>) => void
   now: () => number

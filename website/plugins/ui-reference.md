@@ -1474,7 +1474,7 @@ ui.loader({
 })
 ```
 
-`variant` 默认 `gap`；早先的 `braille` 与 `tide` 仍被接受，画成 `gap`。省略 `message`
+`variant` 默认 `gap`。省略 `message`
 时节点只是一个字形。`elapsedMs` 是非负毫秒提示，显示为 `45s`、`2m 10s` 或 `1h 5m`。
 动画归 renderer 所有，所有 surface 共用一个时钟，100 ms 一步：`bloom`（`· ✢ ✳ ✶ ✻ ✽`）、
 `fill`（盲文条逐格填满再退回）、`gap`（盲文转轮）每个 tick 前进一步；`breath` 是一个 `●`，

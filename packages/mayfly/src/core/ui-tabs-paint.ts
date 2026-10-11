@@ -29,7 +29,7 @@ export interface TabsPaintOptions {
 /** Gap between two tabs of a strip. */
 const TAB_GAP = 3
 /** Below this many columns a rail is drawn as the horizontal strip (spec 4.5). */
-export const RAIL_MIN_COLUMNS = 60
+const RAIL_MIN_COLUMNS = 60
 const WIZARD_SEPARATOR_WIDTH = 5
 
 /** Whether a tabs node is drawn as a vertical rail in a viewport that is `columns` wide. */

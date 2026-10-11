@@ -20,7 +20,7 @@ export interface AmbientOutput {
 }
 
 /** Reversible ownership handle for alternate-screen output recovery. */
-export interface OutputRecovery {
+interface OutputRecovery {
   /** Install the stream guards. Idempotent. */
   activate(): void
   /** Restore the original streams while the terminal is released. */

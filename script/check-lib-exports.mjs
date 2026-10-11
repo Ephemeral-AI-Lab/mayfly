@@ -19,6 +19,7 @@
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { parseManifestText } from './package-contract.mjs'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 
@@ -37,7 +38,7 @@ function packagesWithExports() {
       if (!statSync(full).isDirectory()) continue
       const manifestPath = join(full, 'package.json')
       if (!existsSync(manifestPath)) continue
-      const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'))
+      const manifest = parseManifestText(readFileSync(manifestPath, 'utf8'), manifestPath)
       if (manifest.exports !== undefined) found.push({ dir: full, name: manifest.name, manifest })
     }
   }

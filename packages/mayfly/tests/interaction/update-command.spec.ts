@@ -31,7 +31,6 @@ import {
   createUpdateProgressState,
   registerUpdateCommand,
   updatePanelModel,
-  updatePanelSummary,
 } from '../../src/interaction/update-command.ts'
 import * as settingsPlugin from '../../src/interaction/settings.ts'
 import { fakeMayflyContext, KEY, type FakeScreen } from './fakes.ts'
@@ -271,7 +270,6 @@ describe('/update guards', () => {
     const blocked = updatePanelModel(state, '1.0.0', '1.0.1', t)
     expect(blocked).toMatchObject({ title: '更新 Mayfly' })
     expect(JSON.stringify(blocked)).toContain('E404 raw diagnostic')
-    expect(updatePanelSummary(state, t)).toBe('更新无法继续，未进行任何修改')
     expect(checkCooldown('1.0.1', { publishedAt: 0, now: 60_000, cooldownMinutes: 10 }, t)).toMatchObject({
       code: 'cooldown', blocking: true, message: expect.stringContaining('禁止安装'),
     })
@@ -997,7 +995,6 @@ describe('update panel model', () => {
 
   it('renders the step ladder, refuses close mid-swap, and closes after settle', async () => {
     const { state, model, publish, rows } = await mount()
-    expect(updatePanelSummary(state)).toBe('update panel closed')
     applyUpdateProgress(state, { step: 'snapshot', state: 'ok' })
     applyUpdateProgress(state, { step: 'install', state: 'start' })
     publish()
@@ -1022,7 +1019,6 @@ describe('update panel model', () => {
     model.requestClose()
     await flushUpdate()
     expect(model.disposed).toBe(true)
-    expect(updatePanelSummary(state)).toContain('restart dsh to apply')
   })
 
   it('renders blocked and rollback outcomes and summarizes failures', async () => {
@@ -1030,7 +1026,6 @@ describe('update panel model', () => {
     blocked.blockedMessage = 'the profile mixes link/file specs (@ephemeral-ai/mayfly)\nrepair the profile'
     expect(updatePanelModel(blocked, 'old', 'new')).toMatchObject({ kind: 'surface', title: 'Update Mayfly', chrome: 'overlay' })
     expect(JSON.stringify(updatePanelModel(blocked, 'old', 'new'))).toContain('repair the profile')
-    expect(updatePanelSummary(blocked)).toContain('update blocked')
 
     const state = createUpdateProgressState()
     applyUpdateProgress(state, { step: 'smoke-boot', state: 'fail' })
@@ -1043,7 +1038,6 @@ describe('update panel model', () => {
     const rendered = mounted.rows()
     expect(rendered).toContain('✗ smoke: boot')
     expect(rendered).toContain('✓ rollback')
-    expect(updatePanelSummary(state)).toContain('did not complete')
     mounted.model.invoke('close')
     await flushUpdate()
     expect(mounted.model.disposed).toBe(true)

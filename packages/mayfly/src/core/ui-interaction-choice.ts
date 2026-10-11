@@ -37,7 +37,7 @@ interface UiChoiceTreeIndex {
 }
 
 /** What the painter needs to know about one visible row beyond the item itself. */
-export interface UiChoiceRow {
+interface UiChoiceRow {
   readonly item: MayflyListNode['items'][number]
   readonly depth: number
   /** The last visible child of its parent: drawn `╰`, the others `│`. */
@@ -272,11 +272,6 @@ export function choiceVisibleIndex(state: UiChoiceState, position: number): numb
 /** Return visible raw item indexes, including matching ancestors for tree search. */
 export function visibleChoiceIndices(state: UiChoiceState): readonly number[] {
   return indexedVisibility(state) ?? Array.from({ length: state.definition.items.length }, (_, index) => index)
-}
-
-/** The item at a raw index; the label is never decorated, because the painter draws guides and disclosure itself. */
-export function decorateChoiceItem(state: UiChoiceState, index: number): MayflyListNode['items'][number] {
-  return admittedListItem(state.definition.items, index)!
 }
 
 /**

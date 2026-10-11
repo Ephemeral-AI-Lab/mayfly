@@ -14,7 +14,6 @@ import { ui } from '../../../ui/src/index.ts'
 import { compileMayflyUiNode } from '../../src/core/ui-compiler.ts'
 import type { MayflyComponent, MayflyComponents, MayflyFocusable, MayflyRgbColor, MayflySemanticColors } from '../../src/core/types.ts'
 import {
-  createStableTuiReference,
   createTerminalRelease,
   measuredLaneRows,
   normalizeNavigationInput,
@@ -1023,13 +1022,12 @@ describe('alternate-screen runtime', () => {
     terminal.dispose()
   })
 
-  it('retargets rendered input focus when persisted active surface state is stale', async () => {
+  it('retargets rendered input focus when the active surface tab switches', async () => {
     const terminal = new AltScreenTerminal(120, 8)
     const runtime = await startMayflyTerminal(terminal, noProbe, undefined, undefined, 'alternate')
     runtime.addChild(textComponent('transcript'))
     runtime.addBottomChild(textComponent('editor'))
     runtime.addBottomChild(textComponent('status'), 'bottom')
-    runtime.surfaces.replaceUserState({ active: { right: 'missing' } })
     const received: string[] = []
     const pane = (body: string): MayflyFocusable => ({
       focused: false,
@@ -2046,53 +2044,6 @@ describe('createTerminalRelease', () => {
 
     await release()
     expect(terminal.stopCount).toBe(1)
-  })
-})
-
-describe('createStableTuiReference', () => {
-  function stubTui(label: string): TUI {
-    return {
-      mode: 'regular',
-      label,
-      ping(): string {
-        return `${label}-pong`
-      },
-    } as unknown as TUI
-  }
-
-  it('resolves properties and methods against the current renderer at call time', () => {
-    let current = stubTui('a')
-    const stable = createStableTuiReference(() => current)
-
-    expect(stable.mode).toBe('regular')
-    expect((stable as unknown as { label: string }).label).toBe('a')
-
-    const ping = (stable as unknown as { ping: () => string }).ping
-    expect(ping()).toBe('a-pong')
-
-    current = stubTui('b')
-    expect(ping()).toBe('b-pong')
-    expect((stable as unknown as { label: string }).label).toBe('b')
-  })
-
-  it('throws when a method turns non-callable across a renderer swap', () => {
-    const a = stubTui('a')
-    const b = { mode: 'regular', ping: 'not-a-function' } as unknown as TUI
-    let current = a
-    const stable = createStableTuiReference(() => current)
-    const ping = (stable as unknown as { ping: () => string }).ping
-    expect(ping()).toBe('a-pong')
-    current = b
-    expect(() => ping()).toThrow(TypeError)
-  })
-
-  it('forwards set, has, and getPrototypeOf to the current renderer', () => {
-    const current = stubTui('a')
-    const stable = createStableTuiReference(() => current)
-    ;(stable as unknown as { extra: string }).extra = 'value'
-    expect((current as unknown as { extra: string }).extra).toBe('value')
-    expect('mode' in stable).toBe(true)
-    expect(Object.getPrototypeOf(stable)).toBe(Object.getPrototypeOf(current))
   })
 })
 

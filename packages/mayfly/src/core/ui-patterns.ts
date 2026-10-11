@@ -6,16 +6,14 @@
  * @module @ephemeral-ai/mayfly/core/ui-patterns
  */
 
-import type { MayflyFormField, MayflyListSegment, MayflyTone, MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
+import type { MayflyTone, MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import type { MayflyTranslate } from '../frontend/locale.ts'
 import type { MayflySemanticColors } from './types.ts'
 import type { MayflyGlyphMode } from './glyphs.ts'
-import { loaderCell, loaderVariant } from './ui-loader-animation.ts'
+import { loaderCell } from './ui-loader-animation.ts'
 import { hintNotation } from './ui-key-grammar.ts'
 import { sanitizePluginText } from './plugin-view.ts'
 import { paintSpan, paintTone } from './ui-paint.ts'
-import { paintFormField, type FieldDecor } from './ui-form-paint.ts'
-import { segmentFooter } from './ui-list-segment.ts'
 import { paintList, type ListPaintOptions, type ListRowMemo, type ListRowSpec } from './ui-list-paint.ts'
 import { paintTabs, type TabsPaintOptions } from './ui-tabs-paint.ts'
 import { sliceByColumn, truncateMiddle, truncateToWidth, visibleWidth, wrapTextWithAnsi } from './width.ts'
@@ -56,7 +54,7 @@ const ELLIPSIS_WIDTH = visibleWidth(ELLIPSIS)
 const TRAILING_ANSI_RESET = /(?:\x1b\[0m)+$/
 
 /** Renderer paint and layout supplied by the thin pi-tui select adapter. */
-export interface AutocompleteListPatternOptions {
+interface AutocompleteListPatternOptions {
   readonly selectedText: (text: string) => string
   readonly description: (text: string) => string
   readonly scrollInfo: (text: string) => string
@@ -272,18 +270,6 @@ export function renderList(node: ListNode, width: number, height: number, focus:
   })
 }
 
-/**
- * The segment strip as one footer line: the label and the whole strip when they fit, then the strip alone, without
- * `(default)`, folded into `+N`, and last the active option alone. `selectedId` is the option that applies.
- */
-export function renderListSegment(segment: MayflyListSegment, selectedId: string | undefined, width: number, colors: MayflySemanticColors, pinned: string | null = selectedId ?? null): string {
-  return segmentFooter({ segment, pinned, active: selectedId }, safeWidth(width), colors, segment.label ?? 'Options')
-}
-
-export function renderFormField(field: MayflyFormField, width: number, focus: PatternFocus, colors: MayflySemanticColors, text: (key: string) => string = key => key, decor: FieldDecor = {}, labelWidth = visibleWidth(field.label)): string[] {
-  return paintFormField({ field, decor, width, focus, colors, text, labelWidth })
-}
-
 /** One action as the kit's `actionTokens` writes it: `[ Label ]` primary, `! Label` danger, a declared key as `(c)`. */
 function actionToken(item: ActionsNode['items'][number], focus: PatternFocus, colors: MayflySemanticColors): { readonly plain: string, readonly value: string, readonly focused: boolean } {
   const busy = item.busy === true
@@ -367,7 +353,7 @@ function formatElapsedMs(ms: number): string {
  * the clock `frame` (frozen under reduced motion); without a message the row is the bare glyph.
  */
 export function renderLoader(node: LoaderNode, width: number, colors: MayflySemanticColors, frame = 0, glyphs: MayflyGlyphMode = 'unicode', reducedMotion = false): string[] {
-  const cell = loaderCell(loaderVariant(node.variant), frame, { colors, glyphs, reducedMotion })
+  const cell = loaderCell(node.variant ?? 'gap', frame, { colors, glyphs, reducedMotion })
   const message = node.message === undefined || node.message === '' ? '' : ` ${colors.text(node.message)}`
   const elapsed = node.elapsedMs === undefined ? '' : ` ${colors.textMuted(formatElapsedMs(node.elapsedMs))}`
   return [fit(`${cell}${message}${elapsed}`, width)]

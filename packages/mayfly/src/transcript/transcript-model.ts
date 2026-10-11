@@ -65,9 +65,6 @@ interface DisclosureTarget extends MayflyComponent {
 
 type Source = TranscriptModel | (() => TranscriptModel | null)
 
-/** Legacy export retained for consumers; transcript rendering no longer drops history. */
-export const TRANSCRIPT_MODEL_WINDOW = 200
-
 /** Renderer-only dependencies for semantic transcript entries. */
 export interface TranscriptModelRenderer extends CanonicalNodeRenderer {
   readonly colors: MayflySemanticColors
@@ -88,7 +85,7 @@ export interface TranscriptModelRenderer extends CanonicalNodeRenderer {
 }
 
 /** Renderer dependencies owned by the one product conversation controller. */
-export interface TranscriptControllerOptions {
+interface TranscriptControllerOptions {
   readonly renderer?: TranscriptModelRenderer
 }
 

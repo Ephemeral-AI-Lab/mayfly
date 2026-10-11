@@ -9,7 +9,8 @@
 
 import { describe, expect, it } from 'vitest'
 import { CONTENT_SEGMENT_LINES } from '../../src/core/content-segments.ts'
-import { charWrap, contentNodeRows, contentNodeSource, documentRowsSource, type ContentRowsEnv, type WindowedContentNode } from '../../src/core/content-rows.ts'
+import { charWrap, contentNodeSource, documentRowsSource, type ContentRowsEnv, type WindowedContentNode } from '../../src/core/content-rows.ts'
+import { virtualRows } from '../../src/core/ui-rows.ts'
 import { alignDiffLines, diffModel, paintDiffRows } from '../../src/core/diff-align.ts'
 import { DARK_COLORS } from '../../src/core/theme-dark.ts'
 import { LIGHT_COLORS } from '../../src/core/theme-light.ts'
@@ -18,6 +19,10 @@ import { declaredWidthOf, findMarkerRow, isVirtualRows, materializedRows, prepar
 import { createWorkCounters, type MayflyWorkCounters } from '../../src/core/ui-work-counters.ts'
 import type { MayflyComponents, MayflySemanticColors } from '../../src/core/types.ts'
 import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/width.ts'
+
+/** The leaf's rows materialized through its production row source. */
+const contentNodeRows = (node: WindowedContentNode, width: number, env: ContentRowsEnv): string[] =>
+  virtualRows(contentNodeSource(node, width, env))
 
 const ANSI = /\x1b(?:\][^\x07]*(?:\x07|\x1b\\)|\[[0-?]*[ -/]*[@-~])/gu
 const strip = (row: string): string => row.replace(ANSI, '')

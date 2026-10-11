@@ -22,7 +22,7 @@ export const CONTENT_SEGMENT_LINES = 64
 export const CONTENT_CUT_UNITS = 16_384
 
 /** One column-sample cut covers about this many estimated columns. */
-export const CONTENT_CUT_COLUMNS = 4_096
+const CONTENT_CUT_COLUMNS = 4_096
 
 /** How far back from a cut threshold to look for a plain-ASCII or space boundary. */
 const CUT_SAFE_LOOKBACK = 64

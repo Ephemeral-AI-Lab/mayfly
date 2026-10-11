@@ -4,7 +4,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { LOGO_ART, LOGO_COLS, LOGO_GRADIENT, LOGO_ROWS } from '../../src/transcript/banner-art.ts'
+import { LOGO_ART, LOGO_COLS, LOGO_ROWS } from '../../src/transcript/banner-art.ts'
 
 describe('LOGO_ART', () => {
   it('pins the Mayfly mark logo rows', () => {
@@ -28,12 +28,5 @@ describe('LOGO_ART', () => {
 
   it('exposes the row count the layout anchors on', () => {
     expect(LOGO_ROWS).toBe(LOGO_ART.length)
-  })
-
-  it('carries one brand color gradient hex per logo row', () => {
-    expect(LOGO_GRADIENT).toHaveLength(LOGO_ROWS)
-    for (const hex of LOGO_GRADIENT) {
-      expect(hex).toMatch(/^#[0-9a-fA-F]{6}$/)
-    }
   })
 })

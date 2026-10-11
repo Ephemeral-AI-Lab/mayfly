@@ -9,7 +9,7 @@ import { indexContent, type ContentIndex } from './content-segments.ts'
 import { commonPrefix, commonSuffix } from './text-match.ts'
 import { documentRowsSource, type ContentRowsEnv } from './content-rows.ts'
 
-export interface UiDocumentBlock { readonly id: string, readonly node: MayflyUiNode }
+interface UiDocumentBlock { readonly id: string, readonly node: MayflyUiNode }
 export interface UiDocumentAnchor { readonly blockId: string, readonly offset: number, readonly follow: 'none' | 'end' }
 export interface UiDocumentState { readonly blocks: readonly UiDocumentBlock[], readonly anchor?: UiDocumentAnchor }
 
@@ -18,7 +18,7 @@ export interface UiDocumentState { readonly blocks: readonly UiDocumentBlock[], 
  * `offsetOf` answers where a row begins. Segmented sources answer from their live row map; bounded kinds estimate
  * proportionally; anything else rides an index of the block's text — none of them re-wrap the document.
  */
-export interface DocumentBlockSource {
+interface DocumentBlockSource {
   readonly length: number
   rowOf(offset: number): number
   offsetOf(row: number): number
@@ -203,7 +203,7 @@ const MAPPED_KINDS = new Set(['text', 'code', 'rich-text', 'markdown'])
  * The block's row map at `width`: the shared segmented source for the kinds whose offsets ride it, a proportional
  * map over the shared source's real length for the other content kinds, or an index estimate for everything else.
  */
-export function documentBlockSource(block: UiDocumentBlock, width: number, env: ContentRowsEnv): DocumentBlockSource {
+function documentBlockSource(block: UiDocumentBlock, width: number, env: ContentRowsEnv): DocumentBlockSource {
   const safe = Number.isFinite(width) ? Math.max(1, Math.floor(width)) : 1
   const source = documentRowsSource(block.node, safe, env)
   if (source !== undefined && MAPPED_KINDS.has(block.node.kind) && source.rowOf !== undefined && source.offsetOf !== undefined) {

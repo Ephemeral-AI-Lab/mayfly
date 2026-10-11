@@ -43,10 +43,10 @@ import type {
 export const TOOL_ARGUMENTS_MAX_CHARS = KEY_ARG_MAX_CHARS
 
 /** Collapsed result preview: visual rows kept (kimi `RESULT_PREVIEW_LINES`). */
-export const RESULT_PREVIEW_LINES = 3
+const RESULT_PREVIEW_LINES = 3
 
 /** Collapsed Write/Edit-style preview: rows kept (kimi `COMMAND_PREVIEW_LINES`). */
-export const COMMAND_PREVIEW_LINES = 10
+const COMMAND_PREVIEW_LINES = 10
 
 /** Collapsed long user-message preview: visual rows kept (the S20 idiom, D46). */
 export const USER_PREVIEW_LINES = 3
@@ -81,19 +81,19 @@ const PREVIEW_INDENT = '  '
 const STATUS_BULLET = '● '
 
 /** The user block's first-line marker (the DeepSeek guide arrow). */
-export const USER_MESSAGE_BULLET = '» '
+const USER_MESSAGE_BULLET = '» '
 
 /** Continuation indent: the bullet's visible width (kimi `MESSAGE_INDENT`). */
-export const MESSAGE_INDENT = '  '
+const MESSAGE_INDENT = '  '
 
 /** Maximum rendered height of one user-message image, in terminal cells. */
-export const USER_IMAGE_MAX_HEIGHT_CELLS = 12
+const USER_IMAGE_MAX_HEIGHT_CELLS = 12
 
 /**
  * Loads one image attachment's bytes. Resolves `undefined` when the bytes
  * are unavailable (missing store, read failure) — the placeholder stays.
  */
-export type UserImageLoader = (ref: ImageAttachmentRef) => Promise<Uint8Array | undefined>
+type UserImageLoader = (ref: ImageAttachmentRef) => Promise<Uint8Array | undefined>
 
 /** Optional image-rendering wiring for {@link UserMessageComponent}. */
 export interface UserMessageImages {

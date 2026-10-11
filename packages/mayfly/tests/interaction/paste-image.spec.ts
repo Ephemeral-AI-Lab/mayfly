@@ -21,12 +21,14 @@ import {
   type ImageAttachmentRef,
   type SaveImageAttachment,
 } from '@deepseek-ai/dsh-attachment'
-import { applyReversibleSubmitTransformers, applySubmitTransformers } from '../../src/interaction/prompt-submit-pipeline.ts'
+import { applyReversibleSubmitTransformers } from '../../src/interaction/prompt-submit-pipeline.ts'
 import { clearSharedEditor, setSharedEditor } from '../../src/interaction/editor-instance.ts'
 // The value import carries the `settings` Context merge and the
 // 'settings/document-updated' Events merge the override spec below uses.
 import * as pasteImage from '../../src/interaction/paste-image.ts'
-import { ACTION_IMAGE_PASTE, type ClipboardImageResult } from '../../src/interaction/paste-image.ts'
+import { ACTION_IMAGE_PASTE } from '../../src/interaction/paste-image.ts'
+import { probeDarwin, probeWindows } from '../../src/interaction/paste-image-native.ts'
+import { setClipboardToolTimeout, type ClipboardImageResult } from '../../src/interaction/clipboard-probe.ts'
 import { fakeMayflyContext, FakeMayflyEditor, KEY, type FakeKeymap } from './fakes.ts'
 import { mkdtempTracked, registerTempDirCleanup } from '../core/temp-dir.ts'
 
@@ -121,7 +123,7 @@ describe('mayfly-paste-image plugin', () => {
   it('registers the ctrl+v action and the submit transformer until dispose', async () => {
     await mount()
     expect(keymap.getKeys(ACTION_IMAGE_PASTE)).toEqual(['ctrl+v'])
-    expect(applySubmitTransformers(ctx, '[image #99]')).toEqual([{ type: 'text', text: '[image #99]' }])
+    expect(ctx.mayflyPromptSubmissions.apply('[image #99]')).toEqual([{ type: 'text', text: '[image #99]' }])
     await fiber!.dispose()
     fiber = undefined
     expect(keymap.getKeys(ACTION_IMAGE_PASTE)).toEqual([])
@@ -230,21 +232,21 @@ describe('mayfly-paste-image plugin', () => {
     ])
     transformed.rollback?.()
     transformed.rollback?.()
-    expect(applySubmitTransformers(ctx, firstMarker)).toEqual([
+    expect(ctx.mayflyPromptSubmissions.apply(firstMarker)).toEqual([
       { type: 'image', attachment: expect.objectContaining({ mediaType: 'image/png' }) },
     ])
     // Consumed markers leave the map: a resubmit keeps them literal.
-    expect(applySubmitTransformers(ctx, `again ${firstMarker}`)).toEqual([
+    expect(ctx.mayflyPromptSubmissions.apply(`again ${firstMarker}`)).toEqual([
       { type: 'text', text: `again ${firstMarker}` },
     ])
     // A marker-only line yields just the image block (the third, unconsumed
     // paste).
     const thirdMarker = editor.inserted[2]!
-    expect(applySubmitTransformers(ctx, thirdMarker)).toEqual([
+    expect(ctx.mayflyPromptSubmissions.apply(thirdMarker)).toEqual([
       { type: 'image', attachment: expect.objectContaining({ mediaType: 'image/jpeg' }) },
     ])
     // No known markers at all: the fallback single text block.
-    expect(applySubmitTransformers(ctx, 'plain line')).toEqual([{ type: 'text', text: 'plain line' }])
+    expect(ctx.mayflyPromptSubmissions.apply('plain line')).toEqual([{ type: 'text', text: 'plain line' }])
   })
 
   it('reports a successful automatic backend fallback after inserting its marker', async () => {
@@ -294,7 +296,7 @@ describe('mayfly-paste-image plugin', () => {
       expect.objectContaining({ mediaType: 'image/gif', name: 'second.gif' }),
     ])
     expect(editor.inserted[0]!.match(/\[image #\d+\]/g)).toHaveLength(2)
-    expect(applySubmitTransformers(ctx, editor.inserted[0]!)).toEqual([
+    expect(ctx.mayflyPromptSubmissions.apply(editor.inserted[0]!)).toEqual([
       { type: 'image', attachment: expect.objectContaining({ mediaType: 'image/png' }) },
       { type: 'text', text: ' ' },
       { type: 'image', attachment: expect.objectContaining({ mediaType: 'image/gif' }) },
@@ -446,6 +448,7 @@ describe('default clipboard image reader', () => {
   const savedDisplay = process.env.DISPLAY
   const savedWayland = process.env.WAYLAND_DISPLAY
   const savedRuntimeDir = process.env.XDG_RUNTIME_DIR
+  const savedPlatform = Object.getOwnPropertyDescriptor(process, 'platform')
   let editor: FakeMayflyEditor
   let notices: string[]
   let saveImage: Mock<(input: SaveImageAttachment) => Promise<ImageAttachmentRef>>
@@ -483,8 +486,10 @@ describe('default clipboard image reader', () => {
     else process.env.WAYLAND_DISPLAY = savedWayland
     if (savedRuntimeDir === undefined) delete process.env.XDG_RUNTIME_DIR
     else process.env.XDG_RUNTIME_DIR = savedRuntimeDir
+    if (savedPlatform !== undefined) Object.defineProperty(process, 'platform', savedPlatform)
     pasteImage.setClipboardImageReader(undefined)
     pasteImage.setClipboardClock(undefined)
+    setClipboardToolTimeout(undefined)
     pasteImage.resetClipboardBackendCooldowns(ctx)
     clearSharedEditor(ctx)
     await fiber?.dispose()
@@ -1010,10 +1015,11 @@ exit 1
     const bin = mkdtempTracked('mayfly-paste-bin-')
     tool(bin, 'wl-paste', '#!/bin/sh\ntrap \'\' TERM\nexec /bin/sleep 10\n')
     process.env.PATH = bin
+    setClipboardToolTimeout(200)
     await mountDefault()
     await vi.waitFor(() => {
       expect(notices).toEqual(['pasting image...', 'clipboard read timed out'])
-    }, { timeout: 8000 })
+    }, { timeout: 4000 })
     expect(saveImage).not.toHaveBeenCalled()
   })
 
@@ -1023,10 +1029,11 @@ exit 1
     const bin = mkdtempTracked('mayfly-paste-bin-')
     tool(bin, 'wl-paste', '#!/bin/sh\ntrap \'\' TERM\nexec /bin/sleep 10\n')
     process.env.PATH = bin
+    setClipboardToolTimeout(200)
     await mountDefault('wayland')
     await vi.waitFor(() => {
       expect(notices).toEqual(['pasting image...', 'clipboard read timed out'])
-    }, { timeout: 8000 })
+    }, { timeout: 4000 })
 
     tool(bin, 'wl-paste', wlPasteFake('image/png\n', { 'image/png': shBytes(PNG_1X1) }))
     process.env.WAYLAND_DISPLAY = 'wayland-new'
@@ -1151,6 +1158,42 @@ exit 1
     await mountDefault()
     await vi.waitFor(() => {
       expect(notices).toEqual(['pasting image...', 'no image available from the clipboard'])
+    })
+  })
+
+  it('selects the native probes by platform only', () => {
+    expect(pasteImage.clipboardImageProbeFor('win32')).toBe(probeWindows)
+    expect(pasteImage.clipboardImageProbeFor('darwin')).toBe(probeDarwin)
+    expect(pasteImage.clipboardImageProbeFor('linux')).toBeUndefined()
+    expect(pasteImage.clipboardImageProbeFor('freebsd')).toBeUndefined()
+  })
+
+  it('reads through the darwin probe on a darwin platform', async () => {
+    // The full-path proof headless: platform stubbed and only osascript on
+    // PATH — the display-tool path would classify missing-tool here.
+    const bin = mkdtempTracked('mayfly-paste-bin-')
+    tool(bin, 'osascript', `#!${process.execPath}
+const fs = require('fs')
+const args = process.argv.slice(2).join('\\n')
+if (args.includes('clipboard info')) { process.stdout.write('«class PNGf» 3971\\n'); process.exit(0) }
+fs.writeFileSync(/POSIX file "(.*)"/.exec(args)[1], Buffer.from('${Buffer.from(PNG_1X1).toString('hex')}', 'hex'))
+process.exit(0)
+`)
+    Object.defineProperty(process, 'platform', { value: 'darwin' })
+    process.env.PATH = bin
+    await mountDefault()
+    await vi.waitFor(() => {
+      expect(editor.inserted).toHaveLength(1)
+    })
+    expect(saveImage.mock.calls[0]![0]).toMatchObject({ mediaType: 'image/png', name: 'pasted-image.png' })
+  })
+
+  it('names the platform tool in the missing-tool notice', async () => {
+    Object.defineProperty(process, 'platform', { value: 'win32' })
+    process.env.PATH = mkdtempTracked('mayfly-paste-bin-')
+    await mountDefault()
+    await vi.waitFor(() => {
+      expect(notices).toEqual(['pasting image...', 'clipboard image tool missing: powershell.exe is unavailable'])
     })
   })
 })

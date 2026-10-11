@@ -66,7 +66,7 @@ export const BANNER_MIN_WIDTH = 40
 const LOGO_TEXT_GAP = 2
 
 /** The info rows' labels, hand-aligned to {@link LABEL_WIDTH} columns. */
-export const DIRECTORY_LABEL = 'Directory: '
+const DIRECTORY_LABEL = 'Directory: '
 const MODEL_LABEL = 'Model:     '
 const VERSION_LABEL = 'Version:   '
 
@@ -74,7 +74,7 @@ const VERSION_LABEL = 'Version:   '
 const LABEL_WIDTH = 11
 
 /** One width computation for a banner render. */
-export interface BannerLayout {
+interface BannerLayout {
   /** The viewport width budget; every line stays within this many columns. */
   readonly total: number
   /** The width each status value may use, after the logo and its labels. */

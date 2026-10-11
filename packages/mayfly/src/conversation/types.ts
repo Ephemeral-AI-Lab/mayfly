@@ -36,14 +36,14 @@ interface ConversationEntryBase {
 }
 
 /** One direct human message. Synthetic context injections are excluded. */
-export interface ConversationUserEntry extends ConversationEntryBase {
+interface ConversationUserEntry extends ConversationEntryBase {
   readonly kind: 'user'
   readonly text: string
   readonly images: readonly ConversationImage[]
 }
 
 /** One assistant answer, updated in place while chunks arrive. */
-export interface ConversationAssistantEntry extends ConversationEntryBase {
+interface ConversationAssistantEntry extends ConversationEntryBase {
   readonly kind: 'assistant'
   readonly step: number
   readonly text: string
@@ -81,7 +81,7 @@ export interface OutputProgress {
 }
 
 /** Canonical result facts preserved for an official tool presenter. */
-export interface ConversationToolResult {
+interface ConversationToolResult {
   readonly content: readonly ConversationJson[]
   readonly text: string
   readonly isError: boolean
@@ -102,14 +102,14 @@ export interface ConversationToolEntry extends ConversationEntryBase {
 }
 
 /** Structured turn failure. */
-export interface ConversationErrorEntry extends ConversationEntryBase {
+interface ConversationErrorEntry extends ConversationEntryBase {
   readonly kind: 'error'
   readonly message: string
   readonly code?: string | undefined
 }
 
 /** Durable marker for a turn cut before normal completion. */
-export interface ConversationInterruptedEntry extends ConversationEntryBase {
+interface ConversationInterruptedEntry extends ConversationEntryBase {
   readonly kind: 'interrupted'
 }
 

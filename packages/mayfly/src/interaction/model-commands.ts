@@ -50,7 +50,7 @@ function readSelection(
 }
 
 /** Read the official next model selection for Mayfly's current Agent. */
-export function currentModelSelection(ctx: Context): MayflySessionModelSelection | undefined {
+function currentModelSelection(ctx: Context): MayflySessionModelSelection | undefined {
   const agent = ctx.get('mayflyCurrentAgent')?.current()
   const projections = ctx.get('sessionProjections')
   if (agent == null || projections === undefined) return undefined
@@ -77,7 +77,7 @@ function sameSelection(a: MayflySessionModelSelection, b: MayflySessionModelSele
  * @param next - the selection after the switch.
  * @returns the single-line notice text.
  */
-export function modelSwitchNotice(
+function modelSwitchNotice(
   previous: MayflySessionModelSelection,
   next: MayflySessionModelSelection,
 ): string {

@@ -36,7 +36,7 @@ import {
   styledText,
   truncatedRow,
 } from './plugin-view.ts'
-import { concatSources, mapSource, rowsSource, virtualRows, type RowSource } from './ui-rows.ts'
+import { concatSources, mapSource, rowsSource, type RowSource } from './ui-rows.ts'
 import { paintedRowsBytes, type MayflyContentCache } from './ui-content-cache.ts'
 import type { MayflyComponents, MayflySemanticColors } from './types.ts'
 import { truncateMiddle } from './width.ts'
@@ -1120,11 +1120,6 @@ export function contentNodeSource(node: WindowedContentNode, width: number, env:
   if (typeof node !== 'object' || node === null) throw new TypeError('view must be an object')
   const inner = nodeSource(node, Math.max(1, Math.floor(width)), env, 0)
   return clampedSource(env.bounded ? elidedSource(inner, env.viewportRows(), env) : inner, width, env)
-}
-
-/** The leaf's rows as a `string[]` facade over its source: pi-tui reads `length`, indexes the rows it paints. */
-export function contentNodeRows(node: WindowedContentNode, width: number, env: ContentRowsEnv): string[] {
-  return virtualRows(contentNodeSource(node, width, env))
 }
 
 /**

@@ -21,20 +21,20 @@ import { sliceByColumn, truncateToWidth, visibleWidth } from './width.ts'
 /** The id under which the surface manager records the lane's focus (`SurfaceManager.focusedId`); no pane id can spell it. */
 export const VIEWS_FOCUS_ID = '@views'
 /** Columns between two tabs of the strip. */
-export const VIEWS_TAB_GAP = 3
+const VIEWS_TAB_GAP = 3
 /** The smallest the entered lane gets: the strip, the rule, and two panel rows. */
-export const VIEWS_MIN_ROWS = 4
+const VIEWS_MIN_ROWS = 4
 /** The rule under the active tab. */
 const RULE = '━'
 
 /** What a view puts in status row 2: a motion-free status node, and the count its tab shows. */
-export interface ViewSummary {
+interface ViewSummary {
   readonly node: MayflyStatusNode
   readonly count?: number | string
 }
 
 /** A view's declaration. */
-export interface ViewContribution {
+interface ViewContribution {
   readonly id: string
   readonly title?: string
   readonly priority?: number

@@ -6,7 +6,7 @@ import { ui, type MayflyUiActionReply, type MayflyUiEvent, type MayflyUiNode } f
 import type { MayflyTranslate } from '../frontend/index.ts'
 import { copyTextToClipboard } from './clipboard-write.ts'
 
-export interface PlanReviewChoices {
+interface PlanReviewChoices {
   readonly approve: AskUserQuestionOption
   readonly decline: AskUserQuestionOption
 }
@@ -49,7 +49,7 @@ export function planReviewControls(question: AskUserQuestionItem, choices: PlanR
 
 /** The 'Other' input replaces the decision controls in place — same surface,
  *  same page — so typing starts immediately without tab navigation. */
-export function planReviewFeedback(t: MayflyTranslate): MayflyUiNode {
+function planReviewFeedback(t: MayflyTranslate): MayflyUiNode {
   return ui.stack.column([
     ui.text(t('Tell the model what to change')),
     ui.form({ id: 'revision', enterSubmits: 'send-feedback', fields: [{ kind: 'textarea', id: 'reason', label: t('Feedback'), value: '' }] }),

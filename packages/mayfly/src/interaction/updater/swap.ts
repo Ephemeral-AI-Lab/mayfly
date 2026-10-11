@@ -110,7 +110,7 @@ export interface SwapOutcome {
 }
 
 /** Everything the executor needs. */
-export interface SwapInput {
+interface SwapInput {
   readonly t?: MayflyTranslate
   /** The profile workspace root. */
   readonly root: string

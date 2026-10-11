@@ -33,7 +33,7 @@ interface Slot {
 }
 
 /** Collaborators the slots build sources and read native history with. */
-export interface ConversationSlotsOptions {
+interface ConversationSlotsOptions {
   /** Build one model source; `agent` scopes tool presenters, `publish` wakes the renderer. */
   readonly source: (agent: Agent | undefined, publish: () => void) => OfficialConversationModelSource
   /** Renderer options for a view without its own activity row. */

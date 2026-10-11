@@ -172,7 +172,7 @@ describe('feed-backed model source', () => {
     }, ADDRESS, publish)
     source.attachFeed(feed, 2)
     const loading = source.snapshot()
-    expect(materializeTranscriptEntries(loading)).toEqual([{ kind: 'loader', message: 'loading conversation...', variant: 'braille' }])
+    expect(materializeTranscriptEntries(loading)).toEqual([{ kind: 'loader', message: 'loading conversation...', variant: 'gap' }])
     expect(source.snapshot()).toBe(loading)
     gate.resolve()
     await settled()

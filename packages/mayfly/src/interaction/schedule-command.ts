@@ -53,7 +53,7 @@ export function formatReminderFrequency(record: ScheduleRecord, t: MayflyTransla
 }
 
 /** Format the durable UTC target in the frontend's current locale and process zone. */
-export function formatReminderLocalTime(scheduledAt: string, locale?: MayflyLocaleId): string {
+function formatReminderLocalTime(scheduledAt: string, locale?: MayflyLocaleId): string {
   return new Intl.DateTimeFormat(locale, {
     dateStyle: 'medium',
     timeStyle: 'short',
@@ -75,7 +75,7 @@ export function formatReminderRelative(scheduledAt: string, now: number, t: Mayf
 }
 
 /** Overdue records first, then ascending target time; exact ties stay stable. */
-export function orderScheduleRecords(
+function orderScheduleRecords(
   records: readonly ScheduleRecord[],
   now: number,
 ): ScheduleRecord[] {

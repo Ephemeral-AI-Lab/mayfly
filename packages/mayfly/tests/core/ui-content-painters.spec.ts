@@ -2,17 +2,22 @@
 import { describe, expect, it } from 'vitest'
 import { ui } from '../../../ui/src/index.ts'
 import { renderChartRows } from '../../src/core/chart-renderer.ts'
-import { contentNodeRows, type ContentRowsEnv, type WindowedContentNode } from '../../src/core/content-rows.ts'
+import { contentNodeSource, type ContentRowsEnv, type WindowedContentNode } from '../../src/core/content-rows.ts'
+import { virtualRows } from '../../src/core/ui-rows.ts'
 import { MayflyContentCache } from '../../src/core/ui-content-cache.ts'
 import type { MayflyComponents, MayflySemanticColors } from '../../src/core/types.ts'
 import {
-  BREATH_LEVELS, LOADER_FRAMES, breathLevel, breathPaint, loaderCell, loaderFrameGlyph, loaderVariant, shimmerText, shimmerWindow,
+  breathLevel, breathPaint, loaderCell, loaderFrameGlyph, shimmerText, shimmerWindow,
 } from '../../src/core/ui-loader-animation.ts'
 import { hasMotion, paintMotionSpans } from '../../src/core/ui-motion-text.ts'
 import { renderDivider, renderEmpty, renderLoader, renderProgress, renderSurfaceHead, renderSurfaceTail, surfaceBorderPaint } from '../../src/core/ui-patterns.ts'
 import { UiProgressTransitions } from '../../src/core/ui-progress-transition.ts'
 import { truncateMiddle, truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/width.ts'
 import { ADVERSARIAL } from './width-scan.ts'
+
+/** The leaf's rows materialized through its production row source. */
+const contentNodeRows = (node: WindowedContentNode, width: number, env: ContentRowsEnv): string[] =>
+  virtualRows(contentNodeSource(node, width, env))
 
 const tag = new Proxy({}, { get: (_target, role: string) => (text: string) => `<${role}>${text}</${role}>` }) as MayflySemanticColors
 const identity = (value: string): string => value
@@ -37,13 +42,8 @@ describe('truncateMiddle', () => {
 
 describe('motion tables and cells', () => {
   it('steps each variant over its table, and breathes a shade every fourth step', () => {
-    expect(LOADER_FRAMES.bloom).toHaveLength(10)
-    expect(LOADER_FRAMES.fill).toHaveLength(12)
-    expect(LOADER_FRAMES.gap).toHaveLength(8)
     expect(loaderFrameGlyph('gap', 9)).toBe('⣽')
     expect([0, 3, 4, 8, 12, 16, 20, 24].map(breathLevel)).toEqual([0.25, 0.25, 0.5, 0.8, 1, 0.8, 0.5, 0.25])
-    expect(BREATH_LEVELS).toHaveLength(6)
-    expect([undefined, 'braille', 'tide', 'bloom'].map(variant => loaderVariant(variant as never))).toEqual(['gap', 'gap', 'gap', 'bloom'])
   })
 
   it('paints a stepping cell in primary, the ASCII spinner in ASCII mode, and freezes under reduced motion', () => {

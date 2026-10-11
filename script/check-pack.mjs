@@ -242,10 +242,12 @@ verifyExternalUiKit(tarballs.get('@ephemeral-ai/mayfly-ui'))
 // (the terminal DeepSeek account sign-in panel and its remote-callback
 // guidance added about 6 KB, and the single control walk with memoized
 // visible/all/accelerator sets added about 13 KB, and the named actions,
-// runtime rebinding, and key decoder of slice 1.7 about 41 KB, and the visual language of slice 1.2 about 26 KB, and the image node and its byte source of slice 1.9a about 30 KB, and the content, layout, and motion of slice 1.3 about 60 KB, and the views lane of slice 1.10b about 27 KB, and the prompt of slice 1.9b about 40 KB, and the patterns of slice 1.8b one declaration file and about 4 KB, and the retained rows, the placing stacks, and the frame counters of slice 1.12 about 29 KB, and the segmented content rows, diff aligner, and Markdown scanner of slice 2c about 80 KB); retain headroom
+// runtime rebinding, and key decoder of slice 1.7 about 41 KB, and the visual language of slice 1.2 about 26 KB, and the image node and its byte source of slice 1.9a about 30 KB, and the content, layout, and motion of slice 1.3 about 60 KB, and the views lane of slice 1.10b about 27 KB, and the prompt of slice 1.9b about 40 KB, and the patterns of slice 1.8b one declaration file and about 4 KB, and the retained rows, the placing stacks, and the frame counters of slice 1.12 about 29 KB, and the segmented content rows, diff aligner, and Markdown scanner of slice 2c about 80 KB,
+// and the wired native clipboard probes and their shared probe declarations
+// of audit-fix C one declaration file and about 17 KB); retain headroom
 // while still catching accidental entry/chunk growth.
-if (libraryFiles > 225) fail(`library lib output has ${libraryFiles} files; budget is 225`)
-if (libraryBytes > 2_600_000) fail(`library lib output has ${libraryBytes} bytes; budget is 2600000`)
+if (libraryFiles > 230) fail(`library lib output has ${libraryFiles} files; budget is 230`)
+if (libraryBytes > 2_650_000) fail(`library lib output has ${libraryBytes} bytes; budget is 2650000`)
 
 if (problems.length > 0) {
   console.error(`pack contract failed with ${problems.length} problem(s)`)

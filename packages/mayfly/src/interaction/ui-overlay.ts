@@ -5,7 +5,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { MayflyOverlayDefinition, MayflyOverlayHandle, MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 
 /** Open-time policy for an app-scoped UI overlay registration. */
-export interface UiOverlayOpenOptions {
+interface UiOverlayOpenOptions {
   /** Caller cancellation: an aborted signal throws before opening; a later abort closes the overlay. */
   readonly signal?: AbortSignal | undefined
   /**

@@ -159,7 +159,7 @@ export function injectGhostHint(
 }
 
 /** Options for {@link withSideBorders}. */
-export interface SideBordersOptions {
+interface SideBordersOptions {
   /** Draw `├┤` top corners instead of `╭╮` (a panel is docked above). */
   readonly connectedAbove?: boolean
   /**
@@ -183,7 +183,7 @@ export interface SideBordersOptions {
 }
 
 /** Narrowest title, in visible columns, worth laying into a top border. */
-export const MIN_BORDER_TITLE_COLUMNS = 6
+const MIN_BORDER_TITLE_COLUMNS = 6
 
 /**
  * Fit a border title into `maxWidth` visible columns, ending an elided
@@ -285,99 +285,10 @@ export function injectPromptSymbol(
   return '  ' + rendered + ' ' + line.slice(4)
 }
 
-/**
- * Join key-hint parts into one dialog footer row: `↑/↓ select · 1-4 choose ·
- * ↵ confirm`. Parts are joined with ` · ` (the kimi convention) and the row
- * is indented two columns so it never sits flush against the surrounding
- * rule.
- * @param parts - the key-hint fragments, already styled if they carry color.
- * @param paint - the color function for the joiners and the indent.
- * @returns the rendered footer row.
- */
-export function hintRow(parts: readonly string[], paint: (text: string) => string): string {
-  return paint(`  ${parts.join(' · ')}`)
-}
-
-/** Options for {@link framePanel}. */
-export interface FramePanelOptions {
-  /** Title text rendered on its own line under the top rule, indented two columns. */
-  readonly title?: string
-  /** Styling for the title line; defaults to unstyled. */
-  readonly titlePaint?: (text: string) => string
-  /** Muted hint appended to the title line after a space (lead with `· `). */
-  readonly titleHint?: string
-  /** Styling for the title hint; defaults to unstyled. */
-  readonly hintPaint?: (text: string) => string
-  /** Key-row parts rendered as a footer above the bottom rule. */
-  readonly footer?: readonly string[]
-  /** Styling for the footer row; defaults to unstyled. */
-  readonly footerPaint?: (text: string) => string
-  /** Styling for the top and bottom rules; defaults to unstyled. */
-  readonly rulePaint?: (text: string) => string
-}
-
 const identity = (text: string): string => text
 
-/**
- * Frame a dialog body in the kimi full-width-rule style: a `─` rule, an
- * optional title line (with an optional muted hint on the same line), the
- * body rows, an optional key-row footer, and a closing `─` rule. Dialogs
- * use flat rules — never the rounded corners of {@link withSideBorders},
- * which belong to panels and the editor. The rules span the full render
- * width even when the body truncates shorter; title, hint, and footer are
- * ANSI-safe truncated so styled text is never cut mid-SGR.
- * @param body - the dialog's content rows, already rendered at `width`.
- * @param width - the render width the rules and truncation use.
- * @param options - title, hint, footer, and their paints.
- * @returns the framed rows, width preserved.
- */
-export function framePanel(
-  body: readonly string[],
-  width: number,
-  options: FramePanelOptions = {},
-): string[] {
-  const ruleWidth = Math.max(1, width)
-  const rulePaint = options.rulePaint ?? identity
-  const lines: string[] = [rulePaint('─'.repeat(ruleWidth))]
-  const title = options.title
-  if (title !== undefined) {
-    const titlePaint = options.titlePaint ?? identity
-    const hint = options.titleHint
-    if (hint === undefined) {
-      lines.push(truncateToWidth(titlePaint(`  ${title}`), ruleWidth, OVERFLOW_ELLIPSIS))
-    } else {
-      const hintPaint = options.hintPaint ?? identity
-      // The kimi title line: `  help · Esc / Enter / q to cancel · ↑↓ scroll`
-      // — callers lead the hint with `· ` so the join is a single space.
-      lines.push(truncateToWidth(`${titlePaint(`  ${title}`)} ${hintPaint(hint)}`, ruleWidth, OVERFLOW_ELLIPSIS))
-    }
-  }
-  lines.push(...body)
-  const footer = options.footer
-  if (footer !== undefined && footer.length > 0) {
-    // Key rows grow with every new panel action; an over-wide footer would
-    // crash the renderer's width invariant, so it clips ANSI-safe like the
-    // title line (the S23 model-family footer is the first to need it).
-    lines.push(truncateToWidth(hintRow(footer, options.footerPaint ?? identity), ruleWidth, OVERFLOW_ELLIPSIS))
-  }
-  lines.push(rulePaint('─'.repeat(ruleWidth)))
-  // Body rows arrive pre-budgeted by their callers; only a degenerate
-  // viewport — narrow enough that the rows' fixed furniture (their
-  // two-space indents) already exceeds the frame — can leave them
-  // over-wide, and only then does the framer cut (D48). Wider frames
-  // emit the body untouched.
-  if (width >= FRAME_DEGENERATE_WIDTH) return lines
-  return lines.map(line => truncateToWidth(line, Math.max(1, width), OVERFLOW_ELLIPSIS))
-}
-
-/**
- * Below this width a frame's fixed row furniture (indents, ellipses) no
- * longer fits; the D48 backstop engages.
- */
-const FRAME_DEGENERATE_WIDTH = 8
-
 /** Options for {@link topRule}. */
-export interface TopRuleOptions {
+interface TopRuleOptions {
   /** Title text rendered after the left corner, typically pre-styled (e.g. bold ` BTW `). */
   readonly title?: string
   /** Styling for the title; defaults to unstyled. */

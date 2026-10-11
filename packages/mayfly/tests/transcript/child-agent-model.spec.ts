@@ -4,7 +4,6 @@ import { describe, expect, it } from 'vitest'
 import {
   childIdOfResult,
   childLiveSnapshot,
-  correlateChild,
   trackChildAgentModels,
 } from '../../src/transcript/child-agent-model.ts'
 import type { ChildSessionFacts } from '../../src/transcript/session-facts.ts'
@@ -28,12 +27,7 @@ describe('child agent model', () => {
   it('correlates exact acknowledgement ids before prompt fallback', () => {
     expect(childIdOfResult(member())).toBe(child.id)
     expect(childIdOfResult(member({ result: undefined }))).toBeUndefined()
-    expect(correlateChild(child, member())).toBe(true)
-    expect(correlateChild({ ...child, id: 'other' }, member())).toBe(false)
-    const fork = member({ result: { text: 'started background subagent job subagent-1', isError: false, endedAt: 2 } })
-    expect(correlateChild(child, fork)).toBe(true)
-    expect(correlateChild({ ...child, promptText: undefined }, fork)).toBe(false)
-    expect(correlateChild(child, member({ result: fork.result, parsedArguments: null }))).toBe(false)
+    expect(childIdOfResult(member({ result: { text: 'started background subagent job subagent-1', isError: false, endedAt: 2 } }))).toBeUndefined()
   })
 
   it('maps every projected field into the agent-card snapshot', () => {

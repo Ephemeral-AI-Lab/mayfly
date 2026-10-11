@@ -139,7 +139,7 @@ function patternsGroup() {
       cancelLabel: 'Cancel',
     }),
     ui.progress({ label: 'Progress', value: 3, max: 5 }),
-    ui.loader({ message: 'Loading gallery', variant: 'tide', elapsedMs: 1200 }),
+    ui.loader({ message: 'Loading gallery', variant: 'gap', elapsedMs: 1200 }),
     ui.empty({
       title: 'No results',
       description: 'An empty state can offer follow-up actions.',

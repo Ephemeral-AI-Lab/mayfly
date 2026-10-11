@@ -35,13 +35,13 @@ export const FIBER_DISPOSED = 4
 export const FIBER_UNLOADING = 5
 
 /** The public prefix of MCP-served tool names (`mcp__<server>__<raw>`). */
-export const MCP_PREFIX = 'mcp__'
+const MCP_PREFIX = 'mcp__'
 
 /** The derived display status of one MCP server row. */
 export type McpStatus = 'synced' | 'restricted' | 'no-tools' | 'starting' | 'failed' | 'reloading' | 'disabled'
 
 /** The resolved reconnect policy fields the panel shows. */
-export interface McpReconnectView {
+interface McpReconnectView {
   readonly enabled: boolean
   readonly initialDelayMs: number
   readonly maxDelayMs: number

@@ -5,9 +5,7 @@ import {
   renderActions,
   renderDivider,
   renderEmpty,
-  renderFormField,
   renderList,
-  renderListSegment,
   renderLoader,
   renderProgress,
   renderSurfaceHead,
@@ -15,8 +13,19 @@ import {
   renderTabs,
   type PatternFocus,
 } from '../../src/core/ui-patterns.ts'
+import { paintFormField } from '../../src/core/ui-form-paint.ts'
+import { segmentFooter } from '../../src/core/ui-list-segment.ts'
+import type { MayflyFormField, MayflyListSegment } from '@ephemeral-ai/mayfly-ui'
 import type { MayflySemanticColors } from '../../src/core/types.ts'
 import { visibleWidth } from '../../src/core/width.ts'
+
+/** The segment strip's footer line through the production painter. */
+const renderListSegment = (segment: MayflyListSegment, selectedId: string | undefined, width: number, colors: MayflySemanticColors): string =>
+  segmentFooter({ segment, pinned: selectedId ?? null, active: selectedId }, Math.max(1, width), colors, segment.label ?? 'Options')
+
+/** One field's rows through the production painter. */
+const renderFormField = (field: MayflyFormField, width: number, focus: PatternFocus, colors: MayflySemanticColors): string[] =>
+  paintFormField({ field, decor: {}, width, focus, colors, text: key => key, labelWidth: visibleWidth(field.label) })
 
 const identity = (value: string): string => value
 const colors = new Proxy({ logoGradient: [identity] }, { get: (target, key) => key === 'logoGradient' ? target.logoGradient : identity }) as unknown as MayflySemanticColors
@@ -302,9 +311,9 @@ describe('private UI pattern painters', () => {
     expect(visibleWidth(renderActions(node, 10, { key: 'danger', focused: true, marker: '|' }, colors, false)[0]!)).toBeLessThanOrEqual(10)
     expect(renderActions(ui.actions({ id: 'empty', items: [] }), 10, idle, colors, false)).toEqual([])
     expect(renderLoader(ui.loader({ message: 'Load' }), 20, colors)).toEqual(['⣾ Load'])
-    expect(renderLoader(ui.loader({ message: 'Tide', variant: 'tide', elapsedMs: 25 }), 20, colors)).toEqual(['⣾ Tide 0s'])
-    expect(renderLoader(ui.loader({ message: 'Tide', variant: 'tide', elapsedMs: 12_345 }), 20, colors)).toEqual(['⣾ Tide 12s'])
-    expect(renderLoader(ui.loader({ message: 'Tide', variant: 'tide', elapsedMs: 125_000 }), 20, colors)).toEqual(['⣾ Tide 2m 5s'])
+    expect(renderLoader(ui.loader({ message: 'Gap', variant: 'gap', elapsedMs: 25 }), 20, colors)).toEqual(['⣾ Gap 0s'])
+    expect(renderLoader(ui.loader({ message: 'Gap', variant: 'gap', elapsedMs: 12_345 }), 20, colors)).toEqual(['⣾ Gap 12s'])
+    expect(renderLoader(ui.loader({ message: 'Gap', variant: 'gap', elapsedMs: 125_000 }), 20, colors)).toEqual(['⣾ Gap 2m 5s'])
     expect(renderEmpty(ui.empty({ title: 'Nothing', description: 'Try again' }), 20, colors)).toEqual(['Nothing', 'Try again'])
     const narrowEmpty = renderEmpty(ui.empty({ title: 'Nothing' }), 3, colors)
     expect(narrowEmpty.join('')).toBe('Nothing')

@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest'
 import { ui, type MayflyTabItem } from '../../../ui/src/index.ts'
 import type { MayflySemanticColors } from '../../src/core/types.ts'
-import { RAIL_MIN_COLUMNS, isRail, paintTabs, tabsShape, type TabsFocus } from '../../src/core/ui-tabs-paint.ts'
+import { isRail, paintTabs, tabsShape, type TabsFocus } from '../../src/core/ui-tabs-paint.ts'
 import { UiRowCache } from '../../src/core/ui-row-cache.ts'
 import { createWorkCounters } from '../../src/core/ui-work-counters.ts'
 import { visibleWidth } from '../../src/core/width.ts'
@@ -155,7 +155,6 @@ describe('the rail', () => {
 
 describe('the shape of a rail', () => {
   it('is a rail only from 60 columns, and only a vertical, non-wizard strip', () => {
-    expect(RAIL_MIN_COLUMNS).toBe(60)
     expect(isRail(rail(), 60)).toBe(true)
     expect(isRail(rail(), 59)).toBe(false)
     expect(isRail(ui.tabs({ id: 's', activeId: 'a', items: [{ id: 'a', label: 'A' }] }), 120)).toBe(false)

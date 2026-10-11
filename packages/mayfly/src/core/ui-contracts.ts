@@ -12,10 +12,10 @@ export type MayflyValidationResult<Value> =
   | { readonly ok: true, readonly value: Value }
   | { readonly ok: false, readonly code: MayflyUiErrorCode, readonly message: string }
 
-export interface MayflyEditorControlNode { readonly kind: 'editor-control' }
+interface MayflyEditorControlNode { readonly kind: 'editor-control' }
 export interface MayflyEditorChild extends Omit<MayflyUiChild, 'node'> { readonly node: MayflyEditorShellNode }
-export interface MayflyEditorStackNode extends Omit<MayflyStackNode, 'children'> { readonly children: readonly MayflyEditorChild[] }
-export interface MayflyEditorSurfaceNode extends Omit<MayflySurfaceNode, 'child' | 'footer'> {
+interface MayflyEditorStackNode extends Omit<MayflyStackNode, 'children'> { readonly children: readonly MayflyEditorChild[] }
+interface MayflyEditorSurfaceNode extends Omit<MayflySurfaceNode, 'child' | 'footer'> {
   readonly child: MayflyEditorShellNode
   readonly footer?: MayflyEditorShellNode
 }
