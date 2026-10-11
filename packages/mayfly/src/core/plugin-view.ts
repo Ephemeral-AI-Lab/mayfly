@@ -12,6 +12,7 @@
 
 import type { MayflyContentNode, MayflyInlineSpan, MayflyTextStyle, MayflyTone } from '@ephemeral-ai/mayfly-ui'
 import { textOf } from '@ephemeral-ai/mayfly-ui'
+import { stripEscapeSequences } from './escape-sequences.ts'
 import type { MayflyComponents, MayflySemanticColors } from './types.ts'
 
 /** A code block highlights at most this many rows; the rest are plain text. */
@@ -24,12 +25,13 @@ export const CODE_HIGHLIGHT_MAX_BYTES = 32 * 1024
 export const PLUGIN_VIEW_MAX_DEPTH = 8
 
 const ANSI_OR_OSC = /\x1b(?:\][^\x07]*(?:\x07|\x1b\\)|\[[0-?]*[ -/]*[@-~]|.)/gu
+const ANSI_TAIL = /\x1b(?:\[[0-?]*[ -/]*[@-~]|.)/gu
 /** The focus sentinel is a private-use code point the surface owns; a contribution's text may not carry it. */
 const UNSAFE_CONTROLS = /[\x00-\x08\x0b-\x1f\x7f-\x9f\uf8ff]/gu
 
 /** Strip terminal escapes and non-layout controls from untrusted text. */
 export function sanitizePluginText(text: string): string {
-  return text.replace(ANSI_OR_OSC, '').replace(UNSAFE_CONTROLS, '')
+  return stripEscapeSequences(text, ANSI_OR_OSC, ANSI_TAIL, false).replace(UNSAFE_CONTROLS, '')
 }
 
 /** Resolve one semantic public tone into Mayfly's current palette. */

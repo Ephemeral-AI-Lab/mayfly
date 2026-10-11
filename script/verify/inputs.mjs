@@ -36,6 +36,15 @@ export const DATA_READS = [
   ['packages/ui/tests/types.spec.ts', 'packages/ui/tests/tsconfig.json'],
   ['packages/ui/tests/types.spec.ts', 'packages/ui/tests/ui.compile.ts'],
   ['packages/ui/tests/types.spec.ts', 'packages/ui/src/'],
+  // The guard specs read whole source trees and import nothing from them, so any edit under a tree they scan reaches them.
+  ['packages/mayfly/tests/core/keyboard-boundary.spec.ts', 'packages/mayfly/src/interaction/'],
+  ['packages/mayfly/tests/core/keyboard-boundary.spec.ts', 'packages/mayfly/src/transcript/'],
+  ['packages/mayfly/tests/core/business-rendering-drift.spec.ts', 'packages/mayfly/src/'],
+  ['packages/mayfly/tests/core/business-rendering-drift.spec.ts', 'packages/ui/src/'],
+  ['packages/mayfly/tests/core/business-rendering-drift.spec.ts', 'packages/cli/src/'],
+  ['packages/mayfly/tests/frontend/architecture-boundary.spec.ts', 'packages/mayfly/src/'],
+  ['packages/mayfly/tests/frontend/architecture-boundary.spec.ts', 'packages/ui/src/'],
+  ['packages/mayfly/tests/locale-catalog.spec.ts', 'packages/mayfly/src/'],
 ]
 
 /**

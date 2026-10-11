@@ -122,6 +122,11 @@ function slashItemDescription(command: {
   return command.inputHint === undefined ? description : `${command.inputHint} — ${description}`
 }
 
+/** The directory `@` completion and `!` commands run in: the displayed Agent's session directory, else the launch directory. */
+function sessionCwd(ctx: Context): string {
+  return ctx.mayflyCurrentAgent.current()?.session.header.cwd ?? process.cwd()
+}
+
 /**
  * Build the dispatching autocomplete provider for the shared editor: a
  * leading `/` token completes slash commands from `ctx.commands` (S14: fuzzy
@@ -158,7 +163,7 @@ function createAutocompleteProvider(
   // detection needs a fresh instance and nothing else does. Until the probe
   // settles fdPath is null and the @ branch runs the filesystem fallback.
   let fdPath: string | null = null
-  let builtCwd = process.cwd()
+  let builtCwd = sessionCwd(ctx)
   let builtFdPath: string | null = null
   let inner = components.createFileMentionProvider(builtCwd, null)
   void detectFdPath(ctx.mayflyInteractionState.fdProbe).then(resolved => {
@@ -175,7 +180,7 @@ function createAutocompleteProvider(
       const line = lines[cursorLine] ?? ''
       const atPrefix = extractAtPrefix(line.slice(0, cursorCol))
       if (atPrefix !== null) {
-        const cwd = process.cwd()
+        const cwd = sessionCwd(ctx)
         if (cwd !== builtCwd || fdPath !== builtFdPath) {
           builtCwd = cwd
           builtFdPath = fdPath
@@ -436,7 +441,7 @@ function runShell(ctx: Context, command: string, isUnloaded: () => boolean): voi
       return () => slot.dispose()
     })
   }
-  void shellExecutor(command, process.cwd()).then(
+  void shellExecutor(command, sessionCwd(ctx)).then(
     (result) => {
       if (isUnloaded()) return
       mount({

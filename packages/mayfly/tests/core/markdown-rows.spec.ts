@@ -11,7 +11,7 @@
 import { describe, expect, it } from 'vitest'
 import { Markdown, type MarkdownTheme } from '@earendil-works/pi-tui'
 import { contentNodeRows } from '../../src/core/content-rows.ts'
-import { expandMarkdownRules, markdownTheme, scanMarkdown } from '../../src/core/markdown-rows.ts'
+import { expandMarkdownRules, markdownTheme, scanMarkdown, type MarkdownUnit } from '../../src/core/markdown-rows.ts'
 import { renderMermaidRows, splitRichDocument } from '../../src/core/rich-document.ts'
 import { CONTENT_SEGMENT_UNITS } from '../../src/core/content-segments.ts'
 import { DARK_COLORS } from '../../src/core/theme-dark.ts'
@@ -112,6 +112,8 @@ const CORPUS: readonly string[] = [
   '## h\n[a]: /x\n\nuse [x][a]',
   '> quote [a]: /inner\n\npara [x][a]',
   'intro\n\n$$\nx\n\ny\n$$\n\noutro',
+  '[ref]: /target "title"\n***\n# Top\n[ref]: /target "title"\nSetext\n===',
+  'a\n\n[r]: /t\n```js\nx\n```\n[r]: /t\n# Top\n[r]: /t\nlast',
 ]
 
 const WIDTHS = [20, 40, 80, 120]
@@ -194,6 +196,89 @@ describe('markdown equivalence', () => {
     const windowed = rows.slice(10, 20)
     expect(windowed).toEqual(eagerRows(text, 60).slice(10, 20))
     expect(rows.slice()).toEqual(eagerRows(text, 60))
+  })
+})
+
+describe('scan cost and latex boundaries', () => {
+  it('scans a megabyte of paragraphs in time linear in its size', () => {
+    const text = Array.from({ length: 20_000 }, (_, index) => `Paragraph ${String(index)} with some words and [a link](http://x/${String(index)}).`).join('\n\n')
+    expect(text.length).toBeGreaterThan(1_000_000)
+    const started = performance.now()
+    scanMarkdown(text)
+    // The quadratic start callback took 3-4 s here; the linear scan takes about a tenth of a second.
+    expect(performance.now() - started).toBeLessThan(1500)
+  })
+
+  it('keeps latex blocks and whitespace-only separators equal to the eager render', () => {
+    const pieces = [
+      'a paragraph of plain words that runs on\n', '\n', '  \n', '\n\n', '$$\nx^2\n$$\n', '\\[\ny\n\\]\n', 'text right before\n$$\nm\n$$\n',
+      '$$ one line $$\n', '# Heading\n', '- a\n- b\n', '> quote\n', '```\ncode\n```\n', 'tail with \\[ inline ]\n', '1. one\n2. two\n',
+    ]
+    let seed = 12345
+    const next = (): number => { seed = (Math.imul(seed, 1103515245) + 12345) >>> 0; return seed / 4294967296 }
+    for (let round = 0; round < 12; round += 1) {
+      let text = ''
+      while (text.length < CONTENT_SEGMENT_UNITS * 3) text += pieces[Math.floor(next() * pieces.length)]!
+      const rows = lazyRows(text, 50, makeEnv())
+      prepareRows(rows, 0, Number.MAX_SAFE_INTEGER)
+      expect(rows.slice(), `round ${String(round)}`).toEqual(eagerRows(text, 50))
+    }
+  })
+})
+
+describe('adjacent blocks without blank lines', () => {
+  const unitSize = (unit: MarkdownUnit): number => unit.kind === 'mermaid' ? 0 : unit.end - unit.start
+
+  // Lists, quotes, tables, and paragraphs take the lines after them as lazy continuation, so each is followed by a
+  // block that interrupts it; the rest may follow anything.
+  const SWALLOWING = [
+    'a paragraph of plain words that runs on for a while', '- one\n- two', '1. first\n2. second', '> quoted\n> more', '| a | b |\n| - | - |\n| 1 | 2 |', 'text with [ref] use',
+  ]
+  const STANDING = ['## Heading', '# Top', '```js\nconst x = 1\n```', '***', '$$\nx^2\n$$', '[ref]: /target "title"', 'Setext\n===']
+  const INTERRUPTING = ['## Next', '***', '```\nfence\n```', '- list after\n- items']
+
+  it('cuts a run of adjacent headings into bounded units', () => {
+    const text = Array.from({ length: 8000 }, (_, index) => `## Heading ${String(index)}`).join('\n')
+    const { units } = scanMarkdown(text)
+    expect(units.length).toBeGreaterThan(20)
+    expect(Math.max(...units.map(unitSize))).toBeLessThanOrEqual(CONTENT_SEGMENT_UNITS + 32)
+  })
+
+  it('cuts a run of adjacent code fences into bounded units', () => {
+    const text = Array.from({ length: 3000 }, (_, index) => `\`\`\`\ncode ${String(index)}\n\`\`\``).join('\n')
+    const { units } = scanMarkdown(text)
+    expect(units.length).toBeGreaterThan(10)
+    expect(Math.max(...units.map(unitSize))).toBeLessThanOrEqual(CONTENT_SEGMENT_UNITS + 64)
+  })
+
+  it.each([20, 60])('paints the rows of the whole render across tight cuts of every block pair at width %i', width => {
+    let seed = 777
+    const next = (): number => { seed = (Math.imul(seed, 1103515245) + 12345) >>> 0; return seed / 4294967296 }
+    for (let round = 0; round < 16; round += 1) {
+      const parts: string[] = []
+      let length = 0
+      while (length < CONTENT_SEGMENT_UNITS * 4) {
+        const swallowing = next() < 0.5
+        const pool = swallowing ? SWALLOWING : STANDING
+        const block = pool[Math.floor(next() * pool.length)]!
+        parts.push(block)
+        length += block.length + 1
+        if (swallowing) {
+          const stop = INTERRUPTING[Math.floor(next() * (block.startsWith('- ') || block.startsWith('1.') ? INTERRUPTING.length - 1 : INTERRUPTING.length))]!
+          parts.push(stop)
+          length += stop.length + 1
+        }
+      }
+      // Single newlines only: no space token ever separates two blocks, so every unit boundary is a tight cut.
+      const text = parts.join('\n')
+      const prepared = scanMarkdown(text)
+      expect(prepared.units.length, `round ${String(round)} cuts`).toBeGreaterThan(3)
+      expect(prepared.units.some(unit => unit.kind === 'block' && unit.closed === true)).toBe(true)
+      expect(prepared.units.some(unit => unit.kind === 'block' && unit.closed !== true)).toBe(true)
+      const rows = lazyRows(text, width, makeEnv())
+      prepareRows(rows, 0, Number.MAX_SAFE_INTEGER)
+      expect(rows.slice(), `round ${String(round)}`).toEqual(eagerRows(text, width))
+    }
   })
 })
 

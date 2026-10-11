@@ -126,6 +126,20 @@ describe('change impact planning', () => {
     assert.deepEqual(classifyChanges(['packages/mayfly/tests/perf/budgets.json']).tests.specs, ['packages/mayfly/tests/perf/work-budget.spec.ts'])
   })
 
+  test('a leaf edit reaches the guard specs that scan its source tree', () => {
+    const guards = [
+      'packages/mayfly/tests/core/business-rendering-drift.spec.ts',
+      'packages/mayfly/tests/frontend/architecture-boundary.spec.ts',
+      'packages/mayfly/tests/locale-catalog.spec.ts',
+    ]
+    const jobs = classifyChanges(['packages/mayfly/src/interaction/jobs.ts']).tests.specs
+    for (const guard of [...guards, 'packages/mayfly/tests/core/keyboard-boundary.spec.ts']) assert.ok(jobs.includes(guard), guard)
+    const banner = classifyChanges(['packages/mayfly/src/transcript/banner.ts']).tests.specs
+    for (const guard of [...guards, 'packages/mayfly/tests/core/keyboard-boundary.spec.ts']) assert.ok(banner.includes(guard), guard)
+    const builders = classifyChanges(['packages/ui/src/builders.ts']).tests.specs
+    for (const guard of ['packages/mayfly/tests/core/business-rendering-drift.spec.ts', 'packages/mayfly/tests/frontend/architecture-boundary.spec.ts']) assert.ok(builders.includes(guard), guard)
+  })
+
   test('widens global configuration to full, and only that', () => {
     assert.equal(classifyChanges(['vitest.config.ts']).mode, 'full')
     assert.equal(classifyChanges(['packages/ui/src/index.ts']).mode, 'changed')

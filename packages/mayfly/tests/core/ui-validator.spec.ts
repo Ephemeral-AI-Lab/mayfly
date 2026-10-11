@@ -58,6 +58,17 @@ describe('validateMayflyUiNode', () => {
     expect(validateMayflyUiNode(value)).toMatchObject({ ok: false, code: 'MAYFLY_INVALID_CONTRIBUTION', message: expect.stringContaining(message) })
   })
 
+  it('turns a line break in a fields row into one space instead of rejecting the node', () => {
+    const admitted = validateMayflyUiNode(ui.sections([{ body: ui.fields([
+      { label: 'a\nb', value: [{ text: 'line one\nline two' }, { text: 'x \n\n y' }] },
+      { label: 'plain', value: [{ text: 'kept' }] },
+    ]) }]))
+    expect(admitted.ok).toBe(true)
+    if (!admitted.ok) return
+    const [section] = (admitted.value as unknown as { sections: { body: { rows: { label: string, value: { text: string }[] }[] } }[] }).sections
+    expect(section!.body.rows.map(row => [row.label, row.value.map(piece => piece.text)])).toEqual([['a b', ['line one line two', 'x y']], ['plain', ['kept']]])
+  })
+
   it('canonicalizes every public node kind and drops unknown fields', () => {
     const all = ui.stack.column([
       ui.text('text', { tone: 'accent', overflow: 'truncate' }),

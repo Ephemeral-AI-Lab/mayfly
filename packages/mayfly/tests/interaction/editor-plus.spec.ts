@@ -38,6 +38,12 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
+/** Displays an Agent whose session header names `cwd`, as a session resumed from another workspace would. */
+function inDirectory(ctx: Context, agent: Agent, cwd: string): void {
+  const testSession = ctx.get('testSession') as { current: Agent | null }
+  testSession.current = { ...agent, id: agent.id, session: { ...agent.session, header: { cwd } } } as unknown as Agent
+}
+
 async function mount(options: { withAgent?: boolean, plusFirst?: boolean, locale?: 'en' | 'zh', locals?: { append(component: MayflyComponent): () => void } } = {}): Promise<{
   ctx: Context
   screen: FakeScreen
@@ -191,6 +197,20 @@ describe('mayfly-editor-plus input modes', () => {
     expect(followup).toHaveBeenCalledOnce()
     await inputFiber.dispose()
     expect(echoes(screen)).toEqual([])
+  })
+
+  it('runs a bash-mode command in the displayed session directory, not the launch directory', async () => {
+    const { ctx, screen, editor, agent } = await mount()
+    const sessionDir = mkdtempTracked('mayfly-plus-session-')
+    inDirectory(ctx, agent, sessionDir)
+    const cwds: string[] = []
+    editorPlus.setShellExecutor((_command, cwd) => { cwds.push(cwd); return Promise.resolve({ code: 0, stdout: '', stderr: '' }) })
+    type(editor, '!')
+    type(editor, 'pwd')
+    editor.handleInput(KEY.enter)
+    await vi.waitFor(() => { expect(echoes(screen)).toHaveLength(1) })
+    expect(cwds).toEqual([sessionDir])
+    expect(sessionDir).not.toBe(process.cwd())
   })
 
   it('anchors the echo into the conversation flow when the transcript seam exists', async () => {
@@ -962,6 +982,23 @@ describe('mayfly-editor-plus @ mentions', () => {
     const drill = await provider.getSuggestions(['@src/'], 0, 5, { signal: signal() })
     expect(drill?.items.map(item => item.value)).toEqual(['@src/a.ts', '@src/b.ts'])
     expect(delegated).not.toHaveBeenCalled()
+  })
+
+  it('completes @ in the displayed session directory and follows it when the session moves', async () => {
+    fileMention.setFdProbe(async () => null)
+    const { ctx, editor, agent } = await mount()
+    const launch = fixture()
+    process.chdir(launch)
+    const other = mkdtempTracked('mayfly-plus-other-')
+    writeFileSync(join(other, 'only-here.md'), 'x')
+    inDirectory(ctx, agent, other)
+    reattach(ctx)
+    const provider = editor.autocompleteProvider as MayflyAutocompleteProvider
+    const bare = await provider.getSuggestions(['@'], 0, 1, { signal: signal() })
+    expect(bare?.items.map(item => item.value)).toEqual(['@only-here.md'])
+    inDirectory(ctx, agent, launch)
+    const moved = await provider.getSuggestions(['@'], 0, 1, { signal: signal() })
+    expect(moved?.items.map(item => item.value)).toContain('@top.md')
   })
 
   it('falls back to the fs scanner for fd-less query-bearing tokens', async () => {
