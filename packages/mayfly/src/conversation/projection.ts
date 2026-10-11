@@ -124,7 +124,6 @@ export const conversationProjectionStateSchema = z.object({
   finalizedSteps: z.array(z.string()),
   interruptedTurns: z.array(z.number().int().nonnegative()),
   retractedTurns: z.array(z.number().int().nonnegative()),
-  toolEntryIds: z.record(z.string(), z.string()),
   turns: turnsSchema,
 }) satisfies z.ZodType<ConversationProjectionState>
 
@@ -141,7 +140,6 @@ export function initialConversationState(): ConversationProjectionState {
     finalizedSteps: [],
     interruptedTurns: [],
     retractedTurns: [],
-    toolEntryIds: {},
     turns: [],
   }
 }
@@ -187,8 +185,17 @@ function stepKey(turn: number, step: number): string {
   return `${String(turn)}:${String(step)}`
 }
 
+/** The id of the entry a tool call opens and its result completes. */
+function toolEntryId(callId: string): string {
+  return `tool:${callId}`
+}
+
+/**
+ * Where the entry with `id` sits, searched from the end: the entries a fold looks up are the ones it is streaming or
+ * has just opened, so the search costs the distance from the tail, not the length of the history.
+ */
 function entryIndex(entries: readonly ConversationEntry[], id: string | null): number {
-  return id === null ? -1 : entries.findIndex(entry => entry.id === id)
+  return id === null ? -1 : entries.findLastIndex(entry => entry.id === id)
 }
 
 function replaceEntry(
@@ -249,7 +256,7 @@ function reasoningDuration(stream: AssistantStreamState): number | undefined {
 /** Record one turn boundary time; a missing start adopts the end time. */
 function markTurn(state: ConversationProjectionState, turn: number, patch: Partial<ConversationTurn> & { readonly time: number }): ConversationProjectionState {
   const { time, ...fields } = patch
-  const index = state.turns.findIndex(entry => entry.turn === turn)
+  const index = state.turns.findLastIndex(entry => entry.turn === turn)
   const turns = [...state.turns]
   if (index < 0) turns.push({ turn, startedAt: time, ...fields })
   else turns[index] = { ...turns[index]!, ...fields }
@@ -279,10 +286,6 @@ export function isTurnRetraction(event: SessionEvent): boolean {
 function retractTurn(state: ConversationProjectionState, turn: number): ConversationProjectionState {
   if (state.retractedTurns.includes(turn)) return state
   const entries = state.entries.filter(entry => entry.turn !== turn)
-  const liveEntryIds = new Set(entries.map(entry => entry.id))
-  const toolEntryIds = Object.fromEntries(
-    Object.entries(state.toolEntryIds).filter(([, id]) => liveEntryIds.has(id)),
-  )
   const prefix = `${String(turn)}:`
   const ownsStreaming = state.streamingStep?.startsWith(prefix) === true || state.currentTurn === turn
   return {
@@ -300,7 +303,6 @@ function retractTurn(state: ConversationProjectionState, turn: number): Conversa
     finalizedSteps: state.finalizedSteps.filter(key => !key.startsWith(prefix)),
     interruptedTurns: state.interruptedTurns.filter(value => value !== turn),
     retractedTurns: [...state.retractedTurns, turn],
-    toolEntryIds,
     turns: state.turns.filter(entry => entry.turn !== turn),
   }
 }
@@ -401,11 +403,10 @@ function applyToolResult(
     endedAt: event.time,
     ...(event.data.meta === undefined ? {} : { meta: event.data.meta as ConversationJson }),
   }
-  const pairedId = state.toolEntryIds[callId]
-  if (pairedId !== undefined) {
-    return replaceEntry(state, pairedId, event.seq, entry => entry.kind === 'tool' ? { ...entry, result } : entry)
+  const id = toolEntryId(callId)
+  if (entryIndex(state.entries, id) >= 0) {
+    return replaceEntry(state, id, event.seq, entry => entry.kind === 'tool' ? { ...entry, result } : entry)
   }
-  const id = `tool:${callId}`
   const entry: ConversationToolEntry = {
     kind: 'tool',
     id,
@@ -420,10 +421,7 @@ function applyToolResult(
     channel: 'transcript',
     result,
   }
-  return {
-    ...appendEntry(state, entry),
-    toolEntryIds: { ...state.toolEntryIds, [callId]: id },
-  }
+  return appendEntry(state, entry)
 }
 
 /**
@@ -448,7 +446,7 @@ export function foldConversationProjection(
       if (state.retractedTurns.includes(event.data.turn)) return state
       const settled = { ...settleStreaming(state, event.seq), currentTurn: event.data.turn, active: false }
       // The first close wins: a later synthetic closer keeps the recorded outcome.
-      let next = state.turns.some(entry => entry.turn === event.data.turn && entry.endedAt !== undefined)
+      let next = state.turns.findLast(entry => entry.turn === event.data.turn)?.endedAt !== undefined
         ? settled
         : markTurn(settled, event.data.turn, { time: event.time, endedAt: event.time, outcome: event.data.reason.kind })
       if (event.data.reason.kind === 'error') {
@@ -528,7 +526,7 @@ export function foldConversationProjection(
         : finalizeAssistant(state, event)
     case 'tool/call': {
       if (state.retractedTurns.includes(event.data.turn)) return state
-      const id = `tool:${String(event.data.callId)}`
+      const id = toolEntryId(String(event.data.callId))
       const entry: ConversationToolEntry = {
         kind: 'tool',
         id,
@@ -542,10 +540,7 @@ export function foldConversationProjection(
         startedAt: event.time,
         channel: toolChannel(event.data.name),
       }
-      return {
-        ...appendEntry(pauseThinking(state, event.seq), entry),
-        toolEntryIds: { ...state.toolEntryIds, [entry.callId]: id },
-      }
+      return appendEntry(pauseThinking(state, event.seq), entry)
     }
     case 'tool/result':
       return state.retractedTurns.includes(event.data.turn) || !isAppendSurfaceEvent(event)
@@ -685,5 +680,5 @@ export const conversationProjectionDefinition: ConversationProjectionDefinition 
       return view
     },
   },
-  stateVersion: 8,
+  stateVersion: 9,
 }
