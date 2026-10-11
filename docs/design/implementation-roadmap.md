@@ -1827,17 +1827,17 @@ The A/B and the outputs:
 
 | Slice | Status | Branch |
 | --- | --- | --- |
-| 2b.0 | in review | `feat/2b-0-gate-design` |
-| 2b.1 | in review | `feat/2b-1-walk-grids` |
-| 2b.2 | in review | `feat/2b-2-one-suite-run` |
-| 2b.3 | in review | `feat/2b-3-graph-selection` |
-| 2b.4 | in review | `feat/2b-4-check-tiers` |
-| 2b.5 | in review | `feat/2b-5-scenario-runner` |
-| 2b.6 | in review | `feat/2b-6-scenario-goldens` |
-| 2b.7 | in review | `feat/2b-7-perf-ab` |
-| 2b.8 | in review | `feat/2b-8-real-screenshots` |
-| 2b.6b | in review | `feat/2b-6b-app-scenes` |
-| 2b.9 | in review | `feat/2b-9-typed-tests` |
+| 2b.0 | merged (main) | `feat/2b-0-gate-design` |
+| 2b.1 | merged (main) | `feat/2b-1-walk-grids` |
+| 2b.2 | merged (main) | `feat/2b-2-one-suite-run` |
+| 2b.3 | merged (main) | `feat/2b-3-graph-selection` |
+| 2b.4 | merged (main) | `feat/2b-4-check-tiers` |
+| 2b.5 | merged (main) | `feat/2b-5-scenario-runner` |
+| 2b.6 | merged (main) | `feat/2b-6-scenario-goldens` |
+| 2b.7 | merged (main) | `feat/2b-7-perf-ab` |
+| 2b.8 | merged (main) | `feat/2b-8-real-screenshots` |
+| 2b.6b | merged (main) | `feat/2b-6b-app-scenes` |
+| 2b.9 | merged (main) | `feat/2b-9-typed-tests` |
 
 **2c Content at any size** (§4.2, D26, D30-D33). The text quota and the paint-time cap go; a publish costs what its
 new text costs, a frame costs the rows in view, and memory is bounded by eviction, never by rejection. The owner
@@ -1875,15 +1875,15 @@ in review at a time; 2c.7 needs 2c.4's anchors. Each slice is reviewed like a co
 
 | Slice | Status | Branch |
 | --- | --- | --- |
-| 2c.0 | in review | `feat/2c` |
-| 2c.1 | in review | `feat/2c` |
-| 2c.2 | in review | `feat/2c` |
-| 2c.3 | in review | `feat/2c` |
-| 2c.4 | in review | `feat/2c` |
-| 2c.5 | in review | `feat/2c` |
-| 2c.6 | in review | `feat/2c` |
-| 2c.7 | in review | `feat/2c` |
-| 2c.8 | in review | `feat/2c` |
+| 2c.0 | merged (main, PR #1) | `feat/2c` |
+| 2c.1 | merged (main, PR #1) | `feat/2c` |
+| 2c.2 | merged (main, PR #1) | `feat/2c` |
+| 2c.3 | merged (main, PR #1) | `feat/2c` |
+| 2c.4 | merged (main, PR #1) | `feat/2c` |
+| 2c.5 | merged (main, PR #1) | `feat/2c` |
+| 2c.6 | merged (main, PR #1) | `feat/2c` |
+| 2c.7 | merged (main, PR #1) | `feat/2c` |
+| 2c.8 | merged (main, PR #1) | `feat/2c` |
 
 **2d The foundation review.** The owner reviews the basic components in the gallery with the workbench, covering what
 checkpoints A to C were to check: each basic scene beside the prototype at 120 and 60 columns, with `NO_COLOR=1`,
@@ -1891,6 +1891,10 @@ ASCII glyphs, and reduced motion; a key rebound in settings, with the hint row f
 `examples/mayfly-user-kit`; the prompt with paste, IME, and the clipboard (`docs/platform-acceptance.md`); an inline
 image; a plugin view in row 2; the work report and the bench. What the owner changes is changed here, in any API
 (D21), and the accepted frames replace the Phase 1 captures of 2b.
+
+**Phase 2 status: complete.** The owner accepted the foundation review (2d) on the workbench, and the machine
+verification passed (the full tier, `pnpm run check -- --tier full`). Phase 2 has no profile or preview left to remove.
+Phase 3 starts from the accepted foundation.
 
 ### Phase 3 Session flow
 
