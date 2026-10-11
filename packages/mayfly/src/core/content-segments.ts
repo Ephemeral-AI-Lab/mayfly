@@ -12,7 +12,7 @@
  * @module @ephemeral-ai/mayfly/core/content-segments
  */
 
-import { estimateColumns } from './width-estimate.ts'
+import { estimateColumns, startColumnWalk, walkColumns } from './width-estimate.ts'
 
 /** A line-run segment ends when either bound is hit. */
 export const CONTENT_SEGMENT_UNITS = 4_096
@@ -182,10 +182,11 @@ export class ContentIndex {
       if (target <= 0) return start
       let columns = 0
       let position = start
+      const walk = startColumnWalk()
       while (position < end) {
         const code = text.charCodeAt(position)
         const step = code >= 0xd800 && code <= 0xdbff && position + 1 < end ? 2 : 1
-        const next = columns + estimateColumns(text, position, position + step)
+        const next = columns + walkColumns(walk, text, position, position + step)
         if (next > target) return position
         columns = next
         position += step
@@ -362,18 +363,24 @@ function planContentLines(text: string, starts: ArrayLike<number>, ends: ArrayLi
       let cutColsAcc = 0
       let safeEnd = cutStart
       let position = cutStart
+      let walk = startColumnWalk()
       cutFrom = undefined
       while (position < end) {
         const code = text.charCodeAt(position)
         const step = code >= 0xd800 && code <= 0xdbff && position + 1 < end ? 2 : 1
         if (code >= 0x20 && code <= 0x7e) safeEnd = position + step
-        cutColsAcc += estimateColumns(text, position, position + step)
+        cutColsAcc += walkColumns(walk, text, position, position + step)
         position += step
         if (cutColsAcc >= CONTENT_CUT_COLUMNS) {
           const boundary = safeEnd > cutStart && safeEnd >= position - CUT_SAFE_LOOKBACK ? safeEnd : position
           pushCut(lineIndex, cutStart, boundary, estimateColumns(text, cutStart, boundary))
+          // The next cut counts from its own start, so the plan from any cut on is a function of the text from there: a
+          // plan that resumes at a cut is the plan of a walk from the line's start.
           cutStart = boundary
+          position = boundary
+          safeEnd = boundary
           cutColsAcc = 0
+          walk = startColumnWalk()
         }
       }
       if (cutStart < end) pushCut(lineIndex, cutStart, end, estimateColumns(text, cutStart, end))

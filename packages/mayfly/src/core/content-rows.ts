@@ -183,12 +183,21 @@ class SegmentedContent implements RowSource {
     }
   }
 
+  /**
+   * The row at `index` of the current map. Painting the segment under the row can replace its estimate with a different
+   * painted count, and the row then belongs to another segment, so the row is located again against the settled map.
+   * Each pass settles one more segment's count, and a settled count never moves again, so the walk ends.
+   */
   row(index: number): string {
-    if (index < 0 || index >= this.length) return ''
-    const segment = this.tree.locate(index)
-    const rows = this.segmentRows(segment)
-    countWork(this.env.counters, 'rowsMaterialized')
-    return rows[index - this.tree.sum(segment - 1)] ?? ''
+    for (;;) {
+      if (index < 0 || index >= this.length) return ''
+      const settled = this.changes
+      const segment = this.tree.locate(index)
+      const rows = this.segmentRows(segment)
+      if (this.changes !== settled) continue
+      countWork(this.env.counters, 'rowsMaterialized')
+      return rows[index - this.tree.sum(segment - 1)] ?? ''
+    }
   }
 
   /**
@@ -340,12 +349,17 @@ class DiffRowsSource implements RowSource {
     }
   }
 
+  /** The row at `index`, located again when painting its chunk moved the map (a contained failure's error rows). */
   row(index: number): string {
-    if (index < 0 || index >= this.length) return ''
-    const chunk = this.tree.locate(index)
-    const rows = this.chunkRows(chunk)
-    countWork(this.env.counters, 'rowsMaterialized')
-    return rows[index - this.tree.sum(chunk - 1)] ?? ''
+    for (;;) {
+      if (index < 0 || index >= this.length) return ''
+      const settled = this.changes
+      const chunk = this.tree.locate(index)
+      const rows = this.chunkRows(chunk)
+      if (this.changes !== settled) continue
+      countWork(this.env.counters, 'rowsMaterialized')
+      return rows[index - this.tree.sum(chunk - 1)] ?? ''
+    }
   }
 
   prepare(from: number, to: number): void {
@@ -502,21 +516,26 @@ class MarkdownRowSource implements RowSource {
     return rows
   }
 
+  /** The row at `index`, located again when painting its unit or its child moved the map under it. */
   row(index: number): string {
-    if (index < 0 || index >= this.length) return ''
-    const at = this.tree.locate(index)
-    const local = index - this.tree.sum(at - 1)
-    const rows = this.unitRows(at)
-    let row: string
-    if (rows !== undefined) row = rows[local] ?? ''
-    else {
-      // A segmented child answers its own row; no facade stands between, so nothing is kept twice.
-      const child = this.children.get(at)!
-      row = child.row(local)
-      this.syncCount(at, child.length)
+    for (;;) {
+      if (index < 0 || index >= this.length) return ''
+      const settled = this.changes
+      const at = this.tree.locate(index)
+      const local = index - this.tree.sum(at - 1)
+      const rows = this.unitRows(at)
+      let row: string
+      if (rows !== undefined) row = rows[local] ?? ''
+      else {
+        // A segmented child answers its own row; no facade stands between, so nothing is kept twice.
+        const child = this.children.get(at)!
+        row = child.row(local)
+        this.syncCount(at, child.length)
+      }
+      if (this.changes !== settled) continue
+      countWork(this.env.counters, 'rowsMaterialized')
+      return row
     }
-    countWork(this.env.counters, 'rowsMaterialized')
-    return row
   }
 
   prepare(from: number, to: number): void {

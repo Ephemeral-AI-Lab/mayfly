@@ -50,26 +50,98 @@ function pointWidth(point: number): number {
   return printingWidth(point)
 }
 
+/** Pictographs an emoji sequence joins: the emoji blocks, the symbol and dingbat blocks, and a few lone marks. */
+function isPictograph(point: number): boolean {
+  return point >= 0x1f000 && point <= 0x1faff || point >= 0x2190 && point <= 0x2bff || point === 0xa9 || point === 0xae || point === 0x203c || point === 0x2049 || point === 0x2122 || point === 0x2139
+}
+
 /**
- * Estimated columns of `text[start, end)`. Surrogate pairs count as their code point; the ranges `0 <= start <= end`
- * of a line never cross a `\n`. This is an estimate, not the measure: ANSI escapes the painter later strips count as
- * ordinary characters (a small over-estimate), and grapheme-cluster subtleties may be off by a cell.
+ * What the walk over a line remembers about the cluster in progress. The measure counts an emoji sequence once, not by
+ * member: a ZWJ sequence, a flag, a toned person, and a pictograph with a presentation selector are two columns each.
+ * The estimate follows those few rules and no others; every other cluster stays priced by its code points.
+ */
+export interface ColumnWalk {
+  /** The previous printing code point was a pictograph, so a joiner, tone, or selector after it belongs to its cluster. */
+  emoji: boolean
+  /** A joiner followed that pictograph: the next pictograph is a member of the sequence. */
+  joined: boolean
+  /** The previous code point was the first of a regional-indicator pair, so the next one completes the flag. */
+  flag: boolean
+  /** The cells the previous printing code point took (a keycap's enclosing mark widens a one-cell base). */
+  last: number
+}
+
+/** A walk at the start of a line. */
+export function startColumnWalk(): ColumnWalk {
+  return { emoji: false, joined: false, flag: false, last: 0 }
+}
+
+/** The cells one code point adds after the code points the walk has seen, which it advances. */
+function advance(walk: ColumnWalk, point: number): number {
+  if (point === 0x200d) { walk.joined = walk.emoji; return 0 }
+  const joined = walk.joined
+  walk.joined = false
+  if (point >= 0x1f1e6 && point <= 0x1f1ff) {
+    const completes = walk.flag
+    walk.flag = !completes
+    walk.emoji = true
+    walk.last = 2
+    return completes ? 0 : 2
+  }
+  walk.flag = false
+  // A presentation selector widens a narrow pictograph (a heart, a sun) to the emoji cell pair.
+  if (point === 0xfe0f) {
+    if (!walk.emoji || walk.last !== 1) return 0
+    walk.last = 2
+    return 1
+  }
+  // A keycap sequence (a digit, the selector, the enclosing keycap) is one emoji cell pair.
+  if (point === 0x20e3) {
+    if (walk.last !== 1) return 0
+    walk.last = 2
+    return 1
+  }
+  // A skin tone belongs to the pictograph before it, and gives a narrow one (a victory hand) its emoji cell pair.
+  if (point >= 0x1f3fb && point <= 0x1f3ff && walk.emoji) {
+    const widens = walk.last === 1
+    walk.last = 2
+    return widens ? 1 : 0
+  }
+  const cells = pointWidth(point)
+  if (cells === 0) return 0
+  const pictograph = isPictograph(point)
+  if (joined && pictograph) return 0
+  walk.emoji = pictograph
+  walk.last = cells
+  return cells
+}
+
+/** The cells a range adds to the walk, which it advances: the ranges of one line summed in order price it as a whole. */
+export function walkColumns(walk: ColumnWalk, text: string, start: number, end: number): number {
+  let width = 0
+  for (let index = start; index < end; index += 1) {
+    const code = text.charCodeAt(index)
+    if (code >= 0xd800 && code <= 0xdbff && index + 1 < end) {
+      const low = text.charCodeAt(index + 1)
+      if (low >= 0xdc00 && low <= 0xdfff) { width += advance(walk, ((code - 0xd800) << 10) + low - 0xdc00 + 0x10000); index += 1; continue }
+    }
+    width += advance(walk, code)
+  }
+  return width
+}
+
+/**
+ * Estimated columns of `text[start, end)`. Surrogate pairs count as their code point, and an emoji sequence counts as
+ * one cluster (see {@link ColumnWalk}); the ranges `0 <= start <= end` of a line never cross a `\n`. This is an
+ * estimate, not the measure: ANSI escapes the painter later strips count as ordinary characters (a small
+ * over-estimate), and clusters other than emoji sequences may be off by a cell.
  */
 export function estimateColumns(text: string, start: number, end: number): number {
-  let width = 0
   let ascii = true
   for (let index = start; index < end; index += 1) {
     const code = text.charCodeAt(index)
     if (code >= 0x80 || code === 0x09 || code < 0x20 || code === 0x7f) { ascii = false; break }
   }
   if (ascii) return end - start
-  for (let index = start; index < end; index += 1) {
-    const code = text.charCodeAt(index)
-    if (code >= 0xd800 && code <= 0xdbff && index + 1 < end) {
-      const low = text.charCodeAt(index + 1)
-      if (low >= 0xdc00 && low <= 0xdfff) { width += pointWidth(((code - 0xd800) << 10) + low - 0xdc00 + 0x10000); index += 1; continue }
-    }
-    width += pointWidth(code)
-  }
-  return width
+  return walkColumns(startColumnWalk(), text, start, end)
 }

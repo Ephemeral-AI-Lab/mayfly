@@ -166,6 +166,36 @@ describe('contentNodeSource', () => {
     expect(trimmedRows).toEqual(allRows(trimmed, 60, makeEnv().env))
   })
 
+  it('answers a first read of an over-estimated segment from the row the painted map puts there', () => {
+    // The index prices the escape sequences of a line as ordinary characters and the painter strips them, so a document of
+    // colored text estimates far more rows than it paints. A reader that jumps without preparing reads a row the map
+    // still places in a segment whose painted count then shrinks: the row has moved on, and an empty string must not
+    // stand in for it.
+    const colored = Array.from({ length: 400 }, (_, line) => Array.from({ length: 30 }, (_, at) => `\x1b[38;2;${String(line % 256)};20;30m${String.fromCharCode(97 + at % 26)}`).join('')).join('\n')
+    const kinds: readonly WindowedContentNode[] = [
+      { kind: 'text', content: colored },
+      { kind: 'code', code: colored },
+      { kind: 'markdown', source: colored.replaceAll('\n', '\n\n') },
+    ]
+    for (const node of kinds) {
+      for (const width of [20, 40]) {
+        const reference = documentRowsSource(node as never, width, makeEnv().env)!
+        reference.prepare?.(0, Number.MAX_SAFE_INTEGER)
+        const settled = reference.length
+        const jumped = documentRowsSource(node as never, width, makeEnv().env)!
+        expect(jumped.length, `${node.kind} at ${String(width)}: the estimate is past the painted rows`).toBeGreaterThan(settled)
+        // Every row below the painted total exists, and the map is never shorter than that until it has converged.
+        const reads: string[] = []
+        for (let row = 0; row < settled; row += 37) reads.push(jumped.row(row))
+        expect(reads.filter(row => row === ''), `${node.kind} at ${String(width)}`).toEqual([])
+        // A sequential read paints each segment before the next is asked for, so it never meets a moved row.
+        const walked = documentRowsSource(node as never, width, makeEnv().env)!
+        const ordered = Array.from({ length: Math.min(settled, 600) }, (_, row) => walked.row(row))
+        expect(ordered.filter(row => row === '')).toEqual([])
+      }
+    }
+  })
+
   it('serves a repainted segment from the shared cache instead of painting again', () => {
     const text = 'abcdefghij '.repeat(200).trim()
     const node: WindowedContentNode = { kind: 'text', content: text }
@@ -809,7 +839,7 @@ describe('contentNodeSource', () => {
     expect(documentRowsSource(undefined as never, 40, env.env)).toBeUndefined()
   })
 
-  it('reports a diff paint failure once, then repaints it after the entry evicts', () => {
+  it('reports a diff paint failure once per chunk, then repaints it after the entry evicts', () => {
     const counters = createWorkCounters()
     const cache = new MayflyContentCache(1)
     const reports: string[] = []
@@ -832,15 +862,16 @@ describe('contentNodeSource', () => {
     const after = Array.from({ length: 70 }, (_, index) => `n${String(index)}`).join('\n')
     const node: WindowedContentNode = { kind: 'diff', before, after }
     const rows = contentNodeRows(node, 40, env)
-    // A read located under the estimate falls through the failed chunk's one error row and answers ''.
+    // Row 10 lies past the one error row of the first chunk, so the read settles the map through each chunk it passes
+    // (each reports its own failure once) and finds no row left to answer.
     expect(rows[10]!).toBe('')
     expect(strip(rows[0]!)).toBe('<error>no</error>')
-    expect(reports).toEqual(['no'])
+    expect(reports).toEqual(['no', 'no', 'no'])
     for (let index = 0; index < 140; index += 1) cache.put(`pad${String(index)}`, ['x'.repeat(200)], 500)
     // A fresh facade over the memoized source repaints the evicted chunk; the failure stays deduplicated.
     const again = contentNodeRows(node, 40, env)
     expect(strip(again[0]!)).toBe('<error>no</error>')
-    expect(reports).toEqual(['no'])
+    expect(reports).toEqual(['no', 'no', 'no'])
   })
 })
 

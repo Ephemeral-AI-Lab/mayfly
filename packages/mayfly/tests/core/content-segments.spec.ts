@@ -230,6 +230,8 @@ describe('extendMergedLines', () => {
   }
 
   const longLine = 'word '.repeat(CONTENT_CUT_UNITS / 4)
+  // Letters up to the cut threshold, then wide characters across it: the cut lands before the wide run, at the last plain boundary.
+  const straddling = `${'a'.repeat(4_090)}${'中'.repeat(30)}`.repeat(4)
 
   it.each([
     [[], ['a', 'b\n', '\n', 'c\nd', '']],
@@ -243,15 +245,20 @@ describe('extendMergedLines', () => {
     [['head\n', longLine.slice(0, 3_000)], [longLine.slice(3_000, 9_000), longLine.slice(9_000), ' end of the long line', '\nafter\n']],
     [['first\n', longLine], [longLine, 'x\n', 'short\n', longLine, 'tail']],
     [[`${longLine}\n${'short\n'.repeat(100)}`], ['more short\n', longLine, longLine]],
+    [['head\n', straddling], [straddling, '中'.repeat(100), 'tail\n', straddling]],
+    // The last cut of the index starts where the first one stopped short of three wide characters; the appended letters cross the next threshold from there.
+    [[`${'a'.repeat(4_090)}中中中${'\u0301'.repeat(13_000)}`], ['a'.repeat(5_000), 'b'.repeat(5_000)]],
+    [[straddling.slice(0, 9_000)], [straddling.slice(9_000, 13_000), straddling.slice(13_000)]],
   ])('equals the scratch index after each append %#', expectAppends)
 
   it('equals the scratch index over random chunkings of text with long lines and wide characters', () => {
     let seed = 11
     const random = (limit: number): number => { seed = (seed * 1_103_515_245 + 12_345) % 2_147_483_648; return seed % limit }
     const pieces = ['plain words here ', '\n', '\n\n', '中文宽字符', '🚀', '\u{1F468}‍\u{1F469}‍\u{1F467}', 'tab\tstop', 'x'.repeat(2_000), longLine, 'é']
-    for (let round = 0; round < 12; round += 1) {
-      const chunks = Array.from({ length: 1 + random(6) }, () => Array.from({ length: random(8) }, () => pieces[random(pieces.length)]!).join(''))
-      const more = Array.from({ length: 1 + random(8) }, () => Array.from({ length: random(6) }, () => pieces[random(pieces.length)]!).join(''))
+    for (let round = 0; round < 24; round += 1) {
+      const pool = [...pieces, ...Array.from({ length: 3 }, () => `${'a'.repeat(4_070 + random(40))}${'中'.repeat(1 + random(40))}`)]
+      const chunks = Array.from({ length: 1 + random(6) }, () => Array.from({ length: random(8) }, () => pool[random(pool.length)]!).join(''))
+      const more = Array.from({ length: 1 + random(8) }, () => Array.from({ length: random(6) }, () => pool[random(pool.length)]!).join(''))
       expectAppends(chunks, more)
     }
   })
