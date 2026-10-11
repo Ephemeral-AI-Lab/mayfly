@@ -16,8 +16,8 @@ import type { Context } from '@deepseek-ai/cordis'
 import { MayflyComponentsService } from './components.ts'
 import { MayflyKeymapService } from './keymap.ts'
 import { MayflyScreenService } from './screen.ts'
-import { MayflyTerminalInfoService } from './terminal-info.ts'
-import { startMayflyTerminal } from './terminal.ts'
+import { MayflyTerminalInfoService, backgroundFromRgb, probeTerminalBackground } from './terminal-info.ts'
+import { startMayflyTerminal, type MayflyTerminalRuntime } from './terminal.ts'
 import { mountMayflySurfaceRenderer } from './surface-renderer.ts'
 import { contextHintTranslator, mountContextHintLocale } from './context-hint-locale.ts'
 import { ThemeModelService } from '../frontend/theme.ts'
@@ -47,7 +47,6 @@ export {
   type MayflyUiImageSource,
   type MayflyUiImageState,
 } from './ui-images.ts'
-export { createTerminalRelease } from './terminal.ts'
 export { concatRows } from './ui-rows.ts'
 export { alignDiffLines, diffChangeCounts, diffModel, paintDiffRows, paintDiffSegment, DIFF_ALIGN_MAX_EDITS, DIFF_CONTEXT_ROWS, type DiffModel, type DiffOp, type DiffPaintColors, type DiffPaintOptions, type DiffRowModel, type DiffSegment, type DiffWidthHelpers } from './diff-align.ts'
 export { WindowController, type MayflyWindow } from './window-controller.ts'
@@ -148,17 +147,37 @@ export const name = 'mayfly-core'
  * Probe the terminal, start it, and mount the L1 services. `mayflyKeymap`
  * instantiates directly (see below); the remaining services are class
  * plugins on their own fibers, so unloading this plugin unregisters all of
- * them; the effect stops the terminal last. `mayflyComponents` mounts as a
- * sub-plugin injecting `mayflyTheme`: while no theme provider is loaded the
- * sub-plugin waits, and a provider swap rebuilds the factory through
- * Cordis reload semantics.
+ * them. The terminal's owner effect is registered before the probe and its
+ * restore is awaited by the unload; the plugin's other disposables run
+ * concurrently with it and tolerate a stopping runtime. `mayflyComponents`
+ * mounts as a sub-plugin injecting `mayflyTheme`: while no theme provider is
+ * loaded the sub-plugin waits, and a provider swap rebuilds the factory
+ * through Cordis reload semantics.
  * @param ctx - plugin context.
  */
 export async function apply(ctx: Context): Promise<void> {
   ctx.plugin(ThemeModelService)
-  const runtime = await startMayflyTerminal(undefined, undefined, (scheme) => {
-    ctx.emit('mayfly/terminal-theme-changed', scheme)
-  }, undefined, 'alternate', { stdout: process.stdout, stderr: process.stderr })
+  // The terminal's owner is registered before the probe acquires anything.
+  // Terminal restore starts first at unload and is awaited by the Fiber; the
+  // Fiber's children dispose concurrently with it and must tolerate a
+  // stopping runtime — a stopped TUI ignores late requestRender calls.
+  let runtime: MayflyTerminalRuntime | undefined
+  let disposed = false
+  ctx.effect(() => () => {
+    disposed = true
+    return runtime?.stop()
+  })
+  const background = backgroundFromRgb(await probeTerminalBackground())
+  // Unloaded during the probe: nothing was started, nothing to stop.
+  if (disposed) return
+  runtime = startMayflyTerminal(undefined, {
+    background,
+    onSchemeChange: (scheme) => {
+      ctx.emit('mayfly/terminal-theme-changed', scheme)
+    },
+    screenMode: 'alternate',
+    ambientOutput: { stdout: process.stdout, stderr: process.stderr },
+  })
   mountContextHintLocale(ctx, runtime.requestRender)
   // The keymap instantiates directly instead of as a class plugin so the
   // dispatcher below can close over the instance: the runtime predates the
@@ -195,5 +214,4 @@ export async function apply(ctx: Context): Promise<void> {
       mountMayflySurfaceRenderer(subCtx as Parameters<typeof mountMayflySurfaceRenderer>[0], runtime, contextHintTranslator(ctx), subCtx.get('mayflyUiImages'))
     },
   })
-  ctx.effect(() => () => runtime.stop())
 }

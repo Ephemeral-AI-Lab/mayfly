@@ -12,9 +12,8 @@ import type { LayoutBox, LayoutFrame } from '@earendil-works/pi-tui/dist/layout.
 import { LAYOUT_NODE, type LayoutNode } from '@earendil-works/pi-tui/dist/layout-node.js'
 import { ui } from '../../../ui/src/index.ts'
 import { compileMayflyUiNode } from '../../src/core/ui-compiler.ts'
-import type { MayflyComponent, MayflyComponents, MayflyFocusable, MayflyRgbColor } from '../../src/core/types.ts'
+import type { MayflyComponent, MayflyComponents, MayflyFocusable } from '../../src/core/types.ts'
 import {
-  createTerminalRelease,
   measuredLaneRows,
   normalizeNavigationInput,
   normalizeWheelInput,
@@ -27,16 +26,6 @@ import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/
 import { FakeTerminal, waitForRender } from './fake-terminal.ts'
 import { virtualRows } from '../../src/core/ui-rows.ts'
 import { plainColors } from '../helpers.ts'
-
-vi.mock('../../src/core/terminal-info.ts', async importOriginal => {
-  const actual = await importOriginal<typeof import('../../src/core/terminal-info.ts')>()
-  return { ...actual, probeTerminalBackground: vi.fn(() => Promise.resolve(undefined)) }
-})
-
-/** A background probe that never answers, for tests indifferent to it. */
-function noProbe(): Promise<MayflyRgbColor | undefined> {
-  return Promise.resolve(undefined)
-}
 
 /**
  * Drop the writer-level control wrappers pi-tui adds around raw writes but
@@ -119,7 +108,7 @@ class TerminalOutputStream implements AmbientOutputStream {
 describe('startMayflyTerminal', () => {
   it.each(['main', 'alternate'] as const)('repaints a resize before the pending stream timer in %s mode', async mode => {
     const terminal = new FakeTerminal(40, 10)
-    const runtime = await startMayflyTerminal(terminal, noProbe, undefined, undefined, mode)
+    const runtime = startMayflyTerminal(terminal, { screenMode: mode })
     const component = { render: vi.fn((width: number) => [`width ${String(width)}`]), invalidate() {} }
     runtime.addChild(component)
     await waitForRender()
@@ -146,16 +135,16 @@ describe('startMayflyTerminal', () => {
     }
   })
 
-  it('uses the default background probe when none is injected', async () => {
+  it('leaves the background unset when the caller probed nothing', async () => {
     const terminal = new FakeTerminal()
-    const runtime = await startMayflyTerminal(terminal, undefined)
+    const runtime = startMayflyTerminal(terminal)
     expect(runtime.background).toBeUndefined()
     await runtime.stop()
   })
 
   it('starts the renderer on the given terminal', async () => {
     const terminal = new FakeTerminal()
-    const runtime = await startMayflyTerminal(terminal, noProbe)
+    const runtime = startMayflyTerminal(terminal)
     expect(terminal.startCount).toBe(1)
     expect(runtime.columns).toBe(80)
     expect(runtime.rows).toBe(24)
@@ -166,7 +155,7 @@ describe('startMayflyTerminal', () => {
 
   it('leaves mouse reporting disabled so native terminal selection remains available', async () => {
     const terminal = new FakeTerminal()
-    const runtime = await startMayflyTerminal(terminal, noProbe)
+    const runtime = startMayflyTerminal(terminal)
 
     expect(terminal.output).not.toContain('\x1b[?1000h')
     expect(terminal.output).not.toContain('\x1b[?1002h')
@@ -181,23 +170,16 @@ describe('startMayflyTerminal', () => {
     expect(terminal.output).not.toContain('\x1b[?1006l')
   })
 
-  it('runs the probe before the terminal starts and maps the reply', async () => {
-    const terminal = new FakeTerminal()
-    let startCountAtProbe = -1
-    const probe = () => {
-      startCountAtProbe = terminal.startCount
-      return Promise.resolve({ r: 255, g: 255, b: 255 })
-    }
-    const runtime = await startMayflyTerminal(terminal, probe)
-    expect(startCountAtProbe).toBe(0)
-    expect(runtime.background).toBe('light')
-    await runtime.stop()
+  it('carries the caller-classified probe reply onto the runtime', async () => {
+    const light = startMayflyTerminal(new FakeTerminal(), { background: 'light' })
+    expect(light.background).toBe('light')
+    await light.stop()
 
-    const dark = await startMayflyTerminal(new FakeTerminal(), () => Promise.resolve({ r: 0, g: 0, b: 0 }))
+    const dark = startMayflyTerminal(new FakeTerminal(), { background: 'dark' })
     expect(dark.background).toBe('dark')
     await dark.stop()
 
-    const unknown = await startMayflyTerminal(new FakeTerminal(), noProbe)
+    const unknown = startMayflyTerminal(new FakeTerminal())
     expect(unknown.background).toBeUndefined()
     await unknown.stop()
   })
@@ -205,7 +187,7 @@ describe('startMayflyTerminal', () => {
   it('exposes the Kitty protocol state and the stable TUI reference', async () => {
     const terminal = new FakeTerminal()
     terminal.kittyActive = true
-    const runtime = await startMayflyTerminal(terminal, noProbe)
+    const runtime = startMayflyTerminal(terminal)
     expect(runtime.kittyKeyboard).toBe(true)
     expect(runtime.tui.children).toEqual([])
     await runtime.stop()
@@ -213,7 +195,7 @@ describe('startMayflyTerminal', () => {
 
   it('writes a sanitized OSC 0 title straight through the terminal', async () => {
     const terminal = new FakeTerminal()
-    const runtime = await startMayflyTerminal(terminal, noProbe)
+    const runtime = startMayflyTerminal(terminal)
     runtime.setTitle('fix the login\x1b]0;pwned\x07 bug')
     // The title write is the terminal's latest: one raw write carries the
     // whole sequence, its payload sanitized (the injected OSC and BEL
@@ -225,7 +207,7 @@ describe('startMayflyTerminal', () => {
   it('enables scheme notifications and forwards reports through the callback', async () => {
     const terminal = new FakeTerminal()
     const schemes: ('dark' | 'light')[] = []
-    const runtime = await startMayflyTerminal(terminal, noProbe, scheme => schemes.push(scheme))
+    const runtime = startMayflyTerminal(terminal, { onSchemeChange: scheme => schemes.push(scheme) })
     // Mode 2031 notifications are requested right after start.
     expect(terminal.output).toContain('\x1b[?2031h')
 
@@ -240,14 +222,14 @@ describe('startMayflyTerminal', () => {
 
   it('tolerates scheme reports without a registered callback', async () => {
     const terminal = new FakeTerminal()
-    const runtime = await startMayflyTerminal(terminal, noProbe)
+    const runtime = startMayflyTerminal(terminal)
     terminal.sendInput('\x1b[?997;2n')
     await runtime.stop()
   })
 
   it('renders mounted components to the terminal', async () => {
     const terminal = new FakeTerminal()
-    const runtime = await startMayflyTerminal(terminal, noProbe)
+    const runtime = startMayflyTerminal(terminal)
     runtime.addChild(textComponent('hello mayfly'))
     runtime.requestRender()
     await waitForRender()
@@ -261,7 +243,7 @@ describe('startMayflyTerminal', () => {
 
   it('renders bottom-pinned components after content mounted later', async () => {
     const terminal = new FakeTerminal()
-    const runtime = await startMayflyTerminal(terminal, noProbe)
+    const runtime = startMayflyTerminal(terminal)
     // The editor pins first; transcript rows mount afterwards (session start)
     // and must still render above it.
     const editor = textComponent('bottom-editor')
@@ -289,7 +271,7 @@ describe('startMayflyTerminal', () => {
 
   it('sinks the bottom dock to the last rows when content is shorter than the viewport', async () => {
     const terminal = new FakeTerminal()
-    const runtime = await startMayflyTerminal(terminal, noProbe)
+    const runtime = startMayflyTerminal(terminal)
     runtime.addBottomChild(textComponent('dock-row'))
     runtime.addChild(textComponent('content-row'))
     runtime.requestRender(true)
@@ -306,7 +288,7 @@ describe('startMayflyTerminal', () => {
 
   it('keeps the bottom dock visible when content exceeds the viewport', async () => {
     const terminal = new FakeTerminal()
-    const runtime = await startMayflyTerminal(terminal, noProbe)
+    const runtime = startMayflyTerminal(terminal)
     runtime.addBottomChild(textComponent('dock-row'))
     runtime.addChild({
       render: () => Array.from({ length: 30 }, (_, index) => `row-${index}`),
@@ -326,7 +308,7 @@ describe('startMayflyTerminal', () => {
 
   it('routes keyboard scroll input through the content handler', async () => {
     const terminal = new FakeTerminal()
-    const runtime = await startMayflyTerminal(terminal, noProbe)
+    const runtime = startMayflyTerminal(terminal)
     runtime.addBottomChild(textComponent('dock-row'))
     runtime.addChild({
       render: () => Array.from({ length: 30 }, (_, index) => `row-${index}`),
@@ -344,7 +326,7 @@ describe('startMayflyTerminal', () => {
 
   it('pads nothing while no component is mounted', async () => {
     const terminal = new FakeTerminal()
-    const runtime = await startMayflyTerminal(terminal, noProbe)
+    const runtime = startMayflyTerminal(terminal)
     runtime.requestRender(true)
     await waitForRender()
     // An empty tree renders no lines at all — no blank flood at boot.
@@ -354,7 +336,7 @@ describe('startMayflyTerminal', () => {
 
   it('pads nothing without a bottom-pinned component', async () => {
     const terminal = new FakeTerminal()
-    const runtime = await startMayflyTerminal(terminal, noProbe)
+    const runtime = startMayflyTerminal(terminal)
     runtime.addChild(textComponent('content-row'))
     runtime.requestRender(true)
     await waitForRender()
@@ -368,7 +350,7 @@ describe('startMayflyTerminal', () => {
     // line exceeds the 40-column viewport and the width guard throws out of
     // the render timer. The exit backstop hard-slices it instead.
     const terminal = new FakeTerminal(40)
-    const runtime = await startMayflyTerminal(terminal, noProbe)
+    const runtime = startMayflyTerminal(terminal)
     runtime.addChild({
       render: () => ['x'.repeat(60), '中文'.repeat(30), 'fits'],
       invalidate: () => {},
@@ -386,8 +368,8 @@ describe('startMayflyTerminal', () => {
   it('records clamped lines through the injected overflow sink', async () => {
     const terminal = new FakeTerminal(40)
     const entries: FrameOverflowEntry[] = []
-    const runtime = await startMayflyTerminal(terminal, noProbe, undefined, {
-      record: entry => entries.push(entry),
+    const runtime = startMayflyTerminal(terminal, {
+      overflow: { record: entry => entries.push(entry) },
     })
     runtime.addChild(textComponent('y'.repeat(55)))
     runtime.requestRender(true)
@@ -398,7 +380,7 @@ describe('startMayflyTerminal', () => {
 
   it('clamps the dock-filler frame path as well', async () => {
     const terminal = new FakeTerminal(40)
-    const runtime = await startMayflyTerminal(terminal, noProbe)
+    const runtime = startMayflyTerminal(terminal)
     runtime.addBottomChild(textComponent('z'.repeat(52)))
     runtime.addChild(textComponent('content'))
     runtime.requestRender(true)
@@ -414,25 +396,38 @@ describe('startMayflyTerminal', () => {
 
   it('stops idempotently: drains input once and stops the terminal once', async () => {
     const terminal = new FakeTerminal()
-    const runtime = await startMayflyTerminal(terminal, noProbe)
+    const runtime = startMayflyTerminal(terminal)
     await runtime.stop()
     await runtime.stop()
     expect(terminal.drainCount).toBe(1)
     expect(terminal.stopCount).toBe(1)
   })
 
-  it('keeps only the newest runtime active for the release', async () => {
-    const first = await startMayflyTerminal(new FakeTerminal(), noProbe)
-    const secondTerminal = new FakeTerminal()
-    await startMayflyTerminal(secondTerminal, noProbe)
-    await first.stop()
-    await createTerminalRelease()()
-    expect(secondTerminal.stopCount).toBe(1)
+  it('hands a second stop() the first call\'s in-flight teardown', async () => {
+    const terminal = new FakeTerminal()
+    const gate = Promise.withResolvers<void>()
+    const originalDrain = terminal.drainInput.bind(terminal)
+    let drained = false
+    terminal.drainInput = async () => {
+      await gate.promise
+      drained = true
+      return originalDrain()
+    }
+    const runtime = startMayflyTerminal(terminal)
+    const first = runtime.stop().then(() => 'first')
+    const second = runtime.stop().then(() => 'second')
+    // Neither settles while the drain is still open.
+    expect(await Promise.race([Promise.race([first, second]), Promise.resolve('pending')])).toBe('pending')
+    gate.resolve()
+    expect(await Promise.all([first, second])).toEqual(['first', 'second'])
+    expect(drained).toBe(true)
+    expect(terminal.drainCount).toBe(1)
+    expect(terminal.stopCount).toBe(1)
   })
 
   it('linearizes managed surfaces in MainScreen order and restores the exact frame on unload', async () => {
     const terminal = new FakeTerminal(80, 12)
-    const runtime = await startMayflyTerminal(terminal, noProbe)
+    const runtime = startMayflyTerminal(terminal)
     runtime.addChild(textComponent('transcript'))
     runtime.addBottomChild(textComponent('editor'))
     runtime.addBottomChild(textComponent('status'), 'bottom')
@@ -465,7 +460,7 @@ describe('startMayflyTerminal', () => {
 describe('alternate-screen runtime', () => {
   it('budgets passive panes without hiding fixed slots and recomputes on resize', async () => {
     const terminal = new AltScreenTerminal(40, 10)
-    const runtime = await startMayflyTerminal(terminal, noProbe, undefined, undefined, 'alternate')
+    const runtime = startMayflyTerminal(terminal, { screenMode: 'alternate' })
     const counts = new Map<string, number>()
     const counted = (label: string, rows: number): MayflyComponent => ({
       render: () => {
@@ -522,7 +517,7 @@ describe('alternate-screen runtime', () => {
 
   it('renders optional lanes at 120 columns, falls back at 80/40, and keeps the fixed tail', async () => {
     const terminal = new AltScreenTerminal(120, 12)
-    const runtime = await startMayflyTerminal(terminal, noProbe, undefined, undefined, 'alternate')
+    const runtime = startMayflyTerminal(terminal, { screenMode: 'alternate' })
     runtime.addChild(textComponent('transcript'))
     runtime.addBottomChild(textComponent('editor'))
     runtime.addBottomChild(textComponent('status'), 'bottom')
@@ -566,7 +561,7 @@ describe('alternate-screen runtime', () => {
 
   it('keeps the no-contribution frame exactly equivalent before and after a surface lifecycle', async () => {
     const terminal = new AltScreenTerminal(80, 8)
-    const runtime = await startMayflyTerminal(terminal, noProbe, undefined, undefined, 'alternate')
+    const runtime = startMayflyTerminal(terminal, { screenMode: 'alternate' })
     runtime.addChild(textComponent('transcript'))
     runtime.addBottomChild(textComponent('editor'))
     runtime.addBottomChild(textComponent('status'), 'bottom')
@@ -589,7 +584,7 @@ describe('alternate-screen runtime', () => {
 
   it('moves a side-only lane through bottom fallback and the 44-column reopen boundary', async () => {
     const terminal = new AltScreenTerminal(120, 8)
-    const runtime = await startMayflyTerminal(terminal, noProbe, undefined, undefined, 'alternate')
+    const runtime = startMayflyTerminal(terminal, { screenMode: 'alternate' })
     runtime.addChild(textComponent('transcript'))
     runtime.addBottomChild(textComponent('editor'))
     runtime.addBottomChild(textComponent('status'), 'bottom')
@@ -622,7 +617,7 @@ describe('alternate-screen runtime', () => {
 
   it('promotes a focused collapsed side without adding a lane at narrow width', async () => {
     const terminal = new AltScreenTerminal(73, 8)
-    const runtime = await startMayflyTerminal(terminal, noProbe, undefined, undefined, 'alternate')
+    const runtime = startMayflyTerminal(terminal, { screenMode: 'alternate' })
     runtime.addChild(textComponent('transcript'))
     runtime.addBottomChild(textComponent('editor'))
     runtime.addBottomChild(textComponent('status'), 'bottom')
@@ -657,7 +652,7 @@ describe('alternate-screen runtime', () => {
 
   it('remeasures a lane when its rendered layout is invalidated mid-frame', async () => {
     const terminal = new AltScreenTerminal(80, 8)
-    const runtime = await startMayflyTerminal(terminal, noProbe, undefined, undefined, 'alternate')
+    const runtime = startMayflyTerminal(terminal, { screenMode: 'alternate' })
     runtime.addChild(textComponent('transcript'))
     runtime.addBottomChild(textComponent('editor'))
     runtime.surfaces.register({ id: 'header', placement: 'header', component: textComponent('header') })
@@ -682,7 +677,7 @@ describe('alternate-screen runtime', () => {
 
   it('can register a collapsed side at 40 columns and recover its HStack at 120', async () => {
     const terminal = new AltScreenTerminal(40, 8)
-    const runtime = await startMayflyTerminal(terminal, noProbe, undefined, undefined, 'alternate')
+    const runtime = startMayflyTerminal(terminal, { screenMode: 'alternate' })
     runtime.addChild(textComponent('transcript'))
     runtime.addBottomChild(textComponent('editor'))
     runtime.addBottomChild(textComponent('status'), 'bottom')
@@ -702,7 +697,7 @@ describe('alternate-screen runtime', () => {
 
   it('preserves a compiled pane scroll as contained while transcript remains the only primary owner', async () => {
     const terminal = new AltScreenTerminal(80, 8)
-    const runtime = await startMayflyTerminal(terminal, noProbe, undefined, undefined, 'alternate')
+    const runtime = startMayflyTerminal(terminal, { screenMode: 'alternate' })
     runtime.addChild({
       render: () => Array.from({ length: 20 }, (_, index) => `transcript-${String(index)}`),
       invalidate: () => {},
@@ -764,7 +759,7 @@ describe('alternate-screen runtime', () => {
 
   it('forwards lane and tab invalidation through the surface manager', async () => {
     const terminal = new AltScreenTerminal(80, 8)
-    const runtime = await startMayflyTerminal(terminal, noProbe, undefined, undefined, 'alternate')
+    const runtime = startMayflyTerminal(terminal, { screenMode: 'alternate' })
     const transcript = textComponent('transcript')
     runtime.addChild(transcript)
     runtime.addBottomChild(textComponent('editor'))
@@ -803,7 +798,7 @@ describe('alternate-screen runtime', () => {
   it('paints an over-budget bottom lane head-first with one shared rule', async () => {
     // A 12-row terminal gives the bottom lane four rows.
     const terminal = new AltScreenTerminal(40, 12)
-    const runtime = await startMayflyTerminal(terminal, noProbe, undefined, undefined, 'alternate')
+    const runtime = startMayflyTerminal(terminal, { screenMode: 'alternate' })
     runtime.addChild(textComponent('transcript'))
     runtime.addBottomChild(textComponent('editor'))
     runtime.addBottomChild(textComponent('status'), 'bottom')
@@ -833,7 +828,7 @@ describe('alternate-screen runtime', () => {
 
   it('reports measured lane viewports without recursive surface rendering', async () => {
     const terminal = new AltScreenTerminal(120, 12)
-    const runtime = await startMayflyTerminal(terminal, noProbe, undefined, undefined, 'alternate')
+    const runtime = startMayflyTerminal(terminal, { screenMode: 'alternate' })
     runtime.addChild(textComponent('transcript'))
     runtime.addBottomChild(textComponent('editor'))
     runtime.addBottomChild(textComponent('status'), 'bottom')
@@ -878,7 +873,7 @@ describe('alternate-screen runtime', () => {
 
   it('reports the full terminal viewport for main-screen surfaces', async () => {
     const terminal = new FakeTerminal(90, 18)
-    const runtime = await startMayflyTerminal(terminal, noProbe)
+    const runtime = startMayflyTerminal(terminal)
     runtime.surfaces.register({ id: 'main-pane', placement: 'right', component: textComponent('pane') })
 
     expect(runtime.surfaceViewport('main-pane')).toEqual({ columns: 90, rows: 18 })
@@ -888,7 +883,7 @@ describe('alternate-screen runtime', () => {
 
   it('keeps restored editor focus when a stale pane release follows passive activation', async () => {
     const terminal = new AltScreenTerminal(120, 8)
-    const runtime = await startMayflyTerminal(terminal, noProbe, undefined, undefined, 'alternate')
+    const runtime = startMayflyTerminal(terminal, { screenMode: 'alternate' })
     runtime.addChild(textComponent('transcript'))
     const editor = focusableComponent('editor')
     runtime.addBottomChild(editor)
@@ -916,7 +911,7 @@ describe('alternate-screen runtime', () => {
 
   it('releases real focus for hidden narrow surfaces but retains it across bottom fallback', async () => {
     const terminal = new AltScreenTerminal(120, 8)
-    const runtime = await startMayflyTerminal(terminal, noProbe, undefined, undefined, 'alternate')
+    const runtime = startMayflyTerminal(terminal, { screenMode: 'alternate' })
     runtime.addChild(textComponent('transcript'))
     runtime.addBottomChild(textComponent('editor'))
     runtime.addBottomChild(textComponent('status'), 'bottom')
@@ -968,7 +963,7 @@ describe('alternate-screen runtime', () => {
 
   it('retargets lane activation, active unload, and overlay pre-focus', async () => {
     const terminal = new AltScreenTerminal(120, 8)
-    const runtime = await startMayflyTerminal(terminal, noProbe, undefined, undefined, 'alternate')
+    const runtime = startMayflyTerminal(terminal, { screenMode: 'alternate' })
     runtime.addChild(textComponent('transcript'))
     runtime.addBottomChild(textComponent('editor'))
     runtime.addBottomChild(textComponent('status'), 'bottom')
@@ -1022,7 +1017,7 @@ describe('alternate-screen runtime', () => {
 
   it('retargets rendered input focus when the active surface tab switches', async () => {
     const terminal = new AltScreenTerminal(120, 8)
-    const runtime = await startMayflyTerminal(terminal, noProbe, undefined, undefined, 'alternate')
+    const runtime = startMayflyTerminal(terminal, { screenMode: 'alternate' })
     runtime.addChild(textComponent('transcript'))
     runtime.addBottomChild(textComponent('editor'))
     runtime.addBottomChild(textComponent('status'), 'bottom')
@@ -1058,7 +1053,7 @@ describe('alternate-screen runtime', () => {
 
   it('preserves active side focus through bottom fallback and reverse resize', async () => {
     const terminal = new AltScreenTerminal(120, 8)
-    const runtime = await startMayflyTerminal(terminal, noProbe, undefined, undefined, 'alternate')
+    const runtime = startMayflyTerminal(terminal, { screenMode: 'alternate' })
     runtime.addChild(textComponent('transcript'))
     runtime.addBottomChild(textComponent('editor'))
     runtime.addBottomChild(textComponent('status'), 'bottom')
@@ -1105,7 +1100,7 @@ describe('alternate-screen runtime', () => {
 
   it('shrinks header and managed bottom before clipping the fixed editor/status tail', async () => {
     const terminal = new AltScreenTerminal(80, 8)
-    const runtime = await startMayflyTerminal(terminal, noProbe, undefined, undefined, 'alternate')
+    const runtime = startMayflyTerminal(terminal, { screenMode: 'alternate' })
     const rows = (label: string, count: number): MayflyComponent => ({
       render: () => Array.from({ length: count }, (_, index) => `${label}-${String(index)}`),
       invalidate: () => {},
@@ -1157,14 +1152,10 @@ describe('alternate-screen runtime', () => {
     const terminal = new AltScreenTerminal(40, 12)
     const stdout = new TerminalOutputStream(terminal)
     const stderr = new TerminalOutputStream(terminal)
-    const runtime = await startMayflyTerminal(
-      terminal,
-      noProbe,
-      undefined,
-      undefined,
-      'alternate',
-      { stdout, stderr },
-    )
+    const runtime = startMayflyTerminal(terminal, {
+      screenMode: 'alternate',
+      ambientOutput: { stdout, stderr },
+    })
     runtime.addChild({
       render: () => Array.from({ length: 30 }, (_, index) => `transcript-${String(index).padStart(2, '0')}`),
       invalidate: () => {},
@@ -1211,14 +1202,10 @@ describe('alternate-screen runtime', () => {
     const stderr = new TerminalOutputStream(terminal)
     const originalStdoutWrite = stdout.write
     const originalStderrWrite = stderr.write
-    const runtime = await startMayflyTerminal(
-      terminal,
-      noProbe,
-      undefined,
-      undefined,
-      'alternate',
-      { stdout, stderr },
-    )
+    const runtime = startMayflyTerminal(terminal, {
+      screenMode: 'alternate',
+      ambientOutput: { stdout, stderr },
+    })
     const activeStdoutWrite = stdout.write
     expect(activeStdoutWrite).not.toBe(originalStdoutWrite)
     expect(stderr.write).not.toBe(originalStderrWrite)
@@ -1238,7 +1225,7 @@ describe('alternate-screen runtime', () => {
 
   it('keeps raw wheel reports for the native viewport when no editor handler is installed', async () => {
     const terminal = new AltScreenTerminal(40, 10)
-    const runtime = await startMayflyTerminal(terminal, noProbe, undefined, undefined, 'alternate')
+    const runtime = startMayflyTerminal(terminal, { screenMode: 'alternate' })
     runtime.addChild({
       render: () => Array.from({ length: 20 }, (_, index) => `row-${index}`),
       invalidate: () => {},
@@ -1258,7 +1245,7 @@ describe('alternate-screen runtime', () => {
 
   it('keeps a focused editor from receiving wheel reports at the scroll boundary', async () => {
     const terminal = new AltScreenTerminal(40, 10)
-    const runtime = await startMayflyTerminal(terminal, noProbe, undefined, undefined, 'alternate')
+    const runtime = startMayflyTerminal(terminal, { screenMode: 'alternate' })
     const received: string[] = []
     const editor: MayflyFocusable & { handleInput(data: string): void } = {
       focused: false,
@@ -1291,7 +1278,7 @@ describe('alternate-screen runtime', () => {
 
   it('routes wheel reports by pointer position over a focused dock surface', async () => {
     const terminal = new AltScreenTerminal(40, 10)
-    const runtime = await startMayflyTerminal(terminal, noProbe, undefined, undefined, 'alternate')
+    const runtime = startMayflyTerminal(terminal, { screenMode: 'alternate' })
     const received: string[] = []
     const dock: MayflyFocusable & { handleInput(data: string): void } = {
       focused: false,
@@ -1331,7 +1318,7 @@ describe('alternate-screen runtime', () => {
 
   it('leaves wheel input raw for a focused component outside the dock and surfaces', async () => {
     const terminal = new AltScreenTerminal(40, 10)
-    const runtime = await startMayflyTerminal(terminal, noProbe, undefined, undefined, 'alternate')
+    const runtime = startMayflyTerminal(terminal, { screenMode: 'alternate' })
     const received: string[] = []
     const content: MayflyFocusable & { handleInput(data: string): void } = {
       focused: false,
@@ -1357,7 +1344,7 @@ describe('alternate-screen runtime', () => {
 
   it('keeps the dock fixed while wheel input scrolls the transcript by three rows', async () => {
     const terminal = new AltScreenTerminal(40, 10)
-    const runtime = await startMayflyTerminal(terminal, noProbe, undefined, undefined, 'alternate')
+    const runtime = startMayflyTerminal(terminal, { screenMode: 'alternate' })
     runtime.addBottomChild(textComponent('dock-row'), 'bottom')
     runtime.addChild({
       render: () => Array.from({ length: 20 }, (_, index) => `row-${index}`),
@@ -1401,13 +1388,10 @@ describe('alternate-screen runtime', () => {
     const terminal = new AltScreenTerminal(40, 10)
     const overflows: FrameOverflowEntry[] = []
     const rows = ['x'.repeat(50)]
-    const runtime = await startMayflyTerminal(
-      terminal,
-      noProbe,
-      undefined,
-      { record: entry => overflows.push(entry) },
-      'alternate',
-    )
+    const runtime = startMayflyTerminal(terminal, {
+      overflow: { record: entry => overflows.push(entry) },
+      screenMode: 'alternate',
+    })
     runtime.addChild({ render: () => rows, invalidate: () => {} })
     runtime.requestRender(true)
     await waitForRender()
@@ -1428,13 +1412,10 @@ describe('alternate-screen runtime', () => {
     let stable = ['stable', 'y'.repeat(50)]
     let volatileRenders = 0
     let volatileTail = 'z'.repeat(50)
-    const runtime = await startMayflyTerminal(
-      terminal,
-      noProbe,
-      undefined,
-      { record: entry => overflows.push(entry) },
-      'alternate',
-    )
+    const runtime = startMayflyTerminal(terminal, {
+      overflow: { record: entry => overflows.push(entry) },
+      screenMode: 'alternate',
+    })
     runtime.addChild({ render: () => stable, invalidate: () => {} })
     // A stateless child hands back a fresh array every frame.
     runtime.addChild({ render: () => { volatileRenders += 1; return ['fresh', volatileTail] }, invalidate: () => {} })
@@ -1477,7 +1458,7 @@ describe('alternate-screen runtime', () => {
   it('clamps a virtual child row by row without reading an earlier frame', async () => {
     const terminal = new AltScreenTerminal(40, 10)
     const overflows: FrameOverflowEntry[] = []
-    const runtime = await startMayflyTerminal(terminal, noProbe, undefined, { record: entry => overflows.push(entry) }, 'alternate')
+    const runtime = startMayflyTerminal(terminal, { overflow: { record: entry => overflows.push(entry) }, screenMode: 'alternate' })
     // Every render hands back a fresh facade over a fresh source; each source counts the rows read from it.
     const frames: { reads: number }[] = []
     runtime.addChild({
@@ -1508,13 +1489,10 @@ describe('alternate-screen runtime', () => {
     const { MayflyScreenService } = await import('../../src/core/screen.ts')
     const terminal = new AltScreenTerminal(40, 12)
     const overflows: FrameOverflowEntry[] = []
-    const runtime = await startMayflyTerminal(
-      terminal,
-      noProbe,
-      undefined,
-      { record: entry => overflows.push(entry) },
-      'alternate',
-    )
+    const runtime = startMayflyTerminal(terminal, {
+      overflow: { record: entry => overflows.push(entry) },
+      screenMode: 'alternate',
+    })
     const screen = new MayflyScreenService(new Context(), runtime)
     // The prelude re-composes every render, like the stateless banner used to.
     screen.mountContentSlot('transcript.prelude', { render: () => ['prelude'], invalidate: () => {} })
@@ -1554,7 +1532,7 @@ describe('alternate-screen runtime', () => {
 
   it('routes wheel and legacy or enhanced navigation keys to a focused replacement panel', async () => {
     const terminal = new FakeTerminal(40, 10)
-    const runtime = await startMayflyTerminal(terminal, noProbe, undefined, undefined, 'alternate')
+    const runtime = startMayflyTerminal(terminal, { screenMode: 'alternate' })
     const received: string[] = []
     const panel: MayflyFocusable & { handleInput(data: string): void } = {
       focused: false,
@@ -1606,7 +1584,7 @@ describe('alternate-screen runtime', () => {
     const savedTmux = process.env.TMUX
     delete process.env.TMUX
     const terminal = new AltScreenTerminal(40, 8)
-    const runtime = await startMayflyTerminal(terminal, noProbe, undefined, undefined, 'alternate')
+    const runtime = startMayflyTerminal(terminal, { screenMode: 'alternate' })
     try {
       runtime.addBottomChild(textComponent('dock-row'))
       runtime.addChild(textComponent('select this text'))
@@ -1639,7 +1617,7 @@ describe('alternate-screen runtime', () => {
       }
     }
     const terminal = new FailingClipboardTerminal(40, 8)
-    const runtime = await startMayflyTerminal(terminal, noProbe, undefined, undefined, 'alternate')
+    const runtime = startMayflyTerminal(terminal, { screenMode: 'alternate' })
     try {
       runtime.addChild(textComponent('select this text'))
       runtime.requestRender(true)
@@ -1661,7 +1639,7 @@ describe('alternate-screen runtime', () => {
 
   it('preserves the main screen during suspend and re-enters fullscreen afterwards', async () => {
     const terminal = new FakeTerminal()
-    const runtime = await startMayflyTerminal(terminal, noProbe, undefined, undefined, 'alternate')
+    const runtime = startMayflyTerminal(terminal, { screenMode: 'alternate' })
     await runtime.suspend(async () => {
       expect(terminal.output.lastIndexOf('\x1b[?1049l')).toBeGreaterThan(terminal.output.lastIndexOf('\x1b[?1049h'))
     })
@@ -1672,9 +1650,10 @@ describe('alternate-screen runtime', () => {
   it('clamps alternate-screen content through the injected overflow sink', async () => {
     const terminal = new FakeTerminal(20, 8)
     const entries: FrameOverflowEntry[] = []
-    const runtime = await startMayflyTerminal(terminal, noProbe, undefined, {
-      record: entry => entries.push(entry),
-    }, 'alternate')
+    const runtime = startMayflyTerminal(terminal, {
+      overflow: { record: entry => entries.push(entry) },
+      screenMode: 'alternate',
+    })
     runtime.addChild(textComponent('x'.repeat(30)))
     runtime.requestRender(true)
     await waitForRender()
@@ -1686,7 +1665,7 @@ describe('alternate-screen runtime', () => {
 describe('suspend', () => {
   it('releases the renderer around fn and resumes with a full repaint', async () => {
     const terminal = new FakeTerminal()
-    const runtime = await startMayflyTerminal(terminal, noProbe)
+    const runtime = startMayflyTerminal(terminal)
     runtime.addChild(textComponent('suspend-frame'))
     runtime.requestRender()
     await waitForRender()
@@ -1708,7 +1687,7 @@ describe('suspend', () => {
 
   it('runs fn with the renderer already stopped', async () => {
     const terminal = new FakeTerminal()
-    const runtime = await startMayflyTerminal(terminal, noProbe)
+    const runtime = startMayflyTerminal(terminal)
     let stopCountInside = -1
     await runtime.suspend(async () => {
       stopCountInside = terminal.stopCount
@@ -1722,7 +1701,7 @@ describe('suspend', () => {
 
   it('propagates fn failures after resuming the renderer', async () => {
     const terminal = new FakeTerminal()
-    const runtime = await startMayflyTerminal(terminal, noProbe)
+    const runtime = startMayflyTerminal(terminal)
     const startCountBefore = terminal.startCount
     await expect(runtime.suspend(async () => {
       throw new Error('boom')
@@ -1733,7 +1712,7 @@ describe('suspend', () => {
 
   it('rejects a second suspend while one is in flight', async () => {
     const terminal = new FakeTerminal()
-    const runtime = await startMayflyTerminal(terminal, noProbe)
+    const runtime = startMayflyTerminal(terminal)
     await runtime.suspend(async () => {
       await expect(runtime.suspend(async () => 1)).rejects.toThrow('already in flight')
     })
@@ -1742,7 +1721,7 @@ describe('suspend', () => {
 
   it('a stop during suspend tears down without draining or re-stopping the renderer', async () => {
     const terminal = new FakeTerminal()
-    const runtime = await startMayflyTerminal(terminal, noProbe)
+    const runtime = startMayflyTerminal(terminal)
     const value = await runtime.suspend(async () => {
       await runtime.stop()
       // A child owns the tty: no drain, and the renderer's own suspend stop
@@ -1761,12 +1740,12 @@ describe('suspend', () => {
   })
 
   it('a superseded runtime stopping mid-suspend leaves the successor alone', async () => {
-    const first = await startMayflyTerminal(new FakeTerminal(), noProbe)
+    const first = startMayflyTerminal(new FakeTerminal())
     const secondTerminal = new FakeTerminal()
     await first.suspend(async () => {
       // A newer stack registers while the first is suspended (the mirror of
       // "keeps only the newest runtime active", raced against a suspend).
-      await startMayflyTerminal(secondTerminal, noProbe)
+      startMayflyTerminal(secondTerminal)
       await first.stop()
       // The stop unregisters the superseded runtime only.
       expect(secondTerminal.stopCount).toBe(0)
@@ -1775,14 +1754,14 @@ describe('suspend', () => {
 
   it('refuses to suspend a stopped runtime', async () => {
     const terminal = new FakeTerminal()
-    const runtime = await startMayflyTerminal(terminal, noProbe)
+    const runtime = startMayflyTerminal(terminal)
     await runtime.stop()
     await expect(runtime.suspend(async () => 1)).rejects.toThrow('stopped; suspend refused')
   })
 
   it('drains and stops normally after a resumed suspend', async () => {
     const terminal = new FakeTerminal()
-    const runtime = await startMayflyTerminal(terminal, noProbe)
+    const runtime = startMayflyTerminal(terminal)
     await runtime.suspend(async () => undefined)
     await runtime.stop()
     expect(terminal.drainCount).toBe(1)
@@ -1793,7 +1772,7 @@ describe('suspend', () => {
 describe('overlay focus discipline', () => {
   it('keeps trusted default overlay width responsive while enforcing its hard maximum', async () => {
     const terminal = new FakeTerminal(40, 24)
-    const runtime = await startMayflyTerminal(terminal, noProbe)
+    const runtime = startMayflyTerminal(terminal)
     const widths: number[] = []
     const overlay = { render: (width: number) => { widths.push(width); return ['overlay'] }, invalidate: () => {} }
     const handle = runtime.showOverlay(overlay, { width: '70%', minWidth: 150, maxWidth: 100 })
@@ -1839,7 +1818,7 @@ describe('overlay focus discipline', () => {
   })
 
   it('reports capturing overlays across visible, hidden, and passive states', async () => {
-    const runtime = await startMayflyTerminal(new FakeTerminal(), noProbe)
+    const runtime = startMayflyTerminal(new FakeTerminal())
     expect(runtime.hasCapturingOverlay()).toBe(false)
 
     const capturing = runtime.showOverlay(textComponent('capturing'))
@@ -1857,7 +1836,7 @@ describe('overlay focus discipline', () => {
 
   it('focuses a shown overlay and restores the previous focus on hide', async () => {
     const terminal = new FakeTerminal()
-    const runtime = await startMayflyTerminal(terminal, noProbe)
+    const runtime = startMayflyTerminal(terminal)
     const base = focusableComponent('base')
     runtime.addChild(base)
     runtime.setFocus(base)
@@ -1878,7 +1857,7 @@ describe('overlay focus discipline', () => {
 
   it('supports temporary hide/show and focus/unfocus through the handle', async () => {
     const terminal = new FakeTerminal()
-    const runtime = await startMayflyTerminal(terminal, noProbe)
+    const runtime = startMayflyTerminal(terminal)
     const overlay = focusableComponent('modal')
     const handle = runtime.showOverlay(overlay)
 
@@ -1902,7 +1881,7 @@ describe('overlay focus discipline', () => {
 
   it('does not capture focus for a nonCapturing overlay', async () => {
     const terminal = new FakeTerminal()
-    const runtime = await startMayflyTerminal(terminal, noProbe)
+    const runtime = startMayflyTerminal(terminal)
     const base = focusableComponent('editor')
     runtime.addChild(base)
     runtime.setFocus(base)
@@ -1962,7 +1941,7 @@ describe('input listeners on the stable reference', () => {
 
   it('routes normalized wheel input to the focused component', async () => {
     const terminal = new FakeTerminal()
-    const runtime = await startMayflyTerminal(terminal, noProbe)
+    const runtime = startMayflyTerminal(terminal)
     const received: string[] = []
     const focused: MayflyFocusable & { handleInput(data: string): void } = {
       focused: false,
@@ -1980,7 +1959,7 @@ describe('input listeners on the stable reference', () => {
 
   it('normalizes wheel input for a focused surface pane', async () => {
     const terminal = new FakeTerminal()
-    const runtime = await startMayflyTerminal(terminal, noProbe, undefined, undefined, 'alternate')
+    const runtime = startMayflyTerminal(terminal, { screenMode: 'alternate' })
     const received: string[] = []
     const focused: MayflyFocusable & { handleInput(data: string): void } = {
       focused: false,
@@ -1999,7 +1978,7 @@ describe('input listeners on the stable reference', () => {
 
   it('runs listeners before focus routing and honors consume/dispose', async () => {
     const terminal = new FakeTerminal()
-    const runtime = await startMayflyTerminal(terminal, noProbe)
+    const runtime = startMayflyTerminal(terminal)
     const received: string[] = []
     const focused: MayflyFocusable & { handleInput(data: string): void } = {
       focused: false,
@@ -2027,21 +2006,6 @@ describe('input listeners on the stable reference', () => {
     terminal.sendInput('\x0f')
     expect(received).toEqual(['a', '\x0f'])
     await runtime.stop()
-  })
-})
-
-describe('createTerminalRelease', () => {
-  it('is a no-op before any terminal stack is active and after it stops', async () => {
-    const release = createTerminalRelease()
-    await release()
-
-    const terminal = new FakeTerminal()
-    await startMayflyTerminal(terminal, noProbe)
-    await release()
-    expect(terminal.stopCount).toBe(1)
-
-    await release()
-    expect(terminal.stopCount).toBe(1)
   })
 })
 

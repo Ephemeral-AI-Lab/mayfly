@@ -39,8 +39,7 @@ import {
 } from './surface-manager.ts'
 import { buildTitleOsc0, copySelectionText } from './terminal-escape.ts'
 import { concatRows, isVirtualRows, mapRows } from './ui-rows.ts'
-import { probeTerminalBackground, backgroundFromRgb, type MayflyProbeProcess } from './terminal-info.ts'
-import type { MayflyComponent, MayflyDockOptions, MayflyOverlayHandle, MayflyOverlayOptions, MayflyRgbColor } from './types.ts'
+import type { MayflyComponent, MayflyDockOptions, MayflyOverlayHandle, MayflyOverlayOptions } from './types.ts'
 
 interface MayflyRuntimeOverlayOptions extends MayflyOverlayOptions { readonly maxWidth?: number }
 
@@ -586,67 +585,80 @@ export interface MayflyTerminalRuntime {
    */
   setTitle(title: string): void
   /**
-   * Restore the terminal: drain pending input, then stop the renderer and
-   * the underlying terminal. Idempotent.
+   * Restore the terminal: deactivate the output guard, drain pending input,
+   * then stop the renderer and the underlying terminal. Memoized: a second
+   * caller receives the first call's promise and so settles only once the
+   * terminal is restored. Terminal restore starts first at Fiber unload and
+   * is awaited by it; the Fiber's children dispose concurrently and must
+   * tolerate a stopping runtime.
    * @returns settles when the terminal state is restored.
    */
   stop(): Promise<void>
 }
 
-/**
- * The Mayfly terminal stack active in this process, or `undefined` before the
- * plugin loads and after it unloads. At most one is active: the underlying
- * `ProcessTerminal` owns process stdin/stdout.
- */
-let activeRuntime: MayflyTerminalRuntime | undefined
-
-/**
- * Terminal restore function factory for `installFailLoud(binName, proc,
- * release)`. The returned function stops the active Mayfly terminal stack
- * (restoring raw mode, bracketed paste, and keyboard protocols) and is a
- * no-op when no stack is active.
- * @returns the release function to hand to `installFailLoud`.
- */
-export function createTerminalRelease(): () => Promise<void> {
-  return async () => {
-    await activeRuntime?.stop()
-  }
+/** Constructor options for {@link startMayflyTerminal}. */
+export interface MayflyTerminalOptions {
+  /**
+   * The probed terminal background ('dark'/'light'), already classified by
+   * `backgroundFromRgb`. The caller owns the asynchronous probe so this
+   * function can start the renderer synchronously: between acquiring the tty
+   * and returning the runtime to its Fiber owner there is no `await`.
+   */
+  readonly background?: 'dark' | 'light' | undefined
+  /** Called when the terminal reports a dark/light color-scheme switch. */
+  readonly onSchemeChange?: (scheme: 'dark' | 'light') => void
+  /**
+   * Where the exit backstop records clamped lines; defaults to the
+   * deduplicating file sink under pi-tui's log directory. Tests inject a
+   * recorder.
+   */
+  readonly overflow?: OverflowSink
+  /**
+   * Renderer buffer mode. The Mayfly plugin selects `'alternate'`;
+   * `'main'` remains available for compatibility fixtures.
+   */
+  readonly screenMode?: MayflyScreenMode
+  /**
+   * stdout/stderr streams that host plugins may write around the renderer.
+   * Production passes process streams; source-plane VT tests inject
+   * recording streams.
+   */
+  readonly ambientOutput?: AmbientOutput
 }
 
 /**
- * Start the Mayfly terminal stack: a pi-tui renderer over a `ProcessTerminal`,
- * registered as the process-active runtime. The OSC 11
- * background probe runs first, before the renderer takes stdin into raw
- * mode; then the renderer starts and subscribes to terminal color-scheme
- * (mode 2031) notifications, forwarded through `onSchemeChange`.
+ * Start the Mayfly terminal stack: a pi-tui renderer over a `ProcessTerminal`.
+ * The renderer starts and subscribes to terminal color-scheme (mode 2031)
+ * notifications, forwarded through `onSchemeChange`.
  * Production uses the alternate screen; main-screen mode remains an explicit
  * compatibility option. The returned runtime holds the renderer itself, so
  * the concrete pi-tui class never leaks past core.
- * @param terminal - the terminal to drive; defaults to a real
+ *
+ * The function is synchronous by contract: its caller owns the asynchronous
+ * background probe and registers the runtime's owner (a Fiber effect) before
+ * acquiring the tty, so a runtime handed out here is always already owned.
+ * @param hostTerminal - the terminal to drive; defaults to a real
  *   `ProcessTerminal` on process stdin/stdout. Tests inject a fake.
- * @param probe - the background probe; defaults to the OSC 11 query on the
- *   live process. Tests inject a recording fake.
- * @param onSchemeChange - called when the terminal reports a dark/light
- *   color-scheme switch.
- * @param overflow - where the exit backstop records clamped lines; defaults
- *   to the deduplicating file sink under pi-tui's log directory. Tests
- *   inject a recorder.
- * @param screenMode - renderer buffer mode. The Mayfly plugin selects
- *   `'alternate'`; `'main'` remains available for compatibility fixtures.
- * @param ambientOutput - stdout/stderr streams that host plugins may write
- *   around the renderer. Production passes process streams; source-plane VT
- *   tests inject recording streams.
+ * @param options - see {@link MayflyTerminalOptions}.
  * @returns the running stack's Mayfly-typed face.
  */
-export async function startMayflyTerminal(
-  terminal: Terminal = new ProcessTerminal(),
-  probe: (proc?: MayflyProbeProcess) => Promise<MayflyRgbColor | undefined> = () => probeTerminalBackground(),
-  onSchemeChange?: (scheme: 'dark' | 'light') => void,
-  overflow: OverflowSink = createFileOverflowSink({ directory: defaultOverflowDirectory() }),
-  screenMode: MayflyScreenMode = 'main',
-  ambientOutput?: AmbientOutput,
-): Promise<MayflyTerminalRuntime> {
-  const alternate = screenMode === 'alternate'
+export function startMayflyTerminal(
+  hostTerminal: Terminal = new ProcessTerminal(),
+  options: MayflyTerminalOptions = {},
+): MayflyTerminalRuntime {
+  const alternate = (options.screenMode ?? 'main') === 'alternate'
+  const onSchemeChange = options.onSchemeChange
+  const overflow = options.overflow ?? createFileOverflowSink({ directory: defaultOverflowDirectory() })
+  // Dynamic Host plugins intentionally log straight to process stdout/stderr.
+  // In alternate-screen mode that bypasses the renderer at its hardware
+  // cursor (normally inside the editor), so the text can overwrite both the
+  // draft and footer until another input happens to redraw them. Preserve the
+  // host write, then force a full frame on the next tick. Every renderer
+  // write goes through the facade; output that did not is ambient.
+  const outputRecovery = alternate && options.ambientOutput !== undefined
+    ? createOutputRecovery(options.ambientOutput, () => current.requestRender(true))
+    : undefined
+  const terminal = outputRecovery?.renderer(hostTerminal) ?? hostTerminal
   // The renderer reads input through the joiner, so a modified key split in two arrives as one sequence.
   const input = withJoinedModifiers(terminal)
   const current: TUI = alternate
@@ -931,24 +943,16 @@ export async function startMayflyTerminal(
       ...bottomPinned,
     ]
   }
-  const background = backgroundFromRgb(await probe())
+  const background = options.background
   current.start()
-  // Dynamic Host plugins intentionally log straight to process stdout/stderr.
-  // In alternate-screen mode that bypasses the renderer at its hardware
-  // cursor (normally inside the editor), so the text can overwrite both the
-  // draft and footer until another input happens to redraw them. Preserve the
-  // host write, then force a full frame on the next tick. Renderer writes are
-  // excluded by the recovery handle's terminal-write guard.
-  const outputRecovery = alternate && ambientOutput !== undefined
-    ? createOutputRecovery(terminal, ambientOutput, () => current.requestRender(true))
-    : undefined
   outputRecovery?.activate()
   current.setTerminalColorSchemeNotifications(true)
   if (onSchemeChange !== undefined) current.onTerminalColorSchemeChange(onSchemeChange)
   let stopped = false
   let suspended = false
+  let stopping: Promise<void> | undefined
   const runtime: MayflyTerminalRuntime = {
-    mode: screenMode,
+    mode: alternate ? 'alternate' : 'main',
     get columns() {
       return current.terminal.columns
     },
@@ -962,13 +966,13 @@ export async function startMayflyTerminal(
     tui: current,
     surfaces,
     surfaceViewport(id) {
-      const layout = screenMode === 'main'
+      const layout = !alternate
         ? surfaces.linearLayout(terminal.columns, terminal.rows)
         : surfaces.layout(terminal.columns, terminal.rows)
       const lane = ([layout.header, layout.left, layout.right, layout.bottom] as const)
         .find(candidate => candidate?.entries.some(entry => entry.id === id))
       const columns = lane?.placement === 'left' || lane?.placement === 'right' ? lane.width ?? terminal.columns : terminal.columns
-      if (screenMode === 'main') return { columns: Math.max(1, terminal.columns), rows: Math.max(1, terminal.rows) }
+      if (!alternate) return { columns: Math.max(1, terminal.columns), rows: Math.max(1, terminal.rows) }
       const tabs = lane === undefined ? 0 : surfaceLaneTabRows(lane)
       const dockRows = lastDockRows
       const rows = lane?.placement === 'header'
@@ -1137,6 +1141,12 @@ export async function startMayflyTerminal(
       // One setImmediate beat lets the stop escape sequences flush before
       // the child takes over the tty.
       await new Promise<void>(resolve => setImmediate(resolve))
+      // Stopped while the stop sequences flushed: the child must not take
+      // the tty at all; the teardown already ran the suspended branch.
+      if (stopped) {
+        suspended = false
+        throw new Error('mayfly terminal stopped while suspending')
+      }
       try {
         return await fn()
       } finally {
@@ -1146,7 +1156,7 @@ export async function startMayflyTerminal(
         process.stdin.pause()
         // Torn down mid-suspend (fiber unload / fail-loud release): the
         // renderer must not restart; the settlement propagates as-is.
-        if (!stopped && activeRuntime === runtime) {
+        if (!stopped) {
           current.start()
           outputRecovery?.activate()
           // stop() disabled OSC 2031 notifications; re-arm them, then force
@@ -1164,36 +1174,35 @@ export async function startMayflyTerminal(
       terminal.write(buildTitleOsc0(title))
     },
     async stop() {
-      if (stopped) return
-      stopped = true
-      if (suspended) {
-        // The renderer is already stopped and a child owns the tty: draining
-        // here would steal the child's input, and a second tui stop would
-        // replay the teardown sequences. Just unregister.
-        removeWheelNormalizer()
-        removeViewportInput()
-        removeContentScrollHandler()
-        removeNavigationNormalizer()
+      // Memoized single-shot: every caller receives the first caller's
+      // promise and so settles only once the terminal is restored.
+      stopping ??= (async () => {
+        stopped = true
+        // The guard leaves first so the drain below never repaints into a
+        // screen that is about to be left.
         outputRecovery?.deactivate()
-        // Final teardown: drain overflow telemetry still queued off the
-        // render path before the runtime goes away.
-        await overflow.dispose?.()
-        if (activeRuntime === runtime) activeRuntime = undefined
-        return
-      }
-      // Drain before stopping so in-flight Kitty key releases cannot leak
-      // into the parent shell as literal escape sequences.
-      await terminal.drainInput()
-      outputRecovery?.deactivate()
-      current.stop()
-      removeWheelNormalizer()
-      removeViewportInput()
-      removeContentScrollHandler()
-      removeNavigationNormalizer()
-      await overflow.dispose?.()
-      if (activeRuntime === runtime) activeRuntime = undefined
+        try {
+          if (!suspended) {
+            // Drain before stopping so in-flight Kitty key releases cannot
+            // leak into the parent shell as literal escape sequences.
+            await terminal.drainInput()
+            current.stop()
+          }
+          // Suspended: the renderer is already stopped and a child owns the
+          // tty — draining would steal the child's input and a second tui
+          // stop would replay the teardown sequences.
+        } finally {
+          removeWheelNormalizer()
+          removeViewportInput()
+          removeContentScrollHandler()
+          removeNavigationNormalizer()
+          // Final teardown: drain overflow telemetry still queued off the
+          // render path before the runtime goes away.
+          await overflow.dispose?.()
+        }
+      })()
+      return stopping
     },
   }
-  activeRuntime = runtime
   return runtime
 }
