@@ -9,6 +9,9 @@ slots, never arbitrary root components.
 
 ## State and lifetime ownership
 
+- A resource acquired across an `await` registers its owner first and
+  re-checks it on resumption: the owning effect precedes the acquisition,
+  and queued async work fences starts and late failures behind the unload flag.
 - `app/` owns startup and the conversation registry (`mayflyConversations`):
   the primary plus any number of side conversations (at most one BTW), one
   displayed selection, and the most-recently-displayed order behind F7.

@@ -292,6 +292,20 @@ describe('mayfly app driver', () => {
     await vi.waitFor(() => { expect(test.created.length).toBeGreaterThan(1) })
   })
 
+  it('drops a queued operation that resolves after the fiber unloaded: no stderr line, no exit', async () => {
+    const gate = Promise.withResolvers<void>()
+    const test = bench({ resume: 'gone-session' }, { loader: gate.promise })
+    // Let the queued startup operation reach its `await loader.await()`.
+    await new Promise(resolve => setTimeout(resolve))
+    await test.ctx.fiber.dispose()
+    gate.resolve()
+    await new Promise(resolve => setTimeout(resolve))
+    // The in-flight operation resumes but its late failure is fenced: no
+    // stderr line and no process exit on an unloaded fiber.
+    expect(test.errors()).toBe('')
+    expect(test.exits).toEqual([])
+  })
+
   it('arms the latest selected non-empty session on disposal', async () => {
     const test = bench()
     const agent = await waitForAgent(test)
