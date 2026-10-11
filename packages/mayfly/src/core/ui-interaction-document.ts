@@ -2,9 +2,11 @@
  * @module @ephemeral-ai/mayfly/core/ui-interaction-document
  */
 import { diffChars } from 'diff'
-import { freezeWire, textOf, type MayflyScrollNode, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
+import { freezeWire, type MayflyScrollNode, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
+import { fieldText } from './field-text.ts'
 import { isDeferredUiNode, materializedDeferredUiNode } from './ui-validator.ts'
 import { indexContent, type ContentIndex } from './content-segments.ts'
+import { commonPrefix, commonSuffix } from './text-match.ts'
 import { documentRowsSource, type ContentRowsEnv } from './content-rows.ts'
 
 export interface UiDocumentBlock { readonly id: string, readonly node: MayflyUiNode }
@@ -33,18 +35,15 @@ export function documentOffset(source: string, offset: number): number {
 /**
  * `offset` from `before` expressed in `after`: the unchanged prefix and suffix carry positions through verbatim,
  * positions past them ride the length shift, and only the changed window costs a bounded Myers diff — a replaced
- * megabyte body diffs its touched chunk, not the document.
+ * megabyte body diffs its touched chunk, not the document. The unchanged ends are matched by native block compares, so
+ * an appended or head-trimmed log costs a memory scan, not a loop over its units.
  */
 export function remapDocumentOffset(before: string, after: string, offset: number): number {
   const position = documentOffset(before, offset)
   if (before === after) return position
-  const limit = Math.min(before.length, after.length)
-  let prefix = 0
-  while (prefix < limit && before[prefix] === after[prefix]) prefix += 1
-  let suffix = 0
-  const suffixLimit = Math.min(before.length - prefix, after.length - prefix)
-  while (suffix < suffixLimit && before[before.length - suffix - 1] === after[after.length - suffix - 1]) suffix += 1
+  const prefix = commonPrefix(before, after, Math.min(before.length, after.length))
   if (position < prefix) return position
+  const suffix = commonSuffix(before, after, Math.min(before.length - prefix, after.length - prefix))
   if (position >= before.length - suffix) return documentOffset(after, position + after.length - before.length)
   const changes = diffChars(before.slice(prefix, before.length - suffix), after.slice(prefix, after.length - suffix), { maxEditLength: 2_048 })
   if (changes === undefined) return documentOffset(after, position)
@@ -65,9 +64,9 @@ function sourceText(node: MayflyUiNode): string | undefined {
   }
   const join = (values: readonly (string | undefined)[]) => values.includes(undefined) ? undefined : values.join('\n')
   switch (node.kind) {
-    case 'text': return textOf(node.content)
-    case 'markdown': return textOf(node.source)
-    case 'code': return node.language === undefined ? textOf(node.code) : `${node.language}\n${textOf(node.code)}`
+    case 'text': return fieldText(node.content)
+    case 'markdown': return fieldText(node.source)
+    case 'code': return node.language === undefined ? fieldText(node.code) : `${node.language}\n${fieldText(node.code)}`
     case 'rich-text': return node.spans.map(span => span.text).join('')
     case 'fields': return node.rows.map(row => `${row.label}: ${row.value.map(span => span.text).join('')}`).join('\n')
     case 'diff': return `${node.before}\n${node.after}`
@@ -75,7 +74,7 @@ function sourceText(node: MayflyUiNode): string | undefined {
     case 'stack': return join(node.children.map(child => sourceText(child.node)))
     case 'surface': return join([node.title ?? '', node.subtitle ?? '', sourceText(node.child), node.footer === undefined ? '' : sourceText(node.footer)])
     case 'scroll': return sourceText(node.child)
-    case 'diagram': return textOf(node.source)
+    case 'diagram': return fieldText(node.source)
     case 'chart': return 'title' in node && node.title !== undefined ? node.title : ''
     case 'empty': return `${node.title}\n${node.description ?? ''}`
     case 'progress': return node.label ?? ''

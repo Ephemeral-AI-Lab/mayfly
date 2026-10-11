@@ -411,7 +411,6 @@ describe('mayflyConversation projection', () => {
     expect(retracted.streamingAssistantId).toBe(active.streamingAssistantId)
     expect(retracted.streamingThinkingId).toBe(active.streamingThinkingId)
     expect(retracted.pendingReasoning).toBe(active.pendingReasoning)
-    expect(retracted.toolEntryIds).toEqual(active.toolEntryIds)
     expect(retracted.entries).toEqual(active.entries)
   })
 
@@ -456,7 +455,7 @@ describe('mayflyConversation projection', () => {
     expect(retracted).toMatchObject({
       entries: [], active: false, streamingStep: null,
       streamingAssistantId: null, streamingThinkingId: null,
-      pendingReasoning: '', toolEntryIds: {}, retractedTurns: [9],
+      pendingReasoning: '', retractedTurns: [9],
     })
   })
 
@@ -529,7 +528,7 @@ describe('mayflyConversation projection', () => {
     expect(conversationProjectionSchema.safeParse({ entries: [], streaming: 'yes' }).success).toBe(false)
     expect(conversationProjectionStateSchema.safeParse(state).success).toBe(true)
     expect(conversationProjectionStateSchema.safeParse({ ...state, finalizedSteps: [1] }).success).toBe(false)
-    expect(conversationProjectionDefinition.stateVersion).toBe(8)
+    expect(conversationProjectionDefinition.stateVersion).toBe(9)
   })
 
   it('covers final-only replay, mid-stream settling, nested result text, and defensive restored ids', () => {
@@ -624,8 +623,7 @@ describe('mayflyConversation projection', () => {
 
     const badToolPair: ConversationProjectionState = {
       ...initialConversationState(),
-      entries: [{ kind: 'assistant', id: 'not-a-tool', seq: 1, updatedSeq: 1, turn: 1, step: 0, text: 'a', streaming: false }],
-      toolEntryIds: { paired: 'not-a-tool' },
+      entries: [{ kind: 'assistant', id: 'tool:paired', seq: 1, updatedSeq: 1, turn: 1, step: 0, text: 'a', streaming: false }],
     }
     const unchangedPair = foldConversationProjection(badToolPair, event('tool/result', {
       turn: 1,
@@ -818,6 +816,31 @@ describe('mayflyConversation projection', () => {
   })
 })
 
+describe('mayflyConversation projection over a long history', () => {
+  it('finds the entries it updates from the tail, not by walking the history', () => {
+    // A resumed session folds thousands of turns; an event only ever updates the entries it just opened. Every id of the
+    // settled history counts its reads, so a lookup that starts at the head shows as thousands of them.
+    let reads = 0
+    const history: ConversationProjectionState['entries'][number][] = Array.from({ length: 5_000 }, (_, turn) => {
+      const entry = { kind: 'user' as const, id: `user:${String(turn)}`, seq: turn, updatedSeq: turn, turn, text: 'earlier', images: [] }
+      return Object.defineProperty({ ...entry }, 'id', { get() { reads += 1; return entry.id }, enumerable: true })
+    })
+    let state: ConversationProjectionState = { ...initialConversationState(), currentTurn: 4_999, entries: history }
+    for (const next of [
+      event('turn/start', { turn: 5_000 }),
+      event('step/start', { turn: 5_000, step: 0 }),
+      attemptEvent(5_000, 0, 'text', 'draft'),
+      attemptEvent(5_000, 0, 'text', ' more'),
+      event('assistant/message', { turn: 5_000, step: 0, message: assistantMessage([{ type: 'text', text: 'final' }]) }, { append: true }),
+      event('tool/call', { turn: 5_000, step: 0, callId: ToolCallId('long-history'), name: 'read', arguments: '{}' }),
+      event('tool/result', { turn: 5_000, step: 0, message: toolResultMessage('long-history', [{ type: 'text', text: 'ok' }]) }, { append: true }),
+      event('turn/end', { turn: 5_000, reason: { kind: 'completed' } }),
+    ]) state = foldConversationProjection(state, next)
+    expect(state.entries.at(-1)).toMatchObject({ kind: 'tool', callId: 'long-history', result: { text: 'ok' } })
+    expect(reads).toBeLessThan(100)
+  })
+})
+
 describe('SessionProjectionRegistry integration', () => {
   it('replays, checkpoints, restores, drives live changes, and removes the readiness signal on unload', async () => {
     const ctx = new Context()
@@ -842,7 +865,7 @@ describe('SessionProjectionRegistry integration', () => {
     expect(changes).toEqual([2, 3])
 
     const checkpoint = ctx.sessionProjections.checkpoint(session)
-    expect(checkpoint.mayflyConversation).toMatchObject({ ver: 8, seq: 3 })
+    expect(checkpoint.mayflyConversation).toMatchObject({ ver: 9, seq: 3 })
     const obsolete = { ...checkpoint, mayflyConversation: { ...checkpoint.mayflyConversation!, ver: 4 } }
     expect(ctx.sessionProjections.restoreFloor(obsolete)).toBe(0)
     expect(ctx.sessionProjections.viewCheckpoint(obsolete)).not.toHaveProperty('mayflyConversation')

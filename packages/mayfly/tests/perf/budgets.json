@@ -26,6 +26,9 @@
   "W20": { "nodesValidated": 0, "unitsCompiled": 0, "rowsPainted": 56, "rowsMaterialized": 8, "segmentsPainted": 1, "linesEstimated": 0, "stringsMeasured": 9 },
   "W21": { "nodesValidated": 2, "unitsCompiled": 2, "rowsPainted": 20, "rowsMaterialized": 8, "segmentsPainted": 5, "linesEstimated": 21800, "stringsMeasured": 10, "componentRenders": 2, "controlWalks": 1, "reconciles": 4, "layoutPasses": 1, "clockTicks": 0, "keymapSnapshots": 0 },
   "W22": { "nodesValidated": 0, "unitsCompiled": 0, "rowsPainted": 8, "rowsMaterialized": 8, "segmentsPainted": 0, "linesEstimated": 0, "stringsMeasured": 9 },
-  "W23": { "nodesValidated": 3, "unitsCompiled": 2, "rowsPainted": 51, "rowsMaterialized": 8, "segmentsPainted": 1, "linesEstimated": 20005, "stringsMeasured": 9 },
-  "W24": { "nodesValidated": 2, "unitsCompiled": 1, "rowsPainted": 1, "rowsMaterialized": 0, "segmentsPainted": 0, "linesEstimated": 0, "stringsMeasured": 0, "componentRenders": 2, "controlWalks": 2, "reconciles": 6, "layoutPasses": 1, "clockTicks": 0, "keymapSnapshots": 0 }
+  "W23": { "nodesValidated": 3, "unitsCompiled": 2, "rowsPainted": 51, "rowsMaterialized": 8, "segmentsPainted": 1, "linesEstimated": 43, "stringsMeasured": 9 },
+  "W24": { "nodesValidated": 2, "unitsCompiled": 1, "rowsPainted": 1, "rowsMaterialized": 0, "segmentsPainted": 0, "linesEstimated": 0, "stringsMeasured": 0, "componentRenders": 2, "controlWalks": 2, "reconciles": 6, "layoutPasses": 1, "clockTicks": 0, "keymapSnapshots": 0 },
+  "W25": { "unitsCompiled": 54, "componentRenders": 62, "segmentsPainted": 0 },
+  "W26": { "unitsCompiled": 61, "componentRenders": 86, "segmentsPainted": 10 },
+  "W27": { "unitsCompiled": 51, "componentRenders": 35, "segmentsPainted": 0 }
 }

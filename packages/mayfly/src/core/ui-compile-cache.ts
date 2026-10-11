@@ -4,7 +4,12 @@
 import type { MayflyComponent, MayflyComponents, MayflySemanticColors } from './types.ts'
 import type { MayflyWorkCounters } from './ui-work-counters.ts'
 
-/** What a reusable leaf reads from the surface that compiled it; it is re-pointed at the newest surface on every reuse. */
+/**
+ * What a reusable leaf reads from the surface that compiled it; it is re-pointed at the newest surface on every reuse.
+ * A leaf is reused only for the identical `components` and `colors` objects (identity, never value), so the owner of a
+ * surface obtains `components` once for as long as it lives. A Cordis service getter is not such an owner: it returns a
+ * new wrapper at every read.
+ */
 export interface PaintOptions {
   readonly components: MayflyComponents
   readonly colors: MayflySemanticColors

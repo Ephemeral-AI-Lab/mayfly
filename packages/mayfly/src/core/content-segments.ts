@@ -12,7 +12,7 @@
  * @module @ephemeral-ai/mayfly/core/content-segments
  */
 
-import { estimateColumns } from './width-estimate.ts'
+import { estimateColumns, startColumnWalk, walkColumns } from './width-estimate.ts'
 
 /** A line-run segment ends when either bound is hit. */
 export const CONTENT_SEGMENT_UNITS = 4_096
@@ -34,6 +34,14 @@ interface SegmentPlan {
   text0: Uint32Array
   text1: Uint32Array
   cols: Uint32Array // estimated columns; cut segments only
+}
+
+/** A plan to continue instead of walking the whole text again: the segments before `segment` and the widest line they saw. */
+interface PlanResume {
+  readonly plan: SegmentPlan
+  readonly segment: number
+  /** The widest line of the text planned so far; a line that only grew cannot lower it. */
+  readonly maxColumns: number
 }
 
 /**
@@ -88,6 +96,28 @@ export class ContentIndex {
   /** Estimated columns of one line. */
   lineColumns(line: number): number {
     return this.lineCols[line]!
+  }
+
+  /** Copies the line table of the first `count` lines into the arrays given. */
+  copyLines(starts: Uint32Array, ends: Uint32Array, cols: Uint32Array, count: number): void {
+    starts.set(this.lineStart.subarray(0, count))
+    ends.set(this.lineEnd.subarray(0, count))
+    cols.set(this.lineCols.subarray(0, count))
+  }
+
+  /**
+   * Where planning can pick up when the lines from `line` on may have changed: the last segment that starts at or before
+   * that line. Every segment before it is a function of lines before `line`, so a plan that keeps them is the plan of a
+   * scratch walk.
+   */
+  resumeFrom(line: number): PlanResume {
+    let low = 0, high = this.segments - 1
+    while (low < high) {
+      const middle = (low + high + 1) >> 1
+      if (this.plan.line0[middle]! <= line) low = middle
+      else high = middle - 1
+    }
+    return { plan: this.plan, segment: low, maxColumns: this.maxColumns }
   }
 
   /**
@@ -152,10 +182,11 @@ export class ContentIndex {
       if (target <= 0) return start
       let columns = 0
       let position = start
+      const walk = startColumnWalk()
       while (position < end) {
         const code = text.charCodeAt(position)
         const step = code >= 0xd800 && code <= 0xdbff && position + 1 < end ? 2 : 1
-        const next = columns + estimateColumns(text, position, position + step)
+        const next = columns + walkColumns(walk, text, position, position + step)
         if (next > target) return position
         columns = next
         position += step
@@ -210,30 +241,32 @@ export function scanContentLines(text: string): ContentLineScan {
   return { units: text.length, starts: Uint32Array.from(starts), ends: Uint32Array.from(ends), columns: Uint32Array.from(columns) }
 }
 
+/** The merged line table of consecutive scans, as plain arrays. */
+interface MergedLines { readonly starts: number[], readonly ends: number[], readonly cols: number[] }
+
 /**
- * Join per-chunk line scans into the line table of the whole `text` (the chunks' texts concatenated): a chunk whose
- * text does not end at a `\n` leaves its last line open, and it merges with the next chunk's first line.
+ * Merge consecutive scans whose first piece starts at `base`. A scan whose text does not end at a `\n` leaves its last
+ * line open, and it merges with the next scan's first line; `open` carries such a line in from before the first scan.
  */
-export function indexMergedLines(scans: readonly ContentLineScan[], text: string, onLines?: (lines: number) => void): ContentIndex {
-  const lineStart: number[] = []
-  const lineEnd: number[] = []
-  const lineCols: number[] = []
-  let base = 0
-  let openStart = -1
-  let openCols = 0
+function mergeScans(scans: readonly ContentLineScan[], base: number, open?: { readonly start: number, readonly columns: number }): MergedLines {
+  const starts: number[] = []
+  const ends: number[] = []
+  const cols: number[] = []
+  let openStart = open?.start ?? -1
+  let openCols = open?.columns ?? 0
   for (const scan of scans) {
     const lines = scan.starts.length
     for (let line = 0; line < lines; line += 1) {
       const terminated = line + 1 < lines
       if (line === 0 && openStart >= 0) {
         if (terminated) {
-          lineStart.push(openStart); lineEnd.push(base + scan.ends[0]!); lineCols.push(openCols + scan.columns[0]!)
+          starts.push(openStart); ends.push(base + scan.ends[0]!); cols.push(openCols + scan.columns[0]!)
           openStart = -1
         } else openCols += scan.columns[0]!
         continue
       }
       if (terminated) {
-        lineStart.push(base + scan.starts[line]!); lineEnd.push(base + scan.ends[line]!); lineCols.push(scan.columns[line]!)
+        starts.push(base + scan.starts[line]!); ends.push(base + scan.ends[line]!); cols.push(scan.columns[line]!)
       } else {
         openStart = base + scan.starts[line]!
         openCols = scan.columns[line]!
@@ -242,9 +275,39 @@ export function indexMergedLines(scans: readonly ContentLineScan[], text: string
     base += scan.units
   }
   if (openStart >= 0) {
-    lineStart.push(openStart); lineEnd.push(base); lineCols.push(openCols)
+    starts.push(openStart); ends.push(base); cols.push(openCols)
   }
-  return planContentLines(text, lineStart, lineEnd, lineCols, onLines)
+  return { starts, ends, cols }
+}
+
+/**
+ * Join per-chunk line scans into the line table of the whole `text` (the chunks' texts concatenated): a chunk whose
+ * text does not end at a `\n` leaves its last line open, and it merges with the next chunk's first line.
+ */
+export function indexMergedLines(scans: readonly ContentLineScan[], text: string, onLines?: (lines: number) => void): ContentIndex {
+  const { starts, ends, cols } = mergeScans(scans, 0)
+  return planContentLines(text, starts, ends, cols, onLines)
+}
+
+/**
+ * The index of `text` when it is `previous`'s text with more pieces appended after it: `scans` are the line tables of
+ * the appended pieces only. The last line of an index is always open (a text that ends at a `\n` ends in an empty line),
+ * so it is the only settled-looking part that can change; every line before it and every segment that ends before it
+ * carries over, and only the segment holding it is planned again. `onLines` counts the lines this call walked, which
+ * is what an append costs, not the lines of the text.
+ */
+export function extendMergedLines(previous: ContentIndex, scans: readonly ContentLineScan[], text: string, onLines?: (lines: number) => void): ContentIndex {
+  const last = previous.lines - 1
+  const tail = mergeScans(scans, previous.units, { start: previous.lineText(last)[0], columns: previous.lineColumns(last) })
+  const lines = last + tail.starts.length
+  const starts = new Uint32Array(lines)
+  const ends = new Uint32Array(lines)
+  const cols = new Uint32Array(lines)
+  previous.copyLines(starts, ends, cols, last)
+  starts.set(tail.starts, last)
+  ends.set(tail.ends, last)
+  cols.set(tail.cols, last)
+  return planContentLines(text, starts, ends, cols, onLines, previous.resumeFrom(last))
 }
 
 /**
@@ -256,18 +319,27 @@ export function indexContent(text: string, onLines?: (lines: number) => void): C
   return planContentLines(text, scan.starts, scan.ends, scan.columns, onLines)
 }
 
-/** The segment plan over an already-scanned line table; an empty table stands for one empty line. */
-function planContentLines(text: string, starts: ArrayLike<number>, ends: ArrayLike<number>, cols: ArrayLike<number>, onLines?: (lines: number) => void): ContentIndex {
+/**
+ * The segment plan over an already-scanned line table; an empty table stands for one empty line. With `resume` the plan
+ * keeps the segments before the resume segment and walks only the lines from there (inside a long line, from the start
+ * of its last cut), so the cost follows what changed.
+ */
+function planContentLines(text: string, starts: ArrayLike<number>, ends: ArrayLike<number>, cols: ArrayLike<number>, onLines?: (lines: number) => void, resume?: PlanResume): ContentIndex {
   const lineStart = starts.length === 0 ? [0] : starts
   const lineEnd = ends.length === 0 ? [0] : ends
   const lineCols = cols.length === 0 ? [0] : cols
-  const kind: number[] = []
-  const line0: number[] = []
-  const line1: number[] = []
-  const text0: number[] = []
-  const text1: number[] = []
-  const cutCols: number[] = []
-  let maxColumns = 0
+  const kept = resume?.segment ?? 0
+  const keep = (values: Uint8Array | Uint32Array | undefined): number[] => values === undefined ? [] : Array.from(values.subarray(0, kept))
+  const kind = keep(resume?.plan.kind)
+  const line0 = keep(resume?.plan.line0)
+  const line1 = keep(resume?.plan.line1)
+  const text0 = keep(resume?.plan.text0)
+  const text1 = keep(resume?.plan.text1)
+  const cutCols = keep(resume?.plan.cols)
+  let maxColumns = resume?.maxColumns ?? 0
+  const firstLine = resume === undefined ? 0 : resume.plan.line0[kept]!
+  /** Inside a long line the plan resumes at its last cut: the cut starts there, with nothing counted since. */
+  let cutFrom = resume !== undefined && resume.plan.kind[kept] === 1 ? resume.plan.text0[kept] : undefined
 
   const openLineRun = (line: number): void => {
     kind.push(0); line0.push(line); line1.push(line); text0.push(0); text1.push(0); cutCols.push(0)
@@ -278,7 +350,7 @@ function planContentLines(text: string, starts: ArrayLike<number>, ends: ArrayLi
 
   let runUnits = 0
   let runLines = 0
-  for (let lineIndex = 0; lineIndex < lineStart.length; lineIndex += 1) {
+  for (let lineIndex = firstLine; lineIndex < lineStart.length; lineIndex += 1) {
     const start = lineStart[lineIndex]!
     const end = lineEnd[lineIndex]!
     const units = end - start
@@ -287,21 +359,28 @@ function planContentLines(text: string, starts: ArrayLike<number>, ends: ArrayLi
       // the last plain-ASCII or space boundary so a split rarely lands inside a grapheme.
       const lineWidth = lineCols[lineIndex]!
       maxColumns = Math.max(maxColumns, lineWidth)
-      let cutStart = start
+      let cutStart = cutFrom ?? start
       let cutColsAcc = 0
-      let safeEnd = start
-      let position = start
+      let safeEnd = cutStart
+      let position = cutStart
+      let walk = startColumnWalk()
+      cutFrom = undefined
       while (position < end) {
         const code = text.charCodeAt(position)
         const step = code >= 0xd800 && code <= 0xdbff && position + 1 < end ? 2 : 1
         if (code >= 0x20 && code <= 0x7e) safeEnd = position + step
-        cutColsAcc += estimateColumns(text, position, position + step)
+        cutColsAcc += walkColumns(walk, text, position, position + step)
         position += step
         if (cutColsAcc >= CONTENT_CUT_COLUMNS) {
           const boundary = safeEnd > cutStart && safeEnd >= position - CUT_SAFE_LOOKBACK ? safeEnd : position
           pushCut(lineIndex, cutStart, boundary, estimateColumns(text, cutStart, boundary))
+          // The next cut counts from its own start, so the plan from any cut on is a function of the text from there: a
+          // plan that resumes at a cut is the plan of a walk from the line's start.
           cutStart = boundary
+          position = boundary
+          safeEnd = boundary
           cutColsAcc = 0
+          walk = startColumnWalk()
         }
       }
       if (cutStart < end) pushCut(lineIndex, cutStart, end, estimateColumns(text, cutStart, end))
@@ -319,21 +398,22 @@ function planContentLines(text: string, starts: ArrayLike<number>, ends: ArrayLi
     }
   }
   // Whole-line segments record their line span; the text range derives from the lines at query time.
-  for (let segment = 0; segment < kind.length; segment += 1) {
+  for (let segment = kept; segment < kind.length; segment += 1) {
     if (kind[segment] === 0) {
       line1[segment] = segment + 1 < kind.length ? line0[segment + 1]! : lineStart.length
       text0[segment] = lineStart[line0[segment]!]!
       text1[segment] = lineEnd[line1[segment]! - 1]!
     }
   }
-  onLines?.(lineStart.length)
+  onLines?.(lineStart.length - firstLine)
+  const typed = (values: ArrayLike<number>): Uint32Array => values instanceof Uint32Array ? values : Uint32Array.from(values)
   return new ContentIndex(
     lineStart.length,
     text.length,
     maxColumns,
-    Uint32Array.from(lineStart),
-    Uint32Array.from(lineEnd),
-    Uint32Array.from(lineCols),
+    typed(lineStart),
+    typed(lineEnd),
+    typed(lineCols),
     { kind: Uint8Array.from(kind), line0: Uint32Array.from(line0), line1: Uint32Array.from(line1), text0: Uint32Array.from(text0), text1: Uint32Array.from(text1), cols: Uint32Array.from(cutCols) },
   )
 }

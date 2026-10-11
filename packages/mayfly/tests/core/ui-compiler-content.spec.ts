@@ -192,6 +192,27 @@ describe('the scroll region', () => {
     expect(tall.render()[0]).toContain('log line 2')
   })
 
+  it('remembers the places of the scroll regions it painted lately, not of every position its tree has had', () => {
+    // A region is remembered by its position in the tree, so a tree that grows and loses siblings brings a new position
+    // for the same region each time. The memory keeps a bounded number of the latest, more than the regions a live tree
+    // (at most 256 nodes) can hold, so the regions of the live tree are always among them.
+    const placed = (before: number, inner: number, count = 10): MayflyUiNode => ui.stack.column([
+      ...Array.from({ length: before }, () => ui.spacer()),
+      ui.stack.column([...Array.from({ length: inner }, () => ui.spacer()), region(count, { follow: 'none' })]),
+    ])
+    const surface = mount(placed(0, 0))
+    for (let before = 0; before < 25; before += 1) for (let inner = 0; inner < 50; inner += 1) surface.publish(placed(before, inner))
+    expect(surface.runtime['scrolled'].size).toBeLessThanOrEqual(512)
+    // The live region keeps its place across a republish, however many positions came and went before it.
+    surface.publish(placed(1, 1))
+    surface.render()
+    surface.press(KEYS.down)
+    surface.publish(placed(1, 1, 12))
+    expect(surface.render().filter(row => row.includes('log line')).map(row => row.trim())[0]).toContain('log line 2')
+    surface.publish(placed(1, 1, 14))
+    expect(surface.render().filter(row => row.includes('log line')).map(row => row.trim())[0]).toContain('log line 2')
+  })
+
   it('works on a narrow width and an id with a document, and counts its rows', () => {
     const counters = createWorkCounters()
     const surface = mount(region(10, { id: 'log' }), { width: 2, counters })

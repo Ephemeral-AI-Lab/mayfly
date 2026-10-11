@@ -274,5 +274,50 @@
     "layoutPasses": 1,
     "clockTicks": 0,
     "keymapSnapshots": 0
+  },
+  "W25": {
+    "nodesValidated": 2,
+    "unitsCompiled": 110,
+    "rowsPainted": 143,
+    "rowsMaterialized": 18,
+    "segmentsPainted": 80,
+    "linesEstimated": 0,
+    "stringsMeasured": 4,
+    "componentRenders": 198,
+    "controlWalks": 2,
+    "reconciles": 3,
+    "layoutPasses": 1,
+    "clockTicks": 0,
+    "keymapSnapshots": 0
+  },
+  "W26": {
+    "nodesValidated": 2,
+    "unitsCompiled": 110,
+    "rowsPainted": 146,
+    "rowsMaterialized": 18,
+    "segmentsPainted": 80,
+    "linesEstimated": 7,
+    "stringsMeasured": 4,
+    "componentRenders": 198,
+    "controlWalks": 2,
+    "reconciles": 3,
+    "layoutPasses": 1,
+    "clockTicks": 0,
+    "keymapSnapshots": 0
+  },
+  "W27": {
+    "nodesValidated": 2,
+    "unitsCompiled": 107,
+    "rowsPainted": 114,
+    "rowsMaterialized": 7,
+    "segmentsPainted": 72,
+    "linesEstimated": 0,
+    "stringsMeasured": 13,
+    "componentRenders": 115,
+    "controlWalks": 1,
+    "reconciles": 5,
+    "layoutPasses": 2,
+    "clockTicks": 0,
+    "keymapSnapshots": 0
   }
 }

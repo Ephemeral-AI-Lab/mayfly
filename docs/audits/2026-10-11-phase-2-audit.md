@@ -301,7 +301,18 @@ What `audit-1` decided, for the owner to confirm or reverse:
   `packages/mayfly/src`, `packages/ui/src` or `packages/cli/src` selects them. That adds about four specs to most
   `pr` runs.
 
-Not in `audit-1`: F5, F6, A10 (`audit-3`), F12 (`audit-5`), B1-B3 and B4 (`audit-2`), and the `audit-4` test and gate items.
+`audit-fix A` (content and measurement cost, branch `audit/fix-a-content-cost`) takes `audit-3` and the profiler and compile-cache items of part 1: P1-01, P1-03, F6, A10, F5, F11, P1-02 and the budget rows (T13). What it decided, for the owner to confirm or reverse (the numbers are the audit's repros on one machine, before -> after):
+
+- **P1-01 was a path mismatch, and the reader stays flat.** `perf --prof` wrote `prof/<side>/<scenario>-<run>/` and read `prof/<side>/`. The summary reads the directories of the scenario's own runs, in milliseconds per run, and fails when a scenario left no profile.
+- **P1-03 is fixed in the renderer, not the cache.** Every read of a Cordis service getter returns a new wrapper, and the cache reuses a leaf only for the identical components object (identity, never value), so `mountMayflySurfaceRenderer` reads `mayflyComponents` once; a replaced service re-runs the mount. Real-service republish workloads W25 to W27 (the direct workloads hand the compiler a stable object): units compiled 110 -> 54, component renders 198 -> 62, segments painted 80 -> 0 for an unchanged pane. The 54 units left are the containers, which are not reusable kinds.
+- **F6 follows the stream, not the chunk list.** A job feed joins neighbours in its older half on every append once it holds 256 chunks, so chunk identity before the tail does not survive. The next publish is found by the chunk the last one ended on plus a compare of the text before it, and only the lines from the last (always open) line on are indexed and planned again. Per append at 1, 4 and 10 MB: 4.2, 17.3, 41.4 ms -> 0.8, 2.2, 7.1 ms; lines indexed 47,629, 190,486, 476,200 -> 13, 22, 40 (W23: 20,005 -> 43). What is left is one join and one text compare, both memory-bound. A cut now restarts its scan at its boundary, so a resumed plan equals a scratch plan.
+- **A10's cost was a record, not the array copies.** `toolEntryIds` spread a record that grew with every tool call; it held nothing the entries do not (the id is `tool:<callId>`) and is gone, with `stateVersion` 9. Lookups start at the tail. 4,800 turns: 3,003 -> 407 ms folded, 3,513 -> 614 ms through the registry. The copy of the flat arrays per mutation is what the registry's contract (pure `apply`, views compared by identity) needs and is left; the turn admission the audit suspected costs 0.15 ms per live event and is left.
+- **F5 was real and a spec pinned it.** `row()` re-locates until the paint leaves the map where it was. The diff-failure spec that asserted the empty answer now asserts each chunk passed reports once.
+- **F11 follows the measure for emoji sequences only.** A walk counts a ZWJ sequence, a flag, a tone, a presentation selector and a keycap as one cluster; over 4,000 random strings of such pieces the estimate equals `visibleWidth` (it was exact for 2,012). Reusing `visibleWidth` would cost 50 to 100 times as much on the per-code-point paths.
+- **P1-02 is bounded, not pruned.** Keys are made while compiling, after the pass for deferred branches and open list rows, so "keep the keys of the latest compile" would drop live places. The map keeps 512 (a tree holds at most 256 nodes); dispose clears it. No shipped code reaches the declared-viewport branch; plugins that shift siblings do.
+- **T13 adds the three W25 to W27 rows and tightens W23; no timing row.** W22 takes 188 ms after `audit-1` (it was 1.2 s with F1).
+
+Not in `audit-1` or `audit-fix A`: F12 (`audit-5`), B1-B3 and B4 (`audit-2`), and the `audit-4` test and gate items.
 
 ## Refuted or downgraded
 

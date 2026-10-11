@@ -112,6 +112,8 @@ const FOCUS_SENTINEL = '\uf8ff'
 const ERROR_MAX_ROWS = 3
 const LAYOUT_VALUE_MAX = 1_000_000
 const INACTIVE_FIELD_CACHE_LIMIT = 64
+/** Scroll places a surface remembers: more than a tree can hold regions (`MAYFLY_UI_MAX_NODES`), so the live ones are never the oldest. */
+const SCROLL_MEMORY_LIMIT = 512
 const PASSIVE_EVENT_SINK = Function.prototype as (event: MayflyUiEvent) => void
 
 /** Apply one semantic scroll movement to a scroll view. */
@@ -2133,7 +2135,7 @@ export class MayflyUiSurfaceRuntime {
   readonly rows = new UiRowCache()
   /** The painted content segments this surface's leaves produced; the renderer's one shared cache by default. */
   readonly content: MayflyContentCache
-  /** Where this surface's scroll regions are scrolled, by control key. */
+  /** Where this surface's scroll regions are scrolled, by control key, the least recently compiled first. */
   private readonly scrolled = new Map<string, ScrollMemory>()
   /** The one-shot drains of this surface's progress bars. */
   private readonly transitions = new UiProgressTransitions()
@@ -2352,9 +2354,16 @@ export class MayflyUiSurfaceRuntime {
   /** Asks the renderer to paint this surface again: an image's bytes arrived. */
   readonly repaint = (): void => { if (this.live) this.requestRender?.() }
   /** The scroll position a region keeps across publishes. */
+  /**
+   * The place of the scroll region at `key`, made the most recent. A region is remembered by its position in the tree, so
+   * a tree that shifts its siblings brings a new key for the same region, and the keys it leaves behind age out once the
+   * limit is reached; a region still in a compiled tree was touched by that compile and outlasts them.
+   */
   scrollMemory(key: string): ScrollMemory {
-    let memory = this.scrolled.get(key)
-    if (memory === undefined) { memory = { offset: 0, following: undefined, away: 0 }; this.scrolled.set(key, memory) }
+    const memory = this.scrolled.get(key) ?? { offset: 0, following: undefined, away: 0 }
+    this.scrolled.delete(key)
+    this.scrolled.set(key, memory)
+    if (this.scrolled.size > SCROLL_MEMORY_LIMIT) this.scrolled.delete(this.scrolled.keys().next().value!)
     return memory
   }
   /**
@@ -2566,6 +2575,7 @@ export class MayflyUiSurfaceRuntime {
     this.fieldKinds.clear()
     this.fieldOwners.clear()
     this.fieldRecency.clear()
+    this.scrolled.clear()
     this.controls.resetGeneration()
     this.state.activeKey = undefined
     this.state.activeGroup = undefined

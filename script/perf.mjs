@@ -9,7 +9,8 @@
  * `--against <ref>`; `--against HEAD` measures the noise of one build), each from a fresh boot, and judges every
  * metric of every span `regressed`, `same`, or `improved` (median, noise band, rank test). It reports and does not fail
  * on a verdict. `--assert` holds one run of each scenario to the catalog's ceilings, scaled by `MAYFLY_PERF_SLACK`, and
- * fails past them. `--prof` writes CPU profiles and lists the functions with the most self time. Results go to
+ * fails past them. `--prof` writes CPU profiles and lists, per scenario, the functions with the most self time per run (it
+ * fails when a scenario left no profile). Results go to
  * `.artifacts/verify/perf.json` for `pnpm run check`. @module script/perf
  */
 
@@ -19,7 +20,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import { defaultBase } from './change-files.mjs'
 import { CATALOG, PERF_SCENARIOS } from './scenarios/catalog.mjs'
 import { commitOf, ensureBaseline, mergeBaseOf } from './scenarios/baseline.mjs'
-import { selfTimes, topFunctions } from './scenarios/cpuprofile.mjs'
+import { profileLeaf, scenarioFunctions } from './scenarios/cpuprofile.mjs'
 import { prepareProfiles, runScenario } from './scenarios/runner.mjs'
 import { verdict } from './scenarios/stats.mjs'
 import { assertDshVersion, resolveDshBin, root } from './smoke-lib.mjs'
@@ -90,6 +91,12 @@ export function compareRuns(head, base) {
 
 const show = value => value === null || value === undefined ? 'n/a' : String(Number(value.toFixed(2)))
 
+/** The functions with the most self time, per run, with the baseline's time beside each when there is one. */
+function printFunctions(rows) {
+  console.log(`  most self time per run (head ms${rows[0]?.baseMs === undefined ? '' : ' / base ms'}):`)
+  for (const row of rows.slice(0, 10)) console.log(`    ${show(row.headMs).padStart(8)} ${row.baseMs === undefined ? '' : `/ ${show(row.baseMs).padStart(8)}`}  ${row.fn}`)
+}
+
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const parsed = parsePerfArgs(process.argv.slice(2))
   if ('error' in parsed) { console.error(parsed.error); process.exit(2) }
@@ -99,9 +106,8 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   assertDshVersion(dshBin)
   const failures = []
   const report = { mode: options.assert ? 'assert' : 'ab', scenarios: [], failures }
-  const profDir = side => join(root, '.artifacts/perf/prof', side)
   const measure = async (repo, name, side, run) => {
-    const profileDir = options.prof ? join(profDir(side), `${name}-${String(run)}`) : undefined
+    const profileDir = options.prof ? profileLeaf(root, side, name, run) : undefined
     if (profileDir !== undefined) rmSync(profileDir, { recursive: true, force: true })
     const result = await runScenario(name, { root: repo, dshBin, profileDir })
     result.screen.dispose()
@@ -115,9 +121,11 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     for (const name of names) {
       const result = await measure(root, name, 'head', 1)
       const broken = breaches(CATALOG[name].perf.ceilings, result.metrics, slack)
-      report.scenarios.push({ name, spans: result.metrics, breaches: broken })
+      const prof = options.prof ? scenarioFunctions(root, name, 1) : undefined
+      report.scenarios.push({ name, spans: result.metrics, breaches: broken, ...(prof === undefined ? {} : { prof }) })
       for (const span of result.metrics) console.log(`  ${name} ${span.name.padEnd(14)} ${show(span.cpuPct)}% CPU${span.keys === undefined ? '' : `, key p50 ${show(span.keyP50Ms)} ms, ${show(span.cpuPerKeyMs)} ms CPU per key`}`)
       for (const breach of broken) { console.log(`  ✗ ${name} ${breach.span} ${breach.metric}: ${show(breach.value)} (ceiling ${show(breach.ceiling)})`); failures.push(`${name} ${breach.span} ${breach.metric} ${show(breach.value)} is past its ceiling ${show(breach.ceiling)}`) }
+      if (prof !== undefined) printFunctions(prof)
     }
   } else {
     const headSha = commitOf(root, 'HEAD')
@@ -144,7 +152,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
         }
       }
       const judged = base.length === 0 ? [] : compareRuns(head, base)
-      const prof = options.prof ? topFunctions(selfTimes(profDir('head')), onBase ? selfTimes(profDir('base')) : undefined) : undefined
+      const prof = options.prof ? scenarioFunctions(root, name, options.runs, onBase) : undefined
       report.scenarios.push({ name, runs: { head: head.map(run => run.metrics), base: base.map(run => run.metrics) }, judged, ...(prof === undefined ? {} : { prof }) })
       console.log(`\n${name}${baseDir === undefined ? '' : onBase ? ` (head vs ${baseSha.slice(0, 10)}, ${String(options.runs)} runs each)` : ' (new on this branch; head only)'}`)
       for (const span of baseDir === undefined ? head[0]?.metrics ?? [] : []) console.log(`  ${span.name.padEnd(14)} ${show(span.cpuPct)}% CPU${span.keys === undefined ? '' : `, key p50 ${show(span.keyP50Ms)} ms, ${show(span.cpuPerKeyMs)} ms CPU per key`}`)
@@ -154,7 +162,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
           console.log(`  ${mark} ${entry.span.padEnd(14)} ${metric.padEnd(12)} ${show(result.head).padStart(9)} vs ${show(result.base).padStart(9)}  ${result.delta === null ? '' : `${result.delta > 0 ? '+' : ''}${String(result.delta)}%`}  ${result.verdict}`)
         }
       }
-      if (prof !== undefined) { console.log('  most self time (head ms / base ms):'); for (const row of prof.slice(0, 10)) console.log(`    ${show(row.headMs).padStart(8)} ${row.baseMs === undefined ? '' : `/ ${show(row.baseMs).padStart(8)}`}  ${row.fn}`) }
+      if (prof !== undefined) printFunctions(prof)
     }
     report.regressions = report.scenarios.flatMap(scenario => scenario.judged.flatMap(entry => Object.entries(entry.metrics).filter(([, result]) => result.verdict === 'regressed').map(([metric, result]) => ({ scenario: scenario.name, span: entry.span, metric, head: result.head, base: result.base, delta: result.delta }))))
     report.improvements = report.scenarios.flatMap(scenario => scenario.judged.flatMap(entry => Object.entries(entry.metrics).filter(([, result]) => result.verdict === 'improved').map(([metric, result]) => ({ scenario: scenario.name, span: entry.span, metric, head: result.head, base: result.base, delta: result.delta }))))

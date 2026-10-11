@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 import { breaches, compareRuns, parsePerfArgs } from '../perf.mjs'
-import { selfTimes, topFunctions } from '../scenarios/cpuprofile.mjs'
+import { profileLeaf, scenarioFunctions, selfTimes, topFunctions } from '../scenarios/cpuprofile.mjs'
 import { percentile, spanMetrics } from '../scenarios/metrics.mjs'
 import { mad, mannWhitneyP, median, verdict } from '../scenarios/stats.mjs'
 
@@ -73,5 +73,34 @@ test('a CPU profile adds up self time per function, leaving idle time out', () =
     assert.deepEqual(topFunctions(times, new Map([['paint core.js:10', 1]]), 1), [{ fn: 'paint core.js:10', headMs: 5, baseMs: 1 }])
   } finally {
     rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+/** A profile whose one function holds `ms` of self time. */
+const profileOf = (fn, ms) => JSON.stringify({
+  nodes: [{ id: 1, callFrame: { functionName: fn, url: 'file:///x/core.js', lineNumber: 0 } }],
+  samples: [1],
+  timeDeltas: [ms * 1000],
+})
+
+test('a scenario summary reads the leaves of its own runs, per run, and never an empty profile set', () => {
+  const root = mkdtempSync(join(tmpdir(), 'mayfly-prof-'))
+  const write = (side, name, run, fn, ms) => {
+    const leaf = profileLeaf(root, side, name, run)
+    mkdirSync(leaf, { recursive: true })
+    writeFileSync(join(leaf, 'p.cpuprofile'), profileOf(fn, ms))
+  }
+  try {
+    write('head', 'perf-a', 1, 'paint', 10)
+    write('head', 'perf-a', 2, 'paint', 30)
+    write('head', 'perf-a', 3, 'paint', 500) // left by an earlier invocation with more runs
+    write('head', 'perf-b', 1, 'other', 700) // another scenario
+    write('base', 'perf-a', 1, 'paint', 4)
+    write('base', 'perf-a', 2, 'paint', 6)
+    assert.deepEqual(scenarioFunctions(root, 'perf-a', 2, true), [{ fn: 'paint core.js:1', headMs: 20, baseMs: 5 }])
+    assert.deepEqual(scenarioFunctions(root, 'perf-a', 2), [{ fn: 'paint core.js:1', headMs: 20 }])
+    assert.throws(() => scenarioFunctions(root, 'perf-c', 2), /left no CPU profile/u)
+  } finally {
+    rmSync(root, { recursive: true, force: true })
   }
 })

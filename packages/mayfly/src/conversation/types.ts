@@ -175,7 +175,6 @@ export interface ConversationProjectionState {
   readonly interruptedTurns: readonly number[]
   /** Turns durably erased by Mayfly's safe-retraction surface marker. */
   readonly retractedTurns: readonly number[]
-  readonly toolEntryIds: Readonly<Record<string, string>>
   readonly turns: readonly ConversationTurn[]
 }
 
