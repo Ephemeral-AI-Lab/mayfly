@@ -23,8 +23,8 @@ Fix first:
 Then F2, F4, F7 (to confirm at runtime), the compatibility leftovers the root instructions forbid (B1, B2), and the
 test-time items (T2, T3), which together remove about 35 s of wait time from the suite.
 
-Three leads from the first survey did not hold and are recorded under "Refuted or downgraded" so nobody
-re-investigates them.
+Leads that did not hold (the first survey's, and F9 from the follow-up pass) are recorded under "Refuted or
+downgraded" so nobody re-investigates them. F12 moved the other way: it is now a reproduced P3.
 
 ## Scope and evidence
 
@@ -194,9 +194,11 @@ the parameter and update them.
 to `gap`, and `transcript/official-model.ts:686`, `examples/ui-gallery/src/index.ts:142` and
 `website/plugins/ui-reference.md:1476` still use them. One change removes the aliases and updates every caller.
 
-**B3. Duplicate `"@ephemeral-ai/mayfly-ui"` key in five example manifests.** Confirmed in `bottom-log`, `header`,
-`mayfly-user-kit`, `right-inspector` and `ui-gallery` (the first survey counted four). JSON keeps the last value, so
-nothing breaks, but the manifest check should reject it.
+**B3. Duplicate `"@ephemeral-ai/mayfly-ui"` key in four example manifests.** Confirmed in `bottom-log`, `header`,
+`right-inspector` and `ui-gallery`: line 14 of each `package.json` lists the key twice inside one `dependencies`
+object. JSON keeps the last value, so nothing breaks, but the manifest check should reject it. The first version of
+this report counted five and named `mayfly-user-kit`; that manifest lists the package once under `peerDependencies`
+and once under `devDependencies`, which is legitimate. The first survey's count of four was right.
 
 **B4. Dead and test-only code.** Counted by `exports.mjs` over 1,945 exports of `packages/*/src`:
 
@@ -220,20 +222,40 @@ ANSI strippers. Merging them is mechanical and low risk but touches many files.
 `paintSafely`, `cacheKey`, and `prepare`. A shared base removes about 150 lines, but this is the hot path, so only do it
 after F1, F4 and F6 are fixed, with the decision tests of W18-W24 in place.
 
-**F5, F8, F9, F10, F11 (read, unverified at runtime, low impact).**
+**F5, F8, F9, F10, F11 (low impact; the follow-up pass below ran F5 and F11 and re-read F8 and F9).**
 
 - F5: `SegmentedContent.row()` locates the segment before painting and does not re-locate after the painted count
   replaces the estimate (`content-rows.ts:185-191, 342-348, 504-519`), so a first read of an over-estimated segment can
-  return `''`. Scrolls call `prepare` first. The first survey reproduced it on a family-emoji document.
+  return `''`. Reproduced in the follow-up pass: see "Follow-up checks". Scrolls call `prepare` first
+  (`ui-scroll-region.ts:155`, `ui-compiler.ts:628`), so the reachable cases are readers that jump without preparing.
 - F8: `app/index.ts:150-187` queues startup, resume, new and fork on one promise chain with no unload or generation
-  fence. `exit-epitaph.ts:29-53` keeps module-level mutable state and a `process.once('exit')` hook that is never
-  removed. The epitaph is armed on dispose by design.
+  fence. `exit-epitaph.ts:29-53` keeps module-level mutable state (`writer`, `armed`, `hooked`) and a
+  `process.once('exit')` hook that is installed once and never removed. The epitaph is armed on dispose by design.
+  The module state is a mutable product singleton by the letter of the root instructions; the hook itself is harmless.
 - F9: `new AbortController().signal` is passed to `commands.execute` in three places (`input-plugin.ts:575`,
-  `permission-panel.ts:112`, `mode-commands.ts:61`), so a command cannot be cancelled when its Fiber unloads.
+  `permission-panel.ts:112`, `mode-commands.ts:61`), so a command is not cancelled when its Fiber unloads. The first
+  version of this report called that a defect. The caller already ignores a late result (`input-plugin.ts:571-590`
+  checks `unloaded`), and the package instructions say UI withdrawal does not roll back native work. Downgraded:
+  not a defect, no fix proposed.
 - F10: admission and paint sanitize with different regexes (`ui-validator.ts:67-68` also strips C1/DCS sequences and
-  `﷐-﷯`; `plugin-view.ts:26-32` does not), and the painter sanitizes again per segment.
-- F11: `estimateColumns` counts every code point of a ZWJ emoji family as two columns (about three times the real
-  width). It only moves the estimated row map, which `prepare` corrects.
+  `\ufdd0-\ufdef`; `plugin-view.ts:26-32` does not), and the painter sanitizes again per segment. Read only.
+- F11: `estimateColumns` counts each emoji of a ZWJ family as two columns and the joiners as zero. Reproduced: the
+  family sequence estimates 8 columns against a real width of 2 (four times, not three). It only moves the estimated
+  row map, which `prepare` corrects, but it is what makes F5 reachable.
+
+## Follow-up checks
+
+Second pass on 2026-10-11 on a clean worktree of the audit commit (`89f4c6b`, built `lib/`), through temporary
+specs that were deleted and not committed. Same rules as the first pass.
+
+| ID | Result | Evidence |
+| --- | --- | --- |
+| F5 | **Reproduced.** P3. | A 400-line document of 40-family-emoji lines. The estimate is 6,401 rows at width 20 against 1,601 painted (3,201 against 801 at width 40). A first read of a fresh source at every 37th row returned `''` for 130 of 173 rows (62 of 87 at width 40), both on the raw `RowSource` and through the `virtualRows` facade `pi-tui` reads. The facade re-syncs on the next access, so the empty row is not retained, but the first reader sees it. A sequential read from row 0 is correct. |
+| F11 | **Reproduced.** | `estimateColumns` of one family sequence is 8, `visibleWidth` is 2. |
+| F12 | **Reproduced at the component level.** P3. The first report's "not reproduced" is withdrawn. | A filterable list at query `Lead` renders `1 match`. After the translator starts returning a Chinese catalog and no model changes, `render(60)` still returns `1 match`; `invalidate()` then returns `ZH:1 match`. The elision row uses the same `coreText` path. The host only requests a frame on a locale change (`core/index.ts:162`), and a pane recompiles only on an entry or interaction revision change (`surface-renderer.ts:550, 584`; the compiled surface's epoch inputs are viewport, model revision, keymap revision and completions, `ui-compiler.ts:2989-2990`). Node slots do include the locale revision (`node-slot.ts:66`), so slots and panes disagree. Not run through a live `/settings` locale switch. |
+| F7 | **Strengthened, not run live.** | Neither Mayfly (`chdir` appears only in specs) nor the installed Harness (`dsh` 0.2.0-rc.2 `lib/`: no `chdir`) changes the process directory, so a resumed session of another workspace leaves `process.cwd()` at the launch directory while the status line follows `session.header.cwd`. `editor-plus.ts:161, 178, 439` read `process.cwd()`. The live resume check stays in the manual list. |
+| Segmented equals whole | **No failure found.** | 24 seeded documents of 30,000 units (ASCII words, CJK, fullwidth, combining marks, ZWJ families, tabs, SGR runs, 300-character unbroken runs, blank lines), 3 widths (8, 20, 61), `text` and `code` leaves, 144 cases. Rows after `prepare(0, all)`, after preparing in reverse order, and after a sequential `row(i)` walk were identical, and for `text` the non-space characters of the rows equal the input's. |
+| F1, F2, F3, F4, E1 | **Re-run, same result.** | F1: 296 KB 275 ms, 594 KB 917 ms, 1.2 MB 3,410 ms against 23, 37 and 82 ms for the plain lexer. F2: 65 KB takes 336 ms (validator) and 321 ms (plugin view). F3: both inputs give `Mayfly UI rejected: values[line] is not iterable`. F4: 8,000 headings joined by `\n` form one unit, joined by `\n\n` 33 units of at most 4,098 characters; 3,000 adjacent fences form one unit. E1: `jobs.ts` selects 5 specs and `banner.ts` 5, none a guard; `terminal.ts` selects 123 and two guards. The F4 unit size depends on the heading text, so the 182,889 characters of the first table was not reproduced exactly (the repro here gave 126,889 characters, one unit). |
 
 ## Refuted or downgraded
 
@@ -243,7 +265,7 @@ after F1, F4 and F6 are fixed, with the decision tests of W18-W24 in place.
 | `agentDocs` patterns for `.agents/`, `docs/skills/` and `mayfly-skills-plan.md` are stale (`script/verify/inputs.mjs:21`) | They are triggers for the check that forbids those paths (`check-agent-docs.mjs:48-53`). A file added there should select the check. Keep them. |
 | The six `invariant.ts` area companions are dead and should be deleted | Each imports `@deepseek-ai/dsh-invariants`, is described as a "package-owned invariant companion", has an empty installer and its own spec. It appears to be a Harness convention. Whether the Harness requires one per area was not checked against its reference. Decide with the owner (ceremony, not a defect). |
 | `checkOf` is O(items) per row on the hot path | Tree page down is 1.2 ms at 100,000 items. Not a measured cost. |
-| F12, a stale elision text after a locale change | Not reproduced and not traced to the end: the compile cache is keyed on colors and components only (`ui-compile-cache.ts:34`) and `contentEnv` captures compile-time options. Whether a locale change recompiles the surface was not checked. Low priority; check it during the 2d locale pass. |
+| F9, a command is not cancelled when its Fiber unloads | The late result is already ignored and native work is not rolled back by design. Not a defect. |
 
 ## Test efficiency
 
@@ -299,8 +321,9 @@ I cannot judge these from code or a headless run. They are the 2d acceptance its
 | --- | --- | --- | --- |
 | `audit-1` correctness | F1, F3, F2, F4, F7 (after the runtime check), E1 | pr, then full | F4's cut rule |
 | `audit-2` forbidden leftovers | B1, B2, B3, `spanText`, test-only exports (B4) | pr | public-surface removals |
-| `audit-3` content cost | F6, A10, and timed rows for W22/W23 | pr with perf A/B | none |
+| `audit-3` content cost | F6, A10, F5 (re-locate after the painted count lands), and timed rows for W22/W23 | pr with perf A/B | none |
 | `audit-4` tests and gate | T2, T3, T7, T1, T10, E2 | pr, then full | none |
+| `audit-5` locale | F12 (give pane epochs the locale revision, as `nodeSlotEpoch` does) | pr | none |
 | later | B5, B6, T4, T6, T8, T9, T12 | full | yes |
 
 ## Appendix: reproduction

@@ -1,16 +1,17 @@
 # Phase 2 pre-review audit: progress report
 
-Report date: 2026-10-11. Baseline: `b657469`. Plan: [audit plan](2026-10-11-phase-2-audit-plan.md). Results:
+Report date: 2026-10-11 (follow-up pass the same day). Baseline: `b657469`. Plan: [audit plan](2026-10-11-phase-2-audit-plan.md). Results:
 [audit report](2026-10-11-phase-2-audit.md). This records the state of the audit when it was submitted and does not
 define current behavior.
 
 ## Status
 
-The agent-auditable part is finished to the depth below. Nothing has been fixed. The manual part has not started.
+The agent-auditable part is finished to the depth below after a follow-up pass that ran the open checks. Nothing has
+been fixed. The manual part has not started.
 
 | Workstream | State | Done | Not done |
 | --- | --- | --- | --- |
-| A Logic and correctness | Mostly done | F1, F2, F3, F4, F6 and A10 reproduced with numbers. F7 traced in code. F5, F8, F9, F10, F11 read only. F12 not traced to the end | Runtime checks for F5, F7, F8, F9; a segmented-equals-whole property check; a lifecycle sweep of `terminal.ts`, `surface-manager.ts` and `ui-interaction-*.ts` (the first pass went deep only on the 2c files) |
+| A Logic and correctness | Done except one sweep | F1, F2, F3, F4, F5, F6, F11, F12, A10 and the segmented-equals-whole property reproduced or run with numbers (F12 at the component level). F7 traced in code and strengthened (no `chdir` in Mayfly or the Harness). F8, F9, F10 re-read; F9 downgraded to not a defect | The live resume check for F7 (manual); a lifecycle sweep of `terminal.ts`, `surface-manager.ts` and `ui-interaction-*.ts` (the first pass went deep only on the 2c files); F8 and F10 only read |
 | B Redundant and dead code | Done at counting depth | Export-usage scan (1,945 exports: 218 own-file only, 280 test-only, 1 dead); compatibility leftovers (B1, B2); manifest duplicates (B3); helper duplication counted (B5) | Per-export review of the 280 test-only exports; the duplicate-function scan beyond the named helpers; script hygiene (orphan smokes, copied PTY blocks) read from the first survey only |
 | C Algorithm and performance | Partly done | Scaling repros for F1, F2, F4, F6, A10; the existing `audit-performance.mjs` (lists and transcript source healthy to 100,000) | CPU profiles with `perf --prof`; `DiffRowsSource` rebuild on resize, `UiRowCache` FIFO eviction, `scrolled` map growth, and the stacked width clamps are read only, not measured; pane and overlay refresh costs |
 | D Test efficiency | Done | Fresh per-test timings (plain and MEMO), work-budget timings, selection fan-out probes; T5 refuted | Coverage-run timings to separate coverage cost; per-spec import-closure report; a deletion check for each proposed test removal |
@@ -22,22 +23,30 @@ The agent-auditable part is finished to the depth below. Nothing has been fixed.
 | Severity | Count | IDs |
 | --- | --- | --- |
 | P1 | 1 | F1 |
-| P2 | 5 | F2, F3, F4, F7 (to confirm), E1 |
-| P3 | 8, plus a low-impact group | F6, A10, B1-B6 (B1-B3 are rule violations with a mechanical fix); the group is F5, F8-F11 |
+| P2 | 5 | F2, F3, F4, F7 (to confirm live), E1 |
+| P3 | 10, plus a low-impact group | F5, F6, F12, A10, B1-B6 (B1-B3 are rule violations with a mechanical fix); the group is F8, F10, F11 |
 
-Reproduced here: F1, F2, F3, F4, F6, A10, E1, B1, B2, B3, B4 counts. Read but not run: F5, F7, F8, F9, F10, F11, B6.
+Reproduced: F1, F2, F3, F4, F5, F6, F11, F12 (component level), A10, E1, B1, B2, B3, B4 counts. Read but not run: F7
+(strengthened), F8, F10, B6. Not a defect: F9.
 
 ## Corrections made during the audit
 
 Five leads from the first survey were checked and dropped or changed: the `MAYFLY_UI_VERIFY_MEMO` cost (none), the
 `agentDocs` patterns (intentional), the `invariant.ts` files (probably a Harness convention), `checkOf` (not slow),
-and the duplicate-key count (five manifests, not four). The A10 lead is real but milder than first reported.
+and the A10 lead (real but milder than first reported). The first version of this report also said the duplicate-key
+count was five manifests, not four; the follow-up pass found four (`mayfly-user-kit` lists the package once as a peer
+and once as a dev dependency, which is legitimate), so the survey's four was right.
+
+The follow-up pass also changed two findings: F12 went from "not reproduced" to reproduced, and F9 went from a
+defect to not a defect (the late result is ignored and native work is not rolled back by design). Two numbers were
+corrected: F11 is four times the real width (8 against 2), not three, and the F4 largest-unit size depends on the
+heading text.
 
 ## Next steps
 
 1. Owner triage of the report's slice table.
-2. Slice `audit-1` (F1, F3, F2, F4, F7 after its check, E1) on `feat/audit-1`, then `audit-2` to `audit-4`.
-3. Finish the open runtime checks above while the first slice is in review.
+2. Slice `audit-1` (F1, F3, F2, F4, F7 after its check, E1) on `feat/audit-1`, then `audit-2` to `audit-5`.
+3. Run the remaining sweep above (lifecycle files, F8, F10) while the first slice is in review.
 4. Owner runs the manual list in the plan; its results update the 2d acceptance record.
 
 ## Working-tree notes
