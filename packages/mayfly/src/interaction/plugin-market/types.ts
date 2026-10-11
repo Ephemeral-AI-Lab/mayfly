@@ -27,7 +27,7 @@ export interface MarketInstallRow {
 }
 
 /** Registry enrichment for one row package, absent for GitHub-only rows. */
-export interface MarketNpmInfo {
+interface MarketNpmInfo {
   readonly latestVersion: string | null
   readonly integrity?: string | null
   readonly publishedAt?: string | null
@@ -35,7 +35,7 @@ export interface MarketNpmInfo {
 }
 
 /** What the plugin contributes; frontend usefulness is derived, not declared. */
-export interface MarketSurfaces {
+interface MarketSurfaces {
   readonly server?: Readonly<Record<string, never>>
   readonly web?: { readonly clientModule: boolean }
   readonly tui?: { readonly contributions: readonly string[] }
@@ -76,7 +76,7 @@ export interface MarketIndex {
 }
 
 /** The index schema version this consumer understands. */
-export const MARKET_INDEX_SCHEMA_VERSION = 1
+const MARKET_INDEX_SCHEMA_VERSION = 1
 
 const installRowSchema = z.object({
   id: z.string().min(1).optional(),

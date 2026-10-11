@@ -13,7 +13,7 @@ import { VIEWS_FOCUS_ID, ViewsLane } from './views-lane.ts'
 import { sliceByColumn, visibleWidth } from './width.ts'
 
 export type SurfacePlacement = 'header' | 'left' | 'right' | 'bottom'
-export type SurfaceNarrowPolicy = 'bottom' | 'overlay' | 'hidden'
+type SurfaceNarrowPolicy = 'bottom' | 'overlay' | 'hidden'
 
 export interface SurfaceContribution {
   readonly id: string
@@ -35,14 +35,14 @@ export interface SurfaceLaneEntry extends SurfaceContribution {
   readonly priority: number
 }
 
-export interface SurfaceLaneLayout {
+interface SurfaceLaneLayout {
   readonly placement: SurfacePlacement
   readonly entries: readonly SurfaceLaneEntry[]
   readonly active: SurfaceLaneEntry
   readonly width?: number
 }
 
-export interface SurfaceOverflowEntry {
+interface SurfaceOverflowEntry {
   readonly entry: SurfaceLaneEntry
   readonly reason: 'hidden' | 'overlay'
 }
@@ -65,16 +65,16 @@ export interface SurfaceRegistration {
   dispose(): void
 }
 
-export interface SurfaceManagerOptions {
+interface SurfaceManagerOptions {
   readonly onChange?: () => void
   readonly onSurfaceFocusTransition?: (previous: MayflyFocusable, next: MayflyFocusable | null) => void
 }
 
 export const SURFACE_TRANSCRIPT_MIN_COLUMNS = 40
 export const SURFACE_TRANSCRIPT_REOPEN_COLUMNS = 44
-export const SURFACE_SIDE_MIN_COLUMNS = 20
-export const SURFACE_SIDE_PREFERRED_COLUMNS = 32
-export const SURFACE_SIDE_MAX_COLUMNS = 48
+const SURFACE_SIDE_MIN_COLUMNS = 20
+const SURFACE_SIDE_PREFERRED_COLUMNS = 32
+const SURFACE_SIDE_MAX_COLUMNS = 48
 export const SURFACE_HEADER_MAX_ROWS = 4
 
 const PLACEMENTS: readonly SurfacePlacement[] = ['header', 'left', 'right', 'bottom']
@@ -163,7 +163,7 @@ export function surfaceLaneTabRows(lane: SurfaceLaneLayout): 0 | 1 {
 }
 
 /** One bottom pane's row demand for {@link allocateBottomRows}. */
-export interface BottomRowDemand {
+interface BottomRowDemand {
   /** Rows the pane rendered. */
   readonly rows: number
   /** Rows granted before any pane grows; default 1 (the head row). */
@@ -226,7 +226,7 @@ export function fitSurfaceRows(rows: readonly string[], size: number, overflow: 
 }
 
 /** Lane hooks a bottom pane component may offer beyond `render`. */
-export interface SurfaceLaneRows {
+interface SurfaceLaneRows {
   /** Whether the first rendered row is a plain rule the lane paints once. */
   readonly leadingRule?: boolean
   /** Paint the muted row that replaces `hidden` cut rows. */
@@ -236,7 +236,7 @@ export interface SurfaceLaneRows {
 }
 
 /** One painted entry of a planned bottom lane. */
-export interface BottomLaneSlot {
+interface BottomLaneSlot {
   readonly entry: SurfaceLaneEntry
   /** Passive panes paint `rows`; an interactive pane lays out in `size` rows. */
   readonly passive: boolean

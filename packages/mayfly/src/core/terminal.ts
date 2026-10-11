@@ -69,7 +69,7 @@ const NORMALIZED_NAVIGATION_INPUT = new Map<string, string>([
 ])
 
 /** Renderer choice kept inside core's L0 boundary. */
-export type MayflyScreenMode = 'main' | 'alternate'
+type MayflyScreenMode = 'main' | 'alternate'
 
 /** One child's latest clamped rows, keyed on the row array the child returned. */
 interface ClampedChildRows {

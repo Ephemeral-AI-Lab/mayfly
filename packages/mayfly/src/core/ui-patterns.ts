@@ -54,7 +54,7 @@ const ELLIPSIS_WIDTH = visibleWidth(ELLIPSIS)
 const TRAILING_ANSI_RESET = /(?:\x1b\[0m)+$/
 
 /** Renderer paint and layout supplied by the thin pi-tui select adapter. */
-export interface AutocompleteListPatternOptions {
+interface AutocompleteListPatternOptions {
   readonly selectedText: (text: string) => string
   readonly description: (text: string) => string
   readonly scrollInfo: (text: string) => string

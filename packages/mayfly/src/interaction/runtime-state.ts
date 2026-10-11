@@ -20,7 +20,7 @@ declare module '@deepseek-ai/cordis' {
 }
 
 /** Mutable state for clipboard-image paste within one frontend tree. */
-export interface PasteImageRuntimeState {
+interface PasteImageRuntimeState {
   backendOverride: 'auto' | 'wayland' | 'x11' | undefined
   readonly backendCooldowns: Map<string, number>
   readonly pastedImages: Map<string, ImageAttachmentRef>

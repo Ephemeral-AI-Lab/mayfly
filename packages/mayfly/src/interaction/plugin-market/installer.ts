@@ -250,12 +250,12 @@ function prepareProfilePatchRemoval(root: string, rows: readonly MarketInstallRo
 }
 
 /** The outcome of an install or removal. */
-export type InstallOutcome =
+type InstallOutcome =
   | { readonly kind: 'success' }
   | { readonly kind: 'error', readonly text: string }
 
 /** Everything an install or removal needs to run. */
-export interface InstallerInput {
+interface InstallerInput {
   /** The dsh CLI binary (`findDshCommand()`). */
   readonly dshCommand: ResolvedCommand
   /** The profile name the launcher runs under. */

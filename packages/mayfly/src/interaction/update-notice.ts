@@ -12,7 +12,7 @@
  */
 
 /** The notice's facts. */
-export interface UpdateNoticeContent {
+interface UpdateNoticeContent {
   /** The version the process runs. */
   readonly current: string
   /** The version the registry offers. */

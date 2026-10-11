@@ -57,7 +57,7 @@ export interface UpdateCheckState {
 }
 
 /** The update-specific view of the shared Mayfly settings namespace. */
-export type UpdateSettings = Pick<MayflySettings, 'updateCheck' | 'updateChannel'>
+type UpdateSettings = Pick<MayflySettings, 'updateCheck' | 'updateChannel'>
 
 /** Stable Cordis plugin name. */
 export const name = 'mayfly-update-check'

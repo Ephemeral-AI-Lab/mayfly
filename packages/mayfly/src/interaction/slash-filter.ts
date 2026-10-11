@@ -16,7 +16,7 @@
 import type { MayflyComponents } from '../core/index.ts'
 
 /** The command-registry shape the filter reads. */
-export interface SlashCommandText {
+interface SlashCommandText {
   /** Lowercase command name without the leading slash. */
   readonly name: string
   /** Extra names the command answers to; each is matched like the name. */
@@ -24,7 +24,7 @@ export interface SlashCommandText {
 }
 
 /** One filtered command with the match provenance the display needs. */
-export interface SlashCommandMatch<T extends SlashCommandText> {
+interface SlashCommandMatch<T extends SlashCommandText> {
   readonly command: T
   /** True when the query matched an alias, not the canonical name. */
   readonly viaAlias: boolean

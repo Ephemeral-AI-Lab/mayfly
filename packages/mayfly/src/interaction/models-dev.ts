@@ -18,7 +18,7 @@ import type { Context } from '@deepseek-ai/cordis'
 const PI_AI_LEVELS = new Set(['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'])
 
 /** One model's catalog match: what the wizard can adopt without asking. */
-export interface ModelsDevMatch {
+interface ModelsDevMatch {
   /** The declared context window (`limit.context`). */
   readonly contextWindow?: number
   /** The declared output ceiling (`limit.output`). */

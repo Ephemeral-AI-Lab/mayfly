@@ -74,7 +74,7 @@ const VERSION_LABEL = 'Version:   '
 const LABEL_WIDTH = 11
 
 /** One width computation for a banner render. */
-export interface BannerLayout {
+interface BannerLayout {
   /** The viewport width budget; every line stays within this many columns. */
   readonly total: number
   /** The width each status value may use, after the logo and its labels. */

@@ -7,7 +7,7 @@ import type { MayflyTone } from '@ephemeral-ai/mayfly-ui'
 import type { TranscriptToolItem } from './types.ts'
 
 /** Canonical visual semantics of one Agent lifecycle phase. */
-export interface AgentPhasePresentation {
+interface AgentPhasePresentation {
   readonly label: 'running' | 'waiting' | 'done' | 'failed' | 'cancelled'
   readonly marker: '●' | '✓' | '✗' | '⊘'
   readonly tone: MayflyTone
@@ -65,7 +65,7 @@ export function agentPhasePresentation(phase: 'pending' | 'running' | 'waiting' 
 export const COMPACT_MEMBER_LIMIT = 3
 
 /** At most this many member rows render in a dock pane; the rest fold into one count row. */
-export const MAX_MEMBER_ROWS = 6
+const MAX_MEMBER_ROWS = 6
 
 /** Labels that keep a member in the visible selection first. */
 const LIVE_LABELS: ReadonlySet<string> = new Set(['running', 'waiting'])

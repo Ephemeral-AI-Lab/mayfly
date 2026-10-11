@@ -17,7 +17,7 @@ export const PATTERN_SOURCE_MAX = 256
 export const SUGGESTIONS_MAX = 64
 
 /** The flags every `pattern` compiles with: Unicode-aware, so `\p{L}` works and a stray escape is an error. */
-export const PATTERN_FLAGS = 'u'
+const PATTERN_FLAGS = 'u'
 
 function present<Value>(key: string, value: Value | undefined): Fields {
   return value === undefined ? {} : { [key]: value }

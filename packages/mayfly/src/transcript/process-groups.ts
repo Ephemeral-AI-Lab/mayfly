@@ -66,7 +66,7 @@ export interface EntryItem {
 export type DisplayItem = EntryItem | TurnHeaderItem | ProcessTitleItem
 
 /** Inputs of one display plan. */
-export interface DisplayInput {
+interface DisplayInput {
   readonly entries: readonly Entry[]
   readonly policy: ProcessPolicy
   /** The running turn, or `undefined` when every turn has ended. */

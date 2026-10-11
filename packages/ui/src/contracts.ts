@@ -13,21 +13,19 @@ export type * from './interaction.ts'
  */
 export type MayflyTranslate = (key: string, values?: Readonly<Record<string, string | number>>) => string
 
-export type MayflyJson = null | boolean | number | string | readonly MayflyJson[] | { readonly [key: string]: MayflyJson }
-
-export interface MayflyRegistration {
+interface MayflyRegistration {
   readonly disposed: boolean
   dispose(): void
 }
 
-export interface MayflyNodeRegistration<Node> extends MayflyRegistration {
+interface MayflyNodeRegistration<Node> extends MayflyRegistration {
   readonly revision: number
   set(node: Node | null, update?: MayflySnapshotUpdate): void
 }
 
 /** Service-owned asynchronous snapshot source; the node remains pure data. */
-export interface MayflySnapshotRequest { readonly cursor?: string, readonly signal: AbortSignal }
-export interface MayflySnapshotPage<Node> { readonly node: Node, readonly nextCursor?: string, readonly total?: number }
+interface MayflySnapshotRequest { readonly cursor?: string, readonly signal: AbortSignal }
+interface MayflySnapshotPage<Node> { readonly node: Node, readonly nextCursor?: string, readonly total?: number }
 export type MayflySnapshotProvider<Node> = (request: MayflySnapshotRequest) => MayflySnapshotPage<Node> | Promise<MayflySnapshotPage<Node>>
 
 export type MayflyTone = 'default' | 'muted' | 'primary' | 'accent' | 'user' | 'success' | 'warning' | 'danger'
@@ -49,7 +47,7 @@ export interface MayflyField { readonly label: string, readonly value: readonly 
  * How text wider than its row behaves: wrap onto more rows, stay one row ellipsized at the end, or stay one row with
  * the middle or the start elided so the distinguishing end shows (paths, titles). Rich text takes `wrap` and `truncate`.
  */
-export type MayflyTextOverflow = 'wrap' | 'truncate' | 'middle' | 'start'
+type MayflyTextOverflow = 'wrap' | 'truncate' | 'middle' | 'start'
 /**
  * One append unit of a chunked content field. Producers keep their chunk objects and publish the same identities as the
  * field grows, so admission validates each piece once and the renderer reuses its line index; a chunk whose text ends
@@ -174,7 +172,7 @@ export interface MayflyListSegment {
 }
 /** Content a list row may open under itself. It is never a control, so a body never takes focus or holds a key. */
 export type MayflyListBodyNode = MayflyContentNode | MayflyImageNode | MayflyProgressNode | MayflySpacerNode | MayflyDividerNode | MayflyListBodyStackNode
-export interface MayflyListBodyChild extends Omit<MayflyUiChild, 'node' | 'tab'> { readonly node: MayflyListBodyNode }
+interface MayflyListBodyChild extends Omit<MayflyUiChild, 'node' | 'tab'> { readonly node: MayflyListBodyNode }
 export interface MayflyListBodyStackNode extends Omit<MayflyStackNode, 'children'> { readonly children: readonly MayflyListBodyChild[] }
 export interface MayflyListItem {
   readonly id: string
@@ -251,7 +249,7 @@ export interface MayflyListNode {
   /** The word the hint row gives the list's `↑/↓`. */
   readonly hintLabel?: string
 }
-export interface MayflyFormFieldBase {
+interface MayflyFormFieldBase {
   readonly id: string
   readonly label: string
   readonly error?: string
@@ -266,7 +264,7 @@ export interface MayflyFormFieldBase {
   readonly group?: string
 }
 /** The text-entry constraints beyond length: `pattern` is checked when the field commits, and `suggestions` complete on `Tab`. */
-export interface MayflyTextFieldRules {
+interface MayflyTextFieldRules {
   /** A regular expression (at most 256 characters) the committed value must match. */
   readonly pattern?: string
   /** The error shown when `pattern` fails; a localized "Invalid value" otherwise. */
@@ -379,11 +377,11 @@ export interface MayflyImageNode {
 }
 
 /** A `[label size ×]` attachment shown inside the prompt's input row; the host owns the list and removes one on `token-remove`. */
-export interface MayflyPromptToken { readonly id: string, readonly label: string, readonly size?: string }
+interface MayflyPromptToken { readonly id: string, readonly label: string, readonly size?: string }
 /** One earlier message the prompt can recall: a queued message first, then history. */
 export interface MayflyPromptRecall { readonly kind: 'queued' | 'history', readonly text: string }
 /** One row of the prompt's completion list. */
-export interface MayflyPromptCompletion {
+interface MayflyPromptCompletion {
   readonly id: string
   readonly label: string
   /** Muted text after the label, behind a dash. */
@@ -425,10 +423,10 @@ export interface MayflyChartPoint { readonly x: number, readonly y: number | nul
 export interface MayflyChartSeries { readonly id: string, readonly label?: string, readonly tone?: MayflyTone, readonly points: readonly MayflyChartPoint[] }
 export interface MayflyBarChartSeries { readonly id: string, readonly label?: string, readonly tone?: MayflyTone, readonly values: readonly (number | null)[], readonly empty?: boolean }
 export interface MayflyChartLevel { readonly value: number | string, readonly label: string, readonly tone?: MayflyTone }
-export interface MayflyLineChartNode { readonly kind: 'chart', readonly chart: 'line' | 'point', readonly series: readonly MayflyChartSeries[], readonly title?: string, readonly xLabel?: string, readonly yLabel?: string, readonly height?: number }
-export interface MayflyBarChartNode { readonly kind: 'chart', readonly chart: 'bar', readonly layout?: 'grouped' | 'stacked' | 'normalized', readonly orientation?: 'vertical' | 'horizontal', readonly categories: readonly string[], readonly series: readonly MayflyBarChartSeries[], readonly title?: string, readonly yLabel?: string, readonly height?: number }
-export interface MayflySparklineChartNode { readonly kind: 'chart', readonly chart: 'sparkline', readonly values: readonly (number | null)[], readonly label?: string, readonly tone?: MayflyTone }
-export interface MayflyHeatmapChartNode {
+interface MayflyLineChartNode { readonly kind: 'chart', readonly chart: 'line' | 'point', readonly series: readonly MayflyChartSeries[], readonly title?: string, readonly xLabel?: string, readonly yLabel?: string, readonly height?: number }
+interface MayflyBarChartNode { readonly kind: 'chart', readonly chart: 'bar', readonly layout?: 'grouped' | 'stacked' | 'normalized', readonly orientation?: 'vertical' | 'horizontal', readonly categories: readonly string[], readonly series: readonly MayflyBarChartSeries[], readonly title?: string, readonly yLabel?: string, readonly height?: number }
+interface MayflySparklineChartNode { readonly kind: 'chart', readonly chart: 'sparkline', readonly values: readonly (number | null)[], readonly label?: string, readonly tone?: MayflyTone }
+interface MayflyHeatmapChartNode {
   readonly kind: 'chart'
   readonly chart: 'heatmap'
   readonly columns: readonly string[]
@@ -446,11 +444,11 @@ export type MayflyChartNode = MayflyLineChartNode | MayflyBarChartNode | MayflyS
 export type MayflyContentNode = MayflyTextNode | MayflyMarkdownNode | MayflyFieldsNode | MayflyCodeNode | MayflyDiffNode | MayflySectionsNode | MayflyRichTextNode | MayflyDiagramNode | MayflyChartNode
 export type MayflyUiNode = MayflyContentNode | MayflyStackNode | MayflySurfaceNode | MayflyScrollNode | MayflyTabsNode | MayflyListNode | MayflyFormNode | MayflyActionsNode | MayflyLoaderNode | MayflyEmptyNode | MayflyProgressNode | MayflySpacerNode | MayflyDividerNode | MayflyImageNode | MayflyPromptNode
 
-export interface MayflyRegistryUpsert<Entry> { readonly kind: 'upsert', readonly entry: Entry }
-export interface MayflyRegistryRemove { readonly kind: 'remove', readonly id: string, readonly revision: number }
+interface MayflyRegistryUpsert<Entry> { readonly kind: 'upsert', readonly entry: Entry }
+interface MayflyRegistryRemove { readonly kind: 'remove', readonly id: string, readonly revision: number }
 export type MayflyRegistryDelta<Entry> = MayflyRegistryUpsert<Entry> | MayflyRegistryRemove
 
-export type MayflyPanePlacement = 'header' | 'left' | 'right' | 'bottom' | 'views'
+type MayflyPanePlacement = 'header' | 'left' | 'right' | 'bottom' | 'views'
 export interface MayflyInteractionDefinition { readonly scope?: MayflyUiScope, readonly source?: readonly MayflySourceStamp[] }
 export interface MayflyInteractionSnapshot { readonly scope: MayflyUiScope, readonly source: readonly MayflySourceStamp[] }
 /**
@@ -483,7 +481,7 @@ export interface MayflyOverlayRegistry { open(definition: MayflyOverlayDefinitio
 
 export type MayflyStatusNode = MayflyTextNode | MayflyRichTextNode | MayflyFieldsNode | MayflyProgressNode | MayflyStatusStackNode
 export interface MayflyStatusChild extends Omit<MayflyUiChild, 'node' | 'tab'> { readonly node: MayflyStatusNode }
-export interface MayflyStatusStackNode extends Omit<MayflyStackNode, 'children'> { readonly children: readonly MayflyStatusChild[] }
+interface MayflyStatusStackNode extends Omit<MayflyStackNode, 'children'> { readonly children: readonly MayflyStatusChild[] }
 export interface MayflyStatusDefinition { readonly id: string, readonly priority?: number, readonly band?: 'left' | 'center' | 'right', readonly row?: 1 | 2, readonly overflow?: 'truncate' | 'hide' }
 export interface MayflyStatusEntry { readonly id: string, readonly definition: MayflyStatusDefinition, readonly node: MayflyStatusNode | null, readonly revision: number }
 export interface MayflyStatusRegistration extends MayflyRegistration { readonly revision: number, set(node: MayflyStatusNode | null): void }
@@ -491,15 +489,15 @@ export interface MayflyStatusRegistry { register(definition: MayflyStatusDefinit
 
 export interface MayflyEditorCompletionItem { readonly id: string, readonly label: string, readonly insertText: string, readonly detail?: string }
 export interface MayflyEditorCompletionRequest { readonly query: string, readonly trigger: '/' | '@' | '#' | 'manual' }
-export interface MayflyEditorDiagnostic { readonly id: string, readonly message: string, readonly tone?: MayflyTone }
+interface MayflyEditorDiagnostic { readonly id: string, readonly message: string, readonly tone?: MayflyTone }
 export interface MayflyEditorAttachment { readonly id: string, readonly label: string, readonly mediaType?: string, readonly size?: number }
 export interface MayflyEditorSubmitRequest { readonly text: string, readonly attachments: readonly MayflyEditorAttachment[] }
 export interface MayflyEditorSubmitValue { readonly text: string }
-export type MayflyEditorContentNode = Exclude<MayflyContentNode, MayflyDiagramNode | MayflyChartNode>
+type MayflyEditorContentNode = Exclude<MayflyContentNode, MayflyDiagramNode | MayflyChartNode>
 export type MayflyEditorExtensionNode = MayflyEditorContentNode | MayflyProgressNode | MayflySpacerNode | MayflyDividerNode | MayflyEditorExtensionStackNode | MayflyEditorExtensionSurfaceNode
-export interface MayflyEditorExtensionChild extends Omit<MayflyUiChild, 'node' | 'tab'> { readonly node: MayflyEditorExtensionNode }
-export interface MayflyEditorExtensionStackNode extends Omit<MayflyStackNode, 'children'> { readonly children: readonly MayflyEditorExtensionChild[] }
-export interface MayflyEditorExtensionSurfaceNode extends Omit<MayflySurfaceNode, 'child' | 'footer'> { readonly child: MayflyEditorExtensionNode, readonly footer?: MayflyEditorExtensionNode }
+interface MayflyEditorExtensionChild extends Omit<MayflyUiChild, 'node' | 'tab'> { readonly node: MayflyEditorExtensionNode }
+interface MayflyEditorExtensionStackNode extends Omit<MayflyStackNode, 'children'> { readonly children: readonly MayflyEditorExtensionChild[] }
+interface MayflyEditorExtensionSurfaceNode extends Omit<MayflySurfaceNode, 'child' | 'footer'> { readonly child: MayflyEditorExtensionNode, readonly footer?: MayflyEditorExtensionNode }
 export interface MayflyEditorDecoration { readonly before?: MayflyEditorExtensionNode, readonly after?: MayflyEditorExtensionNode, readonly hint?: string, readonly diagnostics?: readonly MayflyEditorDiagnostic[], readonly actions?: readonly MayflyActionItem[] }
 export interface MayflyEditorExtensionDefinition extends MayflyInteractionDefinition { readonly id: string, readonly priority?: number, readonly onEvent?: MayflyUiEventHandlers<MayflyEditorDecoration>, readonly complete?: (request: MayflyEditorCompletionRequest, context: MayflyUiEventContext) => readonly MayflyEditorCompletionItem[] | Promise<readonly MayflyEditorCompletionItem[]>, readonly transformSubmit?: (request: MayflyEditorSubmitRequest, context: MayflyUiEventContext) => MayflyEditorSubmitValue | Promise<MayflyEditorSubmitValue> }
 export interface MayflyEditorExtensionEntry extends MayflyInteractionSnapshot { readonly id: string, readonly definition: MayflyEditorExtensionDefinition, readonly decoration: MayflyEditorDecoration, readonly revision: number, readonly update: MayflySnapshotChange, readonly events: MayflyUiEventEndpoint<MayflyEditorDecoration> }

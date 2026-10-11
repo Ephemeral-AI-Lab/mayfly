@@ -17,13 +17,13 @@ declare module '@deepseek-ai/cordis' {
 }
 
 /** Locale identifiers supported by Mayfly. */
-export const MAYFLY_LOCALE_IDS = ['zh', 'en'] as const
+const MAYFLY_LOCALE_IDS = ['zh', 'en'] as const
 
 /** A locale identifier supported by Mayfly. */
 export type MayflyLocaleId = typeof MAYFLY_LOCALE_IDS[number]
 
 /** Explicit preference; absence means follow the process locale. */
-export type MayflyLocalePreference = MayflyLocaleId | undefined
+type MayflyLocalePreference = MayflyLocaleId | undefined
 
 /** One namespace's messages for both shipped locales. */
 export interface MayflyLocaleCatalog {
@@ -44,13 +44,13 @@ export interface MayflyLocaleSnapshot {
 }
 
 /** Values interpolated into `{name}` message placeholders. */
-export type MayflyLocaleValues = Readonly<Record<string, string | number>>
+type MayflyLocaleValues = Readonly<Record<string, string | number>>
 
 /** Namespace-bound translation function (the type `@ephemeral-ai/mayfly-ui` exports for components). */
 export type { MayflyTranslate }
 
 /** Options for {@link MayflyLocaleService}. */
-export interface MayflyLocaleServiceOptions {
+interface MayflyLocaleServiceOptions {
   /** Locale resolved from the process environment. */
   readonly systemLocale?: MayflyLocaleId
   /** Initial explicit preference. */

@@ -33,7 +33,7 @@ export interface LiveAssistantDraft {
 }
 
 /** Native session follow reader, fenced by the caller's exact Agent identity. */
-export interface AssistantStreamFollow {
+interface AssistantStreamFollow {
   open(signal: AbortSignal): AsyncIterable<SessionFollowFrame>
   current(): boolean
 }

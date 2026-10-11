@@ -23,7 +23,7 @@ export interface SessionListRow extends SessionListHeader {
   readonly summary: SessionSummary
 }
 
-export interface SessionListSelection { readonly cwd?: string | undefined, readonly ids?: ReadonlySet<string> }
+interface SessionListSelection { readonly cwd?: string | undefined, readonly ids?: ReadonlySet<string> }
 
 /** Read results retained by the command Fiber, including confirmed absent titles. */
 export interface SessionListCache {

@@ -77,7 +77,7 @@ export interface ShellExecution {
  * Runs one shell command line and resolves with its outcome; never rejects
  * for a nonzero exit code.
  */
-export type ShellExecutor = (command: string, cwd: string) => Promise<ShellExecution>
+type ShellExecutor = (command: string, cwd: string) => Promise<ShellExecution>
 
 /** The default executor: the platform shell, cwd inherited from the process. */
 const defaultShellExecutor: ShellExecutor = (command, cwd) => new Promise((resolve) => {

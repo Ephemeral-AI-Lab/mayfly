@@ -6,7 +6,7 @@ import type { ProjectionDefinition } from '@deepseek-ai/dsh-session-projection'
 import { z } from 'zod'
 
 const schema = z.array(z.object({ id: z.string(), path: z.string(), description: z.string().optional() }))
-export type DeliveredFile = z.infer<typeof schema>[number]
+type DeliveredFile = z.infer<typeof schema>[number]
 declare module '@deepseek-ai/dsh-session-projection/types' {
   interface SessionProjectionStateMap { mayflyDeliverables: DeliveredFile[] }
   interface SessionProjectionMap { mayflyDeliverables: DeliveredFile[] }

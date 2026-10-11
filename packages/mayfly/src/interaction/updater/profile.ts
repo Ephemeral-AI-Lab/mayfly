@@ -21,7 +21,7 @@ import type { ResolvedCommand } from './io.ts'
 const SNAPSHOT_FILES = ['package.json', 'pnpm-lock.yaml', 'cordis.patch.yml'] as const
 
 /** The backup directory inside the profile (dies with `rm -rf` of it). */
-export const BACKUP_DIRNAME = '.mayfly-update-backup'
+const BACKUP_DIRNAME = '.mayfly-update-backup'
 
 /** What the updater needs to know about an installed profile. */
 export interface ProfileFacts {
@@ -121,7 +121,7 @@ function readInstalledVersion(manifestPath: string): string | undefined {
 }
 
 /** The snapshot's bookkeeping, written beside the preserved files. */
-export interface SnapshotManifest {
+interface SnapshotManifest {
   /** The version the profile ran before the swap. */
   readonly fromVersion: string
   /** The version the swap attempted. */

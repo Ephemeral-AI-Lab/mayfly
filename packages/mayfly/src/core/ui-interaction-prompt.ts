@@ -14,7 +14,7 @@ import type { UiControlAddress } from './ui-interaction-tree.ts'
 export const PROMPT_COMPLETION_ROWS = 5
 
 /** The recall walk: the entry on show, and the draft that `↓` past the newest entry returns. */
-export interface UiPromptRecall {
+interface UiPromptRecall {
   /** Index into `definition.recall`; `-1` between the draft and the first entry, after the entry on show was withdrawn. */
   readonly index: number
   readonly draft: string
@@ -59,7 +59,7 @@ export type UiPromptEffect =
   | { readonly kind: 'completion-dismiss' }
   | { readonly kind: 'submit', readonly text: string, readonly tokens: readonly string[], readonly draftRevision: number }
 
-export interface UiPromptReduction {
+interface UiPromptReduction {
   readonly model: UiPromptModel
   readonly effects: readonly UiPromptEffect[]
 }

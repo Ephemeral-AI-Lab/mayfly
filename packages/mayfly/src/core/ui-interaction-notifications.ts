@@ -24,7 +24,7 @@ export function feedbackSpans(severity: MayflyFeedback['severity'], message: str
   return [{ text: `${glyph} `, tone }, quiet ? { text: message } : { text: message, tone }]
 }
 
-export interface UiNotificationIdentity {
+interface UiNotificationIdentity {
   readonly owner: string
   readonly scope: MayflyUiScope
   readonly operationId?: string

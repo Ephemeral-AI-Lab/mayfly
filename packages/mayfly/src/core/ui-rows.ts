@@ -365,7 +365,7 @@ export function concatRows(...parts: readonly (readonly string[])[]): string[] {
   return virtualRows(concatOf(pieces))
 }
 
-export interface MappedRowsOptions {
+interface MappedRowsOptions {
   /** The widest row the map produces; omitted means unknown, so a measure reads the rows. */
   readonly declaredWidth?: number
   /**

@@ -25,7 +25,7 @@ import { interactionTranslator } from './locale.ts'
 
 export const DEEPSEEK_KEY = 'DEEPSEEK_API_KEY'
 /** The provider route that reads `DEEPSEEK_API_KEY`. */
-export const DEEPSEEK_KEY_ROUTE = 'deepseek-official'
+const DEEPSEEK_KEY_ROUTE = 'deepseek-official'
 export const name = 'mayfly-provider-onboarding'
 export const inject = ['credentials', 'mayflyOverlays']
 

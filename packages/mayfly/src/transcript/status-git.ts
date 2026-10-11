@@ -73,7 +73,7 @@ export interface GitBadgeStatus {
  * probe failed or timed out, so dirty/ahead/behind are unknown — rendered
  * as `branch [?]`, never as a clean tree.
  */
-export interface GitUnknownBadgeStatus {
+interface GitUnknownBadgeStatus {
   /** Checked-out branch name. */
   readonly branch: string
   /** Discriminant: always true, marks the tree state as unknown. */
@@ -81,7 +81,7 @@ export interface GitUnknownBadgeStatus {
 }
 
 /** The probed working-tree facts without the branch name. */
-export type GitTreeFacts = Pick<GitBadgeStatus, 'dirty' | 'ahead' | 'behind' | 'diffAdded' | 'diffDeleted'>
+type GitTreeFacts = Pick<GitBadgeStatus, 'dirty' | 'ahead' | 'behind' | 'diffAdded' | 'diffDeleted'>
 
 /**
  * One git invocation: runs `git` with `args` in `cwd`, returning trimmed
@@ -115,14 +115,14 @@ export function setGitCommandRunner(runner: GitCommandRunner | undefined): void 
 }
 
 /** The wall clock the TTL cache reads; replaceable in tests. */
-export type GitClock = () => number
+type GitClock = () => number
 
 const defaultGitClock: GitClock = () => Date.now()
 
 let gitClock: GitClock = defaultGitClock
 
 /** Timer primitives driving controller-side probes independently of render. */
-export interface GitStatusTimers {
+interface GitStatusTimers {
   setInterval: (callback: () => void, ms: number) => ReturnType<typeof setInterval>
   clearInterval: (handle: ReturnType<typeof setInterval>) => void
 }
@@ -201,7 +201,7 @@ interface CacheSlots {
 }
 
 /** A TTL-cached git badge reader for one working directory. */
-export interface GitBadgeCache {
+interface GitBadgeCache {
   /**
    * The current facts, probing whatever its TTL expired.
    * @returns the facts, an unknown-status badge when the branch resolved but

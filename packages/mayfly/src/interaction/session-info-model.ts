@@ -7,7 +7,7 @@ import type { ChangelogEntry } from './changelog-content.ts'
 import { MAYFLY_VERSION } from '../transcript/banner-content.ts'
 import { formatTokens, usagePercent, usageRatio, ratioSeverity, totalTokens, type UsageFacts, type CompositionFacts } from './usage.ts'
 
-export interface VersionFacts { readonly mayfly: string, readonly harness: string }
+interface VersionFacts { readonly mayfly: string, readonly harness: string }
 export interface SessionInfoFacts {
   readonly id: string
   readonly cwd?: string

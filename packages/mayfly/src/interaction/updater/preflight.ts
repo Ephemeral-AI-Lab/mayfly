@@ -22,7 +22,7 @@ import { compareVersions, isVersion, VERSION_FLOOR } from './version.ts'
 export const DEFAULT_COOLDOWN_MINUTES = 1440
 
 /** A blocking gate's verdict — it stops the update and carries its message. */
-export interface BlockingVerdict {
+interface BlockingVerdict {
   /** Stable gate id (`link-pollution`, `host-line`, …). */
   readonly code: string
   readonly blocking: true
@@ -31,7 +31,7 @@ export interface BlockingVerdict {
 }
 
 /** A passing gate's verdict — optionally a warning that rides along. */
-export interface PassingVerdict {
+interface PassingVerdict {
   /** Stable gate id. */
   readonly code: string
   readonly blocking: false
@@ -40,7 +40,7 @@ export interface PassingVerdict {
 }
 
 /** A gate's verdict; blocking gates stop before anything is touched. */
-export type Verdict = BlockingVerdict | PassingVerdict
+type Verdict = BlockingVerdict | PassingVerdict
 
 /** The repair recipe every blocking lane/set verdict offers. */
 export function repairRecipe(names: readonly string[], version: string, t: MayflyTranslate = interpolateLocaleMessage): string {
@@ -107,7 +107,7 @@ export function checkVersionFloor(target: string, t: MayflyTranslate = interpola
 }
 
 /** The host-line facts gate 5 reads. */
-export interface HostLineInput {
+interface HostLineInput {
   /** A bundled host advances by reinstalling its launcher, not a global dsh. */
   readonly launcher?: boolean
   /** The global dsh CLI's version, `undefined` when unprobeable. */
@@ -161,7 +161,7 @@ export function checkHostLine(input: HostLineInput, t: MayflyTranslate = interpo
 }
 
 /** The cooldown facts gate 6 reads. */
-export interface CooldownInput {
+interface CooldownInput {
   /** Target's publish time, epoch ms; `undefined` when unrecorded. */
   readonly publishedAt: number | undefined
   /** pnpm's `minimumReleaseAge` in minutes; `undefined` falls to the default. */
@@ -212,7 +212,7 @@ export function checkDowngrade(facts: ProfileFacts, target: string, t: MayflyTra
 }
 
 /** Everything the composed pre-flight needs. */
-export interface PreflightInput {
+interface PreflightInput {
   readonly t?: MayflyTranslate
   readonly facts: ProfileFacts
   /** The package names used in repair guidance. */
@@ -245,7 +245,7 @@ export function runPreflight(input: PreflightInput): Verdict[] {
 }
 
 /** What the offer resolution concluded. */
-export type OfferResolution =
+type OfferResolution =
   | { kind: 'offer'; target: string }
   | { kind: 'up-to-date'; target: string }
   | { kind: 'no-tag' }

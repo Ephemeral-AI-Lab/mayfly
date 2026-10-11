@@ -160,7 +160,7 @@ type MayflyStackBareNode = MayflyUiNode & {
   readonly priority?: never
   readonly band?: never
 }
-export type MayflyStackItem = MayflyStackBareNode | (MayflyUiChild & { readonly kind?: never })
+type MayflyStackItem = MayflyStackBareNode | (MayflyUiChild & { readonly kind?: never })
 
 function stack(direction: MayflyStackNode['direction'], children: readonly MayflyStackItem[], options: StackOptions = {}): MayflyStackNode {
   const normalized: MayflyUiChild[] = frozen(children).map(item => 'kind' in item ? { node: item as MayflyUiNode } : item)

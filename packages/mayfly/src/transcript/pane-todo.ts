@@ -50,7 +50,7 @@ export const ACTION_TOGGLE_TODO = 'mayfly.todo.toggle'
 const MAX_VISIBLE = 5
 
 /** The folded view's answer: the rows that show and what the footer counts. */
-export interface VisibleTodos {
+interface VisibleTodos {
   /** The selected rows, in their original list order. */
   readonly rows: readonly TodoItem[]
   /** How many entries the fold hides. */

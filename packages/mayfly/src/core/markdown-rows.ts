@@ -92,7 +92,7 @@ function blankBetween(previous: string, next: string): boolean {
 }
 
 /** One link-reference definition the document resolves: its tag and its complete raw text. */
-export interface MarkdownDef {
+interface MarkdownDef {
   readonly tag: string
   readonly raw: string
 }

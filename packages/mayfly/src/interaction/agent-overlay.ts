@@ -7,7 +7,7 @@ import type { MayflyOverlayDefinition, MayflyOverlayHandle, MayflyUiActionHandle
 import type {} from '../app/index.ts'
 
 /** Open-time policy for an Agent-scoped UI overlay registration. */
-export interface AgentOverlayOpenOptions {
+interface AgentOverlayOpenOptions {
   /** Caller cancellation checked before and during the child-fiber mount. */
   readonly signal?: AbortSignal | undefined
   /**

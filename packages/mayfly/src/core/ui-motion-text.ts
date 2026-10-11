@@ -18,7 +18,7 @@ export function hasMotion(spans: readonly MayflyInlineSpan[]): boolean {
 }
 
 /** How the motion spans of a row are painted. */
-export interface MotionSpanOptions {
+interface MotionSpanOptions {
   readonly glyphs?: MayflyGlyphMode | undefined
   readonly reducedMotion?: boolean | undefined
 }

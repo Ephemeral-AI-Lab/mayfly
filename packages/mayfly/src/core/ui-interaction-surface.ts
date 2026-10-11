@@ -35,7 +35,7 @@ interface UiAction {
   readonly close?: boolean
 }
 
-export interface UiAvailableAction {
+interface UiAvailableAction {
   readonly actionId: string
   readonly pagePath: MayflyPagePath
   readonly verb: 'activate' | 'read' | 'submit' | 'navigate' | 'dismiss'
@@ -86,7 +86,7 @@ const DISPOSED_EVENTS: MayflyUiEventEndpoint<MayflyUiNode | null> = Object.freez
   prepare: async () => Object.freeze({ reply: undefined, publish: () => false }),
 })
 
-export function sameUiSource(left: readonly MayflySourceStamp[], right: readonly MayflySourceStamp[]): boolean {
+function sameUiSource(left: readonly MayflySourceStamp[], right: readonly MayflySourceStamp[]): boolean {
   return left.length === right.length && left.every(stamp => right.some(other => other.resourceId === stamp.resourceId && other.revision === stamp.revision))
 }
 

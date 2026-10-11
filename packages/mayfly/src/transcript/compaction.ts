@@ -25,7 +25,7 @@ import { BRAILLE_SPINNER_FRAMES, BRAILLE_SPINNER_INTERVAL_MS } from './spinners.
 import { formatTokens } from './status-context.ts'
 
 /** Upper bound on the expanded checkpoint-summary preview. */
-export const COMPACTION_SUMMARY_LINES = 5
+const COMPACTION_SUMMARY_LINES = 5
 
 /** Refresh cadence of the live frame and elapsed label. */
 const COMPACTION_REFRESH_MS = BRAILLE_SPINNER_INTERVAL_MS

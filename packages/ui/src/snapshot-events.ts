@@ -64,7 +64,7 @@ export function admitSnapshotUpdate(update: MayflySnapshotUpdate = {}): MayflySn
   return admitted
 }
 
-export function validateFeedback(feedback: MayflyFeedback): void {
+function validateFeedback(feedback: MayflyFeedback): void {
   record(feedback, 'action feedback')
   if (typeof feedback.message !== 'string' || feedback.message.length === 0) throw new TypeError('feedback requires a message')
   if (!['info', 'success', 'warning', 'error'].includes(feedback.severity)) throw new TypeError('feedback severity is invalid')

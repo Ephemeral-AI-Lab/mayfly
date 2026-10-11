@@ -13,7 +13,7 @@ export interface SubmitTransformation {
   readonly rollback?: () => void
 }
 
-export type SubmitTransformer = (text: string) => ContentBlock[] | SubmitTransformation
+type SubmitTransformer = (text: string) => ContentBlock[] | SubmitTransformation
 
 /** Ordered reversible transformations applied immediately before Agent followup. */
 export class PromptSubmitPipeline extends Service {

@@ -17,13 +17,13 @@ import { countWork, type MayflyWorkCounters } from './ui-work-counters.ts'
 export const ADMISSION_MIN_TRUNCATED = 8
 
 /** A child's natural width is measured at this width, or at the row's when that is wider. */
-export const ADMISSION_PROBE_WIDTH = 120
+const ADMISSION_PROBE_WIDTH = 120
 
 /** The gap between admitted children when the row names none. */
-export const ADMISSION_GAP = 2
+const ADMISSION_GAP = 2
 
 /** What admission reads of one child. */
-export interface AdmissionEntry {
+interface AdmissionEntry {
   readonly priority?: number | undefined
   readonly overflow?: MayflyUiChild['overflow'] | undefined
   /** The width the child asks for when nothing constrains it. */
@@ -62,7 +62,7 @@ export function admitWidths(entries: readonly AdmissionEntry[], width: number, g
 }
 
 /** One child of an admission row. */
-export interface AdmissionChild extends AdmissionEntry {
+interface AdmissionChild extends AdmissionEntry {
   readonly component: Component
   readonly band: 'left' | 'center' | 'right'
 }
@@ -91,7 +91,7 @@ export function layoutBands(bands: { readonly left: string, readonly center: str
 }
 
 /** What an admission row needs from its compiled children and its host. */
-export interface AdmissionRowOptions {
+interface AdmissionRowOptions {
   readonly components: Pick<MayflyComponents, 'visibleWidth' | 'truncateToWidth'>
   readonly gap?: number | undefined
   /** The work sink; the row counts the one row it paints. */

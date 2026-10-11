@@ -14,7 +14,7 @@ import { getSharedEditor } from './editor-instance.ts'
 import { interactionTranslator } from './locale.ts'
 
 /** Independent native state for plan switching and status display. */
-export interface MayflySessionModeSnapshot {
+interface MayflySessionModeSnapshot {
   readonly plan: { readonly active: boolean, readonly pending: boolean } | undefined
   readonly yolo: boolean
 }

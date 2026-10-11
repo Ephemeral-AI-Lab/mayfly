@@ -12,13 +12,13 @@ import { SessionId } from '@deepseek-ai/dsh-session'
 import type { MayflyConversationView } from './conversation-views.ts'
 
 /** Outcome of one synchronous tree-wide interrupt request. */
-export interface AgentTreeInterruptResult {
+interface AgentTreeInterruptResult {
   readonly requested: boolean
   readonly failures: readonly string[]
 }
 
 /** Options that differ between ordinary interruption and safe retraction. */
-export interface AgentTreeInterruptOptions {
+interface AgentTreeInterruptOptions {
   readonly keepInbox?: boolean
 }
 

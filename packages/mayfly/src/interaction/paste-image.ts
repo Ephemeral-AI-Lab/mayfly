@@ -91,7 +91,7 @@ export const ACTION_IMAGE_PASTE = 'mayfly.image.paste'
  * Reads the clipboard's current image, or resolves the failure kind. Never
  * rejects (the injected test readers may).
  */
-export type ClipboardImageReader = () => Promise<ClipboardImageResult>
+type ClipboardImageReader = () => Promise<ClipboardImageResult>
 
 /** How one clipboard tool lists the offered types and reads one back. */
 type ClipboardTool = {
@@ -132,7 +132,7 @@ const CLIPBOARD_TOOLS: Readonly<Record<DisplayBackend, ClipboardTool>> = {
 const BACKEND_COOLDOWN_MS = 60_000
 
 /** Wall clock seam for deterministic cooldown specs. */
-export type ClipboardClock = () => number
+type ClipboardClock = () => number
 
 const defaultClipboardClock: ClipboardClock = () => Date.now()
 let clipboardClock: ClipboardClock = defaultClipboardClock

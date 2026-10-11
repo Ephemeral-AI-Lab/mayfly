@@ -75,7 +75,7 @@ export function formatReminderRelative(scheduledAt: string, now: number, t: Mayf
 }
 
 /** Overdue records first, then ascending target time; exact ties stay stable. */
-export function orderScheduleRecords(
+function orderScheduleRecords(
   records: readonly ScheduleRecord[],
   now: number,
 ): ScheduleRecord[] {

@@ -26,7 +26,7 @@ import { extractMentionToken, mentionPath } from '../internal/mention.ts'
 import { displayPath, platformPath } from '../internal/paths.ts'
 
 /** Hard cap on fallback-scan entries, directories included (kimi parity). */
-export const MAX_FALLBACK_SCAN = 2000
+const MAX_FALLBACK_SCAN = 2000
 /** Cap on fallback suggestions returned per query (kimi parity). */
 export const MAX_FALLBACK_SUGGESTIONS = 50
 /** Directory names the fallback scan never yields nor descends into. */
@@ -45,7 +45,7 @@ export function extractAtPrefix(text: string): string | null {
  * Probes the PATH for a usable `fd` binary; tests replace this.
  * @returns the resolved binary name, or `null` when none spawns.
  */
-export type FdProbe = () => Promise<string | null>
+type FdProbe = () => Promise<string | null>
 
 /** Probe one binary by asking for its version. */
 function probeBinary(binary: string): Promise<boolean> {
@@ -157,7 +157,7 @@ const MENTION_CACHE_TTL_MS = 3000
  * The cache has no filesystem invalidation — the TTL bounds staleness, and
  * it lives with the editor fiber that owns it.
  */
-export interface MentionScanCache {
+interface MentionScanCache {
   /**
    * The candidates for `base`: an already-running scan is joined, and a
    * settled one within the TTL is returned without touching the disk.

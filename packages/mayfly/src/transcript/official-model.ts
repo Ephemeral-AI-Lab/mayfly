@@ -49,7 +49,7 @@ export const COMMAND_PREVIEW_LINE_LIMIT = 4
 const COMMAND_PREVIEW_LINE_MAX_CHARS = 160
 
 /** One tool entry with its presenter views resolved exactly once. */
-export interface ResolvedTool {
+interface ResolvedTool {
   readonly entry: ConversationToolEntry
   readonly args: unknown
   readonly outcome: ToolResult | undefined

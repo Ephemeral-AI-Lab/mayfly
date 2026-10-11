@@ -24,7 +24,7 @@ export const SCROLL_DEFAULT_EXPANDED_HEIGHT = 14
 const BAR_COLUMNS = 2
 
 /** The document anchors a scroll keeps its place with when its content changes (`ui-interaction-document.ts`). */
-export interface ScrollRegionAnchors {
+interface ScrollRegionAnchors {
   state(): UiDocumentState | undefined
   rowOf(state: UiDocumentState, width: number): number
   anchorAt(state: UiDocumentState, row: number, width: number, follow: 'none' | 'end'): UiDocumentAnchor | undefined
@@ -43,7 +43,7 @@ export interface ScrollMemory {
   away: number
 }
 
-export interface ScrollRegionOptions {
+interface ScrollRegionOptions {
   readonly child: Component
   readonly memory: ScrollMemory
   readonly height: number

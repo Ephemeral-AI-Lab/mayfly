@@ -13,9 +13,9 @@ interface TranscriptEntryBase {
   /** Presentation revision independent of the durable event sequence. */
   readonly renderRevision?: string
 }
-export interface TranscriptUserModel extends TranscriptEntryBase { readonly kind: 'transcript-user'; readonly text: string; readonly images: readonly TranscriptImageModel[] }
-export interface TranscriptAssistantModel extends TranscriptEntryBase { readonly kind: 'transcript-assistant'; readonly step: number; readonly text: string; readonly streaming: boolean }
-export interface TranscriptThinkingModel extends TranscriptEntryBase {
+interface TranscriptUserModel extends TranscriptEntryBase { readonly kind: 'transcript-user'; readonly text: string; readonly images: readonly TranscriptImageModel[] }
+interface TranscriptAssistantModel extends TranscriptEntryBase { readonly kind: 'transcript-assistant'; readonly step: number; readonly text: string; readonly streaming: boolean }
+interface TranscriptThinkingModel extends TranscriptEntryBase {
   readonly kind: 'transcript-thinking'
   readonly step: number
   readonly text: string
@@ -39,7 +39,7 @@ export interface TranscriptTerminalModel { readonly command: string; readonly de
 export type TranscriptWebModel =
   | { readonly kind: 'search'; readonly sources: readonly { readonly url: string; readonly title?: string }[]; readonly truncated: boolean }
   | { readonly kind: 'fetch'; readonly url: string; readonly statusCode: number; readonly truncated: boolean }
-export interface TranscriptToolResultModel { readonly text: string; readonly fullText?: string; readonly isError: boolean; readonly endedAt: number }
+interface TranscriptToolResultModel { readonly text: string; readonly fullText?: string; readonly isError: boolean; readonly endedAt: number }
 /**
  * The presenter-card family a lone tool card belongs to, for the per-family
  * detail policy: `command` covers terminal cards, `edit` diff cards, `web`
@@ -68,7 +68,7 @@ export interface TranscriptToolModel extends TranscriptEntryBase {
   readonly presentation?: ToolPresentationModel
 }
 /** One bounded preview line carried for a read window's expanded view. */
-export interface ReadPreviewLine { readonly number: number; readonly text: string }
+interface ReadPreviewLine { readonly number: number; readonly text: string }
 /**
  * One read call's renderer-neutral facts: what was asked for (the argument
  * window), what came back (the actual line range and totals), and a bounded
@@ -99,9 +99,9 @@ export interface ReadCallModel {
 /** A run of consecutive read calls collapsed into one transcript entry. */
 export interface TranscriptReadGroupModel extends TranscriptEntryBase { readonly kind: 'transcript-read-group'; readonly step: number; readonly reads: readonly ReadCallModel[] }
 /** One bounded match preview carried for a search group's expanded view. */
-export interface SearchMatchPreview { readonly lineNumber: number; readonly line: string }
+interface SearchMatchPreview { readonly lineNumber: number; readonly line: string }
 /** One file's matched content as carried facts: the match count plus bounded previews. */
-export interface SearchFileMatchesModel { readonly path: string; readonly count: number; readonly previews: readonly SearchMatchPreview[] }
+interface SearchFileMatchesModel { readonly path: string; readonly count: number; readonly previews: readonly SearchMatchPreview[] }
 /**
  * One search call's renderer-neutral facts — a content search (grep,
  * `shape: 'matches'`) or a path search (glob, `shape: 'paths'`), with a
@@ -156,8 +156,8 @@ export interface CommandCallModel {
 }
 /** A run of consecutive terminal-card calls collapsed into one transcript entry. */
 export interface TranscriptCommandGroupModel extends TranscriptEntryBase { readonly kind: 'transcript-command-group'; readonly step: number; readonly commands: readonly CommandCallModel[] }
-export interface TranscriptErrorModel extends TranscriptEntryBase { readonly kind: 'transcript-error'; readonly message: string; readonly code?: string }
-export interface TranscriptInterruptedModel extends TranscriptEntryBase { readonly kind: 'transcript-interrupted' }
+interface TranscriptErrorModel extends TranscriptEntryBase { readonly kind: 'transcript-error'; readonly message: string; readonly code?: string }
+interface TranscriptInterruptedModel extends TranscriptEntryBase { readonly kind: 'transcript-interrupted' }
 /** One compaction transaction's lifecycle, rendered as the durable boundary marker. */
 export interface TranscriptCompactionModel extends TranscriptEntryBase {
   readonly kind: 'transcript-compaction'
@@ -172,7 +172,7 @@ export interface TranscriptCompactionModel extends TranscriptEntryBase {
   readonly error?: string
 }
 export type TranscriptEntryModel = TranscriptUserModel | TranscriptAssistantModel | TranscriptThinkingModel | TranscriptToolModel | TranscriptReadGroupModel | TranscriptSearchGroupModel | TranscriptCommandGroupModel | TranscriptErrorModel | TranscriptInterruptedModel | TranscriptCompactionModel
-export interface TranscriptLiveOverlay {
+interface TranscriptLiveOverlay {
   readonly turn: number
   readonly step: number
   readonly entries: readonly TranscriptEntryModel[]

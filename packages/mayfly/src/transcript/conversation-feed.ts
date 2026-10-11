@@ -39,13 +39,13 @@ export interface ConversationHistorySource {
 }
 
 /** Latest unread whole projection value and its committed sequence. */
-export interface PendingProjection {
+interface PendingProjection {
   readonly value: unknown
   readonly seq: number
 }
 
 /** Why a feed cannot deliver its conversation. */
-export type ConversationFeedFailure = 'controller-unavailable' | 'invalid' | 'read-failed'
+type ConversationFeedFailure = 'controller-unavailable' | 'invalid' | 'read-failed'
 
 /** Delivery state of one feed. */
 export type ConversationFeedState =

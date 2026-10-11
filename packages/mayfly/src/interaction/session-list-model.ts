@@ -43,7 +43,7 @@ export interface SessionListFacts {
 }
 
 /** Listing-time context the summary itself does not carry. */
-export interface SessionListContext {
+interface SessionListContext {
   readonly header?: SessionHeader | undefined
   readonly title?: string | null | undefined
   readonly projections?: SessionProjectionBaseline | undefined

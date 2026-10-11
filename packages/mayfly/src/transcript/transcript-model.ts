@@ -85,7 +85,7 @@ export interface TranscriptModelRenderer extends CanonicalNodeRenderer {
 }
 
 /** Renderer dependencies owned by the one product conversation controller. */
-export interface TranscriptControllerOptions {
+interface TranscriptControllerOptions {
   readonly renderer?: TranscriptModelRenderer
 }
 

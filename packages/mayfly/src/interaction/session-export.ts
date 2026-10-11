@@ -107,7 +107,7 @@ export function lastAssistantText(items: readonly TranscriptItem[]): string {
 }
 
 /** The facts the Markdown export renders. */
-export interface ExportInput {
+interface ExportInput {
   /** The persisted session id. */
   readonly sessionId: string
   /** The session's durable cwd, when the header recorded one. */
@@ -420,7 +420,7 @@ function isConversationProjection(value: unknown): value is ConversationProjecti
 }
 
 /** The facts the full (event-stream) export renders. */
-export interface FullExportInput {
+interface FullExportInput {
   /** The persisted session id. */
   readonly sessionId: string
   /** The session's durable cwd, when the header recorded one. */

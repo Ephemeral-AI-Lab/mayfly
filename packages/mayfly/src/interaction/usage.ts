@@ -19,7 +19,7 @@ export interface TokenBuckets {
  * (`projectedTokens`, else `pressureTokens`), the denominator the newest
  * advertised window. Both absent until a request reports or advertises.
  */
-export interface ContextFacts {
+interface ContextFacts {
   readonly used?: number
   readonly window?: number
 }

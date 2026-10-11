@@ -66,7 +66,7 @@ export function styledText(value: string, styles: readonly MayflyTextStyle[] | u
   return (styles ?? []).reduce((text, style) => style === 'strong' ? strong(text) : style === 'italic' ? italic(text) : strike(text), value)
 }
 
-export type BasicContentNode = Extract<MayflyContentNode, { readonly kind: 'text' | 'fields' | 'code' | 'diff' | 'sections' }>
+type BasicContentNode = Extract<MayflyContentNode, { readonly kind: 'text' | 'fields' | 'code' | 'diff' | 'sections' }>
 
 /**
  * One ellipsized row for `overflow: 'truncate'`: line breaks and tabs fold

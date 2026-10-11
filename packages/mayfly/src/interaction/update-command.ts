@@ -52,7 +52,7 @@ const STEP_ROWS: readonly { step: SwapStep, label: string }[] = [
 ]
 
 /** Renderer-neutral state behind the generic update panel model. */
-export interface UpdateProgressState {
+interface UpdateProgressState {
   readonly steps: Map<SwapStep, 'start' | 'ok' | 'fail'>
   outcome?: SwapOutcome
   blockedMessage?: string

@@ -91,7 +91,7 @@ const defaultClipboardTextWriter: ClipboardTextWriter = async (text) => {
  * it and rejecting when none did (headless server, SSH session, missing
  * tools).
  */
-export type ClipboardTextWriter = (text: string) => Promise<void>
+type ClipboardTextWriter = (text: string) => Promise<void>
 
 let clipboardTextWriter: ClipboardTextWriter = defaultClipboardTextWriter
 
@@ -106,7 +106,7 @@ export function setClipboardTextWriter(writer: ClipboardTextWriter | undefined):
 /**
  * Emit the OSC 52 escape leg; returns whether the sequence was written.
  */
-export type ClipboardOsc52Emitter = (text: string) => boolean
+type ClipboardOsc52Emitter = (text: string) => boolean
 
 let clipboardOsc52Emitter: ClipboardOsc52Emitter = emitClipboardOsc52
 

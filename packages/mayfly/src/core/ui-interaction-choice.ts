@@ -37,7 +37,7 @@ interface UiChoiceTreeIndex {
 }
 
 /** What the painter needs to know about one visible row beyond the item itself. */
-export interface UiChoiceRow {
+interface UiChoiceRow {
   readonly item: MayflyListNode['items'][number]
   readonly depth: number
   /** The last visible child of its parent: drawn `╰`, the others `│`. */

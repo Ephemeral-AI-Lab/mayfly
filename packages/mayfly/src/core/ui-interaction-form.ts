@@ -8,7 +8,7 @@ import { untranslated, type UiTranslate } from './ui-interaction-locale.ts'
 import type { FieldDecor } from './ui-form-paint.ts'
 import { patternMatcher } from './ui-validator-form.ts'
 
-export interface UiFieldState {
+interface UiFieldState {
   readonly definition: MayflyFormField
   readonly baseline: MayflyFieldValue
   readonly baselineOrigin: 'inherited' | 'explicit'
@@ -47,7 +47,7 @@ export function formAddressKey(address: MayflyFormAddress): string {
   return JSON.stringify([address.pagePath.map(segment => [segment.controlId, segment.itemId]), address.formId])
 }
 
-export function equalFieldValue(left: MayflyFieldValue, right: MayflyFieldValue): boolean {
+function equalFieldValue(left: MayflyFieldValue, right: MayflyFieldValue): boolean {
   if (!Array.isArray(left) || !Array.isArray(right)) return left === right
   return left.length === right.length && left.every(id => right.includes(id))
 }

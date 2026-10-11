@@ -131,7 +131,7 @@ export interface TranscriptErrorItem {
  * persistence backend's crash-recovery `interrupted` marker, rendered as
  * one muted row so the cut is visible instead of the stream just going
  * quiet (the S24a dogfood ruling). */
-export interface TranscriptInterruptedItem {
+interface TranscriptInterruptedItem {
   readonly kind: 'interrupted'
   /** Seq of the `turn/end` event. */
   readonly seq: number

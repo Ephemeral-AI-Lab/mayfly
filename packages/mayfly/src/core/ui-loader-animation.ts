@@ -28,10 +28,10 @@ const LOADER_FRAMES: Readonly<Record<'bloom' | 'fill' | 'gap', readonly string[]
 const BREATH_LEVELS: readonly number[] = Object.freeze([0.25, 0.5, 0.8, 1, 0.8, 0.5])
 
 /** Clock steps per breath shade: 400 ms. */
-export const BREATH_STEPS = 4
+const BREATH_STEPS = 4
 
 /** The `shimmer` window is this many letters wide, centred on the sweep. */
-export const SHIMMER_WINDOW = 3
+const SHIMMER_WINDOW = 3
 
 /** The step of a stepping variant at a clock frame (a reduced-motion caller passes frame 0). */
 export function loaderFrameGlyph(variant: 'bloom' | 'fill' | 'gap', frame: number): string {
@@ -66,7 +66,7 @@ export function breathPaint(colors: Pick<MayflySemanticColors, 'primary' | 'text
 }
 
 /** What a loader cell is painted with. */
-export interface LoaderCellOptions {
+interface LoaderCellOptions {
   readonly colors: Pick<MayflySemanticColors, 'primary' | 'textMuted'>
   /** The glyph vocabulary; ASCII swaps every stepping variant for `- \ | /`. */
   readonly glyphs?: MayflyGlyphMode | undefined

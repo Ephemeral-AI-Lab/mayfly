@@ -4,7 +4,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { MayflyFeedback, MayflyUiScope } from '@ephemeral-ai/mayfly-ui'
 
-export interface InteractionNotificationOwner {
+interface InteractionNotificationOwner {
   report(id: string, feedback: MayflyFeedback, scope?: MayflyUiScope, operationId?: string): void
   clear(id: string): void
   clearAll(): void

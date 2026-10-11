@@ -22,7 +22,7 @@ import { sniffImageMediaType } from './attachments.ts'
 /** Concrete clipboard backend that produced an image: the two Linux
  * display protocols (config-selectable through `mayfly-paste-image`) plus the
  * win32/darwin native probes (platform-selected). */
-export type ClipboardBackend = 'wayland' | 'x11' | 'win32' | 'darwin'
+type ClipboardBackend = 'wayland' | 'x11' | 'win32' | 'darwin'
 
 /**
  * One clipboard read: direct image bytes, an ordered copied-file image
@@ -46,7 +46,7 @@ export type FailureResult = Exclude<ClipboardImageResult, { kind: 'image' | 'ima
 export type FailureKind = FailureResult['kind']
 
 /** Per-tool timeout; a hung clipboard helper must not wedge the editor. */
-export const CLIPBOARD_TOOL_TIMEOUT_MS = 3000
+const CLIPBOARD_TOOL_TIMEOUT_MS = 3000
 
 let clipboardToolTimeoutMs = CLIPBOARD_TOOL_TIMEOUT_MS
 
@@ -56,7 +56,7 @@ export function setClipboardToolTimeout(timeoutMs: number | undefined): void {
 }
 
 /** Outcome of one clipboard tool invocation. */
-export type ToolRun =
+type ToolRun =
   | { ok: true; stdout: Buffer }
   | { ok: false; code: string | number | undefined; killed: boolean; stderr: string }
 
@@ -64,7 +64,7 @@ export type ToolRun =
 export type FailedRun = Extract<ToolRun, { ok: false }>
 
 /** Options for one tool run: per-backend spawn timeout and environment. */
-export interface ToolRunOptions {
+interface ToolRunOptions {
   /** Spawn timeout in milliseconds; defaults to {@link CLIPBOARD_TOOL_TIMEOUT_MS}. */
   timeoutMs?: number | undefined
   /** Full child environment (the staging-dir handoff); set means no inheritance. */

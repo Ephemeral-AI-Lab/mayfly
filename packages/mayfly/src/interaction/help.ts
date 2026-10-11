@@ -5,7 +5,7 @@ import { ui, type MayflyInlineSpan, type MayflyTone, type MayflyUiNode } from '@
 import { interpolateLocaleMessage, type MayflyTranslate } from '../frontend/index.ts'
 
 /** One help entry. */
-export interface HelpRow {
+interface HelpRow {
   readonly label: string
   readonly description: string
 }

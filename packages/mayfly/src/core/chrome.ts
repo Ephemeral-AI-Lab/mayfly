@@ -159,7 +159,7 @@ export function injectGhostHint(
 }
 
 /** Options for {@link withSideBorders}. */
-export interface SideBordersOptions {
+interface SideBordersOptions {
   /** Draw `├┤` top corners instead of `╭╮` (a panel is docked above). */
   readonly connectedAbove?: boolean
   /**
@@ -183,7 +183,7 @@ export interface SideBordersOptions {
 }
 
 /** Narrowest title, in visible columns, worth laying into a top border. */
-export const MIN_BORDER_TITLE_COLUMNS = 6
+const MIN_BORDER_TITLE_COLUMNS = 6
 
 /**
  * Fit a border title into `maxWidth` visible columns, ending an elided
@@ -288,7 +288,7 @@ export function injectPromptSymbol(
 const identity = (text: string): string => text
 
 /** Options for {@link topRule}. */
-export interface TopRuleOptions {
+interface TopRuleOptions {
   /** Title text rendered after the left corner, typically pre-styled (e.g. bold ` BTW `). */
   readonly title?: string
   /** Styling for the title; defaults to unstyled. */

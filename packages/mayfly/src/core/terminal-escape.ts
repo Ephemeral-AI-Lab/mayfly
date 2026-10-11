@@ -44,7 +44,7 @@ export interface MayflyEscapeProcess {
 }
 
 /** The terminal write slice used by application-owned selection copying. */
-export interface MayflyClipboardTerminal {
+interface MayflyClipboardTerminal {
   /** Write one OSC sequence; may throw when the terminal has closed. */
   write(chunk: string): unknown
 }

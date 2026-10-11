@@ -55,7 +55,7 @@ export function quoteShellArg(arg: string, platform: NodeJS.Platform = process.p
  *   the system shell, so `code --wait` works).
  * @returns the edited text, or `undefined` on a nonzero exit.
  */
-export type ExternalEditorLauncher = (initialText: string, command: string) => Promise<string | undefined>
+type ExternalEditorLauncher = (initialText: string, command: string) => Promise<string | undefined>
 
 /**
  * The default launcher (the kimi `editInExternalEditor` port): a private

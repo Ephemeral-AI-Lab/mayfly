@@ -10,7 +10,7 @@ import type { MayflyProgressNode } from '@ephemeral-ai/mayfly-ui'
 import { LOADER_FRAME_MS } from './ui-loader-animation.ts'
 
 /** What to draw now, and whether the bar still needs the clock. */
-export interface ProgressStep {
+interface ProgressStep {
   readonly value: number
   readonly animating: boolean
 }
