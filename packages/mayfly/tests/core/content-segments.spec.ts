@@ -7,7 +7,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { CONTENT_CUT_UNITS, CONTENT_SEGMENT_LINES, CONTENT_SEGMENT_UNITS, indexContent, indexMergedLines, scanContentLines } from '../../src/core/content-segments.ts'
+import { CONTENT_CUT_UNITS, CONTENT_SEGMENT_LINES, CONTENT_SEGMENT_UNITS, extendMergedLines, indexContent, indexMergedLines, scanContentLines, type ContentIndex } from '../../src/core/content-segments.ts'
 import { wrapTextWithAnsi } from '../../src/core/width.ts'
 
 /** The segment plan as readable tuples: kind, first line, lines, first unit, units, estimated columns. */
@@ -204,5 +204,66 @@ describe('indexMergedLines', () => {
     let lines = -1
     indexMergedLines(['a\n', 'b\n', 'c'].map(scanContentLines), 'a\nb\nc', count => { lines = count })
     expect(lines).toBe(3)
+  })
+})
+
+describe('extendMergedLines', () => {
+  /** Everything an index answers, at two widths, so an extended index is held to the scratch one on every query. */
+  function describeIndex(index: ContentIndex): unknown {
+    return {
+      lines: index.lines, units: index.units, segments: index.segments, maxColumns: index.maxColumns,
+      lineRows: Array.from({ length: index.lines }, (_, line) => [index.lineText(line), index.lineColumns(line)]),
+      segmentRows: Array.from({ length: index.segments }, (_, segment) => [index.segmentLines(segment), index.segmentText(segment), index.isCut(segment), index.estimateRows(segment, 7), index.estimateRows(segment, 80)]),
+    }
+  }
+
+  /** Index `chunks`, append `more` one chunk at a time, and hold every step to the scratch index of the same chunks. */
+  function expectAppends(chunks: readonly string[], more: readonly string[]): void {
+    let held = [...chunks]
+    let index = indexMergedLines(held.map(scanContentLines), held.join(''))
+    for (const next of more) {
+      held = [...held, next]
+      const text = held.join('')
+      index = extendMergedLines(index, [scanContentLines(next)], text)
+      expect(describeIndex(index), `after appending ${String(next.length)} units to ${String(held.length - 1)} chunks`).toEqual(describeIndex(indexMergedLines(held.map(scanContentLines), text)))
+    }
+  }
+
+  const longLine = 'word '.repeat(CONTENT_CUT_UNITS / 4)
+
+  it.each([
+    [[], ['a', 'b\n', '\n', 'c\nd', '']],
+    [['a\n'], ['b\n', 'c']],
+    [['open'], [' still open', ' and closed\n', 'next']],
+    [[''], ['x']],
+    [[`${'line\n'.repeat(70)}tail`], ['\n', 'more\n']],
+    [['x'.repeat(CONTENT_SEGMENT_UNITS - 3)], ['yyyy', '\nz', 'z']],
+    [['🚀'], ['\u{1F680}', 'a\n', '中文', 'end\n']],
+    [['tail\u{1F680}'], ['\u{1F680}head']],
+    [['head\n', longLine.slice(0, 3_000)], [longLine.slice(3_000, 9_000), longLine.slice(9_000), ' end of the long line', '\nafter\n']],
+    [['first\n', longLine], [longLine, 'x\n', 'short\n', longLine, 'tail']],
+    [[`${longLine}\n${'short\n'.repeat(100)}`], ['more short\n', longLine, longLine]],
+  ])('equals the scratch index after each append %#', expectAppends)
+
+  it('equals the scratch index over random chunkings of text with long lines and wide characters', () => {
+    let seed = 11
+    const random = (limit: number): number => { seed = (seed * 1_103_515_245 + 12_345) % 2_147_483_648; return seed % limit }
+    const pieces = ['plain words here ', '\n', '\n\n', '中文宽字符', '🚀', '\u{1F468}‍\u{1F469}‍\u{1F467}', 'tab\tstop', 'x'.repeat(2_000), longLine, 'é']
+    for (let round = 0; round < 12; round += 1) {
+      const chunks = Array.from({ length: 1 + random(6) }, () => Array.from({ length: random(8) }, () => pieces[random(pieces.length)]!).join(''))
+      const more = Array.from({ length: 1 + random(8) }, () => Array.from({ length: random(6) }, () => pieces[random(pieces.length)]!).join(''))
+      expectAppends(chunks, more)
+    }
+  })
+
+  it('walks the lines an append touches, not the lines of the text', () => {
+    const settled = 'a settled line of job output\n'.repeat(50_000)
+    const text = `${settled}open`
+    const index = indexMergedLines([settled, 'open'].map(scanContentLines), text)
+    const walked: number[] = []
+    extendMergedLines(index, [scanContentLines(' and more\nnext\n')], `${text} and more\nnext\n`, lines => walked.push(lines))
+    expect(index.lines).toBe(50_001)
+    expect(walked).toHaveLength(1)
+    expect(walked[0]).toBeLessThanOrEqual(CONTENT_SEGMENT_LINES + 3)
   })
 })

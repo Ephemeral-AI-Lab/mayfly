@@ -16,10 +16,11 @@
  * @module @ephemeral-ai/mayfly/core/content-rows
  */
 
-import { textOf } from '@ephemeral-ai/mayfly-ui'
 import type { MayflyContentField, MayflyContentNode, MayflyField, MayflyMarkdownNode, MayflyRichTextNode, MayflySection, MayflySectionContentNode, MayflyTextStyle, MayflyTone, MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import type { MarkdownTheme } from '@earendil-works/pi-tui'
-import { CONTENT_SEGMENT_LINES, CONTENT_SEGMENT_UNITS, indexContent, indexMergedLines, scanContentLines, type ContentIndex, type ContentLineScan } from './content-segments.ts'
+import { fieldText } from './field-text.ts'
+import { commonPrefix } from './text-match.ts'
+import { CONTENT_SEGMENT_LINES, CONTENT_SEGMENT_UNITS, extendMergedLines, indexContent, indexMergedLines, scanContentLines, type ContentIndex, type ContentLineScan } from './content-segments.ts'
 import { alignDiffLines, diffModel, paintDiffSegment, type DiffModel, type DiffSegment } from './diff-align.ts'
 import { ownDataErrorMessage } from './error-message.ts'
 import { highlightable, highlightCodeLines } from './highlight.ts'
@@ -576,7 +577,7 @@ const preparedMarkdowns = new WeakMap<object, PreparedMarkdown>()
 function markdownSource(node: MayflyMarkdownNode, width: number, env: ContentRowsEnv): RowSource {
   let prepared = preparedMarkdowns.get(node)
   if (prepared === undefined) {
-    prepared = scanMarkdown(textOf(node.source))
+    prepared = scanMarkdown(fieldText(node.source))
     countWork(env.counters, 'linesEstimated', prepared.lines)
     preparedMarkdowns.set(node, prepared)
   }
@@ -585,6 +586,11 @@ function markdownSource(node: MayflyMarkdownNode, width: number, env: ContentRow
 
 const indexedFields = new WeakMap<object, IndexedField>()
 const chunkScans = new WeakMap<object, ContentLineScan>()
+/**
+ * The newest chunked field indexed from each last chunk, until a field that extends it takes it over: a stream's next
+ * publish holds that chunk again, however older chunks were joined or the pieces were regrouped since.
+ */
+const indexedTails = new WeakMap<object, IndexedField>()
 const objectIds = new WeakMap<object, number>()
 let nextObjectId = 0
 
@@ -604,22 +610,47 @@ function chunkScan(chunk: { readonly text: string }): ContentLineScan {
   return scan
 }
 
+/** How many chunks back from the end of a field to look for the last chunk of the field it extends. */
+const TAIL_LOOKBACK = 8
+
 /**
- * The text and measure index of one node's content field. A string field indexes in one pass; a chunked field joins
- * its per-chunk scans, each computed once per chunk identity, so a growing stream re-derives the merged index without
- * rescanning settled pieces.
+ * The field indexed before that `field` extends, with the chunks that follow its last piece: the chunk it ended on is
+ * in `field` again, the text before and including that chunk is the same text, and what follows is new. The text is
+ * compared, not the chunks before the tail, because a feed joins neighbours as it grows and drops pieces on a lossy read.
+ * The predecessor is handed over once; a field that does not extend it leaves it for the one that does.
+ */
+function extendedField(field: readonly { readonly text: string }[], text: string): { readonly known: IndexedField, readonly appended: readonly ContentLineScan[] } | undefined {
+  for (let at = field.length - 1; at >= Math.max(0, field.length - TAIL_LOOKBACK); at -= 1) {
+    const known = indexedTails.get(field[at]!)
+    if (known === undefined) continue
+    const appended = field.slice(at + 1).map(chunkScan)
+    const settled = text.length - appended.reduce((units, scan) => units + scan.units, 0)
+    if (settled !== known.text.length || commonPrefix(known.text, text, settled) !== settled) return undefined
+    indexedTails.delete(field[at]!)
+    return { known, appended }
+  }
+  return undefined
+}
+
+/**
+ * The text and measure index of one node's content field. A string field indexes in one pass. A chunked field joins its
+ * per-chunk scans, each computed once per chunk identity; one that extends a field indexed before (a growing stream)
+ * adds only the scans of its new chunks to that index, so an append costs the appended lines, not the stream.
  */
 function indexedField(node: object, field: MayflyContentField | (() => string), env: ContentRowsEnv): IndexedField {
   let held = indexedFields.get(node)
   if (held === undefined) {
+    const onLines = (lines: number): void => { countWork(env.counters, 'linesEstimated', lines) }
     if (typeof field === 'function') {
       const text = field()
-      held = { text, index: indexContent(text, lines => countWork(env.counters, 'linesEstimated', lines)) }
+      held = { text, index: indexContent(text, onLines) }
     } else if (typeof field === 'string') {
-      held = { text: field, index: indexContent(field, lines => countWork(env.counters, 'linesEstimated', lines)) }
+      held = { text: field, index: indexContent(field, onLines) }
     } else {
-      const text = textOf(field)
-      held = { text, index: indexMergedLines(field.map(chunkScan), text, lines => countWork(env.counters, 'linesEstimated', lines)) }
+      const text = fieldText(field)
+      const extended = extendedField(field, text)
+      held = { text, index: extended === undefined ? indexMergedLines(field.map(chunkScan), text, onLines) : extendMergedLines(extended.known.index, extended.appended, text, onLines) }
+      if (field.length > 0) indexedTails.set(field[field.length - 1]!, held)
     }
     indexedFields.set(node, held)
   }
@@ -763,7 +794,7 @@ function textSource(node: Extract<MayflySectionContentNode, { readonly kind: 'te
   const tone = paintPluginTone(env.colors, node.tone)
   const painted = (row: string): string => styledText(tone(row), node.styles)
   if (node.overflow !== undefined && node.overflow !== 'wrap') {
-    const content = textOf(node.content)
+    const content = fieldText(node.content)
     if (node.overflow === 'truncate') return eager([painted(truncatedRow(sanitizePluginText(content), width, env.components))], env)
     return eager([painted(truncateMiddle(sanitizePluginText(content).replace(/[\r\n\t]+/gu, ' '), width, node.overflow))], env)
   }

@@ -1,6 +1,7 @@
 /** Semantic document anchors over source replacement and renderer widths.
  * @module @ephemeral-ai/mayfly/tests/core/ui-interaction-document
  */
+import { diffChars } from 'diff'
 import { describe, expect, it } from 'vitest'
 import { ui } from '../../../ui/src/index.ts'
 import {
@@ -69,6 +70,52 @@ describe('semantic document state', () => {
     const after = `${'b'.repeat(3_200)}tail`
     expect(remapDocumentOffset(before, after, before.length)).toBe(after.length)
     expect(remapDocumentOffset(before, after, 10)).toBe(10)
+  })
+
+  it('maps like a unit-by-unit comparison for appended, trimmed, and edited logs of a few blocks', () => {
+    // The reference compares one unit at a time; the shipped function compares blocks natively. The sizes straddle the block.
+    const reference = (before: string, after: string, offset: number): number => {
+      const position = documentOffset(before, offset)
+      if (before === after) return position
+      const limit = Math.min(before.length, after.length)
+      let prefix = 0
+      while (prefix < limit && before[prefix] === after[prefix]) prefix += 1
+      let suffix = 0
+      const suffixLimit = Math.min(before.length - prefix, after.length - prefix)
+      while (suffix < suffixLimit && before[before.length - suffix - 1] === after[after.length - suffix - 1]) suffix += 1
+      if (position < prefix) return position
+      if (position >= before.length - suffix) return documentOffset(after, position + after.length - before.length)
+      const changes = diffChars(before.slice(prefix, before.length - suffix), after.slice(prefix, after.length - suffix), { maxEditLength: 2_048 })
+      if (changes === undefined) return documentOffset(after, position)
+      let oldPosition = prefix, newPosition = prefix
+      for (const change of changes) {
+        if (change.added) { newPosition += change.value.length; continue }
+        if (position < oldPosition + change.value.length) return documentOffset(after, change.removed ? newPosition : newPosition + position - oldPosition)
+        oldPosition += change.value.length
+        if (!change.removed) newPosition += change.value.length
+      }
+      return documentOffset(after, newPosition)
+    }
+    let seed = 7
+    const random = (limit: number): number => { seed = (seed * 1_103_515_245 + 12_345) % 2_147_483_648; return seed % limit }
+    const line = (index: number): string => `step ${String(index)} 😀 wrote ${'x'.repeat(random(40))}\n`
+    for (const lines of [3, 120, 400, 1_200]) {
+      const base = Array.from({ length: lines }, (_, index) => line(index)).join('')
+      const edit = random(base.length)
+      const variants = [
+        `${base}appended\n`,
+        `${base}${base.slice(0, 5_000)}`,
+        base.slice(random(base.length >> 1)),
+        base.slice(0, base.length - random(Math.min(base.length, 6_000))),
+        `${base.slice(0, edit)}EDIT${base.slice(edit + 3)}`,
+        `new head\n${base}`,
+      ]
+      for (const after of variants) {
+        for (const at of [0, 1, edit, base.length >> 1, base.length - 1, base.length, base.length + 5]) {
+          expect(remapDocumentOffset(base, after, at), `${String(lines)} lines, offset ${String(at)}`).toBe(reference(base, after, at))
+        }
+      }
+    }
   })
 
   it('remaps positions inside added, removed, and kept changes', () => {

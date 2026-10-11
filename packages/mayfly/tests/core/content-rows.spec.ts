@@ -136,6 +136,36 @@ describe('contentNodeSource', () => {
     expect(reads).toBe(5)
   })
 
+  it('extends the index of a stream it already built, however older pieces were joined or the head was lost', () => {
+    // A job feed joins the smallest neighbours in its older half as it grows, so the chunks before the tail change
+    // identity on an append; the text and the chunk the last publish ended on are what the next publish shares.
+    const piece = (start: number): { text: string } => ({ text: Array.from({ length: 50 }, (_, line) => `step ${String(start + line)} wrote some output`).join('\n') + '\n' })
+    const feed = Array.from({ length: 200 }, (_, index) => piece(index * 50))
+    const made = makeEnv()
+    const allRows = (chunks: readonly { text: string }[], width: number, at: ContentRowsEnv): string[] => {
+      const rows = contentNodeRows({ kind: 'code', code: chunks } as WindowedContentNode, width, at)
+      prepareRows(rows, 0, rows.length)
+      return Array.from({ length: rows.length }, (_, row) => strip(rows[row]!))
+    }
+    allRows(feed, 60, made.env)
+    const built = made.counters.linesEstimated
+    expect(built).toBe(200 * 50 + 1)
+
+    // Append one piece after joining two neighbours in the middle: only the appended lines are estimated again.
+    const joined = { text: feed[99]!.text + feed[100]!.text }
+    const grown = [...feed.slice(0, 99), joined, ...feed.slice(101), piece(10_000)]
+    const grownRows = allRows(grown, 60, made.env)
+    expect(made.counters.linesEstimated - built).toBeLessThanOrEqual(CONTENT_SEGMENT_LINES + 51)
+    expect(grownRows).toEqual(allRows(grown, 60, makeEnv().env))
+
+    // The index was handed over: a field that no longer extends it (the head was lost) is indexed from scratch.
+    const before = made.counters.linesEstimated
+    const trimmed = grown.slice(10)
+    const trimmedRows = allRows(trimmed, 60, made.env)
+    expect(made.counters.linesEstimated - before).toBe(trimmed.map(chunk => chunk.text).join('').split('\n').length)
+    expect(trimmedRows).toEqual(allRows(trimmed, 60, makeEnv().env))
+  })
+
   it('serves a repainted segment from the shared cache instead of painting again', () => {
     const text = 'abcdefghij '.repeat(200).trim()
     const node: WindowedContentNode = { kind: 'text', content: text }
