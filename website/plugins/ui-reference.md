@@ -30,8 +30,8 @@ I/O、Agent、Session 或 mutable renderer object 放进节点。
   内容文本（`text`、`markdown`、`code`、`diff`、`diagram`、rich-text span、字符串
   list body）不设大小上限：renderer 只读取可视的行。id 与 key 最多 1,024 个
   UTF-16 code unit，超出即被拒绝。单行字段（label、title、badge、detail、
-  reason、hint、placeholder、chart label、`alt`）在 4,096 个 code unit 处截断并以
-  `…` 结尾。
+  reason、hint、placeholder、chart label、`alt`，以及 `fields` value 的每个
+  span）在 4,096 个 code unit 处截断并以 `…` 结尾。
 - 持续增长的文本（流式回答、job 输出、实时日志）直接在 `text`、`markdown`、
   `code` 或 `diagram` 字段上以 `chunks` 列表发布（`MayflyContentField` 为
   `string | readonly MayflyContentChunk[]`）：最多 10,000 个 `ui.chunk(text)`

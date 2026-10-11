@@ -35,8 +35,8 @@ in a node.
   bodies — has no size limit: the renderer reads only the rows in view. Ids
   and keys may be at most 1,024 UTF-16 code units; a longer one is rejected.
   One-row fields — labels, titles, badges, details, reasons, hints,
-  placeholders, chart labels, `alt` — are clipped at 4,096 code units and end
-  in `…`.
+  placeholders, chart labels, `alt`, and each span of a `fields` value — are
+  clipped at 4,096 code units and end in `…`.
 - Text that grows — a streamed answer, job output, a live log — publishes as
   a `chunks` list on the `text`, `markdown`, `code`, or `diagram` field itself
   (`MayflyContentField` is `string | readonly MayflyContentChunk[]`): up to
