@@ -1,13 +1,12 @@
 /** The prompt's keys, events, and hint row in every state: idle, tokens, recall, completions, a paste, and a republish. */
-import { CURSOR_MARKER } from '@earendil-works/pi-tui'
 import { afterEach, describe, expect, it } from 'vitest'
 import { ui, type MayflyPromptNode, type MayflyUiEvent, type MayflyUiNode } from '../../../ui/src/index.ts'
 import { createRealSurface, probeComponents, type RealSurface } from '../design/probe.ts'
 import { MayflyUiSurfaceRuntime, compileMayflyUiSurfaceNode } from '../../src/core/ui-compiler.ts'
 import { UiSurfaceModel } from '../../src/core/ui-interaction-surface.ts'
 import { PROBE_PALETTE } from '../design/probe.ts'
+import { plainText } from '../helpers.ts'
 
-const plain = (text: string): string => text.replaceAll(CURSOR_MARKER, '').replace(/\x1b\[[0-9;]*m/gu, '')
 const KEY = { up: '\x1b[A', down: '\x1b[B', left: '\x1b[D', enter: '\r', esc: '\x1b', tab: '\t', backspace: '\x7f', altEnter: '\x1b\r', ctrlJ: '\n', ctrlC: '\x03', paste: '\x1b[200~', pasteEnd: '\x1b[201~' } as const
 const TOKENS = [{ id: 't1', label: 'Image #1', size: '84 KB' }, { id: 't2', label: 'notes.md', size: '2 KB' }]
 const RECALL = [{ kind: 'queued', text: 'also update the footer' }, { kind: 'history', text: 'run the width scan again' }, { kind: 'history', text: 'bump the changelog too' }] as const
@@ -21,7 +20,7 @@ function open(prompt: Omit<MayflyPromptNode, 'kind' | 'id'> = {}, width = 100, e
   const node = ui.surface({ title: 'Prompt', chrome: 'surface', child: ui.stack.column([ui.prompt({ id: 'p', autofocus: true, ...prompt }), ...extra]) })
   const surface = createRealSurface(node, width, { components: probeComponents(), events: event => events.push(event), overrides: { onUnhandledEscape: () => {}, escapeHint: 'close' } })
   surfaces.push(surface)
-  const rows = (): string[] => surface.render().map(plain)
+  const rows = (): string[] => surface.render().map(plainText)
   const inside = (): string[] => rows().slice(1, -1).map(row => row.replace(/^│ ?| ?│$/gu, '').trimEnd())
   const hint = (): string => (inside().at(-1) ?? '').trim()
   const press = (...keys: string[]): void => { for (const key of keys) surface.press(key) }
@@ -263,7 +262,7 @@ describe('republishing', () => {
     let compiled = compile()
     return {
       events, model,
-      rows: () => compiled.component.render(width).map(plain),
+      rows: () => compiled.component.render(width).map(plainText),
       press: (key: string) => { compiled.focusTarget!.handleInput?.(key) },
       publish: (prompt: Omit<MayflyPromptNode, 'kind' | 'id'>) => { model.receive(snapshot(prompt) as never); compiled = compile() },
       reload: () => { runtime.dispose(); runtime = new MayflyUiSurfaceRuntime(model); compiled = compile() },
@@ -348,7 +347,7 @@ describe('the surface around a prompt', () => {
     const events: MayflyUiEvent[] = []
     const surface = createRealSurface(ui.surface({ title: 'Prompt', chrome: 'surface', child: ui.prompt({ id: 'p' }) }), 80, { components: probeComponents(), events: event => events.push(event) })
     surfaces.push(surface)
-    expect(surface.render().map(plain).at(-2)!.replace(/^│ ?| ?│$/gu, '').trim()).toBe('Enter send · Alt+Enter newline')
+    expect(surface.render().map(plainText).at(-2)!.replace(/^│ ?| ?│$/gu, '').trim()).toBe('Enter send · Alt+Enter newline')
     surface.press(KEY.esc)
     surface.press(KEY.ctrlC)
     expect(events).toEqual([])
@@ -362,7 +361,7 @@ describe('the surface around a prompt', () => {
     const runtime = new MayflyUiSurfaceRuntime(model)
     const result = compileMayflyUiSurfaceNode(ui.prompt({ id: 'p', value: 'kept', placeholder: 'Ask' }), { components: probeComponents(), colors: PROBE_PALETTE, getViewport: () => ({ columns: 40, rows: 10 }), screenMode: 'alternate', emit: () => {}, surfaceRuntime: runtime })
     if (!result.ok) throw new Error(result.message)
-    expect(result.value.component.render(40).map(plain)).toEqual(['> kept'])
+    expect(result.value.component.render(40).map(plainText)).toEqual(['> kept'])
     runtime.dispose()
     model.dispose()
   })
@@ -377,9 +376,9 @@ describe('the surface around a prompt', () => {
     const runtime = new MayflyUiSurfaceRuntime(model)
     const result = compileMayflyUiSurfaceNode(model.node!, { components: failing, colors: PROBE_PALETTE, getViewport: () => ({ columns: 40, rows: 10 }), screenMode: 'alternate', emit: () => {}, surfaceRuntime: runtime })
     if (!result.ok) throw new Error(result.message)
-    expect(result.value.component.render(40).map(plain).join('\n')).toContain('boom')
+    expect(result.value.component.render(40).map(plainText).join('\n')).toContain('boom')
     result.value.component.invalidate()
-    expect(result.value.component.render(40).map(plain).join('\n')).toContain('boom')
+    expect(result.value.component.render(40).map(plainText).join('\n')).toContain('boom')
     runtime.dispose()
     model.dispose()
   })
@@ -395,13 +394,13 @@ describe('the surface around a prompt', () => {
       if (!result.ok) throw new Error(result.message)
       return result.value
     }
-    expect(compile().component.render(40).map(plain)).toEqual(['> kept'])
+    expect(compile().component.render(40).map(plainText)).toEqual(['> kept'])
     model.receive(snapshot(ui.text('no prompt any more')) as never)
     expect(model.prompt({ pagePath: [], controlId: 'p' })).toBeUndefined()
-    expect(compile().component.render(40).map(plain)).toEqual(['no prompt any more'])
+    expect(compile().component.render(40).map(plainText)).toEqual(['no prompt any more'])
     model.receive(snapshot(ui.prompt({ id: 'p', value: 'new' })) as never)
     // The new prompt starts from its own value: the old draft went with the old prompt.
-    expect(compile().component.render(40).map(plain)).toEqual(['> new'])
+    expect(compile().component.render(40).map(plainText)).toEqual(['> new'])
     runtime.dispose()
     model.dispose()
   })

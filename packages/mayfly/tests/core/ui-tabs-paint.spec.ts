@@ -6,6 +6,7 @@ import { isRail, paintTabs, tabsShape, type TabsFocus } from '../../src/core/ui-
 import { UiRowCache } from '../../src/core/ui-row-cache.ts'
 import { createWorkCounters } from '../../src/core/ui-work-counters.ts'
 import { visibleWidth } from '../../src/core/width.ts'
+import { plain, plainColors } from '../helpers.ts'
 
 /** A palette that gives each tone its own SGR color, so a row's styling is exact and its width unchanged. */
 const CODES: Readonly<Record<string, number>> = { primary: 35, muted: 90, text: 37, warning: 33, success: 32 }
@@ -14,8 +15,7 @@ const tagged = new Proxy({ logoGradient: [(v: string) => v] }, {
 }) as unknown as MayflySemanticColors
 /** The expected look of a piece in a tone. */
 const tone = (name: keyof typeof CODES, value: string): string => `\x1b[${String(CODES[name])}m${value}\x1b[39m`
-const identity = (value: string): string => value
-const bare = new Proxy({ logoGradient: [identity] }, { get: (target, key) => key === 'logoGradient' ? target.logoGradient : identity }) as unknown as MayflySemanticColors
+const bare = plainColors()
 const idle: TabsFocus = { key: '', focused: false, marker: '|' }
 const focus = (key: string): TabsFocus => ({ key, focused: true, marker: '|' })
 const strong = (value: string): string => `\x1b[1m${value}\x1b[22m`
@@ -28,7 +28,6 @@ const rail = (extra: Partial<Parameters<typeof ui.tabs>[0]> = {}) => ui.tabs({ i
 
 describe('the strip', () => {
   const items: readonly MayflyTabItem[] = [{ id: 'a', label: 'Alpha', count: 12 }, { id: 'b', label: 'Beta', count: '2/6' }, { id: 'c', label: 'Gamma', attention: true }, { id: 'd', label: 'Delta' }]
-  const plain = (rows: readonly string[]): string[] => rows.map(row => row.replaceAll(/\x1b\[[0-9;]*m/gu, ''))
 
   it('draws counts muted, a string count as given, and `!` strong in the warning tone in place of a count', () => {
     const rows = paintTabs(ui.tabs({ id: 's', activeId: 'a', items }), 100, idle, tagged)
@@ -82,7 +81,6 @@ describe('the strip', () => {
 })
 
 describe('the rail', () => {
-  const plain = (rows: readonly string[]): string[] => rows.map(row => row.replaceAll(/\x1b\[[0-9;]*m/gu, ''))
 
   it('draws upper-cased group headings, the arrow on the active label, and counts or `!` right-aligned', () => {
     expect(plain(paintTabs(rail(), 24, idle, tagged)).map(row => row.trimEnd())).toEqual([

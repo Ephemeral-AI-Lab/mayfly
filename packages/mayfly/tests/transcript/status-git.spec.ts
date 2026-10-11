@@ -16,6 +16,7 @@ import * as git from '../../src/transcript/status-git.ts'
 import type { GitBadgeStatus } from '../../src/transcript/status-git.ts'
 import { asAgent, bootStatusPlugin, fakeAgent } from './status-fakes.ts'
 import { mkdtempTracked, registerTempDirCleanup } from '../core/temp-dir.ts'
+import { flush } from '../helpers.ts'
 
 
 registerTempDirCleanup()
@@ -42,7 +43,7 @@ function captureTicker(): void {
 }
 
 async function settleProbe(): Promise<void> {
-  await new Promise<void>(resolve => setImmediate(resolve))
+  await flush()
 }
 
 /** A scripted git invocation: every call records itself and replays `out`. */

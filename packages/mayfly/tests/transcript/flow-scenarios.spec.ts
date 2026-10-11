@@ -10,7 +10,7 @@
  */
 import { afterEach, describe, expect, it } from 'vitest'
 import type { ToolRuntime } from '@deepseek-ai/dsh-tools'
-import type { MayflySemanticColors } from '../../src/core/index.ts'
+import type { MayflySemanticColors } from '../../src/core/types.ts'
 import type { ConversationEntry, ConversationProjection } from '../../src/conversation/types.ts'
 import type { TranscriptModel } from '../../src/frontend/models.ts'
 import { conversationTranscriptModel } from '../../src/transcript/official-model.ts'
@@ -20,9 +20,9 @@ import { setProcessRowTimers } from '../../src/transcript/process-rows.ts'
 import { setCompactionTimers } from '../../src/transcript/compaction.ts'
 import { TranscriptModelComponent } from '../../src/transcript/transcript-model.ts'
 import { fakeMayflyComponents } from './helpers.ts'
+import { plainText } from '../helpers.ts'
 import { COLORS } from './status-fakes.ts'
 
-const strip = (row: string): string => row.replace(/\x1b\[[0-9;]*m/gu, '')
 type Args = Record<string, unknown>
 type Outcome = { readonly isError: boolean, readonly meta?: unknown, readonly content: readonly { readonly type: string, readonly text?: string }[] }
 const meta = (outcome: Outcome): Record<string, unknown> => outcome.meta as Record<string, unknown>
@@ -124,7 +124,7 @@ function render(model: TranscriptModel, mode: TranscriptViewMode, expanded = fal
     images: () => ({}), requestRender: () => {}, presentation: policy,
   })
   component.setExpanded(expanded)
-  return { rows: component.render(120).map(strip), component }
+  return { rows: component.render(120).map(plainText), component }
 }
 
 afterEach(() => {
@@ -159,7 +159,7 @@ describe('conversation flow scenarios', () => {
     expect(text).toContain('▾ Took 38s · 14 tool calls · 1 subagent')
     expect(text).toContain('✻ Thought for 4s · The user wants the flaky login test fixed.')
     component.invalidate()
-    expect(component.render(120).map(strip)).toEqual(rows)
+    expect(component.render(120).map(plainText)).toEqual(rows)
     component.dispose()
   })
 
@@ -183,7 +183,7 @@ describe('conversation flow scenarios', () => {
       expect(text).not.toContain('pnpm lint')
       // An anchored local (a `!cmd` echo) never disables folding.
       component.appendAnchored('local', { render: () => ['$ ls'], invalidate: () => {} }, 0)
-      const anchored = component.render(120).map(strip)
+      const anchored = component.render(120).map(plainText)
       expect(anchored).toContain(header)
       expect(anchored).toContain(' $ ls')
       expect(anchored.join('\n')).not.toContain('pnpm lint')
@@ -202,7 +202,7 @@ describe('conversation flow scenarios', () => {
       images: () => ({}), requestRender: () => {}, presentation: policy,
     })
     component.setExpanded(false)
-    const folded = component.render(120).map(strip)
+    const folded = component.render(120).map(plainText)
     expect(folded.join('\n')).toContain(header)
     expect(folded.join('\n')).not.toContain('pnpm lint')
     // A stale overlay for the ended turn must not reopen it: Ctrl-O stays put
@@ -212,7 +212,7 @@ describe('conversation flow scenarios', () => {
       streaming: true,
       live: { turn: 1, step: 5, entries: [] },
     }
-    expect(component.render(120).map(strip)).toEqual(folded)
+    expect(component.render(120).map(plainText)).toEqual(folded)
     // Even one that still carries ghost entries keeps every durable member hidden.
     current = {
       ...settled,
@@ -222,7 +222,7 @@ describe('conversation flow scenarios', () => {
         entries: [{ kind: 'transcript-thinking', id: 'thinking:1:5', seq: 99, updatedSeq: 99, turn: 1, step: 5, text: 'ghost', streaming: false }],
       },
     }
-    const stale = component.render(120).map(strip).join('\n')
+    const stale = component.render(120).map(plainText).join('\n')
     expect(stale).toContain(header)
     expect(stale).not.toContain('pnpm lint')
     expect(stale).not.toContain('ghost')

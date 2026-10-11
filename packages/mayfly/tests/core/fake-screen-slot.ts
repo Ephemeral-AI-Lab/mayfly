@@ -1,7 +1,7 @@
 /** Stable named-slot fake shared by renderer-adjacent tests.
  * @module @ephemeral-ai/mayfly/tests/core/fake-screen-slot
  */
-import type { MayflyComponent, MayflyFocusable, MayflyScreenSlot } from '../../src/core/index.ts'
+import type { MayflyComponent, MayflyFocusable, MayflyScreenSlot } from '../../src/core/types.ts'
 
 export function mountFakeScreenSlot(
   id: string,

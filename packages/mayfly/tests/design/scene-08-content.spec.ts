@@ -11,6 +11,7 @@ import { PROBE_PALETTE, caption, expectFrames, paint } from './probe.ts'
 import { MayflyComponentsService } from '../../src/core/components.ts'
 import { FakeTerminal } from '../core/fake-terminal.ts'
 import type { MayflyComponents } from '../../src/core/types.ts'
+import { plainText } from '../helpers.ts'
 
 type Tone = 'default' | 'muted' | 'primary' | 'accent' | 'user' | 'success' | 'warning' | 'danger'
 type Style = 'strong' | 'italic' | 'strike'
@@ -83,7 +84,7 @@ describe('scene 8 Content', () => {
   })
 
   it('draws a diff node with the defaults, a start line, a row budget, and a context of zero', () => {
-    const rows = (options: Parameters<typeof ui.diff>[2]) => paint(ui.diff('a\nb\nc\nd\ne', 'a\nB\nc\nd\nE', options), 60).map(row => row.replace(/\x1b\[[0-9;]*m/gu, ''))
+    const rows = (options: Parameters<typeof ui.diff>[2]) => paint(ui.diff('a\nb\nc\nd\ne', 'a\nB\nc\nd\nE', options), 60).map(plainText)
     expect(rows({})[0]).toBe('    1   1 │   a')
     expect(rows({ start: 10 })[0]).toContain(' 10  10 │')
     expect(rows({ context: 0 }).filter(row => row.includes('⋯'))).toHaveLength(2)
@@ -102,7 +103,7 @@ describe('scene 8 Content', () => {
       { label: 'heatmap', rows: paint(ui.chart(HEAT), WIDTH), width: WIDTH },
     ])
     const bars = paint(ui.chart({ chart: 'bar', orientation: 'horizontal', layout: 'normalized', title: 'normalized', categories: ['mon', 'tue'], series: [{ id: 'a', values: [12, 8] }, { id: 'b', values: [8, 14] }] }), WIDTH)
-    expect(bars.map(row => row.replace(/\x1b\[[0-9;]*m/gu, '')).filter(row => ['normalized', 'mon', 'tue'].includes(row))).toEqual(['normalized', 'mon', 'tue'])
+    expect(bars.map(plainText).filter(row => ['normalized', 'mon', 'tue'].includes(row))).toEqual(['normalized', 'mon', 'tue'])
   })
 
   it('draws the one-cell heatmap of a year with its month labels, and a blank for a value with no level', () => {
@@ -113,7 +114,7 @@ describe('scene 8 Content', () => {
     const rows = paint(ui.chart({
       chart: 'heatmap', cell: 1, columns: Array.from({ length: weeks }, (_, week) => `w${String(week)}`), columnLabels, rows: days,
       values: days.map((_, day) => Array.from({ length: weeks }, (_, week) => (day === 2 && week === 11 ? null : (week + day) % 5))), levels,
-    }), 60).map(row => row.replace(/\x1b\[[0-9;]*m/gu, ''))
+    }), 60).map(plainText)
     expect(rows).toEqual([
       '     Jan  Feb',
       'Mon  ·░▒▓█·░▒▓█·░',
@@ -128,17 +129,17 @@ describe('scene 8 Content', () => {
       ui.chart({ chart: 'line', title: 'latency (ms)', xLabel: 'turn', series: [{ id: 's', tone: 'accent', points: Array.from({ length: 30 }, (_, x) => ({ x, y: Math.round(120 + 90 * Math.sin(x / 5) + x * 4) })) }] }), ui.spacer(),
       ui.chart({ chart: 'point', title: 'point', series: [{ id: 's', tone: 'success', points: Array.from({ length: 20 }, (_, x) => ({ x, y: (x * 7) % 11 })) }], height: 5 }), ui.spacer(),
       ui.chart({ chart: 'bar', title: 'vertical', categories: ['mon', 'tue', 'wed', 'thu'], series: [{ id: 'a', tone: 'warning', values: [3, 5, 2, 4] }], height: 5 }),
-    ), WIDTH).map(row => row.replace(/\x1b\[[0-9;]*m/gu, '').trimEnd())
+    ), WIDTH).map(row => plainText(row).trimEnd())
     for (const title of ['latency (ms)', 'point', 'vertical']) expect(rows).toContain(title)
     expect(rows.some(row => row.includes('turn'))).toBe(true)
   })
 
   it('page 7: a diagram within budget draws as boxes and one over budget falls back to its source (Δ23)', () => {
-    const within = paint(ui.diagram('flowchart LR\n  queue --> agent --> tools'), WIDTH, realComponents()).map(row => row.replace(/\x1b\[[0-9;]*m/gu, ''))
+    const within = paint(ui.diagram('flowchart LR\n  queue --> agent --> tools'), WIDTH, realComponents()).map(plainText)
     expect(within.join('\n')).toMatch(/queue[\s\S]*agent[\s\S]*tools/u)
     expect(within.join('\n')).not.toContain('mermaid')
     const source = Array.from({ length: 30 }, (_, index) => `  n${String(index)} --> n${String(index + 1)}`).join('\n')
-    const over = paint(ui.diagram(source), WIDTH, realComponents()).map(row => row.replace(/\x1b\[[0-9;]*m/gu, ''))
+    const over = paint(ui.diagram(source), WIDTH, realComponents()).map(plainText)
     expect(over.join('\n')).toContain('mermaid')
     expect(over.join('\n')).toContain('n29 --> n30')
   })

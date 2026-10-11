@@ -23,18 +23,17 @@ import { initialConversationFacts } from '../src/conversation/facts.ts'
 import type { ConversationProjection } from '../src/conversation/types.ts'
 import type { Session } from '@deepseek-ai/dsh-session'
 import type { MayflyCurrentAgentService } from '../src/app/current-agent.ts'
-import {
-  MayflyComponentsService,
-  MayflyKeymapService,
-  MayflyScreenService,
-  MayflyTerminalInfoService,
-} from '../src/core/index.ts'
+import { MayflyComponentsService } from '../src/core/components.ts'
+import { MayflyKeymapService } from '../src/core/keymap.ts'
+import { MayflyScreenService } from '../src/core/screen.ts'
+import { MayflyTerminalInfoService } from '../src/core/terminal-info.ts'
 import { mountMayflySurfaceRenderer } from '../src/core/surface-renderer.ts'
 import { startMayflyTerminal } from '../src/core/terminal.ts'
 import type { MayflyTerminalRuntime } from '../src/core/terminal.ts'
 import * as themeDarkPlugin from '../src/core/theme-dark.ts'
 import { FakeTerminal } from './core/fake-terminal.ts'
 import { mkdtempTracked, registerTempDirCleanup } from './core/temp-dir.ts'
+import { fakeAgent, type FakeAgent } from './helpers.ts'
 
 registerTempDirCleanup()
 
@@ -101,35 +100,6 @@ interface DirectContext extends Omit<Context, 'commands' | 'sessionProjections' 
   readonly mayflyEditorExtensions: MayflyEditorExtensionRegistry
 }
 
-interface FakeSession {
-  readonly id: string
-  readonly events: unknown[]
-  readonly header: { readonly cwd: string }
-  readonly seq: number
-  readonly surface: { readonly nodes: readonly unknown[] }
-  requestHeader(): undefined
-}
-
-type FakeAgent = Agent & { readonly session: Agent['session'] & FakeSession }
-
-function fakeAgent(id: string): FakeAgent {
-  const session: FakeSession = {
-    id,
-    events: [],
-    seq: 1,
-    header: { cwd: process.cwd() },
-    surface: { nodes: [] },
-    requestHeader: () => undefined,
-  }
-  return {
-    id: session.id,
-    session,
-    status: 'idle',
-    options: {},
-    followup() {},
-    cancel() {},
-  } as unknown as FakeAgent
-}
 
 export interface DirectObservations {
   readonly selectedAgents: Agent[]
@@ -314,7 +284,7 @@ export const apply = ctx => globalThis.__mayflyDirectE2E.transcriptApply(ctx)
   const created: string[] = []
   const forks: Array<{ sessionId: unknown, atSeq?: number }> = []
   const createAgent = (prefix: string): FakeAgent => {
-    const agent = fakeAgent(`${prefix}-${String(++sequence)}`)
+    const agent = fakeAgent(`${prefix}-${String(++sequence)}`, { cwd: process.cwd() })
     agents.set(String(agent.id), agent)
     return agent
   }

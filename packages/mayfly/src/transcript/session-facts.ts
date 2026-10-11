@@ -13,8 +13,8 @@ import { SessionId, type Session } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-session-projection'
 import type {} from '@deepseek-ai/dsh-session-title/types'
 import type { LiveAssistantDraft, LiveAssistantStreamService } from '../conversation/live-stream.ts'
-import type { ConversationFacts } from '../conversation/index.ts'
-import { initialConversationFacts } from '../conversation/index.ts'
+import type { ConversationFacts } from '../conversation/types.ts'
+import { initialConversationFacts } from '../conversation/facts.ts'
 import { reasoningDetail } from '../conversation/activity-detail.ts'
 
 /** Renderer-neutral facts for one admitted child session. */

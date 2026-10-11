@@ -199,6 +199,14 @@ export const CATALOG = Object.freeze({
     sizes: [DEFAULT_SIZE],
     script: [checkpoint('boot')],
   },
+  // The Host schedule service ships disabled, so /schedule degrades to its unavailable surface.
+  schedule: {
+    summary: 'the /schedule overlay on a composition without the Host service',
+    source: { idle: true },
+    covers: [`${INTERACTION}schedule-command.ts`],
+    sizes: [DEFAULT_SIZE, [40, 24]],
+    script: [type('/schedule'), key('enter'), checkpoint('catalog')],
+  },
   ...Object.fromEntries(Object.entries(REPLAYS).map(([name, replay]) => [name, replayScenario(name, replay)])),
   ...APP,
   ...PERF,

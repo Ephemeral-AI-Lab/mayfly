@@ -6,8 +6,8 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { ui, type MayflyListItem, type MayflyTabItem, type MayflyUiEvent, type MayflyUiNode } from '../../../ui/src/index.ts'
 import { createRealSurface, probeComponents, type RealSurface } from '../design/probe.ts'
+import { plainText } from '../helpers.ts'
 
-const plain = (text: string): string => text.replace(/\x1b\[[0-9;]*m|\x1b\]8;;[^\x07\x1b]*(?:\x07|\x1b\\)|\x1b_pi:c\x07/gu, '')
 const KEY = {
   up: '\x1b[A', down: '\x1b[B', right: '\x1b[C', left: '\x1b[D', enter: '\r', esc: '\x1b', tab: '\t', space: ' ',
   altUp: '\x1b[1;3A', altDown: '\x1b[1;3B', altLeft: '\x1b[1;3D', altRight: '\x1b[1;3C', f2: '\x1bOQ', f3: '\x1bOR', f4: '\x1bOS', f5: '\x1b[15~',
@@ -25,7 +25,7 @@ function open(content: MayflyUiNode, width = 100, escape = true) {
     ? { ...options, overrides: { onUnhandledEscape: () => { escapes += 1 }, escapeHint: 'close' as const } }
     : options)
   surfaces.push(surface)
-  const rows = (): string[] => surface.render().map(plain)
+  const rows = (): string[] => surface.render().map(plainText)
   const hint = (): string => rows().at(-2)!.replace(/^│\s*|\s*│$/gu, '')
   const tabs = (): string[] => events.filter(event => event.kind === 'tab-change').map(event => (event as { tabId: string }).tabId)
   return { surface, events, rows, hint, tabs, press: (...keys: string[]) => { for (const key of keys) surface.press(key) }, escapes: () => escapes }
@@ -60,7 +60,7 @@ describe('the hint row of a tab strip, a wizard, and a rail', () => {
     expect(view.hint()).toBe('←/→ tabs · Enter open · Esc close')
     view.press(KEY.enter)
     expect(view.hint()).toBe('↑/↓ options · Enter open · Alt+←/→ tabs · Esc back')
-    expect(open(strip({ hintLabel: 'views' })).surface.press(KEY.enter).map(plain).some(row => row.includes('Alt+←/→ views'))).toBe(true)
+    expect(open(strip({ hintLabel: 'views' })).surface.press(KEY.enter).map(plainText).some(row => row.includes('Alt+←/→ views'))).toBe(true)
   })
 
   it('words a wizard\'s Escape back, and names the vertical rail\'s own keys', () => {
@@ -85,7 +85,7 @@ describe('the rail', () => {
     const view = open(settings(selectPage))
     const arrow = (): string => view.rows().find(row => row.includes('→ Model'))!
     expect(arrow()).toContain('→ Model')
-    const ansi = view.surface.render().find(row => plain(row).includes('→ Model'))!
+    const ansi = view.surface.render().find(row => plainText(row).includes('→ Model'))!
     expect(ansi).toContain('\x1b[1m')
     view.press(KEY.right)
     expect(arrow()).toContain('→ Model')

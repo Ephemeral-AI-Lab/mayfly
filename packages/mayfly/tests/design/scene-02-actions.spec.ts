@@ -12,6 +12,7 @@ import type { MayflyKeymap } from '../../src/core/types.ts'
 import { INTERACTION_KEY_ACTIONS } from '../../src/interaction/keys.ts'
 import { PROBE_PALETTE, expectFrames, probeComponents, type Frame } from './probe.ts'
 import { sceneWalks, stepLabel } from './walks.ts'
+import { plainText } from '../helpers.ts'
 import { feedbackSpans } from '../../src/core/ui-interaction-notifications.ts'
 
 /** The scene's node, as `ui-preview.mjs` builds it, with the real builders. */
@@ -63,7 +64,7 @@ function overlay(keymap?: MayflyKeymap, reply?: string) {
     press: (key: string) => { focus.handleInput?.(key) },
     activated: () => events.flatMap(event => event.kind === 'activate' ? [event.actionId] : []),
     // The plain text of the hint row: keys in text color and labels muted are separate runs.
-    hint: (width: number) => (result.value.component.render(width).at(-2) ?? '').replace(/\x1b\[[0-9;]*m/gu, ''),
+    hint: (width: number) => plainText(result.value.component.render(width).at(-2) ?? ''),
   }
 }
 

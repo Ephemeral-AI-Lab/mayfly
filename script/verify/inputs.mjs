@@ -56,12 +56,21 @@ export const SCENARIO_SMOKE = [
   { pattern: /^packages\/(?:mayfly|ui)\/src\//u, scenarios: ['idle', 'tour'] },
 ]
 
+/**
+ * Scenario machinery: a change here can move every checkpoint, so it selects the whole catalog. The path rule covers
+ * the pipeline directory (not the goldens, which select their own scenario) and the `scenarios` command itself; the
+ * pipeline roots catch an outside file the run, the content, or the compare loads (the throwaway profile a boot
+ * prepares). An import the command makes only to orchestrate — the change-set parser, the shots painter, the dsh
+ * lookup — is not machinery and no longer runs the catalog. @see select.mjs
+ */
+export const SCENARIO_ALL = /^script\/scenarios(?:\.mjs|\/(?!golden\/))/u
+export const SCENARIO_PIPELINE = ['script/scenarios/runner.mjs', 'script/scenarios/catalog.mjs', 'script/scenarios/golden.mjs']
+
 /** Files nothing in the gate reads: prose, history, the design sketch, and scripts a person runs. */
 export const INERT = [
   /^LICENSE$/u,
   /^\.gitignore$/u,
   /^docs\//u,
-  /^script\/demo-fresh-onboarding\.sh$/u,
   /^(?:packages|examples)\/[^/]+\/(?:README(?:\.zh)?\.md|LICENSE|\.gitignore|CHANGELOG\.md)$/u,
 ]
 

@@ -13,6 +13,7 @@ import {
   paintDiffRows,
 } from '../../src/core/diff-align.ts'
 import { truncateToWidth, visibleWidth } from '../../src/core/width.ts'
+import { plainText } from '../helpers.ts'
 
 const ops = (before: string, after: string): Array<[string, string]> =>
   alignDiffLines(before, after).map(op => [op.type, op.text])
@@ -142,7 +143,7 @@ describe('paintDiffRows', () => {
     expect(rows.map(row => visibleWidth(row))).toEqual([24, 24, 24])
     expect(rows[1]).not.toContain('\t')
     expect(rows[1]).toContain('   y')
-    expect(rows[2]!.replace(/\x1b\[[0-9;]*m/gu, '')).toBe('        3 │ + long line…')
+    expect(plainText(rows[2]!)).toBe('        3 │ + long line…')
     // The band stays open through the ellipsis and the fill.
     expect(rows[2]!.slice(rows[2]!.indexOf('\x1b[48;2;4;5;6m'), -'\x1b[49m'.length)).not.toContain('\x1b[0m')
     expect(paintDiffRows(alignDiffLines('a long context line', 'a long context line\nb'), 16, helpers)[0]).toBe('    1   1 │   a…')

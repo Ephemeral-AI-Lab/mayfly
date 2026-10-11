@@ -7,7 +7,8 @@
  */
 
 import type { MayflyUiEvent, MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
-import { compileMayflyUiNode, type MayflyComponents, type MayflySemanticColors } from '../core/index.ts'
+import type { MayflyComponents, MayflySemanticColors } from '../core/types.ts'
+import { compileMayflyUiNode } from '../core/ui-compiler.ts'
 
 /** Renderer dependencies already owned by the active frontend tree. */
 export interface CanonicalNodeRenderer {

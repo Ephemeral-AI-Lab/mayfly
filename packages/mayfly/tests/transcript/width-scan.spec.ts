@@ -15,7 +15,7 @@ import { AttachmentId } from '@deepseek-ai/dsh-attachment'
 import type { GoalProjection } from '@deepseek-ai/dsh-goal'
 import type { MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import { MayflyStatusService } from '../../../ui/src/provider.ts'
-import type { MayflySemanticColors } from '../../src/core/index.ts'
+import type { MayflySemanticColors } from '../../src/core/types.ts'
 import {
   AssistantMessageComponent,
   ErrorMessageComponent,

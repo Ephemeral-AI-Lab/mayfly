@@ -10,10 +10,11 @@ import {
 } from '../../src/core/ui-actions.ts'
 import { MayflyUiSurfaceRuntime, compileMayflyUiSurfaceNode, type MayflyUiCompilerOptions } from '../../src/core/ui-compiler.ts'
 import { validateMayflyEditorShellNode, validateMayflyUiNode } from '../../src/core/ui-validator.ts'
-import type { MayflyKeymap, MayflySemanticColors } from '../../src/core/types.ts'
+import type { MayflyKeymap } from '../../src/core/types.ts'
 import { probeComponents } from '../design/probe.ts'
 import { MayflyKeymapService } from '../../src/core/keymap.ts'
 import { INTERACTION_KEY_ACTIONS } from '../../src/interaction/keys.ts'
+import { plainColors } from '../helpers.ts'
 
 /** The real keymap with the shipped defaults registered. */
 function realKeymap(): MayflyKeymapService {
@@ -22,8 +23,7 @@ function realKeymap(): MayflyKeymapService {
   return keymap
 }
 
-const identity = (value: string): string => value
-const colors = new Proxy({ logoGradient: [identity] }, { get: (target, key) => key === 'logoGradient' ? target.logoGradient : identity }) as unknown as MayflySemanticColors
+const colors = plainColors()
 
 /** A keymap stand-in that answers `getKeys` from a table, the way the real one answers an override. */
 function keymapWith(keys: Readonly<Record<string, readonly string[]>>): MayflyKeymap {

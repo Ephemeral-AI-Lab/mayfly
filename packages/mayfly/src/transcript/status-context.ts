@@ -27,7 +27,7 @@
  */
 
 import type { Context } from '@deepseek-ai/cordis'
-import type { ConversationFacts } from '../conversation/index.ts'
+import type { ConversationFacts } from '../conversation/types.ts'
 import type { SessionFactsService } from './session-facts.ts'
 import type { MayflyStatusNode } from '@ephemeral-ai/mayfly-ui'
 

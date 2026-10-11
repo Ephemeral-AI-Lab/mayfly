@@ -7,7 +7,7 @@ import type {} from '@deepseek-ai/dsh-commands'
 import { JobId, type JobOutputRead, type JobView } from '@deepseek-ai/dsh-jobs'
 import { isDeepStrictEqual } from 'node:util'
 import { ui, type MayflyContentChunk, type MayflyListItem, type MayflyOverlayHandle, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
-import type { MayflyTranslate } from '../frontend/index.ts'
+import type { MayflyTranslate } from '../frontend/locale.ts'
 import { openAgentOverlay } from './agent-overlay.ts'
 import { interactionTranslator, mountInteractionLocale, observeInteractionLocale } from './locale.ts'
 

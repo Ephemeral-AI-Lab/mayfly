@@ -12,8 +12,9 @@
  * @module @ephemeral-ai/mayfly/transcript/thinking
  */
 
-import { sanitizePluginText, type MayflyComponent, type MayflyComponents, type MayflySemanticColors } from '../core/index.ts'
-import { interpolateLocaleMessage, type MayflyTranslate } from '../frontend/index.ts'
+import { sanitizePluginText } from '../core/plugin-view.ts'
+import type { MayflyComponent, MayflyComponents, MayflySemanticColors } from '../core/types.ts'
+import { interpolateLocaleMessage, type MayflyTranslate } from '../frontend/locale.ts'
 import { streamingWindow, STREAMING_RENDER_MAX_CHARS } from './components.ts'
 import type { TranscriptThinkingItem } from './types.ts'
 import { compactElapsedMs } from './agent-presentation.ts'

@@ -2,7 +2,7 @@
  * @module @ephemeral-ai/mayfly/interaction/session-info-model
  */
 import { ui, type MayflyField, type MayflyTone, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
-import type { MayflyTranslate } from '../frontend/index.ts'
+import type { MayflyTranslate } from '../frontend/locale.ts'
 import type { ChangelogEntry } from './changelog-content.ts'
 import { MAYFLY_VERSION } from '../transcript/banner-content.ts'
 import { formatTokens, usagePercent, usageRatio, ratioSeverity, totalTokens, type UsageFacts, type CompositionFacts } from './usage.ts'

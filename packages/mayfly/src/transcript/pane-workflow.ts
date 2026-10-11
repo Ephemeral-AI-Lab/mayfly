@@ -12,7 +12,7 @@ import type {
   WorkflowStopReason,
 } from '@deepseek-ai/dsh-workflow'
 import type { MayflyInlineSpan, MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
-import { interpolateLocaleMessage, type MayflyTranslate } from '../frontend/index.ts'
+import { interpolateLocaleMessage, type MayflyTranslate } from '../frontend/locale.ts'
 import type { SessionFactsService } from './session-facts.ts'
 import { agentPhasePresentation, agentTreeBranch, compactElapsedSeconds, hiddenMembersText, selectVisibleMembers } from './agent-presentation.ts'
 import { transcriptTranslator } from './locale.ts'

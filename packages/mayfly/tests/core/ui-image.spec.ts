@@ -18,11 +18,10 @@ import {
 } from '../../src/core/ui-validator.ts'
 import type { MayflySemanticColors } from '../../src/core/types.ts'
 import { createWorkCounters } from '../../src/core/ui-work-counters.ts'
+import { flush, identity } from '../helpers.ts'
 
-const identity = (value: string): string => value
 const colors = new Proxy({ logoGradient: [identity] }, { get: (target, key) => key === 'logoGradient' ? target.logoGradient : (value: string) => `«${String(key)}:${value}»` }) as unknown as MayflySemanticColors
 const PHOTO: MayflyUiImageBytes = { data: new Uint8Array([1, 2, 3]), mediaType: 'image/png', name: 'photo.png' }
-const flush = () => new Promise<void>(resolve => { setImmediate(resolve) })
 
 const services: MayflyUiImagesService[] = []
 afterEach(() => { for (const service of services.splice(0)) service.dispose() })

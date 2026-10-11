@@ -6,7 +6,7 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { ApprovalOutcome, ApprovalRequest } from '@deepseek-ai/dsh-user-approval'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import { ui, type MayflyUiEvent } from '@ephemeral-ai/mayfly-ui'
-import type { MayflyTranslate } from '../frontend/index.ts'
+import type { MayflyTranslate } from '../frontend/locale.ts'
 import { interactionTranslator, mountInteractionLocale } from './locale.ts'
 import { requestOverlay } from './request-overlay.ts'
 

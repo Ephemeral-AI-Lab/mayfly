@@ -15,6 +15,7 @@ import {
   executeDirectOverlay,
   resetDirectMayfly,
 } from './e2e-boot.ts'
+import { plainBlock } from './helpers.ts'
 
 afterEach(async () => { await resetDirectMayfly() })
 
@@ -220,7 +221,7 @@ describe('Mayfly direct-service whole tree', () => {
     await waitForRender()
     expect(tree.terminal.written.slice(mark).join('')).toContain('Builds 3')
     expect(tree.ctx.mayflyScreen.enterViews()).toBe(true)
-    const rows = (tree.ctx.mayflyScreen.views.panel(80) ?? []).join('\n').replace(/\x1b\[[0-9;]*m/gu, '')
+    const rows = plainBlock(tree.ctx.mayflyScreen.views.panel(80))
     expect(rows).toMatch(/→\S* build two/u)
 
     await fiber.dispose()

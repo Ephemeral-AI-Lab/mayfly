@@ -25,6 +25,7 @@ import { WrappingSelectList } from '../../src/core/wrapping-select-list.ts'
 import { sliceByColumn, truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/width.ts'
 import { ViewsLane } from '../../src/core/views-lane.ts'
 import { ADVERSARIAL, SCAN_WIDTHS, expectLinesFit } from './width-scan.ts'
+import { plainColors } from '../helpers.ts'
 
 /** Identity paints: the scan measures true columns, not bracket markers. */
 const selectTheme: SelectListTheme = {
@@ -37,8 +38,7 @@ const selectTheme: SelectListTheme = {
 
 /** W4a migration sweep: every integer width in the supported fixture range. */
 const MIGRATION_WIDTHS = Array.from({ length: 119 }, (_, index) => index + 2)
-const identity = (text: string): string => text
-const statusColors = new Proxy({ logoGradient: [identity] }, { get: (target, key) => key === 'logoGradient' ? target.logoGradient : identity })
+const statusColors = plainColors()
 
 function scanEditor(text: string): MayflyEditor {
   return {

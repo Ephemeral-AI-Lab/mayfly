@@ -12,15 +12,9 @@
  */
 
 import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
-import type {
-  MayflyComponent,
-  MayflyComponents,
-  MayflyImage,
-  MayflyMarkdown,
-  MayflySemanticColors,
-} from '../core/index.ts'
-import { sanitizePluginText } from '../core/index.ts'
-import { interpolateLocaleMessage, type MayflyTranslate } from '../frontend/index.ts'
+import type { MayflyComponent, MayflyComponents, MayflyImage, MayflyMarkdown, MayflySemanticColors } from '../core/types.ts'
+import { sanitizePluginText } from '../core/plugin-view.ts'
+import { interpolateLocaleMessage, type MayflyTranslate } from '../frontend/locale.ts'
 import { extractKeyArgument, isPlanDecline, KEY_ARG_MAX_CHARS } from './present.ts'
 import { summarizeToolText } from './envelope.ts'
 import { moreLinesHint, moreOutputHint } from './hints.ts'

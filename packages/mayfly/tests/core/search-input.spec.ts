@@ -11,9 +11,9 @@ import * as frontend from '../../src/frontend/index.ts'
 import { FakeTheme, KEY } from '../interaction/fakes.ts'
 import { FakeTerminal } from './fake-terminal.ts'
 import { visibleWidth } from '../../src/core/width.ts'
+import { flush } from '../helpers.ts'
 
 const contexts: Context[] = []
-const flush = () => new Promise<void>(resolve => { setImmediate(resolve) })
 afterEach(async () => { for (const ctx of contexts.splice(0)) await ctx.fiber.dispose() })
 function display(ctx = new Context()) {
   contexts.push(ctx)

@@ -6,32 +6,19 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import type { MayflyComponents, MayflySemanticColors } from '../../src/core/index.ts'
-import type { ReadCallModel, TranscriptReadGroupModel } from '../../src/frontend/index.ts'
+import type { MayflyComponents } from '../../src/core/types.ts'
+import type { ReadCallModel, TranscriptReadGroupModel } from '../../src/frontend/models.ts'
 import {
   groupReadsByFile,
   READ_GROUP_ROW_LIMIT,
   ReadGroupComponent,
 } from '../../src/transcript/read-group.ts'
 import { fakeMayflyComponents } from './helpers.ts'
+import { plainColors, taggedColors } from '../helpers.ts'
 
-/** Identity colors: assertions see structure, not escape codes. */
-const id = (text: string): string => text
-const IDENTITY: MayflySemanticColors = {
-  text: id, textStrong: id, muted: id, textMuted: id, accent: id, primary: id, border: id,
-  borderFocus: id, success: id, error: id, warning: id, selectedBg: id, roleUser: id, shellMode: id,
-  mdHeading: id, mdLink: id, mdLinkUrl: id, mdCode: id, mdCodeBlock: id, mdCodeBlockBorder: id,
-  mdQuote: id, mdQuoteBorder: id, mdHr: id, mdListBullet: id,
-  diffAdded: id, diffRemoved: id, diffAddedStrong: id, diffRemovedStrong: id, diffGutter: id, diffMeta: id, diffAddedBg: id, diffRemovedBg: id,
-  modelHighlight: id, logoGradient: [],
-}
-// Structurally satisfies MayflySemanticColors; declared where consumed.
+const IDENTITY = plainColors()
 
-/** Tagged colors for role assertions. */
-function tagged(): MayflySemanticColors {
-  const tag = (letter: string) => (text: string): string => `[${letter}]${text}[/${letter}]`
-  return { ...IDENTITY, muted: tag('M'), textMuted: tag('T'), primary: tag('P'), success: tag('S'), error: tag('E'), warning: tag('W') }
-}
+
 
 const COMPONENTS: MayflyComponents = fakeMayflyComponents()
 
@@ -68,7 +55,7 @@ describe('ReadGroupComponent', () => {
       read({ callId: 'c', path: 'src/bar.ts', range: { first: 1, last: 40 }, totalLines: 89 }),
       read({ callId: 'd', activity: 'read', detail: 'package.json', path: 'package.json', state: 'error', error: 'file not found' }),
     ])
-    const lines = new ReadGroupComponent(model, tagged(), COMPONENTS).render(80)
+    const lines = new ReadGroupComponent(model, taggedColors(), COMPONENTS).render(80)
     expect(lines).toEqual([
       '',
       '[W]◐ [/W]\x1b[1m[P]Read 3 files[/P]\x1b[22m[M] · 4 reads[/M][E] · 1 failed[/E]',
@@ -83,42 +70,42 @@ describe('ReadGroupComponent', () => {
   it('renders pending, all-failed, and mixed parents', () => {
     const pending = new ReadGroupComponent(group([
       read({ callId: 'a', activity: 'read', detail: 'one.ts', path: 'one.ts', state: 'pending', requestedRange: { first: 1, last: 50 } }),
-    ]), tagged(), COMPONENTS).render(80)
+    ]), taggedColors(), COMPONENTS).render(80)
     expect(pending[1]).toBe('● \x1b[1m[P]Reading 1 file…[/P]\x1b[22m')
     expect(pending[2]).toBe('  └─ one.ts · 1-50 [T]…[/T]')
 
     const failed = new ReadGroupComponent(group([
       read({ callId: 'a', activity: 'read', detail: 'one.ts', path: 'one.ts', state: 'error', error: 'nope' }),
       read({ callId: 'b', activity: 'read', detail: 'one.ts', path: 'one.ts', state: 'error', error: 'still nope' }),
-    ]), tagged(), COMPONENTS).render(80)
+    ]), taggedColors(), COMPONENTS).render(80)
     expect(failed[1]).toBe('[E]✗ [/E]\x1b[1m[E]Read 1 file · failed[/E]\x1b[22m[M] · 2 reads[/M]')
     expect(failed[2]).toBe('  └─ one.ts [E]✗[/E] [E]nope[/E]')
 
     const mixed = new ReadGroupComponent(group([
       read({ callId: 'a', path: 'one.ts', range: { first: 1, last: 10 } }),
       read({ callId: 'b', activity: 'read', detail: 'one.ts', path: 'one.ts', state: 'error', error: 'gone' }),
-    ]), tagged(), COMPONENTS).render(80)
+    ]), taggedColors(), COMPONENTS).render(80)
     expect(mixed[2]).toBe('  └─ one.ts [W]◐[/W] [E]gone[/E]')
 
     // A single-window failure without detail inlines the bare mark; an
     // all-failed multi-file run pluralizes the header.
     const silent = new ReadGroupComponent(group([
       read({ callId: 'a', activity: 'read', detail: 'one.ts', path: 'one.ts', state: 'error' }),
-    ]), tagged(), COMPONENTS).render(80)
+    ]), taggedColors(), COMPONENTS).render(80)
     expect(silent[2]).toBe('  └─ one.ts [E]✗[/E]')
     const plural = new ReadGroupComponent(group([
       read({ callId: 'a', activity: 'read', detail: 'one.ts', path: 'one.ts', state: 'error', error: 'x' }),
       read({ callId: 'b', activity: 'read', detail: 'two.ts', path: 'two.ts', state: 'error', error: 'y' }),
-    ]), tagged(), COMPONENTS).render(80)
+    ]), taggedColors(), COMPONENTS).render(80)
     expect(plural[1]).toBe('[E]✗ [/E]\x1b[1m[E]Read 2 files · failed[/E]\x1b[22m')
 
     const reading = new ReadGroupComponent(group([
       read({ callId: 'a', path: 'one.ts', range: { first: 1, last: 10 } }),
       read({ callId: 'b', activity: 'read', detail: 'one.ts', path: 'one.ts', state: 'pending', requestedRange: { first: 11, last: 20 } }),
-    ]), tagged(), COMPONENTS).render(80)
+    ]), taggedColors(), COMPONENTS).render(80)
     expect(reading[2]).toBe('  └─ one.ts[T] · reading…[/T]')
 
-    const pathless = new ReadGroupComponent(group([read({ callId: 'a', state: 'ok' })]), tagged(), COMPONENTS).render(80)
+    const pathless = new ReadGroupComponent(group([read({ callId: 'a', state: 'ok' })]), taggedColors(), COMPONENTS).render(80)
     expect(pathless).toEqual(['', '[S]✓ [/S]\x1b[1m[P]Read 0 files[/P]\x1b[22m[M] · 1 reads[/M]'])
   })
 
@@ -126,7 +113,7 @@ describe('ReadGroupComponent', () => {
     const component = new ReadGroupComponent(group([
       read({ callId: 'a', activity: 'read', detail: 'one.ts', path: 'one.ts', state: 'error' }),
       read({ callId: 'b', activity: 'read', detail: 'one.ts', path: 'one.ts', state: 'error' }),
-    ]), tagged(), COMPONENTS)
+    ]), taggedColors(), COMPONENTS)
     const lines = component.render(80)
     expect(lines[2]).toBe('  └─ one.ts [E]✗[/E]')
     expect(lines[3]).toBe('     ├─ read [E]✗[/E]')
@@ -212,7 +199,7 @@ describe('ReadGroupComponent', () => {
       read({ callId: 'b', activity: 'read', detail: 'src/bar.ts', path: 'src/bar.ts', state: 'pending' }),
       read({ callId: 'c', activity: 'read', detail: 'src/bar.ts', path: 'src/bar.ts', state: 'pending' }),
     ])
-    const component = new ReadGroupComponent(model, tagged(), COMPONENTS)
+    const component = new ReadGroupComponent(model, taggedColors(), COMPONENTS)
     expect(component.render(80)[1]).toBe('● \x1b[1m[P]Reading 2 files…[/P]\x1b[22m[M] · 3 reads[/M]')
     component.setScope({ hint: true, turnClosed: true })
     expect(component.render(80)).toEqual([

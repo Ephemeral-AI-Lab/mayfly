@@ -13,9 +13,10 @@ import type { Session, SessionEvent } from '@deepseek-ai/dsh-session'
 import type { GoalPhase, GoalProjection } from '@deepseek-ai/dsh-goal'
 import type { TodoItem } from '@deepseek-ai/dsh-tool-todo'
 import { endsWithAffordance } from '../../src/core/surface-renderer.ts'
-import type { MayflyTranslate } from '../../src/frontend/index.ts'
+import type { MayflyTranslate } from '../../src/frontend/locale.ts'
 import * as todo from '../../src/transcript/pane-todo.ts'
 import { event, resetSeq, turnEnd, turnStart, userEvent } from './helpers.ts'
+import { plainText } from '../helpers.ts'
 import { bootPanePlugin } from './pane-fakes.ts'
 import { asAgent, fakeAgent } from './status-fakes.ts'
 
@@ -507,7 +508,7 @@ describe('mayfly-pane-todo', () => {
     const narrow = pane.render(10)
     expect(narrow.length).toBeGreaterThan(0)
     for (const line of narrow) {
-      expect(line.replace(/\x1b\[[0-9;]*m/g, '').length).toBeLessThanOrEqual(10)
+      expect(plainText(line).length).toBeLessThanOrEqual(10)
     }
     expect(pane.render(3).length).toBeGreaterThan(0)
     pane.invalidate()

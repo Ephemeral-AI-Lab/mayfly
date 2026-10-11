@@ -6,7 +6,7 @@
  * @module @ephemeral-ai/mayfly/transcript/hints
  */
 
-import type { MayflyTranslate } from '../frontend/index.ts'
+import type { MayflyTranslate } from '../frontend/locale.ts'
 
 /**
  * The hidden-lines hint of one folded body.

@@ -6,7 +6,7 @@
 
 import { describe, expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
-import type { MayflyAutocompleteProvider } from '../../src/core/index.ts'
+import type { MayflyAutocompleteProvider } from '../../src/core/types.ts'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import {
   clearSharedEditor,

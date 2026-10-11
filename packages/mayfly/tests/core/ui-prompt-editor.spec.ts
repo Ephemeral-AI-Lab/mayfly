@@ -11,10 +11,10 @@ import type { MayflySemanticColors, MayflyTheme } from '../../src/core/types.ts'
 import { PROBE_PALETTE } from '../design/probe.ts'
 import { FakeTerminal } from './fake-terminal.ts'
 import { ADVERSARIAL, SCAN_WIDTHS, expectLinesFit } from './width-scan.ts'
+import { plainText } from '../helpers.ts'
 
 const ROLES = Object.keys(PROBE_PALETTE) as (keyof MayflySemanticColors)[]
 const identityTheme = (): MayflyTheme => ({ colors: Object.fromEntries(ROLES.map(role => [role, (text: string) => text])) as unknown as MayflySemanticColors })
-const strip = (row: string): string => row.replaceAll(CURSOR_MARKER, '').replace(/\x1b\[[0-9;]*m/gu, '')
 const KEY = { altEnter: '\x1b\r', ctrlA: '\x01', ctrlK: '\x0b', ctrlY: '\x19', undo: '\x1f', enter: '\r', paste: '\x1b[200~', pasteEnd: '\x1b[201~' } as const
 
 const cleanups: (() => void)[] = []
@@ -40,7 +40,7 @@ function open(prompt: Omit<MayflyPromptNode, 'kind' | 'id'> = {}, width = 40) {
   const draft = (): string => model.prompt({ pagePath: [], controlId: 'p' })!.text
   return {
     events, draft, surface: result.value,
-    rows: (): string[] => result.value.component.render(width).map(strip),
+    rows: (): string[] => result.value.component.render(width).map(plainText),
     raw: (): string => result.value.component.render(width).join('\n'),
     press: (...keys: string[]): void => { for (const key of keys) result.value.focusTarget!.handleInput?.(key) },
   }

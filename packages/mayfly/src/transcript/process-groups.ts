@@ -13,7 +13,7 @@
  * @module @ephemeral-ai/mayfly/transcript/process-groups
  */
 
-import type { TranscriptEntryModel, TranscriptModel, TranscriptTurnModel } from '../frontend/index.ts'
+import type { TranscriptEntryModel, TranscriptModel, TranscriptTurnModel } from '../frontend/models.ts'
 import type { ProcessPolicy } from './presentation-policy.ts'
 import { summarizeProcess, type ProcessMemberFact, type ProcessSummary } from './process-activity.ts'
 

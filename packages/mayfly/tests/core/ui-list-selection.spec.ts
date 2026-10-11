@@ -5,8 +5,8 @@ import { createRealSurface, probeComponents, type RealSurface } from '../design/
 import { listSelectedIds } from '../../src/core/ui-list-selection.ts'
 import { createChoiceState, reduceChoice } from '../../src/core/ui-interaction-choice.ts'
 import { validateMayflyUiNode } from '../../src/core/ui-validator.ts'
+import { plainText } from '../helpers.ts'
 
-const plain = (text: string): string => text.replace(/\x1b\[[0-9;]*m/gu, '')
 const items = [{ id: 'apple', label: 'Apple' }, { id: 'banana', label: 'Banana' }]
 
 const surfaces: RealSurface[] = []
@@ -16,7 +16,7 @@ function open(node: MayflyListNode) {
   const events: MayflyUiEvent[] = []
   const surface = createRealSurface(ui.surface({ title: 'List', chrome: 'overlay', child: node }), 80, { components: probeComponents(), events: event => events.push(event) })
   surfaces.push(surface)
-  return { surface, events, rows: () => surface.render().map(plain) }
+  return { surface, events, rows: () => surface.render().map(plainText) }
 }
 
 describe('a list without selectedIds', () => {

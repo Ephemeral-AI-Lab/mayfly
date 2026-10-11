@@ -31,6 +31,7 @@ import { probeDarwin, probeWindows } from '../../src/interaction/paste-image-nat
 import { setClipboardToolTimeout, type ClipboardImageResult } from '../../src/interaction/clipboard-probe.ts'
 import { fakeMayflyContext, FakeMayflyEditor, KEY, type FakeKeymap } from './fakes.ts'
 import { mkdtempTracked, registerTempDirCleanup } from '../core/temp-dir.ts'
+import { flush } from '../helpers.ts'
 
 
 registerTempDirCleanup()
@@ -61,8 +62,6 @@ const IMAGE_LIMITS: ImageAttachmentLimits = {
   maxImageDimension: 4096,
   mediaTypes: ['image/png', 'image/jpeg', 'image/webp', 'image/gif'],
 }
-
-const tick = (): Promise<void> => new Promise(resolve => setImmediate(resolve))
 
 describe('mayfly-paste-image plugin', () => {
   let root: string
@@ -379,7 +378,7 @@ describe('mayfly-paste-image plugin', () => {
     ctx.emit('mayfly/input-editor-changed')
     pasteImage.setClipboardImageReader(() => Promise.resolve({ kind: 'no-image' }))
     plain.handleInput(KEY.ctrlV)
-    await tick()
+    await flush()
     expect(plain.inserted).toHaveLength(0)
     expect(plain.getText()).toBe('')
   })
@@ -392,7 +391,7 @@ describe('mayfly-paste-image plugin', () => {
     await fiber!.dispose()
     fiber = undefined
     gate.resolve({ kind: 'image', data: PNG_1X1, mediaType: 'image/png' })
-    await tick()
+    await flush()
     expect(editor.inserted).toHaveLength(0)
     // Only the in-progress flash landed before the unload; nothing follows.
     expect(notices).toEqual(['pasting image...'])
@@ -407,7 +406,7 @@ describe('mayfly-paste-image plugin', () => {
     await fiber!.dispose()
     fiber = undefined
     rejection.reject(new Error('too late'))
-    await tick()
+    await flush()
     expect(notices).toEqual(['pasting image...', 'pasting image...'])
   })
 
@@ -426,7 +425,7 @@ describe('mayfly-paste-image plugin', () => {
       width: 1,
       height: 1,
     })
-    await tick()
+    await flush()
     expect(editor.inserted).toHaveLength(0)
 
     // The same guard covers the rejection continuation.
@@ -438,7 +437,7 @@ describe('mayfly-paste-image plugin', () => {
     await fiber!.dispose()
     fiber = undefined
     failure.reject(new AttachmentError('late', 'IMAGE_TOO_LARGE'))
-    await tick()
+    await flush()
     expect(notices).toEqual(['pasting image...', 'pasting image...'])
   })
 })

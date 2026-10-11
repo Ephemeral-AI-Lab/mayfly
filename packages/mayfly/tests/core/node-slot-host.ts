@@ -19,11 +19,11 @@ import type { MayflyUiImageSource } from '../../src/core/ui-images.ts'
 import type { MayflyComponent, MayflyComponents, MayflyFocusable, MayflySemanticColors } from '../../src/core/types.ts'
 import { sliceByColumn, truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/width.ts'
 import { createFakeEditor } from './fake-editor.ts'
+import { plainColors } from '../helpers.ts'
 
-const identity = (value: string): string => value
 
 /** A palette that paints nothing, and one that dims every token, so a theme change is visible in the rows. */
-export const PLAIN_COLORS = new Proxy({ logoGradient: [identity] }, { get: (target, key) => key === 'logoGradient' ? target.logoGradient : identity }) as unknown as MayflySemanticColors
+export const PLAIN_COLORS = plainColors()
 const dim = (value: string): string => `\x1b[2m${value}\x1b[22m`
 export const DIM_COLORS = new Proxy({ logoGradient: [dim] }, { get: (target, key) => key === 'logoGradient' ? target.logoGradient : dim }) as unknown as MayflySemanticColors
 

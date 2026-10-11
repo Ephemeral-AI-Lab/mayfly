@@ -21,7 +21,7 @@ import type { Dirent } from 'node:fs'
 import { readdir, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { posix } from 'node:path'
-import type { MayflyAutocompleteItem, MayflyAutocompleteSuggestions } from '../core/index.ts'
+import type { MayflyAutocompleteItem, MayflyAutocompleteSuggestions } from '../core/types.ts'
 import { extractMentionToken, mentionPath } from '../internal/mention.ts'
 import { displayPath, platformPath } from '../internal/paths.ts'
 

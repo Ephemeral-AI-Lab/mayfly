@@ -9,8 +9,10 @@
  * @module @ephemeral-ai/mayfly/transcript/tool-line
  */
 
-import { sanitizePluginText, type MayflyComponent, type MayflyComponents, type MayflySemanticColors } from '../core/index.ts'
-import { interpolateLocaleMessage, type MayflyTranslate, type TranscriptToolModel } from '../frontend/index.ts'
+import { sanitizePluginText } from '../core/plugin-view.ts'
+import type { MayflyComponent, MayflyComponents, MayflySemanticColors } from '../core/types.ts'
+import { interpolateLocaleMessage, type MayflyTranslate } from '../frontend/locale.ts'
+import type { TranscriptToolModel } from '../frontend/models.ts'
 import { agentCallLabel } from './agent-presentation.ts'
 import { moreLinesHint } from './hints.ts'
 import { ellipsize, parseToolArguments } from './present.ts'

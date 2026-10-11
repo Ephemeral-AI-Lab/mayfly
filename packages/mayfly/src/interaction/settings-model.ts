@@ -5,7 +5,7 @@ import Schema from '@deepseek-ai/schemastery'
 import { createHash } from 'node:crypto'
 import type { SettingsDescriptor, SettingsPathOp } from '@deepseek-ai/dsh-settings'
 import { ui, type MayflyFieldValue, type MayflyFormField, type MayflySubmittedForm, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
-import type { MayflyTranslate } from '../frontend/index.ts'
+import type { MayflyTranslate } from '../frontend/locale.ts'
 
 const LABELS: Readonly<Record<string, string>> = {
   'locale.preference': 'Language', 'mayfly.updateCheck': 'Update check', 'mayfly.updateChannel': 'Update channel',

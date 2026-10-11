@@ -17,6 +17,7 @@ import {
   scheduleProviderMigration,
   writeHomeProviders,
 } from '../../src/interaction/provider-store.ts'
+import { flush } from '../helpers.ts'
 
 registerTempDirCleanup()
 
@@ -29,7 +30,6 @@ afterEach(() => {
   updaterInternals.homedir = REAL_HOMEDIR
 })
 
-const flush = () => new Promise<void>(resolve => { setImmediate(resolve) })
 const tempFile = (): string => join(mkdtempTracked('mayfly-provider-store-'), 'cordis.patch.yml')
 
 function descriptor(value: unknown, revision = 0) {

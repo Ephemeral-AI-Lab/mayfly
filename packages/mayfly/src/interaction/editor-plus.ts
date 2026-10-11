@@ -35,16 +35,9 @@
 import { exec } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import type { Context } from '@deepseek-ai/cordis'
-import type {
-  MayflyAutocompleteItem,
-  MayflyAutocompleteProvider,
-  MayflyAutocompleteSuggestions,
-  MayflyComponent,
-  MayflyComponents,
-  MayflySemanticColors,
-} from '../core/index.ts'
-import type { MayflyTranslate } from '../frontend/index.ts'
-import type { TranscriptLocalsService } from '../transcript/index.ts'
+import type { MayflyAutocompleteItem, MayflyAutocompleteProvider, MayflyAutocompleteSuggestions, MayflyComponent, MayflyComponents, MayflySemanticColors } from '../core/types.ts'
+import type { MayflyTranslate } from '../frontend/locale.ts'
+import type { TranscriptLocalsService } from '../transcript/transcript-model.ts'
 import {
   ENHANCEMENT_EDITOR_PLUS,
   markEditorEnhancement,

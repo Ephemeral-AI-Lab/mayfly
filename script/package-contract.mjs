@@ -101,7 +101,7 @@ export function readManifest(relativeDir) {
 }
 
 /** Return a condition-map export's runtime target. */
-function defaultTarget(value) {
+export function defaultTarget(value) {
   if (typeof value === 'string') return value
   if (value !== null && typeof value === 'object' && typeof value.default === 'string') return value.default
   return undefined

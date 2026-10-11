@@ -16,6 +16,7 @@ import { createFakeEditor } from './fake-editor.ts'
 import { FakeTerminal } from './fake-terminal.ts'
 import * as frontend from '../../src/frontend/index.ts'
 import { MayflyScreenService } from '../../src/core/screen.ts'
+import { flush } from '../helpers.ts'
 
 const colors = new Proxy({}, { get: () => (text: string) => text }) as MayflySemanticColors
 const components = { visibleWidth, wrapText: wrapTextWithAnsi, truncateToWidth, createEditor: createFakeEditor } as MayflyComponents
@@ -31,7 +32,6 @@ class Scope {
   dispose(): void { for (const cleanup of this.cleanups.splice(0).reverse()) cleanup() }
 }
 
-async function flush(turns = 8): Promise<void> { for (let index = 0; index < turns; index += 1) await Promise.resolve() }
 
 const choices = (): MayflyUiNode => ui.list({
   id: 'decision', role: 'choose', numbered: true, selectedIds: [],
@@ -87,26 +87,26 @@ describe('overlay arm delay', () => {
     const b = await bench()
     try {
       const handle = b.open(300)
-      await flush()
+      await flush(8)
       expect(b.rows()).toContain('… ready in a moment')
       /* A republish repaints through the same arm, so the hint survives it. */
       handle.set(ui.list({ id: 'decision', role: 'choose', numbered: true, selectedIds: [], items: [{ id: 'once', label: 'Allow once' }, { id: 'reject', label: 'Reject now' }] }))
-      await flush()
+      await flush(8)
       expect(b.rows()).toContain('Reject now')
       expect(b.rows()).toContain('… ready in a moment')
       b.slot.component.handleInput?.('1')
       b.slot.component.handleInput?.('\r')
       vi.advanceTimersByTime(299)
       b.slot.component.handleInput?.('1')
-      await flush()
+      await flush(8)
       expect(b.chosen).toEqual([])
       expect(vi.getTimerCount()).toBe(1)
       vi.advanceTimersByTime(1)
-      await flush()
+      await flush(8)
       expect(vi.getTimerCount()).toBe(0)
       expect(b.rows()).not.toContain('ready in a moment')
       b.slot.component.handleInput?.('1')
-      await flush()
+      await flush(8)
       expect(b.chosen).toEqual(['once'])
       handle.close()
     } finally { await b.dispose() }
@@ -116,12 +116,12 @@ describe('overlay arm delay', () => {
     const b = await bench()
     try {
       b.open(300)
-      await flush()
+      await flush(8)
       b.slot.component.handleInput?.('x')
-      await flush()
+      await flush(8)
       expect(b.dismissed).toEqual([])
       b.slot.component.handleInput?.('\x1b')
-      await flush()
+      await flush(8)
       expect(b.dismissed).toEqual(['dismiss'])
       expect(b.chosen).toEqual([])
     } finally { await b.dispose() }
@@ -131,12 +131,12 @@ describe('overlay arm delay', () => {
     const b = await bench()
     try {
       b.open(undefined).close()
-      await flush()
+      await flush(8)
       b.open(0)
-      await flush()
+      await flush(8)
       expect(b.rows()).not.toContain('ready in a moment')
       b.slot.component.handleInput?.('1')
-      await flush()
+      await flush(8)
       expect(b.chosen).toEqual(['once'])
       expect(vi.getTimerCount()).toBe(0)
     } finally { await b.dispose() }
@@ -146,13 +146,13 @@ describe('overlay arm delay', () => {
     const b = await bench()
     try {
       const handle = b.open(300)
-      await flush()
+      await flush(8)
       expect(vi.getTimerCount()).toBe(1)
       handle.close()
-      await flush()
+      await flush(8)
       expect(vi.getTimerCount()).toBe(0)
       b.open(300)
-      await flush()
+      await flush(8)
       expect(vi.getTimerCount()).toBe(1)
     } finally { await b.dispose() }
     expect(vi.getTimerCount()).toBe(0)
@@ -181,19 +181,19 @@ describe('patterns.decisionPanel opened unprompted', () => {
     const b = await bench()
     try {
       const handle = b.open(patterns.decisionArmMs, decision(instant))
-      await flush()
+      await flush(8)
       expect(b.rows()).toContain('Allow once')
       expect(b.rows()).toContain('ready in a moment')
       b.slot.component.handleInput?.('1')
       b.slot.component.handleInput?.('\r')
       b.slot.component.handleInput?.('2')
-      await flush()
+      await flush(8)
       expect(b.chosen).toEqual([])
       vi.advanceTimersByTime(patterns.decisionArmMs)
-      await flush()
+      await flush(8)
       expect(b.rows()).not.toContain('ready in a moment')
       b.slot.component.handleInput?.('\r')
-      await flush()
+      await flush(8)
       expect(b.chosen).toEqual(['once'])
       handle.close()
     } finally { await b.dispose() }
@@ -203,17 +203,17 @@ describe('patterns.decisionPanel opened unprompted', () => {
     const b = await bench()
     try {
       const handle = b.open(patterns.decisionArmMs, decision(true))
-      await flush()
+      await flush(8)
       b.slot.component.handleInput?.('\x1b')
-      await flush()
+      await flush(8)
       expect(b.dismissed).toEqual(['dismiss'])
       handle.close()
       const again = b.open(patterns.decisionArmMs, decision(true))
-      await flush()
+      await flush(8)
       vi.advanceTimersByTime(patterns.decisionArmMs)
-      await flush()
+      await flush(8)
       b.slot.component.handleInput?.('2')
-      await flush()
+      await flush(8)
       expect(b.chosen).toEqual(['reject'])
       again.close()
     } finally { await b.dispose() }

@@ -76,9 +76,10 @@ describe('work budgets', () => {
   })
 
   it('is deterministic', async () => {
-    for (const workload of WORKLOADS) expect(measureWorkload(workload, environment), workload.id).toEqual(measureWorkload(workload, environment))
-    for (const workload of FRAME_WORKLOADS) expect(await measureFrameWorkload(workload, environment), workload.id).toEqual(await measureFrameWorkload(workload, environment))
-  }, FRAME_TIMEOUT_MS * 4)
+    // The budget runs already measured every workload once; a fresh run must equal it. Run alone, each pair is fresh.
+    for (const workload of WORKLOADS) expect(measureWorkload(workload, environment), workload.id).toEqual(measured[workload.id] ?? measureWorkload(workload, environment))
+    for (const workload of FRAME_WORKLOADS) expect(await measureFrameWorkload(workload, environment), workload.id).toEqual(measured[workload.id] ?? await measureFrameWorkload(workload, environment))
+  }, FRAME_TIMEOUT_MS * 2)
 
   it('rewrites the baseline on request', () => {
     if (process.env.UPDATE_WORK_BASELINE !== '1') return

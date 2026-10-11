@@ -6,10 +6,10 @@ import { compileMayflyStatusNode, compileMayflyUiNode } from '../../src/core/ui-
 import { createWorkCounters } from '../../src/core/ui-work-counters.ts'
 import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/width.ts'
 import { ADVERSARIAL } from './width-scan.ts'
-import type { MayflyComponents, MayflySemanticColors } from '../../src/core/types.ts'
+import type { MayflyComponents } from '../../src/core/types.ts'
+import { plainColors } from '../helpers.ts'
 
-const identity = (value: string): string => value
-const colors = new Proxy({ logoGradient: [identity] }, { get: (target, key) => key === 'logoGradient' ? target.logoGradient : identity }) as unknown as MayflySemanticColors
+const colors = plainColors()
 const components = { visibleWidth, wrapText: wrapTextWithAnsi, truncateToWidth } as unknown as MayflyComponents
 
 describe('admitWidths', () => {

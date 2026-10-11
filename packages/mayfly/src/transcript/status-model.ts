@@ -3,7 +3,9 @@
  */
 import type { MayflyStatusEntry, MayflyStatusRegistry } from '@ephemeral-ai/mayfly-ui'
 import { textOf } from '@ephemeral-ai/mayfly-ui'
-import { compileMayflyStatusNode, type MayflyComponent, type MayflyComponents, type MayflySemanticColors, type MayflyViewsSource } from '../core/index.ts'
+import type { MayflyComponent, MayflyComponents, MayflySemanticColors } from '../core/types.ts'
+import { compileMayflyStatusNode } from '../core/ui-compiler.ts'
+import type { MayflyViewsSource } from '../core/views-lane.ts'
 
 export type { MayflyStatusEntry } from '@ephemeral-ai/mayfly-ui'
 

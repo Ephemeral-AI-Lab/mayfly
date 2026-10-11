@@ -51,10 +51,7 @@
 
 import { randomUUID } from 'node:crypto'
 import type { Context } from '@deepseek-ai/cordis'
-import type {
-  MayflyScreen,
-  MayflySubmittedDraft,
-} from '../core/index.ts'
+import type { MayflyScreen, MayflySubmittedDraft } from '../core/types.ts'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { ui, type MayflyFeedback, type MayflyFeedbackRecord, type MayflyUiNode, type MayflyUiScope } from '@ephemeral-ai/mayfly-ui'
 import { normalizeWheelInput } from '../core/terminal.ts'

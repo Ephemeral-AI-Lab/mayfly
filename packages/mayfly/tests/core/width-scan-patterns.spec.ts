@@ -2,12 +2,12 @@
 import { describe, it } from 'vitest'
 import { patterns, ui, type MayflyUiNode } from '../../../ui/src/index.ts'
 import { compileMayflyUiNode } from '../../src/core/ui-compiler.ts'
-import type { MayflyComponents, MayflySemanticColors } from '../../src/core/types.ts'
+import type { MayflyComponents } from '../../src/core/types.ts'
 import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/width.ts'
 import { ADVERSARIAL, SCAN_WIDTHS, expectLinesFit } from './width-scan.ts'
+import { plainColors } from '../helpers.ts'
 
-const identity = (text: string): string => text
-const colors = new Proxy({ logoGradient: [identity] }, { get: (target, key) => key === 'logoGradient' ? target.logoGradient : identity }) as unknown as MayflySemanticColors
+const colors = plainColors()
 const components = { visibleWidth, wrapText: wrapTextWithAnsi, truncateToWidth } as unknown as MayflyComponents
 
 function paint(node: MayflyUiNode, width: number, focused: boolean): string[] {

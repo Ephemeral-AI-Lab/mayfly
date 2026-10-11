@@ -18,7 +18,7 @@
  */
 
 import type { Context } from '@deepseek-ai/cordis'
-import type { SessionFactsService } from '../transcript/index.ts'
+import type { SessionFactsService } from '../transcript/session-facts.ts'
 
 /** The title shown while nothing is attached or titled yet. */
 const PRODUCT_TITLE = 'mayfly'

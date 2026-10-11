@@ -7,37 +7,19 @@
 // Run: pnpm smoke:pty (self-contained: installs its own throwaway profile)
 
 import { createRequire } from 'node:module'
-import { existsSync, readdirSync, chmodSync, statSync } from 'node:fs'
-import { join } from 'node:path'
 import {
   assertDshVersion,
   cleanOutput,
   installIntoThrowawayProfile,
+  loadPty,
   registerCleanup,
   resolveDshBin,
+  sleep,
+  waiter,
 } from './smoke-lib.mjs'
 
 const require = createRequire(import.meta.url)
-const pty = require('node-pty')
-
-// macOS-local pitfall (the kimi-code fix-node-pty-perms pattern): pnpm
-// stores can drop the execute bit on node-pty's spawn-helper; chmod it back
-// where present. A no-op on Linux.
-try {
-  const store = join(import.meta.dirname, '..', 'node_modules', '.pnpm')
-  if (existsSync(store)) {
-    for (const entry of readdirSync(store)) {
-      if (!entry.startsWith('node-pty@')) continue
-      const helper = join(store, entry, 'node_modules', 'node-pty', 'spawn-helper')
-      if (existsSync(helper) && (statSync(helper).mode & 0o111) === 0) {
-        chmodSync(helper, 0o755)
-        console.log(`==> Restored spawn-helper execute bit under ${entry}`)
-      }
-    }
-  }
-} catch {
-  // The smoke reports its own failures; permission probing stays silent.
-}
+const pty = loadPty()
 
 const dshBin = resolveDshBin()
 assertDshVersion(dshBin)
@@ -77,17 +59,7 @@ let exitCode = null
 term.onData(data => { out += data })
 term.onExit(({ exitCode: code }) => { exitCode = code })
 
-const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
-const deadline = Date.now() + 120_000
-async function waitFor(predicate, label) {
-  while (Date.now() < deadline) {
-    if (predicate()) return true
-    await sleep(200)
-  }
-  console.error(`FAIL: timed out waiting for ${label}`)
-  return false
-}
-
+const waitFor = waiter()
 const clean = () => cleanOutput(out)
 
 try {

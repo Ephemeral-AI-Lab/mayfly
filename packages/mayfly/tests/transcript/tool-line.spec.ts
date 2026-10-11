@@ -2,7 +2,7 @@
  * @module @ephemeral-ai/mayfly/tests/transcript/tool-line
  */
 import { describe, expect, it } from 'vitest'
-import type { MayflySemanticColors } from '../../src/core/index.ts'
+import type { MayflySemanticColors } from '../../src/core/types.ts'
 import type { TranscriptToolModel } from '../../src/frontend/models.ts'
 import { interpolateLocaleMessage } from '../../src/frontend/locale.ts'
 import { TRANSCRIPT_LOCALE } from '../../src/transcript/locale.ts'

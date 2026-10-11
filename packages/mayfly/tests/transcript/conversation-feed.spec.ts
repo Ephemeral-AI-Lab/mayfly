@@ -8,7 +8,7 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { SessionAddress, SessionFollowFrame } from '@deepseek-ai/dsh-api-session-controller'
 import { SessionId, type Session } from '@deepseek-ai/dsh-session'
 import { describe, expect, it, vi } from 'vitest'
-import { materializeTranscriptEntries } from '../../src/frontend/index.ts'
+import { materializeTranscriptEntries } from '../../src/frontend/models.ts'
 import type { LiveAssistantDraft } from '../../src/conversation/live-stream.ts'
 import {
   AddressConversationFeed,

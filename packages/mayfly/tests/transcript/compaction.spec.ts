@@ -2,16 +2,16 @@
  * @module @ephemeral-ai/mayfly/tests/transcript/compaction
  */
 import { afterEach, describe, expect, it } from 'vitest'
-import type { MayflySemanticColors } from '../../src/core/index.ts'
+import type { MayflySemanticColors } from '../../src/core/types.ts'
 import type { TranscriptCompactionModel } from '../../src/frontend/models.ts'
 import { CompactionRowComponent, setCompactionTimers, type CompactionTimers } from '../../src/transcript/compaction.ts'
 import { createTranscriptModel, TranscriptModelComponent } from '../../src/transcript/transcript-model.ts'
 import { fakeMayflyComponents } from './helpers.ts'
+import { plainText } from '../helpers.ts'
 import { COLORS } from './status-fakes.ts'
 import { withOverrides, type Overrides } from '../fixture-fields.ts'
 
 const colors = COLORS as MayflySemanticColors
-const strip = (row: string): string => row.replace(/\x1b\[[0-9;]*m/gu, '')
 
 function model(overrides: Overrides<TranscriptCompactionModel> = {}): TranscriptCompactionModel {
   return withOverrides<TranscriptCompactionModel>({
@@ -53,18 +53,18 @@ describe('CompactionRowComponent', () => {
       colors, fakeMayflyComponents(), () => { repaints += 1 },
     )
     try {
-      const before = component.render(80).map(strip)
+      const before = component.render(80).map(plainText)
       expect(before[0]).toContain('⠋ compacting context…')
       tick()
       expect(repaints).toBe(1)
       // The frame advanced through the braille cycle.
-      expect(component.render(80).map(strip)[0]).toContain('⠙ compacting context…')
+      expect(component.render(80).map(plainText)[0]).toContain('⠙ compacting context…')
       // The tick that observes a settled model retires the timer itself.
       component.update(model())
       tick()
       expect(repaints).toBe(1)
       expect(cleared()).toBe(1)
-      expect(component.render(80).map(strip)[0]).toContain('✓ compacted 47 items · ~17.8k')
+      expect(component.render(80).map(plainText)[0]).toContain('✓ compacted 47 items · ~17.8k')
       // Rendering a settled row never restarts the timer.
       tick()
       expect(repaints).toBe(1)
@@ -76,37 +76,37 @@ describe('CompactionRowComponent', () => {
   it('renders every settled shape and the expanded summary preview', () => {
     const components = fakeMayflyComponents()
     const ok = new CompactionRowComponent(model(), colors, components)
-    expect(ok.render(120).map(strip)).toEqual(['✓ compacted 47 items · ~17.8k'])
+    expect(ok.render(120).map(plainText)).toEqual(['✓ compacted 47 items · ~17.8k'])
 
     const auto = new CompactionRowComponent(model({ trigger: 'auto' }), colors, components)
-    expect(auto.render(120).map(strip)).toEqual(['✓ compacted 47 items · ~17.8k · auto'])
+    expect(auto.render(120).map(plainText)).toEqual(['✓ compacted 47 items · ~17.8k · auto'])
 
     const noTokens = new CompactionRowComponent(model({ shadowedTokens: undefined }), colors, components)
-    expect(noTokens.render(120).map(strip)).toEqual(['✓ compacted 47 items'])
+    expect(noTokens.render(120).map(plainText)).toEqual(['✓ compacted 47 items'])
 
     const detailOnly = new CompactionRowComponent(model({
       shadowedCount: undefined, shadowedTokens: undefined, detail: 'No compactable history yet.',
     }), colors, components)
-    expect(detailOnly.render(120).map(strip)).toEqual(['✓ No compactable history yet.'])
+    expect(detailOnly.render(120).map(plainText)).toEqual(['✓ No compactable history yet.'])
 
     const fallback = new CompactionRowComponent(model({ shadowedCount: undefined, shadowedTokens: undefined }), colors, components)
-    expect(fallback.render(120).map(strip)).toEqual(['✓ compacted'])
+    expect(fallback.render(120).map(plainText)).toEqual(['✓ compacted'])
 
     const failed = new CompactionRowComponent(model({ state: 'error', error: 'boom\nsecond line' }), colors, components)
-    expect(failed.render(120).map(strip)).toEqual(['✗ boom'])
+    expect(failed.render(120).map(plainText)).toEqual(['✗ boom'])
 
     const noReason = new CompactionRowComponent(model({ state: 'error', error: undefined }), colors, components)
-    expect(noReason.render(120).map(strip)).toEqual(['✗ compaction failed'])
+    expect(noReason.render(120).map(plainText)).toEqual(['✗ compaction failed'])
 
     const detailReason = new CompactionRowComponent(model({ state: 'error', error: undefined, detail: 'Compaction cancelled.' }), colors, components)
-    expect(detailReason.render(120).map(strip)).toEqual(['✗ Compaction cancelled.'])
+    expect(detailReason.render(120).map(plainText)).toEqual(['✗ Compaction cancelled.'])
 
     const expanded = new CompactionRowComponent(model({ summary: 'line one\nline two\n\x1b[31mred\x1b[39m' }), colors, components)
     expanded.setExpanded(true)
-    const rows = expanded.render(120).map(strip)
+    const rows = expanded.render(120).map(plainText)
     expect(rows).toEqual(['✓ compacted 47 items · ~17.8k', '  line one', '  line two', '  red'])
     expanded.setExpanded(false)
-    expect(expanded.render(120).map(strip)).toHaveLength(1)
+    expect(expanded.render(120).map(plainText)).toHaveLength(1)
     // setScope and invalidate are no-ops on the boundary row.
     expanded.setScope({ hint: true })
     expanded.invalidate()
@@ -139,7 +139,7 @@ describe('CompactionRowComponent', () => {
     )
     try {
       component.setExpanded(true)
-      const [row] = component.render(80).map(strip)
+      const [row] = component.render(80).map(plainText)
       expect(row).toContain('compacting context…')
       expect(row).toContain('· auto')
       expect(component.render(80)).toHaveLength(1)
@@ -164,14 +164,14 @@ describe('CompactionRowComponent', () => {
       colors, components, images: () => ({}), requestRender: () => { repaints += 1 }, viewportRows: () => 24,
     })
     try {
-      expect(component.render(80).map(strip).join('\n')).toContain('compacting context…')
+      expect(component.render(80).map(plainText).join('\n')).toContain('compacting context…')
       // The mounted live row nudges a repaint on every tick.
       tick()
       expect(repaints).toBe(1)
-      expect(component.render(80).map(strip).join('\n')).toContain('compacting context…')
+      expect(component.render(80).map(plainText).join('\n')).toContain('compacting context…')
       // A new revision on the same entry id flows through the update hook.
       transcript = createTranscriptModel('cmp-flow', [entry({ state: 'ok', updatedSeq: 2, shadowedCount: 2, shadowedTokens: 2_048 })], false, 0)
-      expect(component.render(80).map(strip).join('\n')).toContain('✓ compacted 2 items · ~2k')
+      expect(component.render(80).map(plainText).join('\n')).toContain('✓ compacted 2 items · ~2k')
     } finally {
       component.dispose()
     }
@@ -189,7 +189,7 @@ describe('CompactionRowComponent', () => {
       colors, components, images: () => ({}), requestRender: () => {}, viewportRows: () => 24, semantic: false,
     })
     try {
-      const rows = flat.render(120).map(strip).join('\n')
+      const rows = flat.render(120).map(plainText).join('\n')
       expect(rows).toContain('Compacting context')
       expect(rows).toContain('Compaction failed: denied')
       expect(rows).toContain('Compaction failed\n')

@@ -20,7 +20,7 @@ import { MayflyTerminalInfoService } from './terminal-info.ts'
 import { startMayflyTerminal } from './terminal.ts'
 import { mountMayflySurfaceRenderer } from './surface-renderer.ts'
 import { contextHintTranslator, mountContextHintLocale } from './context-hint-locale.ts'
-import { ThemeModelService } from '../frontend/index.ts'
+import { ThemeModelService } from '../frontend/theme.ts'
 
 export { MayflyComponentsService, type MayflyComponentsDeps } from './components.ts'
 export { GutterComponent } from './gutter.ts'

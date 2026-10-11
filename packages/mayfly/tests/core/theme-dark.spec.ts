@@ -5,7 +5,7 @@
 
 import { describe, expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
-import { ThemeModelService } from '../../src/frontend/index.ts'
+import { ThemeModelService } from '../../src/frontend/theme.ts'
 import { apply, MayflyThemeService, name } from '../../src/core/theme-dark.ts'
 import type { MayflySemanticColors } from '../../src/core/types.ts'
 

@@ -8,7 +8,7 @@
 import { describe, expect, it, vi, afterEach, beforeEach } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
-import type { MayflyComponent, MayflyFocusable } from '../../src/core/index.ts'
+import type { MayflyComponent, MayflyFocusable } from '../../src/core/types.ts'
 import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
 import CommandRuntime, { type CommandResult } from '@deepseek-ai/dsh-commands'
 import type { UserMessage } from '@deepseek-ai/dsh-llm'

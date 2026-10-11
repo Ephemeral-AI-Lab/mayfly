@@ -15,7 +15,7 @@ import type {
   MayflyEditorSubmitValue,
   MayflyUiEvent,
 } from '@ephemeral-ai/mayfly-ui'
-import type { MayflyAutocompleteItem, MayflyAutocompleteProvider, MayflyEditorSubmitAttempt } from '../../src/core/index.ts'
+import type { MayflyAutocompleteItem, MayflyAutocompleteProvider, MayflyEditorSubmitAttempt } from '../../src/core/types.ts'
 import { describe, expect, it, vi } from 'vitest'
 import { EditorExtensionRuntime } from '../../src/interaction/editor-extension-runtime.ts'
 import {

@@ -5,16 +5,8 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import { describe, expect, it, vi } from 'vitest'
 import { hasRunningAgentWork, interruptAgentTree } from '../../src/app/agent-interrupt.ts'
+import { fakeAgent } from '../helpers.ts'
 import type { MayflyConversationView } from '../../src/app/conversation-views.ts'
-
-function fakeAgent(id: string, status: 'idle' | 'running', parentId?: string): Agent {
-  return {
-    id: SessionId(id),
-    status,
-    cancel: vi.fn(),
-    session: { header: parentId === undefined ? {} : { parentSession: SessionId(parentId) } },
-  } as unknown as Agent
-}
 
 function primaryView(agent: Agent): MayflyConversationView {
   return { kind: 'primary', id: `session:${String(agent.id)}`, sessionId: String(agent.id), access: 'interactive', residency: 'displayed' }
@@ -35,14 +27,14 @@ function harness(
 
 describe('interruptAgentTree', () => {
   it('interrupts the running primary and all running nested descendants', () => {
-    const root = fakeAgent('root', 'running')
-    const child = fakeAgent('child', 'running', 'root')
-    const nested = fakeAgent('nested', 'running', 'child')
-    const idle = fakeAgent('idle', 'idle', 'root')
-    const unrelated = fakeAgent('unrelated', 'running')
-    const orphan = fakeAgent('orphan', 'running', 'missing')
-    const cycleA = fakeAgent('cycle-a', 'running', 'cycle-b')
-    const cycleB = fakeAgent('cycle-b', 'running', 'cycle-a')
+    const root = fakeAgent('root', { status: 'running' })
+    const child = fakeAgent('child', { status: 'running', parentId: 'root' })
+    const nested = fakeAgent('nested', { status: 'running', parentId: 'child' })
+    const idle = fakeAgent('idle', { status: 'idle', parentId: 'root' })
+    const unrelated = fakeAgent('unrelated', { status: 'running' })
+    const orphan = fakeAgent('orphan', { status: 'running', parentId: 'missing' })
+    const cycleA = fakeAgent('cycle-a', { status: 'running', parentId: 'cycle-b' })
+    const cycleB = fakeAgent('cycle-b', { status: 'running', parentId: 'cycle-a' })
     const interrupt = vi.fn()
     const ctx = harness([root, nested, child, idle, unrelated, orphan, cycleA, cycleB], interrupt)
 
@@ -56,8 +48,8 @@ describe('interruptAgentTree', () => {
   })
 
   it('still interrupts a running descendant when the selected Agent is idle', () => {
-    const root = fakeAgent('root', 'idle')
-    const child = fakeAgent('child', 'running', 'root')
+    const root = fakeAgent('root', { status: 'idle' })
+    const child = fakeAgent('child', { status: 'running', parentId: 'root' })
     const interrupt = vi.fn()
     const ctx = harness([root, child], interrupt)
 
@@ -67,8 +59,8 @@ describe('interruptAgentTree', () => {
   })
 
   it('uses the direct parent address for a selected continuable child', () => {
-    const child = fakeAgent('child', 'running')
-    const nested = fakeAgent('nested', 'running', 'child')
+    const child = fakeAgent('child', { status: 'running' })
+    const nested = fakeAgent('nested', { status: 'running', parentId: 'child' })
     const interrupt = vi.fn()
     const interruptByParent = vi.fn()
     const ctx = harness([child, nested], interrupt, interruptByParent)
@@ -84,8 +76,8 @@ describe('interruptAgentTree', () => {
   })
 
   it('does nothing when neither the selected Agent nor a descendant is running', () => {
-    const root = fakeAgent('root', 'idle')
-    const child = fakeAgent('child', 'idle', 'root')
+    const root = fakeAgent('root', { status: 'idle' })
+    const child = fakeAgent('child', { status: 'idle', parentId: 'root' })
     const interrupt = vi.fn()
     const ctx = harness([root, child], interrupt)
     expect(interruptAgentTree(ctx, root, primaryView(root))).toEqual({ requested: false, failures: [] })
@@ -93,8 +85,8 @@ describe('interruptAgentTree', () => {
   })
 
   it('contains individual failures and preserves inbox work for retraction', () => {
-    const root = fakeAgent('root', 'running')
-    const child = fakeAgent('child', 'running', 'root')
+    const root = fakeAgent('root', { status: 'running' })
+    const child = fakeAgent('child', { status: 'running', parentId: 'root' })
     vi.mocked(root.cancel).mockImplementation(() => { throw new Error('root refused') })
     const interrupt = vi.fn(() => { throw 'child refused' })
     const ctx = harness([root, child], interrupt)
@@ -109,24 +101,24 @@ describe('interruptAgentTree', () => {
 
 describe('hasRunningAgentWork', () => {
   it('reports the running selected Agent', () => {
-    const root = fakeAgent('root', 'running')
+    const root = fakeAgent('root', { status: 'running' })
     const ctx = harness([root])
     expect(hasRunningAgentWork(ctx, root)).toBe(true)
   })
 
   it('reports a running descendant of an idle selected Agent', () => {
-    const root = fakeAgent('root', 'idle')
-    const child = fakeAgent('child', 'running', 'root')
-    const nested = fakeAgent('nested', 'running', 'child')
-    const idle = fakeAgent('idle', 'idle', 'root')
+    const root = fakeAgent('root', { status: 'idle' })
+    const child = fakeAgent('child', { status: 'running', parentId: 'root' })
+    const nested = fakeAgent('nested', { status: 'running', parentId: 'child' })
+    const idle = fakeAgent('idle', { status: 'idle', parentId: 'root' })
     const ctx = harness([root, child, nested, idle])
     expect(hasRunningAgentWork(ctx, root)).toBe(true)
   })
 
   it('reports nothing when the selected subtree is idle', () => {
-    const root = fakeAgent('root', 'idle')
-    const child = fakeAgent('child', 'idle', 'root')
-    const unrelated = fakeAgent('unrelated', 'running')
+    const root = fakeAgent('root', { status: 'idle' })
+    const child = fakeAgent('child', { status: 'idle', parentId: 'root' })
+    const unrelated = fakeAgent('unrelated', { status: 'running' })
     const ctx = harness([root, child, unrelated])
     expect(hasRunningAgentWork(ctx, root)).toBe(false)
   })

@@ -5,7 +5,7 @@ import type { SessionSummary } from '@deepseek-ai/dsh-api-session-controller'
 import type { SessionHeader } from '@deepseek-ai/dsh-session'
 import { describe, expect, it } from 'vitest'
 import type { MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
-import type { MayflyTranslate } from '../../src/frontend/index.ts'
+import type { MayflyTranslate } from '../../src/frontend/locale.ts'
 import {
   formatAgo,
   formatDuration,

@@ -10,26 +10,11 @@
 import { Service, type Context } from '@deepseek-ai/cordis'
 import { AttachmentId, type ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import type { MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
-import {
-  concatRows,
-  GutterComponent,
-  type MayflyComponent,
-  type MayflyComponents,
-  type MayflyScreen,
-  type MayflySemanticColors,
-} from '../core/index.ts'
-import {
-  freezeModel,
-  materializeTranscriptEntries,
-  type TranscriptCompactionModel,
-  type TranscriptEntryModel,
-  type TranscriptImageModel,
-  type TranscriptModel,
-  type TranscriptToolModel,
-  type TranscriptTurnModel,
-  type MayflyTranslate,
-  interpolateLocaleMessage,
-} from '../frontend/index.ts'
+import { GutterComponent } from '../core/gutter.ts'
+import type { MayflyComponent, MayflyComponents, MayflyScreen, MayflySemanticColors } from '../core/types.ts'
+import { concatRows } from '../core/ui-rows.ts'
+import { type MayflyTranslate, interpolateLocaleMessage } from '../frontend/locale.ts'
+import { freezeModel, materializeTranscriptEntries, type TranscriptCompactionModel, type TranscriptEntryModel, type TranscriptImageModel, type TranscriptModel, type TranscriptToolModel, type TranscriptTurnModel } from '../frontend/models.ts'
 import {
   AssistantMessageComponent,
   ErrorMessageComponent,

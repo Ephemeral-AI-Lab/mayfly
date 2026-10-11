@@ -12,7 +12,7 @@ import type { LayoutBox, LayoutFrame } from '@earendil-works/pi-tui/dist/layout.
 import { LAYOUT_NODE, type LayoutNode } from '@earendil-works/pi-tui/dist/layout-node.js'
 import { ui } from '../../../ui/src/index.ts'
 import { compileMayflyUiNode } from '../../src/core/ui-compiler.ts'
-import type { MayflyComponent, MayflyComponents, MayflyFocusable, MayflyRgbColor, MayflySemanticColors } from '../../src/core/types.ts'
+import type { MayflyComponent, MayflyComponents, MayflyFocusable, MayflyRgbColor } from '../../src/core/types.ts'
 import {
   createTerminalRelease,
   measuredLaneRows,
@@ -26,6 +26,7 @@ import type { AmbientOutputStream } from '../../src/core/output-recovery.ts'
 import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/width.ts'
 import { FakeTerminal, waitForRender } from './fake-terminal.ts'
 import { virtualRows } from '../../src/core/ui-rows.ts'
+import { plainColors } from '../helpers.ts'
 
 vi.mock('../../src/core/terminal-info.ts', async importOriginal => {
   const actual = await importOriginal<typeof import('../../src/core/terminal-info.ts')>()
@@ -708,10 +709,7 @@ describe('alternate-screen runtime', () => {
     })
     runtime.addBottomChild(textComponent('editor'))
     runtime.addBottomChild(textComponent('status'), 'bottom')
-    const identity = (value: string): string => value
-    const colors = new Proxy({ logoGradient: [identity] }, {
-      get: (target, key) => key === 'logoGradient' ? target.logoGradient : identity,
-    }) as unknown as MayflySemanticColors
+    const colors = plainColors()
     const components = { visibleWidth, wrapText: wrapTextWithAnsi, truncateToWidth } as MayflyComponents
     const pane = compileMayflyUiNode(ui.scroll(ui.stack.column(
       Array.from({ length: 20 }, (_, index) => ui.text(`pane-${String(index)}`)),

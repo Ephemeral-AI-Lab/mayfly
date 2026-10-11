@@ -6,8 +6,8 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { createRealSurface, expectFrames, probeComponents, type Frame, type RealSurface } from './probe.ts'
 import { NEXT, sceneWalks, stepLabel } from './walks.ts'
 import { pageNode, pageWidth } from './scene-11.ts'
+import { plainText } from '../helpers.ts'
 
-const strip = (row: string): string => row.replace(/\x1b\[[0-9;]*m/gu, '')
 
 const surfaces: RealSurface[] = []
 afterEach(() => { for (const surface of surfaces.splice(0)) surface.dispose() })
@@ -38,7 +38,7 @@ describe('scene 11, Patterns', () => {
 })
 
 describe('scene 11, Patterns, page 1: the decision card\'s keys', () => {
-  const hintRow = (surface: RealSurface): string => strip(surface.render().at(-2)!).replace(/[│╭╮╰╯]/gu, '').trim()
+  const hintRow = (surface: RealSurface): string => plainText(surface.render().at(-2)!).replace(/[│╭╮╰╯]/gu, '').trim()
 
   it('Δ31: a card framed at 80 columns hints three fragments, and Esc rejects', () => {
     const surface = open(0)

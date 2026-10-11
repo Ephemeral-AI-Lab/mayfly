@@ -14,18 +14,17 @@ import { renderDivider, renderEmpty, renderLoader, renderProgress, renderSurface
 import { UiProgressTransitions } from '../../src/core/ui-progress-transition.ts'
 import { truncateMiddle, truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/width.ts'
 import { ADVERSARIAL } from './width-scan.ts'
+import { identity, plainColors, plainText } from '../helpers.ts'
 
 /** The leaf's rows materialized through its production row source. */
 const contentNodeRows = (node: WindowedContentNode, width: number, env: ContentRowsEnv): string[] =>
   virtualRows(contentNodeSource(node, width, env))
 
 const tag = new Proxy({}, { get: (_target, role: string) => (text: string) => `<${role}>${text}</${role}>` }) as MayflySemanticColors
-const identity = (value: string): string => value
-const plainColors = new Proxy({ logoGradient: [identity] }, { get: (target, key) => key === 'logoGradient' ? target.logoGradient : identity }) as unknown as MayflySemanticColors
+const palette = plainColors()
 const components = { visibleWidth, wrapText: wrapTextWithAnsi, truncateToWidth } as unknown as MayflyComponents
 const truecolor = (r: number, g: number, b: number) => (text: string): string => `\x1b[38;2;${String(r)};${String(g)};${String(b)}m${text}\x1b[39m`
-const rgbColors = { ...plainColors, primary: truecolor(200, 100, 50), textMuted: truecolor(100, 100, 100), muted: identity } as unknown as MayflySemanticColors
-const strip = (row: string): string => row.replace(/\x1b\[[0-9;]*m/gu, '')
+const rgbColors = { ...palette, primary: truecolor(200, 100, 50), textMuted: truecolor(100, 100, 100), muted: identity } as unknown as MayflySemanticColors
 
 describe('truncateMiddle', () => {
   it('keeps text that fits, elides the middle or the start, and handles the edges', () => {
@@ -88,14 +87,14 @@ describe('motion tables and cells', () => {
 
 describe('feedback painters', () => {
   it('draws a loader as its glyph, message, and elapsed time up to hours, or as the bare glyph', () => {
-    expect(strip(renderLoader(ui.loader({ message: 'Working', elapsedMs: 3_725_000 }), 40, plainColors)[0]!)).toBe('⣾ Working 1h 2m')
-    expect(strip(renderLoader(ui.loader({ variant: 'fill' }), 40, plainColors, 1)[0]!)).toBe('⣄')
-    expect(strip(renderLoader(ui.loader({ message: '', variant: 'bloom' }), 40, plainColors)[0]!)).toBe('·')
-    expect(strip(renderLoader(ui.loader({ message: 'Go', variant: 'breath' }), 40, plainColors, 0, 'unicode', true)[0]!)).toBe('● Go')
+    expect(plainText(renderLoader(ui.loader({ message: 'Working', elapsedMs: 3_725_000 }), 40, palette)[0]!)).toBe('⣾ Working 1h 2m')
+    expect(plainText(renderLoader(ui.loader({ variant: 'fill' }), 40, palette, 1)[0]!)).toBe('⣄')
+    expect(plainText(renderLoader(ui.loader({ message: '', variant: 'bloom' }), 40, palette)[0]!)).toBe('·')
+    expect(plainText(renderLoader(ui.loader({ message: 'Go', variant: 'breath' }), 40, palette, 0, 'unicode', true)[0]!)).toBe('● Go')
   })
 
   it('draws progress cells with a label, count, and percent, squeezed to the room', () => {
-    const bar = (options: Parameters<typeof ui.progress>[0], width = 40) => strip(renderProgress(ui.progress(options), width, plainColors)[0]!)
+    const bar = (options: Parameters<typeof ui.progress>[0], width = 40) => plainText(renderProgress(ui.progress(options), width, palette)[0]!)
     expect(bar({ label: 'Building', value: 6, max: 10, width: 10 })).toBe('Building ▰▰▰▰▰▰▱▱▱▱ 6/10')
     expect(bar({ value: 9, max: 10, width: 10, showCount: false, showPercent: true })).toBe('▰▰▰▰▰▰▰▰▰▱ 90%')
     expect(bar({ style: 'cells', value: 1, max: 4 })).toBe('▰▰▰▱▱▱▱▱▱▱ 1/4')
@@ -106,27 +105,27 @@ describe('feedback painters', () => {
 
   it('draws the heading rule heavy for done and light for what is left, clipped to the room', () => {
     expect(renderProgress(ui.progress({ style: 'rule', value: 2, max: 8, width: 8 }), 40, tag)).toEqual(['<primary>━━</primary><muted>──────</muted>'])
-    expect(strip(renderProgress(ui.progress({ style: 'rule', value: 8, max: 8 }), 10, plainColors)[0]!)).toBe('━'.repeat(10))
+    expect(plainText(renderProgress(ui.progress({ style: 'rule', value: 8, max: 8 }), 10, palette)[0]!)).toBe('━'.repeat(10))
     expect(renderProgress(ui.progress({ style: 'rule', value: 8, max: 8, width: 4, tone: 'danger' }), 40, tag)[0]).toContain('<error>')
   })
 
   it('draws the legacy block bar with the new switches, and shows a shown value in place of the node value', () => {
-    expect(visibleWidth(renderProgress(ui.progress({ value: 5, max: 10 }), 20, plainColors)[0]!)).toBe(20)
-    expect(strip(renderProgress(ui.progress({ value: 5, max: 10, showCount: false, showPercent: true, tone: 'success' }), 20, plainColors)[0]!)).toMatch(/^█+░* 50%$/u)
-    expect(strip(renderProgress(ui.progress({ label: 'Build', value: 5, max: 10 }), 30, plainColors, 2)[0]!)).toContain('2/10')
-    expect(strip(renderProgress(ui.progress({ value: 5, max: 10 }), 20, plainColors)[0]!)).toContain('5/10')
+    expect(visibleWidth(renderProgress(ui.progress({ value: 5, max: 10 }), 20, palette)[0]!)).toBe(20)
+    expect(plainText(renderProgress(ui.progress({ value: 5, max: 10, showCount: false, showPercent: true, tone: 'success' }), 20, palette)[0]!)).toMatch(/^█+░* 50%$/u)
+    expect(plainText(renderProgress(ui.progress({ label: 'Build', value: 5, max: 10 }), 30, palette, 2)[0]!)).toContain('2/10')
+    expect(plainText(renderProgress(ui.progress({ value: 5, max: 10 }), 20, palette)[0]!)).toContain('5/10')
   })
 
   it('draws a divider with its label and two dashes at least, and an empty state in muted text', () => {
-    expect(strip(renderDivider(undefined, 6, plainColors)[0]!)).toBe('──────')
-    expect(strip(renderDivider('Connection', 20, plainColors)[0]!)).toBe('── Connection ──────')
-    expect(strip(renderDivider('Connection', 14, plainColors)[0]!)).toBe('── Connection ')
+    expect(plainText(renderDivider(undefined, 6, palette)[0]!)).toBe('──────')
+    expect(plainText(renderDivider('Connection', 20, palette)[0]!)).toBe('── Connection ──────')
+    expect(plainText(renderDivider('Connection', 14, palette)[0]!)).toBe('── Connection ')
     expect(renderEmpty(ui.empty({ title: 'Nothing', description: 'Try' }), 40, tag)).toEqual(['<muted>Nothing</muted>', '<muted>Try</muted>'])
   })
 })
 
 describe('surface chrome', () => {
-  const frame = (options: Partial<Parameters<typeof ui.surface>[0]>, width: number) => strip(renderSurfaceHead(ui.surface({ child: ui.text('x'), chrome: 'surface', ...options }), width, plainColors)[0]!)
+  const frame = (options: Partial<Parameters<typeof ui.surface>[0]>, width: number) => plainText(renderSurfaceHead(ui.surface({ child: ui.text('x'), chrome: 'surface', ...options }), width, palette)[0]!)
 
   it('puts a right-aligned title in the corner with the badges at the left, eliding its start', () => {
     expect(frame({ title: 'Compose', titleAlign: 'right', badges: [{ text: 'dirty' }] }, 30)).toBe('╭ dirty ──────────── Compose ╮')
@@ -147,14 +146,14 @@ describe('surface chrome', () => {
 describe('content views', () => {
   const env: ContentRowsEnv = {
     components,
-    colors: plainColors,
+    colors: palette,
     cache: new MayflyContentCache(),
     bounded: false,
     viewportRows: () => 0,
     elide: hidden => `… +${String(hidden)} more rows`,
     errorRows: message => [message],
   }
-  const view = (node: WindowedContentNode, width = 40) => contentNodeRows(node, width, env).map(strip)
+  const view = (node: WindowedContentNode, width = 40) => contentNodeRows(node, width, env).map(plainText)
 
   it('elides the middle or the start of a text row and styles it', () => {
     expect(view({ kind: 'text', content: '~/work/mayfly/packages/mayfly', overflow: 'middle' }, 12)).toEqual(['~/work…ayfly'])
@@ -177,7 +176,7 @@ describe('content views', () => {
 })
 
 describe('charts', () => {
-  const rows = (chart: Parameters<typeof renderChartRows>[0], width = 40) => renderChartRows(chart, width, components, plainColors).map(strip)
+  const rows = (chart: Parameters<typeof renderChartRows>[0], width = 40) => renderChartRows(chart, width, components, palette).map(plainText)
 
   it('draws a sparkline as its label and cells on one row, scaled to the tallest value', () => {
     expect(rows(ui.chart({ chart: 'sparkline', values: [1, 2, 4, 8, null, 8], label: 'tokens' }))).toEqual(['tokens ▁▂▄▇▁▇'.replace('▇▁▇', '█▁█')].map(row => row))
@@ -199,8 +198,8 @@ describe('charts', () => {
   it.each(ADVERSARIAL)('keeps a heatmap and a sparkline inside their width over $name', ({ text }) => {
     for (const width of [1, 2, 5, 12, 40, 80]) {
       const heat = ui.chart({ chart: 'heatmap', title: text, columns: ['a', text], rows: [text], values: [[0, 1]], levels: [{ value: 0, label: text }, { value: 1, label: 'x' }] })
-      for (const row of renderChartRows(heat, width, components, plainColors)) expect(visibleWidth(row)).toBeLessThanOrEqual(width)
-      for (const row of renderChartRows(ui.chart({ chart: 'sparkline', values: [1, 2, 3], label: text }), width, components, plainColors)) expect(visibleWidth(row)).toBeLessThanOrEqual(width)
+      for (const row of renderChartRows(heat, width, components, palette)) expect(visibleWidth(row)).toBeLessThanOrEqual(width)
+      for (const row of renderChartRows(ui.chart({ chart: 'sparkline', values: [1, 2, 3], label: text }), width, components, palette)) expect(visibleWidth(row)).toBeLessThanOrEqual(width)
     }
   })
 })

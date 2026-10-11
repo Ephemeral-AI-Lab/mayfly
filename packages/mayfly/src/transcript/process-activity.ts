@@ -11,7 +11,8 @@
 
 import type { ToolCallView, ToolResultView } from '@deepseek-ai/dsh-tools'
 import { isSpawnToolName } from '../conversation/projection.ts'
-import type { MayflyTranslate, ProcessActivity } from '../frontend/index.ts'
+import type { MayflyTranslate } from '../frontend/locale.ts'
+import type { ProcessActivity } from '../frontend/models.ts'
 
 const COMMAND_TOOLS = new Set(['bash', 'pwsh', 'exec_command', 'write_stdin'])
 const PLAN_TOOLS = new Set(['todo_write', 'create_goal', 'update_goal', 'get_goal'])

@@ -8,6 +8,7 @@ import { DEFAULT_SETTINGS } from '../../src/interaction/settings.ts'
 import { InteractionStateService } from '../../src/interaction/runtime-state.ts'
 import { openWelcome, welcomeDue, welcomeNode, WELCOME_ID } from '../../src/interaction/welcome.ts'
 import { providerFixture } from './provider-fixture.ts'
+import { flush } from '../helpers.ts'
 
 const themeCalls = vi.hoisted(() => ({ keys: [] as string[], fail: false }))
 vi.mock('../../src/interaction/theme-switch.ts', () => ({
@@ -19,7 +20,6 @@ vi.mock('../../src/interaction/theme-switch.ts', () => ({
 
 const contexts: Context[] = []
 afterEach(async () => { for (const ctx of contexts.splice(0)) await ctx.fiber.dispose(); themeCalls.keys.length = 0; themeCalls.fail = false })
-const flush = async (times = 4): Promise<void> => { for (let index = 0; index < times; index += 1) await new Promise<void>(resolve => { setImmediate(resolve) }) }
 
 /** A fixture tree whose settings list the shared `locale` and `mayfly` namespaces. */
 async function bench(options: { readonly locale?: boolean, readonly state?: boolean } = {}) {
@@ -59,7 +59,7 @@ describe('welcome', () => {
     ctx.mayflyLocale.setPreference('zh')
     ctx.mayflyInteractionState.currentThemeKey = 'custom'
     void openWelcome(ctx, new AbortController().signal)
-    await flush()
+    await flush(4)
     const json = JSON.stringify(welcome()!.node)
     expect(json).toContain('"value":"zh"')
     expect(json).toContain('"value":"dark"')
@@ -68,7 +68,7 @@ describe('welcome', () => {
     const theme = await bench()
     theme.ctx.mayflyInteractionState.currentThemeKey = 'paper'
     void openWelcome(theme.ctx, new AbortController().signal)
-    await flush()
+    await flush(4)
     expect(JSON.stringify(theme.welcome()!.node)).toContain('"value":"paper"')
     theme.ctx.mayflyOverlays.close(WELCOME_ID)
   })
@@ -87,7 +87,7 @@ describe('welcome', () => {
     const lifetime = new AbortController()
     let settled = false
     const opened = openWelcome(ctx, lifetime.signal).then(() => { settled = true })
-    await flush()
+    await flush(4)
     const model = welcome()!
     expect(JSON.stringify(model.node)).toContain('Pick a language')
     expect(settled).toBe(false)
@@ -106,7 +106,7 @@ describe('welcome', () => {
     const readOnly = await bench()
     Object.defineProperty(readOnly.settings, 'writable', { value: false })
     const first = openWelcome(readOnly.ctx, new AbortController().signal)
-    await flush()
+    await flush(4)
     submit(readOnly.welcome()!, 'en', 'light')
     await flush(8)
     await first
@@ -118,7 +118,7 @@ describe('welcome', () => {
     vi.spyOn(rejecting.settings, 'mutate').mockRejectedValue(new Error('conflict'))
     themeCalls.fail = true
     const second = openWelcome(rejecting.ctx, new AbortController().signal)
-    await flush()
+    await flush(4)
     submit(rejecting.welcome()!, 'zh', 'paper')
     await flush(8)
     await second
@@ -129,7 +129,7 @@ describe('welcome', () => {
   it('rejects a forged submission and resolves at once when the welcome is already open', async () => {
     const { ctx, welcome } = await bench()
     const first = openWelcome(ctx, new AbortController().signal)
-    await flush()
+    await flush(4)
     const model = welcome()!
     model.edit({ pagePath: [], formId: 'welcome', fieldId: 'language' }, 'xx')
     model.invoke('continue')

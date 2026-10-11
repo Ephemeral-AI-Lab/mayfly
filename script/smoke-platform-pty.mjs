@@ -10,9 +10,10 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync, rmSync
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { c as createTar } from 'tar'
+import { loadPty, sleep } from './smoke-lib.mjs'
 
 const require = createRequire(import.meta.url)
-const pty = require('node-pty')
+const pty = loadPty()
 const { Terminal } = require('@xterm/headless')
 const artifactRoot = resolve(process.env.MAYFLY_SMOKE_ARTIFACTS ?? '.artifacts/platform-pty')
 mkdirSync(artifactRoot, { recursive: true })
@@ -79,29 +80,28 @@ const cachePath = join(home, 'storages', 'mayfly-plugin-market', 'cache.json')
 let previousCache
 let fixtureCache
 const scenarios = []
-const delay = ms => new Promise(resolve => setTimeout(resolve, ms))
 const view = () => Array.from({ length: screen.rows }, (_, row) => screen.buffer.active.getLine(row)?.translateToString(true) ?? '').join('\n')
 async function waitFor(predicate, label, timeout = 30_000) {
   const deadline = Date.now() + timeout
   while (Date.now() < deadline) {
     if (predicate()) return
     if (exitCode !== undefined) throw new Error(`exited (${exitCode}) while waiting for ${label}`)
-    await delay(50)
+    await sleep(50)
   }
   throw new Error(`timed out waiting for ${label}\n${view()}`)
 }
 async function clearEditor() {
   terminal.write('\x1b')
-  await delay(300)
+  await sleep(300)
   terminal.write('\x1b[F')
-  await delay(100)
+  await sleep(100)
   terminal.write('\x15')
-  await delay(200)
+  await sleep(200)
 }
 async function command(text) {
   await clearEditor()
   terminal.write(`\x1b[200~${text}\x1b[201~`)
-  await delay(100)
+  await sleep(100)
   terminal.write('\r')
 }
 // Hosted Windows runners can stall the first marketplace install (Defender
@@ -117,7 +117,7 @@ async function waitForCommand(text, predicate, label, { attempts = 2, timeout = 
     } catch (error) {
       lastError = error
       if (exitCode !== undefined) throw error
-      if (attempt < attempts) await delay(retryDelay)
+      if (attempt < attempts) await sleep(retryDelay)
     }
   }
   throw lastError
@@ -157,11 +157,11 @@ try {
   await waitFor(() => view().includes('portable 输') && !view().includes('portable 输入'), 'editor backspace')
   terminal.resize(40, 16)
   screen.resize(40, 16)
-  await delay(300)
+  await sleep(300)
   await waitFor(() => view().includes('portable 输'), 'narrow resize')
   terminal.resize(100, 30)
   screen.resize(100, 30)
-  await delay(300)
+  await sleep(300)
   scenarios.push('paste', 'edit', 'resize')
 
   await clearEditor()
@@ -172,24 +172,24 @@ try {
   await command('/provider add')
   await waitFor(() => view().includes('Custom endpoint'), 'provider source picker')
   terminal.write('\x1b[B')
-  await delay(100)
+  await sleep(100)
   terminal.write('\r')
   await waitFor(() => view().includes('Custom endpoint') && view().includes('Protocol') && view().includes('Base URL'), 'provider form')
   terminal.write('\t')
-  await delay(200)
+  await sleep(200)
   terminal.write('portable-form')
   await waitFor(() => view().includes('portable-form'), 'form editing')
   terminal.write('\x7f')
   await waitFor(() => view().includes('portable-for') && !view().includes('portable-form'), 'form backspace')
   terminal.write('\r')
-  await delay(200)
+  await sleep(200)
   for (let attempt = 0; attempt < 4 && !view().includes('Discard unsaved changes'); attempt += 1) {
     terminal.write('\x1b')
-    await delay(350)
+    await sleep(350)
   }
   await waitFor(() => view().includes('Discard unsaved changes'), 'discard confirmation')
   terminal.write('\x1b[C')
-  await delay(100)
+  await sleep(100)
   terminal.write('\r')
   await waitFor(() => !view().includes('Provider Name'), 'provider form cancellation')
   scenarios.push('form-edit-cancel')
@@ -208,7 +208,7 @@ try {
 } finally {
   if (terminal !== undefined && exitCode === undefined) {
     terminal.kill()
-    for (let attempt = 0; attempt < 20 && exitCode === undefined; attempt += 1) await delay(100)
+    for (let attempt = 0; attempt < 20 && exitCode === undefined; attempt += 1) await sleep(100)
   }
   screen?.dispose()
   writeFileSync(join(artifactRoot, 'terminal.log'), output)

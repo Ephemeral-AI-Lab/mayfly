@@ -7,13 +7,7 @@
 
 import { Context } from '@deepseek-ai/cordis'
 import { MayflyPaneService } from '../../../ui/src/provider.ts'
-import type {
-  MayflyComponent,
-  MayflyKeyAction,
-  MayflyKeymap,
-  MayflyOverlayHandle,
-  MayflyScreen,
-} from '../../src/core/index.ts'
+import type { MayflyComponent, MayflyKeyAction, MayflyKeymap, MayflyOverlayHandle, MayflyScreen } from '../../src/core/types.ts'
 import type { CommandDefinition, CommandInvocation, CommandResult } from '@deepseek-ai/dsh-commands'
 import { fakeMayflyComponents } from './helpers.ts'
 import { asAgent, COLORS, FakeFactsService, type FakeAgent } from './status-fakes.ts'

@@ -2,7 +2,7 @@
  * @module @ephemeral-ai/mayfly/tests/transcript/process-rows
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { MayflySemanticColors } from '../../src/core/index.ts'
+import type { MayflySemanticColors } from '../../src/core/types.ts'
 import {
   ProcessTitleComponent,
   setProcessRowTimers,

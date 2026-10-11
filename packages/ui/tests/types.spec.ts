@@ -14,4 +14,4 @@ it('compiles every type fixture, including each @ts-expect-error', () => {
     }
   }
   expect(run()).toBe('')
-}, 120_000)
+}, 60_000)

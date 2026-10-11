@@ -4,8 +4,9 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { AskUserQuestionItem } from '@deepseek-ai/dsh-user-questions'
 import { ui, type MayflyUiEvent, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
-import { compileMayflyUiNode, GutterComponent } from '../core/index.ts'
-import type { MayflyTranslate } from '../frontend/index.ts'
+import { GutterComponent } from '../core/gutter.ts'
+import { compileMayflyUiNode } from '../core/ui-compiler.ts'
+import type { MayflyTranslate } from '../frontend/locale.ts'
 import type { TranscriptLocalsService } from '../transcript/transcript-model.ts'
 
 /* The document is passive content: it admits no controls, so its event sink

@@ -11,9 +11,7 @@
  */
 
 import type { Context } from '@deepseek-ai/cordis'
-import {
-  GutterComponent,
-} from '../core/index.ts'
+import { GutterComponent } from '../core/gutter.ts'
 // Empty type import carries the app-owned session reader/projection services.
 import type {} from '../app/index.ts'
 import type { UserMessageImages } from './components.ts'

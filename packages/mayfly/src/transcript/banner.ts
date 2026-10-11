@@ -24,12 +24,8 @@
 import { homedir } from 'node:os'
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
-import {
-  GutterComponent,
-  type MayflyComponent,
-  type MayflyComponents,
-  type MayflySemanticColors,
-} from '../core/index.ts'
+import { GutterComponent } from '../core/gutter.ts'
+import type { MayflyComponent, MayflyComponents, MayflySemanticColors } from '../core/types.ts'
 // Empty type import carries the `agentDefaultModel` Context merge this
 // plugin's inject resolves.
 import type {} from '@deepseek-ai/dsh-agent-default-model'
@@ -39,7 +35,7 @@ import type {} from '@deepseek-ai/dsh-session-projection'
 import type {} from '../app/index.ts'
 import { LOGO_ART, LOGO_ROWS } from './banner-art.ts'
 import { MAYFLY_VERSION } from './banner-content.ts'
-import type { MayflyTranslate } from '../frontend/index.ts'
+import type { MayflyTranslate } from '../frontend/locale.ts'
 import {
   BANNER_LOCALE,
   mountTranscriptLocale,
