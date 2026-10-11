@@ -5,9 +5,9 @@ import { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { JobId, type JobView } from '@deepseek-ai/dsh-jobs'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { textOf, ui, type MayflyUiEvent } from '@ephemeral-ai/mayfly-ui'
+import { textOf, ui, type MayflyUiEvent, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import * as agentOverlay from '../../src/interaction/agent-overlay.ts'
-import { formatJobDuration, isLiveJob, jobDetailsNode, jobItems, jobOutputNode, sortJobs } from '../../src/interaction/jobs.ts'
+import { JOB_OUTPUT_FEED_CHUNKS, formatJobDuration, isLiveJob, jobDetailsNode, jobItems, jobOutputNode, sortJobs } from '../../src/interaction/jobs.ts'
 import type { UiSurfaceModel } from '../../src/core/ui-interaction-surface.ts'
 import { validateMayflyUiNode } from '../../src/core/ui-validator.ts'
 import { jobsFixture } from './jobs-fixture.ts'
@@ -354,6 +354,33 @@ describe('shared jobs browsing', () => {
     expect(JSON.stringify(output.node)).toContain('before ')
     expect(JSON.stringify(output.node)).toContain('raced')
     expect(readAt).toHaveBeenCalledTimes(3)
+  })
+
+  it('keeps a chatty job admissible: older pieces join so the feed never outgrows the chunk cap', async () => {
+    const bench = await setup()
+    const source = bench.start({ output: 'start\n' })
+    await bench.run('/jobs')
+    select(bench.model('mayfly.jobs'), source.id)
+    await flushRequests()
+    action(bench.model('mayfly.jobs.detail'), 'read')
+    await flushRequests()
+    const output = bench.model('mayfly.jobs.output')
+    const lines = Array.from({ length: JOB_OUTPUT_FEED_CHUNKS * 3 }, (_, index) => `line ${String(index)}\n`)
+    for (const line of lines) source.append(line)
+    await flushRequests()
+    const code = (function find(node: MayflyUiNode): Extract<MayflyUiNode, { readonly kind: 'code' }> | undefined {
+      if (node.kind === 'code') return node
+      if (node.kind === 'surface' || node.kind === 'scroll') return find(node.child)
+      if (node.kind === 'stack') for (const child of node.children) { const hit = find(child.node); if (hit !== undefined) return hit }
+      return undefined
+    })(output.node!)!
+    expect(Array.isArray(code.code)).toBe(true)
+    expect((code.code as readonly unknown[]).length).toBeLessThanOrEqual(JOB_OUTPUT_FEED_CHUNKS)
+    expect(textOf(code.code)).toBe(`start\n${lines.join('')}`)
+    // The newest pieces keep their identity: only the older half joins.
+    const tail = (code.code as readonly { readonly text: string }[]).at(-1)!
+    expect(tail.text).toBe(lines.at(-1))
+    expect(validateMayflyUiNode(output.node).ok).toBe(true)
   })
 
   it('drops held chunks and marks the banner when the ring trims below the cursor', async () => {

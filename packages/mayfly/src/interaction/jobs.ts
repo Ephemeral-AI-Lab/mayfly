@@ -61,6 +61,28 @@ interface JobOutputFeed {
   readonly chunks: MayflyContentChunk[]
 }
 
+/**
+ * Pieces one feed keeps before older ones join, far under the admission cap (`MAYFLY_UI_MAX_CHUNKS`): a job that
+ * prints a line at a time for hours would otherwise outgrow it and every later publish would be rejected.
+ */
+export const JOB_OUTPUT_FEED_CHUNKS = 256
+
+/**
+ * Join neighbours until the feed fits {@link JOB_OUTPUT_FEED_CHUNKS}. Only the older half joins, so the pieces a
+ * following tail paints keep their identity, and the smallest pair joins first, so sizes stay balanced and a join
+ * copies little rather than rewriting one ever-growing head.
+ */
+function settleOutput(chunks: MayflyContentChunk[]): void {
+  while (chunks.length > JOB_OUTPUT_FEED_CHUNKS) {
+    const older = chunks.length - JOB_OUTPUT_FEED_CHUNKS / 2
+    let pair = 0
+    for (let index = 1; index + 1 < older; index += 1) {
+      if (chunks[index]!.text.length + chunks[index + 1]!.text.length < chunks[pair]!.text.length + chunks[pair + 1]!.text.length) pair = index
+    }
+    chunks.splice(pair, 2, ui.chunk(chunks[pair]!.text + chunks[pair + 1]!.text))
+  }
+}
+
 /** Append everything `read` holds under the feed's cursor; a lossy read drops the held pieces with the missed bytes. */
 function appendOutput(feed: JobOutputFeed, read: JobOutputRead): boolean {
   if (read.lossy) {
@@ -68,6 +90,7 @@ function appendOutput(feed: JobOutputFeed, read: JobOutputRead): boolean {
     feed.dropped = true
   }
   for (const chunk of read.chunks) if (chunk.at >= feed.cursor) feed.chunks.push(ui.chunk(chunk.text))
+  settleOutput(feed.chunks)
   feed.cursor = read.next
   return read.chunks.length > 0 || read.lossy
 }
@@ -84,6 +107,7 @@ export function jobOutputNode(job: JobView, feed: { readonly dropped: boolean, r
 /** A read result is retained in its child Fiber, never reread by rendering or scrolling. */
 async function showOutput(ctx: Context, agent: Agent, job: JobView, read: JobOutputRead, signal: AbortSignal, t: MayflyTranslate): Promise<void> {
   const feed: JobOutputFeed = { cursor: read.next, dropped: read.lossy, chunks: read.chunks.map(chunk => ui.chunk(chunk.text)) }
+  settleOutput(feed.chunks)
   ctx.mayflyOverlays.close('mayfly.jobs.output')
   let handle: MayflyOverlayHandle | undefined
   handle = await openAgentOverlay(ctx, agent, { id: 'mayfly.jobs.output', presentation: 'editor', capturing: true }, jobOutputNode(job, feed, t), owner => {
