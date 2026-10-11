@@ -68,6 +68,17 @@ describe('alignDiffLines', () => {
     expect(diffChangeCounts(before, after)).toEqual({ added: DIFF_ALIGN_MAX_EDITS + 5, removed: DIFF_ALIGN_MAX_EDITS + 5 })
   })
 
+  it('aligns a middle of hundreds of thousands of lines without spreading it into one call', () => {
+    // A one-sided middle is its own alignment; an argument-list spread of it overflowed the stack near 120,000 ops.
+    const inserted = Array.from({ length: 200_000 }, (_, index) => `line ${String(index)}`)
+    const aligned = alignDiffLines('head\ntail', ['head', ...inserted, 'tail'].join('\n'))
+    expect(aligned).toHaveLength(200_002)
+    expect(aligned[0]).toEqual({ type: 'ctx', text: 'head' })
+    expect(aligned[1]).toEqual({ type: 'add', text: 'line 0' })
+    expect(aligned.at(-1)).toEqual({ type: 'ctx', text: 'tail' })
+    expect(diffChangeCounts('head\ntail', ['head', ...inserted, 'tail'].join('\n'))).toEqual({ added: 200_000, removed: 0 })
+  })
+
   it('keeps equal counts for identical and empty-change inputs', () => {
     expect(diffChangeCounts('x', 'x')).toEqual({ added: 0, removed: 0 })
     expect(diffChangeCounts('', '')).toEqual({ added: 0, removed: 0 })

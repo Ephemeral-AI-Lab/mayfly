@@ -92,7 +92,8 @@ export function alignDiffLines(before: string, after: string): readonly DiffOp[]
       }
       return out
     }
-    ops.push(...alignMiddle(intern(beforeLines, start, endBefore), intern(afterLines, start, endAfter), texts, 0))
+    // A loop, not a spread: a megabyte write is hundreds of thousands of ops, past any argument list.
+    for (const op of alignMiddle(intern(beforeLines, start, endBefore), intern(afterLines, start, endAfter), texts, 0)) ops.push(op)
   }
   for (let index = endBefore; index < beforeLines.length; index += 1) ops.push({ type: 'ctx', text: beforeLines[index]! })
   return ops
@@ -136,7 +137,9 @@ function uniqueAnchor(before: readonly number[], after: readonly number[]): { re
  * anchorless or too-deep middle degrades to whole blocks.
  */
 function alignMiddle(before: readonly number[], after: readonly number[], texts: readonly string[], depth: number): DiffOp[] {
-  const parts = diffArrays([...before], [...after], { maxEditLength: DIFF_ALIGN_MAX_EDITS })
+  // A one-sided middle (a new file, a deleted block) is its own alignment; Myers would only spend its edit budget.
+  if (before.length === 0 || after.length === 0) return blockOps(before, after, texts)
+  const parts = diffArrays(before as number[], after as number[], { maxEditLength: DIFF_ALIGN_MAX_EDITS })
   if (parts !== undefined) {
     const ops: DiffOp[] = []
     for (const part of parts) {
@@ -346,6 +349,6 @@ export function paintDiffRows(ops: readonly DiffOp[], width: number, helpers: Di
   const columns = Math.max(1, width)
   const model = diffModel(ops, options)
   const out: string[] = []
-  for (const segment of model.segments) out.push(...paintDiffSegment(segment, model.digits, columns, helpers, colors, options.numbered !== false))
+  for (const segment of model.segments) for (const row of paintDiffSegment(segment, model.digits, columns, helpers, colors, options.numbered !== false)) out.push(row)
   return out
 }
