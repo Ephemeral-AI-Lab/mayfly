@@ -51,16 +51,12 @@ export interface MayflyClipboardTerminal {
 
 /**
  * Build an OSC 52 sequence asking the terminal to put `text` on the
- * clipboard.
+ * clipboard. Selection routing happens in {@link copySelectionText}, so
+ * this pure builder always returns the direct-terminal form.
  * @param text - the text to copy.
- * @param insideTmux - whether the process runs inside tmux (detected from
- * `$TMUX` by default). Retained for call-site compatibility; selection
- * routing now happens in {@link copySelectionText}, so this pure builder
- * always returns the direct-terminal form.
  * @returns the escape sequence, ready for a single stdout write.
  */
-export function buildClipboardOsc52(text: string, insideTmux: boolean = (process.env.TMUX ?? '').length > 0): string {
-  void insideTmux
+export function buildClipboardOsc52(text: string): string {
   const payload = Buffer.from(text, 'utf8').toString('base64')
   return `${ESC}]52;c;${payload}${BEL}`
 }
@@ -132,7 +128,7 @@ export async function copySelectionText(
 ): Promise<boolean> {
   if (insideTmux) return loadTmuxClipboard(text)
   try {
-    terminal.write(buildClipboardOsc52(text, false))
+    terminal.write(buildClipboardOsc52(text))
     return true
   } catch {
     return false

@@ -55,18 +55,12 @@ function fakeProc(opts: { tty?: boolean, throwOnWrite?: boolean } = {}): MayflyE
 
 describe('buildClipboardOsc52', () => {
   it('builds the plain sequence with a base64 payload', () => {
-    const sequence = buildClipboardOsc52('hi', false)
+    const sequence = buildClipboardOsc52('hi')
     expect(sequence).toBe(`\x1b]52;c;${Buffer.from('hi', 'utf8').toString('base64')}\x07`)
-  })
-
-  it('keeps the pure sequence bare when a compatibility caller passes tmux', () => {
-    const sequence = buildClipboardOsc52('hi', true)
-    expect(sequence).toBe(`\x1b]52;c;${Buffer.from('hi', 'utf8').toString('base64')}\x07`)
-    expect(sequence).not.toContain('\x1bPtmux;')
   })
 
   it('encodes multi-byte text as UTF-8 before base64', () => {
-    const sequence = buildClipboardOsc52('你好', false)
+    const sequence = buildClipboardOsc52('你好')
     expect(sequence).toBe(`\x1b]52;c;${Buffer.from('你好', 'utf8').toString('base64')}\x07`)
   })
 
@@ -137,7 +131,7 @@ describe('copySelectionText', () => {
   it('uses direct OSC 52 outside tmux', async () => {
     const written: string[] = []
     await expect(copySelectionText('hi', { write: chunk => written.push(chunk) }, false)).resolves.toBe(true)
-    expect(written).toEqual([buildClipboardOsc52('hi', false)])
+    expect(written).toEqual([buildClipboardOsc52('hi')])
   })
 
   it('reports a direct terminal write failure', async () => {
