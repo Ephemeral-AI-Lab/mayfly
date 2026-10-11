@@ -259,5 +259,20 @@
     "layoutPasses": 1,
     "clockTicks": 0,
     "keymapSnapshots": 0
+  },
+  "W24": {
+    "nodesValidated": 2,
+    "unitsCompiled": 1,
+    "rowsPainted": 1,
+    "rowsMaterialized": 0,
+    "segmentsPainted": 0,
+    "linesEstimated": 0,
+    "stringsMeasured": 0,
+    "componentRenders": 2,
+    "controlWalks": 2,
+    "reconciles": 6,
+    "layoutPasses": 1,
+    "clockTicks": 0,
+    "keymapSnapshots": 0
   }
 }

@@ -9,11 +9,12 @@
 
 import type { MayflyInlineSpan, MayflyListItem, MayflyListNode } from '@ephemeral-ai/mayfly-ui'
 import type { MayflySemanticColors } from './types.ts'
+import { scanContentLines, type ContentLineScan } from './content-segments.ts'
 import { paintSpan, paintTone } from './ui-paint.ts'
 import { inlineSegmentStrip, segmentFitsInline, segmentFooter, type SegmentView } from './ui-list-segment.ts'
 import type { UiRowCache } from './ui-row-cache.ts'
-import type { MayflyWorkCounters } from './ui-work-counters.ts'
-import { concatRows, mapRows, sliceRows } from './ui-rows.ts'
+import { countWork, type MayflyWorkCounters } from './ui-work-counters.ts'
+import { concatRows, mapRows, sliceRows, virtualRows } from './ui-rows.ts'
 import { sliceByColumn, visibleWidth, wrapTextWithAnsi } from './width.ts'
 
 /** One visible row of a list: the item and how the model sees it (tree depth, disclosure) and where it sits. */
@@ -196,17 +197,48 @@ function headLines(state: RowState, colors: MayflySemanticColors, translate: Lis
   return [clipRow(line, width)]
 }
 
+/**
+ * The line table of one item's string body, kept on the admitted item so an open body scans once and the list window
+ * paints only the rows it shows — a body of any size costs the window's rows, never the document's.
+ */
+const bodyScans = new WeakMap<MayflyListItem, ContentLineScan>()
+
+function bodyScan(item: MayflyListItem, body: string, counters: MayflyWorkCounters | undefined): ContentLineScan {
+  let scan = bodyScans.get(item)
+  if (scan === undefined) {
+    scan = scanContentLines(body)
+    countWork(counters, 'linesEstimated', scan.starts.length)
+    bodyScans.set(item, scan)
+  }
+  return scan
+}
+
 /** The lines of an open body: guides for text, content for a node. */
-function bodyLines(spec: ListRowSpec, width: number, colors: MayflySemanticColors, paintBody: ListPaintOptions['body']): readonly string[] {
+function bodyLines(spec: ListRowSpec, width: number, colors: MayflySemanticColors, paintBody: ListPaintOptions['body'], counters: MayflyWorkCounters | undefined): readonly string[] {
   // Only an open row with a body asks for its body lines.
   const item = spec.item
   const body = item.body!
   const indent = ' '.repeat(item.indent ?? 0)
   const always = item.bodyAlways === true
   if (typeof body === 'string') {
-    const lines = body.split('\n')
-    if (always) return lines.map(line => clipRow(`${indent}       ${colors.muted(line)}`, width))
-    return lines.map((line, index) => clipRow(`${indent}    ${colors.muted(index === lines.length - 1 ? '╰ ' : '│ ')}${colors.muted(line)}`, width))
+    const scan = bodyScan(item, body, counters)
+    // `split('\n')` parity: an empty body is one empty line under the guide.
+    const count = Math.max(1, scan.starts.length)
+    const last = count - 1
+    return virtualRows({
+      get length() { return count },
+      declaredWidth: width,
+      // Admission strips the markers from body text, so a caret or sentinel search skips the body whole.
+      markerFree: true,
+      row(index) {
+        // The facade clamps reads to `index < count`; past `starts.length` only the empty body's single row exists.
+        countWork(counters, 'rowsMaterialized')
+        const line = index < scan.starts.length ? body.slice(scan.starts[index]!, scan.ends[index]!) : ''
+        return always
+          ? clipRow(`${indent}       ${colors.muted(line)}`, width)
+          : clipRow(`${indent}    ${colors.muted(index === last ? '╰ ' : '│ ')}${colors.muted(line)}`, width)
+      },
+    })
   }
   if (paintBody === undefined) return []
   if (always) return mapRows(paintBody(item, Math.max(1, width - 2 - indent.length)), line => `${indent}  ${line}`)
@@ -265,9 +297,10 @@ export function paintList(node: ListNodeView, width: number, height: number, col
       : options.memo.cache.readLines(colors, item, key, () => headLines(state, colors, options.translate), options.memo.counters)
     entries.push({ kind: 'item', id: item.id, lines: painted })
     if (spec.open && item.body !== undefined) {
+      const counters = options.memo?.counters
       const body = options.memo === undefined
-        ? bodyLines(spec, available, colors, options.body)
-        : options.memo.cache.readLines(colors, item, `body\x01${String(available)}`, () => bodyLines(spec, available, colors, options.body), options.memo.counters)
+        ? bodyLines(spec, available, colors, options.body, counters)
+        : options.memo.cache.readLines(colors, item, `body\x01${String(available)}`, () => bodyLines(spec, available, colors, options.body, counters), counters)
       if (body.length > 0) entries.push({ kind: 'body', lines: body })
     }
   }

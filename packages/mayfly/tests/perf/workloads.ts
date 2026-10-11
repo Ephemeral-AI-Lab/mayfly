@@ -1,5 +1,5 @@
 /**
- * The work-budget workloads W1 to W23 (docs/design/implementation-roadmap.md section 7.1), and W1 and W4 again through the
+ * The work-budget workloads W1 to W24 (docs/design/implementation-roadmap.md section 7.1), and W1 and W4 again through the
  * node slot (slice 1.10a), the path the footer and the conversation take from Phases 3 and 6. Each one builds a surface of
  * a stated shape, then runs one steady-state step that publishes, presses a key, or ticks the clock, and reports the
  * counters of that step alone. The counts are deterministic, so a spec gates them; `script/audit-performance.mjs`
@@ -497,6 +497,31 @@ export const WORKLOADS: readonly Workload[] = [
       reset(counters)
       let arrived = 0
       return { step: () => { arrived += 1; surface.publish(stream([`${piece(20_000 + arrived * 4, 4)}\n`])) }, dispose: () => surface.dispose() }
+    },
+  },
+  {
+    id: 'W24', title: 'stream with a huge body: a 2,000-item list holding an open 200 KB diff and a 1 MB Markdown body, the last item changes',
+    setup(counters) {
+      // The big body sits one row above the tail: the reader following the stream keeps it in the window, and a
+      // republish repaints it from the nested sources it already indexed, not by splitting and clipping a megabyte.
+      const before = codeDocument(0.2)
+      const after = before.split('\n').map((line, index) => index % 500 === 0 ? `${line} // edited` : line).join('\n')
+      const open = freezeWire(item(1998, { body: ui.stack.column([ui.diff(before, after), ui.markdown(markdownDocument(1))]), expanded: true }))
+      const items = [...Array.from({ length: 1998 }, (_, index) => freezeWire(item(index))), open]
+      const last = (revision: number): ReturnType<typeof item> => item(1999, { detail: `streaming ${String(revision)}` })
+      const surface = new Surface('w24', listNode('stream', [...items, last(0)]), counters)
+      surface.render()
+      // The reader follows the tail, where the changing row is.
+      surface.press('\x1b[F')
+      let revision = 0
+      reset(counters)
+      return {
+        step: () => {
+          revision += 1
+          surface.publish(listNode('stream', [...items, last(revision)]))
+        },
+        dispose: () => surface.dispose(),
+      }
     },
   },
   {

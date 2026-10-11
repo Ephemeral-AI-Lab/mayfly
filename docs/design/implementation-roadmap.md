@@ -1855,7 +1855,7 @@ with the page forms is deleted.
 | 2c.5 | `diff-align.ts` on Myers over interned line ids under `maxEditLength`, anchored on unique lines past it, memoized per admitted diff; hunk segments with exact extents; `maxRows` counts exact; gutter width from the largest line number | `DIFF_ALIGN_MAX_ROWS`, the LCS table, the `Math.max(...)` spreads (also in `diagramSource`) |
 | 2c.6 | `core/markdown-rows.ts`: marked-token units inside `splitRichDocument` segments (4 KB budget, cuts only beside `space` tokens, `def` raws gathered once and injected per fragment minus tags the fragment resolves, oversized tokens get segmented `lines` children, Mermaid rides the diagram seam); `MarkdownRowSource` (Fenwick counts, `markerFree`, `rowOf`/`offsetOf` for document anchors), `markdown` through `contentLeafComponent`, the segmented-equals-whole property test, W22; `renderChecked` keeps its window virtual in main mode and reads markers through `seekMarker` (`ownKeys` on `virtualRows`, `mapRows` delegates `seekMarker`); transcript rows and expanded tool bodies compose through `concatRows` | the `markdown` leaf's whole-document `createMarkdown` paint; the flatMap/spread composition of canonical transcript rows |
 | 2c.7 | `chunks` on content fields (D30): `MayflyContentField` contracts and the `ui.chunk`/`textOf` builders in `packages/ui`, `MAYFLY_UI_MAX_CHUNKS` and the per-chunk `cache.chunks` admission memo, `scanContentLines`/`indexMergedLines` chunk-boundary line joins with `indexedField`/`chunkScans` memos, job output as an append-only chunk feed on a `follow: 'end'` scroll fed by `jobs.events` and `readAt` with a catch-up read and `drop` on retention trims, the Website reference, W23 | — |
-| 2c.8 | An open list body as a nested row source; the list window paints the body rows inside it; W24 | — |
+| 2c.8 | An open list body as a nested row source: a string body keeps one `scanContentLines` table per admitted item and answers rows through a virtual source (guide, indent, clip on demand, `rowsMaterialized` counted); a node body's `paintBody` result flows `mapRows` into `concatRows`/`sliceRows` untouched; `UiRowCache.readLines` counts a stored facade as materialized work, not painted rows; the list component composes its query row, counter, and body through `concatRows`; W24 | the string body's `split`+`clipRow` paint-everything path and the `[...body]` materializing spread in the list component |
 
 **Order and acceptance.** 2c.1 and 2c.2 land first (2c.3 needs both); then 2c.4-2c.6 and 2c.8 may go in any order, one
 in review at a time; 2c.7 needs 2c.4's anchors. Each slice is reviewed like a component (§7) and merges on its own.
@@ -1883,7 +1883,7 @@ in review at a time; 2c.7 needs 2c.4's anchors. Each slice is reviewed like a co
 | 2c.5 | in review | `feat/2c` |
 | 2c.6 | in review | `feat/2c` |
 | 2c.7 | in review | `feat/2c` |
-| 2c.8 | — | — |
+| 2c.8 | in review | `feat/2c` |
 
 **2d The foundation review.** The owner reviews the basic components in the gallery with the workbench, covering what
 checkpoints A to C were to check: each basic scene beside the prototype at 120 and 60 columns, with `NO_COLOR=1`,

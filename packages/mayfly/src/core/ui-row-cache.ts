@@ -1,6 +1,7 @@
 /** Painted list rows, remembered per admitted item and the state each was painted in.
  * @module @ephemeral-ai/mayfly/core/ui-row-cache
  */
+import { isVirtualRows } from './ui-rows.ts'
 import { countWork, type MayflyWorkCounters } from './ui-work-counters.ts'
 
 /** How many painted variants of one item are kept: its focused, resting, and selected looks at the widths in use. */
@@ -35,7 +36,9 @@ export class UiRowCache {
     const known = variants.get(key)
     if (known !== undefined) return known
     const rows = paint()
-    countWork(counters, 'rowsPainted', rows.length)
+    // A virtual body paints through its source when the window reads it; the facade's length is an estimate, not
+    // painted work, so real rows count here and facades count there.
+    countWork(counters, 'rowsPainted', isVirtualRows(rows) ? 0 : rows.length)
     if (variants.size >= ROW_VARIANTS) variants.delete(variants.keys().next().value!)
     variants.set(key, rows)
     return rows

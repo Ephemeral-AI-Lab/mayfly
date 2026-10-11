@@ -1838,7 +1838,7 @@ function compileUnit(node: CompilableNode, state: FocusState, options: RuntimeCo
         )
         // The row cache counts the rows it paints; the list counts its render.
         countWork(options.counters, 'componentRenders')
-        return [...queryRows, ...(counter === undefined ? [] : [sliceByColumn(options.colors.textMuted(counter), 0, width, true)]), ...body]
+        return concatRows(queryRows, counter === undefined ? [] : [sliceByColumn(options.colors.textMuted(counter), 0, width, true)], body)
       }, options, false)
       const initial = options.listRuntime.listWindow(node, listRowLimit(options))
       if (initial.length === 0) state.bindControls([scopedControlKey('empty-list', node.id)], { component, axis: 'none' })
