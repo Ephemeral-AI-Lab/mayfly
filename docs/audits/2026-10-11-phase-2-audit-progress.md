@@ -70,6 +70,8 @@ The plan lists twelve leads (F1 to F12). The follow-up pass's fuzz test added F1
 `audit-1` is implemented on `feat/audit-1` (`1d357d5`, F1, F2, F3, F4, F7, E1, F13) and passes the pr and full tiers.
 It is not merged. Owed: the runtime profile and Website preview acceptance. `audit-2` to `audit-5` have not started.
 See "Fix slices" in the audit report for the decisions the slice made.
+The fix design for issue #7 (audit-fix B: lifecycle, sanitizer, notifications, locale) is
+[2026-10-11-fix-b-lifecycle-design.md](2026-10-11-fix-b-lifecycle-design.md); it is a proposal until the owner approves it.
 
 ## Parallel split
 
