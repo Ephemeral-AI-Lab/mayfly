@@ -14,8 +14,8 @@ checks remain open, listed below. Nothing has been fixed in this branch. The man
 
 | Workstream | State | Done | Not done |
 | --- | --- | --- | --- |
-| A Logic and correctness | Done except one sweep | F1, F2, F3, F4, F5, F6, F11, F12, A10 and the segmented-equals-whole property reproduced or run with numbers (F12 at the component level). F7 traced in code and strengthened (no `chdir` in Mayfly or the Harness). F8, F9, F10 re-read; F9 downgraded to not a defect | The live resume check for F7 (manual); a lifecycle sweep of `terminal.ts`, `surface-manager.ts` and `ui-interaction-*.ts` (the first pass went deep only on the 2c files); F8 and F10 only read |
-| B Redundant and dead code | Done at counting depth | Export-usage scan (1,945 exports: 218 own-file only, 280 test-only, 1 dead); compatibility leftovers (B1, B2); manifest duplicates (B3); helper duplication counted (B5) | Per-export review of the 280 test-only exports; the duplicate-function scan beyond the named helpers; script hygiene (orphan smokes, copied PTY blocks) read from the first survey only |
+| A Logic and correctness | Done (the lifecycle sweep and the F8/F10 traces are in part 2) | F1, F2, F3, F4, F5, F6, F11, F12, A10 and the segmented-equals-whole property reproduced or run with numbers (F12 at the component level). F7 traced in code and strengthened (no `chdir` in Mayfly or the Harness). F8, F9, F10 re-read; F9 downgraded to not a defect | The live resume check for F7 (manual); a lifecycle sweep of `terminal.ts`, `surface-manager.ts` and `ui-interaction-*.ts` (the first pass went deep only on the 2c files); F8 and F10 only read |
+| B Redundant and dead code | Done (the per-export review, the duplicate scan and script hygiene are in part 2) | Export-usage scan (1,945 exports: 218 own-file only, 280 test-only, 1 dead); compatibility leftovers (B1, B2); manifest duplicates (B3); helper duplication counted (B5) | Per-export review of the 280 test-only exports; the duplicate-function scan beyond the named helpers; script hygiene (orphan smokes, copied PTY blocks) read from the first survey only |
 | C Algorithm and performance | Partly done | Scaling repros for F1, F2, F4, F6, A10; the existing `audit-performance.mjs` (lists and transcript source healthy to 100,000) | CPU profiles with `perf --prof`; `DiffRowsSource` rebuild on resize, `UiRowCache` FIFO eviction, `scrolled` map growth, and the stacked width clamps are read only, not measured; pane and overlay refresh costs |
 | D Test efficiency | Done | Fresh per-test timings (plain and MEMO), work-budget timings, selection fan-out probes; T5 refuted | Coverage-run timings to separate coverage cost; per-spec import-closure report; a deletion check for each proposed test removal |
 | E Gate and workflow | Partly done | Selection reach (E1 reproduced), step ordering, input declarations | Scenario determinism under parallel runs; perf verdict statistics; golden accept path |
@@ -25,13 +25,13 @@ checks remain open, listed below. Nothing has been fixed in this branch. The man
 
 Agent-auditable, still open:
 
-1. Lifecycle sweep of `terminal.ts`, `surface-manager.ts` and `ui-interaction-*.ts` (A).
-2. F8 and F10 traced to the end, not only read (A).
+1. ~~Lifecycle sweep of `terminal.ts`, `surface-manager.ts` and `ui-interaction-*.ts` (A).~~ Done in part 2.
+2. ~~F8 and F10 traced to the end, not only read (A).~~ Done in part 2.
 3. CPU profiles with `perf --prof` (C).
 4. Measure `DiffRowsSource` rebuild on resize, `UiRowCache` FIFO eviction, `scrolled` map growth, stacked width
    clamps, and pane and overlay refresh costs (C).
-5. Per-export review of the 280 test-only exports; duplicate-function scan beyond the named helpers; script hygiene (B).
-6. Coverage-run timings and a per-spec import-closure report; a deletion check for each proposed test removal (D).
+5. ~~Per-export review of the 280 test-only exports; duplicate-function scan beyond the named helpers; script hygiene (B).~~ Done in part 2.
+6. Coverage-run timings and a per-spec import-closure report (D). The deletion check is done in part 2; the rest is part 1's.
 7. Scenario determinism under parallel runs; perf verdict statistics; golden accept path (E).
 
 Needs a person or a live run:
@@ -85,11 +85,28 @@ Rules: audit only, no product code edits; one timing run at a time, so Part 2 ru
 measures; the deletion check runs after Part 1's timings; every finding has a `file:line` and every claim a quoted
 reproduction. Owner items 8 and 9 stay out of both parts.
 
+## Part 2 results
+
+[Part 2](2026-10-11-phase-2-audit-part2.md) closes open items 1, 2 and 5 and the deletion check of item 6. Nothing in the product
+was changed. It adds twelve findings, `P2-1` to `P2-12`:
+
+- **P2** `P2-1`: `sanitizePluginText` deletes the text between two ST-terminated OSC sequences, so shell output with hyperlinks loses
+  its labels (extends F10; the audit-1 F2 fix, as described, keeps it). `P2-2`: Windows and macOS clipboard-image paste is documented
+  but its implementation, `paste-image-native.ts`, is imported by nothing.
+- **P3** `P2-3` to `P2-12`: a terminal that outlives a failed or unloaded startup, the output guard forcing repaints on overlay
+  show and hide, a second `stop()` returning early (latent), a wrong shutdown-order comment, twenty module-level test hooks,
+  a handled notification that expires again, duplicate implementations, dead production code with tests, unreferenced scripts, and a
+  test title that embeds a timestamp.
+- **Export review**: of the 280 test-only exports, 257 stay and 23 can go.
+- **Deletion check**: the proposed T3, T6 and T8 removals break no other test; the branch coverage floor then keeps only 0.02 points of
+  headroom (99.22 to 99.02). T9 as written fails: the design specs and frames can go, the shared helpers cannot, and
+  `script/tests/check.test.mjs:68` names a frame.
+
 ## Next steps
 
 1. Owner review of `audit-1` and its decisions, then triage of the rest of the slice table.
 2. Slices `audit-2` to `audit-5`.
-3. Close the open agent items 1 to 7 above through the parallel split while the first slice is in review.
+3. Close the remaining open agent items (3, 4, 6 coverage and import closure, 7) through part 1 while the first slice is in review; merge both parts into the audit report.
 4. Owner runs the manual list in the plan (items 8 and 9 above); its results update the 2d acceptance record.
 
 ## Working-tree notes
