@@ -9,16 +9,16 @@ The audit ships as one PR: the first pass and the follow-up pass are both commit
 
 ## Status
 
-The agent-auditable scope of the plan is partly complete. Lifecycle, profiling, gate determinism and test-cost
-checks remain open, listed below. Nothing has been fixed in this branch. The manual part (M) has not started.
+The agent-auditable scope of the plan is complete (parts 1 and 2). Only the live checks and the manual part (M) remain, and the
+fixes are split into the work packages under "Dispatch". Nothing has been fixed in this branch. The manual part has not started.
 
 | Workstream | State | Done | Not done |
 | --- | --- | --- | --- |
 | A Logic and correctness | Done (the lifecycle sweep and the F8/F10 traces are in part 2) | F1, F2, F3, F4, F5, F6, F11, F12, A10 and the segmented-equals-whole property reproduced or run with numbers (F12 at the component level). F7 traced in code and strengthened (no `chdir` in Mayfly or the Harness). F8, F9, F10 re-read; F9 downgraded to not a defect | The live resume check for F7 (manual); a lifecycle sweep of `terminal.ts`, `surface-manager.ts` and `ui-interaction-*.ts` (the first pass went deep only on the 2c files); F8 and F10 only read |
-| B Redundant and dead code | Done (the per-export review, the duplicate scan and script hygiene are in part 2) | Export-usage scan (1,945 exports: 218 own-file only, 280 test-only, 1 dead); compatibility leftovers (B1, B2); manifest duplicates (B3); helper duplication counted (B5) | Per-export review of the 280 test-only exports; the duplicate-function scan beyond the named helpers; script hygiene (orphan smokes, copied PTY blocks) read from the first survey only |
-| C Algorithm and performance | Partly done | Scaling repros for F1, F2, F4, F6, A10; the existing `audit-performance.mjs` (lists and transcript source healthy to 100,000) | CPU profiles with `perf --prof`; `DiffRowsSource` rebuild on resize, `UiRowCache` FIFO eviction, `scrolled` map growth, and the stacked width clamps are read only, not measured; pane and overlay refresh costs |
-| D Test efficiency | Done | Fresh per-test timings (plain and MEMO), work-budget timings, selection fan-out probes; T5 refuted | Coverage-run timings to separate coverage cost; per-spec import-closure report; a deletion check for each proposed test removal |
-| E Gate and workflow | Partly done | Selection reach (E1 reproduced), step ordering, input declarations | Scenario determinism under parallel runs; perf verdict statistics; golden accept path |
+| B Redundant and dead code | Done (the per-export review, the duplicate scan and script hygiene are in part 2) | Export-usage scan (1,945 exports: 218 own-file only, 280 test-only, 1 dead); compatibility leftovers (B1, B2); manifest duplicates (B3); helper duplication counted (B5) | None; the per-export review, the duplicate scan and script hygiene were completed in part 2 |
+| C Algorithm and performance | Done (profiles and the unmeasured paths are in part 1) | Scaling repros for F1, F2, F4, F6, A10; the existing `audit-performance.mjs`; CPU profiles of the five paths; diff resize, row-cache eviction, scroll-memory growth, stacked clamps and pane/overlay refresh cost measured (P1-01 to P1-03) | An exclusive-machine timing pass; `perf --prof` of the exact stress inputs (the CLI does not parameterize them) |
+| D Test efficiency | Done | Fresh per-test timings (plain and MEMO), work-budget timings, selection fan-out probes; T5 refuted; coverage-run timings (part 1); per-spec import closures (part 1); the deletion check (part 2) | An exclusive-machine pass for a clean coverage factor |
+| E Gate and workflow | Done | Selection reach (E1 reproduced), step ordering, input declarations; scenario determinism under parallel runs, perf verdict statistics, golden accept path (part 1) | Clean-machine verdict stability |
 | M Manual acceptance | Not started | The checklist is in the plan | All of it |
 
 ## Open items
@@ -27,12 +27,12 @@ Agent-auditable, still open:
 
 1. ~~Lifecycle sweep of `terminal.ts`, `surface-manager.ts` and `ui-interaction-*.ts` (A).~~ Done in part 2.
 2. ~~F8 and F10 traced to the end, not only read (A).~~ Done in part 2.
-3. CPU profiles with `perf --prof` (C).
-4. Measure `DiffRowsSource` rebuild on resize, `UiRowCache` FIFO eviction, `scrolled` map growth, stacked width
-   clamps, and pane and overlay refresh costs (C).
+3. ~~CPU profiles with `perf --prof` (C).~~ Done in part 1.
+4. ~~Measure `DiffRowsSource` rebuild on resize, `UiRowCache` FIFO eviction, `scrolled` map growth, stacked width
+   clamps, and pane and overlay refresh costs (C).~~ Done in part 1.
 5. ~~Per-export review of the 280 test-only exports; duplicate-function scan beyond the named helpers; script hygiene (B).~~ Done in part 2.
-6. Coverage-run timings and a per-spec import-closure report (D). The deletion check is done in part 2; the rest is part 1's.
-7. Scenario determinism under parallel runs; perf verdict statistics; golden accept path (E).
+6. ~~Coverage-run timings and a per-spec import-closure report (D).~~ Done in part 1; the deletion check is in part 2.
+7. ~~Scenario determinism under parallel runs; perf verdict statistics; golden accept path (E).~~ Done in part 1.
 
 Needs a person or a live run:
 
@@ -102,11 +102,53 @@ was changed. It adds twelve findings, `P2-1` to `P2-12`:
   headroom (99.22 to 99.02). T9 as written fails: the design specs and frames can go, the shared helpers cannot, and
   `script/tests/check.test.mjs:68` names a frame.
 
+## Part 1 results
+
+[Part 1](2026-10-11-phase-2-audit-part1.md) closes open items 3, 4, 6 (timings and import closures) and 7. Nothing in the product
+was changed. Timings are qualified: the machine was not exclusive, so no clean coverage-cost factor is claimed (observed
+paired-run ratio 1.18 to 1.27). It adds three findings:
+
+- `P1-01`: `pnpm run perf -- --prof` reads the wrong directory level, so its function summary is empty although the profile
+  files exist.
+- `P1-02`: persistent scroll memory keeps historical positional paths (1,000 to 2,000 entries with one current scroll); id-only churn
+  keeps one. Product reach and the intended bound are not established.
+- `P1-03`: components obtained through the real Cordis service miss the static-leaf compile reuse on every publish; a stable-reference
+  control hits it and removes the linear leaf work.
+
+Confirmed or extended: F1, F2, F4, F6 and A10 profile as the report says, on direct large inputs (the catalog does not expose them).
+No slow diff resize is demonstrated; `UiRowCache` is FIFO, not LRU (eight variants stay warm, sixteen thrash); the stacked width clamps
+are proportional to history in main mode and to the visible rows in alternate mode. Four identical suite runs pass (5,140 tests, one
+skipped), plain and with coverage. Two simultaneous full catalog runs produce 40 byte-identical grids each. Perf verdicts over equal
+builds at 3, 5 and 7 runs per side show no directional verdict (one inconclusive at 3 runs); clean-machine stability is unverified. The
+scratch golden path (new, updated, same) works. Appendix B lists the closure of all 294 specs (120 have at least 150 source files; width
+reaches 189).
+
+## Dispatch
+
+The open fixes are split into four work packages, each an issue on the repository, each in its own worktree and PR. The packages
+are divided by files and by kind of risk, not by fix. `audit-1` (F1, F2, F3, F4, F7, F13, E1) stays its own slice and is not merged;
+items that touch its files wait for it.
+
+| Package | Contents | Difficulty | After `audit-1` |
+| --- | --- | --- | --- |
+| A, content and measurement cost | P1-01, P1-03, P1-02, F6, A10, F5 with F11, timed budget rows (T13) | High: hot path, every claim measured, Cordis identity in P1-03 | F5 |
+| B, lifecycle, sanitizer, notification correctness | P2-1 with F10, P2-3, P2-4, P2-5, P2-6, P2-8, F12, F8 | Medium to high: terminal timing, needs a PTY and manual acceptance | P2-1 |
+| C, leftovers, dead code, native paste | B1, B2, B3, B4 with P2-10, P2-2 with the clipboard pair of P2-9, T2 paste waits | Medium: wide public-surface edits; P2-2 cannot be run on Linux | B2 |
+| D, tests, gate, scripts | T1, T2 (rest), T3, T7, T10, E2, P2-11, P2-12 | Medium: wide and conflict-prone, gate changes hide failures if wrong | E1 rows, T7 |
+
+Not dispatched, because each needs an owner decision: B5 with the rest of P2-9 (exact duplicates), B6 (a shared row-source base, only after
+the content fixes), P2-7 (twenty module-level test hooks that the decision tests depend on), T4, T6, T8 with the coverage floor (0.02
+points of headroom after the T3, T6 and T8 removals), T9 (specs and frames only), T12, and the `invariant.ts` companions. The manual
+list (items 8 and 9) stays with the owner.
+
+Overlaps to keep in mind: `core/surface-renderer.ts` (A and B), `core/plugin-view.ts` and `core/terminal.ts` (B and C),
+`tests/perf/work-budget.spec.ts` (A and D); D's T1 and T10 touch many specs and go last.
+
 ## Next steps
 
-1. Owner review of `audit-1` and its decisions, then triage of the rest of the slice table.
-2. Slices `audit-2` to `audit-5`.
-3. Close the remaining open agent items (3, 4, 6 coverage and import closure, 7) through part 1 while the first slice is in review; merge both parts into the audit report.
+1. Owner review of `audit-1` and its decisions; its merge unblocks the items marked above.
+2. Packages A to D, claimed and worked in parallel; each PR runs the pr tier and the full tier before review.
+3. Owner decisions on the items not dispatched.
 4. Owner runs the manual list in the plan (items 8 and 9 above); its results update the 2d acceptance record.
 
 ## Working-tree notes
