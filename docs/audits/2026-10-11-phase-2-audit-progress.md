@@ -4,10 +4,13 @@ Report date: 2026-10-11 (follow-up pass the same day). Baseline: `b657469`. Plan
 [audit report](2026-10-11-phase-2-audit.md). This records the state of the audit when it was submitted and does not
 define current behavior.
 
+The audit ships as one PR: the first pass and the follow-up pass are both commits on `docs/phase-2-audit`
+(`89f4c6b`, `855e7f4`, `4b1d736`). The follow-up pass that was submitted as a separate PR is folded into it.
+
 ## Status
 
-The agent-auditable part is finished to the depth below after a follow-up pass that ran the open checks. Nothing has
-been fixed. The manual part has not started.
+The agent-auditable scope of the plan is partly complete. Lifecycle, profiling, gate determinism and test-cost
+checks remain open, listed below. Nothing has been fixed in this branch. The manual part (M) has not started.
 
 | Workstream | State | Done | Not done |
 | --- | --- | --- | --- |
@@ -17,6 +20,24 @@ been fixed. The manual part has not started.
 | D Test efficiency | Done | Fresh per-test timings (plain and MEMO), work-budget timings, selection fan-out probes; T5 refuted | Coverage-run timings to separate coverage cost; per-spec import-closure report; a deletion check for each proposed test removal |
 | E Gate and workflow | Partly done | Selection reach (E1 reproduced), step ordering, input declarations | Scenario determinism under parallel runs; perf verdict statistics; golden accept path |
 | M Manual acceptance | Not started | The checklist is in the plan | All of it |
+
+## Open items
+
+Agent-auditable, still open:
+
+1. Lifecycle sweep of `terminal.ts`, `surface-manager.ts` and `ui-interaction-*.ts` (A).
+2. F8 and F10 traced to the end, not only read (A).
+3. CPU profiles with `perf --prof` (C).
+4. Measure `DiffRowsSource` rebuild on resize, `UiRowCache` FIFO eviction, `scrolled` map growth, stacked width
+   clamps, and pane and overlay refresh costs (C).
+5. Per-export review of the 280 test-only exports; duplicate-function scan beyond the named helpers; script hygiene (B).
+6. Coverage-run timings and a per-spec import-closure report; a deletion check for each proposed test removal (D).
+7. Scenario determinism under parallel runs; perf verdict statistics; golden accept path (E).
+
+Needs a person or a live run:
+
+8. Live checks: F7 on a resumed session of another workspace; F12 through a real `/settings` locale switch.
+9. Manual acceptance (M), the eight items in the plan, including the owner decisions in item 8.
 
 ## Findings by severity
 
@@ -42,6 +63,8 @@ defect to not a defect (the late result is ignored and native work is not rolled
 corrected: F11 is four times the real width (8 against 2), not three, and the F4 largest-unit size depends on the
 heading text.
 
+The plan lists twelve leads (F1 to F12). The follow-up pass's fuzz test added F13, which the plan does not list.
+
 ## Fix slices
 
 `audit-1` is implemented on `feat/audit-1` (`1d357d5`, F1, F2, F3, F4, F7, E1, F13) and passes the pr and full tiers.
@@ -52,8 +75,8 @@ See "Fix slices" in the audit report for the decisions the slice made.
 
 1. Owner review of `audit-1` and its decisions, then triage of the rest of the slice table.
 2. Slices `audit-2` to `audit-5`.
-3. Run the remaining sweep above (lifecycle files, F8, F10) while the first slice is in review.
-4. Owner runs the manual list in the plan; its results update the 2d acceptance record.
+3. Close the open agent items 1 to 7 above while the first slice is in review.
+4. Owner runs the manual list in the plan (items 8 and 9 above); its results update the 2d acceptance record.
 
 ## Working-tree notes
 
