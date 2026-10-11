@@ -32,7 +32,7 @@ export type MayflySnapshotProvider<Node> = (request: MayflySnapshotRequest) => M
 
 export type MayflyTone = 'default' | 'muted' | 'primary' | 'accent' | 'user' | 'success' | 'warning' | 'danger'
 export type MayflyTextStyle = 'strong' | 'italic' | 'strike'
-/** The glyph animations of a loader and of a loader span; `braille` and `tide` of the first loaders are `gap`. */
+/** The glyph animations of a loader and of a loader span. */
 export type MayflyLoaderVariant = 'bloom' | 'fill' | 'gap' | 'breath'
 export interface MayflyInlineSpan {
   readonly text: string
@@ -338,8 +338,8 @@ export interface MayflyLoaderNode {
   readonly kind: 'loader'
   /** What is loading; without one the loader is a bare glyph. */
   readonly message?: string
-  /** The glyph animation (`gap` by default); the first loaders' `braille` and `tide` stay accepted and draw `gap`. */
-  readonly variant?: MayflyLoaderVariant | 'braille' | 'tide'
+  /** The glyph animation (`gap` by default). */
+  readonly variant?: MayflyLoaderVariant
   readonly elapsedMs?: number
   readonly cancelActionId?: string
   readonly cancelLabel?: string

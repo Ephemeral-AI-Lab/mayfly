@@ -175,9 +175,10 @@ export const options = ui.diff('a', 'b', { start: 41, numbered: true, hunkHeader
 export const plainDiff = ui.diff('a', 'b')
 export const yearHeatmap = ui.chart({ chart: 'heatmap', cell: 1, columns: ['w1'], columnLabels: ['Jan'], rows: ['Mon'], values: [[1]], levels: [{ value: 1, label: 'some' }] })
 export const bareLoader = ui.loader({ variant: 'bloom' })
-export const oldLoader = ui.loader({ message: 'Working', variant: 'braille' })
-// @ts-expect-error a loader variant is one of the four, or an old braille or tide
+// @ts-expect-error a loader variant is one of the four
 ui.loader({ variant: 'spin' })
+// @ts-expect-error the first loaders' braille and tide aliases are gone
+ui.loader({ variant: 'braille' })
 export const meter = ui.progress({ label: 'Building', value: 6, max: 10, style: 'cells', width: 10, tone: 'success', showCount: true, showPercent: true, transition: { from: 91, ms: 800, rev: 1 } })
 export const headRule = ui.progress({ style: 'rule', value: 2, max: 8, width: 40 })
 // @ts-expect-error a progress style is cells or rule

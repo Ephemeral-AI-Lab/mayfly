@@ -222,7 +222,7 @@ describe('compileMayflyUiNode', () => {
       ui.list({ id: 'list', role: 'browse', selectedIds: ['a'], items: [{ id: 'a', label: 'A' }] }),
       ui.form({ id: 'form', fields: [{ kind: 'secret', id: 'secret', label: 'Secret', value: 'value' }, { kind: 'toggle', id: 'toggle', label: 'Toggle', value: false }] }),
       ui.actions({ id: 'actions', items: [{ id: 'go', label: 'Go' }] }),
-      ui.loader({ message: 'load', variant: 'braille', elapsedMs: 3, cancelActionId: 'cancel' }),
+      ui.loader({ message: 'load', variant: 'gap', elapsedMs: 3, cancelActionId: 'cancel' }),
       ui.empty({ title: 'empty', description: 'description' }),
       ui.progress({ value: 1, max: 2 }),
       ui.spacer(),
@@ -1472,7 +1472,7 @@ describe('compileMayflyUiNode', () => {
         { kind: 'toggle', id: 'enabled', label: 'Enabled', value: true },
       ] }),
       ui.actions({ id: 'actions', items: [{ id: 'go', label: 'Go' }] }),
-      ui.loader({ message: 'tide', variant: 'tide' }),
+      ui.loader({ message: 'tide', variant: 'gap' }),
       ui.progress({ label: 'done', value: 1, max: 2 }),
     ])
     const alternate = compiled(tree, fixture().options)
@@ -1514,7 +1514,7 @@ describe('compileMayflyUiNode', () => {
     const timeout = vi.spyOn(globalThis, 'setTimeout')
     const interval = vi.spyOn(globalThis, 'setInterval')
     try {
-      const loader = compiled(ui.loader({ message: 'Loading', variant: 'braille', elapsedMs: 10 }), fixture().options)
+      const loader = compiled(ui.loader({ message: 'Loading', variant: 'gap', elapsedMs: 10 }), fixture().options)
       expect(loader.component.render(20)).toEqual(['⣾ Loading 0s'])
       loader.component.invalidate()
       expect(timeout).not.toHaveBeenCalled()
@@ -2432,7 +2432,7 @@ it('animates shared loader frames through the compiler memo without rebuilding t
     return result.value.component
   }
   try {
-    const node = ui.stack.column([ui.loader({ message: 'Loading' }), ui.loader({ message: 'Tide', variant: 'tide' })])
+    const node = ui.stack.column([ui.loader({ message: 'Loading' }), ui.loader({ message: 'Tide', variant: 'gap' })])
     let component = render(node)
     expect(component.render(30)).toEqual(['⣾ Loading', '⣾ Tide'])
     expect(component.render(30)).toEqual(['⣾ Loading', '⣾ Tide'])

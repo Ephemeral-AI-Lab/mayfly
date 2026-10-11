@@ -105,7 +105,7 @@ describe('ui builders', () => {
         { kind: 'input', id: 'url', label: 'URL', value: '', pattern: '^https?://', patternMessage: 'Must be a URL', suggestions: ['https://example.com'] },
       ], submitActionId: 'save', cancelActionId: 'cancel' }),
       action,
-      ui.loader({ message: 'Loading', variant: 'tide', elapsedMs: 120, cancelActionId: 'cancel' }),
+      ui.loader({ message: 'Loading', variant: 'gap', elapsedMs: 120, cancelActionId: 'cancel' }),
       ui.empty({ title: 'Nothing here', description: 'Create an item', actions: action }),
       ui.progress({ label: 'Context', value: 42, max: 100 }),
       ui.spacer({ size: 2 }),

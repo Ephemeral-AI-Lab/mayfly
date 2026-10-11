@@ -116,10 +116,12 @@ describe('code, diff, and heatmap fields', () => {
 })
 
 describe('loader and progress fields', () => {
-  it('admits a bare loader glyph and every variant, the old ones included', () => {
+  it('admits a bare loader glyph and every variant, and refuses the first loaders', () => {
     expect(accepted(ui.loader({ variant: 'breath' }))).toEqual({ kind: 'loader', variant: 'breath' })
-    for (const variant of ['bloom', 'fill', 'gap', 'breath', 'braille', 'tide'] as const) expect(accepted(ui.loader({ message: 'x', variant }))).toMatchObject({ variant })
+    for (const variant of ['bloom', 'fill', 'gap', 'breath'] as const) expect(accepted(ui.loader({ message: 'x', variant }))).toMatchObject({ variant })
     expect(rejected({ kind: 'loader', message: 'x', variant: 'spin' })).toContain('variant')
+    expect(rejected({ kind: 'loader', message: 'x', variant: 'braille' })).toContain('variant')
+    expect(rejected({ kind: 'loader', message: 'x', variant: 'tide' })).toContain('variant')
   })
 
   it('admits the progress style, size, tone, labels, and transition', () => {

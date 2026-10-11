@@ -529,9 +529,9 @@ export const SCENARIOS = [
   },
   {
     id: 'loader',
-    // Doc example, verbatim: the default braille variant with the documented
+    // Doc example, verbatim: the default gap variant with the documented
     // elapsed hint and cancel control.
-    title: 'loader — braille indicator with cancel control',
+    title: 'loader — gap indicator with cancel control',
     width: 64,
     build: ui => ui.loader({
       message: 'Waiting for model',

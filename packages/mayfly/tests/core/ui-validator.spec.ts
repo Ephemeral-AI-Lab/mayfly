@@ -89,7 +89,7 @@ describe('validateMayflyUiNode', () => {
         { kind: 'toggle', id: 'toggle', label: 'Toggle', value: true },
       ], submitActionId: 'submit', cancelActionId: 'form-cancel' }),
       ui.actions({ id: 'actions', items: [{ id: 'go', label: 'Go', intent: 'primary', busy: false, hidden: false, confirm: 'sure?', key: 'q' }] }),
-      ui.loader({ message: 'loading', variant: 'tide', elapsedMs: 10, cancelActionId: 'loader-cancel' }),
+      ui.loader({ message: 'loading', variant: 'gap', elapsedMs: 10, cancelActionId: 'loader-cancel' }),
       ui.empty({ title: 'empty', description: 'description', actions: ui.actions({ id: 'empty-actions', items: [] }) }),
       ui.progress({ label: 'progress', value: 15, max: 10 }),
       ui.spacer({ size: 2 }),

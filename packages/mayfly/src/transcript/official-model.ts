@@ -683,7 +683,7 @@ export class OfficialConversationModelSource {
     if (state.kind === 'ready') return this.model
     if (this.stateModel?.state === state) return this.stateModel.model
     const node = state.kind === 'loading'
-      ? { kind: 'loader' as const, message: this.t('loading conversation...'), variant: 'braille' as const }
+      ? { kind: 'loader' as const, message: this.t('loading conversation...'), variant: 'gap' as const }
       : {
           kind: 'empty' as const,
           title: this.t('conversation unavailable'),

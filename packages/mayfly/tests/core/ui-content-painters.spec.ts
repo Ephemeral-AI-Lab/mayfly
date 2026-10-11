@@ -6,7 +6,7 @@ import { contentNodeRows, type ContentRowsEnv, type WindowedContentNode } from '
 import { MayflyContentCache } from '../../src/core/ui-content-cache.ts'
 import type { MayflyComponents, MayflySemanticColors } from '../../src/core/types.ts'
 import {
-  BREATH_LEVELS, LOADER_FRAMES, breathLevel, breathPaint, loaderCell, loaderFrameGlyph, loaderVariant, shimmerText, shimmerWindow,
+  BREATH_LEVELS, LOADER_FRAMES, breathLevel, breathPaint, loaderCell, loaderFrameGlyph, shimmerText, shimmerWindow,
 } from '../../src/core/ui-loader-animation.ts'
 import { hasMotion, paintMotionSpans } from '../../src/core/ui-motion-text.ts'
 import { renderDivider, renderEmpty, renderLoader, renderProgress, renderSurfaceHead, renderSurfaceTail, surfaceBorderPaint } from '../../src/core/ui-patterns.ts'
@@ -43,7 +43,6 @@ describe('motion tables and cells', () => {
     expect(loaderFrameGlyph('gap', 9)).toBe('⣽')
     expect([0, 3, 4, 8, 12, 16, 20, 24].map(breathLevel)).toEqual([0.25, 0.25, 0.5, 0.8, 1, 0.8, 0.5, 0.25])
     expect(BREATH_LEVELS).toHaveLength(6)
-    expect([undefined, 'braille', 'tide', 'bloom'].map(variant => loaderVariant(variant as never))).toEqual(['gap', 'gap', 'gap', 'bloom'])
   })
 
   it('paints a stepping cell in primary, the ASCII spinner in ASCII mode, and freezes under reduced motion', () => {

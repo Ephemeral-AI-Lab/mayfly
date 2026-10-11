@@ -10,7 +10,7 @@ import type { MayflyFormField, MayflyListSegment, MayflyTone, MayflyUiNode } fro
 import type { MayflyTranslate } from '../frontend/locale.ts'
 import type { MayflySemanticColors } from './types.ts'
 import type { MayflyGlyphMode } from './glyphs.ts'
-import { loaderCell, loaderVariant } from './ui-loader-animation.ts'
+import { loaderCell } from './ui-loader-animation.ts'
 import { hintNotation } from './ui-key-grammar.ts'
 import { sanitizePluginText } from './plugin-view.ts'
 import { paintSpan, paintTone } from './ui-paint.ts'
@@ -367,7 +367,7 @@ function formatElapsedMs(ms: number): string {
  * the clock `frame` (frozen under reduced motion); without a message the row is the bare glyph.
  */
 export function renderLoader(node: LoaderNode, width: number, colors: MayflySemanticColors, frame = 0, glyphs: MayflyGlyphMode = 'unicode', reducedMotion = false): string[] {
-  const cell = loaderCell(loaderVariant(node.variant), frame, { colors, glyphs, reducedMotion })
+  const cell = loaderCell(node.variant ?? 'gap', frame, { colors, glyphs, reducedMotion })
   const message = node.message === undefined || node.message === '' ? '' : ` ${colors.text(node.message)}`
   const elapsed = node.elapsedMs === undefined ? '' : ` ${colors.textMuted(formatElapsedMs(node.elapsedMs))}`
   return [fit(`${cell}${message}${elapsed}`, width)]

@@ -33,11 +33,6 @@ export const BREATH_STEPS = 4
 /** The `shimmer` window is this many letters wide, centred on the sweep. */
 export const SHIMMER_WINDOW = 3
 
-/** The first-loaders' variants draw the gap spinner. */
-export function loaderVariant(variant: MayflyLoaderVariant | 'braille' | 'tide' | undefined): MayflyLoaderVariant {
-  return variant === undefined || variant === 'braille' || variant === 'tide' ? 'gap' : variant
-}
-
 /** The step of a stepping variant at a clock frame (a reduced-motion caller passes frame 0). */
 export function loaderFrameGlyph(variant: 'bloom' | 'fill' | 'gap', frame: number): string {
   const frames = LOADER_FRAMES[variant]
