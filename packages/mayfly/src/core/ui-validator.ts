@@ -39,7 +39,7 @@ import type { MayflyEditorChild, MayflyEditorShellNode, MayflyValidationResult }
 import { printableKey } from './key-actions.ts'
 import { COMMON_MEANINGS, actionNamingProblem, defaultItemKey } from './ui-actions.ts'
 import { isWireSnapshot } from '@ephemeral-ai/mayfly-ui'
-import { stripEscapeSequences } from './escape-sequences.ts'
+import { stripTerminalText } from './escape-sequences.ts'
 import { countWork, type MayflyWorkCounters } from './ui-work-counters.ts'
 import { admitFieldPresentation, admitTextRules } from './ui-validator-form.ts'
 import { admitPromptFields, MAYFLY_UI_MAX_DRAFT_TEXT, type PromptAdmissionHelpers } from './ui-validator-prompt.ts'
@@ -64,10 +64,6 @@ export const MAYFLY_UI_MAX_IMAGES = 8
 export const MAYFLY_UI_MAX_ATTACHMENT_ID = 128
 /** Maximum `maxRows` an `image` node may ask for. */
 export const MAYFLY_UI_MAX_IMAGE_ROWS = 40
-
-const TERMINAL_SEQUENCE = /(?:(?:\x1b\]|\x9d)[\s\S]*?(?:\x07|\x1b\\|\x9c)|(?:\x1b[PX^_]|[\x90\x98\x9e\x9f])[\s\S]*?(?:\x07|\x1b\\|\x9c)|(?:\x1b\[|\x9b)[0-?]*[ -/]*[@-~]|\x1b.)/gu
-const TERMINAL_TAIL = /(?:\x1b\[|\x9b)[0-?]*[ -/]*[@-~]|\x1b./gu
-const UNSAFE_CONTROLS = /[\x00-\x08\x0b-\x1f\x7f-\x9f\uf8ff\ufdd0-\ufdef]/gu
 
 type ValidationMode = 'ui' | 'status' | 'editor'
 
@@ -218,7 +214,7 @@ function required(object: Record<string, unknown>, key: string, path: string): u
 /** Content text: sanitized and admitted whole, whatever its length; the viewport, not admission, bounds the work. */
 function text(value: unknown, path: string): string {
   if (typeof value !== 'string') invalid(`${path} must be a string`)
-  return stripEscapeSequences(value, TERMINAL_SEQUENCE, TERMINAL_TAIL, true).replace(UNSAFE_CONTROLS, '')
+  return stripTerminalText(value)
 }
 
 /** Clip a sanitized string to the label maximum, never splitting a surrogate pair, ending in `…`. */
@@ -257,7 +253,7 @@ function draftText(value: unknown, path: string, state: ValidationState): string
   if (typeof value !== 'string') invalid(`${path} must be a string`)
   state.budget.draftText += value.length
   if (state.budget.draftText > MAYFLY_UI_MAX_DRAFT_TEXT) limit(`Mayfly UI draft text exceeds ${String(MAYFLY_UI_MAX_DRAFT_TEXT)} characters`)
-  return stripEscapeSequences(value, TERMINAL_SEQUENCE, TERMINAL_TAIL, true).replace(UNSAFE_CONTROLS, '')
+  return stripTerminalText(value)
 }
 
 function boolean(value: unknown, path: string): boolean {
