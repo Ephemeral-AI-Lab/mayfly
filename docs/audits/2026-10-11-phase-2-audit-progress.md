@@ -71,11 +71,25 @@ The plan lists twelve leads (F1 to F12). The follow-up pass's fuzz test added F1
 It is not merged. Owed: the runtime profile and Website preview acceptance. `audit-2` to `audit-5` have not started.
 See "Fix slices" in the audit report for the decisions the slice made.
 
+## Parallel split
+
+The open agent items (1 to 7) are divided between two agents. Each works in its own worktree from `17b2c84` and writes
+its own report. The lead merges both into the audit report.
+
+- **Part 1, runtime and measurement** (`docs/audits/2026-10-11-phase-2-audit-part1.md`): open items 3, 4, 6 (the coverage
+  timings and import-closure report) and 7.
+- **Part 2, static reading and dead code** (`docs/audits/2026-10-11-phase-2-audit-part2.md`): open items 1, 2, 5, and
+  the deletion check of item 6.
+
+Rules: audit only, no product code edits; one timing run at a time, so Part 2 runs no heavy tests or builds while Part 1
+measures; the deletion check runs after Part 1's timings; every finding has a `file:line` and every claim a quoted
+reproduction. Owner items 8 and 9 stay out of both parts.
+
 ## Next steps
 
 1. Owner review of `audit-1` and its decisions, then triage of the rest of the slice table.
 2. Slices `audit-2` to `audit-5`.
-3. Close the open agent items 1 to 7 above while the first slice is in review.
+3. Close the open agent items 1 to 7 above through the parallel split while the first slice is in review.
 4. Owner runs the manual list in the plan (items 8 and 9 above); its results update the 2d acceptance record.
 
 ## Working-tree notes
