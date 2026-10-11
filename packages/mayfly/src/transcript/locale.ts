@@ -7,12 +7,7 @@
  */
 
 import type { Context } from '@deepseek-ai/cordis'
-import {
-  interpolateLocaleMessage,
-  type MayflyLocaleCatalog,
-  type MayflyLocaleSnapshot,
-  type MayflyTranslate,
-} from '../frontend/index.ts'
+import { interpolateLocaleMessage, type MayflyLocaleCatalog, type MayflyLocaleSnapshot, type MayflyTranslate } from '../frontend/locale.ts'
 import { HINTS_ZH } from './hints.ts'
 import { PROCESS_ACTIVE_ZH, PROCESS_DONE_ZH, SHARED_DONE_PREFIX_KEY } from './process-activity.ts'
 

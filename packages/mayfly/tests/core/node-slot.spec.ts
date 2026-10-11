@@ -26,10 +26,10 @@ import {
   type NodeSlotHostState,
   type NodeSlotRuntime,
 } from './node-slot-host.ts'
+import { flush } from '../helpers.ts'
 
 const cleanups: (() => Promise<unknown>)[] = []
 afterEach(async () => { for (const cleanup of cleanups.splice(0).reverse()) await cleanup() })
-const flush = () => new Promise<void>(resolve => { setImmediate(resolve) })
 const DOWN = '\x1b[B'
 const STREAM = { pagePath: [], controlId: 'stream' }
 const PROMPT = { pagePath: [], formId: 'prompt' }

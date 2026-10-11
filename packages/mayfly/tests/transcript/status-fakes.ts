@@ -10,12 +10,7 @@ import { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { GoalProjection } from '@deepseek-ai/dsh-goal'
 import { MayflyStatusService } from '../../../ui/src/provider.ts'
-import type {
-  MayflyComponent,
-  MayflyOverlayHandle,
-  MayflyScreen,
-  MayflySemanticColors,
-} from '../../src/core/index.ts'
+import type { MayflyComponent, MayflyOverlayHandle, MayflyScreen, MayflySemanticColors } from '../../src/core/types.ts'
 import { SessionId, type SessionEvent } from '@deepseek-ai/dsh-session'
 import { foldConversationFacts, initialConversationFacts } from '../../src/conversation/facts.ts'
 import type { ConversationFacts } from '../../src/conversation/types.ts'
@@ -23,6 +18,7 @@ import { projectChildSessionFacts, type ChildSessionFacts } from '../../src/tran
 import type { LiveAssistantDraft } from '../../src/conversation/live-stream.ts'
 import { compileMayflyStatusNode } from '../../src/core/ui-compiler.ts'
 import { fakeMayflyComponents } from './helpers.ts'
+import { fakeAgent as sharedFakeAgent, plainColors } from '../helpers.ts'
 import { mountFakeScreenSlot } from '../core/fake-screen-slot.ts'
 
 declare module '@deepseek-ai/cordis' {
@@ -32,20 +28,7 @@ declare module '@deepseek-ai/cordis' {
   }
 }
 
-/** Identity colors so rendered assertions see structure, not escape codes. */
-const id = (text: string): string => text
-export const COLORS: MayflySemanticColors = {
-  text: id, textStrong: id, muted: id, textMuted: id, accent: id, primary: id, border: id,
-  borderFocus: id,
-  success: id, error: id, warning: id, selectedBg: id, roleUser: id, shellMode: id,
-  mdHeading: id, mdLink: id, mdLinkUrl: id, mdCode: id, mdCodeBlock: id,
-  mdCodeBlockBorder: id, mdQuote: id, mdQuoteBorder: id, mdHr: id, mdListBullet: id,
-  diffAdded: id, diffRemoved: id, diffAddedStrong: id, diffRemovedStrong: id,
-  diffGutter: id, diffMeta: id, diffAddedBg: id, diffRemovedBg: id,
-  modelHighlight: id,
-  logoGradient: [],
-}
-// Structurally satisfies MayflySemanticColors; declared where consumed.
+export const COLORS = plainColors()
 
 /** Records render requests; mounting methods are out of scope here. */
 export class StatusFakeScreen implements MayflyScreen {
@@ -329,32 +312,7 @@ export function fakeAgent(
   } = {},
 ): FakeAgent {
   agentCounter += 1
-  const header: { cwd?: string } = {}
-  if (options.cwd !== undefined) header.cwd = options.cwd
-  const agentOptions: { provider?: string, model?: string, reasoningEffort?: string } = {}
-  if (options.model !== undefined) agentOptions.model = options.model
-  if (options.provider !== undefined) agentOptions.provider = options.provider
-  if (options.effort !== undefined) agentOptions.reasoningEffort = options.effort
-  const headerModel = options.headerModel
-  const headerEffort = options.headerEffort
-  const contextWindow = options.contextWindow
-  const requestContext = contextWindow === undefined
-    ? undefined
-    : (): { contextWindow?: number } => ({ contextWindow })
-  return {
-    id: SessionId(`fake-agent-${agentCounter}`),
-    status: 'idle',
-    options: agentOptions,
-    session: {
-      events,
-      header,
-      snapshotEvents: () => events,
-      requestHeader: () => (headerModel === undefined ? undefined : {
-        config: { model: headerModel, ...(headerEffort === undefined ? {} : { reasoningEffort: headerEffort }) },
-      }),
-      requestContext: () => requestContext?.(),
-    },
-  }
+  return sharedFakeAgent(`fake-agent-${agentCounter}`, { events, ...options }) as unknown as FakeAgent
 }
 
 /** Narrow a fake to the app-owned event payload type. */

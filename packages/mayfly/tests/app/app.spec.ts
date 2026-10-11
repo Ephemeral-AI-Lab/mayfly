@@ -5,11 +5,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
-import { SessionId } from '@deepseek-ai/dsh-session'
 import { apply, Config, internals } from '../../src/app/index.ts'
 import { MayflyCurrentAgentService } from '../../src/app/current-agent.ts'
 import { conversationId, MAX_SIDE_CONVERSATIONS, MayflyConversationsService } from '../../src/app/conversation-views.ts'
 import { armExitEpitaph, armedEpitaph } from '../../src/app/exit-epitaph.ts'
+import { fakeAgent, type FakeAgent } from '../helpers.ts'
 
 const originalStderr = internals.stderr
 
@@ -18,43 +18,6 @@ afterEach(() => {
   armExitEpitaph(undefined)
   vi.restoreAllMocks()
 })
-
-interface FakeSession {
-  readonly id: ReturnType<typeof SessionId>
-  readonly events: unknown[]
-  readonly seq: number
-  snapshotEvents(): readonly unknown[]
-  readonly header: { readonly cwd?: string }
-  readonly surface: { readonly nodes: readonly number[] }
-  requestHeader(): undefined
-}
-
-/** An Agent as the app sees it, with the scripted session and spies the tests read. */
-type FakeAgent = Agent & {
-  readonly session: Agent['session'] & FakeSession
-  readonly followup: ReturnType<typeof vi.fn>
-  readonly cancel: ReturnType<typeof vi.fn>
-}
-
-function fakeAgent(id: string, events: unknown[] = []): FakeAgent {
-  const session: FakeSession = {
-    id: SessionId(id),
-    events,
-    get seq() { return events.length },
-    snapshotEvents: () => events,
-    header: {},
-    surface: { nodes: [] },
-    requestHeader: () => undefined,
-  }
-  return {
-    id: session.id,
-    session,
-    status: 'idle',
-    options: {},
-    followup: vi.fn(),
-    cancel: vi.fn(),
-  } as unknown as FakeAgent
-}
 
 interface Bench {
   readonly ctx: Context
@@ -379,10 +342,10 @@ describe('mayfly app driver', () => {
   it('interrupts a retracted continuable subagent through its parent address', async () => {
     const test = bench()
     const parent = await waitForAgent(test)
-    const child = fakeAgent('child', [
+    const child = fakeAgent('child', { events: [
       { type: 'turn/start', seq: 0, data: { turn: 1 } },
       { type: 'user/message', seq: 1, data: { id: 'child-message', source: { kind: 'user' } } },
-    ])
+    ] })
     Object.assign(child, { status: 'running' })
     ;(child.session.surface.nodes as unknown as number[]).push(1)
     test.live.set(String(child.id), child)

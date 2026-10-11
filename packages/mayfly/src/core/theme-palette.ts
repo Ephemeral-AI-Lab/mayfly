@@ -10,7 +10,7 @@
 
 import { Context, Service } from '@deepseek-ai/cordis'
 import type { MayflyColorFn, MayflySemanticColors, MayflyTheme } from './types.ts'
-import type { ThemeModel } from '../frontend/index.ts'
+import type { ThemeModel } from '../frontend/models.ts'
 import { presentedColors, readPresentation } from './presentation.ts'
 
 /**

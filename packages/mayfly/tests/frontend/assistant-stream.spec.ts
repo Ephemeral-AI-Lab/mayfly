@@ -10,10 +10,10 @@ import { MayflyCurrentAgentService } from '../../src/app/current-agent.ts'
 import { MayflyConversationsService } from '../../src/app/conversation-views.ts'
 import { LiveAssistantStreamService } from '../../src/conversation/live-stream.ts'
 import * as recovery from '../../src/frontend/assistant-stream.ts'
+import { flush } from '../helpers.ts'
 
 const contexts: Context[] = []
 afterEach(async () => { for (const ctx of contexts.splice(0)) await ctx.fiber.dispose() })
-const flush = async () => { for (let index = 0; index < 12; index += 1) await Promise.resolve() }
 
 function agent(id: string): Agent { return { id, session: { id, seq: 4 } } as unknown as Agent }
 
@@ -43,14 +43,14 @@ describe('frontend assistant stream recovery', () => {
     ctx.provide('sessionController', { follow } as never)
     const owner = await ctx.plugin(recovery)
     conversations.selectPrimary(first)
-    await flush()
+    await flush(12)
     expect(live.get(first)?.text).toBe('first')
     const calls = follow.mock.calls.length
     conversations.selectPrimary(first)
     expect(follow).toHaveBeenCalledTimes(calls)
     agents.set(first.id, replacement)
     conversations.selectPrimary(replacement)
-    await flush()
+    await flush(12)
     expect(live.get(replacement)?.text).toBe('replacement')
     expect(signals[0]!.aborted).toBe(true)
     conversations.selectPrimary(null)
@@ -70,7 +70,7 @@ describe('frontend assistant stream recovery', () => {
     })
     ctx.provide('sessionController', { follow } as never)
     recovery.watchAssistantStream(ctx, child)()
-    await flush()
+    await flush(12)
     expect(follow.mock.calls[0]![0]).toMatchObject({ address: { kind: 'subagent', parentSessionId: 'parent', childSessionId: 'child', mode: 'unknown' }, assistantStream: true })
   })
 

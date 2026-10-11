@@ -17,7 +17,7 @@
  */
 
 import { join } from 'node:path'
-import { interpolateLocaleMessage, type MayflyTranslate } from '../../frontend/index.ts'
+import { interpolateLocaleMessage, type MayflyTranslate } from '../../frontend/locale.ts'
 import { cleanOutput, updaterInternals, type InteractiveChild, type SpawnOutcome, type ResolvedCommand } from './io.ts'
 import { appendUpdateLog, backupDir, readProfileFacts, restoreSnapshot, snapshotProfile } from './profile.ts'
 import { repairRecipe } from './preflight.ts'

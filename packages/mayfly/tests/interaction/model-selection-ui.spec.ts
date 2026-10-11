@@ -8,10 +8,10 @@ import { MayflyCurrentAgentService } from '../../src/app/current-agent.ts'
 import { MayflyConversationsService } from '../../src/app/conversation-views.ts'
 import { openModelPicker } from '../../src/interaction/model-commands.ts'
 import { providerFixture } from './provider-fixture.ts'
+import { flush } from '../helpers.ts'
 
 const contexts: Context[] = []
 afterEach(async () => { for (const ctx of contexts.splice(0)) await ctx.fiber.dispose() })
-const flush = () => new Promise<void>(resolve => { setImmediate(resolve) })
 
 async function setup() {
   const ctx = new Context()

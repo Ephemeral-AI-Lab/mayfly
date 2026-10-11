@@ -11,8 +11,9 @@
  * @module @ephemeral-ai/mayfly/transcript/process-rows
  */
 
-import { sanitizePluginText, type MayflyComponent, type MayflyComponents, type MayflySemanticColors } from '../core/index.ts'
-import { interpolateLocaleMessage, type MayflyTranslate } from '../frontend/index.ts'
+import { sanitizePluginText } from '../core/plugin-view.ts'
+import type { MayflyComponent, MayflyComponents, MayflySemanticColors } from '../core/types.ts'
+import { interpolateLocaleMessage, type MayflyTranslate } from '../frontend/locale.ts'
 import { compactElapsedMs } from './agent-presentation.ts'
 import { processTitle } from './process-activity.ts'
 import type { ProcessTitleItem, TurnHeaderItem } from './process-groups.ts'

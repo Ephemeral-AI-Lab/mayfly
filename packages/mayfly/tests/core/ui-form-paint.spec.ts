@@ -4,11 +4,10 @@ import type { MayflyFormField } from '../../../ui/src/index.ts'
 import type { MayflySemanticColors } from '../../src/core/types.ts'
 import { editorWidth, formHeading, formLabelWidth, matchingSuggestions, paintFormField, type FieldDecor, type FormFieldPaint } from '../../src/core/ui-form-paint.ts'
 import { visibleWidth } from '../../src/core/width.ts'
+import { identity, plain, plainColors } from '../helpers.ts'
 
-const identity = (value: string): string => value
-const colors = new Proxy({ logoGradient: [identity] }, { get: (target, key) => key === 'logoGradient' ? target.logoGradient : identity }) as unknown as MayflySemanticColors
+const colors = plainColors()
 const tagged = new Proxy({ logoGradient: [identity] }, { get: (target, key) => key === 'logoGradient' ? target.logoGradient : (value: string) => `<${String(key)}>${value}</${String(key)}>` }) as unknown as MayflySemanticColors
-const plain = (rows: readonly string[]): string[] => rows.map(row => row.replace(/\x1b\[[0-9;]*m/gu, ''))
 const idle = { key: '', focused: false, marker: '|' }
 const focus = (id: string, extra: Partial<FormFieldPaint['focus']> = {}): FormFieldPaint['focus'] => ({ key: id, focused: true, marker: '|', ...extra })
 

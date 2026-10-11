@@ -5,13 +5,13 @@ import { MayflyUiSurfaceRuntime, compileMayflyUiNode, compileMayflyUiSurfaceNode
 import { ScrollRegion } from '../../src/core/ui-scroll-region.ts'
 import { UiSurfaceModel } from '../../src/core/ui-interaction-surface.ts'
 import { UiAnimationClock } from '../../src/core/ui-loader-animation.ts'
-import type { MayflyComponents, MayflySemanticColors } from '../../src/core/types.ts'
+import type { MayflyComponents } from '../../src/core/types.ts'
 import type { MayflyPresentation } from '../../src/core/presentation.ts'
 import { createWorkCounters } from '../../src/core/ui-work-counters.ts'
 import { probeComponents } from '../design/probe.ts'
+import { plainColors, plainText } from '../helpers.ts'
 
-const identity = (value: string): string => value
-const colors = new Proxy({ logoGradient: [identity] }, { get: (target, key) => key === 'logoGradient' ? target.logoGradient : identity }) as unknown as MayflySemanticColors
+const colors = plainColors()
 
 function components(presentation: Partial<MayflyPresentation> = {}): MayflyComponents {
   const base = probeComponents()
@@ -101,7 +101,7 @@ describe('surface fields', () => {
 
   it('paints a right-aligned title at the corner, eliding its start, and a border tone', () => {
     const rows = mount(ui.surface({ title: '~/work/mayfly/packages/mayfly', titleAlign: 'right', chrome: 'surface', border: 'warning', badges: [{ text: 'dirty' }], child: ui.text('body') }), { width: 30 }).render()
-    expect(rows[0]!.replace(/\x1b\[[0-9;]*m/gu, '')).toMatch(/^╭─+ …\S+ ╮$/u)
+    expect(plainText(rows[0]!)).toMatch(/^╭─+ …\S+ ╮$/u)
   })
 })
 

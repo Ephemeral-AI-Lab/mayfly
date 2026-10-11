@@ -45,8 +45,8 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import { ui, type MayflyInlineSpan, type MayflyTone, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
-import type { ConversationAgentCall, ConversationFacts } from '../conversation/index.ts'
-import type { MayflyTranslate } from '../frontend/index.ts'
+import type { ConversationAgentCall, ConversationFacts } from '../conversation/types.ts'
+import type { MayflyTranslate } from '../frontend/locale.ts'
 import type { SessionFactsService } from './session-facts.ts'
 import { transcriptTranslator } from './locale.ts'
 import {

@@ -8,10 +8,10 @@ import * as provider from '../../../ui/src/provider.ts'
 import type { MayflyFormAddress, MayflyUiActionReply, MayflyUiEvent, MayflyUiEventHandlers, MayflyUiObservationReply } from '../../../ui/src/contracts.ts'
 import * as frontend from '../../src/frontend/index.ts'
 import { UiSurfaceModel, type UiSurfaceSnapshot } from '../../src/core/ui-interaction-surface.ts'
+import { flush } from '../helpers.ts'
 
 const cleanups: (() => Promise<unknown>)[] = []
 afterEach(async () => { vi.useRealTimers(); for (const cleanup of cleanups.splice(0).reverse()) await cleanup() })
-const flush = () => new Promise<void>(resolve => { setImmediate(resolve) })
 const address = (itemId = 'one'): MayflyFormAddress => ({ pagePath: [{ controlId: 'pages', itemId }], formId: 'config' })
 const source = (revision: number) => [{ resourceId: 'settings', revision }]
 const definition = (one = 'A', two = 'Z') => ui.stack.column([

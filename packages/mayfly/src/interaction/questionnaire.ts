@@ -3,7 +3,7 @@
  */
 import type { AskUserQuestionAnswer, AskUserQuestionItem } from '@deepseek-ai/dsh-user-questions'
 import { ui, type MayflyFormAddress, type MayflyPagePath, type MayflySelectionAddress, type MayflyUiEvent, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
-import type { MayflyTranslate } from '../frontend/index.ts'
+import type { MayflyTranslate } from '../frontend/locale.ts'
 
 const STEPS = 'questions'
 const pathOf = (questions: readonly AskUserQuestionItem[], id: string): MayflyPagePath =>

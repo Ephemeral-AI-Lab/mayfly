@@ -38,6 +38,7 @@ import type {
 } from '../../src/core/types.ts'
 import { FakeTerminal, waitForRender } from './fake-terminal.ts'
 import { mkdtempTracked, registerTempDirCleanup } from './temp-dir.ts'
+import { identity } from '../helpers.ts'
 
 
 registerTempDirCleanup()
@@ -122,7 +123,6 @@ const SGR = { border: '\x1b[38;5;240m', shellMode: '\x1b[38;5;99m', textMuted: '
 const RESET = '\x1b[0m'
 
 function sgrTheme(): MayflyTheme {
-  const identity = (text: string): string => text
   const colors = Object.fromEntries(
     ROLES.map(role => [
       role,

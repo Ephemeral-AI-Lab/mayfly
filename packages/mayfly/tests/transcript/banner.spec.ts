@@ -10,12 +10,7 @@ import { homedir } from 'node:os'
 import { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { Session } from '@deepseek-ai/dsh-session'
-import type {
-  MayflyComponent,
-  MayflyOverlayHandle,
-  MayflyScreen,
-  MayflySemanticColors,
-} from '../../src/core/index.ts'
+import type { MayflyComponent, MayflyOverlayHandle, MayflyScreen, MayflySemanticColors } from '../../src/core/types.ts'
 import { describe, expect, it, vi } from 'vitest'
 import {
   BANNER_MIN_WIDTH,

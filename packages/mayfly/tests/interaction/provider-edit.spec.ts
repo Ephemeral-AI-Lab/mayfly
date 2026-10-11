@@ -10,9 +10,9 @@ import type { MayflyFieldValue, MayflySubmission } from '../../../ui/src/interac
 import { providerFixture, testHomeText } from './provider-fixture.ts'
 import { buildIndex, setModelsDevLoader } from '../../src/interaction/models-dev.ts'
 import { openProviderEditor } from '../../src/interaction/provider-edit.ts'
+import { flush } from '../helpers.ts'
 const contexts: Context[] = []
 afterEach(async () => { setModelsDevLoader(undefined); for (const ctx of contexts.splice(0)) await ctx.fiber.dispose() })
-const flush = () => new Promise<void>(resolve => { setImmediate(resolve) })
 const address = (itemId: string) => ({ pagePath: [{ controlId: 'provider-pages', itemId }], formId: 'provider' })
 const profile = { displayName: 'Original', api: 'openai-completions', baseURL: 'https://old.example/v1', apiKeyEnv: 'CUSTOM_KEY', models: [{ id: 'one', contextWindow: 4000 }], headers: { untouched: 'value' } }
 

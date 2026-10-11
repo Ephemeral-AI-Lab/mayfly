@@ -2,7 +2,7 @@
  * @module @ephemeral-ai/mayfly/interaction/help
  */
 import { ui, type MayflyInlineSpan, type MayflyTone, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
-import { interpolateLocaleMessage, type MayflyTranslate } from '../frontend/index.ts'
+import { interpolateLocaleMessage, type MayflyTranslate } from '../frontend/locale.ts'
 
 /** One help entry. */
 interface HelpRow {

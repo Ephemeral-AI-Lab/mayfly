@@ -52,6 +52,48 @@ describe('frontend runtime architecture boundary', () => {
     expect(Object.keys(frontend)).not.toContain('Terminal')
   })
 
+  it('keeps cross-area imports on leaf modules, not the area index barrels', async () => {
+    const pkgRoot = resolve(root, 'packages/mayfly')
+    const srcRoot = resolve(pkgRoot, 'src')
+    /** A file's own declared exports plus names it re-exports from leaves (`export {...} from`, `export *`). */
+    const exportedNames = async (file: string, own: boolean): Promise<Set<string>> => {
+      const names = new Set<string>()
+      const source = await readFile(file, 'utf8')
+      const bare = (name: string): string => name.trim().replace(/^type\s+/u, '').split(' as ').at(-1)!.trim()
+      if (own) {
+        for (const match of source.matchAll(/export\s+(?:declare\s+)?(?:const|function|class|interface|type|enum|async function)\s+(\w+)/gu))
+          names.add(match[1]!)
+        for (const match of source.matchAll(/export\s+(?:type\s+)?\{([^}]*)\}(?!\s+from)/gu))
+          for (const name of match[1]!.split(',')) names.add(bare(name))
+      }
+      for (const match of source.matchAll(/export\s+(?:type\s+)?\{([^}]*)\}\s+from\s+'(\.[^']+)'/gu))
+        for (const name of match[1]!.split(',')) names.add(bare(name))
+      for (const match of source.matchAll(/export \* from '(\.[^']+)'/gu))
+        for (const name of await exportedNames(resolve(file, '..', match[1]!), true)) names.add(name)
+      return names
+    }
+    /** Names an area index only forwards: importers must use the leaf; the index's own locals (`apply`, `name`, ...) stay legal. */
+    const barrels = new Map<string, Promise<Set<string>>>()
+    const barrelNames = (area: string): Promise<Set<string>> => {
+      if (!barrels.has(area)) barrels.set(area, exportedNames(resolve(srcRoot, area, 'index.ts'), false))
+      return barrels.get(area)!
+    }
+    const imports = /import\s+(?:type\s+)?\{([^}]*)\}\s+from\s+'([^']+)'/gu
+    for (const path of [...await sourceFiles(srcRoot), ...await sourceFiles(resolve(pkgRoot, 'tests'))]) {
+      const source = await readFile(path, 'utf8')
+      for (const match of source.matchAll(imports)) {
+        const target = resolve(path, '..', match[2]!)
+        const area = /^.*\/src\/([^/]+)\/index\.ts$/u.exec(target)?.[1]
+        if (area === undefined || target === path) continue
+        const reexported = await barrelNames(area)
+        for (const named of match[1]!.split(',')) {
+          const bare = named.trim().replace(/^type\s+/u, '').split(' as ')[0]!.trim()
+          if (bare !== '') expect(reexported.has(bare), `${path} imports ${bare} through src/${area}/index.ts — import the leaf`).toBe(false)
+        }
+      }
+    }
+  })
+
   it.each([
     ['zh-CN', 'zh'],
     ['en-US', 'en'],

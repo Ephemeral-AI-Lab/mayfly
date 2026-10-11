@@ -135,19 +135,25 @@ it('skips the reminder catalog when the invoking Agent is stale or the request i
 })
 
 it('refreshes reminders only for the selected session and releases its timer', async () => {
-  const bench = await setup()
-  await bench.run('/schedule')
-  await flushRequests()
-  const reminders = bench.model('mayfly.schedule')
-  expect(await nativeAction(reminders, activate('close'))).toMatchObject({ kind: 'completed' })
-  bench.setSchedule([])
-  bench.ctx.emit('schedule/changed')
-  await flushRequests()
-  expect(JSON.stringify(reminders.node)).toContain('No active reminders')
-  expect(bench.list).toHaveBeenCalledWith({ sessionId: bench.session.id })
-  await new Promise(resolve => setTimeout(resolve, 1010))
-  bench.ctx.mayflyConversations.selectPrimary(null)
-  expect(reminders.disposed).toBe(true)
+  // Fake the interval, not the async machinery: a timer that outlived its overlay would still fire when advanced.
+  vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+  try {
+    const bench = await setup()
+    await bench.run('/schedule')
+    await flushRequests()
+    const reminders = bench.model('mayfly.schedule')
+    expect(await nativeAction(reminders, activate('close'))).toMatchObject({ kind: 'completed' })
+    bench.setSchedule([])
+    bench.ctx.emit('schedule/changed')
+    await flushRequests()
+    expect(JSON.stringify(reminders.node)).toContain('No active reminders')
+    expect(bench.list).toHaveBeenCalledWith({ sessionId: bench.session.id })
+    await vi.advanceTimersByTimeAsync(2 * schedule.SCHEDULE_TICK_MS)
+    bench.ctx.mayflyConversations.selectPrimary(null)
+    expect(reminders.disposed).toBe(true)
+  } finally {
+    vi.useRealTimers()
+  }
 })
 it('fences late reminder reads after Agent selection and unload', async () => {
   const bench = await setup()

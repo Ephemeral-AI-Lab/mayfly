@@ -18,15 +18,13 @@ import * as frontend from '../../src/frontend/index.ts'
 import { mountMayflySurfaceRenderer } from '../../src/core/surface-renderer.ts'
 import { MayflyScreenService } from '../../src/core/screen.ts'
 import { renderSurfaceLane, SurfaceManager, type SurfaceLaneEntry, type SurfaceLayout } from '../../src/core/surface-manager.ts'
-import type { MayflyComponent, MayflyComponents, MayflyFocusable, MayflyKeyAction, MayflySemanticColors } from '../../src/core/types.ts'
+import type { MayflyComponent, MayflyComponents, MayflyFocusable, MayflyKeyAction } from '../../src/core/types.ts'
 import type { MayflyTerminalRuntime } from '../../src/core/terminal.ts'
 import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/width.ts'
 import { createFakeEditor } from './fake-editor.ts'
+import { flush, plainColors, plainText } from '../helpers.ts'
 
-const identity = (value: string): string => value
-const colors = new Proxy({ logoGradient: [identity] }, {
-  get: (target, key) => key === 'logoGradient' ? target.logoGradient : identity,
-}) as unknown as MayflySemanticColors
+const colors = plainColors()
 const components = { visibleWidth, wrapText: wrapTextWithAnsi, truncateToWidth, createEditor: createFakeEditor } as MayflyComponents
 const placements = ['header', 'left', 'right', 'bottom'] as const
 
@@ -201,9 +199,6 @@ async function fixture(runtime = createRuntime(), compilerComponents: MayflyComp
   }
 }
 
-async function flush(turns = 8): Promise<void> {
-  for (let turn = 0; turn < turns; turn += 1) await Promise.resolve()
-}
 
 function entries(surfaces: SurfaceManager, columns = 120, rows = 20): SurfaceLaneEntry[] {
   const layout = surfaces.linearLayout(columns, rows)
@@ -229,26 +224,26 @@ describe('direct pane surface renderer', () => {
     try {
       const action = vi.fn(() => ({ kind: 'completed' as const }))
       const handle = f.register({ id: 'event-pane', render: () => ui.actions({ id: 'actions', items: [{ id: 'run', label: 'Run' }] }), onEvent: { action } })
-      await flush()
+      await flush(8)
       let target = entry(f.runtime.surfaces, 'event-pane').focusTarget!
       f.runtime.runtime.setFocus(target)
       target.handleInput?.('\r')
-      await flush()
+      await flush(8)
       expect(action).toHaveBeenCalledOnce()
       expect(entry(f.runtime.surfaces, 'event-pane').component.render(80).join('\n'))
         .toContain('translated:run')
       handle.set(ui.actions({ id: 'actions', items: [{ id: 'run', label: 'Run again' }] }))
-      await flush()
+      await flush(8)
       target = entry(f.runtime.surfaces, 'event-pane').focusTarget!
       target.handleInput?.('\r')
-      await flush()
+      await flush(8)
       expect(action).toHaveBeenCalledTimes(2)
 
       f.register({
         id: 'invalid-deferred',
         render: () => ({ kind: 'stack', direction: 'column', children: [{ when: { minWidth: 1 }, node: { kind: 'unknown' } }] }) as never,
       })
-      await flush()
+      await flush(8)
       expect(entry(f.runtime.surfaces, 'invalid-deferred').component.render(80).join(' ')).toContain('unknown Mayfly UI kind')
     } finally {
       await f.dispose()
@@ -263,12 +258,12 @@ describe('direct pane surface renderer', () => {
       const loader = vi.fn(() => bytes.promise)
       const release = f.root.mayflyUiImages.provide(loader)
       f.register({ id: 'photo', render: () => ui.stack.column([ui.text('caption'), ui.image({ attachmentId: 'att-1', alt: '[Image #1 84 KB]' })]) })
-      await flush()
+      await flush(8)
       const pane = entry(f.runtime.surfaces, 'photo').component
       expect(pane.render(40).join('\n')).toContain('[Image #1 84 KB]')
       expect(loader).toHaveBeenCalledOnce()
       bytes.resolve({ data: new Uint8Array([1]), mediaType: 'image/png' })
-      await flush()
+      await flush(8)
       const rows = pane.render(40).join('\n')
       expect(rows).toContain('<image>')
       expect(rows).not.toContain('[Image #1 84 KB]')
@@ -283,7 +278,7 @@ describe('direct pane surface renderer', () => {
     const f = await fixture(createRuntime(), broken)
     try {
       f.register({ id: 'broken-editor', render: () => ui.form({ id: 'form', fields: [{ kind: 'input', id: 'name', label: 'Name', value: '' }] }) })
-      await flush()
+      await flush(8)
       // The editor is built when the field is first focused or typed into.
       const surface = entry(f.runtime.surfaces, 'broken-editor')
       f.runtime.runtime.setFocus(surface.focusTarget!)
@@ -297,13 +292,13 @@ describe('direct pane surface renderer', () => {
     const f = await fixture()
     try {
       f.register({ id: 'owned', placement: 'right', render: () => ui.text('owned pane') })
-      await flush()
+      await flush(8)
       expect(entries(f.runtime.surfaces).map(item => item.id)).toEqual(['owned'])
       f.owner.dispose()
       expect(entries(f.runtime.surfaces)).toEqual([])
       expect(f.root.mayflyPanes.list().map(item => item.id)).toEqual(['owned'])
       f.mount()
-      await flush()
+      await flush(8)
       expect(entry(f.runtime.surfaces, 'owned').component.render(40)).toEqual(['owned pane'])
     } finally {
       await f.dispose()
@@ -316,7 +311,7 @@ describe('direct pane surface renderer', () => {
       const queued = 'queued / step: Agent sent a message: Subagent result (read-only; nothing modified). Files read:'
       f.register({ id: 'queued', title: 'Queued messages', render: () => ui.text(queued) })
       f.register({ id: 'todo', title: 'Todo', render: () => ui.text('○ Compose rich stream (mermaid, markdown, tables)') })
-      await flush()
+      await flush(8)
 
       const lane = f.runtime.surfaces.layout(40, 20).bottom!
       const rows = renderSurfaceLane(lane, 40)
@@ -337,12 +332,12 @@ describe('direct pane surface renderer', () => {
         id: 'activity',
         render: () => active ? ui.text('working') : ui.spacer(),
       })
-      await flush()
+      await flush(8)
       expect(entry(f.runtime.surfaces, 'activity').component.render(40)).toEqual([''])
 
       active = true
       handle.refresh()
-      await flush()
+      await flush(8)
       const rows = entry(f.runtime.surfaces, 'activity').component.render(40)
       expect(rows).toEqual(['working'])
     } finally {
@@ -360,7 +355,7 @@ describe('direct pane surface renderer', () => {
       f.register({ id: 'muted-tail', render: () => ui.stack.column([ui.text('a', { tone: 'muted' })]) })
       f.register({ id: 'conditional-tail', render: () => ui.stack.column([ui.child(ui.text('a', { tone: 'muted' }), { when: { minWidth: 1 } })]) })
       f.register({ id: 'tabbed-tail', render: () => ui.stack.column([ui.child(ui.text('a', { tone: 'muted' }), { tab: { controlId: 'tabs', itemId: 'one' } })]) })
-      await flush()
+      await flush(8)
       const keepsTail = (id: string): boolean =>
         (entry(f.runtime.surfaces, id).component as MayflyComponent & { overflowKeepsTail: boolean }).overflowKeepsTail
       expect(entries(f.runtime.surfaces).map(item => item.id)).toEqual(expect.arrayContaining([
@@ -384,7 +379,7 @@ describe('direct pane surface renderer', () => {
       let nullable = false
       const nullableHandle = f.register({ id: 'nullable', render: () => nullable ? null : ui.text('visible') })
       f.register({ id: 'invalid', render: () => ({ kind: 'unknown' }) as never })
-      await flush()
+      await flush(8)
       const invalid = entry(f.runtime.surfaces, 'invalid').component.render(12)
       expect(invalid.join(' ')).toContain('This surface')
       expect(invalid.every(row => visibleWidth(row) <= 12)).toBe(true)
@@ -395,14 +390,14 @@ describe('direct pane surface renderer', () => {
       nullableComponent.invalidate()
       nullable = true
       nullableHandle.refresh()
-      await flush()
+      await flush(8)
       expect(entries(f.runtime.surfaces).map(item => item.id)).not.toContain('nullable')
       expect(nullableComponent).toMatchObject({ live: false, targetValue: null })
       expect(nullableComponent.render(20)).toEqual([])
       expect(getLayoutNode(nullableComponent)).toMatchObject({ type: 'vstack', entries: [] })
       nullable = false
       nullableHandle.refresh()
-      await flush()
+      await flush(8)
       expect(entry(f.runtime.surfaces, 'nullable').component.render(20)).toEqual(['visible'])
     } finally {
       await f.dispose()
@@ -420,26 +415,26 @@ describe('direct pane surface renderer', () => {
           return ui.form({ id: 'form', fields: [{ kind: 'input', id: 'name', label: 'Name', value: 'A' }] })
         },
       })
-      await flush()
+      await flush(8)
       const surface = entry(f.runtime.surfaces, 'profile')
       f.runtime.runtime.setFocus(surface.focusTarget!)
       surface.focusTarget!.handleInput?.('\x1b')
       expect(f.runtime.focused()).toBe(f.runtime.editor)
       f.runtime.runtime.setFocus(surface.focusTarget!)
       surface.focusTarget!.handleInput?.('B')
-      await flush()
+      await flush(8)
       expect(renders).toBe(1)
       expect(entry(f.runtime.surfaces, 'profile').component).toBe(surface.component)
       expect(stripTerminalSequences(surface.component.render(80).join('\n'))).toContain('Name: AB')
 
       surface.focusTarget!.handleInput?.('C')
       handle.refresh()
-      await flush()
+      await flush(8)
       expect(stripTerminalSequences(surface.component.render(80).join('\n'))).toContain('Name: ABC')
       expect(entry(f.runtime.surfaces, 'profile').focusTarget).toBe(surface.focusTarget)
 
       handle.set(ui.form({ id: 'form', fields: [{ kind: 'input', id: 'name', label: 'Name', value: 'A' }] }), { reason: 'replace' })
-      await flush()
+      await flush(8)
       const replacement = entry(f.runtime.surfaces, 'profile')
       expect(replacement.component).not.toBe(surface.component)
       expect(stripTerminalSequences(replacement.component.render(80).join('\n'))).toContain('Name: A')
@@ -454,15 +449,15 @@ describe('direct pane surface renderer', () => {
     try {
       let renders = 0
       const handle = f.register({ id: 'toggle', render: () => { renders += 1; return ui.actions({ id: 'a', items: [{ id: 'go', label: 'Go' }] }) } })
-      await flush()
+      await flush(8)
       const surface = entry(f.runtime.surfaces, 'toggle')
       f.runtime.runtime.setFocus(surface.focusTarget!)
       handle.setHidden(true)
-      await flush()
+      await flush(8)
       expect(entries(f.runtime.surfaces).map(item => item.id)).not.toContain('toggle')
       expect(f.runtime.focused()).toBe(f.runtime.editor)
       handle.setHidden(false)
-      await flush()
+      await flush(8)
       expect(entry(f.runtime.surfaces, 'toggle').component).not.toBe(surface.component)
       expect(f.runtime.focused()).toBe(f.runtime.editor)
       expect(renders).toBe(2)
@@ -485,27 +480,27 @@ describe('direct pane surface renderer', () => {
           return result.promise
         } },
       })
-      await flush()
+      await flush(8)
       const target = entry(f.runtime.surfaces, 'latest').focusTarget!
       f.runtime.runtime.setFocus(target)
       target.handleInput?.('a')
-      await flush()
+      await flush(8)
       target.handleInput?.('b')
-      await flush()
+      await flush(8)
       expect(calls).toHaveLength(2)
       expect(calls[0]!.context.signal.aborted).toBe(true)
       calls[0]!.result.resolve()
       calls[1]!.result.resolve()
-      await flush()
+      await flush(8)
       expect(renders).toBe(1)
 
       target.handleInput?.('c')
-      await flush()
+      await flush(8)
       handle.refresh()
-      await flush()
+      await flush(8)
       expect(calls[2]!.context.signal.aborted).toBe(false)
       calls[2]!.result.resolve()
-      await flush()
+      await flush(8)
       expect(renders).toBe(2)
     } finally {
       await f.dispose()
@@ -533,21 +528,21 @@ describe('direct pane surface renderer', () => {
           }
         } },
       })
-      await flush()
+      await flush(8)
       const target = entry(f.runtime.surfaces, 'event-owned').focusTarget!
       f.runtime.runtime.setFocus(target)
       target.handleInput?.('\r')
       await flush(2)
       expect(context?.signal.aborted).toBe(false)
       pending.resolve()
-      await flush()
+      await flush(8)
       expect(entry(f.runtime.surfaces, 'event-owned').component.render(80).join('\n')).toContain('Updated')
 
       pending = deferred<void>()
       entry(f.runtime.surfaces, 'event-owned').focusTarget!.handleInput?.('\r')
       await flush(2)
       handle.set(ui.text('external'), { reason: 'replace' })
-      await flush()
+      await flush(8)
       expect(context?.signal.aborted).toBe(true)
       pending.resolve()
     } finally {
@@ -559,7 +554,7 @@ describe('direct pane surface renderer', () => {
     const f = await fixture()
     try {
       const handle = f.register({ id: 'scheduled-pane', render: () => ui.text('initial') })
-      await flush()
+      await flush(8)
       const tasks: VoidFunction[] = []
       const queue = vi.spyOn(globalThis, 'queueMicrotask').mockImplementation(task => { tasks.push(task) })
 
@@ -603,17 +598,17 @@ describe('direct pane surface renderer', () => {
           return { kind: 'accepted' as const, source: [], node: ui.actions({ id: 'actions', items: [{ id: 'go', label: 'Go' }] }) }
         } },
       })
-      await flush()
+      await flush(8)
       const target = entry(f.runtime.surfaces, 'internal-pane').focusTarget!
       f.runtime.runtime.setFocus(target)
       const tasks: VoidFunction[] = []
       const queue = vi.spyOn(globalThis, 'queueMicrotask').mockImplementation(task => { tasks.push(task) })
       target.handleInput?.('\r')
-      await flush()
+      await flush(8)
       expect(tasks).toHaveLength(1)
       tasks.shift()!()
       target.handleInput?.('\r')
-      await flush()
+      await flush(8)
       expect(tasks).toHaveLength(2)
       tasks.splice(1, 1)[0]!()
       tasks.shift()!()
@@ -639,28 +634,28 @@ describe('direct pane surface renderer', () => {
           return result.promise.then(() => ({ kind: 'completed' as const }))
         } },
       })
-      await flush()
+      await flush(8)
       const target = entry(f.runtime.surfaces, 'fifo').focusTarget!
       f.runtime.runtime.setFocus(target)
       target.handleInput?.('\r')
       target.handleInput?.('\r')
-      await flush()
+      await flush(8)
       expect(calls).toHaveLength(1)
       calls[0]!.resolve()
-      await flush()
+      await flush(8)
       expect(calls).toHaveLength(1)
       expect(renders).toBe(1)
       target.handleInput?.('\r')
-      await flush()
+      await flush(8)
       expect(calls).toHaveLength(2)
       calls[1]!.reject(new Error('rejected'))
-      await flush()
+      await flush(8)
       expect(entries(f.runtime.surfaces).map(item => item.id)).toContain('fifo')
       expect(renders).toBe(1)
       target.handleInput?.('\r')
-      await flush()
+      await flush(8)
       calls[2]!.resolve()
-      await flush()
+      await flush(8)
       expect(renders).toBe(1)
     } finally {
       await f.dispose()
@@ -689,16 +684,16 @@ describe('direct pane surface renderer', () => {
           action: () => release.promise.then(() => ({ kind: 'completed' as const })),
         },
       })
-      await flush()
+      await flush(8)
       const target = entry(f.runtime.surfaces, 'coalesced').focusTarget!
       f.runtime.runtime.setFocus(target)
       target.handleInput?.('\x1b[C')
       target.handleInput?.('\t')
       target.handleInput?.('\r')
-      await flush()
+      await flush(8)
       expect(renders).toBe(1)
       release.resolve()
-      await flush()
+      await flush(8)
       expect(renders).toBe(1)
     } finally {
       await f.dispose()
@@ -713,32 +708,32 @@ describe('direct pane surface renderer', () => {
         id: 'pending',
         render: () => { renders += 1; return ui.actions({ id: 'actions', items: [{ id: 'go', label: 'Go' }] }) },
       })
-      await flush()
+      await flush(8)
       const target = entry(f.runtime.surfaces, 'pending').focusTarget!
       f.runtime.runtime.setFocus(target)
 
       const retainedTasks: VoidFunction[] = []
       const retainedQueue = vi.spyOn(globalThis, 'queueMicrotask').mockImplementation(task => { retainedTasks.push(task) })
       target.handleInput?.('\r')
-      await flush()
+      await flush(8)
       target.handleInput?.('\r')
-      await flush()
+      await flush(8)
       f.register({ id: 'sibling', render: () => ui.text('sibling') })
       expect(retainedTasks.length).toBeGreaterThanOrEqual(1)
       while (retainedTasks.length > 0) retainedTasks.shift()!()
       retainedQueue.mockRestore()
-      await flush()
+      await flush(8)
       expect(renders).toBe(1)
 
       const droppedTasks: VoidFunction[] = []
       const droppedQueue = vi.spyOn(globalThis, 'queueMicrotask').mockImplementation(task => { droppedTasks.push(task) })
       target.handleInput?.('\r')
-      await flush()
+      await flush(8)
       handle.dispose()
       expect(droppedTasks.length).toBeGreaterThanOrEqual(1)
       while (droppedTasks.length > 0) droppedTasks.shift()!()
       droppedQueue.mockRestore()
-      await flush()
+      await flush(8)
       expect(renders).toBe(1)
     } finally {
       vi.restoreAllMocks()
@@ -759,24 +754,24 @@ describe('direct pane surface renderer', () => {
           return result.promise.then(() => ({ kind: 'completed' as const }))
         } },
       })
-      await flush()
+      await flush(8)
       const oldComponent = entry(f.runtime.surfaces, 'replace').component as MayflyFocusable
       f.runtime.runtime.setFocus(oldComponent)
       oldComponent.handleInput?.('\r')
       oldComponent.handleInput?.('\r')
-      await flush()
+      await flush(8)
       expect(calls).toHaveLength(1)
       original.refresh()
-      await flush()
+      await flush(8)
       expect(calls[0]!.context.signal.aborted).toBe(false)
       calls[0]!.result.resolve()
-      await flush()
+      await flush(8)
 
       const refreshed = entry(f.runtime.surfaces, 'replace').focusTarget!
       f.runtime.runtime.setFocus(refreshed)
       refreshed.handleInput?.('\r')
       refreshed.handleInput?.('\r')
-      await flush()
+      await flush(8)
       expect(calls).toHaveLength(2)
       original.dispose()
       f.register({
@@ -787,12 +782,12 @@ describe('direct pane surface renderer', () => {
         narrow: 'hidden',
         render: () => ui.text('new pane'),
       })
-      await flush()
+      await flush(8)
       expect(calls[1]!.context.signal.aborted).toBe(true)
       calls[1]!.result.resolve()
-      await flush()
+      await flush(8)
       const replacementRows = entry(f.runtime.surfaces, 'replace').component.render(30)
-      expect(replacementRows[0]!.replace(/\x1b\[[0-9;]*m/gu, '')).toContain('╭ Replacement')
+      expect(plainText(replacementRows[0]!)).toContain('╭ Replacement')
       expect(replacementRows[1]).toContain('new pane')
       expect(replacementRows.at(-1)).toContain('╰')
       expect((oldComponent as MayflyFocusable).focused).toBe(false)
@@ -822,25 +817,25 @@ describe('direct pane surface renderer', () => {
           return result.promise.then(() => ({ kind: 'completed' as const }))
         } },
       })
-      await flush()
+      await flush(8)
       const target = entry(f.runtime.surfaces, 'abort').focusTarget!
       f.runtime.runtime.setFocus(target)
       target.handleInput?.('\r')
-      await flush()
+      await flush(8)
       await vi.advanceTimersByTimeAsync(30_000)
       expect(contexts[0]!.signal.aborted).toBe(false)
       expect(entries(f.runtime.surfaces).map(item => item.id)).toContain('abort')
       results[0]!.resolve()
-      await flush()
+      await flush(8)
       expect(renders).toBe(1)
 
       target.handleInput?.('\r')
-      await flush()
+      await flush(8)
       handle.dispose()
-      await flush()
+      await flush(8)
       expect(contexts[1]!.signal.aborted).toBe(true)
       results[1]!.resolve()
-      await flush()
+      await flush(8)
       expect(entries(f.runtime.surfaces).map(item => item.id)).not.toContain('abort')
     } finally {
       await f.dispose()
@@ -853,7 +848,7 @@ describe('direct pane surface renderer', () => {
       f.register({ id: 'header', placement: 'header', render: () => ui.actions({ id: 'h', items: [{ id: 'go', label: 'Header' }] }) })
       f.register({ id: 'left-passive', placement: 'left', render: () => ui.text('passive') })
       f.register({ id: 'bottom', render: () => ui.actions({ id: 'b', items: [{ id: 'go', label: 'Bottom' }] }) })
-      await flush()
+      await flush(8)
 
       f.keymap.invoke('mayfly.surface.next')
       expect(f.runtime.surfaces.focusedId).toBe('header')
@@ -901,14 +896,14 @@ describe('direct pane surface renderer', () => {
     try {
       const first = f.register({ id: 'a-remove', placement: 'left', render: () => ui.actions({ id: 'a', items: [{ id: 'go', label: 'A' }] }) })
       const second = f.register({ id: 'b-remove', placement: 'left', render: () => ui.actions({ id: 'b', items: [{ id: 'go', label: 'B' }] }) })
-      await flush()
+      await flush(8)
       f.keymap.invoke('mayfly.surface.next')
       expect(f.runtime.surfaces.focusedId).toBe('a-remove')
       first.dispose()
-      await flush()
+      await flush(8)
       expect(entries(f.runtime.surfaces).map(item => item.id)).toEqual(['b-remove'])
       second.dispose()
-      await flush()
+      await flush(8)
       expect(entries(f.runtime.surfaces)).toEqual([])
     } finally {
       await f.dispose()
@@ -919,12 +914,12 @@ describe('direct pane surface renderer', () => {
     const f = await fixture()
     try {
       const handle = f.register({ id: 'hidden-remove', placement: 'left', render: () => ui.actions({ id: 'a', items: [{ id: 'go', label: 'A' }] }) })
-      await flush()
+      await flush(8)
       f.keymap.invoke('mayfly.surface.next')
       handle.setHidden(true)
-      await flush()
+      await flush(8)
       handle.dispose()
-      await flush()
+      await flush(8)
       expect(entries(f.runtime.surfaces)).toEqual([])
     } finally {
       await f.dispose()
@@ -941,7 +936,7 @@ describe('direct pane surface renderer', () => {
         f.root.mayflyUiInteraction.remove('pane', 'stale-pane')
       })
       f.register({ id: 'stale-pane', render: () => ui.text('stale') })
-      await flush()
+      await flush(8)
       expect(entries(f.runtime.surfaces).some(candidate => candidate.id === 'stale-pane')).toBe(false)
     } finally {
       await f.dispose()
@@ -952,7 +947,7 @@ describe('direct pane surface renderer', () => {
     const f = await fixture()
     try {
       const handle = f.register({ id: 'retired-pane', render: () => ui.text('retired') })
-      await flush()
+      await flush(8)
       expect(entries(f.runtime.surfaces).some(candidate => candidate.id === 'retired-pane')).toBe(true)
       let disarm = false
       f.root.mayflyUiInteraction.subscribe(() => {
@@ -961,7 +956,7 @@ describe('direct pane surface renderer', () => {
         f.root.mayflyUiInteraction.remove('pane', 'retired-pane')
       })
       handle.set(ui.text('updated'))
-      await flush()
+      await flush(8)
       expect(entries(f.runtime.surfaces).some(candidate => candidate.id === 'retired-pane')).toBe(false)
     } finally {
       await f.dispose()
@@ -978,7 +973,7 @@ describe('direct pane surface renderer', () => {
         f.owner.dispose()
       })
       f.register({ id: 'late-pane', render: () => ui.text('late') })
-      await flush()
+      await flush(8)
       expect(entries(f.runtime.surfaces)).toHaveLength(0)
     } finally {
       await f.dispose()
@@ -989,7 +984,7 @@ describe('direct pane surface renderer', () => {
     const f = await fixture()
     try {
       const handle = f.register({ id: 'stale-render-pane', render: () => ui.text('initial') })
-      await flush()
+      await flush(8)
       const tasks: VoidFunction[] = []
       const queue = vi.spyOn(globalThis, 'queueMicrotask').mockImplementation(task => { tasks.push(task) })
 
@@ -1028,12 +1023,12 @@ describe('direct pane surface renderer', () => {
         f.register({ id: 'scoped', priority: 17, render: () => ({ kind: 'stack', direction: 'column', children: [{ node: ui.divider(), when: { minWidth: 1 } }, { node: ui.text('scoped') }] }) }),
         f.register({ id: 'plain', priority: 16, render: () => ui.text('plain') }),
       ]
-      await flush()
+      await flush(8)
       const leading = (id: string): unknown => (entry(f.runtime.surfaces, id).component as { leadingRule?: boolean }).leadingRule
       expect(['agents', 'todo', 'row', 'gapped', 'labelled', 'scoped', 'plain'].map(leading))
         .toEqual([true, true, false, false, false, false, false])
       for (const other of others) other.setHidden(true)
-      await flush()
+      await flush(8)
       const lane = f.runtime.surfaces.layout(120, 20).bottom!
       expect(renderSurfaceLane(lane, 40)).toHaveLength(7)
       const rows = renderSurfaceLane(lane, 40, 5)
@@ -1062,11 +1057,11 @@ describe('direct pane surface renderer', () => {
           ui.child(ui.text('narrow'), { when: { maxWidth: 19 } }),
         ]),
       })
-      await flush()
+      await flush(8)
       expect(entry(runtime.surfaces, 'responsive').component.render(30)).toContain('wide')
       runtime.resize(18, 20)
       handle.refresh()
-      await flush()
+      await flush(8)
       const rows = entry(runtime.surfaces, 'responsive').component.render(18)
       expect(rows).toContain('narrow')
       expect(rows.every(row => visibleWidth(row) <= 18)).toBe(true)
@@ -1082,14 +1077,14 @@ it('requests independent frames for pane loaders and releases their clock on rem
   try {
     const repaint = vi.spyOn(bench.runtime.runtime, 'requestRender')
     const handle = bench.register({ id: 'loading-pane', placement: 'bottom', render: () => ui.loader({ message: 'Loading' }) })
-    await flush()
+    await flush(8)
     const component = entry(bench.runtime.surfaces, 'loading-pane').component
     expect(component.render(40).join('\n')).toContain('⣾ Loading')
     repaint.mockClear()
     vi.advanceTimersByTime(100)
     expect(repaint).toHaveBeenCalledOnce()
     expect(component.render(40).join('\n')).toContain('⣽ Loading')
-    handle.dispose(); await flush()
+    handle.dispose(); await flush(8)
     repaint.mockClear()
     vi.advanceTimersByTime(800)
     expect(repaint).not.toHaveBeenCalled()

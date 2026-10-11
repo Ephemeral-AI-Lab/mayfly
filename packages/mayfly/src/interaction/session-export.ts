@@ -21,7 +21,7 @@ import type { CommandResult } from '@deepseek-ai/dsh-commands'
 import { AttachmentId } from '@deepseek-ai/dsh-attachment'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
-import type { TranscriptItem, TranscriptToolItem } from '../transcript/index.ts'
+import type { TranscriptItem, TranscriptToolItem } from '../transcript/types.ts'
 // Empty type imports carry the `commands` merge the registration uses, the
 // app-owned reader/action/projection merges every handler reads, and the
 // `sessionPersistence` merge the read path resolves.

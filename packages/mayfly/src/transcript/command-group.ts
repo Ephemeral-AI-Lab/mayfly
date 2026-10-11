@@ -8,8 +8,10 @@
  * @module @ephemeral-ai/mayfly/transcript/command-group
  */
 
-import { sanitizePluginText, type MayflyComponent, type MayflyComponents, type MayflySemanticColors } from '../core/index.ts'
-import { interpolateLocaleMessage, type CommandCallModel, type MayflyTranslate, type TranscriptCommandGroupModel } from '../frontend/index.ts'
+import { sanitizePluginText } from '../core/plugin-view.ts'
+import type { MayflyComponent, MayflyComponents, MayflySemanticColors } from '../core/types.ts'
+import { interpolateLocaleMessage, type MayflyTranslate } from '../frontend/locale.ts'
+import type { CommandCallModel, TranscriptCommandGroupModel } from '../frontend/models.ts'
 import { moreRowsHint } from './hints.ts'
 
 /** Tree rows kept in the collapsed card before the expand hint. */

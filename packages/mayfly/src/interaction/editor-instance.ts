@@ -8,7 +8,7 @@
 
 import { Service, type Context } from '@deepseek-ai/cordis'
 import type { MayflyFeedback } from '@ephemeral-ai/mayfly-ui'
-import type { MayflyAutocompleteProvider, MayflyEditor } from '../core/index.ts'
+import type { MayflyAutocompleteProvider, MayflyEditor } from '../core/types.ts'
 
 declare module '@deepseek-ai/cordis' {
   interface Context { mayflyPromptEditor: PromptEditorController }

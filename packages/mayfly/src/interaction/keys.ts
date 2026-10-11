@@ -20,7 +20,7 @@ import type { Context } from '@deepseek-ai/cordis'
 // Empty type import carries the `settings` Context merge and the
 // 'settings/document-updated' Events merge the live apply follows.
 import type { SettingsPathOp } from '@deepseek-ai/dsh-settings'
-import type { MayflyKeyAction, MayflyKeymap } from '../core/index.ts'
+import type { MayflyKeyAction, MayflyKeymap } from '../core/types.ts'
 import type {} from '../app/conversation-views.ts'
 import { createInteractionNotificationOwner } from './notifications.ts'
 import { currentMayflySettings } from './settings.ts'

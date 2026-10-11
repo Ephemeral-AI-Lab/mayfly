@@ -4,12 +4,12 @@ import { ui } from '../../../ui/src/index.ts'
 import { compileMayflyUiNode, MayflyUiSurfaceRuntime, compileMayflyUiSurfaceNode } from '../../src/core/ui-compiler.ts'
 import { UiSurfaceModel } from '../../src/core/ui-interaction-surface.ts'
 import { UiAnimationClock } from '../../src/core/ui-loader-animation.ts'
-import type { MayflyComponents, MayflySemanticColors } from '../../src/core/types.ts'
+import type { MayflyComponents } from '../../src/core/types.ts'
 import type { MayflyPresentation } from '../../src/core/presentation.ts'
 import { probeComponents } from '../design/probe.ts'
+import { plainColors } from '../helpers.ts'
 
-const identity = (value: string): string => value
-const colors = new Proxy({ logoGradient: [identity] }, { get: (target, key) => key === 'logoGradient' ? target.logoGradient : identity }) as unknown as MayflySemanticColors
+const colors = plainColors()
 
 function components(presentation: Partial<MayflyPresentation>): MayflyComponents {
   const base = probeComponents()

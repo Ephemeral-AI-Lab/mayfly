@@ -8,7 +8,7 @@
 
 import { describe, expect, it } from 'vitest'
 import { AttachmentId, type ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
-import type { MayflyComponents, MayflySemanticColors } from '../../src/core/index.ts'
+import type { MayflyComponents, MayflySemanticColors } from '../../src/core/types.ts'
 import {
   AssistantMessageComponent,
   ErrorMessageComponent,
@@ -28,35 +28,25 @@ import type {
   TranscriptUserItem,
 } from '../../src/transcript/types.ts'
 import { fakeMayflyComponents } from './helpers.ts'
+import { colorTag, plainColors } from '../helpers.ts'
 
 /** Identity colors: assertions see structure, not escape codes. */
-const id = (text: string): string => text
-const COLORS = {
-  text: id, textStrong: id, muted: id, textMuted: id, accent: id, primary: id, border: id,
-  borderFocus: id,
-  success: id, error: id, warning: id, selectedBg: id, roleUser: id, shellMode: id,
-  mdHeading: id, mdLink: id, mdLinkUrl: id, mdCode: id, mdCodeBlock: id,
-  mdCodeBlockBorder: id, mdQuote: id, mdQuoteBorder: id, mdHr: id, mdListBullet: id,
-  diffAdded: id, diffRemoved: id, diffAddedStrong: id, diffRemovedStrong: id,
-  diffGutter: id, diffMeta: id, diffAddedBg: id, diffRemovedBg: id,
-  modelHighlight: id, logoGradient: [],
-}
+const COLORS = plainColors()
 // Structurally satisfies MayflySemanticColors; declared where consumed.
 
 /** Tagged colors for role assertions. */
 function tagged(): MayflySemanticColors {
-  const tag = (letter: string) => (text: string): string => `[${letter}]${text}[/${letter}]`
-  return {
+    return {
     ...COLORS,
-    accent: tag('A'),
-    muted: tag('M'),
-    textMuted: tag('T'),
-    primary: tag('P'),
-    roleUser: tag('R'),
-    border: tag('B'),
-    success: tag('S'),
-    error: tag('E'),
-    warning: tag('W'),
+    accent: colorTag('A'),
+    muted: colorTag('M'),
+    textMuted: colorTag('T'),
+    primary: colorTag('P'),
+    roleUser: colorTag('R'),
+    border: colorTag('B'),
+    success: colorTag('S'),
+    error: colorTag('E'),
+    warning: colorTag('W'),
   }
 }
 

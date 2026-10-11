@@ -4,33 +4,22 @@
 // sequence must recover the user's prompt rather than the out-of-band JSON.
 
 import { createRequire } from 'node:module'
-import { existsSync, readdirSync, chmodSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import {
   assertDshVersion,
   cleanOutput,
   installIntoThrowawayProfile,
+  loadPty,
   registerCleanup,
   resolveDshBin,
+  sleep,
+  waiter,
 } from './smoke-lib.mjs'
 
 const require = createRequire(import.meta.url)
-const pty = require('node-pty')
+const pty = loadPty()
 const { Terminal: HeadlessTerminal } = require('@xterm/headless')
 const { startMockLlmServer } = require('@deepseek-ai/dsh-llm-mock-server')
-
-try {
-  const store = join(import.meta.dirname, '..', 'node_modules', '.pnpm')
-  if (existsSync(store)) {
-    for (const entry of readdirSync(store)) {
-      if (!entry.startsWith('node-pty@')) continue
-      const helper = join(store, entry, 'node_modules', 'node-pty', 'spawn-helper')
-      if (existsSync(helper) && (statSync(helper).mode & 0o111) === 0) chmodSync(helper, 0o755)
-    }
-  }
-} catch {
-  // The smoke reports spawn failures below; permission probing is best effort.
-}
 
 const dshBin = resolveDshBin()
 assertDshVersion(dshBin)
@@ -68,15 +57,7 @@ term.onData(data => {
 })
 term.onExit(({ exitCode: code }) => { exitCode = code })
 
-const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
-const deadline = Date.now() + 120_000
-async function waitFor(predicate, label) {
-  while (Date.now() < deadline) {
-    if (predicate()) return true
-    await sleep(100)
-  }
-  throw new Error(`timed out waiting for ${label}`)
-}
+const waitFor = waiter(Date.now() + 120_000, 100)
 
 async function screen() {
   await new Promise(resolve => vt.write('', resolve))
@@ -86,12 +67,12 @@ async function screen() {
 
 const clean = () => cleanOutput(out)
 try {
-  await waitFor(() => clean().includes('deepseek-flash'), 'statusline')
+  if (!(await waitFor(() => clean().includes('deepseek-flash'), 'statusline'))) throw new Error('statusline')
   term.write('history prompt\r')
-  await waitFor(() => clean().includes('turn-finished'), 'settled turn')
+  if (!(await waitFor(() => clean().includes('turn-finished'), 'settled turn'))) throw new Error('settled turn')
   await sleep(300)
 
-  await waitFor(() => clean().includes('[cordis:bleed-fixture]'), 'delayed Host console output')
+  if (!(await waitFor(() => clean().includes('[cordis:bleed-fixture]'), 'delayed Host console output'))) throw new Error('Host console output')
   if (!clean().includes('host-bleed-35')) throw new Error('large Host JSON did not reach the raw PTY stream')
 
   await sleep(250)
@@ -112,7 +93,7 @@ try {
   term.write('\x03')
   await sleep(400)
   term.write('\x03')
-  await waitFor(() => exitCode !== null, 'clean exit')
+  if (!(await waitFor(() => exitCode !== null, 'clean exit'))) throw new Error('clean exit')
 } catch (error) {
   console.error(`FAIL: ${error instanceof Error ? error.message : String(error)}`)
   console.error((await screen()).join('\n'))

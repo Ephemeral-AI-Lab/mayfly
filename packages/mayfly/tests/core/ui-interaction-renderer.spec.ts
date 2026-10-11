@@ -8,20 +8,19 @@ import * as provider from '../../../ui/src/provider.ts'
 import type { MayflyUiEventHandlers, MayflyUiNode } from '../../../ui/src/contracts.ts'
 import * as frontend from '../../src/frontend/index.ts'
 import { compileMayflyUiSurfaceNode, MayflyUiSurfaceRuntime, type MayflyUiCompilerOptions } from '../../src/core/ui-compiler.ts'
-import type { MayflyComponents, MayflyKeymap, MayflySemanticColors } from '../../src/core/types.ts'
+import type { MayflyComponents, MayflyKeymap } from '../../src/core/types.ts'
 import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/width.ts'
 import { createFakeEditor } from './fake-editor.ts'
 import { renderLayoutFrame } from '@earendil-works/pi-tui/dist/layout.js'
 import { ScrollView } from '@earendil-works/pi-tui'
 import type { LayoutBox } from '@earendil-works/pi-tui/dist/layout.js'
 import { ACTION_CANCEL, ACTION_SUBMIT } from '../../src/core/key-actions.ts'
+import { flush, plainBlock, plainColors, plainText } from '../helpers.ts'
 
 const cleanups: (() => Promise<unknown>)[] = []
 afterEach(async () => { for (const cleanup of cleanups.splice(0).reverse()) await cleanup() })
-const identity = (value: string) => value
-const colors = new Proxy({ logoGradient: [identity] }, { get: (_target, key) => key === 'logoGradient' ? [identity] : identity }) as unknown as MayflySemanticColors
+const colors = plainColors()
 const components = { createEditor: createFakeEditor, visibleWidth, truncateToWidth, wrapText: wrapTextWithAnsi } as MayflyComponents
-const flush = () => new Promise<void>(resolve => { setImmediate(resolve) })
 const scrollViews = (box: LayoutBox): ScrollView[] => [
   ...(box.scrollView === undefined ? [] : [box.scrollView]),
   ...box.children.flatMap(scrollViews),
@@ -571,7 +570,7 @@ describe('shared interaction compiler', () => {
       { id: 'approve', label: 'Approve' }, { id: 'reject', label: 'Reject' },
     ] }), { action: event => { if (event.kind === 'selection-accept') accepted.push(event.selectedIds[0]!); return { kind: 'completed' } } })
     const renderer = compile()
-    expect(renderer.compiled.component.render(80).join('\n').replace(/\x1b\[[0-9;]*m/gu, '')).toContain('1  Approve')
+    expect(plainBlock(renderer.compiled.component.render(80))).toContain('1  Approve')
     expect(renderer.compiled.component.render(80).at(-1)).toContain('1-2 focus')
     renderer.input('1')
     await flush()
@@ -719,7 +718,7 @@ describe('shared interaction compiler', () => {
     viewport.rows = 4
     const renderer = compile()
     renderer.input('\x1b[F')
-    const rows = renderer.compiled.component.render(40).join('\n').replace(/\x1b\[[0-9;]*m/gu, '')
+    const rows = plainBlock(renderer.compiled.component.render(40))
     expect(rows).toContain('9  Level 9')
     expect(rows).not.toContain('1  Level 9')
     expect(renderer.compiled.component.render(80).at(-1)).toContain('1-9 choose')
@@ -826,14 +825,14 @@ describe('shared interaction compiler', () => {
     // The surface renderer recompiles on each model revision, which re-seeds the field editor.
     renderer.runtime.dispose()
     renderer = compile()
-    expect(renderer.compiled.component.render(80).join('\n').replace(/\x1b\[[0-9;]*m/gu, '')).toContain('Name: base  (inherited)')
+    expect(plainBlock(renderer.compiled.component.render(80))).toContain('Name: base  (inherited)')
     expect(hints()).not.toContain('Delete')
     // An inherited value has nothing to reset until an edit overrides it.
     renderer.input('\x1b[B')
     expect(hints()).not.toContain('Delete')
     renderer.input('\x1b[C')
     expect(fields().mode).toMatchObject({ value: 'b', change: 'set' })
-    expect(renderer.compiled.component.render(80).join('\n').replace(/\x1b\[[0-9;]*m/gu, '')).toContain('Mode: ‹ B ›  (override)')
+    expect(plainBlock(renderer.compiled.component.render(80))).toContain('Mode: ‹ B ›  (override)')
     renderer.input('\x1b[3~')
     expect(fields().mode).toMatchObject({ value: 'a', change: 'unchanged' })
     // Without an origin, Delete restores the declared default.
@@ -851,7 +850,7 @@ describe('shared interaction compiler', () => {
     handle.set(form('C'), { reason: 'data' })
     const renderer = compile()
     // Tokens are three spaces apart.
-    expect(renderer.compiled.component.render(80).join('\n').replace(/\x1b\[[0-9;]*m/gu, '')).toContain('Use current value   Keep my changes')
+    expect(plainBlock(renderer.compiled.component.render(80))).toContain('Use current value   Keep my changes')
     expect(renderer.compiled.focusTarget!.restoreFocusIdentity?.({ pagePath: [], controlId: 'name', itemId: 'draft' })).toBe(true)
     expect(renderer.compiled.component.render(80).join('\n')).toContain('Keep my changes')
     renderer.input('\r')
@@ -919,7 +918,7 @@ describe('shared interaction compiler', () => {
     expect(renderer.compiled.component.render(80).join('\n')).toContain('Field 7')
     for (let index = 0; index < 7; index += 1) renderer.input('\x1b[A')
     const rows = renderer.compiled.component.render(80)
-    expect(rows[0]!.replace(/\x1b\[[0-9;]*m/gu, '')).toMatch(/^╭ Long form/u)
+    expect(plainText(rows[0]!)).toMatch(/^╭ Long form/u)
     expect(rows.join('\n')).toContain('Field 0')
     expect(rows.at(-1)).toMatch(/^╰/u)
     renderer.runtime.dispose()

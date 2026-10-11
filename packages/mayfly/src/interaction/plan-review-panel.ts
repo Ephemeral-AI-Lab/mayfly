@@ -3,7 +3,7 @@
  */
 import type { AskUserQuestionAnswer, AskUserQuestionItem, AskUserQuestionOption } from '@deepseek-ai/dsh-user-questions'
 import { ui, type MayflyUiActionReply, type MayflyUiEvent, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
-import type { MayflyTranslate } from '../frontend/index.ts'
+import type { MayflyTranslate } from '../frontend/locale.ts'
 import { copyTextToClipboard } from './clipboard-write.ts'
 
 interface PlanReviewChoices {

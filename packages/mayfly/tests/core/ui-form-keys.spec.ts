@@ -6,15 +6,15 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ui, type MayflyUiEvent, type MayflyUiNode } from '../../../ui/src/index.ts'
 import { MayflyUiSurfaceRuntime, compileMayflyUiSurfaceNode } from '../../src/core/ui-compiler.ts'
-import type { MayflyComponents, MayflySemanticColors } from '../../src/core/types.ts'
+import type { MayflyComponents } from '../../src/core/types.ts'
 import { UiSurfaceModel } from '../../src/core/ui-interaction-surface.ts'
 import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/width.ts'
 import { createFakeEditor } from './fake-editor.ts'
+import { plainBlock, plainColors } from '../helpers.ts'
 
-const identity = (value: string) => value
-const colors = new Proxy({ logoGradient: [identity] }, { get: (_target, key) => key === 'logoGradient' ? [identity] : identity }) as unknown as MayflySemanticColors
+const colors = plainColors()
 const components = { createEditor: createFakeEditor, visibleWidth, truncateToWidth, wrapText: wrapTextWithAnsi } as MayflyComponents
-const plain = (rows: readonly string[]): string => rows.join('\n').replace(/\x1b\[[0-9;]*m/gu, '').replace(/\x1b_[^\x07]*\x07/gu, '')
+const plain = plainBlock
 
 const DOWN = '\x1b[B'
 const UP = '\x1b[A'

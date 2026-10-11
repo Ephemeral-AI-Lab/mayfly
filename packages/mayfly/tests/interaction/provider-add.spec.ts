@@ -12,10 +12,10 @@ import { openProviderSetup } from '../../src/interaction/provider-add.ts'
 import { deriveKeyRef, normalizeBaseURL, providerProfile } from '../../src/interaction/provider-profile.ts'
 import { buildIndex, setModelsDevLoader } from '../../src/interaction/models-dev.ts'
 import { providerFixture, testHomeText } from './provider-fixture.ts'
+import { flush } from '../helpers.ts'
 
 const contexts: Context[] = []
 afterEach(async () => { setModelsDevLoader(undefined); for (const ctx of contexts.splice(0)) await ctx.fiber.dispose() })
-const flush = () => new Promise<void>(resolve => { setImmediate(resolve) })
 const address = (formId: string) => ({ pagePath: [{ controlId: 'provider-tabs', itemId: formId }], formId })
 
 async function setup(

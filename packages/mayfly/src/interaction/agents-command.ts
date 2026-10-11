@@ -20,6 +20,9 @@ import { conversationId } from '../app/conversation-views.ts'
 /** Stable Cordis plugin name. */
 export const name = 'mayfly-agents-command'
 
+/** How often an open `/agents` browser repaints its live rows while a child runs. */
+export const AGENTS_TICK_MS = 1_000
+
 /** Native and Mayfly services required by the browser and attach view. */
 export const inject = [
   'commands',
@@ -285,7 +288,7 @@ export function apply(ctx: Context): void {
         handle.set(view())
       }
       const live = next.some(entry => entry.kind === 'child' && entry.activity === 'running')
-      if (live && timer === undefined) { timer = setInterval(() => publish(true), 1000); timer.unref() }
+      if (live && timer === undefined) { timer = setInterval(() => publish(true), AGENTS_TICK_MS); timer.unref() }
       else if (!live && timer !== undefined) { clearInterval(timer); timer = undefined }
     }
     const relist = async (): Promise<void> => {

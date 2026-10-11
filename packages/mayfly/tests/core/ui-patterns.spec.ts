@@ -18,6 +18,7 @@ import { segmentFooter } from '../../src/core/ui-list-segment.ts'
 import type { MayflyFormField, MayflyListSegment } from '@ephemeral-ai/mayfly-ui'
 import type { MayflySemanticColors } from '../../src/core/types.ts'
 import { visibleWidth } from '../../src/core/width.ts'
+import { identity, plain, plainColors, plainText } from '../helpers.ts'
 
 /** The segment strip's footer line through the production painter. */
 const renderListSegment = (segment: MayflyListSegment, selectedId: string | undefined, width: number, colors: MayflySemanticColors): string =>
@@ -27,13 +28,11 @@ const renderListSegment = (segment: MayflyListSegment, selectedId: string | unde
 const renderFormField = (field: MayflyFormField, width: number, focus: PatternFocus, colors: MayflySemanticColors): string[] =>
   paintFormField({ field, decor: {}, width, focus, colors, text: key => key, labelWidth: visibleWidth(field.label) })
 
-const identity = (value: string): string => value
-const colors = new Proxy({ logoGradient: [identity] }, { get: (target, key) => key === 'logoGradient' ? target.logoGradient : identity }) as unknown as MayflySemanticColors
+const colors = plainColors()
 const idle: PatternFocus = { key: '', focused: false, marker: '|' }
 
 describe('private UI pattern painters', () => {
   it('renders distinct surface chrome and every badge tone', () => {
-    const plain = (rows: readonly string[]): string[] => rows.map(row => row.replace(/\x1b\[[0-9;]*m/gu, ''))
     const badges = [
       { text: 'default' },
       { text: 'muted', tone: 'muted' as const },
@@ -70,7 +69,6 @@ describe('private UI pattern painters', () => {
   })
 
   it('draws the active tab with an underline, folds a strip that does not fit, and marks wizard steps', () => {
-    const plain = (rows: readonly string[]): string[] => rows.map(row => row.replace(/\x1b\[[0-9;]*m/gu, ''))
     const node = ui.tabs({ id: 'tabs', activeId: 'a', items: [
       { id: 'a', label: 'Alpha', count: 12 },
       { id: 'b', label: 'Beta', disabled: true, count: 3 },
@@ -100,7 +98,6 @@ describe('private UI pattern painters', () => {
   })
 
   it('renders list marks, the focused cursor, groups, filtering, detail degradation, and windows', () => {
-    const plain = (rows: readonly string[]): string[] => rows.map(row => row.replace(/\x1b\[[0-9;]*m/gu, ''))
     const selectedBg = vi.fn(identity)
     const primary = vi.fn(identity)
     const tracked = new Proxy(colors, { get: (target, key, receiver) => key === 'selectedBg' ? selectedBg : key === 'primary' ? primary : Reflect.get(target, key, receiver) })
@@ -228,7 +225,6 @@ describe('private UI pattern painters', () => {
   })
 
   it('renders every form field state with validation on its own row', () => {
-    const plain = (rows: readonly string[]): string[] => rows.map(row => row.replace(/\x1b\[[0-9;]*m/gu, ''))
     const focus = { key: 'input', focused: true, marker: '|' }
     expect(plain(renderFormField({ kind: 'input', id: 'input', label: 'Input', value: '', placeholder: 'hint', error: 'required' }, 40, focus, colors))).toEqual([
       '→|Input: hint',
@@ -305,7 +301,7 @@ describe('private UI pattern painters', () => {
     const keyed = ui.actions({ id: 'keyed', items: [{ id: 'copy', label: 'Copy', key: 'c' }, { id: 'link', label: 'Link', key: 'ctrl+y' }, { id: 'wait', label: 'Wait', key: 'w', busy: true }] })
     expect(renderActions(keyed, 120, idle, colors, false)[0]).toContain('Copy (c)   Link (Ctrl+Y)   … Wait')
     // A row that does not fit keeps the tokens that do, at least one, and a muted `+N`.
-    const bare = (row: string | undefined): string => (row ?? '').replace(/\x1b\[[0-9;]*m/gu, '')
+    const bare = (row: string | undefined): string => plainText(row ?? '')
     expect(bare(renderActions(node, 24, idle, colors, false)[0])).toBe(' [ Run ]   Later   +3')
     expect(bare(renderActions(node, 14, idle, colors, false)[0])).toBe(' [ Run ]   +4')
     expect(visibleWidth(renderActions(node, 10, { key: 'danger', focused: true, marker: '|' }, colors, false)[0]!)).toBeLessThanOrEqual(10)

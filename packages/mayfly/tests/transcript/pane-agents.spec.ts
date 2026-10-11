@@ -21,6 +21,7 @@ import {
   turnStart,
 } from './helpers.ts'
 import { bootPanePlugin, type PanePluginHarness } from './pane-fakes.ts'
+import { fakeAgent } from '../helpers.ts'
 
 /** The frozen wall clock the injected timers report. */
 const T0 = 1_700_000_000_000
@@ -37,14 +38,6 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
-/** A fake agent whose session carries the id the admission keys match. */
-function fakeAgent(events: SessionEvent[]): Agent {
-  return {
-    id: PARENT,
-    session: { id: PARENT, events, header: {} },
-  } as unknown as Agent
-}
-
 /** One harness with the pane booted, the clock frozen, the agent held. */
 interface Rig extends PanePluginHarness {
   agent: Agent
@@ -52,7 +45,7 @@ interface Rig extends PanePluginHarness {
 
 async function boot(events: SessionEvent[] = []): Promise<Rig> {
   resetSeq()
-  const agent = fakeAgent(events)
+  const agent = fakeAgent(PARENT, { events })
   const harness = await bootPanePlugin(paneAgents, agent as never)
   return { ...harness, agent }
 }
@@ -138,7 +131,7 @@ describe('mayfly-pane-agents plugin', () => {
 
   it('survives result shapes without text and unparsable spawn arguments', async () => {
     const rig = await boot()
-    const agent = fakeAgent([turnStart(1)])
+    const agent = fakeAgent(PARENT, { events: [turnStart(1)] })
     rig.ctx.emit('test/session-changed', agent)
     // A result whose message carries no content at all.
     emitEvent(rig.ctx, agent.session, {
@@ -185,7 +178,7 @@ describe('mayfly-pane-agents plugin', () => {
     expect(harness.screen.paneLines(80)).toEqual([])
     // A result event without a toolCallId pairs nothing and throws
     // nothing (the pane's defensive guard).
-    const agent = fakeAgent([turnStart(1)])
+    const agent = fakeAgent(PARENT, { events: [turnStart(1)] })
     harness.ctx.emit('test/session-changed', agent)
     emitEvent(harness.ctx, agent.session, {
       type: 'tool/result', seq: 50, time: T0 + 1_000,
@@ -492,7 +485,7 @@ describe('mayfly-pane-agents plugin', () => {
     ])
     emitEvent(pending.ctx, child, childTurnStart())
     pending.screen.paneLines(140)
-    const next = fakeAgent([])
+    const next = fakeAgent(PARENT, { events: [] })
     ;(next as unknown as { id: string }).id = 'parent-next'
     pending.ctx.emit('test/session-changed', next)
     await pending.dispose()
@@ -518,7 +511,7 @@ describe('mayfly-pane-agents plugin', () => {
     ])
     const tick = intervals.mock.calls.find(([, ms]) => ms === paneAgents.PANE_TICK_MS)?.[0] as (() => void) | undefined
     expect(tick).toBeTypeOf('function')
-    const next = fakeAgent([])
+    const next = fakeAgent(PARENT, { events: [] })
     ;(next as unknown as { id: string }).id = 'parent-next'
     rig.ctx.emit('test/session-changed', next)
     tick?.()
@@ -584,7 +577,7 @@ describe('mayfly-pane-agents plugin', () => {
       toolResultEvent(1, 1, 'a1', 'started subagent 9f5c4086a0674b55b621c3eaf8b88c0e', { time: T0 + 5_000 }),
     ])
     expect(rig.screen.paneLines(140).join('\n')).toContain('done Survey')
-    const next = fakeAgent([])
+    const next = fakeAgent(PARENT, { events: [] })
     ;(next as unknown as { id: string }).id = 'parent-2'
     ;(next.session as unknown as { id: string }).id = 'parent-2'
     rig.ctx.emit('test/session-changed', next)

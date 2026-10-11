@@ -13,11 +13,11 @@ import { mountUiRegistryObservers, UiInteractionService } from '../../src/core/u
 import { MayflyLocaleService } from '../../src/frontend/locale.ts'
 import { renderRequest } from './request-fixture.ts'
 import type { Agent } from '@deepseek-ai/dsh-agent'
+import { flush } from '../helpers.ts'
 
 const record = { sessionId: SessionId('trace-test'), seq: 0, time: 1, type: 'user/message', surface: 'current' as const }
 const target = { type: 'user/message', seq: 0, time: 1, surfaceOp: 'append', data: { content: [{ type: 'text', text: 'hello' }], source: { kind: 'user' } } } as unknown as SessionEvent
 const contexts: Context[] = []
-const flush = () => new Promise<void>(resolve => { setImmediate(resolve) })
 
 describe('registerTraceCommand', () => {
   let copied: string[]

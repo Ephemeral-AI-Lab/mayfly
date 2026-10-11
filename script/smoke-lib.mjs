@@ -1,10 +1,13 @@
 // Shared bootstrap for the smoke scripts (D48): dsh discovery and version
-// alignment, the throwaway-profile install chain, and output cleaning.
-// Both smoke-happy.mjs (CI, pipe stdio) and smoke-pty.mjs (manual, real
-// pseudo-terminal) boot the same real process through these helpers.
+// alignment, the throwaway-profile install chain, output cleaning, and the
+// polling and node-pty loading every real-process smoke drives.
+// smoke-happy.mjs (CI, pipe stdio), smoke-pty-output-recovery.mjs (full
+// tier), smoke-pty.mjs (manual), and smoke-platform-pty.mjs (release) boot
+// the same real process through these helpers.
 
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -104,4 +107,46 @@ export function registerCleanup(home) {
   process.on('exit', () => {
     rmSync(home, { recursive: true, force: true })
   })
+}
+
+export const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
+
+/**
+ * A `waitFor` bound to one deadline: the shared budget across all of a smoke's
+ * polls. It reports `label` and returns false on timeout, so callers write
+ * `if (!(await waitFor(...))) throw ...` when a wait is fatal.
+ */
+export function waiter(deadline = Date.now() + 120_000, intervalMs = 200) {
+  return async (predicate, label) => {
+    while (Date.now() < deadline) {
+      if (predicate()) return true
+      await sleep(intervalMs)
+    }
+    console.error(`FAIL: timed out waiting for ${label}`)
+    return false
+  }
+}
+
+/**
+ * Load node-pty, first restoring the spawn-helper's execute bit where a pnpm
+ * store dropped it (the kimi-code fix-node-pty-perms pattern). The repair is a
+ * no-op on Linux; probing stays silent so the smoke reports its own failures.
+ */
+export function loadPty() {
+  try {
+    const store = join(root, 'node_modules', '.pnpm')
+    if (existsSync(store)) {
+      for (const entry of readdirSync(store)) {
+        if (!entry.startsWith('node-pty@')) continue
+        const helper = join(store, entry, 'node_modules', 'node-pty', 'spawn-helper')
+        if (existsSync(helper) && (statSync(helper).mode & 0o111) === 0) {
+          chmodSync(helper, 0o755)
+          console.log(`==> Restored spawn-helper execute bit under ${entry}`)
+        }
+      }
+    }
+  } catch {
+    // The smoke reports its own failures; permission probing stays silent.
+  }
+  return createRequire(import.meta.url)('node-pty')
 }

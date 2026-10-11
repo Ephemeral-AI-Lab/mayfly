@@ -23,10 +23,9 @@ import { FakeMayflyComponents, FakeKeymap, FakeScreen, FakeTheme } from './fakes
 import { renderRequest, flushRequests } from './request-fixture.ts'
 import type { MayflyComponent } from '../../src/core/types.ts'
 import { withOverrides, type Overrides } from '../fixture-fields.ts'
+import { plainText } from '../helpers.ts'
 
-function plain(rows: readonly string[]): readonly string[] {
-  return rows.map(row => row.replace(/\x1b\[[0-9;]*m/g, '').replace(/[~^#!?@]/g, ''))
-}
+const plain = (rows: readonly string[]): string[] => rows.map(row => plainText(row).replace(/[~^#!?@]/g, ''))
 
 type ChildEntry = MayflySubagentTreeEntry & { readonly kind: 'child' }
 
@@ -690,19 +689,27 @@ describe('mayfly-agents-command', () => {
   })
 
   it('ticks live rows on an interval and stops ticking once nothing runs', async () => {
-    const rig = await mountCommand()
-    rig.tree = [child('child')]
-    await execute(rig)
-    expect(browserRows(rig)).toContain('2k tok')
-    rig.facts.epochTokens = 8_192
-    await vi.waitFor(() => expect(browserRows(rig)).toContain('8k tok'), { timeout: 3_000 })
-    rig.liveAgents.delete('child')
-    rig.ctx.emit('agent/disposed', { agent: { id: SessionId('child'), session: rig.childSession } as unknown as Agent })
-    expect(browserRows(rig)).toContain('○ child')
-    rig.facts.epochTokens = 16_384
-    await new Promise(resolve => setTimeout(resolve, 1_100))
-    expect(browserRows(rig)).toContain('8k tok')
-    await rig.fiber.dispose()
+    // Fake the interval, not the async machinery: advancing past the tick repaints live facts, and a tick that was
+    // not stopped would still fire and repaint them.
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+    try {
+      const rig = await mountCommand()
+      rig.tree = [child('child')]
+      await execute(rig)
+      expect(browserRows(rig)).toContain('2k tok')
+      rig.facts.epochTokens = 8_192
+      await vi.advanceTimersByTimeAsync(agentsPlugin.AGENTS_TICK_MS)
+      expect(browserRows(rig)).toContain('8k tok')
+      rig.liveAgents.delete('child')
+      rig.ctx.emit('agent/disposed', { agent: { id: SessionId('child'), session: rig.childSession } as unknown as Agent })
+      expect(browserRows(rig)).toContain('○ child')
+      rig.facts.epochTokens = 16_384
+      await vi.advanceTimersByTimeAsync(2 * agentsPlugin.AGENTS_TICK_MS)
+      expect(browserRows(rig)).toContain('8k tok')
+      await rig.fiber.dispose()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('drops failed and stale relists and ignores non-subagent lifecycle events', async () => {

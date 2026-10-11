@@ -6,31 +6,18 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import type { MayflyComponents, MayflySemanticColors } from '../../src/core/index.ts'
-import type { CommandCallModel, TranscriptCommandGroupModel } from '../../src/frontend/index.ts'
+import type { MayflyComponents } from '../../src/core/types.ts'
+import type { CommandCallModel, TranscriptCommandGroupModel } from '../../src/frontend/models.ts'
 import {
   COMMAND_GROUP_ROW_LIMIT,
   CommandGroupComponent,
 } from '../../src/transcript/command-group.ts'
 import { fakeMayflyComponents } from './helpers.ts'
+import { plainColors, taggedColors } from '../helpers.ts'
 
-/** Identity colors: assertions see structure, not escape codes. */
-const id = (text: string): string => text
-const IDENTITY: MayflySemanticColors = {
-  text: id, textStrong: id, muted: id, textMuted: id, accent: id, primary: id, border: id,
-  borderFocus: id, success: id, error: id, warning: id, selectedBg: id, roleUser: id, shellMode: id,
-  mdHeading: id, mdLink: id, mdLinkUrl: id, mdCode: id, mdCodeBlock: id, mdCodeBlockBorder: id,
-  mdQuote: id, mdQuoteBorder: id, mdHr: id, mdListBullet: id,
-  diffAdded: id, diffRemoved: id, diffAddedStrong: id, diffRemovedStrong: id, diffGutter: id, diffMeta: id, diffAddedBg: id, diffRemovedBg: id,
-  modelHighlight: id, logoGradient: [],
-}
-// Structurally satisfies MayflySemanticColors; declared where consumed.
+const IDENTITY = plainColors()
 
-/** Tagged colors for role assertions. */
-function tagged(): MayflySemanticColors {
-  const tag = (letter: string) => (text: string): string => `[${letter}]${text}[/${letter}]`
-  return { ...IDENTITY, muted: tag('M'), textMuted: tag('T'), primary: tag('P'), success: tag('S'), error: tag('E'), warning: tag('W') }
-}
+
 
 const COMPONENTS: MayflyComponents = fakeMayflyComponents()
 
@@ -50,7 +37,7 @@ describe('CommandGroupComponent', () => {
       command({ callId: 'b', command: 'git status', exitCode: 0 }),
       command({ callId: 'c', activity: 'commands', detail: 'rm -rf dist', command: 'rm -rf dist', state: 'error', exitCode: 1, error: 'rm: cannot remove' }),
     ])
-    const lines = new CommandGroupComponent(model, tagged(), COMPONENTS).render(80)
+    const lines = new CommandGroupComponent(model, taggedColors(), COMPONENTS).render(80)
     expect(lines).toEqual([
       '',
       '[W]◐ [/W]\x1b[1m[P]Ran 3 commands[/P]\x1b[22m[E] · 1 failed[/E]',
@@ -64,14 +51,14 @@ describe('CommandGroupComponent', () => {
     const pending = new CommandGroupComponent(group([
       command({ callId: 'a', activity: 'commands', detail: 'pnpm build', command: 'pnpm build', state: 'pending' }),
       command({ callId: 'b', command: 'pnpm test' }),
-    ]), tagged(), COMPONENTS).render(80)
+    ]), taggedColors(), COMPONENTS).render(80)
     expect(pending[1]).toBe('● \x1b[1m[P]Running 2 commands…[/P]\x1b[22m')
     expect(pending[2]).toBe('  ├─ pnpm build [T]…[/T]')
 
     const failed = new CommandGroupComponent(group([
       command({ callId: 'a', activity: 'commands', detail: 'one', command: 'one', state: 'error', error: 'nope' }),
       command({ callId: 'b', activity: 'commands', detail: 'two', command: 'two', state: 'error' }),
-    ]), tagged(), COMPONENTS).render(80)
+    ]), taggedColors(), COMPONENTS).render(80)
     expect(failed[1]).toBe('[E]✗ [/E]\x1b[1m[E]Ran 2 commands · failed[/E]\x1b[22m')
     expect(failed[3]).toBe('  └─ two [E]✗[/E]')
   })

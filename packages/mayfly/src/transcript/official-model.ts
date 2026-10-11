@@ -9,15 +9,11 @@
 
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import type { Session } from '@deepseek-ai/dsh-session'
-import { interpolateLocaleMessage, type MayflyTranslate } from '../frontend/index.ts'
+import { interpolateLocaleMessage, type MayflyTranslate } from '../frontend/locale.ts'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-session-projection'
 import type { ToolCallView, ToolResult, ToolResultView } from '@deepseek-ai/dsh-tools'
-import {
-  type ConversationEntry,
-  type ConversationProjection,
-  type ConversationToolEntry,
-} from '../conversation/index.ts'
+import type { ConversationEntry, ConversationProjection, ConversationToolEntry } from '../conversation/types.ts'
 import type { LiveAssistantDraft } from '../conversation/live-stream.ts'
 import {
   SessionConversationFeed,
@@ -26,7 +22,7 @@ import {
   type ConversationProjectionSource,
   type LiveDraftSource,
 } from './conversation-feed.ts'
-import { freezeModel, type CommandCallModel, type ReadCallModel, type SearchCallModel, type TranscriptCommandGroupModel, type TranscriptEntryModel, type TranscriptModel, type TranscriptReadGroupModel, type TranscriptSearchGroupModel, type TranscriptTerminalModel, type TranscriptToolFamily, type TranscriptTurnModel, type TranscriptWebModel } from '../frontend/index.ts'
+import { freezeModel, type CommandCallModel, type ReadCallModel, type SearchCallModel, type TranscriptCommandGroupModel, type TranscriptEntryModel, type TranscriptModel, type TranscriptReadGroupModel, type TranscriptSearchGroupModel, type TranscriptTerminalModel, type TranscriptToolFamily, type TranscriptTurnModel, type TranscriptWebModel } from '../frontend/models.ts'
 import { createToolPresentationModel } from './tool-model.ts'
 import { createTranscriptModel } from './transcript-model.ts'
 import { ellipsize, parseToolArguments, resolveCallView, resolveResultView, type ToolPresentationSource } from './present.ts'

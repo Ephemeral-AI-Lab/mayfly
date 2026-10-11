@@ -20,9 +20,9 @@ import { UiSurfaceModel } from '../../src/core/ui-interaction-surface.ts'
 import { choiceSegment } from '../../src/core/ui-interaction-choice.ts'
 import type { MayflyUiEvent } from '../../../ui/src/index.ts'
 import { ADVERSARIAL, expectLinesFit, SCAN_WIDTHS } from './width-scan.ts'
+import { identity, plainColors } from '../helpers.ts'
 
-const identity = (value: string): string => value
-const colors = new Proxy({ logoGradient: [identity] }, { get: (target, key) => key === 'logoGradient' ? target.logoGradient : identity }) as unknown as MayflySemanticColors
+const colors = plainColors()
 
 function createTestEditor(): MayflyEditor {
   let value = ''

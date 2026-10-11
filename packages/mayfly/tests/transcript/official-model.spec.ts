@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { Session } from '@deepseek-ai/dsh-session'
 import type { ToolRuntime } from '@deepseek-ai/dsh-tools'
-import type { ConversationJson, ConversationProjection, ConversationToolEntry } from '../../src/conversation/index.ts'
+import type { ConversationJson, ConversationProjection, ConversationToolEntry } from '../../src/conversation/types.ts'
 import { conversationTranscriptModel, OfficialConversationModelSource } from '../../src/transcript/official-model.ts'
 import type { ConversationProjectionSource } from '../../src/transcript/conversation-feed.ts'
 import type { ToolPresentationSource } from '../../src/transcript/present.ts'

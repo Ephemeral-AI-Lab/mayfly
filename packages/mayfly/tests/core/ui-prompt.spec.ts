@@ -9,6 +9,7 @@ import { UiPromptEditor, paintPrompt, paintTokenStrip, pickPlaceholder, placehol
 import { validateMayflyUiNode } from '../../src/core/ui-validator.ts'
 import { truncateToWidth, visibleWidth } from '../../src/core/width.ts'
 import { createFakeEditor } from './fake-editor.ts'
+import { plain } from '../helpers.ts'
 
 /** A palette in which every token is its own SGR color, so a row's tones can be read back and its width is the text's. */
 const codes = new Map<string, number>()
@@ -18,7 +19,6 @@ const tone = (key: string, value: string): string => {
 }
 const colors = new Proxy({}, { get: (_target, key) => (value: string) => tone(String(key), value) }) as MayflySemanticColors
 const components = { visibleWidth, truncateToWidth, createEditor: createFakeEditor } as unknown as MayflyComponents
-const plain = (rows: readonly string[]): string[] => rows.map(row => row.replaceAll(CURSOR_MARKER, '').replace(/\x1b\[[0-9;]*m/gu, ''))
 
 const admit = (node: Omit<MayflyPromptNode, 'kind'>): MayflyPromptNode => {
   const result = validateMayflyUiNode(ui.prompt(node))

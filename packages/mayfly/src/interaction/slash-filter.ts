@@ -13,7 +13,7 @@
  * @module @ephemeral-ai/mayfly/interaction/slash-filter
  */
 
-import type { MayflyComponents } from '../core/index.ts'
+import type { MayflyComponents } from '../core/types.ts'
 
 /** The command-registry shape the filter reads. */
 interface SlashCommandText {

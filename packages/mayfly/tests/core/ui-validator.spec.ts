@@ -43,7 +43,7 @@ describe('validateMayflyUiNode', () => {
   it.each([
     [null, 'object'],
     [[], 'object'],
-    [new Date(), 'plain object'],
+    [new Date(0), 'plain object'],
     [{ kind: 'text' }, 'required'],
     [{ kind: 'text', content: 1 }, 'string'],
     [{ kind: 'rich-text', spans: [{ text: 'x', styles: ['strong', 'strong'] }] }, 'styles contains duplicates'],

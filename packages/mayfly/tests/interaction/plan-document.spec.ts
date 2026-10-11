@@ -5,7 +5,7 @@ import { Context } from '@deepseek-ai/cordis'
 import type { AskUserQuestionItem } from '@deepseek-ai/dsh-user-questions'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { MayflyUiNode } from '../../../ui/src/index.ts'
-import type { MayflyComponent } from '../../src/core/index.ts'
+import type { MayflyComponent } from '../../src/core/types.ts'
 import { mountPlanDocument, planDocumentNode } from '../../src/interaction/plan-document.ts'
 import { FakeMayflyComponents, FakeScreen, FakeTheme } from './fakes.ts'
 

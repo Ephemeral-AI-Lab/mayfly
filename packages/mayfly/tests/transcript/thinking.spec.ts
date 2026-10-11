@@ -11,32 +11,21 @@ import { ThinkingComponent, THINKING_PREVIEW_LINES } from '../../src/transcript/
 import { interpolateLocaleMessage } from '../../src/frontend/locale.ts'
 import { TRANSCRIPT_LOCALE } from '../../src/transcript/locale.ts'
 import { STREAMING_RENDER_MAX_CHARS } from '../../src/transcript/components.ts'
-import type { MayflySemanticColors } from '../../src/core/index.ts'
+import type { MayflySemanticColors } from '../../src/core/types.ts'
 import type { TranscriptThinkingItem } from '../../src/transcript/types.ts'
 import { fakeMayflyComponents } from './helpers.ts'
+import { colorTag, plain, plainColors } from '../helpers.ts'
 
-/** Identity colors: assertions see structure, not escape codes. */
-const id = (text: string): string => text
-const COLORS = {
-  text: id, textStrong: id, muted: id, textMuted: id, accent: id, primary: id, border: id,
-  borderFocus: id,
-  success: id, error: id, warning: id, selectedBg: id, roleUser: id, shellMode: id,
-  mdHeading: id, mdLink: id, mdLinkUrl: id, mdCode: id, mdCodeBlock: id,
-  mdCodeBlockBorder: id, mdQuote: id, mdQuoteBorder: id, mdHr: id, mdListBullet: id,
-  diffAdded: id, diffRemoved: id, diffAddedStrong: id, diffRemovedStrong: id,
-  diffGutter: id, diffMeta: id, diffAddedBg: id, diffRemovedBg: id,
-  modelHighlight: id, logoGradient: [],
-}
+const COLORS = plainColors()
 // Structurally satisfies MayflySemanticColors; declared where consumed.
 
 /** Tagged colors for role assertions. */
 function tagged(): MayflySemanticColors {
-  const tag = (letter: string) => (text: string): string => `[${letter}]${text}[/${letter}]`
   return {
     ...COLORS,
-    muted: tag('M'),
-    textMuted: tag('T'),
-    primary: tag('P'),
+    muted: colorTag('M'),
+    textMuted: colorTag('T'),
+    primary: colorTag('P'),
   }
 }
 
@@ -53,7 +42,6 @@ describe('ThinkingComponent', () => {
     const wrap = vi.spyOn(components, 'wrapText')
     const long = `${'earlier reasoning line\n'.repeat(400)}penultimate thought\nfinal thought`
     const live = new ThinkingComponent(thinkingItem({ text: long, streaming: true }), COLORS, components)
-    const plain = (rows: readonly string[]): string[] => rows.map(row => row.replace(/\x1b\[[0-9;]*m/gu, ''))
     expect(plain(live.render(40))).toEqual(['', '✻ penultimate thought', '  final thought'])
     expect(wrap.mock.calls.every(([text]) => text.length < 400)).toBe(true)
     // A tail of trailing blank lines falls back to the whole text.

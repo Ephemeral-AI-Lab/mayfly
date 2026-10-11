@@ -12,9 +12,9 @@ import * as commands from '../../src/interaction/commands-plugin.ts'
 import { InteractionStateService } from '../../src/interaction/runtime-state.ts'
 import { DEFAULT_SETTINGS } from '../../src/interaction/settings.ts'
 import { fakeConversations } from './fakes.ts'
+import { flush } from '../helpers.ts'
 
 const roots: Context[] = []
-const flush = () => new Promise<void>(resolve => { setImmediate(resolve) })
 afterEach(async () => { for (const ctx of roots.splice(0).reverse()) await ctx.fiber.dispose() })
 
 async function setup() {

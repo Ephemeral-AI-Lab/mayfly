@@ -19,13 +19,12 @@ import { declaredWidthOf, findMarkerRow, isVirtualRows, materializedRows, prepar
 import { createWorkCounters, type MayflyWorkCounters } from '../../src/core/ui-work-counters.ts'
 import type { MayflyComponents, MayflySemanticColors } from '../../src/core/types.ts'
 import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/width.ts'
+import { plainText } from '../helpers.ts'
 
 /** The leaf's rows materialized through its production row source. */
 const contentNodeRows = (node: WindowedContentNode, width: number, env: ContentRowsEnv): string[] =>
   virtualRows(contentNodeSource(node, width, env))
 
-const ANSI = /\x1b(?:\][^\x07]*(?:\x07|\x1b\\)|\[[0-?]*[ -/]*[@-~])/gu
-const strip = (row: string): string => row.replace(ANSI, '')
 
 const components = {
   visibleWidth,
@@ -79,7 +78,7 @@ describe('contentNodeSource', () => {
     expect(materializedRows(rows)).toBe(0)
     // Reading one row paints its whole segment, nothing else.
     const at = CONTENT_SEGMENT_LINES + 5
-    expect(strip(rows[at]!)).toContain(`line ${String(at)}`)
+    expect(plainText(rows[at]!)).toContain(`line ${String(at)}`)
     expect(env.counters.segmentsPainted).toBe(1)
     expect(materializedRows(rows)).toBe(1)
     // The facade retains what it produced; a second read is free.
@@ -112,9 +111,9 @@ describe('contentNodeSource', () => {
     const { rows, env } = source(node, 40)
     expect(env.counters.linesEstimated).toBe(3)
     expect(rows.length).toBe(3)
-    expect(strip(rows[0]!)).toBe('a')
-    expect(strip(rows[1]!)).toBe('bc')
-    expect(strip(rows[2]!)).toBe('de')
+    expect(plainText(rows[0]!)).toBe('a')
+    expect(plainText(rows[1]!)).toBe('bc')
+    expect(plainText(rows[2]!)).toBe('de')
     // The same node identity re-answers from its own index — the merged scan is not rebuilt.
     const more = contentNodeRows(node, 40, env.env)
     expect(env.counters.linesEstimated).toBe(3)
@@ -135,7 +134,7 @@ describe('contentNodeSource', () => {
     const { rows } = source(appended, 40)
     expect(reads).toBe(5)
     expect(rows.length).toBe(3)
-    expect(strip(rows[2]!)).toBe('c')
+    expect(plainText(rows[2]!)).toBe('c')
     // A node identity also memoizes its whole field index — neither the join nor a scan runs again.
     contentNodeRows(appended, 40, makeEnv().env)
     expect(reads).toBe(5)
@@ -150,7 +149,7 @@ describe('contentNodeSource', () => {
     const allRows = (chunks: readonly { text: string }[], width: number, at: ContentRowsEnv): string[] => {
       const rows = contentNodeRows({ kind: 'code', code: chunks } as WindowedContentNode, width, at)
       prepareRows(rows, 0, rows.length)
-      return Array.from({ length: rows.length }, (_, row) => strip(rows[row]!))
+      return Array.from({ length: rows.length }, (_, row) => plainText(rows[row]!))
     }
     allRows(feed, 60, made.env)
     const built = made.counters.linesEstimated
@@ -208,7 +207,7 @@ describe('contentNodeSource', () => {
     prepareRows(rows, 0, 5)
     const painted = env.counters.segmentsPainted
     expect(painted).toBeGreaterThan(0)
-    expect(strip(rows[0]!)).not.toBe('')
+    expect(plainText(rows[0]!)).not.toBe('')
     expect(env.counters.segmentsPainted).toBe(painted)
     // The same node at the same width answers from the renderer's cache, not a repaint.
     const again = contentNodeRows(node, 20, env.env)
@@ -220,10 +219,10 @@ describe('contentNodeSource', () => {
     const content = Array.from({ length: 50 }, (_, index) => `row ${String(index)}`).join('\n')
     const { rows } = source({ kind: 'text', content }, 20, 10)
     expect(rows.length).toBe(11)
-    expect(strip(rows[10]!)).toBe('…40')
+    expect(plainText(rows[10]!)).toBe('…40')
     const full = unclampedRows(rows)
     expect(full.length).toBe(50)
-    expect(strip(full[49]!)).toBe('row 49')
+    expect(plainText(full[49]!)).toBe('row 49')
   })
 
   it('contains a throwing paint into an error row for that segment and reports it once', () => {
@@ -235,7 +234,7 @@ describe('contentNodeSource', () => {
     const env: ContentRowsEnv = { ...held.env, components: throwing }
     const content = Array.from({ length: CONTENT_SEGMENT_LINES * 4 }, (_, index) => index === 3 ? 'explodes' : `line ${String(index)} ${'x'.repeat(30)}`).join('\n')
     const rows = contentNodeRows({ kind: 'text', content }, 40, env)
-    const materialized = [...rows].map(strip)
+    const materialized = [...rows].map(plainText)
     // The segment holding 'explodes' collapses to one error row; the facade follows the shrunken row map, so the next
     // segment's first line follows the error row and the walk ends on the document's last line, not on blanks.
     expect(materialized[0]).toBe('<error>paint blew up</error>')
@@ -261,7 +260,7 @@ describe('contentNodeSource', () => {
     // only drift from a continuous wrap is a short seam row where a boundary lands inside one.
     const long = 'x'.repeat(40_000)
     const { rows } = source({ kind: 'code', code: long }, 100)
-    const painted = [...rows].map(strip)
+    const painted = [...rows].map(plainText)
     expect(painted.join('')).toBe(long)
     expect(painted.every(row => row.length > 0)).toBe(true)
     expect(painted.length - Math.ceil(40_000 / 100)).toBeLessThanOrEqual(Math.ceil(40_000 / 16_384))
@@ -269,7 +268,7 @@ describe('contentNodeSource', () => {
 
   it('numbers only the first wrapped row of a code line and paints the language header', () => {
     const { rows } = source({ kind: 'code', code: `${'a'.repeat(90)}\nshort`, language: 'ts', numbered: true }, 60)
-    const materialized = [...rows].map(strip)
+    const materialized = [...rows].map(plainText)
     expect(materialized[0]).toBe('ts')
     // Two source lines → a one-digit gutter: ' 1 │ '.
     expect(materialized[1]).toMatch(/^ *1 │ a+$/u)
@@ -287,7 +286,7 @@ describe('contentNodeSource', () => {
       ],
     }
     const { rows } = source(node, 40)
-    const materialized = [...rows].map(strip)
+    const materialized = [...rows].map(plainText)
     expect(materialized[0]).toBe('short:               v1')
     expect(materialized[1]).toMatch(/^a-much-longer-label:/u)
     expect(materialized.join('')).toContain('x'.repeat(60))
@@ -299,7 +298,7 @@ describe('contentNodeSource', () => {
       { text: 'plain ', styles: ['strong'] },
       { text: 'accented', tone: 'accent', styles: ['italic'] },
     ] }, 80)
-    const materialized = [...rows].map(strip)
+    const materialized = [...rows].map(plainText)
     expect(materialized).toEqual(['plain accented'])
     const truncated = source({ kind: 'rich-text', overflow: 'truncate', spans: [{ text: 'long '.repeat(30).trim() }] }, 10)
     expect(visibleWidth(truncated.rows[0]!)).toBeLessThanOrEqual(10)
@@ -335,9 +334,9 @@ describe('contentNodeSource', () => {
     expect(painted).toBeGreaterThan(10)
     expect(cache.bytes).toBeLessThanOrEqual(MAYFLY_CONTENT_CACHE_BYTES)
     // Evicted segments still answer: cold reads repaint rather than corrupt.
-    expect(strip(rows[0]!)).toContain('line 000000')
-    expect(strip(rows[12_345]!)).toContain('line 012345')
-    expect(strip(rows[rows.length - 1]!)).toContain('line 026999')
+    expect(plainText(rows[0]!)).toContain('line 000000')
+    expect(plainText(rows[12_345]!)).toContain('line 012345')
+    expect(plainText(rows[rows.length - 1]!)).toContain('line 026999')
   })
 
   it('paints a diff only in the chunks a window reads, its length exact from the hunk model', () => {
@@ -351,7 +350,7 @@ describe('contentNodeSource', () => {
     expect(env.counters.segmentsPainted).toBe(0)
     // One row read paints its ≤64-line chunk only.
     const at = CONTENT_SEGMENT_LINES + 5
-    expect(strip(rows[at]!)).toContain(`old ${String(at)}`)
+    expect(plainText(rows[at]!)).toContain(`old ${String(at)}`)
     expect(env.counters.segmentsPainted).toBe(1)
     // The whole materialized facade is row-for-row the eager painter's output.
     const eager = paintDiffRows(alignDiffLines(before, after), 40, components, DARK_COLORS)
@@ -362,7 +361,7 @@ describe('contentNodeSource', () => {
     const node: WindowedContentNode = { kind: 'diff', before: 'a\nb\nc', after: 'a\nx\nc' }
     const { rows, env } = source(node, 40)
     expect(env.counters.segmentsPainted).toBeGreaterThan(0)
-    expect([...rows].map(row => strip(row).trimEnd())).toEqual(['    1   1 │   a', '    2     │ − b', '        2 │ + x', '    3   3 │   c'])
+    expect([...rows].map(row => plainText(row).trimEnd())).toEqual(['    1   1 │   a', '    2     │ − b', '        2 │ + x', '    3   3 │   c'])
     // The alignment lives on the node: a second width repaints the same kept rows without re-aligning.
     const aligned = env.counters.linesEstimated
     contentNodeRows(node, 60, env.env)
@@ -374,10 +373,10 @@ describe('contentNodeSource', () => {
     const after = Array.from({ length: 30 }, (_, index) => `w${String(index)}`).join('\n')
     const { rows } = source({ kind: 'diff', before, after }, 40, 10)
     expect(rows.length).toBe(11)
-    expect(strip(rows[10]!)).toBe('…50')
+    expect(plainText(rows[10]!)).toBe('…50')
     const full = unclampedRows(rows)
     expect(full.length).toBe(60)
-    expect(strip(full[59]!).trimEnd()).toBe('       30 │ + w29')
+    expect(plainText(full[59]!).trimEnd()).toBe('       30 │ + w29')
   })
 
   it('maps document offsets to rows through segmented and lifted sources', () => {
@@ -389,7 +388,7 @@ describe('contentNodeSource', () => {
     const seg = rowSourceOf(rows)!
     const offset = text.indexOf('L90\n')
     const row = seg.rowOf!(offset)
-    expect(strip(rows[row]!)).toContain('L90')
+    expect(plainText(rows[row]!)).toContain('L90')
     expect(seg.offsetOf!(row)).toBeLessThanOrEqual(offset)
     expect(seg.offsetOf!(0)).toBe(0)
     const lifted = rowSourceOf(source({ kind: 'code', language: 'ts', code: 'a\nb' }, 10).rows)!
@@ -441,7 +440,7 @@ describe('contentNodeSource', () => {
     const rows = contentNodeRows({ kind: 'rich-text', spans }, 40, env.env)
     const materialized = [...rows]
     for (const row of materialized) expect(visibleWidth(row)).toBeLessThanOrEqual(40)
-    const joined = materialized.map(strip).join('')
+    const joined = materialized.map(plainText).join('')
     for (const probe of [...tones, '中'.repeat(60), 'é'.repeat(60), '👨‍👩‍👧', 'x'.repeat(100), 'y'.repeat(100)]) expect(joined).toContain(probe)
   })
 
@@ -453,7 +452,7 @@ describe('contentNodeSource', () => {
       50, 51, 52, 53, 54, 55, 90, 91, 92, 93, 94, 95, 96, 97, 100, 101, 102, 103, 104, 105, 106, 107]
     const run = `${codes.map(code => `\x1b[${String(code)}m`).join('')}text\x1b[Kmore\x1b`
     const rows = charWrap(run, 10, components)
-    expect(rows.map(strip).join('')).toBe('textmore\x1b')
+    expect(rows.map(plainText).join('')).toBe('textmore\x1b')
     for (const row of rows) expect(visibleWidth(row)).toBeLessThanOrEqual(10)
     // Reopened attributes keep later rows self-contained: an open channel re-emits at each row start.
     const carried = charWrap(`\x1b[31m${'a'.repeat(25)}\x1b[39mdone`, 10, components)
@@ -470,19 +469,19 @@ describe('contentNodeSource', () => {
 
   it('char-wraps zero-width-only content and a grapheme wider than the wrap', () => {
     const { rows } = source({ kind: 'text', content: `${'x'.repeat(20_000)}${'\u200b'.repeat(500)}` }, 40)
-    expect(strip(rows[rows.length - 1]!)).toContain('\u200b')
+    expect(plainText(rows[rows.length - 1]!)).toContain('\u200b')
     const wide = source({ kind: 'text', content: `${'中'.repeat(17_000)}` }, 1)
     for (const row of [...wide.rows].slice(0, 5)) expect(row.length).toBeGreaterThan(0)
   })
 
   it('char-wraps oversized values in fields, rich-text, and lifted code', () => {
     const fields = source({ kind: 'fields', rows: [{ label: 'v', value: [{ text: 'x'.repeat(20_000) }] }] }, 40)
-    expect([...fields.rows].map(strip).join('')).toContain('x'.repeat(100))
+    expect([...fields.rows].map(plainText).join('')).toContain('x'.repeat(100))
     const rich = source({ kind: 'rich-text', spans: [{ text: 'y'.repeat(20_000), tone: 'accent' }] }, 40)
-    expect([...rich.rows].map(strip).join('')).toBe('y'.repeat(20_000))
+    expect([...rich.rows].map(plainText).join('')).toBe('y'.repeat(20_000))
     // A cut crossing a numbered code line: the first cut of a line carries the number, later cuts stay blank.
     const code = source({ kind: 'code', code: `head\n${'z'.repeat(20_000)}\ntail`, language: 'py', numbered: true }, 40)
-    const painted = [...code.rows].map(strip)
+    const painted = [...code.rows].map(plainText)
     expect(painted[0]).toBe('py')
     expect(painted[1]).toMatch(/^ *1 │ head$/u)
     expect(painted[2]).toMatch(/^ *2 │ z+$/u)
@@ -493,7 +492,7 @@ describe('contentNodeSource', () => {
   it('paints middle-truncated text and rejects malformed rich-text spans', () => {
     const { rows } = source({ kind: 'text', content: `${'a'.repeat(100)} middle ${'b'.repeat(100)}`, overflow: 'middle' }, 30)
     expect(visibleWidth(rows[0]!)).toBeLessThanOrEqual(30)
-    expect(strip(rows[0]!)).toContain('…')
+    expect(plainText(rows[0]!)).toContain('…')
     expect(() => contentNodeSource({ kind: 'rich-text', spans: 'x' } as never, 20, makeEnv().env)).toThrow('rich-text spans')
     expect(() => contentNodeSource({ kind: 'rich-text', spans: [42] } as never, 20, makeEnv().env)).toThrow('rich-text span')
     expect(() => contentNodeSource({ kind: 'sections', sections: 'x' } as never, 20, makeEnv().env)).toThrow('sections must be')
@@ -509,7 +508,7 @@ describe('contentNodeSource', () => {
       { title: 'two', collapsed: true, body: { kind: 'text', content: 'hidden' } },
       { collapsed: true, body: { kind: 'text', content: 'hidden' } },
     ] }, 40)
-    const materialized = [...rows].map(strip)
+    const materialized = [...rows].map(plainText)
     expect(materialized).toContain('one')
     expect(materialized).toContain('two')
     expect(materialized.at(-1)).toBe('...')
@@ -520,7 +519,7 @@ describe('contentNodeSource', () => {
       { title: 'head', body: { kind: 'text', content: 'inner' } },
       { body: { kind: 'text', content: 'plain' } },
     ] }, 40)
-    const materialized = [...rows].map(strip)
+    const materialized = [...rows].map(plainText)
     expect(materialized[0]).toBe('head')
     expect(materialized[1]).toBe('  inner')
     expect(materialized[2]).toBe('plain')
@@ -542,7 +541,7 @@ describe('contentNodeSource', () => {
     const before = Array.from({ length: 10 }, (_, index) => `o${String(index)}`).join('\n')
     const after = Array.from({ length: 10 }, (_, index) => `n${String(index)}`).join('\n')
     const rows = contentNodeRows({ kind: 'diff', before, after }, 40, env)
-    expect(strip(rows[0]!)).toBe('<error>no</error>')
+    expect(plainText(rows[0]!)).toBe('<error>no</error>')
     expect(rows.length).toBe(1)
   })
 
@@ -565,13 +564,13 @@ describe('contentNodeSource', () => {
     }
     const node: WindowedContentNode = { kind: 'markdown', source: '# head\n\nbody' }
     const rows = contentNodeRows(node, 100, env)
-    expect(strip(rows[0]!)).toBe('<error>hr blew</error>')
+    expect(plainText(rows[0]!)).toBe('<error>hr blew</error>')
     expect(reports).toEqual(['hr blew'])
     for (let index = 0; index < 140; index += 1) cache.put(`pad${String(index)}`, ['x'.repeat(200)], 500)
     // The first facade holds its produced row; a fresh facade over the memoized source repaints the evicted
     // fragment and the deduplicated failure stays silent.
     const again = contentNodeRows(node, 100, env)
-    expect(strip(again[0]!)).toBe('<error>hr blew</error>')
+    expect(plainText(again[0]!)).toBe('<error>hr blew</error>')
     expect(reports).toEqual(['hr blew'])
   })
 
@@ -588,7 +587,7 @@ describe('contentNodeSource', () => {
       errorRows: message => [`<error>${message}</error>`],
     }
     const rows = contentNodeRows({ kind: 'diff', before: 'a', after: 'b'.repeat(100) }, 40, env)
-    expect(strip(rows[rows.length - 1]!)).toBe('<error>unknown render failure</error>')
+    expect(plainText(rows[rows.length - 1]!)).toBe('<error>unknown render failure</error>')
   })
 
   it('measures and clips a static row that still exceeds the leaf', () => {
@@ -600,7 +599,7 @@ describe('contentNodeSource', () => {
     ] }, 20)
     const materialized = [...rows]
     expect(visibleWidth(materialized[0]!)).toBeLessThanOrEqual(20)
-    expect(strip(materialized[2]!)).toBe('narrow')
+    expect(plainText(materialized[2]!)).toBe('narrow')
   })
 
   it('paints markdown units of every kind and maps offsets through them', () => {
@@ -612,7 +611,7 @@ describe('contentNodeSource', () => {
     const document = `# Title\n\nsome paragraph text\n\n${code}\n\n\`\`\`mermaid\ngraph TD; A-->B\n\`\`\`\n\n${mermaid}\n`
     const { rows } = source({ kind: 'markdown', source: document }, 60)
     const markdown = rowSourceOf(rows)!
-    const materialized = [...rows].map(strip)
+    const materialized = [...rows].map(plainText)
     expect(materialized.some(row => row.includes('Title'))).toBe(true)
     expect(materialized.some(row => row.includes('u'.repeat(60)))).toBe(true)
     expect(materialized.some(row => row.includes('q'.repeat(60)))).toBe(true)
@@ -648,7 +647,7 @@ describe('contentNodeSource', () => {
     const rows = contentNodeRows(node, 100, env)
     // A read located under the estimate falls through the failed unit's one error row and answers ''.
     expect(rows[40]!).toBe('')
-    expect(strip(rows[0]!)).toBe('<error>unknown render failure</error>')
+    expect(plainText(rows[0]!)).toBe('<error>unknown render failure</error>')
     expect(reports.length).toBeGreaterThan(0)
     // A prepare over the same failed unit does not re-report.
     rowSourceOf(rows)!.prepare!(0, rows.length)
@@ -661,7 +660,7 @@ describe('contentNodeSource', () => {
     const token = 'u'.repeat(5_000)
     const { rows } = source({ kind: 'markdown', source: `# t\n\n${token}\n\ntail` }, 40)
     prepareRows(rows, 0, rows.length)
-    const materialized = [...rows].map(strip)
+    const materialized = [...rows].map(plainText)
     expect(materialized.at(-1)).toContain('tail')
   })
 
@@ -679,7 +678,7 @@ describe('contentNodeSource', () => {
     expect(within.seekMarker!('nomarker', 0)).toBe(-1)
     const zero = rowSourceOf(source(node, 10, 0).rows)!
     expect(zero.length).toBe(1)
-    expect(strip(zero.row(0))).toBe('…3')
+    expect(plainText(zero.row(0))).toBe('…3')
     expect(zero.seekMarker!('ts', 0)).toBe(-1)
   })
 
@@ -687,7 +686,7 @@ describe('contentNodeSource', () => {
     const { rows } = source({ kind: 'code', language: 'typescript', code: 'ab\ncd' }, 80)
     expect(declaredWidthOf(rows)).toBe('typescript'.length)
     expect(findMarkerRow(rows, 'typescript')).toBe(-1)
-    expect([...rows].map(strip)).toEqual(['typescript', 'ab', 'cd'])
+    expect([...rows].map(plainText)).toEqual(['typescript', 'ab', 'cd'])
   })
 
   it('answers the rows an estimate correction moved, not the rows it read before', () => {
@@ -731,8 +730,8 @@ describe('contentNodeSource', () => {
     const first = contentNodeRows(node, 10, env.env)
     for (const width of [20, 30, 40, 50]) contentNodeRows(node, width, env.env)
     // The width-10 source evicted out of the width map still paints correctly on its own rows.
-    expect(strip(first[0]!)).toBe('a')
-    expect(strip(first[1]!)).toBe('b')
+    expect(plainText(first[0]!)).toBe('a')
+    expect(plainText(first[1]!)).toBe('b')
   })
 
   it('rejects malformed fields rows and sections inside nested bodies', () => {
@@ -750,7 +749,7 @@ describe('contentNodeSource', () => {
         { title: 'inner', body: { kind: 'text', content: 'deep' } },
       ] } },
     ] }
-    const materialized = [...source(nested, 40).rows].map(strip)
+    const materialized = [...source(nested, 40).rows].map(plainText)
     expect(materialized).toContain('  inner')
     expect(materialized.some(row => row.endsWith('deep'))).toBe(true)
   })
@@ -768,7 +767,7 @@ describe('contentNodeSource', () => {
     const after = Array.from({ length: 100 }, (_, index) => index === 5 ? 'new5' : index === 99 ? 'new99' : `b${String(index)}`).join('\n')
     const node: WindowedContentNode = { kind: 'diff', before, after, start: 40, hunkHeader: true, context: 1, maxRows: 6 }
     const { rows } = source(node, 40)
-    const materialized = [...rows].map(strip)
+    const materialized = [...rows].map(plainText)
     expect(materialized.some(row => row.includes('@@'))).toBe(true)
     expect(materialized.some(row => row.includes('⋯'))).toBe(true)
     expect(materialized.at(-1)!.trimEnd()).toContain('… +')
@@ -796,7 +795,7 @@ describe('contentNodeSource', () => {
     const node: WindowedContentNode = { kind: 'text', content: 'x'.repeat(5_000) }
     const failed = contentNodeRows(node, 40, env)
     expect(failed[60]!).toBe('')
-    expect(strip(failed[0]!)).toBe('<error>unknown render failure</error>')
+    expect(plainText(failed[0]!)).toBe('<error>unknown render failure</error>')
     const reported = reports.length
     expect(reported).toBeGreaterThan(0)
     // A prepare window past the end returns instead of walking off the segment map.
@@ -804,7 +803,7 @@ describe('contentNodeSource', () => {
     // After the error fragment evicts, a fresh facade repaints it through the deduplicated failure path.
     for (let index = 0; index < 140; index += 1) cache.put(`pad${String(index)}`, ['x'.repeat(200)], 500)
     const again = contentNodeRows(node, 40, env)
-    expect(strip(again[0]!)).toBe('<error>unknown render failure</error>')
+    expect(plainText(again[0]!)).toBe('<error>unknown render failure</error>')
     expect(reports.length).toBe(reported)
   })
 
@@ -817,7 +816,7 @@ describe('contentNodeSource', () => {
     contentNodeRows(fields, 40, env.env)
     const second = contentNodeRows(fields, 60, env.env)
     // The empty label keeps an empty column name, and the second width reuses the prepared shape.
-    expect(strip(second[0]!)).toBe('  v')
+    expect(plainText(second[0]!)).toBe('  v')
   })
 
   it('bounds a sections leaf without offset maps and reads inside its bound', () => {
@@ -828,8 +827,8 @@ describe('contentNodeSource', () => {
     ] }, 40, 3)
     const bounded = rowSourceOf(rows)!
     expect(rows.length).toBe(4)
-    expect(strip(rows[0]!)).toBe('one')
-    expect(strip(rows[3]!)).toBe('…3')
+    expect(plainText(rows[0]!)).toBe('one')
+    expect(plainText(rows[3]!)).toBe('…3')
     // A real-array source carries no offset map or marker seek — the elision spreads stay empty.
     expect(bounded.rowOf).toBeUndefined()
     expect(bounded.offsetOf).toBeUndefined()
@@ -870,12 +869,12 @@ describe('contentNodeSource', () => {
     // Row 10 lies past the one error row of the first chunk, so the read settles the map through each chunk it passes
     // (each reports its own failure once) and finds no row left to answer.
     expect(rows[10]!).toBe('')
-    expect(strip(rows[0]!)).toBe('<error>no</error>')
+    expect(plainText(rows[0]!)).toBe('<error>no</error>')
     expect(reports).toEqual(['no', 'no', 'no'])
     for (let index = 0; index < 140; index += 1) cache.put(`pad${String(index)}`, ['x'.repeat(200)], 500)
     // A fresh facade over the memoized source repaints the evicted chunk; the failure stays deduplicated.
     const again = contentNodeRows(node, 40, env)
-    expect(strip(again[0]!)).toBe('<error>no</error>')
+    expect(plainText(again[0]!)).toBe('<error>no</error>')
     expect(reports).toEqual(['no', 'no', 'no'])
   })
 })

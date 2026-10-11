@@ -31,6 +31,11 @@ test('the pr tier adds the checks the change claims, builds before packing, and 
   assert.ok(names(stepsFor(plan, 'pr', { root: ROOT })).includes('agent docs'))
   const manifest = scriptsOf(stepsFor(classifyChanges(['packages/mayfly/package.json']), 'pr', { root: ROOT }))
   assert.ok(manifest.indexOf('build:changed') < manifest.indexOf('check:pack'))
+  // The registry smoke installs what check:pack produced, so it always follows the pack.
+  for (const tier of ['pr', 'full']) {
+    const packed = scriptsOf(stepsFor(classifyChanges(['packages/mayfly/package.json']), tier, { root: ROOT }))
+    assert.equal(packed[packed.indexOf('check:pack') + 1], 'smoke:cli-registry', tier)
+  }
   assert.ok(scriptsOf(stepsFor(classifyChanges(['examples/header/package.json']), 'pr', { root: ROOT })).includes('check:examples'))
   const advised = commandOf(stepsFor(plan, 'pr', { root: ROOT, coverageAdvice: true }), 'specs')
   assert.equal(advised.kind, 'coverage')
@@ -41,7 +46,7 @@ test('the pr tier adds the checks the change claims, builds before packing, and 
 test('the full tier runs everything once: one vitest run with coverage, the scenarios, the smoke, and the perf ceilings on its own build', () => {
   const steps = stepsFor(classifyChanges(['website/index.md']), 'full', { root: ROOT })
   const scripts = scriptsOf(steps)
-  for (const name of ['test:repo-workflow', 'typecheck', 'lint', 'diagrams:check', 'build', 'check:lib', 'shots:check', 'check:agent-docs', 'check:examples', 'website:build', 'smoke:happy']) assert.ok(scripts.includes(name), name)
+  for (const name of ['test:repo-workflow', 'typecheck', 'lint', 'diagrams:check', 'build', 'check:lib', 'shots:check', 'check:agent-docs', 'check:examples', 'website:build', 'smoke:happy', 'smoke:pty:output']) assert.ok(scripts.includes(name), name)
   assert.deepEqual(commandOf(steps, 'perf ceilings').args, ['script/perf.mjs', '--assert'])
   assert.ok(!scripts.includes('check:pack'))
   const vitest = steps.filter(step => step.args.includes('vitest'))
@@ -145,6 +150,16 @@ test('a golden runs its scenario, a covered source the scenarios that cover it, 
   assert.deepEqual(machinery.tests.scenarios, [...GOLDEN_SCENARIOS].sort())
   assert.deepEqual(machinery.tests.perf, [...PERF_SCENARIOS].sort())
   assert.equal(machinery.tests.why['scenario idle'].at(-2), 'script/scenarios.mjs')
+  const everything = [...GOLDEN_SCENARIOS, ...PERF_SCENARIOS].sort()
+  for (const file of ['script/scenarios.mjs', 'script/scenarios/replays.mjs', 'script/scenarios/golden.mjs', 'script/workbench/profile.mjs']) {
+    const plan = classifyChanges([file])
+    assert.deepEqual([...plan.tests.scenarios, ...plan.tests.perf].sort(), everything, file)
+  }
+  // An import the command makes only to orchestrate is not machinery.
+  for (const file of ['script/change-files.mjs', 'script/smoke-lib.mjs', 'script/shots/app.mjs', 'packages/mayfly/package.json']) {
+    const plan = classifyChanges([file])
+    assert.deepEqual([...plan.tests.scenarios, ...plan.tests.perf], [], file)
+  }
   assert.equal(stepsFor(classifyChanges(['packages/mayfly/src/transcript/thinking.ts']), 'pr', { root: ROOT }).find(step => step.kind === 'scenarios').args[3], 'all')
 })
 

@@ -8,10 +8,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { openAuthorization } from '../../src/interaction/authorization-ui.ts'
 import { setClipboardOsc52Emitter, setClipboardTextWriter } from '../../src/interaction/clipboard-write.ts'
 import { providerFixture } from './provider-fixture.ts'
+import { flush } from '../helpers.ts'
 
 const contexts: Context[] = []
 afterEach(async () => { vi.useRealTimers(); setClipboardTextWriter(undefined); setClipboardOsc52Emitter(undefined); for (const ctx of contexts.splice(0)) await ctx.fiber.dispose() })
-const flush = () => new Promise<void>(resolve => { setImmediate(resolve) })
 const key = credentialKey('llm-pi-ai', 'test')
 
 async function setup(run: (session: AuthorizationSession, commit: () => Promise<void>) => Promise<void>, completed = vi.fn(async () => {})) {

@@ -12,7 +12,7 @@ import {
   type ToolResultMessage,
   type UserMessage,
 } from '@deepseek-ai/dsh-llm'
-import type { MayflyComponents, MayflyImage, MayflyMarkdown } from '../../src/core/index.ts'
+import type { MayflyComponents, MayflyImage, MayflyMarkdown } from '../../src/core/types.ts'
 import { SessionSeq, type SessionEvent } from '@deepseek-ai/dsh-session'
 
 // Width truth is pi-tui itself (D48): the fake codepoint counters that used

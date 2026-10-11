@@ -3,8 +3,8 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { ui, type MayflyListItem, type MayflyUiEvent, type MayflyUiNode } from '../../../ui/src/index.ts'
 import { createRealSurface, probeComponents, PROBE_PALETTE, type RealSurface } from '../design/probe.ts'
 import { compileMayflyUiNode } from '../../src/core/ui-compiler.ts'
+import { plainText } from '../helpers.ts'
 
-const plain = (text: string): string => text.replace(/\x1b\[[0-9;]*m/gu, '')
 const KEY = { up: '\x1b[A', down: '\x1b[B', right: '\x1b[C', left: '\x1b[D', enter: '\r', esc: '\x1b', space: ' ', delete: '\x1b[3~', ctrlU: '\x15', end: '\x1b[F', home: '\x1b[H', pageDown: '\x1b[6~' } as const
 
 const surfaces: RealSurface[] = []
@@ -16,7 +16,7 @@ function open(node: MayflyUiNode, width = 100) {
     components: probeComponents(), events: event => events.push(event), overrides: { onUnhandledEscape: () => {}, escapeHint: 'close' },
   })
   surfaces.push(surface)
-  const rows = (): string[] => surface.render().map(plain)
+  const rows = (): string[] => surface.render().map(plainText)
   const hint = (): string => rows().find(row => row.includes('Esc'))!.replace(/^│\s*|\s*│$/gu, '')
   const row = (text: string): string => rows().find(candidate => candidate.includes(text)) ?? ''
   return { surface, events, rows, hint, row }
@@ -83,13 +83,13 @@ describe('the hint row of a list', () => {
     expect(events.some(event => event.kind === 'activate' && event.actionId === 'install')).toBe(true)
     // Digits move the cursor until a search is open; after `/` they are text and no accelerator fires.
     surface.press('3')
-    expect(cursor(surface.render().map(plain))?.includes('Cherry') === true).toBe(true)
+    expect(cursor(surface.render().map(plainText))?.includes('Cherry') === true).toBe(true)
     surface.press('/')
     surface.press('o')
     surface.press('3')
     const count = events.filter(event => event.kind === 'activate').length
     expect(count).toBe(1)
-    expect(surface.render().map(plain).join('\n')).toContain('/ o3')
+    expect(surface.render().map(plainText).join('\n')).toContain('/ o3')
   })
 
   it('hints the strip, and Delete use default only while a row that inherits is pinned', () => {
@@ -250,7 +250,7 @@ describe('list keys', () => {
     ]), { components: probeComponents(), colors: PROBE_PALETTE, getViewport: () => ({ columns: 60, rows: 20 }), screenMode: 'alternate', emit: () => {} })
     if (!result.ok) throw new Error(result.message)
     result.value.focusTarget!.focused = true
-    const rows = result.value.component.render(60).map(plain)
+    const rows = result.value.component.render(60).map(plainText)
     expect(rows[0]).toMatch(/A +x ‹ y ›/u)
   })
 })

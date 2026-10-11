@@ -14,7 +14,7 @@
  */
 
 import type { Packument } from './registry.ts'
-import { interpolateLocaleMessage, type MayflyTranslate } from '../../frontend/index.ts'
+import { interpolateLocaleMessage, type MayflyTranslate } from '../../frontend/locale.ts'
 import type { ProfileFacts } from './profile.ts'
 import { compareVersions, isVersion, VERSION_FLOOR } from './version.ts'
 

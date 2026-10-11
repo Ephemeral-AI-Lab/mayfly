@@ -2,7 +2,7 @@
  * @module @ephemeral-ai/mayfly/interaction/session-workspaces-model
  */
 import type { MayflyListItem } from '@ephemeral-ai/mayfly-ui'
-import type { MayflyTranslate } from '../frontend/index.ts'
+import type { MayflyTranslate } from '../frontend/locale.ts'
 import { displayPath, homeRelative } from '../internal/paths.ts'
 import type { SessionListHeader } from './session-list-reads.ts'
 

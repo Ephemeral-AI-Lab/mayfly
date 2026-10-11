@@ -19,6 +19,8 @@ import {
   registerCleanup,
   resolveDshBin,
   root,
+  sleep,
+  waiter,
 } from './smoke-lib.mjs'
 
 const require = createRequire(import.meta.url)
@@ -66,16 +68,7 @@ dsh.stdout.on('data', chunk => { out += String(chunk) })
 dsh.stderr.on('data', chunk => { out += String(chunk) })
 dsh.on('exit', code => { exitCode = code })
 
-const deadline = Date.now() + 120_000
-const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
-async function waitFor(predicate, label) {
-  while (Date.now() < deadline) {
-    if (predicate()) return true
-    await sleep(200)
-  }
-  console.error(`FAIL: timed out waiting for ${label}`)
-  return false
-}
+const waitFor = waiter()
 
 const clean = () => cleanOutput(out)
 

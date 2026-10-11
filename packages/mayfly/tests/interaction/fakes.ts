@@ -18,31 +18,10 @@ import {
 // the same implementations the renderer runs.
 import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/width.ts'
 import { topRule } from '../../src/core/chrome.ts'
-import type {
-  MayflyAutocompleteItem,
-  MayflyAutocompleteProvider,
-  MayflyColorFn,
-  MayflyComponent,
-  MayflyComponents,
-  MayflyEditor,
-  MayflyEditorOptions,
-  MayflyEditorSubmitAttempt,
-  MayflyFocusable,
-  MayflyKeyAction,
-  MayflyKeymap,
-  MayflyMarkdown,
-  MayflyMarkdownOptions,
-  MayflyOverlayHandle,
-  MayflyOverlayOptions,
-  MayflyScreen,
-  MayflySelectItem,
-  MayflySelectList,
-  MayflySelectListOptions,
-  MayflySemanticColors,
-  MayflySubmittedDraft,
-  MayflyTheme,
-} from '../../src/core/index.ts'
-import type { MayflyScreenService, MayflyKeymapService, MayflyComponentsService } from '../../src/core/index.ts'
+import type { MayflyAutocompleteItem, MayflyAutocompleteProvider, MayflyColorFn, MayflyComponent, MayflyComponents, MayflyEditor, MayflyEditorOptions, MayflyEditorSubmitAttempt, MayflyFocusable, MayflyKeyAction, MayflyKeymap, MayflyMarkdown, MayflyMarkdownOptions, MayflyOverlayHandle, MayflyOverlayOptions, MayflyScreen, MayflySelectItem, MayflySelectList, MayflySelectListOptions, MayflySemanticColors, MayflySubmittedDraft, MayflyTheme } from '../../src/core/types.ts'
+import type { MayflyComponentsService } from '../../src/core/components.ts'
+import type { MayflyKeymapService } from '../../src/core/keymap.ts'
+import type { MayflyScreenService } from '../../src/core/screen.ts'
 // MayflyImage/MayflyImageOptions are not root-exported by core yet; source-plane
 // tests import them straight from core's src types.
 import type { MayflyFuzzyMatch, MayflyImage, MayflyImageOptions } from '../../src/core/types.ts'
@@ -55,6 +34,7 @@ import { SkillsCatalogService } from '../../src/interaction/skills-catalog.ts'
 import { InteractionStateService } from '../../src/interaction/runtime-state.ts'
 import { DEFAULT_SETTINGS } from '../../src/interaction/settings.ts'
 import { mountFakeScreenSlot } from '../core/fake-screen-slot.ts'
+import { identity } from '../helpers.ts'
 
 /** Decoded input sequences matching each key id the interaction batch binds. */
 const SEQUENCE_BY_KEY_ID: Record<string, string> = {
@@ -179,7 +159,6 @@ export class FakeKeymap implements MayflyKeymap {
   }
 }
 
-const identity = (text: string): string => text
 
 /** Marker-wrapping color functions so tests can assert which role styled a row. */
 function fakeColors(): MayflySemanticColors {

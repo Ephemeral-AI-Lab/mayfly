@@ -8,11 +8,10 @@ import { isVirtualRows, virtualRows } from '../../src/core/ui-rows.ts'
 import type { MayflySemanticColors } from '../../src/core/types.ts'
 import { createWorkCounters } from '../../src/core/ui-work-counters.ts'
 import { visibleWidth } from '../../src/core/width.ts'
+import { identity, plain, plainColors } from '../helpers.ts'
 
-const identity = (value: string): string => value
-const colors = new Proxy({ logoGradient: [identity] }, { get: (target, key) => key === 'logoGradient' ? target.logoGradient : identity }) as unknown as MayflySemanticColors
+const colors = plainColors()
 const tagged = new Proxy({ logoGradient: [identity] }, { get: (target, key) => key === 'logoGradient' ? target.logoGradient : (value: string) => `<${String(key)}>${value}</>` }) as unknown as MayflySemanticColors
-const plain = (rows: readonly string[]): string[] => rows.map(row => row.replace(/\x1b\[[0-9;]*m/gu, ''))
 const idle: PatternFocus = { key: '', focused: false, marker: '|' }
 const on = (key: string): PatternFocus => ({ key, focused: true, marker: '|' })
 

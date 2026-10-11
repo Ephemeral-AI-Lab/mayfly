@@ -12,10 +12,9 @@ import { createAdmissionCache } from '../../src/core/ui-validator.ts'
 import type { MayflyComponent, MayflyComponents, MayflySemanticColors } from '../../src/core/types.ts'
 import { createWorkCounters } from '../../src/core/ui-work-counters.ts'
 import { sliceByColumn, truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/width.ts'
+import { plainColors } from '../helpers.ts'
 
-const identity = (value: string): string => value
-const makeColors = (): MayflySemanticColors => new Proxy({ logoGradient: [identity] }, { get: (target, key) => key === 'logoGradient' ? target.logoGradient : identity }) as unknown as MayflySemanticColors
-const colors = makeColors()
+const colors = plainColors()
 const components = { visibleWidth, wrapText: wrapTextWithAnsi, truncateToWidth, sliceByColumn } as unknown as MayflyComponents
 
 const paint = (extra: Partial<PaintOptions> = {}): PaintOptions => ({ components, colors, reportRuntimeFailure: () => {}, ...extra })
@@ -165,7 +164,7 @@ describe('key hint memo', () => {
     expect(editing.at(-1)).not.toBe(first.at(-1))
     expect(counters.rowsPainted, 'a changed hint is painted').toBeGreaterThan(painted)
     const before = counters.rowsPainted
-    const recoloured = compile(makeColors())
+    const recoloured = compile(plainColors())
     recoloured.component.render(80)
     expect(counters.rowsPainted, 'a new palette never serves the old row').toBeGreaterThan(before)
     dispose()

@@ -4,9 +4,9 @@ import { ui } from '../../../ui/src/index.ts'
 import { formatChartNumber, renderChartRows } from '../../src/core/chart-renderer.ts'
 import type { MayflyComponents, MayflySemanticColors } from '../../src/core/types.ts'
 import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/width.ts'
+import { identity, plainColors } from '../helpers.ts'
 
-const identity = (text: string): string => text
-const colors = new Proxy({ logoGradient: [identity] }, { get: (target, key) => key === 'logoGradient' ? target.logoGradient : identity }) as unknown as MayflySemanticColors
+const colors = plainColors()
 const components = { visibleWidth, truncateToWidth, wrapText: wrapTextWithAnsi } as MayflyComponents
 
 const charts = [

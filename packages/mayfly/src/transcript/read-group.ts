@@ -10,8 +10,10 @@
  * @module @ephemeral-ai/mayfly/transcript/read-group
  */
 
-import { sanitizePluginText, type MayflyComponent, type MayflyComponents, type MayflySemanticColors } from '../core/index.ts'
-import { interpolateLocaleMessage, type MayflyTranslate, type ReadCallModel, type TranscriptReadGroupModel } from '../frontend/index.ts'
+import { sanitizePluginText } from '../core/plugin-view.ts'
+import type { MayflyComponent, MayflyComponents, MayflySemanticColors } from '../core/types.ts'
+import { interpolateLocaleMessage, type MayflyTranslate } from '../frontend/locale.ts'
+import type { ReadCallModel, TranscriptReadGroupModel } from '../frontend/models.ts'
 import { moreRowsHint } from './hints.ts'
 
 /** Tree rows kept in the collapsed card before the expand hint. */

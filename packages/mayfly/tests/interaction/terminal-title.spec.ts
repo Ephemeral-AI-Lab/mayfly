@@ -12,6 +12,7 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import * as terminalTitle from '../../src/interaction/terminal-title.ts'
 import { SessionFactsService } from '../../src/transcript/session-facts.ts'
 import { fakeMayflyContext, type FakeScreen } from './fakes.ts'
+import { fakeAgent } from '../helpers.ts'
 
 /** One logged title event, the slice of `SessionEvent` the fold reads. */
 interface FakeTitleEvent {
@@ -28,12 +29,9 @@ interface FakeSession {
  * A fake agent carrying one fake session; `session/event` emissions route
  * by this exact object.
  */
-function fakeAgent(titles: string[] = [], id = 'terminal-title-spec'): { agent: Agent, session: FakeSession } {
-  const session: FakeSession = {
-    events: titles.map(title => ({ type: 'session/title', data: { title } })),
-  }
-  const agent = { id, session, status: 'idle' } as unknown as Agent
-  return { agent, session }
+function titleAgent(titles: string[] = [], id = 'terminal-title-spec'): { agent: Agent, session: FakeSession } {
+  const agent = fakeAgent(id, { events: titles.map(title => ({ type: 'session/title', data: { title } })) })
+  return { agent, session: agent.session as unknown as FakeSession }
 }
 
 /**
@@ -90,25 +88,25 @@ describe('mayfly-terminal-title', () => {
   })
 
   it('mirrors the folded title once a session is attached', async () => {
-    const { agent } = fakeAgent(['fix the login bug'])
+    const { agent } = titleAgent(['fix the login bug'])
     const { screen } = await boot({ agent })
     expect(screen.titles).toEqual(['fix the login bug'])
   })
 
   it('falls back to the product name on a thin host without the service', async () => {
-    const { agent } = fakeAgent(['fix the login bug'])
+    const { agent } = titleAgent(['fix the login bug'])
     const { screen } = await boot({ agent, service: null })
     expect(screen.titles).toEqual(['mayfly'])
   })
 
   it('falls back to the product name while the session is untitled', async () => {
-    const { agent } = fakeAgent([])
+    const { agent } = titleAgent([])
     const { screen } = await boot({ agent })
     expect(screen.titles).toEqual(['mayfly'])
   })
 
   it('re-emits on the current session title events, deduped', async () => {
-    const { agent, session } = fakeAgent(['first'])
+    const { agent, session } = titleAgent(['first'])
     const { ctx, screen } = await boot({ agent })
     expect(screen.titles).toEqual(['first'])
 
@@ -147,16 +145,16 @@ describe('mayfly-terminal-title', () => {
   })
 
   it('ignores events from a session that is not the attached one', async () => {
-    const { agent } = fakeAgent(['first'])
+    const { agent } = titleAgent(['first'])
     const { ctx, screen } = await boot({ agent })
-    const foreign = fakeAgent(['foreign'])
+    const foreign = titleAgent(['foreign'])
     ctx.emit('session/event', foreign.session as never, { type: 'session/title', data: { title: 'foreign' }, seq: 1 } as never)
     expect(screen.titles).toEqual(['first'])
   })
 
   it('re-folds on session switches in both directions', async () => {
-    const first = fakeAgent(['first'], 'first')
-    const second = fakeAgent(['second'], 'second')
+    const first = titleAgent(['first'], 'first')
+    const second = titleAgent(['second'], 'second')
     const { ctx, screen, session } = await boot({ agent: first.agent })
     session.current = second.agent
     ctx.emit('test/session-binding-changed', { id: String(second.agent.id), session: second.session })

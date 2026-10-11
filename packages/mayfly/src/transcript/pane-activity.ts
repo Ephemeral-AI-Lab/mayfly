@@ -31,10 +31,10 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import type { MayflyInlineSpan, MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
-import type { MayflyComponents } from '../core/index.ts'
+import type { MayflyComponents } from '../core/types.ts'
 // Empty type import carries the app-owned opaque binding event merge.
 import type {} from '../app/index.ts'
-import type { ConversationFacts } from '../conversation/index.ts'
+import type { ConversationFacts } from '../conversation/types.ts'
 import { isSpawnToolName } from '../conversation/projection.ts'
 import type { OutputProgress } from '../conversation/types.ts'
 import { compactElapsedMs } from './agent-presentation.ts'
@@ -46,7 +46,7 @@ import { formatTokens } from './status-context.ts'
 import { buildTipRotation } from './status-tips.ts'
 import { toolDisplayName } from './tool-line.ts'
 import { STATUS_TIPS } from './tips-content.ts'
-import type { MayflyTranslate } from '../frontend/index.ts'
+import type { MayflyTranslate } from '../frontend/locale.ts'
 import {
   ACTIVITY_LOCALE,
   mountTranscriptLocale,

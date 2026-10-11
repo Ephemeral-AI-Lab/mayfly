@@ -17,8 +17,9 @@
  * @module @ephemeral-ai/mayfly/transcript/compaction
  */
 
-import { sanitizePluginText, type MayflyComponent, type MayflyComponents, type MayflySemanticColors } from '../core/index.ts'
-import { interpolateLocaleMessage, type MayflyTranslate } from '../frontend/index.ts'
+import { sanitizePluginText } from '../core/plugin-view.ts'
+import type { MayflyComponent, MayflyComponents, MayflySemanticColors } from '../core/types.ts'
+import { interpolateLocaleMessage, type MayflyTranslate } from '../frontend/locale.ts'
 import type { TranscriptCompactionModel } from '../frontend/models.ts'
 import { compactElapsedMs } from './agent-presentation.ts'
 import { BRAILLE_SPINNER_FRAMES, BRAILLE_SPINNER_INTERVAL_MS } from './spinners.ts'

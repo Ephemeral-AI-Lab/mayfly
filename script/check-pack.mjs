@@ -18,6 +18,7 @@ import {
   NODE_RANGE,
   PACKAGE_DIRS,
   ROOT,
+  defaultTarget,
   readManifest,
   releaseRepository,
 } from './package-contract.mjs'
@@ -58,12 +59,6 @@ function walk(dir, prefix = '') {
   return files
 }
 
-function runtimeTarget(value) {
-  if (typeof value === 'string') return value
-  if (value !== null && typeof value === 'object' && typeof value.default === 'string') return value.default
-  return undefined
-}
-
 function validateManifest(name, manifest, root, relativeDir) {
   const expectedRepository = releaseRepository(relativeDir)
   if (!isDeepStrictEqual(manifest.repository, expectedRepository)) {
@@ -81,7 +76,7 @@ function validateManifest(name, manifest, root, relativeDir) {
     }
   }
   for (const [subpath, value] of Object.entries(manifest.exports ?? {})) {
-    const target = runtimeTarget(value)
+    const target = defaultTarget(value)
     if (target !== undefined && !target.includes('*') && !existsSync(join(root, target.replace(/^\.\//, '')))) {
       fail(`${name}: packed export ${subpath} targets missing ${target}`)
     }
@@ -244,10 +239,11 @@ verifyExternalUiKit(tarballs.get('@ephemeral-ai/mayfly-ui'))
 // visible/all/accelerator sets added about 13 KB, and the named actions,
 // runtime rebinding, and key decoder of slice 1.7 about 41 KB, and the visual language of slice 1.2 about 26 KB, and the image node and its byte source of slice 1.9a about 30 KB, and the content, layout, and motion of slice 1.3 about 60 KB, and the views lane of slice 1.10b about 27 KB, and the prompt of slice 1.9b about 40 KB, and the patterns of slice 1.8b one declaration file and about 4 KB, and the retained rows, the placing stacks, and the frame counters of slice 1.12 about 29 KB, and the segmented content rows, diff aligner, and Markdown scanner of slice 2c about 80 KB,
 // and the wired native clipboard probes and their shared probe declarations
-// of audit-fix C one declaration file and about 17 KB); retain headroom
+// of audit-fix C one declaration file and about 17 KB, and the leaf-import
+// chunk retopology of audit-fix D about 20 chunks and 11 KB); retain headroom
 // while still catching accidental entry/chunk growth.
-if (libraryFiles > 230) fail(`library lib output has ${libraryFiles} files; budget is 230`)
-if (libraryBytes > 2_650_000) fail(`library lib output has ${libraryBytes} bytes; budget is 2650000`)
+if (libraryFiles > 260) fail(`library lib output has ${libraryFiles} files; budget is 260`)
+if (libraryBytes > 2_700_000) fail(`library lib output has ${libraryBytes} bytes; budget is 2700000`)
 
 if (problems.length > 0) {
   console.error(`pack contract failed with ${problems.length} problem(s)`)

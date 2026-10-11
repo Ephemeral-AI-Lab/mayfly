@@ -8,7 +8,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { GoalView } from '@deepseek-ai/dsh-goal'
 import type { SessionFactsService } from './session-facts.ts'
 import type { MayflyStatusNode } from '@ephemeral-ai/mayfly-ui'
-import { interpolateLocaleMessage, type MayflyTranslate } from '../frontend/index.ts'
+import { interpolateLocaleMessage, type MayflyTranslate } from '../frontend/locale.ts'
 import { transcriptTranslator } from './locale.ts'
 
 /** Stable Cordis plugin name. */

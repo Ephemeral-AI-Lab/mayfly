@@ -13,6 +13,7 @@ import { visibleWidth, wrapTextWithAnsi, truncateToWidth } from '../../src/core/
 import type { PermissionPresetsService } from '../../src/interaction/permission-panel.ts'
 import { fakeMayflyContext } from './fakes.ts'
 import { CommandId } from '@deepseek-ai/dsh-commands'
+import { plainColors } from '../helpers.ts'
 
 /** The sandbox knob event, declared by dsh-sandbox-policy, which Mayfly does not depend on. */
 const SANDBOX_MODE = 'sandbox/mode'
@@ -104,10 +105,9 @@ describe('mayfly-status-mode', () => {
       { node: { kind: 'text', content: pending ? 'plan…' : 'plan', tone: 'accent' } },
       { node: { kind: 'text', content: 'yolo', tone: 'warning' } },
     ] })
-    const identity = (text: string) => text
     const compiled = compileMayflyStatusNode(node, {
       components: { visibleWidth, wrapText: wrapTextWithAnsi, truncateToWidth } as never,
-      colors: new Proxy({}, { get: () => identity }) as never,
+      colors: plainColors() as never,
       getViewport: () => ({ columns: 80, rows: 1 }),
       screenMode: 'main', maxRows: 1,
     })

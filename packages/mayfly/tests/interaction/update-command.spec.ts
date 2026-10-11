@@ -44,10 +44,10 @@ import { MemorySettings } from '../../../../examples/overlay/tests/settings.ts'
 import { checkCooldown, checkHostLine, repairRecipe } from '../../src/interaction/updater/preflight.ts'
 import { classifyInstallFailure } from '../../src/interaction/updater/swap.ts'
 import { renderRequest } from './request-fixture.ts'
+import { flush, plainBlock } from '../helpers.ts'
 
 /** The real seams, restored after every test. */
 const REAL = { ...updaterInternals }
-const flushUpdate = (): Promise<void> => new Promise(resolve => { setImmediate(resolve) })
 
 afterEach(() => {
   Object.assign(updaterInternals, REAL)
@@ -436,7 +436,7 @@ describe('/update early verdicts', () => {
     // Esc closes the blocked panel through the bound restore path.
     const blocked = await world.waitSurface('mayfly.update.blocked')
     blocked.requestClose()
-    await flushUpdate()
+    await flush()
     expect(blocked.disposed).toBe(true)
     world.dispose()
   })
@@ -523,7 +523,7 @@ describe('/update confirm and swap', () => {
     // restore path.
     const progress = await world.waitSurface('mayfly.update.progress')
     progress.requestClose()
-    await flushUpdate()
+    await flush()
     expect(progress.disposed).toBe(true)
     world.dispose()
   })
@@ -783,7 +783,7 @@ describe('/update confirm and swap', () => {
     confirmation.invoke('yes')
     const progress = await world.waitSurface('mayfly.update.progress')
     progress.requestClose()
-    await flushUpdate()
+    await flush()
     expect(progress.disposed).toBe(false)
     expect(progress.feedbackSnapshot()).toEqual(expect.arrayContaining([
       expect.objectContaining({ severity: 'error', message: 'The update is still running' }),
@@ -791,7 +791,7 @@ describe('/update confirm and swap', () => {
     release.resolve()
     await expect(pending).resolves.toMatchObject({ result: { kind: 'success' } })
     progress.requestClose()
-    await flushUpdate()
+    await flush()
     expect(progress.disposed).toBe(true)
     world.dispose()
   })
@@ -816,7 +816,7 @@ describe('/update confirm and swap', () => {
     expect(rows).toContain('the snapshot is at')
     const progress = await world.waitSurface('mayfly.update.progress')
     progress.requestClose()
-    await flushUpdate()
+    await flush()
     expect(progress.disposed).toBe(true)
     world.dispose()
   })
@@ -957,8 +957,7 @@ describe('/update confirm and swap', () => {
 })
 
 /** Strip the fake theme's paint markers and any ANSI for row asserts. */
-const plain = (rows: readonly string[]): string =>
-  rows.join('\n').replace(/[\^_!]/g, '').replace(/\x1b\[[0-9;?]*[A-Za-z]/g, '')
+const plain = (rows: readonly string[]): string => plainBlock(rows).replace(/[\^_!]/g, '')
 
 /** The last overlay's rendered rows, cleaned, if one is mounted. */
 function overlayRows(ctx: Context): string {
@@ -974,7 +973,7 @@ describe('update panel model', () => {
     const { ctx } = fakeMayflyContext()
     const interaction = new UiInteractionService(ctx)
     mountUiRegistryObservers(ctx)
-    await flushUpdate()
+    await flush()
     const view = () => updatePanelModel(state, '0.1.0-rc.6', '0.1.0-rc.7')
     const handle = ctx.mayflyOverlays.open({
       id: 'update-model', capturing: true, dismissal: 'discard', scope: { kind: 'app', targetId: 'update-model' },
@@ -999,7 +998,7 @@ describe('update panel model', () => {
     applyUpdateProgress(state, { step: 'install', state: 'start' })
     publish()
     model.requestClose()
-    await flushUpdate()
+    await flush()
     expect(model.disposed).toBe(false)
     expect(model.feedbackSnapshot()).toEqual(expect.arrayContaining([expect.objectContaining({ severity: 'error', message: 'The update is still running' })]))
     expect(model.availableActions()).toEqual(expect.arrayContaining([expect.objectContaining({ actionId: 'close', enabled: false, disabledReason: 'The update is still running' })]))
@@ -1017,7 +1016,7 @@ describe('update panel model', () => {
     expect(rendered).toContain('restart dsh to apply')
     expect(rendered).toContain('log: /tmp/update.log')
     model.requestClose()
-    await flushUpdate()
+    await flush()
     expect(model.disposed).toBe(true)
   })
 
@@ -1039,7 +1038,7 @@ describe('update panel model', () => {
     expect(rendered).toContain('✗ smoke: boot')
     expect(rendered).toContain('✓ rollback')
     mounted.model.invoke('close')
-    await flushUpdate()
+    await flush()
     expect(mounted.model.disposed).toBe(true)
   })
 })

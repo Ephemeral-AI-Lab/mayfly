@@ -6,6 +6,7 @@ import { ui } from '../../../ui/src/index.ts'
 import type { MayflyComponent, MayflyFocusable, MayflyFocusIdentity, MayflySemanticColors } from '../../src/core/types.ts'
 import { VIEWS_FOCUS_ID, ViewsLane, type ViewRegistration, type ViewsLaneHost } from '../../src/core/views-lane.ts'
 import { visibleWidth } from '../../src/core/width.ts'
+import { plain } from '../helpers.ts'
 
 const PRIMARY = '\x1b[35m'
 const MUTED = '\x1b[2m'
@@ -13,7 +14,6 @@ const colors = new Proxy({}, {
   get: (_target, key) => key === 'primary' ? (text: string) => `${PRIMARY}${text}\x1b[39m` : key === 'muted' ? (text: string) => `${MUTED}${text}\x1b[22m` : (text: string) => text,
 }) as unknown as MayflySemanticColors
 /** Plain text of painted rows. */
-const plain = (rows: readonly string[] | undefined): string[] => (rows ?? []).map(row => row.replace(/\x1b\[[0-9;]*m/gu, ''))
 
 interface Harness {
   readonly lane: ViewsLane

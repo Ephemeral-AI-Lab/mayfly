@@ -6,31 +6,18 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import type { MayflyComponents, MayflySemanticColors } from '../../src/core/index.ts'
-import type { SearchCallModel, TranscriptSearchGroupModel } from '../../src/frontend/index.ts'
+import type { MayflyComponents } from '../../src/core/types.ts'
+import type { SearchCallModel, TranscriptSearchGroupModel } from '../../src/frontend/models.ts'
 import {
   SEARCH_GROUP_ROW_LIMIT,
   SearchGroupComponent,
 } from '../../src/transcript/search-group.ts'
 import { fakeMayflyComponents } from './helpers.ts'
+import { plainColors, taggedColors } from '../helpers.ts'
 
-/** Identity colors: assertions see structure, not escape codes. */
-const id = (text: string): string => text
-const IDENTITY: MayflySemanticColors = {
-  text: id, textStrong: id, muted: id, textMuted: id, accent: id, primary: id, border: id,
-  borderFocus: id, success: id, error: id, warning: id, selectedBg: id, roleUser: id, shellMode: id,
-  mdHeading: id, mdLink: id, mdLinkUrl: id, mdCode: id, mdCodeBlock: id, mdCodeBlockBorder: id,
-  mdQuote: id, mdQuoteBorder: id, mdHr: id, mdListBullet: id,
-  diffAdded: id, diffRemoved: id, diffAddedStrong: id, diffRemovedStrong: id, diffGutter: id, diffMeta: id, diffAddedBg: id, diffRemovedBg: id,
-  modelHighlight: id, logoGradient: [],
-}
-// Structurally satisfies MayflySemanticColors; declared where consumed.
+const IDENTITY = plainColors()
 
-/** Tagged colors for role assertions. */
-function tagged(): MayflySemanticColors {
-  const tag = (letter: string) => (text: string): string => `[${letter}]${text}[/${letter}]`
-  return { ...IDENTITY, muted: tag('M'), textMuted: tag('T'), primary: tag('P'), success: tag('S'), error: tag('E'), warning: tag('W') }
-}
+
 
 const COMPONENTS: MayflyComponents = fakeMayflyComponents()
 
@@ -58,7 +45,7 @@ describe('SearchGroupComponent', () => {
       search({ callId: 'g2', pattern: 'TODO', shape: 'matches', files: [] }),
       search({ callId: 'g3', activity: 'search', detail: 'gone', pattern: 'gone', state: 'error', error: 'invalid pattern' }),
     ])
-    const lines = new SearchGroupComponent(model, tagged(), COMPONENTS).render(140)
+    const lines = new SearchGroupComponent(model, taggedColors(), COMPONENTS).render(140)
     expect(lines).toEqual([
       '',
       '[W]◐ [/W]\x1b[1m[P]Searched 4 patterns[/P]\x1b[22m[M] · 2 files, 34 matches, 12 paths[/M][E] · 1 failed[/E]',
@@ -72,14 +59,14 @@ describe('SearchGroupComponent', () => {
   it('renders pending and all-failed headers', () => {
     const pending = new SearchGroupComponent(group([
       search({ callId: 'a', activity: 'search', detail: 'one', pattern: 'one', state: 'pending' }),
-    ]), tagged(), COMPONENTS).render(80)
+    ]), taggedColors(), COMPONENTS).render(80)
     expect(pending[1]).toBe('● \x1b[1m[P]Searching 1 pattern…[/P]\x1b[22m')
     expect(pending[2]).toBe('  └─ one [T]…[/T]')
 
     const failed = new SearchGroupComponent(group([
       search({ callId: 'a', activity: 'search', detail: 'one', pattern: 'one', state: 'error', error: 'nope' }),
       search({ callId: 'b', activity: 'search', detail: 'two', pattern: 'two', state: 'error', error: 'nope' }),
-    ]), tagged(), COMPONENTS).render(80)
+    ]), taggedColors(), COMPONENTS).render(80)
     expect(failed[1]).toBe('[E]✗ [/E]\x1b[1m[E]Searched 2 patterns · failed[/E]\x1b[22m')
 
     // Single-path glob rows singularize; a paths view without totals counts
@@ -237,7 +224,7 @@ describe('SearchGroupComponent', () => {
       search({ callId: 'a', pattern: 'const', shape: 'matches', files: [{ path: 'a.ts', count: 2, previews: [] }] }),
       search({ callId: 'b', activity: 'search', detail: 'deep', pattern: 'deep', state: 'pending' }),
     ])
-    const component = new SearchGroupComponent(model, tagged(), COMPONENTS)
+    const component = new SearchGroupComponent(model, taggedColors(), COMPONENTS)
     expect(component.render(140)[3]).toBe('  └─ deep [T]…[/T]')
     component.setScope({ hint: true, turnClosed: true })
     const rows = component.render(140)

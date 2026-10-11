@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url'
 import { normalizeChangedFiles } from '../change-files.mjs'
 import { CATALOG } from '../scenarios/catalog.mjs'
 import { buildGraph, CODE_FILE, covers, dependents, NODE_TEST_FILE, SPEC_FILE } from './graph.mjs'
-import { CHECKS, DATA_READS, GLOBAL, INERT, SCENARIO_SMOKE, STRUCTURAL } from './inputs.mjs'
+import { CHECKS, DATA_READS, GLOBAL, INERT, SCENARIO_ALL, SCENARIO_PIPELINE, SCENARIO_SMOKE, STRUCTURAL } from './inputs.mjs'
 
 const ROOT = fileURLToPath(new URL('../..', import.meta.url))
 
@@ -44,7 +44,12 @@ function selectScenarios(graph, files) {
   }
   const others = files.filter(file => !goldens.includes(file))
   const reached = dependents(graph, others)
-  const machinery = reached.get('script/scenarios.mjs')
+  // Machinery is the run/content/compare pipeline, not everything the command's own imports reach: an outside file
+  // the pipeline loads changes every run, an orchestration-only import (the change-set parser, the shots painter)
+  // changes none.
+  const pipeline = SCENARIO_PIPELINE.map(root => reached.get(root)).find(chain => chain !== undefined)
+  const inside = others.find(file => SCENARIO_ALL.test(file))
+  const machinery = pipeline !== undefined ? [...pipeline, 'script/scenarios.mjs'] : inside === undefined ? undefined : [inside]
   if (machinery !== undefined) for (const name of Object.keys(CATALOG)) add(name, machinery)
   for (const file of others) {
     const covered = Object.entries(CATALOG).filter(([, scenario]) => scenario.covers.some(glob => coversPath(glob, file)))

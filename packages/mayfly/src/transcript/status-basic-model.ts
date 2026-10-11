@@ -19,7 +19,7 @@ import type {} from '@deepseek-ai/dsh-session-projection'
 import type {} from '../app/index.ts'
 import type { MayflyStatusNode } from '@ephemeral-ai/mayfly-ui'
 import type { Session } from '@deepseek-ai/dsh-session'
-import type { ConversationFacts } from '../conversation/index.ts'
+import type { ConversationFacts } from '../conversation/types.ts'
 import type { SessionFactsService } from './session-facts.ts'
 
 /** Stable Cordis plugin name. */

@@ -13,7 +13,7 @@ import type { MayflyConversationView } from '../../src/app/conversation-views.ts
 import type { Session, SessionEvent } from '@deepseek-ai/dsh-session'
 import type { SettingsNamespace } from '@deepseek-ai/dsh-settings'
 import { MayflyStatusService } from '../../../ui/src/provider.ts'
-import type { MayflyComponent, MayflyKeyAction, MayflyKeymap, MayflyOverlayHandle, MayflyScreen } from '../../src/core/index.ts'
+import type { MayflyComponent, MayflyKeyAction, MayflyKeymap, MayflyOverlayHandle, MayflyScreen } from '../../src/core/types.ts'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { MayflyLocaleService } from '../../src/frontend/locale.ts'
 import { mkdtempTracked, registerTempDirCleanup } from '../core/temp-dir.ts'
@@ -22,6 +22,7 @@ import { LiveAssistantStreamService } from '../../src/conversation/live-stream.t
 import { SessionFactsService } from '../../src/transcript/session-facts.ts'
 import * as statusBasicModel from '../../src/transcript/status-basic-model.ts'
 import { assistantEvent, fakeMayflyComponents, imageBlock, reasoningDelta, resetSeq, stepStart, textDelta, toolCallEvent, toolResultEvent, turnStart, userEvent } from './helpers.ts'
+import { fakeAgent, plainColors } from '../helpers.ts'
 import { setProcessRowTimers } from '../../src/transcript/process-rows.ts'
 import { FakeProjectionService } from './pane-fakes.ts'
 import { mountFakeScreenSlot } from '../core/fake-screen-slot.ts'
@@ -33,16 +34,7 @@ afterEach(async () => {
   for (const dispose of disposers.splice(0)) await dispose()
 })
 
-const id = (text: string): string => text
-const COLORS = {
-  text: id, textStrong: id, muted: id, textMuted: id, accent: id, primary: id, border: id,
-  borderFocus: id, success: id, error: id, warning: id, selectedBg: id, roleUser: id, shellMode: id,
-  mdHeading: id, mdLink: id, mdLinkUrl: id, mdCode: id, mdCodeBlock: id,
-  mdCodeBlockBorder: id, mdQuote: id, mdQuoteBorder: id, mdHr: id, mdListBullet: id,
-  diffAdded: id, diffRemoved: id, diffAddedStrong: id, diffRemovedStrong: id,
-  diffGutter: id, diffMeta: id, diffAddedBg: id, diffRemovedBg: id,
-  modelHighlight: id, logoGradient: [],
-}
+const COLORS = plainColors()
 
 class FakeScreen implements MayflyScreen {
   readonly children: MayflyComponent[] = []
@@ -110,15 +102,8 @@ interface FakeAgent {
   session: Session & { events: SessionEvent[] }
 }
 
-function fakeAgent(events: SessionEvent[], model = 'deepseek-chat'): FakeAgent {
-  const session = {
-    id: 'parent-1',
-    events,
-    header: {},
-    requestHeader: () => undefined,
-  } as unknown as FakeAgent['session']
-  return { id: 'parent-1', status: 'idle', options: { model, provider: 'deepseek' }, session }
-}
+const fakeParent = (events: SessionEvent[]): FakeAgent =>
+  fakeAgent('parent-1', { events, model: 'deepseek-chat', provider: 'deepseek' }) as unknown as FakeAgent
 
 interface Harness {
   readonly ctx: Context
@@ -302,7 +287,7 @@ function footerLines(screen: FakeScreen): string[] {
 describe('mayfly-transcript through the real Loader', () => {
   it('boots against direct Cordis services and renders a pre-existing Agent', async () => {
     resetSeq()
-    const agent = fakeAgent([userEvent('remember me'), assistantEvent(1, 1, [{ type: 'text', text: 'answer' }])])
+    const agent = fakeParent([userEvent('remember me'), assistantEvent(1, 1, [{ type: 'text', text: 'answer' }])])
     const { ctx, screen } = await bootTranscript(agent)
     expect(ctx.mayflyCurrentAgent.current()).toBe(agent)
     expect(contentLines(screen).join('\n')).toContain('remember me')
@@ -317,12 +302,12 @@ describe('mayfly-transcript through the real Loader', () => {
     const { ctx, screen, select } = await bootTranscript(null, {
       settings: { mayfly: { transcriptView: 'verbose' } },
     })
-    const agent = fakeAgent([userEvent('work'), toolCallEvent(1, 1, 'c1', 'bash', '{"command":"ls"}')])
+    const agent = fakeParent([userEvent('work'), toolCallEvent(1, 1, 'c1', 'bash', '{"command":"ls"}')])
     select(agent)
     expect(contentLines(screen).join('\n')).toContain('work')
 
     const baseline = screen.renderRequests.length
-    const other = fakeAgent([])
+    const other = fakeParent([])
     Object.assign(other.session, { id: 'other' })
     ctx.emit('session/event', other.session, textDelta(2, 1, 'foreign'))
     expect(screen.renderRequests.length).toBe(baseline)
@@ -341,12 +326,12 @@ describe('mayfly-transcript through the real Loader', () => {
 
   it('hides inherited BTW history while preserving it when returning to the main session', async () => {
     resetSeq()
-    const main = fakeAgent([
+    const main = fakeParent([
       userEvent('main history'),
       assistantEvent(1, 1, [{ type: 'text', text: 'main answer' }]),
     ])
     resetSeq()
-    const btw = fakeAgent([
+    const btw = fakeParent([
       userEvent('inherited main history'),
       assistantEvent(1, 1, [{ type: 'text', text: 'inherited main answer' }]),
       userEvent('BTW question'),
@@ -379,9 +364,9 @@ describe('mayfly-transcript through the real Loader', () => {
     setProcessRowTimers(timers)
     try {
       resetSeq()
-      const main = fakeAgent([userEvent('main history')])
+      const main = fakeParent([userEvent('main history')])
       resetSeq()
-      const worker = fakeAgent([turnStart(1), stepStart(1, 1), userEvent('child question'), reasoningDelta(1, 1, 'child thought')])
+      const worker = fakeParent([turnStart(1), stepStart(1, 1), userEvent('child question'), reasoningDelta(1, 1, 'child thought')])
       worker.id = 'worker-1'
       Object.assign(worker.session, { id: 'worker-1' })
       const { screen, showReadonlyChild, select } = await bootTranscript(main)
@@ -402,12 +387,12 @@ describe('mayfly-transcript through the real Loader', () => {
 
   it('isolates populated sessions whose transcript ids and revisions collide', async () => {
     resetSeq()
-    const first = fakeAgent([
+    const first = fakeParent([
       userEvent('session A prompt'),
       assistantEvent(1, 1, [{ type: 'text', text: 'session A answer' }]),
     ])
     resetSeq()
-    const second = fakeAgent([
+    const second = fakeParent([
       userEvent('session B prompt'),
       assistantEvent(1, 1, [{ type: 'text', text: 'session B answer' }]),
     ])
@@ -430,7 +415,7 @@ describe('mayfly-transcript through the real Loader', () => {
     const get = vi.fn((toolName: string) => toolName === 'presented'
       ? { presentCall, presentResult }
       : toolName === 'plain' ? {} : undefined)
-    const agent = fakeAgent([
+    const agent = fakeParent([
       userEvent('tools'),
       toolCallEvent(1, 1, 'presented-call', 'presented', '{}'),
       toolResultEvent(1, 1, 'presented-call', 'done'),
@@ -451,7 +436,7 @@ describe('mayfly-transcript through the real Loader', () => {
     const live = async (view: string): Promise<string> => {
       resetSeq()
       // The fake projection re-seeds from every logged event but the last.
-      const agent = fakeAgent([userEvent('think'), turnStart(1)])
+      const agent = fakeParent([userEvent('think'), turnStart(1)])
       const harness = await bootTranscript(agent, { settings: { mayfly: { transcriptView: view } } })
       harness.ctx.emit('session/event', agent.session, reasoningDelta(1, 1, 'working'))
       return contentLines(harness.screen).join('\n')
@@ -472,7 +457,7 @@ describe('mayfly-transcript through the real Loader', () => {
   })
 
   it('renders a sibling plugin registration from the same direct mayflyStatus service', async () => {
-    const { screen } = await bootTranscript(fakeAgent([]), { fixture: true })
+    const { screen } = await bootTranscript(fakeParent([]), { fixture: true })
     const footer = footerLines(screen).join('\n')
     expect(footer).toContain('deepseek-chat')
     expect(footer).toContain('fixture-entry')
@@ -485,7 +470,7 @@ describe('mayfly-transcript through the real Loader', () => {
       if (call === 1) return { data: new Uint8Array([1, 2, 3]) }
       throw new Error('attachment unavailable')
     })
-    const agent = fakeAgent([userEvent('images', [
+    const agent = fakeParent([userEvent('images', [
       imageBlock({ attachmentId: 'image-ok', mediaType: 'image/png', bytes: 3, width: 1, height: 1 } as never),
       imageBlock({ attachmentId: 'image-missing', mediaType: 'image/png', bytes: 3, width: 1, height: 1 } as never),
     ])])

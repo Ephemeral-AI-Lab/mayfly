@@ -15,6 +15,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import * as workflow from '../../src/transcript/pane-workflow.ts'
 import { formatWorkflowElapsed, setWorkflowPaneTimers, workflowNode } from '../../src/transcript/pane-workflow.ts'
 import { resetSeq, turnStart } from './helpers.ts'
+import { plainText } from '../helpers.ts'
 import { bootPanePlugin, type PanePluginHarness } from './pane-fakes.ts'
 import { fakeAgent, type FakeAgent } from './status-fakes.ts'
 
@@ -87,7 +88,7 @@ async function boot(): Promise<Rig> {
 }
 
 function plain(rig: Rig, width = 80): string[] {
-  return rig.screen.paneLines(width).map(row => row.replace(/\x1b\[[0-9;]*m/g, ''))
+  return rig.screen.paneLines(width).map(plainText)
 }
 
 function startRun(ctx: Context, info: WorkflowRunInfo, childId: string): void {

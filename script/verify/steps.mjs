@@ -49,14 +49,16 @@ export function stepsFor(plan, tier, { root = process.cwd(), coverageAdvice = fa
       pnpm('shots', 'run', 'shots:check'),
       pnpm('agent docs', 'run', 'check:agent-docs'),
       pnpm('examples', 'run', 'check:examples'),
-      ...(plan.checks.pack ? [pnpm('pack', 'run', 'check:pack')] : []),
+      // The registry smoke installs and runs what check:pack just produced, so it only runs when the pack did.
+      ...(plan.checks.pack ? [pnpm('pack', 'run', 'check:pack'), pnpm('cli registry smoke', 'run', 'smoke:cli-registry')] : []),
       ...(plan.checks.website ? [pnpm('website', 'run', 'website:build')] : []),
       // One run: the suites with every retained-row hit painted again, the work budgets, and coverage against its floor.
       vitest('suites and coverage', 'coverage', ['--coverage']),
-      // The real terminal on the build above: every scenario against its goldens, the happy smoke, and every perf
+      // The real terminal on the build above: every scenario against its goldens, the smokes, and every perf
       // scenario against its ceilings.
       { name: 'scenarios', kind: 'scenarios', command: 'node', args: ['script/scenarios.mjs'] },
       pnpm('happy smoke', 'run', 'smoke:happy'),
+      pnpm('pty output smoke', 'run', 'smoke:pty:output'),
       { name: 'perf ceilings', kind: 'perf', command: 'node', args: ['script/perf.mjs', '--assert'] },
     ]
   }
@@ -74,7 +76,7 @@ export function stepsFor(plan, tier, { root = process.cwd(), coverageAdvice = fa
     if (plan.checks.checkLib) steps.push(pnpm('lib exports', 'run', 'check:lib'))
     if (plan.checks.shots) steps.push(pnpm('shots', 'run', 'shots:check'))
     if (plan.checks.examples) steps.push(pnpm('examples', 'run', 'check:examples'))
-    if (plan.checks.pack) steps.push(pnpm('pack', 'run', 'check:pack'))
+    if (plan.checks.pack) steps.push(pnpm('pack', 'run', 'check:pack'), pnpm('cli registry smoke', 'run', 'smoke:cli-registry'))
     if (plan.checks.website) steps.push(pnpm('website', 'run', 'website:build'))
   }
   // The repository-workflow tests the change reaches, and only those.

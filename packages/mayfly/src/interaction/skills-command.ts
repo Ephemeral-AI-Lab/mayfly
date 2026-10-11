@@ -4,7 +4,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { SkillSummary } from '@deepseek-ai/dsh-skill'
 import { ui, type MayflyUiNode, type MayflyOverlayHandle } from '@ephemeral-ai/mayfly-ui'
-import type { MayflyTranslate } from '../frontend/index.ts'
+import type { MayflyTranslate } from '../frontend/locale.ts'
 import { openAgentOverlay } from './agent-overlay.ts'
 import { interactionTranslator, mountInteractionLocale, observeInteractionLocale } from './locale.ts'
 

@@ -6,7 +6,7 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-schedule'
 import type { ScheduleRecord } from '@deepseek-ai/dsh-schedule/client'
 import { ui, type MayflyListItem, type MayflyOverlayHandle, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
-import type { MayflyLocaleId, MayflyTranslate } from '../frontend/index.ts'
+import type { MayflyLocaleId, MayflyTranslate } from '../frontend/locale.ts'
 import { openAgentOverlay } from './agent-overlay.ts'
 import { interactionTranslator, mountInteractionLocale, observeInteractionLocale } from './locale.ts'
 
@@ -16,6 +16,8 @@ export const inject = ['commands', 'mayflyCurrentAgent', 'mayflyOverlays', 'mayf
 type TimeUnit = 'day' | 'hour' | 'minute' | 'second'
 
 const SECOND_MS = 1_000
+/** How often an open reminder catalog repaints its relative labels. */
+export const SCHEDULE_TICK_MS = SECOND_MS
 const SECOND_UNIT = { unit: 'second', seconds: 1 } as const
 const UNIT_SECONDS: readonly { unit: TimeUnit; seconds: number }[] = [
   { unit: 'day', seconds: 86_400 },
@@ -166,7 +168,7 @@ export function apply(ctx: Context): void {
       listeners.add(update)
       owner.effect(() => ctx.on('schedule/changed', refreshCurrent))
       owner.effect(() => observeInteractionLocale(owner, update))
-      const timer = setInterval(update, 1000)
+      const timer = setInterval(update, SCHEDULE_TICK_MS)
       timer.unref()
       owner.effect(() => () => { listeners.delete(update); clearInterval(timer) })
       refreshCurrent()

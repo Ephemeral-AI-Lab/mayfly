@@ -11,7 +11,7 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { SessionAddress, SessionFollowFrame, SessionFollowRequest } from '@deepseek-ai/dsh-api-session-controller'
 import type { Session } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-session-projection'
-import { conversationProjectionSchema } from '../conversation/index.ts'
+import { conversationProjectionSchema } from '../conversation/projection.ts'
 import type { LiveAssistantDraft } from '../conversation/live-stream.ts'
 
 /**

@@ -8,10 +8,10 @@ import { MAYFLY_VERSION } from '../../src/transcript/banner-content.ts'
 import { setClipboardTextWriter } from '../../src/interaction/clipboard-write.ts'
 import { GUIDE_CLOSE_DELAY_MS, accountInternals, accountPanelNode, callbackOrigin, clientMetadata, openAccountPanel, openUrlInBrowser, openerFor, parseCallbackLocation } from '../../src/interaction/provider-account.ts'
 import { providerFixture } from './provider-fixture.ts'
+import { flush } from '../helpers.ts'
 
 const contexts: Context[] = []
 afterEach(async () => { for (const ctx of contexts.splice(0)) await ctx.fiber.dispose() })
-const flush = async (times = 4): Promise<void> => { for (let index = 0; index < times; index += 1) await new Promise<void>(resolve => { setImmediate(resolve) }) }
 
 const LINKS = { usageUrl: 'https://example/usage', topUpUrl: 'https://example/topup' }
 const signedOut: AccountView = { status: 'signed-out', links: LINKS, attempt: null }
@@ -132,7 +132,7 @@ describe('DeepSeek account panel', () => {
       expect(await openAccountPanel(ctx, 'deepseek-account')).toBe(true)
       const model = ctx.mayflyUiInteraction.get('overlay', panelId)!
       model.invoke('sign-in')
-      await flush()
+      await flush(4)
       expect(account.starts).toHaveLength(1)
       expect(account.starts[0]).toMatchObject({ origin: 'http://localhost:45678', source: 'desktop' })
       expect(account.starts[0]!.client).toMatchObject({ version: MAYFLY_VERSION, locale: expect.any(String), timezoneOffsetSeconds: expect.any(Number) })
@@ -169,11 +169,11 @@ describe('DeepSeek account panel', () => {
       await openAccountPanel(ctx, 'deepseek-account')
       const model = ctx.mayflyUiInteraction.get('overlay', panelId)!
       model.invoke('sign-in')
-      await flush()
+      await flush(4)
       expect(JSON.stringify(model.node)).toContain('callback-paste')
       // The loopback server completes the attempt; only the watch stream reports it.
       account.complete()
-      await flush()
+      await flush(4)
       const json = JSON.stringify(model.node)
       expect(json).toContain('Connected — account models need no API key.')
       expect(json).not.toContain('callback-paste')
@@ -193,14 +193,14 @@ describe('DeepSeek account panel', () => {
       await openAccountPanel(ctx, 'deepseek-account')
       const model = ctx.mayflyUiInteraction.get('overlay', panelId)!
       model.invoke('sign-in')
-      await flush()
+      await flush(4)
       expect(JSON.stringify(model.node)).toContain('"Copy link"')
       model.invoke('copy-link')
-      await flush()
+      await flush(4)
       expect(copied).toEqual(['https://auth.example/authorize?origin=http://localhost:45678&n=1'])
       fail = true
       model.invoke('copy-link')
-      await flush()
+      await flush(4)
       expect(copied).toHaveLength(1)
       expect(ctx.mayflyOverlays.list().map(entry => entry.id)).toContain(panelId)
     } finally {
@@ -259,29 +259,29 @@ describe('DeepSeek account panel', () => {
       expect(await openAccountPanel(ctx, 'deepseek-account')).toBe(true)
       const model = ctx.mayflyUiInteraction.get('overlay', panelId)!
       model.invoke('sign-in')
-      await flush()
-      await flush()
+      await flush(4)
+      await flush(4)
       model.edit({ pagePath: [], formId: 'callback-paste', fieldId: 'callback-url' }, 'http://localhost:45678/oauth/callback?code=a&state=b')
       model.invoke('deliver-callback')
-      await flush()
+      await flush(4)
       expect(delivered).toEqual(['http://localhost:45678/oauth/callback?code=a&state=b'])
       expect(model.feedbackSnapshot().at(-1)?.message).toContain('Callback delivered')
 
       accountInternals.fetchCallback = async () => { throw new Error('unreachable') }
       model.edit({ pagePath: [], formId: 'callback-paste', fieldId: 'callback-url' }, 'http://localhost:45678/oauth/callback?code=e&state=f')
       model.invoke('deliver-callback')
-      await flush()
+      await flush(4)
       expect(model.feedbackSnapshot().at(-1)?.message).toContain('could not be delivered')
 
       accountInternals.fetchCallback = async () => ({ status: 400 })
       model.edit({ pagePath: [], formId: 'callback-paste', fieldId: 'callback-url' }, 'http://localhost:45678/oauth/callback?code=c&state=d')
       model.invoke('deliver-callback')
-      await flush()
+      await flush(4)
       expect(model.feedbackSnapshot().at(-1)?.severity).toBe('error')
 
       model.edit({ pagePath: [], formId: 'callback-paste', fieldId: 'callback-url' }, 'https://evil.example/oauth/callback?code=a&state=b')
       model.invoke('deliver-callback')
-      await flush()
+      await flush(4)
       expect(model.form({ pagePath: [], formId: 'callback-paste' })!.fields['callback-url']!.error).toContain('Paste the full callback address')
       expect(delivered).toHaveLength(1)
     } finally {
@@ -309,7 +309,7 @@ describe('DeepSeek account panel', () => {
       expect(await openAccountPanel(ctx, 'deepseek-account')).toBe(true)
       const model = ctx.mayflyUiInteraction.get('overlay', panelId)!
       model.invoke('sign-in')
-      await flush()
+      await flush(4)
       expect(model.feedbackSnapshot().at(-1)?.message).toContain('open the link below in a browser')
     } finally {
       accountInternals.spawnOpener = original
@@ -320,7 +320,7 @@ describe('DeepSeek account panel', () => {
     expect(await openAccountPanel(failing.ctx, 'deepseek-account')).toBe(true)
     const failModel = failing.ctx.mayflyUiInteraction.get('overlay', panelId)!
     failModel.invoke('sign-out', [], true)
-    await flush()
+    await flush(4)
     expect(failModel.feedbackSnapshot().at(-1)?.severity).toBe('error')
 
     const startFail = await bench(signedOut, { port: 45678 })
@@ -328,7 +328,7 @@ describe('DeepSeek account panel', () => {
     expect(await openAccountPanel(startFail.ctx, 'deepseek-account')).toBe(true)
     const startModel = startFail.ctx.mayflyUiInteraction.get('overlay', panelId)!
     startModel.invoke('sign-in')
-    await flush()
+    await flush(4)
     expect(startModel.feedbackSnapshot().at(-1)?.severity).toBe('error')
 
     const cancelFail = await bench({ status: 'signed-out', links: LINKS, attempt: { id: 'attempt' as never, phase: 'waiting-browser', authorizeUrl: 'https://auth.example/x' } }, { port: 45678 })
@@ -336,7 +336,7 @@ describe('DeepSeek account panel', () => {
     expect(await openAccountPanel(cancelFail.ctx, 'deepseek-account')).toBe(true)
     const cancelModel = cancelFail.ctx.mayflyUiInteraction.get('overlay', panelId)!
     cancelModel.invoke('restart-sign-in')
-    await flush()
+    await flush(4)
     expect(cancelModel.feedbackSnapshot().at(-1)?.severity).toBe('error')
   })
 
@@ -351,7 +351,7 @@ describe('DeepSeek account panel', () => {
       expect(await openAccountPanel(ctx, 'deepseek-account')).toBe(true)
       const model = ctx.mayflyUiInteraction.get('overlay', panelId)!
       model.invoke('sign-in')
-      await flush()
+      await flush(4)
       urls.push(JSON.stringify(model.node).match(/authorize\?origin=([^"]+)/)![1]!)
       expect(JSON.stringify(model.node)).toContain('"New link"')
       model.invoke('restart-sign-in')
@@ -373,7 +373,7 @@ describe('DeepSeek account panel', () => {
       expect(await openAccountPanel(opened.ctx, 'deepseek-account')).toBe(true)
       const openedModel = opened.ctx.mayflyUiInteraction.get('overlay', panelId)!
       openedModel.invoke('sign-in')
-      await flush()
+      await flush(4)
       openedModel.invoke('restart-sign-in')
       await flush(8)
       expect(opened.account.starts).toHaveLength(2)
@@ -396,7 +396,7 @@ describe('DeepSeek account panel', () => {
     const storedModel = signedIn.ctx.mayflyUiInteraction.get('overlay', panelId)!
     expect(JSON.stringify(storedModel.node)).toContain('Signed in')
     storedModel.invoke('sign-out', [], true)
-    await flush()
+    await flush(4)
     expect(signedIn.account.signOuts).toHaveLength(1)
     expect(JSON.stringify(storedModel.node)).toContain('Not signed in')
   })
@@ -438,16 +438,16 @@ describe('DeepSeek account panel', () => {
     const idle = await bench(signedOut, { port: 45678 })
     await openAccountPanel(idle.ctx, 'deepseek-account', undefined, guide)
     idle.ctx.mayflyUiInteraction.get('overlay', panelId)!.invoke('close')
-    await flush()
+    await flush(4)
     expect(exits).toEqual(['back'])
 
     const done = await bench(signedOut, { port: 45678 })
     await openAccountPanel(done.ctx, 'deepseek-account', undefined, guide)
-    await flush()
+    await flush(4)
     done.account.complete()
-    await flush()
+    await flush(4)
     done.ctx.mayflyUiInteraction.get('overlay', panelId)!.invoke('close')
-    await flush()
+    await flush(4)
     expect(exits).toEqual(['back'])
 
     const unloading = await bench(signedOut, { port: 45678 })
@@ -458,7 +458,7 @@ describe('DeepSeek account panel', () => {
     const standalone = await bench(signedOut, { port: 45678 })
     await openAccountPanel(standalone.ctx, 'deepseek-account')
     standalone.ctx.mayflyUiInteraction.get('overlay', panelId)!.invoke('close')
-    await flush()
+    await flush(4)
     expect(exits).toEqual(['back'])
   })
 })
@@ -539,7 +539,7 @@ describe('DeepSeek account panel lifetime', () => {
       expect(await openAccountPanel(initializing.ctx, 'deepseek-account')).toBe(true)
       const model = initializing.ctx.mayflyUiInteraction.get('overlay', panelId)!
       model.invoke('sign-in')
-      await flush()
+      await flush(4)
       const json = JSON.stringify(model.node)
       expect(json).toContain('Signing in…')
       expect(json).not.toContain('Sign-in link')

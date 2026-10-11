@@ -24,9 +24,10 @@ import { MayflyCompileCache } from '../../src/core/ui-compile-cache.ts'
 import { createAdmissionCache } from '../../src/core/ui-validator.ts'
 import { UiSurfaceModel, type UiSurfaceSnapshot } from '../../src/core/ui-interaction-surface.ts'
 import { createWorkCounters, type MayflyWorkCounters } from '../../src/core/ui-work-counters.ts'
-import type { MayflyComponent, MayflyComponents, MayflyFocusable, MayflyKeymap, MayflySemanticColors } from '../../src/core/types.ts'
+import type { MayflyComponent, MayflyComponents, MayflyFocusable, MayflyKeymap } from '../../src/core/types.ts'
 import { sliceByColumn, truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/width.ts'
 import { createFakeEditor } from '../core/fake-editor.ts'
+import { plainColors } from '../helpers.ts'
 
 /** What a workload needs from its host: a clock it can advance (fake timers under vitest, mock timers in a script). */
 export interface WorkloadEnvironment {
@@ -46,8 +47,7 @@ export interface Workload {
   setup(counters: MayflyWorkCounters, environment: WorkloadEnvironment): WorkloadRun
 }
 
-const identity = (value: string): string => value
-const colors = new Proxy({ logoGradient: [identity] }, { get: (target, key) => key === 'logoGradient' ? target.logoGradient : identity }) as unknown as MayflySemanticColors
+const colors = plainColors()
 const components = {
   visibleWidth,
   wrapText: wrapTextWithAnsi,

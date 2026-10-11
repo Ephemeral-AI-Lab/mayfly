@@ -20,18 +20,10 @@ import type {
   MayflyUiEvent,
   MayflyUiNode,
 } from '@ephemeral-ai/mayfly-ui'
-import {
-  compileMayflyEditorShellNode,
-  validateMayflyUiNode,
-  type MayflyAutocompleteItem,
-  type MayflyAutocompleteProvider,
-  type MayflyAutocompleteSuggestions,
-  type MayflyComponent,
-  type MayflyEditor,
-  type MayflyEditorShellNode,
-  type MayflyEditorSubmitAttempt,
-  type MayflyFocusable,
-} from '../core/index.ts'
+import type { MayflyAutocompleteItem, MayflyAutocompleteProvider, MayflyAutocompleteSuggestions, MayflyComponent, MayflyEditor, MayflyEditorSubmitAttempt, MayflyFocusable } from '../core/types.ts'
+import { compileMayflyEditorShellNode } from '../core/ui-compiler.ts'
+import type { MayflyEditorShellNode } from '../core/ui-contracts.ts'
+import { validateMayflyUiNode } from '../core/ui-validator.ts'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import { printableKey } from '../core/key-actions.ts'
 import type { SubmitTransformation } from './prompt-submit-pipeline.ts'

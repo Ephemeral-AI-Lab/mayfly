@@ -5,19 +5,18 @@ import { createRealSurface, probeComponents, type RealSurface } from '../design/
 import { inlineSegmentStrip, segmentFitsInline, segmentFooter, segmentStrip, type SegmentView } from '../../src/core/ui-list-segment.ts'
 import type { MayflySemanticColors } from '../../src/core/types.ts'
 import { visibleWidth } from '../../src/core/width.ts'
+import { identity, plainColors, plainText } from '../helpers.ts'
 
-const identity = (value: string): string => value
-const colors = new Proxy({ logoGradient: [identity] }, { get: (target, key) => key === 'logoGradient' ? target.logoGradient : identity }) as unknown as MayflySemanticColors
-const plain = (text: string): string => text.replace(/\x1b\[[0-9;]*m/gu, '')
+const colors = plainColors()
 
 const segment: MayflyListSegment = { label: 'Thinking', options: [{ id: 'min', label: 'min' }, { id: 'high', label: 'high' }, { id: 'max', label: 'max' }], inheritedId: 'high' }
 const view = (pinned: string | null, active = pinned ?? segment.inheritedId): SegmentView => ({ segment, pinned, active })
 
 describe('segment strip painters', () => {
   it('marks the inherited option (default) while unpinned and not once pinned', () => {
-    expect(plain(segmentStrip(view(null), true, colors).text)).toBe('min ‹ high (default) › max')
-    expect(plain(segmentStrip(view(null), false, colors).text)).toBe('min ‹ high › max')
-    expect(plain(segmentStrip(view('max'), true, colors).text)).toBe('min high ‹ max ›')
+    expect(plainText(segmentStrip(view(null), true, colors).text)).toBe('min ‹ high (default) › max')
+    expect(plainText(segmentStrip(view(null), false, colors).text)).toBe('min ‹ high › max')
+    expect(plainText(segmentStrip(view('max'), true, colors).text)).toBe('min high ‹ max ›')
     expect(segmentStrip(view(null), true, colors).width).toBe('min ‹ high (default) › max'.length)
   })
 
@@ -37,17 +36,17 @@ describe('segment strip painters', () => {
   })
 
   it('walks the footer ladder: caption, the strip alone, without (default), folded to +N, the active token alone', () => {
-    const footer = (width: number): string => plain(segmentFooter(view(null), width, colors, 'Thinking'))
+    const footer = (width: number): string => plainText(segmentFooter(view(null), width, colors, 'Thinking'))
     expect(footer(80)).toBe('  Thinking: min ‹ high (default) › max')
     expect(footer(30)).toBe('  min ‹ high (default) › max')
     expect(footer(22)).toBe('  min ‹ high › max')
     const wide: SegmentView = { segment: { options: Array.from({ length: 9 }, (_, index) => ({ id: `o${String(index)}`, label: `option${String(index)}` })), inheritedId: 'o4' }, pinned: null, active: 'o4' }
-    expect(plain(segmentFooter(wide, 40, colors, 'Level'))).toBe('  option3 ‹ option4 (default) › +7')
-    expect(plain(segmentFooter(wide, 40, colors, 'Level'))).toContain('‹ option4 (default) ›')
-    expect(plain(segmentFooter(wide, 40, colors, 'Level'))).toMatch(/\+\d+$/u)
+    expect(plainText(segmentFooter(wide, 40, colors, 'Level'))).toBe('  option3 ‹ option4 (default) › +7')
+    expect(plainText(segmentFooter(wide, 40, colors, 'Level'))).toContain('‹ option4 (default) ›')
+    expect(plainText(segmentFooter(wide, 40, colors, 'Level'))).toMatch(/\+\d+$/u)
     // The active token alone, cut to the width when even it does not fit.
     for (const width of [24, 16, 10, 4, 1]) expect(visibleWidth(segmentFooter(wide, width, colors, 'Level'))).toBeLessThanOrEqual(width)
-    expect(plain(segmentFooter({ segment, pinned: null, active: undefined }, 10, colors, 'Level'))).toBe('  min +2')
+    expect(plainText(segmentFooter({ segment, pinned: null, active: undefined }, 10, colors, 'Level'))).toBe('  min +2')
     // A strip of one option that is wider than the line has nothing to fold: it is cut.
     const single: SegmentView = { segment: { options: [{ id: 'a', label: 'a'.repeat(30) }] }, pinned: 'a', active: 'a' }
     expect(visibleWidth(segmentFooter(single, 20, colors, 'Level'))).toBe(20)
@@ -73,7 +72,7 @@ describe('the strip on a model picker row', () => {
     surfaces.push(surface)
     return { surface, events }
   }
-  const rows = (surface: RealSurface): string[] => surface.render().map(plain)
+  const rows = (surface: RealSurface): string[] => surface.render().map(plainText)
   const focused = (lines: readonly string[]): string => lines.find(line => line.includes('→')) ?? ''
   const RIGHT = '\x1b[C'
   const LEFT = '\x1b[D'
@@ -113,11 +112,11 @@ describe('the strip on a model picker row', () => {
   it('steps with ← and →, clamps at the ends, and unpins by stepping onto the inherited option', () => {
     const { surface } = open(120)
     expect(focused(rows(surface))).toContain('min ‹ high (default) › max')
-    expect(focused(surface.press(RIGHT).map(plain))).toContain('min high ‹ max ›')
-    expect(focused(surface.press(RIGHT).map(plain))).toContain('min high ‹ max ›')
-    expect(focused(surface.press(LEFT).map(plain))).toContain('min ‹ high (default) › max')
-    expect(focused(surface.press(LEFT).map(plain))).toContain('‹ min › high max')
-    expect(focused(surface.press(LEFT).map(plain))).toContain('‹ min › high max')
+    expect(focused(surface.press(RIGHT).map(plainText))).toContain('min high ‹ max ›')
+    expect(focused(surface.press(RIGHT).map(plainText))).toContain('min high ‹ max ›')
+    expect(focused(surface.press(LEFT).map(plainText))).toContain('min ‹ high (default) › max')
+    expect(focused(surface.press(LEFT).map(plainText))).toContain('‹ min › high max')
+    expect(focused(surface.press(LEFT).map(plainText))).toContain('‹ min › high max')
   })
 
   it('unpins with Delete and names it in the hint only while the row is pinned', () => {
@@ -140,7 +139,7 @@ describe('the strip on a model picker row', () => {
     expect(focused(rows(surface))).toContain('→')
     // The row inherits nothing, so its strip starts on the first enabled option.
     expect(focused(rows(surface))).toContain('‹ low › off high')
-    expect(focused(surface.press(RIGHT).map(plain))).toContain('low off ‹ high ›')
+    expect(focused(surface.press(RIGHT).map(plainText))).toContain('low off ‹ high ›')
   })
 
   it('reports a segment id with the accepted row only while the row is pinned', async () => {

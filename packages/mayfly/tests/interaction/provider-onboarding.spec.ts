@@ -12,6 +12,7 @@ import { InteractionStateService } from '../../src/interaction/runtime-state.ts'
 import { DEEPSEEK_KEY } from '../../src/interaction/provider-onboarding.ts'
 import { providerFixture } from './provider-fixture.ts'
 import type { MayflyFieldValue, MayflyUiActionEvent } from '../../../ui/src/interaction.ts'
+import { flush } from '../helpers.ts'
 
 const pickerCalls = vi.hoisted(() => [] as Array<string | undefined>)
 vi.mock('../../src/interaction/model-commands.ts', () => ({ openModelPicker: async (_ctx: unknown, _signal: unknown, provider?: string) => { pickerCalls.push(provider); return { kind: 'success' } } }))
@@ -19,7 +20,6 @@ vi.mock('../../src/interaction/theme-switch.ts', () => ({ applyTheme: async () =
 
 const contexts: Context[] = []
 afterEach(async () => { pickerCalls.length = 0; for (const ctx of contexts.splice(0)) await ctx.fiber.dispose() })
-const flush = () => new Promise<void>(resolve => { setImmediate(resolve) })
 
 async function setup(profiles: Record<string, unknown> = {}, configured = false, llm?: unknown) {
   const ctx = new Context()
