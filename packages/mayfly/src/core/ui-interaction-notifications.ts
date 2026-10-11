@@ -69,7 +69,6 @@ export class UiNotificationStore {
         ...feedback,
         id,
         ...identity,
-        state: 'active' as const,
         createdAt: previous === undefined || settlesProgress ? now : previous.createdAt,
         visibleMs,
         message: admitNotificationMessage(feedback.message),
@@ -85,7 +84,6 @@ export class UiNotificationStore {
         owner: identity.owner,
         scope: identity.scope,
         ...(identity.operationId === undefined ? {} : { operationId: identity.operationId }),
-        state: 'active',
         createdAt: Date.now(),
         visibleMs: 0,
         message: 'The operation returned invalid feedback',
@@ -111,14 +109,6 @@ export class UiNotificationStore {
       changed = true
     }
     if (changed) this.changed()
-  }
-
-  handle(id: string): void {
-    const record = this.records.get(id)
-    if (record === undefined || record.state === 'handled') return
-    this.cancelTimer(id)
-    this.records.set(id, freezeWire({ ...record, state: 'handled' as const }))
-    this.changed()
   }
 
   setVisible(visible: boolean): void {
@@ -169,7 +159,7 @@ export class UiNotificationStore {
   private trim(): void {
     if (this.records.size <= 64) return
     const removable = [...this.records.values()]
-      .filter(record => record.state === 'handled' || (record.purpose !== 'progress' && record.severity !== 'warning' && record.severity !== 'error'))
+      .filter(record => record.purpose !== 'progress' && record.severity !== 'warning' && record.severity !== 'error')
       .toSorted((left, right) => left.createdAt - right.createdAt)
     for (const record of removable) {
       if (this.records.size <= 64) break
@@ -191,6 +181,5 @@ export class UiNotificationOwner {
 
   clear(id: string): void { this.store.clear(`${this.id}/${id}`) }
   clearAll(): void { if (this.live) this.store.clearOwner(this.id) }
-  handle(id: string): void { this.store.handle(`${this.id}/${id}`) }
   dispose(): void { if (this.live) { this.live = false; this.store.clearOwner(this.id) } }
 }

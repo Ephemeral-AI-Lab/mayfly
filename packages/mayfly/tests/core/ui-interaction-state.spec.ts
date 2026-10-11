@@ -251,11 +251,9 @@ describe.each(['pane', 'overlay'] as const)('%s frontend interaction', kind => {
     second.resolve({ kind: 'completed', feedback: { severity: 'success', message: 'Save complete' } })
     await flush()
     expect(model.feedbackSnapshot()).toEqual(expect.arrayContaining([
-      expect.objectContaining({ severity: 'error', message: 'Delete failed', detail: 'Keep this visible', owner: model.instanceId, state: 'active' }),
+      expect.objectContaining({ severity: 'error', message: 'Delete failed', detail: 'Keep this visible', owner: model.instanceId }),
       expect.objectContaining({ severity: 'success', message: 'Save complete', owner: model.instanceId }),
     ]))
-    model.handleFeedback(`${model.instanceId}/1`)
-    expect(model.feedbackSnapshot().find(item => item.message === 'Delete failed')?.state).toBe('handled')
   })
 
   it('pauses short feedback lifetime while an overlay is hidden', async () => {
@@ -511,9 +509,7 @@ it('projects registry entries and contains observers across service disposal', a
 
   const owner = ctx.mayflyUiInteraction.createNotificationOwner('service-test')
   owner.report('failure', { kind: 'app', targetId: 'test' }, { severity: 'error', message: 'Failure' })
-  const notification = ctx.mayflyUiInteraction.notificationSnapshot()[0]!
-  ctx.mayflyUiInteraction.handleNotification(notification.id)
-  expect(ctx.mayflyUiInteraction.notificationSnapshot()[0]!.state).toBe('handled')
+  expect(ctx.mayflyUiInteraction.notificationSnapshot().map(record => record.message)).toEqual(['Failure'])
 
   const warn = vi.spyOn(ctx.logger, 'warn').mockImplementation(() => {})
   ctx.mayflyUiInteraction.subscribe(() => { throw new Error('observer failed') })

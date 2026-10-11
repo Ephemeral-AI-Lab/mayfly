@@ -101,7 +101,7 @@ Handlers are registered as `onEvent: { observe?, action? }`: `observe` receives
 the observation events (`value-change`, `selection-toggle`, `tab-change`) and
 `action` the action events and returns the reply. A reply may carry `feedback`
 (`{ message, severity, purpose?, detail? }`); the core keeps one record per
-message (`id`, `owner`, `scope`, `state: 'active' | 'handled'`, `createdAt`,
+message (`id`, `owner`, `scope`, `operationId`, `createdAt`,
 `visibleMs`) and owns its lifetime (spec §2.4). The remaining routing fields in
 `packages/ui/src/interaction.ts` (`operationId`, `fieldId`, `surfaceId`,
 `targetId`, `resourceId`, `sessionId`, `focusRevision`) address a reply to the
