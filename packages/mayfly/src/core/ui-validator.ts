@@ -39,6 +39,7 @@ import type { MayflyEditorChild, MayflyEditorShellNode, MayflyValidationResult }
 import { printableKey } from './key-actions.ts'
 import { COMMON_MEANINGS, actionNamingProblem, defaultItemKey } from './ui-actions.ts'
 import { isWireSnapshot } from '@ephemeral-ai/mayfly-ui'
+import { stripEscapeSequences } from './escape-sequences.ts'
 import { countWork, type MayflyWorkCounters } from './ui-work-counters.ts'
 import { admitFieldPresentation, admitTextRules } from './ui-validator-form.ts'
 import { admitPromptFields, MAYFLY_UI_MAX_DRAFT_TEXT, type PromptAdmissionHelpers } from './ui-validator-prompt.ts'
@@ -65,6 +66,7 @@ export const MAYFLY_UI_MAX_ATTACHMENT_ID = 128
 export const MAYFLY_UI_MAX_IMAGE_ROWS = 40
 
 const TERMINAL_SEQUENCE = /(?:(?:\x1b\]|\x9d)[\s\S]*?(?:\x07|\x1b\\|\x9c)|(?:\x1b[PX^_]|[\x90\x98\x9e\x9f])[\s\S]*?(?:\x07|\x1b\\|\x9c)|(?:\x1b\[|\x9b)[0-?]*[ -/]*[@-~]|\x1b.)/gu
+const TERMINAL_TAIL = /(?:\x1b\[|\x9b)[0-?]*[ -/]*[@-~]|\x1b./gu
 const UNSAFE_CONTROLS = /[\x00-\x08\x0b-\x1f\x7f-\x9f\uf8ff\ufdd0-\ufdef]/gu
 
 type ValidationMode = 'ui' | 'status' | 'editor'
@@ -216,7 +218,7 @@ function required(object: Record<string, unknown>, key: string, path: string): u
 /** Content text: sanitized and admitted whole, whatever its length; the viewport, not admission, bounds the work. */
 function text(value: unknown, path: string): string {
   if (typeof value !== 'string') invalid(`${path} must be a string`)
-  return value.replace(TERMINAL_SEQUENCE, '').replace(UNSAFE_CONTROLS, '')
+  return stripEscapeSequences(value, TERMINAL_SEQUENCE, TERMINAL_TAIL, true).replace(UNSAFE_CONTROLS, '')
 }
 
 /** Clip a sanitized string to the label maximum, never splitting a surrogate pair, ending in `…`. */
@@ -255,7 +257,7 @@ function draftText(value: unknown, path: string, state: ValidationState): string
   if (typeof value !== 'string') invalid(`${path} must be a string`)
   state.budget.draftText += value.length
   if (state.budget.draftText > MAYFLY_UI_MAX_DRAFT_TEXT) limit(`Mayfly UI draft text exceeds ${String(MAYFLY_UI_MAX_DRAFT_TEXT)} characters`)
-  return value.replace(TERMINAL_SEQUENCE, '').replace(UNSAFE_CONTROLS, '')
+  return stripEscapeSequences(value, TERMINAL_SEQUENCE, TERMINAL_TAIL, true).replace(UNSAFE_CONTROLS, '')
 }
 
 function boolean(value: unknown, path: string): boolean {
@@ -441,10 +443,15 @@ function spans(value: unknown, path: string, state: ValidationState, motion = fa
   return collection(value, path).map((entry, index) => span(entry, `${path}[${String(index)}]`, state, motion, clipped))
 }
 
+/** The lines of `value` trimmed and joined by one space: a `fields` row paints on one line, so no line break reaches it. */
+function oneRow(value: string): string {
+  return value.includes('\n') ? value.split('\n').map(line => line.trim()).filter(line => line !== '').join(' ') : value
+}
+
 function field(value: unknown, path: string, state: ValidationState): MayflyField {
   return enter(value, path, state, object => ({
-    label: label(required(object, 'label', path), `${path}.label`),
-    value: spans(required(object, 'value', path), `${path}.value`, state, false, true),
+    label: oneRow(label(required(object, 'label', path), `${path}.label`)),
+    value: spans(required(object, 'value', path), `${path}.value`, state, false, true).map(piece => ({ ...piece, text: oneRow(piece.text) })),
   }))
 }
 

@@ -486,7 +486,7 @@ class MarkdownRowSource implements RowSource {
     if (rows === undefined) {
       const painted = unit.kind === 'mermaid'
         ? this.paintSafely(at, () => markdownMermaidRows(unit.source, unit.fallback, this.width, this.theme, this.env.colors.mdHr))
-        : this.paintSafely(at, () => markdownBlockRows(this.prepared.normalized.slice(unit.start, unit.end), this.prepared.defs, this.width, this.theme, this.env.colors.mdHr))
+        : this.paintSafely(at, () => markdownBlockRows(this.prepared.normalized.slice(unit.start, unit.end), this.prepared.defs, this.width, this.theme, this.env.colors.mdHr, unit.closed === true))
       // Only an oversized mermaid declines a fragment paint; its raw fence becomes the segmented child.
       if (painted === undefined) {
         this.syncCount(at, this.linesChild(at, (unit as Extract<MarkdownUnit, { readonly kind: 'mermaid' }>).fallback).length)

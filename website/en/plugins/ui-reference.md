@@ -36,7 +36,8 @@ in a node.
   and keys may be at most 1,024 UTF-16 code units; a longer one is rejected.
   One-row fields — labels, titles, badges, details, reasons, hints,
   placeholders, chart labels, `alt`, and each span of a `fields` value — are
-  clipped at 4,096 code units and end in `…`.
+  clipped at 4,096 code units and end in `…`. A line break inside a `fields`
+  label or value becomes one space.
 - Text that grows — a streamed answer, job output, a live log — publishes as
   a `chunks` list on the `text`, `markdown`, `code`, or `diagram` field itself
   (`MayflyContentField` is `string | readonly MayflyContentChunk[]`): up to
