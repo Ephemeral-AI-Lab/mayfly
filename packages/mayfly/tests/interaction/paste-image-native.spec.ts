@@ -20,6 +20,7 @@ import {
   POWERSHELL_ARGS,
   probeDarwin,
   probeWindows,
+  setNativeToolTimeouts,
 } from '../../src/interaction/paste-image-native.ts'
 import {
   classifyNativeFailure,
@@ -449,6 +450,7 @@ describe('probeDarwin', () => {
     if (savedTmpdir === undefined) delete process.env.TMPDIR
     else process.env.TMPDIR = savedTmpdir
     for (const key of ['FAKE_AS_MODE', 'FAKE_AS_PNG', 'FAKE_AS_GIF', 'FAKE_AS_JPG', 'FAKE_AS_TIFF', 'FAKE_INFO', 'FAKE_FURL', 'FAKE_AS_LOG', 'FAKE_SIPS_LOG', 'FAKE_SIPS_MODE']) delete process.env[key]
+    setNativeToolTimeouts(undefined)
   })
 
   /** The staging directory extracted from the fake's logged write argv. */
@@ -601,23 +603,25 @@ describe('probeDarwin', () => {
     await expect(probeDarwin(IMAGE_LIMITS)).resolves.toEqual({ kind: 'failed', detail: 'osascript exited with code 1: no furl' })
   })
 
-  it('times out when the furl listing hangs', { timeout: 15_000 }, async () => {
+  it('times out when the furl listing hangs', { timeout: 10_000 }, async () => {
     const { bin } = fakeBin()
     process.env.PATH = bin
     process.env.FAKE_AS_MODE = 'hang-furl'
     process.env.FAKE_INFO = '«class furl» 412'
+    setNativeToolTimeouts({ darwin: 200 })
     await expect(probeDarwin(IMAGE_LIMITS)).resolves.toEqual({ kind: 'timeout' })
   })
 
-  it('times out when a direct coercion write hangs', { timeout: 15_000 }, async () => {
+  it('times out when a direct coercion write hangs', { timeout: 10_000 }, async () => {
     const { bin } = fakeBin()
     process.env.PATH = bin
     process.env.FAKE_AS_MODE = 'hang-write'
     process.env.FAKE_INFO = '«class PNGf» 3971'
+    setNativeToolTimeouts({ darwin: 200 })
     await expect(probeDarwin(IMAGE_LIMITS)).resolves.toEqual({ kind: 'timeout' })
   })
 
-  it('times out when the first TIFF coercion write hangs', { timeout: 15_000 }, async () => {
+  it('times out when the first TIFF coercion write hangs', { timeout: 10_000 }, async () => {
     // TIFF-only clipboard: the direct loop stays empty, so the hang lands on
     // the «class TIFF» write and the timeout returns as a hard failure from
     // inside the TIFF leg rather than surfacing as a soft detail.
@@ -625,13 +629,15 @@ describe('probeDarwin', () => {
     process.env.PATH = bin
     process.env.FAKE_AS_MODE = 'hang-write'
     process.env.FAKE_INFO = 'TIFF picture 4810'
+    setNativeToolTimeouts({ darwin: 200 })
     await expect(probeDarwin(IMAGE_LIMITS)).resolves.toEqual({ kind: 'timeout' })
   })
 
-  it('times out when clipboard info itself hangs', { timeout: 15_000 }, async () => {
+  it('times out when clipboard info itself hangs', { timeout: 10_000 }, async () => {
     const { bin } = fakeBin()
     process.env.PATH = bin
     process.env.FAKE_AS_MODE = 'hang-info'
+    setNativeToolTimeouts({ darwin: 200 })
     await expect(probeDarwin(IMAGE_LIMITS)).resolves.toEqual({ kind: 'timeout' })
   })
 

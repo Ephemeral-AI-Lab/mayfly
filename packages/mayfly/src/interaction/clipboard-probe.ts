@@ -48,6 +48,13 @@ export type FailureKind = FailureResult['kind']
 /** Per-tool timeout; a hung clipboard helper must not wedge the editor. */
 export const CLIPBOARD_TOOL_TIMEOUT_MS = 3000
 
+let clipboardToolTimeoutMs = CLIPBOARD_TOOL_TIMEOUT_MS
+
+/** Replace the default per-tool timeout in tests; `undefined` restores it. */
+export function setClipboardToolTimeout(timeoutMs: number | undefined): void {
+  clipboardToolTimeoutMs = timeoutMs ?? CLIPBOARD_TOOL_TIMEOUT_MS
+}
+
 /** Outcome of one clipboard tool invocation. */
 export type ToolRun =
   | { ok: true; stdout: Buffer }
@@ -108,7 +115,7 @@ export function runTool(command: string, args: readonly string[], options?: Tool
       child?.stderr?.destroy()
     }
     const abort = (): void => stop('ABORT_ERR', false)
-    timer = setTimeout(() => stop('ETIMEDOUT', true), options?.timeoutMs ?? CLIPBOARD_TOOL_TIMEOUT_MS)
+    timer = setTimeout(() => stop('ETIMEDOUT', true), options?.timeoutMs ?? clipboardToolTimeoutMs)
     options?.signal?.addEventListener('abort', abort, { once: true })
     try {
       child = execFile(command, args, {

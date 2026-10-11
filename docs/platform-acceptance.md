@@ -47,8 +47,8 @@ the following real environments and record versions and results:
 | Environment | Required scenarios |
 | --- | --- |
 | Linux Wayland and X11 | Chinese input method, text and image clipboard, missing helper, OSC52 feedback on copy failure |
-| Windows Terminal / ConPTY | No Git Bash, Chinese input method, UTF-8 paste, drive-letter and UNC completion, npmrc mirrors, in-app plugin actions |
-| macOS Terminal or iTerm2 | Chinese input method, pbcopy, Finder image/file paste, window resize, and terminal restoration after exit |
+| Windows Terminal / ConPTY | No Git Bash, Chinese input method, UTF-8 paste, clipboard image paste (screenshot or copied image files stage through PowerShell into a paste marker; an unavailable powershell.exe is named in the notice), drive-letter and UNC completion, npmrc mirrors, in-app plugin actions |
+| macOS Terminal or iTerm2 | Chinese input method, pbcopy, Finder image/file paste, screenshot/TIFF clipboard image paste (osascript coercion, Chromium TIFF converted through sips; an unavailable osascript or sips is named in the notice), window resize, and terminal restoration after exit |
 
 The `prompt` node (roadmap slice 1.9b) keeps the terminal editor's own paste and input-method
 behavior, so each platform also checks it on the UI gallery's prompt pane
