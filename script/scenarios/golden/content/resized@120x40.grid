@@ -13,12 +13,12 @@ grid 80x24 cursor none
 |╭ Trace detail #13 ────────────────────────────────────────────────────────────╮
 |│ Type:    tool/call                                                           │
 |│ Surface: log-only                                                            │
-|│ record00039 = { index: 39, payload:                                          │
-|│ 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx │
+|│ ecord03996 = { index: 3996, payload: 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx │
 |│ xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx │
-|│ xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx' }\\nexport const          │
-|│   Page: 2                                                                    │
-|│  Previous   Go to page   Next page                                           │
+|│ xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx │
+|│ xxxxxxxxxx' }\\nexport const record03997 = { index: 3997, payload: 'xxxxxxxx │
+|│ xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx │
+|│ xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx │
 |│  Copy trace item   Close                                                     │
 |│   ↑/↓ scroll · Ctrl+E expand · Esc close                                     │
 |╰──────────────────────────────────────────────────────────────────────────────╯
@@ -34,12 +34,12 @@ styles
 11: 0-1 fg:#dcd7f2; 2-17 fg:#f5f5f7 b; 18-79 fg:#dcd7f2
 12: 0 fg:#dcd7f2; 2-9 fg:#9aa3b8; 11-19 fg:#ededf2; 79 fg:#dcd7f2
 13: 0 fg:#dcd7f2; 2-9 fg:#9aa3b8; 11-18 fg:#ededf2; 79 fg:#dcd7f2
-14: 0 fg:#dcd7f2; 2-77 fg:#4ec87e; 79 fg:#dcd7f2
-15: 0 fg:#dcd7f2; 2-77 fg:#4ec87e; 79 fg:#dcd7f2
-16: 0 fg:#dcd7f2; 2-76 fg:#4ec87e; 77 fg:#4ec87e bg:p8; 78 fg:#4ec87e; 79 fg:#dcd7f2
-17: 0 fg:#dcd7f2; 2-76 fg:#4ec87e; 77 fg:#4ec87e bg:p8; 78 fg:#4ec87e; 79 fg:#dcd7f2
-18: 0 fg:#dcd7f2; 4-10 fg:#ededf2; 79 fg:#dcd7f2
-19: 0 fg:#dcd7f2; 3-10 fg:#ededf2; 14-23 fg:#ededf2; 27-35 fg:#ededf2; 79 fg:#dcd7f2
+14: 0 fg:#dcd7f2; 79 fg:#dcd7f2
+15: 0 fg:#dcd7f2; 79 fg:#dcd7f2
+16: 0 fg:#dcd7f2; 79 fg:#dcd7f2
+17: 0 fg:#dcd7f2; 79 fg:#dcd7f2
+18: 0 fg:#dcd7f2; 77 bg:p8; 79 fg:#dcd7f2
+19: 0 fg:#dcd7f2; 77 bg:p8; 79 fg:#dcd7f2
 20: 0 fg:#dcd7f2; 3-17 fg:#ededf2; 21-25 fg:#ededf2; 79 fg:#dcd7f2
 21: 0 fg:#dcd7f2; 2-3 fg:#5c6476; 4-6 fg:#ededf2; 8-16 fg:#5c6476; 17-22 fg:#ededf2; 24-32 fg:#5c6476; 33-35 fg:#ededf2; 37-41 fg:#5c6476; 79 fg:#dcd7f2
 22: 0-79 fg:#dcd7f2

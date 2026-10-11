@@ -5,7 +5,7 @@ import { ui } from '../../../ui/src/index.ts'
 import { FakeMayflyComponents } from '../interaction/fakes.ts'
 import { UiImagePainter } from '../../src/core/ui-image.ts'
 import { MayflyUiSurfaceRuntime, compileMayflyUiNode, compileMayflyUiSurfaceNode } from '../../src/core/ui-compiler.ts'
-import { documentBlocks } from '../../src/core/ui-interaction-document.ts'
+import { documentBlocks, documentBlockText } from '../../src/core/ui-interaction-document.ts'
 import { MAYFLY_UI_IMAGE_CACHE, MayflyUiImagesService, type MayflyUiImageBytes, type MayflyUiImageLoader } from '../../src/core/ui-images.ts'
 import {
   MAYFLY_UI_MAX_ATTACHMENT_ID,
@@ -335,6 +335,6 @@ describe('compiled image nodes', () => {
   })
 
   it('reads an image as its alt in a document block', () => {
-    expect(documentBlocks(ui.image({ attachmentId: 'a', alt: '[Image #1]' })).blocks.map(block => block.source)).toEqual(['[Image #1]'])
+    expect(documentBlocks(ui.image({ attachmentId: 'a', alt: '[Image #1]' })).blocks.map(documentBlockText)).toEqual(['[Image #1]'])
   })
 })

@@ -45,7 +45,7 @@ const COVERS = {
   content: [
     'packages/mayfly/src/core/content-*.ts', 'packages/mayfly/src/core/width-estimate.ts', 'packages/mayfly/src/core/plugin-view.ts',
     'packages/mayfly/src/core/ui-rows.ts', 'packages/mayfly/src/core/ui-scroll-region.ts',
-    'packages/mayfly/src/core/ui-content-cache.ts', `${INTERACTION}trace-*.ts`, `${INTERACTION}document-pages.ts`,
+    'packages/mayfly/src/core/ui-content-cache.ts', `${INTERACTION}trace-*.ts`, `${INTERACTION}jobs.ts`,
     `${TRANSCRIPT}command-group.ts`, `${TRANSCRIPT}tool-line.ts`,
   ],
 }
@@ -58,12 +58,11 @@ const SCRIPTS = {
   jobs: [play('running'), checkpoint('running')],
   // The wheel scrolls the transcript back: the two checkpoints differ only by the scroll.
   wheel: [play(), checkpoint('end'), wheel('up', { count: 3 }), checkpoint('wheel')],
-  // The collapsed write card, then /trace on its tool call: a document page of the megabyte content, scrolled and resized.
+  // The collapsed write card, then /trace on its tool call: the megabyte document in one scroll, paged and resized.
   content: [
     play(), checkpoint('card'),
     type('/trace'), key('enter'), key('end'), key('up', { repeat: 4 }), key('enter'), checkpoint('detail'),
-    key('tab', { repeat: 2 }), key('right', { repeat: 2 }), key('enter'), checkpoint('page'),
-    key('shift+tab', { repeat: 4 }), key('pagedown'), checkpoint('paged'), key('end'), checkpoint('tail'), resize(80, 24), checkpoint('resized'),
+    key('pagedown'), checkpoint('paged'), key('end'), checkpoint('tail'), resize(80, 24), checkpoint('resized'),
   ],
 }
 /** Replays that run at a size of their own. */
@@ -178,7 +177,6 @@ const PERF = {
     perf: { ceilings: { scroll: { keyP50Ms: 20, cpuPerKeyMs: 30 }, resize: { keyP50Ms: 50, cpuPerKeyMs: 50 } } },
     script: [
       play(), type('/trace'), key('enter'), key('end'), key('up', { repeat: 4 }), key('enter'),
-      key('tab', { repeat: 2 }), key('right', { repeat: 2 }), key('enter'), key('shift+tab', { repeat: 4 }),
       measure('scroll', [key('pagedown', { repeat: 8 }), key('end'), key('home')]),
       measure('resize', [resize(80, 24), resize(120, 40)]),
     ],

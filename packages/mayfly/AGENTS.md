@@ -229,7 +229,7 @@ the same change; nothing is kept for a later cleanup.
   recompose plus a manual event. UI withdrawal does not roll back native work.
   Plan toggles and permission presets remain independent; `pending` means queued.
 - Jobs stays an ordinary preset sibling. Browsing uses `list/get`; only explicit
-  Read output consumes `read`. Keep reads outside snapshots and page without
+  Read output consumes `read`. Keep reads outside snapshots and scroll without
   losing long-line tails or splitting surrogate pairs. Recheck status for Stop;
   native notifications own terminal job state.
 - Host commands use fixed-argument descriptors. `MAYFLY_DSH_BIN` wins over

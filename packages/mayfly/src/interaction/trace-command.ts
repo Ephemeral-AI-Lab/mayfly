@@ -9,14 +9,12 @@ import { buildSessionEventRecords } from '@deepseek-ai/dsh-session-query'
 import { ui, type MayflyOverlayHandle, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import { copyTextToClipboard, type ClipboardCopyMethod } from './clipboard-write.ts'
 import { openAgentOverlay } from './agent-overlay.ts'
-import { documentPages } from './document-pages.ts'
 import { formatTraceAll, formatTraceItem, traceTime, type TraceItem } from './trace-format.ts'
 import { aggregateTraceItems } from './trace-aggregate.ts'
 import { interactionTranslator, observeInteractionLocale } from './locale.ts'
 import { interpolateLocaleMessage, type MayflyTranslate } from '../frontend/locale.ts'
 
 const ROOT = 'mayfly.trace'
-const PAGE = { pagePath: [], formId: 'trace-page' } as const
 const describe = (error: unknown) => error instanceof Error ? error.message : String(error)
 const sequence = (item: TraceItem) => item.lastSeq === item.seq ? `#${item.seq}` : `#${item.seq}-${item.lastSeq}`
 const copiedVia = (method: ClipboardCopyMethod, t: MayflyTranslate) => method === 'osc52' ? t(' via terminal escape sequence (unverified)') : ''
@@ -31,18 +29,10 @@ export function tracePanelModel(sessionId: string, items: readonly TraceItem[], 
   ]) })
 }
 
-export function traceDetailPanelModel(item: TraceItem, pages: readonly string[], page = 1, t: MayflyTranslate = interpolateLocaleMessage): MayflyUiNode {
+export function traceDetailPanelModel(item: TraceItem, document: string, t: MayflyTranslate = interpolateLocaleMessage): MayflyUiNode {
   return ui.surface({ title: `${t('Trace detail')} ${sequence(item)}`, chrome: 'overlay', padding: 1, child: ui.stack.column([
     ui.fields([{ label: t('Type'), value: [{ text: item.type }] }, { label: t('Surface'), value: [{ text: item.surface }] }]),
-    ui.child(ui.scroll(ui.code(pages[page - 1]!, { language: 'json' }), { id: `trace-document/${String(page)}`, scrollbar: true }), { basis: 0, grow: 1, minSize: 1 }),
-    ...pages.length === 1 ? [] : [
-      ui.form({ id: PAGE.formId, fields: [{ kind: 'number', id: 'page', label: t('Page'), value: page, min: 1, max: pages.length, step: 1, required: true }] }),
-      ui.actions({ id: 'page-actions', items: [
-        { id: 'previous', label: t('Previous'), submit: [PAGE], disabled: page === 1 },
-        { id: 'go', label: t('Go to page'), submit: [PAGE] },
-        { id: 'next', label: t('Next page'), submit: [PAGE], disabled: page === pages.length },
-      ] }),
-    ],
+    ui.child(ui.scroll(ui.code(document, { language: 'json' }), { id: 'trace-document', scrollbar: true }), { basis: 0, grow: 1, minSize: 1 }),
     ui.actions({ id: 'trace-detail-actions', items: [{ id: 'copy', label: t('Copy trace item') }, { id: 'close', label: t('Close'), dismiss: true }] }),
   ]) })
 }
@@ -106,23 +96,16 @@ export function registerTraceCommand(ctx: Context): () => void {
         if (item === undefined || context.signal.aborted) return { kind: 'completed' }
         const id = `${ROOT}.detail`
         registry.close(id)
-        const pages = documentPages(JSON.stringify(rawEvents(item), null, 2))
+        const document = JSON.stringify(rawEvents(item), null, 2)
         let detail: MayflyOverlayHandle | undefined
-        let page = 1
-        detail = await openAgentOverlay(owner, agent, { id, presentation: 'editor', capturing: true, dismissal: 'discard' }, traceDetailPanelModel(item, pages, page, t), scope => {
+        detail = await openAgentOverlay(owner, agent, { id, presentation: 'editor', capturing: true, dismissal: 'discard' }, traceDetailPanelModel(item, document, t), scope => {
           scope.effect(() => observeInteractionLocale(scope, () => {
             if (detail?.closed !== false) return
-            detail.set(traceDetailPanelModel(item, pages, page, t))
+            detail.set(traceDetailPanelModel(item, document, t))
           }))
           return async (event, context) => {
             if (event.kind === 'activate' && event.actionId === 'copy') return copyReply(item, context.signal)
-            if (event.kind !== 'submit') return { kind: 'completed' }
-            const submittedPage = event.submission.forms.find(form => form.formId === PAGE.formId)?.fields.find(field => field.id === 'page')?.value
-            if (typeof submittedPage !== 'number' || !Number.isInteger(submittedPage)) return { kind: 'failed', message: t('Invalid page') }
-            const action = event.submission.actionId
-            const target = action === 'previous' ? submittedPage - 1 : action === 'next' ? submittedPage + 1 : submittedPage
-            page = Math.max(1, Math.min(pages.length, target))
-            return { kind: 'accepted', node: traceDetailPanelModel(item, pages, page, t), source: [] }
+            return { kind: 'completed' }
           }
         }, { signal, reopen: 'replace' })
         return { kind: 'completed' }

@@ -106,6 +106,74 @@ export class ContentIndex {
     }
     return Math.max(1, rows)
   }
+
+  /** The segment whose text range covers `offset` (an offset past the last cut lands on the last segment). */
+  segmentAtOffset(offset: number): number {
+    let low = 0, high = this.segments - 1
+    while (low < high) {
+      const middle = (low + high + 1) >> 1
+      if (this.plan.text0[middle]! <= offset) low = middle
+      else high = middle - 1
+    }
+    return low
+  }
+
+  /**
+   * Rows of `segment` (its own row space) estimated to stand before `offset` at `width`: whole lines counted before
+   * the line holding the offset, plus the wrapped share of that line the offset's columns cover. The inverse of
+   * {@link offsetOfRow} under the same estimate model, so an anchor written from a row maps back to that row.
+   */
+  rowOfOffset(segment: number, offset: number, width: number, text: string): number {
+    const safe = Math.max(1, width)
+    const [segmentStart, segmentEnd] = this.segmentText(segment)
+    const at = Math.max(segmentStart, Math.min(segmentEnd, offset))
+    if (this.isCut(segment)) return Math.floor(estimateColumns(text, segmentStart, at) / safe)
+    let rows = 0
+    const [first, past] = this.segmentLines(segment)
+    for (let line = first; line < past; line += 1) {
+      const [start, end] = this.lineText(line)
+      if (at <= end) return rows + Math.floor(estimateColumns(text, start, at) / safe)
+      const cols = this.lineCols[line]!
+      rows += cols === 0 ? 1 : Math.ceil(cols / safe)
+    }
+    return rows
+  }
+
+  /**
+   * The text offset where segment-local row `row` begins at `width`, under the same estimate model as
+   * {@link rowOfOffset}: enough columns to fill `row` rows, code-point aligned and capped at the segment's end.
+   */
+  offsetOfRow(segment: number, row: number, width: number, text: string): number {
+    const safe = Math.max(1, width)
+    const [segmentStart, segmentEnd] = this.segmentText(segment)
+    /** The position inside `[start, end)` where the accumulated columns first reach `rows` full rows. */
+    const seek = (start: number, end: number, rows: number): number => {
+      const target = rows * safe
+      if (target <= 0) return start
+      let columns = 0
+      let position = start
+      while (position < end) {
+        const code = text.charCodeAt(position)
+        const step = code >= 0xd800 && code <= 0xdbff && position + 1 < end ? 2 : 1
+        const next = columns + estimateColumns(text, position, position + step)
+        if (next > target) return position
+        columns = next
+        position += step
+      }
+      return end
+    }
+    if (this.isCut(segment)) return seek(segmentStart, segmentEnd, Math.max(0, row))
+    const [first, past] = this.segmentLines(segment)
+    let remaining = Math.max(0, row)
+    for (let line = first; line < past; line += 1) {
+      const [start, end] = this.lineText(line)
+      const cols = this.lineCols[line]!
+      const rows = cols === 0 ? 1 : Math.ceil(cols / safe)
+      if (remaining < rows) return seek(start, end, remaining)
+      remaining -= rows
+    }
+    return segmentEnd
+  }
 }
 
 /**

@@ -10,11 +10,9 @@ import { ui, type MayflyListItem, type MayflyOverlayHandle, type MayflyUiNode } 
 import type { MayflyTranslate } from '../frontend/index.ts'
 import { openAgentOverlay } from './agent-overlay.ts'
 import { interactionTranslator, mountInteractionLocale, observeInteractionLocale } from './locale.ts'
-import { documentPages } from './document-pages.ts'
 
 export const name = 'mayfly-jobs'
 export const inject = ['commands', 'jobs', 'mayflyCurrentAgent', 'mayflyOverlays']
-const PAGE_FORM = { pagePath: [], formId: 'output-page' } as const
 const jobSource = (job: JobView) => [{ resourceId: `job/${job.id}`, revision: JSON.stringify([job.status, job.finishedAt ?? null]) }]
 
 export function isLiveJob(job: JobView): boolean { return job.status === 'running' || job.status === 'stopping' }
@@ -51,49 +49,30 @@ export function jobDetailsNode(job: JobView, t: MayflyTranslate): MayflyUiNode {
   ]) })
 }
 
-export function jobOutputNode(job: JobView, read: JobOutputRead, pages: readonly string[], page: number, t: MayflyTranslate): MayflyUiNode {
-  const text = pages[page - 1]!
+export function jobOutputNode(job: JobView, read: JobOutputRead, output: string, t: MayflyTranslate): MayflyUiNode {
   return ui.surface({ title: t('Job {id}', { id: String(job.id) }), chrome: 'overlay', padding: 1, child: ui.stack.column([
     ui.fields([{ label: t('Status at read'), value: [{ text: t(job.status) }] }]),
     ...read.lossy ? [ui.text(t('(earlier output was dropped by retention)'), { tone: 'muted' })] : [],
-    ui.child(ui.scroll(text === '' ? ui.text(t(isLiveJob(job) ? '(no output yet)' : '(no output)'), { tone: 'muted' }) : ui.code(text), { id: `job-output-document/${String(page)}`, scrollbar: true }), { basis: 0, grow: 1, minSize: 1 }),
-    ...pages.length === 1 ? [] : [
-      ui.form({ id: PAGE_FORM.formId, fields: [{ kind: 'number', id: 'page', label: t('Page'), value: page, min: 1, max: pages.length, step: 1, required: true }] }),
-      ui.actions({ id: 'page-actions', items: [
-        { id: 'first', label: t('First'), submit: [PAGE_FORM], disabled: page === 1 },
-        { id: 'previous', label: t('Previous'), submit: [PAGE_FORM], disabled: page === 1 },
-        { id: 'go', label: t('Go to page'), submit: [PAGE_FORM] },
-        { id: 'next', label: t('Next page'), submit: [PAGE_FORM], disabled: page === pages.length },
-        { id: 'last', label: t('Last'), submit: [PAGE_FORM], disabled: page === pages.length },
-      ] }),
-    ],
+    ui.child(ui.scroll(output === '' ? ui.text(t(isLiveJob(job) ? '(no output yet)' : '(no output)'), { tone: 'muted' }) : ui.code(output), { id: 'job-output-document', scrollbar: true }), { basis: 0, grow: 1, minSize: 1 }),
     ui.actions({ id: 'output-actions', items: [{ id: 'close', label: t('Close'), dismiss: true }] }),
   ]) })
 }
 
-/** A read result is retained in its child Fiber, never reread by rendering or paging. */
+/** A read result is retained in its child Fiber, never reread by rendering or scrolling. */
 async function showOutput(ctx: Context, agent: Agent, job: JobView, read: JobOutputRead, signal: AbortSignal, t: MayflyTranslate): Promise<void> {
-  const pages = documentPages(read.chunks.map(chunk => chunk.text).join(''))
+  const output = read.chunks.map(chunk => chunk.text).join('')
   ctx.mayflyOverlays.close('mayfly.jobs.output')
   let handle: MayflyOverlayHandle | undefined
-  handle = await openAgentOverlay(ctx, agent, { id: 'mayfly.jobs.output', presentation: 'editor', capturing: true }, jobOutputNode(job, read, pages, 1, t), owner => {
+  handle = await openAgentOverlay(ctx, agent, { id: 'mayfly.jobs.output', presentation: 'editor', capturing: true }, jobOutputNode(job, read, output, t), owner => {
     owner.effect(() => observeInteractionLocale(owner, () => {
       if (handle?.closed !== false) return
-      // Locale updates reuse the published baseline; the shared form retains any draft.
-      const node = owner.mayflyOverlays.list().find(entry => entry.id === 'mayfly.jobs.output')!.node
-      if (node.kind !== 'surface' || node.child.kind !== 'stack') return
-      const form = node.child.children.map(child => child.node).find(node => node.kind === 'form')
-      const page = form?.fields.find(field => field.id === 'page')?.value ?? 1
-      handle.set(jobOutputNode(job, read, pages, Number(page), t))
+      // Locale updates republish only over this surface's own document; a foreign registration wins.
+      const node = owner.mayflyOverlays.list().find(entry => entry.id === 'mayfly.jobs.output')?.node
+      if (node === undefined || node.kind !== 'surface' || node.child.kind !== 'stack'
+        || !node.child.children.some(child => child.node.kind === 'scroll' && child.node.id === 'job-output-document')) return
+      handle.set(jobOutputNode(job, read, output, t))
     }))
-    return event => {
-      if (event.kind !== 'submit') return { kind: 'completed' }
-      const page = event.submission.forms[0]?.fields.find(field => field.id === 'page')?.value
-      if (typeof page !== 'number' || !Number.isInteger(page)) return { kind: 'failed', message: t('Invalid page') }
-      const action = event.submission.actionId
-      const target = action === 'first' ? 1 : action === 'last' ? pages.length : action === 'previous' ? page - 1 : action === 'next' ? page + 1 : page
-      return { kind: 'accepted', node: jobOutputNode(job, read, pages, Math.max(1, Math.min(pages.length, target)), t), source: [] }
-    }
+    return event => event.kind === 'submit' ? { kind: 'cancelled' } : { kind: 'completed' }
   }, { signal, reopen: 'replace' })
 }
 

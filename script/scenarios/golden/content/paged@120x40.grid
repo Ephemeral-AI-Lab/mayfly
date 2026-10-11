@@ -21,20 +21,20 @@ grid 120x40 cursor none
 |╭ Trace detail #13 ────────────────────────────────────────────────────────────────────────────────────────────────────╮
 |│ Type:    tool/call                                                                                                   │
 |│ Surface: log-only                                                                                                    │
-|│ 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx │
-|│ xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx' }\\nexport const record00005  │
-|│ = { index: 5, payload:                                                                                               │
-|│ 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx │
-|│ xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx' }\\nexport const record00006  │
-|│ = { index: 6, payload:                                                                                               │
-|│ 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx │
-|│ xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx' }\\nexport const record00007  │
-|│ = { index: 7, payload:                                                                                               │
-|│ 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx │
-|│ xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx' }\\nexport const record00008  │
-|│ = { index: 8, payload:                                                                                               │
-|│   Page: 2                                                                                                            │
-|│  Previous   Go to page   Next page                                                                                   │
+|│ d00002 = { index: 2, payload: 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx │
+|│ xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx' │
+|│  }\\nexport const record00003 = { index: 3, payload: 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx │
+|│ xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx │
+|│ xxxxxxxxxxxxxxxxxxxxxx' }\\nexport const record00004 = { index: 4, payload: 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx │
+|│ xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx │
+|│ xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx' }\\nexport const record00005 = { index: 5, payload: 'xxxxxxxxxxxxxxxx │
+|│ xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx │
+|│ xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx' }\\nexport const record00006 = { index: 6, pay │
+|│ load: 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx │
+|│ xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx' }\\nexport const record │
+|│ 00007 = { index: 7, payload: 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx │
+|│ xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'  │
+|│ }\\nexport const record00008 = { index: 8, payload: 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx │
 |│  Copy trace item   Close                                                                                             │
 |│   ↑/↓ scroll · Ctrl+E expand · Tab/Shift+Tab groups · Esc close                                                      │
 |╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
@@ -56,20 +56,20 @@ styles
 19: 0-1 fg:#dcd7f2; 2-17 fg:#f5f5f7 b; 18-119 fg:#dcd7f2
 20: 0 fg:#dcd7f2; 2-9 fg:#9aa3b8; 11-19 fg:#ededf2; 119 fg:#dcd7f2
 21: 0 fg:#dcd7f2; 2-9 fg:#9aa3b8; 11-18 fg:#ededf2; 119 fg:#dcd7f2
-22: 0 fg:#dcd7f2; 2-117 fg:#4ec87e; 119 fg:#dcd7f2
-23: 0 fg:#dcd7f2; 2-116 fg:#4ec87e; 117 fg:#4ec87e bg:p8; 118 fg:#4ec87e; 119 fg:#dcd7f2
-24: 0 fg:#dcd7f2; 2-116 fg:#4ec87e; 117 fg:#4ec87e bg:p8; 118 fg:#4ec87e; 119 fg:#dcd7f2
-25: 0 fg:#dcd7f2; 2-117 fg:#4ec87e; 119 fg:#dcd7f2
-26: 0 fg:#dcd7f2; 2-117 fg:#4ec87e; 119 fg:#dcd7f2
-27: 0 fg:#dcd7f2; 2-117 fg:#4ec87e; 119 fg:#dcd7f2
-28: 0 fg:#dcd7f2; 2-117 fg:#4ec87e; 119 fg:#dcd7f2
-29: 0 fg:#dcd7f2; 2-117 fg:#4ec87e; 119 fg:#dcd7f2
-30: 0 fg:#dcd7f2; 2-117 fg:#4ec87e; 119 fg:#dcd7f2
-31: 0 fg:#dcd7f2; 2-117 fg:#4ec87e; 119 fg:#dcd7f2
-32: 0 fg:#dcd7f2; 2-117 fg:#4ec87e; 119 fg:#dcd7f2
-33: 0 fg:#dcd7f2; 2-117 fg:#4ec87e; 119 fg:#dcd7f2
-34: 0 fg:#dcd7f2; 4-10 fg:#ededf2; 119 fg:#dcd7f2
-35: 0 fg:#dcd7f2; 3-10 fg:#ededf2; 14-23 fg:#ededf2; 27-35 fg:#ededf2; 119 fg:#dcd7f2
+22: 0 fg:#dcd7f2; 117 bg:p8; 119 fg:#dcd7f2
+23: 0 fg:#dcd7f2; 117 bg:p8; 119 fg:#dcd7f2
+24: 0 fg:#dcd7f2; 119 fg:#dcd7f2
+25: 0 fg:#dcd7f2; 119 fg:#dcd7f2
+26: 0 fg:#dcd7f2; 119 fg:#dcd7f2
+27: 0 fg:#dcd7f2; 119 fg:#dcd7f2
+28: 0 fg:#dcd7f2; 119 fg:#dcd7f2
+29: 0 fg:#dcd7f2; 119 fg:#dcd7f2
+30: 0 fg:#dcd7f2; 119 fg:#dcd7f2
+31: 0 fg:#dcd7f2; 119 fg:#dcd7f2
+32: 0 fg:#dcd7f2; 119 fg:#dcd7f2
+33: 0 fg:#dcd7f2; 119 fg:#dcd7f2
+34: 0 fg:#dcd7f2; 119 fg:#dcd7f2
+35: 0 fg:#dcd7f2; 119 fg:#dcd7f2
 36: 0 fg:#dcd7f2; 3-17 fg:#ededf2; 21-25 fg:#ededf2; 119 fg:#dcd7f2
 37: 0 fg:#dcd7f2; 2-3 fg:#5c6476; 4-6 fg:#ededf2; 8-16 fg:#5c6476; 17-22 fg:#ededf2; 24-32 fg:#5c6476; 33-45 fg:#ededf2; 47-55 fg:#5c6476; 56-58 fg:#ededf2; 60-64 fg:#5c6476; 119 fg:#dcd7f2
 38: 0-119 fg:#dcd7f2

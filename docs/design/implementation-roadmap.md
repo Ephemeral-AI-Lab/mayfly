@@ -482,9 +482,9 @@ What it costs today:
 - A tool card for a write over 20 KB, or an edit whose old and new text together pass it, renders the rejection
   instead of the diff (`transcript/tool-model.ts` through `canonical-node-renderer.ts`).
 - A plan longer than 20 KB renders as rejection rows (`interaction/plan-document.ts`, one `ui.markdown`).
-- Job output and trace payloads are cut into 12,000-character pages by hand (`interaction/document-pages.ts`), with a
-  page form and First/Previous/Go/Next/Last actions in `jobs.ts` and `trace-command.ts`; the scroll position resets on
-  every page.
+- Job output and trace payloads were cut into 12,000-character pages by hand, with a
+  page form and First/Previous/Go/Next/Last actions; the scroll position reset on
+  every page. 2c.4 replaced them with one scroll each.
 - The changelog renders every release in one tree and grows past the budget; fixtures are cut to stay under it
   (`tests/core/width-scan-patterns.spec.ts`).
 - The transcript of Phase 3 would reject any answer, diff, or plan row over 20,000 characters, and in a short session
@@ -1879,7 +1879,7 @@ in review at a time; 2c.7 needs 2c.4's anchors. Each slice is reviewed like a co
 | 2c.1 | in review | `feat/2c` |
 | 2c.2 | in review | `feat/2c` |
 | 2c.3 | in review | `feat/2c` |
-| 2c.4 | — | — |
+| 2c.4 | in review | `feat/2c` |
 | 2c.5 | — | — |
 | 2c.6 | — | — |
 | 2c.7 | — | — |

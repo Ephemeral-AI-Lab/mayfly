@@ -32,9 +32,9 @@ grid 120x40 cursor none
 |│       "step": 2,                                                                                                     │
 |│       "callId": "replay-call-1",                                                                                     │
 |│       "name": "write",                                                                                               │
-|│                                                                                                                      │
-|│   Page: 1                                                                                                            │
-|│  Previous   Go to page   Next page                                                                                   │
+|│       "arguments": "{\"file_path\":\"fixtures/generated.ts\",\"content\":\"export const record00001 = { index: 1, pa │
+|│ yload: 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx │
+|│ xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx' }\\nexport const recor │
 |│  Copy trace item   Close                                                                                             │
 |│   ↑/↓ scroll · Ctrl+E expand · Tab/Shift+Tab groups · Esc close                                                      │
 |╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
@@ -59,17 +59,17 @@ styles
 22: 0 fg:#dcd7f2; 2-5 fg:#9aa3b8; 119 fg:#dcd7f2
 23: 0 fg:#dcd7f2; 2 fg:#ededf2; 119 fg:#dcd7f2
 24: 0 fg:#dcd7f2; 2-4 fg:#ededf2; 119 fg:#dcd7f2
-25: 0 fg:#dcd7f2; 2-13 fg:#ededf2; 14-24 fg:#4ec87e; 25 fg:#ededf2; 119 fg:#dcd7f2
+25: 0 fg:#dcd7f2; 2-25 fg:#ededf2; 119 fg:#dcd7f2
 26: 0 fg:#dcd7f2; 2-15 fg:#ededf2; 119 fg:#dcd7f2
 27: 0 fg:#dcd7f2; 2-27 fg:#ededf2; 119 fg:#dcd7f2
 28: 0 fg:#dcd7f2; 2-14 fg:#ededf2; 119 fg:#dcd7f2
 29: 0 fg:#dcd7f2; 2-17 fg:#ededf2; 119 fg:#dcd7f2
 30: 0 fg:#dcd7f2; 2-17 fg:#ededf2; 119 fg:#dcd7f2
-31: 0 fg:#dcd7f2; 2-17 fg:#ededf2; 18-32 fg:#4ec87e; 33 fg:#ededf2; 119 fg:#dcd7f2
-32: 0 fg:#dcd7f2; 2-15 fg:#ededf2; 16-22 fg:#4ec87e; 23 fg:#ededf2; 119 fg:#dcd7f2
+31: 0 fg:#dcd7f2; 2-33 fg:#ededf2; 119 fg:#dcd7f2
+32: 0 fg:#dcd7f2; 2-23 fg:#ededf2; 119 fg:#dcd7f2
 33: 0 fg:#dcd7f2; 119 fg:#dcd7f2
-34: 0 fg:#dcd7f2; 4-10 fg:#ededf2; 119 fg:#dcd7f2
-35: 0 fg:#dcd7f2; 3-10 fg:#9aa3b8; 14-23 fg:#ededf2; 27-35 fg:#ededf2; 119 fg:#dcd7f2
+34: 0 fg:#dcd7f2; 119 fg:#dcd7f2
+35: 0 fg:#dcd7f2; 119 fg:#dcd7f2
 36: 0 fg:#dcd7f2; 3-17 fg:#ededf2; 21-25 fg:#ededf2; 119 fg:#dcd7f2
 37: 0 fg:#dcd7f2; 2-3 fg:#5c6476; 4-6 fg:#ededf2; 8-16 fg:#5c6476; 17-22 fg:#ededf2; 24-32 fg:#5c6476; 33-45 fg:#ededf2; 47-55 fg:#5c6476; 56-58 fg:#ededf2; 60-64 fg:#5c6476; 119 fg:#dcd7f2
 38: 0-119 fg:#dcd7f2

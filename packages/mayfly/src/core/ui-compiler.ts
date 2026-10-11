@@ -98,7 +98,7 @@ import { hasMotion, paintMotionSpans } from './ui-motion-text.ts'
 import { UiProgressTransitions } from './ui-progress-transition.ts'
 import { untranslated, type UiTranslateValues } from './ui-interaction-locale.ts'
 import { grammarHints, hintNotation, keyGrammar, type EscapeStep, type GrammarControl, type GrammarIntent, type GrammarMatch, type GrammarState, type PromptOperation } from './ui-key-grammar.ts'
-import { documentAnchorAtRow, documentAnchorRow } from './ui-interaction-document.ts'
+import { documentAnchorAtRow, documentAnchorRow, documentResolver, type DocumentResolver } from './ui-interaction-document.ts'
 import type { UiControlAddress } from './ui-interaction-tree.ts'
 import {
   keyActionKeys,
@@ -547,15 +547,11 @@ function pureStaticComponent(render: (width: number) => string[], options: Pick<
 const PURE_STATIC_WIDTHS = 4
 
 /**
- * A content leaf (`text`, `fields`, `code`, `sections`, `rich-text` without motion): its rows are a virtual facade
- * over a segmented source, so layout reads a length and a scroll reads only its window. The leaf keeps the
- * per-width facade memo a pure static leaf has; in the alternate screen the source clamps itself to the viewport
- * plus an elision row that scrolls unwrap through `unclampedRows`.
+ * The content-source environment of one surface: the leaves' paint (re-pointed by the compile cache) plus the
+ * surface's viewport, content cache, and bounds. Document resolvers pass `options` as the paint.
  */
-function contentLeafComponent(node: WindowedContentNode, options: RuntimeCompilerOptions, paint: PaintOptions): MayflyComponent {
-  const glyphs = options.components.presentation?.glyphs
-  const memo = new Map<number, string[]>()
-  const env: ContentRowsEnv = {
+function contentEnv(options: RuntimeCompilerOptions, paint: Pick<PaintOptions, 'components' | 'colors' | 'counters' | 'reportRuntimeFailure'>): ContentRowsEnv {
+  return {
     get components() { return paint.components },
     get colors() { return paint.colors },
     get counters() { return paint.counters },
@@ -566,6 +562,18 @@ function contentLeafComponent(node: WindowedContentNode, options: RuntimeCompile
     errorRows: (message, width) => errorRows(message, width, paint.colors),
     report: message => { paint.reportRuntimeFailure(message) },
   }
+}
+
+/**
+ * A content leaf (`text`, `fields`, `code`, `sections`, `rich-text` without motion): its rows are a virtual facade
+ * over a segmented source, so layout reads a length and a scroll reads only its window. The leaf keeps the
+ * per-width facade memo a pure static leaf has; in the alternate screen the source clamps itself to the viewport
+ * plus an elision row that scrolls unwrap through `unclampedRows`.
+ */
+function contentLeafComponent(node: WindowedContentNode, options: RuntimeCompilerOptions, paint: PaintOptions): MayflyComponent {
+  const glyphs = options.components.presentation?.glyphs
+  const memo = new Map<number, string[]>()
+  const env = contentEnv(options, paint)
   return {
     render: width => {
       try {
@@ -638,6 +646,7 @@ class SemanticScrollView extends WindowScrollView {
     options: ConstructorParameters<typeof ScrollView>[1],
     private readonly model: UiSurfaceModel,
     private readonly address: UiControlAddress,
+    private readonly resolve: DocumentResolver,
   ) { super(component, options) }
 
   /** Both a render and pi-tui's native layout ask for the content width first, so the anchors learn it here. */
@@ -650,14 +659,14 @@ class SemanticScrollView extends WindowScrollView {
     super.updateLayout(contentHeight, viewportHeight, requestRender)
     const state = this.model.document(this.address)
     if (state?.anchor?.follow === 'end') super.scrollToEnd()
-    else if (state !== undefined) super.scrollTo(documentAnchorRow(state, this.width), { disableFollow: true })
+    else if (state !== undefined) super.scrollTo(documentAnchorRow(state, this.width, this.resolve), { disableFollow: true })
     this.prepareWindow()
   }
 
   private sync(): void {
     const state = this.model.document(this.address)
     if (state === undefined) return
-    const anchor = documentAnchorAtRow(state, this.scrollTop, this.width, this.isFollowingEnd ? 'end' : 'none')
+    const anchor = documentAnchorAtRow(state, this.scrollTop, this.width, this.isFollowingEnd ? 'end' : 'none', this.resolve)
     if (anchor !== undefined) this.model.moveDocument(this.address, anchor)
   }
 
@@ -1736,6 +1745,7 @@ function compileUnit(node: CompilableNode, state: FocusState, options: RuntimeCo
         const key = scopedControlKey('scroll', path)
         const model = options.listRuntime.interaction
         const address = node.id === undefined || model === undefined ? undefined : { pagePath, controlId: node.id }
+        const resolve = address === undefined || model === undefined || model.document(address) === undefined ? undefined : documentResolver(contentEnv(options, options))
         const region = new ScrollRegion({
           child: child as Component,
           memory: options.listRuntime.scrollMemory(key),
@@ -1750,11 +1760,11 @@ function compileUnit(node: CompilableNode, state: FocusState, options: RuntimeCo
           components: options.components,
           counters: options.counters,
           pillText: count => coreText(options, '↓ {count} new · End', { count }),
-          anchors: address === undefined || model!.document(address) === undefined ? undefined : {
-            state: () => model!.document(address),
-            rowOf: documentAnchorRow,
-            anchorAt: documentAnchorAtRow,
-            move: anchor => { model!.moveDocument(address, anchor) },
+          anchors: resolve === undefined ? undefined : {
+            state: () => model!.document(address!),
+            rowOf: (document, width) => documentAnchorRow(document, width, resolve),
+            anchorAt: (document, row, width, follow) => documentAnchorAtRow(document, row, width, follow, resolve),
+            move: anchor => { model!.moveDocument(address!, anchor) },
           },
         })
         state.bindControls([key], { component: region, axis: 'none' })
@@ -1766,7 +1776,7 @@ function compileUnit(node: CompilableNode, state: FocusState, options: RuntimeCo
       const model = options.listRuntime.interaction
       const scroll = address === undefined || model === undefined || model.document(address) === undefined
         ? new WindowScrollView(child, scrollOptions)
-        : new SemanticScrollView(child as Component, scrollOptions, model, address)
+        : new SemanticScrollView(child as Component, scrollOptions, model, address, documentResolver(contentEnv(options, options)))
       // A scroll view holds one child, from its first row: what is on screen is decided against this view's window.
       placeChild(child, scroll, 0)
       const key = scopedControlKey('scroll', path)

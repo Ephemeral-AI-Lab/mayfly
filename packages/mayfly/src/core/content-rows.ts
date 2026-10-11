@@ -15,7 +15,7 @@
  * @module @ephemeral-ai/mayfly/core/content-rows
  */
 
-import type { MayflyContentNode, MayflyField, MayflyRichTextNode, MayflySection, MayflySectionContentNode, MayflyTextStyle, MayflyTone } from '@ephemeral-ai/mayfly-ui'
+import type { MayflyContentNode, MayflyField, MayflyRichTextNode, MayflySection, MayflySectionContentNode, MayflyTextStyle, MayflyTone, MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import { CONTENT_SEGMENT_UNITS, indexContent, type ContentIndex } from './content-segments.ts'
 import { ownDataErrorMessage } from './error-message.ts'
 import { highlightable, highlightCodeLines } from './highlight.ts'
@@ -108,6 +108,8 @@ class SegmentedContent implements RowSource {
 
   constructor(
     private readonly index: ContentIndex,
+    /** The text the index measured: anchors map their source positions through it. */
+    private readonly text: () => string,
     /** The width rows wrap and estimate at: the leaf width minus whatever fixed chrome the painter adds. */
     private readonly wrapWidth: number,
     private readonly paint: (segment: number, width: number) => readonly string[],
@@ -172,6 +174,26 @@ class SegmentedContent implements RowSource {
     const rows = this.segmentRows(segment)
     countWork(this.env.counters, 'rowsMaterialized')
     return rows[index - this.tree.sum(segment - 1)] ?? ''
+  }
+
+  /**
+   * Rows before `offset` units of the text, under the source's own row map: painted segments count their painted
+   * rows before the offset's segment, and inside the segment the index estimates the share the offset's columns
+   * cover — the same model `offsetOf` inverts, so an anchor round-trips to the row it was written from.
+   */
+  rowOf(offset: number): number {
+    if (this.index.segments === 0) return 0
+    const segment = this.index.segmentAtOffset(offset)
+    const local = Math.min(this.index.rowOfOffset(segment, offset, this.wrapWidth, this.text()), this.counts[segment]! - 1)
+    return this.tree.sum(segment - 1) + Math.max(0, local)
+  }
+
+  /** The text offset `row` begins at: the segment under the row, then the estimated boundary inside it. */
+  offsetOf(row: number): number {
+    if (this.index.segments === 0) return 0
+    const segment = this.tree.locate(row)
+    const local = Math.min(Math.max(0, row - this.tree.sum(segment - 1)), this.counts[segment]! - 1)
+    return this.index.offsetOfRow(segment, local, this.wrapWidth, this.text())
   }
 
   prepare(from: number, to: number): void {
@@ -327,7 +349,7 @@ function textSource(node: Extract<MayflySectionContentNode, { readonly kind: 'te
   if (node.overflow === 'truncate') return eager([painted(truncatedRow(sanitizePluginText(content), width, env.components))], env)
   if (node.overflow === 'middle' || node.overflow === 'start') return eager([painted(truncateMiddle(sanitizePluginText(content).replace(/[\r\n\t]+/gu, ' '), width, node.overflow))], env)
   const index = indexFor(node, () => content, env)
-  return new SegmentedContent(index, width, (segment, at) => {
+  return new SegmentedContent(index, () => content, width, (segment, at) => {
     const rows: string[] = []
     const paint = (start: number, end: number, cut: boolean): void => {
       const slice = sanitizePluginText(content.slice(start, end))
@@ -371,7 +393,7 @@ function codeSource(node: Extract<MayflySectionContentNode, { readonly kind: 'co
     }
     return highlighted
   }
-  const body = new SegmentedContent(index, inner, (segment, at) => {
+  const body = new SegmentedContent(index, () => code, inner, (segment, at) => {
     const rows: string[] = []
     const wrap = (line: number, painted: string, numbered: boolean, cut: boolean): void => {
       const wrapped = cut ? charWrap(painted, at, env.components) : env.components.wrapText(painted, at)
@@ -398,7 +420,19 @@ function codeSource(node: Extract<MayflySectionContentNode, { readonly kind: 'co
   }, env, keyOf(node), gutter)
   if (language.length === 0) return body
   countWork(env.counters, 'rowsPainted', 1)
-  return sourceOf(concatRows([env.colors.muted(language)], virtualRows(body)))
+  const lifted = sourceOf(concatRows([env.colors.muted(language)], virtualRows(body)))
+  // The anchor's text space is `language\ncode`: the label row covers the prefix, the body maps the rest.
+  return {
+    get length() { return lifted.length },
+    row: index => lifted.row(index),
+    ...(lifted.declaredWidth === undefined ? {} : { declaredWidth: lifted.declaredWidth }),
+    ...(lifted.markerFree === true ? { markerFree: true } : {}),
+    ...(lifted.seekMarker === undefined ? {} : { seekMarker: lifted.seekMarker.bind(lifted) }),
+    ...(lifted.prepare === undefined ? {} : { prepare: lifted.prepare.bind(lifted) }),
+    get unclamped() { return lifted.unclamped },
+    rowOf(offset) { return offset <= language.length ? 0 : 1 + body.rowOf(offset - language.length - 1) },
+    offsetOf(row) { return row <= 0 ? 0 : language.length + 1 + body.offsetOf(row - 1) },
+  }
 }
 
 /** The prepared pieces of one fields node, shared by every width: labels, padding, sanitized spans, and the raw text. */
@@ -441,7 +475,7 @@ function fieldsSource(node: Extract<MayflySectionContentNode, { readonly kind: '
     { raw: true, text: ' ' },
     ...values[line]!,
   ]
-  return new SegmentedContent(index, width, (segment, at) => {
+  return new SegmentedContent(index, () => raw, width, (segment, at) => {
     const wrap = (line: number, start: number, end: number, cut: boolean): string[] => {
       const joined = clipSpans(spansOf(line), start, end).map(span => paintSpan(span, env.colors)).join('')
       return cut ? charWrap(joined, at, env.components) : env.components.wrapText(joined, at)
@@ -489,14 +523,14 @@ function richTextSource(node: MayflyRichTextNode, width: number, env: ContentRow
   if (node.overflow === 'truncate') return eager([truncatedRow(spans.map(span => paintSpan(span, env.colors)).join(''), width, env.components)], env)
   const raw = spans.map(span => span.text).join('')
   const index = indexFor(node, () => raw, env)
-  return new SegmentedContent(index, width, (segment, at) => {
+  return new SegmentedContent(index, () => raw, width, (segment, at) => {
     const [start, end] = index.segmentText(segment)
     const joined = clipSpans(spans, start, end).map(span => paintSpan(span, env.colors)).join('')
     return index.isCut(segment) ? charWrap(joined, at, env.components) : env.components.wrapText(joined, at)
   }, env, keyOf(node))
 }
 
-function nodeSource(node: WindowedContentNode, width: number, env: ContentRowsEnv, depth: number): RowSource {
+function buildNodeSource(node: WindowedContentNode, width: number, env: ContentRowsEnv, depth: number): RowSource {
   if (depth > PLUGIN_VIEW_MAX_DEPTH) throw new RangeError(`view nesting exceeds ${String(PLUGIN_VIEW_MAX_DEPTH)}`)
   switch (node.kind) {
     case 'text': return textSource(node, width, env)
@@ -507,6 +541,33 @@ function nodeSource(node: WindowedContentNode, width: number, env: ContentRowsEn
     case 'diff': return eager(renderCanonicalDiff(node, width, env.components, env.colors), env)
     default: throw new TypeError(`unknown basic content kind "${String((node as { readonly kind?: unknown }).kind)}"`)
   }
+}
+
+/** The leaf kinds this module answers a shared source for. */
+const CONTENT_NODE_KINDS = new Set<string>(['text', 'fields', 'code', 'sections', 'rich-text', 'diff'])
+
+/**
+ * One source per admitted node and width, shared by the leaf that paints it and the document resolver that maps its
+ * anchors: a scroll's anchor and its viewport read the same row map instead of re-wrapping the document on their own.
+ * Keyed by node identity — the same object arriving again is the same text — and bounded to the widths the leaf
+ * memo keeps.
+ */
+const SHARED_SOURCE_WIDTHS = 4
+
+const sharedSources = new WeakMap<object, Map<number, RowSource>>()
+
+function nodeSource(node: WindowedContentNode, width: number, env: ContentRowsEnv, depth: number): RowSource {
+  let widths = sharedSources.get(node)
+  const shared = widths?.get(width)
+  if (shared !== undefined) return shared
+  const built = buildNodeSource(node, width, env, depth)
+  if (widths === undefined) {
+    widths = new Map()
+    sharedSources.set(node, widths)
+  }
+  if (widths.size >= SHARED_SOURCE_WIDTHS) widths.delete(widths.keys().next().value!)
+  widths.set(width, built)
+  return built
 }
 
 /** A source that clips every produced row to the leaf's width: the canonical renderer's `clampRowsToWidth` backstop. */
@@ -523,6 +584,8 @@ function clampedSource(source: RowSource, width: number, env: ContentRowsEnv): R
     },
     ...(seek === undefined ? {} : { seekMarker: seek }),
     ...(prepare === undefined ? {} : { prepare }),
+    ...(source.rowOf === undefined ? {} : { rowOf: source.rowOf.bind(source) }),
+    ...(source.offsetOf === undefined ? {} : { offsetOf: source.offsetOf.bind(source) }),
     row(index) {
       const row = source.row(index)
       // A source that declares its width inside the leaf's guarantees every row fits; the measure is the backstop
@@ -563,6 +626,10 @@ function elidedSource(inner: RowSource, cap: () => number, env: ContentRowsEnv):
         prepare(from, Math.min(to, Math.max(0, cap())))
       },
     }),
+    // The document map always speaks for the whole source: an anchor keeps meaning while the leaf only reports a
+    // bounded prefix.
+    ...(inner.rowOf === undefined ? {} : { rowOf: inner.rowOf.bind(inner) }),
+    ...(inner.offsetOf === undefined ? {} : { offsetOf: inner.offsetOf.bind(inner) }),
     row(index) {
       return index < Math.max(0, cap()) ? inner.row(index) : env.elide(Math.max(0, inner.length - Math.max(0, cap())))
     },
@@ -583,4 +650,15 @@ export function contentNodeSource(node: WindowedContentNode, width: number, env:
 /** The leaf's rows as a `string[]` facade over its source: pi-tui reads `length`, indexes the rows it paints. */
 export function contentNodeRows(node: WindowedContentNode, width: number, env: ContentRowsEnv): string[] {
   return virtualRows(contentNodeSource(node, width, env))
+}
+
+/**
+ * The shared row source of a document block at `width`, or undefined when its node is not a content leaf. This is the
+ * instance the leaf render uses, so a document anchor and the painted viewport agree on the row map: `text`, `code`,
+ * and `rich-text` sources translate source-text offsets through `rowOf`/`offsetOf`, while `fields`, `sections`, and
+ * `diff` report their real `length` for the document's proportional map.
+ */
+export function documentRowsSource(node: MayflyUiNode, width: number, env: ContentRowsEnv): RowSource | undefined {
+  if (typeof node !== 'object' || node === null || !CONTENT_NODE_KINDS.has(node.kind)) return undefined
+  return nodeSource(node as WindowedContentNode, Math.max(1, Math.floor(width)), env, 0)
 }

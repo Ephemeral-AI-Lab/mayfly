@@ -8,7 +8,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ui, type MayflyUiEvent } from '@ephemeral-ai/mayfly-ui'
 import * as agentOverlay from '../../src/interaction/agent-overlay.ts'
 import { formatJobDuration, isLiveJob, jobDetailsNode, jobItems, jobOutputNode, sortJobs } from '../../src/interaction/jobs.ts'
-import { documentPages } from '../../src/interaction/document-pages.ts'
 import type { UiSurfaceModel } from '../../src/core/ui-interaction-surface.ts'
 import { validateMayflyUiNode } from '../../src/core/ui-validator.ts'
 import { jobsFixture } from './jobs-fixture.ts'
@@ -23,7 +22,6 @@ afterEach(async () => {
 async function setup() { const ctx = new Context(); contexts.push(ctx); return jobsFixture(ctx) }
 const action = (model: UiSurfaceModel, id: string, controlId = 'job-actions') => model.emit({ kind: 'activate', pagePath: [], controlId, actionId: id })
 const select = (model: UiSurfaceModel, id: string) => model.emit({ kind: 'selection-accept', pagePath: [], controlId: 'jobs', selectedIds: [id] })
-const pageAddress = { pagePath: [], formId: 'output-page' } as const
 const job = (id: string, status: JobView['status'], options: Partial<JobView> = {}): JobView => ({ id: JobId(id), kind: 'bash', label: `Job ${id}`, startedAt: 1_000, status, output: { total: 0, earliest: 0 }, ...options })
 async function prepare(model: UiSurfaceModel, event: MayflyUiEvent) {
   const abort = new AbortController()
@@ -68,24 +66,27 @@ describe('shared jobs browsing', () => {
     expect(readAt).toHaveBeenCalledOnce()
   })
 
-  it.each([false, true])('relocalizes output without resetting its published page or reading again (paged=%s)', async paged => {
+  it('relocalizes output without resetting its scroll anchor or reading again', async () => {
     const bench = await setup()
     const readAt = vi.spyOn(bench.registry, 'readAt')
-    const source = bench.start({ output: paged ? 'x'.repeat(36_001) : 'only page' })
+    const source = bench.start({ output: 'x'.repeat(36_001) })
     await bench.run('/jobs')
     select(bench.model('mayfly.jobs'), source.id)
     await flushRequests()
     action(bench.model('mayfly.jobs.detail'), 'read')
     await flushRequests()
     const output = bench.model('mayfly.jobs.output')
-    if (paged) {
-      action(output, 'next', 'page-actions'); await flushRequests()
-      output.edit({ ...pageAddress, fieldId: 'page' }, '3')
-    }
+    const renderer = renderRequest(output)
+    renderer.component.render(80)
+    renderer.input('\x1b[F')
+    renderer.component.render(80)
+    renderer.runtime.dispose()
+    const anchored = output.document({ pagePath: [], controlId: 'job-output-document' })?.anchor
+    expect(anchored?.offset).toBeGreaterThan(0)
     bench.ctx.mayflyLocale.setPreference('zh')
     await flushRequests()
     expect(JSON.stringify(output.node)).toContain('\u8bfb\u53d6\u65f6\u72b6\u6001')
-    if (paged) expect(output.form(pageAddress)!.fields.page).toMatchObject({ baseline: 2, value: '3', change: 'set' })
+    expect(output.document({ pagePath: [], controlId: 'job-output-document' })?.anchor).toEqual(anchored)
     expect(readAt).toHaveBeenCalledOnce()
   })
 
@@ -101,7 +102,7 @@ describe('shared jobs browsing', () => {
     expect(JSON.stringify(bench.model('mayfly.jobs.output').node)).toContain('earlier output was dropped by retention')
   })
 
-  it('rejects malformed output submissions and ignores obsolete inspector actions at the registration boundary', async () => {
+  it('ignores obsolete inspector actions and output submissions at the registration boundary', async () => {
     const bench = await setup()
     const readAt = vi.spyOn(bench.registry, 'readAt')
     const source = bench.start({ output: 'x'.repeat(24_001) })
@@ -115,10 +116,9 @@ describe('shared jobs browsing', () => {
     action(detail, 'read')
     await flushRequests()
     const output = bench.model('mayfly.jobs.output')
-    for (const fields of [[], [{ id: 'page', change: 'set' as const, value: 'invalid' }], [{ id: 'page', change: 'set' as const, value: 1.5 }]]) {
-      const reply = await prepare(output, { kind: 'submit', pagePath: [], controlId: 'output-page', submission: { actionId: 'go', draftRevision: 0, source: [], forms: [{ ...pageAddress, draftRevision: 0, fields }] } })
-      expect(reply).toMatchObject({ kind: 'failed', message: 'Invalid page' })
-    }
+    // The output surface keeps no forms; a stray submission is cancelled without effect.
+    const reply = await prepare(output, { kind: 'submit', pagePath: [], controlId: 'output-page', submission: { actionId: 'go', draftRevision: 0, source: [], forms: [] } })
+    expect(reply).toMatchObject({ kind: 'cancelled' })
     await source.finish({ status: 'completed' })
     expect(await prepare(detail, { kind: 'activate', pagePath: [], controlId: 'job-actions', actionId: 'stop' })).toMatchObject({ kind: 'completed' })
     expect(source.cancel).not.toHaveBeenCalled()
@@ -333,7 +333,7 @@ describe('shared jobs browsing', () => {
     Array.from({ length: 500 }, (_, index) => `row ${String(index).padStart(3, '0')} ${'x'.repeat(60)}`).join('\n'),
     `start${'x'.repeat(11_994)}\u{1F680}${'y'.repeat(24_000)}end`,
     '中文'.repeat(12_001),
-  ])('reconstructs full large output using shared page submissions without rereading', async text => {
+  ])('reconstructs full large output in one scroll without rereading', async text => {
     const bench = await setup()
     const readAt = vi.spyOn(bench.registry, 'readAt')
     const source = bench.start({ output: text })
@@ -343,42 +343,20 @@ describe('shared jobs browsing', () => {
     action(bench.model('mayfly.jobs.detail'), 'read')
     await flushRequests()
     const output = bench.model('mayfly.jobs.output')
-    const pages = documentPages(text)
-    let restored = ''
-    for (let page = 0; page < pages.length; page += 1) {
-      expect(output.form(pageAddress)!.fields.page!.baseline).toBe(page + 1)
-      const node = output.node
-      expect(validateMayflyUiNode(node).ok).toBe(true)
-      if (node?.kind !== 'surface' || node.child.kind !== 'stack') throw new Error('Missing output surface')
-      const scroll = node.child.children.find(child => child.node.kind === 'scroll')!.node
-      if (scroll.kind !== 'scroll' || scroll.child.kind !== 'code') throw new Error('Missing output text')
-      expect(scroll.id).toBe(`job-output-document/${String(page + 1)}`)
-      expect(output.document({ pagePath: [], controlId: scroll.id! })).toBeDefined()
-      expect(scroll.child.code).toBe(pages[page])
-      expect(scroll.child.code.isWellFormed()).toBe(true)
-      restored += scroll.child.code
-      const renderer = renderRequest(output)
-      renderer.component.render(80)
-      renderer.input('\x1b[F')
-      expect(renderer.component.render(80).join('\n')).toContain(scroll.child.code.trimEnd().slice(-10))
-      renderer.runtime.dispose()
-      action(output, 'next', 'page-actions')
-      await flushRequests()
-    }
-    expect(restored).toBe(text)
-    expect(output.form(pageAddress)!.fields.page!.baseline).toBe(pages.length)
-    action(output, 'first', 'page-actions'); await flushRequests()
-    expect(output.form(pageAddress)!.fields.page!.baseline).toBe(1)
-    output.edit({ ...pageAddress, fieldId: 'page' }, '2')
-    action(output, 'go', 'page-actions'); await flushRequests()
-    expect(output.form(pageAddress)!.fields.page!.baseline).toBe(2)
-    action(output, 'previous', 'page-actions'); await flushRequests()
-    expect(output.form(pageAddress)!.fields.page!.baseline).toBe(1)
-    action(output, 'last', 'page-actions'); await flushRequests()
-    expect(output.form(pageAddress)!.fields.page!.baseline).toBe(pages.length)
-    output.edit({ ...pageAddress, fieldId: 'page' }, '0')
-    action(output, 'go', 'page-actions'); await flushRequests()
-    expect(output.form(pageAddress)!.fields.page!.error).toBeDefined()
+    const node = output.node
+    expect(validateMayflyUiNode(node).ok).toBe(true)
+    if (node?.kind !== 'surface' || node.child.kind !== 'stack') throw new Error('Missing output surface')
+    const scroll = node.child.children.find(child => child.node.kind === 'scroll')!.node
+    if (scroll.kind !== 'scroll' || scroll.child.kind !== 'code') throw new Error('Missing output text')
+    expect(scroll.id).toBe('job-output-document')
+    expect(output.document({ pagePath: [], controlId: scroll.id! })).toBeDefined()
+    expect(scroll.child.code).toBe(text)
+    expect(scroll.child.code.isWellFormed()).toBe(true)
+    const renderer = renderRequest(output)
+    renderer.component.render(80)
+    renderer.input('\x1b[F')
+    expect(renderer.component.render(80).join('\n')).toContain(text.trimEnd().slice(-10))
+    renderer.runtime.dispose()
     expect(readAt).toHaveBeenCalledOnce()
   })
 
@@ -516,16 +494,18 @@ describe('jobs readonly projections', () => {
     expect(jobItems(rows, 61_000, key => key)).toContainEqual(expect.objectContaining({ id: 'failed', badge: 'failed', detail: expect.stringContaining('exit 3') }))
     expect(sortJobs([job('old', 'completed', { startedAt: 2_000 }), job('new', 'completed', { startedAt: 9_000 })]).map(row => row.id)).toEqual(['new', 'old'])
   })
-  it('keeps empty results and arbitrary line lengths within the wire quota', () => {
-    expect(documentPages('')).toEqual([''])
-    for (const text of ['', '\n'.repeat(24_001), 'x'.repeat(12_000), 'x'.repeat(11_999) + '\u{1F680}', '\u{1F680}'.repeat(20_000)]) {
-      const pages = documentPages(text)
-      expect(pages.join('')).toBe(text)
-      for (const page of pages) { expect(page.length).toBeLessThanOrEqual(12_000); expect(page.isWellFormed()).toBe(true) }
-    }
+  it('keeps empty results and arbitrary line lengths on one scroll', () => {
     const emptyRead = { chunks: [], next: 0, lossy: false }
-    expect(JSON.stringify(jobOutputNode(job('empty', 'completed'), emptyRead, [''], 1, key => key))).toContain('(no output)')
-    expect(JSON.stringify(jobOutputNode(job('live', 'running'), emptyRead, [''], 1, key => key))).toContain('(no output yet)')
+    expect(JSON.stringify(jobOutputNode(job('empty', 'completed'), emptyRead, '', key => key))).toContain('(no output)')
+    expect(JSON.stringify(jobOutputNode(job('live', 'running'), emptyRead, '', key => key))).toContain('(no output yet)')
+    for (const text of ['', '\n'.repeat(24_001), 'x'.repeat(12_000), 'x'.repeat(11_999) + '\u{1F680}', '\u{1F680}'.repeat(20_000)]) {
+      const node = jobOutputNode(job('large', 'completed'), emptyRead, text, key => key)
+      expect(validateMayflyUiNode(node).ok).toBe(true)
+      expect(text.isWellFormed()).toBe(true)
+      const scroll = node.kind === 'surface' && node.child.kind === 'stack' ? node.child.children.map(child => child.node).find(node => node.kind === 'scroll') : undefined
+      if (text === '') expect(scroll?.child.kind).toBe('text')
+      else expect(scroll?.child).toMatchObject({ kind: 'code', code: text })
+    }
     expect(validateMayflyUiNode(jobDetailsNode(job('done', 'completed'), key => key)).ok).toBe(true)
   })
 })

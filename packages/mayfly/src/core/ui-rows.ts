@@ -48,6 +48,14 @@ export interface RowSource {
    * and slicing.
    */
   readonly unclamped?: RowSource | undefined
+  /**
+   * Rows of this source's document estimated (or, where painted, known) to stand before `offset` units of the text
+   * the source was built over. Only sources that index a text can map positions; document anchors ride this map so
+   * a scroll position stays a source position instead of a re-wrapped guess.
+   */
+  rowOf?(offset: number): number
+  /** The inverse of {@link rowOf} under the same model: the text offset `row` begins at. */
+  offsetOf?(row: number): number
 }
 
 interface RowsMeta {
@@ -248,6 +256,8 @@ export function mapRows(rows: readonly string[], map: (row: string, index: numbe
       return unclamped ?? undefined
     },
     ...(sourcePrepare === undefined ? {} : { prepare: sourcePrepare }),
+    ...(source.rowOf === undefined ? {} : { rowOf: source.rowOf.bind(source) }),
+    ...(source.offsetOf === undefined ? {} : { offsetOf: source.offsetOf.bind(source) }),
     row(index) {
       return map(rows[index]!, index)
     },
@@ -289,6 +299,16 @@ export function sliceRows(rows: readonly string[], start: number, end?: number):
     ...(sourcePrepare === undefined ? {} : {
       prepare(from: number, to: number): void {
         sourcePrepare(first + Math.max(0, from), Math.min(bound(), first + to))
+      },
+    }),
+    ...(source.rowOf === undefined ? {} : {
+      rowOf(offset: number): number {
+        return Math.max(0, source.rowOf!(offset) - first)
+      },
+    }),
+    ...(source.offsetOf === undefined ? {} : {
+      offsetOf(row: number): number {
+        return source.offsetOf!(first + Math.max(0, row))
       },
     }),
     row(index) {
