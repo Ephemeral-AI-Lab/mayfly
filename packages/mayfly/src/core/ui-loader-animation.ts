@@ -18,14 +18,14 @@ export const LOADER_FRAME_MS = 100
 export const LOADER_MAX_FRAME_MS = 1000
 
 /** The frames of the three stepping variants, one cell each. */
-export const LOADER_FRAMES: Readonly<Record<'bloom' | 'fill' | 'gap', readonly string[]>> = Object.freeze({
+const LOADER_FRAMES: Readonly<Record<'bloom' | 'fill' | 'gap', readonly string[]>> = Object.freeze({
   bloom: Object.freeze(['·', '✢', '✳', '✶', '✻', '✽', '✻', '✶', '✳', '✢']),
   fill: Object.freeze(['⡀', '⣄', '⣤', '⣦', '⣶', '⣷', '⣿', '⣷', '⣶', '⣦', '⣤', '⣄']),
   gap: Object.freeze(['⣾', '⣽', '⣻', '⢿', '⡿', '⣟', '⣯', '⣷']),
 })
 
 /** How bright each of the breath's six shades is, dim to bright to dim (1 is the tone itself). */
-export const BREATH_LEVELS: readonly number[] = Object.freeze([0.25, 0.5, 0.8, 1, 0.8, 0.5])
+const BREATH_LEVELS: readonly number[] = Object.freeze([0.25, 0.5, 0.8, 1, 0.8, 0.5])
 
 /** Clock steps per breath shade: 400 ms. */
 export const BREATH_STEPS = 4

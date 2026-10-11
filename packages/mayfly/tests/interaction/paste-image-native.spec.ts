@@ -17,7 +17,6 @@ import type { ImageAttachmentLimits } from '@deepseek-ai/dsh-attachment'
 import {
   escapeAppleScriptString,
   parseClipboardClasses,
-  POWERSHELL_ARGS,
   probeDarwin,
   probeWindows,
   setNativeToolTimeouts,
@@ -351,7 +350,6 @@ describe('probeWindows', () => {
     const entries = readLog(psLog) as { argv: string[], stage: string, envHandoff: boolean }[]
     expect(entries).toHaveLength(1)
     expect(entries[0]!.argv).toEqual(['-NoProfile', '-NonInteractive', '-STA', '-Command', EXPECTED_POWERSHELL_SCRIPT])
-    expect(entries[0]!.argv).toEqual(POWERSHELL_ARGS)
     expect(entries[0]!.envHandoff).toBe(true)
     expect(existsSync(entries[0]!.stage)).toBe(false)
     expect(existsSync(log)).toBe(false)

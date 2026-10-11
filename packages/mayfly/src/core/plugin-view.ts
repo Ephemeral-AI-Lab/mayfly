@@ -10,7 +10,7 @@
  * @module @ephemeral-ai/mayfly/core/plugin-view
  */
 
-import type { MayflyContentNode, MayflyInlineSpan, MayflyTextStyle, MayflyTone } from '@ephemeral-ai/mayfly-ui'
+import type { MayflyContentNode, MayflyTextStyle, MayflyTone } from '@ephemeral-ai/mayfly-ui'
 import { textOf } from '@ephemeral-ai/mayfly-ui'
 import { stripEscapeSequences } from './escape-sequences.ts'
 import type { MayflyComponents, MayflySemanticColors } from './types.ts'
@@ -64,11 +64,6 @@ function strike(text: string): string { return `\x1b[9m${text}\x1b[29m` }
 /** Wrap painted text in the weight, slant, and strike a node asks for. */
 export function styledText(value: string, styles: readonly MayflyTextStyle[] | undefined): string {
   return (styles ?? []).reduce((text, style) => style === 'strong' ? strong(text) : style === 'italic' ? italic(text) : strike(text), value)
-}
-
-export function spanText(span: MayflyInlineSpan, colors: MayflySemanticColors): string {
-  if (typeof span !== 'object' || span === null) throw new TypeError('field span must be an object')
-  return styledText(paintPluginTone(colors, span.tone)(sanitizePluginText(requireText(span.text, 'span text'))), span.styles)
 }
 
 export type BasicContentNode = Extract<MayflyContentNode, { readonly kind: 'text' | 'fields' | 'code' | 'diff' | 'sections' }>

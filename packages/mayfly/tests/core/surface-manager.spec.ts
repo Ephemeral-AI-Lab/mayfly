@@ -66,53 +66,32 @@ describe('SurfaceManager', () => {
     expect(renderSurfaceLane(manager.linearLayout(120, 24).bottom, 80, 3)).toEqual(['a', '  … +2 more rows', 'd'])
   })
 
-  it('orders deterministically and applies immutable user layout overrides', () => {
+  it('orders deterministically by priority then id', () => {
     const changes = vi.fn()
-    const saves = vi.fn()
-    const manager = new SurfaceManager({
-      userState: {
-        order: ['ordered'],
-        pinnedIds: ['pinned'],
-        active: { right: 'low' },
-        hiddenIds: ['hidden'],
-        placements: { moved: 'right' },
-      },
-      onChange: changes,
-      onUserStateChange: saves,
-    })
+    const manager = new SurfaceManager({ onChange: changes })
     manager.register(contribution('zeta', 'right', { priority: 10 }))
     manager.register(contribution('alpha', 'right', { priority: 10 }))
     manager.register(contribution('low', 'right', { priority: -1 }))
-    manager.register(contribution('pinned', 'right'))
+    manager.register(contribution('plain', 'right'))
     manager.register(contribution('ordered', 'right'))
-    manager.register(contribution('hidden', 'right'))
-    manager.register(contribution('moved', 'left'))
+    manager.register(contribution('regular', 'right'))
+    manager.register(contribution('side', 'left'))
 
     const right = manager.linearLayout(120, 24).right!
-    expect(right.entries.map(entry => entry.id)).toEqual(['ordered', 'pinned', 'alpha', 'zeta', 'moved', 'low'])
-    expect(right.active.id).toBe('low')
-    expect(manager.userState).toEqual({
-      hiddenIds: ['hidden'],
-      order: ['ordered'],
-      active: { right: 'low' },
-      placements: { moved: 'right' },
-      pinnedIds: ['pinned'],
-      sizes: {},
-    })
-    expect(Object.isFrozen(manager.userState)).toBe(true)
-    expect(Object.isFrozen(manager.userState.active)).toBe(true)
+    expect(right.entries.map(entry => entry.id)).toEqual(['alpha', 'zeta', 'ordered', 'plain', 'regular', 'low'])
+    expect(right.active.id).toBe('alpha')
     expect(manager.activate('left', 'missing')).toBe(false)
-    expect(manager.activate('right', 'alpha')).toBe(true)
-    expect(manager.userState.active.right).toBe('alpha')
-    expect(saves).toHaveBeenCalledOnce()
+    expect(manager.activate('right', 'zeta')).toBe(true)
+    expect(manager.linearLayout(120, 24).right?.active.id).toBe('zeta')
     expect(changes).toHaveBeenCalledTimes(8)
   })
 
   it('renders Mayfly-owned tabs, active selection, overflow, and hostile widths safely', () => {
-    const manager = new SurfaceManager({ userState: { active: { right: 'cjk' } } })
+    const manager = new SurfaceManager()
     manager.register(contribution('ansi', 'right', { title: '\x1b[31mRed\x1b[0m' }))
     manager.register(contribution('cjk', 'right', { title: '面板' }, component('\x1b[32m内容\x1b[0m', '👩‍💻'.repeat(8))))
     manager.register(contribution('emoji', 'right', { title: '🚀 launch' }))
+    expect(manager.activate('right', 'cjk')).toBe(true)
     const lane = manager.linearLayout(120, 24).right!
 
     expect(renderSurfaceTabs(lane, 80)).toContain('[面板]')
@@ -130,7 +109,7 @@ describe('SurfaceManager', () => {
   })
 
   it('stacks every visible bottom contribution without lane tabs', () => {
-    const manager = new SurfaceManager({ userState: { active: { bottom: 'activity' } } })
+    const manager = new SurfaceManager()
     manager.register(contribution('activity', 'bottom', { title: 'Activity', priority: 10 }, component('activity')))
     manager.register(contribution('todo', 'bottom', { title: 'Todo', priority: 30 }, component('todo-title', 'todo-row')))
     manager.register(contribution('agents', 'bottom', { title: 'Agents', priority: 50 }, component('agents-title', 'agent-row')))
@@ -208,12 +187,13 @@ describe('SurfaceManager', () => {
     expect(renderSurfaceLane(lane, 80)).toEqual(['First [Second]', 'progress-row', 'second-form'])
   })
 
-  it('falls back to a selectable active tab when user state names a passive pane', () => {
-    const manager = new SurfaceManager({ userState: { active: { bottom: 'progress' } } })
+  it('falls back to a selectable active tab when activation names a passive pane', () => {
+    const manager = new SurfaceManager()
     const passive = component('progress')
     const focusable = { ...component('form'), focused: false }
     manager.register(contribution('progress', 'bottom', { title: 'Progress' }, passive))
     manager.register({ ...contribution('form', 'bottom', { title: 'Form' }, focusable), focusTarget: focusable })
+    expect(manager.activate('bottom', 'progress')).toBe(true)
     const lane = manager.linearLayout(80, 24).bottom!
     expect(lane.active.id).toBe('form')
     expect(() => renderSurfaceTabs(lane, 8)).not.toThrow()
@@ -225,10 +205,10 @@ describe('SurfaceManager', () => {
     const lane = {
       placement: 'bottom' as const,
       entries: [
-        { id: 'progress', placement: 'bottom' as const, priority: 20, pinned: false, component: passive },
-        { id: 'form', placement: 'bottom' as const, priority: 10, pinned: false, component: focusable, focusTarget: focusable },
+        { id: 'progress', placement: 'bottom' as const, priority: 20, component: passive },
+        { id: 'form', placement: 'bottom' as const, priority: 10, component: focusable, focusTarget: focusable },
       ],
-      active: { id: 'progress', placement: 'bottom' as const, priority: 20, pinned: false, component: passive },
+      active: { id: 'progress', placement: 'bottom' as const, priority: 20, component: passive },
     }
     expect(renderSurfaceTabs(lane, 80)).toBe('[form]')
     expect(renderedSurfaceEntries(lane).map(entry => entry.id)).toEqual(['progress', 'form'])
@@ -288,7 +268,7 @@ describe('SurfaceManager', () => {
     const manager = new SurfaceManager()
     const a = manager.register(contribution('a', 'header'))
     const b = manager.register(contribution('b', 'bottom', {}, { focused: false, render: () => ['b'], invalidate: () => {} } as MayflyComponent))
-    manager.register(contribution('c', 'bottom', {}, { focused: false, render: () => ['c'], invalidate: () => {} } as MayflyComponent))
+    const c = manager.register(contribution('c', 'bottom', {}, { focused: false, render: () => ['c'], invalidate: () => {} } as MayflyComponent))
 
     // Same viewport: identity-stable results; another viewport is memoized separately.
     const layout = manager.layout(80, 24)
@@ -323,13 +303,12 @@ describe('SurfaceManager', () => {
     expect(manager.layout(80, 24)).not.toBe(beforeDispose)
     expect(manager.layout(80, 24).header).toBeUndefined()
     const beforeState = manager.layout(80, 24)
-    manager.replaceUserState({ hiddenIds: ['c'] })
+    c.setHidden(true)
     expect(manager.layout(80, 24)).not.toBe(beforeState)
     expect(manager.layout(80, 24).bottom?.entries.map(entry => entry.id)).toEqual(['b'])
     // Retiring an unavailable focus inside layout() invalidates mid-flight, so
     // the returned frame is recomputed once more before it memoizes.
     const side = manager.register(contribution('side', 'left', { narrow: 'hidden' }, { focused: false, render: () => ['side'], invalidate: () => {} } as MayflyComponent))
-    manager.replaceUserState({})
     expect(manager.setFocused('side')).toBe(true)
     const retired = manager.layout(30, 10)
     expect(retired.overflow.map(item => item.entry.id)).toEqual(['side'])
@@ -360,12 +339,11 @@ describe('SurfaceManager', () => {
     expect(manager.layout(73, 24).left).toBeDefined()
   })
 
-  it('separates provider visibility from user state and handles registration lifecycle', () => {
+  it('separates provider visibility from activation and handles registration lifecycle', () => {
     const changes = vi.fn()
-    const saves = vi.fn()
     const first = component('first')
     const replacement = component('replacement')
-    const manager = new SurfaceManager({ onChange: changes, onUserStateChange: saves })
+    const manager = new SurfaceManager({ onChange: changes })
     const a = manager.register(contribution('a', 'header', {}, first))
     const b = manager.register(contribution('b', 'header'))
     expect(a.disposed).toBe(false)
@@ -386,40 +364,29 @@ describe('SurfaceManager', () => {
     a.setHidden(true)
     a.replace(first)
     expect(a.disposed).toBe(true)
-    expect(manager.userState.active.header).toBe('b')
-    expect(saves).toHaveBeenCalledTimes(2)
+    expect(manager.layout(80, 20).header?.active.id).toBe('b')
     expect(changes).toHaveBeenCalledTimes(7)
     b.dispose()
     expect(manager.empty).toBe(true)
   })
 
-  it('replaces persisted state, clamps side sizes, and clears stale active state', () => {
+  it('clamps side sizes to the contribution metadata and clears stale active state', () => {
     const changes = vi.fn()
-    const saves = vi.fn()
-    const manager = new SurfaceManager({ onChange: changes, onUserStateChange: saves })
+    const manager = new SurfaceManager({ onChange: changes })
     const huge = manager.register(contribution('huge', 'left', { size: { min: 60, preferred: 100, max: 10 } }))
     manager.register(contribution('auto', 'right', { size: { min: Number.NaN, preferred: 'auto', max: Number.NaN } }))
     expect(manager.layout(200, 20).left?.width).toBe(48)
     expect(manager.layout(200, 20).right?.width).toBe(32)
 
-    manager.replaceUserState({
-      hiddenIds: [],
-      order: [],
-      active: { left: 'huge' },
-      placements: {},
-      pinnedIds: [],
-      sizes: { huge: -20 },
-    })
-    expect(manager.layout(200, 20).left?.width).toBe(48)
+    expect(manager.activate('left', 'huge')).toBe(true)
     huge.dispose()
-    expect(manager.userState.active.left).toBeUndefined()
+    expect(manager.layout(200, 20).left).toBeUndefined()
     expect(manager.empty).toBe(false)
-    expect(saves).toHaveBeenCalledOnce()
     expect(changes).toHaveBeenCalledTimes(4)
   })
 
-  it('supports fallback activation and every user-order comparison', () => {
-    const manager = new SurfaceManager({ userState: { order: ['b', 'a'] } })
+  it('supports fallback activation and re-activation after the active pane disposes', () => {
+    const manager = new SurfaceManager()
     const invalidated = vi.fn()
     const a = manager.register(contribution('a', 'left', {}, { render: () => ['a'], invalidate: invalidated }))
     manager.register(contribution('b', 'bottom'))
@@ -427,23 +394,13 @@ describe('SurfaceManager', () => {
     expect(manager.linearLayout(120, 20).bottom?.entries.map(entry => entry.id)).toEqual(['b', 'c'])
     expect(manager.activate('bottom', 'a')).toBe(true)
     expect(manager.layout(40, 20).bottom?.active.id).toBe('a')
-    expect(manager.userState.active.bottom).toBe('a')
     manager.invalidate()
     expect(invalidated).toHaveBeenCalledOnce()
     a.dispose()
-    expect(manager.userState.active.bottom).toBe('b')
+    expect(manager.layout(40, 20).bottom?.active.id).toBe('b')
   })
 
-  it('uses lane-wide pin, focus, and recent activation before plugin priority', () => {
-    const pinned = new SurfaceManager({
-      userState: { active: { right: 'right-active' }, pinnedIds: ['right-pinned'] },
-    })
-    pinned.register(contribution('left-high', 'left', { priority: 100 }))
-    pinned.register(contribution('right-active', 'right', { priority: 0 }))
-    pinned.register(contribution('right-pinned', 'right', { priority: -100 }))
-    expect(pinned.layout(73, 20).right?.active.id).toBe('right-active')
-    expect(pinned.layout(73, 20).left).toBeUndefined()
-
+  it('uses lane-wide focus and recent activation before plugin priority', () => {
     const attention = new SurfaceManager()
     attention.register(contribution('left-low', 'left', { priority: 0 }))
     attention.register(contribution('right-high', 'right', { priority: 100 }))
@@ -455,19 +412,16 @@ describe('SurfaceManager', () => {
     expect(attention.layout(73, 20).right).toBeUndefined()
     expect(attention.setFocused(undefined)).toBe(true)
 
-    attention.replaceUserState({})
     expect(attention.activate('left', 'left-low')).toBe(true)
-    expect(attention.layout(73, 20).left).toBeDefined()
-    attention.replaceUserState({ order: ['right-high'] })
     expect(attention.focusedId).toBeUndefined()
-    expect(attention.layout(73, 20).right).toBeDefined()
-    expect(attention.layout(73, 20).left).toBeUndefined()
+    expect(attention.layout(73, 20).left).toBeDefined()
+    expect(attention.layout(73, 20).right).toBeUndefined()
 
-    const ordered = new SurfaceManager({ userState: { order: ['right-low'] } })
+    const ordered = new SurfaceManager()
     ordered.register(contribution('left-high', 'left', { priority: 100 }))
     ordered.register(contribution('right-low', 'right', { priority: 0 }))
-    expect(ordered.layout(73, 20).right).toBeDefined()
-    expect(ordered.layout(73, 20).left).toBeUndefined()
+    expect(ordered.layout(73, 20).left).toBeDefined()
+    expect(ordered.layout(73, 20).right).toBeUndefined()
 
     const focusedPromotion = new SurfaceManager()
     focusedPromotion.register(contribution('left-high', 'left', { priority: 100 }))
@@ -547,7 +501,7 @@ describe('SurfaceManager', () => {
     expect(transitions.at(-1)).toEqual([nextFocus, null])
 
     manager.setFocused('a')
-    manager.replaceUserState({ hiddenIds: ['a'] })
+    a.setHidden(true)
     expect(transitions.at(-1)).toEqual([nextFocus, null])
     manager.setFocusedComponent(null)
 
@@ -582,7 +536,7 @@ describe('SurfaceManager', () => {
     manager.setFocused('plain')
     expect(manager.activate('right', 'hidden')).toBe(true)
     expect(manager.focusedId).toBe('hidden')
-    manager.replaceUserState({})
+    hidden.setHidden(true)
     expect(transitions.at(-1)).toEqual([focusable, null])
 
     const disposalTransitions: [MayflyComponent, MayflyComponent | null][] = []
@@ -609,10 +563,9 @@ describe('SurfaceManager', () => {
     expect(disposalTransitions.at(-1)).toEqual([last, null])
   })
 
-  it('retargets focus from the displayed fallback when persisted active state is stale', () => {
+  it('retargets focus from the displayed active entry when the tab switches', () => {
     const transitions: [MayflyComponent, MayflyComponent | null][] = []
     const manager = new SurfaceManager({
-      userState: { active: { right: 'missing' } },
       onSurfaceFocusTransition: (previous, next) => transitions.push([previous, next]),
     })
     const a = { ...component('a'), focused: false }
@@ -628,24 +581,24 @@ describe('SurfaceManager', () => {
   })
 
   it('preserves a side lane active identity through bottom fallback and back', () => {
-    const manager = new SurfaceManager({ userState: { active: { right: 'b' } } })
+    const manager = new SurfaceManager()
     const a = { ...component('a'), focused: false }
     const b = { ...component('b'), focused: false }
     manager.register(contribution('a', 'right', {}, a))
     manager.register(contribution('b', 'right', {}, b))
+    expect(manager.activate('right', 'b')).toBe(true)
     manager.setFocusedComponent(b)
 
     expect(manager.layout(120, 20).right?.active.id).toBe('b')
     expect(manager.layout(40, 20).bottom?.active.id).toBe('b')
     expect(manager.focusedId).toBe('b')
     expect(manager.activate('bottom', 'a')).toBe(true)
-    expect(manager.userState.active.bottom).toBe('a')
-    expect(manager.userState.active.right).toBe('a')
+    expect(manager.layout(40, 20).bottom?.active.id).toBe('a')
     expect(manager.layout(120, 20).right?.active.id).toBe('a')
   })
 
-  it('clears recent activity in hidden overflow and evaluates every ordered lane member', () => {
-    const manager = new SurfaceManager({ userState: { order: ['right-a', 'right-b', 'left-a', 'left-b'] } })
+  it('clears recent activity in hidden overflow and keeps activation past it', () => {
+    const manager = new SurfaceManager()
     const hidden = { ...contribution('left-a', 'left', { narrow: 'hidden' }), focusTarget: null }
     manager.register(hidden)
     manager.register(contribution('left-b', 'left'))
@@ -656,7 +609,8 @@ describe('SurfaceManager', () => {
     const layout = manager.layout(10, 20)
     expect(layout.overflow.map(item => item.entry.id)).toContain('left-a')
     expect(manager.focusedId).toBeUndefined()
-    expect(manager.layout(77, 20).right).toBeDefined()
+    expect(manager.layout(77, 20).left).toBeDefined()
+    expect(manager.layout(77, 20).right).toBeUndefined()
   })
 
   describe('views lane focus', () => {
@@ -686,7 +640,7 @@ describe('SurfaceManager', () => {
       expect(manager.views.isEntered).toBe(false)
     })
 
-    it('forgets being entered when another surface takes focus, and leaves when the user layout is replaced', () => {
+    it('forgets being entered when another surface takes focus, and leaves when focus is released', () => {
       const manager = new SurfaceManager()
       lane(manager)
       const pane = { focused: false, render: () => ['pane'], invalidate: () => {}, handleInput: () => {} }
@@ -696,7 +650,7 @@ describe('SurfaceManager', () => {
       expect(manager.focusedId).toBe('pane')
       expect(manager.views.isEntered).toBe(false)
       manager.views.enter()
-      manager.replaceUserState({})
+      manager.setFocusedComponent(null)
       expect(manager.views.isEntered).toBe(false)
       expect(manager.focusedId).toBeUndefined()
     })

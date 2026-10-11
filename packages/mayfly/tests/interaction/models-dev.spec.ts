@@ -170,8 +170,7 @@ describe('loadModelsDevIndex', () => {
   })
 
   it('reports the HTTP status when the endpoint answers non-2xx', async () => {
-    const { MODELS_DEV_URL, setModelsDevFetch: reset } = await import('../../src/interaction/models-dev.ts')
-    expect(MODELS_DEV_URL).toBe('https://models.dev/api.json')
+    const { setModelsDevFetch: reset } = await import('../../src/interaction/models-dev.ts')
     // The default fetch layer performs the ok-check itself; a non-2xx
     // response becomes the thrown error the loader swallows.
     setModelsDevLoader(undefined)

@@ -37,7 +37,7 @@ export interface ModelsDevIndex {
 }
 
 /** The public catalog endpoint (the kimi default). */
-export const MODELS_DEV_URL = 'https://models.dev/api.json'
+const MODELS_DEV_URL = 'https://models.dev/api.json'
 
 /** One index entry lives this long; repeated wizard runs reuse it. */
 const CACHE_TTL_MS = 10 * 60 * 1000

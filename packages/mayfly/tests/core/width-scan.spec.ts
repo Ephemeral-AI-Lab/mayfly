@@ -8,7 +8,7 @@
 
 import { describe, expect, it } from 'vitest'
 import type { SelectItem, SelectListTheme } from '@earendil-works/pi-tui'
-import { clampRowsToWidth, framePanel } from '../../src/core/chrome.ts'
+import { clampRowsToWidth } from '../../src/core/chrome.ts'
 import { renderChartRows } from '../../src/core/chart-renderer.ts'
 import { alignDiffLines, paintDiffRows } from '../../src/core/diff-align.ts'
 import { DARK_COLORS } from '../../src/core/theme-dark.ts'
@@ -147,19 +147,6 @@ describe('core width-scan', () => {
           expect(rows.join('\n'), 'the prompt was admitted').not.toContain('could not be displayed')
           expectLinesFit(`prompt-${String(index)}/${name}`, rows, width)
         } finally { surface.dispose() }
-      }
-    })
-
-    it(`framePanel survives ${name}`, () => {
-      // framePanel's body rows arrive pre-budgeted by their callers (the
-      // HelpOverlay/InfoPanel pattern); the scan feeds them the same way.
-      const budget = (row: string, width: number): string => truncateToWidth(row, Math.max(1, width))
-      for (const width of SCAN_WIDTHS) {
-        const body = [budget(`  ${text}`, width), budget(text, width)]
-        expectLinesFit(`framePanel/${name}`, framePanel(body, width, {
-          title: text.slice(0, 20),
-          titleHint: '· hint',
-        }), width)
       }
     })
 

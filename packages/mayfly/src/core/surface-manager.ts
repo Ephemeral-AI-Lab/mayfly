@@ -30,21 +30,9 @@ export interface SurfaceContribution {
   readonly focusTarget?: MayflyFocusable | null
 }
 
-export interface SurfaceUserLayoutState {
-  readonly hiddenIds: readonly string[]
-  readonly order: readonly string[]
-  readonly active: Readonly<Partial<Record<SurfacePlacement, string>>>
-  readonly placements: Readonly<Record<string, SurfacePlacement>>
-  readonly pinnedIds: readonly string[]
-  readonly sizes: Readonly<Record<string, number>>
-}
-
-export type SurfaceUserLayoutInput = Partial<SurfaceUserLayoutState>
-
 export interface SurfaceLaneEntry extends SurfaceContribution {
   readonly placement: SurfacePlacement
   readonly priority: number
-  readonly pinned: boolean
 }
 
 export interface SurfaceLaneLayout {
@@ -78,9 +66,7 @@ export interface SurfaceRegistration {
 }
 
 export interface SurfaceManagerOptions {
-  readonly userState?: SurfaceUserLayoutInput
   readonly onChange?: () => void
-  readonly onUserStateChange?: (state: SurfaceUserLayoutState) => void
   readonly onSurfaceFocusTransition?: (previous: MayflyFocusable, next: MayflyFocusable | null) => void
 }
 
@@ -105,20 +91,6 @@ function finiteInteger(value: number | undefined, fallback: number): number {
 function compareId(left: string, right: string): number {
   /* registered ids are unique, so sort never compares equal ids */
   return left < right ? -1 : left > right ? 1 : 0
-}
-
-function freezeUserState(input: SurfaceUserLayoutInput = {}): SurfaceUserLayoutState {
-  const active = Object.freeze({ ...input.active })
-  const placements = Object.freeze({ ...input.placements })
-  const sizes = Object.freeze({ ...input.sizes })
-  return Object.freeze({
-    hiddenIds: Object.freeze([...(input.hiddenIds ?? [])]),
-    order: Object.freeze([...(input.order ?? [])]),
-    active,
-    placements,
-    pinnedIds: Object.freeze([...(input.pinnedIds ?? [])]),
-    sizes,
-  })
 }
 
 function safeDimension(value: number): number {
@@ -377,15 +349,13 @@ export class SurfaceManager {
   /** The views of status row 2: no lane rows of their own, but a focus of their own (`VIEWS_FOCUS_ID`). */
   readonly views = new ViewsLane()
   private revision = 0
-  private userStateValue: SurfaceUserLayoutState
+  private readonly activePlacements: Partial<Record<SurfacePlacement, string>> = {}
   private focusedIdValue: string | undefined
   private activeIdValue: string | undefined
 
-  constructor(private readonly options: SurfaceManagerOptions = {}) {
-    this.userStateValue = freezeUserState(options.userState)
-  }
+  constructor(private readonly options: SurfaceManagerOptions = {}) {}
 
-  /** Drop memoized layouts after any registry, user-state, focus, or activation change. */
+  /** Drop memoized layouts after any registry, activation, or focus change. */
   private touch(): void {
     this.revision += 1
     this.layouts.clear()
@@ -407,10 +377,6 @@ export class SurfaceManager {
   private changed(): void {
     this.touch()
     this.options.onChange?.()
-  }
-
-  get userState(): SurfaceUserLayoutState {
-    return this.userStateValue
   }
 
   get empty(): boolean {
@@ -467,23 +433,22 @@ export class SurfaceManager {
       dispose: () => {
         if (disposed) return
         disposed = true
-        const placement = this.effectivePlacement(registered.contribution)
-        const activePlacements = PLACEMENTS.filter(item => this.userStateValue.active[item] === contribution.id)
+        const placement = registered.contribution.placement
+        const activated = PLACEMENTS.filter(item => this.activePlacements[item] === contribution.id)
         const wasFocused = this.focusedIdValue === contribution.id
         const previousFocus = wasFocused ? contributionFocusTarget(registered.contribution) : null
         this.entries.delete(contribution.id)
         if (this.activeIdValue === contribution.id) this.activeIdValue = undefined
         if (placement === 'left' || placement === 'right') this.collapsed[placement] = false
         let focusSuccessor: SurfaceLaneEntry | undefined
-        if (activePlacements.length > 0) {
-          const active = { ...this.userStateValue.active }
-          for (const item of activePlacements) {
+        if (activated.length > 0) {
+          for (const item of activated) {
             const successor = this.activationCandidates(item)[0]
             focusSuccessor ??= successor
-            if (successor === undefined) delete active[item]
-            else active[item] = successor.id
+            if (successor === undefined) delete this.activePlacements[item]
+            else this.activePlacements[item] = successor.id
           }
-          this.setUserState({ ...this.userStateValue, active })
+          this.changed()
         } else {
           focusSuccessor = this.activationCandidates(placement)[0]
           this.changed()
@@ -498,31 +463,15 @@ export class SurfaceManager {
     }
   }
 
-  replaceUserState(state: SurfaceUserLayoutInput): void {
-    if (this.focusedIdValue === VIEWS_FOCUS_ID) this.views.leave()
-    const focusedContribution = this.focusedIdValue === undefined ? undefined : this.entries.get(this.focusedIdValue)?.contribution
-    const focused = focusedContribution === undefined ? null : contributionFocusTarget(focusedContribution)
-    this.userStateValue = freezeUserState(state)
-    this.collapsed.left = false
-    this.collapsed.right = false
-    this.focusedIdValue = undefined
-    this.activeIdValue = undefined
-    if (focused !== null) this.options.onSurfaceFocusTransition?.(focused, null)
-    this.changed()
-  }
-
   activate(placement: SurfacePlacement, id: string): boolean {
     const lane = this.activationCandidates(placement)
     if (!lane.some(entry => entry.id === id)) return false
     const previous = this.lane(placement, lane)?.active
     const next = lane.find(entry => entry.id === id)!
     this.activeIdValue = id
-    const active = { ...this.userStateValue.active, [placement]: id }
-    if (placement === 'bottom' && next.placement !== 'bottom') active[next.placement] = id
-    this.setUserState({
-      ...this.userStateValue,
-      active,
-    })
+    this.activePlacements[placement] = id
+    if (placement === 'bottom' && next.placement !== 'bottom') this.activePlacements[next.placement] = id
+    this.changed()
     if (previous !== undefined && previous.id !== next.id && this.focusedIdValue === previous.id) {
       const previousFocus = contributionFocusTarget(previous)
       const nextFocus = contributionFocusTarget(next)
@@ -652,12 +601,6 @@ export class SurfaceManager {
     return layout
   }
 
-  private setUserState(state: SurfaceUserLayoutInput): void {
-    this.userStateValue = freezeUserState(state)
-    this.options.onUserStateChange?.(this.userStateValue)
-    this.changed()
-  }
-
   private activationCandidates(placement: SurfacePlacement): SurfaceLaneEntry[] {
     const grouped = this.groupedEntries()
     return placement === 'bottom'
@@ -667,22 +610,13 @@ export class SurfaceManager {
   }
 
   private visibleEntries(): SurfaceLaneEntry[] {
-    const hidden = new Set(this.userStateValue.hiddenIds)
-    const pinned = new Set(this.userStateValue.pinnedIds)
-    return [...this.entries.values()].flatMap(registered => {
-      if (registered.hidden || hidden.has(registered.contribution.id)) return []
-      const placement = this.effectivePlacement(registered.contribution)
-      return [{
-        ...registered.contribution,
-        placement,
-        priority: finiteInteger(registered.contribution.priority, 0),
-        pinned: pinned.has(registered.contribution.id),
-      }]
-    })
-  }
-
-  private effectivePlacement(contribution: SurfaceContribution): SurfacePlacement {
-    return this.userStateValue.placements[contribution.id] ?? contribution.placement
+    return [...this.entries.values()].flatMap(registered =>
+      registered.hidden
+        ? []
+        : [{
+          ...registered.contribution,
+          priority: finiteInteger(registered.contribution.priority, 0),
+        }])
   }
 
   private groupedEntries(): Record<SurfacePlacement, SurfaceLaneEntry[]> {
@@ -693,20 +627,8 @@ export class SurfaceManager {
   }
 
   private sortEntries(entries: readonly SurfaceLaneEntry[]): SurfaceLaneEntry[] {
-    const order = new Map(this.userStateValue.order.map((id, index) => [id, index]))
-    return [...entries].sort((left, right) => {
-      const leftOrder = order.get(left.id)
-      const rightOrder = order.get(right.id)
-      if (leftOrder !== undefined || rightOrder !== undefined) {
-        if (leftOrder === undefined) return 1
-        if (rightOrder === undefined) return -1
-        /* one id has one index in the user order map */
-        if (leftOrder !== rightOrder) return leftOrder - rightOrder
-      }
-      return Number(right.pinned) - Number(left.pinned)
-        || right.priority - left.priority
-        || compareId(left.id, right.id)
-    })
+    return [...entries].sort((left, right) =>
+      right.priority - left.priority || compareId(left.id, right.id))
   }
 
   private lane(placement: SurfacePlacement, entries: readonly SurfaceLaneEntry[]): SurfaceLaneLayout | undefined {
@@ -719,11 +641,11 @@ export class SurfaceManager {
       ? [
           this.focusedIdValue,
           this.activeIdValue,
-          this.userStateValue.active.bottom,
-          this.userStateValue.active.left,
-          this.userStateValue.active.right,
+          this.activePlacements.bottom,
+          this.activePlacements.left,
+          this.activePlacements.right,
         ]
-      : [this.userStateValue.active[placement]]
+      : [this.activePlacements[placement]]
     const active = requested.flatMap(id => activeEntries.find(entry => entry.id === id) ?? []).at(0) ?? activeEntries[0]!
     return { placement, entries, active }
   }
@@ -734,35 +656,15 @@ export class SurfaceManager {
     const preferred = entry.size?.preferred === 'auto'
       ? SURFACE_SIDE_PREFERRED_COLUMNS
       : finiteInteger(entry.size?.preferred, SURFACE_SIDE_PREFERRED_COLUMNS)
-    const user = finiteInteger(this.userStateValue.sizes[entry.id], preferred)
-    return Math.max(minimum, Math.min(maximum, user))
+    return Math.max(minimum, Math.min(maximum, preferred))
   }
 
   private compareSideStrength(left: SurfaceLaneLayout, right: SurfaceLaneLayout): number {
-    const leftPinned = left.entries.some(entry => entry.pinned)
-    const rightPinned = right.entries.some(entry => entry.pinned)
     const leftFocused = left.entries.some(entry => entry.id === this.focusedIdValue)
     const rightFocused = right.entries.some(entry => entry.id === this.focusedIdValue)
     const leftActive = left.entries.some(entry => entry.id === this.activeIdValue)
     const rightActive = right.entries.some(entry => entry.id === this.activeIdValue)
-    const order = new Map(this.userStateValue.order.map((id, index) => [id, index]))
-    const leftOrder = left.entries.reduce<number | undefined>((best, entry) => {
-      const index = order.get(entry.id)
-      return index === undefined ? best : best === undefined ? index : Math.min(best, index)
-    }, undefined)
-    const rightOrder = right.entries.reduce<number | undefined>((best, entry) => {
-      const index = order.get(entry.id)
-      return index === undefined ? best : best === undefined ? index : Math.min(best, index)
-    }, undefined)
-    return Number(leftPinned) - Number(rightPinned)
-      || (leftOrder === undefined && rightOrder === undefined
-        ? 0
-        : leftOrder === undefined
-          ? -1
-          : rightOrder === undefined
-            ? 1
-            : rightOrder - leftOrder)
-      || Number(leftFocused) - Number(rightFocused)
+    return Number(leftFocused) - Number(rightFocused)
       || Number(leftActive) - Number(rightActive)
       || left.active.priority - right.active.priority
       || -compareId(left.active.id, right.active.id)

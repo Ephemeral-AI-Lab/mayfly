@@ -1,8 +1,7 @@
 /**
  * L0 pi-tui adapter: the only code in the tree that constructs pi-tui
  * renderers and touches the process terminal. Owns the terminal lifecycle
- * (start, drain, stop) and the stable TUI reference behind which a future
- * renderer hot-swap can happen without consumers re-resolving.
+ * (start, drain, stop) and the TUI renderer the runtime hands to core.
  *
  * @module @ephemeral-ai/mayfly/core/terminal
  */
@@ -503,7 +502,7 @@ export interface MayflyTerminalRuntime {
   readonly background: 'dark' | 'light' | undefined
   /** Whether the Kitty keyboard protocol is active on the terminal. */
   readonly kittyKeyboard: boolean
-  /** The stable TUI reference behind the runtime; core-internal (pi-tui type). */
+  /** The TUI renderer behind the runtime; core-internal (pi-tui type). */
   readonly tui: TUI
   /** Core-internal surface seam for the later pane-owner bridge. */
   readonly surfaces: SurfaceManager
@@ -595,40 +594,6 @@ export interface MayflyTerminalRuntime {
 }
 
 /**
- * Stable `TUI` reference for consumers while the runtime replaces the active
- * renderer. Mirrors pi's `createInteractiveTuiReference`: property reads and
- * method calls resolve against the current renderer at call time.
- * @param getTui - accessor for the current renderer.
- * @returns a proxy implementing the full pi-tui `TUI` interface.
- */
-export function createStableTuiReference(getTui: () => TUI): TUI {
-  return new Proxy({} as TUI, {
-    get: (_target, property) => {
-      const tui = getTui()
-      const value: unknown = Reflect.get(tui, property, tui)
-      if (typeof value !== 'function') return value
-      let methodTui = tui
-      let method = value as (this: TUI, ...args: unknown[]) => unknown
-      return (...args: unknown[]) => {
-        const currentTui = getTui()
-        if (currentTui !== methodTui) {
-          const currentMethod: unknown = Reflect.get(currentTui, property, currentTui)
-          if (typeof currentMethod !== 'function') {
-            throw new TypeError(`TUI property ${String(property)} is not callable`)
-          }
-          methodTui = currentTui
-          method = currentMethod as (this: TUI, ...args: unknown[]) => unknown
-        }
-        return Reflect.apply(method, methodTui, args)
-      }
-    },
-    set: (_target, property, value) => Reflect.set(getTui(), property, value, getTui()),
-    has: (_target, property) => Reflect.has(getTui(), property),
-    getPrototypeOf: () => Reflect.getPrototypeOf(getTui()),
-  })
-}
-
-/**
  * The Mayfly terminal stack active in this process, or `undefined` before the
  * plugin loads and after it unloads. At most one is active: the underlying
  * `ProcessTerminal` owns process stdin/stdout.
@@ -655,8 +620,8 @@ export function createTerminalRelease(): () => Promise<void> {
  * mode; then the renderer starts and subscribes to terminal color-scheme
  * (mode 2031) notifications, forwarded through `onSchemeChange`.
  * Production uses the alternate screen; main-screen mode remains an explicit
- * compatibility option. The returned runtime delegates through the stable
- * reference so the concrete renderer never leaks past core.
+ * compatibility option. The returned runtime holds the renderer itself, so
+ * the concrete pi-tui class never leaks past core.
  * @param terminal - the terminal to drive; defaults to a real
  *   `ProcessTerminal` on process stdin/stdout. Tests inject a fake.
  * @param probe - the background probe; defaults to the OSC 11 query on the
@@ -701,7 +666,6 @@ export async function startMayflyTerminal(
     renderRows = terminal.rows
     requestRender(force || resized)
   }
-  const stable = createStableTuiReference(() => current)
   // TuiAltScreen registers its viewport listener in its constructor. Move it
   // behind Mayfly's contextual content handler and wheel normalizer: the main
   // editor then owns transcript scrolling, while a focused replacement panel
@@ -809,7 +773,7 @@ export async function startMayflyTerminal(
       for (const overlay of internal.overlayStack) {
         if (overlay.preFocus === previous) overlay.preFocus = target
       }
-      if (internal.getFocusedComponent() === previous) stable.setFocus(target)
+      if (internal.getFocusedComponent() === previous) current.setFocus(target)
       if (next === null) surfacePreFocus = null
     },
   })
@@ -995,7 +959,7 @@ export async function startMayflyTerminal(
     get kittyKeyboard() {
       return terminal.kittyProtocolActive
     },
-    tui: stable,
+    tui: current,
     surfaces,
     surfaceViewport(id) {
       const layout = screenMode === 'main'
@@ -1021,7 +985,7 @@ export async function startMayflyTerminal(
       if (surfaces.focusedId !== id) return
       surfaces.setFocused(undefined)
       const target = mountedSurfaceBase()
-      stable.setFocus(target)
+      current.setFocus(target)
       surfacePreFocus = null
     },
     hasCapturingOverlay() {
@@ -1080,7 +1044,7 @@ export async function startMayflyTerminal(
       const previousSurfaceId = surfaces.focusedId
       surfaces.setFocusedComponent(component)
       if (previousSurfaceId === undefined && surfaces.focusedId !== undefined && previous !== component) surfacePreFocus = previous
-      stable.setFocus(component)
+      current.setFocus(component)
     },
     /* exercised through the real PTY interaction path */
     scrollContent(direction, amount = 1) {
@@ -1103,7 +1067,7 @@ export async function startMayflyTerminal(
       if (next === contentScrollOffset) return false
       contentScrollOffset = next
       contentScrollManual = next > 0
-      stable.requestRender(true)
+      current.requestRender(true)
       return true
     },
     contentChanged() {
@@ -1114,7 +1078,7 @@ export async function startMayflyTerminal(
       }
       const wasManual = contentScrollManual
       if (!contentScrollManual) contentScrollOffset = 0
-      stable.requestRender()
+      current.requestRender()
       return wasManual
     },
     followContent() {
@@ -1124,7 +1088,7 @@ export async function startMayflyTerminal(
       }
       contentScrollOffset = 0
       contentScrollManual = false
-      stable.requestRender(true)
+      current.requestRender(true)
     },
     setContentScrollHandler(handler) {
       contentScrollHandler = handler
@@ -1133,7 +1097,7 @@ export async function startMayflyTerminal(
       }
     },
     showOverlay(component, options) {
-      if (options?.maxWidth === undefined) return stable.showOverlay(component, options)
+      if (options?.maxWidth === undefined) return current.showOverlay(component, options)
       const maximum = Math.max(1, Math.floor(options.maxWidth))
       const source = options.width
       const sourceMinWidth = options.minWidth
@@ -1155,10 +1119,10 @@ export async function startMayflyTerminal(
           get: () => Math.max(1, Math.min(terminal.columns, maximum, Math.floor(sourceMinWidth ?? 1))),
         },
       })
-      return stable.showOverlay(component, adapted)
+      return current.showOverlay(component, adapted)
     },
     requestRender(force) {
-      stable.requestRender(force)
+      current.requestRender(force)
     },
     async suspend<T>(fn: () => Promise<T>): Promise<T> {
       if (suspended) throw new Error('mayfly terminal suspend is already in flight')

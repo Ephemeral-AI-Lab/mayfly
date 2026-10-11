@@ -106,7 +106,7 @@ try {
 /** PowerShell invocation: no profile or interactivity, STA for the OLE
  * clipboard, and the script as one `-Command` argument. The native spec
  * pins this argv and the script literal against drift. */
-export const POWERSHELL_ARGS: readonly string[] = ['-NoProfile', '-NonInteractive', '-STA', '-Command', POWERSHELL_READ_SCRIPT]
+const POWERSHELL_ARGS: readonly string[] = ['-NoProfile', '-NonInteractive', '-STA', '-Command', POWERSHELL_READ_SCRIPT]
 
 /**
  * Read the staging kind marker (`image` or `files`); an unreadable or

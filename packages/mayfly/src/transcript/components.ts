@@ -84,7 +84,7 @@ const STATUS_BULLET = '● '
 export const USER_MESSAGE_BULLET = '» '
 
 /** Continuation indent: the bullet's visible width (kimi `MESSAGE_INDENT`). */
-export const MESSAGE_INDENT = '  '
+const MESSAGE_INDENT = '  '
 
 /** Maximum rendered height of one user-message image, in terminal cells. */
 export const USER_IMAGE_MAX_HEIGHT_CELLS = 12

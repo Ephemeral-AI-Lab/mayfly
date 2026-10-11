@@ -362,7 +362,7 @@ describe('mayfly-banner plugin', () => {
     // (this spec also runs in worktree copies): a cwd that fits renders
     // whole, a deeper one as its exact clipped row text.
     const budget = banner.bannerLayout(98)!.valueWidth
-    const row = `${banner.DIRECTORY_LABEL}${shortenHome(process.cwd(), homedir())}`
+    const row = `Directory: ${shortenHome(process.cwd(), homedir())}`
     expect(joined).toContain(truncateToWidth(row, budget))
     // Composed rows keep their identity across frames at one width (the
     // content frame above caches by identity); a new width or an explicit

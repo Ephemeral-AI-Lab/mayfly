@@ -93,7 +93,7 @@ it('formats reminder frequency and relative status across units and locale', asy
   expect(schedule.formatReminderRelative('2029-12-31T23:59:59.500Z', now, t)).toBe('1 second overdue')
   expect(schedule.formatReminderRelative('2029-12-31T22:00:00Z', now, t)).toBe('2 hours overdue')
   expect(schedule.formatReminderRelative('2029-12-30T00:00:00Z', now, t)).toBe('2 days overdue')
-  expect(typeof schedule.formatReminderLocalTime('2030-01-01T00:00:00Z', 'en')).toBe('string')
+
   bench.ctx.mayflyLocale.setPreference('zh')
   expect(schedule.formatReminderFrequency(record(300), t)).toBe('每5分钟一次')
   expect(schedule.formatReminderFrequency({ id: 'r', title: 'p', prompt: 'p', kind: 'daily', time: '09:00:00', timeZone: 'UTC', scheduledAt: '2099-01-01T00:00:00Z' } as never, t)).toBe('每天')
