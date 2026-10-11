@@ -11,6 +11,21 @@
 /** Mirrors pi-tui's non-printing classes: controls, marks, formats, surrogates and default-ignorables take no cell. */
 const NON_PRINTING = /^(?:\p{Control}|\p{Format}|\p{Mark}|\p{Surrogate}|\p{Default_Ignorable_Code_Point})$/u
 
+/**
+ * The regex's answer for each Basic Multilingual Plane code point already seen, plus one (zero means not yet asked):
+ * a memo of a pure function, so Latin, Greek, or Cyrillic prose costs a table read per character, not a regex test.
+ */
+const BMP_WIDTHS = new Uint8Array(0x10000)
+
+function printingWidth(point: number): number {
+  if (point > 0xffff) return NON_PRINTING.test(String.fromCodePoint(point)) ? 0 : 1
+  const known = BMP_WIDTHS[point]!
+  if (known !== 0) return known - 1
+  const width = NON_PRINTING.test(String.fromCodePoint(point)) ? 0 : 1
+  BMP_WIDTHS[point] = width + 1
+  return width
+}
+
 /** Estimated cell width of one code point. Tabs expand to three columns, matching the layout's expansion. */
 function pointWidth(point: number): number {
   if (point < 0x80) return point === 0x09 ? 3 : point < 0x20 || point === 0x7f ? 0 : 1
@@ -32,7 +47,7 @@ function pointWidth(point: number): number {
     || point >= 0x1f1e6 && point <= 0x1f1ff // regional indicators render two cells
     || point >= 0x20000 && point <= 0x3fffd // CJK Extension B and beyond
   ) return 2
-  return NON_PRINTING.test(String.fromCodePoint(point)) ? 0 : 1
+  return printingWidth(point)
 }
 
 /**
