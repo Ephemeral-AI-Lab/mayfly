@@ -200,7 +200,7 @@ function proportionalBlockSource(length: () => number, units: number): DocumentB
 }
 
 /** The kinds whose shared source maps offsets in the same text space `sourceText` produces. */
-const MAPPED_KINDS = new Set(['text', 'code', 'rich-text'])
+const MAPPED_KINDS = new Set(['text', 'code', 'rich-text', 'markdown'])
 
 /**
  * The block's row map at `width`: the shared segmented source for the kinds whose offsets ride it, a proportional

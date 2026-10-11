@@ -679,22 +679,6 @@ class SemanticScrollView extends WindowScrollView {
   override scrollToEnd(): void { super.scrollToEnd(); this.sync() }
 }
 
-function markdownLeafComponent(node: Extract<MayflyUiNode, { readonly kind: 'markdown' }>, options: RuntimeCompilerOptions): MayflyComponent {
-  const markdown = options.components.createMarkdown({ text: node.source })
-  const glyphs = options.components.presentation?.glyphs
-  return {
-    render: width => {
-      try { return glyphRows(markdown.render(Math.max(1, width)), glyphs) }
-      catch (error) {
-        const message = renderFailure(error)
-        options.reportRuntimeFailure(message)
-        return errorRows(message, width, options.colors)
-      }
-    },
-    invalidate: () => markdown.invalidate(),
-  }
-}
-
 function diagramSource(node: MayflyDiagramNode): string {
   let longest = 0
   for (const match of node.source.matchAll(/`+/gu)) longest = Math.max(longest, match[0].length)
@@ -702,13 +686,16 @@ function diagramSource(node: MayflyDiagramNode): string {
   return `${fence}mermaid\n${node.source}\n${fence}`
 }
 
-function diagramComponent(node: MayflyDiagramNode, options: RuntimeCompilerOptions): MayflyComponent {
-  const markdown = options.components.createMarkdown({ text: diagramSource(node) })
-  const glyphs = options.components.presentation?.glyphs
-  return {
-    render: width => glyphRows(markdown.render(Math.max(1, width)), glyphs),
-    invalidate: () => markdown.invalidate(),
+/** The `markdown` node a `diagram` compiles through: its fence text once, stable for the shared-source memos. */
+const diagramMarkdownNodes = new WeakMap<MayflyDiagramNode, Extract<MayflyUiNode, { readonly kind: 'markdown' }>>()
+
+function diagramMarkdownNode(node: MayflyDiagramNode): Extract<MayflyUiNode, { readonly kind: 'markdown' }> {
+  let markdown = diagramMarkdownNodes.get(node)
+  if (markdown === undefined) {
+    markdown = { kind: 'markdown', source: diagramSource(node) }
+    diagramMarkdownNodes.set(node, markdown)
   }
+  return markdown
 }
 
 function imageComponent(node: MayflyImageNode, options: RuntimeCompilerOptions): MayflyComponent {
@@ -1621,7 +1608,7 @@ const UNRETAINED_KINDS: ReadonlySet<string> = new Set(['text', 'fields', 'code',
 const VOLATILE_KINDS: ReadonlySet<string> = new Set(['editor-control', 'prompt'])
 
 /** Node kinds that paint only from their admitted node, the width, the colors, and the components. */
-const REUSABLE_KINDS: ReadonlySet<string> = new Set(['text', 'fields', 'code', 'diff', 'sections', 'rich-text', 'divider'])
+const REUSABLE_KINDS: ReadonlySet<string> = new Set(['text', 'fields', 'code', 'diff', 'sections', 'rich-text', 'divider', 'markdown', 'diagram'])
 
 /** Compiles a reusable leaf and remembers it for the next publish. */
 function leaf(node: CompilableNode, options: RuntimeCompilerOptions, build: (paint: PaintOptions) => MayflyComponent): MayflyComponent {
@@ -1671,7 +1658,7 @@ function compileUnit(node: CompilableNode, state: FocusState, options: RuntimeCo
     case 'code':
     case 'diff':
     case 'sections': return leaf(node, options, paint => contentLeafComponent(node, options, paint))
-    case 'markdown': return markdownLeafComponent(node, options)
+    case 'markdown': return leaf(node, options, paint => contentLeafComponent(node, options, paint))
     case 'rich-text': return hasMotion(node.spans) ? staticComponent(width => {
       // An animated row is the one row a clock tick repaints: it is not memoized, and it joins the clock while painted.
       countWork(options.counters, 'stringsMeasured')
@@ -1939,7 +1926,7 @@ function compileUnit(node: CompilableNode, state: FocusState, options: RuntimeCo
       : staticComponent(width => renderProgress(node, width, options.colors, options.listRuntime.progressValue(`${JSON.stringify(pagePath)}${path}`, node as typeof node & { readonly transition: NonNullable<typeof node.transition> }, options.components.presentation?.reducedMotion === true)), options)
     case 'spacer': return staticComponent(() => Array.from({ length: node.size ?? 1 }, () => ''), options)
     case 'divider': return leaf(node, options, paint => pureStaticComponent(width => renderDivider(node.label, width, paint.colors), paint))
-    case 'diagram': return diagramComponent(node, options)
+    case 'diagram': return leaf(node, options, paint => contentLeafComponent(diagramMarkdownNode(node), options, paint))
     case 'chart': return chartComponent(node, options)
     case 'image': return imageComponent(node, options)
     case 'prompt': return promptComponent(node, state, options, scopedControlKey('prompt', node.id))
@@ -2931,21 +2918,33 @@ class CompiledSurface implements MayflyEditorShellComponent {
         if (focusRow >= 0 && focusRow < this.viewportOffset) this.viewportOffset = focusRow
         else if (focusRow >= this.viewportOffset + contentLimit) this.viewportOffset = focusRow - contentLimit + 1
         this.viewportOffset = Math.max(0, Math.min(this.viewportOffset, rows.length - contentLimit))
-        limited = [...sliceRows(rows, this.viewportOffset, this.viewportOffset + contentLimit), ...feedbackRows]
+        // A windowed tree keeps its window: the slice stays a facade, so the paint below touches only the rows read.
+        limited = concatRows(sliceRows(rows, this.viewportOffset, this.viewportOffset + contentLimit), feedbackRows)
       }
       let overflowed = rowLimit !== undefined && rows.length > rowLimit
-      countWork(this.runtimeOptions.counters, 'stringsMeasured', limited.length)
-      const rendered = limited.map(row => {
+      const clampRow = (row: string): string => {
+        countWork(this.runtimeOptions.counters, 'stringsMeasured')
         if (visibleWidth(row) <= safeWidth) return row
         overflowed = true
         return sliceByColumn(row, 0, safeWidth, true)
-      })
-      let inserted = rendered.some(row => row.includes(CURSOR_MARKER))
-      const result = { rows: rendered.map(row => {
-        if (!this.focused || inserted || !row.includes(FOCUS_SENTINEL)) return row.replaceAll(FOCUS_SENTINEL, ' ')
-        inserted = true
+      }
+      const rendered = mapRows(limited, clampRow)
+      // Marker reads stay on the sources' seek path: a windowed answer consults the marker positions it already
+      // mapped instead of materializing every row to scan them.
+      const markerAt = (marker: string): number => {
+        const at = findMarkerRow(rows, marker, this.viewportOffset)
+        return at >= this.viewportOffset && at < this.viewportOffset + contentLimit ? at - this.viewportOffset : -1
+      }
+      const inserted = isVirtualRows(limited)
+        ? markerAt(CURSOR_MARKER) >= 0
+        : rendered.some(row => row.includes(CURSOR_MARKER))
+      const sentinelRow = !this.focused || inserted ? -1
+        : isVirtualRows(limited) ? markerAt(FOCUS_SENTINEL)
+          : rendered.findIndex(row => row.includes(FOCUS_SENTINEL))
+      const result = { rows: mapRows(rendered, (row, index) => {
+        if (!this.focused || inserted || index !== sentinelRow) return row.replaceAll(FOCUS_SENTINEL, ' ')
         return row.replace(FOCUS_SENTINEL, `${CURSOR_MARKER} `).replaceAll(FOCUS_SENTINEL, ' ')
-      }), overflowed }
+      }, { markerFree: !inserted && sentinelRow < 0 }), overflowed }
       return this.runtimeFailure === undefined ? result : { ...result, runtimeFailure: this.runtimeFailure }
     } catch (error) {
       const message = renderFailure(error)

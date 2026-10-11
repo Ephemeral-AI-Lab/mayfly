@@ -7,7 +7,7 @@
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import type { ToolCallView, ToolResult, ToolResultView } from '@deepseek-ai/dsh-tools'
 import type { MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
-import { diffChangeCounts, type MayflyComponent } from '../core/index.ts'
+import { concatRows, diffChangeCounts, type MayflyComponent } from '../core/index.ts'
 import { freezeModel, interpolateLocaleMessage, type MayflyTranslate, type ToolPresentationModel } from '../frontend/index.ts'
 import { renderCanonicalNode, type CanonicalNodeRenderer } from './canonical-node-renderer.ts'
 import { summarizeToolText } from './envelope.ts'
@@ -208,7 +208,7 @@ class ToolModelComponent implements MayflyComponent {
       // A settled structured call (a diff) repeats in its result; only a call's
       // own text details precede the result.
       const call = model.result !== undefined && model.call?.kind !== 'text' ? undefined : model.call
-      return [call, model.result].flatMap(view => view === undefined ? [] : renderCanonicalNode(view, width, this.renderer))
+      return concatRows(...[call, model.result].flatMap(view => view === undefined ? [] : [renderCanonicalNode(view, width, this.renderer)]))
     }
     const view = model.result ?? model.call
     if (view === undefined) return []

@@ -34,7 +34,8 @@ interface OpenFence {
   readonly mermaid: boolean
 }
 
-function sourceLines(source: string): readonly { readonly start: number, readonly end: number, readonly text: string }[] {
+/** The line extents of `source`: `[start, end)` offsets (end past the `\n`) and the line text without its newline. */
+export function sourceLines(source: string): readonly { readonly start: number, readonly end: number, readonly text: string }[] {
   const lines: Array<{ start: number, end: number, text: string }> = []
   let start = 0
   while (start < source.length) {

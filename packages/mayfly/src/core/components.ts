@@ -31,7 +31,7 @@ import {
   type TUI,
 } from '@earendil-works/pi-tui'
 import type { MayflyGlyphMode } from './glyphs.ts'
-import { highlightCodeLines } from './highlight.ts'
+import { expandMarkdownRules, markdownTheme } from './markdown-rows.ts'
 import { readPresentation, type MayflyPresentation } from './presentation.ts'
 import { renderMermaidRows, splitRichDocument } from './rich-document.ts'
 import { extractMentionToken, mentionPath } from '../internal/mention.ts'
@@ -94,33 +94,6 @@ function selectListTheme(colors: MayflySemanticColors): SelectListTheme {
     description: colors.textMuted,
     scrollInfo: colors.textMuted,
     noMatch: colors.textMuted,
-  }
-}
-
-/**
- * Map the palette to a markdown theme: the ten md* tokens plus emphasis.
- * Headings carry their level through bold (0.84.2 exposes a single
- * `heading` fn, so kimi's per-level styling is out of reach), unordered
- * markers are normalized to `•`, and fenced code goes through cli-highlight
- * via `highlightCode`, which recolors lines without changing their count.
- */
-function markdownTheme(colors: MayflySemanticColors): MarkdownTheme {
-  return {
-    heading: (text) => `\x1b[1m${colors.mdHeading(text)}\x1b[22m`,
-    link: colors.mdLink,
-    linkUrl: colors.mdLinkUrl,
-    code: colors.mdCode,
-    codeBlock: colors.mdCodeBlock,
-    codeBlockBorder: colors.mdCodeBlockBorder,
-    quote: colors.mdQuote,
-    quoteBorder: colors.mdQuoteBorder,
-    hr: colors.mdHr,
-    listBullet: (marker) => colors.mdListBullet(marker.replace(/^[-+*] $/, '• ')),
-    bold: colors.textStrong,
-    italic: colors.text,
-    strikethrough: colors.muted,
-    underline: colors.text,
-    highlightCode: (code, lang) => highlightCodeLines(code, lang, { base: colors.mdCodeBlock, keyword: colors.primary, string: colors.success, comment: colors.muted }),
   }
 }
 
@@ -600,7 +573,7 @@ class MarkdownAdapter implements MayflyMarkdown {
     if (this.cache?.width === safeWidth) return this.cache.rows
     const segments = this.segments ??= splitRichDocument(this.text)
     if (!segments.some(segment => segment.kind === 'mermaid')) {
-      const rows = this.expandRules(this.markdown.render(safeWidth), safeWidth)
+      const rows = expandMarkdownRules(this.markdown.render(safeWidth), safeWidth, this.hr)
       this.cache = { width: safeWidth, rows }
       return rows
     }
@@ -611,30 +584,16 @@ class MarkdownAdapter implements MayflyMarkdown {
       if (segment.kind === 'mermaid') {
         const diagram = renderMermaidRows(segment.source, contentWidth)
         if (diagram !== undefined) return diagram
-        return this.expandRules(new Markdown(segment.fallback, 0, 0, this.theme).render(contentWidth), contentWidth)
+        return expandMarkdownRules(new Markdown(segment.fallback, 0, 0, this.theme).render(contentWidth), contentWidth, this.hr)
       }
       /* splitRichDocument omits zero-length Markdown segments. */
       if (segment.source.length === 0) return []
-      return this.expandRules(new Markdown(segment.source, 0, 0, this.theme).render(contentWidth), contentWidth)
+      return expandMarkdownRules(new Markdown(segment.source, 0, 0, this.theme).render(contentWidth), contentWidth, this.hr)
     })
     const horizontal = padX === 0 ? body : body.map(line => `${' '.repeat(padX)}${line}`)
     const result = [...Array.from({ length: padY }, () => ''), ...horizontal, ...Array.from({ length: padY }, () => '')]
     this.cache = { width: safeWidth, rows: result }
     return result
-  }
-
-  private expandRules(lines: string[], width: number): string[] {
-    // pi-tui caps horizontal rules at 80 columns regardless of the render
-    // width (`'─'.repeat(Math.min(width, 80))` in markdown.js); the user's
-    // S17 dogfood ruling wants the rule as wide as the body text it
-    // separates, so the adapter re-paints the capped rule to the full
-    // render width. Exact string equality against the known theme output —
-    // tolerating pi-tui's row padding — keeps code lines (their own SGRs)
-    // and any custom rule styling out of the path.
-    if (width <= 80) return lines
-    const capped = this.hr('─'.repeat(80))
-    const full = this.hr('─'.repeat(width))
-    return lines.map(line => line.trimEnd() === capped ? full : line)
   }
 
   invalidate(): void {

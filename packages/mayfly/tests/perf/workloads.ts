@@ -1,5 +1,5 @@
 /**
- * The work-budget workloads W1 to W21 (docs/design/implementation-roadmap.md section 7.1), and W1 and W4 again through the
+ * The work-budget workloads W1 to W22 (docs/design/implementation-roadmap.md section 7.1), and W1 and W4 again through the
  * node slot (slice 1.10a), the path the footer and the conversation take from Phases 3 and 6. Each one builds a surface of
  * a stated shape, then runs one steady-state step that publishes, presses a key, or ticks the clock, and reports the
  * counters of that step alone. The counts are deterministic, so a spec gates them; `script/audit-performance.mjs`
@@ -171,6 +171,15 @@ const reset = (counters: MayflyWorkCounters): void => { Object.assign(counters, 
 export function codeDocument(megabytes: number): string {
   const line = (index: number): string => `const value${String(index)} = compute(input, state, cache) ${String(index)}`
   return Array.from({ length: Math.ceil((megabytes * 1_000_000) / (line(0).length + 1)) }, (_, index) => line(index)).join('\n')
+}
+
+/**
+ * Roughly `megabytes` of ordinary Markdown — headings, paragraphs, bullets, and fences repeating — so the scan's
+ * block units hold whole sections and a PageDown paints the units under the new window, not the document.
+ */
+export function markdownDocument(megabytes: number): string {
+  const section = (index: number): string => `## Section ${String(index)}\n\nParagraph ${String(index)} with a [link](https://x.example/${String(index)}) and **strong** text that wraps a little.\n\n- item ${String(index)}a\n- item ${String(index)}b\n\n\`\`\`\nfence ${String(index)} line one\nfence ${String(index)} line two\n\`\`\``
+  return Array.from({ length: Math.ceil((megabytes * 1_000_000) / (section(0).length + 2)) }, (_, index) => section(index)).join('\n\n')
 }
 
 const item = (index: number, extra = {}): { id: string, label: string, detail: string } => ({ id: `item-${String(index)}`, label: `Item number ${String(index)}`, detail: `detail ${String(index)}`, ...extra })
@@ -462,6 +471,15 @@ export const WORKLOADS: readonly Workload[] = [
       const after = before.split('\n').map((line, index) => index % step === 5 ? `${line} // edited` : line).join('\n')
       const surface = new Surface('w21', ui.scroll(ui.diff(before, after), { height: 8, scrollbar: true }), counters)
       return { step: () => { surface.render() }, dispose: () => surface.dispose() }
+    },
+  },
+  {
+    id: 'W22', title: 'content markdown: a megabyte of Markdown in a declared-height scroll, PageDown',
+    setup(counters) {
+      const surface = new Surface('w22', ui.scroll(ui.markdown(markdownDocument(1)), { height: 8, scrollbar: true }), counters)
+      surface.render()
+      reset(counters)
+      return { step: () => { surface.press('\x1b[6~') }, dispose: () => surface.dispose() }
     },
   },
   {

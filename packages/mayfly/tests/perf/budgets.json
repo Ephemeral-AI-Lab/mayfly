@@ -24,5 +24,6 @@
   "W18-overlay": { "nodesValidated": 0, "unitsCompiled": 0, "rowsPainted": 2, "rowsMaterialized": 12, "stringsMeasured": 13, "componentRenders": 3, "controlWalks": 0, "reconciles": 4, "layoutPasses": 2, "clockTicks": 0, "keymapSnapshots": 0 },
   "W19": { "nodesValidated": 0, "unitsCompiled": 0, "rowsPainted": 73, "rowsMaterialized": 8, "segmentsPainted": 1, "linesEstimated": 0, "stringsMeasured": 10 },
   "W20": { "nodesValidated": 0, "unitsCompiled": 0, "rowsPainted": 56, "rowsMaterialized": 8, "segmentsPainted": 1, "linesEstimated": 0, "stringsMeasured": 9 },
-  "W21": { "nodesValidated": 2, "unitsCompiled": 2, "rowsPainted": 20, "rowsMaterialized": 8, "segmentsPainted": 5, "linesEstimated": 21800, "stringsMeasured": 10, "componentRenders": 2, "controlWalks": 1, "reconciles": 4, "layoutPasses": 1, "clockTicks": 0, "keymapSnapshots": 0 }
+  "W21": { "nodesValidated": 2, "unitsCompiled": 2, "rowsPainted": 20, "rowsMaterialized": 8, "segmentsPainted": 5, "linesEstimated": 21800, "stringsMeasured": 10, "componentRenders": 2, "controlWalks": 1, "reconciles": 4, "layoutPasses": 1, "clockTicks": 0, "keymapSnapshots": 0 },
+  "W22": { "nodesValidated": 0, "unitsCompiled": 0, "rowsPainted": 8, "rowsMaterialized": 8, "segmentsPainted": 0, "linesEstimated": 0, "stringsMeasured": 9 }
 }

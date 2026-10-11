@@ -1853,7 +1853,7 @@ with the page forms is deleted.
 | 2c.3 | `core/width-estimate.ts` (ASCII fast path, code-point table), `core/content-segments.ts` (line index, 4 KB / 64-row segments, long-line segments per D31, prefix-sum extents), `core/ui-content-cache.ts` (D33), `core/content-rows.ts` (windowed painters for text, code, rich text without motion, fields, sections), scrolls that resolve their window before exposing rows, the outside-a-scroll clamp, `segmentsPainted` and `linesEstimated` counters, W18-W20 | `PLUGIN_VIEW_MAX_CHARS` and its `RangeError`, `renderCanonicalView`'s paint-everything path for these kinds, their full per-width row memo |
 | 2c.4 | Anchors through row sources: a document block holds the admitted leaf, remapping touches the first changed segment only, no per-frame re-wrap; `traceDetailPanelModel` and `jobOutputNode` as one `ui.scroll(ui.code(…))` each | `rowOffsets`, the block source copies, `interaction/document-pages.ts`, both page forms and their handlers, the page locale keys (`Page`, `First`, `Previous`, `Next page`, `Last`, `Go to page`, `Invalid page`), the paging tests |
 | 2c.5 | `diff-align.ts` on Myers over interned line ids under `maxEditLength`, anchored on unique lines past it, memoized per admitted diff; hunk segments with exact extents; `maxRows` counts exact; gutter width from the largest line number | `DIFF_ALIGN_MAX_ROWS`, the LCS table, the `Math.max(...)` spreads (also in `diagramSource`) |
-| 2c.6 | Markdown block segments (`rich-document.ts`: cuts only at blank lines outside fences and HTML blocks, reference definitions gathered once, an oversized fence becomes code segments), `MarkdownAdapter` as a row source, `markdown` in `REUSABLE_KINDS`, the segmented-equals-whole property test, W22 | — |
+| 2c.6 | `core/markdown-rows.ts`: marked-token units inside `splitRichDocument` segments (4 KB budget, cuts only beside `space` tokens, `def` raws gathered once and injected per fragment minus tags the fragment resolves, oversized tokens get segmented `lines` children, Mermaid rides the diagram seam); `MarkdownRowSource` (Fenwick counts, `markerFree`, `rowOf`/`offsetOf` for document anchors), `markdown` through `contentLeafComponent`, the segmented-equals-whole property test, W22; `renderChecked` keeps its window virtual in main mode and reads markers through `seekMarker` (`ownKeys` on `virtualRows`, `mapRows` delegates `seekMarker`); transcript rows and expanded tool bodies compose through `concatRows` | the `markdown` leaf's whole-document `createMarkdown` paint; the flatMap/spread composition of canonical transcript rows |
 | 2c.7 | `chunks` on content fields (D30): contracts and `ui.chunks*` builders in `packages/ui`, per-chunk admission memo and index reuse, `textOf()` on explicit reads, job output as a follow-tail scroll fed by `jobs.events` and `readAt` with `drop` on retention trims, the Website reference, W23 | — |
 | 2c.8 | An open list body as a nested row source; the list window paints the body rows inside it; W24 | — |
 
@@ -1881,7 +1881,7 @@ in review at a time; 2c.7 needs 2c.4's anchors. Each slice is reviewed like a co
 | 2c.3 | in review | `feat/2c` |
 | 2c.4 | in review | `feat/2c` |
 | 2c.5 | in review | `feat/2c` |
-| 2c.6 | — | — |
+| 2c.6 | in review | `feat/2c` |
 | 2c.7 | — | — |
 | 2c.8 | — | — |
 

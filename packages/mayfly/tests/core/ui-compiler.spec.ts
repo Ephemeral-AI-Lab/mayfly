@@ -241,21 +241,14 @@ describe('compileMayflyUiNode', () => {
     result.component.invalidate()
   })
 
-  it('routes document formats through the shared Markdown adapter', () => {
-    const sources: string[] = []
-    const markdownComponents = {
-      ...components,
-      createMarkdown: (options?: { text?: string }) => {
-        sources.push(options?.text ?? '')
-        return { setText: () => {}, render: () => ['document'], invalidate: () => {} }
-      },
-    } as MayflyComponents
-    expect(compiled(ui.markdown('# Heading'), fixture({ components: markdownComponents }).options).component.render(20)).toEqual(['document'])
-    expect(compiled(ui.diagram('graph TD\nA --> B'), fixture({ components: markdownComponents }).options).component.render(20)).toEqual(['document'])
-    expect(compiled(ui.diagram('graph TD\nA[```] --> B'), fixture({ components: markdownComponents }).options).component.render(20)).toEqual(['document'])
-    expect(sources[0]).toBe('# Heading')
-    expect(sources[1]).toBe('```mermaid\ngraph TD\nA --> B\n```')
-    expect(sources[2]).toBe('````mermaid\ngraph TD\nA[```] --> B\n````')
+  it('renders markdown and diagram leaves through the segmented Markdown source', () => {
+    const { options } = fixture()
+    expect(compiled(ui.markdown('# Heading'), options).component.render(20).join('\n')).toContain('Heading')
+    const diagram = compiled(ui.diagram('graph TD\nA --> B'), options).component.render(20).join('\n')
+    expect(diagram).toContain('A')
+    expect(diagram).toContain('B')
+    // An inner ``` cannot close the ```` fence the diagram compiles through.
+    expect(compiled(ui.diagram('graph TD\nA[```] --> B'), options).component.render(20).join('\n')).toContain('```')
   })
 
   it('keeps complete wrapped leaf content in main mode', () => {
@@ -268,44 +261,29 @@ describe('compileMayflyUiNode', () => {
       .toEqual(['ab', 'cd', 'ef', 'gh', 'ok'])
   })
 
-  it('keeps all renderer-owned Markdown rows', () => {
-    const invalidate = vi.fn()
-    const markdownComponents = {
-      ...components,
-      createMarkdown: () => ({
-        setText: () => {},
-        render: () => ['heading', 'list', 'fence', 'tail'],
-        invalidate,
-      }),
-    } as MayflyComponents
-    const result = compiled(ui.markdown('# heading\n- list\n```ts\nfence\n```'), fixture({ components: markdownComponents }).options)
-    expect(result.component.render(20)).toEqual(['heading', 'list', 'fence', 'tail'])
+  it('keeps every painted Markdown row through the segmented leaf', () => {
+    const result = compiled(ui.markdown('# heading\n- list\n```ts\nfence\n```'), fixture().options)
+    const rows = result.component.render(20)
+    const joined = rows.join('\n')
+    expect(joined).toContain('heading')
+    expect(joined).toContain('• list')
+    expect(joined).toContain('fence')
+    expect(rows.every(row => visibleWidth(row) <= 20)).toBe(true)
     result.component.invalidate()
-    expect(invalidate).toHaveBeenCalledOnce()
   })
 
-  it('contains renderer-owned Markdown failures at the selected text leaf', () => {
-    const markdownComponents = {
-      ...components,
-      createMarkdown: () => ({
-        setText: () => {},
-        render: () => { throw new Error('markdown failed') },
-        invalidate: () => {},
-      }),
-    } as MayflyComponents
-    const error = compiled(ui.markdown('# heading'), fixture({ components: markdownComponents }).options)
+  it('contains Markdown paint failures at the selected text leaf', () => {
+    const failing = new Proxy(colors, {
+      get: (target, key) => key === 'mdHeading' ? () => { throw new Error('markdown failed') } : Reflect.get(target, key),
+    }) as unknown as MayflySemanticColors
+    const error = compiled(ui.markdown('# heading'), fixture({ colors: failing }).options)
     expect(error.component.render(20).join('')).toContain('markdown failed')
 
-    const unknownComponents = {
-      ...components,
-      createMarkdown: () => ({
-        setText: () => {},
-        render: () => { throw 'markdown failed' },
-        invalidate: () => {},
-      }),
-    } as MayflyComponents
-    const unknown = compiled(ui.markdown('# heading'), fixture({ components: unknownComponents }).options)
-    expect(unknown.component.render(20).join('')).toContain('unknown')
+    const unknown = new Proxy(colors, {
+      get: (target, key) => key === 'mdHeading' ? () => { throw 'markdown failed' } : Reflect.get(target, key),
+    }) as unknown as MayflySemanticColors
+    const rows = compiled(ui.markdown('# heading'), fixture({ colors: unknown }).options).component.render(20)
+    expect(rows.join('')).toContain('unknown')
   })
 
   it('renders all surface chrome content, rich emphasis, and explicit stack sizing', () => {
@@ -445,8 +423,8 @@ describe('compileMayflyUiNode', () => {
     renderLayoutFrame(first.value.component, 20, 3, () => {})
     const identity = focus.captureFocusIdentity?.()
 
-    const failed = compileMayflyUiSurfaceNode(ui.markdown('broken markdown'), {
-      ...fixture({ components: { ...components, createMarkdown: () => { throw new Error('setup failed') } } as MayflyComponents }).options,
+    const failed = compileMayflyUiSurfaceNode({ kind: 'custom' }, {
+      ...f.options,
       surfaceRuntime: runtime,
     })
     expect(failed.ok).toBe(false)

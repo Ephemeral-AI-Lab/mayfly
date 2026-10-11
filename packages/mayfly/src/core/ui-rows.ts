@@ -126,6 +126,14 @@ export function virtualRows(source: RowSource): string[] {
       }
       return Reflect.getOwnPropertyDescriptor(array, prop)
     },
+    ownKeys(array) {
+      // Every index is an own enumerable key, as on a real array: a `toEqual` or `Object.keys` reader gets the
+      // same view a full iteration would — which is also what asks for every row to be produced.
+      const keys = new Set<string | symbol>()
+      for (let index = 0; index < liveLength(); index += 1) keys.add(String(index))
+      for (const key of Reflect.ownKeys(array)) keys.add(key)
+      return [...keys]
+    },
     preventExtensions() {
       return false
     },
@@ -258,6 +266,10 @@ export function mapRows(rows: readonly string[], map: (row: string, index: numbe
     ...(sourcePrepare === undefined ? {} : { prepare: sourcePrepare }),
     ...(source.rowOf === undefined ? {} : { rowOf: source.rowOf.bind(source) }),
     ...(source.offsetOf === undefined ? {} : { offsetOf: source.offsetOf.bind(source) }),
+    ...(source.seekMarker === undefined || options.markerFree === false ? {} : {
+      // A marker-preserving map keeps a hit's row honest; callers that transform markers opt out through markerFree.
+      seekMarker: source.seekMarker.bind(source),
+    }),
     row(index) {
       return map(rows[index]!, index)
     },

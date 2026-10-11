@@ -48,6 +48,7 @@ export {
   type MayflyUiImageState,
 } from './ui-images.ts'
 export { createTerminalRelease } from './terminal.ts'
+export { concatRows } from './ui-rows.ts'
 export { alignDiffLines, diffChangeCounts, diffModel, paintDiffRows, paintDiffSegment, DIFF_ALIGN_MAX_EDITS, DIFF_CONTEXT_ROWS, type DiffModel, type DiffOp, type DiffPaintColors, type DiffPaintOptions, type DiffRowModel, type DiffSegment, type DiffWidthHelpers } from './diff-align.ts'
 export { WindowController, type MayflyWindow } from './window-controller.ts'
 export { visibleWidth } from './width.ts'

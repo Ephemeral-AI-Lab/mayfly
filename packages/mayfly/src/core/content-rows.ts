@@ -16,11 +16,13 @@
  * @module @ephemeral-ai/mayfly/core/content-rows
  */
 
-import type { MayflyContentNode, MayflyField, MayflyRichTextNode, MayflySection, MayflySectionContentNode, MayflyTextStyle, MayflyTone, MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
+import type { MayflyContentNode, MayflyField, MayflyMarkdownNode, MayflyRichTextNode, MayflySection, MayflySectionContentNode, MayflyTextStyle, MayflyTone, MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
+import type { MarkdownTheme } from '@earendil-works/pi-tui'
 import { CONTENT_SEGMENT_LINES, CONTENT_SEGMENT_UNITS, indexContent, type ContentIndex } from './content-segments.ts'
 import { alignDiffLines, diffModel, paintDiffSegment, type DiffModel, type DiffSegment } from './diff-align.ts'
 import { ownDataErrorMessage } from './error-message.ts'
 import { highlightable, highlightCodeLines } from './highlight.ts'
+import { markdownBlockRows, markdownMermaidRows, markdownTheme, scanMarkdown, type MarkdownUnit, type PreparedMarkdown } from './markdown-rows.ts'
 import {
   CODE_HIGHLIGHT_MAX_BYTES,
   CODE_HIGHLIGHT_MAX_ROWS,
@@ -39,7 +41,7 @@ import { truncateMiddle } from './width.ts'
 import { countWork, type MayflyWorkCounters } from './ui-work-counters.ts'
 
 /** The leaf kinds this module paints; `MayflySectionContentNode` covers `sections` bodies. */
-export type WindowedContentNode = MayflySectionContentNode | Extract<MayflyContentNode, { readonly kind: 'rich-text' }>
+export type WindowedContentNode = MayflySectionContentNode | Extract<MayflyContentNode, { readonly kind: 'rich-text' | 'markdown' }>
 
 /** What a content leaf needs beyond its node: width helpers, palette, the content cache, and the frame contract. */
 export interface ContentRowsEnv {
@@ -338,6 +340,194 @@ class DiffRowsSource implements RowSource {
 
 function diffSource(node: Extract<MayflySectionContentNode, { readonly kind: 'diff' }>, width: number, env: ContentRowsEnv): RowSource {
   return new DiffRowsSource(diffPrepared(node, env), Math.max(1, width), env, keyOf(node))
+}
+
+/**
+ * The row source of one `markdown` node at one width: `length` is the unit row map (estimates replaced by painted
+ * counts as units materialize), `row`/`prepare` paint the block or diagram under the asked rows through the content
+ * cache, and oversized tokens delegate to a segmented child over their raw lines (`markdown-rows.ts` owns the scan
+ * and the fragment paints). pi-tui pads every Markdown row to the render width, so `declaredWidth` is the width.
+ */
+class MarkdownRowSource implements RowSource {
+  readonly declaredWidth: number
+  readonly markerFree = true
+  private readonly counts: number[]
+  private readonly tree: Fenwick
+  private readonly failures = new Set<number>()
+  private readonly children = new Map<number, RowSource>()
+  private readonly theme: MarkdownTheme
+
+  constructor(
+    private readonly prepared: PreparedMarkdown,
+    private readonly width: number,
+    private readonly env: ContentRowsEnv,
+    private readonly key: string,
+  ) {
+    this.counts = new Array<number>(prepared.units.length)
+    this.tree = new Fenwick(prepared.units.length)
+    prepared.units.forEach((unit, index) => {
+      // The scan's per-token estimate is width-free; floor it by the unit's paintable characters at this width.
+      const estimate = unit.kind === 'mermaid' ? unit.estimate : Math.max(unit.estimate, Math.ceil(unit.flow / Math.max(1, width)))
+      this.counts[index] = estimate
+      this.tree.add(index, estimate)
+    })
+    this.declaredWidth = width
+    this.theme = markdownTheme(env.colors)
+    // A document that fits a paint budget is painted eagerly: its row map is exact at once, like the texts.
+    if (prepared.normalized.length <= CONTENT_SEGMENT_UNITS) this.prepare(0, Number.MAX_SAFE_INTEGER)
+  }
+
+  get length(): number {
+    // A segmented child converges on its own schedule; fold its live length back into the unit map.
+    for (const [unit, child] of this.children) this.syncCount(unit, child.length)
+    return this.prepared.units.length === 0 ? 0 : this.tree.sum(this.prepared.units.length - 1)
+  }
+
+  private syncCount(unit: number, rows: number): void {
+    if (this.counts[unit] !== rows) {
+      this.tree.add(unit, rows - this.counts[unit]!)
+      this.counts[unit] = rows
+    }
+  }
+
+  private cacheKey(unit: number): string {
+    return `${this.key}:md:${String(this.width)}:${String(unit)}`
+  }
+
+  /** The segmented child painting one oversized token's raw lines, built on first demand and shared across reads. */
+  private linesChild(unit: number, text: string): RowSource {
+    let child = this.children.get(unit)
+    if (child === undefined) {
+      const index = indexContent(text, lines => countWork(this.env.counters, 'linesEstimated', lines))
+      child = new SegmentedContent(index, () => text, this.width, (segment, at) => {
+        const rows: string[] = []
+        const paint = (start: number, end: number, cut: boolean): void => {
+          const slice = sanitizePluginText(text.slice(start, end))
+          for (const row of cut ? charWrap(slice, at, this.env.components) : this.env.components.wrapText(slice, at)) rows.push(row)
+        }
+        if (index.isCut(segment)) {
+          const [start, end] = index.segmentText(segment)
+          paint(start, end, true)
+          return rows
+        }
+        const [first, past] = index.segmentLines(segment)
+        for (let line = first; line < past; line += 1) {
+          const [start, end] = index.lineText(line)
+          paint(start, end, false)
+        }
+        return rows
+      }, this.env, `${this.key}:md:u${String(unit)}`)
+      this.children.set(unit, child)
+    }
+    return child
+  }
+
+  /** The fragment rows of a `block` or `mermaid` unit, or undefined when the unit wants its raw-line child. */
+  private paintSafely(unit: number, at: MarkdownUnit): readonly string[] | undefined {
+    try {
+      if (at.kind === 'mermaid') return markdownMermaidRows(at.source, at.fallback, this.width, this.theme, this.env.colors.mdHr)
+      if (at.kind === 'block') return markdownBlockRows(this.prepared.normalized.slice(at.start, at.end), this.prepared.defs, this.width, this.theme, this.env.colors.mdHr)
+      return undefined
+    } catch (error) {
+      const message = ownDataErrorMessage(error) ?? 'unknown render failure'
+      if (!this.failures.has(unit)) {
+        this.failures.add(unit)
+        this.env.report?.(message)
+      }
+      return this.env.errorRows(message, this.width)
+    }
+  }
+
+  /** The unit's rows: fragments come through the cache, oversized tokens and oversized fallbacks through their child. */
+  private unitRows(at: number): readonly string[] {
+    const unit = this.prepared.units[at]!
+    if (unit.kind === 'lines') return virtualRows(this.linesChild(at, this.prepared.normalized.slice(unit.start, unit.end)))
+    let rows = this.env.cache.get(this.cacheKey(at))
+    if (rows === undefined) {
+      const painted = this.paintSafely(at, unit)
+      if (painted === undefined) {
+        const child = this.linesChild(at, unit.kind === 'mermaid' ? unit.fallback : this.prepared.normalized.slice(unit.start, unit.end))
+        this.syncCount(at, child.length)
+        return virtualRows(child)
+      }
+      rows = painted
+      this.env.cache.put(this.cacheKey(at), rows, paintedRowsBytes(rows))
+      countWork(this.env.counters, 'segmentsPainted')
+      countWork(this.env.counters, 'rowsPainted', rows.length)
+    }
+    this.syncCount(at, rows.length)
+    return rows
+  }
+
+  row(index: number): string {
+    if (index < 0 || index >= this.length) return ''
+    const at = this.tree.locate(index)
+    const rows = this.unitRows(at)
+    countWork(this.env.counters, 'rowsMaterialized')
+    return rows[index - this.tree.sum(at - 1)] ?? ''
+  }
+
+  prepare(from: number, to: number): void {
+    if (from >= this.length) return
+    let at = this.tree.locate(Math.max(0, from))
+    while (at < this.prepared.units.length && this.tree.sum(at - 1) < to) {
+      this.unitRows(at)
+      const child = this.children.get(at)
+      if (child?.prepare !== undefined) child.prepare(Math.max(0, from - this.tree.sum(at - 1)), to - this.tree.sum(at - 1))
+      at += 1
+    }
+  }
+
+  /** The unit holding a normalized-text offset: unit starts are sorted, so a binary walk of the map finds it. */
+  private unitAt(offset: number): number {
+    let lo = 0
+    let hi = this.prepared.units.length - 1
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >> 1
+      if (this.prepared.units[mid]!.start <= offset) lo = mid
+      else hi = mid - 1
+    }
+    return lo
+  }
+
+  /**
+   * The row holding a source-text offset — unit-granular, proportional inside the unit, the segmented child's own
+   * map when one painted it. Offsets land in `normalized` space; tabs and CRs the scan normalized away drift the
+   * map by a few characters at most, which anchor tolerance absorbs.
+   */
+  rowOf(offset: number): number {
+    const at = this.unitAt(offset)
+    const unit = this.prepared.units[at]!
+    const startRow = this.tree.sum(at - 1)
+    const child = this.children.get(at)
+    if (child?.rowOf !== undefined && unit.kind === 'lines') return startRow + child.rowOf(offset - unit.start)
+    if (unit.kind === 'mermaid') return startRow
+    const span = Math.max(1, unit.end - unit.start)
+    const within = Math.min(this.counts[at]!, Math.max(0, Math.floor(((offset - unit.start) / span) * this.counts[at]!)))
+    return startRow + within
+  }
+
+  /** The source offset a row starts from, inverse of `rowOf` at unit granularity. */
+  offsetOf(row: number): number {
+    const at = this.tree.locate(row)
+    const unit = this.prepared.units[at]!
+    const child = this.children.get(at)
+    if (child?.offsetOf !== undefined && unit.kind === 'lines') return unit.start + child.offsetOf(row - this.tree.sum(at - 1))
+    return unit.start
+  }
+}
+
+const preparedMarkdowns = new WeakMap<object, PreparedMarkdown>()
+
+function markdownSource(node: MayflyMarkdownNode, width: number, env: ContentRowsEnv): RowSource {
+  const source = requireText(node.source, 'markdown source')
+  let prepared = preparedMarkdowns.get(node)
+  if (prepared === undefined) {
+    prepared = scanMarkdown(source)
+    countWork(env.counters, 'linesEstimated', prepared.lines)
+    preparedMarkdowns.set(node, prepared)
+  }
+  return new MarkdownRowSource(prepared, Math.max(1, width), env, keyOf(node))
 }
 
 const indexes = new WeakMap<object, ContentIndex>()
@@ -673,12 +863,13 @@ function buildNodeSource(node: WindowedContentNode, width: number, env: ContentR
     case 'sections': return sectionsSource(node, width, env, depth)
     case 'rich-text': return richTextSource(node, width, env)
     case 'diff': return diffSource(node, width, env)
+    case 'markdown': return markdownSource(node, width, env)
     default: throw new TypeError(`unknown basic content kind "${String((node as { readonly kind?: unknown }).kind)}"`)
   }
 }
 
 /** The leaf kinds this module answers a shared source for. */
-const CONTENT_NODE_KINDS = new Set<string>(['text', 'fields', 'code', 'sections', 'rich-text', 'diff'])
+const CONTENT_NODE_KINDS = new Set<string>(['text', 'fields', 'code', 'sections', 'rich-text', 'diff', 'markdown'])
 
 /**
  * One source per admitted node and width, shared by the leaf that paints it and the document resolver that maps its

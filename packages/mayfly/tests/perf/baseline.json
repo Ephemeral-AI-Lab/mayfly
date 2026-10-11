@@ -229,5 +229,20 @@
     "layoutPasses": 1,
     "clockTicks": 0,
     "keymapSnapshots": 0
+  },
+  "W22": {
+    "nodesValidated": 0,
+    "unitsCompiled": 0,
+    "rowsPainted": 8,
+    "rowsMaterialized": 8,
+    "segmentsPainted": 0,
+    "linesEstimated": 0,
+    "stringsMeasured": 9,
+    "componentRenders": 0,
+    "controlWalks": 1,
+    "reconciles": 3,
+    "layoutPasses": 1,
+    "clockTicks": 0,
+    "keymapSnapshots": 0
   }
 }
