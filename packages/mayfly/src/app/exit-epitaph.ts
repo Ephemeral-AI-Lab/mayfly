@@ -6,9 +6,10 @@
  * funnels through the launcher's dispose-the-tree-then-exit, and the
  * Node `process 'exit'` event is the only point strictly after both the
  * screen restore and the persistence coordinator's session flush — the
- * dispose ordering (mayfly-app's fiber unloads before mayfly-core's stop
- * effect; the base persistence rows unload after both) is why the hook
- * lives here rather than in a dispose chain.
+ * dispose ordering (the app's awaited fiber dispose completes before
+ * 'exit' fires, hence after the terminal restore the mayfly-core owner
+ * effect awaits; the base persistence rows unload after both) is why the
+ * hook lives here rather than in a dispose chain.
  *
  * The armed line is a module-level single slot (the `draft-stash`
  * pattern): an HMR recompose disposes the tree without process exit, and

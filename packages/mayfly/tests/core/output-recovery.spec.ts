@@ -18,34 +18,42 @@ class RecordingStream implements AmbientOutputStream {
 }
 
 describe('createOutputRecovery', () => {
-  it('repaints after ambient writes but excludes renderer terminal writes', () => {
+  it('repaints after ambient writes but excludes every renderer terminal method', () => {
     const stdout = new RecordingStream()
     const stderr = new RecordingStream()
+    const repaint = vi.fn()
+    const recovery = createOutputRecovery({ stdout, stderr }, repaint)
+    // Every function-valued terminal property brackets its own write; pi-tui
+    // reaches process.stdout through cursor, clearing and progress methods
+    // too, not only `write`.
     const terminal = {
       write(data: string) { stdout.write(data) },
-    } satisfies Pick<Terminal, 'write'>
-    const originalTerminalWrite = terminal.write
+      hideCursor() { stdout.write('hide-cursor') },
+      stop() { stdout.write('stop') },
+      columns: 80,
+    } as unknown as Terminal
     const originalStdoutWrite = stdout.write
     const originalStderrWrite = stderr.write
-    const repaint = vi.fn()
-    const recovery = createOutputRecovery(terminal, { stdout, stderr }, repaint)
+    const facade = recovery.renderer(terminal)
 
     recovery.activate()
     recovery.activate()
-    terminal.write('renderer frame')
+    facade.write('renderer frame')
+    facade.hideCursor()
+    facade.stop()
     expect(repaint).not.toHaveBeenCalled()
+    expect(facade.columns).toBe(80)
 
     const callback = vi.fn()
     expect(stdout.write('host json', callback)).toBe(true)
     stderr.write(Buffer.from('host error'))
     expect(callback).toHaveBeenCalledOnce()
     expect(repaint).toHaveBeenCalledTimes(2)
-    expect(stdout.chunks).toEqual(['renderer frame', 'host json'])
+    expect(stdout.chunks).toEqual(['renderer frame', 'hide-cursor', 'stop', 'host json'])
     expect(stderr.chunks).toEqual(['host error'])
 
     recovery.deactivate()
     recovery.deactivate()
-    expect(terminal.write).toBe(originalTerminalWrite)
     expect(stdout.write).toBe(originalStdoutWrite)
     expect(stderr.write).toBe(originalStderrWrite)
     stdout.write('after release')
@@ -55,18 +63,14 @@ describe('createOutputRecovery', () => {
   it('does not overwrite a stream method replaced by another owner', () => {
     const stdout = new RecordingStream()
     const stderr = new RecordingStream()
-    const terminal = { write: (_data: string) => {} } satisfies Pick<Terminal, 'write'>
-    const recovery = createOutputRecovery(terminal, { stdout, stderr }, () => {})
+    const recovery = createOutputRecovery({ stdout, stderr }, () => {})
     recovery.activate()
-    const terminalReplacement = (_data: string): void => {}
     const stdoutReplacement = (() => true) as NodeJS.WriteStream['write']
     const stderrReplacement = (() => true) as NodeJS.WriteStream['write']
-    terminal.write = terminalReplacement
     stdout.write = stdoutReplacement
     stderr.write = stderrReplacement
 
     recovery.deactivate()
-    expect(terminal.write).toBe(terminalReplacement)
     expect(stdout.write).toBe(stdoutReplacement)
     expect(stderr.write).toBe(stderrReplacement)
   })
@@ -76,12 +80,13 @@ describe('createOutputRecovery', () => {
     const stderr = new RecordingStream()
     const terminal = {
       write: (_data: string) => { throw new Error('terminal failed') },
-    } satisfies Pick<Terminal, 'write'>
+    } as unknown as Terminal
     const repaint = vi.fn()
-    const recovery = createOutputRecovery(terminal, { stdout, stderr }, repaint)
+    const recovery = createOutputRecovery({ stdout, stderr }, repaint)
+    const facade = recovery.renderer(terminal)
     recovery.activate()
 
-    expect(() => terminal.write('frame')).toThrow('terminal failed')
+    expect(() => facade.write('frame')).toThrow('terminal failed')
     stdout.write('external after failure')
     expect(repaint).toHaveBeenCalledOnce()
     recovery.deactivate()

@@ -151,6 +151,8 @@ export interface MayflyUiCompilerOptions {
     readonly suppressAuto?: boolean
     readonly focusWithoutControls?: boolean
     readonly translate?: (key: string, values?: UiTranslateValues) => string
+    /** The locale revision behind `translate`: a frame input, so a locale turn repaints every surface that translated. */
+    readonly revision?: () => number
     readonly extra?: () => readonly {
       readonly id: string
       readonly keys: string
@@ -2835,7 +2837,7 @@ class CompiledSurface implements MayflyEditorShellComponent {
   [LAYOUT_NODE](): LayoutNode {
     if (!this.surfaceRuntime.current(this.generation)) return { type: 'vstack', entries: [], gap: 0, align: 'stretch' }
     this.viewport = safeViewport(this.options.getViewport)
-    this.syncEpoch(this.viewport, this.surfaceRuntime.interaction?.revision, this.options.keymap?.revision, this.options.completionsOpen?.() === true)
+    this.syncEpoch(this.viewport, this.surfaceRuntime.interaction?.revision, this.options.keymap?.revision, this.options.contextHints?.revision?.(), this.options.completionsOpen?.() === true)
     this.prepareNativeLayout()
     this.viewport = safeViewport(this.options.getViewport)
     this.surfaceRuntime.beginAnimationFrame()
@@ -2984,6 +2986,7 @@ class CompiledSurface implements MayflyEditorShellComponent {
     readonly rows: number
     readonly revision: number | undefined
     readonly keymapRevision: number | undefined
+    readonly localeRevision: number | undefined
     readonly completions: boolean
     readonly animationFrame: number
     readonly result: MayflyStatusRenderResult
@@ -2993,11 +2996,12 @@ class CompiledSurface implements MayflyEditorShellComponent {
   private frameInputs: string | undefined
 
   /**
-   * Moves the surface epoch when the host viewport, the model revision, the keymap revision, or the completion list
-   * changed since the last frame. Everything inside the surface that can change a row moves the epoch where it happens.
+   * Moves the surface epoch when the host viewport, the model revision, the keymap or locale revision, or the
+   * completion list changed since the last frame. Everything inside the surface that can change a row moves the
+   * epoch where it happens.
    */
-  private syncEpoch(viewport: MayflyUiViewport, revision: number | undefined, keymapRevision: number | undefined, completions: boolean): void {
-    const inputs = `${String(viewport.columns)}x${String(viewport.rows)}|${String(revision)}|${String(keymapRevision)}|${String(completions)}`
+  private syncEpoch(viewport: MayflyUiViewport, revision: number | undefined, keymapRevision: number | undefined, localeRevision: number | undefined, completions: boolean): void {
+    const inputs = `${String(viewport.columns)}x${String(viewport.rows)}|${String(revision)}|${String(keymapRevision)}|${String(localeRevision)}|${String(completions)}`
     if (inputs === this.frameInputs) return
     this.frameInputs = inputs
     this.surfaceRuntime.touch()
@@ -3008,18 +3012,20 @@ class CompiledSurface implements MayflyEditorShellComponent {
     const viewport = safeViewport(this.options.getViewport)
     const revision = this.surfaceRuntime.interaction?.revision
     const keymapRevision = this.options.keymap?.revision
+    const localeRevision = this.options.contextHints?.revision?.()
     const completions = this.options.completionsOpen?.() === true
-    this.syncEpoch(viewport, revision, keymapRevision, completions)
+    this.syncEpoch(viewport, revision, keymapRevision, localeRevision, completions)
     const animationFrame = this.surfaceRuntime.animationFrame
     const cached = this.frameResult
     if (cached !== undefined
       && cached.current === current && cached.width === width && cached.maxRows === maxRows
       && cached.columns === viewport.columns && cached.rows === viewport.rows && cached.revision === revision
-      && cached.keymapRevision === keymapRevision && cached.completions === completions && cached.animationFrame === animationFrame) {
+      && cached.keymapRevision === keymapRevision && cached.localeRevision === localeRevision
+      && cached.completions === completions && cached.animationFrame === animationFrame) {
       return cached.result
     }
     const result = this.renderFrame(width, maxRows)
-    this.frameResult = { current, width, maxRows, columns: viewport.columns, rows: viewport.rows, revision, keymapRevision, completions, animationFrame, result }
+    this.frameResult = { current, width, maxRows, columns: viewport.columns, rows: viewport.rows, revision, keymapRevision, localeRevision, completions, animationFrame, result }
     return result
   }
 

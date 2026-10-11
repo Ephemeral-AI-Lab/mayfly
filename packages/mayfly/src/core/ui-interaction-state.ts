@@ -34,7 +34,7 @@ export class UiInteractionService extends Service {
   constructor(ctx: Context) {
     super(ctx, 'mayflyUiInteraction')
     this.notifications = new UiNotificationStore(() => this.notify())
-    this.translate = contextHintTranslator(ctx)
+    this.translate = contextHintTranslator(ctx).translate
   }
 
   private key(kind: UiSurfaceKind, id: string): string { return JSON.stringify([kind, id]) }
@@ -64,7 +64,6 @@ export class UiInteractionService extends Service {
   createNotificationOwner(label: string): UiNotificationOwner { return new UiNotificationOwner(`${label}/${++this.notificationSerial}`, this.notifications) }
   notificationSnapshot(): readonly MayflyFeedbackRecord[] { return this.notifications.snapshot() }
   setNotificationVisibility(visible: boolean): void { this.notifications.setVisible(visible) }
-  handleNotification(id: string): void { this.notifications.handle(id) }
 
   remove(kind: UiSurfaceKind, id: string, expected?: UiSurfaceModel): void {
     const key = this.key(kind, id)

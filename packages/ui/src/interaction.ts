@@ -43,7 +43,6 @@ export interface MayflyFeedbackRecord extends MayflyFeedback {
   readonly owner: string
   readonly scope: MayflyUiScope
   readonly operationId?: string
-  readonly state: 'active' | 'handled'
   readonly createdAt: number
   readonly visibleMs: number
 }

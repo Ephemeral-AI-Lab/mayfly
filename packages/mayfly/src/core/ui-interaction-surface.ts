@@ -875,7 +875,6 @@ export class UiSurfaceModel {
     this.notifications.report(id, { owner: this.instanceId, scope: this.scope, ...(id.includes('/') ? { operationId: id } : {}) }, feedback)
   }
   clearFeedback(id: string): void { this.notifications.clear(id) }
-  handleFeedback(id: string): void { this.notifications.handle(id) }
   cancelOperation(id: string): void { this.tasks.get(id)?.controller.abort() }
   private cancelTasks(): void { for (const task of this.tasks.values()) task.controller.abort() }
   private trimOperations(): void {

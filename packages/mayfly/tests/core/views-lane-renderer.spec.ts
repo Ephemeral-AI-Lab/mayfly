@@ -13,6 +13,7 @@ import type {
 import { ui } from '../../../ui/src/index.ts'
 import * as frontend from '../../src/frontend/index.ts'
 import { mountMayflySurfaceRenderer } from '../../src/core/surface-renderer.ts'
+import type { MayflyContextHints } from '../../src/core/context-hint-locale.ts'
 import { MayflyScreenService } from '../../src/core/screen.ts'
 import { SurfaceManager, type SurfaceLayout } from '../../src/core/surface-manager.ts'
 import type { MayflyComponent, MayflyComponents, MayflyFocusable, MayflyKeyAction } from '../../src/core/types.ts'
@@ -148,7 +149,7 @@ type TestPaneContribution = Omit<MayflyPaneDefinition, 'placement' | 'onEvent'> 
 }
 type TestPaneRegistration = MayflyPaneRegistration & { refresh(): void, setHidden(hidden: boolean): void }
 
-async function fixture(runtime = createRuntime(), compilerComponents: MayflyComponents = components, translateHint?: (key: string) => string): Promise<Fixture> {
+async function fixture(runtime = createRuntime(), compilerComponents: MayflyComponents = components, contextHints?: MayflyContextHints): Promise<Fixture> {
   const root = new Context()
   await root.plugin({ name: 'test-mayfly-ui-provider', apply: applyApi })
   await root.plugin(frontend)
@@ -166,7 +167,7 @@ async function fixture(runtime = createRuntime(), compilerComponents: MayflyComp
       mayflyTheme: { colors },
       mayflyKeymap: keymap,
     })
-    mountMayflySurfaceRenderer(owner as never, runtime.runtime, translateHint, root.get('mayflyUiImages'))
+    mountMayflySurfaceRenderer(owner as never, runtime.runtime, contextHints, root.get('mayflyUiImages'))
     owners.push(owner)
     return owner
   }
@@ -261,7 +262,7 @@ describe('views lane through the direct pane renderer', () => {
   })
 
   it('enters from the prompt through the screen, shows the panel under the tab strip and the lane hints, and Esc returns', async () => {
-    const f = await fixture(createRuntime(), components, key => key)
+    const f = await fixture(createRuntime(), components, { translate: key => key, revision: () => 0 })
     try {
       f.register({ id: 'agents', placement: 'views', title: 'Agents', priority: 1, summary: row2('Agents', 5), render: actions('a', 'Open agent') })
       f.register({ id: 'jobs', placement: 'views', title: 'Jobs', priority: 2, summary: row2('Jobs', 3), render: actions('j', 'Open job') })

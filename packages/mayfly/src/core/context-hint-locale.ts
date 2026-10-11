@@ -94,11 +94,21 @@ export const CORE_CONTEXT_HINT_LOCALE: MayflyLocaleCatalog = Object.freeze({ en,
 export const HINT_MEMO_ENTRIES = 512
 
 /**
+ * The translator and its revision travel together: a surface paints `translate`, and a moved `revision` is the
+ * compiler frame input that repaints the surface without a publish.
+ */
+export interface MayflyContextHints {
+  readonly translate: MayflyTranslate
+  /** The bound locale provider's revision, or 0 while none is mounted. */
+  readonly revision: () => number
+}
+
+/**
  * Resolve contextual operation labels against the current locale provider.
  * @param ctx - frontend-tree context.
- * @returns dynamic translator with an English-key fallback.
+ * @returns dynamic translator with an English-key fallback, paired with the provider's revision.
  */
-export function contextHintTranslator(ctx: Context): MayflyTranslate {
+export function contextHintTranslator(ctx: Context): MayflyContextHints {
   const lookup: MayflyTranslate = (key, values) => ctx.get('mayflyLocale')?.translate('core-context-hints', key, values)
     ?? interpolateLocaleMessage(key, values)
   // Painters translate the same few strings on every row, and a catalog changes only with the locale provider or its
@@ -112,17 +122,20 @@ export function contextHintTranslator(ctx: Context): MayflyTranslate {
       messages = undefined
     })
   })
-  return (key, values) => {
-    if (messages === undefined) return lookup(key, values)
-    const id = values === undefined ? key : `${key}\0${JSON.stringify(values)}`
-    let message = messages.get(id)
-    if (message === undefined) {
-      message = lookup(key, values)
-      // Interpolated counts are unbounded; a full memo starts over rather than grow.
-      if (messages.size >= HINT_MEMO_ENTRIES) messages.clear()
-      messages.set(id, message)
-    }
-    return message
+  return {
+    translate: (key, values) => {
+      if (messages === undefined) return lookup(key, values)
+      const id = values === undefined ? key : `${key}\0${JSON.stringify(values)}`
+      let message = messages.get(id)
+      if (message === undefined) {
+        message = lookup(key, values)
+        // Interpolated counts are unbounded; a full memo starts over rather than grow.
+        if (messages.size >= HINT_MEMO_ENTRIES) messages.clear()
+        messages.set(id, message)
+      }
+      return message
+    },
+    revision: () => ctx.get('mayflyLocale')?.snapshot.revision ?? 0,
   }
 }
 

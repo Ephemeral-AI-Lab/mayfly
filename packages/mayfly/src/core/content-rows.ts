@@ -36,6 +36,7 @@ import {
   styledText,
   truncatedRow,
 } from './plugin-view.ts'
+import { terminalSequenceAt } from './escape-sequences.ts'
 import { concatSources, mapSource, rowsSource, type RowSource } from './ui-rows.ts'
 import { paintedRowsBytes, type MayflyContentCache } from './ui-content-cache.ts'
 import type { MayflyComponents, MayflySemanticColors } from './types.ts'
@@ -731,7 +732,6 @@ function clipSpans(spans: readonly SanitizedSpan[], start: number, end: number):
 const paintSpan = (span: SanitizedSpan, colors: MayflySemanticColors): string =>
   styledText(span.raw === true ? span.text : paintPluginTone(colors, span.tone)(span.text), span.styles)
 
-const ANSI_AT = /\x1b(?:\][^\x07]*(?:\x07|\x1b\\)|\[[0-?]*[ -/]*[@-~])/uy
 const SGR_AT = /^\x1b\[([0-9;]*)m/u
 const grapheme = new Intl.Segmenter('en', { granularity: 'grapheme' })
 
@@ -785,12 +785,10 @@ export function charWrap(text: string, width: number, components: Pick<MayflyCom
   let cursor = 0
   while (cursor < text.length) {
     if (text.charCodeAt(cursor) === 0x1b) {
-      ANSI_AT.lastIndex = cursor
-      const ansi = ANSI_AT.exec(text)
-      const code = ansi?.[0] ?? '\x1b'
+      const code = terminalSequenceAt(text, cursor) ?? '\x1b'
       row += code
       cursor += code.length
-      const channel = ansi?.[0] === undefined ? undefined : sgrChannel(ansi[0])
+      const channel = sgrChannel(code)
       if (channel !== undefined) {
         if (channel === '') active.clear()
         else if (channel.startsWith('-')) active.delete(channel.slice(1))

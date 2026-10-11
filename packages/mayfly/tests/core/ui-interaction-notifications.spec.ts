@@ -95,34 +95,30 @@ describe('notification records', () => {
     expect(store.get('same')).toBeUndefined()
   })
 
-  it('trims handled and ordinary records while retaining critical capacity', () => {
+  it('trims the oldest ordinary records while retaining critical capacity', () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
     const store = new UiNotificationStore(vi.fn())
     for (let index = 0; index < 63; index += 1) {
       store.report(`critical-${index}`, { owner: 'owner', scope: app }, { severity: index % 2 === 0 ? 'warning' : 'error', message: String(index) })
     }
-    store.report('handled', { owner: 'owner', scope: app }, { severity: 'error', message: 'Handled' })
-    store.handle('handled')
-    store.report('first', { owner: 'owner', scope: app }, { severity: 'info', message: 'First' })
+    store.report('oldest', { owner: 'owner', scope: app }, { severity: 'info', message: 'Oldest' })
+    store.report('newest', { owner: 'owner', scope: app }, { severity: 'info', message: 'Newest' })
     expect(store.snapshot()).toHaveLength(64)
-    expect(store.get('handled')).toBeUndefined()
-    expect(store.get('first')).toBeDefined()
+    expect(store.get('oldest')).toBeUndefined()
+    expect(store.get('newest')).toBeDefined()
 
     store.report('progress-a', { owner: 'owner', scope: app }, { severity: 'info', purpose: 'progress', message: 'A' })
+    expect(store.get('newest')).toBeUndefined()
     store.report('progress-b', { owner: 'owner', scope: app }, { severity: 'info', purpose: 'progress', message: 'B' })
     expect(store.snapshot()).toHaveLength(65)
   })
 
-  it('clears, handles, and disposes records idempotently', () => {
+  it('clears and disposes records idempotently', () => {
     const changed = vi.fn()
     const store = new UiNotificationStore(changed)
     store.clear('missing')
     store.report('one', { owner: 'one', scope: app }, { severity: 'error', message: 'One' })
     store.report('two', { owner: 'two', scope: app }, { severity: 'success', message: 'Two' })
-    store.handle('missing')
-    store.handle('one')
-    store.handle('one')
-    expect(store.get('one')?.state).toBe('handled')
     store.clear('two', false)
     store.clearOwner('missing')
     store.clearOwner('one')
@@ -143,8 +139,6 @@ describe('notification owners', () => {
     const second = new UiNotificationOwner('second', store)
     first.report('one', app, { severity: 'error', message: 'One' })
     second.report('two', app, { severity: 'warning', message: 'Two' }, 'operation')
-    first.handle('one')
-    expect(store.get('first/one')).toMatchObject({ state: 'handled' })
     first.clear('one')
     first.report('again', app, { severity: 'info', message: 'Again' })
     first.clearAll()

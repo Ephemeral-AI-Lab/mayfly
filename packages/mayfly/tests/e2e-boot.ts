@@ -158,7 +158,7 @@ export async function bootDirectMayfly(options: { readonly terminal?: FakeTermin
     transcriptApply: transcriptPlugin.apply,
     transcriptInject: transcriptPlugin.inject,
     async coreApply(ctx) {
-      const runtime = await startMayflyTerminal(terminal, () => Promise.resolve(undefined))
+      const runtime = startMayflyTerminal(terminal)
       const keymap = new MayflyKeymapService(ctx)
       ctx.effect(() => runtime.tui.addInputListener(data => (keymap.dispatch(data) ? { consume: true } : undefined)))
       ctx.plugin(MayflyTerminalInfoService, { background: runtime.background, kittyKeyboard: runtime.kittyKeyboard })

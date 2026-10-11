@@ -143,15 +143,26 @@ export function apply(ctx: Context, config: Config): void {
   })
 
   ctx.effect(() => () => {
+    // This disposer must read the Agent before the app's own services clear:
+    // sibling disposables start concurrently, in reverse registration order,
+    // and this one registered first on the app fiber (see the epitaph's
+    // module header for why the hook lives there at all).
     const agent = current.current()
     armExitEpitaph(agent !== null && agent.session.seq > 0
       ? epitaphFor(String(agent.id), profileNameFromArgv(process.argv))
       : undefined)
   })
 
+  // A resource acquired across an `await` registers its owner first and
+  // re-checks it on resumption — the queued operations below run after
+  // arbitrary awaits, so each start and each late failure checks the fence.
+  let live = true
+  ctx.effect(() => () => { live = false })
+
   let chain = Promise.resolve()
   const enqueue = (operation: () => Promise<void>): void => {
-    chain = chain.then(operation).catch((error: unknown) => {
+    chain = chain.then(() => (live ? operation() : undefined)).catch((error: unknown) => {
+      if (!live) return
       io.stderr.write(`dsh: ${describe(error)}\n`)
     })
   }
@@ -186,6 +197,9 @@ export function apply(ctx: Context, config: Config): void {
         }))
       }
     } catch (error) {
+      // An unloaded fiber drops the failure: a late io.exit(1) during an app
+      // reload would kill a process that is not actually exiting.
+      if (!live) return
       io.stderr.write(`dsh: ${describe(error)}\n`)
       io.exit(1)
     }

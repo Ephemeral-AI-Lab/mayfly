@@ -117,7 +117,7 @@ class FrameHost {
     await root.plugin({ name: 'frame-workload-ui-provider', apply: applyUiProvider })
     await root.plugin(frontend)
     const terminal = new FakeTerminal(COLUMNS, ROWS)
-    const runtime = await startMayflyTerminal(terminal, () => Promise.resolve(undefined), undefined, undefined, 'alternate')
+    const runtime = startMayflyTerminal(terminal, { screenMode: 'alternate' })
     await root.plugin(themeDark)
     await root.plugin({
       name: 'frame-workload-core',

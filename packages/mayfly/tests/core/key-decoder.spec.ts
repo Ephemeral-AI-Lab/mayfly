@@ -88,7 +88,7 @@ describe('the decoder', () => {
     expect(received).toEqual(['\x1b[1;3B'])
 
     const fake = new FakeTerminal()
-    const runtime = await startMayflyTerminal(fake, async () => undefined)
+    const runtime = startMayflyTerminal(fake)
     const input = vi.fn()
     const remove = runtime.tui.addInputListener(data => { input(data); return { consume: true } })
     fake.sendInput('\x1b')
