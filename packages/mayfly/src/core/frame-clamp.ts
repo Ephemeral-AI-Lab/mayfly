@@ -112,18 +112,17 @@ export function clampFrameFrom(previous: ClampedRows | undefined, lines: string[
 }
 
 /**
- * One row of {@link clampFrameFrom}, for a source that must not be scanned: an unchanged source row reuses the
- * previous clamped row, an over-wide row is sliced and recorded. The caller's map materializes the source row it is
- * handed, so a virtual source paints only the rows someone reads.
- * @param previous - the previous clamp at this width, if any.
+ * One row of {@link clampFrameFrom}, for a source that must not be scanned: an over-wide row is sliced and recorded.
+ * The caller's map materializes the source row it is handed, so a virtual source paints and measures only the rows
+ * someone reads. It never consults an earlier frame: a lazy clamp that read through the previous one would keep every
+ * frame before it alive and repaint old frames' rows to compare them.
  * @param line - the source row.
  * @param index - the row's index, as recorded for the sink.
  * @param width - the viewport width.
  * @param sink - where a newly clamped row is recorded.
  * @returns the row to hand to pi-tui.
  */
-export function clampRow(previous: ClampedRows | undefined, line: string, index: number, width: number, sink?: OverflowSink): string {
-  if (previous !== undefined && previous.source[index] === line) return previous.rows[index]!
+export function clampRow(line: string, index: number, width: number, sink?: OverflowSink): string {
   if (visibleWidth(line) <= width) return line
   sink?.record({ index, columns: width, width: visibleWidth(line), line })
   return sliceByColumn(line, 0, width, true)

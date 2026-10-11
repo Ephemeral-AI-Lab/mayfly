@@ -60,6 +60,25 @@ describe('virtualRows', () => {
     expect(source.reads).toEqual([500_000, 500_001, 500_002, 500_003, 500_004])
   })
 
+  it('drops what it produced when the revision moves, and follows the length both ways', () => {
+    let revision = 0
+    let length = 4
+    let label = 'a'
+    const rows = virtualRows({ get length() { return length }, get revision() { return revision }, row: index => `${label}${String(index)}` })
+    expect([...rows]).toEqual(['a0', 'a1', 'a2', 'a3'])
+    // Unchanged revision: the rows already produced answer, whatever the source would say now.
+    label = 'b'
+    expect(rows[1]).toBe('a1')
+    revision += 1
+    length = 2
+    expect(rows.length).toBe(2)
+    expect([...rows]).toEqual(['b0', 'b1'])
+    expect(rows[3]).toBeUndefined()
+    revision += 1
+    length = 3
+    expect([...rows]).toEqual(['b0', 'b1', 'b2'])
+  })
+
   it('reports its source', () => {
     const source = counting(3, { declaredWidth: 40 })
     const rows = virtualRows(source)
@@ -100,6 +119,39 @@ describe('concatRows', () => {
     expect(tail.reads).toEqual([1])
   })
 
+  it('reads through the arrays it is handed, so a retained part produces a row once for every pipe', () => {
+    const source = counting(1_000)
+    const part = virtualRows(source)
+    expect(concatRows(['head'], part)[500]).toBe('row 499')
+    expect(concatRows(['other head'], part)[500]).toBe('row 499')
+    expect(source.reads).toEqual([499])
+    expect(materializedRows(part)).toBe(1)
+  })
+
+  it('joins runs of real parts and flattens a concat of concats', () => {
+    const middle = virtualRows(counting(3))
+    const inner = concatRows(['a'], middle)
+    const rows = concatRows(...Array.from({ length: 200 }, (_, index) => [`p${String(index)}`]), inner, ['z'])
+    expect(rows.length).toBe(205)
+    expect(rows[0]).toBe('p0')
+    expect(rows[199]).toBe('p199')
+    expect(rows[200]).toBe('a')
+    expect(rows[203]).toBe('row 2')
+    expect(rows[204]).toBe('z')
+  })
+
+  it('moves with a part whose row map moves', () => {
+    let revision = 0
+    let length = 2
+    const grows = virtualRows({ get length() { return length }, get revision() { return revision }, row: index => `g${String(index)}` })
+    const rows = concatRows(['head'], grows, ['tail'])
+    expect([...rows]).toEqual(['head', 'g0', 'g1', 'tail'])
+    revision += 1
+    length = 3
+    expect([...rows]).toEqual(['head', 'g0', 'g1', 'g2', 'tail'])
+    expect(rowSourceOf(rows)!.revision).toBe(1)
+  })
+
   it('reads parts in sequence as rows are read in sequence', () => {
     const body = counting(10)
     const rows = concatRows(virtualRows(body))
@@ -117,6 +169,17 @@ describe('mapRows', () => {
     expect(source.reads).toEqual([])
     expect(rows[2]).toBe('<row 2>')
     expect(source.reads).toEqual([2])
+  })
+
+  it('forwards a moving revision through map and slice instead of freezing it', () => {
+    let revision = 0
+    const source: RowSource = { length: 5, get revision() { return revision }, row: index => `r${String(index)}` }
+    const mapped = rowSourceOf(mapRows(virtualRows(source), row => row))!
+    const sliced = rowSourceOf(sliceRows(virtualRows(source), 1, 3))!
+    revision = 7
+    expect(mapped.revision).toBe(7)
+    expect(sliced.revision).toBe(7)
+    expect(rowSourceOf(mapRows(virtualRows(counting(2)), row => row))!.revision).toBeUndefined()
   })
 
   it('keeps the declared width it is given', () => {
@@ -166,6 +229,32 @@ describe('unclampedRows', () => {
     const lifted = unclampedRows(rows)
     expect(lifted.length).toBe(501)
     expect(lifted[500]).toBe('row 499')
+  })
+
+  it('follows the unclamped chain over sources, so a scroll never fills the clamped facade', () => {
+    const leaf = virtualRows(clamped(counting(500), 20))
+    const lifted = unclampedRows(mapRows(concatRows(['head'], leaf), row => row))
+    expect(lifted[400]).toBe('row 399')
+    expect(materializedRows(leaf)).toBe(0)
+  })
+
+  it('answers a retained tree from memory on the next frame, and keeps only a bounded window of a long one', () => {
+    // A scroll asks for `unclampedRows` every frame; the chain is memoized with the parent it unwraps.
+    const small = counting(100)
+    const tree = mapRows(concatRows(['head'], virtualRows(clamped(small, 20))), row => row)
+    for (let frame = 0; frame < 3; frame += 1) {
+      const lifted = unclampedRows(tree)
+      for (let index = 0; index < lifted.length; index += 1) void lifted[index]
+    }
+    expect(small.reads).toHaveLength(100)
+    const long = counting(10_000)
+    const document = mapRows(concatRows(['head'], virtualRows(clamped(long, 20))), row => row)
+    for (let frame = 0; frame < 2; frame += 1) {
+      const lifted = unclampedRows(document)
+      for (let index = 0; index < lifted.length; index += 1) void lifted[index]
+    }
+    // Every row of the second walk was produced again: the chain forgot the first walk instead of keeping it all.
+    expect(long.reads).toHaveLength(20_000)
   })
 
   it('drops a slice end that covered the source, keeps a deliberate window', () => {

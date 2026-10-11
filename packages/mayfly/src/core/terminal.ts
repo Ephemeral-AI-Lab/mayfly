@@ -133,8 +133,9 @@ class FrameClampedContainer extends Container {
       ? this.overflow
       : { record: entry => this.overflow.record({ ...entry, index: entry.index + offset }) }
     const prior = previous?.width === width ? previous : undefined
+    // A virtual source clamps each row as it is read, so the backstop measures only the rows a frame shows.
     const rows = isVirtualRows(source)
-      ? mapRows(source, (line, index) => clampRow(prior, line, index, width, sink))
+      ? mapRows(source, (line, index) => clampRow(line, index, width, sink))
       : clampFrameFrom(prior, source, width, sink)
     this.clampedChildren.set(child, { width, source, rows })
     return rows

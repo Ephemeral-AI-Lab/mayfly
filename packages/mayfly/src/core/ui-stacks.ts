@@ -121,9 +121,12 @@ export class RowStack extends HStack {
     for (const [index, entry] of entries.entries()) placeChild(entry.component, this, offsets[index]!)
     if (rendered.some(lines => isVirtualRows(lines))) {
       // A windowed child stays a window: one result row splices the row each child contributes at its offset, painted
-      // on first read through the same remembered composite.
+      // on first read through the same remembered composite. The layout is this render's; a child whose row map
+      // moves still moves the rows read from it.
+      const moving = rendered.map(lines => rowSourceOf(lines)).filter(source => source?.revision !== undefined)
       return virtualRows({
         length: height,
+        get revision() { return moving.length === 0 ? undefined : moving.reduce((total, source) => total + source!.revision!, 0) },
         markerFree: rendered.every(lines => rowSourceOf(lines)?.markerFree === true),
         row: row => {
           let base = ''

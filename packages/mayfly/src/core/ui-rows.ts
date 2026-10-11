@@ -1,15 +1,17 @@
 /**
  * Rows a component paints on demand instead of all at once. pi-tui's contract is `render(width): string[]`, but its
  * layout reads a leaf's `lines.length` for the height and indexes only the rows it clips; a frozen array facade over a
- * {@link RowSource} therefore flows a window through the native layout with no pi-tui change. Every row read is
- * materialized once into the facade's own backing array, so a second read of a row — the verify pass, a retained hit,
- * a sibling pipe — costs nothing.
+ * {@link RowSource} therefore flows a window through the native layout with no pi-tui change. A facade remembers the
+ * rows it produced while its source's row map stands still, so a second read of a row — the verify pass, a retained
+ * hit, a sibling reader — costs nothing; when the map moves ({@link RowSource.revision}) the facade forgets them.
  *
  * The pipes that hand rows along either keep them virtual ({@link concatRows}, {@link mapRows}, {@link sliceRows}) or
- * are bounded by the viewport they paint into. A pipe that needs every row anyway — a width measure, a full marker
- * scan — materializes the facade one row at a time, which is the same work as before for real rows and the failure a
- * windowed design exists to avoid for big content; {@link RowSource.declaredWidth} and the marker hints exist so the
- * common scans never have to.
+ * are bounded by the viewport they paint into. A pipe reads through the arrays it was handed, so a retained
+ * component's rows are produced once however many frames read them; the `unclamped` chain a scroll follows to reach a
+ * whole document reads through facades that keep a bounded number of rows, so a window over a megabyte never fills a
+ * facade without limit. A pipe that needs every row anyway — a width measure, a full marker scan — materializes the facade one row at a time, which is the same work as before for real
+ * rows and the failure a windowed design exists to avoid for big content; {@link RowSource.declaredWidth} and the
+ * marker hints exist so the common scans never have to.
  *
  * One scan stays pi-tui's own: when the layout gives a leaf fewer rows than it reports, the leaf clip runs
  * `lines.findIndex(line => line.includes(CURSOR_MARKER))` on the array itself and no hint can intercept it. Inside a
@@ -20,17 +22,24 @@
  */
 
 /**
- * What a virtual array reads when a row is asked for. `row(index)` is called once per index per facade; producing the
- * row — wrapping a segment, painting a diff hunk — is the source's work and the source counts it.
+ * What a virtual array reads when a row is asked for. `row(index)` produces the row — wrapping a segment, painting a
+ * diff hunk — and the source counts that work.
  */
 export interface RowSource {
   /**
-   * The rows the facade reports, read live: a segmented source raises its length as estimates become painted counts,
-   * so a scroll's `contentHeight` converges to the truth wherever windows have been.
+   * The rows the source reports. A source with a {@link revision} may change it as estimates become painted counts,
+   * so a scroll's `contentHeight` converges to the truth wherever windows have been; a source without one is fixed.
    */
   readonly length: number
   /** Produce row `index`, `0 <= index < length`. */
   row(index: number): string
+  /**
+   * A counter that grows whenever the row map moves — an estimate became a painted count, a bound changed — so row
+   * `i` may now name different text and `length` may differ. Omitted (or undefined) means the source is fixed: its
+   * length and rows never change once a facade reads them. Wrappers forward it through a getter, never a spread,
+   * which would copy one value and freeze it.
+   */
+  readonly revision?: number | undefined
   /** The widest row in columns, when the source can answer without painting; a measure uses it instead of scanning. */
   readonly declaredWidth?: number
   /** True when no row can contain pi-tui's cursor marker or the focus sentinel, so a marker scan may skip the array. */
@@ -60,13 +69,18 @@ export interface RowSource {
 
 interface RowsMeta {
   readonly source: RowSource
-  /** The indices the facade has materialized so far; the verify pass compares only these. */
+  /** The indices the facade has materialized under its current revision; the verify pass compares only these. */
   readonly materialized: Set<number>
 }
 
 const meta = new WeakMap<readonly string[], RowsMeta>()
 
 const ROW_INDEX = /^(0|[1-9]\d*)$/u
+
+/** A source's row count as an index bound. */
+function rowCount(source: RowSource): number {
+  return Math.max(0, Math.floor(source.length))
+}
 
 /** Whether `rows` is a virtual facade. */
 export function isVirtualRows(rows: readonly string[]): boolean {
@@ -89,50 +103,79 @@ export function materializedRows(rows: readonly string[]): number {
 }
 
 /**
- * A frozen array facade over `source`: `length` is real and row `i` is produced on first read. The facade is an
- * ordinary array to everything that reads it — `slice`, `map`, `findIndex`, `for...of` all go through the same trap,
- * so a full walk paints every row, which is exactly what a caller that walks rows asks for. Freezing throws: a frozen
- * facade could never produce its unread rows, so the failure is loud instead of half-empty.
+ * A frozen array facade over `source`: `length` is the source's, and row `i` is produced on first read and kept until
+ * the source's revision moves. The facade is an ordinary array to everything that reads it — `slice`, `map`,
+ * `findIndex`, `for...of` all go through the same trap, so a full walk paints every row, which is exactly what a
+ * caller that walks rows asks for. Freezing throws: a frozen facade could never produce its unread rows, so the
+ * failure is loud instead of half-empty.
  */
 export function virtualRows(source: RowSource): string[] {
-  const liveLength = (): number => Math.max(Math.max(0, Math.floor(source.length)), target.length)
-  const target = new Array<string>(Math.max(0, Math.floor(source.length)))
+  return facade(source, Number.POSITIVE_INFINITY)
+}
+
+/**
+ * A facade on the `unclamped` chain keeps at most this many rows, then forgets them and starts over: a retained tree
+ * that fits answers every frame from memory, and a scroll across a whole document never holds more than this.
+ */
+const UNCLAMPED_KEEP = 2_048
+
+function facade(source: RowSource, keep: number): string[] {
+  // The backing array starts empty: a facade over a million rows holds only what was read.
+  const target: string[] = []
   const materialized = new Set<number>()
+  const dynamic = source.revision !== undefined
+  let revision = source.revision
+  let length = rowCount(source)
+  /** The current length; a moved row map drops the rows produced under the old one. */
+  const sync = (): number => {
+    if (dynamic && source.revision !== revision) {
+      revision = source.revision
+      length = rowCount(source)
+      target.length = 0
+      materialized.clear()
+    }
+    return length
+  }
   const produce = (index: number): string => {
     const known = target[index]
     if (known !== undefined) return known
     const row = source.row(index)
+    if (materialized.size >= keep) {
+      target.length = 0
+      materialized.clear()
+    }
     target[index] = row
     materialized.add(index)
     return row
   }
   const rows = new Proxy<string[]>(target, {
     get(array, prop, receiver) {
-      if (prop === 'length') return liveLength()
+      if (prop === 'length') return sync()
       if (typeof prop === 'string' && ROW_INDEX.test(prop)) {
         const index = Number(prop)
-        if (index < liveLength()) return produce(index)
+        if (index < sync()) return produce(index)
+        return undefined
       }
       return Reflect.get(array, prop, receiver)
     },
     has(array, prop) {
-      if (typeof prop === 'string' && ROW_INDEX.test(prop)) return Number(prop) < liveLength() || prop in array
+      if (typeof prop === 'string' && ROW_INDEX.test(prop)) return Number(prop) < sync()
       return prop in array
     },
     getOwnPropertyDescriptor(array, prop) {
-      if (prop === 'length') return { value: liveLength(), writable: true, enumerable: false, configurable: false }
-      if (typeof prop === 'string' && ROW_INDEX.test(prop) && Number(prop) < liveLength()) {
-        return { value: produce(Number(prop)), writable: true, enumerable: true, configurable: true }
+      if (prop === 'length') return { value: sync(), writable: true, enumerable: false, configurable: false }
+      if (typeof prop === 'string' && ROW_INDEX.test(prop)) {
+        return Number(prop) < sync() ? { value: produce(Number(prop)), writable: true, enumerable: true, configurable: true } : undefined
       }
       return Reflect.getOwnPropertyDescriptor(array, prop)
     },
     ownKeys(array) {
       // Every index is an own enumerable key, as on a real array: a `toEqual` or `Object.keys` reader gets the
       // same view a full iteration would — which is also what asks for every row to be produced.
-      const keys = new Set<string | symbol>()
-      for (let index = 0; index < liveLength(); index += 1) keys.add(String(index))
-      for (const key of Reflect.ownKeys(array)) keys.add(key)
-      return [...keys]
+      const keys: (string | symbol)[] = []
+      for (let index = 0; index < sync(); index += 1) keys.push(String(index))
+      for (const key of Reflect.ownKeys(array)) if (typeof key !== 'string' || !ROW_INDEX.test(key)) keys.push(key)
+      return keys
     },
     preventExtensions() {
       return false
@@ -140,6 +183,48 @@ export function virtualRows(source: RowSource): string[] {
   })
   meta.set(rows, { source, materialized })
   return rows
+}
+
+/** A fixed source over already-painted rows, so every part of a pipe reads through one `RowSource`. */
+export function rowsSource(rows: readonly string[]): RowSource {
+  return {
+    get length() { return rows.length },
+    row(index) { return rows[index] ?? '' },
+  }
+}
+
+/**
+ * One input of a pipe: the source that owns its row map, and how one of its rows is read. A part the caller handed
+ * over as an array reads through it — a real array's rows, or a facade's — so the rows a retained facade already
+ * produced are reused. A part reached through the `unclamped` chain reads through a facade of its own that keeps at
+ * most {@link UNCLAMPED_KEEP} rows, memoized with the chain, so a retained tree inside a scroll is painted once while
+ * a scroll across a whole document holds a bounded window. A source handed in as a source reads it directly.
+ */
+interface Part {
+  readonly source: RowSource
+  read(index: number): string
+}
+
+function arrayPart(rows: readonly string[]): Part {
+  return { source: rowSourceOf(rows) ?? rowsSource(rows), read: index => rows[index] ?? '' }
+}
+
+function sourcePart(source: RowSource): Part {
+  return { source, read: index => source.row(index) }
+}
+
+function unclampedPart(source: RowSource): Part {
+  return arrayPart(facade(source, UNCLAMPED_KEEP))
+}
+
+/** The first row at or after `from` whose text contains `marker`, without producing rows a seek can answer. */
+function seekPart(part: Part, marker: string, from: number): number {
+  const { source } = part
+  if (source.markerFree === true) return -1
+  if (source.seekMarker !== undefined) return source.seekMarker(marker, Math.max(0, from))
+  const length = rowCount(source)
+  for (let index = Math.max(0, from); index < length; index += 1) if (part.read(index).includes(marker)) return index
+  return -1
 }
 
 function seekIn(rows: readonly string[], marker: string, from: number): number {
@@ -160,77 +245,124 @@ export function findMarkerRow(rows: readonly string[], marker: string, from = 0)
   return seekIn(rows, marker, from)
 }
 
-/** The rows of the parts as one array: a real concat when every part is real, else a facade that reads through. */
-export function concatRows(...parts: readonly (readonly string[])[]): string[] {
-  if (parts.length === 0) return []
-  if (parts.length === 1) return parts[0] as string[]
-  if (parts.every(part => !isVirtualRows(part))) return parts.flat()
-  // Part lengths are read live: a segmented part grows as its estimates become painted counts.
-  const last = parts.length - 1
-  const locate = (index: number): { part: number, start: number } => {
-    let start = 0
-    for (let part = 0; part <= last; part += 1) {
-      const next = start + parts[part]!.length
-      if (index < next || part === last) return { part, start }
-      start = next
-    }
-    return { part: last, start }
+/** The part holding `index`: the last part whose start is at or before it (empty parts share their successor's start). */
+function locatePart(starts: readonly number[], index: number): number {
+  let low = 0
+  let high = starts.length - 2
+  while (low < high) {
+    const middle = (low + high + 1) >> 1
+    if (starts[middle]! <= index) low = middle
+    else high = middle - 1
   }
-  const markerFree = parts.every(part => rowSourceOf(part)?.markerFree === true)
-  let unclamped: RowSource | null | undefined
-  return virtualRows({
-    get length() {
+  return low
+}
+
+/** The parts of a concat source, so a concat of concats reads one flat list. */
+const concatParts = new WeakMap<RowSource, readonly Part[]>()
+
+/**
+ * The rows of `parts` read one after another. Part starts are computed once per revision of the parts that have
+ * one, so a row costs a binary search, not a walk over every part; a concat over fixed parts lays itself out once.
+ */
+function concatOf(input: readonly Part[]): RowSource {
+  const parts = input.flatMap(part => concatParts.get(part.source) ?? [part])
+  if (parts.length === 0) return { length: 0, declaredWidth: 0, markerFree: true, row: () => '' }
+  if (parts.length === 1) return parts[0]!.source
+  const sources = parts.map(part => part.source)
+  const dynamic = sources.filter(source => source.revision !== undefined)
+  const revision = (): number => {
+    let total = 0
+    for (const source of dynamic) total += source.revision!
+    return total
+  }
+  let starts: number[] = []
+  let stamp = 0
+  const layout = (): readonly number[] => {
+    const now = dynamic.length === 0 ? 0 : revision()
+    if (starts.length === 0 || now !== stamp) {
+      stamp = now
+      starts = []
       let total = 0
-      for (const part of parts) total += part.length
-      return total
-    },
+      for (const source of sources) {
+        starts.push(total)
+        total += rowCount(source)
+      }
+      starts.push(total)
+    }
+    return starts
+  }
+  const declaredWidth = sources.every(source => source.declaredWidth !== undefined)
+    ? sources.reduce((widest, source) => Math.max(widest, source.declaredWidth!), 0)
+    : undefined
+  const markerFree = sources.every(source => source.markerFree === true)
+  let unclamped: RowSource | null | undefined
+  const source: RowSource = {
+    get length() { return layout()[parts.length]! },
+    get revision() { return dynamic.length === 0 ? undefined : revision() },
+    ...(declaredWidth === undefined ? {} : { declaredWidth }),
     ...(markerFree ? { markerFree } : {}),
     get unclamped() {
       if (unclamped === undefined) {
-        const inner = parts.map(part => {
-          const source = rowSourceOf(part)?.unclamped
-          return source === undefined ? part : virtualRows(source)
-        })
-        unclamped = inner.some((part, index) => part !== parts[index]) ? rowSourceOf(concatRows(...inner))! : null
+        const inner = parts.map(part => part.source.unclamped === undefined ? part : unclampedPart(part.source.unclamped))
+        unclamped = inner.some((part, index) => part !== parts[index]) ? concatOf(inner) : null
       }
       return unclamped ?? undefined
     },
     seekMarker(marker, from) {
-      let start = 0
-      for (const part of parts) {
-        const end = start + part.length
-        if (from < end) {
-          const source = rowSourceOf(part)
-          const at = Math.max(0, from - start)
-          if (source === undefined) {
-            const hit = seekIn(part, marker, at)
-            if (hit >= 0) return start + hit
-          } else if (source.markerFree !== true) {
-            const hit = source.seekMarker === undefined ? seekIn(part, marker, at) : source.seekMarker(marker, at)
-            if (hit >= 0) return start + hit
-          }
-          from = end
-        }
-        start = end
+      const at = layout()
+      for (let part = locatePart(at, Math.max(0, from)); part < parts.length; part += 1) {
+        const hit = seekPart(parts[part]!, marker, Math.max(0, from - at[part]!))
+        if (hit >= 0) return at[part]! + hit
       }
       return -1
     },
     prepare(from, to) {
-      let start = 0
-      for (const part of parts) {
-        const end = start + part.length
-        if (to > start && from < end) {
-          const source = rowSourceOf(part)
-          source?.prepare?.(Math.max(0, from - start), Math.min(part.length, to - start))
-        }
-        start = end
+      // A prepared part may grow, which moves every part after it: walk on from the live lengths.
+      let part = locatePart(layout(), Math.max(0, from))
+      let start = layout()[part]!
+      for (; part < parts.length && start < to; part += 1) {
+        const piece = sources[part]!
+        if (start + rowCount(piece) > from) piece.prepare?.(Math.max(0, from - start), to - start)
+        start += rowCount(piece)
       }
     },
     row(index) {
-      const { part, start } = locate(index)
-      return parts[part]![index - start] ?? ''
+      const at = layout()
+      const part = locatePart(at, index)
+      return parts[part]!.read(index - at[part]!)
     },
-  })
+  }
+  concatParts.set(source, parts)
+  return source
+}
+
+/** The rows of `sources` read one after another: the source-level form of {@link concatRows}. */
+export function concatSources(sources: readonly RowSource[]): RowSource {
+  return concatOf(sources.map(sourcePart))
+}
+
+/**
+ * The rows of the parts as one array: a real concat when every part is real, else a facade that reads through. Runs
+ * of adjacent real parts join into one, so a long transcript of plain rows around one windowed card stays a handful
+ * of parts.
+ */
+export function concatRows(...parts: readonly (readonly string[])[]): string[] {
+  if (parts.length === 0) return []
+  if (parts.length === 1) return parts[0] as string[]
+  if (parts.every(part => !isVirtualRows(part))) return parts.flat()
+  const pieces: Part[] = []
+  let run: (readonly string[])[] = []
+  const flush = (): void => {
+    if (run.length > 0) pieces.push(arrayPart(run.length === 1 ? run[0]! : run.flat()))
+    run = []
+  }
+  for (const part of parts) {
+    if (!isVirtualRows(part)) { if (part.length > 0) run.push(part); continue }
+    flush()
+    pieces.push(arrayPart(part))
+  }
+  flush()
+  return virtualRows(concatOf(pieces))
 }
 
 export interface MappedRowsOptions {
@@ -243,27 +375,20 @@ export interface MappedRowsOptions {
   readonly markerFree?: boolean
 }
 
-/** `rows.map(map)` that stays a facade: row `i` is `map` of the source's row `i`, painted on first read. */
-export function mapRows(rows: readonly string[], map: (row: string, index: number) => string, options: MappedRowsOptions = {}): string[] {
-  const source = rowSourceOf(rows)
-  if (source === undefined) return rows.map(map)
+function mapOf(part: Part, map: (row: string, index: number) => string, options: MappedRowsOptions): RowSource {
+  const { source } = part
   const markerFree = options.markerFree ?? source.markerFree === true
-  const sourcePrepare = source.prepare?.bind(source)
   let unclamped: RowSource | null | undefined
-  return virtualRows({
-    get length() {
-      return rows.length
-    },
+  return {
+    get length() { return source.length },
+    get revision() { return source.revision },
     ...(options.declaredWidth === undefined ? {} : { declaredWidth: options.declaredWidth }),
     ...(markerFree ? { markerFree } : {}),
     get unclamped() {
-      if (unclamped === undefined) {
-        const inner = source.unclamped
-        unclamped = inner === undefined ? null : rowSourceOf(mapRows(virtualRows(inner), map, options))!
-      }
+      if (unclamped === undefined) unclamped = source.unclamped === undefined ? null : mapOf(unclampedPart(source.unclamped), map, options)
       return unclamped ?? undefined
     },
-    ...(sourcePrepare === undefined ? {} : { prepare: sourcePrepare }),
+    ...(source.prepare === undefined ? {} : { prepare: source.prepare.bind(source) }),
     ...(source.rowOf === undefined ? {} : { rowOf: source.rowOf.bind(source) }),
     ...(source.offsetOf === undefined ? {} : { offsetOf: source.offsetOf.bind(source) }),
     ...(source.seekMarker === undefined || options.markerFree === false ? {} : {
@@ -271,46 +396,47 @@ export function mapRows(rows: readonly string[], map: (row: string, index: numbe
       seekMarker: source.seekMarker.bind(source),
     }),
     row(index) {
-      return map(rows[index]!, index)
+      return map(part.read(index), index)
     },
-  })
+  }
 }
 
-/** `rows.slice(start, end)` that stays a facade: a window into the same source, no rows copied. */
-export function sliceRows(rows: readonly string[], start: number, end?: number): string[] {
-  const source = rowSourceOf(rows)
-  if (source === undefined) return rows.slice(start, end)
-  const first = Math.max(0, Math.min(start, rows.length))
+/** `source` with `map` applied to each row it produces: the source-level form of {@link mapRows}. */
+export function mapSource(source: RowSource, map: (row: string, index: number) => string, options: MappedRowsOptions = {}): RowSource {
+  return mapOf(sourcePart(source), map, options)
+}
+
+/** `rows.map(map)` that stays a facade: row `i` is `map` of the source's row `i`, painted on first read. */
+export function mapRows(rows: readonly string[], map: (row: string, index: number) => string, options: MappedRowsOptions = {}): string[] {
+  if (!isVirtualRows(rows)) return rows.map(map)
+  return virtualRows(mapOf(arrayPart(rows), map, options))
+}
+
+function sliceOf(part: Part, start: number, end: number | undefined): RowSource {
+  const { source } = part
+  const first = Math.max(0, Math.min(start, rowCount(source)))
   // An `end` that already covers the source's whole length means "the rest": it was derived from the reported
   // length, so an `unclamped` unwrap drops it (the unclamped rest is what the slice meant). A shorter `end` is a
   // deliberate window and keeps its bound through the unwrap.
-  const openEnd = end === undefined || end >= rows.length
-  const bound = (): number => Math.max(first, Math.min(end ?? rows.length, rows.length))
-  const sourceSeek = source.seekMarker?.bind(source)
-  const sourcePrepare = source.prepare?.bind(source)
+  const openEnd = end === undefined || end >= source.length
+  const bound = (): number => Math.max(first, Math.min(end ?? rowCount(source), rowCount(source)))
   let unclamped: RowSource | null | undefined
-  return virtualRows({
-    get length() {
-      return bound() - first
-    },
+  return {
+    get length() { return bound() - first },
+    get revision() { return source.revision },
     ...(source.markerFree === true ? { markerFree: true } : {}),
     ...(source.declaredWidth === undefined ? {} : { declaredWidth: source.declaredWidth }),
     get unclamped() {
-      if (unclamped === undefined) {
-        const inner = source.unclamped
-        unclamped = inner === undefined ? null : rowSourceOf(sliceRows(virtualRows(inner), first, openEnd ? undefined : end))!
-      }
+      if (unclamped === undefined) unclamped = source.unclamped === undefined ? null : sliceOf(unclampedPart(source.unclamped), first, openEnd ? undefined : end)
       return unclamped ?? undefined
     },
-    ...(sourceSeek === undefined ? {} : {
-      seekMarker(marker: string, from: number): number {
-        const hit = sourceSeek(marker, first + Math.max(0, from))
-        return hit < 0 || hit >= bound() ? -1 : hit - first
-      },
-    }),
-    ...(sourcePrepare === undefined ? {} : {
+    seekMarker(marker: string, from: number): number {
+      const hit = seekPart(part, marker, first + Math.max(0, from))
+      return hit < 0 || hit >= bound() ? -1 : hit - first
+    },
+    ...(source.prepare === undefined ? {} : {
       prepare(from: number, to: number): void {
-        sourcePrepare(first + Math.max(0, from), Math.min(bound(), first + to))
+        source.prepare!(first + Math.max(0, from), Math.min(bound(), first + to))
       },
     }),
     ...(source.rowOf === undefined ? {} : {
@@ -324,22 +450,20 @@ export function sliceRows(rows: readonly string[], start: number, end?: number):
       },
     }),
     row(index) {
-      return rows[first + index]!
+      return part.read(first + index)
     },
-  })
+  }
+}
+
+/** `rows.slice(start, end)` that stays a facade: a window into the same source, no rows copied. */
+export function sliceRows(rows: readonly string[], start: number, end?: number): string[] {
+  if (!isVirtualRows(rows)) return rows.slice(start, end)
+  return virtualRows(sliceOf(arrayPart(rows), start, end))
 }
 
 /** `n` blank rows as a facade: nothing to paint, marker-free, zero columns wide. */
 export function blankRows(n: number): string[] {
   return virtualRows({ length: n, declaredWidth: 0, markerFree: true, row: () => '' })
-}
-
-/** A trivial source over already-painted rows, so a leaf can answer every kind through one `RowSource`. */
-export function rowsSource(rows: readonly string[]): RowSource {
-  return {
-    get length() { return rows.length },
-    row(index) { return rows[index] ?? '' },
-  }
 }
 
 /** Warm the rows `[from, to)` of a possibly virtual array before a frame reads them; a no-op on real rows. */
@@ -366,10 +490,11 @@ export function sameMaterializedRows(left: readonly string[], right: readonly st
   const leftMeta = meta.get(left)
   const rightMeta = meta.get(right)
   if (leftMeta === undefined && rightMeta === undefined) return left.every((row, index) => row === right[index])
-  // A real array's rows all exist; a facade's known rows are the ones it materialized.
+  // A real array's rows all exist; a facade's known rows are the ones it materialized. Reading may move a revision
+  // and clear a set, so each walks a copy.
   if (leftMeta === undefined) { for (let index = 0; index < left.length; index += 1) if (left[index] !== right[index]) return false }
-  else for (const index of leftMeta.materialized) if (left[index] !== right[index]) return false
+  else for (const index of Array.from(leftMeta.materialized)) if (left[index] !== right[index]) return false
   if (rightMeta === undefined) { for (let index = 0; index < right.length; index += 1) if (left[index] !== right[index]) return false }
-  else for (const index of rightMeta.materialized) if (left[index] !== right[index]) return false
+  else for (const index of Array.from(rightMeta.materialized)) if (left[index] !== right[index]) return false
   return true
 }

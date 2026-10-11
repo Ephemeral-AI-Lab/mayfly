@@ -26,6 +26,7 @@ import type { FrameOverflowEntry } from '../../src/core/frame-clamp.ts'
 import type { AmbientOutputStream } from '../../src/core/output-recovery.ts'
 import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/width.ts'
 import { FakeTerminal, waitForRender } from './fake-terminal.ts'
+import { virtualRows } from '../../src/core/ui-rows.ts'
 
 vi.mock('../../src/core/terminal-info.ts', async importOriginal => {
   const actual = await importOriginal<typeof import('../../src/core/terminal-info.ts')>()
@@ -1473,6 +1474,35 @@ describe('alternate-screen runtime', () => {
     await waitForRender()
     expect(indexes().filter(index => index === 1)).toHaveLength(2)
     expect(stripWriterWrappers(terminal.output)).toContain('x'.repeat(40))
+    await runtime.stop()
+    terminal.dispose()
+  })
+
+  it('clamps a virtual child row by row without reading an earlier frame', async () => {
+    const terminal = new AltScreenTerminal(40, 10)
+    const overflows: FrameOverflowEntry[] = []
+    const runtime = await startMayflyTerminal(terminal, noProbe, undefined, { record: entry => overflows.push(entry) }, 'alternate')
+    // Every render hands back a fresh facade over a fresh source; each source counts the rows read from it.
+    const frames: { reads: number }[] = []
+    runtime.addChild({
+      render: () => {
+        const frame = { reads: 0 }
+        frames.push(frame)
+        return virtualRows({ length: 60, row: index => { frame.reads += 1; return index === 55 ? 'w'.repeat(50) : `row ${String(index)}` } })
+      },
+      invalidate: () => {},
+    })
+    runtime.requestRender(true)
+    await waitForRender()
+    for (let step = 0; step < 4; step += 1) {
+      const before = frames.map(frame => frame.reads)
+      // Scrolling up reads rows the earlier frames never produced; comparing against them would paint them now.
+      expect(runtime.scrollContent('up', 3)).toBe(true)
+      await waitForRender()
+      expect(frames.slice(0, before.length).map(frame => frame.reads)).toEqual(before)
+    }
+    expect(overflows.length).toBeGreaterThan(0)
+    expect(stripWriterWrappers(terminal.output)).toContain('w'.repeat(40))
     await runtime.stop()
     terminal.dispose()
   })

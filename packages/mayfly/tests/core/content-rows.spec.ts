@@ -12,8 +12,9 @@ import { CONTENT_SEGMENT_LINES } from '../../src/core/content-segments.ts'
 import { charWrap, contentNodeRows, contentNodeSource, documentRowsSource, type ContentRowsEnv, type WindowedContentNode } from '../../src/core/content-rows.ts'
 import { alignDiffLines, diffModel, paintDiffRows } from '../../src/core/diff-align.ts'
 import { DARK_COLORS } from '../../src/core/theme-dark.ts'
+import { LIGHT_COLORS } from '../../src/core/theme-light.ts'
 import { MAYFLY_CONTENT_CACHE_BYTES, MayflyContentCache } from '../../src/core/ui-content-cache.ts'
-import { isVirtualRows, materializedRows, prepareRows, rowSourceOf, unclampedRows } from '../../src/core/ui-rows.ts'
+import { declaredWidthOf, findMarkerRow, isVirtualRows, materializedRows, prepareRows, rowSourceOf, unclampedRows } from '../../src/core/ui-rows.ts'
 import { createWorkCounters, type MayflyWorkCounters } from '../../src/core/ui-work-counters.ts'
 import type { MayflyComponents, MayflySemanticColors } from '../../src/core/types.ts'
 import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/width.ts'
@@ -170,11 +171,13 @@ describe('contentNodeSource', () => {
     const content = Array.from({ length: CONTENT_SEGMENT_LINES * 4 }, (_, index) => index === 3 ? 'explodes' : `line ${String(index)} ${'x'.repeat(30)}`).join('\n')
     const rows = contentNodeRows({ kind: 'text', content }, 40, env)
     const materialized = [...rows].map(strip)
-    // The segment holding 'explodes' collapses to one error row; the live source length shrinks under the facade's
-    // fixed backing, so the next segment's first line follows the error row and the stale tail reads as blanks.
+    // The segment holding 'explodes' collapses to one error row; the facade follows the shrunken row map, so the next
+    // segment's first line follows the error row and the walk ends on the document's last line, not on blanks.
     expect(materialized[0]).toBe('<error>paint blew up</error>')
     expect(materialized[1]).toBe(`line ${String(CONTENT_SEGMENT_LINES)} ${'x'.repeat(30)}`)
-    expect(materialized.at(-1)).toBe('')
+    expect(materialized.at(-1)).toBe(`line ${String(CONTENT_SEGMENT_LINES * 4 - 1)} ${'x'.repeat(30)}`)
+    expect(materialized).toHaveLength(1 + CONTENT_SEGMENT_LINES * 3)
+    expect(rows.length).toBe(materialized.length)
     expect(held.reports).toEqual(['paint blew up'])
   })
 
@@ -602,16 +605,47 @@ describe('contentNodeSource', () => {
     expect(rows.length).toBe(0)
   })
 
-  it('seeks markers inside a lifted leaf only within the elision bound', () => {
-    // The bounded leaf delegates seekMarker to the concat over [language, body]: a hit inside the bound returns,
+  it('seeks markers inside a composed leaf only within the elision bound', () => {
+    // The bounded leaf delegates seekMarker to the concat over [title, body]: a hit inside the bound returns,
     // a miss answers -1, and a zero bound clamps even a row-0 hit out.
-    const within = rowSourceOf(source({ kind: 'code', language: 'ts', code: 'a\nb' }, 10, 5).rows)!
+    const node: WindowedContentNode = { kind: 'sections', sections: [{ title: 'ts', body: { kind: 'text', content: 'a\nb' } }] }
+    const within = rowSourceOf(source(node, 10, 5).rows)!
     expect(within.seekMarker!('ts', 0)).toBe(0)
     expect(within.seekMarker!('nomarker', 0)).toBe(-1)
-    const zero = rowSourceOf(source({ kind: 'code', language: 'ts', code: 'a\nb' }, 10, 0).rows)!
+    const zero = rowSourceOf(source(node, 10, 0).rows)!
     expect(zero.length).toBe(1)
     expect(strip(zero.row(0))).toBe('…3')
     expect(zero.seekMarker!('ts', 0)).toBe(-1)
+  })
+
+  it('declares a code block with a language marker-free and as wide as its widest row', () => {
+    const { rows } = source({ kind: 'code', language: 'typescript', code: 'ab\ncd' }, 80)
+    expect(declaredWidthOf(rows)).toBe('typescript'.length)
+    expect(findMarkerRow(rows, 'typescript')).toBe(-1)
+    expect([...rows].map(strip)).toEqual(['typescript', 'ab', 'cd'])
+  })
+
+  it('answers the rows an estimate correction moved, not the rows it read before', () => {
+    // Each line is 20 columns of words: estimated two rows at width 10, painted three once word wrap applies.
+    const lines = Array.from({ length: CONTENT_SEGMENT_LINES * 4 }, (_, index) => `${String(index).padStart(6, '0')} bbbbbb cccccc`)
+    const env = makeEnv()
+    const node: WindowedContentNode = { kind: 'text', content: lines.join('\n') }
+    const rows = contentNodeRows(node, 10, env.env)
+    void rows[400]
+    // Painting the first segment grows it past its estimate, which moves every row after it.
+    void rows[0]
+    const fresh = contentNodeRows(node, 10, env.env)
+    expect(rows[400]).toBe(fresh[400])
+    expect(rows.length).toBe(fresh.length)
+  })
+
+  it('paints a shared node again under a new palette instead of answering the old rows', () => {
+    const node: WindowedContentNode = { kind: 'text', content: 'hello', tone: 'primary' }
+    const cache = new MayflyContentCache()
+    const dark = contentNodeRows(node, 20, { ...makeEnv().env, cache })[0]
+    const light = contentNodeRows(node, 20, { ...makeEnv(undefined, LIGHT_COLORS).env, cache })[0]
+    expect(dark).toBe(DARK_COLORS.primary('hello'))
+    expect(light).toBe(LIGHT_COLORS.primary('hello'))
   })
 
   it('clamps a bounded prepare to the elision bound and delegates the unclamped chain', () => {

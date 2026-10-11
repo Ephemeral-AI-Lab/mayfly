@@ -567,23 +567,24 @@ function contentEnv(options: RuntimeCompilerOptions, paint: Pick<PaintOptions, '
 
 /**
  * A content leaf (`text`, `fields`, `code`, `sections`, `rich-text` without motion): its rows are a virtual facade
- * over a segmented source, so layout reads a length and a scroll reads only its window. The leaf keeps the
- * per-width facade memo a pure static leaf has; in the alternate screen the source clamps itself to the viewport
- * plus an elision row that scrolls unwrap through `unclampedRows`.
+ * over a segmented source, so layout reads a length and a scroll reads only its window. The leaf keeps the facade
+ * memo a pure static leaf has; in the alternate screen the source clamps itself to the viewport plus an elision row
+ * that scrolls unwrap through `unclampedRows`, so the memo is keyed by the viewport height as well as the width.
  */
 function contentLeafComponent(node: WindowedContentNode, options: RuntimeCompilerOptions, paint: PaintOptions): MayflyComponent {
   const glyphs = options.components.presentation?.glyphs
-  const memo = new Map<number, string[]>()
+  const memo = new Map<string, string[]>()
   const env = contentEnv(options, paint)
   return {
     render: width => {
       try {
         const safeWidth = Math.max(1, Math.floor(width))
-        let rows = memo.get(safeWidth)
+        const key = env.bounded ? `${String(safeWidth)}x${String(env.viewportRows())}` : String(safeWidth)
+        let rows = memo.get(key)
         if (rows === undefined) {
           rows = glyphRows(virtualRows(contentNodeSource(node, safeWidth, env)), glyphs)
           if (memo.size >= PURE_STATIC_WIDTHS) memo.delete(memo.keys().next().value!)
-          memo.set(safeWidth, rows)
+          memo.set(key, rows)
           // Building the facade is the render; what reads through it materializes is counted by the source.
           countWork(paint.counters, 'componentRenders')
         }

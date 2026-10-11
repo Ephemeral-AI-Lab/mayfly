@@ -35,7 +35,7 @@ import {
   styledText,
   truncatedRow,
 } from './plugin-view.ts'
-import { concatRows, mapRows, rowSourceOf, rowsSource, virtualRows, type RowSource } from './ui-rows.ts'
+import { concatSources, mapSource, rowsSource, virtualRows, type RowSource } from './ui-rows.ts'
 import { paintedRowsBytes, type MayflyContentCache } from './ui-content-cache.ts'
 import type { MayflyComponents, MayflySemanticColors } from './types.ts'
 import { truncateMiddle } from './width.ts'
@@ -52,7 +52,7 @@ export interface ContentRowsEnv {
   readonly cache: MayflyContentCache
   /** Whether the outside-window elision applies (the alternate screen); the main screen prints every row. */
   readonly bounded: boolean
-  /** Rows the viewport gives a leaf outside any window; the leaf clamps to this plus its elision row. */
+  /** Rows the viewport gives a leaf outside any window, read when the leaf is built; it clamps to this plus its elision row. */
   readonly viewportRows: () => number
   /** The row shown for `hidden` rows the outside-window clamp removed. */
   readonly elide: (hidden: number) => string
@@ -106,6 +106,9 @@ class Fenwick {
 class SegmentedContent implements RowSource {
   readonly declaredWidth: number
   readonly markerFree = true
+  private changes = 0
+  /** Whether segments paint on demand; a document painted whole at construction is fixed and has no revision. */
+  private readonly lazy: boolean
   private readonly counts: number[]
   private readonly tree: Fenwick
   private readonly failures = new Set<number>()
@@ -131,12 +134,18 @@ class SegmentedContent implements RowSource {
     }
     this.declaredWidth = Math.min(wrapWidth + extraColumns, extraColumns + index.maxColumns)
     // A document that fits a segment's paint budget is painted eagerly: its row map is exact at once, so a small
-    // leaf never shows a one-frame tail while an estimate converges.
-    if (index.units <= CONTENT_SEGMENT_UNITS) this.prepare(0, Number.MAX_SAFE_INTEGER)
+    // leaf never shows a one-frame tail while an estimate converges, and a pipe over it never checks a revision.
+    this.lazy = index.units > CONTENT_SEGMENT_UNITS
+    if (!this.lazy) this.prepare(0, Number.MAX_SAFE_INTEGER)
   }
 
   get length(): number {
     return this.tree.sum(this.index.segments - 1)
+  }
+
+  /** Grows each time a painted count replaces a segment's estimate, so a facade drops rows read under the old map. */
+  get revision(): number | undefined {
+    return this.lazy ? this.changes : undefined
   }
 
   private cacheKey(segment: number): string {
@@ -155,6 +164,7 @@ class SegmentedContent implements RowSource {
     if (this.counts[segment] !== rows.length) {
       this.tree.add(segment, rows.length - this.counts[segment]!)
       this.counts[segment] = rows.length
+      this.changes += 1
     }
     return rows
   }
@@ -252,6 +262,9 @@ function diffPrepared(node: Extract<MayflySectionContentNode, { readonly kind: '
 class DiffRowsSource implements RowSource {
   readonly declaredWidth: number
   readonly markerFree = true
+  private changes = 0
+  /** Whether chunks paint on demand; a diff painted whole at construction is fixed and has no revision. */
+  private readonly lazy: boolean
   private readonly chunks: readonly DiffSegment[]
   private readonly counts: number[]
   private readonly tree: Fenwick
@@ -280,7 +293,13 @@ class DiffRowsSource implements RowSource {
     counts.forEach((count, chunk) => this.tree.add(chunk, count))
     // Every row is clipped to the asked columns by the painter, so the leaf width is the width truth.
     this.declaredWidth = width
-    if (prepared.model.length <= DIFF_CHUNK_ROWS) this.prepare(0, Number.MAX_SAFE_INTEGER)
+    this.lazy = prepared.model.length > DIFF_CHUNK_ROWS
+    if (!this.lazy) this.prepare(0, Number.MAX_SAFE_INTEGER)
+  }
+
+  /** Grows when a chunk paints a different row count than the model said (a contained failure's error rows). */
+  get revision(): number | undefined {
+    return this.lazy ? this.changes : undefined
   }
 
   get length(): number {
@@ -302,6 +321,7 @@ class DiffRowsSource implements RowSource {
     if (this.counts[chunk] !== rows.length) {
       this.tree.add(chunk, rows.length - this.counts[chunk]!)
       this.counts[chunk] = rows.length
+      this.changes += 1
     }
     return rows
   }
@@ -338,7 +358,7 @@ class DiffRowsSource implements RowSource {
 }
 
 function diffSource(node: Extract<MayflySectionContentNode, { readonly kind: 'diff' }>, width: number, env: ContentRowsEnv): RowSource {
-  return new DiffRowsSource(diffPrepared(node, env), Math.max(1, width), env, keyOf(node))
+  return new DiffRowsSource(diffPrepared(node, env), Math.max(1, width), env, keyOf(node, env))
 }
 
 /**
@@ -350,6 +370,9 @@ function diffSource(node: Extract<MayflySectionContentNode, { readonly kind: 'di
 class MarkdownRowSource implements RowSource {
   readonly declaredWidth: number
   readonly markerFree = true
+  private changes = 0
+  /** Whether units paint on demand; a document painted whole at construction is fixed and has no revision. */
+  private readonly lazy: boolean
   private readonly counts: number[]
   private readonly tree: Fenwick
   private readonly failures = new Set<number>()
@@ -373,19 +396,32 @@ class MarkdownRowSource implements RowSource {
     this.declaredWidth = width
     this.theme = markdownTheme(env.colors)
     // A document that fits a paint budget is painted eagerly: its row map is exact at once, like the texts.
-    if (prepared.normalized.length <= CONTENT_SEGMENT_UNITS) this.prepare(0, Number.MAX_SAFE_INTEGER)
+    this.lazy = prepared.normalized.length > CONTENT_SEGMENT_UNITS
+    if (!this.lazy) this.prepare(0, Number.MAX_SAFE_INTEGER)
   }
 
   get length(): number {
-    // A segmented child converges on its own schedule; fold its live length back into the unit map.
-    for (const [unit, child] of this.children) this.syncCount(unit, child.length)
+    this.syncChildren()
     return this.prepared.units.length === 0 ? 0 : this.tree.sum(this.prepared.units.length - 1)
+  }
+
+  /** Grows whenever a unit's count moves, its segmented children's included; a fixed document has none. */
+  get revision(): number | undefined {
+    if (!this.lazy) return undefined
+    this.syncChildren()
+    return this.changes
+  }
+
+  /** A segmented child converges on its own schedule; fold its live length back into the unit map. */
+  private syncChildren(): void {
+    for (const [unit, child] of this.children) this.syncCount(unit, child.length)
   }
 
   private syncCount(unit: number, rows: number): void {
     if (this.counts[unit] !== rows) {
       this.tree.add(unit, rows - this.counts[unit]!)
       this.counts[unit] = rows
+      this.changes += 1
     }
   }
 
@@ -435,10 +471,17 @@ class MarkdownRowSource implements RowSource {
     }
   }
 
-  /** The unit's rows: fragments come through the cache, oversized tokens and oversized fallbacks through their child. */
-  private unitRows(at: number): readonly string[] {
+  /**
+   * A block or Mermaid unit's painted rows through the cache, or undefined when the unit paints through a segmented
+   * child: an oversized token, or a Mermaid fence whose fallback is too large for one fragment.
+   */
+  private unitRows(at: number): readonly string[] | undefined {
     const unit = this.prepared.units[at]!
-    if (unit.kind === 'lines') return virtualRows(this.linesChild(at, this.prepared.normalized.slice(unit.start, unit.end)))
+    if (unit.kind === 'lines') {
+      this.syncCount(at, this.linesChild(at, this.prepared.normalized.slice(unit.start, unit.end)).length)
+      return undefined
+    }
+    if (this.children.has(at)) return undefined
     let rows = this.env.cache.get(this.cacheKey(at))
     if (rows === undefined) {
       const painted = unit.kind === 'mermaid'
@@ -446,9 +489,8 @@ class MarkdownRowSource implements RowSource {
         : this.paintSafely(at, () => markdownBlockRows(this.prepared.normalized.slice(unit.start, unit.end), this.prepared.defs, this.width, this.theme, this.env.colors.mdHr))
       // Only an oversized mermaid declines a fragment paint; its raw fence becomes the segmented child.
       if (painted === undefined) {
-        const child = this.linesChild(at, (unit as Extract<MarkdownUnit, { readonly kind: 'mermaid' }>).fallback)
-        this.syncCount(at, child.length)
-        return virtualRows(child)
+        this.syncCount(at, this.linesChild(at, (unit as Extract<MarkdownUnit, { readonly kind: 'mermaid' }>).fallback).length)
+        return undefined
       }
       rows = painted
       this.env.cache.put(this.cacheKey(at), rows, paintedRowsBytes(rows))
@@ -462,18 +504,30 @@ class MarkdownRowSource implements RowSource {
   row(index: number): string {
     if (index < 0 || index >= this.length) return ''
     const at = this.tree.locate(index)
+    const local = index - this.tree.sum(at - 1)
     const rows = this.unitRows(at)
+    let row: string
+    if (rows !== undefined) row = rows[local] ?? ''
+    else {
+      // A segmented child answers its own row; no facade stands between, so nothing is kept twice.
+      const child = this.children.get(at)!
+      row = child.row(local)
+      this.syncCount(at, child.length)
+    }
     countWork(this.env.counters, 'rowsMaterialized')
-    return rows[index - this.tree.sum(at - 1)] ?? ''
+    return row
   }
 
   prepare(from: number, to: number): void {
     if (from >= this.length) return
     let at = this.tree.locate(Math.max(0, from))
     while (at < this.prepared.units.length && this.tree.sum(at - 1) < to) {
-      this.unitRows(at)
-      const child = this.children.get(at)
-      if (child?.prepare !== undefined) child.prepare(Math.max(0, from - this.tree.sum(at - 1)), to - this.tree.sum(at - 1))
+      if (this.unitRows(at) === undefined) {
+        const child = this.children.get(at)!
+        const start = this.tree.sum(at - 1)
+        child.prepare?.(Math.max(0, from - start), to - start)
+        this.syncCount(at, child.length)
+      }
       at += 1
     }
   }
@@ -526,13 +580,13 @@ function markdownSource(node: MayflyMarkdownNode, width: number, env: ContentRow
     countWork(env.counters, 'linesEstimated', prepared.lines)
     preparedMarkdowns.set(node, prepared)
   }
-  return new MarkdownRowSource(prepared, Math.max(1, width), env, keyOf(node))
+  return new MarkdownRowSource(prepared, Math.max(1, width), env, keyOf(node, env))
 }
 
 const indexedFields = new WeakMap<object, IndexedField>()
 const chunkScans = new WeakMap<object, ContentLineScan>()
-const nodeIds = new WeakMap<object, number>()
-let nextNodeId = 0
+const objectIds = new WeakMap<object, number>()
+let nextObjectId = 0
 
 /** The joined text and measure index of one node's content, built once and shared by every width and repaint. */
 interface IndexedField {
@@ -572,17 +626,28 @@ function indexedField(node: object, field: MayflyContentField | (() => string), 
   return held
 }
 
-/** The cache-key prefix of one node: an id per admitted node object, stable for the surface's life. */
-function keyOf(node: object): string {
-  let id = nodeIds.get(node)
+/** One id per object identity — admitted nodes, palettes, component sets, caches — stable while the object lives. */
+function idOf(value: object): number {
+  let id = objectIds.get(value)
   if (id === undefined) {
-    id = nextNodeId += 1
-    nodeIds.set(node, id)
+    id = nextObjectId += 1
+    objectIds.set(value, id)
   }
-  return `n${String(id)}`
+  return id
 }
 
-const sourceOf = (rows: string[]): RowSource => rowSourceOf(rows) ?? rowsSource(rows)
+/**
+ * The paint a source's rows depend on beyond its node and width: the palette and the component set. A theme or
+ * presentation change brings new objects, so rows painted under the old ones never answer for the new.
+ */
+function paintKey(env: ContentRowsEnv): string {
+  return `${String(idOf(env.colors))}.${String(idOf(env.components))}`
+}
+
+/** The cache-key prefix of one node under one paint, stable for the node's life. */
+function keyOf(node: object, env: ContentRowsEnv): string {
+  return `n${String(idOf(node))}p${paintKey(env)}`
+}
 
 /** Already-painted rows as a source, counting what the old per-width memo would have counted. */
 function eager(rows: string[], env: ContentRowsEnv): RowSource {
@@ -721,7 +786,7 @@ function textSource(node: Extract<MayflySectionContentNode, { readonly kind: 'te
       paint(start, end, false)
     }
     return rows
-  }, env, keyOf(node))
+  }, env, keyOf(node, env))
 }
 
 function codeSource(node: Extract<MayflySectionContentNode, { readonly kind: 'code' }>, width: number, env: ContentRowsEnv): RowSource {
@@ -770,17 +835,19 @@ function codeSource(node: Extract<MayflySectionContentNode, { readonly kind: 'co
       wrap(line, lit[line] ?? env.colors.text(sanitizePluginText(code.slice(start, end))), true, false)
     }
     return rows
-  }, env, keyOf(node), gutter)
+  }, env, keyOf(node, env), gutter)
   if (language.length === 0) return body
   countWork(env.counters, 'rowsPainted', 1)
-  const lifted = sourceOf(concatRows([env.colors.muted(language)], virtualRows(body)))
+  const label = env.colors.muted(language)
+  // The label row heads the body; both are sanitized, so the whole block stays marker-free and declares its width.
   // The anchor's text space is `language\ncode`: the label row covers the prefix, the body maps the rest.
   return {
-    get length() { return lifted.length },
-    row: index => lifted.row(index),
-    seekMarker: lifted.seekMarker!.bind(lifted),
-    prepare: lifted.prepare!.bind(lifted),
-    get unclamped() { return lifted.unclamped },
+    get length() { return body.length + 1 },
+    get revision() { return body.revision },
+    declaredWidth: Math.max(env.components.visibleWidth(language), body.declaredWidth),
+    markerFree: true,
+    row: index => index === 0 ? label : body.row(index - 1),
+    prepare(from, to) { body.prepare(Math.max(0, from - 1), Math.max(0, to - 1)) },
     rowOf(offset) { return offset <= language.length ? 0 : 1 + body.rowOf(offset - language.length - 1) },
     offsetOf(row) { return row <= 0 ? 0 : language.length + 1 + body.offsetOf(row - 1) },
   }
@@ -843,26 +910,26 @@ function fieldsSource(node: Extract<MayflySectionContentNode, { readonly kind: '
       rows.push(...wrap(line, 0, lineEnd - lineStart, false))
     }
     return rows
-  }, env, keyOf(node))
+  }, env, keyOf(node, env))
 }
 
 function sectionsSource(node: Extract<MayflySectionContentNode, { readonly kind: 'sections' }>, width: number, env: ContentRowsEnv, depth: number): RowSource {
   if (!Array.isArray(node.sections)) throw new TypeError('sections must be an array')
   const sections = node.sections as readonly MayflySection[]
-  const parts: string[][] = []
+  const parts: RowSource[] = []
   for (const section of sections) {
     if (typeof section !== 'object' || section === null) throw new TypeError('section is invalid')
     const title = section.title === undefined ? undefined : sanitizePluginText(requireText(section.title, 'section title'))
-    if (title !== undefined) parts.push([strong(env.colors.primary(title))])
+    if (title !== undefined) parts.push(rowsSource([strong(env.colors.primary(title))]))
     if (section.collapsed === true) {
-      parts.push(title === undefined ? [env.colors.muted('...')] : [env.colors.muted('  …')])
+      parts.push(rowsSource(title === undefined ? [env.colors.muted('...')] : [env.colors.muted('  …')]))
       continue
     }
     const body = nodeSource(section.body, title === undefined ? width : Math.max(1, width - 2), env, depth + 1)
     // A titled body sits two columns in under its heading.
-    parts.push(title === undefined ? virtualRows(body) : mapRows(virtualRows(body), row => `  ${row}`))
+    parts.push(title === undefined ? body : mapSource(body, row => `  ${row}`, body.declaredWidth === undefined ? {} : { declaredWidth: body.declaredWidth + 2 }))
   }
-  return sourceOf(concatRows(...parts))
+  return concatSources(parts)
 }
 
 function richTextSource(node: MayflyRichTextNode, width: number, env: ContentRowsEnv): RowSource {
@@ -878,7 +945,7 @@ function richTextSource(node: MayflyRichTextNode, width: number, env: ContentRow
     const [start, end] = index.segmentText(segment)
     const joined = clipSpans(spans, start, end).map(span => paintSpan(span, env.colors)).join('')
     return index.isCut(segment) ? charWrap(joined, at, env.components) : env.components.wrapText(joined, at)
-  }, env, keyOf(node))
+  }, env, keyOf(node, env))
 }
 
 function buildNodeSource(node: WindowedContentNode, width: number, env: ContentRowsEnv, depth: number): RowSource {
@@ -899,26 +966,28 @@ function buildNodeSource(node: WindowedContentNode, width: number, env: ContentR
 const CONTENT_NODE_KINDS = new Set<string>(['text', 'fields', 'code', 'sections', 'rich-text', 'diff', 'markdown'])
 
 /**
- * One source per admitted node and width, shared by the leaf that paints it and the document resolver that maps its
- * anchors: a scroll's anchor and its viewport read the same row map instead of re-wrapping the document on their own.
- * Keyed by node identity — the same object arriving again is the same text — and bounded to the widths the leaf
- * memo keeps.
+ * One source per admitted node, width, paint, and cache, shared by the leaf that paints it and the document resolver
+ * that maps its anchors: a scroll's anchor and its viewport read the same row map instead of re-wrapping the document
+ * on their own. Keyed by node identity — the same object arriving again is the same text — plus the palette and
+ * components it paints with and the cache its segments live in, so a theme change or another renderer never reads
+ * rows painted for someone else; bounded to the variants the leaf memo keeps.
  */
-const SHARED_SOURCE_WIDTHS = 4
+const SHARED_SOURCE_VARIANTS = 4
 
-const sharedSources = new WeakMap<object, Map<number, RowSource>>()
+const sharedSources = new WeakMap<object, Map<string, RowSource>>()
 
 function nodeSource(node: WindowedContentNode, width: number, env: ContentRowsEnv, depth: number): RowSource {
-  let widths = sharedSources.get(node)
-  const shared = widths?.get(width)
+  const key = `${String(width)}|${paintKey(env)}|${String(idOf(env.cache))}`
+  let variants = sharedSources.get(node)
+  const shared = variants?.get(key)
   if (shared !== undefined) return shared
   const built = buildNodeSource(node, width, env, depth)
-  if (widths === undefined) {
-    widths = new Map()
-    sharedSources.set(node, widths)
+  if (variants === undefined) {
+    variants = new Map()
+    sharedSources.set(node, variants)
   }
-  if (widths.size >= SHARED_SOURCE_WIDTHS) widths.delete(widths.keys().next().value!)
-  widths.set(width, built)
+  if (variants.size >= SHARED_SOURCE_VARIANTS) variants.delete(variants.keys().next().value!)
+  variants.set(key, built)
   return built
 }
 
@@ -928,6 +997,8 @@ function clampedSource(source: RowSource, width: number, env: ContentRowsEnv): R
   const prepare = source.prepare?.bind(source)
   return {
     get length() { return source.length },
+    // A getter, never a spread: a spread would copy today's revision and freeze it.
+    get revision() { return source.revision },
     declaredWidth: Math.min(width, source.declaredWidth ?? width),
     ...(source.markerFree === true ? { markerFree: true } : {}),
     get unclamped() {
@@ -950,32 +1021,34 @@ function clampedSource(source: RowSource, width: number, env: ContentRowsEnv): R
 }
 
 /**
- * A source that answers at most `cap` content rows plus one elision row: the outside-window clamp, computed live so a
- * leaf whose estimate grows still reports a bounded height and every bounded consumer reads a bounded prefix. The
- * `unclamped` chain lets a scroll reach the full content.
+ * A source that answers at most `cap` content rows plus one elision row: the outside-window clamp. The bound is the
+ * viewport at the time the leaf was built — the leaf memo keeps one facade per viewport height — so a bounded consumer
+ * reads a bounded prefix and the elision row never moves under rows already read. A leaf whose estimate grows still
+ * reports a bounded height. The `unclamped` chain lets a scroll reach the full content.
  */
-function elidedSource(inner: RowSource, cap: () => number, env: ContentRowsEnv): RowSource {
+function elidedSource(inner: RowSource, cap: number, env: ContentRowsEnv): RowSource {
   const seek = inner.seekMarker?.bind(inner)
   const prepare = inner.prepare?.bind(inner)
+  const bound = Math.max(0, Math.floor(cap))
   return {
     get length() {
       const total = inner.length
-      const bound = Math.max(0, cap())
       return total <= bound ? total : bound + 1
     },
+    // A getter, never a spread: a spread would copy today's revision and freeze it.
+    get revision() { return inner.revision },
     ...(inner.declaredWidth === undefined ? {} : { declaredWidth: inner.declaredWidth }),
     ...(inner.markerFree === true ? { markerFree: true } : {}),
     get unclamped() { return inner.unclamped ?? inner },
     ...(seek === undefined ? {} : {
       seekMarker(marker: string, from: number): number {
-        const bound = Math.max(0, cap())
         const hit = seek(marker, Math.max(0, Math.min(from, bound)))
         return hit < 0 || hit >= bound ? -1 : hit
       },
     }),
     ...(prepare === undefined ? {} : {
       prepare(from: number, to: number): void {
-        prepare(from, Math.min(to, Math.max(0, cap())))
+        prepare(from, Math.min(to, bound))
       },
     }),
     // The document map always speaks for the whole source: an anchor keeps meaning while the leaf only reports a
@@ -983,7 +1056,7 @@ function elidedSource(inner: RowSource, cap: () => number, env: ContentRowsEnv):
     ...(inner.rowOf === undefined ? {} : { rowOf: inner.rowOf.bind(inner) }),
     ...(inner.offsetOf === undefined ? {} : { offsetOf: inner.offsetOf.bind(inner) }),
     row(index) {
-      return index < Math.max(0, cap()) ? inner.row(index) : env.elide(Math.max(0, inner.length - Math.max(0, cap())))
+      return index < bound ? inner.row(index) : env.elide(Math.max(0, inner.length - bound))
     },
   }
 }
@@ -996,7 +1069,7 @@ function elidedSource(inner: RowSource, cap: () => number, env: ContentRowsEnv):
 export function contentNodeSource(node: WindowedContentNode, width: number, env: ContentRowsEnv): RowSource {
   if (typeof node !== 'object' || node === null) throw new TypeError('view must be an object')
   const inner = nodeSource(node, Math.max(1, Math.floor(width)), env, 0)
-  return clampedSource(env.bounded ? elidedSource(inner, env.viewportRows, env) : inner, width, env)
+  return clampedSource(env.bounded ? elidedSource(inner, env.viewportRows(), env) : inner, width, env)
 }
 
 /** The leaf's rows as a `string[]` facade over its source: pi-tui reads `length`, indexes the rows it paints. */
