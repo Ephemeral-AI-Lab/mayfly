@@ -511,7 +511,18 @@ const wheel = {
   items: [turn('ping', [step({ text: lines60, textMs: 1500 })])],
 }
 
-export const REPLAYS = { tour, toolkit, thinking, markdown, phases, prompts, errors, compaction: compactionReplay, manualCompact, context, subagents, childStream, approvals, questions, plan, goal, jobs, queued, retries, sideQuestion, notices, modes, edge, history, wheel }
+/** Roughly a megabyte of generated source: the write card clips it and /trace keeps the whole document in its scroll. */
+const GENERATED_RECORDS = lines(4_000, n => `export const record${String(n).padStart(5, '0')} = { index: ${String(n)}, payload: '${'x'.repeat(200)}' }`)
+
+const content = {
+  summary: 'a megabyte write: its card keeps to head rows, and the trace detail pages, ends, and resizes inside the document scroll',
+  items: [turn('Generate the large fixture.', [
+    step({ text: 'I will write the generated records to one file.' }),
+    step({ tools: [tool('write', { file_path: 'fixtures/generated.ts', content: GENERATED_RECORDS }, { result: 'Wrote fixtures/generated.ts', runMs: 900 })] }),
+  ])],
+}
+
+export const REPLAYS = { tour, toolkit, thinking, markdown, phases, prompts, errors, compaction: compactionReplay, manualCompact, context, subagents, childStream, approvals, questions, plan, goal, jobs, queued, retries, sideQuestion, notices, modes, edge, history, wheel, content }
 
 /*
  * The scenes of the Website's app shots. Each is the source of an `app-*` scenario of the catalog, whose goldens the

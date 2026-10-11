@@ -8,6 +8,7 @@
  */
 import { freezeWire, type MayflyUiEventEndpoint, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import { compileMayflyUiSurfaceNode, MayflyUiSurfaceRuntime, type MayflyCompiledUi, type MayflyUiViewport } from './ui-compiler.ts'
+import type { MayflyContentCache } from './ui-content-cache.ts'
 import type { MayflyUiImageSource } from './ui-images.ts'
 import type { UiAnimationClock } from './ui-loader-animation.ts'
 import type { UiInteractionService } from './ui-interaction-state.ts'
@@ -40,6 +41,8 @@ export interface MayflyNodeSlotCompiler {
   readonly requestRender: () => void
   /** The renderer's one animation clock. */
   readonly clock?: UiAnimationClock
+  /** The renderer's one painted-segment cache, shared by its panes, overlays, and slots. */
+  readonly content?: MayflyContentCache
   readonly translateHint?: (key: string) => string
   /** The host tree's byte source behind `image` nodes, as a pane's runtime receives it. */
   readonly images?: MayflyUiImageSource
@@ -90,7 +93,7 @@ class SlotAttachment {
     private readonly viewport: () => MayflyUiViewport,
     invalidate: () => void,
   ) {
-    this.runtime = new MayflyUiSurfaceRuntime(model, () => { invalidate(); compiler.requestRender() }, compiler.clock, compiler.images, () => { compiler.requestRender() })
+    this.runtime = new MayflyUiSurfaceRuntime(model, () => { invalidate(); compiler.requestRender() }, compiler.clock, compiler.images, () => { compiler.requestRender() }, compiler.content)
     this.off = model.subscribe(() => { compiler.requestRender() })
   }
 

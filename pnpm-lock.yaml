@@ -236,6 +236,9 @@ importers:
       diff:
         specifier: 9.0.0
         version: 9.0.0
+      marked:
+        specifier: 18.0.5
+        version: 18.0.5
       semver:
         specifier: 7.8.5
         version: 7.8.5

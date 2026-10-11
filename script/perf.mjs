@@ -15,7 +15,7 @@
 
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { defaultBase } from './change-files.mjs'
 import { CATALOG, PERF_SCENARIOS } from './scenarios/catalog.mjs'
 import { commitOf, ensureBaseline, mergeBaseOf } from './scenarios/baseline.mjs'
@@ -127,23 +127,26 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     const baseDir = sameBuild ? undefined : ensureBaseline(root, baseSha, { log: line => console.error(line) })
     report.baseline = { ref: options.against ?? `merge base with ${defaultBase()}`, sha: baseSha, dir: baseDir ?? null }
     if (sameBuild) console.log('perf: HEAD is the merge base, so there is no baseline to compare with; measuring HEAD only')
+    // A scenario the baseline's catalog lacks — new on this branch — measures on HEAD only.
+    const baseScenarios = baseDir === undefined ? new Set() : new Set(Object.keys((await import(pathToFileURL(join(baseDir, 'script/scenarios/catalog.mjs')).href)).CATALOG))
     prepareProfiles({ root, dshBin, names })
     if (baseDir !== undefined) prepareProfiles({ root: baseDir, dshBin, names })
     for (const name of names) {
       const head = []
       const base = []
+      const onBase = baseDir !== undefined && baseScenarios.has(name)
       // Interleaved, so drift on the machine falls on both builds alike.
       for (let run = 1; run <= options.runs; run += 1) {
         const order = run % 2 === 1 ? ['head', 'base'] : ['base', 'head']
         for (const side of order) {
           if (side === 'head') head.push(await measure(root, name, 'head', run))
-          else if (baseDir !== undefined) base.push(await measure(baseDir, name, 'base', run))
+          else if (onBase) base.push(await measure(baseDir, name, 'base', run))
         }
       }
-      const judged = baseDir === undefined ? [] : compareRuns(head, base)
-      const prof = options.prof ? topFunctions(selfTimes(profDir('head')), baseDir === undefined ? undefined : selfTimes(profDir('base'))) : undefined
+      const judged = base.length === 0 ? [] : compareRuns(head, base)
+      const prof = options.prof ? topFunctions(selfTimes(profDir('head')), onBase ? selfTimes(profDir('base')) : undefined) : undefined
       report.scenarios.push({ name, runs: { head: head.map(run => run.metrics), base: base.map(run => run.metrics) }, judged, ...(prof === undefined ? {} : { prof }) })
-      console.log(`\n${name}${baseDir === undefined ? '' : ` (head vs ${baseSha.slice(0, 10)}, ${String(options.runs)} runs each)`}`)
+      console.log(`\n${name}${baseDir === undefined ? '' : onBase ? ` (head vs ${baseSha.slice(0, 10)}, ${String(options.runs)} runs each)` : ' (new on this branch; head only)'}`)
       for (const span of baseDir === undefined ? head[0]?.metrics ?? [] : []) console.log(`  ${span.name.padEnd(14)} ${show(span.cpuPct)}% CPU${span.keys === undefined ? '' : `, key p50 ${show(span.keyP50Ms)} ms, ${show(span.cpuPerKeyMs)} ms CPU per key`}`)
       for (const entry of judged) {
         for (const [metric, result] of Object.entries(entry.metrics)) {

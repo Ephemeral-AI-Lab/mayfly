@@ -26,7 +26,6 @@ import { helpNode, type HelpSection } from '../../src/interaction/help.ts'
 import { jobDetailsNode, jobItems, jobOutputNode } from '../../src/interaction/jobs.ts'
 import { sessionWorkspaceItem } from '../../src/interaction/session-workspaces-model.ts'
 import { sessionDetailNode as sessionListDetailNode, sessionListItem } from '../../src/interaction/session-list-model.ts'
-import { documentPages } from '../../src/interaction/document-pages.ts'
 import { FakeKeymap } from './fakes.ts'
 import { ADVERSARIAL, SCAN_WIDTHS, expectLinesFit } from '../core/width-scan.ts'
 import { fakeMayflyComponents } from '../transcript/helpers.ts'
@@ -114,29 +113,26 @@ describe('interaction width-scan', () => {
       } finally { await bench.ctx.fiber.dispose() }
     })
 
-    // Give each width its own test budget: full pages at all nine widths
-    // otherwise share one timeout under coverage and concurrent CI workers.
-    for (const width of SCAN_WIDTHS) it(`paged job output survives ${name} at width ${width}`, async () => {
+    // Give each width its own test budget: the full document at all nine widths
+    // otherwise shares one timeout under coverage and concurrent CI workers.
+    for (const width of SCAN_WIDTHS) it(`job output survives ${name} at width ${width}`, async () => {
       const bench = await requestFixture()
       const job = { id: 'large', kind: 'bash', label: 'Large output', status: 'completed', startedAt: 1, output: { total: 0, earliest: 0 } } as JobView
       const text2 = `${text}\n`.repeat(Math.ceil(13_000 / (text.length + 1)))
       const read = { chunks: [{ at: 0, text: text2 }], next: text2.length, lossy: false }
-      const pages = documentPages(text2)
       try {
-        for (const page of pages.keys()) {
-          const handle = bench.ctx.mayflyOverlays.open({ id: 'job-output', capturing: true }, jobOutputNode(job, read, pages, page + 1, key => key))
-          const model = bench.ctx.mayflyUiInteraction.get('overlay', 'job-output')!
-          const viewport = { columns: width, rows: 20 }
-          const renderer = renderRequest(model, viewport)
-          try {
-            for (const height of [20, 7, 3]) {
-              viewport.rows = height
-              const rows = renderer.component.render(width)
-              expectLinesFit(`job-output/${name}/${page}/${height}`, rows, width)
-              expect(rows.length).toBeLessThanOrEqual(height)
-            }
-          } finally { renderer.runtime.dispose(); handle.close() }
-        }
+        const handle = bench.ctx.mayflyOverlays.open({ id: 'job-output', capturing: true }, jobOutputNode(job, { dropped: read.lossy, chunks: read.chunks.map(chunk => ui.chunk(chunk.text)) }, key => key))
+        const model = bench.ctx.mayflyUiInteraction.get('overlay', 'job-output')!
+        const viewport = { columns: width, rows: 20 }
+        const renderer = renderRequest(model, viewport)
+        try {
+          for (const height of [20, 7, 3]) {
+            viewport.rows = height
+            const rows = renderer.component.render(width)
+            expectLinesFit(`job-output/${name}/${height}`, rows, width)
+            expect(rows.length).toBeLessThanOrEqual(height)
+          }
+        } finally { renderer.runtime.dispose(); handle.close() }
       } finally { await bench.ctx.fiber.dispose() }
     })
 
@@ -155,7 +151,7 @@ describe('interaction width-scan', () => {
       const nodes = [
         ui.list({ id: 'jobs', role: 'browse', selectedIds: [], items: jobItems([job], 61_000, key => key) }),
         jobDetailsNode(job, key => key),
-        jobOutputNode(job, { chunks: [{ at: 0, text }], next: text.length, lossy: false }, [text], 1, key => key),
+        jobOutputNode(job, { dropped: false, chunks: [ui.chunk(text)] }, key => key),
       ]
       try {
         for (const [index, node] of nodes.entries()) {

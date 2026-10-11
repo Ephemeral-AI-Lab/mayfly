@@ -294,11 +294,55 @@ describe('content nodes in a plain compile', () => {
     return result.value.component.render(width)
   }
 
+  it('moves a bounded leaf\'s elision row with the viewport height, both ways', () => {
+    // Outside a scroll the alternate screen bounds a leaf to the viewport plus `… N more rows`, and the focused action
+    // below it keeps the end of the leaf on screen. The leaf is compiled once; its rows must follow the viewport each
+    // frame reports, not the one it was first painted at.
+    const viewport = { columns: 40, rows: 6 }
+    const runtime = new MayflyUiSurfaceRuntime()
+    disposers.push(() => { runtime.dispose() })
+    const result = compileMayflyUiSurfaceNode(ui.stack.column([
+      ui.text(Array.from({ length: 100 }, (_, index) => `line ${String(index)}`).join('\n')),
+      ui.actions({ id: 'act', items: [{ id: 'ok', label: 'OK' }] }),
+    ]), { components: components(), colors, getViewport: () => viewport, screenMode: 'alternate', emit: () => {}, surfaceRuntime: runtime })
+    if (!result.ok) throw new Error(result.message)
+    result.value.focusTarget!.focused = true
+    const frame = (rows: number): string[] => { viewport.rows = rows; return [...result.value.component.render(40)].map(row => row.trim()) }
+    const elisions = (rows: readonly string[]): string[] => rows.filter(row => row.includes('more rows'))
+    expect(elisions(frame(6))).toEqual(['… +94 more rows'])
+    const grown = frame(9)
+    expect(elisions(grown)).toEqual(['… +91 more rows'])
+    expect(grown).toContain('line 8')
+    expect(elisions(frame(4))).toEqual(['… +96 more rows'])
+    expect(elisions(frame(6))).toEqual(['… +94 more rows'])
+  })
+
   it('draws the main-screen scroll as its child, and a declared viewport in the alternate screen', () => {
     const main = compileMayflyUiNode(ui.scroll(lines(3), { height: 2 }), { emit: () => {}, components: components(), colors, getViewport: () => ({ columns: 20, rows: 20 }), screenMode: 'main' })
     if (!main.ok) throw new Error(main.message)
-    expect(main.value.component.render(20)).toEqual(['log line 1', 'log line 2', 'log line 3'])
+    expect([...main.value.component.render(20)]).toEqual(['log line 1', 'log line 2', 'log line 3'])
     expect(paint(ui.scroll(lines(3), { height: 2, scrollbar: false }), 20).map(row => row.trimEnd())).toEqual(['log line 1', 'log line 2'])
+  })
+
+  it('leaves a main-mode render a facade, painting only the rows a consumer reads', () => {
+    const counters = createWorkCounters()
+    const compile = (node: MayflyUiNode) => {
+      const result = compileMayflyUiNode(node, { emit: () => {}, components: components(), colors, getViewport: () => ({ columns: 80, rows: 20 }), screenMode: 'main', counters })
+      if (!result.ok) throw new Error(result.message)
+      return result.value.component
+    }
+    const after = Array.from({ length: 25000 }, (_, index) => `line ${index} content`).join('\n')
+    const rendered = compile(ui.sections([{ title: 'f', body: ui.diff('', after) }])).render(80)
+    expect(rendered.length).toBeGreaterThan(25000)
+    expect(counters.rowsPainted).toBe(0)
+    const window = rendered.slice(0, 11)
+    expect(counters.rowsPainted).toBeLessThan(200)
+    expect(window[0]).toContain('f')
+    const markdown = compile(ui.markdown(`# T\n\n${Array.from({ length: 5000 }, (_, index) => `paragraph ${index} `.repeat(4)).join('\n\n')}`)).render(80)
+    expect(counters.rowsPainted).toBeLessThan(200)
+    expect(markdown.length).toBeGreaterThan(5000)
+    markdown.slice(0, 5)
+    expect(counters.rowsPainted).toBeLessThan(400)
   })
 })
 

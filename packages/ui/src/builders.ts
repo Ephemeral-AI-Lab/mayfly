@@ -2,6 +2,8 @@
  * @module @ephemeral-ai/mayfly-ui/builders
  */
 import type {
+  MayflyContentChunk,
+  MayflyContentField,
   MayflyListBodyNode,
   MayflyListBodyStackNode,
   MayflyActionsNode,
@@ -99,11 +101,27 @@ export function isWireSnapshot(value: unknown): boolean {
 
 const frozen = freezeWire
 
-function text(content: string, options: TextOptions = {}): MayflyTextNode {
+/** One append unit of a chunked content field; keep the object and republish it for memo hits. */
+function chunk(text: string): MayflyContentChunk {
+  return frozen({ text })
+}
+
+/** The text a content field contributes: the string itself, or its chunks joined in order. */
+export function textOf(field: MayflyContentField): string {
+  if (typeof field === 'string') return field
+  if (!Array.isArray(field)) throw new TypeError('content field must be a string or chunks')
+  return field.map(chunk => {
+    const text = typeof chunk === 'object' && chunk !== null ? chunk.text : undefined
+    if (typeof text !== 'string') throw new TypeError('content chunk must carry string text')
+    return text
+  }).join('')
+}
+
+function text(content: MayflyContentField, options: TextOptions = {}): MayflyTextNode {
   return frozen({ ...frozen(options), kind: 'text', content })
 }
 
-function markdown(source: string): MayflyMarkdownNode {
+function markdown(source: MayflyContentField): MayflyMarkdownNode {
   return frozen({ kind: 'markdown', source })
 }
 
@@ -111,7 +129,7 @@ function fields(rows: MayflyFieldsNode['rows']): MayflyFieldsNode {
   return frozen({ kind: 'fields', rows })
 }
 
-function code(value: string, options: CodeOptions = {}): MayflyCodeNode {
+function code(value: MayflyContentField, options: CodeOptions = {}): MayflyCodeNode {
   return frozen({ ...frozen(options), kind: 'code', code: value })
 }
 
@@ -206,7 +224,7 @@ function prompt(options: Omit<MayflyPromptNode, 'kind'>): MayflyPromptNode {
   return frozen({ ...frozen(options), kind: 'prompt' })
 }
 
-function diagram(source: string): MayflyDiagramNode {
+function diagram(source: MayflyContentField): MayflyDiagramNode {
   return frozen({ kind: 'diagram', diagram: 'mermaid', source })
 }
 
@@ -216,6 +234,7 @@ function chart(options: ChartOptions): MayflyChartNode {
 
 /** Pure builder namespace. Every result is recursively frozen. */
 export const ui = Object.freeze({
+  chunk,
   text,
   markdown,
   fields,

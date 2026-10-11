@@ -26,8 +26,18 @@ I/O、Agent、Session 或 mutable renderer object 放进节点。
 
 ## 公共规则与限额
 
-- 一棵树最多 256 个节点，根节点深度为 0、最大深度为 8；任一数组最多 200 项；
-  全树字符串合计最多 20,000 个 UTF-16 code unit。
+- 一棵树最多 256 个节点，根节点深度为 0、最大深度为 8；任一数组最多 200 项。
+  内容文本（`text`、`markdown`、`code`、`diff`、`diagram`、rich-text span、字符串
+  list body）不设大小上限：renderer 只读取可视的行。id 与 key 最多 1,024 个
+  UTF-16 code unit，超出即被拒绝。单行字段（label、title、badge、detail、
+  reason、hint、placeholder、chart label、`alt`，以及 `fields` value 的每个
+  span）在 4,096 个 code unit 处截断并以 `…` 结尾。
+- 持续增长的文本（流式回答、job 输出、实时日志）直接在 `text`、`markdown`、
+  `code` 或 `diagram` 字段上以 `chunks` 列表发布（`MayflyContentField` 为
+  `string | readonly MayflyContentChunk[]`）：最多 10,000 个 `ui.chunk(text)`
+  snapshot，不受 200 项集合上限约束。追加时重新发布原有的 chunk 对象加上新
+  chunk——admission 按 identity 对每个 chunk 只校验一次，在半行结束的 chunk
+  会与下一块拼成同一行。`textOf(field)` 在显式需要时拼接整个字段。
 - builder 会递归复制并冻结输入，循环对象会被拒绝。Host admission 只接受普通
   object 和 dense array，并移除 ANSI、C1 与不安全控制字符。
 - 一棵树最多 8 个 `image` 节点。`image` 的 `attachmentId` 为 1 到 128 个字符，
@@ -69,7 +79,7 @@ I/O、Agent、Session 或 mutable renderer object 放进节点。
 *危险 tone 的单行提示（宽度 48）。*
 
 ```ts
-ui.text(content: string, options?: {
+ui.text(content: MayflyContentField, options?: {
   tone?: MayflyTone
   overflow?: 'wrap' | 'truncate' | 'middle' | 'start'
   styles?: readonly ('strong' | 'italic' | 'strike')[]
@@ -239,7 +249,7 @@ ui.fields([
 *带 `ts` 语言提示的多行代码块（宽度 64）。*
 
 ```ts
-ui.code(value: string, options?: { language?: string, numbered?: boolean })
+ui.code(value: MayflyContentField, options?: { language?: string, numbered?: boolean })
 ```
 
 表达代码或预格式化文本，例如补丁片段、命令输出或配置内容。带可识别的
@@ -347,8 +357,8 @@ ui.sections([
 ### `markdown` 与 `diagram`
 
 ```ts
-ui.markdown(source: string)
-ui.diagram(mermaidSource: string)
+ui.markdown(source: MayflyContentField)
+ui.diagram(mermaidSource: MayflyContentField)
 ```
 
 Markdown 复用 Mayfly 的 pi-tui adapter，支持表格与代码 fence。Mermaid 通过
@@ -1404,7 +1414,7 @@ ui.prompt(options: {
 草稿随即清空，宿主像对表单一样答复，通常是带新节点（已清空的标记、更新后的 `recall`）的 `accepted`。
 `reset` 对每个新的 `rev` 只替换一次草稿，宿主用它插入补全或恢复草稿。
 
-限制：草稿、回溯消息和 reset 在每棵树中合计 100,000 个字符，不计入整棵树 20,000 字符的文本预算；
+限制：草稿、回溯消息、reset 与表单文本值在每棵树中合计 100,000 个字符；
 最多 50 个标记（`id`、`label`、`size` 各最多 64 个字符）、8 个占位变体（每个最多 200 个字符）、
 最多 8 个字符的 `symbol`，`recallLabel` 与 `submitLabel` 最多 24 个字符。`prompt` 可用于 pane 和 overlay，
 不是 status 或 editor extension 节点。

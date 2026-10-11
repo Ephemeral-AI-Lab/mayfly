@@ -16,6 +16,7 @@ import { interpolateLocaleMessage, type MayflyTranslate } from '../frontend/loca
 import type { MayflyTerminalRuntime } from './terminal.ts'
 import type { SurfaceLaneEntry, SurfaceRegistration } from './surface-manager.ts'
 import { UiAnimationClock } from './ui-loader-animation.ts'
+import { MayflyContentCache } from './ui-content-cache.ts'
 import { nodeSlotEpoch } from './node-slot.ts'
 import { VIEWS_FOCUS_ID, type ViewHint, type ViewRegistration } from './views-lane.ts'
 import { MayflyUiSurfaceRuntime, compileMayflyUiNode, compileMayflyUiSurfaceNode, type MayflyCompiledUi, type MayflyUiViewport } from './ui-compiler.ts'
@@ -307,6 +308,8 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
   const overlays = new Map<string, OverlayRecord>()
   /** One timer for every animated pane and overlay of this renderer. */
   const clock = new UiAnimationClock(counters)
+  /** One painted-segment cache for every surface this renderer mounts (roadmap D33). */
+  const content = new MayflyContentCache()
   /** A measuring caller's sink reaches every surface this renderer compiles; production passes none. */
   const counted = counters === undefined ? {} : { counters }
   let disposed = false
@@ -404,7 +407,7 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
   const addPane = (entry: MayflyPaneEntry): void => {
     let record!: PaneRecord
     const interaction = ctx.mayflyUiInteraction.get('pane', entry.id)!
-    record = { entry, interaction, runtime: new MayflyUiSurfaceRuntime(interaction, () => { record.component.invalidate(); runtime.requestRender() }, clock, images, () => { runtime.requestRender() }), component: new PaneComponent(ctx.mayflyTheme.colors, translateHint ?? interpolateLocaleMessage), registration: undefined, renderedRevision: -1 }
+    record = { entry, interaction, runtime: new MayflyUiSurfaceRuntime(interaction, () => { record.component.invalidate(); runtime.requestRender() }, clock, images, () => { runtime.requestRender() }, content), component: new PaneComponent(ctx.mayflyTheme.colors, translateHint ?? interpolateLocaleMessage), registration: undefined, renderedRevision: -1 }
     panes.set(entry.id, record)
     if (entry.definition.placement === 'views') {
       record.component.view = runtime.surfaces.views.register({
@@ -425,7 +428,7 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
   const addOverlay = (entry: MayflyOverlayEntry): void => {
     let record!: OverlayRecord
     const interaction = ctx.mayflyUiInteraction.get('overlay', entry.id)!
-    const surfaceRuntime = new MayflyUiSurfaceRuntime(interaction, () => { record.component.invalidate(); runtime.requestRender() }, clock, images, () => { runtime.requestRender() })
+    const surfaceRuntime = new MayflyUiSurfaceRuntime(interaction, () => { record.component.invalidate(); runtime.requestRender() }, clock, images, () => { runtime.requestRender() }, content)
     const arm = entry.definition.armMs === undefined || entry.definition.armMs === 0
       ? undefined
       : new OverlayArm(entry.definition.armMs, () => { record.component.invalidate(); runtime.requestRender() })
@@ -662,7 +665,7 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
   // Node slots compile through this renderer's dependencies and its one clock; a rebound key or a new locale repaints them.
   ctx.effect(() => ctx.mayflyScreen.bindNodeSlots({
     interaction: ctx.mayflyUiInteraction, components: ctx.mayflyComponents, colors: ctx.mayflyTheme.colors, keymap: ctx.mayflyKeymap,
-    mode: runtime.mode, requestRender: () => { runtime.requestRender() }, clock, ...(translateHint === undefined ? {} : { translateHint }), ...(images === undefined ? {} : { images }),
+    mode: runtime.mode, requestRender: () => { runtime.requestRender() }, clock, content, ...(translateHint === undefined ? {} : { translateHint }), ...(images === undefined ? {} : { images }),
     epoch: () => nodeSlotEpoch(ctx.mayflyKeymap, ctx.get('mayflyLocale')),
     ...counted,
   }))

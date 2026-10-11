@@ -1,17 +1,19 @@
 /**
- * Line alignment for inline diff panels. The official `FileDiff` presentation
+ * Line alignment and layout for inline diff panels. The official `FileDiff` presentation
  * carries whole-text `oldText`/`newText` pairs (per-hunk, with the context
  * lines duplicated on both sides); this module re-derives the line-level
- * `ctx`/`del`/`add` alignment a unified panel needs — dependency-free, with a
- * prefix/suffix trim that absorbs the presenter's duplicated context, an LCS
- * core for the small middle, and a size guard that degrades oversized inputs
- * to whole-block removal plus addition instead of an unbounded DP table.
+ * `ctx`/`del`/`add` alignment a unified panel needs — a prefix/suffix trim that
+ * absorbs the presenter's duplicated context, then Myers over interned line ids
+ * under a `maxEditLength` bound; past it, lines unique to both sides anchor a
+ * bounded split, and an anchorless rewrite degrades to whole-block removal plus
+ * addition rather than an unbounded table.
  * Painting numbers both sides in a muted gutter and shades only the code of
  * removed and added lines (spec §4.1).
  *
  * @module @ephemeral-ai/mayfly/core/diff-align
  */
 
+import { diffArrays } from 'diff'
 import type { MayflyComponents, MayflySemanticColors } from './types.ts'
 
 /** One aligned line: unchanged on both sides, removed, or added. */
@@ -20,8 +22,11 @@ export type DiffOp =
   | { readonly type: 'del'; readonly text: string }
   | { readonly type: 'add'; readonly text: string }
 
-/** Either middle side above this many lines skips the LCS and renders as whole blocks. */
-export const DIFF_ALIGN_MAX_ROWS = 1200
+/** The line-edit distance one middle may cost before unique-line anchors split it. */
+export const DIFF_ALIGN_MAX_EDITS = 1_024
+
+/** Anchor splits a middle may take before it degrades to whole blocks. */
+const DIFF_ALIGN_MAX_DEPTH = 16
 
 // oxlint-disable-next-line no-control-regex -- ESC (\x1b) matches the truncator's closing SGR resets
 const TRAILING_RESET = /(?:\x1b\[0m)+$/u
@@ -47,8 +52,9 @@ function splitLines(text: string): string[] {
  * @param before - the prior text (an empty string aligns as pure additions).
  * @param after - the updated text (an empty string aligns as pure removals).
  * @returns the aligned ops in order — context lines appear once, removals
- *   before additions within a change, and inputs whose changed middle
- *   exceeds {@link DIFF_ALIGN_MAX_ROWS} degrade to whole-block del+add.
+ *   before additions within a change, and inputs whose changed middle costs
+ *   more than {@link DIFF_ALIGN_MAX_EDITS} split at unique-line anchors or
+ *   degrade to whole-block del+add.
  */
 export function alignDiffLines(before: string, after: string): readonly DiffOp[] {
   const beforeLines = splitLines(before)
@@ -68,55 +74,95 @@ export function alignDiffLines(before: string, after: string): readonly DiffOp[]
 
   const ops: DiffOp[] = []
   for (let index = 0; index < start; index += 1) ops.push({ type: 'ctx', text: beforeLines[index]! })
-  const midBefore = beforeLines.slice(start, endBefore)
-  const midAfter = afterLines.slice(start, endAfter)
-  if (midBefore.length > DIFF_ALIGN_MAX_ROWS || midAfter.length > DIFF_ALIGN_MAX_ROWS) {
-    for (const text of midBefore) ops.push({ type: 'del', text })
-    for (const text of midAfter) ops.push({ type: 'add', text })
-  } else {
-    ops.push(...lcsOps(midBefore, midAfter))
+  if (endBefore > start || endAfter > start) {
+    // Interned line ids make Myers' inner compare O(1); `texts` maps an id back to its line.
+    const texts: string[] = []
+    const ids = new Map<string, number>()
+    const intern = (lines: readonly string[], lo: number, hi: number): number[] => {
+      const out = new Array<number>(hi - lo)
+      for (let index = lo; index < hi; index += 1) {
+        const line = lines[index]!
+        let id = ids.get(line)
+        if (id === undefined) {
+          id = texts.length
+          texts.push(line)
+          ids.set(line, id)
+        }
+        out[index - lo] = id
+      }
+      return out
+    }
+    // A loop, not a spread: a megabyte write is hundreds of thousands of ops, past any argument list.
+    for (const op of alignMiddle(intern(beforeLines, start, endBefore), intern(afterLines, start, endAfter), texts, 0)) ops.push(op)
   }
   for (let index = endBefore; index < beforeLines.length; index += 1) ops.push({ type: 'ctx', text: beforeLines[index]! })
   return ops
 }
 
-/** Classic LCS table walk over the trimmed middle; removals lead additions. */
-function lcsOps(before: readonly string[], after: readonly string[]): DiffOp[] {
-  const width = after.length + 1
-  const table = new Uint32Array((before.length + 1) * width)
-  for (let i = before.length - 1; i >= 0; i -= 1) {
-    for (let j = after.length - 1; j >= 0; j -= 1) {
-      table[i * width + j] = before[i] === after[j]
-        ? table[(i + 1) * width + (j + 1)]! + 1
-        : Math.max(table[(i + 1) * width + j]!, table[i * width + (j + 1)]!)
+/** Whole-block removal plus addition: the degrade for middles no anchor can split cheaply. */
+function blockOps(before: readonly number[], after: readonly number[], texts: readonly string[]): DiffOp[] {
+  return [...before.map(id => ({ type: 'del' as const, text: texts[id]! })), ...after.map(id => ({ type: 'add' as const, text: texts[id]! }))]
+}
+
+/**
+ * The line appearing exactly once on each side at the least skewed relative position, or undefined. A rewrite with
+ * no unique lines cannot anchor and degrades instead.
+ */
+function uniqueAnchor(before: readonly number[], after: readonly number[]): { readonly before: number, readonly after: number } | undefined {
+  const beforeCount = new Map<number, number>()
+  const afterCount = new Map<number, number>()
+  for (const id of before) beforeCount.set(id, (beforeCount.get(id) ?? 0) + 1)
+  for (const id of after) afterCount.set(id, (afterCount.get(id) ?? 0) + 1)
+  const afterPosition = new Map<number, number>()
+  for (const [index, id] of after.entries()) {
+    if (afterCount.get(id) === 1 && beforeCount.get(id) === 1) afterPosition.set(id, index)
+  }
+  let anchor: { readonly before: number, readonly after: number } | undefined
+  let skew = Number.POSITIVE_INFINITY
+  for (const [index, id] of before.entries()) {
+    if (beforeCount.get(id) !== 1) continue
+    const match = afterPosition.get(id)
+    if (match === undefined) continue
+    const value = Math.abs(index * after.length - match * before.length)
+    if (value < skew) {
+      skew = value
+      anchor = { before: index, after: match }
     }
   }
-  const ops: DiffOp[] = []
-  let i = 0
-  let j = 0
-  while (i < before.length && j < after.length) {
-    if (before[i] === after[j]) {
-      ops.push({ type: 'ctx', text: before[i]! })
-      i += 1
-      j += 1
-    } else if (table[(i + 1) * width + j]! >= table[i * width + (j + 1)]!) {
-      ops.push({ type: 'del', text: before[i]! })
-      i += 1
-    } else {
-      ops.push({ type: 'add', text: after[j]! })
-      j += 1
+  return anchor
+}
+
+/**
+ * Myers over interned ids under the edit bound. Past it the least-skewed unique line anchors two cheaper middles; an
+ * anchorless or too-deep middle degrades to whole blocks.
+ */
+function alignMiddle(before: readonly number[], after: readonly number[], texts: readonly string[], depth: number): DiffOp[] {
+  // A one-sided middle (a new file, a deleted block) is its own alignment; Myers would only spend its edit budget.
+  if (before.length === 0 || after.length === 0) return blockOps(before, after, texts)
+  const parts = diffArrays(before as number[], after as number[], { maxEditLength: DIFF_ALIGN_MAX_EDITS })
+  if (parts !== undefined) {
+    const ops: DiffOp[] = []
+    for (const part of parts) {
+      const type = part.added === true ? 'add' as const : part.removed === true ? 'del' as const : 'ctx' as const
+      for (const id of part.value) ops.push({ type, text: texts[id as number]! })
     }
+    return ops
   }
-  for (; i < before.length; i += 1) ops.push({ type: 'del', text: before[i]! })
-  for (; j < after.length; j += 1) ops.push({ type: 'add', text: after[j]! })
-  return ops
+  if (depth >= DIFF_ALIGN_MAX_DEPTH) return blockOps(before, after, texts)
+  const anchor = uniqueAnchor(before, after)
+  if (anchor === undefined) return blockOps(before, after, texts)
+  return [
+    ...alignMiddle(before.slice(0, anchor.before), after.slice(0, anchor.after), texts, depth + 1),
+    { type: 'ctx', text: texts[before[anchor.before]!]! },
+    ...alignMiddle(before.slice(anchor.before + 1), after.slice(anchor.after + 1), texts, depth + 1),
+  ]
 }
 
 /**
  * Count the added and removed lines of one alignment.
  * @param before - the prior text.
  * @param after - the updated text.
- * @returns exact counts for aligned inputs; block counts for guarded ones.
+ * @returns exact counts for aligned inputs; block counts for degraded ones.
  */
 export function diffChangeCounts(before: string, after: string): { readonly added: number; readonly removed: number } {
   let added = 0
@@ -142,18 +188,148 @@ export interface DiffPaintOptions {
   readonly maxRows?: number
 }
 
-interface NumberedRow {
+/** One kept line with its two side numbers and sign; only kept lines exist in the model. */
+export interface DiffRowModel {
   readonly old?: number
   readonly new?: number
   readonly sign: '' | '-' | '+'
   readonly text: string
 }
 
-function numberedRows(ops: readonly DiffOp[], start: number): NumberedRow[] {
+/** A run of the diff's visible layout: the `@@` header, a kept hunk's rows, one `⋯` gap row, or the `maxRows` tail. */
+export type DiffSegment =
+  | { readonly kind: 'header', readonly text: string }
+  | { readonly kind: 'gap' }
+  | { readonly kind: 'rows', readonly rows: readonly DiffRowModel[] }
+  | { readonly kind: 'tail', readonly remaining: number }
+
+/**
+ * A diff's painted layout before width enters: exact segments and the row total, so a windowed source reports the
+ * real length without painting and a collapsed run stays one `⋯` row.
+ */
+export interface DiffModel {
+  readonly digits: number
+  readonly segments: readonly DiffSegment[]
+  readonly length: number
+}
+
+/**
+ * Lay `ops` out under `options`: kept runs merge into hunks, collapsed runs become one `⋯` segment each, `maxRows`
+ * truncates at an exact remaining count, and `digits` answers the gutter width from the largest line number — no
+ * scan over the rows.
+ */
+export function diffModel(ops: readonly DiffOp[], options: DiffPaintOptions = {}): DiffModel {
+  const start = options.start ?? 1
+  const context = Math.max(0, Math.floor(options.context ?? DIFF_CONTEXT_ROWS))
+  const ranges: [number, number][] = []
+  let beforeTotal = 0
+  let afterTotal = 0
+  for (const [index, op] of ops.entries()) {
+    if (op.type === 'ctx') {
+      beforeTotal += 1
+      afterTotal += 1
+    } else {
+      if (op.type === 'del') beforeTotal += 1
+      else afterTotal += 1
+      const lo = Math.max(0, index - context)
+      const hi = Math.min(ops.length - 1, index + context)
+      const last = ranges.at(-1)
+      if (last !== undefined && lo <= last[1] + 1) last[1] = Math.max(last[1], hi)
+      else ranges.push([lo, hi])
+    }
+  }
+  const segments: DiffSegment[] = []
+  if (options.hunkHeader ?? ranges.length > 1) segments.push({ kind: 'header', text: `@@ -${String(start)},${String(beforeTotal)} +${String(start)},${String(afterTotal)} @@` })
+  const keptTotal = ranges.reduce((total, [lo, hi]) => total + hi - lo + 1, 0)
+  const maxRows = options.maxRows
+  let shown = 0
   let old = start
   let next = start
-  return ops.map(op => op.type === 'ctx' ? { old: old++, new: next++, sign: '' as const, text: op.text }
-    : op.type === 'del' ? { old: old++, sign: '-' as const, text: op.text } : { new: next++, sign: '+' as const, text: op.text })
+  let opIndex = 0
+  let ended = false
+  for (const [lo, hi] of ranges) {
+    if (ended) break
+    // Skipped context before, between, and around the kept ranges is one `⋯` row per run.
+    if (opIndex < lo) segments.push({ kind: 'gap' })
+    for (; opIndex < lo; opIndex += 1) {
+      const op = ops[opIndex]!
+      if (op.type === 'ctx') { old += 1; next += 1 }
+      else if (op.type === 'del') old += 1
+      else next += 1
+    }
+    const rows: DiffRowModel[] = []
+    let tail: number | undefined
+    for (; opIndex <= hi; opIndex += 1) {
+      if (maxRows !== undefined && shown >= maxRows) {
+        tail = keptTotal - shown
+        ended = true
+        break
+      }
+      const op = ops[opIndex]!
+      if (op.type === 'ctx') rows.push({ old: old++, new: next++, sign: '', text: op.text })
+      else if (op.type === 'del') rows.push({ old: old++, sign: '-', text: op.text })
+      else rows.push({ new: next++, sign: '+', text: op.text })
+      shown += 1
+    }
+    if (rows.length > 0) segments.push({ kind: 'rows', rows })
+    if (tail !== undefined) segments.push({ kind: 'tail', remaining: tail })
+  }
+  if (!ended && opIndex < ops.length) segments.push({ kind: 'gap' })
+  const digits = Math.max(3, String(Math.max(start - 1 + beforeTotal, start - 1 + afterTotal)).length)
+  const length = segments.reduce((total, segment) => total + (segment.kind === 'rows' ? segment.rows.length : 1), 0)
+  return { digits, segments, length }
+}
+
+/** Paint one kept line: gutter numbers, the −/+ sign, and the change band behind the code only. */
+function paintDiffRow(
+  row: DiffRowModel,
+  digits: number,
+  columns: number,
+  helpers: DiffWidthHelpers,
+  colors: DiffPaintColors | undefined,
+  numbered: boolean,
+  clip: (text: string, room: number) => string,
+  paint: (tone: ((text: string) => string) | undefined, text: string) => string,
+): string {
+  const number = (value: number | undefined): string => value === undefined ? ' '.repeat(digits) : String(value).padStart(digits)
+  const gutter = numbered ? `${paint(colors?.diffGutter, `${number(row.old)} ${number(row.new)} │`)} ` : ''
+  const head = `  ${gutter}`
+  const room = Math.max(0, columns - helpers.visibleWidth(head))
+  const text = row.text.replace(/\t/gu, '   ')
+  if (row.sign === '') return clip(`${head}  ${paint(colors?.text, text)}`, columns)
+  const tone = row.sign === '-' ? colors?.diffRemoved : colors?.diffAdded
+  const code = clip(`${paint(tone, row.sign === '-' ? '−' : '+')} ${paint(tone, text)}`, room)
+  const band = row.sign === '-' ? colors?.diffRemovedBg : colors?.diffAddedBg
+  const fill = band === undefined ? '' : ' '.repeat(Math.max(0, room - helpers.visibleWidth(code)))
+  return room === 0 ? clip(head, columns) : `${head}${paint(band, `${code}${fill}`)}`
+}
+
+/**
+ * Paint one model segment at `columns`: a `rows` segment maps each kept line, and every other segment answers its
+ * one muted row.
+ */
+export function paintDiffSegment(
+  segment: DiffSegment,
+  digits: number,
+  columns: number,
+  helpers: DiffWidthHelpers,
+  colors: DiffPaintColors | undefined,
+  numbered: boolean,
+): string[] {
+  const paint = (tone: ((text: string) => string) | undefined, text: string): string => tone === undefined ? text : tone(text)
+  // A clipped painted line keeps its band open: the truncator's closing reset becomes a foreground reset after the `…`.
+  const clip = (text: string, room: number): string => {
+    if (room <= 0) return ''
+    if (helpers.visibleWidth(text) <= room) return text
+    const cut = helpers.truncateToWidth(text, room - 1, '').replace(TRAILING_RESET, '')
+    return text.includes('\x1b') ? `${cut}…\x1b[39m` : `${cut}…`
+  }
+  switch (segment.kind) {
+    case 'header': return [clip(paint(colors?.diffMeta, segment.text), columns)]
+    case 'gap': return [clip(`  ${paint(colors?.diffMeta, '⋯')}`, columns)]
+    case 'tail': return [clip(`  ${paint(colors?.diffMeta, `… +${String(segment.remaining)} rows · Ctrl+O`)}`, columns)]
+    case 'rows': return segment.rows.map(row => paintDiffRow(row, digits, columns, helpers, colors, numbered, clip, paint))
+  }
 }
 
 /**
@@ -171,56 +347,8 @@ function numberedRows(ops: readonly DiffOp[], start: number): NumberedRow[] {
  */
 export function paintDiffRows(ops: readonly DiffOp[], width: number, helpers: DiffWidthHelpers, colors?: DiffPaintColors, options: DiffPaintOptions = {}): string[] {
   const columns = Math.max(1, width)
-  const paint = (tone: ((text: string) => string) | undefined, text: string): string => tone === undefined ? text : tone(text)
-  const start = options.start ?? 1
-  const rows = numberedRows(ops, start)
-  const context = Math.max(0, options.context ?? DIFF_CONTEXT_ROWS)
-  const keep = new Set<number>()
-  rows.forEach((row, index) => { if (row.sign !== '') for (let offset = -context; offset <= context; offset += 1) keep.add(index + offset) })
-  const hunks = rows.filter((_, index) => keep.has(index) && !keep.has(index - 1)).length
-  const digits = Math.max(3, ...rows.map(row => String(Math.max(row.old ?? 0, row.new ?? 0)).length))
-  // A clipped painted line keeps its band open: the truncator's closing reset becomes a foreground reset after the `…`.
-  const clip = (text: string, room: number): string => {
-    if (room <= 0) return ''
-    if (helpers.visibleWidth(text) <= room) return text
-    const cut = helpers.truncateToWidth(text, room - 1, '').replace(TRAILING_RESET, '')
-    return text.includes('\x1b') ? `${cut}…\x1b[39m` : `${cut}…`
-  }
+  const model = diffModel(ops, options)
   const out: string[] = []
-  if (options.hunkHeader ?? hunks > 1) {
-    const oldCount = rows.filter(row => row.old !== undefined).length
-    const newCount = rows.filter(row => row.new !== undefined).length
-    out.push(clip(paint(colors?.diffMeta, `@@ -${String(start)},${String(oldCount)} +${String(start)},${String(newCount)} @@`), columns))
-  }
-  let skipped = false
-  let shown = 0
-  for (const [index, row] of rows.entries()) {
-    if (!keep.has(index)) {
-      if (!skipped) out.push(clip(`  ${paint(colors?.diffMeta, '⋯')}`, columns))
-      skipped = true
-      continue
-    }
-    skipped = false
-    if (options.maxRows !== undefined && shown >= options.maxRows) {
-      const remaining = rows.filter((_, later) => later >= index && keep.has(later)).length
-      out.push(clip(`  ${paint(colors?.diffMeta, `… +${String(remaining)} rows · Ctrl+O`)}`, columns))
-      break
-    }
-    shown += 1
-    const number = (value: number | undefined): string => value === undefined ? ' '.repeat(digits) : String(value).padStart(digits)
-    const gutter = options.numbered === false ? '' : `${paint(colors?.diffGutter, `${number(row.old)} ${number(row.new)} │`)} `
-    const head = `  ${gutter}`
-    const room = Math.max(0, columns - helpers.visibleWidth(head))
-    const text = row.text.replace(/\t/gu, '   ')
-    if (row.sign === '') {
-      out.push(clip(`${head}  ${paint(colors?.text, text)}`, columns))
-      continue
-    }
-    const tone = row.sign === '-' ? colors?.diffRemoved : colors?.diffAdded
-    const code = clip(`${paint(tone, row.sign === '-' ? '−' : '+')} ${paint(tone, text)}`, room)
-    const band = row.sign === '-' ? colors?.diffRemovedBg : colors?.diffAddedBg
-    const fill = band === undefined ? '' : ' '.repeat(Math.max(0, room - helpers.visibleWidth(code)))
-    out.push(room === 0 ? clip(head, columns) : `${head}${paint(band, `${code}${fill}`)}`)
-  }
+  for (const segment of model.segments) for (const row of paintDiffSegment(segment, model.digits, columns, helpers, colors, options.numbered !== false)) out.push(row)
   return out
 }

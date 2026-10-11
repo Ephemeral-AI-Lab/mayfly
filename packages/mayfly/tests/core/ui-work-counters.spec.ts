@@ -77,11 +77,12 @@ describe('compilation', () => {
     const compiled = counters.unitsCompiled
     expect(compiled).toBeGreaterThanOrEqual(4)
     expect(counters.nodesValidated).toBe(4)
-    result.value.component.render(40)
+    const rendered = result.value.component.render(40)
+    expect([...rendered].length).toBeGreaterThan(0)
     expect(counters.rowsPainted).toBeGreaterThan(0)
     expect(counters.stringsMeasured).toBeGreaterThan(0)
     const painted = counters.rowsPainted
-    result.value.component.render(40)
+    ;[...result.value.component.render(40)]
     expect(counters.rowsPainted).toBeGreaterThanOrEqual(painted)
   })
 

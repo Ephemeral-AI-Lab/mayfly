@@ -16,7 +16,6 @@ import type {
   MayflyInlineSpan,
   MayflyListItem,
   MayflyListNode,
-  MayflySectionContentNode,
   MayflyStatusNode,
   MayflyTone,
   MayflyUiEvent,
@@ -27,13 +26,15 @@ import type {
   MayflyFieldValue,
   MayflyPagePath,
 } from '@ephemeral-ai/mayfly-ui'
+import { textOf } from '@ephemeral-ai/mayfly-ui'
 import { CURSOR_MARKER, HStack, ScrollView, type Component } from '@earendil-works/pi-tui'
 import { renderLayoutFrame, type LayoutBox, type LayoutRect } from '@earendil-works/pi-tui/dist/layout.js'
 import { getLayoutNode, LAYOUT_NODE, type LayoutNode, type LayoutViewport } from '@earendil-works/pi-tui/dist/layout-node.js'
 import { glyphRows } from './glyphs.ts'
 import { renderChartRows } from './chart-renderer.ts'
 import { ownDataErrorMessage } from './error-message.ts'
-import { paintPluginTone, renderCanonicalView, sanitizePluginText, truncatedRow } from './plugin-view.ts'
+import { contentNodeSource, type ContentRowsEnv, type WindowedContentNode } from './content-rows.ts'
+import { paintPluginTone, sanitizePluginText, truncatedRow } from './plugin-view.ts'
 import type { MayflyComponent, MayflyComponents, MayflyEditor, MayflyFocusable, MayflyFocusIdentity, MayflyKeymap, MayflySemanticColors } from './types.ts'
 import {
   renderActions,
@@ -41,6 +42,7 @@ import {
   renderEmpty,
   renderList,
   renderLoader,
+  renderOverflowRow,
   renderProgress,
   renderHintRow,
   renderSurfaceHead,
@@ -50,6 +52,7 @@ import {
   renderTabs,
   type PatternFocus,
 } from './ui-patterns.ts'
+import { concatRows, findMarkerRow, isVirtualRows, mapRows, prepareRows, sameMaterializedRows, sliceRows, unclampedRows, virtualRows } from './ui-rows.ts'
 import { ColumnStack, RowStack, onScreen, placeChild } from './ui-stacks.ts'
 import { sliceByColumn, truncateToWidth, visibleWidth } from './width.ts'
 import { fieldActions, fieldReset, type UiFieldAction } from './ui-interaction-field-actions.ts'
@@ -77,6 +80,7 @@ import type { UiSurfaceModel } from './ui-interaction-surface.ts'
 import { feedbackSpans } from './ui-interaction-notifications.ts'
 import { admittedListItem } from './ui-validator.ts'
 import { MayflyCompileCache, type PaintOptions } from './ui-compile-cache.ts'
+import { MayflyContentCache } from './ui-content-cache.ts'
 import { actionHintLabel, actionScopeActive, effectiveItemKeys } from './ui-actions.ts'
 import { UiRowCache } from './ui-row-cache.ts'
 import { canStepLeft, railGroupFor, type TabsTraits } from './ui-focus-levels.ts'
@@ -95,7 +99,7 @@ import { hasMotion, paintMotionSpans } from './ui-motion-text.ts'
 import { UiProgressTransitions } from './ui-progress-transition.ts'
 import { untranslated, type UiTranslateValues } from './ui-interaction-locale.ts'
 import { grammarHints, hintNotation, keyGrammar, type EscapeStep, type GrammarControl, type GrammarIntent, type GrammarMatch, type GrammarState, type PromptOperation } from './ui-key-grammar.ts'
-import { documentAnchorAtRow, documentAnchorRow } from './ui-interaction-document.ts'
+import { documentAnchorAtRow, documentAnchorRow, documentResolver, type DocumentResolver } from './ui-interaction-document.ts'
 import type { UiControlAddress } from './ui-interaction-tree.ts'
 import {
   keyActionKeys,
@@ -502,7 +506,8 @@ function staticComponent(render: (width: number) => string[], options: Pick<Pain
       try {
         const rows = glyphRows(render(width), glyphs)
         if (counted) {
-          countWork(options.counters, 'rowsPainted', rows.length)
+          // A virtual array has painted no rows yet; its source counts what reads through the facade materialize.
+          countWork(options.counters, 'rowsPainted', isVirtualRows(rows) ? 0 : rows.length)
           countWork(options.counters, 'componentRenders')
         }
         return rows
@@ -528,7 +533,7 @@ function pureStaticComponent(render: (width: number) => string[], options: Pick<
     const known = memo.get(width)
     if (known !== undefined) return known
     const rows = render(width)
-    countWork(options.counters, 'rowsPainted', rows.length)
+    countWork(options.counters, 'rowsPainted', isVirtualRows(rows) ? 0 : rows.length)
     countWork(options.counters, 'componentRenders')
     if (memo.size >= PURE_STATIC_WIDTHS) memo.delete(memo.keys().next().value!)
     memo.set(width, rows)
@@ -542,7 +547,100 @@ function pureStaticComponent(render: (width: number) => string[], options: Pick<
 /** How many widths a pure static leaf remembers rows for. */
 const PURE_STATIC_WIDTHS = 4
 
-class SemanticScrollView extends ScrollView {
+/**
+ * The content-source environment of one surface: the leaves' paint (re-pointed by the compile cache) plus the
+ * surface's viewport, content cache, and bounds. Document resolvers pass `options` as the paint.
+ */
+function contentEnv(options: RuntimeCompilerOptions, paint: Pick<PaintOptions, 'components' | 'colors' | 'counters' | 'reportRuntimeFailure'>): ContentRowsEnv {
+  return {
+    get components() { return paint.components },
+    get colors() { return paint.colors },
+    get counters() { return paint.counters },
+    cache: options.listRuntime.content,
+    bounded: options.screenMode === 'alternate' || options.listRuntime.interaction !== undefined,
+    viewportRows: () => safeViewport(options.getViewport).rows,
+    elide: hidden => paint.colors.muted(renderOverflowRow(hidden, (key, values) => coreText(options, key, values))),
+    errorRows: (message, width) => errorRows(message, width, paint.colors),
+    report: message => { paint.reportRuntimeFailure(message) },
+  }
+}
+
+/**
+ * A content leaf (`text`, `fields`, `code`, `sections`, `rich-text` without motion): its rows are a virtual facade
+ * over a segmented source, so layout reads a length and a scroll reads only its window. The leaf keeps the facade
+ * memo a pure static leaf has; in the alternate screen the source clamps itself to the viewport plus an elision row
+ * that scrolls unwrap through `unclampedRows`, so the memo is keyed by the viewport height as well as the width.
+ */
+function contentLeafComponent(node: WindowedContentNode, options: RuntimeCompilerOptions, paint: PaintOptions): MayflyComponent {
+  const glyphs = options.components.presentation?.glyphs
+  const memo = new Map<string, string[]>()
+  const env = contentEnv(options, paint)
+  return {
+    render: width => {
+      try {
+        const safeWidth = Math.max(1, Math.floor(width))
+        const key = env.bounded ? `${String(safeWidth)}x${String(env.viewportRows())}` : String(safeWidth)
+        let rows = memo.get(key)
+        if (rows === undefined) {
+          rows = glyphRows(virtualRows(contentNodeSource(node, safeWidth, env)), glyphs)
+          if (memo.size >= PURE_STATIC_WIDTHS) memo.delete(memo.keys().next().value!)
+          memo.set(key, rows)
+          // Building the facade is the render; what reads through it materializes is counted by the source.
+          countWork(paint.counters, 'componentRenders')
+        }
+        return rows
+      } catch (error) {
+        const message = renderFailure(error)
+        paint.reportRuntimeFailure(message)
+        return errorRows(message, width, paint.colors)
+      }
+    },
+    invalidate: () => {},
+  }
+}
+
+/**
+ * A ScrollView whose scrollbar column keeps laziness: the base `render` maps every child row to widen it one column,
+ * which would paint a whole windowed child. The mapped rows stay a facade, so a passive render reads only the rows
+ * someone asks for; the layout-driven frame never calls `render` at all.
+ *
+ * The child is wrapped so the outside-window elision a leaf applied is lifted (`unclampedRows`): the scroll's own
+ * window is what bounds the paint. The captured rows are `prepare`d on every layout, so the segments under the
+ * settled window paint before the frame reads them and the reported `contentHeight` is exact where it is seen.
+ */
+class WindowScrollView extends ScrollView {
+  private readonly held: { rows?: string[] | undefined }
+
+  constructor(component: Component, options: ConstructorParameters<typeof ScrollView>[1]) {
+    const held: { rows?: string[] } = {}
+    super({
+      render: (width: number): string[] => {
+        const painted = component.render(width)
+        return held.rows = unclampedRows(painted)
+      },
+      invalidate: () => component.invalidate(),
+    }, options)
+    this.held = held
+  }
+
+  /** Paint the segments under the settled window before the frame reads the rows. */
+  protected prepareWindow(): void {
+    if (this.held.rows !== undefined) prepareRows(this.held.rows, this.scrollTop, this.scrollTop + this.viewportHeight)
+  }
+
+  override updateLayout(contentHeight: number, viewportHeight: number, requestRender: () => void): void {
+    super.updateLayout(contentHeight, viewportHeight, requestRender)
+    this.prepareWindow()
+  }
+
+  override render(width: number): string[] {
+    const contentWidth = this.getContentWidth(width)
+    const lines = this.children[0]!.render(contentWidth)
+    return contentWidth === width ? lines : mapRows(lines, line => `${line} `)
+  }
+}
+
+class SemanticScrollView extends WindowScrollView {
   private width = 1
 
   constructor(
@@ -550,6 +648,7 @@ class SemanticScrollView extends ScrollView {
     options: ConstructorParameters<typeof ScrollView>[1],
     private readonly model: UiSurfaceModel,
     private readonly address: UiControlAddress,
+    private readonly resolve: DocumentResolver,
   ) { super(component, options) }
 
   /** Both a render and pi-tui's native layout ask for the content width first, so the anchors learn it here. */
@@ -562,13 +661,14 @@ class SemanticScrollView extends ScrollView {
     super.updateLayout(contentHeight, viewportHeight, requestRender)
     const state = this.model.document(this.address)
     if (state?.anchor?.follow === 'end') super.scrollToEnd()
-    else if (state !== undefined) super.scrollTo(documentAnchorRow(state, this.width), { disableFollow: true })
+    else if (state !== undefined) super.scrollTo(documentAnchorRow(state, this.width, this.resolve), { disableFollow: true })
+    this.prepareWindow()
   }
 
   private sync(): void {
     const state = this.model.document(this.address)
     if (state === undefined) return
-    const anchor = documentAnchorAtRow(state, this.scrollTop, this.width, this.isFollowingEnd ? 'end' : 'none')
+    const anchor = documentAnchorAtRow(state, this.scrollTop, this.width, this.isFollowingEnd ? 'end' : 'none', this.resolve)
     if (anchor !== undefined) this.model.moveDocument(this.address, anchor)
   }
 
@@ -581,35 +681,24 @@ class SemanticScrollView extends ScrollView {
   override scrollToEnd(): void { super.scrollToEnd(); this.sync() }
 }
 
-function markdownLeafComponent(node: Extract<MayflyUiNode, { readonly kind: 'markdown' }>, options: RuntimeCompilerOptions): MayflyComponent {
-  const markdown = options.components.createMarkdown({ text: node.source })
-  const glyphs = options.components.presentation?.glyphs
-  return {
-    render: width => {
-      try { return glyphRows(markdown.render(Math.max(1, width)), glyphs) }
-      catch (error) {
-        const message = renderFailure(error)
-        options.reportRuntimeFailure(message)
-        return errorRows(message, width, options.colors)
-      }
-    },
-    invalidate: () => markdown.invalidate(),
-  }
-}
-
 function diagramSource(node: MayflyDiagramNode): string {
-  const longest = Math.max(0, ...Array.from(node.source.matchAll(/`+/gu), match => match[0].length))
+  const source = textOf(node.source)
+  let longest = 0
+  for (const match of source.matchAll(/`+/gu)) longest = Math.max(longest, match[0].length)
   const fence = '`'.repeat(Math.max(3, longest + 1))
-  return `${fence}mermaid\n${node.source}\n${fence}`
+  return `${fence}mermaid\n${source}\n${fence}`
 }
 
-function diagramComponent(node: MayflyDiagramNode, options: RuntimeCompilerOptions): MayflyComponent {
-  const markdown = options.components.createMarkdown({ text: diagramSource(node) })
-  const glyphs = options.components.presentation?.glyphs
-  return {
-    render: width => glyphRows(markdown.render(Math.max(1, width)), glyphs),
-    invalidate: () => markdown.invalidate(),
+/** The `markdown` node a `diagram` compiles through: its fence text once, stable for the shared-source memos. */
+const diagramMarkdownNodes = new WeakMap<MayflyDiagramNode, Extract<MayflyUiNode, { readonly kind: 'markdown' }>>()
+
+function diagramMarkdownNode(node: MayflyDiagramNode): Extract<MayflyUiNode, { readonly kind: 'markdown' }> {
+  let markdown = diagramMarkdownNodes.get(node)
+  if (markdown === undefined) {
+    markdown = { kind: 'markdown', source: diagramSource(node) }
+    diagramMarkdownNodes.set(node, markdown)
   }
+  return markdown
 }
 
 function imageComponent(node: MayflyImageNode, options: RuntimeCompilerOptions): MayflyComponent {
@@ -832,7 +921,7 @@ function framedSurfaceComponent(node: Extract<CompilableNode, { readonly kind: '
     [LAYOUT_NODE](): LayoutNode { return layout[LAYOUT_NODE]() },
     render(width: number): string[] {
       const available = Math.max(1, Math.floor(width))
-      if (available < 3) return body.render(available).map(row => { countWork(options.counters, 'stringsMeasured'); return truncateToWidth(row, available, '') })
+      if (available < 3) return mapRows(body.render(available), row => { countWork(options.counters, 'stringsMeasured'); return truncateToWidth(row, available, '') })
       const horizontalPadding = Math.min(gutter, Math.max(0, Math.floor((available - 3) / 2)))
       const contentWidth = Math.max(1, available - 2 - horizontalPadding * 2)
       // The frame's own rows convert to the glyph mode here; the body's painters converted theirs.
@@ -841,7 +930,7 @@ function framedSurfaceComponent(node: Extract<CompilableNode, { readonly kind: '
       const tail = glyphRows(renderSurfaceTail(node, available, options.colors), glyphs)
       const border = paint(bar)
       const inset = ' '.repeat(horizontalPadding)
-      const rows = bodyRows.map(row => {
+      const rows = mapRows(bodyRows, row => {
         // A row that fits is measured once; only a row that overflows is clipped and measured again.
         countWork(options.counters, 'stringsMeasured')
         const rowWidth = visibleWidth(row)
@@ -849,8 +938,8 @@ function framedSurfaceComponent(node: Extract<CompilableNode, { readonly kind: '
         countWork(options.counters, 'stringsMeasured')
         const clipped = truncateToWidth(row, contentWidth, '')
         return `${border}${inset}${clipped}${' '.repeat(Math.max(0, contentWidth - visibleWidth(clipped)))}${inset}${border}`
-      })
-      return [...head, ...rows, ...tail]
+      }, { declaredWidth: available })
+      return concatRows(head, rows, tail)
     },
     invalidate(): void { layout.invalidate() },
   }
@@ -1458,10 +1547,6 @@ const RETAINED_ENTRIES = 6
 /** Components whose `render` already answers from a retained memo. */
 const retainedComponents = new WeakSet<object>()
 
-function sameRows(left: readonly string[], right: readonly string[]): boolean {
-  return left.length === right.length && left.every((row, index) => row === right[index])
-}
-
 /**
  * Makes a component answer a repeat render from memory. pi-tui renders a component once per ancestor stack that
  * measures it and again on every frame of the terminal, whatever asked for the frame; a retained component paints once
@@ -1497,7 +1582,7 @@ function retain<Target extends Component>(component: Target, what: string, optio
     const key = `${String(width)}|${state.layoutPass ? 1 : 0}|${String(runtime.rowBudget ?? '')}|${String(viewport.columns)}x${String(viewport.rows)}`
     const known = memo.get(key)
     if (known !== undefined && known.epoch === runtime.epoch && (known.frame === undefined || known.frame === runtime.animationFrame)) {
-      if (verify && !sameRows(painted(width).rows, known.rows)) throw new Error(`retained rows of a ${what} went stale: something it reads changed without moving the surface epoch`)
+      if (verify && !sameMaterializedRows(painted(width).rows, known.rows)) throw new Error(`retained rows of a ${what} went stale: something it reads changed without moving the surface epoch`)
       if (known.frame !== undefined) runtime.showMoving(known.moving)
       return known.rows
     }
@@ -1526,7 +1611,7 @@ const UNRETAINED_KINDS: ReadonlySet<string> = new Set(['text', 'fields', 'code',
 const VOLATILE_KINDS: ReadonlySet<string> = new Set(['editor-control', 'prompt'])
 
 /** Node kinds that paint only from their admitted node, the width, the colors, and the components. */
-const REUSABLE_KINDS: ReadonlySet<string> = new Set(['text', 'fields', 'code', 'diff', 'sections', 'rich-text', 'divider'])
+const REUSABLE_KINDS: ReadonlySet<string> = new Set(['text', 'fields', 'code', 'diff', 'sections', 'rich-text', 'divider', 'markdown', 'diagram'])
 
 /** Compiles a reusable leaf and remembers it for the next publish. */
 function leaf(node: CompilableNode, options: RuntimeCompilerOptions, build: (paint: PaintOptions) => MayflyComponent): MayflyComponent {
@@ -1571,34 +1656,19 @@ function compileUnit(node: CompilableNode, state: FocusState, options: RuntimeCo
       state.bindControls([scopedControlKey('editor', 'editor-control')], { component, axis: 'none' })
       return component
     }
-    case 'text': return leaf(node, options, paint => pureStaticComponent(width => renderCanonicalView(
-        node,
-        width,
-        paint.components,
-        paint.colors,
-      ), paint))
-    case 'markdown': return markdownLeafComponent(node, options)
+    case 'text':
     case 'fields':
     case 'code':
     case 'diff':
-    case 'sections': return leaf(node, options, paint => pureStaticComponent(width => renderCanonicalView(
-      node as MayflySectionContentNode,
-      width,
-      paint.components,
-      paint.colors,
-    ), paint))
+    case 'sections': return leaf(node, options, paint => contentLeafComponent(node, options, paint))
+    case 'markdown': return leaf(node, options, paint => contentLeafComponent(node, options, paint))
     case 'rich-text': return hasMotion(node.spans) ? staticComponent(width => {
       // An animated row is the one row a clock tick repaints: it is not memoized, and it joins the clock while painted.
       countWork(options.counters, 'stringsMeasured')
       const presentation = options.components.presentation
       const line = paintMotionSpans(node.spans, options.colors, motionFrame(options), { glyphs: presentation?.glyphs, reducedMotion: presentation?.reducedMotion })
       return node.overflow === 'truncate' ? [truncatedRow(line, width, options.components)] : options.components.wrapText(line, Math.max(1, width))
-    }, options) : leaf(node, options, paint => pureStaticComponent(width => {
-      countWork(paint.counters, 'stringsMeasured')
-      return node.overflow === 'truncate'
-        ? [truncatedRow(joinSpans(node, paint.colors), width, paint.components)]
-        : paint.components.wrapText(joinSpans(node, paint.colors), Math.max(1, width))
-    }, paint))
+    }, options) : leaf(node, options, paint => contentLeafComponent(node, options, paint))
     case 'stack': {
       // A row whose children carry a priority admits them while they fit, one row of the children's first rows.
       if (node.direction === 'row' && node.children.some(child => child.priority !== undefined)) {
@@ -1661,6 +1731,7 @@ function compileUnit(node: CompilableNode, state: FocusState, options: RuntimeCo
         const key = scopedControlKey('scroll', path)
         const model = options.listRuntime.interaction
         const address = node.id === undefined || model === undefined ? undefined : { pagePath, controlId: node.id }
+        const resolve = address === undefined || model === undefined || model.document(address) === undefined ? undefined : documentResolver(contentEnv(options, options))
         const region = new ScrollRegion({
           child: child as Component,
           memory: options.listRuntime.scrollMemory(key),
@@ -1675,11 +1746,11 @@ function compileUnit(node: CompilableNode, state: FocusState, options: RuntimeCo
           components: options.components,
           counters: options.counters,
           pillText: count => coreText(options, '↓ {count} new · End', { count }),
-          anchors: address === undefined || model!.document(address) === undefined ? undefined : {
-            state: () => model!.document(address),
-            rowOf: documentAnchorRow,
-            anchorAt: documentAnchorAtRow,
-            move: anchor => { model!.moveDocument(address, anchor) },
+          anchors: resolve === undefined ? undefined : {
+            state: () => model!.document(address!),
+            rowOf: (document, width) => documentAnchorRow(document, width, resolve),
+            anchorAt: (document, row, width, follow) => documentAnchorAtRow(document, row, width, follow, resolve),
+            move: anchor => { model!.moveDocument(address!, anchor) },
           },
         })
         state.bindControls([key], { component: region, axis: 'none' })
@@ -1690,8 +1761,8 @@ function compileUnit(node: CompilableNode, state: FocusState, options: RuntimeCo
       const address = node.id === undefined ? undefined : { pagePath, controlId: node.id }
       const model = options.listRuntime.interaction
       const scroll = address === undefined || model === undefined || model.document(address) === undefined
-        ? new ScrollView(child, scrollOptions)
-        : new SemanticScrollView(child as Component, scrollOptions, model, address)
+        ? new WindowScrollView(child, scrollOptions)
+        : new SemanticScrollView(child as Component, scrollOptions, model, address, documentResolver(contentEnv(options, options)))
       // A scroll view holds one child, from its first row: what is on screen is decided against this view's window.
       placeChild(child, scroll, 0)
       const key = scopedControlKey('scroll', path)
@@ -1768,7 +1839,7 @@ function compileUnit(node: CompilableNode, state: FocusState, options: RuntimeCo
         )
         // The row cache counts the rows it paints; the list counts its render.
         countWork(options.counters, 'componentRenders')
-        return [...queryRows, ...(counter === undefined ? [] : [sliceByColumn(options.colors.textMuted(counter), 0, width, true)]), ...body]
+        return concatRows(queryRows, counter === undefined ? [] : [sliceByColumn(options.colors.textMuted(counter), 0, width, true)], body)
       }, options, false)
       const initial = options.listRuntime.listWindow(node, listRowLimit(options))
       if (initial.length === 0) state.bindControls([scopedControlKey('empty-list', node.id)], { component, axis: 'none' })
@@ -1858,7 +1929,7 @@ function compileUnit(node: CompilableNode, state: FocusState, options: RuntimeCo
       : staticComponent(width => renderProgress(node, width, options.colors, options.listRuntime.progressValue(`${JSON.stringify(pagePath)}${path}`, node as typeof node & { readonly transition: NonNullable<typeof node.transition> }, options.components.presentation?.reducedMotion === true)), options)
     case 'spacer': return staticComponent(() => Array.from({ length: node.size ?? 1 }, () => ''), options)
     case 'divider': return leaf(node, options, paint => pureStaticComponent(width => renderDivider(node.label, width, paint.colors), paint))
-    case 'diagram': return diagramComponent(node, options)
+    case 'diagram': return leaf(node, options, paint => contentLeafComponent(diagramMarkdownNode(node), options, paint))
     case 'chart': return chartComponent(node, options)
     case 'image': return imageComponent(node, options)
     case 'prompt': return promptComponent(node, state, options, scopedControlKey('prompt', node.id))
@@ -2060,6 +2131,8 @@ export class MayflyUiSurfaceRuntime {
   readonly reuse = new MayflyCompileCache()
   /** The item rows this surface's lists have painted, kept by item and state. */
   readonly rows = new UiRowCache()
+  /** The painted content segments this surface's leaves produced; the renderer's one shared cache by default. */
+  readonly content: MayflyContentCache
   /** Where this surface's scroll regions are scrolled, by control key. */
   private readonly scrolled = new Map<string, ScrollMemory>()
   /** The one-shot drains of this surface's progress bars. */
@@ -2110,7 +2183,8 @@ export class MayflyUiSurfaceRuntime {
    * @param requestFrame - asks the host for another frame and nothing else: the clock moved. A tick must not
    *   invalidate, or every retained row would be painted again for one moving cell; defaults to `requestRender`.
    */
-  constructor(readonly interaction?: UiSurfaceModel, private readonly requestRender?: () => void, clock?: UiAnimationClock, readonly images?: MayflyUiImageSource, requestFrame?: () => void) {
+  constructor(readonly interaction?: UiSurfaceModel, private readonly requestRender?: () => void, clock?: UiAnimationClock, readonly images?: MayflyUiImageSource, requestFrame?: () => void, content?: MayflyContentCache) {
+    this.content = content ?? new MayflyContentCache()
     const tick = requestFrame ?? requestRender
     this.loaderAnimation = tick === undefined ? undefined : new UiLoaderAnimation(tick, clock)
     const fieldValue = (field: MayflyFormField, key: string): MayflyFieldValue => {
@@ -2830,8 +2904,8 @@ class CompiledSurface implements MayflyEditorShellComponent {
         0, safeWidth, true,
       )], this.options.components.presentation?.glyphs)
       const contentLimit = rowLimit === undefined ? rows.length : Math.max(1, rowLimit - feedbackRows.length)
-      const caretRow = rows.findIndex(row => row.includes(CURSOR_MARKER))
-      const focusRow = caretRow < 0 ? rows.findIndex(row => row.includes(FOCUS_SENTINEL)) : caretRow
+      const caretRow = findMarkerRow(rows, CURSOR_MARKER)
+      const focusRow = caretRow < 0 ? findMarkerRow(rows, FOCUS_SENTINEL) : caretRow
       const pinFrame = rowLimit !== undefined && rows.length > contentLimit && this.node.kind === 'surface'
         && (this.node.chrome === 'overlay' || this.node.chrome === 'surface')
       let limited: string[]
@@ -2842,26 +2916,38 @@ class CompiledSurface implements MayflyEditorShellComponent {
         if (innerFocus >= 0 && innerFocus < this.viewportOffset) this.viewportOffset = innerFocus
         else if (innerFocus >= this.viewportOffset + innerLimit) this.viewportOffset = innerFocus - innerLimit + 1
         this.viewportOffset = Math.max(0, Math.min(this.viewportOffset, innerLength - innerLimit))
-        limited = [rows[0]!, ...rows.slice(1 + this.viewportOffset, 1 + this.viewportOffset + innerLimit), rows.at(-1)!, ...feedbackRows]
+        limited = [rows[0]!, ...sliceRows(rows, 1 + this.viewportOffset, 1 + this.viewportOffset + innerLimit), rows.at(-1)!, ...feedbackRows]
       } else {
         if (focusRow >= 0 && focusRow < this.viewportOffset) this.viewportOffset = focusRow
         else if (focusRow >= this.viewportOffset + contentLimit) this.viewportOffset = focusRow - contentLimit + 1
         this.viewportOffset = Math.max(0, Math.min(this.viewportOffset, rows.length - contentLimit))
-        limited = [...rows.slice(this.viewportOffset, this.viewportOffset + contentLimit), ...feedbackRows]
+        // A windowed tree keeps its window: the slice stays a facade, so the paint below touches only the rows read.
+        limited = concatRows(sliceRows(rows, this.viewportOffset, this.viewportOffset + contentLimit), feedbackRows)
       }
       let overflowed = rowLimit !== undefined && rows.length > rowLimit
-      countWork(this.runtimeOptions.counters, 'stringsMeasured', limited.length)
-      const rendered = limited.map(row => {
+      const clampRow = (row: string): string => {
+        countWork(this.runtimeOptions.counters, 'stringsMeasured')
         if (visibleWidth(row) <= safeWidth) return row
         overflowed = true
         return sliceByColumn(row, 0, safeWidth, true)
-      })
-      let inserted = rendered.some(row => row.includes(CURSOR_MARKER))
-      const result = { rows: rendered.map(row => {
-        if (!this.focused || inserted || !row.includes(FOCUS_SENTINEL)) return row.replaceAll(FOCUS_SENTINEL, ' ')
-        inserted = true
+      }
+      const rendered = mapRows(limited, clampRow)
+      // Marker reads stay on the sources' seek path: a windowed answer consults the marker positions it already
+      // mapped instead of materializing every row to scan them.
+      const markerAt = (marker: string): number => {
+        const at = findMarkerRow(rows, marker, this.viewportOffset)
+        return at >= this.viewportOffset && at < this.viewportOffset + contentLimit ? at - this.viewportOffset : -1
+      }
+      const inserted = isVirtualRows(limited)
+        ? markerAt(CURSOR_MARKER) >= 0
+        : rendered.some(row => row.includes(CURSOR_MARKER))
+      const sentinelRow = !this.focused || inserted ? -1
+        : isVirtualRows(limited) ? markerAt(FOCUS_SENTINEL)
+          : rendered.findIndex(row => row.includes(FOCUS_SENTINEL))
+      const result = { rows: mapRows(rendered, (row, index) => {
+        if (!this.focused || inserted || index !== sentinelRow) return row.replaceAll(FOCUS_SENTINEL, ' ')
         return row.replace(FOCUS_SENTINEL, `${CURSOR_MARKER} `).replaceAll(FOCUS_SENTINEL, ' ')
-      }), overflowed }
+      }, { markerFree: !inserted && sentinelRow < 0 }), overflowed }
       return this.runtimeFailure === undefined ? result : { ...result, runtimeFailure: this.runtimeFailure }
     } catch (error) {
       const message = renderFailure(error)
@@ -3547,7 +3633,7 @@ export function compileMayflyUiSurfaceNode(value: unknown, options: MayflyUiSurf
       const frame = validateMayflyUiNode({ kind: 'surface', chrome: 'overlay', title: options.title, padding: 1, child: { kind: 'spacer' } }, options.counters)
       if (!frame.ok || frame.value.kind !== 'surface') throw new Error('invalid surface title')
       node = admitted.value.kind === 'surface' && admitted.value.chrome === 'overlay'
-        ? { ...admitted.value, title: options.title }
+        ? { ...admitted.value, title: frame.value.title! }
         : { ...frame.value, child: node }
     }
     const surface = admittedSurface(node, options, 'ui', undefined, options.surfaceRuntime, true, contextEscapeHint)

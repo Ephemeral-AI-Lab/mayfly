@@ -27,7 +27,6 @@ export { GutterComponent } from './gutter.ts'
 export { MayflyKeymapError, MayflyKeymapService, type MayflyKeymapErrorCode } from './keymap.ts'
 export { MayflyScreenService } from './screen.ts'
 export {
-  PLUGIN_VIEW_MAX_CHARS,
   PLUGIN_VIEW_MAX_DEPTH,
   paintPluginTone,
   sanitizePluginText,
@@ -49,7 +48,8 @@ export {
   type MayflyUiImageState,
 } from './ui-images.ts'
 export { createTerminalRelease } from './terminal.ts'
-export { alignDiffLines, diffChangeCounts, paintDiffRows, DIFF_ALIGN_MAX_ROWS, DIFF_CONTEXT_ROWS, type DiffOp, type DiffPaintColors, type DiffPaintOptions, type DiffWidthHelpers } from './diff-align.ts'
+export { concatRows } from './ui-rows.ts'
+export { alignDiffLines, diffChangeCounts, diffModel, paintDiffRows, paintDiffSegment, DIFF_ALIGN_MAX_EDITS, DIFF_CONTEXT_ROWS, type DiffModel, type DiffOp, type DiffPaintColors, type DiffPaintOptions, type DiffRowModel, type DiffSegment, type DiffWidthHelpers } from './diff-align.ts'
 export { WindowController, type MayflyWindow } from './window-controller.ts'
 export { visibleWidth } from './width.ts'
 export type { MayflyViewsSource } from './views-lane.ts'
@@ -81,8 +81,10 @@ export {
   MAYFLY_UI_MAX_IMAGES,
   MAYFLY_UI_MAX_IMAGE_ROWS,
   MAYFLY_UI_MAX_DEPTH,
+  MAYFLY_UI_MAX_ID,
+  MAYFLY_UI_MAX_LABEL,
   MAYFLY_UI_MAX_NODES,
-  MAYFLY_UI_MAX_TEXT,
+  clipLabel,
   validateMayflyEditorShellNode,
   validateMayflyStatusNode,
   validateMayflyUiNode,

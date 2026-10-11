@@ -8,13 +8,18 @@
 import type { MayflyInlineSpan, MayflyProgressNode, MayflyTextStyle, MayflyTone } from '@ephemeral-ai/mayfly-ui'
 
 /** The validator's field primitives, generic over its private state. */
-export interface AdmissionHelpers<State> {
+export interface AdmissionHelpers {
   own(object: Record<string, unknown>, key: string, path: string): unknown
   invalid(message: string): never
   enumeration<Value extends string | number>(value: unknown, values: readonly Value[], path: string): Value
   finiteInteger(value: unknown, path: string, minimum?: number): number
   boolean(value: unknown, path: string): boolean
-  text(value: unknown, path: string, state: State): string
+  /** Content text: sanitized, never capped. */
+  text(value: unknown, path: string): string
+  /** A one-row label: sanitized and clipped at the label maximum. */
+  label(value: unknown, path: string): string
+  /** An id or key: sanitized and non-empty, rejected above the id maximum. */
+  identifier(value: unknown, path: string): string
   collection(value: unknown, path: string): readonly unknown[]
 }
 
@@ -35,12 +40,12 @@ function present<Value>(key: string, value: Value | undefined): Fields {
   return value === undefined ? {} : { [key]: value }
 }
 
-function flag<State>(h: AdmissionHelpers<State>, object: Fields, key: string, path: string): boolean | undefined {
+function flag(h: AdmissionHelpers, object: Fields, key: string, path: string): boolean | undefined {
   const value = h.own(object, key, path)
   return value === undefined ? undefined : h.boolean(value, `${path}.${key}`)
 }
 
-function integer<State>(h: AdmissionHelpers<State>, object: Fields, key: string, path: string, minimum: number, maximum: number): number | undefined {
+function integer(h: AdmissionHelpers, object: Fields, key: string, path: string, minimum: number, maximum: number): number | undefined {
   const value = h.own(object, key, path)
   if (value === undefined) return undefined
   const result = h.finiteInteger(value, `${path}.${key}`, minimum)
@@ -49,7 +54,7 @@ function integer<State>(h: AdmissionHelpers<State>, object: Fields, key: string,
 }
 
 /** A text node's `styles`: each of strong, italic, and strike at most once. */
-export function admitTextStyles<State>(h: AdmissionHelpers<State>, object: Fields, path: string): Fields {
+export function admitTextStyles(h: AdmissionHelpers, object: Fields, path: string): Fields {
   const value = h.own(object, 'styles', path)
   if (value === undefined) return {}
   const styles = h.collection(value, `${path}.styles`).map((style, index) => h.enumeration<MayflyTextStyle>(style, ['strong', 'italic', 'strike'], `${path}.styles[${String(index)}]`))
@@ -58,12 +63,12 @@ export function admitTextStyles<State>(h: AdmissionHelpers<State>, object: Field
 }
 
 /** A code node's `numbered`. */
-export function admitCodeFields<State>(h: AdmissionHelpers<State>, object: Fields, path: string): Fields {
+export function admitCodeFields(h: AdmissionHelpers, object: Fields, path: string): Fields {
   return present('numbered', flag(h, object, 'numbered', path))
 }
 
 /** A diff node's `start`, `numbered`, `hunkHeader`, `context` (0 to 3), and `maxRows`. */
-export function admitDiffFields<State>(h: AdmissionHelpers<State>, object: Fields, path: string): Fields {
+export function admitDiffFields(h: AdmissionHelpers, object: Fields, path: string): Fields {
   return {
     ...present('start', integer(h, object, 'start', path, 0, 1_000_000)),
     ...present('numbered', flag(h, object, 'numbered', path)),
@@ -74,7 +79,7 @@ export function admitDiffFields<State>(h: AdmissionHelpers<State>, object: Field
 }
 
 /** A stack child's `priority`, `band`, and `overflow`. */
-export function admitChildAdmission<State>(h: AdmissionHelpers<State>, object: Fields, path: string): Fields {
+export function admitChildAdmission(h: AdmissionHelpers, object: Fields, path: string): Fields {
   const band = h.own(object, 'band', path)
   const overflow = h.own(object, 'overflow', path)
   return {
@@ -85,7 +90,7 @@ export function admitChildAdmission<State>(h: AdmissionHelpers<State>, object: F
 }
 
 /** A surface's `titleAlign`, `border`, `escapeLabel`, and `hint`. */
-export function admitSurfaceFields<State>(h: AdmissionHelpers<State>, object: Fields, path: string): Fields {
+export function admitSurfaceFields(h: AdmissionHelpers, object: Fields, path: string): Fields {
   const titleAlign = h.own(object, 'titleAlign', path)
   const border = h.own(object, 'border', path)
   const escapeLabel = h.own(object, 'escapeLabel', path)
@@ -99,7 +104,7 @@ export function admitSurfaceFields<State>(h: AdmissionHelpers<State>, object: Fi
 }
 
 /** A scroll's `height`, `expandedHeight` (not shorter than `height`), `fit`, and `pill`. */
-export function admitScrollFields<State>(h: AdmissionHelpers<State>, object: Fields, path: string): Fields {
+export function admitScrollFields(h: AdmissionHelpers, object: Fields, path: string): Fields {
   const height = integer(h, object, 'height', path, 1, SCROLL_HEIGHT_MAX)
   const expandedHeight = integer(h, object, 'expandedHeight', path, 1, SCROLL_HEIGHT_MAX)
   if (height !== undefined && expandedHeight !== undefined && expandedHeight < height) h.invalid(`${path}.expandedHeight must not be shorter than height`)
@@ -110,7 +115,7 @@ export function admitScrollFields<State>(h: AdmissionHelpers<State>, object: Fie
  * A progress node's `style`, `width`, `tone`, `showCount`, `showPercent`, and `transition`. A status node carries no
  * motion, so it takes no transition.
  */
-export function admitProgressFields<State>(h: AdmissionHelpers<State>, object: Fields, path: string, max: number, status: boolean): Fields {
+export function admitProgressFields(h: AdmissionHelpers, object: Fields, path: string, max: number, status: boolean): Fields {
   const style = h.own(object, 'style', path)
   const tone = h.own(object, 'tone', path)
   const transition = h.own(object, 'transition', path)
@@ -136,15 +141,15 @@ export function admitProgressFields<State>(h: AdmissionHelpers<State>, object: F
 }
 
 /** A heatmap's `cell` (1 or 2) and `columnLabels`, one per column. */
-export function admitHeatmapFields<State>(h: AdmissionHelpers<State>, object: Fields, path: string, columns: number, state: State): Fields {
+export function admitHeatmapFields(h: AdmissionHelpers, object: Fields, path: string, columns: number): Fields {
   const cell = h.own(object, 'cell', path)
   const labels = h.own(object, 'columnLabels', path)
-  const columnLabels = labels === undefined ? undefined : h.collection(labels, `${path}.columnLabels`).map((label, index) => h.text(label, `${path}.columnLabels[${String(index)}]`, state))
+  const columnLabels = labels === undefined ? undefined : h.collection(labels, `${path}.columnLabels`).map((item, index) => h.label(item, `${path}.columnLabels[${String(index)}]`))
   if (columnLabels !== undefined && columnLabels.length !== columns) h.invalid(`${path}.columnLabels must match columns`)
   return { ...present('cell', cell === undefined ? undefined : h.enumeration(cell, [1, 2] as const, `${path}.cell`)), ...present('columnLabels', columnLabels) }
 }
 
 /** A rich-text row has one motion channel: at most one span shimmers or is a loader cell. */
-export function countMotion<State>(h: AdmissionHelpers<State>, spans: readonly MayflyInlineSpan[], path: string): void {
+export function countMotion(h: AdmissionHelpers, spans: readonly MayflyInlineSpan[], path: string): void {
   if (spans.filter(span => span.motion !== undefined).length > 1) h.invalid(`${path} has more than one motion channel in a row`)
 }

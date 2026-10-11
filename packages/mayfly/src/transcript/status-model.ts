@@ -2,6 +2,7 @@
  * @module @ephemeral-ai/mayfly/transcript/status-model
  */
 import type { MayflyStatusEntry, MayflyStatusRegistry } from '@ephemeral-ai/mayfly-ui'
+import { textOf } from '@ephemeral-ai/mayfly-ui'
 import { compileMayflyStatusNode, type MayflyComponent, type MayflyComponents, type MayflySemanticColors, type MayflyViewsSource } from '../core/index.ts'
 
 export type { MayflyStatusEntry } from '@ephemeral-ai/mayfly-ui'
@@ -100,7 +101,7 @@ export class StatusFooterComponent implements MayflyComponent {
     })
     const component = result.ok ? result.value.component : result.errorComponent
     const renderWidth = result.ok && result.value.node.kind === 'text'
-      ? Math.max(width, result.value.node.content.length * 2 + 1)
+      ? Math.max(width, textOf(result.value.node.content).length * 2 + 1)
       : width
     const rendered = component.renderStatus(renderWidth)
     const fullPart = (rendered.rows[0] ?? '').replace(/ +$/u, '')

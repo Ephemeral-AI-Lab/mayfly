@@ -11,8 +11,8 @@ import { registerTraceCommand, traceDetailPanelModel, tracePanelModel } from '..
 import type { TraceItem } from '../../src/interaction/trace-format.ts'
 import { mountUiRegistryObservers, UiInteractionService } from '../../src/core/ui-interaction-state.ts'
 import { MayflyLocaleService } from '../../src/frontend/locale.ts'
+import { renderRequest } from './request-fixture.ts'
 import type { Agent } from '@deepseek-ai/dsh-agent'
-import type { MayflyUiActionEvent } from '../../../ui/src/interaction.ts'
 
 const record = { sessionId: SessionId('trace-test'), seq: 0, time: 1, type: 'user/message', surface: 'current' as const }
 const target = { type: 'user/message', seq: 0, time: 1, surfaceOp: 'append', data: { content: [{ type: 'text', text: 'hello' }], source: { kind: 'user' } } } as unknown as SessionEvent
@@ -46,11 +46,11 @@ describe('registerTraceCommand', () => {
     expect(aggregated).toContain('??:??:?? #3-5 Thinking')
     expect(aggregated).toContain('first second')
     expect(aggregated).toContain('shadowed')
-    const detail = JSON.stringify(traceDetailPanelModel(item, ['page one', 'page two'], 2))
+    const detail = JSON.stringify(traceDetailPanelModel(item, 'document text'))
     expect(detail).toContain('Trace detail #3-5')
-    expect(detail).toContain('trace-document/2')
-    expect(detail).toContain('page two')
-    expect(detail).toContain('"id":"page","label":"Page","value":2')
+    expect(detail).toContain('trace-document')
+    expect(detail).toContain('document text')
+    expect(detail).not.toContain('"kind":"form"')
   })
 
   async function mount(options: {
@@ -121,21 +121,20 @@ describe('registerTraceCommand', () => {
     ctx.mayflyOverlays.close('mayfly.trace')
   })
 
-  it('keeps every long detail page reachable without rereading the session', async () => {
+  it('keeps a long detail reachable in one scroll without rereading the session', async () => {
     const long = { ...target, data: { ...target.data, payload: `${'x'.repeat(20_000)}TAIL` } } as unknown as SessionEvent
     const { ctx, agent, query, model } = await mount({ events: [long] })
     await ctx.commands.execute(agent, '/trace', [], new AbortController().signal)
     const root = model('mayfly.trace')!
     root.emit({ kind: 'selection-accept', pagePath: [], controlId: 'trace-events', selectedIds: ['0'] })
-    await vi.waitFor(() => expect(model('mayfly.trace.detail')?.form({ pagePath: [], formId: 'trace-page' })).toBeDefined())
+    await vi.waitFor(() => expect(model('mayfly.trace.detail')?.document({ pagePath: [], controlId: 'trace-document' })).toBeDefined())
     const detail = model('mayfly.trace.detail')!
-    const page = { pagePath: [], formId: 'trace-page', fieldId: 'page' } as const
-    const field = detail.form(page)!.fields.page!.definition
-    const maximum = field.kind === 'number' ? field.max! : 1
-    detail.edit(page, String(maximum))
-    detail.invoke('go')
-    await vi.waitFor(() => expect(JSON.stringify(detail.node)).toContain(`trace-document/${String(maximum)}`))
     expect(JSON.stringify(detail.node)).toContain('TAIL')
+    const renderer = renderRequest(detail)
+    renderer.component.render(80)
+    renderer.input('\x1b[F')
+    expect(renderer.component.render(80).join('\n')).toContain('TAIL')
+    renderer.runtime.dispose()
     expect(query?.readSession).toHaveBeenCalledOnce()
   })
 
@@ -236,7 +235,7 @@ describe('registerTraceCommand', () => {
     expect(await failedResult).toEqual({ kind: 'success' })
   })
 
-  it('defends root and paged detail events and refreshes localized nodes', async () => {
+  it('defends root and detail events and refreshes localized nodes', async () => {
     const long = { ...target, data: { ...target.data, payload: 'x'.repeat(20_000) } } as unknown as SessionEvent
     const bench = await mount({ events: [long] })
     await bench.ctx.commands.find(bench.agent, 'trace')!.handler({ rawInput: '', signal: new AbortController().signal } as never)
@@ -252,10 +251,8 @@ describe('registerTraceCommand', () => {
     await root.definition.onEvent!.action!({ kind: 'selection-accept', pagePath: [], controlId: 'trace-events', selectedIds: ['0'] }, context(root))
     const detail = bench.ctx.mayflyOverlays.list().find(entry => entry.id === 'mayfly.trace.detail')!
     expect(await detail.definition.onEvent!.action!({ kind: 'activate', pagePath: [], controlId: 'noop', actionId: 'noop' }, context(detail))).toEqual({ kind: 'completed' })
-    expect(await detail.definition.onEvent!.action!({ kind: 'submit', pagePath: [], controlId: 'submit', submission: { draftRevision: 1, actionId: 'go', source: [], forms: [] } }, context(detail))).toMatchObject({ kind: 'failed', message: 'Invalid page' })
-    const page = (actionId: string, value: number): MayflyUiActionEvent => ({ kind: 'submit', pagePath: [], controlId: 'trace-page', submission: { actionId, draftRevision: 1, source: [], forms: [{ pagePath: [], formId: 'trace-page', draftRevision: 1, fields: [{ id: 'page', value, change: 'set' }] }] } })
-    expect(await detail.definition.onEvent!.action!(page('next', 1), context(detail))).toMatchObject({ kind: 'accepted' })
-    expect(await detail.definition.onEvent!.action!(page('previous', 2), context(detail))).toMatchObject({ kind: 'accepted' })
+    // The detail keeps no forms; a stray submission completes without effect.
+    expect(await detail.definition.onEvent!.action!({ kind: 'submit', pagePath: [], controlId: 'submit', submission: { draftRevision: 1, actionId: 'go', source: [], forms: [] } }, context(detail))).toEqual({ kind: 'completed' })
     bench.ctx.mayflyLocale.setPreference('en')
     await flush()
     expect(bench.ctx.mayflyOverlays.list().find(entry => entry.id === detail.id)!.node).toBeDefined()

@@ -50,10 +50,21 @@ export interface MayflyField { readonly label: string, readonly value: readonly 
  * the middle or the start elided so the distinguishing end shows (paths, titles). Rich text takes `wrap` and `truncate`.
  */
 export type MayflyTextOverflow = 'wrap' | 'truncate' | 'middle' | 'start'
-export interface MayflyTextNode { readonly kind: 'text', readonly content: string, readonly tone?: MayflyTone, readonly overflow?: MayflyTextOverflow, readonly styles?: readonly MayflyTextStyle[] }
-export interface MayflyMarkdownNode { readonly kind: 'markdown', readonly source: string }
+/**
+ * One append unit of a chunked content field. Producers keep their chunk objects and publish the same identities as the
+ * field grows, so admission validates each piece once and the renderer reuses its line index; a chunk whose text ends
+ * mid-line still joins the next chunk on one row.
+ */
+export interface MayflyContentChunk { readonly text: string }
+/**
+ * A large content field: one string, or an append-only list of chunks joined in order. Chunks are the form a stream
+ * takes — job output, logs — where each publish appends pieces instead of resending the whole field.
+ */
+export type MayflyContentField = string | readonly MayflyContentChunk[]
+export interface MayflyTextNode { readonly kind: 'text', readonly content: MayflyContentField, readonly tone?: MayflyTone, readonly overflow?: MayflyTextOverflow, readonly styles?: readonly MayflyTextStyle[] }
+export interface MayflyMarkdownNode { readonly kind: 'markdown', readonly source: MayflyContentField }
 export interface MayflyFieldsNode { readonly kind: 'fields', readonly rows: readonly MayflyField[] }
-export interface MayflyCodeNode { readonly kind: 'code', readonly code: string, readonly language?: string, readonly numbered?: boolean }
+export interface MayflyCodeNode { readonly kind: 'code', readonly code: MayflyContentField, readonly language?: string, readonly numbered?: boolean }
 export interface MayflyDiffNode {
   readonly kind: 'diff'
   readonly before: string
@@ -70,7 +81,7 @@ export interface MayflyDiffNode {
   readonly maxRows?: number
 }
 export interface MayflyRichTextNode { readonly kind: 'rich-text', readonly spans: readonly MayflyInlineSpan[], readonly overflow?: Extract<MayflyTextOverflow, 'wrap' | 'truncate'> }
-export interface MayflyDiagramNode { readonly kind: 'diagram', readonly diagram: 'mermaid', readonly source: string }
+export interface MayflyDiagramNode { readonly kind: 'diagram', readonly diagram: 'mermaid', readonly source: MayflyContentField }
 export type MayflySectionContentNode = MayflyTextNode | MayflyFieldsNode | MayflyCodeNode | MayflyDiffNode | MayflySectionsNode
 export interface MayflySection { readonly title?: string, readonly body: MayflySectionContentNode, readonly collapsed?: boolean }
 export interface MayflySectionsNode { readonly kind: 'sections', readonly sections: readonly MayflySection[] }

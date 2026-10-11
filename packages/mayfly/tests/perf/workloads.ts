@@ -1,5 +1,5 @@
 /**
- * The work-budget workloads W1 to W8 (docs/design/implementation-roadmap.md section 7.1), and W1 and W4 again through the
+ * The work-budget workloads W1 to W24 (docs/design/implementation-roadmap.md section 7.1), and W1 and W4 again through the
  * node slot (slice 1.10a), the path the footer and the conversation take from Phases 3 and 6. Each one builds a surface of
  * a stated shape, then runs one steady-state step that publishes, presses a key, or ticks the clock, and reports the
  * counters of that step alone. The counts are deterministic, so a spec gates them; `script/audit-performance.mjs`
@@ -163,6 +163,24 @@ class SlotScreen {
 }
 
 const reset = (counters: MayflyWorkCounters): void => { Object.assign(counters, createWorkCounters()) }
+
+/**
+ * Roughly `megabytes` of ordinary-length code lines, built once per workload. Every line is one row at the
+ * workload width, so a segment's row estimate is exact and the gates measure window size, not drift.
+ */
+export function codeDocument(megabytes: number): string {
+  const line = (index: number): string => `const value${String(index)} = compute(input, state, cache) ${String(index)}`
+  return Array.from({ length: Math.ceil((megabytes * 1_000_000) / (line(0).length + 1)) }, (_, index) => line(index)).join('\n')
+}
+
+/**
+ * Roughly `megabytes` of ordinary Markdown — headings, paragraphs, bullets, and fences repeating — so the scan's
+ * block units hold whole sections and a PageDown paints the units under the new window, not the document.
+ */
+export function markdownDocument(megabytes: number): string {
+  const section = (index: number): string => `## Section ${String(index)}\n\nParagraph ${String(index)} with a [link](https://x.example/${String(index)}) and **strong** text that wraps a little.\n\n- item ${String(index)}a\n- item ${String(index)}b\n\n\`\`\`\nfence ${String(index)} line one\nfence ${String(index)} line two\n\`\`\``
+  return Array.from({ length: Math.ceil((megabytes * 1_000_000) / (section(0).length + 2)) }, (_, index) => section(index)).join('\n\n')
+}
 
 const item = (index: number, extra = {}): { id: string, label: string, detail: string } => ({ id: `item-${String(index)}`, label: `Item number ${String(index)}`, detail: `detail ${String(index)}`, ...extra })
 
@@ -415,6 +433,95 @@ export const WORKLOADS: readonly Workload[] = [
       publish()
       reset(counters)
       return { step: publish, dispose: () => {} }
+    },
+  },
+  {
+    id: 'W18', title: 'content scroll: a megabyte of code in a declared-height scroll, PageDown',
+    setup(counters) {
+      const surface = new Surface('w18', ui.scroll(ui.code(codeDocument(1)), { height: 8, scrollbar: true }), counters)
+      surface.render()
+      reset(counters)
+      return { step: () => { surface.press('\x1b[6~') }, dispose: () => surface.dispose() }
+    },
+  },
+  {
+    id: 'W19', title: 'content resize: the same megabyte of code repainted one column narrower',
+    setup(counters) {
+      const surface = new Surface('w19', ui.scroll(ui.code(codeDocument(1)), { height: 8, scrollbar: true }), counters)
+      surface.render()
+      reset(counters)
+      return { step: () => { surface.render(99) }, dispose: () => surface.dispose() }
+    },
+  },
+  {
+    id: 'W20', title: 'content end: ten megabytes of code in a declared-height scroll, End',
+    setup(counters) {
+      const surface = new Surface('w20', ui.scroll(ui.code(codeDocument(10)), { height: 8, scrollbar: true }), counters)
+      surface.render()
+      reset(counters)
+      return { step: () => { surface.press('\x1b[F') }, dispose: () => surface.dispose() }
+    },
+  },
+  {
+    id: 'W21', title: 'content diff: a megabyte file with sixty edits in a declared-height scroll, first paint',
+    setup(counters) {
+      const before = codeDocument(1)
+      // Sixty one-line edits spread through the file: the alignment runs once, the window paints its own rows.
+      const step = Math.ceil(before.split('\n').length / 60)
+      const after = before.split('\n').map((line, index) => index % step === 5 ? `${line} // edited` : line).join('\n')
+      const surface = new Surface('w21', ui.scroll(ui.diff(before, after), { height: 8, scrollbar: true }), counters)
+      return { step: () => { surface.render() }, dispose: () => surface.dispose() }
+    },
+  },
+  {
+    id: 'W22', title: 'content markdown: a megabyte of Markdown in a declared-height scroll, PageDown',
+    setup(counters) {
+      const surface = new Surface('w22', ui.scroll(ui.markdown(markdownDocument(1)), { height: 8, scrollbar: true }), counters)
+      surface.render()
+      reset(counters)
+      return { step: () => { surface.press('\x1b[6~') }, dispose: () => surface.dispose() }
+    },
+  },
+  {
+    id: 'W23', title: 'content chunks: a megabyte of streamed job output in a follow-tail scroll, one chunk arrives',
+    setup(counters) {
+      // Held pieces are frozen snapshots republished by identity, as the job feed does: an append admits only the
+      // new chunk and rescans nothing settled, while the merged index still walks every line of the stream.
+      const piece = (start: number, lines: number): string =>
+        Array.from({ length: lines }, (_, index) => `[worker] step ${String(start + index)} wrote ${'x'.repeat(40)} bytes`).join('\n')
+      const held = Array.from({ length: 100 }, (_, index) => ui.chunk(`${piece(index * 200, 200)}\n`))
+      const stream = (extra: string[] = []): MayflyUiNode =>
+        ui.scroll(ui.code([...held, ...extra.map(text => ui.chunk(text))]), { id: 'stream', follow: 'end', height: 8, scrollbar: true })
+      const surface = new Surface('w23', stream(), counters)
+      surface.render()
+      reset(counters)
+      let arrived = 0
+      return { step: () => { arrived += 1; surface.publish(stream([`${piece(20_000 + arrived * 4, 4)}\n`])) }, dispose: () => surface.dispose() }
+    },
+  },
+  {
+    id: 'W24', title: 'stream with a huge body: a 2,000-item list holding an open 200 KB diff and a 1 MB Markdown body, the last item changes',
+    setup(counters) {
+      // The big body sits one row above the tail: the reader following the stream keeps it in the window, and a
+      // republish repaints it from the nested sources it already indexed, not by splitting and clipping a megabyte.
+      const before = codeDocument(0.2)
+      const after = before.split('\n').map((line, index) => index % 500 === 0 ? `${line} // edited` : line).join('\n')
+      const open = freezeWire(item(1998, { body: ui.stack.column([ui.diff(before, after), ui.markdown(markdownDocument(1))]), expanded: true }))
+      const items = [...Array.from({ length: 1998 }, (_, index) => freezeWire(item(index))), open]
+      const last = (revision: number): ReturnType<typeof item> => item(1999, { detail: `streaming ${String(revision)}` })
+      const surface = new Surface('w24', listNode('stream', [...items, last(0)]), counters)
+      surface.render()
+      // The reader follows the tail, where the changing row is.
+      surface.press('\x1b[F')
+      let revision = 0
+      reset(counters)
+      return {
+        step: () => {
+          revision += 1
+          surface.publish(listNode('stream', [...items, last(revision)]))
+        },
+        dispose: () => surface.dispose(),
+      }
     },
   },
   {

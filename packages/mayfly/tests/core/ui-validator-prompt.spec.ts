@@ -12,9 +12,9 @@ import {
   MAYFLY_UI_MAX_PROMPT_PLACEHOLDERS,
   MAYFLY_UI_MAX_PROMPT_PLACEHOLDER_TEXT,
   MAYFLY_UI_MAX_PROMPT_SYMBOL,
-  MAYFLY_UI_MAX_PROMPT_TEXT,
   MAYFLY_UI_MAX_PROMPT_TOKENS,
   MAYFLY_UI_MAX_PROMPT_TOKEN_TEXT,
+  MAYFLY_UI_MAX_DRAFT_TEXT,
 } from '../../src/core/ui-validator-prompt.ts'
 
 const admitted = (value: unknown) => {
@@ -71,7 +71,7 @@ describe('prompt admission', () => {
     [{ kind: 'prompt', id: 'p', completions: {} }, 'completions.items is required'],
     [{ kind: 'prompt', id: 'p', completions: { items: [{ label: 'x' }] } }, 'items[0].id is required'],
     [{ kind: 'prompt', id: 'p', completions: { items: [{ id: 'c' }] } }, 'items[0].label is required'],
-    [{ kind: 'prompt', id: 'p', completions: { items: [{ id: ' ', label: 'x' }] } }, 'items id must not be empty'],
+    [{ kind: 'prompt', id: 'p', completions: { items: [{ id: ' ', label: 'x' }] } }, 'items[0].id must not be empty'],
     [{ kind: 'prompt', id: 'p', completions: { items: [{ id: 'c', label: 'x' }, { id: 'c', label: 'y' }] } }, 'items contains duplicate ids'],
     [{ kind: 'prompt', id: 'p', completions: { items: [{ id: 'c', label: 'x', detail: 1 }] } }, 'detail must be a string'],
     [{ kind: 'prompt', id: 'p', reset: { value: 'x' } }, 'reset.rev is required'],
@@ -97,16 +97,16 @@ describe('prompt admission', () => {
     expect(admitted(ui.prompt({ id: 'p', symbol: long(MAYFLY_UI_MAX_PROMPT_SYMBOL), recallLabel: long(MAYFLY_UI_MAX_PROMPT_LABEL) }))).toMatchObject({ kind: 'prompt' })
   })
 
-  it('limits the tokens and the text a prompt carries, apart from the tree\'s own text budget', () => {
+  it('limits the tokens a prompt carries, and its draft text under the shared draft budget', () => {
     const tokens = (count: number) => Array.from({ length: count }, (_, index) => ({ id: `t${String(index)}`, label: 'x' }))
     expect(validateMayflyUiNode(ui.prompt({ id: 'p', tokens: tokens(MAYFLY_UI_MAX_PROMPT_TOKENS) }))).toMatchObject({ ok: true })
     expect(validateMayflyUiNode(ui.prompt({ id: 'p', tokens: tokens(MAYFLY_UI_MAX_PROMPT_TOKENS + 1) }))).toMatchObject({ ok: false, code: 'MAYFLY_INVALID_CONTRIBUTION' })
-    // A draft larger than the tree's 20,000 characters is fine for a prompt: that is what a paste is.
+    // Content text has no tree budget; a prompt draft is bounded separately because it is what a user typed or pasted.
     expect(validateMayflyUiNode(ui.prompt({ id: 'p', value: 'x'.repeat(50_000) }))).toMatchObject({ ok: true })
     const recall = (count: number, length: number) => Array.from({ length: count }, () => ({ kind: 'history' as const, text: 'y'.repeat(length) }))
-    expect(validateMayflyUiNode(ui.prompt({ id: 'p', value: 'x'.repeat(10), recall: recall(10, MAYFLY_UI_MAX_PROMPT_TEXT / 10 - 1) }))).toMatchObject({ ok: true })
-    expect(validateMayflyUiNode(ui.prompt({ id: 'p', value: 'x'.repeat(10), recall: recall(10, MAYFLY_UI_MAX_PROMPT_TEXT / 10) }))).toMatchObject({ ok: false, code: 'MAYFLY_LIMIT_EXCEEDED' })
-    const two = ui.stack.column([ui.prompt({ id: 'a', value: 'x'.repeat(MAYFLY_UI_MAX_PROMPT_TEXT) }), ui.prompt({ id: 'b', value: 'y' })])
+    expect(validateMayflyUiNode(ui.prompt({ id: 'p', value: 'x'.repeat(10), recall: recall(10, MAYFLY_UI_MAX_DRAFT_TEXT / 10 - 1) }))).toMatchObject({ ok: true })
+    expect(validateMayflyUiNode(ui.prompt({ id: 'p', value: 'x'.repeat(10), recall: recall(10, MAYFLY_UI_MAX_DRAFT_TEXT / 10) }))).toMatchObject({ ok: false, code: 'MAYFLY_LIMIT_EXCEEDED' })
+    const two = ui.stack.column([ui.prompt({ id: 'a', value: 'x'.repeat(MAYFLY_UI_MAX_DRAFT_TEXT) }), ui.prompt({ id: 'b', value: 'y' })])
     expect(validateMayflyUiNode(two)).toMatchObject({ ok: false, code: 'MAYFLY_LIMIT_EXCEEDED' })
   })
 
@@ -128,7 +128,7 @@ describe('prompt admission', () => {
 
   it('is never replayed from the admission memo, so every publish counts its text again', () => {
     const cache = createAdmissionCache()
-    const shared = ui.stack.column([ui.prompt({ id: 'p', value: 'x'.repeat(MAYFLY_UI_MAX_PROMPT_TEXT - 1) })])
+    const shared = ui.stack.column([ui.prompt({ id: 'p', value: 'x'.repeat(MAYFLY_UI_MAX_DRAFT_TEXT - 1) })])
     expect(validateMayflyUiNode(ui.stack.column([shared]), undefined, cache)).toMatchObject({ ok: true })
     expect(validateMayflyUiNode(ui.stack.column([shared]), undefined, cache)).toMatchObject({ ok: true })
     const second = ui.stack.column([shared, ui.prompt({ id: 'q', value: 'zz' })])

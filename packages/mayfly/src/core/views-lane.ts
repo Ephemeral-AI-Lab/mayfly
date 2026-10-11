@@ -14,6 +14,7 @@ import { displayKey, keyActionKeys, matchesKeyAction, ACTION_SEGMENT_LEFT, ACTIO
 import { glyphRows, type MayflyGlyphMode } from './glyphs.ts'
 import { sanitizePluginText } from './plugin-view.ts'
 import { renderOverflowRow } from './ui-patterns.ts'
+import { concatRows, mapRows, sliceRows } from './ui-rows.ts'
 import type { MayflyComponent, MayflyFocusable, MayflyKeymap, MayflySemanticColors } from './types.ts'
 import { sliceByColumn, truncateToWidth, visibleWidth } from './width.ts'
 
@@ -292,11 +293,11 @@ export class ViewsLane implements MayflyViewsSource {
     const available = Math.max(1, Math.floor(width))
     const { strip, rule } = this.paintStrip(host, available)
     const budget = Math.max(1, this.laneRows(host.viewport().rows) - 2)
-    const rows = active.panel!.render(available).map(row => fit(row, available))
+    const rows = mapRows(active.panel!.render(available), row => fit(row, available))
     const body = rows.length <= budget || budget <= 1
-      ? rows.slice(0, budget)
-      : [...rows.slice(0, budget - 1), fit(host.colors.muted(renderOverflowRow(rows.length - budget + 1, host.translate ?? interpolateLocaleMessage)), available)]
-    return [...glyphRows([strip, rule], host.glyphs), ...body]
+      ? sliceRows(rows, 0, budget)
+      : concatRows(sliceRows(rows, 0, budget - 1), [fit(host.colors.muted(renderOverflowRow(rows.length - budget + 1, host.translate ?? interpolateLocaleMessage)), available)])
+    return concatRows(glyphRows([strip, rule], host.glyphs), body)
   }
 
   /** The component's key route: `←/→` switch views unless the panel is editing; every other key is the panel's. */

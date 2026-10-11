@@ -223,6 +223,17 @@ export async function runScenario(name, { root, dshBin, cols, rows, keys = [], o
     const frames = screen.state.frames.length
     const at = performance.now()
     pty.write(bytes)
+    await timedFrame(frames, at, samples)
+  }
+  /** One timed resize: applied, then timed to the end of the next frame like a key. */
+  async function timedResize(cols, rows, samples) {
+    const frames = screen.state.frames.length
+    const at = performance.now()
+    pty.resize(cols, rows)
+    screen.resize(cols, rows)
+    await timedFrame(frames, at, samples)
+  }
+  async function timedFrame(frames, at, samples) {
     while (screen.state.frames.length === frames && performance.now() - at < 3000) await sleep(1)
     const frame = screen.state.frames[frames]
     if (frame !== undefined) samples.push(frame.at - at)
@@ -244,7 +255,8 @@ export async function runScenario(name, { root, dshBin, cols, rows, keys = [], o
       } else if (step.step === 'play') {
         if (driver === 'paused') { control.send({ type: 'play', until: step.until ?? null, timed: step.timed === true }); driver = 'running' }
         if (driver !== 'finished') await report(300_000, 'the replay to play')
-      } else if (step.step === 'wait') await sleep(step.ms)
+      } else if (step.step === 'resize') await timedResize(step.cols, step.rows, samples)
+      else if (step.step === 'wait') await sleep(step.ms)
       else throw new Error(`a perf span cannot hold the step ${String(step.step)}`)
     }
     const cpu1 = processCpuMs(pty.pid)

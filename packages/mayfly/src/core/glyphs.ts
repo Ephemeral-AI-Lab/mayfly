@@ -7,6 +7,8 @@
  * @module @ephemeral-ai/mayfly/core/glyphs
  */
 
+import { mapRows } from './ui-rows.ts'
+
 /** Which vocabulary the renderer paints with. */
 export type MayflyGlyphMode = 'unicode' | 'ascii'
 
@@ -51,7 +53,7 @@ export function asciiText(text: string): string {
  * @returns the rows to show.
  */
 export function glyphRows(rows: string[], mode: MayflyGlyphMode | undefined): string[] {
-  return mode === 'ascii' ? rows.map(asciiText) : rows
+  return mode === 'ascii' ? mapRows(rows, asciiText) : rows
 }
 
 /**

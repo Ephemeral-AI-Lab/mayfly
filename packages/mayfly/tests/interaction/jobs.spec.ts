@@ -5,10 +5,9 @@ import { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { JobId, type JobView } from '@deepseek-ai/dsh-jobs'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { ui, type MayflyUiEvent } from '@ephemeral-ai/mayfly-ui'
+import { textOf, ui, type MayflyUiEvent, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import * as agentOverlay from '../../src/interaction/agent-overlay.ts'
-import { formatJobDuration, isLiveJob, jobDetailsNode, jobItems, jobOutputNode, sortJobs } from '../../src/interaction/jobs.ts'
-import { documentPages } from '../../src/interaction/document-pages.ts'
+import { JOB_OUTPUT_FEED_CHUNKS, formatJobDuration, isLiveJob, jobDetailsNode, jobItems, jobOutputNode, sortJobs } from '../../src/interaction/jobs.ts'
 import type { UiSurfaceModel } from '../../src/core/ui-interaction-surface.ts'
 import { validateMayflyUiNode } from '../../src/core/ui-validator.ts'
 import { jobsFixture } from './jobs-fixture.ts'
@@ -23,7 +22,6 @@ afterEach(async () => {
 async function setup() { const ctx = new Context(); contexts.push(ctx); return jobsFixture(ctx) }
 const action = (model: UiSurfaceModel, id: string, controlId = 'job-actions') => model.emit({ kind: 'activate', pagePath: [], controlId, actionId: id })
 const select = (model: UiSurfaceModel, id: string) => model.emit({ kind: 'selection-accept', pagePath: [], controlId: 'jobs', selectedIds: [id] })
-const pageAddress = { pagePath: [], formId: 'output-page' } as const
 const job = (id: string, status: JobView['status'], options: Partial<JobView> = {}): JobView => ({ id: JobId(id), kind: 'bash', label: `Job ${id}`, startedAt: 1_000, status, output: { total: 0, earliest: 0 }, ...options })
 async function prepare(model: UiSurfaceModel, event: MayflyUiEvent) {
   const abort = new AbortController()
@@ -65,28 +63,47 @@ describe('shared jobs browsing', () => {
     bench.ctx.mayflyLocale.setPreference('zh')
     await flushRequests()
     expect(output.node).toBe(node)
-    expect(readAt).toHaveBeenCalledOnce()
+    expect(readAt).toHaveBeenCalledTimes(2)
   })
 
-  it.each([false, true])('relocalizes output without resetting its published page or reading again (paged=%s)', async paged => {
+  it('relocalizes output without resetting its scroll anchor or reading again', async () => {
     const bench = await setup()
     const readAt = vi.spyOn(bench.registry, 'readAt')
-    const source = bench.start({ output: paged ? 'x'.repeat(36_001) : 'only page' })
+    const source = bench.start({ output: 'x'.repeat(36_001) })
     await bench.run('/jobs')
     select(bench.model('mayfly.jobs'), source.id)
     await flushRequests()
     action(bench.model('mayfly.jobs.detail'), 'read')
     await flushRequests()
     const output = bench.model('mayfly.jobs.output')
-    if (paged) {
-      action(output, 'next', 'page-actions'); await flushRequests()
-      output.edit({ ...pageAddress, fieldId: 'page' }, '3')
-    }
+    const renderer = renderRequest(output)
+    renderer.component.render(80)
+    renderer.input('\x1b[F')
+    renderer.component.render(80)
+    renderer.runtime.dispose()
+    const anchored = output.document({ pagePath: [], controlId: 'job-output-document' })?.anchor
+    expect(anchored?.offset).toBeGreaterThan(0)
     bench.ctx.mayflyLocale.setPreference('zh')
     await flushRequests()
     expect(JSON.stringify(output.node)).toContain('\u8bfb\u53d6\u65f6\u72b6\u6001')
-    if (paged) expect(output.form(pageAddress)!.fields.page).toMatchObject({ baseline: 2, value: '3', change: 'set' })
-    expect(readAt).toHaveBeenCalledOnce()
+    expect(output.document({ pagePath: [], controlId: 'job-output-document' })?.anchor).toEqual(anchored)
+    expect(readAt).toHaveBeenCalledTimes(2)
+  })
+
+  it('drops a chunk the feed cursor already passed', async () => {
+    const bench = await setup()
+    const source = bench.start({ output: 'early' })
+    await bench.run('/jobs')
+    select(bench.model('mayfly.jobs'), source.id)
+    await flushRequests()
+    action(bench.model('mayfly.jobs.detail'), 'read')
+    await flushRequests()
+    const spy = vi.spyOn(bench.registry, 'readAt').mockReturnValueOnce({ chunks: [{ at: 0, text: 'stale' }], next: 5, lossy: false })
+    source.append('late')
+    await flushRequests()
+    const node = JSON.stringify(bench.model('mayfly.jobs.output').node)
+    expect(node).not.toContain('stale')
+    spy.mockRestore()
   })
 
   it('marks a retained-tail read when the ring dropped earlier output', async () => {
@@ -101,7 +118,7 @@ describe('shared jobs browsing', () => {
     expect(JSON.stringify(bench.model('mayfly.jobs.output').node)).toContain('earlier output was dropped by retention')
   })
 
-  it('rejects malformed output submissions and ignores obsolete inspector actions at the registration boundary', async () => {
+  it('ignores obsolete inspector actions and output submissions at the registration boundary', async () => {
     const bench = await setup()
     const readAt = vi.spyOn(bench.registry, 'readAt')
     const source = bench.start({ output: 'x'.repeat(24_001) })
@@ -115,14 +132,13 @@ describe('shared jobs browsing', () => {
     action(detail, 'read')
     await flushRequests()
     const output = bench.model('mayfly.jobs.output')
-    for (const fields of [[], [{ id: 'page', change: 'set' as const, value: 'invalid' }], [{ id: 'page', change: 'set' as const, value: 1.5 }]]) {
-      const reply = await prepare(output, { kind: 'submit', pagePath: [], controlId: 'output-page', submission: { actionId: 'go', draftRevision: 0, source: [], forms: [{ ...pageAddress, draftRevision: 0, fields }] } })
-      expect(reply).toMatchObject({ kind: 'failed', message: 'Invalid page' })
-    }
+    // The output surface keeps no forms; a stray submission is cancelled without effect.
+    const reply = await prepare(output, { kind: 'submit', pagePath: [], controlId: 'output-page', submission: { actionId: 'go', draftRevision: 0, source: [], forms: [] } })
+    expect(reply).toMatchObject({ kind: 'cancelled' })
     await source.finish({ status: 'completed' })
     expect(await prepare(detail, { kind: 'activate', pagePath: [], controlId: 'job-actions', actionId: 'stop' })).toMatchObject({ kind: 'completed' })
     expect(source.cancel).not.toHaveBeenCalled()
-    expect(readAt).toHaveBeenCalledOnce()
+    expect(readAt).toHaveBeenCalledTimes(3)
   })
 
   it('does not open detail after the exact Agent changes during native inspection', async () => {
@@ -274,11 +290,13 @@ describe('shared jobs browsing', () => {
     const output = bench.model('mayfly.jobs.output')
     expect(JSON.stringify(output.node)).toContain('first delta')
     source.append('second delta')
+    // The output event republishes the open view with the appended chunk — following the tail needs no reopen.
+    expect(JSON.stringify(output.node)).toContain('second delta')
     const rendered = renderRequest(output)
     rendered.component.render(80)
     rendered.component.render(40)
     rendered.runtime.dispose()
-    expect(readAt).toHaveBeenCalledOnce()
+    expect(readAt).toHaveBeenCalledTimes(3)
     output.requestClose()
     await flushRequests()
     action(detail, 'read')
@@ -286,7 +304,7 @@ describe('shared jobs browsing', () => {
     const second = bench.model('mayfly.jobs.output')
     expect(JSON.stringify(second.node)).toContain('first delta')
     expect(JSON.stringify(second.node)).toContain('second delta')
-    expect(readAt).toHaveBeenCalledTimes(2)
+    expect(readAt).toHaveBeenCalledTimes(5)
     const modelRead = bench.registry.read(source.id, bench.agent.id)
     expect(modelRead.chunks.map(chunk => chunk.text).join('')).toBe('first deltasecond delta')
   })
@@ -308,10 +326,84 @@ describe('shared jobs browsing', () => {
       output.requestClose()
       await flushRequests()
     }
-    expect(readAt).toHaveBeenCalledTimes(2)
+    expect(readAt).toHaveBeenCalledTimes(4)
     const modelRead = bench.registry.read(source.id, bench.agent.id)
     expect(modelRead.result).toBe('final result')
     expect(modelRead.chunks).toEqual([])
+  })
+
+  it('catches up output appended between the first read and the subscription', async () => {
+    const bench = await setup()
+    const readAt = vi.spyOn(bench.registry, 'readAt')
+    const source = bench.start({ output: 'before ' })
+    await bench.run('/jobs')
+    select(bench.model('mayfly.jobs'), source.id)
+    await flushRequests()
+    const detail = bench.model('mayfly.jobs.detail')
+    // The append lands inside the initial read, so the first result's cursor already misses it; the catch-up
+    // read (and the queued event) delivers it without a second open.
+    const real = bench.registry.readAt.bind(bench.registry)
+    readAt.mockImplementationOnce((id, from, caller) => {
+      const read = real(id, from, caller)
+      source.append('raced')
+      return read
+    })
+    action(detail, 'read')
+    await flushRequests()
+    const output = bench.model('mayfly.jobs.output')
+    expect(JSON.stringify(output.node)).toContain('before ')
+    expect(JSON.stringify(output.node)).toContain('raced')
+    expect(readAt).toHaveBeenCalledTimes(3)
+  })
+
+  it('keeps a chatty job admissible: older pieces join so the feed never outgrows the chunk cap', async () => {
+    const bench = await setup()
+    const source = bench.start({ output: 'start\n' })
+    await bench.run('/jobs')
+    select(bench.model('mayfly.jobs'), source.id)
+    await flushRequests()
+    action(bench.model('mayfly.jobs.detail'), 'read')
+    await flushRequests()
+    const output = bench.model('mayfly.jobs.output')
+    const lines = Array.from({ length: JOB_OUTPUT_FEED_CHUNKS * 3 }, (_, index) => `line ${String(index)}\n`)
+    for (const line of lines) source.append(line)
+    await flushRequests()
+    const code = (function find(node: MayflyUiNode): Extract<MayflyUiNode, { readonly kind: 'code' }> | undefined {
+      if (node.kind === 'code') return node
+      if (node.kind === 'surface' || node.kind === 'scroll') return find(node.child)
+      if (node.kind === 'stack') for (const child of node.children) { const hit = find(child.node); if (hit !== undefined) return hit }
+      return undefined
+    })(output.node!)!
+    expect(Array.isArray(code.code)).toBe(true)
+    expect((code.code as readonly unknown[]).length).toBeLessThanOrEqual(JOB_OUTPUT_FEED_CHUNKS)
+    expect(textOf(code.code)).toBe(`start\n${lines.join('')}`)
+    // The newest pieces keep their identity: only the older half joins.
+    const tail = (code.code as readonly { readonly text: string }[]).at(-1)!
+    expect(tail.text).toBe(lines.at(-1))
+    expect(validateMayflyUiNode(output.node).ok).toBe(true)
+  })
+
+  it('drops held chunks and marks the banner when the ring trims below the cursor', async () => {
+    const bench = await setup()
+    const readAt = vi.spyOn(bench.registry, 'readAt')
+    const source = bench.start({ output: 'first delta' })
+    await bench.run('/jobs')
+    select(bench.model('mayfly.jobs'), source.id)
+    await flushRequests()
+    const detail = bench.model('mayfly.jobs.detail')
+    action(detail, 'read')
+    await flushRequests()
+    const output = bench.model('mayfly.jobs.output')
+    expect(JSON.stringify(output.node)).toContain('first delta')
+    // The ring evicted the bytes the feed held: the read answers lossy with only the retained tail.
+    readAt.mockReturnValueOnce({ chunks: [{ at: 20, text: 'retained tail' }], next: 33, lossy: true })
+    source.append('x')
+    await flushRequests()
+    const node = JSON.stringify(output.node)
+    expect(node).toContain('retained tail')
+    expect(node).toContain('(earlier output was dropped by retention)')
+    expect(node).not.toContain('first delta')
+    expect(readAt).toHaveBeenCalledTimes(3)
   })
 
   it('leaves the model cursor untouched by reads after terminal settlement', async () => {
@@ -333,7 +425,7 @@ describe('shared jobs browsing', () => {
     Array.from({ length: 500 }, (_, index) => `row ${String(index).padStart(3, '0')} ${'x'.repeat(60)}`).join('\n'),
     `start${'x'.repeat(11_994)}\u{1F680}${'y'.repeat(24_000)}end`,
     '中文'.repeat(12_001),
-  ])('reconstructs full large output using shared page submissions without rereading', async text => {
+  ])('reconstructs full large output in one scroll without rereading', async text => {
     const bench = await setup()
     const readAt = vi.spyOn(bench.registry, 'readAt')
     const source = bench.start({ output: text })
@@ -343,43 +435,21 @@ describe('shared jobs browsing', () => {
     action(bench.model('mayfly.jobs.detail'), 'read')
     await flushRequests()
     const output = bench.model('mayfly.jobs.output')
-    const pages = documentPages(text)
-    let restored = ''
-    for (let page = 0; page < pages.length; page += 1) {
-      expect(output.form(pageAddress)!.fields.page!.baseline).toBe(page + 1)
-      const node = output.node
-      expect(validateMayflyUiNode(node).ok).toBe(true)
-      if (node?.kind !== 'surface' || node.child.kind !== 'stack') throw new Error('Missing output surface')
-      const scroll = node.child.children.find(child => child.node.kind === 'scroll')!.node
-      if (scroll.kind !== 'scroll' || scroll.child.kind !== 'code') throw new Error('Missing output text')
-      expect(scroll.id).toBe(`job-output-document/${String(page + 1)}`)
-      expect(output.document({ pagePath: [], controlId: scroll.id! })).toBeDefined()
-      expect(scroll.child.code).toBe(pages[page])
-      expect(scroll.child.code.isWellFormed()).toBe(true)
-      restored += scroll.child.code
-      const renderer = renderRequest(output)
-      renderer.component.render(80)
-      renderer.input('\x1b[F')
-      expect(renderer.component.render(80).join('\n')).toContain(scroll.child.code.trimEnd().slice(-10))
-      renderer.runtime.dispose()
-      action(output, 'next', 'page-actions')
-      await flushRequests()
-    }
-    expect(restored).toBe(text)
-    expect(output.form(pageAddress)!.fields.page!.baseline).toBe(pages.length)
-    action(output, 'first', 'page-actions'); await flushRequests()
-    expect(output.form(pageAddress)!.fields.page!.baseline).toBe(1)
-    output.edit({ ...pageAddress, fieldId: 'page' }, '2')
-    action(output, 'go', 'page-actions'); await flushRequests()
-    expect(output.form(pageAddress)!.fields.page!.baseline).toBe(2)
-    action(output, 'previous', 'page-actions'); await flushRequests()
-    expect(output.form(pageAddress)!.fields.page!.baseline).toBe(1)
-    action(output, 'last', 'page-actions'); await flushRequests()
-    expect(output.form(pageAddress)!.fields.page!.baseline).toBe(pages.length)
-    output.edit({ ...pageAddress, fieldId: 'page' }, '0')
-    action(output, 'go', 'page-actions'); await flushRequests()
-    expect(output.form(pageAddress)!.fields.page!.error).toBeDefined()
-    expect(readAt).toHaveBeenCalledOnce()
+    const node = output.node
+    expect(validateMayflyUiNode(node).ok).toBe(true)
+    if (node?.kind !== 'surface' || node.child.kind !== 'stack') throw new Error('Missing output surface')
+    const scroll = node.child.children.find(child => child.node.kind === 'scroll')!.node
+    if (scroll.kind !== 'scroll' || scroll.child.kind !== 'code') throw new Error('Missing output text')
+    expect(scroll.id).toBe('job-output-document')
+    expect(output.document({ pagePath: [], controlId: scroll.id! })).toBeDefined()
+    expect(textOf(scroll.child.code)).toBe(text)
+    expect(textOf(scroll.child.code).isWellFormed()).toBe(true)
+    const renderer = renderRequest(output)
+    renderer.component.render(80)
+    renderer.input('\x1b[F')
+    expect(renderer.component.render(80).join('\n')).toContain(text.trimEnd().slice(-10))
+    renderer.runtime.dispose()
+    expect(readAt).toHaveBeenCalledTimes(2)
   })
 
   it('confirms Stop with No selected, preserves cancellation, and follows native terminal status', async () => {
@@ -478,7 +548,7 @@ describe('shared jobs browsing', () => {
     expect(output.disposed).toBe(true)
     detail.answerDecision(true)
     expect(source.cancel).toHaveBeenCalledTimes(reason === 'provider' ? 1 : 0)
-    expect(readAt).toHaveBeenCalledOnce()
+    expect(readAt).toHaveBeenCalledTimes(2)
   })
 
   it('updates elapsed labels only while jobs are live and preserves search and confirmation', async () => {
@@ -516,16 +586,21 @@ describe('jobs readonly projections', () => {
     expect(jobItems(rows, 61_000, key => key)).toContainEqual(expect.objectContaining({ id: 'failed', badge: 'failed', detail: expect.stringContaining('exit 3') }))
     expect(sortJobs([job('old', 'completed', { startedAt: 2_000 }), job('new', 'completed', { startedAt: 9_000 })]).map(row => row.id)).toEqual(['new', 'old'])
   })
-  it('keeps empty results and arbitrary line lengths within the wire quota', () => {
-    expect(documentPages('')).toEqual([''])
+  it('keeps empty results and arbitrary line lengths on one scroll', () => {
+    const emptyFeed = { dropped: false, chunks: [] }
+    expect(JSON.stringify(jobOutputNode(job('empty', 'completed'), emptyFeed, key => key))).toContain('(no output)')
+    expect(JSON.stringify(jobOutputNode(job('live', 'running'), emptyFeed, key => key))).toContain('(no output yet)')
     for (const text of ['', '\n'.repeat(24_001), 'x'.repeat(12_000), 'x'.repeat(11_999) + '\u{1F680}', '\u{1F680}'.repeat(20_000)]) {
-      const pages = documentPages(text)
-      expect(pages.join('')).toBe(text)
-      for (const page of pages) { expect(page.length).toBeLessThanOrEqual(12_000); expect(page.isWellFormed()).toBe(true) }
+      const node = jobOutputNode(job('large', 'completed'), { dropped: false, chunks: text === '' ? [] : [ui.chunk(text)] }, key => key)
+      expect(validateMayflyUiNode(node).ok).toBe(true)
+      expect(text.isWellFormed()).toBe(true)
+      const scroll = node.kind === 'surface' && node.child.kind === 'stack' ? node.child.children.map(child => child.node).find(node => node.kind === 'scroll') : undefined
+      if (text === '') expect(scroll?.child.kind).toBe('text')
+      else {
+        expect(scroll?.child.kind).toBe('code')
+        expect(textOf(scroll?.child.kind === 'code' ? scroll.child.code : '')).toBe(text)
+      }
     }
-    const emptyRead = { chunks: [], next: 0, lossy: false }
-    expect(JSON.stringify(jobOutputNode(job('empty', 'completed'), emptyRead, [''], 1, key => key))).toContain('(no output)')
-    expect(JSON.stringify(jobOutputNode(job('live', 'running'), emptyRead, [''], 1, key => key))).toContain('(no output yet)')
     expect(validateMayflyUiNode(jobDetailsNode(job('done', 'completed'), key => key)).ok).toBe(true)
   })
 })

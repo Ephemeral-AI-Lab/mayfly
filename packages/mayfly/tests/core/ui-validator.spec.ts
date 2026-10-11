@@ -1,26 +1,32 @@
 /** Canonical UI validator quotas, narrowing, and hostile-input containment. */
 import { runInNewContext } from 'node:vm'
 import { describe, expect, it } from 'vitest'
+import type { MayflyListNode, MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
+import { ui as uiLib } from '@ephemeral-ai/mayfly-ui'
 import { ui } from '../../../ui/src/index.ts'
 import {
+  MAYFLY_UI_MAX_CHUNKS,
   MAYFLY_UI_MAX_COLLECTION,
   MAYFLY_UI_MAX_DEPTH,
+  MAYFLY_UI_MAX_ID,
+  MAYFLY_UI_MAX_LABEL,
   MAYFLY_UI_MAX_NODES,
-  MAYFLY_UI_MAX_TEXT,
   MAYFLY_UI_MAX_ITEM_BODY_NODES,
   admittedListExpanded,
   admittedListIndex,
   admittedListItem,
+  createAdmissionCache,
   deferredUiNodeMayHaveControls,
   materializeDeferredUiNode,
   validateMayflyEditorShellNode,
   validateMayflyStatusNode,
   validateMayflyUiNode,
 } from '../../src/core/ui-validator.ts'
-import { createWorkCounters } from '../../src/core/ui-work-counters.ts'
+import { createWorkCounters, type MayflyWorkCounters } from '../../src/core/ui-work-counters.ts'
+import type { MayflyAdmissionCache } from '../../src/core/ui-validator.ts'
 
-function accepted(value: unknown): unknown {
-  const result = validateMayflyUiNode(value)
+function accepted(value: unknown, counters?: MayflyWorkCounters, cache?: MayflyAdmissionCache): unknown {
+  const result = validateMayflyUiNode(value, counters, cache)
   expect(result).toMatchObject({ ok: true })
   if (!result.ok) throw new Error(result.message)
   return result.value
@@ -198,10 +204,7 @@ describe('validateMayflyUiNode', () => {
     expect(result.content).toBe('a\t\nbredxyzqC1')
   })
 
-  it('accepts exact budgets and rejects text, depth, node, and collection overflow', () => {
-    expect(validateMayflyUiNode(ui.text('x'.repeat(MAYFLY_UI_MAX_TEXT))).ok).toBe(true)
-    expect(validateMayflyUiNode(ui.text('x'.repeat(MAYFLY_UI_MAX_TEXT + 1)))).toMatchObject({ ok: false, code: 'MAYFLY_LIMIT_EXCEEDED' })
-
+  it('accepts exact budgets and rejects depth, node, and collection overflow', () => {
     let depth: unknown = ui.text('leaf')
     for (let index = 0; index < MAYFLY_UI_MAX_DEPTH; index += 1) depth = ui.surface({ child: depth as never })
     expect(validateMayflyUiNode(depth).ok).toBe(true)
@@ -211,6 +214,92 @@ describe('validateMayflyUiNode', () => {
     const groups = Array.from({ length: 2 }, (_, group) => ui.stack.column(Array.from({ length: 128 }, (_, index) => ui.text(`${String(group)}-${String(index)}`))))
     expect(validateMayflyUiNode(ui.stack.column(groups))).toMatchObject({ ok: false, code: 'MAYFLY_LIMIT_EXCEEDED', message: expect.stringContaining(String(MAYFLY_UI_MAX_NODES)) })
     expect(validateMayflyUiNode({ kind: 'fields', rows: Array.from({ length: MAYFLY_UI_MAX_COLLECTION + 1 }, () => ({ label: 'x', value: [] })) })).toMatchObject({ ok: false, code: 'MAYFLY_LIMIT_EXCEEDED' })
+  })
+
+  it('admits content text at any size, clips one-row labels, and rejects oversized ids', () => {
+    // Content is bounded by the viewport at paint time, not by admission.
+    expect(validateMayflyUiNode(ui.text('x'.repeat(2_000_000))).ok).toBe(true)
+
+    const clipped = accepted(ui.list({ role: 'browse', id: 'l', selectedIds: [], items: [{ id: 'a', label: `pre${'l'.repeat(MAYFLY_UI_MAX_LABEL)}post` }] })) as MayflyListNode
+    expect(clipped.items[0]!.label).toBe(`pre${'l'.repeat(MAYFLY_UI_MAX_LABEL - 4)}…`)
+    // The clip never splits a surrogate pair.
+    const paired = accepted(ui.list({ role: 'browse', id: 'l', selectedIds: [], items: [{ id: 'a', label: `${'l'.repeat(MAYFLY_UI_MAX_LABEL - 2)}😀tail` }] })) as MayflyListNode
+    expect(paired.items[0]!.label).toBe(`${'l'.repeat(MAYFLY_UI_MAX_LABEL - 2)}…`)
+
+    expect(validateMayflyUiNode(ui.list({ role: 'browse', id: 'l', selectedIds: [], items: [{ id: 'i'.repeat(MAYFLY_UI_MAX_ID), label: 'x' }] })).ok).toBe(true)
+    expect(validateMayflyUiNode(ui.list({ role: 'browse', id: 'l', selectedIds: [], items: [{ id: 'i'.repeat(MAYFLY_UI_MAX_ID + 1), label: 'x' }] }))).toMatchObject({ ok: false, code: 'MAYFLY_INVALID_CONTRIBUTION' })
+  })
+
+  it('admits chunked content fields of every kind and joins their text only at the wire boundary', () => {
+    const chunks = [ui.chunk('a\nb'), ui.chunk('c')]
+    const admitted = accepted(ui.stack.column([
+      ui.text(chunks),
+      ui.code(chunks, { language: 'ts' }),
+      ui.markdown(chunks),
+      ui.diagram(chunks),
+    ])) as MayflyUiNode
+    const nodes = admitted.kind === 'stack' ? admitted.children.map(child => child.node) : []
+    // Every content kind keeps the wire shape: the field is the chunk list, joined only when a consumer asks.
+    for (const node of nodes) {
+      const field = (node as { code?: unknown, content?: unknown, source?: unknown }).code
+        ?? (node as { content?: unknown }).content ?? (node as { source?: unknown }).source
+      expect(field).toHaveLength(2)
+      expect((field as readonly { text: string }[]).map(chunk => chunk.text).join('')).toBe('a\nbc')
+    }
+    // The field carries no whole-text budget: the joined size passes at any length.
+    const huge = [ui.chunk('x'.repeat(100_000)), ui.chunk('y'.repeat(100_000))]
+    expect(validateMayflyUiNode(ui.code(huge)).ok).toBe(true)
+    // Chunk texts sanitize like any content text — a sequence split across pieces can never survive.
+    const dirty = accepted(ui.code([ui.chunk('a\x1b[31mb'), ui.chunk('c\x07d')])) as { code: readonly { text: string }[] }
+    expect(dirty.code.map(chunk => chunk.text).join('')).not.toContain('\x1b')
+    expect(dirty.code.map(chunk => chunk.text).join('')).not.toContain('\x07')
+  })
+
+  it('bounds a chunked field by chunk count and contains hostile chunk input', () => {
+    const kinds = (field: unknown): unknown[] => [
+      { kind: 'text', content: field }, { kind: 'code', code: field },
+      { kind: 'markdown', source: field }, { kind: 'diagram', diagram: 'mermaid', source: field },
+    ]
+    for (const node of kinds(Array.from({ length: MAYFLY_UI_MAX_CHUNKS + 1 }, () => ui.chunk('x'))))
+      expect(validateMayflyUiNode(node)).toMatchObject({ ok: false, code: 'MAYFLY_LIMIT_EXCEEDED', message: expect.stringContaining(String(MAYFLY_UI_MAX_CHUNKS)) })
+    // The collection quota does not apply to chunks — the field has its own.
+    expect(validateMayflyUiNode(ui.code(Array.from({ length: MAYFLY_UI_MAX_COLLECTION + 1 }, (_, index) => ui.chunk(`c${String(index)}`)))).ok).toBe(true)
+
+    for (const node of [
+      { kind: 'text', content: 7 },
+      { kind: 'code', code: [7] },
+      { kind: 'code', code: ['text'] },
+      { kind: 'code', code: [{ text: 7 }] },
+      { kind: 'code', code: Object.setPrototypeOf([{ text: 'x' }], class extends Array {}.prototype) },
+      { kind: 'code', code: Object.assign([ui.chunk('a')], { 3: ui.chunk('b') }) },
+      { kind: 'code', code: Object.defineProperty([ui.chunk('a')], '0', { get: () => ui.chunk('b'), enumerable: true }) },
+    ]) expect(validateMayflyUiNode(node)).toMatchObject({ ok: false, code: expect.stringMatching(/MAYFLY_(INVALID_CONTRIBUTION|LIMIT_EXCEEDED)/) })
+    // An unknown chunk field is not an error — only the canonical `text` is kept.
+    expect(accepted({ kind: 'code', code: [{ text: 'x', extra: 'dropped' }] })).toEqual({ kind: 'code', code: [{ text: 'x' }] })
+  })
+
+  it('replays a settled chunk from the admission memo and validates only appended pieces', () => {
+    const cache = createAdmissionCache()
+    const counters = createWorkCounters()
+    // Chunks must be snapshots of the same builders module the validator checks `isWireSnapshot` against.
+    const first = uiLib.chunk('a\n')
+    const second = uiLib.chunk('b')
+    const one = accepted(uiLib.code([first], { language: 'ts' }), counters, cache) as { code: readonly { text: string }[] }
+    const validated = counters.nodesValidated
+    expect(validated).toBeGreaterThan(0)
+    // The republish shares the settled piece: the memo returns it untouched and only the new chunk validates.
+    const two = accepted(uiLib.code([first, second], { language: 'ts' }), counters, cache) as { code: readonly { text: string }[] }
+    expect(two.code[0]).toBe(one.code[0])
+    // One node + one new chunk; the settled piece replays from the memo without a count.
+    expect(counters.nodesValidated - validated).toBe(2)
+    // A fresh cache validates both pieces again — the memo is scoped to the surface's admission.
+    const other = accepted(uiLib.code([first, second], { language: 'ts' }), counters, createAdmissionCache()) as { code: readonly { text: string }[] }
+    expect(other.code[0]).not.toBe(one.code[0])
+    // Untrusted chunk objects are cloned, never memo-keyed: equal shape, no shared identity.
+    const untrusted = { code: [{ text: 'x' }] }
+    const a = accepted({ kind: 'code', ...untrusted }, counters, cache) as { code: readonly { text: string }[] }
+    const b = accepted({ kind: 'code', ...untrusted }, counters, cache) as { code: readonly { text: string }[] }
+    expect(a.code[0]).not.toBe(b.code[0])
   })
 
   it('admits large lists lazily and isolates an invalid item when it is reached', () => {
@@ -246,23 +335,17 @@ describe('validateMayflyUiNode', () => {
     expect(result.value.items[0]).toMatchObject({ id: '0' })
   })
 
-  it('bounds each admitted list item and select option by its own text quota', () => {
+  it('admits each list item and select option under its own quota', () => {
     const row = (index: number) => ({
       id: `session-${String(index)}`,
       label: `Session title ${String(index)}`,
       detail: 'd'.repeat(80),
       searchText: 's'.repeat(80),
     })
-    // 120 rows × ~190 chars ≈ 23k aggregate — over the shared tree budget but
-    // each item far under it; per-item quotas admit the picker (the /sessions
-    // regression: a populated directory rejected its own session list).
     const items = Array.from({ length: 120 }, (_, index) => row(index))
     expect(validateMayflyUiNode(ui.list({ role: 'choose', id: 'sessions', selectedIds: [], items })).ok).toBe(true)
     const options = Array.from({ length: 120 }, (_, index) => row(index))
     expect(validateMayflyUiNode({ kind: 'form', id: 'f', fields: [{ kind: 'select', id: 's', label: 'S', value: null, options }] }).ok).toBe(true)
-    // The per-item quota still applies to the item itself.
-    const oversized = [{ id: 'a', label: 'A'.repeat(MAYFLY_UI_MAX_TEXT + 1) }]
-    expect(validateMayflyUiNode(ui.list({ role: 'choose', id: 'x', selectedIds: [], items: oversized }))).toMatchObject({ ok: false, code: 'MAYFLY_LIMIT_EXCEEDED' })
   })
 
   it('contains sparse, accessor, throwing, and subclassed large list inputs', () => {

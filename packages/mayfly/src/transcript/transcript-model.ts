@@ -11,6 +11,7 @@ import { Service, type Context } from '@deepseek-ai/cordis'
 import { AttachmentId, type ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import type { MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import {
+  concatRows,
   GutterComponent,
   type MayflyComponent,
   type MayflyComponents,
@@ -352,11 +353,12 @@ export class TranscriptModelComponent implements MayflyComponent {
     const tailItems = tailEntries.length === 0 ? [] : display(tailEntries, prefix.lastSeq)
     this.pruneRows(new Set([...prefix.rowIds, ...rowIdsOf(tailItems)]))
     // A live frame is a fresh array over the shared stable rows: identity
-    // caches downstream (the frame clamp) see the change without a scan.
+    // caches downstream (the frame clamp) see the change without a scan, and
+    // the concat stays a facade so a reader paints only the window it asks for.
     let rows = prefix.rows
     if (tailFirst !== undefined) {
       const anchors = [...this.anchored.values()].filter(item => item.seq >= tailFirst)
-      rows = [...prefix.rows, ...this.renderItems(tailItems, anchors, width, policy)]
+      rows = concatRows(prefix.rows, this.renderItems(tailItems, anchors, width, policy))
     }
     this.renderedRows = { model, width, expanded: this.expanded, policy, rows }
     return rows
@@ -419,20 +421,20 @@ export class TranscriptModelComponent implements MayflyComponent {
   private anchoredRowsAt(insertions: Map<number, AnchoredContent[]>, index: number, width: number): string[] {
     const items = insertions.get(index)
     if (items === undefined) return []
-    return items.flatMap(item => {
+    return concatRows(...items.map(item => {
       if (item.cached?.width !== width) item.cached = { width, rows: item.component.render(width) }
       return item.cached.rows
-    })
+    }))
   }
 
-  /** Render display items with their anchored locals interleaved. */
+  /** Render display items with their anchored locals interleaved; the parts compose lazily. */
   private renderItems(items: readonly DisplayItem[], anchors: readonly AnchoredContent[], width: number, policy: TranscriptPresentationSnapshot): string[] {
     const insertions = this.anchoredInsertions(items, anchors)
-    if (insertions === undefined) return items.flatMap(item => this.renderItem(item, width, policy))
-    return [
-      ...this.anchoredRowsAt(insertions, 0, width),
-      ...items.flatMap((item, index) => [...this.renderItem(item, width, policy), ...this.anchoredRowsAt(insertions, index + 1, width)]),
-    ]
+    if (insertions === undefined) return concatRows(...items.map(item => this.renderItem(item, width, policy)))
+    return concatRows(
+      this.anchoredRowsAt(insertions, 0, width),
+      ...items.flatMap((item, index) => [this.renderItem(item, width, policy), this.anchoredRowsAt(insertions, index + 1, width)]),
+    )
   }
 
   private renderItem(item: DisplayItem, width: number, policy: TranscriptPresentationSnapshot): string[] {

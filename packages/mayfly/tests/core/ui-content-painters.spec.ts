@@ -2,7 +2,8 @@
 import { describe, expect, it } from 'vitest'
 import { ui } from '../../../ui/src/index.ts'
 import { renderChartRows } from '../../src/core/chart-renderer.ts'
-import { renderCanonicalView } from '../../src/core/plugin-view.ts'
+import { contentNodeRows, type ContentRowsEnv, type WindowedContentNode } from '../../src/core/content-rows.ts'
+import { MayflyContentCache } from '../../src/core/ui-content-cache.ts'
 import type { MayflyComponents, MayflySemanticColors } from '../../src/core/types.ts'
 import {
   BREATH_LEVELS, LOADER_FRAMES, breathLevel, breathPaint, loaderCell, loaderFrameGlyph, loaderVariant, shimmerText, shimmerWindow,
@@ -144,12 +145,21 @@ describe('surface chrome', () => {
 })
 
 describe('content views', () => {
-  const view = (node: Parameters<typeof renderCanonicalView>[0], width = 40) => renderCanonicalView(node, width, components, plainColors).map(strip)
+  const env: ContentRowsEnv = {
+    components,
+    colors: plainColors,
+    cache: new MayflyContentCache(),
+    bounded: false,
+    viewportRows: () => 0,
+    elide: hidden => `… +${String(hidden)} more rows`,
+    errorRows: message => [message],
+  }
+  const view = (node: WindowedContentNode, width = 40) => contentNodeRows(node, width, env).map(strip)
 
   it('elides the middle or the start of a text row and styles it', () => {
     expect(view({ kind: 'text', content: '~/work/mayfly/packages/mayfly', overflow: 'middle' }, 12)).toEqual(['~/work…ayfly'])
     expect(view({ kind: 'text', content: 'a\nb/c/d/e/f/g/h', overflow: 'start' }, 6)).toEqual(['…f/g/h'])
-    expect(renderCanonicalView({ kind: 'text', content: 'x', styles: ['strong', 'italic'] }, 10, components, plainColors)).toEqual(['\x1b[3m\x1b[1mx\x1b[22m\x1b[23m'])
+    expect([...contentNodeRows({ kind: 'text', content: 'x', styles: ['strong', 'italic'] }, 10, env)]).toEqual(['\x1b[3m\x1b[1mx\x1b[22m\x1b[23m'])
   })
 
   it('aligns field labels, leaves an empty label bare, and indents a titled section body', () => {

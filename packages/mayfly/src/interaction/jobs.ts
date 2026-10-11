@@ -6,15 +6,13 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-commands'
 import { JobId, type JobOutputRead, type JobView } from '@deepseek-ai/dsh-jobs'
 import { isDeepStrictEqual } from 'node:util'
-import { ui, type MayflyListItem, type MayflyOverlayHandle, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
+import { ui, type MayflyContentChunk, type MayflyListItem, type MayflyOverlayHandle, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import type { MayflyTranslate } from '../frontend/index.ts'
 import { openAgentOverlay } from './agent-overlay.ts'
 import { interactionTranslator, mountInteractionLocale, observeInteractionLocale } from './locale.ts'
-import { documentPages } from './document-pages.ts'
 
 export const name = 'mayfly-jobs'
 export const inject = ['commands', 'jobs', 'mayflyCurrentAgent', 'mayflyOverlays']
-const PAGE_FORM = { pagePath: [], formId: 'output-page' } as const
 const jobSource = (job: JobView) => [{ resourceId: `job/${job.id}`, revision: JSON.stringify([job.status, job.finishedAt ?? null]) }]
 
 export function isLiveJob(job: JobView): boolean { return job.status === 'running' || job.status === 'stopping' }
@@ -51,50 +49,85 @@ export function jobDetailsNode(job: JobView, t: MayflyTranslate): MayflyUiNode {
   ]) })
 }
 
-export function jobOutputNode(job: JobView, read: JobOutputRead, pages: readonly string[], page: number, t: MayflyTranslate): MayflyUiNode {
-  const text = pages[page - 1]!
+/**
+ * The appended tail of one job's retained output. `chunks` are held wire pieces — publishes share their identities,
+ * so admission validates each ring piece once. `dropped` marks a lossy read (retention trimmed bytes below the
+ * cursor); on it the held pieces are dropped with the read, so the document stays the ring's retained window.
+ */
+interface JobOutputFeed {
+  /** The ring offset the next `readAt` resumes from. */
+  cursor: number
+  dropped: boolean
+  readonly chunks: MayflyContentChunk[]
+}
+
+/**
+ * Pieces one feed keeps before older ones join, far under the admission cap (`MAYFLY_UI_MAX_CHUNKS`): a job that
+ * prints a line at a time for hours would otherwise outgrow it and every later publish would be rejected.
+ */
+export const JOB_OUTPUT_FEED_CHUNKS = 256
+
+/**
+ * Join neighbours until the feed fits {@link JOB_OUTPUT_FEED_CHUNKS}. Only the older half joins, so the pieces a
+ * following tail paints keep their identity, and the smallest pair joins first, so sizes stay balanced and a join
+ * copies little rather than rewriting one ever-growing head.
+ */
+function settleOutput(chunks: MayflyContentChunk[]): void {
+  while (chunks.length > JOB_OUTPUT_FEED_CHUNKS) {
+    const older = chunks.length - JOB_OUTPUT_FEED_CHUNKS / 2
+    let pair = 0
+    for (let index = 1; index + 1 < older; index += 1) {
+      if (chunks[index]!.text.length + chunks[index + 1]!.text.length < chunks[pair]!.text.length + chunks[pair + 1]!.text.length) pair = index
+    }
+    chunks.splice(pair, 2, ui.chunk(chunks[pair]!.text + chunks[pair + 1]!.text))
+  }
+}
+
+/** Append everything `read` holds under the feed's cursor; a lossy read drops the held pieces with the missed bytes. */
+function appendOutput(feed: JobOutputFeed, read: JobOutputRead): boolean {
+  if (read.lossy) {
+    feed.chunks.length = 0
+    feed.dropped = true
+  }
+  for (const chunk of read.chunks) if (chunk.at >= feed.cursor) feed.chunks.push(ui.chunk(chunk.text))
+  settleOutput(feed.chunks)
+  feed.cursor = read.next
+  return read.chunks.length > 0 || read.lossy
+}
+
+export function jobOutputNode(job: JobView, feed: { readonly dropped: boolean, readonly chunks: readonly MayflyContentChunk[] }, t: MayflyTranslate): MayflyUiNode {
   return ui.surface({ title: t('Job {id}', { id: String(job.id) }), chrome: 'overlay', padding: 1, child: ui.stack.column([
     ui.fields([{ label: t('Status at read'), value: [{ text: t(job.status) }] }]),
-    ...read.lossy ? [ui.text(t('(earlier output was dropped by retention)'), { tone: 'muted' })] : [],
-    ui.child(ui.scroll(text === '' ? ui.text(t(isLiveJob(job) ? '(no output yet)' : '(no output)'), { tone: 'muted' }) : ui.code(text), { id: `job-output-document/${String(page)}`, scrollbar: true }), { basis: 0, grow: 1, minSize: 1 }),
-    ...pages.length === 1 ? [] : [
-      ui.form({ id: PAGE_FORM.formId, fields: [{ kind: 'number', id: 'page', label: t('Page'), value: page, min: 1, max: pages.length, step: 1, required: true }] }),
-      ui.actions({ id: 'page-actions', items: [
-        { id: 'first', label: t('First'), submit: [PAGE_FORM], disabled: page === 1 },
-        { id: 'previous', label: t('Previous'), submit: [PAGE_FORM], disabled: page === 1 },
-        { id: 'go', label: t('Go to page'), submit: [PAGE_FORM] },
-        { id: 'next', label: t('Next page'), submit: [PAGE_FORM], disabled: page === pages.length },
-        { id: 'last', label: t('Last'), submit: [PAGE_FORM], disabled: page === pages.length },
-      ] }),
-    ],
+    ...feed.dropped ? [ui.text(t('(earlier output was dropped by retention)'), { tone: 'muted' })] : [],
+    ui.child(ui.scroll(feed.chunks.length === 0 ? ui.text(t(isLiveJob(job) ? '(no output yet)' : '(no output)'), { tone: 'muted' }) : ui.code([...feed.chunks]), { id: 'job-output-document', scrollbar: true, follow: 'end' }), { basis: 0, grow: 1, minSize: 1 }),
     ui.actions({ id: 'output-actions', items: [{ id: 'close', label: t('Close'), dismiss: true }] }),
   ]) })
 }
 
-/** A read result is retained in its child Fiber, never reread by rendering or paging. */
+/** A read result is retained in its child Fiber, never reread by rendering or scrolling. */
 async function showOutput(ctx: Context, agent: Agent, job: JobView, read: JobOutputRead, signal: AbortSignal, t: MayflyTranslate): Promise<void> {
-  const pages = documentPages(read.chunks.map(chunk => chunk.text).join(''))
+  const feed: JobOutputFeed = { cursor: read.next, dropped: read.lossy, chunks: read.chunks.map(chunk => ui.chunk(chunk.text)) }
+  settleOutput(feed.chunks)
   ctx.mayflyOverlays.close('mayfly.jobs.output')
   let handle: MayflyOverlayHandle | undefined
-  handle = await openAgentOverlay(ctx, agent, { id: 'mayfly.jobs.output', presentation: 'editor', capturing: true }, jobOutputNode(job, read, pages, 1, t), owner => {
+  handle = await openAgentOverlay(ctx, agent, { id: 'mayfly.jobs.output', presentation: 'editor', capturing: true }, jobOutputNode(job, feed, t), owner => {
+    const off = ctx.jobs.events.subscribe({ owner: agent.id }, event => {
+      if (event.type !== 'output' || event.id !== job.id || handle?.closed !== false) return
+      if (appendOutput(feed, ctx.jobs.readAt(job.id, feed.cursor, agent.id))) handle?.set(jobOutputNode(job, feed, t))
+    })
+    owner.effect(() => off)
     owner.effect(() => observeInteractionLocale(owner, () => {
       if (handle?.closed !== false) return
-      // Locale updates reuse the published baseline; the shared form retains any draft.
-      const node = owner.mayflyOverlays.list().find(entry => entry.id === 'mayfly.jobs.output')!.node
-      if (node.kind !== 'surface' || node.child.kind !== 'stack') return
-      const form = node.child.children.map(child => child.node).find(node => node.kind === 'form')
-      const page = form?.fields.find(field => field.id === 'page')?.value ?? 1
-      handle.set(jobOutputNode(job, read, pages, Number(page), t))
+      // Locale updates republish only over this surface's own document; a foreign registration wins.
+      const node = owner.mayflyOverlays.list().find(entry => entry.id === 'mayfly.jobs.output')?.node
+      if (node === undefined || node.kind !== 'surface' || node.child.kind !== 'stack'
+        || !node.child.children.some(child => child.node.kind === 'scroll' && child.node.id === 'job-output-document')) return
+      handle.set(jobOutputNode(job, feed, t))
     }))
-    return event => {
-      if (event.kind !== 'submit') return { kind: 'completed' }
-      const page = event.submission.forms[0]?.fields.find(field => field.id === 'page')?.value
-      if (typeof page !== 'number' || !Number.isInteger(page)) return { kind: 'failed', message: t('Invalid page') }
-      const action = event.submission.actionId
-      const target = action === 'first' ? 1 : action === 'last' ? pages.length : action === 'previous' ? page - 1 : action === 'next' ? page + 1 : page
-      return { kind: 'accepted', node: jobOutputNode(job, read, pages, Math.max(1, Math.min(pages.length, target)), t), source: [] }
-    }
+    return event => event.kind === 'submit' ? { kind: 'cancelled' } : { kind: 'completed' }
   }, { signal, reopen: 'replace' })
+  // Whatever appended between the first read and the open (or before the subscription went in) is caught up here.
+  if (handle?.closed === false && appendOutput(feed, ctx.jobs.readAt(job.id, feed.cursor, agent.id))) handle.set(jobOutputNode(job, feed, t))
 }
 
 export function apply(ctx: Context): void {

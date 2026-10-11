@@ -112,6 +112,23 @@ export function clampFrameFrom(previous: ClampedRows | undefined, lines: string[
 }
 
 /**
+ * One row of {@link clampFrameFrom}, for a source that must not be scanned: an over-wide row is sliced and recorded.
+ * The caller's map materializes the source row it is handed, so a virtual source paints and measures only the rows
+ * someone reads. It never consults an earlier frame: a lazy clamp that read through the previous one would keep every
+ * frame before it alive and repaint old frames' rows to compare them.
+ * @param line - the source row.
+ * @param index - the row's index, as recorded for the sink.
+ * @param width - the viewport width.
+ * @param sink - where a newly clamped row is recorded.
+ * @returns the row to hand to pi-tui.
+ */
+export function clampRow(line: string, index: number, width: number, sink?: OverflowSink): string {
+  if (visibleWidth(line) <= width) return line
+  sink?.record({ index, columns: width, width: visibleWidth(line), line })
+  return sliceByColumn(line, 0, width, true)
+}
+
+/**
  * pi-tui's own log-directory chain (`PI_CODING_AGENT_DIR ?? ~/.pi/agent`),
  * so `mayfly-overflow.log` lands next to `pi-crash.log`.
  * @returns the directory for the default overflow sink.

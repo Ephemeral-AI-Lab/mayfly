@@ -94,10 +94,14 @@ keeps its row and names its successor, because the Phase 1 record cites it.
 | D23 | **Finalize one component at a time.** | A component and the API it needs are developed in review rounds with the owner and fixed together when the owner accepts it (§7). The change that finalizes it deletes the code it replaces. A finalized component is reopened only at the owner's request. |
 | D24 | **Finalized components land on `main` one at a time.** | Supersedes D18 after Phase 1. `main` may show old and new surfaces side by side during a phase; no release is cut until the phase is accepted as a whole. No long-lived integration branch. |
 | D25 | **Decision tests and a coverage floor.** | Tests record what was decided: accepted frames, keys, writes, lifecycle, width, and work budgets. The per-file 100% coverage gate becomes a coverage report with a repository-wide floor that runs in the full tier (Phase 2b); a test that only reaches a line is not written. |
-| D26 | **Cost is bounded by what is on screen.** | The whole-tree text quota (`MAYFLY_UI_MAX_TEXT`, 20,000 characters) and the paint-time string cap go. Long text is chunked, admitted, and painted as the window reaches it; one memory ceiling per surface protects the renderer (§4.2, Phase 2c). |
+| D26 | **Cost is bounded by what is on screen.** | The whole-tree text quota (`MAYFLY_UI_MAX_TEXT`, 20,000 characters) and the paint-time string cap go. Long text is chunked, admitted, and painted as the window reaches it; a derived-row cache bounds memory by eviction (D33, §4.2, Phase 2c). |
 | D27 | **A whole-architecture performance phase.** | Phase 7 profiles the finished product on real workloads and restructures what the measurements name, breaking anything it must, then resets the budgets and the bench ceilings (§7.1). Earlier phases fix only local problems. |
 | D28 | **Scenarios are the automated oracle of the live product.** | One catalog of scenarios drives review, frames, goldens, perf, and screenshots (Phase 2b). The gate compares cell grids read from a real `dsh` under a PTY. Screenshots from xterm.js in headless Chrome, and wall-clock perf measured A/B against the merge-base, are reported, not gated. The work-budget counters (§7.1) stay the deterministic perf gate. |
 | D29 | **Verification follows the change.** | An import graph and declared inputs select the specs, checks, and scenarios a change can affect. A file no rule claims escalates to the full tier. The full tier runs in CI on every push to `main`, nightly, at a release, and at a phase end. A local run never measures coverage. |
+| D30 | **Chunks on content fields.** | Append-only text (a streamed answer, job output, a live log) is a `chunks` list on the text field itself, and an append shares every chunk before the new one, so identity does the diffing (§4.2). Chunks are frozen wire data, not handles. |
+| D31 | **A long line wraps by character.** | A line past 16 KB is its own segment and wraps on a column boundary, with column samples that let a window start anywhere in it (§4.2). |
+| D32 | **Phase 2c windows the compiled surfaces.** | Overlays, panes, the node slot, list bodies, the content container, and the gutter pay for the rows in view. The legacy transcript view still builds every row of a mounted entry; Phase 3a replaces that path (§4.2 scope). |
+| D33 | **One derived-row cache, evicted, never an error.** | Each renderer keeps one byte-budgeted LRU of painted rows; the rows a frame uses are pinned, and an evicted segment repaints on demand inside the frame's bound. It replaces D26's one memory ceiling per surface, which was still a hard cutoff that rejected content. |
 
 ### 2.2 Spec §8 questions, resolved
 
@@ -461,7 +465,7 @@ memo), `clampFrameFrom` in `core/frame-clamp.ts` (frames compared by identity), 
 (bounded list work). The counters that prove the reuse are passed through the compiler options (§7.1), never held in
 a singleton.
 
-### 4.2 Content at any size (D26)
+### 4.2 Content at any size (D26, D30-D33)
 
 **The problem.** Admission charges every string of one publish to a single budget, `MAYFLY_UI_MAX_TEXT` (20,000
 UTF-16 units, `core/ui-validator.ts`), beside the node, depth, collection, image, and chart quotas. Ids, labels, code,
@@ -470,19 +474,47 @@ publish over the budget is rejected, never cut: a first publish shows *This surf
 one leaves the old content on screen, and a compiled leaf paints up to three *Mayfly UI rejected* rows. A second wall
 sits at paint time: `PLUGIN_VIEW_MAX_CHARS` (`core/plugin-view.ts`) throws for any single string over 20,000. List
 items and select options each get a fresh budget, which is why `/sessions` works, but any one item is still capped.
+The cap is too loose where it holds, too: a 2,000-item list may legally carry 40 million characters, and nothing
+bounds paint work or the rows kept in memory.
 
-What it costs today and what it would cost the plan:
+What it costs today:
 
 - A tool card for a write over 20 KB, or an edit whose old and new text together pass it, renders the rejection
   instead of the diff (`transcript/tool-model.ts` through `canonical-node-renderer.ts`).
 - A plan longer than 20 KB renders as rejection rows (`interaction/plan-document.ts`, one `ui.markdown`).
-- Job output and trace payloads are cut into 12,000-character pages by hand (`interaction/document-pages.ts`), with a
-  page form and First/Previous/Go/Next/Last actions in `jobs.ts` and `trace-command.ts`; the scroll position resets on
-  every page.
+- Job output and trace payloads were cut into 12,000-character pages by hand, with a
+  page form and First/Previous/Go/Next/Last actions; the scroll position reset on
+  every page. 2c.4 replaced them with one scroll each.
 - The changelog renders every release in one tree and grows past the budget; fixtures are cut to stay under it
   (`tests/core/width-scan-patterns.spec.ts`).
 - The transcript of Phase 3 would reject any answer, diff, or plan row over 20,000 characters, and in a short session
   the whole stream.
+
+**What a stage costs** (1 MB sources, 118 columns, one machine, Phase 2c measurements):
+
+| Stage | Code | Log | Markdown | CJK/emoji |
+| --- | --- | --- | --- | --- |
+| Sanitize (`ANSI_OR_OSC`, `UNSAFE_CONTROLS`) | 2.4 ms | 1.0 ms | 1.2 ms | — |
+| Line index | 0.8 ms | 0.2 ms | 0.1 ms | — |
+| Row estimate, no painting | 2 ms ASCII fast path; 153 ms through `visibleWidth` | 57 ms | 2.0 ms | 32 ms code-point table; 388 ms through `visibleWidth` |
+| Paint every row | 300 ms | 429 ms | 155 ms wrapped; 608 ms through `Markdown` | 469 ms |
+| Painted rows kept, one width | 2.6 MB | 2.3 MB | 2.3 MB | — |
+| Paint one 4 KB segment | 0.1 ms | 1.1 ms | 0.5 ms | — |
+| Estimate error against the real wrap | 0.0% | -0.8% | -0.7% | 0.0% |
+
+A 1 MB file with 60 one-line edits aligns to 40,748 changed rows and paints in 669 ms through `alignDiffLines`; a
+Myers diff over interned line ids (the `diff` package, already a dependency) finds the 120 changed rows in 7.2 ms, and
+`paintDiffRows` overflows the call stack near 200,000 operations on a `Math.max(...)` spread. One 1 MB line takes
+348 ms to wrap. Painting one 4 KB segment costs 0.1-1.1 ms wherever it sits in the document, which is the whole
+argument for windows.
+
+**Why painting is the wall.** pi-tui's contract is `render(width): string[]`, every row or none. Its layout reads a
+leaf's `lines.length` for the height and indexes only the rows it clips, so the renderer already paints just what is
+on screen; what it lacks is the height of the rows it has not painted. Mayfly's own containers are the problem: each
+one flattens, maps, or decorates its child's whole array (`ColumnStack`, `framedSurfaceComponent`,
+`FrameClampedContainer`, `ScrollRegion`, the list painter), and a retained leaf memoizes whole arrays, about 10 MB of
+rows per MB of source at the cached widths. A `ScrollView` therefore bounds nothing: its child has already built every
+row before a clip exists.
 
 **The rule.** Work and memory are bounded by the rows in view, never by the size of what was published. Admission
 checks shape and safety once per identity; it does not police how much text an author may legitimately show. This is
@@ -492,20 +524,37 @@ what `docs/mayfly-seams.md` already promises: core validates, compiles, and pain
 
 | Part | Behavior | Builds on |
 | --- | --- | --- |
-| Chunked text | The text of a `text`, `rich-text`, `markdown`, `code`, and `diff` leaf is split at admission into immutable, line-aligned chunks of bounded size, memoized by node identity. A split never breaks a line when it can avoid it and never splits a surrogate pair. | The splitting rule of `documentPages` |
-| Append keeps identity | Append-only content (a streamed answer, job output, a live log) keeps the identity of every chunk before the new one, so an append admits, wraps, and paints only the new chunk. Whether the wire carries a chunk list or a builder extends a previous node is decided in Phase 2c with the owner. | `freezeWire` identity, the admission memo |
-| Admit when visible | Sanitizing, wrapping, highlighting, and diffing run per chunk when the scroll window reaches it, and are remembered per width. An unvisited chunk reports its height from its line count until it is first painted. | Deferred hidden branches (`deferredUiNode` in `ui-validator.ts`), `lazyListItems` |
-| Windowed extent | Scroll extent and the scrollbar come from row-height prefix sums over chunks, so a scroll step paints the rows it reveals. | `core/ui-row-cache.ts`, the list window, `core/ui-scroll-region.ts` |
-| One memory ceiling | The whole-tree text budget and `PLUGIN_VIEW_MAX_CHARS` go. A surface has one ceiling on the bytes it retains, measured in MB and set from measurements in Phase 2c, so that ordinary content (a 1 MB diff, a long plan, a long log) never reaches it. Past the ceiling, the error names the surface. Depth limits and the node quotas of containers that are not lazy stay, because they bound layout work. | — |
-| Plain data | The wire carries strings and frozen arrays only: no source handle, callback, or Promise (root `AGENTS.md`). | — |
+| Virtual rows | A leaf that windows its content hands its parent a frozen array facade over a row source: `length` is real, row *i* is painted on first read, and every read is counted. pi-tui reads `length` and the clipped rows, so a window flows through the native layout with no pi-tui change. Every Mayfly pipe either keeps the rows lazy (concat, map, slice, the scrollbar column) or is bounded by the viewport; a spec drives a counting source through every pipe and pins pi-tui's access pattern against an upgrade. A source whose row map can move (a lazily painted document whose estimates become painted counts) carries a revision, and a facade drops the rows it read under an old one; a document painted whole when it is built is fixed, so a pipe over ordinary content never checks one. The `unclamped` chain a scroll follows reads through facades that keep a bounded window, so a retained tree inside a scroll paints once and a scroll across a whole document holds no more than that window. | `lazyListItems` |
+| Segments | The unit of measure, paint, and cache, cut per kind under a 4 KB / 64-row ceiling. Text and code cut at runs of whole lines; a line past 16 KB is its own segment and wraps by character (D31), with column samples every 256 units so a window can start inside it. Markdown cuts only at a blank line outside fences and HTML blocks, never between list items or inside a table, with reference definitions gathered in one pass. A diff's segments are its hunks, aligned by Myers over interned line ids under a `maxEditLength` bound, anchored on lines unique to both sides past it. | `documentPages`' boundary rules |
+| Two-tier extents | An unseen segment reports an estimate: per-line column counts (an ASCII fast path, else a code-point East-Asian table; `width.ts` stays the truth) wrapped arithmetically, plus the kind's structure, kept in a prefix-sum tree. Painting replaces the estimate with the exact count, which is kept after the rows are evicted. A scroll paints the segments under its window before it exposes rows, so the row map of a frame is exact where it is seen; corrections land off screen, and a source anchor absorbs the rest. | — |
+| Field classes at admission | Content fields (text, Markdown, code, diff, diagram, rich-text spans, string list bodies) carry no length cap. Ids reject past 1,024 units. One-row labels (labels, titles, badges, details, hints, `searchText`, chart labels, `alt`, notifications) clip at 4,096 units, surrogate-safe with an ellipsis. Drafts keep a 100,000-unit budget per tree (`MAYFLY_UI_MAX_DRAFT_TEXT`). The node, depth, collection, image, and chart quotas stay; they bound layout work. | — |
+| The derived-row cache (D33) | One byte-budgeted LRU per renderer holds painted segment rows by (identity, width, epoch); the rows of the current and previous frame are pinned. Eviction is never an error: a segment repaints inside the same frame bound. The size is set from the measurements above; about 64 MiB holds 25 MB of source painted at one width. | `UiRowCache`, the retained variants |
+| Append keeps identity (D30) | Content fields accept a `chunks` list of frozen `{ text }` parts. An append shares every chunk before the new one; admission memoizes per chunk and the line index is reused per chunk, so an append validates one node, admits the delta plus the boundary chunk, and paints the tail segment only while following. Sanitizing stays eager and per chunk: `UNSAFE_CONTROLS` removes controls individually, so a boundary can cost cosmetics, never safety. | `freezeWire` identity, the admission memo |
+| Anchors | A scroll position stays a source position. A document block holds the admitted leaf and its length, not a copy of its source; an unchanged leaf costs nothing on republish; rows and anchors map through the leaf's row source instead of a re-wrap of the whole text per frame. | `UiDocumentBlock`, `UiDocumentAnchor` |
+| Windowed scrolls | A scroll over virtual rows paints the segments under its previous window, then exposes a facade whose visible span is exact. A semantic scroll derives its top from the anchor each frame, so an estimate correction never moves visible text; a plain index scroll corrects only above its painted window. Follow-tail reads the end from the painted tail segments. | `SemanticScrollView`, `core/ui-scroll-region.ts` |
+| List bodies | An open item body is a nested row source; the list window paints the body rows inside it. | `core/ui-list-paint.ts` |
+| Scope (D32) | Compiled surfaces (overlays, panes, the node slot, list bodies), the content container, and the gutter window. The legacy transcript view still builds every row of a mounted entry until Phase 3a, so an expanded 1 MB card or a long plan paints in full once per width. Outside any scroll, on the alternate screen, a content leaf paints at most the viewport's rows plus a `… N more rows` row. pi-tui's own full-row scans (the alternate screen's search and prompt jumps) materialize rows only when invoked and stay until Phase 3e. | — |
+| Plain data | The wire carries strings and frozen arrays only: chunks are frozen data, no source handle, callback, or Promise (root `AGENTS.md`). | — |
 
-**What it deletes.** `interaction/document-pages.ts` and the page forms of job output and trace details (they become
-a scroll view with follow-tail), the paint-time `RangeError`, the fixture cut in `width-scan-patterns.spec.ts`, and
-`admitNotificationMessage`'s reuse of the text budget (a notification gets its own length rule).
+**What it deletes.** `MAYFLY_UI_MAX_TEXT`, `PLUGIN_VIEW_MAX_CHARS` and its `RangeError`, `renderCanonicalView`'s
+paint-everything path for the content kinds, the full per-width row memo of those kinds, `rowOffsets`' re-wrap of the
+document on every frame, `interaction/document-pages.ts` and the page forms of job output and trace details (each
+becomes a scroll view with follow-tail), `DIFF_ALIGN_MAX_ROWS` with the LCS table and the `Math.max(...)` spreads that
+overflow past 200,000 operations, `admitNotificationMessage`'s reuse of the text budget (a notification gets its own
+length rule), and the fixture cut in `width-scan-patterns.spec.ts`.
 
-**Gate rows** (§7.1, added in Phase 2c): a 1 MB document scrolled by one page admits and paints only the chunks in the
-new window; appending one chunk to a 1 MB log admits one chunk; a 2,000-item stream that holds a 200 KB diff costs per
-step what W4 costs.
+**Gate rows** (§7.1): W18-W24, each baselined from its first measurement; `budgets.json` holds the counts. A separate
+spec scrolls a 50 MB document end to end and checks the cache never passes its budget.
+
+| Row | Workload | Step | Budget |
+| --- | --- | --- | --- |
+| W18 | 1 MB of code in a declared-height scroll; again in an overlay's layout-driven scroll (frame workload) | PageDown | 0 validated or compiled; rows materialized ≤ viewport + one segment |
+| W19 | the same document | resize 100 to 99 | rows ≤ viewport + one segment; lines estimated ≤ the document's lines |
+| W20 | 10 MB of code | End | rows ≤ viewport + two segments |
+| W21 | a 1 MB file with 60 edits | first paint | rows ≤ viewport; the alignment counts 120 changed rows |
+| W22 | 1 MB of Markdown | PageDown | rows ≤ viewport + one block segment |
+| W23 | a 1 MB chunked log, following | append 100 units | units admitted ≤ 100 + one chunk; 1 segment painted |
+| W24 | a 2,000-item stream holding a 200 KB diff and a 1 MB Markdown body | the last item changes | W4's figures |
 
 ## 5. Phases
 
@@ -1790,10 +1839,51 @@ The A/B and the outputs:
 | 2b.6b | in review | `feat/2b-6b-app-scenes` |
 | 2b.9 | in review | `feat/2b-9-typed-tests` |
 
-**2c Content at any size** (§4.2, D26). Chunked text, admission and painting when visible, append identity, the memory
-ceiling, and the gate rows. The owner reviews a 1 MB diff, a long plan, and job output following its tail in the
-workbench. Job output and trace details become scroll views with follow-tail (their final look is decided in Phase 6),
-and `interaction/document-pages.ts` with the page forms is deleted.
+**2c Content at any size** (§4.2, D26, D30-D33). The text quota and the paint-time cap go; a publish costs what its
+new text costs, a frame costs the rows in view, and memory is bounded by eviction, never by rejection. The owner
+reviews a 1 MB diff, a long plan, and job output following its tail in the workbench. Job output and trace details
+become scroll views with follow-tail (their final look is decided in Phase 6), and `interaction/document-pages.ts`
+with the page forms is deleted.
+
+| Slice | Delivers | Deletes |
+| --- | --- | --- |
+| 2c.0 | This design record: the measurements, the mechanism, D30-D33, the gate rows | — |
+| 2c.1 | `core/ui-rows.ts`: virtual rows over a row source (counted reads, lazy concat, map, slice, marker scan), and every pass-through pipe kept lazy or bounded by the viewport: `ColumnStack` and `RowStack`, the scrollbar-column map, `framedSurfaceComponent` and `pad`, the glyph rows, `CompiledSurface.renderFrame`'s scans and pinned cut, the `retain` verifier, `padColumns`, `FrameClampedContainer`, `LocalActivityRegion`, the lane `fit` maps. The pi-tui access pattern (`length` plus the clipped rows) is pinned by a counting-source spec | — |
+| 2c.2 | Admission field classes: content fields uncapped, ids rejected past 1,024 units, one-row labels clipped at 4,096, drafts at 100,000 per tree (`MAYFLY_UI_MAX_DRAFT_TEXT`); `admitNotificationMessage` gets its own length rule; the Website limits section | `MAYFLY_UI_MAX_TEXT` and its export, its validator and admission-cache tests, the fixture cut in `width-scan-patterns.spec.ts` |
+| 2c.3 | `core/width-estimate.ts` (ASCII fast path, code-point table), `core/content-segments.ts` (line index, 4 KB / 64-row segments, long-line segments per D31, prefix-sum extents), `core/ui-content-cache.ts` (D33), `core/content-rows.ts` (windowed painters for text, code, rich text without motion, fields, sections), scrolls that resolve their window before exposing rows, the outside-a-scroll clamp, `segmentsPainted` and `linesEstimated` counters, W18-W20 | `PLUGIN_VIEW_MAX_CHARS` and its `RangeError`, `renderCanonicalView`'s paint-everything path for these kinds, their full per-width row memo |
+| 2c.4 | Anchors through row sources: a document block holds the admitted leaf, remapping touches the first changed segment only, no per-frame re-wrap; `traceDetailPanelModel` and `jobOutputNode` as one `ui.scroll(ui.code(…))` each | `rowOffsets`, the block source copies, `interaction/document-pages.ts`, both page forms and their handlers, the page locale keys (`Page`, `First`, `Previous`, `Next page`, `Last`, `Go to page`, `Invalid page`), the paging tests |
+| 2c.5 | `diff-align.ts` on Myers over interned line ids under `maxEditLength`, anchored on unique lines past it, memoized per admitted diff; hunk segments with exact extents; `maxRows` counts exact; gutter width from the largest line number | `DIFF_ALIGN_MAX_ROWS`, the LCS table, the `Math.max(...)` spreads (also in `diagramSource`) |
+| 2c.6 | `core/markdown-rows.ts`: marked-token units inside `splitRichDocument` segments (4 KB budget, cuts only beside `space` tokens, `def` raws gathered once and injected per fragment minus tags the fragment resolves, oversized tokens get segmented `lines` children, Mermaid rides the diagram seam); `MarkdownRowSource` (Fenwick counts, `markerFree`, `rowOf`/`offsetOf` for document anchors), `markdown` through `contentLeafComponent`, the segmented-equals-whole property test, W22; `renderChecked` keeps its window virtual in main mode and reads markers through `seekMarker` (`ownKeys` on `virtualRows`, `mapRows` delegates `seekMarker`); transcript rows and expanded tool bodies compose through `concatRows` | the `markdown` leaf's whole-document `createMarkdown` paint; the flatMap/spread composition of canonical transcript rows |
+| 2c.7 | `chunks` on content fields (D30): `MayflyContentField` contracts and the `ui.chunk`/`textOf` builders in `packages/ui`, `MAYFLY_UI_MAX_CHUNKS` and the per-chunk `cache.chunks` admission memo, `scanContentLines`/`indexMergedLines` chunk-boundary line joins with `indexedField`/`chunkScans` memos, job output as an append-only chunk feed on a `follow: 'end'` scroll fed by `jobs.events` and `readAt` with a catch-up read and `drop` on retention trims, the Website reference, W23 | — |
+| 2c.8 | An open list body as a nested row source: a string body keeps one `scanContentLines` table per admitted item and answers rows through a virtual source (guide, indent, clip on demand, `rowsMaterialized` counted); a node body's `paintBody` result flows `mapRows` into `concatRows`/`sliceRows` untouched; `UiRowCache.readLines` counts a stored facade as materialized work, not painted rows; the list component composes its query row, counter, and body through `concatRows`; W24 | the string body's `split`+`clipRow` paint-everything path and the `[...body]` materializing spread in the list component |
+
+**Order and acceptance.** 2c.1 and 2c.2 land first (2c.3 needs both); then 2c.4-2c.6 and 2c.8 may go in any order, one
+in review at a time; 2c.7 needs 2c.4's anchors. Each slice is reviewed like a component (§7) and merges on its own.
+
+- **Interim states a slice may leave:** until 2c.3, a single string over 20,000 still meets the paint-time cap; until
+  2c.6, a large Markdown document paints in full, which admission rejects today.
+- **Acceptance checks:**
+  - **2c.1:** every golden identical; the counting-source spec shows a 1,000,000-row document paint at most the
+    viewport's rows through each pipe and through pi-tui's `renderLayoutFrame`.
+  - **2c.3:** PageDown, End, and a resize inside the `content` scenario's 1 MB write read steady in the workbench; a
+    collapsed card of it shows its head rows only.
+  - **2c.5:** the 1 MB edit of `content` shows exactly its changed hunks.
+  - **2c.7:** a job that prints for a while follows its tail, keeps its place unfollowed, and survives a reload.
+- **Phase-level:** the owner reviews the 1 MB diff, the long plan, and job output following its tail on
+  `dsh --profile mayfly-2c` at 120 and 60 columns, with `NO_COLOR=1`, ASCII glyphs, and reduced motion; the `content`
+  scenario's checkpoints are goldens; `perf-content` reports the A/B; the full tier is green.
+
+| Slice | Status | Branch |
+| --- | --- | --- |
+| 2c.0 | in review | `feat/2c` |
+| 2c.1 | in review | `feat/2c` |
+| 2c.2 | in review | `feat/2c` |
+| 2c.3 | in review | `feat/2c` |
+| 2c.4 | in review | `feat/2c` |
+| 2c.5 | in review | `feat/2c` |
+| 2c.6 | in review | `feat/2c` |
+| 2c.7 | in review | `feat/2c` |
+| 2c.8 | in review | `feat/2c` |
 
 **2d The foundation review.** The owner reviews the basic components in the gallery with the workbench, covering what
 checkpoints A to C were to check: each basic scene beside the prototype at 120 and 60 columns, with `NO_COLOR=1`,
@@ -2221,7 +2311,7 @@ the slice:
 | Screenshots differ between machines | They gate nothing (D28): the cell grid gates, and a PNG is compared with the merge-base build rendered on the same machine |
 | A wall-clock perf verdict is noise | Interleaved A/B runs from fresh boots with a noise band and a rank test; an A/A calibration in 2b.7; the deterministic work-budget counters stay the gate |
 | The stream as one list is slower than today's cached components | The engine (§4.1) reuses every unchanged item; W4 gates it on a synthetic stream since Phase 1 and on the real transcript in Phase 3a; memoized frozen items keep identity through `freezeWire` |
-| Lifting the text quota exposes the renderer to huge content | Cost is bounded by the rows in view (§4.2); one memory ceiling per surface names the surface that passes it; depth and the node quotas of containers that are not lazy stay |
+| Lifting the text quota exposes the renderer to huge content | Cost is bounded by the rows in view (§4.2); painted rows live in one evicting cache per renderer (D33); depth and the node quotas of containers that are not lazy stay |
 | Local performance fixes pile up into an incoherent architecture | Rounds fix only local problems and record the rest; Phase 7 restructures on measurement and resets the budgets (D27) |
 | A cache serves a stale row | Keys are frozen-node identity plus explicit epochs (theme, keymap, locale, screen mode, width); `test:retained` repaints on every hit and fails on a difference |
 | Wrapping the pi-tui editor in a node control loses editing behavior | `prompt` reuses the existing adapter; drafts live in the frontend model; platform acceptance for paste and IME at the Phase 4 gate |

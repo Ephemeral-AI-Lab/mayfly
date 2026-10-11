@@ -7,6 +7,7 @@
 
 import { Context, Service } from '@deepseek-ai/cordis'
 import { NodeSlotHost, type MayflyNodeSlot, type MayflyNodeSlotCompiler, type MayflyNodeSlotRegion } from './node-slot.ts'
+import { concatRows } from './ui-rows.ts'
 import type { MayflyTerminalRuntime } from './terminal.ts'
 import type { MayflyViewsSource } from './views-lane.ts'
 import type { MayflyComponent, MayflyFocusable, MayflyOverlayHandle, MayflyOverlayOptions, MayflyScreen, MayflyScreenSlot } from './types.ts'
@@ -136,7 +137,7 @@ class LocalActivityRegion implements MayflyComponent {
     const cached = this.cached
     if (cached !== undefined && cached.width === width && cached.parts.length === parts.length
       && parts.every((part, index) => cached.parts[index] === part)) return cached.rows
-    const rows = parts.length === 0 ? NO_ROWS : parts.length === 1 ? parts[0]! : parts.flat()
+    const rows = parts.length === 0 ? NO_ROWS : parts.length === 1 ? parts[0]! : concatRows(...parts)
     this.cached = { width, parts, rows }
     return rows
   }

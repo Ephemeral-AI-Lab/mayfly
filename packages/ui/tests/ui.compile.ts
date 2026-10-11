@@ -1,6 +1,7 @@
 import {
   defineMayflyComponent,
   patterns,
+  textOf,
   ui,
   type MayflyDecisionPanelProps,
   type MayflyEditorExtensionNode,
@@ -38,6 +39,12 @@ export const metric = defineMayflyComponent<MetricProps>({
 export const node: MayflyUiNode = metric.render({ label: 'Context', value: 42 })
 export const child: MayflyUiChild = ui.child(node, { shrink: 1 })
 export const document = ui.diagram('graph TD\nA --> B')
+export const streamedChunk = ui.chunk('first piece\n')
+export const streamedDocument = ui.diagram([ui.chunk('graph TD\n'), ui.chunk('A --> B')])
+export const streamedCode = ui.code([ui.chunk('const a = 1\n'), streamedChunk], { language: 'ts' })
+export const streamedMarkdown = ui.markdown([ui.chunk('# title\n\n'), ui.chunk('body')])
+export const streamedText = ui.text([streamedChunk, ui.chunk('second piece')], { tone: 'muted' })
+export const streamedJoined: string = textOf(streamedCode.code)
 export const chart = ui.chart({ chart: 'line', series: [{ id: 'load', points: [{ x: 0, y: 1 }] }] })
 export const horizontalBar = ui.chart({ chart: 'bar', layout: 'normalized', orientation: 'horizontal', categories: ['ctx'], series: [{ id: 'load', values: [1] }, { id: 'free', values: [9], empty: true }] })
 export const photo = ui.image({ attachmentId: 'att-1', alt: '[Image #1 84 KB]', maxRows: 12 })

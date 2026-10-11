@@ -12,6 +12,7 @@
 
 import { HStack, ScrollView, VStack, compositeTuiLine, type Component } from '@earendil-works/pi-tui'
 import { allocateStackSizes, visibleStackEntries } from '@earendil-works/pi-tui/dist/components/stack.js'
+import { blankRows, concatRows, declaredWidthOf, isVirtualRows, rowSourceOf, sliceRows, virtualRows } from './ui-rows.ts'
 import { visibleWidth } from './width.ts'
 
 /** How many composited rows one stack remembers before its next render starts over. */
@@ -59,6 +60,23 @@ export class ColumnStack extends VStack {
     const entries = visibleStackEntries(this.entries, { width: safeWidth, height: Number.MAX_SAFE_INTEGER })
     const rendered = entries.map(entry => entry.component.render(safeWidth))
     const sizes = allocateStackSizes(entries, rendered.map(lines => lines.length), undefined, this.gap)
+    if (rendered.some(lines => isVirtualRows(lines))) {
+      // A windowed child stays a window: the stack's rows are a lazy concat of the children's facades, so reading a
+      // row paints only the part it lands in.
+      const parts: string[][] = []
+      let top = 0
+      for (const [index, entry] of entries.entries()) {
+        if (index > 0) parts.push(blankRows(this.gap))
+        placeChild(entry.component, this, top)
+        const size = sizes[index]!
+        const childLines = sliceRows(rendered[index]!, 0, size)
+        parts.push(childLines)
+        const padding = size - Math.min(size, rendered[index]!.length)
+        if (padding > 0) parts.push(blankRows(padding))
+        top += size + this.gap
+      }
+      return concatRows(...parts)
+    }
     const lines: string[] = []
     for (const [index, entry] of entries.entries()) {
       if (index > 0) for (let gap = 0; gap < this.gap; gap += 1) lines.push('')
@@ -94,20 +112,46 @@ export class RowStack extends HStack {
     const widths = allocateStackSizes(entries, intrinsic, safeWidth, this.gap)
     const rendered = entries.map((entry, index) => widths[index] === 0 ? [] : entry.component.render(widths[index]!))
     const height = rendered.reduce((max, lines) => Math.max(max, lines.length), 0)
+    const columns: number[] = []
+    {
+      let column = 0
+      for (const childWidth of widths) { columns.push(column); column += childWidth + this.gap }
+    }
+    const offsets = rendered.map(lines => this.align === 'center' ? Math.floor((height - lines.length) / 2) : this.align === 'end' ? height - lines.length : 0)
+    for (const [index, entry] of entries.entries()) placeChild(entry.component, this, offsets[index]!)
+    if (rendered.some(lines => isVirtualRows(lines))) {
+      // A windowed child stays a window: one result row splices the row each child contributes at its offset, painted
+      // on first read through the same remembered composite. The layout is this render's; a child whose row map
+      // moves still moves the rows read from it.
+      const moving = rendered.map(lines => rowSourceOf(lines)).filter(source => source?.revision !== undefined)
+      return virtualRows({
+        length: height,
+        get revision() { return moving.length === 0 ? undefined : moving.reduce((total, source) => total + source!.revision!, 0) },
+        markerFree: rendered.every(lines => rowSourceOf(lines)?.markerFree === true),
+        row: row => {
+          let base = ''
+          for (const [index, lines] of rendered.entries()) {
+            const source = row - offsets[index]!
+            if (source < 0 || source >= lines.length) continue
+            base = this.splice(this.splices(`${String(columns[index])}|${String(widths[index])}|${String(safeWidth)}`), base, lines[source]!, columns[index]!, widths[index]!, safeWidth)
+          }
+          return base
+        },
+      })
+    }
     const result = Array.from({ length: height }, () => '')
-    let column = 0
     for (const [index, lines] of rendered.entries()) {
       const childWidth = widths[index]!
-      const offset = this.align === 'center' ? Math.floor((height - lines.length) / 2) : this.align === 'end' ? height - lines.length : 0
-      placeChild(entries[index]!.component, this, offset)
-      const splices = this.splices(`${String(column)}|${String(childWidth)}|${String(safeWidth)}`)
-      for (const [row, line] of lines.entries()) result[row + offset] = this.splice(splices, result[row + offset]!, line, column, childWidth, safeWidth)
-      column += childWidth + this.gap
+      const offset = offsets[index]!
+      const splices = this.splices(`${String(columns[index])}|${String(childWidth)}|${String(safeWidth)}`)
+      for (const [row, line] of lines.entries()) result[row + offset] = this.splice(splices, result[row + offset]!, line, columns[index]!, childWidth, safeWidth)
     }
     return result
   }
 
   private widestRow(lines: readonly string[]): number {
+    const declared = declaredWidthOf(lines)
+    if (declared !== undefined) return declared
     let width = this.widest.get(lines)
     if (width === undefined) {
       width = lines.reduce((max, line) => Math.max(max, visibleWidth(line)), 0)

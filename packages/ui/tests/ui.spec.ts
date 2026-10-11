@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { deepFreeze, defineMayflyComponent, freezeWire, isWireSnapshot, ui } from '../src/index.ts'
+import { deepFreeze, defineMayflyComponent, freezeWire, isWireSnapshot, textOf, ui } from '../src/index.ts'
 
 function expectDeepFrozen(value: unknown, seen = new WeakSet<object>()): void {
   if (value === null || typeof value !== 'object' || seen.has(value)) return
@@ -35,6 +35,33 @@ describe('ui builders', () => {
       { kind: 'chart', chart: 'sparkline', values: [1, null, 3], label: 'Load', tone: 'accent' },
     ])
     for (const leaf of leaves) expectDeepFrozen(leaf)
+  })
+
+  it('builds frozen chunks, keeps their identities in fields, and joins them with textOf', () => {
+    const first = ui.chunk('a\nb')
+    const second = ui.chunk('c')
+    expect(first).toEqual({ text: 'a\nb' })
+    expectDeepFrozen(first)
+    expect(isWireSnapshot(first)).toBe(true)
+
+    const node = ui.code([first, second], { language: 'ts' })
+    expect(node).toEqual({ kind: 'code', code: [{ text: 'a\nb' }, { text: 'c' }], language: 'ts' })
+    // A snapshot keeps its identity inside a new field — builders never rebuild a settled piece.
+    expect((node.code as readonly unknown[])[0]).toBe(first)
+    expect((node.code as readonly unknown[])[1]).toBe(second)
+
+    expect(textOf('joined')).toBe('joined')
+    expect(textOf(node.code)).toBe('a\nbc')
+    expect(textOf([])).toBe('')
+    // A field mixing snapshot and built chunks publishes in order; textOf reads the wire shape.
+    expect(textOf(ui.text([ui.chunk('one'), ui.chunk('two')]).content)).toBe('onetwo')
+  })
+
+  it('rejects malformed content fields read through textOf', () => {
+    expect(() => textOf(1 as never)).toThrow('must be a string or chunks')
+    expect(() => textOf([null] as never)).toThrow('must carry string text')
+    expect(() => textOf([{ text: 1 }] as never)).toThrow('must carry string text')
+    expect(() => textOf([1] as never)).toThrow('must carry string text')
   })
 
   it('builds explicit children, both stack directions, surfaces, and scrolls', () => {
