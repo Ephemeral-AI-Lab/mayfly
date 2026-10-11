@@ -23,7 +23,7 @@ been fixed. The manual part has not started.
 | Severity | Count | IDs |
 | --- | --- | --- |
 | P1 | 1 | F1 |
-| P2 | 5 | F2, F3, F4, F7 (to confirm live), E1 |
+| P2 | 6 | F2, F3, F4, F7 (to confirm live), F13, E1 |
 | P3 | 10, plus a low-impact group | F5, F6, F12, A10, B1-B6 (B1-B3 are rule violations with a mechanical fix); the group is F8, F10, F11 |
 
 Reproduced: F1, F2, F3, F4, F5, F6, F11, F12 (component level), A10, E1, B1, B2, B3, B4 counts. Read but not run: F7
@@ -42,10 +42,16 @@ defect to not a defect (the late result is ignored and native work is not rolled
 corrected: F11 is four times the real width (8 against 2), not three, and the F4 largest-unit size depends on the
 heading text.
 
+## Fix slices
+
+`audit-1` is implemented on `feat/audit-1` (`1d357d5`, F1, F2, F3, F4, F7, E1, F13) and passes the pr and full tiers.
+It is not merged. Owed: the runtime profile and Website preview acceptance. `audit-2` to `audit-5` have not started.
+See "Fix slices" in the audit report for the decisions the slice made.
+
 ## Next steps
 
-1. Owner triage of the report's slice table.
-2. Slice `audit-1` (F1, F3, F2, F4, F7 after its check, E1) on `feat/audit-1`, then `audit-2` to `audit-5`.
+1. Owner review of `audit-1` and its decisions, then triage of the rest of the slice table.
+2. Slices `audit-2` to `audit-5`.
 3. Run the remaining sweep above (lifecycle files, F8, F10) while the first slice is in review.
 4. Owner runs the manual list in the plan; its results update the 2d acceptance record.
 

@@ -2,7 +2,8 @@
 
 Audit baseline: `b657469` (`main`, PR #1 merged) plus two uncommitted edits (the 2b/2c status tables in the
 roadmap, and a `20_000` timeout on `markdown-rows.spec.ts:188`). Report date: 2026-10-11. This is an audit record
-of that commit. It does not define current behavior, and no fix has been made.
+of that commit. It does not define current behavior. The audit itself changed no product code; the fixes live on separate
+slice branches (see "Fix slices").
 
 ## Conclusion
 
@@ -154,6 +155,20 @@ A change that breaks a boundary in a leaf file therefore passes the round and pr
 tier on `main`. `ui/tests/types.spec.ts` already uses the directory-prefix form of `DATA_READS`.
 *Fix direction:* add `[spec, 'packages/mayfly/src/']` rows (and the `locale` files for `locale-catalog`).
 
+**F13. A repeated link-reference definition drops Markdown content in the scan.** Found by the audit-1 fuzz test and
+reproduced on `b657469`; not in the first survey. `markdown-rows.ts` places each lexer token by its `raw`
+(`scanMarkdown`). `marked` drops a repeated `[ref]: ...` definition without a token and appends its newline to the token
+before it, so that raw ends in a newline the source does not have there and cannot be placed. The fallback then pushed
+one unit from `Math.max(start, position)`, which discards the tokens collected since the last unit:
+
+```
+[ref]: /t\n***\n# Top\n[ref]: /t\nSetext\n===   ->  lazy rows: Top, '', Setext   eager rows: hr, '', Top, '', Setext
+```
+
+The window shows rows the eager renderer does not, and misses the horizontal rule. Any document with a repeated
+definition after a block is exposed (a changelog or a reference list that repeats a tag). *Fix:* place the token
+without its trailing newlines and start the fallback unit at the pending `start`.
+
 ### P3
 
 **F6. Appending to a chunked log costs O(total) per append.** Reproduced. Per appended chunk:
@@ -257,6 +272,37 @@ specs that were deleted and not committed. Same rules as the first pass.
 | Segmented equals whole | **No failure found.** | 24 seeded documents of 30,000 units (ASCII words, CJK, fullwidth, combining marks, ZWJ families, tabs, SGR runs, 300-character unbroken runs, blank lines), 3 widths (8, 20, 61), `text` and `code` leaves, 144 cases. Rows after `prepare(0, all)`, after preparing in reverse order, and after a sequential `row(i)` walk were identical, and for `text` the non-space characters of the rows equal the input's. |
 | F1, F2, F3, F4, E1 | **Re-run, same result.** | F1: 296 KB 275 ms, 594 KB 917 ms, 1.2 MB 3,410 ms against 23, 37 and 82 ms for the plain lexer. F2: 65 KB takes 336 ms (validator) and 321 ms (plugin view). F3: both inputs give `Mayfly UI rejected: values[line] is not iterable`. F4: 8,000 headings joined by `\n` form one unit, joined by `\n\n` 33 units of at most 4,098 characters; 3,000 adjacent fences form one unit. E1: `jobs.ts` selects 5 specs and `banner.ts` 5, none a guard; `terminal.ts` selects 123 and two guards. The F4 unit size depends on the heading text, so the 182,889 characters of the first table was not reproduced exactly (the repro here gave 126,889 characters, one unit). |
 
+## Fix slices
+
+Slices are separate branches stacked on `main` (`b657469`), one commit each, and do not change this record. Their
+status when this section was written:
+
+| Slice | Branch | State | Gate |
+| --- | --- | --- | --- |
+| `audit-1` correctness | `feat/audit-1` (`1d357d5`) | F1, F2, F3, F4, F7, E1 and F13 fixed; not merged | pr and full tiers pass; owed manual acceptance: runtime profile (`dsh --profile mayfly-audit-1`) and a Website preview, because the Website reference gained one sentence |
+
+What `audit-1` decided, for the owner to confirm or reverse:
+
+- **F4's cut rule.** A run of adjacent blocks is cut between two tokens once a unit would pass 4,096 characters. pi-tui
+  adds a blank row after a heading, paragraph, code block, quote, rule, table or latex block when a non-space token
+  follows (a paragraph before a list and a list itself add none), so the earlier unit paints that blank row itself
+  (`closed`). A fuzz test over every block pair at widths 20 and 60 equals the eager render.
+- **F3 collapses, not rejects.** A line break in a `fields` label or value becomes one space. Rejecting would have turned
+  an ordinary multi-line error text into a rejection row. The collapse is scoped to `fields`: `label()` is shared by 31
+  callers and form `suggestions` already reject a newline on purpose, so the first attempt, collapsing in `label()`, was
+  reverted when `ui-validator-form.spec.ts` caught it.
+- **F2 keeps the output.** The sanitizers split the text after its last terminator, so the output equals the old
+  regexes' (checked against them over 6,000 mixed inputs) and the cost is linear. 256 KB of unterminated openers takes
+  5.5 s with the old regex and a few milliseconds now.
+- **F7 follows the displayed Agent.** `@` completion and `!` use `mayflyCurrentAgent.current()`'s session directory and fall
+  back to the launch directory when no interactive conversation is displayed. This is covered by unit tests only; the
+  live resume check is still the owner's.
+- **E1 declares the reads.** Eight `DATA_READS` rows tie the four guard specs to the trees they scan, so any edit under
+  `packages/mayfly/src`, `packages/ui/src` or `packages/cli/src` selects them. That adds about four specs to most
+  `pr` runs.
+
+Not in `audit-1`: F5, F6, A10 (`audit-3`), F12 (`audit-5`), B1-B3 and B4 (`audit-2`), and the `audit-4` test and gate items.
+
 ## Refuted or downgraded
 
 | Lead from the survey | What the check showed |
@@ -319,7 +365,7 @@ I cannot judge these from code or a headless run. They are the 2d acceptance its
 
 | Slice | Contents | Gate tier | Owner decision |
 | --- | --- | --- | --- |
-| `audit-1` correctness | F1, F3, F2, F4, F7 (after the runtime check), E1 | pr, then full | F4's cut rule |
+| `audit-1` correctness | F1, F3, F2, F4, F7 (after the runtime check), E1, F13 | pr, then full | F4's cut rule |
 | `audit-2` forbidden leftovers | B1, B2, B3, `spanText`, test-only exports (B4) | pr | public-surface removals |
 | `audit-3` content cost | F6, A10, F5 (re-locate after the painted count lands), and timed rows for W22/W23 | pr with perf A/B | none |
 | `audit-4` tests and gate | T2, T3, T7, T1, T10, E2 | pr, then full | none |
