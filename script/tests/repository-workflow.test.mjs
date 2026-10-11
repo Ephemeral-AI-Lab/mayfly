@@ -9,8 +9,10 @@ import { after, describe, test } from 'node:test'
 import { auditAgentDocs } from '../check-agent-docs.mjs'
 import {
   BUGS_URL,
+  BUILD_PACKAGE_DIRS,
   HOMEPAGE_URL,
   NODE_RANGE,
+  parseManifestText,
   readManifest,
   releaseDistTags,
   releaseRepository,
@@ -57,6 +59,20 @@ describe('change impact planning', () => {
     assert.deepEqual(releaseDistTags('0.1.0-alpha.1'), ['latest'])
     assert.deepEqual(releaseDistTags('0.1.0-rc.1'), ['rc', 'latest'])
     assert.deepEqual(releaseDistTags('0.1.0'), ['latest'])
+  })
+
+  test('rejects duplicate keys in manifests, at any object depth', () => {
+    assert.throws(() => parseManifestText('{"a": 1, "a": 2}', 'fixture'), /fixture: duplicate key "a"/u)
+    assert.throws(() => parseManifestText('{"deps": {"x": "1", "x": "2"}}', 'fixture'), /duplicate key "x"/u)
+    assert.throws(() => parseManifestText('{"a": {"b": 1}, "a": 2}', 'fixture'), /duplicate key "a"/u)
+    assert.deepEqual(
+      parseManifestText('{"files": ["a", "b"], "deps": {"x": "1", "y": "2"}, "ok": true}', 'fixture'),
+      { files: ['a', 'b'], deps: { x: '1', y: '2' }, ok: true },
+    )
+    for (const relativeDir of ['.', 'website', ...BUILD_PACKAGE_DIRS]) {
+      const manifestPath = join(ROOT, relativeDir, 'package.json')
+      parseManifestText(readFileSync(manifestPath, 'utf8'), `${relativeDir}/package.json`)
+    }
   })
 
   test('keeps release manifests linked to the provenance repository', () => {

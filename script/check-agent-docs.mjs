@@ -4,7 +4,7 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { BUILD_PACKAGE_DIRS } from './package-contract.mjs'
+import { BUILD_PACKAGE_DIRS, parseManifestText } from './package-contract.mjs'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 
@@ -31,11 +31,11 @@ export function auditAgentDocs(root, options = {}) {
   const problems = []
   const packageDirs = options.packageDirs ?? BUILD_PACKAGE_DIRS
   const checkPreset = options.checkPreset ?? true
-  const rootManifest = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'))
+  const rootManifest = parseManifestText(readFileSync(join(root, 'package.json'), 'utf8'), 'package.json')
   const scripts = new Set(Object.keys(rootManifest.scripts ?? {}))
   const agentFiles = walk(root, 'AGENTS.md')
   const packageVersions = new Set(packageDirs.map(packageDir => {
-    const manifest = JSON.parse(readFileSync(join(root, packageDir, 'package.json'), 'utf8'))
+    const manifest = parseManifestText(readFileSync(join(root, packageDir, 'package.json'), 'utf8'), `${packageDir}/package.json`)
     return manifest.version
   }))
   const harnessSource = join(root, 'packages', 'mayfly', 'src', 'interaction', 'session-commands.ts')

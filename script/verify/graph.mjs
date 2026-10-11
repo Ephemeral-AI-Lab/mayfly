@@ -12,6 +12,7 @@ import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, join, posix } from 'node:path'
 import ts from 'typescript'
+import { parseManifestText } from '../package-contract.mjs'
 
 /** Files the parser reads: TypeScript and ESM sources of the workspace packages, the examples, the scripts, and the design sketch. */
 export const CODE_FILE = /^(?:(?:packages|examples)\/[^/]+\/(?!lib\/|node_modules\/).+\.(?:[cm]?ts|tsx|mjs)|(?:script|docs)\/.+\.mjs)$/u
@@ -47,7 +48,7 @@ function workspacePackages(root, files) {
   const packages = new Map()
   for (const file of files) {
     if (!/^(?:packages|examples)\/[^/]+\/package\.json$/u.test(file)) continue
-    const manifest = JSON.parse(readFileSync(join(root, file), 'utf8'))
+    const manifest = parseManifestText(readFileSync(join(root, file), 'utf8'), file)
     if (typeof manifest.name === 'string') packages.set(manifest.name, { dir: posix.dirname(file), exports: manifest.exports ?? {} })
   }
   return packages

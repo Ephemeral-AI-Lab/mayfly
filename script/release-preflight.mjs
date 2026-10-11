@@ -4,7 +4,7 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { basename, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { RELEASE_PACKAGE_DIRS, ROOT } from './package-contract.mjs'
+import { parseManifestText, RELEASE_PACKAGE_DIRS, ROOT } from './package-contract.mjs'
 import { advertisedVersionFiles } from './release-line.mjs'
 
 /** Check the exact version advertised by each release input and the current changelog entry. */
@@ -13,7 +13,7 @@ export function checkReleaseReadiness(root, version, { requireChangelog = true }
   if (typeof version !== 'string' || !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/u.test(version)) return [`invalid release version: ${version}`]
   for (const directory of [...RELEASE_PACKAGE_DIRS, 'website']) {
     const relativePath = `${directory}/package.json`
-    const manifest = JSON.parse(readFileSync(join(root, relativePath), 'utf8'))
+    const manifest = parseManifestText(readFileSync(join(root, relativePath), 'utf8'), relativePath)
     if (manifest.version !== version) problems.push(`${relativePath}: expected ${version}, got ${manifest.version}`)
   }
   for (const relativePath of advertisedVersionFiles) {
@@ -41,7 +41,7 @@ export function checkReleaseIndex(root, index, version, { requireFiles = false }
   const packages = index?.packages
   if (!Array.isArray(packages) || packages.length !== RELEASE_PACKAGE_DIRS.length) return ['pack index: release package count differs']
   for (const [position, directory] of RELEASE_PACKAGE_DIRS.entries()) {
-    const manifest = JSON.parse(readFileSync(join(root, directory, 'package.json'), 'utf8'))
+    const manifest = parseManifestText(readFileSync(join(root, directory, 'package.json'), 'utf8'), `${directory}/package.json`)
     const pkg = packages[position]
     if (pkg?.name !== manifest.name) problems.push(`pack index: expected ${manifest.name} at position ${position}`)
     if (pkg?.version !== version || manifest.version !== version) problems.push(`pack index: ${manifest.name} version differs from ${version}`)

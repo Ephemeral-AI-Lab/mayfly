@@ -54,9 +54,50 @@ export const PACKAGE_DIRS = RELEASE_PACKAGE_DIRS
 /** All packages with buildable runtime entries, including validation plugins. */
 export const BUILD_PACKAGE_DIRS = [...RELEASE_PACKAGE_DIRS, ...VALIDATION_PACKAGE_DIRS, ...ECOSYSTEM_PACKAGE_DIRS]
 
+/**
+ * Parse manifest JSON after refusing duplicate object keys. `JSON.parse`
+ * keeps the last value silently, so a repeated key in one object — a
+ * copy-paste leftover in a dependency map — must be caught on the raw text
+ * before parsing. `source` names the manifest in the error.
+ */
+export function parseManifestText(text, source) {
+  const frames = []
+  let expectingKey = false
+  for (let index = 0; index < text.length; index++) {
+    const char = text[index]
+    if (char === '"') {
+      let end = index + 1
+      while (end < text.length && text[end] !== '"') {
+        if (text[end] === '\\') end++
+        end++
+      }
+      const keys = frames[frames.length - 1]
+      if (expectingKey && keys instanceof Set) {
+        const key = JSON.parse(text.slice(index, end + 1))
+        if (keys.has(key)) throw new Error(`${source}: duplicate key ${JSON.stringify(key)}`)
+        keys.add(key)
+        expectingKey = false
+      }
+      index = end
+    } else if (char === '{') {
+      frames.push(new Set())
+      expectingKey = true
+    } else if (char === '[') {
+      frames.push(false)
+      expectingKey = false
+    } else if (char === '}' || char === ']') {
+      frames.pop()
+      expectingKey = false
+    } else if (char === ',') {
+      expectingKey = frames[frames.length - 1] instanceof Set
+    }
+  }
+  return JSON.parse(text)
+}
+
 /** Read one package manifest. */
 export function readManifest(relativeDir) {
-  return JSON.parse(readFileSync(join(ROOT, relativeDir, 'package.json'), 'utf8'))
+  return parseManifestText(readFileSync(join(ROOT, relativeDir, 'package.json'), 'utf8'), `${relativeDir}/package.json`)
 }
 
 /** Return a condition-map export's runtime target. */
