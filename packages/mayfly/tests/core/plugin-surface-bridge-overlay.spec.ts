@@ -9,6 +9,7 @@ import { apply as applyApi } from '../../../ui/src/provider.ts'
 import type { MayflyOverlayDefinition, MayflyOverlayHandle, MayflyUiEventContext, MayflyUiNode } from '../../../ui/src/contracts.ts'
 import { ui } from '../../../ui/src/index.ts'
 import { mountMayflySurfaceRenderer } from '../../src/core/surface-renderer.ts'
+import type { MayflyContextHints } from '../../src/core/context-hint-locale.ts'
 import type { MayflyUiImageSource } from '../../src/core/ui-images.ts'
 import { startMayflyTerminal, type MayflyTerminalRuntime } from '../../src/core/terminal.ts'
 import type { MayflyComponents, MayflyFocusable, MayflyKeyAction, MayflySemanticColors } from '../../src/core/types.ts'
@@ -21,6 +22,7 @@ const promptStandIn = (): MayflyFocusable => ({ focused: false, render: () => ['
 import { FakeTerminal } from './fake-terminal.ts'
 import * as frontend from '../../src/frontend/index.ts'
 import { MayflyScreenService } from '../../src/core/screen.ts'
+import { untranslated } from '../../src/core/ui-interaction-locale.ts'
 
 class Scope {
   private readonly cleanups: Array<() => void> = []
@@ -88,12 +90,12 @@ type TestOverlayRequest = Omit<MayflyOverlayDefinition, 'onEvent'> & {
 }
 type TestOverlayHandle = MayflyOverlayHandle & { refresh(): void }
 
-async function fixture(columns = 80, rows = 24, compilerComponents: MayflyComponents = components, translateHint?: (key: string) => string, images?: MayflyUiImageSource): Promise<Fixture> {
+async function fixture(columns = 80, rows = 24, compilerComponents: MayflyComponents = components, contextHints?: MayflyContextHints, images?: MayflyUiImageSource): Promise<Fixture> {
   const root = new Context()
   await root.plugin({ name: 'test-mayfly-ui-provider', apply: applyApi })
   await root.plugin(frontend)
   const terminal = new FakeTerminal(columns, rows)
-  const runtime = await startMayflyTerminal(terminal, () => Promise.resolve(undefined))
+  const runtime = startMayflyTerminal(terminal)
   await root.plugin(MayflyScreenService, runtime)
   const owners: Scope[] = []
   const mount = (): Scope => {
@@ -112,7 +114,7 @@ async function fixture(columns = 80, rows = 24, compilerComponents: MayflyCompon
         dispatch: () => false,
       },
     })
-    mountMayflySurfaceRenderer(owner as never, runtime, translateHint, images)
+    mountMayflySurfaceRenderer(owner as never, runtime, contextHints, images)
     owners.push(owner)
     return owner
   }
@@ -576,8 +578,29 @@ describe('direct overlay surface renderer', () => {
     }
   })
 
+  it('repaints a translated hint when the hint revision moves, without a publish', async () => {
+    let revision = 0
+    const f = await fixture(80, 10, components, {
+      translate: (key, values) => revision === 0 ? untranslated(key, values) : `[zh] ${untranslated(key, values)}`,
+      revision: () => revision,
+    })
+    try {
+      const overlay = f.open({ id: 'actions', capturing: true, title: 'Actions', maxHeight: 6, render: () => actionNode() })
+      await flush()
+      overlay.refresh()
+      await flush()
+      const english = f.stack()[0]!.component.render(60)
+      expect(english.at(-2)).toContain('run')
+      expect(english.join('\n')).not.toContain('[zh]')
+      revision += 1
+      expect(f.stack()[0]!.component.render(60).at(-2)).toContain('[zh] run')
+    } finally {
+      await f.dispose()
+    }
+  })
+
   it('renders translated hints and bounded titled failure frames', async () => {
-    const f = await fixture(80, 10, components, key => `translated:${key}`)
+    const f = await fixture(80, 10, components, { translate: key => `translated:${key}`, revision: () => 0 })
     try {
       const translated = f.open({ id: 'translated', capturing: true, title: 'Actions', maxHeight: 6, render: () => actionNode() })
       await flush(8)

@@ -28,7 +28,7 @@ describe('context hint locale lifecycle', () => {
   })
 
   it('falls back to English keys and interpolation without a provider', () => {
-    const t = contextHintTranslator(new Context())
+    const t = contextHintTranslator(new Context()).translate
     expect(t('run')).toBe('run')
     expect(t('run {count}', { count: 2 })).toBe('run 2')
   })
@@ -37,7 +37,7 @@ describe('context hint locale lifecycle', () => {
     const ctx = new Context()
     const repaint = vi.fn()
     mountContextHintLocale(ctx, repaint)
-    const t = contextHintTranslator(ctx)
+    const t = contextHintTranslator(ctx).translate
 
     const first = await ctx.plugin(localePlugin('zh'))
     await settle()
@@ -61,7 +61,7 @@ describe('context hint locale lifecycle', () => {
   it('resolves a string once per locale revision while a provider is mounted', async () => {
     const ctx = new Context()
     mountContextHintLocale(ctx, () => {})
-    const t = contextHintTranslator(ctx)
+    const t = contextHintTranslator(ctx).translate
     const provider = await ctx.plugin(localePlugin('zh'))
     await settle()
     const translate = vi.spyOn(MayflyLocaleService.prototype, 'translate')

@@ -17,7 +17,7 @@ import type { MayflyTerminalRuntime } from './terminal.ts'
 import type { SurfaceLaneEntry, SurfaceRegistration } from './surface-manager.ts'
 import { UiAnimationClock } from './ui-loader-animation.ts'
 import { MayflyContentCache } from './ui-content-cache.ts'
-import { nodeSlotEpoch } from './node-slot.ts'
+import type { MayflyContextHints } from './context-hint-locale.ts'
 import { VIEWS_FOCUS_ID, type ViewHint, type ViewRegistration } from './views-lane.ts'
 import { MayflyUiSurfaceRuntime, compileMayflyUiNode, compileMayflyUiSurfaceNode, type MayflyCompiledUi, type MayflyUiViewport } from './ui-compiler.ts'
 import { renderOverflowRow } from './ui-patterns.ts'
@@ -63,7 +63,7 @@ function compile(
     readonly emit: (event: MayflyUiEvent) => void
     readonly onEscape?: () => void
     readonly escapeHint?: 'close' | 'leave'
-    readonly translateHint?: (key: string) => string
+    readonly contextHints?: MayflyContextHints
     readonly extraHints?: () => readonly OverlayArmHint[]
     readonly interactive: boolean
     readonly runtime: MayflyUiSurfaceRuntime
@@ -103,7 +103,7 @@ function compile(
     emit: options.emit,
     contextHints: {
       focusWithoutControls: options.viewHints !== undefined || (kind === 'overlay' && options.interactive && options.onEscape !== undefined),
-      ...(options.translateHint === undefined ? {} : { translate: options.translateHint }),
+      ...(options.contextHints === undefined ? {} : { translate: options.contextHints.translate, revision: options.contextHints.revision }),
       ...(options.extraHints === undefined && options.viewHints === undefined ? {} : { extra: () => [...options.extraHints?.() ?? [], ...options.viewHints?.() ?? []] }),
     },
     ...(options.onEscape === undefined ? {} : { onUnhandledEscape: options.onEscape }),
@@ -303,7 +303,7 @@ function focusTarget(entry: SurfaceLaneEntry): MayflyFocusable | null {
 }
 
 /** Mount the direct registry renderer after theme/components become available. */
-export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTerminalRuntime, translateHint?: (key: string) => string, images?: MayflyUiImageSource, counters?: MayflyWorkCounters): void {
+export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTerminalRuntime, contextHints?: MayflyContextHints, images?: MayflyUiImageSource, counters?: MayflyWorkCounters): void {
   const panes = new Map<string, PaneRecord>()
   const overlays = new Map<string, OverlayRecord>()
   /** One timer for every animated pane and overlay of this renderer. */
@@ -361,7 +361,7 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
       emit: record.interaction.emit.bind(record.interaction),
       onEscape: () => lane === undefined ? runtime.releaseSurfaceFocus(entry.id) : lane.leave(),
       escapeHint: lane === undefined ? 'leave' : 'close',
-      ...(translateHint === undefined ? {} : { translateHint }),
+      ...(contextHints === undefined ? {} : { contextHints }),
       interactive: true,
       runtime: record.runtime,
       ...counted,
@@ -413,7 +413,7 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
   const addPane = (entry: MayflyPaneEntry): void => {
     let record!: PaneRecord
     const interaction = ctx.mayflyUiInteraction.get('pane', entry.id)!
-    record = { entry, interaction, runtime: new MayflyUiSurfaceRuntime(interaction, () => { record.component.invalidate(); runtime.requestRender() }, clock, images, () => { runtime.requestRender() }, content), component: new PaneComponent(ctx.mayflyTheme.colors, translateHint ?? interpolateLocaleMessage), registration: undefined, renderedRevision: -1 }
+    record = { entry, interaction, runtime: new MayflyUiSurfaceRuntime(interaction, () => { record.component.invalidate(); runtime.requestRender() }, clock, images, () => { runtime.requestRender() }, content), component: new PaneComponent(ctx.mayflyTheme.colors, contextHints?.translate ?? interpolateLocaleMessage), registration: undefined, renderedRevision: -1 }
     panes.set(entry.id, record)
     if (entry.definition.placement === 'views') {
       record.component.view = runtime.surfaces.views.register({
@@ -446,7 +446,7 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
       mode: runtime.mode,
       emit: interaction.emit.bind(interaction),
       ...(entry.definition.capturing && entry.definition.dismissible !== false ? { onEscape: () => interaction.emit({ kind: 'dismiss', pagePath: [] }), escapeHint: 'close' as const } : {}),
-      ...(translateHint === undefined ? {} : { translateHint }),
+      ...(contextHints === undefined ? {} : { contextHints }),
       ...(arm === undefined ? {} : { extraHints: () => arm.hints() }),
       interactive: entry.definition.capturing === true,
       runtime: surfaceRuntime,
@@ -489,7 +489,7 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
       mode: runtime.mode,
       emit: record.interaction.emit.bind(record.interaction),
       ...(entry.definition.capturing && entry.definition.dismissible !== false ? { onEscape: () => record.interaction.emit({ kind: 'dismiss', pagePath: [] }), escapeHint: 'close' as const } : {}),
-      ...(translateHint === undefined ? {} : { translateHint }),
+      ...(contextHints === undefined ? {} : { contextHints }),
       ...(record.arm === undefined ? {} : { extraHints: () => record.arm!.hints() }),
       interactive: entry.definition.capturing === true,
       runtime: record.runtime,
@@ -671,15 +671,14 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
   // Node slots compile through this renderer's dependencies and its one clock; a rebound key or a new locale repaints them.
   ctx.effect(() => ctx.mayflyScreen.bindNodeSlots({
     interaction: ctx.mayflyUiInteraction, components, colors: ctx.mayflyTheme.colors, keymap: ctx.mayflyKeymap,
-    mode: runtime.mode, requestRender: () => { runtime.requestRender() }, clock, content, ...(translateHint === undefined ? {} : { translateHint }), ...(images === undefined ? {} : { images }),
-    epoch: () => nodeSlotEpoch(ctx.mayflyKeymap, ctx.get('mayflyLocale')),
+    mode: runtime.mode, requestRender: () => { runtime.requestRender() }, clock, content, ...(contextHints === undefined ? {} : { contextHints }), ...(images === undefined ? {} : { images }),
     ...counted,
   }))
   // The views lane paints and focuses through this renderer's colors, keymap, and terminal.
   ctx.effect(() => runtime.surfaces.views.bind({
     colors: ctx.mayflyTheme.colors,
     keymap: ctx.mayflyKeymap,
-    translate: translateHint ?? interpolateLocaleMessage,
+    translate: contextHints?.translate ?? interpolateLocaleMessage,
     glyphs: components.presentation?.glyphs,
     focus: component => { runtime.setFocus(component) },
     release: () => { runtime.releaseSurfaceFocus(VIEWS_FOCUS_ID) },

@@ -6,7 +6,8 @@
 import { describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import { ui } from '@ephemeral-ai/mayfly-ui'
-import { nodeSlotEpoch, type MayflyNodeSlotCompiler } from '../../src/core/node-slot.ts'
+import type { MayflyNodeSlotCompiler } from '../../src/core/node-slot.ts'
+import { untranslated } from '../../src/core/ui-interaction-locale.ts'
 import { MayflyScreenService } from '../../src/core/screen.ts'
 import type { MayflyTerminalRuntime } from '../../src/core/terminal.ts'
 import type { MayflyComponent, MayflyDockOptions, MayflyFocusable, MayflyKeymap, MayflyOverlayHandle } from '../../src/core/types.ts'
@@ -473,8 +474,8 @@ describe('MayflyScreenService node slots', () => {
       const runtime = recordingRuntime()
       const ctx = new Context()
       await ctx.plugin(MayflyScreenService, runtime)
-      let epoch = 0
-      const compiler = slotCompiler(ctx, { epoch: () => epoch })
+      let revision = 0
+      const compiler = slotCompiler(ctx, { contextHints: { revision: () => revision } })
       ctx.mayflyScreen.bindNodeSlots(compiler)
       const content = ctx.mayflyScreen.mountNodeSlot('transcript.conversation', { region: 'content' })
       const dock = ctx.mayflyScreen.mountNodeSlot('editor.prompt', { region: 'dock' })
@@ -500,14 +501,14 @@ describe('MayflyScreenService node slots', () => {
       prompt.handleInput!('\r')
       expect(prompt.render(120).join('\n')).toContain('Go')
 
-      // The paint epoch repaints a slot whose model did not move; an unmoved epoch serves the same frame.
+      // The hint revision repaints a slot whose model did not move; an unmoved revision serves the same frame.
       const before = prompt.render(120)
       expect(prompt.render(120)).toBe(before)
-      epoch += 1
+      revision += 1
       expect(prompt.render(120)).not.toBe(before)
       dock.set(null)
       prompt.render(120)
-      epoch += 1
+      revision += 1
       expect(prompt.render(120)).toEqual([])
 
       // A loader's tick asks the renderer for a frame through the slot.
@@ -522,8 +523,27 @@ describe('MayflyScreenService node slots', () => {
     }
   })
 
-  it('sums the keymap and locale revisions into the paint epoch', () => {
-    expect(nodeSlotEpoch({} as MayflyKeymap, undefined)).toBe(0)
-    expect(nodeSlotEpoch({ revision: 2 } as unknown as MayflyKeymap, { snapshot: { revision: 3 } })).toBe(5)
+  it('repaints a slot\'s translated strings when the hint revision moves, without a publish', async () => {
+    const runtime = recordingRuntime()
+    const ctx = new Context()
+    await ctx.plugin(MayflyScreenService, runtime)
+    let revision = 0
+    const compiler = slotCompiler(ctx, {
+      contextHints: {
+        translate: (key, values) => revision === 0 ? untranslated(key, values) : `[zh] ${untranslated(key, values)}`,
+        revision: () => revision,
+      },
+    })
+    ctx.mayflyScreen.bindNodeSlots(compiler)
+    const content = ctx.mayflyScreen.mountNodeSlot('transcript.conversation', { region: 'content' })
+    content.set(ui.list({ id: 'stream', role: 'browse', filterable: true, selectedIds: [], items: streamItems(5) }))
+    const host = runtime.added[1]!
+    compiler.interaction.get('slot', content.id)!.updateChoice({ pagePath: [], controlId: 'stream' }, { kind: 'query', query: 'Item number 1' })
+    const english = host.render(80).join('\n')
+    expect(english).toContain('1 match')
+    revision += 1
+    const translated = host.render(80).join('\n')
+    expect(translated).toContain('[zh] 1 match')
+    await ctx.fiber.dispose()
   })
 })

@@ -6,7 +6,7 @@
  *
  * @module @ephemeral-ai/mayfly/core/node-slot
  */
-import { freezeWire, type MayflyUiEventEndpoint, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
+import { freezeWire, type MayflyTranslate, type MayflyUiEventEndpoint, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import { compileMayflyUiSurfaceNode, MayflyUiSurfaceRuntime, type MayflyCompiledUi, type MayflyUiViewport } from './ui-compiler.ts'
 import type { MayflyContentCache } from './ui-content-cache.ts'
 import type { MayflyUiImageSource } from './ui-images.ts'
@@ -43,29 +43,21 @@ export interface MayflyNodeSlotCompiler {
   readonly clock?: UiAnimationClock
   /** The renderer's one painted-segment cache, shared by its panes, overlays, and slots. */
   readonly content?: MayflyContentCache
-  readonly translateHint?: (key: string) => string
+  /**
+   * The translator a slot's contextual hints paint with and the locale revision behind it, as a pane receives them:
+   * a moved revision repaints a slot whose model did not move through the compiler's own frame inputs.
+   */
+  readonly contextHints?: {
+    readonly translate?: MayflyTranslate
+    readonly revision?: () => number
+  }
   /** The host tree's byte source behind `image` nodes, as a pane's runtime receives it. */
   readonly images?: MayflyUiImageSource
-  /**
-   * Changes whenever a painted string can change without a publish (a key rebound, a new locale): a slot whose model
-   * did not move then repaints its frame. Static leaves keep their rows and the hint row its text-keyed memo.
-   */
-  readonly epoch?: () => number
   /** Measurement sink for admission, compilation, and painting; production passes none. */
   readonly counters?: MayflyWorkCounters
 }
 
 const NO_ROWS = Object.freeze([]) as unknown as string[]
-
-/**
- * A renderer's paint epoch: its keymap's revision plus its locale's, two counters that only grow.
- * @param keymap - the renderer's keymap; a fixture keymap without a revision counts as 0.
- * @param locale - the frontend locale service, absent outside a frontend tree.
- * @returns a number that changes whenever either changes.
- */
-export function nodeSlotEpoch(keymap: MayflyKeymap, locale: { readonly snapshot: { readonly revision: number } } | undefined): number {
-  return ((keymap as { readonly revision?: number }).revision ?? 0) + (locale?.snapshot.revision ?? 0)
-}
 
 /** Slots route no events yet: an action settles without a handler, as a disposed endpoint's does. */
 const SLOT_EVENTS: MayflyUiEventEndpoint<MayflyUiNode | null> = Object.freeze({
@@ -84,7 +76,6 @@ class SlotAttachment {
   readonly runtime: MayflyUiSurfaceRuntime
   compiled: MayflyCompiledUi | null = null
   private renderedRevision = -1
-  private renderedEpoch: number | undefined
   private readonly off: () => void
 
   constructor(
@@ -99,13 +90,7 @@ class SlotAttachment {
 
   /** The compiled node, recompiled when the model moved on since the last paint (a pane recompiles on the same signal). */
   current(focused: boolean): MayflyCompiledUi | null {
-    const epoch = this.compiler.epoch?.()
-    if (this.renderedRevision === this.model.revision) {
-      if (epoch !== this.renderedEpoch) this.compiled?.component.invalidate()
-      this.renderedEpoch = epoch
-      return this.compiled
-    }
-    this.renderedEpoch = epoch
+    if (this.renderedRevision === this.model.revision) return this.compiled
     setCompiledFocus(this.compiled, false)
     const node = this.model.decisionNode ?? this.model.node
     const compiler = this.compiler
@@ -120,7 +105,7 @@ class SlotAttachment {
         getViewport: this.viewport,
         screenMode: compiler.mode,
         emit: this.model.emit.bind(this.model),
-        contextHints: compiler.translateHint === undefined ? {} : { translate: compiler.translateHint },
+        contextHints: compiler.contextHints === undefined ? {} : compiler.contextHints,
         surfaceRuntime: this.runtime,
         ...(compiler.counters === undefined ? {} : { counters: compiler.counters }),
       })

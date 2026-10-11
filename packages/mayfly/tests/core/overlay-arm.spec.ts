@@ -53,7 +53,7 @@ async function bench(): Promise<Bench> {
   await root.plugin({ name: 'test-mayfly-ui-provider', apply: applyApi })
   await root.plugin(frontend)
   const terminal = new FakeTerminal(80, 24)
-  const runtime: MayflyTerminalRuntime = await startMayflyTerminal(terminal, () => Promise.resolve(undefined))
+  const runtime: MayflyTerminalRuntime = startMayflyTerminal(terminal)
   await root.plugin(MayflyScreenService, runtime)
   const owner = new Scope()
   Object.assign(owner, {
@@ -61,7 +61,7 @@ async function bench(): Promise<Bench> {
     mayflyComponents: components, mayflyTheme: { colors }, emit: root.emit.bind(root),
     mayflyKeymap: { register(_actions: MayflyKeyAction[]) { return () => {} }, matches: () => false, dispatch: () => false },
   })
-  mountMayflySurfaceRenderer(owner as never, runtime, key => key)
+  mountMayflySurfaceRenderer(owner as never, runtime, { translate: key => key, revision: () => 0 })
   /* The editor is the prompt a stray key would otherwise land in; the overlay replaces it while a request is open. */
   const slot = root.mayflyScreen.mountDockSlot('editor.prompt', { focused: false, render: () => ['prompt'], invalidate() {}, handleInput() {} } as MayflyFocusable)
   slot.focus()

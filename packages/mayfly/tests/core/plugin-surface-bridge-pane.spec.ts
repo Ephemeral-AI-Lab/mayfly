@@ -16,7 +16,9 @@ import type {
 import { ui } from '../../../ui/src/index.ts'
 import * as frontend from '../../src/frontend/index.ts'
 import { mountMayflySurfaceRenderer } from '../../src/core/surface-renderer.ts'
+import type { MayflyContextHints } from '../../src/core/context-hint-locale.ts'
 import { MayflyScreenService } from '../../src/core/screen.ts'
+import { untranslated } from '../../src/core/ui-interaction-locale.ts'
 import { renderSurfaceLane, SurfaceManager, type SurfaceLaneEntry, type SurfaceLayout } from '../../src/core/surface-manager.ts'
 import type { MayflyComponent, MayflyComponents, MayflyFocusable, MayflyKeyAction } from '../../src/core/types.ts'
 import type { MayflyTerminalRuntime } from '../../src/core/terminal.ts'
@@ -151,7 +153,7 @@ type TestPaneContribution = Omit<MayflyPaneDefinition, 'placement' | 'onEvent'> 
 }
 type TestPaneRegistration = MayflyPaneRegistration & { refresh(): void, setHidden(hidden: boolean): void }
 
-async function fixture(runtime = createRuntime(), compilerComponents: MayflyComponents = components, translateHint?: (key: string) => string): Promise<Fixture> {
+async function fixture(runtime = createRuntime(), compilerComponents: MayflyComponents = components, contextHints?: MayflyContextHints): Promise<Fixture> {
   const root = new Context()
   await root.plugin({ name: 'test-mayfly-ui-provider', apply: applyApi })
   await root.plugin(frontend)
@@ -169,7 +171,7 @@ async function fixture(runtime = createRuntime(), compilerComponents: MayflyComp
       mayflyTheme: { colors },
       mayflyKeymap: keymap,
     })
-    mountMayflySurfaceRenderer(owner as never, runtime.runtime, translateHint, root.get('mayflyUiImages'))
+    mountMayflySurfaceRenderer(owner as never, runtime.runtime, contextHints, root.get('mayflyUiImages'))
     owners.push(owner)
     return owner
   }
@@ -220,7 +222,7 @@ afterEach(() => { vi.useRealTimers() })
 
 describe('direct pane surface renderer', () => {
   it('routes pane actions through the live model and contains a visible deferred failure', async () => {
-    const f = await fixture(createRuntime(), components, key => `translated:${key}`)
+    const f = await fixture(createRuntime(), components, { translate: key => `translated:${key}`, revision: () => 0 })
     try {
       const action = vi.fn(() => ({ kind: 'completed' as const }))
       const handle = f.register({ id: 'event-pane', render: () => ui.actions({ id: 'actions', items: [{ id: 'run', label: 'Run' }] }), onEvent: { action } })
@@ -245,6 +247,26 @@ describe('direct pane surface renderer', () => {
       })
       await flush(8)
       expect(entry(f.runtime.surfaces, 'invalid-deferred').component.render(80).join(' ')).toContain('unknown Mayfly UI kind')
+    } finally {
+      await f.dispose()
+    }
+  })
+
+  it('repaints a translated filter count when the hint revision moves, without a publish', async () => {
+    let revision = 0
+    const f = await fixture(createRuntime(), components, {
+      translate: (key, values) => revision === 0 ? untranslated(key, values) : `[zh] ${untranslated(key, values)}`,
+      revision: () => revision,
+    })
+    try {
+      f.register({ id: 'people', render: () => ui.list({ id: 'roster', role: 'browse', filterable: true, selectedIds: [], items: [{ id: 'lead', label: 'Lead' }, { id: 'reviewer', label: 'Reviewer' }] }) })
+      await flush()
+      f.root.mayflyUiInteraction.get('pane', 'people')!.updateChoice({ pagePath: [], controlId: 'roster' }, { kind: 'query', query: 'Lead' })
+      await flush()
+      const english = entry(f.runtime.surfaces, 'people').component.render(60).join('\n')
+      expect(english).toContain('1 match')
+      revision += 1
+      expect(entry(f.runtime.surfaces, 'people').component.render(60).join('\n')).toContain('[zh] 1 match')
     } finally {
       await f.dispose()
     }
