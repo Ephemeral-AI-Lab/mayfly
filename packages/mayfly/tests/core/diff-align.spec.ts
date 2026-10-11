@@ -1,14 +1,15 @@
 /**
- * The diff alignment core: fast paths, prefix/suffix trim, LCS interleaving,
- * the oversized-input guard, change counts, and the painted rows with their
- * numbered gutters, context and ⋯ runs, row budget, and code-only bands.
+ * The diff alignment core: fast paths, prefix/suffix trim, Myers interleaving,
+ * the anchored split past the edit bound and the block degrade, change counts,
+ * and the painted rows with their numbered gutters, context and ⋯ runs, row
+ * budget, and code-only bands.
  */
 
 import { describe, expect, it } from 'vitest'
 import {
   alignDiffLines,
   diffChangeCounts,
-  DIFF_ALIGN_MAX_ROWS,
+  DIFF_ALIGN_MAX_EDITS,
   paintDiffRows,
 } from '../../src/core/diff-align.ts'
 import { truncateToWidth, visibleWidth } from '../../src/core/width.ts'
@@ -44,14 +45,27 @@ describe('alignDiffLines', () => {
     expect(diffChangeCounts('a\nb', 'b\na')).toEqual({ added: 1, removed: 1 })
   })
 
-  it('degrades oversized middles to whole blocks instead of an unbounded table', () => {
-    const before = Array.from({ length: DIFF_ALIGN_MAX_ROWS + 5 }, (_, index) => `b${String(index)}`).join('\n')
-    const after = Array.from({ length: DIFF_ALIGN_MAX_ROWS + 5 }, (_, index) => `a${String(index)}`).join('\n')
+  it('splits a middle past the edit bound at unique lines and keeps aligning inside the halves', () => {
+    // 312 changed + 312 kept lines per side of unique lines: over DIFF_ALIGN_MAX_EDITS together, under it halved.
+    const half = DIFF_ALIGN_MAX_EDITS / 2 - 200
+    const before = [...Array.from({ length: half }, (_, index) => `b${String(index)}`), ...Array.from({ length: half }, (_, index) => `same-${String(index)}`), 'anchor', ...Array.from({ length: half }, (_, index) => `c${String(index)}`), ...Array.from({ length: half }, (_, index) => `same-${String(half + index)}`)]
+    const after = [...Array.from({ length: half }, (_, index) => `a${String(index)}`), ...Array.from({ length: half }, (_, index) => `same-${String(index)}`), 'anchor', ...Array.from({ length: half }, (_, index) => `d${String(index)}`), ...Array.from({ length: half }, (_, index) => `same-${String(half + index)}`)]
+    const aligned = ops(before.join('\n'), after.join('\n'))
+    // The anchor holds: real alignment inside both halves, never whole-block del+add over the whole input.
+    expect(aligned).toContainEqual(['ctx', 'anchor'])
+    expect(aligned).toContainEqual(['ctx', 'same-0'])
+    expect(aligned).toContainEqual(['ctx', `same-${String(half * 2 - 1)}`])
+    expect(diffChangeCounts(before.join('\n'), after.join('\n'))).toEqual({ added: half * 2, removed: half * 2 })
+  })
+
+  it('degrades an anchorless rewrite to whole blocks instead of an unbounded walk', () => {
+    const before = Array.from({ length: DIFF_ALIGN_MAX_EDITS + 5 }, (_, index) => `b${String(index)}`).join('\n')
+    const after = Array.from({ length: DIFF_ALIGN_MAX_EDITS + 5 }, (_, index) => `a${String(index)}`).join('\n')
     const aligned = alignDiffLines(before, after)
-    expect(aligned).toHaveLength((DIFF_ALIGN_MAX_ROWS + 5) * 2)
+    expect(aligned).toHaveLength((DIFF_ALIGN_MAX_EDITS + 5) * 2)
     expect(aligned[0]).toEqual({ type: 'del', text: 'b0' })
-    expect(aligned[DIFF_ALIGN_MAX_ROWS + 5]).toEqual({ type: 'add', text: 'a0' })
-    expect(diffChangeCounts(before, after)).toEqual({ added: DIFF_ALIGN_MAX_ROWS + 5, removed: DIFF_ALIGN_MAX_ROWS + 5 })
+    expect(aligned[DIFF_ALIGN_MAX_EDITS + 5]).toEqual({ type: 'add', text: 'a0' })
+    expect(diffChangeCounts(before, after)).toEqual({ added: DIFF_ALIGN_MAX_EDITS + 5, removed: DIFF_ALIGN_MAX_EDITS + 5 })
   })
 
   it('keeps equal counts for identical and empty-change inputs', () => {

@@ -1,5 +1,5 @@
 /**
- * The work-budget workloads W1 to W20 (docs/design/implementation-roadmap.md section 7.1), and W1 and W4 again through the
+ * The work-budget workloads W1 to W21 (docs/design/implementation-roadmap.md section 7.1), and W1 and W4 again through the
  * node slot (slice 1.10a), the path the footer and the conversation take from Phases 3 and 6. Each one builds a surface of
  * a stated shape, then runs one steady-state step that publishes, presses a key, or ticks the clock, and reports the
  * counters of that step alone. The counts are deterministic, so a spec gates them; `script/audit-performance.mjs`
@@ -451,6 +451,17 @@ export const WORKLOADS: readonly Workload[] = [
       surface.render()
       reset(counters)
       return { step: () => { surface.press('\x1b[F') }, dispose: () => surface.dispose() }
+    },
+  },
+  {
+    id: 'W21', title: 'content diff: a megabyte file with sixty edits in a declared-height scroll, first paint',
+    setup(counters) {
+      const before = codeDocument(1)
+      // Sixty one-line edits spread through the file: the alignment runs once, the window paints its own rows.
+      const step = Math.ceil(before.split('\n').length / 60)
+      const after = before.split('\n').map((line, index) => index % step === 5 ? `${line} // edited` : line).join('\n')
+      const surface = new Surface('w21', ui.scroll(ui.diff(before, after), { height: 8, scrollbar: true }), counters)
+      return { step: () => { surface.render() }, dispose: () => surface.dispose() }
     },
   },
   {

@@ -10,6 +10,7 @@
 import { describe, expect, it } from 'vitest'
 import { CONTENT_SEGMENT_LINES } from '../../src/core/content-segments.ts'
 import { contentNodeRows, contentNodeSource, type ContentRowsEnv, type WindowedContentNode } from '../../src/core/content-rows.ts'
+import { alignDiffLines, diffModel, paintDiffRows } from '../../src/core/diff-align.ts'
 import { DARK_COLORS } from '../../src/core/theme-dark.ts'
 import { MAYFLY_CONTENT_CACHE_BYTES, MayflyContentCache } from '../../src/core/ui-content-cache.ts'
 import { isVirtualRows, materializedRows, prepareRows, rowSourceOf, unclampedRows } from '../../src/core/ui-rows.ts'
@@ -233,6 +234,46 @@ describe('contentNodeSource', () => {
     expect(strip(rows[0]!)).toContain('line 000000')
     expect(strip(rows[12_345]!)).toContain('line 012345')
     expect(strip(rows[rows.length - 1]!)).toContain('line 026999')
+  })
+
+  it('paints a diff only in the chunks a window reads, its length exact from the hunk model', () => {
+    // ~400 changed lines far past the chunk budget: the source stays lazy, and its length is the model's exact total.
+    const before = Array.from({ length: 400 }, (_, index) => `old ${String(index)}`).join('\n')
+    const after = Array.from({ length: 400 }, (_, index) => `new ${String(index)}`).join('\n')
+    const node: WindowedContentNode = { kind: 'diff', before, after }
+    const { rows, env } = source(node, 40)
+    const exact = diffModel(alignDiffLines(before, after), {}).length
+    expect(rows.length).toBe(exact)
+    expect(env.counters.segmentsPainted).toBe(0)
+    // One row read paints its ≤64-line chunk only.
+    const at = CONTENT_SEGMENT_LINES + 5
+    expect(strip(rows[at]!)).toContain(`old ${String(at)}`)
+    expect(env.counters.segmentsPainted).toBe(1)
+    // The whole materialized facade is row-for-row the eager painter's output.
+    const eager = paintDiffRows(alignDiffLines(before, after), 40, components, DARK_COLORS)
+    for (const [index, row] of [...rows].entries()) expect(row).toBe(eager[index])
+  })
+
+  it('paints a small diff eagerly and aligns a node once across widths', () => {
+    const node: WindowedContentNode = { kind: 'diff', before: 'a\nb\nc', after: 'a\nx\nc' }
+    const { rows, env } = source(node, 40)
+    expect(env.counters.segmentsPainted).toBeGreaterThan(0)
+    expect([...rows].map(row => strip(row).trimEnd())).toEqual(['    1   1 │   a', '    2     │ − b', '        2 │ + x', '    3   3 │   c'])
+    // The alignment lives on the node: a second width repaints the same kept rows without re-aligning.
+    const aligned = env.counters.linesEstimated
+    contentNodeRows(node, 60, env.env)
+    expect(env.counters.linesEstimated).toBe(aligned)
+  })
+
+  it('bounds a diff outside a scroll and unclamps it inside one', () => {
+    const before = Array.from({ length: 30 }, (_, index) => `v${String(index)}`).join('\n')
+    const after = Array.from({ length: 30 }, (_, index) => `w${String(index)}`).join('\n')
+    const { rows } = source({ kind: 'diff', before, after }, 40, 10)
+    expect(rows.length).toBe(11)
+    expect(strip(rows[10]!)).toBe('…50')
+    const full = unclampedRows(rows)
+    expect(full.length).toBe(60)
+    expect(strip(full[59]!).trimEnd()).toBe('       30 │ + w29')
   })
 })
 

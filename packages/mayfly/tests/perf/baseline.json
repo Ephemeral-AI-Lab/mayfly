@@ -214,5 +214,20 @@
     "layoutPasses": 1,
     "clockTicks": 0,
     "keymapSnapshots": 0
+  },
+  "W21": {
+    "nodesValidated": 2,
+    "unitsCompiled": 2,
+    "rowsPainted": 20,
+    "rowsMaterialized": 8,
+    "segmentsPainted": 5,
+    "linesEstimated": 21800,
+    "stringsMeasured": 10,
+    "componentRenders": 2,
+    "controlWalks": 1,
+    "reconciles": 4,
+    "layoutPasses": 1,
+    "clockTicks": 0,
+    "keymapSnapshots": 0
   }
 }

@@ -33,7 +33,7 @@ import { glyphRows } from './glyphs.ts'
 import { renderChartRows } from './chart-renderer.ts'
 import { ownDataErrorMessage } from './error-message.ts'
 import { contentNodeSource, type ContentRowsEnv, type WindowedContentNode } from './content-rows.ts'
-import { paintPluginTone, renderCanonicalDiff, sanitizePluginText, truncatedRow } from './plugin-view.ts'
+import { paintPluginTone, sanitizePluginText, truncatedRow } from './plugin-view.ts'
 import type { MayflyComponent, MayflyComponents, MayflyEditor, MayflyFocusable, MayflyFocusIdentity, MayflyKeymap, MayflySemanticColors } from './types.ts'
 import {
   renderActions,
@@ -696,7 +696,8 @@ function markdownLeafComponent(node: Extract<MayflyUiNode, { readonly kind: 'mar
 }
 
 function diagramSource(node: MayflyDiagramNode): string {
-  const longest = Math.max(0, ...Array.from(node.source.matchAll(/`+/gu), match => match[0].length))
+  let longest = 0
+  for (const match of node.source.matchAll(/`+/gu)) longest = Math.max(longest, match[0].length)
   const fence = '`'.repeat(Math.max(3, longest + 1))
   return `${fence}mermaid\n${node.source}\n${fence}`
 }
@@ -1668,14 +1669,9 @@ function compileUnit(node: CompilableNode, state: FocusState, options: RuntimeCo
     case 'text':
     case 'fields':
     case 'code':
+    case 'diff':
     case 'sections': return leaf(node, options, paint => contentLeafComponent(node, options, paint))
     case 'markdown': return markdownLeafComponent(node, options)
-    case 'diff': return leaf(node, options, paint => pureStaticComponent(width => renderCanonicalDiff(
-      node,
-      width,
-      paint.components,
-      paint.colors,
-    ), paint))
     case 'rich-text': return hasMotion(node.spans) ? staticComponent(width => {
       // An animated row is the one row a clock tick repaints: it is not memoized, and it joins the clock while painted.
       countWork(options.counters, 'stringsMeasured')

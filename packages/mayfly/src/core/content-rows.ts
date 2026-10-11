@@ -1,10 +1,11 @@
 /**
- * Windowed painters for the content leaf kinds (`text`, `fields`, `code`, `sections`, `rich-text` without motion;
- * `diff` stays eager until slice 2c.5). Instead of rendering every row, a leaf indexes its text once per node
- * (`content-segments.ts`), answers its height from per-segment row estimates at the asked width, and paints a segment
- * only when a row inside it is read — a scroll `prepare`d its window or the layout indexed the row. Painted segments
- * live in the renderer's content cache (`ui-content-cache.ts`), keyed by node, segment, and width, so a repaint is
- * free and the estimate under a painted window is always the truth.
+ * Windowed painters for the content leaf kinds (`text`, `fields`, `code`, `sections`, `rich-text` without motion,
+ * `diff`). Instead of rendering every row, a leaf indexes its text once per node (`content-segments.ts`), answers
+ * its height from per-segment row estimates at the asked width, and paints a segment only when a row inside it is
+ * read — a scroll `prepare`d its window or the layout indexed the row. Painted segments live in the renderer's
+ * content cache (`ui-content-cache.ts`), keyed by node, segment, and width, so a repaint is free and the estimate
+ * under a painted window is always the truth. A `diff` aligns once per node into a hunk model
+ * (`diff-align.ts`) whose kept lines paint in chunks the same way.
  *
  * A leaf the viewport cannot fully show reports at most the viewport's rows plus a `… N more rows` elision row
  * (`elidedSource`): that keeps every bounded-height consumer — pi-tui's clipped-leaf marker scan, a horizontal
@@ -16,7 +17,8 @@
  */
 
 import type { MayflyContentNode, MayflyField, MayflyRichTextNode, MayflySection, MayflySectionContentNode, MayflyTextStyle, MayflyTone, MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
-import { CONTENT_SEGMENT_UNITS, indexContent, type ContentIndex } from './content-segments.ts'
+import { CONTENT_SEGMENT_LINES, CONTENT_SEGMENT_UNITS, indexContent, type ContentIndex } from './content-segments.ts'
+import { alignDiffLines, diffModel, paintDiffSegment, type DiffModel, type DiffSegment } from './diff-align.ts'
 import { ownDataErrorMessage } from './error-message.ts'
 import { highlightable, highlightCodeLines } from './highlight.ts'
 import {
@@ -24,7 +26,6 @@ import {
   CODE_HIGHLIGHT_MAX_ROWS,
   PLUGIN_VIEW_MAX_DEPTH,
   paintPluginTone,
-  renderCanonicalDiff,
   requireText,
   sanitizePluginText,
   strong,
@@ -204,6 +205,139 @@ class SegmentedContent implements RowSource {
       segment += 1
     }
   }
+}
+
+/** Kept lines one paint call produces at most — the same budget a content segment has. */
+const DIFF_CHUNK_ROWS = CONTENT_SEGMENT_LINES
+
+/**
+ * The diff layout of one node, shared by every width the leaf is asked: the alignment and the hunk model are
+ * width-independent, so a width change repaints the same kept rows, never re-aligns.
+ */
+interface PreparedDiff {
+  readonly model: DiffModel
+  readonly numbered: boolean
+}
+
+const preparedDiffs = new WeakMap<object, PreparedDiff>()
+
+function diffPrepared(node: Extract<MayflySectionContentNode, { readonly kind: 'diff' }>, env: ContentRowsEnv): PreparedDiff {
+  let prepared = preparedDiffs.get(node)
+  if (prepared === undefined) {
+    const before = sanitizePluginText(requireText(node.before, 'diff before'))
+    const after = sanitizePluginText(requireText(node.after, 'diff after'))
+    const ops = alignDiffLines(before, after)
+    countWork(env.counters, 'linesEstimated', ops.length)
+    prepared = {
+      numbered: node.numbered !== false,
+      model: diffModel(ops, {
+        ...node.start === undefined ? {} : { start: node.start },
+        ...node.hunkHeader === undefined ? {} : { hunkHeader: node.hunkHeader },
+        ...node.context === undefined ? {} : { context: node.context },
+        ...node.maxRows === undefined ? {} : { maxRows: node.maxRows },
+      }),
+    }
+    preparedDiffs.set(node, prepared)
+  }
+  return prepared
+}
+
+/**
+ * The row source of one diff at one width: `length` is the model's exact row total (no estimates to converge), and
+ * `row`/`prepare` paint the ≤{@link DIFF_CHUNK_ROWS}-line chunk under the asked rows through the content cache, so a
+ * window over a megabyte diff costs its own rows. Painted rows are marker-free by the same sanitizing argument as
+ * the segmented texts.
+ */
+class DiffRowsSource implements RowSource {
+  readonly declaredWidth: number
+  readonly markerFree = true
+  private readonly chunks: readonly DiffSegment[]
+  private readonly counts: number[]
+  private readonly tree: Fenwick
+  private readonly failures = new Set<number>()
+
+  constructor(
+    private readonly prepared: PreparedDiff,
+    private readonly width: number,
+    private readonly env: ContentRowsEnv,
+    private readonly key: string,
+  ) {
+    const chunks: DiffSegment[] = []
+    const counts: number[] = []
+    for (const segment of prepared.model.segments) {
+      const pieces = segment.kind === 'rows' && segment.rows.length > DIFF_CHUNK_ROWS
+        ? Array.from({ length: Math.ceil(segment.rows.length / DIFF_CHUNK_ROWS) }, (_, at): DiffSegment => ({ kind: 'rows', rows: segment.rows.slice(at * DIFF_CHUNK_ROWS, (at + 1) * DIFF_CHUNK_ROWS) }))
+        : [segment]
+      for (const piece of pieces) {
+        chunks.push(piece)
+        counts.push(piece.kind === 'rows' ? piece.rows.length : 1)
+      }
+    }
+    this.chunks = chunks
+    this.counts = counts
+    this.tree = new Fenwick(chunks.length)
+    counts.forEach((count, chunk) => this.tree.add(chunk, count))
+    // Every row is clipped to the asked columns by the painter, so the leaf width is the width truth.
+    this.declaredWidth = width
+    if (prepared.model.length <= DIFF_CHUNK_ROWS) this.prepare(0, Number.MAX_SAFE_INTEGER)
+  }
+
+  get length(): number {
+    return this.chunks.length === 0 ? 0 : this.tree.sum(this.chunks.length - 1)
+  }
+
+  private cacheKey(chunk: number): string {
+    return `${this.key}:${String(this.width)}:${String(chunk)}`
+  }
+
+  private chunkRows(chunk: number): readonly string[] {
+    let rows = this.env.cache.get(this.cacheKey(chunk))
+    if (rows === undefined) {
+      rows = this.paintSafely(chunk)
+      this.env.cache.put(this.cacheKey(chunk), rows, paintedRowsBytes(rows))
+      countWork(this.env.counters, 'segmentsPainted')
+      countWork(this.env.counters, 'rowsPainted', rows.length)
+    }
+    if (this.counts[chunk] !== rows.length) {
+      this.tree.add(chunk, rows.length - this.counts[chunk]!)
+      this.counts[chunk] = rows.length
+    }
+    return rows
+  }
+
+  private paintSafely(chunk: number): readonly string[] {
+    try {
+      return paintDiffSegment(this.chunks[chunk]!, this.prepared.model.digits, this.width, this.env.components, this.env.colors, this.prepared.numbered)
+    } catch (error) {
+      const message = ownDataErrorMessage(error) ?? 'unknown render failure'
+      if (!this.failures.has(chunk)) {
+        this.failures.add(chunk)
+        this.env.report?.(message)
+      }
+      return this.env.errorRows(message, this.width)
+    }
+  }
+
+  row(index: number): string {
+    if (index < 0 || index >= this.length) return ''
+    const chunk = this.tree.locate(index)
+    const rows = this.chunkRows(chunk)
+    countWork(this.env.counters, 'rowsMaterialized')
+    return rows[index - this.tree.sum(chunk - 1)] ?? ''
+  }
+
+  prepare(from: number, to: number): void {
+    if (from >= this.length) return
+    let chunk = this.tree.locate(Math.max(0, from))
+    while (chunk < this.chunks.length && this.tree.sum(chunk - 1) < to) {
+      this.chunkRows(chunk)
+      chunk += 1
+    }
+  }
+}
+
+function diffSource(node: Extract<MayflySectionContentNode, { readonly kind: 'diff' }>, width: number, env: ContentRowsEnv): RowSource {
+  return new DiffRowsSource(diffPrepared(node, env), Math.max(1, width), env, keyOf(node))
 }
 
 const indexes = new WeakMap<object, ContentIndex>()
@@ -538,7 +672,7 @@ function buildNodeSource(node: WindowedContentNode, width: number, env: ContentR
     case 'code': return codeSource(node, width, env)
     case 'sections': return sectionsSource(node, width, env, depth)
     case 'rich-text': return richTextSource(node, width, env)
-    case 'diff': return eager(renderCanonicalDiff(node, width, env.components, env.colors), env)
+    case 'diff': return diffSource(node, width, env)
     default: throw new TypeError(`unknown basic content kind "${String((node as { readonly kind?: unknown }).kind)}"`)
   }
 }

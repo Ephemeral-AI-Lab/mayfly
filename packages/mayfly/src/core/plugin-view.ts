@@ -4,16 +4,13 @@
  * own theme and width helpers, so a contribution cannot write raw ANSI or
  * escape its assigned rows.
  *
- * The windowed painters for `text`, `fields`, `code`, `sections`, and `rich-text` live in `content-rows.ts`; this
- * module keeps the sanitizing primitives they share, the still-eager `diff` painter (segmented in slice 2c.5), and
- * the one-line summaries.
+ * The windowed painters for `text`, `fields`, `code`, `sections`, `rich-text`, and `diff` live in `content-rows.ts`;
+ * this module keeps the sanitizing primitives they share and the one-line summaries.
  *
  * @module @ephemeral-ai/mayfly/core/plugin-view
  */
 
 import type { MayflyContentNode, MayflyInlineSpan, MayflyTextStyle, MayflyTone } from '@ephemeral-ai/mayfly-ui'
-import { alignDiffLines, paintDiffRows } from './diff-align.ts'
-import { clampRowsToWidth } from './chrome.ts'
 import type { MayflyComponents, MayflySemanticColors } from './types.ts'
 
 /** A code block highlights at most this many rows; the rest are plain text. */
@@ -24,9 +21,6 @@ export const CODE_HIGHLIGHT_MAX_BYTES = 32 * 1024
 
 /** Maximum recursive `sections` nesting accepted from a dynamic view. */
 export const PLUGIN_VIEW_MAX_DEPTH = 8
-
-/** Interim bound on one diff side until slice 2c.5 segments diffs: past it the paint fails, contained. */
-const PLUGIN_VIEW_MAX_DIFF_CHARS = 20_000
 
 const ANSI_OR_OSC = /\x1b(?:\][^\x07]*(?:\x07|\x1b\\)|\[[0-?]*[ -/]*[@-~]|.)/gu
 /** The focus sentinel is a private-use code point the surface owns; a contribution's text may not carry it. */
@@ -60,12 +54,6 @@ export function requireText(value: unknown, label: string): string {
   return value
 }
 
-function checkedDiffText(value: unknown, label: string): string {
-  const text = requireText(value, label)
-  if (text.length > PLUGIN_VIEW_MAX_DIFF_CHARS) throw new RangeError(`${label} exceeds ${String(PLUGIN_VIEW_MAX_DIFF_CHARS)} characters`)
-  return sanitizePluginText(text)
-}
-
 export function strong(text: string): string { return `\x1b[1m${text}\x1b[22m` }
 function italic(text: string): string { return `\x1b[3m${text}\x1b[23m` }
 function strike(text: string): string { return `\x1b[9m${text}\x1b[29m` }
@@ -92,40 +80,6 @@ export type BasicContentNode = Extract<MayflyContentNode, { readonly kind: 'text
  */
 export function truncatedRow(text: string, width: number, components: MayflyComponents): string {
   return components.truncateToWidth(text.replace(/[\r\n\t]+/gu, ' '), Math.max(1, width), '…')
-}
-
-type DiffContentNode = Extract<BasicContentNode, { readonly kind: 'diff' }>
-
-function renderDiff(
-  view: DiffContentNode,
-  width: number,
-  components: MayflyComponents,
-  colors: MayflySemanticColors,
-): string[] {
-  // The painter clips each line and pads each change band to the full
-  // width, so it takes the components service's width truth.
-  const before = checkedDiffText(view.before, 'diff before')
-  const after = checkedDiffText(view.after, 'diff after')
-  return paintDiffRows(alignDiffLines(before, after), width, components, colors, {
-    ...view.start === undefined ? {} : { start: view.start },
-    ...view.numbered === undefined ? {} : { numbered: view.numbered },
-    ...view.hunkHeader === undefined ? {} : { hunkHeader: view.hunkHeader },
-    ...view.context === undefined ? {} : { context: view.context },
-    ...view.maxRows === undefined ? {} : { maxRows: view.maxRows },
-  })
-}
-
-/** Core-internal renderer for an already validated canonical diff; segmented in slice 2c.5. */
-export function renderCanonicalDiff(
-  view: DiffContentNode,
-  width: number,
-  components: MayflyComponents,
-  colors: MayflySemanticColors,
-  maxRows?: number,
-): string[] {
-  const rendered = renderDiff(view, Math.max(1, width), components, colors)
-  const rows = maxRows === undefined ? rendered : rendered.slice(0, Math.max(0, maxRows))
-  return clampRowsToWidth(rows, Math.max(1, width), (text, target) => components.truncateToWidth(text, target))
 }
 
 /** Produce a safe one-line notification/status summary from any public view. */
