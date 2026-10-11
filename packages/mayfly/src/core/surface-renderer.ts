@@ -312,6 +312,12 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
   const content = new MayflyContentCache()
   /** A measuring caller's sink reaches every surface this renderer compiles; production passes none. */
   const counted = counters === undefined ? {} : { counters }
+  /**
+   * The components every surface of this renderer paints with, read once. Cordis hands out a new wrapper at every read of
+   * a service, and the compile cache reuses a leaf only for the identical components object, so a read per publish
+   * would recompile every unchanged leaf. A replaced service re-runs this mount, so the capture cannot outlive its service.
+   */
+  const components = ctx.mayflyComponents
   let disposed = false
   let pending: SurfaceSnapshot | undefined
   let scheduled = false
@@ -347,7 +353,7 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
     const placement = entry.definition.placement
     const lane = placement === 'views' ? runtime.surfaces.views : undefined
     const compiled = compile(node, 'pane', {
-      components: ctx.mayflyComponents,
+      components,
       colors: ctx.mayflyTheme.colors,
       keymap: ctx.mayflyKeymap,
       viewport: () => lane === undefined ? paneViewport(entry.id) : lane.viewport(),
@@ -433,7 +439,7 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
       ? undefined
       : new OverlayArm(entry.definition.armMs, () => { record.component.invalidate(); runtime.requestRender() })
     const compiled = compile(interaction.decisionNode ?? interaction.node, 'overlay', {
-      components: ctx.mayflyComponents,
+      components,
       colors: ctx.mayflyTheme.colors,
       keymap: ctx.mayflyKeymap,
       viewport: () => overlayViewport(entry),
@@ -476,7 +482,7 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
   const renderOverlay = (record: OverlayRecord): void => {
     const entry = record.entry
     const compiled = compile(record.interaction.decisionNode ?? record.interaction.node, 'overlay', {
-      components: ctx.mayflyComponents,
+      components,
       colors: ctx.mayflyTheme.colors,
       keymap: ctx.mayflyKeymap,
       viewport: () => overlayViewport(entry),
@@ -664,7 +670,7 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
   publish()
   // Node slots compile through this renderer's dependencies and its one clock; a rebound key or a new locale repaints them.
   ctx.effect(() => ctx.mayflyScreen.bindNodeSlots({
-    interaction: ctx.mayflyUiInteraction, components: ctx.mayflyComponents, colors: ctx.mayflyTheme.colors, keymap: ctx.mayflyKeymap,
+    interaction: ctx.mayflyUiInteraction, components, colors: ctx.mayflyTheme.colors, keymap: ctx.mayflyKeymap,
     mode: runtime.mode, requestRender: () => { runtime.requestRender() }, clock, content, ...(translateHint === undefined ? {} : { translateHint }), ...(images === undefined ? {} : { images }),
     epoch: () => nodeSlotEpoch(ctx.mayflyKeymap, ctx.get('mayflyLocale')),
     ...counted,
@@ -674,7 +680,7 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
     colors: ctx.mayflyTheme.colors,
     keymap: ctx.mayflyKeymap,
     translate: translateHint ?? interpolateLocaleMessage,
-    glyphs: ctx.mayflyComponents.presentation?.glyphs,
+    glyphs: components.presentation?.glyphs,
     focus: component => { runtime.setFocus(component) },
     release: () => { runtime.releaseSurfaceFocus(VIEWS_FOCUS_ID) },
     requestRender: () => { runtime.requestRender() },

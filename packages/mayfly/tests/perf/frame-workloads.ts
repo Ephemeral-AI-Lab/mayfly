@@ -1,15 +1,18 @@
 /**
- * The frame workloads W13 to W18-overlay (docs/design/implementation-roadmap.md section 7.1). W1 to W20 call a compiled
+ * The frame workloads W13 to W18-overlay and W25 to W27 (docs/design/implementation-roadmap.md section 7.1). W1 to W20 call a compiled
  * component's `render` directly; these mount a pane or an overlay the way the product does, through pi-tui's alternate
  * screen over a fake terminal, the surface lanes, and the surface renderer, and count one whole frame: the lane measure,
  * pi-tui's native layout, and the animation clock are all on the path. W17 counts the keymap snapshots one editor
- * keystroke takes through the editor-extension runtime. Each step is asynchronous because pi-tui paints from a timer.
+ * keystroke takes through the editor-extension runtime. W25 to W27 publish a pane or an overlay again with the service
+ * getters of the real Cordis context, which hand out a new wrapper at every read: a stable component object in a
+ * direct workload cannot show whether an unchanged republish reuses its leaves. Each step is asynchronous because pi-tui
+ * paints from a timer.
  */
 
 import { Context } from '@deepseek-ai/cordis'
-import type { MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
+import type { MayflyPaneRegistration, MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import { ui } from '@ephemeral-ai/mayfly-ui'
-import { apply as applyUiProvider } from '../../../ui/src/provider.ts'
+import { apply as applyUiProvider } from '@ephemeral-ai/mayfly-ui/provider'
 import { MayflyComponentsService } from '../../src/core/components.ts'
 import { contextHintTranslator, mountContextHintLocale } from '../../src/core/context-hint-locale.ts'
 import { MayflyKeymapService } from '../../src/core/keymap.ts'
@@ -77,8 +80,13 @@ function section(index: number): MayflyUiNode[] {
   ]
 }
 
+/** The eight sections of a side pane; a pane built from the same sections again shares their leaves. */
+function sections(): MayflyUiNode[][] {
+  return Array.from({ length: 8 }, (_, index) => section(index))
+}
+
 /** A lane pane of eight sections in one scroll view, with a loader above them, below the fold, or nowhere. */
-export function sidePane(loader?: 'top' | 'bottom'): MayflyUiNode {
+export function sidePane(loader?: 'top' | 'bottom', parts: readonly (readonly MayflyUiNode[])[] = sections()): MayflyUiNode {
   const working = ui.loader({ message: 'Working' })
   return ui.surface({
     chrome: 'lane', padding: 1, title: 'Side pane',
@@ -86,7 +94,7 @@ export function sidePane(loader?: 'top' | 'bottom'): MayflyUiNode {
       ui.tabs({ id: 'pane-tabs', activeId: 'one', items: [{ id: 'one', label: 'One' }, { id: 'two', label: 'Two' }] }),
       ui.scroll(ui.stack.column([
         ...(loader === 'top' ? [working] : []),
-        ...Array.from({ length: 8 }, (_, index) => section(index)).flat(),
+        ...parts.flat(),
         ...(loader === 'bottom' ? [working] : []),
       ], { gap: 1 }), { scrollbar: true }),
     ], { gap: 1 }),
@@ -179,21 +187,21 @@ class FrameHost {
 }
 
 /** A side pane in the right lane, painted until it is steady. */
-async function withSidePane(counters: MayflyWorkCounters, environment: WorkloadEnvironment, loader?: 'top' | 'bottom'): Promise<FrameHost> {
+async function withSidePane(counters: MayflyWorkCounters, environment: WorkloadEnvironment, loader?: 'top' | 'bottom', node = sidePane(loader)): Promise<{ readonly host: FrameHost, readonly pane: MayflyPaneRegistration }> {
   const host = await FrameHost.boot(counters, environment)
-  host.root.mayflyPanes.register({ id: 'perf.side', title: 'Side pane', placement: 'right', size: { min: 24, preferred: 40, max: 48 }, narrow: 'bottom' }, sidePane(loader))
+  const pane = host.root.mayflyPanes.register({ id: 'perf.side', title: 'Side pane', placement: 'right', size: { min: 24, preferred: 40, max: 48 }, narrow: 'bottom' }, node)
   await host.frames()
   // Two clock steps: the first paint of a loader arms the clock, and the pane is steady only after it has ticked.
   await host.tick()
   await host.tick()
-  return host
+  return { host, pane }
 }
 
 export const FRAME_WORKLOADS: readonly FrameWorkload[] = [
   {
     id: 'W13', title: 'keystroke beside a pane: a key in the editor while a side pane of eight sections does not change',
     async setup(counters, environment) {
-      const host = await withSidePane(counters, environment)
+      const { host } = await withSidePane(counters, environment)
       await host.press('a')
       reset(counters)
       return { step: () => host.press('b'), dispose: () => host.dispose() }
@@ -202,7 +210,7 @@ export const FRAME_WORKLOADS: readonly FrameWorkload[] = [
   {
     id: 'W14', title: 'tick below the fold: one clock step while the only loader of a side pane is scrolled out of view',
     async setup(counters, environment) {
-      const host = await withSidePane(counters, environment, 'bottom')
+      const { host } = await withSidePane(counters, environment, 'bottom')
       reset(counters)
       return { step: () => host.tick(), dispose: () => host.dispose() }
     },
@@ -210,7 +218,7 @@ export const FRAME_WORKLOADS: readonly FrameWorkload[] = [
   {
     id: 'W15', title: 'tick on screen: one clock step while a loader at the top of a side pane is in view',
     async setup(counters, environment) {
-      const host = await withSidePane(counters, environment, 'top')
+      const { host } = await withSidePane(counters, environment, 'top')
       reset(counters)
       return { step: () => host.tick(), dispose: () => host.dispose() }
     },
@@ -237,6 +245,38 @@ export const FRAME_WORKLOADS: readonly FrameWorkload[] = [
       await host.frames()
       reset(counters)
       return { step: () => host.press('\x1b[6~'), dispose: () => host.dispose() }
+    },
+  },
+  {
+    id: 'W25', title: 'republish a pane: the node of a side pane of eight sections is published again, unchanged',
+    async setup(counters, environment) {
+      const node = sidePane()
+      const { host, pane } = await withSidePane(counters, environment, undefined, node)
+      // The first publish after the registration admits the node once more; the step is the steady state after it.
+      pane.set(node)
+      await host.frames()
+      reset(counters)
+      return { step: async () => { pane.set(node); await host.frames() }, dispose: () => host.dispose() }
+    },
+  },
+  {
+    id: 'W26', title: 'republish a pane with one section changed: the other seven keep their leaves',
+    async setup(counters, environment) {
+      const parts = sections()
+      const { host, pane } = await withSidePane(counters, environment, undefined, sidePane(undefined, parts))
+      reset(counters)
+      return { step: async () => { pane.set(sidePane(undefined, [section(8), ...parts.slice(1)])); await host.frames() }, dispose: () => host.dispose() }
+    },
+  },
+  {
+    id: 'W27', title: 'republish an overlay: the node of a picker with a long scroll of sections is published again, unchanged',
+    async setup(counters, environment) {
+      const host = await FrameHost.boot(counters, environment)
+      const node = ui.scroll(ui.stack.column(sections().flat(), { gap: 1 }), { scrollbar: true })
+      const overlay = host.root.mayflyOverlays.open({ id: 'perf.republish', title: 'Sections', capturing: true }, node)
+      await host.frames()
+      reset(counters)
+      return { step: async () => { overlay.set(node); await host.frames() }, dispose: () => host.dispose() }
     },
   },
   {
