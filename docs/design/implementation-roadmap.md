@@ -1975,6 +1975,22 @@ The groups below are finalized in this order, each under §7. Their text is the 
 At the phase gate the owner runs real sessions, with subagents, a compaction, and approvals, and the PTY smoke covers
 `Alt+↑`, `c`, `Ctrl+F`, and `Esc`.
 
+**Phase 3 status.** The parts are those of [component-development-spec.md](./component-development-spec.md) §7, worked
+in rounds of two or three parts (about four scenarios each) on the branch `feat/3a` and its successors, with the
+profile `mayfly-3`. A part is `accepted` when the owner accepts it in a question round; a group finalizes when its last
+part is accepted (§7 step 3).
+
+| Round | Parts | Status | Branch |
+| --- | --- | --- | --- |
+| R1 | T0 demo kit; 3.0 components area; 3a.1 turns | T0 and 3.0 committed; 3a.1 in progress | `feat/3a` |
+| R2 | 3a.2 answers and reasoning; 3a.3 the live turn | not started | |
+| R3 | 3a.4 images and cutover cleanup; 3b.1 settled tool lines | not started | |
+| R4 | 3b.2 edit cards; 3b.3 write and command cards | not started | |
+| R5 | 3c.1 activity header; 3c.2 activity details and tips | not started | |
+| R6 | 3c.3 notices and banners; 3c.4 compaction | not started | |
+| R7 | 3d.1 approval card; 3d.2 plan review card | not started | |
+| R8 | 3e.1 levels; 3e.2 row selection; 3e.3 stream search | not started | |
+
 ### Phase 4 Editor and command palette
 
 **Backlog:** B4 (border), G15, G18, G19, H7, H8, R11 (`?`), R20 (editor). Scenes 15 (every context at 96, 60, 40) and
