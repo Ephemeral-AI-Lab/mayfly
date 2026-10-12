@@ -1985,8 +1985,8 @@ part is accepted (§7 step 3).
 | --- | --- | --- | --- |
 | R1 | T0 demo kit; 3.0 components area | committed, awaiting the owner's look at the brief format | `feat/3a` |
 | R2 | 3a.1 turns: the stream cutover (new `TranscriptView` on the conversation node slot, planning reused from `buildDisplay`, minimal rows for the other kinds) | 3a.1 accepted (stream cutover; closing row instead of the turn rule; wrapped lines hang under the text via `hang`); perf A/B and profile smoke owed | `feat/3a` |
-| R3 | 3a.2 answers and reasoning | in review (Markdown answers as one item with a leading body, reasoning forms, a blank row after the banner; the banner stays its own block until the owner decides on new tones) | `feat/3a` |
-| R3b | 3a.3 the live turn | in review (the `↓ N new · End` pill replaces the footer notice; a scrolled-away reader holds their place; the incremental Markdown scan and the 32,000-character live cap gone; `W-answer` budget) | `feat/3a` |
+| R3 | 3a.2 answers and reasoning | 3a.2 accepted (Markdown answers under a leading `●` via `bodyLead`, reasoning header with duration and text aligned under the word, a blank row after the banner; the banner stays its own block) | `feat/3a` |
+| R3b | 3a.3 the live turn | 3a.3 accepted (the tail chip `Back to bottom · Ctrl+↓` / `N new turns · Ctrl+↓` counting turns, a dedicated follow-tail key, the held place, the incremental Markdown scan, `W-answer` budget and `perf-stream` ceilings); the footer notice deleted | `feat/3a` |
 | R4 | 3a.4 images and cutover cleanup; 3b.1 settled tool lines | 3a.4 built (prompt images as `ui.image` bodies with a text fallback and the attachment-store loader); 3b.1 not started | `feat/3a` |
 | R5 | 3b.2 edit cards; 3b.3 write and command cards | not started | |
 | R6 | 3c.1 activity header; 3c.2 activity details and tips | not started | |
