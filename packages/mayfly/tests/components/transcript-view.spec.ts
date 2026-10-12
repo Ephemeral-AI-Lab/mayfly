@@ -9,7 +9,7 @@ import { PROMPT_MAX_LINES, TranscriptView, type StreamRow, type StreamTurn, type
 
 const prompt = (id: string, text: string, more: Partial<Extract<StreamRow, { kind: 'prompt' }>> = {}): StreamRow => ({ kind: 'prompt', id, text, images: [], open: false, ...more })
 const answer = (id: string, text: string): StreamRow => ({ kind: 'answer', id, text })
-const turn = (id: string, rows: readonly StreamRow[], time?: string): StreamTurn => ({ id, rows, ...(time === undefined ? {} : { time }) })
+const turn = (id: string, rows: readonly StreamRow[], closing?: string): StreamTurn => ({ id, rows, ...(closing === undefined ? {} : { closing }) })
 const facts = (turns: readonly StreamTurn[], queued: TranscriptViewFacts['queued'] = []): TranscriptViewFacts => ({ turns, queued })
 const itemsOf = (value: TranscriptViewFacts) => TranscriptView(value).items
 
@@ -19,17 +19,18 @@ describe('TranscriptView', () => {
     expect(node).toMatchObject({ kind: 'list', id: 'stream', role: 'browse', acceptVerb: 'expand', hintLabel: 'stream' })
   })
 
-  it('opens every turn after the first with a blank row and a rule carrying its start time', () => {
+  it('opens every turn after the first with a blank row and closes an ended turn with one muted row', () => {
     const items = itemsOf(facts([
-      turn('turn:1', [prompt('u1', 'one'), answer('a1', 'first')], '10:02'),
-      turn('turn:2', [prompt('u2', 'two')], '10:03'),
+      turn('turn:1', [prompt('u1', 'one'), answer('a1', 'first')], 'Worked for 17s · done 10:13'),
+      turn('turn:2', [prompt('u2', 'two')], 'Stopped after 3s · done 10:14'),
       turn('turn:3', [prompt('u3', 'three')]),
     ]))
-    expect(items.map(item => item.id)).toEqual(['u1', 'a1.0', 'turn:2.gap', 'turn:2.rule', 'u2', 'turn:3.gap', 'turn:3.rule', 'u3'])
-    expect(items.find(item => item.id === 'turn:2.rule')).toMatchObject({ rule: '10:03', disabled: true })
-    // A turn that recorded no start still gets its rule, without a time.
-    expect(items.find(item => item.id === 'turn:3.rule')).toMatchObject({ rule: '' })
+    expect(items.map(item => item.id)).toEqual(['u1', 'a1.0', 'turn:1.end.gap', 'turn:1.end', 'turn:2.gap', 'u2', 'turn:2.end.gap', 'turn:2.end', 'turn:3.gap', 'u3'])
+    expect(items.find(item => item.id === 'turn:1.end')).toMatchObject({ label: '✻ Worked for 17s · done 10:13', labelSpans: [{ text: '✻ ', tone: 'muted' }, { text: 'Worked for 17s · done 10:13', tone: 'muted' }] })
     expect(items.find(item => item.id === 'turn:2.gap')).toMatchObject({ gap: true, disabled: true })
+    // No line is drawn anywhere, and a running turn has no closing row.
+    expect(items.some(item => item.rule !== undefined)).toBe(false)
+    expect(items.some(item => item.id === 'turn:3.end')).toBe(false)
   })
 
   it('wraps the prompt under its marker and caps it at four lines until it is open', () => {
@@ -50,7 +51,7 @@ describe('TranscriptView', () => {
 
   it('puts the messages queued behind the stream after the last turn, marked as queued', () => {
     const items = itemsOf(facts([turn('turn:1', [prompt('u1', 'one')])], [{ id: 'q1', text: 'then update the changelog', suffix: '⏎ queued' }]))
-    expect(items.map(item => item.id)).toEqual(['u1', 'queued.q1.gap', 'queued.q1.rule', 'queued.q1'])
+    expect(items.map(item => item.id)).toEqual(['u1', 'queued.q1.gap', 'queued.q1'])
     const queued = items.at(-1)!
     expect(queued.labelSpans?.at(-1)).toEqual({ text: '  ⏎ queued', tone: 'muted' })
     expect(queued).toMatchObject({ wrap: true, wrapMax: 4 })
@@ -71,18 +72,18 @@ describe('TranscriptView', () => {
 
   it('keeps the frozen items of a row while its facts keep their identity', () => {
     const settled = answer('a1', 'done')
-    const first = turn('turn:1', [prompt('u1', 'one'), settled], '10:02')
-    const second = turn('turn:2', [prompt('u2', 'two')], '10:03')
+    const first = turn('turn:1', [prompt('u1', 'one'), settled], 'Worked for 1s · done 10:02')
+    const second = turn('turn:2', [prompt('u2', 'two')])
     const before = itemsOf(facts([first, second]))
     // The live turn changes; the settled one is the same object, so its items are the same objects.
-    const live = turn('turn:2', [prompt('u2', 'two'), answer('a2', 'streaming…')], '10:03')
+    const live = turn('turn:2', [prompt('u2', 'two'), answer('a2', 'streaming…')])
     const after = itemsOf(facts([first, live]))
     expect(after[0]).toBe(before[0])
     expect(after[1]).toBe(before[1])
     // A turn rebuilt with equal facts but a new object still reuses its rows' items.
-    expect(itemsOf(facts([first, turn('turn:2', second.rows, '10:03')]))[2]).not.toBe(undefined)
+    expect(itemsOf(facts([first, turn('turn:2', second.rows)]))[2]).not.toBe(undefined)
     expect(Object.isFrozen(before[0])).toBe(true)
     // A row with new facts gets new items.
-    expect(itemsOf(facts([turn('turn:1', [prompt('u1', 'one'), answer('a1', 'done more')], '10:02')]))[1]).not.toBe(before[1])
+    expect(itemsOf(facts([turn('turn:1', [prompt('u1', 'one'), answer('a1', 'done more')], 'Worked for 1s · done 10:02')]))[1]).not.toBe(before[1])
   })
 })

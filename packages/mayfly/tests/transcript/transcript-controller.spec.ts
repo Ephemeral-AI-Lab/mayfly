@@ -59,7 +59,7 @@ describe('TranscriptController', () => {
     controller.attach(screen)
     model = createTranscriptModel('a', [user(1, 'one'), user(2, 'two')])
     controller.refresh()
-    expect(latest()!.items.filter(item => item.rule !== undefined)).toHaveLength(1)
+    expect(latest()!.items.filter(item => item.gap === true)).toHaveLength(1)
     controller.dropView('main')
     expect(latest()).toBeNull()
   })

@@ -1,7 +1,7 @@
 /**
  * The conversation stream: one browse list whose rows are the turns of a session. A turn after the first starts with a
- * blank row and a muted rule carrying its start time; the prompt row keeps its own bold line, wraps, and folds behind
- * `▸ N more lines · Enter` past {@link PROMPT_MAX_LINES}. Every other kind of row is a minimal one-row stand-in that its
+ * blank row, and a turn that has ended closes with one muted row (`✻ Worked for 21s · done 10:13`); the prompt row keeps
+ * its own bold line, wraps, and folds behind `▸ N more lines · Enter` past {@link PROMPT_MAX_LINES}. Every other kind of row is a minimal one-row stand-in that its
  * own component replaces (answers, reasoning, tools, groups, compaction).
  *
  * The component is a pure function of facts: texts arrive translated and times arrive formatted. The facts of a row are
@@ -44,11 +44,12 @@ export type StreamRow =
   /** Any other text the stream shows. */
   | { readonly kind: 'note', readonly id: string, readonly text: string }
 
-/** One turn: the rows it holds, and the time it started when the session recorded one. */
+/** One turn: the rows it holds, and the closing line of a turn that has ended. */
 export interface StreamTurn {
   readonly id: string
-  readonly time?: string
   readonly rows: readonly StreamRow[]
+  /** The translated closing text, without its glyph: how long the turn worked and when it was done. */
+  readonly closing?: string
 }
 
 /** A message the user typed while the agent works: the next turn's prompt, not yet part of the session. */
@@ -125,22 +126,27 @@ function itemsOf(row: StreamRow): readonly MayflyListItem[] {
   return items
 }
 
-/** The blank row and the timed rule that open a turn after the first. */
-function boundary(id: string, time: string | undefined): readonly MayflyListItem[] {
-  return [
-    blank(`${id}.gap`),
-    { id: `${id}.rule`, label: '', disabled: true, rule: time ?? '' },
-  ]
+/** The blank row that opens a turn after the first. */
+const gapCache = new WeakMap<StreamTurn, MayflyListItem>()
+
+function blankBetween(turn: StreamTurn): MayflyListItem {
+  let item = gapCache.get(turn)
+  if (item === undefined) {
+    item = freezeWire(blank(`${turn.id}.gap`))
+    gapCache.set(turn, item)
+  }
+  return item
 }
 
-/** The boundaries of settled turns, by turn facts. */
-const boundaryCache = new WeakMap<StreamTurn, readonly MayflyListItem[]>()
+/** The closing row of a turn that has ended, behind a blank row, by turn facts. */
+const closingCache = new WeakMap<StreamTurn, readonly MayflyListItem[]>()
 
-function boundaryOf(turn: StreamTurn): readonly MayflyListItem[] {
-  let items = boundaryCache.get(turn)
+function closingOf(turn: StreamTurn): readonly MayflyListItem[] {
+  if (turn.closing === undefined) return []
+  let items = closingCache.get(turn)
   if (items === undefined) {
-    items = freezeWire(boundary(turn.id, turn.time))
-    boundaryCache.set(turn, items)
+    items = freezeWire([blank(`${turn.id}.end.gap`), line(`${turn.id}.end`, [span('✻ ', 'muted'), span(turn.closing, 'muted')])])
+    closingCache.set(turn, items)
   }
   return items
 }
@@ -150,7 +156,7 @@ const queuedCache = new WeakMap<StreamQueued, readonly MayflyListItem[]>()
 function queuedItems(message: StreamQueued): readonly MayflyListItem[] {
   let items = queuedCache.get(message)
   if (items === undefined) {
-    items = freezeWire([...boundary(`queued.${message.id}`, undefined), promptItem(`queued.${message.id}`, message.text, false, message.suffix)])
+    items = freezeWire([blank(`queued.${message.id}.gap`), promptItem(`queued.${message.id}`, message.text, false, message.suffix)])
     queuedCache.set(message, items)
   }
   return items
@@ -164,8 +170,9 @@ function queuedItems(message: StreamQueued): readonly MayflyListItem[] {
 export function TranscriptView(facts: TranscriptViewFacts): MayflyListNode {
   const items: MayflyListItem[] = []
   facts.turns.forEach((turn, index) => {
-    if (index > 0) items.push(...boundaryOf(turn))
+    if (index > 0) items.push(blankBetween(turn))
     for (const row of turn.rows) items.push(...itemsOf(row))
+    items.push(...closingOf(turn))
   })
   for (const message of facts.queued) items.push(...queuedItems(message))
   return ui.list({ id: 'stream', role: 'browse', acceptVerb: 'expand', hintLabel: 'stream', items })

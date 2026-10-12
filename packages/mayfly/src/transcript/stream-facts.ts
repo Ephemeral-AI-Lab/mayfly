@@ -11,7 +11,7 @@ import type { UserMessage } from '@deepseek-ai/dsh-session'
 import { textOf, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import { sanitizePluginText } from '../core/plugin-view.ts'
 import type { MayflyTranslate } from '../frontend/locale.ts'
-import type { TranscriptEntryModel, TranscriptModel } from '../frontend/models.ts'
+import type { TranscriptEntryModel, TranscriptModel, TranscriptTurnModel } from '../frontend/models.ts'
 import type { StreamMood, StreamQueued, StreamRow, StreamTurn, TranscriptViewFacts } from '../components/transcript-view.ts'
 import { compactElapsedMs } from './agent-presentation.ts'
 import { buildDisplay, memberFacts, runningTurnOf, type DisplayItem, type EntryItem, type ProcessTitleItem, type TurnHeaderItem } from './process-groups.ts'
@@ -158,7 +158,7 @@ export class StreamFacts {
       flat: model.streaming === undefined,
       runningHeader: inputs.liveTurnHeader,
     })
-    const times = new Map((model.turns ?? []).map(turn => [turn.turn, clockTime(turn.startedAt)]))
+    const lifecycle = new Map((model.turns ?? []).map(turn => [turn.turn, turn]))
     const buckets: { readonly turn: number, readonly rows: StreamRow[] }[] = []
     let lead: StreamRow[] = []
     display.forEach((item, position) => {
@@ -186,10 +186,10 @@ export class StreamFacts {
     }
     return buckets.map(({ turn, rows }) => {
       const id = `turn:${String(turn)}`
-      const time = times.get(turn)
+      const closing = closingOf(lifecycle.get(turn), inputs.t)
       const previous = this.turns.get(id)
-      const settled = previous !== undefined && previous.time === time && previous.rows.length === rows.length && previous.rows.every((row, index) => row === rows[index])
-      const result: StreamTurn = settled ? previous : { id, ...(time === undefined ? {} : { time }), rows }
+      const settled = previous !== undefined && previous.closing === closing && previous.rows.length === rows.length && previous.rows.every((row, index) => row === rows[index])
+      const result: StreamTurn = settled ? previous : { id, rows, ...(closing === undefined ? {} : { closing }) }
       keptTurns.set(id, result)
       return result
     })
@@ -209,6 +209,15 @@ function turnOf(item: DisplayItem): number | undefined {
   return isSemantic(item.entry) ? item.entry.turn : undefined
 }
 
+/** How long a turn that has ended worked and when it was done, or `undefined` while it runs. */
+function closingOf(turn: TranscriptTurnModel | undefined, t: MayflyTranslate): string | undefined {
+  if (turn?.endedAt === undefined) return undefined
+  const values = { duration: compactElapsedMs(turn.endedAt - turn.startedAt), time: clockTime(turn.endedAt) }
+  if (turn.outcome === 'aborted' || turn.outcome === 'interrupted' || turn.outcome === 'forked') return t('Stopped after {duration} · done {time}', values)
+  if (turn.outcome === 'error') return t('Failed after {duration} · done {time}', values)
+  return t('Worked for {duration} · done {time}', values)
+}
+
 function headerRow(item: TurnHeaderItem, t: MayflyTranslate): StreamRow {
   let mood: StreamMood = 'done'
   let label: string
@@ -222,14 +231,16 @@ function headerRow(item: TurnHeaderItem, t: MayflyTranslate): StreamRow {
     mood = 'failed'
     label = t('Failed')
   } else {
-    label = item.startedAt === undefined || item.endedAt === undefined ? t('Worked') : t('Took {duration}', { duration: compactElapsedMs(item.endedAt - item.startedAt) })
+    label = ''
   }
   const counts = item.running ? [] : [
     ...(item.toolCalls === 0 ? [] : [t(item.toolCalls === 1 ? '{count} tool call' : '{count} tool calls', { count: item.toolCalls })]),
     ...(item.subagents === 0 ? [] : [t(item.subagents === 1 ? '{count} subagent' : '{count} subagents', { count: item.subagents })]),
   ]
-  const tail = `${counts.map(count => ` · ${count}`).join('')}${item.hint ? ` · ${t('Ctrl+O to expand')}` : ''}`
-  return { kind: 'header', id: item.id, mood, open: !item.folded, label, tail }
+  const hint = item.hint ? t('Ctrl+O to expand') : ''
+  // A finished turn's header is what it did: the counts. How long it took is the closing row's.
+  if (mood === 'done') return { kind: 'header', id: item.id, mood, open: !item.folded, label: [...counts, ...(hint === '' ? [] : [hint])].join(' · ') || t('Worked'), tail: '' }
+  return { kind: 'header', id: item.id, mood, open: !item.folded, label, tail: `${counts.map(count => ` · ${count}`).join('')}${hint === '' ? '' : ` · ${hint}`}` }
 }
 
 function titleRow(item: ProcessTitleItem, t: MayflyTranslate): StreamRow {

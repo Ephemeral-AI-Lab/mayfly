@@ -13,13 +13,13 @@ import { fakeMayflyComponents } from '../transcript/helpers.ts'
 import { COLORS } from '../transcript/status-fakes.ts'
 
 /** Compile the stream the way a mounted slot paints it, and render it at one width. */
-function render(rows: readonly StreamRow[], width: number, queued = ''): string[] {
+function render(rows: readonly StreamRow[], width: number, text = ''): string[] {
   const node = TranscriptView({
     turns: [
-      { id: 'turn:1', time: '10:02', rows: [{ kind: 'prompt', id: 'u0', text: 'first', images: [], open: false }] },
-      { id: 'turn:2', time: '10:03', rows },
+      { id: 'turn:1', closing: `Worked for ${text} · done 10:13`, rows: [{ kind: 'prompt', id: 'u0', text: 'first', images: [], open: false }] },
+      { id: 'turn:2', closing: text, rows },
     ],
-    queued: queued === '' ? [] : [{ id: 'q', text: queued, suffix: '⏎ queued' }],
+    queued: text === '' ? [] : [{ id: 'q', text, suffix: '⏎ queued' }],
   })
   const compiled = compileMayflyUiNode(node, {
     components: fakeMayflyComponents(),

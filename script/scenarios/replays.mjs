@@ -421,7 +421,7 @@ const turns = {
       step({ text: 'Done — 5 files updated; the width scan has 6 narrow cases (24 to 60 columns) and all pass.' }),
     ], { startAt: '10:03' }),
     turn(lines(7, n => `Check ${String(n)}: the ${['header', 'footer', 'editor', 'banner', 'queue', 'status row', 'overlay'][n - 1]} still fits at 40 columns.`), [step({ text: 'All seven fit; the overlay needed a one-column trim.' })], { startAt: '10:09' }),
-    turn('请把这一段说明翻译成中文，并且保留原来的标点：the stream shows one rule between turns, and a prompt longer than four lines folds behind a muted row that opens with Enter.', [step({ text: '已翻译；标点保持不变。' })], { startAt: '10:11' }),
+    turn('请把这一段说明翻译成中文，并且保留原来的标点：each turn ends with one quiet closing row, and a prompt longer than four lines folds behind a muted row that opens with Enter.', [step({ text: '已翻译；标点保持不变。' })], { startAt: '10:11' }),
     turn('Run the full gate, and I will stop you halfway.', [
       step({ text: 'Starting the full gate.', tools: [tool('bash', { command: 'pnpm run check -- --tier full', description: 'Run the full gate' }, { result: 'stopped', runMs: 1500 })] }),
     ], { startAt: '10:14', outcome: 'interrupted' }),

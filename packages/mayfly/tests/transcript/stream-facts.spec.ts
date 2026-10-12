@@ -1,6 +1,6 @@
 /**
  * The facts of the conversation stream: a transcript model mapped to turns and rows through the display plan, with the
- * policy's window, the Ctrl-O reach, row identity across passes, and the time a turn started.
+ * policy's window, the Ctrl-O reach, row identity across passes, and the closing line of a turn that has ended.
  * @module transcript-stream-facts
  */
 
@@ -35,14 +35,15 @@ describe('StreamFacts', () => {
     expect(clockTime(NOON)).toBe(`${String(local.getHours()).padStart(2, '0')}:${String(local.getMinutes()).padStart(2, '0')}`)
   })
 
-  it('groups the rows of each turn under its start time and keeps the answer of a settled turn', () => {
+  it('groups the rows of each turn and closes the turns that have ended', () => {
     const facts = new StreamFacts().build(model(
       [user(1, 'hello'), assistant(1, 'hi'), user(2, 'again'), assistant(2, 'sure')],
       [{ turn: 1, startedAt: NOON, endedAt: NOON + 1_000, outcome: 'completed' }, { turn: 2, startedAt: NOON + 60_000 }],
     ), inputs())
     expect(facts.turns.map(turn => turn.id)).toEqual(['turn:1', 'turn:2'])
-    expect(facts.turns[0]!.time).toBe(clockTime(NOON))
-    expect(facts.turns[1]!.time).toBe(clockTime(NOON + 60_000))
+    expect(facts.turns[0]!.closing).toBe(`Worked for 1s · done ${clockTime(NOON + 1_000)}`)
+    // A running turn has no closing line: the activity row owns its state.
+    expect(facts.turns[1]!.closing).toBeUndefined()
     expect(rowsOf(facts.turns[0]).map(row => row.kind)).toEqual(['prompt', 'answer'])
   })
 
@@ -51,7 +52,7 @@ describe('StreamFacts', () => {
     const turns = [{ turn: 1, startedAt: NOON, endedAt: NOON + 4_000, outcome: 'completed' }]
     const folded = new StreamFacts().build(model(entries, turns, false), inputs())
     expect(rowsOf(folded.turns[0]).map(row => row.kind)).toEqual(['prompt', 'header', 'answer'])
-    expect(rowsOf(folded.turns[0])[1]).toMatchObject({ kind: 'header', mood: 'done', open: false, label: 'Took 4s', tail: ' · 1 tool call · Ctrl+O to expand' })
+    expect(rowsOf(folded.turns[0])[1]).toMatchObject({ kind: 'header', mood: 'done', open: false, label: '1 tool call · Ctrl+O to expand', tail: '' })
     // Streaming models carry the lifecycle; a flat model draws the entries alone.
     const open = new StreamFacts().build(model(entries, turns, true), inputs({ expanded: true }))
     expect(rowsOf(open.turns[0]).map(row => row.kind)).toEqual(['prompt', 'header', 'reasoning', 'step', 'answer'])
