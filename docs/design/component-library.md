@@ -1430,36 +1430,52 @@ summarizing and applying.
 The drop matches the status bar's context meter. Without a known context window
 the bar falls back to the two stages (`1/2`, `2/2`).
 
-**The user's own words.** A prompt must be findable at a glance, and today it is not: it is one bold `»` row at the
-same indent as the output with no space above it, so a turn's answer runs straight into the next prompt. The design
-separates turns with a **turn rule**: before every turn after the first, a blank row and a muted full-width rule with
-the turn's start time on the right, then the prompt row.
+**The stream's turns, prompts, answers, and reasoning.** *Finalized in group 3a; the owner accepted each part on its scenario.*
 
 ```
-  ● Done — the hero now reads "Ship agent UI in a keystroke"; all 214 tests pass.
-    The one failure was a truncation bug in the tool-line row, fixed in the same change.
-
-  ──────────────────────────────────────────────────────── 10:03
   » Before the release, audit every place that still prints
     "Working" instead of "Deep diving": the activity row, the
     tips, the website pages, and the screenshots. List each file
     you changed, keep the diff small, and do not touch the
     ▸ 2 more lines · Enter
-    ▸ Took 17s · 4 tool calls · +2 −2 · Ctrl+O expand
-    ● Done — 5 files updated; the width scan has 6 narrow cases (24 to 60 columns) and all pass.
+    ▸ 4 tool calls · Ctrl+O to expand
+  ● Done — 5 files updated; the width scan has 6 narrow cases (24 to 60 columns) and all pass.
+
+  ✻ Worked for 17s · done 10:13
+
+  » Next prompt
 ```
 
-- The rule and the blank row are not selectable and cost two rows per turn; the first turn has none. The rule is
-  monochrome-safe (a glyph, not a color) and its time is the turn's start, so the stream also reads as a timeline.
-- **A prompt is capped at four lines** at every level. Lines beyond the cap are hidden behind one muted row,
-  `▸ N more lines · Enter`; `Enter` on the selected prompt opens the rest and `Enter` again closes it. Copy (`c`) and
-  open in `$EDITOR` (`Ctrl+G`) always take the whole prompt, and a search hit inside the hidden lines opens the
-  prompt (§5.6 search). The cap is part of the design, not of one style (`PROMPT_MAX_LINES`).
-- The prompt keeps its own bold row and wraps with its text aligned after the `»`, so a wrapped prompt reads as one
-  block. At Compact level, where a turn is a prompt, a header, and an answer, the rule is the main separator.
-- A queued or steered message uses the same row with a `⏎ queued` suffix, and an interrupted prompt a `■ interrupted`
-  one.
-- In the prototype this is `ui.list` rows with `rule` and `gap` (§4.4); no new component is needed.
+- **Turn edges.** A blank row opens every turn after the first, and a turn that has ended closes with one muted row,
+  `✻ Worked for 17s · done 10:13` (`Stopped after` / `Failed after`). No rule is drawn: the owner chose this quieter
+  closing row over the sketch's timed rule at 3a.1, and the header drops its duration, which the closing row carries.
+- **A prompt is capped at four lines** at every level (`PROMPT_MAX_LINES`). Lines beyond the cap are hidden behind one
+  muted row, `▸ N more lines · Enter`; `Ctrl+O` opens the prompts of the last three turns, and (with row selection,
+  3e.2) `Enter` opens the selected one. Copy (`c`) and open in `$EDITOR` (`Ctrl+G`) always take the whole prompt, and a
+  search hit inside the hidden lines opens the prompt. The prompt keeps its own bold row; its wrapped lines start
+  under the text, after the `»`.
+- A queued or steered message is the same row with a `⏎ queued` suffix, behind a blank row after the last turn; an
+  interrupted turn ends with `■ interrupted` in the warning tone.
+- **Images** pasted into a prompt are a picture under it (`ui.image`, 12 rows at most, bytes from the attachment
+  store); while loading, when the store lacks them, and on a terminal without an image protocol the row shows
+  `▪ [image] 1 · error.png · 1280×720 · 82 KB`.
+- **An answer is Markdown**: one list item whose body is the shipped Markdown component (headings, nested lists, tables
+  drawn as boxes, highlighted fences, inline emphasis, code, and links), led by `● ` on its first row and wrapped under
+  it (`bodyLead`, §4.4). Blocks are separated by the renderer's own blank row. A growing answer is scanned from its last
+  unit and painted one unit per append, so a long live answer costs what its tail costs; nothing caps it.
+- **Reasoning** shows where the display plan opens process cards (the levels' policy is 3e.1): live, one italic muted
+  row, `✻ <latest line>`, clipped at the width; at Verbose a streaming reasoning grows line by line under a
+  `✻ Thinking` header. Opened (Verbose, or a turn opened with `Ctrl+O`) it is a header row `✻ Thinking · 9s` (how long it
+  took) and the whole text under it, aligned with the word `Thinking`, uncapped. A mode that previews settled
+  reasoning (`settledReasoningPreview`, Detailed) shows `✻ <first line>`.
+- **The welcome banner** stays its own block above the stream and scrolls away with the history; a blank row closes it.
+  Moving it into the list needs tones for its per-row logo gradient and model highlight, a decision for later.
+- **The live turn.** The stream follows its tail. A view scrolled away keeps its place (also when the stream rewrites
+  its rows) and keeps a reverse-video chip on the stream's last visible row at its right edge: `Back to bottom · Ctrl+↓`,
+  or `N new turns · Ctrl+↓` once N turns of the agent loop began below the view (turns, never rows, tool calls, or message
+  blocks). `Ctrl+↓` (the action `mayfly.interaction.follow-tail`, rebindable; `End` too with an empty draft) follows the
+  tail. The chip is painted by the renderer over the screen's scroll; a `ui.scroll` with `pill` keeps the sketch's
+  `↓ N new · End` for inner regions.
 
 *Considered and not chosen* (the Prompt styles scene still draws them, with `1`-`7`): a hanging indent for everything
 under the prompt, a `▎` quote bar down each prompt line, a background band behind the prompt (truecolor only), a

@@ -58,163 +58,7 @@ const COVERS = {
  * `scene`, the `reference`, and the effects `implemented`, to look at (`focus`: what to judge and `how` to reach it),
  * that `differs` from the prototype, and `pending`. `brief.mjs` prints them. Finalizing a group removes its entries.
  */
-const REVIEW = {
-  turns: {
-    scene: 18,
-    reference: 'prototype scenes 18 (Conversation stream) and 19 (Prompt styles, A) · spec §5.6 · TranscriptView and userItems in mayfly-components.mjs',
-    implemented: [
-      'The stream is one browse list on the conversation node slot and the outer view scrolls it: the wheel, PageUp, and End work as before.',
-      'A blank row opens every turn after the first, and a turn that has ended closes with one muted row: `✻ Worked for 17s · done 10:13` (`Stopped after` / `Failed after` when it did not finish). No line is drawn.',
-      'The prompt is a bold » row that wraps, keeps four lines, and hides the rest behind a muted `▸ N more lines · Enter` row; Ctrl+O opens the prompts of the last three turns.',
-      'A message queued while the agent works shows after the last turn as a prompt row ending in `⏎ queued`, behind a blank row.',
-      'An interrupted turn ends with `■ interrupted` in the warning tone.',
-      'Answers, reasoning, tool calls and their groups, the turn header, and compaction are one-row stand-ins that the next parts replace.',
-    ],
-    focus: [
-      { look: 'The closing row of each turn: its gray, its spacing around it, and whether the turn boundary reads without a line', how: 'checkpoint settled; node docs/design/prototypes/ui-preview.mjs 18 for the sketch\'s rule' },
-      { look: 'A long prompt wrapped, a seven-line prompt folded, and a CJK prompt that wraps mid-sentence', how: 'checkpoint settled' },
-      { look: 'Continuation lines of a wrapped prompt starting under the text, after the », and under a wrapped answer', how: 'checkpoint settled, then --width 60' },
-      { look: 'The queued rows after the last turn, and the pane above the editor showing the same messages', how: 'checkpoint queued' },
-      { look: 'The interrupted turn: its header, its group title, and the cut marker', how: 'checkpoint settled' },
-      { look: 'Ctrl+O opening the folded prompts and the process of the last three turns', how: 'checkpoint open (Ctrl+O on end)' },
-      { look: 'The closing row and the fold row at 60, 48, and 40 columns', how: 'checkpoint narrow, and --width 60 / --width 40' },
-    ],
-    differs: [
-      'The sketch (and spec §5.6) separates turns with a timed rule; the owner asked for a quieter closing row at the end of each turn instead (like Claude Code), so the header drops its duration, which the closing row carries.',
-      'The prototype draws no queued or interrupted row: both are placed from the spec text (§5.6).',
-      'A queued message is also in the queue pane until Phase 4 deletes it; the sketch shows the queue line only above the editor.',
-    ],
-    pending: [
-      'Answers show their source text line by line; markdown, blank-row rhythm, and wrap indent come with 3a.2.',
-      'The live reasoning row shows its last line; the real reasoning row, the streamed turn, and the tail chip are 3a.2 and 3a.3.',
-      'Images are a label row; pictures are 3a.4. Tool lines, cards, and diffs are 3b; the activity row, banners, and compaction rows are 3c.',
-      'Rows take no focus: Alt+↑, Enter expand, and c copy come with row selection (3e.2), so the list hint row is not shown.',
-      'The running header of a read-only child shows no ticking duration until 3c.',
-      'The `!` shell echo and the plan document sit below the stream, no longer at the tail of the turn that made them.',
-      'The `userFoldLines` and `userFoldChars` settings no longer fold anything; they go with the settings surface once the four-line cap is accepted.',
-    ],
-  },
-  markdown: {
-    scene: 18,
-    reference: 'prototype scene 18 (Conversation stream), the answer rows · spec §5.6 and Δ21 · turnItemsRaw in mayfly-components.mjs',
-    implemented: [
-      'An answer is Markdown: headings, bullets with nested items, tables drawn as boxes, fenced code highlighted by language, and inline emphasis, code, and links.',
-      'A `● ` leads the answer\'s first row and every other row sits under it, two columns in; a long paragraph wraps under its own first letter.',
-      'Blocks are separated by one blank row, the renderer\'s own rhythm.',
-      'The answer grows in place while it streams and the view follows its tail; settling it changes no row above the last block.',
-    ],
-    focus: [
-      { look: 'Headings, lists, the table, and both code fences against the sketch\'s plain wrapped lines', how: 'checkpoint end' },
-      { look: 'The `● ` and the two-column hang on the first row and on a wrapped paragraph', how: 'checkpoint end, then --width 60' },
-      { look: 'Half an answer: the open block at the tail and the tail in view', how: 'checkpoint half' },
-      { look: 'A table and a fence at 60 columns', how: 'checkpoint narrow' },
-    ],
-    differs: [
-      'The sketch draws an answer as plain wrapped lines; the spec (Δ21) keeps the shipped Markdown component, so headings, tables, and highlighted fences appear.',
-      'The sketch indents every answer row by two columns; here the Markdown renderer\'s own list and quote indents add to those two.',
-    ],
-    pending: [
-      'Reasoning, tool rows, and the activity row are the other parts\' work.',
-    ],
-  },
-  thinking: {
-    scene: 18,
-    reference: 'prototype scene 18 (Conversation stream), the `think` rows · spec §5.6 · turnItemsRaw in mayfly-components.mjs',
-    implemented: [
-      'At Standard a finished turn folds its reasoning behind the header (`▸ Took 10s · Ctrl+O to expand`); Ctrl+O opens the last three turns and the reasoning shows whole.',
-      'An opened reasoning is a header row of its own, `✻ Thinking · 9s` (how long it took), and the whole text under it, wrapped and aligned with the word `Thinking`, paragraphs kept.',
-    ],
-    focus: [
-      { look: 'The folded turn, then the reasoning that Ctrl+O opens', how: 'checkpoint end, then checkpoint open' },
-      { look: 'The wrap under the text at 48 columns', how: 'checkpoint narrow' },
-    ],
-    differs: [
-      'The sketch\'s reasoning is one sentence; real reasoning is many paragraphs, shown whole when a turn is open (owner decision, no cap).',
-      'R2\'s `Thought for 9s` row is now the header `✻ Thinking · 9s` with the text on the lines below it, not beside it.',
-    ],
-    pending: [
-      'Which levels show reasoning, and the one-line preview that Detailed will show for a settled turn, come with the levels (3e.1); the preview row exists but a Detailed turn folds until then.',
-      'Selecting a reasoning row, copying it, and searching it are 3e.',
-    ],
-  },
-  'thinking-verbose': {
-    scene: 18,
-    reference: 'prototype scene 18 (Conversation stream) at level Verbose, the `think` rows · spec §5.6',
-    implemented: [
-      'At Verbose the reasoning streams in: a `✻ Thinking` header and the text growing line by line under it, aligned with the word `Thinking`; the activity row keeps the clock and counters.',
-      'A settled turn at Verbose shows `✻ Thinking · 9s` and the whole text under it, wrapped.',
-      'At the other levels that show live reasoning (Detailed) the stream still shows one italic row, `✻ <latest line>`.',
-    ],
-    focus: [
-      { look: 'The reasoning growing under its header mid-stream, with no single-line scrolling', how: 'checkpoint live' },
-      { look: 'The settled header with its duration, the text aligned under the word Thinking, the blank rows between paragraphs, and the answer after it', how: 'checkpoint settled' },
-      { look: 'The same at 48 columns', how: 'checkpoint narrow' },
-    ],
-    differs: [
-      'Reasoning is shown whole and uncapped, header and text on separate rows; the sketch has one sentence on one row (owner decision, Verbose is where reasoning is read).',
-    ],
-    pending: [
-      'The Detailed level, its preview, and the policy that decides which level shows what are 3e.1.',
-    ],
-  },
-  live: {
-    scene: 18,
-    reference: 'spec §5.6 (follow-tail and the tail chip) · ScrollRegion pill in ui-kit.mjs',
-    implemented: [
-      'While you are at the tail the stream follows a growing answer and shows no chip.',
-      'Scroll up (wheel, PageUp, Shift+↑) and a reverse-video chip appears on the stream\'s last visible row at its right edge and stays while you are away. With nothing new below it reads `Back to bottom · Ctrl+↓`, the way back; once a new turn of the agent loop begins below you it reads `N new turns · Ctrl+↓`. N counts turns, never rows, tool calls, or message blocks.',
-      '`Ctrl+↓` jumps to the newest content and the chip goes; it works with a draft in the editor and on keyboards with no End key. `End` still works with an empty draft. The key is the action `mayfly.interaction.follow-tail`, and the chip shows whatever it is bound to.',
-      'A reader scrolled away stays away when the stream rewrites its rows (a live answer settling into its message): the view holds its place instead of snapping back to the tail.',
-      'The footer notice `new messages available · press End to follow` is gone: the chip replaces it.',
-    ],
-    focus: [
-      { look: 'The chip right after you scroll up, before anything new has arrived: `Back to bottom`', how: 'checkpoint scrolled (the wheel scrolls up while the first answer is half written)' },
-      { look: 'The chip once the rest arrives: two more turns began below, so `2 new turns`', how: 'checkpoint away' },
-      { look: 'Ctrl+↓ returning to the newest rows and the chip leaving', how: 'checkpoint followed' },
-      { look: 'The chip at 60 columns, and the rows above it holding still', how: 'checkpoint away, then --width 60' },
-    ],
-    differs: [
-      'The sketch draws the pill on an inner scroll region with a declared height, shows it only when rows arrived, and counts rows with `End`; the stream is scrolled by the screen, so the chip is painted over its last row by the renderer, stays while you are away, counts turns, and uses Ctrl+↓.',
-    ],
-    pending: [
-      'The view can still shift by about a row when the answer\'s lazily painted blocks (a table) replace their row estimates above the view; anchoring on the first visible row would remove it.',
-      'Clicking the chip does not follow yet.',
-    ],
-  },
-  prompts: {
-    scene: 18,
-    reference: 'spec §5.6 (images in the stream) · the prompt rows of turnItemsRaw in mayfly-components.mjs',
-    implemented: [
-      'An image pasted into a prompt is a picture row under the prompt, `▪` and the image, tall at most 12 rows; its bytes come from the attachment store.',
-      'While the bytes load, when the store does not have them, and on a terminal with no image protocol the row shows its text: `▪ [image] 1 · error.png · 1280×720 · 82 KB`.',
-    ],
-    focus: [
-      { look: 'The image row under its prompt: the lead, the alt text, and the spacing to the answer', how: 'checkpoint end' },
-      { look: 'The same at 60 columns', how: 'checkpoint end, then --width 60' },
-    ],
-    differs: [
-      'The scenario\'s image has no bytes in the store and the runner has no image protocol, so it shows the text fallback; the picture itself is covered by the image-node specs with a fake loader.',
-    ],
-    pending: [
-      'Tool rows, cards, and diffs are 3b; the activity row, banners, and compaction rows are 3c.',
-    ],
-  },
-  idle: {
-    reference: 'spec §5.6 (the welcome banner as the stream\'s first row) · the Banner of the shipped product',
-    implemented: [
-      'A blank row closes the welcome banner, the same gap every turn after the first has, so the first prompt no longer sits against the logo.',
-    ],
-    focus: [
-      { look: 'The banner and the row after it, at 120 and 60 columns', how: 'checkpoint boot' },
-    ],
-    differs: [
-      'The banner is still its own block above the stream, not a row of it: its per-row logo gradient and model highlight are theme colors the list\'s tones do not carry. Moving it into the list needs new tones, which is a question for the owner.',
-    ],
-    pending: [
-      'The banner scrolls away with the history as before; selecting or copying it is not part of 3e.',
-    ],
-  },
-}
+const REVIEW = {}
 
 /**
  * Scripts that differ from playing to the end. A settled job wakes the agent for a real turn on the stub, which runs
@@ -381,7 +225,6 @@ export const CATALOG = Object.freeze({
     covers: [`${TRANSCRIPT}banner*.ts`, `${TRANSCRIPT}status-*.ts`, `${INTERACTION}input-plugin.ts`],
     sizes: [DEFAULT_SIZE, [60, 24]],
     script: [checkpoint('boot')],
-    review: REVIEW.idle,
   },
   gallery: {
     summary: 'the UI gallery: a side pane, a view in status row 2, and a bottom prompt pane',
@@ -411,7 +254,6 @@ export const CATALOG = Object.freeze({
       play(), checkpoint('settled'),
       resize(48, 24), checkpoint('narrow'),
     ],
-    review: REVIEW['thinking-verbose'],
   },
   // The pill: scroll away from a streaming answer, let the rest arrive, then follow it again with Ctrl+↓.
   live: {
@@ -425,7 +267,6 @@ export const CATALOG = Object.freeze({
       play(), checkpoint('away'),
       key('ctrl+down'), checkpoint('followed'),
     ],
-    review: REVIEW.live,
   },
   ...APP,
   ...PERF,

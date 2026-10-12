@@ -1,0 +1,44 @@
+grid 48x24 cursor none
+|
+|    Step 13: consider whether a factor below
+|    1300 could divide 2^31 - 1. The number is a
+|    Mersenne number, and a Mersenne exponent
+|    being prime is necessary but not sufficient,
+|    so the exponent 31 alone settles nothing.
+|    Lucas–Lehmer gives the answer directly.
+|
+|    Step 14: consider whether a factor below
+|    1400 could divide 2^31 - 1. The number is a
+|    Mersenne number, and a Mersenne exponent
+|    being prime is necessary but not sufficient,
+|    so the exponent 31 alone settles nothing.
+|    Lucas–Lehmer gives the answer directly.
+|  ● Yes. 2^31 - 1 = 2147483647 is a Mersenne
+|    prime (the Lucas–Lehmer test with exponent
+|    31 returns zero).
+|
+|  ✻ Worked for 10s · done 09:00
+|
+|╭───────────────────────── Is 2^31 - 1 prime? ─╮
+|│ >                                            │
+|╰──────────────────────────────────────────────╯
+| deepseek-flash High  ~/workspace
+styles
+1: 4-43 fg:#9aa3b8 i
+2: 4-46 fg:#9aa3b8 i
+3: 4-43 fg:#9aa3b8 i
+4: 4-47 fg:#9aa3b8 i
+5: 4-44 fg:#9aa3b8 i
+6: 4-42 fg:#9aa3b8 i
+8: 4-43 fg:#9aa3b8 i
+9: 4-46 fg:#9aa3b8 i
+10: 4-43 fg:#9aa3b8 i
+11: 4-47 fg:#9aa3b8 i
+12: 4-44 fg:#9aa3b8 i
+13: 4-42 fg:#9aa3b8 i
+14: 2-3 fg:#ededf2
+18: 2-30 fg:#9aa3b8
+20: 0-25 fg:#45406b; 26-45 fg:#5c6476; 46-47 fg:#45406b
+21: 0 fg:#45406b; 4 r; 47 fg:#45406b
+22: 0-47 fg:#45406b
+23: 1-19 fg:#ededf2; 22-32 fg:#9aa3b8

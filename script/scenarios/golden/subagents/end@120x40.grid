@@ -8,11 +8,11 @@ grid 120x40 cursor none
 | ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣿⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀  Model:     deepseek-flash · deepseek-official
 | ⠀⠀⠀⠀⠀⠀⠀⠀⠀⡠⠊⠀⠑⢄⠀⠀⠀⠀⠀⠀⠀⠀⠀  Version:   scenario
 |
-| » Split the rebranding into parallel tracks.
+|  » Split the rebranding into parallel tracks.
+|  ▸ 5 subagents · Ctrl+O to expand
+|  ● All three tracks are started. I will wait for the survey to finish.
 |
-| ▸ Took 4s · 5 subagents · Ctrl+O to expand
-|
-| ● All three tracks are started. I will wait for the survey to finish.
+|  ✻ Worked for 4s · done 09:00
 |
 |
 |
@@ -48,9 +48,10 @@ styles
 5: 1-25 fg:#9a86e6; 26-107 fg:#ededf2
 6: 1-23 fg:#8371d6; 24-25 fg:#9a86e6; 26-107 fg:#e9e6f4
 7: 1-23 fg:#6c5bbf; 24-25 fg:#9a86e6; 26-107 fg:#ededf2
-9: 1-44 fg:#9a86e6 b
-11: 1-9 fg:#9aa3b8; 10-42 fg:#5c6476
-13: 1-2 fg:#ededf2
+9: 2-3 fg:#9a86e6; 4-45 fg:#9a86e6 b
+10: 2-33 fg:#9aa3b8
+11: 2-3 fg:#ededf2
+13: 2-29 fg:#9aa3b8
 26: 0-119 fg:#45406b
 27: 0-1 fg:#c9c0f0; 2-17 fg:#c9c0f0 b; 18-67 fg:#9aa3b8
 28: 0-4 fg:#9aa3b8; 5-12 fg:#c9c0f0 b; 13-31 fg:#c9c0f0; 32-100 fg:#9aa3b8

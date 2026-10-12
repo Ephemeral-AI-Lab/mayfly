@@ -1,23 +1,23 @@
 grid 120x40 cursor none
-| » Generate the large fixture.
+| ⠱⣦⣄⣀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⣠⣴⠎
+| ⠀⠙⢿⣿⣿⣷⣶⣤⣀⣀⣴⣶⣦⣀⣀⣤⣶⣾⣿⣿⡿⠋⠀  mayfly
+| ⠀⠀⠀⠈⠻⢿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡿⠟⠁⠀⠀⠀  ephemeral agents, enduring works
+| ⠀⠀⠀⠀⠀⠀⠀⠉⠉⠁⢸⣿⡇⠈⠉⠉⠀⠀⠀⠀⠀⠀⠀
+| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢸⣿⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀  Send /help for help information.
+| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⣿⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀  Directory: ~/workspace
+| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣿⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀  Model:     deepseek-flash · deepseek-official
+| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⡠⠊⠀⠑⢄⠀⠀⠀⠀⠀⠀⠀⠀⠀  Version:   scenario
 |
-| ▸ Took 3s · 1 tool call · Ctrl+O to expand
+|  » Generate the large fixture.
+|  ▸ 1 tool call · Ctrl+O to expand
+|  ● I will write the generated records to one file.
+|  ✓ Write fixtures/generated.ts
 |
-| ● I will write the generated records to one file.
+|  ✻ Worked for 3s · done 09:00
 |
-| ✓ Write fixtures/generated.ts · +4000 −0
-|   fixtures/generated.ts · new file, +4000 lines
-|               1 │ + export const record00001 = { index: 1, payload: 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…
-|               2 │ + export const record00002 = { index: 2, payload: 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…
-|               3 │ + export const record00003 = { index: 3, payload: 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…
-|               4 │ + export const record00004 = { index: 4, payload: 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…
-|               5 │ + export const record00005 = { index: 5, payload: 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…
-|               6 │ + export const record00006 = { index: 6, payload: 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…
-|               7 │ + export const record00007 = { index: 7, payload: 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…
-|               8 │ + export const record00008 = { index: 8, payload: 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…
-|               9 │ + export const record00009 = { index: 9, payload: 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…
-|              10 │ + export const record00010 = { index: 10, payload: 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…
-|   ... (3990 more lines, 4001 total, Ctrl+O to expand)
+|
+|
+|
 |╭ Trace detail #13 ────────────────────────────────────────────────────────────────────────────────────────────────────╮
 |│ Type:    tool/call                                                                                                   │
 |│ Surface: log-only                                                                                                    │
@@ -40,22 +40,19 @@ grid 120x40 cursor none
 |╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
 | deepseek-flash High  ~/workspace                                                    cache 42%  context: 5% (5.5k/128k)
 styles
-0: 1-29 fg:#9a86e6 b
-2: 1-9 fg:#9aa3b8; 10-42 fg:#5c6476
-4: 1-2 fg:#ededf2
-6: 1-2 fg:#4ec87e; 3-29 fg:#9a86e6 b; 30-40 fg:#9aa3b8
-7: 3-47 fg:#9a86e6 b
-8: 7-17 fg:#5c6476; 19 fg:#4ec87e bg:#1e3a2b; 20 bg:#1e3a2b; 21-118 fg:#4ec87e bg:#1e3a2b
-9: 7-17 fg:#5c6476; 19 fg:#4ec87e bg:#1e3a2b; 20 bg:#1e3a2b; 21-118 fg:#4ec87e bg:#1e3a2b
-10: 7-17 fg:#5c6476; 19 fg:#4ec87e bg:#1e3a2b; 20 bg:#1e3a2b; 21-118 fg:#4ec87e bg:#1e3a2b
-11: 7-17 fg:#5c6476; 19 fg:#4ec87e bg:#1e3a2b; 20 bg:#1e3a2b; 21-118 fg:#4ec87e bg:#1e3a2b
-12: 7-17 fg:#5c6476; 19 fg:#4ec87e bg:#1e3a2b; 20 bg:#1e3a2b; 21-118 fg:#4ec87e bg:#1e3a2b
-13: 7-17 fg:#5c6476; 19 fg:#4ec87e bg:#1e3a2b; 20 bg:#1e3a2b; 21-118 fg:#4ec87e bg:#1e3a2b
-14: 7-17 fg:#5c6476; 19 fg:#4ec87e bg:#1e3a2b; 20 bg:#1e3a2b; 21-118 fg:#4ec87e bg:#1e3a2b
-15: 7-17 fg:#5c6476; 19 fg:#4ec87e bg:#1e3a2b; 20 bg:#1e3a2b; 21-118 fg:#4ec87e bg:#1e3a2b
-16: 7-17 fg:#5c6476; 19 fg:#4ec87e bg:#1e3a2b; 20 bg:#1e3a2b; 21-118 fg:#4ec87e bg:#1e3a2b
-17: 7-17 fg:#5c6476; 19 fg:#4ec87e bg:#1e3a2b; 20 bg:#1e3a2b; 21-118 fg:#4ec87e bg:#1e3a2b
-18: 3-53 fg:#9aa3b8
+0: 1-23 fg:#f5f5f7; 24-25 fg:#9a86e6
+1: 1-23 fg:#e9e5f6; 24-25 fg:#9a86e6; 26-107 fg:#9a86e6 b
+2: 1-23 fg:#dbd3f0; 24-25 fg:#9a86e6; 26-107 fg:#c9c0f0
+3: 1-23 fg:#c9beea; 24-25 fg:#9a86e6
+4: 1-23 fg:#b2a1ec; 24-25 fg:#9a86e6; 26-107 fg:#9aa3b8
+5: 1-25 fg:#9a86e6; 26-107 fg:#ededf2
+6: 1-23 fg:#8371d6; 24-25 fg:#9a86e6; 26-107 fg:#e9e6f4
+7: 1-23 fg:#6c5bbf; 24-25 fg:#9a86e6; 26-107 fg:#ededf2
+9: 2-3 fg:#9a86e6; 4-30 fg:#9a86e6 b
+10: 2-33 fg:#9aa3b8
+11: 2-3 fg:#ededf2
+12: 2-3 fg:#4ec87e; 4-30 fg:#ededf2
+14: 2-29 fg:#9aa3b8
 19: 0-1 fg:#dcd7f2; 2-17 fg:#f5f5f7 b; 18-119 fg:#dcd7f2
 20: 0 fg:#dcd7f2; 2-9 fg:#9aa3b8; 11-19 fg:#ededf2; 119 fg:#dcd7f2
 21: 0 fg:#dcd7f2; 2-9 fg:#9aa3b8; 11-18 fg:#ededf2; 119 fg:#dcd7f2

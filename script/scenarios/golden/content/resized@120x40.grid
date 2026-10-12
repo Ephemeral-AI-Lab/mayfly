@@ -1,15 +1,15 @@
 grid 80x24 cursor none
-|               1 │ + export const record00001 = { index: 1, payload: 'xxxxxxxx…
-|               2 │ + export const record00002 = { index: 2, payload: 'xxxxxxxx…
-|               3 │ + export const record00003 = { index: 3, payload: 'xxxxxxxx…
-|               4 │ + export const record00004 = { index: 4, payload: 'xxxxxxxx…
-|               5 │ + export const record00005 = { index: 5, payload: 'xxxxxxxx…
-|               6 │ + export const record00006 = { index: 6, payload: 'xxxxxxxx…
-|               7 │ + export const record00007 = { index: 7, payload: 'xxxxxxxx…
-|               8 │ + export const record00008 = { index: 8, payload: 'xxxxxxxx…
-|               9 │ + export const record00009 = { index: 9, payload: 'xxxxxxxx…
-|              10 │ + export const record00010 = { index: 10, payload: 'xxxxxxx…
-|   ... (3990 more lines, 4001 total, Ctrl+O to expand)
+| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢸⣿⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀  Send /help for help information.
+| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⣿⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀  Directory: ~/workspace
+| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣿⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀  Model:     deepseek-flash · deepseek-of...
+| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⡠⠊⠀⠑⢄⠀⠀⠀⠀⠀⠀⠀⠀⠀  Version:   scenario
+|
+|  » Generate the large fixture.
+|  ▸ 1 tool call · Ctrl+O to expand
+|  ● I will write the generated records to one file.
+|  ✓ Write fixtures/generated.ts
+|
+|  ✻ Worked for 3s · done 09:00
 |╭ Trace detail #13 ────────────────────────────────────────────────────────────╮
 |│ Type:    tool/call                                                           │
 |│ Surface: log-only                                                            │
@@ -24,17 +24,15 @@ grid 80x24 cursor none
 |╰──────────────────────────────────────────────────────────────────────────────╯
 | deepseek-flash High  ~/workspace            cache 42%  context: 5% (5.5k/128k)
 styles
-0: 7-17 fg:#5c6476; 19 fg:#4ec87e bg:#1e3a2b; 20 bg:#1e3a2b; 21-78 fg:#4ec87e bg:#1e3a2b
-1: 7-17 fg:#5c6476; 19 fg:#4ec87e bg:#1e3a2b; 20 bg:#1e3a2b; 21-78 fg:#4ec87e bg:#1e3a2b
-2: 7-17 fg:#5c6476; 19 fg:#4ec87e bg:#1e3a2b; 20 bg:#1e3a2b; 21-78 fg:#4ec87e bg:#1e3a2b
-3: 7-17 fg:#5c6476; 19 fg:#4ec87e bg:#1e3a2b; 20 bg:#1e3a2b; 21-78 fg:#4ec87e bg:#1e3a2b
-4: 7-17 fg:#5c6476; 19 fg:#4ec87e bg:#1e3a2b; 20 bg:#1e3a2b; 21-78 fg:#4ec87e bg:#1e3a2b
-5: 7-17 fg:#5c6476; 19 fg:#4ec87e bg:#1e3a2b; 20 bg:#1e3a2b; 21-78 fg:#4ec87e bg:#1e3a2b
-6: 7-17 fg:#5c6476; 19 fg:#4ec87e bg:#1e3a2b; 20 bg:#1e3a2b; 21-78 fg:#4ec87e bg:#1e3a2b
-7: 7-17 fg:#5c6476; 19 fg:#4ec87e bg:#1e3a2b; 20 bg:#1e3a2b; 21-78 fg:#4ec87e bg:#1e3a2b
-8: 7-17 fg:#5c6476; 19 fg:#4ec87e bg:#1e3a2b; 20 bg:#1e3a2b; 21-78 fg:#4ec87e bg:#1e3a2b
-9: 7-17 fg:#5c6476; 19 fg:#4ec87e bg:#1e3a2b; 20 bg:#1e3a2b; 21-78 fg:#4ec87e bg:#1e3a2b
-10: 3-53 fg:#9aa3b8
+0: 1-23 fg:#b2a1ec; 24-25 fg:#9a86e6; 26-67 fg:#9aa3b8
+1: 1-25 fg:#9a86e6; 26-67 fg:#ededf2
+2: 1-23 fg:#8371d6; 24-25 fg:#9a86e6; 26-64 fg:#e9e6f4
+3: 1-23 fg:#6c5bbf; 24-25 fg:#9a86e6; 26-67 fg:#ededf2
+5: 2-3 fg:#9a86e6; 4-30 fg:#9a86e6 b
+6: 2-33 fg:#9aa3b8
+7: 2-3 fg:#ededf2
+8: 2-3 fg:#4ec87e; 4-30 fg:#ededf2
+10: 2-29 fg:#9aa3b8
 11: 0-1 fg:#dcd7f2; 2-17 fg:#f5f5f7 b; 18-79 fg:#dcd7f2
 12: 0 fg:#dcd7f2; 2-9 fg:#9aa3b8; 11-19 fg:#ededf2; 79 fg:#dcd7f2
 13: 0 fg:#dcd7f2; 2-9 fg:#9aa3b8; 11-18 fg:#ededf2; 79 fg:#dcd7f2

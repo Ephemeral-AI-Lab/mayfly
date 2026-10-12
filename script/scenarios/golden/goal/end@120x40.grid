@@ -8,11 +8,11 @@ grid 120x40 cursor none
 | ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣿⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀  Model:     deepseek-flash · deepseek-official
 | ⠀⠀⠀⠀⠀⠀⠀⠀⠀⡠⠊⠀⠑⢄⠀⠀⠀⠀⠀⠀⠀⠀⠀  Version:   scenario
 |
-| » Work towards the goal: migrate to ESM.
+|  » Work towards the goal: migrate to ESM.
+|  ▸ 2 tool calls · Ctrl+O to expand
+|  ● The goal is complete.
 |
-| ▸ Took 13s · 2 tool calls · Ctrl+O to expand
-|
-| ● The goal is complete.
+|  ✻ Worked for 13s · done 09:00
 |
 |
 |
@@ -48,9 +48,10 @@ styles
 5: 1-25 fg:#9a86e6; 26-107 fg:#ededf2
 6: 1-23 fg:#8371d6; 24-25 fg:#9a86e6; 26-107 fg:#e9e6f4
 7: 1-23 fg:#6c5bbf; 24-25 fg:#9a86e6; 26-107 fg:#ededf2
-9: 1-40 fg:#9a86e6 b
-11: 1-10 fg:#9aa3b8; 11-44 fg:#5c6476
-13: 1-2 fg:#ededf2
+9: 2-3 fg:#9a86e6; 4-41 fg:#9a86e6 b
+10: 2-34 fg:#9aa3b8
+11: 2-3 fg:#ededf2
+13: 2-30 fg:#9aa3b8
 36: 0-85 fg:#45406b; 86-117 fg:#5c6476; 118-119 fg:#45406b
 37: 0 fg:#45406b; 4 r; 119 fg:#45406b
 38: 0-119 fg:#45406b

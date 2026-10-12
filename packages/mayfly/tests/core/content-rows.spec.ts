@@ -649,6 +649,18 @@ describe('contentNodeSource', () => {
     expect(env.counters.segmentsPainted).toBeGreaterThan(before)
   })
 
+  it('tells its host when painting a unit moves the row count an estimate had given', () => {
+    // Prose that wraps more rows than its source lines estimate: painting the tail unit corrects the length.
+    const prose = Array.from({ length: 12 }, () => `${'word '.repeat(300)}`).join('\n\n')
+    const env = makeEnv()
+    let changes = 0
+    const rows = contentNodeRows({ kind: 'markdown', source: prose }, 40, { ...env.env, changed: () => { changes += 1 } })
+    const before = rows.length
+    void rows[rows.length - 1]
+    expect(changes).toBeGreaterThan(0)
+    expect(rows.length).toBeGreaterThan(before)
+  })
+
   it('reports a markdown paint failure once per unit', () => {
     const counters = createWorkCounters()
     const reports: string[] = []

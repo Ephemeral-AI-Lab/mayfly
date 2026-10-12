@@ -1,0 +1,74 @@
+grid 120x40 cursor none
+| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⣿⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀  Directory: ~/workspace
+| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣿⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀  Model:     deepseek-flash · deepseek-official
+| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⡠⠊⠀⠑⢄⠀⠀⠀⠀⠀⠀⠀⠀⠀  Version:   scenario
+|
+|  » Is 2^31 - 1 prime? Think it through.
+|  ✻ Thinking
+|    Step 1: consider whether a factor below 100 could divide 2^31 - 1. The number is a Mersenne number, and a Mersenne
+|    exponent being prime is necessary but not sufficient, so the exponent 31 alone settles nothing. Lucas–Lehmer gives
+|    the answer directly.
+|
+|    Step 2: consider whether a factor below 200 could divide 2^31 - 1. The number is a Mersenne number, and a Mersenne
+|    exponent being prime is necessary but not sufficient, so the exponent 31 alone settles nothing. Lucas–Lehmer gives
+|    the answer directly.
+|
+|    Step 3: consider whether a factor below 300 could divide 2^31 - 1. The number is a Mersenne number, and a Mersenne
+|    exponent being prime is necessary but not sufficient, so the exponent 31 alone settles nothing. Lucas–Lehmer gives
+|    the answer directly.
+|
+|    Step 4: consider whether a factor below 400 could divide 2^31 - 1. The number is a Mersenne number, and a Mersenne
+|    exponent being prime is necessary but not sufficient, so the exponent 31 alone settles nothing. Lucas–Lehmer gives
+|    the answer directly.
+|
+|    Step 5: consider whether a factor below 500 could divide 2^31 - 1. The number is a Mersenne number, and a Mersenne
+|    exponent being prime is necessary but not sufficient, so the exponent 31 alone settles nothing. Lucas–Lehmer gives
+|    the answer directly.
+|
+|    Step 6: consider whether a factor below 600 could divide 2^31 - 1. The number is a Mersenne number, and a Mersenne
+|    exponent being prime is necessary but not sufficient, so the exponent 31 alone settles nothing. Lucas–Lehmer gives
+|    the answer directly.
+|
+|    Step 7: consider whether a factor below 700 could divide 2^31 - 1. The number is a Mersenne number, and a Mersenne
+|    exponent being prime is necessary but not sufficient, so the exponent 31 alone settles nothing. Lucas–Lehmer gives
+|    the answer directly.
+|
+|    Step 8: consid
+|⠋ Thinking · 4s · ↓444 · ≈98 tok/s · Tip: ! to run a shell command
+|╭───────────────────────────────────────────────────────────────────────────────────────────────── Is 2^31 - 1 prime? ─╮
+|│ >                                                                                                                    │
+|╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+| deepseek-flash High  ~/workspace
+styles
+0: 1-25 fg:#9a86e6; 26-107 fg:#ededf2
+1: 1-23 fg:#8371d6; 24-25 fg:#9a86e6; 26-107 fg:#e9e6f4
+2: 1-23 fg:#6c5bbf; 24-25 fg:#9a86e6; 26-107 fg:#ededf2
+4: 2-3 fg:#9a86e6; 4-39 fg:#9a86e6 b
+5: 2-11 fg:#9aa3b8
+6: 2-3 fg:#ededf2; 4-117 fg:#9aa3b8 i
+7: 4-117 fg:#9aa3b8 i
+8: 4-23 fg:#9aa3b8 i
+10: 4-117 fg:#9aa3b8 i
+11: 4-117 fg:#9aa3b8 i
+12: 4-23 fg:#9aa3b8 i
+14: 4-117 fg:#9aa3b8 i
+15: 4-117 fg:#9aa3b8 i
+16: 4-23 fg:#9aa3b8 i
+18: 4-117 fg:#9aa3b8 i
+19: 4-117 fg:#9aa3b8 i
+20: 4-23 fg:#9aa3b8 i
+22: 4-117 fg:#9aa3b8 i
+23: 4-117 fg:#9aa3b8 i
+24: 4-23 fg:#9aa3b8 i
+26: 4-117 fg:#9aa3b8 i
+27: 4-117 fg:#9aa3b8 i
+28: 4-23 fg:#9aa3b8 i
+30: 4-117 fg:#9aa3b8 i
+31: 4-117 fg:#9aa3b8 i
+32: 4-23 fg:#9aa3b8 i
+34: 4-17 fg:#9aa3b8 i
+35: 0 fg:#c9c0f0 b; 1-9 fg:#ededf2; 10-65 fg:#9aa3b8
+36: 0-97 fg:#45406b; 98-117 fg:#5c6476; 118-119 fg:#45406b
+37: 0 fg:#45406b; 4 r; 119 fg:#45406b
+38: 0-119 fg:#45406b
+39: 1-19 fg:#ededf2; 22-32 fg:#9aa3b8

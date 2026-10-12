@@ -8,11 +8,11 @@ grid 120x40 cursor none
 | ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣿⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀  Model:     deepseek-flash · deepseek-official
 | ⠀⠀⠀⠀⠀⠀⠀⠀⠀⡠⠊⠀⠑⢄⠀⠀⠀⠀⠀⠀⠀⠀⠀  Version:   scenario
 |
-| » Is 2^31 - 1 prime? Think it through.
+|  » Is 2^31 - 1 prime? Think it through.
+|  ▸ Ctrl+O to expand
+|  ● Yes. 2^31 - 1 = 2147483647 is a Mersenne prime (the Lucas–Lehmer test with exponent 31 returns zero).
 |
-| ▸ Took 10s · Ctrl+O to expand
-|
-| ● Yes. 2^31 - 1 = 2147483647 is a Mersenne prime (the Lucas–Lehmer test with exponent 31 returns zero).
+|  ✻ Worked for 10s · done 09:00
 |
 |
 |
@@ -48,9 +48,10 @@ styles
 5: 1-25 fg:#9a86e6; 26-107 fg:#ededf2
 6: 1-23 fg:#8371d6; 24-25 fg:#9a86e6; 26-107 fg:#e9e6f4
 7: 1-23 fg:#6c5bbf; 24-25 fg:#9a86e6; 26-107 fg:#ededf2
-9: 1-38 fg:#9a86e6 b
-11: 1-10 fg:#9aa3b8; 11-29 fg:#5c6476
-13: 1-2 fg:#ededf2
+9: 2-3 fg:#9a86e6; 4-39 fg:#9a86e6 b
+10: 2-19 fg:#9aa3b8
+11: 2-3 fg:#ededf2
+13: 2-30 fg:#9aa3b8
 36: 0-97 fg:#45406b; 98-117 fg:#5c6476; 118-119 fg:#45406b
 37: 0 fg:#45406b; 4 r; 119 fg:#45406b
 38: 0-119 fg:#45406b

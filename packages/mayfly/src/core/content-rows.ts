@@ -62,6 +62,11 @@ export interface ContentRowsEnv {
   readonly errorRows: (message: string, width: number) => string[]
   /** Report a contained paint failure to the host, once per segment. */
   readonly report?: ((message: string) => void) | undefined
+  /**
+   * A source's row count moved because a segment painted (an estimate became the painted count). A scroll that already
+   * measured the content with the estimate needs another frame to place its window against the real length.
+   */
+  readonly changed?: (() => void) | undefined
 }
 
 /** Prefix sums over per-segment row counts; an estimate becomes the painted count wherever a segment is painted. */
@@ -456,6 +461,7 @@ class MarkdownRowSource implements RowSource {
       this.tree.add(unit, rows - this.counts[unit]!)
       this.counts[unit] = rows
       this.changes += 1
+      this.env.changed?.()
     }
   }
 

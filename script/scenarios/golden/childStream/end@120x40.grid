@@ -8,11 +8,11 @@ grid 120x40 cursor none
 | ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣿⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀  Model:     deepseek-flash · deepseek-official
 | ⠀⠀⠀⠀⠀⠀⠀⠀⠀⡠⠊⠀⠑⢄⠀⠀⠀⠀⠀⠀⠀⠀⠀  Version:   scenario
 |
-| » Rewrite the README hero in the background.
+|  » Rewrite the README hero in the background.
+|  ▸ 1 subagent · Ctrl+O to expand
+|  ● The subagent is running; I will check on it later.
 |
-| ▸ Took 3s · 1 subagent · Ctrl+O to expand
-|
-| ● The subagent is running; I will check on it later.
+|  ✻ Worked for 3s · done 09:00
 |
 |
 |
@@ -33,7 +33,7 @@ grid 120x40 cursor none
 |────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 |● Running 1 agent
 |  └─ running Rewrite README hero · deepseek-flash · high · 0 tools · 57s · 5.6k tokens
-|         Starting…
+|         Writing…
 |
 |╭───────────────────────────────────────────────────────────────────────────────────────── Rewrite the README hero in ─╮
 |│ >                                                                                                                    │
@@ -48,13 +48,14 @@ styles
 5: 1-25 fg:#9a86e6; 26-107 fg:#ededf2
 6: 1-23 fg:#8371d6; 24-25 fg:#9a86e6; 26-107 fg:#e9e6f4
 7: 1-23 fg:#6c5bbf; 24-25 fg:#9a86e6; 26-107 fg:#ededf2
-9: 1-44 fg:#9a86e6 b
-11: 1-9 fg:#9aa3b8; 10-41 fg:#5c6476
-13: 1-2 fg:#ededf2
+9: 2-3 fg:#9a86e6; 4-45 fg:#9a86e6 b
+10: 2-32 fg:#9aa3b8
+11: 2-3 fg:#ededf2
+13: 2-29 fg:#9aa3b8
 31: 0-119 fg:#45406b
 32: 0-1 fg:#c9c0f0; 2-16 fg:#c9c0f0 b
 33: 0-4 fg:#9aa3b8; 5-12 fg:#c9c0f0 b; 13-31 fg:#c9c0f0; 32-85 fg:#9aa3b8
-34: 0-17 fg:#9aa3b8
+34: 0-16 fg:#9aa3b8
 36: 0-89 fg:#45406b; 90-117 fg:#5c6476; 118-119 fg:#45406b
 37: 0 fg:#45406b; 4 r; 119 fg:#45406b
 38: 0-119 fg:#45406b

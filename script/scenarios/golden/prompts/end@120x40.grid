@@ -1,69 +1,71 @@
 grid 120x40 cursor none
-| ⠀⠀⠀⠈⠻⢿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡿⠟⠁⠀⠀⠀  ephemeral agents, enduring works
 | ⠀⠀⠀⠀⠀⠀⠀⠉⠉⠁⢸⣿⡇⠈⠉⠉⠀⠀⠀⠀⠀⠀⠀
 | ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢸⣿⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀  Send /help for help information.
 | ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⣿⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀  Directory: ~/workspace
 | ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣿⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀  Model:     deepseek-flash · deepseek-official
 | ⠀⠀⠀⠀⠀⠀⠀⠀⠀⡠⠊⠀⠑⢄⠀⠀⠀⠀⠀⠀⠀⠀⠀  Version:   scenario
 |
-| » Line 1 of a very long pasted prompt that should fold in the transcript instead of taking the whole screen.
-|   Line 2 of a very long pasted prompt that should fold in the transcript instead of taking the whole screen.
-|   Line 3 of a very long pasted prompt that should fold in the transcript instead of taking the whole screen.
-|   ... (37 more lines, 40 total)
+|  » Line 1 of a very long pasted prompt that should fold in the transcript instead of taking the whole screen.
+|    Line 2 of a very long pasted prompt that should fold in the transcript instead of taking the whole screen.
+|    Line 3 of a very long pasted prompt that should fold in the transcript instead of taking the whole screen.
+|    Line 4 of a very long pasted prompt that should fold in the transcript instead of taking the whole screen.
+|    ▸ 35 more lines · Enter
+|  ● I read the long prompt.
 |
-| ● I read the long prompt.
+|  ✻ Worked for 1s · done 09:00
 |
-| » Please look at this:
+|  » Please look at this:
 |
-|   ```js
-|   export const answer = 42
-|   console.log(answer)
-|   ```
+|    ```js
+|    export const answer = 42
+|    ▸ 4 more lines · Enter
+|  ● It prints 42.
 |
-|   and tell me what it prints.
+|  ✻ Worked for 1s · done 09:00
 |
-| ● It prints 42.
+|  » 请用中文解释这个函数的作用，并给出一个简短的例子。
+|  ▸ Ctrl+O to expand
+|  ● 这个函数把配置里的基础地址和超时时间格式化成一行文字，例如 http://localhost:8080 (timeout 3000 ms)。
 |
-| » 请用中文解释这个函数的作用，并给出一个简短的例子。
+|  ✻ Worked for 2s · done 09:00
 |
-| ▸ Took 2s · Ctrl+O to expand
+|  » Here is a screenshot of the error:
+|    ▪ [image] 1 · error.png · 1280×720 · 82 KB
+|  ● The screenshot shows a timeout error on the client.
 |
-| ● 这个函数把配置里的基础地址和超时时间格式化成一行文字，例如 http://localhost:8080 (timeout 3000 ms)。
-|
-| » Here is a screenshot of the error:
-|   [image]
-|
-| ● The screenshot shows a timeout error on the client.
+|  ✻ Worked for 1s · done 09:00
 |
 |╭─────────────────────────────────────────────────────────────────────────────────────────────────── Line 1 of a very ─╮
 |│ >                                                                                                                    │
 |╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
 | deepseek-flash High  ~/workspace                                                    cache 42%  context: 5% (5.5k/128k)
 styles
-0: 1-23 fg:#dbd3f0; 24-25 fg:#9a86e6; 26-107 fg:#c9c0f0
-1: 1-23 fg:#c9beea; 24-25 fg:#9a86e6
-2: 1-23 fg:#b2a1ec; 24-25 fg:#9a86e6; 26-107 fg:#9aa3b8
-3: 1-25 fg:#9a86e6; 26-107 fg:#ededf2
-4: 1-23 fg:#8371d6; 24-25 fg:#9a86e6; 26-107 fg:#e9e6f4
-5: 1-23 fg:#6c5bbf; 24-25 fg:#9a86e6; 26-107 fg:#ededf2
-7: 1-108 fg:#9a86e6 b
-8: 3-108 fg:#9a86e6 b
-9: 3-108 fg:#9a86e6 b
-10: 3-31 fg:#5c6476
-12: 1-2 fg:#ededf2
-14: 1-22 fg:#9a86e6 b
-16: 3-7 fg:#9a86e6 b
-17: 3-26 fg:#9a86e6 b
-18: 3-21 fg:#9a86e6 b
-19: 3-5 fg:#9a86e6 b
-21: 3-29 fg:#9a86e6 b
-23: 1-2 fg:#ededf2; 13-14 fg:#c9c0f0
-25: 1-52 fg:#9a86e6 b
-27: 1-9 fg:#9aa3b8; 10-28 fg:#5c6476
-29: 1-2 fg:#ededf2; 62-100 fg:#c9c0f0
-31: 1-36 fg:#9a86e6 b
-32: 3-9 fg:#9aa3b8
-34: 1-2 fg:#ededf2
+0: 1-23 fg:#c9beea; 24-25 fg:#9a86e6
+1: 1-23 fg:#b2a1ec; 24-25 fg:#9a86e6; 26-107 fg:#9aa3b8
+2: 1-25 fg:#9a86e6; 26-107 fg:#ededf2
+3: 1-23 fg:#8371d6; 24-25 fg:#9a86e6; 26-107 fg:#e9e6f4
+4: 1-23 fg:#6c5bbf; 24-25 fg:#9a86e6; 26-107 fg:#ededf2
+6: 2-3 fg:#9a86e6; 4-109 fg:#9a86e6 b
+7: 4-109 fg:#9a86e6 b
+8: 4-109 fg:#9a86e6 b
+9: 4-109 fg:#9a86e6 b
+10: 4-26 fg:#9aa3b8
+11: 2-3 fg:#ededf2
+13: 2-29 fg:#9aa3b8
+15: 2-3 fg:#9a86e6; 4-23 fg:#9a86e6 b
+17: 4-8 fg:#9a86e6 b
+18: 4-27 fg:#9a86e6 b
+19: 4-25 fg:#9aa3b8
+20: 2-3 fg:#ededf2; 14-15 fg:#c9c0f0
+22: 2-29 fg:#9aa3b8
+24: 2-3 fg:#9a86e6; 4-53 fg:#9a86e6 b
+25: 2-19 fg:#9aa3b8
+26: 2-3 fg:#ededf2; 63-101 fg:#c9c0f0
+28: 2-29 fg:#9aa3b8
+30: 2-3 fg:#9a86e6; 4-37 fg:#9a86e6 b
+31: 2-5 fg:#9aa3b8; 6-45 fg:#5c6476
+32: 2-3 fg:#ededf2
+34: 2-29 fg:#9aa3b8
 36: 0-99 fg:#45406b; 100-117 fg:#5c6476; 118-119 fg:#45406b
 37: 0 fg:#45406b; 4 r; 119 fg:#45406b
 38: 0-119 fg:#45406b

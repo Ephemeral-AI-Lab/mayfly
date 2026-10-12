@@ -8,12 +8,12 @@ grid 120x40 cursor none
 | ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣿⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀  Model:     deepseek-flash · deepseek-official
 | ⠀⠀⠀⠀⠀⠀⠀⠀⠀⡠⠊⠀⠑⢄⠀⠀⠀⠀⠀⠀⠀⠀⠀  Version:   scenario
 |
-| » Keep reading until the context is nearly full.
+|  » Keep reading until the context is nearly full.
+|  ▸ 4 tool calls · Ctrl+O to expand
+|  ✓ compacted 10 items · auto
+|  ● After compaction the context is small again.
 |
-| ▸ Took 11s · 4 tool calls · Ctrl+O to expand
-| ✓ compacted 10 items · ~27.3k · auto
-|
-| ● After compaction the context is small again.
+|  ✻ Worked for 11s · done 09:00
 |
 |
 |
@@ -48,10 +48,11 @@ styles
 5: 1-25 fg:#9a86e6; 26-107 fg:#ededf2
 6: 1-23 fg:#8371d6; 24-25 fg:#9a86e6; 26-107 fg:#e9e6f4
 7: 1-23 fg:#6c5bbf; 24-25 fg:#9a86e6; 26-107 fg:#ededf2
-9: 1-48 fg:#9a86e6 b
-11: 1-10 fg:#9aa3b8; 11-44 fg:#5c6476
-12: 1 fg:#4ec87e; 3-36 fg:#9aa3b8
-14: 1-2 fg:#ededf2
+9: 2-3 fg:#9a86e6; 4-49 fg:#9a86e6 b
+10: 2-34 fg:#9aa3b8
+11: 2-3 fg:#4ec87e; 4-28 fg:#ededf2
+12: 2-3 fg:#ededf2
+14: 2-30 fg:#9aa3b8
 36: 0-85 fg:#45406b; 86-117 fg:#5c6476; 118-119 fg:#45406b
 37: 0 fg:#45406b; 4 r; 119 fg:#45406b
 38: 0-119 fg:#45406b

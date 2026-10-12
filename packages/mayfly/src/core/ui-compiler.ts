@@ -566,6 +566,7 @@ function contentEnv(options: RuntimeCompilerOptions, paint: Pick<PaintOptions, '
     elide: hidden => paint.colors.muted(renderOverflowRow(hidden, (key, values) => coreText(options, key, values))),
     errorRows: (message, width) => errorRows(message, width, paint.colors),
     report: message => { paint.reportRuntimeFailure(message) },
+    changed: () => { options.listRuntime.nudge() },
   }
 }
 
@@ -2185,6 +2186,8 @@ export class MayflyUiSurfaceRuntime {
    * surface's focus before the surface compiles, so a focused one keeps its cursor window through every recompile.
    */
   flow = false
+  /** Asks the host for another frame and nothing else (what a clock tick does). */
+  readonly nudge: () => void
 
   readonly state: FocusState
   private readonly loaderAnimation: UiLoaderAnimation | undefined
@@ -2200,6 +2203,7 @@ export class MayflyUiSurfaceRuntime {
   constructor(readonly interaction?: UiSurfaceModel, private readonly requestRender?: () => void, clock?: UiAnimationClock, readonly images?: MayflyUiImageSource, requestFrame?: () => void, content?: MayflyContentCache) {
     this.content = content ?? new MayflyContentCache()
     const tick = requestFrame ?? requestRender
+    this.nudge = tick ?? (() => {})
     this.loaderAnimation = tick === undefined ? undefined : new UiLoaderAnimation(tick, clock)
     const fieldValue = (field: MayflyFormField, key: string): MayflyFieldValue => {
       const address = this.fieldAddresses.get(key)

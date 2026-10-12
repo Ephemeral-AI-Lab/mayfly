@@ -1,29 +1,30 @@
 grid 40x24 cursor none
-|   mouse-line-41
-|   mouse-line-42
-|   mouse-line-43
-|   mouse-line-44
-|   mouse-line-45
-|   mouse-line-46
-|   mouse-line-47
-|   mouse-line-48
-|   mouse-line-49
-|   mouse-line-50
-|   mouse-line-51
-|   mouse-line-52
-|   mouse-line-53
-|   mouse-line-54
-|   mouse-line-55
-|   mouse-line-56
-|   mouse-line-57
-|   mouse-line-58
-|   mouse-line-59
+|    mouse-line-43
+|    mouse-line-44
+|    mouse-line-45
+|    mouse-line-46
+|    mouse-line-47
+|    mouse-line-48
+|    mouse-line-49
+|    mouse-line-50
+|    mouse-line-51
+|    mouse-line-52
+|    mouse-line-53
+|    mouse-line-54
+|    mouse-line-55
+|    mouse-line-56
+|    mouse-line-57
+|    mouse-line-58
+|    mouse-line-59
+|
+|  ✻ Worked for 2s · done 09:00
 |
 |╭─────────────────────────────── ping ─╮
 |│ >                                    │
 |╰──────────────────────────────────────╯
 | deepseek-flash High  ~/workspace
 styles
+18: 2-29 fg:#9aa3b8
 20: 0-31 fg:#45406b; 32-37 fg:#5c6476; 38-39 fg:#45406b
 21: 0 fg:#45406b; 4 r; 39 fg:#45406b
 22: 0-39 fg:#45406b

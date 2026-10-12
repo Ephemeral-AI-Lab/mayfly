@@ -8,11 +8,11 @@ grid 120x40 cursor none
 | ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣿⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀  Model:     deepseek-flash · deepseek-official
 | ⠀⠀⠀⠀⠀⠀⠀⠀⠀⡠⠊⠀⠑⢄⠀⠀⠀⠀⠀⠀⠀⠀⠀  Version:   scenario
 |
-| » Start the background work.
+|  » Start the background work.
+|  ● Starting three background jobs.
+|  ▸ Ran commands
 |
-| ● Starting three background jobs.
 |
-| ▸ Ran commands
 |
 |
 |
@@ -48,9 +48,9 @@ styles
 5: 1-25 fg:#9a86e6; 26-107 fg:#ededf2
 6: 1-23 fg:#8371d6; 24-25 fg:#9a86e6; 26-107 fg:#e9e6f4
 7: 1-23 fg:#6c5bbf; 24-25 fg:#9a86e6; 26-107 fg:#ededf2
-9: 1-28 fg:#9a86e6 b
-11: 1-2 fg:#ededf2
-13: 1-14 fg:#9aa3b8
+9: 2-3 fg:#9a86e6; 4-29 fg:#9a86e6 b
+10: 2-3 fg:#ededf2
+11: 2-15 fg:#9aa3b8
 35: 0-1 fg:#c9c0f0 b; 2-13 fg:#ededf2; 14-50 fg:#9aa3b8
 36: 0-89 fg:#45406b; 90-117 fg:#5c6476; 118-119 fg:#45406b
 37: 0 fg:#45406b; 4 r; 119 fg:#45406b
