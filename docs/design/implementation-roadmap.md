@@ -297,6 +297,7 @@ export interface MayflyListItem {
   readonly expanded?: boolean        // initial disclosure
   readonly wrap?: boolean
   readonly wrapMax?: number          // then `▸ N more lines · Enter`
+  readonly hang?: number             // columns the continuation lines start beyond the prefix (the leading glyph)
   readonly meter?: { readonly value: number, readonly max: number, readonly width?: number, readonly tone?: MayflyTone }
   readonly indent?: number
   readonly rule?: string             // a non-selectable muted rule with right-aligned text

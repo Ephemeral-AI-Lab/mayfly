@@ -891,6 +891,7 @@ type MayflyListItem = {
   expanded?: boolean
   wrap?: boolean
   wrapMax?: number
+  hang?: number
   meter?: { value: number, max: number, width?: number, tone?: MayflyTone }
   indent?: number
   rule?: string
@@ -939,7 +940,7 @@ query），所以单个字母可以留给 `i install`、通用的 `x delete`、`
 不会动读者已经移动过的光标。`expandFocused` 展开光标行的 body 或分支。`labelSpans` 绘制标签（`label`
 仍是筛选读取的纯文本），`right` 把 span 对齐到行右缘，`rightFocus` 在光标下替换它，`meter` 画
 `▰▱`，`indent` 缩进，`wrap` 在行自己的前缀下折行（最多 `wrapMax` 行，之后是
-`▸ N more lines · Enter`），`rule` 与 `gap` 是方向键跳过的不可选 muted 分隔线与空行。树中 `*`
+`▸ N more lines · Enter`；`hang` 是文本前导符号的宽度，续行从文本下方开始），`rule` 与 `gap` 是方向键跳过的不可选 muted 分隔线与空行。树中 `*`
 展开所有分支、`-` 折叠；multiple 树的父级在部分子项被选中时显示 `◐`。
 
 **Body。** 字符串 `body` 在行下方以 `│ ╰` 引导线展开；节点 `body`（用 `ui.listBody` 构建，仅限内容：

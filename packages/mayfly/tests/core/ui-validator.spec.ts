@@ -796,13 +796,13 @@ describe('list rows and bodies', () => {
   it('canonicalizes the row fields of an item', () => {
     expect(itemOf({
       id: 'a', label: 'A', labelSpans: [{ text: 'A', styles: ['strong'] }], right: [{ text: '1.0', tone: 'muted' }], rightFocus: [{ text: 'Enter' }],
-      expanded: true, wrap: true, wrapMax: 500, meter: { value: 9, max: 4, width: 99, tone: 'success' }, indent: 99, rule: '', gap: false,
+      expanded: true, wrap: true, wrapMax: 500, hang: 99, meter: { value: 9, max: 4, width: 99, tone: 'success' }, indent: 99, rule: '', gap: false,
     })).toMatchObject({
       labelSpans: [{ text: 'A', styles: ['strong'] }], right: [{ text: '1.0', tone: 'muted' }], rightFocus: [{ text: 'Enter' }],
-      expanded: true, wrap: true, wrapMax: 100, meter: { value: 4, max: 4, width: 40, tone: 'success' }, indent: 8, rule: '', gap: false,
+      expanded: true, wrap: true, wrapMax: 100, hang: 8, meter: { value: 4, max: 4, width: 40, tone: 'success' }, indent: 8, rule: '', gap: false,
     })
     expect(itemOf({ id: 'a', label: 'A', meter: { value: 1, max: 2 } })).toMatchObject({ meter: { value: 1, max: 2 } })
-    for (const bad of [{ labelSpans: 'x' }, { right: [1] }, { expanded: 'y' }, { wrap: 1 }, { wrapMax: 0 }, { meter: { value: 1 } }, { meter: { value: 1, max: 0 } }, { meter: { value: 1, max: 2, tone: 'loud' } }, { indent: -1 }, { rule: 1 }, { gap: 1 }, { gap: true, rule: 'x' }, { bodyAlways: true }, { bodyAlways: 1, body: 'x' }]) {
+    for (const bad of [{ labelSpans: 'x' }, { right: [1] }, { expanded: 'y' }, { wrap: 1 }, { wrapMax: 0 }, { hang: -1 }, { hang: 1.5 }, { meter: { value: 1 } }, { meter: { value: 1, max: 0 } }, { meter: { value: 1, max: 2, tone: 'loud' } }, { indent: -1 }, { rule: 1 }, { gap: 1 }, { gap: true, rule: 'x' }, { bodyAlways: true }, { bodyAlways: 1, body: 'x' }]) {
       expect(validateMayflyUiNode(rows([{ id: 'a', label: 'A', ...bad }])), JSON.stringify(bad)).toMatchObject({ ok: false })
     }
   })

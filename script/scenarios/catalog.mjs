@@ -72,7 +72,7 @@ const REVIEW = {
     focus: [
       { look: 'The rule: its spacing, tone, and the time at the right edge, against the sketch', how: 'checkpoint settled; node docs/design/prototypes/ui-preview.mjs 18' },
       { look: 'A long prompt wrapped, a seven-line prompt folded, and a CJK prompt that wraps mid-sentence', how: 'checkpoint settled' },
-      { look: 'Where the continuation lines of a wrapped prompt start (the gutter, not the text)', how: 'checkpoint settled, then --width 60' },
+      { look: 'Continuation lines of a wrapped prompt starting under the text, after the », and under a wrapped answer', how: 'checkpoint settled, then --width 60' },
       { look: 'The queued rows after the last turn, and the pane above the editor showing the same messages', how: 'checkpoint queued' },
       { look: 'The interrupted turn: its header, its group title, and the cut marker', how: 'checkpoint settled' },
       { look: 'Ctrl+O opening the folded prompts and the process of the last three turns', how: 'checkpoint open (Ctrl+O on end)' },
@@ -80,7 +80,6 @@ const REVIEW = {
     ],
     differs: [
       'The prototype draws no queued or interrupted row: both are placed from the spec text (§5.6) and are questions of this round.',
-      'Wrapped lines hang at the list gutter (2 columns), under the » and not under the text (Δ20); the sketch hangs them under the text.',
       'A queued message is also in the queue pane until Phase 4 deletes it; the sketch shows the queue line only above the editor.',
     ],
     pending: [

@@ -1408,8 +1408,8 @@ other two turns follow the same rules). Whole-conversation row counts: Standard
 - Search (below) opens the turn holding a match at Verbose, so a hit inside a
   fold is never invisible.
 
-Every row is one line that ladders to width; a user prompt longer than the row at
-Compact ends in `…` (the prototype cuts at 62 cells), diff rows end in `…`, and `NO_COLOR` keeps `▸ ▾ ✓ ✗ ●` and the `⎿` tree as
+Every row is one line that ladders to width (a user prompt is the exception: it wraps and keeps four lines at every level,
+Compact included, see *The user's own words*), diff rows end in `…`, and `NO_COLOR` keeps `▸ ▾ ✓ ✗ ●` and the `⎿` tree as
 the carriers of state.
 
 **Compaction.**

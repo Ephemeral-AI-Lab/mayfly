@@ -954,6 +954,7 @@ type MayflyListItem = {
   expanded?: boolean
   wrap?: boolean
   wrapMax?: number
+  hang?: number
   meter?: { value: number, max: number, width?: number, tone?: MayflyTone }
   indent?: number
   rule?: string
@@ -1017,7 +1018,8 @@ alone. `expandFocused` opens the cursor row's body or branch. `labelSpans`
 paint the label (`label` stays the plain text a filter reads), `right` aligns
 spans to the row's right edge and `rightFocus` replaces them under the cursor,
 `meter` draws `▰▱` cells, `indent` indents the row, `wrap` wraps the row under
-its own prefix (up to `wrapMax` lines, then `▸ N more lines · Enter`), and a
+its own prefix (up to `wrapMax` lines, then `▸ N more lines · Enter`; `hang` is the
+width of a glyph that leads the text, so continuation lines start under the text), and a
 `rule` or `gap` item is a non-selectable muted rule or blank row that the arrows
 skip. In a tree, `*` opens every branch and `-` closes them; a parent of a
 multiple tree shows `◐` when only some of its children are chosen.

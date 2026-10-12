@@ -35,7 +35,7 @@ describe('TranscriptView', () => {
   it('wraps the prompt under its marker and caps it at four lines until it is open', () => {
     expect(PROMPT_MAX_LINES).toBe(4)
     const closed = itemsOf(facts([turn('turn:1', [prompt('u1', 'a\nb\nc\nd\ne\nf')])]))[0]!
-    expect(closed).toMatchObject({ wrap: true, wrapMax: 4 })
+    expect(closed).toMatchObject({ wrap: true, wrapMax: 4, hang: 2 })
     expect(closed.labelSpans?.[0]).toEqual({ text: '» ', tone: 'user' })
     const open = itemsOf(facts([turn('turn:1', [prompt('u1', 'a\nb\nc\nd\ne\nf', { open: true })])]))[0]!
     expect(open.wrap).toBe(true)

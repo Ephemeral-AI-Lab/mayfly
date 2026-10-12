@@ -503,7 +503,7 @@ function admitListItem(value: unknown, path: string, counters?: MayflyWorkCounte
 /** The most nodes one list item's body may hold; each item admits under its own quota, so a long list of rich rows stays legal. */
 export const MAYFLY_UI_MAX_ITEM_BODY_NODES = 32
 /** The most lines one wrapped row may be asked to show, and the widest meter and indent a row may ask for. */
-const LIST_ROW_LIMITS = { wrapMax: 100, meterWidth: 40, indent: 8 } as const
+const LIST_ROW_LIMITS = { wrapMax: 100, meterWidth: 40, indent: 8, hang: 8 } as const
 const LIST_BODY_KINDS: ReadonlySet<string> = new Set([
   'text', 'markdown', 'fields', 'code', 'diff', 'sections', 'rich-text', 'diagram', 'chart', 'image', 'progress', 'spacer', 'divider', 'stack',
 ])
@@ -528,6 +528,7 @@ function listItemRowFields(object: Record<string, unknown>, path: string, state:
   const expanded = own(object, 'expanded', path)
   const wrap = own(object, 'wrap', path)
   const wrapMax = own(object, 'wrapMax', path)
+  const hang = own(object, 'hang', path)
   const meterValue = own(object, 'meter', path)
   const indent = own(object, 'indent', path)
   const gap = own(object, 'gap', path)
@@ -545,6 +546,7 @@ function listItemRowFields(object: Record<string, unknown>, path: string, state:
     ...optional(expanded === undefined ? undefined : boolean(expanded, `${path}.expanded`), 'expanded'),
     ...optional(wrap === undefined ? undefined : boolean(wrap, `${path}.wrap`), 'wrap'),
     ...optional(wrapMax === undefined ? undefined : Math.min(finiteInteger(wrapMax, `${path}.wrapMax`, 1), LIST_ROW_LIMITS.wrapMax), 'wrapMax'),
+    ...optional(hang === undefined ? undefined : Math.min(finiteInteger(hang, `${path}.hang`), LIST_ROW_LIMITS.hang), 'hang'),
     ...optional(meterValue === undefined ? undefined : listMeter(meterValue, `${path}.meter`, state), 'meter'),
     ...optional(indent === undefined ? undefined : Math.min(finiteInteger(indent, `${path}.indent`), LIST_ROW_LIMITS.indent), 'indent'),
     ...optional(ruleValue, 'rule'),

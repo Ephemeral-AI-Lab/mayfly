@@ -193,6 +193,8 @@ export interface MayflyListItem {
   readonly wrap?: boolean
   /** With `wrap`, the most lines shown before `▸ N more lines · Enter`. */
   readonly wrapMax?: number
+  /** With `wrap`, the columns the continuation lines start beyond the row's prefix: the width of a glyph that leads the text, so they align under it. */
+  readonly hang?: number
   readonly meter?: { readonly value: number, readonly max: number, readonly width?: number, readonly tone?: MayflyTone }
   /** Columns of indent before the row's own glyphs. */
   readonly indent?: number

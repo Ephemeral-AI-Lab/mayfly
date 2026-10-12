@@ -160,17 +160,22 @@ function headOf(state: RowState, colors: MayflySemanticColors): { readonly prefi
   return { prefix, line: `${prefix}${labelOf(state, colors)}${trailer(state.spec.item, state.width, colors)}` }
 }
 
-/** Wrap a row's text under its own prefix: continuation lines align under the label, `wrapMax` keeps the first lines. */
+/**
+ * Wrap a row's text under its own prefix: continuation lines align under the label (or under the text after a leading
+ * glyph, with `hang`), `wrapMax` keeps the first lines.
+ */
 function wrapped(state: RowState, head: { readonly prefix: string, readonly line: string }, colors: MayflySemanticColors, translate: ListPaintOptions['translate']): readonly string[] {
-  const hang = visibleWidth(head.prefix)
+  const margin = visibleWidth(head.prefix)
   const text = head.line.slice(head.prefix.length)
-  const room = Math.max(1, state.width - hang)
-  const pieces = wrapTextWithAnsi(text, room)
-  const lines = pieces.map((piece, index) => `${index === 0 ? head.prefix : ' '.repeat(hang)}${piece}`)
+  // The hang is the leading glyph's width: it stays on the first line and the text wraps in the room that is left.
+  const hang = Math.min(state.spec.item.hang ?? 0, visibleWidth(text))
+  const lead = hang === 0 ? '' : sliceByColumn(text, 0, hang, true)
+  const pieces = wrapTextWithAnsi(hang === 0 ? text : sliceByColumn(text, hang, visibleWidth(text) - hang, true), Math.max(1, state.width - margin - hang))
+  const lines = pieces.map((piece, index) => `${index === 0 ? `${head.prefix}${lead}` : ' '.repeat(margin + hang)}${piece}`)
   const limit = state.spec.item.wrapMax
   if (limit === undefined || lines.length <= limit) return lines
   const more = translate?.('▸ {count} more lines · Enter', { count: lines.length - limit }) ?? `▸ ${String(lines.length - limit)} more lines · Enter`
-  return [...lines.slice(0, limit), `${' '.repeat(hang)}${colors.muted(more)}`]
+  return [...lines.slice(0, limit), `${' '.repeat(margin + hang)}${colors.muted(more)}`]
 }
 
 /** The rows of one item: its head (wrapped or one line, with its strip or right spans) and nothing else. */

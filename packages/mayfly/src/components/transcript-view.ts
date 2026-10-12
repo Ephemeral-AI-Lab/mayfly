@@ -86,6 +86,7 @@ function blank(id: string): MayflyListItem {
 function promptItem(id: string, text: string, open: boolean, suffix?: string): MayflyListItem {
   return line(id, [span('» ', 'user'), span(text, 'default', ['strong']), ...(suffix === undefined ? [] : [span(`  ${suffix}`, 'muted')])], {
     wrap: true,
+    hang: 2,
     ...(open ? {} : { wrapMax: PROMPT_MAX_LINES }),
   })
 }
@@ -100,13 +101,13 @@ function rowItems(row: StreamRow): readonly MayflyListItem[] {
     // One item per source line keeps the blank lines and the layout of the text; a long line wraps under the gutter.
     case 'answer': return row.text.split('\n').map((text, index) => text.trim() === '' && index > 0
       ? blank(`${row.id}.${String(index)}`)
-      : line(`${row.id}.${String(index)}`, [span(index === 0 ? '● ' : '  '), span(text)], { wrap: true }))
+      : line(`${row.id}.${String(index)}`, [span(index === 0 ? '● ' : '  '), span(text)], { wrap: true, hang: 2 }))
     case 'reasoning': return [line(row.id, [span('✻ ', 'muted'), span(row.label, 'muted', ['italic']), ...(row.preview === undefined ? [] : [span(`  ${row.preview}`, 'muted', ['italic'])])])]
     case 'step': return [line(row.id, [span(STATE_GLYPH[row.state], STATE_TONE[row.state]), span(row.title), ...(row.detail === undefined ? [] : [span(` · ${row.detail}`, 'muted')])])]
     case 'title': return [line(row.id, [span('▸ ', 'muted'), span(row.text, 'muted'), ...(row.failed === undefined ? [] : [span(` · ${row.failed}`, 'danger')])])]
     case 'header': return [line(row.id, [span(row.open ? '▾ ' : '▸ ', 'muted'), span(row.label, MOOD_TONE[row.mood]), ...(row.tail === '' ? [] : [span(row.tail, 'muted')])])]
     case 'compaction': return [line(row.id, [span(STATE_GLYPH[row.state], STATE_TONE[row.state]), span(row.text)])]
-    case 'error': return [line(row.id, [span('✗ ', 'danger'), span(row.text, 'danger')], { wrap: true })]
+    case 'error': return [line(row.id, [span('✗ ', 'danger'), span(row.text, 'danger')], { wrap: true, hang: 2 })]
     case 'interrupted': return [line(row.id, [span(row.text, 'warning')])]
     case 'note': return [line(row.id, [span(row.text, 'muted')])]
   }

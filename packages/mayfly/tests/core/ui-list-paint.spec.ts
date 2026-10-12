@@ -104,6 +104,16 @@ describe('list rows', () => {
     expect(plain(renderList(node, 20, 20, idle, colors, 0, undefined, { rows: specs(items), translate }))[5]).toContain('▸ {count} more lines · Enter:1')
   })
 
+  it('hangs the continuation lines under the text after a leading glyph, and keeps the fold row there', () => {
+    const items: MayflyListItem[] = [{ id: 'a', label: '» one two three four five six seven eight nine ten eleven twelve', wrap: true, hang: 2, wrapMax: 3 }, { id: 'b', label: '» 请把这一段说明翻译成中文并且保留标点', wrap: true, hang: 2 }]
+    const node = ui.list({ id: 'h', role: 'browse', selectedIds: [], items })
+    const rows = plain(renderList(node, 20, 20, idle, colors, 0, undefined, { rows: specs(items) }))
+    expect(rows.slice(0, 4)).toEqual(['  » one two three', '    four five six', '    seven eight nine', '    ▸ 2 more lines · Enter'])
+    // A wide character never starts a line past the width, and the lines hang under the first character after the glyph.
+    expect(rows.slice(4).every(row => visibleWidth(row) <= 20)).toBe(true)
+    expect(rows.slice(5).every(row => row.startsWith('    '))).toBe(true)
+  })
+
   it('draws rules, blank rows, and group headings that carry no cursor', () => {
     const items: MayflyListItem[] = [
       { id: 'r', label: '', rule: 'Today', group: 'G' },
