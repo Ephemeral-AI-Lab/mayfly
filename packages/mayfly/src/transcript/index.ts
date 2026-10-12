@@ -124,7 +124,20 @@ export function apply(ctx: Context): void {
       .filter(message => message.source.kind === 'user')
       .map(message => ({ id: String(message.id), text: userMessageText(message) }))
   }
-  const transcript = new TranscriptController({ presentation, t, queued: () => queued })
+  // The wire carries an attachment id; the byte loader resolves it through the attachment store with the reference the
+  // stream kept when it built the prompt's row. A missing store or file leaves the text fallback.
+  const imageRefs = new Map<string, { readonly attachmentId: string, readonly mediaType: string }>()
+  ctx.effect(() => (ctx.get('mayflyUiImages')?.provide(async (attachmentId) => {
+    const ref = imageRefs.get(attachmentId)
+    const attachments = ctx.get('attachments') as { readImage(ref: unknown): Promise<{ readonly data: Uint8Array }> } | undefined
+    if (ref === undefined || attachments === undefined) return undefined
+    try {
+      return { data: (await attachments.readImage(ref)).data, mediaType: ref.mediaType }
+    } catch {
+      return undefined
+    }
+  }) ?? (() => {})))
+  const transcript = new TranscriptController({ presentation, t, queued: () => queued, imageRefs })
   ctx.effect(() => () => transcript.dispose())
   // Every displayed or retained conversation reads its own native path; the
   // registry decides which views exist, the controller which one is mounted.

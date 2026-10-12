@@ -181,6 +181,24 @@ const REVIEW = {
       'Clicking the chip does not follow yet.',
     ],
   },
+  prompts: {
+    scene: 18,
+    reference: 'spec §5.6 (images in the stream) · the prompt rows of turnItemsRaw in mayfly-components.mjs',
+    implemented: [
+      'An image pasted into a prompt is a picture row under the prompt, `▪` and the image, tall at most 12 rows; its bytes come from the attachment store.',
+      'While the bytes load, when the store does not have them, and on a terminal with no image protocol the row shows its text: `▪ [image] 1 · error.png · 1280×720 · 82 KB`.',
+    ],
+    focus: [
+      { look: 'The image row under its prompt: the lead, the alt text, and the spacing to the answer', how: 'checkpoint end' },
+      { look: 'The same at 60 columns', how: 'checkpoint end, then --width 60' },
+    ],
+    differs: [
+      'The scenario\'s image has no bytes in the store and the runner has no image protocol, so it shows the text fallback; the picture itself is covered by the image-node specs with a fake loader.',
+    ],
+    pending: [
+      'Tool rows, cards, and diffs are 3b; the activity row, banners, and compaction rows are 3c.',
+    ],
+  },
   idle: {
     reference: 'spec §5.6 (the welcome banner as the stream\'s first row) · the Banner of the shipped product',
     implemented: [

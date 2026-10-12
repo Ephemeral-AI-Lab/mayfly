@@ -32,6 +32,8 @@ export interface TranscriptControllerOptions {
   readonly t: MayflyTranslate
   /** The messages the user typed while the agent works; read on every publish. */
   readonly queued: () => readonly { readonly id: string, readonly text: string }[]
+  /** Where the references of the images the stream shows are kept for the byte loader. */
+  readonly imageRefs?: Map<string, { readonly attachmentId: string, readonly mediaType: string }>
 }
 
 /** How one retained view differs from the default. */
@@ -186,6 +188,7 @@ export class TranscriptController {
       liveTurnHeader: view.options.liveTurnHeader === true,
       t: this.options.t,
       queued: this.options.queued(),
+      ...(this.options.imageRefs === undefined ? {} : { imageRefs: this.options.imageRefs }),
     })
     slot.setTurns(latestTurnOf(facts))
     slot.set(TranscriptView(facts))

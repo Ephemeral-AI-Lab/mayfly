@@ -98,6 +98,15 @@ describe('StreamFacts', () => {
     expect(rowsOf(preview.turns[0]).find(row => row.kind === 'reasoning')).not.toHaveProperty('label')
   })
 
+  it('keeps each prompt image as an attachment id with its fallback text, and remembers the reference for the loader', () => {
+    const image = { attachmentId: 'att-1', mediaType: 'image/png' as const, bytes: 2048, width: 4, height: 3, name: 'shot.png' }
+    const entry = { ...user(1, 'look'), images: [image] }
+    const imageRefs = new Map<string, { readonly attachmentId: string, readonly mediaType: string }>()
+    const facts = new StreamFacts().build(model([entry], [{ turn: 1, startedAt: NOON }], true), inputs({ imageRefs }))
+    expect(rowsOf(facts.turns[0])[0]).toMatchObject({ kind: 'prompt', images: [{ attachmentId: 'att-1', alt: '[image] 1 · shot.png · 4×3 · 2 KB' }] })
+    expect(imageRefs.get('att-1')).toEqual({ attachmentId: 'att-1', mediaType: 'image/png' })
+  })
+
   it('shows a message that sits twice in the inbox once', () => {
     const facts = new StreamFacts().build(model([user(1, 'q')], [{ turn: 1, startedAt: NOON }], true), inputs({ queued: [{ id: 'm1', text: 'later' }, { id: 'm1', text: 'later' }, { id: 'm2', text: 'then' }] }))
     expect(facts.queued.map(message => message.id)).toEqual(['m1', 'm2'])

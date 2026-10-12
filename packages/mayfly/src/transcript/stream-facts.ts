@@ -37,6 +37,8 @@ export interface StreamInputs {
   readonly t: MayflyTranslate
   /** The messages the user typed while the agent works. */
   readonly queued: readonly { readonly id: string, readonly text: string }[]
+  /** Where each image attachment's reference is kept for the byte loader, by attachment id. */
+  readonly imageRefs?: Map<string, { readonly attachmentId: string, readonly mediaType: string }>
 }
 
 function isSemantic(entry: Entry): entry is TranscriptEntryModel {
@@ -264,7 +266,13 @@ function entryRow(item: EntryItem, entry: TranscriptEntryModel, inputs: StreamIn
         kind: 'prompt',
         id: entry.id,
         text: sanitizePluginText(entry.text),
-        images: entry.images.map((image, index) => `${t('[image]')} ${String(index + 1)}${image.name === undefined ? '' : ` · ${sanitizePluginText(image.name)}`} · ${String(image.width)}×${String(image.height)} · ${String(Math.max(1, Math.round(image.bytes / 1024)))} KB`),
+        images: entry.images.map((image, index) => {
+          inputs.imageRefs?.set(image.attachmentId, { attachmentId: image.attachmentId, mediaType: image.mediaType })
+          return {
+            attachmentId: image.attachmentId,
+            alt: `${t('[image]')} ${String(index + 1)}${image.name === undefined ? '' : ` · ${sanitizePluginText(image.name)}`} · ${String(image.width)}×${String(image.height)} · ${String(Math.max(1, Math.round(image.bytes / 1024)))} KB`,
+          }
+        }),
         open: item.expanded,
       }
     case 'transcript-assistant': {

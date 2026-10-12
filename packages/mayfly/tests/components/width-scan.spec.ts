@@ -35,7 +35,7 @@ describe('components width-scan', () => {
   for (const { name, text } of ADVERSARIAL) {
     it(`TranscriptView rows survive ${name}`, () => {
       const rows: StreamRow[] = [
-        { kind: 'prompt', id: 'u1', text, images: [`[image] 1 · ${text}`], open: false },
+        { kind: 'prompt', id: 'u1', text, images: [{ attachmentId: 'a1', alt: `[image] 1 · ${text}` }], open: false },
         { kind: 'prompt', id: 'u2', text: `${text}\n${text}\n${text}\n${text}\n${text}\n${text}`, images: [], open: false },
         { kind: 'header', id: 'h1', mood: 'stopped', open: false, label: text, tail: ` · ${text}` },
         { kind: 'title', id: 't1', text, failed: text },

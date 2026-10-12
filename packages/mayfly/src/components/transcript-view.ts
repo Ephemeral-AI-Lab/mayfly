@@ -15,6 +15,16 @@ import { freezeWire, ui, type MayflyInlineSpan, type MayflyListItem, type Mayfly
 /** A prompt shows at most this many lines; opening it (or a search hit inside it) shows the rest. */
 export const PROMPT_MAX_LINES = 4
 
+/** The tallest a prompt's picture paints, in terminal rows. */
+export const PROMPT_IMAGE_MAX_ROWS = 12
+
+/** One image attached to a prompt: the reference the host resolves to bytes, and the text shown until it does. */
+export interface StreamImage {
+  readonly attachmentId: string
+  /** The text fallback: while the bytes load, when they are missing, and on a terminal without an image protocol. */
+  readonly alt: string
+}
+
 /** How a header or a step reads: the tone of its label and its glyph. */
 export type StreamMood = 'running' | 'done' | 'stopped' | 'failed'
 
@@ -24,8 +34,8 @@ export type StreamRow =
     readonly kind: 'prompt'
     readonly id: string
     readonly text: string
-    /** One short label per attached image. */
-    readonly images: readonly string[]
+    /** The images attached to the prompt, in block order. */
+    readonly images: readonly StreamImage[]
     /** Whether the prompt shows all its lines. */
     readonly open: boolean
   }
@@ -105,7 +115,13 @@ function rowItems(row: StreamRow): readonly MayflyListItem[] {
     case 'prompt':
       return [
         promptItem(row.id, row.text, row.open),
-        ...row.images.map((label, index) => line(`${row.id}.image.${String(index)}`, [span('  ▪ ', 'muted'), span(label, 'muted')])),
+        ...row.images.map((image, index): MayflyListItem => ({
+          id: `${row.id}.image.${String(index)}`,
+          label: image.alt,
+          body: ui.image({ attachmentId: image.attachmentId, alt: image.alt, maxRows: PROMPT_IMAGE_MAX_ROWS }),
+          bodyAlways: true,
+          bodyLead: [span('  ▪ ', 'muted')],
+        })),
       ]
     // One item holds the whole answer: its Markdown body lays out the blocks and wraps under the `●` that leads it.
     case 'answer': return [{ id: row.id, label: '', body: ui.markdown(row.text), bodyAlways: true, bodyLead: [span('● ')] }]

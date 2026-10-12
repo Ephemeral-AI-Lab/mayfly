@@ -44,10 +44,13 @@ describe('TranscriptView', () => {
     expect(open.wrapMax).toBeUndefined()
   })
 
-  it('lists attached images under the prompt', () => {
-    const items = itemsOf(facts([turn('turn:1', [prompt('u1', 'look', { images: ['[image] 1 · 1×1 · 1 KB'] })])]))
+  it('puts each attached image under the prompt as a picture with its text fallback', () => {
+    const items = itemsOf(facts([turn('turn:1', [prompt('u1', 'look', { images: [{ attachmentId: 'att-1', alt: '[image] 1 · 1×1 · 1 KB' }] })])]))
     expect(items.map(item => item.id)).toEqual(['u1', 'u1.image.0'])
-    expect(items[1]!.label).toBe('  ▪ [image] 1 · 1×1 · 1 KB')
+    expect(items[1]).toMatchObject({
+      label: '[image] 1 · 1×1 · 1 KB', bodyAlways: true, bodyLead: [{ text: '  ▪ ', tone: 'muted' }],
+      body: { kind: 'image', attachmentId: 'att-1', alt: '[image] 1 · 1×1 · 1 KB', maxRows: 12 },
+    })
   })
 
   it('puts the messages queued behind the stream after the last turn, marked as queued', () => {
