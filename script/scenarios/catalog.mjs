@@ -51,6 +51,13 @@ const COVERS = {
 }
 
 /**
+ * The briefs of scenarios whose group is in review (docs/design/component-development-spec.md §5.1): the prototype
+ * `scene`, the `reference`, and the effects `implemented`, to look at (`focus`: what to judge and `how` to reach it),
+ * that `differs` from the prototype, and `pending`. `brief.mjs` prints them. Finalizing a group removes its entries.
+ */
+const REVIEW = {}
+
+/**
  * Scripts that differ from playing to the end. A settled job wakes the agent for a real turn on the stub, which runs
  * at real time, so the jobs replay is captured while all three jobs run.
  */
@@ -77,6 +84,7 @@ const replayScenario = (name, replay) => ({
   covers: COVERS[name] ?? [],
   sizes: SIZES[name] ?? [DEFAULT_SIZE],
   script: SCRIPTS[name] ?? [play(), checkpoint('end')],
+  ...(REVIEW[name] === undefined ? {} : { review: REVIEW[name] }),
 })
 
 /** The size of the Website's app shots. */

@@ -111,10 +111,12 @@ touches one of those, the spec text is the reference and the brief says so.
 ### 5.1 Where it lives
 
 The brief is **data of the scenario**, so it is present wherever the scenario is run and cannot drift from it. A catalog
-entry gains a `review` field (tooling part T0, §7):
+entry may carry a `review` field (read by `script/scenarios/brief.mjs`; `scene` is the number of the prototype scene to
+run beside it):
 
 ```js
 review: {
+  scene: 14,
   reference: 'prototype scene 14 (Activity row) · spec §5.3 · ActivityRow in mayfly-components.mjs',
   implemented: ['…effects that now show, each as one observable sentence…'],
   focus: [{ look: '…what to judge…', how: 'key walk or checkpoint that shows it' }],
@@ -125,9 +127,10 @@ review: {
 
 `pnpm run scenario <name>` prints the brief before it opens the product and prints the equivalent
 `node docs/design/prototypes/ui-preview.mjs <n>` line for the side-by-side; `pnpm run frame <name>` writes it beside the
-checkpoints as `brief.md`; `pnpm run scenario --list` marks the scenarios that carry one. A scenario of an accepted
+checkpoints as `brief.md`; `pnpm run scenario --list` marks the scenarios that carry one with `*`. A scenario of an accepted
 group keeps its `review` field only while the group is in review; finalization removes it (the spec section is the
-record). Until T0 lands, the brief is the text of the hand-off message, in the same shape.
+record). The catalog test refuses a malformed review, one with more than eight focus items, and a focus walk that
+names none of the scenario's checkpoints. The hand-off message restates the brief in the same shape (§5.3).
 
 ### 5.2 What a good brief says
 

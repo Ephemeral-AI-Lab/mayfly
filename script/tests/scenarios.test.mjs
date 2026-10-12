@@ -3,6 +3,7 @@ import { execFileSync } from 'node:child_process'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 import { ROOT } from '../package-contract.mjs'
+import { reviewProblems } from '../scenarios/brief.mjs'
 import { APP_SHOTS, CATALOG } from '../scenarios/catalog.mjs'
 import { goldenPath } from '../scenarios/golden.mjs'
 import { parseGrid, serializeGrid, styleSgr } from '../scenarios/grid.mjs'
@@ -68,6 +69,11 @@ test('every scenario has a known source, real sizes, its marks, and covers globs
   }
   for (const [name, scenario] of Object.entries(CATALOG)) {
     assert.ok(scenario.summary.length > 0, name)
+    if (scenario.review !== undefined) {
+      assert.deepEqual(reviewProblems(scenario.review), [], `${name}: review`)
+      const checkpoints = new Set(scenario.script.filter(step => step.step === 'checkpoint').map(step => step.name))
+      for (const { how } of scenario.review.focus) assert.ok([...checkpoints].some(point => how.includes(point)), `${name}: focus walk "${how}" names none of its checkpoints`)
+    }
     assert.ok(scenario.sizes.length > 0 && scenario.sizes.every(([cols, rows]) => Number.isInteger(cols) && Number.isInteger(rows) && cols >= 20 && rows >= 10), name)
     for (const glob of scenario.covers) assert.ok(matches(glob), `${name}: ${glob} names no file`)
     if (scenario.source.replay !== undefined) {
