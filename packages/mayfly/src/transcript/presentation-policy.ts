@@ -47,14 +47,16 @@ export interface ProcessPolicy {
   readonly liveProcessDetail: boolean
   /** Whether a settled reasoning row shows its first line only, instead of the whole text (an open turn always shows it whole). */
   readonly settledReasoningPreview: boolean
+  /** Whether a streaming reasoning grows line by line under its header, instead of showing its latest line. */
+  readonly streamedReasoning: boolean
 }
 
 /** The fixed capability table; the same mode always yields the same object. */
 export const PROCESS_POLICIES: Readonly<Record<TranscriptViewMode, ProcessPolicy>> = Object.freeze({
-  compact: Object.freeze({ foldCompletedTurns: true, liveProcess: 'hidden', settledProcess: 'titles', fileChanges: 'process', liveProcessDetail: false, settledReasoningPreview: false }),
-  standard: Object.freeze({ foldCompletedTurns: true, liveProcess: 'titles', settledProcess: 'titles', fileChanges: 'content', liveProcessDetail: true, settledReasoningPreview: false }),
-  detailed: Object.freeze({ foldCompletedTurns: true, liveProcess: 'cards', settledProcess: 'titles', fileChanges: 'content', liveProcessDetail: false, settledReasoningPreview: true }),
-  verbose: Object.freeze({ foldCompletedTurns: false, liveProcess: 'cards', settledProcess: 'cards', fileChanges: 'content', liveProcessDetail: false, settledReasoningPreview: false }),
+  compact: Object.freeze({ foldCompletedTurns: true, liveProcess: 'hidden', settledProcess: 'titles', fileChanges: 'process', liveProcessDetail: false, settledReasoningPreview: false, streamedReasoning: false }),
+  standard: Object.freeze({ foldCompletedTurns: true, liveProcess: 'titles', settledProcess: 'titles', fileChanges: 'content', liveProcessDetail: true, settledReasoningPreview: false, streamedReasoning: false }),
+  detailed: Object.freeze({ foldCompletedTurns: true, liveProcess: 'cards', settledProcess: 'titles', fileChanges: 'content', liveProcessDetail: false, settledReasoningPreview: true, streamedReasoning: false }),
+  verbose: Object.freeze({ foldCompletedTurns: false, liveProcess: 'cards', settledProcess: 'cards', fileChanges: 'content', liveProcessDetail: false, settledReasoningPreview: false, streamedReasoning: true }),
 })
 
 /** Immutable reading of one transcript tree's presentation policy. */

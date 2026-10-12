@@ -283,11 +283,17 @@ function entryRow(item: EntryItem, entry: TranscriptEntryModel, inputs: StreamIn
     }
     case 'transcript-thinking': {
       if (entry.text.trim() === '') return undefined
-      // The activity row owns the live label; the stream shows the tail of what is being thought.
-      if (entry.streaming) return { kind: 'reasoning', id: entry.id, text: lastLine(entry.text, REASONING_LINE_MAX_CHARS) ?? '' }
+      // The activity row owns the live label and clock; a mode that streams reasoning grows its text under the header,
+      // any other shows the latest line.
+      if (entry.streaming) {
+        return inputs.policy.process.streamedReasoning
+          ? { kind: 'reasoning', id: entry.id, label: t('Thinking'), text: sanitizePluginText(entry.text.trim()) }
+          : { kind: 'reasoning', id: entry.id, text: lastLine(entry.text, REASONING_LINE_MAX_CHARS) ?? '' }
+      }
       // A mode that previews settled reasoning shows one line of it; a turn that is open (Verbose, Ctrl+O) shows the whole.
       if (inputs.policy.process.settledReasoningPreview && !item.expanded) return { kind: 'reasoning', id: entry.id, text: firstLine(entry.text, REASONING_LINE_MAX_CHARS) ?? '' }
-      return { kind: 'reasoning', id: entry.id, label: t('Thinking'), text: sanitizePluginText(entry.text.trim()) }
+      const took = entry.durationMs === undefined ? '' : ` · ${compactElapsedMs(Math.max(1000, entry.durationMs))}`
+      return { kind: 'reasoning', id: entry.id, label: `${t('Thinking')}${took}`, text: sanitizePluginText(entry.text.trim()) }
     }
     case 'transcript-tool': {
       const state = entry.result === undefined ? item.turnClosed ? 'error' : 'running' : entry.result.isError ? 'error' : 'ok'

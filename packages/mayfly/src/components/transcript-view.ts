@@ -32,8 +32,9 @@ export type StreamRow =
   /** The model's answer, as Markdown source. */
   | { readonly kind: 'answer', readonly id: string, readonly text: string }
   /**
-   * The model's reasoning. With a `label` it is the whole text under `✻ <label>`; without one it is a single line (the
-   * latest line while streaming, the first once settled) that the row clips.
+   * The model's reasoning. With a `label` (`Thinking`, with how long it took once settled) it is a header row and the
+   * whole text under it, aligned with the label; without one it is a single line (the latest line while streaming, the
+   * first once settled) that the row clips.
    */
   | { readonly kind: 'reasoning', readonly id: string, readonly text: string, readonly label?: string }
   /** A tool call or a group of calls: a glyph by state, a title, and the salient argument. */
@@ -106,9 +107,13 @@ function rowItems(row: StreamRow): readonly MayflyListItem[] {
       ]
     // One item holds the whole answer: its Markdown body lays out the blocks and wraps under the `●` that leads it.
     case 'answer': return [{ id: row.id, label: '', body: ui.markdown(row.text), bodyAlways: true, bodyLead: [span('● ')] }]
-    case 'reasoning': return [row.label === undefined
-      ? line(row.id, [span('✻ ', 'muted'), span(row.text, 'muted', ['italic'])])
-      : { id: row.id, label: '', body: ui.text(row.text, { tone: 'muted', styles: ['italic'] }), bodyAlways: true, bodyLead: [span('✻ ', 'muted'), span(row.label, 'muted'), span('  ')] }]
+    // With a label the reasoning is a header row and its whole text under it, aligned with the label's first letter.
+    case 'reasoning': return row.label === undefined
+      ? [line(row.id, [span('✻ ', 'muted'), span(row.text, 'muted', ['italic'])])]
+      : [
+        line(row.id, [span('✻ ', 'muted'), span(row.label, 'muted')]),
+        { id: `${row.id}.text`, label: '', body: ui.text(row.text, { tone: 'muted', styles: ['italic'] }), bodyAlways: true, bodyLead: [span('  ')] },
+      ]
     case 'step': return [line(row.id, [span(STATE_GLYPH[row.state], STATE_TONE[row.state]), span(row.title), ...(row.detail === undefined ? [] : [span(` · ${row.detail}`, 'muted')])])]
     case 'title': return [line(row.id, [span('▸ ', 'muted'), span(row.text, 'muted'), ...(row.failed === undefined ? [] : [span(` · ${row.failed}`, 'danger')])])]
     case 'header': return [line(row.id, [span(row.open ? '▾ ' : '▸ ', 'muted'), span(row.label, MOOD_TONE[row.mood]), ...(row.tail === '' ? [] : [span(row.tail, 'muted')])])]

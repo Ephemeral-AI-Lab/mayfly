@@ -153,7 +153,7 @@ export function compile(items, { provider = 'deepseek-official', model = 'deepse
     let t = start
     let turnNo = 0
     const sessionOp = session === null ? {} : { session }
-    const event = (at, type, data, surface = false) => push(at, { op: 'append', ...sessionOp, type, data, ...(surface ? { surface: 'append' } : {}) })
+    const event = (at, type, data, surface = false, extra = {}) => push(at, { op: 'append', ...sessionOp, type, data, ...(surface ? { surface: 'append' } : {}), ...extra })
     // A stored log only loads when the request header sits inside an open turn, so the first step writes it.
     let header = false
     const writeHeader = (at) => {
@@ -295,7 +295,7 @@ export function compile(items, { provider = 'deepseek-official', model = 'deepse
       message: { id: id('assistant'), role: 'assistant', content, source: { kind: 'model', provider, model } },
       stream: [],
       usage: { ...DEFAULT_USAGE, ...(spec.usage ?? {}) },
-    }, true)
+    }, true, spec.reasoning === undefined ? {} : { streamTiming: { reasoning: spec.reasoning, text: spec.text, reasoningMs: spec.reasoningMs ?? Math.min(7000, Math.max(900, spec.reasoning.length * 12)) } })
     if (streamed && (blocks.length > 0 || preparing)) push(t, { op: 'stream', ...via, frame: 'end' })
     let last = t
     calls.forEach((call, index) => {

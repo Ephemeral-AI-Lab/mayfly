@@ -68,15 +68,20 @@ describe('StreamFacts', () => {
     expect(rows.find(row => row.kind === 'interrupted')).toMatchObject({ text: '■ interrupted' })
   })
 
-  it('shows the tail of a streaming reasoning once the mode shows the live process, and nothing of a blank one', () => {
-    const verbose = new TranscriptPresentationPolicy()
-    verbose.apply({ transcriptView: 'verbose' })
+  it('streams a reasoning line by line under its header at Verbose, shows its tail line at Detailed, and nothing at Standard', () => {
     const entries = [user(1, 'q'), thinking(1, 'first\nsecond thought\n', true), thinking(1, '   ')]
-    const live = new StreamFacts().build(model(entries, [{ turn: 1, startedAt: NOON }], true), inputs({ policy: verbose.snapshot() }))
-    expect(rowsOf(live.turns[0]).filter(row => row.kind === 'reasoning')).toEqual([expect.objectContaining({ text: 'second thought' })])
+    const live = (mode: 'verbose' | 'detailed' | 'standard') => {
+      const policy = new TranscriptPresentationPolicy()
+      policy.apply({ transcriptView: mode })
+      return new StreamFacts().build(model(entries, [{ turn: 1, startedAt: NOON }], true), inputs({ policy: policy.snapshot() }))
+    }
+    const reasoning = (facts: ReturnType<typeof live>) => rowsOf(facts.turns[0]).filter(row => row.kind === 'reasoning')
+    // Blank reasoning draws nothing; Verbose grows the whole text under the label.
+    expect(reasoning(live('verbose'))).toEqual([expect.objectContaining({ label: 'Thinking', text: 'first\nsecond thought' })])
+    expect(reasoning(live('detailed'))).toEqual([expect.objectContaining({ text: 'second thought' })])
+    expect(reasoning(live('detailed'))[0]).not.toHaveProperty('label')
     // Standard keeps a running turn's process out of the stream: the activity row says what it is doing.
-    const standard = new StreamFacts().build(model(entries, [{ turn: 1, startedAt: NOON }], true), inputs())
-    expect(rowsOf(standard.turns[0]).some(row => row.kind === 'reasoning')).toBe(false)
+    expect(reasoning(live('standard'))).toEqual([])
   })
 
   it('shows a settled reasoning whole under a label, or as its first line where the mode previews it', () => {
@@ -84,7 +89,7 @@ describe('StreamFacts', () => {
     const verbose = new TranscriptPresentationPolicy()
     verbose.apply({ transcriptView: 'verbose' })
     const whole = new StreamFacts().build(model(entries, [], false), inputs({ policy: verbose.snapshot() }))
-    expect(rowsOf(whole.turns[0]).find(row => row.kind === 'reasoning')).toMatchObject({ kind: 'reasoning', label: 'Thinking', text: 'first line\nsecond line' })
+    expect(rowsOf(whole.turns[0]).find(row => row.kind === 'reasoning')).toMatchObject({ kind: 'reasoning', label: 'Thinking · 4s', text: 'first line\nsecond line' })
     const detailed = new TranscriptPresentationPolicy()
     detailed.apply({ transcriptView: 'detailed' })
     // A flat model draws its entries alone, so the preview is reachable without the turn fold.

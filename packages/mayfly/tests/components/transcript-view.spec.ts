@@ -63,14 +63,17 @@ describe('TranscriptView', () => {
     expect(items[0]).toMatchObject({ id: 'a1', label: '', bodyAlways: true, bodyLead: [{ text: '● ' }], body: { kind: 'markdown', source: 'Summary\n\n- one\n  - nested' } })
   })
 
-  it('draws reasoning as one clipped line, or as its whole text under a label', () => {
-    const [line, full] = itemsOf(facts([turn('turn:1', [
+  it('draws reasoning as one clipped line, or as a header with its whole text aligned under the label', () => {
+    const items = itemsOf(facts([turn('turn:1', [
       { kind: 'reasoning', id: 'r1', text: 'check the factors' },
-      { kind: 'reasoning', id: 'r2', label: 'Thinking', text: 'first\n\nsecond' },
+      { kind: 'reasoning', id: 'r2', label: 'Thinking · 9s', text: 'first\n\nsecond' },
     ])]))
-    expect(line).toMatchObject({ id: 'r1', label: '✻ check the factors', labelSpans: [{ text: '✻ ', tone: 'muted' }, { text: 'check the factors', tone: 'muted', styles: ['italic'] }] })
-    expect(line!.wrap).toBeUndefined()
-    expect(full).toMatchObject({ id: 'r2', label: '', bodyAlways: true, bodyLead: [{ text: '✻ ', tone: 'muted' }, { text: 'Thinking', tone: 'muted' }, { text: '  ' }], body: { kind: 'text', tone: 'muted', styles: ['italic'] } })
+    expect(items.map(item => item.id)).toEqual(['r1', 'r2', 'r2.text'])
+    expect(items[0]).toMatchObject({ label: '✻ check the factors', labelSpans: [{ text: '✻ ', tone: 'muted' }, { text: 'check the factors', tone: 'muted', styles: ['italic'] }] })
+    expect(items[0]!.wrap).toBeUndefined()
+    expect(items[1]).toMatchObject({ label: '✻ Thinking · 9s', labelSpans: [{ text: '✻ ', tone: 'muted' }, { text: 'Thinking · 9s', tone: 'muted' }] })
+    // The text starts in the column of the label's first letter: the two columns of `✻ ` lead it.
+    expect(items[2]).toMatchObject({ label: '', bodyAlways: true, bodyLead: [{ text: '  ' }], body: { kind: 'text', tone: 'muted', styles: ['italic'] } })
   })
 
   it('draws the cut turn marker as its translated text', () => {

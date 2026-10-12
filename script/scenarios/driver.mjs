@@ -89,6 +89,15 @@ function connectControl(path, onSync) {
   })
 }
 
+/** The compact stream records of a settled step: its reasoning (and answer) timed so the projection can read how long it thought. */
+function settledStream({ reasoning, text, reasoningMs }) {
+  const now = Date.now()
+  const half = Math.ceil(reasoning.length / 2)
+  const records = [{ type: 'reasoning-chunks', time0: now - reasoningMs, index: 0, dt: [reasoningMs], texts: [reasoning.slice(0, half), reasoning.slice(half)] }]
+  if (text !== undefined && text !== '') records.push({ type: 'text-chunks', time0: now, index: 1, dt: [], texts: [text] })
+  return records
+}
+
 export function apply(ctx) {
   const file = process.env.MAYFLY_REPLAY_FILE
   if (file === undefined || file === '') return
@@ -183,7 +192,9 @@ export function apply(ctx) {
           case 'append': {
             const session = target(action)
             if (session === undefined) { log(`no session ${action.session} for ${action.type}`); break }
-            const event = action.surface === undefined ? session.append(action.type, action.data) : session.append(action.type, action.data, { surfaceOp: action.surface })
+            // The settled message carries the stream's own timing, so its reasoning keeps the duration it took.
+            const data = action.streamTiming === undefined ? action.data : { ...action.data, stream: settledStream(action.streamTiming) }
+            const event = action.surface === undefined ? session.append(action.type, data) : session.append(action.type, data, { surfaceOp: action.surface })
             lastSeqs.set(session, event.seq)
             log(`${action.session ?? 'main'} ${action.type}`)
             break

@@ -98,15 +98,15 @@ describe('phase-local output', () => {
     try {
       replay(reasoning('seed', 1_000))
       // The activity row owns the phase, time, and throughput; the live
-      // reasoning block is content only, with no caption or counters.
+      // reasoning block is a `Thinking` header and its text, with no counters.
       expect(streamText()).toContain('✻ ')
-      expect(streamText()).not.toMatch(/Thinking|↓|tok\/s/u)
+      expect(streamText()).not.toMatch(/↓|tok\/s/u)
       // Thinking keeps the activity row: the dock never collapses mid-turn.
       expect(harness.screen.paneLines()[0]).toContain('Thinking · 0s · ↓1 · seed')
       vi.setSystemTime(2_000)
       replay(reasoning('x'.repeat(168), 2_000))
       expect(streamText()).toContain('✻ ')
-      expect(streamText()).not.toMatch(/Thinking|↓|tok\/s/u)
+      expect(streamText()).not.toMatch(/↓|tok\/s/u)
       expect(harness.screen.paneLines()[0]).toContain('Thinking · 1s · ↓43 · ≈42 tok/s')
       replay(answer('', 2_010))
       replay(reasoning('\n', 2_020))

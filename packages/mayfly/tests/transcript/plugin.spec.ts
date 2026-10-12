@@ -465,13 +465,14 @@ describe('mayfly-transcript through the real Loader', () => {
       expect(text).toContain('think')
       expect(text).not.toMatch(/working|Deep diving|Thinking|Analyzing the request/u)
     }
-    // Detailed and Verbose show the reasoning itself, as a captionless tail.
-    for (const view of ['detailed', 'verbose']) {
-      const text = await live(view)
-      expect(text).toContain('think')
-      expect(text).toMatch(/✻ .*working/u)
-      expect(text).not.toMatch(/Deep diving|Thinking/u)
-    }
+    // Detailed shows the latest line of the reasoning, captionless; Verbose grows the text under a `Thinking` header.
+    const detailed = await live('detailed')
+    expect(detailed).toContain('think')
+    expect(detailed).toMatch(/✻ .*working/u)
+    expect(detailed).not.toMatch(/Deep diving|Thinking/u)
+    const verbose = await live('verbose')
+    expect(verbose).toMatch(/✻ Thinking\n\s+.*working/u)
+    expect(verbose).not.toMatch(/Deep diving/u)
   })
 
   it('renders a sibling plugin registration from the same direct mayflyStatus service', async () => {

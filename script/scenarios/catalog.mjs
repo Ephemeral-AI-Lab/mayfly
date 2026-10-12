@@ -122,7 +122,7 @@ const REVIEW = {
     reference: 'prototype scene 18 (Conversation stream), the `think` rows · spec §5.6 · turnItemsRaw in mayfly-components.mjs',
     implemented: [
       'At Standard a finished turn folds its reasoning behind the header (`▸ Took 10s · Ctrl+O to expand`); Ctrl+O opens the last three turns and the reasoning shows whole.',
-      'The reasoning row is `✻ Thinking` and then the text, wrapped under the text with its paragraphs kept; no duration on the row.',
+      'An opened reasoning is a header row of its own, `✻ Thinking · 9s` (how long it took), and the whole text under it, wrapped and aligned with the word `Thinking`, paragraphs kept.',
     ],
     focus: [
       { look: 'The folded turn, then the reasoning that Ctrl+O opens', how: 'checkpoint end, then checkpoint open' },
@@ -130,7 +130,7 @@ const REVIEW = {
     ],
     differs: [
       'The sketch\'s reasoning is one sentence; real reasoning is many paragraphs, shown whole when a turn is open (owner decision, no cap).',
-      'R2\'s `Thought for 9s` label is gone: the closing row already says how long the turn took.',
+      'R2\'s `Thought for 9s` row is now the header `✻ Thinking · 9s` with the text on the lines below it, not beside it.',
     ],
     pending: [
       'Which levels show reasoning, and the one-line preview that Detailed will show for a settled turn, come with the levels (3e.1); the preview row exists but a Detailed turn folds until then.',
@@ -141,16 +141,17 @@ const REVIEW = {
     scene: 18,
     reference: 'prototype scene 18 (Conversation stream) at level Verbose, the `think` rows · spec §5.6',
     implemented: [
-      'While the model thinks, the stream shows one italic muted row, `✻ <latest line>`, clipped at the width; the activity row owns the label and the clock.',
-      'A settled turn at Verbose shows `✻ Thinking` and the whole text under it, wrapped under the text.',
+      'At Verbose the reasoning streams in: a `✻ Thinking` header and the text growing line by line under it, aligned with the word `Thinking`; the activity row keeps the clock and counters.',
+      'A settled turn at Verbose shows `✻ Thinking · 9s` and the whole text under it, wrapped.',
+      'At the other levels that show live reasoning (Detailed) the stream still shows one italic row, `✻ <latest line>`.',
     ],
     focus: [
-      { look: 'The live reasoning row mid-stream: one row, the latest line, no counters', how: 'checkpoint live' },
-      { look: 'The settled reasoning: the lead, the hang under the text, the blank rows between paragraphs, and the answer after it', how: 'checkpoint settled' },
+      { look: 'The reasoning growing under its header mid-stream, with no single-line scrolling', how: 'checkpoint live' },
+      { look: 'The settled header with its duration, the text aligned under the word Thinking, the blank rows between paragraphs, and the answer after it', how: 'checkpoint settled' },
       { look: 'The same at 48 columns', how: 'checkpoint narrow' },
     ],
     differs: [
-      'Reasoning is shown whole and uncapped; the sketch has one sentence (owner decision, Verbose is where reasoning is read).',
+      'Reasoning is shown whole and uncapped, header and text on separate rows; the sketch has one sentence on one row (owner decision, Verbose is where reasoning is read).',
     ],
     pending: [
       'The Detailed level, its preview, and the policy that decides which level shows what are 3e.1.',
