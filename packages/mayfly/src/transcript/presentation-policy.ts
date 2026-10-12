@@ -33,18 +33,21 @@ export type TranscriptViewMode = 'compact' | 'standard' | 'detailed' | 'verbose'
 export interface ProcessPolicy {
   /** Whether a normally completed turn folds its process and interim replies behind the turn header. */
   readonly foldCompletedTurns: boolean
-  /** A running turn's process: hidden, past-tense titles of its settled work, or every card. */
-  readonly liveProcess: 'hidden' | 'titles' | 'cards'
-  /** A settled turn that does not fold: past-tense titles or every card. */
-  readonly settledProcess: 'titles' | 'cards'
+  /**
+   * A running turn's process, as the tier each view draws: `hidden` (nothing), `blocks` (a run of calls of one kind is one
+   * multi-line block, the Standard tier), `current` (the step the model works in draws one block with a body per call, the
+   * Verbose tier, and the steps before it collapse to blocks), or `cards` (the Verbose tier for every step). A running call
+   * has no block in any view: the activity row names it.
+   */
+  readonly liveProcess: 'hidden' | 'blocks' | 'current' | 'cards'
+  /** A settled turn that does not fold: `titles` is the Compact tier, one merged line per run of calls between two messages. */
+  readonly settledProcess: 'titles' | 'blocks' | 'cards'
   /**
    * Diff-card calls (file writes and edits): ordinary process members, or
    * content that renders as its card, closes the current group, and stays
    * visible when the turn folds.
    */
   readonly fileChanges: 'process' | 'content'
-  /** Whether the activity row appends the running command, path, query, or reasoning. */
-  readonly liveProcessDetail: boolean
   /** Whether a settled reasoning row shows its first line only, instead of the whole text (an open turn always shows it whole). */
   readonly settledReasoningPreview: boolean
   /** Whether a streaming reasoning grows line by line under its header, instead of showing its latest line. */
@@ -53,10 +56,10 @@ export interface ProcessPolicy {
 
 /** The fixed capability table; the same mode always yields the same object. */
 export const PROCESS_POLICIES: Readonly<Record<TranscriptViewMode, ProcessPolicy>> = Object.freeze({
-  compact: Object.freeze({ foldCompletedTurns: true, liveProcess: 'hidden', settledProcess: 'titles', fileChanges: 'process', liveProcessDetail: false, settledReasoningPreview: false, streamedReasoning: false }),
-  standard: Object.freeze({ foldCompletedTurns: true, liveProcess: 'titles', settledProcess: 'titles', fileChanges: 'content', liveProcessDetail: true, settledReasoningPreview: false, streamedReasoning: false }),
-  detailed: Object.freeze({ foldCompletedTurns: true, liveProcess: 'cards', settledProcess: 'titles', fileChanges: 'content', liveProcessDetail: false, settledReasoningPreview: true, streamedReasoning: false }),
-  verbose: Object.freeze({ foldCompletedTurns: false, liveProcess: 'cards', settledProcess: 'cards', fileChanges: 'content', liveProcessDetail: false, settledReasoningPreview: false, streamedReasoning: true }),
+  compact: Object.freeze({ foldCompletedTurns: true, liveProcess: 'hidden', settledProcess: 'titles', fileChanges: 'process', settledReasoningPreview: false, streamedReasoning: false }),
+  standard: Object.freeze({ foldCompletedTurns: false, liveProcess: 'blocks', settledProcess: 'blocks', fileChanges: 'content', settledReasoningPreview: false, streamedReasoning: false }),
+  detailed: Object.freeze({ foldCompletedTurns: false, liveProcess: 'current', settledProcess: 'blocks', fileChanges: 'content', settledReasoningPreview: true, streamedReasoning: false }),
+  verbose: Object.freeze({ foldCompletedTurns: false, liveProcess: 'cards', settledProcess: 'cards', fileChanges: 'content', settledReasoningPreview: false, streamedReasoning: true }),
 })
 
 /** Immutable reading of one transcript tree's presentation policy. */

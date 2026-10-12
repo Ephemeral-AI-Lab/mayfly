@@ -47,6 +47,17 @@ const SUMMARY = [
 const CONFIG = "export const config = {\n  baseUrl: 'http://localhost:8080',\n  timeoutMs: 3000,\n}\n\nexport function describe() {\n  return `${config.baseUrl} (timeout ${config.timeoutMs} ms)`\n}\n"
 const TEST_OUTPUT = '✔ describe names the base url and timeout (0.8ms)\n✔ describe shows the retries (0.3ms)\nℹ tests 2\nℹ pass 2\nℹ fail 0'
 
+/** The presenter metadata of a `read` result: `shown` numbered lines of a file of `total`. */
+const readMeta = (path, shown, total, offset = 1) => ({ path, offset, totalLines: total, lines: Array.from({ length: shown }, (_, index) => ({ number: offset + index, text: `export const value${String(offset + index)} = render(${String(offset + index)}) // ${path}` })) })
+/** The presenter metadata of a `grep` result: `total` matches spread over `files` files. */
+const grepMeta = (files, total) => ({ shape: 'matches', truncated: false, total, files: Array.from({ length: files }, (_, index) => ({ path: `src/module${String(index + 1)}.mjs`, matches: [{ lineNumber: index + 3, line: 'const activity = phase' }] })) })
+/** The presenter metadata of a `glob` result. */
+const globMeta = (paths) => ({ shape: 'paths', truncated: false, total: paths.length, paths })
+/** The text of a `read` result: the envelope the presenter recognizes around the file's lines. */
+const readText = (path, body) => `<path>${path}</path>\n<type>file</type>\n<content>\n${body}\n</content>`
+const PANE_ACTIVITY = 'packages/mayfly/src/transcript/pane-activity.ts'
+const LONG_COMMAND = 'pnpm run check -- --tier round --base origin/main --plan --why && pnpm run scenarios -- --png toollines toolkit errors'
+
 const tour = {
   summary: 'a full agent turn: reasoning, todos, search, read, edits, a write, bash (running, failing, passing), and a markdown answer',
   items: [turn('Add a retries option to the config and run the tests.', [
@@ -233,7 +244,7 @@ const toolkit = {
       firstTokenMs: 900,
       prepareMs: 1200,
       tools: [
-        tool('read', { file_path: 'src/config.mjs' }, { result: CONFIG, runMs: 500 }),
+        tool('read', { file_path: 'src/config.mjs' }, { result: readText('src/config.mjs', CONFIG.trimEnd()), runMs: 500, meta: readMeta('src/config.mjs', 8, 8) }),
         tool('read', { file_path: 'src/client.mjs' }, { result: "import { config } from './config.mjs'\n\nexport async function get(path) {}", runMs: 600 }),
         tool('read', { file_path: 'README.md', offset: 1, limit: 40 }, { result: '# replay-app\n\nA tiny service.', runMs: 700 }),
         tool('grep', { pattern: 'config', include: '*.mjs' }, { result: 'src/client.mjs:1:import { config } from \'./config.mjs\'\nsrc/client.mjs:4:  config.baseUrl', runMs: 800 }),
@@ -448,6 +459,67 @@ const turns = {
   ],
 }
 
+const toollines = {
+  summary: 'settled tool calls as one line each: reads, searches, commands, web, other tools, failures, and a call cut off by an interrupt',
+  items: [
+    turn('Survey the transcript code and check that it still builds.', [
+      step({
+        text: 'Reading the files first.',
+        tools: [
+          tool('read', { file_path: 'src/config.mjs' }, { result: readText('src/config.mjs', CONFIG.trimEnd()), runMs: 400, meta: readMeta('src/config.mjs', 8, 8) }),
+          tool('read', { file_path: PANE_ACTIVITY, offset: 1, limit: 40 }, { result: readText(PANE_ACTIVITY, 'export const value1 = render(1)'), runMs: 500, meta: readMeta(PANE_ACTIVITY, 40, 481) }),
+          tool('read', { file_path: 'src/missing.ts' }, { result: 'File not found: src/missing.ts', error: true, runMs: 300 }),
+        ],
+      }),
+      step({
+        text: 'Searching for the label.',
+        tools: [
+          tool('grep', { pattern: 'activity', path: 'packages' }, { result: 'src/module1.mjs:3:const activity = phase', runMs: 700, meta: grepMeta(12, 47) }),
+          tool('grep', { pattern: 'neverUsedName', path: 'packages' }, { result: 'No matches found', runMs: 500, meta: grepMeta(0, 0) }),
+          tool('glob', { pattern: '**/*.test.mjs' }, { result: 'tests/a.test.mjs', runMs: 400, meta: globMeta(['tests/a.test.mjs', 'tests/b.test.mjs', 'tests/c.test.mjs']) }),
+        ],
+      }),
+      mark('searched'),
+      step({
+        text: 'Building and linting.',
+        tools: [
+          tool('bash', { command: 'pnpm run check:lib', description: 'Check the exports' }, { result: '> check:lib\nexports ok\nentries ok\nfiles ok\nsize budget ok\n4 packages checked', runMs: 4200 }),
+          tool('bash', { command: 'pnpm run lint', description: 'Lint' }, { result: 'src/client.mjs:4:3  error  no-unused-vars  "signal" is assigned but never used\nsrc/client.mjs:9:1  warning  prefer-const\n2 problems (1 error, 1 warning)\n[exit code: 1]', runMs: 3000 }),
+          tool('bash', { command: LONG_COMMAND, description: 'The long gate' }, { result: 'plan: 3 steps\nok', runMs: 1200 }),
+        ],
+      }),
+      mark('built'),
+      step({
+        text: 'Checking the docs online.',
+        tools: [
+          tool('web_search', { queries: ['pi tui overflow truncate'] }, { result: '1. pi.dev\n2. example.com', runMs: 1500, meta: { sources: [{ url: 'https://pi.dev/docs/latest/tui', title: 'TUI' }, { url: 'https://example.com', title: 'Example' }], truncated: false } }),
+          tool('web_fetch', { url: 'https://pi.dev/docs/latest/tui' }, { result: `# Terminal UI\n\nThe TUI library draws rows and clips them to the width.\n\n## Overflow\n\nA row either wraps or truncates.\n${lines(300, n => `Documentation line ${String(n)} of the page.`)}`, runMs: 2200, meta: { url: 'https://pi.dev/docs/latest/tui', statusCode: 200, truncated: false } }),
+          tool('web_fetch', { url: 'https://example.com/big' }, { result: lines(2000, n => `Big page line ${String(n)} that is long enough.`), runMs: 3100, meta: { url: 'https://example.com/big', statusCode: 200, truncated: true } }),
+        ],
+      }),
+      step({
+        text: 'Other tools.',
+        tools: [
+          tool('skill', { name: 'release-notes' }, { result: 'Loaded skill release-notes (3 steps).', runMs: 500 }),
+          tool('mcp__github__search_issues', { query: 'is:open label:bug' }, { result: '#412 Crash on empty config', runMs: 1500 }),
+          tool('custom_inventory_tool', { scope: 'all' }, { result: '{"items": 12}', runMs: 600 }),
+        ],
+      }),
+      step({ text: 'Everything is checked; the lint failure is the only open item.' }),
+    ], { startAt: '10:20' }),
+    turn('Run the long build, and I will stop you.', [
+      step({
+        text: 'Starting the build.',
+        tools: [
+          tool('read', { file_path: 'package.json' }, { result: readText('package.json', '{}'), runMs: 300, meta: readMeta('package.json', 1, 1) }),
+          tool('bash', { command: 'pnpm run lint', description: 'Lint' }, { result: 'src/client.mjs:4:3  error  no-unused-vars\n[exit code: 1]', runMs: 1000 }),
+          tool('bash', { command: 'pnpm run build', description: 'Build' }, { result: '', runMs: 4000, unanswered: true }),
+        ],
+      }),
+    ], { startAt: '10:24', outcome: 'interrupted' }),
+  ],
+}
+
 const phases = {
   summary: 'activity phases: waiting for the first token, reasoning only, text only, and a tool call being prepared',
   items: [
@@ -561,7 +633,7 @@ const content = {
   ])],
 }
 
-export const REPLAYS = { tour, toolkit, thinking, markdown, live, phases, prompts, turns, errors, compaction: compactionReplay, manualCompact, context, subagents, childStream, approvals, questions, plan, goal, jobs, queued, retries, sideQuestion, notices, modes, edge, history, wheel, content }
+export const REPLAYS = { tour, toolkit, thinking, markdown, live, phases, prompts, turns, toollines, errors, compaction: compactionReplay, manualCompact, context, subagents, childStream, approvals, questions, plan, goal, jobs, queued, retries, sideQuestion, notices, modes, edge, history, wheel, content }
 
 /*
  * The scenes of the Website's app shots. Each is the source of an `app-*` scenario of the catalog, whose goldens the

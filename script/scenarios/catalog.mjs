@@ -28,6 +28,7 @@ const COVERS = {
   prompts: [`${TRANSCRIPT}transcript-model.ts`, `${INTERACTION}attachments.ts`, ...STREAM],
   turns: [`${TRANSCRIPT}transcript-model.ts`, `${TRANSCRIPT}process-groups.ts`, `${TRANSCRIPT}presentation-policy.ts`, `${INTERACTION}pane-queue.ts`, 'packages/mayfly/src/core/node-slot.ts', ...STREAM],
   errors: [`${TRANSCRIPT}tool-*.ts`, `${TRANSCRIPT}transcript-model.ts`, ...STREAM],
+  toollines: [`${TRANSCRIPT}tool-*.ts`, `${TRANSCRIPT}process-*.ts`, `${TRANSCRIPT}official-model.ts`, 'packages/mayfly/src/frontend/models.ts', ...STREAM],
   compaction: [...STREAM],
   manualCompact: [...STREAM],
   context: [`${TRANSCRIPT}status-context.ts`, ...STREAM],
@@ -58,13 +59,134 @@ const COVERS = {
  * `scene`, the `reference`, and the effects `implemented`, to look at (`focus`: what to judge and `how` to reach it),
  * that `differs` from the prototype, and `pending`. `brief.mjs` prints them. Finalizing a group removes its entries.
  */
-const REVIEW = {}
+const REVIEW = {
+  toolkit: {
+    scene: 17,
+    reference: 'prototype scene 17 (Tool rows and edits) · spec §5.3 · every kind of call in one turn',
+    implemented: [
+      'Reads, searches, web calls, skills, jobs, MCP and unknown tools each settle into the Standard block or line of their kind.',
+      'Runs of calls of one kind share a block (the job tools and the skill are `Called 4 tools`).',
+    ],
+    focus: [
+      { look: 'One block per run of one kind; a single call stays a line', how: 'checkpoint `end`' },
+      { look: 'The verbose bodies of the same calls', how: '`pnpm run frame toolkit --keys ctrl+o`, checkpoint `keys`' },
+    ],
+    differs: ['The replay runs without most tool presenters, so some outcomes (matches, status, size) show only where the replay carries the presenter data.'],
+    pending: ['The edit still draws the old `✓ Edit path` row: its card is part 3b.2.'],
+  },
+  errors: {
+    scene: 17,
+    reference: 'prototype scene 17 (Tool rows and edits) · spec §5.3 · failed and cut-off calls',
+    implemented: [
+      'A failed call is ✗ with its reason on the line (the first line of the error, clipped), at every tier.',
+    ],
+    focus: [
+      { look: 'The failed lines of the failed turn', how: '`pnpm run frame errors --keys ctrl+o`, checkpoint `keys` (the ⊘ cancelled line is in `toollines`)' },
+    ],
+    differs: [],
+    pending: ['Output tails under `⎿` wait for part 3b.3.'],
+  },
+  toollines: {
+    scene: 17,
+    reference: 'prototype scene 17 (Tool rows and edits) · spec §5.3 · docs/design/component-development-spec.md §7.1 (every tool at three tiers)',
+    implemented: [
+      'Standard (default): a run of calls of one kind is one block (`✓ Read 3 files · 48 lines` and a tree of paths with their lines); a single call is one line, `✓ Read(path) · 8 lines`, with the tool\'s own name in bold; a settled turn shows its blocks inline.',
+      'Verbose (and Ctrl+O): one block per call, `✓ Bash(command) · 4.2s` with the output on the lines under it (no `⎿` mark) and a body of up to 6 rows: the lines read, the matches, the command output tail, the sources, the head of a fetched page; Ctrl+O shows every row the facts carry (40).',
+      'Compact: the turn folds behind its header; an interrupted turn shows one merged line per run (`▸ Ran 2 commands · Read 1 file · 1.1s · 1 failed`).',
+      'Detailed: the step the model works in draws verbose blocks and the steps before it collapse to Standard blocks; a settled turn is Standard.',
+      'A failed call keeps its reason on its line at every tier; a call cut off by an interrupt reads ⊘ with no outcome. A running call has no block: the activity row names it at every level.',
+      'A blank row separates every row of a turn, as in Claude Code.',
+    ],
+    focus: [
+      { look: 'Standard blocks: head with counts and time, tree of items, failures marked ✗', how: 'checkpoint `standard`' },
+      { look: 'Verbose bodies: read lines, matches, output tail, sources, page head, and the `… +N more · Ctrl+O` row', how: 'Ctrl+O is `open` (all rows); `pnpm run scenario toollines-verbose` is the capped form' },
+      { look: 'Compact merged line and the folded header', how: '`pnpm run scenario toollines-compact`, checkpoint `end`' },
+      { look: 'Detailed collapse: earlier steps become Standard blocks when the next step starts', how: '`pnpm run scenario toollines-detailed`, checkpoint `live` (stopped after step 3)' },
+      { look: 'The ⊘ line of the interrupted build and the failed lint', how: 'checkpoint `open`, the last turn' },
+      { look: 'Long paths and commands clip at the end; the tree and glyphs stay', how: '`--width 60` and `--width 40`' },
+      { look: 'Spacing: a blank row between every row', how: 'any checkpoint' },
+    ],
+    differs: [
+      'Targets are the paths as given, not shortened (owner decision), so a long path pushes the outcome off a narrow row.',
+      'The fetch size is derived from the length of the result text (the tool reports only the status): it is approximate.',
+      'The command output tail is drawn now (the spec assigned command rows to 3b.3): the tier rule asks every tool for a verbose body.',
+      'The prototype folds with `Read 3 files · …`; the real title also counts failures (`· 2 failed`) and caps at three categories plus `…`.',
+    ],
+    pending: [
+      'Edit and write calls still draw the old `✓ Edit path` row: their three tiers are parts 3b.2 and 3b.3.',
+      'Enter on a line, copy, and opening a row in the editor are row selection (3e.2).',
+    ],
+  },
+  toolkit: {
+    scene: 17,
+    reference: 'prototype scene 17 (Tool rows and edits) · spec §5.3 · every kind of call in one turn',
+    implemented: [
+      'Reads, searches, web calls, skills, jobs, MCP and unknown tools each settle into one line with the verb and outcome of their kind.',
+      'The long bash output and the long read stay one line each: the output tail is not drawn (command rows are 3b.3).',
+    ],
+    focus: [
+      { look: 'One line per call, in the order made; reads and searches are not merged', how: 'Ctrl+O, then checkpoint `keys` (`pnpm run frame toolkit --keys ctrl+o`)' },
+      { look: 'Tools without a presenter fall back to their title and a duration', how: 'the skill, job, MCP and custom_inventory_tool lines' },
+    ],
+    differs: ['The replay runs without the real tool presenters for most calls, so some outcomes (matches, status, size) show only where the replay carries the metadata.'],
+    pending: ['The edit still draws the old `✓ Edit path` row: its card is part 3b.2.'],
+  },
+  errors: {
+    scene: 17,
+    reference: 'prototype scene 17 (Tool rows and edits) · spec §5.3 · failed and cut-off calls',
+    implemented: [
+      'A failed call is ✗ with its reason on the line (the first line of the error, clipped), at every tier.',
+    ],
+    focus: [
+      { look: 'The failed lines of the failed turn', how: '`pnpm run frame errors --keys ctrl+o`, checkpoint `keys` (the ⊘ cancelled line is in `toollines`)' },
+    ],
+    differs: [],
+    pending: ['Output tails under `⎿` wait for part 3b.3.'],
+  },
+  toollines: {
+    scene: 17,
+    reference: 'prototype scene 17 (Tool rows and edits) · spec §5.3 settled calls · ToolLine in mayfly-components.mjs',
+    implemented: [
+      'Every settled call is one line: ✓ / ✗ / ⊘, the past-tense verb, the target in accent, and the outcome in muted text.',
+      'Reads show their lines (`481 lines`, `40 of 481 lines`), searches their matches or paths, commands their time or `exit 1`, fetches `200 · 18 KB`.',
+      'A failed call puts its reason on the line (`file not found`, `exit 1 · 3s`); a call cut off by an interrupt reads ⊘ with a muted verb.',
+      'A run of reads or searches is one line per call, and the folded title counts them (`Read 3 files · Searched code · Ran 3 commands · 12s`).',
+      'A call that is still running has no line: the activity row owns it, and its line appears when it settles.',
+      'A blank row separates every block, as in Claude Code: the prompt, the turn header, each tool line, answer and reasoning, and the interruption mark all stand alone.',
+      'The work-details level decides where the lines show: Verbose always, Detailed while the turn runs, Standard and Compact after Ctrl+O (`toollines-compact`, `-detailed`, `-verbose`).',
+    ],
+    focus: [
+      { look: 'The folded title: counts per category, the time, and `· 1 failed`', how: 'checkpoint `settled`: the interrupted turn\'s `▸` row (the first turn folds behind its header)' },
+      { look: 'Glyph, verb, target and outcome tones; one line per call', how: 'Ctrl+O, checkpoint `lines`' },
+      { look: 'Read windows, search counts, exit codes, fetch size', how: 'checkpoint `lines`: the reads, greps, bash and web_fetch lines' },
+      { look: 'The failed lines (missing file, lint exit 1)', how: 'checkpoint `lines`' },
+      { look: 'The ⊘ line of the interrupted build, with no outcome', how: 'Ctrl+O, checkpoint `lines`: the last line of the second turn' },
+      { look: 'A long path or command is clipped at the end, and the verb stays', how: '`--width 60` and `--width 40`, checkpoint `lines`' },
+      { look: 'A call settling in the live turn adds its line when it finishes', how: 'watch `pnpm run scenario toollines` while it plays (Ctrl+O first, for the open view)' },
+    ],
+    differs: [
+      'Targets are the paths as given, not shortened (owner decision), so a long path pushes the outcome off a narrow row.',
+      'The fetch size is derived from the length of the result text (the tool reports only the status): it is approximate.',
+      'The prototype folds with `Read 3 files · …`; the real title also counts failures (`· 2 failed`) and caps at three categories plus `…`.',
+    ],
+    pending: [
+      'Edit and write calls still draw the old `✓ Edit path` row: their cards are parts 3b.2 and 3b.3.',
+      'Output tails under `⎿` and Enter on a line are not done: command rows are 3b.3, row selection is 3e.2.',
+    ],
+  },
+}
 
 /**
  * Scripts that differ from playing to the end. A settled job wakes the agent for a real turn on the stub, which runs
  * at real time, so the jobs replay is captured while all three jobs run.
  */
 const SCRIPTS = {
+  // A settled turn folds behind its title; Ctrl+O opens its calls as lines; the interrupted turn leaves a call cancelled.
+  toollines: [
+    play(), checkpoint('standard'),
+    key('ctrl+o'), checkpoint('open'),
+    resize(72, 30), checkpoint('resized'),
+  ],
   // Settled turns, then the turn that holds queued messages, then its end; Ctrl+O opens the folds, and a resize narrows it.
   turns: [
     play('settled'), checkpoint('settled'),
@@ -99,6 +221,7 @@ const SCRIPTS = {
 /** Replays that run at a size of their own. */
 const SIZES = {
   turns: [DEFAULT_SIZE, [60, 24], [40, 24]],
+  toollines: [[120, 80], [60, 64], [40, 64]],
   wheel: [[40, 24]],
 }
 
@@ -255,6 +378,15 @@ export const CATALOG = Object.freeze({
       resize(48, 24), checkpoint('narrow'),
     ],
   },
+  // The same tool lines at the other work-details levels (the default, Standard, is `toollines`).
+  ...Object.fromEntries(['compact', 'detailed', 'verbose'].map(level => [`toollines-${level}`, {
+    summary: `the tool lines at the ${level[0].toUpperCase()}${level.slice(1)} level`,
+    source: { replay: 'toollines' },
+    config: { mayfly: { transcriptView: level } },
+    covers: COVERS.toollines,
+    sizes: [[120, 80], [60, 64]],
+    script: level === 'detailed' ? [play('built'), checkpoint('live'), play(), checkpoint('end')] : [play(), checkpoint('end')],
+  }])),
   // The pill: scroll away from a streaming answer, let the rest arrive, then follow it again with Ctrl+↓.
   live: {
     summary: 'a streamed answer: scroll away mid-stream, see the chip (`Back to bottom`, then `N new turns`), then Ctrl+↓ follows it',

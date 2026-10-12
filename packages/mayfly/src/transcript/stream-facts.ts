@@ -14,8 +14,9 @@ import type { MayflyTranslate } from '../frontend/locale.ts'
 import type { TranscriptEntryModel, TranscriptModel, TranscriptTurnModel } from '../frontend/models.ts'
 import type { StreamMood, StreamQueued, StreamRow, StreamTurn, TranscriptViewFacts } from '../components/transcript-view.ts'
 import { compactElapsedMs } from './agent-presentation.ts'
-import { buildDisplay, memberFacts, runningTurnOf, type DisplayItem, type EntryItem, type ProcessTitleItem, type TurnHeaderItem } from './process-groups.ts'
-import { processTitle, summarizeProcess } from './process-activity.ts'
+import { buildDisplay, runningTurnOf, type DisplayItem, type EntryItem, type ProcessTitleItem, type TurnHeaderItem } from './process-groups.ts'
+import { processTitle } from './process-activity.ts'
+import { callsOf, isFileChange, standardRow, verboseRow, type Call } from './tool-calls.ts'
 import type { TranscriptPresentationSnapshot } from './presentation-policy.ts'
 import { ellipsize, toolDisplayName } from './present.ts'
 
@@ -73,16 +74,19 @@ function lastLine(text: string, max = PREVIEW_MAX_CHARS): string | undefined {
   return line === undefined ? undefined : ellipsize(sanitizePluginText(line.trim()), max)
 }
 
-function sameRow(left: StreamRow, right: StreamRow): boolean {
-  const a = left as unknown as Record<string, unknown>
-  const b = right as unknown as Record<string, unknown>
+/** Whether two values hold the same facts: rows carry lists of plain records, so equality reaches into them. */
+function sameValue(x: unknown, y: unknown): boolean {
+  if (x === y) return true
+  if (typeof x !== 'object' || typeof y !== 'object' || x === null || y === null) return false
+  if (Array.isArray(x) !== Array.isArray(y)) return false
+  const a = x as Record<string, unknown>
+  const b = y as Record<string, unknown>
   const keys = Object.keys(a)
-  if (keys.length !== Object.keys(b).length) return false
-  return keys.every((key) => {
-    const x = a[key]
-    const y = b[key]
-    return Array.isArray(x) ? Array.isArray(y) && x.length === y.length && x.every((value, index) => value === y[index]) : x === y
-  })
+  return keys.length === Object.keys(b).length && keys.every(key => sameValue(a[key], b[key]))
+}
+
+function sameRow(left: StreamRow, right: StreamRow): boolean {
+  return sameValue(left, right)
 }
 
 /** Builds the facts of one conversation view and keeps the rows of its settled turns by identity. */
@@ -156,15 +160,14 @@ export class StreamFacts {
     const lifecycle = new Map((model.turns ?? []).map(turn => [turn.turn, turn]))
     const buckets: { readonly turn: number, readonly rows: StreamRow[] }[] = []
     let lead: StreamRow[] = []
-    display.forEach((item, position) => {
+    runsOf(display, inputs.t).forEach((item, position) => {
       const turn = turnOf(item)
-      const mapped = this.rowOf(item, inputs, position)
-      if (mapped === undefined) return
-      const row = this.intern(mapped, kept)
+      const mapped = this.rowsOf(item, inputs, position).map(row => this.intern(row, kept))
+      if (mapped.length === 0) return
       if (turn === undefined) {
         // A canonical node belongs with the turn it precedes, or with the last one when none follows.
-        if (buckets.length === 0 || lead.length > 0) lead.push(row)
-        else buckets.at(-1)!.rows.push(row)
+        if (buckets.length === 0 || lead.length > 0) lead.push(...mapped)
+        else buckets.at(-1)!.rows.push(...mapped)
         return
       }
       let bucket = buckets.at(-1)
@@ -173,7 +176,7 @@ export class StreamFacts {
         lead = []
         buckets.push(bucket)
       }
-      bucket.rows.push(row)
+      bucket.rows.push(...mapped)
     })
     if (lead.length > 0) {
       if (buckets.length === 0) buckets.push({ turn: -1, rows: lead })
@@ -190,16 +193,17 @@ export class StreamFacts {
     })
   }
 
-  private rowOf(item: DisplayItem, inputs: StreamInputs, position: number): StreamRow | undefined {
-    if (item.kind === 'turn-header') return headerRow(item, inputs.t)
-    if (item.kind === 'process-title') return titleRow(item, inputs.t)
+  private rowsOf(item: DisplayItem | RunUnit, inputs: StreamInputs, position: number): readonly StreamRow[] {
+    if (item.kind === 'run') return [standardRow(item.calls, inputs.t)]
+    if (item.kind === 'turn-header') return [headerRow(item, inputs.t)]
+    if (item.kind === 'process-title') return [titleRow(item, inputs.t)]
     // A hand-built model may carry canonical nodes between its entries: their text is all the stream keeps.
-    if (!isSemantic(item.entry)) return { kind: 'note', id: `node:${String(position)}`, text: sanitizePluginText(canonicalText(item.entry)) }
-    return entryRow(item, item.entry, inputs)
+    if (!isSemantic(item.entry)) return [{ kind: 'note', id: `node:${String(position)}`, text: sanitizePluginText(canonicalText(item.entry)) }]
+    return entryRows(item, item.entry, inputs)
   }
 }
 
-function turnOf(item: DisplayItem): number | undefined {
+function turnOf(item: DisplayItem | RunUnit): number | undefined {
   if (item.kind !== 'entry') return item.turn
   return isSemantic(item.entry) ? item.entry.turn : undefined
 }
@@ -247,15 +251,67 @@ function titleRow(item: ProcessTitleItem, t: MayflyTranslate): StreamRow {
   }
 }
 
-/** The state a group of calls reads as: any pending call runs, any failed call fails. */
-function groupState(states: readonly ('pending' | 'ok' | 'error')[], closed: boolean): 'running' | 'ok' | 'error' {
-  if (states.includes('error')) return 'error'
-  return states.includes('pending') && !closed ? 'running' : 'ok'
-}
-
 function canonicalText(node: MayflyUiNode): string {
   if (node.kind === 'text') return textOf(node.content)
   return node.kind === 'code' ? textOf(node.code) : `[${node.kind}]`
+}
+
+/** A run of settled calls of one kind that the standard tier draws as one block. */
+interface RunUnit {
+  readonly kind: 'run'
+  readonly turn: number
+  readonly calls: readonly Call[]
+}
+
+function isToolLike(entry: TranscriptEntryModel): boolean {
+  return entry.kind === 'transcript-read-group' || entry.kind === 'transcript-search-group' || entry.kind === 'transcript-command-group'
+    || (entry.kind === 'transcript-tool' && !isFileChange(entry))
+}
+
+/**
+ * The display plan with the tool entries of the standard tier gathered into runs: consecutive calls of one kind, whatever
+ * entries they came in, are one block. Anything else (a reasoning, an answer, a file change, a header) ends the run, and
+ * a call that still runs is skipped without ending it.
+ */
+function runsOf(display: readonly DisplayItem[], t: MayflyTranslate): readonly (DisplayItem | RunUnit)[] {
+  const units: (DisplayItem | RunUnit)[] = []
+  let run: { turn: number, calls: Call[] } | undefined
+  const flush = (): void => {
+    if (run !== undefined) units.push({ kind: 'run', turn: run.turn, calls: run.calls })
+    run = undefined
+  }
+  for (const item of display) {
+    if (item.kind === 'entry' && item.tier === 'standard' && isSemantic(item.entry) && isToolLike(item.entry)) {
+      for (const call of callsOf(item.entry, item.turnClosed, t)) {
+        if (run !== undefined && run.calls[0]!.activity !== call.activity) flush()
+        if (run === undefined) run = { turn: item.entry.turn, calls: [] }
+        run.calls.push(call)
+      }
+      continue
+    }
+    flush()
+    units.push(item)
+  }
+  flush()
+  return units
+}
+
+/** The rows of one entry: none for an empty one, one per call for a tool, group, or run of calls drawn as verbose blocks. */
+function entryRows(item: EntryItem, entry: TranscriptEntryModel, inputs: StreamInputs): readonly StreamRow[] {
+  if (entry.kind === 'transcript-tool' && isFileChange(entry)) return [fileChangeRow(item, entry)]
+  if (isToolLike(entry)) return callsOf(entry, item.turnClosed, inputs.t).map(call => verboseRow(call, item.expanded, inputs.t))
+  const row = entryRow(item, entry, inputs)
+  return row === undefined ? [] : [row]
+}
+
+/** A file change has no block of its own until the edit and write cards: it keeps a one-row stand-in. */
+function fileChangeRow(item: EntryItem, entry: Extract<TranscriptEntryModel, { readonly kind: 'transcript-tool' }>): StreamRow {
+  const state = entry.result === undefined ? item.turnClosed ? 'error' : 'running' : entry.result.isError ? 'error' : 'ok'
+  const title = sanitizePluginText(entry.title ?? toolDisplayName(entry.name))
+  const salient = ellipsize(sanitizePluginText(entry.detail), PREVIEW_MAX_CHARS)
+  // The presenter's title often names the argument already.
+  const detail = salient === '' || title.includes(salient) ? undefined : salient
+  return { kind: 'step', id: entry.id, state, title, ...(detail === undefined ? {} : { detail }) }
 }
 
 function entryRow(item: EntryItem, entry: TranscriptEntryModel, inputs: StreamInputs): StreamRow | undefined {
@@ -294,22 +350,11 @@ function entryRow(item: EntryItem, entry: TranscriptEntryModel, inputs: StreamIn
       const took = entry.durationMs === undefined ? '' : ` · ${compactElapsedMs(Math.max(1000, entry.durationMs))}`
       return { kind: 'reasoning', id: entry.id, label: `${t('Thinking')}${took}`, text: sanitizePluginText(entry.text.trim()) }
     }
-    case 'transcript-tool': {
-      const state = entry.result === undefined ? item.turnClosed ? 'error' : 'running' : entry.result.isError ? 'error' : 'ok'
-      const title = sanitizePluginText(entry.title ?? toolDisplayName(entry.name))
-      const salient = ellipsize(sanitizePluginText(entry.detail), PREVIEW_MAX_CHARS)
-      // The presenter's title often names the argument already.
-      const detail = salient === '' || title.includes(salient) ? undefined : salient
-      return { kind: 'step', id: entry.id, state, title, ...(detail === undefined ? {} : { detail }) }
-    }
-    case 'transcript-read-group': {
-      const paths = [...new Set(entry.reads.map(read => read.path ?? read.label).filter((path): path is string => path !== undefined))]
-      return groupRow(entry, entry.id, entry.reads.map(read => read.state), paths, item.turnClosed, t)
-    }
+    case 'transcript-tool':
+    case 'transcript-read-group':
     case 'transcript-search-group':
-      return groupRow(entry, entry.id, entry.searches.map(call => call.state), entry.searches.map(call => call.pattern ?? call.detail), item.turnClosed, t)
     case 'transcript-command-group':
-      return groupRow(entry, entry.id, entry.commands.map(call => call.state), entry.commands.map(call => call.command), item.turnClosed, t)
+      return undefined
     case 'transcript-error':
       return { kind: 'error', id: entry.id, text: sanitizePluginText(entry.code === undefined ? entry.message : `${entry.message} (${entry.code})`) }
     case 'transcript-interrupted':
@@ -321,13 +366,4 @@ function entryRow(item: EntryItem, entry: TranscriptEntryModel, inputs: StreamIn
       return { kind: 'compaction', id: entry.id, state: 'ok', text: `${done}${entry.trigger === 'auto' ? t(' · auto') : ''}` }
     }
   }
-}
-
-/** One row for a group of read, search, or command calls: the past-tense title and the first things it touched. */
-function groupRow(entry: TranscriptEntryModel, id: string, states: readonly ('pending' | 'ok' | 'error')[], things: readonly string[], closed: boolean, t: MayflyTranslate): StreamRow {
-  const title = processTitle(summarizeProcess(memberFacts(entry, true).map(fact => ({ ...fact, running: false }))), t)
-  const shown = things.slice(0, 2).map(thing => sanitizePluginText(thing)).join(', ')
-  const more = things.length > 2 ? ` +${String(things.length - 2)}` : ''
-  const detail = shown === '' ? undefined : ellipsize(`${shown}${more}`, PREVIEW_MAX_CHARS)
-  return { kind: 'step', id, state: groupState(states, closed), title: sanitizePluginText(title), ...(detail === undefined ? {} : { detail }) }
 }

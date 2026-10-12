@@ -60,6 +60,11 @@ export interface EntryItem {
   readonly hint: boolean
   /** Whether the entry's turn has ended (pending calls read as cancelled). */
   readonly turnClosed: boolean
+  /**
+   * How a tool entry is drawn: `verbose` is one block per call with its body, `standard` lets a run of calls of one kind
+   * share a block. Absent on a plain (flat) model, where each call is a verbose block.
+   */
+  readonly tier?: 'verbose' | 'standard'
 }
 
 /** One row group of the display plan, in render order. */
@@ -106,6 +111,10 @@ function exitFailed(entry: Extract<TranscriptEntryModel, { readonly kind: 'trans
   return terminal !== undefined && (terminal.signal !== undefined || (terminal.exitCode !== undefined && terminal.exitCode !== 0))
 }
 
+function times(call: { readonly startedAt: number, readonly endedAt?: number }): { readonly startedAt: number, readonly endedAt?: number } {
+  return { startedAt: call.startedAt, ...(call.endedAt === undefined ? {} : { endedAt: call.endedAt }) }
+}
+
 /**
  * The summary facts one process member contributes.
  * @param entry - a process member entry.
@@ -120,13 +129,15 @@ export function memberFacts(entry: Entry, closed: boolean): ProcessMemberFact[] 
         running: !closed && entry.result === undefined,
         ...(entry.preparing === undefined ? {} : { preparing: true }),
         failed: entry.result?.isError === true || exitFailed(entry),
+        startedAt: entry.startedAt,
+        ...(entry.result === undefined ? {} : { endedAt: entry.result.endedAt }),
       }]
     case 'transcript-read-group':
-      return entry.reads.map(read => ({ activity: read.activity, running: !closed && read.state === 'pending', failed: read.state === 'error' }))
+      return entry.reads.map(read => ({ activity: read.activity, running: !closed && read.state === 'pending', failed: read.state === 'error', ...times(read) }))
     case 'transcript-search-group':
-      return entry.searches.map(call => ({ activity: call.activity, running: !closed && call.state === 'pending', failed: call.state === 'error' }))
+      return entry.searches.map(call => ({ activity: call.activity, running: !closed && call.state === 'pending', failed: call.state === 'error', ...times(call) }))
     case 'transcript-command-group':
-      return entry.commands.map(call => ({ activity: call.activity, running: !closed && call.state === 'pending', failed: call.state === 'error' }))
+      return entry.commands.map(call => ({ activity: call.activity, running: !closed && call.state === 'pending', failed: call.state === 'error', ...times(call) }))
     default:
       return []
   }
@@ -173,9 +184,9 @@ export function buildDisplay(input: DisplayInput): DisplayItem[] {
   const items: DisplayItem[] = []
   let lastSeq = input.previousSeq
   const turnInfo = new Map((input.turns ?? []).map(turn => [turn.turn, turn]))
-  const plainEntry = (entry: Entry, turnClosed: boolean, expanded: boolean, hint: boolean): EntryItem => {
+  const plainEntry = (entry: Entry, turnClosed: boolean, expanded: boolean, hint: boolean, tier?: 'verbose' | 'standard'): EntryItem => {
     if (isSemantic(entry)) lastSeq = entry.seq
-    return { kind: 'entry', entry, seq: lastSeq, expanded, hint, turnClosed }
+    return { kind: 'entry', entry, seq: lastSeq, expanded, hint, turnClosed, ...(tier === undefined ? {} : { tier }) }
   }
   let index = 0
   const entries = input.entries
@@ -213,6 +224,8 @@ export function buildDisplay(input: DisplayInput): DisplayItem[] {
     const policy = input.policy
     const folded = policy.foldCompletedTurns && closed && !interleaved && !abnormal && !expandedTurn
     const view = expandedTurn ? 'cards' : closed ? policy.settledProcess : policy.liveProcess
+    // The step the model works in: at the `current` view its calls are verbose blocks and the steps before it collapse.
+    const currentStep = rest.reduce((latest, entry) => isSemantic(entry) && 'step' in entry ? Math.max(latest, entry.step) : latest, -1)
     const content = (entry: Entry): boolean => policy.fileChanges === 'content' && isFileChange(entry)
     const facts = rest.filter(isMember).flatMap(entry => memberFacts(entry, closed)).filter(fact => fact.preparing !== true)
     const subagents = facts.filter(fact => fact.activity === 'subagents').length
@@ -235,7 +248,8 @@ export function buildDisplay(input: DisplayInput): DisplayItem[] {
         toolCalls: facts.length - subagents,
         subagents,
         folded,
-        hint: folded && inScope,
+        // Ctrl+O names itself wherever it would open more: a fold, or a view short of the verbose blocks.
+        hint: inScope && !expandedTurn && (folded || view !== 'cards'),
       })
       lastSeq = headerSeq
     }
@@ -255,8 +269,11 @@ export function buildDisplay(input: DisplayInput): DisplayItem[] {
       if (pending.length === 0) return
       const members = pending
       pending = []
-      if (view === 'cards') {
-        for (const entry of members) items.push(plainEntry(entry, closed, expandedTurn, inScope))
+      if (view === 'cards' || view === 'blocks' || view === 'current') {
+        for (const entry of members) {
+          const verbose = view === 'cards' || (view === 'current' && 'step' in entry && entry.step === currentStep)
+          items.push(plainEntry(entry, closed, expandedTurn, inScope, verbose ? 'verbose' : 'standard'))
+        }
         return
       }
       // Past tense only: a title summarizes settled members, so a

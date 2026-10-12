@@ -29,17 +29,17 @@ import { ellipsize, parseToolArguments, resolveCallView, resolveResultView, type
 import { toolDetail } from '../conversation/activity-detail.ts'
 import { toolActivity } from './process-activity.ts'
 
-/** Preview lines a read window carries for the expanded group view. */
-export const READ_PREVIEW_LINE_LIMIT = 5
+/** Preview lines a read window carries: the body of its verbose block, opened to every row by Ctrl+O. */
+export const READ_PREVIEW_LINE_LIMIT = 40
 
-/** Match previews a search group's file row carries when expanded. */
+/** Match previews a search file carries for the body of its verbose block. */
 export const SEARCH_PREVIEW_MATCH_LIMIT = 3
 
-/** Path rows a search group's glob call carries when expanded. */
-export const SEARCH_PATH_LIMIT = 16
+/** Path rows a glob call carries for the body of its verbose block. */
+export const SEARCH_PATH_LIMIT = 40
 
-/** Output-tail rows a command group's member carries when expanded. */
-export const COMMAND_PREVIEW_LINE_LIMIT = 4
+/** Output-tail rows a command carries for the body of its verbose block. */
+export const COMMAND_PREVIEW_LINE_LIMIT = 40
 
 /** Characters one command output-tail row keeps before truncation. */
 const COMMAND_PREVIEW_LINE_MAX_CHARS = 160
@@ -115,6 +115,11 @@ function isWebTool(resolved: ResolvedTool): boolean {
   return resolved.result?.card === 'web'
 }
 
+/** The tool a call used, when it started, and, once its result settled, when it ended. */
+function callFacts(entry: ConversationToolEntry): { readonly name: string, readonly startedAt: number, readonly endedAt?: number } {
+  return { name: entry.name, startedAt: entry.startedAt, ...(entry.result === undefined ? {} : { endedAt: entry.result.endedAt }) }
+}
+
 /** The process activity and live detail every mapped tool call carries. */
 function processFacts(resolved: ResolvedTool): { readonly activity: ReturnType<typeof toolActivity>, readonly detail: string } {
   return {
@@ -178,6 +183,7 @@ function readCallModel(resolved: ResolvedTool): ReadCallModel {
     updatedSeq: entry.updatedSeq,
     turn: entry.turn,
     step: entry.step,
+    ...callFacts(entry),
     ...(path === undefined ? {} : { path }),
     ...(label === undefined ? {} : { label }),
     ...(limit === undefined ? {} : { requestedRange: { first: offset, last: offset + limit - 1 } }),
@@ -219,6 +225,7 @@ function searchCallModel(resolved: ResolvedTool): SearchCallModel {
     updatedSeq: entry.updatedSeq,
     turn: entry.turn,
     step: entry.step,
+    ...callFacts(entry),
     ...(pattern === undefined ? {} : { pattern }),
     ...(view === undefined ? {} : { shape: view.shape }),
     ...(view?.shape === 'matches' ? {
@@ -291,6 +298,7 @@ function commandCallModel(resolved: ResolvedTool): CommandCallModel {
     updatedSeq: entry.updatedSeq,
     turn: entry.turn,
     step: entry.step,
+    ...callFacts(entry),
     command: ellipsize(command, 120),
     state,
     ...(resultView?.exitCode === undefined ? {} : { exitCode: resultView.exitCode }),

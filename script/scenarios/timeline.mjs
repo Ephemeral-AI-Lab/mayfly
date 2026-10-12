@@ -25,7 +25,11 @@ export const turn = (prompt, items, options = {}) => ({ kind: 'turn', prompt, it
  * `assistant/attempt`, and the `llm/retry` records of the retry policy.
  */
 export const step = (options = {}) => ({ kind: 'step', ...options })
-/** A tool call. `runMs` is how long it shows as running; `result` is its output (`error: true` marks a failure). */
+/**
+ * A tool call. `runMs` is how long it shows as running; `result` is its output (`error: true` marks a failure,
+ * `meta` is the presenter's metadata: read lines, search matches, the fetch status). `unanswered: true` leaves the
+ * call without a result, as a turn cut off while the tool ran leaves it.
+ */
 export const tool = (name, args, options = {}) => ({ name, args, ...options })
 /**
  * A file edit as the `edit` tool reports it: the diff card shows `before` and `after` (the changed lines with whatever
@@ -312,7 +316,8 @@ export function compile(items, { provider = 'deepseek-official', model = 'deepse
         conversation([turn(child.prompt, child.items ?? [], { outcome: child.outcome })], callAt + 100 + (child.startMs ?? 300), childId)
         call.result ??= `started subagent ${childId}`
       }
-      event(resultAt, 'tool/result', {
+      // A call the turn was cut off before it was answered never gets a result (`unanswered: true`).
+      if (call.unanswered !== true) event(resultAt, 'tool/result', {
         turn: turnNo,
         step: stepNo,
         message: { id: id('tool'), role: 'tool', content: [{ type: 'text', text: call.result ?? '' }], toolCallId: call.callId, isError: call.error === true, source: { kind: 'tool', callId: call.callId } },

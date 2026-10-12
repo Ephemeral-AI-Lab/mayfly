@@ -11,6 +11,7 @@
  */
 
 import { freezeWire, ui, type MayflyInlineSpan, type MayflyListItem, type MayflyListNode } from '@ephemeral-ai/mayfly-ui'
+import { ToolBody, ToolGroupHead, ToolGroupItem, ToolLine, ToolMore, type ToolBlockFacts, type ToolGroupFacts } from './tool-line.ts'
 
 /** A prompt shows at most this many lines; opening it (or a search hit inside it) shows the rest. */
 export const PROMPT_MAX_LINES = 4
@@ -47,7 +48,11 @@ export type StreamRow =
    * first once settled) that the row clips.
    */
   | { readonly kind: 'reasoning', readonly id: string, readonly text: string, readonly label?: string }
-  /** A tool call or a group of calls: a glyph by state, a title, and the salient argument. */
+  /** A settled tool call, the verbose tier: a glyph by outcome, the verb, the target, what came of it, and a short body. */
+  | ({ readonly kind: 'tool', readonly id: string } & ToolBlockFacts)
+  /** A run of settled calls of one kind, the standard tier: a head and one line per call. */
+  | ({ readonly kind: 'tools', readonly id: string } & ToolGroupFacts)
+  /** A file change that has no card of its own yet: a glyph by state, a title, and the salient argument. */
   | { readonly kind: 'step', readonly id: string, readonly state: 'running' | 'ok' | 'error', readonly title: string, readonly detail?: string }
   /** The past-tense title of a folded process group. */
   | { readonly kind: 'title', readonly id: string, readonly text: string, readonly failed?: string }
@@ -132,6 +137,16 @@ function rowItems(row: StreamRow): readonly MayflyListItem[] {
         line(row.id, [span('✻ ', 'muted'), span(row.label, 'muted')]),
         { id: `${row.id}.text`, label: '', body: ui.text(row.text, { tone: 'muted', styles: ['italic'] }), bodyAlways: true, bodyLead: [span('  ')] },
       ]
+    case 'tool': return [
+      line(row.id, ToolLine(row)),
+      ...(row.moreBefore === undefined ? [] : [line(`${row.id}.before`, ToolMore(row.moreBefore))]),
+      ...(row.body ?? []).map((part, index) => line(`${row.id}.body.${String(index)}`, ToolBody(part))),
+      ...(row.more === undefined ? [] : [line(`${row.id}.more`, ToolMore(row.more))]),
+    ]
+    case 'tools': return [
+      line(row.id, ToolGroupHead(row)),
+      ...row.items.map((item, index) => line(`${row.id}.item.${String(index)}`, ToolGroupItem(item, index === row.items.length - 1))),
+    ]
     case 'step': return [line(row.id, [span(STATE_GLYPH[row.state], STATE_TONE[row.state]), span(row.title), ...(row.detail === undefined ? [] : [span(` · ${row.detail}`, 'muted')])])]
     case 'title': return [line(row.id, [span('▸ ', 'muted'), span(row.text, 'muted'), ...(row.failed === undefined ? [] : [span(` · ${row.failed}`, 'danger')])])]
     case 'header': return [line(row.id, [span(row.open ? '▾ ' : '▸ ', 'muted'), span(row.label, MOOD_TONE[row.mood]), ...(row.tail === '' ? [] : [span(row.tail, 'muted')])])]
@@ -152,6 +167,18 @@ function itemsOf(row: StreamRow): readonly MayflyListItem[] {
     rowCache.set(row, items)
   }
   return items
+}
+
+/** The blank row before a row, kept by the row's facts. */
+const rowGapCache = new WeakMap<StreamRow, MayflyListItem>()
+
+function rowGap(row: StreamRow): MayflyListItem {
+  let item = rowGapCache.get(row)
+  if (item === undefined) {
+    item = freezeWire(blank(`${row.id}.gap`))
+    rowGapCache.set(row, item)
+  }
+  return item
 }
 
 /** The blank row that opens a turn after the first. */
@@ -231,7 +258,11 @@ export function TranscriptView(facts: TranscriptViewFacts): MayflyListNode {
   const items: MayflyListItem[] = []
   facts.turns.forEach((turn, index) => {
     if (index > 0) items.push(blankBetween(turn))
-    for (const row of turn.rows) items.push(...itemsOf(row))
+    turn.rows.forEach((row, position) => {
+      // Every row is a block of its own, and a blank row separates two blocks.
+      if (position > 0) items.push(rowGap(row))
+      items.push(...itemsOf(row))
+    })
     items.push(...closingOf(turn))
   })
   for (const message of facts.queued) items.push(...queuedItems(message))

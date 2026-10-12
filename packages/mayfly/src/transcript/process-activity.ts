@@ -53,12 +53,17 @@ export interface ProcessMemberFact {
   readonly running: boolean
   readonly preparing?: boolean
   readonly failed?: boolean
+  /** Producer times of the call, for the wall time a group title reports. */
+  readonly startedAt?: number
+  readonly endedAt?: number
 }
 
 /** Ranked category counts and failures of one process group's settled members. */
 export interface ProcessSummary {
   readonly counts: readonly { readonly activity: ProcessActivity, readonly count: number }[]
   readonly failed: number
+  /** Wall time from the first member's start to the last member's end, when every settled member has both. */
+  readonly durationMs?: number
 }
 
 /**
@@ -75,7 +80,10 @@ export function summarizeProcess(members: readonly ProcessMemberFact[]): Process
     if (member.failed === true) failed += 1
   }
   const ranked = [...counts].map(([activity, count]) => ({ activity, count })).sort((a, b) => b.count - a.count)
-  return { counts: ranked, failed }
+  const starts = members.flatMap(member => member.startedAt === undefined ? [] : [member.startedAt])
+  const ends = members.flatMap(member => member.endedAt === undefined ? [] : [member.endedAt])
+  const span = starts.length === 0 || ends.length === 0 ? undefined : Math.max(...ends) - Math.min(...starts)
+  return { counts: ranked, failed, ...(span === undefined || span < 0 ? {} : { durationMs: span }) }
 }
 
 const RUNNING_LABEL: Readonly<Record<ProcessActivity, string>> = {
@@ -109,25 +117,6 @@ const PREPARING_LABEL: Readonly<Record<ProcessActivity, string>> = {
   questions: 'Preparing questions',
   tools: 'Preparing tool calls',
 }
-
-const DONE_LABEL: Readonly<Record<ProcessActivity, string>> = {
-  read: 'Read files',
-  readImage: 'Read images',
-  write: 'Wrote files',
-  search: 'Searched code',
-  edit: 'Edited files',
-  commands: 'Ran commands',
-  code: 'Ran code',
-  webSearch: 'Searched the web',
-  webFetch: 'Visited web pages',
-  subagents: 'Coordinated subagents',
-  plan: 'Updated the plan',
-  questions: 'Asked questions',
-  tools: 'Called tools',
-}
-
-/** Locale key of the prefix shared by joined done labels (`已` in Chinese, empty in English). */
-export const SHARED_DONE_PREFIX_KEY = 'process.shared-done-prefix'
 
 /**
  * The activity row's present-tense labels (identity English keys) plus
@@ -163,26 +152,83 @@ export const PROCESS_ACTIVE_ZH: Readonly<Record<string, string>> = {
 }
 
 /**
- * The transcript's past-tense group titles and their joiners (identity
- * English keys) plus Chinese copy, taken from the upstream Chat locale.
+ * What a folded group says of one category: a count phrase, one form for a single call and one for several (identity
+ * English keys). Searches, code runs, web searches, and plan updates name no object, so their phrase counts the times.
  */
+const COUNT_PHRASE: Readonly<Record<ProcessActivity, readonly [one: string, many: string]>> = {
+  read: ['Read {count} file', 'Read {count} files'],
+  readImage: ['Read {count} image', 'Read {count} images'],
+  write: ['Wrote {count} file', 'Wrote {count} files'],
+  search: ['Searched code', 'Searched code {count} times'],
+  edit: ['Edited {count} file', 'Edited {count} files'],
+  commands: ['Ran {count} command', 'Ran {count} commands'],
+  code: ['Ran code', 'Ran code {count} times'],
+  webSearch: ['Searched the web', 'Searched the web {count} times'],
+  webFetch: ['Visited {count} web page', 'Visited {count} web pages'],
+  subagents: ['Coordinated {count} subagent', 'Coordinated {count} subagents'],
+  plan: ['Updated the plan', 'Updated the plan {count} times'],
+  questions: ['Asked {count} question', 'Asked {count} questions'],
+  tools: ['Called {count} tool', 'Called {count} tools'],
+}
+
+/** Chinese copy of the folded group phrases and the outcomes a call line shows. */
 export const PROCESS_DONE_ZH: Readonly<Record<string, string>> = {
-  'Read files': '已读取文件',
-  'Read images': '已读取图片',
-  'Wrote files': '已写入文件',
-  'Searched code': '已搜索代码',
-  'Edited files': '修改了文件',
-  'Ran commands': '执行了命令',
+  'Read {count} file': '读取了 {count} 个文件',
+  'Read {count} files': '读取了 {count} 个文件',
+  'Read {count} image': '读取了 {count} 张图片',
+  'Read {count} images': '读取了 {count} 张图片',
+  'Wrote {count} file': '写入了 {count} 个文件',
+  'Wrote {count} files': '写入了 {count} 个文件',
+  'Searched code': '搜索了代码',
+  'Searched code {count} times': '搜索了 {count} 次代码',
+  'Edited {count} file': '修改了 {count} 个文件',
+  'Edited {count} files': '修改了 {count} 个文件',
+  'Ran {count} command': '执行了 {count} 条命令',
+  'Ran {count} commands': '执行了 {count} 条命令',
   'Ran code': '运行了代码',
-  'Searched the web': '已搜索网页',
-  'Visited web pages': '已访问网页',
-  'Coordinated subagents': '已协调子智能体',
+  'Ran code {count} times': '运行了 {count} 次代码',
+  'Searched the web': '搜索了网页',
+  'Searched the web {count} times': '搜索了 {count} 次网页',
+  'Visited {count} web page': '访问了 {count} 个网页',
+  'Visited {count} web pages': '访问了 {count} 个网页',
+  'Coordinated {count} subagent': '协调了 {count} 个子智能体',
+  'Coordinated {count} subagents': '协调了 {count} 个子智能体',
   'Updated the plan': '更新了计划',
-  'Asked questions': '向用户提出了问题',
-  'Called tools': '已调用工具',
-  '{first} and {second}': '{first}并{second}',
-  ', ': '，',
-  '{title}, etc.': '{title}等',
+  'Updated the plan {count} times': '更新了 {count} 次计划',
+  'Asked {count} question': '提出了 {count} 个问题',
+  'Asked {count} questions': '提出了 {count} 个问题',
+  'Called {count} tool': '调用了 {count} 个工具',
+  'Called {count} tools': '调用了 {count} 个工具',
+  '… +{count} more': '… 还有 {count} 项',
+  '… +{count} earlier': '… 前面还有 {count} 项',
+  ' · Ctrl+O': ' · 按 Ctrl+O',
+  '{count} line': '{count} 行',
+  '{count} lines': '{count} 行',
+  '{shown} of {total} lines': '{total} 行中的 {shown} 行',
+  '{count} file': '{count} 个文件',
+  '{count} files': '{count} 个文件',
+  '{matches} in {files}': '{matches}，分布在 {files}',
+  'no matches': '无匹配',
+  '{count} path': '{count} 个路径',
+  '{count} paths': '{count} 个路径',
+  '{count} source': '{count} 个来源',
+  '{count} sources': '{count} 个来源',
+  'exit {code}': '退出码 {code}',
+  'signal {signal}': '信号 {signal}',
+}
+
+/**
+ * A call's or a group's wall time as a line shows it: `4.2s` under ten seconds, then the compact form; nothing under a
+ * tenth of a second, where the number says nothing.
+ * @param ms - the elapsed milliseconds.
+ * @returns the text, or `undefined` when too short to report.
+ */
+export function elapsedText(ms: number): string | undefined {
+  if (!(ms >= 100)) return undefined
+  if (ms < 10_000) return `${String(Math.round(ms / 100) / 10)}s`
+  const seconds = Math.round(ms / 1000)
+  if (seconds < 60) return `${String(seconds)}s`
+  return `${String(Math.floor(seconds / 60))}m ${String(seconds % 60)}s`
 }
 
 /**
@@ -205,25 +251,27 @@ export function preparingLabel(activity: ProcessActivity): string {
 }
 
 /**
- * The localized past-tense title of one process group: its top three
- * categories' done labels, joined.
+ * What a run of calls of one category says of itself: `Read 3 files`, `Searched code 3 times`.
+ * @param activity - the calls' category.
+ * @param count - how many calls.
+ * @param t - translator for the transcript namespace.
+ * @returns the translated phrase.
+ */
+export function countPhrase(activity: ProcessActivity, count: number, t: MayflyTranslate): string {
+  return t(COUNT_PHRASE[activity][count === 1 ? 0 : 1], { count })
+}
+
+/**
+ * The title of one folded process group: a count phrase for each of its top three categories, joined by ` · `, and the
+ * wall time of its settled calls.
  * @param summary - the summary of the group's settled members.
  * @param t - translator for the transcript namespace.
  * @returns the title text, or `''` when nothing has settled.
  */
 export function processTitle(summary: ProcessSummary, t: MayflyTranslate): string {
-  const labels = summary.counts.slice(0, 3).map(({ activity }) => t(DONE_LABEL[activity]))
-  const first = labels[0]
-  if (first === undefined) return ''
-  const second = labels[1]
-  if (second === undefined) return first
-  const continuation = (label: string): string => label.charAt(0).toLowerCase() + label.slice(1)
-  if (labels.length === 2) {
-    const translated = t(SHARED_DONE_PREFIX_KEY)
-    const prefix = translated === SHARED_DONE_PREFIX_KEY ? '' : translated
-    const trimmed = prefix !== '' && first.startsWith(prefix) && second.startsWith(prefix) ? second.slice(prefix.length) : second
-    return t('{first} and {second}', { first, second: continuation(trimmed) })
-  }
-  const title = [first, ...labels.slice(1).map(continuation)].join(t(', '))
-  return summary.counts.length > 3 ? t('{title}, etc.', { title }) : title
+  if (summary.counts.length === 0) return ''
+  const shown = summary.counts.slice(0, 3).map(({ activity, count }) => countPhrase(activity, count, t))
+  const more = summary.counts.length > 3 ? ['…'] : []
+  const time = summary.durationMs === undefined ? undefined : elapsedText(summary.durationMs)
+  return [...shown, ...more, ...(time === undefined ? [] : [time])].join(' · ')
 }

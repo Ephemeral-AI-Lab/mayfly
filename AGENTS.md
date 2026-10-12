@@ -43,8 +43,11 @@ History and release notes do not define current behavior.
 
 ## Verification
 
-Verify with `pnpm run check -- --tier round|pr|full` (default `pr`). `round`
-is for every edit (the incremental build, lint, the specs and workflow tests
+Verify with `pnpm run check -- --tier round|pr|full` (default `pr`). Component
+rounds test late: not during design, build, or the owner's effect review, only
+once the owner has confirmed the final effect (see *Review loop*); and no round
+tests, builds, or previews the Website (below). `round`
+is the check of a finished edit (the incremental build, lint, the specs and workflow tests
 the change reaches, and its scenarios at their first size), `pr` for finalizing
 a change (round plus the checks it claims: agent docs, diagrams, lib exports,
 shots, examples, pack, Website; scenarios at every size),
@@ -130,6 +133,22 @@ Component work (Phases 3 to 6) follows
 scenario demo with a brief (implemented effects, effects to focus on), the original prototype `.mjs` read first,
 and terminal-only demos and questions to the owner.
 
+A component round runs in this order, and nothing is tested before step 5:
+
+1. **Design** under plan mode: Claude analyzes the round and writes the solution.
+2. **Questions**: Claude asks the owner about every open choice with something to look at, and the owner and Claude
+   confirm the final effect.
+3. **Build**: development starts only now.
+4. **Scenarios**: when the build is done, Claude writes the scenario code (replay, catalog entry, brief), organizes
+   all of the round's scenarios, and tells the owner the commands. It does not rush to test.
+5. **Effect review**: the owner verifies and adjusts the effect on the scenarios, and Claude applies the changes. Tests
+   stay off in this loop; only the build that the scenarios need runs.
+6. **Test**: once the effect is final, the building session writes a test hand-off brief and stops. The tests run in a
+   separate session on a smaller model (Haiku) from that brief: the round tier (then the pr tier at the group's end),
+   the decision tests and goldens, the commit, and the PR update. See the component development specification, §3.1.
+
+Progress comes first: do not spend a round's time on tests, goldens, or checks before its effect is final.
+
 Review rounds use the workbench instead of a gate run. `pnpm run dev --profile
 mayfly-<tag>` watches `packages/*/src` and `examples/*/src`, runs the
 incremental build for the changed files, and restarts the profile's `dsh` on the
@@ -195,14 +214,17 @@ Develop user-visible behavior, public seams, and Website changes in a dedicated
 worktree and branch. Never link a checkout into production `mayfly`; use
 `mayfly-dev` for the main checkout and `mayfly-<tag>` for worktrees.
 
-1. Implement and verify before requesting acceptance. README, `docs/**`,
+1. Implement before requesting acceptance; for component rounds the owner reviews the effect on the scenarios first
+   and the tests follow (*Review loop*). README, `docs/**`,
    Website pages/assets, and AGENTS-only changes need no runtime profile.
    Executable config, manifests, scripts, preset payload, and shipped skills
    are not documentation-only.
-2. Any `website/**` change requires `pnpm run website:build` and a persistent
-   preview: `pnpm --dir website exec vitepress preview . --host 0.0.0.0 --port <port>`.
-   Give affected routes at `http://<actual-lan-ip>:<port>/`, never localhost,
-   loopback, or the bind address, for human visual/content acceptance.
+2. The Website is not part of a round: no round or pr-tier step builds, previews, checks, or tests it, and the
+   `app-*` goldens and app shots wait with it. The Website is tested once, when a new version is released: then
+   `website/**` changes require `pnpm run website:build` and a persistent preview:
+   `pnpm --dir website exec vitepress preview . --host 0.0.0.0 --port <port>`, with affected routes given at
+   `http://<actual-lan-ip>:<port>/`, never localhost, loopback, or the bind address, for human visual/content
+   acceptance. Do not edit Website pages inside a round unless the owner asks.
 3. Runtime behavior, public seams, composition, preset payload, and shipped
    skills require `PROFILE=mayfly-<tag> script/install-dev.sh` and relevant
    headless/PTY smoke. Give `dsh --profile mayfly-<tag>` with the primary

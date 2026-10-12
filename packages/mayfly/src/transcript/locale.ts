@@ -8,7 +8,7 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import { interpolateLocaleMessage, type MayflyLocaleCatalog, type MayflyLocaleSnapshot, type MayflyTranslate } from '../frontend/locale.ts'
-import { PROCESS_ACTIVE_ZH, PROCESS_DONE_ZH, SHARED_DONE_PREFIX_KEY } from './process-activity.ts'
+import { PROCESS_ACTIVE_ZH, PROCESS_DONE_ZH } from './process-activity.ts'
 
 const identityCatalog = (zh: Readonly<Record<string, string>>): MayflyLocaleCatalog => Object.freeze({
   en: Object.freeze(Object.fromEntries(Object.keys(zh).map(key => [key, key]))),
@@ -86,15 +86,8 @@ const TRANSCRIPT_MESSAGES = identityCatalog({
   '⏵ {count} jobs': '⏵ {count} 个任务',
 })
 
-/**
- * The transcript catalog. The joined-title shared prefix is the one message
- * whose English is empty (Chinese strips a repeated `已`), so it is added
- * beside the identity entries.
- */
-export const TRANSCRIPT_LOCALE: MayflyLocaleCatalog = Object.freeze({
-  en: Object.freeze({ ...TRANSCRIPT_MESSAGES.en, [SHARED_DONE_PREFIX_KEY]: '' }),
-  zh: Object.freeze({ ...TRANSCRIPT_MESSAGES.zh, [SHARED_DONE_PREFIX_KEY]: '已' }),
-})
+/** The transcript catalog. */
+export const TRANSCRIPT_LOCALE: MayflyLocaleCatalog = TRANSCRIPT_MESSAGES
 
 /** Activity-pane copy: phase labels plus the running and preparing process labels. */
 export const ACTIVITY_LOCALE = identityCatalog({

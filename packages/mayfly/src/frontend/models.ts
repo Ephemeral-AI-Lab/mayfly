@@ -86,6 +86,11 @@ export interface ReadCallModel {
   readonly updatedSeq: number
   readonly turn: number
   readonly step: number
+  /** The tool's name exactly as the model requested it. */
+  readonly name: string
+  /** Producer time the call started, and the time its result settled. */
+  readonly startedAt: number
+  readonly endedAt?: number
   readonly path?: string
   /** Row fallback when the call reads no file: the salient argument (e.g. `job_id: 5`). */
   readonly label?: string
@@ -119,6 +124,11 @@ export interface SearchCallModel {
   readonly updatedSeq: number
   readonly turn: number
   readonly step: number
+  /** The tool's name exactly as the model requested it. */
+  readonly name: string
+  /** Producer time the call started, and the time its result settled. */
+  readonly startedAt: number
+  readonly endedAt?: number
   readonly pattern?: string
   readonly shape?: 'matches' | 'paths'
   readonly files?: readonly SearchFileMatchesModel[]
@@ -146,6 +156,11 @@ export interface CommandCallModel {
   readonly updatedSeq: number
   readonly turn: number
   readonly step: number
+  /** The tool's name exactly as the model requested it. */
+  readonly name: string
+  /** Producer time the call started, and the time its result settled. */
+  readonly startedAt: number
+  readonly endedAt?: number
   /** The command line (the terminal call view's title, or the `command` argument). */
   readonly command: string
   readonly state: 'pending' | 'ok' | 'error'

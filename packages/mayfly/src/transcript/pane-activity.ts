@@ -7,8 +7,7 @@
  * present tense: `Deep diving` while waiting on the model (and while a
  * subagent spawn runs, whose detail the agents pane owns), `Thinking`,
  * `Writing`, the running tool category (`Running commands`), or its
- * preparing form while a call's arguments stream. Standard (the work-details
- * `liveProcessDetail` capability) appends the running command, path, query,
+ * preparing form while a call's arguments stream. At every work-details level the row appends the running command, path, query,
  * or latest reasoning paragraph in the tail slot the teaching tip otherwise
  * takes; a file change the transcript already shows as a card adds none.
  * Responsive variants drop the tail, rate, counters, elapsed time, then the
@@ -277,12 +276,10 @@ function activityLabel(mode: ActivityPaneMode, facts: ConversationFacts): string
 /**
  * The running action's detail under a policy: the latest reasoning paragraph
  * while thinking, else the running call's salient argument (a generic tool
- * falls back to its name). File changes that render as transcript cards, and
- * everything under a policy without live detail, carry none.
+ * falls back to its name). File changes that render as transcript cards carry none.
  */
 function activityDetail(mode: ActivityPaneMode, facts: ConversationFacts, policy: TranscriptPresentationPolicy): string {
   const process = policy.snapshot().process
-  if (!process.liveProcessDetail) return ''
   const activity = facts.activity
   if (mode === 'thinking') return activity?.kind === 'reasoning' ? activity.detail ?? '' : ''
   if (mode !== 'tool' || activity?.kind !== 'tool' || activity.name === undefined || isSpawnToolName(activity.name)) return ''

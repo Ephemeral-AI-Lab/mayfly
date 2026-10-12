@@ -1928,6 +1928,10 @@ The groups below are finalized in this order, each under §7. Their text is the 
   - Deletes the transcript painters each row replaces in `transcript/components.ts`, and `mountContentSlot` once
     nothing mounts it.
 - **3b Tool rows** (`ToolLine`, `EditCard`, `WriteCard`, command rows; scenes 17, 18).
+  - Every tool is designed at three tiers (verbose block with a body, standard block for a run of one kind, compact merged
+    line; Detailed draws the current step verbose and collapses earlier steps), per
+    [component-development-spec.md](./component-development-spec.md) §7.1. Settled read, search, command, web, and generic
+    calls are the first part (3b.1); `EditCard` and `WriteCard` take their three tiers in 3b.2 and 3b.3.
   - `EditCard`: numbered diff (6 rows collapsed, 12 expanded), diffstat, `A`/`M`/`D` per file, the failure reason on
     `⎿`. `WriteCard`: one line, numbered highlighted code when expanded (highlighting capped at 12 rows and 32 KB,
     §2.2 row 14). Command rows with their `⎿` tails; the header with its diffstat or the failure line.
@@ -1987,7 +1991,7 @@ part is accepted (§7 step 3).
 | R2 | 3a.1 turns: the stream cutover (new `TranscriptView` on the conversation node slot, planning reused from `buildDisplay`, minimal rows for the other kinds) | 3a.1 accepted (stream cutover; closing row instead of the turn rule; wrapped lines hang under the text via `hang`); perf A/B and profile smoke owed | `feat/3a` |
 | R3 | 3a.2 answers and reasoning | 3a.2 accepted (Markdown answers under a leading `●` via `bodyLead`, reasoning header with duration and text aligned under the word, a blank row after the banner; the banner stays its own block) | `feat/3a` |
 | R3b | 3a.3 the live turn | 3a.3 accepted (the tail chip `Back to bottom · Ctrl+↓` / `N new turns · Ctrl+↓` counting turns, a dedicated follow-tail key, the held place, the incremental Markdown scan, `W-answer` budget and `perf-stream` ceilings); the footer notice deleted | `feat/3a` |
-| R4 | 3a.4 images and cutover cleanup; 3b.1 settled tool lines | 3a.4 accepted; group 3a finalized (goldens written for the stream scenarios, spec §5.6 rewritten as accepted behavior, briefs removed); the `app-*` goldens and Website app shots wait with the Website (on hold); 3b.1 not started | `feat/3a` |
+| R4 | 3a.4 images and cutover cleanup; 3b.1 settled tool lines | 3a.4 accepted; group 3a finalized (goldens written for the stream scenarios, spec §5.6 rewritten as accepted behavior, briefs removed); the `app-*` goldens and Website app shots wait with the Website (on hold); 3b.1 built (every tool at three tiers, spec §7.1) and its effect accepted by the owner; its tests, goldens and perf A/B run in a separate test session (spec §3.1), so it is not yet marked accepted | `feat/3a` |
 | R5 | 3b.2 edit cards; 3b.3 write and command cards | not started | |
 | R6 | 3c.1 activity header; 3c.2 activity details and tips | not started | |
 | R7 | 3c.3 notices and banners; 3c.4 compaction | not started | |
@@ -2169,13 +2173,15 @@ the owner's review in the running terminal decides, and tests record what was de
 **The loop for one component** (D23). A component, or a group whose parts only make sense together, goes through
 four steps in a dedicated worktree with its phase's profile (`PROFILE=mayfly-<phase> script/install-dev.sh`).
 [component-development-spec.md](./component-development-spec.md) governs how steps 1 and 2 run: the group is cut into
-parts, each part ends in a scenario demo with a brief and a question round in the terminal, and the prototype scene is
-read first and named in the brief.
+parts; each part is designed under plan mode and its open choices asked before the build, ends in a scenario demo with
+a brief, and is tested only after the owner confirms the final effect (§3 there); the prototype scene is read first and
+named in the brief. The Website is never part of a round: it is tested when a version is released.
 
 1. **Draft** (the agent). Build the component from its spec section and §5's starting points, with the prototype scene
    as the sketch, on real data through the native services. Add the workbench scenarios for its states (§5, 2a),
-   including a narrow width and a lifecycle case. Run the round tier (`pnpm run check -- --tier round`, or
-   `pnpm run dev --check`) and read its `summary.md`; write no goldens and chase no coverage.
+   including a narrow width and a lifecycle case. Do not run the tests yet: the owner reviews the effect first. Once the
+   effect is final, run the round tier (`pnpm run check -- --tier round`, or `pnpm run dev --check`) and read its
+   `summary.md`; write no goldens and chase no coverage.
 2. **Review rounds** (the owner and the agent). The owner runs the profile or a scenario beside
    `node docs/design/prototypes/ui-preview.mjs <scene>`; the agent shares frames and screenshots at the agreed widths
    (`pnpm run frame`, with `--png` for the real look), applies what the owner asks, and the change reaches the running
@@ -2186,9 +2192,10 @@ read first and named in the brief.
    [component-library.md](./component-library.md) is rewritten as the accepted behavior and marked *Finalized*; the API
    it needs is fixed;
    the decision tests below are added, with the accepted checkpoints as goldens
-   (`pnpm run scenarios -- --update <scenario>`); the code it replaces is deleted; `website/plugins/ui-reference.md`
-   and its English twin, the shot manifest, and any feature page it changes are updated (`pnpm run shots:sync`); the
-   pr tier runs (`pnpm run check`); the change merges to `main`, and CI runs the full tier there.
+   (`pnpm run scenarios -- --update <scenario>`, not the `app-*` ones); the code it replaces is deleted; the Website
+   (`website/plugins/ui-reference.md` and its English twin, the shot manifest, the `app-*` goldens, any feature page) is
+   updated and tested at the release, not in the round; the pr tier runs (`pnpm run check`); the change merges to
+   `main`, and CI runs the full tier there.
 4. **Phase gate.** When a phase's last component is finalized: `pnpm run check -- --tier full`, the perf report
    against the previous phase, and the owner's acceptance of the whole phase on its profile (the table below). Then
    the profile and any preview are removed. No release is cut until a phase passes its gate.
@@ -2200,7 +2207,7 @@ are allowed again, with every caller updated in the same change.
 
 | Tier | When | Runs |
 | --- | --- | --- |
-| round | Every edit in a review round | The incremental build, the typecheck, lint, and the specs and scenarios the edit can affect |
+| round | After the owner confirms a part's final effect (not during the effect review) | The incremental build, the typecheck, lint, and the specs and scenarios the edit can affect |
 | pr | Once per component, before it merges, and in PR CI | round, the checks the changed inputs claim, every size of the selected scenarios, perf A/B and PNGs where selected |
 | full | CI on `main` and nightly, the end of a phase, a release, and changes the root instructions route to it (composition, workflow, release) | Everything, with coverage and its floor, the smoke, the perf ceilings, and the platform matrix (`check:pack` when selected); at a phase end, also the perf report and the owner's acceptance |
 
