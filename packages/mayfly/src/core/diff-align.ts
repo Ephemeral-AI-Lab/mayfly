@@ -35,7 +35,7 @@ const TRAILING_RESET = /(?:\x1b\[0m)+$/u
 export const DIFF_CONTEXT_ROWS = 1
 
 /** The palette slice a diff panel paints with. */
-export type DiffPaintColors = Pick<MayflySemanticColors, 'text' | 'diffAdded' | 'diffRemoved' | 'diffAddedBg' | 'diffRemovedBg' | 'diffMeta' | 'diffGutter'>
+export type DiffPaintColors = Pick<MayflySemanticColors, 'text' | 'diffAdded' | 'diffRemoved' | 'diffAddedBg' | 'diffRemovedBg' | 'diffMeta' | 'diffGutter'> & Partial<Pick<MayflySemanticColors, 'muted'>>
 
 /** The width truth a diff panel clips and pads with. */
 export type DiffWidthHelpers = Pick<MayflyComponents, 'truncateToWidth' | 'visibleWidth'>
@@ -174,11 +174,23 @@ export function diffChangeCounts(before: string, after: string): { readonly adde
   return { added, removed }
 }
 
+/** What paints a row beyond its text: numbering and the highlighted lines of each side. */
+export interface DiffStyle {
+  readonly numbered: boolean
+  /** The first line number of both sides: a row's number minus it is its index in `lit`. */
+  readonly start: number
+  /** The text of each side already painted with syntax colors, one entry per line. */
+  readonly lit?: { readonly before: readonly string[], readonly after: readonly string[] }
+}
+
+/** Columns a change's tint leaves free at the right edge, so it never touches the border. */
+const DIFF_INSET_COLUMNS = 4
+
 /** How a diff paints beyond its alignment; every field is optional. */
 export interface DiffPaintOptions {
   /** The first line number of both sides (default 1). */
   readonly start?: number
-  /** Old and new line-number gutters (default true). */
+  /** A line-number gutter, which numbers the modified file and leaves a removed line's cell blank (default true). */
   readonly numbered?: boolean
   /** An `@@` header over the rows (default: only when the diff has more than one hunk). */
   readonly hunkHeader?: boolean
@@ -186,6 +198,8 @@ export interface DiffPaintOptions {
   readonly context?: number
   /** Rows painted before `… +N rows · Ctrl+O` (default: all). */
   readonly maxRows?: number
+  /** The text of the row after `maxRows`, replacing `… +N rows · Ctrl+O`. */
+  readonly tail?: string
 }
 
 /** One kept line with its two side numbers and sign; only kept lines exist in the model. */
@@ -201,7 +215,7 @@ export type DiffSegment =
   | { readonly kind: 'header', readonly text: string }
   | { readonly kind: 'gap' }
   | { readonly kind: 'rows', readonly rows: readonly DiffRowModel[] }
-  | { readonly kind: 'tail', readonly remaining: number }
+  | { readonly kind: 'tail', readonly remaining: number, readonly text?: string }
 
 /**
  * A diff's painted layout before width enters: exact segments and the row total, so a windowed source reports the
@@ -272,10 +286,10 @@ export function diffModel(ops: readonly DiffOp[], options: DiffPaintOptions = {}
       shown += 1
     }
     if (rows.length > 0) segments.push({ kind: 'rows', rows })
-    if (tail !== undefined) segments.push({ kind: 'tail', remaining: tail })
+    if (tail !== undefined) segments.push({ kind: 'tail', remaining: tail, ...(options.tail === undefined ? {} : { text: options.tail }) })
   }
   if (!ended && opIndex < ops.length) segments.push({ kind: 'gap' })
-  const digits = Math.max(3, String(Math.max(start - 1 + beforeTotal, start - 1 + afterTotal)).length)
+  const digits = String(Math.max(1, start - 1 + afterTotal)).length
   const length = segments.reduce((total, segment) => total + (segment.kind === 'rows' ? segment.rows.length : 1), 0)
   return { digits, segments, length }
 }
@@ -287,21 +301,28 @@ function paintDiffRow(
   columns: number,
   helpers: DiffWidthHelpers,
   colors: DiffPaintColors | undefined,
-  numbered: boolean,
+  style: DiffStyle,
   clip: (text: string, room: number) => string,
   paint: (tone: ((text: string) => string) | undefined, text: string) => string,
 ): string {
+  const { numbered } = style
   const number = (value: number | undefined): string => value === undefined ? ' '.repeat(digits) : String(value).padStart(digits)
-  const gutter = numbered ? `${paint(colors?.diffGutter, `${number(row.old)} ${number(row.new)} │`)} ` : ''
+  // The gutter is the code block's (`N │ `, muted, numbers right-aligned): it numbers the modified file, and a removed line has no number there, so its cell stays blank.
+  const gutter = numbered ? `${paint(colors?.muted ?? colors?.diffGutter, `${number(row.new)} │`)} ` : ''
   const head = `  ${gutter}`
   const room = Math.max(0, columns - helpers.visibleWidth(head))
   const text = row.text.replace(/\t/gu, '   ')
-  if (row.sign === '') return clip(`${head}  ${paint(colors?.text, text)}`, columns)
+  // The code with its syntax colors when the diff has a language, else the row's plain text.
+  const lit = row.sign === '-' ? style.lit?.before[(row.old ?? 0) - style.start] : style.lit?.after[(row.new ?? 0) - style.start]
+  const code = lit === undefined ? undefined : lit.replace(/\t/gu, '   ')
+  if (row.sign === '') return clip(`${head}  ${code ?? paint(colors?.text, text)}`, columns)
   const tone = row.sign === '-' ? colors?.diffRemoved : colors?.diffAdded
-  const code = clip(`${paint(tone, row.sign === '-' ? '−' : '+')} ${paint(tone, text)}`, room)
   const band = row.sign === '-' ? colors?.diffRemovedBg : colors?.diffAddedBg
-  const fill = band === undefined ? '' : ' '.repeat(Math.max(0, room - helpers.visibleWidth(code)))
-  return room === 0 ? clip(head, columns) : `${head}${paint(band, `${code}${fill}`)}`
+  // A line too long for the row is cut where the tint stops, so the tint never reaches the border either.
+  const shown = clip(`${paint(tone, row.sign === '-' ? '−' : '+')} ${code ?? paint(tone, text)}`, Math.max(1, room - (band === undefined ? 0 : DIFF_INSET_COLUMNS)))
+  // The tint spans the row but stops short of the right edge (and never cuts the code).
+  const fill = band === undefined ? '' : ' '.repeat(Math.max(0, room - DIFF_INSET_COLUMNS - helpers.visibleWidth(shown)))
+  return room === 0 ? clip(head, columns) : `${head}${paint(band, `${shown}${fill}`)}`
 }
 
 /**
@@ -314,7 +335,7 @@ export function paintDiffSegment(
   columns: number,
   helpers: DiffWidthHelpers,
   colors: DiffPaintColors | undefined,
-  numbered: boolean,
+  style: DiffStyle,
 ): string[] {
   const paint = (tone: ((text: string) => string) | undefined, text: string): string => tone === undefined ? text : tone(text)
   // A clipped painted line keeps its band open: the truncator's closing reset becomes a foreground reset after the `…`.
@@ -327,15 +348,15 @@ export function paintDiffSegment(
   switch (segment.kind) {
     case 'header': return [clip(paint(colors?.diffMeta, segment.text), columns)]
     case 'gap': return [clip(`  ${paint(colors?.diffMeta, '⋯')}`, columns)]
-    case 'tail': return [clip(`  ${paint(colors?.diffMeta, `… +${String(segment.remaining)} rows · Ctrl+O`)}`, columns)]
-    case 'rows': return segment.rows.map(row => paintDiffRow(row, digits, columns, helpers, colors, numbered, clip, paint))
+    case 'tail': return [clip(`  ${paint(colors?.diffMeta, segment.text ?? `… +${String(segment.remaining)} rows · Ctrl+O`)}`, columns)]
+    case 'rows': return segment.rows.map(row => paintDiffRow(row, digits, columns, helpers, colors, style, clip, paint))
   }
 }
 
 /**
- * Paint aligned ops as terminal rows no wider than `width` (spec §4.1): an old and a new line-number gutter (muted,
- * ending in `│`), then `−` or `+` and the code. A removed or added line keeps its band behind the code only, never the
- * gutter, in the removed or added tone; an unchanged line is plain. Only {@link DiffPaintOptions.context} unchanged
+ * Paint aligned ops as terminal rows no wider than `width` (spec §4.1): one line-number gutter that numbers the
+ * modified file (muted, ending in `│`; a removed line's cell is blank), then `−` or `+` and the code. A removed or added line keeps its band behind the code only, never the
+ * gutter, in the removed or added tone, stopping a few columns short of the right edge; an unchanged line is plain. Only {@link DiffPaintOptions.context} unchanged
  * lines stay around each change, a run of skipped lines is one muted `⋯`, a long line ends in `…`, and tabs expand to
  * three columns so a band has no tab-stop gaps.
  * @param ops - the alignment to paint.
@@ -349,6 +370,6 @@ export function paintDiffRows(ops: readonly DiffOp[], width: number, helpers: Di
   const columns = Math.max(1, width)
   const model = diffModel(ops, options)
   const out: string[] = []
-  for (const segment of model.segments) for (const row of paintDiffSegment(segment, model.digits, columns, helpers, colors, options.numbered !== false)) out.push(row)
+  for (const segment of model.segments) for (const row of paintDiffSegment(segment, model.digits, columns, helpers, colors, { numbered: options.numbered !== false, start: options.start ?? 1 })) out.push(row)
   return out
 }

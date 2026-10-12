@@ -32,10 +32,17 @@ export const step = (options = {}) => ({ kind: 'step', ...options })
  */
 export const tool = (name, args, options = {}) => ({ name, args, ...options })
 /**
- * A file edit as the `edit` tool reports it: the diff card shows `before` and `after` (the changed lines with whatever
- * context you include). The call arguments replace the first line of `before` text that differs.
+ * A file edit as the `edit` tool reports it: the diff shows `before` and `after` (the changed lines with whatever
+ * context you include, as the tool sends them: three lines around each hunk). The call arguments carry the same text.
  */
-export const edit = (path, before, after, options = {}) => tool('edit', { file_path: path, old_string: before, new_string: after }, { result: `Edited ${path}`, runMs: 500, meta: { operation: 'edit', diffs: [{ path, oldText: before, newText: after }] }, ...options })
+export const edit = (path, before, after, options = {}) => tool('edit', { file_path: path, old_string: before, new_string: after }, { result: `Edited ${path}`, runMs: 500, meta: { diffs: [{ path, oldText: before, newText: after }] }, ...options })
+/** A `replace_all` edit that changed several places: one `[before, after]` hunk per place, as the tool reports them. */
+export const editHunks = (path, hunks, options = {}) => tool('edit', { file_path: path, old_string: hunks[0][0], new_string: hunks[0][1], replace_all: true }, { result: `Edited ${path} (${String(hunks.length)} replacements)`, runMs: 600, meta: { diffs: hunks.map(([before, after]) => ({ path, oldText: before, newText: after })) }, ...options })
+/**
+ * A file written by the `write` tool. A new file reports `operation: 'create'` and no hunks; an overwrite
+ * (`options.meta: { operation: 'update', diffs }`) reports the hunks against the old file.
+ */
+export const write = (path, content, options = {}) => tool('write', { file_path: path, content }, { result: `Wrote ${path}`, runMs: 500, meta: { operation: 'create', diffs: [] }, ...options })
 /** A todo-list update, as the `todo_write` tool makes it. */
 export const todos = (list, options = {}) => tool('todo_write', { todos: list.map(([status, content]) => ({ status, content })) }, { result: 'Todos updated', runMs: 200, todos: list, ...options })
 /** A subagent spawned by a tool call: the child session plays `child` (`prompt`, `items`, `outcome`, `startMs`). */

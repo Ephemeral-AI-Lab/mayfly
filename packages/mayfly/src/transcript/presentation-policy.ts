@@ -42,12 +42,6 @@ export interface ProcessPolicy {
   readonly liveProcess: 'hidden' | 'blocks' | 'current' | 'cards'
   /** A settled turn that does not fold: `titles` is the Compact tier, one merged line per run of calls between two messages. */
   readonly settledProcess: 'titles' | 'blocks' | 'cards'
-  /**
-   * Diff-card calls (file writes and edits): ordinary process members, or
-   * content that renders as its card, closes the current group, and stays
-   * visible when the turn folds.
-   */
-  readonly fileChanges: 'process' | 'content'
   /** Whether a settled reasoning row shows its first line only, instead of the whole text (an open turn always shows it whole). */
   readonly settledReasoningPreview: boolean
   /** Whether a streaming reasoning grows line by line under its header, instead of showing its latest line. */
@@ -56,10 +50,10 @@ export interface ProcessPolicy {
 
 /** The fixed capability table; the same mode always yields the same object. */
 export const PROCESS_POLICIES: Readonly<Record<TranscriptViewMode, ProcessPolicy>> = Object.freeze({
-  compact: Object.freeze({ foldCompletedTurns: true, liveProcess: 'hidden', settledProcess: 'titles', fileChanges: 'process', settledReasoningPreview: false, streamedReasoning: false }),
-  standard: Object.freeze({ foldCompletedTurns: false, liveProcess: 'blocks', settledProcess: 'blocks', fileChanges: 'content', settledReasoningPreview: false, streamedReasoning: false }),
-  detailed: Object.freeze({ foldCompletedTurns: false, liveProcess: 'current', settledProcess: 'blocks', fileChanges: 'content', settledReasoningPreview: true, streamedReasoning: false }),
-  verbose: Object.freeze({ foldCompletedTurns: false, liveProcess: 'cards', settledProcess: 'cards', fileChanges: 'content', settledReasoningPreview: false, streamedReasoning: true }),
+  compact: Object.freeze({ foldCompletedTurns: true, liveProcess: 'hidden', settledProcess: 'titles', settledReasoningPreview: false, streamedReasoning: false }),
+  standard: Object.freeze({ foldCompletedTurns: false, liveProcess: 'blocks', settledProcess: 'blocks', settledReasoningPreview: false, streamedReasoning: false }),
+  detailed: Object.freeze({ foldCompletedTurns: false, liveProcess: 'current', settledProcess: 'blocks', settledReasoningPreview: true, streamedReasoning: false }),
+  verbose: Object.freeze({ foldCompletedTurns: false, liveProcess: 'cards', settledProcess: 'cards', settledReasoningPreview: false, streamedReasoning: true }),
 })
 
 /** Immutable reading of one transcript tree's presentation policy. */

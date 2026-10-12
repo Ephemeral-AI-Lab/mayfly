@@ -16,9 +16,9 @@ import type { StreamMood, StreamQueued, StreamRow, StreamTurn, TranscriptViewFac
 import { compactElapsedMs } from './agent-presentation.ts'
 import { buildDisplay, runningTurnOf, type DisplayItem, type EntryItem, type ProcessTitleItem, type TurnHeaderItem } from './process-groups.ts'
 import { processTitle } from './process-activity.ts'
-import { callsOf, isFileChange, standardRow, verboseRow, type Call } from './tool-calls.ts'
+import { callsOf, standardRow, verboseRow, type Call } from './tool-calls.ts'
 import type { TranscriptPresentationSnapshot } from './presentation-policy.ts'
-import { ellipsize, toolDisplayName } from './present.ts'
+import { ellipsize } from './present.ts'
 
 /** Characters of a salient argument kept on a row. */
 const PREVIEW_MAX_CHARS = 80
@@ -265,7 +265,12 @@ interface RunUnit {
 
 function isToolLike(entry: TranscriptEntryModel): boolean {
   return entry.kind === 'transcript-read-group' || entry.kind === 'transcript-search-group' || entry.kind === 'transcript-command-group'
-    || (entry.kind === 'transcript-tool' && !isFileChange(entry))
+    || entry.kind === 'transcript-tool'
+}
+
+/** An edit or a write: each is its own open block at the standard tier, never part of a run. */
+function isFileChange(entry: TranscriptEntryModel): boolean {
+  return entry.kind === 'transcript-tool' && (entry.activity === 'edit' || entry.activity === 'write')
 }
 
 /**
@@ -281,7 +286,7 @@ function runsOf(display: readonly DisplayItem[], t: MayflyTranslate): readonly (
     run = undefined
   }
   for (const item of display) {
-    if (item.kind === 'entry' && item.tier === 'standard' && isSemantic(item.entry) && isToolLike(item.entry)) {
+    if (item.kind === 'entry' && item.tier === 'standard' && isSemantic(item.entry) && isToolLike(item.entry) && !isFileChange(item.entry)) {
       for (const call of callsOf(item.entry, item.turnClosed, t)) {
         if (run !== undefined && run.calls[0]!.activity !== call.activity) flush()
         if (run === undefined) run = { turn: item.entry.turn, calls: [] }
@@ -298,20 +303,9 @@ function runsOf(display: readonly DisplayItem[], t: MayflyTranslate): readonly (
 
 /** The rows of one entry: none for an empty one, one per call for a tool, group, or run of calls drawn as verbose blocks. */
 function entryRows(item: EntryItem, entry: TranscriptEntryModel, inputs: StreamInputs): readonly StreamRow[] {
-  if (entry.kind === 'transcript-tool' && isFileChange(entry)) return [fileChangeRow(item, entry)]
-  if (isToolLike(entry)) return callsOf(entry, item.turnClosed, inputs.t).map(call => verboseRow(call, item.expanded, inputs.t))
+  if (isToolLike(entry)) return callsOf(entry, item.turnClosed, inputs.t).map(call => verboseRow(call, item.expanded, inputs.t, item.tier === 'standard' ? 'standard' : 'verbose'))
   const row = entryRow(item, entry, inputs)
   return row === undefined ? [] : [row]
-}
-
-/** A file change has no block of its own until the edit and write cards: it keeps a one-row stand-in. */
-function fileChangeRow(item: EntryItem, entry: Extract<TranscriptEntryModel, { readonly kind: 'transcript-tool' }>): StreamRow {
-  const state = entry.result === undefined ? item.turnClosed ? 'error' : 'running' : entry.result.isError ? 'error' : 'ok'
-  const title = sanitizePluginText(entry.title ?? toolDisplayName(entry.name))
-  const salient = ellipsize(sanitizePluginText(entry.detail), PREVIEW_MAX_CHARS)
-  // The presenter's title often names the argument already.
-  const detail = salient === '' || title.includes(salient) ? undefined : salient
-  return { kind: 'step', id: entry.id, state, title, ...(detail === undefined ? {} : { detail }) }
 }
 
 function entryRow(item: EntryItem, entry: TranscriptEntryModel, inputs: StreamInputs): StreamRow | undefined {

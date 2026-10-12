@@ -4,7 +4,7 @@
  * replay that shows its states. See `timeline.mjs` for the builders. @module script/scenarios/replays
  */
 
-import { approval, compaction, edit, goal as goalItem, image, btw, job, mark, notify, pause, question, queue, raw, seed, step, subagent, text, todos, tool, turn } from './timeline.mjs'
+import { approval, compaction, edit, editHunks, write, goal as goalItem, image, btw, job, mark, notify, pause, question, queue, raw, seed, step, subagent, text, todos, tool, turn } from './timeline.mjs'
 
 /** A reply shaped like a real answer: prose, lists, a table, and fenced code in two languages. */
 function reply() {
@@ -520,6 +520,65 @@ const toollines = {
   ],
 }
 
+/** Three lines of code around a change, the context the edit tool sends on each side of a hunk. */
+const around = (at, removed, added) => {
+  const head = lines(3, n => `  const row${String(at + n)} = paint(${String(at + n)})`)
+  const tail = lines(3, n => `  const row${String(at + 10 + n)} = paint(${String(at + 10 + n)})`)
+  const join = (middle) => [head, ...(middle === '' ? [] : [middle]), tail].join('\n')
+  return [join(removed), join(added)]
+}
+const CONFIG_BEFORE = "export const config = {\n  baseUrl: 'http://localhost:8080',\n  timeoutMs: 3000,\n}\n\nexport function describe() {\n  return `${config.baseUrl} (timeout ${config.timeoutMs} ms)`"
+const CONFIG_AFTER = "export const config = {\n  baseUrl: 'http://localhost:8080',\n  timeoutMs: 3000,\n  retries: 2,\n}\n\nexport function describe() {\n  return `${config.baseUrl} (timeout ${config.timeoutMs} ms, ${config.retries} retries)`"
+const RETRY_MODULE = "// Retry the call with a growing delay.\nimport { setTimeout as sleep } from 'node:timers/promises'\n\nexport interface RetryOptions {\n  readonly retries: number\n  readonly baseMs?: number\n}\n\nexport async function withRetry<T>(run: () => Promise<T>, options: RetryOptions): Promise<T> {\n  const { retries, baseMs = 250 } = options\n  for (let attempt = 0; attempt <= retries; attempt += 1) {\n    try {\n      return await run()\n    } catch (error) {\n      if (attempt === retries) throw new Error(`gave up after ${retries} retries`, { cause: error })\n      await sleep(baseMs * 2 ** attempt)\n    }\n  }\n  return run()\n}\n"
+const RETRY_TEST = "import assert from 'node:assert/strict'\nimport test from 'node:test'\nimport { describe } from '../src/config.mjs'\n\ntest('describe shows the retries', () => {\n  assert.match(describe(), /2 retries/)\n})\n"
+const REPORT = lines(84, n => n % 12 === 1 ? `## Section ${String(Math.ceil(n / 12))}` : `export const metric${String(n)} = { name: 'metric ${String(n)}', value: ${String(n * 7)} }`)
+
+const edits = {
+  summary: 'file changes at the three tiers: a single edit, a multi-hunk edit, a large edit, a new file, an overwrite, a run of mixed changes, a failed edit, and a write cut off by an interrupt',
+  items: [
+    turn('Add a retries setting, read it in the client, and cover it with a test.', [
+      step({ text: 'The setting goes into the config first.', tools: [edit('src/config.mjs', CONFIG_BEFORE, CONFIG_AFTER)] }),
+      step({ text: 'The client names the timeout in three places.', tools: [editHunks('src/client.mjs', [around(10, '  const wait = timeout', '  const wait = timeoutMs'), around(48, '  return timeout * 2', '  return timeoutMs * 2'), around(120, '  log(timeout)', '  log(timeoutMs)')])] }),
+      mark('edited'),
+      step({ text: 'Now the test for it.', tools: [write('tests/retry.test.mjs', RETRY_TEST)] }),
+      step({ text: 'And the helper itself.', tools: [write('src/retry.ts', RETRY_MODULE)] }),
+      mark('written'),
+      step({
+        text: 'Then a handful of files together.',
+        tools: [
+          edit('src/limits.mjs', ...around(30, '  max: 10,', '  max: 12,\n  min: 2,')),
+          edit('src/paint.mjs', ...around(70, '  paint(row)\n  paint(next)', '  paint(row, width)')),
+          write('docs/retries.md', REPORT),
+          edit('src/index.mjs', ...around(5, '', "  export * from './retries.mjs'")),
+          tool('bash', { command: 'pnpm run lint', description: 'Lint' }, { result: 'ok', runMs: 1800 }),
+        ],
+      }),
+      mark('run'),
+      step({
+        text: 'A large rewrite of the painter.',
+        tools: [edit('src/painter.mjs', ...around(200, lines(18, n => `  rows.push(old${String(n)}(width))`), lines(26, n => `  rows.push(next${String(n)}(width, mode))`)))],
+      }),
+      mark('large'),
+      step({
+        text: 'The report is rewritten whole.',
+        tools: [write('docs/report.md', REPORT, { meta: { operation: 'update', diffs: [{ path: 'docs/report.md', oldText: lines(6, n => `old metric ${String(n)}`), newText: lines(8, n => `new metric ${String(n)}`) }] } })],
+      }),
+      step({ text: 'A stale edit that cannot apply.', tools: [tool('edit', { file_path: 'src/client.mjs', old_string: 'const gone = 1', new_string: 'const gone = 2' }, { result: 'old_string was not found in src/client.mjs; read the file again before editing', error: true, runMs: 300 })] }),
+      mark('failed'),
+      step({ text: 'The file changes are in; the lint is clean.' }),
+    ], { startAt: '10:30' }),
+    turn('Rewrite the client from scratch, and I will stop you.', [
+      step({
+        text: 'Replacing the client.',
+        tools: [
+          edit('src/client.mjs', ...around(300, '  send(request)', '  send(request, signal)')),
+          write('src/client.mjs', lines(40, n => `export const call${String(n)} = () => request(${String(n)})`), { result: '', runMs: 4000, unanswered: true }),
+        ],
+      }),
+    ], { startAt: '10:34', outcome: 'interrupted' }),
+  ],
+}
+
 const phases = {
   summary: 'activity phases: waiting for the first token, reasoning only, text only, and a tool call being prepared',
   items: [
@@ -633,7 +692,7 @@ const content = {
   ])],
 }
 
-export const REPLAYS = { tour, toolkit, thinking, markdown, live, phases, prompts, turns, toollines, errors, compaction: compactionReplay, manualCompact, context, subagents, childStream, approvals, questions, plan, goal, jobs, queued, retries, sideQuestion, notices, modes, edge, history, wheel, content }
+export const REPLAYS = { tour, toolkit, thinking, markdown, live, phases, prompts, turns, toollines, edits, errors, compaction: compactionReplay, manualCompact, context, subagents, childStream, approvals, questions, plan, goal, jobs, queued, retries, sideQuestion, notices, modes, edge, history, wheel, content }
 
 /*
  * The scenes of the Website's app shots. Each is the source of an `app-*` scenario of the catalog, whose goldens the

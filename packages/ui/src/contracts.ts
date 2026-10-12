@@ -62,14 +62,21 @@ export type MayflyContentField = string | readonly MayflyContentChunk[]
 export interface MayflyTextNode { readonly kind: 'text', readonly content: MayflyContentField, readonly tone?: MayflyTone, readonly overflow?: MayflyTextOverflow, readonly styles?: readonly MayflyTextStyle[] }
 export interface MayflyMarkdownNode { readonly kind: 'markdown', readonly source: MayflyContentField }
 export interface MayflyFieldsNode { readonly kind: 'fields', readonly rows: readonly MayflyField[] }
-export interface MayflyCodeNode { readonly kind: 'code', readonly code: MayflyContentField, readonly language?: string, readonly numbered?: boolean }
+export interface MayflyCodeNode {
+  readonly kind: 'code'
+  readonly code: MayflyContentField
+  readonly language?: string
+  readonly numbered?: boolean
+  /** Whether a muted row names the language above the code (default true); the language still picks the highlighting. */
+  readonly label?: boolean
+}
 export interface MayflyDiffNode {
   readonly kind: 'diff'
   readonly before: string
   readonly after: string
   /** The number of the first line (default 1). */
   readonly start?: number
-  /** Old and new line-number gutters (default true). */
+  /** A line-number gutter, which numbers the modified file and leaves a removed line's cell blank (default true). */
   readonly numbered?: boolean
   /** Draw an `@@` header even for one hunk (default: only when there is more than one). */
   readonly hunkHeader?: boolean
@@ -77,6 +84,10 @@ export interface MayflyDiffNode {
   readonly context?: number
   /** At most this many rows, then `… +N rows · Ctrl+O`. */
   readonly maxRows?: number
+  /** The row that ends a diff cut at `maxRows`, in place of `… +N rows · Ctrl+O` (the caller's own count and wording). */
+  readonly tail?: string
+  /** Syntax highlighting of the code of every row, by language name. */
+  readonly language?: string
 }
 export interface MayflyRichTextNode { readonly kind: 'rich-text', readonly spans: readonly MayflyInlineSpan[], readonly overflow?: Extract<MayflyTextOverflow, 'wrap' | 'truncate'> }
 export interface MayflyDiagramNode { readonly kind: 'diagram', readonly diagram: 'mermaid', readonly source: MayflyContentField }

@@ -2,13 +2,11 @@
  * Work-details display plan: the pure segmentation of transcript entries into
  * turn headers, process groups, and visible entries, after the upstream
  * Harness Chat `TurnGroups` rules. Reasoning and tool calls are process
- * members; a reply, a user message, an error, an interruption, or (where the
- * policy makes file changes content) a diff-card call closes the current
- * group. The transcript speaks in the past tense: a group title summarizes
+ * members; a reply, a user message, an error, or an interruption closes the
+ * current group. The transcript speaks in the past tense: a group title summarizes
  * only settled members, a reasoning-only group has no title, and a running
  * turn has no header unless its tree has no activity row. A normally
- * completed turn folds everything but its file changes and final answer
- * behind the turn header. Rendering and width live elsewhere.
+ * completed turn folds everything but its final answer behind the turn header. Rendering and width live elsewhere.
  *
  * @module @ephemeral-ai/mayfly/transcript/process-groups
  */
@@ -98,11 +96,6 @@ function isMember(entry: Entry): boolean {
     || entry.kind === 'transcript-read-group' || entry.kind === 'transcript-search-group' || entry.kind === 'transcript-command-group'
 }
 
-/** Whether a tool entry presents as a file change (the presenter's diff card). */
-function isFileChange(entry: Entry): boolean {
-  return entry.kind === 'transcript-tool' && entry.family === 'edit'
-}
-
 const ABNORMAL_OUTCOMES = new Set(['aborted', 'error', 'interrupted', 'forked'])
 
 /** Whether a settled terminal run exited non-zero or by signal. */
@@ -131,6 +124,7 @@ export function memberFacts(entry: Entry, closed: boolean): ProcessMemberFact[] 
         failed: entry.result?.isError === true || exitFailed(entry),
         startedAt: entry.startedAt,
         ...(entry.result === undefined ? {} : { endedAt: entry.result.endedAt }),
+        ...(entry.change === undefined ? {} : { added: entry.change.added, removed: entry.change.removed }),
       }]
     case 'transcript-read-group':
       return entry.reads.map(read => ({ activity: read.activity, running: !closed && read.state === 'pending', failed: read.state === 'error', ...times(read) }))
@@ -226,7 +220,6 @@ export function buildDisplay(input: DisplayInput): DisplayItem[] {
     const view = expandedTurn ? 'cards' : closed ? policy.settledProcess : policy.liveProcess
     // The step the model works in: at the `current` view its calls are verbose blocks and the steps before it collapse.
     const currentStep = rest.reduce((latest, entry) => isSemantic(entry) && 'step' in entry ? Math.max(latest, entry.step) : latest, -1)
-    const content = (entry: Entry): boolean => policy.fileChanges === 'content' && isFileChange(entry)
     const facts = rest.filter(isMember).flatMap(entry => memberFacts(entry, closed)).filter(fact => fact.preparing !== true)
     const subagents = facts.filter(fact => fact.activity === 'subagents').length
     for (const entry of block.slice(0, lead)) items.push(plainEntry(entry, closed, expandedTurn, inScope))
@@ -259,7 +252,7 @@ export function buildDisplay(input: DisplayInput): DisplayItem[] {
         // Compaction rows are system-level boundary markers, not process work:
         // they survive the fold so "context was condensed here" stays visible
         // in every work-details mode.
-        if (entry === answer || !isSemantic(entry) || entry.kind === 'transcript-compaction' || content(entry)) items.push(plainEntry(entry, closed, expandedTurn, inScope))
+        if (entry === answer || !isSemantic(entry) || entry.kind === 'transcript-compaction') items.push(plainEntry(entry, closed, expandedTurn, inScope))
       }
       lastSeq = (rest.findLast(isSemantic) as TranscriptEntryModel).seq
       continue
@@ -287,7 +280,7 @@ export function buildDisplay(input: DisplayInput): DisplayItem[] {
       lastSeq = (members.findLast(isSemantic) as TranscriptEntryModel).seq
     }
     for (const entry of rest) {
-      if (isMember(entry) && !content(entry)) {
+      if (isMember(entry)) {
         pending.push(entry)
         continue
       }

@@ -56,6 +56,9 @@ export interface ProcessMemberFact {
   /** Producer times of the call, for the wall time a group title reports. */
   readonly startedAt?: number
   readonly endedAt?: number
+  /** Lines a file change added and removed, for the diffstat a title reports. */
+  readonly added?: number
+  readonly removed?: number
 }
 
 /** Ranked category counts and failures of one process group's settled members. */
@@ -64,6 +67,9 @@ export interface ProcessSummary {
   readonly failed: number
   /** Wall time from the first member's start to the last member's end, when every settled member has both. */
   readonly durationMs?: number
+  /** Lines the members' file changes added and removed, when any made one. */
+  readonly added?: number
+  readonly removed?: number
 }
 
 /**
@@ -75,15 +81,23 @@ export interface ProcessSummary {
 export function summarizeProcess(members: readonly ProcessMemberFact[]): ProcessSummary {
   const counts = new Map<ProcessActivity, number>()
   let failed = 0
+  let added = 0
+  let removed = 0
+  let changed = false
   for (const member of members) {
     counts.set(member.activity, (counts.get(member.activity) ?? 0) + 1)
     if (member.failed === true) failed += 1
+    if (member.added !== undefined) {
+      changed = true
+      added += member.added
+      removed += member.removed ?? 0
+    }
   }
   const ranked = [...counts].map(([activity, count]) => ({ activity, count })).sort((a, b) => b.count - a.count)
   const starts = members.flatMap(member => member.startedAt === undefined ? [] : [member.startedAt])
   const ends = members.flatMap(member => member.endedAt === undefined ? [] : [member.endedAt])
   const span = starts.length === 0 || ends.length === 0 ? undefined : Math.max(...ends) - Math.min(...starts)
-  return { counts: ranked, failed, ...(span === undefined || span < 0 ? {} : { durationMs: span }) }
+  return { counts: ranked, failed, ...(span === undefined || span < 0 ? {} : { durationMs: span }), ...(changed ? { added, removed } : {}) }
 }
 
 const RUNNING_LABEL: Readonly<Record<ProcessActivity, string>> = {
@@ -200,6 +214,7 @@ export const PROCESS_DONE_ZH: Readonly<Record<string, string>> = {
   'Called {count} tool': '调用了 {count} 个工具',
   'Called {count} tools': '调用了 {count} 个工具',
   '… +{count} more': '… 还有 {count} 项',
+  '… +{count} rows': '… 还有 {count} 行',
   '… +{count} earlier': '… 前面还有 {count} 项',
   ' · Ctrl+O': ' · 按 Ctrl+O',
   '{count} line': '{count} 行',
@@ -262,6 +277,16 @@ export function countPhrase(activity: ProcessActivity, count: number, t: MayflyT
 }
 
 /**
+ * The diffstat of a change as a line shows it: `+4 −2`.
+ * @param added - lines added.
+ * @param removed - lines removed.
+ * @returns the text.
+ */
+export function diffStat(added: number, removed: number): string {
+  return `+${String(added)} −${String(removed)}`
+}
+
+/**
  * The title of one folded process group: a count phrase for each of its top three categories, joined by ` · `, and the
  * wall time of its settled calls.
  * @param summary - the summary of the group's settled members.
@@ -273,5 +298,6 @@ export function processTitle(summary: ProcessSummary, t: MayflyTranslate): strin
   const shown = summary.counts.slice(0, 3).map(({ activity, count }) => countPhrase(activity, count, t))
   const more = summary.counts.length > 3 ? ['…'] : []
   const time = summary.durationMs === undefined ? undefined : elapsedText(summary.durationMs)
-  return [...shown, ...more, ...(time === undefined ? [] : [time])].join(' · ')
+  const stat = summary.added === undefined ? undefined : diffStat(summary.added, summary.removed ?? 0)
+  return [...shown, ...more, ...(time === undefined ? [] : [time]), ...(stat === undefined ? [] : [stat])].join(' · ')
 }

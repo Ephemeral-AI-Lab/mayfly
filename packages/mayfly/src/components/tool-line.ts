@@ -22,7 +22,18 @@ export interface ToolLineFacts {
   readonly target?: string
   /** What came of it: a count, an exit status, a time. */
   readonly outcome?: string
+  /** The lines a file change added and removed: a diffstat with its bar, in place of an outcome. */
+  readonly stat?: ToolStat
 }
+
+/** Lines added and removed, which a line draws as `+4 −2` and a bar. */
+export interface ToolStat {
+  readonly added: number
+  readonly removed: number
+}
+
+/** Cells of the bar that shows the share of added lines. */
+const STAT_BAR_CELLS = 8
 
 /** One row of a verbose block's body: a line of code, a match, a source, an output line. */
 export interface ToolBodyRow {
@@ -32,9 +43,30 @@ export interface ToolBodyRow {
   readonly tone?: 'default' | 'muted' | 'danger'
 }
 
+/** One hunk of a diff body: the text of each side. */
+export interface ToolDiffHunk {
+  readonly before: string
+  readonly after: string
+  /** Rows of this hunk shown before its `tail` row; absent shows it whole. */
+  readonly maxRows?: number
+  /** The translated row that ends a hunk cut at `maxRows`: how many rows the change leaves out. */
+  readonly tail?: string
+  /** The language of the file, which colors the code. */
+  readonly language?: string
+}
+
+/** The code of a write, numbered and highlighted by its language. */
+export interface ToolCodeFacts {
+  readonly text: string
+  readonly language?: string
+}
+
 /** The facts of a verbose block: the line, its body, and the row that says how much of the body is left out. */
 export interface ToolBlockFacts extends ToolLineFacts {
   readonly body?: readonly ToolBodyRow[]
+  /** A file change's body: the hunks of an edit (no line numbers, the Harness gives none), or a write's code. */
+  readonly diff?: readonly ToolDiffHunk[]
+  readonly code?: ToolCodeFacts
   /** The translated `… +N more` row after a capped body. */
   readonly more?: string
   /** The translated `… +N earlier` row before a body that shows the end of the output. */
@@ -72,6 +104,29 @@ export function ToolLine(facts: ToolLineFacts): readonly MayflyInlineSpan[] {
     { text: facts.name, tone: facts.state === 'cancelled' ? 'muted' : 'default', styles: ['strong'] },
     ...(facts.target === undefined ? [] : [{ text: '(', tone: 'muted' } as const, { text: facts.target, tone: 'accent' } as const, { text: ')', tone: 'muted' } as const]),
     ...(facts.outcome === undefined ? [] : [{ text: ` · ${facts.outcome}`, tone: 'muted' } as const]),
+    ...(facts.stat === undefined ? [] : [{ text: ' · ', tone: 'muted' } as const, ...ToolStatSpans(facts.stat)]),
+  ]
+}
+
+/**
+ * A diffstat: the added count in `success`, the removed in `danger`, and a bar of {@link STAT_BAR_CELLS} cells split by
+ * their share.
+ * @param stat - lines added and removed.
+ * @returns the spans.
+ */
+function ToolStatSpans(stat: ToolStat): readonly MayflyInlineSpan[] {
+  const total = stat.added + stat.removed
+  // Each side keeps at least one cell while it has any line.
+  const filled = total === 0 ? 0 : Math.min(STAT_BAR_CELLS - (stat.removed > 0 ? 1 : 0), Math.max(stat.added > 0 ? 1 : 0, Math.round(stat.added / total * STAT_BAR_CELLS)))
+  return [
+    { text: `+${String(stat.added)}`, tone: 'success' },
+    { text: ' ', tone: 'muted' },
+    { text: `−${String(stat.removed)}`, tone: 'danger' },
+    ...(total === 0 ? [] : [
+      { text: ' ', tone: 'muted' } as const,
+      ...(filled === 0 ? [] : [{ text: '▮'.repeat(filled), tone: 'success' } as const]),
+      ...(STAT_BAR_CELLS - filled === 0 ? [] : [{ text: '▮'.repeat(STAT_BAR_CELLS - filled), tone: 'danger' } as const]),
+    ]),
   ]
 }
 

@@ -22,7 +22,8 @@ import {
   type ConversationProjectionSource,
   type LiveDraftSource,
 } from './conversation-feed.ts'
-import { freezeModel, type CommandCallModel, type ReadCallModel, type SearchCallModel, type TranscriptCommandGroupModel, type TranscriptEntryModel, type TranscriptModel, type TranscriptReadGroupModel, type TranscriptSearchGroupModel, type TranscriptTerminalModel, type TranscriptToolFamily, type TranscriptTurnModel, type TranscriptWebModel } from '../frontend/models.ts'
+import { freezeModel, type CommandCallModel, type ReadCallModel, type SearchCallModel, type TranscriptCommandGroupModel, type TranscriptEntryModel, type TranscriptFileChangeModel, type TranscriptModel, type TranscriptReadGroupModel, type TranscriptSearchGroupModel, type TranscriptTerminalModel, type TranscriptToolFamily, type TranscriptTurnModel, type TranscriptWebModel } from '../frontend/models.ts'
+import { diffChangeCounts } from '../core/diff-align.ts'
 import { createToolPresentationModel } from './tool-model.ts'
 import { createTranscriptModel } from './transcript-model.ts'
 import { ellipsize, parseToolArguments, resolveCallView, resolveResultView, type ToolPresentationSource } from './present.ts'
@@ -43,6 +44,12 @@ export const COMMAND_PREVIEW_LINE_LIMIT = 40
 
 /** Characters one command output-tail row keeps before truncation. */
 const COMMAND_PREVIEW_LINE_MAX_CHARS = 160
+
+/** Lines of each side an edit hunk carries; the change's counts are taken over all of them. */
+const FILE_CHANGE_HUNK_LINES = 60
+
+/** Lines of a write's new text the facts carry for its code body (the most any tier shows). */
+export const WRITE_HEAD_LINES = 40
 
 /** One tool entry with its presenter views resolved exactly once. */
 interface ResolvedTool {
@@ -354,10 +361,93 @@ function webModel(resolved: ResolvedTool): TranscriptWebModel | undefined {
   }
 }
 
+function textLines(text: string): string[] {
+  const lines = text.split('\n')
+  if (lines.length > 0 && lines.at(-1) === '') lines.pop()
+  return lines
+}
+
+/** Unchanged lines a hunk keeps around its change: the Harness sends three, the diff body shows one. */
+const FILE_CHANGE_CONTEXT_LINES = 1
+
+/**
+ * A hunk with its unchanged lines around the change cut down to {@link FILE_CHANGE_CONTEXT_LINES} on each side, so the diff
+ * body needs no `⋯` for context it does not draw.
+ */
+function trimContext(before: string, after: string): { readonly before: string, readonly after: string } {
+  const a = before === '' ? [] : before.split('\n')
+  const b = after === '' ? [] : after.split('\n')
+  let prefix = 0
+  while (prefix < a.length && prefix < b.length && a[prefix] === b[prefix]) prefix += 1
+  let suffix = 0
+  while (suffix < a.length - prefix && suffix < b.length - prefix && a[a.length - 1 - suffix] === b[b.length - 1 - suffix]) suffix += 1
+  const dropHead = Math.max(0, prefix - FILE_CHANGE_CONTEXT_LINES)
+  const dropTail = Math.max(0, suffix - FILE_CHANGE_CONTEXT_LINES)
+  return { before: a.slice(dropHead, a.length - dropTail).join('\n'), after: b.slice(dropHead, b.length - dropTail).join('\n') }
+}
+
+/** The first `max` lines of a text (the whole text when it is shorter). */
+function headLines(text: string, max: number): { readonly text: string, readonly cut: boolean } {
+  let at = -1
+  for (let line = 0; line < max; line += 1) {
+    at = text.indexOf('\n', at + 1)
+    if (at === -1) return { text, cut: false }
+  }
+  return { text: text.slice(0, at), cut: true }
+}
+
+/**
+ * The change an edit or write made, from the result's diff view (the applied hunks) and, for a write, the call's content.
+ * An edit that failed, or a call that still runs, has none: its line gives the reason and the activity row names it.
+ */
+function fileChangeModel(resolved: ResolvedTool): TranscriptFileChangeModel | undefined {
+  const { entry, outcome, call, result } = resolved
+  if (entry.result === undefined || entry.result.isError) return undefined
+  const diffs = result?.card === 'diff' ? result.diffs : call?.card === 'diff' ? call.diffs : undefined
+  if (diffs === undefined || diffs.length === 0) return undefined
+  const path = diffs[0]!.path
+  const isWrite = entry.name === 'write'
+  // A write is code, not a diff: the new text's size and head, from what the call gave.
+  const operation = (outcome?.meta as { readonly operation?: unknown } | undefined)?.operation
+  const created = isWrite && (operation === 'create' || (operation !== 'update' && diffs.every(diff => diff.oldText === null)))
+  const hunks: { before: string, after: string }[] = []
+  let added = 0
+  let removed = 0
+  let hidden = 0
+  if (!created) {
+    for (const diff of diffs) {
+      const trimmed = trimContext(diff.oldText ?? '', diff.newText)
+      const counts = diffChangeCounts(trimmed.before, trimmed.after)
+      added += counts.added
+      removed += counts.removed
+      const cutBefore = headLines(trimmed.before, FILE_CHANGE_HUNK_LINES)
+      const cutAfter = headLines(trimmed.after, FILE_CHANGE_HUNK_LINES)
+      if (cutBefore.cut || cutAfter.cut) {
+        const kept = diffChangeCounts(cutBefore.text, cutAfter.text)
+        hidden += counts.added + counts.removed - kept.added - kept.removed
+      }
+      hunks.push({ before: cutBefore.text, after: cutAfter.text })
+    }
+  }
+  if (!isWrite) return { path, added, removed, hunks, hiddenLines: hidden }
+  const content = call?.card === 'diff' ? call.diffs[0]?.newText : diffs[0]!.newText
+  const text = content ?? ''
+  const lines = textLines(text)
+  return {
+    path,
+    added: created ? lines.length : added,
+    removed,
+    hunks: [],
+    hiddenLines: 0,
+    write: { bytes: Buffer.byteLength(text, 'utf8'), lines: lines.length, head: lines.slice(0, WRITE_HEAD_LINES) },
+  }
+}
+
 function toolModel(resolved: ResolvedTool, family: TranscriptToolFamily): TranscriptEntryModel {
   const { entry, outcome, call, result } = resolved
   const terminal = terminalModel(resolved)
   const web = webModel(resolved)
+  const change = family === 'edit' || resolved.entry.name === 'write' ? fileChangeModel(resolved) : undefined
   const presentation = call === undefined && result === undefined
     ? undefined
     : createToolPresentationModel({
@@ -381,6 +471,7 @@ function toolModel(resolved: ResolvedTool, family: TranscriptToolFamily): Transc
     ...(call === undefined ? {} : { title: call.title }),
     ...(terminal === undefined ? {} : { terminal }),
     ...(web === undefined ? {} : { web }),
+    ...(change === undefined ? {} : { change }),
     arguments: entry.arguments,
     startedAt: entry.startedAt,
     ...(entry.result === undefined ? {} : {

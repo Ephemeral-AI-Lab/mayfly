@@ -16,6 +16,9 @@ import { ToolBody, ToolGroupHead, ToolGroupItem, ToolLine, ToolMore, type ToolBl
 /** A prompt shows at most this many lines; opening it (or a search hit inside it) shows the rest. */
 export const PROMPT_MAX_LINES = 4
 
+/** Unchanged lines a diff body keeps around each change. */
+const DIFF_CONTEXT = 1
+
 /** The tallest a prompt's picture paints, in terminal rows. */
 export const PROMPT_IMAGE_MAX_ROWS = 12
 
@@ -52,8 +55,6 @@ export type StreamRow =
   | ({ readonly kind: 'tool', readonly id: string } & ToolBlockFacts)
   /** A run of settled calls of one kind, the standard tier: a head and one line per call. */
   | ({ readonly kind: 'tools', readonly id: string } & ToolGroupFacts)
-  /** A file change that has no card of its own yet: a glyph by state, a title, and the salient argument. */
-  | { readonly kind: 'step', readonly id: string, readonly state: 'running' | 'ok' | 'error', readonly title: string, readonly detail?: string }
   /** The past-tense title of a folded process group. */
   | { readonly kind: 'title', readonly id: string, readonly text: string, readonly failed?: string }
   /** The turn header: its lifecycle label and counts. */
@@ -141,13 +142,38 @@ function rowItems(row: StreamRow): readonly MayflyListItem[] {
       line(row.id, ToolLine(row)),
       ...(row.moreBefore === undefined ? [] : [line(`${row.id}.before`, ToolMore(row.moreBefore))]),
       ...(row.body ?? []).map((part, index) => line(`${row.id}.body.${String(index)}`, ToolBody(part))),
+      // An edit's hunks, each a diff of its own (the band behind the changed code, no line numbers); a write's code.
+      ...(row.diff ?? []).flatMap((hunk, index): MayflyListItem[] => [
+        // The hunks of one edit are apart in the file: a `⋯` stands between them.
+        ...(index === 0 ? [] : [line(`${row.id}.diff.${String(index)}.gap`, [span('  ⋯', 'muted')])]),
+        {
+          id: `${row.id}.diff.${String(index)}`,
+          label: '',
+          body: ui.diff(hunk.before, hunk.after, {
+            hunkHeader: false,
+            context: DIFF_CONTEXT,
+            ...(hunk.maxRows === undefined ? {} : { maxRows: hunk.maxRows }),
+            ...(hunk.tail === undefined ? {} : { tail: hunk.tail }),
+            ...(hunk.language === undefined ? {} : { language: hunk.language }),
+          }),
+          bodyAlways: true,
+          // A lead puts the body on the line itself (no blank head row); the diff's own indent sets its column.
+          bodyLead: [span('')],
+        },
+      ]),
+      ...(row.code === undefined ? [] : [{
+        id: `${row.id}.code`,
+        label: '',
+        body: ui.code(row.code.text, { numbered: true, label: false, ...(row.code.language === undefined ? {} : { language: row.code.language }) }),
+        bodyAlways: true,
+        bodyLead: [span('  ')],
+      } satisfies MayflyListItem]),
       ...(row.more === undefined ? [] : [line(`${row.id}.more`, ToolMore(row.more))]),
     ]
     case 'tools': return [
       line(row.id, ToolGroupHead(row)),
       ...row.items.map((item, index) => line(`${row.id}.item.${String(index)}`, ToolGroupItem(item, index === row.items.length - 1))),
     ]
-    case 'step': return [line(row.id, [span(STATE_GLYPH[row.state], STATE_TONE[row.state]), span(row.title), ...(row.detail === undefined ? [] : [span(` · ${row.detail}`, 'muted')])])]
     case 'title': return [line(row.id, [span('▸ ', 'muted'), span(row.text, 'muted'), ...(row.failed === undefined ? [] : [span(` · ${row.failed}`, 'danger')])])]
     case 'header': return [line(row.id, [span(row.open ? '▾ ' : '▸ ', 'muted'), span(row.label, MOOD_TONE[row.mood]), ...(row.tail === '' ? [] : [span(row.tail, 'muted')])])]
     case 'compaction': return [line(row.id, [span(STATE_GLYPH[row.state], STATE_TONE[row.state]), span(row.text)])]

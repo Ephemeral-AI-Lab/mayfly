@@ -8,11 +8,12 @@
  * @module @ephemeral-ai/mayfly/transcript/tool-calls
  */
 
+import { alignDiffLines, diffModel } from '../core/diff-align.ts'
 import { sanitizePluginText } from '../core/plugin-view.ts'
 import type { MayflyTranslate } from '../frontend/locale.ts'
 import type { CommandCallModel, ProcessActivity, ReadCallModel, SearchCallModel, TranscriptEntryModel } from '../frontend/models.ts'
 import type { StreamRow } from '../components/transcript-view.ts'
-import type { ToolBodyRow, ToolLineState } from '../components/tool-line.ts'
+import type { ToolBodyRow, ToolDiffHunk, ToolLineState, ToolStat } from '../components/tool-line.ts'
 import { countPhrase, elapsedText } from './process-activity.ts'
 import { ellipsize } from './present.ts'
 
@@ -21,6 +22,12 @@ export const VERBOSE_BODY_ROWS = 6
 
 /** Rows a verbose block's body shows once Ctrl+O opens the turn: every row the facts carry. */
 export const OPEN_BODY_ROWS = 40
+
+/** Rows of a file change's body at the Standard tier (a single edit; a write has no body there). */
+export const STANDARD_DIFF_ROWS = 6
+
+/** Rows of a file change's body at the Verbose tier; Ctrl+O lifts it to {@link OPEN_BODY_ROWS}. */
+export const VERBOSE_CHANGE_ROWS = 12
 
 /** Characters of a salient argument kept on a row. */
 const TARGET_MAX_CHARS = 80
@@ -42,6 +49,11 @@ interface Body {
   readonly tail?: boolean
 }
 
+/** The body of a file change: an edit's hunks, or the head of a write's code. */
+type ChangeBody =
+  | { readonly kind: 'diff', readonly language?: string, readonly hunks: readonly { readonly before: string, readonly after: string, readonly rows: number }[], readonly hidden: number }
+  | { readonly kind: 'code', readonly head: readonly string[], readonly total: number, readonly language?: string }
+
 /** One settled (or cut-off) call, reduced to what any tier lays out. */
 export interface Call {
   readonly id: string
@@ -60,14 +72,11 @@ export interface Call {
   /** Matches a search found, for the sum a standard block reports. */
   readonly matches?: number
   readonly body: () => Body
+  /** A file change: its kind and diffstat, and the diff or code its body draws. */
+  readonly file?: { readonly stat: ToolStat, readonly statInLine: boolean, readonly content: () => ChangeBody }
 }
 
 type ToolEntry = Extract<TranscriptEntryModel, { readonly kind: 'transcript-tool' }>
-
-/** Whether a tool entry is a file change, which has no block of its own until the edit and write cards. */
-export function isFileChange(entry: ToolEntry): boolean {
-  return entry.family === 'edit' || entry.activity === 'edit' || entry.activity === 'write'
-}
 
 /** The state a call reads as, or `undefined` while it still runs (the activity row owns it). */
 function stateOf(state: 'pending' | 'ok' | 'error', closed: boolean): ToolLineState | undefined {
@@ -216,6 +225,62 @@ function commandCall(groupId: string, call: CommandCallModel, closed: boolean, t
   }
 }
 
+/** Highlight languages by file extension; anything else is plain code. */
+const LANGUAGES: Readonly<Record<string, string>> = {
+  ts: 'typescript', tsx: 'typescript', mts: 'typescript', cts: 'typescript', js: 'javascript', jsx: 'javascript', mjs: 'javascript', cjs: 'javascript',
+  json: 'json', md: 'markdown', py: 'python', rs: 'rust', go: 'go', rb: 'ruby', java: 'java', sh: 'bash', bash: 'bash', zsh: 'bash',
+  css: 'css', html: 'xml', xml: 'xml', yml: 'yaml', yaml: 'yaml', toml: 'ini', sql: 'sql', c: 'c', h: 'c', cpp: 'cpp', cc: 'cpp',
+}
+
+function languageOf(path: string): string | undefined {
+  const extension = /\.([A-Za-z0-9]+)$/u.exec(path)?.[1]?.toLowerCase()
+  return extension === undefined ? undefined : LANGUAGES[extension]
+}
+
+/** A size as a line shows it: bytes under a kilobyte, then kilobytes with one decimal. */
+function sizeText(bytes: number): string {
+  return bytes < 1024 ? `${String(bytes)} B` : `${String(Math.round(bytes / 102.4) / 10)} KB`
+}
+
+/** An edit or write as a call: its tool name and path, the diffstat or the size, and the diff or code as its body. */
+function fileCall(entry: ToolEntry, closed: boolean, t: MayflyTranslate): Call | undefined {
+  const state = stateOf(entry.result === undefined ? 'pending' : entry.result.isError ? 'error' : 'ok', closed)
+  if (state === undefined) return undefined
+  const change = entry.change
+  const target = change?.path ?? (entry.detail === '' ? undefined : ellipsize(sanitizePluginText(entry.detail), TARGET_MAX_CHARS))
+  const name = nameOf(entry.name)
+  const write = change?.write
+  const outcome = state === 'error' ? [reason(entry.result?.text)]
+    : write === undefined ? [] : [t(write.lines === 1 ? '{count} line' : '{count} lines', { count: write.lines }), sizeText(write.bytes)]
+  const hasStat = state === 'ok' && change !== undefined && write === undefined
+  return {
+    id: entry.id,
+    activity: entry.activity,
+    state,
+    name,
+    ...(target === undefined ? {} : { target }),
+    label: target ?? name,
+    outcome,
+    startedAt: entry.startedAt,
+    ...(entry.result === undefined ? {} : { endedAt: entry.result.endedAt }),
+    body: () => ({ rows: [], total: 0 }),
+    ...(change === undefined || state !== 'ok' ? {} : {
+      file: {
+        stat: { added: change.added, removed: change.removed },
+        statInLine: hasStat,
+        content: (): ChangeBody => write !== undefined
+          ? { kind: 'code', head: write.head, total: write.lines, ...(languageOf(change.path) === undefined ? {} : { language: languageOf(change.path)! }) }
+          : {
+              kind: 'diff',
+              ...(languageOf(change.path) === undefined ? {} : { language: languageOf(change.path)! }),
+              hunks: change.hunks.map(hunk => ({ ...hunk, rows: diffModel(alignDiffLines(hunk.before, hunk.after), { context: 1 }).length })),
+              hidden: change.hiddenLines,
+            },
+      },
+    }),
+  }
+}
+
 function loneCall(entry: ToolEntry, closed: boolean, t: MayflyTranslate): Call | undefined {
   const exit = exitText(entry.terminal?.exitCode, entry.terminal?.signal, t)
   const state = stateOf(entry.result === undefined ? 'pending' : entry.result.isError || exit !== undefined ? 'error' : 'ok', closed)
@@ -264,7 +329,7 @@ function loneCall(entry: ToolEntry, closed: boolean, t: MayflyTranslate): Call |
 
 /**
  * The settled calls of one entry, in the order they were made. A running call has none, a call cut off with its turn is
- * cancelled, and a file change is not a call here.
+ * cancelled.
  * @param entry - a tool or a group of read, search, or command calls.
  * @param closed - whether the entry's turn has ended.
  * @param t - translator for the transcript namespace.
@@ -276,7 +341,7 @@ export function callsOf(entry: TranscriptEntryModel, closed: boolean, t: MayflyT
     case 'transcript-read-group': for (const call of entry.reads) calls.push(readCall(entry.id, call, closed, t)); break
     case 'transcript-search-group': for (const call of entry.searches) calls.push(searchCall(entry.id, call, closed, t)); break
     case 'transcript-command-group': for (const call of entry.commands) calls.push(commandCall(entry.id, call, closed, t)); break
-    case 'transcript-tool': if (!isFileChange(entry)) calls.push(loneCall(entry, closed, t)); break
+    case 'transcript-tool': calls.push(entry.change !== undefined || entry.activity === 'edit' || entry.activity === 'write' ? fileCall(entry, closed, t) : loneCall(entry, closed, t)); break
     default: break
   }
   return calls.filter((call): call is Call => call !== undefined)
@@ -288,22 +353,64 @@ function outcomeText(call: Call): string | undefined {
   return text === '' || call.state === 'cancelled' ? undefined : sanitizePluginText(text)
 }
 
+/** The diff or code body of a file change within `cap` rows, and the row that says how much is left out. */
+function changeLayout(call: Call, cap: number, open: boolean, t: MayflyTranslate): { readonly diff?: readonly ToolDiffHunk[], readonly code?: { readonly text: string, readonly language?: string }, readonly more?: string } {
+  const content = call.file?.content()
+  if (content === undefined || cap <= 0) return {}
+  const hint = open ? '' : t(' · Ctrl+O')
+  if (content.kind === 'code') {
+    const rows = content.head.slice(0, cap)
+    const left = content.total - rows.length
+    return {
+      code: { text: rows.join('\n'), ...(content.language === undefined ? {} : { language: content.language }) },
+      ...(left > 0 ? { more: `${t('… +{count} more', { count: left })}${hint}` } : {}),
+    }
+  }
+  const styled = content.language === undefined ? {} : { language: content.language }
+  let room = cap
+  let hidden = content.hidden
+  const hunks: ToolDiffHunk[] = []
+  let cut = false
+  for (const hunk of content.hunks) {
+    // The `⋯` between two hunks takes a row of the budget.
+    if (hunks.length > 0) room -= 1
+    if (room <= 0) { hidden += hunk.rows; continue }
+    if (hunk.rows <= room) {
+      hunks.push({ before: hunk.before, after: hunk.after, ...styled })
+      room -= hunk.rows
+    } else {
+      // The hunk that does not fit ends with the row that counts everything left out, its own and the hunks after it.
+      hunks.push({ before: hunk.before, after: hunk.after, maxRows: room, ...styled })
+      hidden += hunk.rows - room
+      cut = true
+      room = 0
+    }
+  }
+  const left = hidden > 0 ? `${t('… +{count} rows', { count: hidden })}${hint}` : undefined
+  if (cut && left !== undefined) hunks[hunks.length - 1] = { ...hunks[hunks.length - 1]!, tail: left }
+  return { diff: hunks, ...(!cut && left !== undefined ? { more: left } : {}) }
+}
+
 /**
  * One call as a verbose block: its line and the first rows of its body.
  * @param call - the settled call.
  * @param open - whether Ctrl+O opened the turn, which shows every row the facts carry.
  * @param t - translator for the transcript namespace.
+ * @param tier - `standard` for a call the standard tier draws alone: a file change is open at 6 rows, any other call has no body.
  * @returns the block's row.
  */
-export function verboseRow(call: Call, open: boolean, t: MayflyTranslate): StreamRow {
+export function verboseRow(call: Call, open: boolean, t: MayflyTranslate, tier: 'verbose' | 'standard' = 'verbose'): StreamRow {
   const cap = open ? OPEN_BODY_ROWS : VERBOSE_BODY_ROWS
   // A call cut off has no output, and a failed read or search has only its reason, which the line already gives.
   const quiet = call.state === 'cancelled' || (call.state === 'error' && (call.activity === 'read' || call.activity === 'readImage' || call.activity === 'search'))
-  const body: Body = quiet ? { rows: [], total: 0 } : call.body()
+  const body: Body = quiet || tier === 'standard' ? { rows: [], total: 0 } : call.body()
   const rows = body.tail === true ? body.rows.slice(-cap) : body.rows.slice(0, cap)
   const left = body.total - rows.length
   const hint = open ? '' : t(' · Ctrl+O')
-  const more = left > 0 ? `${t(body.tail === true ? '… +{count} earlier' : '… +{count} more', { count: left })}${hint}` : undefined
+  const textMore = left > 0 ? `${t(body.tail === true ? '… +{count} earlier' : '… +{count} more', { count: left })}${hint}` : undefined
+  const change = call.file === undefined || call.state !== 'ok' ? {}
+    : changeLayout(call, tier === 'standard' ? STANDARD_DIFF_ROWS : open ? OPEN_BODY_ROWS : VERBOSE_CHANGE_ROWS, open, t)
+  const more = textMore ?? change.more
   const outcome = outcomeText(call)
   return {
     kind: 'tool',
@@ -312,7 +419,10 @@ export function verboseRow(call: Call, open: boolean, t: MayflyTranslate): Strea
     name: sanitizePluginText(call.name),
     ...(call.target === undefined || call.target === '' ? {} : { target: sanitizePluginText(call.target) }),
     ...(outcome === undefined ? {} : { outcome }),
+    ...(call.file?.statInLine === true && call.state === 'ok' ? { stat: call.file.stat } : {}),
     ...(rows.length === 0 ? {} : { body: rows }),
+    ...(change.diff === undefined || change.diff.length === 0 ? {} : { diff: change.diff }),
+    ...(change.code === undefined ? {} : { code: change.code }),
     ...(more === undefined ? {} : body.tail === true ? { moreBefore: more } : { more }),
   }
 }
@@ -325,7 +435,7 @@ export function verboseRow(call: Call, open: boolean, t: MayflyTranslate): Strea
  */
 export function standardRow(calls: readonly Call[], t: MayflyTranslate): StreamRow {
   const first = calls[0]!
-  if (calls.length === 1) return verboseRow({ ...first, body: () => ({ rows: [], total: 0 }) }, false, t)
+  if (calls.length === 1) return verboseRow(first, false, t, 'standard')
   const lines = calls.every(call => call.lines !== undefined || call.state !== 'ok') ? calls.reduce((sum, call) => sum + (call.lines ?? 0), 0) : undefined
   const matches = calls.every(call => call.matches !== undefined || call.state !== 'ok') ? calls.reduce((sum, call) => sum + (call.matches ?? 0), 0) : undefined
   const starts = calls.map(call => call.startedAt)
@@ -346,7 +456,11 @@ export function standardRow(calls: readonly Call[], t: MayflyTranslate): StreamR
     ...(failed === 0 ? {} : { failed: t('{count} failed', { count: failed }) }),
     items: calls.map((call) => {
       const outcome = outcomeText(call)
-      return { state: call.state, label: sanitizePluginText(call.label), ...(outcome === undefined ? {} : { outcome }) }
+      return {
+        state: call.state,
+        label: sanitizePluginText(call.label),
+        ...(outcome === undefined ? {} : { outcome }),
+      }
     }),
   }
 }

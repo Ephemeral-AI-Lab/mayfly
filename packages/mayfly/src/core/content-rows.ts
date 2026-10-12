@@ -21,9 +21,9 @@ import type { MarkdownTheme } from '@earendil-works/pi-tui'
 import { fieldText } from './field-text.ts'
 import { commonPrefix } from './text-match.ts'
 import { CONTENT_SEGMENT_LINES, CONTENT_SEGMENT_UNITS, extendMergedLines, indexContent, indexMergedLines, scanContentLines, type ContentIndex, type ContentLineScan } from './content-segments.ts'
-import { alignDiffLines, diffModel, paintDiffSegment, type DiffModel, type DiffSegment } from './diff-align.ts'
+import { alignDiffLines, diffModel, paintDiffSegment, type DiffModel, type DiffSegment, type DiffStyle } from './diff-align.ts'
 import { ownDataErrorMessage } from './error-message.ts'
-import { highlightable, highlightCodeLines } from './highlight.ts'
+import { highlightable, highlightCodeLines, type CodePaints } from './highlight.ts'
 import { markdownBlockRows, markdownMermaidRows, markdownTheme, scanMarkdown, type MarkdownUnit, type PreparedMarkdown } from './markdown-rows.ts'
 import {
   CODE_HIGHLIGHT_MAX_BYTES,
@@ -243,8 +243,9 @@ const DIFF_CHUNK_ROWS = CONTENT_SEGMENT_LINES
  */
 interface PreparedDiff {
   readonly model: DiffModel
-  readonly numbered: boolean
+  readonly style: DiffStyle
 }
+
 
 const preparedDiffs = new WeakMap<object, PreparedDiff>()
 
@@ -255,13 +256,22 @@ function diffPrepared(node: Extract<MayflySectionContentNode, { readonly kind: '
     const after = sanitizePluginText(requireText(node.after, 'diff after'))
     const ops = alignDiffLines(before, after)
     countWork(env.counters, 'linesEstimated', ops.length)
+    const language = node.language === undefined ? '' : sanitizePluginText(requireText(node.language, 'diff language'))
+    // The code of each side is highlighted as one block, so a token that spans lines keeps its color; past the byte cap, plain.
+    const lit = highlightable(language) && Buffer.byteLength(before, 'utf8') + Buffer.byteLength(after, 'utf8') <= CODE_HIGHLIGHT_MAX_BYTES
+      ? {
+          before: highlightCodeLines(before, language, codePaints(env)),
+          after: highlightCodeLines(after, language, codePaints(env)),
+        }
+      : undefined
     prepared = {
-      numbered: node.numbered !== false,
+      style: { numbered: node.numbered !== false, start: node.start ?? 1, ...(lit === undefined ? {} : { lit }) },
       model: diffModel(ops, {
         ...node.start === undefined ? {} : { start: node.start },
         ...node.hunkHeader === undefined ? {} : { hunkHeader: node.hunkHeader },
         ...node.context === undefined ? {} : { context: node.context },
         ...node.maxRows === undefined ? {} : { maxRows: node.maxRows },
+        ...node.tail === undefined ? {} : { tail: sanitizePluginText(node.tail) },
       }),
     }
     preparedDiffs.set(node, prepared)
@@ -344,7 +354,7 @@ class DiffRowsSource implements RowSource {
 
   private paintSafely(chunk: number): readonly string[] {
     try {
-      return paintDiffSegment(this.chunks[chunk]!, this.prepared.model.digits, this.width, this.env.components, this.env.colors, this.prepared.numbered)
+      return paintDiffSegment(this.chunks[chunk]!, this.prepared.model.digits, this.width, this.env.components, this.env.colors, this.prepared.style)
     } catch (error) {
       const message = ownDataErrorMessage(error) ?? 'unknown render failure'
       if (!this.failures.has(chunk)) {
@@ -894,6 +904,12 @@ function textSource(node: Extract<MayflySectionContentNode, { readonly kind: 'te
   }, env, keyOf(node, env))
 }
 
+/** The palette a highlighted code block or diff paints with. */
+function codePaints(env: ContentRowsEnv): CodePaints {
+  const { colors } = env
+  return { base: colors.text, keyword: colors.primary, string: colors.success, comment: colors.muted, number: colors.warning, type: colors.accent, added: colors.success, removed: colors.error }
+}
+
 function codeSource(node: Extract<MayflySectionContentNode, { readonly kind: 'code' }>, width: number, env: ContentRowsEnv): RowSource {
   const { text: code, index } = indexedField(node, node.code, env)
   const language = node.language === undefined ? '' : sanitizePluginText(requireText(node.language, 'code language'))
@@ -911,7 +927,7 @@ function codeSource(node: Extract<MayflySectionContentNode, { readonly kind: 'co
           const [start, end] = index.lineText(line)
           head.push(sanitizePluginText(code.slice(start, end)))
         }
-        highlighted = highlightCodeLines(head.join('\n'), language, { base: env.colors.text, keyword: env.colors.primary, string: env.colors.success, comment: env.colors.muted })
+        highlighted = highlightCodeLines(head.join('\n'), language, codePaints(env))
       }
     }
     return highlighted
@@ -941,7 +957,7 @@ function codeSource(node: Extract<MayflySectionContentNode, { readonly kind: 'co
     }
     return rows
   }, env, keyOf(node, env), gutter)
-  if (language.length === 0) return body
+  if (language.length === 0 || node.label === false) return body
   countWork(env.counters, 'rowsPainted', 1)
   const label = env.colors.muted(language)
   // The label row heads the body; both are sanitized, so the whole block stays marker-free and declares its width.

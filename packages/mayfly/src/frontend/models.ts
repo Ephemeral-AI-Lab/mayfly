@@ -39,6 +39,22 @@ export interface TranscriptTerminalModel { readonly command: string; readonly de
 export type TranscriptWebModel =
   | { readonly kind: 'search'; readonly sources: readonly { readonly url: string; readonly title?: string }[]; readonly truncated: boolean }
   | { readonly kind: 'fetch'; readonly url: string; readonly statusCode: number; readonly truncated: boolean }
+/**
+ * File-change facts of one settled edit or write call, bounded so a megabyte write or a huge replacement carries only its
+ * head: the counts are taken before the cut, the hunks and the head lines after it.
+ */
+export interface TranscriptFileChangeModel {
+  readonly path: string
+  /** Lines the change added and removed, over the whole change. */
+  readonly added: number
+  readonly removed: number
+  /** Edit hunks (an overwrite's too): the text of each side, cut to a bounded number of lines. */
+  readonly hunks: readonly { readonly before: string; readonly after: string }[]
+  /** Changed lines the cut hunks leave out. */
+  readonly hiddenLines: number
+  /** A write's new text: its size, its lines, and the first of them. */
+  readonly write?: { readonly bytes: number; readonly lines: number; readonly head: readonly string[] }
+}
 interface TranscriptToolResultModel { readonly text: string; readonly fullText?: string; readonly isError: boolean; readonly endedAt: number }
 /**
  * The presenter-card family a lone tool card belongs to, for the per-family
@@ -62,6 +78,8 @@ export interface TranscriptToolModel extends TranscriptEntryBase {
   readonly title?: string
   readonly terminal?: TranscriptTerminalModel
   readonly web?: TranscriptWebModel
+  /** The change an edit or write made, once it settled without an error. */
+  readonly change?: TranscriptFileChangeModel
   readonly arguments: string
   readonly startedAt: number
   readonly result?: TranscriptToolResultModel

@@ -29,6 +29,7 @@ const COVERS = {
   turns: [`${TRANSCRIPT}transcript-model.ts`, `${TRANSCRIPT}process-groups.ts`, `${TRANSCRIPT}presentation-policy.ts`, `${INTERACTION}pane-queue.ts`, 'packages/mayfly/src/core/node-slot.ts', ...STREAM],
   errors: [`${TRANSCRIPT}tool-*.ts`, `${TRANSCRIPT}transcript-model.ts`, ...STREAM],
   toollines: [`${TRANSCRIPT}tool-*.ts`, `${TRANSCRIPT}process-*.ts`, `${TRANSCRIPT}official-model.ts`, 'packages/mayfly/src/frontend/models.ts', ...STREAM],
+  edits: [`${TRANSCRIPT}tool-*.ts`, `${TRANSCRIPT}process-*.ts`, `${TRANSCRIPT}official-model.ts`, 'packages/mayfly/src/frontend/models.ts', 'packages/mayfly/src/core/content-rows.ts', 'packages/mayfly/src/core/diff-align.ts', 'packages/mayfly/src/core/highlight.ts', ...STREAM],
   compaction: [...STREAM],
   manualCompact: [...STREAM],
   context: [`${TRANSCRIPT}status-context.ts`, ...STREAM],
@@ -72,7 +73,7 @@ const REVIEW = {
       { look: 'The verbose bodies of the same calls', how: '`pnpm run frame toolkit --keys ctrl+o`, checkpoint `keys`' },
     ],
     differs: ['The replay runs without most tool presenters, so some outcomes (matches, status, size) show only where the replay carries the presenter data.'],
-    pending: ['The edit still draws the old `✓ Edit path` row: its card is part 3b.2.'],
+    pending: ['The edit and the write are parts 3b.2 and 3b.3 (scenario `edits`).'],
   },
   errors: {
     scene: 17,
@@ -84,7 +85,7 @@ const REVIEW = {
       { look: 'The failed lines of the failed turn', how: '`pnpm run frame errors --keys ctrl+o`, checkpoint `keys` (the ⊘ cancelled line is in `toollines`)' },
     ],
     differs: [],
-    pending: ['Output tails under `⎿` wait for part 3b.3.'],
+    pending: [],
   },
   toollines: {
     scene: 17,
@@ -109,69 +110,45 @@ const REVIEW = {
     differs: [
       'Targets are the paths as given, not shortened (owner decision), so a long path pushes the outcome off a narrow row.',
       'The fetch size is derived from the length of the result text (the tool reports only the status): it is approximate.',
-      'The command output tail is drawn now (the spec assigned command rows to 3b.3): the tier rule asks every tool for a verbose body.',
+      'The command output tail is drawn here in 3b.1 (the spec assigned command rows to 3b.3): the tier rule asks every tool for a verbose body; 3b.3 builds the Write card only.',
       'The prototype folds with `Read 3 files · …`; the real title also counts failures (`· 2 failed`) and caps at three categories plus `…`.',
     ],
     pending: [
-      'Edit and write calls still draw the old `✓ Edit path` row: their three tiers are parts 3b.2 and 3b.3.',
+      'Edit and write calls are in scenario `edits` (parts 3b.2 and 3b.3).',
       'Enter on a line, copy, and opening a row in the editor are row selection (3e.2).',
     ],
   },
-  toolkit: {
+  edits: {
     scene: 17,
-    reference: 'prototype scene 17 (Tool rows and edits) · spec §5.3 · every kind of call in one turn',
+    reference: 'prototype scene 17 (Tool rows and edits) · spec §5.3 EditCard and WriteCard · docs/design/component-development-spec.md §7.1',
     implemented: [
-      'Reads, searches, web calls, skills, jobs, MCP and unknown tools each settle into one line with the verb and outcome of their kind.',
-      'The long bash output and the long read stay one line each: the output tail is not drawn (command rows are 3b.3).',
+      'Standard: every edit and every write is its own open block, never folded into a run: an edit is its line (`✓ Edit(path) · +4 −2 ▮▮▮▮▮▮▯▯`) and its diff, a write is its line (`✓ Write(path) · 84 lines · 3.1 KB`) and its code, numbered and highlighted by the file extension; both show 6 rows.',
+      'Verbose and Detailed (the current step): the same blocks at 12 rows (a `⋯` between hunks, `… +N rows` after); Ctrl+O lifts both to 40.',
+      'Compact: the turn folds behind its header; the merged line counts the changes and the diffstat (`Edited 3 files · Wrote 1 file · Ran 1 command · 1.8s · +33 −8`).',
+      'A failed edit is `✗ Edit(path) · <first line of the reason>` at every tier, with no diff; a write cut off by an interrupt is `⊘ Write(path)`. A running edit or write has no block: the activity row names it.',
+      'The diff is syntax-highlighted by the file extension and has one quiet line-number gutter that numbers the modified file (a removed line has a blank cell); the tint behind a changed line stops 4 columns short of the right edge. The Harness sends three lines of context around a hunk, the diff body keeps one.',
     ],
     focus: [
-      { look: 'One line per call, in the order made; reads and searches are not merged', how: 'Ctrl+O, then checkpoint `keys` (`pnpm run frame toolkit --keys ctrl+o`)' },
-      { look: 'Tools without a presenter fall back to their title and a duration', how: 'the skill, job, MCP and custom_inventory_tool lines' },
-    ],
-    differs: ['The replay runs without the real tool presenters for most calls, so some outcomes (matches, status, size) show only where the replay carries the metadata.'],
-    pending: ['The edit still draws the old `✓ Edit path` row: its card is part 3b.2.'],
-  },
-  errors: {
-    scene: 17,
-    reference: 'prototype scene 17 (Tool rows and edits) · spec §5.3 · failed and cut-off calls',
-    implemented: [
-      'A failed call is ✗ with its reason on the line (the first line of the error, clipped), at every tier.',
-    ],
-    focus: [
-      { look: 'The failed lines of the failed turn', how: '`pnpm run frame errors --keys ctrl+o`, checkpoint `keys` (the ⊘ cancelled line is in `toollines`)' },
-    ],
-    differs: [],
-    pending: ['Output tails under `⎿` wait for part 3b.3.'],
-  },
-  toollines: {
-    scene: 17,
-    reference: 'prototype scene 17 (Tool rows and edits) · spec §5.3 settled calls · ToolLine in mayfly-components.mjs',
-    implemented: [
-      'Every settled call is one line: ✓ / ✗ / ⊘, the past-tense verb, the target in accent, and the outcome in muted text.',
-      'Reads show their lines (`481 lines`, `40 of 481 lines`), searches their matches or paths, commands their time or `exit 1`, fetches `200 · 18 KB`.',
-      'A failed call puts its reason on the line (`file not found`, `exit 1 · 3s`); a call cut off by an interrupt reads ⊘ with a muted verb.',
-      'A run of reads or searches is one line per call, and the folded title counts them (`Read 3 files · Searched code · Ran 3 commands · 12s`).',
-      'A call that is still running has no line: the activity row owns it, and its line appears when it settles.',
-      'A blank row separates every block, as in Claude Code: the prompt, the turn header, each tool line, answer and reasoning, and the interruption mark all stand alone.',
-      'The work-details level decides where the lines show: Verbose always, Detailed while the turn runs, Standard and Compact after Ctrl+O (`toollines-compact`, `-detailed`, `-verbose`).',
-    ],
-    focus: [
-      { look: 'The folded title: counts per category, the time, and `· 1 failed`', how: 'checkpoint `settled`: the interrupted turn\'s `▸` row (the first turn folds behind its header)' },
-      { look: 'Glyph, verb, target and outcome tones; one line per call', how: 'Ctrl+O, checkpoint `lines`' },
-      { look: 'Read windows, search counts, exit codes, fetch size', how: 'checkpoint `lines`: the reads, greps, bash and web_fetch lines' },
-      { look: 'The failed lines (missing file, lint exit 1)', how: 'checkpoint `lines`' },
-      { look: 'The ⊘ line of the interrupted build, with no outcome', how: 'Ctrl+O, checkpoint `lines`: the last line of the second turn' },
-      { look: 'A long path or command is clipped at the end, and the verb stays', how: '`--width 60` and `--width 40`, checkpoint `lines`' },
-      { look: 'A call settling in the live turn adds its line when it finishes', how: 'watch `pnpm run scenario toollines` while it plays (Ctrl+O first, for the open view)' },
+      { look: 'The single edit: line, diffstat bar, highlighted code, the inset bands, the gutter and signs, one context line each side', how: 'checkpoint `standard`, the first edit' },
+      { look: 'The multi-hunk edit and the `⋯` between hunks', how: 'Ctrl+O is `open`; or `pnpm run scenario edits-verbose`' },
+      { look: 'Several changes in a row stay separate open blocks', how: 'checkpoint `standard`, the "handful of files" step' },
+      { look: 'The large edit capped at 6 / 12 / 40 rows with its `… +N rows` row', how: 'compare checkpoint `standard`, `edits-verbose` and `open`' },
+      { look: 'The write: highlighted numbered code, 6 rows at Standard and 12 at Verbose', how: 'checkpoint `standard`, then `pnpm run scenario edits-verbose`' },
+      { look: 'The failed edit and the cancelled write', how: 'checkpoint `open`, last lines of each turn' },
+      { look: 'Narrow widths: the diff rows clip with `…`, the line clips at the end, the gutter takes 5 columns', how: '`--width 60` and `--width 40`' },
+      { look: 'Compact and Detailed', how: '`pnpm run scenario edits-compact`, `pnpm run scenario edits-detailed` (checkpoint `live`)' },
     ],
     differs: [
-      'Targets are the paths as given, not shortened (owner decision), so a long path pushes the outcome off a narrow row.',
-      'The fetch size is derived from the length of the result text (the tool reports only the status): it is approximate.',
-      'The prototype folds with `Read 3 files · …`; the real title also counts failures (`· 2 failed`) and caps at three categories plus `…`.',
+      'The line numbers are relative: the Harness gives hunk text with no start line, so each hunk counts from 1, and only the modified file is numbered (owner decision, until a real start line is available).',
+      'A call is named by its tool (`Edit`, `Write`), not the prototype\'s `Edited`/`Wrote`; the verbs stay in the head of a run (owner decision).',
+      'The failure reason is on the call\'s line, not on a `⎿` row (owner decision, 3b.1).',
+      'Edits and writes are open at Standard and fold only at Compact (owner decision), so they never form a tree.',
+      'A diff that exceeds its rows ends with the painter\'s own `… +N rows · Ctrl+O`, in English, even when Ctrl+O is already open.',
     ],
     pending: [
-      'Edit and write calls still draw the old `✓ Edit path` row: their cards are parts 3b.2 and 3b.3.',
-      'Output tails under `⎿` and Enter on a line are not done: command rows are 3b.3, row selection is 3e.2.',
+      'Command rows are finished in 3b.1 (no `⎿` tails); there is no command work in this part.',
+      'The 400 ms flash when an edit settles and the counts ticking while it applies are unscheduled; the activity row names the edit while it runs (part 3c).',
+      'Enter, copy, and opening the diff in the editor are row selection (3e.2).',
     ],
   },
 }
@@ -183,6 +160,12 @@ const REVIEW = {
 const SCRIPTS = {
   // A settled turn folds behind its title; Ctrl+O opens its calls as lines; the interrupted turn leaves a call cancelled.
   toollines: [
+    play(), checkpoint('standard'),
+    key('ctrl+o'), checkpoint('open'),
+    resize(72, 30), checkpoint('resized'),
+  ],
+  // Standard (single edit and write, a run), Ctrl+O (every body at 40 rows), then a narrow terminal.
+  edits: [
     play(), checkpoint('standard'),
     key('ctrl+o'), checkpoint('open'),
     resize(72, 30), checkpoint('resized'),
@@ -222,6 +205,7 @@ const SCRIPTS = {
 const SIZES = {
   turns: [DEFAULT_SIZE, [60, 24], [40, 24]],
   toollines: [[120, 80], [60, 64], [40, 64]],
+  edits: [[120, 90], [60, 70], [40, 70]],
   wheel: [[40, 24]],
 }
 
@@ -386,6 +370,15 @@ export const CATALOG = Object.freeze({
     covers: COVERS.toollines,
     sizes: [[120, 80], [60, 64]],
     script: level === 'detailed' ? [play('built'), checkpoint('live'), play(), checkpoint('end')] : [play(), checkpoint('end')],
+  }])),
+  // The file changes at the other work-details levels (the default, Standard, is `edits`).
+  ...Object.fromEntries(['compact', 'detailed', 'verbose'].map(level => [`edits-${level}`, {
+    summary: `the file changes at the ${level[0].toUpperCase()}${level.slice(1)} level`,
+    source: { replay: 'edits' },
+    config: { mayfly: { transcriptView: level } },
+    covers: COVERS.edits,
+    sizes: [[120, 90], [60, 70]],
+    script: level === 'detailed' ? [play('run'), checkpoint('live'), play(), checkpoint('end')] : [play(), checkpoint('end')],
   }])),
   // The pill: scroll away from a streaming answer, let the rest arrive, then follow it again with Ctrl+↓.
   live: {

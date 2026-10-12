@@ -62,12 +62,12 @@ export function admitTextStyles(h: AdmissionHelpers, object: Fields, path: strin
   return { styles }
 }
 
-/** A code node's `numbered`. */
+/** A code node's `numbered` and `label`. */
 export function admitCodeFields(h: AdmissionHelpers, object: Fields, path: string): Fields {
-  return present('numbered', flag(h, object, 'numbered', path))
+  return { ...present('numbered', flag(h, object, 'numbered', path)), ...present('label', flag(h, object, 'label', path)) }
 }
 
-/** A diff node's `start`, `numbered`, `hunkHeader`, `context` (0 to 3), and `maxRows`. */
+/** A diff node's `start`, `numbered`, `hunkHeader`, `context` (0 to 3), `maxRows`, the `tail` row that ends a cut diff, and its `language`. */
 export function admitDiffFields(h: AdmissionHelpers, object: Fields, path: string): Fields {
   return {
     ...present('start', integer(h, object, 'start', path, 0, 1_000_000)),
@@ -75,6 +75,8 @@ export function admitDiffFields(h: AdmissionHelpers, object: Fields, path: strin
     ...present('hunkHeader', flag(h, object, 'hunkHeader', path)),
     ...present('context', integer(h, object, 'context', path, 0, 3)),
     ...present('maxRows', integer(h, object, 'maxRows', path, 1, 10_000)),
+    ...present('tail', h.own(object, 'tail', path) === undefined ? undefined : h.label(h.own(object, 'tail', path), `${path}.tail`)),
+    ...present('language', h.own(object, 'language', path) === undefined ? undefined : h.label(h.own(object, 'language', path), `${path}.language`)),
   }
 }
 

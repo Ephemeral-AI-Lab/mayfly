@@ -38,7 +38,6 @@ import { isSpawnToolName } from '../conversation/projection.ts'
 import type { OutputProgress } from '../conversation/types.ts'
 import { compactElapsedMs } from './agent-presentation.ts'
 import { outputCounter, outputRate } from './output-rate.ts'
-import { followPresentationSettings, TranscriptPresentationPolicy } from './presentation-policy.ts'
 import { preparingLabel, runningLabel, toolActivity } from './process-activity.ts'
 import { toolDisplayName } from './present.ts'
 import type { SessionFactsService } from './session-facts.ts'
@@ -149,7 +148,7 @@ interface ActivityState {
   flow: string
   /** The phase or running-action label (an untranslated locale key). */
   label: string
-  /** The running action's detail, when the policy shows one; '' otherwise. */
+  /** The running action's detail; '' when it has none. */
   detail: string
   /** The active turn's start (a session timestamp), the elapsed anchor. */
   turnStartedAt?: number | undefined
@@ -274,17 +273,14 @@ function activityLabel(mode: ActivityPaneMode, facts: ConversationFacts): string
 }
 
 /**
- * The running action's detail under a policy: the latest reasoning paragraph
- * while thinking, else the running call's salient argument (a generic tool
- * falls back to its name). File changes that render as transcript cards carry none.
+ * The running action's detail: the latest reasoning paragraph while thinking, else the running call's salient
+ * argument (a generic tool falls back to its name).
  */
-function activityDetail(mode: ActivityPaneMode, facts: ConversationFacts, policy: TranscriptPresentationPolicy): string {
-  const process = policy.snapshot().process
+function activityDetail(mode: ActivityPaneMode, facts: ConversationFacts): string {
   const activity = facts.activity
   if (mode === 'thinking') return activity?.kind === 'reasoning' ? activity.detail ?? '' : ''
   if (mode !== 'tool' || activity?.kind !== 'tool' || activity.name === undefined || isSpawnToolName(activity.name)) return ''
   const category = toolActivity(activity.name)
-  if (process.fileChanges === 'content' && (category === 'edit' || category === 'write')) return ''
   const detail = activity.detail ?? ''
   return detail === '' && category === 'tools' ? toolDisplayName(activity.name) : detail
 }
@@ -319,7 +315,6 @@ export function apply(ctx: Context): void {
   const state: ActivityState = {
     mode: 'idle', frame: 0, tip: '', flow: '', label: WAITING_LABEL, detail: '', dialog: false,
   }
-  const policy = new TranscriptPresentationPolicy()
   const factsService = ctx.get('mayflySessionFacts') as SessionFactsService | undefined
   /* mayflySessionFacts is an injected service; the fallback
      keeps direct thin-host construction renderer-neutral but cannot occur in
@@ -399,7 +394,7 @@ export function apply(ctx: Context): void {
     const progress = kind === 'composing' ? facts.outputProgress : undefined
     const nextFlow = flowCounter({ up: facts.flowUp, downChars: progress?.chars ?? facts.flowDownChars })
     const nextLabel = activityLabel(mode, facts)
-    const nextDetail = activityDetail(mode, facts, policy)
+    const nextDetail = activityDetail(mode, facts)
     const nextStart = facts.active ? facts.turnStartedAt : undefined
     // A running spinner republishes every frame, so streamed output counters
     // ride its tick instead of recompiling the row on every delta; a usage
@@ -417,9 +412,6 @@ export function apply(ctx: Context): void {
     state.outputProgress = progress
     if (changed) publish()
   }
-  // The work-details mode decides whether the row carries the live detail.
-  followPresentationSettings(ctx, policy, sync)
-
   const offFacts = factsService?.subscribe(next => {
     facts = next
     if (!next.active && next.turn > 0) statusActive = false

@@ -1931,10 +1931,14 @@ The groups below are finalized in this order, each under §7. Their text is the 
   - Every tool is designed at three tiers (verbose block with a body, standard block for a run of one kind, compact merged
     line; Detailed draws the current step verbose and collapses earlier steps), per
     [component-development-spec.md](./component-development-spec.md) §7.1. Settled read, search, command, web, and generic
-    calls are the first part (3b.1); `EditCard` and `WriteCard` take their three tiers in 3b.2 and 3b.3.
-  - `EditCard`: numbered diff (6 rows collapsed, 12 expanded), diffstat, `A`/`M`/`D` per file, the failure reason on
-    `⎿`. `WriteCard`: one line, numbered highlighted code when expanded (highlighting capped at 12 rows and 32 KB,
-    §2.2 row 14). Command rows with their `⎿` tails; the header with its diffstat or the failure line.
+    calls, with the command output tails, are the first part (3b.1); `EditCard` and `WriteCard` take their three tiers in
+    3b.2 and 3b.3.
+  - `EditCard` (owner's answers, R5): an edit is `✓ Edit(path) · +4 −2` with a diffstat bar and its diff, with
+    real line numbers (the Harness gives no start line, so the one gutter, which numbers the modified file and leaves removed lines blank, counts from 1 in each hunk for now),
+    syntax-highlighted code, and a tint that stops 4 columns short of the right edge; the failure reason is on the call's line. `WriteCard`: `✓
+    Write(path) · 84 lines · 3.1 KB` and numbered highlighted code (highlighting capped at 12 rows and 32 KB, §2.2 row
+    14). Both are open by default, 6 rows at Standard, 12 at Verbose, up to 40 with Ctrl+O, each its own block (never a
+    run); only Compact folds them into the merged line with its diffstat.
   - Content of any size through §4.2: a large write or edit shows its diff, never a rejection.
   - Deletes the canonical-node card path (`transcript/canonical-node-renderer.ts`) and the tool painters it replaces.
 - **3c Activity row, motion, notices, and compaction** (`ActivityRow`, `Banner`, `CompactionRow`; scenes 14, 16, 20).
@@ -1992,7 +1996,7 @@ part is accepted (§7 step 3).
 | R3 | 3a.2 answers and reasoning | 3a.2 accepted (Markdown answers under a leading `●` via `bodyLead`, reasoning header with duration and text aligned under the word, a blank row after the banner; the banner stays its own block) | `feat/3a` |
 | R3b | 3a.3 the live turn | 3a.3 accepted (the tail chip `Back to bottom · Ctrl+↓` / `N new turns · Ctrl+↓` counting turns, a dedicated follow-tail key, the held place, the incremental Markdown scan, `W-answer` budget and `perf-stream` ceilings); the footer notice deleted | `feat/3a` |
 | R4 | 3a.4 images and cutover cleanup; 3b.1 settled tool lines | 3a.4 accepted; group 3a finalized (goldens written for the stream scenarios, spec §5.6 rewritten as accepted behavior, briefs removed); the `app-*` goldens and Website app shots wait with the Website (on hold); 3b.1 built (every tool at three tiers, spec §7.1) and its effect accepted by the owner; its tests, goldens and perf A/B run in a separate test session (spec §3.1), so it is not yet marked accepted | `feat/3a` |
-| R5 | 3b.2 edit cards; 3b.3 write and command cards | not started | |
+| R5 | 3b.2 edit cards; 3b.3 write card (command rows were finished in 3b.1) | designed and built (scenarios `edits`, `edits-compact`, `-detailed`, `-verbose`); the owner's answers: relative line numbers, highlighted diff with an inset tint, calls named by tool; Standard shows every edit and write open, awaiting the owner's review | `feat/3a` |
 | R6 | 3c.1 activity header; 3c.2 activity details and tips | not started | |
 | R7 | 3c.3 notices and banners; 3c.4 compaction | not started | |
 | R8 | 3d.1 approval card; 3d.2 plan review card | not started | |
