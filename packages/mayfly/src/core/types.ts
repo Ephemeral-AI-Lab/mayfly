@@ -370,6 +370,11 @@ export interface MayflyKeyBinding extends Omit<MayflyKeyAction, 'keys' | 'handle
   readonly overridden: boolean
 }
 
+/** What the user is being asked for: a decision on a call or a plan, or an answer to a question. The request itself is the panel's and the stream's. */
+export interface MayflyDecisionWait {
+  readonly kind: 'approval' | 'answer'
+}
+
 /**
  * `ctx.mayflyKeymap` — the keybinding registry. All Mayfly key handling goes
  * through registered actions; conflict detection runs at registration.
@@ -969,5 +974,13 @@ declare module '@deepseek-ai/cordis' {
      * @mode emit
      */
     'mayfly/editor-slot-swapped'(occupied: boolean): void
+    /**
+     * The decision the user is being asked for changed: an approval, a question, or a plan review became the active
+     * panel, or the last one settled. The activity row names the wait (and stays up above the panel) while one is
+     * pending. Emitted by `mayfly-approval` and `mayfly-questions`; unfiltered.
+     * @param wait - what is being asked, or `undefined` when nothing waits on the user.
+     * @mode emit
+     */
+    'mayfly/decision-wait-changed'(wait: MayflyDecisionWait | undefined): void
   }
 }

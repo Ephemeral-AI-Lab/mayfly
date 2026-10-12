@@ -26,6 +26,7 @@ export function apply(ctx: Context): void {
     /* A plan review mounts its document into the scrollable content flow and
        keeps only the decision controls in the editor dock. */
     const document = single !== undefined && choices !== undefined ? mountPlanDocument(ctx, `${id}.document`, () => planDocumentNode(single, t)) : undefined
+    ctx.emit('mayfly/decision-wait-changed', { kind: choices === undefined ? 'answer' : 'approval' })
     return requestOverlay(ctx, {
       id, title: () => single !== undefined && choices !== undefined ? single.header ?? t('Plan review') : t('Questions'),
       ...choices === undefined ? {} : { dismissal: 'discard', contentScroll: true },
@@ -35,6 +36,9 @@ export function apply(ctx: Context): void {
       answer: event => single !== undefined && choices !== undefined ? planReviewAnswer(single, choices, event) : questionnaireAnswer(questions, event),
       ...choices === undefined ? {} : { onAction: event => planReviewAction(single!, choices, event, t) },
       cancelled: reason => { throw new UserQuestionError(reason === 'dismiss' ? 'ask_user_question was dismissed' : 'ask_user_question was aborted before the user answered', reason === 'dismiss' ? 'ASK_CANCELLED' : 'ASK_ABORTED') },
-    }).result.finally(() => { document?.dispose() })
+    }).result.finally(() => {
+      document?.dispose()
+      ctx.emit('mayfly/decision-wait-changed', undefined)
+    })
   })
 }

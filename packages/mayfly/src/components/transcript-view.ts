@@ -51,7 +51,7 @@ export type StreamRow =
    * first once settled) that the row clips.
    */
   | { readonly kind: 'reasoning', readonly id: string, readonly text: string, readonly label?: string }
-  /** A settled tool call, the verbose tier: a glyph by outcome, the verb, the target, what came of it, and a short body. */
+  /** A tool call, the verbose tier: a glyph by state (a dot that breathes while it runs), the name, the target, what came of it, and a short body. */
   | ({ readonly kind: 'tool', readonly id: string } & ToolBlockFacts)
   /** A run of settled calls of one kind, the standard tier: a head and one line per call. */
   | ({ readonly kind: 'tools', readonly id: string } & ToolGroupFacts)
@@ -139,7 +139,10 @@ function rowItems(row: StreamRow): readonly MayflyListItem[] {
         { id: `${row.id}.text`, label: '', body: ui.text(row.text, { tone: 'muted', styles: ['italic'] }), bodyAlways: true, bodyLead: [span('  ')] },
       ]
     case 'tool': return [
-      line(row.id, ToolLine(row)),
+      // A call that still runs leads with a breathing dot, a motion span that only a row body may paint.
+      row.state === 'pending'
+        ? { id: row.id, label: row.name, body: ui.richText(ToolLine(row), { overflow: 'truncate' }), bodyAlways: true, bodyLead: [span('')] } satisfies MayflyListItem
+        : line(row.id, ToolLine(row)),
       ...(row.moreBefore === undefined ? [] : [line(`${row.id}.before`, ToolMore(row.moreBefore))]),
       ...(row.body ?? []).map((part, index) => line(`${row.id}.body.${String(index)}`, ToolBody(part))),
       // An edit's hunks, each a diff of its own (the band behind the changed code, no line numbers); a write's code.

@@ -1942,19 +1942,19 @@ The groups below are finalized in this order, each under §7. Their text is the 
   - Content of any size through §4.2: a large write or edit shows its diff, never a rejection.
   - Deletes the canonical-node card path (`transcript/canonical-node-renderer.ts`) and the tool painters it replaces.
 - **3c Activity row, motion, notices, and compaction** (`ActivityRow`, `Banner`, `CompactionRow`; scenes 14, 16, 20).
-  - The glyph by phase: thinking blooms, *Deep diving* fills, waiting on an external action breathes, a running tool
-    keeps a still `●` while its label shimmers, waiting on the user is a static `?`, and stopping is a static `■`. The
-    header tail (`· 8s · ↑30.2k ↓1.1k · 38 tok/s`) is priority 2 and hides first; the right gap (priority 1) carries
-    `Esc interrupt · Ctrl+O expand` while a detail exists, the rotating tip only in the *Deep diving* row, or a toast.
-    Up to three `⎿` detail items, one truncated row each. The row pads to the turn's highest detail count (a plugin
-    fact) and renders nothing when idle.
+  - The row is the turn's vitals, a constant three rows (header, one `⎿` line, a blank row) at the stream's left margin.
+    The glyph by phase: thinking blooms through four named stages that deepen with time, *Deep diving* and *Writing*
+    fill, waiting on the user breathes (approval or answer), a running tool keeps a still `●` while its label shimmers,
+    and stopping is a static `■`. The header tail (`· 8s · ↑30.2k ↓1.1k · 38 tok/s`) is priority 1 and hides first. The
+    `⎿` line is a rotating tip, except at Compact where the stream shows no process and it carries the detail. Nothing
+    the stream shows is repeated here, and every in-flight item is in the stream first (component-library §5.3.1).
   - `transcript/pane-activity.ts` stops measuring widths and animating: core's clock moves the glyph and the shimmer;
     the plugin republishes once a second for the elapsed time and throughput (data, not motion).
-  - Tips teach keys and prefixes (`transcript/tips-content.ts`) and appear only in the *Deep diving* gap; a quiet-hints
-    setting (`minimal`, `off`) trims the gap cue and the placeholder.
+  - Tips teach keys and prefixes (`transcript/tips-content.ts`) and fill the `⎿` line, rotating each turn and every 15 s;
+    a quiet-hints setting (`full`, `off`) blanks them.
   - Notices: `Banner` rows for rate limiting, offline, context nearly full, low balance, and a resumed session, bound
     to the native facts that carry them (confirm the retry and offline signals against the Harness reference); toasts
-    in the activity gap from the notification lane.
+    from the notification lane (their place is decided with 3c.3, since the gap is gone).
   - `CompactionRow` over `compaction/start`, `compaction/summary` (`shadowedTokenCount`), and `compaction/end`
     (`error`): `1/2 summarizing`, `2/2 applying`, the occupancy bar from the token meter, the 800 ms drain as a
     `progress.transition`, the settled `✓ Compacted 84 items · 91% → 9%`, and the failure row.
@@ -1997,7 +1997,7 @@ part is accepted (§7 step 3).
 | R3b | 3a.3 the live turn | 3a.3 accepted (the tail chip `Back to bottom · Ctrl+↓` / `N new turns · Ctrl+↓` counting turns, a dedicated follow-tail key, the held place, the incremental Markdown scan, `W-answer` budget and `perf-stream` ceilings); the footer notice deleted | `feat/3a` |
 | R4 | 3a.4 images and cutover cleanup; 3b.1 settled tool lines | 3a.4 accepted; group 3a finalized (goldens written for the stream scenarios, spec §5.6 rewritten as accepted behavior, briefs removed); the `app-*` goldens and Website app shots wait with the Website (on hold); 3b.1 built (every tool at three tiers, spec §7.1) and its effect accepted by the owner; its tests, goldens and perf A/B run in a separate test session (spec §3.1), so it is not yet marked accepted | `feat/3a` |
 | R5 | 3b.2 edit cards; 3b.3 write card (command rows were finished in 3b.1) | designed and built (scenarios `edits`, `edits-compact`, `-detailed`, `-verbose`); the owner's answers: relative line numbers, highlighted diff with an inset tint, calls named by tool; Standard shows every edit and write open; the effect is accepted by the owner (`d71a9e5`); its tests, goldens and perf A/B run in a separate test session (spec §3.1), so it is not yet marked accepted | `feat/3a` |
-| R6 | 3c.1 activity header; 3c.2 activity details and tips | not started | |
+| R6 | 3c.1 activity header; 3c.2 activity details and tips; 3b.4 pending call blocks (§5.3.1) | 3c.1, 3c.2 and 3b.4 built; the owner accepted the effect as it stands (tests, goldens and perf A/B run in a separate test session, spec §3.1, so it is not yet marked accepted); a later round, in a session of its own, refines how the activity row and the session flow stay in step (scenarios `phases`, `phases-off`, `thinkingLadder`, `pending`, `pending-compact`, `pending-verbose`, `activityDetail`, `activityWait`); the owner's answers and layout: the block is a constant three rows (header, one line, a blank row before the editor) at the stream's left margin; the line is the single action running now, else a rotating teaching tip; every wait breathes its `●` (`Waiting for your approval` / `Waiting for your answer`, and the row stays above the approval and question panels); Writing fills like Deep diving; a quiet-hints setting (`full`, `off`) blanks the tip; the division of labor between the stream and the activity row is written in component-library §5.3.1 (pending call blocks in the stream, the thinking ladder, a tip under the header outside Compact) and builds as part 3b.4 inside this round; `authorization` is the provider sign-in, so it is not an activity phase | `feat/3a` |
 | R7 | 3c.3 notices and banners; 3c.4 compaction | not started | |
 | R8 | 3d.1 approval card; 3d.2 plan review card | not started | |
 | R9 | 3e.1 levels; 3e.2 row selection; 3e.3 stream search | not started | |

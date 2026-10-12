@@ -8,7 +8,7 @@
  */
 
 import type { MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
-import { latestTurnOf, TranscriptView } from '../components/transcript-view.ts'
+import { latestTurnOf, TranscriptView, type TranscriptViewFacts } from '../components/transcript-view.ts'
 import type { MayflyNodeSlot } from '../core/node-slot.ts'
 import type { MayflyScreenService } from '../core/screen.ts'
 import type { MayflyScreen } from '../core/types.ts'
@@ -20,6 +20,9 @@ import {
   type TranscriptPresentationPolicy,
   type TranscriptPresentationSnapshot,
 } from './presentation-policy.ts'
+
+/** How often the stream is built again while a call runs, so its time moves. */
+const PENDING_TICK_MS = 1000
 
 type Source = TranscriptModel | (() => TranscriptModel | null)
 
@@ -86,6 +89,7 @@ export class TranscriptController {
   private slot: MayflyNodeSlot | undefined
   private screen: TranscriptScreen | undefined
   private expanded = false
+  private tick: ReturnType<typeof setTimeout> | undefined
 
   constructor(private readonly options: TranscriptControllerOptions) {}
 
@@ -159,6 +163,8 @@ export class TranscriptController {
   }
 
   dispose(): void {
+    clearTimeout(this.tick)
+    this.tick = undefined
     this.unmount()
     this.views.clear()
     this.active = undefined
@@ -187,11 +193,29 @@ export class TranscriptController {
       expanded: this.expanded,
       liveTurnHeader: view.options.liveTurnHeader === true,
       t: this.options.t,
+      now: Date.now(),
       queued: this.options.queued(),
       ...(this.options.imageRefs === undefined ? {} : { imageRefs: this.options.imageRefs }),
     })
     slot.setTurns(latestTurnOf(facts))
     slot.set(TranscriptView(facts))
+    this.keepTime(facts)
+  }
+
+  /** A call that still runs shows its own time, so the stream is built again each second while one is on screen. */
+  private keepTime(facts: TranscriptViewFacts): void {
+    const pending = facts.turns.some(turn => turn.rows.some(row => row.kind === 'tool' && row.state === 'pending'))
+    if (!pending) {
+      clearTimeout(this.tick)
+      this.tick = undefined
+      return
+    }
+    if (this.tick !== undefined) return
+    this.tick = setTimeout(() => {
+      this.tick = undefined
+      this.publish()
+      this.screen?.requestRender()
+    }, PENDING_TICK_MS)
   }
 
   private mount(): void {

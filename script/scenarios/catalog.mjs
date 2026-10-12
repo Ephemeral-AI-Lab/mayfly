@@ -24,7 +24,11 @@ const COVERS = {
   thinking: [...STREAM, `${TRANSCRIPT}presentation-policy.ts`, 'packages/mayfly/src/core/ui-list-paint.ts'],
   live: [...STREAM],
   markdown: [...STREAM, 'packages/mayfly/src/core/components.ts', 'packages/mayfly/src/core/content-rows.ts', 'packages/mayfly/src/core/markdown-rows.ts', 'packages/mayfly/src/core/ui-list-paint.ts'],
-  phases: [`${TRANSCRIPT}pane-activity.ts`, `${TRANSCRIPT}spinners.ts`, `${TRANSCRIPT}output-rate.ts`],
+  phases: [`${TRANSCRIPT}pane-activity.ts`, `${TRANSCRIPT}output-rate.ts`, 'packages/mayfly/src/conversation/activity-detail.ts', 'packages/mayfly/src/components/activity-row.ts'],
+  thinkingLadder: [`${TRANSCRIPT}pane-activity.ts`, 'packages/mayfly/src/components/activity-row.ts'],
+  pending: [`${TRANSCRIPT}pane-activity.ts`, `${TRANSCRIPT}tool-calls.ts`, `${TRANSCRIPT}transcript-model.ts`, 'packages/mayfly/src/components/activity-row.ts', ...STREAM],
+  activityDetail: [`${TRANSCRIPT}pane-activity.ts`, 'packages/mayfly/src/conversation/activity-detail.ts', 'packages/mayfly/src/components/activity-row.ts'],
+  activityWait: [`${TRANSCRIPT}pane-activity.ts`, 'packages/mayfly/src/components/activity-row.ts', `${INTERACTION}approval-plugin.ts`, `${INTERACTION}questions-plugin.ts`],
   prompts: [`${TRANSCRIPT}transcript-model.ts`, `${INTERACTION}attachments.ts`, ...STREAM],
   turns: [`${TRANSCRIPT}transcript-model.ts`, `${TRANSCRIPT}process-groups.ts`, `${TRANSCRIPT}presentation-policy.ts`, `${INTERACTION}pane-queue.ts`, 'packages/mayfly/src/core/node-slot.ts', ...STREAM],
   errors: [`${TRANSCRIPT}tool-*.ts`, `${TRANSCRIPT}transcript-model.ts`, ...STREAM],
@@ -61,6 +65,86 @@ const COVERS = {
  * that `differs` from the prototype, and `pending`. `brief.mjs` prints them. Finalizing a group removes its entries.
  */
 const REVIEW = {
+  pending: {
+    scene: 17,
+    reference: 'prototype scene 17 (Tool rows) and 14 (Activity row) · component-library §5.3.1 (division of labor) · part 3b.4',
+    implemented: [
+      'A call is in the stream the moment it is committed: `● Bash(pnpm test) · 4s`, the dot breathing and the call\'s own time ticking, then `✓`, `✗`, or `⊘` in place.',
+      'Two commands running together are two pending lines; when they settle they regroup into the run block.',
+      'While a call runs the activity row says only `Running commands` (no time, no detail) with a tip under it; at Compact it carries the command, since the stream shows no process.',
+    ],
+    focus: [
+      { look: 'The stream is never empty while the row says Running commands', how: 'checkpoint `running`' },
+      { look: 'Two pending lines, each with its own time', how: 'checkpoint `parallel`' },
+      { look: 'The pending line becomes a failure with its reason', how: 'checkpoint `failing`, then `end`' },
+      { look: 'The same at Compact: the row carries the command', how: '`pnpm run scenario pending-compact`, checkpoint `running`' },
+    ],
+    differs: ['Partial output is not shown: the Harness reports a foreground command\'s output only with its result.'],
+    pending: ['The interrupted call (`⊘`) is the last turn of the replay; the approval row in the stream is part 3d.'],
+  },
+  thinkingLadder: {
+    scene: 14,
+    reference: 'prototype scene 14 (Activity row) · component-library §5.3.1 (the thinking ladder)',
+    implemented: ['The thinking label deepens with the seconds spent in the phase: Pondering, Mulling, DeepThinking, Fathoming, its tone stepping muted, default, primary, accent bold.'],
+    focus: [
+      { look: 'Four words, four tones, the glyph blooming throughout', how: 'checkpoints `pondering`, `mulling`, `deep`, `fathoming`' },
+      { look: 'The reasoning text in the stream shows no ticking time', how: 'checkpoint `deep`' },
+    ],
+    differs: [],
+    pending: [],
+  },
+  phases: {
+    scene: 14,
+    reference: 'prototype scene 14 (Activity row, `v`/`V` next phase) · spec §5.3 · ActivityRow in mayfly-components.mjs · part 3c.1',
+    implemented: [
+      'Deep diving fills its glyph, Thinking blooms its glyph, Writing fills like Deep diving; the label stays still in all three.',
+      'A running tool keeps a still ● while only its label shimmers; a call being prepared reads Preparing to edit files.',
+      'The block is a constant three rows: the header, one line under it, and a blank row before the editor; it starts at the stream\'s left margin.',
+      'The header tail (`· 8s · ↑30.2k ↓1.1k · 38 tok/s`) ticks once a second; the glyph and the shimmer move on core\'s clock, and reduced motion freezes them.',
+    ],
+    focus: [
+      { look: 'Glyph moves over a still label (Deep diving, Thinking, Writing); label moves over a still ● (tool)', how: 'checkpoints `diving`, `thinking`, `writing`, `tool`' },
+      { look: 'The block keeps its height: the editor never moves between phases', how: 'checkpoints `diving` against `tool`' },
+      { look: 'What hides first as the row narrows: the tail, then the ⎿ connector', how: '`pnpm run scenario phases --width 60`, then `--width 40`, at checkpoints `tool` and `thinking`' },
+      { look: 'Reduced motion stops the glyph and the shimmer', how: '`/settings`, Reduced motion, then play to checkpoint `diving`' },
+    ],
+    differs: [
+      'The block is two lines plus a spacing row, as the owner drew it; the spec\'s up-to-three `⎿` lines and the interrupt cue in the right gap are gone.',
+      'Waiting on the user breathes its ● like an external wait (no static `?`); see `activityWait`.',
+    ],
+    pending: ['The stop acknowledgment (a static red ■ `interrupting…`) needs a live turn: press Esc in a real session. Notices and compaction are parts 3c.3 and 3c.4.'],
+  },
+  activityDetail: {
+    scene: 14,
+    reference: 'prototype scene 14 (Activity row) · spec §5.3 · part 3c.2 (details and tips)',
+    implemented: [
+      'The line under the header is the single action running now: the latest reasoning paragraph, a command, a query, or one salient argument, cut at the end of the row.',
+      'While no action is named (Deep diving, Writing) that line holds a teaching tip instead, after the same ⎿, rotating each turn and every 15 s.',
+      'Below 40 columns the line drops its ⎿ connector (the tip too).',
+    ],
+    focus: [
+      { look: 'Detail under Thinking, under the command, the search, and the queries', how: 'checkpoints `reasoning`, `command`, `single`, `queries`' },
+      { look: 'The tip fills the line while the model waits or writes, and the editor does not move', how: 'checkpoints `diving` and `writing`' },
+      { look: 'What sheds at 60 and 40 columns', how: 'checkpoints `narrow` and `narrower`' },
+      { look: 'A dialog (the /help overlay) hides the row, and it returns', how: 'checkpoints `hidden`, `back`' },
+    ],
+    differs: [],
+    pending: ['The quiet-hints setting (`full`, `off`) only blanks the tip line.'],
+  },
+  activityWait: {
+    scene: 14,
+    reference: 'prototype scene 14 (Activity row, phase 5) and scene 21 (approval) · spec §5.3 · part 3c.2',
+    implemented: [
+      'While an approval or a question waits on you, the row stays above the panel with a breathing ● and `Waiting for your approval` or `Waiting for your answer`, the subject on the ⎿ row, and the wait time.',
+      'The row clears when you answer; other dialogs still hide it.',
+    ],
+    focus: [
+      { look: 'Breathing ●, still label, elapsed wait time, the ⎿ subject', how: 'checkpoints `approval` and `question`' },
+      { look: 'The row is gone after the answer', how: 'checkpoint `end`' },
+    ],
+    differs: ['The decision cards of part 3d replace the panels under this row.'],
+    pending: ['The approval row in the stream and the card itself are part 3d.'],
+  },
   toolkit: {
     scene: 17,
     reference: 'prototype scene 17 (Tool rows and edits) · spec §5.3 · every kind of call in one turn',
@@ -157,7 +241,53 @@ const REVIEW = {
  * Scripts that differ from playing to the end. A settled job wakes the agent for a real turn on the stub, which runs
  * at real time, so the jobs replay is captured while all three jobs run.
  */
+/** Play at the replay's own pace: the activity row is a function of time (a phase lasts seconds, the tail ticks). */
+const TIMED = { timed: true }
 const SCRIPTS = {
+  // A command that runs, two at once, one that fails, and one cut off; the row names the phase while the stream holds the calls.
+  pending: [
+    play('running', TIMED), checkpoint('running'),
+    play('parallel', TIMED), checkpoint('parallel'),
+    play('failing', TIMED), checkpoint('failing'),
+    play(), checkpoint('end'),
+  ],
+  thinkingLadder: [
+    play('pondering', TIMED), checkpoint('pondering'),
+    play('mulling', TIMED), checkpoint('mulling'),
+    play('deep', TIMED), checkpoint('deep'),
+    play('fathoming', TIMED), checkpoint('fathoming'),
+  ],
+  // Each phase of one turn, stopped part-way through it.
+  phases: [
+    play('diving', TIMED), checkpoint('diving'),
+    play('thinking', TIMED), checkpoint('thinking'),
+    play('tool', TIMED), checkpoint('tool'),
+    play('writing', TIMED), checkpoint('writing'),
+    play('preparing', TIMED), checkpoint('preparing'),
+    play(), checkpoint('end'),
+  ],
+  // The detail rows of each kind of action, the reservation while the answer streams, a narrow terminal, a hiding dialog.
+  activityDetail: [
+    play('diving', TIMED), checkpoint('diving'),
+    play('reasoning', TIMED), checkpoint('reasoning'),
+    play('command', TIMED), checkpoint('command'),
+    resize(60, 30), checkpoint('narrow'),
+    resize(40, 30), checkpoint('narrower'),
+    resize(120, 40),
+    play('single', TIMED), checkpoint('single'),
+    play('queries', TIMED), checkpoint('queries'),
+    play('writing', TIMED), checkpoint('writing'),
+    type('/help'), key('enter'), checkpoint('hidden'), key('esc'), checkpoint('back'),
+    play('next', TIMED), checkpoint('next'),
+  ],
+  // The approval panel and the question panel, each answered with the keys.
+  activityWait: [
+    play(), checkpoint('approval'),
+    key('down'), key('enter'),
+    play(), checkpoint('question'),
+    key('enter'),
+    play(), checkpoint('end'),
+  ],
   // A settled turn folds behind its title; Ctrl+O opens its calls as lines; the interrupted turn leaves a call cancelled.
   toollines: [
     play(), checkpoint('standard'),
@@ -203,6 +333,8 @@ const SCRIPTS = {
 }
 /** Replays that run at a size of their own. */
 const SIZES = {
+  phases: [DEFAULT_SIZE, [60, 24], [40, 24]],
+  activityDetail: [DEFAULT_SIZE, [60, 30]],
   turns: [DEFAULT_SIZE, [60, 24], [40, 24]],
   toollines: [[120, 80], [60, 64], [40, 64]],
   edits: [[120, 90], [60, 70], [40, 70]],
@@ -371,6 +503,32 @@ export const CATALOG = Object.freeze({
     sizes: [[120, 80], [60, 64]],
     script: level === 'detailed' ? [play('built'), checkpoint('live'), play(), checkpoint('end')] : [play(), checkpoint('end')],
   }])),
+  // Compact hides the process of a running turn, so the activity row carries the detail.
+  'pending-compact': {
+    summary: 'the pending calls at the Compact level: the stream holds only the prompt, the activity row carries the command',
+    source: { replay: 'pending' },
+    config: { mayfly: { transcriptView: 'compact' } },
+    covers: COVERS.pending,
+    sizes: [DEFAULT_SIZE],
+    script: [play('running', TIMED), checkpoint('running'), play(), checkpoint('end')],
+  },
+  'pending-verbose': {
+    summary: 'the pending calls at the Verbose level',
+    source: { replay: 'pending' },
+    config: { mayfly: { transcriptView: 'verbose' } },
+    covers: COVERS.pending,
+    sizes: [DEFAULT_SIZE],
+    script: [play('running', TIMED), checkpoint('running'), play('parallel', TIMED), checkpoint('parallel'), play(), checkpoint('end')],
+  },
+  // The quiet-hints setting (the default, full, is `phases`): the line under the header stays blank.
+  'phases-off': {
+    summary: 'the activity row with quiet hints off: no teaching tip under the header',
+    source: { replay: 'phases' },
+    config: { mayfly: { quietHints: 'off' } },
+    covers: COVERS.phases,
+    sizes: [DEFAULT_SIZE],
+    script: [play('diving', TIMED), checkpoint('diving'), play('writing', TIMED), checkpoint('writing')],
+  },
   // The file changes at the other work-details levels (the default, Standard, is `edits`).
   ...Object.fromEntries(['compact', 'detailed', 'verbose'].map(level => [`edits-${level}`, {
     summary: `the file changes at the ${level[0].toUpperCase()}${level.slice(1)} level`,

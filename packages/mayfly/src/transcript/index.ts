@@ -44,12 +44,6 @@ export { createToolPresentationModel, toolCallNode, toolResultNode } from './too
 export type { ToolPresentationFacts } from './tool-model.ts'
 export { appendTranscriptNode, createTranscriptModel, TranscriptController } from './transcript-model.ts'
 export type { TranscriptControllerOptions, TranscriptViewOptions } from './transcript-model.ts'
-export {
-  BRAILLE_SPINNER_FRAMES,
-  BRAILLE_SPINNER_INTERVAL_MS,
-  MOON_SPINNER_FRAMES,
-  MOON_SPINNER_INTERVAL_MS,
-} from './spinners.ts'
 export type {
   TranscriptAssistantItem,
   TranscriptItem,

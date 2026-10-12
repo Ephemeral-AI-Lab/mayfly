@@ -10,8 +10,8 @@
 
 import type { MayflyInlineSpan } from '@ephemeral-ai/mayfly-ui'
 
-/** How a settled call ended: it worked, it failed, or its turn ended before it settled. */
-export type ToolLineState = 'ok' | 'error' | 'cancelled'
+/** How a call stands: it still runs, it worked, it failed, or its turn ended before it settled. */
+export type ToolLineState = 'pending' | 'ok' | 'error' | 'cancelled'
 
 /** The facts of one tool line. Every text is final: translated, sanitized, and without escape sequences. */
 export interface ToolLineFacts {
@@ -90,17 +90,20 @@ export interface ToolGroupFacts {
   readonly items: readonly ToolGroupItemFacts[]
 }
 
-const GLYPH = { ok: '✓ ', error: '✗ ', cancelled: '⊘ ' } as const
-const GLYPH_TONE = { ok: 'success', error: 'danger', cancelled: 'muted' } as const
+const GLYPH = { pending: '● ', ok: '✓ ', error: '✗ ', cancelled: '⊘ ' } as const
+const GLYPH_TONE = { pending: 'primary', ok: 'success', error: 'danger', cancelled: 'muted' } as const
+
+/** The glyph of a call that still runs: a dot that breathes (one motion channel, so the rest of the line is still). */
+const PENDING_GLYPH: readonly MayflyInlineSpan[] = [{ text: '', motion: 'loader', variant: 'breath' }, { text: ' ' }]
 
 /**
  * The spans of one tool line.
  * @param facts - the call's state, verb, target, and outcome.
- * @returns the spans, glyph first.
+ * @returns the spans, glyph first; a call that still runs leads with the breathing dot, which only a row body may paint.
  */
 export function ToolLine(facts: ToolLineFacts): readonly MayflyInlineSpan[] {
   return [
-    { text: GLYPH[facts.state], tone: GLYPH_TONE[facts.state] },
+    ...facts.state === 'pending' ? PENDING_GLYPH : [{ text: GLYPH[facts.state], tone: GLYPH_TONE[facts.state] } as const],
     { text: facts.name, tone: facts.state === 'cancelled' ? 'muted' : 'default', styles: ['strong'] },
     ...(facts.target === undefined ? [] : [{ text: '(', tone: 'muted' } as const, { text: facts.target, tone: 'accent' } as const, { text: ')', tone: 'muted' } as const]),
     ...(facts.outcome === undefined ? [] : [{ text: ` · ${facts.outcome}`, tone: 'muted' } as const]),

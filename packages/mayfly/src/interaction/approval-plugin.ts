@@ -70,7 +70,11 @@ export function apply(ctx: Context): void {
         cancellations.delete(cancel)
         request.signal?.removeEventListener('abort', cancel)
         resolve(outcome)
-        if (started) { active = false; queued.shift()?.() }
+        if (started) {
+          active = false
+          ctx.emit('mayfly/decision-wait-changed', undefined)
+          queued.shift()?.()
+        }
       }
       const cancel = (): void => {
         if (started) stop?.()
@@ -82,6 +86,7 @@ export function apply(ctx: Context): void {
         if (disposed || currentAgent.current() !== request.agent || request.signal?.aborted) { finish('cancelled'); return }
         if (allowances.get(request.agent)?.has(request.toolName)) { finish('allowed-once'); return }
         const t = interactionTranslator(ctx)
+        ctx.emit('mayfly/decision-wait-changed', { kind: 'approval' })
         const prompt = requestOverlay(ctx, {
           id: `mayfly.approval.${++sequence}`, title: () => t('Approve {tool}?', { tool: request.toolName }), agent: request.agent, dismissal: 'discard',
           ...request.signal === undefined ? {} : { signal: request.signal },

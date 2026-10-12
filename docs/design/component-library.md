@@ -1143,43 +1143,43 @@ an undo toast.
 
 **Built from:** `loader`, `rich-text`, `stack` (priority admission), `diff`, `code`. Scenes: Activity row, Tool rows and edits.
 
-The header carries the phase, elapsed time, throughput, and a right-aligned
-gap. Under it, one to three wrapped `⎿` lines describe **the single action
-running now**: the running command, path, or query, or the latest reasoning
-paragraph. It is never a list of tools.
+The activity row is the turn's vitals, a block of constant height: a header, one line
+under it, and a blank row before the editor. It starts at the stream's left margin (two cells). It says which phase
+the turn is in, how long it has been there, how much it has said, and how fast; it never repeats text the
+stream already shows (§5.3.1).
 
 ```
-✻ Thinking · 8s · ↑30.2k ↓1.1k                       Esc interrupt · Ctrl+O expand
-  ⎿ Checking whether the activity row can show more than the latest tool name,
-    since every tool call overwrites the previous one…
+  ✶ Mulling · 9s · ↑30.2k ↓640
+    ⎿ Tip: Ctrl+O expands the tool details
 
-● Running commands · 12s · ↑30.2k ↓4.1k · 38 tok/s   Esc interrupt · Ctrl+O expand
-  ⎿ pnpm run verify:changed -- --plan
+  ⡀ Deep diving · 2s
+    ⎿ Tip: / commands
 
-⣤ Deep diving · 2s                                    Tip: / commands
+  ● Running commands
+    ⎿ Tip: /btw asks a side question while it runs
 ```
 
-- **The gap.** Running rows with a detail line carry `Esc interrupt · Ctrl+O
-  expand` there. The `Deep diving` row, which has no detail, rotates the tip there instead. Idle
-  renders nothing.
-- **Height.** One header plus at most three detail lines. The row never
-  collapses while active, so the editor does not shift between phases; a phase
-  with fewer lines pads to the turn's high-water mark.
-- **Narrow widths** shed, in order: detail lines beyond the first, the `⎿`
-  connector, the header tail (rate, counters, elapsed), then the gap.
-- **Tense.** The activity row is the only place that speaks in the present tense;
-  transcript rows speak in the past tense.
+- **The line under the header** is a tip while the stream shows the current action (every level but
+  Compact), and the one-line detail (the latest reasoning paragraph, the running command or path or query) at
+  Compact, where the stream shows no process. It always leads with `⎿`, drops the `⎿` below 40 columns, and
+  is blank when hints are off (`quietHints: off`) or nothing applies.
+- **Height.** Always three rows while a turn runs: nothing shifts between phases. Idle renders nothing.
+- **Narrow widths** shed, in order: the header tail (time, counters, rate), then the `⎿` connector.
+- **Motion.** One channel per row: the glyph moves over a still label (Deep diving, Thinking, Writing), or the
+  label shimmers over a still `●` (a running tool), or the `●` breathes over a still label (a wait on the user).
+  A stop is static. The thinking label deepens with time (§5.3.1).
+- **Tense.** The activity row is the only place that speaks in the present tense about the turn;
+  transcript rows speak in the past tense, except an in-flight call block, which shows its own state (§5.3.1).
 
-Running calls use the same row, with the category choosing label and
-detail:
+Phases and what each shows:
 
 ```
-● Running commands    ⎿ pnpm run verify:changed -- --plan
-● Reading files       ⎿ packages/mayfly/src/transcript/pane-activity.ts
-● Searching code      ⎿ "activity" in packages/
-● Visiting web pages  ⎿ https://pi.dev/docs/latest/tui
-● Updating the plan   ⎿ 3 of 5 items done
-? Waiting for your action ⎿ Which release channel should this go to?
+  ⡀ Deep diving · 2s                      fill glyph; waiting for the model; tip underneath
+  ✶ Pondering · 3s · ↑30.2k ↓80           bloom glyph; the thinking ladder (§5.3.1); tip underneath
+  ⡀ Writing · 20s · ↓240 · 38 tok/s       fill glyph; the answer streams in the stream
+  ● Running commands                      still ●, shimmering label; the call and its time are in the stream
+  ● Waiting for your approval · 45s       breathing ●; the request is in the stream and the panel
+  ■ interrupting…                         static; held 600 ms
 ```
 
 Settled calls are one static line: glyph, past-tense verb, target, outcome.
@@ -1220,6 +1220,54 @@ Settled calls are one static line: glyph, past-tense verb, target, outcome.
 - **Write** is not a diff, because there is nothing to compare: collapsed it is one line, `✓ Wrote path · 84 lines ·
   3.1 KB · Ctrl+O expand`; expanded it shows the file as **syntax-highlighted code with line numbers**
   (`ui.code` with `numbered`), no `+` markers and no bands.
+
+### 5.3.1 Stream and activity row: division of labor
+
+One fact has one home. The stream owns **content and the state of things**; the activity row owns the **vitals
+of the turn**. The Harness gives both one source of truth (the conversation facts), so the rule is about what each
+place draws, not what each place knows.
+
+| Fact | Home | Never also in |
+| --- | --- | --- |
+| Reasoning text, answer text | the stream, as it arrives | the activity row |
+| A tool call, its arguments, its output, its outcome | the stream's call block | the activity row |
+| How long a call has been running | the call block (`● Bash(pnpm test) · 4s`) | the activity row |
+| How long the model has been thinking, tokens in and out, tokens per second | the activity row, while the phase lasts | the live reasoning row (a settled reasoning row keeps its final duration) |
+| The phase word (Deep diving, Thinking, Writing, Running commands, Waiting for you) | the activity row | the stream |
+| A request that waits on you (approval, plan review, question) | the stream row and the panel; the activity row only breathes and names the wait | — |
+| A teaching tip | the activity row | the stream |
+
+**Every in-flight item is visible in the stream.** The user must never see the activity row busy while the
+stream is empty. The moment a call is committed it has a block in the stream, in the state it is in:
+
+| State | Looks like | Notes |
+| --- | --- | --- |
+| Pending | `● Bash(pnpm test) · 4s`, the dot breathing, the time ticking; then any output there is | Calls of one kind running together stack as pending lines; they regroup into the run block when they settle |
+| Complete | `✓ Bash(pnpm test) · 4.2s` and the tier's body | unchanged from §7.1 of the development spec |
+| Failed | `✗ Bash(pnpm test) · exit 1`, the first line of the reason | |
+| Interrupted | `⊘ Bash(pnpm test)`, muted, no outcome | the turn ended before the call settled |
+
+Partial output appears in a pending block only where the Harness reports it while the call runs (the committed
+`tool/call` and `tool/result` events carry none for a foreground command; a background job has its own live tail);
+otherwise the output arrives with the result.
+
+**By level.** Compact hides the process of a running turn, so there the row also carries the one-line detail
+(the running command, or the reasoning paragraph) after its `⎿`. At Standard, Detailed, and Verbose the stream shows
+the current action and the row's second line is a tip.
+
+**The thinking ladder.** The thinking label is a character, not a status: it deepens with the seconds spent in the
+current reasoning phase (the clock restarts with each phase), and its tone steps deeper with it. Four stages:
+
+```
+  ✶ Pondering · 3s       muted         0-5 s
+  ✶ Mulling · 9s         default       5-15 s
+  ✶ DeepThinking · 22s   primary       15-45 s    (the wordplay: DeepSeek)
+  ✶ Fathoming · 58s      accent, bold  45 s and up
+```
+
+Each stage is one word, deeper than the one before.
+The glyph keeps blooming in every stage. The words are one table in `transcript/pane-activity.ts`, so a stage is
+a wording change, not a code change, and each has a Chinese counterpart.
 
 ### 5.4 Goal and todo views
 
@@ -1373,16 +1421,17 @@ other two turns follow the same rules). Whole-conversation row counts: Standard
     The one failure was a truncation bug in the tool-line row, fixed in the same change.
 ```
 
-| Level | Settled turn | Running turn | Activity row |
+| Level | Settled turn | Running turn | Activity row's second line |
 | --- | --- | --- | --- |
-| 1 Compact | prompt (one row), header with diffstat, final answer; a failure keeps its reason line | the prompt only | header and one `⎿` detail line |
-| 2 Standard | header, file-change cards (numbered diff, capped at 6 rows), final answer | settled groups as `⎿` titles and file-change cards as they land | header and `⎿` detail |
-| 3 Detailed | the header is open: reasoning preview, past-tense group titles between the file-change cards, final answer | every card live, one row each | header only |
-| 4 Verbose | everything open: reasoning, every call with its output tail, full diffs | every card live, with the running card's output tail | header only |
+| 1 Compact | prompt (one row), header with diffstat, final answer; a failure keeps its reason line | the prompt only | the `⎿` detail (the stream shows no process) |
+| 2 Standard | header, file-change cards (numbered diff, capped at 6 rows), final answer | reasoning as it arrives, settled groups as blocks, in-flight calls as pending lines, file-change cards as they land | a tip |
+| 3 Detailed | the header is open: reasoning preview, past-tense group titles between the file-change cards, final answer | every card live, one row each; the current step's calls as pending blocks | a tip |
+| 4 Verbose | everything open: reasoning, every call with its output tail, full diffs | every card live, with the running card's output tail | a tip |
 
-- **Detail lives in exactly one place.** Compact and Standard have no running
-  cards, so the activity row carries the `⎿` detail. Detailed and Verbose show
-  the running card in the transcript, so the activity row drops it.
+- **Detail lives in exactly one place** (§5.3.1). Compact shows no process of a
+  running turn, so the activity row carries the `⎿` detail there. Every other
+  level shows the current action in the stream (a pending call block, the
+  reasoning as it arrives), so the activity row's second line is a tip.
 - **The header says what changed.** A settled turn's header carries its
   diffstat (`+10 −3`) so a folded turn still tells you whether files changed.
 - **Never folded away at any level:** failures and their reason, interruptions,

@@ -24,8 +24,11 @@ const LOADER_FRAMES: Readonly<Record<'bloom' | 'fill' | 'gap', readonly string[]
   gap: Object.freeze(['⣾', '⣽', '⣻', '⢿', '⡿', '⣟', '⣯', '⣷']),
 })
 
-/** How bright each of the breath's six shades is, dim to bright to dim (1 is the tone itself). */
-const BREATH_LEVELS: readonly number[] = Object.freeze([0.25, 0.5, 0.8, 1, 0.8, 0.5])
+/** How bright each of the breath's six shades is, dim to bright to dim (1 is the tone itself, 0 the palette's muted gray). */
+const BREATH_LEVELS: readonly number[] = Object.freeze([0, 0.2, 0.6, 1, 0.6, 0.2])
+
+/** From this level up the breath is also bold, so the bright half of the cycle reads at once. */
+const BREATH_BOLD_LEVEL = 0.6
 
 /** Clock steps per breath shade: 400 ms. */
 const BREATH_STEPS = 4
@@ -62,7 +65,8 @@ export function breathPaint(colors: Pick<MayflySemanticColors, 'primary' | 'text
   const floor = rgbOf(colors.textMuted)
   if (tone === undefined || floor === undefined) return colors.primary
   const [r, g, b] = tone.map((channel, index) => Math.round(floor[index]! + (channel - floor[index]!) * level))
-  return text => `\x1b[38;2;${String(r)};${String(g)};${String(b)}m${text}\x1b[39m`
+  const [open, close] = level >= BREATH_BOLD_LEVEL ? ['\x1b[1m', '\x1b[22m'] : ['', '']
+  return text => `${open}\x1b[38;2;${String(r)};${String(g)};${String(b)}m${text}\x1b[39m${close}`
 }
 
 /** What a loader cell is painted with. */

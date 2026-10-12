@@ -91,11 +91,16 @@ export const TRANSCRIPT_LOCALE: MayflyLocaleCatalog = TRANSCRIPT_MESSAGES
 
 /** Activity-pane copy: phase labels plus the running and preparing process labels. */
 export const ACTIVITY_LOCALE = identityCatalog({
-  ' · Tip: ': ' · 提示：',
+  'Tip: ': '提示：',
   'Deep diving': '深度求索中',
-  'Thinking': '思考中',
+  'Pondering': '思索中',
+  'Mulling': '琢磨中',
+  'DeepThinking': '深度思考中',
+  'Fathoming': '沉思中',
   'Writing': '输出中',
-  ' interrupting…': ' 正在中断…',
+  'interrupting…': '正在中断…',
+  'Waiting for your approval': '等待你的批准',
+  'Waiting for your answer': '等待你的回答',
   ...PROCESS_ACTIVE_ZH,
 })
 

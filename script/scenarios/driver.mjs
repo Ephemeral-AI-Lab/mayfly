@@ -209,7 +209,9 @@ export function apply(ctx) {
             const attemptId = `replay-${String(agent.id)}-attempt-${String(counters.attempt + (action.frame === 'start' ? 1 : 0))}`
             if (action.frame === 'start') {
               counters.attempt += 1
-              counters.revision = 1
+              // The Agent's revision counts every frame it ever streams: a start that falls back to 1 reads as a stale
+              // frame and the live stream drops the whole attempt, so only the first step of a session would show live.
+              counters.revision += 1
               counters.frameIndex = 0
               ctx.emit('agent/assistant-stream', { agent, frame: { type: 'start', attemptId, revision: counters.revision, turn: action.turn, step: action.step } })
             } else if (action.frame === 'delta') {

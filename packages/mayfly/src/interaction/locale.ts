@@ -678,6 +678,7 @@ const zh: Readonly<Record<string, string>> = {
   'Glyphs': '字形',
   'Monochrome': '单色',
   'Reduced motion': '减少动效',
+  'Quiet hints': '安静提示',
 }
 
 const en = Object.freeze(Object.fromEntries(Object.keys(zh).map(key => [key, key])))

@@ -36,6 +36,8 @@ export interface StreamInputs {
   /** Whether a running turn keeps its header (a view without an activity row). */
   readonly liveTurnHeader: boolean
   readonly t: MayflyTranslate
+  /** The time, which a call that still runs measures its own against. */
+  readonly now: number
   /** The messages the user typed while the agent works. */
   readonly queued: readonly { readonly id: string, readonly text: string }[]
   /** Where each image attachment's reference is kept for the byte loader, by attachment id. */
@@ -160,7 +162,7 @@ export class StreamFacts {
     const lifecycle = new Map((model.turns ?? []).map(turn => [turn.turn, turn]))
     const buckets: { readonly turn: number, readonly rows: StreamRow[] }[] = []
     let lead: StreamRow[] = []
-    runsOf(display, inputs.t).forEach((item, position) => {
+    runsOf(display, inputs.t, inputs.now).forEach((item, position) => {
       const turn = turnOf(item)
       const mapped = this.rowsOf(item, inputs, position).map(row => this.intern(row, kept))
       if (mapped.length === 0) return
@@ -276,9 +278,9 @@ function isFileChange(entry: TranscriptEntryModel): boolean {
 /**
  * The display plan with the tool entries of the standard tier gathered into runs: consecutive calls of one kind, whatever
  * entries they came in, are one block. Anything else (a reasoning, an answer, a file change, a header) ends the run, and
- * a call that still runs is skipped without ending it.
+ * a call that still runs is a line of its own and ends it.
  */
-function runsOf(display: readonly DisplayItem[], t: MayflyTranslate): readonly (DisplayItem | RunUnit)[] {
+function runsOf(display: readonly DisplayItem[], t: MayflyTranslate, now: number): readonly (DisplayItem | RunUnit)[] {
   const units: (DisplayItem | RunUnit)[] = []
   let run: { turn: number, calls: Call[] } | undefined
   const flush = (): void => {
@@ -287,7 +289,13 @@ function runsOf(display: readonly DisplayItem[], t: MayflyTranslate): readonly (
   }
   for (const item of display) {
     if (item.kind === 'entry' && item.tier === 'standard' && isSemantic(item.entry) && isToolLike(item.entry) && !isFileChange(item.entry)) {
-      for (const call of callsOf(item.entry, item.turnClosed, t)) {
+      for (const call of callsOf(item.entry, item.turnClosed, t, now)) {
+        // A call that still runs is a line of its own; it settles into the run afterwards.
+        if (call.state === 'pending') {
+          flush()
+          units.push({ kind: 'run', turn: item.entry.turn, calls: [call] })
+          continue
+        }
         if (run !== undefined && run.calls[0]!.activity !== call.activity) flush()
         if (run === undefined) run = { turn: item.entry.turn, calls: [] }
         run.calls.push(call)
@@ -303,7 +311,7 @@ function runsOf(display: readonly DisplayItem[], t: MayflyTranslate): readonly (
 
 /** The rows of one entry: none for an empty one, one per call for a tool, group, or run of calls drawn as verbose blocks. */
 function entryRows(item: EntryItem, entry: TranscriptEntryModel, inputs: StreamInputs): readonly StreamRow[] {
-  if (isToolLike(entry)) return callsOf(entry, item.turnClosed, inputs.t).map(call => verboseRow(call, item.expanded, inputs.t, item.tier === 'standard' ? 'standard' : 'verbose'))
+  if (isToolLike(entry)) return callsOf(entry, item.turnClosed, inputs.t, inputs.now).map(call => verboseRow(call, item.expanded, inputs.t, item.tier === 'standard' ? 'standard' : 'verbose'))
   const row = entryRow(item, entry, inputs)
   return row === undefined ? [] : [row]
 }

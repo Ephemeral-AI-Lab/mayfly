@@ -580,15 +580,91 @@ const edits = {
 }
 
 const phases = {
-  summary: 'activity phases: waiting for the first token, reasoning only, text only, and a tool call being prepared',
+  summary: 'activity phases: waiting for the first token, reasoning, a running command, answer text, and a call being prepared',
   items: [
     turn('Show me every activity phase.', [
-      step({ firstTokenMs: 4000, reasoning: 'Thinking only, with no visible answer yet.', reasoningMs: 4000, stream: true, tools: [tool('read', { file_path: 'README.md' }, { result: '# replay-app', runMs: 500 })] }),
-      step({ text: 'A text-only step that streams slowly so the composing phase stays visible for a while.', textMs: 5000 }),
-      step({ text: 'Now a large edit is prepared.', textMs: 800, prepareMs: 5000, tools: [edit('src/config.mjs', lines(6, n => `  setting${String(n)}: ${String(n)},`), lines(6, n => `  setting${String(n)}: ${String(n + 1)},`))] }),
+      step({
+        firstTokenMs: 6000, marks: [{ block: 'wait', at: 0.85, name: 'diving' }, { block: 'reasoning', at: 0.85, name: 'thinking' }, { block: 'tool', at: 0.6, name: 'tool' }],
+        reasoning: 'Checking how the loader reads its settings.\nThe config has two keys and both have defaults.\nI will run the build to be sure nothing else reads them.',
+        reasoningMs: 6000, stream: true,
+        tools: [tool('bash', { command: 'pnpm run build:changed', description: 'Build the changed packages' }, { result: 'built 3 packages', runMs: 7000 })],
+      }),
+      step({ text: 'The build passed. A text-only step that streams slowly so the writing phase stays visible for a while.', textMs: 6000, marks: [{ block: 'text', at: 0.7, name: 'writing' }] }),
+      step({ text: 'Now a large edit is prepared.', textMs: 800, prepareMs: 6000, marks: [{ block: 'prepare', at: 0.6, name: 'preparing' }], tools: [edit('src/config.mjs', lines(6, n => `  setting${String(n)}: ${String(n)},`), lines(6, n => `  setting${String(n)}: ${String(n + 1)},`))] }),
       step({ text: 'Done.' }),
     ]),
   ],
+}
+
+const thinkingLadder = {
+  summary: 'one long reasoning phase: the thinking label deepens through its four stages (Pondering, Mulling, DeepThinking, Fathoming)',
+  items: [turn('Think about this for a long while.', [
+    step({
+      firstTokenMs: 1500,
+      marks: [{ block: 'reasoning', at: 0.02, name: 'pondering' }, { block: 'reasoning', at: 0.15, name: 'mulling' }, { block: 'reasoning', at: 0.4, name: 'deep' }, { block: 'reasoning', at: 0.95, name: 'fathoming' }],
+      reasoning: lines(40, n => `Line ${String(n)} of a long chain of thought about how the activity row and the stream should share the work.`),
+      reasoningMs: 55_000, stream: true,
+    }),
+    step({ text: 'That took a while, but the answer is short.' }),
+  ])],
+}
+
+const pending = {
+  summary: 'calls that run for a while: a command, two commands at once, a failing command, and a command cut off by an interrupt',
+  items: [
+    turn('Run the checks.', [
+      step({ text: 'Running the tests first.', textMs: 600, marks: [{ block: 'tool', at: 0.5, name: 'running' }], tools: [tool('bash', { command: 'pnpm test', description: 'Run the tests' }, { result: '214 passed', runMs: 9000 })] }),
+      step({
+        text: 'Now the build and the lint at once.', textMs: 600, marks: [{ block: 'tool', at: 0.4, name: 'parallel' }],
+        tools: [tool('bash', { command: 'pnpm run build', description: 'Build' }, { result: 'built 3 packages', runMs: 8000 }), tool('bash', { command: 'pnpm run lint', description: 'Lint' }, { result: 'ok', runMs: 4000 })],
+      }),
+      step({ text: 'And a last one that fails.', textMs: 600, marks: [{ block: 'tool', at: 0.8, name: 'failing' }], tools: [tool('bash', { command: 'pnpm run check:lib', description: 'Check exports' }, { result: 'missing export\n[exit code: 1]', runMs: 5000 })] }),
+      step({ text: 'One check failed.' }),
+    ]),
+    turn('Run the long migration, and I will stop you.', [
+      step({ text: 'Starting the migration.', textMs: 600, tools: [tool('bash', { command: 'pnpm run migrate', description: 'Run the migration' }, { result: '', runMs: 30_000, unanswered: true })] }),
+    ], { outcome: 'interrupted' }),
+  ],
+}
+
+const activityDetail = {
+  summary: 'the detail rows under the activity header: three items, one, two, none, and the padding to the turn\'s highest count',
+  items: [
+    turn('Walk me through the detail rows.', [
+      step({
+        firstTokenMs: 4000, marks: [{ block: 'wait', at: 0.8, name: 'diving' }, { block: 'reasoning', at: 0.9, name: 'reasoning' }, { block: 'tool', at: 0.6, name: 'command' }],
+        reasoning: 'The first paragraph is settled and gone.\n\nThe latest paragraph has three lines.\nThe second line follows the first.\nThe third line is the newest one, and it is long enough that it will be cut at the end of narrow rows.',
+        reasoningMs: 5000, stream: true,
+        tools: [tool('bash', { command: 'set -e\npnpm run build:changed\npnpm run check:lib\npnpm run typecheck', description: 'Build and check' }, { result: 'ok', runMs: 6000 })],
+      }),
+      step({ text: 'One detail row next.', textMs: 500, marks: [{ block: 'tool', at: 0.6, name: 'single' }], tools: [tool('grep', { pattern: 'ActivityRow', path: 'packages/mayfly/src' }, { result: 'components/activity-row.ts', runMs: 5000, meta: { shape: 'files', files: ['components/activity-row.ts'], total: 1, truncated: false } })] }),
+      step({ text: 'Two queries.', textMs: 500, marks: [{ block: 'tool', at: 0.6, name: 'queries' }], tools: [tool('web_search', { queries: ['pi-tui loader animation', 'terminal shimmer text'] }, { result: 'two sources', runMs: 5000, meta: { sources: [], truncated: false } })] }),
+      step({ text: 'No detail rows while the answer streams, but the rows stay reserved so the editor does not move. This sentence takes a while.', textMs: 6000, marks: [{ block: 'text', at: 0.7, name: 'writing' }] }),
+    ]),
+    turn('A short turn: the reservation starts over.', [
+      step({ marks: [{ block: 'tool', at: 0.6, name: 'next' }], tools: [tool('read', { file_path: 'README.md' }, { result: '# replay-app', runMs: 5000 })] }),
+      step({ text: 'Done.' }),
+    ]),
+  ],
+}
+
+const activityWait = {
+  summary: 'the activity row while the turn waits on you: a command approval, then a question; answer the panels with the keys',
+  items: [turn('Clean the build output, then ask me which runtime to target.', [
+    step({
+      text: 'This deletes the build directory, which needs your approval.',
+      tools: [tool('bash', { command: 'rm -rf dist build', description: 'Delete the build output' }, { ask: approval('bash', 'The command removes files outside the tracked sources.'), result: '[exit code: 0]', runMs: 900 })],
+    }),
+    step({
+      text: 'One question before I continue.',
+      tools: [tool('ask_user_question', { questions: [] }, {
+        ask: question([{ id: 'runtime', header: 'Runtime', question: 'Which runtime should the project target?', options: [{ label: 'Node 22 (Recommended)', description: 'Current LTS line' }, { label: 'Node 24', description: 'Latest release' }] }]),
+        result: 'The user answered: Node 22.',
+        runMs: 500,
+      })],
+    }),
+    step({ text: 'Thanks. I will target Node 22.' }),
+  ])],
 }
 
 const manualCompact = {
@@ -692,7 +768,7 @@ const content = {
   ])],
 }
 
-export const REPLAYS = { tour, toolkit, thinking, markdown, live, phases, prompts, turns, toollines, edits, errors, compaction: compactionReplay, manualCompact, context, subagents, childStream, approvals, questions, plan, goal, jobs, queued, retries, sideQuestion, notices, modes, edge, history, wheel, content }
+export const REPLAYS = { tour, toolkit, thinking, markdown, live, phases, thinkingLadder, pending, activityDetail, activityWait, prompts, turns, toollines, edits, errors, compaction: compactionReplay, manualCompact, context, subagents, childStream, approvals, questions, plan, goal, jobs, queued, retries, sideQuestion, notices, modes, edge, history, wheel, content }
 
 /*
  * The scenes of the Website's app shots. Each is the source of an `app-*` scenario of the catalog, whose goldens the

@@ -2,8 +2,8 @@
  * The facts of settled tool calls at the three tiers every tool is designed at: a verbose block per call (the line and a
  * short body), a standard block for a run of calls of one kind (a head and a tree), and the stream's merged title for the
  * compact tier (`process-activity`). A call is reduced once to a {@link Call}: its tool name, target, outcome, and a lazy body,
- * so the tiers differ only in how they lay the same facts out. A call that still runs has no block at any tier; the
- * activity row names it. Texts leave here translated and sanitized.
+ * so the tiers differ only in how they lay the same facts out. A call that still runs is a pending line with its own time
+ * (the activity row names only the phase). Texts leave here translated and sanitized.
  *
  * @module @ephemeral-ai/mayfly/transcript/tool-calls
  */
@@ -78,9 +78,9 @@ export interface Call {
 
 type ToolEntry = Extract<TranscriptEntryModel, { readonly kind: 'transcript-tool' }>
 
-/** The state a call reads as, or `undefined` while it still runs (the activity row owns it). */
-function stateOf(state: 'pending' | 'ok' | 'error', closed: boolean): ToolLineState | undefined {
-  if (state === 'pending') return closed ? 'cancelled' : undefined
+/** The state a call reads as: a call that still runs is pending, and one cut off with its turn is cancelled. */
+function stateOf(state: 'pending' | 'ok' | 'error', closed: boolean): ToolLineState {
+  if (state === 'pending') return closed ? 'cancelled' : 'pending'
   return state
 }
 
@@ -138,9 +138,8 @@ function headOf(text: string, max: number): Body {
   return { rows, total }
 }
 
-function readCall(groupId: string, call: ReadCallModel, closed: boolean, t: MayflyTranslate): Call | undefined {
+function readCall(groupId: string, call: ReadCallModel, closed: boolean, t: MayflyTranslate): Call {
   const state = stateOf(call.state, closed)
-  if (state === undefined) return undefined
   const shown = call.range === undefined ? undefined : call.range.last - call.range.first + 1
   const lines = shown === undefined ? undefined
     : call.totalLines !== undefined && shown < call.totalLines ? t('{shown} of {total} lines', { shown, total: call.totalLines })
@@ -165,9 +164,8 @@ function readCall(groupId: string, call: ReadCallModel, closed: boolean, t: Mayf
   }
 }
 
-function searchCall(groupId: string, call: SearchCallModel, closed: boolean, t: MayflyTranslate): Call | undefined {
+function searchCall(groupId: string, call: SearchCallModel, closed: boolean, t: MayflyTranslate): Call {
   const state = stateOf(call.state, closed)
-  if (state === undefined) return undefined
   let found: string | undefined
   let matches: number | undefined
   if (call.shape === 'paths') {
@@ -204,9 +202,8 @@ function searchCall(groupId: string, call: SearchCallModel, closed: boolean, t: 
   }
 }
 
-function commandCall(groupId: string, call: CommandCallModel, closed: boolean, t: MayflyTranslate): Call | undefined {
+function commandCall(groupId: string, call: CommandCallModel, closed: boolean, t: MayflyTranslate): Call {
   const state = stateOf(call.state, closed)
-  if (state === undefined) return undefined
   const why = state === 'error' ? exitText(call.exitCode, call.signal, t) ?? reason(call.error) : undefined
   return {
     id: `${groupId}:${call.callId}`,
@@ -243,9 +240,8 @@ function sizeText(bytes: number): string {
 }
 
 /** An edit or write as a call: its tool name and path, the diffstat or the size, and the diff or code as its body. */
-function fileCall(entry: ToolEntry, closed: boolean, t: MayflyTranslate): Call | undefined {
+function fileCall(entry: ToolEntry, closed: boolean, t: MayflyTranslate): Call {
   const state = stateOf(entry.result === undefined ? 'pending' : entry.result.isError ? 'error' : 'ok', closed)
-  if (state === undefined) return undefined
   const change = entry.change
   const target = change?.path ?? (entry.detail === '' ? undefined : ellipsize(sanitizePluginText(entry.detail), TARGET_MAX_CHARS))
   const name = nameOf(entry.name)
@@ -281,10 +277,9 @@ function fileCall(entry: ToolEntry, closed: boolean, t: MayflyTranslate): Call |
   }
 }
 
-function loneCall(entry: ToolEntry, closed: boolean, t: MayflyTranslate): Call | undefined {
+function loneCall(entry: ToolEntry, closed: boolean, t: MayflyTranslate): Call {
   const exit = exitText(entry.terminal?.exitCode, entry.terminal?.signal, t)
   const state = stateOf(entry.result === undefined ? 'pending' : entry.result.isError || exit !== undefined ? 'error' : 'ok', closed)
-  if (state === undefined) return undefined
   const web = entry.web
   const text = entry.result?.text ?? ''
   const salient = ellipsize(sanitizePluginText(entry.detail), TARGET_MAX_CHARS)
@@ -327,24 +322,34 @@ function loneCall(entry: ToolEntry, closed: boolean, t: MayflyTranslate): Call |
   }
 }
 
+/** A call that still runs, as the stream shows it: its time so far is its outcome, and it has no body yet. */
+function whilePending(call: Call, now: number): Call {
+  return call.state === 'pending' ? { ...call, outcome: [elapsedText(Math.max(0, now - call.startedAt))], body: () => ({ rows: [], total: 0 }) } : call
+}
+
 /**
- * The settled calls of one entry, in the order they were made. A running call has none, a call cut off with its turn is
- * cancelled.
+ * The calls of one entry, in the order they were made: a call that still runs is pending with the time it has taken so
+ * far, and a call cut off with its turn is cancelled. A call whose arguments still stream has not been committed, so it
+ * has none.
  * @param entry - a tool or a group of read, search, or command calls.
  * @param closed - whether the entry's turn has ended.
  * @param t - translator for the transcript namespace.
+ * @param now - the time, which a pending call measures its own against.
  * @returns the calls.
  */
-export function callsOf(entry: TranscriptEntryModel, closed: boolean, t: MayflyTranslate): readonly Call[] {
-  const calls: (Call | undefined)[] = []
+export function callsOf(entry: TranscriptEntryModel, closed: boolean, t: MayflyTranslate, now: number): readonly Call[] {
+  const calls: Call[] = []
   switch (entry.kind) {
     case 'transcript-read-group': for (const call of entry.reads) calls.push(readCall(entry.id, call, closed, t)); break
     case 'transcript-search-group': for (const call of entry.searches) calls.push(searchCall(entry.id, call, closed, t)); break
     case 'transcript-command-group': for (const call of entry.commands) calls.push(commandCall(entry.id, call, closed, t)); break
-    case 'transcript-tool': calls.push(entry.change !== undefined || entry.activity === 'edit' || entry.activity === 'write' ? fileCall(entry, closed, t) : loneCall(entry, closed, t)); break
+    case 'transcript-tool':
+      if (entry.preparing !== undefined) break
+      calls.push(entry.change !== undefined || entry.activity === 'edit' || entry.activity === 'write' ? fileCall(entry, closed, t) : loneCall(entry, closed, t))
+      break
     default: break
   }
-  return calls.filter((call): call is Call => call !== undefined)
+  return calls.map(call => whilePending(call, now))
 }
 
 function outcomeText(call: Call): string | undefined {
@@ -401,8 +406,8 @@ function changeLayout(call: Call, cap: number, open: boolean, t: MayflyTranslate
  */
 export function verboseRow(call: Call, open: boolean, t: MayflyTranslate, tier: 'verbose' | 'standard' = 'verbose'): StreamRow {
   const cap = open ? OPEN_BODY_ROWS : VERBOSE_BODY_ROWS
-  // A call cut off has no output, and a failed read or search has only its reason, which the line already gives.
-  const quiet = call.state === 'cancelled' || (call.state === 'error' && (call.activity === 'read' || call.activity === 'readImage' || call.activity === 'search'))
+  // A call that still runs or was cut off has no output, and a failed read or search has only its reason, which the line already gives.
+  const quiet = call.state === 'pending' || call.state === 'cancelled' || (call.state === 'error' && (call.activity === 'read' || call.activity === 'readImage' || call.activity === 'search'))
   const body: Body = quiet || tier === 'standard' ? { rows: [], total: 0 } : call.body()
   const rows = body.tail === true ? body.rows.slice(-cap) : body.rows.slice(0, cap)
   const left = body.total - rows.length
