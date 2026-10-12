@@ -6,7 +6,6 @@
  */
 
 import { describe, expect, it, vi } from 'vitest'
-import { Terminal as HeadlessTerminal } from '@xterm/headless'
 import { CURSOR_MARKER, type TUI } from '@earendil-works/pi-tui'
 import type { LayoutBox, LayoutFrame } from '@earendil-works/pi-tui/dist/layout.js'
 import { LAYOUT_NODE, type LayoutNode } from '@earendil-works/pi-tui/dist/layout-node.js'
@@ -23,6 +22,7 @@ import {
 import type { FrameOverflowEntry } from '../../src/core/frame-clamp.ts'
 import type { AmbientOutputStream } from '../../src/core/output-recovery.ts'
 import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/width.ts'
+import { AltScreenTerminal } from './alt-screen-terminal.ts'
 import { FakeTerminal, waitForRender } from './fake-terminal.ts'
 import { virtualRows } from '../../src/core/ui-rows.ts'
 import { plainColors } from '../helpers.ts'
@@ -54,44 +54,6 @@ function focusableComponent(text: string): MayflyFocusable {
 
 function layoutScrolls(box: LayoutBox): NonNullable<LayoutBox['scrollView']>[] {
   return [...(box.scrollView === undefined ? [] : [box.scrollView]), ...box.children.flatMap(layoutScrolls)]
-}
-
-class AltScreenTerminal extends FakeTerminal {
-  private readonly vt: HeadlessTerminal
-
-  constructor(columns = 40, rows = 10) {
-    super(columns, rows)
-    this.vt = new HeadlessTerminal({ cols: columns, rows, scrollback: 1000, allowProposedApi: true })
-  }
-
-  override write(data: string): void {
-    super.write(data)
-    this.vt.write(data)
-  }
-
-  override resize(columns: number, rows: number): void {
-    this.vt.resize(columns, rows)
-    super.resize(columns, rows)
-  }
-
-  externalWrite(data: string): void {
-    this.vt.write(data)
-  }
-
-  async screen(): Promise<string[]> {
-    await new Promise<void>(resolve => this.vt.write('', resolve))
-    const buffer = this.vt.buffer.active
-    return Array.from({ length: this.vt.rows }, (_, row) => buffer.getLine(row)?.translateToString(true) ?? '')
-  }
-
-  async bufferType(): Promise<string> {
-    await new Promise<void>(resolve => this.vt.write('', resolve))
-    return this.vt.buffer.active.type
-  }
-
-  dispose(): void {
-    this.vt.dispose()
-  }
 }
 
 class TerminalOutputStream implements AmbientOutputStream {
@@ -1373,11 +1335,11 @@ describe('alternate-screen runtime', () => {
     expect(scrolled[0]).toContain('row-8')
     expect(runtime.tui.fullRedraws).toBe(fullRedraws)
     expect(terminal.output.slice(outputAtScroll)).not.toContain('\x1b[2J')
-    expect(runtime.contentChanged()).toBe(true)
+    expect(runtime.contentTail()).toMatchObject({ away: true, unseen: 0 })
 
     runtime.followContent()
     await waitForRender()
-    expect(runtime.contentChanged()).toBe(false)
+    expect(runtime.contentTail()).toMatchObject({ away: false, unseen: 0 })
     await runtime.stop()
     expect(await terminal.bufferType()).toBe('normal')
     expect(terminal.output).toContain('\x1b[?1049l')

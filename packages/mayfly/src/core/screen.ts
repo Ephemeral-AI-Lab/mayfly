@@ -261,6 +261,11 @@ export class MayflyScreenService extends Service implements MayflyScreen {
     return this.nodeSlots.mount(id, options.region)
   }
 
+  /** The newest turn the conversation slots hold, for the `N new turns` tally of a view scrolled away from the tail. */
+  contentTurns(): number {
+    return this.nodeSlots.contentTurns()
+  }
+
   /** The surface renderer lends its compiler dependencies and clock to the node slots; the disposer takes them back. */
   bindNodeSlots(compiler: MayflyNodeSlotCompiler): () => void {
     return this.nodeSlots.bind(compiler)
@@ -300,10 +305,6 @@ export class MayflyScreenService extends Service implements MayflyScreen {
 
   scrollContent = (direction: 'up' | 'down', amount?: number): boolean => {
     return this.runtime.scrollContent(direction, amount)
-  }
-
-  contentChanged = (): boolean => {
-    return this.runtime.contentChanged()
   }
 
   /* exercised by End in the real input path */

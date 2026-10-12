@@ -343,3 +343,55 @@ describe('lazy units', () => {
     expect(all.every(row => visibleWidth(row) <= 60)).toBe(true)
   })
 })
+
+describe('scanMarkdown of a growing source', () => {
+  const block = (index: number): string => [
+    `## Part ${String(index)}`,
+    `A paragraph with **bold**, \`code\`, and a [link](https://example.com/${String(index)}). ${'words '.repeat(60)}`,
+    '- one\n- two\n  - nested\n\n- loose three',
+    ['| a | b |', '| --- | ---: |', `| ${String(index)} | x |`, '| 2 | y |'].join('\n'),
+    ['```ts', `const n${String(index)} = ${String(index)}`, '', 'export default n', '```'].join('\n'),
+    '> a quote\n> over two lines',
+    `Setext ${String(index)}\n-----`,
+    '---',
+    '```mermaid\ngraph TD; A-->B\n```',
+    '1. first\n2. second',
+  ].join('\n\n')
+
+  /** A scan without `scanned`, the lines it lexed: an extension lexes fewer than a whole scan does. */
+  const sans = ({ scanned: _scanned, ...scan }: ReturnType<typeof scanMarkdown>) => scan
+
+  /** A small deterministic generator, so a failing split reproduces. */
+  const generator = (seed: number) => () => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 4294967296 }
+
+  it('scans to what a whole scan gives, at every size an append can take', () => {
+    const text = Array.from({ length: 22 }, (_, index) => block(index)).join('\n\n')
+    expect(text.length).toBeGreaterThan(3 * CONTENT_SEGMENT_UNITS)
+    for (const seed of [1, 2, 3]) {
+      const next = generator(seed)
+      let previous = scanMarkdown('')
+      let at = 0
+      while (at < text.length) {
+        at = Math.min(text.length, at + 1 + Math.floor(next() * 90))
+        const source = text.slice(0, at)
+        const grown = scanMarkdown(source, previous)
+        expect(sans(grown), `seed ${String(seed)} at ${String(at)}`).toEqual(sans(scanMarkdown(source)))
+        previous = grown
+      }
+    }
+  })
+
+  it('reuses a scan for the same text without lexing it again', () => {
+    const first = scanMarkdown('# t\n\nbody')
+    const again = scanMarkdown('# t\n\nbody', first)
+    expect(again).toMatchObject({ units: first.units, lines: first.lines, scanned: 0 })
+  })
+
+  it('scans a source with a link definition whole, and a source that is not an extension whole', () => {
+    const first = scanMarkdown(`${'para\n\n'.repeat(900)}[r]: /t\n\nlast`)
+    const defined = `${'para\n\n'.repeat(900)}[r]: /t\n\nlast and more [r]`
+    expect(sans(scanMarkdown(defined, first))).toEqual(sans(scanMarkdown(defined)))
+    const other = 'something else entirely\n\nwith blocks'
+    expect(sans(scanMarkdown(other, first))).toEqual(sans(scanMarkdown(other)))
+  })
+})

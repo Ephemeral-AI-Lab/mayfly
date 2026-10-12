@@ -25,6 +25,11 @@ export interface MayflyNodeSlot {
   readonly disposed: boolean
   /** Publish the slot's node; `null` shows nothing and resets its interaction state, as a pane's `set(null)` does. */
   set(node: MayflyUiNode | null): void
+  /**
+   * The number of the newest turn of the agent loop the slot's content holds. The owner knows turns, and the screen only
+   * rows; the screen compares the number over time for its `N new turns` tally.
+   */
+  setTurns(latest: number): void
   /** Give the slot keyboard focus. */
   focus(): void
   /** Release the slot and drop its interaction state. */
@@ -155,6 +160,8 @@ class NodeSlotLease implements MayflyNodeSlot {
   private node: MayflyUiNode | null = null
   /** Whether `set` ran: until then a lease adopts a retained model without touching it. */
   private published = false
+  /** The newest turn the owner reported in this slot's content. */
+  turns = 0
   private revision = 0
   /** The interaction owner that held this slot's model last; it outlives a renderer gap. */
   private interaction: UiInteractionService | undefined
@@ -165,7 +172,7 @@ class NodeSlotLease implements MayflyNodeSlot {
     private readonly screen: MayflyScreenSlot,
     private readonly viewport: () => MayflyUiViewport,
     private readonly host: NodeSlotHost,
-    private readonly region: MayflyNodeSlotRegion,
+    readonly region: MayflyNodeSlotRegion,
   ) {}
 
   get disposed(): boolean { return !this.live }
@@ -176,6 +183,10 @@ class NodeSlotLease implements MayflyNodeSlot {
     this.published = true
     this.revision += 1
     this.attach(this.host.compiler)
+  }
+
+  setTurns(latest: number): void {
+    if (this.live) this.turns = Math.max(0, Math.floor(latest))
   }
 
   focus(): void { if (this.live) this.screen.focus() }
@@ -233,6 +244,13 @@ export class NodeSlotHost {
   ) {}
 
   get compiler(): MayflyNodeSlotCompiler | undefined { return this.bound }
+
+  /** The newest turn the owners of the scroll region's slots reported. */
+  contentTurns(): number {
+    let latest = 0
+    for (const lease of this.leases.values()) if (lease.region === 'content') latest = Math.max(latest, lease.turns)
+    return latest
+  }
 
   /** Claims the region's host for `id`; it throws, leaving nothing behind, when the host is unknown or taken. */
   mount(id: string, region: MayflyNodeSlotRegion): MayflyNodeSlot {

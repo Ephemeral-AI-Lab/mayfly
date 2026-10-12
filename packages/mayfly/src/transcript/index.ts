@@ -34,13 +34,6 @@ import {
   transcriptTranslator,
 } from './locale.ts'
 
-declare module '@deepseek-ai/cordis' {
-  interface Events {
-    /** New transcript content arrived while the user was scrolled away. */
-    'mayfly/transcript-content-changed'(paused: boolean): void
-  }
-}
-
 export { READ_PREVIEW_LINE_LIMIT, SEARCH_PREVIEW_MATCH_LIMIT, SEARCH_PATH_LIMIT, COMMAND_PREVIEW_LINE_LIMIT } from './official-model.ts'
 export { conversationTranscriptModel } from './official-model.ts'
 export type { ToolPresentationSource } from './present.ts'
@@ -131,7 +124,7 @@ export function apply(ctx: Context): void {
       .filter(message => message.source.kind === 'user')
       .map(message => ({ id: String(message.id), text: userMessageText(message) }))
   }
-  const transcript = new TranscriptController(ctx, { presentation, t, queued: () => queued })
+  const transcript = new TranscriptController({ presentation, t, queued: () => queued })
   ctx.effect(() => () => transcript.dispose())
   // Every displayed or retained conversation reads its own native path; the
   // registry decides which views exist, the controller which one is mounted.

@@ -1,29 +1,27 @@
 /**
- * The controller behind the conversation node slot: it publishes the displayed view's stream, swaps views, announces
- * new content while the viewport is scrolled away, and leaves nothing mounted once disposed.
+ * The controller behind the conversation node slot: it publishes the displayed view's stream, swaps views, and leaves
+ * nothing mounted once disposed.
  * @module transcript-controller
  */
 
-import { Context } from '@deepseek-ai/cordis'
 import { describe, expect, it, vi } from 'vitest'
 import type { MayflyListNode, MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import type { MayflyNodeSlot } from '../../src/core/node-slot.ts'
 import type { TranscriptEntryModel } from '../../src/frontend/models.ts'
-import { createTranscriptModel, FOLLOW_NOTICE_INTERVAL_MS, TranscriptController, type TranscriptScreen } from '../../src/transcript/transcript-model.ts'
+import { createTranscriptModel, TranscriptController, type TranscriptScreen } from '../../src/transcript/transcript-model.ts'
 
 const user = (turn: number, text: string): TranscriptEntryModel => ({ id: `user:${String(turn)}`, kind: 'transcript-user', seq: turn, updatedSeq: turn, turn, text, images: [] })
 
-/** A screen that keeps what the conversation slot was given, and answers `contentChanged` as scripted. */
-function fakeScreen(paused = { value: false }) {
-  const slot = { published: [] as (MayflyUiNode | null)[], disposed: false }
+/** A screen that keeps what the conversation slot was given. */
+function fakeScreen() {
+  const slot = { published: [] as (MayflyUiNode | null)[], disposed: false, turns: 0 }
   const lease: MayflyNodeSlot = {
     id: 'transcript.conversation', get disposed() { return slot.disposed },
-    set: (node) => { slot.published.push(node) }, focus: () => {}, dispose: () => { slot.disposed = true },
+    set: (node) => { slot.published.push(node) }, setTurns: (latest) => { slot.turns = latest }, focus: () => {}, dispose: () => { slot.disposed = true },
   }
   const mounted: { id: string, region: string }[] = []
   const screen = {
     mountNodeSlot: (id: string, options: { region: string }) => { mounted.push({ id, region: options.region }); return lease },
-    contentChanged: () => paused.value,
     followContent: vi.fn(),
     requestRender: vi.fn(),
   } as unknown as TranscriptScreen
@@ -36,7 +34,7 @@ const options = { t: (key: string) => key, queued: () => [] as { id: string, tex
 describe('TranscriptController', () => {
   it('mounts the conversation node slot in the content region and publishes the displayed view', () => {
     const { screen, mounted, latest } = fakeScreen()
-    const controller = new TranscriptController(new Context(), options)
+    const controller = new TranscriptController(options)
     controller.setView('main', createTranscriptModel('a', [user(1, 'hello')]))
     controller.show('main')
     controller.attach(screen)
@@ -52,7 +50,7 @@ describe('TranscriptController', () => {
 
   it('reads a function source on every publish and drops a view', () => {
     const { screen, latest } = fakeScreen()
-    const controller = new TranscriptController(new Context(), options)
+    const controller = new TranscriptController(options)
     let model = createTranscriptModel('a', [user(1, 'one')])
     controller.setView('main', () => model)
     controller.show('main')
@@ -64,33 +62,10 @@ describe('TranscriptController', () => {
     expect(latest()).toBeNull()
   })
 
-  it('announces new content while scrolled away, at most once a second', () => {
-    vi.useFakeTimers()
-    try {
-      const paused = { value: true }
-      const { screen } = fakeScreen(paused)
-      const ctx = new Context()
-      const heard: boolean[] = []
-      ctx.on('mayfly/transcript-content-changed', (value) => { heard.push(value) })
-      const controller = new TranscriptController(ctx, options)
-      controller.setView('main', createTranscriptModel('a', [user(1, 'one')]))
-      controller.show('main')
-      controller.attach(screen)
-      controller.refresh()
-      controller.refresh()
-      expect(heard).toEqual([true])
-      vi.advanceTimersByTime(FOLLOW_NOTICE_INTERVAL_MS)
-      controller.refresh()
-      paused.value = false
-      controller.refresh()
-      expect(heard).toEqual([true, true, false])
-    } finally { vi.useRealTimers() }
-  })
-
-  it('opens the prompts the Ctrl-O reach covers, republishes the queue without announcing, and unmounts on dispose', () => {
+  it('opens the prompts the Ctrl-O reach covers, republishes the queue, and unmounts on dispose', () => {
     const { screen, slot, latest } = fakeScreen()
     const queued: { id: string, text: string }[] = []
-    const controller = new TranscriptController(new Context(), { ...options, queued: () => queued })
+    const controller = new TranscriptController({ ...options, queued: () => queued })
     controller.setView('main', createTranscriptModel('a', [user(1, 'a\nb\nc\nd\ne\nf')], true, 0, [{ turn: 1, startedAt: 0 }]))
     controller.show('main')
     controller.attach(screen)

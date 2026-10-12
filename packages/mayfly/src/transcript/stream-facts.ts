@@ -19,9 +19,6 @@ import { processTitle, summarizeProcess } from './process-activity.ts'
 import type { TranscriptPresentationSnapshot } from './presentation-policy.ts'
 import { ellipsize, toolDisplayName } from './present.ts'
 
-/** Maximum source characters one streamed answer paints: the rest of a longer one is summarized by its count. */
-export const STREAMING_RENDER_MAX_CHARS = 32_000
-
 /** Characters of a salient argument kept on a row. */
 const PREVIEW_MAX_CHARS = 80
 
@@ -62,14 +59,6 @@ export function userMessageText(message: UserMessage): string {
 export function clockTime(ms: number): string {
   const date = new Date(ms)
   return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
-}
-
-/** Keep a long live text bounded while the model keeps the whole of it. */
-function streamingWindow(text: string): string {
-  const start = text.length - STREAMING_RENDER_MAX_CHARS
-  const boundary = text.indexOf('\n', start)
-  const visible = sanitizePluginText(text.slice(boundary < 0 ? start : boundary + 1))
-  return `... (${String(text.length - visible.length)} earlier characters)\n${visible}`
 }
 
 function firstLine(text: string, max = PREVIEW_MAX_CHARS): string | undefined {
@@ -133,7 +122,8 @@ export class StreamFacts {
 
   private queuedOf(inputs: StreamInputs, kept: Map<string, StreamQueued>): readonly StreamQueued[] {
     const suffix = inputs.t('⏎ queued')
-    return inputs.queued.map((message) => {
+    // The inbox can hold a message twice (a step's and a turn's queue); the stream shows it once.
+    return inputs.queued.filter((message, index) => inputs.queued.findIndex(other => other.id === message.id) === index).map((message) => {
       const next: StreamQueued = { id: message.id, text: sanitizePluginText(message.text), suffix }
       const previous = this.queued.get(message.id)
       const result = previous !== undefined && previous.text === next.text && previous.suffix === suffix ? previous : next
@@ -192,7 +182,7 @@ export class StreamFacts {
       const closing = closingOf(lifecycle.get(turn), inputs.t)
       const previous = this.turns.get(id)
       const settled = previous !== undefined && previous.closing === closing && previous.rows.length === rows.length && previous.rows.every((row, index) => row === rows[index])
-      const result: StreamTurn = settled ? previous : { id, rows, ...(closing === undefined ? {} : { closing }) }
+      const result: StreamTurn = settled ? previous : { id, number: Math.max(0, turn), rows, ...(closing === undefined ? {} : { closing }) }
       keptTurns.set(id, result)
       return result
     })
@@ -279,7 +269,8 @@ function entryRow(item: EntryItem, entry: TranscriptEntryModel, inputs: StreamIn
       }
     case 'transcript-assistant': {
       if (entry.text.trim() === '') return undefined
-      return { kind: 'answer', id: entry.id, text: entry.text.length > STREAMING_RENDER_MAX_CHARS && entry.streaming ? streamingWindow(entry.text) : sanitizePluginText(entry.text) }
+      // The Markdown body paints the unit an append reached, so a long live answer costs what its tail does.
+      return { kind: 'answer', id: entry.id, text: sanitizePluginText(entry.text) }
     }
     case 'transcript-thinking': {
       if (entry.text.trim() === '') return undefined

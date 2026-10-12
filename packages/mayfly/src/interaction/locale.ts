@@ -650,7 +650,6 @@ const zh: Readonly<Record<string, string>> = {
   'interrupt requested': '已请求中断',
   'interrupt requested with failures: {failures}': '已请求中断，但有失败：{failures}',
   'press Ctrl+C again to exit': '再按一次 Ctrl+C 退出',
-  'new messages available · press {key} to follow': '有新消息 · 按 {key} 跟随',
   'plan mode is unavailable': '计划模式不可用',
   'mode command is unavailable: /plan': '模式命令不可用：/plan',
   'plan': '计划',

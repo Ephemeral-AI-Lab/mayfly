@@ -16,8 +16,8 @@ import { COLORS } from '../transcript/status-fakes.ts'
 function render(rows: readonly StreamRow[], width: number, text = ''): string[] {
   const node = TranscriptView({
     turns: [
-      { id: 'turn:1', closing: `Worked for ${text} · done 10:13`, rows: [{ kind: 'prompt', id: 'u0', text: 'first', images: [], open: false }] },
-      { id: 'turn:2', closing: text, rows },
+      { id: 'turn:1', number: 1, closing: `Worked for ${text} · done 10:13`, rows: [{ kind: 'prompt', id: 'u0', text: 'first', images: [], open: false }] },
+      { id: 'turn:2', number: 2, closing: text, rows },
     ],
     queued: text === '' ? [] : [{ id: 'q', text, suffix: '⏎ queued' }],
   })

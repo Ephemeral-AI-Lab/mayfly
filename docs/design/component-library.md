@@ -1495,7 +1495,7 @@ hit inside a fold is never invisible. Matched text is highlighted in `warning` +
 match, `Esc` closes the search and keeps the highlight until the next search.
 
 The scroll position follows the same rules as any scroll region: the stream keeps the tail in view while following, a
-`↓ N new · End` pill appears while it is scrolled away, and `End` jumps to the latest.
+`N new turns · Ctrl+↓` chip stays on the last row while it is scrolled away (N counts the turns of the agent loop that began below the view, never rows, tool calls, or message blocks; with none it reads `Back to bottom · Ctrl+↓`, the way back), and `Ctrl+↓` (or `End` with an empty draft) jumps to the latest. The follow key is its own action, `mayfly.interaction.follow-tail`, because thin laptops have no End key.
 
 ### 5.7 Decision cards: approval, plan review, permission
 

@@ -53,6 +53,8 @@ export type StreamRow =
 /** One turn: the rows it holds, and the closing line of a turn that has ended. */
 export interface StreamTurn {
   readonly id: string
+  /** The turn's number in its session: it only grows, so a count of turns survives the window dropping old ones. */
+  readonly number: number
   readonly rows: readonly StreamRow[]
   /** The translated closing text, without its glyph: how long the turn worked and when it was done. */
   readonly closing?: string
@@ -173,10 +175,42 @@ function queuedItems(message: StreamQueued): readonly MayflyListItem[] {
 }
 
 /**
+ * The number of the newest turn the stream holds, for the `N new turns` tally of a view scrolled away from its tail: the
+ * screen compares it over time, so the tally counts the turns of the agent loop that began below the view, never the
+ * rows, tool calls, or message blocks inside one.
+ * @param facts - the facts the stream was built from.
+ * @returns the newest turn's number, or 0 with no turn.
+ */
+export function latestTurnOf(facts: TranscriptViewFacts): number {
+  return facts.turns.reduce((latest, turn) => Math.max(latest, turn.number), 0)
+}
+
+/**
  * The stream as a browse list.
  * @param facts - the turns, in order, and the messages queued behind them.
  * @returns the list node; its items keep their identity while their facts do.
  */
+/**
+ * The items with every id unique: the list node is refused whole when two items share an id, which would blank the
+ * whole stream for one repeated id. A repeat takes a numbered id, so the stream draws and the rest keep their identity.
+ */
+function withUniqueIds(items: MayflyListItem[]): MayflyListItem[] {
+  const seen = new Set<string>()
+  let repeated = false
+  for (const item of items) {
+    if (seen.has(item.id)) { repeated = true; break }
+    seen.add(item.id)
+  }
+  if (!repeated) return items
+  const used = new Set<string>()
+  return items.map((item) => {
+    let id = item.id
+    for (let copy = 2; used.has(id); copy += 1) id = `${item.id}~${String(copy)}`
+    used.add(id)
+    return id === item.id ? item : freezeWire({ ...item, id })
+  })
+}
+
 export function TranscriptView(facts: TranscriptViewFacts): MayflyListNode {
   const items: MayflyListItem[] = []
   facts.turns.forEach((turn, index) => {
@@ -185,5 +219,5 @@ export function TranscriptView(facts: TranscriptViewFacts): MayflyListNode {
     items.push(...closingOf(turn))
   })
   for (const message of facts.queued) items.push(...queuedItems(message))
-  return ui.list({ id: 'stream', role: 'browse', acceptVerb: 'expand', hintLabel: 'stream', items })
+  return ui.list({ id: 'stream', role: 'browse', acceptVerb: 'expand', hintLabel: 'stream', items: withUniqueIds(items) })
 }

@@ -25,7 +25,6 @@ interface Recorded {
   suspends: unknown[]
   titles: string[]
   scrolls: { direction: 'up' | 'down', amount: number | undefined }[]
-  contentChanges: number
 }
 
 function recordingRuntime(laneRows = 0): MayflyTerminalRuntime & Recorded {
@@ -37,10 +36,9 @@ function recordingRuntime(laneRows = 0): MayflyTerminalRuntime & Recorded {
     unfocus: () => {},
     isFocused: () => true,
   }
-  const recorded: Recorded = { added: [], bottomAdded: [], dockAdded: [], removed: [], focused: [], overlays: [], renders: [], suspends: [], titles: [], scrolls: [], contentChanges: 0 }
+  const recorded: Recorded = { added: [], bottomAdded: [], dockAdded: [], removed: [], focused: [], overlays: [], renders: [], suspends: [], titles: [], scrolls: [] }
   const runtime = {
     ...recorded,
-    get contentChanges() { return recorded.contentChanges },
     columns: 120,
     rows: 24,
     surfaceLaneRows: () => laneRows,
@@ -69,10 +67,6 @@ function recordingRuntime(laneRows = 0): MayflyTerminalRuntime & Recorded {
     },
     scrollContent(direction, amount) {
       recorded.scrolls.push({ direction, amount })
-      return true
-    },
-    contentChanged() {
-      recorded.contentChanges += 1
       return true
     },
     async suspend<T>(fn: () => Promise<T>): Promise<T> {
@@ -216,8 +210,6 @@ describe('MayflyScreenService', () => {
 
     expect(screen.scrollContent('up', 3)).toBe(true)
     expect(runtime.scrolls).toEqual([{ direction: 'up', amount: 3 }])
-    expect(screen.contentChanged()).toBe(true)
-    expect(runtime.contentChanges).toBe(1)
 
     await expect(screen.suspend(async () => 'ok')).resolves.toBe('ok')
     expect(runtime.suspends).toEqual(['ok'])

@@ -85,6 +85,7 @@ import {
   ACTION_CYCLE_MODEL,
   ACTION_EXTERNAL_EDITOR,
   ACTION_END,
+  ACTION_FOLLOW_TAIL,
   ACTION_INTERRUPT,
   ACTION_MOVE_DOWN,
   ACTION_MOVE_UP,
@@ -92,7 +93,6 @@ import {
   ACTION_PAGE_UP,
   ACTION_FOCUS_NEXT,
   ACTION_STEER,
-  interactionKeyHint,
 } from './keys.ts'
 import { interactionTranslator } from './locale.ts'
 import { createModelListCache, cycleSessionModel } from './model-commands.ts'
@@ -946,10 +946,14 @@ export function apply(ctx: Context): void {
         const amount = Math.max(1, ctx.mayflyScreen.rows - 4)
         return ctx.mayflyScreen.scrollContent(direction, amount)
       }
+      // Ctrl+↓ means nothing in a draft, so it follows the tail whatever the editor holds; End is the editor's own with text.
+      if (ctx.mayflyKeymap.matches(data, ACTION_FOLLOW_TAIL)) {
+        ctx.mayflyScreen.followContent()
+        return true
+      }
       if (editor.getText().length > 0) return false
       if (ctx.mayflyKeymap.matches(data, ACTION_END)) {
         ctx.mayflyScreen.followContent()
-        notificationOwner.clear('transcript-follow')
         return true
       }
       return false
@@ -967,9 +971,5 @@ export function apply(ctx: Context): void {
     draft.clearDraft()
     refreshHint()
     screen.requestRender()
-  }))
-  ctx.effect(() => ctx.on('mayfly/transcript-content-changed', paused => {
-    if (paused) showFeedback('transcript-follow', t('new messages available · press {key} to follow', { key: interactionKeyHint(ctx.mayflyKeymap, ACTION_END, 'End') }), 'info')
-    else notificationOwner.clear('transcript-follow')
   }))
 }

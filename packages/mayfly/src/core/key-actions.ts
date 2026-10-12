@@ -47,6 +47,7 @@ export const ACTION_CYCLE_MODE = 'mayfly.interaction.cycle-mode'
 export const ACTION_CYCLE_MODEL = 'mayfly.interaction.cycle-model'
 export const ACTION_TOGGLE_AGENT_VIEW = 'mayfly.interaction.toggle-agent-view'
 export const ACTION_CLOSE_AGENT_VIEW = 'mayfly.interaction.close-agent-view'
+export const ACTION_FOLLOW_TAIL = 'mayfly.interaction.follow-tail'
 
 /**
  * Default keys of the core actions: the kit's DEFAULT_KEYMAP in pi-tui key ids. Every Alt default has a second default
@@ -88,6 +89,7 @@ export const DEFAULT_ACTION_KEYS: Readonly<Record<string, readonly string[]>> = 
   [ACTION_CYCLE_MODEL]: ['alt+m'],
   [ACTION_TOGGLE_AGENT_VIEW]: ['f7'],
   [ACTION_CLOSE_AGENT_VIEW]: ['f8'],
+  [ACTION_FOLLOW_TAIL]: ['ctrl+down'],
 })
 
 const DISPLAY_KEY_BY_ID: Readonly<Record<string, string>> = {

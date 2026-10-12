@@ -5,11 +5,12 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { PROMPT_MAX_LINES, TranscriptView, type StreamRow, type StreamTurn, type TranscriptViewFacts } from '../../src/components/transcript-view.ts'
+import { freezeWire } from '@ephemeral-ai/mayfly-ui'
+import { latestTurnOf, PROMPT_MAX_LINES, TranscriptView, type StreamRow, type StreamTurn, type TranscriptViewFacts } from '../../src/components/transcript-view.ts'
 
 const prompt = (id: string, text: string, more: Partial<Extract<StreamRow, { kind: 'prompt' }>> = {}): StreamRow => ({ kind: 'prompt', id, text, images: [], open: false, ...more })
 const answer = (id: string, text: string): StreamRow => ({ kind: 'answer', id, text })
-const turn = (id: string, rows: readonly StreamRow[], closing?: string): StreamTurn => ({ id, rows, ...(closing === undefined ? {} : { closing }) })
+const turn = (id: string, rows: readonly StreamRow[], closing?: string): StreamTurn => ({ id, number: Number(id.slice('turn:'.length)), rows, ...(closing === undefined ? {} : { closing }) })
 const facts = (turns: readonly StreamTurn[], queued: TranscriptViewFacts['queued'] = []): TranscriptViewFacts => ({ turns, queued })
 const itemsOf = (value: TranscriptViewFacts) => TranscriptView(value).items
 
@@ -74,6 +75,22 @@ describe('TranscriptView', () => {
     expect(items[1]).toMatchObject({ label: '✻ Thinking · 9s', labelSpans: [{ text: '✻ ', tone: 'muted' }, { text: 'Thinking · 9s', tone: 'muted' }] })
     // The text starts in the column of the label's first letter: the two columns of `✻ ` lead it.
     expect(items[2]).toMatchObject({ label: '', bodyAlways: true, bodyLead: [{ text: '  ' }], body: { kind: 'text', tone: 'muted', styles: ['italic'] } })
+  })
+
+  it('reports the newest turn, so the screen counts turns of the agent loop and never rows inside one', () => {
+    expect(latestTurnOf(facts([]))).toBe(0)
+    expect(latestTurnOf(facts([turn('turn:4', [prompt('u4', 'go')]), turn('turn:5', [prompt('u5', 'again'), answer('a5', 'done')])], [{ id: 'q', text: 'later', suffix: '⏎ queued' }]))).toBe(5)
+    // The window drops old turns without lowering the number.
+    expect(latestTurnOf(facts([turn('turn:15', [prompt('u15', 'x')]), turn('turn:16', [prompt('u16', 'y')])]))).toBe(16)
+  })
+
+  it('numbers a repeated id instead of letting the list be refused whole', () => {
+    const items = itemsOf(facts([turn('turn:1', [prompt('u1', 'one'), prompt('u1', 'one again')])], [{ id: 'q', text: 'x', suffix: '⏎ queued' }, { id: 'q', text: 'y', suffix: '⏎ queued' }]))
+    const ids = items.map(item => item.id)
+    expect(new Set(ids).size).toBe(ids.length)
+    expect(ids).toEqual(['u1', 'u1~2', 'queued.q.gap', 'queued.q', 'queued.q.gap~2', 'queued.q~2'])
+    // The nodes still admit as a stream.
+    expect(() => freezeWire(TranscriptView(facts([turn('turn:1', [prompt('u1', 'a'), prompt('u1', 'b')])])))).not.toThrow()
   })
 
   it('draws the cut turn marker as its translated text', () => {

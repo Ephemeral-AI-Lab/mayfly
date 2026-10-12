@@ -52,6 +52,7 @@ const SEQUENCE_BY_KEY_ID: Record<string, string> = {
   delete: '\x1b[3~',
   f5: '\x1b[15~',
   'alt+down': '\x1b[1;3B',
+  'ctrl+down': '\x1b[1;5B',
   f7: '\x1b[18~',
   f8: '\x1b[19~',
   tab: '\t',
@@ -805,10 +806,6 @@ export class FakeScreen implements MayflyScreen {
   scrollContent = (direction: 'up' | 'down', amount?: number): boolean => {
     this.contentScrolls.push({ direction, amount })
     return this.contentScrollResult
-  }
-
-  contentChanged(): boolean {
-    return this.contentPaused
   }
 
   followContent(): void {

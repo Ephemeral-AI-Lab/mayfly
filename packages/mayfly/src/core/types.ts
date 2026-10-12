@@ -175,8 +175,6 @@ export interface MayflyScreen {
   setFocus(component: MayflyComponent | null): void
   /** Scroll the overflowing main content; returns true when it moved. */
   scrollContent(direction: 'up' | 'down', amount?: number): boolean
-  /** Notify the renderer that new content arrived and preserve tail-follow. */
-  contentChanged(): boolean
   /** Return the transcript viewport to the newest content. */
   followContent(): void
   /** Install the focused-editor content scroll input handler. */

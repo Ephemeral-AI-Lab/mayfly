@@ -409,6 +409,8 @@ class MarkdownRowSource implements RowSource {
   private readonly children = new Map<number, RowSource>()
   private readonly theme: MarkdownTheme
   private readonly defsKey: string
+  /** The cache key of each unit, hashed once: a row read asks for it every time. */
+  private readonly keys: string[] = []
 
   constructor(
     private readonly prepared: PreparedMarkdown,
@@ -462,6 +464,15 @@ class MarkdownRowSource implements RowSource {
    * and only the unit the append reached has new text. The link definitions the paint restores are part of the key.
    */
   private cacheKey(index: number): string {
+    let key = this.keys[index]
+    if (key === undefined) {
+      key = this.contentKey(index)
+      this.keys[index] = key
+    }
+    return key
+  }
+
+  private contentKey(index: number): string {
     const unit = this.prepared.units[index]!
     const text = unit.kind === 'mermaid' ? `${unit.source}\0${unit.fallback}` : this.prepared.normalized.slice(unit.start, unit.end)
     const closed = unit.kind === 'block' && unit.closed === true ? 1 : 0
@@ -617,11 +628,28 @@ class MarkdownRowSource implements RowSource {
 
 const preparedMarkdowns = new WeakMap<object, PreparedMarkdown>()
 
+/** The scans of the sources that streamed most recently: a source that grows takes over the scan it extends. */
+const recentScans: PreparedMarkdown[] = []
+const RECENT_SCANS = 4
+/** A scan of a larger source is not kept: it is a document, not a stream. */
+const RECENT_SCAN_MAX_CHARS = 512 * 1024
+
+function scanOf(source: string): PreparedMarkdown {
+  const previous = recentScans.find(scan => source.length >= scan.normalized.length && source.startsWith(scan.normalized))
+  const prepared = scanMarkdown(source, previous)
+  if (previous !== undefined) recentScans.splice(recentScans.indexOf(previous), 1)
+  if (prepared.normalized.length <= RECENT_SCAN_MAX_CHARS) {
+    recentScans.push(prepared)
+    if (recentScans.length > RECENT_SCANS) recentScans.shift()
+  }
+  return prepared
+}
+
 function markdownSource(node: MayflyMarkdownNode, width: number, env: ContentRowsEnv): RowSource {
   let prepared = preparedMarkdowns.get(node)
   if (prepared === undefined) {
-    prepared = scanMarkdown(fieldText(node.source))
-    countWork(env.counters, 'linesEstimated', prepared.lines)
+    prepared = scanOf(fieldText(node.source))
+    countWork(env.counters, 'linesEstimated', prepared.scanned)
     preparedMarkdowns.set(node, prepared)
   }
   return new MarkdownRowSource(prepared, Math.max(1, width), env, keyOf(node, env))

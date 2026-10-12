@@ -98,6 +98,11 @@ describe('StreamFacts', () => {
     expect(rowsOf(preview.turns[0]).find(row => row.kind === 'reasoning')).not.toHaveProperty('label')
   })
 
+  it('shows a message that sits twice in the inbox once', () => {
+    const facts = new StreamFacts().build(model([user(1, 'q')], [{ turn: 1, startedAt: NOON }], true), inputs({ queued: [{ id: 'm1', text: 'later' }, { id: 'm1', text: 'later' }, { id: 'm2', text: 'then' }] }))
+    expect(facts.queued.map(message => message.id)).toEqual(['m1', 'm2'])
+  })
+
   it('keeps the window of recent turns the policy names', () => {
     const policy = new TranscriptPresentationPolicy()
     policy.apply({ windowTurns: 2 })

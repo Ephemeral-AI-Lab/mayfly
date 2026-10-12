@@ -234,12 +234,10 @@ describe('mayfly-input plugin', () => {
     expect(screen.children).toEqual([transcriptRow, editorRoot])
   })
 
-  it('pauses tail-follow, advertises new messages, and resumes on End', async () => {
-    const { ctx, screen, editor, editorRoot, hint, fiber } = await mount()
+  it('pages the transcript from the editor and resumes the tail on End', async () => {
+    const { screen, editor, editorRoot, hint, fiber } = await mount()
     screen.contentScrollResult = true
     screen.contentPaused = true
-    ctx.emit('mayfly/transcript-content-changed', screen.contentChanged())
-    expect(hint.render(80)).toEqual(['^ℹ ^new messages available · press End to follow'])
 
     type(editor, 'draft')
     expect(screen.sendContentInput('\x1b[5~')).toBe(true)
@@ -251,9 +249,12 @@ describe('mayfly-input plugin', () => {
       { direction: 'down', amount: 20 },
     ])
     expect(screen.sendContentInput('\x1b[F')).toBe(false)
+    // Ctrl+↓ follows the tail even with a draft, for keyboards that have no End key.
+    expect(screen.sendContentInput('\x1b[1;5B')).toBe(true)
+    expect(screen.followCount).toBe(1)
     editor.setText('')
     expect(screen.sendContentInput('\x1b[F')).toBe(true)
-    expect(screen.followCount).toBe(1)
+    expect(screen.followCount).toBe(2)
     expect(screen.contentPaused).toBe(false)
     expect(hint.render(80)).toEqual([])
 

@@ -108,8 +108,10 @@ export interface PreparedMarkdown {
    * def line as a marked duplicate and change the spacing a neighbor token sees.
    */
   readonly defs: readonly MarkdownDef[]
-  /** Source line count, for the caller's work counter. */
+  /** Source line count. */
   readonly lines: number
+  /** The lines this scan lexed: all of them, or the last unit's when it extended a previous scan; the caller's work counter. */
+  readonly scanned: number
 }
 
 /** pi-tui 0.84.2 markdown.js: the heuristic a pending `$$`/`\\[` block must satisfy to keep reading. */
@@ -178,8 +180,36 @@ function collectDefs(tokens: readonly Token[], links: Readonly<Record<string, un
  * fragment may end — only ever adjacent to a `space` token — so a fragment render is indistinguishable from the
  * same token span inside the whole render.
  */
-export function scanMarkdown(source: string): PreparedMarkdown {
+export function scanMarkdown(source: string, previous?: PreparedMarkdown): PreparedMarkdown {
   const normalized = source.replace(/\r\n?/gu, '\n').replace(/\t/gu, '   ')
+  // A source that only grew past the previous scan keeps every unit before the last one: those end at a token that more
+  // text followed, so appended text cannot change them. Only the last unit is lexed again, from where it starts.
+  // The same text again (a node rebuilt without a change) is the same scan, and lexes nothing.
+  if (previous !== undefined && normalized === previous.normalized) return { ...previous, scanned: 0 }
+  const last = previous?.units.at(-1)
+  if (previous !== undefined && last !== undefined && previous.defs.length === 0 && normalized.length > previous.normalized.length && normalized.startsWith(previous.normalized)) {
+    const tail = scanNormalized(normalized.slice(last.start))
+    // A link definition is resolved document-wide, so a tail that holds one is scanned whole.
+    if (tail.defs.length === 0) {
+      return { normalized, units: [...previous.units.slice(0, -1), ...tail.units.map(unit => shifted(unit, last.start))], defs: [], lines: previous.lines + appendedLines(normalized, previous.normalized.length), scanned: tail.lines }
+    }
+  }
+  return scanNormalized(normalized)
+}
+
+/** The line breaks in `text` from `from` on: what appending that part adds to a line count. */
+function appendedLines(text: string, from: number): number {
+  let lines = 0
+  for (let at = text.indexOf('\n', from); at >= 0; at = text.indexOf('\n', at + 1)) lines += 1
+  return lines
+}
+
+/** A unit of a scan of the text from `by` on, as the unit of the whole text. */
+function shifted(unit: MarkdownUnit, by: number): MarkdownUnit {
+  return unit.kind === 'mermaid' ? { ...unit, start: unit.start + by } : { ...unit, start: unit.start + by, end: unit.end + by }
+}
+
+function scanNormalized(normalized: string): PreparedMarkdown {
   const units: MarkdownUnit[] = []
   const defs: MarkdownDef[] = []
   const seenDefs = new Set<string>()
@@ -252,7 +282,8 @@ export function scanMarkdown(source: string): PreparedMarkdown {
     flush()
     cursor = segmentStart < 0 ? position : segmentStart + segmentRaw.length
   }
-  return { normalized, units, defs, lines: normalized.split('\n').length }
+  const lines = normalized.split('\n').length
+  return { normalized, units, defs, lines, scanned: lines }
 }
 
 /**

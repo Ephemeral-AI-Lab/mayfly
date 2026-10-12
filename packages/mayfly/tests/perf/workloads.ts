@@ -162,6 +162,8 @@ class SlotScreen {
   }
 }
 
+let answerRuns = 0
+
 const reset = (counters: MayflyWorkCounters): void => { Object.assign(counters, createWorkCounters()) }
 
 /**
@@ -386,6 +388,36 @@ export const WORKLOADS: readonly Workload[] = [
         },
         dispose: () => { screen.dispose() },
       }
+    },
+  },
+  {
+    id: 'W-answer', title: 'streamed answer through the node slot: 30 settled rows and a 24 KB Markdown answer in one leading item, 24 characters are appended and the tail is read',
+    setup(counters) {
+      const settled = Array.from({ length: 30 }, (_, index) => freezeWire(item(index)))
+      const section = (index: number): string => [
+        `## Section ${String(index)}: rendering notes`,
+        `The **renderer** walks the tree once per frame and only repaints rows whose content changed. ${'This paragraph wraps at ordinary widths. '.repeat(4)}`,
+        '- first point about caches\n- second point about `width` ladders\n  - nested one',
+        ['```ts', `export const section${String(index)} = (input: string): string => input.trim()`, '```'].join('\n'),
+      ].join('\n\n')
+      const source = Array.from({ length: 40 }, (_, index) => section(index)).join('\n\n')
+      const answer = (text: string) => ({ id: 'answer', label: '', body: ui.markdown(text), bodyAlways: true, bodyLead: [{ text: '● ' }] })
+      const screen = new SlotScreen(counters)
+      const { slot, host } = screen.mount('content')
+      const publish = (text: string): void => {
+        slot.set(ui.list({ id: 'stream', role: 'browse', selectedIds: [], items: [...settled, answer(text)] }))
+        // The screen reads the rows its viewport shows: the tail while it follows.
+        void host.render(WIDTH).slice(-ROWS)
+      }
+      // The scan memo outlives a workload: each run streams text of its own, as a stream's next answer would.
+      answerRuns += 1
+      let text = `${source} ${String(answerRuns)}`
+      publish(text)
+      // One append first, so the answer's scan and its unit cache are warm like a stream's.
+      text += ' appended'
+      publish(text)
+      reset(counters)
+      return { step: () => { text += ' + 24 more characters.'; publish(text) }, dispose: () => { screen.dispose() } }
     },
   },
   {

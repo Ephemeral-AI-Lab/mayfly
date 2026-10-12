@@ -65,6 +65,15 @@
     "rowsPainted": 0,
     "stringsMeasured": 40
   },
+  "W-answer": {
+    "nodesValidated": 3,
+    "unitsCompiled": 2,
+    "rowsPainted": 54,
+    "rowsMaterialized": 40,
+    "segmentsPainted": 1,
+    "linesEstimated": 45,
+    "stringsMeasured": 40
+  },
   "W9": {
     "nodesValidated": 0,
     "unitsCompiled": 0,

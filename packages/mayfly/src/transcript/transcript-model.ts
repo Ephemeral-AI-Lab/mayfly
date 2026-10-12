@@ -7,9 +7,8 @@
  * @module @ephemeral-ai/mayfly/transcript/transcript-model
  */
 
-import type { Context } from '@deepseek-ai/cordis'
 import type { MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
-import { TranscriptView } from '../components/transcript-view.ts'
+import { latestTurnOf, TranscriptView } from '../components/transcript-view.ts'
 import type { MayflyNodeSlot } from '../core/node-slot.ts'
 import type { MayflyScreenService } from '../core/screen.ts'
 import type { MayflyScreen } from '../core/types.ts'
@@ -68,13 +67,6 @@ export function appendTranscriptNode(
   return createTranscriptModel(model.id, [...materializeTranscriptEntries(model), entry], streaming, model.generation, model.turns)
 }
 
-/**
- * While the viewport is scrolled away, new content re-announces itself at
- * most this often: often enough to keep the follow notice alive, without a
- * notification record per streamed delta.
- */
-export const FOLLOW_NOTICE_INTERVAL_MS = 1000
-
 /** One retained conversation view: its source, its options, and the facts it keeps by identity. */
 interface ControllerView {
   readonly source: Source
@@ -92,12 +84,8 @@ export class TranscriptController {
   private slot: MayflyNodeSlot | undefined
   private screen: TranscriptScreen | undefined
   private expanded = false
-  private followNotice: { readonly paused: boolean, readonly at: number } | undefined
 
-  constructor(
-    private readonly owner: Context,
-    private readonly options: TranscriptControllerOptions,
-  ) {}
+  constructor(private readonly options: TranscriptControllerOptions) {}
 
   attach(screen: TranscriptScreen): void {
     this.unmount()
@@ -134,19 +122,12 @@ export class TranscriptController {
     }
   }
 
-  /** The displayed model changed: publish it, and say when the viewport is scrolled away from the new content. */
+  /** The displayed model changed: publish it. The screen follows the tail, or counts what arrived below a view scrolled away. */
   refresh(): void {
     if (this.active === undefined) return
     const screen = this.screen
     if (screen === undefined) return
     this.publish()
-    const paused = screen.contentChanged()
-    const now = Date.now()
-    const last = this.followNotice
-    if (last?.paused !== paused || (paused && now - last.at >= FOLLOW_NOTICE_INTERVAL_MS)) {
-      this.followNotice = { paused, at: now }
-      this.owner.emit('mayfly/transcript-content-changed', paused)
-    }
     screen.requestRender()
   }
 
@@ -196,15 +177,18 @@ export class TranscriptController {
     const model = view === undefined ? null : typeof view.source === 'function' ? view.source() : view.source
     if (view === undefined || model === null) {
       slot.set(null)
+      slot.setTurns(0)
       return
     }
-    slot.set(TranscriptView(view.facts.build(model, {
+    const facts = view.facts.build(model, {
       policy: this.presentationPolicy(),
       expanded: this.expanded,
       liveTurnHeader: view.options.liveTurnHeader === true,
       t: this.options.t,
       queued: this.options.queued(),
-    })))
+    })
+    slot.setTurns(latestTurnOf(facts))
+    slot.set(TranscriptView(facts))
   }
 
   private mount(): void {

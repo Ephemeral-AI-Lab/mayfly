@@ -22,8 +22,9 @@ import { VIEWS_FOCUS_ID, type ViewHint, type ViewRegistration } from './views-la
 import { MayflyUiSurfaceRuntime, compileMayflyUiNode, compileMayflyUiSurfaceNode, type MayflyCompiledUi, type MayflyUiViewport } from './ui-compiler.ts'
 import { renderOverflowRow } from './ui-patterns.ts'
 import { OverlayArm, type OverlayArmHint } from './overlay-arm.ts'
-import { ACTION_PAGE_DOWN, ACTION_PAGE_UP, matchesKeyAction } from './key-actions.ts'
-import type { MayflyComponents, MayflyFocusable, MayflyFocusIdentity, MayflyKeymap, MayflyOverlayHandle, MayflySemanticColors } from './types.ts'
+import { ACTION_FOLLOW_TAIL, ACTION_PAGE_DOWN, ACTION_PAGE_UP, displayKey, matchesKeyAction } from './key-actions.ts'
+import { visibleWidth } from './width.ts'
+import type { MayflyComponent, MayflyComponents, MayflyFocusable, MayflyFocusIdentity, MayflyKeymap, MayflyOverlayHandle, MayflySemanticColors } from './types.ts'
 import type { UiSurfaceModel } from './ui-interaction-surface.ts'
 import type { UiInteractionService } from './ui-interaction-state.ts'
 import type { MayflyUiImageSource } from './ui-images.ts'
@@ -659,6 +660,39 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
     { id: 'mayfly.surface.next', keys: 'f6', description: 'Focus the next Mayfly surface', handler: () => navigate(1) },
     { id: 'mayfly.surface.previous', keys: 'shift+f6', description: 'Focus the previous Mayfly surface', handler: () => navigate(-1) },
   ]))
+  // On the alternate screen the stream is scrolled by the screen: a view scrolled away from the tail keeps a chip on the
+  // content region's last row at its right edge. It counts the turns of the agent loop that began below the view, and
+  // with none it is the way back to the bottom.
+  let tailPill: MayflyOverlayHandle | undefined
+  if (runtime.contentTail() !== undefined) {
+    const translate = contextHints?.translate ?? interpolateLocaleMessage
+    /** The newest turn the slots held the last time the view was at the tail: what a view that leaves it has not seen. */
+    let seen = 0
+    const standing = (): { readonly away: boolean, readonly turns: number } => {
+      const tail = runtime.contentTail()
+      const latest = ctx.mayflyScreen.contentTurns()
+      if (tail === undefined || !tail.away) { seen = latest; return { away: false, turns: 0 } }
+      return { away: true, turns: Math.max(0, latest - seen) }
+    }
+    const key = (): string => {
+      const keys = ctx.mayflyKeymap.getKeys?.(ACTION_FOLLOW_TAIL) ?? []
+      return keys.length === 0 ? 'Ctrl+↓' : keys.map(displayKey).join('/')
+    }
+    const text = (): string => {
+      const { turns } = standing()
+      const words = turns === 0 ? translate('Back to bottom · {key}', { key: key() }) : translate(turns === 1 ? '{count} new turn · {key}' : '{count} new turns · {key}', { count: turns, key: key() })
+      return ` ${words} `
+    }
+    const away = (): boolean => standing().away
+    const component: MayflyComponent = { render: () => away() ? [`\x1b[7m${text()}\x1b[27m`] : [], invalidate: () => {} }
+    const options = { anchor: 'top-left' as const, nonCapturing: true, visible: () => away() }
+    Object.defineProperties(options, {
+      width: { enumerable: true, get: () => visibleWidth(text()) },
+      row: { enumerable: true, get: () => runtime.contentTail()?.row ?? 0 },
+      col: { enumerable: true, get: () => { const tail = runtime.contentTail(); return tail === undefined ? 0 : Math.max(tail.col, tail.col + tail.width - visibleWidth(text())) } },
+    })
+    tailPill = runtime.showOverlay(component, options)
+  }
   let registryRevision = 0
   let editorOccupied = false
   const publish = (): void => schedule({
@@ -688,6 +722,7 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
   ctx.effect(() => () => {
     disposed = true
     clock.dispose()
+    tailPill?.hide()
     offInteraction()
     for (const record of [...overlays.values()].reverse()) {
       record.runtime.dispose()

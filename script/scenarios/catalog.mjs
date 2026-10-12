@@ -22,6 +22,7 @@ const COVERS = {
   tour: [`${TRANSCRIPT}tool-*.ts`, `${TRANSCRIPT}process-*.ts`, `${TRANSCRIPT}pane-todo.ts`, ...STREAM],
   toolkit: [`${TRANSCRIPT}tool-*.ts`, `${TRANSCRIPT}present.ts`, ...STREAM],
   thinking: [...STREAM, `${TRANSCRIPT}presentation-policy.ts`, 'packages/mayfly/src/core/ui-list-paint.ts'],
+  live: [...STREAM],
   markdown: [...STREAM, 'packages/mayfly/src/core/components.ts', 'packages/mayfly/src/core/content-rows.ts', 'packages/mayfly/src/core/markdown-rows.ts', 'packages/mayfly/src/core/ui-list-paint.ts'],
   phases: [`${TRANSCRIPT}pane-activity.ts`, `${TRANSCRIPT}spinners.ts`, `${TRANSCRIPT}output-rate.ts`],
   prompts: [`${TRANSCRIPT}transcript-model.ts`, `${INTERACTION}attachments.ts`, ...STREAM],
@@ -85,7 +86,7 @@ const REVIEW = {
     ],
     pending: [
       'Answers show their source text line by line; markdown, blank-row rhythm, and wrap indent come with 3a.2.',
-      'The live reasoning row shows its last line; the real reasoning row, the streamed turn, and the `↓ N new` pill are 3a.2 and 3a.3.',
+      'The live reasoning row shows its last line; the real reasoning row, the streamed turn, and the tail chip are 3a.2 and 3a.3.',
       'Images are a label row; pictures are 3a.4. Tool lines, cards, and diffs are 3b; the activity row, banners, and compaction rows are 3c.',
       'Rows take no focus: Alt+↑, Enter expand, and c copy come with row selection (3e.2), so the list hint row is not shown.',
       'The running header of a read-only child shows no ticking duration until 3c.',
@@ -113,7 +114,6 @@ const REVIEW = {
       'The sketch indents every answer row by two columns; here the Markdown renderer\'s own list and quote indents add to those two.',
     ],
     pending: [
-      'The `↓ N new · End` pill and the cost of very long answers are 3a.3 (a live answer still shows at most its last 32,000 characters).',
       'Reasoning, tool rows, and the activity row are the other parts\' work.',
     ],
   },
@@ -155,6 +155,30 @@ const REVIEW = {
     ],
     pending: [
       'The Detailed level, its preview, and the policy that decides which level shows what are 3e.1.',
+    ],
+  },
+  live: {
+    scene: 18,
+    reference: 'spec §5.6 (follow-tail and the tail chip) · ScrollRegion pill in ui-kit.mjs',
+    implemented: [
+      'While you are at the tail the stream follows a growing answer and shows no chip.',
+      'Scroll up (wheel, PageUp, Shift+↑) and a reverse-video chip appears on the stream\'s last visible row at its right edge and stays while you are away. With nothing new below it reads `Back to bottom · Ctrl+↓`, the way back; once a new turn of the agent loop begins below you it reads `N new turns · Ctrl+↓`. N counts turns, never rows, tool calls, or message blocks.',
+      '`Ctrl+↓` jumps to the newest content and the chip goes; it works with a draft in the editor and on keyboards with no End key. `End` still works with an empty draft. The key is the action `mayfly.interaction.follow-tail`, and the chip shows whatever it is bound to.',
+      'A reader scrolled away stays away when the stream rewrites its rows (a live answer settling into its message): the view holds its place instead of snapping back to the tail.',
+      'The footer notice `new messages available · press End to follow` is gone: the chip replaces it.',
+    ],
+    focus: [
+      { look: 'The chip right after you scroll up, before anything new has arrived: `Back to bottom`', how: 'checkpoint scrolled (the wheel scrolls up while the first answer is half written)' },
+      { look: 'The chip once the rest arrives: two more turns began below, so `2 new turns`', how: 'checkpoint away' },
+      { look: 'Ctrl+↓ returning to the newest rows and the chip leaving', how: 'checkpoint followed' },
+      { look: 'The chip at 60 columns, and the rows above it holding still', how: 'checkpoint away, then --width 60' },
+    ],
+    differs: [
+      'The sketch draws the pill on an inner scroll region with a declared height, shows it only when rows arrived, and counts rows with `End`; the stream is scrolled by the screen, so the chip is painted over its last row by the renderer, stays while you are away, counts turns, and uses Ctrl+↓.',
+    ],
+    pending: [
+      'The view can still shift by about a row when the answer\'s lazily painted blocks (a table) replace their row estimates above the view; anchoring on the first visible row would remove it.',
+      'Clicking the chip does not follow yet.',
     ],
   },
   idle: {
@@ -309,7 +333,8 @@ const PERF = {
     source: { replay: 'markdown' },
     covers: [`${TRANSCRIPT}conversation-feed.ts`, `${TRANSCRIPT}transcript-model.ts`, ...STREAM, 'packages/mayfly/src/core/components.ts'],
     sizes: [DEFAULT_SIZE],
-    perf: { ceilings: {} },
+    // Measured on the dev machine at 27% / 3 ms; the ceilings keep the headroom of the other scenarios.
+    perf: { ceilings: { stream: { cpuPct: 45 }, scroll: { keyP50Ms: 12, cpuPerKeyMs: 8 }, wheel: { keyP50Ms: 12, cpuPerKeyMs: 8 } } },
     script: [measure('stream', [play(undefined, { timed: true })]), measure('scroll', [key('pageup', { repeat: 10 }), key('pagedown', { repeat: 10 })]), measure('wheel', [wheel('up', { count: 10 }), wheel('down', { count: 10 })])],
   },
   'perf-content': {
@@ -369,6 +394,20 @@ export const CATALOG = Object.freeze({
       resize(48, 24), checkpoint('narrow'),
     ],
     review: REVIEW['thinking-verbose'],
+  },
+  // The pill: scroll away from a streaming answer, let the rest arrive, then follow it again with Ctrl+↓.
+  live: {
+    summary: 'a streamed answer: scroll away mid-stream, see the chip (`Back to bottom`, then `N new turns`), then Ctrl+↓ follows it',
+    source: { replay: 'live' },
+    covers: ['packages/mayfly/src/core/terminal.ts', 'packages/mayfly/src/core/surface-renderer.ts', ...COVERS.markdown],
+    sizes: [DEFAULT_SIZE, [60, 24]],
+    script: [
+      play('half'), checkpoint('half'),
+      wheel('up', { count: 3 }), checkpoint('scrolled'),
+      play(), checkpoint('away'),
+      key('ctrl+down'), checkpoint('followed'),
+    ],
+    review: REVIEW.live,
   },
   ...APP,
   ...PERF,

@@ -16,6 +16,8 @@ const NAMED = new Map([
   ['down', '\u001b[B'],
   ['right', '\u001b[C'],
   ['left', '\u001b[D'],
+  ['ctrl+down', '\u001b[1;5B'],
+  ['ctrl+up', '\u001b[1;5A'],
   ['home', '\u001b[H'],
   ['end', '\u001b[F'],
   ['pageup', '\u001b[5~'],

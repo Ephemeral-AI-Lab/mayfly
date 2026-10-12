@@ -54,6 +54,7 @@ class FakeScreen implements MayflyScreen {
       id,
       disposed: false,
       set: (node: MayflyUiNode | null) => { this.nodes.set(id, node); this.requestRender() },
+      setTurns: () => {},
       focus: () => {},
       dispose: () => { slot.disposed = true; this.nodes.delete(id) },
     }
@@ -80,7 +81,6 @@ class FakeScreen implements MayflyScreen {
   setFocus(_component: MayflyComponent | null): void {}
   showOverlay(): MayflyOverlayHandle { throw new Error('overlays are out of scope') }
   requestRender(force?: boolean): void { this.renderRequests.push(force) }
-  contentChanged(): boolean { this.requestRender(); return false }
   follows = 0
   followContent(): void { this.follows += 1 }
   suspend<T>(fn: () => Promise<T>): Promise<T> { return fn() }

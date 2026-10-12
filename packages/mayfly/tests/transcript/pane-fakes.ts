@@ -128,7 +128,6 @@ export class PaneFakeScreen implements MayflyScreen {
   }
 
   scrollContent(): boolean { return false }
-  contentChanged(): boolean { return false }
   followContent(): void {}
   setContentScrollHandler(): () => void { return () => {} }
 }

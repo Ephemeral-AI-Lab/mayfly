@@ -113,6 +113,18 @@ const markdown = {
   items: [turn('Explain the rendering pipeline.', [step({ reasoning: 'Plan the answer: sections on caching, width ladders, and code.', text: reply(), textMs: 6000, chunk: 24, marks: [{ name: 'half', block: 'text', at: 0.5 }], usage: { inputTokens: 1200, outputTokens: 2600 } })])],
 }
 
+const live = {
+  summary: 'a long streamed answer, then two more turns with a tool call: what a view scrolled away from the tail has not seen',
+  items: [
+    turn('Explain the rendering pipeline.', [step({ text: reply(), textMs: 6000, chunk: 24, marks: [{ name: 'half', block: 'text', at: 0.5 }] })]),
+    turn('Check the readme too.', [
+      step({ text: 'Reading it.', tools: [tool('read', { file_path: 'README.md' }, { result: '# replay-app\n\nA tiny service used by the Mayfly workbench replays.', runMs: 500 })] }),
+      step({ text: 'The readme confirms it: the service is tiny.' }),
+    ]),
+    turn('And the tests?', [step({ text: 'All of them pass.' })]),
+  ],
+}
+
 const errors = {
   summary: 'failing tools, then a turn that ends in an error, one that is interrupted, and one that is aborted',
   items: [
@@ -549,7 +561,7 @@ const content = {
   ])],
 }
 
-export const REPLAYS = { tour, toolkit, thinking, markdown, phases, prompts, turns, errors, compaction: compactionReplay, manualCompact, context, subagents, childStream, approvals, questions, plan, goal, jobs, queued, retries, sideQuestion, notices, modes, edge, history, wheel, content }
+export const REPLAYS = { tour, toolkit, thinking, markdown, live, phases, prompts, turns, errors, compaction: compactionReplay, manualCompact, context, subagents, childStream, approvals, questions, plan, goal, jobs, queued, retries, sideQuestion, notices, modes, edge, history, wheel, content }
 
 /*
  * The scenes of the Website's app shots. Each is the source of an `app-*` scenario of the catalog, whose goldens the
