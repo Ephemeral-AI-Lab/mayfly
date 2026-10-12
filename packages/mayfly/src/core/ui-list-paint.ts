@@ -57,6 +57,8 @@ export interface ListPaintOptions {
   /** A painted row ahead of the list's own, windowed with them (a legacy filter echo). */
   readonly lead?: string
   readonly translate?: ((key: string, values?: Readonly<Record<string, string | number>>) => string) | undefined
+  /** The list lies in flow content that an outer scroll windows: its node bodies paint in full, not to the viewport. */
+  readonly flow?: boolean
   readonly memo?: ListRowMemo | undefined
 }
 
@@ -251,6 +253,21 @@ function bodyLines(spec: ListRowSpec, width: number, colors: MayflySemanticColor
   return mapRows(lines, (line, index) => `${indent}    ${colors.muted(index === lines.length - 1 ? '╰ ' : '│ ')}${line}`)
 }
 
+/**
+ * The rows of an item whose body leads them (`bodyLead`): no head line, the lead spans after the cursor gutter on the
+ * body's first row, and the body in the columns that remain with its other rows under it.
+ */
+function leadedLines(state: RowState, colors: MayflySemanticColors, paintBody: ListPaintOptions['body']): readonly string[] {
+  const item = state.spec.item
+  const prefix = prefixOf(state, colors)
+  const lead = spansText(item.bodyLead!, colors)
+  const margin = visibleWidth(prefix) + visibleWidth(lead)
+  const rows = paintBody === undefined ? [] : paintBody(item, Math.max(1, state.width - margin))
+  if (rows.length === 0) return [`${prefix}${lead}`]
+  const pad = ' '.repeat(margin)
+  return mapRows(rows, (line, index) => `${index === 0 ? `${prefix}${lead}` : pad}${line}`)
+}
+
 /** The width of a row's head: what the strip has to share the line with. */
 function headWidth(state: RowState, colors: MayflySemanticColors): number {
   return visibleWidth(headOf({ ...state, on: true }, colors).line)
@@ -295,17 +312,17 @@ export function paintList(node: ListNodeView, width: number, height: number, col
     const key = [
       available, state.marker, on ? 1 : 0, options.focused ? 1 : 0, node.marker === 'selection' ? 1 : 0, state.check, state.number,
       spec.depth, spec.last ? 1 : 0, spec.expandable ? 1 : 0, spec.open ? 1 : 0,
-      `${String(view?.active)}\0${String(view?.pinned)}`,
+      `${String(view?.active)}\0${String(view?.pinned)}`, options.flow === true ? 1 : 0,
     ].join('\x01')
-    const painted = options.memo === undefined
-      ? headLines(state, colors, options.translate)
-      : options.memo.cache.readLines(colors, item, key, () => headLines(state, colors, options.translate), options.memo.counters)
+    const leaded = item.bodyLead !== undefined && spec.open && item.body !== undefined
+    const paintHead = (): readonly string[] => leaded ? leadedLines(state, colors, options.body) : headLines(state, colors, options.translate)
+    const painted = options.memo === undefined ? paintHead() : options.memo.cache.readLines(colors, item, key, paintHead, options.memo.counters)
     entries.push({ kind: 'item', id: item.id, lines: painted })
-    if (spec.open && item.body !== undefined) {
+    if (!leaded && spec.open && item.body !== undefined) {
       const counters = options.memo?.counters
       const body = options.memo === undefined
         ? bodyLines(spec, available, colors, options.body, counters)
-        : options.memo.cache.readLines(colors, item, `body\x01${String(available)}`, () => bodyLines(spec, available, colors, options.body, counters), counters)
+        : options.memo.cache.readLines(colors, item, `body\x01${String(available)}\x01${options.flow === true ? 1 : 0}`, () => bodyLines(spec, available, colors, options.body, counters), counters)
       if (body.length > 0) entries.push({ kind: 'body', lines: body })
     }
   }

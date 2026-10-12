@@ -628,6 +628,27 @@ describe('contentNodeSource', () => {
     expect(markdown.offsetOf!(tokenRow + 2)).toBeGreaterThan(back)
   })
 
+  it('repaints only the unit an appended source reached, whichever node it came from', () => {
+    // A streamed answer is a new node on every append: its settled units must hit the cache by what they paint.
+    const paragraph = (index: number): string => `${'w '.repeat(900)}${String(index)}`
+    const settled = [0, 1, 2].map(paragraph).join('\n\n')
+    const env = makeEnv()
+    const first = contentNodeRows({ kind: 'markdown', source: settled }, 80, env.env)
+    void [...first]
+    const painted = env.counters.segmentsPainted
+    expect(painted).toBeGreaterThan(1)
+    const grown = contentNodeRows({ kind: 'markdown', source: `${settled}\n\n${paragraph(3)}` }, 80, env.env)
+    const rows = [...grown].map(plainText)
+    expect(rows.some(row => row.includes('w 3'))).toBe(true)
+    // Only the unit the append reached was painted again; the rows above it came from the cache.
+    expect(env.counters.segmentsPainted - painted).toBeLessThan(painted)
+    expect(env.counters.segmentsPainted - painted).toBeGreaterThan(0)
+    // The same text at another width is another paint.
+    const before = env.counters.segmentsPainted
+    void [...contentNodeRows({ kind: 'markdown', source: settled }, 60, env.env)]
+    expect(env.counters.segmentsPainted).toBeGreaterThan(before)
+  })
+
   it('reports a markdown paint failure once per unit', () => {
     const counters = createWorkCounters()
     const reports: string[] = []

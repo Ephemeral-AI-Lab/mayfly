@@ -802,9 +802,13 @@ describe('list rows and bodies', () => {
       expanded: true, wrap: true, wrapMax: 100, hang: 8, meter: { value: 4, max: 4, width: 40, tone: 'success' }, indent: 8, rule: '', gap: false,
     })
     expect(itemOf({ id: 'a', label: 'A', meter: { value: 1, max: 2 } })).toMatchObject({ meter: { value: 1, max: 2 } })
-    for (const bad of [{ labelSpans: 'x' }, { right: [1] }, { expanded: 'y' }, { wrap: 1 }, { wrapMax: 0 }, { hang: -1 }, { hang: 1.5 }, { meter: { value: 1 } }, { meter: { value: 1, max: 0 } }, { meter: { value: 1, max: 2, tone: 'loud' } }, { indent: -1 }, { rule: 1 }, { gap: 1 }, { gap: true, rule: 'x' }, { bodyAlways: true }, { bodyAlways: 1, body: 'x' }]) {
+    for (const bad of [{ labelSpans: 'x' }, { right: [1] }, { expanded: 'y' }, { wrap: 1 }, { wrapMax: 0 }, { hang: -1 }, { hang: 1.5 }, { meter: { value: 1 } }, { meter: { value: 1, max: 0 } }, { meter: { value: 1, max: 2, tone: 'loud' } }, { indent: -1 }, { rule: 1 }, { gap: 1 }, { gap: true, rule: 'x' }, { bodyAlways: true }, { bodyAlways: 1, body: 'x' }, { bodyLead: [{ text: '● ' }] }, { bodyLead: [{ text: '● ' }], body: ui.text('x') }, { bodyLead: [{ text: '● ' }], body: 'x', bodyAlways: true }, { bodyLead: 'x', body: ui.text('x'), bodyAlways: true }]) {
       expect(validateMayflyUiNode(rows([{ id: 'a', label: 'A', ...bad }])), JSON.stringify(bad)).toMatchObject({ ok: false })
     }
+  })
+
+  it('admits a lead only on an always-open node body', () => {
+    expect(itemOf({ id: 'a', label: '', body: ui.markdown('# x'), bodyAlways: true, bodyLead: [{ text: '● ', tone: 'muted' }] })).toMatchObject({ bodyAlways: true, bodyLead: [{ text: '● ', tone: 'muted' }] })
   })
 
   it('admits a string body and a content body, and refuses anything that holds focus', () => {

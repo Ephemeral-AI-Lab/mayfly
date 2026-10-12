@@ -1985,7 +1985,8 @@ part is accepted (§7 step 3).
 | --- | --- | --- | --- |
 | R1 | T0 demo kit; 3.0 components area | committed, awaiting the owner's look at the brief format | `feat/3a` |
 | R2 | 3a.1 turns: the stream cutover (new `TranscriptView` on the conversation node slot, planning reused from `buildDisplay`, minimal rows for the other kinds) | 3a.1 accepted (stream cutover; closing row instead of the turn rule; wrapped lines hang under the text via `hang`); perf A/B and profile smoke owed | `feat/3a` |
-| R3 | 3a.2 answers and reasoning; 3a.3 the live turn | not started | |
+| R3 | 3a.2 answers and reasoning | in review (Markdown answers as one item with a leading body, reasoning forms, a blank row after the banner; the banner stays its own block until the owner decides on new tones) | `feat/3a` |
+| R3b | 3a.3 the live turn | not started | |
 | R4 | 3a.4 images and cutover cleanup; 3b.1 settled tool lines | not started | |
 | R5 | 3b.2 edit cards; 3b.3 write and command cards | not started | |
 | R6 | 3c.1 activity header; 3c.2 activity details and tips | not started | |

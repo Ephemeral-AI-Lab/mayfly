@@ -377,6 +377,20 @@ function diffSource(node: Extract<MayflySectionContentNode, { readonly kind: 'di
   return new DiffRowsSource(diffPrepared(node, env), Math.max(1, width), env, keyOf(node, env))
 }
 
+/** A 53-bit hash of `text` (cyrb53) with its length: the content part of a painted unit's cache key. */
+function contentHash(text: string): string {
+  let h1 = 0xdeadbeef
+  let h2 = 0x41c6ce57
+  for (let index = 0; index < text.length; index += 1) {
+    const code = text.charCodeAt(index)
+    h1 = Math.imul(h1 ^ code, 2654435761)
+    h2 = Math.imul(h2 ^ code, 1597334677)
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909)
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909)
+  return `${String(text.length)}.${(4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36)}`
+}
+
 /**
  * The row source of one `markdown` node at one width: `length` is the unit row map (estimates replaced by painted
  * counts as units materialize), `row`/`prepare` paint the block or diagram under the asked rows through the content
@@ -394,6 +408,7 @@ class MarkdownRowSource implements RowSource {
   private readonly failures = new Set<number>()
   private readonly children = new Map<number, RowSource>()
   private readonly theme: MarkdownTheme
+  private readonly defsKey: string
 
   constructor(
     private readonly prepared: PreparedMarkdown,
@@ -411,6 +426,7 @@ class MarkdownRowSource implements RowSource {
     })
     this.declaredWidth = width
     this.theme = markdownTheme(env.colors)
+    this.defsKey = prepared.defs.length === 0 ? '' : contentHash(prepared.defs.map(def => def.raw).join(''))
     // A document that fits a paint budget is painted eagerly: its row map is exact at once, like the texts.
     this.lazy = prepared.normalized.length > CONTENT_SEGMENT_UNITS
     if (!this.lazy) this.prepare(0, Number.MAX_SAFE_INTEGER)
@@ -441,8 +457,15 @@ class MarkdownRowSource implements RowSource {
     }
   }
 
-  private cacheKey(unit: number): string {
-    return `${this.key}:md:${String(this.width)}:${String(unit)}`
+  /**
+   * A unit is cached by what it paints, not by the node it came from: a streamed answer is a new node on every append,
+   * and only the unit the append reached has new text. The link definitions the paint restores are part of the key.
+   */
+  private cacheKey(index: number): string {
+    const unit = this.prepared.units[index]!
+    const text = unit.kind === 'mermaid' ? `${unit.source}\0${unit.fallback}` : this.prepared.normalized.slice(unit.start, unit.end)
+    const closed = unit.kind === 'block' && unit.closed === true ? 1 : 0
+    return `m${paintKey(this.env)}:${String(this.width)}:${String(closed)}:${this.defsKey}:${contentHash(text)}`
   }
 
   /** The segmented child painting one oversized token's raw lines, built on first demand and shared across reads. */

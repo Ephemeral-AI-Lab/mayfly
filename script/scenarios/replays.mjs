@@ -102,6 +102,7 @@ const thinking = {
   items: [turn('Is 2^31 - 1 prime? Think it through.', [step({
     reasoning: Array.from({ length: 14 }, (_, n) => `Step ${n + 1}: consider whether a factor below ${100 * (n + 1)} could divide 2^31 - 1. The number is a Mersenne number, and a Mersenne exponent being prime is necessary but not sufficient, so the exponent 31 alone settles nothing. Lucas–Lehmer gives the answer directly.`).join('\n\n'),
     reasoningMs: 9000,
+    marks: [{ name: 'thinking', block: 'reasoning', at: 0.5 }],
     text: 'Yes. 2^31 - 1 = 2147483647 is a Mersenne prime (the Lucas–Lehmer test with exponent 31 returns zero).',
     usage: { inputTokens: 900, outputTokens: 1400 },
   })])],
@@ -109,7 +110,7 @@ const thinking = {
 
 const markdown = {
   summary: 'a long streamed answer with headings, lists, tables, and code in two languages',
-  items: [turn('Explain the rendering pipeline.', [step({ reasoning: 'Plan the answer: sections on caching, width ladders, and code.', text: reply(), textMs: 6000, chunk: 24, usage: { inputTokens: 1200, outputTokens: 2600 } })])],
+  items: [turn('Explain the rendering pipeline.', [step({ reasoning: 'Plan the answer: sections on caching, width ladders, and code.', text: reply(), textMs: 6000, chunk: 24, marks: [{ name: 'half', block: 'text', at: 0.5 }], usage: { inputTokens: 1200, outputTokens: 2600 } })])],
 }
 
 const errors = {

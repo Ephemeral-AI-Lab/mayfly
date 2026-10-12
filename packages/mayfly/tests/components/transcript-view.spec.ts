@@ -1,6 +1,6 @@
 /**
  * Decision tests of the conversation stream: the turn rule and its time, the prompt row and its four-line cap, the
- * queued rows, the answer's blank lines, and the identity that keeps the list's row cache hitting.
+ * queued rows, the answer and reasoning rows, and the identity that keeps the list's row cache hitting.
  * @module components-transcript-view
  */
 
@@ -25,7 +25,7 @@ describe('TranscriptView', () => {
       turn('turn:2', [prompt('u2', 'two')], 'Stopped after 3s · done 10:14'),
       turn('turn:3', [prompt('u3', 'three')]),
     ]))
-    expect(items.map(item => item.id)).toEqual(['u1', 'a1.0', 'turn:1.end.gap', 'turn:1.end', 'turn:2.gap', 'u2', 'turn:2.end.gap', 'turn:2.end', 'turn:3.gap', 'u3'])
+    expect(items.map(item => item.id)).toEqual(['u1', 'a1', 'turn:1.end.gap', 'turn:1.end', 'turn:2.gap', 'u2', 'turn:2.end.gap', 'turn:2.end', 'turn:3.gap', 'u3'])
     expect(items.find(item => item.id === 'turn:1.end')).toMatchObject({ label: '✻ Worked for 17s · done 10:13', labelSpans: [{ text: '✻ ', tone: 'muted' }, { text: 'Worked for 17s · done 10:13', tone: 'muted' }] })
     expect(items.find(item => item.id === 'turn:2.gap')).toMatchObject({ gap: true, disabled: true })
     // No line is drawn anywhere, and a running turn has no closing row.
@@ -57,12 +57,20 @@ describe('TranscriptView', () => {
     expect(queued).toMatchObject({ wrap: true, wrapMax: 4 })
   })
 
-  it('draws an answer line by line so its blank lines and layout survive', () => {
+  it('draws an answer as one item whose Markdown body wraps under the bullet that leads it', () => {
     const items = itemsOf(facts([turn('turn:1', [answer('a1', 'Summary\n\n- one\n  - nested')])]))
-    expect(items.map(item => item.id)).toEqual(['a1.0', 'a1.1', 'a1.2', 'a1.3'])
-    expect(items[0]!.label).toBe('● Summary')
-    expect(items[1]).toMatchObject({ gap: true })
-    expect(items[3]!.label).toBe('    - nested')
+    expect(items).toHaveLength(1)
+    expect(items[0]).toMatchObject({ id: 'a1', label: '', bodyAlways: true, bodyLead: [{ text: '● ' }], body: { kind: 'markdown', source: 'Summary\n\n- one\n  - nested' } })
+  })
+
+  it('draws reasoning as one clipped line, or as its whole text under a label', () => {
+    const [line, full] = itemsOf(facts([turn('turn:1', [
+      { kind: 'reasoning', id: 'r1', text: 'check the factors' },
+      { kind: 'reasoning', id: 'r2', label: 'Thinking', text: 'first\n\nsecond' },
+    ])]))
+    expect(line).toMatchObject({ id: 'r1', label: '✻ check the factors', labelSpans: [{ text: '✻ ', tone: 'muted' }, { text: 'check the factors', tone: 'muted', styles: ['italic'] }] })
+    expect(line!.wrap).toBeUndefined()
+    expect(full).toMatchObject({ id: 'r2', label: '', bodyAlways: true, bodyLead: [{ text: '✻ ', tone: 'muted' }, { text: 'Thinking', tone: 'muted' }, { text: '  ' }], body: { kind: 'text', tone: 'muted', styles: ['italic'] } })
   })
 
   it('draws the cut turn marker as its translated text', () => {

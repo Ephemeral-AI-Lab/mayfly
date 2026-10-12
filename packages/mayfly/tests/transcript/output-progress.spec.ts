@@ -6,6 +6,7 @@
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
+import { textOf, type MayflyListItem } from '@ephemeral-ai/mayfly-ui'
 import type { AssistantStreamRecord, StreamChunk } from '@deepseek-ai/dsh-llm'
 import { appendOutputProgress, outputProgressSchema } from '../../src/conversation/output-progress.ts'
 import { foldConversationFacts, initialConversationFacts, conversationFactsSchema } from '../../src/conversation/facts.ts'
@@ -46,6 +47,13 @@ function attempt(stream: readonly AssistantStreamRecord[], time: number, step: n
   return event('assistant/attempt', { turn, step, stream: [...stream] }, time)
 }
 
+/** A stream item as text: its label, or its lead and the text of its body. */
+const rowText = (item: MayflyListItem): string => {
+  if (item.label !== '' || item.body === undefined || typeof item.body === 'string') return item.label
+  const body = item.body.kind === 'text' ? textOf(item.body.content) : item.body.kind === 'markdown' ? textOf(item.body.source) : ''
+  return `${item.bodyLead?.map(span => span.text).join('') ?? ''}${body}`
+}
+
 describe('phase-local output', () => {
   it('measures event-time rates without first-chunk latency, clock reversal, or stale rates', () => {
     const first = appendOutputProgress(undefined, 4, 1_000)
@@ -72,7 +80,7 @@ describe('phase-local output', () => {
     // The stream's rows as text: what the transcript shows of the live turn, with the activity row apart from it.
     const streamText = (): string => TranscriptView(facts.build(conversationTranscriptModel(
       { entries: state.entries, streaming: state.active, settledSteps: state.finalizedSteps, turns: [] }, { get: () => undefined },
-    ), { policy: presentation.snapshot(), expanded: false, liveTurnHeader: false, t: key => key, queued: [] })).items.map(item => item.label).join('\n')
+    ), { policy: presentation.snapshot(), expanded: false, liveTurnHeader: false, t: key => key, queued: [] })).items.map(rowText).join('\n')
     const send = (next: SessionEvent): void => {
       state = foldConversationProjection(state, next)
       harness.ctx.emit('session/event', agent.session as never, next)
@@ -105,8 +113,8 @@ describe('phase-local output', () => {
       expect(streamText()).toContain('✻ ')
       vi.setSystemTime(3_000)
       replay(answer('seed', 3_000))
-      // The reasoning settles in place into its one-row summary.
-      expect(streamText()).toContain('✻ Thought for')
+      // The reasoning settles in place into its whole text under a label.
+      expect(streamText()).toContain('✻ Thinking')
       expect(harness.screen.paneLines()[0]).toContain('Writing · 2s · ↓1')
       expect(harness.screen.paneLines()[0]).not.toContain('tok/s')
       vi.setSystemTime(4_000)

@@ -29,8 +29,13 @@ export type StreamRow =
     /** Whether the prompt shows all its lines. */
     readonly open: boolean
   }
+  /** The model's answer, as Markdown source. */
   | { readonly kind: 'answer', readonly id: string, readonly text: string }
-  | { readonly kind: 'reasoning', readonly id: string, readonly label: string, readonly preview?: string }
+  /**
+   * The model's reasoning. With a `label` it is the whole text under `✻ <label>`; without one it is a single line (the
+   * latest line while streaming, the first once settled) that the row clips.
+   */
+  | { readonly kind: 'reasoning', readonly id: string, readonly text: string, readonly label?: string }
   /** A tool call or a group of calls: a glyph by state, a title, and the salient argument. */
   | { readonly kind: 'step', readonly id: string, readonly state: 'running' | 'ok' | 'error', readonly title: string, readonly detail?: string }
   /** The past-tense title of a folded process group. */
@@ -99,11 +104,11 @@ function rowItems(row: StreamRow): readonly MayflyListItem[] {
         promptItem(row.id, row.text, row.open),
         ...row.images.map((label, index) => line(`${row.id}.image.${String(index)}`, [span('  ▪ ', 'muted'), span(label, 'muted')])),
       ]
-    // One item per source line keeps the blank lines and the layout of the text; a long line wraps under the gutter.
-    case 'answer': return row.text.split('\n').map((text, index) => text.trim() === '' && index > 0
-      ? blank(`${row.id}.${String(index)}`)
-      : line(`${row.id}.${String(index)}`, [span(index === 0 ? '● ' : '  '), span(text)], { wrap: true, hang: 2 }))
-    case 'reasoning': return [line(row.id, [span('✻ ', 'muted'), span(row.label, 'muted', ['italic']), ...(row.preview === undefined ? [] : [span(`  ${row.preview}`, 'muted', ['italic'])])])]
+    // One item holds the whole answer: its Markdown body lays out the blocks and wraps under the `●` that leads it.
+    case 'answer': return [{ id: row.id, label: '', body: ui.markdown(row.text), bodyAlways: true, bodyLead: [span('● ')] }]
+    case 'reasoning': return [row.label === undefined
+      ? line(row.id, [span('✻ ', 'muted'), span(row.text, 'muted', ['italic'])])
+      : { id: row.id, label: '', body: ui.text(row.text, { tone: 'muted', styles: ['italic'] }), bodyAlways: true, bodyLead: [span('✻ ', 'muted'), span(row.label, 'muted'), span('  ')] }]
     case 'step': return [line(row.id, [span(STATE_GLYPH[row.state], STATE_TONE[row.state]), span(row.title), ...(row.detail === undefined ? [] : [span(` · ${row.detail}`, 'muted')])])]
     case 'title': return [line(row.id, [span('▸ ', 'muted'), span(row.text, 'muted'), ...(row.failed === undefined ? [] : [span(` · ${row.failed}`, 'danger')])])]
     case 'header': return [line(row.id, [span(row.open ? '▾ ' : '▸ ', 'muted'), span(row.label, MOOD_TONE[row.mood]), ...(row.tail === '' ? [] : [span(row.tail, 'muted')])])]

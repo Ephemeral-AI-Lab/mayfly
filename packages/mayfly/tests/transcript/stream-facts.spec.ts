@@ -73,10 +73,24 @@ describe('StreamFacts', () => {
     verbose.apply({ transcriptView: 'verbose' })
     const entries = [user(1, 'q'), thinking(1, 'first\nsecond thought\n', true), thinking(1, '   ')]
     const live = new StreamFacts().build(model(entries, [{ turn: 1, startedAt: NOON }], true), inputs({ policy: verbose.snapshot() }))
-    expect(rowsOf(live.turns[0]).filter(row => row.kind === 'reasoning')).toEqual([expect.objectContaining({ label: 'second thought' })])
+    expect(rowsOf(live.turns[0]).filter(row => row.kind === 'reasoning')).toEqual([expect.objectContaining({ text: 'second thought' })])
     // Standard keeps a running turn's process out of the stream: the activity row says what it is doing.
     const standard = new StreamFacts().build(model(entries, [{ turn: 1, startedAt: NOON }], true), inputs())
     expect(rowsOf(standard.turns[0]).some(row => row.kind === 'reasoning')).toBe(false)
+  })
+
+  it('shows a settled reasoning whole under a label, or as its first line where the mode previews it', () => {
+    const entries = [user(1, 'q'), thinking(1, 'first line\nsecond line')]
+    const verbose = new TranscriptPresentationPolicy()
+    verbose.apply({ transcriptView: 'verbose' })
+    const whole = new StreamFacts().build(model(entries, [], false), inputs({ policy: verbose.snapshot() }))
+    expect(rowsOf(whole.turns[0]).find(row => row.kind === 'reasoning')).toMatchObject({ kind: 'reasoning', label: 'Thinking', text: 'first line\nsecond line' })
+    const detailed = new TranscriptPresentationPolicy()
+    detailed.apply({ transcriptView: 'detailed' })
+    // A flat model draws its entries alone, so the preview is reachable without the turn fold.
+    const preview = new StreamFacts().build(createTranscriptModel('spec', entries), inputs({ policy: detailed.snapshot() }))
+    expect(rowsOf(preview.turns[0]).find(row => row.kind === 'reasoning')).toMatchObject({ kind: 'reasoning', text: 'first line' })
+    expect(rowsOf(preview.turns[0]).find(row => row.kind === 'reasoning')).not.toHaveProperty('label')
   })
 
   it('keeps the window of recent turns the policy names', () => {

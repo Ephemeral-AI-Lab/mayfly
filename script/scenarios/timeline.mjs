@@ -273,6 +273,8 @@ export function compile(items, { provider = 'deepseek-official', model = 'deepse
         const parts = spread(block.text, spec.chunk ?? 14)
         const total = block.type === 'reasoning' ? (spec.reasoningMs ?? Math.min(7000, Math.max(900, block.text.length * 12))) : (spec.textMs ?? Math.min(6000, Math.max(500, block.text.length * 8)))
         parts.forEach((part, index) => push(t + (total * index) / parts.length, { op: 'stream', ...via, frame: 'delta', channel, block: blocks.indexOf(block), text: part }))
+        // A mark inside a block stops playback part-way through it (`marks: [{ name, block: 'text', at: 0.5 }]`).
+        for (const point of spec.marks ?? []) if (point.block === block.type) push(t + total * point.at, { op: 'mark', name: point.name })
         t += total
       }
       if (preparing) {

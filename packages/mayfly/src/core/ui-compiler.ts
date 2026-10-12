@@ -1799,7 +1799,9 @@ function compileUnit(node: CompilableNode, state: FocusState, options: RuntimeCo
           body = compileNode(item.body as MayflyUiNode, state, options, `${path}.body.${item.id}`, mode)
           bodies.set(item, body)
         }
-        return body.render(width)
+        const rows = body.render(width)
+        // In flow content an outer scroll windows the rows, so a leaf's viewport bound would hide what it must reach.
+        return options.listRuntime.flow ? unclampedRows(rows) : rows
       }
       let component!: MayflyComponent
       component = staticComponent(width => {
@@ -1831,6 +1833,7 @@ function compileUnit(node: CompilableNode, state: FocusState, options: RuntimeCo
             after: visibleCount - entries.at(-1)!.position - 1,
             total: visibleCount,
             translate,
+            flow: options.listRuntime.flow,
             body: paintBody,
             segmentLabel: coreText(options, 'Options'),
             segment: item => {

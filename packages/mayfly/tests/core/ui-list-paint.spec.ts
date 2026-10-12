@@ -242,7 +242,37 @@ describe('a body at any size', () => {
     const painted = renderList(node, 30, 3, idle, colors, 0, memo, { rows, cursorId: 'a' })
     expect(plain(painted)).toEqual(['  A', '       always line 0', '       always line 1'])
     expect(counters.rowsMaterialized).toBe(2)
-    expect(isVirtualRows(memo.cache.readLines(colors, items[0]!, 'body\x0130', () => [], counters))).toBe(true)
+    expect(isVirtualRows(memo.cache.readLines(colors, items[0]!, 'body\x0130\x010', () => [], counters))).toBe(true)
+  })
+})
+
+describe('a body that leads its row', () => {
+  it('has no head line: the lead follows the cursor gutter, the body takes the rest, and its other rows sit under it', () => {
+    const items: MayflyListItem[] = [
+      { id: 'a', label: '', body: ui.text('first row\nsecond row'), bodyAlways: true, bodyLead: [{ text: '● ' }] },
+      { id: 'b', label: 'B' },
+    ]
+    const node = ui.list({ id: 'lead', role: 'browse', selectedIds: [], items })
+    const rows = specs(items).map(row => row.item.id === 'a' ? { ...row, open: true } : row)
+    const body = vi.fn((_item: MayflyListItem, width: number) => [`first@${String(width)}`, 'second'])
+    expect(plain(renderList(node, 30, 10, idle, colors, 0, undefined, { rows, cursorId: 'b', body }))).toEqual(['  ● first@26', '    second', '  B'])
+    // The cursor arrow rides the first row, and a wide lead narrows the body by its own width.
+    expect(plain(renderList(node, 30, 10, on('a'), colors, 0, undefined, { rows, cursorId: 'a', body }))[0]).toBe('→|● first@26')
+    const wide: MayflyListItem[] = [{ id: 'w', label: '', body: ui.text('x'), bodyAlways: true, bodyLead: [{ text: '✻ ' }, { text: '思考' }, { text: '  ' }] }]
+    const wideBody = vi.fn((_item: MayflyListItem, width: number) => [`w@${String(width)}`, 'next'])
+    expect(plain(renderList(ui.list({ id: 'w', role: 'browse', selectedIds: [], items: wide }), 30, 10, idle, colors, 0, undefined, { rows: specs(wide).map(row => ({ ...row, open: true })), body: wideBody }))).toEqual(['  ✻ 思考  w@20', '          next'])
+  })
+
+  it('keeps the leaded rows in the row cache and a body that paints nothing as the lead alone', () => {
+    const items: MayflyListItem[] = [{ id: 'a', label: '', body: ui.text('x'), bodyAlways: true, bodyLead: [{ text: '● ' }] }]
+    const node = ui.list({ id: 'cache', role: 'browse', selectedIds: [], items })
+    const rows = specs(items).map(row => ({ ...row, open: true }))
+    const memo = { cache: new UiRowCache(), counters: createWorkCounters() }
+    const body = vi.fn(() => ['row'])
+    renderList(node, 30, 10, idle, colors, 0, memo, { rows, body })
+    renderList(node, 30, 10, idle, colors, 0, memo, { rows, body })
+    expect(body).toHaveBeenCalledTimes(1)
+    expect(plain(renderList(node, 30, 10, idle, colors, 0, undefined, { rows, body: () => [] }))).toEqual(['  ● '])
   })
 })
 

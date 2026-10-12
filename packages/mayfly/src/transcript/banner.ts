@@ -259,8 +259,10 @@ class BannerComponent implements MayflyComponent {
       visibleWidth: text => this.components.visibleWidth(text),
       t: this.t,
     }, this.content, width)
-    this.cache = { width, content: this.content, lines }
-    return lines
+    // One blank row closes the banner, the gap every turn after it has.
+    const closed = lines.length === 0 ? lines : [...lines, '']
+    this.cache = { width, content: this.content, lines: closed }
+    return closed
   }
 
   /** Drop the composed rows; the next render re-reads the translator. */

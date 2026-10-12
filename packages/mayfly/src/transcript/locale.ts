@@ -44,8 +44,6 @@ const TRANSCRIPT_MESSAGES = identityCatalog({
   '{count} subagents': '{count} 个 subagent',
   '{count} failed': '{count} 个失败',
   'Ctrl+O to expand': '按 Ctrl+O 展开',
-  'Thought for a while': '已思考',
-  'Thought for {duration}': '已思考 {duration}',
   'cancelled': '已取消',
   'running': '运行中',
   'truncated': '已截断',

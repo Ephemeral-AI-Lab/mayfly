@@ -888,6 +888,7 @@ type MayflyListItem = {
   rightFocus?: readonly MayflyInlineSpan[]
   body?: string | MayflyListBodyNode   // 内容用 ui.listBody(...) 构建
   bodyAlways?: boolean
+  bodyLead?: readonly MayflyInlineSpan[]  // 与 bodyAlways 和节点 body 一起使用
   expanded?: boolean
   wrap?: boolean
   wrapMax?: number
@@ -946,7 +947,7 @@ query），所以单个字母可以留给 `i install`、通用的 `x delete`、`
 **Body。** 字符串 `body` 在行下方以 `│ ╰` 引导线展开；节点 `body`（用 `ui.listBody` 构建，仅限内容：
 text、rich text、fields、code、diff、sections、progress、image、divider）作为内容展开。带 body 的行
 显示 `▸`/`▾`，用 Enter、Space 或 Right 展开（Left 折叠）；`bodyAlways` 不带展开箭头直接显示，
-`expanded` 让行初始展开。每个 body 随其 item 在各自 32 个节点的预算下校验，长列表只校验光标附近的行，
+`expanded` 让行初始展开。`bodyLead`（须与 `bodyAlways` 和节点 body 同用）去掉行的首行：这些 span 接在光标列之后、领起 body 的第一行，body 排在余下的列里，其余各行对齐在它之下（流中的回答用 `● ` 领起它的 Markdown）。每个 body 随其 item 在各自 32 个节点的预算下校验，长列表只校验光标附近的行，
 所以数千条富行不会占用比普通行更多的树配额。body 永远不是 control：其中的 list、form、actions、
 tabs 会被拒绝。
 

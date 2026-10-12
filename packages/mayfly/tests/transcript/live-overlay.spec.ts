@@ -94,7 +94,7 @@ describe('live draft overlays', () => {
     model = source.snapshot()
     expect(materializeTranscriptEntries(model).map(entry => entry.kind)).toEqual(['transcript-user', 'transcript-assistant', 'transcript-thinking', 'transcript-assistant'])
     expect(JSON.stringify(materializeTranscriptEntries(model))).toContain('thinking now')
-    // Settled live reasoning carries its producer-time span for the `Thought for` title.
+    // Settled live reasoning carries its producer-time span for the closing row's duration.
     expect(materializeTranscriptEntries(model)[2]).toMatchObject({ kind: 'transcript-thinking', streaming: false, startedAt: 2, durationMs: 0 })
 
     // Each reasoning delta is visible on the next render; it must not wait

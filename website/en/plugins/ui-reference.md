@@ -951,6 +951,7 @@ type MayflyListItem = {
   rightFocus?: readonly MayflyInlineSpan[]
   body?: string | MayflyListBodyNode   // built with ui.listBody(...) for content
   bodyAlways?: boolean
+  bodyLead?: readonly MayflyInlineSpan[]  // with bodyAlways and a node body
   expanded?: boolean
   wrap?: boolean
   wrapMax?: number
@@ -1029,7 +1030,9 @@ multiple tree shows `◐` when only some of its children are chosen.
 code, diff, sections, progress, an image, a divider) opens as content. A row
 with a body shows `▸`/`▾` and opens with Enter, Space, or Right (closes with
 Left); `bodyAlways` shows the body without a disclosure and `expanded` starts
-the row open. Each body admits with its item under its own budget of 32 nodes,
+the row open. `bodyLead` (with `bodyAlways` and a node body) drops the row's head line: its spans follow the
+cursor gutter and lead the body's first row, the body takes the columns that remain, and its other rows sit under
+it (the stream's answer leads its Markdown with `● `). Each body admits with its item under its own budget of 32 nodes,
 and a long list admits only the rows around the cursor, so a stream of thousands
 of rich rows needs no more of the tree's quotas than plain ones. A body is never
 a control: a list, form, actions, or tabs node inside it is refused.

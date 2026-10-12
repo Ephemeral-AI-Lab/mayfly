@@ -33,9 +33,9 @@ it('resolves each mode to its capability table', () => {
   })
   expect(table).toEqual([
     ['compact', true, 'hidden', 'titles', 'process', false, false],
-    ['standard', true, 'titles', 'titles', 'content', true, true],
+    ['standard', true, 'titles', 'titles', 'content', true, false],
     ['detailed', true, 'cards', 'titles', 'content', false, true],
-    ['verbose', false, 'cards', 'cards', 'content', false, true],
+    ['verbose', false, 'cards', 'cards', 'content', false, false],
   ])
   // The activity row carries the running detail exactly where no card shows it.
   for (const process of Object.values(PROCESS_POLICIES)) {

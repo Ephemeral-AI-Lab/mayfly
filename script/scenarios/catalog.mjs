@@ -21,8 +21,8 @@ const STREAM = [`${TRANSCRIPT}stream-facts.ts`, 'packages/mayfly/src/components/
 const COVERS = {
   tour: [`${TRANSCRIPT}tool-*.ts`, `${TRANSCRIPT}process-*.ts`, `${TRANSCRIPT}pane-todo.ts`, ...STREAM],
   toolkit: [`${TRANSCRIPT}tool-*.ts`, `${TRANSCRIPT}present.ts`, ...STREAM],
-  thinking: [...STREAM],
-  markdown: [...STREAM, 'packages/mayfly/src/core/components.ts'],
+  thinking: [...STREAM, `${TRANSCRIPT}presentation-policy.ts`, 'packages/mayfly/src/core/ui-list-paint.ts'],
+  markdown: [...STREAM, 'packages/mayfly/src/core/components.ts', 'packages/mayfly/src/core/content-rows.ts', 'packages/mayfly/src/core/markdown-rows.ts', 'packages/mayfly/src/core/ui-list-paint.ts'],
   phases: [`${TRANSCRIPT}pane-activity.ts`, `${TRANSCRIPT}spinners.ts`, `${TRANSCRIPT}output-rate.ts`],
   prompts: [`${TRANSCRIPT}transcript-model.ts`, `${INTERACTION}attachments.ts`, ...STREAM],
   turns: [`${TRANSCRIPT}transcript-model.ts`, `${TRANSCRIPT}process-groups.ts`, `${TRANSCRIPT}presentation-policy.ts`, `${INTERACTION}pane-queue.ts`, 'packages/mayfly/src/core/node-slot.ts', ...STREAM],
@@ -93,6 +93,84 @@ const REVIEW = {
       'The `userFoldLines` and `userFoldChars` settings no longer fold anything; they go with the settings surface once the four-line cap is accepted.',
     ],
   },
+  markdown: {
+    scene: 18,
+    reference: 'prototype scene 18 (Conversation stream), the answer rows · spec §5.6 and Δ21 · turnItemsRaw in mayfly-components.mjs',
+    implemented: [
+      'An answer is Markdown: headings, bullets with nested items, tables drawn as boxes, fenced code highlighted by language, and inline emphasis, code, and links.',
+      'A `● ` leads the answer\'s first row and every other row sits under it, two columns in; a long paragraph wraps under its own first letter.',
+      'Blocks are separated by one blank row, the renderer\'s own rhythm.',
+      'The answer grows in place while it streams and the view follows its tail; settling it changes no row above the last block.',
+    ],
+    focus: [
+      { look: 'Headings, lists, the table, and both code fences against the sketch\'s plain wrapped lines', how: 'checkpoint end' },
+      { look: 'The `● ` and the two-column hang on the first row and on a wrapped paragraph', how: 'checkpoint end, then --width 60' },
+      { look: 'Half an answer: the open block at the tail and the tail in view', how: 'checkpoint half' },
+      { look: 'A table and a fence at 60 columns', how: 'checkpoint narrow' },
+    ],
+    differs: [
+      'The sketch draws an answer as plain wrapped lines; the spec (Δ21) keeps the shipped Markdown component, so headings, tables, and highlighted fences appear.',
+      'The sketch indents every answer row by two columns; here the Markdown renderer\'s own list and quote indents add to those two.',
+    ],
+    pending: [
+      'The `↓ N new · End` pill and the cost of very long answers are 3a.3 (a live answer still shows at most its last 32,000 characters).',
+      'Reasoning, tool rows, and the activity row are the other parts\' work.',
+    ],
+  },
+  thinking: {
+    scene: 18,
+    reference: 'prototype scene 18 (Conversation stream), the `think` rows · spec §5.6 · turnItemsRaw in mayfly-components.mjs',
+    implemented: [
+      'At Standard a finished turn folds its reasoning behind the header (`▸ Took 10s · Ctrl+O to expand`); Ctrl+O opens the last three turns and the reasoning shows whole.',
+      'The reasoning row is `✻ Thinking` and then the text, wrapped under the text with its paragraphs kept; no duration on the row.',
+    ],
+    focus: [
+      { look: 'The folded turn, then the reasoning that Ctrl+O opens', how: 'checkpoint end, then checkpoint open' },
+      { look: 'The wrap under the text at 48 columns', how: 'checkpoint narrow' },
+    ],
+    differs: [
+      'The sketch\'s reasoning is one sentence; real reasoning is many paragraphs, shown whole when a turn is open (owner decision, no cap).',
+      'R2\'s `Thought for 9s` label is gone: the closing row already says how long the turn took.',
+    ],
+    pending: [
+      'Which levels show reasoning, and the one-line preview that Detailed will show for a settled turn, come with the levels (3e.1); the preview row exists but a Detailed turn folds until then.',
+      'Selecting a reasoning row, copying it, and searching it are 3e.',
+    ],
+  },
+  'thinking-verbose': {
+    scene: 18,
+    reference: 'prototype scene 18 (Conversation stream) at level Verbose, the `think` rows · spec §5.6',
+    implemented: [
+      'While the model thinks, the stream shows one italic muted row, `✻ <latest line>`, clipped at the width; the activity row owns the label and the clock.',
+      'A settled turn at Verbose shows `✻ Thinking` and the whole text under it, wrapped under the text.',
+    ],
+    focus: [
+      { look: 'The live reasoning row mid-stream: one row, the latest line, no counters', how: 'checkpoint live' },
+      { look: 'The settled reasoning: the lead, the hang under the text, the blank rows between paragraphs, and the answer after it', how: 'checkpoint settled' },
+      { look: 'The same at 48 columns', how: 'checkpoint narrow' },
+    ],
+    differs: [
+      'Reasoning is shown whole and uncapped; the sketch has one sentence (owner decision, Verbose is where reasoning is read).',
+    ],
+    pending: [
+      'The Detailed level, its preview, and the policy that decides which level shows what are 3e.1.',
+    ],
+  },
+  idle: {
+    reference: 'spec §5.6 (the welcome banner as the stream\'s first row) · the Banner of the shipped product',
+    implemented: [
+      'A blank row closes the welcome banner, the same gap every turn after the first has, so the first prompt no longer sits against the logo.',
+    ],
+    focus: [
+      { look: 'The banner and the row after it, at 120 and 60 columns', how: 'checkpoint boot' },
+    ],
+    differs: [
+      'The banner is still its own block above the stream, not a row of it: its per-row logo gradient and model highlight are theme colors the list\'s tones do not carry. Moving it into the list needs new tones, which is a question for the owner.',
+    ],
+    pending: [
+      'The banner scrolls away with the history as before; selecting or copying it is not part of 3e.',
+    ],
+  },
 }
 
 /**
@@ -107,6 +185,19 @@ const SCRIPTS = {
     play(), checkpoint('end'),
     key('ctrl+o'), checkpoint('open'),
     resize(48, 24), checkpoint('narrow'),
+  ],
+  // Reasoning is a card of the open view: Standard folds it, Ctrl+O opens it, and a resize narrows the open turn.
+  thinking: [
+    play('thinking'), checkpoint('live'),
+    play(), checkpoint('end'),
+    key('ctrl+o'), checkpoint('open'),
+    resize(48, 24), checkpoint('narrow'),
+  ],
+  // A long markdown answer, stopped half-way through its stream, then settled and narrowed.
+  markdown: [
+    play('half'), checkpoint('half'),
+    play(), checkpoint('end'),
+    resize(60, 24), checkpoint('narrow'),
   ],
   jobs: [play('running'), checkpoint('running')],
   // The wheel scrolls the transcript back: the two checkpoints differ only by the scroll.
@@ -246,6 +337,7 @@ export const CATALOG = Object.freeze({
     covers: [`${TRANSCRIPT}banner*.ts`, `${TRANSCRIPT}status-*.ts`, `${INTERACTION}input-plugin.ts`],
     sizes: [DEFAULT_SIZE, [60, 24]],
     script: [checkpoint('boot')],
+    review: REVIEW.idle,
   },
   gallery: {
     summary: 'the UI gallery: a side pane, a view in status row 2, and a bottom prompt pane',
@@ -263,6 +355,20 @@ export const CATALOG = Object.freeze({
     script: [type('/schedule'), key('enter'), checkpoint('catalog')],
   },
   ...Object.fromEntries(Object.entries(REPLAYS).map(([name, replay]) => [name, replayScenario(name, replay)])),
+  // The same reasoning with every card open: the live row mid-stream, the settled row, and the narrow row.
+  'thinking-verbose': {
+    summary: 'a long reasoning block at the Verbose level: the live reasoning row, then the settled one with its whole text',
+    source: { replay: 'thinking' },
+    config: { mayfly: { transcriptView: 'verbose' } },
+    covers: COVERS.thinking,
+    sizes: [DEFAULT_SIZE],
+    script: [
+      play('thinking'), checkpoint('live'),
+      play(), checkpoint('settled'),
+      resize(48, 24), checkpoint('narrow'),
+    ],
+    review: REVIEW['thinking-verbose'],
+  },
   ...APP,
   ...PERF,
 })

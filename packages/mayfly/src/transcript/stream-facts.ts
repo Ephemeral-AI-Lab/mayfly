@@ -22,8 +22,11 @@ import { ellipsize, toolDisplayName } from './present.ts'
 /** Maximum source characters one streamed answer paints: the rest of a longer one is summarized by its count. */
 export const STREAMING_RENDER_MAX_CHARS = 32_000
 
-/** Characters of a reasoning preview and of a salient argument kept on a row. */
+/** Characters of a salient argument kept on a row. */
 const PREVIEW_MAX_CHARS = 80
+
+/** Characters of a one-line reasoning row kept in its facts: the row clips to the width it is given. */
+const REASONING_LINE_MAX_CHARS = 400
 
 type Entry = TranscriptModel['entries'][number]
 
@@ -69,14 +72,14 @@ function streamingWindow(text: string): string {
   return `... (${String(text.length - visible.length)} earlier characters)\n${visible}`
 }
 
-function firstLine(text: string): string | undefined {
+function firstLine(text: string, max = PREVIEW_MAX_CHARS): string | undefined {
   const line = text.split('\n').find(candidate => candidate.trim() !== '')
-  return line === undefined ? undefined : ellipsize(sanitizePluginText(line.trim()), PREVIEW_MAX_CHARS)
+  return line === undefined ? undefined : ellipsize(sanitizePluginText(line.trim()), max)
 }
 
-function lastLine(text: string): string | undefined {
+function lastLine(text: string, max = PREVIEW_MAX_CHARS): string | undefined {
   const line = text.split('\n').findLast(candidate => candidate.trim() !== '')
-  return line === undefined ? undefined : ellipsize(sanitizePluginText(line.trim()), PREVIEW_MAX_CHARS)
+  return line === undefined ? undefined : ellipsize(sanitizePluginText(line.trim()), max)
 }
 
 function sameRow(left: StreamRow, right: StreamRow): boolean {
@@ -281,10 +284,10 @@ function entryRow(item: EntryItem, entry: TranscriptEntryModel, inputs: StreamIn
     case 'transcript-thinking': {
       if (entry.text.trim() === '') return undefined
       // The activity row owns the live label; the stream shows the tail of what is being thought.
-      if (entry.streaming) return { kind: 'reasoning', id: entry.id, label: lastLine(entry.text) ?? '' }
-      const label = entry.durationMs === undefined ? t('Thought for a while') : t('Thought for {duration}', { duration: compactElapsedMs(Math.max(1000, entry.durationMs)) })
-      const preview = inputs.policy.process.settledReasoningPreview ? firstLine(entry.text) : undefined
-      return { kind: 'reasoning', id: entry.id, label, ...(preview === undefined ? {} : { preview }) }
+      if (entry.streaming) return { kind: 'reasoning', id: entry.id, text: lastLine(entry.text, REASONING_LINE_MAX_CHARS) ?? '' }
+      // A mode that previews settled reasoning shows one line of it; a turn that is open (Verbose, Ctrl+O) shows the whole.
+      if (inputs.policy.process.settledReasoningPreview && !item.expanded) return { kind: 'reasoning', id: entry.id, text: firstLine(entry.text, REASONING_LINE_MAX_CHARS) ?? '' }
+      return { kind: 'reasoning', id: entry.id, label: t('Thinking'), text: sanitizePluginText(entry.text.trim()) }
     }
     case 'transcript-tool': {
       const state = entry.result === undefined ? item.turnClosed ? 'error' : 'running' : entry.result.isError ? 'error' : 'ok'

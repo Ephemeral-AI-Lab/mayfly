@@ -45,16 +45,16 @@ export interface ProcessPolicy {
   readonly fileChanges: 'process' | 'content'
   /** Whether the activity row appends the running command, path, query, or reasoning. */
   readonly liveProcessDetail: boolean
-  /** Whether a settled reasoning row previews its first line beside its title. */
+  /** Whether a settled reasoning row shows its first line only, instead of the whole text (an open turn always shows it whole). */
   readonly settledReasoningPreview: boolean
 }
 
 /** The fixed capability table; the same mode always yields the same object. */
 export const PROCESS_POLICIES: Readonly<Record<TranscriptViewMode, ProcessPolicy>> = Object.freeze({
   compact: Object.freeze({ foldCompletedTurns: true, liveProcess: 'hidden', settledProcess: 'titles', fileChanges: 'process', liveProcessDetail: false, settledReasoningPreview: false }),
-  standard: Object.freeze({ foldCompletedTurns: true, liveProcess: 'titles', settledProcess: 'titles', fileChanges: 'content', liveProcessDetail: true, settledReasoningPreview: true }),
+  standard: Object.freeze({ foldCompletedTurns: true, liveProcess: 'titles', settledProcess: 'titles', fileChanges: 'content', liveProcessDetail: true, settledReasoningPreview: false }),
   detailed: Object.freeze({ foldCompletedTurns: true, liveProcess: 'cards', settledProcess: 'titles', fileChanges: 'content', liveProcessDetail: false, settledReasoningPreview: true }),
-  verbose: Object.freeze({ foldCompletedTurns: false, liveProcess: 'cards', settledProcess: 'cards', fileChanges: 'content', liveProcessDetail: false, settledReasoningPreview: true }),
+  verbose: Object.freeze({ foldCompletedTurns: false, liveProcess: 'cards', settledProcess: 'cards', fileChanges: 'content', liveProcessDetail: false, settledReasoningPreview: false }),
 })
 
 /** Immutable reading of one transcript tree's presentation policy. */

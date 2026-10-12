@@ -187,6 +187,11 @@ export interface MayflyListItem {
   readonly body?: string | MayflyListBodyNode
   /** The body is always open and the row is not a disclosure. */
   readonly bodyAlways?: boolean
+  /**
+   * With `bodyAlways` and a node body: the row has no head line of its own. These spans lead the body's first row (after
+   * the cursor gutter) and the body is laid out in the columns that remain, so its other rows start under it.
+   */
+  readonly bodyLead?: readonly MayflyInlineSpan[]
   /** The row starts open. */
   readonly expanded?: boolean
   /** Wrap the row's text onto more rows instead of truncating it. */

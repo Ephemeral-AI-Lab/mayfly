@@ -525,6 +525,7 @@ function listItemRowFields(object: Record<string, unknown>, path: string, state:
   const rightFocus = own(object, 'rightFocus', path)
   const bodyValue = own(object, 'body', path)
   const bodyAlways = own(object, 'bodyAlways', path)
+  const bodyLead = own(object, 'bodyLead', path)
   const expanded = own(object, 'expanded', path)
   const wrap = own(object, 'wrap', path)
   const wrapMax = own(object, 'wrapMax', path)
@@ -535,6 +536,7 @@ function listItemRowFields(object: Record<string, unknown>, path: string, state:
   const body = bodyValue === undefined ? undefined
     : typeof bodyValue === 'string' ? text(bodyValue, `${path}.body`) : listBody(bodyValue, `${path}.body`, state)
   if (bodyAlways !== undefined && boolean(bodyAlways, `${path}.bodyAlways`) && body === undefined) invalid(`${path}.bodyAlways needs a body`)
+  if (bodyLead !== undefined && !(bodyAlways === true && body !== undefined && typeof body !== 'string')) invalid(`${path}.bodyLead needs bodyAlways and a node body`)
   const ruleValue = optionalLabel(object, 'rule', path)
   if (gap === true && ruleValue !== undefined) invalid(`${path} cannot be both a rule and a gap`)
   return {
@@ -543,6 +545,7 @@ function listItemRowFields(object: Record<string, unknown>, path: string, state:
     ...optional(rightFocus === undefined ? undefined : spans(rightFocus, `${path}.rightFocus`, state, false, true), 'rightFocus'),
     ...optional(body, 'body'),
     ...optional(bodyAlways === undefined ? undefined : boolean(bodyAlways, `${path}.bodyAlways`), 'bodyAlways'),
+    ...optional(bodyLead === undefined ? undefined : spans(bodyLead, `${path}.bodyLead`, state, false, true), 'bodyLead'),
     ...optional(expanded === undefined ? undefined : boolean(expanded, `${path}.expanded`), 'expanded'),
     ...optional(wrap === undefined ? undefined : boolean(wrap, `${path}.wrap`), 'wrap'),
     ...optional(wrapMax === undefined ? undefined : Math.min(finiteInteger(wrapMax, `${path}.wrapMax`, 1), LIST_ROW_LIMITS.wrapMax), 'wrapMax'),
