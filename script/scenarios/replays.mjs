@@ -409,6 +409,32 @@ const prompts = {
   ],
 }
 
+const turns = {
+  summary: 'the stream of turns: the turn rule with its start time, prompts of every shape (wrapped, folded, CJK), an interrupted turn, and queued messages',
+  items: [
+    turn('Update the landing page hero copy and run the tests.', [
+      step({ text: 'I will read the hero first.', tools: [tool('read', { file_path: 'website/index.md' }, { result: '# Mayfly\n\nBuild agents faster.', runMs: 400 })] }),
+      step({ text: 'Done — the hero now reads “Ship agent UI in a keystroke”; all 214 tests pass.' }),
+    ], { startAt: '10:02' }),
+    turn('Before the release, audit every place that still prints "Working" instead of "Deep diving": the activity row, the tips, the website pages, and the screenshots. List each file you changed, keep the diff small, and do not touch the locale files for other languages. Run the width scan when you are done and tell me which cases cover narrow terminals.', [
+      step({ text: 'Searching for the old label.', tools: [tool('grep', { pattern: 'Working', path: 'src' }, { result: 'src/tips.ts:12: Working · @ files', runMs: 400 })] }),
+      step({ text: 'Done — 5 files updated; the width scan has 6 narrow cases (24 to 60 columns) and all pass.' }),
+    ], { startAt: '10:03' }),
+    turn(lines(7, n => `Check ${String(n)}: the ${['header', 'footer', 'editor', 'banner', 'queue', 'status row', 'overlay'][n - 1]} still fits at 40 columns.`), [step({ text: 'All seven fit; the overlay needed a one-column trim.' })], { startAt: '10:09' }),
+    turn('请把这一段说明翻译成中文，并且保留原来的标点：the stream shows one rule between turns, and a prompt longer than four lines folds behind a muted row that opens with Enter.', [step({ text: '已翻译；标点保持不变。' })], { startAt: '10:11' }),
+    turn('Run the full gate, and I will stop you halfway.', [
+      step({ text: 'Starting the full gate.', tools: [tool('bash', { command: 'pnpm run check -- --tier full', description: 'Run the full gate' }, { result: 'stopped', runMs: 1500 })] }),
+    ], { startAt: '10:14', outcome: 'interrupted' }),
+    mark('settled'),
+    turn('Now regenerate the screenshots and check that they are fresh.', [
+      queue(['Then update the changelog', { steer: 'Keep the diff small' }], { holdMs: 8000 }),
+      mark('queued'),
+      step({ text: 'Running shots:sync first.', textMs: 1500, tools: [tool('bash', { command: 'pnpm run shots:sync', description: 'Regenerate the screenshots' }, { result: 'wrote 14 screenshots', runMs: 1200 })] }),
+      step({ text: 'Screenshots are fresh: shots:sync wrote 14 files.' }),
+    ], { startAt: '10:16' }),
+  ],
+}
+
 const phases = {
   summary: 'activity phases: waiting for the first token, reasoning only, text only, and a tool call being prepared',
   items: [
@@ -522,7 +548,7 @@ const content = {
   ])],
 }
 
-export const REPLAYS = { tour, toolkit, thinking, markdown, phases, prompts, errors, compaction: compactionReplay, manualCompact, context, subagents, childStream, approvals, questions, plan, goal, jobs, queued, retries, sideQuestion, notices, modes, edge, history, wheel, content }
+export const REPLAYS = { tour, toolkit, thinking, markdown, phases, prompts, turns, errors, compaction: compactionReplay, manualCompact, context, subagents, childStream, approvals, questions, plan, goal, jobs, queued, retries, sideQuestion, notices, modes, edge, history, wheel, content }
 
 /*
  * The scenes of the Website's app shots. Each is the source of an `app-*` scenario of the catalog, whose goldens the

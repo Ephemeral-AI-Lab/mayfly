@@ -1,22 +1,24 @@
 /**
  * @ephemeral-ai/mayfly/transcript — terminal transcript surfaces for the frontend runtime.
  * The official conversation plugin publishes a renderer-neutral transcript
- * model from the Harness projection; this plugin owns component
- * reconciliation, one view per displayed or retained conversation, Ctrl-O
+ * model from the Harness projection; this plugin maps the displayed model to
+ * the stream's facts and publishes the stream into the conversation node slot,
+ * keeps one view per displayed or retained conversation, and owns Ctrl-O
  * expansion, settings, dock chrome, and the canonical status footer. It does
- * not fold a Harness event log. Unloading removes mounted components and
- * keymap actions.
+ * not fold a Harness event log. Unloading removes the slot, mounted components,
+ * and keymap actions.
  *
  * @module @ephemeral-ai/mayfly/transcript
  */
 
 import type { Context } from '@deepseek-ai/cordis'
+import type { Agent } from '@deepseek-ai/dsh-agent'
 import { GutterComponent } from '../core/gutter.ts'
 // Empty type import carries the app-owned session reader/projection services.
 import type {} from '../app/index.ts'
-import type { UserMessageImages } from './components.ts'
 import { StatusFooterComponent } from './status-model.ts'
-import { TranscriptController, TranscriptLocalsService } from './transcript-model.ts'
+import { userMessageText } from './stream-facts.ts'
+import { TranscriptController } from './transcript-model.ts'
 import { OfficialConversationModelSource } from './official-model.ts'
 import type { LiveDraftSource } from './conversation-feed.ts'
 import { ConversationSlots } from './conversation-slots.ts'
@@ -39,33 +41,22 @@ declare module '@deepseek-ai/cordis' {
   }
 }
 
-export {
-  AssistantMessageComponent,
-  TOOL_ARGUMENTS_MAX_CHARS,
-  ToolCallComponent,
-  USER_PREVIEW_LINES,
-  UserMessageComponent,
-} from './components.ts'
-export { ReadGroupComponent, groupReadsByFile, READ_GROUP_ROW_LIMIT, READ_GROUP_EXPANDED_ROW_LIMIT, type ReadFileGroup } from './read-group.ts'
-export { SearchGroupComponent, SEARCH_GROUP_ROW_LIMIT, SEARCH_GROUP_EXPANDED_ROW_LIMIT } from './search-group.ts'
-export { CommandGroupComponent, COMMAND_GROUP_ROW_LIMIT } from './command-group.ts'
 export { READ_PREVIEW_LINE_LIMIT, SEARCH_PREVIEW_MATCH_LIMIT, SEARCH_PATH_LIMIT, COMMAND_PREVIEW_LINE_LIMIT } from './official-model.ts'
 export { conversationTranscriptModel } from './official-model.ts'
 export type { ToolPresentationSource } from './present.ts'
 export { parseXmlEnvelope, summarizeToolText, type EnvelopePair } from './envelope.ts'
 export { ellipsize, parseToolArguments, summarizeToolCall, TOOL_ARG_PAIR_LIMIT, TOOL_ARG_VALUE_MAX_CHARS } from './present.ts'
 export { SessionFactsService } from './session-facts.ts'
-export { createToolPresentationModel, toolCallNode, toolResultNode, toolResultChip, ToolModelComponent } from './tool-model.ts'
+export { createToolPresentationModel, toolCallNode, toolResultNode } from './tool-model.ts'
 export type { ToolPresentationFacts } from './tool-model.ts'
-export { appendTranscriptNode, createTranscriptModel, TranscriptController, TranscriptLocalsService, TranscriptModelComponent } from './transcript-model.ts'
-export type { TranscriptModelRenderer } from './transcript-model.ts'
+export { appendTranscriptNode, createTranscriptModel, TranscriptController } from './transcript-model.ts'
+export type { TranscriptControllerOptions, TranscriptViewOptions } from './transcript-model.ts'
 export {
   BRAILLE_SPINNER_FRAMES,
   BRAILLE_SPINNER_INTERVAL_MS,
   MOON_SPINNER_FRAMES,
   MOON_SPINNER_INTERVAL_MS,
 } from './spinners.ts'
-export { ThinkingComponent, THINKING_PREVIEW_LINES } from './thinking.ts'
 export type {
   TranscriptAssistantItem,
   TranscriptItem,
@@ -84,7 +75,6 @@ export {
   TranscriptPresentationPolicy,
 } from './presentation-policy.ts'
 export type { ProcessPolicy, TranscriptPresentationSnapshot, TranscriptViewMode } from './presentation-policy.ts'
-export { setProcessRowTimers, type ProcessRowTimers } from './process-rows.ts'
 
 /** Stable Cordis plugin name. */
 export const name = 'mayfly-transcript'
@@ -125,45 +115,24 @@ export function apply(ctx: Context): void {
   // keeps every shipped default.
   followPresentationSettings(ctx, presentation, () => transcript.refreshPresentationPolicy())
 
-  // Optional image wiring is renderer-owned; the projected model carries only
-  // durable references and the byte loader stays in this terminal layer.
-  const imageDependencies = (): UserMessageImages => {
-    const attachments = ctx.get('attachments') as
-      | { readImage(ref: unknown): Promise<{ data: Uint8Array }> }
-      | undefined
-    return attachments === undefined ? {} : {
-      loadImage: async (ref: unknown) => {
-        try {
-          return (await attachments.readImage(ref)).data
-        } catch {
-          return undefined
-        }
-      },
-      onReady: () => screen.requestRender(),
-    }
-  }
-
   // Frontend owns live drafts across renderer/theme reloads.
   const liveStream = ctx.mayflyLiveAssistantStream
   const liveDrafts: LiveDraftSource = {
     subscribe: listener => liveStream.subscribe(listener),
     get: agent => liveStream.get(agent),
   }
-  const transcript = new TranscriptController(ctx, undefined, {
-    renderer: {
-      colors,
-      components: ctx.mayflyComponents,
-      viewportRows: () => screen.editorViewport.rows,
-      images: imageDependencies,
-      presentation,
-      t,
-    },
-  })
+  // The messages typed while the agent works are the inbox of the selected Agent. The inbox is read when it changes (as
+  // the queue pane does), never while a model is being published: a read inside a session event disturbs the
+  // activity row's own bookkeeping of that event.
+  let selected: Agent | null = null
+  let queued: readonly { readonly id: string, readonly text: string }[] = []
+  const readQueued = (): void => {
+    queued = selected === null ? [] : [...selected.inbox.nextStep, ...selected.inbox.nextTurn]
+      .filter(message => message.source.kind === 'user')
+      .map(message => ({ id: String(message.id), text: userMessageText(message) }))
+  }
+  const transcript = new TranscriptController(ctx, { presentation, t, queued: () => queued })
   ctx.effect(() => () => transcript.dispose())
-  // Ephemeral local entries (e.g. `!` shell echoes) anchor into the mounted
-  // conversation flow through this seam and scroll up with later history;
-  // the service unregisters when this fiber unloads.
-  new TranscriptLocalsService(ctx, transcript)
   // Every displayed or retained conversation reads its own native path; the
   // registry decides which views exist, the controller which one is mounted.
   const slots = new ConversationSlots(ctx, transcript, {
@@ -181,7 +150,7 @@ export function apply(ctx: Context): void {
       liveDrafts,
       t,
     ),
-    headed: { liveTurnHeader: true, requestRender: () => screen.requestRender() },
+    headed: { liveTurnHeader: true },
     history: () => ctx.get('sessionController'),
   })
   ctx.effect(() => () => slots.dispose())
@@ -189,9 +158,21 @@ export function apply(ctx: Context): void {
   const sync = (): void => { slots.sync(ctx.mayflyConversations.snapshot()) }
   // A same-id Agent replacement changes the exact Agent without a registry change.
   const offView = ctx.mayflyConversations.subscribe(sync)
-  const offAgent = ctx.mayflyCurrentAgent.subscribe(sync)
+  const offAgent = ctx.mayflyCurrentAgent.subscribe((agent) => {
+    selected = agent
+    readQueued()
+    sync()
+    transcript.republish()
+  })
   ctx.effect(() => () => offView())
   ctx.effect(() => () => offAgent())
+  // A message enters or leaves the selected Agent's inbox: the queued rows follow it.
+  const onInbox = ({ agent }: { readonly agent: unknown }): void => {
+    if (agent !== selected) return
+    readQueued()
+    transcript.republish()
+  }
+  for (const off of [ctx.on('agent/inbox/inserted', onInbox), ctx.on('agent/inbox/claimed', onInbox), ctx.on('agent/inbox/discarded', onInbox)]) ctx.effect(() => () => off())
   const footer = new StatusFooterComponent(
     ctx.mayflyStatus,
     ctx.mayflyComponents,

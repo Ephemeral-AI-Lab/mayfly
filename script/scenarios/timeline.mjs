@@ -12,6 +12,10 @@ const DEFAULT_USAGE = { inputTokens: 3200, outputTokens: 120, cacheReadTokens: 2
 /**
  * A user turn: `prompt`, then the steps (and compactions) the agent took, ending with `outcome`: `'completed'` (the
  * default), `'interrupted'`, `'aborted'`, `{ error: { message, code } }`, or `'open'` for a turn that never ends.
+ * `startAt` (`'HH:MM'` on the scenario's day, UTC, or milliseconds from the scenario epoch) stands the scenario clock
+ * there when the turn starts, and everything after it follows from that time. Playback does not wait for it: only the
+ * clock the session events are stamped with jumps, so a run under the runner shows `10:04` and a live run shows the
+ * wall clock.
  */
 export const turn = (prompt, items, options = {}) => ({ kind: 'turn', prompt, items, ...options })
 /**
@@ -88,6 +92,15 @@ export const approval = (toolName, reason) => ({ kind: 'approval', toolName, rea
 /** Questions for the user during a tool call (`tool('ask_user_question', ..., { ask: question([...]) })`); the replay waits for the answer. */
 export const question = questions => ({ kind: 'question', questions })
 
+/** The scenario epoch is 09:00 UTC (`clock.mjs`); a `'HH:MM'` start is a time of that day. */
+const EPOCH_MINUTES = 9 * 60
+const clockMs = (at) => {
+  if (typeof at === 'number') return at
+  const match = /^(\d{1,2}):(\d{2})$/.exec(at)
+  if (match === null) throw new Error(`startAt must be 'HH:MM' or milliseconds, not ${JSON.stringify(at)}`)
+  return (Number(match[1]) * 60 + Number(match[2]) - EPOCH_MINUTES) * 60_000
+}
+
 const spread = (text, chunk) => {
   const points = Array.from(text)
   const out = []
@@ -103,6 +116,8 @@ const spread = (text, chunk) => {
  */
 export function compile(items, { provider = 'deepseek-official', model = 'deepseek-flash', contextWindow = 131072 } = {}) {
   const actions = []
+  /** Milliseconds the scenario clock runs ahead of the playback time since the last `startAt`. */
+  let skew = 0
   let messageSeq = 0
   let callSeq = 0
   let childSeq = 0
@@ -110,7 +125,7 @@ export function compile(items, { provider = 'deepseek-official', model = 'deepse
   const live = new Set()
   const id = prefix => `replay-${prefix}-${String(++messageSeq)}`
 
-  const push = (at, op) => actions.push({ at: Math.round(at), ...op })
+  const push = (at, op) => actions.push({ at: Math.round(at), ...(skew === 0 ? {} : { skew }), ...op })
 
   /** A job starts, prints its lines and progress, and settles, each at its own time. */
   function scheduleJob(item, t) {
@@ -190,6 +205,7 @@ export function compile(items, { provider = 'deepseek-official', model = 'deepse
 
   function runTurn(spec, turnNo, start, event, session, writeHeader) {
     let t = start
+    if (spec.startAt !== undefined) skew = clockMs(spec.startAt) - Math.round(t)
     event(t, 'turn/start', { turn: turnNo })
     if (spec.prompt !== undefined) event(t + 100, 'user/message', { id: id('user'), role: 'user', content: typeof spec.prompt === 'string' ? [{ type: 'text', text: spec.prompt }] : spec.prompt, source: { kind: 'user' } }, true)
     t += 300

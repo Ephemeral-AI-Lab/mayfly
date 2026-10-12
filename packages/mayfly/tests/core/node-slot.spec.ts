@@ -61,7 +61,11 @@ describe('node slot test host', () => {
     expect(tree.root.mayflyUiInteraction.list('slot').map(model => model.id)).toEqual(['status.footer', 'editor.prompt', 'transcript.conversation'])
     expect(footer.render(100).join('\n')).toContain('entry 11 0')
     expect(editor.render(100)).toEqual(['  Prompt: '])
-    expect(content.render(100)[0]).toContain('(1/200)')
+    // An unfocused content slot is the content of the outer scroll: every item paints and the scroll windows them.
+    const flowing = content.render(100)
+    expect(flowing).toHaveLength(200)
+    expect(flowing[0]).toContain('Item number 0')
+    expect(flowing.join('\n')).not.toContain('(1/200)')
 
     tree.state.stream!.focus()
     expect(tree.terminal.focused()).toBe(content)
@@ -148,7 +152,8 @@ describe('node slot test host', () => {
     expect(tree.state.stream).not.toBe(stale)
     expect(tree.root.mayflyUiInteraction.list('slot')).toEqual(models)
     const after = hosts(terminal)
-    expect(after.content.render(100)[0]).toContain('(4/200)')
+    expect(after.content.render(100)).toHaveLength(200)
+    expect(tree.root.mayflyUiInteraction.get('slot', 'transcript.conversation')!.choice(STREAM)?.focusedId).toBe('item-3')
     expect(after.editor.render(100)[0]).toContain('Prompt: ok')
     expect(tree.root.mayflyUiInteraction.get('slot', 'editor.prompt')!.form(PROMPT)?.fields.draft?.value).toBe('ok')
 
@@ -156,7 +161,7 @@ describe('node slot test host', () => {
     stale.set(streamList(streamItems(3)))
     stale.focus()
     stale.dispose()
-    expect(after.content.render(100)[0]).toContain('(4/200)')
+    expect(after.content.render(100)).toHaveLength(200)
     tree.state.stream!.focus()
     after.content.handleInput!(DOWN)
     expect(tree.root.mayflyUiInteraction.get('slot', 'transcript.conversation')!.choice(STREAM)?.focusedId).toBe('item-4')

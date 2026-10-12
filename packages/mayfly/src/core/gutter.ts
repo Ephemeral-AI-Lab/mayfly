@@ -16,6 +16,12 @@ import { clampRowsToWidth, padColumns } from './chrome.ts'
 import { truncateToWidth } from './width.ts'
 
 /**
+ * The columns before a conversation stream row's text: the list row's arrow and marker. Local content mounted below the
+ * stream (a shell echo, a plan document) insets by the same amount so it lines up with the rows above it.
+ */
+export const STREAM_GUTTER = 2
+
+/**
  * Renders one wrapped child inside the kimi one-column gutter. The padded
  * rows are reused by identity while the child returns the same array at the
  * same width, so a cached child stays cached through the wrapper.

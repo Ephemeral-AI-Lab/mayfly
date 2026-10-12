@@ -31,25 +31,12 @@ const widthOperators = new Set([
 const approvedWidthMath = new Set([
   'packages/mayfly/src/transcript/banner.ts:const logoWidth = Math.max(...LOGO_ART.map(art => art.length))',
   "packages/mayfly/src/transcript/status-model.ts:const renderWidth = result.ok && result.value.node.kind === 'text'",
-  'packages/mayfly/src/transcript/thinking.ts:const contentWidth = Math.max(1, width - THINKING_INDENT.length)',
 ])
 
 const approvedPresentation = new Set([
   "border:packages/mayfly/src/transcript/pane-agents.ts:return [row, ui.text(`  ${last ? '   ' : '│  '}    ${failed ? `Error: ${detailLine}` : detailLine}`, { tone: failed ? 'danger' : 'muted', overflow: 'truncate' })]",
   "border:packages/mayfly/src/transcript/agent-presentation.ts:return last ? '└─' : '├─'",
   "border:packages/mayfly/src/transcript/agent-presentation.ts:export function agentTreeBranch(last: boolean): '└─' | '├─' {",
-  "border:packages/mayfly/src/transcript/command-group.ts:const branch = last ? '└─' : '├─'",
-  "border:packages/mayfly/src/transcript/command-group.ts:const continuation = last ? '   ' : '│  '",
-  "border:packages/mayfly/src/transcript/read-group.ts:const branch = last ? '└─' : '├─'",
-  "border:packages/mayfly/src/transcript/read-group.ts:const continuation = last ? '   ' : '│  '",
-  "border:packages/mayfly/src/transcript/read-group.ts:const windowBranch = windowLast ? '└─' : '├─'",
-  "border:packages/mayfly/src/transcript/read-group.ts:rows.push(...this.renderPreviewRows(read, `${String(continuation)}${windowLast ? '   ' : '│  '}`, cut))",
-  "border:packages/mayfly/src/transcript/search-group.ts:const branch = last ? '└─' : '├─'",
-  "border:packages/mayfly/src/transcript/search-group.ts:const childContinuation = `${String(continuation)}${last ? '   ' : '│  '}`",
-  "border:packages/mayfly/src/transcript/search-group.ts:const continuation = last ? '   ' : '│  '",
-  "border:packages/mayfly/src/transcript/tool-line.ts:const branch = index === web.sources.length - 1 ? '└─' : '├─'",
-  "pointer:packages/mayfly/src/transcript/tool-line.ts:return mcp === null ? name : `${mcp[1]!} › ${mcp[2]!}`",
-  "pointer:packages/mayfly/src/transcript/tool-line.ts:return { label: entry.detail, outcome: result === undefined ? t('waiting for your answer') : answer === undefined ? outcome : `→ ${answer}` }",
   "padding:packages/mayfly/src/transcript/banner-art.ts:'⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢸⣿⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀'.padEnd(LOGO_COLS),",
   "padding:packages/mayfly/src/transcript/banner-art.ts:'⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⣿⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀'.padEnd(LOGO_COLS),",
   "padding:packages/mayfly/src/transcript/banner-art.ts:'⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣿⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀'.padEnd(LOGO_COLS),",
@@ -60,13 +47,13 @@ const approvedPresentation = new Set([
   "padding:packages/mayfly/src/transcript/banner-art.ts:'⠱⣦⣄⣀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⣠⣴⠎'.padEnd(LOGO_COLS),",
   "padding:packages/mayfly/src/transcript/banner.ts:return { text: `${truncated}${' '.repeat(pad)}`, style }",
   "padding:packages/mayfly/src/transcript/banner.ts:{ text: ' '.repeat(LOGO_TEXT_GAP), style: 'logo' },",
-  "padding:packages/mayfly/src/transcript/components.ts:const indent = ' '.repeat(bulletWidth)",
   "padding:packages/mayfly/src/transcript/status-model.ts:? leftText + ' '.repeat(Math.max(0, width - leftWidth))",
   "padding:packages/mayfly/src/transcript/status-model.ts:? ' '.repeat(Math.max(0, width - rightWidth)) + rightText",
   "padding:packages/mayfly/src/transcript/status-model.ts:+ ' '.repeat(Math.max(0, centerStart - leftWidth))",
   "padding:packages/mayfly/src/transcript/status-model.ts:+ ' '.repeat(Math.max(0, width - centerStart - centerWidth - rightWidth))",
   "pointer:packages/mayfly/src/interaction/update-command.ts:ui.text([`v${fromVersion} → v${toVersion}`, detail, t('The update is kept only after a successful startup check.')].filter(Boolean).join(' · '), { tone: 'warning' }),",
   "pointer:packages/mayfly/src/interaction/update-command.ts:{ kind: 'divider', label: `v${fromVersion} → v${toVersion}` },",
+  "pointer:packages/mayfly/src/transcript/present.ts:return mcp === null ? name : `${mcp[1]!} › ${mcp[2]!}`",
 ])
 
 interface Audit {

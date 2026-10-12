@@ -4,10 +4,9 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { AskUserQuestionItem } from '@deepseek-ai/dsh-user-questions'
 import { ui, type MayflyUiEvent, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
-import { GutterComponent } from '../core/gutter.ts'
+import { GutterComponent, STREAM_GUTTER } from '../core/gutter.ts'
 import { compileMayflyUiNode } from '../core/ui-compiler.ts'
 import type { MayflyTranslate } from '../frontend/locale.ts'
-import type { TranscriptLocalsService } from '../transcript/transcript-model.ts'
 
 /* The document is passive content: it admits no controls, so its event sink
    can never fire. */
@@ -42,13 +41,7 @@ export function mountPlanDocument(ctx: Context, id: string, view: () => MayflyUi
     emit: PASSIVE_EVENT_SINK,
   })
   const component = compiled.ok ? compiled.value.component : compiled.errorComponent
-  const locals = ctx.get('mayflyTranscriptLocals') as TranscriptLocalsService | undefined
-  if (locals !== undefined) {
-    const dispose = locals.append(component)
-    screen.followContent()
-    return { dispose }
-  }
-  const slot = screen.mountContentSlot(`local.${id}`, new GutterComponent(component))
+  const slot = screen.mountContentSlot(`local.${id}`, new GutterComponent(component, STREAM_GUTTER))
   screen.followContent()
   return slot
 }

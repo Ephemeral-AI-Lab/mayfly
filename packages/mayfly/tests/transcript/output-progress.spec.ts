@@ -12,13 +12,14 @@ import { foldConversationFacts, initialConversationFacts, conversationFactsSchem
 import { foldConversationProjection, initialConversationState, conversationProjectionStateSchema } from '../../src/conversation/projection.ts'
 import { conversationTranscriptModel } from '../../src/transcript/official-model.ts'
 import { TranscriptPresentationPolicy } from '../../src/transcript/presentation-policy.ts'
-import { TranscriptModelComponent } from '../../src/transcript/transcript-model.ts'
+import { StreamFacts } from '../../src/transcript/stream-facts.ts'
+import { TranscriptView } from '../../src/components/transcript-view.ts'
 import { outputRate } from '../../src/transcript/output-rate.ts'
 import * as activity from '../../src/transcript/pane-activity.ts'
 import { BRAILLE_SPINNER_FRAMES, BRAILLE_SPINNER_INTERVAL_MS } from '../../src/transcript/spinners.ts'
 import { bootPanePlugin } from './pane-fakes.ts'
-import { COLORS, fakeAgent } from './status-fakes.ts'
-import { assistantEvent, event, fakeMayflyComponents, resetSeq, turnEnd, turnStart } from './helpers.ts'
+import { fakeAgent } from './status-fakes.ts'
+import { assistantEvent, event, resetSeq, turnEnd, turnStart } from './helpers.ts'
 import { expectLinesFit, SCAN_WIDTHS } from '../core/width-scan.ts'
 
 afterEach(() => {
@@ -67,11 +68,11 @@ describe('phase-local output', () => {
     let state = initialConversationState()
     const presentation = new TranscriptPresentationPolicy()
     presentation.apply({ transcriptView: 'verbose' })
-    const transcript = new TranscriptModelComponent(() => conversationTranscriptModel(
+    const facts = new StreamFacts()
+    // The stream's rows as text: what the transcript shows of the live turn, with the activity row apart from it.
+    const streamText = (): string => TranscriptView(facts.build(conversationTranscriptModel(
       { entries: state.entries, streaming: state.active, settledSteps: state.finalizedSteps, turns: [] }, { get: () => undefined },
-    ), {
-      colors: COLORS, components: fakeMayflyComponents(), images: () => ({}), requestRender: () => {}, presentation, viewportRows: () => 24,
-    })
+    ), { policy: presentation.snapshot(), expanded: false, liveTurnHeader: false, t: key => key, queued: [] })).items.map(item => item.label).join('\n')
     const send = (next: SessionEvent): void => {
       state = foldConversationProjection(state, next)
       harness.ctx.emit('session/event', agent.session as never, next)
@@ -90,22 +91,22 @@ describe('phase-local output', () => {
       replay(reasoning('seed', 1_000))
       // The activity row owns the phase, time, and throughput; the live
       // reasoning block is content only, with no caption or counters.
-      expect(transcript.render(80).join('\n')).toMatch(/✻ .*seed/u)
-      expect(transcript.render(80).join('\n')).not.toMatch(/Thinking|↓|tok\/s/u)
+      expect(streamText()).toContain('✻ ')
+      expect(streamText()).not.toMatch(/Thinking|↓|tok\/s/u)
       // Thinking keeps the activity row: the dock never collapses mid-turn.
       expect(harness.screen.paneLines()[0]).toContain('Thinking · 0s · ↓1 · seed')
       vi.setSystemTime(2_000)
       replay(reasoning('x'.repeat(168), 2_000))
-      expect(transcript.render(80).join('\n')).toContain('✻ ')
-      expect(transcript.render(80).join('\n')).not.toMatch(/Thinking|↓|tok\/s/u)
+      expect(streamText()).toContain('✻ ')
+      expect(streamText()).not.toMatch(/Thinking|↓|tok\/s/u)
       expect(harness.screen.paneLines()[0]).toContain('Thinking · 1s · ↓43 · ≈42 tok/s')
       replay(answer('', 2_010))
       replay(reasoning('\n', 2_020))
-      expect(transcript.render(80).join('\n')).toContain('✻ ')
+      expect(streamText()).toContain('✻ ')
       vi.setSystemTime(3_000)
       replay(answer('seed', 3_000))
       // The reasoning settles in place into its one-row summary.
-      expect(transcript.render(80).join('\n')).toContain('✻ Thought for')
+      expect(streamText()).toContain('✻ Thought for')
       expect(harness.screen.paneLines()[0]).toContain('Writing · 2s · ↓1')
       expect(harness.screen.paneLines()[0]).not.toContain('tok/s')
       vi.setSystemTime(4_000)
@@ -125,16 +126,15 @@ describe('phase-local output', () => {
 
       const final = { ...assistantEvent(1, 1, [{ type: 'reasoning', text: 'corrected thought' }, { type: 'text', text: 'final answer' }]), surfaceOp: 'append' as const }
       send(final)
-      expect(transcript.render(80).join('\n')).toContain('corrected thought')
+      expect(streamText()).toContain('corrected thought')
       expect(harness.screen.paneLines().join('\n')).not.toContain('Writing')
       send(reasoning('late', 7_000))
-      expect(transcript.render(80).join('\n')).not.toContain('late')
+      expect(streamText()).not.toContain('late')
       expect(harness.screen.paneLines().join('\n')).not.toContain('tok/s')
       send(turnEnd(1))
       send(answer('late', 8_000))
       expect(harness.screen.paneLines()).toEqual([''])
     } finally {
-      transcript.dispose()
       await harness.dispose()
     }
     expect(vi.getTimerCount()).toBe(0)

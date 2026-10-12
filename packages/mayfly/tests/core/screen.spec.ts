@@ -464,7 +464,8 @@ describe('MayflyScreenService node slots', () => {
     root.mayflyScreen.bindNodeSlots(slotCompiler(root, { interaction }))
     expect(interaction.get('slot', 'local.kept')).toBeUndefined()
     expect(interaction.get('slot', adopted.id)).toBe(model)
-    expect(next.added[1]!.render(80)[0]).toContain('(3/40)')
+    // The adopted lease is unfocused, so its content flows; the cursor the model kept is the focused window's.
+    expect(next.added[1]!.render(80)).toHaveLength(40)
     await root.fiber.dispose()
   })
 
@@ -485,9 +486,15 @@ describe('MayflyScreenService node slots', () => {
       content.set(streamList(items))
       dock.set(streamList(items))
       const [prompt, status] = runtime.bottomAdded as [MayflyFocusable, MayflyComponent]
-      // The content region gets the terminal's rows; the dock gets the editor viewport, below the footer.
+      // An unfocused content region flows into the outer scroll (every row); a focused one keeps the terminal's rows as
+      // its cursor window. The dock gets the editor viewport, below the footer.
       const footerRows = status.render(120).length
-      expect(runtime.added[1]!.render(120)).toHaveLength(24)
+      const contentHost = runtime.added[1]! as MayflyFocusable
+      expect(contentHost.render(120)).toHaveLength(60)
+      contentHost.focused = true
+      expect(contentHost.render(120)).toHaveLength(24)
+      contentHost.focused = false
+      expect(contentHost.render(120)).toHaveLength(60)
       expect(prompt.render(120)).toHaveLength(ctx.mayflyScreen.editorViewport.rows)
       expect(ctx.mayflyScreen.editorViewport.rows).toBe(24 - footerRows - 1)
 

@@ -8,20 +8,9 @@ import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import type { ToolCallView, ToolResult, ToolResultView } from '@deepseek-ai/dsh-tools'
 import type { MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import { diffChangeCounts } from '../core/diff-align.ts'
-import type { MayflyComponent } from '../core/types.ts'
-import { concatRows } from '../core/ui-rows.ts'
-import { interpolateLocaleMessage, type MayflyTranslate } from '../frontend/locale.ts'
 import { freezeModel, type ToolPresentationModel } from '../frontend/models.ts'
-import { renderCanonicalNode, type CanonicalNodeRenderer } from './canonical-node-renderer.ts'
 import { summarizeToolText } from './envelope.ts'
-import { moreLinesHint } from './hints.ts'
 import { summarizeToolCall } from './present.ts'
-
-/** Rows a collapsed structured body (a diff, sections) keeps. */
-const COLLAPSED_ROW_LIMIT = 12
-
-/** Rows a collapsed plain-text result keeps. */
-const COLLAPSED_TEXT_LIMIT = 3
 
 /** Official facts required to build one renderer-neutral tool card. */
 export interface ToolPresentationFacts {
@@ -141,37 +130,6 @@ function diffSections(title: string, diffs: readonly { readonly path: string; re
     : diffs.map(diff => ({ title: diffSectionTitle(diff), body: { kind: 'diff', before: diff.oldText ?? '', after: diff.newText } })) }
 }
 
-/**
- * The semantic result chip for a tool card's header: summed `+A −D` when the
- * presentation's result is diff-shaped, or `undefined` to keep the plain line
- * count (the raw-result line count misleads on envelope-backed results).
- * @param presentation - the tool's presentation model, if any.
- * @returns the chip text, or `undefined` when no diff view contributes.
- */
-export function toolResultChip(presentation: ToolPresentationModel | undefined): string | undefined {
-  if (presentation === undefined) return undefined
-  let added = 0
-  let removed = 0
-  const walk = (node: MayflyUiNode | undefined): void => {
-    if (node === undefined) return
-    if (node.kind === 'diff') {
-      const counts = diffChangeCounts(node.before, node.after)
-      added += counts.added
-      removed += counts.removed
-      return
-    }
-    if (node.kind === 'sections') for (const section of node.sections) walk(section.body)
-    else if (node.kind === 'stack') for (const child of node.children) walk(child.node)
-    else if (node.kind === 'surface') { walk(node.child); walk(node.footer) }
-    else if (node.kind === 'scroll') walk(node.child)
-    else if (node.kind === 'list') walk(node.empty)
-    else if (node.kind === 'empty') walk(node.actions)
-  }
-  walk(presentation.result)
-  if (added === 0 && removed === 0) return undefined
-  return `+${String(added)} −${String(removed)}`
-}
-
 function readableValue(value: unknown): string {
   if (typeof value === 'string') return value
   try { return JSON.stringify(value, null, 2) ?? String(value) } catch { return String(value) }
@@ -189,46 +147,3 @@ function contentText(content: readonly ContentBlock[] | undefined): string | und
     }
   }).join('\n')
 }
-
-/**
- * The presented body of one tool card. Collapsed it shows the settled result
- * (the pending call while running) under a row budget — three rows for plain
- * text, twelve for structured views such as diffs; expanded it shows the
- * call's own details followed by the complete result.
- */
-class ToolModelComponent implements MayflyComponent {
-  private expandedOverride: boolean | undefined
-  private keyed = true
-  constructor(
-    private readonly source: () => ToolPresentationModel | null,
-    private readonly renderer: CanonicalNodeRenderer & { readonly t?: MayflyTranslate | undefined },
-  ) {}
-  render(width: number): string[] {
-    const model = this.source()
-    if (model === null) return []
-    const expanded = this.expandedOverride ?? model.expanded ?? false
-    if (expanded) {
-      // A settled structured call (a diff) repeats in its result; only a call's
-      // own text details precede the result.
-      const call = model.result !== undefined && model.call?.kind !== 'text' ? undefined : model.call
-      return concatRows(...[call, model.result].flatMap(view => view === undefined ? [] : [renderCanonicalNode(view, width, this.renderer)]))
-    }
-    const view = model.result ?? model.call
-    if (view === undefined) return []
-    // The tool component applies its own row budget after canonical content
-    // has rendered completely, so its hidden-line count stays exact.
-    const rows = renderCanonicalNode(view, width, this.renderer)
-    const limit = view.kind === 'text' ? COLLAPSED_TEXT_LIMIT : COLLAPSED_ROW_LIMIT
-    if (rows.length <= limit) return rows
-    const remaining = rows.length - limit + 1
-    const hint = moreLinesHint(this.renderer.t ?? interpolateLocaleMessage, remaining, rows.length, this.keyed)
-    const hintRow = renderCanonicalNode({ kind: 'text', content: hint, tone: 'muted' }, width, this.renderer)[0]!
-    return [...rows.slice(0, limit - 1), hintRow]
-  }
-  setExpanded(expanded: boolean): void { this.expandedOverride = expanded }
-  /** Adopt whether Ctrl-O reaches the card, so the hint may name the key. */
-  setScope(scope: { readonly hint: boolean }): void { this.keyed = scope.hint }
-  invalidate(): void {}
-}
-
-export { ToolModelComponent }

@@ -149,6 +149,7 @@ export function fakeAgent(id: string, {
       ...(provider === undefined ? {} : { provider }),
       ...(effort === undefined ? {} : { reasoningEffort: effort }),
     },
+    inbox: { nextTurn: [], nextStep: [] },
     followup: vi.fn(),
     cancel: vi.fn(),
   } as unknown as FakeAgent

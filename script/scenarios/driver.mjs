@@ -171,7 +171,7 @@ export function apply(ctx) {
         const wait = timed ? action.at - previous : 0
         previous = action.at
         await sleep(wait, undefined, { signal: abort.signal }).catch(() => {})
-        clock?.at(action.at)
+        clock?.at(action.at + (action.skew ?? 0))
       }
       try {
         switch (action.op) {
@@ -401,7 +401,7 @@ export function apply(ctx) {
               ids.set(spec.id, session.id)
               log(`seeded ${spec.id} (${String(events.length)} events)`)
             }
-            clock?.at(action.at)
+            clock?.at(action.at + (action.skew ?? 0))
             break
           }
           case 'ask': {

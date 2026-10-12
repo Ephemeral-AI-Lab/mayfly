@@ -105,6 +105,19 @@ test('the scenario clock holds its epoch until moved, stands at a timeline time,
   assert.deepEqual(rest, ['2026-01-01T09:01:30.000Z', true, true, 'string', 0, true])
 })
 
+test('a turn that names its start stands the clock there without making playback wait', () => {
+  const actions = compile([
+    turn('first', [step({ text: 'a', stream: false })], { startAt: '10:02' }),
+    turn('second', [step({ text: 'b', stream: false })], { startAt: '10:09' }),
+    turn('third', [step({ text: 'c', stream: false })]),
+  ])
+  const starts = actions.filter(action => action.type === 'turn/start')
+  // The clock reads the named time at each start (the epoch is 09:00 UTC), and playback times stay a few seconds apart.
+  assert.deepEqual(starts.map(action => action.at + action.skew), [62 * 60_000, 69 * 60_000, 69 * 60_000 + (starts[2].at - starts[1].at)])
+  assert.ok(starts.at(-1).at < 30_000)
+  assert.throws(() => compile([turn('x', [], { startAt: 'ten past' })]), /startAt must be/u)
+})
+
 test('every Website app shot is a checkpoint its scenario captures at its first size, with a golden', () => {
   assert.deepEqual(APP_SHOTS.map(shot => shot.id).sort(), ['app-agents', 'app-conversation', 'app-permission', 'app-session-workspace', 'app-sessions', 'app-trace'])
   for (const shot of APP_SHOTS) {

@@ -40,6 +40,16 @@ export function ellipsize(text: string, maxChars: number): string {
   return flat.length <= maxChars ? flat : `${flat.slice(0, maxChars - 1)}…`
 }
 
+/**
+ * Human form of a tool name: `mcp__<server>__<tool>` reads `server › tool`.
+ * @param name - the tool name.
+ * @returns the display name.
+ */
+export function toolDisplayName(name: string): string {
+  const mcp = /^mcp__(.+?)__(.+)$/u.exec(name)
+  return mcp === null ? name : `${mcp[1]!} › ${mcp[2]!}`
+}
+
 /** Maximum key/value pairs shown by {@link summarizeToolCall}. */
 export const TOOL_ARG_PAIR_LIMIT = 6
 

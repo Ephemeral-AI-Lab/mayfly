@@ -95,6 +95,13 @@ model for the next lease of the same id; only `dispose()` drops it. Mayfly
 features reach the footer, the editor, and the conversation through slots, never
 through a new root component. Plugins still use only the four public services.
 
+The `content` region is the content of the outer scroll: while the slot holds no
+focus its lists and rows are not bounded by the viewport (`MayflyUiSurfaceRuntime.flowing`),
+and the scroll view windows what they paint, so wheel, page keys, and follow-tail
+work as for any content. A focused slot keeps the list's cursor window. The
+conversation stream (`TranscriptView`, published by `transcript/transcript-model.ts`
+from `transcript/stream-facts.ts`) is the first consumer.
+
 ## Components area
 
 `src/components/` holds the Mayfly components as pure functions of facts that

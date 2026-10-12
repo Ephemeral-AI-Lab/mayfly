@@ -1983,7 +1983,7 @@ part is accepted (§7 step 3).
 | Round | Parts | Status | Branch |
 | --- | --- | --- | --- |
 | R1 | T0 demo kit; 3.0 components area | committed, awaiting the owner's look at the brief format | `feat/3a` |
-| R2 | 3a.1 turns: the stream cutover (new `TranscriptView` on the conversation node slot, planning reused from `buildDisplay`, minimal rows for the other kinds) | not started | `feat/3a` |
+| R2 | 3a.1 turns: the stream cutover (new `TranscriptView` on the conversation node slot, planning reused from `buildDisplay`, minimal rows for the other kinds) | committed, awaiting the owner's question round | `feat/3a` |
 | R3 | 3a.2 answers and reasoning; 3a.3 the live turn | not started | |
 | R4 | 3a.4 images and cutover cleanup; 3b.1 settled tool lines | not started | |
 | R5 | 3b.2 edit cards; 3b.3 write and command cards | not started | |

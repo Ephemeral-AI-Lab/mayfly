@@ -14,19 +14,22 @@ export const DEFAULT_SIZE = Object.freeze([120, 40])
 
 const TRANSCRIPT = 'packages/mayfly/src/transcript/'
 const INTERACTION = 'packages/mayfly/src/interaction/'
+/** What draws the conversation stream: the facts of its rows and the component that lays them out. */
+const STREAM = [`${TRANSCRIPT}stream-facts.ts`, 'packages/mayfly/src/components/']
 
 /** What each replay shows, as the sources whose change it can reveal. */
 const COVERS = {
-  tour: [`${TRANSCRIPT}tool-*.ts`, `${TRANSCRIPT}process-*.ts`, `${TRANSCRIPT}thinking.ts`, `${TRANSCRIPT}pane-todo.ts`],
-  toolkit: [`${TRANSCRIPT}tool-*.ts`, `${TRANSCRIPT}read-group.ts`, `${TRANSCRIPT}search-group.ts`, `${TRANSCRIPT}present.ts`],
-  thinking: [`${TRANSCRIPT}thinking.ts`],
-  markdown: [`${TRANSCRIPT}components.ts`, 'packages/mayfly/src/core/components.ts'],
+  tour: [`${TRANSCRIPT}tool-*.ts`, `${TRANSCRIPT}process-*.ts`, `${TRANSCRIPT}pane-todo.ts`, ...STREAM],
+  toolkit: [`${TRANSCRIPT}tool-*.ts`, `${TRANSCRIPT}present.ts`, ...STREAM],
+  thinking: [...STREAM],
+  markdown: [...STREAM, 'packages/mayfly/src/core/components.ts'],
   phases: [`${TRANSCRIPT}pane-activity.ts`, `${TRANSCRIPT}spinners.ts`, `${TRANSCRIPT}output-rate.ts`],
-  prompts: [`${TRANSCRIPT}transcript-model.ts`, `${INTERACTION}attachments.ts`],
-  errors: [`${TRANSCRIPT}tool-*.ts`, `${TRANSCRIPT}transcript-model.ts`],
-  compaction: [`${TRANSCRIPT}compaction.ts`],
-  manualCompact: [`${TRANSCRIPT}compaction.ts`, `${TRANSCRIPT}command-group.ts`],
-  context: [`${TRANSCRIPT}status-context.ts`, `${TRANSCRIPT}compaction.ts`],
+  prompts: [`${TRANSCRIPT}transcript-model.ts`, `${INTERACTION}attachments.ts`, ...STREAM],
+  turns: [`${TRANSCRIPT}transcript-model.ts`, `${TRANSCRIPT}process-groups.ts`, `${TRANSCRIPT}presentation-policy.ts`, `${INTERACTION}pane-queue.ts`, 'packages/mayfly/src/core/node-slot.ts', ...STREAM],
+  errors: [`${TRANSCRIPT}tool-*.ts`, `${TRANSCRIPT}transcript-model.ts`, ...STREAM],
+  compaction: [...STREAM],
+  manualCompact: [...STREAM],
+  context: [`${TRANSCRIPT}status-context.ts`, ...STREAM],
   subagents: [`${TRANSCRIPT}pane-agents.ts`, `${TRANSCRIPT}child-agent-model.ts`],
   childStream: [`${TRANSCRIPT}pane-agents.ts`, `${INTERACTION}agents-command.ts`],
   approvals: [`${INTERACTION}approval-plugin.ts`, `${INTERACTION}permission-panel.ts`],
@@ -35,18 +38,17 @@ const COVERS = {
   goal: [`${TRANSCRIPT}status-goal.ts`],
   jobs: [`${TRANSCRIPT}status-jobs.ts`, `${INTERACTION}jobs.ts`],
   queued: [`${INTERACTION}pane-queue.ts`],
-  retries: [`${TRANSCRIPT}transcript-model.ts`, `${INTERACTION}trace-*.ts`],
+  retries: [`${TRANSCRIPT}transcript-model.ts`, `${INTERACTION}trace-*.ts`, ...STREAM],
   sideQuestion: [`${INTERACTION}btw-command.ts`, `${INTERACTION}conversation-view-status.ts`],
   notices: [`${INTERACTION}notifications.ts`],
   modes: [`${INTERACTION}mode-status.ts`, `${TRANSCRIPT}status-model.ts`],
-  edge: [`${TRANSCRIPT}tool-line.ts`, 'packages/mayfly/src/core/width.ts'],
-  history: [`${TRANSCRIPT}conversation-feed.ts`, `${TRANSCRIPT}transcript-model.ts`],
-  wheel: ['packages/mayfly/src/core/terminal.ts', `${TRANSCRIPT}conversation-feed.ts`],
+  edge: [...STREAM, 'packages/mayfly/src/core/width.ts'],
+  history: [`${TRANSCRIPT}conversation-feed.ts`, `${TRANSCRIPT}transcript-model.ts`, ...STREAM],
+  wheel: ['packages/mayfly/src/core/terminal.ts', 'packages/mayfly/src/core/node-slot.ts', `${TRANSCRIPT}conversation-feed.ts`, ...STREAM],
   content: [
     'packages/mayfly/src/core/content-*.ts', 'packages/mayfly/src/core/width-estimate.ts', 'packages/mayfly/src/core/plugin-view.ts',
     'packages/mayfly/src/core/ui-rows.ts', 'packages/mayfly/src/core/ui-scroll-region.ts',
     'packages/mayfly/src/core/ui-content-cache.ts', `${INTERACTION}trace-*.ts`, `${INTERACTION}jobs.ts`,
-    `${TRANSCRIPT}command-group.ts`, `${TRANSCRIPT}tool-line.ts`,
   ],
 }
 
@@ -55,13 +57,57 @@ const COVERS = {
  * `scene`, the `reference`, and the effects `implemented`, to look at (`focus`: what to judge and `how` to reach it),
  * that `differs` from the prototype, and `pending`. `brief.mjs` prints them. Finalizing a group removes its entries.
  */
-const REVIEW = {}
+const REVIEW = {
+  turns: {
+    scene: 18,
+    reference: 'prototype scenes 18 (Conversation stream) and 19 (Prompt styles, A) · spec §5.6 · TranscriptView and userItems in mayfly-components.mjs',
+    implemented: [
+      'The stream is one browse list on the conversation node slot and the outer view scrolls it: the wheel, PageUp, and End work as before.',
+      'A blank row and a muted rule carrying the turn start time (HH:MM, right-aligned) open every turn after the first.',
+      'The prompt is a bold » row that wraps, keeps four lines, and hides the rest behind a muted `▸ N more lines · Enter` row; Ctrl+O opens the prompts of the last three turns.',
+      'A message queued while the agent works shows after the last turn as a prompt row ending in `⏎ queued`, behind its own rule.',
+      'An interrupted turn ends with `■ interrupted` in the warning tone.',
+      'Answers, reasoning, tool calls and their groups, the turn header, and compaction are one-row stand-ins that the next parts replace.',
+    ],
+    focus: [
+      { look: 'The rule: its spacing, tone, and the time at the right edge, against the sketch', how: 'checkpoint settled; node docs/design/prototypes/ui-preview.mjs 18' },
+      { look: 'A long prompt wrapped, a seven-line prompt folded, and a CJK prompt that wraps mid-sentence', how: 'checkpoint settled' },
+      { look: 'Where the continuation lines of a wrapped prompt start (the gutter, not the text)', how: 'checkpoint settled, then --width 60' },
+      { look: 'The queued rows after the last turn, and the pane above the editor showing the same messages', how: 'checkpoint queued' },
+      { look: 'The interrupted turn: its header, its group title, and the cut marker', how: 'checkpoint settled' },
+      { look: 'Ctrl+O opening the folded prompts and the process of the last three turns', how: 'checkpoint open (Ctrl+O on end)' },
+      { look: 'The rule and the fold row at 60, 48, and 40 columns', how: 'checkpoint narrow, and --width 60 / --width 40' },
+    ],
+    differs: [
+      'The prototype draws no queued or interrupted row: both are placed from the spec text (§5.6) and are questions of this round.',
+      'Wrapped lines hang at the list gutter (2 columns), under the » and not under the text (Δ20); the sketch hangs them under the text.',
+      'A queued message is also in the queue pane until Phase 4 deletes it; the sketch shows the queue line only above the editor.',
+    ],
+    pending: [
+      'Answers show their source text line by line; markdown, blank-row rhythm, and wrap indent come with 3a.2.',
+      'The live reasoning row shows its last line; the real reasoning row, the streamed turn, and the `↓ N new` pill are 3a.2 and 3a.3.',
+      'Images are a label row; pictures are 3a.4. Tool lines, cards, and diffs are 3b; the activity row, banners, and compaction rows are 3c.',
+      'Rows take no focus: Alt+↑, Enter expand, and c copy come with row selection (3e.2), so the list hint row is not shown.',
+      'The running header of a read-only child shows no ticking duration until 3c.',
+      'The `!` shell echo and the plan document sit below the stream, no longer at the tail of the turn that made them.',
+      'The `userFoldLines` and `userFoldChars` settings no longer fold anything; they go with the settings surface once the four-line cap is accepted.',
+    ],
+  },
+}
 
 /**
  * Scripts that differ from playing to the end. A settled job wakes the agent for a real turn on the stub, which runs
  * at real time, so the jobs replay is captured while all three jobs run.
  */
 const SCRIPTS = {
+  // Settled turns, then the turn that holds queued messages, then its end; Ctrl+O opens the folds, and a resize narrows it.
+  turns: [
+    play('settled'), checkpoint('settled'),
+    play('queued'), checkpoint('queued'),
+    play(), checkpoint('end'),
+    key('ctrl+o'), checkpoint('open'),
+    resize(48, 24), checkpoint('narrow'),
+  ],
   jobs: [play('running'), checkpoint('running')],
   // The wheel scrolls the transcript back: the two checkpoints differ only by the scroll.
   wheel: [play(), checkpoint('end'), wheel('up', { count: 3 }), checkpoint('wheel')],
@@ -74,6 +120,7 @@ const SCRIPTS = {
 }
 /** Replays that run at a size of their own. */
 const SIZES = {
+  turns: [DEFAULT_SIZE, [60, 24], [40, 24]],
   wheel: [[40, 24]],
 }
 
@@ -98,7 +145,7 @@ const APP = {
   'app-conversation': {
     summary: 'the Website hero: a finished turn above the editor and the status row',
     source: { replay: 'appConversation' },
-    covers: [`${TRANSCRIPT}transcript-model.ts`, `${TRANSCRIPT}tool-*.ts`, `${TRANSCRIPT}thinking.ts`, `${TRANSCRIPT}status-*.ts`, `${TRANSCRIPT}banner*.ts`],
+    covers: [`${TRANSCRIPT}transcript-model.ts`, `${TRANSCRIPT}tool-*.ts`, `${TRANSCRIPT}status-*.ts`, `${TRANSCRIPT}banner*.ts`, ...STREAM],
     sizes: [APP_SIZE],
     shots: { end: 'app-conversation' },
     script: [play(), checkpoint('end')],
@@ -168,7 +215,7 @@ const PERF = {
   'perf-stream': {
     summary: 'a long streamed answer at its own pace, then page keys and the mouse wheel over the transcript',
     source: { replay: 'markdown' },
-    covers: [`${TRANSCRIPT}conversation-feed.ts`, `${TRANSCRIPT}transcript-model.ts`, `${TRANSCRIPT}components.ts`, 'packages/mayfly/src/core/components.ts'],
+    covers: [`${TRANSCRIPT}conversation-feed.ts`, `${TRANSCRIPT}transcript-model.ts`, ...STREAM, 'packages/mayfly/src/core/components.ts'],
     sizes: [DEFAULT_SIZE],
     perf: { ceilings: {} },
     script: [measure('stream', [play(undefined, { timed: true })]), measure('scroll', [key('pageup', { repeat: 10 }), key('pagedown', { repeat: 10 })]), measure('wheel', [wheel('up', { count: 10 }), wheel('down', { count: 10 })])],

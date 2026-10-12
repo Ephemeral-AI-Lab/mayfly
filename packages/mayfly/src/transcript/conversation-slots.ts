@@ -16,7 +16,7 @@ import type { MayflyConversationsSnapshot, MayflyConversationView } from '../app
 import { watchAssistantStream } from '../frontend/assistant-stream.ts'
 import { AddressConversationFeed, type ConversationHistorySource } from './conversation-feed.ts'
 import type { OfficialConversationModelSource } from './official-model.ts'
-import type { TranscriptController, TranscriptModelRenderer } from './transcript-model.ts'
+import type { TranscriptController, TranscriptViewOptions } from './transcript-model.ts'
 
 /** The native read path of one conversation. */
 type Binding =
@@ -36,8 +36,8 @@ interface Slot {
 interface ConversationSlotsOptions {
   /** Build one model source; `agent` scopes tool presenters, `publish` wakes the renderer. */
   readonly source: (agent: Agent | undefined, publish: () => void) => OfficialConversationModelSource
-  /** Renderer options for a view without its own activity row. */
-  readonly headed: Partial<TranscriptModelRenderer>
+  /** View options for a view without its own activity row. */
+  readonly headed: TranscriptViewOptions
   readonly history: () => ConversationHistorySource | undefined
 }
 

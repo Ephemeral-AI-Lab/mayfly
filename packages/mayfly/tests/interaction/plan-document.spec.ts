@@ -5,7 +5,7 @@ import { Context } from '@deepseek-ai/cordis'
 import type { AskUserQuestionItem } from '@deepseek-ai/dsh-user-questions'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { MayflyUiNode } from '../../../ui/src/index.ts'
-import type { MayflyComponent } from '../../src/core/types.ts'
+import { STREAM_GUTTER } from '../../src/core/gutter.ts'
 import { mountPlanDocument, planDocumentNode } from '../../src/interaction/plan-document.ts'
 import { FakeMayflyComponents, FakeScreen, FakeTheme } from './fakes.ts'
 
@@ -25,22 +25,7 @@ function setup() {
 const question: AskUserQuestionItem = { id: 'plan', question: 'Proceed?', detail: '# Plan\n\nChange the module.' }
 
 describe('plan document flow entry', () => {
-  it('appends through transcript locals so the transcript applies its gutter', () => {
-    const { ctx, screen } = setup()
-    const appended: MayflyComponent[] = []
-    let disposed = 0
-    ctx.provide('mayflyTranscriptLocals', { append: (component: MayflyComponent) => { appended.push(component); return () => { disposed += 1 } } } as never)
-    const entry = mountPlanDocument(ctx, 'doc', () => planDocumentNode(question, key => key))
-    expect(appended).toHaveLength(1)
-    /* The transcript service owns the gutter wrap; the document arrives bare. */
-    expect(appended[0]!.render(80).join('\n')).toContain('Change the module.')
-    expect(screen.slotTargets.has('local.doc')).toBe(false)
-    expect(screen.followCount).toBe(1)
-    entry.dispose()
-    expect(disposed).toBe(1)
-  })
-
-  it('falls back to a guttered local content slot without transcript locals', () => {
+  it('mounts a guttered local content slot below the stream', () => {
     const { ctx, screen } = setup()
     const entry = mountPlanDocument(ctx, 'doc', () => planDocumentNode(question, key => key))
     const target = screen.slotTargets.get('local.doc')!
@@ -49,9 +34,8 @@ describe('plan document flow entry', () => {
     const rows = target.render(80)
     expect(rows.join('\n')).toContain('Plan')
     expect(rows.join('\n')).toContain('Change the module.')
-    /* The fallback wraps the document in the conversation gutter itself, so
-       every row carries the same one-column margin the transcript paints. */
-    expect(rows.every(row => row.startsWith(' '))).toBe(true)
+    /* The document sits in the stream's own gutter, so every row lines up with the rows above it. */
+    expect(rows.every(row => row.startsWith(' '.repeat(STREAM_GUTTER)))).toBe(true)
     entry.dispose()
     expect(screen.children).toHaveLength(0)
   })

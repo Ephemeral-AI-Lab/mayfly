@@ -16,6 +16,8 @@ import { MayflyStatusService } from '../../../ui/src/provider.ts'
 import type { MayflyComponent, MayflyKeyAction, MayflyKeymap, MayflyOverlayHandle, MayflyScreen } from '../../src/core/types.ts'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { MayflyLocaleService } from '../../src/frontend/locale.ts'
+import { compileMayflyUiNode } from '../../src/core/ui-compiler.ts'
+import type { MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import { mkdtempTracked, registerTempDirCleanup } from '../core/temp-dir.ts'
 import { ACTION_TOGGLE_COLLAPSE, apply, inject } from '../../src/transcript/index.ts'
 import { LiveAssistantStreamService } from '../../src/conversation/live-stream.ts'
@@ -23,7 +25,6 @@ import { SessionFactsService } from '../../src/transcript/session-facts.ts'
 import * as statusBasicModel from '../../src/transcript/status-basic-model.ts'
 import { assistantEvent, fakeMayflyComponents, imageBlock, reasoningDelta, resetSeq, stepStart, textDelta, toolCallEvent, toolResultEvent, turnStart, userEvent } from './helpers.ts'
 import { fakeAgent, plainColors } from '../helpers.ts'
-import { setProcessRowTimers } from '../../src/transcript/process-rows.ts'
 import { FakeProjectionService } from './pane-fakes.ts'
 import { mountFakeScreenSlot } from '../core/fake-screen-slot.ts'
 
@@ -45,6 +46,18 @@ class FakeScreen implements MayflyScreen {
   get editorViewport(): { readonly columns: number, readonly rows: number } { return { columns: this.columns, rows: this.rows } }
   mountContentSlot(id: string, component: MayflyComponent | null) {
     return mountFakeScreenSlot(id, component, shell => this.addChild(shell), target => this.setFocus(target), () => this.requestRender())
+  }
+  /** The nodes published into node slots, by slot id; `null` once a slot is cleared. */
+  readonly nodes = new Map<string, MayflyUiNode | null>()
+  mountNodeSlot(id: string, _options: { readonly region: 'content' | 'dock' | 'footer' }) {
+    const slot = {
+      id,
+      disposed: false,
+      set: (node: MayflyUiNode | null) => { this.nodes.set(id, node); this.requestRender() },
+      focus: () => {},
+      dispose: () => { slot.disposed = true; this.nodes.delete(id) },
+    }
+    return slot
   }
   mountDockSlot(id: string, component: MayflyComponent | null) {
     return mountFakeScreenSlot(id, component, shell => this.addBottomChild(shell), target => this.setFocus(target), () => this.requestRender())
@@ -276,8 +289,23 @@ function stripGutter(lines: string[]): string[] {
   return lines.map(line => line === ' ' ? '' : line.slice(1))
 }
 
+/** The rows of the nodes published into node slots, compiled the way a mounted slot paints them at 80 columns. */
+function nodeLines(screen: FakeScreen): string[] {
+  return [...screen.nodes.values()].flatMap((node) => {
+    if (node === null) return []
+    const compiled = compileMayflyUiNode(node, {
+      components: fakeMayflyComponents(),
+      colors: COLORS,
+      getViewport: () => ({ columns: 80, rows: 1000 }),
+      screenMode: 'main',
+      emit: () => {},
+    })
+    return (compiled.ok ? compiled.value.component : compiled.errorComponent).render(80)
+  })
+}
+
 function contentLines(screen: FakeScreen): string[] {
-  return stripGutter(screen.children.flatMap(component => component.render(80)))
+  return [...stripGutter(screen.children.flatMap(component => component.render(80))), ...nodeLines(screen)]
 }
 
 function footerLines(screen: FakeScreen): string[] {
@@ -318,8 +346,6 @@ describe('mayfly-transcript through the real Loader', () => {
     ctx.emit('session/event', agent.session, toolResultEvent(2, 1, 'c1', 'file.txt'))
     const text = contentLines(screen).join('\n')
     expect(text).toContain('final')
-    expect(text).toContain('Used')
-    expect(text).toContain('file.txt')
     select(null)
     expect(contentLines(screen)).toEqual([])
   })
@@ -359,30 +385,22 @@ describe('mayfly-transcript through the real Loader', () => {
     await ctx.fiber.dispose()
   })
 
-  it('shows a readonly child in the main pane with its own ticking running header', async () => {
-    const timers = { intervals: [] as Array<() => void>, setInterval: (callback: () => void) => { timers.intervals.push(callback); return 0 as unknown as ReturnType<typeof setInterval> }, clearInterval: () => {}, now: () => 5_000 }
-    setProcessRowTimers(timers)
-    try {
-      resetSeq()
-      const main = fakeParent([userEvent('main history')])
-      resetSeq()
-      const worker = fakeParent([turnStart(1), stepStart(1, 1), userEvent('child question'), reasoningDelta(1, 1, 'child thought')])
-      worker.id = 'worker-1'
-      Object.assign(worker.session, { id: 'worker-1' })
-      const { screen, showReadonlyChild, select } = await bootTranscript(main)
-      showReadonlyChild(worker)
-      const child = contentLines(screen).join('\n')
-      expect(child).toContain('child question')
-      expect(child).not.toContain('main history')
-      expect(child).toMatch(/▾ Deep diving/u)
-      // No activity row follows a readonly child, so its transcript keeps the running header.
-      expect(timers.intervals).toHaveLength(1)
-      const before = screen.renderRequests.length
-      timers.intervals[0]!()
-      expect(screen.renderRequests.length).toBeGreaterThan(before)
-      select(main)
-      expect(contentLines(screen).join('\n')).toContain('main history')
-    } finally { setProcessRowTimers(undefined) }
+  it('shows a readonly child in the main pane with its own running header', async () => {
+    resetSeq()
+    const main = fakeParent([userEvent('main history')])
+    resetSeq()
+    const worker = fakeParent([turnStart(1), stepStart(1, 1), userEvent('child question'), reasoningDelta(1, 1, 'child thought')])
+    worker.id = 'worker-1'
+    Object.assign(worker.session, { id: 'worker-1' })
+    const { screen, showReadonlyChild, select } = await bootTranscript(main)
+    showReadonlyChild(worker)
+    const child = contentLines(screen).join('\n')
+    expect(child).toContain('child question')
+    expect(child).not.toContain('main history')
+    // No activity row follows a readonly child, so its transcript keeps the running header.
+    expect(child).toMatch(/▾ Deep diving/u)
+    select(main)
+    expect(contentLines(screen).join('\n')).toContain('main history')
   })
 
   it('isolates populated sessions whose transcript ids and revisions collide', async () => {
@@ -463,25 +481,17 @@ describe('mayfly-transcript through the real Loader', () => {
     expect(footer).toContain('fixture-entry')
   })
 
-  it('loads transcript images through the optional attachment service and contains failures', async () => {
-    let call = 0
-    const readImage = vi.fn(async () => {
-      call += 1
-      if (call === 1) return { data: new Uint8Array([1, 2, 3]) }
-      throw new Error('attachment unavailable')
-    })
+  it('labels attached images on the prompt row without reading their bytes', async () => {
+    const readImage = vi.fn(async () => ({ data: new Uint8Array([1, 2, 3]) }))
     const agent = fakeParent([userEvent('images', [
       imageBlock({ attachmentId: 'image-ok', mediaType: 'image/png', bytes: 3, width: 1, height: 1 } as never),
-      imageBlock({ attachmentId: 'image-missing', mediaType: 'image/png', bytes: 3, width: 1, height: 1 } as never),
+      imageBlock({ attachmentId: 'image-missing', mediaType: 'image/png', bytes: 3, width: 1, height: 1, name: 'shot.png' } as never),
     ])])
     const { screen } = await bootTranscript(agent, { attachments: { readImage } })
-    contentLines(screen)
-    await vi.waitFor(() => { expect(readImage).toHaveBeenCalledTimes(2) })
-    await vi.waitFor(() => {
-      const rendered = contentLines(screen).join('\n')
-      expect(rendered).toContain('<image 3B>')
-      expect(rendered.match(/\[image\]/g)?.length).toBeGreaterThanOrEqual(1)
-    })
+    const rendered = contentLines(screen).join('\n')
+    expect(rendered).toContain('[image] 1 · 1×1 · 1 KB')
+    expect(rendered).toContain('[image] 2 · shot.png · 1×1 · 1 KB')
+    expect(readImage).not.toHaveBeenCalled()
   })
 
   it('applies settings, reprojects locale copy, and unloads every Fiber-owned registration', async () => {

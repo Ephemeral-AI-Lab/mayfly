@@ -83,13 +83,21 @@ class SlotAttachment {
     private readonly compiler: MayflyNodeSlotCompiler,
     private readonly viewport: () => MayflyUiViewport,
     invalidate: () => void,
+    private readonly flowRegion: boolean,
   ) {
     this.runtime = new MayflyUiSurfaceRuntime(model, () => { invalidate(); compiler.requestRender() }, compiler.clock, compiler.images, () => { compiler.requestRender() }, compiler.content)
+    this.runtime.flow = flowRegion
     this.off = model.subscribe(() => { compiler.requestRender() })
+  }
+
+  /** The content region is the outer scroll's content while the slot holds no focus; a focused slot keeps its cursor window. */
+  focus(focused: boolean): void {
+    this.runtime.flow = this.flowRegion && !focused
   }
 
   /** The compiled node, recompiled when the model moved on since the last paint (a pane recompiles on the same signal). */
   current(focused: boolean): MayflyCompiledUi | null {
+    this.focus(focused)
     if (this.renderedRevision === this.model.revision) return this.compiled
     setCompiledFocus(this.compiled, false)
     const node = this.model.decisionNode ?? this.model.node
@@ -133,6 +141,7 @@ class NodeSlotSurface implements MayflyFocusable {
   get focused(): boolean { return this.focusedValue }
   set focused(value: boolean) {
     this.focusedValue = value
+    this.attachment?.focus(value)
     if (this.attachment !== undefined) setCompiledFocus(this.attachment.compiled, value)
   }
 
@@ -156,6 +165,7 @@ class NodeSlotLease implements MayflyNodeSlot {
     private readonly screen: MayflyScreenSlot,
     private readonly viewport: () => MayflyUiViewport,
     private readonly host: NodeSlotHost,
+    private readonly region: MayflyNodeSlotRegion,
   ) {}
 
   get disposed(): boolean { return !this.live }
@@ -187,7 +197,7 @@ class NodeSlotLease implements MayflyNodeSlot {
     model.setVisible(this.node !== null)
     this.interaction = compiler.interaction
     // The endpoint is shared by every slot, so the owner keeps one model per id: an attachment already holds it.
-    this.surface.attachment ??= new SlotAttachment(model, compiler, this.viewport, () => { this.surface.invalidate() })
+    this.surface.attachment ??= new SlotAttachment(model, compiler, this.viewport, () => { this.surface.invalidate() }, this.region === 'content')
   }
 
   /** A renderer gap: the compile state goes, the model stays. */
@@ -228,7 +238,7 @@ export class NodeSlotHost {
   mount(id: string, region: MayflyNodeSlotRegion): MayflyNodeSlot {
     const surface = new NodeSlotSurface()
     const screen = this.mountScreenSlot(id, region, surface)
-    const lease = new NodeSlotLease(id, surface, screen, () => this.viewport(region), this)
+    const lease = new NodeSlotLease(id, surface, screen, () => this.viewport(region), this, region)
     this.leases.set(id, lease)
     return lease
   }

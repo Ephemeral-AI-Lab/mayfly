@@ -137,7 +137,7 @@ describe('change impact planning', () => {
   })
 
   test('a renderer reaches its width scan, and a data file the spec that reads it', () => {
-    assert.ok(classifyChanges(['packages/mayfly/src/transcript/tool-model.ts']).tests.specs.includes('packages/mayfly/tests/transcript/width-scan.spec.ts'))
+    assert.ok(classifyChanges(['packages/mayfly/src/components/transcript-view.ts']).tests.specs.includes('packages/mayfly/tests/components/width-scan.spec.ts'))
     assert.ok(classifyChanges(['examples/mayfly-user-kit/src/index.ts']).tests.specs.includes('examples/mayfly-user-kit/tests/width-scan.spec.ts'))
     assert.deepEqual(classifyChanges(['packages/mayfly/tests/perf/budgets.json']).tests.specs, ['packages/mayfly/tests/perf/work-budget.spec.ts'])
   })

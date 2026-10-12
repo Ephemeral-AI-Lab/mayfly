@@ -2176,6 +2176,13 @@ export class MayflyUiSurfaceRuntime {
     /** One walk per layout viewport and list row budget: a layout pass alternates between a handful of them. */
     readonly walks: Map<string, ControlWalk>
   } | undefined
+  /**
+   * Whether this surface is the content of an outer scroll right now (the unfocused conversation slot): the viewport
+   * bounds neither its lists nor its rows, and the scroll view windows what it paints. Its owner sets it from the
+   * surface's focus before the surface compiles, so a focused one keeps its cursor window through every recompile.
+   */
+  flow = false
+
   readonly state: FocusState
   private readonly loaderAnimation: UiLoaderAnimation | undefined
   private epochValue = 0
@@ -2391,7 +2398,7 @@ export class MayflyUiSurfaceRuntime {
 
   fieldAddress(key: string): MayflyFieldAddress | undefined { return this.fieldAddresses.get(key) }
 
-  listRowLimit(viewportRows: number): number { return Math.min(viewportRows, this.listRowBudget ?? viewportRows) }
+  listRowLimit(viewportRows: number): number { return this.flow ? Number.MAX_SAFE_INTEGER : Math.min(viewportRows, this.listRowBudget ?? viewportRows) }
 
   setListRowBudget(rows: number | undefined): void { this.listRowBudget = rows }
 
@@ -2897,7 +2904,7 @@ class CompiledSurface implements MayflyEditorShellComponent {
       else {
         rows = this.root.render(safeWidth)
         const hasList = this.state.controls().some(control => control.kind === 'list' || control.kind === 'event' && control.listEntry !== undefined)
-        if (this.surfaceRuntime.interaction !== undefined && hasList) {
+        if (this.surfaceRuntime.interaction !== undefined && hasList && !this.surfaceRuntime.flow) {
           let budget = this.viewport.rows
           while (rows.length > this.viewport.rows && budget > 1) {
             const next = Math.max(1, budget - (rows.length - this.viewport.rows))
@@ -2908,7 +2915,7 @@ class CompiledSurface implements MayflyEditorShellComponent {
           }
         }
       }
-      const rowLimit = maxRows ?? (this.options.screenMode === 'alternate' || this.surfaceRuntime.interaction !== undefined ? this.viewport.rows : undefined)
+      const rowLimit = maxRows ?? (this.surfaceRuntime.flow ? undefined : this.options.screenMode === 'alternate' || this.surfaceRuntime.interaction !== undefined ? this.viewport.rows : undefined)
       const severity = { info: 0, success: 1, warning: 2, error: 3 }
       const notice = this.surfaceRuntime.interaction?.feedbackSnapshot().toSorted((left, right) => severity[left.severity] - severity[right.severity]).at(-1)
       const feedbackRows = notice === undefined || rowLimit === 1 ? [] : glyphRows([sliceByColumn(
