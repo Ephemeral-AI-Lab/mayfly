@@ -28,6 +28,10 @@ retired them from the gate: the design scenes now compare the real renderer with
 frames, committed as cell grids, until the accepted frames of the foundation review
 replace them.
 
+Components are developed part by part under
+[design/component-development-spec.md](./design/component-development-spec.md): each part has a scenario demo, a
+brief of what it implements and what to judge, and a question round with the owner in the terminal.
+
 A review round runs on the workbench: `pnpm run dev` rebuilds and restarts the
 profile on the same session, `pnpm run scenario` opens the product on a scripted
 timeline played into the live session (no model, no tools, no quota), `pnpm run frame` runs a scenario against the real product and writes each checkpoint as a cell grid, text, SVG, and (with `--png`) a screenshot from xterm.js in headless Chrome, and the

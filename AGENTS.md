@@ -125,6 +125,11 @@ decisions; do not add tests only to reach a line.
 
 ## Review loop
 
+Component work (Phases 3 to 6) follows
+[docs/design/component-development-spec.md](docs/design/component-development-spec.md): parts that each end in a
+scenario demo with a brief (implemented effects, effects to focus on), the original prototype `.mjs` read first,
+and terminal-only demos and questions to the owner.
+
 Review rounds use the workbench instead of a gate run. `pnpm run dev --profile
 mayfly-<tag>` watches `packages/*/src` and `examples/*/src`, runs the
 incremental build for the changed files, and restarts the profile's `dsh` on the

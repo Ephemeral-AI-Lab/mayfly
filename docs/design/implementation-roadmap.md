@@ -2148,7 +2148,10 @@ Phase 1 ran the full gate for every slice and compared every scene with the prot
 the owner's review in the running terminal decides, and tests record what was decided (D22, D25).
 
 **The loop for one component** (D23). A component, or a group whose parts only make sense together, goes through
-four steps in a dedicated worktree with its phase's profile (`PROFILE=mayfly-<phase> script/install-dev.sh`):
+four steps in a dedicated worktree with its phase's profile (`PROFILE=mayfly-<phase> script/install-dev.sh`).
+[component-development-spec.md](./component-development-spec.md) governs how steps 1 and 2 run: the group is cut into
+parts, each part ends in a scenario demo with a brief and a question round in the terminal, and the prototype scene is
+read first and named in the brief.
 
 1. **Draft** (the agent). Build the component from its spec section and §5's starting points, with the prototype scene
    as the sketch, on real data through the native services. Add the workbench scenarios for its states (§5, 2a),
