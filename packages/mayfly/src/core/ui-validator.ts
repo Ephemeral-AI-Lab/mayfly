@@ -429,7 +429,7 @@ function span(value: unknown, path: string, state: ValidationState, motion = fal
       const channel = enumeration(motionValue, ['shimmer', 'loader'] as const, `${path}.motion`)
       if (channel === 'loader' && content !== '') invalid(`${path}.text must be empty for a loader span`)
       if (channel === 'shimmer' && (content === '' || variantValue !== undefined)) invalid(`${path} shimmer needs text and takes no variant`)
-      return { text: content, ...optional(tone, 'tone'), ...optional(styles, 'styles'), motion: channel, ...optional(variantValue === undefined ? undefined : enumeration(variantValue, ['bloom', 'fill', 'gap', 'breath'] as const, `${path}.variant`), 'variant') }
+      return { text: content, ...optional(tone, 'tone'), ...optional(styles, 'styles'), motion: channel, ...optional(variantValue === undefined ? undefined : enumeration(variantValue, ['bloom', 'fill', 'gap', 'breath', 'pulse'] as const, `${path}.variant`), 'variant') }
     }
     return { text: content, ...optional(tone, 'tone'), ...optional(styles, 'styles') }
   })
@@ -1470,7 +1470,7 @@ function admitNode(value: unknown, path: string, state: ValidationState, depth: 
           if (cancelActionId.trim().length === 0) invalid(`${path}.cancelActionId must not be empty`)
           reserveControl(cancelActionId, state)
         }
-        return { kind, ...optional(optionalLabel(object, 'message', path), 'message'), ...optional(variantValue === undefined ? undefined : enumeration(variantValue, ['bloom', 'fill', 'gap', 'breath'], `${path}.variant`), 'variant'), ...optional(elapsedValue === undefined ? undefined : finiteInteger(elapsedValue, `${path}.elapsedMs`), 'elapsedMs'), ...optional(cancelActionId, 'cancelActionId'), ...optional(optionalLabel(object, 'cancelLabel', path), 'cancelLabel') }
+        return { kind, ...optional(optionalLabel(object, 'message', path), 'message'), ...optional(variantValue === undefined ? undefined : enumeration(variantValue, ['bloom', 'fill', 'gap', 'breath', 'pulse'], `${path}.variant`), 'variant'), ...optional(elapsedValue === undefined ? undefined : finiteInteger(elapsedValue, `${path}.elapsedMs`), 'elapsedMs'), ...optional(cancelActionId, 'cancelActionId'), ...optional(optionalLabel(object, 'cancelLabel', path), 'cancelLabel') }
       }
       case 'empty': {
         const actionsValue = own(object, 'actions', path)

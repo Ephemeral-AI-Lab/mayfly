@@ -80,8 +80,6 @@ export const ACTION_TOGGLE_COLLAPSE = 'mayfly.transcript.toggle-collapse'
  */
 export const EXPAND_TURNS = DEFAULT_EXPAND_TURNS
 
-/** The plugin-wide expansion state forwarded to the semantic transcript model. */
-interface CollapseToggle { expanded: boolean }
 /**
  * Mount the transcript components and model footer. The official transcript
  * consumer owns projection binding; this fiber provides the single
@@ -93,7 +91,6 @@ export function apply(ctx: Context): void {
   const t = transcriptTranslator(ctx, 'transcript')
   const screen = ctx.mayflyScreen
   const colors = ctx.mayflyTheme.colors
-  const toggle: CollapseToggle = { expanded: false }
   const presentation = new TranscriptPresentationPolicy()
   // Mayfly settings ride the host settings document: the resolved `mayfly`
   // namespace (schema owned by interaction) carries the work-details mode
@@ -226,8 +223,7 @@ export function apply(ctx: Context): void {
       keys: 'ctrl+o',
       description: t('Toggle detail expansion (tool output, long messages)'),
       handler: () => {
-        toggle.expanded = !toggle.expanded
-        transcript.setExpanded(toggle.expanded)
+        transcript.toggleRecent()
         screen.requestRender(true)
       },
     }])

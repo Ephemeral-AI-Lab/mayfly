@@ -59,7 +59,7 @@ export interface EntryItem {
   readonly entry: Entry
   /** Anchor ordering seq: the entry's own, or the preceding one for canonical nodes. */
   readonly seq: number | undefined
-  /** Whether Ctrl-O currently expands this entry's body. */
+  /** Whether this entry's body is drawn in full: its turn is open, or the reader lifted it. */
   readonly expanded: boolean
   /** Whether Ctrl-O reaches this entry, so hints may name the key. */
   readonly hint: boolean
@@ -83,9 +83,11 @@ interface DisplayInput {
   /** The running turn, or `undefined` when every turn has ended. */
   readonly runningTurn: number | undefined
   readonly turns?: readonly TranscriptTurnModel[] | undefined
-  /** The global Ctrl-O toggle. */
-  readonly expanded: boolean
-  /** Turns within Ctrl-O's reach. */
+  /** Turns drawn at their Verbose tier: Ctrl-O's reach, flipped by Enter on a header, plus the turns a search holds open. */
+  readonly open: ReadonlySet<number>
+  /** Entries whose body the reader lifted to its full rows. */
+  readonly rows: ReadonlySet<string>
+  /** Turns within Ctrl-O's reach, so hints may name the key. */
   readonly scope: ReadonlySet<number>
   /** Plain or hand-built models: entries only, no headers, groups, or folds. */
   readonly flat: boolean
@@ -186,7 +188,7 @@ export function buildDisplay(input: DisplayInput): DisplayItem[] {
   const turnInfo = new Map((input.turns ?? []).map(turn => [turn.turn, turn]))
   const plainEntry = (entry: Entry, turnClosed: boolean, expanded: boolean, hint: boolean, tier?: 'verbose' | 'standard' | 'compact'): EntryItem => {
     if (isSemantic(entry)) lastSeq = entry.seq
-    return { kind: 'entry', entry, seq: lastSeq, expanded, hint, turnClosed, ...(tier === undefined ? {} : { tier }) }
+    return { kind: 'entry', entry, seq: lastSeq, expanded: expanded || (isSemantic(entry) && input.rows.has(entry.id)), hint, turnClosed, ...(tier === undefined ? {} : { tier }) }
   }
   let index = 0
   const entries = input.entries
@@ -211,7 +213,7 @@ export function buildDisplay(input: DisplayInput): DisplayItem[] {
     const info = turnInfo.get(turn)
     const closed = !input.flat && (info?.endedAt !== undefined || turn !== input.runningTurn)
     const inScope = input.scope.has(turn)
-    const expandedTurn = input.expanded && inScope
+    const expandedTurn = input.open.has(turn)
     if (input.flat || !block.some(isMember)) {
       for (const entry of block) items.push(plainEntry(entry, closed, expandedTurn, inScope))
       continue

@@ -30,6 +30,7 @@ const REQUEST = [
 
 /** What each replay shows, as the sources whose change it can reveal. */
 const COVERS = {
+  levels: [`${TRANSCRIPT}tool-*.ts`, `${TRANSCRIPT}process-*.ts`, `${TRANSCRIPT}presentation-policy.ts`, `${TRANSCRIPT}disclosure.ts`, `${TRANSCRIPT}official-model.ts`, 'packages/mayfly/src/frontend/models.ts', ...STREAM],
   tour: [`${TRANSCRIPT}tool-*.ts`, `${TRANSCRIPT}process-*.ts`, `${TRANSCRIPT}pane-todo.ts`, ...STREAM],
   toolkit: [`${TRANSCRIPT}tool-*.ts`, `${TRANSCRIPT}present.ts`, ...STREAM],
   thinking: [...STREAM, `${TRANSCRIPT}presentation-policy.ts`, 'packages/mayfly/src/core/ui-list-paint.ts'],
@@ -85,6 +86,25 @@ const COVERS = {
  * that `differs` from the prototype, and `pending`. `brief.mjs` prints them. Finalizing a group removes its entries.
  */
 const REVIEW = {
+  levels: {
+    scene: 18,
+    reference: 'prototype scene 18 (Conversation stream, every level) · component-library §5.6 · part 3e.1',
+    implemented: [
+      'What you open sits on top of the level: Ctrl+O draws the newest three turns at their Verbose tier and a second Ctrl+O closes them again; nothing else changes.',
+      'The level table is the only place that says what a level shows: a compaction row is one line at Compact and opens its summary at Verbose (it used to ask the mode directly).',
+      'Behind the scenes, the reader\'s openings are one value (Ctrl+O reach, single turns, single rows, turns a search holds open); Enter on a header (3e.2) and search (3e.3) use the same value.',
+    ],
+    focus: [
+      { look: 'Detail is in exactly one place per level: the same turns at Compact, Standard, Detailed and Verbose', how: '`pnpm run scenario levels`, `levels-compact`, `levels-detailed`, `levels-verbose`, checkpoint `end`' },
+      { look: 'Ctrl+O opens the newest three turns; older turns stay as the level draws them', how: 'checkpoint `open`' },
+      { look: 'The second Ctrl+O puts the turns back exactly as they were', how: 'checkpoint `closed`' },
+      { look: 'The `Ctrl+O to expand` hints appear only while there is more to open', how: 'compare `end`, `open`, `closed`' },
+    ],
+    differs: [
+      'Enter on a turn header and the row cursor arrive with part 3e.2; this scenario shows only the Ctrl+O side.',
+    ],
+    pending: [],
+  },
   pending: {
     scene: 17,
     reference: 'prototype scene 17 (Tool rows) and 14 (Activity row) · component-library §5.3.1 (division of labor) · part 3b.4',
@@ -382,7 +402,7 @@ const REVIEW = {
     scene: 17,
     reference: 'prototype scene 17 (Tool rows and edits) · spec §5.3 · failed and cut-off calls',
     implemented: [
-      'A failed call is ✗ with its reason on the line (the first line of the error, clipped), at every tier.',
+      'A failed call is ✗ with its reason on the line (the first line of the error, clipped), at every tier. A block of calls where only some failed has a `⚠` head with `N failed` in the warning tone (✗ is for a block where every call failed), and the Compact line counts its failures in the same tone.',
     ],
     focus: [
       { look: 'The failed lines of the failed turn', how: '`pnpm run frame errors --keys ctrl+o`, checkpoint `keys` (the ⊘ cancelled line is in `toollines`)' },
@@ -926,6 +946,16 @@ export const CATALOG = Object.freeze({
     sizes: [[120, 64]],
     script: [play('write-early', TIMED), key('ctrl+o'), play('write-half', TIMED), checkpoint('half'), play('write-late', TIMED), checkpoint('late'), play(), checkpoint('end')],
   },
+  // The reader's openings over each level: the same turns at the four levels, Ctrl+O to open the newest three and again to close.
+  ...Object.fromEntries(['standard', 'compact', 'detailed', 'verbose'].map(level => [level === 'standard' ? 'levels' : `levels-${level}`, {
+    summary: `the newest turns at the ${level[0].toUpperCase()}${level.slice(1)} level, then opened and closed with Ctrl+O`,
+    source: { replay: 'toollines' },
+    config: { mayfly: { transcriptView: level } },
+    covers: COVERS.levels,
+    sizes: level === 'standard' ? [[120, 80], [60, 64], [40, 64]] : [[120, 80]],
+    script: [play(), checkpoint('end'), key('ctrl+o'), checkpoint('open'), key('ctrl+o'), checkpoint('closed')],
+    ...(level === 'standard' ? { review: REVIEW.levels } : {}),
+  }])),
   // At Compact a turn's calls are one line that counts up and stays; Ctrl+O opens the turn.
   fold: {
     summary: 'the Compact level: a turn\'s calls are one `▸ N tool calls` line where the first call was; Ctrl+O opens them',

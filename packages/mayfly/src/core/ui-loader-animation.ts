@@ -79,10 +79,11 @@ interface LoaderCellOptions {
   readonly reducedMotion?: boolean | undefined
 }
 
-/** One loader cell, painted: a stepping variant's glyph in `primary`, or the breath's `●` in its current shade. */
+/** One loader cell, painted: a stepping variant's glyph in `primary`, or the breath's `●` (the pulse's `•`) in its current shade. */
 export function loaderCell(variant: MayflyLoaderVariant, frame: number, options: LoaderCellOptions): string {
   const at = options.reducedMotion === true ? 0 : frame
   if (variant === 'breath') return breathPaint(options.colors, breathLevel(at))('●')
+  if (variant === 'pulse') return breathPaint(options.colors, breathLevel(at))('•')
   if (options.glyphs === 'ascii') return options.colors.primary(ASCII_SPINNER_FRAMES[at % ASCII_SPINNER_FRAMES.length]!)
   return options.colors.primary(loaderFrameGlyph(variant, at))
 }

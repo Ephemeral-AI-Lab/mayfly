@@ -171,7 +171,7 @@ type MayflyInlineSpan = {
   tone?: MayflyTone
   emphasis?: 'normal' | 'strong'
   motion?: 'shimmer' | 'loader'                        // one channel per rich-text row
-  variant?: 'bloom' | 'fill' | 'gap' | 'breath'        // with motion: 'loader'; default 'gap'
+  variant?: 'bloom' | 'fill' | 'gap' | 'breath' | 'pulse'        // with motion: 'loader'; default 'gap'
 }
 ```
 
@@ -1628,7 +1628,7 @@ api.overlays.open({ id: 'acme.approve', presentation: 'editor', capturing: true,
 ```ts
 ui.loader({
   message?: string
-  variant?: 'bloom' | 'fill' | 'gap' | 'breath'
+  variant?: 'bloom' | 'fill' | 'gap' | 'breath' | 'pulse'
   elapsedMs?: number
   cancelActionId?: string
   cancelLabel?: string
@@ -1640,7 +1640,7 @@ non-negative millisecond hint, shown as `45s`, `2m 10s`, or `1h 5m`. The rendere
 owns the animation, one clock for every surface at a 100 ms step: `bloom` (`· ✢ ✳
 ✶ ✻ ✽`), `fill` (a braille bar that fills and drains), and `gap` (a braille
 spinner) step each tick, and `breath` is a `●` that moves through six shades of
-the `primary` tone, dim to bright to dim, a shade every 400 ms. Never start a timer
+the `primary` tone, dim to bright to dim, a shade every 400 ms (`pulse` is the same breath on a small `•`). Never start a timer
 in `render()`. Reduced motion freezes every variant on its first frame, and ASCII
 glyphs draw `- \ | /`. A `cancelActionId` is a hint, not a button: the row
 `Esc cancel` (or `Esc` and the lower-cased `cancelLabel`) sits under the loader,

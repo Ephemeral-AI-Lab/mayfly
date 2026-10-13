@@ -66,7 +66,7 @@ function secondLine(facts: ActivityFacts): MayflyUiChild {
 /**
  * The activity row of one phase.
  * @param facts - the phase and its texts.
- * @returns the header and the line under it.
+ * @returns a blank row that sets the stream's last row apart, the header, and the line under it.
  */
 export function ActivityRow(facts: ActivityFacts): MayflyUiNode {
   const tail = facts.tail ?? []
@@ -74,5 +74,5 @@ export function ActivityRow(facts: ActivityFacts): MayflyUiNode {
     ui.child(ui.richText(head(facts), { overflow: 'truncate' }), { priority: 0, overflow: 'truncate' }),
     ...tail.length === 0 ? [] : [ui.child(ui.richText([{ text: `· ${tail.join(' · ')}`, tone: 'muted' }]), { priority: 1, overflow: 'hide' })],
   ], { gap: 1 })
-  return ui.stack.column([ui.child(header), secondLine(facts)])
+  return ui.stack.column([ui.child(ui.spacer()), ui.child(header), secondLine(facts)])
 }

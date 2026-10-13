@@ -31,7 +31,7 @@ export type MayflySnapshotProvider<Node> = (request: MayflySnapshotRequest) => M
 export type MayflyTone = 'default' | 'muted' | 'primary' | 'accent' | 'user' | 'success' | 'warning' | 'danger'
 export type MayflyTextStyle = 'strong' | 'italic' | 'strike' | 'inverse'
 /** The glyph animations of a loader and of a loader span. */
-export type MayflyLoaderVariant = 'bloom' | 'fill' | 'gap' | 'breath'
+export type MayflyLoaderVariant = 'bloom' | 'fill' | 'gap' | 'breath' | 'pulse'
 export interface MayflyInlineSpan {
   readonly text: string
   readonly tone?: MayflyTone

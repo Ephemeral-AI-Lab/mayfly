@@ -15,6 +15,7 @@ import type { MayflyDecisionRequest, MayflyScreen } from '../core/types.ts'
 import type { ApprovalMark, CompactionMark } from '../conversation/types.ts'
 import type { MayflyTranslate } from '../frontend/locale.ts'
 import { freezeModel, materializeTranscriptEntries, type TranscriptEntryModel, type TranscriptModel, type TranscriptTurnModel } from '../frontend/models.ts'
+import { NO_DISCLOSURE, toggleRow, toggleTurn, type Disclosure } from './disclosure.ts'
 import { StreamFacts } from './stream-facts.ts'
 import type { TickSource } from './tick.ts'
 import {
@@ -93,7 +94,7 @@ export class TranscriptController {
   private active: string | undefined
   private slot: MayflyNodeSlot | undefined
   private screen: TranscriptScreen | undefined
-  private expanded = false
+  private disclosure: Disclosure = NO_DISCLOSURE
   private offTick: (() => void) | undefined
 
   constructor(private readonly options: TranscriptControllerOptions) {}
@@ -147,8 +148,22 @@ export class TranscriptController {
     this.publish()
   }
 
-  setExpanded(expanded: boolean): void {
-    this.expanded = expanded
+  /** Ctrl-O: open or close the Verbose tier of the newest turns. @returns whether they are open now. */
+  toggleRecent(): boolean {
+    this.disclosure = { ...this.disclosure, recent: !this.disclosure.recent }
+    this.publish()
+    return this.disclosure.recent
+  }
+
+  /** Enter on a turn header: flip that turn against what the level and Ctrl-O give. */
+  toggleTurn(turn: number): void {
+    this.disclosure = toggleTurn(this.disclosure, turn)
+    this.publish()
+  }
+
+  /** Enter on a row with a capped body: lift the cap, or put it back. */
+  toggleRow(id: string): void {
+    this.disclosure = toggleRow(this.disclosure, id)
     this.publish()
   }
 
@@ -195,7 +210,7 @@ export class TranscriptController {
     }
     const facts = view.facts.build(model, {
       policy: this.presentationPolicy(),
-      expanded: this.expanded,
+      disclosure: this.disclosure,
       liveTurnHeader: view.options.liveTurnHeader === true,
       t: this.options.t,
       now,

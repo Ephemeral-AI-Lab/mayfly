@@ -711,7 +711,7 @@ export function standardRow(calls: readonly Call[], t: MayflyTranslate, now: num
   return {
     kind: 'tools',
     id: `run:${first.id}`,
-    state: running ? 'pending' : failed > 0 ? 'error' : calls.some(call => call.state === 'cancelled') ? 'cancelled' : 'ok',
+    state: running ? 'pending' : failed > 0 ? (calls.some(call => call.state === 'ok') ? 'partial' : 'error') : calls.some(call => call.state === 'cancelled') ? 'cancelled' : 'ok',
     name: sanitizePluginText(names.length === 1 ? names[0]! : kindOf(first.activity).title),
     head: sanitizePluginText(head),
     ...(failed === 0 ? {} : { failed: t('{count} failed', { count: failed }) }),

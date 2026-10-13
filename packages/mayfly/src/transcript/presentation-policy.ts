@@ -40,14 +40,18 @@ export interface ProcessPolicy {
   readonly liveProcess: 'collect' | 'blocks' | 'current' | 'cards'
   /** A settled turn's process: `collect` is the Compact tier, one line for the turn's calls. */
   readonly settledProcess: 'collect' | 'blocks' | 'cards'
+  /** Whether a compaction row is one line, without its bar or summary (the Compact tier). */
+  readonly compactionLine: boolean
+  /** Whether a compaction row shows its summary without being opened (the Verbose tier). */
+  readonly compactionSummary: boolean
 }
 
 /** The fixed capability table; the same mode always yields the same object. */
 export const PROCESS_POLICIES: Readonly<Record<TranscriptViewMode, ProcessPolicy>> = Object.freeze({
-  compact: Object.freeze({ liveProcess: 'collect', settledProcess: 'collect' }),
-  standard: Object.freeze({ liveProcess: 'blocks', settledProcess: 'blocks' }),
-  detailed: Object.freeze({ liveProcess: 'current', settledProcess: 'blocks' }),
-  verbose: Object.freeze({ liveProcess: 'cards', settledProcess: 'cards' }),
+  compact: Object.freeze({ liveProcess: 'collect', settledProcess: 'collect', compactionLine: true, compactionSummary: false }),
+  standard: Object.freeze({ liveProcess: 'blocks', settledProcess: 'blocks', compactionLine: false, compactionSummary: false }),
+  detailed: Object.freeze({ liveProcess: 'current', settledProcess: 'blocks', compactionLine: false, compactionSummary: false }),
+  verbose: Object.freeze({ liveProcess: 'cards', settledProcess: 'cards', compactionLine: false, compactionSummary: true }),
 })
 
 /** Immutable reading of one transcript tree's presentation policy. */

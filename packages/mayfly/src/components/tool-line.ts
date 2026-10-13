@@ -13,6 +13,9 @@ import type { MayflyInlineSpan } from '@ephemeral-ai/mayfly-ui'
 /** How a call stands: it still runs, it waits on the user's decision, it worked, it failed, the user sent it back with a revision, or its turn ended before it settled. */
 export type ToolLineState = 'pending' | 'waiting' | 'ok' | 'error' | 'returned' | 'cancelled'
 
+/** How a block of calls stands: as a call does, or `partial` when some of its calls failed and others worked. */
+export type ToolGroupState = ToolLineState | 'partial'
+
 /** The facts of one tool line. Every text is final: translated, sanitized, and without escape sequences. */
 export interface ToolLineFacts {
   readonly state: ToolLineState
@@ -88,8 +91,8 @@ export interface ToolGroupItemFacts {
 
 /** The facts of a standard block: a head and one line per call. */
 export interface ToolGroupFacts {
-  /** Pending while any call runs, then failed, cut off, or done. */
-  readonly state: ToolLineState
+  /** Pending while any call runs, then failed (every call), partial (some failed, some worked), cut off, or done. */
+  readonly state: ToolGroupState
   /** The tool's name, in bold. */
   readonly name: string
   /** The translated rest of the head: what the calls count, and the time. */
@@ -99,8 +102,11 @@ export interface ToolGroupFacts {
   readonly items: readonly ToolGroupItemFacts[]
 }
 
-const GLYPH = { pending: '● ', waiting: '? ', ok: '✓ ', error: '✗ ', returned: '↩ ', cancelled: '⊘ ' } as const
-const GLYPH_TONE = { pending: 'primary', waiting: 'warning', ok: 'success', error: 'danger', returned: 'warning', cancelled: 'muted' } as const
+const GLYPH = { pending: '● ', waiting: '? ', ok: '✓ ', error: '✗ ', returned: '↩ ', cancelled: '⊘ ', partial: '⚠ ' } as const
+const GLYPH_TONE = { pending: 'primary', waiting: 'warning', ok: 'success', error: 'danger', returned: 'warning', cancelled: 'muted', partial: 'warning' } as const
+
+/** The mark of a call in flight under a block's head: a small dot that breathes with the head's, as a row body paints it. */
+const ITEM_PENDING_GLYPH: readonly MayflyInlineSpan[] = [{ text: '', motion: 'loader', variant: 'pulse' }, { text: ' ' }]
 
 /** The glyph of a call that still runs: a dot that breathes (one motion channel, so the rest of the line is still). */
 const PENDING_GLYPH: readonly MayflyInlineSpan[] = [{ text: '', motion: 'loader', variant: 'breath' }, { text: ' ' }]
@@ -174,7 +180,7 @@ export function ToolGroupHead(facts: ToolGroupFacts): readonly MayflyInlineSpan[
     ...facts.state === 'pending' ? PENDING_GLYPH : [{ text: GLYPH[facts.state], tone: GLYPH_TONE[facts.state] } as const],
     { text: facts.name, tone: facts.state === 'cancelled' ? 'muted' : 'default', styles: ['strong'] },
     ...(facts.head === '' ? [] : [{ text: ` · ${facts.head}`, tone: 'muted' } as const]),
-    ...(facts.failed === undefined ? [] : [{ text: ` · ${facts.failed}`, tone: 'danger' } as const]),
+    ...(facts.failed === undefined ? [] : [{ text: ` · ${facts.failed}`, tone: facts.state === 'partial' ? 'warning' : 'danger' } as const]),
   ]
 }
 
@@ -182,12 +188,12 @@ export function ToolGroupHead(facts: ToolGroupFacts): readonly MayflyInlineSpan[
  * The spans of one call line of a standard block.
  * @param item - the call.
  * @param last - whether it is the block's last call (it closes the tree).
- * @returns the spans: the tree mark, a glyph for a call that did not work, the label, and the outcome.
+ * @returns the spans: the tree mark, a glyph for a call that did not work (a breathing small dot for one in flight, which only a row body may paint), the label, and the outcome.
  */
 export function ToolGroupItem(item: ToolGroupItemFacts, last: boolean): readonly MayflyInlineSpan[] {
   return [
     { text: last ? '  └ ' : '  ├ ', tone: 'muted' },
-    ...(item.state === 'ok' ? [] : [{ text: GLYPH[item.state], tone: GLYPH_TONE[item.state] } as const]),
+    ...item.state === 'ok' ? [] : item.state === 'pending' ? ITEM_PENDING_GLYPH : [{ text: GLYPH[item.state], tone: GLYPH_TONE[item.state] } as const],
     { text: item.label, tone: 'accent' },
     ...(item.outcome === undefined ? [] : [{ text: ` · ${item.outcome}`, tone: 'muted' } as const]),
   ]

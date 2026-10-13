@@ -146,6 +146,7 @@ add a third meaning to a glyph.
 | `»` | user block |
 | `✻` | thinking |
 | `✓` `✗` | done / failed |
+| `⚠` | a block of calls where some failed and others worked (the head of a run, warning tone; `✗` only when every call failed) |
 | `⊘` | cancelled |
 | `◐` | declined (plan) |
 | `■` | stopping or interrupted |
@@ -967,7 +968,7 @@ The Layout scene draws a width ladder, priority admission, and a windowed list; 
 ### 4.8 Loader, progress, and empty
 
 ```
-ui.loader({ variant?: 'bloom' | 'fill' | 'gap' | 'breath', message?, elapsedMs?, cancelActionId? })
+ui.loader({ variant?: 'bloom' | 'fill' | 'gap' | 'breath' | 'pulse', message?, elapsedMs?, cancelActionId? })
 ui.progress({ value, max, label?, width?, style?: 'cells' | 'rule', tone?, showCount?, showPercent? })
 ui.empty(title, { description? })
 ```
@@ -2199,7 +2200,7 @@ incompatibly when that is the better design ([implementation-roadmap.md](./imple
 | Builder | Addition | Needed by |
 | --- | --- | --- |
 | `ui.child` | `priority`, `band`, `overflow` (admission) | status rows, activity row |
-| `ui.loader` | variants `bloom` `fill` `gap` `breath`; an inline shimmer span | activity row, loaders, onboarding |
+| `ui.loader` | variants `bloom` `fill` `gap` `breath` `pulse` (a small `•` that breathes); an inline shimmer span | activity row, loaders, onboarding |
 | `ui.progress` | `style: 'rule'`, `width`, `tone`, `showPercent` | todo, goal, compaction |
 | `ui.text` | `overflow: 'middle'` and `'start'` | sessions path, rail labels |
 | `ui.diff` | `start`, `numbered`, `hunkHeader`, `context`, `maxRows`; a red or green background behind the removed or added code (never the gutter) | edit cards, hunk review, the stream |

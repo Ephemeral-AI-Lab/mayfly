@@ -15,6 +15,7 @@ import type { MayflyTranslate } from '../frontend/locale.ts'
 import type { TranscriptEntryModel, TranscriptModel, TranscriptTurnModel } from '../frontend/models.ts'
 import type { StreamMood, StreamQueued, StreamRow, StreamTurn, TranscriptViewFacts } from '../components/transcript-view.ts'
 import { compactElapsedMs } from './agent-presentation.ts'
+import { openTurns, type Disclosure } from './disclosure.ts'
 import { buildDisplay, runningTurnOf, type DisplayItem, type EntryItem, type ProcessTitleItem, type TurnHeaderItem } from './process-groups.ts'
 import { diffStat, elapsedText } from './process-activity.ts'
 import { callsOf, standardRow, verboseRow, type Call, type CallRequests } from './tool-calls.ts'
@@ -37,8 +38,8 @@ type Entry = TranscriptModel['entries'][number]
 /** What one pass reads besides the model. */
 export interface StreamInputs {
   readonly policy: TranscriptPresentationSnapshot
-  /** The global Ctrl-O toggle. */
-  readonly expanded: boolean
+  /** What the reader opened beyond the level: Ctrl-O's reach, single turns and rows, the turns a search holds open. */
+  readonly disclosure: Disclosure
   /** Whether a running turn keeps its header (a view without an activity row). */
   readonly liveTurnHeader: boolean
   readonly t: MayflyTranslate
@@ -162,15 +163,17 @@ export class StreamFacts {
     const bounded = live === undefined ? model.entries : model.entries.filter(entry => !((entry.kind === 'transcript-thinking' || entry.kind === 'transcript-assistant')
       && entry.turn === live.turn && entry.step === live.step))
     const turnNumbers = [...new Set([...bounded.filter(isSemantic).map(entry => entry.turn), ...(live === undefined ? [] : [live.turn])])]
-    const visible = new Set(turnNumbers.slice(-policy.windowTurns))
+    const visible = new Set([...turnNumbers.slice(-policy.windowTurns), ...inputs.disclosure.forced])
     const entries = bounded.filter(entry => !isSemantic(entry) || visible.has(entry.turn))
+    const reach = new Set(turnNumbers.slice(-policy.expandTurns))
     const display = buildDisplay({
       entries: [...entries, ...liveEntries],
       policy: policy.process,
       runningTurn: runningTurnOf(model, entries),
       turns: model.turns,
-      expanded: inputs.expanded,
-      scope: new Set(turnNumbers.slice(-policy.expandTurns)),
+      open: openTurns(inputs.disclosure, reach),
+      rows: inputs.disclosure.rows,
+      scope: reach,
       flat: model.streaming === undefined,
       runningHeader: inputs.liveTurnHeader,
     })
@@ -310,7 +313,7 @@ function titleRow(item: ProcessTitleItem, t: MayflyTranslate): StreamRow {
     kind: 'title',
     id: item.id,
     text: sanitizePluginText(parts.join(' · ')),
-    ...(item.failed === 0 ? {} : { failed: t('{count} failed', { count: item.failed }) }),
+    ...(item.failed === 0 ? {} : { failed: t('{count} failed', { count: item.failed }), ...(item.failed < item.toolCalls + item.subagents ? { partial: true as const } : {}) }),
     ...(item.hint ? { hint: t('Ctrl+O to expand') } : {}),
   }
 }
@@ -466,7 +469,7 @@ const approx = (tokens: number): string => `~${formatTokens(tokens)}`
  */
 function compactionRow(entry: TranscriptCompactionModel, inputs: StreamInputs): StreamRow {
   const { t, now } = inputs
-  const compact = inputs.policy.mode === 'compact'
+  const compact = inputs.policy.process.compactionLine
   const mark = inputs.compactions?.find(item => item.id === entry.compactionId)
   const window = mark?.window ?? inputs.contextWindow
   const share = (tokens: number | undefined): number | undefined => window === undefined || tokens === undefined ? undefined : contextPercent(tokens, window)
@@ -505,7 +508,7 @@ function compactionRow(entry: TranscriptCompactionModel, inputs: StreamInputs): 
     ...trigger === undefined ? {} : { trigger },
   }
   const lines = compact || entry.summary === undefined ? [] : sanitizePluginText(entry.summary).split(/\r?\n/u).map(line => line.trim()).filter(line => line !== '')
-  const open = inputs.expanded || inputs.policy.mode === 'verbose'
+  const open = inputs.disclosure.recent || inputs.disclosure.rows.has(id) || inputs.policy.process.compactionSummary
   return {
     kind: 'compaction', id, facts,
     ...lines.length === 0 ? {} : open

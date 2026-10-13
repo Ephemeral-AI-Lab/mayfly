@@ -157,7 +157,7 @@ type MayflyInlineSpan = {
   tone?: MayflyTone
   emphasis?: 'normal' | 'strong'
   motion?: 'shimmer' | 'loader'                        // 一行只有一个动效通道
-  variant?: 'bloom' | 'fill' | 'gap' | 'breath'        // 配合 motion: 'loader'；默认 'gap'
+  variant?: 'bloom' | 'fill' | 'gap' | 'breath' | 'pulse'        // 配合 motion: 'loader'；默认 'gap'
 }
 ```
 
@@ -1469,7 +1469,7 @@ api.overlays.open({ id: 'acme.approve', presentation: 'editor', capturing: true,
 ```ts
 ui.loader({
   message?: string
-  variant?: 'bloom' | 'fill' | 'gap' | 'breath'
+  variant?: 'bloom' | 'fill' | 'gap' | 'breath' | 'pulse'
   elapsedMs?: number
   cancelActionId?: string
   cancelLabel?: string
@@ -1480,7 +1480,7 @@ ui.loader({
 时节点只是一个字形。`elapsedMs` 是非负毫秒提示，显示为 `45s`、`2m 10s` 或 `1h 5m`。
 动画归 renderer 所有，所有 surface 共用一个时钟，100 ms 一步：`bloom`（`· ✢ ✳ ✶ ✻ ✽`）、
 `fill`（盲文条逐格填满再退回）、`gap`（盲文转轮）每个 tick 前进一步；`breath` 是一个 `●`，
-在 `primary` tone 的六档明暗里一暗一亮地走，每 400 ms 一档。不要在 `render()` 里启动 timer。
+在 `primary` tone 的六档明暗里一暗一亮地走，每 400 ms 一档（`pulse` 是同样的呼吸，画在一个小 `•` 上）。不要在 `render()` 里启动 timer。
 减少动效时所有 variant 停在首帧，ASCII 字形模式下画 `- \ | /`。`cancelActionId` 是提示而不是按钮：
 loader 下面一行写着 `Esc cancel`（或 `Esc` 加小写的 `cancelLabel`），`Esc` 在离开 surface 之前先为该 action
 发出 `activate`，焦点在这一行时按 `Enter` 同样如此。上面的截图渲染的就是这个节点：

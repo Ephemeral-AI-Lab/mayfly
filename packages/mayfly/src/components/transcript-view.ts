@@ -56,7 +56,7 @@ export type StreamRow =
   /** A run of settled calls of one kind, the standard tier: a head and one line per call. */
   | ({ readonly kind: 'tools', readonly id: string } & ToolGroupFacts)
   /** The past-tense title of a folded process group. */
-  | { readonly kind: 'title', readonly id: string, readonly text: string, readonly failed?: string, readonly hint?: string }
+  | { readonly kind: 'title', readonly id: string, readonly text: string, readonly failed?: string, readonly partial?: true, readonly hint?: string }
   /** The turn header: its lifecycle label and counts. */
   | { readonly kind: 'header', readonly id: string, readonly mood: StreamMood, readonly open: boolean, readonly label: string, readonly tail: string }
   /**
@@ -187,9 +187,16 @@ function rowItems(row: StreamRow): readonly MayflyListItem[] {
       row.state === 'pending'
         ? { id: row.id, label: row.name, body: ui.richText(ToolGroupHead(row), { overflow: 'truncate' }), bodyAlways: true, bodyLead: [span('')] } satisfies MayflyListItem
         : line(row.id, ToolGroupHead(row)),
-      ...row.items.map((item, index) => line(`${row.id}.item.${String(index)}`, ToolGroupItem(item, index === row.items.length - 1))),
+      ...row.items.map((item, index) => {
+        const id = `${row.id}.item.${String(index)}`
+        const spans = ToolGroupItem(item, index === row.items.length - 1)
+        // A call in flight leads with a breathing dot, a motion span that only a row body may paint.
+        return item.state === 'pending'
+          ? { id, label: item.label, body: ui.richText(spans, { overflow: 'truncate' }), bodyAlways: true, bodyLead: [span('')] } satisfies MayflyListItem
+          : line(id, spans)
+      }),
     ]
-    case 'title': return [line(row.id, [span('▸ ', 'muted'), span(row.text, 'muted'), ...(row.failed === undefined ? [] : [span(` · ${row.failed}`, 'danger')]), ...(row.hint === undefined ? [] : [span(` · ${row.hint}`, 'muted')])])]
+    case 'title': return [line(row.id, [span('▸ ', 'muted'), span(row.text, 'muted'), ...(row.failed === undefined ? [] : [span(` · ${row.failed}`, row.partial === true ? 'warning' : 'danger')]), ...(row.hint === undefined ? [] : [span(` · ${row.hint}`, 'muted')])])]
     case 'header': return [line(row.id, [span(row.open ? '▾ ' : '▸ ', 'muted'), span(row.label, MOOD_TONE[row.mood]), ...(row.tail === '' ? [] : [span(row.tail, 'muted')])])]
     case 'compaction': return [
       { id: row.id, label: row.facts.title, body: CompactionRow(row.facts), bodyAlways: true, bodyLead: [span('')] } satisfies MayflyListItem,
