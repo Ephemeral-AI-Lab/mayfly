@@ -148,6 +148,8 @@ export interface MayflyUiCompilerOptions {
   /** Renderer-private contextual key hints used by official panel adapters. */
   readonly contextHints?: {
     readonly enabled?: boolean
+    /** `false`: a surface compiled from a node draws no key-hint row of its own (its owner shows the keys elsewhere). */
+    readonly rows?: boolean
     readonly suppressAuto?: boolean
     readonly focusWithoutControls?: boolean
     readonly translate?: (key: string, values?: UiTranslateValues) => string
@@ -3667,7 +3669,7 @@ export function compileMayflyUiSurfaceNode(value: unknown, options: MayflyUiSurf
         ? { ...admitted.value, title: frame.value.title! }
         : { ...frame.value, child: node }
     }
-    const surface = admittedSurface(node, options, 'ui', undefined, options.surfaceRuntime, true, contextEscapeHint)
+    const surface = admittedSurface(node, options, 'ui', undefined, options.surfaceRuntime, options.contextHints?.rows !== false, contextEscapeHint)
     const hasControls = surface.hasControls()
     const focusTarget = hasControls || options.contextHints?.focusWithoutControls === true ? surface : null
     return { ok: true, value: { node: admitted.value, component: surface, focusTarget } }

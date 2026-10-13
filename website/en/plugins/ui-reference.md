@@ -922,7 +922,7 @@ ui.list({
   maxSelected?: number
   acceptActionId?: string
   empty?: MayflyUiNode
-  marker?: 'cursor' | 'selection'
+  marker?: 'cursor' | 'selection' | 'band'
   marks?: boolean
   maxRows?: number
   expandFocused?: boolean
@@ -1009,7 +1009,9 @@ filterable list the refusal lifts. While a search is open the filter row shows
 `N matches`, and the hint row names only what ends or clears it.
 
 **Rows.** `marker: 'selection'` keeps a muted `→` on the cursor row after
-focus leaves the list (a rail whose detail follows it). `marks: true` draws
+focus leaves the list (a rail whose detail follows it); `marker: 'band'` draws no
+arrow and paints the cursor row, with its body, in the palette's selected
+background while the list has focus (the conversation stream). `marks: true` draws
 `●`/`○` on a single choose list. `maxRows` windows the list around the cursor
 and ends it with `↑ n more · ↓ n more`. `acceptVerb` names Enter in the hint
 row, `hintLabel` names `↑/↓`, and `autofocus` makes the list the first control

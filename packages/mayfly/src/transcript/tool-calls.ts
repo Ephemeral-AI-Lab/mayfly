@@ -688,11 +688,15 @@ export function verboseRow(call: Call, open: boolean, t: MayflyTranslate, tier: 
  * @param calls - the run's calls, in flight or settled, all of one category.
  * @param t - translator for the transcript namespace.
  * @param now - the time, which a block with a call in flight measures its own against.
+ * @param opened - the ids of the calls the reader opened: each shows its body under its own line.
  * @returns the run's row.
  */
-export function standardRow(calls: readonly Call[], t: MayflyTranslate, now: number): StreamRow {
+/** No call opened. */
+const NONE_OPENED: ReadonlySet<string> = new Set()
+
+export function standardRow(calls: readonly Call[], t: MayflyTranslate, now: number, opened: ReadonlySet<string> = NONE_OPENED): StreamRow {
   const first = calls[0]!
-  if (calls.length === 1) return verboseRow(first, false, t, 'standard')
+  if (calls.length === 1) return opened.has(first.id) ? verboseRow(first, true, t, 'verbose') : verboseRow(first, false, t, 'standard')
   const running = calls.some(call => call.state === 'pending')
   const lines = !running && calls.every(call => call.lines !== undefined || call.state !== 'ok') ? calls.reduce((sum, call) => sum + (call.lines ?? 0), 0) : undefined
   const matches = !running && calls.every(call => call.matches !== undefined || call.state !== 'ok') ? calls.reduce((sum, call) => sum + (call.matches ?? 0), 0) : undefined
@@ -710,17 +714,23 @@ export function standardRow(calls: readonly Call[], t: MayflyTranslate, now: num
   ].filter((part): part is string => part !== undefined).join(' · ')
   return {
     kind: 'tools',
-    id: `run:${first.id}`,
+    id: first.id,
     state: running ? 'pending' : failed > 0 ? (calls.some(call => call.state === 'ok') ? 'partial' : 'error') : calls.some(call => call.state === 'cancelled') ? 'cancelled' : 'ok',
     name: sanitizePluginText(names.length === 1 ? names[0]! : kindOf(first.activity).title),
     head: sanitizePluginText(head),
     ...(failed === 0 ? {} : { failed: t('{count} failed', { count: failed }) }),
     items: calls.map((call) => {
       const outcome = outcomeText(call)
+      // An opened call shows what its Verbose block would, in place under its line: the block around it stays a run.
+      const open = opened.has(call.id) ? verboseRow(call, true, t, 'verbose') : undefined
+      const body = open?.kind === 'tool' ? open.body : undefined
+      const more = open?.kind === 'tool' ? open.more : undefined
       return {
         state: call.state,
         label: sanitizePluginText(call.label),
         ...(outcome === undefined ? {} : { outcome }),
+        ...(body === undefined || body.length === 0 ? {} : { body }),
+        ...(more === undefined ? {} : { more }),
       }
     }),
   }

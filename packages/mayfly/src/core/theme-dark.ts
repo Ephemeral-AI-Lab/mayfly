@@ -56,7 +56,7 @@ const DARK_LOGO_GRADIENT = [
 ] as const
 
 export const DARK_BACKGROUNDS = {
-  selectedBg: '#221E38',
+  selectedBg: '#2b2b30',
   diffAddedBg: '#1E3A2B',
   diffRemovedBg: '#43232A',
 } as const

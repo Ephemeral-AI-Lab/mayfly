@@ -859,7 +859,7 @@ ui.list({
   maxSelected?: number
   acceptActionId?: string
   empty?: MayflyUiNode
-  marker?: 'cursor' | 'selection'
+  marker?: 'cursor' | 'selection' | 'band'
   marks?: boolean
   maxRows?: number
   expandFocused?: boolean
@@ -934,7 +934,7 @@ query），所以单个字母可以留给 `i install`、通用的 `x delete`、`
 与之并存的可打印 accelerator；每个可筛选列表都设为 `filterMode: 'slash'` 时才放开。搜索打开时筛选
 行显示 `N matches`，提示行只列出结束或清除搜索的键。
 
-**行。** `marker: 'selection'` 让光标行在焦点离开后保留一个 muted 的 `→`（详情跟随它的 rail）。
+**行。** `marker: 'selection'` 让光标行在焦点离开后保留一个 muted 的 `→`（详情跟随它的 rail）；`marker: 'band'` 不画箭头，而是在列表持有焦点时把光标行（连同它的 body）涂上调色板的选中背景（会话流使用）。
 `marks: true` 在 single choose 列表上画 `●`/`○`。`maxRows` 围绕光标开窗口，并以
 `↑ n more · ↓ n more` 结尾。`acceptVerb` 在提示行命名 Enter，`hintLabel` 命名 `↑/↓`，`autofocus`
 让该列表最先获得焦点。`focusItem` 在 `rev` 变化时移动光标（并展开该行的父级）；重新发布相同 `rev`

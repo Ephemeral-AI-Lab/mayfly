@@ -160,6 +160,9 @@ export interface MayflyOverlayHandle {
  * tree, the single focus slot, and the overlay stack; it carries no color
  * or keybinding responsibility.
  */
+/** Where keyboard focus lives: the prompt, the stream's row cursor, a view of the status bar, or a search of the stream. */
+export type MayflyFocusMode = 'prompt' | 'conversation' | 'bar' | 'search'
+
 export interface MayflyScreen {
   /** Whether an active overlay or editor replacement must receive input before global actions. */
   readonly capturesInput?: boolean
@@ -1013,5 +1016,13 @@ declare module '@deepseek-ai/cordis' {
      * @mode emit
      */
     'mayfly/content-tail-changed'(label: string | undefined): void
+    /**
+     * Where keyboard focus lives, as a mode: the prompt, the conversation (the stream's row cursor), the bar (a view of
+     * status row 2), or a search of the stream. The status line names every mode but the prompt, and the prompt dims while
+     * it does not hold focus. Emitted by the surfaces that take focus; unfiltered.
+     * @param mode - the mode that holds focus now.
+     * @mode emit
+     */
+    'mayfly/focus-mode-changed'(mode: MayflyFocusMode): void
   }
 }

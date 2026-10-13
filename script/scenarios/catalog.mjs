@@ -86,6 +86,33 @@ const COVERS = {
  * that `differs` from the prototype, and `pending`. `brief.mjs` prints them. Finalizing a group removes its entries.
  */
 const REVIEW = {
+  select: {
+    scene: 18,
+    reference: 'prototype scene 18 (Conversation stream: Alt+Up select a row, Enter expand, c copy, Ctrl+G open in editor) · component-library §5.6 · part 3e.2',
+    implemented: [
+      'Alt+Up (or F4) with an empty prompt moves focus up into the stream; the cursor starts on the newest selectable row and the view returns to the tail (a history scrolled away comes back), ↑/↓ walk the rows. Blank rows, the `✻ Worked for …` line and `■ interrupted` are not rows to select. Esc or Alt+Down (F5) gives focus back to the prompt.',
+      'The selected block is a gray band, inset one column from each edge of the screen and covering the whole block: a call with its output, an answer with all its lines, a run head with the calls under it. A selected call inside a run is only its own line.',
+      'Mode: while focus is off the prompt the status line carries a `conversation` chip (at the place of the plan/yolo badges, `bar` when a view of the bottom bar is entered, `search` with the search in 3e.3); the prompt frame turns gray, and the notification pane (the row above the editor) teaches the stream\'s keys at the left (a copy notice keeps the right); with no notice and focus on the prompt, it teaches `Alt+↑ conversation · Alt+↓ bar` at the right.',
+      'Enter on a turn header (or a Compact `▸ N tool calls` line) opens that turn at Verbose and the cursor follows to the turn\'s new header; Enter again folds it. Enter on a call line inside a run opens only that call, in place under its line, and the run stays as it is; on the run head it opens every call, and Enter again folds them all. Enter on a prompt, an answer, or a diff lifts its cap.',
+      '`c` copies what a person reads: a message as its Markdown, an edit as a diff, a command with its output, a read with its lines, a plan as Markdown. `Ctrl+C` (not the interrupt, while the stream has focus) copies the model\'s raw JSON of the row. A header or title stands for its whole turn. The notification pane says what was copied; Ctrl+G reads the same text in $EDITOR.',
+    ],
+    focus: [
+      { look: 'The cursor lands on the newest row as a gray band and the status line says `conversation`', how: 'checkpoints `end`, `focused` (`--png` shows the band)' },
+      { look: 'An inner call of a run: the run stays whole, only that call opens in place under its line (the band covers the line and its output), Enter again folds it', how: 'checkpoints `item`, `item-open`, `item-closed`' },
+      { look: 'The run head: Enter opens every call in place, Enter again folds them all', how: 'checkpoints `head`, `head-open`, `head-closed`' },
+      { look: 'c and Ctrl+C notices (try pasting both live)', how: 'checkpoints `copied`, `copied-raw`' },
+      { look: 'The turn header opens the whole turn and the cursor follows to the new header', how: 'checkpoints `header`, `turn-open`, `turn-closed`' },
+      { look: 'Esc and Alt+Down return to the prompt; the chip and the gray frame go', how: 'checkpoints `back`, `back-alt`' },
+      { look: 'Focus after scrolling the history away: the view comes back to the tail', how: '`pnpm run scenario select-away`' },
+      { look: 'At Compact the title line is a row and Enter opens its turn', how: '`pnpm run scenario select-compact`' },
+      { look: 'A 60-column terminal: the hint row and the band fit', how: '`--width 60`' },
+    ],
+    differs: [
+      'The mouse wheel does not scroll while the stream is focused (the stream shows the window around its cursor); PageUp/PageDown walk the cursor.',
+      'A request waiting on you is not reachable with Alt+Up: the decision card takes the prompt\'s place and its keys.',
+    ],
+    pending: [],
+  },
   levels: {
     scene: 18,
     reference: 'prototype scene 18 (Conversation stream, every level) · component-library §5.6 · part 3e.1',
@@ -945,6 +972,82 @@ export const CATALOG = Object.freeze({
     covers: COVERS.streaming,
     sizes: [[120, 64]],
     script: [play('write-early', TIMED), key('ctrl+o'), play('write-half', TIMED), checkpoint('half'), play('write-late', TIMED), checkpoint('late'), play(), checkpoint('end')],
+  },
+  // The row cursor: Alt+Up from the prompt, walk, open a row, copy it, and come back with Esc.
+  select: {
+    summary: 'Alt+Up moves focus up into the stream; the cursor walks the rows, Enter opens one, c copies it, Esc returns to the prompt',
+    source: { replay: 'toollines' },
+    covers: COVERS.levels,
+    sizes: [[120, 60], [60, 50]],
+    review: REVIEW.select,
+    script: [
+      play(), checkpoint('end'),
+      key('alt+up'), checkpoint('focused'),
+      // An inner call of a run: the run stays as it is and only that call opens in place; Enter again folds it.
+      key('up'), checkpoint('item'),
+      key('enter'), checkpoint('item-open'),
+      key('enter'), checkpoint('item-closed'),
+      // The head of the run: Enter opens every call in place, Enter again folds them all.
+      key('up'), checkpoint('head'),
+      key('enter'), checkpoint('head-open'),
+      key('enter'), checkpoint('head-closed'),
+      // Copy: c is for a person (a command with its output), Ctrl+C the model's JSON.
+      key('c'), checkpoint('copied'),
+      key('ctrl+c'), checkpoint('copied-raw'),
+      // The turn header opens the whole turn, and the cursor follows to it.
+      key('up', { repeat: 3 }), checkpoint('header'),
+      key('enter'), checkpoint('turn-open'),
+      key('enter'), checkpoint('turn-closed'),
+      key('ctrl+g'), checkpoint('editor'),
+      key('esc'), checkpoint('back'),
+      key('alt+up'), key('alt+down'), checkpoint('back-alt'),
+    ],
+  },
+  // Focus entered after scrolling the history away: the view comes back to the newest rows, where the cursor starts.
+  'select-away': {
+    summary: 'scroll far up the history, then Alt+Up: the view returns to the tail with the cursor on the newest row, and the cursor walks up from there',
+    source: { replay: 'history' },
+    covers: COVERS.levels,
+    sizes: [[100, 30]],
+    script: [
+      play(), wheel('up', { count: 30 }), checkpoint('away'),
+      key('alt+up'), checkpoint('focused'),
+      key('up', { repeat: 12 }), checkpoint('walk'),
+      key('esc'), checkpoint('back'),
+    ],
+  },
+  // An open run keeps its shape: calls that join it follow its state, one call folds alone, and the cursor stays where it is.
+  'select-grow': {
+    summary: 'open a run of web searches from its head, then a fourth search joins it: it arrives open; folding one call leaves the others open',
+    source: { replay: 'toolgrow' },
+    covers: COVERS.levels,
+    sizes: [[100, 40], [60, 40]],
+    script: [
+      play('three'), checkpoint('three'),
+      key('alt+up'), key('up', { repeat: 3 }), checkpoint('head'),
+      key('enter'), checkpoint('head-open'),
+      // A call completes while the run is open as a whole: it joins open, and the cursor stays on the head.
+      play('four'), checkpoint('joined'),
+      key('down'), key('enter'), checkpoint('call-folded'),
+      // The run is no longer open as a whole: a call that joins later would come in folded; Enter on the head opens all again.
+      key('up'), key('enter'), checkpoint('head-open-again'),
+      key('enter'), checkpoint('head-closed'),
+      play(), checkpoint('end'),
+    ],
+  },
+  // The same at the Compact level: a turn is one `▸ N tool calls` line, and Enter on it opens the turn.
+  'select-compact': {
+    summary: 'at Compact the cursor walks title lines; Enter on one opens its turn at Verbose and Enter again folds it',
+    source: { replay: 'toollines' },
+    config: { mayfly: { transcriptView: 'compact' } },
+    covers: COVERS.levels,
+    sizes: [[120, 50]],
+    script: [
+      play(), checkpoint('end'),
+      key('alt+up'), checkpoint('walk'),
+      key('enter'), checkpoint('opened'),
+      key('enter'), checkpoint('closed'),
+    ],
   },
   // The reader's openings over each level: the same turns at the four levels, Ctrl+O to open the newest three and again to close.
   ...Object.fromEntries(['standard', 'compact', 'detailed', 'verbose'].map(level => [level === 'standard' ? 'levels' : `levels-${level}`, {

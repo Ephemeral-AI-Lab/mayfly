@@ -222,7 +222,7 @@ export function apply(ctx: Context): void {
   mountTranscriptLocale(ctx, 'transcript.activity', ACTIVITY_LOCALE)
   const t = transcriptTranslator(ctx, 'transcript.activity')
   // The notice row under the activity block and the notices the facts raise into it share this plugin's Fiber.
-  mountNotificationPane(ctx)
+  mountNotificationPane(ctx, t)
   mountNotices(ctx, t, () => activityNow())
   const state: ActivityState = {
     mode: 'idle', tip: '', label: WAITING_LABEL, turn: 0, dialog: false, ...readPreferences(ctx),

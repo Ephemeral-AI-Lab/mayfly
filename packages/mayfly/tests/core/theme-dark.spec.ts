@@ -87,7 +87,7 @@ describe('mayfly-theme-dark plugin', () => {
     expect(colors.primary('hi')).toBe('\x1b[38;2;154;134;230mhi\x1b[39m')
     // textMuted #5C6476 → rgb(92, 100, 118)
     expect(colors.textMuted('hi')).toBe('\x1b[38;2;92;100;118mhi\x1b[39m')
-    // selectedBg #221E38 → rgb(34, 30, 56)
+    // selectedBg #2b2b30 → rgb(34, 30, 56)
     expect(colors.selectedBg('hi')).toBe('\x1b[48;2;34;30;56mhi\x1b[49m')
     // diffAddedBg #1E3A2B → rgb(30, 58, 43)
     expect(colors.diffAddedBg('hi')).toBe('\x1b[48;2;30;58;43mhi\x1b[49m')

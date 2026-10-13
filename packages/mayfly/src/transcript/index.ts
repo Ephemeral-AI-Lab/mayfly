@@ -17,9 +17,13 @@ import { GutterComponent } from '../core/gutter.ts'
 import type { MayflyDecisionRequest } from '../core/types.ts'
 // Empty type import carries the app-owned session reader/projection services.
 import type {} from '../app/index.ts'
+import { copyTextToClipboard } from '../interaction/clipboard-write.ts'
+import { openInEditor } from '../interaction/decision-actions.ts'
+import { createInteractionNotificationOwner } from '../interaction/notifications.ts'
+import { mountFocusModeStatus } from './status-focus.ts'
 import { StatusFooterComponent } from './status-model.ts'
 import { userMessageText } from './stream-facts.ts'
-import { TranscriptController } from './transcript-model.ts'
+import { TranscriptController, type StreamRowActions } from './transcript-model.ts'
 import { OfficialConversationModelSource } from './official-model.ts'
 import type { LiveDraftSource } from './conversation-feed.ts'
 import { ConversationSlots } from './conversation-slots.ts'
@@ -130,13 +134,29 @@ export function apply(ctx: Context): void {
       return undefined
     }
   }) ?? (() => {})))
+  // The row under the stream's cursor goes to the clipboard or to $EDITOR; the outcome is a notice on the notification pane.
+  mountFocusModeStatus(ctx, t)
+  const rowNotices = createInteractionNotificationOwner(ctx, 'mayfly.transcript.rows', 'transcript-rows')
+  const rows: StreamRowActions = {
+    copy: (text, mode) => {
+      copyTextToClipboard(text).then(
+        (method) => { rowNotices.report('copy', { message: t(mode === 'raw' ? (method === 'native' ? 'Copied {count} characters of JSON' : 'Copied {count} characters of JSON (unverified)') : (method === 'native' ? 'Copied {count} characters' : 'Copied {count} characters (unverified)'), { count: text.length }), severity: 'success' }) },
+        (error: unknown) => { rowNotices.report('copy', { message: t('Could not copy'), severity: 'error', detail: error instanceof Error ? error.message : String(error) }) },
+      )
+    },
+    open: (text) => {
+      void openInEditor(ctx, text, t, new AbortController().signal).then((reply) => {
+        if (reply.kind === 'failed') rowNotices.report('open', { message: reply.message, severity: 'error' })
+      })
+    },
+  }
   // The compaction rows read the selected Agent's occupancy marks; the stream is published again when a mark lands.
   const sessionFacts = ctx.get('mayflySessionFacts') as SessionFactsService | undefined
   // The requests waiting on the user, in the order they were asked: the plugins that put them to the user publish their
   // queues, and the stream turns the first one's call into the request block.
   const queues: Record<'approval' | 'plan', readonly MayflyDecisionRequest[]> = { approval: [], plan: [] }
   let requests: readonly MayflyDecisionRequest[] = []
-  const transcript: TranscriptController = new TranscriptController({ presentation, t, queued: () => queued, requests: () => requests, imageRefs, tick: ctx.mayflyTick, context: () => sessionFacts === undefined ? undefined : { marks: sessionFacts.current.compactions, window: sessionFacts.current.contextWindow, tokens: sessionFacts.current.contextTokens, approvals: sessionFacts.current.approvals } })
+  const transcript: TranscriptController = new TranscriptController({ presentation, t, queued: () => queued, requests: () => requests, imageRefs, rows, focusMode: mode => ctx.emit('mayfly/focus-mode-changed', mode), tick: ctx.mayflyTick, context: () => sessionFacts === undefined ? undefined : { marks: sessionFacts.current.compactions, window: sessionFacts.current.contextWindow, tokens: sessionFacts.current.contextTokens, approvals: sessionFacts.current.approvals } })
   let marks = sessionFacts?.current.compactions
   let window = sessionFacts?.current.contextWindow
   let approvals = sessionFacts?.current.approvals

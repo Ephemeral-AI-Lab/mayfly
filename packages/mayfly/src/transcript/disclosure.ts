@@ -10,8 +10,10 @@ export interface Disclosure {
   readonly recent: boolean
   /** Turns whose state Enter on their header flipped against what `recent` gives. */
   readonly turns: ReadonlySet<number>
-  /** Entries whose body Enter lifted to its full rows (a diff, a command's output, a reasoning block). */
+  /** Entries Enter opened: each draws its Verbose tier with every row it carries (a diff, a command's output, a reasoning block, a folded prompt). */
   readonly rows: ReadonlySet<string>
+  /** Runs of calls (by their first call's id) the reader opened as a whole: every call in them is open, those that join later too. */
+  readonly groups: ReadonlySet<string>
   /** Turns a search match sits in: mounted and drawn Verbose while the search is open. */
   readonly forced: ReadonlySet<number>
 }
@@ -21,6 +23,7 @@ export const NO_DISCLOSURE: Disclosure = Object.freeze({
   recent: false,
   turns: new Set<number>(),
   rows: new Set<string>(),
+  groups: new Set<string>(),
   forced: new Set<number>(),
 })
 
@@ -54,13 +57,53 @@ export function toggleTurn(disclosure: Disclosure, turn: number): Disclosure {
 }
 
 /**
- * The same disclosure with one entry's body lifted or put back.
+ * The same disclosure with some entries opened, or closed again when they all are open.
  * @param disclosure - the current value.
- * @param id - the entry id.
+ * @param ids - the entry ids a row stands for.
  * @returns the next value.
  */
-export function toggleRow(disclosure: Disclosure, id: string): Disclosure {
+export function toggleRows(disclosure: Disclosure, ids: readonly string[]): Disclosure {
+  if (ids.length === 0) return disclosure
   const rows = new Set(disclosure.rows)
-  if (!rows.delete(id)) rows.add(id)
+  const allOpen = ids.every(id => rows.has(id))
+  for (const id of ids) {
+    if (allOpen) rows.delete(id)
+    else rows.add(id)
+  }
   return { ...disclosure, rows }
+}
+
+/**
+ * Enter on the head of a run: every call opens, or, when the run is open as a whole or every call is, every call folds.
+ * An open run keeps the calls that join it open too.
+ * @param disclosure - the current value.
+ * @param head - the run's id (its first call's).
+ * @param calls - the ids of the calls the run holds now.
+ * @returns the next value.
+ */
+export function toggleGroup(disclosure: Disclosure, head: string, calls: readonly string[]): Disclosure {
+  const rows = new Set(disclosure.rows)
+  const groups = new Set(disclosure.groups)
+  const open = groups.has(head) || calls.every(call => rows.has(call))
+  for (const call of calls) rows.delete(call)
+  if (open) groups.delete(head)
+  else groups.add(head)
+  return { ...disclosure, rows, groups }
+}
+
+/**
+ * Enter on one call of a run: only that call flips, and the run keeps its shape. A call folded inside an open run ends the
+ * run's being open as a whole: the other calls stay open one by one, and the ones that join later come in folded.
+ * @param disclosure - the current value.
+ * @param head - the run's id.
+ * @param calls - the ids of the calls the run holds now.
+ * @param call - the call that was accepted.
+ * @returns the next value.
+ */
+export function toggleCall(disclosure: Disclosure, head: string, calls: readonly string[], call: string): Disclosure {
+  const rows = new Set(disclosure.rows)
+  const groups = new Set(disclosure.groups)
+  if (groups.delete(head)) for (const other of calls) rows.add(other)
+  if (!rows.delete(call)) rows.add(call)
+  return { ...disclosure, rows, groups }
 }

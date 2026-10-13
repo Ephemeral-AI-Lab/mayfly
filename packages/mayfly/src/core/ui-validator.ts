@@ -533,6 +533,7 @@ function listItemRowFields(object: Record<string, unknown>, path: string, state:
   const meterValue = own(object, 'meter', path)
   const indent = own(object, 'indent', path)
   const gap = own(object, 'gap', path)
+  const under = optionalLabel(object, 'under', path)
   const body = bodyValue === undefined ? undefined
     : typeof bodyValue === 'string' ? text(bodyValue, `${path}.body`) : listBody(bodyValue, `${path}.body`, state)
   if (bodyAlways !== undefined && boolean(bodyAlways, `${path}.bodyAlways`) && body === undefined) invalid(`${path}.bodyAlways needs a body`)
@@ -554,6 +555,7 @@ function listItemRowFields(object: Record<string, unknown>, path: string, state:
     ...optional(indent === undefined ? undefined : Math.min(finiteInteger(indent, `${path}.indent`), LIST_ROW_LIMITS.indent), 'indent'),
     ...optional(ruleValue, 'rule'),
     ...optional(gap === undefined ? undefined : boolean(gap, `${path}.gap`), 'gap'),
+    ...optional(under, 'under'),
   }
 }
 
@@ -594,7 +596,7 @@ function listNodeFields(object: Record<string, unknown>, path: string, state: Va
   const autofocus = own(object, 'autofocus', path)
   const focusItem = own(object, 'focusItem', path)
   return {
-    ...optional(marker === undefined ? undefined : enumeration(marker, ['cursor', 'selection'], `${path}.marker`), 'marker'),
+    ...optional(marker === undefined ? undefined : enumeration(marker, ['cursor', 'selection', 'band'], `${path}.marker`), 'marker'),
     ...optional(marks === undefined ? undefined : boolean(marks, `${path}.marks`), 'marks'),
     ...optional(maxRows === undefined ? undefined : finiteInteger(maxRows, `${path}.maxRows`, 1), 'maxRows'),
     ...optional(expandFocused === undefined ? undefined : boolean(expandFocused, `${path}.expandFocused`), 'expandFocused'),

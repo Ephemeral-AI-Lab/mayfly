@@ -55,6 +55,17 @@ const TRANSCRIPT_MESSAGES = identityCatalog({
   '{count} subagents': '{count} 个 subagent',
   '{count} failed': '{count} 个失败',
   'Ctrl+O to expand': '按 Ctrl+O 展开',
+  'conversation': '对话',
+  'bar': '底栏',
+  'search': '搜索',
+  'Copied {count} characters': '已复制 {count} 个字符',
+  'Copied {count} characters of JSON': '已复制 {count} 个字符的 JSON',
+  'Copied {count} characters of JSON (unverified)': '已通过终端转义序列复制 {count} 个字符的 JSON（未验证）',
+  'Copied {count} characters (unverified)': '已通过终端转义序列复制 {count} 个字符（未验证）',
+  'Could not copy': '无法复制',
+  'The terminal is unavailable': '终端不可用',
+  'no editor configured ($VISUAL/$EDITOR)': '未配置编辑器（$VISUAL/$EDITOR）',
+  'The editor could not be opened': '无法打开编辑器',
   'cancelled': '已取消',
   'running': '运行中',
   'truncated': '已截断',
@@ -109,6 +120,8 @@ export const TRANSCRIPT_LOCALE: MayflyLocaleCatalog = TRANSCRIPT_MESSAGES
 
 /** Activity-pane copy: phase labels plus the running and preparing process labels. */
 export const ACTIVITY_LOCALE = identityCatalog({
+  'Alt+↑ conversation · Alt+↓ bar': 'Alt+↑ 选对话 · Alt+↓ 选底栏',
+  'Enter expand · c copy · Ctrl+C JSON · Ctrl+G editor · ↑/↓ select · Esc back': 'Enter 展开 · c 复制 · Ctrl+C 复制 JSON · Ctrl+G 编辑器 · ↑/↓ 选择 · Esc 返回',
   'Tip: ': '提示：',
   'Deep diving': '深度求索中',
   'Pondering': '思索中',

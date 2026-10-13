@@ -7,15 +7,16 @@
  * @module @ephemeral-ai/mayfly/transcript/transcript-model
  */
 
-import type { MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
-import { latestTurnOf, TranscriptView, type StreamRow, type TranscriptViewFacts } from '../components/transcript-view.ts'
+import type { MayflyUiEvent, MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
+import { latestTurnOf, STREAM, streamTarget, TranscriptStream, type StreamRow, type TranscriptViewFacts } from '../components/transcript-view.ts'
 import type { MayflyNodeSlot } from '../core/node-slot.ts'
 import type { MayflyScreenService } from '../core/screen.ts'
 import type { MayflyDecisionRequest, MayflyScreen } from '../core/types.ts'
 import type { ApprovalMark, CompactionMark } from '../conversation/types.ts'
 import type { MayflyTranslate } from '../frontend/locale.ts'
 import { freezeModel, materializeTranscriptEntries, type TranscriptEntryModel, type TranscriptModel, type TranscriptTurnModel } from '../frontend/models.ts'
-import { NO_DISCLOSURE, toggleRow, toggleTurn, type Disclosure } from './disclosure.ts'
+import { NO_DISCLOSURE, toggleCall, toggleGroup, toggleRows, toggleTurn, type Disclosure } from './disclosure.ts'
+import type { CopyMode } from './row-text.ts'
 import { StreamFacts } from './stream-facts.ts'
 import type { TickSource } from './tick.ts'
 import {
@@ -43,6 +44,18 @@ export interface TranscriptControllerOptions {
   readonly context?: () => { readonly marks?: readonly CompactionMark[] | undefined, readonly window?: number | undefined, readonly tokens?: number | undefined, readonly approvals?: readonly ApprovalMark[] | undefined } | undefined
   /** Where the references of the images the stream shows are kept for the byte loader. */
   readonly imageRefs?: Map<string, { readonly attachmentId: string, readonly mediaType: string }>
+  /** What `c` and `Ctrl+G` do with the row under the cursor. */
+  readonly rows?: StreamRowActions
+  /** Called when the stream gains or loses keyboard focus, for the mode the status line names. */
+  readonly focusMode?: (mode: 'conversation' | 'prompt') => void
+}
+
+/** What a row under the cursor can be sent to: the clipboard, or the editor. */
+export interface StreamRowActions {
+  /** Copy the row's content; `raw` is the model's JSON. */
+  copy(text: string, mode: CopyMode): void
+  /** Read the row's content in `$EDITOR`. */
+  open(text: string): void
 }
 
 /** How one retained view differs from the default. */
@@ -95,6 +108,12 @@ export class TranscriptController {
   private slot: MayflyNodeSlot | undefined
   private screen: TranscriptScreen | undefined
   private disclosure: Disclosure = NO_DISCLOSURE
+  /** Counts the times focus moved into the stream; the list sends its cursor to the newest row once per count. */
+  private cursorRev = 0
+  /** The cursor send the slot's focus was last moved for. */
+  private sentRev = 0
+  /** Where the next cursor send lands, before the newest row: the rows a turn's toggle turned its own row into. */
+  private cursorIds: readonly string[] | undefined
   private offTick: (() => void) | undefined
 
   constructor(private readonly options: TranscriptControllerOptions) {}
@@ -161,9 +180,14 @@ export class TranscriptController {
     this.publish()
   }
 
-  /** Enter on a row with a capped body: lift the cap, or put it back. */
-  toggleRow(id: string): void {
-    this.disclosure = toggleRow(this.disclosure, id)
+  /** Enter on a row: open the entries it stands for to their Verbose tier, or put them back. */
+  toggleRows(ids: readonly string[]): void {
+    this.disclosure = toggleRows(this.disclosure, ids)
+    this.publish()
+  }
+
+  private setDisclosure(disclosure: Disclosure): void {
+    this.disclosure = disclosure
     this.publish()
   }
 
@@ -220,7 +244,15 @@ export class TranscriptController {
       ...(this.options.imageRefs === undefined ? {} : { imageRefs: this.options.imageRefs }),
     })
     slot.setTurns(latestTurnOf(facts))
-    slot.set(TranscriptView(facts))
+    const ids = this.cursorIds ?? []
+    const node = TranscriptStream(facts, this.cursorRev === 0 ? undefined : { rev: this.cursorRev, ...ids.length === 0 ? {} : { ids } })
+    slot.set(node)
+    // A cursor just sent also takes the keyboard focus, so the key that follows acts on that row.
+    const target = streamTarget(node)
+    if (target !== undefined && this.sentRev !== this.cursorRev) {
+      this.sentRev = this.cursorRev
+      slot.focusRow(STREAM.list, target)
+    }
     this.keepTime(facts)
   }
 
@@ -254,9 +286,65 @@ export class TranscriptController {
   private mount(): void {
     const screen = this.screen
     if (screen === undefined) return
-    this.slot = screen.mountNodeSlot('transcript.conversation', { region: 'content' })
+    this.slot = screen.mountNodeSlot('transcript.conversation', {
+      region: 'content',
+      // The stream's keys are taught on the notification pane while it holds focus, not on a row of its own.
+      hints: false,
+      // `ctrl+c` is reserved for interrupting, so the stream answers it itself while it holds focus.
+      keys: { 'ctrl+c': STREAM.copyRaw },
+      onEvent: event => { this.onEvent(event) },
+      // Focus moves up into the stream at its newest row; `Esc` and `Alt+↓` give it back to the prompt.
+      onFocus: () => {
+        // A focused stream shows the window around its cursor, so the view returns to the tail where the cursor starts: a
+        // reader who had scrolled away would otherwise find the window below the view and nothing above it.
+        this.screen?.followContent()
+        this.cursorIds = undefined
+        this.cursorRev += 1
+        this.publish()
+      },
+      onFocusChange: (focused) => { this.options.focusMode?.(focused ? 'conversation' : 'prompt') },
+      onLeave: () => { this.slot?.release() },
+    })
     this.publish()
     screen.requestRender()
+  }
+
+  /** The stream's controls: where the cursor is, Enter on a row, and the keys that copy it or open it in the editor. */
+  private onEvent(event: MayflyUiEvent): void {
+    if (event.kind === 'selection-accept' && event.controlId === STREAM.list) this.accept(event.selectedIds[0])
+    else if (event.kind === 'activate' && event.actionId === STREAM.copy) this.withRowText('text', text => this.options.rows?.copy(text, 'text'))
+    else if (event.kind === 'activate' && event.actionId === STREAM.copyRaw) this.withRowText('raw', text => this.options.rows?.copy(text, 'raw'))
+    else if (event.kind === 'activate' && event.actionId === STREAM.open) this.withRowText('text', text => this.options.rows?.open(text))
+  }
+
+  private accept(itemId: string | undefined): void {
+    const facts = this.active === undefined ? undefined : this.views.get(this.active)?.facts
+    const owner = itemId === undefined ? undefined : facts?.locate(itemId)
+    if (facts === undefined || owner === undefined) return
+    this.cursorIds = undefined
+    // A header, a compact title, and the closing line stand for their turn: the cursor follows to the turn's other row.
+    if (owner.kind !== 'entries') {
+      if (owner.turn === undefined) return
+      this.cursorIds = [`turn-header:${String(owner.turn)}`, `process:${String(owner.turn)}`]
+      this.cursorRev += 1
+      this.toggleTurn(owner.turn)
+      return
+    }
+    // Any other row opens the parts it stands for; its row keeps its id, so the cursor stays on it. A run opens or folds whole
+    // from its head (and keeps the calls that join it in step), a call of it flips alone, and the run keeps its shape.
+    this.cursorIds = [itemId!]
+    this.cursorRev += 1
+    const run = owner.run
+    if (run === undefined) this.toggleRows(owner.parts)
+    else if (itemId === run.head) this.setDisclosure(toggleGroup(this.disclosure, run.head, run.calls))
+    else this.setDisclosure(toggleCall(this.disclosure, run.head, run.calls, owner.parts[0]!))
+  }
+
+  private withRowText(mode: CopyMode, use: (text: string) => void): void {
+    const facts = this.active === undefined ? undefined : this.views.get(this.active)?.facts
+    const cursor = this.slot?.cursor(STREAM.list)
+    const text = cursor === undefined ? undefined : facts?.textOf(cursor, mode)
+    if (text !== undefined && text !== '') use(text)
   }
 
   private unmount(): void {

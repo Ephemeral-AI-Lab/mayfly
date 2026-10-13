@@ -123,6 +123,8 @@ interface EditorChromePaints {
   readonly ghostHintPaint: (text: string) => string
   /** Styling for the top-border title (`textMuted`). */
   readonly borderTitlePaint: (text: string) => string
+  /** Styling for the frame while the editor does not hold keyboard focus (`textMuted`): the prompt reads as parked. */
+  readonly parkedBorderPaint: (text: string) => string
   /** The glyph mode the frame is drawn in; the typed text is never converted. */
   readonly glyphs?: MayflyGlyphMode
 }
@@ -417,8 +419,10 @@ class EditorAdapter implements MayflyEditor {
     lines[1] = row
     // Corners and bars route through the live `borderColor` property, so a
     // host recolor via `setBorderColor` (slash context, bash mode) repaints
-    // the whole frame in sync without re-entering this adapter.
-    const framed = withSideBorders(lines, (text: string) => this.editor.borderColor(text), {
+    // the whole frame in sync without re-entering this adapter. An editor that
+    // does not hold keyboard focus (the conversation or a bar has it) draws a
+    // muted frame, so the prompt reads as parked.
+    const framed = withSideBorders(lines, (text: string) => this.focused ? this.editor.borderColor(text) : this.chrome.parkedBorderPaint(text), {
       connectedAbove: this.connectedAbove,
       label: this.borderLabel,
       title: this.borderTitle,
@@ -702,6 +706,7 @@ export class MayflyComponentsService extends Service implements MayflyComponents
       slashTokenPaint: (text) => `\x1b[1m${colors.primary(text)}\x1b[22m`,
       ghostHintPaint: colors.textMuted,
       borderTitlePaint: colors.textMuted,
+      parkedBorderPaint: colors.textMuted,
       glyphs: this.presentation.glyphs,
     })
   }

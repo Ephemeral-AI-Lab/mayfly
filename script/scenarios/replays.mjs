@@ -596,6 +596,35 @@ const toollines = {
   ],
 }
 
+/** Calls that join a run while it is open: web searches are lone tool entries that gather into one block, and a fourth arrives later. */
+const toolgrow = {
+  summary: 'a run of web searches (separate tool entries) that gains a call after the reader opened it, and a command below it',
+  items: [
+    turn('Look up how the terminal clips rows, from several angles.', [
+      step({
+        text: 'Searching the web.',
+        tools: [
+          tool('web_search', { queries: ['pi tui overflow truncate'] }, { result: '1. pi.dev\n2. example.com', runMs: 600, meta: { sources: [{ url: 'https://pi.dev/docs/latest/tui', title: 'TUI' }, { url: 'https://example.com', title: 'Example' }], truncated: false } }),
+          tool('web_search', { queries: ['terminal row wrap width'] }, { result: '1. wcwidth.dev\n2. unicode.org', runMs: 700, meta: { sources: [{ url: 'https://wcwidth.dev', title: 'Width' }, { url: 'https://unicode.org', title: 'Unicode' }], truncated: false } }),
+          tool('web_search', { queries: ['ansi escape sequences clip'] }, { result: '1. ecma-48.org', runMs: 800, meta: { sources: [{ url: 'https://ecma-48.org', title: 'ECMA-48' }], truncated: false } }),
+        ],
+      }),
+      mark('three'),
+      step({
+        tools: [
+          tool('web_search', { queries: ['grapheme cluster width'] }, { result: '1. unicode.org/reports/tr29', runMs: 600, meta: { sources: [{ url: 'https://unicode.org/reports/tr29', title: 'UAX #29' }], truncated: false } }),
+        ],
+      }),
+      mark('four'),
+      step({
+        text: 'Checking the build.',
+        tools: [tool('bash', { command: 'pnpm run build', description: 'Build' }, { result: 'built 4 packages', runMs: 900 })],
+      }),
+      step({ text: 'The sources agree.' }),
+    ], { startAt: '11:02' }),
+  ],
+}
+
 /** Three lines of code around a change, the context the edit tool sends on each side of a hunk. */
 const around = (at, removed, added) => {
   const head = lines(3, n => `  const row${String(at + n)} = paint(${String(at + n)})`)
@@ -932,7 +961,7 @@ const approvalsQueue = {
   ])],
 }
 
-export const REPLAYS = { tour, toolkit, thinking, markdown, live, phases, thinkingLadder, pending, blocks, streaming, sync, activityWait, prompts, turns, toollines, edits, errors, compaction: compactionReplay, compactionNoWindow, compactionFailed, manualCompact, context, subagents, childStream, approvals, approvalsRejected, approvalsEdit, approvalsQueue, questions, plan, planLong, goal, jobs, queued, retries, sideQuestion, notices, notificationPane, modes, edge, history, wheel, content }
+export const REPLAYS = { tour, toolkit, thinking, markdown, live, phases, thinkingLadder, pending, blocks, streaming, sync, activityWait, prompts, turns, toollines, toolgrow, edits, errors, compaction: compactionReplay, compactionNoWindow, compactionFailed, manualCompact, context, subagents, childStream, approvals, approvalsRejected, approvalsEdit, approvalsQueue, questions, plan, planLong, goal, jobs, queued, retries, sideQuestion, notices, notificationPane, modes, edge, history, wheel, content }
 
 /*
  * The scenes of the Website's app shots. Each is the source of an `app-*` scenario of the catalog, whose goldens the

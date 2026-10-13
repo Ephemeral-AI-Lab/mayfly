@@ -91,6 +91,7 @@ import {
   ACTION_PAGE_DOWN,
   ACTION_PAGE_UP,
   ACTION_FOCUS_NEXT,
+  ACTION_FOCUS_PREV,
   ACTION_STEER,
 } from './keys.ts'
 import { interactionTranslator } from './locale.ts'
@@ -804,6 +805,11 @@ export function apply(ctx: Context): void {
       && editor.getText().length === 0
       && !editor.isShowingAutocomplete()
       && ctx.mayflyScreen.enterViews()) return true
+    // Alt+Up (F4) on an empty prompt moves focus up into the conversation, where the cursor walks its rows.
+    if (keymap.matches(data, ACTION_FOCUS_PREV)
+      && editor.getText().length === 0
+      && !editor.isShowingAutocomplete()
+      && ctx.mayflyScreen.focusConversation()) return true
     // Up on an empty prompt withdraws the newest still-pending queued
     // message back into the draft — the folded queue pane's recall gesture.
     // A non-empty buffer, an open autocomplete dropdown, and bash mode all

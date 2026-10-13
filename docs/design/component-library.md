@@ -722,7 +722,7 @@ it. Its keys:
 
 ```
 ui.list({ id, role: 'browse' | 'choose', mode?: 'single' | 'multiple', items, selectedIds?, filterable?, filterMode?: 'type' | 'slash',
-  numbered?: true | 'focus', tree?, marker?: 'cursor' | 'selection', marks?, maxRows?, expandFocused?, acceptVerb?, autofocus?,
+  numbered?: true | 'focus', tree?, marker?: 'cursor' | 'selection' | 'band', marks?, maxRows?, expandFocused?, acceptVerb?, autofocus?,
   focusItem?: { id, rev }, empty? })
 item: { id, label: string | span[], detail?: string | span[], badge?, right?, rightFocus?, group?, parentId?, body?: string | node,
         bodyAlways?, bodyLead?: span[], wrap?, meter?, indent?, block?, rule?, gap?, disabled?, disabledReason?, confirm?, unavailableActions?,

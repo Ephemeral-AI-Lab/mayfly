@@ -227,6 +227,11 @@ export interface MayflyListItem {
   readonly disabled?: boolean
   readonly disabledReason?: string
   readonly parentId?: string
+  /**
+   * The id of the item whose block this row belongs to. A list with `marker: 'band'` draws the band behind the cursor
+   * item and every row under it, so a block that spans rows (a head and its body) is marked whole.
+   */
+  readonly under?: string
   readonly searchText?: string
   readonly segment?: MayflyListSegment
   /** Actions (by id) that cannot run while this row is the selection they target, with the reason shown in place of the action. */
@@ -252,8 +257,11 @@ export interface MayflyListNode {
   readonly maxSelected?: number
   readonly acceptActionId?: string
   readonly empty?: MayflyUiNode
-  /** `'selection'` keeps a muted arrow on the cursor row after focus leaves the list (a list whose detail follows it). */
-  readonly marker?: 'cursor' | 'selection'
+  /**
+   * `'selection'` keeps a muted arrow on the cursor row after focus leaves the list (a list whose detail follows it).
+   * `'band'` draws no arrow: the cursor row, and its body, take the palette's selected background across the row while the list has focus.
+   */
+  readonly marker?: 'cursor' | 'selection' | 'band'
   /** Draw `●` `○` on a single choose list. */
   readonly marks?: boolean
   /** Show at most this many rows, windowed around the cursor, with an `↑ n more · ↓ n more` row. */

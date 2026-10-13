@@ -12,7 +12,7 @@ import type { MayflyDecisionRequest } from '../core/types.ts'
 import { textOf, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import { sanitizePluginText } from '../core/plugin-view.ts'
 import type { MayflyTranslate } from '../frontend/locale.ts'
-import type { TranscriptEntryModel, TranscriptModel, TranscriptTurnModel } from '../frontend/models.ts'
+import { materializeTranscriptEntries, type CommandCallModel, type ReadCallModel, type SearchCallModel, type TranscriptEntryModel, type TranscriptModel, type TranscriptTurnModel } from '../frontend/models.ts'
 import type { StreamMood, StreamQueued, StreamRow, StreamTurn, TranscriptViewFacts } from '../components/transcript-view.ts'
 import { compactElapsedMs } from './agent-presentation.ts'
 import { openTurns, type Disclosure } from './disclosure.ts'
@@ -22,6 +22,7 @@ import { callsOf, standardRow, verboseRow, type Call, type CallRequests } from '
 import { kindOf } from './tool-kinds.ts'
 import type { TranscriptPresentationSnapshot } from './presentation-policy.ts'
 import { ellipsize } from './present.ts'
+import { partText, type CopyMode, type RowPart } from './row-text.ts'
 import { contextPercent, formatTokens } from './status-context.ts'
 import { COMPACTION_DRAIN_MS, type CompactionFacts } from '../components/compaction-row.ts'
 import type { ApprovalMark, CompactionMark } from '../conversation/types.ts'
@@ -107,8 +108,21 @@ function sameRow(left: StreamRow, right: StreamRow): boolean {
   return sameValue(left, right)
 }
 
+/** What a stream row stands for: the turn it sits in and the entries (or calls of them) it draws. */
+export interface RowOwner {
+  /** `header` and `title` stand for their whole turn. */
+  readonly kind: 'header' | 'title' | 'entries'
+  readonly turn: number | undefined
+  /** Entry ids, or the ids of calls inside group entries (`<entry>:<call>`). */
+  readonly parts: readonly string[]
+  /** A run's head or one of its calls: the run's id and the ids of the calls it holds, so Enter opens a call without leaving the run. */
+  readonly run?: { readonly head: string, readonly calls: readonly string[] }
+}
+
 /** Builds the facts of one conversation view and keeps the rows of its settled turns by identity. */
 export class StreamFacts {
+  private owners = new Map<string, RowOwner>()
+  private model: TranscriptModel | null = null
   private rows = new Map<string, StreamRow>()
   private turns = new Map<string, StreamTurn>()
   private queued = new Map<string, StreamQueued>()
@@ -130,7 +144,10 @@ export class StreamFacts {
     const rows = new Map<string, StreamRow>()
     const turns = new Map<string, StreamTurn>()
     const queued = new Map<string, StreamQueued>()
-    const facts: TranscriptViewFacts = { turns: model === null ? [] : this.turnsOf(model, inputs, rows, turns), queued: this.queuedOf(inputs, queued) }
+    const owners = new Map<string, RowOwner>()
+    const facts: TranscriptViewFacts = { turns: model === null ? [] : this.turnsOf(model, inputs, rows, turns, owners), queued: this.queuedOf(inputs, queued) }
+    this.owners = owners
+    this.model = model
     this.rows = rows
     this.turns = turns
     this.queued = queued
@@ -156,7 +173,7 @@ export class StreamFacts {
     })
   }
 
-  private turnsOf(model: TranscriptModel, inputs: StreamInputs, kept: Map<string, StreamRow>, keptTurns: Map<string, StreamTurn>): StreamTurn[] {
+  private turnsOf(model: TranscriptModel, inputs: StreamInputs, kept: Map<string, StreamRow>, keptTurns: Map<string, StreamTurn>, owners: Map<string, RowOwner>): StreamTurn[] {
     const { policy } = inputs
     const live = model.live
     const liveEntries = live?.entries ?? []
@@ -166,13 +183,15 @@ export class StreamFacts {
     const visible = new Set([...turnNumbers.slice(-policy.windowTurns), ...inputs.disclosure.forced])
     const entries = bounded.filter(entry => !isSemantic(entry) || visible.has(entry.turn))
     const reach = new Set(turnNumbers.slice(-policy.expandTurns))
+    const runnable = new Set(entries.flatMap(entry => isSemantic(entry) && isToolLike(entry) && !isUnmerged(entry) ? [entry.id] : []))
     const display = buildDisplay({
       entries: [...entries, ...liveEntries],
       policy: policy.process,
       runningTurn: runningTurnOf(model, entries),
       turns: model.turns,
       open: openTurns(inputs.disclosure, reach),
-      rows: inputs.disclosure.rows,
+      // A call of a tool that merges into runs opens in place inside its run, so it keeps its tier (it must not leave the run).
+      rows: new Set([...inputs.disclosure.rows].filter(id => !runnable.has(id))),
       scope: reach,
       flat: model.streaming === undefined,
       runningHeader: inputs.liveTurnHeader,
@@ -185,6 +204,11 @@ export class StreamFacts {
       const turn = turnOf(item)
       const mapped = this.rowsOf(item, inputs, position, asked).map(row => this.intern(row, kept))
       if (mapped.length === 0) return
+      for (const row of mapped) {
+        owners.set(row.id, ownerOf(item, turn, row))
+        // The calls of a run are rows of their own: Enter on one opens that call, Enter on the head opens them all.
+        if (item.kind === 'run') item.calls.forEach((call, index) => owners.set(`${row.id}.item.${String(index)}`, { kind: 'entries', turn, parts: [call.id], run: runOf(item) }))
+      }
       if (turn === undefined) {
         // A canonical node belongs with the turn it precedes, or with the last one when none follows.
         if (buckets.length === 0 || lead.length > 0) lead.push(...mapped)
@@ -222,8 +246,61 @@ export class StreamFacts {
     })
   }
 
+  /**
+   * What the row an item id belongs to stands for. An item id is its row's id, or the row's id and a suffix after a dot
+   * (a body, a gap, a more line); the closing line of a turn is `turn:N.end`.
+   * @param itemId - the id of a list item the stream drew.
+   * @returns the owner, or `undefined` for an item no entry stands behind (a queued message, a blank row).
+   */
+  locate(itemId: string): RowOwner | undefined {
+    const direct = this.owners.get(itemId)
+    if (direct !== undefined) return direct
+    let found: RowOwner | undefined
+    let length = -1
+    for (const [id, owner] of this.owners) {
+      if (id.length > length && itemId.startsWith(`${id}.`)) { found = owner; length = id.length }
+    }
+    if (found !== undefined) return found
+    const end = /^turn:(-?\d+)\.end$/u.exec(itemId)
+    return end === null ? undefined : { kind: 'header', turn: Number(end[1]), parts: [] }
+  }
+
+  /**
+   * The content behind an item, in one form: what its parts say as a person reads it, or the model's JSON. A header, a
+   * title, and the closing line stand for their whole turn.
+   * @param itemId - the id of a list item the stream drew.
+   * @param mode - `text` or `raw`.
+   * @returns the text, or `undefined` when nothing stands behind the item.
+   */
+  textOf(itemId: string, mode: CopyMode): string | undefined {
+    const parts = this.partsOf(itemId)
+    if (parts === undefined) return undefined
+    const texts = parts.map(part => partText(part, mode)).filter(text => text !== '')
+    return mode === 'raw' && parts.length > 1 ? `[\n${texts.join(',\n')}\n]` : texts.join('\n\n')
+  }
+
+  private partsOf(itemId: string): readonly RowPart[] | undefined {
+    const owner = this.locate(itemId)
+    const model = this.model
+    if (owner === undefined || model === null) return undefined
+    const entries = materializeTranscriptEntries(model).filter(isSemantic)
+    if (owner.kind !== 'entries') return entries.filter(entry => entry.turn === owner.turn).map(entry => ({ entry }))
+    return owner.parts.flatMap((part): RowPart[] => {
+      for (const entry of entries) {
+        if (entry.id === part) return [{ entry }]
+        if (!part.startsWith(`${entry.id}:`)) continue
+        const callId = part.slice(entry.id.length + 1)
+        const calls: readonly (ReadCallModel | SearchCallModel | CommandCallModel)[] = entry.kind === 'transcript-read-group' ? entry.reads
+          : entry.kind === 'transcript-search-group' ? entry.searches : entry.kind === 'transcript-command-group' ? entry.commands : []
+        const call = calls.find(candidate => candidate.callId === callId)
+        if (call !== undefined) return [{ entry, call }]
+      }
+      return []
+    })
+  }
+
   private rowsOf(item: DisplayItem | RunUnit, inputs: StreamInputs, position: number, asked: CallRequests): readonly StreamRow[] {
-    if (item.kind === 'run') return [standardRow(item.calls, inputs.t, inputs.now)]
+    if (item.kind === 'run') return [standardRow(item.calls, inputs.t, inputs.now, openedOf(item.calls, inputs.disclosure))]
     if (item.kind === 'turn-header') return [headerRow(item, inputs.t)]
     if (item.kind === 'process-title') return [titleRow(item, inputs.t)]
     // A hand-built model may carry canonical nodes between its entries: their text is all the stream keeps.
@@ -260,6 +337,23 @@ function requestOf(requests: readonly MayflyDecisionRequest[] | undefined, appro
   if (first?.callId === undefined) return { asked: new Map(), decided }
   const total = requests!.filter(request => request.type === first.type).length
   return { asked: new Map([[first.callId, { type: first.type, index: 1, total, ...(first.reason === undefined ? {} : { reason: first.reason }) }]]), decided }
+}
+
+/** What a row stands for: a run, all its calls; any other row, itself (a row's id is its entry's, or its call's). */
+function ownerOf(item: DisplayItem | RunUnit, turn: number | undefined, row: StreamRow): RowOwner {
+  if (item.kind === 'turn-header') return { kind: 'header', turn, parts: [] }
+  if (item.kind === 'process-title') return { kind: 'title', turn, parts: [] }
+  if (item.kind === 'run') return { kind: 'entries', turn, parts: item.calls.map(call => call.id), run: runOf(item) }
+  return { kind: 'entries', turn, parts: [row.id] }
+}
+
+function runOf(run: RunUnit): NonNullable<RowOwner['run']> {
+  return { head: run.calls[0]!.id, calls: run.calls.map(call => call.id) }
+}
+
+/** The calls of a run the reader has open: the ones opened one by one, and all of them while the run is open as a whole. */
+function openedOf(calls: readonly Call[], disclosure: Disclosure): ReadonlySet<string> {
+  return disclosure.groups.has(calls[0]!.id) ? new Set([...disclosure.rows, ...calls.map(call => call.id)]) : disclosure.rows
 }
 
 function turnOf(item: DisplayItem | RunUnit): number | undefined {
@@ -379,7 +473,7 @@ function entryRows(item: EntryItem, entry: TranscriptEntryModel, inputs: StreamI
   if (isToolLike(entry)) {
     // At the compact level a call in flight is its line alone, and one that waits on the user stays open; what has settled is the title's.
     const calls = callsOf(entry, item.turnClosed, inputs.t, inputs.now, asked)
-    return (item.tier === 'compact' ? calls.filter(call => call.state === 'pending' || call.state === 'waiting') : calls).map(call => verboseRow(call, item.expanded, inputs.t, item.tier ?? 'verbose'))
+    return (item.tier === 'compact' ? calls.filter(call => call.state === 'pending' || call.state === 'waiting') : calls).map(call => verboseRow(call, item.expanded || inputs.disclosure.rows.has(call.id), inputs.t, item.tier ?? 'verbose'))
   }
   const row = entryRow(item, entry, inputs)
   return row === undefined ? [] : [row]

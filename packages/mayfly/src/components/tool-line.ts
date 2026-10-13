@@ -87,6 +87,9 @@ export interface ToolGroupItemFacts {
   readonly state: ToolLineState
   readonly label: string
   readonly outcome?: string
+  /** An opened call: the rows under its line, and the translated `… +N more` that follows when the call carries more. */
+  readonly body?: readonly ToolBodyRow[]
+  readonly more?: string
 }
 
 /** The facts of a standard block: a head and one line per call. */

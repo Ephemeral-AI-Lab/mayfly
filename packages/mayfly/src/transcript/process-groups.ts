@@ -85,7 +85,7 @@ interface DisplayInput {
   readonly turns?: readonly TranscriptTurnModel[] | undefined
   /** Turns drawn at their Verbose tier: Ctrl-O's reach, flipped by Enter on a header, plus the turns a search holds open. */
   readonly open: ReadonlySet<number>
-  /** Entries whose body the reader lifted to its full rows. */
+  /** Entries the reader opened one by one: each draws its Verbose tier with every row it carries. */
   readonly rows: ReadonlySet<string>
   /** Turns within Ctrl-O's reach, so hints may name the key. */
   readonly scope: ReadonlySet<number>
@@ -287,7 +287,7 @@ export function buildDisplay(input: DisplayInput): DisplayItem[] {
       const members = pending
       pending = []
       for (const entry of members) {
-        const verbose = view === 'cards' || (view === 'current' && 'step' in entry && entry.step === currentStep)
+        const verbose = view === 'cards' || (isSemantic(entry) && input.rows.has(entry.id)) || (view === 'current' && 'step' in entry && entry.step === currentStep)
         items.push(plainEntry(entry, closed, expandedTurn, inScope, verbose ? 'verbose' : 'standard'))
       }
     }

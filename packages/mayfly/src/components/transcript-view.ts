@@ -10,7 +10,7 @@
  * @module components/transcript-view
  */
 
-import { freezeWire, ui, type MayflyInlineSpan, type MayflyListItem, type MayflyListNode } from '@ephemeral-ai/mayfly-ui'
+import { freezeWire, ui, type MayflyInlineSpan, type MayflyListItem, type MayflyListNode, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import { CompactionRow, type CompactionFacts } from './compaction-row.ts'
 import { ToolBody, ToolGroupHead, ToolGroupItem, ToolLine, ToolMore, type ToolBlockFacts, type ToolGroupFacts } from './tool-line.ts'
 
@@ -120,7 +120,48 @@ function promptItem(id: string, text: string, open: boolean, suffix?: string): M
   })
 }
 
+/**
+ * A row's items as one block: the first is the head the cursor stands on, and the rest belong to it. They sit under the
+ * head (the band covers them with it) and the cursor skips them, except the calls of a run, which are rows of their own.
+ */
+function asBlock(items: readonly MayflyListItem[], selectable = false): readonly MayflyListItem[] {
+  const [head, ...rest] = items
+  if (head === undefined) return items
+  return [head, ...rest.map((item): MayflyListItem => ({ ...item, under: head.id, ...selectable ? {} : { disabled: true } }))]
+}
+
 function rowItems(row: StreamRow): readonly MayflyListItem[] {
+  return row.kind === 'tools' ? runItems(row) : asBlock(rowParts(row))
+}
+
+/**
+ * A run: its head, and one row per call under it. Each call is a row of its own, and an opened call shows its body in
+ * place under its line, in the tree's column. The calls sit under the head and a body under its call, so the band behind
+ * the cursor covers a call with its body, and the head with all of them.
+ */
+function runItems(row: Extract<StreamRow, { readonly kind: 'tools' }>): readonly MayflyListItem[] {
+  const head: MayflyListItem = row.state === 'pending'
+    ? { id: row.id, label: row.name, body: ui.richText(ToolGroupHead(row), { overflow: 'truncate' }), bodyAlways: true, bodyLead: [span('')] }
+    : line(row.id, ToolGroupHead(row))
+  const items = row.items.flatMap((item, index): MayflyListItem[] => {
+    const id = `${row.id}.item.${String(index)}`
+    const last = index === row.items.length - 1
+    const spans = ToolGroupItem(item, last)
+    // A call in flight leads with a breathing dot, a motion span that only a row body may paint.
+    const call: MayflyListItem = item.state === 'pending'
+      ? { id, label: item.label, body: ui.richText(spans, { overflow: 'truncate' }), bodyAlways: true, bodyLead: [span('')], under: row.id }
+      : { ...line(id, spans), under: row.id }
+    const guide = span(last ? '      ' : '  │   ', 'muted')
+    const body = (item.body ?? []).map((part, at): MayflyListItem => ({
+      ...line(`${id}.body.${String(at)}`, [guide, ...ToolBody(part).slice(1)]), under: id, disabled: true,
+    }))
+    const more = item.more === undefined ? [] : [{ ...line(`${id}.more`, [guide, span(item.more, 'muted')]), under: id, disabled: true } satisfies MayflyListItem]
+    return [call, ...body, ...more]
+  })
+  return [head, ...items]
+}
+
+function rowParts(row: StreamRow): readonly MayflyListItem[] {
   switch (row.kind) {
     case 'prompt':
       return [
@@ -183,19 +224,7 @@ function rowItems(row: StreamRow): readonly MayflyListItem[] {
       ...(row.markdown === undefined ? [] : [{ id: `${row.id}.markdown`, label: '', body: ui.markdown(row.markdown), bodyAlways: true, bodyLead: [span('  ')] } satisfies MayflyListItem]),
       ...(row.more === undefined ? [] : [line(`${row.id}.more`, ToolMore(row.more))]),
     ]
-    case 'tools': return [
-      row.state === 'pending'
-        ? { id: row.id, label: row.name, body: ui.richText(ToolGroupHead(row), { overflow: 'truncate' }), bodyAlways: true, bodyLead: [span('')] } satisfies MayflyListItem
-        : line(row.id, ToolGroupHead(row)),
-      ...row.items.map((item, index) => {
-        const id = `${row.id}.item.${String(index)}`
-        const spans = ToolGroupItem(item, index === row.items.length - 1)
-        // A call in flight leads with a breathing dot, a motion span that only a row body may paint.
-        return item.state === 'pending'
-          ? { id, label: item.label, body: ui.richText(spans, { overflow: 'truncate' }), bodyAlways: true, bodyLead: [span('')] } satisfies MayflyListItem
-          : line(id, spans)
-      }),
-    ]
+    case 'tools': return runItems(row)
     case 'title': return [line(row.id, [span('▸ ', 'muted'), span(row.text, 'muted'), ...(row.failed === undefined ? [] : [span(` · ${row.failed}`, row.partial === true ? 'warning' : 'danger')]), ...(row.hint === undefined ? [] : [span(` · ${row.hint}`, 'muted')])])]
     case 'header': return [line(row.id, [span(row.open ? '▾ ' : '▸ ', 'muted'), span(row.label, MOOD_TONE[row.mood]), ...(row.tail === '' ? [] : [span(row.tail, 'muted')])])]
     case 'compaction': return [
@@ -205,7 +234,7 @@ function rowItems(row: StreamRow): readonly MayflyListItem[] {
       ...row.more === undefined ? [] : [line(`${row.id}.more`, [span('    '), span(row.more, 'muted')])],
     ]
     case 'error': return [line(row.id, [span('✗ ', 'danger'), span(row.text, 'danger')], { wrap: true, hang: 2 })]
-    case 'interrupted': return [line(row.id, [span(row.text, 'warning')])]
+    case 'interrupted': return [line(row.id, [span(row.text, 'warning')], { disabled: true })]
     case 'note': return [line(row.id, [span(row.text, 'muted')])]
   }
 }
@@ -253,7 +282,7 @@ function closingOf(turn: StreamTurn): readonly MayflyListItem[] {
   if (turn.closing === undefined) return []
   let items = closingCache.get(turn)
   if (items === undefined) {
-    items = freezeWire([blank(`${turn.id}.end.gap`), line(`${turn.id}.end`, [span('✻ ', 'muted'), span(turn.closing, 'muted')])])
+    items = freezeWire([blank(`${turn.id}.end.gap`), line(`${turn.id}.end`, [span('✻ ', 'muted'), span(turn.closing, 'muted')], { disabled: true })])
     closingCache.set(turn, items)
   }
   return items
@@ -307,7 +336,18 @@ function withUniqueIds(items: MayflyListItem[]): MayflyListItem[] {
   })
 }
 
-export function TranscriptView(facts: TranscriptViewFacts): MayflyListNode {
+/** The ids the stream's controls carry: the list the cursor walks, and the hidden keys scoped to it. */
+export const STREAM = Object.freeze({ list: 'stream', keys: 'stream.keys', copy: 'copy', copyRaw: 'copy-raw', open: 'open' })
+
+/** Where the stream's cursor is sent from outside: the newest row when the reader moves focus up into the stream. */
+export interface StreamCursor {
+  /** Changes every time the cursor is sent; the list moves it once per value. */
+  readonly rev: number
+  /** The rows to land on, the first that the stream draws; the newest row when none is given or none is drawn. */
+  readonly ids?: readonly string[]
+}
+
+export function TranscriptView(facts: TranscriptViewFacts, cursor?: StreamCursor): MayflyListNode {
   const items: MayflyListItem[] = []
   facts.turns.forEach((turn, index) => {
     if (index > 0) items.push(blankBetween(turn))
@@ -322,5 +362,43 @@ export function TranscriptView(facts: TranscriptViewFacts): MayflyListNode {
     })
   })
   for (const message of facts.queued) items.push(...queuedItems(message))
-  return ui.list({ id: 'stream', role: 'browse', acceptVerb: 'expand', hintLabel: 'stream', items: withUniqueIds(items) })
+  const unique = withUniqueIds(items)
+  const drawn = new Set(unique.map(item => item.id))
+  // Sent to the rows it names; a row that is no longer drawn leaves the cursor where it is, and only a bare entry lands on the newest.
+  const target = cursor === undefined ? undefined : cursor.ids === undefined ? unique.findLast(item => item.disabled !== true)?.id : cursor.ids.find(id => drawn.has(id))
+  return ui.list({
+    id: STREAM.list, role: 'browse', marker: 'band', acceptVerb: 'expand', hintLabel: 'stream', items: unique,
+    ...target === undefined ? {} : { focusItem: { id: target, rev: cursor!.rev } },
+  })
+}
+
+/**
+ * The row the stream's cursor was sent to, by the node {@link TranscriptStream} built.
+ * @param node - the stream's node.
+ * @returns the item id, or `undefined` when no cursor was sent.
+ */
+export function streamTarget(node: MayflyUiNode): string | undefined {
+  const list = node.kind === 'stack' ? node.children[0]?.node : node
+  return list?.kind === 'list' ? list.focusItem?.id : undefined
+}
+
+/**
+ * The stream with its keys: the list, and the hidden actions that copy the row under the cursor and open it in the
+ * editor, which the hint row names only while the stream has focus.
+ * @param facts - the turns, in order, and the messages queued behind them.
+ * @param cursor - where to send the cursor, when the reader just moved focus into the stream.
+ * @returns the node the conversation slot shows.
+ */
+export function TranscriptStream(facts: TranscriptViewFacts, cursor?: StreamCursor): MayflyUiNode {
+  return ui.stack.column([
+    TranscriptView(facts, cursor),
+    ui.actions({
+      id: STREAM.keys,
+      scope: STREAM.list,
+      items: [
+        { id: STREAM.copy, semantic: 'copy', label: 'Copy', hintLabel: 'copy · Ctrl+C JSON', hidden: true },
+        { id: STREAM.open, semantic: 'external', label: 'Open in editor', hintLabel: 'open in editor', hidden: true },
+      ],
+    }),
+  ])
 }

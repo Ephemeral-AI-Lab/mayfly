@@ -46,7 +46,7 @@ custom 主题从 JSON 文件读取 token 到 `#rrggbb` 十六进制色的映射�
   "primary": "#9A86E6",
   "accent": "#C9C0F0",
   "roleUser": "#9A86E6",
-  "selectedBg": "#221E38"
+  "selectedBg": "#2b2b30"
 }
 ```
 
@@ -77,7 +77,7 @@ custom 主题从 JSON 文件读取 token 到 `#rrggbb` 十六进制色的映射�
 | `success` | `#4ec87e` | 成功态 |
 | `error` | `#e85454` | 错误态 |
 | `warning` | `#e8a838` | 警告态 |
-| `selectedBg` | `#221E38` | 列表选中行背景 |
+| `selectedBg` | `#2b2b30` | 列表选中行背景 |
 | `roleUser` | `#9A86E6` | 用户消息 `»` 边栏 |
 | `shellMode` | `#C9C0F0` | `!` bash 模式（编辑框、`$ ` 前缀） |
 | `modelHighlight` | `#E9E6F4` | 横幅模型行高亮 |

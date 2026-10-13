@@ -6,7 +6,7 @@
  */
 
 import { Context, Service } from '@deepseek-ai/cordis'
-import { NodeSlotHost, type MayflyNodeSlot, type MayflyNodeSlotCompiler, type MayflyNodeSlotRegion } from './node-slot.ts'
+import { NodeSlotHost, type MayflyNodeSlot, type MayflyNodeSlotCompiler, type MayflyNodeSlotOptions } from './node-slot.ts'
 import { concatRows } from './ui-rows.ts'
 import type { MayflyTerminalRuntime } from './terminal.ts'
 import type { MayflyViewsSource } from './views-lane.ts'
@@ -163,6 +163,7 @@ export class MayflyScreenService extends Service implements MayflyScreen {
   private readonly nodeSlots = new NodeSlotHost(
     (id, region, component) => region === 'content' ? this.mountContentSlot(id, component) : this.mountDockSlot(id, component, region === 'footer' ? 'bottom' : undefined),
     region => region === 'dock' ? this.editorViewport : { columns: this.runtime.columns, rows: this.runtime.rows },
+    () => { this.fixed.get('editor.prompt')?.focus() },
   )
 
   /**
@@ -186,6 +187,8 @@ export class MayflyScreenService extends Service implements MayflyScreen {
     runtime.addBottomChild(editor)
     runtime.addBottomChild(footer, 'bottom')
     ctx.effect(() => () => { this.nodeSlots.dispose() })
+    // Entering a view of status row 2 moves focus to the bar; leaving it gives focus back to the prompt.
+    ctx.effect(() => runtime.surfaces.views.onEnteredChange((entered) => { ctx.emit('mayfly/focus-mode-changed', entered ? 'bar' : 'prompt') }))
     runtime.requestRender()
   }
 
@@ -257,8 +260,17 @@ export class MayflyScreenService extends Service implements MayflyScreen {
    * @param options - the region the slot sits in.
    * @returns the lease; the screen's teardown revokes it and keeps its interaction state.
    */
-  mountNodeSlot(id: string, options: { readonly region: MayflyNodeSlotRegion }): MayflyNodeSlot {
-    return this.nodeSlots.mount(id, options.region)
+  mountNodeSlot(id: string, options: MayflyNodeSlotOptions): MayflyNodeSlot {
+    return this.nodeSlots.mount(id, options)
+  }
+
+  /**
+   * Move keyboard focus from the prompt into the conversation, where the cursor walks its rows. The prompt calls this on
+   * `Alt+↑`/`F4` with an empty buffer.
+   * @returns whether the conversation took focus; `false` leaves the key to the editor.
+   */
+  focusConversation(): boolean {
+    return this.nodeSlots.focusContent()
   }
 
   /** The newest turn the conversation slots hold, for the `N new turns` tally of a view scrolled away from the tail. */

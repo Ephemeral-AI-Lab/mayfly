@@ -138,7 +138,7 @@ function prefixOf(state: RowState, colors: MayflySemanticColors): string {
   const { spec, on, focused } = state
   const item = spec.item
   const disabled = item.disabled === true
-  const showArrow = on && !disabled && (focused || state.node.marker === 'selection')
+  const showArrow = on && !disabled && state.node.marker !== 'band' && (focused || state.node.marker === 'selection')
   const arrow = showArrow ? strong(focused ? colors.primary('→') : colors.muted('→')) : ' '
   const gutter = `${arrow}${showArrow && focused ? state.marker : ' '}`
   const indent = item.indent === undefined ? '' : ' '.repeat(item.indent)
@@ -179,6 +179,16 @@ function wrapped(state: RowState, head: { readonly prefix: string, readonly line
   if (limit === undefined || lines.length <= limit) return lines
   const more = translate?.('▸ {count} more lines · Enter', { count: lines.length - limit }) ?? `▸ ${String(lines.length - limit)} more lines · Enter`
   return [...lines.slice(0, limit), `${' '.repeat(margin + hang)}${colors.muted(more)}`]
+}
+
+/** Whether a row belongs to the block of the item that holds the cursor, however deep it sits under it. */
+function within(item: MayflyListItem, cursorId: string, parents: ReadonlyMap<string, string>): boolean {
+  let parent = item.under
+  for (let depth = 0; parent !== undefined && depth < 4; depth += 1) {
+    if (parent === cursorId) return true
+    parent = parents.get(parent)
+  }
+  return false
 }
 
 /** The rows of one item: its head (wrapped or one line, with its strip or right spans) and nothing else. */
@@ -287,6 +297,9 @@ export function paintList(node: ListNodeView, width: number, height: number, col
   let footerFor: SegmentView | undefined
   if (options.lead !== undefined) entries.push({ kind: 'group', lines: [options.lead] })
   let needsFooter = false
+  // Which item each row sits under, so a band can follow the chain from a body to its call to the head.
+  const parents = new Map<string, string>()
+  for (const spec of options.rows) if (spec.item.under !== undefined) parents.set(spec.item.id, spec.item.under)
   for (const spec of options.rows) {
     const item = spec.item
     if (item.group !== undefined && item.group !== group) {
@@ -311,7 +324,7 @@ export function paintList(node: ListNodeView, width: number, height: number, col
       continue
     }
     const key = [
-      available, state.marker, on ? 1 : 0, options.focused ? 1 : 0, node.marker === 'selection' ? 1 : 0, state.check, state.number,
+      available, state.marker, on ? 1 : 0, options.focused ? 1 : 0, node.marker ?? '', state.check, state.number,
       spec.depth, spec.last ? 1 : 0, spec.expandable ? 1 : 0, spec.open ? 1 : 0,
       `${String(view?.active)}\0${String(view?.pinned)}`, options.flow === true ? 1 : 0,
     ].join('\x01')
@@ -320,13 +333,19 @@ export function paintList(node: ListNodeView, width: number, height: number, col
     // A row whose body carries a motion span is painted again at every clock frame: its remembered lines would freeze it.
     const moves = typeof item.body === 'object' && item.body.kind === 'rich-text' && hasMotion(item.body.spans)
     const painted = options.memo === undefined || moves ? paintHead() : options.memo.cache.readLines(colors, item, key, paintHead, options.memo.counters)
-    entries.push({ kind: 'item', id: item.id, lines: painted })
+    // A `band` list marks its cursor row, the rows under it, and their bodies with the selected background, in place of an
+    // arrow. The band keeps a column free at each edge of the list.
+    const banded = node.marker === 'band' && options.focused && options.cursorId !== undefined && (on || within(item, options.cursorId, parents))
+    const shade = (rows: readonly string[]): readonly string[] => banded
+      ? mapRows(rows, line => ` ${colors.selectedBg(sliceByColumn(padTo(line, available), 1, Math.max(0, available - 2), true))} `)
+      : rows
+    entries.push({ kind: 'item', id: item.id, lines: shade(painted) })
     if (!leaded && spec.open && item.body !== undefined) {
       const counters = options.memo?.counters
       const body = options.memo === undefined || moves
         ? bodyLines(spec, available, colors, options.body, counters)
         : options.memo.cache.readLines(colors, item, `body\x01${String(available)}\x01${options.flow === true ? 1 : 0}`, () => bodyLines(spec, available, colors, options.body, counters), counters)
-      if (body.length > 0) entries.push({ kind: 'body', lines: body })
+      if (body.length > 0) entries.push({ kind: 'body', lines: shade(body) })
     }
   }
 

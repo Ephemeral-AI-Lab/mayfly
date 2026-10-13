@@ -6,10 +6,12 @@
  *
  * @module @ephemeral-ai/mayfly/core/node-slot
  */
-import { freezeWire, type MayflyTranslate, type MayflyUiEventEndpoint, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
+import { matchesKey, type KeyId } from '@earendil-works/pi-tui'
+import { freezeWire, type MayflyTranslate, type MayflyUiEvent, type MayflyUiEventContext, type MayflyUiEventEndpoint, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import { compileMayflyUiSurfaceNode, MayflyUiSurfaceRuntime, type MayflyCompiledUi, type MayflyUiViewport } from './ui-compiler.ts'
 import type { MayflyContentCache } from './ui-content-cache.ts'
 import type { MayflyUiImageSource } from './ui-images.ts'
+import { ACTION_CANCEL, ACTION_FOCUS_NEXT } from './key-actions.ts'
 import type { UiAnimationClock } from './ui-loader-animation.ts'
 import type { UiInteractionService } from './ui-interaction-state.ts'
 import type { UiSurfaceModel, UiSurfaceSnapshot } from './ui-interaction-surface.ts'
@@ -18,6 +20,26 @@ import type { MayflyComponent, MayflyComponents, MayflyFocusable, MayflyKeymap, 
 
 /** Where a node slot sits: the scroll region, the dock above the footer (the prompt's host), or the footer. */
 export type MayflyNodeSlotRegion = 'content' | 'dock' | 'footer'
+
+/** What the owner of a slot hears and decides. */
+export interface MayflyNodeSlotOptions {
+  readonly region: MayflyNodeSlotRegion
+  /** An event the slot's controls emitted: an accepted row, an activated action, the cursor moving. */
+  readonly onEvent?: (event: MayflyUiEvent) => void
+  /** The slot received keyboard focus (the prompt handed it over). */
+  readonly onFocus?: () => void
+  /** `false`: the slot draws no key-hint row; its owner shows the keys somewhere else. */
+  readonly hints?: boolean
+  /** The slot gained or lost keyboard focus, by any path. */
+  readonly onFocusChange?: (focused: boolean) => void
+  /**
+   * Keys the slot answers while it holds focus, by key id, each as an action of the slot's own: the key reaches the
+   * owner as an `activate` event of the control `keys`. For a key a surface action may not claim (`ctrl+c` is reserved).
+   */
+  readonly keys?: Readonly<Record<string, string>>
+  /** The reader asked to leave the focused slot (`Esc` or `Alt+↓`); the owner decides, typically with {@link MayflyNodeSlot.release}. */
+  readonly onLeave?: () => void
+}
 
 /** A lease on one node-backed screen slot. */
 export interface MayflyNodeSlot {
@@ -32,6 +54,19 @@ export interface MayflyNodeSlot {
   setTurns(latest: number): void
   /** Give the slot keyboard focus. */
   focus(): void
+  /** Hand keyboard focus back to the prompt. */
+  release(): void
+  /**
+   * Stand the keyboard focus on one row of a list the slot shows, once the slot has compiled its newest node: the cursor
+   * a list's `focusItem` moves is only the list's own, and the key that follows (`Enter`, `c`) acts on the focused row.
+   */
+  focusRow(controlId: string, itemId: string): void
+  /**
+   * The row the cursor of a list control stands on.
+   * @param controlId - the list's id.
+   * @returns the item id, or `undefined` when the slot shows no such list or it has no cursor yet.
+   */
+  cursor(controlId: string): string | undefined
   /** Release the slot and drop its interaction state. */
   dispose(): void
 }
@@ -53,6 +88,7 @@ export interface MayflyNodeSlotCompiler {
    * a moved revision repaints a slot whose model did not move through the compiler's own frame inputs.
    */
   readonly contextHints?: {
+    readonly rows?: boolean
     readonly translate?: MayflyTranslate
     readonly revision?: () => number
   }
@@ -64,11 +100,18 @@ export interface MayflyNodeSlotCompiler {
 
 const NO_ROWS = Object.freeze([]) as unknown as string[]
 
-/** Slots route no events yet: an action settles without a handler, as a disposed endpoint's does. */
-const SLOT_EVENTS: MayflyUiEventEndpoint<MayflyUiNode | null> = Object.freeze({
-  /* The surface never publishes a reply-less preparation. */
-  prepare: async () => Object.freeze({ reply: undefined, publish: () => false }),
-})
+/**
+ * The endpoint of one slot: an event reaches the owner's listener, and the slot answers without a reply, so nothing is
+ * published back; the owner changes what it shows by setting the slot's node.
+ */
+function slotEndpoint(onEvent: ((event: MayflyUiEvent) => void) | undefined): MayflyUiEventEndpoint<MayflyUiNode | null> {
+  return Object.freeze({
+    prepare: async (event: MayflyUiEvent, context: MayflyUiEventContext) => {
+      if (!context.signal.aborted) onEvent?.(event)
+      return Object.freeze({ reply: undefined, publish: () => false })
+    },
+  })
+}
 
 /** Focus follows the compiled surface's focus target; a slot without controls takes no focus. */
 function setCompiledFocus(compiled: MayflyCompiledUi | null, focused: boolean): void {
@@ -80,8 +123,11 @@ function setCompiledFocus(compiled: MayflyCompiledUi | null, focused: boolean): 
 class SlotAttachment {
   readonly runtime: MayflyUiSurfaceRuntime
   compiled: MayflyCompiledUi | null = null
+  /** A row to stand focus on as soon as the compiled node has it (applied after the next compile). */
+  pendingFocus: { readonly controlId: string, readonly itemId: string } | undefined
   private renderedRevision = -1
   private readonly off: () => void
+  get keymap(): MayflyKeymap { return this.compiler.keymap }
 
   constructor(
     readonly model: UiSurfaceModel,
@@ -89,6 +135,7 @@ class SlotAttachment {
     private readonly viewport: () => MayflyUiViewport,
     invalidate: () => void,
     private readonly flowRegion: boolean,
+    private readonly hints: boolean,
   ) {
     this.runtime = new MayflyUiSurfaceRuntime(model, () => { invalidate(); compiler.requestRender() }, compiler.clock, compiler.images, () => { compiler.requestRender() }, compiler.content)
     this.runtime.flow = flowRegion
@@ -100,10 +147,23 @@ class SlotAttachment {
     this.runtime.flow = this.flowRegion && !focused
   }
 
+  /** Ask for a paint, so a pending focus is applied. */
+  invalidateSoon(): void { this.compiler.requestRender() }
+
+  private applyPendingFocus(): void {
+    const pending = this.pendingFocus
+    const target = this.compiled?.focusTarget
+    if (pending === undefined || target === undefined || target === null) return
+    if (target.restoreFocusIdentity?.({ pagePath: [], controlId: pending.controlId, itemId: pending.itemId }) === true) this.pendingFocus = undefined
+  }
+
   /** The compiled node, recompiled when the model moved on since the last paint (a pane recompiles on the same signal). */
   current(focused: boolean): MayflyCompiledUi | null {
     this.focus(focused)
-    if (this.renderedRevision === this.model.revision) return this.compiled
+    if (this.renderedRevision === this.model.revision) {
+      this.applyPendingFocus()
+      return this.compiled
+    }
     setCompiledFocus(this.compiled, false)
     const node = this.model.decisionNode ?? this.model.node
     const compiler = this.compiler
@@ -118,7 +178,7 @@ class SlotAttachment {
         getViewport: this.viewport,
         screenMode: compiler.mode,
         emit: this.model.emit.bind(this.model),
-        contextHints: compiler.contextHints === undefined ? {} : compiler.contextHints,
+        contextHints: { ...compiler.contextHints, ...this.hints ? {} : { rows: false } },
         surfaceRuntime: this.runtime,
         ...(compiler.counters === undefined ? {} : { counters: compiler.counters }),
       })
@@ -127,6 +187,7 @@ class SlotAttachment {
     }
     this.renderedRevision = this.model.revision
     setCompiledFocus(this.compiled, focused)
+    this.applyPendingFocus()
     return this.compiled
   }
 
@@ -143,16 +204,35 @@ class NodeSlotSurface implements MayflyFocusable {
   attachment: SlotAttachment | undefined
   private focusedValue = false
 
+  constructor(private readonly leave: (() => void) | undefined, private readonly changed: ((focused: boolean) => void) | undefined, private readonly keys: Readonly<Record<string, string>>, private readonly onKey: (actionId: string) => void) {}
+
   get focused(): boolean { return this.focusedValue }
   set focused(value: boolean) {
+    const before = this.focusedValue
     this.focusedValue = value
+    if (before !== value) this.changed?.(value)
     this.attachment?.focus(value)
     if (this.attachment !== undefined) setCompiledFocus(this.attachment.compiled, value)
   }
 
   render(width: number): string[] { return this.attachment?.current(this.focusedValue)?.component.render(width) ?? NO_ROWS }
   invalidate(): void { this.attachment?.compiled?.component.invalidate() }
-  handleInput(data: string): void { this.attachment?.current(this.focusedValue)?.focusTarget?.handleInput?.(data) }
+  handleInput(data: string): void {
+    const attachment = this.attachment
+    if (attachment === undefined) return
+    // Leaving is the owner's call: a focused slot gives `Esc` and `Alt+↓` (the way back down the focus levels) to it.
+    if (this.leave !== undefined && (attachment.keymap.matches(data, ACTION_CANCEL) || attachment.keymap.matches(data, ACTION_FOCUS_NEXT))) {
+      this.leave()
+      return
+    }
+    for (const [key, actionId] of Object.entries(this.keys)) {
+      if (matchesKey(data, key as KeyId)) {
+        this.onKey(actionId)
+        return
+      }
+    }
+    attachment.current(this.focusedValue)?.focusTarget?.handleInput?.(data)
+  }
 }
 
 class NodeSlotLease implements MayflyNodeSlot {
@@ -173,7 +253,11 @@ class NodeSlotLease implements MayflyNodeSlot {
     private readonly viewport: () => MayflyUiViewport,
     private readonly host: NodeSlotHost,
     readonly region: MayflyNodeSlotRegion,
+    private readonly options: MayflyNodeSlotOptions,
   ) {}
+
+  /** The listener the endpoint hands the slot's events to; one object per lease, so a re-attach keeps it. */
+  private readonly events = slotEndpoint(event => { this.options.onEvent?.(event) })
 
   get disposed(): boolean { return !this.live }
 
@@ -193,7 +277,27 @@ class NodeSlotLease implements MayflyNodeSlot {
     if (this.region === 'content') this.host.contentTurnsChanged()
   }
 
-  focus(): void { if (this.live) this.screen.focus() }
+  /** Whether the lease shows content, so there is something to focus. */
+  get filled(): boolean { return this.live && this.node !== null }
+
+  focus(): void {
+    if (!this.live) return
+    this.screen.focus()
+    this.options.onFocus?.()
+  }
+
+  release(): void { if (this.live) this.host.focusPrompt() }
+
+  focusRow(controlId: string, itemId: string): void {
+    const attachment = this.surface.attachment
+    if (!this.live || attachment === undefined) return
+    attachment.pendingFocus = { controlId, itemId }
+    attachment.invalidateSoon()
+  }
+
+  cursor(controlId: string): string | undefined {
+    return this.surface.attachment?.model.choice({ pagePath: [], controlId })?.focusedId
+  }
 
   /** Publishes the slot's node into its model and compiles from it, under the bound renderer. */
   attach(compiler: MayflyNodeSlotCompiler | undefined): void {
@@ -205,14 +309,14 @@ class NodeSlotLease implements MayflyNodeSlot {
       source: [],
       scope: { kind: 'app', targetId: this.id },
       update: { reason: 'data' },
-      events: SLOT_EVENTS,
+      events: this.events,
       definition: {},
     }
     const model = compiler.interaction.upsert('slot', snapshot, compiler.counters === undefined ? {} : { counters: compiler.counters })
     model.setVisible(this.node !== null)
     this.interaction = compiler.interaction
     // The endpoint is shared by every slot, so the owner keeps one model per id: an attachment already holds it.
-    this.surface.attachment ??= new SlotAttachment(model, compiler, this.viewport, () => { this.surface.invalidate() }, this.region === 'content')
+    this.surface.attachment ??= new SlotAttachment(model, compiler, this.viewport, () => { this.surface.invalidate() }, this.region === 'content', this.options.hints !== false)
   }
 
   /** A renderer gap: the compile state goes, the model stays. */
@@ -245,7 +349,25 @@ export class NodeSlotHost {
   constructor(
     private readonly mountScreenSlot: (id: string, region: MayflyNodeSlotRegion, component: MayflyComponent) => MayflyScreenSlot,
     private readonly viewport: (region: MayflyNodeSlotRegion) => MayflyUiViewport,
+    private readonly focusPromptHost: () => void,
   ) {}
+
+  /** Hand keyboard focus back to the prompt. */
+  focusPrompt(): void { this.focusPromptHost() }
+
+  /**
+   * Focus the conversation: the scroll region's slot that shows content.
+   * @returns whether one took focus; `false` leaves the key to the prompt.
+   */
+  focusContent(): boolean {
+    for (const lease of this.leases.values()) {
+      if (lease.region === 'content' && lease.filled) {
+        lease.focus()
+        return true
+      }
+    }
+    return false
+  }
 
   get compiler(): MayflyNodeSlotCompiler | undefined { return this.bound }
 
@@ -269,10 +391,11 @@ export class NodeSlotHost {
   }
 
   /** Claims the region's host for `id`; it throws, leaving nothing behind, when the host is unknown or taken. */
-  mount(id: string, region: MayflyNodeSlotRegion): MayflyNodeSlot {
-    const surface = new NodeSlotSurface()
+  mount(id: string, options: MayflyNodeSlotOptions): MayflyNodeSlot {
+    const { region } = options
+    const surface = new NodeSlotSurface(options.onLeave, options.onFocusChange, options.keys ?? {}, actionId => { options.onEvent?.({ kind: 'activate', pagePath: [], controlId: 'keys', actionId }) })
     const screen = this.mountScreenSlot(id, region, surface)
-    const lease = new NodeSlotLease(id, surface, screen, () => this.viewport(region), this, region)
+    const lease = new NodeSlotLease(id, surface, screen, () => this.viewport(region), this, region, options)
     this.leases.set(id, lease)
     return lease
   }
