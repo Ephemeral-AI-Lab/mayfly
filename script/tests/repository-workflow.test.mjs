@@ -180,10 +180,11 @@ describe('change impact planning', () => {
     assert.ok(preset.tests.specs.includes('packages/mayfly/tests/presets.spec.ts'))
   })
 
-  test('classifies Website and runtime acceptance separately from automatic checks', () => {
+  test('plans no Website check and owes only runtime acceptance', () => {
     const plan = classifyChanges(['website/en/index.md', 'packages/mayfly/src/transcript/status-context.ts'])
-    assert.equal(plan.checks.website, true)
-    assert.deepEqual(plan.manualAcceptance, ['runtime-profile', 'website-preview'])
+    assert.equal(plan.checks.website, undefined)
+    assert.deepEqual(plan.manualAcceptance, ['runtime-profile'])
+    assert.deepEqual(classifyChanges(['website/en/index.md']).manualAcceptance, [])
   })
 
   test('ignores generated artifacts without ignoring tracked composition', () => {
@@ -209,8 +210,7 @@ describe('change impact planning', () => {
       const full = JSON.parse(execFileSync(process.execPath, [
         join(ROOT, 'script/check.mjs'), '--plan', '--tier', 'full',
       ], { cwd: root, encoding: 'utf8' }))
-      assert.equal(full.checks.website, true)
-      assert.ok(full.steps.includes('website: pnpm run website:build'))
+      assert.ok(!full.steps.some(step => step.includes('website')))
       writeFileSync(join(root, 'packages', 'mayfly', 'cordis.patch.yml'), 'updated\n')
       assert.equal(verify().mode, 'full')
     } finally {

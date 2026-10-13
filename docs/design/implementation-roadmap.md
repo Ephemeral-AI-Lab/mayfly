@@ -1689,9 +1689,9 @@ stdout keeps one line per step. CI copies the summary into the job summary and u
 
 | Tier | When | Runs | Leaves out |
 | --- | --- | --- | --- |
-| round | Every edit; `pnpm run dev --check` after each incremental build | `build:changed`, `tsc -b`, oxlint on the changed files, the selected specs, the selected scenarios at their first size | Coverage, perf, screenshots, the smoke, the whole suite |
-| pr (default) | Finalizing a component; PR CI | round, plus the checks the changed inputs claim (agent docs, diagrams, `check:lib`, examples, pack, the Website build), the selected scenarios at every size, perf A/B when a perf scenario is selected, and PNGs of the changed checkpoints. In CI only, the changed lines no spec ran, as advice | The whole suite, the coverage floor, the smoke, the perf ceilings |
-| full | CI on `main`, nightly, a release, a phase end | One vitest run with coverage and retained-row verification together, the repository floor, every scenario at every size, the Website shots, `smoke:happy`, the perf ceilings, the platform matrix | — |
+| round | The end of a review round, after the owner finalizes the effect; `pnpm run dev --check` runs it after each incremental build | `build:changed`, `tsc -b`, oxlint on the changed files, the selected specs, the selected scenarios at their first size | Coverage, perf, screenshots, the smoke, the whole suite |
+| pr (default) | Finalizing a component; PR CI | round, plus the checks the changed inputs claim (agent docs, diagrams, `check:lib`, examples, pack), the selected scenarios at every size, perf A/B when a perf scenario is selected, and PNGs of the changed checkpoints. In CI only, the changed lines no spec ran, as advice | The whole suite, the coverage floor, the smoke, the perf ceilings |
+| full | CI on `main`, nightly, a release, a phase end | One vitest run with coverage and retained-row verification together, the repository floor, every scenario at every size, `smoke:happy`, the perf ceilings, the platform matrix | — |
 
 *Selection* (D29). `script/verify/` (*new*) replaces the path rules of `script/test-impact.mjs`.
 
@@ -2177,43 +2177,46 @@ Phase 1 ran the full gate for every slice and compared every scene with the prot
 the owner's review in the running terminal decides, and tests record what was decided (D22, D25).
 
 **The loop for one component** (D23). A component, or a group whose parts only make sense together, goes through
-four steps in a dedicated worktree with its phase's profile (`PROFILE=mayfly-<phase> script/install-dev.sh`).
-[component-development-spec.md](./component-development-spec.md) governs how steps 1 and 2 run: the group is cut into
-parts; each part is designed under plan mode and its open choices asked before the build, ends in a scenario demo with
-a brief, and is tested only after the owner confirms the final effect (§3 there); the prototype scene is read first and
-named in the brief. The Website is never part of a round: it is tested when a version is released.
+five steps in a dedicated worktree with its phase's profile (`PROFILE=mayfly-<phase> script/install-dev.sh`). Tests
+come last: nothing below runs a check tier, a spec, or a golden until the owner has finalized the effect (AGENTS.md,
+*Round workflow*).
 
-1. **Draft** (the agent). Build the component from its spec section and §5's starting points, with the prototype scene
-   as the sketch, on real data through the native services. Add the workbench scenarios for its states (§5, 2a),
-   including a narrow width and a lifecycle case. Do not run the tests yet: the owner reviews the effect first. Once the
-   effect is final, run the round tier (`pnpm run check -- --tier round`, or `pnpm run dev --check`) and read its
-   `summary.md`; write no goldens and chase no coverage.
-2. **Review rounds** (the owner and the agent). The owner runs the profile or a scenario beside
+1. **Design** (the agent, in plan mode). Analyze the round against its spec section and §5's starting points, with the
+   prototype scene as the sketch, and write the solution design: contracts, files, states, keys, and the scenarios.
+   Then **confirm the effect** (the owner and the agent): the agent asks questions about every choice that changes
+   the visible result or the API, and the final effect is agreed before any code.
+2. **Draft** (the agent). Build the component on real data through the native services, as agreed. Write the
+   workbench scenarios for its states (§5, 2a), including a narrow width and a lifecycle case, and organize all of
+   them into one list for the owner (name, command, what it shows, what to try). Run no check tier, write no
+   goldens, and chase no coverage; the workbench's incremental build is the only mechanical feedback. Stop and
+   tell the owner.
+3. **Review rounds** (the owner and the agent). The owner runs the profile or a scenario beside
    `node docs/design/prototypes/ui-preview.mjs <scene>`; the agent shares frames and screenshots at the agreed widths
    (`pnpm run frame`, with `--png` for the real look), applies what the owner asks, and the change reaches the running
-   terminal in seconds (`pnpm run dev`). Any API may change in a round (D21). A performance problem seen in a round,
+   terminal in seconds (`pnpm run dev`). Any API may change in a round (D21). A round runs no tests. A performance problem seen in a round,
    or in the perf A/B for the scenario (`pnpm run perf`), is fixed in the round when it is local and recorded for
    Phase 7 when it is not. A round ends with the owner's notes and the frames they refer to.
-3. **Finalize** (the owner says it is accepted). In one change: the component's spec section in
+4. **Finalize** (the owner says it is accepted; the first step that tests). In one change: the component's spec section in
    [component-library.md](./component-library.md) is rewritten as the accepted behavior and marked *Finalized*; the API
    it needs is fixed;
    the decision tests below are added, with the accepted checkpoints as goldens
-   (`pnpm run scenarios -- --update <scenario>`, not the `app-*` ones); the code it replaces is deleted; the Website
-   (`website/plugins/ui-reference.md` and its English twin, the shot manifest, the `app-*` goldens, any feature page) is
-   updated and tested at the release, not in the round; the pr tier runs (`pnpm run check`); the change merges to
-   `main`, and CI runs the full tier there.
-4. **Phase gate.** When a phase's last component is finalized: `pnpm run check -- --tier full`, the perf report
+   (`pnpm run scenarios -- --update <scenario>`); the code it replaces is deleted; `website/plugins/ui-reference.md`
+   and its English twin and any feature page it changes are updated as text, with no Website build, shot sync, or
+   preview (the release does those); the pr tier runs (`pnpm run check`); the change merges to `main`, and CI runs
+   the full tier there.
+5. **Phase gate.** When a phase's last component is finalized: `pnpm run check -- --tier full`, the perf report
    against the previous phase, and the owner's acceptance of the whole phase on its profile (the table below). Then
    the profile and any preview are removed. No release is cut until a phase passes its gate.
 
 A finalized component is reopened only at the owner's request, and then follows the same loop; incompatible changes
 are allowed again, with every caller updated in the same change.
 
-**Gate tiers** (D29). `pnpm run check` runs one of three tiers; Phase 2b states what each runs and leaves out.
+**Gate tiers** (D29). `pnpm run check` runs one of three tiers; Phase 2b states what each runs and leaves out. No tier
+builds, previews, or checks the Website or its screenshots: a release does (`docs/package-release.md`).
 
 | Tier | When | Runs |
 | --- | --- | --- |
-| round | After the owner confirms a part's final effect (not during the effect review) | The incremental build, the typecheck, lint, and the specs and scenarios the edit can affect |
+| round | The end of a review round, once the owner has finalized the effect (`pnpm run dev --check`) | The incremental build, the typecheck, lint, and the specs and scenarios the edit can affect |
 | pr | Once per component, before it merges, and in PR CI | round, the checks the changed inputs claim, every size of the selected scenarios, perf A/B and PNGs where selected |
 | full | CI on `main` and nightly, the end of a phase, a release, and changes the root instructions route to it (composition, workflow, release) | Everything, with coverage and its floor, the smoke, the perf ceilings, and the platform matrix (`check:pack` when selected); at a phase end, also the perf report and the owner's acceptance |
 
