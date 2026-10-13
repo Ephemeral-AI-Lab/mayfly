@@ -131,6 +131,8 @@ export interface ConversationCompactionEntry extends ConversationEntryBase {
   readonly trigger: 'manual' | 'auto'
   readonly startedAt: number
   readonly endedAt?: number | undefined
+  /** When the summary landed: the instant the run moves from summarizing to applying. */
+  readonly summaryAt?: number | undefined
   readonly shadowedCount?: number | undefined
   readonly shadowedTokens?: number | undefined
   readonly provider?: string | undefined
@@ -227,12 +229,23 @@ export interface ConversationFacts {
    */
   readonly inFlight?: readonly Readonly<{ readonly callId: string, readonly name: string, readonly detail?: string | undefined, readonly preparing?: boolean | undefined }>[] | undefined
   /** A provider request being retried after a failure: which retry, when it was scheduled, and how long it waits. */
-  readonly retrying?: Readonly<{ readonly retry: number, readonly maxRetries: number, readonly at: number, readonly delayMs: number, readonly reason?: string | undefined }> | undefined
+  readonly retrying?: Readonly<{ readonly retry: number, readonly maxRetries: number, readonly at: number, readonly delayMs: number, readonly reason?: string | undefined, readonly status?: number | undefined }> | undefined
+  /** The context occupancy around each recent compaction, kept so its settled row reads the same numbers for good. */
+  readonly compactions?: readonly CompactionMark[] | undefined
   /** Terminal outcome of the latest run. */
   readonly runOutcome?: 'completed' | 'failed' | undefined
   /** Envelope timestamp of the latest terminal outcome. */
   readonly endedAt?: number | undefined
   readonly agentCalls: readonly ConversationAgentCall[]
+}
+
+/** The context tokens a compaction began with and ended with, and the window they were measured against. */
+export interface CompactionMark {
+  readonly id: string
+  readonly before: number
+  /** Set when the summary lands: the occupancy with the checkpoint in place of the shadowed history. */
+  readonly after?: number | undefined
+  readonly window?: number | undefined
 }
 
 /** Projection facts for one spawn-class (`subagent` or `subagent_*`) call. */

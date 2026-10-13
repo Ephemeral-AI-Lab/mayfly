@@ -266,6 +266,11 @@ export class MayflyScreenService extends Service implements MayflyScreen {
     return this.nodeSlots.contentTurns()
   }
 
+  /** Listen to the newest conversation turn changing, for the tail chip's count. */
+  onContentTurns(listener: () => void): () => void {
+    return this.nodeSlots.onContentTurns(listener)
+  }
+
   /** The surface renderer lends its compiler dependencies and clock to the node slots; the disposer takes them back. */
   bindNodeSlots(compiler: MayflyNodeSlotCompiler): () => void {
     return this.nodeSlots.bind(compiler)

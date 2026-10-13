@@ -1,9 +1,9 @@
 /**
- * The activity row: the one present-tense block above the editor, always three rows high so the editor never shifts
- * between phases: a header (the phase's glyph and label and a muted tail of counts), one line under it, and a blank row
- * before the editor. The line under the header, after a `⎿`, is what the turn is doing that the stream does not say (the
- * arguments of the calls in flight, a provider retry), else a teaching tip, or blank: the row has one effect at every
- * work-details level. The glyph or the label moves, never both: a model phase animates its
+ * The activity row: the one present-tense block above the editor, always two rows high while a turn is live: a header
+ * (the phase's glyph and label and a muted tail of counts) and one line under it. The row before the editor under it
+ * belongs to the notification line, so the editor never shifts between phases. The line under the header, after a `⎿`,
+ * is what the turn is doing that the stream does not say (the arguments of the calls in flight), else a teaching tip,
+ * or blank: the row has one effect at every work-details level. The glyph or the label moves, never both: a model phase animates its
  * glyph over a still label, a running tool keeps a still `●` while its label shimmers, a wait breathes its `●`, and a
  * stop is static. A pure function of facts: the texts arrive translated and final, the clock and the motion belong to
  * core, and the row sheds by priority as it narrows (the tail first), then the `⎿` connector.
@@ -26,7 +26,7 @@ export interface ActivityFacts {
   readonly labelStrong?: boolean
   /** The muted counts after the label (`8s`, `↑30.2k ↓1.1k`, `38 tok/s`), joined by ` · `. */
   readonly tail?: readonly string[]
-  /** What the turn is doing that the stream does not say (the running calls' arguments, a provider retry): it takes the line under the header. */
+  /** What the turn is doing that the stream does not say (the running calls' arguments): it takes the line under the header. */
   readonly info?: string
   /** The line under the header when there is no info: a teaching tip. */
   readonly tip?: string
@@ -66,7 +66,7 @@ function secondLine(facts: ActivityFacts): MayflyUiChild {
 /**
  * The activity row of one phase.
  * @param facts - the phase and its texts.
- * @returns the header, the line under it, and the blank row before the editor.
+ * @returns the header and the line under it.
  */
 export function ActivityRow(facts: ActivityFacts): MayflyUiNode {
   const tail = facts.tail ?? []
@@ -74,5 +74,5 @@ export function ActivityRow(facts: ActivityFacts): MayflyUiNode {
     ui.child(ui.richText(head(facts), { overflow: 'truncate' }), { priority: 0, overflow: 'truncate' }),
     ...tail.length === 0 ? [] : [ui.child(ui.richText([{ text: `· ${tail.join(' · ')}`, tone: 'muted' }]), { priority: 1, overflow: 'hide' })],
   ], { gap: 1 })
-  return ui.stack.column([ui.child(header), secondLine(facts), ui.child(ui.spacer())])
+  return ui.stack.column([ui.child(header), secondLine(facts)])
 }

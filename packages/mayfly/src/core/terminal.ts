@@ -553,6 +553,12 @@ export interface MayflyTerminalRuntime {
    * scrollback the terminal owns.
    */
   contentTail(): MayflyContentTail | undefined
+  /**
+   * Call back after each layout of the content scroll, when its standing against the tail may have changed.
+   * @param listener - called with no arguments.
+   * @returns a disposer.
+   */
+  watchContentTail(listener: () => void): () => void
   followContent(): void
   setContentScrollHandler(handler: ((data: string) => boolean) | undefined): () => void
   /**
@@ -625,6 +631,8 @@ class TailScrollView extends ScrollView {
   measuredHeight = 0
   /** Where a reader scrolled away stood when the content shrank under them. */
   private heldTop: number | undefined
+  /** Called after each layout. */
+  readonly watchers = new Set<() => void>()
 
   override updateLayout(contentHeight: number, viewportHeight: number, requestRender: () => void): void {
     const away = !this.isFollowingEnd
@@ -640,6 +648,7 @@ class TailScrollView extends ScrollView {
       if (this.heldTop <= Math.max(0, contentHeight - viewportHeight)) this.heldTop = undefined
     }
     if (this.isFollowingEnd || contentHeight <= viewportHeight) this.tailHeight = contentHeight
+    for (const watcher of [...this.watchers]) watcher()
   }
 
   override scrollTo(scrollTop: number, options?: Parameters<ScrollView['scrollTo']>[1]): void {
@@ -1138,6 +1147,10 @@ export function startMayflyTerminal(
       contentScrollOffset = next
       current.requestRender(true)
       return true
+    },
+    watchContentTail(listener) {
+      scrollView?.watchers.add(listener)
+      return () => { scrollView?.watchers.delete(listener) }
     },
     contentTail() {
       if (scrollView === undefined) return undefined

@@ -535,6 +535,8 @@ function entryModel(entry: Exclude<ConversationEntry, ConversationToolEntry>): T
         kind: 'transcript-compaction', id: entry.id, seq: entry.seq, updatedSeq: entry.updatedSeq, turn: entry.turn,
         state: entry.state, trigger: entry.trigger, startedAt: entry.startedAt,
         ...(entry.endedAt === undefined ? {} : { endedAt: entry.endedAt }),
+        ...(entry.summaryAt === undefined ? {} : { summaryAt: entry.summaryAt }),
+        ...(entry.compactionId === undefined ? {} : { compactionId: entry.compactionId }),
         ...(entry.shadowedCount === undefined ? {} : { shadowedCount: entry.shadowedCount }),
         ...(entry.shadowedTokens === undefined ? {} : { shadowedTokens: entry.shadowedTokens }),
         ...(entry.summary === undefined ? {} : { summary: entry.summary }),

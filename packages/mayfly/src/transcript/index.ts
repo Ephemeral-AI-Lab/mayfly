@@ -22,6 +22,7 @@ import { TranscriptController } from './transcript-model.ts'
 import { OfficialConversationModelSource } from './official-model.ts'
 import type { LiveDraftSource } from './conversation-feed.ts'
 import { ConversationSlots } from './conversation-slots.ts'
+import type { SessionFactsService } from './session-facts.ts'
 import {
   DEFAULT_EXPAND_TURNS,
   followPresentationSettings,
@@ -131,7 +132,18 @@ export function apply(ctx: Context): void {
       return undefined
     }
   }) ?? (() => {})))
-  const transcript = new TranscriptController({ presentation, t, queued: () => queued, imageRefs, tick: ctx.mayflyTick })
+  // The compaction rows read the selected Agent's occupancy marks; the stream is published again when a mark lands.
+  const sessionFacts = ctx.get('mayflySessionFacts') as SessionFactsService | undefined
+  const transcript: TranscriptController = new TranscriptController({ presentation, t, queued: () => queued, imageRefs, tick: ctx.mayflyTick, context: () => sessionFacts === undefined ? undefined : { marks: sessionFacts.current.compactions, window: sessionFacts.current.contextWindow, tokens: sessionFacts.current.contextTokens } })
+  let marks = sessionFacts?.current.compactions
+  let window = sessionFacts?.current.contextWindow
+  const offMarks = sessionFacts?.subscribe((facts) => {
+    if (facts.compactions === marks && facts.contextWindow === window) return
+    marks = facts.compactions
+    window = facts.contextWindow
+    transcript.republish()
+  })
+  ctx.effect(() => () => offMarks?.())
   ctx.effect(() => () => transcript.dispose())
   // Every displayed or retained conversation reads its own native path; the
   // registry decides which views exist, the controller which one is mounted.

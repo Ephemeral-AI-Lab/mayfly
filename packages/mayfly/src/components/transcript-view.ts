@@ -11,6 +11,7 @@
  */
 
 import { freezeWire, ui, type MayflyInlineSpan, type MayflyListItem, type MayflyListNode } from '@ephemeral-ai/mayfly-ui'
+import { CompactionRow, type CompactionFacts } from './compaction-row.ts'
 import { ToolBody, ToolGroupHead, ToolGroupItem, ToolLine, ToolMore, type ToolBlockFacts, type ToolGroupFacts } from './tool-line.ts'
 
 /** A prompt shows at most this many lines; opening it (or a search hit inside it) shows the rest. */
@@ -58,7 +59,11 @@ export type StreamRow =
   | { readonly kind: 'title', readonly id: string, readonly text: string, readonly failed?: string, readonly hint?: string }
   /** The turn header: its lifecycle label and counts. */
   | { readonly kind: 'header', readonly id: string, readonly mood: StreamMood, readonly open: boolean, readonly label: string, readonly tail: string }
-  | { readonly kind: 'compaction', readonly id: string, readonly state: 'running' | 'ok' | 'error', readonly text: string }
+  /**
+   * One context compaction: its facts, and under a settled one the hint that opens its summary or, once opened, the
+   * summary's first lines. A `trailing` row (a manual `/compact`) is its own block after the turn it followed.
+   */
+  | { readonly kind: 'compaction', readonly id: string, readonly facts: CompactionFacts, readonly hint?: string, readonly summary?: readonly string[], readonly more?: string, readonly trailing?: true }
   | { readonly kind: 'error', readonly id: string, readonly text: string }
   /** The cut-turn marker, whole: its `■` is part of the translated text. */
   | { readonly kind: 'interrupted', readonly id: string, readonly text: string }
@@ -73,6 +78,8 @@ export interface StreamTurn {
   readonly rows: readonly StreamRow[]
   /** The translated closing text, without its glyph: how long the turn worked and when it was done. */
   readonly closing?: string
+  /** Blocks of their own after the closing line: a manual `/compact` that followed the turn. */
+  readonly after?: readonly StreamRow[]
 }
 
 /** A message the user typed while the agent works: the next turn's prompt, not yet part of the session. */
@@ -93,8 +100,6 @@ const span = (text: string, tone?: MayflyInlineSpan['tone'], styles?: MayflyInli
   ({ text, ...(tone === undefined ? {} : { tone }), ...(styles === undefined ? {} : { styles }) })
 
 const MOOD_TONE = { running: 'primary', done: 'muted', stopped: 'warning', failed: 'danger' } as const
-const STATE_GLYPH = { running: '● ', ok: '✓ ', error: '✗ ' } as const
-const STATE_TONE = { running: 'primary', ok: 'success', error: 'danger' } as const
 
 /** A one-row item: `spans` are what it paints, and the plain label is what a filter or a screen reader reads. */
 function line(id: string, spans: readonly MayflyInlineSpan[], more: Partial<MayflyListItem> = {}): MayflyListItem {
@@ -184,7 +189,12 @@ function rowItems(row: StreamRow): readonly MayflyListItem[] {
     ]
     case 'title': return [line(row.id, [span('▸ ', 'muted'), span(row.text, 'muted'), ...(row.failed === undefined ? [] : [span(` · ${row.failed}`, 'danger')]), ...(row.hint === undefined ? [] : [span(` · ${row.hint}`, 'muted')])])]
     case 'header': return [line(row.id, [span(row.open ? '▾ ' : '▸ ', 'muted'), span(row.label, MOOD_TONE[row.mood]), ...(row.tail === '' ? [] : [span(row.tail, 'muted')])])]
-    case 'compaction': return [line(row.id, [span(STATE_GLYPH[row.state], STATE_TONE[row.state]), span(row.text)])]
+    case 'compaction': return [
+      { id: row.id, label: row.facts.title, body: CompactionRow(row.facts), bodyAlways: true, bodyLead: [span('')] } satisfies MayflyListItem,
+      ...row.hint === undefined ? [] : [line(`${row.id}.hint`, [span('  ⎿ ', 'muted'), span(row.hint, 'muted')])],
+      ...(row.summary ?? []).map((text, index) => line(`${row.id}.summary.${String(index)}`, [span(index === 0 ? '  ⎿ ' : '    ', 'muted'), span(text, 'muted')], { wrap: true, hang: 4 })),
+      ...row.more === undefined ? [] : [line(`${row.id}.more`, [span('    '), span(row.more, 'muted')])],
+    ]
     case 'error': return [line(row.id, [span('✗ ', 'danger'), span(row.text, 'danger')], { wrap: true, hang: 2 })]
     case 'interrupted': return [line(row.id, [span(row.text, 'warning')])]
     case 'note': return [line(row.id, [span(row.text, 'muted')])]
@@ -298,6 +308,9 @@ export function TranscriptView(facts: TranscriptViewFacts): MayflyListNode {
       items.push(...itemsOf(row))
     })
     items.push(...closingOf(turn))
+    turn.after?.forEach((row) => {
+      items.push(rowGap(row), ...itemsOf(row))
+    })
   })
   for (const message of facts.queued) items.push(...queuedItems(message))
   return ui.list({ id: 'stream', role: 'browse', acceptVerb: 'expand', hintLabel: 'stream', items: withUniqueIds(items) })

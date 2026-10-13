@@ -152,11 +152,26 @@ const errors = {
 }
 
 const compactionReplay = {
-  summary: 'an automatic compaction between steps, with its summary, then the turn continues',
+  summary: 'an automatic compaction between steps: summarizing, applying with the bar draining, then settled, and the turn continues',
+  options: { contextWindow: 65_536 },
   items: [turn('Read the readme and summarise it.', [
-    step({ text: 'Reading the readme.', tools: [tool('read', { file_path: 'README.md' }, { result: '# replay-app\n\nA tiny service used by the Mayfly workbench replays.', runMs: 500 })] }),
-    compaction({ ms: 2500, shadowedTokens: 42_000, shadowedItems: 14, summary: 'The user asked for a summary of README.md. It was read: a tiny service with a config module and a client module.' }),
-    step({ text: 'The readme describes a tiny service with a config module and a client module.', usage: { inputTokens: 1800, outputTokens: 40, cacheReadTokens: 0 } }),
+    step({ text: 'Reading the readme.', usage: { inputTokens: 40_000, outputTokens: 120, cacheReadTokens: 19_500 }, tools: [tool('read', { file_path: 'README.md' }, { result: '# replay-app\n\nA tiny service used by the Mayfly workbench replays.', runMs: 500 })] }),
+    compaction({ ms: 4000, applyMs: 1600, shadowedTokens: 53_000, shadowedItems: 14, summaryTokens: 900, marks: [{ name: 'summarizing', stage: 'summarize', at: 0.7 }, { name: 'applying', stage: 'apply', at: 0.4 }], summary: 'The user asked for a summary of README.md.\nIt was read: a tiny service with a config module and a client module.\nNo files were changed.' }),
+    pause(1800),
+    mark('settled'),
+    step({ text: 'The readme describes a tiny service with a config module and a client module.', usage: { inputTokens: 6_500, outputTokens: 40, cacheReadTokens: 0 } }),
+  ])],
+}
+
+const compactionFailed = {
+  summary: 'a compaction that fails: the summarizing stage, then the failure row with its reason',
+  options: { contextWindow: 65_536 },
+  items: [turn('Keep going with the long task.', [
+    step({ text: 'Working through the files.', usage: { inputTokens: 40_000, outputTokens: 120, cacheReadTokens: 19_500 } }),
+    compaction({ ms: 3000, error: 'context still over budget after summary', marks: [{ name: 'summarizing', stage: 'summarize', at: 0.6 }] }),
+    pause(600),
+    mark('failed'),
+    step({ text: 'The compaction failed, so I carry on with the full context.', usage: { inputTokens: 41_000, outputTokens: 60, cacheReadTokens: 20_000 } }),
   ])],
 }
 
@@ -351,6 +366,7 @@ const retries = {
         { text: 'The changelog lists three', failure: { message: 'The provider is overloaded', code: 'overloaded', status: 529 }, delayMs: 2500 },
         { reasoning: 'Trying again after the overload.', failure: { message: 'The request timed out', code: 'timeout', status: 504 }, delayMs: 4000, ms: 900 },
       ],
+      marks: [{ name: 'overloaded', block: 'retry', attempt: 0, at: 0.4 }, { name: 'timeout', block: 'retry', attempt: 1, at: 0.4 }],
       text: 'The changelog lists three changes: a faster parser, a new CLI flag, and a fix for Windows paths.',
     }),
   ])],
@@ -367,15 +383,45 @@ const sideQuestion = {
 }
 
 const notices = {
-  summary: 'the footer notices above the editor: info, success, warning, error with detail, and a running operation',
+  summary: 'the notification pane above the editor: info, success, warning, error with detail, and a running operation, one at a time',
   items: [turn('Show me every kind of notice.', [
-    notify('info', 'Session saved to ~/.dsh/sessions', { holdMs: 3000 }),
-    notify('success', 'Copied the last answer to the clipboard', { holdMs: 3000 }),
-    notify('warning', 'The clipboard tool is missing; falling back to OSC 52', { holdMs: 3000, detail: 'Install xclip or wl-clipboard for a system clipboard.' }),
-    notify('error', 'Could not write the export: permission denied', { holdMs: 3000, detail: 'EACCES: permission denied, open /root/export.md' }),
-    notify('info', 'Indexing the workspace…', { holdMs: 3500, purpose: 'progress' }),
+    notify('info', 'Session saved to ~/.dsh/sessions', { holdMs: 3000, marks: [{ name: 'info', at: 0.5 }] }),
+    notify('success', 'Copied the last answer to the clipboard', { holdMs: 3000, marks: [{ name: 'success', at: 0.5 }] }),
+    notify('warning', 'The clipboard tool is missing; falling back to OSC 52', { holdMs: 3000, detail: 'Install xclip or wl-clipboard for a system clipboard.', marks: [{ name: 'warning', at: 0.5 }] }),
+    notify('error', 'Could not write the export: permission denied', { holdMs: 3000, detail: 'EACCES: permission denied, open /root/export.md', marks: [{ name: 'error', at: 0.5 }] }),
+    notify('info', 'Indexing the workspace…', { holdMs: 3500, purpose: 'progress', marks: [{ name: 'progress', at: 0.5 }] }),
     step({ text: 'Those were all four severities plus a running operation.' }),
   ])],
+}
+
+const notificationPane = {
+  summary: 'the notification pane: a rate-limit countdown, a lane notice over a turn, a context that fills up and is relieved, and a resumed session',
+  options: { contextWindow: 32_768 },
+  items: [
+    seed([{ id: 'seed-earlier', at: -3 * 3_600_000, title: 'Earlier work', items: [
+      turn('Draft the release notes.', [step({ text: 'Release notes drafted.', usage: { inputTokens: 4_000, outputTokens: 300, cacheReadTokens: 0 } })]),
+      turn('Add the install section.', [step({ text: 'The install section is in.', usage: { inputTokens: 5_000, outputTokens: 200, cacheReadTokens: 0 } })]),
+    ] }]),
+    turn('Summarise the changelog.', [
+      step({
+        failedAttempts: [{ text: 'The changelog lists', failure: { message: 'Rate limit reached for requests', code: 'rate_limited', status: 429 }, delayMs: 9000 }],
+        marks: [{ name: 'rate-limited', block: 'retry', attempt: 0, at: 0.3 }],
+        text: 'The changelog lists three changes: a faster parser, a new CLI flag, and a fix for Windows paths.',
+        usage: { inputTokens: 6_000, outputTokens: 80, cacheReadTokens: 2_000 },
+      }),
+    ]),
+    turn('Copy it, then keep reading the logs.', [
+      notify('success', 'Copied the last answer to the clipboard', { holdMs: 4500, marks: [{ name: 'toast', at: 0.4 }] }),
+      step({ text: 'First log.', usage: { inputTokens: 12_000, outputTokens: 80, cacheReadTokens: 6_000 }, tools: [tool('read', { file_path: 'a.log' }, { result: LONG_LOG, runMs: 500 })] }),
+      step({ text: 'Second log: the context is nearly full.', usage: { inputTokens: 24_000, outputTokens: 80, cacheReadTokens: 14_000 }, tools: [tool('read', { file_path: 'b.log' }, { result: LONG_LOG, runMs: 500 })] }),
+      pause(1500),
+      mark('context-full'),
+      compaction({ ms: 2500, applyMs: 1000, shadowedTokens: 30_000, shadowedItems: 8, summaryTokens: 500, summary: 'The user asked to read two logs; both were read.' }),
+      pause(800),
+      mark('relieved'),
+      step({ text: 'The context is small again.', usage: { inputTokens: 2_400, outputTokens: 40, cacheReadTokens: 0 } }),
+    ]),
+  ],
 }
 
 const header = (model, effort, reason = 'change') => raw('request/header', { header: { config: { provider: 'deepseek-official', model, reasoningEffort: effort } }, reason })
@@ -410,15 +456,19 @@ const modes = {
 }
 
 const context = {
-  summary: 'a small context window filling up step by step until an automatic compaction relieves it',
+  summary: 'a small context window filling up step by step until a warning shows, then an automatic compaction relieves it',
   options: { contextWindow: 32_768 },
   items: [turn('Keep reading until the context is nearly full.', [
-    step({ text: 'First chunk.', usage: { inputTokens: 6_000, outputTokens: 80, cacheReadTokens: 2_000 }, tools: [tool('read', { file_path: 'a.log' }, { result: LONG_LOG, runMs: 500 })] }),
-    step({ text: 'Second chunk.', usage: { inputTokens: 12_000, outputTokens: 80, cacheReadTokens: 6_000 }, tools: [tool('read', { file_path: 'b.log' }, { result: LONG_LOG, runMs: 500 })] }),
-    step({ text: 'Third chunk; the footer should now warn.', usage: { inputTokens: 18_000, outputTokens: 80, cacheReadTokens: 10_000 }, tools: [tool('read', { file_path: 'c.log' }, { result: LONG_LOG, runMs: 500 })] }),
-    step({ text: 'Fourth chunk: nearly full.', usage: { inputTokens: 24_000, outputTokens: 80, cacheReadTokens: 14_000 }, tools: [tool('read', { file_path: 'd.log' }, { result: LONG_LOG, runMs: 500 })] }),
-    step({ text: 'Fifth chunk: over the limit.', usage: { inputTokens: 30_500, outputTokens: 80, cacheReadTokens: 20_000 } }),
-    compaction({ ms: 3000, shadowedTokens: 28_000, shadowedItems: 9, summary: 'The user asked to read four log files; all four were read and contain build step lines.' }),
+    step({ text: 'First chunk.', usage: { inputTokens: 4_000, outputTokens: 80, cacheReadTokens: 2_000 }, tools: [tool('read', { file_path: 'a.log' }, { result: LONG_LOG, runMs: 500 })] }),
+    step({ text: 'Second chunk.', usage: { inputTokens: 6_000, outputTokens: 80, cacheReadTokens: 6_000 }, tools: [tool('read', { file_path: 'b.log' }, { result: LONG_LOG, runMs: 500 })] }),
+    step({ text: 'Third chunk.', usage: { inputTokens: 8_000, outputTokens: 80, cacheReadTokens: 10_000 }, tools: [tool('read', { file_path: 'c.log' }, { result: LONG_LOG, runMs: 500 })] }),
+    step({ text: 'Fourth chunk: three quarters full.', usage: { inputTokens: 10_000, outputTokens: 80, cacheReadTokens: 14_000 }, tools: [tool('read', { file_path: 'd.log' }, { result: LONG_LOG, runMs: 500 })] }),
+    step({ text: 'Fifth chunk: nearly full, the notification pane warns.', usage: { inputTokens: 10_500, outputTokens: 80, cacheReadTokens: 20_000 } }),
+    pause(1500),
+    mark('full'),
+    compaction({ ms: 3000, applyMs: 1200, shadowedTokens: 28_000, shadowedItems: 9, summaryTokens: 500, summary: 'The user asked to read four log files; all four were read and contain build step lines.' }),
+    pause(1500),
+    mark('relieved'),
     step({ text: 'After compaction the context is small again.', usage: { inputTokens: 2_400, outputTokens: 40, cacheReadTokens: 0 } }),
   ])],
 }
@@ -713,11 +763,26 @@ const activityWait = {
   ])],
 }
 
+const compactionNoWindow = {
+  summary: 'a compaction in a session whose model advertises no context window: the bar counts the stages instead of the occupancy',
+  options: { contextWindow: null },
+  items: [turn('Read the readme and summarise it.', [
+    step({ text: 'Reading the readme.', usage: { inputTokens: 40_000, outputTokens: 120, cacheReadTokens: 19_500 }, tools: [tool('read', { file_path: 'README.md' }, { result: '# replay-app', runMs: 500 })] }),
+    compaction({ ms: 4000, applyMs: 1600, shadowedTokens: 53_000, shadowedItems: 14, summaryTokens: 900, marks: [{ name: 'summarizing', stage: 'summarize', at: 0.7 }, { name: 'applying', stage: 'apply', at: 0.4 }], summary: 'The user asked for a summary of README.md.' }),
+    pause(1800),
+    mark('settled'),
+    step({ text: 'The readme describes a tiny service.', usage: { inputTokens: 6_500, outputTokens: 40, cacheReadTokens: 0 } }),
+  ])],
+}
+
 const manualCompact = {
-  summary: 'a manual /compact between turns, with the command row and its checkpoint',
+  summary: 'a manual /compact after a turn: its own block below the turn\'s closing line, with the command row and its checkpoint',
+  options: { contextWindow: 65_536 },
   items: [
-    turn('Read the readme.', [step({ text: 'Reading.', tools: [tool('read', { file_path: 'README.md' }, { result: '# replay-app', runMs: 500 })] }), step({ text: 'Done reading.' })]),
-    compaction({ manual: true, ms: 2500, shadowedTokens: 9_000, shadowedItems: 5, summary: 'The user asked to read README.md, which was read.' }),
+    turn('Read the readme.', [step({ text: 'Reading.', usage: { inputTokens: 26_000, outputTokens: 100, cacheReadTokens: 12_000 }, tools: [tool('read', { file_path: 'README.md' }, { result: '# replay-app', runMs: 500 })] }), step({ text: 'Done reading.', usage: { inputTokens: 26_300, outputTokens: 40, cacheReadTokens: 12_000 } })]),
+    compaction({ manual: true, ms: 3000, applyMs: 1200, shadowedTokens: 30_000, shadowedItems: 5, summaryTokens: 700, marks: [{ name: 'summarizing', stage: 'summarize', at: 0.6 }], summary: 'The user asked to read README.md, which was read.' }),
+    pause(1800),
+    mark('settled'),
     turn('What did I ask before?', [step({ text: 'You asked me to read the readme.' })]),
   ],
 }
@@ -814,7 +879,7 @@ const content = {
   ])],
 }
 
-export const REPLAYS = { tour, toolkit, thinking, markdown, live, phases, thinkingLadder, pending, blocks, streaming, sync, activityWait, prompts, turns, toollines, edits, errors, compaction: compactionReplay, manualCompact, context, subagents, childStream, approvals, questions, plan, goal, jobs, queued, retries, sideQuestion, notices, modes, edge, history, wheel, content }
+export const REPLAYS = { tour, toolkit, thinking, markdown, live, phases, thinkingLadder, pending, blocks, streaming, sync, activityWait, prompts, turns, toollines, edits, errors, compaction: compactionReplay, compactionNoWindow, compactionFailed, manualCompact, context, subagents, childStream, approvals, questions, plan, goal, jobs, queued, retries, sideQuestion, notices, notificationPane, modes, edge, history, wheel, content }
 
 /*
  * The scenes of the Website's app shots. Each is the source of an `app-*` scenario of the catalog, whose goldens the

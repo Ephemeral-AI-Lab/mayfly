@@ -200,6 +200,8 @@ export interface TranscriptCompactionModel extends TranscriptEntryBase {
   readonly trigger: 'manual' | 'auto'
   readonly startedAt: number
   readonly endedAt?: number
+  readonly summaryAt?: number
+  readonly compactionId?: string
   readonly shadowedCount?: number
   readonly shadowedTokens?: number
   readonly summary?: string

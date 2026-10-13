@@ -27,6 +27,7 @@ export function paintSpan(span: MayflyInlineSpan, colors: MayflySemanticColors):
   return (span.styles ?? []).reduce((value, style) => {
     if (style === 'strong') return `\x1b[1m${value}\x1b[22m`
     if (style === 'italic') return `\x1b[3m${value}\x1b[23m`
+    if (style === 'inverse') return `\x1b[7m${value}\x1b[27m`
     return `\x1b[9m${value}\x1b[29m`
   }, painted)
 }

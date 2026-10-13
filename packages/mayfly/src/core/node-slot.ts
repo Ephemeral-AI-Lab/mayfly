@@ -186,7 +186,11 @@ class NodeSlotLease implements MayflyNodeSlot {
   }
 
   setTurns(latest: number): void {
-    if (this.live) this.turns = Math.max(0, Math.floor(latest))
+    if (!this.live) return
+    const next = Math.max(0, Math.floor(latest))
+    if (next === this.turns) return
+    this.turns = next
+    if (this.region === 'content') this.host.contentTurnsChanged()
   }
 
   focus(): void { if (this.live) this.screen.focus() }
@@ -244,6 +248,18 @@ export class NodeSlotHost {
   ) {}
 
   get compiler(): MayflyNodeSlotCompiler | undefined { return this.bound }
+
+  private readonly turnListeners = new Set<() => void>()
+
+  /** Listen to the newest content turn changing. */
+  onContentTurns(listener: () => void): () => void {
+    this.turnListeners.add(listener)
+    return () => { this.turnListeners.delete(listener) }
+  }
+
+  contentTurnsChanged(): void {
+    for (const listener of [...this.turnListeners]) listener()
+  }
 
   /** The newest turn the owners of the scroll region's slots reported. */
   contentTurns(): number {

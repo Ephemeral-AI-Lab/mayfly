@@ -17,7 +17,7 @@ import type {} from '@deepseek-ai/dsh-compaction/types'
 import { z } from 'zod'
 import { everyAdmitted, identityAdmission } from './admission.ts'
 import { outputProgressSchema } from './output-progress.ts'
-import type { ConversationFactsState } from './types.ts'
+import type { CompactionMark, ConversationFactsState } from './types.ts'
 import { foldAssistantStreamRecords, initialAssistantStream } from './stream-accumulator.ts'
 import { argumentDetail } from './activity-detail.ts'
 import { isSpawnToolName } from './projection.ts'
@@ -55,7 +55,8 @@ export const conversationFactsSchema = z.object({
     preparing: z.boolean().optional(),
   }).optional(),
   inFlight: z.array(z.object({ callId: z.string(), name: z.string(), detail: z.string().optional(), preparing: z.boolean().optional() })).optional(),
-  retrying: z.object({ retry: z.number(), maxRetries: z.number(), at: z.number(), delayMs: z.number(), reason: z.string().optional() }).optional(),
+  retrying: z.object({ retry: z.number(), maxRetries: z.number(), at: z.number(), delayMs: z.number(), reason: z.string().optional(), status: z.number().optional() }).optional(),
+  compactions: z.array(z.object({ id: z.string(), before: z.number().nonnegative(), after: z.number().nonnegative().optional(), window: z.number().positive().optional() })).optional(),
   runOutcome: z.enum(['completed', 'failed']).optional(),
   endedAt: z.number().optional(),
   agentCalls: z.array(z.object({
@@ -159,6 +160,21 @@ function retryReason(failure: unknown): string | undefined {
   return text === undefined ? undefined : text.replace(/\s+/gu, ' ').trim().slice(0, 80)
 }
 
+/** How many compactions' marks the facts keep. */
+const COMPACTION_MARKS = 16
+
+/** Add or replace the mark of one compaction, keeping the newest few. */
+function markCompaction(marks: ConversationFactsState['compactions'], mark: CompactionMark): readonly CompactionMark[] {
+  return [...(marks ?? []).filter(item => item.id !== mark.id), mark].slice(-COMPACTION_MARKS)
+}
+
+/** The HTTP status a retry record's failure carries, when the provider returned one. */
+function retryStatus(failure: unknown): number | undefined {
+  if (typeof failure !== 'object' || failure === null) return undefined
+  const { status } = failure as { readonly status?: unknown }
+  return typeof status === 'number' && Number.isFinite(status) ? status : undefined
+}
+
 function foldFacts(
   state: ConversationFactsState,
   event: SessionEvent,
@@ -168,7 +184,8 @@ function foldFacts(
   if (kind === 'llm/retry') {
     const data = (event as unknown as { readonly data: { readonly retry: number, readonly maxRetries: number, readonly delayMs: number, readonly failure?: unknown } }).data
     const reason = retryReason(data.failure)
-    return { ...state, retrying: { retry: data.retry, maxRetries: data.maxRetries, at: event.time, delayMs: data.delayMs, ...(reason === undefined ? {} : { reason }) } }
+    const status = retryStatus(data.failure)
+    return { ...state, retrying: { retry: data.retry, maxRetries: data.maxRetries, at: event.time, delayMs: data.delayMs, ...(reason === undefined ? {} : { reason }), ...(status === undefined ? {} : { status }) } }
   }
   if (kind === 'llm/retry-started') return state.retrying === undefined ? state : { ...state, retrying: undefined }
   if (kind === 'assistant/message' && state.retrying !== undefined) return foldFacts({ ...state, retrying: undefined }, event)
@@ -282,12 +299,19 @@ function foldFacts(
     // without retaining per-node prices. The summarize call's output tokens
     // stand in for the framed checkpoint; the post-replacement cache share
     // is unknown, so the stale segment clears until the next model step.
-    case 'compaction/summary':
+    case 'compaction/start':
+      return { ...state, compactions: markCompaction(state.compactions, { id: String(event.data.compactionId), before: state.contextTokens, ...state.contextWindow === undefined ? {} : { window: state.contextWindow } }) }
+    case 'compaction/summary': {
+      const contextAfter = Math.max(0, state.contextTokens - event.data.shadowedTokenCount + (event.data.usage?.outputTokens ?? 0))
+      const id = String(event.data.compactionId)
+      const started = state.compactions?.find(mark => mark.id === id)
       return {
         ...state,
-        contextTokens: Math.max(0, state.contextTokens - event.data.shadowedTokenCount + (event.data.usage?.outputTokens ?? 0)),
+        contextTokens: contextAfter,
         contextCacheReadTokens: undefined,
+        compactions: markCompaction(state.compactions, { ...started ?? { id, before: state.contextTokens, ...state.contextWindow === undefined ? {} : { window: state.contextWindow } }, after: contextAfter }),
       }
+    }
     case 'compaction/prune':
       return {
         ...state,
@@ -345,5 +369,5 @@ export const conversationFactsProjectionDefinition: ConversationFactsProjectionD
       todos: state.todos.map(todo => ({ ...todo })),
     }),
   },
-  stateVersion: 8,
+  stateVersion: 9,
 }

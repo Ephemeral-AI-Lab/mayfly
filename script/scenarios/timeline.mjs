@@ -79,10 +79,10 @@ export const queue = (rows, { holdMs = 4000 } = {}) => ({ kind: 'queue', rows, h
  */
 export const btw = (question, items, { label = question, outcome, closeAfterMs } = {}) => ({ kind: 'btw', question, items, label, outcome, closeAfterMs })
 /**
- * A notice in the footer line above the editor (`info`, `success`, `warning`, or `error`), through the product's own
+ * A notice in the notification pane above the editor (`info`, `success`, `warning`, or `error`), through the product's own
  * notification lane. `purpose: 'progress'` marks a running operation; the notice clears itself after `holdMs`.
  */
-export const notify = (severity, message, { holdMs = 3500, detail, purpose } = {}) => ({ kind: 'notify', severity, message, holdMs, detail, purpose })
+export const notify = (severity, message, { holdMs = 3500, detail, purpose, marks = [] } = {}) => ({ kind: 'notify', severity, message, holdMs, detail, purpose, marks })
 /** An image in a prompt: `turn([text('see'), image('shot.png')], ...)`. */
 export const text = value => ({ type: 'text', text: value })
 export const image = (name, { width = 1280, height = 720, bytes = 84_000 } = {}) => ({ type: 'image', attachment: { attachmentId: `replay-${name}`, mediaType: 'image/png', bytes, width, height, name } })
@@ -157,6 +157,8 @@ export function compile(items, { provider = 'deepseek-official', model = 'deepse
     const noticeId = id('notice')
     push(t, { op: 'notify', noticeId, severity: item.severity, message: item.message, detail: item.detail, purpose: item.purpose })
     push(t + item.holdMs, { op: 'notify-clear', noticeId })
+    // A mark stops playback while the notice shows (`marks: [{ name, at: 0.5 }]`, `at` a share of `holdMs`).
+    for (const point of item.marks ?? []) push(t + item.holdMs * point.at, { op: 'mark', name: point.name })
   }
 
   /** Compile one conversation (the main one or a child) into `session`; returns the clock at its end. */
@@ -171,7 +173,8 @@ export function compile(items, { provider = 'deepseek-official', model = 'deepse
       if (header) return
       header = true
       event(at, 'request/header', { header: { config: { provider, model, reasoningEffort: 'high' } }, reason: 'initial' })
-      event(at + 1, 'request/context', { provider, model, contextWindow })
+      // A provider that advertises no window (`contextWindow: null`) writes no route record; the footer then shows no meter.
+      if (contextWindow !== null) event(at + 1, 'request/context', { provider, model, contextWindow })
     }
     t += 200
     for (const item of list) {
@@ -206,10 +209,21 @@ export function compile(items, { provider = 'deepseek-official', model = 'deepse
     const compactionId = `replay-compaction-${String(++messageSeq)}`
     const sessionOp = session === null ? {} : { session }
     const commandId = item.manual === true ? `replay-command-${String(messageSeq)}` : undefined
+    const ids = { ...sessionOp, compactionId, commandId, turn: turnNo }
     if (commandId !== undefined) event(t, 'command/run', { commandId, name: 'compact', source: { kind: 'user' } })
-    push(t + 50, { op: 'compact-start', ...sessionOp, compactionId, commandId, turn: turnNo })
-    const end = t + 50 + (item.ms ?? 1800)
-    push(end, { op: 'compact-finish', ...sessionOp, compactionId, commandId, turn: turnNo, provider, model, summary: item.summary ?? 'Earlier work was summarised.', shadowedTokens: item.shadowedTokens ?? 18_000 })
+    push(t + 50, { op: 'compact-start', ...ids })
+    // Summarizing lasts `ms`; the summary lands, and applying lasts `applyMs` until the end record. A mark stops playback part-way through a stage (`marks: [{ name, stage: 'summarize' | 'apply', at: 0.5 }]`).
+    const summaryAt = t + 50 + (item.ms ?? 1800)
+    const end = summaryAt + (item.applyMs ?? 20)
+    for (const point of item.marks ?? []) push(point.stage === 'apply' ? summaryAt + (item.applyMs ?? 20) * point.at : t + 50 + (item.ms ?? 1800) * point.at, { op: 'mark', name: point.name })
+    if (item.error !== undefined) {
+      // A failed attempt records no summary: the end record carries the reason.
+      push(summaryAt, { op: 'compact-end', ...ids, error: item.error })
+      if (commandId !== undefined) event(summaryAt + 100, 'command/done', { commandId, kind: 'error', text: item.error })
+      return summaryAt + 300
+    }
+    push(summaryAt, { op: 'compact-finish', ...ids, provider, model, summary: item.summary ?? 'Earlier work was summarised.', shadowedTokens: item.shadowedTokens ?? 18_000, summaryTokens: item.summaryTokens ?? 600 })
+    push(end, { op: 'compact-end', ...ids })
     if (commandId !== undefined) event(end + 100, 'command/done', { commandId, kind: 'success', text: item.detail ?? 'Compacted the conversation.' })
     return end + 300
   }
@@ -266,6 +280,8 @@ export function compile(items, { provider = 'deepseek-official', model = 'deepse
       const failure = { message: attempt.failure?.message ?? 'The provider is overloaded', code: attempt.failure?.code ?? 'overloaded', status: attempt.failure?.status ?? 529 }
       const delayMs = attempt.delayMs ?? 1500
       event(t + 100, 'llm/retry', { retryId, turn: turnNo, step: stepNo, provider, mode: 'normal', policyKey: 'replay-policy', retry: index + 1, maxRetries: 5, delayMs, failure })
+      // A `retry` mark stops playback while the retry waits (`marks: [{ name, block: 'retry', attempt: 0, at: 0.3 }]`).
+      for (const point of spec.marks ?? []) if (point.block === 'retry' && (point.attempt ?? 0) === index) push(t + 100 + delayMs * point.at, { op: 'mark', name: point.name })
       t += 100 + delayMs
       event(t, 'llm/retry-started', { retryId, turn: turnNo, step: stepNo, retry: index + 1 })
       t += 100

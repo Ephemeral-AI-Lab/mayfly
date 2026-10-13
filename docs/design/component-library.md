@@ -220,7 +220,7 @@ the primary content.
 **Feedback.** `✓` success and `ℹ` info disappear after 5 s of visible time; `⚠`
 warning stays until acted on; `✗` error stays and offers its retry key; progress
 never auto-dismisses. Feedback is inline in the footer of an open surface and a toast
-in the activity row's gap otherwise. Glyph plus word, never color alone.
+in the notification pane (the row above the editor, §5.2) otherwise. Glyph plus word, never color alone.
 
 **Breakpoints.** At 100 columns or more a list-and-detail surface is a split view;
 from 60 to 99 it is one column and `Enter` opens the detail; below 60 it shows the name
@@ -1136,8 +1136,18 @@ queued (2)  ⏎ "also update the footer"  ⏎ "keep the hero copy shor…"  ↑ 
 - **Completions** are a `choose` list under the buffer: `@` files (inserted as a token), `/` commands, `#` skills
   (inserted as text), each with its own key line (`Tab complete · Enter insert · Esc close`).
 
-**Notices** are rich-text rows: banners (`⚠ Rate limited · retrying in 12s`), a toast in the activity row's gap, and
-an undo toast.
+**Notices** live in the **notification pane**: one row on the blank line above the editor, under the activity block,
+right-aligned and never wider than half the terminal. It shows one notice at a time, the most severe and then the
+newest, with a muted `· +N` for the ones waiting, and it is there (blank) when nothing shows, so the editor never
+shifts. Its content is the notification lane (the commands' and extensions' feedback: `✓` and `ℹ` leave after five
+seconds of visible time, `⚠` and `✗` stay) and the notices the session's facts raise: `⚠ Rate limited · retrying in 9s ·
+1/5` (a provider failure with HTTP status 429; any other failure reads `Provider error`), `⚠ Context 93% full · /compact
+now` (from 92% of the window, until a compaction lowers it), and `ℹ Resumed session · 24 turns · last active 2h ago`
+(five seconds). The footer under the editor keeps only the slash hint. When the stream is scrolled away from its
+tail, the same row carries the chip back to it, centered and inverse (`Back to bottom · Ctrl+↓`, or `2 new turns ·
+Ctrl+↓`): the notice takes only the room right of the chip, so the two never overlap (at 100 columns the notice keeps
+about 40 columns, at 60 about 12). Offline and a low balance are not raised: the
+Harness has no offline signal and the balance is not read yet. An undo toast is not built.
 
 ### 5.3 Activity row and tool rows
 
@@ -1163,7 +1173,8 @@ stream already shows (§5.3.1).
   Compact), and the one-line detail (the latest reasoning paragraph, the running command or path or query) at
   Compact, where the stream shows no process. It always leads with `⎿`, drops the `⎿` below 40 columns, and
   is blank when hints are off (`quietHints: off`) or nothing applies.
-- **Height.** Always three rows while a turn runs: nothing shifts between phases. Idle renders nothing.
+- **Height.** Two rows while a turn runs (the header and the line under it), and the row under them is the notification
+  pane's (§5.2), so nothing shifts between phases. Idle renders nothing of its own.
 - **Narrow widths** shed, in order: the header tail (time, counters, rate), then the `⎿` connector.
 - **Motion.** One channel per row: the glyph moves over a still label (Deep diving, Thinking, Writing), or the
   label shimmers over a still `●` (a running tool), or the `●` breathes over a still label (a wait on the user).
@@ -1470,21 +1481,26 @@ the carriers of state.
 
 **Compaction.**
 
-Compaction reports real stages, so its bar is real. The bar is **context
-occupancy** (tokens in use over the context window), and the two stages are
-summarizing and applying.
+Compaction reports two real stages, summarizing and applying, but no progress inside them, so its percentage is an
+estimate. The bar and the percentage show the share done: it grows with the time spent summarizing along a curve whose
+pace follows the size of the context being summarized (about 80% when the expected time has passed, never past 90%),
+the bar then fills to 100% over 800 ms when the summary lands, and it stays full once the row settles.
 
 ```
-● Compacting context ▰▰▰▰▰▰▰▰▰▱ 91%  1/2 summarizing · 4s · auto      the edge cell breathes
-● Compacting context ▰▱▱▱▱▱▱▱▱▱  9%  2/2 applying · auto              800 ms drain when the summary lands
-✓ Compacted 84 items ▰▱▱▱▱▱▱▱▱▱ 91% → 9% · ~148k → ~12k tokens · auto
+● Compacting context ▰▰▰▰▱▱▱▱▱▱ 42% summarizing · 4s · auto           the estimate, growing
+● Compacting context ▰▰▰▰▰▰▰▰▰▰ 100% applying · auto                 fills over 800 ms when the summary lands
+✓ Compacted 84 items ▰▰▰▰▰▰▰▰▰▰ context 91% → 9% · ~148k → ~12k tokens · auto
   ⎿ Ctrl+O summary
-✓ Compacted 84 items · 91% → 9%                                       narrow: the bar goes first
+✓ Compacted 84 items · context 91% → 9%                              narrow: the bar goes first
+● Compacting context · 42% summarizing · 4s                           narrow and Compact
 ✗ Compaction failed: context still over budget after summary
 ```
 
-The drop matches the status bar's context meter. Without a known context window
-the bar falls back to the two stages (`1/2`, `2/2`).
+The settled row keeps the context occupancy marks the facts took at the compaction (`compactions`), so it does not
+change as later steps grow the context; without a known window the occupancy is left out and the row keeps the token
+estimate. A manual `/compact` is a block of its own below the previous turn's closing line; an automatic one stays
+between the steps it interrupted. Below 56 columns, and at the Compact level, the row is one line; `Ctrl+O` (or the
+Verbose level) opens the summary's first lines under it. Every compaction, manual or automatic, is this block.
 
 **The stream's turns, prompts, answers, and reasoning.** *Finalized in group 3a; the owner accepted each part on its scenario.*
 
@@ -2023,7 +2039,7 @@ Every step is reversible with `Esc`, and `Skip for now` never blocks:
 | Command palette | filtered list with the match bolded, description, and the command's own key | `/` then type · `Tab` complete · `Enter` run · `Esc` close |
 | `@` file picker | recent first, fuzzy on name and path; the focused row shows `↗ code` | `Enter` **open in the external editor** · `Tab` insert the mention · `Esc` close |
 | Changed files | `M`/`A`/`D` with stat; `Enter` opens at the first changed line | `Enter` open · `d` diff |
-| Notifications and undo | right-aligned toast in the activity row's gap (`✓ build finished · 22s`); a destructive action offers `u undo · 8s` | `Ctrl+J` view · `u` undo |
+| Notifications and undo | right-aligned toast in the notification pane above the editor (`✓ build finished · 22s`); a destructive action offers `u undo · 8s` | `Ctrl+J` view · `u` undo |
 | Queued messages, attachments | one truncated `queued (2)` line above the editor; attachments and pasted blocks are `[Image #1 84 KB ×]` tokens inside the input (§5.2) | `↑` recall · `Backspace` selects then removes a token |
 | Rewind | checkpoint list with a restore scope `‹ conversation + code ›` | `↑↓` · `←/→` scope · `Enter` restore |
 | Diff hunk review | per-hunk accept or reject on the numbered diff | `a`/`r` · `A`/`R` all · `n`/`p` hunk |

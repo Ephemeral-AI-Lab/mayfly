@@ -57,7 +57,7 @@ function integer(h: AdmissionHelpers, object: Fields, key: string, path: string,
 export function admitTextStyles(h: AdmissionHelpers, object: Fields, path: string): Fields {
   const value = h.own(object, 'styles', path)
   if (value === undefined) return {}
-  const styles = h.collection(value, `${path}.styles`).map((style, index) => h.enumeration<MayflyTextStyle>(style, ['strong', 'italic', 'strike'], `${path}.styles[${String(index)}]`))
+  const styles = h.collection(value, `${path}.styles`).map((style, index) => h.enumeration<MayflyTextStyle>(style, ['strong', 'italic', 'strike', 'inverse'], `${path}.styles[${String(index)}]`))
   if (new Set(styles).size !== styles.length) h.invalid(`${path}.styles contains duplicates`)
   return { styles }
 }

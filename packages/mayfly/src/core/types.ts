@@ -982,5 +982,13 @@ declare module '@deepseek-ai/cordis' {
      * @mode emit
      */
     'mayfly/decision-wait-changed'(wait: MayflyDecisionWait | undefined): void
+    /**
+     * The conversation scroll left or came back to its tail, or the words of its chip changed (the count of turns that
+     * began below the view, a rebound key). The notification pane draws the chip, so it follows this event. Alternate
+     * screen only; emitted by the surface renderer, unfiltered.
+     * @param label - the chip's translated words (`Back to bottom · Ctrl+↓`, `2 new turns · Ctrl+↓`), or `undefined` at the tail.
+     * @mode emit
+     */
+    'mayfly/content-tail-changed'(label: string | undefined): void
   }
 }

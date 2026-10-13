@@ -87,6 +87,7 @@ const conversationEntriesSchema = z.array(z.discriminatedUnion('kind', [
     trigger: z.enum(['manual', 'auto']),
     startedAt: z.number(),
     endedAt: z.number().optional(),
+    summaryAt: z.number().optional(),
     shadowedCount: z.number().int().nonnegative().optional(),
     shadowedTokens: z.number().nonnegative().optional(),
     provider: z.string().optional(),
@@ -585,6 +586,7 @@ export function foldConversationProjection(
       const summary = visibleText(event.data.summary)
       return replaceEntry(state, entry.id, event.seq, () => ({
         ...entry,
+        summaryAt: event.time,
         shadowedCount: event.data.shadowedSeqs.length,
         shadowedTokens: event.data.shadowedTokenCount,
         provider: event.data.provider,

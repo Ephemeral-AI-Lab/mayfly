@@ -4,7 +4,7 @@
  * the phase (`Deep diving` while waiting on the model, `Thinking`, `Writing`, the running tool category or its
  * preparing form, a wait on the user, or the latched stop), the turn's elapsed time and throughput, and under them one
  * line: a teaching tip. The row has one effect at every work-details level; the process itself is the stream's. The block is
- * a constant three rows (header, that line, a blank row before the editor). Motion belongs to core's one clock, and the
+ * two rows (header and that line); the blank row before the editor is the notification pane's (`pane-notification.ts`), so the editor never shifts. Motion belongs to core's one clock, and the
  * seconds come from the host's one tick (`mayflyTick`, the same the stream's pending lines keep time by), so the plugin
  * republishes at each tick for the elapsed time and throughput (data, not frames) and not at all while the phase is still. The pane stays up above an approval or question panel (the
  * decision wait) while hiding under every other editor dialog. A latched user interrupt renders one static `■`
@@ -24,6 +24,8 @@ import type { MayflyDecisionWait } from '../core/types.ts'
 // Empty type import carries the app-owned opaque binding event merge.
 import type {} from '../app/index.ts'
 import type { ConversationFacts } from '../conversation/types.ts'
+import { mountNotificationPane } from './pane-notification.ts'
+import { mountNotices } from './notices.ts'
 import { compactElapsedMs } from './agent-presentation.ts'
 import { outputCounter, outputRate } from './output-rate.ts'
 import { toolActivity } from './process-activity.ts'
@@ -44,7 +46,7 @@ import {
 export const name = 'mayfly-pane-activity'
 
 /** Services required before the pane can mount. */
-export const inject = ['mayflyPanes', 'mayflySessionFacts', 'mayflyTick']
+export const inject = ['mayflyPanes', 'mayflySessionFacts', 'mayflyTick', 'mayflyUiInteraction']
 
 /** The label while the turn waits on the model (the retired turn header's phrase). */
 const WAITING_LABEL = 'Deep diving'
@@ -219,6 +221,9 @@ function readPreferences(ctx: Context): { readonly quietHints: QuietHints } {
 export function apply(ctx: Context): void {
   mountTranscriptLocale(ctx, 'transcript.activity', ACTIVITY_LOCALE)
   const t = transcriptTranslator(ctx, 'transcript.activity')
+  // The notice row under the activity block and the notices the facts raise into it share this plugin's Fiber.
+  mountNotificationPane(ctx)
+  mountNotices(ctx, t, () => activityNow())
   const state: ActivityState = {
     mode: 'idle', tip: '', label: WAITING_LABEL, turn: 0, dialog: false, ...readPreferences(ctx),
   }
@@ -248,14 +253,8 @@ export function apply(ctx: Context): void {
   let tipIndex = 0
   /** The line under the header when no action runs: the tip, or nothing. */
   const tipOf = (): string | undefined => state.quietHints === 'off' || state.tip === '' ? undefined : `${t('Tip: ')}${t(state.tip)}`
-  /** What the turn is doing that the stream does not say: a provider retry with its countdown, or the arguments of the calls in flight. */
-  const infoOf = (now: number): string | undefined => {
-    const retrying = facts.retrying
-    if (retrying !== undefined) {
-      const seconds = Math.max(0, Math.ceil((retrying.at + retrying.delayMs - now) / 1000))
-      const head = seconds === 0 ? t('Retrying {retry}/{max}…', { retry: retrying.retry, max: retrying.maxRetries }) : t('Retry {retry}/{max} in {seconds}s', { retry: retrying.retry, max: retrying.maxRetries, seconds })
-      return retrying.reason === undefined ? head : `${head} · ${retrying.reason}`
-    }
+  /** What the turn is doing that the stream does not say: the arguments of the calls in flight (a provider retry is the notification row's). */
+  const infoOf = (): string | undefined => {
     if (state.mode !== 'tool') return undefined
     const details = [...new Set((facts.inFlight ?? []).flatMap(call => call.preparing === true || call.detail === undefined || call.detail === '' ? [] : [call.detail]))]
     if (details.length === 0) return undefined
@@ -273,10 +272,10 @@ export function apply(ctx: Context): void {
   const currentNode = (): MayflyUiNode | null => {
     if (state.mode === 'hidden') return null
     const phase = phaseOf(state.mode)
-    if (phase === undefined) return { kind: 'spacer' }
+    if (phase === undefined) return null
     const tip = tipOf()
     const now = tickNow
-    const info = infoOf(now)
+    const info = infoOf()
     const stage = phase === 'thinking' ? thinkingStage(thinkingElapsed(now)) : undefined
     const facing: ActivityFacts = {
       phase,
@@ -334,7 +333,7 @@ export function apply(ctx: Context): void {
     const nextStart = facts.active ? facts.turnStartedAt : undefined
     // The stage is part of the shape, so a stage change publishes at once, whatever moment the facts arrive at.
     const stage = mode === 'thinking' ? thinkingStage(thinkingElapsed(tickNow)).label : ''
-    const next = JSON.stringify([mode, flight.key, flight.values?.count, stage, state.tip, state.quietHints, facts.flowUp, nextStart, state.waitingSince, facts.outputProgress?.startedAt, facts.inFlight?.map(call => call.callId), facts.retrying?.at])
+    const next = JSON.stringify([mode, flight.key, flight.values?.count, stage, state.tip, state.quietHints, facts.flowUp, nextStart, state.waitingSince, facts.outputProgress?.startedAt, facts.inFlight?.map(call => call.callId)])
     state.mode = mode
     state.label = flight.key
     state.labelValues = flight.values

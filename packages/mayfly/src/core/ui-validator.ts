@@ -418,7 +418,7 @@ function span(value: unknown, path: string, state: ValidationState, motion = fal
     const tone = toneValue === undefined ? undefined : enumeration(toneValue, ['default', 'muted', 'primary', 'accent', 'user', 'success', 'warning', 'danger'], `${path}.tone`)
     const styles = stylesValue === undefined
       ? undefined
-      : collection(stylesValue, `${path}.styles`).map((style, index) => enumeration(style, ['strong', 'italic', 'strike'], `${path}.styles[${String(index)}]`))
+      : collection(stylesValue, `${path}.styles`).map((style, index) => enumeration(style, ['strong', 'italic', 'strike', 'inverse'], `${path}.styles[${String(index)}]`))
     if (styles !== undefined && new Set(styles).size !== styles.length) invalid(`${path}.styles contains duplicates`)
     const motionValue = own(object, 'motion', path)
     const variantValue = own(object, 'variant', path)

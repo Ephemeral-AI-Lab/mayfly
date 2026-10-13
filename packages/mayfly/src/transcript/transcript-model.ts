@@ -8,10 +8,11 @@
  */
 
 import type { MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
-import { latestTurnOf, TranscriptView, type TranscriptViewFacts } from '../components/transcript-view.ts'
+import { latestTurnOf, TranscriptView, type StreamRow, type TranscriptViewFacts } from '../components/transcript-view.ts'
 import type { MayflyNodeSlot } from '../core/node-slot.ts'
 import type { MayflyScreenService } from '../core/screen.ts'
 import type { MayflyScreen } from '../core/types.ts'
+import type { CompactionMark } from '../conversation/types.ts'
 import type { MayflyTranslate } from '../frontend/locale.ts'
 import { freezeModel, materializeTranscriptEntries, type TranscriptEntryModel, type TranscriptModel, type TranscriptTurnModel } from '../frontend/models.ts'
 import { StreamFacts } from './stream-facts.ts'
@@ -35,6 +36,8 @@ export interface TranscriptControllerOptions {
   readonly queued: () => readonly { readonly id: string, readonly text: string }[]
   /** The clock a call that is in flight keeps its time by; absent, the stream's time only moves when it is published. */
   readonly tick?: TickSource
+  /** The selected Agent's context window and occupancy and the marks around each recent compaction; read on every publish. */
+  readonly context?: () => { readonly marks?: readonly CompactionMark[] | undefined, readonly window?: number | undefined, readonly tokens?: number | undefined } | undefined
   /** Where the references of the images the stream shows are kept for the byte loader. */
   readonly imageRefs?: Map<string, { readonly attachmentId: string, readonly mediaType: string }>
 }
@@ -195,6 +198,7 @@ export class TranscriptController {
       t: this.options.t,
       now,
       queued: this.options.queued(),
+      ...this.compactionInputs(),
       ...(this.options.imageRefs === undefined ? {} : { imageRefs: this.options.imageRefs }),
     })
     slot.setTurns(latestTurnOf(facts))
@@ -202,9 +206,20 @@ export class TranscriptController {
     this.keepTime(facts)
   }
 
-  /** A call in flight shows its own time, so the stream is built again at each tick while one is on screen. */
+  private compactionInputs(): { readonly compactions?: readonly CompactionMark[], readonly contextWindow?: number, readonly contextTokens?: number } {
+    const context = this.options.context?.()
+    if (context === undefined) return {}
+    return {
+      ...context.marks === undefined ? {} : { compactions: context.marks },
+      ...context.window === undefined ? {} : { contextWindow: context.window },
+      ...context.tokens === undefined ? {} : { contextTokens: context.tokens },
+    }
+  }
+
+  /** A call or a compaction in flight shows its own time, so the stream is built again at each tick while one is on screen. */
   private keepTime(facts: TranscriptViewFacts): void {
-    const pending = facts.turns.some(turn => turn.rows.some(row => row.kind === 'tool' && row.state === 'pending'))
+    const running = (row: StreamRow): boolean => (row.kind === 'tool' && row.state === 'pending') || (row.kind === 'compaction' && row.facts.state === 'running')
+    const pending = facts.turns.some(turn => turn.rows.some(running) || (turn.after?.some(running) ?? false))
     if (!pending) {
       this.offTick?.()
       this.offTick = undefined

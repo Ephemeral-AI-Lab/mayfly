@@ -20,6 +20,10 @@ import { callsOf, standardRow, verboseRow, type Call } from './tool-calls.ts'
 import { kindOf } from './tool-kinds.ts'
 import type { TranscriptPresentationSnapshot } from './presentation-policy.ts'
 import { ellipsize } from './present.ts'
+import { contextPercent, formatTokens } from './status-context.ts'
+import { COMPACTION_DRAIN_MS, type CompactionFacts } from '../components/compaction-row.ts'
+import type { CompactionMark } from '../conversation/types.ts'
+import type { TranscriptCompactionModel } from '../frontend/models.ts'
 
 /** Characters of a salient argument kept on a row. */
 const PREVIEW_MAX_CHARS = 80
@@ -41,6 +45,11 @@ export interface StreamInputs {
   readonly now: number
   /** The messages the user typed while the agent works. */
   readonly queued: readonly { readonly id: string, readonly text: string }[]
+  /** The context occupancy around each recent compaction, for its bar. */
+  readonly compactions?: readonly CompactionMark[]
+  /** The selected Agent's context window and occupancy, for a compaction whose marks have not landed. */
+  readonly contextWindow?: number
+  readonly contextTokens?: number
   /** Where each image attachment's reference is kept for the byte loader, by attachment id. */
   readonly imageRefs?: Map<string, { readonly attachmentId: string, readonly mediaType: string }>
 }
@@ -81,6 +90,11 @@ function sameValue(x: unknown, y: unknown): boolean {
   const b = y as Record<string, unknown>
   const keys = Object.keys(a)
   return keys.length === Object.keys(b).length && keys.every(key => sameValue(a[key], b[key]))
+}
+
+/** A row that is a block of its own after the turn it followed. */
+function isTrailing(row: StreamRow): boolean {
+  return row.kind === 'compaction' && row.trailing === true
 }
 
 function sameRow(left: StreamRow, right: StreamRow): boolean {
@@ -180,12 +194,15 @@ export class StreamFacts {
       if (buckets.length === 0) buckets.push({ turn: -1, rows: lead })
       else buckets.at(-1)!.rows.push(...lead)
     }
-    return buckets.map(({ turn, rows }) => {
+    return buckets.map(({ turn, rows: all }) => {
       const id = `turn:${String(turn)}`
       const closing = closingOf(lifecycle.get(turn), inputs.t)
+      const rows = all.filter(row => !isTrailing(row))
+      const after = all.filter(isTrailing)
       const previous = this.turns.get(id)
-      const settled = previous !== undefined && previous.closing === closing && previous.rows.length === rows.length && previous.rows.every((row, index) => row === rows[index])
-      const result: StreamTurn = settled ? previous : { id, number: Math.max(0, turn), rows, ...(closing === undefined ? {} : { closing }) }
+      const same = (left: readonly StreamRow[], right: readonly StreamRow[]): boolean => left.length === right.length && left.every((row, index) => row === right[index])
+      const settled = previous !== undefined && previous.closing === closing && same(previous.rows, rows) && same(previous.after ?? [], after)
+      const result: StreamTurn = settled ? previous : { id, number: Math.max(0, turn), rows, ...(closing === undefined ? {} : { closing }), ...after.length === 0 ? {} : { after } }
       keptTurns.set(id, result)
       return result
     })
@@ -370,11 +387,83 @@ function entryRow(item: EntryItem, entry: TranscriptEntryModel, inputs: StreamIn
       return { kind: 'error', id: entry.id, text: sanitizePluginText(entry.code === undefined ? entry.message : `${entry.message} (${entry.code})`) }
     case 'transcript-interrupted':
       return { kind: 'interrupted', id: entry.id, text: t('■ interrupted') }
-    case 'transcript-compaction': {
-      if (entry.state === 'running') return { kind: 'compaction', id: entry.id, state: 'running', text: `${t('compacting context…')}${entry.trigger === 'auto' ? t(' · auto') : ''}` }
-      if (entry.state === 'error') return { kind: 'compaction', id: entry.id, state: 'error', text: firstLine(entry.error ?? entry.detail ?? t('compaction failed')) ?? t('compaction failed') }
-      const done = entry.shadowedCount === undefined ? firstLine(entry.detail ?? t('compacted')) ?? t('compacted') : t('compacted {count} items', { count: entry.shadowedCount })
-      return { kind: 'compaction', id: entry.id, state: 'ok', text: `${done}${entry.trigger === 'auto' ? t(' · auto') : ''}` }
-    }
+    case 'transcript-compaction': return compactionRow(entry, inputs)
+  }
+}
+
+/**
+ * The estimated share of a compaction done after `elapsedMs` of summarizing. The Harness reports no progress, so the
+ * share approaches 90% along a curve whose pace follows the size of the context being summarized (a larger context
+ * takes longer): about 80% when the expected time has passed. The last tenth is the summary landing.
+ * @param elapsedMs - time since the compaction began.
+ * @param contextTokens - the context being summarized, when known.
+ * @returns whole percent, 0 to 90.
+ */
+export function progressAt(elapsedMs: number, contextTokens: number | undefined): number {
+  const expectedMs = Math.min(45_000, Math.max(4_000, 4_000 + (contextTokens ?? 20_000) * 0.2))
+  return Math.min(90, Math.max(0, Math.round(90 * (1 - Math.exp(-Math.max(0, elapsedMs) / (expectedMs / 2.5))))))
+}
+
+/** How long after its summary lands the row still reads as applying: the fill takes 800 ms, and the painter starts it a frame later. */
+const FILL_HOLD_MS = COMPACTION_DRAIN_MS + 200
+
+/** Lines of the checkpoint summary shown when the row is opened. */
+const SUMMARY_ROWS = 8
+
+/** The estimate of the occupied tokens, as the session list and the status bar write it: `~148k`. */
+const approx = (tokens: number): string => `~${formatTokens(tokens)}`
+
+/**
+ * One compaction as a row: the stage it is in while it runs, then what it did. The occupancy numbers are the facts' marks
+ * for this compaction, so a settled row reads the same after later steps grow the context.
+ */
+function compactionRow(entry: TranscriptCompactionModel, inputs: StreamInputs): StreamRow {
+  const { t, now } = inputs
+  const compact = inputs.policy.mode === 'compact'
+  const mark = inputs.compactions?.find(item => item.id === entry.compactionId)
+  const window = mark?.window ?? inputs.contextWindow
+  const share = (tokens: number | undefined): number | undefined => window === undefined || tokens === undefined ? undefined : contextPercent(tokens, window)
+  const before = share(mark?.before)
+  const after = share(mark?.after)
+  // The row settles only once the bar has filled: the end record follows the summary at once, but the fill takes a moment,
+  // and the ✓ and the settled look must not come before the bar reaches 100%.
+  const filling = entry.state === 'ok' && entry.summaryAt !== undefined && now - entry.summaryAt < FILL_HOLD_MS
+  const running = entry.state === 'running' || filling
+  const applying = filling || (entry.state === 'running' && entry.shadowedCount !== undefined)
+  const summarized = entry.summaryAt === undefined ? undefined : progressAt(entry.summaryAt - entry.startedAt, mark?.before ?? inputs.contextTokens)
+  const estimate = progressAt(now - entry.startedAt, mark?.before ?? inputs.contextTokens)
+  // The share while summarizing is the estimate; once the summary has landed the bar fills from where it stood to 100.
+  const percent = applying ? summarized ?? estimate : estimate
+  const bar = { from: percent, to: applying || entry.state === 'ok' ? 100 : percent, drain: applying, rev: entry.seq }
+  const trigger = entry.trigger === 'auto' ? t('auto') : undefined
+  const id = entry.id
+  if (running) {
+    const stage = applying ? t('applying') : t('summarizing')
+    const elapsed = applying ? [] : [compactElapsedMs(Math.max(0, now - entry.startedAt))]
+    const facts: CompactionFacts = { state: 'running', title: t('Compacting context'), compact, bar, percent: applying ? summarized ?? estimate : estimate, progress: [stage, ...elapsed], ...trigger === undefined ? {} : { trigger } }
+    return { kind: 'compaction', id, facts }
+  }
+  if (entry.state === 'error') {
+    const reason = firstLine(entry.error ?? entry.detail ?? '')
+    const title = reason === undefined ? t('Compaction failed') : t('Compaction failed: {reason}', { reason })
+    return { kind: 'compaction', id, facts: { state: 'error', title, compact } }
+  }
+  const title = entry.shadowedCount === undefined ? firstLine(entry.detail ?? t('Compacted')) ?? t('Compacted') : t('Compacted {count} items', { count: entry.shadowedCount })
+  const tokens = mark?.before !== undefined && mark.after !== undefined ? `${approx(mark.before)} → ${approx(mark.after)} ${t('tokens')}`
+    : entry.shadowedTokens === undefined ? undefined : `${approx(entry.shadowedTokens)} ${t('tokens')}`
+  const facts: CompactionFacts = {
+    state: 'ok', title, compact, bar,
+    ...before === undefined || after === undefined ? {} : { change: t('context {from}% → {to}%', { from: before, to: after }) },
+    ...tokens === undefined ? {} : { tokens },
+    ...trigger === undefined ? {} : { trigger },
+  }
+  const lines = compact || entry.summary === undefined ? [] : sanitizePluginText(entry.summary).split(/\r?\n/u).map(line => line.trim()).filter(line => line !== '')
+  const open = inputs.expanded || inputs.policy.mode === 'verbose'
+  return {
+    kind: 'compaction', id, facts,
+    ...lines.length === 0 ? {} : open
+      ? { summary: lines.slice(0, SUMMARY_ROWS), ...lines.length > SUMMARY_ROWS ? { more: t('… +{count} more', { count: lines.length - SUMMARY_ROWS }) } : {} }
+      : { hint: t('Ctrl+O summary') },
+    ...entry.trigger === 'manual' ? { trailing: true as const } : {},
   }
 }

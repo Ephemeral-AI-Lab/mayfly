@@ -257,10 +257,15 @@ export function apply(ctx) {
             if (nodes.length === 0) { log('compaction has nothing to replace'); break }
             const start = nodes[0]
             const end = nodes.at(-1)
-            session.append('compaction/summary', { compactionId: action.compactionId, ...(action.commandId === undefined ? {} : { sourceCommandId: action.commandId }), summary: [{ type: 'text', text: action.summary }], shadowedRange: { start, end }, shadowedSeqs: nodes, shadowedTokenCount: action.shadowedTokens, provider: action.provider, model: action.model })
+            session.append('compaction/summary', { compactionId: action.compactionId, ...(action.commandId === undefined ? {} : { sourceCommandId: action.commandId }), summary: [{ type: 'text', text: action.summary }], shadowedRange: { start, end }, shadowedSeqs: nodes, shadowedTokenCount: action.shadowedTokens, usage: { inputTokens: action.shadowedTokens, outputTokens: action.summaryTokens ?? 600 }, provider: action.provider, model: action.model })
             session.append('user/message', { id: `replay-checkpoint-${action.compactionId}`, role: 'user', content: [{ type: 'text', text: action.summary }], source: { kind: 'compact-checkpoint', compactionId: action.compactionId, ...(action.commandId === undefined ? {} : { sourceCommandId: action.commandId }) } }, { surfaceOp: { op: 'replace', startSeq: start, endSeq: end }, sourceEventSeqs: nodes })
-            session.append('compaction/end', { compactionId: action.compactionId, turn: action.turn, ...(action.commandId === undefined ? {} : { sourceCommandId: action.commandId }) })
             log(`compaction ${action.compactionId} replaced ${String(nodes.length)} nodes`)
+            break
+          }
+          case 'compact-end': {
+            const session = target(action)
+            session.append('compaction/end', { compactionId: action.compactionId, turn: action.turn, ...(action.commandId === undefined ? {} : { sourceCommandId: action.commandId }), ...(action.error === undefined ? {} : { error: action.error }) })
+            log(`compaction ${action.compactionId} ${action.error === undefined ? 'ended' : 'failed'}`)
             break
           }
           case 'goal': {

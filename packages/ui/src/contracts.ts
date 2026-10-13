@@ -29,7 +29,7 @@ interface MayflySnapshotPage<Node> { readonly node: Node, readonly nextCursor?: 
 export type MayflySnapshotProvider<Node> = (request: MayflySnapshotRequest) => MayflySnapshotPage<Node> | Promise<MayflySnapshotPage<Node>>
 
 export type MayflyTone = 'default' | 'muted' | 'primary' | 'accent' | 'user' | 'success' | 'warning' | 'danger'
-export type MayflyTextStyle = 'strong' | 'italic' | 'strike'
+export type MayflyTextStyle = 'strong' | 'italic' | 'strike' | 'inverse'
 /** The glyph animations of a loader and of a loader span. */
 export type MayflyLoaderVariant = 'bloom' | 'fill' | 'gap' | 'breath'
 export interface MayflyInlineSpan {

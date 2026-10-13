@@ -17,6 +17,11 @@ const INTERACTION = 'packages/mayfly/src/interaction/'
 /** What draws the conversation stream: the facts of its rows and the component that lays them out. */
 const STREAM = [`${TRANSCRIPT}stream-facts.ts`, 'packages/mayfly/src/components/']
 
+/** What draws a compaction row: the stream's facts, the row, and the facts that carry its occupancy. */
+const COMPACTION = [...STREAM, 'packages/mayfly/src/conversation/facts.ts', 'packages/mayfly/src/conversation/projection.ts']
+/** What draws the notification pane: the pane, the line, and the notices the facts raise into it. */
+const NOTIFICATION = [`${TRANSCRIPT}pane-notification.ts`, `${TRANSCRIPT}notices.ts`, 'packages/mayfly/src/components/notification-line.ts', 'packages/mayfly/src/conversation/facts.ts', `${INTERACTION}notifications.ts`]
+
 /** What each replay shows, as the sources whose change it can reveal. */
 const COVERS = {
   tour: [`${TRANSCRIPT}tool-*.ts`, `${TRANSCRIPT}process-*.ts`, `${TRANSCRIPT}pane-todo.ts`, ...STREAM],
@@ -36,9 +41,11 @@ const COVERS = {
   errors: [`${TRANSCRIPT}tool-*.ts`, `${TRANSCRIPT}transcript-model.ts`, ...STREAM],
   toollines: [`${TRANSCRIPT}tool-*.ts`, `${TRANSCRIPT}process-*.ts`, `${TRANSCRIPT}official-model.ts`, 'packages/mayfly/src/frontend/models.ts', ...STREAM],
   edits: [`${TRANSCRIPT}tool-*.ts`, `${TRANSCRIPT}process-*.ts`, `${TRANSCRIPT}official-model.ts`, 'packages/mayfly/src/frontend/models.ts', 'packages/mayfly/src/core/content-rows.ts', 'packages/mayfly/src/core/diff-align.ts', 'packages/mayfly/src/core/highlight.ts', ...STREAM],
-  compaction: [...STREAM],
-  manualCompact: [...STREAM],
-  context: [`${TRANSCRIPT}status-context.ts`, ...STREAM],
+  compaction: [...COMPACTION],
+  compactionFailed: [...COMPACTION],
+  compactionNoWindow: [...COMPACTION],
+  manualCompact: [...COMPACTION],
+  context: [`${TRANSCRIPT}status-context.ts`, `${TRANSCRIPT}notices.ts`, ...COMPACTION],
   subagents: [`${TRANSCRIPT}pane-agents.ts`, `${TRANSCRIPT}child-agent-model.ts`],
   childStream: [`${TRANSCRIPT}pane-agents.ts`, `${INTERACTION}agents-command.ts`],
   approvals: [`${INTERACTION}approval-plugin.ts`, `${INTERACTION}permission-panel.ts`],
@@ -47,9 +54,10 @@ const COVERS = {
   goal: [`${TRANSCRIPT}status-goal.ts`],
   jobs: [`${TRANSCRIPT}status-jobs.ts`, `${INTERACTION}jobs.ts`],
   queued: [`${INTERACTION}pane-queue.ts`],
-  retries: [`${TRANSCRIPT}transcript-model.ts`, `${INTERACTION}trace-*.ts`, ...STREAM],
+  retries: [`${TRANSCRIPT}transcript-model.ts`, `${INTERACTION}trace-*.ts`, ...NOTIFICATION, ...STREAM],
   sideQuestion: [`${INTERACTION}btw-command.ts`, `${INTERACTION}conversation-view-status.ts`],
-  notices: [`${INTERACTION}notifications.ts`],
+  notices: [...NOTIFICATION],
+  notificationPane: [...NOTIFICATION, ...COMPACTION],
   modes: [`${INTERACTION}mode-status.ts`, `${TRANSCRIPT}status-model.ts`],
   edge: [...STREAM, 'packages/mayfly/src/core/width.ts'],
   history: [`${TRANSCRIPT}conversation-feed.ts`, `${TRANSCRIPT}transcript-model.ts`, ...STREAM],
@@ -101,7 +109,7 @@ const REVIEW = {
     implemented: [
       'Deep diving fills its glyph, Thinking blooms its glyph, Writing fills like Deep diving; the label stays still in all three.',
       'A running tool keeps a still ● while only its label shimmers; a call being prepared reads Preparing to edit files while its code streams into the stream (see `streaming`).',
-      'The block is a constant three rows: the header, one line under it, and a blank row before the editor; it starts at the stream\'s left margin.',
+      'The block is two rows while a turn runs: the header and one line under it, at the stream\'s left margin; the row under it is the notification pane\'s, so the editor never shifts.',
       'The header tail (`· 8s · ↑30.2k ↓1.1k · 38 tok/s`) ticks once a second; the glyph and the shimmer move on core\'s clock, and reduced motion freezes them.',
     ],
     focus: [
@@ -111,10 +119,10 @@ const REVIEW = {
       { look: 'Reduced motion stops the glyph and the shimmer', how: '`/settings`, Reduced motion, then play to checkpoint `diving`' },
     ],
     differs: [
-      'The block is two lines plus a spacing row, as the owner drew it; the spec\'s up-to-three `⎿` lines and the interrupt cue in the right gap are gone.',
+      'The block is two lines, with the notification pane\'s row under it, as the owner drew it; the spec\'s up-to-three `⎿` lines and the interrupt cue in the right gap are gone.',
       'Waiting on the user breathes its ● like an external wait (no static `?`); see `activityWait`.',
     ],
-    pending: ['The stop acknowledgment (a static red ■ `interrupting…`) needs a live turn: press Esc in a real session. Notices and compaction are parts 3c.3 and 3c.4.'],
+    pending: ['The stop acknowledgment (a static red ■ `interrupting…`) needs a live turn: press Esc in a real session.'],
   },
   blocks: {
     scene: 17,
@@ -159,7 +167,7 @@ const REVIEW = {
       'The row\'s tool phase names the calls in flight: `Running 2 tools` while a command and a read run, `Running commands` once the read settled, and it ends with the last result.',
       'The pending lines and the row take their time from one tick and one format (whole seconds), so the seconds agree.',
       'The thinking ladder counts from the session\'s own timestamp.',
-      'The second line carries what the turn is doing that the stream does not say: the arguments of the calls in flight, or a provider retry (`Retry 2/5 in 3s · overloaded`); else a tip.',
+      'The second line carries what the turn is doing that the stream does not say: the arguments of the calls in flight; else a tip. A provider retry is the notification pane\'s (see `notificationPane`).',
       'Thinking is a block like a write: `● Thinking` with its first lines filling in (3 at Standard, 8 at Verbose, 40 open), then `… +N more`.',
     ],
     focus: [
@@ -184,6 +192,46 @@ const REVIEW = {
     ],
     differs: ['The decision cards of part 3d replace the panels under this row.'],
     pending: ['The approval row in the stream and the card itself are part 3d.'],
+  },
+  notificationPane: {
+    scene: 16,
+    reference: 'prototype scene 16 (Notices and banners) · component-library §5.2 · part 3c.3',
+    implemented: [
+      'One row between the activity block and the editor carries the notice to read now: right-aligned, never wider than half the terminal, one notice at a time (the most severe, then the newest) with a muted `· +N` for the ones waiting.',
+      'It shows the notification lane (commands\' and extensions\' feedback: `✓`/`ℹ` leave after 5 s, `⚠`/`✗` stay) and three notices the session\'s facts raise: a rate limit or provider error with its countdown (`Rate limited · retrying in 9s · 1/5`), a context 92% full (`Context 93% full · /compact now`), and a resumed session (`Resumed session · 2 turns · last active 3h ago`, which leaves after 5 s).',
+      'The row is there when nothing shows (blank), so the editor never moves; the footer under the editor keeps only the slash hint.',
+    ],
+    focus: [
+      { look: 'The rate-limit notice counts down, right-aligned, under the activity block', how: 'checkpoint `rate-limited`' },
+      { look: 'A success toast over a running turn, gone after 5 s', how: 'checkpoints `toast` and the one after it' },
+      { look: 'The context warning stays, the compaction clears it', how: 'checkpoints `context-full` and `relieved`' },
+      { look: 'The resumed notice after opening a stored conversation', how: 'checkpoint `resumed` (`/sessions`, then the stored conversation)' },
+      { look: 'The half-width cap and the truncation', how: '`pnpm run scenario notificationPane --width 60`' },
+    ],
+    differs: [
+      'The prototype\'s banners carry keys (`Esc cancel`, `r retry`); only the rate limit names Esc through the activity row\'s interrupt cue, and nothing here binds `r`.',
+      'The toast has no `Ctrl+J view` or `u undo` (the notification view and undo are not built).',
+    ],
+    pending: ['Offline and a low balance are not raised: the Harness has no offline signal and the balance is not read yet.'],
+  },
+  compaction: {
+    scene: 20,
+    reference: 'prototype scene 20 (Compaction) · component-library §5.6 (Compaction) · part 3c.4',
+    implemented: [
+      'While it runs: `● Compacting context ▰▰▰▰▱▱▱▱▱▱ 42% summarizing · 4s · auto` with the dot breathing; the percentage is an estimate that grows with the time (about 80% at the expected time, never past 90%); when the summary lands the stage reads `applying` and the bar fills to 100% over 800 ms.',
+      'Settled: `✓ Compacted 84 items ▰▰▰▰▰▰▰▰▰▰ context 91% → 9% · ~148k → ~12k tokens · auto` and `⎿ Ctrl+O summary` (the summary\'s first lines with Ctrl+O).',
+      'A narrow row sheds the bar, then the token estimate, then `auto`; below 56 columns and at Compact it is one line (`✓ Compacted 14 items · 91% → 9%`).',
+    ],
+    focus: [
+      { look: 'The estimated percentage growing with the seconds', how: 'checkpoint `summarizing` (frames compress time: run `pnpm run scenario compaction` live to watch it climb)' },
+      { look: 'The bar filling to 100% and the stage `applying`', how: 'checkpoint `applying` (the fill is 800 ms: watch it live)' },
+      { look: 'The settled row and its summary line', how: 'checkpoint `settled`; Ctrl+O is `open`' },
+      { look: 'Compact and narrow', how: '`pnpm run scenario compaction-compact`, and `--width 60` / `--width 40`' },
+      { look: 'The failure row', how: '`pnpm run scenario compactionFailed`' },
+      { look: 'A manual /compact: its own block below the turn\'s closing line', how: '`pnpm run scenario manualCompact`' },
+    ],
+    differs: ['The bar\'s edge cell does not breathe: the leading dot breathes while it runs (one motion channel, as every pending row).'],
+    pending: ['Stage 2 is inferred from the summary landing before the end record; a real compaction applies within a tick, so `applying` may be too brief to see outside a replay.'],
   },
   toolkit: {
     scene: 17,
@@ -338,6 +386,59 @@ const SCRIPTS = {
     key('enter'),
     play(), checkpoint('end'),
   ],
+  // A compaction stopped while it summarizes, while it applies, and settled; Ctrl+O opens the summary.
+  compaction: [
+    play('summarizing', TIMED), checkpoint('summarizing'),
+    play('applying', TIMED), checkpoint('applying'),
+    play('settled', TIMED), checkpoint('settled'),
+    key('ctrl+o'), checkpoint('open'),
+    play(), checkpoint('end'),
+  ],
+  compactionNoWindow: [
+    play('summarizing', TIMED), checkpoint('summarizing'),
+    play('applying', TIMED), checkpoint('applying'),
+    play('settled', TIMED), checkpoint('settled'),
+    play(), checkpoint('end'),
+  ],
+  compactionFailed: [
+    play('summarizing', TIMED), checkpoint('summarizing'),
+    play('failed', TIMED), checkpoint('failed'),
+    play(), checkpoint('end'),
+  ],
+  manualCompact: [
+    play('summarizing', TIMED), checkpoint('summarizing'),
+    play('settled', TIMED), checkpoint('settled'),
+    play(), checkpoint('end'),
+  ],
+  // The context warning once the window is nearly full, and after the compaction relieved it.
+  context: [
+    play('full', TIMED), checkpoint('full'),
+    play('relieved', TIMED), checkpoint('relieved'),
+    play(), checkpoint('end'),
+  ],
+  // Each severity of the lane over a running turn, one at a time.
+  notices: [
+    play('info', TIMED), checkpoint('info'),
+    play('success', TIMED), checkpoint('success'),
+    play('warning', TIMED), checkpoint('warning'),
+    play('error', TIMED), checkpoint('error'),
+    play('progress', TIMED), checkpoint('progress'),
+    play(), checkpoint('end'),
+  ],
+  retries: [
+    play('overloaded', TIMED), checkpoint('overloaded'),
+    play('timeout', TIMED), checkpoint('timeout'),
+    play(), checkpoint('end'),
+  ],
+  // The rate-limit countdown, a toast over a turn, the context filling and relieved, then a stored conversation resumed.
+  notificationPane: [
+    play('rate-limited', TIMED), checkpoint('rate-limited'),
+    play('toast', TIMED), checkpoint('toast'),
+    play('context-full', TIMED), checkpoint('context-full'),
+    play('relieved', TIMED), checkpoint('relieved'),
+    play(), checkpoint('end'),
+    type('/sessions'), key('enter'), key('enter'), key('down'), key('down'), checkpoint('sessions'), key('enter'), key('enter'), checkpoint('resumed'),
+  ],
   // A settled turn folds behind its title; Ctrl+O opens its calls as lines; the interrupted turn leaves a call cancelled.
   toollines: [
     play(), checkpoint('standard'),
@@ -387,6 +488,13 @@ const SIZES = {
   blocks: [[120, 56], [60, 56]],
   streaming: [[120, 64], [60, 56]],
   sync: [[120, 40], [60, 30]],
+  notificationPane: [[120, 40], [60, 30]],
+  compaction: [[120, 40], [60, 30]],
+  compactionFailed: [[120, 40], [60, 30]],
+  compactionNoWindow: [[120, 40], [60, 30]],
+  manualCompact: [[120, 40], [60, 30]],
+  context: [[120, 40], [60, 30]],
+  notices: [[120, 40], [60, 30]],
   turns: [DEFAULT_SIZE, [60, 24], [40, 24]],
   toollines: [[120, 80], [60, 64], [40, 64]],
   edits: [[120, 90], [60, 70], [40, 70]],
@@ -632,6 +740,27 @@ export const CATALOG = Object.freeze({
     sizes: [[120, 90], [60, 70]],
     script: level === 'detailed' ? [play('run'), checkpoint('live'), play(), checkpoint('end')] : [play(), checkpoint('end')],
   }])),
+  // The compaction at the other work-details levels (the default, Standard, is `compaction`).
+  ...Object.fromEntries(['compact', 'verbose'].map(level => [`compaction-${level}`, {
+    summary: `a compaction at the ${level[0].toUpperCase()}${level.slice(1)} level`,
+    source: { replay: 'compaction' },
+    config: { mayfly: { transcriptView: level } },
+    covers: COVERS.compaction,
+    sizes: [[120, 40], [60, 30]],
+    script: [play('summarizing', TIMED), checkpoint('summarizing'), play('applying', TIMED), checkpoint('applying'), play('settled', TIMED), checkpoint('settled'), play(), checkpoint('end')],
+  }])),
+  // The chip back to the bottom shares the notification row: centered, with the notice to its right.
+  'notification-chip': {
+    summary: 'scrolled away from the tail while a notice shows: the chip back to the bottom is centered on the notification row and the notice takes the room to its right',
+    source: { replay: 'notificationPane' },
+    covers: COVERS.notificationPane,
+    sizes: [[100, 22], [60, 22]],
+    script: [
+      play('context-full', TIMED), key('pageup'), checkpoint('away'),
+      key('ctrl+down'), checkpoint('tail'),
+      key('pageup'), play('relieved', TIMED), checkpoint('new'),
+    ],
+  },
   // The pill: scroll away from a streaming answer, let the rest arrive, then follow it again with Ctrl+↓.
   live: {
     summary: 'a streamed answer: scroll away mid-stream, see the chip (`Back to bottom`, then `N new turns`), then Ctrl+↓ follows it',

@@ -53,9 +53,8 @@ import { randomUUID } from 'node:crypto'
 import type { Context } from '@deepseek-ai/cordis'
 import type { MayflyScreen, MayflySubmittedDraft } from '../core/types.ts'
 import type { Agent } from '@deepseek-ai/dsh-agent'
-import { ui, type MayflyFeedback, type MayflyFeedbackRecord, type MayflyUiNode, type MayflyUiScope } from '@ephemeral-ai/mayfly-ui'
+import { ui, type MayflyFeedback, type MayflyUiNode, type MayflyUiScope } from '@ephemeral-ai/mayfly-ui'
 import { normalizeWheelInput } from '../core/terminal.ts'
-import { feedbackSpans } from '../core/ui-interaction-notifications.ts'
 import { parseCommand } from '@deepseek-ai/dsh-commands'
 import type { PromptContentPart, StoredImageAttachment } from '@deepseek-ai/dsh-attachment'
 import { createUserMessage, type ContentBlock } from '@deepseek-ai/dsh-llm'
@@ -236,17 +235,8 @@ export function apply(ctx: Context): void {
     const agent = ctx.mayflyCurrentAgent.current()
     return agent === null ? { kind: 'app', targetId: 'prompt' } : { kind: 'session', sessionId: String(agent.id) }
   }
-  const visibleNotification = (): MayflyFeedbackRecord | undefined => {
-    const agentId = ctx.mayflyCurrentAgent.current()?.id
-    const severity = { info: 0, success: 1, warning: 2, error: 3 }
-    return ctx.mayflyUiInteraction.notificationSnapshot()
-      .filter(record => record.scope.kind === 'app' || (record.scope.kind === 'session' && String(record.scope.sessionId) === String(agentId)))
-      .toSorted((left, right) => severity[left.severity] - severity[right.severity] || left.createdAt - right.createdAt)
-      .at(-1)
-  }
+  /** The footer under the editor holds only the slash hint; every notification is the notification pane's. */
   const feedbackNode = (): MayflyUiNode | undefined => {
-    const record = visibleNotification()
-    if (record !== undefined) return ui.richText(feedbackSpans(record.severity, record.message))
     const hint = slashHint()
     return hint === undefined ? undefined : ui.text(hint, { tone: 'muted' })
   }
@@ -288,14 +278,13 @@ export function apply(ctx: Context): void {
     return undefined
   }
 
-  /** Recompile the prompt footer from structured feedback or slash state. */
+  /** Recompile the prompt footer from the slash state. */
   let refreshingHint = false
   function refreshHint(): void {
     if (refreshingHint) return
     refreshingHint = true
     try { extensionRuntime.refreshPresentation() } finally { refreshingHint = false }
   }
-  ctx.effect(() => ctx.mayflyUiInteraction.subscribe(refreshHint))
 
   /**
    * Restore one captured submission buffer through the adapter — raw marker

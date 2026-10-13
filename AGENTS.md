@@ -162,7 +162,7 @@ into the live session by a driver plugin loaded with `dsh --patch`. The driver a
 agent loop would have written, creates child sessions (continuable ones with a
 live Agent) and a `/btw` side conversation with its own Agent, drives the real
 goal and job services, writes compactions, failed provider attempts with their
-retry records, inbox messages (the queued-message pane), and footer notices, and
+retry records, inbox messages (the queued-message pane), and notification-pane notices, and
 puts approval, question, and plan-review prompts to you, so reviewing a state
 needs no model, no quota, and no tools. The replays cover tool cards of every
 kind, streaming phases, subagents, plan mode, goals, jobs, modes and model
