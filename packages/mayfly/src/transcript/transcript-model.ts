@@ -15,14 +15,12 @@ import type { MayflyScreen } from '../core/types.ts'
 import type { MayflyTranslate } from '../frontend/locale.ts'
 import { freezeModel, materializeTranscriptEntries, type TranscriptEntryModel, type TranscriptModel, type TranscriptTurnModel } from '../frontend/models.ts'
 import { StreamFacts } from './stream-facts.ts'
+import type { TickSource } from './tick.ts'
 import {
   DEFAULT_TRANSCRIPT_PRESENTATION,
   type TranscriptPresentationPolicy,
   type TranscriptPresentationSnapshot,
 } from './presentation-policy.ts'
-
-/** How often the stream is built again while a call runs, so its time moves. */
-const PENDING_TICK_MS = 1000
 
 type Source = TranscriptModel | (() => TranscriptModel | null)
 
@@ -35,6 +33,8 @@ export interface TranscriptControllerOptions {
   readonly t: MayflyTranslate
   /** The messages the user typed while the agent works; read on every publish. */
   readonly queued: () => readonly { readonly id: string, readonly text: string }[]
+  /** The clock a call that is in flight keeps its time by; absent, the stream's time only moves when it is published. */
+  readonly tick?: TickSource
   /** Where the references of the images the stream shows are kept for the byte loader. */
   readonly imageRefs?: Map<string, { readonly attachmentId: string, readonly mediaType: string }>
 }
@@ -89,7 +89,7 @@ export class TranscriptController {
   private slot: MayflyNodeSlot | undefined
   private screen: TranscriptScreen | undefined
   private expanded = false
-  private tick: ReturnType<typeof setTimeout> | undefined
+  private offTick: (() => void) | undefined
 
   constructor(private readonly options: TranscriptControllerOptions) {}
 
@@ -163,8 +163,8 @@ export class TranscriptController {
   }
 
   dispose(): void {
-    clearTimeout(this.tick)
-    this.tick = undefined
+    this.offTick?.()
+    this.offTick = undefined
     this.unmount()
     this.views.clear()
     this.active = undefined
@@ -178,7 +178,7 @@ export class TranscriptController {
     this.screen?.requestRender(true)
   }
 
-  private publish(): void {
+  private publish(now = Date.now()): void {
     const slot = this.slot
     if (slot === undefined) return
     const view = this.active === undefined ? undefined : this.views.get(this.active)
@@ -193,7 +193,7 @@ export class TranscriptController {
       expanded: this.expanded,
       liveTurnHeader: view.options.liveTurnHeader === true,
       t: this.options.t,
-      now: Date.now(),
+      now,
       queued: this.options.queued(),
       ...(this.options.imageRefs === undefined ? {} : { imageRefs: this.options.imageRefs }),
     })
@@ -202,20 +202,19 @@ export class TranscriptController {
     this.keepTime(facts)
   }
 
-  /** A call that still runs shows its own time, so the stream is built again each second while one is on screen. */
+  /** A call in flight shows its own time, so the stream is built again at each tick while one is on screen. */
   private keepTime(facts: TranscriptViewFacts): void {
     const pending = facts.turns.some(turn => turn.rows.some(row => row.kind === 'tool' && row.state === 'pending'))
     if (!pending) {
-      clearTimeout(this.tick)
-      this.tick = undefined
+      this.offTick?.()
+      this.offTick = undefined
       return
     }
-    if (this.tick !== undefined) return
-    this.tick = setTimeout(() => {
-      this.tick = undefined
-      this.publish()
+    if (this.offTick !== undefined || this.options.tick === undefined) return
+    this.offTick = this.options.tick.subscribe((now) => {
+      this.publish(now)
       this.screen?.requestRender()
-    }, PENDING_TICK_MS)
+    })
   }
 
   private mount(): void {

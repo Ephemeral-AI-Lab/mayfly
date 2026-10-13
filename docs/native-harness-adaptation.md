@@ -69,8 +69,8 @@ presentation and current-Agent selection.
 - `mayfly.transcriptView` replaces `mayfly.transcript.*`. Values are `compact`,
   `standard` (default), `detailed`, and `verbose`, keeping the Harness Chat
   work-details mode names. Unlike Harness Chat, whose running turn header and
-  open group title are its live signals, Mayfly keeps every live fact in the
-  activity row and renders the transcript in the past tense: completed turns fold
+  open group title are its live signals, Mayfly keeps the vitals of the turn in the
+  activity row (calls in flight are pending lines in the transcript) and renders the rest in the past tense: completed turns fold
   behind a settled turn header while final replies (and, from Standard up, file
   changes) remain visible, process work collapses into titles of settled work,
   and Verbose keeps every card open. Ctrl+O expands the recent `expandTurns`

@@ -11,7 +11,8 @@ import type { OutputProgress } from './types.ts'
 
 /** Visible output of one attempt; transport identity stays with its owner. */
 export interface AssistantStreamState {
-  readonly preparing?: readonly { readonly id: string, readonly name: string, readonly characters: number }[]
+  /** Tool calls whose arguments still stream: the partial JSON text so far, and when the first delta arrived. */
+  readonly preparing?: readonly { readonly id: string, readonly name: string, readonly characters: number, readonly arguments: string, readonly startedAt: number }[]
   readonly reasoning: string
   readonly text: string
   readonly phase: 'waiting' | 'thinking' | 'composing'
@@ -36,7 +37,13 @@ export function foldAssistantStreamChunk(state: AssistantStreamState, chunk: Str
     const previous = calls.find(call => call.id === chunk.id)
     const name = chunk.name ?? previous?.name
     if (name === undefined) return state
-    const call = { id: chunk.id, name, characters: (previous?.characters ?? 0) + chunk.argumentsDelta.length }
+    const call = {
+      id: chunk.id,
+      name,
+      characters: (previous?.characters ?? 0) + chunk.argumentsDelta.length,
+      arguments: (previous?.arguments ?? '') + chunk.argumentsDelta,
+      startedAt: previous?.startedAt ?? time,
+    }
     return { ...state, preparing: previous === undefined ? [...calls, call] : calls.map(item => item.id === call.id ? call : item), phase: 'waiting', outputProgress: undefined, updatedAt: Math.max(state.updatedAt, time) }
   }
   if (chunk.type === 'reasoning-delta' || chunk.type === 'text-delta') {

@@ -627,23 +627,69 @@ const pending = {
   ],
 }
 
-const activityDetail = {
-  summary: 'the detail rows under the activity header: three items, one, two, none, and the padding to the turn\'s highest count',
+const blocks = {
+  summary: 'calls in flight of every kind: a read, a search, a multi-line command, a web search and a web fetch, each a pending line with its input at the level',
   items: [
-    turn('Walk me through the detail rows.', [
+    turn('Look into the config loader and run the long build.', [
       step({
-        firstTokenMs: 4000, marks: [{ block: 'wait', at: 0.8, name: 'diving' }, { block: 'reasoning', at: 0.9, name: 'reasoning' }, { block: 'tool', at: 0.6, name: 'command' }],
-        reasoning: 'The first paragraph is settled and gone.\n\nThe latest paragraph has three lines.\nThe second line follows the first.\nThe third line is the newest one, and it is long enough that it will be cut at the end of narrow rows.',
-        reasoningMs: 5000, stream: true,
-        tools: [tool('bash', { command: 'set -e\npnpm run build:changed\npnpm run check:lib\npnpm run typecheck', description: 'Build and check' }, { result: 'ok', runMs: 6000 })],
+        text: 'Starting several lookups at once.', textMs: 600, marks: [{ block: 'tool', at: 0.3, name: 'kinds' }],
+        tools: [
+          tool('read', { file_path: 'packages/mayfly/src/transcript/tool-calls.ts', offset: 120, limit: 80 }, { result: 'export function callsOf() {}', runMs: 20_000 }),
+          tool('read', { file_path: 'packages/mayfly/src/transcript/tool-kinds.ts' }, { result: 'export function kindOf() {}', runMs: 20_000 }),
+          tool('grep', { pattern: 'callsOf', path: 'packages/mayfly/src' }, { result: 'transcript/tool-calls.ts:340', runMs: 20_000 }),
+          tool('bash', { command: 'set -e\nexport CI=1\npnpm run build:changed\npnpm run check:lib\npnpm run typecheck\npnpm test -- --run tool-calls\necho done', description: 'Build and check' }, { result: 'ok', runMs: 20_000 }),
+          tool('bash', { command: 'pnpm run lint', description: 'Lint' }, { result: 'ok', runMs: 20_000 }),
+          tool('web_search', { queries: ['pi-tui loader animation', 'terminal shimmer text'] }, { result: 'two sources', runMs: 20_000 }),
+          tool('web_fetch', { url: 'https://nodejs.org/api/test.html' }, { result: '# Test runner', runMs: 20_000 }),
+        ],
       }),
-      step({ text: 'One detail row next.', textMs: 500, marks: [{ block: 'tool', at: 0.6, name: 'single' }], tools: [tool('grep', { pattern: 'ActivityRow', path: 'packages/mayfly/src' }, { result: 'components/activity-row.ts', runMs: 5000, meta: { shape: 'files', files: ['components/activity-row.ts'], total: 1, truncated: false } })] }),
-      step({ text: 'Two queries.', textMs: 500, marks: [{ block: 'tool', at: 0.6, name: 'queries' }], tools: [tool('web_search', { queries: ['pi-tui loader animation', 'terminal shimmer text'] }, { result: 'two sources', runMs: 5000, meta: { sources: [], truncated: false } })] }),
-      step({ text: 'No detail rows while the answer streams, but the rows stay reserved so the editor does not move. This sentence takes a while.', textMs: 6000, marks: [{ block: 'text', at: 0.7, name: 'writing' }] }),
+      step({
+        text: 'One long command on its own.', textMs: 500, marks: [{ block: 'tool', at: 0.5, name: 'command' }],
+        tools: [tool('bash', { command: lines(14, n => `echo "step ${String(n)} of the release script" && sleep 1`), description: 'The release script' }, { result: 'released', runMs: 12_000 })],
+      }),
+      step({ text: 'Everything settled.' }),
     ]),
-    turn('A short turn: the reservation starts over.', [
-      step({ marks: [{ block: 'tool', at: 0.6, name: 'next' }], tools: [tool('read', { file_path: 'README.md' }, { result: '# replay-app', runMs: 5000 })] }),
-      step({ text: 'Done.' }),
+  ],
+}
+
+const EDIT_LINES = Array.from({ length: 12 }, (_, index) => `  setting${String(index + 1)}: ${String(index + 1)},`)
+
+const streaming = {
+  summary: 'a write and an edit being generated: the code appears line by line before the call is committed, then the call runs and settles in place',
+  items: [
+    turn('Write the report script, then tighten the config.', [
+      step({
+        text: 'Writing the script.', textMs: 500, prepareMs: 9000,
+        marks: [{ block: 'prepare', at: 0.12, name: 'write-early' }, { block: 'prepare', at: 0.5, name: 'write-half' }, { block: 'prepare', at: 0.97, name: 'write-late' }, { block: 'tool', at: 0.5, name: 'write-running' }],
+        tools: [write('scripts/report.mjs', lines(34, n => `export const metric${String(n)} = () => compute(${String(n)}, { window: ${String(n * 5)} })`), { runMs: 3000 })],
+      }),
+      step({
+        text: 'Now the edit.', textMs: 500, prepareMs: 6000,
+        marks: [{ block: 'prepare', at: 0.2, name: 'edit-early' }, { block: 'prepare', at: 0.6, name: 'edit-half' }, { block: 'prepare', at: 0.97, name: 'edit-late' }, { block: 'tool', at: 0.5, name: 'edit-running' }],
+        tools: [edit('src/config.mjs', EDIT_LINES.join('\n'), [...EDIT_LINES.slice(0, 3), '  retries: 3,', '  backoff: { base: 100, max: 5000 },', '  jitter: true,', '  signal: AbortSignal.timeout(30_000),', ...EDIT_LINES.slice(6)].join('\n'), { runMs: 3000 })],
+      }),
+      step({ text: 'Both are in place.' }),
+    ]),
+  ],
+}
+
+const sync = {
+  summary: 'the activity row in step with the stream: two calls of different kinds in flight, one settles, then the model thinks again',
+  items: [
+    turn('Build and read the changelog together.', [
+      step({
+        text: 'Running both at once.', textMs: 500,
+        marks: [{ block: 'tool', at: 0.1, name: 'mixed' }, { block: 'tool', at: 0.55, name: 'one' }],
+        tools: [
+          tool('bash', { command: 'pnpm run build', description: 'Build' }, { result: 'built 3 packages', runMs: 10_000 }),
+          tool('read', { file_path: 'CHANGELOG.md' }, { result: '# Changelog', runMs: 3000 }),
+        ],
+      }),
+      step({
+        firstTokenMs: 800, reasoning: 'The build passed and the changelog is short.\nI can summarise both now.', reasoningMs: 5000, stream: true,
+        marks: [{ block: 'reasoning', at: 0.6, name: 'thinking' }],
+      }),
+      step({ text: 'Both finished.' }),
     ]),
   ],
 }
@@ -768,7 +814,7 @@ const content = {
   ])],
 }
 
-export const REPLAYS = { tour, toolkit, thinking, markdown, live, phases, thinkingLadder, pending, activityDetail, activityWait, prompts, turns, toollines, edits, errors, compaction: compactionReplay, manualCompact, context, subagents, childStream, approvals, questions, plan, goal, jobs, queued, retries, sideQuestion, notices, modes, edge, history, wheel, content }
+export const REPLAYS = { tour, toolkit, thinking, markdown, live, phases, thinkingLadder, pending, blocks, streaming, sync, activityWait, prompts, turns, toollines, edits, errors, compaction: compactionReplay, manualCompact, context, subagents, childStream, approvals, questions, plan, goal, jobs, queued, retries, sideQuestion, notices, modes, edge, history, wheel, content }
 
 /*
  * The scenes of the Website's app shots. Each is the source of an `app-*` scenario of the catalog, whose goldens the

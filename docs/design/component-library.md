@@ -1196,10 +1196,10 @@ Settled calls are one static line: glyph, past-tense verb, target, outcome.
 **Edit is a diff; Write is code.**
 
 ```
-● Preparing to edit files · 3s · ↓0.8k           phase 1: arguments streaming
-● Editing files · 5s                              phase 2: applying
-  ⎿ pane-activity.ts  +12 −3 ▮▮▮▮▮▮▮▯                the counts tick up as the patch parses
-✓ Edited pane-activity.ts  +12 −3 ▮▮▮▮▮▮▮▯        phase 3: 400 ms flash, then static
+● Edit(pane-activity.ts)                          phase 1: arguments streaming; the rows fill as the model writes
+    41 │ − const frame = moon                          (the row says Preparing to edit files)
+● Edit(pane-activity.ts) · 5s                     phase 2: committed and applying, the same rows
+✓ Edit(pane-activity.ts) · +12 −3 ▮▮▮▮▮▮▮▯        phase 3: settled in place
     41   41 │   const moon = state.mode === 'waiting'
     42      │ − const frame = moon
          42 │ + const frame = glyphFor(state)
@@ -1247,13 +1247,20 @@ stream is empty. The moment a call is committed it has a block in the stream, in
 | Failed | `✗ Bash(pnpm test) · exit 1`, the first line of the reason | |
 | Interrupted | `⊘ Bash(pnpm test)`, muted, no outcome | the turn ended before the call settled |
 
-Partial output appears in a pending block only where the Harness reports it while the call runs (the committed
-`tool/call` and `tool/result` events carry none for a foreground command; a background job has its own live tail);
-otherwise the output arrives with the result.
+The Harness reports no output while a foreground call runs (the committed `tool/call` and `tool/result` events carry
+none; a background job has its own live tail, which the bottom bar will carry), so a pending block shows the call's
+**input** instead, by level (development spec §7.1, "The tool block base"): the lines of a multi-line command after the
+first, and for Edit and Write the code the model is generating, row by row, before the call is even committed. The
+output arrives with the result.
 
-**By level.** Compact hides the process of a running turn, so there the row also carries the one-line detail
-(the running command, or the reasoning paragraph) after its `⎿`. At Standard, Detailed, and Verbose the stream shows
-the current action and the row's second line is a tip.
+**By level.** The levels choose how much of a call the stream draws; they never change the activity row. The row has one
+effect (header, tail, and a tip under it) at every level. Compact draws a call in flight as its pending line alone, so
+the stream is never empty while the row is busy.
+
+**One clock, one list.** The stream's pending lines and the row take their seconds from one host tick and one format
+(whole seconds while a call runs, tenths once it settled), and the row's tool phase names the calls in flight (the
+`inFlight` fact: `Running commands`, or `Running 3 tools` for several kinds), the list the pending lines are drawn from,
+so the two never disagree about what runs. The thinking ladder counts from the reasoning phase's own session timestamp.
 
 **The thinking ladder.** The thinking label is a character, not a status: it deepens with the seconds spent in the
 current reasoning phase (the clock restarts with each phase), and its tone steps deeper with it. Four stages:

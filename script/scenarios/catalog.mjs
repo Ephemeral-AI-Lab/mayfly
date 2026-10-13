@@ -24,10 +24,12 @@ const COVERS = {
   thinking: [...STREAM, `${TRANSCRIPT}presentation-policy.ts`, 'packages/mayfly/src/core/ui-list-paint.ts'],
   live: [...STREAM],
   markdown: [...STREAM, 'packages/mayfly/src/core/components.ts', 'packages/mayfly/src/core/content-rows.ts', 'packages/mayfly/src/core/markdown-rows.ts', 'packages/mayfly/src/core/ui-list-paint.ts'],
-  phases: [`${TRANSCRIPT}pane-activity.ts`, `${TRANSCRIPT}output-rate.ts`, 'packages/mayfly/src/conversation/activity-detail.ts', 'packages/mayfly/src/components/activity-row.ts'],
+  phases: [`${TRANSCRIPT}pane-activity.ts`, `${TRANSCRIPT}output-rate.ts`, 'packages/mayfly/src/components/activity-row.ts'],
   thinkingLadder: [`${TRANSCRIPT}pane-activity.ts`, 'packages/mayfly/src/components/activity-row.ts'],
-  pending: [`${TRANSCRIPT}pane-activity.ts`, `${TRANSCRIPT}tool-calls.ts`, `${TRANSCRIPT}transcript-model.ts`, 'packages/mayfly/src/components/activity-row.ts', ...STREAM],
-  activityDetail: [`${TRANSCRIPT}pane-activity.ts`, 'packages/mayfly/src/conversation/activity-detail.ts', 'packages/mayfly/src/components/activity-row.ts'],
+  pending: [`${TRANSCRIPT}pane-activity.ts`, `${TRANSCRIPT}tool-*.ts`, `${TRANSCRIPT}transcript-model.ts`, `${TRANSCRIPT}tick.ts`, 'packages/mayfly/src/components/activity-row.ts', ...STREAM],
+  blocks: [`${TRANSCRIPT}tool-*.ts`, `${TRANSCRIPT}process-*.ts`, `${TRANSCRIPT}official-model.ts`, `${TRANSCRIPT}transcript-model.ts`, ...STREAM],
+  streaming: [`${TRANSCRIPT}tool-*.ts`, `${TRANSCRIPT}partial-json.ts`, `${TRANSCRIPT}official-model.ts`, 'packages/mayfly/src/conversation/stream-accumulator.ts', 'packages/mayfly/src/core/content-rows.ts', 'packages/mayfly/src/core/diff-align.ts', ...STREAM],
+  sync: [`${TRANSCRIPT}pane-activity.ts`, `${TRANSCRIPT}session-facts.ts`, `${TRANSCRIPT}tick.ts`, 'packages/mayfly/src/conversation/facts.ts', 'packages/mayfly/src/components/activity-row.ts', ...STREAM],
   activityWait: [`${TRANSCRIPT}pane-activity.ts`, 'packages/mayfly/src/components/activity-row.ts', `${INTERACTION}approval-plugin.ts`, `${INTERACTION}questions-plugin.ts`],
   prompts: [`${TRANSCRIPT}transcript-model.ts`, `${INTERACTION}attachments.ts`, ...STREAM],
   turns: [`${TRANSCRIPT}transcript-model.ts`, `${TRANSCRIPT}process-groups.ts`, `${TRANSCRIPT}presentation-policy.ts`, `${INTERACTION}pane-queue.ts`, 'packages/mayfly/src/core/node-slot.ts', ...STREAM],
@@ -71,15 +73,15 @@ const REVIEW = {
     implemented: [
       'A call is in the stream the moment it is committed: `● Bash(pnpm test) · 4s`, the dot breathing and the call\'s own time ticking, then `✓`, `✗`, or `⊘` in place.',
       'Two commands running together are two pending lines; when they settle they regroup into the run block.',
-      'While a call runs the activity row says only `Running commands` (no time, no detail) with a tip under it; at Compact it carries the command, since the stream shows no process.',
+      'While a call runs the activity row says only `Running commands` (no time, no detail) with a tip under it, at every level; at Compact the stream still holds the pending line, since the row has one effect.',
     ],
     focus: [
       { look: 'The stream is never empty while the row says Running commands', how: 'checkpoint `running`' },
       { look: 'Two pending lines, each with its own time', how: 'checkpoint `parallel`' },
       { look: 'The pending line becomes a failure with its reason', how: 'checkpoint `failing`, then `end`' },
-      { look: 'The same at Compact: the row carries the command', how: '`pnpm run scenario pending-compact`, checkpoint `running`' },
+      { look: 'The same at Compact: the pending line is there, the row is unchanged', how: '`pnpm run scenario pending-compact`, checkpoint `running`' },
     ],
-    differs: ['Partial output is not shown: the Harness reports a foreground command\'s output only with its result.'],
+    differs: ['Partial output is not shown: the Harness reports a foreground command\'s output only with its result; a multi-line command shows its own lines as input (see `blocks`).'],
     pending: ['The interrupted call (`⊘`) is the last turn of the replay; the approval row in the stream is part 3d.'],
   },
   thinkingLadder: {
@@ -98,7 +100,7 @@ const REVIEW = {
     reference: 'prototype scene 14 (Activity row, `v`/`V` next phase) · spec §5.3 · ActivityRow in mayfly-components.mjs · part 3c.1',
     implemented: [
       'Deep diving fills its glyph, Thinking blooms its glyph, Writing fills like Deep diving; the label stays still in all three.',
-      'A running tool keeps a still ● while only its label shimmers; a call being prepared reads Preparing to edit files.',
+      'A running tool keeps a still ● while only its label shimmers; a call being prepared reads Preparing to edit files while its code streams into the stream (see `streaming`).',
       'The block is a constant three rows: the header, one line under it, and a blank row before the editor; it starts at the stream\'s left margin.',
       'The header tail (`· 8s · ↑30.2k ↓1.1k · 38 tok/s`) ticks once a second; the glyph and the shimmer move on core\'s clock, and reduced motion freezes them.',
     ],
@@ -114,32 +116,70 @@ const REVIEW = {
     ],
     pending: ['The stop acknowledgment (a static red ■ `interrupting…`) needs a live turn: press Esc in a real session. Notices and compaction are parts 3c.3 and 3c.4.'],
   },
-  activityDetail: {
-    scene: 14,
-    reference: 'prototype scene 14 (Activity row) · spec §5.3 · part 3c.2 (details and tips)',
+  blocks: {
+    scene: 17,
+    reference: 'component-development-spec §7.1 (tool block base) · component-library §5.3.1 · parts 3b.4 and 3b.5',
     implemented: [
-      'The line under the header is the single action running now: the latest reasoning paragraph, a command, a query, or one salient argument, cut at the end of the row.',
-      'While no action is named (Deep diving, Writing) that line holds a teaching tip instead, after the same ⎿, rotating each turn and every 15 s.',
-      'Below 40 columns the line drops its ⎿ connector (the tip too).',
+      'A call in flight is a pending line at every level, Compact included, with the dot breathing and the time ticking in whole seconds.',
+      'A running multi-line command is `● Bash` with its own lines under it (3 at Standard, 6 at Detailed and Verbose, 40 with Ctrl+O, then `… +N more`); Compact shows `● Bash(first line …)`. After it completes it reads `✓ Bash(first line …)`.',
+      'Calls of one kind form ONE group block from the first call on, in place: `● Read · 2 files` with a branch line per file (each with its own state), the head turning ✓ when all are done.',
+      'The activity row says `Running 7 tools` while they run, and its second line lists their arguments.',
     ],
     focus: [
-      { look: 'Detail under Thinking, under the command, the search, and the queries', how: 'checkpoints `reasoning`, `command`, `single`, `queries`' },
-      { look: 'The tip fills the line while the model waits or writes, and the editor does not move', how: 'checkpoints `diving` and `writing`' },
-      { look: 'What sheds at 60 and 40 columns', how: 'checkpoints `narrow` and `narrower`' },
-      { look: 'A dialog (the /help overlay) hides the row, and it returns', how: 'checkpoints `hidden`, `back`' },
+      { look: 'Groups of two reads and two commands, three single kinds, the long command with 3 rows of its own lines', how: 'checkpoint `kinds`' },
+      { look: 'A 14-line command: how many rows each level shows', how: 'checkpoint `command` here, then `blocks-compact`, `blocks-detailed`, `blocks-verbose`' },
+      { look: 'Ctrl+O lifts the input to 40 rows', how: '`blocks-verbose`, checkpoint `open`' },
+    ],
+    differs: ['Subagent and job progress is not drawn in the block; the bottom bar will carry it.'],
+    pending: ['Foreground output is not streamed by the Harness, so the input stands in for it.'],
+  },
+  streaming: {
+    scene: 17,
+    reference: 'component-library §5.3 (Edit is a diff; Write is code) · component-development-spec §7.1 · part 3b.5',
+    implemented: [
+      'The moment the model names a write or an edit, the stream holds its pending line; the code appears row by row as the model writes the arguments, before the call is committed.',
+      'While the model writes, the block shows the last rows that fit the level\'s cap (6 at Standard, 12 at Verbose, 40 with Ctrl+O), newest at the bottom, under `… +N earlier`; once the call is committed it shows the first rows above `… +N more`.',
+      'A write shows its code; an edit shows the old text removed and the new text added as it arrives. The path joins the line once the model has written it.',
+      'Committing the call and its result change the dot and the line in place: the rows do not jump.',
+    ],
+    focus: [
+      { look: 'The write\'s code scrolling: early, half, late (its line numbers keep their own count)', how: 'checkpoints `write-early`, `write-half`, `write-late`' },
+      { look: 'The committed call switches to its first rows', how: 'checkpoint `write-running`' },
+      { look: 'The edit growing as a diff', how: 'checkpoints `edit-early`, `edit-half`, `edit-late`' },
+      { look: 'Live rows beyond the cap with Ctrl+O', how: '`pnpm run scenario streaming-open`, checkpoints `half`, `late`' },
+      { look: 'The narrow terminal', how: '`pnpm run scenario streaming --width 60`' },
+    ],
+    differs: ['The edit\'s diff has no line numbers (the Harness gives no start line); the whole old text shows as removed until the new text arrives.'],
+    pending: ['An interrupt during the arguments needs a live turn.'],
+  },
+  sync: {
+    scene: 14,
+    reference: 'component-library §5.3.1 (division of labor) · part 3c.1',
+    implemented: [
+      'The row\'s tool phase names the calls in flight: `Running 2 tools` while a command and a read run, `Running commands` once the read settled, and it ends with the last result.',
+      'The pending lines and the row take their time from one tick and one format (whole seconds), so the seconds agree.',
+      'The thinking ladder counts from the session\'s own timestamp.',
+      'The second line carries what the turn is doing that the stream does not say: the arguments of the calls in flight, or a provider retry (`Retry 2/5 in 3s · overloaded`); else a tip.',
+      'Thinking is a block like a write: `● Thinking` with its first lines filling in (3 at Standard, 8 at Verbose, 40 open), then `… +N more`.',
+    ],
+    focus: [
+      { look: 'Row says Running 2 tools; the stream has two pending lines', how: 'checkpoint `mixed`' },
+      { look: 'The read has settled (✓), the row says Running commands', how: 'checkpoint `one`' },
+      { look: 'After the last result the row is Pondering, not a tool label; the thinking block fills in the stream', how: 'checkpoint `thinking`' },
+      { look: 'The second line names the arguments of the calls in flight', how: 'checkpoints `mixed` and `one`' },
     ],
     differs: [],
-    pending: ['The quiet-hints setting (`full`, `off`) only blanks the tip line.'],
+    pending: ['Reload mid-thought (the ladder keeps its stage) needs a live session.'],
   },
   activityWait: {
     scene: 14,
     reference: 'prototype scene 14 (Activity row, phase 5) and scene 21 (approval) · spec §5.3 · part 3c.2',
     implemented: [
-      'While an approval or a question waits on you, the row stays above the panel with a breathing ● and `Waiting for your approval` or `Waiting for your answer`, the subject on the ⎿ row, and the wait time.',
+      'While an approval or a question waits on you, the row stays above the panel with a breathing ● and `Waiting for your approval` or `Waiting for your answer`, a tip under it, and the wait time.',
       'The row clears when you answer; other dialogs still hide it.',
     ],
     focus: [
-      { look: 'Breathing ●, still label, elapsed wait time, the ⎿ subject', how: 'checkpoints `approval` and `question`' },
+      { look: 'Breathing ●, still label, elapsed wait time', how: 'checkpoints `approval` and `question`' },
       { look: 'The row is gone after the answer', how: 'checkpoint `end`' },
     ],
     differs: ['The decision cards of part 3d replace the panels under this row.'],
@@ -179,7 +219,7 @@ const REVIEW = {
       'Verbose (and Ctrl+O): one block per call, `✓ Bash(command) · 4.2s` with the output on the lines under it (no `⎿` mark) and a body of up to 6 rows: the lines read, the matches, the command output tail, the sources, the head of a fetched page; Ctrl+O shows every row the facts carry (40).',
       'Compact: the turn folds behind its header; an interrupted turn shows one merged line per run (`▸ Ran 2 commands · Read 1 file · 1.1s · 1 failed`).',
       'Detailed: the step the model works in draws verbose blocks and the steps before it collapse to Standard blocks; a settled turn is Standard.',
-      'A failed call keeps its reason on its line at every tier; a call cut off by an interrupt reads ⊘ with no outcome. A running call has no block: the activity row names it at every level.',
+      'A failed call keeps its reason on its line at every tier; a call cut off by an interrupt reads ⊘ with no outcome. A call in flight is a pending line at every level (see `blocks`).',
       'A blank row separates every row of a turn, as in Claude Code.',
     ],
     focus: [
@@ -209,7 +249,7 @@ const REVIEW = {
       'Standard: every edit and every write is its own open block, never folded into a run: an edit is its line (`✓ Edit(path) · +4 −2 ▮▮▮▮▮▮▯▯`) and its diff, a write is its line (`✓ Write(path) · 84 lines · 3.1 KB`) and its code, numbered and highlighted by the file extension; both show 6 rows.',
       'Verbose and Detailed (the current step): the same blocks at 12 rows (a `⋯` between hunks, `… +N rows` after); Ctrl+O lifts both to 40.',
       'Compact: the turn folds behind its header; the merged line counts the changes and the diffstat (`Edited 3 files · Wrote 1 file · Ran 1 command · 1.8s · +33 −8`).',
-      'A failed edit is `✗ Edit(path) · <first line of the reason>` at every tier, with no diff; a write cut off by an interrupt is `⊘ Write(path)`. A running edit or write has no block: the activity row names it.',
+      'A failed edit is `✗ Edit(path) · <first line of the reason>` at every tier, with no diff; a write cut off by an interrupt is `⊘ Write(path)`. A running edit or write is a pending line whose code fills as the model writes it (see `streaming`).',
       'The diff is syntax-highlighted by the file extension and has one quiet line-number gutter that numbers the modified file (a removed line has a blank cell); the tint behind a changed line stops 4 columns short of the right edge. The Harness sends three lines of context around a hunk, the diff body keeps one.',
     ],
     focus: [
@@ -231,7 +271,7 @@ const REVIEW = {
     ],
     pending: [
       'Command rows are finished in 3b.1 (no `⎿` tails); there is no command work in this part.',
-      'The 400 ms flash when an edit settles and the counts ticking while it applies are unscheduled; the activity row names the edit while it runs (part 3c).',
+      'The 400 ms flash when an edit settles is unscheduled.',
       'Enter, copy, and opening the diff in the editor are row selection (3e.2).',
     ],
   },
@@ -266,19 +306,29 @@ const SCRIPTS = {
     play('preparing', TIMED), checkpoint('preparing'),
     play(), checkpoint('end'),
   ],
-  // The detail rows of each kind of action, the reservation while the answer streams, a narrow terminal, a hiding dialog.
-  activityDetail: [
-    play('diving', TIMED), checkpoint('diving'),
-    play('reasoning', TIMED), checkpoint('reasoning'),
+  // Calls in flight of every kind, then one long command alone.
+  blocks: [
+    play('kinds', TIMED), checkpoint('kinds'),
     play('command', TIMED), checkpoint('command'),
-    resize(60, 30), checkpoint('narrow'),
-    resize(40, 30), checkpoint('narrower'),
-    resize(120, 40),
-    play('single', TIMED), checkpoint('single'),
-    play('queries', TIMED), checkpoint('queries'),
-    play('writing', TIMED), checkpoint('writing'),
-    type('/help'), key('enter'), checkpoint('hidden'), key('esc'), checkpoint('back'),
-    play('next', TIMED), checkpoint('next'),
+    play(), checkpoint('end'),
+  ],
+  // A write and an edit growing before the call is committed, then running, then settled.
+  streaming: [
+    play('write-early', TIMED), checkpoint('write-early'),
+    play('write-half', TIMED), checkpoint('write-half'),
+    play('write-late', TIMED), checkpoint('write-late'),
+    play('write-running', TIMED), checkpoint('write-running'),
+    play('edit-early', TIMED), checkpoint('edit-early'),
+    play('edit-half', TIMED), checkpoint('edit-half'),
+    play('edit-late', TIMED), checkpoint('edit-late'),
+    play(), checkpoint('end'),
+  ],
+  // Two kinds in flight, one settled, then the model thinks.
+  sync: [
+    play('mixed', TIMED), checkpoint('mixed'),
+    play('one', TIMED), checkpoint('one'),
+    play('thinking', TIMED), checkpoint('thinking'),
+    play(), checkpoint('end'),
   ],
   // The approval panel and the question panel, each answered with the keys.
   activityWait: [
@@ -334,7 +384,9 @@ const SCRIPTS = {
 /** Replays that run at a size of their own. */
 const SIZES = {
   phases: [DEFAULT_SIZE, [60, 24], [40, 24]],
-  activityDetail: [DEFAULT_SIZE, [60, 30]],
+  blocks: [[120, 56], [60, 56]],
+  streaming: [[120, 64], [60, 56]],
+  sync: [[120, 40], [60, 30]],
   turns: [DEFAULT_SIZE, [60, 24], [40, 24]],
   toollines: [[120, 80], [60, 64], [40, 64]],
   edits: [[120, 90], [60, 70], [40, 70]],
@@ -503,9 +555,9 @@ export const CATALOG = Object.freeze({
     sizes: [[120, 80], [60, 64]],
     script: level === 'detailed' ? [play('built'), checkpoint('live'), play(), checkpoint('end')] : [play(), checkpoint('end')],
   }])),
-  // Compact hides the process of a running turn, so the activity row carries the detail.
+  // Compact hides the settled process of a running turn but keeps what is in flight.
   'pending-compact': {
-    summary: 'the pending calls at the Compact level: the stream holds only the prompt, the activity row carries the command',
+    summary: 'the pending calls at the Compact level: a pending line each, no rows; the activity row is the same as at every level',
     source: { replay: 'pending' },
     config: { mayfly: { transcriptView: 'compact' } },
     covers: COVERS.pending,
@@ -519,6 +571,48 @@ export const CATALOG = Object.freeze({
     covers: COVERS.pending,
     sizes: [DEFAULT_SIZE],
     script: [play('running', TIMED), checkpoint('running'), play('parallel', TIMED), checkpoint('parallel'), play(), checkpoint('end')],
+  },
+  // The calls in flight at the other work-details levels (the default, Standard, is `blocks`).
+  ...Object.fromEntries(['compact', 'detailed', 'verbose'].map(level => [`blocks-${level}`, {
+    summary: `the calls in flight at the ${level[0].toUpperCase()}${level.slice(1)} level`,
+    source: { replay: 'blocks' },
+    config: { mayfly: { transcriptView: level } },
+    covers: COVERS.blocks,
+    sizes: [[120, 56], [60, 56]],
+    script: [play('kinds', TIMED), checkpoint('kinds'), play('command', TIMED), checkpoint('command'), ...(level === 'verbose' ? [key('ctrl+o'), checkpoint('open')] : []), play(), checkpoint('end')],
+  }])),
+  // The streaming code at the other levels, and with the turn open (the default, Standard, is `streaming`).
+  'streaming-compact': {
+    summary: 'the write and the edit being generated at the Compact level: a pending line each, no rows',
+    source: { replay: 'streaming' },
+    config: { mayfly: { transcriptView: 'compact' } },
+    covers: COVERS.streaming,
+    sizes: [[120, 40]],
+    script: [play('write-half', TIMED), checkpoint('half'), play('edit-half', TIMED), checkpoint('edit'), play(), checkpoint('end')],
+  },
+  'streaming-verbose': {
+    summary: 'the write and the edit being generated at the Verbose level: 12 rows, then the counter',
+    source: { replay: 'streaming' },
+    config: { mayfly: { transcriptView: 'verbose' } },
+    covers: COVERS.streaming,
+    sizes: [[120, 64]],
+    script: [play('write-half', TIMED), checkpoint('half'), play('write-late', TIMED), checkpoint('late'), play('edit-late', TIMED), checkpoint('edit'), play(), checkpoint('end')],
+  },
+  'streaming-open': {
+    summary: 'the write being generated with Ctrl+O open: the new rows are drawn live, up to 40',
+    source: { replay: 'streaming' },
+    covers: COVERS.streaming,
+    sizes: [[120, 64]],
+    script: [play('write-early', TIMED), key('ctrl+o'), play('write-half', TIMED), checkpoint('half'), play('write-late', TIMED), checkpoint('late'), play(), checkpoint('end')],
+  },
+  // At Compact a turn's calls are one line that counts up and stays; Ctrl+O opens the turn.
+  fold: {
+    summary: 'the Compact level: a turn\'s calls are one `▸ N tool calls` line where the first call was; Ctrl+O opens them',
+    source: { replay: 'toollines' },
+    config: { mayfly: { transcriptView: 'compact' } },
+    covers: COVERS.toollines,
+    sizes: [[120, 60]],
+    script: [play(), checkpoint('folded'), key('ctrl+o'), checkpoint('open')],
   },
   // The quiet-hints setting (the default, full, is `phases`): the line under the header stays blank.
   'phases-off': {

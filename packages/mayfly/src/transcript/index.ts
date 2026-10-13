@@ -67,7 +67,7 @@ export type { ProcessPolicy, TranscriptPresentationSnapshot, TranscriptViewMode 
 export const name = 'mayfly-transcript'
 
 /** Services the plugin requires before it can mount. */
-export const inject = ['mayflyConversationReady', 'mayflyLiveAssistantStream', 'mayflyScreen', 'mayflyTheme', 'mayflyComponents', 'mayflyKeymap', 'mayflyStatus', 'mayflyConversations', 'mayflyCurrentAgent', 'agents', 'sessionProjections', 'sessions', 'tools']
+export const inject = ['mayflyConversationReady', 'mayflyLiveAssistantStream', 'mayflyScreen', 'mayflyTheme', 'mayflyComponents', 'mayflyKeymap', 'mayflyStatus', 'mayflyTick', 'mayflyConversations', 'mayflyCurrentAgent', 'agents', 'sessionProjections', 'sessions', 'tools']
 
 /** The global action toggling tool-output expansion (Ctrl-O). */
 export const ACTION_TOGGLE_COLLAPSE = 'mayfly.transcript.toggle-collapse'
@@ -131,7 +131,7 @@ export function apply(ctx: Context): void {
       return undefined
     }
   }) ?? (() => {})))
-  const transcript = new TranscriptController({ presentation, t, queued: () => queued, imageRefs })
+  const transcript = new TranscriptController({ presentation, t, queued: () => queued, imageRefs, tick: ctx.mayflyTick })
   ctx.effect(() => () => transcript.dispose())
   // Every displayed or retained conversation reads its own native path; the
   // registry decides which views exist, the controller which one is mounted.

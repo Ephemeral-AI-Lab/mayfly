@@ -263,9 +263,10 @@ other part needs the brief. Parts of Phases 4 to 6 are cut when their phase star
 | **3b.1 Settled tool lines** | Every tool at three tiers (§7.1): a verbose block per call with a body (lines read, matches, output tail, sources, page head), a standard block for a run of one kind, a compact merged line; Detailed collapses earlier steps. | 17 | `toollines` (+ `-compact`, `-detailed`, `-verbose`), `toolkit`, `errors` | bodies and their cap; the block of a run; the merged line; the Detailed collapse; failure and ⊘ lines |
 | **3b.2 Edit cards** | An edit is `✓ Edit(path) · +4 −2` and its diff, open at Standard (6 rows; 12 at Verbose, 40 with Ctrl+O): syntax-highlighted code, red and green bands that stop short of the right edge, `−`/`+` marks, and one quiet line-number gutter (the modified file's numbers, a removed line blank) that counts from 1 in each hunk (the Harness gives no start line); each change is its own block, never a run; the failure reason on the call's line. | 17 | `tour`, *edits* | band and gutter tones; `⋯` between hunks; `… +N rows · Ctrl+O`; multi-file |
 | **3b.3 Write card** | `✓ Write(path) · N lines · size` and its highlighted code with line numbers, open like the edit (6, 12, 40 rows); Compact folds both. Command rows were finished in 3b.1. | 17 | `tour`, `toolkit`, `content` | highlight cap; a 1 MB write shows head rows only |
-| **3b.4 Pending call blocks** | A call is in the stream the moment it is committed: `● Bash(cmd) · 4s` with a breathing dot and its own time, any output below, then `✓`/`✗`/`⊘` in place; at Compact only the activity row names it. The activity row's second line is a tip outside Compact; the thinking label deepens through four named stages; the live reasoning row carries no ticking time. | 17, 14 | `toollines`, `phases`, *pending* | the stream is never empty while the row is busy; one fact in one place; the four thinking stages |
+| **3b.4 Pending call blocks** | A call is in the stream the moment it is committed: `● Bash(cmd) · 4s` with a breathing dot and its own time, any output below, then `✓`/`✗`/`⊘` in place; at Compact too, the line alone. The activity row's second line is a tip at every level; the thinking label deepens through four named stages; the live reasoning row carries no ticking time. | 17, 14 | `toollines`, `phases`, *pending* | the stream is never empty while the row is busy; one fact in one place; the four thinking stages |
+| **3b.5 Tool block base** | One descriptor per tool category (`tool-kinds.ts`) and four block states (running, done, run, fold) at the four levels (§7.1, "The tool block base"): a call in flight shows its input by level, Edit and Write code fills row by row before the commit, the activity row has one effect and names the calls in flight on the one host tick. | 17, 14 | `blocks`, `streaming`, `sync`, `fold` | the pending line at Compact; input rows per level; the code growing and holding still at the cap; the row and the stream agreeing |
 | **3c.1 Activity header** | The glyph by phase (bloom, fill, breath for every wait on you, still `●` with shimmering label, static `■`); the header tail; the constant three-row block. | 14 | `phases`, `phases-off` | motion cadence; reduced motion; what hides first at 60 and 40 columns |
-| **3c.2 Activity details and tips** | The line under the header names the single action running now, else a rotating tip; the block is a constant three rows; the wait row above the approval and question panels; the quiet-hints setting. | 14 | `activityDetail`, `activityWait` | the editor never shifts between phases; the shed order |
+| **3c.2 Activity tips** | The line under the header is a rotating tip (the row has one effect at every level; the action running is the stream's pending line); the block is a constant three rows; the wait row above the approval and question panels; the quiet-hints setting. | 14 | `sync`, `activityWait` | the editor never shifts between phases; the shed order |
 | **3c.3 Notices and banners** | `Banner` rows (rate limiting, offline, context nearly full, low balance, resumed); toasts in the activity gap. | 16 | `notices`, `context`, `retries`, *banners* | severity glyph and tone; stacking; the signals that raise each |
 | **3c.4 Compaction** | `1/2 summarizing`, `2/2 applying`, the occupancy bar with its 800 ms drain, `✓ Compacted 84 items · 91% → 9%`, the failure row. | 20 | `compaction`, `manualCompact`, `context` | the drain; the `~` estimate; the failure state |
 | **3d.1 Approval card** | The pending approval as the newest open row, and the decision card (variant B: grant first, digits, `Esc` rejects, the 300 ms arm delay, `⚠ deletes files`). | 21 | `approvals`, *approvals-queue* | the stray-key case grants nothing; `1 of N waiting`; feedback line |
@@ -298,10 +299,10 @@ How a part applies it:
    what a run of the tool collapses to, and what the compact line counts. Ask the owner only what the rule leaves open.
 2. **Failures and cancellations keep their reason at every tier.** A failed call is `✗` with the first line of its reason,
    a call the turn ended without settling is `⊘` with a muted verb and no outcome, an interruption is never folded away.
-3. **A running call is a pending line in the stream at every level but Compact** (component-library §5.3.1; this replaces the
-   3b.1 rule that a running call had no block): `● Bash(command) · 4s`, the dot breathing, the call's own time ticking, its
-   output below it where the Harness reports any. The activity row names the phase only (`Running commands`), with no
-   call time and, outside Compact, no detail. A call settles into `✓`, `✗`, or `⊘` in place.
+3. **A call in flight is a pending line in the stream at every level, Compact included** (component-library §5.3.1; this
+   replaces the 3b.1 rule that a running call had no block): `● Bash(command) · 4s`, the dot breathing, the call's own
+   time ticking, its input below it by tier (the tool block base, below). The activity row names the phase only
+   (`Running commands`), with no call time and no detail at any level. A call settles into `✓`, `✗`, or `⊘` in place.
 4. **A blank row separates every row of a turn** (prompt, header, each block, answer, reasoning, the interruption mark).
 5. **A call is named by its tool, not by a verb of ours:** `✓ **Read**(path) · 481 lines`, `✓ **WebSearch**("query") · 2 sources`, `✓ **Bash**(command) · 4.2s`, with the output on the lines under it and no `⎿` mark. The name is the tool's own in PascalCase (`web_search` is `WebSearch`, an MCP tool is `server › tool`), the arguments are shown as given, and the row clips at the end at narrow widths.
 
@@ -320,6 +321,39 @@ Where the code lives (what the next tool part reuses):
 - Bodies are bounded by the facts the model carries: `READ_PREVIEW_LINE_LIMIT`, `SEARCH_PREVIEW_MATCH_LIMIT`,
   `SEARCH_PATH_LIMIT`, `COMMAND_PREVIEW_LINE_LIMIT` in `transcript/official-model.ts`, and `OPEN_BODY_ROWS` for text kept
   from a result. A command shows the end of its output (`… +N earlier` above), every other body its first rows.
+
+### The tool block base (part 3b.5)
+
+Every tool block is drawn from one base, `transcript/tool-kinds.ts`: a `ToolKind` descriptor per category
+(`headed`, `count` phrase, `running` and `preparing` labels, `mergeable`, `streams`) that a category overrides on top of
+the base. A `Call` (`transcript/tool-calls.ts`) carries a `phase` (`preparing`: the model still writes the arguments;
+`running`: committed, no result; `settled`), a lazy `input()` (what the call was given that its line does not show) and a
+lazy `body()` (what came back). Blocks have four states, each at the four levels:
+
+| State | Compact | Standard | Detailed | Verbose (Ctrl+O) |
+| --- | --- | --- | --- | --- |
+| **Running** | `● Bash(first line …) · 4s`, no rows | a multi-line command is `● Bash` over its own lines (3 rows); Edit and Write 6 rows, filling from the top, then `… +N more` counts up; Thinking 3 rows, and the same 3 once settled (`✻ Thinking · 9s`) | the current step as Verbose: 6 rows (Edit and Write 12, Thinking 8) | the same; with the turn open (Ctrl+O) new rows are drawn live up to 40 |
+| **Done** (one call) | in the Fold line | one line, `✓ Bash(first line …)` (Edit and Write open at 6 rows) | the current step as Verbose, earlier steps as Standard | a block, body 6 (change 12, 40 open) |
+| **Run** (two or more of a kind) | in the Fold line | one group block from the first call on: `● Read · 2 files` and a branch line per call, each with its own state, in place | earlier steps | never merged: one block per call |
+| **Fold** | one line per turn where the first call was, `▸ 6 tool calls · 14s · Ctrl+O to expand`, counting up as the turn works; calls in flight keep their lines under it; nothing folds away at the end | none | none | none |
+
+Rules the base fixes for every tool:
+
+- The **input** of a call is shown while it runs: a command's lines after the first (the line carries the first, with
+  `…` when more follow), the queries of a web search, and for Edit and Write the code the model is generating. A call
+  with a single-line input (Read, Search, WebFetch) is just its line. Subagent and job progress is not drawn in the
+  block (the bottom bar will carry it).
+- **Streaming shows the end, a finished block shows the start.** While the model writes a call's input (Edit, Write) or
+  its thinking, the block shows the last rows that fit its cap, newest at the bottom, under `… +N earlier`; the line numbers
+  of a code window are its own (`ui.code` `start`). When the input is committed (the thinking is done) the block shows
+  its first rows above `… +N more`.
+- A call that streams its input (`streams`: Edit, Write) has a stream row from the moment the model names it, in
+  `preparing`, with no time of its own (the activity row counts the turn's); it keeps its identity when the call is
+  committed. Arguments are read by `transcript/partial-json.ts` as they arrive; the accumulator keeps the text
+  (`preparing[].arguments`).
+- A level never changes what the activity row draws. At Compact the settled calls are the Fold title's and only what is
+  in flight keeps its line.
+- The turn fold stays a Compact behavior; it is the Fold state of the base, not a separate mechanism.
 
 Constraints learned while building 3b.1:
 

@@ -179,8 +179,10 @@ export interface CommandCallModel {
   /** Producer time the call started, and the time its result settled. */
   readonly startedAt: number
   readonly endedAt?: number
-  /** The command line (the terminal call view's title, or the `command` argument). */
+  /** The command's first line (the terminal call view's title, or the `command` argument), with `…` when more follow. */
   readonly command: string
+  /** Every line of a command that spans several, bounded: what a running call shows as its input in place of its line's target. */
+  readonly commandLines?: readonly string[]
   readonly state: 'pending' | 'ok' | 'error'
   readonly exitCode?: number
   readonly signal?: string

@@ -250,7 +250,7 @@ ui.fields([
 *带 `ts` 语言提示的多行代码块（宽度 64）。*
 
 ```ts
-ui.code(value: MayflyContentField, options?: { language?: string, numbered?: boolean })
+ui.code(value: MayflyContentField, options?: { language?: string, numbered?: boolean, start?: number })
 ```
 
 表达代码或预格式化文本，例如补丁片段、命令输出或配置内容。带可识别的

@@ -268,7 +268,7 @@ ui.fields([
 *A multi-line code block with the `ts` language hint (width 64).*
 
 ```ts
-ui.code(value: MayflyContentField, options?: { language?: string, numbered?: boolean })
+ui.code(value: MayflyContentField, options?: { language?: string, numbered?: boolean, start?: number })
 ```
 
 Represents code or preformatted text such as patch fragments, command output,
@@ -286,8 +286,8 @@ ui.code([
 ].join('\n'), { language: 'ts' })
 ```
 
-`numbered: true` draws a muted `n │ ` gutter; a wrapped line's continuation rows
-stay under its code:
+`numbered: true` draws a muted `n │ ` gutter, counting from `start` (default 1, for a
+window of a longer text); a wrapped line's continuation rows stay under its code:
 
 ![`code` numbered](/shots/code-numbered.svg)
 

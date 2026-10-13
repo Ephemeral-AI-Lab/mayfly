@@ -213,16 +213,21 @@ export interface ConversationFacts {
   /** Projection-private usage buckets retained as plain readonly data. */
   readonly usageByStep?: Readonly<Record<string, number>> | undefined
   /**
-   * Latest running activity marker. `detail` is the bounded salient argument
-   * of a non-spawn call or the latest reasoning paragraph; `preparing` marks a
-   * call whose arguments are still streaming.
+   * Latest running activity marker; `preparing` marks a call whose arguments
+   * are still streaming.
    */
   readonly activity?: Readonly<{
     readonly kind: 'reasoning' | 'text' | 'tool'
     readonly name?: string | undefined
-    readonly detail?: string | undefined
     readonly preparing?: boolean | undefined
   }> | undefined
+  /**
+   * The non-spawn calls in flight: committed and awaiting their result, or (from the live draft) still streaming their
+   * arguments. The stream's pending lines and the activity row's tool phase both read this one list.
+   */
+  readonly inFlight?: readonly Readonly<{ readonly callId: string, readonly name: string, readonly detail?: string | undefined, readonly preparing?: boolean | undefined }>[] | undefined
+  /** A provider request being retried after a failure: which retry, when it was scheduled, and how long it waits. */
+  readonly retrying?: Readonly<{ readonly retry: number, readonly maxRetries: number, readonly at: number, readonly delayMs: number, readonly reason?: string | undefined }> | undefined
   /** Terminal outcome of the latest run. */
   readonly runOutcome?: 'completed' | 'failed' | undefined
   /** Envelope timestamp of the latest terminal outcome. */

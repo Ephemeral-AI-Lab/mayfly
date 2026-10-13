@@ -3,14 +3,16 @@
  * while the transcript is scrolled away. This plugin owns the row's facts and `components/activity-row.ts` draws them:
  * the phase (`Deep diving` while waiting on the model, `Thinking`, `Writing`, the running tool category or its
  * preparing form, a wait on the user, or the latched stop), the turn's elapsed time and throughput, and under them one
- * line: the single action running now, else a teaching tip. The block is a constant three rows (header, that line, a
- * blank row before the editor). Motion belongs to core's one clock, so the plugin republishes once a second for the elapsed time and
- * throughput (data, not frames) and not at all while the phase is still. The pane stays up above an approval or question panel (the
+ * line: a teaching tip. The row has one effect at every work-details level; the process itself is the stream's. The block is
+ * a constant three rows (header, that line, a blank row before the editor). Motion belongs to core's one clock, and the
+ * seconds come from the host's one tick (`mayflyTick`, the same the stream's pending lines keep time by), so the plugin
+ * republishes at each tick for the elapsed time and throughput (data, not frames) and not at all while the phase is still. The pane stays up above an approval or question panel (the
  * decision wait) while hiding under every other editor dialog. A latched user interrupt renders one static `■`
  * row held for a minimum visible duration, because a plain abort settles within one render frame.
  *
  * The phase and elapsed anchor come from the `mayflySessionFacts` bridge over the official `mayflyConversationFacts`
- * projection, so replay and live updates share one whole value.
+ * projection, so replay and live updates share one whole value. The tool phase names the calls in flight (`inFlight`),
+ * the list the stream draws its pending lines from; the reasoning ladder counts from the phase's session timestamp.
  *
  * @module @ephemeral-ai/mayfly/transcript/pane-activity
  */
@@ -22,12 +24,12 @@ import type { MayflyDecisionWait } from '../core/types.ts'
 // Empty type import carries the app-owned opaque binding event merge.
 import type {} from '../app/index.ts'
 import type { ConversationFacts } from '../conversation/types.ts'
-import { isSpawnToolName } from '../conversation/projection.ts'
 import { compactElapsedMs } from './agent-presentation.ts'
 import { outputCounter, outputRate } from './output-rate.ts'
-import { preparingLabel, runningLabel, toolActivity } from './process-activity.ts'
-import { toolDisplayName } from './present.ts'
+import { toolActivity } from './process-activity.ts'
+import { flightLabel } from './tool-kinds.ts'
 import type { SessionFactsService } from './session-facts.ts'
+import type { TickSource } from './tick.ts'
 import { formatTokens } from './status-context.ts'
 import { buildTipRotation } from './status-tips.ts'
 import { STATUS_TIPS } from './tips-content.ts'
@@ -42,7 +44,7 @@ import {
 export const name = 'mayfly-pane-activity'
 
 /** Services required before the pane can mount. */
-export const inject = ['mayflyPanes', 'mayflySessionFacts']
+export const inject = ['mayflyPanes', 'mayflySessionFacts', 'mayflyTick']
 
 /** The label while the turn waits on the model (the retired turn header's phrase). */
 const WAITING_LABEL = 'Deep diving'
@@ -73,8 +75,8 @@ const STOPPING_LABEL = 'interrupting…'
 const APPROVAL_LABEL = 'Waiting for your approval'
 const ANSWER_LABEL = 'Waiting for your answer'
 
-/** How often the elapsed time and the throughput are republished while a phase is live. */
-const TICK_MS = 1000
+/** The calls in flight whose arguments the second line lists before it counts the rest. */
+const INFO_CALLS = 3
 
 /** Ticks a tip stays up before the next one replaces it. */
 const TIP_TICKS = 15
@@ -86,12 +88,8 @@ const TIP_TICKS = 15
  */
 const STOPPING_MIN_MS = 600
 
-/** The timer primitives behind the clock tick and the stopping hold; replaceable in tests. */
+/** The timer primitives behind the stopping hold; replaceable in tests. */
 export interface ActivityTimers {
-  /** Start a repeating callback; mirrors the global `setInterval`. */
-  setInterval: (callback: () => void, ms: number) => ReturnType<typeof setInterval>
-  /** Stop a repeating callback; mirrors the global `clearInterval`. */
-  clearInterval: (handle: ReturnType<typeof setInterval>) => void
   /** Start a one-shot callback; mirrors the global `setTimeout`. */
   setTimeout: (callback: () => void, ms: number) => ReturnType<typeof setTimeout>
   /** Stop a one-shot callback; mirrors the global `clearTimeout`. */
@@ -100,8 +98,6 @@ export interface ActivityTimers {
 
 /** The process timer primitives. */
 const defaultActivityTimers: ActivityTimers = {
-  setInterval: (callback, ms) => setInterval(callback, ms),
-  clearInterval: handle => clearInterval(handle),
   setTimeout: (callback, ms) => setTimeout(callback, ms),
   clearTimeout: handle => clearTimeout(handle),
 }
@@ -139,16 +135,15 @@ interface ActivityState {
   mode: ActivityMode
   /** The teaching tip that fills the line under the header while no action runs. */
   tip: string
-  /** The phase or running-action label (an untranslated locale key). */
+  /** The phase or in-flight label (an untranslated locale key) and the values it interpolates. */
   label: string
-  /** The running action's detail. */
-  detail: string
+  labelValues?: { readonly count: number } | undefined
   /** The turn the tip rotation belongs to. */
   turn: number
   /** The active turn's start (a session timestamp), the elapsed anchor. */
   turnStartedAt?: number | undefined
-  /** When the current reasoning phase began. */
-  thinkingSince?: number | undefined
+  /** When the row first saw the current reasoning phase without a session timestamp (the fallback anchor). */
+  phaseSeenAt?: number | undefined
   /** When the current decision wait began. */
   waitingSince?: number | undefined
   /** The decision the user is being asked for. */
@@ -156,8 +151,6 @@ interface ActivityState {
   /** Whether a dialog panel occupies the editor slot. */
   dialog: boolean
   quietHints: QuietHints
-  /** Whether the stream hides the process of a running turn (Compact), so this row carries the detail. */
-  compact: boolean
 }
 
 /** The tail of counts after the label: `↑30.2k ↓4.1k`, parts omitted at zero. */
@@ -175,33 +168,17 @@ function phaseOf(mode: ActivityMode): ActivityPhase | undefined {
 }
 
 /**
- * The present-tense label for one mode: the phase, or the running (or
- * preparing) tool category. Subagent spawns keep the waiting label because
- * the agents pane owns them, and a durable tool marker left from an earlier
- * step never labels a waiting row.
+ * The present-tense label for one mode: the phase, or the calls in flight (their category, or how many). Subagent
+ * spawns keep the waiting label because the agents pane owns them.
  */
-function activityLabel(mode: ActivityMode, facts: ConversationFacts, decision: MayflyDecisionWait | undefined): string {
-  if (mode === 'stopping') return STOPPING_LABEL
-  if (mode === 'waiting') return decision?.kind === 'answer' ? ANSWER_LABEL : APPROVAL_LABEL
-  if (mode === 'thinking') return THINKING_STAGES[0]!.label
-  if (mode === 'writing') return WRITING_LABEL
-  const activity = facts.activity
-  const name = activity?.kind === 'tool' && activity.name !== undefined && !isSpawnToolName(activity.name) ? activity.name : undefined
-  if (name === undefined) return WAITING_LABEL
-  if (mode === 'tool') return runningLabel(toolActivity(name))
-  return activity?.preparing === true ? preparingLabel(toolActivity(name)) : WAITING_LABEL
-}
-
-/**
- * The detail of the single action running now: the latest reasoning paragraph while thinking, or the running call's
- * salient argument (a generic tool falls back to its name). Only Compact draws it, because the stream shows no process there.
- */
-function activityDetail(mode: ActivityMode, facts: ConversationFacts): string {
-  const activity = facts.activity
-  if (mode === 'thinking') return activity?.kind === 'reasoning' ? activity.detail ?? '' : ''
-  if (mode !== 'tool' || activity?.kind !== 'tool' || activity.name === undefined || isSpawnToolName(activity.name)) return ''
-  const detail = activity.detail ?? ''
-  return detail === '' && toolActivity(activity.name) === 'tools' ? toolDisplayName(activity.name) : detail
+function activityLabel(mode: ActivityMode, facts: ConversationFacts, decision: MayflyDecisionWait | undefined): { readonly key: string, readonly values?: { readonly count: number } } {
+  if (mode === 'stopping') return { key: STOPPING_LABEL }
+  if (mode === 'waiting') return { key: decision?.kind === 'answer' ? ANSWER_LABEL : APPROVAL_LABEL }
+  if (mode === 'thinking') return { key: THINKING_STAGES[0]!.label }
+  if (mode === 'writing') return { key: WRITING_LABEL }
+  const calls = facts.inFlight ?? []
+  if (mode !== 'tool' || calls.length === 0) return { key: WAITING_LABEL }
+  return flightLabel(calls.map(call => ({ activity: toolActivity(call.name), preparing: call.preparing === true })))
 }
 
 /** Resolve the mode from editor occupancy, the decision wait, the stop latch, projection activity, and Agent status. */
@@ -216,17 +193,17 @@ function activityMode(state: ActivityState, facts: ConversationFacts, statusActi
     switch (facts.phase) {
       case 'thinking': return 'thinking'
       case 'composing': return 'writing'
-      case 'tool': return 'tool'
-      default: return 'diving'
+      // The calls in flight, not the last call event, decide the tool phase: it ends with the last result.
+      default: return (facts.inFlight?.length ?? 0) > 0 ? 'tool' : 'diving'
     }
   }
   return statusActive ? 'diving' : 'idle'
 }
 
 /** Read the preferences this row follows from the resolved `mayfly` settings section. */
-function readPreferences(ctx: Context): { readonly quietHints: QuietHints, readonly compact: boolean } {
+function readPreferences(ctx: Context): { readonly quietHints: QuietHints } {
   const settings = ctx.get('mayflyInteractionState')?.settingsSource()
-  return { quietHints: settings?.quietHints === 'off' ? 'off' : 'full', compact: settings?.transcriptView === 'compact' }
+  return { quietHints: settings?.quietHints === 'off' ? 'off' : 'full' }
 }
 
 /**
@@ -234,17 +211,18 @@ function readPreferences(ctx: Context): { readonly quietHints: QuietHints, reado
  * editor-slot occupancy (dialogs hide the pane, decision dialogs excepted), the decision wait, the app-owned stop
  * latch (a latched interrupt renders the static stopping row), the current
  * session's admitted status (idle parks the placeholder), and the
- * projection-backed phase. One interval republishes the elapsed time and the
+ * projection-backed phase. The shared tick republishes the elapsed time and the
  * throughput each second while a phase is live; `sync` publishes at once when the
- * mode, label, detail, or tip changed. Unloading the fiber unmounts the pane and stops the timers.
+ * mode, label, or tip changed. Unloading the fiber unmounts the pane and stops the tick and the timers.
  * @param ctx - plugin context.
  */
 export function apply(ctx: Context): void {
   mountTranscriptLocale(ctx, 'transcript.activity', ACTIVITY_LOCALE)
   const t = transcriptTranslator(ctx, 'transcript.activity')
   const state: ActivityState = {
-    mode: 'idle', tip: '', label: WAITING_LABEL, detail: '', turn: 0, dialog: false, ...readPreferences(ctx),
+    mode: 'idle', tip: '', label: WAITING_LABEL, turn: 0, dialog: false, ...readPreferences(ctx),
   }
+  const tick = ctx.get('mayflyTick') as TickSource | undefined
   const factsService = ctx.get('mayflySessionFacts') as SessionFactsService | undefined
   /* mayflySessionFacts is an injected service; the fallback
      keeps direct thin-host construction renderer-neutral but cannot occur in
@@ -260,38 +238,57 @@ export function apply(ctx: Context): void {
   let stoppingSince = stopPending ? activityNow() : 0
   /** Deferred release of a stopping acknowledgment still inside its hold. */
   let stoppingHold: ReturnType<typeof setTimeout> | undefined
-  let timer: ReturnType<typeof setInterval> | undefined
+  let offTick: (() => void) | undefined
   let ticks = 0
+  /** The time of the latest tick: every figure on the row is measured against it, as the stream's pending lines are. */
+  let tickNow = activityNow()
   /** The facts that decide the row's shape; a change publishes at once, the counters wait for the tick. */
   let shape = ''
   const rotation = buildTipRotation(STATUS_TIPS)
   let tipIndex = 0
   /** The line under the header when no action runs: the tip, or nothing. */
   const tipOf = (): string | undefined => state.quietHints === 'off' || state.tip === '' ? undefined : `${t('Tip: ')}${t(state.tip)}`
+  /** What the turn is doing that the stream does not say: a provider retry with its countdown, or the arguments of the calls in flight. */
+  const infoOf = (now: number): string | undefined => {
+    const retrying = facts.retrying
+    if (retrying !== undefined) {
+      const seconds = Math.max(0, Math.ceil((retrying.at + retrying.delayMs - now) / 1000))
+      const head = seconds === 0 ? t('Retrying {retry}/{max}…', { retry: retrying.retry, max: retrying.maxRetries }) : t('Retry {retry}/{max} in {seconds}s', { retry: retrying.retry, max: retrying.maxRetries, seconds })
+      return retrying.reason === undefined ? head : `${head} · ${retrying.reason}`
+    }
+    if (state.mode !== 'tool') return undefined
+    const details = [...new Set((facts.inFlight ?? []).flatMap(call => call.preparing === true || call.detail === undefined || call.detail === '' ? [] : [call.detail]))]
+    if (details.length === 0) return undefined
+    return `${details.slice(0, INFO_CALLS).join(' · ')}${details.length > INFO_CALLS ? ` ${t('+{count} more', { count: details.length - INFO_CALLS })}` : ''}`
+  }
   const nextTip = (): void => {
     if (rotation.length === 0) return
     state.tip = rotation[tipIndex % rotation.length]!.text
     tipIndex += 1
   }
 
+  /** How long the reasoning phase has lasted: from the session's own timestamp, so a reload keeps the ladder where it was. */
+  const thinkingElapsed = (now: number): number => Math.max(0, now - (facts.outputProgress?.startedAt ?? state.phaseSeenAt ?? now))
+
   const currentNode = (): MayflyUiNode | null => {
     if (state.mode === 'hidden') return null
     const phase = phaseOf(state.mode)
     if (phase === undefined) return { kind: 'spacer' }
     const tip = tipOf()
-    const now = activityNow()
-    const stage = phase === 'thinking' ? thinkingStage(state.thinkingSince === undefined ? 0 : now - state.thinkingSince) : undefined
+    const now = tickNow
+    const info = infoOf(now)
+    const stage = phase === 'thinking' ? thinkingStage(thinkingElapsed(now)) : undefined
     const facing: ActivityFacts = {
       phase,
-      label: t(stage?.label ?? state.label),
+      label: t(stage?.label ?? state.label, state.labelValues),
       ...stage === undefined ? {} : { labelTone: stage.tone, labelStrong: stage.strong },
-      ...state.detail === '' ? {} : { detail: state.detail },
+      ...info === undefined ? {} : { info },
       ...tip === undefined ? {} : { tip },
     }
     // A running call and its time are the stream's (a pending line), so the row names only the phase.
     if (phase === 'stopping' || phase === 'tool') return ActivityRow(facing)
     // The time of the phase the row names: how long the model has thought, how long the wait lasts, else the turn's.
-    const since = phase === 'waiting' ? state.waitingSince : phase === 'thinking' ? state.thinkingSince : state.turnStartedAt
+    const since = phase === 'waiting' ? state.waitingSince : phase === 'thinking' ? facts.outputProgress?.startedAt : state.turnStartedAt
     const elapsed = since === undefined ? '' : compactElapsedMs(Math.max(0, now - since))
     const counters = phase === 'waiting' ? '' : flowCounter(facts.flowUp, facts.outputProgress?.chars ?? facts.flowDownChars)
     const rate = phase === 'waiting' ? '' : outputRate(facts.outputProgress, now)
@@ -306,28 +303,28 @@ export function apply(ctx: Context): void {
   const publish = (): void => pane.set(currentNode())
 
   const stopTimer = (): void => {
-    if (timer === undefined) return
-    activityTimers.clearInterval(timer)
-    timer = undefined
+    offTick?.()
+    offTick = undefined
   }
 
-  /** The interval republishes the time-dependent tail only while a phase is live. */
+  /** The shared tick republishes the time-dependent tail only while a phase is live. */
   const ensureTimer = (): void => {
-    if (timer !== undefined) return
-    timer = activityTimers.setInterval(() => {
+    if (offTick !== undefined || tick === undefined) return
+    offTick = tick.subscribe((now) => {
+      tickNow = now
       ticks += 1
       if (ticks % TIP_TICKS === 0) nextTip()
       publish()
-    }, TICK_MS)
+    })
   }
 
   /** Reconcile the row (mode, tip, detail, timer) with the pane's facts. */
   const sync = (): void => {
     const mode = activityMode(state, facts, statusActive, stopPending)
-    const label = activityLabel(mode, facts, state.decision)
-    const detail = state.compact ? activityDetail(mode, facts) : ''
-    if (mode === 'thinking' && state.mode !== 'thinking') state.thinkingSince = activityNow()
-    if (mode !== 'thinking') state.thinkingSince = undefined
+    const flight = activityLabel(mode, facts, state.decision)
+    tickNow = activityNow()
+    if (mode === 'thinking' && state.mode !== 'thinking') state.phaseSeenAt = tickNow
+    if (mode !== 'thinking') state.phaseSeenAt = undefined
     // A fresh tip when a turn's row appears; the interval rotates it while the turn runs.
     const live = mode !== 'hidden' && mode !== 'idle'
     if (live && (state.mode === 'idle' || state.mode === 'hidden' || facts.turn !== state.turn)) nextTip()
@@ -336,11 +333,11 @@ export function apply(ctx: Context): void {
     else stopTimer()
     const nextStart = facts.active ? facts.turnStartedAt : undefined
     // The stage is part of the shape, so a stage change publishes at once, whatever moment the facts arrive at.
-    const stage = mode === 'thinking' ? thinkingStage(activityNow() - (state.thinkingSince ?? activityNow())).label : ''
-    const next = JSON.stringify([mode, label, stage, detail, state.tip, state.quietHints, state.compact, facts.flowUp, nextStart, state.waitingSince, state.thinkingSince])
+    const stage = mode === 'thinking' ? thinkingStage(thinkingElapsed(tickNow)).label : ''
+    const next = JSON.stringify([mode, flight.key, flight.values?.count, stage, state.tip, state.quietHints, facts.flowUp, nextStart, state.waitingSince, facts.outputProgress?.startedAt, facts.inFlight?.map(call => call.callId), facts.retrying?.at])
     state.mode = mode
-    state.label = label
-    state.detail = detail
+    state.label = flight.key
+    state.labelValues = flight.values
     state.turnStartedAt = nextStart
     if (next === shape) return
     shape = next
@@ -397,9 +394,8 @@ export function apply(ctx: Context): void {
   ctx.on('settings/document-updated', (namespace) => {
     if (String(namespace) !== 'mayfly') return
     const next = readPreferences(ctx)
-    if (next.quietHints === state.quietHints && next.compact === state.compact) return
+    if (next.quietHints === state.quietHints) return
     state.quietHints = next.quietHints
-    state.compact = next.compact
     sync()
   })
 

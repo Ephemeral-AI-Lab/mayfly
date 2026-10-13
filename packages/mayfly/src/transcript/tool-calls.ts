@@ -1,21 +1,28 @@
 /**
- * The facts of settled tool calls at the three tiers every tool is designed at: a verbose block per call (the line and a
- * short body), a standard block for a run of calls of one kind (a head and a tree), and the stream's merged title for the
- * compact tier (`process-activity`). A call is reduced once to a {@link Call}: its tool name, target, outcome, and a lazy body,
- * so the tiers differ only in how they lay the same facts out. A call that still runs is a pending line with its own time
- * (the activity row names only the phase). Texts leave here translated and sanitized.
+ * The facts of tool calls at the three tiers every tool is designed at: a verbose block per call (the line and a short
+ * body), a standard block for a run of calls of one kind (a head and a tree), and the stream's merged title for the compact
+ * tier (`process-activity`). A call is reduced once to a {@link Call}: its tool name, target, outcome, and lazy bodies, so
+ * the tiers differ only in how they lay the same facts out. What differs per category (phrases, merging, streaming) is the
+ * descriptor in `tool-kinds`. A call that is still in flight is a pending line with its own time and its input under it: a
+ * command's further lines, the code an edit or write is generating (the activity row names only the phase). Texts leave
+ * here translated and sanitized.
  *
  * @module @ephemeral-ai/mayfly/transcript/tool-calls
  */
 
 import { alignDiffLines, diffModel } from '../core/diff-align.ts'
 import { sanitizePluginText } from '../core/plugin-view.ts'
+import { argumentDetail } from '../conversation/activity-detail.ts'
 import type { MayflyTranslate } from '../frontend/locale.ts'
 import type { CommandCallModel, ProcessActivity, ReadCallModel, SearchCallModel, TranscriptEntryModel } from '../frontend/models.ts'
 import type { StreamRow } from '../components/transcript-view.ts'
 import type { ToolBodyRow, ToolDiffHunk, ToolLineState, ToolStat } from '../components/tool-line.ts'
-import { countPhrase, elapsedText } from './process-activity.ts'
+import { compactElapsedMs } from './agent-presentation.ts'
+import { trimContext, WRITE_HEAD_LINES } from './official-model.ts'
+import { elapsedText } from './process-activity.ts'
+import { partialStrings } from './partial-json.ts'
 import { ellipsize } from './present.ts'
+import { kindOf, unitPhrase } from './tool-kinds.ts'
 
 /** Rows a verbose block's body shows. */
 export const VERBOSE_BODY_ROWS = 6
@@ -23,8 +30,14 @@ export const VERBOSE_BODY_ROWS = 6
 /** Rows a verbose block's body shows once Ctrl+O opens the turn: every row the facts carry. */
 export const OPEN_BODY_ROWS = 40
 
-/** Rows of a file change's body at the Standard tier (a single edit; a write has no body there). */
+/** Rows of a file change's body at the Standard tier, settled or being generated. */
 export const STANDARD_DIFF_ROWS = 6
+
+/** Rows of input a running call shows at the Standard tier: a command's lines after the first. */
+export const STANDARD_INPUT_ROWS = 3
+
+/** Lines of a file change's input the facts keep while it is generated: the same bound a settled change keeps. */
+const LIVE_CHANGE_LINES = 60
 
 /** Rows of a file change's body at the Verbose tier; Ctrl+O lifts it to {@link OPEN_BODY_ROWS}. */
 export const VERBOSE_CHANGE_ROWS = 12
@@ -51,14 +64,19 @@ interface Body {
 
 /** The body of a file change: an edit's hunks, or the head of a write's code. */
 type ChangeBody =
-  | { readonly kind: 'diff', readonly language?: string, readonly hunks: readonly { readonly before: string, readonly after: string, readonly rows: number }[], readonly hidden: number }
-  | { readonly kind: 'code', readonly head: readonly string[], readonly total: number, readonly language?: string }
+  // `tail`: the change is still being written, so its last rows are what a block shows (a settled one shows its first).
+  | { readonly kind: 'diff', readonly language?: string, readonly hunks: readonly { readonly before: string, readonly after: string, readonly rows: number }[], readonly hidden: number, readonly tail?: boolean }
+  | { readonly kind: 'code', readonly head: readonly string[], readonly total: number, readonly language?: string, readonly tail?: boolean }
 
-/** One settled (or cut-off) call, reduced to what any tier lays out. */
+/** Where a call is: its arguments still stream, it runs, or it has settled (or was cut off). */
+export type CallPhase = 'preparing' | 'running' | 'settled'
+
+/** One call, in flight or settled (or cut off), reduced to what any tier lays out. */
 export interface Call {
   readonly id: string
   readonly activity: ProcessActivity
   readonly state: ToolLineState
+  readonly phase: CallPhase
   /** The tool's name as the model requested it, in the display form (`Read`, `WebSearch`). */
   readonly name: string
   readonly target?: string
@@ -72,7 +90,11 @@ export interface Call {
   /** Matches a search found, for the sum a standard block reports. */
   readonly matches?: number
   readonly body: () => Body
-  /** A file change: its kind and diffstat, and the diff or code its body draws. */
+  /** What the call was given, for the time it runs: the lines of a command that spans several. */
+  readonly input: () => Body
+  /** Whether the input's rows are the call's target in full, so a running line at the tiers that draw them names only the tool. */
+  readonly inputIsTarget?: boolean
+  /** A file change: its kind and diffstat, and the diff or code its body draws (while it is generated, too). */
   readonly file?: { readonly stat: ToolStat, readonly statInLine: boolean, readonly content: () => ChangeBody }
 }
 
@@ -94,8 +116,18 @@ function nameOf(name: string): string {
   return name.split('_').filter(part => part !== '').map(part => part.charAt(0).toUpperCase() + part.slice(1)).join('')
 }
 
-/** The categories whose head names what the calls did, so a call's line in the block is just its target. */
-const HEADED = new Set<ProcessActivity>(['read', 'readImage', 'search', 'commands', 'code', 'webSearch', 'webFetch'])
+const NO_ROWS: Body = { rows: [], total: 0 }
+
+function phaseOf(state: ToolLineState, preparing: boolean): CallPhase {
+  if (state !== 'pending') return 'settled'
+  return preparing ? 'preparing' : 'running'
+}
+
+/** The non-blank lines of a text, as the rows a running call shows in place of its target. */
+function allLines(text: string): Body {
+  const lines = text.split('\n').map(line => line.trimEnd()).filter(line => line.trim() !== '')
+  return { rows: lines.slice(0, OPEN_BODY_ROWS).map(line => bodyRow(line)), total: lines.length }
+}
 
 function took(startedAt: number, endedAt: number | undefined): string | undefined {
   return endedAt === undefined ? undefined : elapsedText(endedAt - startedAt)
@@ -149,6 +181,7 @@ function readCall(groupId: string, call: ReadCallModel, closed: boolean, t: Mayf
     id: `${groupId}:${call.callId}`,
     activity: call.activity,
     state,
+    phase: phaseOf(state, false),
     name: nameOf(call.name),
     ...(target === undefined ? {} : { target }),
     label: target ?? nameOf(call.name),
@@ -156,6 +189,7 @@ function readCall(groupId: string, call: ReadCallModel, closed: boolean, t: Mayf
     startedAt: call.startedAt,
     ...(call.endedAt === undefined ? {} : { endedAt: call.endedAt }),
     ...(shown === undefined ? {} : { lines: shown }),
+    input: () => NO_ROWS,
     body: () => {
       const preview = call.previewLines ?? []
       const width = String(preview.at(-1)?.number ?? 0).length
@@ -184,6 +218,7 @@ function searchCall(groupId: string, call: SearchCallModel, closed: boolean, t: 
     id: `${groupId}:${call.callId}`,
     activity: call.activity,
     state,
+    phase: phaseOf(state, false),
     name: nameOf(call.name),
     target,
     label: target,
@@ -191,6 +226,7 @@ function searchCall(groupId: string, call: SearchCallModel, closed: boolean, t: 
     startedAt: call.startedAt,
     ...(call.endedAt === undefined ? {} : { endedAt: call.endedAt }),
     ...(matches === undefined ? {} : { matches }),
+    input: () => NO_ROWS,
     body: () => {
       if (call.shape === 'paths') {
         const paths = call.paths ?? []
@@ -209,12 +245,18 @@ function commandCall(groupId: string, call: CommandCallModel, closed: boolean, t
     id: `${groupId}:${call.callId}`,
     activity: call.activity,
     state,
+    phase: phaseOf(state, false),
     name: nameOf(call.name),
     target: call.command,
     label: call.command,
     outcome: [why, took(call.startedAt, call.endedAt)],
     startedAt: call.startedAt,
     ...(call.endedAt === undefined ? {} : { endedAt: call.endedAt }),
+    input: () => {
+      const lines = call.commandLines ?? []
+      return { rows: lines.map(line => bodyRow(line)), total: lines.length }
+    },
+    ...(call.commandLines === undefined ? {} : { inputIsTarget: true }),
     body: () => {
       const rows = (call.previewLines ?? []).map(line => bodyRow(line))
       return { rows, total: rows.length, tail: true }
@@ -239,28 +281,81 @@ function sizeText(bytes: number): string {
   return bytes < 1024 ? `${String(bytes)} B` : `${String(Math.round(bytes / 102.4) / 10)} KB`
 }
 
+/** The lines of a text, without the empty piece a closing newline leaves. */
+function linesOf(text: string): string[] {
+  const lines = text.split('\n')
+  if (lines.at(-1) === '') lines.pop()
+  return lines
+}
+
+/**
+ * The body of a file change that is still being written: the code of a write so far, or the two sides of an edit so far.
+ * Nothing is drawn until the model has written some of it.
+ */
+function liveChange(entry: ToolEntry, fields: Readonly<Record<string, string>>, path: string | undefined): { readonly content: () => ChangeBody, readonly stat: ToolStat } | undefined {
+  const language = path === undefined ? undefined : languageOf(path)
+  const styled = language === undefined ? {} : { language }
+  if (entry.activity === 'write') {
+    const content = fields['content']
+    if (content === undefined || content === '') return undefined
+    const lines = linesOf(content)
+    const streaming = entry.preparing !== undefined
+    return {
+      stat: { added: lines.length, removed: 0 },
+      content: () => ({ kind: 'code', head: streaming ? lines.slice(-WRITE_HEAD_LINES) : lines.slice(0, WRITE_HEAD_LINES), total: lines.length, ...(streaming ? { tail: true } : {}), ...styled }),
+    }
+  }
+  const before = fields['old_string']
+  const after = fields['new_string']
+  if (before === undefined && after === undefined) return undefined
+  const cut = (text: string): { readonly kept: string, readonly left: number } => {
+    const lines = linesOf(text)
+    return { kept: lines.slice(0, LIVE_CHANGE_LINES).join('\n'), left: Math.max(0, lines.length - LIVE_CHANGE_LINES) }
+  }
+  // The context the change leaves alone is trimmed as a settled change's is, so the rows do not change on settling.
+  const trimmed = trimContext(before ?? '', after ?? '', entry.preparing === undefined)
+  const old = cut(trimmed.before)
+  const next = cut(trimmed.after)
+  return {
+    stat: { added: linesOf(after ?? '').length, removed: linesOf(before ?? '').length },
+    content: () => ({
+      kind: 'diff',
+      ...styled,
+      hunks: [{ before: old.kept, after: next.kept, rows: diffModel(alignDiffLines(old.kept, next.kept), { context: 1 }).length }],
+      hidden: old.left + next.left,
+      ...(entry.preparing === undefined ? {} : { tail: true }),
+    }),
+  }
+}
+
 /** An edit or write as a call: its tool name and path, the diffstat or the size, and the diff or code as its body. */
 function fileCall(entry: ToolEntry, closed: boolean, t: MayflyTranslate): Call {
   const state = stateOf(entry.result === undefined ? 'pending' : entry.result.isError ? 'error' : 'ok', closed)
   const change = entry.change
-  const target = change?.path ?? (entry.detail === '' ? undefined : ellipsize(sanitizePluginText(entry.detail), TARGET_MAX_CHARS))
+  // While the call is in flight the arguments are all there is: complete once it is committed, partial while they stream.
+  const fields = entry.result === undefined && change === undefined ? partialStrings(entry.arguments).fields : {}
+  const path = change?.path ?? fields['file_path'] ?? fields['path']
+  const target = path ?? (entry.detail === '' ? undefined : ellipsize(sanitizePluginText(entry.detail), TARGET_MAX_CHARS))
   const name = nameOf(entry.name)
   const write = change?.write
   const outcome = state === 'error' ? [reason(entry.result?.text)]
     : write === undefined ? [] : [t(write.lines === 1 ? '{count} line' : '{count} lines', { count: write.lines }), sizeText(write.bytes)]
   const hasStat = state === 'ok' && change !== undefined && write === undefined
+  const live = state === 'pending' ? liveChange(entry, fields, path) : undefined
   return {
     id: entry.id,
     activity: entry.activity,
     state,
+    phase: phaseOf(state, entry.preparing !== undefined),
     name,
-    ...(target === undefined ? {} : { target }),
+    ...(target === undefined ? {} : { target: path === undefined ? target : ellipsize(sanitizePluginText(path), TARGET_MAX_CHARS) }),
     label: target ?? name,
     outcome,
     startedAt: entry.startedAt,
     ...(entry.result === undefined ? {} : { endedAt: entry.result.endedAt }),
-    body: () => ({ rows: [], total: 0 }),
-    ...(change === undefined || state !== 'ok' ? {} : {
+    input: () => NO_ROWS,
+    body: () => NO_ROWS,
+    ...(change === undefined || state !== 'ok' ? live === undefined ? {} : { file: { stat: live.stat, statInLine: false, content: live.content } } : {
       file: {
         stat: { added: change.added, removed: change.removed },
         statInLine: hasStat,
@@ -282,9 +377,13 @@ function loneCall(entry: ToolEntry, closed: boolean, t: MayflyTranslate): Call {
   const state = stateOf(entry.result === undefined ? 'pending' : entry.result.isError || exit !== undefined ? 'error' : 'ok', closed)
   const web = entry.web
   const text = entry.result?.text ?? ''
-  const salient = ellipsize(sanitizePluginText(entry.detail), TARGET_MAX_CHARS)
+  // A call whose arguments still stream names the target as far as they have gone.
+  const fields = entry.preparing === undefined ? undefined : partialStrings(entry.arguments).fields
+  const command = entry.terminal?.command ?? (entry.activity === 'commands' ? fields?.['command'] : undefined)
+  const salient = ellipsize(sanitizePluginText(fields === undefined ? entry.detail : argumentDetail(fields)), TARGET_MAX_CHARS)
+  const further = command === undefined ? NO_ROWS : allLines(command)
   // The arguments the model gave: a command, a query, an address, else the salient one (not the tool's own name).
-  const target = entry.terminal !== undefined ? ellipsize(entry.terminal.command, COMMAND_MAX_CHARS)
+  const target = command !== undefined ? ellipsize(`${linesOf(command).find(line => line.trim() !== '') ?? command}${further.total > 1 ? ' …' : ''}`, COMMAND_MAX_CHARS)
     : web?.kind === 'fetch' ? web.url
     : entry.activity === 'webSearch' && salient !== '' ? `"${salient}"`
     : salient === '' || salient === entry.name ? undefined : salient
@@ -303,12 +402,15 @@ function loneCall(entry: ToolEntry, closed: boolean, t: MayflyTranslate): Call {
     id: entry.id,
     activity: entry.activity,
     state,
+    phase: phaseOf(state, entry.preparing !== undefined),
     name,
     ...(target === undefined ? {} : { target }),
-    label: HEADED.has(entry.activity) ? target ?? name : `${name}${target === undefined ? '' : `(${target})`}`,
+    label: kindOf(entry.activity).headed ? target ?? name : `${name}${target === undefined ? '' : `(${target})`}`,
     outcome,
     startedAt: entry.startedAt,
     ...(entry.result === undefined ? {} : { endedAt: entry.result.endedAt }),
+    input: () => further,
+    ...(further.total > 1 ? { inputIsTarget: true } : {}),
     body: () => {
       if (web?.kind === 'search') {
         return { rows: web.sources.map(source => bodyRow(source.title === undefined ? source.url : `${source.title} · ${source.url.replace(/^[a-z][a-z0-9+.-]*:\/\//iu, '')}`)), total: web.sources.length }
@@ -322,15 +424,24 @@ function loneCall(entry: ToolEntry, closed: boolean, t: MayflyTranslate): Call {
   }
 }
 
-/** A call that still runs, as the stream shows it: its time so far is its outcome, and it has no body yet. */
-function whilePending(call: Call, now: number): Call {
-  return call.state === 'pending' ? { ...call, outcome: [elapsedText(Math.max(0, now - call.startedAt))], body: () => ({ rows: [], total: 0 }) } : call
+/** A call in flight as a pending line's outcome: the whole seconds it has taken so far, nothing in the first second. */
+function pendingElapsed(ms: number): string | undefined {
+  return ms < 1000 ? undefined : compactElapsedMs(ms)
 }
 
 /**
- * The calls of one entry, in the order they were made: a call that still runs is pending with the time it has taken so
- * far, and a call cut off with its turn is cancelled. A call whose arguments still stream has not been committed, so it
- * has none.
+ * A call that is in flight, as the stream shows it: once it runs, its time so far is its outcome. While the model still
+ * writes its arguments it has no time of its own (the activity row counts the turn's).
+ */
+function whilePending(call: Call, now: number): Call {
+  if (call.state !== 'pending') return call
+  return { ...call, outcome: call.phase === 'preparing' ? [] : [pendingElapsed(Math.max(0, now - call.startedAt))] }
+}
+
+/**
+ * The calls of one entry, in the order they were made: a call in flight is pending with the time it has taken so far, and
+ * a call cut off with its turn is cancelled. A call whose arguments still stream is pending too: the stream shows it as
+ * soon as the model names it.
  * @param entry - a tool or a group of read, search, or command calls.
  * @param closed - whether the entry's turn has ended.
  * @param t - translator for the transcript namespace.
@@ -344,8 +455,7 @@ export function callsOf(entry: TranscriptEntryModel, closed: boolean, t: MayflyT
     case 'transcript-search-group': for (const call of entry.searches) calls.push(searchCall(entry.id, call, closed, t)); break
     case 'transcript-command-group': for (const call of entry.commands) calls.push(commandCall(entry.id, call, closed, t)); break
     case 'transcript-tool':
-      if (entry.preparing !== undefined) break
-      calls.push(entry.change !== undefined || entry.activity === 'edit' || entry.activity === 'write' ? fileCall(entry, closed, t) : loneCall(entry, closed, t))
+      calls.push(entry.change !== undefined || kindOf(entry.activity).streams ? fileCall(entry, closed, t) : loneCall(entry, closed, t))
       break
     default: break
   }
@@ -358,11 +468,48 @@ function outcomeText(call: Call): string | undefined {
   return text === '' || call.state === 'cancelled' ? undefined : sanitizePluginText(text)
 }
 
-/** The diff or code body of a file change within `cap` rows, and the row that says how much is left out. */
-function changeLayout(call: Call, cap: number, open: boolean, t: MayflyTranslate): { readonly diff?: readonly ToolDiffHunk[], readonly code?: { readonly text: string, readonly language?: string }, readonly more?: string } {
+/** The last rows of a hunk that fit `cap` rows: the text of each side from the first kept row, and the number the first one has. */
+function tailHunk(hunk: { readonly before: string, readonly after: string }, cap: number): { readonly before: string, readonly after: string, readonly start: number, readonly rows: number, readonly kept: number } {
+  const ops = alignDiffLines(hunk.before, hunk.after)
+  const rowsOf = (from: number): number => diffModel(ops.slice(from), { context: 1 }).length
+  const total = rowsOf(0)
+  let from = 0
+  while (from < ops.length && rowsOf(from) > cap) from += 1
+  // Only one unchanged line of context leads the window, so no `⋯` stands above it.
+  while (ops[from]?.type === 'ctx' && ops[from + 1]?.type === 'ctx') from += 1
+  const kept = ops.slice(from)
+  return {
+    before: kept.filter(op => op.type !== 'add').map(op => op.text).join('\n'),
+    after: kept.filter(op => op.type !== 'del').map(op => op.text).join('\n'),
+    // The gutter numbers the modified file, so the rows dropped above it that exist there move the first number down.
+    start: 1 + ops.slice(0, from).filter(op => op.type !== 'del').length,
+    rows: total,
+    kept: rowsOf(from),
+  }
+}
+
+/** The diff or code body of a file change within `cap` rows, and the row that says how much is left out (after it, or before it for the end of a change still being written). */
+function changeLayout(call: Call, cap: number, open: boolean, t: MayflyTranslate): { readonly diff?: readonly ToolDiffHunk[], readonly code?: { readonly text: string, readonly language?: string, readonly start?: number }, readonly more?: string, readonly moreBefore?: string } {
   const content = call.file?.content()
   if (content === undefined || cap <= 0) return {}
   const hint = open ? '' : t(' · Ctrl+O')
+  const earlier = (count: number): string => `${t('… +{count} earlier', { count })}${hint}`
+  if (content.kind === 'code' && content.tail === true) {
+    const rows = content.head.slice(-cap)
+    const left = content.total - rows.length
+    return {
+      code: { text: rows.join('\n'), start: content.total - rows.length + 1, ...(content.language === undefined ? {} : { language: content.language }) },
+      ...(left > 0 ? { moreBefore: earlier(left) } : {}),
+    }
+  }
+  if (content.kind === 'diff' && content.tail === true && content.hunks.length > 0) {
+    const shown = tailHunk(content.hunks[0]!, cap)
+    const left = shown.rows - shown.kept + content.hidden
+    return {
+      diff: [{ before: shown.before, after: shown.after, start: shown.start, ...(content.language === undefined ? {} : { language: content.language }) }],
+      ...(left > 0 ? { moreBefore: earlier(left) } : {}),
+    }
+  }
   if (content.kind === 'code') {
     const rows = content.head.slice(0, cap)
     const left = content.total - rows.length
@@ -397,58 +544,70 @@ function changeLayout(call: Call, cap: number, open: boolean, t: MayflyTranslate
 }
 
 /**
- * One call as a verbose block: its line and the first rows of its body.
- * @param call - the settled call.
+ * One call as a block: its line and the first rows of its body. A call in flight shows its input under the line instead.
+ * @param call - the call.
  * @param open - whether Ctrl+O opened the turn, which shows every row the facts carry.
  * @param t - translator for the transcript namespace.
- * @param tier - `standard` for a call the standard tier draws alone: a file change is open at 6 rows, any other call has no body.
+ * @param tier - `standard` for a call the standard tier draws alone: a file change is open at 6 rows, any other call has no body;
+ *   `compact` for a call in flight at the compact level: its line alone.
  * @returns the block's row.
  */
-export function verboseRow(call: Call, open: boolean, t: MayflyTranslate, tier: 'verbose' | 'standard' = 'verbose'): StreamRow {
-  const cap = open ? OPEN_BODY_ROWS : VERBOSE_BODY_ROWS
-  // A call that still runs or was cut off has no output, and a failed read or search has only its reason, which the line already gives.
-  const quiet = call.state === 'pending' || call.state === 'cancelled' || (call.state === 'error' && (call.activity === 'read' || call.activity === 'readImage' || call.activity === 'search'))
-  const body: Body = quiet || tier === 'standard' ? { rows: [], total: 0 } : call.body()
+export function verboseRow(call: Call, open: boolean, t: MayflyTranslate, tier: 'verbose' | 'standard' | 'compact' = 'verbose'): StreamRow {
+  const running = call.state === 'pending'
+  const cap = running
+    ? tier === 'compact' ? 0 : tier === 'standard' ? STANDARD_INPUT_ROWS : open ? OPEN_BODY_ROWS : VERBOSE_BODY_ROWS
+    : open ? OPEN_BODY_ROWS : VERBOSE_BODY_ROWS
+  // A call that was cut off has no output, and a failed read or search has only its reason, which the line already gives.
+  const quiet = call.state === 'cancelled' || (call.state === 'error' && (call.activity === 'read' || call.activity === 'readImage' || call.activity === 'search'))
+  const body: Body = quiet ? NO_ROWS : running ? call.input() : tier === 'verbose' ? call.body() : NO_ROWS
   const rows = body.tail === true ? body.rows.slice(-cap) : body.rows.slice(0, cap)
   const left = body.total - rows.length
   const hint = open ? '' : t(' · Ctrl+O')
-  const textMore = left > 0 ? `${t(body.tail === true ? '… +{count} earlier' : '… +{count} more', { count: left })}${hint}` : undefined
-  const change = call.file === undefined || call.state !== 'ok' ? {}
+  const textMore = left > 0 && cap > 0 ? `${t(body.tail === true ? '… +{count} earlier' : '… +{count} more', { count: left })}${hint}` : undefined
+  const change = call.file === undefined || (call.state !== 'ok' && !running) || tier === 'compact' ? {}
     : changeLayout(call, tier === 'standard' ? STANDARD_DIFF_ROWS : open ? OPEN_BODY_ROWS : VERBOSE_CHANGE_ROWS, open, t)
   const more = textMore ?? change.more
+  const moreBefore = body.tail === true ? more : change.moreBefore
   const outcome = outcomeText(call)
   return {
     kind: 'tool',
     id: call.id,
     state: call.state,
     name: sanitizePluginText(call.name),
-    ...(call.target === undefined || call.target === '' ? {} : { target: sanitizePluginText(call.target) }),
+    // A running command that spans several lines shows them under the bare tool name; the target comes back with the result.
+    ...(call.target === undefined || call.target === '' || (running && call.inputIsTarget === true && rows.length > 0) ? {} : { target: sanitizePluginText(call.target) }),
     ...(outcome === undefined ? {} : { outcome }),
     ...(call.file?.statInLine === true && call.state === 'ok' ? { stat: call.file.stat } : {}),
     ...(rows.length === 0 ? {} : { body: rows }),
     ...(change.diff === undefined || change.diff.length === 0 ? {} : { diff: change.diff }),
     ...(change.code === undefined ? {} : { code: change.code }),
-    ...(more === undefined ? {} : body.tail === true ? { moreBefore: more } : { more }),
+    ...(moreBefore === undefined ? {} : { moreBefore }),
+    ...(more === undefined || body.tail === true ? {} : { more }),
   }
 }
 
 /**
- * A run of calls of one kind as a standard block. A single call is its own line.
- * @param calls - the run's settled calls, all of one category.
+ * A run of calls of one kind as a standard block, from the first call on: the tool's name and what the calls count, and a line
+ * per call that changes in place as the call runs and settles. A single call is its own line.
+ * @param calls - the run's calls, in flight or settled, all of one category.
  * @param t - translator for the transcript namespace.
+ * @param now - the time, which a block with a call in flight measures its own against.
  * @returns the run's row.
  */
-export function standardRow(calls: readonly Call[], t: MayflyTranslate): StreamRow {
+export function standardRow(calls: readonly Call[], t: MayflyTranslate, now: number): StreamRow {
   const first = calls[0]!
   if (calls.length === 1) return verboseRow(first, false, t, 'standard')
-  const lines = calls.every(call => call.lines !== undefined || call.state !== 'ok') ? calls.reduce((sum, call) => sum + (call.lines ?? 0), 0) : undefined
-  const matches = calls.every(call => call.matches !== undefined || call.state !== 'ok') ? calls.reduce((sum, call) => sum + (call.matches ?? 0), 0) : undefined
+  const running = calls.some(call => call.state === 'pending')
+  const lines = !running && calls.every(call => call.lines !== undefined || call.state !== 'ok') ? calls.reduce((sum, call) => sum + (call.lines ?? 0), 0) : undefined
+  const matches = !running && calls.every(call => call.matches !== undefined || call.state !== 'ok') ? calls.reduce((sum, call) => sum + (call.matches ?? 0), 0) : undefined
   const starts = calls.map(call => call.startedAt)
   const ends = calls.flatMap(call => call.endedAt === undefined ? [] : [call.endedAt])
-  const span = ends.length === 0 ? undefined : elapsedText(Math.max(...ends) - Math.min(...starts))
+  const span = running ? pendingElapsed(Math.max(0, now - Math.min(...starts)))
+    : ends.length === 0 ? undefined : elapsedText(Math.max(...ends) - Math.min(...starts))
   const failed = calls.filter(call => call.state === 'error').length
+  const names = [...new Set(calls.map(call => call.name))]
   const head = [
-    countPhrase(first.activity, calls.length, t),
+    unitPhrase(first.activity, calls.length, t),
     lines === undefined || lines === 0 ? undefined : t('{count} lines', { count: lines }),
     matches === undefined || matches === 0 ? undefined : t(matches === 1 ? '{count} match' : '{count} matches', { count: matches }),
     span,
@@ -456,7 +615,8 @@ export function standardRow(calls: readonly Call[], t: MayflyTranslate): StreamR
   return {
     kind: 'tools',
     id: `run:${first.id}`,
-    state: failed > 0 ? 'error' : calls.some(call => call.state === 'cancelled') ? 'cancelled' : 'ok',
+    state: running ? 'pending' : failed > 0 ? 'error' : calls.some(call => call.state === 'cancelled') ? 'cancelled' : 'ok',
+    name: sanitizePluginText(names.length === 1 ? names[0]! : kindOf(first.activity).title),
     head: sanitizePluginText(head),
     ...(failed === 0 ? {} : { failed: t('{count} failed', { count: failed }) }),
     items: calls.map((call) => {

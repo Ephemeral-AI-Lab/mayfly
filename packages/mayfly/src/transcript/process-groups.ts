@@ -3,17 +3,16 @@
  * turn headers, process groups, and visible entries, after the upstream
  * Harness Chat `TurnGroups` rules. Reasoning and tool calls are process
  * members; a reply, a user message, an error, or an interruption closes the
- * current group. The transcript speaks in the past tense: a group title summarizes
- * only settled members, a reasoning-only group has no title, and a running
- * turn has no header unless its tree has no activity row. A normally
- * completed turn folds everything but its final answer behind the turn header. Rendering and width live elsewhere.
+ * current group. A call in flight is a line of its own at every level. At the compact level a turn's process is collected
+ * into one line (`▸ 6 tool calls`) that stands where its first call was and counts up as the turn works, so nothing folds
+ * away at the end; a running turn has no header unless its tree has no activity row. Rendering and width live elsewhere.
  *
  * @module @ephemeral-ai/mayfly/transcript/process-groups
  */
 
 import type { TranscriptEntryModel, TranscriptModel, TranscriptTurnModel } from '../frontend/models.ts'
 import type { ProcessPolicy } from './presentation-policy.ts'
-import { summarizeProcess, type ProcessMemberFact, type ProcessSummary } from './process-activity.ts'
+import { summarizeProcess, type ProcessMemberFact } from './process-activity.ts'
 
 type Entry = TranscriptModel['entries'][number]
 
@@ -31,19 +30,27 @@ export interface TurnHeaderItem {
   readonly toolCalls: number
   /** Subagent spawns, counted apart from tool calls as upstream does. */
   readonly subagents: number
-  /** Whether the turn's process and interim replies are hidden behind this row. */
-  readonly folded: boolean
   /** Whether Ctrl-O reaches this turn, so the row may name the key. */
   readonly hint: boolean
 }
 
-/** One collapsed process group row: the past-tense summary of its settled members. */
+/** The line that collects a turn's process at the compact level: how many calls it made, and how they went. */
 export interface ProcessTitleItem {
   readonly kind: 'process-title'
   readonly id: string
   readonly turn: number
   readonly seq: number
-  readonly summary: ProcessSummary
+  /** Tool calls other than subagent spawns, those in flight included. */
+  readonly toolCalls: number
+  readonly subagents: number
+  readonly failed: number
+  /** Wall time of the calls, once every one of them has settled. */
+  readonly durationMs?: number
+  /** Lines the calls' file changes added and removed, when any made one. */
+  readonly added?: number
+  readonly removed?: number
+  /** Whether Ctrl-O reaches this turn, so the line may name the key. */
+  readonly hint: boolean
 }
 
 /** One visible entry with its disclosure state. */
@@ -60,9 +67,10 @@ export interface EntryItem {
   readonly turnClosed: boolean
   /**
    * How a tool entry is drawn: `verbose` is one block per call with its body, `standard` lets a run of calls of one kind
-   * share a block. Absent on a plain (flat) model, where each call is a verbose block.
+   * share a block, `compact` keeps only the calls still in flight, as their lines. Absent on a plain (flat) model, where
+   * each call is a verbose block.
    */
-  readonly tier?: 'verbose' | 'standard'
+  readonly tier?: 'verbose' | 'standard' | 'compact'
 }
 
 /** One row group of the display plan, in render order. */
@@ -95,8 +103,6 @@ function isMember(entry: Entry): boolean {
   return entry.kind === 'transcript-thinking' || entry.kind === 'transcript-tool'
     || entry.kind === 'transcript-read-group' || entry.kind === 'transcript-search-group' || entry.kind === 'transcript-command-group'
 }
-
-const ABNORMAL_OUTCOMES = new Set(['aborted', 'error', 'interrupted', 'forked'])
 
 /** Whether a settled terminal run exited non-zero or by signal. */
 function exitFailed(entry: Extract<TranscriptEntryModel, { readonly kind: 'transcript-tool' }>): boolean {
@@ -178,7 +184,7 @@ export function buildDisplay(input: DisplayInput): DisplayItem[] {
   const items: DisplayItem[] = []
   let lastSeq = input.previousSeq
   const turnInfo = new Map((input.turns ?? []).map(turn => [turn.turn, turn]))
-  const plainEntry = (entry: Entry, turnClosed: boolean, expanded: boolean, hint: boolean, tier?: 'verbose' | 'standard'): EntryItem => {
+  const plainEntry = (entry: Entry, turnClosed: boolean, expanded: boolean, hint: boolean, tier?: 'verbose' | 'standard' | 'compact'): EntryItem => {
     if (isSemantic(entry)) lastSeq = entry.seq
     return { kind: 'entry', entry, seq: lastSeq, expanded, hint, turnClosed, ...(tier === undefined ? {} : { tier }) }
   }
@@ -212,11 +218,7 @@ export function buildDisplay(input: DisplayInput): DisplayItem[] {
     }
     const lead = block.findIndex(entry => entry.kind !== 'transcript-user')
     const rest = block.slice(lead)
-    const interleaved = rest.some(entry => entry.kind === 'transcript-user')
-    const abnormal = (info?.outcome !== undefined && ABNORMAL_OUTCOMES.has(info.outcome))
-      || rest.some(entry => entry.kind === 'transcript-error' || entry.kind === 'transcript-interrupted')
     const policy = input.policy
-    const folded = policy.foldCompletedTurns && closed && !interleaved && !abnormal && !expandedTurn
     const view = expandedTurn ? 'cards' : closed ? policy.settledProcess : policy.liveProcess
     // The step the model works in: at the `current` view its calls are verbose blocks and the steps before it collapse.
     const currentStep = rest.reduce((latest, entry) => isSemantic(entry) && 'step' in entry ? Math.max(latest, entry.step) : latest, -1)
@@ -225,7 +227,7 @@ export function buildDisplay(input: DisplayInput): DisplayItem[] {
     for (const entry of block.slice(0, lead)) items.push(plainEntry(entry, closed, expandedTurn, inScope))
     // The activity row owns a running turn's lifecycle; only a tree without
     // one keeps the live header.
-    if (closed || input.runningHeader === true) {
+    if ((closed || input.runningHeader === true) && view !== 'collect') {
       const headerSeq = (rest.find(isSemantic) as TranscriptEntryModel).seq
       items.push({
         kind: 'turn-header',
@@ -240,21 +242,41 @@ export function buildDisplay(input: DisplayInput): DisplayItem[] {
         }),
         toolCalls: facts.length - subagents,
         subagents,
-        folded,
-        // Ctrl+O names itself wherever it would open more: a fold, or a view short of the verbose blocks.
-        hint: inScope && !expandedTurn && (folded || view !== 'cards'),
+        // Ctrl+O names itself wherever it would open more: a view short of the verbose blocks.
+        hint: inScope && !expandedTurn && view !== 'cards',
       })
       lastSeq = headerSeq
     }
-    if (folded) {
-      const answer = rest.findLast(entry => entry.kind === 'transcript-assistant')
+    // The compact level: the turn's calls are one line where its first call was, and only what is in flight keeps its own line.
+    if (view === 'collect') {
+      const calls = rest.filter(isMember).flatMap(entry => memberFacts(entry, closed)).filter(fact => fact.preparing !== true)
+      const settled = calls.every(fact => !fact.running)
+      const summary = summarizeProcess(calls.filter(fact => !fact.running))
+      let collected = calls.length === 0
       for (const entry of rest) {
-        // Compaction rows are system-level boundary markers, not process work:
-        // they survive the fold so "context was condensed here" stays visible
-        // in every work-details mode.
-        if (entry === answer || !isSemantic(entry) || entry.kind === 'transcript-compaction') items.push(plainEntry(entry, closed, expandedTurn, inScope))
+        if (!isMember(entry)) {
+          items.push(plainEntry(entry, closed, expandedTurn, inScope))
+          continue
+        }
+        if (!collected) {
+          collected = true
+          items.push({
+            kind: 'process-title',
+            id: `process:${String(turn)}`,
+            turn,
+            seq: (entry as TranscriptEntryModel).seq,
+            toolCalls: calls.length - subagents,
+            subagents,
+            failed: summary.failed,
+            ...(settled && summary.durationMs !== undefined ? { durationMs: summary.durationMs } : {}),
+            ...(summary.added === undefined ? {} : { added: summary.added, removed: summary.removed ?? 0 }),
+            hint: inScope && !expandedTurn,
+          })
+        }
+        const inFlight = entry.kind === 'transcript-thinking' ? entry.streaming : memberFacts(entry, closed).some(fact => fact.running)
+        if (inFlight) items.push(plainEntry(entry, closed, expandedTurn, inScope, 'compact'))
+        else lastSeq = (entry as TranscriptEntryModel).seq
       }
-      lastSeq = (rest.findLast(isSemantic) as TranscriptEntryModel).seq
       continue
     }
     let pending: Entry[] = []
@@ -262,22 +284,10 @@ export function buildDisplay(input: DisplayInput): DisplayItem[] {
       if (pending.length === 0) return
       const members = pending
       pending = []
-      if (view === 'cards' || view === 'blocks' || view === 'current') {
-        for (const entry of members) {
-          const verbose = view === 'cards' || (view === 'current' && 'step' in entry && entry.step === currentStep)
-          items.push(plainEntry(entry, closed, expandedTurn, inScope, verbose ? 'verbose' : 'standard'))
-        }
-        return
+      for (const entry of members) {
+        const verbose = view === 'cards' || (view === 'current' && 'step' in entry && entry.step === currentStep)
+        items.push(plainEntry(entry, closed, expandedTurn, inScope, verbose ? 'verbose' : 'standard'))
       }
-      // Past tense only: a title summarizes settled members, so a
-      // reasoning-only group or one whose work still runs shows nothing.
-      const settled = members.flatMap(entry => memberFacts(entry, closed)).filter(fact => !fact.running)
-      const head = members[0] as TranscriptEntryModel
-      if (view === 'titles' && settled.length > 0) {
-        items.push({ kind: 'process-title', id: `process:${head.id}`, turn, seq: head.seq, summary: summarizeProcess(settled) })
-      }
-      // Hidden members still advance the anchor order.
-      lastSeq = (members.findLast(isSemantic) as TranscriptEntryModel).seq
     }
     for (const entry of rest) {
       if (isMember(entry)) {

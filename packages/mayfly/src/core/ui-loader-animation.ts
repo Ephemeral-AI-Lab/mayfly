@@ -24,14 +24,14 @@ const LOADER_FRAMES: Readonly<Record<'bloom' | 'fill' | 'gap', readonly string[]
   gap: Object.freeze(['⣾', '⣽', '⣻', '⢿', '⡿', '⣟', '⣯', '⣷']),
 })
 
-/** How bright each of the breath's six shades is, dim to bright to dim (1 is the tone itself, 0 the palette's muted gray). */
-const BREATH_LEVELS: readonly number[] = Object.freeze([0, 0.2, 0.6, 1, 0.6, 0.2])
+/** Shades in one breath: a clock step each, so the cycle is as smooth as the clock (2.4 s at 100 ms). */
+const BREATH_SHADES = 24
+
+/** How bright each of the breath's shades is, dim to bright to dim along a cosine (1 is the tone itself, 0 the palette's muted gray). */
+const BREATH_LEVELS: readonly number[] = Object.freeze(Array.from({ length: BREATH_SHADES }, (_, index) => Number((0.5 - 0.5 * Math.cos((2 * Math.PI * index) / BREATH_SHADES)).toFixed(3))))
 
 /** From this level up the breath is also bold, so the bright half of the cycle reads at once. */
 const BREATH_BOLD_LEVEL = 0.6
-
-/** Clock steps per breath shade: 400 ms. */
-const BREATH_STEPS = 4
 
 /** The `shimmer` window is this many letters wide, centred on the sweep. */
 const SHIMMER_WINDOW = 3
@@ -44,7 +44,7 @@ export function loaderFrameGlyph(variant: 'bloom' | 'fill' | 'gap', frame: numbe
 
 /** Which breath shade a clock frame shows. */
 export function breathLevel(frame: number): number {
-  return BREATH_LEVELS[Math.floor(frame / BREATH_STEPS) % BREATH_LEVELS.length]!
+  return BREATH_LEVELS[frame % BREATH_LEVELS.length]!
 }
 
 // oxlint-disable-next-line no-control-regex -- ESC (\x1b) opens the palette's SGR sequence
@@ -58,12 +58,13 @@ function rgbOf(paint: (text: string) => string): readonly [number, number, numbe
 
 /**
  * The colour of a breath shade: the `primary` tone blended toward the palette's deepest gray by `level`, so the
- * brightest shade is `primary` itself. A palette that paints no truecolor (monochrome) has no shades and paints the tone.
+ * brightest shade is `primary` itself. A palette that paints no truecolor (monochrome) has no shades and alternates the tone and the muted gray.
  */
 export function breathPaint(colors: Pick<MayflySemanticColors, 'primary' | 'textMuted'>, level: number): (text: string) => string {
   const tone = rgbOf(colors.primary)
   const floor = rgbOf(colors.textMuted)
-  if (tone === undefined || floor === undefined) return colors.primary
+  // A palette with no truecolor has no shades: the breath alternates the tone and the muted gray instead.
+  if (tone === undefined || floor === undefined) return level >= 0.5 ? colors.primary : colors.textMuted
   const [r, g, b] = tone.map((channel, index) => Math.round(floor[index]! + (channel - floor[index]!) * level))
   const [open, close] = level >= BREATH_BOLD_LEVEL ? ['\x1b[1m', '\x1b[22m'] : ['', '']
   return text => `${open}\x1b[38;2;${String(r)};${String(g)};${String(b)}m${text}\x1b[39m${close}`

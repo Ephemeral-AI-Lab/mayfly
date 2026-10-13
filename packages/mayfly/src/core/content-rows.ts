@@ -913,7 +913,8 @@ function codePaints(env: ContentRowsEnv): CodePaints {
 function codeSource(node: Extract<MayflySectionContentNode, { readonly kind: 'code' }>, width: number, env: ContentRowsEnv): RowSource {
   const { text: code, index } = indexedField(node, node.code, env)
   const language = node.language === undefined ? '' : sanitizePluginText(requireText(node.language, 'code language'))
-  const digits = node.numbered === true ? String(index.lines).length : 0
+  const startAt = node.start ?? 1
+  const digits = node.numbered === true ? String(index.lines + startAt - 1).length : 0
   const gutter = digits === 0 ? 0 : digits + 3
   const inner = Math.max(1, width - gutter)
   // Highlighting keeps its old cap (roadmap §2.2 row 14): the first rows of a block up to 32 KB, computed once.
@@ -938,7 +939,7 @@ function codeSource(node: Extract<MayflySectionContentNode, { readonly kind: 'co
       const wrapped = cut ? charWrap(painted, at, env.components) : env.components.wrapText(painted, at)
       wrapped.forEach((row, offset) => {
         if (gutter === 0) { rows.push(row); return }
-        const mark = numbered && offset === 0 ? `${String(line + 1).padStart(digits)} │ ` : ' '.repeat(gutter)
+        const mark = numbered && offset === 0 ? `${String(line + startAt).padStart(digits)} │ ` : ' '.repeat(gutter)
         rows.push(`${env.colors.muted(mark)}${row}`)
       })
     }

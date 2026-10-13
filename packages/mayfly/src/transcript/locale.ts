@@ -101,6 +101,11 @@ export const ACTIVITY_LOCALE = identityCatalog({
   'interrupting…': '正在中断…',
   'Waiting for your approval': '等待你的批准',
   'Waiting for your answer': '等待你的回答',
+  'Running {count} tools': '正在运行 {count} 个工具',
+  'Retry {retry}/{max} in {seconds}s': '第 {retry}/{max} 次重试，{seconds} 秒后',
+  'Retrying {retry}/{max}…': '正在第 {retry}/{max} 次重试…',
+  '+{count} more': '另有 {count} 项',
+  'Preparing {count} tool calls': '准备 {count} 个工具调用',
   ...PROCESS_ACTIVE_ZH,
 })
 

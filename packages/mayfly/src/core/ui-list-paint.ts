@@ -7,6 +7,7 @@
  * @module @ephemeral-ai/mayfly/core/ui-list-paint
  */
 
+import { hasMotion } from './ui-motion-text.ts'
 import type { MayflyInlineSpan, MayflyListItem, MayflyListNode } from '@ephemeral-ai/mayfly-ui'
 import type { MayflySemanticColors } from './types.ts'
 import { scanContentLines, type ContentLineScan } from './content-segments.ts'
@@ -316,11 +317,13 @@ export function paintList(node: ListNodeView, width: number, height: number, col
     ].join('\x01')
     const leaded = item.bodyLead !== undefined && spec.open && item.body !== undefined
     const paintHead = (): readonly string[] => leaded ? leadedLines(state, colors, options.body) : headLines(state, colors, options.translate)
-    const painted = options.memo === undefined ? paintHead() : options.memo.cache.readLines(colors, item, key, paintHead, options.memo.counters)
+    // A row whose body carries a motion span is painted again at every clock frame: its remembered lines would freeze it.
+    const moves = typeof item.body === 'object' && item.body.kind === 'rich-text' && hasMotion(item.body.spans)
+    const painted = options.memo === undefined || moves ? paintHead() : options.memo.cache.readLines(colors, item, key, paintHead, options.memo.counters)
     entries.push({ kind: 'item', id: item.id, lines: painted })
     if (!leaded && spec.open && item.body !== undefined) {
       const counters = options.memo?.counters
-      const body = options.memo === undefined
+      const body = options.memo === undefined || moves
         ? bodyLines(spec, available, colors, options.body, counters)
         : options.memo.cache.readLines(colors, item, `body\x01${String(available)}\x01${options.flow === true ? 1 : 0}`, () => bodyLines(spec, available, colors, options.body, counters), counters)
       if (body.length > 0) entries.push({ kind: 'body', lines: body })

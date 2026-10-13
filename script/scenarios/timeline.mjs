@@ -285,14 +285,14 @@ export function compile(items, { provider = 'deepseek-official', model = 'deepse
         const parts = spread(block.text, spec.chunk ?? 14)
         const total = block.type === 'reasoning' ? (spec.reasoningMs ?? Math.min(7000, Math.max(900, block.text.length * 12))) : (spec.textMs ?? Math.min(6000, Math.max(500, block.text.length * 8)))
         parts.forEach((part, index) => push(t + (total * index) / parts.length, { op: 'stream', ...via, frame: 'delta', channel, block: blocks.indexOf(block), text: part }))
-        // A mark inside a block stops playback part-way through it (`marks: [{ name, block: 'text', at: 0.5 }]`; the blocks are `reasoning`, `text`, `wait` for the first token, `prepare` for a call's arguments, and `tool` for the first call running).
+        // A mark inside a block stops playback part-way through it (`marks: [{ name, block: 'text', at: 0.5 }]`; the blocks are `reasoning`, `text`, `wait` for the first token, `prepare` for a call's arguments, and `tool` for a call running; `call` picks the call of the step, the first by default).
         for (const point of spec.marks ?? []) if (point.block === block.type) push(t + total * point.at, { op: 'mark', name: point.name })
         t += total
       }
       if (preparing) {
         // The model writes each call's arguments before the call is committed: the activity row names the tool.
         for (const call of calls) {
-          if (call === calls[0]) for (const point of spec.marks ?? []) if (point.block === 'prepare') push(t + spec.prepareMs * point.at, { op: 'mark', name: point.name })
+          for (const point of spec.marks ?? []) if (point.block === 'prepare' && (point.call ?? 0) === calls.indexOf(call)) push(t + spec.prepareMs * point.at, { op: 'mark', name: point.name })
           const parts = spread(JSON.stringify(call.args ?? {}), spec.chunk ?? 14)
           parts.forEach((part, index) => push(t + (spec.prepareMs * index) / parts.length, { op: 'stream', ...via, frame: 'delta', channel: 'tool-call-delta', callId: call.callId, name: index === 0 ? call.name : undefined, text: part }))
           t += spec.prepareMs
@@ -315,8 +315,8 @@ export function compile(items, { provider = 'deepseek-official', model = 'deepse
       const callAt = t + 100 + index * 60
       event(callAt, 'tool/call', { turn: turnNo, step: stepNo, callId: call.callId, name: call.name, arguments: JSON.stringify(call.args ?? {}) })
       const resultAt = callAt + (call.runMs ?? 600)
-      // A `tool` mark stops playback while the first call runs.
-      if (index === 0) for (const point of spec.marks ?? []) if (point.block === 'tool') push(callAt + (call.runMs ?? 600) * point.at, { op: 'mark', name: point.name })
+      // A `tool` mark stops playback while a call runs (the first, or the one a mark's `call` names); so does a `prepare` mark while its arguments stream.
+      for (const point of spec.marks ?? []) if (point.block === 'tool' && (point.call ?? 0) === index) push(callAt + (call.runMs ?? 600) * point.at, { op: 'mark', name: point.name })
       if (call.ask !== undefined) push(callAt + 200, { op: 'ask', ...(session === null ? {} : { session }), callId: call.callId, toolName: call.name, ...call.ask })
       if (call.todos !== undefined) event(resultAt - 20, 'todo/write', { todos: call.todos.map(([status, content]) => ({ status, content })) })
       if (call.child !== undefined) {

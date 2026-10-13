@@ -46,17 +46,16 @@ export type StreamRow =
   /** The model's answer, as Markdown source. */
   | { readonly kind: 'answer', readonly id: string, readonly text: string }
   /**
-   * The model's reasoning. With a `label` (`Thinking`, with how long it took once settled) it is a header row and the
-   * whole text under it, aligned with the label; without one it is a single line (the latest line while streaming, the
-   * first once settled) that the row clips.
+   * The model's reasoning: a header (`Thinking`, with how long it took once settled; a breathing dot while `pending`) and its
+   * `rows` by tier: the last ones under an `earlier` row while it is written, the first ones above a `more` row once it is done.
    */
-  | { readonly kind: 'reasoning', readonly id: string, readonly text: string, readonly label?: string }
+  | { readonly kind: 'reasoning', readonly id: string, readonly label: string, readonly pending?: boolean, readonly rows?: readonly string[], readonly earlier?: string, readonly more?: string }
   /** A tool call, the verbose tier: a glyph by state (a dot that breathes while it runs), the name, the target, what came of it, and a short body. */
   | ({ readonly kind: 'tool', readonly id: string } & ToolBlockFacts)
   /** A run of settled calls of one kind, the standard tier: a head and one line per call. */
   | ({ readonly kind: 'tools', readonly id: string } & ToolGroupFacts)
   /** The past-tense title of a folded process group. */
-  | { readonly kind: 'title', readonly id: string, readonly text: string, readonly failed?: string }
+  | { readonly kind: 'title', readonly id: string, readonly text: string, readonly failed?: string, readonly hint?: string }
   /** The turn header: its lifecycle label and counts. */
   | { readonly kind: 'header', readonly id: string, readonly mood: StreamMood, readonly open: boolean, readonly label: string, readonly tail: string }
   | { readonly kind: 'compaction', readonly id: string, readonly state: 'running' | 'ok' | 'error', readonly text: string }
@@ -131,13 +130,16 @@ function rowItems(row: StreamRow): readonly MayflyListItem[] {
       ]
     // One item holds the whole answer: its Markdown body lays out the blocks and wraps under the `●` that leads it.
     case 'answer': return [{ id: row.id, label: '', body: ui.markdown(row.text), bodyAlways: true, bodyLead: [span('● ')] }]
-    // With a label the reasoning is a header row and its whole text under it, aligned with the label's first letter.
-    case 'reasoning': return row.label === undefined
-      ? [line(row.id, [span('✻ ', 'muted'), span(row.text, 'muted', ['italic'])])]
-      : [
-        line(row.id, [span('✻ ', 'muted'), span(row.label, 'muted')]),
-        { id: `${row.id}.text`, label: '', body: ui.text(row.text, { tone: 'muted', styles: ['italic'] }), bodyAlways: true, bodyLead: [span('  ')] },
-      ]
+    // The reasoning is a header row and its rows under it (as many as the tier shows), aligned under the label.
+    case 'reasoning': return [
+      // Still thinking: a breathing dot; done: the `✻` with the duration. Then its rows.
+      row.pending === true
+        ? { id: row.id, label: row.label, body: ui.richText([{ text: '', motion: 'loader', variant: 'breath' }, { text: ` ${row.label}`, tone: 'muted' }], { overflow: 'truncate' }), bodyAlways: true, bodyLead: [span('')] } satisfies MayflyListItem
+        : line(row.id, [span('✻ ', 'muted'), span(row.label, 'muted')]),
+      ...(row.earlier === undefined ? [] : [line(`${row.id}.earlier`, ToolMore(row.earlier))]),
+      ...(row.rows ?? []).map((text, index) => line(`${row.id}.row.${String(index)}`, ToolBody({ text, tone: 'muted' }))),
+      ...(row.more === undefined ? [] : [line(`${row.id}.more`, ToolMore(row.more))]),
+    ]
     case 'tool': return [
       // A call that still runs leads with a breathing dot, a motion span that only a row body may paint.
       row.state === 'pending'
@@ -158,6 +160,7 @@ function rowItems(row: StreamRow): readonly MayflyListItem[] {
             ...(hunk.maxRows === undefined ? {} : { maxRows: hunk.maxRows }),
             ...(hunk.tail === undefined ? {} : { tail: hunk.tail }),
             ...(hunk.language === undefined ? {} : { language: hunk.language }),
+            ...(hunk.start === undefined ? {} : { start: hunk.start }),
           }),
           bodyAlways: true,
           // A lead puts the body on the line itself (no blank head row); the diff's own indent sets its column.
@@ -167,17 +170,19 @@ function rowItems(row: StreamRow): readonly MayflyListItem[] {
       ...(row.code === undefined ? [] : [{
         id: `${row.id}.code`,
         label: '',
-        body: ui.code(row.code.text, { numbered: true, label: false, ...(row.code.language === undefined ? {} : { language: row.code.language }) }),
+        body: ui.code(row.code.text, { numbered: true, label: false, ...(row.code.language === undefined ? {} : { language: row.code.language }), ...(row.code.start === undefined ? {} : { start: row.code.start }) }),
         bodyAlways: true,
         bodyLead: [span('  ')],
       } satisfies MayflyListItem]),
       ...(row.more === undefined ? [] : [line(`${row.id}.more`, ToolMore(row.more))]),
     ]
     case 'tools': return [
-      line(row.id, ToolGroupHead(row)),
+      row.state === 'pending'
+        ? { id: row.id, label: row.name, body: ui.richText(ToolGroupHead(row), { overflow: 'truncate' }), bodyAlways: true, bodyLead: [span('')] } satisfies MayflyListItem
+        : line(row.id, ToolGroupHead(row)),
       ...row.items.map((item, index) => line(`${row.id}.item.${String(index)}`, ToolGroupItem(item, index === row.items.length - 1))),
     ]
-    case 'title': return [line(row.id, [span('▸ ', 'muted'), span(row.text, 'muted'), ...(row.failed === undefined ? [] : [span(` · ${row.failed}`, 'danger')])])]
+    case 'title': return [line(row.id, [span('▸ ', 'muted'), span(row.text, 'muted'), ...(row.failed === undefined ? [] : [span(` · ${row.failed}`, 'danger')]), ...(row.hint === undefined ? [] : [span(` · ${row.hint}`, 'muted')])])]
     case 'header': return [line(row.id, [span(row.open ? '▾ ' : '▸ ', 'muted'), span(row.label, MOOD_TONE[row.mood]), ...(row.tail === '' ? [] : [span(row.tail, 'muted')])])]
     case 'compaction': return [line(row.id, [span(STATE_GLYPH[row.state], STATE_TONE[row.state]), span(row.text)])]
     case 'error': return [line(row.id, [span('✗ ', 'danger'), span(row.text, 'danger')], { wrap: true, hang: 2 })]

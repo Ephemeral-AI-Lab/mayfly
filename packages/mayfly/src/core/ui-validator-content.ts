@@ -62,9 +62,9 @@ export function admitTextStyles(h: AdmissionHelpers, object: Fields, path: strin
   return { styles }
 }
 
-/** A code node's `numbered` and `label`. */
+/** A code node's `numbered`, `start`, and `label`. */
 export function admitCodeFields(h: AdmissionHelpers, object: Fields, path: string): Fields {
-  return { ...present('numbered', flag(h, object, 'numbered', path)), ...present('label', flag(h, object, 'label', path)) }
+  return { ...present('numbered', flag(h, object, 'numbered', path)), ...present('start', integer(h, object, 'start', path, 0, 1_000_000)), ...present('label', flag(h, object, 'label', path)) }
 }
 
 /** A diff node's `start`, `numbered`, `hunkHeader`, `context` (0 to 3), `maxRows`, the `tail` row that ends a cut diff, and its `language`. */

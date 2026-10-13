@@ -120,7 +120,7 @@ keeps its row and names its successor, because the Phase 1 record cites it.
 | 11 API additions | Approved as §3. |
 | 12 Unused builders | `sections` and `diagram` stay for plugins. |
 | 13 Trace turn | Derived in Mayfly from the session events (`interaction/trace-aggregate.ts`); no Harness change. |
-| 14 Write highlighting | Capped at the expanded card's 12 rows and 32 KB, then plain text. |
+| 14 Write highlighting | Capped at the open card's 40 rows and 32 KB, then plain text. |
 | 15 Turn rule | Start time only, as drawn. |
 
 ### 2.3 Where the implementation differs from the prototype
@@ -854,7 +854,7 @@ It landed in five parts, each green on its own, and a sixth after slice 1.7 merg
    `context`, and `maxRows` as painter options for slice 1.3 to put on the node; `CTX_EDGE_ROWS` became
    `DIFF_CONTEXT_ROWS`. A code node with a known language is highlighted by default (keywords `primary`, strings
    `success`, as the kit does; comments muted; every other token class in text color, so no color outside the palette
-   reaches the terminal), for the first 12 rows of a block of at most 32 KB; markdown fences use the same theme.
+   reaches the terminal), for the first 40 rows of a block of at most 32 KB; markdown fences use the same theme.
 5. **Guards and parity.** `tests/core/theme-contrast.spec.ts` checks every tone at 4.5:1 or more against each theme's
    canvas (dark against the shots canvas `#0A0A0C`, light against white, ocean against `#0E1A2B`, paper against
    `#F6F0E4`; `auto` is dark or light); light's `accent` and paper's `primary` and `warning` were darkened to pass.
@@ -1936,7 +1936,7 @@ The groups below are finalized in this order, each under §7. Their text is the 
   - `EditCard` (owner's answers, R5): an edit is `✓ Edit(path) · +4 −2` with a diffstat bar and its diff, with
     real line numbers (the Harness gives no start line, so the one gutter, which numbers the modified file and leaves removed lines blank, counts from 1 in each hunk for now),
     syntax-highlighted code, and a tint that stops 4 columns short of the right edge; the failure reason is on the call's line. `WriteCard`: `✓
-    Write(path) · 84 lines · 3.1 KB` and numbered highlighted code (highlighting capped at 12 rows and 32 KB, §2.2 row
+    Write(path) · 84 lines · 3.1 KB` and numbered highlighted code (highlighting capped at 40 rows and 32 KB, §2.2 row
     14). Both are open by default, 6 rows at Standard, 12 at Verbose, up to 40 with Ctrl+O, each its own block (never a
     run); only Compact folds them into the merged line with its diffstat.
   - Content of any size through §4.2: a large write or edit shows its diff, never a rejection.
@@ -1998,6 +1998,7 @@ part is accepted (§7 step 3).
 | R4 | 3a.4 images and cutover cleanup; 3b.1 settled tool lines | 3a.4 accepted; group 3a finalized (goldens written for the stream scenarios, spec §5.6 rewritten as accepted behavior, briefs removed); the `app-*` goldens and Website app shots wait with the Website (on hold); 3b.1 built (every tool at three tiers, spec §7.1) and its effect accepted by the owner; its tests, goldens and perf A/B run in a separate test session (spec §3.1), so it is not yet marked accepted | `feat/3a` |
 | R5 | 3b.2 edit cards; 3b.3 write card (command rows were finished in 3b.1) | designed and built (scenarios `edits`, `edits-compact`, `-detailed`, `-verbose`); the owner's answers: relative line numbers, highlighted diff with an inset tint, calls named by tool; Standard shows every edit and write open; the effect is accepted by the owner (`d71a9e5`); its tests, goldens and perf A/B run in a separate test session (spec §3.1), so it is not yet marked accepted | `feat/3a` |
 | R6 | 3c.1 activity header; 3c.2 activity details and tips; 3b.4 pending call blocks (§5.3.1) | 3c.1, 3c.2 and 3b.4 built; the owner accepted the effect as it stands (tests, goldens and perf A/B run in a separate test session, spec §3.1, so it is not yet marked accepted); a later round, in a session of its own, refines how the activity row and the session flow stay in step (scenarios `phases`, `phases-off`, `thinkingLadder`, `pending`, `pending-compact`, `pending-verbose`, `activityDetail`, `activityWait`); the owner's answers and layout: the block is a constant three rows (header, one line, a blank row before the editor) at the stream's left margin; the line is the single action running now, else a rotating teaching tip; every wait breathes its `●` (`Waiting for your approval` / `Waiting for your answer`, and the row stays above the approval and question panels); Writing fills like Deep diving; a quiet-hints setting (`full`, `off`) blanks the tip; the division of labor between the stream and the activity row is written in component-library §5.3.1 (pending call blocks in the stream, the thinking ladder, a tip under the header outside Compact) and builds as part 3b.4 inside this round; `authorization` is the provider sign-in, so it is not an activity phase | `feat/3a` |
+| R6b | 3b.5 the tool block base; activity row in step with the stream | the owner's follow-up to R6: `transcript/tool-kinds.ts` (the descriptor every tool block is drawn from), pending lines at every level with their input (a command's lines, Edit and Write code streaming before the commit), `partial-json.ts`, group blocks from the first call (tool name and count, a branch line per call), one `▸ N tool calls` line per turn at Compact, Thinking as a streaming block, the breathing dot repainted in lists, a 24-shade breath, code highlighting to 40 rows, the activity row's second line (call arguments, provider retry), the `inFlight` fact, one host tick (`mayflyTick`) and one time format (scenarios `blocks`, `blocks-compact`, `-detailed`, `-verbose`, `streaming`, `streaming-compact`, `-verbose`, `-open`, `sync`, `fold`; `activityDetail` removed); built, in owner review | `feat/3a` |
 | R7 | 3c.3 notices and banners; 3c.4 compaction | not started | |
 | R8 | 3d.1 approval card; 3d.2 plan review card | not started | |
 | R9 | 3e.1 levels; 3e.2 row selection; 3e.3 stream search | not started | |

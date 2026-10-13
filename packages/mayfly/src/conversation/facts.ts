@@ -19,8 +19,8 @@ import { everyAdmitted, identityAdmission } from './admission.ts'
 import { outputProgressSchema } from './output-progress.ts'
 import type { ConversationFactsState } from './types.ts'
 import { foldAssistantStreamRecords, initialAssistantStream } from './stream-accumulator.ts'
+import { argumentDetail } from './activity-detail.ts'
 import { isSpawnToolName } from './projection.ts'
-import { callDetail, reasoningDetail } from './activity-detail.ts'
 
 const todoSchema = z.object({
   content: z.string(),
@@ -52,9 +52,10 @@ export const conversationFactsSchema = z.object({
   activity: z.object({
     kind: z.enum(['reasoning', 'text', 'tool']),
     name: z.string().optional(),
-    detail: z.string().optional(),
     preparing: z.boolean().optional(),
   }).optional(),
+  inFlight: z.array(z.object({ callId: z.string(), name: z.string(), detail: z.string().optional(), preparing: z.boolean().optional() })).optional(),
+  retrying: z.object({ retry: z.number(), maxRetries: z.number(), at: z.number(), delayMs: z.number(), reason: z.string().optional() }).optional(),
   runOutcome: z.enum(['completed', 'failed']).optional(),
   endedAt: z.number().optional(),
   agentCalls: z.array(z.object({
@@ -111,7 +112,7 @@ function foldStreamChunks(
     flowDownChars: state.flowDownChars + draft.chars,
     activity: draft.phase === 'waiting'
       ? state.activity
-      : draft.phase === 'thinking' ? { kind: 'reasoning', detail: reasoningDetail(draft.reasoning) } : { kind: 'text' },
+      : draft.phase === 'thinking' ? { kind: 'reasoning' } : { kind: 'text' },
     outputProgress: draft.outputProgress,
   }
 }
@@ -141,16 +142,42 @@ function withoutCleared(state: ConversationFactsState): ConversationFactsState {
   return plain === undefined ? state : plain as unknown as ConversationFactsState
 }
 
+/** The salient argument of a committed call's raw JSON arguments, `''` when they do not parse. */
+function detailOf(raw: string): string {
+  try {
+    return argumentDetail(JSON.parse(raw))
+  } catch {
+    return ''
+  }
+}
+
+/** The failure a retry record carries, as a short reason. */
+function retryReason(failure: unknown): string | undefined {
+  if (typeof failure !== 'object' || failure === null) return undefined
+  const { message, code } = failure as { readonly message?: unknown, readonly code?: unknown }
+  const text = typeof code === 'string' && code !== '' ? code : typeof message === 'string' ? message : undefined
+  return text === undefined ? undefined : text.replace(/\s+/gu, ' ').trim().slice(0, 80)
+}
+
 function foldFacts(
   state: ConversationFactsState,
   event: SessionEvent,
 ): ConversationFactsState {
+  // The retry records are the retry plugin's events, which this package does not type.
+  const kind: string = event.type
+  if (kind === 'llm/retry') {
+    const data = (event as unknown as { readonly data: { readonly retry: number, readonly maxRetries: number, readonly delayMs: number, readonly failure?: unknown } }).data
+    const reason = retryReason(data.failure)
+    return { ...state, retrying: { retry: data.retry, maxRetries: data.maxRetries, at: event.time, delayMs: data.delayMs, ...(reason === undefined ? {} : { reason }) } }
+  }
+  if (kind === 'llm/retry-started') return state.retrying === undefined ? state : { ...state, retrying: undefined }
+  if (kind === 'assistant/message' && state.retrying !== undefined) return foldFacts({ ...state, retrying: undefined }, event)
   switch (event.type) {
     case 'turn/start':
       return {
         ...state, phase: 'waiting', active: true, turn: event.data.turn, turnStartedAt: event.time, flowUp: undefined,
         flowDownChars: 0, outputProgress: undefined, epochToolCount: 0, epochTokens: 0, usageByStep: {},
-        activity: undefined, runOutcome: undefined, endedAt: undefined, currentStep: undefined, lastCompletedStep: undefined,
+        activity: undefined, inFlight: undefined, retrying: undefined, runOutcome: undefined, endedAt: undefined, currentStep: undefined, lastCompletedStep: undefined,
       }
     case 'user/message': {
       if (event.data.source?.kind !== 'user') return state
@@ -212,7 +239,8 @@ function foldFacts(
       return {
         ...state, phase: 'tool', active: true, turn: event.data.turn, outputProgress: undefined,
         epochToolCount: (state.epochToolCount ?? 0) + 1,
-        activity: { kind: 'tool', name: event.data.name, detail: callDetail(event.data.arguments) },
+        activity: { kind: 'tool', name: event.data.name },
+        inFlight: [...(state.inFlight ?? []), { callId: String(event.data.callId), name: event.data.name, detail: detailOf(event.data.arguments) }],
       }
     case 'tool/result': {
       // Tool results are first-class tool-role messages; logs written before
@@ -221,7 +249,11 @@ function foldFacts(
       if (message === undefined || typeof message !== 'object' || typeof message.toolCallId !== 'string') return state
       const callId = String(message.toolCallId)
       const index = state.agentCalls.findIndex(call => call.callId === callId)
-      if (index < 0) return state
+      if (index < 0) {
+        // A call that settled leaves the list of calls in flight.
+        const remaining = (state.inFlight ?? []).filter(call => call.callId !== callId)
+        return remaining.length === (state.inFlight ?? []).length ? state : { ...state, inFlight: remaining }
+      }
       const content = Array.isArray(message.content) ? message.content : []
       const text = content
         .filter((item): item is Extract<ContentBlock, { type: 'text' }> => typeof item === 'object' && item !== null && item.type === 'text')
@@ -234,11 +266,11 @@ function foldFacts(
     }
     case 'step/end':
       if (event.data.turn < state.turn || (event.data.turn === state.turn && state.runOutcome !== undefined)) return state
-      return { ...state, phase: 'waiting', active: true, turn: event.data.turn, outputProgress: undefined }
+      return { ...state, phase: 'waiting', active: true, turn: event.data.turn, outputProgress: undefined, inFlight: undefined, retrying: undefined }
     case 'turn/end':
       if (event.data.turn < state.turn || (event.data.turn === state.turn && state.runOutcome !== undefined)) return state
       return {
-        ...state, phase: 'idle', active: false, turn: event.data.turn, outputProgress: undefined,
+        ...state, phase: 'idle', active: false, turn: event.data.turn, outputProgress: undefined, inFlight: undefined, retrying: undefined,
         runOutcome: event.data.reason.kind === 'completed' ? 'completed' : 'failed', endedAt: event.time,
       }
     case 'todo/write':

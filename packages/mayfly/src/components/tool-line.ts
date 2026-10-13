@@ -53,12 +53,16 @@ export interface ToolDiffHunk {
   readonly tail?: string
   /** The language of the file, which colors the code. */
   readonly language?: string
+  /** The number the first row has, for the end of a change. */
+  readonly start?: number
 }
 
 /** The code of a write, numbered and highlighted by its language. */
 export interface ToolCodeFacts {
   readonly text: string
   readonly language?: string
+  /** The number the first line has, for the end of a longer text. */
+  readonly start?: number
 }
 
 /** The facts of a verbose block: the line, its body, and the row that says how much of the body is left out. */
@@ -82,8 +86,11 @@ export interface ToolGroupItemFacts {
 
 /** The facts of a standard block: a head and one line per call. */
 export interface ToolGroupFacts {
+  /** Pending while any call runs, then failed, cut off, or done. */
   readonly state: ToolLineState
-  /** The translated head: what the calls did, in counts. */
+  /** The tool's name, in bold. */
+  readonly name: string
+  /** The translated rest of the head: what the calls count, and the time. */
   readonly head: string
   /** The translated tail of the head that is a warning, such as `1 failed`. */
   readonly failed?: string
@@ -158,12 +165,13 @@ export function ToolMore(more: string): readonly MayflyInlineSpan[] {
 /**
  * The spans of a standard block's head.
  * @param facts - the block's state, head, and warning.
- * @returns the spans, glyph first.
+ * @returns the spans, glyph first; a block with a call in flight leads with the breathing dot, which only a row body may paint.
  */
 export function ToolGroupHead(facts: ToolGroupFacts): readonly MayflyInlineSpan[] {
   return [
-    { text: GLYPH[facts.state], tone: GLYPH_TONE[facts.state] },
-    { text: facts.head, tone: 'default' },
+    ...facts.state === 'pending' ? PENDING_GLYPH : [{ text: GLYPH[facts.state], tone: GLYPH_TONE[facts.state] } as const],
+    { text: facts.name, tone: facts.state === 'cancelled' ? 'muted' : 'default', styles: ['strong'] },
+    ...(facts.head === '' ? [] : [{ text: ` · ${facts.head}`, tone: 'muted' } as const]),
     ...(facts.failed === undefined ? [] : [{ text: ` · ${facts.failed}`, tone: 'danger' } as const]),
   ]
 }

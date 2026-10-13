@@ -67,6 +67,8 @@ export interface MayflyCodeNode {
   readonly code: MayflyContentField
   readonly language?: string
   readonly numbered?: boolean
+  /** The number of the first line (default 1), for code that is a window of a longer text. */
+  readonly start?: number
   /** Whether a muted row names the language above the code (default true); the language still picks the highlighting. */
   readonly label?: boolean
 }

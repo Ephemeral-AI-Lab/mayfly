@@ -42,6 +42,9 @@ export const SEARCH_PATH_LIMIT = 40
 /** Output-tail rows a command carries for the body of its verbose block. */
 export const COMMAND_PREVIEW_LINE_LIMIT = 40
 
+/** Lines of a multi-line command that a call carries as its input rows. */
+const COMMAND_INPUT_LINE_LIMIT = 40
+
 /** Characters one command output-tail row keeps before truncation. */
 const COMMAND_PREVIEW_LINE_MAX_CHARS = 160
 
@@ -292,7 +295,11 @@ function commandCallModel(resolved: ResolvedTool): CommandCallModel {
   const callView = call?.card === 'terminal' ? call : undefined
   const resultView = result?.card === 'terminal' ? result : undefined
   const argCommand = typeof record['command'] === 'string' && record['command'] !== '' ? record['command'] : undefined
-  const command = callView?.title ?? resultView?.title ?? argCommand ?? entry.name
+  const full = callView?.title ?? resultView?.title ?? argCommand ?? entry.name
+  const [first = '', ...rest] = (argCommand ?? full).split('\n').map(line => line.replace(/\s+$/, '')).filter((line, index) => index === 0 || line.trim() !== '')
+  const multi = rest.length > 0
+  const command = multi ? ellipsize(`${first} …`, 120) : ellipsize(full, 120)
+  const commandLines = multi ? [first, ...rest].slice(0, COMMAND_INPUT_LINE_LIMIT).map(line => line.length <= COMMAND_PREVIEW_LINE_MAX_CHARS ? line : `${line.slice(0, COMMAND_PREVIEW_LINE_MAX_CHARS - 1)}…`) : undefined
   const output = resultView?.output ?? (entry.result === undefined ? undefined : entry.result.text)
   const exit = exitFailure(resultView?.exitCode, resultView?.signal)
   const state = outcome === undefined ? 'pending' : outcome.isError || exit !== undefined ? 'error' : 'ok'
@@ -306,7 +313,8 @@ function commandCallModel(resolved: ResolvedTool): CommandCallModel {
     turn: entry.turn,
     step: entry.step,
     ...callFacts(entry),
-    command: ellipsize(command, 120),
+    command,
+    ...(commandLines === undefined ? {} : { commandLines }),
     state,
     ...(resultView?.exitCode === undefined ? {} : { exitCode: resultView.exitCode }),
     ...(resultView?.signal === undefined ? {} : { signal: resultView.signal }),
@@ -372,15 +380,15 @@ const FILE_CHANGE_CONTEXT_LINES = 1
 
 /**
  * A hunk with its unchanged lines around the change cut down to {@link FILE_CHANGE_CONTEXT_LINES} on each side, so the diff
- * body needs no `⋯` for context it does not draw.
+ * body needs no `⋯` for context it does not draw. A change still being written has no end to compare yet (`tail: false`).
  */
-function trimContext(before: string, after: string): { readonly before: string, readonly after: string } {
+export function trimContext(before: string, after: string, tail = true): { readonly before: string, readonly after: string } {
   const a = before === '' ? [] : before.split('\n')
   const b = after === '' ? [] : after.split('\n')
   let prefix = 0
   while (prefix < a.length && prefix < b.length && a[prefix] === b[prefix]) prefix += 1
   let suffix = 0
-  while (suffix < a.length - prefix && suffix < b.length - prefix && a[a.length - 1 - suffix] === b[b.length - 1 - suffix]) suffix += 1
+  while (tail && suffix < a.length - prefix && suffix < b.length - prefix && a[a.length - 1 - suffix] === b[b.length - 1 - suffix]) suffix += 1
   const dropHead = Math.max(0, prefix - FILE_CHANGE_CONTEXT_LINES)
   const dropTail = Math.max(0, suffix - FILE_CHANGE_CONTEXT_LINES)
   return { before: a.slice(dropHead, a.length - dropTail).join('\n'), after: b.slice(dropHead, b.length - dropTail).join('\n') }
@@ -849,7 +857,7 @@ function withLiveDraft(
     if (dispatched.has(call.id)) continue
     liveEntries.push({ kind: 'transcript-tool', id: `preparing:${call.id}`, seq, updatedSeq, renderRevision,
       turn: draft.turn, step: draft.step, callId: call.id, name: call.name, family: 'other',
-      activity: toolActivity(call.name), detail: '', arguments: '', startedAt: draft.updatedAt,
+      activity: toolActivity(call.name), detail: '', arguments: call.arguments, startedAt: call.startedAt,
       preparing: { characters: call.characters },
     })
   }

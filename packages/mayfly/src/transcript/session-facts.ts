@@ -9,13 +9,13 @@
 import { Service, type Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { GoalProjection } from '@deepseek-ai/dsh-goal'
+import { isSpawnToolName } from '../conversation/projection.ts'
 import { SessionId, type Session } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-session-projection'
 import type {} from '@deepseek-ai/dsh-session-title/types'
 import type { LiveAssistantDraft, LiveAssistantStreamService } from '../conversation/live-stream.ts'
 import type { ConversationFacts } from '../conversation/types.ts'
 import { initialConversationFacts } from '../conversation/facts.ts'
-import { reasoningDetail } from '../conversation/activity-detail.ts'
 
 /** Renderer-neutral facts for one admitted child session. */
 export interface ChildSessionFacts {
@@ -69,10 +69,22 @@ function onlyLiveCharsChanged(previous: ChildSessionFacts, next: ChildSessionFac
  * still streaming, else the durable marker.
  */
 function draftActivity(draft: LiveAssistantDraft, durable: ConversationFacts['activity']): ConversationFacts['activity'] {
-  if (draft.phase === 'thinking') return { kind: 'reasoning', detail: reasoningDetail(draft.reasoning) }
+  if (draft.phase === 'thinking') return { kind: 'reasoning' }
   if (draft.phase === 'composing') return { kind: 'text' }
   const preparing = draft.preparing?.at(-1)
   return preparing === undefined ? durable : { kind: 'tool', name: preparing.name, preparing: true }
+}
+
+/**
+ * The calls in flight: the committed calls awaiting a result, then the calls whose arguments still stream in the draft
+ * (a call the durable list already holds is committed, so it is not preparing). Spawn calls belong to the agents pane.
+ */
+function inFlightOf(draft: LiveAssistantDraft, durable: ConversationFacts): ConversationFacts['inFlight'] {
+  const committed = durable.inFlight ?? []
+  const preparing = (draft.preparing ?? [])
+    .filter(call => !isSpawnToolName(call.name) && !committed.some(item => item.callId === call.id))
+    .map(call => ({ callId: call.id, name: call.name, preparing: true }))
+  return preparing.length === 0 ? durable.inFlight : [...committed, ...preparing]
 }
 
 /** Session-scoped facts bridge for status and dock model producers. */
@@ -257,6 +269,7 @@ export class SessionFactsService extends Service {
       currentStep: draft.step,
       phase: draft.phase,
       activity: draftActivity(draft, this.durable.activity),
+      inFlight: inFlightOf(draft, this.durable),
       flowDownChars: this.durable.flowDownChars + draft.chars,
       outputProgress: draft.outputProgress,
     }

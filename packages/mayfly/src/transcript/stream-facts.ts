@@ -15,8 +15,9 @@ import type { TranscriptEntryModel, TranscriptModel, TranscriptTurnModel } from 
 import type { StreamMood, StreamQueued, StreamRow, StreamTurn, TranscriptViewFacts } from '../components/transcript-view.ts'
 import { compactElapsedMs } from './agent-presentation.ts'
 import { buildDisplay, runningTurnOf, type DisplayItem, type EntryItem, type ProcessTitleItem, type TurnHeaderItem } from './process-groups.ts'
-import { processTitle } from './process-activity.ts'
+import { diffStat, elapsedText } from './process-activity.ts'
 import { callsOf, standardRow, verboseRow, type Call } from './tool-calls.ts'
+import { kindOf } from './tool-kinds.ts'
 import type { TranscriptPresentationSnapshot } from './presentation-policy.ts'
 import { ellipsize } from './present.ts'
 
@@ -68,11 +69,6 @@ export function clockTime(ms: number): string {
 
 function firstLine(text: string, max = PREVIEW_MAX_CHARS): string | undefined {
   const line = text.split('\n').find(candidate => candidate.trim() !== '')
-  return line === undefined ? undefined : ellipsize(sanitizePluginText(line.trim()), max)
-}
-
-function lastLine(text: string, max = PREVIEW_MAX_CHARS): string | undefined {
-  const line = text.split('\n').findLast(candidate => candidate.trim() !== '')
   return line === undefined ? undefined : ellipsize(sanitizePluginText(line.trim()), max)
 }
 
@@ -196,7 +192,7 @@ export class StreamFacts {
   }
 
   private rowsOf(item: DisplayItem | RunUnit, inputs: StreamInputs, position: number): readonly StreamRow[] {
-    if (item.kind === 'run') return [standardRow(item.calls, inputs.t)]
+    if (item.kind === 'run') return [standardRow(item.calls, inputs.t, inputs.now)]
     if (item.kind === 'turn-header') return [headerRow(item, inputs.t)]
     if (item.kind === 'process-title') return [titleRow(item, inputs.t)]
     // A hand-built model may carry canonical nodes between its entries: their text is all the stream keeps.
@@ -240,16 +236,24 @@ function headerRow(item: TurnHeaderItem, t: MayflyTranslate): StreamRow {
   ]
   const hint = item.hint ? t('Ctrl+O to expand') : ''
   // A finished turn's header is what it did: the counts. How long it took is the closing row's.
-  if (mood === 'done') return { kind: 'header', id: item.id, mood, open: !item.folded, label: [...counts, ...(hint === '' ? [] : [hint])].join(' · ') || t('Worked'), tail: '' }
-  return { kind: 'header', id: item.id, mood, open: !item.folded, label, tail: `${counts.map(count => ` · ${count}`).join('')}${hint === '' ? '' : ` · ${hint}`}` }
+  if (mood === 'done') return { kind: 'header', id: item.id, mood, open: true, label: [...counts, ...(hint === '' ? [] : [hint])].join(' · ') || t('Worked'), tail: '' }
+  return { kind: 'header', id: item.id, mood, open: true, label, tail: `${counts.map(count => ` · ${count}`).join('')}${hint === '' ? '' : ` · ${hint}`}` }
 }
 
+/** The line that collects a turn's calls at the compact level: `6 tool calls · 1 subagent · 5s · +4 −2 · Ctrl+O to expand`. */
 function titleRow(item: ProcessTitleItem, t: MayflyTranslate): StreamRow {
+  const parts = [
+    item.toolCalls === 0 ? undefined : t(item.toolCalls === 1 ? '{count} tool call' : '{count} tool calls', { count: item.toolCalls }),
+    item.subagents === 0 ? undefined : t(item.subagents === 1 ? '{count} subagent' : '{count} subagents', { count: item.subagents }),
+    item.durationMs === undefined ? undefined : elapsedText(item.durationMs),
+    item.added === undefined ? undefined : diffStat(item.added, item.removed ?? 0),
+  ].filter((part): part is string => part !== undefined)
   return {
     kind: 'title',
     id: item.id,
-    text: sanitizePluginText(processTitle(item.summary, t)),
-    ...(item.summary.failed === 0 ? {} : { failed: t('{count} failed', { count: item.summary.failed }) }),
+    text: sanitizePluginText(parts.join(' · ')),
+    ...(item.failed === 0 ? {} : { failed: t('{count} failed', { count: item.failed }) }),
+    ...(item.hint ? { hint: t('Ctrl+O to expand') } : {}),
   }
 }
 
@@ -258,7 +262,7 @@ function canonicalText(node: MayflyUiNode): string {
   return node.kind === 'code' ? textOf(node.code) : `[${node.kind}]`
 }
 
-/** A run of settled calls of one kind that the standard tier draws as one block. */
+/** A run of calls of one kind that the standard tier draws as one block, from the first call on. */
 interface RunUnit {
   readonly kind: 'run'
   readonly turn: number
@@ -270,9 +274,9 @@ function isToolLike(entry: TranscriptEntryModel): boolean {
     || entry.kind === 'transcript-tool'
 }
 
-/** An edit or a write: each is its own open block at the standard tier, never part of a run. */
-function isFileChange(entry: TranscriptEntryModel): boolean {
-  return entry.kind === 'transcript-tool' && (entry.activity === 'edit' || entry.activity === 'write')
+/** A tool whose calls never share a run (an edit or a write): each is its own open block at the standard tier. */
+function isUnmerged(entry: TranscriptEntryModel): boolean {
+  return entry.kind === 'transcript-tool' && !kindOf(entry.activity).mergeable
 }
 
 /**
@@ -288,14 +292,8 @@ function runsOf(display: readonly DisplayItem[], t: MayflyTranslate, now: number
     run = undefined
   }
   for (const item of display) {
-    if (item.kind === 'entry' && item.tier === 'standard' && isSemantic(item.entry) && isToolLike(item.entry) && !isFileChange(item.entry)) {
+    if (item.kind === 'entry' && item.tier === 'standard' && isSemantic(item.entry) && isToolLike(item.entry) && !isUnmerged(item.entry)) {
       for (const call of callsOf(item.entry, item.turnClosed, t, now)) {
-        // A call that still runs is a line of its own; it settles into the run afterwards.
-        if (call.state === 'pending') {
-          flush()
-          units.push({ kind: 'run', turn: item.entry.turn, calls: [call] })
-          continue
-        }
         if (run !== undefined && run.calls[0]!.activity !== call.activity) flush()
         if (run === undefined) run = { turn: item.entry.turn, calls: [] }
         run.calls.push(call)
@@ -311,9 +309,27 @@ function runsOf(display: readonly DisplayItem[], t: MayflyTranslate, now: number
 
 /** The rows of one entry: none for an empty one, one per call for a tool, group, or run of calls drawn as verbose blocks. */
 function entryRows(item: EntryItem, entry: TranscriptEntryModel, inputs: StreamInputs): readonly StreamRow[] {
-  if (isToolLike(entry)) return callsOf(entry, item.turnClosed, inputs.t, inputs.now).map(call => verboseRow(call, item.expanded, inputs.t, item.tier === 'standard' ? 'standard' : 'verbose'))
+  if (isToolLike(entry)) {
+    // At the compact level a call in flight is its line alone; what has settled is the title's.
+    const calls = callsOf(entry, item.turnClosed, inputs.t, inputs.now)
+    return (item.tier === 'compact' ? calls.filter(call => call.state === 'pending') : calls).map(call => verboseRow(call, item.expanded, inputs.t, item.tier ?? 'verbose'))
+  }
   const row = entryRow(item, entry, inputs)
   return row === undefined ? [] : [row]
+}
+
+/** Rows of a reasoning block that is still being written, by tier. */
+const REASONING_ROWS = { standard: 3, verbose: 8, open: 40 } as const
+
+/** The block of reasoning, in flight or settled: its line, and its rows by tier (the last ones while it is written, the first once it is done; a pending one has no time, a settled one its duration). */
+function reasoningRow(item: EntryItem, entry: Extract<TranscriptEntryModel, { readonly kind: 'transcript-thinking' }>, label: string, pending: boolean, t: MayflyTranslate): StreamRow {
+  const lines = entry.text.split('\n').map(line => line.trim()).filter(line => line !== '')
+  const cap = item.tier === 'compact' ? 0 : item.expanded ? REASONING_ROWS.open : item.tier === 'standard' ? REASONING_ROWS.standard : REASONING_ROWS.verbose
+  // While the model thinks the block shows the end of it, what it has just reached; once it is done, the start.
+  const rows = (cap === 0 ? [] : pending ? lines.slice(-cap) : lines.slice(0, cap)).map(line => ellipsize(sanitizePluginText(line), REASONING_LINE_MAX_CHARS))
+  const left = lines.length - rows.length
+  const rest = left > 0 && cap > 0 ? `${t(pending ? '… +{count} earlier' : '… +{count} more', { count: left })}${item.expanded ? '' : t(' · Ctrl+O')}` : undefined
+  return { kind: 'reasoning', id: entry.id, label, ...(pending ? { pending: true } : {}), ...(rows.length === 0 ? {} : { rows }), ...(rest === undefined ? {} : pending ? { earlier: rest } : { more: rest }) }
 }
 
 function entryRow(item: EntryItem, entry: TranscriptEntryModel, inputs: StreamInputs): StreamRow | undefined {
@@ -340,17 +356,10 @@ function entryRow(item: EntryItem, entry: TranscriptEntryModel, inputs: StreamIn
     }
     case 'transcript-thinking': {
       if (entry.text.trim() === '') return undefined
-      // The activity row owns the live label and clock; a mode that streams reasoning grows its text under the header,
-      // any other shows the latest line.
-      if (entry.streaming) {
-        return inputs.policy.process.streamedReasoning
-          ? { kind: 'reasoning', id: entry.id, label: t('Thinking'), text: sanitizePluginText(entry.text.trim()) }
-          : { kind: 'reasoning', id: entry.id, text: lastLine(entry.text, REASONING_LINE_MAX_CHARS) ?? '' }
-      }
-      // A mode that previews settled reasoning shows one line of it; a turn that is open (Verbose, Ctrl+O) shows the whole.
-      if (inputs.policy.process.settledReasoningPreview && !item.expanded) return { kind: 'reasoning', id: entry.id, text: firstLine(entry.text, REASONING_LINE_MAX_CHARS) ?? '' }
-      const took = entry.durationMs === undefined ? '' : ` · ${compactElapsedMs(Math.max(1000, entry.durationMs))}`
-      return { kind: 'reasoning', id: entry.id, label: `${t('Thinking')}${took}`, text: sanitizePluginText(entry.text.trim()) }
+      // The block holds the last lines of what the model thinks, and the first of what it thought, as many as the tier shows. While the model thinks the
+      // activity row owns the clock; once it is done the label keeps the duration.
+      const took = entry.streaming || entry.durationMs === undefined ? '' : ` · ${compactElapsedMs(Math.max(1000, entry.durationMs))}`
+      return reasoningRow(item, entry, `${t('Thinking')}${took}`, entry.streaming, t)
     }
     case 'transcript-tool':
     case 'transcript-read-group':

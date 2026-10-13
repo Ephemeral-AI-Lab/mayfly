@@ -16,7 +16,7 @@ import { stripTerminalText } from './escape-sequences.ts'
 import type { MayflyComponents, MayflySemanticColors } from './types.ts'
 
 /** A code block highlights at most this many rows; the rest are plain text. */
-export const CODE_HIGHLIGHT_MAX_ROWS = 12
+export const CODE_HIGHLIGHT_MAX_ROWS = 40
 
 /** A code block larger than this many UTF-8 bytes is plain text. */
 export const CODE_HIGHLIGHT_MAX_BYTES = 32 * 1024
