@@ -232,11 +232,20 @@ export interface ConversationFacts {
   readonly retrying?: Readonly<{ readonly retry: number, readonly maxRetries: number, readonly at: number, readonly delayMs: number, readonly reason?: string | undefined, readonly status?: number | undefined }> | undefined
   /** The context occupancy around each recent compaction, kept so its settled row reads the same numbers for good. */
   readonly compactions?: readonly CompactionMark[] | undefined
+  /** The approvals put to the answerer, each with the outcome once it is known; the newest few. */
+  readonly approvals?: readonly ApprovalMark[] | undefined
   /** Terminal outcome of the latest run. */
   readonly runOutcome?: 'completed' | 'failed' | undefined
   /** Envelope timestamp of the latest terminal outcome. */
   readonly endedAt?: number | undefined
   readonly agentCalls: readonly ConversationAgentCall[]
+}
+
+/** One approval asked of the user: the call it was about, when the asker named it, and how it ended. */
+export interface ApprovalMark {
+  readonly id: string
+  readonly callId?: string | undefined
+  readonly outcome?: 'allowed-once' | 'rejected' | 'cancelled' | 'unavailable' | undefined
 }
 
 /** The context tokens a compaction began with and ended with, and the window they were measured against. */

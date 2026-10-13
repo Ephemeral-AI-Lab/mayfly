@@ -11,8 +11,8 @@ import type { MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import { latestTurnOf, TranscriptView, type StreamRow, type TranscriptViewFacts } from '../components/transcript-view.ts'
 import type { MayflyNodeSlot } from '../core/node-slot.ts'
 import type { MayflyScreenService } from '../core/screen.ts'
-import type { MayflyScreen } from '../core/types.ts'
-import type { CompactionMark } from '../conversation/types.ts'
+import type { MayflyDecisionRequest, MayflyScreen } from '../core/types.ts'
+import type { ApprovalMark, CompactionMark } from '../conversation/types.ts'
 import type { MayflyTranslate } from '../frontend/locale.ts'
 import { freezeModel, materializeTranscriptEntries, type TranscriptEntryModel, type TranscriptModel, type TranscriptTurnModel } from '../frontend/models.ts'
 import { StreamFacts } from './stream-facts.ts'
@@ -34,10 +34,12 @@ export interface TranscriptControllerOptions {
   readonly t: MayflyTranslate
   /** The messages the user typed while the agent works; read on every publish. */
   readonly queued: () => readonly { readonly id: string, readonly text: string }[]
+  /** The requests waiting on the user, in the order they were asked; read on every publish. */
+  readonly requests?: () => readonly MayflyDecisionRequest[]
   /** The clock a call that is in flight keeps its time by; absent, the stream's time only moves when it is published. */
   readonly tick?: TickSource
   /** The selected Agent's context window and occupancy and the marks around each recent compaction; read on every publish. */
-  readonly context?: () => { readonly marks?: readonly CompactionMark[] | undefined, readonly window?: number | undefined, readonly tokens?: number | undefined } | undefined
+  readonly context?: () => { readonly marks?: readonly CompactionMark[] | undefined, readonly window?: number | undefined, readonly tokens?: number | undefined, readonly approvals?: readonly ApprovalMark[] | undefined } | undefined
   /** Where the references of the images the stream shows are kept for the byte loader. */
   readonly imageRefs?: Map<string, { readonly attachmentId: string, readonly mediaType: string }>
 }
@@ -198,6 +200,7 @@ export class TranscriptController {
       t: this.options.t,
       now,
       queued: this.options.queued(),
+      requests: this.options.requests?.() ?? [],
       ...this.compactionInputs(),
       ...(this.options.imageRefs === undefined ? {} : { imageRefs: this.options.imageRefs }),
     })
@@ -206,13 +209,14 @@ export class TranscriptController {
     this.keepTime(facts)
   }
 
-  private compactionInputs(): { readonly compactions?: readonly CompactionMark[], readonly contextWindow?: number, readonly contextTokens?: number } {
+  private compactionInputs(): { readonly compactions?: readonly CompactionMark[], readonly contextWindow?: number, readonly contextTokens?: number, readonly approvals?: readonly ApprovalMark[] } {
     const context = this.options.context?.()
     if (context === undefined) return {}
     return {
       ...context.marks === undefined ? {} : { compactions: context.marks },
       ...context.window === undefined ? {} : { contextWindow: context.window },
       ...context.tokens === undefined ? {} : { contextTokens: context.tokens },
+      ...context.approvals === undefined ? {} : { approvals: context.approvals },
     }
   }
 

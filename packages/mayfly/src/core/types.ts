@@ -376,6 +376,19 @@ export interface MayflyDecisionWait {
 }
 
 /**
+ * One request that waits on the user: a tool call asking for approval, or a plan under review. The call it is about is
+ * the stream's block (`callId`); the request's content is that call's own arguments, so only the identity travels.
+ */
+export interface MayflyDecisionRequest {
+  readonly type: 'approval' | 'plan'
+  /** The tool call being decided, when the asker named it. */
+  readonly callId?: string
+  readonly toolName: string
+  /** What the asker said about the request (the approval's reason), in the language shown. */
+  readonly reason?: string
+}
+
+/**
  * `ctx.mayflyKeymap` — the keybinding registry. All Mayfly key handling goes
  * through registered actions; conflict detection runs at registration.
  */
@@ -982,6 +995,16 @@ declare module '@deepseek-ai/cordis' {
      * @mode emit
      */
     'mayfly/decision-wait-changed'(wait: MayflyDecisionWait | undefined): void
+    /**
+     * The requests waiting on the user changed: a request was asked, queued behind another, or settled. The first of
+     * `requests` is the one the decision card shows; the rest wait their turn in the order they were asked. The stream
+     * turns the first one's call into the request block (`? Bash(…) · 1 of 3 waiting`). Emitted by `mayfly-approval` and
+     * `mayfly-questions`, each for its own `source`; unfiltered.
+     * @param source - which plugin's queue changed.
+     * @param requests - that queue, first in first out; empty when it settled.
+     * @mode emit
+     */
+    'mayfly/decision-requests-changed'(source: 'approval' | 'plan', requests: readonly MayflyDecisionRequest[]): void
     /**
      * The conversation scroll left or came back to its tail, or the words of its chip changed (the count of turns that
      * began below the view, a rebound key). The notification pane draws the chip, so it follows this event. Alternate

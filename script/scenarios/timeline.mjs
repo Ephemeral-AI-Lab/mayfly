@@ -98,8 +98,12 @@ export const seed = sessions => ({ kind: 'seed', sessions })
 export const pause = ms => ({ kind: 'pause', ms })
 /** A named point of the timeline: a scenario plays up to it (`play({ until: name })`) and takes a checkpoint there. */
 export const mark = name => ({ kind: 'mark', name })
-/** A permission question for a tool call (`tool(..., { ask: approval('bash', 'why') })`); the replay waits for the answer. */
-export const approval = (toolName, reason) => ({ kind: 'approval', toolName, reason })
+/**
+ * A permission question for a tool call (`tool(..., { ask: approval('bash', 'why') })`); the replay waits for the answer.
+ * With `{ queued: true }` the ask is put at once and the replay waits for the answers of all the queued asks before it goes
+ * on, so several calls of one step wait on the user together.
+ */
+export const approval = (toolName, reason, options = {}) => ({ kind: 'approval', toolName, reason, ...options })
 /** Questions for the user during a tool call (`tool('ask_user_question', ..., { ask: question([...]) })`); the replay waits for the answer. */
 export const question = questions => ({ kind: 'question', questions })
 
@@ -344,12 +348,15 @@ export function compile(items, { provider = 'deepseek-official', model = 'deepse
         call.result ??= `started subagent ${childId}`
       }
       // A call the turn was cut off before it was answered never gets a result (`unanswered: true`).
-      if (call.unanswered !== true) event(resultAt, 'tool/result', {
+      const resultData = (text, isError, meta) => ({
         turn: turnNo,
         step: stepNo,
-        message: { id: id('tool'), role: 'tool', content: [{ type: 'text', text: call.result ?? '' }], toolCallId: call.callId, isError: call.error === true, source: { kind: 'tool', callId: call.callId } },
-        ...(call.meta === undefined ? {} : { meta: call.meta }),
-      }, true)
+        message: { id: id('tool'), role: 'tool', content: [{ type: 'text', text }], toolCallId: call.callId, isError, source: { kind: 'tool', callId: call.callId } },
+        ...(meta === undefined ? {} : { meta }),
+      })
+      // `outcomes` are the results the call has for the other answers to its ask (`rejected`, `declined`, `revised`); the driver plays the one the answer picks.
+      const variants = call.outcomes === undefined ? undefined : Object.fromEntries(Object.entries(call.outcomes).map(([key, outcome]) => [key, resultData(outcome.result, outcome.error === true, outcome.meta)]))
+      if (call.unanswered !== true) event(resultAt, 'tool/result', resultData(call.result ?? '', call.error === true, call.meta), true, variants === undefined ? {} : { variants, answerOf: call.callId })
       last = Math.max(last, resultAt)
     })
     event(last + 100, 'step/end', { turn: turnNo, step: stepNo })

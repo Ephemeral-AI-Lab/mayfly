@@ -7,7 +7,7 @@
  */
 
 import { REPLAYS } from './replays.mjs'
-import { checkpoint, idle, key, measure, play, resize, type, wheel } from './steps.mjs'
+import { checkpoint, idle, key, measure, play, resize, type, wait, wheel } from './steps.mjs'
 
 /** The size a scenario runs at unless it names its own. */
 export const DEFAULT_SIZE = Object.freeze([120, 40])
@@ -21,6 +21,12 @@ const STREAM = [`${TRANSCRIPT}stream-facts.ts`, 'packages/mayfly/src/components/
 const COMPACTION = [...STREAM, 'packages/mayfly/src/conversation/facts.ts', 'packages/mayfly/src/conversation/projection.ts']
 /** What draws the notification pane: the pane, the line, and the notices the facts raise into it. */
 const NOTIFICATION = [`${TRANSCRIPT}pane-notification.ts`, `${TRANSCRIPT}notices.ts`, 'packages/mayfly/src/components/notification-line.ts', 'packages/mayfly/src/conversation/facts.ts', `${INTERACTION}notifications.ts`]
+
+/** What draws a request that waits on the user: its block in the stream, the decision card, and what they share. */
+const REQUEST = [
+  `${INTERACTION}decision-actions.ts`, `${INTERACTION}request-overlay.ts`, 'packages/mayfly/src/components/decision-card.ts',
+  `${TRANSCRIPT}request-facts.ts`, `${TRANSCRIPT}tool-calls.ts`, 'packages/mayfly/src/conversation/facts.ts', ...STREAM,
+]
 
 /** What each replay shows, as the sources whose change it can reveal. */
 const COVERS = {
@@ -48,9 +54,13 @@ const COVERS = {
   context: [`${TRANSCRIPT}status-context.ts`, `${TRANSCRIPT}notices.ts`, ...COMPACTION],
   subagents: [`${TRANSCRIPT}pane-agents.ts`, `${TRANSCRIPT}child-agent-model.ts`],
   childStream: [`${TRANSCRIPT}pane-agents.ts`, `${INTERACTION}agents-command.ts`],
-  approvals: [`${INTERACTION}approval-plugin.ts`, `${INTERACTION}permission-panel.ts`],
+  approvals: [`${INTERACTION}approval-plugin.ts`, `${INTERACTION}permission-panel.ts`, ...REQUEST],
+  approvalsRejected: [`${INTERACTION}approval-plugin.ts`, ...REQUEST],
+  approvalsEdit: [`${INTERACTION}approval-plugin.ts`, ...REQUEST, 'packages/mayfly/src/core/content-rows.ts'],
+  approvalsQueue: [`${INTERACTION}approval-plugin.ts`, ...REQUEST],
   questions: [`${INTERACTION}questions-plugin.ts`, `${INTERACTION}questionnaire.ts`],
-  plan: [`${INTERACTION}plan-review-panel.ts`, `${INTERACTION}plan-document.ts`],
+  plan: [`${INTERACTION}plan-review-panel.ts`, `${INTERACTION}questions-plugin.ts`, ...REQUEST],
+  planLong: [`${INTERACTION}plan-review-panel.ts`, `${INTERACTION}questions-plugin.ts`, ...REQUEST, 'packages/mayfly/src/core/markdown-rows.ts'],
   goal: [`${TRANSCRIPT}status-goal.ts`],
   jobs: [`${TRANSCRIPT}status-jobs.ts`, `${INTERACTION}jobs.ts`],
   queued: [`${INTERACTION}pane-queue.ts`],
@@ -190,8 +200,129 @@ const REVIEW = {
       { look: 'Breathing ●, still label, elapsed wait time', how: 'checkpoints `approval` and `question`' },
       { look: 'The row is gone after the answer', how: 'checkpoint `end`' },
     ],
-    differs: ['The decision cards of part 3d replace the panels under this row.'],
-    pending: ['The approval row in the stream and the card itself are part 3d.'],
+    differs: ['The decision cards of part 3d replace the panels under this row; the approval is the card, and the wait is also the call in the stream (`approvals`).'],
+    pending: ['The question panel stays an overlay (part 6e).'],
+  },
+  approvals: {
+    scene: 21,
+    reference: 'prototype scene 21 (Approval, variant B) and scene 18 (request) · spec §5.7 · part 3d.1',
+    implemented: [
+      'A tool call that waits on you is the request: its own line turns into `? Bash(command) · waiting`, open, with the command, `⚠ deletes files` when it removes files, and what the asker said.',
+      'The decision is a lane card where the editor sits: `── Decide ──`, three numbered rows (Allow once, Allow {tool} for this session, Reject), a `Feedback:` note, and the hint row; a digit chooses at once and `Esc` rejects.',
+      'For a moment after the card opens every key but `Esc` is swallowed (`ready in a moment`), so a stray key typed into the editor grants nothing.',
+      'The settled line says what you decided: `✓ Bash(rm -rf dist build) · allowed · 0.9s`.',
+    ],
+    focus: [
+      { look: 'The call is the request; the activity row breathes above the card', how: 'checkpoint `asking`' },
+      { look: 'The same request at 80 columns', how: 'checkpoint `narrow`, and `--width 60`' },
+      { look: 'The settled line with `allowed`', how: 'checkpoint `allowed` (key `1` chose Allow once)' },
+      { look: 'The arm delay: press a key the moment the card opens', how: '`pnpm run scenario approvals`, then mash `1` as the card appears; checkpoint `asking` is taken after the delay' },
+    ],
+    differs: [
+      'The request is the call\'s own block, not a second `Approve command` row (owner, R8).',
+      'One Reject row; `Feedback:` is its note, so there is no `Reject and tell the agent why…` row (owner, R8).',
+      'The `in <directory>` line is not drawn: the stream does not know the working directory yet.',
+    ],
+    pending: ['The settled line says `allowed` for a session grant as well: the audit event does not tell them apart.'],
+  },
+  approvalsRejected: {
+    scene: 21,
+    reference: 'prototype scene 21 (Approval, feedback) · spec §5.7 · part 3d.1',
+    implemented: [
+      '`↓` from the last row focuses `Feedback:`; typing there and Enter rejects and sends the text to the agent.',
+      'The rejected call settles as `✗ Bash(…) · rejected`, and the agent changes course.',
+    ],
+    focus: [
+      { look: 'The note under the rows, with its cursor', how: 'checkpoint `note`' },
+      { look: 'The rejected line and the agent\'s next step', how: 'checkpoint `rejected`' },
+    ],
+    differs: ['The replay cannot fork on the answer, so it always plays the rejection; answering `1` still shows the card.'],
+    pending: ['The note appears as a queued message until the agent reads it, as every steering message does.'],
+  },
+  approvalsEdit: {
+    scene: 21,
+    reference: 'prototype scene 21 (Approval, edit) · spec §5.7 · part 3d.1',
+    implemented: [
+      'An edit waits as `? Edit(path) · waiting` with its diff open (up to 40 rows); a write waits with its code.',
+      '`Ctrl+G` opens the diff or the code in `$EDITOR` and returns to the same card; the card keeps the choice open.',
+    ],
+    focus: [
+      { look: 'The diff is the request, whatever the level', how: 'checkpoint `edit`, and `approvalsEdit-compact` / `approvalsEdit-verbose`' },
+      { look: 'The write\'s code as the request', how: 'checkpoint `write`' },
+      { look: 'Ctrl+G with and without `$EDITOR`', how: 'in the live scenario press `Ctrl+G` on the card of checkpoint `edit`' },
+    ],
+    differs: ['The hint row names `open diff` only for file changes; a command says `open command`.'],
+    pending: ['A very large diff shows 40 rows; `Ctrl+G` shows the rest.'],
+  },
+  approvalsQueue: {
+    scene: 21,
+    reference: 'prototype scene 21 (Approval, queue) · spec §5.7 · part 3d.1',
+    implemented: [
+      'Three calls wait together: the first is `? … · 1 of 3 waiting` with the card; the others keep their running dots until their turn.',
+      'Each answer brings the next request, first in first out; the card says how many wait.',
+    ],
+    focus: [
+      { look: 'Only the first call is a request, the card says `1 of 3 waiting`', how: 'checkpoint `first`' },
+      { look: 'The next request takes over after an answer', how: 'checkpoints `second` and `third`' },
+    ],
+    differs: ['A session grant (`2`) on a tool resolves the queued requests of that tool at once; here the three calls are different.'],
+    pending: [],
+  },
+  plan: {
+    scene: 21,
+    reference: 'prototype scene 21 (Plan review) and scene 18 · spec §5.7 · part 3d.2',
+    implemented: [
+      'The plan under review is the request block: `? Plan ready for review · 4 steps` with the whole plan as Markdown, wrapped under the line.',
+      'The card has Approve and start, Keep planning…, and Reject, a `Revise:` note, `c` to copy and `Ctrl+G` to open the plan.',
+      'A decided plan stays readable: its line ends in `Ctrl+O to expand`, and `Ctrl+O` (or the Verbose level) shows the whole plan again.',
+      'The call settles as you answered: `✓ Plan approved · 4 steps`, `✗ Plan rejected · 4 steps`, or `↩ Plan sent back · 4 steps · "your revision"`.',
+    ],
+    focus: [
+      { look: 'The plan as the request and the card under it', how: 'checkpoint `review`' },
+      { look: 'The narrow card', how: 'checkpoint `narrow`, and `--width 60`' },
+      { look: 'The settled plan line, with its hint', how: 'checkpoint `approved`; `planRejected` and `planRevised` show the other two' },
+      { look: 'Ctrl+O reads the decided plan again', how: 'checkpoint `opened` (press `Ctrl+O` again to fold it)' },
+    ],
+    differs: ['No `Approve and auto-accept edits` row: the Harness offers only the native outcomes (D3).', 'Reject and Keep planning… both decline; only Keep planning… sends your revision, which is how the stream tells them apart (the note beside Reject is not sent).'],
+    pending: [],
+  },
+  planRevised: {
+    scene: 21,
+    reference: 'prototype scene 21 (Plan review, revise) · spec §5.7 · part 3d.2',
+    implemented: [
+      '`Keep planning…` with an empty `Revise:` asks for the revision and focuses the field; Enter with text sends it.',
+      'The plan settles as `↩ Plan sent back · 4 steps · "add a rollback step"`: the revision is on the line, which is what tells it from a rejection.',
+    ],
+    focus: [
+      { look: 'The prompt to write the revision', how: 'checkpoint `needs-note`' },
+      { look: 'The sent-back line with your words', how: 'checkpoint `revised`' },
+    ],
+    differs: [],
+    pending: [],
+  },
+  planRejected: {
+    scene: 21,
+    reference: 'prototype scene 21 (Plan review) · spec §5.7 · part 3d.2',
+    implemented: ['`Reject` declines the plan with no revision; the call settles as `✗ Plan rejected · 4 steps` (red cross, no words), unlike `↩ Plan sent back`.'],
+    focus: [
+      { look: 'The rejected line next to the other two outcomes', how: 'checkpoint `rejected`' },
+    ],
+    differs: ['The Harness gives Reject and Keep planning… (without text) the same answer; here only a revision makes a plan "sent back".'],
+    pending: [],
+  },
+  planLong: {
+    scene: 21,
+    reference: 'prototype scene 21 (Plan review, long plan) · spec §5.7 · roadmap §4.2 · part 3d.2',
+    implemented: [
+      'A plan of any length is the request block, with no cutoff: it scrolls with the stream while the card stays at the foot.',
+      '`PgUp`/`PgDn` scroll the plan behind the card.',
+    ],
+    focus: [
+      { look: 'The end of a long plan above the card', how: 'checkpoint `review`' },
+      { look: 'Scrolled back into the plan', how: 'checkpoint `scrolled`' },
+    ],
+    differs: [],
+    pending: [],
   },
   notificationPane: {
     scene: 16,
@@ -331,6 +462,8 @@ const REVIEW = {
  */
 /** Play at the replay's own pace: the activity row is a function of time (a phase lasts seconds, the tail ticks). */
 const TIMED = { timed: true }
+/** A decision card ignores every key but Esc for 300 ms after it opens (wall clock); a checkpoint waits that out. */
+const ARMED = 400
 const SCRIPTS = {
   // A command that runs, two at once, one that fails, and one cut off; the row names the phase while the stream holds the calls.
   pending: [
@@ -385,6 +518,52 @@ const SCRIPTS = {
     play(), checkpoint('question'),
     key('enter'),
     play(), checkpoint('end'),
+  ],
+  // A command that deletes files waits on you: the request and the card, the narrow card, and Allow once.
+  approvals: [
+    play(), wait(ARMED), checkpoint('asking'),
+    resize(80, 28), checkpoint('narrow'),
+    key('1'), play(), checkpoint('allowed'),
+  ],
+  // A rejection with a note: down to the field, type, Enter.
+  approvalsRejected: [
+    play(), wait(ARMED), checkpoint('asking'),
+    key('down', { repeat: 3 }), type('use a branch instead'), checkpoint('note'),
+    key('enter'), play(), checkpoint('rejected'),
+  ],
+  // An edit and a write, each allowed with its digit.
+  approvalsEdit: [
+    play(), wait(ARMED), checkpoint('edit'),
+    key('1'), play(), wait(ARMED), checkpoint('write'),
+    key('1'), play(), checkpoint('end'),
+  ],
+  // Three requests in a queue, each answered in turn.
+  approvalsQueue: [
+    play(), wait(ARMED), checkpoint('first'),
+    key('1'), wait(ARMED), checkpoint('second'),
+    key('1'), wait(ARMED), checkpoint('third'),
+    key('1'), play(), checkpoint('end'),
+  ],
+  plan: [
+    play(), wait(ARMED), checkpoint('review'),
+    resize(80, 28), checkpoint('narrow'),
+    key('1'), play(), checkpoint('approved'),
+    key('ctrl+o'), checkpoint('opened'),
+  ],
+  // Keep planning with nothing written asks for the revision; then the revision is sent.
+  planRevised: [
+    play(), wait(ARMED), checkpoint('review'),
+    key('2'), checkpoint('needs-note'),
+    type('add a rollback step'), key('enter'), play(), checkpoint('revised'),
+  ],
+  planRejected: [
+    play(), wait(ARMED), checkpoint('review'),
+    key('3'), play(), checkpoint('rejected'),
+  ],
+  planLong: [
+    play(), wait(ARMED), checkpoint('review'),
+    key('pageup', { repeat: 3 }), checkpoint('scrolled'),
+    key('1'), play(), checkpoint('approved'),
   ],
   // A compaction stopped while it summarizes, while it applies, and settled; Ctrl+O opens the summary.
   compaction: [
@@ -495,6 +674,14 @@ const SIZES = {
   manualCompact: [[120, 40], [60, 30]],
   context: [[120, 40], [60, 30]],
   notices: [[120, 40], [60, 30]],
+  approvals: [[120, 40], [60, 30]],
+  approvalsRejected: [[120, 40], [60, 30]],
+  approvalsEdit: [[120, 56], [60, 44]],
+  approvalsQueue: [[120, 56], [60, 44]],
+  plan: [[120, 40], [60, 30]],
+  planRevised: [[120, 40], [60, 30]],
+  planRejected: [[120, 40], [60, 30]],
+  planLong: [[120, 40], [60, 30]],
   turns: [DEFAULT_SIZE, [60, 24], [40, 24]],
   toollines: [[120, 80], [60, 64], [40, 64]],
   edits: [[120, 90], [60, 70], [40, 70]],
@@ -641,6 +828,32 @@ export const CATALOG = Object.freeze({
     script: [type('/schedule'), key('enter'), checkpoint('catalog')],
   },
   ...Object.fromEntries(Object.entries(REPLAYS).map(([name, replay]) => [name, replayScenario(name, replay)])),
+  // The plan answered the other two ways (the replay's results follow the answer, so `plan` takes any of the three).
+  planRevised: {
+    summary: 'a plan you send back with a revision: Keep planning… asks for the text, and the call settles as sent back with your words',
+    source: { replay: 'plan' },
+    covers: COVERS.plan,
+    sizes: SIZES.planRevised,
+    script: SCRIPTS.planRevised,
+    review: REVIEW.planRevised,
+  },
+  planRejected: {
+    summary: 'a plan you reject: the call settles as rejected and the agent goes on',
+    source: { replay: 'plan' },
+    covers: COVERS.plan,
+    sizes: SIZES.planRejected,
+    script: SCRIPTS.planRejected,
+    review: REVIEW.planRejected,
+  },
+  // The edit and the write waiting on you at the other levels: the request is open at every one.
+  ...Object.fromEntries(['compact', 'verbose'].map(level => [`approvalsEdit-${level}`, {
+    summary: `a file change waiting on you at the ${level[0].toUpperCase()}${level.slice(1)} level: the diff is open all the same`,
+    source: { replay: 'approvalsEdit' },
+    config: { mayfly: { transcriptView: level } },
+    covers: COVERS.approvalsEdit,
+    sizes: [[120, 56]],
+    script: [play(), wait(ARMED), checkpoint('edit'), key('1'), play(), wait(ARMED), checkpoint('write'), key('1'), play(), checkpoint('end')],
+  }])),
   // The same reasoning with every card open: the live row mid-stream, the settled row, and the narrow row.
   'thinking-verbose': {
     summary: 'a long reasoning block at the Verbose level: the live reasoning row, then the settled one with its whole text',

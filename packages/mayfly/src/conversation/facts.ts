@@ -14,10 +14,12 @@ import type {} from '@deepseek-ai/dsh-tool-todo'
 // Empty type import activates the compaction-lifecycle event declarations
 // the meter cases below consume.
 import type {} from '@deepseek-ai/dsh-compaction/types'
+// Empty type import activates the approval audit event declarations the approval marks consume.
+import type {} from '@deepseek-ai/dsh-user-approval'
 import { z } from 'zod'
 import { everyAdmitted, identityAdmission } from './admission.ts'
 import { outputProgressSchema } from './output-progress.ts'
-import type { CompactionMark, ConversationFactsState } from './types.ts'
+import type { ApprovalMark, CompactionMark, ConversationFactsState } from './types.ts'
 import { foldAssistantStreamRecords, initialAssistantStream } from './stream-accumulator.ts'
 import { argumentDetail } from './activity-detail.ts'
 import { isSpawnToolName } from './projection.ts'
@@ -57,6 +59,7 @@ export const conversationFactsSchema = z.object({
   inFlight: z.array(z.object({ callId: z.string(), name: z.string(), detail: z.string().optional(), preparing: z.boolean().optional() })).optional(),
   retrying: z.object({ retry: z.number(), maxRetries: z.number(), at: z.number(), delayMs: z.number(), reason: z.string().optional(), status: z.number().optional() }).optional(),
   compactions: z.array(z.object({ id: z.string(), before: z.number().nonnegative(), after: z.number().nonnegative().optional(), window: z.number().positive().optional() })).optional(),
+  approvals: z.array(z.object({ id: z.string(), callId: z.string().optional(), outcome: z.enum(['allowed-once', 'rejected', 'cancelled', 'unavailable']).optional() })).optional(),
   runOutcome: z.enum(['completed', 'failed']).optional(),
   endedAt: z.number().optional(),
   agentCalls: z.array(z.object({
@@ -158,6 +161,14 @@ function retryReason(failure: unknown): string | undefined {
   const { message, code } = failure as { readonly message?: unknown, readonly code?: unknown }
   const text = typeof code === 'string' && code !== '' ? code : typeof message === 'string' ? message : undefined
   return text === undefined ? undefined : text.replace(/\s+/gu, ' ').trim().slice(0, 80)
+}
+
+/** How many approvals' marks the facts keep. */
+const APPROVAL_MARKS = 32
+
+/** Add or replace the mark of one approval, keeping the newest few. */
+function markApproval(marks: ConversationFactsState['approvals'], mark: ApprovalMark): readonly ApprovalMark[] {
+  return [...(marks ?? []).filter(item => item.id !== mark.id), mark].slice(-APPROVAL_MARKS)
 }
 
 /** How many compactions' marks the facts keep. */
@@ -318,6 +329,13 @@ function foldFacts(
         contextTokens: Math.max(0, state.contextTokens - event.data.shadowedTokenCount),
         contextCacheReadTokens: undefined,
       }
+    case 'approval/asked':
+      return { ...state, approvals: markApproval(state.approvals, { id: String(event.data.id), ...event.data.callId === undefined ? {} : { callId: String(event.data.callId) } }) }
+    case 'approval/decided': {
+      const id = String(event.data.id)
+      const asked = state.approvals?.find(mark => mark.id === id)
+      return asked === undefined ? state : { ...state, approvals: markApproval(state.approvals, { ...asked, outcome: event.data.outcome }) }
+    }
     case 'request/header': {
       const config = event.data.header.config
       return {
@@ -369,5 +387,5 @@ export const conversationFactsProjectionDefinition: ConversationFactsProjectionD
       todos: state.todos.map(todo => ({ ...todo })),
     }),
   },
-  stateVersion: 9,
+  stateVersion: 10,
 }

@@ -141,8 +141,8 @@ export class UiSurfaceModel {
   get registration(): UiSurfaceSnapshot { return this.input }
   get node(): MayflyUiNode | null { return this.admittedNode ?? this.admissionError ?? null }
   get focus(): UiControlAddress | undefined { return this.decision === undefined ? this.selectedControl : this.decision.focus }
-  /** A form holds an edit nobody has saved: the surface head says so. */
-  get formsDirty(): boolean { return [...this.forms.values()].some(formDirty) }
+  /** A form holds an edit nobody has saved: the surface head says so. A surface that discards on dismissal has nothing to save (a decision's note). */
+  get formsDirty(): boolean { return this.input.definition.dismissal !== 'discard' && [...this.forms.values()].some(formDirty) }
   get dirty(): boolean { return [...this.forms.values()].some(formDirty) || [...this.choices.values()].some(choice => choice.dirty) }
   get decisionNode(): MayflyUiNode | undefined {
     if (this.decision === undefined) return undefined

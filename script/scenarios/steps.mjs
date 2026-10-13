@@ -21,6 +21,8 @@ export const click = at => ({ step: 'click', at })
 export const wheel = (direction, { at, count = 1 } = {}) => ({ step: 'wheel', direction, count, ...(at === undefined ? {} : { at }) })
 /** Resize the terminal. */
 export const resize = (cols, rows) => ({ step: 'resize', cols, rows })
+/** Let `ms` of wall-clock time pass, then settle: for a state that changes by itself (an arm delay runs out). */
+export const wait = ms => ({ step: 'wait', ms })
 /** Measure the product doing nothing for `ms`: CPU and frames (a perf span named `idle`). */
 export const idle = ms => ({ step: 'idle', ms })
 /**

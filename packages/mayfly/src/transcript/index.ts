@@ -14,6 +14,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { GutterComponent } from '../core/gutter.ts'
+import type { MayflyDecisionRequest } from '../core/types.ts'
 // Empty type import carries the app-owned session reader/projection services.
 import type {} from '../app/index.ts'
 import { StatusFooterComponent } from './status-model.ts'
@@ -134,16 +135,27 @@ export function apply(ctx: Context): void {
   }) ?? (() => {})))
   // The compaction rows read the selected Agent's occupancy marks; the stream is published again when a mark lands.
   const sessionFacts = ctx.get('mayflySessionFacts') as SessionFactsService | undefined
-  const transcript: TranscriptController = new TranscriptController({ presentation, t, queued: () => queued, imageRefs, tick: ctx.mayflyTick, context: () => sessionFacts === undefined ? undefined : { marks: sessionFacts.current.compactions, window: sessionFacts.current.contextWindow, tokens: sessionFacts.current.contextTokens } })
+  // The requests waiting on the user, in the order they were asked: the plugins that put them to the user publish their
+  // queues, and the stream turns the first one's call into the request block.
+  const queues: Record<'approval' | 'plan', readonly MayflyDecisionRequest[]> = { approval: [], plan: [] }
+  let requests: readonly MayflyDecisionRequest[] = []
+  const transcript: TranscriptController = new TranscriptController({ presentation, t, queued: () => queued, requests: () => requests, imageRefs, tick: ctx.mayflyTick, context: () => sessionFacts === undefined ? undefined : { marks: sessionFacts.current.compactions, window: sessionFacts.current.contextWindow, tokens: sessionFacts.current.contextTokens, approvals: sessionFacts.current.approvals } })
   let marks = sessionFacts?.current.compactions
   let window = sessionFacts?.current.contextWindow
+  let approvals = sessionFacts?.current.approvals
   const offMarks = sessionFacts?.subscribe((facts) => {
-    if (facts.compactions === marks && facts.contextWindow === window) return
+    if (facts.compactions === marks && facts.contextWindow === window && facts.approvals === approvals) return
     marks = facts.compactions
     window = facts.contextWindow
+    approvals = facts.approvals
     transcript.republish()
   })
   ctx.effect(() => () => offMarks?.())
+  ctx.effect(() => ctx.on('mayfly/decision-requests-changed', (source, next) => {
+    queues[source] = next
+    requests = [...queues.approval, ...queues.plan]
+    transcript.republish()
+  }))
   ctx.effect(() => () => transcript.dispose())
   // Every displayed or retained conversation reads its own native path; the
   // registry decides which views exist, the controller which one is mounted.

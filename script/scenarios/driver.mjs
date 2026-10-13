@@ -166,6 +166,25 @@ export function apply(ctx) {
     // Persisted sessions need new ids on every run, and the scenario clock repeats Date.now(), so the tag is random.
     const runTag = randomBytes(4).toString('hex')
     let previous = 0
+    // Asks put at once (`approval(..., { queued: true })`) wait behind each other in the product's own queue; the replay goes on
+    // at the first action that is not one of them, once the user has answered them all.
+    const queuedAsks = []
+    // How each ask was answered, by call, for the results that depend on it (`tool(..., { outcomes })`).
+    const answers = new Map()
+    const approvalKey = outcome => outcome === 'allowed-once' ? 'allowed' : outcome
+    const questionKey = (question, answer) => {
+      const item = answer.answers.find(entry => entry.id === question.id)
+      if (item === undefined) return 'declined'
+      if (item.custom !== undefined && item.custom !== '') return 'revised'
+      return item.selected.includes(question.intent?.approve) ? 'approved' : 'declined'
+    }
+    /** A scripted result with the user's own words where it says `{feedback}`. */
+    const withFeedback = (data, feedback) => feedback === undefined ? data : JSON.parse(JSON.stringify(data).replaceAll('{feedback}', JSON.stringify(feedback).slice(1, -1)))
+    const answerQueued = async () => {
+      if (queuedAsks.length === 0) return
+      await Promise.all(queuedAsks.splice(0))
+      log('queued asks answered')
+    }
     log(`replay start: ${String(actions.length)} actions at ${String(speed)}x`)
 
     for (const action of actions) {
@@ -183,6 +202,7 @@ export function apply(ctx) {
         clock?.at(action.at + (action.skew ?? 0))
       }
       try {
+        if (action.op !== 'ask' || action.queued !== true) await answerQueued()
         switch (action.op) {
           case 'mark': {
             log(`mark ${action.name}`)
@@ -193,7 +213,9 @@ export function apply(ctx) {
             const session = target(action)
             if (session === undefined) { log(`no session ${action.session} for ${action.type}`); break }
             // The settled message carries the stream's own timing, so its reasoning keeps the duration it took.
-            const data = action.streamTiming === undefined ? action.data : { ...action.data, stream: settledStream(action.streamTiming) }
+            const answered = action.variants === undefined ? undefined : answers.get(action.answerOf)
+            const base = answered === undefined || action.variants[answered.key] === undefined ? action.data : withFeedback(action.variants[answered.key], answered.feedback)
+            const data = action.streamTiming === undefined ? base : { ...base, stream: settledStream(action.streamTiming) }
             const event = action.surface === undefined ? session.append(action.type, data) : session.append(action.type, data, { surfaceOp: action.surface })
             lastSeqs.set(session, event.seq)
             log(`${action.session ?? 'main'} ${action.type}`)
@@ -429,8 +451,18 @@ export function apply(ctx) {
             // The clock runs while an answer is awaited, as it does for a person; the runner answers with keys.
             clock?.flow()
             control?.send({ type: 'ask', kind: action.kind })
-            if (action.kind === 'approval') await ctx.get('approval').request({ agent: owner, toolName: action.toolName, callId: action.callId, reason: action.reason, signal: abort.signal })
-            else await ctx.get('userQuestions').ask({ agent: owner, questions: action.questions, signal: abort.signal })
+            if (action.kind === 'approval' && action.queued === true) {
+              queuedAsks.push(ctx.get('approval').request({ agent: owner, toolName: action.toolName, callId: action.callId, reason: action.reason, signal: abort.signal }).then(outcome => { answers.set(action.callId, { key: approvalKey(outcome) }) }, error => log(`queued ask failed: ${String(error?.message ?? error)}`)))
+              break
+            }
+            if (action.kind === 'approval') answers.set(action.callId, { key: approvalKey(await ctx.get('approval').request({ agent: owner, toolName: action.toolName, callId: action.callId, reason: action.reason, signal: abort.signal })) })
+            // A plan review names the call whose arguments hold the plan, as the plan-mode tool does.
+            else {
+              const questions = action.questions.map(question => question.intent === undefined || question.intent.callId !== undefined ? question : { ...question, intent: { ...question.intent, callId: action.callId } })
+              const answer = await ctx.get('userQuestions').ask({ agent: owner, questions, signal: abort.signal })
+              const first = questions[0]
+              if (first !== undefined) answers.set(action.callId, { key: questionKey(first, answer), feedback: answer.answers.find(entry => entry.id === first.id)?.custom })
+            }
             log('ask answered')
             break
           }

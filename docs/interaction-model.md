@@ -136,7 +136,10 @@ list, so typed text always reaches the filter.
 
 `numbered: true` maps `1`–`9` to the visible (filtered) rows; the labels stay
 stable while the list scrolls. A digit chooses the row. `numbered: 'focus'`
-only moves the cursor, so gates such as plan review still require `Enter`. The
+only moves the cursor, so a gate that opens unprompted and is not an overlay with an
+arm delay still requires `Enter`. The decision card (approval, plan review) uses
+`numbered: true`: a digit chooses at once, and the overlay ignores every key but
+`Esc` for 300 ms after it opens (`armMs`), so a stray key grants nothing. The
 hint shows the real range (`1`, `1-3`, …) and is omitted while searching.
 
 ## Hints

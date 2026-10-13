@@ -179,6 +179,8 @@ function rowItems(row: StreamRow): readonly MayflyListItem[] {
         bodyAlways: true,
         bodyLead: [span('  ')],
       } satisfies MayflyListItem]),
+      // A plan under review: its Markdown, of any length, wrapped under the line like an answer.
+      ...(row.markdown === undefined ? [] : [{ id: `${row.id}.markdown`, label: '', body: ui.markdown(row.markdown), bodyAlways: true, bodyLead: [span('  ')] } satisfies MayflyListItem]),
       ...(row.more === undefined ? [] : [line(`${row.id}.more`, ToolMore(row.more))]),
     ]
     case 'tools': return [

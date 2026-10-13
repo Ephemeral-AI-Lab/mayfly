@@ -10,8 +10,8 @@
 
 import type { MayflyInlineSpan } from '@ephemeral-ai/mayfly-ui'
 
-/** How a call stands: it still runs, it worked, it failed, or its turn ended before it settled. */
-export type ToolLineState = 'pending' | 'ok' | 'error' | 'cancelled'
+/** How a call stands: it still runs, it waits on the user's decision, it worked, it failed, the user sent it back with a revision, or its turn ended before it settled. */
+export type ToolLineState = 'pending' | 'waiting' | 'ok' | 'error' | 'returned' | 'cancelled'
 
 /** The facts of one tool line. Every text is final: translated, sanitized, and without escape sequences. */
 export interface ToolLineFacts {
@@ -40,7 +40,7 @@ export interface ToolBodyRow {
   /** The muted lead: a line number, a file and line, the `⎿` of an output tail. */
   readonly lead?: string
   readonly text: string
-  readonly tone?: 'default' | 'muted' | 'danger'
+  readonly tone?: 'default' | 'muted' | 'danger' | 'warning'
 }
 
 /** One hunk of a diff body: the text of each side. */
@@ -71,6 +71,8 @@ export interface ToolBlockFacts extends ToolLineFacts {
   /** A file change's body: the hunks of an edit (no line numbers, the Harness gives none), or a write's code. */
   readonly diff?: readonly ToolDiffHunk[]
   readonly code?: ToolCodeFacts
+  /** A plan under review, as Markdown source of any length: the request's body, wrapped under the line. */
+  readonly markdown?: string
   /** The translated `… +N more` row after a capped body. */
   readonly more?: string
   /** The translated `… +N earlier` row before a body that shows the end of the output. */
@@ -97,8 +99,8 @@ export interface ToolGroupFacts {
   readonly items: readonly ToolGroupItemFacts[]
 }
 
-const GLYPH = { pending: '● ', ok: '✓ ', error: '✗ ', cancelled: '⊘ ' } as const
-const GLYPH_TONE = { pending: 'primary', ok: 'success', error: 'danger', cancelled: 'muted' } as const
+const GLYPH = { pending: '● ', waiting: '? ', ok: '✓ ', error: '✗ ', returned: '↩ ', cancelled: '⊘ ' } as const
+const GLYPH_TONE = { pending: 'primary', waiting: 'warning', ok: 'success', error: 'danger', returned: 'warning', cancelled: 'muted' } as const
 
 /** The glyph of a call that still runs: a dot that breathes (one motion channel, so the rest of the line is still). */
 const PENDING_GLYPH: readonly MayflyInlineSpan[] = [{ text: '', motion: 'loader', variant: 'breath' }, { text: ' ' }]
@@ -110,7 +112,7 @@ const PENDING_GLYPH: readonly MayflyInlineSpan[] = [{ text: '', motion: 'loader'
  */
 export function ToolLine(facts: ToolLineFacts): readonly MayflyInlineSpan[] {
   return [
-    ...facts.state === 'pending' ? PENDING_GLYPH : [{ text: GLYPH[facts.state], tone: GLYPH_TONE[facts.state] } as const],
+    ...facts.state === 'pending' ? PENDING_GLYPH : [{ text: GLYPH[facts.state], tone: GLYPH_TONE[facts.state], ...(facts.state === 'waiting' ? { styles: ['strong'] as const } : {}) } as const],
     { text: facts.name, tone: facts.state === 'cancelled' ? 'muted' : 'default', styles: ['strong'] },
     ...(facts.target === undefined ? [] : [{ text: '(', tone: 'muted' } as const, { text: facts.target, tone: 'accent' } as const, { text: ')', tone: 'muted' } as const]),
     ...(facts.outcome === undefined ? [] : [{ text: ` · ${facts.outcome}`, tone: 'muted' } as const]),

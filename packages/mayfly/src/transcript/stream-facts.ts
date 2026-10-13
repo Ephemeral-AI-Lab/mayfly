@@ -8,6 +8,7 @@
  */
 
 import type { UserMessage } from '@deepseek-ai/dsh-session'
+import type { MayflyDecisionRequest } from '../core/types.ts'
 import { textOf, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import { sanitizePluginText } from '../core/plugin-view.ts'
 import type { MayflyTranslate } from '../frontend/locale.ts'
@@ -16,13 +17,13 @@ import type { StreamMood, StreamQueued, StreamRow, StreamTurn, TranscriptViewFac
 import { compactElapsedMs } from './agent-presentation.ts'
 import { buildDisplay, runningTurnOf, type DisplayItem, type EntryItem, type ProcessTitleItem, type TurnHeaderItem } from './process-groups.ts'
 import { diffStat, elapsedText } from './process-activity.ts'
-import { callsOf, standardRow, verboseRow, type Call } from './tool-calls.ts'
+import { callsOf, standardRow, verboseRow, type Call, type CallRequests } from './tool-calls.ts'
 import { kindOf } from './tool-kinds.ts'
 import type { TranscriptPresentationSnapshot } from './presentation-policy.ts'
 import { ellipsize } from './present.ts'
 import { contextPercent, formatTokens } from './status-context.ts'
 import { COMPACTION_DRAIN_MS, type CompactionFacts } from '../components/compaction-row.ts'
-import type { CompactionMark } from '../conversation/types.ts'
+import type { ApprovalMark, CompactionMark } from '../conversation/types.ts'
 import type { TranscriptCompactionModel } from '../frontend/models.ts'
 
 /** Characters of a salient argument kept on a row. */
@@ -45,6 +46,10 @@ export interface StreamInputs {
   readonly now: number
   /** The messages the user typed while the agent works. */
   readonly queued: readonly { readonly id: string, readonly text: string }[]
+  /** The requests waiting on the user, in the order they were asked: the first is the one on the card, and its call is the request block. */
+  readonly requests?: readonly MayflyDecisionRequest[]
+  /** How each approval put to the user ended, from the session's audit events. */
+  readonly approvals?: readonly ApprovalMark[]
   /** The context occupancy around each recent compaction, for its bar. */
   readonly compactions?: readonly CompactionMark[]
   /** The selected Agent's context window and occupancy, for a compaction whose marks have not landed. */
@@ -172,9 +177,10 @@ export class StreamFacts {
     const lifecycle = new Map((model.turns ?? []).map(turn => [turn.turn, turn]))
     const buckets: { readonly turn: number, readonly rows: StreamRow[] }[] = []
     let lead: StreamRow[] = []
-    runsOf(display, inputs.t, inputs.now).forEach((item, position) => {
+    const asked = requestOf(inputs.requests, inputs.approvals)
+    runsOf(display, inputs.t, inputs.now, asked).forEach((item, position) => {
       const turn = turnOf(item)
-      const mapped = this.rowsOf(item, inputs, position).map(row => this.intern(row, kept))
+      const mapped = this.rowsOf(item, inputs, position, asked).map(row => this.intern(row, kept))
       if (mapped.length === 0) return
       if (turn === undefined) {
         // A canonical node belongs with the turn it precedes, or with the last one when none follows.
@@ -194,6 +200,11 @@ export class StreamFacts {
       if (buckets.length === 0) buckets.push({ turn: -1, rows: lead })
       else buckets.at(-1)!.rows.push(...lead)
     }
+    // A request that names no call (a hook asked) has no block to become: it is a block of its own at the end of the stream.
+    const nameless = inputs.requests?.[0]
+    if (nameless !== undefined && nameless.callId === undefined && buckets.length > 0) {
+      buckets.at(-1)!.rows.push(this.intern(namelessRequestRow(nameless, inputs.requests!.filter(request => request.type === nameless.type).length, inputs.t), kept))
+    }
     return buckets.map(({ turn, rows: all }) => {
       const id = `turn:${String(turn)}`
       const closing = closingOf(lifecycle.get(turn), inputs.t)
@@ -208,14 +219,44 @@ export class StreamFacts {
     })
   }
 
-  private rowsOf(item: DisplayItem | RunUnit, inputs: StreamInputs, position: number): readonly StreamRow[] {
+  private rowsOf(item: DisplayItem | RunUnit, inputs: StreamInputs, position: number, asked: CallRequests): readonly StreamRow[] {
     if (item.kind === 'run') return [standardRow(item.calls, inputs.t, inputs.now)]
     if (item.kind === 'turn-header') return [headerRow(item, inputs.t)]
     if (item.kind === 'process-title') return [titleRow(item, inputs.t)]
     // A hand-built model may carry canonical nodes between its entries: their text is all the stream keeps.
     if (!isSemantic(item.entry)) return [{ kind: 'note', id: `node:${String(position)}`, text: sanitizePluginText(canonicalText(item.entry)) }]
-    return entryRows(item, item.entry, inputs)
+    return entryRows(item, item.entry, inputs, asked)
   }
+}
+
+/** The block of a request that names no call: the tool and what the asker said, waiting on the user. */
+function namelessRequestRow(request: MayflyDecisionRequest, total: number, t: MayflyTranslate): StreamRow {
+  return {
+    kind: 'tool',
+    id: `request:${request.type}:${request.toolName}`,
+    state: 'waiting',
+    name: sanitizePluginText(request.toolName),
+    outcome: total > 1 ? t('{index} of {total} waiting', { index: 1, total }) : t('waiting'),
+    ...(request.reason === undefined || request.reason === '' ? {} : { body: [{ text: sanitizePluginText(request.reason), tone: 'muted' as const }] }),
+  }
+}
+
+/**
+ * The request the user is being asked about, by the call it is about. Only the first request of the queue is on the card,
+ * so only its call waits; the calls behind it keep running lines until their turn. Its place reads `1 of N` among the
+ * requests of its own kind.
+ */
+function requestOf(requests: readonly MayflyDecisionRequest[] | undefined, approvals: readonly ApprovalMark[] | undefined): CallRequests {
+  const first = requests?.[0]
+  const decided = new Map<string, 'allowed' | 'rejected'>()
+  for (const mark of approvals ?? []) {
+    if (mark.callId === undefined || mark.outcome === undefined) continue
+    if (mark.outcome === 'allowed-once') decided.set(mark.callId, 'allowed')
+    else if (mark.outcome === 'rejected') decided.set(mark.callId, 'rejected')
+  }
+  if (first?.callId === undefined) return { asked: new Map(), decided }
+  const total = requests!.filter(request => request.type === first.type).length
+  return { asked: new Map([[first.callId, { type: first.type, index: 1, total, ...(first.reason === undefined ? {} : { reason: first.reason }) }]]), decided }
 }
 
 function turnOf(item: DisplayItem | RunUnit): number | undefined {
@@ -301,7 +342,7 @@ function isUnmerged(entry: TranscriptEntryModel): boolean {
  * entries they came in, are one block. Anything else (a reasoning, an answer, a file change, a header) ends the run, and
  * a call that still runs is a line of its own and ends it.
  */
-function runsOf(display: readonly DisplayItem[], t: MayflyTranslate, now: number): readonly (DisplayItem | RunUnit)[] {
+function runsOf(display: readonly DisplayItem[], t: MayflyTranslate, now: number, asked: CallRequests): readonly (DisplayItem | RunUnit)[] {
   const units: (DisplayItem | RunUnit)[] = []
   let run: { turn: number, calls: Call[] } | undefined
   const flush = (): void => {
@@ -310,7 +351,13 @@ function runsOf(display: readonly DisplayItem[], t: MayflyTranslate, now: number
   }
   for (const item of display) {
     if (item.kind === 'entry' && item.tier === 'standard' && isSemantic(item.entry) && isToolLike(item.entry) && !isUnmerged(item.entry)) {
-      for (const call of callsOf(item.entry, item.turnClosed, t, now)) {
+      for (const call of callsOf(item.entry, item.turnClosed, t, now, asked)) {
+        // A call that waits on the user is a block of its own, open, and ends the run.
+        if (call.state === 'waiting') {
+          flush()
+          units.push({ kind: 'run', turn: item.entry.turn, calls: [call] })
+          continue
+        }
         if (run !== undefined && run.calls[0]!.activity !== call.activity) flush()
         if (run === undefined) run = { turn: item.entry.turn, calls: [] }
         run.calls.push(call)
@@ -325,11 +372,11 @@ function runsOf(display: readonly DisplayItem[], t: MayflyTranslate, now: number
 }
 
 /** The rows of one entry: none for an empty one, one per call for a tool, group, or run of calls drawn as verbose blocks. */
-function entryRows(item: EntryItem, entry: TranscriptEntryModel, inputs: StreamInputs): readonly StreamRow[] {
+function entryRows(item: EntryItem, entry: TranscriptEntryModel, inputs: StreamInputs, asked: CallRequests): readonly StreamRow[] {
   if (isToolLike(entry)) {
-    // At the compact level a call in flight is its line alone; what has settled is the title's.
-    const calls = callsOf(entry, item.turnClosed, inputs.t, inputs.now)
-    return (item.tier === 'compact' ? calls.filter(call => call.state === 'pending') : calls).map(call => verboseRow(call, item.expanded, inputs.t, item.tier ?? 'verbose'))
+    // At the compact level a call in flight is its line alone, and one that waits on the user stays open; what has settled is the title's.
+    const calls = callsOf(entry, item.turnClosed, inputs.t, inputs.now, asked)
+    return (item.tier === 'compact' ? calls.filter(call => call.state === 'pending' || call.state === 'waiting') : calls).map(call => verboseRow(call, item.expanded, inputs.t, item.tier ?? 'verbose'))
   }
   const row = entryRow(item, entry, inputs)
   return row === undefined ? [] : [row]

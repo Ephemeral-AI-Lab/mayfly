@@ -217,13 +217,25 @@ const childStream = {
 }
 
 const approvals = {
-  summary: 'a tool call that waits for your permission, then runs; answer the panel with the keys',
+  summary: 'a command that deletes files waits for your permission: its call is the request, a card decides; a digit chooses, Esc rejects',
   items: [turn('Clean the build output.', [
     step({
       text: 'This deletes the build directory, which needs your approval.',
-      tools: [tool('bash', { command: 'rm -rf dist build', description: 'Delete the build output' }, { ask: approval('bash', 'The command removes files outside the tracked sources.'), result: '[exit code: 0]', runMs: 900 })],
+      tools: [tool('bash', { command: 'rm -rf dist build', description: 'Delete the build output' }, { ask: approval('bash', 'The command removes files outside the tracked sources.'), result: '[exit code: 0]', outcomes: { rejected: { result: 'The user rejected this call.', error: true } }, runMs: 900 })],
     }),
-    step({ text: 'The build output is gone.' }),
+    step({ text: 'That is settled; tell me what is next.' }),
+  ])],
+}
+
+const approvalsRejected = {
+  summary: 'a rejection with a note: the note goes to the agent, the call settles as rejected, and the agent changes course',
+  items: [turn('Publish the release.', [
+    step({
+      text: 'Publishing means pushing the tag to main.',
+      tools: [tool('bash', { command: 'git push --force origin main', description: 'Force-push the release' }, { ask: approval('bash', 'A force push rewrites the remote history.'), result: 'The user rejected this call.', error: true, runMs: 300 })],
+    }),
+    step({ text: 'Understood: I will push a branch and open a pull request instead.', tools: [tool('bash', { command: 'git push origin release/1.4', description: 'Push the release branch' }, { result: '[exit code: 0]', runMs: 700 })] }),
+    step({ text: 'The branch is pushed.' }),
   ])],
 }
 
@@ -294,8 +306,27 @@ const toolkit = {
 
 const PLAN = ['## Plan: migrate to ESM', '', '1. Rename `*.cjs` entry points to `*.mjs`.', '2. Replace `require` with `import` and add `.js` extensions.', '3. Update the build and the test runner configuration.', '4. Run the tests and fix the fallout.', '', '**Risk:** dynamic `require` calls need `createRequire`.'].join('\n')
 
+/** A plan review as the plan-mode tool puts it: the plan is its argument, and the question offers the tool's own two labels. */
+const planReview = (planText, runMs = 500) => tool('exit_plan_mode', { plan: planText }, {
+  ask: question([{
+    id: 'plan-review',
+    header: 'Plan review',
+    question: 'Approve this plan and leave plan mode?',
+    detail: planText,
+    options: [{ label: 'Approve', description: 'Leave plan mode; the plan is carried out from the next step.' }, { label: 'Keep planning', description: 'Stay in plan mode; feedback goes back to the model.' }],
+    intent: { kind: 'plan-review', approve: 'Approve' },
+  }]),
+  result: 'Plan approved — plan mode exited; carry out the plan starting with your next step.',
+  // What the plan-mode tool answers when the plan is sent back: with the user's revision, or without it.
+  outcomes: {
+    declined: { result: 'The user chose to keep planning; revise the plan and present it again.', error: true },
+    revised: { result: 'The user chose to keep planning; their feedback: {feedback}', error: true },
+  },
+  runMs,
+})
+
 const plan = {
-  summary: 'plan mode: read-only exploration, a plan review you approve or revise, then implementation',
+  summary: 'plan mode: read-only exploration, then the plan as a request in the stream and a card to approve, keep planning (with a revision), or reject; the call settles as you answer',
   items: [turn('Plan the migration to ESM before changing anything.', [
     raw('plan/mode', { active: true }),
     step({
@@ -303,24 +334,19 @@ const plan = {
       text: 'Exploring the code first; nothing will be changed.',
       tools: [tool('grep', { pattern: 'require\\(', include: '*.cjs' }, { result: 'src/a.cjs:1\nsrc/b.cjs:3', runMs: 700 }), tool('read', { file_path: 'package.json' }, { result: '{ "type": "commonjs" }', runMs: 500 })],
     }),
-    step({
-      text: 'The plan is ready for your review.',
-      tools: [tool('exit_plan_mode', { plan: PLAN }, {
-        ask: question([{
-          id: 'plan-review',
-          header: 'Plan',
-          question: 'Approve this plan?',
-          detail: PLAN,
-          options: [{ label: 'Approve plan', description: 'Start implementing' }, { label: 'Revise plan', description: 'Send feedback first' }],
-          intent: { kind: 'plan-review', approve: 'Approve plan' },
-        }]),
-        result: 'The user approved the plan.',
-        runMs: 500,
-      })],
-    }),
-    raw('plan/mode', { active: false }),
-    step({ text: 'Plan approved. Starting with step 1.', tools: [tool('bash', { command: 'git mv src/a.cjs src/a.mjs', description: 'Rename the first entry point' }, { result: '[exit code: 0]', runMs: 600 })] }),
-    step({ text: 'Step 1 is done; the rest follows the plan.' }),
+    step({ text: 'The plan is ready for your review.', tools: [planReview(PLAN)] }),
+    step({ text: 'Understood; I will go on from your decision.' }),
+  ])],
+}
+
+const PLAN_LONG = ['# Plan: split the painter into layers', '', 'The painter grows by one row kind per release; this plan separates the layers before the next one lands.', '', ...Array.from({ length: 14 }, (_, index) => [`## Phase ${String(index + 1)}: ${['inventory', 'contracts', 'facts', 'rows', 'blocks', 'cards', 'motion', 'keys', 'widths', 'themes', 'locale', 'perf', 'docs', 'release'][index]}`, '', `${String(index * 4 + 1)}. Read every caller of the layer and list what it assumes.`, `${String(index * 4 + 2)}. Write the contract the layer will keep, with one example per state.`, `${String(index * 4 + 3)}. Move the code behind the contract and delete what it replaces.`, `${String(index * 4 + 4)}. Check the scenario of the layer at every width and fix what moves.`, '', '```ts', `export function layer${String(index + 1)}(facts: Facts): Node {`, '  return compose(facts)', '}', '```', ''].join('\n')), '**Risk:** the layers share two caches; the plan moves them last.'].join('\n')
+
+const planLong = {
+  summary: 'a plan of any length under review: the whole plan is the request block, windowed as it scrolls, with no cutoff',
+  items: [turn('Plan how to split the painter into layers.', [
+    raw('plan/mode', { active: true }),
+    step({ text: 'Here is the plan; it is long because it names every phase.', tools: [planReview(PLAN_LONG)] }),
+    step({ text: 'Understood; I will go on from your decision.' }),
   ])],
 }
 
@@ -879,7 +905,34 @@ const content = {
   ])],
 }
 
-export const REPLAYS = { tour, toolkit, thinking, markdown, live, phases, thinkingLadder, pending, blocks, streaming, sync, activityWait, prompts, turns, toollines, edits, errors, compaction: compactionReplay, compactionNoWindow, compactionFailed, manualCompact, context, subagents, childStream, approvals, questions, plan, goal, jobs, queued, retries, sideQuestion, notices, notificationPane, modes, edge, history, wheel, content }
+/** What a call that was put to the user answers when the user rejects it. */
+const REJECTED = { rejected: { result: 'The user rejected this call.', error: true } }
+
+const approvalsEdit = {
+  summary: 'a file change waits for your permission: the diff is the request, then a new file; Ctrl+G opens it in your editor',
+  items: [turn('Add a retries setting.', [
+    step({ text: 'The setting goes into the config first.', tools: [edit('src/config.mjs', CONFIG_BEFORE, CONFIG_AFTER, { ask: approval('edit', 'Edits a file in the workspace.'), outcomes: REJECTED })] }),
+    step({ text: 'Then the report that names it.', tools: [write('docs/retries.md', REPORT, { ask: approval('write', 'Creates a file in the workspace.'), outcomes: REJECTED })] }),
+    step({ text: 'Both files are in place.' }),
+  ])],
+}
+
+const approvalsQueue = {
+  summary: 'three calls of one step wait on you together: the first is on the card with 1 of 3 waiting, and each answer brings the next',
+  items: [turn('Reset the workspace, then fix the config.', [
+    step({
+      text: 'Three actions need your approval.',
+      tools: [
+        tool('bash', { command: 'rm -rf dist build', description: 'Delete the build output' }, { ask: approval('bash', 'The command removes files outside the tracked sources.', { queued: true }), result: '[exit code: 0]', outcomes: REJECTED, runMs: 900 }),
+        edit('src/config.mjs', CONFIG_BEFORE, CONFIG_AFTER, { ask: approval('edit', 'Edits a file in the workspace.', { queued: true }), outcomes: REJECTED }),
+        tool('bash', { command: 'set -e\ngit clean -fd\nrm -rf node_modules/.cache', description: 'Remove untracked files and the cache' }, { ask: approval('bash', 'The command removes untracked files.', { queued: true }), result: '[exit code: 0]', outcomes: REJECTED, runMs: 700 }),
+      ],
+    }),
+    step({ text: 'All three are done.' }),
+  ])],
+}
+
+export const REPLAYS = { tour, toolkit, thinking, markdown, live, phases, thinkingLadder, pending, blocks, streaming, sync, activityWait, prompts, turns, toollines, edits, errors, compaction: compactionReplay, compactionNoWindow, compactionFailed, manualCompact, context, subagents, childStream, approvals, approvalsRejected, approvalsEdit, approvalsQueue, questions, plan, planLong, goal, jobs, queued, retries, sideQuestion, notices, notificationPane, modes, edge, history, wheel, content }
 
 /*
  * The scenes of the Website's app shots. Each is the source of an `app-*` scenario of the catalog, whose goldens the

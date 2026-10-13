@@ -301,6 +301,7 @@ export async function runScenario(name, { root, dshBin, cols, rows, keys = [], o
           break
         }
         case 'resize': pty.resize(step.cols, step.rows); screen.resize(step.cols, step.rows); await browser?.resize(step.cols, step.rows); await settle(); break
+        case 'wait': await sleep(step.ms); await settle(); break
         case 'idle': await span('idle', [{ step: 'wait', ms: step.ms }]); break
         case 'measure': await span(step.name, step.steps); break
         default: throw new Error(`unknown step ${String(step.step)}`)

@@ -22,6 +22,7 @@ import { trimContext, WRITE_HEAD_LINES } from './official-model.ts'
 import { elapsedText } from './process-activity.ts'
 import { partialStrings } from './partial-json.ts'
 import { ellipsize } from './present.ts'
+import { deletesFiles } from './request-facts.ts'
 import { kindOf, unitPhrase } from './tool-kinds.ts'
 
 /** Rows a verbose block's body shows. */
@@ -74,6 +75,8 @@ export type CallPhase = 'preparing' | 'running' | 'settled'
 /** One call, in flight or settled (or cut off), reduced to what any tier lays out. */
 export interface Call {
   readonly id: string
+  /** The Harness's id of the call, which a request that waits on the user names. */
+  readonly callId: string
   readonly activity: ProcessActivity
   readonly state: ToolLineState
   readonly phase: CallPhase
@@ -96,6 +99,24 @@ export interface Call {
   readonly inputIsTarget?: boolean
   /** A file change: its kind and diffstat, and the diff or code its body draws (while it is generated, too). */
   readonly file?: { readonly stat: ToolStat, readonly statInLine: boolean, readonly content: () => ChangeBody }
+  /** A plan that was under review, once the user has decided it: its Markdown, which Ctrl+O opens again. */
+  readonly plan?: string
+  /** A call that waits on the user's decision: what the request shows under its line (the command, the asker's reason, a warning), or the plan under review. */
+  readonly waiting?: { readonly rows: readonly ToolBodyRow[], readonly markdown?: string }
+}
+
+/** What the user was asked about calls: the request on the card, and how each approval ended, by call id. */
+export interface CallRequests {
+  readonly asked: ReadonlyMap<string, CallRequest>
+  readonly decided: ReadonlyMap<string, 'allowed' | 'rejected'>
+}
+
+/** The request that waits on the user about a call: its place in the queue and what the asker said. */
+export interface CallRequest {
+  readonly type: 'approval' | 'plan'
+  readonly index: number
+  readonly total: number
+  readonly reason?: string
 }
 
 type ToolEntry = Extract<TranscriptEntryModel, { readonly kind: 'transcript-tool' }>
@@ -179,6 +200,7 @@ function readCall(groupId: string, call: ReadCallModel, closed: boolean, t: Mayf
   const target = call.path ?? call.label
   return {
     id: `${groupId}:${call.callId}`,
+    callId: call.callId,
     activity: call.activity,
     state,
     phase: phaseOf(state, false),
@@ -216,6 +238,7 @@ function searchCall(groupId: string, call: SearchCallModel, closed: boolean, t: 
   const target = call.pattern === undefined ? call.detail : `"${call.pattern}"`
   return {
     id: `${groupId}:${call.callId}`,
+    callId: call.callId,
     activity: call.activity,
     state,
     phase: phaseOf(state, false),
@@ -243,6 +266,7 @@ function commandCall(groupId: string, call: CommandCallModel, closed: boolean, t
   const why = state === 'error' ? exitText(call.exitCode, call.signal, t) ?? reason(call.error) : undefined
   return {
     id: `${groupId}:${call.callId}`,
+    callId: call.callId,
     activity: call.activity,
     state,
     phase: phaseOf(state, false),
@@ -316,8 +340,10 @@ function liveChange(entry: ToolEntry, fields: Readonly<Record<string, string>>, 
   const trimmed = trimContext(before ?? '', after ?? '', entry.preparing === undefined)
   const old = cut(trimmed.before)
   const next = cut(trimmed.after)
+  const ops = alignDiffLines(trimmed.before, trimmed.after)
   return {
-    stat: { added: linesOf(after ?? '').length, removed: linesOf(before ?? '').length },
+    // The lines the change adds and removes, not the two sides whole (a request shows this beside the path).
+    stat: { added: ops.filter(op => op.type === 'add').length, removed: ops.filter(op => op.type === 'del').length },
     content: () => ({
       kind: 'diff',
       ...styled,
@@ -344,6 +370,7 @@ function fileCall(entry: ToolEntry, closed: boolean, t: MayflyTranslate): Call {
   const live = state === 'pending' ? liveChange(entry, fields, path) : undefined
   return {
     id: entry.id,
+    callId: entry.callId,
     activity: entry.activity,
     state,
     phase: phaseOf(state, entry.preparing !== undefined),
@@ -397,21 +424,33 @@ function loneCall(entry: ToolEntry, closed: boolean, t: MayflyTranslate): Call {
     }
     outcome.push(took(entry.startedAt, entry.result.endedAt))
   }
-  const name = nameOf(entry.name)
+  // The plan under review reads as what the user decided, with how many steps it listed: approved; rejected; or sent back,
+  // which the tool tells by the revision it carries (`their feedback: …`) and the line quotes.
+  const plan = entry.name === 'exit_plan_mode' && (state === 'ok' || state === 'error')
+  const revision = plan && state === 'error' ? /their feedback: ([\s\S]+)$/u.exec(entry.result?.text ?? '')?.[1] : undefined
+  const sentBack = revision !== undefined && revision.trim() !== ''
+  const name = plan ? t(state === 'ok' ? 'Plan approved' : sentBack ? 'Plan sent back' : 'Plan rejected') : nameOf(entry.name)
+  const planText = plan ? partialStrings(entry.arguments).fields['plan'] : undefined
+  if (plan) outcome.splice(0, outcome.length, planSteps(planText, t), sentBack ? `"${flat(revision, REASON_MAX_CHARS) ?? ''}"` : undefined)
   return {
     id: entry.id,
+    callId: entry.callId,
     activity: entry.activity,
-    state,
+    state: sentBack ? 'returned' : state,
     phase: phaseOf(state, entry.preparing !== undefined),
     name,
-    ...(target === undefined ? {} : { target }),
-    label: kindOf(entry.activity).headed ? target ?? name : `${name}${target === undefined ? '' : `(${target})`}`,
+    ...(target === undefined || plan ? {} : { target }),
+    label: plan ? name : kindOf(entry.activity).headed ? target ?? name : `${name}${target === undefined ? '' : `(${target})`}`,
     outcome,
     startedAt: entry.startedAt,
     ...(entry.result === undefined ? {} : { endedAt: entry.result.endedAt }),
-    input: () => further,
+    // A command on one line is its line; the rows under a call are the lines the line cannot carry.
+    ...(planText === undefined || planText.trim() === '' ? {} : { plan: sanitizePluginText(planText) }),
+    input: () => further.total > 1 ? further : NO_ROWS,
     ...(further.total > 1 ? { inputIsTarget: true } : {}),
     body: () => {
+      // A decided plan reads as the plan itself (its Markdown), not the tool's one-line answer.
+      if (plan) return NO_ROWS
       if (web?.kind === 'search') {
         return { rows: web.sources.map(source => bodyRow(source.title === undefined ? source.url : `${source.title} · ${source.url.replace(/^[a-z][a-z0-9+.-]*:\/\//iu, '')}`)), total: web.sources.length }
       }
@@ -441,14 +480,15 @@ function whilePending(call: Call, now: number): Call {
 /**
  * The calls of one entry, in the order they were made: a call in flight is pending with the time it has taken so far, and
  * a call cut off with its turn is cancelled. A call whose arguments still stream is pending too: the stream shows it as
- * soon as the model names it.
+ * soon as the model names it. The call a request waits on is not pending but waiting: it shows the request instead of a time.
  * @param entry - a tool or a group of read, search, or command calls.
  * @param closed - whether the entry's turn has ended.
  * @param t - translator for the transcript namespace.
  * @param now - the time, which a pending call measures its own against.
+ * @param requests - the request that waits on the user and the approvals decided, by the id of the call they are about.
  * @returns the calls.
  */
-export function callsOf(entry: TranscriptEntryModel, closed: boolean, t: MayflyTranslate, now: number): readonly Call[] {
+export function callsOf(entry: TranscriptEntryModel, closed: boolean, t: MayflyTranslate, now: number, requests?: CallRequests): readonly Call[] {
   const calls: Call[] = []
   switch (entry.kind) {
     case 'transcript-read-group': for (const call of entry.reads) calls.push(readCall(entry.id, call, closed, t)); break
@@ -459,7 +499,57 @@ export function callsOf(entry: TranscriptEntryModel, closed: boolean, t: MayflyT
       break
     default: break
   }
-  return calls.map(call => whilePending(call, now))
+  return calls.map((call) => {
+    const request = call.state === 'pending' && call.phase === 'running' ? requests?.asked.get(call.callId) : undefined
+    if (request !== undefined) return awaiting(call, request, entry, t)
+    return decided(whilePending(call, now), requests?.decided.get(call.callId), t)
+  })
+}
+
+/** A settled call that was put to the user says what the user decided: `allowed` before its outcome, `rejected` in place of the failure. */
+function decided(call: Call, decision: 'allowed' | 'rejected' | undefined, t: MayflyTranslate): Call {
+  if (decision === undefined || call.activity === 'plan') return call
+  if (decision === 'allowed' && call.state === 'ok') return { ...call, outcome: [t('allowed'), ...call.outcome] }
+  if (decision === 'rejected' && call.state === 'error') return { ...call, outcome: [t('rejected')] }
+  return call
+}
+
+/** How many steps a plan lists: its numbered lines. */
+function planSteps(plan: string | undefined, t: MayflyTranslate): string | undefined {
+  const count = plan === undefined ? 0 : plan.split('\n').filter(line => /^\s*\d+[.)]\s/u.test(line)).length
+  return count === 0 ? undefined : t(count === 1 ? '{count} step' : '{count} steps', { count })
+}
+
+/**
+ * A call that waits on the user's decision, as the stream shows it: `? Bash(command) · 1 of 3 waiting` open, with the
+ * command's own lines, what the asker said, and the warning a deleting command earns; an edit or write shows its diff or
+ * code (the block's change layout, which an open request never caps at the tier's rows), and a plan its Markdown. The
+ * time is not shown: the user's wait is the activity row's.
+ */
+function awaiting(call: Call, request: CallRequest, entry: TranscriptEntryModel, t: MayflyTranslate): Call {
+  const rows: ToolBodyRow[] = []
+  const fields = entry.kind === 'transcript-tool' ? partialStrings(entry.arguments).fields : {}
+  let markdown: string | undefined
+  if (request.type === 'plan') {
+    const plan = fields['plan']
+    if (plan !== undefined && plan.trim() !== '') markdown = sanitizePluginText(plan)
+  } else if (call.activity === 'commands') {
+    // The line carries a command on one line; a command on several is the bare tool name over its lines.
+    const lines = call.input().rows.map(row => row.text)
+    lines.slice(0, OPEN_BODY_ROWS).forEach((line, index) => rows.push(bodyRow(line, index === 0 ? '$' : ' ')))
+    if (lines.length > OPEN_BODY_ROWS) rows.push(bodyRow(t('… +{count} more', { count: lines.length - OPEN_BODY_ROWS }), undefined, 'muted'))
+    if (deletesFiles(lines.length > 0 ? lines.join('\n') : call.target ?? '')) rows.push(bodyRow(t('⚠ deletes files'), undefined, 'warning'))
+  }
+  if (request.reason !== undefined && request.reason !== '') rows.push(bodyRow(request.reason, undefined, 'muted'))
+  const place = request.total > 1 ? t('{index} of {total} waiting', { index: request.index, total: request.total }) : t('waiting')
+  const waiting = { rows, ...(markdown === undefined ? {} : { markdown }) }
+  // A plan is named for what it is, with how many steps it lists, not by the tool that submitted it.
+  if (request.type === 'plan') {
+    const { target: _target, ...rest } = call
+    const name = t('Plan ready for review')
+    return { ...rest, state: 'waiting', name, label: name, outcome: [planSteps(fields['plan'], t)], waiting }
+  }
+  return { ...call, state: 'waiting', outcome: [place], waiting }
 }
 
 function outcomeText(call: Call): string | undefined {
@@ -554,33 +644,39 @@ function changeLayout(call: Call, cap: number, open: boolean, t: MayflyTranslate
  */
 export function verboseRow(call: Call, open: boolean, t: MayflyTranslate, tier: 'verbose' | 'standard' | 'compact' = 'verbose'): StreamRow {
   const running = call.state === 'pending'
-  const cap = running
-    ? tier === 'compact' ? 0 : tier === 'standard' ? STANDARD_INPUT_ROWS : open ? OPEN_BODY_ROWS : VERBOSE_BODY_ROWS
-    : open ? OPEN_BODY_ROWS : VERBOSE_BODY_ROWS
+  // A request open on the user shows all it asks about, whatever the tier: the user decides on what they see.
+  const asking = call.state === 'waiting'
+  const cap = asking ? OPEN_BODY_ROWS
+    : running
+      ? tier === 'compact' ? 0 : tier === 'standard' ? STANDARD_INPUT_ROWS : open ? OPEN_BODY_ROWS : VERBOSE_BODY_ROWS
+      : open ? OPEN_BODY_ROWS : VERBOSE_BODY_ROWS
   // A call that was cut off has no output, and a failed read or search has only its reason, which the line already gives.
   const quiet = call.state === 'cancelled' || (call.state === 'error' && (call.activity === 'read' || call.activity === 'readImage' || call.activity === 'search'))
-  const body: Body = quiet ? NO_ROWS : running ? call.input() : tier === 'verbose' ? call.body() : NO_ROWS
+  const body: Body = asking ? { rows: call.waiting?.rows ?? [], total: call.waiting?.rows.length ?? 0 } : quiet ? NO_ROWS : running ? call.input() : tier === 'verbose' ? call.body() : NO_ROWS
   const rows = body.tail === true ? body.rows.slice(-cap) : body.rows.slice(0, cap)
   const left = body.total - rows.length
   const hint = open ? '' : t(' · Ctrl+O')
   const textMore = left > 0 && cap > 0 ? `${t(body.tail === true ? '… +{count} earlier' : '… +{count} more', { count: left })}${hint}` : undefined
-  const change = call.file === undefined || (call.state !== 'ok' && !running) || tier === 'compact' ? {}
-    : changeLayout(call, tier === 'standard' ? STANDARD_DIFF_ROWS : open ? OPEN_BODY_ROWS : VERBOSE_CHANGE_ROWS, open, t)
+  const change = call.file === undefined || (call.state !== 'ok' && !running && !asking) || (tier === 'compact' && !asking) ? {}
+    : changeLayout(call, asking ? OPEN_BODY_ROWS : tier === 'standard' ? STANDARD_DIFF_ROWS : open ? OPEN_BODY_ROWS : VERBOSE_CHANGE_ROWS, open || asking, t)
   const more = textMore ?? change.more
   const moreBefore = body.tail === true ? more : change.moreBefore
-  const outcome = outcomeText(call)
+  // A plan the user has decided is a line; Ctrl+O (the Verbose tier) reads it again, and the line says so.
+  const reading = call.plan !== undefined && tier === 'verbose' ? call.plan : undefined
+  const outcome = [outcomeText(call), call.plan !== undefined && tier !== 'verbose' ? t('Ctrl+O to expand') : undefined].filter((part): part is string => part !== undefined).join(' · ') || undefined
   return {
     kind: 'tool',
     id: call.id,
     state: call.state,
     name: sanitizePluginText(call.name),
     // A running command that spans several lines shows them under the bare tool name; the target comes back with the result.
-    ...(call.target === undefined || call.target === '' || (running && call.inputIsTarget === true && rows.length > 0) ? {} : { target: sanitizePluginText(call.target) }),
+    ...(call.target === undefined || call.target === '' || ((running || asking) && call.inputIsTarget === true && rows.length > 0) ? {} : { target: sanitizePluginText(call.target) }),
     ...(outcome === undefined ? {} : { outcome }),
-    ...(call.file?.statInLine === true && call.state === 'ok' ? { stat: call.file.stat } : {}),
+    ...((call.file?.statInLine === true && call.state === 'ok') || (asking && call.file !== undefined) ? { stat: call.file!.stat } : {}),
     ...(rows.length === 0 ? {} : { body: rows }),
     ...(change.diff === undefined || change.diff.length === 0 ? {} : { diff: change.diff }),
     ...(change.code === undefined ? {} : { code: change.code }),
+    ...(call.waiting?.markdown === undefined && reading === undefined ? {} : { markdown: call.waiting?.markdown ?? reading! }),
     ...(moreBefore === undefined ? {} : { moreBefore }),
     ...(more === undefined || body.tail === true ? {} : { more }),
   }
