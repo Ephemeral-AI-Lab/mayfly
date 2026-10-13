@@ -925,6 +925,7 @@ ui.list({
   marker?: 'cursor' | 'selection' | 'band'
   marks?: boolean
   maxRows?: number
+  highlight?: { pattern: string, caseSensitive?: boolean }  // a regular expression drawn in reverse video wherever it matches in a row
   expandFocused?: boolean
   acceptVerb?: 'open' | 'choose' | 'expand' | 'edit' | 'restore'
   autofocus?: boolean

@@ -625,6 +625,21 @@ const toolgrow = {
   ],
 }
 
+/** One tall answer and one command output that hold a term several times each, for a search that steps through the matches of one block. */
+const findings = {
+  summary: 'a 60-line answer and a command output that each repeat a term, so a search has many matches inside one block',
+  items: [
+    turn('Find where the needle is mentioned.', [
+      step({
+        text: 'Checking the logs.',
+        tools: [tool('bash', { command: 'grep -rn needle logs', description: 'Search the logs' }, { result: lines(14, n => (n % 4 === 0 ? `logs/app-${String(n)}.log:${String(n)}: needle found in request ${String(n)}` : `logs/app-${String(n)}.log:${String(n)}: nothing here`)), runMs: 500 })],
+      }),
+      step({ text: lines(60, n => (n === 3 || n === 20 || n === 45 || n === 58 ? `Line ${String(n)} of the report mentions the needle once more.\n` : `Line ${String(n)} of the report is about something else.\n`)).split('\n').filter(line => line !== '').join('\n\n') }),
+    ], { startAt: '12:00' }),
+    turn('Thanks, and one more needle for good measure.', [step({ text: 'Noted: needle needle.' })], { startAt: '12:05' }),
+  ],
+}
+
 /** Three lines of code around a change, the context the edit tool sends on each side of a hunk. */
 const around = (at, removed, added) => {
   const head = lines(3, n => `  const row${String(at + n)} = paint(${String(at + n)})`)
@@ -961,7 +976,7 @@ const approvalsQueue = {
   ])],
 }
 
-export const REPLAYS = { tour, toolkit, thinking, markdown, live, phases, thinkingLadder, pending, blocks, streaming, sync, activityWait, prompts, turns, toollines, toolgrow, edits, errors, compaction: compactionReplay, compactionNoWindow, compactionFailed, manualCompact, context, subagents, childStream, approvals, approvalsRejected, approvalsEdit, approvalsQueue, questions, plan, planLong, goal, jobs, queued, retries, sideQuestion, notices, notificationPane, modes, edge, history, wheel, content }
+export const REPLAYS = { tour, toolkit, thinking, markdown, live, phases, thinkingLadder, pending, blocks, streaming, sync, activityWait, prompts, turns, toollines, toolgrow, findings, edits, errors, compaction: compactionReplay, compactionNoWindow, compactionFailed, manualCompact, context, subagents, childStream, approvals, approvalsRejected, approvalsEdit, approvalsQueue, questions, plan, planLong, goal, jobs, queued, retries, sideQuestion, notices, notificationPane, modes, edge, history, wheel, content }
 
 /*
  * The scenes of the Website's app shots. Each is the source of an `app-*` scenario of the catalog, whose goldens the

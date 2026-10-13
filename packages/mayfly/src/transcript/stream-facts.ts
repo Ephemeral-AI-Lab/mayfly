@@ -247,6 +247,22 @@ export class StreamFacts {
   }
 
   /**
+   * The row that draws one entry or one call, for a search to land on: a call of a run is its own row, under the head.
+   * @param part - an entry id, or a call id (`<entry>:<call>`).
+   * @returns the row's id, or `undefined` when the stream draws nothing for it (a reasoning hidden by the level).
+   */
+  rowOf(part: string): string | undefined {
+    let found: string | undefined
+    let size = Number.POSITIVE_INFINITY
+    for (const [id, owner] of this.owners) {
+      if (owner.kind !== 'entries' || owner.parts.length >= size || !owner.parts.includes(part)) continue
+      found = id
+      size = owner.parts.length
+    }
+    return found
+  }
+
+  /**
    * What the row an item id belongs to stands for. An item id is its row's id, or the row's id and a suffix after a dot
    * (a body, a gap, a more line); the closing line of a turn is `turn:N.end`.
    * @param itemId - the id of a list item the stream drew.

@@ -121,7 +121,15 @@ export const TRANSCRIPT_LOCALE: MayflyLocaleCatalog = TRANSCRIPT_MESSAGES
 /** Activity-pane copy: phase labels plus the running and preparing process labels. */
 export const ACTIVITY_LOCALE = identityCatalog({
   'Alt+↑ conversation · Alt+↓ bar': 'Alt+↑ 选对话 · Alt+↓ 选底栏',
-  'Enter expand · c copy · Ctrl+C JSON · Ctrl+G editor · ↑/↓ select · Esc back': 'Enter 展开 · c 复制 · Ctrl+C 复制 JSON · Ctrl+G 编辑器 · ↑/↓ 选择 · Esc 返回',
+  'Enter expand · c copy · Ctrl+C JSON · Ctrl+G editor · ↑/↓ select · / ? search · Esc back': 'Enter 展开 · c 复制 · Ctrl+C 复制 JSON · Ctrl+G 编辑器 · ↑/↓ 选择 · / ? 搜索 · Esc 返回',
+  'Enter expand · c copy · Ctrl+C JSON · ↑/↓ or n/N match · / ? new search · Esc end search': 'Enter 展开 · c 复制 · Ctrl+C 复制 JSON · ↑/↓ 或 n/N 切换匹配 · / ? 新搜索 · Esc 结束搜索',
+  'Invalid regular expression · Esc to cancel': '正则表达式无效 · Esc 取消',
+  'Type a regular expression · Enter to select · Esc to cancel': '输入正则表达式 · Enter 选择 · Esc 取消',
+  'No matches · Esc to cancel': '无匹配 · Esc 取消',
+  '{total} matches · Enter to select · Esc to cancel': '{total} 个匹配 · Enter 选择 · Esc 取消',
+  '{index}/{total} matches': '{index}/{total} 个匹配',
+  '{index}/{total} match': '{index}/{total} 个匹配',
+  '{total} match · Enter to select · Esc to cancel': '{total} 个匹配 · Enter 选择 · Esc 取消',
   'Tip: ': '提示：',
   'Deep diving': '深度求索中',
   'Pondering': '思索中',

@@ -10,7 +10,7 @@
  * @module components/transcript-view
  */
 
-import { freezeWire, ui, type MayflyInlineSpan, type MayflyListItem, type MayflyListNode, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
+import { freezeWire, ui, type MayflyInlineSpan, type MayflyListHighlight, type MayflyListItem, type MayflyListNode, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import { CompactionRow, type CompactionFacts } from './compaction-row.ts'
 import { ToolBody, ToolGroupHead, ToolGroupItem, ToolLine, ToolMore, type ToolBlockFacts, type ToolGroupFacts } from './tool-line.ts'
 
@@ -337,7 +337,7 @@ function withUniqueIds(items: MayflyListItem[]): MayflyListItem[] {
 }
 
 /** The ids the stream's controls carry: the list the cursor walks, and the hidden keys scoped to it. */
-export const STREAM = Object.freeze({ list: 'stream', keys: 'stream.keys', copy: 'copy', copyRaw: 'copy-raw', open: 'open' })
+export const STREAM = Object.freeze({ list: 'stream', keys: 'stream.keys', copy: 'copy', copyRaw: 'copy-raw', open: 'open', findDown: 'find-down', findUp: 'find-up', matchPrev: 'match-prev', matchNext: 'match-next', matchAgain: 'match-again', matchBack: 'match-back' })
 
 /** Where the stream's cursor is sent from outside: the newest row when the reader moves focus up into the stream. */
 export interface StreamCursor {
@@ -347,7 +347,7 @@ export interface StreamCursor {
   readonly ids?: readonly string[]
 }
 
-export function TranscriptView(facts: TranscriptViewFacts, cursor?: StreamCursor): MayflyListNode {
+export function TranscriptView(facts: TranscriptViewFacts, cursor?: StreamCursor, highlight?: MayflyListHighlight): MayflyListNode {
   const items: MayflyListItem[] = []
   facts.turns.forEach((turn, index) => {
     if (index > 0) items.push(blankBetween(turn))
@@ -369,6 +369,7 @@ export function TranscriptView(facts: TranscriptViewFacts, cursor?: StreamCursor
   return ui.list({
     id: STREAM.list, role: 'browse', marker: 'band', acceptVerb: 'expand', hintLabel: 'stream', items: unique,
     ...target === undefined ? {} : { focusItem: { id: target, rev: cursor!.rev } },
+    ...highlight === undefined ? {} : { highlight },
   })
 }
 
@@ -387,11 +388,12 @@ export function streamTarget(node: MayflyUiNode): string | undefined {
  * editor, which the hint row names only while the stream has focus.
  * @param facts - the turns, in order, and the messages queued behind them.
  * @param cursor - where to send the cursor, when the reader just moved focus into the stream.
+ * @param highlight - the text a search is looking for, drawn reversed wherever it shows.
  * @returns the node the conversation slot shows.
  */
-export function TranscriptStream(facts: TranscriptViewFacts, cursor?: StreamCursor): MayflyUiNode {
+export function TranscriptStream(facts: TranscriptViewFacts, cursor?: StreamCursor, highlight?: MayflyListHighlight): MayflyUiNode {
   return ui.stack.column([
-    TranscriptView(facts, cursor),
+    TranscriptView(facts, cursor, highlight),
     ui.actions({
       id: STREAM.keys,
       scope: STREAM.list,

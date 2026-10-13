@@ -239,6 +239,18 @@ export interface MayflyListItem {
   /** Shared decision shown before accepting this single row. */
   readonly confirm?: string | MayflyConfirmation
 }
+/** What a list marks in its rows: a regular expression, matched against each painted line (a match a wrap cut in two is not found). */
+export interface MayflyListHighlight {
+  /** A JavaScript regular expression source; one that does not compile marks nothing. At most 256 characters. */
+  readonly pattern: string
+  /** Match case (default: any case). */
+  readonly caseSensitive?: boolean
+  /**
+   * Which match inside the cursor row's block (the row and the rows under it, in order, counted from 0) is the current one: it
+   * is drawn stronger and the window centers on it, so a match deep in a tall block is in view.
+   */
+  readonly current?: number
+}
 export interface MayflyListNode {
   readonly kind: 'list'
   readonly id: string
@@ -266,6 +278,8 @@ export interface MayflyListNode {
   readonly marks?: boolean
   /** Show at most this many rows, windowed around the cursor, with an `↑ n more · ↓ n more` row. */
   readonly maxRows?: number
+  /** Text to find: wherever it matches in a row's painted text it is drawn in reverse video. The rows themselves do not change. */
+  readonly highlight?: MayflyListHighlight
   /** The cursor row opens its body or branch while it holds the cursor. */
   readonly expandFocused?: boolean
   /** The word the hint row gives `Enter`. */

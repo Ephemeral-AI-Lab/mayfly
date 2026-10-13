@@ -16,6 +16,7 @@ import { inlineSegmentStrip, segmentFitsInline, segmentFooter, type SegmentView 
 import type { UiRowCache } from './ui-row-cache.ts'
 import { countWork, type MayflyWorkCounters } from './ui-work-counters.ts'
 import { concatRows, mapRows, sliceRows, virtualRows } from './ui-rows.ts'
+import { countMatches, highlightLine, highlightPattern } from './ui-find.ts'
 import { sliceByColumn, visibleWidth, wrapTextWithAnsi } from './width.ts'
 
 /** One visible row of a list: the item and how the model sees it (tree depth, disclosure) and where it sits. */
@@ -63,9 +64,18 @@ export interface ListPaintOptions {
   readonly memo?: ListRowMemo | undefined
 }
 
+/** A `body` or `item` entry carries its rows as the painters made them: the band and the search marks are laid over them last. */
+interface RowFlags {
+  /** The cursor row's block takes the band. */
+  readonly banded: boolean
+  /** The row belongs to the cursor's block, whose current match is drawn stronger. */
+  readonly block: boolean
+}
+
 type Entry =
-  | { readonly kind: 'group' | 'body' | 'rule' | 'gap', readonly lines: readonly string[] }
-  | { readonly kind: 'item', readonly id: string, readonly lines: readonly string[] }
+  | { readonly kind: 'group' | 'rule' | 'gap', readonly lines: readonly string[] }
+  | ({ readonly kind: 'body', readonly lines: readonly string[] } & RowFlags)
+  | ({ readonly kind: 'item', readonly id: string, readonly lines: readonly string[] } & RowFlags)
 
 const strong = (text: string): string => `\x1b[1m${text}\x1b[22m`
 const DEFAULT_METER_WIDTH = 8
@@ -100,7 +110,7 @@ function checkOf(node: ListNodeView, spec: ListRowSpec, selected: boolean, selec
   return selected ? '●' : '○'
 }
 
-type ListNodeView = Pick<MayflyListNode, 'items' | 'marker' | 'marks' | 'mode' | 'tree' | 'numbered' | 'maxRows'>
+type ListNodeView = Pick<MayflyListNode, 'items' | 'marker' | 'marks' | 'mode' | 'tree' | 'numbered' | 'maxRows' | 'highlight'>
 
 /** A one-row meter: `▰` filled in the tone, `▱` empty and muted. */
 function meterText(meter: NonNullable<MayflyListItem['meter']>, colors: MayflySemanticColors): string {
@@ -284,6 +294,39 @@ function headWidth(state: RowState, colors: MayflySemanticColors): number {
   return visibleWidth(headOf({ ...state, on: true }, colors).line)
 }
 
+/** Where the current match of a search stands: which entry, which of its rows, and which match of that row. */
+interface CurrentMatch {
+  readonly entry: number
+  readonly line: number
+  readonly within: number
+}
+
+/**
+ * The `nth` match (counted through the rows of the cursor's block, head first) of a search, or the last one when the block
+ * holds fewer.
+ */
+function currentMatch(entries: readonly Entry[], find: RegExp, nth: number | undefined): CurrentMatch | undefined {
+  if (nth === undefined) return undefined
+  const counts: { readonly entry: number, readonly line: number, readonly count: number }[] = []
+  let total = 0
+  entries.forEach((entry, index) => {
+    if ((entry.kind !== 'item' && entry.kind !== 'body') || !entry.block) return
+    for (let line = 0; line < entry.lines.length; line += 1) {
+      const count = countMatches(entry.lines[line]!, find)
+      if (count === 0) continue
+      counts.push({ entry: index, line, count })
+      total += count
+    }
+  })
+  if (total === 0) return undefined
+  let remaining = Math.min(Math.max(0, nth), total - 1)
+  for (const found of counts) {
+    if (remaining < found.count) return { entry: found.entry, line: found.line, within: remaining }
+    remaining -= found.count
+  }
+  return undefined
+}
+
 /**
  * The lines of a list, windowed to `height`. `node` carries the list's presentation fields; `options.rows` are the
  * materialized visible rows in order. The painted rows come from the memo when an item's state bits are unchanged.
@@ -298,6 +341,7 @@ export function paintList(node: ListNodeView, width: number, height: number, col
   if (options.lead !== undefined) entries.push({ kind: 'group', lines: [options.lead] })
   let needsFooter = false
   // Which item each row sits under, so a band can follow the chain from a body to its call to the head.
+  const find = highlightPattern(node.highlight)
   const parents = new Map<string, string>()
   for (const spec of options.rows) if (spec.item.under !== undefined) parents.set(spec.item.id, spec.item.under)
   for (const spec of options.rows) {
@@ -336,30 +380,38 @@ export function paintList(node: ListNodeView, width: number, height: number, col
     // A `band` list marks its cursor row, the rows under it, and their bodies with the selected background, in place of an
     // arrow. The band keeps a column free at each edge of the list.
     const banded = node.marker === 'band' && options.focused && options.cursorId !== undefined && (on || within(item, options.cursorId, parents))
-    const shade = (rows: readonly string[]): readonly string[] => banded
-      ? mapRows(rows, line => ` ${colors.selectedBg(sliceByColumn(padTo(line, available), 1, Math.max(0, available - 2), true))} `)
-      : rows
-    entries.push({ kind: 'item', id: item.id, lines: shade(painted) })
+    const block = options.cursorId !== undefined && (on || within(item, options.cursorId, parents))
+    entries.push({ kind: 'item', id: item.id, lines: painted, banded, block })
     if (!leaded && spec.open && item.body !== undefined) {
       const counters = options.memo?.counters
       const body = options.memo === undefined || moves
         ? bodyLines(spec, available, colors, options.body, counters)
-        : options.memo.cache.readLines(colors, item, `body\x01${String(available)}\x01${options.flow === true ? 1 : 0}`, () => bodyLines(spec, available, colors, options.body, counters), counters)
-      if (body.length > 0) entries.push({ kind: 'body', lines: shade(body) })
+        : options.memo.cache.readLines(colors, item, `body\x01${String(available)}\x01${options.flow === true ? 1 : 0}\x01${node.highlight?.current === undefined ? 0 : 1}`, () => bodyLines(spec, available, colors, options.body, counters), counters)
+      if (body.length > 0) entries.push({ kind: 'body', lines: body, banded, block })
     }
   }
 
+  // The search marks go on last, with the current match (inside the cursor's block) drawn stronger; then the band.
+  const current = find === undefined ? undefined : currentMatch(entries, find, node.highlight?.current)
+  const laid = entries.map((entry, index): Entry => {
+    if (entry.kind !== 'item' && entry.kind !== 'body') return entry
+    const at = current?.entry === index ? current : undefined
+    const marked = find === undefined ? entry.lines : mapRows(entry.lines, (line, row) => highlightLine(line, find, at?.line === row ? at.within : undefined))
+    const lines = entry.banded ? mapRows(marked, line => ` ${colors.selectedBg(sliceByColumn(padTo(line, available), 1, Math.max(0, available - 2), true))} `) : marked
+    return { ...entry, lines }
+  })
+
   // maxRows windows over entries (a group heading and an open body each count as one), with the rest counted as hidden.
-  let shown: readonly Entry[] = entries
+  let shown: readonly Entry[] = laid
   let hiddenAbove = 0
   let hiddenBelow = 0
   const total = options.total ?? options.rows.length
   if (node.maxRows !== undefined && total > node.maxRows) {
-    const at = Math.max(0, entries.findIndex(entry => entry.kind === 'item' && entry.id === options.cursorId))
-    const start = Math.max(0, Math.min(entries.length - node.maxRows, at - Math.floor(node.maxRows / 2)))
-    shown = entries.slice(start, start + node.maxRows)
+    const at = Math.max(0, laid.findIndex(entry => entry.kind === 'item' && entry.id === options.cursorId))
+    const start = Math.max(0, Math.min(laid.length - node.maxRows, at - Math.floor(node.maxRows / 2)))
+    shown = laid.slice(start, start + node.maxRows)
     hiddenAbove = (options.before ?? 0) + start
-    hiddenBelow = (options.after ?? 0) + entries.length - start - shown.length
+    hiddenBelow = (options.after ?? 0) + laid.length - start - shown.length
   }
 
   // The prefix sums of the shown entries' line counts place the cursor row, whatever height each row has.
@@ -377,6 +429,9 @@ export function paintList(node: ListNodeView, width: number, height: number, col
     const rows = focusAt < 0 ? 1 : shown[focusAt]!.lines.length
     let begin = focusAt < 0 ? 0 : Math.min(Math.max(0, first - Math.floor(limit / 2) + Math.floor(rows / 2)), lineCount - limit)
     if (focusAt >= 0) begin = Math.max(Math.min(begin, first), first + rows - limit)
+    // A search match inside a block taller than the window decides where the window sits: the match is centered.
+    const target = current === undefined ? -1 : shown.indexOf(laid[current.entry]!)
+    if (target >= 0) begin = Math.max(0, Math.min(starts[target]! + current!.line - Math.floor(limit / 2), lineCount - limit))
     lines = sliceRows(lines, begin, begin + limit)
   }
   const tail: string[] = []

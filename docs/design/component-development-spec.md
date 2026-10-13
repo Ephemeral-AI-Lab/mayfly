@@ -273,7 +273,7 @@ other part needs the brief. Parts of Phases 4 to 6 are cut when their phase star
 | **3d.2 Plan review card** | The plan as markdown of any length, `Approve and start` / `Keep planning…` / `Reject`, `Revise:` on the same line. | 21 | `plan`, `planRevised`, `planLong` | a long plan; `Ctrl+G`; `c` copies |
 | **3e.1 Levels** | `Ctrl+O` Verbose for the last three turns; `Enter` on a header; the four levels' policies. | 18 | `tour`, `history` | exactly one place shows detail; compact counts |
 | **3e.2 Row selection** | `Alt+↑` focuses the newest row; `Enter`, `c`, `Ctrl+G`, `Esc`/`Alt+↓`. | 18 | `tour` | focus mark; hint row; copy feedback |
-| **3e.3 Stream search** | `Ctrl+F` search under the stream; the match turn opens at Verbose; matched text `warning` + `strong`. | 18 (`StreamSearch`) | `tour`, `history` | match count; stepping; `Esc` restores levels |
+| **3e.3 Stream search** | `/` and `?` in conversation mode open a search line above the editor (regular expression, smart case); typing highlights, `Enter` selects, `↑`/`↓` and `n`/`N` walk the matches; the match turn opens at Verbose; matched text reversed. | 18 (`StreamSearch`) | `tour`, `history` | match count; stepping; `Esc` restores levels |
 
 Phases 4 to 6 follow the same rules. Their group texts in the roadmap are the starting points: Phase 4 (editor, queue,
 tokens, the `/` `@` `#` completion list, scenes 15 and 30 p1-p2); Phase 5 (the two status rows, scenes 13 and 12,

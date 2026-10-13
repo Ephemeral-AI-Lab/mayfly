@@ -515,6 +515,8 @@ export interface MayflyTerminalRuntime {
    * `surfaceViewport` instead.
    */
   surfaceLaneRows(): number
+  /** The rows the dock (the search line, the editor, the footer) takes now. */
+  dockRows(): number
   /** Release one pane's focus back to the component active before it. */
   releaseSurfaceFocus(id: string): void
   /** Whether any visible modal overlay currently owns the input plane. */
@@ -1059,6 +1061,12 @@ export function startMayflyTerminal(
     },
     surfaceLaneRows() {
       return measuredLaneRows(terminal.rows, surfaceHeaderRows(), surfaceBottomRows())
+    },
+    dockRows() {
+      if (alternate) return lastDockRows
+      let rows = 0
+      for (const child of orderedDock()) rows += child.render(current.terminal.columns).length
+      return rows
     },
     releaseSurfaceFocus(id) {
       if (surfaces.focusedId !== id) return

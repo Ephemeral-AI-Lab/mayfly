@@ -1804,8 +1804,9 @@ function compileUnit(node: CompilableNode, state: FocusState, options: RuntimeCo
           bodies.set(item, body)
         }
         const rows = body.render(width)
-        // In flow content an outer scroll windows the rows, so a leaf's viewport bound would hide what it must reach.
-        return options.listRuntime.flow ? unclampedRows(rows) : rows
+        // In flow content an outer scroll windows the rows, so a leaf's viewport bound would hide what it must reach; so would it
+        // for a search's current match, which the list's window centers on wherever in a tall block it is.
+        return options.listRuntime.flow || node.highlight?.current !== undefined ? unclampedRows(rows) : rows
       }
       let component!: MayflyComponent
       component = staticComponent(width => {

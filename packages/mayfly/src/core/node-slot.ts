@@ -56,6 +56,13 @@ export interface MayflyNodeSlot {
   focus(): void
   /** Hand keyboard focus back to the prompt. */
   release(): void
+  /** Replace the keys the slot answers itself while it holds focus (see {@link MayflyNodeSlotOptions.keys}). */
+  setKeys(keys: Readonly<Record<string, string>>): void
+  /**
+   * Draw the slot as it is drawn while it holds focus (windowed around its cursor, the cursor row banded) without taking
+   * keyboard focus: a search steps through the stream while its own line holds the keys.
+   */
+  spotlight(on: boolean): void
   /**
    * Stand the keyboard focus on one row of a list the slot shows, once the slot has compiled its newest node: the cursor
    * a list's `focusItem` moves is only the list's own, and the key that follows (`Enter`, `c`) acts on the focused row.
@@ -203,19 +210,31 @@ class SlotAttachment {
 class NodeSlotSurface implements MayflyFocusable {
   attachment: SlotAttachment | undefined
   private focusedValue = false
+  private spotlit = false
 
-  constructor(private readonly leave: (() => void) | undefined, private readonly changed: ((focused: boolean) => void) | undefined, private readonly keys: Readonly<Record<string, string>>, private readonly onKey: (actionId: string) => void) {}
+  constructor(private readonly leave: (() => void) | undefined, private readonly changed: ((focused: boolean) => void) | undefined, public keys: Readonly<Record<string, string>>, private readonly onKey: (actionId: string) => void) {}
 
   get focused(): boolean { return this.focusedValue }
   set focused(value: boolean) {
     const before = this.focusedValue
     this.focusedValue = value
     if (before !== value) this.changed?.(value)
-    this.attachment?.focus(value)
-    if (this.attachment !== undefined) setCompiledFocus(this.attachment.compiled, value)
+    this.attachment?.focus(this.shown)
+    if (this.attachment !== undefined) setCompiledFocus(this.attachment.compiled, this.shown)
   }
 
-  render(width: number): string[] { return this.attachment?.current(this.focusedValue)?.component.render(width) ?? NO_ROWS }
+  /** Whether the slot is drawn as focused: it holds focus, or a search is stepping through it. */
+  private get shown(): boolean { return this.focusedValue || this.spotlit }
+
+  set spotlight(on: boolean) {
+    if (this.spotlit === on) return
+    this.spotlit = on
+    this.attachment?.focus(this.shown)
+    if (this.attachment !== undefined) setCompiledFocus(this.attachment.compiled, this.shown)
+    this.attachment?.invalidateSoon()
+  }
+
+  render(width: number): string[] { return this.attachment?.current(this.shown)?.component.render(width) ?? NO_ROWS }
   invalidate(): void { this.attachment?.compiled?.component.invalidate() }
   handleInput(data: string): void {
     const attachment = this.attachment
@@ -231,7 +250,7 @@ class NodeSlotSurface implements MayflyFocusable {
         return
       }
     }
-    attachment.current(this.focusedValue)?.focusTarget?.handleInput?.(data)
+    attachment.current(this.shown)?.focusTarget?.handleInput?.(data)
   }
 }
 
@@ -287,6 +306,10 @@ class NodeSlotLease implements MayflyNodeSlot {
   }
 
   release(): void { if (this.live) this.host.focusPrompt() }
+
+  spotlight(on: boolean): void { if (this.live) this.surface.spotlight = on }
+
+  setKeys(keys: Readonly<Record<string, string>>): void { if (this.live) this.surface.keys = keys }
 
   focusRow(controlId: string, itemId: string): void {
     const attachment = this.surface.attachment

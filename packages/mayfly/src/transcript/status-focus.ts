@@ -17,6 +17,7 @@ const WORDS: Readonly<Record<Exclude<MayflyFocusMode, 'prompt'>, string>> = {
   conversation: 'conversation',
   bar: 'bar',
   search: 'search',
+  'search-select': 'search',
 }
 
 /**

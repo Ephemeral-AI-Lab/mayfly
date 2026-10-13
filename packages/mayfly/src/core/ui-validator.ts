@@ -595,7 +595,19 @@ function listNodeFields(object: Record<string, unknown>, path: string, state: Va
   const acceptVerb = own(object, 'acceptVerb', path)
   const autofocus = own(object, 'autofocus', path)
   const focusItem = own(object, 'focusItem', path)
+  const highlight = own(object, 'highlight', path)
   return {
+    ...optional(highlight === undefined ? undefined : enter(highlight, `${path}.highlight`, state, target => {
+      const pattern = text(required(target, 'pattern', path), `${path}.highlight.pattern`)
+      if (pattern.length > 256) invalid(`${path}.highlight.pattern exceeds 256 characters`)
+      const caseSensitive = own(target, 'caseSensitive', path)
+      const current = own(target, 'current', path)
+      return {
+        pattern,
+        ...optional(caseSensitive === undefined ? undefined : boolean(caseSensitive, `${path}.highlight.caseSensitive`), 'caseSensitive'),
+        ...optional(current === undefined ? undefined : finiteInteger(current, `${path}.highlight.current`, 0), 'current'),
+      }
+    }), 'highlight'),
     ...optional(marker === undefined ? undefined : enumeration(marker, ['cursor', 'selection', 'band'], `${path}.marker`), 'marker'),
     ...optional(marks === undefined ? undefined : boolean(marks, `${path}.marks`), 'marks'),
     ...optional(maxRows === undefined ? undefined : finiteInteger(maxRows, `${path}.maxRows`, 1), 'maxRows'),

@@ -1565,7 +1565,7 @@ shown in the hint row only while the stream has focus (§3.5 `scope`):
 | `Enter` | `ui.accept` | expand or collapse the row's details (a diff, a command's output, a reasoning block) |
 | `c` | `ui.copy` | copy the row's content (the command, the new file text, the answer) |
 | `Ctrl+G` | `ui.external` | open the row's content in `$EDITOR` |
-| `Ctrl+F` | `ui.search` | search the whole conversation (below) |
+| `/` `?` | | search the whole conversation toward the newer or the older rows (below) |
 
 ```
 → ▾ ✓ Edited Hero.tsx  +4 −2 ▮▮▮▮▮▮▮▮
@@ -1577,11 +1577,24 @@ shown in the hint row only while the stream has focus (§3.5 `scope`):
   Enter expand · c copy · Ctrl+G open in editor · Esc back
 ```
 
-**The whole stream is searchable.** `Ctrl+F` opens a one-line search under the stream (`⌕ trunc▌   1/2 matches   matches
-open the rows that hide them`). Matches are found in every row's text and in the details a level hides (command
-output, diff text, reasoning); a turn holding a match opens at Verbose and the stream selects the current match, so a
-hit inside a fold is never invisible. Matched text is highlighted in `warning` + `strong`; `Enter` steps to the next
-match, `Esc` closes the search and keeps the highlight until the next search.
+**The whole stream is searchable.** In conversation mode `/` searches toward the newer rows and `?` toward the older, as in
+vim (`Ctrl+F` is not used: editors and terminals bind it). A search line opens above the editor: two rows, `/ pattern▌`
+and a muted count with the keys. The editor stays, in its parked frame, and the status line names the `search` mode. The
+pattern is a JavaScript regular expression, matched in any case unless it holds a capital letter; one that does not compile
+says so. It is matched against the text a person reads (`row-text`), in every turn of the session, so command output,
+diff text, a plan, and reasoning that a level hides are found, and a turn the stream does not mount is mounted.
+
+While the pattern is typed the stream only highlights (matched text in reverse video wherever it shows, the list's
+`highlight`, painted on the painted rows so it reaches Markdown, code, and diffs alike) and counts: nothing is selected.
+`Enter` accepts the pattern: the input stops, the cursor goes to the first match past where it stood (before it for `?`,
+wrapping), and the stream is in selection mode, which is conversation mode over the matches. Every occurrence is a stop, also
+several inside one block: the current one is drawn bold and underlined over the reversed others, and the window centers on it
+wherever it sits in a tall block. `↑`/`↓` go to the previous or
+next match, `n`/`N` go on and back in the direction of the search, all wrapping; `Enter` expands the row, `c`, `Ctrl+C`,
+and `Ctrl+G` copy or open it, and `/` or `?` starts a new search. The turn holding the current match, and the turns
+already visited, open at Verbose and stay mounted. `Esc` in the input abandons the search; `Esc` or `Alt+↓` in selection mode
+ends it: the levels come back, the highlight is cleared, and conversation mode keeps the cursor on that row (on its turn's
+header when the row folded away); a second `Esc` returns to the prompt.
 
 The scroll position follows the same rules as any scroll region: the stream keeps the tail in view while following, a
 `N new turns · Ctrl+↓` chip stays on the last row while it is scrolled away (N counts the turns of the agent loop that began below the view, never rows, tool calls, or message blocks; with none it reads `Back to bottom · Ctrl+↓`, the way back), and `Ctrl+↓` (or `End` with an empty draft) jumps to the latest. The follow key is its own action, `mayfly.interaction.follow-tail`, because thin laptops have no End key.
@@ -2048,7 +2061,7 @@ Every step is reversible with `Esc`, and `Skip for now` never blocks:
 | Key help | contextual, grouped by task | `?` |
 | Job output | timestamped tail with follow | `f` follow · `↑` scroll · `x` stop |
 | Delete session | **plain `[ No ]  Yes`**, No focused first; no typed phrase | `←/→` or `n`/`y` · `Enter` |
-| Conversation search | the stream's search line (§5.6) | `Ctrl+F` |
+| Conversation search | the stream's search line (§5.6) | `/` and `?` in conversation mode |
 
 - **Opening a file** uses the configured external editor. GUI editors open detached
   with a goto argument (`file:line`); terminal editors suspend the screen and restore
@@ -2232,7 +2245,7 @@ baseline verified against `main` when this was written; *new* means nothing like
 | Compaction | a braille spinner and elapsed time; settles to `✓ compacted N items · ~Tk tokens` | a real occupancy bar with two stages, a drain on settle, and the before/after percentage (§5.6) |
 | Todo and goal | a flat `─` rule and a `Todo` title above the editor; the goal as a status chip | views of status row 2; the rule is the progress bar with `n of N`; goal paused and blocked states; nothing in the stream (§5.4) |
 | Subagents and jobs | a pane above the editor; jobs only as a footer count; neither selectable | views of status row 2, keyboard-selectable, `x` stops behind a confirm (§5.5) |
-| Conversation stream | scroll only; `Ctrl+O` opens the last three turns; a prompt is one bold row with nothing above it, so turns run together | a blank row and a timed rule before every prompt; every row selectable (`Alt+↑`), expand, copy, open in `$EDITOR`, and the whole stream searchable with `Ctrl+F` (§5.6) |
+| Conversation stream | scroll only; `Ctrl+O` opens the last three turns; a prompt is one bold row with nothing above it, so turns run together | a blank row and a timed rule before every prompt; every row selectable (`Alt+↑`), expand, copy, open in `$EDITOR`, and the whole stream searchable with `/` and `?` (§5.6) |
 | Key cues | no persistent prompt; `Ctrl+O` cue only on the last 3 turns, three spellings of a key; `ctrl+t to expand`-style lowercase | cues live with their owner, the activity gap, and the placeholder; one `Ctrl+O` notation (§3.3) |
 | Keys | each surface binds its own keys | named actions, common meanings (`Ctrl+S` save, `c` copy, `x` delete, `r` refresh, `Ctrl+G` external, `Ctrl+F` search), and runtime rebinding with a `/keys` panel (§3.5, §5.15) |
 | Feedback | one unprefixed row | a severity glyph and fixed lifetimes (§2.4) |

@@ -54,7 +54,7 @@ export function mountNotificationPane(ctx: Context, t: MayflyTranslate): void {
     const agent = factsService?.currentAgent
     const notice = interaction === undefined ? undefined : selectNotification(interaction.notificationSnapshot(), agent == null ? undefined : String(agent.id))
     // With no notice the row teaches where focus can go from the prompt: up into the conversation, down to the status bar.
-    return { ...notice === undefined ? {} : { notice }, ...mode === 'prompt' ? notice === undefined ? { hint: t('Alt+↑ conversation · Alt+↓ bar') } : {} : mode === 'conversation' ? { keys: t('Enter expand · c copy · Ctrl+C JSON · Ctrl+G editor · ↑/↓ select · Esc back') } : {}, ...chip === undefined ? {} : { chip } }
+    return { ...notice === undefined ? {} : { notice }, ...mode === 'prompt' ? notice === undefined ? { hint: t('Alt+↑ conversation · Alt+↓ bar') } : {} : mode === 'conversation' ? { keys: t('Enter expand · c copy · Ctrl+C JSON · Ctrl+G editor · ↑/↓ select · / ? search · Esc back') } : mode === 'search-select' ? { keys: t('Enter expand · c copy · Ctrl+C JSON · ↑/↓ or n/N match · / ? new search · Esc end search') } : {}, ...chip === undefined ? {} : { chip } }
   }
   let shape = JSON.stringify(current() ?? null)
   const pane = ctx.mayflyPanes.register({
