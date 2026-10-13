@@ -12,7 +12,7 @@ import { CHECKS, DATA_READS, GLOBAL, INERT, SCENARIO_ALL, SCENARIO_PIPELINE, SCE
 
 const ROOT = fileURLToPath(new URL('../..', import.meta.url))
 
-const NO_CHECKS = { lint: false, typecheck: false, build: false, checkLib: false, pack: false, examples: false, shots: false, agentDocs: false, diagrams: false, website: false, smoke: false }
+const NO_CHECKS = { lint: false, typecheck: false, build: false, checkLib: false, pack: false, examples: false, agentDocs: false, diagrams: false, smoke: false }
 
 /** Expand a plan to the repository's complete deterministic gate. */
 export function promoteToFull(plan, reason) {
@@ -20,7 +20,7 @@ export function promoteToFull(plan, reason) {
     ...plan,
     mode: 'full',
     reasons: [...new Set([...plan.reasons, reason])],
-    checks: { ...plan.checks, lint: true, typecheck: true, build: true, checkLib: true, examples: true, shots: true, agentDocs: true, diagrams: true },
+    checks: { ...plan.checks, lint: true, typecheck: true, build: true, checkLib: true, examples: true, agentDocs: true, diagrams: true },
   }
 }
 
@@ -115,7 +115,6 @@ export function classifyChanges(inputFiles, { graph = repositoryGraph() } = {}) 
     if (/^(?:packages|examples)\/.+\.(?:[cm]?ts|tsx)$/u.test(file) && present.has(file)) checks.lint = true
     if (CODE_FILE.test(file) && !file.startsWith('docs/')) checks.typecheck = true
     if (/^packages\/(?:mayfly\/(?:src\/|presets\/|cordis\.patch\.yml)|ui\/src\/)/u.test(file)) manualAcceptance.add('runtime-profile')
-    if (file.startsWith('website/')) manualAcceptance.add('website-preview')
   }
 
   // Everything the changed paths reach: the specs and workflow tests to run, and the checks whose entry they reach.

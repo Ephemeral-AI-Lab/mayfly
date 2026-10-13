@@ -46,9 +46,10 @@ test('the pr tier adds the checks the change claims, builds before packing, and 
 test('the full tier runs everything once: one vitest run with coverage, the scenarios, the smoke, and the perf ceilings on its own build', () => {
   const steps = stepsFor(classifyChanges(['website/index.md']), 'full', { root: ROOT })
   const scripts = scriptsOf(steps)
-  for (const name of ['test:repo-workflow', 'typecheck', 'lint', 'diagrams:check', 'build', 'check:lib', 'shots:check', 'check:agent-docs', 'check:examples', 'website:build', 'smoke:happy', 'smoke:pty:output']) assert.ok(scripts.includes(name), name)
+  for (const name of ['test:repo-workflow', 'typecheck', 'lint', 'diagrams:check', 'build', 'check:lib', 'check:agent-docs', 'check:examples', 'smoke:happy', 'smoke:pty:output']) assert.ok(scripts.includes(name), name)
   assert.deepEqual(commandOf(steps, 'perf ceilings').args, ['script/perf.mjs', '--assert'])
   assert.ok(!scripts.includes('check:pack'))
+  assert.ok(!scripts.includes('website:build') && !scripts.includes('shots:check'), 'a release checks the Website, not the gate')
   const vitest = steps.filter(step => step.args.includes('vitest'))
   assert.equal(vitest.length, 1)
   assert.deepEqual(commandOf(steps, 'scenarios').args, ['script/scenarios.mjs'])

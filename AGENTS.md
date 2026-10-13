@@ -41,13 +41,50 @@ History and release notes do not define current behavior.
   gallery, shipped skills, the Website reference) and deletes the code it
   replaces, with no alias, shim, deprecation, or fallback path.
 
+## Round workflow
+
+Progress comes first. A round (one component or one slice of a phase) goes
+through these steps in order, and tests come last:
+
+1. **Design.** Analyze the round and write the solution design, in plan mode
+   when the owner starts one. Read the owning package's instructions, the spec
+   section, and the code first; the design names the contracts, files, states,
+   keys, and scenarios, with a recommendation for each open choice.
+2. **Confirm the effect.** Before any code, ask the owner questions about every
+   choice that changes the visible result or the API (look, keys, widths,
+   states, copy), and agree the final effect. Do not start development on
+   guesses; do not ask about what the design can decide.
+3. **Develop.** Implement the agreed design, with the incremental build the
+   workbench runs as the only mechanical feedback. Run no check tier, no specs,
+   no scenario goldens, and do not chase coverage, perf, or lint beyond what a
+   failed build shows.
+4. **Scenario code.** Write the scenarios that show the round's states (a
+   replay with `mark()`s and a catalog script, including a narrow width and a
+   lifecycle case). Do not run them against goldens and do not write goldens.
+5. **Hand over.** Organize all the scenarios of the round into one list for the
+   owner: each scenario's name, the command that opens it
+   (`pnpm run scenario <name>` or `dsh --profile mayfly-<tag>`), what it shows,
+   and what to try. Then stop and tell the owner; do not test.
+6. **Owner review.** The owner runs the scenarios and the live profile, and
+   the agent adjusts the effect until the owner calls it final. Repeat steps
+   3 to 5 as needed; an adjustment is not a reason to run tests.
+7. **Test and finalize.** Only after the owner finalizes the effect: add the
+   decision tests, accept the goldens (`pnpm run scenarios -- --update
+   <scenario>`), delete the code the change replaces, and run the tier below.
+
+Never test the Website in a round, a component finalization, a phase gate, or
+CI: no `website:build`, no preview, no screenshot freshness. The Website
+(pages, reference, shots) is built, previewed, and accepted once, when a new
+version is released (`docs/package-release.md`). Until then it may lag the
+product, and a change updates its text without checking it.
+
 ## Verification
 
-Verify with `pnpm run check -- --tier round|pr|full` (default `pr`). `round`
+The tiers below run at step 7 of a round, never during steps 1 to 6. Verify with `pnpm run check -- --tier round|pr|full` (default `pr`). `round`
 is for every edit (the incremental build, lint, the specs and workflow tests
 the change reaches, and its scenarios at their first size), `pr` for finalizing
 a change (round plus the checks it claims: agent docs, diagrams, lib exports,
-shots, examples, pack, Website; scenarios at every size),
+examples, pack; scenarios at every size),
 and `full` for broad, release, architecture, composition, or workflow changes
 and the end of a phase. The change set is `origin/main...HEAD` plus staged,
 unstaged, and untracked files (not generated `.artifacts/`); use `--base <ref>`
@@ -66,11 +103,11 @@ A global input runs the full tier whatever tier was asked.
 
 CI runs the pr tier on a pull request (with advice on changed source lines no
 selected spec ran) and the full tier on `main` and nightly. The full tier
-includes screenshot freshness, one vitest run (the suites with the stale-row
+includes one vitest run (the suites with the stale-row
 check on, the work budgets, and the coverage floor), the happy smoke and the
 perf scenarios against their ceilings (`perf --assert`) on the tier's own build,
-every scenario against its goldens, and a Website build when Website files
-changed; do not precede it with redundant plain tests. `pnpm run scenarios
+and every scenario against its goldens; it never builds or checks the Website
+or its screenshots. Do not precede it with redundant plain tests. `pnpm run scenarios
 [-- <name>...]` compares the catalog scenarios' checkpoints with
 `script/scenarios/golden/` (selected by their `covers` globs, their goldens,
 the scenario machinery, and a smoke set for other product code); after
@@ -83,10 +120,10 @@ shipped-skill changes run `check:agent-docs`.
 
 UI component work follows the tiers of the
 [roadmap](docs/design/implementation-roadmap.md) §7. Review rounds with the
-owner run the round tier (`pnpm run dev --check` runs it after each rebuild);
-finalizing a component runs the pr tier with its decision tests (accepted
-frames, keys and writes, lifecycle, width, budgets); a phase ends with the full
-tier; CI runs the full tier on `main`. Tests record
+owner run no tier (`pnpm run dev --check`, which runs the round tier after each
+rebuild, is for the end of a round, not for every edit); finalizing a component
+runs the pr tier with its decision tests (accepted frames, keys and writes,
+lifecycle, width, budgets); a phase ends with the full tier; CI runs the full tier on `main`. Tests record
 decisions; do not add tests only to reach a line.
 
 - Vitest uses fork workers and two projects: `suite` runs every spec with
@@ -110,8 +147,9 @@ decisions; do not add tests only to reach a line.
   release/example package sets. Subpath changes update exports, source, types,
   and `files`; verify with `pnpm run check:lib`. Structural build changes need
   `pnpm run build`; ordinary emission can use `pnpm run build:changed`.
-- Screenshot updates use `pnpm run shots:sync` after build; `pnpm run shots:check`
-  checks committed screenshots for staleness.
+- Screenshots are a release task: `pnpm run shots:sync` after build repaints
+  them, and `pnpm run shots:check` (run by the release workflow, not the tiers)
+  checks them for staleness.
 - Frame cost is measured where a frame is painted. `tests/perf/frame-workloads.ts`
   counts one frame through the alternate layout and the surface renderer (the
   deterministic gate), and `pnpm run perf` measures the perf scenarios of the
@@ -125,7 +163,7 @@ decisions; do not add tests only to reach a line.
 
 ## Review loop
 
-Review rounds use the workbench instead of a gate run. `pnpm run dev --profile
+Review rounds use the workbench instead of a gate run (Round workflow, steps 3 to 6). `pnpm run dev --profile
 mayfly-<tag>` watches `packages/*/src` and `examples/*/src`, runs the
 incremental build for the changed files, and restarts the profile's `dsh` on the
 same persisted session; a failed build is not applied (output in
@@ -175,7 +213,7 @@ driver action, or a refused exit. Runs give identical grids, also side by side
 (boots take turns). Each run has a home, a session store, and storages of its
 own (the workspace is `~/workspace`), and a replay `seed`s stored sessions
 there. The Website's app shots are the goldens of the `app-*` scenarios painted
-as SVG (`script/shots/app.mjs`): accepting such a golden repaints its shot.
+as SVG (`script/shots/app.mjs`): the release repaints them.
 Reduced motion is a saved setting: change it in `/settings`.
 
 Code edits apply by restart. Cordis `restart()` re-runs `apply` but the loader's
@@ -190,20 +228,25 @@ Develop user-visible behavior, public seams, and Website changes in a dedicated
 worktree and branch. Never link a checkout into production `mayfly`; use
 `mayfly-dev` for the main checkout and `mayfly-<tag>` for worktrees.
 
-1. Implement and verify before requesting acceptance. README, `docs/**`,
-   Website pages/assets, and AGENTS-only changes need no runtime profile.
+1. Implement and verify before requesting acceptance, in the order of the
+   Round workflow: for a UI round the owner reviews the scenarios and profile
+   first and the tests run after, not before. README, `docs/**`, Website
+   pages/assets, and AGENTS-only changes need no runtime profile.
    Executable config, manifests, scripts, preset payload, and shipped skills
    are not documentation-only.
-2. Any `website/**` change requires `pnpm run website:build` and a persistent
-   preview: `pnpm --dir website exec vitepress preview . --host 0.0.0.0 --port <port>`.
-   Give affected routes at `http://<actual-lan-ip>:<port>/`, never localhost,
-   loopback, or the bind address, for human visual/content acceptance.
+2. A `website/**` change is edited without a build, a preview, or acceptance
+   until a release. The release runs `pnpm run shots:sync`, `pnpm run
+   website:build`, and a persistent preview: `pnpm --dir website exec vitepress
+   preview . --host 0.0.0.0 --port <port>`, and gives affected routes at
+   `http://<actual-lan-ip>:<port>/`, never localhost, loopback, or the bind
+   address, for human visual/content acceptance.
 3. Runtime behavior, public seams, composition, preset payload, and shipped
    skills require `PROFILE=mayfly-<tag> script/install-dev.sh` and relevant
    headless/PTY smoke. Give `dsh --profile mayfly-<tag>` with the primary
    workflow, expected result, fallback/narrow-width/lifecycle case, and nearby
    regression checks. Rebuild after source edits; reinstall when dependencies
-   change. Mixed Website/runtime changes need both acceptance paths.
+   change. A mixed Website/runtime change takes the runtime path now and the
+   Website path at the release.
 4. Wait for all applicable human acceptance before merging, stopping previews,
    or removing profiles. Never redirect acceptance to production `mayfly`.
    After acceptance and merge, rebuild main when runtime output changed, stop
