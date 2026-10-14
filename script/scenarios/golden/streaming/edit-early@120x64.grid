@@ -24,11 +24,11 @@ grid 120x64 cursor none
 |  ● Now the edit.
 |
 |  ● Edit(src/config.mjs)
-|      │ −   setting1: 1,
-|      │ −   setting2: 2,
-|      │ −   setting3: 3,
-|      │ −   setting4: 4,
-|      │ −   se
+|    1 │ −   setting1: 1,
+|    2 │ −   setting2: 2,
+|    3 │ −   setting3: 3,
+|    4 │ −   setting4: 4,
+|    5 │ −   se
 |
 |
 |

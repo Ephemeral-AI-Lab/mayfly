@@ -1,43 +1,41 @@
 grid 60x24 cursor none
+|  ⊘ Bash(pnpm run check -- --tier full) · interrupted · 1.5s
 |
-|  ✻ Worked for 1s · done 10:11
-|
-|  » Run the full gate, and I will stop you halfway.
-|  ▾ Stopped · 1 tool call
-|  ● Starting the full gate.
-|  ✓ pnpm run check -- --tier full · Run the full gate
 |  ■ interrupted
 |
 |  ✻ Stopped after 2s · done 10:14
 |
 |  » Now regenerate the screenshots and check that they are
 |    fresh.
+|
 |  ▾ 1 tool call
+|
 |  ● Running shots:sync first.
-|  ✓ pnpm run shots:sync · Regenerate the screenshots
+|
+|  ✓ Bash(pnpm run shots:sync) · 1.2s
+|    wrote 14 screenshots
+|
 |  ● Screenshots are fresh: shots:sync wrote 14 files.
 |
 |  ✻ Worked for 4s · done 10:16
-|
+|                               Alt+↑ conversation · Alt+↓
 |╭─────────────────────────── Update the landing page hero ─╮
 |│ >                                                        │
 |╰──────────────────────────────────────────────────────────╯
 | deepseek-flash High  .  cache 42%  context: 5% (5.5k/128k)
 styles
-1: 2-29 fg:#9aa3b8
-3: 2-3 fg:#9a86e6; 4-50 fg:#9a86e6 b
-4: 2-3 fg:#9aa3b8; 4-10 fg:#e8a838; 11-24 fg:#9aa3b8
-5: 2-3 fg:#ededf2
-6: 2-3 fg:#4ec87e; 4-32 fg:#ededf2; 33-52 fg:#9aa3b8
-7: 2-14 fg:#e8a838
-9: 2-32 fg:#9aa3b8
-11: 2-3 fg:#9a86e6; 4-57 fg:#9a86e6 b
-12: 4-9 fg:#9a86e6 b
-13: 2-14 fg:#9aa3b8
-14: 2-3 fg:#ededf2
-15: 2-3 fg:#4ec87e; 4-22 fg:#ededf2; 23-51 fg:#9aa3b8
+0: 2-3 fg:#9aa3b8; 4-7 fg:#9aa3b8 b; 8 fg:#9aa3b8; 9-37 fg:#c9c0f0; 38-59 fg:#9aa3b8
+2: 2-14 fg:#e8a838
+4: 2-32 fg:#9aa3b8
+6: 2-3 fg:#9a86e6; 4-57 fg:#9a86e6 b
+7: 4-9 fg:#9a86e6 b
+9: 2-14 fg:#9aa3b8
+11: 2-3 fg:#ededf2
+13: 2-3 fg:#4ec87e; 4-7 fg:#ededf2 b; 8 fg:#9aa3b8; 9-27 fg:#c9c0f0; 28-35 fg:#9aa3b8
+14: 2-23 fg:#ededf2
 16: 2-3 fg:#ededf2
 18: 2-29 fg:#9aa3b8
+19: 31-56 fg:#9aa3b8
 20: 0-27 fg:#45406b; 28-57 fg:#5c6476; 58-59 fg:#45406b
 21: 0 fg:#45406b; 4 r; 59 fg:#45406b
 22: 0-59 fg:#45406b

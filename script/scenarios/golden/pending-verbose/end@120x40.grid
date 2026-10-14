@@ -1,4 +1,5 @@
 grid 120x40 cursor none
+|  ▾ 4 tool calls
 |
 |  ● Running the tests first.
 |
@@ -28,8 +29,7 @@ grid 120x40 cursor none
 |
 |  ● Starting the migration.
 |
-|  ✗ Bash(pnpm run migrate) · The tool call was interrupted after it was recorded, but no result was durably … · 30s
-|    The tool call was interrupted after it was recorded, but no result was durably recorded. Its outcome is unknown. De…
+|  ✗ Bash(pnpm run migrate) · outcome unknown · 30s
 |
 |  ■ interrupted
 |
@@ -40,24 +40,24 @@ grid 120x40 cursor none
 |╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
 | deepseek-flash High  ~/workspace                                                    cache 42%  context: 5% (5.5k/128k)
 styles
-1: 2-3 fg:#ededf2
-3: 2-3 fg:#4ec87e; 4-7 fg:#ededf2 b; 8 fg:#9aa3b8; 9-17 fg:#c9c0f0; 18-23 fg:#9aa3b8
-4: 2-13 fg:#ededf2
-6: 2-3 fg:#ededf2
-8: 2-3 fg:#4ec87e; 4-7 fg:#ededf2 b; 8 fg:#9aa3b8; 9-22 fg:#c9c0f0; 23-28 fg:#9aa3b8
-9: 2-19 fg:#ededf2
-11: 2-3 fg:#4ec87e; 4-7 fg:#ededf2 b; 8 fg:#9aa3b8; 9-21 fg:#c9c0f0; 22-27 fg:#9aa3b8
-12: 2-5 fg:#ededf2
-14: 2-3 fg:#ededf2
-16: 2-3 fg:#e85454; 4-7 fg:#ededf2 b; 8 fg:#9aa3b8; 9-26 fg:#c9c0f0; 27-41 fg:#9aa3b8
-17: 2-17 fg:#ededf2
-19: 2-3 fg:#ededf2
-21: 2-30 fg:#9aa3b8
-23: 2-3 fg:#9a86e6; 4-47 fg:#9a86e6 b
-25: 2-3 fg:#9aa3b8; 4-10 fg:#e8a838; 11-24 fg:#9aa3b8
-27: 2-3 fg:#ededf2
-29: 2-3 fg:#e85454; 4-7 fg:#ededf2 b; 8 fg:#9aa3b8; 9-24 fg:#c9c0f0; 25-114 fg:#9aa3b8
-30: 2-119 fg:#ededf2
+0: 2-15 fg:#9aa3b8
+2: 2-3 fg:#ededf2
+4: 2-3 fg:#4ec87e; 4-7 fg:#ededf2 b; 8 fg:#9aa3b8; 9-17 fg:#c9c0f0; 18-23 fg:#9aa3b8
+5: 2-13 fg:#ededf2
+7: 2-3 fg:#ededf2
+9: 2-3 fg:#4ec87e; 4-7 fg:#ededf2 b; 8 fg:#9aa3b8; 9-22 fg:#c9c0f0; 23-28 fg:#9aa3b8
+10: 2-19 fg:#ededf2
+12: 2-3 fg:#4ec87e; 4-7 fg:#ededf2 b; 8 fg:#9aa3b8; 9-21 fg:#c9c0f0; 22-27 fg:#9aa3b8
+13: 2-5 fg:#ededf2
+15: 2-3 fg:#ededf2
+17: 2-3 fg:#e85454; 4-7 fg:#ededf2 b; 8 fg:#9aa3b8; 9-26 fg:#c9c0f0; 27-41 fg:#9aa3b8
+18: 2-17 fg:#ededf2
+20: 2-3 fg:#ededf2
+22: 2-30 fg:#9aa3b8
+24: 2-3 fg:#9a86e6; 4-47 fg:#9a86e6 b
+26: 2-3 fg:#9aa3b8; 4-10 fg:#e8a838; 11-24 fg:#9aa3b8
+28: 2-3 fg:#ededf2
+30: 2-3 fg:#e85454; 4-7 fg:#ededf2 b; 8 fg:#9aa3b8; 9-24 fg:#c9c0f0; 25-49 fg:#9aa3b8
 32: 2-14 fg:#e8a838
 34: 2-33 fg:#9aa3b8
 35: 87-116 fg:#9aa3b8

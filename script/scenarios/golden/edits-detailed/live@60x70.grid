@@ -16,15 +16,15 @@ grid 60x70 cursor none
 |
 |  ✓ Edit(src/limits.mjs) · +2 −1 ▮▮▮▮▮▮▮▮
 |    1 │     const row33 = paint(33)
-|      │ −   max: 10,
+|    2 │ −   max: 10,
 |    2 │ +   max: 12,
 |    3 │ +   min: 2,
 |    4 │     const row41 = paint(41)
 |
 |  ✓ Edit(src/paint.mjs) · +1 −2 ▮▮▮▮▮▮▮▮
 |    1 │     const row73 = paint(73)
-|      │ −   paint(row)
-|      │ −   paint(next)
+|    2 │ −   paint(row)
+|    3 │ −   paint(next)
 |    2 │ +   paint(row, width)
 |    3 │     const row81 = paint(81)
 |

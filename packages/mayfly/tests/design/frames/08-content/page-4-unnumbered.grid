@@ -16,7 +16,7 @@ styles
 3: 0-52 fg:muted
 4: 0-16 fg:diffMeta
 5: 4-42 fg:text
-6: 2 fg:diffRemoved bg:diffRemovedBg; 3 bg:diffRemovedBg; 4-23 fg:diffRemoved bg:diffRemovedBg; 24-99 bg:diffRemovedBg
-7: 2 fg:diffAdded bg:diffAddedBg; 3 bg:diffAddedBg; 4-34 fg:diffAdded bg:diffAddedBg; 35-99 bg:diffAddedBg
+6: 2 fg:diffRemoved bg:diffRemovedBg; 3 bg:diffRemovedBg; 4-23 fg:diffRemoved bg:diffRemovedBg; 24-95 bg:diffRemovedBg
+7: 2 fg:diffAdded bg:diffAddedBg; 3 bg:diffAddedBg; 4-34 fg:diffAdded bg:diffAddedBg; 35-95 bg:diffAddedBg
 8: 4-30 fg:text
 9: 2 fg:diffMeta

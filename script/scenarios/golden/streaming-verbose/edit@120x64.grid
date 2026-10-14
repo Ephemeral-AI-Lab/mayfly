@@ -31,8 +31,8 @@ grid 120x64 cursor none
 |
 |  ● Edit(src/config.mjs)
 |    … +2 earlier · Ctrl+O
-|       │ −   setting5: 5,
-|       │ −   setting6: 6,
+|     3 │ −   setting5: 5,
+|     4 │ −   setting6: 6,
 |     2 │ +   retries: 3,
 |     3 │ +   backoff: { base: 100, max: 5000 },
 |     4 │ +   jitter: true,
@@ -40,7 +40,7 @@ grid 120x64 cursor none
 |     6 │     setting7: 7,
 |    ⋯
 |    10 │     setting11: 11,
-|       │ −   setting12: 12,
+|    10 │ −   setting12: 12,
 |    11 │ +   sett
 |
 |

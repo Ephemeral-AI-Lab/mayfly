@@ -32,7 +32,7 @@ grid 60x56 cursor none
 |  ● Edit(src/config.mjs)
 |    … +11 earlier · Ctrl+O
 |    10 │     setting11: 11,
-|       │ −   setting12: 12,
+|    10 │ −   setting12: 12,
 |    11 │ +   sett
 |
 |

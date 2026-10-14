@@ -27,14 +27,14 @@ grid 60x40 cursor none
 |
 |  ● Starting the build.
 |
-|  ▸ 3 tool calls · 1.1s · 1 failed · Ctrl+O to expand
+|  ▸ 4 tool calls · 4.1s · 1 failed · 2 interrupted · Ctrl+O
 |
 |  ■ interrupted
 |
 |  ✻ Stopped after 5s · done 10:24
 |
 |  / (build|lint)$
-|    1 match · Enter to select · Esc to cancel
+|    No matches · Esc to cancel
 |╭───────────────────────── Survey the transcript code and ─╮
 |│ >                                                        │
 |╰──────────────────────────────────────────────────────────╯
@@ -55,11 +55,11 @@ styles
 22: 2-30 fg:#9aa3b8
 24: 2-3 fg:#9a86e6; 4-43 fg:#9a86e6 b
 26: 2-3 fg:#ededf2
-28: 1 bg:#2b2b30; 2-22 fg:#9aa3b8 bg:#2b2b30; 23-33 fg:#e8a838 bg:#2b2b30; 34-52 fg:#9aa3b8 bg:#2b2b30; 53-58 bg:#2b2b30
+28: 1 bg:#2b2b30; 2-22 fg:#9aa3b8 bg:#2b2b30; 23-33 fg:#e8a838 bg:#2b2b30; 34-58 fg:#9aa3b8 bg:#2b2b30; 59 fg:#9aa3b8
 30: 2-14 fg:#e8a838
 32: 2-32 fg:#9aa3b8
 34: 2-3 fg:#9a86e6; 17 r
-35: 4-44 fg:#9aa3b8
+35: 4-29 fg:#9aa3b8
 36: 0-59 fg:#5c6476
 37: 0 fg:#5c6476; 4 r; 59 fg:#5c6476
 38: 0-59 fg:#5c6476

@@ -17,8 +17,8 @@ grid 40x24 cursor none
 |    mouse-line-49
 |    mouse-line-50
 |    mouse-line-51
-|    mouse-line- Back to bottom · Ctrl+↓
-|
+|    mouse-line-52
+|         Back to bottom · Ctrl+↓
 |╭─────────────────────────────── ping ─╮
 |│ >                                    │
 |╰──────────────────────────────────────╯
@@ -30,7 +30,7 @@ styles
 13: 39 bg:p8
 14: 39 bg:p8
 15: 39 bg:p8
-18: 15-39 r
+19: 8-32 fg:#ededf2 r
 20: 0-31 fg:#45406b; 32-37 fg:#5c6476; 38-39 fg:#45406b
 21: 0 fg:#45406b; 4 r; 39 fg:#45406b
 22: 0-39 fg:#45406b

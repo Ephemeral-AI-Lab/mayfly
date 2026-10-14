@@ -29,7 +29,7 @@ grid 100x40 cursor none
 |
 |  ● Starting the build.
 |
-|  ▸ 3 tool calls · 1.1s · 1 failed · Ctrl+O to expand
+|  ▸ 4 tool calls · 4.1s · 1 failed · 2 interrupted · Ctrl+O to expand
 |
 |  ■ interrupted
 |
@@ -58,7 +58,7 @@ styles
 24: 2-30 fg:#9aa3b8
 26: 2-3 fg:#9a86e6; 4-43 fg:#9a86e6 b
 28: 2-3 fg:#ededf2
-30: 2-22 fg:#9aa3b8; 23-33 fg:#e8a838; 34-52 fg:#9aa3b8
+30: 2-22 fg:#9aa3b8; 23-33 fg:#e8a838; 34-68 fg:#9aa3b8
 32: 2-14 fg:#e8a838
 34: 2-32 fg:#9aa3b8
 35: 62-63 fg:#4ec87e; 64-96 fg:#ededf2

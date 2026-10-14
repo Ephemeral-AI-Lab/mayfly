@@ -1,0 +1,48 @@
+grid 60x30 cursor none
+|  ✻ Thinking · 54s
+|    Line 1 of a long chain of thought about whether the ret…
+|    Line 2 of a long chain of thought about whether the ret…
+|    Line 3 of a long chain of thought about whether the ret…
+|    … +37 more · Ctrl+O
+|
+|  ● Verdict
+|
+|    The retry loop is correct, but the timeout is not
+|    applied to the retry itself.
+|
+|    ┌─────────┬────────┬─────────┐
+|    │ attempt │ delay  │ outcome │
+|    ├─────────┼────────┼─────────┤
+|    │ 1       │ 250 ms │ retried │
+|    ├─────────┼────────┼─────────┤
+|    │ 2       │ 500 ms │ retried │
+|    ├─────────┼────────┼─────────┤
+|    │ 3       │ -      │ gave up │
+|    └─────────┴────────┴─────────┘
+|
+|    • the delay doubles
+|
+|  ⡀ Writing · 56s · ↓3
+|    ⎿ Tip: ! to run a shell command
+|                               Alt+↑ conversation · Alt+↓
+|╭───────────────────────────────── Here is the timeout on ─╮
+|│ >                                                        │
+|╰──────────────────────────────────────────────────────────╯
+| deepseek-flash High  .  cache 42%  context: 18% (5.5k/32k)
+styles
+0: 2-17 fg:#9aa3b8
+1: 2-3 fg:#ededf2; 4-59 fg:#9aa3b8
+2: 2-3 fg:#ededf2; 4-59 fg:#9aa3b8
+3: 2-3 fg:#ededf2; 4-59 fg:#9aa3b8
+4: 2-3 fg:#ededf2; 4-22 fg:#9aa3b8
+6: 2-3 fg:#ededf2; 4-10 fg:#f5f5f7 b
+8: 22-28 fg:#f5f5f7
+12: 6-12 fg:#f5f5f7; 16-21 fg:#f5f5f7; 25-31 fg:#f5f5f7
+21: 4-5 fg:#c9c0f0
+23: 0-1 fg:#ededf2; 2 fg:#9a86e6; 3-10 fg:#ededf2; 12-21 fg:#9aa3b8
+24: 0-34 fg:#9aa3b8
+25: 31-56 fg:#9aa3b8
+26: 0-33 fg:#45406b; 34-57 fg:#5c6476; 58-59 fg:#45406b
+27: 0 fg:#45406b; 4 r; 59 fg:#45406b
+28: 0-59 fg:#45406b
+29: 1-19 fg:#ededf2; 25-58 fg:#ededf2

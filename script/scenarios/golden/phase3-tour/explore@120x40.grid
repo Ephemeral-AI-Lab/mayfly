@@ -1,0 +1,66 @@
+grid 120x40 cursor none
+|    Line 1 of a long chain of thought about whether the retry delays grow as intended.
+|    Line 2 of a long chain of thought about whether the retry delays grow as intended.
+|    Line 3 of a long chain of thought about whether the retry delays grow as intended.
+|    … +37 more · Ctrl+O
+|
+|  ● Verdict
+|
+|    The retry loop is correct, but the timeout is not applied to the retry itself.
+|
+|    ┌─────────┬────────┬─────────┐
+|    │ attempt │ delay  │ outcome │
+|    ├─────────┼────────┼─────────┤
+|    │ 1       │ 250 ms │ retried │
+|    ├─────────┼────────┼─────────┤
+|    │ 2       │ 500 ms │ retried │
+|    ├─────────┼────────┼─────────┤
+|    │ 3       │ -      │ gave up │
+|    └─────────┴────────┴─────────┘
+|
+|    • the delay doubles on each attempt
+|    • the last error is kept as cause
+|
+|    ```ts
+|      export async function withRetry<T>(run: () => Promise<T>, retries: number): Promise<T> {
+|        // one call, then up to `retries` more
+|        return run()
+|      }
+|    ```
+|
+|  ✻ Worked for 1m 1s · done 10:06
+|
+|  » Survey the project, then run the tests while I read the docs.
+|
+|  ⡀ Deep diving · 0s
+|    ⎿ Tip: @: mention files
+|                                                                                       Alt+↑ conversation · Alt+↓ bar
+|╭───────────────────────────────────────────────────────────────────────────────────────────── Here is the timeout on ─╮
+|│ >                                                                                                                    │
+|╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+| deepseek-flash High  ~/workspace                                                    cache 42%  context: 13% (4.1k/32k)
+styles
+0: 2-3 fg:#ededf2; 4-85 fg:#9aa3b8
+1: 2-3 fg:#ededf2; 4-85 fg:#9aa3b8
+2: 2-3 fg:#ededf2; 4-85 fg:#9aa3b8
+3: 2-3 fg:#ededf2; 4-22 fg:#9aa3b8
+5: 2-3 fg:#ededf2; 4-10 fg:#f5f5f7 b
+7: 22-28 fg:#f5f5f7
+10: 6-12 fg:#f5f5f7; 16-21 fg:#f5f5f7; 25-31 fg:#f5f5f7
+19: 4-5 fg:#c9c0f0
+20: 4-5 fg:#c9c0f0; 32-36 fg:#c9c0f0
+22: 4-8 fg:#45406b
+23: 6-11 fg:#9a86e6; 12 fg:#ededf2; 13-17 fg:#9a86e6; 18 fg:#ededf2; 19-26 fg:#9a86e6; 28-36 fg:#c9c0f0; 38 fg:#c9c0f0; 41-51 fg:#ededf2; 52-58 fg:#c9c0f0; 73-78 fg:#c9c0f0; 82-88 fg:#c9c0f0; 90 fg:#c9c0f0; 93 fg:#ededf2
+24: 6-7 fg:#ededf2; 8-45 fg:#9aa3b8
+25: 6-7 fg:#ededf2; 8-13 fg:#9a86e6; 14-19 fg:#ededf2
+26: 6 fg:#ededf2
+27: 4-6 fg:#45406b
+29: 2-32 fg:#9aa3b8
+31: 2-3 fg:#9a86e6; 4-64 fg:#9a86e6 b
+33: 0-1 fg:#ededf2; 2 fg:#9a86e6; 3-14 fg:#ededf2; 16-19 fg:#9aa3b8
+34: 0-26 fg:#9aa3b8
+35: 87-116 fg:#9aa3b8
+36: 0-93 fg:#45406b; 94-117 fg:#5c6476; 118-119 fg:#45406b
+37: 0 fg:#45406b; 4 r; 119 fg:#45406b
+38: 0-119 fg:#45406b
+39: 1-19 fg:#ededf2; 22-32 fg:#9aa3b8; 85-118 fg:#ededf2

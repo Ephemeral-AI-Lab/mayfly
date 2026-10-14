@@ -1,44 +1,41 @@
 grid 60x24 cursor none
-|                  rows.append('')
-|                  continue
-|              rows.extend(line[i:i + width] for i in
-|    range(0, len(line), width))
-|          return rows
-|    ```
-|
 |  ✻ Worked for 6s · done 09:00
 |
 |  » Check the readme too.
-|  ▸ 1 tool call · Ctrl+O to expand
+|
+|  ▾ 1 tool call · Ctrl+O to expand
+|
+|  ● Reading it.
+|
+|  ✓ Read(README.md)
+|
 |  ● The readme confirms it: the service is tiny.
 |
 |  ✻ Worked for 2s · done 09:00
 |
 |  » And the tests?
+|
 |  ● All of them pass.
 |
 |  ✻ Worked for 1s · done 09:00
-|
+|                               Alt+↑ conversation · Alt+↓
 |╭──────────────────────── Explain the rendering pipeline. ─╮
 |│ >                                                        │
 |╰──────────────────────────────────────────────────────────╯
 | deepseek-flash High  .  cache 42%  context: 5% (5.5k/128k)
 styles
-0: 6-29 fg:#ededf2; 30-31 fg:#4ec87e; 32 fg:#ededf2
-1: 6-17 fg:#ededf2; 18-25 fg:#9a86e6
-2: 6-43 fg:#ededf2; 44-46 fg:#9a86e6; 47-49 fg:#ededf2; 50-51 fg:#9a86e6; 52-59 fg:#ededf2
-3: 4-30 fg:#ededf2
-4: 6-9 fg:#ededf2; 10-15 fg:#9a86e6; 16-20 fg:#ededf2
-5: 4-6 fg:#45406b
-7: 2-29 fg:#9aa3b8
-9: 2-3 fg:#9a86e6; 4-24 fg:#9a86e6 b
-10: 2-33 fg:#9aa3b8
-11: 2-3 fg:#ededf2
-13: 2-29 fg:#9aa3b8
-15: 2-3 fg:#9a86e6; 4-17 fg:#9a86e6 b
+0: 2-29 fg:#9aa3b8
+2: 2-3 fg:#9a86e6; 4-24 fg:#9a86e6 b
+4: 2-33 fg:#9aa3b8
+6: 2-3 fg:#ededf2
+8: 2-3 fg:#4ec87e; 4-7 fg:#ededf2 b; 8 fg:#9aa3b8; 9-17 fg:#c9c0f0; 18 fg:#9aa3b8
+10: 2-3 fg:#ededf2
+12: 2-29 fg:#9aa3b8
+14: 2-3 fg:#9a86e6; 4-17 fg:#9a86e6 b
 16: 2-3 fg:#ededf2
 17: 59 bg:p8
 18: 2-29 fg:#9aa3b8; 59 bg:p8
+19: 31-56 fg:#9aa3b8
 20: 0-24 fg:#45406b; 25-57 fg:#5c6476; 58-59 fg:#45406b
 21: 0 fg:#45406b; 4 r; 59 fg:#45406b
 22: 0-59 fg:#45406b

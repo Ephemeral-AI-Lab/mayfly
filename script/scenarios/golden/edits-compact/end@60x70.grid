@@ -13,9 +13,9 @@ grid 60x70 cursor none
 |
 |  ● The setting goes into the config first.
 |
-|  ▸ 12 tool calls · 13s · +154 −31 · 1 failed · Ctrl+O to e…
+|  ▸ 12 tool calls · 13s · +155 −33 · 1 failed · Ctrl+O to e…
 |
-|  ● The client names the timeout in three places.
+|  ● The client names the timeout in four places.
 |
 |  ● Now the test for it.
 |
@@ -37,7 +37,7 @@ grid 60x70 cursor none
 |
 |  ● Replacing the client.
 |
-|  ▸ 2 tool calls · 4.1s · +1 −1 · 1 failed · Ctrl+O to expa…
+|  ▸ 2 tool calls · 4.1s · +1 −1 · 1 interrupted · Ctrl+O to…
 |
 |  ■ interrupted
 |
@@ -93,7 +93,7 @@ styles
 32: 2-30 fg:#9aa3b8
 34: 2-3 fg:#9a86e6; 4-56 fg:#9a86e6 b
 36: 2-3 fg:#ededf2
-38: 2-30 fg:#9aa3b8; 31-41 fg:#e8a838; 42-59 fg:#9aa3b8
+38: 2-59 fg:#9aa3b8
 40: 2-14 fg:#e8a838
 42: 2-32 fg:#9aa3b8
 65: 31-56 fg:#9aa3b8

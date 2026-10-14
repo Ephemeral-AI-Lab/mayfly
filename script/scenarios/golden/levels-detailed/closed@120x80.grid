@@ -54,20 +54,20 @@ grid 120x80 cursor none
 |
 |  » Run the long build, and I will stop you.
 |
-|  ▾ Stopped · 3 tool calls · Ctrl+O to expand
+|  ▾ Stopped · 4 tool calls · Ctrl+O to expand
 |
 |  ● Starting the build.
 |
 |  ✓ Read(package.json) · 1 line
 |
-|  ✗ Bash · 2 calls · 4.1s · 2 failed
+|  ✗ Bash · 3 calls · 4.1s · 1 failed · 2 interrupted
 |    ├ ✗ pnpm run lint · exit 1 · 1s
-|    └ ✗ pnpm run build · The tool call was interrupted after it was recorded, but no result was durably … · 4s
+|    ├ ⊘ pnpm run build · interrupted · 4s
+|    └ ⊘ pnpm run deploy · not started
 |
 |  ■ interrupted
 |
 |  ✻ Stopped after 5s · done 10:24
-|
 |
 |
 |
@@ -121,11 +121,12 @@ styles
 55: 2-3 fg:#9aa3b8; 4-10 fg:#e8a838; 11-44 fg:#9aa3b8
 57: 2-3 fg:#ededf2
 59: 2-3 fg:#4ec87e; 4-7 fg:#ededf2 b; 8 fg:#9aa3b8; 9-20 fg:#c9c0f0; 21-30 fg:#9aa3b8
-61: 2-3 fg:#e85454; 4-7 fg:#ededf2 b; 8-24 fg:#9aa3b8; 25-35 fg:#e85454
+61: 2-3 fg:#e85454; 4-7 fg:#ededf2 b; 8-24 fg:#9aa3b8; 25-35 fg:#e85454; 36-51 fg:#9aa3b8
 62: 2-5 fg:#9aa3b8; 6-7 fg:#e85454; 8-20 fg:#c9c0f0; 21-34 fg:#9aa3b8
-63: 2-5 fg:#9aa3b8; 6-7 fg:#e85454; 8-21 fg:#c9c0f0; 22-109 fg:#9aa3b8
-65: 2-14 fg:#e8a838
-67: 2-32 fg:#9aa3b8
+63: 2-7 fg:#9aa3b8; 8-21 fg:#c9c0f0; 22-40 fg:#9aa3b8
+64: 2-7 fg:#9aa3b8; 8-22 fg:#c9c0f0; 23-36 fg:#9aa3b8
+66: 2-14 fg:#e8a838
+68: 2-32 fg:#9aa3b8
 75: 87-116 fg:#9aa3b8
 76: 0-85 fg:#45406b; 86-117 fg:#5c6476; 118-119 fg:#45406b
 77: 0 fg:#45406b; 4 r; 119 fg:#45406b

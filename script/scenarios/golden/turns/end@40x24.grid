@@ -1,42 +1,40 @@
 grid 40x24 cursor none
+|  ⊘ Bash(pnpm run check -- --tier full)…
 |
-|  ✻ Worked for 1s · done 10:11
-|
-|  » Run the full gate, and I will stop
-|    you halfway.
-|  ▾ Stopped · 1 tool call
-|  ● Starting the full gate.
-|  ▸ Ran commands
 |  ■ interrupted
 |
 |  ✻ Stopped after 2s · done 10:14
 |
 |  » Now regenerate the screenshots and
 |    check that they are fresh.
-|  ▸ 1 tool call · Ctrl+O to expand
+|
+|  ▾ 1 tool call · Ctrl+O to expand
+|
+|  ● Running shots:sync first.
+|
+|  ✓ Bash(pnpm run shots:sync) · 1.2s
+|
 |  ● Screenshots are fresh: shots:sync
 |    wrote 14 files.
 |
 |  ✻ Worked for 4s · done 10:16
-|
+|                                Alt+↑
 |╭─────── Update the landing page hero ─╮
 |│ >                                    │
 |╰──────────────────────────────────────╯
 | deepseek-flash High  ~/workspace
 styles
-1: 2-29 fg:#9aa3b8
-3: 2-3 fg:#9a86e6; 4-37 fg:#9a86e6 b
-4: 4-15 fg:#9a86e6 b
-5: 2-3 fg:#9aa3b8; 4-10 fg:#e8a838; 11-24 fg:#9aa3b8
-6: 2-3 fg:#ededf2
-7: 2-15 fg:#9aa3b8
-8: 2-14 fg:#e8a838
-10: 2-32 fg:#9aa3b8
-12: 2-3 fg:#9a86e6; 4-37 fg:#9a86e6 b
-13: 4-29 fg:#9a86e6 b
-14: 2-33 fg:#9aa3b8
+0: 2-3 fg:#9aa3b8; 4-7 fg:#9aa3b8 b; 8 fg:#9aa3b8; 9-37 fg:#c9c0f0; 38-39 fg:#9aa3b8
+2: 2-14 fg:#e8a838
+4: 2-32 fg:#9aa3b8
+6: 2-3 fg:#9a86e6; 4-37 fg:#9a86e6 b
+7: 4-29 fg:#9a86e6 b
+9: 2-33 fg:#9aa3b8
+11: 2-3 fg:#ededf2
+13: 2-3 fg:#4ec87e; 4-7 fg:#ededf2 b; 8 fg:#9aa3b8; 9-27 fg:#c9c0f0; 28-35 fg:#9aa3b8
 15: 2-3 fg:#ededf2
 18: 2-29 fg:#9aa3b8
+19: 32-36 fg:#9aa3b8
 20: 0-7 fg:#45406b; 8-37 fg:#5c6476; 38-39 fg:#45406b
 21: 0 fg:#45406b; 4 r; 39 fg:#45406b
 22: 0-39 fg:#45406b

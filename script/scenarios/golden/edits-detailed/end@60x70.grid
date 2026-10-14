@@ -16,11 +16,11 @@ grid 60x70 cursor none
 |
 |  ✓ Edit(src/painter.mjs) · +26 −18 ▮▮▮▮▮▮▮▮
 |     1 │     const row203 = paint(203)
-|       │ −   rows.push(old1(width))
-|       │ −   rows.push(old2(width))
-|       │ −   rows.push(old3(width))
-|       │ −   rows.push(old4(width))
-|       │ −   rows.push(old5(width))
+|     2 │ −   rows.push(old1(width))
+|     3 │ −   rows.push(old2(width))
+|     4 │ −   rows.push(old3(width))
+|     5 │ −   rows.push(old4(width))
+|     6 │ −   rows.push(old5(width))
 |    … +40 rows · Ctrl+O
 |
 |  ● The report is rewritten whole.
@@ -55,11 +55,11 @@ grid 60x70 cursor none
 |
 |  ✓ Edit(src/client.mjs) · +1 −1 ▮▮▮▮▮▮▮▮
 |    1 │     const row303 = paint(303)
-|      │ −   send(request)
+|    2 │ −   send(request)
 |    2 │ +   send(request, signal)
 |    3 │     const row311 = paint(311)
 |
-|  ✗ Write(src/client.mjs) · The tool call was interrupted a…
+|  ⊘ Write(src/client.mjs) · interrupted
 |
 |  ■ interrupted
 |
@@ -115,7 +115,7 @@ styles
 56: 4-6 fg:#9aa3b8; 8 fg:#e85454 bg:#43232a; 9 bg:#43232a; 10-24 fg:#ededf2 bg:#43232a; 25-55 bg:#43232a
 57: 4-6 fg:#9aa3b8; 8 fg:#4ec87e bg:#1e3a2b; 9 bg:#1e3a2b; 10-32 fg:#ededf2 bg:#1e3a2b; 33-55 bg:#1e3a2b
 58: 4-6 fg:#9aa3b8; 10-11 fg:#ededf2; 12-16 fg:#9a86e6; 17-32 fg:#ededf2; 33-35 fg:#e8a838; 36 fg:#ededf2
-60: 2-3 fg:#e85454; 4-8 fg:#ededf2 b; 9 fg:#9aa3b8; 10-23 fg:#c9c0f0; 24-59 fg:#9aa3b8
+60: 2-3 fg:#9aa3b8; 4-8 fg:#9aa3b8 b; 9 fg:#9aa3b8; 10-23 fg:#c9c0f0; 24-38 fg:#9aa3b8
 62: 2-14 fg:#e8a838
 64: 2-32 fg:#9aa3b8
 65: 31-56 fg:#9aa3b8

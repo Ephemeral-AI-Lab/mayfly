@@ -1,0 +1,43 @@
+grid 40x24 cursor none
+|
+|  ✗ Bash(git push --force origin main) …
+|
+|  ● Understood: I will push a branch
+|    instead.
+|
+|  ✓ Bash(git push origin release/1.4) ·…
+|
+|  ✻ Worked for 3s · done 10:26
+|
+|  » Plan the migration before changing
+|    anything, then ask me one question.
+|────────────────────────────────────────
+|  Todo
+|  ● Check the retry path
+|  … +2 more rows
+|
+|  ⡀ Deep diving · 0s
+|    ⎿ Tip: /plugin to browse and instal…
+|                                Alt+↑
+|╭───────────── Here is the timeout on ─╮
+|│ >                                    │
+|╰──────────────────────────────────────╯
+| deepseek-flash High  plan  ~/workspace
+styles
+1: 2-3 fg:#e85454; 4-7 fg:#ededf2 b; 8 fg:#9aa3b8; 9-36 fg:#c9c0f0; 37-39 fg:#9aa3b8
+3: 2-3 fg:#ededf2
+6: 2-3 fg:#4ec87e; 4-7 fg:#ededf2 b; 8 fg:#9aa3b8; 9-35 fg:#c9c0f0; 36-39 fg:#9aa3b8
+8: 2-29 fg:#9aa3b8
+10: 2-3 fg:#9a86e6; 4-37 fg:#9a86e6 b
+11: 4-38 fg:#9a86e6 b
+12: 0-39 fg:#45406b
+13: 0-5 fg:#c9c0f0 b
+14: 0-3 fg:#c9c0f0 b; 4-23 fg:#ededf2
+15: 0-15 fg:#5c6476
+17: 0-1 fg:#ededf2; 2 fg:#9a86e6; 3-14 fg:#ededf2; 16-19 fg:#9aa3b8
+18: 0-38 fg:#9aa3b8
+19: 32-36 fg:#9aa3b8
+20: 0-13 fg:#45406b; 14-37 fg:#5c6476; 38-39 fg:#45406b
+21: 0 fg:#45406b; 4 r; 39 fg:#45406b
+22: 0-39 fg:#45406b
+23: 1-19 fg:#ededf2; 22-25 fg:#c9c0f0; 28-38 fg:#9aa3b8

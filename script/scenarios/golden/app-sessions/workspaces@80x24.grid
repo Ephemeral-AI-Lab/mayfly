@@ -8,13 +8,13 @@ grid 80x24 cursor none
 | ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣿⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀  Model:     deepseek-flash · deepseek-of...
 | ⠀⠀⠀⠀⠀⠀⠀⠀⠀⡠⠊⠀⠑⢄⠀⠀⠀⠀⠀⠀⠀⠀⠀  Version:   scenario
 |
-| » Paint the app screenshots from the scenario goldens.
+|  » Paint the app screenshots from the scenario goldens.
 |
-| ● The Website app shots now come from the accepted goldens.
+|  ● The Website app shots now come from the accepted goldens.
 |
+|  ✻ Worked for 1s · done 09:00
 |
-|
-|
+|                                               Alt+↑ conversation · Alt+↓ bar
 |╭ Sessions · Workspaces ───────────────────────────────────────────────────────╮
 |│ → ~/workspace [current] — 6 sessions                                         │
 |│   ~/docs — 1 session                                                         │
@@ -32,8 +32,10 @@ styles
 5: 1-25 fg:#9a86e6; 26-67 fg:#ededf2
 6: 1-23 fg:#8371d6; 24-25 fg:#9a86e6; 26-64 fg:#e9e6f4
 7: 1-23 fg:#6c5bbf; 24-25 fg:#9a86e6; 26-67 fg:#ededf2
-9: 1-54 fg:#9a86e6 b
-11: 1-2 fg:#ededf2
+9: 2-3 fg:#9a86e6; 4-55 fg:#9a86e6 b
+11: 2-3 fg:#ededf2
+13: 2-29 fg:#9aa3b8
+15: 47-76 fg:#9aa3b8
 16: 0-1 fg:#dcd7f2; 2-22 fg:#f5f5f7 b; 23-79 fg:#dcd7f2
 17: 0 fg:#dcd7f2; 2 fg:#9a86e6 b; 4-14 fg:#ededf2 b; 16-24 fg:#9aa3b8; 26-37 fg:#9aa3b8; 79 fg:#dcd7f2
 18: 0 fg:#dcd7f2; 4-9 fg:#ededf2; 11-21 fg:#9aa3b8; 79 fg:#dcd7f2

@@ -1,0 +1,58 @@
+grid 120x40 cursor none
+| ⠱⣦⣄⣀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⣠⣴⠎
+| ⠀⠙⢿⣿⣿⣷⣶⣤⣀⣀⣴⣶⣦⣀⣀⣤⣶⣾⣿⣿⡿⠋⠀  mayfly
+| ⠀⠀⠀⠈⠻⢿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡿⠟⠁⠀⠀⠀  ephemeral agents, enduring works
+| ⠀⠀⠀⠀⠀⠀⠀⠉⠉⠁⢸⣿⡇⠈⠉⠉⠀⠀⠀⠀⠀⠀⠀
+| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢸⣿⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀  Send /help for help information.
+| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⣿⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀  Directory: ~/workspace
+| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣿⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀  Model:     deepseek-flash · deepseek-official
+| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⡠⠊⠀⠑⢄⠀⠀⠀⠀⠀⠀⠀⠀⠀  Version:   scenario
+|
+|  » Show me every kind of notice.
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|  ⡀ Deep diving · 0s
+|    ⎿ Tip: Esc to interrupt the run
+|                                                                            ✓ Copied the last answer to the clipboard
+|╭────────────────────────────────────────────────────────────────────────────────────────────── Show me every kind of ─╮
+|│ >                                                                                                                    │
+|╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+| deepseek-flash  ~/workspace
+styles
+0: 1-23 fg:#f5f5f7; 24-25 fg:#9a86e6
+1: 1-23 fg:#e9e5f6; 24-25 fg:#9a86e6; 26-107 fg:#9a86e6 b
+2: 1-23 fg:#dbd3f0; 24-25 fg:#9a86e6; 26-107 fg:#c9c0f0
+3: 1-23 fg:#c9beea; 24-25 fg:#9a86e6
+4: 1-23 fg:#b2a1ec; 24-25 fg:#9a86e6; 26-107 fg:#9aa3b8
+5: 1-25 fg:#9a86e6; 26-107 fg:#ededf2
+6: 1-23 fg:#8371d6; 24-25 fg:#9a86e6; 26-107 fg:#e9e6f4
+7: 1-23 fg:#6c5bbf; 24-25 fg:#9a86e6; 26-107 fg:#ededf2
+9: 2-3 fg:#9a86e6; 4-32 fg:#9a86e6 b
+33: 0-1 fg:#ededf2; 2 fg:#9a86e6; 3-14 fg:#ededf2; 16-19 fg:#9aa3b8
+34: 0-34 fg:#9aa3b8
+35: 76-77 fg:#4ec87e; 78-116 fg:#ededf2
+36: 0-94 fg:#45406b; 95-117 fg:#5c6476; 118-119 fg:#45406b
+37: 0 fg:#45406b; 4 r; 119 fg:#45406b
+38: 0-119 fg:#45406b
+39: 1-14 fg:#ededf2; 17-27 fg:#9aa3b8

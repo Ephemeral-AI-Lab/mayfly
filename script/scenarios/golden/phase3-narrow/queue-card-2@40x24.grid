@@ -1,0 +1,48 @@
+grid 40x24 cursor none
+|  ? Edit(src/config.mjs) · 1 of 2 waiti…
+|    Edits a file in the workspace.
+|    1 │     timeoutMs: 3000,
+|    2 │ +   retries: 2,
+|    3 │   }
+|    ⋯
+|    5 │   export function describe() {
+|    5 │ −   return `${config.baseUr…
+|    6 │ +   return `${config.baseUr…
+|
+|  ● Bash
+|    set -e
+|    git clean -fd
+|
+|  ● Waiting for your approval · 0s
+|    ⎿ Tip: /btw <question>: ask a side …
+|                                Alt+↑
+|── Decide ─────────────── 1 of 2 waiting
+|→ 1  Allow once
+|  2  Allow edit for this session
+|  3  Reject
+|  Feedback: type to explain…
+|  Enter · Ctrl+G · Esc
+| deepseek-flash High  ~/workspace
+styles
+0: 2-3 fg:#e8a838 b; 4-7 fg:#ededf2 b; 8 fg:#9aa3b8; 9-22 fg:#c9c0f0; 23-39 fg:#9aa3b8
+1: 2-3 fg:#ededf2; 4-33 fg:#9aa3b8
+2: 4-6 fg:#9aa3b8; 10-22 fg:#ededf2; 23-26 fg:#e8a838; 27 fg:#ededf2
+3: 4-6 fg:#9aa3b8; 8 fg:#4ec87e bg:#1e3a2b; 9 bg:#1e3a2b; 10-11 fg:#ededf2 bg:#1e3a2b; 12-18 fg:#c9c0f0 bg:#1e3a2b; 19-20 fg:#ededf2 bg:#1e3a2b; 21 fg:#e8a838 bg:#1e3a2b; 22 fg:#ededf2 bg:#1e3a2b; 23-35 bg:#1e3a2b
+4: 4-6 fg:#9aa3b8; 10 fg:#ededf2
+5: 4 fg:#9aa3b8
+6: 4-6 fg:#9aa3b8; 10-15 fg:#9a86e6; 16 fg:#ededf2; 17-24 fg:#9a86e6; 26-33 fg:#c9c0f0; 37 fg:#ededf2
+7: 4-6 fg:#9aa3b8; 8 fg:#e85454 bg:#43232a; 9 bg:#43232a; 10-11 fg:#ededf2 bg:#43232a; 12-17 fg:#9a86e6 bg:#43232a; 18 fg:#ededf2 bg:#43232a; 19-35 fg:#4ec87e bg:#43232a
+8: 4-6 fg:#9aa3b8; 8 fg:#4ec87e bg:#1e3a2b; 9 bg:#1e3a2b; 10-11 fg:#ededf2 bg:#1e3a2b; 12-17 fg:#9a86e6 bg:#1e3a2b; 18 fg:#ededf2 bg:#1e3a2b; 19-35 fg:#4ec87e bg:#1e3a2b
+10: 2 fg:#5c6476; 3 fg:#ededf2; 4-7 fg:#ededf2 b
+11: 2-9 fg:#ededf2
+12: 2-16 fg:#ededf2
+14: 0-1 fg:#ededf2; 2 fg:#5c6476; 3-28 fg:#ededf2; 30-33 fg:#9aa3b8
+15: 0-38 fg:#9aa3b8
+16: 32-36 fg:#9aa3b8
+17: 0-24 fg:#9aa3b8; 26-39 fg:#e8a838
+18: 0 fg:#9a86e6 b; 2 fg:#9aa3b8; 5-14 fg:#ededf2 b
+19: 2 fg:#9aa3b8; 5-31 fg:#ededf2
+20: 2 fg:#9aa3b8; 5-10 fg:#ededf2
+21: 2-11 fg:#ededf2; 12-27 fg:#9aa3b8
+22: 0-1 fg:#5c6476; 2-6 fg:#ededf2; 7-9 fg:#5c6476; 10-15 fg:#ededf2; 16-18 fg:#5c6476; 19-21 fg:#ededf2
+23: 1-19 fg:#ededf2; 22-32 fg:#9aa3b8

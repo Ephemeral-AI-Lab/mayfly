@@ -1,0 +1,44 @@
+grid 40x24 cursor none
+|  ✗ Edit(src/client.mjs) · old_string w…
+|
+|  ✻ Worked for 8s · done 10:16
+|
+|  » Clean the build output, reset the
+|    workspace, and publish the branch.
+|
+|  ● This deletes the build directory,
+|    which needs your approval.
+|
+|  ? Bash(rm -rf dist build) · waiting
+|    ⚠ deletes files
+|    The command removes files outside t…
+|
+|  ● Waiting for your approval · 0s
+|    ⎿ Tip: /sessions to browse and resu…
+|                                Alt+↑
+|── Decide ──────────────────────────────
+|→ 1  Allow once
+|  2  Allow bash for this session
+|  3  Reject
+|  Feedback: type to explain…
+|  Enter · Ctrl+G · Esc
+| deepseek-flash High  ~/workspace
+styles
+0: 2-3 fg:#e85454; 4-7 fg:#ededf2 b; 8 fg:#9aa3b8; 9-22 fg:#c9c0f0; 23-39 fg:#9aa3b8
+2: 2-29 fg:#9aa3b8
+4: 2-3 fg:#9a86e6; 4-36 fg:#9a86e6 b
+5: 4-37 fg:#9a86e6 b
+7: 2-3 fg:#ededf2
+10: 2-3 fg:#e8a838 b; 4-7 fg:#ededf2 b; 8 fg:#9aa3b8; 9-25 fg:#c9c0f0; 26-36 fg:#9aa3b8
+11: 2-3 fg:#ededf2; 4-18 fg:#e8a838
+12: 2-3 fg:#ededf2; 4-39 fg:#9aa3b8
+14: 0-1 fg:#ededf2; 2 fg:#5c6476; 3-28 fg:#ededf2; 30-33 fg:#9aa3b8
+15: 0-38 fg:#9aa3b8
+16: 32-36 fg:#9aa3b8
+17: 0-39 fg:#9aa3b8
+18: 0 fg:#9a86e6 b; 2 fg:#9aa3b8; 5-14 fg:#ededf2 b
+19: 2 fg:#9aa3b8; 5-31 fg:#ededf2
+20: 2 fg:#9aa3b8; 5-10 fg:#ededf2
+21: 2-11 fg:#ededf2; 12-27 fg:#9aa3b8
+22: 0-1 fg:#5c6476; 2-6 fg:#ededf2; 7-9 fg:#5c6476; 10-15 fg:#ededf2; 16-18 fg:#5c6476; 19-21 fg:#ededf2
+23: 1-19 fg:#ededf2; 22-32 fg:#9aa3b8

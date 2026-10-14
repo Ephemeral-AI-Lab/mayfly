@@ -18,13 +18,14 @@ grid 40x24 cursor none
 |    mouse-line-59
 |
 |  ✻ Worked for 2s · done 09:00
-|
+|                                Alt+↑
 |╭─────────────────────────────── ping ─╮
 |│ >                                    │
 |╰──────────────────────────────────────╯
 | deepseek-flash High  ~/workspace
 styles
 18: 2-29 fg:#9aa3b8
+19: 32-36 fg:#9aa3b8
 20: 0-31 fg:#45406b; 32-37 fg:#5c6476; 38-39 fg:#45406b
 21: 0 fg:#45406b; 4 r; 39 fg:#45406b
 22: 0-39 fg:#45406b

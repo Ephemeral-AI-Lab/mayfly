@@ -1,7 +1,4 @@
 grid 120x40 cursor none
-|
-|    The renderer walks the tree once per frame and only repaints rows whose content changed since the last frame. This
-|    paragraph is long enough to wrap at ordinary widths, with inline code, emphasis, and a link (https://example.com/4)
 |    to exercise the inline painter.
 |
 |    • first point about caches and identity
@@ -33,42 +30,44 @@ grid 120x40 cursor none
 |
 |    ```python
 |      def wrap(lines, width):
-|          rows = []                                                                             Back to bottom · Ctrl+↓
-|⠋ Writing · 3s · ↓990 · ≈329 tok/s · Tip: ! to run a shell command
+|          rows = []
+|
+|  ⡀ Writing · 3s · ↓990 · 329 tok/s
+|    ⎿ Tip: Esc to interrupt the run
+|                                                 Back to bottom · Ctrl+↓               Alt+↑ conversation · Alt+↓ bar
 |╭──────────────────────────────────────────────────────────────────────────────────── Explain the rendering pipeline. ─╮
 |│ >                                                                                                                    │
 |╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
 | deepseek-flash High  ~/workspace
 styles
-1: 8-15 fg:#f5f5f7
-2: 62-72 fg:#c9c0f0; 75-82 fg:#ededf2; 91-94 fg:#ededf2; 95-118 fg:#5c6476
-5: 4-5 fg:#c9c0f0
-6: 4-5 fg:#c9c0f0; 25-29 fg:#c9c0f0
-7: 4-5 fg:#c9c0f0
-8: 8-9 fg:#c9c0f0
-9: 8-9 fg:#c9c0f0
-11: 4-8 fg:#45406b
-12: 6-11 fg:#9a86e6; 12 fg:#ededf2; 13-20 fg:#9a86e6; 22-29 fg:#ededf2; 31-37 fg:#ededf2; 38-45 fg:#9a86e6; 47-52 fg:#ededf2; 64-69 fg:#ededf2; 73-78 fg:#ededf2; 82 fg:#ededf2
-13: 6-7 fg:#ededf2; 8-12 fg:#9a86e6; 13-32 fg:#ededf2
-14: 6-7 fg:#ededf2; 8-10 fg:#9a86e6; 11-12 fg:#ededf2; 13-17 fg:#9a86e6; 18-23 fg:#ededf2; 24-25 fg:#9a86e6; 26-34 fg:#ededf2
-15: 6-9 fg:#ededf2; 10-11 fg:#9a86e6; 12-44 fg:#ededf2; 45-46 fg:#4ec87e; 47-49 fg:#ededf2; 50-57 fg:#9a86e6; 58-59 fg:#ededf2
-16: 6-9 fg:#ededf2; 10-12 fg:#9a86e6; 13-14 fg:#ededf2; 15-17 fg:#9a86e6; 18-94 fg:#ededf2
-17: 6-8 fg:#ededf2
-18: 6-7 fg:#ededf2; 8-13 fg:#9a86e6; 14-26 fg:#ededf2; 30-48 fg:#ededf2; 49-51 fg:#4ec87e; 52-53 fg:#ededf2
-19: 6 fg:#ededf2
-20: 4-6 fg:#45406b
-23: 6-13 fg:#f5f5f7; 17-25 fg:#f5f5f7; 29-36 fg:#f5f5f7; 40-43 fg:#f5f5f7
+2: 4-5 fg:#c9c0f0
+3: 4-5 fg:#c9c0f0; 25-29 fg:#c9c0f0
+4: 4-5 fg:#c9c0f0
+5: 8-9 fg:#c9c0f0
+6: 8-9 fg:#c9c0f0
+8: 4-8 fg:#45406b
+9: 6-11 fg:#9a86e6; 12 fg:#ededf2; 13-20 fg:#9a86e6; 22-29 fg:#c9c0f0; 31-37 fg:#ededf2; 38-45 fg:#9a86e6; 47-52 fg:#c9c0f0; 64-69 fg:#c9c0f0; 73-78 fg:#c9c0f0; 82 fg:#ededf2
+10: 6-7 fg:#ededf2; 8-12 fg:#9a86e6; 13-19 fg:#ededf2; 20-25 fg:#c9c0f0; 26-32 fg:#ededf2
+11: 6-7 fg:#ededf2; 8-10 fg:#9a86e6; 11-12 fg:#ededf2; 13-17 fg:#9a86e6; 18-23 fg:#ededf2; 24-25 fg:#9a86e6; 26-34 fg:#ededf2
+12: 6-9 fg:#ededf2; 10-11 fg:#9a86e6; 12-29 fg:#ededf2; 30 fg:#e8a838; 31-44 fg:#ededf2; 45-46 fg:#4ec87e; 47-49 fg:#ededf2; 50-57 fg:#9a86e6; 58-59 fg:#ededf2
+13: 6-9 fg:#ededf2; 10-12 fg:#9a86e6; 13-14 fg:#ededf2; 15-17 fg:#9a86e6; 18-23 fg:#ededf2; 24 fg:#e8a838; 25-94 fg:#ededf2
+14: 6-8 fg:#ededf2
+15: 6-7 fg:#ededf2; 8-13 fg:#9a86e6; 14-26 fg:#ededf2; 30-48 fg:#ededf2; 49-51 fg:#4ec87e; 52-53 fg:#ededf2
+16: 6 fg:#ededf2
+17: 4-6 fg:#45406b
+20: 6-13 fg:#f5f5f7; 17-25 fg:#f5f5f7; 29-36 fg:#f5f5f7; 40-43 fg:#f5f5f7
+23: 119 bg:p8
+24: 119 bg:p8
 25: 119 bg:p8
 26: 119 bg:p8
 27: 119 bg:p8
 28: 119 bg:p8
-29: 119 bg:p8
-30: 119 bg:p8
-31: 119 bg:p8
-32: 4-12 fg:#45406b; 119 bg:p8
-33: 6-8 fg:#9a86e6; 10-13 fg:#ededf2; 15-26 fg:#ededf2
-34: 6-18 fg:#ededf2; 95-119 r
-35: 0 fg:#c9c0f0 b; 1-8 fg:#ededf2; 9-65 fg:#9aa3b8
+29: 4-12 fg:#45406b; 119 bg:p8
+30: 6-8 fg:#9a86e6; 10-13 fg:#c9c0f0; 15-26 fg:#ededf2
+31: 6-18 fg:#ededf2
+33: 0-1 fg:#ededf2; 2 fg:#9a86e6; 3-10 fg:#ededf2; 12-34 fg:#9aa3b8
+34: 0-34 fg:#9aa3b8
+35: 48-72 fg:#ededf2 r; 87-116 fg:#9aa3b8
 36: 0-84 fg:#45406b; 85-117 fg:#5c6476; 118-119 fg:#45406b
 37: 0 fg:#45406b; 4 r; 119 fg:#45406b
 38: 0-119 fg:#45406b

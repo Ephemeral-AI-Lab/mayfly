@@ -1,5 +1,5 @@
 grid 60x40 cursor none
-|  (207/227)
+|  (207/229)
 |    Big page line 38 that is long enough.
 |    Big page line 39 that is long enough.
 |    Big page line 40 that is long enough.
@@ -23,7 +23,7 @@ grid 60x40 cursor none
 |
 |  » Run the long build, and I will stop you.
 |
-|  ▾ Stopped · 3 tool calls
+|  ▾ Stopped · 4 tool calls
 |
 |  ● Starting the build.
 |

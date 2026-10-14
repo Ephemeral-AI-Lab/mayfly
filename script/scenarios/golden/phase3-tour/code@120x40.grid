@@ -1,0 +1,70 @@
+grid 120x40 cursor none
+|  » Here is the timeout on the client:
+|    ▪ [image] 1 · timeout.png · 1280×720 · 82 KB
+|
+|  ● The screenshot shows a timeout error: the request is aborted, but the retry never starts.
+|
+|  ✻ Worked for 1s · done 10:00
+|
+|  » 请把下面这一段说明翻译成中文，并且保留原来的标点：the client aborts after 3000 ms 🚀 and retries twice 👩‍💻, every
+|    failure goes to the log 🔥. 日本語のテキストと한국어 텍스트も混ざっています。请把下面这一段说明翻译成中文，并且保留
+|    原来的标点：the client aborts after 3000 ms 🚀 and retries twice 👩‍💻, every failure goes to the log 🔥. 日本語のテキ
+|    ストと한국어 텍스트も混ざっています。
+|
+|  ▾ Ctrl+O to expand
+|
+|  ✻ Thinking · 1s
+|    用户用中文提问，我应当用中文回答。
+|
+|  ● 已翻译；标点保持不变。客户端在 3000 毫秒后中止，然后重试两次 🚀。
+|
+|  ✻ Worked for 2s · done 10:02
+|
+|  » Why does this print 42, and does renaming the value change anything?
+|
+|    ```js
+|    export const answer = 42
+|    ▸ 2 more lines · Enter
+|
+|  ● It prints 42. Renaming the binding changes nothing at runtime:
+|
+|    ```js
+|      export const reply = 42
+|      console.log(reply)
+|    ```
+|
+|  ✻ Worked for 1s · done 10:03
+|                                                                                       Alt+↑ conversation · Alt+↓ bar
+|╭───────────────────────────────────────────────────────────────────────────────────────────── Here is the timeout on ─╮
+|│ >                                                                                                                    │
+|╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+| deepseek-flash High  ~/workspace                                                    cache 42%  context: 18% (5.5k/32k)
+styles
+0: 2-3 fg:#9a86e6; 4-37 fg:#9a86e6 b
+1: 2-5 fg:#9aa3b8; 6-47 fg:#5c6476
+3: 2-3 fg:#ededf2
+5: 2-29 fg:#9aa3b8
+7: 2-3 fg:#9a86e6; 4-114 fg:#9a86e6 b
+8: 4-117 fg:#9a86e6 b
+9: 4-116 fg:#9a86e6 b
+10: 4-40 fg:#9a86e6 b
+12: 2-19 fg:#9aa3b8
+14: 2-16 fg:#9aa3b8
+15: 2-3 fg:#ededf2; 4-37 fg:#9aa3b8
+17: 2-3 fg:#ededf2
+19: 2-29 fg:#9aa3b8
+21: 2-3 fg:#9a86e6; 4-71 fg:#9a86e6 b
+23: 4-8 fg:#9a86e6 b
+24: 4-27 fg:#9a86e6 b
+25: 4-25 fg:#9aa3b8
+27: 2-3 fg:#ededf2; 14-15 fg:#c9c0f0
+29: 4-8 fg:#45406b
+30: 6-11 fg:#9a86e6; 12 fg:#ededf2; 13-17 fg:#9a86e6; 18-26 fg:#ededf2; 27-28 fg:#e8a838
+31: 6-12 fg:#c9c0f0; 13-23 fg:#ededf2
+32: 4-6 fg:#45406b
+34: 2-29 fg:#9aa3b8
+35: 87-116 fg:#9aa3b8
+36: 0-93 fg:#45406b; 94-117 fg:#5c6476; 118-119 fg:#45406b
+37: 0 fg:#45406b; 4 r; 119 fg:#45406b
+38: 0-119 fg:#45406b
+39: 1-19 fg:#ededf2; 22-32 fg:#9aa3b8; 85-118 fg:#ededf2

@@ -1,0 +1,73 @@
+grid 120x40 cursor none
+|    4 │
+|    5 │ test('describe shows the retries', () => {
+|    6 │   assert.match(describe(), /2 retries/)
+|    … +1 more · Ctrl+O
+|
+|  ● The report is rewritten whole.
+|
+|  ✓ Write(docs/report.md) · 84 lines · 4.4 KB
+|    1 │ ## Section 1
+|    2 │ export const metric2 = { name: 'metric 2', value: 14 }
+|    3 │ export const metric3 = { name: 'metric 3', value: 21 }
+|    4 │ export const metric4 = { name: 'metric 4', value: 28 }
+|    5 │ export const metric5 = { name: 'metric 5', value: 35 }
+|    6 │ export const metric6 = { name: 'metric 6', value: 42 }
+|    … +78 more · Ctrl+O
+|
+|  ● A stale edit that cannot apply.
+|
+|  ✗ Edit(src/client.mjs) · old_string was not found in src/client.mjs; read the file again before editing
+|
+|  ✻ Worked for 8s · done 10:16
+|
+|  » Clean the build output, reset the workspace, and publish the branch.
+|
+|  ● This deletes the build directory, which needs your approval.
+|
+|  ? Bash(rm -rf dist build) · waiting
+|    ⚠ deletes files
+|    The command removes files outside the tracked sources.
+|
+|  ● Waiting for your approval · 0s
+|    ⎿ Tip: /sessions to browse and resume earlier sessions
+|                                                                                       Alt+↑ conversation · Alt+↓ bar
+|── Decide ──────────────────────────────────────────────────────────────────────────────────────────────────────────────
+|→ 1  Allow once
+|  2  Allow bash for this session
+|  3  Reject
+|  Feedback: type to explain…
+|  ↑/↓ options · Enter choose · Ctrl+G open command · Esc reject
+| deepseek-flash High  ~/workspace                                                    cache 42%  context: 18% (5.5k/32k)
+styles
+0: 4-7 fg:#9aa3b8
+1: 4-7 fg:#9aa3b8; 8-12 fg:#ededf2; 13-40 fg:#4ec87e; 41-42 fg:#ededf2; 43-47 fg:#c9c0f0; 48-49 fg:#ededf2
+2: 4-7 fg:#9aa3b8; 8-34 fg:#ededf2; 35-45 fg:#4ec87e; 46 fg:#ededf2
+3: 2-3 fg:#ededf2; 4-21 fg:#9aa3b8
+5: 2-3 fg:#ededf2
+7: 2-3 fg:#4ec87e; 4-8 fg:#ededf2 b; 9 fg:#9aa3b8; 10-23 fg:#c9c0f0; 24-44 fg:#9aa3b8
+8: 2-3 fg:#ededf2; 4-7 fg:#9aa3b8; 8-19 fg:#c9c0f0
+9: 4-7 fg:#9aa3b8; 8-61 fg:#ededf2
+10: 4-7 fg:#9aa3b8; 8-61 fg:#ededf2
+11: 4-7 fg:#9aa3b8; 8-61 fg:#ededf2
+12: 4-7 fg:#9aa3b8; 8-61 fg:#ededf2
+13: 4-7 fg:#9aa3b8; 8-61 fg:#ededf2
+14: 2-3 fg:#ededf2; 4-22 fg:#9aa3b8
+16: 2-3 fg:#ededf2
+18: 2-3 fg:#e85454; 4-7 fg:#ededf2 b; 8 fg:#9aa3b8; 9-22 fg:#c9c0f0; 23-104 fg:#9aa3b8
+20: 2-29 fg:#9aa3b8
+22: 2-3 fg:#9a86e6; 4-71 fg:#9a86e6 b
+24: 2-3 fg:#ededf2
+26: 2-3 fg:#e8a838 b; 4-7 fg:#ededf2 b; 8 fg:#9aa3b8; 9-25 fg:#c9c0f0; 26-36 fg:#9aa3b8
+27: 2-3 fg:#ededf2; 4-18 fg:#e8a838
+28: 2-3 fg:#ededf2; 4-57 fg:#9aa3b8
+30: 0-1 fg:#ededf2; 2 fg:#5c6476; 3-28 fg:#ededf2; 30-33 fg:#9aa3b8
+31: 0-57 fg:#9aa3b8
+32: 87-116 fg:#9aa3b8
+33: 0-119 fg:#9aa3b8
+34: 0 fg:#9a86e6 b; 2 fg:#9aa3b8; 5-14 fg:#ededf2 b
+35: 2 fg:#9aa3b8; 5-31 fg:#ededf2
+36: 2 fg:#9aa3b8; 5-10 fg:#ededf2
+37: 2-11 fg:#ededf2; 12-27 fg:#9aa3b8
+38: 0-1 fg:#5c6476; 2-4 fg:#ededf2; 6-15 fg:#5c6476; 16-20 fg:#ededf2; 22-30 fg:#5c6476; 31-36 fg:#ededf2; 38-52 fg:#5c6476; 53-55 fg:#ededf2; 57-62 fg:#5c6476
+39: 1-19 fg:#ededf2; 22-32 fg:#9aa3b8; 85-118 fg:#ededf2

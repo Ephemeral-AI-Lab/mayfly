@@ -22,7 +22,7 @@ grid 120x56 cursor none
 |    3 │   }
 |    ⋯
 |    5 │   export function describe() {
-|      │ −   return `${config.baseUrl} (timeout ${config.timeoutMs} ms)`
+|    5 │ −   return `${config.baseUrl} (timeout ${config.timeoutMs} ms)`
 |    6 │ +   return `${config.baseUrl} (timeout ${config.timeoutMs} ms, ${config.retries} retries)`
 |
 |  ✓ Bash(set -e …) · allowed · 0.7s

@@ -7,19 +7,19 @@ grid 120x90 cursor none
 |    3 │   }
 |    ⋯
 |    5 │   export function describe() {
-|      │ −   return `${config.baseUrl} (timeout ${config.timeoutMs} ms)`
+|    5 │ −   return `${config.baseUrl} (timeout ${config.timeoutMs} ms)`
 |    6 │ +   return `${config.baseUrl} (timeout ${config.timeoutMs} ms, ${config.retries} retries)`
 |
-|  ● The client names the timeout in three places.
+|  ● The client names the timeout in four places.
 |
-|  ✓ Edit(src/client.mjs) · +3 −3 ▮▮▮▮▮▮▮▮
+|  ✓ Edit(src/client.mjs) · +4 −5 ▮▮▮▮▮▮▮▮
 |    1 │     const row13 = paint(13)
-|      │ −   const wait = timeout
+|    2 │ −   const wait = timeout
 |    2 │ +   const wait = timeoutMs
 |    3 │     const row21 = paint(21)
 |    ⋯
 |    1 │     const row51 = paint(51)
-|    … +7 rows · Ctrl+O
+|    … +12 rows · Ctrl+O
 |
 |  ● Now the test for it.
 |
@@ -47,15 +47,15 @@ grid 120x90 cursor none
 |
 |  ✓ Edit(src/limits.mjs) · +2 −1 ▮▮▮▮▮▮▮▮
 |    1 │     const row33 = paint(33)
-|      │ −   max: 10,
+|    2 │ −   max: 10,
 |    2 │ +   max: 12,
 |    3 │ +   min: 2,
 |    4 │     const row41 = paint(41)
 |
 |  ✓ Edit(src/paint.mjs) · +1 −2 ▮▮▮▮▮▮▮▮
 |    1 │     const row73 = paint(73)
-|      │ −   paint(row)
-|      │ −   paint(next)
+|    2 │ −   paint(row)
+|    3 │ −   paint(next)
 |    2 │ +   paint(row, width)
 |    3 │     const row81 = paint(81)
 |
@@ -107,7 +107,7 @@ styles
 17: 4-6 fg:#9aa3b8; 10-11 fg:#ededf2; 12-16 fg:#9a86e6; 17-31 fg:#ededf2; 32-33 fg:#e8a838; 34 fg:#ededf2
 18: 2-4 fg:#9aa3b8
 19: 4-6 fg:#9aa3b8; 10-11 fg:#ededf2; 12-16 fg:#9a86e6; 17-31 fg:#ededf2; 32-33 fg:#e8a838; 34 fg:#ededf2
-20: 4-21 fg:#9aa3b8
+20: 4-22 fg:#9aa3b8
 22: 2-3 fg:#ededf2
 24: 2-3 fg:#4ec87e; 4-8 fg:#ededf2 b; 9 fg:#9aa3b8; 10-29 fg:#c9c0f0; 30-48 fg:#9aa3b8
 25: 2-3 fg:#ededf2; 4-7 fg:#9aa3b8; 8-13 fg:#9a86e6; 14-21 fg:#ededf2; 22-25 fg:#9a86e6; 26 fg:#ededf2; 27-46 fg:#4ec87e

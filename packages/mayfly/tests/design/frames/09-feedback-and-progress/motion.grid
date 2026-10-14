@@ -13,7 +13,7 @@ styles
 3: 0 fg:primary; 2-8 fg:text
 4: 0 fg:primary; 2-40 fg:text; 42-44 fg:textMuted
 5: 2-11 fg:muted
-6: 0 fg:#9a79cb; 2-26 fg:text; 28-30 fg:textMuted
+6: 0 fg:textMuted; 2-26 fg:text; 28-30 fg:textMuted
 ## tick 100ms
 grid 96x7 cursor none
 |page 1/4 (Ctrl+N): loaders (one glyph channel, animated by the renderer) and the cancel hint
@@ -29,7 +29,7 @@ styles
 3: 0 fg:primary; 2-8 fg:text
 4: 0 fg:primary; 2-40 fg:text; 42-44 fg:textMuted
 5: 2-11 fg:muted
-6: 0 fg:#9a79cb; 2-26 fg:text; 28-30 fg:textMuted
+6: 0 fg:#887bda; 2-26 fg:text; 28-30 fg:textMuted
 ## tick 100ms
 grid 96x7 cursor none
 |page 1/4 (Ctrl+N): loaders (one glyph channel, animated by the renderer) and the cancel hint
@@ -45,7 +45,7 @@ styles
 3: 0 fg:primary; 2-8 fg:text
 4: 0 fg:primary; 2-40 fg:text; 42-44 fg:textMuted
 5: 2-11 fg:muted
-6: 0 fg:#9a79cb; 2-26 fg:text; 28-30 fg:textMuted
+6: 0 fg:#8c7ad7; 2-26 fg:text; 28-30 fg:textMuted
 ## tick 100ms
 grid 96x7 cursor none
 |page 1/4 (Ctrl+N): loaders (one glyph channel, animated by the renderer) and the cancel hint
@@ -61,7 +61,7 @@ styles
 3: 0 fg:primary; 2-8 fg:text
 4: 0 fg:primary; 2-40 fg:text; 42-44 fg:textMuted
 5: 2-11 fg:muted
-6: 0 fg:#9a79cb; 2-26 fg:text; 28-30 fg:textMuted
+6: 0 fg:#927ad2; 2-26 fg:text; 28-30 fg:textMuted
 ## tick 100ms
 grid 96x7 cursor none
 |page 1/4 (Ctrl+N): loaders (one glyph channel, animated by the renderer) and the cancel hint
@@ -77,7 +77,7 @@ styles
 3: 0 fg:primary; 2-8 fg:text
 4: 0 fg:primary; 2-40 fg:text; 42-44 fg:textMuted
 5: 2-11 fg:muted
-6: 0 fg:#ac77bb; 2-26 fg:text; 28-30 fg:textMuted
+6: 0 fg:#9a79cb; 2-26 fg:text; 28-30 fg:textMuted
 ## tick 100ms
 grid 96x7 cursor none
 |page 1/4 (Ctrl+N): loaders (one glyph channel, animated by the renderer) and the cancel hint
@@ -93,7 +93,7 @@ styles
 3: 0 fg:primary; 2-8 fg:text
 4: 0 fg:primary; 2-40 fg:text; 42-44 fg:textMuted
 5: 2-11 fg:muted
-6: 0 fg:#ac77bb; 2-26 fg:text; 28-30 fg:textMuted
+6: 0 fg:#a278c3; 2-26 fg:text; 28-30 fg:textMuted
 ## tick 100ms
 grid 96x7 cursor none
 |page 1/4 (Ctrl+N): loaders (one glyph channel, animated by the renderer) and the cancel hint
@@ -125,7 +125,7 @@ styles
 3: 0 fg:primary; 2-8 fg:text
 4: 0 fg:primary; 2-40 fg:text; 42-44 fg:textMuted
 5: 2-11 fg:muted
-6: 0 fg:#ac77bb; 2-26 fg:text; 28-30 fg:textMuted
+6: 0 fg:#b676b3 b; 2-26 fg:text; 28-30 fg:textMuted
 ## tick 100ms
 grid 96x7 cursor none
 |page 1/4 (Ctrl+N): loaders (one glyph channel, animated by the renderer) and the cancel hint
@@ -141,7 +141,7 @@ styles
 3: 0 fg:primary; 2-8 fg:text
 4: 0 fg:primary; 2-40 fg:text; 42-44 fg:textMuted
 5: 2-11 fg:muted
-6: 0 fg:#c275a8; 2-26 fg:text; 28-30 fg:textMuted
+6: 0 fg:#bf75ab b; 2-26 fg:text; 28-30 fg:textMuted
 ## tick 100ms
 grid 96x7 cursor none
 |page 1/4 (Ctrl+N): loaders (one glyph channel, animated by the renderer) and the cancel hint
@@ -157,7 +157,7 @@ styles
 3: 0 fg:primary; 2-8 fg:text
 4: 0 fg:primary; 2-40 fg:text; 42-44 fg:textMuted
 5: 2-11 fg:muted
-6: 0 fg:#c275a8; 2-26 fg:text; 28-30 fg:textMuted
+6: 0 fg:#c674a4 b; 2-26 fg:text; 28-30 fg:textMuted
 ## tick 100ms
 grid 96x7 cursor none
 |page 1/4 (Ctrl+N): loaders (one glyph channel, animated by the renderer) and the cancel hint
@@ -173,7 +173,7 @@ styles
 3: 0 fg:primary; 2-8 fg:text
 4: 0 fg:primary; 2-40 fg:text; 42-44 fg:textMuted
 5: 2-11 fg:muted
-6: 0 fg:#c275a8; 2-26 fg:text; 28-30 fg:textMuted
+6: 0 fg:#cc749f b; 2-26 fg:text; 28-30 fg:textMuted
 ## tick 100ms
 grid 96x7 cursor none
 |page 1/4 (Ctrl+N): loaders (one glyph channel, animated by the renderer) and the cancel hint
@@ -189,7 +189,7 @@ styles
 3: 0 fg:primary; 2-8 fg:text
 4: 0 fg:primary; 2-40 fg:text; 42-44 fg:textMuted
 5: 2-11 fg:muted
-6: 0 fg:#c275a8; 2-26 fg:text; 28-30 fg:textMuted
+6: 0 fg:#d0739c b; 2-26 fg:text; 28-30 fg:textMuted
 ## tick 100ms
 grid 96x7 cursor none
 |page 1/4 (Ctrl+N): loaders (one glyph channel, animated by the renderer) and the cancel hint
@@ -205,4 +205,4 @@ styles
 3: 0 fg:primary; 2-8 fg:text
 4: 0 fg:primary; 2-40 fg:text; 42-44 fg:textMuted
 5: 2-11 fg:muted
-6: 0 fg:primary; 2-26 fg:text; 28-30 fg:textMuted
+6: 0 fg:primary b; 2-26 fg:text; 28-30 fg:textMuted
