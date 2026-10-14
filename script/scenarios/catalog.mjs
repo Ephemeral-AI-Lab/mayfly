@@ -1221,8 +1221,10 @@ export const CATALOG = Object.freeze({
     script: [
       play(), checkpoint('end'),
       // The search line adds two rows to the editor: the stream re-fits before the first key lands (a settle, not a checkpoint).
-      key('alt+up'), key('/'), wait(300), type('needle'), until('12 matches'), checkpoint('typed'),
-      key('enter'), until('11/12 matches'), checkpoint('first'),
+      // Which window of the tall answer the incremental search shows while the word is typed races the stream's re-fit, so the
+      // first two stops are not checkpoints; the walk below starts from the same selected match every time.
+      key('alt+up'), key('/'), until('Enter to select'), type('needle'), until('12 matches'),
+      key('enter'), until('11/12 matches'),
       // Walking back (↑) from the last match: the second prompt, then the four matches of the tall answer one by one.
       key('up', { repeat: 3 }), checkpoint('answer-last'),
       key('up'), checkpoint('answer-third'),
