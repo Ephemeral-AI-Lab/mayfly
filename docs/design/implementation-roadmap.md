@@ -2117,6 +2117,24 @@ panel), and the buttons and pseudo-options its key changes remove. Notes per gro
   Job output is the follow-tail scroll view of 2c over `jobs.read`/`readAt`, without splitting surrogate pairs, and
   `x` rechecks `jobs.get` before `jobs.kill`.
 
+**Phase 6 status.** Phase 6 runs beside Phase 3 on the worktree `../mayfly-6` (profile `mayfly-6`), one branch per group
+off `main` (`feat/6a` first) with the T0 demo kit and the components area cherry-picked from Phase 3's first round. The
+parts follow [component-development-spec.md](./component-development-spec.md) §7; a group finalizes and merges on its
+own when its last part is accepted. `/permission` and 6e wait for Phase 3d, `/changes` for 3b.
+
+| Round | Parts | Status | Branch |
+| --- | --- | --- | --- |
+| P0 | Setup: worktree, profile, status table | done | `feat/6a` |
+| R1 | 6a.1 model picker; 6a.2 `/effort` and `/theme` marks | design only; the first implementation was discarded (main is the baseline), to be redone | `feat/6a` |
+| R2 | 6d.1 tabs and keys; 6d.2 split view and detail; 6d.3 operation, offline, restart banner | not started | |
+| R3 | 6c.1 status shell; 6c.2 Usage tab | not started | |
+| R4 | 6c.3 `/account`; 6c.4 onboarding | not started | |
+| R5 | 6b.1 `/settings`; 6b.2 `/sessions` | not started | |
+| R6 | 6f.1 `/trace`; 6f.2 key help; 6f.3 rewind | not started | |
+| R7 | 6f.4 `/keys`; 6f.5 job output | not started | |
+| R8 | 6f.6 `/changes` (after 3b is accepted) | blocked | |
+| R9 | 6a.3 `/permission`; 6e.1 questions wizard; 6e.2 Review page (after 3d is accepted) | blocked | |
+
 ### Phase 7 Architecture performance
 
 **Goal.** The finished product is fast on real workloads, with an architecture shaped by measurement rather than by
