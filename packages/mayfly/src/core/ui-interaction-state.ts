@@ -26,6 +26,7 @@ export class UiInteractionService extends Service {
   private serial = 0
   private notificationSerial = 0
   private readonly records = new Map<string, SurfaceRecord>()
+  private readonly endpoints = new Map<string, UiSurfaceSnapshot['events']>()
   private readonly listeners = new Set<() => void>()
   private readonly notifications: UiNotificationStore
   private notifyScheduled = false
@@ -47,12 +48,28 @@ export class UiInteractionService extends Service {
       previous.model.receive(snapshot)
       return previous.model
     }
-    this.remove(kind, snapshot.id)
+    this.discard(key)
     const model = new UiSurfaceModel(`${kind}/${++this.serial}`, snapshot, { translate: this.translate, ...bindings })
     const unsubscribe = model.subscribe(() => this.changed())
     this.records.set(key, { kind, model, unsubscribe })
     this.changed()
     return model
+  }
+
+  /**
+   * The one event endpoint of a surface id: created on the first ask and kept until `remove` drops the id, so a later
+   * registration of the same id publishes the same endpoint and `upsert` hands it back the model it kept. A registration
+   * owner that is replaced while the service lives (a core reload) relies on this.
+   */
+  endpoint<E extends UiSurfaceSnapshot['events']>(kind: UiSurfaceKind, id: string, create: () => E): E {
+    if (!this.live) throw new Error('UI interaction owner is disposed')
+    const key = this.key(kind, id)
+    let endpoint = this.endpoints.get(key)
+    if (endpoint === undefined) {
+      endpoint = create()
+      this.endpoints.set(key, endpoint)
+    }
+    return endpoint as E
   }
 
   get(kind: UiSurfaceKind, id: string): UiSurfaceModel | undefined { return this.records.get(this.key(kind, id))?.model }
@@ -65,10 +82,18 @@ export class UiInteractionService extends Service {
   notificationSnapshot(): readonly MayflyFeedbackRecord[] { return this.notifications.snapshot() }
   setNotificationVisibility(visible: boolean): void { this.notifications.setVisible(visible) }
 
+  /** Drop the id's model and its endpoint. */
   remove(kind: UiSurfaceKind, id: string, expected?: UiSurfaceModel): void {
     const key = this.key(kind, id)
+    if (expected !== undefined && this.records.get(key)?.model !== expected) return
+    this.endpoints.delete(key)
+    this.discard(key)
+  }
+
+  /** Drop a model and keep the id's endpoint: a replacement registration is publishing it. */
+  private discard(key: string): void {
     const record = this.records.get(key)
-    if (record === undefined || (expected !== undefined && record.model !== expected)) return
+    if (record === undefined) return
     record.unsubscribe()
     record.model.dispose()
     this.records.delete(key)
@@ -115,6 +140,7 @@ export class UiInteractionService extends Service {
     this.notifyScheduled = false
     for (const record of this.records.values()) { record.unsubscribe(); record.model.dispose() }
     this.records.clear()
+    this.endpoints.clear()
     this.notifications.dispose()
     this.listeners.clear()
   }

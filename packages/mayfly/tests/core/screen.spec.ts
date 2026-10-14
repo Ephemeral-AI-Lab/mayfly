@@ -458,8 +458,47 @@ describe('MayflyScreenService node slots', () => {
     expect(interaction.get('slot', 'local.kept')).toBeDefined()
     root.mayflyScreen.bindNodeSlots(slotCompiler(root, { interaction }))
     expect(interaction.get('slot', 'local.kept')).toBeUndefined()
+    expect(interaction.get('slot', adopted.id)).toBe(model)
     // The adopted lease is unfocused, so its content flows; the cursor the model kept is the focused window's.
     expect(next.added[1]!.render(80)).toHaveLength(40)
+    await root.fiber.dispose()
+  })
+
+  it('routes a slot\'s events to the lease that holds its id, so a stale lease neither hears nor publishes', async () => {
+    const root = new Context()
+    const interaction = new UiInteractionService(root)
+    const first = await root.plugin(MayflyScreenService, recordingRuntime())
+    const heard: string[] = []
+    const stale = root.mayflyScreen.mountNodeSlot('transcript.conversation', { region: 'content', onEvent: (event) => { heard.push(`stale:${event.kind}`) } })
+    stale.set(streamList(streamItems(5)))
+    root.mayflyScreen.bindNodeSlots(slotCompiler(root, { interaction }))
+    const model = interaction.get('slot', stale.id)!
+    const send = (): Promise<unknown> => model.endpoint.prepare({ kind: 'dismiss', pagePath: [] }, { surfaceId: model.id, source: [], revision: model.revision, operationId: 'op', signal: new AbortController().signal, report: vi.fn() })
+    await send()
+    expect(heard).toEqual(['stale:dismiss'])
+
+    // The screen's teardown revokes the lease: the model stays, and its route has no listener until a lease holds the id again.
+    await first.dispose()
+    await send()
+    expect(heard).toEqual(['stale:dismiss'])
+    const next = recordingRuntime()
+    await root.plugin(MayflyScreenService, next)
+    const live = root.mayflyScreen.mountNodeSlot('transcript.conversation', { region: 'content', onEvent: (event) => { heard.push(`live:${event.kind}`) } })
+    live.set(streamList(streamItems(5)))
+    root.mayflyScreen.bindNodeSlots(slotCompiler(root, { interaction }))
+    expect(interaction.get('slot', live.id)).toBe(model)
+    expect(model.endpoint).toBe(interaction.get('slot', live.id)!.endpoint)
+    await send()
+    expect(heard).toEqual(['stale:dismiss', 'live:dismiss'])
+
+    // The stale lease publishes nothing, hears nothing, and ending it again leaves the successor's route and model alone.
+    const revision = model.revision
+    stale.set(streamList(streamItems(2)))
+    stale.dispose()
+    await send()
+    expect(model.revision).toBe(revision)
+    expect(model.disposed).toBe(false)
+    expect(heard).toEqual(['stale:dismiss', 'live:dismiss', 'live:dismiss'])
     await root.fiber.dispose()
   })
 

@@ -96,7 +96,7 @@ describe('node slot test host', () => {
     expect(footer.render(100).join('\n')).not.toContain('↑/↓')
   })
 
-  it('holds an editor-shaped prompt: it types and walks the recall', async () => {
+  it('holds an editor-shaped prompt: it types, walks the recall, and keeps its draft through a core reload', async () => {
     const tree = await boot(undefined, PROMPT_SURFACE)
     tree.keys()
     const before = hosts(tree.terminal).editor
@@ -115,6 +115,17 @@ describe('node slot test host', () => {
     before.handleInput!('\x1b[A')
     expect(draft()).toBe('also update the footer')
     expect(rows(before)[1]).toContain('↑ queued 1/2')
+    await tree.core.dispose()
+    const terminal = nodeSlotRuntime()
+    await tree.root.plugin(nodeSlotCore(terminal.runtime))
+    await flush()
+    tree.keys()
+    const after = hosts(terminal).editor
+    expect(draft()).toBe('also update the footer')
+    expect(rows(after)[1]).toContain('also update the footer')
+    tree.state.editor!.focus()
+    after.handleInput!('\x1b[A')
+    expect(rows(after)[1]).toContain('↑ history 2/2')
   })
 
   it('keeps every slot\'s interaction state through a core reload, and the stale leases write nothing', async () => {
@@ -139,9 +150,12 @@ describe('node slot test host', () => {
     tree.keys()
     expect(tree.state.mounts).toBe(2)
     expect(tree.state.stream).not.toBe(stale)
-    expect(tree.root.mayflyUiInteraction.list('slot').map(model => model.id)).toEqual(models.map(model => model.id))
+    expect(tree.root.mayflyUiInteraction.list('slot')).toEqual(models)
     const after = hosts(terminal)
     expect(after.content.render(100)).toHaveLength(200)
+    expect(tree.root.mayflyUiInteraction.get('slot', 'transcript.conversation')!.choice(STREAM)?.focusedId).toBe('item-3')
+    expect(after.editor.render(100)[0]).toContain('Prompt: ok')
+    expect(tree.root.mayflyUiInteraction.get('slot', 'editor.prompt')!.form(PROMPT)?.fields.draft?.value).toBe('ok')
 
     // A lease from before the reload is fenced: it neither publishes nor focuses nor releases the new slot's state.
     stale.set(streamList(streamItems(3)))
@@ -149,10 +163,8 @@ describe('node slot test host', () => {
     stale.dispose()
     expect(after.content.render(100)).toHaveLength(200)
     tree.state.stream!.focus()
-    const live = tree.root.mayflyUiInteraction.get('slot', 'transcript.conversation')!
-    const held = live.choice(STREAM)?.focusedId
     after.content.handleInput!(DOWN)
-    expect(live.choice(STREAM)?.focusedId).not.toBe(held)
+    expect(tree.root.mayflyUiInteraction.get('slot', 'transcript.conversation')!.choice(STREAM)?.focusedId).toBe('item-4')
 
     // The host's own unload is an explicit dispose: the state goes with it.
     await tree.host.dispose()

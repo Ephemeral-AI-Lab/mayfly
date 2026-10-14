@@ -108,16 +108,22 @@ export interface MayflyNodeSlotCompiler {
 const NO_ROWS = Object.freeze([]) as unknown as string[]
 
 /**
- * The endpoint of one slot: an event reaches the owner's listener, and the slot answers without a reply, so nothing is
- * published back; the owner changes what it shows by setting the slot's node.
+ * The endpoint of one slot id, owned by the interaction service so it outlives the screen that leased the slot. An event
+ * reaches the lease that currently holds the route and nobody else: a revoked or replaced lease has let go of it. The slot
+ * answers without a reply, so nothing is published back; the owner changes what it shows by setting the slot's node.
  */
-function slotEndpoint(onEvent: ((event: MayflyUiEvent) => void) | undefined): MayflyUiEventEndpoint<MayflyUiNode | null> {
-  return Object.freeze({
-    prepare: async (event: MayflyUiEvent, context: MayflyUiEventContext) => {
-      if (!context.signal.aborted) onEvent?.(event)
-      return Object.freeze({ reply: undefined, publish: () => false })
-    },
-  })
+class SlotRoute implements MayflyUiEventEndpoint<MayflyUiNode | null> {
+  private holder: NodeSlotLease | undefined
+
+  hold(lease: NodeSlotLease): void { this.holder = lease }
+
+  /** Only the current holder lets go; a stale lease cannot take the route from its successor. */
+  letGo(lease: NodeSlotLease): void { if (this.holder === lease) this.holder = undefined }
+
+  async prepare(event: MayflyUiEvent, context: MayflyUiEventContext): Promise<{ readonly reply: undefined, readonly publish: () => boolean }> {
+    if (!context.signal.aborted) this.holder?.hear(event)
+    return Object.freeze({ reply: undefined, publish: () => false })
+  }
 }
 
 /** Focus follows the compiled surface's focus target; a slot without controls takes no focus. */
@@ -275,10 +281,13 @@ class NodeSlotLease implements MayflyNodeSlot {
     private readonly options: MayflyNodeSlotOptions,
   ) {}
 
-  /** The listener the endpoint hands the slot's events to; one object per lease, so a re-attach keeps it. */
-  private readonly events = slotEndpoint(event => { this.options.onEvent?.(event) })
+  /** The route this lease holds; it is the interaction service's, so the next lease of the same id finds the same one. */
+  private route: SlotRoute | undefined
 
   get disposed(): boolean { return !this.live }
+
+  /** An event the slot's controls emitted, from the route; a lease that ended hears nothing. */
+  hear(event: MayflyUiEvent): void { if (this.live) this.options.onEvent?.(event) }
 
   set(node: MayflyUiNode | null): void {
     if (!this.live) return
@@ -324,7 +333,11 @@ class NodeSlotLease implements MayflyNodeSlot {
 
   /** Publishes the slot's node into its model and compiles from it, under the bound renderer. */
   attach(compiler: MayflyNodeSlotCompiler | undefined): void {
-    if (compiler === undefined || !this.published) return
+    if (compiler === undefined || !this.published || !this.live) return
+    const route = compiler.interaction.endpoint('slot', this.id, () => new SlotRoute())
+    if (this.route !== route) this.route?.letGo(this)
+    route.hold(this)
+    this.route = route
     const snapshot: UiSurfaceSnapshot = {
       id: this.id,
       node: this.node,
@@ -332,13 +345,13 @@ class NodeSlotLease implements MayflyNodeSlot {
       source: [],
       scope: { kind: 'app', targetId: this.id },
       update: { reason: 'data' },
-      events: this.events,
+      events: route,
       definition: {},
     }
     const model = compiler.interaction.upsert('slot', snapshot, compiler.counters === undefined ? {} : { counters: compiler.counters })
     model.setVisible(this.node !== null)
     this.interaction = compiler.interaction
-    // The endpoint is shared by every slot, so the owner keeps one model per id: an attachment already holds it.
+    // The route is one object per id for as long as the owner keeps the id, so the owner hands every lease of it the one model.
     this.surface.attachment ??= new SlotAttachment(model, compiler, this.viewport, () => { this.surface.invalidate() }, this.region === 'content', this.options.hints !== false)
   }
 
@@ -351,6 +364,8 @@ class NodeSlotLease implements MayflyNodeSlot {
   /** The screen's teardown (of a live lease): the lease ends and its model stays for the next lease of its id. */
   revoke(): void {
     this.live = false
+    this.route?.letGo(this)
+    this.route = undefined
     this.detach()
     this.screen.dispose()
   }
