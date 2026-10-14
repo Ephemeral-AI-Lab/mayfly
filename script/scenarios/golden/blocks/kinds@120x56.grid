@@ -12,19 +12,19 @@ grid 120x56 cursor none
 |
 |  ● Starting several lookups at once.
 |
-|  ● Read · 2 files
-|    ├ • packages/mayfly/src/transcript/tool-calls.ts
-|    └ • packages/mayfly/src/transcript/tool-kinds.ts
+|  ● Read · 2 files · 6s
+|    ├ • packages/mayfly/src/transcript/tool-calls.ts · 6s
+|    └ • packages/mayfly/src/transcript/tool-kinds.ts · 5s
 |
-|  ● Grep("callsOf")
+|  ● Grep("callsOf") · 5s
 |
-|  ● Bash · 2 calls
-|    ├ • set -e …
-|    └ • pnpm run lint
+|  ● Bash · 2 calls · 5s
+|    ├ • set -e … · 5s
+|    └ • pnpm run lint · 5s
 |
-|  ● WebSearch("pi-tui loader animation, terminal shimmer text")
+|  ● WebSearch("pi-tui loader animation, terminal shimmer text") · 5s
 |
-|  ● WebFetch(https://nodejs.org/api/test.html)
+|  ● WebFetch(https://nodejs.org/api/test.html) · 5s
 |
 |
 |
@@ -66,15 +66,15 @@ styles
 7: 1-23 fg:#6c5bbf; 24-25 fg:#9a86e6; 26-107 fg:#ededf2
 9: 2-3 fg:#9a86e6; 4-54 fg:#9a86e6 b
 11: 2-3 fg:#ededf2
-13: 2 fg:#5c6476; 3 fg:#ededf2; 4-7 fg:#ededf2 b; 8-17 fg:#9aa3b8
-14: 2-5 fg:#9aa3b8; 6 fg:#5c6476; 7 fg:#ededf2; 8-51 fg:#c9c0f0
-15: 2-5 fg:#9aa3b8; 6 fg:#5c6476; 7 fg:#ededf2; 8-51 fg:#c9c0f0
-17: 2 fg:#5c6476; 3 fg:#ededf2; 4-7 fg:#ededf2 b; 8 fg:#9aa3b8; 9-17 fg:#c9c0f0; 18 fg:#9aa3b8
-19: 2 fg:#5c6476; 3 fg:#ededf2; 4-7 fg:#ededf2 b; 8-17 fg:#9aa3b8
-20: 2-5 fg:#9aa3b8; 6 fg:#5c6476; 7 fg:#ededf2; 8-15 fg:#c9c0f0
-21: 2-5 fg:#9aa3b8; 6 fg:#5c6476; 7 fg:#ededf2; 8-20 fg:#c9c0f0
-23: 2 fg:#5c6476; 3 fg:#ededf2; 4-12 fg:#ededf2 b; 13 fg:#9aa3b8; 14-61 fg:#c9c0f0; 62 fg:#9aa3b8
-25: 2 fg:#5c6476; 3 fg:#ededf2; 4-11 fg:#ededf2 b; 12 fg:#9aa3b8; 13-44 fg:#c9c0f0; 45 fg:#9aa3b8
+13: 2 fg:#5c6476; 3 fg:#ededf2; 4-7 fg:#ededf2 b; 8-22 fg:#9aa3b8
+14: 2-5 fg:#9aa3b8; 6 fg:#5c6476; 7 fg:#ededf2; 8-51 fg:#c9c0f0; 52-56 fg:#9aa3b8
+15: 2-5 fg:#9aa3b8; 6 fg:#5c6476; 7 fg:#ededf2; 8-51 fg:#c9c0f0; 52-56 fg:#9aa3b8
+17: 2 fg:#5c6476; 3 fg:#ededf2; 4-7 fg:#ededf2 b; 8 fg:#9aa3b8; 9-17 fg:#c9c0f0; 18-23 fg:#9aa3b8
+19: 2 fg:#5c6476; 3 fg:#ededf2; 4-7 fg:#ededf2 b; 8-22 fg:#9aa3b8
+20: 2-5 fg:#9aa3b8; 6 fg:#5c6476; 7 fg:#ededf2; 8-15 fg:#c9c0f0; 16-20 fg:#9aa3b8
+21: 2-5 fg:#9aa3b8; 6 fg:#5c6476; 7 fg:#ededf2; 8-20 fg:#c9c0f0; 21-25 fg:#9aa3b8
+23: 2 fg:#5c6476; 3 fg:#ededf2; 4-12 fg:#ededf2 b; 13 fg:#9aa3b8; 14-61 fg:#c9c0f0; 62-67 fg:#9aa3b8
+25: 2 fg:#5c6476; 3 fg:#ededf2; 4-11 fg:#ededf2 b; 12 fg:#9aa3b8; 13-44 fg:#c9c0f0; 45-50 fg:#9aa3b8
 49: 0-1 fg:#ededf2; 2 fg:#9a86e6; 3 fg:#ededf2; 4-18 fg:#9aa3b8
 50: 0-5 fg:#9aa3b8; 6-114 fg:#ededf2
 51: 87-116 fg:#9aa3b8

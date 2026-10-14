@@ -40,7 +40,7 @@ grid 120x50 cursor none
 |    git clean -fd
 |
 |  ● Waiting for your approval · 0s
-|    ⎿ Tip: /btw <question>: ask a side question without disturbing the run
+|
 |                                                                                       Alt+↑ conversation · Alt+↓ bar
 |── Decide ─────────────────────────────────────────────────────────────────────────────────────────────── 1 of 2 waiting
 |→ 1  Allow once
@@ -79,7 +79,6 @@ styles
 37: 2-9 fg:#ededf2
 38: 2-16 fg:#ededf2
 40: 0-1 fg:#ededf2; 2 fg:#5c6476; 3-28 fg:#ededf2; 30-33 fg:#9aa3b8
-41: 0-73 fg:#9aa3b8
 42: 87-116 fg:#9aa3b8
 43: 0-104 fg:#9aa3b8; 106-119 fg:#e8a838
 44: 0 fg:#9a86e6 b; 2 fg:#9aa3b8; 5-14 fg:#ededf2 b

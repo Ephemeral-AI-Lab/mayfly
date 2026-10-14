@@ -31,7 +31,7 @@ grid 100x40 cursor none
 |  ○ Run the watcher checks
 |
 |  ⡀ Deep diving · 5s · ↑5.5k
-|    ⎿ Tip: /fork to branch the conversation and explore safely
+|
 |  Enter expand · c copy · Ctrl+C JSON · ↑/↓ or n/N match · / ? …   ℹ Resumed session · 13 turns ·
 |  ? needle
 |    11/11 matches
@@ -70,7 +70,6 @@ styles
 28: 0-3 fg:#c9c0f0 b; 4-27 fg:#ededf2
 29: 0-3 fg:#9aa3b8; 4-25 fg:#ededf2
 31: 0-1 fg:#ededf2; 2 fg:#9a86e6; 3-14 fg:#ededf2; 16-27 fg:#9aa3b8
-32: 0-61 fg:#9aa3b8
 33: 0-62 fg:#9aa3b8; 67-68 fg:#9a86e6; 69-96 fg:#ededf2
 34: 2-3 fg:#9a86e6
 35: 4-16 fg:#9aa3b8

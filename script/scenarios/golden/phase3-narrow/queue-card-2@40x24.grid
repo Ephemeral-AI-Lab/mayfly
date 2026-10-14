@@ -14,7 +14,7 @@ grid 40x24 cursor none
 |    git clean -fd
 |
 |  ● Waiting for your approval · 0s
-|    ⎿ Tip: /btw <question>: ask a side …
+|
 |                                Alt+↑
 |── Decide ─────────────── 1 of 2 waiting
 |→ 1  Allow once
@@ -37,7 +37,6 @@ styles
 11: 2-9 fg:#ededf2
 12: 2-16 fg:#ededf2
 14: 0-1 fg:#ededf2; 2 fg:#5c6476; 3-28 fg:#ededf2; 30-33 fg:#9aa3b8
-15: 0-38 fg:#9aa3b8
 16: 32-36 fg:#9aa3b8
 17: 0-24 fg:#9aa3b8; 26-39 fg:#e8a838
 18: 0 fg:#9a86e6 b; 2 fg:#9aa3b8; 5-14 fg:#ededf2 b

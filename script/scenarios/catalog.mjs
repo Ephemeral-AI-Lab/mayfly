@@ -8,7 +8,7 @@
 
 import { REPLAYS } from './replays.mjs'
 import { compile } from './timeline.mjs'
-import { checkpoint, idle, key, measure, play, resize, type, wait, wheel } from './steps.mjs'
+import { checkpoint, idle, key, measure, play, resize, type, until, wait, wheel } from './steps.mjs'
 
 /** The size a scenario runs at unless it names its own. */
 export const DEFAULT_SIZE = Object.freeze([120, 40])
@@ -541,6 +541,17 @@ const REVIEW = {
  * Scripts that differ from playing to the end. A settled job wakes the agent for a real turn on the stub, which runs
  * at real time, so the jobs replay is captured while all three jobs run.
  */
+/**
+ * The Phase 3 session runs for minutes of wall clock, and the activity row's teaching tip advances every 15 ticks of
+ * the product's own one-second timer (which the scenario clock does not move), so the tip under the header would differ
+ * by how long a run took. The Phase 3 scenarios turn quiet hints off; `phases` and `phases-off` show the tip.
+ */
+const NO_TIPS = { quietHints: 'off' }
+/**
+ * `/sessions` opened down to the workspace's list. Each screen loads before it takes keys, so every key waits for the
+ * screen it opens: a key that came first would be swallowed, and the ones after it would land one screen behind.
+ */
+const SESSIONS_OPEN = [type('/sessions'), until('→ /sessions'), key('enter'), until('Sessions · Workspaces'), key('enter'), until('Workspace sessions')]
 /** Play at the replay's own pace: the activity row is a function of time (a phase lasts seconds, the tail ticks). */
 const TIMED = { timed: true }
 /** A decision card ignores every key but Esc for 300 ms after it opens (wall clock); a checkpoint waits that out. */
@@ -682,7 +693,7 @@ const SCRIPTS = {
   approvalsRejected: [
     play(), wait(ARMED), checkpoint('asking'),
     key('down', { repeat: 3 }), type('use a branch instead'), checkpoint('note'),
-    key('enter'), play(), checkpoint('rejected'),
+    key('enter'), play(), until('User rejected bash'), checkpoint('rejected'),
   ],
   // An edit and a write, each allowed with its digit.
   approvalsEdit: [
@@ -769,7 +780,7 @@ const SCRIPTS = {
     play('context-full', TIMED), checkpoint('context-full'),
     play('relieved', TIMED), checkpoint('relieved'),
     play(), checkpoint('end'),
-    type('/sessions'), key('enter'), key('enter'), key('down'), key('down'), checkpoint('sessions'), key('enter'), key('enter'), checkpoint('resumed'),
+    ...SESSIONS_OPEN, key('down'), key('down'), checkpoint('sessions'), key('enter'), until('Open conversation'), key('enter'), until('Resumed session'), checkpoint('resumed'),
   ],
   // A settled turn folds behind its title; Ctrl+O opens its calls as lines; the interrupted turn leaves a call cancelled.
   toollines: [
@@ -844,12 +855,20 @@ const SIZES = {
 }
 
 /** A replay played to its end (or to the prompt that waits for an answer), captured there. */
+/**
+ * The scenarios whose screen shows a running counter (`Bash · 6s`, `Deep diving · 8s`) that the product's own one-second
+ * timer sets: under load the timer fires before or after the scenario clock moves, so a checkpoint ticks it once at the
+ * timeline time and the counter is exact. The timed scenarios (`play(…, TIMED)`) keep the product's own timer.
+ */
+const TICKED = new Set(['notices', 'blocks'])
 const replayScenario = (name, replay) => ({
   summary: replay.summary,
   source: { replay: name },
   covers: COVERS[name] ?? [],
   sizes: SIZES[name] ?? [DEFAULT_SIZE],
   script: SCRIPTS[name] ?? [play(), checkpoint('end')],
+  ...(name === 'phase3' ? { config: { mayfly: NO_TIPS } } : {}),
+  ...(TICKED.has(name) ? { tick: true } : {}),
   ...(REVIEW[name] === undefined ? {} : { review: REVIEW[name] }),
 })
 
@@ -1202,8 +1221,8 @@ export const CATALOG = Object.freeze({
     script: [
       play(), checkpoint('end'),
       // The search line adds two rows to the editor: the stream re-fits before the first key lands (a settle, not a checkpoint).
-      key('alt+up'), key('/'), wait(300), type('needle'), checkpoint('typed'),
-      key('enter'), checkpoint('first'),
+      key('alt+up'), key('/'), wait(300), type('needle'), until('12 matches'), checkpoint('typed'),
+      key('enter'), until('11/12 matches'), checkpoint('first'),
       // Walking back (↑) from the last match: the second prompt, then the four matches of the tall answer one by one.
       key('up', { repeat: 3 }), checkpoint('answer-last'),
       key('up'), checkpoint('answer-third'),
@@ -1313,6 +1332,7 @@ export const CATALOG = Object.freeze({
   'phase3-tour': {
     summary: 'the Phase 3 session played to each of its marks in order: every state once, prompts answered and their cards checkpointed on the way',
     source: { replay: 'phase3' },
+    config: { mayfly: NO_TIPS },
     covers: PHASE3_COVERS,
     sizes: [DEFAULT_SIZE],
     review: PHASE3_REVIEW,
@@ -1322,7 +1342,7 @@ export const CATALOG = Object.freeze({
   ...Object.fromEntries(['standard', 'compact', 'detailed', 'verbose'].map(level => [level === 'standard' ? 'phase3-levels' : `phase3-levels-${level}`, {
     summary: `the Phase 3 session at the ${level} work-details level${level === 'standard' ? ', then Ctrl+O opens the newest turns and closes them again' : ''}`,
     source: { replay: 'phase3' },
-    config: { mayfly: { transcriptView: level } },
+    config: { mayfly: { ...NO_TIPS, transcriptView: level } },
     covers: PHASE3_COVERS,
     sizes: [DEFAULT_SIZE],
     script: level === 'standard' ? [...PHASE3_END, key('ctrl+o'), checkpoint('open'), key('ctrl+o'), checkpoint('closed')] : PHASE3_END,
@@ -1331,6 +1351,7 @@ export const CATALOG = Object.freeze({
   'phase3-select': {
     summary: 'Alt+Up in the Phase 3 session: the cursor on a tool line, an edit card, an approval row, and a compaction row, the arrows walking up from each',
     source: { replay: 'phase3' },
+    config: { mayfly: NO_TIPS },
     covers: PHASE3_COVERS,
     sizes: [[120, 50]],
     script: visit([
@@ -1344,6 +1365,7 @@ export const CATALOG = Object.freeze({
   'phase3-search': {
     summary: 'search in the Phase 3 session: ? over a compaction summary, then ? and / over a command output, an answer, and an edit hunk, with n and N and Esc',
     source: { replay: 'phase3' },
+    config: { mayfly: NO_TIPS },
     covers: PHASE3_COVERS,
     sizes: [[100, 40]],
     script: visit([
@@ -1356,6 +1378,7 @@ export const CATALOG = Object.freeze({
   'phase3-live': {
     summary: 'the live stream of the open turn: waiting, reasoning, a write being prepared, its decision card, and the write running (Esc interrupts nothing: no Agent runs the replayed turn)',
     source: { replay: 'phase3' },
+    config: { mayfly: NO_TIPS },
     covers: PHASE3_COVERS,
     sizes: [DEFAULT_SIZE],
     script: visit([
@@ -1369,6 +1392,7 @@ export const CATALOG = Object.freeze({
   'phase3-narrow': {
     summary: 'the Phase 3 session at 60 and 40 columns: a Markdown answer with a table, an edit, a decision card, and a plan review',
     source: { replay: 'phase3' },
+    config: { mayfly: NO_TIPS },
     covers: PHASE3_COVERS,
     sizes: [[60, 30], [40, 24]],
     script: visit([{ name: 'answer' }, { name: 'edited' }, { name: 'approved' }, { name: 'plan' }]),
@@ -1377,9 +1401,10 @@ export const CATALOG = Object.freeze({
   'phase3-resume': {
     summary: 'the Phase 3 session after its first turn, then /sessions and the stored conversation opened: the resumed notice',
     source: { replay: 'phase3' },
+    config: { mayfly: NO_TIPS },
     covers: [...PHASE3_COVERS, `${INTERACTION}native-sessions.ts`],
     sizes: [DEFAULT_SIZE],
-    script: visit([{ name: 'image', after: [type('/sessions'), key('enter'), key('enter'), key('down'), key('down'), checkpoint('sessions'), key('enter'), key('enter'), checkpoint('resumed')] }]),
+    script: visit([{ name: 'image', after: [...SESSIONS_OPEN, key('down'), key('down'), checkpoint('sessions'), key('enter'), until('Open conversation'), key('enter'), until('Resumed session'), checkpoint('resumed')] }]),
   },
   ...APP,
   ...PERF,

@@ -544,6 +544,20 @@ describe('shared interaction compiler', () => {
     renderer.runtime.dispose()
   })
 
+  it('returns to the previous page with Escape from a control on a returnable page', async () => {
+    const { compile } = await setup(ui.stack.column([
+      ui.tabs({ id: 'pages', activeId: 'two', items: [{ id: 'one', label: 'One' }, { id: 'two', label: 'Two', backId: 'one' }] }),
+      ui.child(ui.text('First page'), { tab: { controlId: 'pages', itemId: 'one' } }),
+      ui.child(ui.actions({ id: 'second-actions', items: [{ id: 'go', label: 'Go' }] }), { tab: { controlId: 'pages', itemId: 'two' } }),
+    ]))
+    const renderer = compile()
+    renderer.input('\r')
+    expect(renderer.compiled.component.render(120).at(-1)).toContain('Esc back')
+    renderer.input('\x1b')
+    expect(renderer.compiled.component.render(120).join('\n')).toContain('First page')
+    renderer.runtime.dispose()
+  })
+
   it('accepts the row the cursor shows after moving past a disabled tail', async () => {
     const accepted: string[] = []
     const { compile } = await setup(ui.list({ id: 'presets', role: 'choose', numbered: true, selectedIds: [], items: [

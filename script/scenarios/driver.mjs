@@ -74,7 +74,7 @@ function connectControl(path, onSync) {
       for (let end = buffer.indexOf('\n'); end >= 0; end = buffer.indexOf('\n')) {
         const message = JSON.parse(buffer.slice(0, end))
         buffer = buffer.slice(end + 1)
-        if (message.type === 'sync') { onSync(message.id); continue }
+        if (message.type === 'sync') { onSync(message.id, message.tick === true); continue }
         const waiter = waiting.shift()
         if (waiter === undefined) queue.push(message)
         else waiter(message)
@@ -126,8 +126,18 @@ export function apply(ctx) {
     const actions = JSON.parse(readFileSync(file, 'utf8'))
     // A `sync` is answered once the work queued before it has run and a render is requested, so a runner that waits
     // for the screen to go quiet afterwards sees everything played so far.
-    const control = controlPath === undefined || controlPath === '' ? undefined : await connectControl(controlPath, (id) => {
+    const control = controlPath === undefined || controlPath === '' ? undefined : await connectControl(controlPath, (id, tick) => {
       void (async () => {
+        // A checkpoint reads the time of the last action on the timeline. The product's one-second timer runs on real
+        // time, so a counter on screen (`Deep diving · 8s`, a pending call's `· 6s`, a wait's `· 1s`) would show the
+        // clock of the last tick, which fell before or after the clock moved depending on the load, or the real time
+        // an answer took while the clock flows; one tick at the timeline time makes it exact.
+        if (tick) {
+          try {
+            const now = clock?.stood() ?? Date.now()
+            for (const listener of [...ctx.get('mayflyTick')?.listeners ?? []]) listener(now)
+          } catch { /* the context was disposed */ }
+        }
         for (let turn = 0; turn < 3; turn += 1) await sleep(0)
         try { ctx.get('mayflyScreen')?.requestRender() } catch { /* the context was disposed */ }
         control?.send({ type: 'synced', id })

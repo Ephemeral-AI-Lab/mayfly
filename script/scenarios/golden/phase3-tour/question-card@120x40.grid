@@ -27,7 +27,7 @@ grid 120x40 cursor none
 |  ● AskUserQuestion
 |
 |  ● Waiting for your answer · 0s
-|    ⎿ Tip: Esc to interrupt the run
+|
 |                                                                                       Alt+↑ conversation · Alt+↓ bar
 |╭ Questions ───────────────────────────────────────────────────────────────────────────────────────────────────────────╮
 |│ Which runtime should the project target?                                                                             │
@@ -54,7 +54,6 @@ styles
 23: 2-3 fg:#ededf2
 25: 2 fg:#5c6476; 3 fg:#ededf2; 4-18 fg:#ededf2 b
 27: 0-1 fg:#ededf2; 2 fg:#5c6476; 3-26 fg:#ededf2; 28-31 fg:#9aa3b8
-28: 0-34 fg:#9aa3b8
 29: 87-116 fg:#9aa3b8
 30: 0-1 fg:#dcd7f2; 2-10 fg:#f5f5f7 b; 11-119 fg:#dcd7f2
 31: 0 fg:#dcd7f2; 2-41 fg:#c9c0f0; 119 fg:#dcd7f2

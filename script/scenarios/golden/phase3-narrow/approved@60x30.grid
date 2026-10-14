@@ -23,7 +23,7 @@ grid 60x30 cursor none
 |  ○ Summarise
 |
 |  ⡀ Deep diving · 2s · ↑5.5k
-|    ⎿ Tip: /fork to branch the conversation and explore saf…
+|
 |                               Alt+↑ conversation · Alt+↓
 |╭───────────────────────────────── Here is the timeout on ─╮
 |│ >                                                        │
@@ -46,7 +46,6 @@ styles
 20: 0-3 fg:#9aa3b8; 4-16 fg:#ededf2
 21: 0-3 fg:#9aa3b8; 4-12 fg:#ededf2
 23: 0-1 fg:#ededf2; 2 fg:#9a86e6; 3-14 fg:#ededf2; 16-27 fg:#9aa3b8
-24: 0-58 fg:#9aa3b8
 25: 31-56 fg:#9aa3b8
 26: 0-33 fg:#45406b; 34-57 fg:#5c6476; 58-59 fg:#45406b
 27: 0 fg:#45406b; 4 r; 59 fg:#45406b

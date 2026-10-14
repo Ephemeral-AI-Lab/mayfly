@@ -17,7 +17,7 @@ grid 40x24 cursor none
 |  … +2 more rows
 |
 |  ⡀ Deep diving · 3s · ↑5.5k
-|    ⎿ Tip: /help: show commands
+|
 |                                Alt+↑
 |╭───────────── Here is the timeout on ─╮
 |│ >                                    │
@@ -38,7 +38,6 @@ styles
 14: 0-3 fg:#c9c0f0 b; 4-23 fg:#ededf2
 15: 0-15 fg:#5c6476
 17: 0-1 fg:#ededf2; 2 fg:#9a86e6; 3-14 fg:#ededf2; 16-27 fg:#9aa3b8
-18: 0-30 fg:#9aa3b8
 19: 32-36 fg:#9aa3b8
 20: 0-13 fg:#45406b; 14-37 fg:#5c6476; 38-39 fg:#45406b
 21: 0 fg:#45406b; 4 r; 39 fg:#45406b

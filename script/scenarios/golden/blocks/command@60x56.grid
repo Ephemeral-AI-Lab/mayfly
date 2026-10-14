@@ -28,7 +28,7 @@ grid 60x56 cursor none
 |
 |  ● One long command on its own.
 |
-|  ● Bash
+|  ● Bash · 6s
 |    echo "step 1 of the release script" && sleep 1
 |    echo "step 2 of the release script" && sleep 1
 |    echo "step 3 of the release script" && sleep 1
@@ -76,7 +76,7 @@ styles
 23: 2-3 fg:#4ec87e; 4-12 fg:#ededf2 b; 13 fg:#9aa3b8; 14-59 fg:#c9c0f0
 25: 2-3 fg:#4ec87e; 4-11 fg:#ededf2 b; 12 fg:#9aa3b8; 13-44 fg:#c9c0f0; 45-51 fg:#9aa3b8
 27: 2-3 fg:#ededf2
-29: 2 fg:#5c6476; 3 fg:#ededf2; 4-7 fg:#ededf2 b
+29: 2 fg:#5c6476; 3 fg:#ededf2; 4-7 fg:#ededf2 b; 8-12 fg:#9aa3b8
 30: 2-49 fg:#ededf2
 31: 2-49 fg:#ededf2
 32: 2-49 fg:#ededf2

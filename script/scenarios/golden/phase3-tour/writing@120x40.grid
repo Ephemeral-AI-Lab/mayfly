@@ -33,7 +33,7 @@ grid 120x40 cursor none
 |  ○ Run the watcher checks
 |
 |  ⡀ Writing · 10s · ↓5 · 1 tok/s
-|    ⎿ Tip: type / to browse commands; matching is fuzzy
+|
 |                                                                  ℹ Resumed session · 13 turns · last active just now
 |╭───────────────────────────────────────────────────────────────────────────────────────────── Here is the timeout on ─╮
 |│ >                                                                                                                    │
@@ -60,7 +60,6 @@ styles
 30: 0-3 fg:#c9c0f0 b; 4-27 fg:#ededf2
 31: 0-3 fg:#9aa3b8; 4-25 fg:#ededf2
 33: 0-1 fg:#ededf2; 2 fg:#9a86e6; 3-10 fg:#ededf2; 12-31 fg:#9aa3b8
-34: 0-54 fg:#9aa3b8
 35: 66-67 fg:#9a86e6; 68-116 fg:#ededf2
 36: 0-93 fg:#45406b; 94-117 fg:#5c6476; 118-119 fg:#45406b
 37: 0 fg:#45406b; 4 r; 119 fg:#45406b

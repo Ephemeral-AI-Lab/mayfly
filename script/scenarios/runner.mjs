@@ -164,11 +164,11 @@ export async function runScenario(name, { root, dshBin, cols, rows, keys = [], o
    * open and no stub request in flight. Content, not bytes: pi-tui writes an empty frame (a cursor move) on every
    * render it is asked for, which a running spinner asks for even under reduced motion.
    */
-  async function settle(quiet = 150, timeoutMs = 20_000) {
+  async function settle(quiet = 150, timeoutMs = 20_000, tick = false) {
     const begin = performance.now()
     // The work the product queued before now runs first, then the screen must stand still.
     const id = ++syncs
-    control.send({ type: 'sync', id })
+    control.send({ type: 'sync', id, ...(tick ? { tick } : {}) })
     for (;;) {
       const message = await control.next(timeoutMs, 'the driver to sync')
       if (message.type === 'synced' && message.id === id) break
@@ -210,7 +210,7 @@ export async function runScenario(name, { root, dshBin, cols, rows, keys = [], o
   /** A key or text, through the browser when there is one. */
   const press = async (keyName) => { if (browser === undefined) pty.write(keyBytes(keyName)); else await browser.key(keyName) }
   const capture = async (checkpointName) => {
-    await settle()
+    await settle(150, 20_000, scenario.tick === true)
     const wrapped = screen.wrappedRows()
     if (wrapped.length > 0) failures.push(`${checkpointName}: rows ${wrapped.join(', ')} are wider than the terminal`)
     const png = browser === undefined ? undefined : await browser.screenshot()
@@ -302,6 +302,17 @@ export async function runScenario(name, { root, dshBin, cols, rows, keys = [], o
         }
         case 'resize': pty.resize(step.cols, step.rows); screen.resize(step.cols, step.rows); await browser?.resize(step.cols, step.rows); await settle(); break
         case 'wait': await sleep(step.ms); await settle(); break
+        case 'until': {
+          const begin = performance.now()
+          for (;;) {
+            await screen.flush()
+            if (screen.find(step.text) !== undefined) break
+            if (performance.now() - begin > 20_000) throw new Error(`"${step.text}" did not appear in 20 s`)
+            await sleep(25)
+          }
+          await settle()
+          break
+        }
         case 'idle': await span('idle', [{ step: 'wait', ms: step.ms }]); break
         case 'measure': await span(step.name, step.steps); break
         default: throw new Error(`unknown step ${String(step.step)}`)

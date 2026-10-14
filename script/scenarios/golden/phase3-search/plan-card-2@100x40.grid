@@ -30,7 +30,7 @@ grid 100x40 cursor none
 |    4. Update the build and the test runner configuration.
 |
 |  ● Waiting for your approval · 0s
-|    ⎿ Tip: ! to run a shell command
+|
 |                                                                   Alt+↑ conversation · Alt+↓ bar
 |── Decide ──────────────────────────────────────────────────────────────────────────────────────────
 |→ 1  Approve and start
@@ -58,7 +58,6 @@ styles
 27: 4-6 fg:#c9c0f0
 28: 4-6 fg:#c9c0f0
 30: 0-1 fg:#ededf2; 2 fg:#5c6476; 3-28 fg:#ededf2; 30-33 fg:#9aa3b8
-31: 0-34 fg:#9aa3b8
 32: 67-96 fg:#9aa3b8
 33: 0-99 fg:#9aa3b8
 34: 0 fg:#9a86e6 b; 2 fg:#9aa3b8; 5-21 fg:#ededf2 b

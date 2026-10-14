@@ -22,7 +22,7 @@ grid 60x30 cursor none
 |
 |
 |
-|  ⡀ Deep diving · 8s
+|  ⡀ Deep diving · 15s
 |    ⎿ Tip: Esc to interrupt the run
 |                                ℹ Indexing the workspace…
 |╭────────────────────────────────── Show me every kind of ─╮
@@ -39,7 +39,7 @@ styles
 6: 1-23 fg:#8371d6; 24-25 fg:#9a86e6; 26-44 fg:#e9e6f4
 7: 1-23 fg:#6c5bbf; 24-25 fg:#9a86e6; 26-47 fg:#ededf2
 9: 2-3 fg:#9a86e6; 4-32 fg:#9a86e6 b
-23: 0-1 fg:#ededf2; 2 fg:#9a86e6; 3-14 fg:#ededf2; 16-19 fg:#9aa3b8
+23: 0-1 fg:#ededf2; 2 fg:#9a86e6; 3-14 fg:#ededf2; 16-20 fg:#9aa3b8
 24: 0-34 fg:#9aa3b8
 25: 32-33 fg:#9a86e6; 34-56 fg:#ededf2
 26: 0-34 fg:#45406b; 35-57 fg:#5c6476; 58-59 fg:#45406b

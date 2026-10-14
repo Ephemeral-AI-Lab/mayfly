@@ -20,7 +20,7 @@ grid 60x30 cursor none
 |    The command removes untracked files.
 |
 |  ● Waiting for your approval · 0s
-|    ⎿ Tip: /theme to switch the terminal UI theme
+|
 |                               Alt+↑ conversation · Alt+↓
 |── Decide ──────────────────────────────────────────────────
 |→ 1  Allow once
@@ -46,7 +46,6 @@ styles
 17: 2-3 fg:#ededf2; 4-18 fg:#e8a838
 18: 2-3 fg:#ededf2; 4-39 fg:#9aa3b8
 20: 0-1 fg:#ededf2; 2 fg:#5c6476; 3-28 fg:#ededf2; 30-33 fg:#9aa3b8
-21: 0-48 fg:#9aa3b8
 22: 31-56 fg:#9aa3b8
 23: 0-59 fg:#9aa3b8
 24: 0 fg:#9a86e6 b; 2 fg:#9aa3b8; 5-14 fg:#ededf2 b

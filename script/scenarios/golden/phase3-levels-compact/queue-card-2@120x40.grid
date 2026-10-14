@@ -30,7 +30,7 @@ grid 120x40 cursor none
 |  ● Bash(set -e …)
 |
 |  ● Waiting for your approval · 0s
-|    ⎿ Tip: /btw <question>: ask a side question without disturbing the run
+|
 |                                                                                       Alt+↑ conversation · Alt+↓ bar
 |── Decide ─────────────────────────────────────────────────────────────────────────────────────────────── 1 of 2 waiting
 |→ 1  Allow once
@@ -60,7 +60,6 @@ styles
 26: 4-6 fg:#9aa3b8; 8 fg:#4ec87e bg:#1e3a2b; 9 bg:#1e3a2b; 10-11 fg:#ededf2 bg:#1e3a2b; 12-17 fg:#9a86e6 bg:#1e3a2b; 18 fg:#ededf2 bg:#1e3a2b; 19-36 fg:#4ec87e bg:#1e3a2b; 37-46 bg:#1e3a2b; 47-65 fg:#4ec87e bg:#1e3a2b; 66-70 bg:#1e3a2b; 71-87 fg:#4ec87e bg:#1e3a2b; 88-115 bg:#1e3a2b
 28: 2 fg:#5c6476; 3 fg:#ededf2; 4-7 fg:#ededf2 b; 8 fg:#9aa3b8; 9-16 fg:#c9c0f0; 17 fg:#9aa3b8
 30: 0-1 fg:#ededf2; 2 fg:#5c6476; 3-28 fg:#ededf2; 30-33 fg:#9aa3b8
-31: 0-73 fg:#9aa3b8
 32: 87-116 fg:#9aa3b8
 33: 0-104 fg:#9aa3b8; 106-119 fg:#e8a838
 34: 0 fg:#9a86e6 b; 2 fg:#9aa3b8; 5-14 fg:#ededf2 b

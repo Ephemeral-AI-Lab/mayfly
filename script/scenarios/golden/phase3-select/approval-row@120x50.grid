@@ -43,7 +43,7 @@ grid 120x50 cursor none
 |  ○ Summarise
 |
 |  ⡀ Deep diving · 2s · ↑5.5k
-|    ⎿ Tip: /fork to branch the conversation and explore safely
+|
 |  Enter expand · c copy · Ctrl+C JSON · Ctrl+G editor · ↑/↓ select · / ? search · Esc back
 |╭───────────────────────────────────────────────────────────────────────────────────────────── Here is the timeout on ─╮
 |│ >                                                                                                                    │
@@ -83,7 +83,6 @@ styles
 40: 0-3 fg:#9aa3b8; 4-16 fg:#ededf2
 41: 0-3 fg:#9aa3b8; 4-12 fg:#ededf2
 43: 0-1 fg:#ededf2; 2 fg:#9a86e6; 3-14 fg:#ededf2; 16-27 fg:#9aa3b8
-44: 0-61 fg:#9aa3b8
 45: 0-89 fg:#9aa3b8
 46: 0-119 fg:#5c6476
 47: 0 fg:#5c6476; 4 r; 119 fg:#5c6476

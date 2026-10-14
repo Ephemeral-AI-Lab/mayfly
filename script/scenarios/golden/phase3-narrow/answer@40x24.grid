@@ -17,7 +17,7 @@ grid 40x24 cursor none
 |    • the delay doubles
 |
 |  ⡀ Writing · 56s · ↓3
-|    ⎿ Tip: ! to run a shell command
+|
 |                                Alt+↑
 |╭───────────── Here is the timeout on ─╮
 |│ >                                    │
@@ -28,7 +28,6 @@ styles
 6: 6-12 fg:#f5f5f7; 16-21 fg:#f5f5f7; 25-31 fg:#f5f5f7
 15: 4-5 fg:#c9c0f0
 17: 0-1 fg:#ededf2; 2 fg:#9a86e6; 3-10 fg:#ededf2; 12-21 fg:#9aa3b8
-18: 0-34 fg:#9aa3b8
 19: 32-36 fg:#9aa3b8
 20: 0-13 fg:#45406b; 14-37 fg:#5c6476; 38-39 fg:#45406b
 21: 0 fg:#45406b; 4 r; 39 fg:#45406b

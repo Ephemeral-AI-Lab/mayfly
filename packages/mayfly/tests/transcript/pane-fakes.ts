@@ -211,6 +211,10 @@ export class FakeProjectionService {
     this.listeners.add(listener)
     return () => this.listeners.delete(listener)
   }
+  /** Publish a whole facts value under the `mayflyConversationFacts` key, as the Harness projection does. */
+  emitFacts(session: unknown, value: unknown): void {
+    for (const listener of this.listeners) listener(session, 'mayflyConversationFacts', value, 0)
+  }
   emit(session: unknown, event: import('@deepseek-ai/dsh-session').SessionEvent): void {
     const key = session as object
     const current = this.states.get(key) ?? (session as { readonly events?: readonly import('@deepseek-ai/dsh-session').SessionEvent[] }).events?.slice(0, -1).reduce((state, row) => this.reduce(state, row), initialConversationState()) ?? initialConversationState()
