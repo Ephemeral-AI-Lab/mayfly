@@ -569,7 +569,7 @@ product is used (D23); Phase 7 optimizes the whole architecture (D27), and Phase
 | 1 Foundation | 13 slices (1.0-1.12) | The oracle, the engine, the visual language, every basic component, the key engine, the patterns, the prompt and image nodes, the host seams, the API freeze, the frame cost | 1-12, 15 (the prompt alone), 13 (the lane) | full for each slice (the Phase 1 rules) |
 | 2 Workbench and content | 4 (2a-2d) | The live review loop and frame capture, automated and change-precise verification (tiers, scenario goldens, perf A/B, real screenshots), content at any size, the owner's review of the foundation | 1-13, 15 | changed per part; full at the end; owner review (2d) |
 | 3 Session flow | 5 (3a-3e) | The components area; the stream and its turns, tool rows, the activity row and notices, request rows and decision cards, levels, selection, search | 14, 16-21 | per component (§7); full and owner at the end |
-| 4 Editor and command palette | 1-2 | The editor as a prompt composition, the `/` `@` `#` completion palette, queue and recall | 15, 30 p1-p2 | per component; full and owner at the end |
+| 4 Editor and command palette | 4 (4a-4e) | The editor as a prompt composition, the `/` `@` `#` completion palette, queue and recall | 15, 30 p1-p2 | per component; full and owner at the end |
 | 5 Status and views | 1-2 | The two status rows and Mayfly's four views | 13, 12 | per component; full and owner at the end |
 | 6 Panels | 6 (6a-6f) | Every command panel, questions, and the trace, keys, rewind, job output, and changes surfaces | 21 p4, 22-32 (30 p3-p6) | per component; full and owner at the end |
 | 7 Architecture performance | 1 | The finished product profiled on real workloads and restructured where measured; the final budgets and ceilings | — | full + bench report; owner |
@@ -2038,6 +2038,39 @@ part is accepted (§7 step 3).
   and delivery select.
 
 At the phase gate: platform acceptance for paste, IME, and the clipboard on macOS, Linux, and Windows.
+
+The groups below are finalized in this order, each under §7 and the procedure of
+[component-development-spec.md](./component-development-spec.md); their parts are the spec's §7 *Phase 4 parts*. The
+text above is the starting point; the final behavior is what the owner accepts.
+
+- **4a Editor frame** (`Editor`; scene 15). The frame with the title in its top-right corner around `ui.prompt`,
+  published into the editor dock slot with `mountNodeSlot`, and shell mode as the `!` symbol and the `accent` border
+  only. Parts 4a.1 and 4a.2. Deletes `setBorderLabel` and the `! shell mode` label (B4, G19, R20).
+- **4b Tokens** (scene 15). Images, pasted blocks, and `@` mentions as prompt tokens with the two-key removal; the submit
+  pipeline expands them to what is sent today. Parts 4b.1 and 4b.2.
+- **4c Queue and recall** (scene 15). The one-line queue above the frame, and `↑`/`↓` through the queue and then the
+  history with `withdrawQueued`. Parts 4c.1 and 4c.2. Deletes `interaction/pane-queue.ts` as a pane (H7, G15).
+- **4d Command palette** (scene 30 p1-p2). The editor's completion list for `/`, `@`, and `#` and the results of
+  editor extensions, with its own key line. Parts 4d.1 to 4d.4. Deletes the autocomplete adapter
+  (`SelectListAdapter`, `core/wrapping-select-list.ts`).
+- **4e Placeholders, keys, and subagent replies** (scene 15). The placeholder ladder by state, the editor-scope keys
+  and the title projection, and the subagent reply through the editor (G18, H8, R11). Parts 4e.1 to 4e.3. Deletes the
+  reply form's `Send`/`Cancel` buttons and delivery select.
+
+**Phase 4 status.** Worked in rounds of two to three parts (about four scenarios each; the 4a.1 frame is the first
+round and the cutover of the editor) on the branch `feat/4a` and its successors, with the profile `mayfly-4`. A part is
+`accepted` when the owner accepts it in a question round; a group finalizes when its last part is accepted (§7 step 3).
+Phase 4 starts after Phase 3's last group is merged, or earlier on a branch off `feat/3a` if the owner says so; the
+rounds are planned in review order, one group in review at a time.
+
+| Round | Parts | Status | Branch |
+| --- | --- | --- | --- |
+| R1 | 4a.1 editor frame; 4a.2 shell mode | planned: the editor becomes a pure `Editor` component on the dock slot, so this round is the cutover and nothing else changes in the editor's behavior | `feat/4a` |
+| R2 | 4b.1 tokens in the buffer; 4b.2 submit expansion | planned | `feat/4a` |
+| R3 | 4c.1 queue line; 4c.2 recall | planned | `feat/4a` |
+| R4 | 4d.1 the `/` list; 4d.2 palette keys | planned: the autocomplete adapter is deleted here | `feat/4a` |
+| R5 | 4d.3 `@` files; 4d.4 `#` skills and extension results | planned | `feat/4a` |
+| R6 | 4e.1 placeholders; 4e.2 keys and title; 4e.3 subagent replies | planned: the last group, so the phase gate follows (platform acceptance above) | `feat/4a` |
 
 ### Phase 5 Status area and views
 
