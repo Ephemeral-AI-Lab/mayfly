@@ -129,8 +129,10 @@ export interface MayflySurfaceNode {
   readonly padding?: 0 | 1 | 2
   readonly child: MayflyUiNode
   readonly footer?: MayflyUiNode
-  /** `right` puts the title in the top-right corner (a long one is elided at its start); badges take the left. */
+  /** `right` puts the title in the top-right corner (a long one is elided at its start unless `titleCut` says otherwise); badges take the left. */
   readonly titleAlign?: 'left' | 'right'
+  /** Which end of a title too long for the rule is cut: `start` keeps its end (a path), `end` keeps its start (a name). A right-aligned title defaults to `start`, a left-aligned one to `end`. */
+  readonly titleCut?: 'start' | 'end'
   /** The border tone; the chrome's own (focus color for an overlay, quiet for a surface) otherwise. */
   readonly border?: MayflyTone
   /** What `Esc` does, as the hint row names it; `reject` dismisses as a rejection. */

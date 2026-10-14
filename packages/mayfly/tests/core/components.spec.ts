@@ -281,133 +281,6 @@ describe('createEditor', () => {
     stop()
   })
 
-  it('renders the palette border and honors setBorderColor', () => {
-    const { tui, stop } = bootTui()
-    const components = createService(tui)
-    const editor = components.createEditor()
-    editor.setText('x')
-    const before = editor.render(40).join('\n')
-    // The idle frame is the neutral border; contextual recolors go through
-    // setBorderColor (the S11 rounded-box default, kimi treatment).
-    expect(before).toContain('«border:')
-    expect(before).not.toContain('«primary:')
-
-    editor.setBorderColor(text => `[[${text}]]`)
-    const after = editor.render(40).join('\n')
-    expect(after).toContain('[[')
-    expect(after).not.toContain('«border:')
-    stop()
-  })
-
-  it('renders a rounded box with side bars over the bare rules', () => {
-    const { tui, stop } = bootTui()
-    const components = createSgrService(tui)
-    const editor = components.createEditor({ paddingX: 4 })
-    editor.setText('hi')
-    const lines = editor.render(20)
-    // The per-dash rule is repainted as one box-drawn span.
-    expect(lines[0]).toBe(`${SGR.textMuted}╭${'─'.repeat(18)}╮${RESET}`)
-    // The content row carries `hi`, the inverse-video cursor right behind
-    // it, and a side bar at each end (the four padding spaces feed them).
-    expect(lines[1]).toBe(`${SGR.textMuted}│${RESET}   hi\x1b[7m \x1b[0m${' '.repeat(12)}${SGR.textMuted}│${RESET}`)
-    expect(lines.at(-1)).toBe(`${SGR.textMuted}╰${'─'.repeat(18)}╯${RESET}`)
-    stop()
-  })
-
-  it('overlays the > prompt symbol unpainted and the ! through the border color', () => {
-    const { tui, stop } = bootTui()
-    const components = createSgrService(tui)
-    const editor = components.createEditor({ paddingX: 4 })
-    editor.setPromptSymbol('>')
-    const plain = editor.render(20)
-    // Column 2 carries the bare `>` (no SGR around it); column 0 is the bar.
-    expect(plain[1]).toBe(`${SGR.textMuted}│${RESET} > \x1b[7m \x1b[0m${' '.repeat(14)}${SGR.textMuted}│${RESET}`)
-
-    editor.setPromptSymbol('!')
-    const bash = editor.render(20)
-    // The bash symbol shares the border hue (kimi rule).
-    expect(bash[1]).toBe(`${SGR.textMuted}│${RESET} ${SGR.border}!${RESET} \x1b[7m \x1b[0m${' '.repeat(14)}${SGR.textMuted}│${RESET}`)
-
-    editor.setPromptSymbol(undefined)
-    const cleared = editor.render(20)
-    expect(cleared[1]).toBe(`${SGR.textMuted}│${RESET}   \x1b[7m \x1b[0m${' '.repeat(14)}${SGR.textMuted}│${RESET}`)
-    stop()
-  })
-
-  it('leaves the prompt off when the first content row lacks the padding', () => {
-    const { tui, stop } = bootTui()
-    const components = createSgrService(tui)
-    // paddingX defaults to 0: content rows start at column 0, so the symbol
-    // has nowhere to land and the row renders unchanged.
-    const editor = components.createEditor()
-    editor.setPromptSymbol('>')
-    const lines = editor.render(20)
-    expect(lines[1]).not.toContain('>')
-    stop()
-  })
-
-  it('lays the border label into the top rule and opens connected corners', () => {
-    const { tui, stop } = bootTui()
-    const components = createSgrService(tui)
-    const editor = components.createEditor({ paddingX: 4 })
-    // A focused editor draws its frame in the focus border; an unfocused one parks it in the muted tone.
-    editor.focused = true
-    editor.setBorderLabel(`${SGR.shellMode}! shell mode${RESET}`)
-    const labeled = editor.render(30)
-    // The label's visible width is 12, leaving 28 - 12 dashes of the rule.
-    expect(labeled[0]).toBe(
-      `${SGR.border}╭${RESET}${SGR.shellMode}! shell mode${RESET}${SGR.border}${'─'.repeat(16)}${RESET}${SGR.border}╮${RESET}`,
-    )
-
-    editor.setConnectedAbove(true)
-    const connected = editor.render(30)
-    expect(connected[0]).toContain(`${SGR.border}├${RESET}`)
-    expect(connected.at(-1)).toBe(` ${SGR.border}╰${'─'.repeat(26)}╯${RESET}`)
-    stop()
-  })
-
-  it('lays the sanitized session title into the top rule beside the label', () => {
-    const { tui, stop } = bootTui()
-    const components = createSgrService(tui)
-    const editor = components.createEditor({ paddingX: 4 })
-    // A focused editor draws its frame in the focus border; an unfocused one parks it in the muted tone.
-    editor.focused = true
-    editor.setBorderTitle('  dock\x1b[31m-transcript\n redesign \x07')
-    const titled = editor.render(40)
-    // Controls are stripped and whitespace collapses: ` dock-transcript redesign ` (26) + `─`.
-    expect(titled[0]).toBe(
-      `${SGR.border}╭${RESET}${SGR.border}${'─'.repeat(11)}${RESET}${SGR.textMuted} dock-transcript redesign ${RESET}${SGR.border}─${RESET}${SGR.border}╮${RESET}`,
-    )
-    expect(piVisibleWidth(titled[0] ?? '')).toBe(40)
-
-    editor.setBorderLabel(`${SGR.shellMode}! shell mode${RESET}`)
-    const both = editor.render(40)
-    expect(both[0]).toContain(`${SGR.shellMode}! shell mode${RESET}`)
-    // 38 rule columns − 12 label − 1 separator − 3 title chrome leave 22.
-    expect(both[0]).toContain(`${SGR.shellMode}! shell mode${RESET}${SGR.border}─${RESET}${SGR.textMuted} dock-transcript redes… ${RESET}`)
-    expect(piVisibleWidth(both[0] ?? '')).toBe(40)
-
-    editor.setBorderTitle(' \t ')
-    expect(editor.render(40)[0]).not.toContain(SGR.textMuted)
-    editor.setBorderLabel(undefined)
-    editor.setBorderTitle(undefined)
-    expect(editor.render(40)[0]).toBe(`${SGR.border}╭${'─'.repeat(38)}╮${RESET}`)
-    stop()
-  })
-
-  it('shares the dock gutter when the editor is connected above a pane', () => {
-    const { tui, stop } = bootTui()
-    const components = createSgrService(tui)
-    const editor = components.createEditor({ paddingX: 4 })
-    editor.setConnectedAbove(true)
-    const lines = editor.render(30)
-    expect(piVisibleWidth(lines[0] ?? '')).toBe(29)
-    expect(lines[0]).toContain('├')
-    expect(lines[0]).toContain('┤')
-    expect(lines[0]?.startsWith(' ')).toBe(true)
-    stop()
-  })
-
   it('forwards the autocomplete provider to the real Editor with structural parity', async () => {
     const { tui, stop } = bootTui()
     const components = createService(tui)
@@ -600,15 +473,14 @@ describe('createEditor', () => {
     // bold SGR pair is the visible marker.
     expect(painted).toContain('\x1b[1m/btw\x1b[22m')
 
-    // The bash `!` proxy: while the bash prompt symbol is set, a leading
-    // slash is a path separator and stays unpainted.
-    editor.setPromptSymbol('!')
+    // Shell mode: a leading slash is a path separator and stays unpainted.
+    editor.setShellMode(true)
     const bash = editor.render(30).join('\n')
     expect(bash).not.toContain('\x1b[1m/btw\x1b[22m')
 
     // A buffer whose first row carries no slash (the slash sits on a later
     // line) leaves the row untouched.
-    editor.setPromptSymbol(undefined)
+    editor.setShellMode(false)
     editor.setText('  \n/bt')
     const declined = editor.render(30).join('\n')
     expect(declined).not.toContain('\x1b[1m')

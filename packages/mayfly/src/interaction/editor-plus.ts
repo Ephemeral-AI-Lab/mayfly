@@ -1,11 +1,10 @@
 /**
  * `mayfly-editor-plus` plugin: enhancement layer over the shared input editor
  * mounted by `mayfly-input` — the `prompt | bash` input mode with shell
- * execution and echo (bash carries the triple cue: `!` prompt symbol,
- * ` ! shell mode ` border label, and the shellMode frame hue, re-asserted
- * over `mayfly-input`'s slash-context resolution while the mode is active),
- * plus the S14 completion polish: slash-command and `@`-file autocomplete
- * with fuzzy matching over the command names (`./slash-filter.ts`), slash
+ * execution and echo (bash shows as the `!` prompt symbol and the accent
+ * frame border, set through the shared editor's `setShell`), plus the S14
+ * completion polish: slash-command and `@`-file autocomplete with fuzzy
+ * matching over the command names (`./slash-filter.ts`), slash
  * values that carry their leading slash so a single Enter accepts the
  * selection and submits, and the argument-hint ghost driven from each
  * command's `input.hint`. `@` mentions run the S22 kimi composition
@@ -18,7 +17,7 @@
  * without submitting (pi-tui's non-slash completion semantics), and the
  * applied token takes a trailing space mid-line. The mode is
  * mirrored into `./draft-stash.ts`, so a theme-swap reload re-applies the
- * triple on the rebuilt editor. The editor reference comes from the
+ * shell frame on the rebuilt editor. The editor reference comes from the
  * package-local shared ref (`./editor-instance.ts`): `inject` cannot order
  * this plugin after `mayfly-input` (which provides no service), so
  * attach/detach is driven by the `'mayfly/input-editor-changed'` event, which
@@ -449,9 +448,6 @@ function runShell(ctx: Context, command: string, isUnloaded: () => boolean): voi
   )
 }
 
-/** The bash-mode border label text (styled at attach time). */
-const BASH_LABEL = '! shell mode'
-
 /**
  * Chain the mode routing and autocomplete provider onto the shared editor,
  * preserving the handlers `mayfly-input` installed.
@@ -463,7 +459,6 @@ const BASH_LABEL = '! shell mode'
  */
 function attach(ctx: Context, shared: SharedEditor, isUnloaded: () => boolean): () => void {
   const { editor } = shared
-  const colors = ctx.mayflyTheme.colors
   const aliases = ctx.mayflyInteractionState.aliases
   const draft = ctx.mayflyInteractionState.draft
   let mode: 'prompt' | 'bash' = draft.getStashedInputMode()
@@ -471,31 +466,22 @@ function attach(ctx: Context, shared: SharedEditor, isUnloaded: () => boolean): 
   const previousOnSubmit = editor.onSubmit
   const previousOnKey = editor.onKey
 
-  /** Apply the bash triple: `!` symbol, border label, and shell hue. */
+  /** Enter bash mode: the frame turns into the shell's (the `!` symbol, the accent border). */
   const enterBash = (): void => {
     mode = 'bash'
     draft.stashInputMode('bash')
-    editor.setPromptSymbol('!')
-    editor.setBorderLabel(` ${colors.shellMode(BASH_LABEL)} `)
-    editor.setBorderColor(colors.shellMode)
+    shared.setShell(true)
   }
 
-  /** Restore the prompt-mode frame without touching the reload stash. */
-  const applyPromptFrame = (): void => {
-    editor.setPromptSymbol('>')
-    editor.setBorderLabel(undefined)
-    editor.setBorderColor(colors.border)
-  }
-
-  /** Leave bash mode: prompt frame plus the stash update. */
+  /** Leave bash mode: the prompt frame plus the stash update. */
   const exitBash = (): void => {
     mode = 'prompt'
     draft.stashInputMode('prompt')
-    applyPromptFrame()
+    shared.setShell(false)
   }
 
   // A theme-swap reload rebuilt the editor while bash mode was stashed:
-  // re-apply the triple so the restored draft still reads as shell input.
+  // re-apply the frame so the restored draft still reads as shell input.
   if (mode === 'bash') enterBash()
 
   /**
@@ -532,16 +518,13 @@ function attach(ctx: Context, shared: SharedEditor, isUnloaded: () => boolean): 
   editor.onChange = (text) => {
     previousOnChange?.(text)
     // A buffer holding exactly '!' switches to bash mode without polluting
-    // the buffer; the mode cue is the symbol + label + hue triple.
+    // the buffer; the mode cue is the `!` symbol and the accent border.
     if (mode === 'prompt' && text === '!') {
       enterBash()
       editor.setText('')
       editor.setGhostHint(undefined)
       return
     }
-    // While bash is active the shell hue wins over `mayfly-input`'s
-    // slash-context resolution (a leading `/` is a path separator here).
-    if (mode === 'bash') editor.setBorderColor(colors.shellMode)
     refreshGhost(text)
   }
   // The editor clears its buffer before invoking onSubmit; the callback
@@ -594,11 +577,9 @@ function attach(ctx: Context, shared: SharedEditor, isUnloaded: () => boolean): 
     editor.onChange = previousOnChange
     editor.onSubmit = previousOnSubmit
     editor.onKey = previousOnKey
+    // The frame goes with the editor; the reload stash keeps the mode the
+    // user was in, so a remount (theme swap) rebuilds bash where it left off.
     editor.setGhostHint(undefined)
-    // Visual restore only — the reload stash keeps the mode the user was
-    // in, so a remount (theme swap) rebuilds bash where it left off.
-    if (mode === 'bash') applyPromptFrame()
-    else editor.setBorderColor(colors.border)
   }
 }
 

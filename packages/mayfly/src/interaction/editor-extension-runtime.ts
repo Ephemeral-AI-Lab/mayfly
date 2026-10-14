@@ -85,6 +85,8 @@ interface EditorExtensionRuntimeOptions {
   readonly editor: MayflyEditor
   readonly report: (id: string, feedback: MayflyFeedback) => void
   readonly footer?: () => MayflyUiNode | undefined
+  /** The editor's frame as a node (the `Editor` component): its one `prompt` is the face of {@link EditorExtensionRuntimeOptions.editor}. */
+  readonly frame: (state: { readonly parked: boolean }) => MayflyUiNode
   readonly shouldTransformSubmit: (text: string) => boolean
 }
 
@@ -249,6 +251,7 @@ export class EditorExtensionRuntime implements MayflyFocusable {
   private completionLifecycle = new AbortController()
   private prepared: PreparedSubmit | undefined
   private initialized = false
+  private disposed = false
   private readonly unsubscribeExtensions: () => void
   private readonly unsubscribeHost: () => void
 
@@ -274,8 +277,11 @@ export class EditorExtensionRuntime implements MayflyFocusable {
 
   get focused(): boolean { return this.ownFocused }
   set focused(value: boolean) {
+    const changed = this.ownFocused !== value
     this.ownFocused = value
     this.focusTarget.focused = value
+    // The frame is muted while keyboard focus is elsewhere, so a focus change recompiles it.
+    if (changed && this.initialized && !this.disposed) this.refreshPresentation()
   }
 
   render(width: number): string[] {
@@ -327,6 +333,7 @@ export class EditorExtensionRuntime implements MayflyFocusable {
   }
 
   dispose(): void {
+    this.disposed = true
     this.unsubscribeExtensions()
     this.unsubscribeHost()
     this.abortPending()
@@ -387,7 +394,7 @@ export class EditorExtensionRuntime implements MayflyFocusable {
       if (admitted.ok && isPassive(admitted.value)) children.push({ node: admitted.value })
       else this.report('definition', admitted.ok ? 'editor extension before must be passive' : admitted.message.slice(0, MAX_NOTICE_TEXT))
     }
-    children.push({ node: { kind: 'editor-control' } })
+    children.push({ node: this.options.frame({ parked: !this.ownFocused }) as MayflyEditorShellNode })
     // The keymap is snapshotted only when a decoration declares an action: the shell is recompiled on every keystroke.
     let claimedKeys: Set<string> | undefined
     const claimed = (): Set<string> => claimedKeys ??= new Set(this.options.ctx.mayflyKeymap.list().flatMap(action => [action.keys].flat()).map(key => key.toLowerCase()))
@@ -450,7 +457,7 @@ export class EditorExtensionRuntime implements MayflyFocusable {
     }
     return {
       node: children.length === 1
-        ? { kind: 'editor-control' }
+        ? children[0]!.node
         : { kind: 'stack', direction: 'column', children },
       actions,
     }
@@ -458,7 +465,6 @@ export class EditorExtensionRuntime implements MayflyFocusable {
 
   private compileShell(): EditorShell {
     const envelope = this.extensionEnvelope()
-    if (envelope.node.kind === 'editor-control') return this.plainShell()
     let shell!: EditorShell
     const result = compileMayflyEditorShellNode(envelope.node, {
       editor: this.options.editor,

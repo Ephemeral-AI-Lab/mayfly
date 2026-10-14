@@ -923,6 +923,84 @@ const APP = {
   },
 }
 
+/** What draws the editor's frame: the component, its facts, the shell that compiles it around the host editor, and the prompt painter. */
+const EDITOR = [
+  'packages/mayfly/src/components/editor.ts', `${INTERACTION}input-plugin.ts`, `${INTERACTION}editor-extension-runtime.ts`, `${INTERACTION}editor-plus.ts`,
+  `${INTERACTION}editor-instance.ts`, 'packages/mayfly/src/core/components.ts', 'packages/mayfly/src/core/chrome.ts', 'packages/mayfly/src/core/ui-prompt.ts',
+  'packages/mayfly/src/core/ui-patterns.ts', 'packages/mayfly/src/core/ui-compiler.ts', 'packages/mayfly/src/core/ui-validator.ts',
+]
+/** The session names the editor scenarios give the conversation (the command `/rename`, then Enter). */
+const RENAME = title => [type(`/rename ${title}`), key('enter')]
+/** Empty the draft: Escape clears an idle prompt (the wait keeps the next key from reading as Alt+key). */
+const CLEAR = [key('esc'), wait(150)]
+const EDITOR_SIZES = [[96, 24], [60, 24], [40, 24]]
+const EDITOR_REVIEW = {
+  editor: {
+    scene: 15,
+    reference: 'prototype scene 15 (Editor) · component-library §5.2 · part 4a.1 · `Editor` in mayfly-components.mjs',
+    implemented: [
+      'The prompt is a rounded frame around the `> ` symbol and the buffer, with the conversation title in the top-right corner (`─ Title ╮`); the title and the frame come from the pure `Editor` component, not from the editor.',
+      'The frame has the same shape at 96, 60, and 40 columns: the buffer wraps inside it (a long sentence, a CJK sentence, three explicit lines) and every wrapped row sits under the buffer, after the symbol\'s two columns; the caret is the editor\'s own cursor cell.',
+      'The `/` list is a borderless palette over the stream: up to six plain rows as wide as the frame, ending on the row right above it (so it covers the stream\'s tail and the hint above the frame), the focused row marked with a `→` and its name in the primary tone, the typed part of the other names bold, descriptions muted, names lined up with the buffer\'s text. No border, count, or key line. It never changes the editor\'s height or moves the stream.',
+      'Focus elsewhere (Alt+Up into the stream) mutes the frame, as before.',
+    ],
+    focus: [
+      { look: 'The frame at 96 columns: title at the right, symbol, caret, nothing else changed in the editor', how: 'checkpoints `start`, `titled`, `typed` (`pnpm run scenario editor`)' },
+      { look: 'A sentence that wraps, then the same at 60 and 40 columns', how: 'checkpoints `wrapped`, `wrapped-60`, `wrapped-40`' },
+      { look: 'A multi-line buffer and a CJK buffer: rows stay under the buffer, no wide character is split', how: 'checkpoints `multiline`, `cjk`, `cjk-40`' },
+      { look: 'The caret in the middle of the text', how: 'checkpoint `caret` (`--png` shows the cursor cell)' },
+      { look: 'The `/` palette over the stream: full row width, the hint above the frame covered, the arrow on the focused row, names under the buffer\'s text', how: 'checkpoints `commands`, `commands-down` (the second row focused)' },
+      { look: 'The palette at 60 and 40 columns', how: 'checkpoints `commands-60`, `commands-40`' },
+      { look: 'A long list scrolls behind the focused row', how: 'checkpoints `commands-all`, `commands-scroll`' },
+      { look: 'Nothing moves when the drawer opens or closes: the frame and the rows above it stay where they were', how: 'checkpoints `typed`, `commands`, `commands-closed` (the frame\'s rows stay put)' },
+      { look: 'A parked frame is muted', how: 'press Alt+Up with an empty prompt in `pnpm run scenario editor`' },
+    ],
+    differs: [
+      'The title is cut at its end with `…` (the prototype keeps the end of a long title): owner decision for 4a.1.',
+      'No placeholder ladder, queue line, tokens, or recall corner: they come with 4b, 4c, and 4e.',
+      'The `/` and `@` lists still hold pi-tui\'s state and keys (4d replaces them); only their painting moved, out of the editor into a palette over the stream, which the prototype does not draw (it grows the prompt): owner decision. The palette has no border, count, or key line, and its focus mark is an arrow, not the prototype\'s `→ ` row prefix with a bold label only.',
+      'A buffer taller than the editor\'s window loses pi-tui\'s `↑ N more` rule (the frame is the surface\'s); the cursor still scrolls the window.',
+      'The slash-context border (primary while the buffer starts with `/`) is gone: the frame has one border tone besides shell mode.',
+    ],
+    pending: ['Placeholders by state (4e.1), tokens (4b), the queue line and recall (4c), the palette list and its key line (4d).'],
+  },
+  editorTitle: {
+    scene: 15,
+    reference: 'prototype scene 15 (Editor: the conversation title in the top-right corner) · component-library §5.2 · part 4a.1',
+    implemented: [
+      'The title is flush right: `─ Title ╮`, in bold text color; a long one keeps its start and ends in `…` (`╭─ Update the landing pa… ╮`) at 60 and 40 columns; a title with no room is dropped and the rule stays whole.',
+      'A rename changes the title at once, a CJK title is cut on a character boundary, and the frame\'s rows do not move.',
+    ],
+    focus: [
+      { look: 'A short title at 96 columns, flush right', how: 'checkpoint `short`' },
+      { look: 'A long title: whole at 96 columns, cut with `…` at 60, 40, and 24', how: 'checkpoints `long`, `long-60`, `long-40`, `long-24`' },
+      { look: 'A rename replaces the title', how: 'checkpoint `renamed`' },
+      { look: 'A CJK title', how: 'checkpoints `cjk`, `cjk-40`' },
+    ],
+    differs: ['The end of a long title is cut (the prototype keeps the end): owner decision for 4a.1; other right-aligned titles keep the end (`titleCut`).'],
+    pending: ['The title follows the official `title` projection already; 4e.2 adds the rename walk and its tests.'],
+  },
+  editorShell: {
+    scene: 15,
+    reference: 'prototype scene 15 (Editor: shell mode) · component-library §5.2 · part 4a.2',
+    implemented: [
+      'A `!` typed as the first character turns the symbol into a bold accent `!` and the whole frame (every row) into the accent border; the `!` itself is not in the buffer, and there is no `! shell mode` label and no chip.',
+      'Esc or Backspace on an empty shell prompt leaves the mode; so does submitting a command (the command runs and echoes into the stream). The title stays.',
+      'The frame is the same at 96, 60, and 40 columns. With no color (`--no-color`, or `editorShell-mono`) the bold `!` is the only cue.',
+    ],
+    focus: [
+      { look: 'The symbol and the border change at the first `!`; nothing else moves', how: 'checkpoints `prompt`, `shell`' },
+      { look: 'A command in the buffer, and the same frame at 60 and 40 columns', how: 'checkpoints `command`, `command-60`, `command-40`' },
+      { look: 'Backspace on an empty buffer leaves; Esc leaves too', how: 'checkpoints `emptied`, `left`, `left-esc`' },
+      { look: 'Submitting leaves shell mode and the command echoes in the stream', how: 'checkpoint `submitted`' },
+      { look: 'Both themes: the accent border and the `!`', how: '`/theme` in `pnpm run scenario editorShell`, then `!`' },
+      { look: 'Without color the shell prompt is still told by its `!`', how: '`pnpm run scenario editorShell --no-color`, or `editorShell-mono`' },
+    ],
+    differs: ['Submitting a shell command leaves the mode (today\'s behavior); the prototype keeps the border until Esc.'],
+    pending: ['A placeholder for shell mode (4e.1).'],
+  },
+}
+
 const SENTENCE = 'the quick brown fox jumps over the lazy dog and keeps typing until the prompt wraps onto a second row of the editor'
 /** Open a panel by its command, measure its cursor keys, and close it. */
 const nav = command => [type(command), key('enter'), measure(`nav ${command}`, [key('down', { repeat: 20 }), key('up', { repeat: 20 })]), key('esc'), key('esc'), key('ctrl+c')]
@@ -985,6 +1063,87 @@ export const CATALOG = Object.freeze({
     covers: [`${TRANSCRIPT}banner*.ts`, `${TRANSCRIPT}status-*.ts`, `${INTERACTION}input-plugin.ts`],
     sizes: [DEFAULT_SIZE, [60, 24]],
     script: [checkpoint('boot')],
+  },
+  // The editor's frame (4a.1): the title in the corner, the buffer wrapped inside, the `/` list under it, at three widths.
+  editor: {
+    summary: 'the editor\'s frame: the conversation title at the top right, a short, a wrapped, a multi-line, and a CJK buffer, the caret, and the `/` list as a borderless palette over the stream, at 96, 60, and 40 columns',
+    source: { idle: true },
+    covers: EDITOR,
+    sizes: EDITOR_SIZES,
+    review: EDITOR_REVIEW.editor,
+    script: [
+      checkpoint('start'),
+      ...RENAME('Update the landing page hero'), checkpoint('titled'),
+      type('Add the install line to the README'), checkpoint('typed'),
+      ...CLEAR, type('the quick brown fox jumps over the lazy dog and keeps typing until the prompt wraps onto a second row of the editor'), checkpoint('wrapped'),
+      key('left', { repeat: 40 }), checkpoint('caret'),
+      resize(60, 24), checkpoint('wrapped-60'),
+      resize(40, 24), checkpoint('wrapped-40'),
+      resize(96, 24),
+      ...CLEAR, type('first line'), key('ctrl+j'), type('a second line that is a little longer'), key('ctrl+j'), type('third'), checkpoint('multiline'),
+      ...CLEAR, type('把落地页的标题改短一点，再检查一下安装说明和链接是否都还有效'), checkpoint('cjk'),
+      resize(40, 24), checkpoint('cjk-40'),
+      resize(96, 24),
+      ...CLEAR, type('/mo'), checkpoint('commands'),
+      key('down'), checkpoint('commands-down'),
+      resize(60, 24), checkpoint('commands-60'),
+      resize(40, 24), checkpoint('commands-40'),
+      resize(96, 24),
+      ...CLEAR, ...CLEAR, type('/'), checkpoint('commands-all'),
+      key('down', { repeat: 8 }), checkpoint('commands-scroll'),
+      key('esc'), checkpoint('commands-closed'),
+    ],
+  },
+  // The title (4a.1): whole, cut at its end, replaced, and wide.
+  editorTitle: {
+    summary: 'the editor\'s title: a short one, a long one cut with `…` at 60, 40, and 24 columns, a rename, and a CJK title',
+    source: { idle: true },
+    covers: EDITOR,
+    sizes: EDITOR_SIZES,
+    review: EDITOR_REVIEW.editorTitle,
+    script: [
+      ...RENAME('Update the landing page hero'), checkpoint('short'),
+      ...RENAME('Update the landing page hero and rewrite the install section of the README'), checkpoint('long'),
+      resize(60, 24), checkpoint('long-60'),
+      resize(40, 24), checkpoint('long-40'),
+      resize(24, 24), checkpoint('long-24'),
+      resize(96, 24),
+      ...RENAME('Fix the build'), checkpoint('renamed'),
+      ...RENAME('更新落地页首屏的标题和安装说明'), checkpoint('cjk'),
+      resize(40, 24), checkpoint('cjk-40'),
+    ],
+  },
+  // Shell mode (4a.2): the `!` symbol and the accent border, the ways out, and the mode without color.
+  editorShell: {
+    summary: 'shell mode: a `!` turns the symbol and the border to the accent color, nothing else changes; Backspace or Esc on an empty buffer leaves, and so does a submit',
+    source: { idle: true },
+    covers: EDITOR,
+    sizes: EDITOR_SIZES,
+    review: EDITOR_REVIEW.editorShell,
+    script: [
+      ...RENAME('Update the landing page hero'), checkpoint('prompt'),
+      type('!'), checkpoint('shell'),
+      type('ls -la docs and then print the first lines of the changelog so the command wraps'), checkpoint('command'),
+      resize(60, 24), checkpoint('command-60'),
+      resize(40, 24), checkpoint('command-40'),
+      resize(96, 24),
+      key('backspace', { repeat: 80 }), checkpoint('emptied'),
+      key('backspace'), checkpoint('left'),
+      type('!'), key('esc'), checkpoint('left-esc'),
+      type('!echo hi'), key('enter'), checkpoint('submitted'),
+    ],
+  },
+  'editorShell-mono': {
+    summary: 'shell mode without color: the bold `!` is the only cue',
+    source: { idle: true },
+    config: { mayfly: { monochrome: true } },
+    covers: EDITOR,
+    sizes: [[96, 24], [40, 24]],
+    script: [
+      ...RENAME('Update the landing page hero'), checkpoint('prompt'),
+      type('!'), checkpoint('shell'),
+      type('ls -la docs'), checkpoint('command'),
+    ],
   },
   gallery: {
     summary: 'the UI gallery: a side pane, a view in status row 2, and a bottom prompt pane',

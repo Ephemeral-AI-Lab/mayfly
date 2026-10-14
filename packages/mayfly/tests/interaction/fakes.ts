@@ -18,7 +18,7 @@ import {
 // the same implementations the renderer runs.
 import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/width.ts'
 import { topRule } from '../../src/core/chrome.ts'
-import type { MayflyAutocompleteItem, MayflyAutocompleteProvider, MayflyColorFn, MayflyComponent, MayflyComponents, MayflyEditor, MayflyEditorOptions, MayflyEditorSubmitAttempt, MayflyFocusable, MayflyKeyAction, MayflyKeymap, MayflyMarkdown, MayflyMarkdownOptions, MayflyOverlayHandle, MayflyOverlayOptions, MayflyScreen, MayflySelectItem, MayflySelectList, MayflySelectListOptions, MayflySemanticColors, MayflySubmittedDraft, MayflyTheme } from '../../src/core/types.ts'
+import type { MayflyAutocompleteItem, MayflyAutocompleteProvider, MayflyComponent, MayflyComponents, MayflyEditor, MayflyEditorOptions, MayflyEditorSubmitAttempt, MayflyFocusable, MayflyKeyAction, MayflyKeymap, MayflyMarkdown, MayflyMarkdownOptions, MayflyOverlayHandle, MayflyOverlayOptions, MayflyScreen, MayflySelectItem, MayflySelectList, MayflySelectListOptions, MayflySemanticColors, MayflySubmittedDraft, MayflyTheme } from '../../src/core/types.ts'
 import type { MayflyComponentsService } from '../../src/core/components.ts'
 import type { MayflyKeymapService } from '../../src/core/keymap.ts'
 import type { MayflyScreenService } from '../../src/core/screen.ts'
@@ -227,16 +227,8 @@ export class FakeMayflyEditor implements MayflyEditor {
   readonly history: string[] = []
   /** Every string recorded through `insertText`, in order. */
   readonly inserted: string[] = []
-  /** The last border color set; identity until restyled. */
-  borderColor: MayflyColorFn = identity
-  /** The last prompt symbol set, if any. */
-  promptSymbol: '>' | '!' | undefined
-  /** The last border label set, if any. */
-  borderLabel: string | undefined
-  /** The last border title set, if any. */
-  borderTitle: string | undefined
-  /** Whether the frame currently opens into a panel above. */
-  connectedAbove = false
+  /** Whether the buffer was last marked as a shell command. */
+  shellMode = false
   /** The last ghost hint set, if any. */
   ghostHint: string | undefined
   /** The last autocomplete provider attached, if any. */
@@ -322,24 +314,8 @@ export class FakeMayflyEditor implements MayflyEditor {
     this.onChange?.(this.text)
   }
 
-  setBorderColor(color: MayflyColorFn): void {
-    this.borderColor = color
-  }
-
-  setPromptSymbol(symbol: '>' | '!' | undefined): void {
-    this.promptSymbol = symbol
-  }
-
-  setBorderLabel(text: string | undefined): void {
-    this.borderLabel = text
-  }
-
-  setBorderTitle(text: string | undefined): void {
-    this.borderTitle = text
-  }
-
-  setConnectedAbove(connected: boolean): void {
-    this.connectedAbove = connected
+  setShellMode(shell: boolean): void {
+    this.shellMode = shell
   }
 
   setGhostHint(hint: string | undefined): void {
@@ -352,6 +328,10 @@ export class FakeMayflyEditor implements MayflyEditor {
 
   isShowingAutocomplete(): boolean {
     return this.showingAutocomplete
+  }
+
+  completion(): undefined {
+    return undefined
   }
 
   refreshAutocomplete(): void {

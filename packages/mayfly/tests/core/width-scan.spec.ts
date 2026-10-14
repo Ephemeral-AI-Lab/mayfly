@@ -1,13 +1,12 @@
 /**
  * The width-scan contract for core's own rendering surfaces (D48): the
- * gutter wrapper, the shared `framePanel` framer, `WrappingSelectList`
- * (the slash-command dropdown), the diff band painter, and the
+ * gutter wrapper, the shared `framePanel` framer, the completion drawer
+ * (the slash-command list), the diff band painter, and the
  * `clampRowsToWidth` backstop itself — each must honor the `MayflyComponent` contract at every scan
  * width against every adversarial fixture.
  */
 
 import { describe, expect, it } from 'vitest'
-import type { SelectItem, SelectListTheme } from '@earendil-works/pi-tui'
 import { clampRowsToWidth } from '../../src/core/chrome.ts'
 import { renderChartRows } from '../../src/core/chart-renderer.ts'
 import { alignDiffLines, paintDiffRows } from '../../src/core/diff-align.ts'
@@ -21,20 +20,11 @@ import { UiSurfaceModel } from '../../src/core/ui-interaction-surface.ts'
 import { ui } from '../../../ui/src/index.ts'
 import { createRealSurface, probeComponents } from '../design/probe.ts'
 import type { MayflyComponents, MayflyEditor, MayflySemanticColors } from '../../src/core/types.ts'
-import { WrappingSelectList } from '../../src/core/wrapping-select-list.ts'
+import { paintDrawer } from '../../src/core/completion-drawer.ts'
 import { sliceByColumn, truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/width.ts'
 import { ViewsLane } from '../../src/core/views-lane.ts'
 import { ADVERSARIAL, SCAN_WIDTHS, expectLinesFit } from './width-scan.ts'
 import { plainColors } from '../helpers.ts'
-
-/** Identity paints: the scan measures true columns, not bracket markers. */
-const selectTheme: SelectListTheme = {
-  selectedPrefix: text => text,
-  selectedText: text => text,
-  description: text => text,
-  scrollInfo: text => text,
-  noMatch: text => text,
-}
 
 /** W4a migration sweep: every integer width in the supported fixture range. */
 const MIGRATION_WIDTHS = Array.from({ length: 119 }, (_, index) => index + 2)
@@ -47,16 +37,13 @@ function scanEditor(text: string): MayflyEditor {
     setSubmitBarrier: () => {},
     submit: () => {},
     isShowingAutocomplete: () => false,
+    completion: () => undefined,
     refreshAutocomplete: () => {},
     getText: () => text,
     setText: () => {},
     addToHistory: () => {},
     getHistory: () => [],
-    setBorderColor: () => {},
-    setPromptSymbol: () => {},
-    setBorderLabel: () => {},
-    setBorderTitle: () => {},
-    setConnectedAbove: () => {},
+    setShellMode: () => {},
     setGhostHint: () => {},
     setAutocompleteProvider: () => {},
     getExpandedText: () => text,
@@ -150,17 +137,18 @@ describe('core width-scan', () => {
       }
     })
 
-    it(`WrappingSelectList survives ${name}`, () => {
-      const items: SelectItem[] = [
-        { value: text, label: `/${text.slice(0, 30)}`, description: text },
-        { value: 'short', label: '/short', description: 'fits' },
-      ]
-      const list = new WrappingSelectList(items, 5, selectTheme, {
-        minPrimaryColumnWidth: 12,
-        maxPrimaryColumnWidth: 32,
-      })
+    it(`the completion drawer survives ${name}`, () => {
+      const view = {
+        kind: 'commands' as const,
+        prefix: '/',
+        index: 0,
+        items: [
+          { label: `/${text.slice(0, 30)}`, detail: text },
+          { label: '/short', detail: 'fits' },
+        ],
+      }
       for (const width of MIGRATION_WIDTHS) {
-        expectLinesFit(`WrappingSelectList/${name}`, list.render(width), width)
+        expectLinesFit(`completion drawer/${name}`, paintDrawer({ view, width, colors: plainColors(), components: probeComponents(), glyphs: undefined }), width)
       }
     })
 

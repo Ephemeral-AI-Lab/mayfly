@@ -176,6 +176,31 @@ export function paintPrompt(paint: PromptPaint): string[] {
   return rows
 }
 
+/** What the host-editor painter reads: the node, the width, the palette, and the host's buffer. */
+export interface HostedPromptPaint {
+  readonly node: MayflyPromptNode
+  readonly width: number
+  readonly colors: MayflySemanticColors
+  readonly components: Measure
+  /** The host editor's rows at a width: its buffer with the cursor, and the completion list it opens under it. */
+  readonly buffer: (width: number) => string[]
+}
+
+/**
+ * The rows of the prompt of an editor shell: the symbol (bold in its tone) beside the host editor's first row, the later
+ * rows under the symbol's indent. The draft, the placeholder, and the tokens are the surface model's and a shell has
+ * none; the editor paints its own cursor.
+ */
+export function paintHostedPrompt(paint: HostedPromptPaint): string[] {
+  const { node, colors, components } = paint
+  const width = Math.max(1, paint.width)
+  const symbol = node.symbol ?? '> '
+  const symbolWidth = components.visibleWidth(symbol)
+  const head = node.symbolTone === undefined ? colors.text(symbol) : strong(paintTone(node.symbolTone, symbol, colors))
+  const [first = '', ...rest] = paint.buffer(Math.max(MIN_EDITOR_WIDTH, width - symbolWidth))
+  return [components.truncateToWidth(`${head}${first}`, width, ''), ...rest.map(row => components.truncateToWidth(`${' '.repeat(symbolWidth)}${row}`, width, ''))]
+}
+
 /**
  * The terminal editor behind one prompt. The surface model owns the draft; this mirrors it into the editor when the
  * model moves (a recall, a reset, a submit) and reports the editor's own edits back. Enter never reaches the editor, so

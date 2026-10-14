@@ -546,6 +546,18 @@ export interface MayflyAutocompleteProvider {
   shouldTriggerFileCompletion?(lines: string[], cursorLine: number, cursorCol: number): boolean
 }
 
+/** One completion list as facts: what the typed prefix selects, the items it kept, and the focused one. */
+export interface MayflyCompletionView {
+  /** `commands` for a `/` prefix, `files` for `@`, `completions` otherwise. */
+  readonly kind: 'commands' | 'files' | 'completions'
+  /** The items, in the provider's order; `detail` is the description. */
+  readonly items: readonly { readonly label: string, readonly detail?: string }[]
+  /** The focused item. */
+  readonly index: number
+  /** The prefix the provider matched, as typed (`/mo`). */
+  readonly prefix: string
+}
+
 /**
  * A multi-line input editor. The submit/change callbacks and `disableSubmit`
  * are mutable properties, set after creation, matching the underlying
@@ -586,6 +598,12 @@ export interface MayflyEditor extends MayflyFocusable {
   /** Re-query the active autocomplete provider without changing the buffer. */
   refreshAutocomplete(): void
   /**
+   * The open completion list as facts, or `undefined` while none is open. The editor paints no rows for the list (its
+   * rows never grow with it); the host draws it as a drawer over the stream.
+   * @returns the list's kind, items, and focused index.
+   */
+  completion(): MayflyCompletionView | undefined
+  /**
    * Read the current text.
    * @returns the editor content.
    */
@@ -616,37 +634,11 @@ export interface MayflyEditor extends MayflyFocusable {
    */
   removeLatestHistory?(text: string): boolean
   /**
-   * Restyle the editor frame (e.g. focused vs. unfocused border).
-   * @param color - the new border color function.
+   * Mark the buffer as a shell command. The editor paints the leading `/command` token of a prompt bold and primary;
+   * in shell mode a leading `/` is a path separator, and the token stays unpainted.
+   * @param shell - whether the buffer is a shell command.
    */
-  setBorderColor(color: MayflyColorFn): void
-  /**
-   * Overlay a prompt symbol on the editor's first content row. Requires the
-   * editor to be created with `paddingX: 4`; the bash `!` renders in the
-   * current border color, the neutral `>` in the default foreground.
-   * @param symbol - the symbol, or `undefined` to remove it.
-   */
-  setPromptSymbol(symbol: '>' | '!' | undefined): void
-  /**
-   * Lay pre-styled text into the editor's top border (e.g. a mode badge);
-   * scroll-indicator borders are never labeled. Requires `paddingX: 4`.
-   * @param text - the styled label, or `undefined` to remove it.
-   */
-  setBorderLabel(text: string | undefined): void
-  /**
-   * Lay plain text into the right end of the editor's top border as
-   * `─ title ─╮` (the session name). Core strips terminal controls,
-   * collapses whitespace, ellipsizes the title to the room the border label
-   * leaves, and drops it on narrow or scroll-indicator borders.
-   * @param text - the plain title, or `undefined` (or blank) to remove it.
-   */
-  setBorderTitle(text: string | undefined): void
-  /**
-   * Switch the top corners between `╭╮` and `├┤`, the latter reading as a
-   * frame docked to a panel above (the S13 btw dock).
-   * @param connected - whether a panel is docked above the editor.
-   */
-  setConnectedAbove(connected: boolean): void
+  setShellMode(shell: boolean): void
   /**
    * Overlay a dimmed argument-hint ghost after the typed text on the first
    * content row (the S14 slash-command parameter hint, e.g. `<question>`

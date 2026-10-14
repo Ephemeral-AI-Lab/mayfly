@@ -20,6 +20,8 @@ export interface SharedEditor {
   readonly editor: MayflyEditor
   readonly submitPrompt: (text: string) => void
   readonly abortPrompt?: () => void
+  /** Switch the frame between a prompt and a shell command: the `!` symbol and the accent border. */
+  readonly setShell: (shell: boolean) => void
   readonly report?: (id: string, feedback: MayflyFeedback) => void
 }
 

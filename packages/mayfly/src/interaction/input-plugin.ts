@@ -1,10 +1,11 @@
 /**
  * `mayfly-input` plugin: the bottom input editor, backed by the pi-tui Editor
  * through `ctx.mayflyComponents.createEditor` (multi-line, kill-ring, undo,
- * history, and paste markers are the component's own). The editor mounts
- * with `paddingX: 4` and the `>` prompt symbol, feeding the rounded-box
- * chrome the core adapter overlays; slash-prefixed input highlights the
- * frame in `primary` and any other text returns the neutral border. Submit
+ * history, and paste markers are the component's own). The editor's frame
+ * is the `Editor` component (`../components/editor.ts`): a rounded surface
+ * with the conversation title in its top-right corner around the prompt,
+ * whose buffer is this editor's own; shell mode shows as the `!` symbol and
+ * the accent border. Submit
  * dispatches a slash command through `ctx.commands` when the line parses as
  * one, otherwise queues the text as a user follow-up message on the current
  * agent (the harness inbox queues it when the agent is running). S29: the
@@ -54,6 +55,8 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { MayflyScreen, MayflySubmittedDraft } from '../core/types.ts'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { ui, type MayflyFeedback, type MayflyUiNode, type MayflyUiScope } from '@ephemeral-ai/mayfly-ui'
+import { Editor } from '../components/editor.ts'
+import { CompletionDrawer } from '../core/completion-drawer.ts'
 import { normalizeWheelInput } from '../core/terminal.ts'
 import { parseCommand } from '@deepseek-ai/dsh-commands'
 import type { PromptContentPart, StoredImageAttachment } from '@deepseek-ai/dsh-attachment'
@@ -175,7 +178,6 @@ export const inject = ['mayflyScreen', 'mayflyTheme', 'mayflyComponents', 'mayfl
 export function apply(ctx: Context): void {
   const t = interactionTranslator(ctx)
   const screen = ctx.mayflyScreen
-  const colors = ctx.mayflyTheme.colors
   const conversations = ctx.mayflyConversations
   const requests = ctx.mayflyRequests
   const subagents = ctx.subagents
@@ -222,10 +224,9 @@ export function apply(ctx: Context): void {
     for (const controller of pendingSubagentPrompts) controller.abort()
     pendingSubagentPrompts.clear()
   })
-  const editor = ctx.mayflyComponents.createEditor({ paddingX: 4 })
-  // The padding reserves columns 0-3 for the side border, its gap, and the
-  // `>` prompt symbol the rounded-box chrome overlays.
-  editor.setPromptSymbol('>')
+  const editor = ctx.mayflyComponents.createEditor()
+  /** The facts of the editor's frame: the conversation title (sanitized, one line) and whether the buffer is a shell command. */
+  const frame: { title: string | undefined, shell: boolean } = { title: undefined, shell: false }
 
   const notificationOwner = ctx.mayflyUiInteraction.createNotificationOwner('mayfly.input')
   ctx.effect(() => () => notificationOwner.dispose())
@@ -248,6 +249,7 @@ export function apply(ctx: Context): void {
     editor,
     report: (id, feedback) => notificationOwner.report(`editor-extension/${id}`, notificationScope(), feedback, id),
     footer: feedbackNode,
+    frame: ({ parked }) => Editor({ ...frame.title === undefined ? {} : { title: frame.title }, shell: frame.shell, parked }),
     shouldTransformSubmit: text => ctx.mayflyCurrentAgent.current() !== null
       && draft.getStashedInputMode() !== 'bash'
       && parseCommand(text.trim()) === undefined,
@@ -824,10 +826,6 @@ export function apply(ctx: Context): void {
     currentText = text
     // Mirror every edit so a theme-swap reload loses nothing.
     draft.stashDraft(text)
-    // Slash context highlights the frame in `primary`; any other text
-    // returns the neutral border. `mayfly-editor-plus` re-asserts its shell
-    // hue on top while bash mode is active.
-    editor.setBorderColor(text.trimStart().startsWith('/') ? colors.primary : colors.border)
     notificationOwner.clearAll()
     refreshHint()
   }
@@ -882,21 +880,44 @@ export function apply(ctx: Context): void {
   // the frontend session-facts bridge whenever that service is mounted.
   ctx.inject(['mayflySessionFacts'], owner => {
     const offTitle = owner.mayflySessionFacts.subscribeTitle(title => {
-      editor.setBorderTitle(title)
-      screen.requestRender()
+      const line = title === undefined ? '' : title.replace(/\s+/gu, ' ').trim()
+      frame.title = line === '' ? undefined : line
+      refreshHint()
     })
     owner.effect(() => () => {
       offTitle()
-      editor.setBorderTitle(undefined)
+      frame.title = undefined
     })
   })
   ctx.effect(() => {
     const slot = screen.mountDockSlot('editor.prompt', extensionRuntime)
     slot.focus()
+    // The completion list is plain rows over the stream, as wide as the frame and ending on the row above it: neither the
+    // editor nor the conversation reflows when it opens.
+    const drawer = new CompletionDrawer({
+      view: () => editor.completion(),
+      frameWidth: () => screen.columns,
+      colors: ctx.mayflyTheme.colors,
+      components: ctx.mayflyComponents,
+      glyphs: ctx.mayflyComponents.presentation?.glyphs,
+    })
+    const drawerHandle = screen.showOverlay(drawer, {
+      anchor: 'bottom-left',
+      nonCapturing: true,
+      get width() { return drawer.width },
+      get offsetY() { return -screen.editorRowsFromBottom },
+      visible: () => drawer.open,
+    })
     const shared = {
       editor,
       submitPrompt,
       abortPrompt: () => { interruptOrClear() },
+      setShell: (shell: boolean) => {
+        if (frame.shell === shell) return
+        frame.shell = shell
+        editor.setShellMode(shell)
+        refreshHint()
+      },
       report: (id: string, feedback: MayflyFeedback) => notificationOwner.report(id, notificationScope(), feedback, id),
     }
     setSharedEditor(ctx, shared)
@@ -907,6 +928,7 @@ export function apply(ctx: Context): void {
       clearSharedEditor(ctx)
       ctx.emit('mayfly/input-editor-changed')
       detachEditorPlus()
+      drawerHandle.hide()
       extensionRuntime.dispose()
       slot.dispose()
     }

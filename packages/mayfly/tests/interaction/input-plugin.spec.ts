@@ -176,7 +176,7 @@ async function mount(options: {
   const editor = components.editors.at(-1)!
   const editorRoot = screen.children[0] as MayflyFocusable & MayflyComponent
   const hint: MayflyComponent = {
-    render: width => editorRoot.render(width).slice(editor.render(width).length),
+    render: width => editorRoot.render(width).slice(editor.render(width).length + 2),
     invalidate: () => editorRoot.invalidate(),
   }
   noticeLanes.set(hint, ctx)
@@ -204,18 +204,18 @@ describe('mayfly-input plugin', () => {
     expect(screen.children).toEqual([editorRoot])
     expect(screen.focused).toBe(editorRoot)
     expect(editor.focused).toBe(true)
-    // The editor mounts with the rounded-box chrome's prerequisites — the
-    // prompt symbol and the padding that reserves its columns — and the hint
+    // The editor mounts as a plain prompt (its frame is the Editor component's, around the buffer) and the hint
     // row renders nothing at rest (the persistent tier retired with S15).
-    expect(editor.promptSymbol).toBe('>')
-    expect((ctx.mayflyComponents as unknown as FakeMayflyComponents).editorOptions[0]).toEqual({ paddingX: 4 })
+    expect(editor.shellMode).toBe(false)
+    expect((ctx.mayflyComponents as unknown as FakeMayflyComponents).editorOptions[0]).toBeUndefined()
     expect(hint.render(80)).toEqual([])
     hint.invalidate()
   })
 
-  it('mirrors the current session title into the editor border while session facts exist', async () => {
-    const { ctx, screen, editor, fiber } = await mount()
-    expect(editor.borderTitle).toBeUndefined()
+  it('mirrors the current session title into the editor frame while session facts exist', async () => {
+    const { ctx, screen, editorRoot, fiber } = await mount()
+    const top = (): string => editorRoot.render(80)[0] ?? ''
+    expect(top()).not.toContain('dock-transcript-redesign')
     const listeners = new Set<(title: string | undefined) => void>()
     const facts = {
       subscribeTitle(listener: (title: string | undefined) => void) {
@@ -226,19 +226,19 @@ describe('mayfly-input plugin', () => {
     }
     const renders = screen.renderRequests
     const offFacts = ctx.provide('mayflySessionFacts', facts as never)
-    await vi.waitFor(() => { expect(editor.borderTitle).toBe('dock-transcript-redesign') })
+    await vi.waitFor(() => { expect(top()).toContain(' dock-transcript-redesign ╮') })
     expect(screen.renderRequests).toBeGreaterThan(renders)
     for (const listener of listeners) listener(undefined)
-    expect(editor.borderTitle).toBeUndefined()
+    expect(top()).not.toContain('dock-transcript-redesign')
     for (const listener of listeners) listener('renamed')
-    expect(editor.borderTitle).toBe('renamed')
+    expect(top()).toContain(' renamed ╮')
 
     offFacts()
     await vi.waitFor(() => { expect(listeners.size).toBe(0) })
-    expect(editor.borderTitle).toBeUndefined()
+    expect(top()).not.toContain('renamed')
 
     ctx.provide('mayflySessionFacts', facts as never)
-    await vi.waitFor(() => { expect(editor.borderTitle).toBe('dock-transcript-redesign') })
+    await vi.waitFor(() => { expect(top()).toContain(' dock-transcript-redesign ╮') })
     await fiber.dispose()
     await vi.waitFor(() => { expect(listeners.size).toBe(0) })
   })
@@ -1186,14 +1186,6 @@ describe('mayfly-input plugin', () => {
     const running = await mount({ running: true })
     expect(running.hint.render(80)).toEqual([])
     await running.fiber.dispose()
-  })
-
-  it('highlights the frame in primary for slash input and restores the neutral border', async () => {
-    const { editor } = await mount()
-    type(editor, '/th')
-    expect(editor.borderColor('x')).toBe('^x^')
-    editor.setText('plain')
-    expect(editor.borderColor('x')).toBe('x')
   })
 
   it('unmounts the editor, clears the shared reference, and releases focus on dispose', async () => {

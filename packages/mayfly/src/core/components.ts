@@ -30,7 +30,6 @@ import {
   type SelectListTheme,
   type TUI,
 } from '@earendil-works/pi-tui'
-import type { MayflyGlyphMode } from './glyphs.ts'
 import { expandMarkdownRules, markdownTheme } from './markdown-rows.ts'
 import { readPresentation, type MayflyPresentation } from './presentation.ts'
 import { renderMermaidRows, splitRichDocument } from './rich-document.ts'
@@ -39,17 +38,14 @@ import { displayPath } from '../internal/paths.ts'
 import {
   highlightLeadingSlashToken,
   injectGhostHint,
-  injectPromptSymbol,
-  padColumns,
+  splitEditorRows,
   topRule as renderTopRule,
-  withSideBorders,
 } from './chrome.ts'
-import { sanitizePluginText } from './plugin-view.ts'
-import { WrappingSelectList } from './wrapping-select-list.ts'
+import { CompletionList } from './completion-list.ts'
 import type {
   MayflyAutocompleteProvider,
-  MayflyColorFn,
   MayflyComponents,
+  MayflyCompletionView,
   MayflyEditor,
   MayflyEditorOptions,
   MayflyEditorSubmitAttempt,
@@ -74,13 +70,8 @@ declare module '@deepseek-ai/cordis' {
 }
 
 /**
- * Map the palette to an editor theme: the frame's neutral border plus the
- * autocomplete dropdown. The default border is the neutral gray `border`
- * token — with the S11 rounded-box chrome the contextual cues (slash
- * context and bash mode recolor the border through `setBorderColor`)
- * carry the focus, the kimi treatment; the S10 interim that pinned the
- * idle border to `primary` retired with the bare two-line editor it was
- * compensating for.
+ * Map the palette to an editor theme: the rule color pi-tui draws its own top and bottom rules in (the adapter drops
+ * them; the frame belongs to the prompt's surface) plus the autocomplete dropdown.
  */
 function editorTheme(colors: MayflySemanticColors): EditorTheme {
   return { borderColor: colors.border, selectList: selectListTheme(colors) }
@@ -112,21 +103,12 @@ interface AutocompleteListFactory {
   createAutocompleteList: (prefix: string, items: MayflySelectItem[]) => SelectList
 }
 
-/** The slash-menu primary column clamp, mirroring upstream's constant. */
-const SLASH_SELECT_LIST_LAYOUT = { minPrimaryColumnWidth: 12, maxPrimaryColumnWidth: 32 }
-
-/** Theme-derived paints the editor chrome overlays (S14 completion polish). */
+/** Theme-derived paints the editor overlays on its first row (S14 completion polish). */
 interface EditorChromePaints {
   /** Styling for the leading `/command` token (bold + `primary`). */
   readonly slashTokenPaint: (text: string) => string
   /** Styling for the argument-hint ghost (`textMuted`). */
   readonly ghostHintPaint: (text: string) => string
-  /** Styling for the top-border title (`textMuted`). */
-  readonly borderTitlePaint: (text: string) => string
-  /** Styling for the frame while the editor does not hold keyboard focus (`textMuted`): the prompt reads as parked. */
-  readonly parkedBorderPaint: (text: string) => string
-  /** The glyph mode the frame is drawn in; the typed text is never converted. */
-  readonly glyphs?: MayflyGlyphMode
 }
 
 function withoutFakeEditorCursor(row: string): string {
@@ -168,17 +150,8 @@ class EditorAdapter implements MayflyEditor {
   /** Buffer and paste table captured by the in-flight native submission. */
   private submittedDraft: MayflySubmittedDraft | undefined
 
-  /** The prompt symbol overlaid on the first content row; none while unset. */
-  private promptSymbol: string | undefined
-
-  /** Pre-styled text laid into the top border; none while unset. */
-  private borderLabel: string | undefined
-
-  /** Sanitized one-line title laid into the top border's right end; none while unset. */
-  private borderTitle: string | undefined
-
-  /** Whether the top corners open into a panel docked above (S13 btw dock). */
-  private connectedAbove = false
+  /** Whether the buffer is a shell command: a leading `/` is then a path, not a command, and stays unpainted. */
+  private shellMode = false
 
   /** The argument-hint ghost (S14); none while unset. */
   private ghostHint: string | undefined
@@ -186,6 +159,8 @@ class EditorAdapter implements MayflyEditor {
   constructor(
     private readonly editor: Editor,
     private readonly chrome: EditorChromePaints,
+    /** The list pi-tui's factory last made; it is the open list while the editor shows one. */
+    private readonly completions: { list: CompletionList | undefined },
   ) {
     this.observedBuffer = { raw: editor.getText(), expanded: editor.getExpandedText() }
     const bridge = editor as unknown as { submitValue(): void }
@@ -301,25 +276,8 @@ class EditorAdapter implements MayflyEditor {
     return true
   }
 
-  setBorderColor(color: MayflyColorFn): void {
-    this.editor.borderColor = color
-  }
-
-  setPromptSymbol(symbol: '>' | '!' | undefined): void {
-    this.promptSymbol = symbol
-  }
-
-  setBorderLabel(text: string | undefined): void {
-    this.borderLabel = text
-  }
-
-  setBorderTitle(text: string | undefined): void {
-    const title = text === undefined ? '' : sanitizePluginText(text).replace(/\s+/gu, ' ').trim()
-    this.borderTitle = title === '' ? undefined : title
-  }
-
-  setConnectedAbove(connected: boolean): void {
-    this.connectedAbove = connected
+  setShellMode(shell: boolean): void {
+    this.shellMode = shell
   }
 
   setGhostHint(hint: string | undefined): void {
@@ -382,54 +340,32 @@ class EditorAdapter implements MayflyEditor {
     return this.editor.isShowingAutocomplete()
   }
 
+  completion(): MayflyCompletionView | undefined {
+    return this.editor.isShowingAutocomplete() ? this.completions.list?.view() : undefined
+  }
+
   refreshAutocomplete(): void {
     const editor = this.editor as unknown as { updateAutocomplete(): void }
     editor.updateAutocomplete()
   }
 
   render(width: number): string[] {
-    const renderWidth = this.connectedAbove ? Math.max(1, width - 2) : width
-    const lines = this.editor.render(renderWidth)
-    // The first content row (row index 1 under the top border — a
-    // scrolled-away top rule keeps that indexing) carries the S14
-    // completion polish in the kimi order: the leading `/command` token
-    // paints bold+primary, the argument-hint ghost splices in after the
-    // cursor, and the prompt symbol overlays last. The bash proxy: the `!`
-    // prompt symbol is the bash triple's first leg, so while it is set a
-    // leading `/` is a path separator, not a command, and stays unpainted.
-    /* the real editor always renders at least one content row between the rules, so lines[1] exists */
-    let row = lines[1] ?? ''
-    if (this.promptSymbol !== '!' && this.editor.getText().trimStart().startsWith('/')) {
+    const safeWidth = Math.max(1, width)
+    // pi-tui draws its own rules around the content; the prompt's surface owns the frame, so only the content rows and
+    // the completion list under them leave. The first content row carries the S14 completion polish in the kimi order:
+    // the leading `/command` token paints bold+primary, then the argument-hint ghost splices in after the cursor. In
+    // shell mode a leading `/` is a path separator, not a command, and stays unpainted.
+    const { content, list } = splitEditorRows(this.editor.render(safeWidth))
+    /* the real editor always renders at least one content row between the rules, so content[0] exists */
+    let row = content[0] ?? ''
+    if (!this.shellMode && this.editor.getText().trimStart().startsWith('/')) {
       row = highlightLeadingSlashToken(row, this.chrome.slashTokenPaint) ?? row
     }
     if (this.ghostHint !== undefined && this.cursorAtInputEnd()) {
-      row = injectGhostHint(row, this.ghostHint, this.editor.getText(), renderWidth, this.chrome.ghostHintPaint)
+      row = injectGhostHint(row, this.ghostHint, this.editor.getText(), safeWidth, this.chrome.ghostHintPaint)
     }
-    // The bash `!` shares the border hue so the mode reads as one unit; the
-    // neutral `>` stays in the terminal's default foreground (kimi rule).
-    const symbol = this.promptSymbol
-    if (symbol !== undefined) {
-      const painted = injectPromptSymbol(
-        row,
-        symbol,
-        symbol === '!' ? (text: string) => this.editor.borderColor(text) : undefined,
-      )
-      if (painted !== undefined) row = painted
-    }
-    lines[1] = row
-    // Corners and bars route through the live `borderColor` property, so a
-    // host recolor via `setBorderColor` (slash context, bash mode) repaints
-    // the whole frame in sync without re-entering this adapter. An editor that
-    // does not hold keyboard focus (the conversation or a bar has it) draws a
-    // muted frame, so the prompt reads as parked.
-    const framed = withSideBorders(lines, (text: string) => this.focused ? this.editor.borderColor(text) : this.chrome.parkedBorderPaint(text), {
-      connectedAbove: this.connectedAbove,
-      label: this.borderLabel,
-      title: this.borderTitle,
-      titlePaint: this.chrome.borderTitlePaint,
-      glyphs: this.chrome.glyphs,
-    })
-    return this.connectedAbove ? padColumns(framed, 1) : framed
+    content[0] = row
+    return [...content, ...list]
   }
 
   handleInput(data: string): void {
@@ -676,10 +612,9 @@ export class MayflyComponentsService extends Service implements MayflyComponents
   strike(text: string): string { return `\x1b[9m${text}\x1b[29m` }
 
   /**
-   * Create a palette-themed multi-line input editor. The editor's
-   * autocomplete dropdown renders slash-command descriptions wrapped to two
-   * lines (`WrappingSelectList`) while every other completion keeps the
-   * stock single-line list — the S14 kimi treatment.
+   * Create a palette-themed multi-line input editor. Its autocomplete list
+   * keeps pi-tui's state and keys but paints no rows (`CompletionList`): the
+   * host draws it as a drawer over the stream, so the editor never grows.
    * @param options - editor options.
    * @returns the editor component.
    */
@@ -692,23 +627,19 @@ export class MayflyComponentsService extends Service implements MayflyComponents
     // initializer, which defeats inference otherwise.
     const editor: Editor = new Editor(this.tui, theme, editorOptions)
     // pi-tui's Editor instantiates the dropdown list through its private
-    // createAutocompleteList; the own-property shadow swaps in the wrapping
-    // list for slash menus. The theme rides along so a theme swap rebuilds
-    // the factory with fresh paints (the editor itself is per-theme). The
-    // cast lands on a local — the repo's no-semicolon style cannot start a
-    // statement with `(`.
+    // createAutocompleteList; the own-property shadow swaps in the state-only
+    // list and remembers it for the adapter. The cast lands on a local — the
+    // repo's no-semicolon style cannot start a statement with `(`.
+    const completions: { list: CompletionList | undefined } = { list: undefined }
     const factory = editor as unknown as AutocompleteListFactory
-    factory.createAutocompleteList = (prefix: string, items: MayflySelectItem[]): SelectList =>
-      prefix.startsWith('/')
-        ? new WrappingSelectList(items, editor.getAutocompleteMaxVisible(), theme.selectList, SLASH_SELECT_LIST_LAYOUT)
-        : new SelectList(items, editor.getAutocompleteMaxVisible(), theme.selectList)
+    factory.createAutocompleteList = (prefix: string, items: MayflySelectItem[]): SelectList => {
+      completions.list = new CompletionList(items, editor.getAutocompleteMaxVisible(), theme.selectList, prefix)
+      return completions.list
+    }
     return new EditorAdapter(editor, {
       slashTokenPaint: (text) => `\x1b[1m${colors.primary(text)}\x1b[22m`,
       ghostHintPaint: colors.textMuted,
-      borderTitlePaint: colors.textMuted,
-      parkedBorderPaint: colors.textMuted,
-      glyphs: this.presentation.glyphs,
-    })
+    }, completions)
   }
 
   /**
