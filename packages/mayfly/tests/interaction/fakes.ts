@@ -753,6 +753,15 @@ export class FakeScreen implements MayflyScreen {
     return this.enterViewsResult
   }
 
+  /** What `focusConversation` answers, and how often the prompt asked. */
+  focusConversationResult = false
+  focusConversationCalls = 0
+
+  focusConversation(): boolean {
+    this.focusConversationCalls += 1
+    return this.focusConversationResult
+  }
+
   mountContentSlot(id: string, component: MayflyComponent | null) {
     this.slotTargets.set(id, component)
     return mountFakeScreenSlot(id, component, shell => this.addChild(shell), target => this.setFocus(target), () => this.requestRender())

@@ -1817,6 +1817,69 @@ describe('detail-shape arms', () => {
   })
 })
 
+describe('/plugin offline catalog, stale rows, and unload gates', () => {
+  it('knows no plugin while the catalog is offline, on the argument paths', async () => {
+    const world = await mountWorld({ offline: true })
+    expect(await world.run('/plugin info loop')).toMatchObject({ kind: 'error', text: 'unknown plugin: loop' })
+    expect(await world.run('/plugin install loop')).toMatchObject({ kind: 'error', text: 'unknown plugin: loop' })
+    expect(world.spawns.filter(spawn => spawn.args[0] === 'plugin')).toEqual([])
+    world.dispose()
+  })
+
+  it('ignores browse actions that name a row the catalog no longer holds', async () => {
+    const world = await mountWorld({ index: [entry()] })
+    await world.run('/plugin')
+    const root = world.ctx.mayflyOverlays.list().find(item => item.id === 'mayfly.plugin-market')!
+    const context = { surfaceId: root.id, operationId: 'stale-row', source: root.source, revision: root.revision, signal: new AbortController().signal, report: vi.fn() }
+    const selections = [{ pagePath: [], controlId: 'plugins', selectedIds: ['ghost'] }]
+    const action = root.definition.onEvent!.action!
+    // Enter on the vanished row opens no detail panel.
+    expect(await action({ kind: 'selection-accept', pagePath: [], controlId: 'plugins', selectedIds: ['ghost'] }, context)).toEqual({ kind: 'completed' })
+    expect(world.ctx.mayflyOverlays.list().map(item => item.id)).toEqual(['mayfly.plugin-market'])
+    // Install and Remove on it fail without touching the profile.
+    for (const actionId of ['install', 'remove']) {
+      const inputs = { actionId, draftRevision: 1, forms: [], source: [], selections }
+      expect(await action({ kind: 'activate', pagePath: [], controlId: 'actions', actionId, inputs }, context)).toMatchObject({ kind: 'failed', message: 'plugin operation failed' })
+    }
+    expect(world.spawns.filter(spawn => spawn.args[0] === 'plugin')).toEqual([])
+    world.dispose()
+  })
+
+  it('stops an install that spans a fiber unload while it looks for the dsh CLI on PATH', async () => {
+    const world = await mountWorld({ index: [entry()] })
+    updaterInternals.env = { DSH_HOME: updaterInternals.env.DSH_HOME }
+    const gate = Promise.withResolvers<void>()
+    updaterInternals.spawnOnce = vi.fn(async (cmd: string, args: readonly string[]) => {
+      world.spawns.push({ cmd, args: [...args] })
+      if (cmd === 'dsh') await gate.promise
+      return ok('dsh 1.0.0')
+    })
+    const execution = world.run('/plugin install loop')
+    await vi.waitFor(() => expect(world.spawns).toContainEqual({ cmd: 'dsh', args: ['--version'] }))
+    await world.dispose()
+    gate.resolve()
+    expect(await execution).toEqual({ kind: 'success' })
+    expect(world.spawns.filter(spawn => spawn.args[0] === 'plugin')).toEqual([])
+    expect(world.notices).toEqual([])
+  })
+
+  it('stops a catalog refresh from the browse panel that spans a fiber unload', async () => {
+    const world = await mountWorld({ index: [entry()] })
+    await world.run('/plugin')
+    const model = world.surface()!
+    const gate = Promise.withResolvers<string>()
+    const realFetch = updaterInternals.fetchText
+    updaterInternals.fetchText = vi.fn(async (url: string, timeoutMs: number) => (url.includes('jsdelivr') || url.includes('raw.githubusercontent') ? gate.promise : realFetch(url, timeoutMs)))
+    invokeMarketAction(model, 'refresh')
+    await vi.waitFor(() => expect(marketFeedback(model)).toContain('refreshing plugin catalog...'))
+    await world.dispose()
+    gate.resolve(indexJson([entry()]))
+    await new Promise(resolve => setTimeout(resolve, 10))
+    expect(marketFeedback(model)).not.toContain('refreshed')
+    expect(world.ctx.mayflyOverlays.list()).toEqual([])
+  })
+})
+
 describe('final arms', () => {
   it('reports uninstall failures and info for github-only and versionless rows', async () => {
     const githubOnly = entry({ id: 'gh2', displayName: 'GH2', install: { rows: [{ name: 'gh2-pkg', github: { repo: 'a/b', ref: 'r' } }] } })

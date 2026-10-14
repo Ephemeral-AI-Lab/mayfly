@@ -22,6 +22,7 @@ import {
   registerEditorAutocompleteSource,
 } from '../../src/interaction/editor-instance.ts'
 import { FakeMayflyEditor, fakeMayflyContext, KEY } from './fakes.ts'
+import { flush } from '../helpers.ts'
 
 function success<Value>(value: Value): Value { return value }
 
@@ -366,6 +367,38 @@ describe('editor extension completion multiplexer', () => {
       unregisterSettled()
       unregisterHung()
       vi.useRealTimers()
+    }
+  })
+
+  it('resolves a pending extension completion to null when the editor cancels its request', async () => {
+    const gate = Promise.withResolvers<readonly MayflyEditorCompletionItem[]>()
+    const started = vi.fn()
+    const extension: TestEditorExtension = { id: 'acme.cancel-complete', complete: () => { started(); return gate.promise } }
+    const { editor, runtime, notices } = runtimeFixture([extension])
+    const controller = new AbortController()
+    const pending = editor.autocompleteProvider!.getSuggestions(['/slow'], 0, 5, { signal: controller.signal })
+    await vi.waitFor(() => expect(started).toHaveBeenCalledOnce())
+    controller.abort()
+    await expect(pending).resolves.toBeNull()
+    gate.resolve([{ id: 'late', label: 'Late', insertText: '/late' }])
+    await flush(2)
+    expect(notices).toEqual([])
+    runtime.dispose()
+  })
+
+  it('re-attaches the completion provider when an autocomplete source registers after the runtime starts', async () => {
+    const { ctx, editor, runtime } = runtimeFixture()
+    const late: MayflyAutocompleteItem = { value: 'late-value', label: 'Late' }
+    const unregister = registerEditorAutocompleteSource(ctx, 'late-source', {
+      getSuggestions: async () => ({ prefix: 'late-prefix', items: [late] }),
+      applyCompletion: (lines, cursorLine, cursorCol) => ({ lines, cursorLine, cursorCol }),
+    })
+    try {
+      const result = await suggestions(editor.autocompleteProvider!, 'late')
+      expect(result?.items).toEqual([late])
+    } finally {
+      unregister()
+      runtime.dispose()
     }
   })
 

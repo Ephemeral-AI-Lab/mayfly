@@ -73,13 +73,13 @@ interface Harness {
 }
 
 /** Mount the notices under a plugin Fiber, with the lane, facts and tick they read. */
-async function boot(facts = new HandFacts()): Promise<Harness> {
+async function boot(facts = new HandFacts(), provided: { readonly facts?: boolean, readonly tick?: boolean } = {}): Promise<Harness> {
   const ctx = new Context()
   const lane = new UiInteractionService(ctx)
   const tick = new HandTick()
   const clock = { now: NOW }
-  ctx.reflect.provide('mayflySessionFacts', facts)
-  ctx.reflect.provide('mayflyTick', tick)
+  if (provided.facts !== false) ctx.reflect.provide('mayflySessionFacts', facts)
+  if (provided.tick !== false) ctx.reflect.provide('mayflyTick', tick)
   const fiber = await ctx.plugin({
     name: 'notices-under-test',
     apply(owner: Context) {
@@ -134,6 +134,41 @@ describe('notices from the session facts', () => {
     await harness.dispose()
   })
 
+  it('does not raise the retry again from a tick already in flight when the retry fact cleared', async () => {
+    const harness = await boot()
+    harness.facts.set({ retrying: retry(429) })
+    // The tick dispatches a copy of its listeners: an earlier one that clears the retry runs before the notices' own.
+    const own = [...harness.tick.listeners]
+    harness.tick.listeners.clear()
+    harness.tick.listeners.add(() => { harness.facts.set({ retrying: undefined }) })
+    for (const listener of own) harness.tick.listeners.add(listener)
+    harness.tick.fire(NOW + 1_000)
+    expect(harness.notices()).toEqual({})
+    await harness.dispose()
+  })
+
+  it('says the attempt alone while the Harness retries without a limit', async () => {
+    const harness = await boot()
+    harness.facts.set({ retrying: retry(503, { maxRetries: Infinity, retry: 4, delayMs: 2_000 }) })
+    expect(harness.notices()).toEqual({ 'notice/retry': 'Provider error · retrying in 2s · 4' })
+    await harness.dispose()
+  })
+
+  it('reports a retry once and counts nothing down when the host has no tick', async () => {
+    const harness = await boot(new HandFacts(), { tick: false })
+    harness.facts.set({ retrying: retry(429) })
+    expect(harness.notices()).toEqual({ 'notice/retry': 'Rate limited · retrying in 5s · 1/5' })
+    expect(harness.tick.listeners.size).toBe(0)
+    await harness.dispose()
+  })
+
+  it('raises nothing when the host has no session facts', async () => {
+    const harness = await boot(new HandFacts(), { facts: false })
+    expect(harness.notices()).toEqual({})
+    expect(harness.tick.listeners.size).toBe(0)
+    await harness.dispose()
+  })
+
   it('warns from 92% context occupancy, says how full it is, and clears below the threshold', async () => {
     expect(CONTEXT_WARN_PERCENT).toBe(92)
     const harness = await boot()
@@ -163,6 +198,21 @@ describe('notices from the session facts', () => {
     // A session with one turn says so; a session that is running raises nothing.
     harness.facts.switchTo({ id: 'agent-3', status: 'running' }, { turn: 1, active: true })
     expect(harness.notices()).toEqual({})
+    await harness.dispose()
+  })
+
+  it('says how long ago a resumed session was last active: just now under a minute, then in minutes, hours, and days', async () => {
+    const harness = await boot()
+    const resumedAfter = async (ms: number, turn: number): Promise<string | undefined> => {
+      harness.facts.switchTo({ id: `agent-${String(ms)}`, status: 'idle' }, { turn, active: false, endedAt: NOW - ms })
+      return harness.notices()['notice/resumed']
+    }
+    expect(await resumedAfter(30_000, 1)).toBe('Resumed session · 1 turn · last active just now')
+    expect(await resumedAfter(3 * 3_600_000, 2)).toBe('Resumed session · 2 turns · last active 3h ago')
+    expect(await resumedAfter(2 * 86_400_000, 2)).toBe('Resumed session · 2 turns · last active 2d ago')
+    // A session that never recorded an end names no age.
+    harness.facts.switchTo({ id: 'agent-new', status: 'idle' }, { turn: 2, active: false })
+    expect(harness.notices()).toEqual({ 'notice/resumed': 'Resumed session · 2 turns' })
     await harness.dispose()
   })
 

@@ -6,7 +6,7 @@
 
 import { describe, expect, it } from 'vitest'
 import { freezeWire } from '@ephemeral-ai/mayfly-ui'
-import { latestTurnOf, PROMPT_MAX_LINES, TranscriptView, type StreamRow, type StreamTurn, type TranscriptViewFacts } from '../../src/components/transcript-view.ts'
+import { latestTurnOf, PROMPT_MAX_LINES, streamTarget, TranscriptStream, TranscriptView, type StreamRow, type StreamTurn, type TranscriptViewFacts } from '../../src/components/transcript-view.ts'
 
 const prompt = (id: string, text: string, more: Partial<Extract<StreamRow, { kind: 'prompt' }>> = {}): StreamRow => ({ kind: 'prompt', id, text, images: [], open: false, ...more })
 const answer = (id: string, text: string): StreamRow => ({ kind: 'answer', id, text })
@@ -124,5 +124,49 @@ describe('TranscriptView', () => {
     expect(Object.isFrozen(before[0])).toBe(true)
     // A row with new facts gets new items.
     expect(itemsOf(facts([turn('turn:1', [prompt('u1', 'one'), answer('a1', 'done more')], 'Worked for 1s · done 10:02')]))[1]).not.toBe(before[1])
+  })
+
+  it('puts the blocks that follow a closed turn after its closing row, each behind a blank row', () => {
+    const compact: StreamRow = { kind: 'note', id: 'c1', text: 'compacted' }
+    const withAfter: StreamTurn = { ...turn('turn:1', [prompt('u1', 'one')], 'Worked for 1s · done 10:02'), after: [compact] }
+    expect(itemsOf(facts([withAfter])).map(item => item.id)).toEqual(['u1', 'turn:1.end.gap', 'turn:1.end', 'c1.gap', 'c1'])
+  })
+
+  it('draws a tool block\'s hunks and code from the line they start at, and a run of calls as its head with a row per call', () => {
+    const tool: StreamRow = {
+      kind: 'tool', id: 't1', state: 'ok', name: 'Edit', target: 'a.ts',
+      diff: [{ before: 'a', after: 'b', start: 4, beforeStart: 5 }],
+      code: { text: 'x = 1', start: 7 },
+    }
+    const ids = itemsOf(facts([turn('turn:1', [tool])])).map(item => item.id)
+    expect(ids).toEqual(['t1', 't1.diff.0', 't1.code'])
+    const diff = itemsOf(facts([turn('turn:1', [tool])]))[1]!.body
+    expect(diff).toMatchObject({ kind: 'diff', start: 4, beforeStart: 5 })
+    expect(itemsOf(facts([turn('turn:1', [tool])]))[2]!.body).toMatchObject({ kind: 'code', start: 7 })
+    expect(diff).not.toHaveProperty('language')
+    const run: StreamRow = { kind: 'tools', id: 'r1', state: 'ok', name: 'Bash', head: '2 calls', items: [{ state: 'ok', label: 'ls' }, { state: 'ok', label: 'pwd' }] }
+    expect(itemsOf(facts([turn('turn:1', [run])])).map(item => item.id)).toEqual(['r1', 'r1.item.0', 'r1.item.1'])
+  })
+
+  it('sends the cursor to the newest row it can stand on, or to the first of the rows it is given that is drawn', () => {
+    const value = facts([turn('turn:1', [prompt('u1', 'one'), answer('a1', 'first')], 'Worked for 1s · done 10:02')])
+    // The closing row and the blanks between rows are not rows the cursor stands on.
+    expect(TranscriptView(value, { rev: 1 }).focusItem).toEqual({ id: 'a1', rev: 1 })
+    expect(TranscriptView(value, { rev: 2, ids: ['gone', 'u1', 'a1'] }).focusItem).toEqual({ id: 'u1', rev: 2 })
+    // A row that is no longer drawn leaves the cursor where it is.
+    expect(TranscriptView(value, { rev: 3, ids: ['gone'] }).focusItem).toBeUndefined()
+    expect(TranscriptView(value).focusItem).toBeUndefined()
+  })
+
+  it('reads the row the cursor was sent to from the list or from the stream that holds it, and nothing from another node', () => {
+    const value = facts([turn('turn:1', [prompt('u1', 'one')])])
+    expect(streamTarget(TranscriptView(value, { rev: 1 }))).toBe('u1')
+    expect(streamTarget(TranscriptStream(value, { rev: 1 }))).toBe('u1')
+    expect(streamTarget(TranscriptStream(value))).toBeUndefined()
+    // The keys that sit beside the list are no list to read a cursor from.
+    const stream = TranscriptStream(value, { rev: 1 })
+    const keys = stream.kind === 'stack' ? stream.children[1]!.node : undefined
+    expect(keys?.kind).toBe('actions')
+    expect(streamTarget(keys!)).toBeUndefined()
   })
 })

@@ -11,7 +11,7 @@ import type { MayflyFeedbackRecord } from '@ephemeral-ai/mayfly-ui'
 import { mountNotificationPane, selectNotification } from '../../src/transcript/pane-notification.ts'
 import { transcriptTranslatorFake } from './notices-fakes.ts'
 import { bootPanePlugin, type PanePluginHarness } from './pane-fakes.ts'
-import { fakeAgent } from './status-fakes.ts'
+import { fakeAgent, type FakeAgent } from './status-fakes.ts'
 
 /** A lane record, as the lane keeps it: the scope, the severity, the message, and the creation time. */
 function record(severity: MayflyFeedbackRecord['severity'], message: string, createdAt: number, scope: MayflyFeedbackRecord['scope'] = { kind: 'app', targetId: 'test' }): MayflyFeedbackRecord {
@@ -65,7 +65,7 @@ class HandLane {
   }
 }
 
-async function boot(current = fakeAgent([]), lane = new HandLane()): Promise<PanePluginHarness & { readonly lane: HandLane }> {
+async function boot(current: FakeAgent | null = fakeAgent([]), lane = new HandLane()): Promise<PanePluginHarness & { readonly lane: HandLane }> {
   const harness = await bootPanePlugin({
     name: 'pane-notification-under-test',
     inject: [],
@@ -129,6 +129,31 @@ describe('mayfly-pane-notification', () => {
     harness.ctx.emit('mayfly/focus-mode-changed', 'search-select')
     expect(nodeOf(harness)).toContain('Enter expand · c copy · Ctrl+C JSON · ↑/↓ or n/N match · / ? new search · Esc end search')
     harness.ctx.emit('mayfly/focus-mode-changed', 'prompt')
+    expect(nodeOf(harness)).toContain('Alt+↑ conversation · Alt+↓ bar')
+    await harness.dispose()
+  })
+
+  it('shows only the app records when no Agent is current, and the bar and search modes teach no keys', async () => {
+    const harness = await boot(null, new HandLane())
+    harness.lane.set([record('info', 'this session', 1, session('a')), record('success', 'the app', 2)])
+    expect(nodeOf(harness)).toContain('the app')
+    expect(nodeOf(harness)).not.toContain('this session')
+    harness.ctx.emit('mayfly/focus-mode-changed', 'bar')
+    expect(nodeOf(harness)).not.toContain('Alt+↑ conversation')
+    expect(nodeOf(harness)).not.toContain('Enter expand')
+    harness.ctx.emit('mayfly/focus-mode-changed', 'search')
+    expect(nodeOf(harness)).not.toContain('Enter expand')
+    await harness.dispose()
+  })
+
+  it('keeps the row and its focus keys when the editor has no lane to read', async () => {
+    const harness = await bootPanePlugin({
+      name: 'pane-notification-without-lane',
+      inject: [],
+      apply(ctx) {
+        mountNotificationPane(ctx, transcriptTranslatorFake)
+      },
+    }, fakeAgent([]), {})
     expect(nodeOf(harness)).toContain('Alt+↑ conversation · Alt+↓ bar')
     await harness.dispose()
   })

@@ -274,3 +274,24 @@ describe('extendMergedLines', () => {
     expect(walked[0]).toBeLessThanOrEqual(CONTENT_SEGMENT_LINES + 3)
   })
 })
+
+describe('segment plan resumes and clamps', () => {
+  it('resumes a plan at the last segment that starts at or before the changed line, and the last segment past the end', () => {
+    const text = `aa\nbbbbb\ncc\n${'x'.repeat(CONTENT_CUT_UNITS + 40)}\nzz`
+    const index = indexContent(text)
+    const segments = plan(text)
+    expect(index.resumeFrom(0)).toMatchObject({ segment: 0 })
+    for (const line of [1, 3, 4, 99]) {
+      expect(index.resumeFrom(line)).toMatchObject({ segment: segments.findLastIndex(each => each.line0 <= line) })
+    }
+  })
+
+  it('maps an offset at the end of a line run past its last line to the rows the run holds', () => {
+    const text = 'aa\nbbbbb\ncc\n'
+    const index = indexContent(text)
+    const [, end] = index.segmentText(0)
+    expect(index.rowOfOffset(0, end, 5, text)).toBeGreaterThanOrEqual(2)
+    expect(index.rowOfOffset(0, end + 50, 5, text)).toBe(index.rowOfOffset(0, end, 5, text))
+  })
+})
+

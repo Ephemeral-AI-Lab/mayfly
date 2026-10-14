@@ -1152,6 +1152,8 @@ Harness has no offline signal and the balance is not read yet. An undo toast is 
 
 ### 5.3 Activity row and tool rows
 
+*Finalized in groups 3b (tool lines, edit and write cards, the tool block base, pending calls) and 3c (activity row, notification pane); the owner accepted each part on its scenario.*
+
 **Built from:** `loader`, `rich-text`, `stack` (priority admission), `diff`, `code`. Scenes: Activity row, Tool rows and edits.
 
 The activity row is the turn's vitals, a block of constant height: a leading spacer, a header, and one line
@@ -1482,7 +1484,7 @@ Every row is one line that ladders to width (a user prompt is the exception: it 
 Compact included, see *The user's own words*), diff rows end in `…`, and `NO_COLOR` keeps `▸ ▾ ✓ ✗ ●` and the `⎿` tree as
 the carriers of state.
 
-**Compaction.**
+**Compaction.** *Finalized in group 3c.*
 
 Compaction reports two real stages, summarizing and applying, but no progress inside them, so its percentage is an
 estimate. The bar and the percentage show the share done: it grows with the time spent summarizing along a curve whose
@@ -1557,7 +1559,7 @@ under the prompt, a `▎` quote bar down each prompt line, a background band beh
 titled card (three rows per turn, boxed), and the combination of indent, bar, and band. They stay in the scene so the
 choice can be revisited; they are not part of the design.
 
-**The stream is selectable.** The whole conversation is one browse list, and every row (a user prompt, a tool line,
+**The stream is selectable.** *Finalized in group 3e.* The whole conversation is one browse list, and every row (a user prompt, a tool line,
 an edit card, an answer, the agent's request) is an item. `Alt+↑` from the prompt moves focus to the newest row;
 `↑`/`↓` walk the rows; `Alt+↓` (or `Esc`) returns to the prompt. A selected row has the `→` cursor and its own keys,
 shown in the hint row only while the stream has focus (§3.5 `scope`):
@@ -1579,7 +1581,7 @@ shown in the hint row only while the stream has focus (§3.5 `scope`):
   Enter expand · c copy · Ctrl+G open in editor · Esc back
 ```
 
-**The whole stream is searchable.** In conversation mode `/` searches toward the newer rows and `?` toward the older, as in
+**The whole stream is searchable.** *Finalized in group 3e.* In conversation mode `/` searches toward the newer rows and `?` toward the older, as in
 vim (`Ctrl+F` is not used: editors and terminals bind it). A search line opens above the editor: two rows, `/ pattern▌`
 and a muted count with the keys. The editor stays, in its parked frame, and the status line names the `search` mode. The
 pattern is a JavaScript regular expression, matched in any case unless it holds a capital letter; one that does not compile
@@ -1602,6 +1604,8 @@ The scroll position follows the same rules as any scroll region: the stream keep
 `N new turns · Ctrl+↓` chip stays on the last row while it is scrolled away (N counts the turns of the agent loop that began below the view, never rows, tool calls, or message blocks; with none it reads `Back to bottom · Ctrl+↓`, the way back), and `Ctrl+↓` (or `End` with an empty draft) jumps to the latest. The follow key is its own action, `mayfly.interaction.follow-tail`, because thin laptops have no End key.
 
 ### 5.7 Decision cards: approval, plan review
+
+*Finalized in group 3d; the owner accepted the effect on its scenarios.*
 
 **Built from:** `components/decision-card.ts`: `ui.surface` (lane), `ui.list` (numbered), `ui.form` (the note), and hidden `ui.actions`. The tool approval and the plan review compose it with their own choices. Scene: Approval, plan review.
 

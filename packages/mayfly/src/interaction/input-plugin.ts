@@ -154,10 +154,7 @@ async function subagentPromptParts(attachments: AttachmentReader | undefined, bl
 }
 
 /** Command descriptors projected through the app-owned session boundary. */
-function availableCommands(ctx: Context) {
-  const agent = ctx.mayflyCurrentAgent.current()
-  /* slashHint checks the current Agent immediately before this sole call site. */
-  if (agent === null) return []
+function availableCommands(ctx: Context, agent: Agent) {
   return ctx.commands.list(agent).map(command => ({
     name: command.name,
     description: command.description,
@@ -266,12 +263,13 @@ export function apply(ctx: Context): void {
     const parsed = parseCommand(currentText)
     // A bare slash cannot parse (parseCommand requires a leading letter).
     if (parsed === undefined && currentText !== '/') return undefined
-    if (ctx.mayflyCurrentAgent.current() === null) return undefined
+    const agent = ctx.mayflyCurrentAgent.current()
+    if (agent === null) return undefined
     // The same S14 fuzzy filter the dropdown uses, so the feedback agrees
     // with what the dropdown just failed to list. The dropdown closes
     // itself on an empty match, so this notice is the only signal.
     const matches = filterSlashCommands(
-      aliases.withCommandAliases(availableCommands(ctx)),
+      aliases.withCommandAliases(availableCommands(ctx, agent)),
       parsed?.name ?? '',
       ctx.mayflyComponents,
     )

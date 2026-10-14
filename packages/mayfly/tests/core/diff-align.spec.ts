@@ -10,7 +10,9 @@ import {
   alignDiffLines,
   diffChangeCounts,
   DIFF_ALIGN_MAX_EDITS,
+  diffModel,
   paintDiffRows,
+  paintDiffSegment,
 } from '../../src/core/diff-align.ts'
 import { truncateToWidth, visibleWidth } from '../../src/core/width.ts'
 import { plainText } from '../helpers.ts'
@@ -57,6 +59,32 @@ describe('alignDiffLines', () => {
     expect(aligned).toContainEqual(['ctx', 'same-0'])
     expect(aligned).toContainEqual(['ctx', `same-${String(half * 2 - 1)}`])
     expect(diffChangeCounts(before.join('\n'), after.join('\n'))).toEqual({ added: half * 2, removed: half * 2 })
+  })
+
+  it('anchors only at lines that appear once on both sides, however often a line repeats before', () => {
+    const half = DIFF_ALIGN_MAX_EDITS / 2 + 100
+    const before = [...Array.from({ length: half }, (_, index) => `b${String(index)}`), 'dup', 'dup', 'anchor', ...Array.from({ length: half }, (_, index) => `c${String(index)}`)]
+    const after = [...Array.from({ length: half }, (_, index) => `a${String(index)}`), 'anchor', ...Array.from({ length: half }, (_, index) => `d${String(index)}`)]
+    const aligned = alignDiffLines(before.join('\n'), after.join('\n'))
+    // `dup` repeats, so it cannot anchor; the one line that stands once on both sides does.
+    expect(aligned.filter(op => op.type === 'ctx').map(op => op.text)).toEqual(['anchor'])
+    expect(diffChangeCounts(before.join('\n'), after.join('\n'))).toEqual({ added: half * 2, removed: half * 2 + 2 })
+  })
+
+  it('stops splitting at the depth limit and degrades the remaining middle to whole blocks', () => {
+    // Seventeen unique lines at the same place on both sides split one by one off the front of an unalignable tail.
+    const splits = 17
+    const tail = DIFF_ALIGN_MAX_EDITS + 100
+    const side = (prefix: string): string => [
+      ...Array.from({ length: splits }, (_, index) => [`${prefix}${String(index)}`, `anchor-${String(index)}`]).flat(),
+      ...Array.from({ length: tail }, (_, index) => `${prefix}-tail-${String(index)}`),
+    ].join('\n')
+    const aligned = alignDiffLines(side('x'), side('y'))
+    expect(aligned.filter(op => op.type === 'ctx').map(op => op.text)).toEqual(Array.from({ length: 16 }, (_, index) => `anchor-${String(index)}`))
+    // The seventeenth anchor is never reached: the middle after the sixteenth split is all removals, then all additions.
+    const rest = aligned.slice(-(2 * (tail + 2)))
+    expect(rest.slice(0, tail + 2).every(op => op.type === 'del')).toBe(true)
+    expect(rest.slice(tail + 2).every(op => op.type === 'add')).toBe(true)
   })
 
   it('degrades an anchorless rewrite to whole blocks instead of an unbounded walk', () => {
@@ -135,6 +163,16 @@ describe('paintDiffRows', () => {
     expect(rows.map(row => row.trimEnd())).toEqual(['  1 │ + a', '  2 │ + b', '  … +2 rows · Ctrl+O'])
   })
 
+  it('ends the layout at the row budget even when more hunks follow, and shows no rows for a hunk the budget already ended', () => {
+    const before = Array.from({ length: 30 }, (_, index) => `l${String(index)}`)
+    const after = before.map((line, index) => index % 10 === 5 ? `${line}!` : line)
+    const aligned = alignDiffLines(before.join('\n'), after.join('\n'))
+    // The first hunk is l4 l5 l5! l6: the budget ends inside it, so the later hunks never show.
+    expect(plain(paintDiffRows(aligned, 80, helpers, palette, { maxRows: 2 })).map(row => row.trimEnd())).toEqual(['@@ -1,30 +1,30 @@', '  ⋯', '   5 │   l4', '   6 │ − l5', '  … +10 rows · Ctrl+O'])
+    // A budget that fills the first hunk exactly ends at the start of the second: only the gap and the remaining count show.
+    expect(plain(paintDiffRows(aligned, 80, helpers, palette, { maxRows: 4 })).map(row => row.trimEnd())).toEqual(['@@ -1,30 +1,30 @@', '  ⋯', '   5 │   l4', '   6 │ − l5', '   6 │ + l5!', '   7 │   l6', '  ⋯', '  … +8 rows · Ctrl+O'])
+  })
+
   it('ends a long line in … and pads real SGR bands to exactly the width', () => {
     const red = (text: string): string => `\x1b[38;2;1;2;3m${text}\x1b[39m`
     const band = (text: string): string => `\x1b[48;2;4;5;6m${text}\x1b[49m`
@@ -156,6 +194,12 @@ describe('paintDiffRows', () => {
       for (const row of paintDiffRows(aligned, width, helpers)) expect(visibleWidth(row)).toBeLessThanOrEqual(Math.max(1, width))
     }
     expect(paintDiffRows(aligned, 12, helpers)).toEqual(['  1 │ − ab', '  1 │ + cd'])
+  })
+
+  it('paints every row of a segment to nothing when no column is left', () => {
+    const model = diffModel(alignDiffLines('same', 'same\nnew'))
+    const rows = model.segments.find(segment => segment.kind === 'rows')!
+    expect(paintDiffSegment(rows, model.digits, 0, helpers, undefined, { numbered: true, start: 1, beforeStart: 1 })).toEqual(['', ''])
   })
 
   it('counts removed lines in the file before the change and the others in the file after it, from each side\'s own start', () => {

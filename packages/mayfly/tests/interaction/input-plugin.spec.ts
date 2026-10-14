@@ -18,6 +18,7 @@ import { AttachmentId, type ImageAttachmentRef } from '@deepseek-ai/dsh-attachme
 import type { MayflyEditorSubmitRequest, MayflyEditorSubmitValue } from '@ephemeral-ai/mayfly-ui'
 import type { MayflyConversationView } from '../../src/app/conversation-views.ts'
 import * as inputPlugin from '../../src/interaction/input-plugin.ts'
+import { ACTION_MOVE_DOWN, ACTION_MOVE_UP } from '../../src/interaction/keys.ts'
 import { __setCatalogForTest } from '../../src/interaction/skills-catalog.ts'
 import * as paneQueuePlugin from '../../src/interaction/pane-queue.ts'
 import {
@@ -2010,5 +2011,79 @@ describe('the Alt+M model cycle key', () => {
     editor.handleInput(KEY.altM)
     expect(editor.getText()).toBe('draft')
     await vi.waitFor(() => { expect(ctx.mayflyUiInteraction.notificationSnapshot().map(item => item.message)).toEqual(['no session is live yet']) })
+  })
+})
+
+describe('the prompt beside the conversation', () => {
+  it.each([['Alt+Up', 'alt+up'], ['F4', 'f4']])('moves focus up into the conversation on %s with an empty prompt', async (_name, key) => {
+    const { editor, screen } = await mount()
+    screen.focusConversationResult = true
+    expect(editor.onKey?.(key)).toBe(true)
+    expect(screen.focusConversationCalls).toBe(1)
+  })
+
+  it('leaves the key to the editor when the conversation cannot take focus, the buffer has text, or a completion list is open', async () => {
+    const { editor, screen } = await mount()
+    expect(editor.onKey?.('alt+up')).toBe(false)
+    expect(screen.focusConversationCalls).toBe(1)
+    screen.focusConversationResult = true
+    editor.setText('draft')
+    expect(editor.onKey?.('alt+up')).toBe(false)
+    editor.setText('')
+    editor.showingAutocomplete = true
+    expect(editor.onKey?.('alt+up')).toBe(false)
+    expect(screen.focusConversationCalls).toBe(1)
+  })
+
+  it('scrolls the transcript three rows per wheel notch while the prompt is focused, whatever the buffer holds', async () => {
+    const { editor, screen } = await mount()
+    type(editor, 'draft')
+    expect(screen.sendContentInput('\x1b[<64;10;5M')).toBe(true)
+    expect(screen.sendContentInput('\x1b[<65;10;5M')).toBe(true)
+    expect(screen.contentScrolls).toEqual([{ direction: 'up', amount: 3 }, { direction: 'down', amount: 3 }])
+  })
+
+  it('leaves a wheel notch to the core when the keymap binds neither direction to the arrows', async () => {
+    const { ctx, screen } = await mount()
+    const matches = ctx.mayflyKeymap.matches.bind(ctx.mayflyKeymap)
+    vi.spyOn(ctx.mayflyKeymap, 'matches').mockImplementation((data, action) => action !== ACTION_MOVE_UP && action !== ACTION_MOVE_DOWN && matches(data, action))
+    expect(screen.sendContentInput('\x1b[<64;10;5M')).toBe(false)
+    expect(screen.sendContentInput('\x1b[<65;10;5M')).toBe(false)
+    expect(screen.contentScrolls).toEqual([])
+  })
+})
+
+describe('slash feedback and command failures', () => {
+  it('filters commands that advertise an input hint like any other when nothing matches', async () => {
+    const { ctx, editor, hint } = await mount()
+    ctx.commands.register({ name: 'deploy', description: 'Deploy a build', input: { hint: '<environment>' }, handler: () => ({ kind: 'success' }) })
+    type(editor, '/dep')
+    expect(hint.render(80)).toEqual([])
+    type(editor, 'qz')
+    expect(hint.render(80)).toEqual(['~no matching command: /depqz~'])
+  })
+
+  it('shows a non-Error rejection of the command runtime as the notice text', async () => {
+    const { ctx, editor, hint } = await mount()
+    vi.spyOn(ctx.commands, 'execute').mockRejectedValue('runtime exploded')
+    type(editor, '/anything')
+    editor.handleInput(KEY.enter)
+    await vi.waitFor(() => { expect(noticesOf(hint)).toEqual(['!✗ !!runtime exploded!']) })
+  })
+
+  it('does not re-enter the footer refresh when a presentation change edits the buffer', async () => {
+    const { editor, screen } = await mount()
+    let nested = 0
+    const requestRender = screen.requestRender.bind(screen)
+    vi.spyOn(screen, 'requestRender').mockImplementation(() => {
+      requestRender()
+      if (nested > 0) return
+      nested += 1
+      // A render observer that edits the draft while the footer is being recompiled.
+      editor.setText('/nested')
+    })
+    type(editor, 'a')
+    expect(nested).toBe(1)
+    expect(editor.getText()).toBe('/nested')
   })
 })

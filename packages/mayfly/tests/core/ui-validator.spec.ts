@@ -569,6 +569,19 @@ describe('validateMayflyUiNode', () => {
     expect(validateMayflyUiNode({ ...rows, numbered: 'accept' })).toMatchObject({ ok: false })
     expect(validateMayflyUiNode({ ...rows, items: [{ id: 'a', label: 'A', unavailableActions: { ' ': 'blank' } }] })).toMatchObject({ ok: false, message: expect.stringContaining('must not be empty') })
     expect(validateMayflyUiNode({ ...rows, items: [{ id: 'a', label: 'A', unavailableActions: { stop: 1 } }] })).toMatchObject({ ok: false })
+    expect(validateMayflyUiNode({ ...rows, items: [{ id: 'a', label: 'A', unavailableActions: { ['x'.repeat(MAYFLY_UI_MAX_ID + 1)]: 'long' } }] })).toMatchObject({ ok: false, message: expect.stringContaining('at most') })
+  })
+
+  it('admits a list highlight with its optional case and current match, and refuses a malformed or oversized one', () => {
+    const rows = (highlight: unknown): unknown => ({ ...ui.list({ id: 'rows', role: 'browse', selectedIds: [], items: [{ id: 'a', label: 'A' }] }), highlight })
+    expect(accepted(rows({ pattern: 'needle' }))).toMatchObject({ highlight: { pattern: 'needle' } })
+    expect(accepted(rows({ pattern: 'Needle', caseSensitive: true, current: 2 }))).toMatchObject({ highlight: { pattern: 'Needle', caseSensitive: true, current: 2 } })
+    expect(accepted(rows({ pattern: 'n'.repeat(256) }))).toMatchObject({ highlight: { pattern: 'n'.repeat(256) } })
+    expect(validateMayflyUiNode(rows({ pattern: 'n'.repeat(257) }))).toMatchObject({ ok: false, message: expect.stringContaining('exceeds 256 characters') })
+    expect(validateMayflyUiNode(rows({}))).toMatchObject({ ok: false })
+    expect(validateMayflyUiNode(rows({ pattern: 'x', caseSensitive: 'yes' }))).toMatchObject({ ok: false })
+    expect(validateMayflyUiNode(rows({ pattern: 'x', current: -1 }))).toMatchObject({ ok: false })
+    expect(validateMayflyUiNode(rows({ pattern: 'x', current: 1.5 }))).toMatchObject({ ok: false })
   })
 
   it('rejects malformed field/action options and wrong empty actions', () => {

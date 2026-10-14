@@ -306,6 +306,31 @@ describe('mayfly app driver', () => {
     expect(test.exits).toEqual([])
   })
 
+  it('never starts a request queued behind an operation once the fiber has unloaded', async () => {
+    const gate = Promise.withResolvers<void>()
+    const test = bench({}, { loader: gate.promise })
+    await new Promise(resolve => setTimeout(resolve))
+    test.ctx.emit('mayfly/request-new')
+    await test.ctx.fiber.dispose()
+    gate.resolve()
+    await new Promise(resolve => setTimeout(resolve))
+    // Only the startup creation ran: the queued new-session request met the unloaded fiber and was dropped.
+    expect(test.created).toHaveLength(1)
+    expect(test.errors()).toBe('')
+  })
+
+  it('fences an operation that fails outside its own handler after the fiber unloaded', async () => {
+    const gate = Promise.withResolvers<void>()
+    const test = bench({}, { loader: gate.promise })
+    await new Promise(resolve => setTimeout(resolve))
+    await test.ctx.fiber.dispose()
+    gate.reject(new Error('loader broke late'))
+    await new Promise(resolve => setTimeout(resolve))
+    expect(test.errors()).toBe('')
+    expect(test.exits).toEqual([])
+    expect(test.created).toEqual([])
+  })
+
   it('arms the latest selected non-empty session on disposal', async () => {
     const test = bench()
     const agent = await waitForAgent(test)

@@ -327,6 +327,20 @@ describe('mayfly-settings theme applier', () => {
     }
   })
 
+  it('drops a theme commit whose swap lands after the fiber unloaded, recording and mounting nothing', async () => {
+    themeMock.calls.length = 0
+    const { ctx, settings, attach } = await mount({ mayfly: { theme: 'ocean' } })
+    attach()
+    await vi.waitFor(() => expect(ctx.get('mayflyTheme')?.colors).toBe(themeOcean.OCEAN_COLORS))
+    const state = ctx.mayflyInteractionState
+    const applied = state.lastAppliedTheme
+    await settings.update('mayfly', { theme: 'paper' })
+    await ctx.fiber.dispose()
+    await settle()
+    expect(state.lastAppliedTheme).toBe(applied)
+    expect(themeMock.calls).toEqual(['ocean', 'paper'])
+  })
+
   it('never attaches once the fiber unloaded before the first session', async () => {
     const ctx = createContext()
     await ctx.plugin(MemorySettings, { mayfly: { theme: 'ocean' } })

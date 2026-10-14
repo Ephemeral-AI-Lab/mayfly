@@ -23,6 +23,7 @@ import { renderSurfaceLane, SurfaceManager, type SurfaceLaneEntry, type SurfaceL
 import type { MayflyComponent, MayflyComponents, MayflyFocusable, MayflyKeyAction } from '../../src/core/types.ts'
 import type { MayflyTerminalRuntime } from '../../src/core/terminal.ts'
 import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/width.ts'
+import { createWorkCounters, type MayflyWorkCounters } from '../../src/core/ui-work-counters.ts'
 import { createFakeEditor } from './fake-editor.ts'
 import { flush, plainColors, plainText } from '../helpers.ts'
 
@@ -154,7 +155,7 @@ type TestPaneContribution = Omit<MayflyPaneDefinition, 'placement' | 'onEvent'> 
 }
 type TestPaneRegistration = MayflyPaneRegistration & { refresh(): void, setHidden(hidden: boolean): void }
 
-async function fixture(runtime = createRuntime(), compilerComponents: MayflyComponents = components, contextHints?: MayflyContextHints): Promise<Fixture> {
+async function fixture(runtime = createRuntime(), compilerComponents: MayflyComponents = components, contextHints?: MayflyContextHints, counters?: MayflyWorkCounters): Promise<Fixture> {
   const root = new Context()
   await root.plugin({ name: 'test-mayfly-ui-provider', apply: applyApi })
   await root.plugin(frontend)
@@ -172,7 +173,7 @@ async function fixture(runtime = createRuntime(), compilerComponents: MayflyComp
       mayflyTheme: { colors },
       mayflyKeymap: keymap,
     })
-    mountMayflySurfaceRenderer(owner as never, runtime.runtime, contextHints, root.get('mayflyUiImages'))
+    mountMayflySurfaceRenderer(owner as never, runtime.runtime, contextHints, root.get('mayflyUiImages'), counters)
     owners.push(owner)
     return owner
   }
@@ -886,6 +887,39 @@ describe('direct pane surface renderer', () => {
       expect(f.runtime.focused()).toBe(f.runtime.editor)
       f.keymap.invoke('mayfly.surface.previous')
       expect(f.runtime.surfaces.focusedId).toBe('bottom')
+    } finally {
+      await f.dispose()
+    }
+  })
+
+  it('steps off the last surface without a release when the reader already left it', async () => {
+    const f = await fixture()
+    try {
+      f.register({ id: 'only', placement: 'left', render: () => ui.actions({ id: 'o', items: [{ id: 'go', label: 'Only' }] }) })
+      await flush(8)
+      f.keymap.invoke('mayfly.surface.next')
+      expect(f.runtime.surfaces.focusedId).toBe('only')
+      // Esc leaves the surface; the walk still stands on it, so one more step runs off the end.
+      f.runtime.runtime.releaseSurfaceFocus('only')
+      expect(f.runtime.surfaces.focusedId).toBeUndefined()
+      f.keymap.invoke('mayfly.surface.next')
+      expect(f.runtime.surfaces.focusedId).toBeUndefined()
+      expect(f.runtime.focused()).toBe(f.runtime.editor)
+      // The walk starts over from the first stop.
+      f.keymap.invoke('mayfly.surface.next')
+      expect(f.runtime.surfaces.focusedId).toBe('only')
+    } finally {
+      await f.dispose()
+    }
+  })
+
+  it('counts the compile work of its panes in the sink it was given', async () => {
+    const counters = createWorkCounters()
+    const f = await fixture(createRuntime(), components, undefined, counters)
+    try {
+      f.register({ id: 'counted', placement: 'left', render: () => ui.text('counted') })
+      await flush(8)
+      expect(counters.unitsCompiled).toBeGreaterThan(0)
     } finally {
       await f.dispose()
     }

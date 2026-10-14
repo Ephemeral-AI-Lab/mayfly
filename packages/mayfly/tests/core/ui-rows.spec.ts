@@ -3,11 +3,14 @@ import { describe, expect, it } from 'vitest'
 import {
   blankRows,
   concatRows,
+  concatSources,
   declaredWidthOf,
   findMarkerRow,
   isVirtualRows,
   materializedRows,
   mapRows,
+  mapSource,
+  prepareRows,
   rowSourceOf,
   sameMaterializedRows,
   sliceRows,
@@ -79,6 +82,23 @@ describe('virtualRows', () => {
     expect([...rows]).toEqual(['b0', 'b1', 'b2'])
   })
 
+  it('answers the descriptors of an array: rows below its length, no row past it, and its own properties', () => {
+    const rows = virtualRows(counting(3))
+    expect(Object.getOwnPropertyDescriptor(rows, '1')).toEqual({ value: 'row 1', writable: true, enumerable: true, configurable: true })
+    expect(Object.getOwnPropertyDescriptor(rows, '3')).toBeUndefined()
+    expect(Object.getOwnPropertyDescriptor(rows, 'length')).toEqual({ value: 3, writable: true, enumerable: false, configurable: false })
+    expect(Object.getOwnPropertyDescriptor(rows, 'note')).toBeUndefined()
+    expect(Object.keys(rows)).toEqual(['0', '1', '2'])
+    expect(3 in rows).toBe(false)
+    expect('map' in rows).toBe(true)
+  })
+
+  it('refuses to be frozen, because a frozen facade could never produce its unread rows', () => {
+    const rows = virtualRows(counting(3))
+    expect(() => Object.freeze(rows)).toThrow(TypeError)
+    expect(() => Object.preventExtensions(rows)).toThrow(TypeError)
+  })
+
   it('reports its source', () => {
     const source = counting(3, { declaredWidth: 40 })
     const rows = virtualRows(source)
@@ -88,6 +108,41 @@ describe('virtualRows', () => {
     expect(isVirtualRows(['a'])).toBe(false)
     expect(rowSourceOf(['a'])).toBeUndefined()
     expect(declaredWidthOf(['a'])).toBeUndefined()
+  })
+})
+
+describe('materializedRows', () => {
+  it('counts the rows a facade has produced, and a real array has all of them', () => {
+    const rows = virtualRows(counting(10))
+    expect(materializedRows(rows)).toBe(0)
+    expect(rows[2]).toBe('row 2')
+    expect(materializedRows(rows)).toBe(1)
+    expect(materializedRows(['a', 'b', 'c'])).toBe(3)
+  })
+})
+
+describe('concatSources', () => {
+  it('reads sources one after another, and no sources at all as no rows', () => {
+    const none = concatSources([])
+    expect(none).toMatchObject({ length: 0, declaredWidth: 0, markerFree: true })
+    expect(none.row(0)).toBe('')
+    const joined = virtualRows(concatSources([counting(2), counting(1)]))
+    expect([...joined]).toEqual(['row 0', 'row 1', 'row 0'])
+    // One source is itself.
+    const only = counting(2)
+    expect(concatSources([only])).toBe(only)
+  })
+
+  it('has no unclamped form when no part has one, and prepares nothing past its end', () => {
+    const prepared: [number, number][] = []
+    const parts = [counting(2, { prepare: (from, to) => { prepared.push([from, to]) } }), counting(3)]
+    const rows = virtualRows(concatSources(parts))
+    expect(rowSourceOf(rows)?.unclamped).toBeUndefined()
+    expect(unclampedRows(rows)).toBe(rows)
+    prepareRows(rows, 100, 110)
+    expect(prepared).toEqual([])
+    prepareRows(rows, 1, 4)
+    expect(prepared).toEqual([[1, 4]])
   })
 })
 
@@ -188,6 +243,14 @@ describe('mapRows', () => {
   })
 })
 
+describe('mapSource', () => {
+  it('has no unclamped form when its source has none', () => {
+    const mapped = mapSource(counting(3), row => row.toUpperCase())
+    expect(mapped.unclamped).toBeUndefined()
+    expect(virtualRows(mapped).slice()).toEqual(['ROW 0', 'ROW 1', 'ROW 2'])
+  })
+})
+
 describe('sliceRows', () => {
   it('slices a real array eagerly and a facade lazily', () => {
     expect(sliceRows(['a', 'b', 'c'], 1)).toEqual(['b', 'c'])
@@ -257,6 +320,21 @@ describe('unclampedRows', () => {
     expect(long.reads).toHaveLength(20_000)
   })
 
+  it('maps text offsets through a slice by the rows it skips, and never to a row before its first', () => {
+    const indexed = counting(10, { rowOf: offset => Math.floor(offset / 10), offsetOf: row => row * 10 })
+    const window = rowSourceOf(sliceRows(virtualRows(indexed), 4, 8))!
+    expect(window.length).toBe(4)
+    expect(window.rowOf!(65)).toBe(2)
+    expect(window.rowOf!(5)).toBe(0)
+    expect(window.offsetOf!(2)).toBe(60)
+    expect(window.offsetOf!(-3)).toBe(40)
+  })
+
+  it('has no unclamped form when its source has none', () => {
+    const slice = rowSourceOf(sliceRows(virtualRows(counting(10)), 2, 6))!
+    expect(slice.unclamped).toBeUndefined()
+  })
+
   it('drops a slice end that covered the source, keeps a deliberate window', () => {
     const source = clamped(counting(500), 20)
     // A stack's allocation slice is a no-op over the reported length: the unwrap must reach the rest.
@@ -309,6 +387,12 @@ describe('findMarkerRow', () => {
 })
 
 describe('sameMaterializedRows', () => {
+  it('is true for the same array', () => {
+    const rows = virtualRows(counting(1_000_000))
+    expect(sameMaterializedRows(rows, rows)).toBe(true)
+    expect(materializedRows(rows)).toBe(0)
+  })
+
   it('compares real arrays row by row', () => {
     expect(sameMaterializedRows(['a', 'b'], ['a', 'b'])).toBe(true)
     expect(sameMaterializedRows(['a'], ['a', 'b'])).toBe(false)
@@ -331,6 +415,24 @@ describe('sameMaterializedRows', () => {
     const fresh = virtualRows({ length: 10, row: index => (index === 3 ? 'different' : `row ${String(index)}`) })
     expect(known[3]).toBe('row 3')
     expect(sameMaterializedRows(known, fresh)).toBe(false)
+  })
+
+  it('fails when a real array differs from a facade in any row, on either side', () => {
+    const source = counting(3)
+    expect(sameMaterializedRows(['row 0', 'x', 'row 2'], virtualRows(source))).toBe(false)
+    expect(sameMaterializedRows(virtualRows(counting(3)), ['row 0', 'row 1', 'x'])).toBe(false)
+    // A facade that agrees on what it materialized still differs from a real array on a row it has not read.
+    const known = virtualRows(counting(3))
+    expect(known[0]).toBe('row 0')
+    expect(sameMaterializedRows(known, ['row 0', 'row 1', 'x'])).toBe(false)
+  })
+
+  it('fails on a row only the second facade has materialized', () => {
+    const first = virtualRows(counting(10))
+    const second = virtualRows({ length: 10, row: index => (index === 7 ? 'different' : `row ${String(index)}`) })
+    expect(first[0]).toBe('row 0')
+    expect(second[7]).toBe('different')
+    expect(sameMaterializedRows(first, second)).toBe(false)
   })
 
   it('compares a real array against a facade over all its rows', () => {

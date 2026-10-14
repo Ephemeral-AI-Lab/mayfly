@@ -73,6 +73,16 @@ describe('findHits', () => {
     expect(result.orders).toEqual(new Map([['read:1:r1', 0], ['read:1:r2', 1]]))
   })
 
+  it('searches each search and each command call of a group as its own part, with the order of its turn', () => {
+    const grep = { callId: 's1', activity: 'search', detail: 'needle', seq: 1, updatedSeq: 1, turn: 1, step: 0, name: 'grep', startedAt: 0, state: 'ok', pattern: 'needle' }
+    const run = { callId: 'c1', activity: 'command', detail: 'build', seq: 2, updatedSeq: 2, turn: 1, step: 0, name: 'bash', startedAt: 0, state: 'ok', command: 'run needle' }
+    const searches = { id: 'search:1', kind: 'transcript-search-group', seq: 1, updatedSeq: 1, turn: 1, step: 0, searches: [grep, { ...grep, callId: 's2', pattern: 'hay' }] } as unknown as TranscriptEntryModel
+    const commands = { id: 'command:1', kind: 'transcript-command-group', seq: 2, updatedSeq: 2, turn: 1, step: 0, commands: [run] } as unknown as TranscriptEntryModel
+    const result = findHits(model([searches, commands]), readPattern('needle'))
+    expect(result.hits).toEqual([{ part: 'search:1:s1', turn: 1, order: 0, nth: 0 }, { part: 'command:1:c1', turn: 1, order: 2, nth: 0 }])
+    expect(result.orders).toEqual(new Map([['search:1:s1', 0], ['search:1:s2', 1], ['command:1:c1', 2]]))
+  })
+
   it('caps the matches of one part at 500 and says nothing more of it', () => {
     const result = findHits(model([user('user:1', 1, 'a'.repeat(600))]), readPattern('a'))
     expect(result.hits).toHaveLength(500)

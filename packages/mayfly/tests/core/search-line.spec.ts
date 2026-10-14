@@ -2,6 +2,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { CURSOR_MARKER } from '@earendil-works/pi-tui'
 import { SearchLine, type MayflySearchLineOptions } from '../../src/core/search-line.ts'
+import { ACTION_CANCEL } from '../../src/core/key-actions.ts'
 import { visibleWidth } from '../../src/core/width.ts'
 
 const KEY = { enter: '\r', escape: '\x1b', ctrlC: '\x03', backspace: '\x7f' }
@@ -120,5 +121,58 @@ describe('SearchLine keys', () => {
     search.setEditable(true)
     search.handleInput('y')
     expect(options.onChange).toHaveBeenCalledWith('y')
+  })
+})
+
+describe('SearchLine focus, colors, and keymap', () => {
+  it('reports the focus it was given, and paints the prefix and status with the theme colors', () => {
+    const options = { prefix: '/', onChange: vi.fn(), onAccept: vi.fn(), onAbandon: vi.fn() } satisfies MayflySearchLineOptions
+    const host = {
+      colors: () => ({ primary: (text: string) => `[p:${text}]`, muted: (text: string) => `[m:${text}]` }),
+      keymap: () => undefined,
+      requestRender: vi.fn(),
+    }
+    const search = new SearchLine(options, host as never)
+    expect(search.focused).toBe(false)
+    search.focused = true
+    expect(search.focused).toBe(true)
+    search.setStatus('2 matches')
+    const rows = shown(search.render(60))
+    expect(rows[0]!.startsWith('  [p:/ ]')).toBe(true)
+    expect(rows[1]).toBe(`${' '.repeat(4)}[m:2 matches]`)
+  })
+
+  it('keeps the pattern and its keys working after the cached input is invalidated', () => {
+    const { search, options } = line()
+    search.focused = true
+    search.handleInput('a')
+    search.invalidate()
+    search.handleInput('b')
+    expect(options.onChange).toHaveBeenLastCalledWith('ab')
+  })
+
+  it('abandons on the keymap binding of the cancel action', () => {
+    const options = { prefix: '/', onChange: vi.fn(), onAccept: vi.fn(), onAbandon: vi.fn() } satisfies MayflySearchLineOptions
+    const host = {
+      colors: () => undefined,
+      keymap: () => ({ matches: (data: string, action: string) => data === 'q' && action === ACTION_CANCEL }),
+      requestRender: vi.fn(),
+    }
+    const search = new SearchLine(options, host as never)
+    search.focused = true
+    search.handleInput('q')
+    expect(options.onAbandon).toHaveBeenCalledTimes(1)
+    expect(options.onChange).not.toHaveBeenCalled()
+  })
+})
+
+describe('SearchLine status', () => {
+  it('repaints only when the status line changes', () => {
+    const { search, host } = line()
+    search.setStatus('1 match')
+    search.setStatus('1 match')
+    expect(host.requestRender).toHaveBeenCalledTimes(1)
+    search.setStatus('2 matches')
+    expect(host.requestRender).toHaveBeenCalledTimes(2)
   })
 })

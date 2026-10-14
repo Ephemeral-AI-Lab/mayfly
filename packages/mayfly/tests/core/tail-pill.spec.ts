@@ -33,7 +33,7 @@ class Scope {
 const WHEEL_UP = '\x1b[<64;1;1M'
 
 /** A terminal and a renderer over content whose height and newest turn the test moves. */
-async function bench(keys: string[] = []) {
+async function bench(keys: string[] = [], hints = true) {
   const root = new Context()
   await root.plugin({ name: 'test-mayfly-ui-provider', apply: applyApi })
   await root.plugin(frontend)
@@ -46,7 +46,7 @@ async function bench(keys: string[] = []) {
     mayflyComponents: components, mayflyTheme: { colors }, emit: root.emit.bind(root),
     mayflyKeymap: { register(_actions: MayflyKeyAction[]) { return () => {} }, matches: () => false, dispatch: () => false, getKeys: () => keys },
   })
-  mountMayflySurfaceRenderer(owner as never, runtime, { translate: (key, values) => key.replace('{count}', String(values?.count)).replace('{key}', String(values?.key)), revision: () => 0 })
+  mountMayflySurfaceRenderer(owner as never, runtime, hints ? { translate: (key, values) => key.replace('{count}', String(values?.count)).replace('{key}', String(values?.key)), revision: () => 0 } : undefined)
   const slot = root.mayflyScreen.mountNodeSlot('transcript.conversation', { region: 'content' })
   // The chip is drawn by the notification pane, which this bench does not mount: its words arrive as an announcement.
   let announced: string | undefined
@@ -61,6 +61,7 @@ async function bench(keys: string[] = []) {
     chip: (): string | undefined => announced,
     paint: async (): Promise<void> => { runtime.requestRender(); await waitForRender() },
     scrollUp: async (): Promise<void> => { terminal.sendInput(WHEEL_UP); await waitForRender() },
+    unmount: (): void => { owner.dispose() },
     dispose: async (): Promise<void> => { owner.dispose(); await runtime.stop(); terminal.dispose() },
   }
 }
@@ -95,6 +96,31 @@ describe('the tail chip', () => {
     runtime.followContent()
     await waitForRender()
     expect(chip()).toBeUndefined()
+    await dispose()
+  })
+
+  it('counts one new turn in the singular, and words the chip with the catalog translator when the renderer has none', async () => {
+    const { state, slot, chip, paint, scrollUp, dispose } = await bench([], false)
+    slot.setTurns(3)
+    await scrollUp()
+    expect(chip()).toBe('Back to bottom · Ctrl+↓')
+    state.length += 4
+    slot.setTurns(4)
+    await paint()
+    expect(chip()).toBe('1 new turn · Ctrl+↓')
+    await dispose()
+  })
+
+  it('announces nothing once the renderer is gone, even when a change was already on its way', async () => {
+    const { slot, chip, scrollUp, unmount, dispose } = await bench()
+    slot.setTurns(3)
+    await scrollUp()
+    expect(chip()).toBe('Back to bottom · Ctrl+↓')
+    // The new turn queues an announcement; the renderer unloads before it is delivered.
+    slot.setTurns(4)
+    unmount()
+    await waitForRender()
+    expect(chip()).toBe('Back to bottom · Ctrl+↓')
     await dispose()
   })
 

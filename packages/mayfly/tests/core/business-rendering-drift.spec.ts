@@ -57,7 +57,6 @@ const approvedPresentation = new Set([
   "padding:packages/mayfly/src/transcript/status-model.ts:+ ' '.repeat(Math.max(0, width - centerStart - centerWidth - rightWidth))",
   "pointer:packages/mayfly/src/interaction/update-command.ts:ui.text([`v${fromVersion} → v${toVersion}`, detail, t('The update is kept only after a successful startup check.')].filter(Boolean).join(' · '), { tone: 'warning' }),",
   "pointer:packages/mayfly/src/interaction/update-command.ts:{ kind: 'divider', label: `v${fromVersion} → v${toVersion}` },",
-  "pointer:packages/mayfly/src/transcript/present.ts:return mcp === null ? name : `${mcp[1]!} › ${mcp[2]!}`",
   "pointer:packages/mayfly/src/transcript/stream-facts.ts:const tokens = mark?.before !== undefined && mark.after !== undefined ? `${approx(mark.before)} → ${approx(mark.after)} ${t('tokens')}`",
   "pointer:packages/mayfly/src/transcript/tool-calls.ts:if (mcp !== null) return `${mcp[1]!} › ${mcp[2]!}`",
 ])

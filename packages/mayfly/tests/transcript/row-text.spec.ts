@@ -35,6 +35,40 @@ describe('partText in text mode', () => {
     expect(text(entry(write))).toBe('--- /dev/null\n+++ new.txt\n+一\n+two\n… 3 more lines')
   })
 
+  it('gives a diff only the sides a hunk has, and a write that fits its head without a count of what is left', () => {
+    const edit = tool({ change: { path: 'a.ts', added: 1, removed: 1, hunks: [{ before: '', after: 'added' }, { before: 'removed', after: '' }], hiddenLines: 0 } })
+    expect(text(entry(edit))).toBe('--- a.ts\n+++ a.ts\n@@\n+added\n@@\n-removed')
+    const write = tool({ name: 'write', activity: 'write', change: { path: 'new.txt', added: 2, removed: 0, hunks: [], hiddenLines: 0, write: { bytes: 8, lines: 2, head: ['one', 'two'] } } })
+    expect(text(entry(write))).toBe('--- /dev/null\n+++ new.txt\n+one\n+two')
+  })
+
+  it('gives a tool with no detail by its name alone, and a fetched page by its address', () => {
+    expect(text(entry(tool({ name: 'custom', activity: 'tools', detail: '', result: { text: 'done', isError: false, endedAt: 1 } })))).toBe('custom\ndone')
+    const fetch = tool({ name: 'web_fetch', activity: 'webFetch', family: 'web', detail: 'https://x.dev', web: { kind: 'fetch', url: 'https://x.dev', statusCode: 200, truncated: false }, result: { text: 'page', isError: false, endedAt: 1 } })
+    expect(text(entry(fetch))).toBe('web_fetch(https://x.dev)\nhttps://x.dev\npage')
+  })
+
+  it('names a read by its label or detail when it has no path, and gives the error a call failed with', () => {
+    const call = (fields: Record<string, unknown>) => ({ callId: 'r', activity: 'read', detail: 'job 5', seq: 1, updatedSeq: 1, turn: 1, step: 0, name: 'read_job', startedAt: 0, state: 'error', ...fields })
+    const group = (calls: unknown[]) => ({ ...base, id: 'read:1', kind: 'transcript-read-group', step: 0, reads: calls }) as unknown as TranscriptEntryModel
+    const labelled = call({ label: 'job_id: 5', error: 'gone' })
+    expect(partText({ entry: group([labelled]), call: labelled as never }, 'text')).toBe('job_id: 5\ngone')
+    const bare = call({})
+    expect(partText({ entry: group([bare]), call: bare as never }, 'text')).toBe('job 5')
+  })
+
+  it('names a search by its detail when it has no pattern, and lists the paths and the error of a call', () => {
+    const search = { callId: 's', activity: 'search', detail: '**/*.ts', seq: 1, updatedSeq: 1, turn: 1, step: 0, name: 'glob', startedAt: 0, state: 'error', shape: 'paths', paths: ['a.ts', 'b.ts'], error: 'truncated' }
+    const group = { ...base, id: 'search:1', kind: 'transcript-search-group', step: 0, searches: [search] } as unknown as TranscriptEntryModel
+    expect(partText({ entry: group, call: search as never }, 'text')).toBe('**/*.ts\ntruncated\na.ts\nb.ts')
+  })
+
+  it('gives a command that spans several lines by all of them, and the error it failed with', () => {
+    const command = { callId: 'g', activity: 'commands', detail: 'cd a', seq: 1, updatedSeq: 1, turn: 1, step: 0, name: 'bash', startedAt: 0, state: 'error', command: 'cd a …', commandLines: ['cd a', 'make'], error: 'exit 2' }
+    const group = { ...base, id: 'cmd:1', kind: 'transcript-command-group', step: 0, commands: [command] } as unknown as TranscriptEntryModel
+    expect(partText({ entry: group, call: command as never }, 'text')).toBe('$ cd a\nmake\nexit 2')
+  })
+
   it('gives a command with its output, and a plain tool with its head, web sources, and result', () => {
     expect(text(entry(tool({ terminal: { command: 'pnpm test', exitCode: 0, output: 'ok 中' } })))).toBe('$ pnpm test\nok 中')
     const search = tool({ name: 'web_search', activity: 'webSearch', family: 'web', detail: 'mayfly', web: { kind: 'search', sources: [{ url: 'https://a.dev', title: 'A' }, { url: 'https://b.dev' }], truncated: false }, result: { text: 'done', isError: false, endedAt: 1 } })
@@ -55,6 +89,26 @@ describe('partText in text mode', () => {
     const command = { callId: 'g1', activity: 'commands', detail: 'pnpm test', seq: 1, updatedSeq: 1, turn: 1, step: 0, name: 'bash', startedAt: 0, state: 'ok', command: 'pnpm test', previewLines: ['a', '中'] }
     const commandGroup = { ...base, id: 'cmd:1', kind: 'transcript-command-group', step: 0, commands: [command] } as unknown as TranscriptEntryModel
     expect(partText({ entry: commandGroup, call: command as never }, 'text')).toBe('$ pnpm test\na\n中')
+  })
+
+  it('gives a whole group entry as its calls one after the other, a blank line between them', () => {
+    const call = (fields: Record<string, unknown>) => ({ detail: 'x', seq: 1, updatedSeq: 1, turn: 1, step: 0, startedAt: 0, state: 'ok', ...fields })
+    const group = (kind: string, key: string, calls: unknown[]) => ({ ...base, id: `${kind}:1`, kind, step: 0, [key]: calls }) as unknown as TranscriptEntryModel
+    const reads = group('transcript-read-group', 'reads', [
+      call({ callId: 'r1', activity: 'read', name: 'read', path: 'a.ts', previewLines: [{ number: 1, text: '一' }] }),
+      call({ callId: 'r2', activity: 'read', name: 'read', path: 'b.ts', previewLines: [{ number: 1, text: 'two' }] }),
+    ])
+    expect(text(entry(reads))).toBe('a.ts\n    1  一\n\nb.ts\n    1  two')
+    const searches = group('transcript-search-group', 'searches', [
+      call({ callId: 's1', activity: 'search', name: 'grep', shape: 'matches', pattern: 'foo', files: [{ path: 'a.ts', count: 1, previews: [{ lineNumber: 3, line: 'foo()' }] }] }),
+      call({ callId: 's2', activity: 'search', name: 'grep', shape: 'matches', pattern: 'bar', files: [{ path: 'b.ts', count: 1, previews: [{ lineNumber: 7, line: 'bar()' }] }] }),
+    ])
+    expect(text(entry(searches))).toBe('foo\na.ts\n  3: foo()\n\nbar\nb.ts\n  7: bar()')
+    const commands = group('transcript-command-group', 'commands', [
+      call({ callId: 'g1', activity: 'commands', name: 'bash', command: 'ls', previewLines: ['a'] }),
+      call({ callId: 'g2', activity: 'commands', name: 'bash', command: 'pwd', previewLines: ['/repo'] }),
+    ])
+    expect(text(entry(commands))).toBe('$ ls\na\n\n$ pwd\n/repo')
   })
 
   it('gives a compaction its detail, summary, and error', () => {

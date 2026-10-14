@@ -82,3 +82,20 @@ describe('countMatches and highlightLine on a painted line', () => {
     expect(marked).toContain(REVERSE_OFF)
   })
 })
+
+describe('highlightLine across escape sequences', () => {
+  const find = (pattern: string): RegExp => highlightPattern({ pattern })!
+  it('counts a two-character escape and an APC (the cursor marker) as zero-width, and marks a match around them', () => {
+    expect(highlightLine('ab\x1b7c', find('bc'))).toBe(`a${REVERSE_ON}b\x1b7c${REVERSE_OFF}`)
+    expect(highlightLine('a\x1b_pi\x1b\\b', find('ab'))).toBe(`${REVERSE_ON}a\x1b_pi\x1b\\b${REVERSE_OFF}`)
+    expect(countMatches('x\x1b_pi\x1b\\y', find('xy'))).toBe(1)
+  })
+
+  it('ends an OSC link that closes with ESC backslash, and keeps a link opened inside a match open without restarting the mark', () => {
+    const link = '\x1b]8;;https://x.dev\x1b\\go\x1b]8;;\x1b\\'
+    expect(stripAnsi(highlightLine(link, find('go')).replace(/\x1b\]8;;[^\x07\x1b]*(\x07|\x1b\\)/gu, ''))).toBe('go')
+    const inside = highlightLine('g\x1b]8;;https://x.dev\x07o', find('go'))
+    expect(inside).toBe(`${REVERSE_ON}g\x1b]8;;https://x.dev\x07o${REVERSE_OFF}`)
+  })
+})
+

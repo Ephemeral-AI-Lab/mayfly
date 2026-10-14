@@ -103,6 +103,11 @@ describe('tool line glyphs and spans', () => {
     expect(ToolLine({ state: 'ok', name: 'Edit', target: 'src/c.ts', stat: { added: 0, removed: 3 } }).at(-1)).toEqual({ text: '▮'.repeat(8), tone: 'danger' })
   })
 
+  it('draws a change that touched no line as its zero counts alone, with no bar', () => {
+    const plain = ToolLine({ state: 'ok', name: 'Write', target: 'src/empty.ts', stat: { added: 0, removed: 0 } }).map(span => span.text).join('')
+    expect(plain).toBe('✓ Write(src/empty.ts) · +0 −0')
+  })
+
   it('draws the body rows indented under the line, the cap row muted, and a standard block\'s head and tree', () => {
     expect(ToolBody({ text: 'ok', tone: 'muted' }).map(span => span.text).join('')).toBe('  ok')
     expect(ToolBody({ lead: '12', text: 'const a = 1' }).map(span => span.text).join('')).toBe('  12 const a = 1')

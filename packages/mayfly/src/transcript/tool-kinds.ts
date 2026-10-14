@@ -68,24 +68,6 @@ export function kindOf(activity: ProcessActivity): ToolKind {
 }
 
 /**
- * The present-tense label of one running category (an English locale key).
- * @param activity - the running call's category.
- * @returns the untranslated label.
- */
-export function runningLabel(activity: ProcessActivity): string {
-  return KINDS[activity].running
-}
-
-/**
- * The present-tense label of one category whose call is still streaming its arguments (an English locale key).
- * @param activity - the preparing call's category.
- * @returns the untranslated label.
- */
-export function preparingLabel(activity: ProcessActivity): string {
-  return KINDS[activity].preparing
-}
-
-/**
  * What a group of calls of one category counts: `3 files`, `3 calls`.
  * @param activity - the calls' category.
  * @param count - how many calls.

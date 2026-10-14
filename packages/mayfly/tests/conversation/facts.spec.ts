@@ -252,6 +252,104 @@ describe('mayflyConversationFacts projection', () => {
     expect(conversationFactsProjectionDefinition.wire.view({ ...state, todos: [{ content: 'x', status: 'pending' }] })).toEqual({ ...state, todos: [{ content: 'x', status: 'pending' }] })
   })
 
+  it('records a retry with a short reason and status, and clears it once the retried attempt starts or lands', () => {
+    seq = 0
+    const retry = (failure: unknown) => event('llm/retry' as never, { retry: 1, maxRetries: 3, delayMs: 2_000, failure }, 7_000)
+    const base = foldConversationFacts(initialConversationFacts(), event('turn/start', { turn: 1 }))
+    // A provider code wins over the message, and the status travels with it.
+    expect(foldConversationFacts(base, retry({ code: 'rate_limited', message: 'slow down', status: 429 })).retrying)
+      .toEqual({ retry: 1, maxRetries: 3, at: 7_000, delayMs: 2_000, reason: 'rate_limited', status: 429 })
+    // Without a code the message is collapsed to one line and cut to 80 characters.
+    const long = foldConversationFacts(base, retry({ code: '', message: `  upstream   said\n${'x'.repeat(200)}` })).retrying
+    expect(long?.reason).toBe(`upstream said ${'x'.repeat(66)}`)
+    expect(long?.reason).toHaveLength(80)
+    expect(long).not.toHaveProperty('status')
+    // A failure with neither, a non-finite status, or a non-object failure names no reason.
+    for (const failure of [{}, { status: Number.NaN }, { status: '503' }, 'boom', null, undefined]) {
+      const retrying = foldConversationFacts(base, retry(failure)).retrying
+      expect(retrying, JSON.stringify(failure)).toEqual({ retry: 1, maxRetries: 3, at: 7_000, delayMs: 2_000 })
+    }
+
+    const waiting = foldConversationFacts(base, retry({ message: 'boom' }))
+    expect(waiting.retrying?.reason).toBe('boom')
+    expect(conversationFactsSchema.safeParse(waiting).success).toBe(true)
+    const started = foldConversationFacts(waiting, event('llm/retry-started' as never, {}))
+    expect(started).not.toHaveProperty('retrying')
+    // Nothing waiting: the event is no change.
+    expect(foldConversationFacts(started, event('llm/retry-started' as never, {}))).toBe(started)
+    // The retried attempt landing as a message also ends the wait.
+    const landed = foldConversationFacts(waiting, event('assistant/message', { turn: 1, step: 0, stream: [] }))
+    expect(landed).not.toHaveProperty('retrying')
+    expect(landed).toMatchObject({ phase: 'waiting', currentStep: 0, lastCompletedStep: 0 })
+  })
+
+  it('keeps one mark per approval with its outcome, and only the newest few', () => {
+    seq = 0
+    let state = foldConversationFacts(initialConversationFacts(), event('approval/asked', { id: 'a1', callId: 'c1' }))
+    expect(state.approvals).toEqual([{ id: 'a1', callId: 'c1' }])
+    state = foldConversationFacts(state, event('approval/asked', { id: 'a2' }))
+    expect(state.approvals).toEqual([{ id: 'a1', callId: 'c1' }, { id: 'a2' }])
+    // The outcome joins the asked mark and moves it to the newest place.
+    state = foldConversationFacts(state, event('approval/decided', { id: 'a1', outcome: 'allowed-once' }))
+    expect(state.approvals).toEqual([{ id: 'a2' }, { id: 'a1', callId: 'c1', outcome: 'allowed-once' }])
+    // A decision for an approval the facts never saw changes nothing.
+    expect(foldConversationFacts(state, event('approval/decided', { id: 'unknown', outcome: 'rejected' }))).toBe(state)
+    expect(conversationFactsSchema.safeParse(state).success).toBe(true)
+
+    for (let index = 0; index < 40; index += 1) state = foldConversationFacts(state, event('approval/asked', { id: `n${index}` }))
+    expect(state.approvals).toHaveLength(32)
+    expect(state.approvals?.[0]).toEqual({ id: 'n8' })
+    expect(state.approvals?.at(-1)).toEqual({ id: 'n39' })
+  })
+
+  it('marks a compaction with the context before and after, and the window when it is known', () => {
+    seq = 0
+    let state = foldConversationFacts(initialConversationFacts(), event('assistant/message', {
+      turn: 1, step: 0, stream: [], usage: { inputTokens: 900, outputTokens: 100 },
+    }))
+    // Without a known window the mark carries none.
+    const noWindow = foldConversationFacts(state, event('compaction/start', { compactionId: 'k0' }))
+    expect(noWindow.compactions).toEqual([{ id: 'k0', before: 900 }])
+    // A summary that never saw its start still records the context it replaced.
+    const orphan = foldConversationFacts(noWindow, event('compaction/summary', {
+      compactionId: 'k9', summary: [], shadowedRange: { start: 1, end: 1 }, shadowedSeqs: [1], shadowedTokenCount: 400,
+      provider: 'mock', model: 'mock', usage: { inputTokens: 10, outputTokens: 50 },
+    }))
+    expect(orphan.compactions).toEqual([{ id: 'k0', before: 900 }, { id: 'k9', before: 900, after: 550 }])
+
+    state = foldConversationFacts(state, event('request/context', { contextWindow: 8_000 }))
+    state = foldConversationFacts(state, event('compaction/start', { compactionId: 'k1' }))
+    expect(state.compactions).toEqual([{ id: 'k1', before: 900, window: 8_000 }])
+    const summarized = foldConversationFacts(state, event('compaction/summary', {
+      compactionId: 'k1', summary: [], shadowedRange: { start: 1, end: 1 }, shadowedSeqs: [1], shadowedTokenCount: 600,
+      provider: 'mock', model: 'mock', usage: { inputTokens: 10, outputTokens: 100 },
+    }))
+    expect(summarized.compactions).toEqual([{ id: 'k1', before: 900, window: 8_000, after: 400 }])
+    const lateOrphan = foldConversationFacts(state, event('compaction/summary', {
+      compactionId: 'k2', summary: [], shadowedRange: { start: 1, end: 1 }, shadowedSeqs: [1], shadowedTokenCount: 200,
+      provider: 'mock', model: 'mock',
+    }))
+    expect(lateOrphan.compactions?.at(-1)).toEqual({ id: 'k2', before: 900, window: 8_000, after: 700 })
+    expect(conversationFactsSchema.safeParse(summarized).success).toBe(true)
+  })
+
+  it('takes a settled call off the calls in flight and ignores a result nobody was waiting on', () => {
+    seq = 0
+    let state = foldConversationFacts(initialConversationFacts(), event('tool/call', { turn: 1, step: 0, callId: 'f1', name: 'read', arguments: '{"path":"a.ts"}' }))
+    state = foldConversationFacts(state, event('tool/call', { turn: 1, step: 0, callId: 'f2', name: 'bash', arguments: 'not json' }))
+    expect(state.inFlight).toEqual([
+      { callId: 'f1', name: 'read', detail: expect.any(String) },
+      { callId: 'f2', name: 'bash', detail: '' },
+    ])
+    state = foldConversationFacts(state, event('tool/result', toolResult('f1', [])))
+    expect(state.inFlight?.map(call => call.callId)).toEqual(['f2'])
+    // A result for a call that is not in flight is no change.
+    expect(foldConversationFacts(state, event('tool/result', toolResult('other', [])))).toBe(state)
+    // Neither is it when no call was ever recorded in flight.
+    const idle = initialConversationFacts()
+    expect(foldConversationFacts(idle, event('tool/result', toolResult('other', [])))).toBe(idle)
+  })
+
   it('replays and publishes facts through the official registry, then unloads', async () => {
     const ctx = new Context()
     await ctx.plugin(SessionStore)

@@ -6,7 +6,7 @@
  * @module @ephemeral-ai/mayfly/tests/transcript/pane-activity
  */
 
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Context } from '@deepseek-ai/cordis'
 import * as activity from '../../src/transcript/pane-activity.ts'
 import { buildTipRotation } from '../../src/transcript/status-tips.ts'
@@ -81,10 +81,14 @@ type Facts = ReturnType<typeof initialConversationFacts>
  * @param initial - the facts the row starts from (the session is active unless said otherwise).
  * @param settings - the `mayfly` settings section the row reads.
  * @param stopPending - whether a stop is latched.
+ * @param status - the Agent's status at mount.
+ * @param processTimers - keep the process timers (the test drives them with fake global timers) instead of the recorded ones.
  */
-async function bootFacts(initial: Partial<Facts>, settings: Record<string, unknown> = {}, stopPending = false, status: 'running' | 'idle' = 'running') {
+async function bootFacts(initial: Partial<Facts>, settings: Record<string, unknown> = {}, stopPending = false, status: 'running' | 'idle' = 'running', processTimers = false) {
   const timers = new FakeTimers()
-  activity.setActivityTimers(timers)
+  if (!processTimers) activity.setActivityTimers(timers)
+  /** The messages of the notices the pane's owners raised, in order. */
+  const reported: string[] = []
   let now = NOW
   activity.setActivityClock(() => now)
   const tick = new FakeTick()
@@ -97,7 +101,7 @@ async function bootFacts(initial: Partial<Facts>, settings: Record<string, unkno
   let stop = stopPending
   const harness: PanePluginHarness = await bootPanePlugin(activity, agent, {
     mayflyTick: tick,
-    mayflyUiInteraction: { notificationSnapshot: (): readonly never[] => [], subscribe: () => () => {}, createNotificationOwner: () => ({ report() {}, clear() {}, clearAll() {}, dispose() {} }) },
+    mayflyUiInteraction: { notificationSnapshot: (): readonly never[] => [], subscribe: () => () => {}, createNotificationOwner: () => ({ report: (_id: string, _scope: unknown, feedback: { readonly message: string }) => { reported.push(feedback.message) }, clear() {}, clearAll() {}, dispose() {} }) },
     mayflyInteractionState: { settingsSource: () => section.value },
     mayflyRequests: { stopPending: () => stop },
     mayflySessionFacts: {
@@ -119,6 +123,7 @@ async function bootFacts(initial: Partial<Facts>, settings: Record<string, unkno
     ...harness,
     timers,
     tick,
+    reported,
     /** The turn ends: the facts go inactive and the Agent's status flips back to idle. */
     idle() {
       facts = { ...facts, active: false, phase: 'idle' }
@@ -388,6 +393,73 @@ describe('mayfly-pane-activity', () => {
     expect(rows(harness.screen)).toEqual([])
     harness.ctx.emit('mayfly/decision-wait-changed', { kind: 'answer' } as never)
     expect(rows(harness.screen)[0]).toMatch(/^ {2}\S? ?Waiting for your answer · 0s$/u)
+    await harness.dispose()
+  })
+
+  it('names the first three arguments of the calls in flight and counts the rest', async () => {
+    const calls = ['one', 'two', 'three', 'four', 'five'].map((detail, index) => ({ callId: `c${String(index)}`, name: 'bash', detail }))
+    const harness = await bootFacts({ phase: 'tool', inFlight: calls })
+    expect(rows(harness.screen)[1]).toBe('    ⎿ one · two · three +2 more')
+    await harness.dispose()
+  })
+
+  it('counts the reasoning phase from the moment the row first saw it when the session carries no start of its own', async () => {
+    const harness = await bootFacts({ phase: 'thinking' })
+    expect(rows(harness.screen)[0]).toMatch(/^ {2}\S Pondering/u)
+    harness.advance(6_000)
+    harness.tick.fire(NOW + 6_000)
+    expect(rows(harness.screen)[0]).toMatch(/^ {2}\S Mulling/u)
+    harness.advance(40_000)
+    harness.tick.fire(NOW + 46_000)
+    expect(rows(harness.screen)[0]).toMatch(/^ {2}\S Fathoming/u)
+    await harness.dispose()
+  })
+
+  it('releases the stopping row at once when the turn settles after its minimum has passed', async () => {
+    const harness = await bootFacts({ phase: 'tool', inFlight: [{ callId: 'c1', name: 'bash', detail: 'sleep 9' }] })
+    harness.stop(true)
+    harness.advance(700)
+    harness.push({ active: false, phase: 'idle', inFlight: [] })
+    harness.stop(false)
+    expect(harness.timers.timeouts).toHaveLength(0)
+    expect(rows(harness.screen)[0]).not.toBe('  ■ interrupting…')
+    await harness.dispose()
+  })
+
+  it('holds and releases the stopping row on the process timers when none are injected', async () => {
+    vi.useFakeTimers()
+    try {
+      const harness = await bootFacts({ phase: 'waiting' }, {}, false, 'running', true)
+      harness.stop(true)
+      harness.stop(false)
+      expect(rows(harness.screen)[0]).toBe('  ■ interrupting…')
+      expect(vi.getTimerCount()).toBe(1)
+      vi.advanceTimersByTime(600)
+      expect(rows(harness.screen)[0]).not.toBe('  ■ interrupting…')
+      // A stop that lands inside a new hold cancels it.
+      harness.stop(true)
+      harness.stop(false)
+      expect(vi.getTimerCount()).toBe(1)
+      harness.stop(true)
+      expect(vi.getTimerCount()).toBe(0)
+      await harness.dispose()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('ignores the settings of another namespace, and a change that leaves the quiet hints as they were', async () => {
+    const harness = await bootFacts({ phase: 'waiting', turnStartedAt: NOW })
+    const before = rows(harness.screen)
+    harness.ctx.emit('settings/document-updated', 'other' as never, 1)
+    harness.settings({ quietHints: 'full', something: 'else' })
+    expect(rows(harness.screen)).toEqual(before)
+    await harness.dispose()
+  })
+
+  it('tells a resumed session how long ago it was last active, by the clock the row keeps', async () => {
+    const harness = await bootFacts({ active: false, phase: 'idle', turn: 2, endedAt: NOW - 120_000 }, {}, false, 'idle')
+    expect(harness.reported).toContain('Resumed session · 2 turns · last active 2m ago')
     await harness.dispose()
   })
 })

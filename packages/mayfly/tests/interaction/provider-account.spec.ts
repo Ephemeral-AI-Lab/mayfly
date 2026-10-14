@@ -461,6 +461,95 @@ describe('DeepSeek account panel', () => {
     await flush(4)
     expect(exits).toEqual(['back'])
   })
+  it('answers a stale copy against the live attempt state, not the waiting panel', async () => {
+    const copied: string[] = []
+    setClipboardTextWriter(async text => { copied.push(text) })
+    const original = accountInternals.spawnOpener
+    accountInternals.spawnOpener = async () => true
+    try {
+      const { ctx, account } = await bench(signedOut, { port: 45678 })
+      await openAccountPanel(ctx, 'deepseek-account')
+      const model = ctx.mayflyUiInteraction.get('overlay', panelId)!
+      model.invoke('sign-in')
+      await flush(4)
+      // the service ends the attempt while the panel still shows its waiting link
+      void account.api.cancelSignIn('attempt-1' as never)
+      model.invoke('copy-link')
+      await flush(4)
+      expect(copied).toEqual([])
+    } finally {
+      setClipboardTextWriter(undefined)
+      accountInternals.spawnOpener = original
+    }
+  })
+
+  it('restarts from a stale waiting panel without retiring an attempt the service already ended', async () => {
+    const original = accountInternals.spawnOpener
+    accountInternals.spawnOpener = async () => true
+    try {
+      const { ctx, account } = await bench(signedOut, { port: 45678 })
+      await openAccountPanel(ctx, 'deepseek-account')
+      const model = ctx.mayflyUiInteraction.get('overlay', panelId)!
+      model.invoke('sign-in')
+      await flush(4)
+      void account.api.cancelSignIn('attempt-1' as never)
+      model.invoke('restart-sign-in')
+      await flush(4)
+      expect(account.cancels).toEqual(['attempt-1'])
+      expect(account.starts).toHaveLength(2)
+    } finally {
+      accountInternals.spawnOpener = original
+    }
+  })
+
+  it('drops the sign-in control and explains the host path once the local web server stops', async () => {
+    const { ctx } = await bench(signedOut)
+    const server = await ctx.plugin({ name: 'e2e-web-server', apply(plugin: Context) { plugin.provide('webServer', { port: 45678 } as never) } })
+    expect(await openAccountPanel(ctx, 'deepseek-account')).toBe(true)
+    const model = ctx.mayflyUiInteraction.get('overlay', panelId)!
+    expect(JSON.stringify(model.node)).toContain('"Sign in"')
+    await server.dispose()
+    await flush(4)
+    const json = JSON.stringify(model.node)
+    expect(json).not.toContain('"Sign in"')
+    expect(json).toContain('Desktop or Web host')
+  })
+
+  it('restarts into an attempt that has no link yet and says a fresh link is pending', async () => {
+    const original = accountInternals.spawnOpener
+    accountInternals.spawnOpener = async () => true
+    try {
+      const { ctx, account } = await bench(signedOut, { port: 45678 })
+      await openAccountPanel(ctx, 'deepseek-account')
+      const model = ctx.mayflyUiInteraction.get('overlay', panelId)!
+      model.invoke('sign-in')
+      await flush(4)
+      account.failures.initializing = true
+      model.invoke('restart-sign-in')
+      await flush(4)
+      expect(model.feedbackSnapshot().at(-1)?.message).toBe('Sign-in restarted with a fresh link')
+    } finally {
+      accountInternals.spawnOpener = original
+    }
+  })
+
+  it('ignores a watch view that arrives after the panel closed', async () => {
+    const { ctx, account } = await bench(signedOut)
+    let release!: () => void
+    const gate = new Promise<void>(resolve => { release = resolve })
+    account.api.watch = () => ({
+      async *[Symbol.asyncIterator]() {
+        yield signedOut
+        await gate
+        yield stored
+      },
+    })
+    expect(await openAccountPanel(ctx, 'deepseek-account')).toBe(true)
+    ctx.mayflyOverlays.close(panelId)
+    release()
+    await flush(4)
+    expect(ctx.mayflyOverlays.list().map(entry => entry.id)).not.toContain(panelId)
+  })
 })
 
 describe('DeepSeek account browser openers', () => {
@@ -518,6 +607,10 @@ describe('DeepSeek account browser openers', () => {
     } finally {
       accountInternals.spawnOpener = original
     }
+  })
+
+  it('reports an opener that cannot take the URL as not opened instead of throwing', async () => {
+    await expect(openUrlInBrowser('https://example/\u0000signin')).resolves.toBe(false)
   })
 })
 

@@ -208,6 +208,25 @@ describe('provider editor', () => {
     ] } } })
   })
 
+  it('stages nothing when the editor closes while the catalog read for an added model is pending', async () => {
+    let finishCatalog!: (index: undefined) => void
+    setModelsDevLoader(() => new Promise(resolve => { finishCatalog = resolve }))
+    try {
+      const bench = await directSetup()
+      const entry = bench.entry!
+      bench.model!.edit({ pagePath: address('models').pagePath, formId: 'custom-model', fieldId: 'model-id' }, 'pending-model')
+      bench.model!.invoke('add-model', address('models').pagePath)
+      await flush()
+      bench.ctx.mayflyOverlays.close(entry.id)
+      finishCatalog(undefined)
+      await flush()
+      expect(bench.settings.get('llm-pi-ai')).not.toMatchObject({ providers: { custom: { models: expect.arrayContaining([expect.objectContaining({ id: 'pending-model' })]) } } })
+      expect(bench.model!.feedbackSnapshot().map(item => item.message)).not.toContain('Model "pending-model" added — save to persist')
+    } finally {
+      setModelsDevLoader(undefined)
+    }
+  })
+
   it('rejects blank and duplicate inline model ids and ignores unrelated activations', async () => {
     setModelsDevLoader(async () => undefined)
     const bench = await directSetup()

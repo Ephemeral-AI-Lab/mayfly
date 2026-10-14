@@ -5,12 +5,15 @@ import { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { setClipboardTextWriter } from '../../src/interaction/clipboard-write.ts'
+import { setExternalEditorLauncher } from '../../src/interaction/external-editor.ts'
 import { requestFixture, renderRequest, flushRequests } from './request-fixture.ts'
 import type { MayflyDecisionRequest } from '../../src/core/types.ts'
 
 const contexts: Context[] = []
 afterEach(async () => {
   setClipboardTextWriter(undefined)
+  setExternalEditorLauncher(undefined)
+  vi.unstubAllEnvs()
   for (const ctx of contexts.splice(0)) await ctx.fiber.dispose()
 })
 async function setup() { const ctx = new Context(); contexts.push(ctx); return requestFixture(ctx) }
@@ -169,6 +172,17 @@ describe('approval decision card', () => {
     await expect(second).resolves.toBe('rejected')
   })
 
+  it('shows the en displayReason entry while the locale is not known yet', async () => {
+    const bench = await setup()
+    // The locale service may be absent when a request arrives; the roster then has no locale to pick an entry by.
+    vi.spyOn(bench.ctx.mayflyLocale, 'snapshot', 'get').mockReturnValue({ locale: undefined as never, preference: undefined, revision: 0 })
+    const seen = rosters(bench.ctx)
+    const pending = bench.approve({ reason: 'raw reason', displayReason: { en: 'Shown reason', zh: '中文理由' } })
+    expect(seen.at(-1)![0]!.reason).toBe('Shown reason')
+    bench.model('mayfly.approval.').requestClose()
+    await expect(pending).resolves.toBe('rejected')
+  })
+
   it('keeps the queue in FIFO order, marks the count on the card, and withdraws a queued request', async () => {
     const bench = await setup()
     const seen = rosters(bench.ctx)
@@ -288,5 +302,152 @@ describe('approval decision card', () => {
     model.invoke('send-note')
     await expect(pending).resolves.toBe('unavailable')
     renderer.runtime.dispose()
+  })
+
+  it('settles a request whose signal is already aborted as cancelled, without a card or a roster entry', async () => {
+    const bench = await setup()
+    const seen = rosters(bench.ctx)
+    const abort = new AbortController()
+    abort.abort()
+    await expect(bench.approve({ signal: abort.signal })).resolves.toBe('cancelled')
+    expect(bench.ctx.mayflyOverlays.list()).toHaveLength(0)
+    expect(seen).toEqual([])
+  })
+
+  it('cancels the open card when its request is aborted while the user is deciding', async () => {
+    const bench = await setup()
+    const abort = new AbortController()
+    const pending = bench.approve({ signal: abort.signal })
+    expect(bench.ctx.mayflyOverlays.list()).toHaveLength(1)
+    abort.abort()
+    await expect(pending).resolves.toBe('cancelled')
+    expect(bench.ctx.mayflyOverlays.list()).toHaveLength(0)
+  })
+
+  it('leaves events that are not an activation open, so nothing is granted or rejected', async () => {
+    const bench = await setup()
+    const pending = bench.approve()
+    const entry = bench.ctx.mayflyOverlays.list()[0]!
+    const context = { surfaceId: entry.id, operationId: 'noop', source: entry.source, revision: entry.revision, signal: new AbortController().signal, report: vi.fn() }
+    expect(await entry.definition.onEvent!.action!({ kind: 'completion-dismiss', pagePath: [], controlId: 'decision.note' }, context)).toEqual({ kind: 'completed' })
+    expect(bench.ctx.mayflyOverlays.list()).toHaveLength(1)
+    bench.model('mayfly.approval.').requestClose()
+    await expect(pending).resolves.toBe('rejected')
+  })
+
+  it('does not start a queued request when the displayed Agent changed behind the roster', async () => {
+    const bench = await setup()
+    let armed = false
+    // The first card is answered while its Agent is displayed; once it closes, the displayed Agent is another one.
+    vi.spyOn(bench.ctx.mayflyCurrentAgent, 'current').mockImplementation(() => armed && bench.ctx.mayflyOverlays.list().length === 0 ? bench.other : bench.agent)
+    const first = bench.approve()
+    const queued = bench.approve({ toolName: 'write' })
+    armed = true
+    bench.model('mayfly.approval.').requestClose()
+    await expect(first).resolves.toBe('rejected')
+    await expect(queued).resolves.toBe('cancelled')
+    expect(bench.ctx.mayflyOverlays.list()).toHaveLength(0)
+  })
+
+  describe('opening the request in the editor', () => {
+    type Bench = Awaited<ReturnType<typeof setup>>
+    const tools = (bench: Bench, calls: Array<{ callId: string, arguments: string }>) => {
+      ;(bench.agent as unknown as { session: unknown }).session = {
+        snapshotEvents: () => calls.map(call => ({ type: 'tool/call', data: { name: 'edit', ...call } })),
+      }
+    }
+    const opened = (launcher: ReturnType<typeof vi.fn>) => vi.waitFor(() => expect(launcher).toHaveBeenCalledOnce())
+
+    async function open(bench: Bench, extra: Parameters<Bench['approve']>[0] = {}) {
+      vi.stubEnv('VISUAL', 'my-editor')
+      const launcher = vi.fn(async (_text: string, _command: string): Promise<string | undefined> => undefined)
+      setExternalEditorLauncher(launcher)
+      const pending = bench.approve(extra)
+      const { model, renderer } = card(bench)
+      return { launcher, pending, model, renderer }
+    }
+
+    async function finish(opening: Awaited<ReturnType<typeof open>>) {
+      opening.model.requestClose()
+      await expect(opening.pending).resolves.toBe('rejected')
+      opening.renderer.runtime.dispose()
+    }
+
+    it('opens the request with Ctrl+G and comes back to the card with the request still open', async () => {
+      const bench = await setup()
+      const opening = await open(bench, { reason: 'Runs a shell command' })
+      opening.renderer.input('\x07')
+      await opened(opening.launcher)
+      expect(opening.launcher).toHaveBeenCalledWith('Runs a shell command', 'my-editor')
+      expect(bench.screen.suspends).toBe(1)
+      await flushRequests()
+      expect(bench.ctx.mayflyOverlays.list()).toHaveLength(1)
+      expect(bench.steer).not.toHaveBeenCalled()
+      await finish(opening)
+    })
+
+    it('shows the tool name when the request has neither a call nor a reason', async () => {
+      const bench = await setup()
+      const opening = await open(bench, { toolName: 'bash' })
+      opening.model.invoke('open')
+      await opened(opening.launcher)
+      expect(opening.launcher.mock.calls[0]![0]).toBe('bash')
+      await finish(opening)
+    })
+
+    it.each([
+      ['an edit as its path and both sides', { file_path: 'a.ts', old_string: 'one', new_string: 'two' }, 'a.ts\n\n--- old\none\n\n+++ new\ntwo\n'],
+      ['an edit that only names the new side', { path: 'b.ts', new_string: 'two' }, 'b.ts\n\n--- old\n\n\n+++ new\ntwo\n'],
+      ['an edit that only names the old side without a path', { old_string: 'one' }, '\n\n--- old\none\n\n+++ new\n\n'],
+      ['a write as its path and content', { file_path: 'c.ts', content: 'body' }, 'c.ts\n\nbody\n'],
+      ['a write without a path', { content: 'body' }, '\n\nbody\n'],
+      ['a command as the command line', { command: 'pnpm test' }, 'pnpm test'],
+      ['other arguments as indented JSON', { query: 'x' }, '{\n  "query": "x"\n}'],
+    ])('reads %s from the recorded call', async (_name, args, expected) => {
+      const bench = await setup()
+      tools(bench, [{ callId: 'other', arguments: '{"command":"nope"}' }, { callId: 'call-1', arguments: JSON.stringify(args) }])
+      const opening = await open(bench, { callId: 'call-1' as never })
+      opening.model.invoke('open')
+      await opened(opening.launcher)
+      expect(opening.launcher.mock.calls[0]![0]).toBe(expected)
+      await finish(opening)
+    })
+
+    it('opens the raw arguments when they are not JSON, and the reason when the call was not recorded', async () => {
+      const bench = await setup()
+      tools(bench, [{ callId: 'call-1', arguments: '{"command": "ls' }])
+      const raw = await open(bench, { callId: 'call-1' as never, reason: 'ignored' })
+      raw.model.invoke('open')
+      await opened(raw.launcher)
+      expect(raw.launcher.mock.calls[0]![0]).toBe('{"command": "ls')
+      await finish(raw)
+
+      tools(bench, [])
+      const missing = await open(bench, { callId: 'call-2' as never, reason: 'Needs approval' })
+      missing.model.invoke('open')
+      await opened(missing.launcher)
+      expect(missing.launcher.mock.calls[0]![0]).toBe('Needs approval')
+      await finish(missing)
+    })
+
+    it('reports a missing editor and an editor that fails as notices, and keeps the card', async () => {
+      const bench = await setup()
+      vi.stubEnv('VISUAL', '')
+      vi.stubEnv('EDITOR', '')
+      const pending = bench.approve()
+      const { model, renderer } = card(bench)
+      model.invoke('open')
+      await vi.waitFor(() => expect(model.feedbackSnapshot().at(-1)?.message).toBe('no editor configured ($VISUAL/$EDITOR)'))
+
+      vi.stubEnv('EDITOR', 'nano')
+      setExternalEditorLauncher(async () => { throw new Error('spawn failed') })
+      model.invoke('open')
+      await vi.waitFor(() => expect(model.feedbackSnapshot().at(-1)?.message).toBe('The editor could not be opened'))
+      expect(model.disposed).toBe(false)
+      expect(bench.ctx.mayflyOverlays.list()).toHaveLength(1)
+      model.requestClose()
+      await expect(pending).resolves.toBe('rejected')
+      renderer.runtime.dispose()
+    })
   })
 })
