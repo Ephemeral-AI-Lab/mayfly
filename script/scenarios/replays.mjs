@@ -976,7 +976,217 @@ const approvalsQueue = {
   ])],
 }
 
-export const REPLAYS = { tour, toolkit, thinking, markdown, live, phases, thinkingLadder, pending, blocks, streaming, sync, activityWait, prompts, turns, toollines, toolgrow, findings, edits, errors, compaction: compactionReplay, compactionNoWindow, compactionFailed, manualCompact, context, subagents, childStream, approvals, approvalsRejected, approvalsEdit, approvalsQueue, questions, plan, planLong, goal, jobs, queued, retries, sideQuestion, notices, notificationPane, modes, edge, history, wheel, content }
+/*
+ * The Phase 3 session: one conversation that meets every state a complete real session shows, so the Phase 3 parts can
+ * be audited together. Each state sits behind a mark; a prompt (approval, plan review, question) stops playback until
+ * the scenario answers it with keys (see `PHASE3_PROMPTS` in catalog.mjs).
+ */
+const PHASE3_CJK = '请把下面这一段说明翻译成中文，并且保留原来的标点：the client aborts after 3000 ms 🚀 and retries twice 👩‍💻, every failure goes to the log 🔥. 日本語のテキストと한국어 텍스트も混ざっています。'.repeat(2)
+const PHASE3_ANSWER = ['## Verdict', '', 'The retry loop is **correct**, but the timeout is not applied to the retry itself.', '', '| attempt | delay | outcome |', '| --- | ---: | --- |', '| 1 | 250 ms | retried |', '| 2 | 500 ms | retried |', '| 3 | - | gave up |', '', '- the delay doubles on each attempt', '- the last error is kept as `cause`', '', '```ts', 'export async function withRetry<T>(run: () => Promise<T>, retries: number): Promise<T> {', '  // one call, then up to `retries` more', '  return run()', '}', '```'].join('\n')
+const PHASE3_PLAN_REVISED = ['## Plan: migrate to ESM (revised)', '', '1. Rename `*.cjs` entry points to `*.mjs`.', '2. Replace `require` with `import`, then run the tests.', '3. Add a rollback step: keep the CJS entry until the ESM build passes.', '4. Update the build and the test runner configuration.'].join('\n')
+const PHASE3_QUESTION = [{ id: 'runtime', header: 'Runtime', question: 'Which runtime should the project target?', options: [{ label: 'Node 22 (Recommended)', description: 'Current LTS line' }, { label: 'Node 24', description: 'Latest release' }] }]
+const PHASE3_NEEDLE = lines(12, n => (n % 4 === 0 ? `Line ${String(n)} mentions the needle again.` : `Line ${String(n)} is about something else.`))
+
+const phase3 = {
+  summary: 'one long session through every Phase 3 state: prompts, thinking, answers, tool runs, edits, approvals, plan review, subagents, jobs, goal, retries, compaction, queued messages, search, interrupts, and a live stream',
+  options: { contextWindow: 32_768 },
+  items: [
+    seed([{ id: 'seed-earlier', at: -3 * 3_600_000, title: 'Earlier work', items: [
+      turn('Draft the release notes.', [step({ text: 'Release notes drafted.', usage: { inputTokens: 4_000, outputTokens: 300, cacheReadTokens: 0 } })]),
+      turn('Add the install section.', [step({ text: 'The install section is in.', usage: { inputTokens: 5_000, outputTokens: 200, cacheReadTokens: 0 } })]),
+    ] }]),
+    turn([text('Here is the timeout on the client:'), image('timeout.png')], [step({ text: 'The screenshot shows a timeout error: the request is aborted, but the retry never starts.' })], { startAt: '10:00' }),
+    mark('image'),
+    turn(PHASE3_CJK, [step({ reasoning: '用户用中文提问，我应当用中文回答。', text: '已翻译；标点保持不变。客户端在 3000 毫秒后中止，然后重试两次 🚀。' })], { startAt: '10:02' }),
+    mark('cjk'),
+    turn('Why does this print 42, and does renaming the value change anything?\n\n```js\nexport const answer = 42\nconsole.log(answer)\n```', [step({ text: 'It prints `42`. Renaming the binding changes nothing at runtime:\n\n```js\nexport const reply = 42\nconsole.log(reply)\n```' })], { startAt: '10:03' }),
+    mark('code'),
+    turn('Is the retry loop right? Think it through, then answer with a table.', [
+      step({
+        firstTokenMs: 1500,
+        marks: [{ block: 'reasoning', at: 0.02, name: 'pondering' }, { block: 'reasoning', at: 0.15, name: 'mulling' }, { block: 'reasoning', at: 0.4, name: 'deep' }, { block: 'reasoning', at: 0.95, name: 'fathoming' }, { block: 'text', at: 0.5, name: 'answer' }],
+        reasoning: lines(40, n => `Line ${String(n)} of a long chain of thought about whether the retry delays grow as intended.`),
+        reasoningMs: 55_000,
+        text: PHASE3_ANSWER,
+        textMs: 4000,
+        usage: { inputTokens: 2400, outputTokens: 900, cacheReadTokens: 1800 },
+      }),
+    ], { startAt: '10:05' }),
+    turn('Survey the project, then run the tests while I read the docs.', [
+      mark('explore'),
+      step({
+        text: 'Searching and reading first.',
+        tools: [
+          todos([['in_progress', 'Check the retry path'], ['pending', 'Run the tests'], ['pending', 'Summarise']]),
+          tool('glob', { pattern: '**/*.mjs' }, { result: 'src/config.mjs\nsrc/client.mjs\ntests/config.test.mjs', runMs: 500 }),
+          tool('grep', { pattern: 'retries', include: '*.mjs' }, { result: 'src/config.mjs:4:  retries: 2,\nsrc/client.mjs:12:  withRetry(run, config.retries)', runMs: 700 }),
+          tool('read', { file_path: 'src/client.mjs' }, { result: readText('src/client.mjs', 'export async function get(path) {}'), runMs: 600, meta: readMeta('src/client.mjs', 1, 1) }),
+          tool('web_search', { query: 'node:test describe it nesting' }, { result: '1. Node.js test runner docs — https://nodejs.org/api/test.html', runMs: 1500, meta: { sources: [{ url: 'https://nodejs.org/api/test.html', title: 'Test runner' }], truncated: false } }),
+          tool('web_fetch', { url: 'https://nodejs.org/api/test.html' }, { result: '# Test runner\n\nThe node:test module facilitates the creation of JavaScript tests.', runMs: 1800, meta: { url: 'https://nodejs.org/api/test.html', statusCode: 200, truncated: false } }),
+        ],
+      }),
+      step({
+        text: 'Running the suite while I finish reading.',
+        marks: [{ block: 'tool', at: 0.5, name: 'pending' }],
+        tools: [tool('bash', { command: 'pnpm test', description: 'Run the tests' }, { result: '214 passed\n[exit code: 0]', runMs: 9000 })],
+      }),
+      step({ text: 'The suite passes and the docs agree.' }),
+      mark('explored'),
+    ], { startAt: '10:12' }),
+    turn('Add the retries setting, rewrite the client, and write the test.', [
+      mark('edits'),
+      step({ text: 'The setting goes into the config first.', tools: [edit('src/config.mjs', CONFIG_BEFORE, CONFIG_AFTER)] }),
+      step({ text: 'The client names the timeout in three places.', tools: [editHunks('src/client.mjs', [around(10, '  const wait = timeout', '  const wait = timeoutMs'), around(48, '  return timeout * 2', '  return timeoutMs * 2'), around(120, '  log(timeout)', '  log(timeoutMs)')])] }),
+      mark('edited'),
+      step({ text: 'Now the test, written as a new file.', tools: [write('tests/retry.test.mjs', RETRY_TEST)] }),
+      mark('written'),
+      step({ text: 'The report is rewritten whole.', tools: [write('docs/report.md', REPORT, { meta: { operation: 'update', diffs: [{ path: 'docs/report.md', oldText: lines(6, n => `old metric ${String(n)}`), newText: lines(8, n => `new metric ${String(n)}`) }] } })] }),
+      mark('overwritten'),
+      step({ text: 'A stale edit that cannot apply.', tools: [tool('edit', { file_path: 'src/client.mjs', old_string: 'const gone = 1', new_string: 'const gone = 2' }, { result: 'old_string was not found in src/client.mjs; read the file again before editing', error: true, runMs: 300 })] }),
+      mark('failed-edit'),
+    ], { startAt: '10:16' }),
+    turn('Clean the build output, reset the workspace, and publish the branch.', [
+      mark('approval'),
+      step({ text: 'This deletes the build directory, which needs your approval.', tools: [tool('bash', { command: 'rm -rf dist build', description: 'Delete the build output' }, { ask: approval('bash', 'The command removes files outside the tracked sources.'), result: '[exit code: 0]', outcomes: REJECTED, runMs: 900 })] }),
+      mark('approved'),
+      mark('queue'),
+      step({
+        text: 'Three actions need your approval.',
+        tools: [
+          tool('bash', { command: 'rm -rf dist build', description: 'Delete the build output' }, { ask: approval('bash', 'The command removes files outside the tracked sources.', { queued: true }), result: '[exit code: 0]', outcomes: REJECTED, runMs: 900 }),
+          edit('src/config.mjs', CONFIG_BEFORE, CONFIG_AFTER, { ask: approval('edit', 'Edits a file in the workspace.', { queued: true }), outcomes: REJECTED }),
+          tool('bash', { command: 'set -e\ngit clean -fd', description: 'Remove untracked files' },{ ask: approval('bash', 'The command removes untracked files.', { queued: true }), result: '[exit code: 0]', outcomes: REJECTED, runMs: 700 }),
+        ],
+      }),
+      mark('queued'),
+    ], { startAt: '10:22' }),
+    turn('Publish the release now.', [
+      mark('reject'),
+      step({ text: 'Publishing means pushing the tag to main.', tools: [tool('bash', { command: 'git push --force origin main', description: 'Force-push the release' }, { ask: approval('bash', 'A force push rewrites the remote history.'), result: '[exit code: 0]', outcomes: REJECTED, runMs: 300 })] }),
+      mark('rejected'),
+      step({ text: 'Understood: I will push a branch instead.', tools: [tool('bash', { command: 'git push origin release/1.4', description: 'Push the release branch' }, { result: '[exit code: 0]', runMs: 700 })] }),
+    ], { startAt: '10:26' }),
+    turn('Plan the migration before changing anything, then ask me one question.', [
+      raw('plan/mode', { active: true }),
+      mark('plan'),
+      step({ text: 'Here is the plan; it names every phase.', tools: [planReview(PLAN_LONG)] }),
+      mark('plan-revised'),
+      step({ text: 'Revised with a rollback step; here it is again.', tools: [planReview(PHASE3_PLAN_REVISED)] }),
+      mark('plan-accepted'),
+      mark('question'),
+      step({ text: 'One question before I start.', tools: [tool('ask_user_question', { questions: [] }, { ask: question(PHASE3_QUESTION), result: 'The user answered: Node 22.', runMs: 500 })] }),
+      mark('answered'),
+      step({ text: 'Thanks. I will target Node 22.' }),
+    ], { startAt: '10:28' }),
+    turn('Rewrite the client retry in the background and keep the watcher running.', [
+      goalItem('create', { objective: 'Land the retries setting and keep the tests green', maxGoalRounds: 8 }),
+      mark('live'),
+      step({
+        text: 'A subagent rewrites the client, a watcher runs, and the goal is tracked.',
+        tools: [
+          todos([['in_progress', 'Rewrite the client retry'], ['pending', 'Run the watcher checks']]),
+          subagent('Rewrite the client retry', 'Rewrite the client retry around withRetry', {
+            mode: 'continuable',
+            live: true,
+            outcome: 'open',
+            startMs: 500,
+            items: [step({
+              reasoning: 'Reading the current client first, then wrapping the call in withRetry. The timeout stays on each attempt.',
+              reasoningMs: 6000,
+              text: 'Draft client:\n\nexport async function get(path) {\n  return withRetry(() => request(path), { retries: config.retries })\n}\n\nThe timeout is set per attempt, so a slow retry does not extend the first wait.',
+              textMs: 50_000,
+              chunk: 10,
+            })],
+          }, { runMs: 800 }),
+          tool('bash', { command: 'npm run watch', description: 'Watch the sources', run_in_background: true }, { result: 'Started job job-1 in the background.', runMs: 500 }),
+        ],
+      }),
+      job('npm run watch', { lines: [[300, 'watching for changes…'], [3000, 'rebuilt src/config.mjs in 42 ms']], progress: [[500, 'watching'], [3000, 'rebuilt 1']] }),
+      mark('watching'),
+      step({ text: 'The watcher keeps running and the subagent streams its draft.' }),
+    ], { startAt: '10:34' }),
+    turn('Summarise the changelog, then run the check that failed before.', [
+      step({
+        failedAttempts: [{ text: 'The changelog lists', failure: { message: 'Rate limit reached for requests', code: 'rate_limited', status: 429 }, delayMs: 9000 }],
+        marks: [{ name: 'rate-limited', block: 'retry', attempt: 0, at: 0.3 }],
+        text: 'The changelog lists three changes: a faster parser, a new CLI flag, and a fix for Windows paths.',
+        usage: { inputTokens: 6_000, outputTokens: 80, cacheReadTokens: 2_000 },
+      }),
+      notify('success', 'Copied the last answer to the clipboard', { holdMs: 4500, marks: [{ name: 'toast', at: 0.4 }] }),
+      notify('warning', 'The clipboard tool is missing; falling back to OSC 52', { holdMs: 4500, detail: 'Install xclip or wl-clipboard for a system clipboard.', marks: [{ name: 'footer', at: 0.5 }] }),
+      step({ text: 'One check fails.', tools: [tool('bash', { command: 'pnpm run check:lib', description: 'Check exports' }, { result: 'missing export\n[exit code: 1]', error: true, runMs: 900 })] }),
+      mark('failed-check'),
+    ], { startAt: '10:40' }),
+    turn('Keep reading the logs until the context is nearly full.', [
+      step({ text: 'First log.', usage: { inputTokens: 4_000, outputTokens: 80, cacheReadTokens: 2_000 }, tools: [tool('read', { file_path: 'a.log' }, { result: LONG_LOG, runMs: 500 })] }),
+      step({ text: 'Second log: the context is nearly full.', usage: { inputTokens: 24_000, outputTokens: 80, cacheReadTokens: 14_000 }, tools: [tool('read', { file_path: 'b.log' }, { result: LONG_LOG, runMs: 500 })] }),
+      pause(1500),
+      mark('context-full'),
+      compaction({ ms: 2500, applyMs: 1000, shadowedTokens: 30_000, shadowedItems: 8, summaryTokens: 500, marks: [{ name: 'compacting', stage: 'summarize', at: 0.6 }], summary: 'The user asked to read two logs; both were read.' }),
+      pause(800),
+      mark('relieved'),
+      step({ text: 'The context is small again.', usage: { inputTokens: 2_400, outputTokens: 40, cacheReadTokens: 0 } }),
+    ], { startAt: '10:44' }),
+    compaction({ manual: true, ms: 2000, error: 'context still over budget after summary', marks: [{ name: 'manual-failing', stage: 'summarize', at: 0.5 }] }),
+    pause(600),
+    mark('manual-failed'),
+    compaction({ manual: true, ms: 2000, applyMs: 1000, shadowedTokens: 9_000, shadowedItems: 3, summaryTokens: 400, summary: 'The user asked to read two logs; both were read, and the context was compacted once more.' }),
+    pause(1200),
+    mark('manual-settled'),
+    turn('Refactor the parser, I will add more while you work.', [
+      queue(['Then update the README', { steer: 'Also keep the public API unchanged' }, 'And bump the version'], { holdMs: 6000 }),
+      mark('queued-rows'),
+      step({ reasoning: 'Reading the parser first. Follow-up messages are already waiting.', text: 'Reading the parser; the pane above the editor shows what you queued.', reasoningMs: 1500, textMs: 3000, tools: [tool('read_file', { path: 'src/parser.ts' }, { result: 'export function parse() {}', runMs: 800 })] }),
+      step({ text: 'The refactor is done; the queued messages were withdrawn.' }),
+    ], { startAt: '10:50' }),
+    btw('What does semver say about a breaking change?', [
+      mark('side'),
+      step({ reasoning: 'A short factual answer is enough.', text: 'A breaking change bumps the major version (for 0.x versions, the minor).', reasoningMs: 1200, textMs: 2500 }),
+    ], { label: 'semver breaking change', closeAfterMs: 4000 }),
+    turn('Find where the needle is mentioned.', [
+      mark('needle'),
+      step({
+        text: 'Checking the logs and the notes.',
+        tools: [
+          tool('bash', { command: 'grep -rn needle logs', description: 'Search the logs' }, { result: lines(8, n => (n % 2 === 0 ? `logs/app-${String(n)}.log:${String(n)}: needle found in request ${String(n)}` : `logs/app-${String(n)}.log:${String(n)}: nothing here`)) + '\n[exit code: 0]', runMs: 500 }),
+          edit('docs/notes.md', 'Keep the needle short.', 'Keep the needle short and named.'),
+        ],
+      }),
+      step({ text: PHASE3_NEEDLE.split('\n').join('\n\n') }),
+      mark('searched'),
+    ], { startAt: '10:54' }),
+    turn('Keep going with the cleanup, and I will stop you.', [
+      mark('interrupted'),
+      step({
+        text: 'Reading the config, then building and rewriting the client.',
+        tools: [
+          tool('read', { file_path: 'src/config.mjs' }, { result: readText('src/config.mjs', CONFIG.trimEnd()), runMs: 300, meta: readMeta('src/config.mjs', 8, 8) }),
+          tool('bash', { command: 'pnpm run build', description: 'Build' }, { result: '', runMs: 4000, unanswered: true }),
+          write('src/client.mjs', lines(40, n => `export const call${String(n)} = () => request(${String(n)})`), { result: '', runMs: 4000, unanswered: true }),
+        ],
+      }),
+    ], { startAt: '10:58', outcome: 'interrupted' }),
+    mark('cut-off'),
+    turn('Run the checks.', [
+      step({ text: 'Running the checks.', tools: [tool('bash', { command: 'npm run lint', description: 'Lint the project' }, { result: 'src/client.mjs:4:3  error  no-unused-vars  "signal" is assigned but never used\n[exit code: 1]', error: true, runMs: 1500 })] }),
+    ], { startAt: '11:02', outcome: { error: { message: 'The provider returned an invalid request: replay error', code: 'INVALID_REQUEST' } } }),
+    mark('error'),
+    turn('Now write the report, and keep editing.', [
+      step({
+        firstTokenMs: 2500,
+        reasoning: 'The report needs a short summary first, then the file list. I will write it in one go and check the result.',
+        reasoningMs: 6000,
+        text: 'Writing the report now.',
+        textMs: 4000,
+        prepareMs: 6000,
+        marks: [{ block: 'wait', at: 0.8, name: 'wait' }, { block: 'reasoning', at: 0.5, name: 'reasoning' }, { block: 'text', at: 0.5, name: 'writing' }, { block: 'prepare', at: 0.6, name: 'prepare' }, { block: 'tool', at: 0.5, name: 'tool' }],
+        tools: [write('docs/phase3.md', lines(20, n => `## Finding ${String(n)}: the state of row ${String(n)} is settled.`), { ask: approval('write', 'Creates a file in the workspace.'), runMs: 3000 })],
+      }),
+    ], { startAt: '11:05', outcome: 'open' }),
+  ],
+}
+
+export const REPLAYS = { tour, toolkit, thinking, markdown, live, phases, thinkingLadder, pending, blocks, streaming, sync, activityWait, prompts, turns, toollines, toolgrow, findings, edits, errors, compaction: compactionReplay, compactionNoWindow, compactionFailed, manualCompact, context, subagents, childStream, approvals, approvalsRejected, approvalsEdit, approvalsQueue, questions, plan, planLong, goal, jobs, queued, retries, sideQuestion, notices, notificationPane, modes, edge, history, wheel, content, phase3 }
 
 /*
  * The scenes of the Website's app shots. Each is the source of an `app-*` scenario of the catalog, whose goldens the

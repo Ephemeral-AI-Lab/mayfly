@@ -72,7 +72,8 @@ test('every scenario has a known source, real sizes, its marks, and covers globs
     if (scenario.review !== undefined) {
       assert.deepEqual(reviewProblems(scenario.review), [], `${name}: review`)
       const checkpoints = new Set(scenario.script.filter(step => step.step === 'checkpoint').map(step => step.name))
-      for (const { how } of scenario.review.focus) assert.ok([...checkpoints].some(point => how.includes(point)), `${name}: focus walk "${how}" names none of its checkpoints`)
+      // A focus walk names a checkpoint of its scenario, one that `--keys` adds (runner.mjs captures the keys as `keys`), or another catalog scenario it opens.
+      for (const { how } of scenario.review.focus) assert.ok([...(how.includes('--keys') ? [...checkpoints, 'keys'] : checkpoints)].some(point => how.includes(point)) || Object.keys(CATALOG).some(other => how.includes(other)), `${name}: focus walk "${how}" names none of its checkpoints`)
     }
     assert.ok(scenario.sizes.length > 0 && scenario.sizes.every(([cols, rows]) => Number.isInteger(cols) && Number.isInteger(rows) && cols >= 20 && rows >= 10), name)
     for (const glob of scenario.covers) assert.ok(matches(glob), `${name}: ${glob} names no file`)

@@ -169,7 +169,7 @@ test('outcomes, todos, edits, compaction, subagents, and asks compile to their e
   const edited = compile([turn('q', [step({ tools: [edit('f.txt', 'a', 'b')] })])]).find(action => action.type === 'tool/result')
   assert.deepEqual(edited.data.meta.diffs, [{ path: 'f.txt', oldText: 'a', newText: 'b' }])
   const compacted = compile([turn('q', [step({ text: 'x' }), { kind: 'compaction', ms: 100 }])])
-  assert.deepEqual(compacted.filter(action => action.op.startsWith('compact')).map(action => action.op), ['compact-start', 'compact-finish'])
+  assert.deepEqual(compacted.filter(action => action.op.startsWith('compact')).map(action => action.op), ['compact-start', 'compact-finish', 'compact-end'])
   const spawned = compile([turn('q', [step({ tools: [subagent('d', 'child prompt', { items: [step({ stream: false, text: 'c' })] })] })])])
   const child = spawned.find(action => action.op === 'child')
   assert.ok(spawned.some(action => action.session === child.id && action.type === 'user/message'))

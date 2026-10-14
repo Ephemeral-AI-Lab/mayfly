@@ -7,6 +7,7 @@
  */
 
 import { REPLAYS } from './replays.mjs'
+import { compile } from './timeline.mjs'
 import { checkpoint, idle, key, measure, play, resize, type, wait, wheel } from './steps.mjs'
 
 /** The size a scenario runs at unless it names its own. */
@@ -28,8 +29,17 @@ const REQUEST = [
   `${TRANSCRIPT}request-facts.ts`, `${TRANSCRIPT}tool-calls.ts`, 'packages/mayfly/src/conversation/facts.ts', ...STREAM,
 ]
 
+/** What the phase3 session shows: every source of its states (tools, edits, prompts, plan, compaction, notices, jobs, queue, search). */
+const PHASE3_COVERS = [...new Set([
+  `${TRANSCRIPT}tool-*.ts`, `${TRANSCRIPT}process-*.ts`, `${TRANSCRIPT}presentation-policy.ts`, `${TRANSCRIPT}official-model.ts`, 'packages/mayfly/src/frontend/models.ts',
+  `${TRANSCRIPT}pane-activity.ts`, `${TRANSCRIPT}transcript-model.ts`, `${TRANSCRIPT}status-goal.ts`, `${TRANSCRIPT}status-jobs.ts`, `${TRANSCRIPT}pane-agents.ts`, `${TRANSCRIPT}child-agent-model.ts`,
+  `${INTERACTION}pane-queue.ts`, `${INTERACTION}btw-command.ts`, `${INTERACTION}approval-plugin.ts`, `${INTERACTION}questions-plugin.ts`, `${INTERACTION}plan-review-panel.ts`, `${INTERACTION}jobs.ts`, `${INTERACTION}trace-*.ts`,
+  ...STREAM, ...COMPACTION, ...NOTIFICATION, ...REQUEST,
+])]
+
 /** What each replay shows, as the sources whose change it can reveal. */
 const COVERS = {
+  phase3: PHASE3_COVERS,
   levels: [`${TRANSCRIPT}tool-*.ts`, `${TRANSCRIPT}process-*.ts`, `${TRANSCRIPT}presentation-policy.ts`, `${TRANSCRIPT}disclosure.ts`, `${TRANSCRIPT}official-model.ts`, 'packages/mayfly/src/frontend/models.ts', ...STREAM],
   tour: [`${TRANSCRIPT}tool-*.ts`, `${TRANSCRIPT}process-*.ts`, `${TRANSCRIPT}pane-todo.ts`, ...STREAM],
   toolkit: [`${TRANSCRIPT}tool-*.ts`, `${TRANSCRIPT}present.ts`, ...STREAM],
@@ -97,7 +107,7 @@ const REVIEW = {
       '`c` copies what a person reads: a message as its Markdown, an edit as a diff, a command with its output, a read with its lines, a plan as Markdown. `Ctrl+C` (not the interrupt, while the stream has focus) copies the model\'s raw JSON of the row. A header or title stands for its whole turn. The notification pane says what was copied; Ctrl+G reads the same text in $EDITOR.',
     ],
     focus: [
-      { look: 'The cursor lands on the newest row as a gray band and the status line says `conversation`', how: 'checkpoints `end`, `focused` (`--png` shows the band)' },
+      { look: 'The cursor lands on the newest row as a gray band and the status line says `conversation`; at 60 columns the hint row and the band fit', how: 'checkpoints `end`, `focused` (`--png` shows the band), and `--width 60`' },
       { look: 'An inner call of a run: the run stays whole, only that call opens in place under its line (the band covers the line and its output), Enter again folds it', how: 'checkpoints `item`, `item-open`, `item-closed`' },
       { look: 'The run head: Enter opens every call in place, Enter again folds them all', how: 'checkpoints `head`, `head-open`, `head-closed`' },
       { look: 'c and Ctrl+C notices (try pasting both live)', how: 'checkpoints `copied`, `copied-raw`' },
@@ -105,7 +115,6 @@ const REVIEW = {
       { look: 'Esc and Alt+Down return to the prompt; the chip and the gray frame go', how: 'checkpoints `back`, `back-alt`' },
       { look: 'Focus after scrolling the history away: the view comes back to the tail', how: '`pnpm run scenario select-away`' },
       { look: 'At Compact the title line is a row and Enter opens its turn', how: '`pnpm run scenario select-compact`' },
-      { look: 'A 60-column terminal: the hint row and the band fit', how: '`--width 60`' },
     ],
     differs: [
       'The mouse wheel does not scroll while the stream is focused (the stream shows the window around its cursor); PageUp/PageDown walk the cursor.',
@@ -130,8 +139,7 @@ const REVIEW = {
       { look: '? searches toward the older rows', how: 'checkpoint `backward`' },
       { look: 'Every occurrence is a stop, also several inside one tall block: the current one is bold and underlined, the window centers on it', how: '`pnpm run scenario search-block`, checkpoints `answer-last` … `answer-first`' },
       { look: 'Esc ends the search and keeps the cursor', how: 'checkpoints `ended`, `prompt`' },
-      { look: 'A hit in an old turn the stream does not mount', how: '`pnpm run scenario search-history`' },
-      { look: 'A call that arrives while searching is found', how: '`pnpm run scenario search-live`' },
+      { look: 'A hit in an old turn the stream does not mount, and a call that arrives while searching is found', how: '`pnpm run scenario search-history`, `pnpm run scenario search-live`' },
       { look: 'A 40-column terminal', how: '`pnpm run scenario search-narrow`' },
     ],
     differs: [
@@ -480,8 +488,8 @@ const REVIEW = {
       { look: 'Compact merged line and the folded header', how: '`pnpm run scenario toollines-compact`, checkpoint `end`' },
       { look: 'Detailed collapse: earlier steps become Standard blocks when the next step starts', how: '`pnpm run scenario toollines-detailed`, checkpoint `live` (stopped after step 3)' },
       { look: 'The ⊘ line of the interrupted build and the failed lint', how: 'checkpoint `open`, the last turn' },
-      { look: 'Long paths and commands clip at the end; the tree and glyphs stay', how: '`--width 60` and `--width 40`' },
-      { look: 'Spacing: a blank row between every row', how: 'any checkpoint' },
+      { look: 'Long paths and commands clip at the end; the tree and glyphs stay', how: 'checkpoint `standard`, at `--width 60` and `--width 40`' },
+      { look: 'Spacing: a blank row between every row', how: 'checkpoint `standard`' },
     ],
     differs: [
       'Targets are the paths as given, not shortened (owner decision), so a long path pushes the outcome off a narrow row.',
@@ -511,7 +519,7 @@ const REVIEW = {
       { look: 'The large edit capped at 6 / 12 / 40 rows with its `… +N rows` row', how: 'compare checkpoint `standard`, `edits-verbose` and `open`' },
       { look: 'The write: highlighted numbered code, 6 rows at Standard and 12 at Verbose', how: 'checkpoint `standard`, then `pnpm run scenario edits-verbose`' },
       { look: 'The failed edit and the cancelled write', how: 'checkpoint `open`, last lines of each turn' },
-      { look: 'Narrow widths: the diff rows clip with `…`, the line clips at the end, the gutter takes 5 columns', how: '`--width 60` and `--width 40`' },
+      { look: 'Narrow widths: the diff rows clip with `…`, the line clips at the end, the gutter takes 5 columns', how: 'checkpoint `standard`, at `--width 60` and `--width 40`' },
       { look: 'Compact and Detailed', how: '`pnpm run scenario edits-compact`, `pnpm run scenario edits-detailed` (checkpoint `live`)' },
     ],
     differs: [
@@ -537,7 +545,79 @@ const REVIEW = {
 const TIMED = { timed: true }
 /** A decision card ignores every key but Esc for 300 ms after it opens (wall clock); a checkpoint waits that out. */
 const ARMED = 400
+/** The marks of the phase3 session in playing order: the tour stops at each of them. */
+const PHASE3_MARKS = [...new Set(compile(REPLAYS.phase3.items, REPLAYS.phase3.options).filter(action => action.op === 'mark').map(action => action.name))]
+/**
+ * The prompts the phase3 session raises before a mark, in order: the checkpoint of each card and the keys that answer it.
+ * A prompt stops playback, so the script plays to the prompt, answers it, and plays to the mark again.
+ */
+const PHASE3_PROMPTS = {
+  approved: [['approval-card', [key('1')]]],
+  queued: [['queue-card-1', [key('1')]], ['queue-card-2', [key('1')]], ['queue-card-3', [key('1')]]],
+  rejected: [['reject-card', [key('3')]]],
+  'plan-revised': [['plan-card', [key('2'), type('add a rollback step'), key('enter')]]],
+  'plan-accepted': [['plan-card-2', [key('1')]]],
+  answered: [['question-card', [key('enter')]]],
+  tool: [['open-card', [key('1')]]],
+}
+/**
+ * Play the phase3 session to the mark `name`, answering the prompts before it. Each card is checkpointed before its
+ * keys: a key sent straight after the prompt is announced can land in the editor instead of on the card (the card's
+ * arm window opens on the frame that shows it), so the checkpoint is what makes the answer reliable. Each prompt
+ * sends one `ask` to the runner, and every `ask` but the first is still queued when the first is answered: one
+ * `play` per prompt drains them and then the mark, or the runner would wait for a mark that comes after the asks.
+ */
+const goto = name => {
+  const prompts = PHASE3_PROMPTS[name] ?? []
+  if (prompts.length === 0) return [play(name)]
+  return [play(name), ...prompts.flatMap(([card, keys]) => [wait(ARMED), checkpoint(card), ...keys]), ...prompts.map(() => play(name))]
+}
+/** Play the phase3 session through the mark `name` without a checkpoint. */
+const through = name => PHASE3_MARKS.slice(0, PHASE3_MARKS.indexOf(name) + 1).flatMap(mark => goto(mark))
+/**
+ * Play the phase3 session to each stop in order, checkpointing the stop's mark; `after` runs at the stop (keys and
+ * checkpoints of the state there). Marks between two stops are passed without a checkpoint.
+ */
+const visit = (stops) => {
+  const steps = []
+  let at = -1
+  for (const stop of stops) {
+    const index = PHASE3_MARKS.indexOf(stop.name)
+    if (index < 0) throw new Error(`the phase3 session has no mark ${stop.name}`)
+    for (const name of PHASE3_MARKS.slice(at + 1, index)) steps.push(...goto(name))
+    steps.push(...goto(stop.name), checkpoint(stop.name), ...(stop.after ?? []))
+    at = index
+  }
+  return steps
+}
+/** The phase3 session played to its end, every prompt answered (the end is the open turn, live). */
+const PHASE3_END = [...through('tool'), play(), checkpoint('end')]
+/** The brief of the phase3 tour: what the whole session is for, and the checkpoints to judge each part at. */
+const PHASE3_REVIEW = {
+  reference: 'component-development-spec §7.1 and parts 3a to 3e, every session state in one conversation · the briefs select, search, levels, approvals, plan, compaction, and notificationPane',
+  implemented: [
+    'One session carries the states the Phase 3 parts draw: prompts and answers, the thinking ladder, tool lines and blocks, edits and writes, approval and plan cards, subagents, jobs, the goal, the notice lane, compaction, queued messages, the side question, search, interrupts, failed and open turns.',
+    'Each state sits behind a mark; the tour checkpoints every mark in order, and each prompt is answered with its key after its own card is checkpointed.',
+  ],
+  focus: [
+    { look: 'The image prompt, the CJK and emoji line, the code block, and the four thinking labels', how: 'checkpoints `image`, `cjk`, `code`, `pondering`, `fathoming`' },
+    { look: 'The Markdown answer with a table, a list, and a fence', how: 'checkpoint `answer`' },
+    { look: 'The exploration run: todos, search, web, and the pending command', how: 'checkpoints `pending`, `explored`' },
+    { look: 'Edits, a multi-hunk edit, a write, an overwrite, and the failed edit', how: 'checkpoints `edited`, `written`, `overwritten`, `failed-edit`' },
+    { look: 'Approval cards: allow once, three queued (1 of 3 waiting), one rejected', how: 'checkpoints `approval-card`, `queue-card-1`, `reject-card`' },
+    { look: 'Plan review: the long plan, revised, accepted, then the question', how: 'checkpoints `plan-card`, `plan-revised`, `question-card`' },
+    { look: 'A live subagent, a background job, and the goal in the status rows', how: 'checkpoints `live`, `watching`' },
+    { look: 'Retry countdown, toast, notice lane, failed bash, compaction, queued messages, search, interrupt, and the open turn', how: 'checkpoints `rate-limited`, `toast`, `footer`, `compacting`, `manual-failed`, `queued-rows`, `needle`, `cut-off`, `prepare`, `tool`' },
+  ],
+  differs: [
+    'The replay cannot fork on an answer, so the tour answers each prompt with the key its card names (1 allow, 2 keep planning, 3 reject).',
+    'Notices are the notification pane, not stream rows: no walk stops on one.',
+  ],
+  pending: [],
+}
+
 const SCRIPTS = {
+  phase3: PHASE3_END,
   // A command that runs, two at once, one that fails, and one cut off; the row names the phase while the stream holds the calls.
   pending: [
     play('running', TIMED), checkpoint('running'),
@@ -1119,7 +1199,8 @@ export const CATALOG = Object.freeze({
     sizes: [[100, 30], [60, 24]],
     script: [
       play(), checkpoint('end'),
-      key('alt+up'), key('/'), type('needle'), checkpoint('typed'),
+      // The search line adds two rows to the editor: the stream re-fits before the first key lands (a settle, not a checkpoint).
+      key('alt+up'), key('/'), wait(300), type('needle'), checkpoint('typed'),
       key('enter'), checkpoint('first'),
       // Walking back (↑) from the last match: the second prompt, then the four matches of the tall answer one by one.
       key('up', { repeat: 3 }), checkpoint('answer-last'),
@@ -1225,6 +1306,77 @@ export const CATALOG = Object.freeze({
       play(), checkpoint('away'),
       key('ctrl+down'), checkpoint('followed'),
     ],
+  },
+  // The Phase 3 session (replays.mjs `phase3`): every mark in order, each prompt answered, the end is the open turn.
+  'phase3-tour': {
+    summary: 'the Phase 3 session played to each of its marks in order: every state once, prompts answered and their cards checkpointed on the way',
+    source: { replay: 'phase3' },
+    covers: PHASE3_COVERS,
+    sizes: [DEFAULT_SIZE],
+    review: PHASE3_REVIEW,
+    script: [...visit(PHASE3_MARKS.map(name => ({ name }))), play(), checkpoint('end')],
+  },
+  // The four work-details levels of the same session, one scenario each (the level is config; no key switches it).
+  ...Object.fromEntries(['standard', 'compact', 'detailed', 'verbose'].map(level => [level === 'standard' ? 'phase3-levels' : `phase3-levels-${level}`, {
+    summary: `the Phase 3 session at the ${level} work-details level${level === 'standard' ? ', then Ctrl+O opens the newest turns and closes them again' : ''}`,
+    source: { replay: 'phase3' },
+    config: { mayfly: { transcriptView: level } },
+    covers: PHASE3_COVERS,
+    sizes: [DEFAULT_SIZE],
+    script: level === 'standard' ? [...PHASE3_END, key('ctrl+o'), checkpoint('open'), key('ctrl+o'), checkpoint('closed')] : PHASE3_END,
+  }])),
+  // Alt+Up on four kinds of row: a tool line, an edit card, an approval row, and a compaction row, with the arrows walking up.
+  'phase3-select': {
+    summary: 'Alt+Up in the Phase 3 session: the cursor on a tool line, an edit card, an approval row, and a compaction row, the arrows walking up from each',
+    source: { replay: 'phase3' },
+    covers: PHASE3_COVERS,
+    sizes: [[120, 50]],
+    script: visit([
+      { name: 'pending', after: [key('alt+up'), checkpoint('tool-line'), key('alt+down')] },
+      { name: 'edited', after: [key('alt+up'), checkpoint('edit-card'), key('up'), checkpoint('edit-walk'), key('alt+down')] },
+      { name: 'approved', after: [key('alt+up'), checkpoint('approval-row'), key('up', { repeat: 2 }), checkpoint('approval-walk'), key('alt+down')] },
+      { name: 'manual-settled', after: [key('alt+up'), checkpoint('compaction-row'), key('up'), checkpoint('compaction-walk'), key('esc')] },
+    ]),
+  },
+  // / and ? over a compaction summary, then over a command output, an answer, and an edit hunk, with n, N, and Esc.
+  'phase3-search': {
+    summary: 'search in the Phase 3 session: ? over a compaction summary, then ? and / over a command output, an answer, and an edit hunk, with n and N and Esc',
+    source: { replay: 'phase3' },
+    covers: PHASE3_COVERS,
+    sizes: [[100, 40]],
+    script: visit([
+      { name: 'manual-settled', after: [key('alt+up'), key('?'), type('once more'), key('enter'), checkpoint('compaction-text'), key('esc'), checkpoint('ended'), key('esc')] },
+      { name: 'searched', after: [key('alt+up'), key('?'), type('needle'), key('enter'), checkpoint('selected'), key('n'), checkpoint('next'), key('N'), checkpoint('prev'), key('/'), type('needle'), key('enter'), checkpoint('forward'), key('esc'), checkpoint('ended-again'), key('esc')] },
+    ]),
+  },
+  // The open turn streams: waiting, reasoning, a write being prepared, its decision card, then Esc during the running write.
+  'phase3-live': {
+    summary: 'the live stream of the open turn: waiting, reasoning, a write being prepared, its decision card, then Esc while the write runs',
+    source: { replay: 'phase3' },
+    covers: PHASE3_COVERS,
+    sizes: [DEFAULT_SIZE],
+    script: visit([
+      { name: 'wait' },
+      { name: 'reasoning' },
+      { name: 'prepare' },
+      { name: 'tool', after: [key('esc'), checkpoint('interrupted')] },
+    ]),
+  },
+  // The same session at the two narrow sizes: a table answer, an edit, a decision card, and a plan.
+  'phase3-narrow': {
+    summary: 'the Phase 3 session at 60 and 40 columns: a Markdown answer with a table, an edit, a decision card, and a plan review',
+    source: { replay: 'phase3' },
+    covers: PHASE3_COVERS,
+    sizes: [[60, 30], [40, 24]],
+    script: visit([{ name: 'answer' }, { name: 'edited' }, { name: 'approved' }, { name: 'plan' }]),
+  },
+  // Lifecycle: after the first turn, /sessions lists the stored conversation, and opening it shows the resumed notice.
+  'phase3-resume': {
+    summary: 'the Phase 3 session after its first turn, then /sessions and the stored conversation opened: the resumed notice',
+    source: { replay: 'phase3' },
+    covers: [...PHASE3_COVERS, `${INTERACTION}native-sessions.ts`],
+    sizes: [DEFAULT_SIZE],
+    script: visit([{ name: 'image', after: [type('/sessions'), key('enter'), key('enter'), key('down'), key('down'), checkpoint('sessions'), key('enter'), key('enter'), checkpoint('resumed')] }]),
   },
   ...APP,
   ...PERF,

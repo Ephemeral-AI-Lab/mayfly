@@ -8,6 +8,8 @@
  */
 
 const DEFAULT_USAGE = { inputTokens: 3200, outputTokens: 120, cacheReadTokens: 2400 }
+/** The text the Harness gives a started call that was interrupted with no durable result (dsh-session `CLOSER_TEXT`). */
+const INTERRUPTED_CALL_TEXT = 'The tool call was interrupted after it was recorded, but no result was durably recorded. Its outcome is unknown. Decide whether to retry from the tool semantics: retry only if the operation is read-only or idempotent; if it may have side effects, first verify external state or ask the user. Do not retry blindly.'
 
 /**
  * A user turn: `prompt`, then the steps (and compactions) the agent took, ending with `outcome`: `'completed'` (the
@@ -27,8 +29,8 @@ export const turn = (prompt, items, options = {}) => ({ kind: 'turn', prompt, it
 export const step = (options = {}) => ({ kind: 'step', ...options })
 /**
  * A tool call. `runMs` is how long it shows as running; `result` is its output (`error: true` marks a failure,
- * `meta` is the presenter's metadata: read lines, search matches, the fetch status). `unanswered: true` leaves the
- * call without a result, as a turn cut off while the tool ran leaves it.
+ * `meta` is the presenter's metadata: read lines, search matches, the fetch status). `unanswered: true` is a turn cut off
+ * while the tool ran: the call gets the Harness's interrupted-outcome error result, as the stored session records it.
  */
 export const tool = (name, args, options = {}) => ({ name, args, ...options })
 /**
@@ -347,16 +349,23 @@ export function compile(items, { provider = 'deepseek-official', model = 'deepse
         conversation([turn(child.prompt, child.items ?? [], { outcome: child.outcome })], callAt + 100 + (child.startMs ?? 300), childId)
         call.result ??= `started subagent ${childId}`
       }
-      // A call the turn was cut off before it was answered never gets a result (`unanswered: true`).
       const resultData = (text, isError, meta) => ({
         turn: turnNo,
         step: stepNo,
         message: { id: id('tool'), role: 'tool', content: [{ type: 'text', text }], toolCallId: call.callId, isError, source: { kind: 'tool', callId: call.callId } },
         ...(meta === undefined ? {} : { meta }),
       })
+      // A call the turn was cut off while it ran (`unanswered: true`) is closed the way the Harness closes an interrupted
+      // started call (`TOOL_OUTCOME_UNKNOWN`, dsh-session `openTurnClosers`): an error result, then the step and turn
+      // ends. A stored step may not end with a started call unresolved, so the replay writes the same closer.
+      const interruptedData = () => ({
+        ...resultData(INTERRUPTED_CALL_TEXT, true),
+        error: { name: 'ToolOutcomeUnknownError', code: 'TOOL_OUTCOME_UNKNOWN' },
+      })
       // `outcomes` are the results the call has for the other answers to its ask (`rejected`, `declined`, `revised`); the driver plays the one the answer picks.
       const variants = call.outcomes === undefined ? undefined : Object.fromEntries(Object.entries(call.outcomes).map(([key, outcome]) => [key, resultData(outcome.result, outcome.error === true, outcome.meta)]))
-      if (call.unanswered !== true) event(resultAt, 'tool/result', resultData(call.result ?? '', call.error === true, call.meta), true, variants === undefined ? {} : { variants, answerOf: call.callId })
+      if (call.unanswered === true) event(resultAt, 'tool/result', interruptedData(), true)
+      else event(resultAt, 'tool/result', resultData(call.result ?? '', call.error === true, call.meta), true, variants === undefined ? {} : { variants, answerOf: call.callId })
       last = Math.max(last, resultAt)
     })
     event(last + 100, 'step/end', { turn: turnNo, step: stepNo })
