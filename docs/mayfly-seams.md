@@ -81,6 +81,23 @@ Overlays provide `focus/hide/show/close`, and `presentation: 'editor'` uses
 the existing editor host. Even if the caller never disposes manually, Cordis
 Fiber unload cleans up the registration.
 
+## Interaction events and the notification lane
+
+The UI events below are declared in `core/types.ts` and are unfiltered. Each has one emitter and the consumers named.
+
+| Event | Emitted by | Payload | Consumed by |
+| --- | --- | --- | --- |
+| `mayfly/decision-requests-changed` | `interaction/approval-plugin.ts` (`'approval'`), `interaction/questions-plugin.ts` (`'plan'`) | `(source, requests)`: the source's queue in the order asked, empty when it settles; each request has `type`, `toolName`, optional `callId` and `reason` | `transcript/index.ts`: the stream's request block and the `1 of N waiting` count |
+| `mayfly/decision-wait-changed` | the same two plugins | `{ kind: 'approval' \| 'answer' }` while a request waits on the user, `undefined` when none does | `transcript/pane-activity.ts`: the activity row's waiting label |
+| `mayfly/content-tail-changed` | `core/surface-renderer.ts`, on the alternate screen only | `label`: the chip's words while the stream is scrolled away (`Back to bottom · Ctrl+↓`, `2 new turns · Ctrl+↓`), `undefined` at the tail | `transcript/pane-notification.ts`: the chip on the notification row |
+
+The notification lane is the frontend's internal record of notices, not a public service. A producer takes an owner
+from `createInteractionNotificationOwner(ctx, label)` (`interaction/notifications.ts`) and reports or clears its
+records by id; the owner's records retire with its Fiber. `transcript/pane-notification.ts` shows one record on the
+notification row: the most severe, then the newest, for the app or the current session. `✓` and `ℹ` records leave
+after five seconds of visible time; `⚠` and `✗` records stay until cleared. The notices the session's facts raise
+(`transcript/notices.ts`) report into the same lane.
+
 ## Current Agent
 
 `@ephemeral-ai/mayfly/app` provides:

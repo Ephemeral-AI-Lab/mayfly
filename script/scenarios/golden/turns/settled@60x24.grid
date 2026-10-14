@@ -1,0 +1,42 @@
+grid 60x24 cursor none
+|    ends with one quiet closing row, and a prompt longer
+|    than four lines folds behind a muted row that opens with
+|    Enter.
+|
+|  ● 已翻译；标点保持不变。
+|
+|  ✻ Worked for 1s · done 10:11
+|
+|  » Run the full gate, and I will stop you halfway.
+|
+|  ▾ Stopped · 1 tool call · Ctrl+O to expand
+|
+|  ● Starting the full gate.
+|
+|  ⊘ Bash(pnpm run check -- --tier full) · interrupted · 1.5s
+|
+|  ■ interrupted
+|
+|  ✻ Stopped after 2s · done 10:14
+|                               Alt+↑ conversation · Alt+↓
+|╭─────────────────────────── Update the landing page hero ─╮
+|│ >                                                        │
+|╰──────────────────────────────────────────────────────────╯
+| deepseek-flash High  .  cache 42%  context: 5% (5.5k/128k)
+styles
+0: 4-55 fg:#9a86e6 b
+1: 4-59 fg:#9a86e6 b
+2: 4-9 fg:#9a86e6 b
+4: 2-3 fg:#ededf2
+6: 2-29 fg:#9aa3b8
+8: 2-3 fg:#9a86e6; 4-50 fg:#9a86e6 b
+10: 2-3 fg:#9aa3b8; 4-10 fg:#e8a838; 11-43 fg:#9aa3b8
+12: 2-3 fg:#ededf2
+14: 2-3 fg:#9aa3b8; 4-7 fg:#9aa3b8 b; 8 fg:#9aa3b8; 9-37 fg:#c9c0f0; 38-59 fg:#9aa3b8
+16: 2-14 fg:#e8a838
+18: 2-32 fg:#9aa3b8
+19: 31-56 fg:#9aa3b8
+20: 0-27 fg:#45406b; 28-57 fg:#5c6476; 58-59 fg:#45406b
+21: 0 fg:#45406b; 4 r; 59 fg:#45406b
+22: 0-59 fg:#45406b
+23: 1-19 fg:#ededf2; 25-58 fg:#ededf2

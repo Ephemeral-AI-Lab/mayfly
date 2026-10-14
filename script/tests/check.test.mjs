@@ -46,9 +46,10 @@ test('the pr tier adds the checks the change claims, builds before packing, and 
 test('the full tier runs everything once: one vitest run with coverage, the scenarios, the smoke, and the perf ceilings on its own build', () => {
   const steps = stepsFor(classifyChanges(['website/index.md']), 'full', { root: ROOT })
   const scripts = scriptsOf(steps)
-  for (const name of ['test:repo-workflow', 'typecheck', 'lint', 'diagrams:check', 'build', 'check:lib', 'shots:check', 'check:agent-docs', 'check:examples', 'website:build', 'smoke:happy', 'smoke:pty:output']) assert.ok(scripts.includes(name), name)
+  for (const name of ['test:repo-workflow', 'typecheck', 'lint', 'diagrams:check', 'build', 'check:lib', 'check:agent-docs', 'check:examples', 'smoke:happy', 'smoke:pty:output']) assert.ok(scripts.includes(name), name)
   assert.deepEqual(commandOf(steps, 'perf ceilings').args, ['script/perf.mjs', '--assert'])
   assert.ok(!scripts.includes('check:pack'))
+  assert.ok(!scripts.includes('website:build') && !scripts.includes('shots:check'), 'a release checks the Website, not the gate')
   const vitest = steps.filter(step => step.args.includes('vitest'))
   assert.equal(vitest.length, 1)
   assert.deepEqual(commandOf(steps, 'scenarios').args, ['script/scenarios.mjs'])
@@ -142,7 +143,7 @@ test('the coverage advice reports changed lines whose statements never ran', () 
 test('a golden runs its scenario, a covered source the scenarios that cover it, other product code the smoke set, the machinery all', () => {
   const scenarios = file => classifyChanges([file]).tests.scenarios
   assert.deepEqual(scenarios('script/scenarios/golden/tour/end@120x40.grid'), ['tour'])
-  assert.deepEqual(scenarios('packages/mayfly/src/transcript/thinking.ts'), ['app-conversation', 'thinking', 'tour'])
+  assert.deepEqual(scenarios('packages/mayfly/src/transcript/pane-todo.ts'), ['tour'])
   assert.deepEqual(scenarios('packages/mayfly/src/core/ui-compiler.ts'), ['idle', 'tour'])
   assert.deepEqual(scenarios('examples/ui-gallery/src/index.ts'), ['gallery'])
   assert.deepEqual(scenarios('docs/README.md'), [])
@@ -160,7 +161,7 @@ test('a golden runs its scenario, a covered source the scenarios that cover it, 
     const plan = classifyChanges([file])
     assert.deepEqual([...plan.tests.scenarios, ...plan.tests.perf], [], file)
   }
-  assert.equal(stepsFor(classifyChanges(['packages/mayfly/src/transcript/thinking.ts']), 'pr', { root: ROOT }).find(step => step.kind === 'scenarios').args[3], 'all')
+  assert.equal(stepsFor(classifyChanges(['packages/mayfly/src/transcript/stream-facts.ts']), 'pr', { root: ROOT }).find(step => step.kind === 'scenarios').args[3], 'all')
 })
 
 test('a scenario report names the checkpoint, size, and rows that differ, a missing golden, a broken run, and an orphan', () => {

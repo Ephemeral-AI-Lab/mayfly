@@ -1,0 +1,50 @@
+grid 60x30 cursor none
+|  » Summarise the changelog.
+|
+|  ● The changelog lists three changes: a faster parser, a
+|    new CLI flag, and a fix for Windows paths.
+|
+|  ✻ Worked for 12s · done 09:00
+|
+|  » Copy it, then keep reading the logs.
+|
+|  ▾ 2 tool calls · Ctrl+O to expand
+|
+|  ● First log.
+|
+|  ✓ Read(a.log)
+|
+|  ● Second log: the context is nearly full.
+|
+|  ✓ Read(b.log)
+|
+|  ✓ Compacted 7 items ▰▰▰▰▰▰▰▰▰▰ context 100% → 26% · auto
+|    ⎿ Ctrl+O summary
+|
+|  ● The context is small again.
+|
+|  ✻ Worked for 15s · done 09:00
+|                               Alt+↑ conversation · Alt+↓
+|╭─────────────────────────────── Summarise the changelog. ─╮
+|│ >                                                        │
+|╰──────────────────────────────────────────────────────────╯
+| deepseek-flash High  ...  cache 0%  context: 8% (2.3k/32k)
+styles
+0: 2-3 fg:#9a86e6; 4-27 fg:#9a86e6 b
+2: 2-3 fg:#ededf2
+5: 2-30 fg:#9aa3b8
+7: 2-3 fg:#9a86e6; 4-39 fg:#9a86e6 b
+9: 2-34 fg:#9aa3b8
+11: 2-3 fg:#ededf2
+13: 2-3 fg:#4ec87e; 4-7 fg:#ededf2 b; 8 fg:#9aa3b8; 9-13 fg:#c9c0f0; 14 fg:#9aa3b8
+15: 2-3 fg:#ededf2
+17: 2-3 fg:#4ec87e; 4-7 fg:#ededf2 b; 8 fg:#9aa3b8; 9-13 fg:#c9c0f0; 14 fg:#9aa3b8
+19: 2-3 fg:#4ec87e; 4-20 fg:#ededf2; 22-31 fg:#4ec87e; 33-50 fg:#9aa3b8; 52-57 fg:#9aa3b8
+20: 2-19 fg:#9aa3b8
+22: 2-3 fg:#ededf2
+24: 2-30 fg:#9aa3b8
+25: 31-56 fg:#9aa3b8
+26: 0-31 fg:#45406b; 32-57 fg:#5c6476; 58-59 fg:#45406b
+27: 0 fg:#45406b; 4 r; 59 fg:#45406b
+28: 0-59 fg:#45406b
+29: 1-19 fg:#ededf2; 27-58 fg:#ededf2

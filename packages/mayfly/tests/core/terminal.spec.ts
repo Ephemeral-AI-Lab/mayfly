@@ -6,7 +6,6 @@
  */
 
 import { describe, expect, it, vi } from 'vitest'
-import { Terminal as HeadlessTerminal } from '@xterm/headless'
 import { CURSOR_MARKER, type TUI } from '@earendil-works/pi-tui'
 import type { LayoutBox, LayoutFrame } from '@earendil-works/pi-tui/dist/layout.js'
 import { LAYOUT_NODE, type LayoutNode } from '@earendil-works/pi-tui/dist/layout-node.js'
@@ -23,6 +22,7 @@ import {
 import type { FrameOverflowEntry } from '../../src/core/frame-clamp.ts'
 import type { AmbientOutputStream } from '../../src/core/output-recovery.ts'
 import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/width.ts'
+import { AltScreenTerminal } from './alt-screen-terminal.ts'
 import { FakeTerminal, waitForRender } from './fake-terminal.ts'
 import { virtualRows } from '../../src/core/ui-rows.ts'
 import { plainColors } from '../helpers.ts'
@@ -54,44 +54,6 @@ function focusableComponent(text: string): MayflyFocusable {
 
 function layoutScrolls(box: LayoutBox): NonNullable<LayoutBox['scrollView']>[] {
   return [...(box.scrollView === undefined ? [] : [box.scrollView]), ...box.children.flatMap(layoutScrolls)]
-}
-
-class AltScreenTerminal extends FakeTerminal {
-  private readonly vt: HeadlessTerminal
-
-  constructor(columns = 40, rows = 10) {
-    super(columns, rows)
-    this.vt = new HeadlessTerminal({ cols: columns, rows, scrollback: 1000, allowProposedApi: true })
-  }
-
-  override write(data: string): void {
-    super.write(data)
-    this.vt.write(data)
-  }
-
-  override resize(columns: number, rows: number): void {
-    this.vt.resize(columns, rows)
-    super.resize(columns, rows)
-  }
-
-  externalWrite(data: string): void {
-    this.vt.write(data)
-  }
-
-  async screen(): Promise<string[]> {
-    await new Promise<void>(resolve => this.vt.write('', resolve))
-    const buffer = this.vt.buffer.active
-    return Array.from({ length: this.vt.rows }, (_, row) => buffer.getLine(row)?.translateToString(true) ?? '')
-  }
-
-  async bufferType(): Promise<string> {
-    await new Promise<void>(resolve => this.vt.write('', resolve))
-    return this.vt.buffer.active.type
-  }
-
-  dispose(): void {
-    this.vt.dispose()
-  }
 }
 
 class TerminalOutputStream implements AmbientOutputStream {
@@ -1373,11 +1335,11 @@ describe('alternate-screen runtime', () => {
     expect(scrolled[0]).toContain('row-8')
     expect(runtime.tui.fullRedraws).toBe(fullRedraws)
     expect(terminal.output.slice(outputAtScroll)).not.toContain('\x1b[2J')
-    expect(runtime.contentChanged()).toBe(true)
+    expect(runtime.contentTail()).toMatchObject({ away: true, unseen: 0 })
 
     runtime.followContent()
     await waitForRender()
-    expect(runtime.contentChanged()).toBe(false)
+    expect(runtime.contentTail()).toMatchObject({ away: false, unseen: 0 })
     await runtime.stop()
     expect(await terminal.bufferType()).toBe('normal')
     expect(terminal.output).toContain('\x1b[?1049l')
@@ -2020,5 +1982,154 @@ describe('measuredLaneRows', () => {
     expect(measuredLaneRows(10.9, 1.2, 2.7)).toBe(3)
     expect(measuredLaneRows(0, 2, 3)).toBe(0)
     expect(measuredLaneRows(24, -1, -1)).toBe(0)
+  })
+})
+
+describe('content scroll reach and lifecycle edges', () => {
+  it('jumps to the top with Home, between semantic prompts with ctrl+shift+arrows, and back to the end with End', async () => {
+    const terminal = new AltScreenTerminal(40, 10)
+    const runtime = startMayflyTerminal(terminal, { screenMode: 'alternate' })
+    runtime.addBottomChild(textComponent('dock-row'), 'bottom')
+    runtime.addChild({
+      render: () => Array.from({ length: 30 }, (_, index) => index === 4 || index === 20 ? `\x1b]133;A\x07prompt-${String(index)}` : `row-${String(index)}`),
+      invalidate: () => {},
+    })
+    runtime.requestRender(true)
+    await waitForRender()
+    expect(runtime.dockRows()).toBe(1)
+    expect((await terminal.screen())[0]).toContain('row-')
+
+    terminal.sendInput('\x1b[1~')
+    await waitForRender()
+    expect((await terminal.screen())[0]).toContain('row-0')
+
+    terminal.sendInput('\x1b[1;6B')
+    await waitForRender()
+    expect((await terminal.screen())[0]).toContain('prompt-4')
+
+    terminal.sendInput('\x1b[1;6B')
+    await waitForRender()
+    expect((await terminal.screen())[0]).toContain('prompt-20')
+
+    terminal.sendInput('\x1b[4~')
+    await waitForRender()
+    expect((await terminal.screen()).at(-2)).toContain('row-29')
+    await runtime.stop()
+    terminal.dispose()
+  })
+
+  it('does not scroll the main-screen content past either end, and reports the move only when it moved', async () => {
+    const terminal = new FakeTerminal(40, 10)
+    const runtime = startMayflyTerminal(terminal)
+    runtime.addChild({ render: () => Array.from({ length: 30 }, (_, index) => `line-${String(index)}`), invalidate: () => {} })
+    runtime.requestRender(true)
+    await waitForRender()
+    expect(runtime.scrollContent('down', 2)).toBe(false)
+    expect(runtime.scrollContent('up', 2)).toBe(true)
+    expect(runtime.scrollContent('down', 2)).toBe(true)
+    await runtime.stop()
+  })
+
+  it('reports no scroll when the content fits the screen', async () => {
+    const terminal = new FakeTerminal(40, 10)
+    const runtime = startMayflyTerminal(terminal)
+    runtime.addChild(textComponent('short'))
+    runtime.requestRender(true)
+    await waitForRender()
+    expect(runtime.scrollContent('up')).toBe(false)
+    expect(runtime.scrollContent('down')).toBe(false)
+    await runtime.stop()
+  })
+
+  it('removes only its own content scroll handler when a newer one has replaced it', async () => {
+    const terminal = new FakeTerminal(40, 10)
+    const runtime = startMayflyTerminal(terminal)
+    const first = vi.fn(() => false)
+    const second = vi.fn(() => true)
+    const releaseFirst = runtime.setContentScrollHandler(first)
+    runtime.setContentScrollHandler(second)
+    releaseFirst()
+    runtime.addChild(textComponent('content'))
+    runtime.requestRender(true)
+    await waitForRender()
+    terminal.sendInput('\x1b[A')
+    await waitForRender()
+    expect(second).toHaveBeenCalledWith('\x1b[A')
+    expect(first).not.toHaveBeenCalled()
+    await runtime.stop()
+  })
+
+  it('refuses a suspend that a stop overtakes while the stop sequences flush, and leaves the terminal down', async () => {
+    const terminal = new FakeTerminal(40, 10)
+    const runtime = startMayflyTerminal(terminal)
+    const child = vi.fn(async () => 1)
+    const suspended = runtime.suspend(child)
+    const stopping = runtime.stop()
+    await expect(suspended).rejects.toThrow('mayfly terminal stopped while suspending')
+    expect(child).not.toHaveBeenCalled()
+    await stopping
+  })
+})
+
+describe('content tail beside side lanes', () => {
+  it('places the tail between the left and right lanes and reports the width the content keeps', async () => {
+    const terminal = new AltScreenTerminal(120, 12)
+    const runtime = startMayflyTerminal(terminal, { screenMode: 'alternate' })
+    runtime.addChild({ render: () => Array.from({ length: 40 }, (_, index) => `body-${String(index)}`), invalidate: () => {} })
+    runtime.addBottomChild(textComponent('editor'))
+    runtime.surfaces.register({ id: 'left', title: 'Left', placement: 'left', priority: 100, component: textComponent('left') })
+    runtime.surfaces.register({ id: 'right', title: 'Right', placement: 'right', priority: 10, component: textComponent('right') })
+    runtime.requestRender(true)
+    await waitForRender()
+    const tail = runtime.contentTail()
+    expect(tail).toBeDefined()
+    // The content begins right of the left lane and stops short of the right one: both keep a gutter column.
+    expect(tail!.col).toBeGreaterThan(0)
+    expect(tail!.col + tail!.width).toBeLessThan(120)
+    expect(tail!.width).toBeGreaterThan(0)
+    await runtime.stop()
+    terminal.dispose()
+  })
+})
+
+describe('reader position under a shrinking content tail', () => {
+  it('keeps a reader who scrolled away at the same row when the content shrinks under them and grows back', async () => {
+    const terminal = new AltScreenTerminal(40, 10)
+    const runtime = startMayflyTerminal(terminal, { screenMode: 'alternate' })
+    let length = 40
+    runtime.addChild({ render: () => Array.from({ length }, (_, index) => `item-${String(index)}`), invalidate: () => {} })
+    runtime.requestRender(true)
+    await waitForRender()
+    runtime.scrollContent('up', 5)
+    await waitForRender()
+    const reading = (await terminal.screen())[0]
+    expect(reading).toMatch(/item-\d+/u)
+
+    // A stream that rewrites its rows shrinks the content for a frame: the view clamps to the end, and the reader's place is held.
+    length = 12
+    runtime.requestRender(true)
+    await waitForRender()
+    length = 40
+    runtime.requestRender(true)
+    await waitForRender()
+    expect((await terminal.screen())[0]).toBe(reading)
+    expect(runtime.contentTail()).toMatchObject({ away: true })
+    await runtime.stop()
+    terminal.dispose()
+  })
+
+  it('stops routing wheel input to a content handler once its release runs', async () => {
+    const terminal = new FakeTerminal(40, 10)
+    const runtime = startMayflyTerminal(terminal)
+    const handler = vi.fn(() => true)
+    const release = runtime.setContentScrollHandler(handler)
+    release()
+    runtime.addChild(textComponent('content'))
+    runtime.requestRender(true)
+    await waitForRender()
+    terminal.sendInput('\x1b[A')
+    await waitForRender()
+    expect(handler).not.toHaveBeenCalled()
+    await runtime.stop()
   })
 })

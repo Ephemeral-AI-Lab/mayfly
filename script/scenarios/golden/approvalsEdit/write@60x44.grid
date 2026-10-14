@@ -1,0 +1,89 @@
+grid 60x44 cursor none
+|    24 │ export const metric24 = { name: 'metric 24', value:
+|         168 }
+|    25 │ ## Section 3
+|    26 │ export const metric26 = { name: 'metric 26', value:
+|         182 }
+|    27 │ export const metric27 = { name: 'metric 27', value:
+|         189 }
+|    28 │ export const metric28 = { name: 'metric 28', value:
+|         196 }
+|    29 │ export const metric29 = { name: 'metric 29', value:
+|         203 }
+|    30 │ export const metric30 = { name: 'metric 30', value:
+|         210 }
+|    31 │ export const metric31 = { name: 'metric 31', value:
+|         217 }
+|    32 │ export const metric32 = { name: 'metric 32', value:
+|         224 }
+|    33 │ export const metric33 = { name: 'metric 33', value:
+|         231 }
+|    34 │ export const metric34 = { name: 'metric 34', value:
+|         238 }
+|    35 │ export const metric35 = { name: 'metric 35', value:
+|         245 }
+|    36 │ export const metric36 = { name: 'metric 36', value:
+|         252 }
+|    37 │ ## Section 4
+|    38 │ export const metric38 = { name: 'metric 38', value:
+|         266 }
+|    39 │ export const metric39 = { name: 'metric 39', value:
+|         273 }
+|    40 │ export const metric40 = { name: 'metric 40', value:
+|         280 }
+|    … +44 more
+|
+|  ● Waiting for your approval · 0s
+|    ⎿ Tip: Ctrl+O to expand tool details
+|                               Alt+↑ conversation · Alt+↓
+|── Decide ──────────────────────────────────────────────────
+|→ 1  Allow once
+|  2  Allow write for this session
+|  3  Reject
+|  Feedback: type to explain…
+|  Enter choose · Ctrl+G open diff · Esc reject
+| deepseek-flash High  .  cache 42%  context: 5% (5.5k/128k)
+styles
+0: 4-8 fg:#9aa3b8; 9-59 fg:#ededf2
+1: 4-8 fg:#9aa3b8; 9-13 fg:#ededf2
+2: 4-8 fg:#9aa3b8; 9-20 fg:#c9c0f0
+3: 4-8 fg:#9aa3b8; 9-59 fg:#ededf2
+4: 4-8 fg:#9aa3b8; 9-13 fg:#ededf2
+5: 4-8 fg:#9aa3b8; 9-59 fg:#ededf2
+6: 4-8 fg:#9aa3b8; 9-13 fg:#ededf2
+7: 4-8 fg:#9aa3b8; 9-59 fg:#ededf2
+8: 4-8 fg:#9aa3b8; 9-13 fg:#ededf2
+9: 4-8 fg:#9aa3b8; 9-59 fg:#ededf2
+10: 4-8 fg:#9aa3b8; 9-13 fg:#ededf2
+11: 4-8 fg:#9aa3b8; 9-59 fg:#ededf2
+12: 4-8 fg:#9aa3b8; 9-13 fg:#ededf2
+13: 4-8 fg:#9aa3b8; 9-59 fg:#ededf2
+14: 4-8 fg:#9aa3b8; 9-13 fg:#ededf2
+15: 4-8 fg:#9aa3b8; 9-59 fg:#ededf2
+16: 4-8 fg:#9aa3b8; 9-13 fg:#ededf2
+17: 4-8 fg:#9aa3b8; 9-59 fg:#ededf2
+18: 4-8 fg:#9aa3b8; 9-13 fg:#ededf2
+19: 4-8 fg:#9aa3b8; 9-59 fg:#ededf2
+20: 4-8 fg:#9aa3b8; 9-13 fg:#ededf2
+21: 4-8 fg:#9aa3b8; 9-59 fg:#ededf2
+22: 4-8 fg:#9aa3b8; 9-13 fg:#ededf2
+23: 4-8 fg:#9aa3b8; 9-59 fg:#ededf2
+24: 4-8 fg:#9aa3b8; 9-13 fg:#ededf2
+25: 4-8 fg:#9aa3b8; 9-20 fg:#c9c0f0
+26: 4-8 fg:#9aa3b8; 9-59 fg:#ededf2
+27: 4-8 fg:#9aa3b8; 9-13 fg:#ededf2
+28: 4-8 fg:#9aa3b8; 9-59 fg:#ededf2
+29: 4-8 fg:#9aa3b8; 9-13 fg:#ededf2
+30: 4-8 fg:#9aa3b8; 9-59 fg:#ededf2
+31: 4-8 fg:#9aa3b8; 9-13 fg:#ededf2
+32: 2-3 fg:#ededf2; 4-13 fg:#9aa3b8
+34: 0-1 fg:#ededf2; 2 fg:#5c6476; 3-28 fg:#ededf2; 30-33 fg:#9aa3b8
+35: 0-39 fg:#9aa3b8
+36: 31-56 fg:#9aa3b8
+37: 0-59 fg:#9aa3b8
+38: 0 fg:#9a86e6 b; 2 fg:#9aa3b8; 5-14 fg:#ededf2 b
+39: 2 fg:#9aa3b8; 5-32 fg:#ededf2
+40: 2 fg:#9aa3b8; 5-10 fg:#ededf2
+41: 2-11 fg:#ededf2; 12-27 fg:#9aa3b8
+42: 0-1 fg:#5c6476; 2-6 fg:#ededf2; 8-16 fg:#5c6476; 17-22 fg:#ededf2; 24-35 fg:#5c6476; 36-38 fg:#ededf2; 40-45 fg:#5c6476
+43: 1-19 fg:#ededf2; 25-58 fg:#ededf2

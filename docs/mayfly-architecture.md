@@ -62,10 +62,12 @@ flowchart TB
    EditorDock, and Footer hosts in a fixed order. Features only claim named
    slot leases; temporary notice/echo content enters the local activity region
    and does not change the terminal root order.
-8. Ordinary surfaces cache by provider revision; the transcript caches by
-   `(session generation, entry id, content revision, width, presentation
-   revision)`. A durable entry's content revision is `updatedSeq`; live entries
-   use a separate `renderRevision`, and the two do not share a numeric clock.
+8. Ordinary surfaces cache by provider revision; the conversation stream keeps
+   each row's facts by identity while their content is equal, so a settled turn
+   publishes the same frozen list items and the list's row cache hits. Only the
+   rows of the live turn change per publish. A durable entry's content revision
+   is `updatedSeq`; live entries use a separate `renderRevision`, and the two do
+   not share a numeric clock.
 
 ## Package boundaries
 
@@ -132,8 +134,8 @@ plugin bridge, and no app session facade.
   structured action replies.
 - The transcript has one conversation controller with one view per displayed
   or retained conversation; listed conversations hold no view, feed, or model.
-  Switching the displayed conversation swaps the mounted view, so returning
-  with F7 reuses its rendered rows. Each view reads one feed: a live Session
+  Switching the displayed conversation republishes another view's stream into
+  the conversation node slot, so returning with F7 reuses its kept row facts. Each view reads one feed: a live Session
   through the native projection registry, or a stored child's first addressed
   snapshot through the session controller, which never activates it. The
   native projection registry validates complete values; a view stashes the
@@ -187,7 +189,7 @@ Whole-tree bundle tests must prove that native command/projection/tool services
 are reachable, current Agent identity is exact, the four UI services accept
 registrations, Fiber unload cleans up, and registries can re-attach renderers
 after a core reload. Width-sensitive components remain covered by
-`packages/mayfly/tests/{core,transcript,interaction}/width-scan.spec.ts`.
+`packages/mayfly/tests/{core,components,transcript,interaction}/width-scan.spec.ts`.
 
 Cold continuable children use the Harness addressed-subagent API for history
 reads and explicit replies; browsing history does not activate the Agent, and

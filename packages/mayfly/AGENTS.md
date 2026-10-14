@@ -95,6 +95,32 @@ model for the next lease of the same id; only `dispose()` drops it. Mayfly
 features reach the footer, the editor, and the conversation through slots, never
 through a new root component. Plugins still use only the four public services.
 
+The `content` region is the content of the outer scroll: while the slot holds no
+focus its lists and rows are not bounded by the viewport (`MayflyUiSurfaceRuntime.flowing`),
+and the scroll view windows what they paint, so wheel, page keys, and follow-tail
+work as for any content. A focused slot keeps the list's cursor window. The
+conversation stream (`TranscriptView`, published by `transcript/transcript-model.ts`
+from `transcript/stream-facts.ts`) is the first consumer.
+
+## Components area
+
+`src/components/` holds the Mayfly components as pure functions of facts that
+return `ui.*` nodes (`TranscriptView`, `ToolLine`, `ActivityRow`,
+`NotificationLine`, `CompactionRow`, and `DecisionCard`). The approval and
+questions plugins own the request queue and publish it as
+`mayfly/decision-requests-changed`; the stream turns the first request's call
+into its request block and never reads the overlay.
+
+It has no Cordis entry and no public subpath, and a component is imported from
+its own module. A file there imports
+only `@ephemeral-ai/mayfly-ui` and its siblings and contains no `node:` module,
+Cordis, `../core`, width helper, escape sequence, timer, or key binding.
+The feature plugins that publish a component's nodes own its facts, its
+Fibers, and its writes; `core/` owns widths, ANSI, clocks, and keys.
+`tests/components/layering.spec.ts` is the guard, and it must keep failing on
+each of those constructs. A new component module extends the guard's reach
+without edits, and its row renderers join the owning `width-scan.spec.ts`.
+
 ## Views lane
 
 A `mayflyPanes` pane with `placement: 'views'` is a view of status row 2, kept

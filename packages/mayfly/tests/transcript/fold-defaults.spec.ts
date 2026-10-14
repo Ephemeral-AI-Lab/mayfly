@@ -28,18 +28,14 @@ it('resolves each mode to its capability table', () => {
   const policy = new TranscriptPresentationPolicy()
   const table = (['compact', 'standard', 'detailed', 'verbose'] as const).map(mode => {
     policy.apply({ transcriptView: mode })
-    const { foldCompletedTurns, liveProcess, settledProcess, fileChanges, liveProcessDetail, settledReasoningPreview } = policy.snapshot().process
-    return [mode, foldCompletedTurns, liveProcess, settledProcess, fileChanges, liveProcessDetail, settledReasoningPreview]
+    const { liveProcess, settledProcess, compactionLine, compactionSummary } = policy.snapshot().process
+    return [mode, liveProcess, settledProcess, compactionLine, compactionSummary]
   })
   expect(table).toEqual([
-    ['compact', true, 'hidden', 'titles', 'process', false, false],
-    ['standard', true, 'titles', 'titles', 'content', true, true],
-    ['detailed', true, 'cards', 'titles', 'content', false, true],
-    ['verbose', false, 'cards', 'cards', 'content', false, true],
+    ['compact', 'collect', 'collect', true, false],
+    ['standard', 'blocks', 'blocks', false, false],
+    ['detailed', 'current', 'blocks', false, false],
+    ['verbose', 'cards', 'cards', false, true],
   ])
-  // The activity row carries the running detail exactly where no card shows it.
-  for (const process of Object.values(PROCESS_POLICIES)) {
-    expect(process.liveProcessDetail).toBe(process.liveProcess === 'titles')
-  }
   expect(PROCESS_POLICIES.standard).toBe(DEFAULT_TRANSCRIPT_PRESENTATION.process)
 })

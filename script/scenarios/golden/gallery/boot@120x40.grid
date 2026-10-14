@@ -19,13 +19,13 @@ grid 120x40 cursor none
 |                                                                                    │  const answer = 42               │
 |                                                                                    │  console.log(answer)             │
 |                                                                                    │                                  │
-|                                                                                    │      1     │ − export const mo…  │
-|                                                                                    │          1 │ + export const mo…  │
+|                                                                                    │    1 │ − export const mode…      │
+|                                                                                    │    1 │ + export const mode…      │
 |                                                                                    │                                  │
 |                                                                                    │  Expanded section                │
 |                                                                                    │    Section bodies stay           │
 |                                                                                    ╰──────────────────────────────────╯
-|
+|                                                                                       Alt+↑ conversation · Alt+↓ bar
 |╭ Gallery prompt ──────────────────────────────────────────────────────────────────────────────────────────────────────╮
 |│ Backspace on an empty prompt selects, then removes, the last token. Up and Down recall; type / @ or # for            │
 |│ completions.                                                                                                         │
@@ -57,15 +57,16 @@ styles
 14: 84 fg:#dcd7f2; 87-93 fg:#9aa3b8; 95-98 fg:#e8a838; 119 fg:#dcd7f2
 15: 84 fg:#dcd7f2; 119 fg:#dcd7f2
 16: 84 fg:#dcd7f2; 87-88 fg:#9aa3b8; 119 fg:#dcd7f2
-17: 84 fg:#dcd7f2; 87-91 fg:#9a86e6; 92-103 fg:#ededf2; 119 fg:#dcd7f2
-18: 84 fg:#dcd7f2; 87-105 fg:#ededf2; 119 fg:#dcd7f2
+17: 84 fg:#dcd7f2; 87-91 fg:#9a86e6; 92-101 fg:#ededf2; 102-103 fg:#e8a838; 119 fg:#dcd7f2
+18: 84 fg:#dcd7f2; 87-93 fg:#c9c0f0; 94-105 fg:#ededf2; 119 fg:#dcd7f2
 19: 84 fg:#dcd7f2; 119 fg:#dcd7f2
-20: 84 fg:#dcd7f2; 89-97 fg:#5c6476; 99 fg:#e85454 bg:#43232a; 100 bg:#43232a; 101-116 fg:#e85454 bg:#43232a; 119 fg:#dcd7f2
-21: 84 fg:#dcd7f2; 89-97 fg:#5c6476; 99 fg:#4ec87e bg:#1e3a2b; 100 bg:#1e3a2b; 101-116 fg:#4ec87e bg:#1e3a2b; 119 fg:#dcd7f2
+20: 84 fg:#dcd7f2; 89-91 fg:#9aa3b8; 93 fg:#e85454 bg:#43232a; 94 bg:#43232a; 95-112 fg:#e85454 bg:#43232a; 119 fg:#dcd7f2
+21: 84 fg:#dcd7f2; 89-91 fg:#9aa3b8; 93 fg:#4ec87e bg:#1e3a2b; 94 bg:#1e3a2b; 95-112 fg:#4ec87e bg:#1e3a2b; 119 fg:#dcd7f2
 22: 84 fg:#dcd7f2; 119 fg:#dcd7f2
 23: 84 fg:#dcd7f2; 87-102 fg:#9a86e6 b; 119 fg:#dcd7f2
 24: 84 fg:#dcd7f2; 89-107 fg:#ededf2; 119 fg:#dcd7f2
 25: 84-119 fg:#dcd7f2
+26: 87-116 fg:#9aa3b8
 27: 0-1 fg:#dcd7f2; 2-15 fg:#f5f5f7 b; 16-119 fg:#dcd7f2
 28: 0 fg:#dcd7f2; 2-106 fg:#9aa3b8; 119 fg:#dcd7f2
 29: 0 fg:#dcd7f2; 2-13 fg:#9aa3b8; 119 fg:#dcd7f2

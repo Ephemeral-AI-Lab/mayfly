@@ -163,7 +163,7 @@ extensions exclude `diagram` and `chart`).
 | `ui.fields` | `rows[]` (`label`, `value: spans[]`) | `label: ` muted, then the value spans, wrapped | key/value panels (status, account) |
 | `ui.markdown` | `source` | the shared markdown painter; a fenced `mermaid` block becomes a diagram | the only node whose code fences are highlighted today |
 | `ui.code` | `code`, `language?` | muted language heading, then every line in `mdCodeBlock` | **not** highlighted (roadmap C2) |
-| `ui.diff` | `before`, `after` (two strings) | aligned rows under a sign gutter, change bands padded to the width | numbered gutters, `@@` headers, and the red/green background behind the changed code (not the line numbers) are targets (ref §6 C1, spec §5.3) |
+| `ui.diff` | `before`, `after` (two strings) | aligned rows under a sign gutter, change bands padded to the width | one numbered gutter (`start`, `beforeStart`, `numberWidth`: a removed line shows its number before the change, any other its number after it), `@@` headers, and the red/green background behind the changed code (not the line numbers) (ref §6 C1, spec §5.3) |
 | `ui.sections` | `sections[]` (`title?`, `body`, `collapsed?`) | bold `primary` title, then the body; a collapsed section is its title row only (`...` when untitled) | bodies: `text`, `fields`, `code`, `diff`, nested `sections` |
 | `ui.chart` | `chart: 'line' \| 'point'`, `'bar'`, `'sparkline'`, `'heatmap'` | `simple-ascii-chart` inside the width | below |
 | `ui.diagram` | `diagram: 'mermaid'`, `source` | beautiful-mermaid ASCII, bounded | below |
@@ -412,7 +412,7 @@ and its §7 sets the gates; a *Full gate* note below records the Phase 1 rule. `
 | B5 | Feedback severity prefix | spec §2.4 | `core/ui-compiler.ts` (feedback row), `core/ui-interaction-notifications.ts`. |
 | C1 | Use the diff tokens and add hunk headers | spec §4.1 | `core/diff-align.ts`, `core/plugin-view.ts`; `diff.svg`. |
 | C2 | Highlight standalone code | spec §4.1 | `core/plugin-view.ts` (code arm), `core/highlight.ts`. |
-| D1 | `NO_COLOR` and reduced motion | spec §2.3 | `core/theme-palette.ts`, `core/ui-loader-animation.ts`, `transcript/spinners.ts`. |
+| D1 | `NO_COLOR` and reduced motion | spec §2.3 | `core/theme-palette.ts`, `core/ui-loader-animation.ts`. |
 | D3 | One animation per surface | spec §2.3 | the loader clock and the pane/transcript timers; a guard spec. |
 | E1 | Inline thinking strip on the model row | spec §5.9 | `packages/ui/src/contracts.ts` (`inheritedId`), `core/ui-validator.ts`, `core/ui-patterns.ts` (`renderListSegment` inline layout), `core/ui-compiler.ts` (list body and reserved footer line), `interaction/model-commands.ts` (drop the `default` pseudo-option); specs and an `app-model` screenshot. Full gate. |
 | E2 | Button-free pickers | spec §5.9 | `interaction/model-commands.ts` (`openPickerOverlay`), the `Set as default` locale key, `model-commands.spec.ts`, `model-selection-ui.spec.ts`. |
@@ -431,7 +431,7 @@ and its §7 sets the gates; a *Full gate* note below records the Phase 1 rule. `
 | B3 | Busy elapsed and unsaved marker | spec §4.2, 4.7 | `core/ui-patterns.ts` (`renderActions`), `core/ui-compiler.ts` (action pending timing). |
 | C3 | Chart legend and Website gallery | spec §4.1 | `core/chart-renderer.ts`, `interaction/session-info-model.ts`, the Website gallery. |
 | C4 | Status grid and priority overflow | spec §4.7 | `transcript/status-model.ts` and the status plugins. |
-| D2 | Unicode fallback | spec §8 | `core/chrome.ts`, `core/ui-patterns.ts`, `transcript/banner.ts`, `transcript/spinners.ts`. |
+| D2 | Unicode fallback | spec §8 | `core/chrome.ts`, `core/ui-patterns.ts`, `transcript/banner.ts`, `core/glyphs.ts`. |
 | F1 | Buttons on demand | spec §4.2 | `packages/ui` contract, `core/ui-patterns.ts` (`renderActions`), `core/ui-compiler.ts`, `core/ui-key-grammar.ts` (group hint), `interaction/questionnaire.ts`. Full gate. |
 | F2 | Live-following label column | spec §4.5 | `packages/ui/src/interaction.ts`, `core/ui-interaction-choice.ts`, the sessions and settings panels. |
 | A3 | Running-block cue without a rail | not in the design | `transcript/process-rows.ts` (`TurnHeaderComponent`), `transcript/components.ts`. |
@@ -447,7 +447,6 @@ findings in the 2026-09-28 audit (PR #77) are cited as `UX-nn`.
 | G2 | `Enter open` on pickers that commit: `browse` role forces the `open` verb (UX-23) | `core/ui-key-grammar.ts` `rowBindings`, `interaction/model-commands.ts` | `acceptVerb`, then set it on the model and effort pickers |
 | G3 | The segment strip is appended after the list body, not on its row, and a row without a strip changes the list height (spec §1.1 principle 6) | `core/ui-compiler.ts` `segmentRows` | E1 |
 | G4 | Two current markers: `CURRENT_MARK = '← current'` (renders `[← current]`) in theme and permission pickers, `[current]` in the model picker; `SELECT_POINTER = '❯'` is exported but unused while the painter draws `→` | `interaction/symbols.ts`, `theme-switch.ts`, `permission-panel.ts`, `model-commands.ts` | one localized `current` badge; delete `CURRENT_MARK` and `SELECT_POINTER`; drop `symbols.ts` from A4's touch points |
-| G5 | Approval `Esc` is labeled `close` but rejects; `Reject with feedback` is a tab plus a `Back` button | `interaction/approval-plugin.ts`, escape labels in `core/ui-key-grammar.ts` | overridable Escape label; B1 |
 | G7 | Redundant buttons: `Set as default` + `Cancel` (pickers); `Back`/`Next`/`Submit answers`/`Cancel` (questionnaire); loader `[ Cancel ]`; single-field form `Submit`/`Cancel` | see spec §4.2 redundancy rule | E2, F1 |
 | G8 | Three checkbox notations: `●`/`○` (multiple lists), `[x]`/`[ ]` (pickers), `[on]`/`[off]` (toggle); `●` is also the "selected" marker in single lists (UX-24) | `core/ui-patterns.ts` `renderList`, `renderFormField` | every choice list and picker adopts `●`/`○`/`◐`; `[on]`/`[off]` stays for toggles |
 | G9 | Hint verbs overlap: `pick` (open a select), `choose`, `apply`, `open` (UX-23) | `core/ui-key-grammar.ts` | settle on the spec §3.2 vocabulary; rename `pick` |
@@ -462,7 +461,6 @@ findings in the 2026-09-28 audit (PR #77) are cited as `UX-nn`.
 | G18 | The subagent reply form draws `Send` and `Cancel` buttons, and `Enter` in its textarea does not send | `interaction/subagent-reply.ts` | H1 |
 | G19 | Bash mode writes `! shell mode` into the editor's left border, the only text besides the session title | `interaction/editor-plus.ts` | B4 |
 | G20 | The activity row truncates the running action to one line (`DETAIL_BUDGETS`); a long command or reasoning paragraph is cut | `transcript/pane-activity.ts` | R2 |
-| G21 | Frame tables mix a two-cell moon slot, braille, and an unused `tide`; the waiting ripple and the working rotation are separate motions | `transcript/spinners.ts`, `core/ui-patterns.ts` | R1 |
 | G22 | Diff rows have only a two-column sign gutter (`GUTTER_COLUMNS = 2`); there are no old or new line numbers | `core/diff-align.ts`, `core/plugin-view.ts` | R3 |
 | G23 | Subagents live in a pane above the editor and jobs only as a footer count; neither can be selected from the keyboard | `transcript/pane-agents.ts`, `transcript/status-jobs.ts` | R7 |
 | G24 | Tabs cannot render a vertical rail that follows the cursor; the label column switches only on `Enter` (ref §6 F2) | `core/ui-compiler.ts` | R9 |
@@ -472,7 +470,6 @@ findings in the 2026-09-28 audit (PR #77) are cited as `UX-nn`.
 
 | ID | Item | Touch points |
 | --- | --- | --- |
-| R1 | Motion and glyph system (spec §2.3); retire the ripple and `tide` | `transcript/spinners.ts`, `core/ui-loader-animation.ts`, `core/ui-patterns.ts` |
 | R2 | Activity pane detail lines and gap; the `Deep diving` label is kept (spec §5.3) | `transcript/pane-activity.ts`, `conversation/activity-detail.ts`, `transcript/process-activity.ts`, `transcript/locale.ts` |
 | R3 | Edit diff with line numbers and a red or green background behind the changed code (not the line numbers); Write as one line, highlighted code when expanded (spec §5.3) | `core/diff-align.ts`, `core/plugin-view.ts`, `transcript/tool-line.ts`, `transcript/process-rows.ts` |
 | R4 | Loader variants and determinate bar (spec §4.8) | `core/ui-patterns.ts`, `packages/ui/src/contracts.ts` |

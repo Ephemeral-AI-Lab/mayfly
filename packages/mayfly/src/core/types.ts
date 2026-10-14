@@ -160,6 +160,9 @@ export interface MayflyOverlayHandle {
  * tree, the single focus slot, and the overlay stack; it carries no color
  * or keybinding responsibility.
  */
+/** Where keyboard focus lives: the prompt, the stream's row cursor, a view of the status bar, or a search of the stream. */
+export type MayflyFocusMode = 'prompt' | 'conversation' | 'bar' | 'search' | 'search-select'
+
 export interface MayflyScreen {
   /** Whether an active overlay or editor replacement must receive input before global actions. */
   readonly capturesInput?: boolean
@@ -175,8 +178,6 @@ export interface MayflyScreen {
   setFocus(component: MayflyComponent | null): void
   /** Scroll the overflowing main content; returns true when it moved. */
   scrollContent(direction: 'up' | 'down', amount?: number): boolean
-  /** Notify the renderer that new content arrived and preserve tail-follow. */
-  contentChanged(): boolean
   /** Return the transcript viewport to the newest content. */
   followContent(): void
   /** Install the focused-editor content scroll input handler. */
@@ -370,6 +371,24 @@ export interface MayflyKeyBinding extends Omit<MayflyKeyAction, 'keys' | 'handle
   readonly defaults: readonly string[]
   /** Whether a user binding replaces the defaults. */
   readonly overridden: boolean
+}
+
+/** What the user is being asked for: a decision on a call or a plan, or an answer to a question. The request itself is the panel's and the stream's. */
+export interface MayflyDecisionWait {
+  readonly kind: 'approval' | 'answer'
+}
+
+/**
+ * One request that waits on the user: a tool call asking for approval, or a plan under review. The call it is about is
+ * the stream's block (`callId`); the request's content is that call's own arguments, so only the identity travels.
+ */
+export interface MayflyDecisionRequest {
+  readonly type: 'approval' | 'plan'
+  /** The tool call being decided, when the asker named it. */
+  readonly callId?: string
+  readonly toolName: string
+  /** What the asker said about the request (the approval's reason), in the language shown. */
+  readonly reason?: string
 }
 
 /**
@@ -971,5 +990,39 @@ declare module '@deepseek-ai/cordis' {
      * @mode emit
      */
     'mayfly/editor-slot-swapped'(occupied: boolean): void
+    /**
+     * The decision the user is being asked for changed: an approval, a question, or a plan review became the active
+     * panel, or the last one settled. The activity row names the wait (and stays up above the panel) while one is
+     * pending. Emitted by `mayfly-approval` and `mayfly-questions`; unfiltered.
+     * @param wait - what is being asked, or `undefined` when nothing waits on the user.
+     * @mode emit
+     */
+    'mayfly/decision-wait-changed'(wait: MayflyDecisionWait | undefined): void
+    /**
+     * The requests waiting on the user changed: a request was asked, queued behind another, or settled. The first of
+     * `requests` is the one the decision card shows; the rest wait their turn in the order they were asked. The stream
+     * turns the first one's call into the request block (`? Bash(…) · 1 of 3 waiting`). Emitted by `mayfly-approval` and
+     * `mayfly-questions`, each for its own `source`; unfiltered.
+     * @param source - which plugin's queue changed.
+     * @param requests - that queue, first in first out; empty when it settled.
+     * @mode emit
+     */
+    'mayfly/decision-requests-changed'(source: 'approval' | 'plan', requests: readonly MayflyDecisionRequest[]): void
+    /**
+     * The conversation scroll left or came back to its tail, or the words of its chip changed (the count of turns that
+     * began below the view, a rebound key). The notification pane draws the chip, so it follows this event. Alternate
+     * screen only; emitted by the surface renderer, unfiltered.
+     * @param label - the chip's translated words (`Back to bottom · Ctrl+↓`, `2 new turns · Ctrl+↓`), or `undefined` at the tail.
+     * @mode emit
+     */
+    'mayfly/content-tail-changed'(label: string | undefined): void
+    /**
+     * Where keyboard focus lives, as a mode: the prompt, the conversation (the stream's row cursor), the bar (a view of
+     * status row 2), or a search of the stream. The status line names every mode but the prompt, and the prompt dims while
+     * it does not hold focus. Emitted by the surfaces that take focus; unfiltered.
+     * @param mode - the mode that holds focus now.
+     * @mode emit
+     */
+    'mayfly/focus-mode-changed'(mode: MayflyFocusMode): void
   }
 }

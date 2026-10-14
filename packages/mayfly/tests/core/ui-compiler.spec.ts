@@ -15,6 +15,7 @@ import {
   type MayflyUiCompilerOptions,
 } from '../../src/core/ui-compiler.ts'
 import type { MayflyComponents, MayflyEditor, MayflySemanticColors } from '../../src/core/types.ts'
+import { createAdmissionCache } from '../../src/core/ui-validator.ts'
 import { sliceByColumn, truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/width.ts'
 import { UiSurfaceModel } from '../../src/core/ui-interaction-surface.ts'
 import { choiceSegment } from '../../src/core/ui-interaction-choice.ts'
@@ -2535,5 +2536,46 @@ describe('control walk memoization (UX-34)', () => {
     expect(runtime.state.activeKey).toContain('c')
     runtime.dispose()
     model.dispose()
+  })
+})
+
+describe('compiler scroll, diagram, and failure edges', () => {
+  it('keeps an auto-scrollbar scroll view inside its width and repaints after an invalidate', () => {
+    const f = fixture({ getViewport: () => ({ columns: 20, rows: 5 }) })
+    const surface = compiledSurface(ui.scroll(ui.stack.column(Array.from({ length: 10 }, (_, index) => ui.text(`line-${index}`))), { scrollbar: true }), f.options)
+    const before = surface.component.render(20)
+    expect(before).toHaveLength(5)
+    expect(before.join('\n')).toContain('line-0')
+    for (const row of before) expect(visibleWidth(stripTerminalSequences(row))).toBeLessThanOrEqual(20)
+
+    surface.component.invalidate()
+    expect(surface.component.render(20)).toEqual(before)
+  })
+
+  it('compiles the same diagram node again to the same rows', () => {
+    const node = ui.diagram('graph TD\nA --> B')
+    // One admission cache hands the same admitted node to both compiles, so the second reads the fence source from the memo.
+    const admission = createAdmissionCache()
+    const first = compiled(node, fixture({ admission }).options).component.render(40).join('\n')
+    const second = compiled(node, fixture({ admission, colors: plainColors() }).options).component.render(40).join('\n')
+    expect(first).toContain('A')
+    expect(second).toBe(first)
+  })
+
+  it('contains a text leaf whose wrapping fails and shows the failure at that leaf', () => {
+    const failing = new Proxy(components, {
+      get: (target, key) => key === 'wrapText' ? () => { throw new Error('wrap failed') } : Reflect.get(target, key),
+    }) as unknown as MayflyComponents
+    const rows = compiled(ui.text('first line'), fixture({ components: failing }).options).component.render(20)
+    expect(rows.join('')).toContain('wrap failed')
+    expect(rows.every(row => visibleWidth(stripTerminalSequences(row)) <= 20)).toBe(true)
+  })
+
+  it('reports no focus identity while a passive surface with no controls holds focus', () => {
+    const f = fixture({ contextHints: { enabled: true, focusWithoutControls: true }, onUnhandledEscape: () => {} })
+    const result = compiled(ui.text('passive'), f.options)
+    result.component.render(40)
+    expect(result.focusTarget).not.toBeNull()
+    expect(result.focusTarget!.captureFocusIdentity?.()).toBeUndefined()
   })
 })

@@ -94,7 +94,7 @@ describe('live draft overlays', () => {
     model = source.snapshot()
     expect(materializeTranscriptEntries(model).map(entry => entry.kind)).toEqual(['transcript-user', 'transcript-assistant', 'transcript-thinking', 'transcript-assistant'])
     expect(JSON.stringify(materializeTranscriptEntries(model))).toContain('thinking now')
-    // Settled live reasoning carries its producer-time span for the `Thought for` title.
+    // Settled live reasoning carries its producer-time span for the closing row's duration.
     expect(materializeTranscriptEntries(model)[2]).toMatchObject({ kind: 'transcript-thinking', streaming: false, startedAt: 2, durationMs: 0 })
 
     // Each reasoning delta is visible on the next render; it must not wait
@@ -131,6 +131,18 @@ describe('live draft overlays', () => {
     // rebuild it.
     expect(materializeTranscriptEntries(source.snapshot())).toEqual([])
     live.dispose()
+  })
+
+  it('keeps the empty model when the tools change before any projection has been shown', () => {
+    const ctx = new Context()
+    const live = new LiveAssistantStreamService(ctx)
+    const source = new OfficialConversationModelSource(new ProjectionFake() as never, { get: () => undefined }, () => {}, {
+      subscribe: listener => live.subscribe(listener),
+      get: id => live.get(id),
+    })
+    const before = source.snapshot()
+    source.invalidateTools()
+    expect(source.snapshot()).toBe(before)
   })
 
   it('never overlays a draft whose turn the durable projection already closed or moved past', () => {

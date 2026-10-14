@@ -5,18 +5,18 @@ grid 100x10 cursor none
 |
 |numbered on (d toggles); an @@ header names the hunk
 |@@ -41,8 +41,8 @@
-|   41  41 │     const moon = state.mode === 'waiting'
-|   42     │ −   const frame = moon
-|       42 │ +   const frame = glyphFor(state)
-|   43  43 │     const now = activityNow()
+|  41 │     const moon = state.mode === 'waiting'
+|  42 │ −   const frame = moon
+|  42 │ +   const frame = glyphFor(state)
+|  43 │     const now = activityNow()
 |  ⋯
 styles
 0: 0-93 fg:muted
 1: 0-12 fg:muted
 3: 0-51 fg:muted
 4: 0-16 fg:diffMeta
-5: 2-10 fg:diffGutter; 14-52 fg:text
-6: 2-10 fg:diffGutter; 12 fg:diffRemoved bg:diffRemovedBg; 13 bg:diffRemovedBg; 14-33 fg:diffRemoved bg:diffRemovedBg; 34-99 bg:diffRemovedBg
-7: 2-10 fg:diffGutter; 12 fg:diffAdded bg:diffAddedBg; 13 bg:diffAddedBg; 14-44 fg:diffAdded bg:diffAddedBg; 45-99 bg:diffAddedBg
-8: 2-10 fg:diffGutter; 14-40 fg:text
+5: 2-5 fg:muted; 9-47 fg:text
+6: 2-5 fg:muted; 7 fg:diffRemoved bg:diffRemovedBg; 8 bg:diffRemovedBg; 9-28 fg:diffRemoved bg:diffRemovedBg; 29-95 bg:diffRemovedBg
+7: 2-5 fg:muted; 7 fg:diffAdded bg:diffAddedBg; 8 bg:diffAddedBg; 9-39 fg:diffAdded bg:diffAddedBg; 40-95 bg:diffAddedBg
+8: 2-5 fg:muted; 9-35 fg:text
 9: 2 fg:diffMeta

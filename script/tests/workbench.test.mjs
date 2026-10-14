@@ -6,6 +6,7 @@ import { join } from 'node:path'
 import test from 'node:test'
 import { debounceFiles, parseDevArgs } from '../dev.mjs'
 import { parseFrameArgs } from '../frame.mjs'
+import { briefMarkdown, briefText, listLine, prototypeCommand, reviewProblems } from '../scenarios/brief.mjs'
 import { scenarioNamed } from '../scenarios/catalog.mjs'
 import { apply as applyDriver } from '../scenarios/driver.mjs'
 import { keyBytes, parseKeys } from '../scenarios/input.mjs'
@@ -28,6 +29,51 @@ test('frame arguments name one scenario and validate sizes', () => {
   assert.match(parseFrameArgs(['a', 'b']).error, /unexpected/u)
   assert.match(parseFrameArgs(['a', '--width', '0']).error, /width/u)
   assert.match(parseFrameArgs(['a', '--bogus']).error, /unknown option/u)
+})
+
+const REVIEW = Object.freeze({
+  scene: 18,
+  reference: 'prototype scene 18 · spec §5.6 · TranscriptView',
+  implemented: ['A turn rule with its start time'],
+  focus: [{ look: 'rule spacing', how: 'play to the end, checkpoint rule' }],
+  differs: ['Wrap keeps leading spaces (Δ20)'],
+  pending: [],
+})
+
+test('a brief prints its reference, the sketch command, and each non-empty section, and a scenario without one prints nothing', () => {
+  const scenario = { summary: 'stream', review: REVIEW }
+  assert.equal(prototypeCommand(REVIEW), 'node docs/design/prototypes/ui-preview.mjs 18')
+  assert.equal(prototypeCommand({ ...REVIEW, scene: undefined }), undefined)
+  assert.equal(briefText('turns', scenario), [
+    'Brief: turns',
+    '  Reference: prototype scene 18 · spec §5.6 · TranscriptView',
+    '  Sketch:    node docs/design/prototypes/ui-preview.mjs 18',
+    '',
+    'Implemented',
+    '  · A turn rule with its start time',
+    '',
+    'Look at',
+    '  1. rule spacing — play to the end, checkpoint rule',
+    '',
+    'Differs from the prototype',
+    '  · Wrap keeps leading spaces (Δ20)',
+    '',
+  ].join('\n'))
+  assert.match(briefMarkdown('turns', scenario), /^# Brief: turns\n\nReference: .*\n\nSketch: `node docs\/design\/prototypes\/ui-preview\.mjs 18`\n\n## Implemented\n\n- A turn rule/u)
+  assert.equal(briefText('idle', { summary: 'x' }), '')
+  assert.equal(briefMarkdown('idle', { summary: 'x' }), '')
+  assert.equal(listLine('turns', scenario).startsWith('* turns'), true)
+  assert.equal(listLine('idle', { summary: 'x' }).startsWith('  idle'), true)
+})
+
+test('a malformed review is refused, and a part with more than eight focus items is too large', () => {
+  assert.deepEqual(reviewProblems(REVIEW), [])
+  assert.deepEqual(reviewProblems({ ...REVIEW, reference: '' }), ['reference must be a non-empty string'])
+  assert.deepEqual(reviewProblems({ ...REVIEW, scene: 0 }), ['scene must be a positive integer'])
+  assert.deepEqual(reviewProblems({ ...REVIEW, implemented: [] }), ['implemented must name at least one effect'])
+  assert.deepEqual(reviewProblems({ ...REVIEW, focus: [{ look: 'x' }] }), ['focus[0] is malformed'])
+  assert.deepEqual(reviewProblems({ ...REVIEW, pending: 'later' }), ['pending must be an array'])
+  assert.deepEqual(reviewProblems({ ...REVIEW, focus: Array.from({ length: 9 }, () => ({ look: 'a', how: 'b' })) }), ['focus has more than eight items: split the part'])
 })
 
 test('scenario names resolve through the catalog', () => {
@@ -123,7 +169,7 @@ test('outcomes, todos, edits, compaction, subagents, and asks compile to their e
   const edited = compile([turn('q', [step({ tools: [edit('f.txt', 'a', 'b')] })])]).find(action => action.type === 'tool/result')
   assert.deepEqual(edited.data.meta.diffs, [{ path: 'f.txt', oldText: 'a', newText: 'b' }])
   const compacted = compile([turn('q', [step({ text: 'x' }), { kind: 'compaction', ms: 100 }])])
-  assert.deepEqual(compacted.filter(action => action.op.startsWith('compact')).map(action => action.op), ['compact-start', 'compact-finish'])
+  assert.deepEqual(compacted.filter(action => action.op.startsWith('compact')).map(action => action.op), ['compact-start', 'compact-finish', 'compact-end'])
   const spawned = compile([turn('q', [step({ tools: [subagent('d', 'child prompt', { items: [step({ stream: false, text: 'c' })] })] })])])
   const child = spawned.find(action => action.op === 'child')
   assert.ok(spawned.some(action => action.session === child.id && action.type === 'user/message'))

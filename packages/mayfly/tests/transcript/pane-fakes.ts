@@ -128,7 +128,6 @@ export class PaneFakeScreen implements MayflyScreen {
   }
 
   scrollContent(): boolean { return false }
-  contentChanged(): boolean { return false }
   followContent(): void {}
   setContentScrollHandler(): () => void { return () => {} }
 }
@@ -211,6 +210,10 @@ export class FakeProjectionService {
   onChanged(listener: (session: unknown, key: string, value: unknown, seq: number) => void): () => void {
     this.listeners.add(listener)
     return () => this.listeners.delete(listener)
+  }
+  /** Publish a whole facts value under the `mayflyConversationFacts` key, as the Harness projection does. */
+  emitFacts(session: unknown, value: unknown): void {
+    for (const listener of this.listeners) listener(session, 'mayflyConversationFacts', value, 0)
   }
   emit(session: unknown, event: import('@deepseek-ai/dsh-session').SessionEvent): void {
     const key = session as object

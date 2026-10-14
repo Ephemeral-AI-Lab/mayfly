@@ -27,9 +27,9 @@ services directly.
 - **Terminal-native rendering**: Markdown tables, closed Mermaid fences in
   assistant messages, and renderer-neutral line, point, bar, sparkline, and
   heatmap nodes — with width-safe source or text fallbacks.
-- **One activity row for live status**: the spinner, current step, turn
-  elapsed time, estimated token count, and output rate live above the
-  editor; the transcript records only what has happened.
+- **One activity block for live status**: the current step, turn elapsed
+  time, estimated token count, and output rate live above the editor, with a
+  notification row under them; the transcript records only what has happened.
 - **Side conversations**: `/btw` and the `/agents` subagent tree share the
   transcript pane; `F7` returns to the previous conversation and `F8`
   closes the displayed one.
@@ -38,12 +38,16 @@ services directly.
   directly; UI contributions go through `mayflyPanes`, `mayflyStatus`,
   `mayflyOverlays`, and `mayflyEditorExtensions`.
 
-The activity row above the editor is the one place for live status: the
-spinner, the current step (`Thinking`, `Running commands`), the turn's elapsed
-time, and the estimated token count and output rate. The transcript records
-only what has happened, so streaming reasoning shows as a captionless `✻` tail
-that settles to one `✻ Thought for 6s` row, and file changes stay visible as
-diff cards next to the final answer.
+The activity block above the editor is the one place for live status: a glyph
+that moves with the phase (blooming while the model thinks, filling while it
+writes, a still `●` beside a running tool, breathing while it waits for you),
+the current step (`Thinking`, `Running commands`), the turn's elapsed time, and
+the estimated token count and output rate. Its second line holds a tip, or the
+arguments of the calls in flight. The notification row under it shows the
+notice to read now, such as a rate-limit retry or a nearly full context. The
+transcript records only what has happened, so streaming reasoning shows as a
+captionless `✻` tail that settles to one `✻ Thinking · 6s` row, and file
+changes stay visible as diff cards next to the final answer.
 Rates use four characters per token, exclude first-chunk latency, and disappear
 after two seconds without output. Narrow terminals omit tips and rates first.
 

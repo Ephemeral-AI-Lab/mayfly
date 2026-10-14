@@ -3,6 +3,7 @@ import { execFileSync } from 'node:child_process'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 import { ROOT } from '../package-contract.mjs'
+import { reviewProblems } from '../scenarios/brief.mjs'
 import { APP_SHOTS, CATALOG } from '../scenarios/catalog.mjs'
 import { goldenPath } from '../scenarios/golden.mjs'
 import { parseGrid, serializeGrid, styleSgr } from '../scenarios/grid.mjs'
@@ -68,6 +69,12 @@ test('every scenario has a known source, real sizes, its marks, and covers globs
   }
   for (const [name, scenario] of Object.entries(CATALOG)) {
     assert.ok(scenario.summary.length > 0, name)
+    if (scenario.review !== undefined) {
+      assert.deepEqual(reviewProblems(scenario.review), [], `${name}: review`)
+      const checkpoints = new Set(scenario.script.filter(step => step.step === 'checkpoint').map(step => step.name))
+      // A focus walk names a checkpoint of its scenario, one that `--keys` adds (runner.mjs captures the keys as `keys`), or another catalog scenario it opens.
+      for (const { how } of scenario.review.focus) assert.ok([...(how.includes('--keys') ? [...checkpoints, 'keys'] : checkpoints)].some(point => how.includes(point)) || Object.keys(CATALOG).some(other => how.includes(other)), `${name}: focus walk "${how}" names none of its checkpoints`)
+    }
     assert.ok(scenario.sizes.length > 0 && scenario.sizes.every(([cols, rows]) => Number.isInteger(cols) && Number.isInteger(rows) && cols >= 20 && rows >= 10), name)
     for (const glob of scenario.covers) assert.ok(matches(glob), `${name}: ${glob} names no file`)
     if (scenario.source.replay !== undefined) {
@@ -97,6 +104,19 @@ test('the scenario clock holds its epoch until moved, stands at a timeline time,
   // Until a driver moves it, the clock stands at its epoch: what the product writes at boot has the same time on every run.
   assert.equal(start, '2026-01-01T09:00:00.000Z')
   assert.deepEqual(rest, ['2026-01-01T09:01:30.000Z', true, true, 'string', 0, true])
+})
+
+test('a turn that names its start stands the clock there without making playback wait', () => {
+  const actions = compile([
+    turn('first', [step({ text: 'a', stream: false })], { startAt: '10:02' }),
+    turn('second', [step({ text: 'b', stream: false })], { startAt: '10:09' }),
+    turn('third', [step({ text: 'c', stream: false })]),
+  ])
+  const starts = actions.filter(action => action.type === 'turn/start')
+  // The clock reads the named time at each start (the epoch is 09:00 UTC), and playback times stay a few seconds apart.
+  assert.deepEqual(starts.map(action => action.at + action.skew), [62 * 60_000, 69 * 60_000, 69 * 60_000 + (starts[2].at - starts[1].at)])
+  assert.ok(starts.at(-1).at < 30_000)
+  assert.throws(() => compile([turn('x', [], { startAt: 'ten past' })]), /startAt must be/u)
 })
 
 test('every Website app shot is a checkpoint its scenario captures at its first size, with a golden', () => {

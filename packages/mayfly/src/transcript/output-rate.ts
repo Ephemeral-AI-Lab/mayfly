@@ -20,5 +20,5 @@ export function outputRate(progress: OutputProgress | undefined, now: number): s
   const elapsed = progress.updatedAt - progress.startedAt
   if (elapsed < 250) return ''
   const tokens = (progress.chars - progress.initialChars) / 4
-  return `≈${Math.round(tokens * 1_000 / elapsed)} tok/s`
+  return `${Math.round(tokens * 1_000 / elapsed)} tok/s`
 }

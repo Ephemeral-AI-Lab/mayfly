@@ -1,0 +1,52 @@
+grid 60x30 cursor none
+| ⠀⠀⠀⠀⠀⠀⠀⠉⠉⠁⢸⣿⡇⠈⠉⠉⠀⠀⠀⠀⠀⠀⠀
+| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢸⣿⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀  Send /help for help...
+| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⣿⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀  Directory: ~/workspace
+| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣿⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀  Model:     deepseek...
+| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⡠⠊⠀⠑⢄⠀⠀⠀⠀⠀⠀⠀⠀⠀  Version:   scenario
+|
+|  » Summarise the changelog.
+|
+|  ● The changelog lists three changes: a faster parser, a
+|    new CLI flag, and a fix for Windows paths.
+|
+|  ✻ Worked for 12s · done 09:00
+|
+|  » Copy it, then keep reading the logs.
+|
+|  ● First log.
+|
+|  ✓ Read(a.log)
+|
+|  ● Second log: the context is nearly full.
+|
+|  ✓ Read(b.log)
+|
+|  ⡀ Deep diving · 8s · ↑37.1k
+|    ⎿ Tip: Ctrl+O to expand tool details
+|                                    ⚠ Context 100% full ·
+|╭─────────────────────────────── Summarise the changelog. ─╮
+|│ >                                                        │
+|╰──────────────────────────────────────────────────────────╯
+| deepseek-flash High   cache 36%  context: 100% (37.1k/32k)
+styles
+0: 1-23 fg:#c9beea; 24-25 fg:#9a86e6
+1: 1-23 fg:#b2a1ec; 24-25 fg:#9a86e6; 26-44 fg:#9aa3b8
+2: 1-25 fg:#9a86e6; 26-47 fg:#ededf2
+3: 1-23 fg:#8371d6; 24-25 fg:#9a86e6; 26-44 fg:#e9e6f4
+4: 1-23 fg:#6c5bbf; 24-25 fg:#9a86e6; 26-47 fg:#ededf2
+6: 2-3 fg:#9a86e6; 4-27 fg:#9a86e6 b
+8: 2-3 fg:#ededf2
+11: 2-30 fg:#9aa3b8
+13: 2-3 fg:#9a86e6; 4-39 fg:#9a86e6 b
+15: 2-3 fg:#ededf2
+17: 2-3 fg:#4ec87e; 4-7 fg:#ededf2 b; 8 fg:#9aa3b8; 9-13 fg:#c9c0f0; 14 fg:#9aa3b8
+19: 2-3 fg:#ededf2
+21: 2-3 fg:#4ec87e; 4-7 fg:#ededf2 b; 8 fg:#9aa3b8; 9-13 fg:#c9c0f0; 14 fg:#9aa3b8
+23: 0-1 fg:#ededf2; 2 fg:#9a86e6; 3-14 fg:#ededf2; 16-28 fg:#9aa3b8
+24: 0-39 fg:#9aa3b8
+25: 36-56 fg:#e8a838
+26: 0-31 fg:#45406b; 32-57 fg:#5c6476; 58-59 fg:#45406b
+27: 0 fg:#45406b; 4 r; 59 fg:#45406b
+28: 0-59 fg:#45406b
+29: 1-19 fg:#ededf2; 23-58 fg:#ededf2

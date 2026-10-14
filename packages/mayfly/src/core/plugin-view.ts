@@ -16,7 +16,7 @@ import { stripTerminalText } from './escape-sequences.ts'
 import type { MayflyComponents, MayflySemanticColors } from './types.ts'
 
 /** A code block highlights at most this many rows; the rest are plain text. */
-export const CODE_HIGHLIGHT_MAX_ROWS = 12
+export const CODE_HIGHLIGHT_MAX_ROWS = 40
 
 /** A code block larger than this many UTF-8 bytes is plain text. */
 export const CODE_HIGHLIGHT_MAX_BYTES = 32 * 1024
@@ -55,10 +55,11 @@ export function requireText(value: unknown, label: string): string {
 export function strong(text: string): string { return `\x1b[1m${text}\x1b[22m` }
 function italic(text: string): string { return `\x1b[3m${text}\x1b[23m` }
 function strike(text: string): string { return `\x1b[9m${text}\x1b[29m` }
+function inverse(text: string): string { return `\x1b[7m${text}\x1b[27m` }
 
 /** Wrap painted text in the weight, slant, and strike a node asks for. */
 export function styledText(value: string, styles: readonly MayflyTextStyle[] | undefined): string {
-  return (styles ?? []).reduce((text, style) => style === 'strong' ? strong(text) : style === 'italic' ? italic(text) : strike(text), value)
+  return (styles ?? []).reduce((text, style) => style === 'strong' ? strong(text) : style === 'italic' ? italic(text) : style === 'inverse' ? inverse(text) : strike(text), value)
 }
 
 type BasicContentNode = Extract<MayflyContentNode, { readonly kind: 'text' | 'fields' | 'code' | 'diff' | 'sections' }>

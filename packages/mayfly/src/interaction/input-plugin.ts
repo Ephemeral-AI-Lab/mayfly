@@ -53,9 +53,8 @@ import { randomUUID } from 'node:crypto'
 import type { Context } from '@deepseek-ai/cordis'
 import type { MayflyScreen, MayflySubmittedDraft } from '../core/types.ts'
 import type { Agent } from '@deepseek-ai/dsh-agent'
-import { ui, type MayflyFeedback, type MayflyFeedbackRecord, type MayflyUiNode, type MayflyUiScope } from '@ephemeral-ai/mayfly-ui'
+import { ui, type MayflyFeedback, type MayflyUiNode, type MayflyUiScope } from '@ephemeral-ai/mayfly-ui'
 import { normalizeWheelInput } from '../core/terminal.ts'
-import { feedbackSpans } from '../core/ui-interaction-notifications.ts'
 import { parseCommand } from '@deepseek-ai/dsh-commands'
 import type { PromptContentPart, StoredImageAttachment } from '@deepseek-ai/dsh-attachment'
 import { createUserMessage, type ContentBlock } from '@deepseek-ai/dsh-llm'
@@ -85,14 +84,15 @@ import {
   ACTION_CYCLE_MODEL,
   ACTION_EXTERNAL_EDITOR,
   ACTION_END,
+  ACTION_FOLLOW_TAIL,
   ACTION_INTERRUPT,
   ACTION_MOVE_DOWN,
   ACTION_MOVE_UP,
   ACTION_PAGE_DOWN,
   ACTION_PAGE_UP,
   ACTION_FOCUS_NEXT,
+  ACTION_FOCUS_PREV,
   ACTION_STEER,
-  interactionKeyHint,
 } from './keys.ts'
 import { interactionTranslator } from './locale.ts'
 import { createModelListCache, cycleSessionModel } from './model-commands.ts'
@@ -154,10 +154,7 @@ async function subagentPromptParts(attachments: AttachmentReader | undefined, bl
 }
 
 /** Command descriptors projected through the app-owned session boundary. */
-function availableCommands(ctx: Context) {
-  const agent = ctx.mayflyCurrentAgent.current()
-  /* slashHint checks the current Agent immediately before this sole call site. */
-  if (agent === null) return []
+function availableCommands(ctx: Context, agent: Agent) {
   return ctx.commands.list(agent).map(command => ({
     name: command.name,
     description: command.description,
@@ -236,17 +233,8 @@ export function apply(ctx: Context): void {
     const agent = ctx.mayflyCurrentAgent.current()
     return agent === null ? { kind: 'app', targetId: 'prompt' } : { kind: 'session', sessionId: String(agent.id) }
   }
-  const visibleNotification = (): MayflyFeedbackRecord | undefined => {
-    const agentId = ctx.mayflyCurrentAgent.current()?.id
-    const severity = { info: 0, success: 1, warning: 2, error: 3 }
-    return ctx.mayflyUiInteraction.notificationSnapshot()
-      .filter(record => record.scope.kind === 'app' || (record.scope.kind === 'session' && String(record.scope.sessionId) === String(agentId)))
-      .toSorted((left, right) => severity[left.severity] - severity[right.severity] || left.createdAt - right.createdAt)
-      .at(-1)
-  }
+  /** The footer under the editor holds only the slash hint; every notification is the notification pane's. */
   const feedbackNode = (): MayflyUiNode | undefined => {
-    const record = visibleNotification()
-    if (record !== undefined) return ui.richText(feedbackSpans(record.severity, record.message))
     const hint = slashHint()
     return hint === undefined ? undefined : ui.text(hint, { tone: 'muted' })
   }
@@ -275,12 +263,13 @@ export function apply(ctx: Context): void {
     const parsed = parseCommand(currentText)
     // A bare slash cannot parse (parseCommand requires a leading letter).
     if (parsed === undefined && currentText !== '/') return undefined
-    if (ctx.mayflyCurrentAgent.current() === null) return undefined
+    const agent = ctx.mayflyCurrentAgent.current()
+    if (agent === null) return undefined
     // The same S14 fuzzy filter the dropdown uses, so the feedback agrees
     // with what the dropdown just failed to list. The dropdown closes
     // itself on an empty match, so this notice is the only signal.
     const matches = filterSlashCommands(
-      aliases.withCommandAliases(availableCommands(ctx)),
+      aliases.withCommandAliases(availableCommands(ctx, agent)),
       parsed?.name ?? '',
       ctx.mayflyComponents,
     )
@@ -288,14 +277,13 @@ export function apply(ctx: Context): void {
     return undefined
   }
 
-  /** Recompile the prompt footer from structured feedback or slash state. */
+  /** Recompile the prompt footer from the slash state. */
   let refreshingHint = false
   function refreshHint(): void {
     if (refreshingHint) return
     refreshingHint = true
     try { extensionRuntime.refreshPresentation() } finally { refreshingHint = false }
   }
-  ctx.effect(() => ctx.mayflyUiInteraction.subscribe(refreshHint))
 
   /**
    * Restore one captured submission buffer through the adapter — raw marker
@@ -815,6 +803,11 @@ export function apply(ctx: Context): void {
       && editor.getText().length === 0
       && !editor.isShowingAutocomplete()
       && ctx.mayflyScreen.enterViews()) return true
+    // Alt+Up (F4) on an empty prompt moves focus up into the conversation, where the cursor walks its rows.
+    if (keymap.matches(data, ACTION_FOCUS_PREV)
+      && editor.getText().length === 0
+      && !editor.isShowingAutocomplete()
+      && ctx.mayflyScreen.focusConversation()) return true
     // Up on an empty prompt withdraws the newest still-pending queued
     // message back into the draft — the folded queue pane's recall gesture.
     // A non-empty buffer, an open autocomplete dropdown, and bash mode all
@@ -946,10 +939,14 @@ export function apply(ctx: Context): void {
         const amount = Math.max(1, ctx.mayflyScreen.rows - 4)
         return ctx.mayflyScreen.scrollContent(direction, amount)
       }
+      // Ctrl+↓ means nothing in a draft, so it follows the tail whatever the editor holds; End is the editor's own with text.
+      if (ctx.mayflyKeymap.matches(data, ACTION_FOLLOW_TAIL)) {
+        ctx.mayflyScreen.followContent()
+        return true
+      }
       if (editor.getText().length > 0) return false
       if (ctx.mayflyKeymap.matches(data, ACTION_END)) {
         ctx.mayflyScreen.followContent()
-        notificationOwner.clear('transcript-follow')
         return true
       }
       return false
@@ -967,9 +964,5 @@ export function apply(ctx: Context): void {
     draft.clearDraft()
     refreshHint()
     screen.requestRender()
-  }))
-  ctx.effect(() => ctx.on('mayfly/transcript-content-changed', paused => {
-    if (paused) showFeedback('transcript-follow', t('new messages available · press {key} to follow', { key: interactionKeyHint(ctx.mayflyKeymap, ACTION_END, 'End') }), 'info')
-    else notificationOwner.clear('transcript-follow')
   }))
 }

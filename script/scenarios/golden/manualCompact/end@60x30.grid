@@ -1,0 +1,52 @@
+grid 60x30 cursor none
+| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢸⣿⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀  Send /help for help...
+| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⣿⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀  Directory: ~/workspace
+| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣿⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀  Model:     deepseek...
+| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⡠⠊⠀⠑⢄⠀⠀⠀⠀⠀⠀⠀⠀⠀  Version:   scenario
+|
+|  » Read the readme.
+|
+|  ▾ 1 tool call · Ctrl+O to expand
+|
+|  ● Reading.
+|
+|  ✓ Read(README.md)
+|
+|  ● Done reading.
+|
+|  ✻ Worked for 2s · done 09:00
+|
+|  ✓ Compacted 4 items ▰▰▰▰▰▰▰▰▰▰ context 59% → 14%
+|    ⎿ Ctrl+O summary
+|
+|  » What did I ask before?
+|
+|  ● You asked me to read the readme.
+|
+|  ✻ Worked for 1s · done 09:00
+|                               Alt+↑ conversation · Alt+↓
+|╭─────────────────────────────────────── Read the readme. ─╮
+|│ >                                                        │
+|╰──────────────────────────────────────────────────────────╯
+| deepseek-flash High  ..  cache 42%  context: 9% (5.5k/64k)
+styles
+0: 1-23 fg:#b2a1ec; 24-25 fg:#9a86e6; 26-44 fg:#9aa3b8
+1: 1-25 fg:#9a86e6; 26-47 fg:#ededf2
+2: 1-23 fg:#8371d6; 24-25 fg:#9a86e6; 26-44 fg:#e9e6f4
+3: 1-23 fg:#6c5bbf; 24-25 fg:#9a86e6; 26-47 fg:#ededf2
+5: 2-3 fg:#9a86e6; 4-19 fg:#9a86e6 b
+7: 2-33 fg:#9aa3b8
+9: 2-3 fg:#ededf2
+11: 2-3 fg:#4ec87e; 4-7 fg:#ededf2 b; 8 fg:#9aa3b8; 9-17 fg:#c9c0f0; 18 fg:#9aa3b8
+13: 2-3 fg:#ededf2
+15: 2-29 fg:#9aa3b8
+17: 2-3 fg:#4ec87e; 4-20 fg:#ededf2; 22-31 fg:#4ec87e; 33-49 fg:#9aa3b8
+18: 2-19 fg:#9aa3b8
+20: 2-3 fg:#9a86e6; 4-25 fg:#9a86e6 b
+22: 2-3 fg:#ededf2
+24: 2-29 fg:#9aa3b8
+25: 31-56 fg:#9aa3b8
+26: 0-39 fg:#45406b; 40-57 fg:#5c6476; 58-59 fg:#45406b
+27: 0 fg:#45406b; 4 r; 59 fg:#45406b
+28: 0-59 fg:#45406b
+29: 1-19 fg:#ededf2; 26-58 fg:#ededf2

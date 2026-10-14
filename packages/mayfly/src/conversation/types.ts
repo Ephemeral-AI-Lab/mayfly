@@ -87,6 +87,8 @@ interface ConversationToolResult {
   readonly isError: boolean
   readonly endedAt: number
   readonly meta?: ConversationJson | undefined
+  /** The Harness's failure code of the result (`ABORTED`, `TOOL_OUTCOME_UNKNOWN`), when it carries one. */
+  readonly code?: string | undefined
 }
 
 /** One tool call, paired with its result when available. */
@@ -131,6 +133,8 @@ export interface ConversationCompactionEntry extends ConversationEntryBase {
   readonly trigger: 'manual' | 'auto'
   readonly startedAt: number
   readonly endedAt?: number | undefined
+  /** When the summary landed: the instant the run moves from summarizing to applying. */
+  readonly summaryAt?: number | undefined
   readonly shadowedCount?: number | undefined
   readonly shadowedTokens?: number | undefined
   readonly provider?: string | undefined
@@ -213,21 +217,46 @@ export interface ConversationFacts {
   /** Projection-private usage buckets retained as plain readonly data. */
   readonly usageByStep?: Readonly<Record<string, number>> | undefined
   /**
-   * Latest running activity marker. `detail` is the bounded salient argument
-   * of a non-spawn call or the latest reasoning paragraph; `preparing` marks a
-   * call whose arguments are still streaming.
+   * Latest running activity marker; `preparing` marks a call whose arguments
+   * are still streaming.
    */
   readonly activity?: Readonly<{
     readonly kind: 'reasoning' | 'text' | 'tool'
     readonly name?: string | undefined
-    readonly detail?: string | undefined
     readonly preparing?: boolean | undefined
   }> | undefined
+  /**
+   * The non-spawn calls in flight: committed and awaiting their result, or (from the live draft) still streaming their
+   * arguments. The stream's pending lines and the activity row's tool phase both read this one list.
+   */
+  readonly inFlight?: readonly Readonly<{ readonly callId: string, readonly name: string, readonly detail?: string | undefined, readonly preparing?: boolean | undefined }>[] | undefined
+  /** A provider request being retried after a failure: which retry, when it was scheduled, and how long it waits. */
+  readonly retrying?: Readonly<{ readonly retry: number, readonly maxRetries: number, readonly at: number, readonly delayMs: number, readonly reason?: string | undefined, readonly status?: number | undefined }> | undefined
+  /** The context occupancy around each recent compaction, kept so its settled row reads the same numbers for good. */
+  readonly compactions?: readonly CompactionMark[] | undefined
+  /** The approvals put to the answerer, each with the outcome once it is known; the newest few. */
+  readonly approvals?: readonly ApprovalMark[] | undefined
   /** Terminal outcome of the latest run. */
   readonly runOutcome?: 'completed' | 'failed' | undefined
   /** Envelope timestamp of the latest terminal outcome. */
   readonly endedAt?: number | undefined
   readonly agentCalls: readonly ConversationAgentCall[]
+}
+
+/** One approval asked of the user: the call it was about, when the asker named it, and how it ended. */
+export interface ApprovalMark {
+  readonly id: string
+  readonly callId?: string | undefined
+  readonly outcome?: 'allowed-once' | 'rejected' | 'cancelled' | 'unavailable' | undefined
+}
+
+/** The context tokens a compaction began with and ended with, and the window they were measured against. */
+export interface CompactionMark {
+  readonly id: string
+  readonly before: number
+  /** Set when the summary lands: the occupancy with the checkpoint in place of the shadowed history. */
+  readonly after?: number | undefined
+  readonly window?: number | undefined
 }
 
 /** Projection facts for one spawn-class (`subagent` or `subagent_*`) call. */

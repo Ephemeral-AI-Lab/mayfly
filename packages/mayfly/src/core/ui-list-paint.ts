@@ -7,6 +7,7 @@
  * @module @ephemeral-ai/mayfly/core/ui-list-paint
  */
 
+import { hasMotion } from './ui-motion-text.ts'
 import type { MayflyInlineSpan, MayflyListItem, MayflyListNode } from '@ephemeral-ai/mayfly-ui'
 import type { MayflySemanticColors } from './types.ts'
 import { scanContentLines, type ContentLineScan } from './content-segments.ts'
@@ -15,6 +16,7 @@ import { inlineSegmentStrip, segmentFitsInline, segmentFooter, type SegmentView 
 import type { UiRowCache } from './ui-row-cache.ts'
 import { countWork, type MayflyWorkCounters } from './ui-work-counters.ts'
 import { concatRows, mapRows, sliceRows, virtualRows } from './ui-rows.ts'
+import { countMatches, highlightLine, highlightPattern } from './ui-find.ts'
 import { sliceByColumn, visibleWidth, wrapTextWithAnsi } from './width.ts'
 
 /** One visible row of a list: the item and how the model sees it (tree depth, disclosure) and where it sits. */
@@ -57,12 +59,23 @@ export interface ListPaintOptions {
   /** A painted row ahead of the list's own, windowed with them (a legacy filter echo). */
   readonly lead?: string
   readonly translate?: ((key: string, values?: Readonly<Record<string, string | number>>) => string) | undefined
+  /** The list lies in flow content that an outer scroll windows: its node bodies paint in full, not to the viewport. */
+  readonly flow?: boolean
   readonly memo?: ListRowMemo | undefined
 }
 
+/** A `body` or `item` entry carries its rows as the painters made them: the band and the search marks are laid over them last. */
+interface RowFlags {
+  /** The cursor row's block takes the band. */
+  readonly banded: boolean
+  /** The row belongs to the cursor's block, whose current match is drawn stronger. */
+  readonly block: boolean
+}
+
 type Entry =
-  | { readonly kind: 'group' | 'body' | 'rule' | 'gap', readonly lines: readonly string[] }
-  | { readonly kind: 'item', readonly id: string, readonly lines: readonly string[] }
+  | { readonly kind: 'group' | 'rule' | 'gap', readonly lines: readonly string[] }
+  | ({ readonly kind: 'body', readonly lines: readonly string[] } & RowFlags)
+  | ({ readonly kind: 'item', readonly id: string, readonly lines: readonly string[] } & RowFlags)
 
 const strong = (text: string): string => `\x1b[1m${text}\x1b[22m`
 const DEFAULT_METER_WIDTH = 8
@@ -97,7 +110,7 @@ function checkOf(node: ListNodeView, spec: ListRowSpec, selected: boolean, selec
   return selected ? '●' : '○'
 }
 
-type ListNodeView = Pick<MayflyListNode, 'items' | 'marker' | 'marks' | 'mode' | 'tree' | 'numbered' | 'maxRows'>
+type ListNodeView = Pick<MayflyListNode, 'items' | 'marker' | 'marks' | 'mode' | 'tree' | 'numbered' | 'maxRows' | 'highlight'>
 
 /** A one-row meter: `▰` filled in the tone, `▱` empty and muted. */
 function meterText(meter: NonNullable<MayflyListItem['meter']>, colors: MayflySemanticColors): string {
@@ -135,7 +148,7 @@ function prefixOf(state: RowState, colors: MayflySemanticColors): string {
   const { spec, on, focused } = state
   const item = spec.item
   const disabled = item.disabled === true
-  const showArrow = on && !disabled && (focused || state.node.marker === 'selection')
+  const showArrow = on && !disabled && state.node.marker !== 'band' && (focused || state.node.marker === 'selection')
   const arrow = showArrow ? strong(focused ? colors.primary('→') : colors.muted('→')) : ' '
   const gutter = `${arrow}${showArrow && focused ? state.marker : ' '}`
   const indent = item.indent === undefined ? '' : ' '.repeat(item.indent)
@@ -160,17 +173,32 @@ function headOf(state: RowState, colors: MayflySemanticColors): { readonly prefi
   return { prefix, line: `${prefix}${labelOf(state, colors)}${trailer(state.spec.item, state.width, colors)}` }
 }
 
-/** Wrap a row's text under its own prefix: continuation lines align under the label, `wrapMax` keeps the first lines. */
+/**
+ * Wrap a row's text under its own prefix: continuation lines align under the label (or under the text after a leading
+ * glyph, with `hang`), `wrapMax` keeps the first lines.
+ */
 function wrapped(state: RowState, head: { readonly prefix: string, readonly line: string }, colors: MayflySemanticColors, translate: ListPaintOptions['translate']): readonly string[] {
-  const hang = visibleWidth(head.prefix)
+  const margin = visibleWidth(head.prefix)
   const text = head.line.slice(head.prefix.length)
-  const room = Math.max(1, state.width - hang)
-  const pieces = wrapTextWithAnsi(text, room)
-  const lines = pieces.map((piece, index) => `${index === 0 ? head.prefix : ' '.repeat(hang)}${piece}`)
+  // The hang is the leading glyph's width: it stays on the first line and the text wraps in the room that is left.
+  const hang = Math.min(state.spec.item.hang ?? 0, visibleWidth(text))
+  const lead = hang === 0 ? '' : sliceByColumn(text, 0, hang, true)
+  const pieces = wrapTextWithAnsi(hang === 0 ? text : sliceByColumn(text, hang, visibleWidth(text) - hang, true), Math.max(1, state.width - margin - hang))
+  const lines = pieces.map((piece, index) => `${index === 0 ? `${head.prefix}${lead}` : ' '.repeat(margin + hang)}${piece}`)
   const limit = state.spec.item.wrapMax
   if (limit === undefined || lines.length <= limit) return lines
   const more = translate?.('▸ {count} more lines · Enter', { count: lines.length - limit }) ?? `▸ ${String(lines.length - limit)} more lines · Enter`
-  return [...lines.slice(0, limit), `${' '.repeat(hang)}${colors.muted(more)}`]
+  return [...lines.slice(0, limit), `${' '.repeat(margin + hang)}${colors.muted(more)}`]
+}
+
+/** Whether a row belongs to the block of the item that holds the cursor, however deep it sits under it. */
+function within(item: MayflyListItem, cursorId: string, parents: ReadonlyMap<string, string>): boolean {
+  let parent = item.under
+  for (let depth = 0; parent !== undefined && depth < 4; depth += 1) {
+    if (parent === cursorId) return true
+    parent = parents.get(parent)
+  }
+  return false
 }
 
 /** The rows of one item: its head (wrapped or one line, with its strip or right spans) and nothing else. */
@@ -246,9 +274,57 @@ function bodyLines(spec: ListRowSpec, width: number, colors: MayflySemanticColor
   return mapRows(lines, (line, index) => `${indent}    ${colors.muted(index === lines.length - 1 ? '╰ ' : '│ ')}${line}`)
 }
 
+/**
+ * The rows of an item whose body leads them (`bodyLead`): no head line, the lead spans after the cursor gutter on the
+ * body's first row, and the body in the columns that remain with its other rows under it.
+ */
+function leadedLines(state: RowState, colors: MayflySemanticColors, paintBody: ListPaintOptions['body']): readonly string[] {
+  const item = state.spec.item
+  const prefix = prefixOf(state, colors)
+  const lead = spansText(item.bodyLead!, colors)
+  const margin = visibleWidth(prefix) + visibleWidth(lead)
+  const rows = paintBody === undefined ? [] : paintBody(item, Math.max(1, state.width - margin))
+  if (rows.length === 0) return [`${prefix}${lead}`]
+  const pad = ' '.repeat(margin)
+  return mapRows(rows, (line, index) => `${index === 0 ? `${prefix}${lead}` : pad}${line}`)
+}
+
 /** The width of a row's head: what the strip has to share the line with. */
 function headWidth(state: RowState, colors: MayflySemanticColors): number {
   return visibleWidth(headOf({ ...state, on: true }, colors).line)
+}
+
+/** Where the current match of a search stands: which entry, which of its rows, and which match of that row. */
+interface CurrentMatch {
+  readonly entry: number
+  readonly line: number
+  readonly within: number
+}
+
+/**
+ * The `nth` match (counted through the rows of the cursor's block, head first) of a search, or the last one when the block
+ * holds fewer.
+ */
+function currentMatch(entries: readonly Entry[], find: RegExp, nth: number | undefined): CurrentMatch | undefined {
+  if (nth === undefined) return undefined
+  const counts: { readonly entry: number, readonly line: number, readonly count: number }[] = []
+  let total = 0
+  entries.forEach((entry, index) => {
+    if ((entry.kind !== 'item' && entry.kind !== 'body') || !entry.block) return
+    for (let line = 0; line < entry.lines.length; line += 1) {
+      const count = countMatches(entry.lines[line]!, find)
+      if (count === 0) continue
+      counts.push({ entry: index, line, count })
+      total += count
+    }
+  })
+  if (total === 0) return undefined
+  let remaining = Math.min(Math.max(0, nth), total - 1)
+  for (const found of counts) {
+    if (remaining < found.count) return { entry: found.entry, line: found.line, within: remaining }
+    remaining -= found.count
+  }
+  return undefined
 }
 
 /**
@@ -264,6 +340,10 @@ export function paintList(node: ListNodeView, width: number, height: number, col
   let footerFor: SegmentView | undefined
   if (options.lead !== undefined) entries.push({ kind: 'group', lines: [options.lead] })
   let needsFooter = false
+  // Which item each row sits under, so a band can follow the chain from a body to its call to the head.
+  const find = highlightPattern(node.highlight)
+  const parents = new Map<string, string>()
+  for (const spec of options.rows) if (spec.item.under !== undefined) parents.set(spec.item.id, spec.item.under)
   for (const spec of options.rows) {
     const item = spec.item
     if (item.group !== undefined && item.group !== group) {
@@ -288,34 +368,50 @@ export function paintList(node: ListNodeView, width: number, height: number, col
       continue
     }
     const key = [
-      available, state.marker, on ? 1 : 0, options.focused ? 1 : 0, node.marker === 'selection' ? 1 : 0, state.check, state.number,
+      available, state.marker, on ? 1 : 0, options.focused ? 1 : 0, node.marker ?? '', state.check, state.number,
       spec.depth, spec.last ? 1 : 0, spec.expandable ? 1 : 0, spec.open ? 1 : 0,
-      `${String(view?.active)}\0${String(view?.pinned)}`,
+      `${String(view?.active)}\0${String(view?.pinned)}`, options.flow === true ? 1 : 0,
     ].join('\x01')
-    const painted = options.memo === undefined
-      ? headLines(state, colors, options.translate)
-      : options.memo.cache.readLines(colors, item, key, () => headLines(state, colors, options.translate), options.memo.counters)
-    entries.push({ kind: 'item', id: item.id, lines: painted })
-    if (spec.open && item.body !== undefined) {
+    const leaded = item.bodyLead !== undefined && spec.open && item.body !== undefined
+    const paintHead = (): readonly string[] => leaded ? leadedLines(state, colors, options.body) : headLines(state, colors, options.translate)
+    // A row whose body carries a motion span is painted again at every clock frame: its remembered lines would freeze it.
+    const moves = typeof item.body === 'object' && item.body.kind === 'rich-text' && hasMotion(item.body.spans)
+    const painted = options.memo === undefined || moves ? paintHead() : options.memo.cache.readLines(colors, item, key, paintHead, options.memo.counters)
+    // A `band` list marks its cursor row, the rows under it, and their bodies with the selected background, in place of an
+    // arrow. The band keeps a column free at each edge of the list.
+    const banded = node.marker === 'band' && options.focused && options.cursorId !== undefined && (on || within(item, options.cursorId, parents))
+    const block = options.cursorId !== undefined && (on || within(item, options.cursorId, parents))
+    entries.push({ kind: 'item', id: item.id, lines: painted, banded, block })
+    if (!leaded && spec.open && item.body !== undefined) {
       const counters = options.memo?.counters
-      const body = options.memo === undefined
+      const body = options.memo === undefined || moves
         ? bodyLines(spec, available, colors, options.body, counters)
-        : options.memo.cache.readLines(colors, item, `body\x01${String(available)}`, () => bodyLines(spec, available, colors, options.body, counters), counters)
-      if (body.length > 0) entries.push({ kind: 'body', lines: body })
+        : options.memo.cache.readLines(colors, item, `body\x01${String(available)}\x01${options.flow === true ? 1 : 0}\x01${node.highlight?.current === undefined ? 0 : 1}`, () => bodyLines(spec, available, colors, options.body, counters), counters)
+      if (body.length > 0) entries.push({ kind: 'body', lines: body, banded, block })
     }
   }
 
+  // The search marks go on last, with the current match (inside the cursor's block) drawn stronger; then the band.
+  const current = find === undefined ? undefined : currentMatch(entries, find, node.highlight?.current)
+  const laid = entries.map((entry, index): Entry => {
+    if (entry.kind !== 'item' && entry.kind !== 'body') return entry
+    const at = current?.entry === index ? current : undefined
+    const marked = find === undefined ? entry.lines : mapRows(entry.lines, (line, row) => highlightLine(line, find, at?.line === row ? at.within : undefined))
+    const lines = entry.banded ? mapRows(marked, line => ` ${colors.selectedBg(sliceByColumn(padTo(line, available), 1, Math.max(0, available - 2), true))} `) : marked
+    return { ...entry, lines }
+  })
+
   // maxRows windows over entries (a group heading and an open body each count as one), with the rest counted as hidden.
-  let shown: readonly Entry[] = entries
+  let shown: readonly Entry[] = laid
   let hiddenAbove = 0
   let hiddenBelow = 0
   const total = options.total ?? options.rows.length
   if (node.maxRows !== undefined && total > node.maxRows) {
-    const at = Math.max(0, entries.findIndex(entry => entry.kind === 'item' && entry.id === options.cursorId))
-    const start = Math.max(0, Math.min(entries.length - node.maxRows, at - Math.floor(node.maxRows / 2)))
-    shown = entries.slice(start, start + node.maxRows)
+    const at = Math.max(0, laid.findIndex(entry => entry.kind === 'item' && entry.id === options.cursorId))
+    const start = Math.max(0, Math.min(laid.length - node.maxRows, at - Math.floor(node.maxRows / 2)))
+    shown = laid.slice(start, start + node.maxRows)
     hiddenAbove = (options.before ?? 0) + start
-    hiddenBelow = (options.after ?? 0) + entries.length - start - shown.length
+    hiddenBelow = (options.after ?? 0) + laid.length - start - shown.length
   }
 
   // The prefix sums of the shown entries' line counts place the cursor row, whatever height each row has.
@@ -333,6 +429,9 @@ export function paintList(node: ListNodeView, width: number, height: number, col
     const rows = focusAt < 0 ? 1 : shown[focusAt]!.lines.length
     let begin = focusAt < 0 ? 0 : Math.min(Math.max(0, first - Math.floor(limit / 2) + Math.floor(rows / 2)), lineCount - limit)
     if (focusAt >= 0) begin = Math.max(Math.min(begin, first), first + rows - limit)
+    // A search match inside a block taller than the window decides where the window sits: the match is centered.
+    const target = current === undefined ? -1 : shown.indexOf(laid[current.entry]!)
+    if (target >= 0) begin = Math.max(0, Math.min(starts[target]! + current!.line - Math.floor(limit / 2), lineCount - limit))
     lines = sliceRows(lines, begin, begin + limit)
   }
   const tail: string[] = []

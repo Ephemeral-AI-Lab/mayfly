@@ -3,15 +3,8 @@
  */
 import { describe, expect, it } from 'vitest'
 import { interpolateLocaleMessage, type MayflyTranslate } from '../../src/frontend/locale.ts'
-import {
-  preparingLabel,
-  processTitle,
-  runningLabel,
-  SHARED_DONE_PREFIX_KEY,
-  summarizeProcess,
-  toolActivity,
-  type ProcessMemberFact,
-} from '../../src/transcript/process-activity.ts'
+import { diffStat, elapsedText, summarizeProcess, toolActivity, type ProcessMemberFact } from '../../src/transcript/process-activity.ts'
+import { flightLabel, kindOf, unitPhrase } from '../../src/transcript/tool-kinds.ts'
 import { ACTIVITY_LOCALE, TRANSCRIPT_LOCALE } from '../../src/transcript/locale.ts'
 
 const zh: MayflyTranslate = (key, values) => interpolateLocaleMessage(TRANSCRIPT_LOCALE.zh[key] ?? key, values)
@@ -31,36 +24,62 @@ describe('process activity', () => {
 
   it('ranks settled categories by count with first-seen ties', () => {
     const summary = summarizeProcess([
-      member('read'), member('search'), member('search'), member('read', { failed: true }), member('commands'),
+      member('read'), member('search'), member('search'), member('read', { failed: true }), member('commands'), member('commands', { interrupted: true }),
     ])
+    // A cancelled member (stopped, or never started) counts apart from the failed ones.
     expect(summary).toEqual({
-      counts: [{ activity: 'read', count: 2 }, { activity: 'search', count: 2 }, { activity: 'commands', count: 1 }],
+      counts: [{ activity: 'read', count: 2 }, { activity: 'search', count: 2 }, { activity: 'commands', count: 2 }],
       failed: 1,
+      interrupted: 1,
     })
   })
 
-  it('titles settled groups in the past tense, in English and Chinese', () => {
+  it('phrases what a group of settled calls counts, singular and plural, in English and Chinese', () => {
     const t = interpolateLocaleMessage
-    // Nothing settled: no title at all.
-    expect(processTitle(summarizeProcess([]), t)).toBe('')
-    expect(processTitle(summarizeProcess([member('read')]), t)).toBe('Read files')
-    expect(processTitle(summarizeProcess([member('read'), member('search')]), t)).toBe('Read files and searched code')
-    expect(processTitle(summarizeProcess([member('read'), member('search'), member('commands')]), t)).toBe('Read files, searched code, ran commands')
-    expect(processTitle(summarizeProcess([member('read'), member('search'), member('commands'), member('edit')]), t)).toBe('Read files, searched code, ran commands, etc.')
-    expect(processTitle(summarizeProcess([member('subagents')]), zh)).toBe('已协调子智能体')
-    // Chinese joins drop the repeated done prefix `已`.
-    expect(processTitle(summarizeProcess([member('read'), member('search')]), zh)).toBe('已读取文件并搜索代码')
-    expect(processTitle(summarizeProcess([member('read'), member('edit')]), zh)).toBe('已读取文件并修改了文件')
-    expect(processTitle(summarizeProcess([member('read'), member('search'), member('commands'), member('edit')]), zh)).toBe('已读取文件，已搜索代码，执行了命令等')
-    expect(TRANSCRIPT_LOCALE.en[SHARED_DONE_PREFIX_KEY]).toBe('')
+    expect(unitPhrase('read', 1, t)).toBe('1 file')
+    expect(unitPhrase('read', 2, t)).toBe('2 files')
+    expect(unitPhrase('search', 1, t)).toBe('1 search')
+    expect(unitPhrase('search', 2, t)).toBe('2 searches')
+    expect(unitPhrase('commands', 1, t)).toBe('1 call')
+    expect(unitPhrase('commands', 3, t)).toBe('3 calls')
+    expect(unitPhrase('subagents', 1, t)).toBe('1 subagent')
+    expect(unitPhrase('read', 2, zh)).toBe('2 个文件')
+    expect(unitPhrase('search', 2, zh)).toBe('2 次搜索')
+    expect(TRANSCRIPT_LOCALE.zh['{count} tool calls']).toBe('{count} 次工具调用')
   })
 
-  it('names running and preparing categories for the activity row', () => {
-    expect(runningLabel('commands')).toBe('Running commands')
-    expect(runningLabel('subagents')).toBe('Coordinating subagents')
-    expect(preparingLabel('edit')).toBe('Preparing to edit files')
-    expect(ACTIVITY_LOCALE.zh[runningLabel('commands')]).toBe('正在运行命令')
-    expect(ACTIVITY_LOCALE.zh[preparingLabel('write')]).toBe('准备写入文件')
+  it('sums a settled group\'s wall time and file-change lines for the compact title', () => {
+    // The wall time runs from the first member's start to the last member's end.
+    expect(summarizeProcess([
+      member('read', { startedAt: 0, endedAt: 2_000 }), member('read', { startedAt: 1_000, endedAt: 3_000 }), member('commands', { startedAt: 0, endedAt: 6_000 }),
+    ])).toEqual({ counts: [{ activity: 'read', count: 2 }, { activity: 'commands', count: 1 }], failed: 0, interrupted: 0, durationMs: 6_000 })
+    // Lines a file change added and removed are summed, and a group with none has none.
+    expect(summarizeProcess([member('edit', { added: 4, removed: 2 }), member('write', { added: 9 }), member('read')])).toMatchObject({ added: 13, removed: 2 })
+    expect(summarizeProcess([member('read')])).not.toHaveProperty('added')
+    expect(diffStat(4, 2)).toBe('+4 −2')
+    expect(diffStat(0, 0)).toBe('+0 −0')
+  })
+
+  it('reports a group wall time only when it is long enough to read', () => {
+    expect(elapsedText(0)).toBeUndefined()
+    expect(elapsedText(99)).toBeUndefined()
+    expect(elapsedText(100)).toBe('0.1s')
+    expect(elapsedText(4_200)).toBe('4.2s')
+    expect(elapsedText(9_960)).toBe('10s')
+    expect(elapsedText(3_000)).toBe('3s')
+    expect(elapsedText(65_000)).toBe('1m 5s')
+  })
+
+  it('names running and preparing categories for the activity row, one category by name and several by count', () => {
+    expect(kindOf('commands').running).toBe('Running commands')
+    expect(kindOf('subagents').running).toBe('Coordinating subagents')
+    expect(kindOf('edit').preparing).toBe('Preparing to edit files')
+    expect(flightLabel([{ activity: 'commands', preparing: false }, { activity: 'commands', preparing: false }])).toEqual({ key: 'Running commands' })
+    expect(flightLabel([{ activity: 'edit', preparing: true }])).toEqual({ key: 'Preparing to edit files' })
+    expect(flightLabel([{ activity: 'read', preparing: false }, { activity: 'commands', preparing: false }])).toEqual({ key: 'Running {count} tools', values: { count: 2 } })
+    expect(flightLabel([{ activity: 'read', preparing: true }, { activity: 'edit', preparing: true }])).toEqual({ key: 'Preparing {count} tool calls', values: { count: 2 } })
+    expect(ACTIVITY_LOCALE.zh[kindOf('commands').running]).toBe('正在运行命令')
+    expect(ACTIVITY_LOCALE.zh[kindOf('write').preparing]).toBe('准备写入文件')
     // The retired reasoning-group titles are gone from both catalogs.
     expect(TRANSCRIPT_LOCALE.zh['Analyzing the request']).toBeUndefined()
     expect(TRANSCRIPT_LOCALE.zh['Analysis completed']).toBeUndefined()

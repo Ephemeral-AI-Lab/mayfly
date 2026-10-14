@@ -31,30 +31,27 @@ export type TranscriptViewMode = 'compact' | 'standard' | 'detailed' | 'verbose'
 
 /** Presentation capabilities one work-details mode enables. */
 export interface ProcessPolicy {
-  /** Whether a normally completed turn folds its process and interim replies behind the turn header. */
-  readonly foldCompletedTurns: boolean
-  /** A running turn's process: hidden, past-tense titles of its settled work, or every card. */
-  readonly liveProcess: 'hidden' | 'titles' | 'cards'
-  /** A settled turn that does not fold: past-tense titles or every card. */
-  readonly settledProcess: 'titles' | 'cards'
   /**
-   * Diff-card calls (file writes and edits): ordinary process members, or
-   * content that renders as its card, closes the current group, and stays
-   * visible when the turn folds.
+   * A running turn's process, as the tier each view draws: `collect` (one line that collects the turn's calls, and the lines of those in flight), `blocks` (a run of calls of one kind is one
+   * multi-line block, the Standard tier), `current` (the step the model works in draws one block with a body per call, the
+   * Verbose tier, and the steps before it collapse to blocks), or `cards` (the Verbose tier for every step). A call in
+   * flight is a pending line in every view, `collect` included (a kind's input under it by tier); the activity row names only the phase.
    */
-  readonly fileChanges: 'process' | 'content'
-  /** Whether the activity row appends the running command, path, query, or reasoning. */
-  readonly liveProcessDetail: boolean
-  /** Whether a settled reasoning row previews its first line beside its title. */
-  readonly settledReasoningPreview: boolean
+  readonly liveProcess: 'collect' | 'blocks' | 'current' | 'cards'
+  /** A settled turn's process: `collect` is the Compact tier, one line for the turn's calls. */
+  readonly settledProcess: 'collect' | 'blocks' | 'cards'
+  /** Whether a compaction row is one line, without its bar or summary (the Compact tier). */
+  readonly compactionLine: boolean
+  /** Whether a compaction row shows its summary without being opened (the Verbose tier). */
+  readonly compactionSummary: boolean
 }
 
 /** The fixed capability table; the same mode always yields the same object. */
 export const PROCESS_POLICIES: Readonly<Record<TranscriptViewMode, ProcessPolicy>> = Object.freeze({
-  compact: Object.freeze({ foldCompletedTurns: true, liveProcess: 'hidden', settledProcess: 'titles', fileChanges: 'process', liveProcessDetail: false, settledReasoningPreview: false }),
-  standard: Object.freeze({ foldCompletedTurns: true, liveProcess: 'titles', settledProcess: 'titles', fileChanges: 'content', liveProcessDetail: true, settledReasoningPreview: true }),
-  detailed: Object.freeze({ foldCompletedTurns: true, liveProcess: 'cards', settledProcess: 'titles', fileChanges: 'content', liveProcessDetail: false, settledReasoningPreview: true }),
-  verbose: Object.freeze({ foldCompletedTurns: false, liveProcess: 'cards', settledProcess: 'cards', fileChanges: 'content', liveProcessDetail: false, settledReasoningPreview: true }),
+  compact: Object.freeze({ liveProcess: 'collect', settledProcess: 'collect', compactionLine: true, compactionSummary: false }),
+  standard: Object.freeze({ liveProcess: 'blocks', settledProcess: 'blocks', compactionLine: false, compactionSummary: false }),
+  detailed: Object.freeze({ liveProcess: 'current', settledProcess: 'blocks', compactionLine: false, compactionSummary: false }),
+  verbose: Object.freeze({ liveProcess: 'cards', settledProcess: 'cards', compactionLine: false, compactionSummary: true }),
 })
 
 /** Immutable reading of one transcript tree's presentation policy. */

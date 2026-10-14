@@ -42,7 +42,7 @@ describe('truncateMiddle', () => {
 describe('motion tables and cells', () => {
   it('steps each variant over its table, and breathes a shade every fourth step', () => {
     expect(loaderFrameGlyph('gap', 9)).toBe('⣽')
-    expect([0, 3, 4, 8, 12, 16, 20, 24].map(breathLevel)).toEqual([0.25, 0.25, 0.5, 0.8, 1, 0.8, 0.5, 0.25])
+    expect([0, 3, 4, 8, 12, 16, 20, 24].map(breathLevel)).toEqual([0, 0.146, 0.25, 0.75, 1, 0.75, 0.25, 0])
   })
 
   it('paints a stepping cell in primary, the ASCII spinner in ASCII mode, and freezes under reduced motion', () => {
@@ -52,8 +52,10 @@ describe('motion tables and cells', () => {
   })
 
   it('blends the breath from the palette, brightest at primary itself, and falls back to the tone without truecolor', () => {
-    expect(loaderCell('breath', 12, { colors: rgbColors })).toBe('\x1b[38;2;200;100;50m●\x1b[39m')
-    expect(loaderCell('breath', 0, { colors: rgbColors })).toBe('\x1b[38;2;125;100;100m●\x1b[39m'.replace('125;100;100', '125;100;88'))
+    // The bright half of the cycle is bold as well (from level 0.6 up).
+    expect(loaderCell('breath', 12, { colors: rgbColors })).toBe('\x1b[1m\x1b[38;2;200;100;50m●\x1b[39m\x1b[22m')
+    // The dim end of the cycle is the palette's muted gray itself.
+    expect(loaderCell('breath', 0, { colors: rgbColors })).toBe('\x1b[38;2;100;100;100m●\x1b[39m')
     expect(loaderCell('breath', 4, { colors: rgbColors, reducedMotion: true })).toBe(loaderCell('breath', 0, { colors: rgbColors }))
     expect(breathPaint(tag, 0.5)('x')).toBe('<primary>x</primary>')
     expect(breathPaint({ primary: truecolor(1, 2, 3), textMuted: identity }, 0.5)('x')).toBe('\x1b[38;2;1;2;3mx\x1b[39m')

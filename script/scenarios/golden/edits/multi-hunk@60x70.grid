@@ -1,0 +1,107 @@
+grid 60x70 cursor none
+| ⠱⣦⣄⣀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⣠⣴⠎
+| ⠀⠙⢿⣿⣿⣷⣶⣤⣀⣀⣴⣶⣦⣀⣀⣤⣶⣾⣿⣿⡿⠋⠀  mayfly
+| ⠀⠀⠀⠈⠻⢿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡿⠟⠁⠀⠀⠀  ephemeral agents, e...
+| ⠀⠀⠀⠀⠀⠀⠀⠉⠉⠁⢸⣿⡇⠈⠉⠉⠀⠀⠀⠀⠀⠀⠀
+| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢸⣿⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀  Send /help for help...
+| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⣿⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀  Directory: ~/workspace
+| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣿⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀  Model:     deepseek...
+| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⡠⠊⠀⠑⢄⠀⠀⠀⠀⠀⠀⠀⠀⠀  Version:   scenario
+|
+|  » Add a retries setting, read it in the client, and cover
+|    it with a test.
+|
+|  ● The setting goes into the config first.
+|
+|  ✓ Edit(src/config.mjs) · +2 −1 ▮▮▮▮▮▮▮▮
+|    1 │     timeoutMs: 3000,
+|    2 │ +   retries: 2,
+|    3 │   }
+|    ⋯
+|    5 │   export function describe() {
+|    5 │ −   return `${config.baseUrl} (timeout ${config…
+|    6 │ +   return `${config.baseUrl} (timeout ${config…
+|
+|  ● The client names the timeout in four places.
+|
+|  ✓ Edit(src/client.mjs) · +4 −5 ▮▮▮▮▮▮▮▮
+|    1 │     const row13 = paint(13)
+|    2 │ −   const wait = timeout
+|    2 │ +   const wait = timeoutMs
+|    3 │     const row21 = paint(21)
+|    ⋯
+|    1 │     const row51 = paint(51)
+|    … +12 rows · Ctrl+O
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|  ⡀ Deep diving · 3s · ↑5.5k
+|    ⎿ Tip: Esc to interrupt the run
+|                               Alt+↑ conversation · Alt+↓
+|╭──────────────────────────── Add a retries setting, read ─╮
+|│ >                                                        │
+|╰──────────────────────────────────────────────────────────╯
+| deepseek-flash High  .  cache 42%  context: 5% (5.5k/128k)
+styles
+0: 1-23 fg:#f5f5f7; 24-25 fg:#9a86e6
+1: 1-23 fg:#e9e5f6; 24-25 fg:#9a86e6; 26-47 fg:#9a86e6 b
+2: 1-23 fg:#dbd3f0; 24-25 fg:#9a86e6; 26-44 fg:#c9c0f0
+3: 1-23 fg:#c9beea; 24-25 fg:#9a86e6
+4: 1-23 fg:#b2a1ec; 24-25 fg:#9a86e6; 26-44 fg:#9aa3b8
+5: 1-25 fg:#9a86e6; 26-47 fg:#ededf2
+6: 1-23 fg:#8371d6; 24-25 fg:#9a86e6; 26-44 fg:#e9e6f4
+7: 1-23 fg:#6c5bbf; 24-25 fg:#9a86e6; 26-47 fg:#ededf2
+9: 2-3 fg:#9a86e6; 4-58 fg:#9a86e6 b
+10: 4-18 fg:#9a86e6 b
+12: 2-3 fg:#ededf2
+14: 2-3 fg:#4ec87e; 4-7 fg:#ededf2 b; 8 fg:#9aa3b8; 9-22 fg:#c9c0f0; 23-26 fg:#9aa3b8; 27-28 fg:#4ec87e; 29 fg:#9aa3b8; 30-31 fg:#e85454; 32 fg:#9aa3b8; 33-37 fg:#4ec87e; 38-40 fg:#e85454
+15: 4-6 fg:#9aa3b8; 10-22 fg:#ededf2; 23-26 fg:#e8a838; 27 fg:#ededf2
+16: 4-6 fg:#9aa3b8; 8 fg:#4ec87e bg:#1e3a2b; 9 bg:#1e3a2b; 10-11 fg:#ededf2 bg:#1e3a2b; 12-18 fg:#c9c0f0 bg:#1e3a2b; 19-20 fg:#ededf2 bg:#1e3a2b; 21 fg:#e8a838 bg:#1e3a2b; 22 fg:#ededf2 bg:#1e3a2b; 23-55 bg:#1e3a2b
+17: 4-6 fg:#9aa3b8; 10 fg:#ededf2
+18: 4 fg:#9aa3b8
+19: 4-6 fg:#9aa3b8; 10-15 fg:#9a86e6; 16 fg:#ededf2; 17-24 fg:#9a86e6; 26-33 fg:#c9c0f0; 37 fg:#ededf2
+20: 4-6 fg:#9aa3b8; 8 fg:#e85454 bg:#43232a; 9 bg:#43232a; 10-11 fg:#ededf2 bg:#43232a; 12-17 fg:#9a86e6 bg:#43232a; 18 fg:#ededf2 bg:#43232a; 19-36 fg:#4ec87e bg:#43232a; 37-46 bg:#43232a; 47-55 fg:#4ec87e bg:#43232a
+21: 4-6 fg:#9aa3b8; 8 fg:#4ec87e bg:#1e3a2b; 9 bg:#1e3a2b; 10-11 fg:#ededf2 bg:#1e3a2b; 12-17 fg:#9a86e6 bg:#1e3a2b; 18 fg:#ededf2 bg:#1e3a2b; 19-36 fg:#4ec87e bg:#1e3a2b; 37-46 bg:#1e3a2b; 47-55 fg:#4ec87e bg:#1e3a2b
+23: 2-3 fg:#ededf2
+25: 2-3 fg:#4ec87e; 4-7 fg:#ededf2 b; 8 fg:#9aa3b8; 9-22 fg:#c9c0f0; 23-26 fg:#9aa3b8; 27-28 fg:#4ec87e; 29 fg:#9aa3b8; 30-31 fg:#e85454; 32 fg:#9aa3b8; 33-36 fg:#4ec87e; 37-40 fg:#e85454
+26: 4-6 fg:#9aa3b8; 10-11 fg:#ededf2; 12-16 fg:#9a86e6; 17-31 fg:#ededf2; 32-33 fg:#e8a838; 34 fg:#ededf2
+27: 4-6 fg:#9aa3b8; 8 fg:#e85454 bg:#43232a; 9 bg:#43232a; 10-11 fg:#ededf2 bg:#43232a; 12-16 fg:#9a86e6 bg:#43232a; 17-31 fg:#ededf2 bg:#43232a; 32-55 bg:#43232a
+28: 4-6 fg:#9aa3b8; 8 fg:#4ec87e bg:#1e3a2b; 9 bg:#1e3a2b; 10-11 fg:#ededf2 bg:#1e3a2b; 12-16 fg:#9a86e6 bg:#1e3a2b; 17-33 fg:#ededf2 bg:#1e3a2b; 34-55 bg:#1e3a2b
+29: 4-6 fg:#9aa3b8; 10-11 fg:#ededf2; 12-16 fg:#9a86e6; 17-31 fg:#ededf2; 32-33 fg:#e8a838; 34 fg:#ededf2
+30: 2-4 fg:#9aa3b8
+31: 4-6 fg:#9aa3b8; 10-11 fg:#ededf2; 12-16 fg:#9a86e6; 17-31 fg:#ededf2; 32-33 fg:#e8a838; 34 fg:#ededf2
+32: 4-22 fg:#9aa3b8
+63: 0-1 fg:#ededf2; 2 fg:#9a86e6; 3-14 fg:#ededf2; 16-27 fg:#9aa3b8
+64: 0-34 fg:#9aa3b8
+65: 31-56 fg:#9aa3b8
+66: 0-28 fg:#45406b; 29-57 fg:#5c6476; 58-59 fg:#45406b
+67: 0 fg:#45406b; 4 r; 59 fg:#45406b
+68: 0-59 fg:#45406b
+69: 1-19 fg:#ededf2; 25-58 fg:#ededf2

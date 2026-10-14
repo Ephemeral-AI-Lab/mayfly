@@ -2,20 +2,17 @@
  * Work-details display plan: the pure segmentation of transcript entries into
  * turn headers, process groups, and visible entries, after the upstream
  * Harness Chat `TurnGroups` rules. Reasoning and tool calls are process
- * members; a reply, a user message, an error, an interruption, or (where the
- * policy makes file changes content) a diff-card call closes the current
- * group. The transcript speaks in the past tense: a group title summarizes
- * only settled members, a reasoning-only group has no title, and a running
- * turn has no header unless its tree has no activity row. A normally
- * completed turn folds everything but its file changes and final answer
- * behind the turn header. Rendering and width live elsewhere.
+ * members; a reply, a user message, an error, or an interruption closes the
+ * current group. A call in flight is a line of its own at every level. At the compact level a turn's process is collected
+ * into one line (`▸ 6 tool calls`) that stands where its first call was and counts up as the turn works, so nothing folds
+ * away at the end; a running turn has no header unless its tree has no activity row. Rendering and width live elsewhere.
  *
  * @module @ephemeral-ai/mayfly/transcript/process-groups
  */
 
-import type { TranscriptEntryModel, TranscriptModel, TranscriptTurnModel } from '../frontend/models.ts'
+import { isCancelled, type ToolInterruption, type TranscriptEntryModel, type TranscriptModel, type TranscriptTurnModel } from '../frontend/models.ts'
 import type { ProcessPolicy } from './presentation-policy.ts'
-import { summarizeProcess, type ProcessMemberFact, type ProcessSummary } from './process-activity.ts'
+import { summarizeProcess, type ProcessMemberFact } from './process-activity.ts'
 
 type Entry = TranscriptModel['entries'][number]
 
@@ -33,19 +30,29 @@ export interface TurnHeaderItem {
   readonly toolCalls: number
   /** Subagent spawns, counted apart from tool calls as upstream does. */
   readonly subagents: number
-  /** Whether the turn's process and interim replies are hidden behind this row. */
-  readonly folded: boolean
   /** Whether Ctrl-O reaches this turn, so the row may name the key. */
   readonly hint: boolean
 }
 
-/** One collapsed process group row: the past-tense summary of its settled members. */
+/** The line that collects a turn's process at the compact level: how many calls it made, and how they went. */
 export interface ProcessTitleItem {
   readonly kind: 'process-title'
   readonly id: string
   readonly turn: number
   readonly seq: number
-  readonly summary: ProcessSummary
+  /** Tool calls other than subagent spawns, those in flight included. */
+  readonly toolCalls: number
+  readonly subagents: number
+  readonly failed: number
+  /** Calls cancelled by an interruption: counted apart from the failed ones. */
+  readonly interrupted: number
+  /** Wall time of the calls, once every one of them has settled. */
+  readonly durationMs?: number
+  /** Lines the calls' file changes added and removed, when any made one. */
+  readonly added?: number
+  readonly removed?: number
+  /** Whether Ctrl-O reaches this turn, so the line may name the key. */
+  readonly hint: boolean
 }
 
 /** One visible entry with its disclosure state. */
@@ -54,12 +61,16 @@ export interface EntryItem {
   readonly entry: Entry
   /** Anchor ordering seq: the entry's own, or the preceding one for canonical nodes. */
   readonly seq: number | undefined
-  /** Whether Ctrl-O currently expands this entry's body. */
+  /** Whether this entry's body is drawn in full: its turn is open, or the reader lifted it. */
   readonly expanded: boolean
   /** Whether Ctrl-O reaches this entry, so hints may name the key. */
   readonly hint: boolean
-  /** Whether the entry's turn has ended (pending calls read as cancelled). */
-  readonly turnClosed: boolean
+  /**
+   * How a tool entry is drawn: `verbose` is one block per call with its body, `standard` lets a run of calls of one kind
+   * share a block, `compact` keeps only the calls still in flight, as their lines. Absent on a plain (flat) model, where
+   * each call is a verbose block.
+   */
+  readonly tier?: 'verbose' | 'standard' | 'compact'
 }
 
 /** One row group of the display plan, in render order. */
@@ -72,9 +83,11 @@ interface DisplayInput {
   /** The running turn, or `undefined` when every turn has ended. */
   readonly runningTurn: number | undefined
   readonly turns?: readonly TranscriptTurnModel[] | undefined
-  /** The global Ctrl-O toggle. */
-  readonly expanded: boolean
-  /** Turns within Ctrl-O's reach. */
+  /** Turns drawn at their Verbose tier: Ctrl-O's reach, flipped by Enter on a header, plus the turns a search holds open. */
+  readonly open: ReadonlySet<number>
+  /** Entries the reader opened one by one: each draws its Verbose tier with every row it carries. */
+  readonly rows: ReadonlySet<string>
+  /** Turns within Ctrl-O's reach, so hints may name the key. */
   readonly scope: ReadonlySet<number>
   /** Plain or hand-built models: entries only, no headers, groups, or folds. */
   readonly flat: boolean
@@ -93,17 +106,20 @@ function isMember(entry: Entry): boolean {
     || entry.kind === 'transcript-read-group' || entry.kind === 'transcript-search-group' || entry.kind === 'transcript-command-group'
 }
 
-/** Whether a tool entry presents as a file change (the presenter's diff card). */
-function isFileChange(entry: Entry): boolean {
-  return entry.kind === 'transcript-tool' && entry.family === 'edit'
-}
-
-const ABNORMAL_OUTCOMES = new Set(['aborted', 'error', 'interrupted', 'forked'])
-
 /** Whether a settled terminal run exited non-zero or by signal. */
 function exitFailed(entry: Extract<TranscriptEntryModel, { readonly kind: 'transcript-tool' }>): boolean {
   const terminal = entry.terminal
   return terminal !== undefined && (terminal.signal !== undefined || (terminal.exitCode !== undefined && terminal.exitCode !== 0))
+}
+
+/** How a settled call counts: cancelled by an interruption (not a failure), or failed (an unknown outcome included). */
+function outcomeFacts(failed: boolean, interruption: ToolInterruption | undefined): { readonly failed: boolean, readonly interrupted: boolean } {
+  const cancelled = failed && isCancelled(interruption)
+  return { failed: failed && !cancelled, interrupted: cancelled }
+}
+
+function times(call: { readonly startedAt: number, readonly endedAt?: number }): { readonly startedAt: number, readonly endedAt?: number } {
+  return { startedAt: call.startedAt, ...(call.endedAt === undefined ? {} : { endedAt: call.endedAt }) }
 }
 
 /**
@@ -119,14 +135,17 @@ export function memberFacts(entry: Entry, closed: boolean): ProcessMemberFact[] 
         activity: entry.activity,
         running: !closed && entry.result === undefined,
         ...(entry.preparing === undefined ? {} : { preparing: true }),
-        failed: entry.result?.isError === true || exitFailed(entry),
+        ...outcomeFacts(entry.result?.isError === true || exitFailed(entry), entry.result?.interruption),
+        startedAt: entry.startedAt,
+        ...(entry.result === undefined ? {} : { endedAt: entry.result.endedAt }),
+        ...(entry.change === undefined ? {} : { added: entry.change.added, removed: entry.change.removed }),
       }]
     case 'transcript-read-group':
-      return entry.reads.map(read => ({ activity: read.activity, running: !closed && read.state === 'pending', failed: read.state === 'error' }))
+      return entry.reads.map(read => ({ activity: read.activity, running: !closed && read.state === 'pending', ...outcomeFacts(read.state === 'error', read.interruption), ...times(read) }))
     case 'transcript-search-group':
-      return entry.searches.map(call => ({ activity: call.activity, running: !closed && call.state === 'pending', failed: call.state === 'error' }))
+      return entry.searches.map(call => ({ activity: call.activity, running: !closed && call.state === 'pending', ...outcomeFacts(call.state === 'error', call.interruption), ...times(call) }))
     case 'transcript-command-group':
-      return entry.commands.map(call => ({ activity: call.activity, running: !closed && call.state === 'pending', failed: call.state === 'error' }))
+      return entry.commands.map(call => ({ activity: call.activity, running: !closed && call.state === 'pending', ...outcomeFacts(call.state === 'error', call.interruption), ...times(call) }))
     default:
       return []
   }
@@ -173,16 +192,16 @@ export function buildDisplay(input: DisplayInput): DisplayItem[] {
   const items: DisplayItem[] = []
   let lastSeq = input.previousSeq
   const turnInfo = new Map((input.turns ?? []).map(turn => [turn.turn, turn]))
-  const plainEntry = (entry: Entry, turnClosed: boolean, expanded: boolean, hint: boolean): EntryItem => {
+  const plainEntry = (entry: Entry, expanded: boolean, hint: boolean, tier?: 'verbose' | 'standard' | 'compact'): EntryItem => {
     if (isSemantic(entry)) lastSeq = entry.seq
-    return { kind: 'entry', entry, seq: lastSeq, expanded, hint, turnClosed }
+    return { kind: 'entry', entry, seq: lastSeq, expanded: expanded || (isSemantic(entry) && input.rows.has(entry.id)), hint, ...(tier === undefined ? {} : { tier }) }
   }
   let index = 0
   const entries = input.entries
   while (index < entries.length) {
     const first = entries[index]!
     if (!isSemantic(first)) {
-      items.push(plainEntry(first, true, false, false))
+      items.push(plainEntry(first, false, false))
       index += 1
       continue
     }
@@ -200,26 +219,23 @@ export function buildDisplay(input: DisplayInput): DisplayItem[] {
     const info = turnInfo.get(turn)
     const closed = !input.flat && (info?.endedAt !== undefined || turn !== input.runningTurn)
     const inScope = input.scope.has(turn)
-    const expandedTurn = input.expanded && inScope
+    const expandedTurn = input.open.has(turn)
     if (input.flat || !block.some(isMember)) {
-      for (const entry of block) items.push(plainEntry(entry, closed, expandedTurn, inScope))
+      for (const entry of block) items.push(plainEntry(entry, expandedTurn, inScope))
       continue
     }
     const lead = block.findIndex(entry => entry.kind !== 'transcript-user')
     const rest = block.slice(lead)
-    const interleaved = rest.some(entry => entry.kind === 'transcript-user')
-    const abnormal = (info?.outcome !== undefined && ABNORMAL_OUTCOMES.has(info.outcome))
-      || rest.some(entry => entry.kind === 'transcript-error' || entry.kind === 'transcript-interrupted')
     const policy = input.policy
-    const folded = policy.foldCompletedTurns && closed && !interleaved && !abnormal && !expandedTurn
     const view = expandedTurn ? 'cards' : closed ? policy.settledProcess : policy.liveProcess
-    const content = (entry: Entry): boolean => policy.fileChanges === 'content' && isFileChange(entry)
+    // The step the model works in: at the `current` view its calls are verbose blocks and the steps before it collapse.
+    const currentStep = rest.reduce((latest, entry) => isSemantic(entry) && 'step' in entry ? Math.max(latest, entry.step) : latest, -1)
     const facts = rest.filter(isMember).flatMap(entry => memberFacts(entry, closed)).filter(fact => fact.preparing !== true)
     const subagents = facts.filter(fact => fact.activity === 'subagents').length
-    for (const entry of block.slice(0, lead)) items.push(plainEntry(entry, closed, expandedTurn, inScope))
+    for (const entry of block.slice(0, lead)) items.push(plainEntry(entry, expandedTurn, inScope))
     // The activity row owns a running turn's lifecycle; only a tree without
     // one keeps the live header.
-    if (closed || input.runningHeader === true) {
+    if ((closed || input.runningHeader === true) && view !== 'collect') {
       const headerSeq = (rest.find(isSemantic) as TranscriptEntryModel).seq
       items.push({
         kind: 'turn-header',
@@ -234,20 +250,42 @@ export function buildDisplay(input: DisplayInput): DisplayItem[] {
         }),
         toolCalls: facts.length - subagents,
         subagents,
-        folded,
-        hint: folded && inScope,
+        // Ctrl+O names itself wherever it would open more: a view short of the verbose blocks.
+        hint: inScope && !expandedTurn && view !== 'cards',
       })
       lastSeq = headerSeq
     }
-    if (folded) {
-      const answer = rest.findLast(entry => entry.kind === 'transcript-assistant')
+    // The compact level: the turn's calls are one line where its first call was, and only what is in flight keeps its own line.
+    if (view === 'collect') {
+      const calls = rest.filter(isMember).flatMap(entry => memberFacts(entry, closed)).filter(fact => fact.preparing !== true)
+      const settled = calls.every(fact => !fact.running)
+      const summary = summarizeProcess(calls.filter(fact => !fact.running))
+      let collected = calls.length === 0
       for (const entry of rest) {
-        // Compaction rows are system-level boundary markers, not process work:
-        // they survive the fold so "context was condensed here" stays visible
-        // in every work-details mode.
-        if (entry === answer || !isSemantic(entry) || entry.kind === 'transcript-compaction' || content(entry)) items.push(plainEntry(entry, closed, expandedTurn, inScope))
+        if (!isMember(entry)) {
+          items.push(plainEntry(entry, expandedTurn, inScope))
+          continue
+        }
+        if (!collected) {
+          collected = true
+          items.push({
+            kind: 'process-title',
+            id: `process:${String(turn)}`,
+            turn,
+            seq: (entry as TranscriptEntryModel).seq,
+            toolCalls: calls.length - subagents,
+            subagents,
+            failed: summary.failed,
+            interrupted: summary.interrupted,
+            ...(settled && summary.durationMs !== undefined ? { durationMs: summary.durationMs } : {}),
+            ...(summary.added === undefined ? {} : { added: summary.added, removed: summary.removed ?? 0 }),
+            hint: inScope && !expandedTurn,
+          })
+        }
+        const inFlight = entry.kind === 'transcript-thinking' ? entry.streaming : memberFacts(entry, closed).some(fact => fact.running)
+        if (inFlight) items.push(plainEntry(entry, expandedTurn, inScope, 'compact'))
+        else lastSeq = (entry as TranscriptEntryModel).seq
       }
-      lastSeq = (rest.findLast(isSemantic) as TranscriptEntryModel).seq
       continue
     }
     let pending: Entry[] = []
@@ -255,27 +293,18 @@ export function buildDisplay(input: DisplayInput): DisplayItem[] {
       if (pending.length === 0) return
       const members = pending
       pending = []
-      if (view === 'cards') {
-        for (const entry of members) items.push(plainEntry(entry, closed, expandedTurn, inScope))
-        return
+      for (const entry of members) {
+        const verbose = view === 'cards' || (isSemantic(entry) && input.rows.has(entry.id)) || (view === 'current' && 'step' in entry && entry.step === currentStep)
+        items.push(plainEntry(entry, expandedTurn, inScope, verbose ? 'verbose' : 'standard'))
       }
-      // Past tense only: a title summarizes settled members, so a
-      // reasoning-only group or one whose work still runs shows nothing.
-      const settled = members.flatMap(entry => memberFacts(entry, closed)).filter(fact => !fact.running)
-      const head = members[0] as TranscriptEntryModel
-      if (view === 'titles' && settled.length > 0) {
-        items.push({ kind: 'process-title', id: `process:${head.id}`, turn, seq: head.seq, summary: summarizeProcess(settled) })
-      }
-      // Hidden members still advance the anchor order.
-      lastSeq = (members.findLast(isSemantic) as TranscriptEntryModel).seq
     }
     for (const entry of rest) {
-      if (isMember(entry) && !content(entry)) {
+      if (isMember(entry)) {
         pending.push(entry)
         continue
       }
       flush()
-      items.push(plainEntry(entry, closed, expandedTurn, inScope))
+      items.push(plainEntry(entry, expandedTurn, inScope))
     }
     flush()
   }

@@ -42,6 +42,7 @@ export function listsGroup() {
       { id: 'a1', label: 'plugin-author', detail: 'preset', body: 'Prototype a plugin in-process,\nthen promote it to a durable external plugin.' },
       { id: 'a2', label: 'preset-author', detail: 'preset', body: ui.listBody([ui.text('Compose your own presets.'), ui.progress({ value: 2, max: 4 })]) },
       { id: 'a3', label: 'always open', bodyAlways: true, body: 'A body that is not a disclosure.' },
+      { id: 'a4', label: '', bodyAlways: true, bodyLead: [{ text: '● ', tone: 'primary' }], body: ui.markdown('A body that leads its row: the bullet shares its first line.\n\n- the rest sits under it') },
     ] }),
     ui.text('rows with a meter, a wrap limit, a rule, and a gap; maxRows windows the rest', { tone: 'muted' }),
     ui.list({ id: 'gallery-rows', role: 'browse', maxRows: 5, selectedIds: [], items: [

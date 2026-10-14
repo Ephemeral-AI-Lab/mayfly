@@ -968,6 +968,28 @@ exit 1
     expect(saveImage).not.toHaveBeenCalled()
   })
 
+  it('names the platform tool a missing clipboard reader needs on macOS and Windows', async () => {
+    const bin = mkdtempTracked('mayfly-paste-platform-')
+    process.env.PATH = bin
+    try {
+      Object.defineProperty(process, 'platform', { value: 'darwin' })
+      await mountDefault()
+      await vi.waitFor(() => {
+        expect(notices).toEqual(['pasting image...', 'clipboard image tool missing: osascript or sips is unavailable'])
+      })
+      await fiber?.dispose()
+      fiber = undefined
+      notices = []
+      Object.defineProperty(process, 'platform', { value: 'win32' })
+      await mountDefault()
+      await vi.waitFor(() => {
+        expect(notices).toEqual(['pasting image...', 'clipboard image tool missing: powershell.exe is unavailable'])
+      })
+    } finally {
+      if (savedPlatform !== undefined) Object.defineProperty(process, 'platform', savedPlatform)
+    }
+  })
+
   it('notices the unreachable session when both tools cannot reach a display', async () => {
     const bin = mkdtempTracked('mayfly-paste-bin-')
     tool(bin, 'wl-paste', '#!/bin/sh\necho \'Failed to connect to a Wayland server\' >&2\nexit 1\n')

@@ -41,7 +41,8 @@ import { buildTitleOsc0, copySelectionText } from './terminal-escape.ts'
 import { concatRows, isVirtualRows, mapRows } from './ui-rows.ts'
 import type { MayflyComponent, MayflyDockOptions, MayflyOverlayHandle, MayflyOverlayOptions } from './types.ts'
 
-interface MayflyRuntimeOverlayOptions extends MayflyOverlayOptions { readonly maxWidth?: number }
+/** The runtime's own overlay options: a width cap, and an absolute cell the renderer places the overlay at. */
+interface MayflyRuntimeOverlayOptions extends MayflyOverlayOptions { readonly maxWidth?: number, readonly row?: number, readonly col?: number }
 
 const KEY_UP = '\x1b[A'
 const KEY_DOWN = '\x1b[B'
@@ -514,6 +515,8 @@ export interface MayflyTerminalRuntime {
    * `surfaceViewport` instead.
    */
   surfaceLaneRows(): number
+  /** The rows the dock (the search line, the editor, the footer) takes now. */
+  dockRows(): number
   /** Release one pane's focus back to the component active before it. */
   releaseSurfaceFocus(id: string): void
   /** Whether any visible modal overlay currently owns the input plane. */
@@ -547,7 +550,17 @@ export interface MayflyTerminalRuntime {
    */
   setFocus(component: MayflyComponent | null): void
   scrollContent(direction: 'up' | 'down', amount?: number): boolean
-  contentChanged(): boolean
+  /**
+   * Where the content scroll stands against its tail, on the alternate screen: `undefined` on the main screen, whose
+   * scrollback the terminal owns.
+   */
+  contentTail(): MayflyContentTail | undefined
+  /**
+   * Call back after each layout of the content scroll, when its standing against the tail may have changed.
+   * @param listener - called with no arguments.
+   * @returns a disposer.
+   */
+  watchContentTail(listener: () => void): () => void
   followContent(): void
   setContentScrollHandler(handler: ((data: string) => boolean) | undefined): () => void
   /**
@@ -594,6 +607,71 @@ export interface MayflyTerminalRuntime {
    * @returns settles when the terminal state is restored.
    */
   stop(): Promise<void>
+}
+
+/** The content scroll's standing against its tail, and the cells its last row occupies on the screen. */
+export interface MayflyContentTail {
+  /** Whether the view is scrolled away from the newest content. */
+  readonly away: boolean
+  /** Rows that arrived below the view since it left the tail. */
+  readonly unseen: number
+  /** The viewport's last row and the columns the content region spans, in screen cells. */
+  readonly row: number
+  readonly col: number
+  readonly width: number
+}
+
+/**
+ * The content scroll view. It remembers how tall its content was the last time it showed the tail (for the pill's
+ * count), and keeps a reader who scrolled away away: pi-tui clamps a view to the end when its content shrinks, which
+ * switches follow back on, and a stream that rewrites its rows (a live draft settling into its message) shrinks for a
+ * frame. The position the reader had is held until the content is tall enough again or they move.
+ */
+class TailScrollView extends ScrollView {
+  /** The content height at the last layout that showed the tail. */
+  tailHeight = 0
+  measuredHeight = 0
+  /** Where a reader scrolled away stood when the content shrank under them. */
+  private heldTop: number | undefined
+  /** Called after each layout. */
+  readonly watchers = new Set<() => void>()
+
+  override updateLayout(contentHeight: number, viewportHeight: number, requestRender: () => void): void {
+    const away = !this.isFollowingEnd
+    const top = this.heldTop ?? this.scrollTop
+    this.measuredHeight = contentHeight
+    super.updateLayout(contentHeight, viewportHeight, requestRender)
+    if (away && this.isFollowingEnd) {
+      // The clamp followed the end for a reader who was away: put them back, or as near as the content allows.
+      this.heldTop = top
+      super.scrollTo(top, { disableFollow: true })
+    } else if (this.heldTop !== undefined) {
+      super.scrollTo(this.heldTop, { disableFollow: true })
+      if (this.heldTop <= Math.max(0, contentHeight - viewportHeight)) this.heldTop = undefined
+    }
+    if (this.isFollowingEnd || contentHeight <= viewportHeight) this.tailHeight = contentHeight
+    for (const watcher of [...this.watchers]) watcher()
+  }
+
+  override scrollTo(scrollTop: number, options?: Parameters<ScrollView['scrollTo']>[1]): void {
+    this.heldTop = undefined
+    super.scrollTo(scrollTop, options)
+  }
+
+  override scrollBy(lines: number): number {
+    this.heldTop = undefined
+    return super.scrollBy(lines)
+  }
+
+  override scrollToEnd(): void {
+    this.heldTop = undefined
+    super.scrollToEnd()
+  }
+
+  override scrollToStart(): void {
+    this.heldTop = undefined
+    super.scrollToStart()
+  }
 }
 
 /** Constructor options for {@link startMayflyTerminal}. */
@@ -763,7 +841,7 @@ export function startMayflyTerminal(
     const bottomRows = Math.min(surfaceBudget, surfaceBottomRows())
     return terminal.rows - headerRows - bottomRows
   }, rows => { lastDockRows = rows }) : undefined
-  const scrollView = contentContainer === undefined ? undefined : new ScrollView(contentContainer, {
+  const scrollView = contentContainer === undefined ? undefined : new TailScrollView(contentContainer, {
     follow: 'end',
     primary: true,
     overscroll: 'chain',
@@ -891,7 +969,6 @@ export function startMayflyTerminal(
   rebuildSurfaceLayout = alternate ? rebuildAlternateLayout : rebuildMainLayout
   rebuildSurfaceLayout()
   let contentScrollOffset = 0
-  let contentScrollManual = false
   // The dock must also sit on the terminal's last rows even when the mounted
   // content is shorter than the viewport (boot with no session yet, a fresh
   // /new) — pi-tui stacks root children top-down, so an unpadded tree leaves
@@ -985,6 +1062,12 @@ export function startMayflyTerminal(
     surfaceLaneRows() {
       return measuredLaneRows(terminal.rows, surfaceHeaderRows(), surfaceBottomRows())
     },
+    dockRows() {
+      if (alternate) return lastDockRows
+      let rows = 0
+      for (const child of orderedDock()) rows += child.render(current.terminal.columns).length
+      return rows
+    },
     releaseSurfaceFocus(id) {
       if (surfaces.focusedId !== id) return
       surfaces.setFocused(undefined)
@@ -1070,20 +1153,26 @@ export function startMayflyTerminal(
         : Math.max(0, contentScrollOffset - step)
       if (next === contentScrollOffset) return false
       contentScrollOffset = next
-      contentScrollManual = next > 0
       current.requestRender(true)
       return true
     },
-    contentChanged() {
-      if (current instanceof TuiAltScreen) {
-        const paused = !current.isFollowingOutput
-        current.requestRender()
-        return paused
+    watchContentTail(listener) {
+      scrollView?.watchers.add(listener)
+      return () => { scrollView?.watchers.delete(listener) }
+    },
+    contentTail() {
+      if (scrollView === undefined) return undefined
+      const layout = surfaces.layout(terminal.columns, terminal.rows)
+      const left = layout.left === undefined ? 0 : (layout.left.width ?? 0) + 1
+      const right = layout.right === undefined ? 0 : (layout.right.width ?? 0) + 1
+      const away = !scrollView.isFollowingEnd && scrollView.measuredHeight > scrollView.viewportHeight
+      return {
+        away,
+        unseen: away ? Math.max(0, scrollView.measuredHeight - scrollView.tailHeight) : 0,
+        row: lastSurfaceHeaderRows + Math.max(1, scrollView.viewportHeight) - 1,
+        col: left,
+        width: Math.max(1, terminal.columns - left - right),
       }
-      const wasManual = contentScrollManual
-      if (!contentScrollManual) contentScrollOffset = 0
-      current.requestRender()
-      return wasManual
     },
     followContent() {
       if (current instanceof TuiAltScreen) {
@@ -1091,7 +1180,6 @@ export function startMayflyTerminal(
         return
       }
       contentScrollOffset = 0
-      contentScrollManual = false
       current.requestRender(true)
     },
     setContentScrollHandler(handler) {

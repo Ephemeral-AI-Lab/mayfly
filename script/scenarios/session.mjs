@@ -43,7 +43,10 @@ export async function prepareSession({ scenario, dir, speed = 1, control, config
   mkdirSync(dir, { recursive: true })
   const patch = join(dir, 'overlay.yml')
   const rows = [`- insert:\n    - id: mayfly-replay-driver\n      name: ${pathToFileURL(DRIVER).href}\n`]
-  for (const [id, settings] of Object.entries(config)) rows.push(`- id: ${id}\n  config:\n${Object.entries(settings).map(([key, value]) => `    ${key}: ${JSON.stringify(value)}\n`).join('')}`)
+  // A scenario may pin settings of its own (a work-details mode) over the runner's.
+  const pinned = { ...config }
+  for (const [id, settings] of Object.entries(scenario.config ?? {})) pinned[id] = { ...pinned[id], ...settings }
+  for (const [id, settings] of Object.entries(pinned)) rows.push(`- id: ${id}\n  config:\n${Object.entries(settings).map(([key, value]) => `    ${key}: ${JSON.stringify(value)}\n`).join('')}`)
   for (const id of disabled) rows.push(`- id: ${id}\n  disabled: true\n`)
   if (isolate) {
     rows.push(`- id: session-persistence-jsonl\n  config:\n    root: ${JSON.stringify(join(dir, 'store/sessions'))}\n`)

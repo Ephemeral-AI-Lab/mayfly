@@ -6,7 +6,8 @@
  */
 
 import { Context, Service } from '@deepseek-ai/cordis'
-import { NodeSlotHost, type MayflyNodeSlot, type MayflyNodeSlotCompiler, type MayflyNodeSlotRegion } from './node-slot.ts'
+import { NodeSlotHost, type MayflyNodeSlot, type MayflyNodeSlotCompiler, type MayflyNodeSlotOptions } from './node-slot.ts'
+import { SearchLine, type MayflySearchLine, type MayflySearchLineOptions } from './search-line.ts'
 import { concatRows } from './ui-rows.ts'
 import type { MayflyTerminalRuntime } from './terminal.ts'
 import type { MayflyViewsSource } from './views-lane.ts'
@@ -159,10 +160,12 @@ export class MayflyScreenService extends Service implements MayflyScreen {
   private readonly fixed = new Map<string, StableSlotHost>()
   private readonly claimed = new Set<string>()
   private readonly local = new LocalActivityRegion()
+  private searchLine: MayflySearchLine | undefined
   /** Node-backed slots claim the same fixed hosts: content as a content slot, dock as the prompt, footer as the footer. */
   private readonly nodeSlots = new NodeSlotHost(
     (id, region, component) => region === 'content' ? this.mountContentSlot(id, component) : this.mountDockSlot(id, component, region === 'footer' ? 'bottom' : undefined),
-    region => region === 'dock' ? this.editorViewport : { columns: this.runtime.columns, rows: this.runtime.rows },
+    region => region === 'dock' ? this.editorViewport : region === 'footer' ? { columns: this.runtime.columns, rows: this.runtime.rows } : this.contentViewport,
+    () => { this.fixed.get('editor.prompt')?.focus() },
   )
 
   /**
@@ -185,7 +188,12 @@ export class MayflyScreenService extends Service implements MayflyScreen {
     this.fixed.set('status.footer', footer)
     runtime.addBottomChild(editor)
     runtime.addBottomChild(footer, 'bottom')
-    ctx.effect(() => () => { this.nodeSlots.dispose() })
+    ctx.effect(() => () => {
+      this.searchLine?.dispose()
+      this.nodeSlots.dispose()
+    })
+    // Entering a view of status row 2 moves focus to the bar; leaving it gives focus back to the prompt.
+    ctx.effect(() => runtime.surfaces.views.onEnteredChange((entered) => { ctx.emit('mayfly/focus-mode-changed', entered ? 'bar' : 'prompt') }))
     runtime.requestRender()
   }
 
@@ -214,6 +222,15 @@ export class MayflyScreenService extends Service implements MayflyScreen {
     const columns = this.runtime.columns
     const footerRows = this.fixed.get('status.footer')!.render(columns).length
     return { columns, rows: Math.max(1, this.runtime.rows - footerRows - 1 - this.runtime.surfaceLaneRows()) }
+  }
+
+  /**
+   * The rows of the scroll region that stay in view: the terminal minus the dock and the lanes. A focused list windows
+   * around its cursor to this many rows, so the cursor is never in the part the dock covers.
+   */
+  get contentViewport(): { readonly columns: number, readonly rows: number } {
+    const rows = this.runtime.rows - this.runtime.dockRows() - this.runtime.surfaceLaneRows()
+    return { columns: this.runtime.columns, rows: Math.max(1, rows) }
   }
 
   /** The views of status row 2, for the footer that paints their summaries and, while one is entered, its panel. */
@@ -257,8 +274,66 @@ export class MayflyScreenService extends Service implements MayflyScreen {
    * @param options - the region the slot sits in.
    * @returns the lease; the screen's teardown revokes it and keeps its interaction state.
    */
-  mountNodeSlot(id: string, options: { readonly region: MayflyNodeSlotRegion }): MayflyNodeSlot {
-    return this.nodeSlots.mount(id, options.region)
+  mountNodeSlot(id: string, options: MayflyNodeSlotOptions): MayflyNodeSlot {
+    return this.nodeSlots.mount(id, options)
+  }
+
+  /**
+   * Move keyboard focus from the prompt into the conversation, where the cursor walks its rows. The prompt calls this on
+   * `Alt+↑`/`F4` with an empty buffer.
+   * @returns whether the conversation took focus; `false` leaves the key to the editor.
+   */
+  focusConversation(): boolean {
+    return this.nodeSlots.focusContent()
+  }
+
+  /**
+   * Open the search line above the editor and let its pattern be typed. There is one: opening it again replaces the first.
+   * @param options - what the line reports, and the character it starts with.
+   * @returns the lease; disposing it closes the line.
+   */
+  mountSearchLine(options: MayflySearchLineOptions): MayflySearchLine {
+    this.searchLine?.dispose()
+    const line = new SearchLine(options, {
+      colors: () => this.nodeSlots.compiler?.colors,
+      keymap: () => this.nodeSlots.compiler?.keymap,
+      requestRender: () => { this.runtime.requestRender() },
+    })
+    // Just above the editor, below the panes: the highest priority a regular dock child takes.
+    this.runtime.addDockChild(line, { priority: Number.MAX_SAFE_INTEGER - 1 })
+    this.runtime.setFocus(line)
+    let live = true
+    const lease: MayflySearchLine = {
+      get disposed() { return !live },
+      set: (status) => { if (live) line.setStatus(status) },
+      edit: () => {
+        if (!live) return
+        line.setEditable(true)
+        this.runtime.setFocus(line)
+      },
+      freeze: () => { if (live) line.setEditable(false) },
+      dispose: () => {
+        if (!live) return
+        live = false
+        if (this.searchLine === lease) this.searchLine = undefined
+        const held = line.focused
+        this.runtime.removeChild(line)
+        if (held) this.fixed.get('editor.prompt')?.focus()
+        this.runtime.requestRender()
+      },
+    }
+    this.searchLine = lease
+    return lease
+  }
+
+  /** The newest turn the conversation slots hold, for the `N new turns` tally of a view scrolled away from the tail. */
+  contentTurns(): number {
+    return this.nodeSlots.contentTurns()
+  }
+
+  /** Listen to the newest conversation turn changing, for the tail chip's count. */
+  onContentTurns(listener: () => void): () => void {
+    return this.nodeSlots.onContentTurns(listener)
   }
 
   /** The surface renderer lends its compiler dependencies and clock to the node slots; the disposer takes them back. */
@@ -300,10 +375,6 @@ export class MayflyScreenService extends Service implements MayflyScreen {
 
   scrollContent = (direction: 'up' | 'down', amount?: number): boolean => {
     return this.runtime.scrollContent(direction, amount)
-  }
-
-  contentChanged = (): boolean => {
-    return this.runtime.contentChanged()
   }
 
   /* exercised by End in the real input path */

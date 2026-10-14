@@ -35,9 +35,9 @@
 import { exec } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import type { Context } from '@deepseek-ai/cordis'
+import { GutterComponent, STREAM_GUTTER } from '../core/gutter.ts'
 import type { MayflyAutocompleteItem, MayflyAutocompleteProvider, MayflyAutocompleteSuggestions, MayflyComponent, MayflyComponents, MayflySemanticColors } from '../core/types.ts'
 import type { MayflyTranslate } from '../frontend/locale.ts'
-import type { TranscriptLocalsService } from '../transcript/transcript-model.ts'
 import {
   ENHANCEMENT_EDITOR_PLUS,
   markEditorEnhancement,
@@ -417,19 +417,13 @@ function runShell(ctx: Context, command: string, isUnloaded: () => boolean): voi
       result.code,
       interactionTranslator(ctx),
     )
-    // Effect-bound so unloading this fiber also removes its echoes. When the
-    // transcript plugin is mounted the echo anchors into the conversation
-    // flow — it lands after the durable tail and later history pushes it up
-    // like an ordinary message instead of pinning above the editor;
-    // compositions without the seam fall back to a local content slot. The
-    // mount lands after the input-driven frame — the shell settles
-    // asynchronously and the renderer only paints on request — so the
-    // render must be asked for here or the echo stays invisible until the
-    // next keypress.
+    // Effect-bound so unloading this fiber also removes its echoes. The echo is a
+    // local content slot below the conversation stream. The mount lands after
+    // the input-driven frame — the shell settles asynchronously and the
+    // renderer only paints on request — so the render must be asked for here
+    // or the echo stays invisible until the next keypress.
     ctx.effect(() => {
-      const locals = ctx.get('mayflyTranscriptLocals') as TranscriptLocalsService | undefined
-      if (locals !== undefined) return locals.append(echo)
-      const slot = ctx.mayflyScreen.mountContentSlot(`local.shell.${randomUUID()}`, echo)
+      const slot = ctx.mayflyScreen.mountContentSlot(`local.shell.${randomUUID()}`, new GutterComponent(echo, STREAM_GUTTER))
       ctx.mayflyScreen.requestRender()
       return () => slot.dispose()
     })

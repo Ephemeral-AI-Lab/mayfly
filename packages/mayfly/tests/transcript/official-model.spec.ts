@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import type { Session } from '@deepseek-ai/dsh-session'
 import type { ToolRuntime } from '@deepseek-ai/dsh-tools'
 import type { ConversationJson, ConversationProjection, ConversationToolEntry } from '../../src/conversation/types.ts'
-import { conversationTranscriptModel, OfficialConversationModelSource } from '../../src/transcript/official-model.ts'
+import { conversationTranscriptModel, OfficialConversationModelSource, trimContext, WRITE_HEAD_LINES } from '../../src/transcript/official-model.ts'
 import type { ConversationProjectionSource } from '../../src/transcript/conversation-feed.ts'
 import type { ToolPresentationSource } from '../../src/transcript/present.ts'
 import { materializeTranscriptEntries } from '../../src/frontend/models.ts'
@@ -356,7 +356,7 @@ describe('official conversation model mapping', () => {
     const group = model.entries[0] as unknown as { reads: Array<Record<string, unknown>> }
     expect(group.reads[0]).toMatchObject({
       callId: 'c-rich', path: 'big.ts', requestedRange: { first: 101, last: 108 }, range: { first: 101, last: 108 },
-      totalLines: 400, state: 'ok', previewLines: { length: 5 },
+      totalLines: 400, state: 'ok', previewLines: { length: 8 },
     })
     expect((group.reads[0]!['previewLines'] as Array<{ number: number }>)[0]).toMatchObject({ number: 101 })
     expect(group.reads[1]).toMatchObject({ callId: 'c-pending', path: 'next.ts', state: 'pending', requestedRange: { first: 5, last: 34 } })
@@ -365,6 +365,19 @@ describe('official conversation model mapping', () => {
     expect(group.reads[2]!['range']).toBeUndefined()
     expect(group.reads[3]).toMatchObject({ callId: 'c-noargs', state: 'error', error: 'File not found: nope.txt' })
     expect(group.reads[3]!['path']).toBeUndefined()
+  })
+
+  it('derives how the Harness cut a call short from the failure code of its result, and only for an error', () => {
+    const result = (code: string | undefined, isError = true) => ({ content: [{ type: 'text' as const, text: 'cut' }], text: 'cut', isError, endedAt: 9, ...(code === undefined ? {} : { code }) })
+    const model = conversationTranscriptModel(projection([
+      transcriptTool({ id: 'a', callId: 'c-a', seq: 1, updatedSeq: 1, name: 'bash', arguments: '{"command":"sleep 9"}', result: result('ABORTED') }),
+      transcriptTool({ id: 'b', callId: 'c-b', seq: 2, updatedSeq: 2, name: 'bash', arguments: '{"command":"sleep 8"}', result: result('ABORTED_BEFORE_DISPATCH') }),
+      transcriptTool({ id: 'c', callId: 'c-c', seq: 3, updatedSeq: 3, name: 'bash', arguments: '{"command":"sleep 7"}', result: result('TOOL_NOT_STARTED') }),
+      transcriptTool({ id: 'd', callId: 'c-d', seq: 4, updatedSeq: 4, name: 'bash', arguments: '{"command":"sleep 6"}', result: result('TOOL_OUTCOME_UNKNOWN') }),
+      transcriptTool({ id: 'e', callId: 'c-e', seq: 5, updatedSeq: 5, name: 'bash', arguments: '{"command":"sleep 5"}', result: result('E_TOOL') }),
+      transcriptTool({ id: 'f', callId: 'c-f', seq: 6, updatedSeq: 6, name: 'bash', arguments: '{"command":"sleep 4"}', result: result('ABORTED', false) }),
+    ]), toolSource())
+    expect(model.entries.map(entry => (entry as { result?: { interruption?: string } }).result?.interruption)).toEqual(['aborted', 'not-started', 'not-started', 'unknown', undefined, undefined])
   })
 
   it('falls back to the view path and the stock error line', () => {
@@ -998,5 +1011,155 @@ describe('OfficialConversationModelSource', () => {
     source.attach(f.session)
     expect(materializeTranscriptEntries(source.snapshot())).toHaveLength(4)
     source.dispose()
+  })
+})
+
+/** A registry whose edit and write calls present a diff card on the call, the result, or both. */
+function diffSource(views: { readonly call?: unknown, readonly result?: unknown }): ToolPresentationSource {
+  return {
+    get(name: string) {
+      if (name !== 'edit' && name !== 'write') return undefined
+      return {
+        presentCall: () => views.call,
+        presentResult: () => views.result,
+      } as never
+    },
+  } as Pick<ToolRuntime, 'get'>
+}
+
+function fileTool(name: 'edit' | 'write', overrides: Partial<ConversationToolEntry> = {}): ConversationToolEntry {
+  return transcriptTool({
+    id: `${name}-1`, callId: `c-${name}`, name, arguments: '{}',
+    result: { content: [{ type: 'text', text: 'done' }], text: 'done', isError: false, endedAt: 200 },
+    ...overrides,
+  })
+}
+
+const lines = (prefix: string, count: number): string => Array.from({ length: count }, (_, index) => `${prefix}${String(index + 1)}`).join('\n')
+
+describe('how a command call maps its input', () => {
+  it('keeps the first line of a multi-line command, drops its blank lines, truncates long lines, and caps the input lines', () => {
+    const script = ['echo first', '', '   ', `echo ${'z'.repeat(200)}`, ...Array.from({ length: 50 }, (_, index) => `step ${String(index)}`)].join('\n')
+    const model = conversationTranscriptModel(projection([
+      bash('b1', 'c-b1', 1, script, commandResult('ok', { exitCode: 0 })),
+      bash('b2', 'c-b2', 2, 'true', commandResult('ok', { exitCode: 0 })),
+    ]), commandSource())
+    const group = model.entries[0] as unknown as { commands: { command: string, commandLines?: string[] }[] }
+    expect(group.commands[0]!.command).toBe('echo first …')
+    const shown = group.commands[0]!.commandLines!
+    expect(shown).toHaveLength(40)
+    expect(shown.slice(0, 2)).toEqual(['echo first', `${`echo ${'z'.repeat(200)}`.slice(0, 159)}…`])
+    expect(shown[2]).toBe('step 0')
+    // A one-line command carries no input lines.
+    expect(group.commands[1]).not.toHaveProperty('commandLines')
+  })
+})
+
+describe('how an edit or a write maps its change', () => {
+  const diff = (oldText: string | null, newText: string, path = 'src/a.ts') => ({ path, oldText, newText })
+  const changeOf = (source: ToolPresentationSource, entry: ConversationToolEntry) => (conversationTranscriptModel(projection([entry]), source).entries[0] as unknown as { change?: Record<string, unknown> }).change
+
+  it('trims an edit to one unchanged line around its change and counts what changed', () => {
+    const change = changeOf(diffSource({ result: { card: 'diff', diffs: [diff('a\nb\nc\nd\ne', 'a\nb\nX\nd\ne')] } }), fileTool('edit'))
+    expect(change).toEqual({ path: 'src/a.ts', added: 1, removed: 1, hunks: [{ before: 'b\nc\nd', after: 'b\nX\nd' }], hiddenLines: 0 })
+  })
+
+  it('takes the diffs of the call when the result presents none, and treats a missing old text as empty', () => {
+    const change = changeOf(diffSource({ call: { card: 'diff', title: 'Edit', diffs: [diff(null, 'one\ntwo')] } }), fileTool('edit'))
+    expect(change).toEqual({ path: 'src/a.ts', added: 2, removed: 0, hunks: [{ before: '', after: 'one\ntwo' }], hiddenLines: 0 })
+  })
+
+  it('cuts a long hunk at sixty lines and counts the lines it hides', () => {
+    const change = changeOf(diffSource({ result: { card: 'diff', diffs: [diff(lines('o', 70), lines('n', 70))] } }), fileTool('edit'))
+    expect(change).toMatchObject({ added: 70, removed: 70, hiddenLines: 20 })
+    expect((change!['hunks'] as { before: string, after: string }[])[0]!.before.split('\n')).toHaveLength(60)
+  })
+
+  it('draws no change for a call that still runs, one that failed, or a view without diffs', () => {
+    const present = diffSource({ result: { card: 'diff', diffs: [diff('a', 'b')] } })
+    expect(changeOf(present, { ...fileTool('edit'), result: undefined })).toBeUndefined()
+    expect(changeOf(present, fileTool('edit', { result: { content: [{ type: 'text', text: 'no match' }], text: 'no match', isError: true, endedAt: 200 } }))).toBeUndefined()
+    expect(changeOf(diffSource({ result: { card: 'diff', diffs: [] } }), fileTool('edit'))).toBeUndefined()
+    // A write whose views carry no diff card has no change either.
+    expect(changeOf(diffSource({ result: { card: 'generic', title: 'Wrote' } }), fileTool('write'))).toBeUndefined()
+  })
+
+  it('maps a created file to its size and head, trimming the closing newline off the line count', () => {
+    const created = fileTool('write', { result: { content: [], text: 'done', isError: false, endedAt: 200, meta: { operation: 'create' } } })
+    const change = changeOf(diffSource({ call: { card: 'diff', title: 'Write', diffs: [diff(null, 'l1\nl2\n')] }, result: { card: 'diff', diffs: [diff(null, 'l1\nl2\n')] } }), created)
+    expect(change).toEqual({ path: 'src/a.ts', added: 2, removed: 0, hunks: [], hiddenLines: 0, write: { bytes: 6, lines: 2, head: ['l1', 'l2'] } })
+  })
+
+  it('keeps the head of a long created file to forty lines', () => {
+    const change = changeOf(diffSource({ result: { card: 'diff', diffs: [diff(null, lines('row ', 55))] } }), fileTool('write'))
+    expect(change).toMatchObject({ added: 55, write: { lines: 55 } })
+    expect((change!['write'] as { head: string[] }).head).toHaveLength(WRITE_HEAD_LINES)
+  })
+
+  it('counts an overwrite as the diff it made, and reads the content from the result when the call shows none', () => {
+    const update = fileTool('write', { result: { content: [], text: 'done', isError: false, endedAt: 200, meta: { operation: 'update' } } })
+    const change = changeOf(diffSource({ call: { card: 'diff', title: 'Write', diffs: [] }, result: { card: 'diff', diffs: [diff(null, 'fresh')] } }), update)
+    // `update` is never a creation, even over an empty old text; the call gave no content, so the write is empty.
+    expect(change).toEqual({ path: 'src/a.ts', added: 1, removed: 0, hunks: [], hiddenLines: 0, write: { bytes: 0, lines: 0, head: [] } })
+    const overwrite = changeOf(diffSource({ result: { card: 'diff', diffs: [diff('old line', 'new line')] } }), fileTool('write'))
+    expect(overwrite).toMatchObject({ added: 1, removed: 1, write: { bytes: 8, lines: 1, head: ['new line'] } })
+  })
+
+  it('trims shared context by line and leaves an unfinished change alone at its tail', () => {
+    expect(trimContext('', '')).toEqual({ before: '', after: '' })
+    // A pure addition keeps one line of context before it.
+    expect(trimContext('a\nb\nc', 'a\nb\nc\nd')).toEqual({ before: 'c', after: 'c\nd' })
+    expect(trimContext('x\ny\nz', 'x\ny\nz', true)).toEqual({ before: 'z', after: 'z' })
+    // While the change is written its end is unknown: the tail is not compared.
+    expect(trimContext('a\nb\nc\nd', 'a\nB\nc\nd', false)).toEqual({ before: 'a\nb\nc\nd', after: 'a\nB\nc\nd' })
+  })
+})
+
+describe('how the other entry kinds map', () => {
+  it('maps a compaction with every fact it carries, and leaves absent ones out', () => {
+    const base = { kind: 'compaction' as const, turn: 1, trigger: 'auto' as const, startedAt: 10 }
+    const model = conversationTranscriptModel(projection([
+      { ...base, id: 'c1', seq: 1, updatedSeq: 1, state: 'ok', endedAt: 30, summaryAt: 20, compactionId: 'cmp-1', shadowedCount: 12, shadowedTokens: 3400, summary: 'the summary', detail: 'Compacted', error: 'unused' },
+      { ...base, id: 'c2', seq: 2, updatedSeq: 2, state: 'running', trigger: 'manual' },
+    ]), toolSource())
+    expect(model.entries[0]).toEqual({
+      kind: 'transcript-compaction', id: 'c1', seq: 1, updatedSeq: 1, turn: 1, state: 'ok', trigger: 'auto', startedAt: 10, endedAt: 30, summaryAt: 20,
+      compactionId: 'cmp-1', shadowedCount: 12, shadowedTokens: 3400, summary: 'the summary', detail: 'Compacted', error: 'unused',
+    })
+    expect(model.entries[1]).toEqual({ kind: 'transcript-compaction', id: 'c2', seq: 2, updatedSeq: 2, turn: 1, state: 'running', trigger: 'manual', startedAt: 10 })
+  })
+})
+
+describe('OfficialConversationModelSource edges', () => {
+  it('shows the calls the model is still writing, except those the projection already dispatched', () => {
+    const f = sourceFixture(projection([transcriptTool({ id: 'sent', callId: 'call-sent', name: 'bash', arguments: '{}' })], true), 1)
+    const agent = { session: f.session } as never
+    const draft = {
+      sessionId: 'session-1', attemptId: 'a', revision: 1, turn: 1, step: 1, phase: 'composing' as const,
+      reasoning: '', text: '', outputProgress: undefined, chars: 0, updatedAt: 1,
+      preparing: [
+        { id: 'call-sent', name: 'bash', arguments: '{}', startedAt: 5, characters: 2 },
+        { id: 'call-new', name: 'write', arguments: '{"path":"a', startedAt: 6, characters: 10 },
+      ],
+    }
+    const source = new OfficialConversationModelSource(f.source, toolSource(), () => {}, { subscribe: () => () => {}, get: () => draft })
+    source.attach(f.session, undefined, agent)
+    const model = source.snapshot()
+    expect(model.live?.entries).toMatchObject([{ kind: 'transcript-tool', id: 'preparing:call-new', callId: 'call-new', name: 'write', startedAt: 6, preparing: { characters: 10 } }])
+    source.dispose()
+  })
+
+  it('republishes nothing for a tools change after it was disposed', () => {
+    const f = sourceFixture(projection([transcriptTool()]), 4)
+    const publish = vi.fn()
+    const source = new OfficialConversationModelSource(f.source, toolSource(), publish)
+    source.attach(f.session)
+    source.snapshot()
+    const before = publish.mock.calls.length
+    source.invalidateTools()
+    expect(publish).toHaveBeenCalledTimes(before + 1)
+    source.dispose()
+    source.invalidateTools()
+    expect(publish).toHaveBeenCalledTimes(before + 1)
   })
 })

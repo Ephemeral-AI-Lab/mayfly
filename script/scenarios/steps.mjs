@@ -9,8 +9,11 @@
  * that waits for an answer (an approval or a question), which the next steps answer with keys.
  */
 export const play = (until, { timed = false } = {}) => ({ step: 'play', ...(until === undefined ? {} : { until }), ...(timed ? { timed } : {}) })
-/** Capture the screen as the checkpoint `name`. */
-export const checkpoint = name => ({ step: 'checkpoint', name })
+/**
+ * Capture the screen as the checkpoint `name`. With `tick`, the product's counters (`Bash · 4s`) are ticked once at the
+ * timeline time first, so a counter does not depend on where the product's own timer fell under load.
+ */
+export const checkpoint = (name, { tick = false } = {}) => ({ step: 'checkpoint', name, ...(tick ? { tick } : {}) })
 /** Send a key by name (`enter`, `down`, `ctrl+o`, `alt+x`, or literal text), `repeat` times. */
 export const key = (name, { repeat = 1 } = {}) => ({ step: 'key', name, repeat })
 /** Type text one character at a time. */
@@ -21,6 +24,13 @@ export const click = at => ({ step: 'click', at })
 export const wheel = (direction, { at, count = 1 } = {}) => ({ step: 'wheel', direction, count, ...(at === undefined ? {} : { at }) })
 /** Resize the terminal. */
 export const resize = (cols, rows) => ({ step: 'resize', cols, rows })
+/** Let `ms` of wall-clock time pass, then settle: for a state that changes by itself (an arm delay runs out). */
+export const wait = ms => ({ step: 'wait', ms })
+/**
+ * Wait until the visible screen holds `text`, then settle: for a screen the product opens by itself after a key (an
+ * overlay that lists something loads it first), so the next key lands on it however long the load takes.
+ */
+export const until = text => ({ step: 'until', text })
 /** Measure the product doing nothing for `ms`: CPU and frames (a perf span named `idle`). */
 export const idle = ms => ({ step: 'idle', ms })
 /**

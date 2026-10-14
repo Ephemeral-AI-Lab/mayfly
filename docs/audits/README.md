@@ -4,6 +4,14 @@ Each file is a dated record of one investigation or acceptance round. A record s
 define current behavior; the code and the [architecture docs](../README.md) do. Read a record's closeout or status note
 first, when it has one.
 
+## Phase 3 closeout audit (2026-10-13)
+
+Folder: [phase-3/](phase-3/). Closed with PR #15; fixed items are in the PR, the rest are carried to Phases 5, 7 and 8 (see the Resolution section).
+
+| Record | What it is | Read it for |
+| --- | --- | --- |
+| [Closeout audit](phase-3/2026-10-13-phase-3-closeout-audit.md) | Docs, decision tests, the `phase3` integration scenario, and a check of how the Phase 3 components fit together | The findings (D, O, P, C), the owner decisions, the verification state, and the next steps |
+
 ## Phase 2 pre-review audit (2026-10-11)
 
 Folder: [phase-2/](phase-2/). Closed; every dispatched fix is on `main`.

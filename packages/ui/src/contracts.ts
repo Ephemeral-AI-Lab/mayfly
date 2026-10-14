@@ -29,9 +29,9 @@ interface MayflySnapshotPage<Node> { readonly node: Node, readonly nextCursor?: 
 export type MayflySnapshotProvider<Node> = (request: MayflySnapshotRequest) => MayflySnapshotPage<Node> | Promise<MayflySnapshotPage<Node>>
 
 export type MayflyTone = 'default' | 'muted' | 'primary' | 'accent' | 'user' | 'success' | 'warning' | 'danger'
-export type MayflyTextStyle = 'strong' | 'italic' | 'strike'
+export type MayflyTextStyle = 'strong' | 'italic' | 'strike' | 'inverse'
 /** The glyph animations of a loader and of a loader span. */
-export type MayflyLoaderVariant = 'bloom' | 'fill' | 'gap' | 'breath'
+export type MayflyLoaderVariant = 'bloom' | 'fill' | 'gap' | 'breath' | 'pulse'
 export interface MayflyInlineSpan {
   readonly text: string
   readonly tone?: MayflyTone
@@ -62,21 +62,38 @@ export type MayflyContentField = string | readonly MayflyContentChunk[]
 export interface MayflyTextNode { readonly kind: 'text', readonly content: MayflyContentField, readonly tone?: MayflyTone, readonly overflow?: MayflyTextOverflow, readonly styles?: readonly MayflyTextStyle[] }
 export interface MayflyMarkdownNode { readonly kind: 'markdown', readonly source: MayflyContentField }
 export interface MayflyFieldsNode { readonly kind: 'fields', readonly rows: readonly MayflyField[] }
-export interface MayflyCodeNode { readonly kind: 'code', readonly code: MayflyContentField, readonly language?: string, readonly numbered?: boolean }
+export interface MayflyCodeNode {
+  readonly kind: 'code'
+  readonly code: MayflyContentField
+  readonly language?: string
+  readonly numbered?: boolean
+  /** The number of the first line (default 1), for code that is a window of a longer text. */
+  readonly start?: number
+  /** Whether a muted row names the language above the code (default true); the language still picks the highlighting. */
+  readonly label?: boolean
+}
 export interface MayflyDiffNode {
   readonly kind: 'diff'
   readonly before: string
   readonly after: string
-  /** The number of the first line (default 1). */
+  /** The number of the first line after the change, and before it unless `beforeStart` says otherwise (default 1). */
   readonly start?: number
-  /** Old and new line-number gutters (default true). */
+  /** The number of the first line before the change (default `start`). */
+  readonly beforeStart?: number
+  /** A line-number gutter: a removed line shows its number before the change, any other its number after it (default true). */
   readonly numbered?: boolean
+  /** The least width of the number column, so several diffs shown together share one gutter (default 1). */
+  readonly numberWidth?: number
   /** Draw an `@@` header even for one hunk (default: only when there is more than one). */
   readonly hunkHeader?: boolean
   /** Context lines around each change, 0 to 3 (default 1). */
   readonly context?: number
   /** At most this many rows, then `… +N rows · Ctrl+O`. */
   readonly maxRows?: number
+  /** The row that ends a diff cut at `maxRows`, in place of `… +N rows · Ctrl+O` (the caller's own count and wording). */
+  readonly tail?: string
+  /** Syntax highlighting of the code of every row, by language name. */
+  readonly language?: string
 }
 export interface MayflyRichTextNode { readonly kind: 'rich-text', readonly spans: readonly MayflyInlineSpan[], readonly overflow?: Extract<MayflyTextOverflow, 'wrap' | 'truncate'> }
 export interface MayflyDiagramNode { readonly kind: 'diagram', readonly diagram: 'mermaid', readonly source: MayflyContentField }
@@ -187,12 +204,19 @@ export interface MayflyListItem {
   readonly body?: string | MayflyListBodyNode
   /** The body is always open and the row is not a disclosure. */
   readonly bodyAlways?: boolean
+  /**
+   * With `bodyAlways` and a node body: the row has no head line of its own. These spans lead the body's first row (after
+   * the cursor gutter) and the body is laid out in the columns that remain, so its other rows start under it.
+   */
+  readonly bodyLead?: readonly MayflyInlineSpan[]
   /** The row starts open. */
   readonly expanded?: boolean
   /** Wrap the row's text onto more rows instead of truncating it. */
   readonly wrap?: boolean
   /** With `wrap`, the most lines shown before `▸ N more lines · Enter`. */
   readonly wrapMax?: number
+  /** With `wrap`, the columns the continuation lines start beyond the row's prefix: the width of a glyph that leads the text, so they align under it. */
+  readonly hang?: number
   readonly meter?: { readonly value: number, readonly max: number, readonly width?: number, readonly tone?: MayflyTone }
   /** Columns of indent before the row's own glyphs. */
   readonly indent?: number
@@ -207,12 +231,29 @@ export interface MayflyListItem {
   readonly disabled?: boolean
   readonly disabledReason?: string
   readonly parentId?: string
+  /**
+   * The id of the item whose block this row belongs to. A list with `marker: 'band'` draws the band behind the cursor
+   * item and every row under it, so a block that spans rows (a head and its body) is marked whole.
+   */
+  readonly under?: string
   readonly searchText?: string
   readonly segment?: MayflyListSegment
   /** Actions (by id) that cannot run while this row is the selection they target, with the reason shown in place of the action. */
   readonly unavailableActions?: Readonly<Record<string, string>>
   /** Shared decision shown before accepting this single row. */
   readonly confirm?: string | MayflyConfirmation
+}
+/** What a list marks in its rows: a regular expression, matched against each painted line (a match a wrap cut in two is not found). */
+export interface MayflyListHighlight {
+  /** A JavaScript regular expression source; one that does not compile marks nothing. At most 256 characters. */
+  readonly pattern: string
+  /** Match case (default: any case). */
+  readonly caseSensitive?: boolean
+  /**
+   * Which match inside the cursor row's block (the row and the rows under it, in order, counted from 0) is the current one: it
+   * is drawn stronger and the window centers on it, so a match deep in a tall block is in view.
+   */
+  readonly current?: number
 }
 export interface MayflyListNode {
   readonly kind: 'list'
@@ -232,12 +273,17 @@ export interface MayflyListNode {
   readonly maxSelected?: number
   readonly acceptActionId?: string
   readonly empty?: MayflyUiNode
-  /** `'selection'` keeps a muted arrow on the cursor row after focus leaves the list (a list whose detail follows it). */
-  readonly marker?: 'cursor' | 'selection'
+  /**
+   * `'selection'` keeps a muted arrow on the cursor row after focus leaves the list (a list whose detail follows it).
+   * `'band'` draws no arrow: the cursor row, and its body, take the palette's selected background across the row while the list has focus.
+   */
+  readonly marker?: 'cursor' | 'selection' | 'band'
   /** Draw `●` `○` on a single choose list. */
   readonly marks?: boolean
   /** Show at most this many rows, windowed around the cursor, with an `↑ n more · ↓ n more` row. */
   readonly maxRows?: number
+  /** Text to find: wherever it matches in a row's painted text it is drawn in reverse video. The rows themselves do not change. */
+  readonly highlight?: MayflyListHighlight
   /** The cursor row opens its body or branch while it holds the cursor. */
   readonly expandFocused?: boolean
   /** The word the hint row gives `Enter`. */

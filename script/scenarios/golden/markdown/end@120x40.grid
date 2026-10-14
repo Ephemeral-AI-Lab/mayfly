@@ -1,69 +1,69 @@
 grid 120x40 cursor none
-|   • third point, with a nested list:
-|       • nested one
-|       • nested two
+|        • nested two
 |
-|   ```ts
-|     export function section8(input: readonly string[], width: number): string[] {
-|       const rows: string[] = []
-|       for (const line of input) {
-|         if (line.length === 0) { rows.push(''); continue }
-|         for (let at = 0; at < line.length; at += width) rows.push(line.slice(at, at + width))
-|       }
-|       return rows.map(row => row.padEnd(width, ' '))
-|     }
-|   ```
+|    ```ts
+|      export function section8(input: readonly string[], width: number): string[] {
+|        const rows: string[] = []
+|        for (const line of input) {
+|          if (line.length === 0) { rows.push(''); continue }
+|          for (let at = 0; at < line.length; at += width) rows.push(line.slice(at, at + width))
+|        }
+|        return rows.map(row => row.padEnd(width, ' '))
+|      }
+|    ```
 |
-|   ┌──────────┬───────────┬──────────┬──────┐
-|   │ workload │ validated │ compiled │ rows │
-|   ├──────────┼───────────┼──────────┼──────┤
-|   │ W1       │ 2         │ 2        │ 2    │
-|   ├──────────┼───────────┼──────────┼──────┤
-|   │ W2       │ 0         │ 0        │ 1    │
-|   ├──────────┼───────────┼──────────┼──────┤
-|   │ W3       │ 0         │ 0        │ 2    │
-|   └──────────┴───────────┴──────────┴──────┘
+|    ┌──────────┬───────────┬──────────┬──────┐
+|    │ workload │ validated │ compiled │ rows │
+|    ├──────────┼───────────┼──────────┼──────┤
+|    │ W1       │ 2         │ 2        │ 2    │
+|    ├──────────┼───────────┼──────────┼──────┤
+|    │ W2       │ 0         │ 0        │ 1    │
+|    ├──────────┼───────────┼──────────┼──────┤
+|    │ W3       │ 0         │ 0        │ 2    │
+|    └──────────┴───────────┴──────────┴──────┘
 |
-|   ```python
-|     def wrap(lines, width):
-|         rows = []
-|         for line in lines:
-|             if not line:
-|                 rows.append('')
-|                 continue
-|             rows.extend(line[i:i + width] for i in range(0, len(line), width))
-|         return rows
-|   ```
+|    ```python
+|      def wrap(lines, width):
+|          rows = []
+|          for line in lines:
+|              if not line:
+|                  rows.append('')
+|                  continue
+|              rows.extend(line[i:i + width] for i in range(0, len(line), width))
+|          return rows
+|    ```
 |
+|  ✻ Worked for 7s · done 09:00
+|                                                                                       Alt+↑ conversation · Alt+↓ bar
 |╭──────────────────────────────────────────────────────────────────────────────────── Explain the rendering pipeline. ─╮
 |│ >                                                                                                                    │
 |╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
 | deepseek-flash High  ~/workspace                                                    cache 66%  context: 3% (3.5k/128k)
 styles
-0: 3-4 fg:#c9c0f0
-1: 7-8 fg:#c9c0f0
-2: 7-8 fg:#c9c0f0
-4: 3-7 fg:#45406b
-5: 5-10 fg:#9a86e6; 11 fg:#ededf2; 12-19 fg:#9a86e6; 21-28 fg:#ededf2; 30-36 fg:#ededf2; 37-44 fg:#9a86e6; 46-51 fg:#ededf2; 63-68 fg:#ededf2; 72-77 fg:#ededf2; 81 fg:#ededf2
-6: 5-6 fg:#ededf2; 7-11 fg:#9a86e6; 12-31 fg:#ededf2
-7: 5-6 fg:#ededf2; 7-9 fg:#9a86e6; 10-11 fg:#ededf2; 12-16 fg:#9a86e6; 17-22 fg:#ededf2; 23-24 fg:#9a86e6; 25-33 fg:#ededf2
-8: 5-8 fg:#ededf2; 9-10 fg:#9a86e6; 11-43 fg:#ededf2; 44-45 fg:#4ec87e; 46-48 fg:#ededf2; 49-56 fg:#9a86e6; 57-58 fg:#ededf2
-9: 5-8 fg:#ededf2; 9-11 fg:#9a86e6; 12-13 fg:#ededf2; 14-16 fg:#9a86e6; 17-93 fg:#ededf2
-10: 5-7 fg:#ededf2
-11: 5-6 fg:#ededf2; 7-12 fg:#9a86e6; 13-25 fg:#ededf2; 29-47 fg:#ededf2; 48-50 fg:#4ec87e; 51-52 fg:#ededf2
-12: 5 fg:#ededf2
-13: 3-5 fg:#45406b
-16: 5-12 fg:#f5f5f7; 16-24 fg:#f5f5f7; 28-35 fg:#f5f5f7; 39-42 fg:#f5f5f7
-25: 3-11 fg:#45406b
-26: 5-7 fg:#9a86e6; 9-12 fg:#ededf2; 14-25 fg:#ededf2
-27: 5-17 fg:#ededf2
-28: 5-8 fg:#ededf2; 9-11 fg:#9a86e6; 12-17 fg:#ededf2; 18-19 fg:#9a86e6; 20-26 fg:#ededf2
-29: 5-12 fg:#ededf2; 13-14 fg:#9a86e6; 15 fg:#ededf2; 16-18 fg:#9a86e6; 19-24 fg:#ededf2
-30: 5-28 fg:#ededf2; 29-30 fg:#4ec87e; 31 fg:#ededf2
-31: 5-16 fg:#ededf2; 17-24 fg:#9a86e6
-32: 5-42 fg:#ededf2; 43-45 fg:#9a86e6; 46-48 fg:#ededf2; 49-50 fg:#9a86e6; 51-78 fg:#ededf2
-33: 5-8 fg:#ededf2; 9-14 fg:#9a86e6; 15-19 fg:#ededf2
-34: 3-5 fg:#45406b
+0: 8-9 fg:#c9c0f0
+2: 4-8 fg:#45406b
+3: 6-11 fg:#9a86e6; 12 fg:#ededf2; 13-20 fg:#9a86e6; 22-29 fg:#c9c0f0; 31-37 fg:#ededf2; 38-45 fg:#9a86e6; 47-52 fg:#c9c0f0; 64-69 fg:#c9c0f0; 73-78 fg:#c9c0f0; 82 fg:#ededf2
+4: 6-7 fg:#ededf2; 8-12 fg:#9a86e6; 13-19 fg:#ededf2; 20-25 fg:#c9c0f0; 26-32 fg:#ededf2
+5: 6-7 fg:#ededf2; 8-10 fg:#9a86e6; 11-12 fg:#ededf2; 13-17 fg:#9a86e6; 18-23 fg:#ededf2; 24-25 fg:#9a86e6; 26-34 fg:#ededf2
+6: 6-9 fg:#ededf2; 10-11 fg:#9a86e6; 12-29 fg:#ededf2; 30 fg:#e8a838; 31-44 fg:#ededf2; 45-46 fg:#4ec87e; 47-49 fg:#ededf2; 50-57 fg:#9a86e6; 58-59 fg:#ededf2
+7: 6-9 fg:#ededf2; 10-12 fg:#9a86e6; 13-14 fg:#ededf2; 15-17 fg:#9a86e6; 18-23 fg:#ededf2; 24 fg:#e8a838; 25-94 fg:#ededf2
+8: 6-8 fg:#ededf2
+9: 6-7 fg:#ededf2; 8-13 fg:#9a86e6; 14-26 fg:#ededf2; 30-48 fg:#ededf2; 49-51 fg:#4ec87e; 52-53 fg:#ededf2
+10: 6 fg:#ededf2
+11: 4-6 fg:#45406b
+14: 6-13 fg:#f5f5f7; 17-25 fg:#f5f5f7; 29-36 fg:#f5f5f7; 40-43 fg:#f5f5f7
+23: 4-12 fg:#45406b
+24: 6-8 fg:#9a86e6; 10-13 fg:#c9c0f0; 15-26 fg:#ededf2
+25: 6-18 fg:#ededf2
+26: 6-9 fg:#ededf2; 10-12 fg:#9a86e6; 13-18 fg:#ededf2; 19-20 fg:#9a86e6; 21-27 fg:#ededf2
+27: 6-13 fg:#ededf2; 14-15 fg:#9a86e6; 16 fg:#ededf2; 17-19 fg:#9a86e6; 20-25 fg:#ededf2
+28: 6-29 fg:#ededf2; 30-31 fg:#4ec87e; 32 fg:#ededf2
+29: 6-17 fg:#ededf2; 18-25 fg:#9a86e6
+30: 6-43 fg:#ededf2; 44-46 fg:#9a86e6; 47-49 fg:#ededf2; 50-51 fg:#9a86e6; 52 fg:#ededf2; 53-57 fg:#c9c0f0; 58 fg:#ededf2; 59 fg:#e8a838; 60-61 fg:#ededf2; 62-64 fg:#c9c0f0; 65-79 fg:#ededf2
+31: 6-9 fg:#ededf2; 10-15 fg:#9a86e6; 16-20 fg:#ededf2
+32: 4-6 fg:#45406b
+34: 2-29 fg:#9aa3b8
+35: 87-116 fg:#9aa3b8
 36: 0-84 fg:#45406b; 85-117 fg:#5c6476; 118-119 fg:#45406b
 37: 0 fg:#45406b; 4 r; 119 fg:#45406b
 38: 0-119 fg:#45406b

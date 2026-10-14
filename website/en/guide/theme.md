@@ -46,7 +46,7 @@ The custom theme reads a JSON file mapping tokens to `#rrggbb` hexes, layered ov
   "primary": "#9A86E6",
   "accent": "#C9C0F0",
   "roleUser": "#9A86E6",
-  "selectedBg": "#221E38"
+  "selectedBg": "#2b2b30"
 }
 ```
 
@@ -77,7 +77,7 @@ Reference values from the dark palette (light/ocean/paper have their own; auto p
 | `success` | `#4ec87e` | success |
 | `error` | `#e85454` | error |
 | `warning` | `#e8a838` | warning |
-| `selectedBg` | `#221E38` | selected list-row background |
+| `selectedBg` | `#2b2b30` | selected list-row background |
 | `roleUser` | `#9A86E6` | user-message `»` rail |
 | `shellMode` | `#C9C0F0` | `!` bash mode (editor frame, `$ ` prefix) |
 | `modelHighlight` | `#E9E6F4` | banner model-row highlight |

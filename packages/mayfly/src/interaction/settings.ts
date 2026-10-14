@@ -83,6 +83,8 @@ export interface MayflySettings {
   readonly monochrome: boolean
   /** Freeze every animation channel on its first frame. */
   readonly reducedMotion: boolean
+  /** How much the activity row and the editor teach: `full` fills the activity row's second line with a rotating tip while no action runs, `off` leaves it blank. */
+  readonly quietHints: 'full' | 'off'
 }
 
 /** One saved key override: the keys that replace an action's defaults, and its label for when it is not loaded. */
@@ -113,6 +115,7 @@ export const Config = z.object({
   glyphs: z.union([z.const('auto'), z.const('unicode'), z.const('ascii')]).default('auto').volatile(),
   monochrome: z.boolean().default(false).volatile(),
   reducedMotion: z.boolean().default(false).volatile(),
+  quietHints: z.union([z.const('full'), z.const('off')]).default('full').volatile(),
 })
 
 /** The resolved defaults, used until a settings service layers overrides. */
@@ -134,6 +137,7 @@ export const DEFAULT_SETTINGS: MayflySettings = {
   glyphs: 'auto',
   monochrome: false,
   reducedMotion: false,
+  quietHints: 'full',
 }
 
 /** Stable Cordis plugin name. */

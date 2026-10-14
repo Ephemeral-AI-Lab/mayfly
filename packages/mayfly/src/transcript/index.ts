@@ -1,25 +1,33 @@
 /**
  * @ephemeral-ai/mayfly/transcript — terminal transcript surfaces for the frontend runtime.
  * The official conversation plugin publishes a renderer-neutral transcript
- * model from the Harness projection; this plugin owns component
- * reconciliation, one view per displayed or retained conversation, Ctrl-O
+ * model from the Harness projection; this plugin maps the displayed model to
+ * the stream's facts and publishes the stream into the conversation node slot,
+ * keeps one view per displayed or retained conversation, and owns Ctrl-O
  * expansion, settings, dock chrome, and the canonical status footer. It does
- * not fold a Harness event log. Unloading removes mounted components and
- * keymap actions.
+ * not fold a Harness event log. Unloading removes the slot, mounted components,
+ * and keymap actions.
  *
  * @module @ephemeral-ai/mayfly/transcript
  */
 
 import type { Context } from '@deepseek-ai/cordis'
+import type { Agent } from '@deepseek-ai/dsh-agent'
 import { GutterComponent } from '../core/gutter.ts'
+import type { MayflyDecisionRequest } from '../core/types.ts'
 // Empty type import carries the app-owned session reader/projection services.
 import type {} from '../app/index.ts'
-import type { UserMessageImages } from './components.ts'
+import { copyTextToClipboard } from '../interaction/clipboard-write.ts'
+import { openInEditor } from '../interaction/decision-actions.ts'
+import { createInteractionNotificationOwner } from '../interaction/notifications.ts'
+import { mountFocusModeStatus } from './status-focus.ts'
 import { StatusFooterComponent } from './status-model.ts'
-import { TranscriptController, TranscriptLocalsService } from './transcript-model.ts'
+import { userMessageText } from './stream-facts.ts'
+import { TranscriptController, type StreamRowActions } from './transcript-model.ts'
 import { OfficialConversationModelSource } from './official-model.ts'
 import type { LiveDraftSource } from './conversation-feed.ts'
 import { ConversationSlots } from './conversation-slots.ts'
+import type { SessionFactsService } from './session-facts.ts'
 import {
   DEFAULT_EXPAND_TURNS,
   followPresentationSettings,
@@ -32,40 +40,16 @@ import {
   transcriptTranslator,
 } from './locale.ts'
 
-declare module '@deepseek-ai/cordis' {
-  interface Events {
-    /** New transcript content arrived while the user was scrolled away. */
-    'mayfly/transcript-content-changed'(paused: boolean): void
-  }
-}
-
-export {
-  AssistantMessageComponent,
-  TOOL_ARGUMENTS_MAX_CHARS,
-  ToolCallComponent,
-  USER_PREVIEW_LINES,
-  UserMessageComponent,
-} from './components.ts'
-export { ReadGroupComponent, groupReadsByFile, READ_GROUP_ROW_LIMIT, READ_GROUP_EXPANDED_ROW_LIMIT, type ReadFileGroup } from './read-group.ts'
-export { SearchGroupComponent, SEARCH_GROUP_ROW_LIMIT, SEARCH_GROUP_EXPANDED_ROW_LIMIT } from './search-group.ts'
-export { CommandGroupComponent, COMMAND_GROUP_ROW_LIMIT } from './command-group.ts'
 export { READ_PREVIEW_LINE_LIMIT, SEARCH_PREVIEW_MATCH_LIMIT, SEARCH_PATH_LIMIT, COMMAND_PREVIEW_LINE_LIMIT } from './official-model.ts'
 export { conversationTranscriptModel } from './official-model.ts'
 export type { ToolPresentationSource } from './present.ts'
 export { parseXmlEnvelope, summarizeToolText, type EnvelopePair } from './envelope.ts'
 export { ellipsize, parseToolArguments, summarizeToolCall, TOOL_ARG_PAIR_LIMIT, TOOL_ARG_VALUE_MAX_CHARS } from './present.ts'
 export { SessionFactsService } from './session-facts.ts'
-export { createToolPresentationModel, toolCallNode, toolResultNode, toolResultChip, ToolModelComponent } from './tool-model.ts'
+export { createToolPresentationModel, toolCallNode, toolResultNode } from './tool-model.ts'
 export type { ToolPresentationFacts } from './tool-model.ts'
-export { appendTranscriptNode, createTranscriptModel, TranscriptController, TranscriptLocalsService, TranscriptModelComponent } from './transcript-model.ts'
-export type { TranscriptModelRenderer } from './transcript-model.ts'
-export {
-  BRAILLE_SPINNER_FRAMES,
-  BRAILLE_SPINNER_INTERVAL_MS,
-  MOON_SPINNER_FRAMES,
-  MOON_SPINNER_INTERVAL_MS,
-} from './spinners.ts'
-export { ThinkingComponent, THINKING_PREVIEW_LINES } from './thinking.ts'
+export { appendTranscriptNode, createTranscriptModel, TranscriptController } from './transcript-model.ts'
+export type { TranscriptControllerOptions, TranscriptViewOptions } from './transcript-model.ts'
 export type {
   TranscriptAssistantItem,
   TranscriptItem,
@@ -84,13 +68,12 @@ export {
   TranscriptPresentationPolicy,
 } from './presentation-policy.ts'
 export type { ProcessPolicy, TranscriptPresentationSnapshot, TranscriptViewMode } from './presentation-policy.ts'
-export { setProcessRowTimers, type ProcessRowTimers } from './process-rows.ts'
 
 /** Stable Cordis plugin name. */
 export const name = 'mayfly-transcript'
 
 /** Services the plugin requires before it can mount. */
-export const inject = ['mayflyConversationReady', 'mayflyLiveAssistantStream', 'mayflyScreen', 'mayflyTheme', 'mayflyComponents', 'mayflyKeymap', 'mayflyStatus', 'mayflyConversations', 'mayflyCurrentAgent', 'agents', 'sessionProjections', 'sessions', 'tools']
+export const inject = ['mayflyConversationReady', 'mayflyLiveAssistantStream', 'mayflyScreen', 'mayflyTheme', 'mayflyComponents', 'mayflyKeymap', 'mayflyStatus', 'mayflyTick', 'mayflyConversations', 'mayflyCurrentAgent', 'agents', 'sessionProjections', 'sessions', 'tools']
 
 /** The global action toggling tool-output expansion (Ctrl-O). */
 export const ACTION_TOGGLE_COLLAPSE = 'mayfly.transcript.toggle-collapse'
@@ -101,8 +84,6 @@ export const ACTION_TOGGLE_COLLAPSE = 'mayfly.transcript.toggle-collapse'
  */
 export const EXPAND_TURNS = DEFAULT_EXPAND_TURNS
 
-/** The plugin-wide expansion state forwarded to the semantic transcript model. */
-interface CollapseToggle { expanded: boolean }
 /**
  * Mount the transcript components and model footer. The official transcript
  * consumer owns projection binding; this fiber provides the single
@@ -114,7 +95,6 @@ export function apply(ctx: Context): void {
   const t = transcriptTranslator(ctx, 'transcript')
   const screen = ctx.mayflyScreen
   const colors = ctx.mayflyTheme.colors
-  const toggle: CollapseToggle = { expanded: false }
   const presentation = new TranscriptPresentationPolicy()
   // Mayfly settings ride the host settings document: the resolved `mayfly`
   // namespace (schema owned by interaction) carries the work-details mode
@@ -125,45 +105,75 @@ export function apply(ctx: Context): void {
   // keeps every shipped default.
   followPresentationSettings(ctx, presentation, () => transcript.refreshPresentationPolicy())
 
-  // Optional image wiring is renderer-owned; the projected model carries only
-  // durable references and the byte loader stays in this terminal layer.
-  const imageDependencies = (): UserMessageImages => {
-    const attachments = ctx.get('attachments') as
-      | { readImage(ref: unknown): Promise<{ data: Uint8Array }> }
-      | undefined
-    return attachments === undefined ? {} : {
-      loadImage: async (ref: unknown) => {
-        try {
-          return (await attachments.readImage(ref)).data
-        } catch {
-          return undefined
-        }
-      },
-      onReady: () => screen.requestRender(),
-    }
-  }
-
   // Frontend owns live drafts across renderer/theme reloads.
   const liveStream = ctx.mayflyLiveAssistantStream
   const liveDrafts: LiveDraftSource = {
     subscribe: listener => liveStream.subscribe(listener),
     get: agent => liveStream.get(agent),
   }
-  const transcript = new TranscriptController(ctx, undefined, {
-    renderer: {
-      colors,
-      components: ctx.mayflyComponents,
-      viewportRows: () => screen.editorViewport.rows,
-      images: imageDependencies,
-      presentation,
-      t,
+  // The messages typed while the agent works are the inbox of the selected Agent. The inbox is read when it changes (as
+  // the queue pane does), never while a model is being published: a read inside a session event disturbs the
+  // activity row's own bookkeeping of that event.
+  let selected: Agent | null = null
+  let queued: readonly { readonly id: string, readonly text: string }[] = []
+  const readQueued = (): void => {
+    queued = selected === null ? [] : [...selected.inbox.nextStep, ...selected.inbox.nextTurn]
+      .filter(message => message.source.kind === 'user')
+      .map(message => ({ id: String(message.id), text: userMessageText(message) }))
+  }
+  // The wire carries an attachment id; the byte loader resolves it through the attachment store with the reference the
+  // stream kept when it built the prompt's row. A missing store or file leaves the text fallback.
+  const imageRefs = new Map<string, { readonly attachmentId: string, readonly mediaType: string }>()
+  ctx.effect(() => (ctx.get('mayflyUiImages')?.provide(async (attachmentId) => {
+    const ref = imageRefs.get(attachmentId)
+    const attachments = ctx.get('attachments') as { readImage(ref: unknown): Promise<{ readonly data: Uint8Array }> } | undefined
+    if (ref === undefined || attachments === undefined) return undefined
+    try {
+      return { data: (await attachments.readImage(ref)).data, mediaType: ref.mediaType }
+    } catch {
+      return undefined
+    }
+  }) ?? (() => {})))
+  // The row under the stream's cursor goes to the clipboard or to $EDITOR; the outcome is a notice on the notification pane.
+  mountFocusModeStatus(ctx, t)
+  const rowNotices = createInteractionNotificationOwner(ctx, 'mayfly.transcript.rows', 'transcript-rows')
+  const rows: StreamRowActions = {
+    copy: (text, mode) => {
+      copyTextToClipboard(text).then(
+        (method) => { rowNotices.report('copy', { message: t(mode === 'raw' ? (method === 'native' ? 'Copied {count} characters of JSON' : 'Copied {count} characters of JSON (unverified)') : (method === 'native' ? 'Copied {count} characters' : 'Copied {count} characters (unverified)'), { count: text.length }), severity: 'success' }) },
+        (error: unknown) => { rowNotices.report('copy', { message: t('Could not copy'), severity: 'error', detail: error instanceof Error ? error.message : String(error) }) },
+      )
     },
+    open: (text) => {
+      void openInEditor(ctx, text, t, new AbortController().signal).then((reply) => {
+        if (reply.kind === 'failed') rowNotices.report('open', { message: reply.message, severity: 'error' })
+      })
+    },
+  }
+  // The compaction rows read the selected Agent's occupancy marks; the stream is published again when a mark lands.
+  const sessionFacts = ctx.get('mayflySessionFacts') as SessionFactsService | undefined
+  // The requests waiting on the user, in the order they were asked: the plugins that put them to the user publish their
+  // queues, and the stream turns the first one's call into the request block.
+  const queues: Record<'approval' | 'plan', readonly MayflyDecisionRequest[]> = { approval: [], plan: [] }
+  let requests: readonly MayflyDecisionRequest[] = []
+  const transcript: TranscriptController = new TranscriptController({ presentation, t, queued: () => queued, requests: () => requests, imageRefs, rows, focusMode: mode => ctx.emit('mayfly/focus-mode-changed', mode), tick: ctx.mayflyTick, context: () => sessionFacts === undefined ? undefined : { marks: sessionFacts.current.compactions, window: sessionFacts.current.contextWindow, tokens: sessionFacts.current.contextTokens, approvals: sessionFacts.current.approvals } })
+  let marks = sessionFacts?.current.compactions
+  let window = sessionFacts?.current.contextWindow
+  let approvals = sessionFacts?.current.approvals
+  const offMarks = sessionFacts?.subscribe((facts) => {
+    if (facts.compactions === marks && facts.contextWindow === window && facts.approvals === approvals) return
+    marks = facts.compactions
+    window = facts.contextWindow
+    approvals = facts.approvals
+    transcript.republish()
   })
+  ctx.effect(() => () => offMarks?.())
+  ctx.effect(() => ctx.on('mayfly/decision-requests-changed', (source, next) => {
+    queues[source] = next
+    requests = [...queues.approval, ...queues.plan]
+    transcript.republish()
+  }))
   ctx.effect(() => () => transcript.dispose())
-  // Ephemeral local entries (e.g. `!` shell echoes) anchor into the mounted
-  // conversation flow through this seam and scroll up with later history;
-  // the service unregisters when this fiber unloads.
-  new TranscriptLocalsService(ctx, transcript)
   // Every displayed or retained conversation reads its own native path; the
   // registry decides which views exist, the controller which one is mounted.
   const slots = new ConversationSlots(ctx, transcript, {
@@ -181,7 +191,7 @@ export function apply(ctx: Context): void {
       liveDrafts,
       t,
     ),
-    headed: { liveTurnHeader: true, requestRender: () => screen.requestRender() },
+    headed: { liveTurnHeader: true },
     history: () => ctx.get('sessionController'),
   })
   ctx.effect(() => () => slots.dispose())
@@ -189,9 +199,21 @@ export function apply(ctx: Context): void {
   const sync = (): void => { slots.sync(ctx.mayflyConversations.snapshot()) }
   // A same-id Agent replacement changes the exact Agent without a registry change.
   const offView = ctx.mayflyConversations.subscribe(sync)
-  const offAgent = ctx.mayflyCurrentAgent.subscribe(sync)
+  const offAgent = ctx.mayflyCurrentAgent.subscribe((agent) => {
+    selected = agent
+    readQueued()
+    sync()
+    transcript.republish()
+  })
   ctx.effect(() => () => offView())
   ctx.effect(() => () => offAgent())
+  // A message enters or leaves the selected Agent's inbox: the queued rows follow it.
+  const onInbox = ({ agent }: { readonly agent: unknown }): void => {
+    if (agent !== selected) return
+    readQueued()
+    transcript.republish()
+  }
+  for (const off of [ctx.on('agent/inbox/inserted', onInbox), ctx.on('agent/inbox/claimed', onInbox), ctx.on('agent/inbox/discarded', onInbox)]) ctx.effect(() => () => off())
   const footer = new StatusFooterComponent(
     ctx.mayflyStatus,
     ctx.mayflyComponents,
@@ -221,8 +243,7 @@ export function apply(ctx: Context): void {
       keys: 'ctrl+o',
       description: t('Toggle detail expansion (tool output, long messages)'),
       handler: () => {
-        toggle.expanded = !toggle.expanded
-        transcript.setExpanded(toggle.expanded)
+        transcript.toggleRecent()
         screen.requestRender(true)
       },
     }])

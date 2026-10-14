@@ -8,10 +8,24 @@
  */
 
 const DEFAULT_USAGE = { inputTokens: 3200, outputTokens: 120, cacheReadTokens: 2400 }
+/**
+ * The results the Harness stores for a call that did not settle: a live Esc or Ctrl+C while it ran (`ABORTED`, dsh-tools
+ * `toolAbortedResult`), a call cancelled before it was dispatched (`ABORTED_BEFORE_DISPATCH`), and a started call whose
+ * session ended with no durable result, closed on resume (`TOOL_OUTCOME_UNKNOWN`, dsh-session `CLOSER_TEXT`).
+ */
+const CUT_SHORT = {
+  aborted: { text: 'Error: tool call aborted', error: { name: 'AbortError', code: 'ABORTED' } },
+  'before-dispatch': { text: 'Error: tool call aborted before dispatch', error: { name: 'AbortError', code: 'ABORTED_BEFORE_DISPATCH' } },
+  unknown: { text: 'The tool call was interrupted after it was recorded, but no result was durably recorded. Its outcome is unknown. Decide whether to retry from the tool semantics: retry only if the operation is read-only or idempotent; if it may have side effects, first verify external state or ask the user. Do not retry blindly.', error: { name: 'ToolOutcomeUnknownError', code: 'TOOL_OUTCOME_UNKNOWN' } },
+}
 
 /**
  * A user turn: `prompt`, then the steps (and compactions) the agent took, ending with `outcome`: `'completed'` (the
  * default), `'interrupted'`, `'aborted'`, `{ error: { message, code } }`, or `'open'` for a turn that never ends.
+ * `startAt` (`'HH:MM'` on the scenario's day, UTC, or milliseconds from the scenario epoch) stands the scenario clock
+ * there when the turn starts, and everything after it follows from that time. Playback does not wait for it: only the
+ * clock the session events are stamped with jumps, so a run under the runner shows `10:04` and a live run shows the
+ * wall clock.
  */
 export const turn = (prompt, items, options = {}) => ({ kind: 'turn', prompt, items, ...options })
 /**
@@ -21,13 +35,26 @@ export const turn = (prompt, items, options = {}) => ({ kind: 'turn', prompt, it
  * `assistant/attempt`, and the `llm/retry` records of the retry policy.
  */
 export const step = (options = {}) => ({ kind: 'step', ...options })
-/** A tool call. `runMs` is how long it shows as running; `result` is its output (`error: true` marks a failure). */
+/**
+ * A tool call. `runMs` is how long it shows as running; `result` is its output (`error: true` marks a failure,
+ * `meta` is the presenter's metadata: read lines, search matches, the fetch status). `unanswered` is a call that did not
+ * settle, which gets the error result the Harness stores for it: `true` (or `'aborted'`) for an Esc or Ctrl+C while it ran
+ * (turn outcome `'aborted'`), `'before-dispatch'` for a call cancelled before it was dispatched, and `'unknown'` for a
+ * session that ended while it ran (turn outcome `'interrupted'`, closed on resume with an unknown outcome).
+ */
 export const tool = (name, args, options = {}) => ({ name, args, ...options })
 /**
- * A file edit as the `edit` tool reports it: the diff card shows `before` and `after` (the changed lines with whatever
- * context you include). The call arguments replace the first line of `before` text that differs.
+ * A file edit as the `edit` tool reports it: the diff shows `before` and `after` (the changed lines with whatever
+ * context you include, as the tool sends them: three lines around each hunk). The call arguments carry the same text.
  */
-export const edit = (path, before, after, options = {}) => tool('edit', { file_path: path, old_string: before, new_string: after }, { result: `Edited ${path}`, runMs: 500, meta: { operation: 'edit', diffs: [{ path, oldText: before, newText: after }] }, ...options })
+export const edit = (path, before, after, options = {}) => tool('edit', { file_path: path, old_string: before, new_string: after }, { result: `Edited ${path}`, runMs: 500, meta: { diffs: [{ path, oldText: before, newText: after }] }, ...options })
+/** A `replace_all` edit that changed several places: one `[before, after]` hunk per place, as the tool reports them. */
+export const editHunks = (path, hunks, options = {}) => tool('edit', { file_path: path, old_string: hunks[0][0], new_string: hunks[0][1], replace_all: true }, { result: `Edited ${path} (${String(hunks.length)} replacements)`, runMs: 600, meta: { diffs: hunks.map(([before, after]) => ({ path, oldText: before, newText: after })) }, ...options })
+/**
+ * A file written by the `write` tool. A new file reports `operation: 'create'` and no hunks; an overwrite
+ * (`options.meta: { operation: 'update', diffs }`) reports the hunks against the old file.
+ */
+export const write = (path, content, options = {}) => tool('write', { file_path: path, content }, { result: `Wrote ${path}`, runMs: 500, meta: { operation: 'create', diffs: [] }, ...options })
 /** A todo-list update, as the `todo_write` tool makes it. */
 export const todos = (list, options = {}) => tool('todo_write', { todos: list.map(([status, content]) => ({ status, content })) }, { result: 'Todos updated', runMs: 200, todos: list, ...options })
 /** A subagent spawned by a tool call: the child session plays `child` (`prompt`, `items`, `outcome`, `startMs`). */
@@ -64,10 +91,10 @@ export const queue = (rows, { holdMs = 4000 } = {}) => ({ kind: 'queue', rows, h
  */
 export const btw = (question, items, { label = question, outcome, closeAfterMs } = {}) => ({ kind: 'btw', question, items, label, outcome, closeAfterMs })
 /**
- * A notice in the footer line above the editor (`info`, `success`, `warning`, or `error`), through the product's own
+ * A notice in the notification pane above the editor (`info`, `success`, `warning`, or `error`), through the product's own
  * notification lane. `purpose: 'progress'` marks a running operation; the notice clears itself after `holdMs`.
  */
-export const notify = (severity, message, { holdMs = 3500, detail, purpose } = {}) => ({ kind: 'notify', severity, message, holdMs, detail, purpose })
+export const notify = (severity, message, { holdMs = 3500, detail, purpose, marks = [] } = {}) => ({ kind: 'notify', severity, message, holdMs, detail, purpose, marks })
 /** An image in a prompt: `turn([text('see'), image('shot.png')], ...)`. */
 export const text = value => ({ type: 'text', text: value })
 export const image = (name, { width = 1280, height = 720, bytes = 84_000 } = {}) => ({ type: 'image', attachment: { attachmentId: `replay-${name}`, mediaType: 'image/png', bytes, width, height, name } })
@@ -83,10 +110,23 @@ export const seed = sessions => ({ kind: 'seed', sessions })
 export const pause = ms => ({ kind: 'pause', ms })
 /** A named point of the timeline: a scenario plays up to it (`play({ until: name })`) and takes a checkpoint there. */
 export const mark = name => ({ kind: 'mark', name })
-/** A permission question for a tool call (`tool(..., { ask: approval('bash', 'why') })`); the replay waits for the answer. */
-export const approval = (toolName, reason) => ({ kind: 'approval', toolName, reason })
+/**
+ * A permission question for a tool call (`tool(..., { ask: approval('bash', 'why') })`); the replay waits for the answer.
+ * With `{ queued: true }` the ask is put at once and the replay waits for the answers of all the queued asks before it goes
+ * on, so several calls of one step wait on the user together.
+ */
+export const approval = (toolName, reason, options = {}) => ({ kind: 'approval', toolName, reason, ...options })
 /** Questions for the user during a tool call (`tool('ask_user_question', ..., { ask: question([...]) })`); the replay waits for the answer. */
 export const question = questions => ({ kind: 'question', questions })
+
+/** The scenario epoch is 09:00 UTC (`clock.mjs`); a `'HH:MM'` start is a time of that day. */
+const EPOCH_MINUTES = 9 * 60
+const clockMs = (at) => {
+  if (typeof at === 'number') return at
+  const match = /^(\d{1,2}):(\d{2})$/.exec(at)
+  if (match === null) throw new Error(`startAt must be 'HH:MM' or milliseconds, not ${JSON.stringify(at)}`)
+  return (Number(match[1]) * 60 + Number(match[2]) - EPOCH_MINUTES) * 60_000
+}
 
 const spread = (text, chunk) => {
   const points = Array.from(text)
@@ -103,6 +143,8 @@ const spread = (text, chunk) => {
  */
 export function compile(items, { provider = 'deepseek-official', model = 'deepseek-flash', contextWindow = 131072 } = {}) {
   const actions = []
+  /** Milliseconds the scenario clock runs ahead of the playback time since the last `startAt`. */
+  let skew = 0
   let messageSeq = 0
   let callSeq = 0
   let childSeq = 0
@@ -110,7 +152,7 @@ export function compile(items, { provider = 'deepseek-official', model = 'deepse
   const live = new Set()
   const id = prefix => `replay-${prefix}-${String(++messageSeq)}`
 
-  const push = (at, op) => actions.push({ at: Math.round(at), ...op })
+  const push = (at, op) => actions.push({ at: Math.round(at), ...(skew === 0 ? {} : { skew }), ...op })
 
   /** A job starts, prints its lines and progress, and settles, each at its own time. */
   function scheduleJob(item, t) {
@@ -131,6 +173,8 @@ export function compile(items, { provider = 'deepseek-official', model = 'deepse
     const noticeId = id('notice')
     push(t, { op: 'notify', noticeId, severity: item.severity, message: item.message, detail: item.detail, purpose: item.purpose })
     push(t + item.holdMs, { op: 'notify-clear', noticeId })
+    // A mark stops playback while the notice shows (`marks: [{ name, at: 0.5 }]`, `at` a share of `holdMs`).
+    for (const point of item.marks ?? []) push(t + item.holdMs * point.at, { op: 'mark', name: point.name })
   }
 
   /** Compile one conversation (the main one or a child) into `session`; returns the clock at its end. */
@@ -138,14 +182,15 @@ export function compile(items, { provider = 'deepseek-official', model = 'deepse
     let t = start
     let turnNo = 0
     const sessionOp = session === null ? {} : { session }
-    const event = (at, type, data, surface = false) => push(at, { op: 'append', ...sessionOp, type, data, ...(surface ? { surface: 'append' } : {}) })
+    const event = (at, type, data, surface = false, extra = {}) => push(at, { op: 'append', ...sessionOp, type, data, ...(surface ? { surface: 'append' } : {}), ...extra })
     // A stored log only loads when the request header sits inside an open turn, so the first step writes it.
     let header = false
     const writeHeader = (at) => {
       if (header) return
       header = true
       event(at, 'request/header', { header: { config: { provider, model, reasoningEffort: 'high' } }, reason: 'initial' })
-      event(at + 1, 'request/context', { provider, model, contextWindow })
+      // A provider that advertises no window (`contextWindow: null`) writes no route record; the footer then shows no meter.
+      if (contextWindow !== null) event(at + 1, 'request/context', { provider, model, contextWindow })
     }
     t += 200
     for (const item of list) {
@@ -180,16 +225,28 @@ export function compile(items, { provider = 'deepseek-official', model = 'deepse
     const compactionId = `replay-compaction-${String(++messageSeq)}`
     const sessionOp = session === null ? {} : { session }
     const commandId = item.manual === true ? `replay-command-${String(messageSeq)}` : undefined
+    const ids = { ...sessionOp, compactionId, commandId, turn: turnNo }
     if (commandId !== undefined) event(t, 'command/run', { commandId, name: 'compact', source: { kind: 'user' } })
-    push(t + 50, { op: 'compact-start', ...sessionOp, compactionId, commandId, turn: turnNo })
-    const end = t + 50 + (item.ms ?? 1800)
-    push(end, { op: 'compact-finish', ...sessionOp, compactionId, commandId, turn: turnNo, provider, model, summary: item.summary ?? 'Earlier work was summarised.', shadowedTokens: item.shadowedTokens ?? 18_000 })
+    push(t + 50, { op: 'compact-start', ...ids })
+    // Summarizing lasts `ms`; the summary lands, and applying lasts `applyMs` until the end record. A mark stops playback part-way through a stage (`marks: [{ name, stage: 'summarize' | 'apply', at: 0.5 }]`).
+    const summaryAt = t + 50 + (item.ms ?? 1800)
+    const end = summaryAt + (item.applyMs ?? 20)
+    for (const point of item.marks ?? []) push(point.stage === 'apply' ? summaryAt + (item.applyMs ?? 20) * point.at : t + 50 + (item.ms ?? 1800) * point.at, { op: 'mark', name: point.name })
+    if (item.error !== undefined) {
+      // A failed attempt records no summary: the end record carries the reason.
+      push(summaryAt, { op: 'compact-end', ...ids, error: item.error })
+      if (commandId !== undefined) event(summaryAt + 100, 'command/done', { commandId, kind: 'error', text: item.error })
+      return summaryAt + 300
+    }
+    push(summaryAt, { op: 'compact-finish', ...ids, provider, model, summary: item.summary ?? 'Earlier work was summarised.', shadowedTokens: item.shadowedTokens ?? 18_000, summaryTokens: item.summaryTokens ?? 600 })
+    push(end, { op: 'compact-end', ...ids })
     if (commandId !== undefined) event(end + 100, 'command/done', { commandId, kind: 'success', text: item.detail ?? 'Compacted the conversation.' })
     return end + 300
   }
 
   function runTurn(spec, turnNo, start, event, session, writeHeader) {
     let t = start
+    if (spec.startAt !== undefined) skew = clockMs(spec.startAt) - Math.round(t)
     event(t, 'turn/start', { turn: turnNo })
     if (spec.prompt !== undefined) event(t + 100, 'user/message', { id: id('user'), role: 'user', content: typeof spec.prompt === 'string' ? [{ type: 'text', text: spec.prompt }] : spec.prompt, source: { kind: 'user' } }, true)
     t += 300
@@ -239,6 +296,8 @@ export function compile(items, { provider = 'deepseek-official', model = 'deepse
       const failure = { message: attempt.failure?.message ?? 'The provider is overloaded', code: attempt.failure?.code ?? 'overloaded', status: attempt.failure?.status ?? 529 }
       const delayMs = attempt.delayMs ?? 1500
       event(t + 100, 'llm/retry', { retryId, turn: turnNo, step: stepNo, provider, mode: 'normal', policyKey: 'replay-policy', retry: index + 1, maxRetries: 5, delayMs, failure })
+      // A `retry` mark stops playback while the retry waits (`marks: [{ name, block: 'retry', attempt: 0, at: 0.3 }]`).
+      for (const point of spec.marks ?? []) if (point.block === 'retry' && (point.attempt ?? 0) === index) push(t + 100 + delayMs * point.at, { op: 'mark', name: point.name })
       t += 100 + delayMs
       event(t, 'llm/retry-started', { retryId, turn: turnNo, step: stepNo, retry: index + 1 })
       t += 100
@@ -250,18 +309,22 @@ export function compile(items, { provider = 'deepseek-official', model = 'deepse
     const preparing = streamed && spec.prepareMs !== undefined && calls.length > 0
     if (streamed && (blocks.length > 0 || preparing)) {
       push(t, { op: 'stream', ...via, frame: 'start', turn: turnNo, step: stepNo })
-      // The attempt shows "waiting" until the first token arrives.
+      // The attempt shows "waiting" until the first token arrives (a `wait` mark stops playback inside it).
+      for (const point of spec.marks ?? []) if (point.block === 'wait') push(t + (spec.firstTokenMs ?? 0) * point.at, { op: 'mark', name: point.name })
       t += spec.firstTokenMs ?? 0
       for (const block of blocks) {
         const channel = block.type === 'reasoning' ? 'reasoning-delta' : 'text-delta'
         const parts = spread(block.text, spec.chunk ?? 14)
         const total = block.type === 'reasoning' ? (spec.reasoningMs ?? Math.min(7000, Math.max(900, block.text.length * 12))) : (spec.textMs ?? Math.min(6000, Math.max(500, block.text.length * 8)))
         parts.forEach((part, index) => push(t + (total * index) / parts.length, { op: 'stream', ...via, frame: 'delta', channel, block: blocks.indexOf(block), text: part }))
+        // A mark inside a block stops playback part-way through it (`marks: [{ name, block: 'text', at: 0.5 }]`; the blocks are `reasoning`, `text`, `wait` for the first token, `prepare` for a call's arguments, and `tool` for a call running; `call` picks the call of the step, the first by default).
+        for (const point of spec.marks ?? []) if (point.block === block.type) push(t + total * point.at, { op: 'mark', name: point.name })
         t += total
       }
       if (preparing) {
         // The model writes each call's arguments before the call is committed: the activity row names the tool.
         for (const call of calls) {
+          for (const point of spec.marks ?? []) if (point.block === 'prepare' && (point.call ?? 0) === calls.indexOf(call)) push(t + spec.prepareMs * point.at, { op: 'mark', name: point.name })
           const parts = spread(JSON.stringify(call.args ?? {}), spec.chunk ?? 14)
           parts.forEach((part, index) => push(t + (spec.prepareMs * index) / parts.length, { op: 'stream', ...via, frame: 'delta', channel: 'tool-call-delta', callId: call.callId, name: index === 0 ? call.name : undefined, text: part }))
           t += spec.prepareMs
@@ -277,13 +340,15 @@ export function compile(items, { provider = 'deepseek-official', model = 'deepse
       message: { id: id('assistant'), role: 'assistant', content, source: { kind: 'model', provider, model } },
       stream: [],
       usage: { ...DEFAULT_USAGE, ...(spec.usage ?? {}) },
-    }, true)
+    }, true, spec.reasoning === undefined ? {} : { streamTiming: { reasoning: spec.reasoning, text: spec.text, reasoningMs: spec.reasoningMs ?? Math.min(7000, Math.max(900, spec.reasoning.length * 12)) } })
     if (streamed && (blocks.length > 0 || preparing)) push(t, { op: 'stream', ...via, frame: 'end' })
     let last = t
     calls.forEach((call, index) => {
       const callAt = t + 100 + index * 60
       event(callAt, 'tool/call', { turn: turnNo, step: stepNo, callId: call.callId, name: call.name, arguments: JSON.stringify(call.args ?? {}) })
       const resultAt = callAt + (call.runMs ?? 600)
+      // A `tool` mark stops playback while a call runs (the first, or the one a mark's `call` names); so does a `prepare` mark while its arguments stream.
+      for (const point of spec.marks ?? []) if (point.block === 'tool' && (point.call ?? 0) === index) push(callAt + (call.runMs ?? 600) * point.at, { op: 'mark', name: point.name })
       if (call.ask !== undefined) push(callAt + 200, { op: 'ask', ...(session === null ? {} : { session }), callId: call.callId, toolName: call.name, ...call.ask })
       if (call.todos !== undefined) event(resultAt - 20, 'todo/write', { todos: call.todos.map(([status, content]) => ({ status, content })) })
       if (call.child !== undefined) {
@@ -294,12 +359,23 @@ export function compile(items, { provider = 'deepseek-official', model = 'deepse
         conversation([turn(child.prompt, child.items ?? [], { outcome: child.outcome })], callAt + 100 + (child.startMs ?? 300), childId)
         call.result ??= `started subagent ${childId}`
       }
-      event(resultAt, 'tool/result', {
+      const resultData = (text, isError, meta) => ({
         turn: turnNo,
         step: stepNo,
-        message: { id: id('tool'), role: 'tool', content: [{ type: 'text', text: call.result ?? '' }], toolCallId: call.callId, isError: call.error === true, source: { kind: 'tool', callId: call.callId } },
-        ...(call.meta === undefined ? {} : { meta: call.meta }),
-      }, true)
+        message: { id: id('tool'), role: 'tool', content: [{ type: 'text', text }], toolCallId: call.callId, isError, source: { kind: 'tool', callId: call.callId } },
+        ...(meta === undefined ? {} : { meta }),
+      })
+      // A call that did not settle (`unanswered`) is closed the way the Harness stores it: an error result with the
+      // failure code, then the step and turn ends. A stored step may not end with a started call unresolved.
+      const cutShortData = () => {
+        const cut = CUT_SHORT[call.unanswered === true ? 'aborted' : call.unanswered]
+        if (cut === undefined) throw new Error(`unknown unanswered kind: ${String(call.unanswered)}`)
+        return { ...resultData(cut.text, true), error: cut.error }
+      }
+      // `outcomes` are the results the call has for the other answers to its ask (`rejected`, `declined`, `revised`); the driver plays the one the answer picks.
+      const variants = call.outcomes === undefined ? undefined : Object.fromEntries(Object.entries(call.outcomes).map(([key, outcome]) => [key, resultData(outcome.result, outcome.error === true, outcome.meta)]))
+      if (call.unanswered !== undefined && call.unanswered !== false) event(resultAt, 'tool/result', cutShortData(), true)
+      else event(resultAt, 'tool/result', resultData(call.result ?? '', call.error === true, call.meta), true, variants === undefined ? {} : { variants, answerOf: call.callId })
       last = Math.max(last, resultAt)
     })
     event(last + 100, 'step/end', { turn: turnNo, step: stepNo })

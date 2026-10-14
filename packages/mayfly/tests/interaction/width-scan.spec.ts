@@ -10,7 +10,7 @@
  * assertions in their specs.
  */
 
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import Schema from '@deepseek-ai/schemastery'
 import { ui } from '../../../ui/src/index.ts'
@@ -252,21 +252,12 @@ describe('interaction width-scan', () => {
             expectLinesFit(`${kind}/${name}/${height}`, rows, width)
             expect(rows.length).toBeLessThanOrEqual(height)
           }
-          if (kind === 'plan') {
-            const document = bench.screen.slotTargets.get('local.mayfly.questions.1.document')
-            expect(document).toBeDefined()
-            for (const width of SCAN_WIDTHS) expectLinesFit(`plan-document/${name}`, document!.render(width), width)
-          }
           if (kind !== 'questionnaire') {
-            if (kind === 'plan') {
-              model.emit({ kind: 'selection-accept', pagePath: [], controlId: 'decision', selectedIds: ['other'] })
-              await vi.waitFor(() => expect(model.form({ pagePath: [], formId: 'revision' })).toBeDefined())
-            } else model.invoke('feedback', [{ controlId: 'approval', itemId: 'decision' }])
-            const feedbackRenderer = renderRequest(model, viewport)
-            for (const width of SCAN_WIDTHS) expectLinesFit(`${kind}-feedback/${name}`, feedbackRenderer.component.render(width), width)
-            feedbackRenderer.runtime.dispose()
-            if (kind === 'plan') model.invoke('back', [])
-            else model.back()
+            /* The note field carries the typed text in the card's own rows; a long note wraps inside every width. */
+            model.edit({ pagePath: [], formId: 'decision.note', fieldId: 'note' }, text)
+            const noteRenderer = renderRequest(model, viewport)
+            for (const width of SCAN_WIDTHS) expectLinesFit(`${kind}-note/${name}`, noteRenderer.component.render(width), width)
+            noteRenderer.runtime.dispose()
           }
           model.requestClose()
           await cancelled

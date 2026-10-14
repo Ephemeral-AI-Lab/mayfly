@@ -16,6 +16,8 @@ import { MayflyStatusService } from '../../../ui/src/provider.ts'
 import type { MayflyComponent, MayflyKeyAction, MayflyKeymap, MayflyOverlayHandle, MayflyScreen } from '../../src/core/types.ts'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { MayflyLocaleService } from '../../src/frontend/locale.ts'
+import { compileMayflyUiNode } from '../../src/core/ui-compiler.ts'
+import type { MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import { mkdtempTracked, registerTempDirCleanup } from '../core/temp-dir.ts'
 import { ACTION_TOGGLE_COLLAPSE, apply, inject } from '../../src/transcript/index.ts'
 import { LiveAssistantStreamService } from '../../src/conversation/live-stream.ts'
@@ -23,9 +25,13 @@ import { SessionFactsService } from '../../src/transcript/session-facts.ts'
 import * as statusBasicModel from '../../src/transcript/status-basic-model.ts'
 import { assistantEvent, fakeMayflyComponents, imageBlock, reasoningDelta, resetSeq, stepStart, textDelta, toolCallEvent, toolResultEvent, turnStart, userEvent } from './helpers.ts'
 import { fakeAgent, plainColors } from '../helpers.ts'
-import { setProcessRowTimers } from '../../src/transcript/process-rows.ts'
 import { FakeProjectionService } from './pane-fakes.ts'
 import { mountFakeScreenSlot } from '../core/fake-screen-slot.ts'
+import { setClipboardOsc52Emitter, setClipboardTextWriter } from '../../src/interaction/clipboard-write.ts'
+import { MayflyUiImagesService } from '../../src/core/ui-images.ts'
+import { initialConversationFacts } from '../../src/conversation/facts.ts'
+import { STREAM } from '../../src/components/transcript-view.ts'
+import { createUserMessage, type UserMessage } from '@deepseek-ai/dsh-llm'
 
 registerTempDirCleanup()
 
@@ -45,6 +51,25 @@ class FakeScreen implements MayflyScreen {
   get editorViewport(): { readonly columns: number, readonly rows: number } { return { columns: this.columns, rows: this.rows } }
   mountContentSlot(id: string, component: MayflyComponent | null) {
     return mountFakeScreenSlot(id, component, shell => this.addChild(shell), target => this.setFocus(target), () => this.requestRender())
+  }
+  /** The nodes published into node slots, by slot id; `null` once a slot is cleared. */
+  readonly nodes = new Map<string, MayflyUiNode | null>()
+  /** The options each node slot was mounted with: the events a stream answers arrive through `onEvent`. */
+  readonly slotOptions = new Map<string, { readonly onEvent: (event: unknown) => void }>()
+  /** The row the stream's cursor stands on, read by the controller when it copies or opens a row. */
+  cursorRow: string | undefined
+  mountNodeSlot(id: string, options: { readonly region: 'content' | 'dock' | 'footer', readonly onEvent?: (event: never) => void }) {
+    if (options.onEvent !== undefined) this.slotOptions.set(id, options as unknown as { readonly onEvent: (event: unknown) => void })
+    const slot = {
+      id,
+      disposed: false,
+      cursor: () => this.cursorRow,
+      set: (node: MayflyUiNode | null) => { this.nodes.set(id, node); this.requestRender() },
+      setTurns: () => {},
+      focus: () => {},
+      dispose: () => { slot.disposed = true; this.nodes.delete(id) },
+    }
+    return slot
   }
   mountDockSlot(id: string, component: MayflyComponent | null) {
     return mountFakeScreenSlot(id, component, shell => this.addBottomChild(shell), target => this.setFocus(target), () => this.requestRender())
@@ -67,7 +92,6 @@ class FakeScreen implements MayflyScreen {
   setFocus(_component: MayflyComponent | null): void {}
   showOverlay(): MayflyOverlayHandle { throw new Error('overlays are out of scope') }
   requestRender(force?: boolean): void { this.renderRequests.push(force) }
-  contentChanged(): boolean { this.requestRender(); return false }
   follows = 0
   followContent(): void { this.follows += 1 }
   suspend<T>(fn: () => Promise<T>): Promise<T> { return fn() }
@@ -113,6 +137,9 @@ interface Harness {
   readonly selectAuxiliary: (agent: FakeAgent, historyFloorSeq: number) => void
   readonly showReadonlyChild: (agent: FakeAgent) => void
   readonly setMayflySettings: (value: unknown) => void
+  readonly projections: FakeProjectionService
+  /** The feedback the transcript reports on its notification owner, in order. */
+  readonly reports: Array<{ readonly id: string, readonly feedback: { readonly message: string, readonly severity?: string, readonly detail?: string } }>
 }
 
 function fixtureApply(ctx: Context): void {
@@ -128,6 +155,12 @@ async function bootTranscript(
     readonly settings?: Record<string, unknown>
     readonly attachments?: { readImage(ref: unknown): Promise<{ data: Uint8Array }> }
     readonly tools?: { get(name: string, agent?: Agent): unknown }
+    /** Provide the real image byte source, so the stream's image rows can be loaded through it. */
+    readonly images?: boolean
+    /** Boot without the session facts bridge, as a host that publishes none. */
+    readonly withoutSessionFacts?: boolean
+    /** Provide the interaction notification owner, so the transcript's reports are observable. */
+    readonly interaction?: boolean
   } = {},
 ): Promise<Harness> {
   const dir = mkdtempTracked('mayfly-transcript-')
@@ -167,7 +200,19 @@ async function bootTranscript(
   const screen = new FakeScreen()
   const keymap = new FakeKeymap()
   const projections = new FakeProjectionService()
+  const reports: Harness['reports'] = []
   void new MayflyStatusService(ctx)
+  if (options.images === true) new MayflyUiImagesService(ctx)
+  if (options.interaction === true) {
+    ctx.reflect.provide('mayflyUiInteraction', {
+      createNotificationOwner: () => ({
+        report: (id: string, _scope: unknown, feedback: Harness['reports'][number]['feedback']) => { reports.push({ id, feedback }) },
+        clear: () => {},
+        clearAll: () => {},
+        dispose: () => {},
+      }),
+    })
+  }
   let active = initial
   let revision = 0
   // The displayed conversation: the primary, or a BTW with its history floor.
@@ -252,6 +297,8 @@ async function bootTranscript(
     agents: { get: (id: unknown) => [primary, btw?.agent].find(agent => agent != null && String(agent.id) === String(id)) },
     mayflyInteractionState: { settingsSource: () => mayflyState.settings },
     sessionProjections: projections,
+    // The host's one-second tick: the spec never advances it, so no time-dependent row republishes on its own.
+    mayflyTick: { subscribe: () => () => {} },
     sessions: { list: () => active === null ? [] : [active.session] },
     mayflyConversationReady: { key: 'mayflyConversation' },
     tools: options.tools ?? { get: () => undefined },
@@ -260,8 +307,10 @@ async function bootTranscript(
   for (const [name, value] of Object.entries(services)) ctx.reflect.provide(name, value)
   ctx.on('session/event', (session, event) => projections.emit(session, event))
   const liveStream = new LiveAssistantStreamService(ctx)
-  const facts = new SessionFactsService(ctx, liveStream)
-  ctx.effect(() => () => facts.dispose())
+  if (options.withoutSessionFacts !== true) {
+    const facts = new SessionFactsService(ctx, liveStream)
+    ctx.effect(() => () => facts.dispose())
+  }
   ctx.effect(() => () => liveStream.dispose())
 
   await ctx.plugin(Loader)
@@ -269,15 +318,30 @@ async function bootTranscript(
   await ctx.loader.create({ name: 'cordis:include', config: { path: pathToFileURL(join(dir, 'cordis.yml')).href } })
   await ctx.loader.await()
   disposers.push(async () => { await ctx.fiber.dispose() })
-  return { ctx, screen, keymap, select, selectAuxiliary, showReadonlyChild, setMayflySettings: value => { mayflyState.settings = value } }
+  return { ctx, screen, keymap, select, selectAuxiliary, showReadonlyChild, setMayflySettings: value => { mayflyState.settings = value }, projections, reports }
 }
 
 function stripGutter(lines: string[]): string[] {
   return lines.map(line => line === ' ' ? '' : line.slice(1))
 }
 
+/** The rows of the nodes published into node slots, compiled the way a mounted slot paints them at 80 columns. */
+function nodeLines(screen: FakeScreen): string[] {
+  return [...screen.nodes.values()].flatMap((node) => {
+    if (node === null) return []
+    const compiled = compileMayflyUiNode(node, {
+      components: fakeMayflyComponents(),
+      colors: COLORS,
+      getViewport: () => ({ columns: 80, rows: 1000 }),
+      screenMode: 'main',
+      emit: () => {},
+    })
+    return (compiled.ok ? compiled.value.component : compiled.errorComponent).render(80)
+  })
+}
+
 function contentLines(screen: FakeScreen): string[] {
-  return stripGutter(screen.children.flatMap(component => component.render(80)))
+  return [...stripGutter(screen.children.flatMap(component => component.render(80))), ...nodeLines(screen)]
 }
 
 function footerLines(screen: FakeScreen): string[] {
@@ -318,8 +382,6 @@ describe('mayfly-transcript through the real Loader', () => {
     ctx.emit('session/event', agent.session, toolResultEvent(2, 1, 'c1', 'file.txt'))
     const text = contentLines(screen).join('\n')
     expect(text).toContain('final')
-    expect(text).toContain('Used')
-    expect(text).toContain('file.txt')
     select(null)
     expect(contentLines(screen)).toEqual([])
   })
@@ -359,30 +421,22 @@ describe('mayfly-transcript through the real Loader', () => {
     await ctx.fiber.dispose()
   })
 
-  it('shows a readonly child in the main pane with its own ticking running header', async () => {
-    const timers = { intervals: [] as Array<() => void>, setInterval: (callback: () => void) => { timers.intervals.push(callback); return 0 as unknown as ReturnType<typeof setInterval> }, clearInterval: () => {}, now: () => 5_000 }
-    setProcessRowTimers(timers)
-    try {
-      resetSeq()
-      const main = fakeParent([userEvent('main history')])
-      resetSeq()
-      const worker = fakeParent([turnStart(1), stepStart(1, 1), userEvent('child question'), reasoningDelta(1, 1, 'child thought')])
-      worker.id = 'worker-1'
-      Object.assign(worker.session, { id: 'worker-1' })
-      const { screen, showReadonlyChild, select } = await bootTranscript(main)
-      showReadonlyChild(worker)
-      const child = contentLines(screen).join('\n')
-      expect(child).toContain('child question')
-      expect(child).not.toContain('main history')
-      expect(child).toMatch(/▾ Deep diving/u)
-      // No activity row follows a readonly child, so its transcript keeps the running header.
-      expect(timers.intervals).toHaveLength(1)
-      const before = screen.renderRequests.length
-      timers.intervals[0]!()
-      expect(screen.renderRequests.length).toBeGreaterThan(before)
-      select(main)
-      expect(contentLines(screen).join('\n')).toContain('main history')
-    } finally { setProcessRowTimers(undefined) }
+  it('shows a readonly child in the main pane with its own running header', async () => {
+    resetSeq()
+    const main = fakeParent([userEvent('main history')])
+    resetSeq()
+    const worker = fakeParent([turnStart(1), stepStart(1, 1), userEvent('child question'), reasoningDelta(1, 1, 'child thought')])
+    worker.id = 'worker-1'
+    Object.assign(worker.session, { id: 'worker-1' })
+    const { screen, showReadonlyChild, select } = await bootTranscript(main)
+    showReadonlyChild(worker)
+    const child = contentLines(screen).join('\n')
+    expect(child).toContain('child question')
+    expect(child).not.toContain('main history')
+    // No activity row follows a readonly child, so its transcript keeps the running header.
+    expect(child).toMatch(/▾ Deep diving/u)
+    select(main)
+    expect(contentLines(screen).join('\n')).toContain('main history')
   })
 
   it('isolates populated sessions whose transcript ids and revisions collide', async () => {
@@ -441,19 +495,23 @@ describe('mayfly-transcript through the real Loader', () => {
       harness.ctx.emit('session/event', agent.session, reasoningDelta(1, 1, 'working'))
       return contentLines(harness.screen).join('\n')
     }
-    // Compact and Standard leave a reasoning-only group untitled: the activity row says Thinking.
-    for (const view of ['compact', 'standard']) {
-      const text = await live(view)
-      expect(text).toContain('think')
-      expect(text).not.toMatch(/working|Deep diving|Thinking|Analyzing the request/u)
-    }
-    // Detailed and Verbose show the reasoning itself, as a captionless tail.
-    for (const view of ['detailed', 'verbose']) {
-      const text = await live(view)
-      expect(text).toContain('think')
-      expect(text).toMatch(/✻ .*working/u)
-      expect(text).not.toMatch(/Deep diving|Thinking/u)
-    }
+    // Compact draws the reasoning still in flight as its own line, with no text of it: the activity row names the phase.
+    const compact = await live('compact')
+    expect(compact).toContain('think')
+    expect(compact).toMatch(/● Thinking/u)
+    expect(compact).not.toMatch(/working|Deep diving|Analyzing the request/u)
+    // Standard draws the reasoning in flight under its pending label, with its latest text under it.
+    const standard = await live('standard')
+    expect(standard).toMatch(/● Thinking\n\s+working/u)
+    expect(standard).not.toMatch(/Deep diving|Running/u)
+    // Detailed shows the reasoning in flight under its label too; Verbose grows the same block.
+    const detailed = await live('detailed')
+    expect(detailed).toContain('think')
+    expect(detailed).toMatch(/● Thinking\n\s+working/u)
+    expect(detailed).not.toMatch(/Deep diving|Running/u)
+    const verbose = await live('verbose')
+    expect(verbose).toMatch(/● Thinking\n\s+working/u)
+    expect(verbose).not.toMatch(/Deep diving/u)
   })
 
   it('renders a sibling plugin registration from the same direct mayflyStatus service', async () => {
@@ -463,25 +521,17 @@ describe('mayfly-transcript through the real Loader', () => {
     expect(footer).toContain('fixture-entry')
   })
 
-  it('loads transcript images through the optional attachment service and contains failures', async () => {
-    let call = 0
-    const readImage = vi.fn(async () => {
-      call += 1
-      if (call === 1) return { data: new Uint8Array([1, 2, 3]) }
-      throw new Error('attachment unavailable')
-    })
+  it('labels attached images on the prompt row without reading their bytes', async () => {
+    const readImage = vi.fn(async () => ({ data: new Uint8Array([1, 2, 3]) }))
     const agent = fakeParent([userEvent('images', [
       imageBlock({ attachmentId: 'image-ok', mediaType: 'image/png', bytes: 3, width: 1, height: 1 } as never),
-      imageBlock({ attachmentId: 'image-missing', mediaType: 'image/png', bytes: 3, width: 1, height: 1 } as never),
+      imageBlock({ attachmentId: 'image-missing', mediaType: 'image/png', bytes: 3, width: 1, height: 1, name: 'shot.png' } as never),
     ])])
     const { screen } = await bootTranscript(agent, { attachments: { readImage } })
-    contentLines(screen)
-    await vi.waitFor(() => { expect(readImage).toHaveBeenCalledTimes(2) })
-    await vi.waitFor(() => {
-      const rendered = contentLines(screen).join('\n')
-      expect(rendered).toContain('<image 3B>')
-      expect(rendered.match(/\[image\]/g)?.length).toBeGreaterThanOrEqual(1)
-    })
+    const rendered = contentLines(screen).join('\n')
+    expect(rendered).toContain('[image] 1 · 1×1 · 1 KB')
+    expect(rendered).toContain('[image] 2 · shot.png · 1×1 · 1 KB')
+    expect(readImage).not.toHaveBeenCalled()
   })
 
   it('applies settings, reprojects locale copy, and unloads every Fiber-owned registration', async () => {
@@ -522,5 +572,203 @@ describe('mayfly-transcript through the real Loader', () => {
     expect(screen.bottomChildren).toEqual([])
     expect(keymap.actions).toEqual([])
     expect(keymap.unregistered.flat().map(action => action.id)).toContain(ACTION_TOGGLE_COLLAPSE)
+  })
+})
+
+describe('mayfly-transcript queued messages, facts, images, and row actions', () => {
+  const queuedMessage = (text: string): UserMessage => createUserMessage({ content: [{ type: 'text', text }], source: { kind: 'user' } })
+  const inboxOf = (agent: FakeAgent): { nextStep: UserMessage[], nextTurn: UserMessage[] } =>
+    (agent as unknown as { inbox: { nextStep: UserMessage[], nextTurn: UserMessage[] } }).inbox
+
+  it('shows the selected Agent\'s queued messages, and follows only that Agent\'s inbox events', async () => {
+    resetSeq()
+    const agent = fakeParent([userEvent('work')])
+    const other = fakeParent([])
+    Object.assign(other.session, { id: 'other-inbox' })
+    const { ctx, screen, select } = await bootTranscript(null)
+    select(agent)
+    inboxOf(agent).nextStep.push(queuedMessage('after this step'))
+    inboxOf(agent).nextTurn.push(queuedMessage('after the turn'))
+    ctx.emit('agent/inbox/inserted', { agent: agent as unknown as Agent, message: queuedMessage('queued') })
+    const queued = contentLines(screen).join('\n')
+    expect(queued).toContain('after this step')
+    expect(queued).toContain('after the turn')
+
+    const baseline = screen.renderRequests.length
+    inboxOf(other).nextTurn.push(queuedMessage('elsewhere'))
+    ctx.emit('agent/inbox/claimed', { agent: other as unknown as Agent, message: queuedMessage('elsewhere'), turn: 1 })
+    expect(screen.renderRequests.length).toBe(baseline)
+
+    inboxOf(agent).nextStep.length = 0
+    ctx.emit('agent/inbox/claimed', { agent: agent as unknown as Agent, message: queuedMessage('claimed'), turn: 1 })
+    const claimed = contentLines(screen).join('\n')
+    expect(claimed).not.toContain('after this step')
+    expect(claimed).toContain('after the turn')
+    inboxOf(agent).nextTurn.length = 0
+    ctx.emit('agent/inbox/discarded', { agent: agent as unknown as Agent, message: queuedMessage('discarded') })
+    expect(contentLines(screen).join('\n')).not.toContain('after the turn')
+  })
+
+  it('republishes the stream when the displayed conversation\'s compactions or approvals change, and only then', async () => {
+    resetSeq()
+    const agent = fakeParent([userEvent('work')])
+    const { screen, projections } = await bootTranscript(agent)
+    const facts = { ...initialConversationFacts(), compactions: [{ id: 'c1', before: 900, after: 300, window: 1000 }] }
+    const compacted = screen.renderRequests.length
+    projections.emitFacts(agent.session, facts)
+    expect(screen.renderRequests.length).toBeGreaterThan(compacted)
+
+    // A facts value that keeps the same marks and window does not repaint the stream.
+    const steady = screen.renderRequests.length
+    projections.emitFacts(agent.session, { ...facts, phase: 'idle' })
+    expect(screen.renderRequests.length).toBe(steady)
+
+    projections.emitFacts(agent.session, { ...facts, approvals: [{ id: 'a1', callId: 'call-1', outcome: 'allowed-once' }] })
+    expect(screen.renderRequests.length).toBeGreaterThan(steady)
+  })
+
+  it('keeps the transcript working when the host publishes no session facts', async () => {
+    resetSeq()
+    const agent = fakeParent([userEvent('still here'), assistantEvent(1, 1, [{ type: 'text', text: 'answered' }])])
+    const { ctx, screen, projections } = await bootTranscript(agent, { withoutSessionFacts: true })
+    const rendered = contentLines(screen).join('\n')
+    expect(rendered).toContain('still here')
+    expect(rendered).toContain('answered')
+    projections.emitFacts(agent.session, { ...initialConversationFacts(), compactions: [] })
+    ctx.emit('tools/change')
+    expect(contentLines(screen).join('\n')).toContain('answered')
+  })
+
+  it('loads an attached image through the attachment store for a reference the stream holds, and answers missing otherwise', async () => {
+    resetSeq()
+    const readImage = vi.fn(async (ref: unknown) => {
+      if ((ref as { attachmentId: string }).attachmentId === 'image-bad') throw new Error('attachment gone')
+      return { data: new Uint8Array([7, 7]) }
+    })
+    const agent = fakeParent([userEvent('pictures', [
+      imageBlock({ attachmentId: 'image-ok', mediaType: 'image/png', bytes: 3, width: 1, height: 1 } as never),
+      imageBlock({ attachmentId: 'image-bad', mediaType: 'image/png', bytes: 3, width: 1, height: 1 } as never),
+    ])])
+    const { ctx } = await bootTranscript(agent, { attachments: { readImage }, images: true })
+    const images = ctx.mayflyUiImages
+    expect(images.read('image-ok', () => {})).toEqual({ state: 'pending' })
+    await vi.waitFor(() => expect(images.read('image-ok', () => {})).toEqual({ state: 'ready', image: { data: new Uint8Array([7, 7]), mediaType: 'image/png' } }))
+    expect(readImage).toHaveBeenCalledWith({ attachmentId: 'image-ok', mediaType: 'image/png' })
+    // A reference the stream does not hold is never read.
+    images.read('image-unknown', () => {})
+    await vi.waitFor(() => expect(images.read('image-unknown', () => {})).toEqual({ state: 'missing' }))
+    expect(readImage).not.toHaveBeenCalledWith(expect.objectContaining({ attachmentId: 'image-unknown' }))
+    // A byte read that throws answers missing, not an error.
+    images.read('image-bad', () => {})
+    await vi.waitFor(() => expect(images.read('image-bad', () => {})).toEqual({ state: 'missing' }))
+  })
+
+  it('answers missing for a stream image when the host has no attachment store', async () => {
+    resetSeq()
+    const agent = fakeParent([userEvent('pictures', [imageBlock({ attachmentId: 'image-x', mediaType: 'image/png', bytes: 3, width: 1, height: 1 } as never)])])
+    const { ctx } = await bootTranscript(agent, { images: true })
+    const images = ctx.mayflyUiImages
+    images.read('image-x', () => {})
+    await vi.waitFor(() => expect(images.read('image-x', () => {})).toEqual({ state: 'missing' }))
+  })
+
+  it('copies the row under the cursor as text or model JSON and reports the outcome', async () => {
+    resetSeq()
+    const agent = fakeParent([userEvent('hello'), assistantEvent(1, 1, [{ type: 'text', text: 'an answer' }])])
+    const { screen, reports } = await bootTranscript(agent, { interaction: true })
+    const writes: string[] = []
+    setClipboardTextWriter(async (text) => { writes.push(text) })
+    setClipboardOsc52Emitter(() => false)
+    try {
+      screen.cursorRow = 'assistant:1:1'
+      const press = (actionId: string) => screen.slotOptions.get('transcript.conversation')!.onEvent({ kind: 'activate', controlId: STREAM.keys, actionId })
+      press(STREAM.copy)
+      await vi.waitFor(() => expect(reports.at(-1)?.feedback.message).toBe('Copied 9 characters'))
+      expect(writes).toEqual(['an answer'])
+      press(STREAM.copyRaw)
+      await vi.waitFor(() => expect(reports.at(-1)?.feedback.message).toMatch(/^Copied \d+ characters of JSON$/u))
+      expect(writes.at(-1)).toContain('"transcript-assistant"')
+      expect(reports.at(-1)?.feedback.severity).toBe('success')
+    } finally {
+      setClipboardTextWriter(undefined)
+      setClipboardOsc52Emitter(undefined)
+    }
+  })
+
+  it('reports an unverified copy when only the terminal escape delivered it, and a failed copy with its detail', async () => {
+    resetSeq()
+    const agent = fakeParent([userEvent('hello'), assistantEvent(1, 1, [{ type: 'text', text: 'an answer' }])])
+    const { screen, reports } = await bootTranscript(agent, { interaction: true })
+    const press = (actionId: string) => screen.slotOptions.get('transcript.conversation')!.onEvent({ kind: 'activate', controlId: STREAM.keys, actionId })
+    screen.cursorRow = 'assistant:1:1'
+    try {
+      setClipboardTextWriter(async () => { throw new Error('no tool') })
+      setClipboardOsc52Emitter(() => true)
+      press(STREAM.copy)
+      await vi.waitFor(() => expect(reports.at(-1)?.feedback.message).toBe('Copied 9 characters (unverified)'))
+      press(STREAM.copyRaw)
+      await vi.waitFor(() => expect(reports.at(-1)?.feedback.message).toMatch(/\(unverified\)$/u))
+
+      setClipboardOsc52Emitter(() => false)
+      press(STREAM.copy)
+      await vi.waitFor(() => expect(reports.at(-1)).toMatchObject({ feedback: { message: 'Could not copy', severity: 'error', detail: 'no tool' } }))
+
+      // A writer that rejects with something other than an Error still reports, with its text.
+      setClipboardTextWriter(async () => { throw 'pipe closed' })
+      press(STREAM.copy)
+      await vi.waitFor(() => expect(reports.at(-1)).toMatchObject({ feedback: { message: 'Could not copy', detail: 'pipe closed' } }))
+    } finally {
+      setClipboardTextWriter(undefined)
+      setClipboardOsc52Emitter(undefined)
+    }
+  })
+
+  it('leaves the reports quiet when the editor opens and closes the row', async () => {
+    resetSeq()
+    const agent = fakeParent([userEvent('hello'), assistantEvent(1, 1, [{ type: 'text', text: 'an answer' }])])
+    const { screen, reports } = await bootTranscript(agent, { interaction: true, settings: { mayfly: {} } })
+    screen.cursorRow = 'assistant:1:1'
+    vi.stubEnv('VISUAL', '')
+    vi.stubEnv('EDITOR', 'true')
+    try {
+      screen.slotOptions.get('transcript.conversation')!.onEvent({ kind: 'activate', controlId: STREAM.keys, actionId: STREAM.open })
+      await vi.waitFor(() => expect(reports).toEqual([]))
+      await new Promise(resolve => setTimeout(resolve, 50))
+      expect(reports).toEqual([])
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  })
+
+  it('announces the conversation and prompt focus modes as the stream gains and loses focus', async () => {
+    resetSeq()
+    const agent = fakeParent([userEvent('hello')])
+    const { ctx, screen } = await bootTranscript(agent)
+    const modes: string[] = []
+    ctx.on('mayfly/focus-mode-changed', mode => { modes.push(mode) })
+    const options = screen.slotOptions.get('transcript.conversation') as unknown as { readonly onFocusChange: (focused: boolean) => void }
+    options.onFocusChange(true)
+    options.onFocusChange(false)
+    expect(modes).toEqual(['conversation', 'prompt'])
+  })
+
+  it('reports a failed open in the editor, and sends nothing when no row is under the cursor', async () => {
+    resetSeq()
+    const agent = fakeParent([userEvent('hello'), assistantEvent(1, 1, [{ type: 'text', text: 'an answer' }])])
+    const { screen, reports } = await bootTranscript(agent, { interaction: true, settings: { mayfly: {} } })
+    const press = (actionId: string) => screen.slotOptions.get('transcript.conversation')!.onEvent({ kind: 'activate', controlId: STREAM.keys, actionId })
+    vi.stubEnv('VISUAL', '')
+    vi.stubEnv('EDITOR', '')
+    try {
+      press(STREAM.open)
+      screen.cursorRow = undefined
+      press(STREAM.open)
+      expect(reports).toEqual([])
+      screen.cursorRow = 'assistant:1:1'
+      press(STREAM.open)
+      await vi.waitFor(() => expect(reports.at(-1)).toMatchObject({ id: 'open', feedback: { severity: 'error' } }))
+    } finally {
+      vi.unstubAllEnvs()
+    }
   })
 })

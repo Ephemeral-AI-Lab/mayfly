@@ -569,6 +569,19 @@ describe('validateMayflyUiNode', () => {
     expect(validateMayflyUiNode({ ...rows, numbered: 'accept' })).toMatchObject({ ok: false })
     expect(validateMayflyUiNode({ ...rows, items: [{ id: 'a', label: 'A', unavailableActions: { ' ': 'blank' } }] })).toMatchObject({ ok: false, message: expect.stringContaining('must not be empty') })
     expect(validateMayflyUiNode({ ...rows, items: [{ id: 'a', label: 'A', unavailableActions: { stop: 1 } }] })).toMatchObject({ ok: false })
+    expect(validateMayflyUiNode({ ...rows, items: [{ id: 'a', label: 'A', unavailableActions: { ['x'.repeat(MAYFLY_UI_MAX_ID + 1)]: 'long' } }] })).toMatchObject({ ok: false, message: expect.stringContaining('at most') })
+  })
+
+  it('admits a list highlight with its optional case and current match, and refuses a malformed or oversized one', () => {
+    const rows = (highlight: unknown): unknown => ({ ...ui.list({ id: 'rows', role: 'browse', selectedIds: [], items: [{ id: 'a', label: 'A' }] }), highlight })
+    expect(accepted(rows({ pattern: 'needle' }))).toMatchObject({ highlight: { pattern: 'needle' } })
+    expect(accepted(rows({ pattern: 'Needle', caseSensitive: true, current: 2 }))).toMatchObject({ highlight: { pattern: 'Needle', caseSensitive: true, current: 2 } })
+    expect(accepted(rows({ pattern: 'n'.repeat(256) }))).toMatchObject({ highlight: { pattern: 'n'.repeat(256) } })
+    expect(validateMayflyUiNode(rows({ pattern: 'n'.repeat(257) }))).toMatchObject({ ok: false, message: expect.stringContaining('exceeds 256 characters') })
+    expect(validateMayflyUiNode(rows({}))).toMatchObject({ ok: false })
+    expect(validateMayflyUiNode(rows({ pattern: 'x', caseSensitive: 'yes' }))).toMatchObject({ ok: false })
+    expect(validateMayflyUiNode(rows({ pattern: 'x', current: -1 }))).toMatchObject({ ok: false })
+    expect(validateMayflyUiNode(rows({ pattern: 'x', current: 1.5 }))).toMatchObject({ ok: false })
   })
 
   it('rejects malformed field/action options and wrong empty actions', () => {
@@ -796,15 +809,19 @@ describe('list rows and bodies', () => {
   it('canonicalizes the row fields of an item', () => {
     expect(itemOf({
       id: 'a', label: 'A', labelSpans: [{ text: 'A', styles: ['strong'] }], right: [{ text: '1.0', tone: 'muted' }], rightFocus: [{ text: 'Enter' }],
-      expanded: true, wrap: true, wrapMax: 500, meter: { value: 9, max: 4, width: 99, tone: 'success' }, indent: 99, rule: '', gap: false,
+      expanded: true, wrap: true, wrapMax: 500, hang: 99, meter: { value: 9, max: 4, width: 99, tone: 'success' }, indent: 99, rule: '', gap: false,
     })).toMatchObject({
       labelSpans: [{ text: 'A', styles: ['strong'] }], right: [{ text: '1.0', tone: 'muted' }], rightFocus: [{ text: 'Enter' }],
-      expanded: true, wrap: true, wrapMax: 100, meter: { value: 4, max: 4, width: 40, tone: 'success' }, indent: 8, rule: '', gap: false,
+      expanded: true, wrap: true, wrapMax: 100, hang: 8, meter: { value: 4, max: 4, width: 40, tone: 'success' }, indent: 8, rule: '', gap: false,
     })
     expect(itemOf({ id: 'a', label: 'A', meter: { value: 1, max: 2 } })).toMatchObject({ meter: { value: 1, max: 2 } })
-    for (const bad of [{ labelSpans: 'x' }, { right: [1] }, { expanded: 'y' }, { wrap: 1 }, { wrapMax: 0 }, { meter: { value: 1 } }, { meter: { value: 1, max: 0 } }, { meter: { value: 1, max: 2, tone: 'loud' } }, { indent: -1 }, { rule: 1 }, { gap: 1 }, { gap: true, rule: 'x' }, { bodyAlways: true }, { bodyAlways: 1, body: 'x' }]) {
+    for (const bad of [{ labelSpans: 'x' }, { right: [1] }, { expanded: 'y' }, { wrap: 1 }, { wrapMax: 0 }, { hang: -1 }, { hang: 1.5 }, { meter: { value: 1 } }, { meter: { value: 1, max: 0 } }, { meter: { value: 1, max: 2, tone: 'loud' } }, { indent: -1 }, { rule: 1 }, { gap: 1 }, { gap: true, rule: 'x' }, { bodyAlways: true }, { bodyAlways: 1, body: 'x' }, { bodyLead: [{ text: '● ' }] }, { bodyLead: [{ text: '● ' }], body: ui.text('x') }, { bodyLead: [{ text: '● ' }], body: 'x', bodyAlways: true }, { bodyLead: 'x', body: ui.text('x'), bodyAlways: true }]) {
       expect(validateMayflyUiNode(rows([{ id: 'a', label: 'A', ...bad }])), JSON.stringify(bad)).toMatchObject({ ok: false })
     }
+  })
+
+  it('admits a lead only on an always-open node body', () => {
+    expect(itemOf({ id: 'a', label: '', body: ui.markdown('# x'), bodyAlways: true, bodyLead: [{ text: '● ', tone: 'muted' }] })).toMatchObject({ bodyAlways: true, bodyLead: [{ text: '● ', tone: 'muted' }] })
   })
 
   it('admits a string body and a content body, and refuses anything that holds focus', () => {

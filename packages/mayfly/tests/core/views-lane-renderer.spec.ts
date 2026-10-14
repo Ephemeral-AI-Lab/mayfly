@@ -118,6 +118,7 @@ function createRuntime(mode: 'main' | 'alternate' = 'alternate', initialColumns 
       assignFocus(component)
     },
     showOverlay() { throw new Error('pane test opened an overlay') },
+    contentTail: () => undefined,
     addChild() {},
     addBottomChild() {},
     requestRender() {},

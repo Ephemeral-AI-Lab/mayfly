@@ -1,0 +1,111 @@
+grid 120x64 cursor none
+| ⠱⣦⣄⣀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⣠⣴⠎
+| ⠀⠙⢿⣿⣿⣷⣶⣤⣀⣀⣴⣶⣦⣀⣀⣤⣶⣾⣿⣿⡿⠋⠀  mayfly
+| ⠀⠀⠀⠈⠻⢿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡿⠟⠁⠀⠀⠀  ephemeral agents, enduring works
+| ⠀⠀⠀⠀⠀⠀⠀⠉⠉⠁⢸⣿⡇⠈⠉⠉⠀⠀⠀⠀⠀⠀⠀
+| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢸⣿⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀  Send /help for help information.
+| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⣿⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀  Directory: ~/workspace
+| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣿⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀  Model:     deepseek-flash · deepseek-official
+| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⡠⠊⠀⠑⢄⠀⠀⠀⠀⠀⠀⠀⠀⠀  Version:   scenario
+|
+|  » Write the report script, then tighten the config.
+|
+|  ● Writing the script.
+|
+|  ✓ Write(scripts/report.mjs) · 34 lines · 1.9 KB
+|     1 │ export const metric1 = () => compute(1, { window: 5 })
+|     2 │ export const metric2 = () => compute(2, { window: 10 })
+|     3 │ export const metric3 = () => compute(3, { window: 15 })
+|     4 │ export const metric4 = () => compute(4, { window: 20 })
+|     5 │ export const metric5 = () => compute(5, { window: 25 })
+|     6 │ export const metric6 = () => compute(6, { window: 30 })
+|     7 │ export const metric7 = () => compute(7, { window: 35 })
+|     8 │ export const metric8 = () => compute(8, { window: 40 })
+|     9 │ export const metric9 = () => compute(9, { window: 45 })
+|    10 │ export const metric10 = () => compute(10, { window: 50 })
+|    11 │ export const metric11 = () => compute(11, { window: 55 })
+|    12 │ export const metric12 = () => compute(12, { window: 60 })
+|    … +22 more · Ctrl+O
+|
+|  ● Now the edit.
+|
+|  ● Edit(src/config.mjs)
+|    … +2 earlier · Ctrl+O
+|     3 │ −   setting5: 5,
+|     4 │ −   setting6: 6,
+|     2 │ +   retries: 3,
+|     3 │ +   backoff: { base: 100, max: 5000 },
+|     4 │ +   jitter: true,
+|     5 │ +   signal: AbortSignal.timeout(30_000),
+|     6 │     setting7: 7,
+|    ⋯
+|    10 │     setting11: 11,
+|    10 │ −   setting12: 12,
+|    11 │ +   sett
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|  ● Preparing to edit files
+|    ⎿ Tip: Esc to interrupt the run
+|                                                                                       Alt+↑ conversation · Alt+↓ bar
+|╭────────────────────────────────────────────────────────────────────────────────────── Write the report script, then ─╮
+|│ >                                                                                                                    │
+|╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+| deepseek-flash High  ~/workspace                                                    cache 42%  context: 5% (5.5k/128k)
+styles
+0: 1-23 fg:#f5f5f7; 24-25 fg:#9a86e6
+1: 1-23 fg:#e9e5f6; 24-25 fg:#9a86e6; 26-107 fg:#9a86e6 b
+2: 1-23 fg:#dbd3f0; 24-25 fg:#9a86e6; 26-107 fg:#c9c0f0
+3: 1-23 fg:#c9beea; 24-25 fg:#9a86e6
+4: 1-23 fg:#b2a1ec; 24-25 fg:#9a86e6; 26-107 fg:#9aa3b8
+5: 1-25 fg:#9a86e6; 26-107 fg:#ededf2
+6: 1-23 fg:#8371d6; 24-25 fg:#9a86e6; 26-107 fg:#e9e6f4
+7: 1-23 fg:#6c5bbf; 24-25 fg:#9a86e6; 26-107 fg:#ededf2
+9: 2-3 fg:#9a86e6; 4-52 fg:#9a86e6 b
+11: 2-3 fg:#ededf2
+13: 2-3 fg:#4ec87e; 4-8 fg:#ededf2 b; 9 fg:#9aa3b8; 10-27 fg:#c9c0f0; 28-48 fg:#9aa3b8
+14: 2-3 fg:#ededf2; 4-8 fg:#9aa3b8; 9-14 fg:#9a86e6; 15 fg:#ededf2; 16-20 fg:#9a86e6; 21-31 fg:#ededf2; 32-36 fg:#c9c0f0; 37-45 fg:#ededf2; 46 fg:#e8a838; 47-50 fg:#ededf2; 51-56 fg:#c9c0f0; 57-58 fg:#ededf2; 59 fg:#e8a838; 60-62 fg:#ededf2
+15: 4-8 fg:#9aa3b8; 9-14 fg:#9a86e6; 15 fg:#ededf2; 16-20 fg:#9a86e6; 21-31 fg:#ededf2; 32-36 fg:#c9c0f0; 37-45 fg:#ededf2; 46 fg:#e8a838; 47-50 fg:#ededf2; 51-56 fg:#c9c0f0; 57-58 fg:#ededf2; 59-60 fg:#e8a838; 61-63 fg:#ededf2
+16: 4-8 fg:#9aa3b8; 9-14 fg:#9a86e6; 15 fg:#ededf2; 16-20 fg:#9a86e6; 21-31 fg:#ededf2; 32-36 fg:#c9c0f0; 37-45 fg:#ededf2; 46 fg:#e8a838; 47-50 fg:#ededf2; 51-56 fg:#c9c0f0; 57-58 fg:#ededf2; 59-60 fg:#e8a838; 61-63 fg:#ededf2
+17: 4-8 fg:#9aa3b8; 9-14 fg:#9a86e6; 15 fg:#ededf2; 16-20 fg:#9a86e6; 21-31 fg:#ededf2; 32-36 fg:#c9c0f0; 37-45 fg:#ededf2; 46 fg:#e8a838; 47-50 fg:#ededf2; 51-56 fg:#c9c0f0; 57-58 fg:#ededf2; 59-60 fg:#e8a838; 61-63 fg:#ededf2
+18: 4-8 fg:#9aa3b8; 9-14 fg:#9a86e6; 15 fg:#ededf2; 16-20 fg:#9a86e6; 21-31 fg:#ededf2; 32-36 fg:#c9c0f0; 37-45 fg:#ededf2; 46 fg:#e8a838; 47-50 fg:#ededf2; 51-56 fg:#c9c0f0; 57-58 fg:#ededf2; 59-60 fg:#e8a838; 61-63 fg:#ededf2
+19: 4-8 fg:#9aa3b8; 9-14 fg:#9a86e6; 15 fg:#ededf2; 16-20 fg:#9a86e6; 21-31 fg:#ededf2; 32-36 fg:#c9c0f0; 37-45 fg:#ededf2; 46 fg:#e8a838; 47-50 fg:#ededf2; 51-56 fg:#c9c0f0; 57-58 fg:#ededf2; 59-60 fg:#e8a838; 61-63 fg:#ededf2
+20: 4-8 fg:#9aa3b8; 9-14 fg:#9a86e6; 15 fg:#ededf2; 16-20 fg:#9a86e6; 21-31 fg:#ededf2; 32-36 fg:#c9c0f0; 37-45 fg:#ededf2; 46 fg:#e8a838; 47-50 fg:#ededf2; 51-56 fg:#c9c0f0; 57-58 fg:#ededf2; 59-60 fg:#e8a838; 61-63 fg:#ededf2
+21: 4-8 fg:#9aa3b8; 9-14 fg:#9a86e6; 15 fg:#ededf2; 16-20 fg:#9a86e6; 21-31 fg:#ededf2; 32-36 fg:#c9c0f0; 37-45 fg:#ededf2; 46 fg:#e8a838; 47-50 fg:#ededf2; 51-56 fg:#c9c0f0; 57-58 fg:#ededf2; 59-60 fg:#e8a838; 61-63 fg:#ededf2
+22: 4-8 fg:#9aa3b8; 9-14 fg:#9a86e6; 15 fg:#ededf2; 16-20 fg:#9a86e6; 21-31 fg:#ededf2; 32-36 fg:#c9c0f0; 37-45 fg:#ededf2; 46 fg:#e8a838; 47-50 fg:#ededf2; 51-56 fg:#c9c0f0; 57-58 fg:#ededf2; 59-60 fg:#e8a838; 61-63 fg:#ededf2
+23: 4-8 fg:#9aa3b8; 9-14 fg:#9a86e6; 15 fg:#ededf2; 16-20 fg:#9a86e6; 21-32 fg:#ededf2; 33-37 fg:#c9c0f0; 38-46 fg:#ededf2; 47-48 fg:#e8a838; 49-52 fg:#ededf2; 53-58 fg:#c9c0f0; 59-60 fg:#ededf2; 61-62 fg:#e8a838; 63-65 fg:#ededf2
+24: 4-8 fg:#9aa3b8; 9-14 fg:#9a86e6; 15 fg:#ededf2; 16-20 fg:#9a86e6; 21-32 fg:#ededf2; 33-37 fg:#c9c0f0; 38-46 fg:#ededf2; 47-48 fg:#e8a838; 49-52 fg:#ededf2; 53-58 fg:#c9c0f0; 59-60 fg:#ededf2; 61-62 fg:#e8a838; 63-65 fg:#ededf2
+25: 4-8 fg:#9aa3b8; 9-14 fg:#9a86e6; 15 fg:#ededf2; 16-20 fg:#9a86e6; 21-32 fg:#ededf2; 33-37 fg:#c9c0f0; 38-46 fg:#ededf2; 47-48 fg:#e8a838; 49-52 fg:#ededf2; 53-58 fg:#c9c0f0; 59-60 fg:#ededf2; 61-62 fg:#e8a838; 63-65 fg:#ededf2
+26: 2-3 fg:#ededf2; 4-22 fg:#9aa3b8
+28: 2-3 fg:#ededf2
+30: 2 fg:#5c6476; 3 fg:#ededf2; 4-7 fg:#ededf2 b; 8 fg:#9aa3b8; 9-22 fg:#c9c0f0; 23 fg:#9aa3b8
+31: 2-3 fg:#ededf2; 4-24 fg:#9aa3b8
+32: 4-7 fg:#9aa3b8; 9 fg:#e85454 bg:#43232a; 10 bg:#43232a; 11-22 fg:#ededf2 bg:#43232a; 23 fg:#e8a838 bg:#43232a; 24 fg:#ededf2 bg:#43232a; 25-115 bg:#43232a
+33: 4-7 fg:#9aa3b8; 9 fg:#e85454 bg:#43232a; 10 bg:#43232a; 11-12 fg:#ededf2 bg:#43232a; 13-20 fg:#c9c0f0 bg:#43232a; 21-22 fg:#ededf2 bg:#43232a; 23 fg:#e8a838 bg:#43232a; 24 fg:#ededf2 bg:#43232a; 25-115 bg:#43232a
+34: 4-7 fg:#9aa3b8; 9 fg:#4ec87e bg:#1e3a2b; 10 bg:#1e3a2b; 11-21 fg:#ededf2 bg:#1e3a2b; 22 fg:#e8a838 bg:#1e3a2b; 23 fg:#ededf2 bg:#1e3a2b; 24-115 bg:#1e3a2b
+35: 4-7 fg:#9aa3b8; 9 fg:#4ec87e bg:#1e3a2b; 10 bg:#1e3a2b; 11-12 fg:#ededf2 bg:#1e3a2b; 13-19 fg:#c9c0f0 bg:#1e3a2b; 20-23 fg:#ededf2 bg:#1e3a2b; 24-27 fg:#c9c0f0 bg:#1e3a2b; 28-29 fg:#ededf2 bg:#1e3a2b; 30-32 fg:#e8a838 bg:#1e3a2b; 33-34 fg:#ededf2 bg:#1e3a2b; 35-37 fg:#c9c0f0 bg:#1e3a2b; 38-39 fg:#ededf2 bg:#1e3a2b; 40-43 fg:#e8a838 bg:#1e3a2b; 44-46 fg:#ededf2 bg:#1e3a2b; 47-115 bg:#1e3a2b
+36: 4-7 fg:#9aa3b8; 9 fg:#4ec87e bg:#1e3a2b; 10 bg:#1e3a2b; 11-12 fg:#ededf2 bg:#1e3a2b; 13-18 fg:#c9c0f0 bg:#1e3a2b; 19-20 fg:#ededf2 bg:#1e3a2b; 21-24 fg:#e8a838 bg:#1e3a2b; 25 fg:#ededf2 bg:#1e3a2b; 26-115 bg:#1e3a2b
+37: 4-7 fg:#9aa3b8; 9 fg:#4ec87e bg:#1e3a2b; 10 bg:#1e3a2b; 11-12 fg:#ededf2 bg:#1e3a2b; 13-18 fg:#c9c0f0 bg:#1e3a2b; 19-40 fg:#ededf2 bg:#1e3a2b; 41-46 fg:#e8a838 bg:#1e3a2b; 47-48 fg:#ededf2 bg:#1e3a2b; 49-115 bg:#1e3a2b
+38: 4-7 fg:#9aa3b8; 11-12 fg:#ededf2; 13-20 fg:#c9c0f0; 21-22 fg:#ededf2; 23 fg:#e8a838; 24 fg:#ededf2
+39: 4 fg:#9aa3b8
+40: 4-7 fg:#9aa3b8; 11-12 fg:#ededf2; 13-21 fg:#c9c0f0; 22-23 fg:#ededf2; 24-25 fg:#e8a838; 26 fg:#ededf2
+41: 4-7 fg:#9aa3b8; 9 fg:#e85454 bg:#43232a; 10 bg:#43232a; 11-12 fg:#ededf2 bg:#43232a; 13-21 fg:#c9c0f0 bg:#43232a; 22-23 fg:#ededf2 bg:#43232a; 24-25 fg:#e8a838 bg:#43232a; 26 fg:#ededf2 bg:#43232a; 27-115 bg:#43232a
+42: 4-7 fg:#9aa3b8; 9 fg:#4ec87e bg:#1e3a2b; 10 bg:#1e3a2b; 11-16 fg:#ededf2 bg:#1e3a2b; 17-115 bg:#1e3a2b
+57: 0-1 fg:#ededf2; 2 fg:#9a86e6; 3 fg:#ededf2; 4-26 fg:#9aa3b8
+58: 0-34 fg:#9aa3b8
+59: 87-116 fg:#9aa3b8
+60: 0-86 fg:#45406b; 87-117 fg:#5c6476; 118-119 fg:#45406b
+61: 0 fg:#45406b; 4 r; 119 fg:#45406b
+62: 0-119 fg:#45406b
+63: 1-19 fg:#ededf2; 22-32 fg:#9aa3b8; 85-118 fg:#ededf2

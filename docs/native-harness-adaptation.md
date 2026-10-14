@@ -69,13 +69,13 @@ presentation and current-Agent selection.
 - `mayfly.transcriptView` replaces `mayfly.transcript.*`. Values are `compact`,
   `standard` (default), `detailed`, and `verbose`, keeping the Harness Chat
   work-details mode names. Unlike Harness Chat, whose running turn header and
-  open group title are its live signals, Mayfly keeps every live fact in the
-  activity row and renders the transcript in the past tense: completed turns fold
-  behind a settled turn header while final replies (and, from Standard up, file
-  changes) remain visible, process work collapses into titles of settled work,
-  and Verbose keeps every card open. Ctrl+O expands the recent `expandTurns`
-  turns. Old per-family settings and `recentStepsRetention` are no longer
-  interpreted.
+  open group title are its live signals, Mayfly keeps the vitals of the turn in the
+  activity block (calls in flight are pending lines in the transcript) and renders
+  the rest in the past tense: each kind of settled work is one block or group, with
+  its own state, and Verbose keeps every card open. Compact folds a turn's settled
+  tool calls into one `▸ N tool calls` line. Standard does not fold turns. Ctrl+O
+  expands the recent `expandTurns` turns. Old per-family settings and
+  `recentStepsRetention` are no longer interpreted.
 
 These changes do not automatically rewrite user configuration or delete user data.
 Remove obsolete keys from settings files when updating.

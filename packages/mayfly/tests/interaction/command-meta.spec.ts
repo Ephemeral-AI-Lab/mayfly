@@ -36,6 +36,16 @@ describe('command-meta alias registry', () => {
     }
   })
 
+  it('clear drops every canonical and alias registration at once', () => {
+    const aliases = registry()
+    aliases.register('quit', ['q'])
+    aliases.register('help', ['h'])
+    aliases.clear()
+    expect(aliases.canonicalOf('q')).toBeUndefined()
+    expect(aliases.aliasesOf('help')).toEqual([])
+    expect(aliases.register('quit', ['q'])).toEqual(expect.any(Function))
+  })
+
   it('rejects an alias that is its own canonical name', () => {
     const aliases = registry()
     expect(() => aliases.register('quit', ['quit', 'q'])).toThrow('cannot be its own alias')

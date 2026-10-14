@@ -22,7 +22,7 @@ import { VIEWS_FOCUS_ID, type ViewHint, type ViewRegistration } from './views-la
 import { MayflyUiSurfaceRuntime, compileMayflyUiNode, compileMayflyUiSurfaceNode, type MayflyCompiledUi, type MayflyUiViewport } from './ui-compiler.ts'
 import { renderOverflowRow } from './ui-patterns.ts'
 import { OverlayArm, type OverlayArmHint } from './overlay-arm.ts'
-import { ACTION_PAGE_DOWN, ACTION_PAGE_UP, matchesKeyAction } from './key-actions.ts'
+import { ACTION_FOLLOW_TAIL, ACTION_PAGE_DOWN, ACTION_PAGE_UP, displayKey, matchesKeyAction } from './key-actions.ts'
 import type { MayflyComponents, MayflyFocusable, MayflyFocusIdentity, MayflyKeymap, MayflyOverlayHandle, MayflySemanticColors } from './types.ts'
 import type { UiSurfaceModel } from './ui-interaction-surface.ts'
 import type { UiInteractionService } from './ui-interaction-state.ts'
@@ -659,6 +659,38 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
     { id: 'mayfly.surface.next', keys: 'f6', description: 'Focus the next Mayfly surface', handler: () => navigate(1) },
     { id: 'mayfly.surface.previous', keys: 'shift+f6', description: 'Focus the previous Mayfly surface', handler: () => navigate(-1) },
   ]))
+  // On the alternate screen the stream is scrolled by the screen: a view scrolled away from the tail has a chip in the
+  // notification pane. It counts the turns of the agent loop that began below the view, and with none it is the way back
+  // to the bottom. The pane draws it; this announces its words whenever they change.
+  let stopTailWatch: (() => void) | undefined
+  if (runtime.contentTail() !== undefined) {
+    const translate = contextHints?.translate ?? interpolateLocaleMessage
+    /** The newest turn the slots held the last time the view was at the tail: what a view that leaves it has not seen. */
+    let seen = 0
+    let announced: string | undefined
+    const key = (): string => {
+      const keys = ctx.mayflyKeymap.getKeys?.(ACTION_FOLLOW_TAIL) ?? []
+      return keys.length === 0 ? 'Ctrl+↓' : keys.map(displayKey).join('/')
+    }
+    const label = (): string | undefined => {
+      const tail = runtime.contentTail()
+      const latest = ctx.mayflyScreen.contentTurns()
+      if (tail === undefined || !tail.away) { seen = latest; return undefined }
+      const turns = Math.max(0, latest - seen)
+      return turns === 0 ? translate('Back to bottom · {key}', { key: key() }) : translate(turns === 1 ? '{count} new turn · {key}' : '{count} new turns · {key}', { count: turns, key: key() })
+    }
+    const announce = (): void => {
+      const next = label()
+      if (next === announced) return
+      announced = next
+      // The layout that found the change is still painting: the pane publishes after it.
+      queueMicrotask(() => { if (!disposed) ctx.emit('mayfly/content-tail-changed', next) })
+    }
+    stopTailWatch = runtime.watchContentTail(announce)
+    const offTurns = ctx.mayflyScreen.onContentTurns(announce)
+    const stopWatch = stopTailWatch
+    stopTailWatch = () => { stopWatch(); offTurns() }
+  }
   let registryRevision = 0
   let editorOccupied = false
   const publish = (): void => schedule({
@@ -688,6 +720,7 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
   ctx.effect(() => () => {
     disposed = true
     clock.dispose()
+    stopTailWatch?.()
     offInteraction()
     for (const record of [...overlays.values()].reverse()) {
       record.runtime.dispose()

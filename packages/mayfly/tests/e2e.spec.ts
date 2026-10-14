@@ -6,6 +6,7 @@ import { readFileSync } from 'node:fs'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { AssistantStreamFrame } from '@deepseek-ai/dsh-agent'
 import { symbols, type Context } from '@deepseek-ai/cordis'
+import type { ApprovalOutcome } from '@deepseek-ai/dsh-user-approval'
 import { ui } from '../../ui/src/index.ts'
 import { INTERACTION_KEY_ACTIONS } from '../src/interaction/keys.ts'
 import { waitForRender } from './core/fake-terminal.ts'
@@ -58,9 +59,6 @@ describe('Mayfly direct-service whole tree', () => {
       mayflyOverlays: true,
       mayflyEditorExtensions: true,
     })
-    // The transcript plugin mounts after the sibling; its ephemeral-local
-    // seam resolves through the shared store once the tree has settled.
-    expect(tree.ctx.get('mayflyTranscriptLocals')).toBeDefined()
     expect(tree.projections.calls.at(-1)).toEqual({ session: agent.session, keys: ['mayflyConversation'] })
     expect(tree.tools.scopes.at(-1)).toBe(agent)
   })
@@ -69,7 +67,8 @@ describe('Mayfly direct-service whole tree', () => {
     const tree = await bootDirectMayfly()
     await currentAgent(tree)
     expect(tree.ctx.mayflyPanes.list().map(entry => entry.id)).toEqual(['e2e.direct-pane'])
-    expect(tree.ctx.mayflyStatus.list().map(entry => entry.id)).toEqual(['e2e.direct-status'])
+    // `mayfly.status.focus` is the transcript plugin's own chip (`transcript/status-focus.ts`), mounted beside the direct entry.
+    expect(tree.ctx.mayflyStatus.list().map(entry => entry.id)).toEqual(['e2e.direct-status', 'mayfly.status.focus'])
     expect(tree.ctx.mayflyEditorExtensions.list().map(entry => entry.id)).toEqual(['e2e.direct-editor'])
     tree.ctx.mayflyScreen.requestRender(true)
     await waitForRender()
@@ -96,7 +95,8 @@ describe('Mayfly direct-service whole tree', () => {
     await tree.ctx.loader.update(entry!.id, { disabled: true })
     await tree.ctx.loader.await()
     expect(tree.ctx.mayflyPanes.list()).toEqual([])
-    expect(tree.ctx.mayflyStatus.list()).toEqual([])
+    // The sibling's status entry leaves with it; the transcript's focus chip stays, since the sibling never registered it.
+    expect(tree.ctx.mayflyStatus.list().map(entry => entry.id)).toEqual(['mayfly.status.focus'])
     expect(tree.ctx.mayflyOverlays.list()).toEqual([])
     expect(tree.ctx.mayflyEditorExtensions.list()).toEqual([])
     expect(tree.commands.find('direct-overlay')).toBeUndefined()
@@ -251,6 +251,39 @@ describe('Mayfly direct-service whole tree', () => {
     await waitForSelections(4, tree)
     expect(tree.controller.forks.at(-1)).toEqual({ sessionId: forked.id, atSeq: 7 })
     expect(tree.projections.calls.at(-1)?.session).toBe(tree.observations.selectedAgents.at(-1)!.session)
+  })
+
+  it('scopes a decision request to the exact selected Agent and withdraws it with the frontend Fiber', async () => {
+    const tree = await bootDirectMayfly()
+    const initial = await currentAgent(tree)
+    const published: Array<readonly unknown[]> = []
+    tree.ctx.on('mayfly/decision-requests-changed', (source, requests) => { if (source === 'approval') published.push(requests) })
+    const fallback = (): Promise<ApprovalOutcome> => Promise.resolve('unavailable')
+    tree.ctx.emit('mayfly/request-new')
+    await waitForSelections(2, tree)
+    const fresh = tree.observations.selectedAgents.at(-1)!
+    expect(fresh).not.toBe(initial)
+
+    /* A request for an Agent that is not the displayed one is left to the next listener, and publishes nothing. */
+    await expect(tree.ctx.waterfall('approval/request', { agent: initial, toolName: 'bash' } as never, fallback)).resolves.toBe('unavailable')
+    expect(published).toEqual([])
+
+    const pending = tree.ctx.waterfall('approval/request', { agent: fresh, toolName: 'bash' } as never, fallback)
+    const card = tree.ctx.mayflyOverlays.list().find(entry => entry.id.startsWith('mayfly.approval.'))
+    expect(card).toBeDefined()
+    expect(tree.ctx.mayflyUiInteraction.get('overlay', card!.id)!.scope).toEqual({ kind: 'session', sessionId: fresh.id })
+    expect(published.at(-1)).toEqual([{ type: 'approval', toolName: 'bash' }])
+
+    const frontend = [...tree.ctx.loader.entries()].find(candidate => candidate.options.id === 'mayfly-frontend')
+    expect(frontend).toBeDefined()
+    await tree.ctx.loader.update(frontend!.id, { disabled: true })
+    await tree.ctx.loader.await()
+    await expect(pending).resolves.toBe('cancelled')
+    expect(published.at(-1)).toEqual([])
+    expect(tree.ctx.mayflyOverlays.list().filter(entry => entry.id.startsWith('mayfly.approval.'))).toEqual([])
+    /* No listener of the unloaded frontend is left to claim a later request. */
+    await expect(tree.ctx.waterfall('approval/request', { agent: fresh, toolName: 'bash' } as never, fallback)).resolves.toBe('unavailable')
+    expect(published.at(-1)).toEqual([])
   })
 
   it('keeps the shipped bundle flat with direct service owners', () => {

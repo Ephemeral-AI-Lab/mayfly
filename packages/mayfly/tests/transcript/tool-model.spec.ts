@@ -1,50 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
-import type { MayflySemanticColors } from '../../src/core/types.ts'
-import type { ToolPresentationModel } from '../../src/frontend/models.ts'
-import { createToolPresentationModel, toolCallNode, toolResultNode, toolResultChip, ToolModelComponent } from '../../src/transcript/tool-model.ts'
-import { fakeMayflyComponents } from './helpers.ts'
-import { COLORS } from './status-fakes.ts'
-
-const renderer = { components: fakeMayflyComponents(), colors: COLORS as MayflySemanticColors, viewportRows: () => 20 }
-
-describe('ToolModelComponent', () => {
-  it('renders missing nodes and invalidates safely', () => { const empty = new ToolModelComponent(() => ({ kind: 'tool', id: 'empty', name: 'empty' }), renderer); expect(empty.render(10)).toEqual([]); empty.invalidate(); const none = new ToolModelComponent(() => null, renderer); expect(none.render(10)).toEqual([]); none.invalidate() })
-  it('falls back to the call node when expanded without a result', () => {
-    const component = new ToolModelComponent(() => ({ kind: 'tool', id: 'call-only', name: 'call-only', expanded: true, call: { kind: 'text', content: 'pending call' } }), renderer)
-    expect(component.render(20)).toEqual(['pending call'])
-  })
-  it('folds collapsed output while preserving the complete expanded presenter output', () => {
-    const rows = Array.from({ length: 220 }, (_, index) => `row ${String(index)}`).join('\n')
-    const component = new ToolModelComponent(() => ({ kind: 'tool', id: 'bounded', name: 'bounded', call: { kind: 'code', code: rows }, result: { kind: 'code', code: rows } }), renderer)
-    const collapsed = component.render(60)
-    expect(collapsed).toHaveLength(12)
-    expect(collapsed.at(-1)).toBe('... (209 more lines, 220 total, Ctrl+O to expand)')
-    // Out of Ctrl-O's reach the hint states the fold without naming the key.
-    component.setScope({ hint: false })
-    expect(component.render(60).at(-1)).toBe('... (209 more lines, 220 total)')
-    component.setExpanded(true)
-    // Expanded: the complete result (a structured call repeats in it).
-    const expanded = component.render(60)
-    expect(expanded).toHaveLength(220)
-    expect(expanded.at(-1)).toBe('row 219')
-  })
-  it('keeps a plain-text result to three rows and skips a settled structured call when expanded', () => {
-    const text = Array.from({ length: 5 }, (_, index) => `line ${String(index)}`).join('\n')
-    const component = new ToolModelComponent(() => ({ kind: 'tool', id: 'text', name: 'text', call: { kind: 'text', content: 'args' }, result: { kind: 'text', content: text } }), renderer)
-    expect(component.render(60)).toEqual(['line 0', 'line 1', '... (3 more lines, 5 total, Ctrl+O to expand)'])
-    component.setExpanded(true)
-    expect(component.render(60)).toEqual(['args', ...text.split('\n')])
-    const diff = { kind: 'sections' as const, sections: [{ title: 'a.ts', body: { kind: 'text' as const, content: 'hunk' } }] }
-    const edit = new ToolModelComponent(() => ({ kind: 'tool', id: 'edit', name: 'edit', call: diff, result: diff, expanded: true }), renderer)
-    expect(edit.render(60)).toHaveLength(2)
-  })
-  it('contains invalid canonical nodes and degenerate viewports', () => {
-    const invalid = { kind: 'list', id: 'bad', selectedIds: [], items: [{ id: 'same', label: 'one' }, { id: 'same', label: 'two' }] } as unknown as MayflyUiNode
-    const component = new ToolModelComponent(() => ({ kind: 'tool', id: 'invalid', name: 'invalid', call: invalid }), { ...renderer, viewportRows: () => Number.NaN })
-    expect(component.render(Number.NaN).join('')).toContain('May')
-  })
-})
+import { createToolPresentationModel, toolCallNode, toolResultNode } from '../../src/transcript/tool-model.ts'
 
 describe('canonical tool presentation builder', () => {
   it('maps generic, terminal, and diff call metadata', () => {
@@ -90,17 +45,6 @@ describe('canonical tool presentation builder', () => {
     expect(toolResultNode(undefined, { content: [{ type: 'text', text: 'failed' }], isError: true }, 'tool')).toEqual({ kind: 'text', content: 'failed', tone: 'danger' })
   })
 
-  it('preserves terminal card row budgets without language headings', () => {
-    const call = toolCallNode({ card: 'terminal', title: 'pnpm test' })
-    const result = toolResultNode({ card: 'terminal', title: 'Shell', output: 'ok', exitCode: 0 }, undefined, 'tool')
-    const callRows = new ToolModelComponent(() => ({ kind: 'tool', id: 'call', name: 'call', call: call! }), renderer).render(40)
-    const resultRows = new ToolModelComponent(() => ({ kind: 'tool', id: 'result', name: 'result', result, expanded: true }), renderer).render(40)
-    expect(callRows.join('\n')).not.toContain('shell')
-    expect(resultRows.join('\n')).not.toContain('console')
-    expect(callRows).toHaveLength(2)
-    expect(resultRows).toHaveLength(4)
-  })
-
   it('summarizes XML-envelope fallbacks and nested tool-call arguments', () => {
     const envelope = '<path>src/a.ts</path>\n<type>file</type>\n<content>\n1: x\n\n(Showing lines 1-1 of 9. Use offset=2 to continue.)\n</content>'
     expect(toolResultNode(undefined, { content: [{ type: 'text', text: envelope }], isError: false }, 'read')).toEqual({ kind: 'text', content: 'src/a.ts · lines 1-1 of 9' })
@@ -113,24 +57,5 @@ describe('canonical tool presentation builder', () => {
     const model = createToolPresentationModel({ id: 'c1', name: 'read', call: { card: 'generic', title: 'Read' }, result: { card: 'read', path: 'a', offset: 1, lines: [], totalLines: 0 }, outcome: { content: [], isError: false }, expanded: false })
     expect(model).toMatchObject({ id: 'c1', expanded: false, action: { kind: 'tool.toggle', id: 'c1' } }); expect(Object.isFrozen(model)).toBe(true); expect(Object.isFrozen(model.call)).toBe(true)
     const plain = createToolPresentationModel({ id: 'c2', name: 'unknown' }); expect(plain.call).toBeUndefined(); expect(plain.result).toBeUndefined()
-  })
-
-  it('derives diff chips through canonical nested nodes', () => {
-    expect(toolResultChip(undefined)).toBeUndefined()
-    expect(toolResultChip(createToolPresentationModel({ id: 'empty', name: 'empty' }))).toBeUndefined()
-    const read = createToolPresentationModel({ id: 'r', name: 'read', call: { card: 'generic', title: 'Read' }, result: { card: 'read', path: 'a', offset: 1, lines: [{ number: 1, text: 'x' }], totalLines: 1 } })
-    expect(toolResultChip(read)).toBeUndefined()
-    const write = createToolPresentationModel({ id: 'w', name: 'write', result: { card: 'diff', title: 'Write', diffs: [{ path: 'a.ts', oldText: 'one\nx\nthree', newText: 'one\ny\nz\nthree' }] } })
-    expect(toolResultChip(write)).toBe('+2 −1')
-    const nested: ToolPresentationModel = { kind: 'tool', id: 'nested', name: 'nested', result: {
-      kind: 'surface',
-      child: { kind: 'stack', direction: 'column', children: [
-        { node: { kind: 'scroll', child: { kind: 'diff', before: '', after: 'one' } } },
-        { node: { kind: 'list', id: 'nested-list', role: 'browse', selectedIds: [], items: [], empty: { kind: 'diff', before: 'old', after: '' } } },
-        { node: { kind: 'empty', title: 'empty', actions: { kind: 'actions', id: 'nested-actions', items: [] } } },
-      ] },
-      footer: { kind: 'diff', before: 'same', after: 'changed' },
-    } }
-    expect(toolResultChip(nested)).toBe('+2 −2')
   })
 })

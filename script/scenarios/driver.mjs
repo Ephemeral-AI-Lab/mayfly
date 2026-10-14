@@ -74,7 +74,7 @@ function connectControl(path, onSync) {
       for (let end = buffer.indexOf('\n'); end >= 0; end = buffer.indexOf('\n')) {
         const message = JSON.parse(buffer.slice(0, end))
         buffer = buffer.slice(end + 1)
-        if (message.type === 'sync') { onSync(message.id); continue }
+        if (message.type === 'sync') { onSync(message.id, message.tick === true); continue }
         const waiter = waiting.shift()
         if (waiter === undefined) queue.push(message)
         else waiter(message)
@@ -87,6 +87,15 @@ function connectControl(path, onSync) {
       close: () => socket.end(),
     }))
   })
+}
+
+/** The compact stream records of a settled step: its reasoning (and answer) timed so the projection can read how long it thought. */
+function settledStream({ reasoning, text, reasoningMs }) {
+  const now = Date.now()
+  const half = Math.ceil(reasoning.length / 2)
+  const records = [{ type: 'reasoning-chunks', time0: now - reasoningMs, index: 0, dt: [reasoningMs], texts: [reasoning.slice(0, half), reasoning.slice(half)] }]
+  if (text !== undefined && text !== '') records.push({ type: 'text-chunks', time0: now, index: 1, dt: [], texts: [text] })
+  return records
 }
 
 export function apply(ctx) {
@@ -117,8 +126,18 @@ export function apply(ctx) {
     const actions = JSON.parse(readFileSync(file, 'utf8'))
     // A `sync` is answered once the work queued before it has run and a render is requested, so a runner that waits
     // for the screen to go quiet afterwards sees everything played so far.
-    const control = controlPath === undefined || controlPath === '' ? undefined : await connectControl(controlPath, (id) => {
+    const control = controlPath === undefined || controlPath === '' ? undefined : await connectControl(controlPath, (id, tick) => {
       void (async () => {
+        // A checkpoint reads the time of the last action on the timeline. The product's one-second timer runs on real
+        // time, so a counter on screen (`Deep diving · 8s`, a pending call's `· 6s`, a wait's `· 1s`) would show the
+        // clock of the last tick, which fell before or after the clock moved depending on the load, or the real time
+        // an answer took while the clock flows; one tick at the timeline time makes it exact.
+        if (tick) {
+          try {
+            const now = clock?.stood() ?? Date.now()
+            for (const listener of [...ctx.get('mayflyTick')?.listeners ?? []]) listener(now)
+          } catch { /* the context was disposed */ }
+        }
         for (let turn = 0; turn < 3; turn += 1) await sleep(0)
         try { ctx.get('mayflyScreen')?.requestRender() } catch { /* the context was disposed */ }
         control?.send({ type: 'synced', id })
@@ -157,6 +176,25 @@ export function apply(ctx) {
     // Persisted sessions need new ids on every run, and the scenario clock repeats Date.now(), so the tag is random.
     const runTag = randomBytes(4).toString('hex')
     let previous = 0
+    // Asks put at once (`approval(..., { queued: true })`) wait behind each other in the product's own queue; the replay goes on
+    // at the first action that is not one of them, once the user has answered them all.
+    const queuedAsks = []
+    // How each ask was answered, by call, for the results that depend on it (`tool(..., { outcomes })`).
+    const answers = new Map()
+    const approvalKey = outcome => outcome === 'allowed-once' ? 'allowed' : outcome
+    const questionKey = (question, answer) => {
+      const item = answer.answers.find(entry => entry.id === question.id)
+      if (item === undefined) return 'declined'
+      if (item.custom !== undefined && item.custom !== '') return 'revised'
+      return item.selected.includes(question.intent?.approve) ? 'approved' : 'declined'
+    }
+    /** A scripted result with the user's own words where it says `{feedback}`. */
+    const withFeedback = (data, feedback) => feedback === undefined ? data : JSON.parse(JSON.stringify(data).replaceAll('{feedback}', JSON.stringify(feedback).slice(1, -1)))
+    const answerQueued = async () => {
+      if (queuedAsks.length === 0) return
+      await Promise.all(queuedAsks.splice(0))
+      log('queued asks answered')
+    }
     log(`replay start: ${String(actions.length)} actions at ${String(speed)}x`)
 
     for (const action of actions) {
@@ -171,9 +209,10 @@ export function apply(ctx) {
         const wait = timed ? action.at - previous : 0
         previous = action.at
         await sleep(wait, undefined, { signal: abort.signal }).catch(() => {})
-        clock?.at(action.at)
+        clock?.at(action.at + (action.skew ?? 0))
       }
       try {
+        if (action.op !== 'ask' || action.queued !== true) await answerQueued()
         switch (action.op) {
           case 'mark': {
             log(`mark ${action.name}`)
@@ -183,7 +222,11 @@ export function apply(ctx) {
           case 'append': {
             const session = target(action)
             if (session === undefined) { log(`no session ${action.session} for ${action.type}`); break }
-            const event = action.surface === undefined ? session.append(action.type, action.data) : session.append(action.type, action.data, { surfaceOp: action.surface })
+            // The settled message carries the stream's own timing, so its reasoning keeps the duration it took.
+            const answered = action.variants === undefined ? undefined : answers.get(action.answerOf)
+            const base = answered === undefined || action.variants[answered.key] === undefined ? action.data : withFeedback(action.variants[answered.key], answered.feedback)
+            const data = action.streamTiming === undefined ? base : { ...base, stream: settledStream(action.streamTiming) }
+            const event = action.surface === undefined ? session.append(action.type, data) : session.append(action.type, data, { surfaceOp: action.surface })
             lastSeqs.set(session, event.seq)
             log(`${action.session ?? 'main'} ${action.type}`)
             break
@@ -198,7 +241,9 @@ export function apply(ctx) {
             const attemptId = `replay-${String(agent.id)}-attempt-${String(counters.attempt + (action.frame === 'start' ? 1 : 0))}`
             if (action.frame === 'start') {
               counters.attempt += 1
-              counters.revision = 1
+              // The Agent's revision counts every frame it ever streams: a start that falls back to 1 reads as a stale
+              // frame and the live stream drops the whole attempt, so only the first step of a session would show live.
+              counters.revision += 1
               counters.frameIndex = 0
               ctx.emit('agent/assistant-stream', { agent, frame: { type: 'start', attemptId, revision: counters.revision, turn: action.turn, step: action.step } })
             } else if (action.frame === 'delta') {
@@ -244,10 +289,15 @@ export function apply(ctx) {
             if (nodes.length === 0) { log('compaction has nothing to replace'); break }
             const start = nodes[0]
             const end = nodes.at(-1)
-            session.append('compaction/summary', { compactionId: action.compactionId, ...(action.commandId === undefined ? {} : { sourceCommandId: action.commandId }), summary: [{ type: 'text', text: action.summary }], shadowedRange: { start, end }, shadowedSeqs: nodes, shadowedTokenCount: action.shadowedTokens, provider: action.provider, model: action.model })
+            session.append('compaction/summary', { compactionId: action.compactionId, ...(action.commandId === undefined ? {} : { sourceCommandId: action.commandId }), summary: [{ type: 'text', text: action.summary }], shadowedRange: { start, end }, shadowedSeqs: nodes, shadowedTokenCount: action.shadowedTokens, usage: { inputTokens: action.shadowedTokens, outputTokens: action.summaryTokens ?? 600 }, provider: action.provider, model: action.model })
             session.append('user/message', { id: `replay-checkpoint-${action.compactionId}`, role: 'user', content: [{ type: 'text', text: action.summary }], source: { kind: 'compact-checkpoint', compactionId: action.compactionId, ...(action.commandId === undefined ? {} : { sourceCommandId: action.commandId }) } }, { surfaceOp: { op: 'replace', startSeq: start, endSeq: end }, sourceEventSeqs: nodes })
-            session.append('compaction/end', { compactionId: action.compactionId, turn: action.turn, ...(action.commandId === undefined ? {} : { sourceCommandId: action.commandId }) })
             log(`compaction ${action.compactionId} replaced ${String(nodes.length)} nodes`)
+            break
+          }
+          case 'compact-end': {
+            const session = target(action)
+            session.append('compaction/end', { compactionId: action.compactionId, turn: action.turn, ...(action.commandId === undefined ? {} : { sourceCommandId: action.commandId }), ...(action.error === undefined ? {} : { error: action.error }) })
+            log(`compaction ${action.compactionId} ${action.error === undefined ? 'ended' : 'failed'}`)
             break
           }
           case 'goal': {
@@ -401,7 +451,7 @@ export function apply(ctx) {
               ids.set(spec.id, session.id)
               log(`seeded ${spec.id} (${String(events.length)} events)`)
             }
-            clock?.at(action.at)
+            clock?.at(action.at + (action.skew ?? 0))
             break
           }
           case 'ask': {
@@ -411,8 +461,18 @@ export function apply(ctx) {
             // The clock runs while an answer is awaited, as it does for a person; the runner answers with keys.
             clock?.flow()
             control?.send({ type: 'ask', kind: action.kind })
-            if (action.kind === 'approval') await ctx.get('approval').request({ agent: owner, toolName: action.toolName, callId: action.callId, reason: action.reason, signal: abort.signal })
-            else await ctx.get('userQuestions').ask({ agent: owner, questions: action.questions, signal: abort.signal })
+            if (action.kind === 'approval' && action.queued === true) {
+              queuedAsks.push(ctx.get('approval').request({ agent: owner, toolName: action.toolName, callId: action.callId, reason: action.reason, signal: abort.signal }).then(outcome => { answers.set(action.callId, { key: approvalKey(outcome) }) }, error => log(`queued ask failed: ${String(error?.message ?? error)}`)))
+              break
+            }
+            if (action.kind === 'approval') answers.set(action.callId, { key: approvalKey(await ctx.get('approval').request({ agent: owner, toolName: action.toolName, callId: action.callId, reason: action.reason, signal: abort.signal })) })
+            // A plan review names the call whose arguments hold the plan, as the plan-mode tool does.
+            else {
+              const questions = action.questions.map(question => question.intent === undefined || question.intent.callId !== undefined ? question : { ...question, intent: { ...question.intent, callId: action.callId } })
+              const answer = await ctx.get('userQuestions').ask({ agent: owner, questions, signal: abort.signal })
+              const first = questions[0]
+              if (first !== undefined) answers.set(action.callId, { key: questionKey(first, answer), feedback: answer.answers.find(entry => entry.id === first.id)?.custom })
+            }
             log('ask answered')
             break
           }

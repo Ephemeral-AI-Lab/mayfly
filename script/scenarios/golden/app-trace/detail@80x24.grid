@@ -1,15 +1,15 @@
 grid 80x24 cursor none
-| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢸⣿⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀  Send /help for help information.
-| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⣿⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀  Directory: ~/workspace
-| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣿⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀  Model:     deepseek-flash · deepseek-of...
-| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⡠⠊⠀⠑⢄⠀⠀⠀⠀⠀⠀⠀⠀⠀  Version:   scenario
+|  ● I will update the hero copy first, then run the tests.
 |
-| » Update the landing page hero copy and run the tests.
+|  ✓ Read(website/index.md)
 |
-| ▸ Took 8s · 2 tool calls · Ctrl+O to expand
+|  ✓ Bash(pnpm run test) · 3.4s
 |
-| ● Done — the hero now reads “Ship agent UI in a keystroke”, and all 214 tests
-|   pass.
+|  ● Done — the hero now reads “Ship agent UI in a keystroke”, and all 214 tests
+|    pass.
+|
+|  ✻ Worked for 8s · done 09:00
+|                                               Alt+↑ conversation · Alt+↓ bar
 |╭ Trace detail #16 ────────────────────────────────────────────────────────────╮
 |│ Type:    tool/result                                                         │
 |│ Surface: current                                                             │
@@ -24,22 +24,21 @@ grid 80x24 cursor none
 |╰──────────────────────────────────────────────────────────────────────────────╯
 | deepseek-flash High  ~/workspace          cache 34%  context: 18% (22.9k/128k)
 styles
-0: 1-23 fg:#b2a1ec; 24-25 fg:#9a86e6; 26-67 fg:#9aa3b8
-1: 1-25 fg:#9a86e6; 26-67 fg:#ededf2
-2: 1-23 fg:#8371d6; 24-25 fg:#9a86e6; 26-64 fg:#e9e6f4
-3: 1-23 fg:#6c5bbf; 24-25 fg:#9a86e6; 26-67 fg:#ededf2
-5: 1-54 fg:#9a86e6 b
-7: 1-9 fg:#9aa3b8; 10-43 fg:#5c6476
-9: 1-2 fg:#ededf2
+0: 2-3 fg:#ededf2
+2: 2-3 fg:#4ec87e; 4-7 fg:#ededf2 b; 8 fg:#9aa3b8; 9-24 fg:#c9c0f0; 25 fg:#9aa3b8
+4: 2-3 fg:#4ec87e; 4-7 fg:#ededf2 b; 8 fg:#9aa3b8; 9-21 fg:#c9c0f0; 22-29 fg:#9aa3b8
+6: 2-3 fg:#ededf2
+9: 2-29 fg:#9aa3b8
+10: 47-76 fg:#9aa3b8
 11: 0-1 fg:#dcd7f2; 2-17 fg:#f5f5f7 b; 18-79 fg:#dcd7f2
 12: 0 fg:#dcd7f2; 2-9 fg:#9aa3b8; 11-21 fg:#ededf2; 79 fg:#dcd7f2
 13: 0 fg:#dcd7f2; 2-9 fg:#9aa3b8; 11-17 fg:#ededf2; 79 fg:#dcd7f2
 14: 0 fg:#dcd7f2; 2-5 fg:#9aa3b8; 79 fg:#dcd7f2
 15: 0 fg:#dcd7f2; 2 fg:#ededf2; 79 fg:#dcd7f2
 16: 0 fg:#dcd7f2; 2-4 fg:#ededf2; 79 fg:#dcd7f2
-17: 0 fg:#dcd7f2; 2-13 fg:#ededf2; 14-26 fg:#4ec87e; 27 fg:#ededf2; 79 fg:#dcd7f2
-18: 0 fg:#dcd7f2; 2-15 fg:#ededf2; 79 fg:#dcd7f2
-19: 0 fg:#dcd7f2; 2-27 fg:#ededf2; 79 fg:#dcd7f2
+17: 0 fg:#dcd7f2; 2-5 fg:#ededf2; 6-11 fg:#c9c0f0; 12-13 fg:#ededf2; 14-26 fg:#4ec87e; 27 fg:#ededf2; 79 fg:#dcd7f2
+18: 0 fg:#dcd7f2; 2-5 fg:#ededf2; 6-10 fg:#c9c0f0; 11-12 fg:#ededf2; 13-14 fg:#e8a838; 15 fg:#ededf2; 79 fg:#dcd7f2
+19: 0 fg:#dcd7f2; 2-5 fg:#ededf2; 6-11 fg:#c9c0f0; 12-13 fg:#ededf2; 14-26 fg:#e8a838; 27 fg:#ededf2; 79 fg:#dcd7f2
 20: 0 fg:#dcd7f2; 3-17 fg:#ededf2; 21-25 fg:#ededf2; 79 fg:#dcd7f2
 21: 0 fg:#dcd7f2; 2-3 fg:#5c6476; 4-6 fg:#ededf2; 8-16 fg:#5c6476; 17-22 fg:#ededf2; 24-32 fg:#5c6476; 33-35 fg:#ededf2; 37-41 fg:#5c6476; 79 fg:#dcd7f2
 22: 0-79 fg:#dcd7f2

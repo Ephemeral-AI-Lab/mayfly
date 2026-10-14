@@ -157,7 +157,7 @@ type MayflyInlineSpan = {
   tone?: MayflyTone
   emphasis?: 'normal' | 'strong'
   motion?: 'shimmer' | 'loader'                        // 一行只有一个动效通道
-  variant?: 'bloom' | 'fill' | 'gap' | 'breath'        // 配合 motion: 'loader'；默认 'gap'
+  variant?: 'bloom' | 'fill' | 'gap' | 'breath' | 'pulse'        // 配合 motion: 'loader'；默认 'gap'
 }
 ```
 
@@ -250,7 +250,7 @@ ui.fields([
 *带 `ts` 语言提示的多行代码块（宽度 64）。*
 
 ```ts
-ui.code(value: MayflyContentField, options?: { language?: string, numbered?: boolean })
+ui.code(value: MayflyContentField, options?: { language?: string, numbered?: boolean, start?: number })
 ```
 
 表达代码或预格式化文本，例如补丁片段、命令输出或配置内容。带可识别的
@@ -280,12 +280,14 @@ ui.code('const frame = glyphFor(state)\nreturn frame', { language: 'ts', numbere
 
 ![`diff` 节点渲染效果](/shots/diff.svg)
 
-*多行 before/after：新旧两列行号，改动行以 `−`/`+` 标出，红/绿色带只铺在代码上（宽度 64）。*
+*多行 before/after：一列行号（删除行为改动前，其余为改动后），改动行以 `−`/`+` 标出，红/绿色带只铺在代码上（宽度 64）。*
 
 ```ts
 ui.diff(before: string, after: string, options?: {
-  start?: number      // 首行行号（默认 1）
-  numbered?: boolean  // 新旧两列行号（默认 true）
+  start?: number      // 改动后首行的行号（默认 1）
+  beforeStart?: number // 改动前首行的行号（默认同 start）
+  numbered?: boolean  // 行号栏（默认 true）
+  numberWidth?: number // 行号列的最小宽度，使一起显示的多个 diff 共用同一行号栏（默认 1）
   hunkHeader?: boolean // 即使只有一个 hunk 也画 `@@` 头（默认：多于一个才画）
   context?: number    // 每处改动周围的未改动行，0 到 3（默认 1）
   maxRows?: number    // 超出后显示 `… +N rows · Ctrl+O`
@@ -293,7 +295,7 @@ ui.diff(before: string, after: string, options?: {
 ```
 
 表达同一内容修改前后的语义对比，例如待确认的编辑。插件提供原始文本，不手工
-添加 diff 颜色：Mayfly 画出新旧两列弱化行号（以 `│` 结尾），删除行与新增行以
+添加 diff 颜色：Mayfly 画出一列弱化行号（以 `│` 结尾；删除行显示改动前的行号，其余行显示改动后的行号），删除行与新增行以
 `−`/`+` 标出，并用主题的 `diffRemovedBg`/`diffAddedBg` 色带铺在代码上（从不铺在行号上）；
 每处改动保留一行上下文，跳过的未改动行显示为一个弱化的 `⋯`，过长的行以 `…` 结尾。
 上面的截图渲染的就是这个节点：
@@ -859,9 +861,10 @@ ui.list({
   maxSelected?: number
   acceptActionId?: string
   empty?: MayflyUiNode
-  marker?: 'cursor' | 'selection'
+  marker?: 'cursor' | 'selection' | 'band'
   marks?: boolean
   maxRows?: number
+  highlight?: { pattern: string, caseSensitive?: boolean }  // a regular expression drawn in reverse video wherever it matches in a row
   expandFocused?: boolean
   acceptVerb?: 'open' | 'choose' | 'expand' | 'edit' | 'restore'
   autofocus?: boolean
@@ -888,9 +891,11 @@ type MayflyListItem = {
   rightFocus?: readonly MayflyInlineSpan[]
   body?: string | MayflyListBodyNode   // 内容用 ui.listBody(...) 构建
   bodyAlways?: boolean
+  bodyLead?: readonly MayflyInlineSpan[]  // 与 bodyAlways 和节点 body 一起使用
   expanded?: boolean
   wrap?: boolean
   wrapMax?: number
+  hang?: number
   meter?: { value: number, max: number, width?: number, tone?: MayflyTone }
   indent?: number
   rule?: string
@@ -932,20 +937,20 @@ query），所以单个字母可以留给 `i install`、通用的 `x delete`、`
 与之并存的可打印 accelerator；每个可筛选列表都设为 `filterMode: 'slash'` 时才放开。搜索打开时筛选
 行显示 `N matches`，提示行只列出结束或清除搜索的键。
 
-**行。** `marker: 'selection'` 让光标行在焦点离开后保留一个 muted 的 `→`（详情跟随它的 rail）。
+**行。** `marker: 'selection'` 让光标行在焦点离开后保留一个 muted 的 `→`（详情跟随它的 rail）；`marker: 'band'` 不画箭头，而是在列表持有焦点时把光标行（连同它的 body）涂上调色板的选中背景（会话流使用）。
 `marks: true` 在 single choose 列表上画 `●`/`○`。`maxRows` 围绕光标开窗口，并以
 `↑ n more · ↓ n more` 结尾。`acceptVerb` 在提示行命名 Enter，`hintLabel` 命名 `↑/↓`，`autofocus`
 让该列表最先获得焦点。`focusItem` 在 `rev` 变化时移动光标（并展开该行的父级）；重新发布相同 `rev`
 不会动读者已经移动过的光标。`expandFocused` 展开光标行的 body 或分支。`labelSpans` 绘制标签（`label`
 仍是筛选读取的纯文本），`right` 把 span 对齐到行右缘，`rightFocus` 在光标下替换它，`meter` 画
 `▰▱`，`indent` 缩进，`wrap` 在行自己的前缀下折行（最多 `wrapMax` 行，之后是
-`▸ N more lines · Enter`），`rule` 与 `gap` 是方向键跳过的不可选 muted 分隔线与空行。树中 `*`
+`▸ N more lines · Enter`；`hang` 是文本前导符号的宽度，续行从文本下方开始），`rule` 与 `gap` 是方向键跳过的不可选 muted 分隔线与空行。树中 `*`
 展开所有分支、`-` 折叠；multiple 树的父级在部分子项被选中时显示 `◐`。
 
 **Body。** 字符串 `body` 在行下方以 `│ ╰` 引导线展开；节点 `body`（用 `ui.listBody` 构建，仅限内容：
 text、rich text、fields、code、diff、sections、progress、image、divider）作为内容展开。带 body 的行
 显示 `▸`/`▾`，用 Enter、Space 或 Right 展开（Left 折叠）；`bodyAlways` 不带展开箭头直接显示，
-`expanded` 让行初始展开。每个 body 随其 item 在各自 32 个节点的预算下校验，长列表只校验光标附近的行，
+`expanded` 让行初始展开。`bodyLead`（须与 `bodyAlways` 和节点 body 同用）去掉行的首行：这些 span 接在光标列之后、领起 body 的第一行，body 排在余下的列里，其余各行对齐在它之下（流中的回答用 `● ` 领起它的 Markdown）。每个 body 随其 item 在各自 32 个节点的预算下校验，长列表只校验光标附近的行，
 所以数千条富行不会占用比普通行更多的树配额。body 永远不是 control：其中的 list、form、actions、
 tabs 会被拒绝。
 
@@ -1467,7 +1472,7 @@ api.overlays.open({ id: 'acme.approve', presentation: 'editor', capturing: true,
 ```ts
 ui.loader({
   message?: string
-  variant?: 'bloom' | 'fill' | 'gap' | 'breath'
+  variant?: 'bloom' | 'fill' | 'gap' | 'breath' | 'pulse'
   elapsedMs?: number
   cancelActionId?: string
   cancelLabel?: string
@@ -1478,7 +1483,7 @@ ui.loader({
 时节点只是一个字形。`elapsedMs` 是非负毫秒提示，显示为 `45s`、`2m 10s` 或 `1h 5m`。
 动画归 renderer 所有，所有 surface 共用一个时钟，100 ms 一步：`bloom`（`· ✢ ✳ ✶ ✻ ✽`）、
 `fill`（盲文条逐格填满再退回）、`gap`（盲文转轮）每个 tick 前进一步；`breath` 是一个 `●`，
-在 `primary` tone 的六档明暗里一暗一亮地走，每 400 ms 一档。不要在 `render()` 里启动 timer。
+在 `primary` tone 的六档明暗里一暗一亮地走，每 400 ms 一档（`pulse` 是同样的呼吸，画在一个小 `•` 上）。不要在 `render()` 里启动 timer。
 减少动效时所有 variant 停在首帧，ASCII 字形模式下画 `- \ | /`。`cancelActionId` 是提示而不是按钮：
 loader 下面一行写着 `Esc cancel`（或 `Esc` 加小写的 `cancelLabel`），`Esc` 在离开 surface 之前先为该 action
 发出 `activate`，焦点在这一行时按 `Enter` 同样如此。上面的截图渲染的就是这个节点：

@@ -4,8 +4,8 @@
  * Every presenter call is contained —
  * an unknown tool, a missing presenter, or a throwing presenter all yield
  * `undefined` and the generic presentation carries on. The module also owns
- * shared presentation pure helpers {@link ellipsize} and
- * {@link extractKeyArgument} for the plain fallback card.
+ * the shared presentation pure helpers {@link ellipsize} and
+ * {@link summarizeToolCall}.
  *
  * @module @ephemeral-ai/mayfly/transcript/present
  */
@@ -15,19 +15,12 @@ import type {
   ToolResult,
   ToolResultView,
 } from '@deepseek-ai/dsh-tools'
-import type { TranscriptToolItem } from './types.ts'
 
 /** The presenter-bearing face of a tool registry the resolvers read (structural, scope-agnostic). */
 export interface ToolPresentationSource {
   /** The presenter-bearing definition the source resolves, or `undefined` when none is visible. */
   get(name: string): { readonly presentCall?: (args: unknown) => unknown; readonly presentResult?: (args: unknown, result: ToolResult) => unknown } | undefined
 }
-
-/** Maximum length of the key argument shown on a card header. */
-export const KEY_ARG_MAX_CHARS = 60
-
-/** The key-arg whitelist, in priority order (the S20 doc's own list). */
-const KEY_ARG_KEYS = ['file_path', 'command', 'pattern']
 
 /**
  * Collapse a multi-line string to one ellipsized line.
@@ -129,46 +122,4 @@ export function resolveResultView(
   } catch {
     return undefined
   }
-}
-
-/** dsh-plan-mode's plan-review exit tool — a named-tool presentation exception. */
-const PLAN_REVIEW_TOOL = 'exit_plan_mode'
-
-/**
- * Whether a tool item is a declined plan review: dsh-plan-mode's
- * `exit_plan_mode` answers a rejection (Reject, or Revise with feedback)
- * by failing the call — "The user chose to keep planning…" — a user
- * decision, not a tool failure, so the card renders the warning tone
- * instead of the error state (the `todo_write` precedent for a
- * named-tool presentation exception; no view contract marks it yet).
- * @param item - the settled tool item.
- * @returns whether the card should present a declined plan review.
- */
-export function isPlanDecline(item: TranscriptToolItem): boolean {
-  return item.name === PLAN_REVIEW_TOOL && item.result?.isError === true
-}
-
-/**
- * The S20 key argument for one tool item's header: the whitelist
- * (`file_path`/`command`/`pattern`) first, then the first short string
- * argument. Values flatten to one line at {@link KEY_ARG_MAX_CHARS}.
- * @param item - the folded tool item (reads `parsedArguments`).
- * @returns the display key argument, or `undefined` when none qualifies.
- */
-export function extractKeyArgument(item: TranscriptToolItem): string | undefined {
-  const parsed = item.parsedArguments
-  if (parsed === undefined || typeof parsed !== 'object' || parsed === null) return undefined
-  const args = parsed as Record<string, unknown>
-  for (const key of KEY_ARG_KEYS) {
-    const value = args[key]
-    if (typeof value === 'string' && value !== '') {
-      return ellipsize(value, KEY_ARG_MAX_CHARS)
-    }
-  }
-  for (const value of Object.values(args)) {
-    if (typeof value === 'string' && value !== '' && value.length <= KEY_ARG_MAX_CHARS) {
-      return ellipsize(value, KEY_ARG_MAX_CHARS)
-    }
-  }
-  return undefined
 }

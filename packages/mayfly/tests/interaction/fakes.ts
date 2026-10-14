@@ -52,6 +52,7 @@ const SEQUENCE_BY_KEY_ID: Record<string, string> = {
   delete: '\x1b[3~',
   f5: '\x1b[15~',
   'alt+down': '\x1b[1;3B',
+  'ctrl+down': '\x1b[1;5B',
   f7: '\x1b[18~',
   f8: '\x1b[19~',
   tab: '\t',
@@ -752,6 +753,15 @@ export class FakeScreen implements MayflyScreen {
     return this.enterViewsResult
   }
 
+  /** What `focusConversation` answers, and how often the prompt asked. */
+  focusConversationResult = false
+  focusConversationCalls = 0
+
+  focusConversation(): boolean {
+    this.focusConversationCalls += 1
+    return this.focusConversationResult
+  }
+
   mountContentSlot(id: string, component: MayflyComponent | null) {
     this.slotTargets.set(id, component)
     return mountFakeScreenSlot(id, component, shell => this.addChild(shell), target => this.setFocus(target), () => this.requestRender())
@@ -805,10 +815,6 @@ export class FakeScreen implements MayflyScreen {
   scrollContent = (direction: 'up' | 'down', amount?: number): boolean => {
     this.contentScrolls.push({ direction, amount })
     return this.contentScrollResult
-  }
-
-  contentChanged(): boolean {
-    return this.contentPaused
   }
 
   followContent(): void {

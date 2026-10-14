@@ -148,6 +148,8 @@ export interface MayflyUiCompilerOptions {
   /** Renderer-private contextual key hints used by official panel adapters. */
   readonly contextHints?: {
     readonly enabled?: boolean
+    /** `false`: a surface compiled from a node draws no key-hint row of its own (its owner shows the keys elsewhere). */
+    readonly rows?: boolean
     readonly suppressAuto?: boolean
     readonly focusWithoutControls?: boolean
     readonly translate?: (key: string, values?: UiTranslateValues) => string
@@ -566,6 +568,7 @@ function contentEnv(options: RuntimeCompilerOptions, paint: Pick<PaintOptions, '
     elide: hidden => paint.colors.muted(renderOverflowRow(hidden, (key, values) => coreText(options, key, values))),
     errorRows: (message, width) => errorRows(message, width, paint.colors),
     report: message => { paint.reportRuntimeFailure(message) },
+    changed: () => { options.listRuntime.nudge() },
   }
 }
 
@@ -859,6 +862,7 @@ function joinSpans(node: { readonly spans: readonly MayflyInlineSpan[] }, colors
     return (span.styles ?? []).reduce((value, style) => {
       if (style === 'strong') return `\x1b[1m${value}\x1b[22m`
       if (style === 'italic') return `\x1b[3m${value}\x1b[23m`
+      if (style === 'inverse') return `\x1b[7m${value}\x1b[27m`
       return `\x1b[9m${value}\x1b[29m`
     }, painted)
   }).join('')
@@ -1799,7 +1803,10 @@ function compileUnit(node: CompilableNode, state: FocusState, options: RuntimeCo
           body = compileNode(item.body as MayflyUiNode, state, options, `${path}.body.${item.id}`, mode)
           bodies.set(item, body)
         }
-        return body.render(width)
+        const rows = body.render(width)
+        // In flow content an outer scroll windows the rows, so a leaf's viewport bound would hide what it must reach; so would it
+        // for a search's current match, which the list's window centers on wherever in a tall block it is.
+        return options.listRuntime.flow || node.highlight?.current !== undefined ? unclampedRows(rows) : rows
       }
       let component!: MayflyComponent
       component = staticComponent(width => {
@@ -1831,6 +1838,7 @@ function compileUnit(node: CompilableNode, state: FocusState, options: RuntimeCo
             after: visibleCount - entries.at(-1)!.position - 1,
             total: visibleCount,
             translate,
+            flow: options.listRuntime.flow,
             body: paintBody,
             segmentLabel: coreText(options, 'Options'),
             segment: item => {
@@ -2176,6 +2184,15 @@ export class MayflyUiSurfaceRuntime {
     /** One walk per layout viewport and list row budget: a layout pass alternates between a handful of them. */
     readonly walks: Map<string, ControlWalk>
   } | undefined
+  /**
+   * Whether this surface is the content of an outer scroll right now (the unfocused conversation slot): the viewport
+   * bounds neither its lists nor its rows, and the scroll view windows what it paints. Its owner sets it from the
+   * surface's focus before the surface compiles, so a focused one keeps its cursor window through every recompile.
+   */
+  flow = false
+  /** Asks the host for another frame and nothing else (what a clock tick does). */
+  readonly nudge: () => void
+
   readonly state: FocusState
   private readonly loaderAnimation: UiLoaderAnimation | undefined
   private epochValue = 0
@@ -2190,6 +2207,7 @@ export class MayflyUiSurfaceRuntime {
   constructor(readonly interaction?: UiSurfaceModel, private readonly requestRender?: () => void, clock?: UiAnimationClock, readonly images?: MayflyUiImageSource, requestFrame?: () => void, content?: MayflyContentCache) {
     this.content = content ?? new MayflyContentCache()
     const tick = requestFrame ?? requestRender
+    this.nudge = tick ?? (() => {})
     this.loaderAnimation = tick === undefined ? undefined : new UiLoaderAnimation(tick, clock)
     const fieldValue = (field: MayflyFormField, key: string): MayflyFieldValue => {
       const address = this.fieldAddresses.get(key)
@@ -2391,7 +2409,7 @@ export class MayflyUiSurfaceRuntime {
 
   fieldAddress(key: string): MayflyFieldAddress | undefined { return this.fieldAddresses.get(key) }
 
-  listRowLimit(viewportRows: number): number { return Math.min(viewportRows, this.listRowBudget ?? viewportRows) }
+  listRowLimit(viewportRows: number): number { return this.flow ? Number.MAX_SAFE_INTEGER : Math.min(viewportRows, this.listRowBudget ?? viewportRows) }
 
   setListRowBudget(rows: number | undefined): void { this.listRowBudget = rows }
 
@@ -2897,7 +2915,7 @@ class CompiledSurface implements MayflyEditorShellComponent {
       else {
         rows = this.root.render(safeWidth)
         const hasList = this.state.controls().some(control => control.kind === 'list' || control.kind === 'event' && control.listEntry !== undefined)
-        if (this.surfaceRuntime.interaction !== undefined && hasList) {
+        if (this.surfaceRuntime.interaction !== undefined && hasList && !this.surfaceRuntime.flow) {
           let budget = this.viewport.rows
           while (rows.length > this.viewport.rows && budget > 1) {
             const next = Math.max(1, budget - (rows.length - this.viewport.rows))
@@ -2908,7 +2926,7 @@ class CompiledSurface implements MayflyEditorShellComponent {
           }
         }
       }
-      const rowLimit = maxRows ?? (this.options.screenMode === 'alternate' || this.surfaceRuntime.interaction !== undefined ? this.viewport.rows : undefined)
+      const rowLimit = maxRows ?? (this.surfaceRuntime.flow ? undefined : this.options.screenMode === 'alternate' || this.surfaceRuntime.interaction !== undefined ? this.viewport.rows : undefined)
       const severity = { info: 0, success: 1, warning: 2, error: 3 }
       const notice = this.surfaceRuntime.interaction?.feedbackSnapshot().toSorted((left, right) => severity[left.severity] - severity[right.severity]).at(-1)
       const feedbackRows = notice === undefined || rowLimit === 1 ? [] : glyphRows([sliceByColumn(
@@ -3652,7 +3670,7 @@ export function compileMayflyUiSurfaceNode(value: unknown, options: MayflyUiSurf
         ? { ...admitted.value, title: frame.value.title! }
         : { ...frame.value, child: node }
     }
-    const surface = admittedSurface(node, options, 'ui', undefined, options.surfaceRuntime, true, contextEscapeHint)
+    const surface = admittedSurface(node, options, 'ui', undefined, options.surfaceRuntime, options.contextHints?.rows !== false, contextEscapeHint)
     const hasControls = surface.hasControls()
     const focusTarget = hasControls || options.contextHints?.focusWithoutControls === true ? surface : null
     return { ok: true, value: { node: admitted.value, component: surface, focusTarget } }

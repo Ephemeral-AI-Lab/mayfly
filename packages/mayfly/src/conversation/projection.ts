@@ -74,6 +74,7 @@ const conversationEntriesSchema = z.array(z.discriminatedUnion('kind', [
       isError: z.boolean(),
       endedAt: z.number(),
       meta: jsonSchema.optional(),
+      code: z.string().optional(),
     }).optional(),
   }),
   z.object({ ...entryBase, kind: z.literal('error'), message: z.string(), code: z.string().optional() }),
@@ -87,6 +88,7 @@ const conversationEntriesSchema = z.array(z.discriminatedUnion('kind', [
     trigger: z.enum(['manual', 'auto']),
     startedAt: z.number(),
     endedAt: z.number().optional(),
+    summaryAt: z.number().optional(),
     shadowedCount: z.number().int().nonnegative().optional(),
     shadowedTokens: z.number().nonnegative().optional(),
     provider: z.string().optional(),
@@ -402,6 +404,7 @@ function applyToolResult(
     isError,
     endedAt: event.time,
     ...(event.data.meta === undefined ? {} : { meta: event.data.meta as ConversationJson }),
+    ...(event.data.error === undefined ? {} : { code: event.data.error.code }),
   }
   const id = toolEntryId(callId)
   if (entryIndex(state.entries, id) >= 0) {
@@ -585,6 +588,7 @@ export function foldConversationProjection(
       const summary = visibleText(event.data.summary)
       return replaceEntry(state, entry.id, event.seq, () => ({
         ...entry,
+        summaryAt: event.time,
         shadowedCount: event.data.shadowedSeqs.length,
         shadowedTokens: event.data.shadowedTokenCount,
         provider: event.data.provider,
@@ -680,5 +684,5 @@ export const conversationProjectionDefinition: ConversationProjectionDefinition 
       return view
     },
   },
-  stateVersion: 9,
+  stateVersion: 10,
 }

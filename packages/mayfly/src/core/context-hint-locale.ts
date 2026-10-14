@@ -37,6 +37,9 @@ const zh = Object.freeze({
   '{count} matches': '{count} 项匹配',
   '↑ {above} more · ↓ {below} more': '↑ 还有 {above} 项 · ↓ 还有 {below} 项',
   '▸ {count} more lines · Enter': '▸ 还有 {count} 行 · Enter',
+  '{count} new turn · {key}': '{count} 个新轮次 · {key}',
+  '{count} new turns · {key}': '{count} 个新轮次 · {key}',
+  'Back to bottom · {key}': '回到底部 · {key}',
   reset: '重置',
   'ready in a moment': '稍候即可操作',
   // The prompt: the recall position in its corner (`↑ history 2/4`) and the words of its hint row.

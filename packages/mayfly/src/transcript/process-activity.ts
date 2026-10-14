@@ -11,7 +11,6 @@
 
 import type { ToolCallView, ToolResultView } from '@deepseek-ai/dsh-tools'
 import { isSpawnToolName } from '../conversation/projection.ts'
-import type { MayflyTranslate } from '../frontend/locale.ts'
 import type { ProcessActivity } from '../frontend/models.ts'
 
 const COMMAND_TOOLS = new Set(['bash', 'pwsh', 'exec_command', 'write_stdin'])
@@ -53,12 +52,27 @@ export interface ProcessMemberFact {
   readonly running: boolean
   readonly preparing?: boolean
   readonly failed?: boolean
+  /** Whether the call was cancelled (stopped by the user, or never started): neither a success nor a failure. */
+  readonly interrupted?: boolean
+  /** Producer times of the call, for the wall time a group title reports. */
+  readonly startedAt?: number
+  readonly endedAt?: number
+  /** Lines a file change added and removed, for the diffstat a title reports. */
+  readonly added?: number
+  readonly removed?: number
 }
 
 /** Ranked category counts and failures of one process group's settled members. */
 export interface ProcessSummary {
   readonly counts: readonly { readonly activity: ProcessActivity, readonly count: number }[]
   readonly failed: number
+  /** Members cancelled by an interruption, which are not counted as failed. */
+  readonly interrupted: number
+  /** Wall time from the first member's start to the last member's end, when every settled member has both. */
+  readonly durationMs?: number
+  /** Lines the members' file changes added and removed, when any made one. */
+  readonly added?: number
+  readonly removed?: number
 }
 
 /**
@@ -70,64 +84,26 @@ export interface ProcessSummary {
 export function summarizeProcess(members: readonly ProcessMemberFact[]): ProcessSummary {
   const counts = new Map<ProcessActivity, number>()
   let failed = 0
+  let interrupted = 0
+  let added = 0
+  let removed = 0
+  let changed = false
   for (const member of members) {
     counts.set(member.activity, (counts.get(member.activity) ?? 0) + 1)
     if (member.failed === true) failed += 1
+    if (member.interrupted === true) interrupted += 1
+    if (member.added !== undefined) {
+      changed = true
+      added += member.added
+      removed += member.removed ?? 0
+    }
   }
   const ranked = [...counts].map(([activity, count]) => ({ activity, count })).sort((a, b) => b.count - a.count)
-  return { counts: ranked, failed }
+  const starts = members.flatMap(member => member.startedAt === undefined ? [] : [member.startedAt])
+  const ends = members.flatMap(member => member.endedAt === undefined ? [] : [member.endedAt])
+  const span = starts.length === 0 || ends.length === 0 ? undefined : Math.max(...ends) - Math.min(...starts)
+  return { counts: ranked, failed, interrupted, ...(span === undefined || span < 0 ? {} : { durationMs: span }), ...(changed ? { added, removed } : {}) }
 }
-
-const RUNNING_LABEL: Readonly<Record<ProcessActivity, string>> = {
-  read: 'Reading files',
-  readImage: 'Reading images',
-  write: 'Writing files',
-  search: 'Searching code',
-  edit: 'Editing files',
-  commands: 'Running commands',
-  code: 'Running code',
-  webSearch: 'Searching the web',
-  webFetch: 'Visiting web pages',
-  subagents: 'Coordinating subagents',
-  plan: 'Updating the plan',
-  questions: 'Waiting for your action',
-  tools: 'Calling tools',
-}
-
-const PREPARING_LABEL: Readonly<Record<ProcessActivity, string>> = {
-  read: 'Preparing to read files',
-  readImage: 'Preparing to read images',
-  write: 'Preparing to write files',
-  search: 'Preparing to search code',
-  edit: 'Preparing to edit files',
-  commands: 'Preparing to run commands',
-  code: 'Preparing to run code',
-  webSearch: 'Preparing to search the web',
-  webFetch: 'Preparing to visit web pages',
-  subagents: 'Preparing to coordinate subagents',
-  plan: 'Preparing to update the plan',
-  questions: 'Preparing questions',
-  tools: 'Preparing tool calls',
-}
-
-const DONE_LABEL: Readonly<Record<ProcessActivity, string>> = {
-  read: 'Read files',
-  readImage: 'Read images',
-  write: 'Wrote files',
-  search: 'Searched code',
-  edit: 'Edited files',
-  commands: 'Ran commands',
-  code: 'Ran code',
-  webSearch: 'Searched the web',
-  webFetch: 'Visited web pages',
-  subagents: 'Coordinated subagents',
-  plan: 'Updated the plan',
-  questions: 'Asked questions',
-  tools: 'Called tools',
-}
-
-/** Locale key of the prefix shared by joined done labels (`已` in Chinese, empty in English). */
-export const SHARED_DONE_PREFIX_KEY = 'process.shared-done-prefix'
 
 /**
  * The activity row's present-tense labels (identity English keys) plus
@@ -162,68 +138,63 @@ export const PROCESS_ACTIVE_ZH: Readonly<Record<string, string>> = {
   'Preparing tool calls': '准备调用工具',
 }
 
-/**
- * The transcript's past-tense group titles and their joiners (identity
- * English keys) plus Chinese copy, taken from the upstream Chat locale.
- */
+/** Chinese copy of the folded group phrases and the outcomes a call line shows. */
 export const PROCESS_DONE_ZH: Readonly<Record<string, string>> = {
-  'Read files': '已读取文件',
-  'Read images': '已读取图片',
-  'Wrote files': '已写入文件',
-  'Searched code': '已搜索代码',
-  'Edited files': '修改了文件',
-  'Ran commands': '执行了命令',
-  'Ran code': '运行了代码',
-  'Searched the web': '已搜索网页',
-  'Visited web pages': '已访问网页',
-  'Coordinated subagents': '已协调子智能体',
-  'Updated the plan': '更新了计划',
-  'Asked questions': '向用户提出了问题',
-  'Called tools': '已调用工具',
-  '{first} and {second}': '{first}并{second}',
-  ', ': '，',
-  '{title}, etc.': '{title}等',
+  '… +{count} more': '… 还有 {count} 项',
+  '… +{count} rows': '… 还有 {count} 行',
+  '… +{count} earlier': '… 前面还有 {count} 项',
+  ' · Ctrl+O': ' · 按 Ctrl+O',
+  '{count} line': '{count} 行',
+  '{count} lines': '{count} 行',
+  '{shown} of {total} lines': '{total} 行中的 {shown} 行',
+  '{count} file': '{count} 个文件',
+  '{count} files': '{count} 个文件',
+  '{matches} in {files}': '{matches}，分布在 {files}',
+  'no matches': '无匹配',
+  '{count} path': '{count} 个路径',
+  '{count} paths': '{count} 个路径',
+  '{count} source': '{count} 个来源',
+  '{count} sources': '{count} 个来源',
+  '{count} image': '{count} 张图片',
+  '{count} images': '{count} 张图片',
+  '{count} search': '{count} 次搜索',
+  '{count} searches': '{count} 次搜索',
+  '{count} call': '{count} 次调用',
+  '{count} calls': '{count} 次调用',
+  '{count} run': '{count} 次运行',
+  '{count} runs': '{count} 次运行',
+  '{count} page': '{count} 个网页',
+  '{count} pages': '{count} 个网页',
+  '{count} subagent': '{count} 个子智能体',
+  '{count} subagents': '{count} 个子智能体',
+  '{count} update': '{count} 次更新',
+  '{count} updates': '{count} 次更新',
+  '{count} question': '{count} 个问题',
+  '{count} questions': '{count} 个问题',
+  'exit {code}': '退出码 {code}',
+  'signal {signal}': '信号 {signal}',
 }
 
 /**
- * The present-tense label of one running category (an English locale key).
- * @param activity - the running call's category.
- * @returns the untranslated label.
+ * A call's or a group's wall time as a line shows it: `4.2s` under ten seconds, then the compact form; nothing under a
+ * tenth of a second, where the number says nothing.
+ * @param ms - the elapsed milliseconds.
+ * @returns the text, or `undefined` when too short to report.
  */
-export function runningLabel(activity: ProcessActivity): string {
-  return RUNNING_LABEL[activity]
+export function elapsedText(ms: number): string | undefined {
+  if (!(ms >= 100)) return undefined
+  if (ms < 10_000) return `${String(Math.round(ms / 100) / 10)}s`
+  const seconds = Math.round(ms / 1000)
+  if (seconds < 60) return `${String(seconds)}s`
+  return `${String(Math.floor(seconds / 60))}m ${String(seconds % 60)}s`
 }
 
 /**
- * The present-tense label of one category whose call is still streaming its
- * arguments (an English locale key).
- * @param activity - the preparing call's category.
- * @returns the untranslated label.
+ * The diffstat of a change as a line shows it: `+4 −2`.
+ * @param added - lines added.
+ * @param removed - lines removed.
+ * @returns the text.
  */
-export function preparingLabel(activity: ProcessActivity): string {
-  return PREPARING_LABEL[activity]
-}
-
-/**
- * The localized past-tense title of one process group: its top three
- * categories' done labels, joined.
- * @param summary - the summary of the group's settled members.
- * @param t - translator for the transcript namespace.
- * @returns the title text, or `''` when nothing has settled.
- */
-export function processTitle(summary: ProcessSummary, t: MayflyTranslate): string {
-  const labels = summary.counts.slice(0, 3).map(({ activity }) => t(DONE_LABEL[activity]))
-  const first = labels[0]
-  if (first === undefined) return ''
-  const second = labels[1]
-  if (second === undefined) return first
-  const continuation = (label: string): string => label.charAt(0).toLowerCase() + label.slice(1)
-  if (labels.length === 2) {
-    const translated = t(SHARED_DONE_PREFIX_KEY)
-    const prefix = translated === SHARED_DONE_PREFIX_KEY ? '' : translated
-    const trimmed = prefix !== '' && first.startsWith(prefix) && second.startsWith(prefix) ? second.slice(prefix.length) : second
-    return t('{first} and {second}', { first, second: continuation(trimmed) })
-  }
-  const title = [first, ...labels.slice(1).map(continuation)].join(t(', '))
-  return summary.counts.length > 3 ? t('{title}, etc.', { title }) : title
+export function diffStat(added: number, removed: number): string {
+  return `+${String(added)} −${String(removed)}`
 }

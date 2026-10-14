@@ -12,6 +12,7 @@ import { MayflyScreenService } from '../../src/core/screen.ts'
 import type { MayflyTerminalRuntime } from '../../src/core/terminal.ts'
 import type { MayflyComponent, MayflyDockOptions, MayflyFocusable, MayflyKeymap, MayflyOverlayHandle } from '../../src/core/types.ts'
 import { UiInteractionService } from '../../src/core/ui-interaction-state.ts'
+import { SurfaceManager } from '../../src/core/surface-manager.ts'
 import { COMPONENTS, DIM_COLORS, PLAIN_COLORS, statusRow, streamItems, streamList } from './node-slot-host.ts'
 
 interface Recorded {
@@ -25,7 +26,7 @@ interface Recorded {
   suspends: unknown[]
   titles: string[]
   scrolls: { direction: 'up' | 'down', amount: number | undefined }[]
-  contentChanges: number
+  scrollHandlers: (((data: string) => boolean) | undefined)[]
 }
 
 function recordingRuntime(laneRows = 0): MayflyTerminalRuntime & Recorded {
@@ -37,13 +38,14 @@ function recordingRuntime(laneRows = 0): MayflyTerminalRuntime & Recorded {
     unfocus: () => {},
     isFocused: () => true,
   }
-  const recorded: Recorded = { added: [], bottomAdded: [], dockAdded: [], removed: [], focused: [], overlays: [], renders: [], suspends: [], titles: [], scrolls: [], contentChanges: 0 }
+  const recorded: Recorded = { added: [], bottomAdded: [], dockAdded: [], removed: [], focused: [], overlays: [], renders: [], suspends: [], titles: [], scrolls: [], scrollHandlers: [] }
   const runtime = {
     ...recorded,
-    get contentChanges() { return recorded.contentChanges },
     columns: 120,
     rows: 24,
     surfaceLaneRows: () => laneRows,
+    dockRows: () => 0,
+    surfaces: new SurfaceManager(),
     hasCapturingOverlay: () => false,
     addChild(component) {
       recorded.added.push(component)
@@ -71,9 +73,9 @@ function recordingRuntime(laneRows = 0): MayflyTerminalRuntime & Recorded {
       recorded.scrolls.push({ direction, amount })
       return true
     },
-    contentChanged() {
-      recorded.contentChanges += 1
-      return true
+    setContentScrollHandler(handler) {
+      recorded.scrollHandlers.push(handler)
+      return () => { recorded.scrollHandlers.push(undefined) }
     },
     async suspend<T>(fn: () => Promise<T>): Promise<T> {
       const value = await fn()
@@ -216,8 +218,12 @@ describe('MayflyScreenService', () => {
 
     expect(screen.scrollContent('up', 3)).toBe(true)
     expect(runtime.scrolls).toEqual([{ direction: 'up', amount: 3 }])
-    expect(screen.contentChanged()).toBe(true)
-    expect(runtime.contentChanges).toBe(1)
+
+    const handler = (data: string): boolean => data === 'x'
+    const unset = screen.setContentScrollHandler(handler)
+    expect(runtime.scrollHandlers).toEqual([handler])
+    unset()
+    expect(runtime.scrollHandlers).toEqual([handler, undefined])
 
     await expect(screen.suspend(async () => 'ok')).resolves.toBe('ok')
     expect(runtime.suspends).toEqual(['ok'])
@@ -464,7 +470,46 @@ describe('MayflyScreenService node slots', () => {
     root.mayflyScreen.bindNodeSlots(slotCompiler(root, { interaction }))
     expect(interaction.get('slot', 'local.kept')).toBeUndefined()
     expect(interaction.get('slot', adopted.id)).toBe(model)
-    expect(next.added[1]!.render(80)[0]).toContain('(3/40)')
+    // The adopted lease is unfocused, so its content flows; the cursor the model kept is the focused window's.
+    expect(next.added[1]!.render(80)).toHaveLength(40)
+    await root.fiber.dispose()
+  })
+
+  it('routes a slot\'s events to the lease that holds its id, so a stale lease neither hears nor publishes', async () => {
+    const root = new Context()
+    const interaction = new UiInteractionService(root)
+    const first = await root.plugin(MayflyScreenService, recordingRuntime())
+    const heard: string[] = []
+    const stale = root.mayflyScreen.mountNodeSlot('transcript.conversation', { region: 'content', onEvent: (event) => { heard.push(`stale:${event.kind}`) } })
+    stale.set(streamList(streamItems(5)))
+    root.mayflyScreen.bindNodeSlots(slotCompiler(root, { interaction }))
+    const model = interaction.get('slot', stale.id)!
+    const send = (): Promise<unknown> => model.endpoint.prepare({ kind: 'dismiss', pagePath: [] }, { surfaceId: model.id, source: [], revision: model.revision, operationId: 'op', signal: new AbortController().signal, report: vi.fn() })
+    await send()
+    expect(heard).toEqual(['stale:dismiss'])
+
+    // The screen's teardown revokes the lease: the model stays, and its route has no listener until a lease holds the id again.
+    await first.dispose()
+    await send()
+    expect(heard).toEqual(['stale:dismiss'])
+    const next = recordingRuntime()
+    await root.plugin(MayflyScreenService, next)
+    const live = root.mayflyScreen.mountNodeSlot('transcript.conversation', { region: 'content', onEvent: (event) => { heard.push(`live:${event.kind}`) } })
+    live.set(streamList(streamItems(5)))
+    root.mayflyScreen.bindNodeSlots(slotCompiler(root, { interaction }))
+    expect(interaction.get('slot', live.id)).toBe(model)
+    expect(model.endpoint).toBe(interaction.get('slot', live.id)!.endpoint)
+    await send()
+    expect(heard).toEqual(['stale:dismiss', 'live:dismiss'])
+
+    // The stale lease publishes nothing, hears nothing, and ending it again leaves the successor's route and model alone.
+    const revision = model.revision
+    stale.set(streamList(streamItems(2)))
+    stale.dispose()
+    await send()
+    expect(model.revision).toBe(revision)
+    expect(model.disposed).toBe(false)
+    expect(heard).toEqual(['stale:dismiss', 'live:dismiss', 'live:dismiss'])
     await root.fiber.dispose()
   })
 
@@ -485,9 +530,15 @@ describe('MayflyScreenService node slots', () => {
       content.set(streamList(items))
       dock.set(streamList(items))
       const [prompt, status] = runtime.bottomAdded as [MayflyFocusable, MayflyComponent]
-      // The content region gets the terminal's rows; the dock gets the editor viewport, below the footer.
+      // An unfocused content region flows into the outer scroll (every row); a focused one keeps the terminal's rows as
+      // its cursor window. The dock gets the editor viewport, below the footer.
       const footerRows = status.render(120).length
-      expect(runtime.added[1]!.render(120)).toHaveLength(24)
+      const contentHost = runtime.added[1]! as MayflyFocusable
+      expect(contentHost.render(120)).toHaveLength(60)
+      contentHost.focused = true
+      expect(contentHost.render(120)).toHaveLength(24)
+      contentHost.focused = false
+      expect(contentHost.render(120)).toHaveLength(60)
       expect(prompt.render(120)).toHaveLength(ctx.mayflyScreen.editorViewport.rows)
       expect(ctx.mayflyScreen.editorViewport.rows).toBe(24 - footerRows - 1)
 
@@ -545,5 +596,106 @@ describe('MayflyScreenService node slots', () => {
     const translated = host.render(80).join('\n')
     expect(translated).toContain('[zh] 1 match')
     await ctx.fiber.dispose()
+  })
+})
+
+describe('MayflyScreenService search line', () => {
+  const options = () => ({ prefix: '/' as const, onChange: vi.fn(), onAccept: vi.fn(), onAbandon: vi.fn() })
+
+  it('mounts above the editor, takes the focus, and paints with the colors of the renderer once one is bound', async () => {
+    const runtime = recordingRuntime()
+    const ctx = new Context()
+    await ctx.plugin(MayflyScreenService, runtime)
+    const heard = options()
+    const lease = ctx.mayflyScreen.mountSearchLine(heard)
+    const line = runtime.dockAdded[0]!.component as MayflyFocusable
+    // Just above the editor, below the panes, and focused for typing.
+    expect(runtime.dockAdded[0]!.options).toEqual({ priority: Number.MAX_SAFE_INTEGER - 1 })
+    expect(runtime.focused.at(-1)).toBe(line)
+    expect(lease.disposed).toBe(false)
+    lease.set('2 matches')
+    expect(line.render(40)).toHaveLength(2)
+    expect(line.render(40)[1]).toContain('2 matches')
+    // No renderer yet: the line paints plain and its keys come from the literal escape and enter.
+    expect(line.render(40)[0]).toMatch(/^ {2}\/ /u)
+    line.handleInput?.('\r')
+    expect(heard.onAccept).toHaveBeenCalledOnce()
+
+    // A bound renderer lends its colors and keymap.
+    const compiler = slotCompiler(ctx, { colors: DIM_COLORS, keymap: { matches: (data: string) => data === 'Q' } as unknown as MayflyKeymap })
+    ctx.mayflyScreen.bindNodeSlots(compiler)
+    expect(line.render(40)[1]).toContain('\x1b[2m')
+    line.handleInput?.('Q')
+    expect(heard.onAbandon).toHaveBeenCalledOnce()
+    await ctx.fiber.dispose()
+  })
+
+  it('freezes and edits again, and a closed line ignores every call', async () => {
+    const runtime = recordingRuntime()
+    const ctx = new Context()
+    await ctx.plugin(MayflyScreenService, runtime)
+    const heard = options()
+    const lease = ctx.mayflyScreen.mountSearchLine(heard)
+    const line = runtime.dockAdded[0]!.component as MayflyFocusable
+    lease.freeze()
+    line.handleInput?.('a')
+    expect(heard.onChange).not.toHaveBeenCalled()
+    runtime.focused.length = 0
+    lease.edit()
+    expect(runtime.focused).toEqual([line])
+    line.handleInput?.('a')
+    expect(heard.onChange).toHaveBeenCalledWith('a')
+
+    lease.dispose()
+    expect(lease.disposed).toBe(true)
+    expect(runtime.removed).toEqual([line])
+    // Closed: nothing changes the status, the editability, or the focus, and closing again removes nothing twice.
+    runtime.focused.length = 0
+    lease.set('late')
+    lease.edit()
+    lease.freeze()
+    lease.dispose()
+    expect(runtime.focused).toEqual([])
+    expect(runtime.removed).toEqual([line])
+    expect(line.render(40)[1]).not.toContain('late')
+    await ctx.fiber.dispose()
+  })
+
+  it('hands the focus back to the prompt only when the line held it', async () => {
+    const runtime = recordingRuntime()
+    const ctx = new Context()
+    await ctx.plugin(MayflyScreenService, runtime)
+    const prompt = { focused: false, render: () => ['prompt'], invalidate: () => {} }
+    const promptSlot = ctx.mayflyScreen.mountDockSlot('editor.prompt', prompt)
+    const held = ctx.mayflyScreen.mountSearchLine(options())
+    const heldLine = runtime.dockAdded[0]!.component as MayflyFocusable
+    heldLine.focused = true
+    runtime.focused.length = 0
+    held.dispose()
+    expect(runtime.focused).toEqual([promptSlot.component])
+
+    // A line the focus already left (the conversation took it) does not steal it back.
+    const left = ctx.mayflyScreen.mountSearchLine(options())
+    runtime.focused.length = 0
+    left.dispose()
+    expect(runtime.focused).toEqual([])
+    await ctx.fiber.dispose()
+  })
+
+  it('replaces the open line when another one opens, and the screen\'s teardown closes the open one', async () => {
+    const runtime = recordingRuntime()
+    const ctx = new Context()
+    await ctx.plugin(MayflyScreenService, runtime)
+    const first = ctx.mayflyScreen.mountSearchLine(options())
+    const second = ctx.mayflyScreen.mountSearchLine(options())
+    expect(first.disposed).toBe(true)
+    expect(second.disposed).toBe(false)
+    expect(runtime.removed).toEqual([runtime.dockAdded[0]!.component])
+    // Closing the replaced lease again leaves the newer line open.
+    first.dispose()
+    expect(second.disposed).toBe(false)
+    await ctx.fiber.dispose()
+    expect(second.disposed).toBe(true)
+    expect(runtime.removed).toEqual([runtime.dockAdded[0]!.component, runtime.dockAdded[1]!.component])
   })
 })

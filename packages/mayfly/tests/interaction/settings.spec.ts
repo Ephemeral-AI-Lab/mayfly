@@ -45,13 +45,14 @@ declare module '@deepseek-ai/cordis' {
  * plugin pending, it does not throw), so this spec forces the error result
  * through a module mock that delegates while the flag is down.
  */
-const themeMock = vi.hoisted(() => ({ forceFailure: false, calls: [] as string[] }))
+const themeMock = vi.hoisted(() => ({ forceFailure: false, hold: undefined as Promise<void> | undefined, calls: [] as string[] }))
 vi.mock('../../src/interaction/theme-switch.ts', async (importOriginal) => {
   const original = await importOriginal<typeof import('../../src/interaction/theme-switch.ts')>()
   return {
     ...original,
     applyTheme: (ctx: Context, key: string) => {
       themeMock.calls.push(key)
+      if (themeMock.hold !== undefined) return themeMock.hold.then(() => ({ kind: 'success' as const, text: `held ${key}` }))
       return themeMock.forceFailure
         ? Promise.resolve({ kind: 'error' as const, text: `forced failure for ${key}` })
         : original.applyTheme(ctx, key)
@@ -151,6 +152,7 @@ describe('mayfly-settings schema and registration', () => {
       glyphs: 'auto',
       monochrome: false,
       reducedMotion: false,
+      quietHints: 'full',
     })
     expect(resolveConfig({ transcriptView: 'verbose' }).transcriptView).toBe('verbose')
     expect(resolveConfig({ keybindings: { 'ui.delete': { keys: ['d'], label: 'delete' } } }).keybindings).toEqual({ 'ui.delete': { keys: ['d'], label: 'delete' } })
@@ -193,6 +195,7 @@ describe('mayfly-settings schema and registration', () => {
       glyphs: 'auto',
       monochrome: false,
       reducedMotion: false,
+      quietHints: 'full',
     })
     expect(ready.at(-1)).toMatchObject({ editorCommand: 'my-editor --wait' })
 
@@ -323,6 +326,47 @@ describe('mayfly-settings theme applier', () => {
     } finally {
       themeMock.forceFailure = false
     }
+  })
+
+  it('drops a theme commit whose swap lands after the fiber unloaded, recording and mounting nothing', async () => {
+    themeMock.calls.length = 0
+    const { ctx, settings, attach } = await mount({ mayfly: { theme: 'ocean' } })
+    attach()
+    await vi.waitFor(() => expect(ctx.get('mayflyTheme')?.colors).toBe(themeOcean.OCEAN_COLORS))
+    const state = ctx.mayflyInteractionState
+    const applied = state.lastAppliedTheme
+    await settings.update('mayfly', { theme: 'paper' })
+    await ctx.fiber.dispose()
+    await settle()
+    expect(state.lastAppliedTheme).toBe(applied)
+    expect(themeMock.calls).toEqual(['ocean', 'paper'])
+  })
+
+  it('records no applied theme and mounts nothing when the fiber unloads while the swap is still applying', async () => {
+    themeMock.calls.length = 0
+    const { ctx, settings, attach } = await mount({ mayfly: { updateCheck: false } })
+    attach()
+    await settle()
+    const state = ctx.mayflyInteractionState
+    const applied = state.lastAppliedTheme
+    let release!: () => void
+    themeMock.hold = new Promise<void>(resolve => { release = resolve })
+    try {
+      await settings.update('mayfly', { theme: 'paper' })
+      await vi.waitFor(() => expect(themeMock.calls).toEqual(['paper']))
+      await ctx.fiber.dispose()
+      release()
+      await settle()
+    } finally {
+      themeMock.hold = undefined
+    }
+    expect(state.lastAppliedTheme).toBe(applied)
+    expect(ctx.get('mayflyTheme')).toBeUndefined()
+  })
+
+  it('reads a declared field as its default when the published row carries it as undefined', async () => {
+    const { ctx } = await mount({ mayfly: { theme: undefined, updateCheck: false } })
+    expect(settingsPlugin.currentMayflySettings(ctx)).toEqual({ ...settingsPlugin.DEFAULT_SETTINGS, updateCheck: false })
   })
 
   it('never attaches once the fiber unloaded before the first session', async () => {

@@ -141,6 +141,22 @@ export class ViewsLane implements MayflyViewsSource {
   /** Whether a view is entered: its panel replaces row 2 and the lane holds focus. */
   get isEntered(): boolean { return this.entered }
 
+  private readonly enteredListeners = new Set<(entered: boolean) => void>()
+
+  /**
+   * Listen to the lane being entered and left.
+   * @param listener - called with whether a view is entered, once per change.
+   * @returns the disposer.
+   */
+  onEnteredChange(listener: (entered: boolean) => void): () => void {
+    this.enteredListeners.add(listener)
+    return () => { this.enteredListeners.delete(listener) }
+  }
+
+  private announceEntered(): void {
+    for (const listener of [...this.enteredListeners]) listener(this.entered)
+  }
+
   /** Whether any view could be entered now. */
   get enterable(): boolean { return this.host !== undefined && this.tabs().length > 0 }
 
@@ -220,7 +236,10 @@ export class ViewsLane implements MayflyViewsSource {
     this.moveActive(target.id)
     this.entered = true
     this.changed()
-    if (!wasEntered) host.focus(this.component)
+    if (!wasEntered) {
+      host.focus(this.component)
+      this.announceEntered()
+    }
     return true
   }
 
@@ -230,6 +249,7 @@ export class ViewsLane implements MayflyViewsSource {
     this.entered = false
     this.changed()
     this.host?.release()
+    this.announceEntered()
   }
 
   /** The surface manager calls this when focus moved off the lane by any other path. */
@@ -237,6 +257,7 @@ export class ViewsLane implements MayflyViewsSource {
     if (!this.entered) return
     this.entered = false
     this.changed()
+    this.announceEntered()
   }
 
   /**
@@ -354,6 +375,7 @@ export class ViewsLane implements MayflyViewsSource {
         this.entered = false
         this.changed()
         this.host?.release()
+        this.announceEntered()
         return
       }
       this.activeId = next.id

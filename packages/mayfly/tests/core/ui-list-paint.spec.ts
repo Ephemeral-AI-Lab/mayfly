@@ -104,6 +104,16 @@ describe('list rows', () => {
     expect(plain(renderList(node, 20, 20, idle, colors, 0, undefined, { rows: specs(items), translate }))[5]).toContain('▸ {count} more lines · Enter:1')
   })
 
+  it('hangs the continuation lines under the text after a leading glyph, and keeps the fold row there', () => {
+    const items: MayflyListItem[] = [{ id: 'a', label: '» one two three four five six seven eight nine ten eleven twelve', wrap: true, hang: 2, wrapMax: 3 }, { id: 'b', label: '» 请把这一段说明翻译成中文并且保留标点', wrap: true, hang: 2 }]
+    const node = ui.list({ id: 'h', role: 'browse', selectedIds: [], items })
+    const rows = plain(renderList(node, 20, 20, idle, colors, 0, undefined, { rows: specs(items) }))
+    expect(rows.slice(0, 4)).toEqual(['  » one two three', '    four five six', '    seven eight nine', '    ▸ 2 more lines · Enter'])
+    // A wide character never starts a line past the width, and the lines hang under the first character after the glyph.
+    expect(rows.slice(4).every(row => visibleWidth(row) <= 20)).toBe(true)
+    expect(rows.slice(5).every(row => row.startsWith('    '))).toBe(true)
+  })
+
   it('draws rules, blank rows, and group headings that carry no cursor', () => {
     const items: MayflyListItem[] = [
       { id: 'r', label: '', rule: 'Today', group: 'G' },
@@ -232,7 +242,37 @@ describe('a body at any size', () => {
     const painted = renderList(node, 30, 3, idle, colors, 0, memo, { rows, cursorId: 'a' })
     expect(plain(painted)).toEqual(['  A', '       always line 0', '       always line 1'])
     expect(counters.rowsMaterialized).toBe(2)
-    expect(isVirtualRows(memo.cache.readLines(colors, items[0]!, 'body\x0130', () => [], counters))).toBe(true)
+    expect(isVirtualRows(memo.cache.readLines(colors, items[0]!, 'body\x0130\x010\x010', () => [], counters))).toBe(true)
+  })
+})
+
+describe('a body that leads its row', () => {
+  it('has no head line: the lead follows the cursor gutter, the body takes the rest, and its other rows sit under it', () => {
+    const items: MayflyListItem[] = [
+      { id: 'a', label: '', body: ui.text('first row\nsecond row'), bodyAlways: true, bodyLead: [{ text: '● ' }] },
+      { id: 'b', label: 'B' },
+    ]
+    const node = ui.list({ id: 'lead', role: 'browse', selectedIds: [], items })
+    const rows = specs(items).map(row => row.item.id === 'a' ? { ...row, open: true } : row)
+    const body = vi.fn((_item: MayflyListItem, width: number) => [`first@${String(width)}`, 'second'])
+    expect(plain(renderList(node, 30, 10, idle, colors, 0, undefined, { rows, cursorId: 'b', body }))).toEqual(['  ● first@26', '    second', '  B'])
+    // The cursor arrow rides the first row, and a wide lead narrows the body by its own width.
+    expect(plain(renderList(node, 30, 10, on('a'), colors, 0, undefined, { rows, cursorId: 'a', body }))[0]).toBe('→|● first@26')
+    const wide: MayflyListItem[] = [{ id: 'w', label: '', body: ui.text('x'), bodyAlways: true, bodyLead: [{ text: '✻ ' }, { text: '思考' }, { text: '  ' }] }]
+    const wideBody = vi.fn((_item: MayflyListItem, width: number) => [`w@${String(width)}`, 'next'])
+    expect(plain(renderList(ui.list({ id: 'w', role: 'browse', selectedIds: [], items: wide }), 30, 10, idle, colors, 0, undefined, { rows: specs(wide).map(row => ({ ...row, open: true })), body: wideBody }))).toEqual(['  ✻ 思考  w@20', '          next'])
+  })
+
+  it('keeps the leaded rows in the row cache and a body that paints nothing as the lead alone', () => {
+    const items: MayflyListItem[] = [{ id: 'a', label: '', body: ui.text('x'), bodyAlways: true, bodyLead: [{ text: '● ' }] }]
+    const node = ui.list({ id: 'cache', role: 'browse', selectedIds: [], items })
+    const rows = specs(items).map(row => ({ ...row, open: true }))
+    const memo = { cache: new UiRowCache(), counters: createWorkCounters() }
+    const body = vi.fn(() => ['row'])
+    renderList(node, 30, 10, idle, colors, 0, memo, { rows, body })
+    renderList(node, 30, 10, idle, colors, 0, memo, { rows, body })
+    expect(body).toHaveBeenCalledTimes(1)
+    expect(plain(renderList(node, 30, 10, idle, colors, 0, undefined, { rows, body: () => [] }))).toEqual(['  ● '])
   })
 })
 
@@ -319,5 +359,163 @@ describe('the segment strip on a row', () => {
     const bare = (row: MayflyListItem) => row.segment === undefined ? undefined : view(null, row.segment)
     expect(plain(renderList(ui.list({ id: 'u', role: 'browse', selectedIds: [], items: unlabeled }), 62, 10, on('a'), colors, 0, undefined, { rows: specs(unlabeled), cursorId: 'a', segment: bare, segmentLabel: 'Effort' })).at(-1)).toBe('  Effort: min ‹ high (default) › max')
     expect(plain(renderList(ui.list({ id: 'u', role: 'browse', selectedIds: [], items: unlabeled }), 62, 10, on('a'), colors, 0, undefined, { rows: specs(unlabeled), cursorId: 'a', segment: bare })).at(-1)).toBe('  Options: min ‹ high (default) › max')
+  })
+})
+
+describe('the selection band and find marks of a list', () => {
+  // The band paints through `selectedBg`; a tagged palette makes it visible in the frame.
+  const rows = (items: MayflyListItem[], open: ReadonlySet<string> = new Set()): ListRowSpec[] => specs(items).map(row => ({ ...row, open: open.has(row.item.id) }))
+
+  it('bands the cursor row and every row under it, following the chain from a body to its call to the head', () => {
+    const items: MayflyListItem[] = [
+      { id: 'head', label: 'Head' },
+      { id: 'call', label: 'Call', under: 'head' },
+      { id: 'deep', label: 'Deep', under: 'call' },
+      { id: 'free', label: 'Free' },
+    ]
+    const node = ui.list({ id: 'band', role: 'browse', marker: 'band', selectedIds: [], items })
+    const painted = renderList(node, 30, 10, on('head'), tagged, 0, undefined, { rows: rows(items), cursorId: 'head' })
+    expect(painted).toHaveLength(4)
+    expect(painted[0]).toContain('<selectedBg>')
+    expect(painted[1]).toContain('<selectedBg>')
+    expect(painted[2]).toContain('<selectedBg>')
+    expect(painted[3]).not.toContain('<selectedBg>')
+  })
+
+  it('draws the band inset one column at each edge and no arrow, and only while the list has focus', () => {
+    const items: MayflyListItem[] = [{ id: 'a', label: 'Alpha' }, { id: 'b', label: 'Beta' }]
+    const node = ui.list({ id: 'band', role: 'browse', marker: 'band', selectedIds: [], items })
+    const focused = renderList(node, 20, 10, on('a'), tagged, 0, undefined, { rows: rows(items), cursorId: 'a' })
+    expect(focused[0]!.startsWith(' <selectedBg>')).toBe(true)
+    expect(focused[0]!.endsWith('</> ')).toBe(true)
+    expect(focused[0]).not.toContain('→')
+    expect(visibleWidth(renderList(node, 20, 10, on('a'), colors, 0, undefined, { rows: rows(items), cursorId: 'a' })[0]!)).toBe(20)
+    const blurred = renderList(node, 20, 10, idle, tagged, 0, undefined, { rows: rows(items), cursorId: 'a' })
+    expect(blurred.join('\n')).not.toContain('<selectedBg>')
+  })
+
+  it('keeps a wide label whole inside the band at 40 and 60 columns', () => {
+    const items: MayflyListItem[] = [{ id: 'a', label: '中文标题很长很长' }, { id: 'b', label: '体', under: 'a' }]
+    const node = ui.list({ id: 'band', role: 'browse', marker: 'band', selectedIds: [], items })
+    for (const width of [40, 60]) {
+      const painted = renderList(node, width, 10, on('a'), colors, 0, undefined, { rows: rows(items), cursorId: 'a' })
+      expect(painted).toHaveLength(2)
+      for (const row of painted) expect(visibleWidth(row)).toBe(width)
+    }
+  })
+
+  it('marks every match of the pattern in the painted rows, and leaves the rows without a match as they were', () => {
+    const items: MayflyListItem[] = [{ id: 'a', label: 'needle one' }, { id: 'b', label: 'hay' }, { id: 'c', label: 'a needle' }]
+    const node = ui.list({ id: 'find', role: 'browse', selectedIds: [], items, highlight: { pattern: 'needle' } })
+    const painted = renderList(node, 40, 10, idle, colors, 0, undefined, { rows: rows(items) })
+    expect(painted[0]).toBe('  \x1b[7mneedle\x1b[27m one')
+    expect(painted[1]).toBe('  hay')
+    expect(painted[2]).toBe('  a \x1b[7mneedle\x1b[27m')
+  })
+
+  it('draws the current match of the cursor block stronger, the first of the block counted head first', () => {
+    const items: MayflyListItem[] = [{ id: 'a', label: 'hit head', body: 'x hit\nhit y', bodyAlways: true }]
+    const node = ui.list({ id: 'current', role: 'browse', selectedIds: [], items, highlight: { pattern: 'hit', current: 1 } })
+    const painted = renderList(node, 40, 10, on('a'), colors, 0, undefined, { rows: rows(items, new Set(['a'])), cursorId: 'a' })
+    // The head's match is nth 0, the body's first line nth 1: only that one is drawn stronger.
+    expect(painted.join('\n')).toContain('\x1b[7m\x1b[1m\x1b[4mhit\x1b[24m\x1b[22m\x1b[27m')
+    expect(painted[0]).toContain('\x1b[7mhit\x1b[27m')
+    expect(painted[0]).not.toContain('\x1b[4m')
+  })
+
+  it('windows a tall block on its current match, so a match deep in the body is in view', () => {
+    const body = Array.from({ length: 200 }, (_, index) => index === 150 ? 'deep needle' : `line ${String(index)}`).join('\n')
+    const items: MayflyListItem[] = [{ id: 'a', label: 'tall', body, bodyAlways: true }]
+    const node = ui.list({ id: 'tall', role: 'browse', selectedIds: [], items, highlight: { pattern: 'needle', current: 0 } })
+    const painted = renderList(node, 40, 5, on('a'), colors, 0, undefined, { rows: rows(items, new Set(['a'])), cursorId: 'a' })
+    expect(painted).toHaveLength(5)
+    expect(painted.join('\n')).toContain('\x1b[4mneedle')
+  })
+
+  it('keeps the unmarked rows of a memo when the pattern goes away, and paints the marks on the next pass', () => {
+    const items: MayflyListItem[] = [{ id: 'a', label: 'needle' }]
+    const memo = { cache: new UiRowCache(), counters: createWorkCounters() }
+    const marked = renderList(ui.list({ id: 'memo', role: 'browse', selectedIds: [], items, highlight: { pattern: 'needle' } }), 30, 5, idle, colors, 0, memo, { rows: rows(items) })
+    expect(marked[0]).toContain('\x1b[7m')
+    const plainRow = renderList(ui.list({ id: 'memo', role: 'browse', selectedIds: [], items }), 30, 5, idle, colors, 0, memo, { rows: rows(items) })
+    expect(plainRow[0]).toBe('  needle')
+  })
+})
+
+describe('list paint decisions at the edges', () => {
+  const treeItems: MayflyListItem[] = [
+    { id: 'p', label: 'parent' },
+    { id: 'c1', label: 'one', parentId: 'p' },
+    { id: 'c2', label: 'two', parentId: 'p' },
+  ]
+  const tree = (selectedIds: string[]) => ui.list({ id: 'tree', role: 'choose', mode: 'multiple', tree: true, selectedIds, items: treeItems })
+
+  it('marks a multiple-tree parent by its children: empty with none chosen, filled when all are or when the parent is picked', () => {
+    expect(plain(renderList(tree([]), 40, 10, idle, colors, 0, undefined, { rows: specs(treeItems) }))[0]).toBe('  ○ parent')
+    expect(plain(renderList(tree(['p']), 40, 10, idle, colors, 0, undefined, { rows: specs(treeItems) }))[0]).toBe('  ● parent')
+    expect(plain(renderList(tree(['c1', 'c2']), 40, 10, idle, colors, 0, undefined, { rows: specs(treeItems) }))[0]).toBe('  ● parent')
+  })
+
+  it('leads a body-led row with its lead alone when the row has no body painter', () => {
+    const items: MayflyListItem[] = [{ id: 'a', label: '', body: ui.text('x'), bodyAlways: true, bodyLead: [{ text: '● ' }] }]
+    const node = ui.list({ id: 'lead', role: 'browse', selectedIds: [], items })
+    expect(plain(renderList(node, 30, 10, idle, colors, 0, undefined, { rows: specs(items).map(row => ({ ...row, open: true })), body: undefined }))).toEqual(['  ● '])
+  })
+
+  it('finds the current match in a block that has group headings, and draws nothing current when the pattern has no match', () => {
+    const items: MayflyListItem[] = [{ id: 'a', label: 'needle', group: 'Heading' }]
+    const node = ui.list({ id: 'group', role: 'browse', selectedIds: [], items, highlight: { pattern: 'needle', current: 0 } })
+    const painted = renderList(node, 40, 10, on('a'), colors, 0, undefined, { rows: specs(items), cursorId: 'a' })
+    expect(painted[0]).toBe('Heading')
+    expect(painted[1]).toContain('\x1b[4mneedle')
+    const none = ui.list({ id: 'none', role: 'browse', selectedIds: [], items, highlight: { pattern: 'absent', current: 0 } })
+    expect(renderList(none, 40, 10, on('a'), colors, 0, undefined, { rows: specs(items), cursorId: 'a' }).join('\n')).not.toContain('\x1b[4m')
+  })
+
+  it('leads the list with the filter echo row, windowed with the rows', () => {
+    const items: MayflyListItem[] = [{ id: 'a', label: 'alpha' }]
+    const node = ui.list({ id: 'filter', role: 'browse', selectedIds: [], items, filter: 'al' })
+    expect(plain(renderList(node, 30, 10, idle, colors, 0, undefined, { rows: specs(items) }))).toEqual(['/ al', '  alpha'])
+  })
+
+  it('paints a flow list from the memo the same as without one', () => {
+    const items: MayflyListItem[] = [{ id: 'a', label: 'alpha' }, { id: 'b', label: 'beta' }]
+    const node = ui.list({ id: 'flow', role: 'browse', selectedIds: [], items })
+    const memo = { cache: new UiRowCache(), counters: createWorkCounters() }
+    const fromMemo = renderList(node, 30, 10, on('a'), colors, 0, memo, { rows: specs(items), cursorId: 'a', flow: true })
+    expect(renderList(node, 30, 10, on('a'), colors, 0, memo, { rows: specs(items), cursorId: 'a', flow: true })).toEqual(fromMemo)
+    expect(plain(fromMemo)).toEqual(['→|alpha', '  beta'])
+  })
+
+  it('repaints a row whose rich body carries a motion span at every frame, and serves a still rich body from the memo', () => {
+    const still: MayflyListItem[] = [{ id: 's', label: 'still', body: { kind: 'rich-text', spans: [{ text: 'calm' }] }, bodyAlways: true }]
+    const moving: MayflyListItem[] = [{ id: 'm', label: 'moving', body: { kind: 'rich-text', spans: [{ text: 'wave', motion: 'shimmer' }] }, bodyAlways: true }]
+    const memo = { cache: new UiRowCache(), counters: createWorkCounters() }
+    const read = vi.spyOn(memo.cache, 'readLines')
+    renderList(ui.list({ id: 's', role: 'browse', selectedIds: [], items: still }), 30, 10, idle, colors, 0, memo, { rows: specs(still).map(row => ({ ...row, open: true })) })
+    expect(read).toHaveBeenCalled()
+    read.mockClear()
+    renderList(ui.list({ id: 'm', role: 'browse', selectedIds: [], items: moving }), 30, 10, idle, colors, 0, memo, { rows: specs(moving).map(row => ({ ...row, open: true })) })
+    expect(read).not.toHaveBeenCalled()
+  })
+
+  it('keeps a full-width band row as it is, without padding it past the list width', () => {
+    const items: MayflyListItem[] = [{ id: 'a', label: '0123456789abcdefghij' }]
+    const node = ui.list({ id: 'band', role: 'browse', marker: 'band', selectedIds: [], items })
+    const painted = renderList(node, 22, 5, on('a'), colors, 0, undefined, { rows: specs(items), cursorId: 'a' })
+    expect(visibleWidth(painted[0]!)).toBe(22)
+    expect(painted[0]).toContain('0123456789abcdefghi')
+  })
+
+  it('paints an open body the same with or without a row memo, and marks its current match in both', () => {
+    const items: MayflyListItem[] = [{ id: 'a', label: 'head', body: 'first hit\nsecond', bodyAlways: true }]
+    const node = ui.list({ id: 'body', role: 'browse', selectedIds: [], items, highlight: { pattern: 'hit', current: 0 } })
+    const extras = { rows: specs(items).map(row => ({ ...row, open: true })), cursorId: 'a' }
+    const bare = renderList(node, 30, 10, on('a'), colors, 0, undefined, extras)
+    const memo = { cache: new UiRowCache(), counters: createWorkCounters() }
+    expect(renderList(node, 30, 10, on('a'), colors, 0, memo, extras)).toEqual(bare)
+    expect(renderList(node, 30, 10, on('a'), colors, 0, memo, { ...extras, flow: true })).toEqual(bare)
+    expect(bare.join('\n')).toContain('\x1b[4mhit')
+    expect(plain(bare)).toEqual(['→|head', '       first hit', '       second'])
   })
 })

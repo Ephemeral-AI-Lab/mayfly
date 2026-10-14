@@ -120,7 +120,7 @@ keeps its row and names its successor, because the Phase 1 record cites it.
 | 11 API additions | Approved as §3. |
 | 12 Unused builders | `sections` and `diagram` stay for plugins. |
 | 13 Trace turn | Derived in Mayfly from the session events (`interaction/trace-aggregate.ts`); no Harness change. |
-| 14 Write highlighting | Capped at the expanded card's 12 rows and 32 KB, then plain text. |
+| 14 Write highlighting | Capped at the open card's 40 rows and 32 KB, then plain text. |
 | 15 Turn rule | Start time only, as drawn. |
 
 ### 2.3 Where the implementation differs from the prototype
@@ -297,6 +297,7 @@ export interface MayflyListItem {
   readonly expanded?: boolean        // initial disclosure
   readonly wrap?: boolean
   readonly wrapMax?: number          // then `▸ N more lines · Enter`
+  readonly hang?: number             // columns the continuation lines start beyond the prefix (the leading glyph)
   readonly meter?: { readonly value: number, readonly max: number, readonly width?: number, readonly tone?: MayflyTone }
   readonly indent?: number
   readonly rule?: string             // a non-selectable muted rule with right-aligned text
@@ -847,13 +848,13 @@ It landed in five parts, each green on its own, and a sixth after slice 1.7 merg
    `←/→ actions`, `No/Yes` on a decision, `↑/↓ fields`, `↑/↓ scroll · Ctrl+E expand`). `hintNotation` in
    `core/ui-key-grammar.ts` writes a printable accelerator as itself (`c copy`, labels lowercased) and names a shared
    modifier once (`Alt+←/→`); the transcript's fold hints and the exit notice write `Ctrl+O` and `Ctrl+C`.
-4. **Diff and code.** `paintDiffRows` draws old and new line-number gutters (muted, ending in `│`), `−`/`+`, and the
+4. **Diff and code.** `paintDiffRows` draws one line-number gutter (muted, ending in `│`: a removed line shows its number before the change, any other line its number after it), `−`/`+`, and the
    removed or added band behind the code only; one context line around each change, `⋯` for a skipped run, `…` at the
    end of a long line, an `@@` header when there is more than one hunk. It takes `start`, `numbered`, `hunkHeader`,
    `context`, and `maxRows` as painter options for slice 1.3 to put on the node; `CTX_EDGE_ROWS` became
    `DIFF_CONTEXT_ROWS`. A code node with a known language is highlighted by default (keywords `primary`, strings
    `success`, as the kit does; comments muted; every other token class in text color, so no color outside the palette
-   reaches the terminal), for the first 12 rows of a block of at most 32 KB; markdown fences use the same theme.
+   reaches the terminal), for the first 40 rows of a block of at most 32 KB; markdown fences use the same theme.
 5. **Guards and parity.** `tests/core/theme-contrast.spec.ts` checks every tone at 4.5:1 or more against each theme's
    canvas (dark against the shots canvas `#0A0A0C`, light against white, ocean against `#0E1A2B`, paper against
    `#F6F0E4`; `auto` is dark or light); light's `accent` and paper's `primary` and `warning` were darkened to pass.
@@ -1688,9 +1689,9 @@ stdout keeps one line per step. CI copies the summary into the job summary and u
 
 | Tier | When | Runs | Leaves out |
 | --- | --- | --- | --- |
-| round | Every edit; `pnpm run dev --check` after each incremental build | `build:changed`, `tsc -b`, oxlint on the changed files, the selected specs, the selected scenarios at their first size | Coverage, perf, screenshots, the smoke, the whole suite |
-| pr (default) | Finalizing a component; PR CI | round, plus the checks the changed inputs claim (agent docs, diagrams, `check:lib`, examples, pack, the Website build), the selected scenarios at every size, perf A/B when a perf scenario is selected, and PNGs of the changed checkpoints. In CI only, the changed lines no spec ran, as advice | The whole suite, the coverage floor, the smoke, the perf ceilings |
-| full | CI on `main`, nightly, a release, a phase end | One vitest run with coverage and retained-row verification together, the repository floor, every scenario at every size, the Website shots, `smoke:happy`, the perf ceilings, the platform matrix | — |
+| round | The end of a review round, after the owner finalizes the effect; `pnpm run dev --check` runs it after each incremental build | `build:changed`, `tsc -b`, oxlint on the changed files, the selected specs, the selected scenarios at their first size | Coverage, perf, screenshots, the smoke, the whole suite |
+| pr (default) | Finalizing a component; PR CI | round, plus the checks the changed inputs claim (agent docs, diagrams, `check:lib`, examples, pack), the selected scenarios at every size, perf A/B when a perf scenario is selected, and PNGs of the changed checkpoints. In CI only, the changed lines no spec ran, as advice | The whole suite, the coverage floor, the smoke, the perf ceilings |
+| full | CI on `main`, nightly, a release, a phase end | One vitest run with coverage and retained-row verification together, the repository floor, every scenario at every size, `smoke:happy`, the perf ceilings, the platform matrix | — |
 
 *Selection* (D29). `script/verify/` (*new*) replaces the path rules of `script/test-impact.mjs`.
 
@@ -1924,40 +1925,51 @@ The groups below are finalized in this order, each under §7. Their text is the 
     `pill` shows `↓ N new · End` while scrolled away.
   - Performance: W4 on the real stream (a 2,000-turn scenario republishing a streamed turn at 10 Hz) and the bench on
     the same scenario.
-  - Deletes the transcript painters each row replaces in `transcript/components.ts`, and `mountContentSlot` once
-    nothing mounts it.
+  - Deletes the transcript painters each row replaces in `transcript/components.ts`. `mountContentSlot` stays: the
+    banner, the local shell echo, and the screen's content region still mount through it.
 - **3b Tool rows** (`ToolLine`, `EditCard`, `WriteCard`, command rows; scenes 17, 18).
-  - `EditCard`: numbered diff (6 rows collapsed, 12 expanded), diffstat, `A`/`M`/`D` per file, the failure reason on
-    `⎿`. `WriteCard`: one line, numbered highlighted code when expanded (highlighting capped at 12 rows and 32 KB,
-    §2.2 row 14). Command rows with their `⎿` tails; the header with its diffstat or the failure line.
+  - Every tool is designed at three tiers (verbose block with a body, standard block for a run of one kind, compact merged
+    line; Detailed draws the current step verbose and collapses earlier steps), per
+    [component-development-spec.md](./component-development-spec.md) §7.1. Settled read, search, command, web, and generic
+    calls, with the command output tails, are the first part (3b.1); `EditCard` and `WriteCard` take their three tiers in
+    3b.2 and 3b.3.
+  - `EditCard` (owner's answers, R5): an edit is `✓ Edit(path) · +4 −2` with a diffstat bar and its diff, with
+    one gutter that numbers every row (a removed line by its place before the edit, any other row by its place after it; the Harness gives
+    no start line, so each hunk counts from its own first row, and the gutter is as wide as the largest number of any hunk),
+    syntax-highlighted code, and a tint that stops 4 columns short of the right edge; the failure reason is on the call's line. `WriteCard`: `✓
+    Write(path) · 84 lines · 3.1 KB` and numbered highlighted code (highlighting capped at 40 rows and 32 KB, §2.2 row
+    14). Both are open by default, 6 rows at Standard, 12 at Verbose, up to 40 with Ctrl+O, each its own block (never a
+    run); only Compact folds them into the merged line with its diffstat.
   - Content of any size through §4.2: a large write or edit shows its diff, never a rejection.
   - Deletes the canonical-node card path (`transcript/canonical-node-renderer.ts`) and the tool painters it replaces.
 - **3c Activity row, motion, notices, and compaction** (`ActivityRow`, `Banner`, `CompactionRow`; scenes 14, 16, 20).
-  - The glyph by phase: thinking blooms, *Deep diving* fills, waiting on an external action breathes, a running tool
-    keeps a still `●` while its label shimmers, waiting on the user is a static `?`, and stopping is a static `■`. The
-    header tail (`· 8s · ↑30.2k ↓1.1k · 38 tok/s`) is priority 2 and hides first; the right gap (priority 1) carries
-    `Esc interrupt · Ctrl+O expand` while a detail exists, the rotating tip only in the *Deep diving* row, or a toast.
-    Up to three `⎿` detail items, one truncated row each. The row pads to the turn's highest detail count (a plugin
-    fact) and renders nothing when idle.
+  - The row is the turn's vitals, three rows (a leading spacer, the header, and one `⎿` line) at the stream's left margin, with the notification pane's row under it.
+    The glyph by phase: thinking blooms through four named stages that deepen with time, *Deep diving* and *Writing*
+    fill, waiting on the user breathes (approval or answer), a running tool keeps a still `●` while its label shimmers,
+    and stopping is a static `■`. The header tail (`· 8s · ↑30.2k ↓1.1k · 38 tok/s`) is priority 1 and hides first. The
+    `⎿` line is a rotating tip, except at Compact where the stream shows no process and it carries the detail. Nothing
+    the stream shows is repeated here, and every in-flight item is in the stream first (component-library §5.3.1).
   - `transcript/pane-activity.ts` stops measuring widths and animating: core's clock moves the glyph and the shimmer;
     the plugin republishes once a second for the elapsed time and throughput (data, not motion).
-  - Tips teach keys and prefixes (`transcript/tips-content.ts`) and appear only in the *Deep diving* gap; a quiet-hints
-    setting (`minimal`, `off`) trims the gap cue and the placeholder.
-  - Notices: `Banner` rows for rate limiting, offline, context nearly full, low balance, and a resumed session, bound
-    to the native facts that carry them (confirm the retry and offline signals against the Harness reference); toasts
-    in the activity gap from the notification lane.
+  - Tips teach keys and prefixes (`transcript/tips-content.ts`) and fill the `⎿` line, rotating each turn and every 15 s;
+    a quiet-hints setting (`full`, `off`) blanks them.
+  - Notices: the notification pane, one right-aligned row (half the width at most) on the blank line above the editor,
+    shows the notification lane's records and the notices the facts raise: rate limiting (`llm/retry`, status 429),
+    context nearly full (from 92%), and a resumed session. Offline and a low balance are deferred: the Harness has no
+    offline signal and the balance is not read yet. The footer under the editor keeps only the slash hint.
   - `CompactionRow` over `compaction/start`, `compaction/summary` (`shadowedTokenCount`), and `compaction/end`
     (`error`): `1/2 summarizing`, `2/2 applying`, the occupancy bar from the token meter, the 800 ms drain as a
     `progress.transition`, the settled `✓ Compacted 84 items · 91% → 9%`, and the failure row.
   - Deletes the moon and braille tables of `transcript/spinners.ts`, the `'braille' | 'tide'` aliases of
     `MayflyLoaderNode.variant` with their mapping in `core/ui-loader-animation.ts`, and the width and animation code of
     `pane-activity.ts`.
-- **3d Request rows and decision cards** (`patterns.decisionPanel` cards; scenes 21, 18).
+- **3d Request rows and decision cards** (`components/decision-card.ts`, composed from `ui.*`; scenes 21, 18).
   - A pending approval (`approval/asked` without `approval/decided`, matched to the tool call by `callId`) or plan
     review (`userQuestions` projection, `intent.callId`) is the newest stream row, open: the command and
-    `⚠ deletes files` (Δ15), the diff, or the plan as Markdown of any length (§4.2).
-  - The decision card is a lane card in the editor slot: variant B, `armMs: 300`, `Esc` rejects, `Feedback:` and
-    `Revise:` on the same line, `Ctrl+G` opens the diff or the plan, `c` copies the plan (D3, D4).
+    `⚠ deletes files` (Δ15), the diff, or the plan as Markdown of any length.
+  - The decision card is a lane card in the editor slot: digits choose at once (variant B), the overlay's `armMs: 300`
+    swallows every key but `Esc` for its first 300 ms, `Esc` rejects, the `Feedback:` / `Revise:` note sits under the
+    choices and travels with the choice, `Ctrl+G` opens the diff or the plan, `c` copies the plan (D3, D4).
   - Approval answers are `ApprovalOutcome` (`allowed-once` with the per-Agent allowance for *this session*, or
     `rejected` with the feedback steered to the Agent, both in `interaction/approval-plugin.ts`). Plan answers are
     `AskUserQuestionAnswer`: the approve label, the decline label, or `custom` text for *Keep planning…*; dismissal is
@@ -1968,12 +1980,34 @@ The groups below are finalized in this order, each under §7. Their text is the 
     Detailed, everything open at Verbose, detail in exactly one place); `Ctrl+O` opens the last three turns at Verbose;
     `Enter` on a header toggles that turn.
   - `Alt+↑` from the prompt focuses the newest row; `Enter` expands, `c` copies the row's content, `Ctrl+G` opens it in
-    `$EDITOR`, `Esc`/`Alt+↓` return. `Ctrl+F` opens `StreamSearch` under the stream; matches are computed over the
-    frontend transcript models (so details a level hides still match), the turn holding a match opens at Verbose,
-    `focusItem` selects the current match, and matched text is `warning` + `strong`.
+    `$EDITOR`, `Esc`/`Alt+↓` return. In conversation mode `/` and `?` open a search line above the editor (regular
+    expression, smart case; `Enter` selects, `↑`/`↓` and `n`/`N` walk every occurrence); matches are computed over the
+    text a person reads (so details a level hides still match), the turn holding a match opens at Verbose, and matches
+    are drawn reversed with the current one bold and underlined.
 
 At the phase gate the owner runs real sessions, with subagents, a compaction, and approvals, and the PTY smoke covers
-`Alt+↑`, `c`, `Ctrl+F`, and `Esc`.
+`Alt+↑`, `c`, `/`, and `Esc`.
+
+**Phase 3 status.** The parts are those of [component-development-spec.md](./component-development-spec.md) §7, worked
+in rounds of one to three parts (about four scenarios each; the 3a.1 cutover is a round of its own) on the branch `feat/3a` and its successors, with the
+profile `mayfly-3`. A part is `accepted` when the owner accepts it in a question round; a group finalizes when its last
+part is accepted (§7 step 3).
+
+| Round | Parts | Status | Branch |
+| --- | --- | --- | --- |
+| R1 | T0 demo kit; 3.0 components area | effect accepted by the owner (`5d68d78`) | `feat/3a` |
+| R2 | 3a.1 turns: the stream cutover (new `TranscriptView` on the conversation node slot, planning reused from `buildDisplay`, minimal rows for the other kinds) | 3a.1 accepted (stream cutover; closing row instead of the turn rule; wrapped lines hang under the text via `hang`); perf A/B and profile smoke owed | `feat/3a` |
+| R3 | 3a.2 answers and reasoning | 3a.2 accepted (Markdown answers under a leading `●` via `bodyLead`, reasoning header with duration and text aligned under the word, a blank row after the banner; the banner stays its own block) | `feat/3a` |
+| R3b | 3a.3 the live turn | 3a.3 accepted (the tail chip `Back to bottom · Ctrl+↓` / `N new turns · Ctrl+↓` counting turns, a dedicated follow-tail key, the held place, the incremental Markdown scan, `W-answer` budget and `perf-stream` ceilings); the footer notice deleted | `feat/3a` |
+| R4 | 3a.4 images and cutover cleanup; 3b.1 settled tool lines | 3a.4 accepted; group 3a finalized (goldens written for the stream scenarios, spec §5.6 rewritten as accepted behavior, briefs removed); the `app-*` goldens and Website app shots wait with the Website (on hold); 3b.1 built (every tool at three tiers, spec §7.1) and its effect accepted by the owner; its tests, goldens and perf A/B run in a separate test session (spec §3.1), so it is not yet marked accepted | `feat/3a` |
+| R5 | 3b.2 edit cards; 3b.3 write card (command rows were finished in 3b.1) | designed and built (scenarios `edits`, `edits-compact`, `-detailed`, `-verbose`); the owner's answers: every diff row numbered (removed rows by the old file, the rest by the new one, from 1 in each hunk), highlighted diff with an inset tint, calls named by tool; Standard shows every edit and write open; the effect is accepted by the owner (`d71a9e5`); its tests, goldens and perf A/B run in a separate test session (spec §3.1), so it is not yet marked accepted | `feat/3a` |
+| R6 | 3c.1 activity header; 3c.2 activity details and tips; 3b.4 pending call blocks (§5.3.1) | 3c.1, 3c.2 and 3b.4 built; the owner accepted the effect as it stands (tests, goldens and perf A/B run in a separate test session, spec §3.1, so it is not yet marked accepted); a later round, in a session of its own, refines how the activity row and the session flow stay in step (scenarios `phases`, `phases-off`, `thinkingLadder`, `pending`, `pending-compact`, `pending-verbose`, `activityDetail`, `activityWait`); the owner's answers and layout: the block is a constant three rows (a leading spacer, the header, one line), with the notification pane's row under it, at the stream's left margin; the line is the single action running now, else a rotating teaching tip; every wait breathes its `●` (`Waiting for your approval` / `Waiting for your answer`, and the row stays above the approval and question panels); Writing fills like Deep diving; a quiet-hints setting (`full`, `off`) blanks the tip; the division of labor between the stream and the activity row is written in component-library §5.3.1 (pending call blocks in the stream, the thinking ladder, a tip under the header outside Compact) and builds as part 3b.4 inside this round; `authorization` is the provider sign-in, so it is not an activity phase | `feat/3a` |
+| R6b | 3b.5 the tool block base; activity row in step with the stream | the owner's follow-up to R6: `transcript/tool-kinds.ts` (the descriptor every tool block is drawn from), pending lines at every level with their input (a command's lines, Edit and Write code streaming before the commit), `partial-json.ts`, group blocks from the first call (tool name and count, a branch line per call), one `▸ N tool calls` line per turn at Compact, Thinking as a streaming block, the breathing dot repainted in lists, a 24-shade breath, code highlighting to 40 rows, the activity row's second line (call arguments, provider retry), the `inFlight` fact, one host tick (`mayflyTick`) and one time format (scenarios `blocks`, `blocks-compact`, `-detailed`, `-verbose`, `streaming`, `streaming-compact`, `-verbose`, `-open`, `sync`, `fold`; `activityDetail` removed); effect accepted by the owner (`bbe68ec`; tests, goldens and perf A/B run in a separate test session, spec §3.1) | `feat/3a` |
+| R7 | 3c.3 the notification pane; 3c.4 compaction | built, and the owner accepted the effect (`b6c5d09`; tests, goldens and perf A/B run in a separate test session, spec §3.1): the notification pane is one row on the blank line above the editor, right-aligned and at most half the width, showing the notification lane's records (moved from the footer, which keeps only the slash hint) and the notices the facts raise (rate limit by status 429 with its countdown, context from 92%, a resumed session); offline and a low balance are deferred (no signal); the compaction row has the progress bar (`▰▱`) with an estimated percentage that grows with the time spent summarizing (never past 90%) and fills to 100% over 800 ms when the summary lands, the stages `summarizing` and `applying`, the settled `✓ Compacted N items ▰▰ context 91% → 9% · ~148k → ~12k tokens · auto` with `⎿ Ctrl+O summary`, one line at Compact and below 56 columns, a failure row, and a manual `/compact` as its own block below the previous turn (the "Back to bottom" chip moved onto this row, centered, with the notice to its right; scenarios `notificationPane`, `notification-chip`, `notices`, `context`, `retries`, `compaction`, `compaction-compact`, `compaction-verbose`, `compactionNoWindow`, `compactionFailed`, `manualCompact`) | `feat/3a` |
+| R8 | 3d.1 approval card; 3d.2 plan review card | built, and the owner accepted the effect (tests, goldens and perf A/B run in a separate test session, spec §3.1, so it is not yet marked accepted): a call that waits on the user is the request (its own block turns into `? Bash(command) · 1 of N waiting`, open with the command, `⚠ deletes files`, the asker's reason, the diff of an edit or the code of a write, or the whole plan as Markdown of any length); the decision is a lane card in the editor's place (`── Decide ──`, numbered rows where a digit chooses at once, a `Feedback:` / `Revise:` note that travels with the choice, `Esc` rejects, `Ctrl+G` opens the request in `$EDITOR`, `c` copies the plan, the 300 ms arm delay); the settled line says `allowed` / `rejected`, or `✓ Plan approved` / `✗ Plan rejected` / `↩ Plan sent back · "your revision"` (the replays' results follow the answer); a decided plan keeps its Markdown, which `Ctrl+O` (or the Verbose level) opens again; the plugins publish the queue through `mayfly/decision-requests-changed`, the approval audit events are folded into the facts (`approvals`, stateVersion 10); `plan-document.ts` and the framed approval view are deleted (scenarios `approvals`, `approvalsRejected`, `approvalsEdit` (+ `-compact`, `-verbose`), `approvalsQueue`, `plan`, `planRevised`, `planRejected`, `planLong`) | `feat/3a` |
+| R9 | 3e.1 levels; 3e.2 row selection; 3e.3 stream search | built, and the owner accepted the effect (tests, goldens and perf A/B run in a separate test session, spec §3.1, so it is not yet marked accepted): one `Disclosure` value (Ctrl+O, Enter on a header, rows and runs opened one by one, turns a search holds open) in place of the global `expanded`; Alt+↑ moves focus into the stream with a gray band over the whole block, Enter opens a row (a run opens whole from its head, a call alone and in place), `c` / `Ctrl+C` / `Ctrl+G` copy as text, copy as JSON, open in `$EDITOR`; a focus-mode chip, a gray parked prompt frame and the keys on the notification pane; in conversation mode `/` and `?` open a vim-like search line above the editor (regular expression, smart case; typing highlights, Enter selects, ↑/↓ and n/N walk every occurrence, Esc ends it); tests in `.artifacts/handoff/3e-test-brief.md` | `feat/3a` |
+
+**Phase 3 closeout.** The closeout audit is recorded in [docs/audits/phase-3/](../audits/phase-3/), and its Resolution section gives each finding's outcome. PR #15 fixes D1 (the stream's node slot keeps its interaction model across a re-lease), D3 and D6 (replay data), and the comment and document findings C1, C2, and C5; O1 is decided and built as option A, and the rest are decided or carried to Phases 5, 7, and 8. Groups 3b to 3e are finalized: their decision tests, the scenario goldens (the `app-*` goldens included; the Website shots wait for the release), and the design snapshots are accepted.
 
 ### Phase 4 Editor and command palette
 
@@ -2035,6 +2069,14 @@ admission width scans, and a PTY smoke that enters the views, stops a job, and r
 `features/status-bar.md`, `features/panes.md`, `plugins/status.md`, `plugins/dock.md`, `reference/keys.md` (both
 languages).
 
+**Carried from Phase 3** (closeout audit, [docs/audits/phase-3/](../audits/phase-3/)):
+
+- The final look of a background subagent that is still running (D2), and the display of todo and goal (with the Agents, Jobs, Goal, and Todo views).
+- Footer working directory collapses to `.` when the goal chip grows, instead of a shortened path (`~/...` at 28 columns) (O4).
+- The search hint row shares a line with the notice and cuts off before `Esc end search`; decision hints at 40 columns read `Enter · Ctrl+G · Esc` with no labels (O4).
+- A long notice is cut without `…` at 60 columns; keep the trailing count or countdown (O2).
+- `compactionNoWindow` shows a time-based `%` with no window: drop the `%`, or correct the round 7 brief (O3).
+
 ### Phase 6 Panels
 
 Every command panel, finalized one group at a time. §6 lists each component's facts and writes. Starting points:
@@ -2088,6 +2130,12 @@ core drives pi-tui.
   boxes on every frame (about 5 ms per frame beside the gallery after slice 1.12c), a picker that lays out once per
   arrow at its edge, re-measuring a framed list on every key, the stream with item bodies (W4b's 12 ms worst sample),
   and anything the earlier phases recorded for this phase.
+**Carried from Phase 3:**
+
+- `perf-stream` draws 3 more scroll frames and 2 more wheel frames than the merge base. The narrowest candidate is the tail chip republish through a microtask after `mayfly/content-tail-changed`: publish the chip in the same pass, or accept the cost in the perf notes (P1).
+- `perf-focus` times out at `nav /theme` on base and head, because a theme change restarts fibers and the settle wait never sees a stable frame (P2).
+- The search highlight pass has no work budget row.
+
 - **Rules.** A restructure lands with its measurement before and after; the owner reviews the felt result in the
   profile; the decision tests of the finalized components hold, or the owner accepts the changed frames.
 - **Output.** New budgets and bench ceilings that become the gate (§7.1), §4 rewritten to describe the final
@@ -2108,6 +2156,18 @@ core drives pi-tui.
 - Release: one release line carries the finished UI, with the incompatible `@ephemeral-ai/mayfly-ui` versioned as a
   breaking release (`pnpm run check:pack`, `pnpm release:preflight <version>`, `docs/package-release.md`).
 
+**Carried from Phase 3:**
+
+- Glyph and wording consistency (O5): a folded body reads `▸ N more lines · Enter` in prose and `… +N more · Ctrl+O` in tool bodies (and `1 more lines` has no singular); `●` is also the message and pending bullet; `✗` and `⚠` overlap in meaning; `✻` marks four states; the `────` separator touches the live region.
+- Markdown table cells break words at 28 columns (`retri` / `ed`): break at word boundaries, or fall back to a list form below a width (O6).
+- Search start: `/` lands on the newest hit and `?` on the oldest, and the hit count includes hits no row draws (O7).
+- The stream's cursor, search, and selection reset on a theme or presentation reload (the slot is disposed on purpose); keep them across it (D1, a product decision).
+- Real diff start lines, if the Harness ever exposes them, so gutter numbers do not restart at 1 in each hunk (D4).
+- A `TOOL_NOT_STARTED` written only by resume repair has no `tool/call` event and draws as an unnamed `⊘ Tool · not started`; keep the call name from the assistant message (O1).
+- Move the digit-count width arithmetic in `transcript/tool-calls.ts` into `core/width.ts` (through `mayflyComponents`), and drop its baseline entry in `tests/core/business-rendering-drift.spec.ts` (C3).
+- `transcript/tick.ts` iterates a snapshot, so a listener disposed by another listener in the same tick still runs: skip disposed listeners and add a spec case (C4).
+- The Website text of `features/streaming.md`, `approval.md`, `editor.md`, and `guide/config.md` still describes the old fold and approval behavior (release).
+
 ## 6. Mayfly components: facts, hosts, and writes
 
 Every module in the second column is *new* in `packages/mayfly/src/components/` (D7). The facts, hosts, and writes are
@@ -2119,7 +2179,7 @@ code each component deletes is listed with its group in §5.
 | `StatusBar` (row 1 entries) | `status-entries.ts` | `status-basic-model.ts`, `sessionModeSnapshot` (plan projection, permission knobs), the token meter in `status-context.ts`, `status-cwd.ts`, `status-git.ts`, `deepseekAccount.getBalance()`, `mayflyConversations.snapshot()` | `mayflyStatus` | — | 5 |
 | `ViewRow`, `ViewPanel` | `status-rows.ts`, `views.ts` | `mayflySessionFacts` (`agentCalls`, `todos`), `child-agent-model.ts`, `jobs.list/get`, the `goal` projection (`phase`, `roundsStarted`, `maxGoalRounds`, `blockedReason`) | views panes; the footer slot | `mayflyConversations.open/display`, `subagents.interrupt`, `jobs.kill` | 5 |
 | `ActivityRow` | `activity-row.ts` | `mayflySessionFacts` (phase, activity detail, `turnStartedAt`, `outputProgress`, `flowUp`), `mayfly/request-stop-changed`, tips | the `mayfly.pane.activity` bottom pane | — | 3c |
-| `Banner` | `banner.ts` | the notification lane, the token meter, the account, the session controller | the activity gap; the notice row under the editor (today's hint line) | — | 3c |
+| `NotificationLine` | `notification-line.ts` | the notification lane, the retry and context facts, the session controller | the notification pane (the row above the editor) | — | 3c |
 | `ToolLine`, `EditCard`, `WriteCard` | `tool-rows.ts` | `transcript/tool-model.ts`, `present.ts` | inside `TranscriptView` | — | 3b |
 | `CompactionRow` | `compaction-row.ts` | `compaction/start`, `/summary`, `/end`; the token meter | inside `TranscriptView` | — | 3c |
 | `TranscriptView`, `StreamSearch` | `transcript-view.ts` | frontend transcript models, the presentation policy, the live assistant stream, `userQuestions`, the approval audit events | the conversation slot | clipboard, `$EDITOR` | 3a, 3e |
@@ -2148,37 +2208,46 @@ Phase 1 ran the full gate for every slice and compared every scene with the prot
 the owner's review in the running terminal decides, and tests record what was decided (D22, D25).
 
 **The loop for one component** (D23). A component, or a group whose parts only make sense together, goes through
-four steps in a dedicated worktree with its phase's profile (`PROFILE=mayfly-<phase> script/install-dev.sh`):
+five steps in a dedicated worktree with its phase's profile (`PROFILE=mayfly-<phase> script/install-dev.sh`). Tests
+come last: nothing below runs a check tier, a spec, or a golden until the owner has finalized the effect (AGENTS.md,
+*Round workflow*).
 
-1. **Draft** (the agent). Build the component from its spec section and §5's starting points, with the prototype scene
-   as the sketch, on real data through the native services. Add the workbench scenarios for its states (§5, 2a),
-   including a narrow width and a lifecycle case. Run the round tier (`pnpm run check -- --tier round`, or
-   `pnpm run dev --check`) and read its `summary.md`; write no goldens and chase no coverage.
-2. **Review rounds** (the owner and the agent). The owner runs the profile or a scenario beside
+1. **Design** (the agent, in plan mode). Analyze the round against its spec section and §5's starting points, with the
+   prototype scene as the sketch, and write the solution design: contracts, files, states, keys, and the scenarios.
+   Then **confirm the effect** (the owner and the agent): the agent asks questions about every choice that changes
+   the visible result or the API, and the final effect is agreed before any code.
+2. **Draft** (the agent). Build the component on real data through the native services, as agreed. Write the
+   workbench scenarios for its states (§5, 2a), including a narrow width and a lifecycle case, and organize all of
+   them into one list for the owner (name, command, what it shows, what to try). Run no check tier, write no
+   goldens, and chase no coverage; the workbench's incremental build is the only mechanical feedback. Stop and
+   tell the owner.
+3. **Review rounds** (the owner and the agent). The owner runs the profile or a scenario beside
    `node docs/design/prototypes/ui-preview.mjs <scene>`; the agent shares frames and screenshots at the agreed widths
    (`pnpm run frame`, with `--png` for the real look), applies what the owner asks, and the change reaches the running
-   terminal in seconds (`pnpm run dev`). Any API may change in a round (D21). A performance problem seen in a round,
+   terminal in seconds (`pnpm run dev`). Any API may change in a round (D21). A round runs no tests. A performance problem seen in a round,
    or in the perf A/B for the scenario (`pnpm run perf`), is fixed in the round when it is local and recorded for
    Phase 7 when it is not. A round ends with the owner's notes and the frames they refer to.
-3. **Finalize** (the owner says it is accepted). In one change: the component's spec section in
+4. **Finalize** (the owner says it is accepted; the first step that tests). In one change: the component's spec section in
    [component-library.md](./component-library.md) is rewritten as the accepted behavior and marked *Finalized*; the API
    it needs is fixed;
    the decision tests below are added, with the accepted checkpoints as goldens
    (`pnpm run scenarios -- --update <scenario>`); the code it replaces is deleted; `website/plugins/ui-reference.md`
-   and its English twin, the shot manifest, and any feature page it changes are updated (`pnpm run shots:sync`); the
-   pr tier runs (`pnpm run check`); the change merges to `main`, and CI runs the full tier there.
-4. **Phase gate.** When a phase's last component is finalized: `pnpm run check -- --tier full`, the perf report
+   and its English twin and any feature page it changes are updated as text, with no Website build, shot sync, or
+   preview (the release does those); the pr tier runs (`pnpm run check`); the change merges to `main`, and CI runs
+   the full tier there.
+5. **Phase gate.** When a phase's last component is finalized: `pnpm run check -- --tier full`, the perf report
    against the previous phase, and the owner's acceptance of the whole phase on its profile (the table below). Then
    the profile and any preview are removed. No release is cut until a phase passes its gate.
 
 A finalized component is reopened only at the owner's request, and then follows the same loop; incompatible changes
 are allowed again, with every caller updated in the same change.
 
-**Gate tiers** (D29). `pnpm run check` runs one of three tiers; Phase 2b states what each runs and leaves out.
+**Gate tiers** (D29). `pnpm run check` runs one of three tiers; Phase 2b states what each runs and leaves out. No tier
+builds, previews, or checks the Website or its screenshots: a release does (`docs/package-release.md`).
 
 | Tier | When | Runs |
 | --- | --- | --- |
-| round | Every edit in a review round | The incremental build, the typecheck, lint, and the specs and scenarios the edit can affect |
+| round | The end of a review round, once the owner has finalized the effect (`pnpm run dev --check`) | The incremental build, the typecheck, lint, and the specs and scenarios the edit can affect |
 | pr | Once per component, before it merges, and in PR CI | round, the checks the changed inputs claim, every size of the selected scenarios, perf A/B and PNGs where selected |
 | full | CI on `main` and nightly, the end of a phase, a release, and changes the root instructions route to it (composition, workflow, release) | Everything, with coverage and its floor, the smoke, the perf ceilings, and the platform matrix (`check:pack` when selected); at a phase end, also the perf report and the owner's acceptance |
 

@@ -39,7 +39,33 @@ export interface TranscriptTerminalModel { readonly command: string; readonly de
 export type TranscriptWebModel =
   | { readonly kind: 'search'; readonly sources: readonly { readonly url: string; readonly title?: string }[]; readonly truncated: boolean }
   | { readonly kind: 'fetch'; readonly url: string; readonly statusCode: number; readonly truncated: boolean }
-interface TranscriptToolResultModel { readonly text: string; readonly fullText?: string; readonly isError: boolean; readonly endedAt: number }
+/**
+ * File-change facts of one settled edit or write call, bounded so a megabyte write or a huge replacement carries only its
+ * head: the counts are taken before the cut, the hunks and the head lines after it.
+ */
+export interface TranscriptFileChangeModel {
+  readonly path: string
+  /** Lines the change added and removed, over the whole change. */
+  readonly added: number
+  readonly removed: number
+  /** Edit hunks (an overwrite's too): the text of each side, cut to a bounded number of lines. */
+  readonly hunks: readonly { readonly before: string; readonly after: string }[]
+  /** Changed lines the cut hunks leave out. */
+  readonly hiddenLines: number
+  /** A write's new text: its size, its lines, and the first of them. */
+  readonly write?: { readonly bytes: number; readonly lines: number; readonly head: readonly string[] }
+}
+/**
+ * How the Harness cut a tool call short, from the failure code of its result: `aborted` (the user stopped it while it ran,
+ * `ABORTED`), `not-started` (it never ran: `TOOL_NOT_STARTED`, or `ABORTED_BEFORE_DISPATCH`), or `unknown` (the session ended
+ * while it ran, `TOOL_OUTCOME_UNKNOWN`, so its effect is not known).
+ */
+export type ToolInterruption = 'aborted' | 'not-started' | 'unknown'
+/** Whether an interruption cancelled the call: the user stopped it or it never started, so it is neither a success nor a failure. An `unknown` outcome stays a failure. */
+export function isCancelled(interruption: ToolInterruption | undefined): boolean {
+  return interruption === 'aborted' || interruption === 'not-started'
+}
+interface TranscriptToolResultModel { readonly text: string; readonly fullText?: string; readonly isError: boolean; readonly endedAt: number; readonly interruption?: ToolInterruption }
 /**
  * The presenter-card family a lone tool card belongs to, for the per-family
  * detail policy: `command` covers terminal cards, `edit` diff cards, `web`
@@ -62,6 +88,8 @@ export interface TranscriptToolModel extends TranscriptEntryBase {
   readonly title?: string
   readonly terminal?: TranscriptTerminalModel
   readonly web?: TranscriptWebModel
+  /** The change an edit or write made, once it settled without an error. */
+  readonly change?: TranscriptFileChangeModel
   readonly arguments: string
   readonly startedAt: number
   readonly result?: TranscriptToolResultModel
@@ -86,6 +114,11 @@ export interface ReadCallModel {
   readonly updatedSeq: number
   readonly turn: number
   readonly step: number
+  /** The tool's name exactly as the model requested it. */
+  readonly name: string
+  /** Producer time the call started, and the time its result settled. */
+  readonly startedAt: number
+  readonly endedAt?: number
   readonly path?: string
   /** Row fallback when the call reads no file: the salient argument (e.g. `job_id: 5`). */
   readonly label?: string
@@ -94,6 +127,8 @@ export interface ReadCallModel {
   readonly totalLines?: number
   readonly state: 'pending' | 'ok' | 'error'
   readonly error?: string
+  /** Set when the error is the call being cut short rather than failing. */
+  readonly interruption?: ToolInterruption
   readonly previewLines?: readonly ReadPreviewLine[]
 }
 /** A run of consecutive read calls collapsed into one transcript entry. */
@@ -119,6 +154,11 @@ export interface SearchCallModel {
   readonly updatedSeq: number
   readonly turn: number
   readonly step: number
+  /** The tool's name exactly as the model requested it. */
+  readonly name: string
+  /** Producer time the call started, and the time its result settled. */
+  readonly startedAt: number
+  readonly endedAt?: number
   readonly pattern?: string
   readonly shape?: 'matches' | 'paths'
   readonly files?: readonly SearchFileMatchesModel[]
@@ -128,6 +168,8 @@ export interface SearchCallModel {
   readonly total?: number
   readonly state: 'pending' | 'ok' | 'error'
   readonly error?: string
+  /** Set when the error is the call being cut short rather than failing. */
+  readonly interruption?: ToolInterruption
 }
 /** A run of consecutive search calls collapsed into one transcript entry. */
 export interface TranscriptSearchGroupModel extends TranscriptEntryBase { readonly kind: 'transcript-search-group'; readonly step: number; readonly searches: readonly SearchCallModel[] }
@@ -146,12 +188,21 @@ export interface CommandCallModel {
   readonly updatedSeq: number
   readonly turn: number
   readonly step: number
-  /** The command line (the terminal call view's title, or the `command` argument). */
+  /** The tool's name exactly as the model requested it. */
+  readonly name: string
+  /** Producer time the call started, and the time its result settled. */
+  readonly startedAt: number
+  readonly endedAt?: number
+  /** The command's first line (the terminal call view's title, or the `command` argument), with `…` when more follow. */
   readonly command: string
+  /** Every line of a command that spans several, bounded: what a running call shows as its input in place of its line's target. */
+  readonly commandLines?: readonly string[]
   readonly state: 'pending' | 'ok' | 'error'
   readonly exitCode?: number
   readonly signal?: string
   readonly error?: string
+  /** Set when the error is the call being cut short rather than failing. */
+  readonly interruption?: ToolInterruption
   readonly previewLines?: readonly string[]
 }
 /** A run of consecutive terminal-card calls collapsed into one transcript entry. */
@@ -165,6 +216,8 @@ export interface TranscriptCompactionModel extends TranscriptEntryBase {
   readonly trigger: 'manual' | 'auto'
   readonly startedAt: number
   readonly endedAt?: number
+  readonly summaryAt?: number
+  readonly compactionId?: string
   readonly shadowedCount?: number
   readonly shadowedTokens?: number
   readonly summary?: string

@@ -14,5 +14,5 @@ styles
 3: 0-9 fg:muted
 4: 0-4 fg:primary; 5-28 fg:text
 5: 0-1 fg:primary; 2-18 fg:text; 19-27 fg:success; 28-30 fg:text
-6: 0-1 fg:text; 2-7 fg:primary; 8-16 fg:text; 17-24 fg:success; 25-35 fg:text; 36-40 fg:success; 41-42 fg:text
+6: 0-1 fg:text; 2-7 fg:primary; 8-10 fg:text; 11-14 fg:accent; 15-16 fg:text; 17-24 fg:success; 25-26 fg:text; 27-33 fg:accent; 34-35 fg:text; 36-40 fg:success; 41-42 fg:text
 7: 0 fg:text

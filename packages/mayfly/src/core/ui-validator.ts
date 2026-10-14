@@ -418,7 +418,7 @@ function span(value: unknown, path: string, state: ValidationState, motion = fal
     const tone = toneValue === undefined ? undefined : enumeration(toneValue, ['default', 'muted', 'primary', 'accent', 'user', 'success', 'warning', 'danger'], `${path}.tone`)
     const styles = stylesValue === undefined
       ? undefined
-      : collection(stylesValue, `${path}.styles`).map((style, index) => enumeration(style, ['strong', 'italic', 'strike'], `${path}.styles[${String(index)}]`))
+      : collection(stylesValue, `${path}.styles`).map((style, index) => enumeration(style, ['strong', 'italic', 'strike', 'inverse'], `${path}.styles[${String(index)}]`))
     if (styles !== undefined && new Set(styles).size !== styles.length) invalid(`${path}.styles contains duplicates`)
     const motionValue = own(object, 'motion', path)
     const variantValue = own(object, 'variant', path)
@@ -429,7 +429,7 @@ function span(value: unknown, path: string, state: ValidationState, motion = fal
       const channel = enumeration(motionValue, ['shimmer', 'loader'] as const, `${path}.motion`)
       if (channel === 'loader' && content !== '') invalid(`${path}.text must be empty for a loader span`)
       if (channel === 'shimmer' && (content === '' || variantValue !== undefined)) invalid(`${path} shimmer needs text and takes no variant`)
-      return { text: content, ...optional(tone, 'tone'), ...optional(styles, 'styles'), motion: channel, ...optional(variantValue === undefined ? undefined : enumeration(variantValue, ['bloom', 'fill', 'gap', 'breath'] as const, `${path}.variant`), 'variant') }
+      return { text: content, ...optional(tone, 'tone'), ...optional(styles, 'styles'), motion: channel, ...optional(variantValue === undefined ? undefined : enumeration(variantValue, ['bloom', 'fill', 'gap', 'breath', 'pulse'] as const, `${path}.variant`), 'variant') }
     }
     return { text: content, ...optional(tone, 'tone'), ...optional(styles, 'styles') }
   })
@@ -503,7 +503,7 @@ function admitListItem(value: unknown, path: string, counters?: MayflyWorkCounte
 /** The most nodes one list item's body may hold; each item admits under its own quota, so a long list of rich rows stays legal. */
 export const MAYFLY_UI_MAX_ITEM_BODY_NODES = 32
 /** The most lines one wrapped row may be asked to show, and the widest meter and indent a row may ask for. */
-const LIST_ROW_LIMITS = { wrapMax: 100, meterWidth: 40, indent: 8 } as const
+const LIST_ROW_LIMITS = { wrapMax: 100, meterWidth: 40, indent: 8, hang: 8 } as const
 const LIST_BODY_KINDS: ReadonlySet<string> = new Set([
   'text', 'markdown', 'fields', 'code', 'diff', 'sections', 'rich-text', 'diagram', 'chart', 'image', 'progress', 'spacer', 'divider', 'stack',
 ])
@@ -525,15 +525,19 @@ function listItemRowFields(object: Record<string, unknown>, path: string, state:
   const rightFocus = own(object, 'rightFocus', path)
   const bodyValue = own(object, 'body', path)
   const bodyAlways = own(object, 'bodyAlways', path)
+  const bodyLead = own(object, 'bodyLead', path)
   const expanded = own(object, 'expanded', path)
   const wrap = own(object, 'wrap', path)
   const wrapMax = own(object, 'wrapMax', path)
+  const hang = own(object, 'hang', path)
   const meterValue = own(object, 'meter', path)
   const indent = own(object, 'indent', path)
   const gap = own(object, 'gap', path)
+  const under = optionalLabel(object, 'under', path)
   const body = bodyValue === undefined ? undefined
     : typeof bodyValue === 'string' ? text(bodyValue, `${path}.body`) : listBody(bodyValue, `${path}.body`, state)
   if (bodyAlways !== undefined && boolean(bodyAlways, `${path}.bodyAlways`) && body === undefined) invalid(`${path}.bodyAlways needs a body`)
+  if (bodyLead !== undefined && !(bodyAlways === true && body !== undefined && typeof body !== 'string')) invalid(`${path}.bodyLead needs bodyAlways and a node body`)
   const ruleValue = optionalLabel(object, 'rule', path)
   if (gap === true && ruleValue !== undefined) invalid(`${path} cannot be both a rule and a gap`)
   return {
@@ -542,13 +546,16 @@ function listItemRowFields(object: Record<string, unknown>, path: string, state:
     ...optional(rightFocus === undefined ? undefined : spans(rightFocus, `${path}.rightFocus`, state, false, true), 'rightFocus'),
     ...optional(body, 'body'),
     ...optional(bodyAlways === undefined ? undefined : boolean(bodyAlways, `${path}.bodyAlways`), 'bodyAlways'),
+    ...optional(bodyLead === undefined ? undefined : spans(bodyLead, `${path}.bodyLead`, state, false, true), 'bodyLead'),
     ...optional(expanded === undefined ? undefined : boolean(expanded, `${path}.expanded`), 'expanded'),
     ...optional(wrap === undefined ? undefined : boolean(wrap, `${path}.wrap`), 'wrap'),
     ...optional(wrapMax === undefined ? undefined : Math.min(finiteInteger(wrapMax, `${path}.wrapMax`, 1), LIST_ROW_LIMITS.wrapMax), 'wrapMax'),
+    ...optional(hang === undefined ? undefined : Math.min(finiteInteger(hang, `${path}.hang`), LIST_ROW_LIMITS.hang), 'hang'),
     ...optional(meterValue === undefined ? undefined : listMeter(meterValue, `${path}.meter`, state), 'meter'),
     ...optional(indent === undefined ? undefined : Math.min(finiteInteger(indent, `${path}.indent`), LIST_ROW_LIMITS.indent), 'indent'),
     ...optional(ruleValue, 'rule'),
     ...optional(gap === undefined ? undefined : boolean(gap, `${path}.gap`), 'gap'),
+    ...optional(under, 'under'),
   }
 }
 
@@ -588,8 +595,20 @@ function listNodeFields(object: Record<string, unknown>, path: string, state: Va
   const acceptVerb = own(object, 'acceptVerb', path)
   const autofocus = own(object, 'autofocus', path)
   const focusItem = own(object, 'focusItem', path)
+  const highlight = own(object, 'highlight', path)
   return {
-    ...optional(marker === undefined ? undefined : enumeration(marker, ['cursor', 'selection'], `${path}.marker`), 'marker'),
+    ...optional(highlight === undefined ? undefined : enter(highlight, `${path}.highlight`, state, target => {
+      const pattern = text(required(target, 'pattern', path), `${path}.highlight.pattern`)
+      if (pattern.length > 256) invalid(`${path}.highlight.pattern exceeds 256 characters`)
+      const caseSensitive = own(target, 'caseSensitive', path)
+      const current = own(target, 'current', path)
+      return {
+        pattern,
+        ...optional(caseSensitive === undefined ? undefined : boolean(caseSensitive, `${path}.highlight.caseSensitive`), 'caseSensitive'),
+        ...optional(current === undefined ? undefined : finiteInteger(current, `${path}.highlight.current`, 0), 'current'),
+      }
+    }), 'highlight'),
+    ...optional(marker === undefined ? undefined : enumeration(marker, ['cursor', 'selection', 'band'], `${path}.marker`), 'marker'),
     ...optional(marks === undefined ? undefined : boolean(marks, `${path}.marks`), 'marks'),
     ...optional(maxRows === undefined ? undefined : finiteInteger(maxRows, `${path}.maxRows`, 1), 'maxRows'),
     ...optional(expandFocused === undefined ? undefined : boolean(expandFocused, `${path}.expandFocused`), 'expandFocused'),
@@ -1465,7 +1484,7 @@ function admitNode(value: unknown, path: string, state: ValidationState, depth: 
           if (cancelActionId.trim().length === 0) invalid(`${path}.cancelActionId must not be empty`)
           reserveControl(cancelActionId, state)
         }
-        return { kind, ...optional(optionalLabel(object, 'message', path), 'message'), ...optional(variantValue === undefined ? undefined : enumeration(variantValue, ['bloom', 'fill', 'gap', 'breath'], `${path}.variant`), 'variant'), ...optional(elapsedValue === undefined ? undefined : finiteInteger(elapsedValue, `${path}.elapsedMs`), 'elapsedMs'), ...optional(cancelActionId, 'cancelActionId'), ...optional(optionalLabel(object, 'cancelLabel', path), 'cancelLabel') }
+        return { kind, ...optional(optionalLabel(object, 'message', path), 'message'), ...optional(variantValue === undefined ? undefined : enumeration(variantValue, ['bloom', 'fill', 'gap', 'breath', 'pulse'], `${path}.variant`), 'variant'), ...optional(elapsedValue === undefined ? undefined : finiteInteger(elapsedValue, `${path}.elapsedMs`), 'elapsedMs'), ...optional(cancelActionId, 'cancelActionId'), ...optional(optionalLabel(object, 'cancelLabel', path), 'cancelLabel') }
       }
       case 'empty': {
         const actionsValue = own(object, 'actions', path)

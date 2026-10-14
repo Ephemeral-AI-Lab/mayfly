@@ -361,11 +361,22 @@ describe('contentNodeSource', () => {
     const node: WindowedContentNode = { kind: 'diff', before: 'a\nb\nc', after: 'a\nx\nc' }
     const { rows, env } = source(node, 40)
     expect(env.counters.segmentsPainted).toBeGreaterThan(0)
-    expect([...rows].map(row => plainText(row).trimEnd())).toEqual(['    1   1 │   a', '    2     │ − b', '        2 │ + x', '    3   3 │   c'])
+    expect([...rows].map(row => plainText(row).trimEnd())).toEqual(['  1 │   a', '  2 │ − b', '  2 │ + x', '  3 │   c'])
     // The alignment lives on the node: a second width repaints the same kept rows without re-aligning.
     const aligned = env.counters.linesEstimated
     contentNodeRows(node, 60, env.env)
     expect(env.counters.linesEstimated).toBe(aligned)
+  })
+
+  it('paints a diff with its language highlighted, its before side numbered from its own start, and its tail below a cut', () => {
+    const node: WindowedContentNode = { kind: 'diff', before: 'const a = 1', after: 'const a = 2', language: 'ts', beforeStart: 10, numberWidth: 4, maxRows: 1, tail: 'read on' }
+    const { rows } = source(node, 60)
+    expect([...rows].map(row => plainText(row).trimEnd())).toEqual(['    10 │ − const a = 1', '  read on'])
+    // Past the highlight byte cap the same diff is painted plain: only the color is withheld, the text is unchanged.
+    const big = 'x'.repeat(40 * 1024)
+    const highlighted = [...source({ kind: 'diff', before: big, after: big, language: 'ts' }, 60).rows].map(row => plainText(row))
+    const plain = [...source({ kind: 'diff', before: big, after: big }, 60).rows].map(row => plainText(row))
+    expect(highlighted).toEqual(plain)
   })
 
   it('bounds a diff outside a scroll and unclamps it inside one', () => {
@@ -376,7 +387,7 @@ describe('contentNodeSource', () => {
     expect(plainText(rows[10]!)).toBe('…50')
     const full = unclampedRows(rows)
     expect(full.length).toBe(60)
-    expect(plainText(full[59]!).trimEnd()).toBe('       30 │ + w29')
+    expect(plainText(full[59]!).trimEnd()).toBe('  30 │ + w29')
   })
 
   it('maps document offsets to rows through segmented and lifted sources', () => {
@@ -626,6 +637,39 @@ describe('contentNodeSource', () => {
     // The oversized token's segmented child answers its own fine-grained map once painted.
     expect(markdown.rowOf!(tokenOffset + 4_000)).toBeGreaterThan(tokenRow)
     expect(markdown.offsetOf!(tokenRow + 2)).toBeGreaterThan(back)
+  })
+
+  it('repaints only the unit an appended source reached, whichever node it came from', () => {
+    // A streamed answer is a new node on every append: its settled units must hit the cache by what they paint.
+    const paragraph = (index: number): string => `${'w '.repeat(900)}${String(index)}`
+    const settled = [0, 1, 2].map(paragraph).join('\n\n')
+    const env = makeEnv()
+    const first = contentNodeRows({ kind: 'markdown', source: settled }, 80, env.env)
+    void [...first]
+    const painted = env.counters.segmentsPainted
+    expect(painted).toBeGreaterThan(1)
+    const grown = contentNodeRows({ kind: 'markdown', source: `${settled}\n\n${paragraph(3)}` }, 80, env.env)
+    const rows = [...grown].map(plainText)
+    expect(rows.some(row => row.includes('w 3'))).toBe(true)
+    // Only the unit the append reached was painted again; the rows above it came from the cache.
+    expect(env.counters.segmentsPainted - painted).toBeLessThan(painted)
+    expect(env.counters.segmentsPainted - painted).toBeGreaterThan(0)
+    // The same text at another width is another paint.
+    const before = env.counters.segmentsPainted
+    void [...contentNodeRows({ kind: 'markdown', source: settled }, 60, env.env)]
+    expect(env.counters.segmentsPainted).toBeGreaterThan(before)
+  })
+
+  it('tells its host when painting a unit moves the row count an estimate had given', () => {
+    // Prose that wraps more rows than its source lines estimate: painting the tail unit corrects the length.
+    const prose = Array.from({ length: 12 }, () => `${'word '.repeat(300)}`).join('\n\n')
+    const env = makeEnv()
+    let changes = 0
+    const rows = contentNodeRows({ kind: 'markdown', source: prose }, 40, { ...env.env, changed: () => { changes += 1 } })
+    const before = rows.length
+    void rows[rows.length - 1]
+    expect(changes).toBeGreaterThan(0)
+    expect(rows.length).toBeGreaterThan(before)
   })
 
   it('reports a markdown paint failure once per unit', () => {

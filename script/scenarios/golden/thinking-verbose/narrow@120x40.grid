@@ -1,0 +1,44 @@
+grid 48x24 cursor none
+|
+|  ▾ Worked
+|
+|  ✻ Thinking · 9s
+|    Step 1: consider whether a factor below 100…
+|    Step 2: consider whether a factor below 200…
+|    Step 3: consider whether a factor below 300…
+|    Step 4: consider whether a factor below 400…
+|    Step 5: consider whether a factor below 500…
+|    Step 6: consider whether a factor below 600…
+|    Step 7: consider whether a factor below 700…
+|    Step 8: consider whether a factor below 800…
+|    … +6 more · Ctrl+O
+|
+|  ● Yes. 2^31 - 1 = 2147483647 is a Mersenne
+|    prime (the Lucas–Lehmer test with exponent
+|    31 returns zero).
+|
+|  ✻ Worked for 10s · done 09:00
+|                           Alt+↑ conversation
+|╭───────────────────────── Is 2^31 - 1 prime? ─╮
+|│ >                                            │
+|╰──────────────────────────────────────────────╯
+| deepseek-flash High  ~/workspace
+styles
+1: 2-9 fg:#9aa3b8
+3: 2-16 fg:#9aa3b8
+4: 2-3 fg:#ededf2; 4-47 fg:#9aa3b8
+5: 2-3 fg:#ededf2; 4-47 fg:#9aa3b8
+6: 2-3 fg:#ededf2; 4-47 fg:#9aa3b8
+7: 2-3 fg:#ededf2; 4-47 fg:#9aa3b8
+8: 2-3 fg:#ededf2; 4-47 fg:#9aa3b8
+9: 2-3 fg:#ededf2; 4-47 fg:#9aa3b8
+10: 2-3 fg:#ededf2; 4-47 fg:#9aa3b8
+11: 2-3 fg:#ededf2; 4-47 fg:#9aa3b8
+12: 2-3 fg:#ededf2; 4-21 fg:#9aa3b8
+14: 2-3 fg:#ededf2
+18: 2-30 fg:#9aa3b8
+19: 27-44 fg:#9aa3b8
+20: 0-25 fg:#45406b; 26-45 fg:#5c6476; 46-47 fg:#45406b
+21: 0 fg:#45406b; 4 r; 47 fg:#45406b
+22: 0-47 fg:#45406b
+23: 1-19 fg:#ededf2; 22-32 fg:#9aa3b8

@@ -1,0 +1,50 @@
+grid 60x24 cursor none
+|  (23/31)
+|    Line 16 of the report is about something else.
+|
+|    Line 17 of the report is about something else.
+|
+|    Line 18 of the report is about something else.
+|
+|    Line 19 of the report is about something else.
+|
+|    Line 20 of the report mentions the needle once more.
+|
+|    Line 21 of the report is about something else.
+|
+|    Line 22 of the report is about something else.
+|
+|    Line 23 of the report is about something else.
+|
+|  Enter expand · c copy · Ctrl+C JSON · ↑/↓ or n/N match …
+|  / needle
+|    7/12 matches
+|╭─────────────────────────────── Find where the needle is ─╮
+|│ >                                                        │
+|╰──────────────────────────────────────────────────────────╯
+| deepseek-flash High   search   ~/workspace
+styles
+0: 0-8 fg:#5c6476
+1: 1-58 bg:#2b2b30
+2: 1-58 bg:#2b2b30
+3: 1-58 bg:#2b2b30
+4: 1-58 bg:#2b2b30
+5: 1-58 bg:#2b2b30
+6: 1-58 bg:#2b2b30
+7: 1-58 bg:#2b2b30
+8: 1-58 bg:#2b2b30
+9: 1-38 bg:#2b2b30; 39-44 bg:#2b2b30 b u r; 45-58 bg:#2b2b30
+10: 1-58 bg:#2b2b30
+11: 1-58 bg:#2b2b30
+12: 1-58 bg:#2b2b30
+13: 1-58 bg:#2b2b30
+14: 1-58 bg:#2b2b30
+15: 1-58 bg:#2b2b30
+16: 1-58 bg:#2b2b30
+17: 0-56 fg:#9aa3b8
+18: 2-3 fg:#9a86e6
+19: 4-15 fg:#9aa3b8
+20: 0-59 fg:#5c6476
+21: 0 fg:#5c6476; 4 r; 59 fg:#5c6476
+22: 0-59 fg:#5c6476
+23: 1-19 fg:#ededf2; 22-29 fg:#9a86e6 b r; 32-42 fg:#9aa3b8

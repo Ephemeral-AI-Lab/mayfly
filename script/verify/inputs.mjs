@@ -21,11 +21,8 @@ export const CHECKS = {
   agentDocs: { entry: 'script/check-agent-docs.mjs', inputs: [/(?:^|\/)AGENTS\.md$/u, /\/SKILL\.md$/u, /^\.agents\//u, /^docs\/skills\//u, /\/mayfly-skills-plan\.md$/u] },
   diagrams: { entry: 'script/sync-diagrams.mjs', inputs: [/^docs\/diagrams\//u, /^README(?:\.zh)?\.md$/u, /^docs\/mayfly-architecture\.md$/u] },
   checkLib: { entry: 'script/check-lib-exports.mjs', inputs: [/^(?:packages|examples)\/[^/]+\/(?:package\.json|tsconfig\.json)$/u, /^packages\/ui\/src\//u, /^script\/(?:clean-lib|prune-types)\.mjs$/u] },
-  // The app shots are painted from the goldens of the `app-*` scenarios.
-  shots: { entry: 'script/shots/sync.mjs', inputs: [/^script\/shots\//u, /^website\/public\/shots\//u, /^script\/scenarios\/golden\/app-/u] },
   examples: { entry: 'script/check-examples.mjs', inputs: [/^examples\//u, /^packages\/ui\/src\//u] },
   pack: { entry: 'script/check-pack.mjs', inputs: [/^packages\/[^/]+\/package\.json$/u, /^packages\/cli\/runtime\//u, /^packages\/ui\/src\//u, /^script\/(?:pack-cli-runtime|release-packages|release-preflight|registry-release)\.mjs$/u] },
-  website: { inputs: [/^website\//u] },
   smoke: { entry: 'script/smoke-happy.mjs', inputs: [/^script\/install-dev\.sh$/u] },
 }
 
@@ -39,6 +36,7 @@ export const DATA_READS = [
   // The guard specs read whole source trees and import nothing from them, so any edit under a tree they scan reaches them.
   ['packages/mayfly/tests/core/keyboard-boundary.spec.ts', 'packages/mayfly/src/interaction/'],
   ['packages/mayfly/tests/core/keyboard-boundary.spec.ts', 'packages/mayfly/src/transcript/'],
+  ['packages/mayfly/tests/components/layering.spec.ts', 'packages/mayfly/src/components/'],
   ['packages/mayfly/tests/core/business-rendering-drift.spec.ts', 'packages/mayfly/src/'],
   ['packages/mayfly/tests/core/business-rendering-drift.spec.ts', 'packages/ui/src/'],
   ['packages/mayfly/tests/core/business-rendering-drift.spec.ts', 'packages/cli/src/'],
@@ -66,9 +64,13 @@ export const SCENARIO_SMOKE = [
 export const SCENARIO_ALL = /^script\/scenarios(?:\.mjs|\/(?!golden\/))/u
 export const SCENARIO_PIPELINE = ['script/scenarios/runner.mjs', 'script/scenarios/catalog.mjs', 'script/scenarios/golden.mjs']
 
-/** Files nothing in the gate reads: prose, history, the design sketch, and scripts a person runs. */
+/**
+ * Files nothing in the gate reads: prose, history, the design sketch, scripts a person runs, and the Website with its
+ * screenshots, which only a release checks (`shots:check`, `website:build`).
+ */
 export const INERT = [
   /^LICENSE$/u,
+  /^website\//u,
   /^\.gitignore$/u,
   /^docs\//u,
   /^(?:packages|examples)\/[^/]+\/(?:README(?:\.zh)?\.md|LICENSE|\.gitignore|CHANGELOG\.md)$/u,

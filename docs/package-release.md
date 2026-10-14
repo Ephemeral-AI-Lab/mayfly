@@ -24,11 +24,17 @@ pnpm release:preflight --artifact "$VERSION"
 
 The version bump supports `pnpm release:version <version> --dry-run` and checks
 all release markers before writing. Write a substantive first entry in the
-shipped changelog before preflight. Do not tag until the applicable Website
-preview, dedicated-profile checks, and human acceptance are complete.
+shipped changelog before preflight. The Website is checked only here, never in
+a round or a gate tier: run `pnpm run shots:sync` and `pnpm run shots:check`,
+then `pnpm run website:build` and a persistent LAN preview
+(`pnpm --dir website exec vitepress preview . --host 0.0.0.0 --port <port>`),
+and give the affected routes for human visual/content acceptance. Do not tag
+until that Website acceptance, the dedicated-profile checks, and the rest of
+the human acceptance are complete.
 For a release manifest change, the full plan includes `check:pack`; otherwise
 run `pnpm run check:pack` before using the artifact preflight. The full gate
-also builds, checks exports and examples, tests, and checks screenshots.
+also builds and checks exports, examples, and tests; it does not check screenshots
+or the Website.
 `release:preflight` checks release metadata before building; its `--artifact`
 form additionally checks the packed package set. These commands do not
 publish or replace the registry-install matrix.

@@ -263,7 +263,6 @@ class BannerFakeScreen implements MayflyScreen {
   setTitle(): void {}
 
   scrollContent(): boolean { return false }
-  contentChanged(): boolean { return false }
   followContent(): void {}
   setContentScrollHandler(): () => void { return () => {} }
 }

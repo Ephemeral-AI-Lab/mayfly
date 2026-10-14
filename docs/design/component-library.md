@@ -90,7 +90,7 @@ Keystroke budget, counted from an open surface (a digit and `Enter` are one key 
 
 | Frequency | Budget | Example |
 | --- | --- | --- |
-| Every session | 1-2 keys | approve a plan (`↓`, `Enter` under variant A, §5.7) |
+| Every session | 1-2 keys | approve a plan (`Enter` or `1` on the first row, §5.7) |
 | Several per day | 2 keys | change thinking effort (`→`, `Enter`) |
 | Occasional | 3 keys | switch model (`/model`, type, `Enter`) |
 | Rare or destructive | as many as needed, with a confirm | delete a provider |
@@ -146,8 +146,9 @@ add a third meaning to a glyph.
 | `»` | user block |
 | `✻` | thinking |
 | `✓` `✗` | done / failed |
-| `⊘` | cancelled |
-| `◐` | declined (plan) |
+| `⚠` | a block of calls where some failed and others worked (the head of a run, warning tone; `✗` only when every call failed) |
+| `⊘` | cancelled: a call the user stopped or that never ran (muted, with its short reason) |
+| `↩` | plan sent back with a revision (`↩ Plan sent back`; ASCII `<`) |
 | `■` | stopping or interrupted |
 | `?` | waiting on the user |
 | `⚠` | warning (deletes files, low balance, dangerous tool) |
@@ -220,7 +221,7 @@ the primary content.
 **Feedback.** `✓` success and `ℹ` info disappear after 5 s of visible time; `⚠`
 warning stays until acted on; `✗` error stays and offers its retry key; progress
 never auto-dismisses. Feedback is inline in the footer of an open surface and a toast
-in the activity row's gap otherwise. Glyph plus word, never color alone.
+in the notification pane (the row above the editor, §5.2) otherwise. Glyph plus word, never color alone.
 
 **Breakpoints.** At 100 columns or more a list-and-detail surface is a split view;
 from 60 to 99 it is one column and `Enter` opens the detail; below 60 it shows the name
@@ -527,7 +528,7 @@ Content is static: it takes no focus and owns no keys. Pick the narrowest form t
 | fields | `label:` muted, then the value; the key/value panels (status, account) |
 | sections | a bold `primary` title then a body; a collapsed section is its title row only |
 | code | a muted language name, then the lines; highlighted by language (on by default); `numbered` adds a line-number gutter (the Write card, the trace JSON) |
-| diff | two numbered gutters (old, new), `−`/`+` plus a **red background behind the removed code and a green one behind the added code** (the band covers the sign and the text to the full width; the line-number gutter is never tinted), `⋯` between hunks, an `@@` header when more than one hunk |
+| diff | one numbered gutter (a removed line shows its number before the change, any other its number after it), `−`/`+` plus a **red background behind the removed code and a green one behind the added code** (the band covers the sign and the text to the full width; the line-number gutter is never tinted), `⋯` between hunks, an `@@` header when more than one hunk |
 | charts | sparkline (one row), bars (grouped, stacked, normalized; horizontal or vertical), line and point, heatmap with a legend row (`cell: 1` draws one-cell columns, 26 weeks in 26 cells) |
 | diagram | a flowchart or state diagram as ASCII within a size budget, falling back to its source |
 | spacer, divider | vertical rhythm: a blank row or a rule, optionally labelled |
@@ -721,10 +722,10 @@ it. Its keys:
 
 ```
 ui.list({ id, role: 'browse' | 'choose', mode?: 'single' | 'multiple', items, selectedIds?, filterable?, filterMode?: 'type' | 'slash',
-  numbered?: true | 'focus', tree?, marker?: 'cursor' | 'selection', marks?, maxRows?, expandFocused?, acceptVerb?, autofocus?,
+  numbered?: true | 'focus', tree?, marker?: 'cursor' | 'selection' | 'band', marks?, maxRows?, expandFocused?, acceptVerb?, autofocus?,
   focusItem?: { id, rev }, empty? })
 item: { id, label: string | span[], detail?: string | span[], badge?, right?, rightFocus?, group?, parentId?, body?: string | node,
-        bodyAlways?, wrap?, meter?, indent?, block?, rule?, gap?, disabled?, disabledReason?, confirm?, unavailableActions?,
+        bodyAlways?, bodyLead?: span[], wrap?, meter?, indent?, block?, rule?, gap?, disabled?, disabledReason?, confirm?, unavailableActions?,
         segment?: { label?, options, selectedId?, inheritedId? } }
 ```
 
@@ -967,7 +968,7 @@ The Layout scene draws a width ladder, priority admission, and a windowed list; 
 ### 4.8 Loader, progress, and empty
 
 ```
-ui.loader({ variant?: 'bloom' | 'fill' | 'gap' | 'breath', message?, elapsedMs?, cancelActionId? })
+ui.loader({ variant?: 'bloom' | 'fill' | 'gap' | 'breath' | 'pulse', message?, elapsedMs?, cancelActionId? })
 ui.progress({ value, max, label?, width?, style?: 'cells' | 'rule', tone?, showCount?, showPercent? })
 ui.empty(title, { description? })
 ```
@@ -1006,7 +1007,7 @@ Core and plugins reuse the same four.
 | `splitView` | a `stack` row of a list and a detail with a width ladder (`when`) | the marketplace, any list-and-detail panel |
 | `statusPage` | `surface` + `tabs` + `fields` | the status panel, any read-only key/value page |
 
-The decision skeleton and its two open variants are specified in §5.7.
+The decision card is specified in §5.7.
 
 ### 4.10 Focus, keys, and events
 
@@ -1136,50 +1137,63 @@ queued (2)  ⏎ "also update the footer"  ⏎ "keep the hero copy shor…"  ↑ 
 - **Completions** are a `choose` list under the buffer: `@` files (inserted as a token), `/` commands, `#` skills
   (inserted as text), each with its own key line (`Tab complete · Enter insert · Esc close`).
 
-**Notices** are rich-text rows: banners (`⚠ Rate limited · retrying in 12s`), a toast in the activity row's gap, and
-an undo toast.
+**Notices** live in the **notification pane**: one row on the blank line above the editor, under the activity block,
+right-aligned and never wider than half the terminal. It shows one notice at a time, the most severe and then the
+newest, with a muted `· +N` for the ones waiting, and it is there (blank) when nothing shows, so the editor never
+shifts. Its content is the notification lane (the commands' and extensions' feedback: `✓` and `ℹ` leave after five
+seconds of visible time, `⚠` and `✗` stay) and the notices the session's facts raise: `⚠ Rate limited · retrying in 9s ·
+1/5` (a provider failure with HTTP status 429; any other failure reads `Provider error`), `⚠ Context 93% full · /compact
+now` (from 92% of the window, until a compaction lowers it), and `ℹ Resumed session · 24 turns · last active 2h ago`
+(five seconds). The footer under the editor keeps only the slash hint. When the stream is scrolled away from its
+tail, the same row carries the chip back to it, centered and inverse (`Back to bottom · Ctrl+↓`, or `2 new turns ·
+Ctrl+↓`): the notice takes only the room right of the chip, so the two never overlap (at 100 columns the notice keeps
+about 40 columns, at 60 about 12). Offline and a low balance are not raised: the
+Harness has no offline signal and the balance is not read yet. An undo toast is not built.
 
 ### 5.3 Activity row and tool rows
 
+*Finalized in groups 3b (tool lines, edit and write cards, the tool block base, pending calls) and 3c (activity row, notification pane); the owner accepted each part on its scenario.*
+
 **Built from:** `loader`, `rich-text`, `stack` (priority admission), `diff`, `code`. Scenes: Activity row, Tool rows and edits.
 
-The header carries the phase, elapsed time, throughput, and a right-aligned
-gap. Under it, one to three wrapped `⎿` lines describe **the single action
-running now**: the running command, path, or query, or the latest reasoning
-paragraph. It is never a list of tools.
+The activity row is the turn's vitals, a block of constant height: a leading spacer, a header, and one line
+under it (the blank row before the editor is the notification pane's). It starts at the stream's left margin (two cells). It says which phase
+the turn is in, how long it has been there, how much it has said, and how fast; it never repeats text the
+stream already shows (§5.3.1).
 
 ```
-✻ Thinking · 8s · ↑30.2k ↓1.1k                       Esc interrupt · Ctrl+O expand
-  ⎿ Checking whether the activity row can show more than the latest tool name,
-    since every tool call overwrites the previous one…
+  ✶ Mulling · 9s · ↑30.2k ↓640
+    ⎿ Tip: Ctrl+O expands the tool details
 
-● Running commands · 12s · ↑30.2k ↓4.1k · 38 tok/s   Esc interrupt · Ctrl+O expand
-  ⎿ pnpm run verify:changed -- --plan
+  ⡀ Deep diving · 2s
+    ⎿ Tip: / commands
 
-⣤ Deep diving · 2s                                    Tip: / commands
+  ● Running commands
+    ⎿ Tip: /btw asks a side question while it runs
 ```
 
-- **The gap.** Running rows with a detail line carry `Esc interrupt · Ctrl+O
-  expand` there. The `Deep diving` row, which has no detail, rotates the tip there instead. Idle
-  renders nothing.
-- **Height.** One header plus at most three detail lines. The row never
-  collapses while active, so the editor does not shift between phases; a phase
-  with fewer lines pads to the turn's high-water mark.
-- **Narrow widths** shed, in order: detail lines beyond the first, the `⎿`
-  connector, the header tail (rate, counters, elapsed), then the gap.
-- **Tense.** The activity row is the only place that speaks in the present tense;
-  transcript rows speak in the past tense.
+- **The line under the header** is a tip while the stream shows the current action (every level but
+  Compact), and the one-line detail (the latest reasoning paragraph, the running command or path or query) at
+  Compact, where the stream shows no process. It always leads with `⎿`, drops the `⎿` below 40 columns, and
+  is blank when hints are off (`quietHints: off`) or nothing applies.
+- **Height.** Three rows while a turn runs (a leading spacer, the header, and the line under it), and the row under them is the notification
+  pane's (§5.2), so nothing shifts between phases. Idle renders nothing of its own.
+- **Narrow widths** shed, in order: the header tail (time, counters, rate), then the `⎿` connector.
+- **Motion.** One channel per row: the glyph moves over a still label (Deep diving, Thinking, Writing), or the
+  label shimmers over a still `●` (a running tool), or the `●` breathes over a still label (a wait on the user).
+  A stop is static. The thinking label deepens with time (§5.3.1).
+- **Tense.** The activity row is the only place that speaks in the present tense about the turn;
+  transcript rows speak in the past tense, except an in-flight call block, which shows its own state (§5.3.1).
 
-Running calls use the same row, with the category choosing label and
-detail:
+Phases and what each shows:
 
 ```
-● Running commands    ⎿ pnpm run verify:changed -- --plan
-● Reading files       ⎿ packages/mayfly/src/transcript/pane-activity.ts
-● Searching code      ⎿ "activity" in packages/
-● Visiting web pages  ⎿ https://pi.dev/docs/latest/tui
-● Updating the plan   ⎿ 3 of 5 items done
-? Waiting for your action ⎿ Which release channel should this go to?
+  ⡀ Deep diving · 2s                      fill glyph; waiting for the model; tip underneath
+  ✶ Pondering · 3s · ↑30.2k ↓80           bloom glyph; the thinking ladder (§5.3.1); tip underneath
+  ⡀ Writing · 20s · ↓240 · 38 tok/s       fill glyph; the answer streams in the stream
+  ● Running commands                      still ●, shimmering label; the call and its time are in the stream
+  ● Waiting for your approval · 45s       breathing ●; the request is in the stream and the panel
+  ■ interrupting…                         static; held 600 ms
 ```
 
 Settled calls are one static line: glyph, past-tense verb, target, outcome.
@@ -1196,10 +1210,10 @@ Settled calls are one static line: glyph, past-tense verb, target, outcome.
 **Edit is a diff; Write is code.**
 
 ```
-● Preparing to edit files · 3s · ↓0.8k           phase 1: arguments streaming
-● Editing files · 5s                              phase 2: applying
-  ⎿ pane-activity.ts  +12 −3 ▮▮▮▮▮▮▮▯                the counts tick up as the patch parses
-✓ Edited pane-activity.ts  +12 −3 ▮▮▮▮▮▮▮▯        phase 3: 400 ms flash, then static
+● Edit(pane-activity.ts)                          phase 1: arguments streaming; the rows fill as the model writes
+    41 │ − const frame = moon                          (the row says Preparing to edit files)
+● Edit(pane-activity.ts) · 5s                     phase 2: committed and applying, the same rows
+✓ Edit(pane-activity.ts) · +12 −3 ▮▮▮▮▮▮▮▯        phase 3: settled in place
     41   41 │   const moon = state.mode === 'waiting'
     42      │ − const frame = moon
          42 │ + const frame = glyphFor(state)
@@ -1208,7 +1222,8 @@ Settled calls are one static line: glyph, past-tense verb, target, outcome.
    118  118 │   return { kind: 'stack', direction: 'column',
 ```
 
-- Two gutters (old, new), sized by the largest line number. Every changed line
+- One gutter, sized by the largest line number: every row has a number, a removed line's in the file before the change
+  and an added or unchanged line's in the file after it (the two counters of a unified diff in one column). Every changed line
   carries `−` or `+` as well as color. One to three context lines per hunk,
   `⋯` between hunks, `… +N rows · Ctrl+O` beyond the cap (6 rows in a
   collapsed Standard card, 12 once expanded), long lines end in
@@ -1220,6 +1235,62 @@ Settled calls are one static line: glyph, past-tense verb, target, outcome.
 - **Write** is not a diff, because there is nothing to compare: collapsed it is one line, `✓ Wrote path · 84 lines ·
   3.1 KB · Ctrl+O expand`; expanded it shows the file as **syntax-highlighted code with line numbers**
   (`ui.code` with `numbered`), no `+` markers and no bands.
+
+### 5.3.1 Stream and activity row: division of labor
+
+One fact has one home. The stream owns **content and the state of things**; the activity row owns the **vitals
+of the turn**. The Harness gives both one source of truth (the conversation facts), so the rule is about what each
+place draws, not what each place knows.
+
+| Fact | Home | Never also in |
+| --- | --- | --- |
+| Reasoning text, answer text | the stream, as it arrives | the activity row |
+| A tool call, its arguments, its output, its outcome | the stream's call block | the activity row |
+| How long a call has been running | the call block (`● Bash(pnpm test) · 4s`) | the activity row |
+| How long the model has been thinking, tokens in and out, tokens per second | the activity row, while the phase lasts | the live reasoning row (a settled reasoning row keeps its final duration) |
+| The phase word (Deep diving, Thinking, Writing, Running commands, Waiting for you) | the activity row | the stream |
+| A request that waits on you (approval, plan review, question) | the stream row and the panel; the activity row only breathes and names the wait | — |
+| A teaching tip | the activity row | the stream |
+
+**Every in-flight item is visible in the stream.** The user must never see the activity row busy while the
+stream is empty. The moment a call is committed it has a block in the stream, in the state it is in:
+
+| State | Looks like | Notes |
+| --- | --- | --- |
+| Pending | `● Bash(pnpm test) · 4s`, the dot breathing, the time ticking; then any output there is | Calls of one kind running together stack as pending lines; they regroup into the run block when they settle |
+| Complete | `✓ Bash(pnpm test) · 4.2s` and the tier's body | unchanged from §7.1 of the development spec |
+| Failed | `✗ Bash(pnpm test) · exit 1`, the first line of the reason | |
+| Interrupted | `⊘ Bash(pnpm test) · interrupted`, muted, with a short reason: `interrupted` for a call the user stopped (Esc, Ctrl+C), `not started` for a call that never ran | the Harness settles the call with `ABORTED`, `ABORTED_BEFORE_DISPATCH`, or `TOOL_NOT_STARTED`; it left no effect, so it is no failure and its text is not shown |
+| Outcome unknown | `✗ Bash(pnpm test) · outcome unknown`, the failed look with a short reason | the session ended while the call ran (`TOOL_OUTCOME_UNKNOWN`, closed on resume); the call may have had a side effect, so it is not drawn as cancelled |
+
+The Harness reports no output while a foreground call runs (the committed `tool/call` and `tool/result` events carry
+none; a background job has its own live tail, which the bottom bar will carry), so a pending block shows the call's
+**input** instead, by level (development spec §7.1, "The tool block base"): the lines of a multi-line command after the
+first, and for Edit and Write the code the model is generating, row by row, before the call is even committed. The
+output arrives with the result.
+
+**By level.** The levels choose how much of a call the stream draws; they never change the activity row. The row has one
+effect (header, tail, and a tip under it) at every level. Compact draws a call in flight as its pending line alone, so
+the stream is never empty while the row is busy.
+
+**One clock, one list.** The stream's pending lines and the row take their seconds from one host tick and one format
+(whole seconds while a call runs, tenths once it settled), and the row's tool phase names the calls in flight (the
+`inFlight` fact: `Running commands`, or `Running 3 tools` for several kinds), the list the pending lines are drawn from,
+so the two never disagree about what runs. The thinking ladder counts from the reasoning phase's own session timestamp.
+
+**The thinking ladder.** The thinking label is a character, not a status: it deepens with the seconds spent in the
+current reasoning phase (the clock restarts with each phase), and its tone steps deeper with it. Four stages:
+
+```
+  ✶ Pondering · 3s       muted         0-5 s
+  ✶ Mulling · 9s         default       5-15 s
+  ✶ DeepThinking · 22s   primary       15-45 s    (the wordplay: DeepSeek)
+  ✶ Fathoming · 58s      accent, bold  45 s and up
+```
+
+Each stage is one word, deeper than the one before.
+The glyph keeps blooming in every stage. The words are one table in `transcript/pane-activity.ts`, so a stage is
+a wording change, not a code change, and each has a Chinese counterpart.
 
 ### 5.4 Goal and todo views
 
@@ -1373,16 +1444,17 @@ other two turns follow the same rules). Whole-conversation row counts: Standard
     The one failure was a truncation bug in the tool-line row, fixed in the same change.
 ```
 
-| Level | Settled turn | Running turn | Activity row |
+| Level | Settled turn | Running turn | Activity row's second line |
 | --- | --- | --- | --- |
-| 1 Compact | prompt (one row), header with diffstat, final answer; a failure keeps its reason line | the prompt only | header and one `⎿` detail line |
-| 2 Standard | header, file-change cards (numbered diff, capped at 6 rows), final answer | settled groups as `⎿` titles and file-change cards as they land | header and `⎿` detail |
-| 3 Detailed | the header is open: reasoning preview, past-tense group titles between the file-change cards, final answer | every card live, one row each | header only |
-| 4 Verbose | everything open: reasoning, every call with its output tail, full diffs | every card live, with the running card's output tail | header only |
+| 1 Compact | prompt (one row), header with diffstat, final answer; a failure keeps its reason line | the prompt only | the `⎿` detail (the stream shows no process) |
+| 2 Standard | header, file-change cards (numbered diff, capped at 6 rows), final answer | reasoning as it arrives, settled groups as blocks, in-flight calls as pending lines, file-change cards as they land | a tip |
+| 3 Detailed | the header is open: reasoning preview, past-tense group titles between the file-change cards, final answer | every card live, one row each; the current step's calls as pending blocks | a tip |
+| 4 Verbose | everything open: reasoning, every call with its output tail, full diffs | every card live, with the running card's output tail | a tip |
 
-- **Detail lives in exactly one place.** Compact and Standard have no running
-  cards, so the activity row carries the `⎿` detail. Detailed and Verbose show
-  the running card in the transcript, so the activity row drops it.
+- **Detail lives in exactly one place** (§5.3.1). Compact shows no process of a
+  running turn, so the activity row carries the `⎿` detail there. Every other
+  level shows the current action in the stream (a pending call block, the
+  reasoning as it arrives), so the activity row's second line is a tip.
 - **The header says what changed.** A settled turn's header carries its
   diffstat (`+10 −3`) so a folded turn still tells you whether files changed.
 - **Never folded away at any level:** failures and their reason, interruptions,
@@ -1408,65 +1480,86 @@ other two turns follow the same rules). Whole-conversation row counts: Standard
 - Search (below) opens the turn holding a match at Verbose, so a hit inside a
   fold is never invisible.
 
-Every row is one line that ladders to width; a user prompt longer than the row at
-Compact ends in `…` (the prototype cuts at 62 cells), diff rows end in `…`, and `NO_COLOR` keeps `▸ ▾ ✓ ✗ ●` and the `⎿` tree as
+Every row is one line that ladders to width (a user prompt is the exception: it wraps and keeps four lines at every level,
+Compact included, see *The user's own words*), diff rows end in `…`, and `NO_COLOR` keeps `▸ ▾ ✓ ✗ ●` and the `⎿` tree as
 the carriers of state.
 
-**Compaction.**
+**Compaction.** *Finalized in group 3c.*
 
-Compaction reports real stages, so its bar is real. The bar is **context
-occupancy** (tokens in use over the context window), and the two stages are
-summarizing and applying.
+Compaction reports two real stages, summarizing and applying, but no progress inside them, so its percentage is an
+estimate. The bar and the percentage show the share done: it grows with the time spent summarizing along a curve whose
+pace follows the size of the context being summarized (about 80% when the expected time has passed, never past 90%),
+the bar then fills to 100% over 800 ms when the summary lands, and it stays full once the row settles.
 
 ```
-● Compacting context ▰▰▰▰▰▰▰▰▰▱ 91%  1/2 summarizing · 4s · auto      the edge cell breathes
-● Compacting context ▰▱▱▱▱▱▱▱▱▱  9%  2/2 applying · auto              800 ms drain when the summary lands
-✓ Compacted 84 items ▰▱▱▱▱▱▱▱▱▱ 91% → 9% · ~148k → ~12k tokens · auto
+● Compacting context ▰▰▰▰▱▱▱▱▱▱ 42% summarizing · 4s · auto           the estimate, growing
+● Compacting context ▰▰▰▰▰▰▰▰▰▰ 100% applying · auto                 fills over 800 ms when the summary lands
+✓ Compacted 84 items ▰▰▰▰▰▰▰▰▰▰ context 91% → 9% · ~148k → ~12k tokens · auto
   ⎿ Ctrl+O summary
-✓ Compacted 84 items · 91% → 9%                                       narrow: the bar goes first
+✓ Compacted 84 items · context 91% → 9%                              narrow: the bar goes first
+● Compacting context · 42% summarizing · 4s                           narrow and Compact
 ✗ Compaction failed: context still over budget after summary
 ```
 
-The drop matches the status bar's context meter. Without a known context window
-the bar falls back to the two stages (`1/2`, `2/2`).
+The settled row keeps the context occupancy marks the facts took at the compaction (`compactions`), so it does not
+change as later steps grow the context; without a known window the occupancy is left out and the row keeps the token
+estimate. A manual `/compact` is a block of its own below the previous turn's closing line; an automatic one stays
+between the steps it interrupted. Below 56 columns, and at the Compact level, the row is one line; `Ctrl+O` (or the
+Verbose level) opens the summary's first lines under it. Every compaction, manual or automatic, is this block.
 
-**The user's own words.** A prompt must be findable at a glance, and today it is not: it is one bold `»` row at the
-same indent as the output with no space above it, so a turn's answer runs straight into the next prompt. The design
-separates turns with a **turn rule**: before every turn after the first, a blank row and a muted full-width rule with
-the turn's start time on the right, then the prompt row.
+**The stream's turns, prompts, answers, and reasoning.** *Finalized in group 3a; the owner accepted each part on its scenario.*
 
 ```
-  ● Done — the hero now reads "Ship agent UI in a keystroke"; all 214 tests pass.
-    The one failure was a truncation bug in the tool-line row, fixed in the same change.
-
-  ──────────────────────────────────────────────────────── 10:03
   » Before the release, audit every place that still prints
     "Working" instead of "Deep diving": the activity row, the
     tips, the website pages, and the screenshots. List each file
     you changed, keep the diff small, and do not touch the
     ▸ 2 more lines · Enter
-    ▸ Took 17s · 4 tool calls · +2 −2 · Ctrl+O expand
-    ● Done — 5 files updated; the width scan has 6 narrow cases (24 to 60 columns) and all pass.
+    ▸ 4 tool calls · Ctrl+O to expand
+  ● Done — 5 files updated; the width scan has 6 narrow cases (24 to 60 columns) and all pass.
+
+  ✻ Worked for 17s · done 10:13
+
+  » Next prompt
 ```
 
-- The rule and the blank row are not selectable and cost two rows per turn; the first turn has none. The rule is
-  monochrome-safe (a glyph, not a color) and its time is the turn's start, so the stream also reads as a timeline.
-- **A prompt is capped at four lines** at every level. Lines beyond the cap are hidden behind one muted row,
-  `▸ N more lines · Enter`; `Enter` on the selected prompt opens the rest and `Enter` again closes it. Copy (`c`) and
-  open in `$EDITOR` (`Ctrl+G`) always take the whole prompt, and a search hit inside the hidden lines opens the
-  prompt (§5.6 search). The cap is part of the design, not of one style (`PROMPT_MAX_LINES`).
-- The prompt keeps its own bold row and wraps with its text aligned after the `»`, so a wrapped prompt reads as one
-  block. At Compact level, where a turn is a prompt, a header, and an answer, the rule is the main separator.
-- A queued or steered message uses the same row with a `⏎ queued` suffix, and an interrupted prompt a `■ interrupted`
-  one.
-- In the prototype this is `ui.list` rows with `rule` and `gap` (§4.4); no new component is needed.
+- **Turn edges.** A blank row opens every turn after the first, and a turn that has ended closes with one muted row,
+  `✻ Worked for 17s · done 10:13` (`Stopped after` / `Failed after`). No rule is drawn: the owner chose this quieter
+  closing row over the sketch's timed rule at 3a.1, and the header drops its duration, which the closing row carries.
+- **A prompt is capped at four lines** at every level (`PROMPT_MAX_LINES`). Lines beyond the cap are hidden behind one
+  muted row, `▸ N more lines · Enter`; `Ctrl+O` opens the prompts of the last three turns, and (with row selection,
+  3e.2) `Enter` opens the selected one. Copy (`c`) and open in `$EDITOR` (`Ctrl+G`) always take the whole prompt, and a
+  search hit inside the hidden lines opens the prompt. The prompt keeps its own bold row; its wrapped lines start
+  under the text, after the `»`.
+- A queued or steered message is the same row with a `⏎ queued` suffix, behind a blank row after the last turn; an
+  interrupted turn ends with `■ interrupted` in the warning tone.
+- **Images** pasted into a prompt are a picture under it (`ui.image`, 12 rows at most, bytes from the attachment
+  store); while loading, when the store lacks them, and on a terminal without an image protocol the row shows
+  `▪ [image] 1 · error.png · 1280×720 · 82 KB`.
+- **An answer is Markdown**: one list item whose body is the shipped Markdown component (headings, nested lists, tables
+  drawn as boxes, highlighted fences, inline emphasis, code, and links), led by `● ` on its first row and wrapped under
+  it (`bodyLead`, §4.4). Blocks are separated by the renderer's own blank row. In a table, a status cell that holds an emoji such as `✅` or `⚠️` is coloured green or red, as the owner accepted. A growing answer is scanned from its last
+  unit and painted one unit per append, so a long live answer costs what its tail costs; nothing caps it.
+- **Reasoning** shows where the display plan opens process cards (the levels' policy is 3e.1): live, one italic muted
+  row, `✻ <latest line>`, clipped at the width; at Verbose a streaming reasoning grows line by line under a
+  `✻ Thinking` header. Opened (Verbose, or a turn opened with `Ctrl+O`) it is a header row `✻ Thinking · 9s` (how long it
+  took) and the whole text under it, aligned with the word `Thinking`, uncapped. A mode that previews settled
+  reasoning (`settledReasoningPreview`, Detailed) shows `✻ <first line>`.
+- **The welcome banner** stays its own block above the stream and scrolls away with the history; a blank row closes it.
+  Moving it into the list needs tones for its per-row logo gradient and model highlight, a decision for later.
+- **The live turn.** The stream follows its tail. A view scrolled away keeps its place (also when the stream rewrites
+  its rows) and keeps a reverse-video chip on the stream's last visible row at its right edge: `Back to bottom · Ctrl+↓`,
+  or `N new turns · Ctrl+↓` once N turns of the agent loop began below the view (turns, never rows, tool calls, or message
+  blocks). `Ctrl+↓` (the action `mayfly.interaction.follow-tail`, rebindable; `End` too with an empty draft) follows the
+  tail. The chip is painted by the renderer over the screen's scroll; a `ui.scroll` with `pill` keeps the sketch's
+  `↓ N new · End` for inner regions.
 
 *Considered and not chosen* (the Prompt styles scene still draws them, with `1`-`7`): a hanging indent for everything
 under the prompt, a `▎` quote bar down each prompt line, a background band behind the prompt (truecolor only), a
 titled card (three rows per turn, boxed), and the combination of indent, bar, and band. They stay in the scene so the
 choice can be revisited; they are not part of the design.
 
-**The stream is selectable.** The whole conversation is one browse list, and every row (a user prompt, a tool line,
+**The stream is selectable.** *Finalized in group 3e.* The whole conversation is one browse list, and every row (a user prompt, a tool line,
 an edit card, an answer, the agent's request) is an item. `Alt+↑` from the prompt moves focus to the newest row;
 `↑`/`↓` walk the rows; `Alt+↓` (or `Esc`) returns to the prompt. A selected row has the `→` cursor and its own keys,
 shown in the hint row only while the stream has focus (§3.5 `scope`):
@@ -1476,7 +1569,7 @@ shown in the hint row only while the stream has focus (§3.5 `scope`):
 | `Enter` | `ui.accept` | expand or collapse the row's details (a diff, a command's output, a reasoning block) |
 | `c` | `ui.copy` | copy the row's content (the command, the new file text, the answer) |
 | `Ctrl+G` | `ui.external` | open the row's content in `$EDITOR` |
-| `Ctrl+F` | `ui.search` | search the whole conversation (below) |
+| `/` `?` | | search the whole conversation toward the newer or the older rows (below) |
 
 ```
 → ▾ ✓ Edited Hero.tsx  +4 −2 ▮▮▮▮▮▮▮▮
@@ -1488,118 +1581,79 @@ shown in the hint row only while the stream has focus (§3.5 `scope`):
   Enter expand · c copy · Ctrl+G open in editor · Esc back
 ```
 
-**The whole stream is searchable.** `Ctrl+F` opens a one-line search under the stream (`⌕ trunc▌   1/2 matches   matches
-open the rows that hide them`). Matches are found in every row's text and in the details a level hides (command
-output, diff text, reasoning); a turn holding a match opens at Verbose and the stream selects the current match, so a
-hit inside a fold is never invisible. Matched text is highlighted in `warning` + `strong`; `Enter` steps to the next
-match, `Esc` closes the search and keeps the highlight until the next search.
+**The whole stream is searchable.** *Finalized in group 3e.* In conversation mode `/` searches toward the newer rows and `?` toward the older, as in
+vim (`Ctrl+F` is not used: editors and terminals bind it). A search line opens above the editor: two rows, `/ pattern▌`
+and a muted count with the keys. The editor stays, in its parked frame, and the status line names the `search` mode. The
+pattern is a JavaScript regular expression, matched in any case unless it holds a capital letter; one that does not compile
+says so. It is matched against the text a person reads (`row-text`), in every turn of the session, so command output,
+diff text, a plan, and reasoning that a level hides are found, and a turn the stream does not mount is mounted.
+
+While the pattern is typed the stream only highlights (matched text in reverse video wherever it shows, the list's
+`highlight`, painted on the painted rows so it reaches Markdown, code, and diffs alike) and counts: nothing is selected.
+`Enter` accepts the pattern: the input stops, the cursor goes to the first match past where it stood (before it for `?`,
+wrapping), and the stream is in selection mode, which is conversation mode over the matches. Every occurrence is a stop, also
+several inside one block: the current one is drawn bold and underlined over the reversed others, and the window centers on it
+wherever it sits in a tall block. `↑`/`↓` go to the previous or
+next match, `n`/`N` go on and back in the direction of the search, all wrapping; `Enter` expands the row, `c`, `Ctrl+C`,
+and `Ctrl+G` copy or open it, and `/` or `?` starts a new search. The turn holding the current match, and the turns
+already visited, open at Verbose and stay mounted. `Esc` in the input abandons the search; `Esc` or `Alt+↓` in selection mode
+ends it: the levels come back, the highlight is cleared, and conversation mode keeps the cursor on that row (on its turn's
+header when the row folded away); a second `Esc` returns to the prompt.
 
 The scroll position follows the same rules as any scroll region: the stream keeps the tail in view while following, a
-`↓ N new · End` pill appears while it is scrolled away, and `End` jumps to the latest.
+`N new turns · Ctrl+↓` chip stays on the last row while it is scrolled away (N counts the turns of the agent loop that began below the view, never rows, tool calls, or message blocks; with none it reads `Back to bottom · Ctrl+↓`, the way back), and `Ctrl+↓` (or `End` with an empty draft) jumps to the latest. The follow key is its own action, `mayfly.interaction.follow-tail`, because thin laptops have no End key.
 
-### 5.7 Decision cards: approval, plan review, permission
+### 5.7 Decision cards: approval, plan review
 
-**Built from:** `decisionPanel` = `surface` (lane), `list` (numbered), `form` (same-line input), hidden `actions`; the request row is a stream row (`list`, `diff`, `markdown`). Scene: Approval, plan review, permission.
+*Finalized in group 3d; the owner accepted the effect on its scenarios.*
+
+**Built from:** `components/decision-card.ts`: `ui.surface` (lane), `ui.list` (numbered), `ui.form` (the note), and hidden `ui.actions`. The tool approval and the plan review compose it with their own choices. Scene: Approval, plan review.
 
 Every "the agent asks, the user decides" moment (tool approval, plan review) is **two things in the conversation
-stream**: the agent's *request* as the newest stream row, with the same content Mayfly shows today (the command, the
-diff, the whole plan), and the *decision card* at the foot of the stream, where the editor normally sits. The card
-is one composition: a lane head (`── Decide ──`), a numbered choice list, an optional same-line input, and the hint
-row. There is no decision-specific widget, no second page, and no `Back` button.
+stream**: the agent's *request*, the newest stream row (the call's own block, open, with the same content Mayfly shows
+today: the command, the diff, the whole plan), and the *decision card* at the foot of the stream, where the editor
+normally sits. The card is one composition: a lane rule with the title (`── Decide ──`) and a `1 of N waiting` badge
+when more requests wait, the numbered choices, the note field, and the hint row. There is no second page and no `Back`
+button.
 
 ```
-  ▾ ? Approve edit  pane-activity.ts  +2 −1                  ← the request: a stream row, today's diff
-     41  41 │     const moon = state.mode === 'waiting'
-     42     │ −   const frame = moon
-         42 │ +   const frame = glyphFor(state)
-── Decide ─────────────────────────────────────────────────
-→ 1  Reject
-  2  Allow once
-  3  Allow edits this session
-  Feedback: type to explain…
-  Enter choose · Ctrl+G open diff · Esc reject
-```
-
-- **The request stays in the stream** after it is answered, as the record of what was approved, and it follows the
-  stream's rules (selectable, searchable, copyable, §5.6). Plan review keeps today's content: the plan is the
-  request row, rendered as markdown.
-- **Open in the editor.** An edit card and a plan card carry the common `external` key (`Ctrl+G`, §3.5): it opens
-  the diff or the plan in `$EDITOR` to read it properly, and closing the editor returns to the card with the
-  decision still open. A plan card also carries `c` (copy plan). Both are hidden accelerators with a hint, no buttons.
-- **Preview.** A command shows the command and a `⚠` note when it deletes files; an edit shows the diff (§5.3) on
-  a red or green background behind the changed code; a plan shows the plan above the options.
-- **Same-line input.** `Feedback:` (approval) or `Revise:` (plan) is an ordinary field
-  under the list; `↓` from the last option focuses it, typing edits in place, and the
-  whole decision settles as one action.
-- **`Esc` says what it does.** Dismissing an approval *rejects* the call, so the footer
-  reads `Esc reject`, not `Esc close`.
-- **Queue.** Pending requests are first in, first out per agent, and the request row reads
-  `1 of 3 waiting`. An allowance lives until that agent ends.
-- **Permission preset** is a *preference*, not a grant, and is not part of a conversation turn: it stays an overlay
-  surface (`/settings` and the first run open it). Digits choose at once, the current preset carries `[current]`,
-  and `Full access` asks the shared Yes/No first.
-
-**Open for review: where the cursor starts and what a digit does.** Two variants are
-drawn in the prototype's Approval scene (`Ctrl+T` switches the variant, `Ctrl+X` simulates a stray keystroke through the real key engine):
-
-Variant A, **safe-first**: the least destructive option is row 1 and focused; digits
-only move the cursor; a grant costs two keys.
-
-```
-  ▾ ? Approve command  bash · 1 of 3 waiting
+  ▾ ? Bash(rm -rf build && pnpm build) · 1 of 3 waiting   ← the request: the call's block, open
     $ rm -rf build && pnpm build
-    in ~/work/mayfly                            ⚠ deletes files
-── Decide ─────────────────────────────────────────────────
-→ 1  Reject
-  2  Allow once
-  3  Allow bash for this session
-  Feedback: type to explain…
-  Enter choose · 1-3 focus · Esc reject
-```
-
-Variant B, **grant-first**: the common grant is row 1 and focused; digits choose at
-once; a rejection is `Esc` or its digit.
-
-```
-  ▾ ? Approve command  bash · 1 of 3 waiting
-    $ rm -rf build && pnpm build
-    in ~/work/mayfly                            ⚠ deletes files
+    ⚠ deletes files
 ── Decide ─────────────────────────────────────────────────
 → 1  Allow once
   2  Allow bash for this session
-  3  Reject and tell the agent why…
+  3  Reject
   Feedback: type to explain…
   Enter choose · 1-3 choose · Esc reject
 ```
 
-| | A safe-first | B grant-first |
-| --- | --- | --- |
-| Row 1, focused | Reject | Allow once |
-| A digit | moves the cursor | chooses at once |
-| Grant | 2 keys (`↓`, `Enter`) | 1 key (`Enter` or its digit) |
-| Reject | 1 key (`Enter` or `Esc`) | 1 key (`Esc`) |
-| A stray `1` or `Enter` typed before the card is seen | at worst rejects | grants |
-| Needs an arm delay (a card that opens unprompted ignores all but `Esc` for about 300 ms) | no | yes |
-
-The recommendation is **A**: approvals are rare and a wrong grant is costly, while a
-wrong reject only costs one more request. The rest of this document assumes A; §8 lists
-it as a decision for you.
-
-Plan review under A (grants need an explicit move; `Enter` alone can never approve):
-
-```
-  ▾ ? Plan ready for review  6 steps
-    # Plan
-    1. Add activeCalls to the facts projection
-    …                                          ← the whole plan, as today
-── Decide ─────────────────────────────────────────────────
-→ 1  Reject
-  2  Approve and start
-  3  Approve and auto-accept edits
-  4  Keep planning…
-  Revise: ▌                       ← type the revision in place
-  Enter choose · c copy plan · Ctrl+G open plan · Esc reject
-```
+- **Choices.** An approval offers `Allow once`, `Allow {tool} for this session`, and `Reject`. A plan offers
+  `Approve and start`, `Keep planning…`, and `Reject`. The common grant is row 1 and focused; the refusal is last.
+- **Digits choose at once.** A digit or `Enter` on the focused row settles the card. The overlay holds a card that
+  opens unprompted for `armMs: 300` after it takes focus: every key but `Esc` is swallowed, so a stray key grants
+  nothing.
+- **`Esc` rejects.** The footer reads `Esc reject`, not `Esc close`. On a plan, `Esc` answers the decline label
+  (`Reject`) and sends no note.
+- **The note.** `Feedback:` (approval) or `Revise:` (plan) is an ordinary field under the choices; `↓` from the
+  last choice focuses it, and typing edits it in place. `Enter` in the note settles the card: on an approval it rejects
+  the call and steers the note to the agent; on a plan it sends the note as the revision for *Keep planning…*. A
+  rejection carries the note; `Reject` on a plan does not send it, so only a revision tells a plan sent back from a
+  rejected one.
+- **Open in the editor.** `Ctrl+G` opens the request in `$EDITOR`: the diff of an edit or write, the command of a shell
+  call, the plan. Closing the editor returns to the card with the decision still open. A plan card also carries `c`
+  (copy the plan). Both are hidden accelerators with a hint, no buttons.
+- **Preview.** A command shows its lines and a `⚠ deletes files` note when it deletes files; an edit or write shows its
+  diff or code (§5.3); a plan shows its Markdown above the choices, of any length.
+- **Settled.** An approval leaves `allowed` or `rejected` on the call's line. A plan leaves `✓ Plan approved`,
+  `✗ Plan rejected`, or `↩ Plan sent back · "revision"` on its block. The request stays in the stream as the record
+  of what was decided, selectable and searchable like any row (§5.6). A decided plan keeps its Markdown, which `Ctrl+O`
+  (or the Verbose level) opens again.
+- **Queue.** Pending requests are first in, first out. The card shows the first, and the request row reads
+  `1 of 3 waiting`. An approval allowance lives until that agent ends.
+- **Permission preset** is a *preference*, not a grant, and is not part of a conversation turn: it stays an overlay
+  surface (`/settings` and the first run open it). Digits choose at once, the current preset carries `[current]`,
+  and `Full access` asks the shared Yes/No first.
 
 ### 5.8 Questions
 
@@ -1951,7 +2005,7 @@ Every step is reversible with `Esc`, and `Skip for now` never blocks:
 | Command palette | filtered list with the match bolded, description, and the command's own key | `/` then type · `Tab` complete · `Enter` run · `Esc` close |
 | `@` file picker | recent first, fuzzy on name and path; the focused row shows `↗ code` | `Enter` **open in the external editor** · `Tab` insert the mention · `Esc` close |
 | Changed files | `M`/`A`/`D` with stat; `Enter` opens at the first changed line | `Enter` open · `d` diff |
-| Notifications and undo | right-aligned toast in the activity row's gap (`✓ build finished · 22s`); a destructive action offers `u undo · 8s` | `Ctrl+J` view · `u` undo |
+| Notifications and undo | right-aligned toast in the notification pane above the editor (`✓ build finished · 22s`); a destructive action offers `u undo · 8s` | `Ctrl+J` view · `u` undo |
 | Queued messages, attachments | one truncated `queued (2)` line above the editor; attachments and pasted blocks are `[Image #1 84 KB ×]` tokens inside the input (§5.2) | `↑` recall · `Backspace` selects then removes a token |
 | Rewind | checkpoint list with a restore scope `‹ conversation + code ›` | `↑↓` · `←/→` scope · `Enter` restore |
 | Diff hunk review | per-hunk accept or reject on the numbered diff | `a`/`r` · `A`/`R` all · `n`/`p` hunk |
@@ -1959,7 +2013,7 @@ Every step is reversible with `Esc`, and `Skip for now` never blocks:
 | Key help | contextual, grouped by task | `?` |
 | Job output | timestamped tail with follow | `f` follow · `↑` scroll · `x` stop |
 | Delete session | **plain `[ No ]  Yes`**, No focused first; no typed phrase | `←/→` or `n`/`y` · `Enter` |
-| Conversation search | the stream's search line (§5.6) | `Ctrl+F` |
+| Conversation search | the stream's search line (§5.6) | `/` and `?` in conversation mode |
 
 - **Opening a file** uses the configured external editor. GUI editors open detached
   with a goto argument (`file:line`); terminal editors suspend the screen and restore
@@ -2111,7 +2165,7 @@ incompatibly when that is the better design ([implementation-roadmap.md](./imple
 | Builder | Addition | Needed by |
 | --- | --- | --- |
 | `ui.child` | `priority`, `band`, `overflow` (admission) | status rows, activity row |
-| `ui.loader` | variants `bloom` `fill` `gap` `breath`; an inline shimmer span | activity row, loaders, onboarding |
+| `ui.loader` | variants `bloom` `fill` `gap` `breath` `pulse` (a small `•` that breathes); an inline shimmer span | activity row, loaders, onboarding |
 | `ui.progress` | `style: 'rule'`, `width`, `tone`, `showPercent` | todo, goal, compaction |
 | `ui.text` | `overflow: 'middle'` and `'start'` | sessions path, rail labels |
 | `ui.diff` | `start`, `numbered`, `hunkHeader`, `context`, `maxRows`; a red or green background behind the removed or added code (never the gutter) | edit cards, hunk review, the stream |
@@ -2139,15 +2193,15 @@ baseline verified against `main` when this was written; *new* means nothing like
 | Status | one row; goal and jobs are chips in it; a `SHELL` chip | **two composable rows**: row 1 facts (model, mode chips, context, directory, git, balance), row 2 views (agents, jobs, goal, todo) (§5.1) |
 | Editor | the conversation title and attachments are elsewhere; `! shell mode` is text in the border | the title in the frame's top-right corner; images, pastes, and `@` mentions as `[… ×]` tokens in the input with a two-step `Backspace`; one truncated queue line; `↑`/`↓` walk the queue then the history; shell mode is the border color (§5.2) |
 | Activity row | one truncated detail line; tips only while a turn runs; the interrupt key is not advertised | up to three `⎿` lines; `Esc interrupt · Ctrl+O expand` in the gap; tips only in the `Deep diving` row (§5.3) |
-| Tool rows | an edit has a two-column sign gutter; no line numbers | plain numbered old/new gutters and a red or green background behind the changed code, `A`/`M`/`D` for multi-file; write is one line, and highlighted code with line numbers when expanded (§5.3) |
+| Tool rows | an edit has a two-column sign gutter; no line numbers | one plain numbered gutter (old numbers on removed lines, new numbers on the rest) and a red or green background behind the changed code, `A`/`M`/`D` for multi-file; write is one line, and highlighted code with line numbers when expanded (§5.3) |
 | Compaction | a braille spinner and elapsed time; settles to `✓ compacted N items · ~Tk tokens` | a real occupancy bar with two stages, a drain on settle, and the before/after percentage (§5.6) |
 | Todo and goal | a flat `─` rule and a `Todo` title above the editor; the goal as a status chip | views of status row 2; the rule is the progress bar with `n of N`; goal paused and blocked states; nothing in the stream (§5.4) |
 | Subagents and jobs | a pane above the editor; jobs only as a footer count; neither selectable | views of status row 2, keyboard-selectable, `x` stops behind a confirm (§5.5) |
-| Conversation stream | scroll only; `Ctrl+O` opens the last three turns; a prompt is one bold row with nothing above it, so turns run together | a blank row and a timed rule before every prompt; every row selectable (`Alt+↑`), expand, copy, open in `$EDITOR`, and the whole stream searchable with `Ctrl+F` (§5.6) |
+| Conversation stream | scroll only; `Ctrl+O` opens the last three turns; a prompt is one bold row with nothing above it, so turns run together | a blank row and a timed rule before every prompt; every row selectable (`Alt+↑`), expand, copy, open in `$EDITOR`, and the whole stream searchable with `/` and `?` (§5.6) |
 | Key cues | no persistent prompt; `Ctrl+O` cue only on the last 3 turns, three spellings of a key; `ctrl+t to expand`-style lowercase | cues live with their owner, the activity gap, and the placeholder; one `Ctrl+O` notation (§3.3) |
 | Keys | each surface binds its own keys | named actions, common meanings (`Ctrl+S` save, `c` copy, `x` delete, `r` refresh, `Ctrl+G` external, `Ctrl+F` search), and runtime rebinding with a `/keys` panel (§3.5, §5.15) |
 | Feedback | one unprefixed row | a severity glyph and fixed lifetimes (§2.4) |
-| Decisions | three shapes: approval (actions row plus a `Reject with feedback` tab), plan review (`Other`/`o`), permission preset | one skeleton; the request is a stream row and the card sits at the foot of the stream; `Esc reject`; a same-line `Feedback:`/`Revise:` field; an open-in-editor key; variant A or B pending (§5.7) |
+| Decisions | three shapes: approval (actions row plus a `Reject with feedback` tab), plan review (`Other`/`o`), permission preset | one skeleton; the request is a stream row and the card sits at the foot of the stream; `Esc reject`; a `Feedback:`/`Revise:` field under the choices; an open-in-editor key; grant-first, digits choose at once (§5.7) |
 | Questions | `Back`/`Next`/`Submit answers`/`Cancel` buttons | no buttons, a step strip with a Review page, `←`/`→` move between questions (§5.8) |
 | Tabs and rails | the active tab wrapped in `‹ ›`; `←` out of a rail's content is unreliable | text color with a heavy underline, `!` attention, a vertical rail, and a defined inner-to-outer `←` ladder (§4.5) |
 | Model picker | the thinking strip is a row under the whole list with a `Provider default` pseudo-option; `Set as default`/`Cancel` buttons; hint says `Enter open` | the strip on the row, an unpinned state, no buttons, hint `Enter choose`, `[current · high]` badge (§5.9) |
@@ -2170,8 +2224,8 @@ Decisions only you can make, each with a recommendation. The answers given after
 implementation therefore differs from the prototype, are in
 [implementation-roadmap.md §2](./implementation-roadmap.md#2-decisions-and-differences).
 
-1. **Decision panels (§5.7).** Safe-first (A) or grant-first (B)? Recommendation: **A**.
-   The Approval scene shows both and runs a stray keystroke through the real key engine.
+1. **Decision panels (§5.7).** Answered: grant-first (B), built as the decision card. The common grant is row 1,
+   digits choose at once, and the 300 ms arm delay swallows every key but `Esc`.
 2. **Rebinding (§3.5).** Where overrides persist (Mayfly settings), whether a plugin's action ids are namespaced by
    plugin name, and the conflict policy (the prototype refuses a clash and names the owner). Recommendation:
    persist in settings, namespace plugin actions, refuse clashes.
@@ -2182,7 +2236,7 @@ implementation therefore differs from the prototype, are in
    cluster, which then also shows for a side conversation with no agents or jobs. Recommendation: keep.
 5. **Keys not yet checked against the keymap.** `Alt+↓` and `F6` entering the views, `Alt+↑` selecting the stream
    (some terminals and multiplexers bind `Alt+arrows`), `Ctrl+F` search, `Ctrl+G` external, `Ctrl+J` view
-   notification, `?` key help on an empty prompt, `/view <level>` and `Alt+V` for levels. The scene's `Ctrl+K`
+   notification (the stream search is `/` and `?`, not `Ctrl+F`), `?` key help on an empty prompt, `/view <level>` and `Alt+V` for levels. The scene's `Ctrl+K`
    and `Ctrl+V` only simulate adding an image or a paste. Recommendation: approve the intent now and let the
    implementation resolve conflicts through §3.5.
 6. **Onboarding permissions step (§5.12)** adds a step to every first run. Recommendation: ship it, with `Default`

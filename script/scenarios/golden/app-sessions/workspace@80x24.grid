@@ -1,5 +1,4 @@
 grid 80x24 cursor none
-| ⠱⣦⣄⣀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⣠⣴⠎
 | ⠀⠙⢿⣿⣿⣷⣶⣤⣀⣀⣴⣶⣦⣀⣀⣤⣶⣾⣿⣿⡿⠋⠀  mayfly
 | ⠀⠀⠀⠈⠻⢿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡿⠟⠁⠀⠀⠀  ephemeral agents, enduring works
 | ⠀⠀⠀⠀⠀⠀⠀⠉⠉⠁⢸⣿⡇⠈⠉⠉⠀⠀⠀⠀⠀⠀⠀
@@ -8,11 +7,12 @@ grid 80x24 cursor none
 | ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣿⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀  Model:     deepseek-flash · deepseek-of...
 | ⠀⠀⠀⠀⠀⠀⠀⠀⠀⡠⠊⠀⠑⢄⠀⠀⠀⠀⠀⠀⠀⠀⠀  Version:   scenario
 |
-| » Paint the app screenshots from the scenario goldens.
+|  » Paint the app screenshots from the scenario goldens.
 |
-| ● The Website app shots now come from the accepted goldens.
+|  ● The Website app shots now come from the accepted goldens.
 |
-|
+|  ✻ Worked for 1s · done 09:00
+|                                               Alt+↑ conversation · Alt+↓ bar
 |╭ Workspace sessions ──────────────────────────────────────────────────────────╮
 |│ ~/workspace                                                                  │
 |│ → Search this workspace’s conversations:                                     │
@@ -24,16 +24,17 @@ grid 80x24 cursor none
 |╰──────────────────────────────────────────────────────────────────────────────╯
 | deepseek-flash High  ~/workspace            cache 42%  context: 5% (5.5k/128k)
 styles
-0: 1-23 fg:#f5f5f7; 24-25 fg:#9a86e6
-1: 1-23 fg:#e9e5f6; 24-25 fg:#9a86e6; 26-67 fg:#9a86e6 b
-2: 1-23 fg:#dbd3f0; 24-25 fg:#9a86e6; 26-67 fg:#c9c0f0
-3: 1-23 fg:#c9beea; 24-25 fg:#9a86e6
-4: 1-23 fg:#b2a1ec; 24-25 fg:#9a86e6; 26-67 fg:#9aa3b8
-5: 1-25 fg:#9a86e6; 26-67 fg:#ededf2
-6: 1-23 fg:#8371d6; 24-25 fg:#9a86e6; 26-64 fg:#e9e6f4
-7: 1-23 fg:#6c5bbf; 24-25 fg:#9a86e6; 26-67 fg:#ededf2
-9: 1-54 fg:#9a86e6 b
-11: 1-2 fg:#ededf2
+0: 1-23 fg:#e9e5f6; 24-25 fg:#9a86e6; 26-67 fg:#9a86e6 b
+1: 1-23 fg:#dbd3f0; 24-25 fg:#9a86e6; 26-67 fg:#c9c0f0
+2: 1-23 fg:#c9beea; 24-25 fg:#9a86e6
+3: 1-23 fg:#b2a1ec; 24-25 fg:#9a86e6; 26-67 fg:#9aa3b8
+4: 1-25 fg:#9a86e6; 26-67 fg:#ededf2
+5: 1-23 fg:#8371d6; 24-25 fg:#9a86e6; 26-64 fg:#e9e6f4
+6: 1-23 fg:#6c5bbf; 24-25 fg:#9a86e6; 26-67 fg:#ededf2
+8: 2-3 fg:#9a86e6; 4-55 fg:#9a86e6 b
+10: 2-3 fg:#ededf2
+12: 2-29 fg:#9aa3b8
+13: 47-76 fg:#9aa3b8
 14: 0-1 fg:#dcd7f2; 2-19 fg:#f5f5f7 b; 20-79 fg:#dcd7f2
 15: 0 fg:#dcd7f2; 2-12 fg:#9aa3b8; 79 fg:#dcd7f2
 16: 0 fg:#dcd7f2; 2 fg:#9a86e6; 4-42 fg:#ededf2 b; 79 fg:#dcd7f2

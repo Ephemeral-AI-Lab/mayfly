@@ -19,6 +19,7 @@ import * as skillsCatalog from '../interaction/skills-catalog.ts'
 import * as skillsCommand from '../interaction/skills-command.ts'
 import { LiveAssistantStreamService } from '../conversation/live-stream.ts'
 import { SessionFactsService } from '../transcript/session-facts.ts'
+import { MayflyTickService } from '../transcript/tick.ts'
 import * as assistantStreamRecovery from './assistant-stream.ts'
 
 export * from './models.ts'
@@ -34,6 +35,8 @@ export const Config: z<Config> = z.object({ displayVersion: z.string() })
 export function apply(ctx: Context, config: Config = {}): void {
   const liveStream = new LiveAssistantStreamService(ctx)
   ctx.effect(() => () => liveStream.dispose())
+  const tick = new MayflyTickService(ctx)
+  ctx.effect(() => () => tick.dispose())
   ctx.plugin(assistantStreamRecovery)
   ctx.plugin({
     name: 'mayfly-session-facts',

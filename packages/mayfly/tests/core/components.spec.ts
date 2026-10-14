@@ -306,11 +306,11 @@ describe('createEditor', () => {
     editor.setText('hi')
     const lines = editor.render(20)
     // The per-dash rule is repainted as one box-drawn span.
-    expect(lines[0]).toBe(`${SGR.border}╭${'─'.repeat(18)}╮${RESET}`)
+    expect(lines[0]).toBe(`${SGR.textMuted}╭${'─'.repeat(18)}╮${RESET}`)
     // The content row carries `hi`, the inverse-video cursor right behind
     // it, and a side bar at each end (the four padding spaces feed them).
-    expect(lines[1]).toBe(`${SGR.border}│${RESET}   hi\x1b[7m \x1b[0m${' '.repeat(12)}${SGR.border}│${RESET}`)
-    expect(lines.at(-1)).toBe(`${SGR.border}╰${'─'.repeat(18)}╯${RESET}`)
+    expect(lines[1]).toBe(`${SGR.textMuted}│${RESET}   hi\x1b[7m \x1b[0m${' '.repeat(12)}${SGR.textMuted}│${RESET}`)
+    expect(lines.at(-1)).toBe(`${SGR.textMuted}╰${'─'.repeat(18)}╯${RESET}`)
     stop()
   })
 
@@ -321,16 +321,16 @@ describe('createEditor', () => {
     editor.setPromptSymbol('>')
     const plain = editor.render(20)
     // Column 2 carries the bare `>` (no SGR around it); column 0 is the bar.
-    expect(plain[1]).toBe(`${SGR.border}│${RESET} > \x1b[7m \x1b[0m${' '.repeat(14)}${SGR.border}│${RESET}`)
+    expect(plain[1]).toBe(`${SGR.textMuted}│${RESET} > \x1b[7m \x1b[0m${' '.repeat(14)}${SGR.textMuted}│${RESET}`)
 
     editor.setPromptSymbol('!')
     const bash = editor.render(20)
     // The bash symbol shares the border hue (kimi rule).
-    expect(bash[1]).toBe(`${SGR.border}│${RESET} ${SGR.border}!${RESET} \x1b[7m \x1b[0m${' '.repeat(14)}${SGR.border}│${RESET}`)
+    expect(bash[1]).toBe(`${SGR.textMuted}│${RESET} ${SGR.border}!${RESET} \x1b[7m \x1b[0m${' '.repeat(14)}${SGR.textMuted}│${RESET}`)
 
     editor.setPromptSymbol(undefined)
     const cleared = editor.render(20)
-    expect(cleared[1]).toBe(`${SGR.border}│${RESET}   \x1b[7m \x1b[0m${' '.repeat(14)}${SGR.border}│${RESET}`)
+    expect(cleared[1]).toBe(`${SGR.textMuted}│${RESET}   \x1b[7m \x1b[0m${' '.repeat(14)}${SGR.textMuted}│${RESET}`)
     stop()
   })
 
@@ -350,6 +350,8 @@ describe('createEditor', () => {
     const { tui, stop } = bootTui()
     const components = createSgrService(tui)
     const editor = components.createEditor({ paddingX: 4 })
+    // A focused editor draws its frame in the focus border; an unfocused one parks it in the muted tone.
+    editor.focused = true
     editor.setBorderLabel(`${SGR.shellMode}! shell mode${RESET}`)
     const labeled = editor.render(30)
     // The label's visible width is 12, leaving 28 - 12 dashes of the rule.
@@ -368,6 +370,8 @@ describe('createEditor', () => {
     const { tui, stop } = bootTui()
     const components = createSgrService(tui)
     const editor = components.createEditor({ paddingX: 4 })
+    // A focused editor draws its frame in the focus border; an unfocused one parks it in the muted tone.
+    editor.focused = true
     editor.setBorderTitle('  dock\x1b[31m-transcript\n redesign \x07')
     const titled = editor.render(40)
     // Controls are stripped and whitespace collapses: ` dock-transcript redesign ` (26) + `─`.

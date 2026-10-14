@@ -1,77 +1,72 @@
 /**
- * Renderer-neutral transcript projection consumer and its semantic TUI
- * controller. The selected session supplies one source; this module owns
- * generation-isolated reconciliation, bounded mounting, width-safe rendering,
- * and screen change notification.
+ * Renderer-neutral transcript projection consumer and the controller that publishes it. The selected session supplies
+ * one source; this module keeps one stream view per displayed or retained conversation, maps the displayed model to the
+ * stream's facts, and publishes `TranscriptView` into the conversation node slot. It owns neither widths nor rows: the
+ * screen compiles the node and scrolls it.
  *
  * @module @ephemeral-ai/mayfly/transcript/transcript-model
  */
 
-import { Service, type Context } from '@deepseek-ai/cordis'
-import { AttachmentId, type ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
-import type { MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
-import { GutterComponent } from '../core/gutter.ts'
-import type { MayflyComponent, MayflyComponents, MayflyScreen, MayflySemanticColors } from '../core/types.ts'
-import { concatRows } from '../core/ui-rows.ts'
-import { type MayflyTranslate, interpolateLocaleMessage } from '../frontend/locale.ts'
-import { freezeModel, materializeTranscriptEntries, type TranscriptCompactionModel, type TranscriptEntryModel, type TranscriptImageModel, type TranscriptModel, type TranscriptToolModel, type TranscriptTurnModel } from '../frontend/models.ts'
-import {
-  AssistantMessageComponent,
-  ErrorMessageComponent,
-  InterruptedMarkerComponent,
-  ToolCallComponent,
-  UserMessageComponent,
-  type UserMessageImages,
-} from './components.ts'
-import { ThinkingComponent } from './thinking.ts'
-import { CompactionRowComponent } from './compaction.ts'
-import { ToolLineComponent, isLineTool } from './tool-line.ts'
-import { ProcessTitleComponent, TurnHeaderComponent } from './process-rows.ts'
-import { buildDisplay, runningTurnOf, type DisplayItem, type EntryItem, type ProcessTitleItem, type TurnHeaderItem } from './process-groups.ts'
-import { ToolModelComponent, toolResultChip } from './tool-model.ts'
-import { ReadGroupComponent, groupReadsByFile } from './read-group.ts'
-import { SearchGroupComponent } from './search-group.ts'
-import { CommandGroupComponent } from './command-group.ts'
-import { parseToolArguments, summarizeToolCall } from './present.ts'
-import { summarizeToolText } from './envelope.ts'
-import { renderCanonicalNode, type CanonicalNodeRenderer } from './canonical-node-renderer.ts'
-import type { TranscriptThinkingItem, TranscriptToolItem } from './types.ts'
+import type { MayflyUiEvent, MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
+import { latestTurnOf, STREAM, streamTarget, TranscriptStream, type StreamRow, type TranscriptViewFacts } from '../components/transcript-view.ts'
+import type { MayflyNodeSlot } from '../core/node-slot.ts'
+import type { MayflySearchLine } from '../core/search-line.ts'
+import type { MayflyScreenService } from '../core/screen.ts'
+import type { MayflyDecisionRequest, MayflyFocusMode, MayflyScreen } from '../core/types.ts'
+import type { ApprovalMark, CompactionMark } from '../conversation/types.ts'
+import type { MayflyTranslate } from '../frontend/locale.ts'
+import { freezeModel, materializeTranscriptEntries, type TranscriptEntryModel, type TranscriptModel, type TranscriptTurnModel } from '../frontend/models.ts'
+import { NO_DISCLOSURE, toggleCall, toggleGroup, toggleRows, toggleTurn, type Disclosure } from './disclosure.ts'
+import type { CopyMode } from './row-text.ts'
+import { findHits, readPattern, type SearchPattern, type SearchResult } from './search.ts'
+import { StreamFacts } from './stream-facts.ts'
+import type { TickSource } from './tick.ts'
 import {
   DEFAULT_TRANSCRIPT_PRESENTATION,
   type TranscriptPresentationPolicy,
   type TranscriptPresentationSnapshot,
 } from './presentation-policy.ts'
 
-/** A mounted card's disclosure setters; every one is optional. */
-interface DisclosureTarget extends MayflyComponent {
-  setExpanded?(expanded: boolean): void
-  setScope?(scope: { readonly hint: boolean, readonly turnClosed: boolean }): void
-}
-
 type Source = TranscriptModel | (() => TranscriptModel | null)
 
-/** Renderer-only dependencies for semantic transcript entries. */
-export interface TranscriptModelRenderer extends CanonicalNodeRenderer {
-  readonly colors: MayflySemanticColors
-  readonly components: MayflyComponents
-  readonly images: () => UserMessageImages
-  /** Redraw nudge for rows that tick on their own (the opt-in running header). */
-  readonly requestRender?: () => void
+/** The screen as the transcript uses it: the L1 contract and the conversation node slot. */
+export type TranscriptScreen = MayflyScreen & Pick<MayflyScreenService, 'mountNodeSlot' | 'mountSearchLine'>
+
+/** What the controller reads besides the models: the policy, the translator, and the messages queued behind the stream. */
+export interface TranscriptControllerOptions {
   readonly presentation?: TranscriptPresentationPolicy
-  /**
-   * Keep the ticking running-turn header. Only for surfaces with no activity
-   * row (which otherwise owns every live fact), such as a readonly child view.
-   */
-  readonly liveTurnHeader?: boolean
-  /** Dynamic translator for transcript-owned renderer chrome. */
-  readonly t?: MayflyTranslate
-  /** Disable semantic component chrome while retaining canonical width-safe rendering. */
-  readonly semantic?: boolean
+  readonly t: MayflyTranslate
+  /** The messages the user typed while the agent works; read on every publish. */
+  readonly queued: () => readonly { readonly id: string, readonly text: string }[]
+  /** The requests waiting on the user, in the order they were asked; read on every publish. */
+  readonly requests?: () => readonly MayflyDecisionRequest[]
+  /** The clock a call that is in flight keeps its time by; absent, the stream's time only moves when it is published. */
+  readonly tick?: TickSource
+  /** The selected Agent's context window and occupancy and the marks around each recent compaction; read on every publish. */
+  readonly context?: () => { readonly marks?: readonly CompactionMark[] | undefined, readonly window?: number | undefined, readonly tokens?: number | undefined, readonly approvals?: readonly ApprovalMark[] | undefined } | undefined
+  /** Where the references of the images the stream shows are kept for the byte loader. */
+  readonly imageRefs?: Map<string, { readonly attachmentId: string, readonly mediaType: string }>
+  /** What `c` and `Ctrl+G` do with the row under the cursor. */
+  readonly rows?: StreamRowActions
+  /** Called when the stream gains or loses keyboard focus, for the mode the status line names. */
+  readonly focusMode?: (mode: MayflyFocusMode) => void
 }
 
-/** Renderer dependencies owned by the one product conversation controller. */
-interface TranscriptControllerOptions {
-  readonly renderer?: TranscriptModelRenderer
+/** What a row under the cursor can be sent to: the clipboard, or the editor. */
+export interface StreamRowActions {
+  /** Copy the row's content; `raw` is the model's JSON. */
+  copy(text: string, mode: CopyMode): void
+  /** Read the row's content in `$EDITOR`. */
+  open(text: string): void
+}
+
+/** How one retained view differs from the default. */
+export interface TranscriptViewOptions {
+  /**
+   * Keep the running turn's header. Only for views with no activity row (which otherwise owns every live fact), such as
+   * a read-only child conversation.
+   */
+  readonly liveTurnHeader?: boolean
 }
 
 /** Build an immutable transcript model from already-projected entries. */
@@ -98,851 +93,490 @@ export function appendTranscriptNode(
   return createTranscriptModel(model.id, [...materializeTranscriptEntries(model), entry], streaming, model.generation, model.turns)
 }
 
-function isSemantic(entry: MayflyUiNode | TranscriptEntryModel): entry is TranscriptEntryModel {
-  return entry.kind.startsWith('transcript-')
+const EMPTY_RESULT: SearchResult = { hits: [], turnStart: new Map(), orders: new Map() }
+
+/** The keys the stream answers itself while it holds focus: the interrupt key's second meaning, and the two searches. */
+const BASE_KEYS = { 'ctrl+c': STREAM.copyRaw, '/': STREAM.findDown, '?': STREAM.findUp } as const
+
+/** Once a search is accepted the arrows walk its matches, and `n`/`N` go on and back in the direction it was made. */
+const SELECT_KEYS = { ...BASE_KEYS, up: STREAM.matchPrev, down: STREAM.matchNext, n: STREAM.matchAgain, 'shift+n': STREAM.matchBack } as const
+
+/** A search of the displayed conversation: its line above the editor, the pattern, what it found, and which hit the stream stands on. */
+interface StreamSearchState {
+  readonly line: MayflySearchLine
+  /** `/` goes toward the newer rows, `?` toward the older. */
+  readonly forward: boolean
+  pattern: string
+  read: SearchPattern
+  /** `input`: the pattern is being typed and only highlights; `select`: it was accepted and the cursor walks the matches. */
+  phase: 'input' | 'select'
+  /** The model the hits were found in: a new model means the hits are found again. */
+  model: TranscriptModel | null
+  result: SearchResult
+  /** The hit the cursor stands on, in `result.hits`; `-1` while none is chosen. */
+  index: number
+  /** The turns the search has stood in: they stay mounted and open until the search ends, so the hits already seen stay in view. */
+  visited: Set<number>
 }
 
-function asToolItem(entry: TranscriptToolModel): TranscriptToolItem {
-  const parsedArguments = parseToolArguments(entry.arguments)
-  return {
-    kind: 'tool',
-    seq: entry.seq,
-    turn: entry.turn,
-    step: entry.step,
-    callId: entry.callId,
-    name: entry.name,
-    arguments: entry.arguments,
-    ...(parsedArguments === undefined ? {} : { parsedArguments }),
-    startedAt: entry.startedAt,
-    ...(entry.result === undefined ? {} : { result: entry.result }),
-    ...(entry.title === undefined ? {} : { title: entry.title }),
-    ...(entry.terminal === undefined ? {} : { terminal: entry.terminal }),
-  }
-}
-
-function asImageRef(image: TranscriptImageModel): ImageAttachmentRef {
-  return {
-    attachmentId: AttachmentId(image.attachmentId),
-    mediaType: image.mediaType,
-    bytes: image.bytes,
-    width: image.width,
-    height: image.height,
-    ...(image.name === undefined ? {} : { name: image.name }),
-    ...(image.originalDimensions === undefined ? {} : {
-      originalDimensions: { ...image.originalDimensions },
-    }),
-  }
-}
-
-interface CachedComponent {
-  readonly kind: TranscriptEntryModel['kind']
-  /** Presentation variant: `line` or `card` for tools, the kind otherwise. */
-  readonly variant: string
-  readonly component: MayflyComponent
-  readonly target: MayflyComponent
-  revision: number | string
-  rows: EntryRowsCache | undefined
-  readonly update: (entry: TranscriptEntryModel) => boolean
-}
-
-interface EntryRowsCache {
-  readonly revision: number | string
-  readonly width: number
-  readonly disclosure: string
-  readonly policy: TranscriptPresentationSnapshot
-  readonly rows: string[]
-}
-
-interface RenderedRowsCache {
-  readonly model: TranscriptModel
-  readonly width: number
-  readonly expanded: boolean
-  readonly policy: TranscriptPresentationSnapshot
-  readonly rows: string[]
-}
-
-interface TranscriptRenderPlan {
-  readonly sourceEntries: TranscriptModel['entries']
-  readonly policy: TranscriptPresentationSnapshot
-  readonly liveTurn: number | undefined
-  readonly liveStep: number | undefined
-  readonly streaming: boolean | undefined
-  readonly turns: TranscriptModel['turns']
-  readonly entries: TranscriptModel['entries']
-  readonly ids: ReadonlySet<string>
-  readonly expandableTurns: ReadonlySet<number>
-  readonly runningTurn: number | undefined
-  /** Index of the running turn's first entry; everything before it is stable. */
-  readonly split: number
-  /** Semantic entry ids before `split`, whose invalidation drops the prefix. */
-  readonly prefixIds: ReadonlySet<string>
-}
-
-/** Rows of every turn before the running one, reused across live frames. */
-interface PrefixRowsCache {
-  readonly width: number
-  readonly expanded: boolean
-  readonly items: readonly DisplayItem[]
-  readonly rows: string[]
-  readonly lastSeq: number | undefined
-  /** Header and group-title row ids the prefix keeps alive. */
-  readonly rowIds: readonly string[]
-}
-
-/** One header or group-title row component and its gutter. */
-type RowComponent =
-  | { readonly kind: 'turn-header', readonly target: TurnHeaderComponent, readonly component: GutterComponent }
-  | { readonly kind: 'process-title', readonly target: ProcessTitleComponent, readonly component: GutterComponent }
-
-/**
- * One ephemeral component anchored into the durable flow: it renders after the
- * last visible item whose seq does not exceed `seq`, orders among siblings by
- * `order`, and drops on generation change or explicit removal.
- */
-interface AnchoredContent {
-  readonly component: MayflyComponent
-  readonly seq: number
-  readonly order: number
-  cached: { readonly width: number, readonly rows: string[] } | undefined
-}
-
-function entryRevision(entry: TranscriptEntryModel): number | string {
-  return entry.renderRevision ?? entry.updatedSeq ?? Number.NaN
-}
-
-/** A tool entry renders as one row or as a card; other kinds have one form. */
-function variantOf(entry: TranscriptEntryModel): string {
-  return entry.kind === 'transcript-tool' ? isLineTool(entry) ? 'line' : 'card' : entry.kind
-}
-
-/** Ids of the header and group-title rows among display items. */
-function rowIdsOf(items: readonly DisplayItem[]): string[] {
-  return items.flatMap(item => item.kind === 'entry' ? [] : [item.id])
-}
-
-/** The anchor-ordering seq of the last item that carries one. */
-function lastItemSeq(items: readonly DisplayItem[], fallback: number | undefined): number | undefined {
-  for (let index = items.length - 1; index >= 0; index -= 1) {
-    const seq = items[index]!.seq
-    if (seq !== undefined) return seq
-  }
-  return fallback
-}
-
-/** Bounded semantic transcript component with id-based reconciliation. */
-export class TranscriptModelComponent implements MayflyComponent {
-  private readonly cached = new Map<string, CachedComponent>()
-  private readonly rowComponents = new Map<string, RowComponent>()
-  private readonly anchored = new Map<string, AnchoredContent>()
-  private canonicalRows = new WeakMap<object, { readonly width: number, readonly rows: string[] }>()
-  private expanded = false
-  private renderedRows: RenderedRowsCache | undefined
-  private generation: number | undefined
-  private plan: TranscriptRenderPlan | undefined
-  private prefix: PrefixRowsCache | undefined
-  private liveIds = new Set<string>()
-  private anchorOrder = 0
-
-  constructor(
-    private readonly source: () => TranscriptModel | null,
-    private readonly renderer: TranscriptModelRenderer,
-  ) {}
-
-  render(width: number): string[] {
-    const model = this.source()
-    if (model === null) {
-      this.renderedRows = undefined
-      this.canonicalRows = new WeakMap()
-      this.prune(new Set())
-      this.pruneRows(new Set())
-      this.clearAnchored()
-      this.generation = undefined
-      this.plan = undefined
-      this.prefix = undefined
-      this.liveIds.clear()
-      return []
-    }
-    if (this.generation !== model.generation) {
-      this.renderedRows = undefined
-      this.canonicalRows = new WeakMap()
-      this.prune(new Set())
-      this.pruneRows(new Set())
-      // Anchors appended since the last render keep their position on the
-      // first pass; a real generation change (new session content) drops them.
-      if (this.generation !== undefined) this.clearAnchored()
-      this.generation = model.generation
-      this.plan = undefined
-      this.prefix = undefined
-      this.liveIds.clear()
-    }
-    const policy = this.presentation()
-    const rendered = this.renderedRows
-    if (rendered?.model === model
-      && rendered.width === width
-      && rendered.expanded === this.expanded
-      && rendered.policy === policy) return rendered.rows
-    const liveEntries = model.live?.entries ?? []
-    const liveIds = new Set(liveEntries.map(entry => entry.id))
-    let plan = this.plan
-    if (plan === undefined || plan.sourceEntries !== model.entries || plan.policy !== policy
-      || plan.liveTurn !== model.live?.turn || plan.liveStep !== model.live?.step
-      || plan.streaming !== model.streaming || plan.turns !== model.turns) {
-      const bounded = model.live === undefined ? model.entries : model.entries.filter(entry => !((entry.kind === 'transcript-thinking' || entry.kind === 'transcript-assistant')
-        && entry.turn === model.live!.turn && entry.step === model.live!.step))
-      const turns = [...new Set([...bounded.filter(isSemantic).map(entry => entry.turn), ...(model.live === undefined ? [] : [model.live.turn])])]
-      const visibleTurns = new Set(turns.slice(-policy.windowTurns))
-      const entries = bounded.filter(entry => !isSemantic(entry) || visibleTurns.has(entry.turn))
-      const ids = new Set(entries.filter(isSemantic).map(entry => entry.id))
-      const runningTurn = runningTurnOf(model, entries)
-      const first = runningTurn === undefined ? -1 : entries.findIndex(entry => isSemantic(entry) && entry.turn === runningTurn)
-      const split = first < 0 ? entries.length : first
-      plan = {
-        sourceEntries: model.entries, policy, liveTurn: model.live?.turn, liveStep: model.live?.step,
-        streaming: model.streaming, turns: model.turns, entries, ids,
-        expandableTurns: new Set(turns.slice(-policy.expandTurns)), runningTurn, split,
-        prefixIds: new Set(entries.slice(0, split).filter(isSemantic).map(entry => entry.id)),
-      }
-      this.plan = plan
-      this.prefix = undefined
-      this.prune(new Set([...ids, ...liveIds]))
-    } else {
-      for (const id of this.liveIds) {
-        if (liveIds.has(id) || plan.ids.has(id)) continue
-        const cached = this.cached.get(id)
-        if (cached !== undefined) this.disposeComponent(cached.target)
-        this.cached.delete(id)
-      }
-    }
-    this.liveIds = liveIds
-    const flat = model.streaming === undefined || this.renderer.semantic === false
-    const tailEntries = [...plan.entries.slice(plan.split), ...liveEntries]
-    const tailFirst = tailEntries.find(isSemantic)?.seq
-    const display = (entries: TranscriptModel['entries'], previousSeq?: number): DisplayItem[] => buildDisplay({
-      entries, policy: policy.process, runningTurn: plan.runningTurn, turns: model.turns,
-      expanded: this.expanded, scope: plan.expandableTurns, flat, previousSeq,
-      runningHeader: this.renderer.liveTurnHeader === true,
-    })
-    let prefix = this.prefix
-    if (prefix === undefined || prefix.width !== width || prefix.expanded !== this.expanded) {
-      const items = display(plan.entries.slice(0, plan.split))
-      const anchors = [...this.anchored.values()].filter(item => tailFirst === undefined || item.seq < tailFirst)
-      prefix = {
-        width, expanded: this.expanded, items, rows: this.renderItems(items, anchors, width, policy),
-        lastSeq: lastItemSeq(items, undefined), rowIds: rowIdsOf(items),
-      }
-      this.prefix = prefix
-    }
-    const tailItems = tailEntries.length === 0 ? [] : display(tailEntries, prefix.lastSeq)
-    this.pruneRows(new Set([...prefix.rowIds, ...rowIdsOf(tailItems)]))
-    // A live frame is a fresh array over the shared stable rows: identity
-    // caches downstream (the frame clamp) see the change without a scan, and
-    // the concat stays a facade so a reader paints only the window it asks for.
-    let rows = prefix.rows
-    if (tailFirst !== undefined) {
-      const anchors = [...this.anchored.values()].filter(item => item.seq >= tailFirst)
-      rows = concatRows(prefix.rows, this.renderItems(tailItems, anchors, width, policy))
-    }
-    this.renderedRows = { model, width, expanded: this.expanded, policy, rows }
-    return rows
-  }
-
-  private renderCanonical(entry: MayflyUiNode, width: number): string[] {
-    const cached = this.canonicalRows.get(entry)
-    if (cached?.width === width) return cached.rows
-    const rows = renderCanonicalNode(entry, width, this.renderer)
-    this.canonicalRows.set(entry, { width, rows })
-    return rows
-  }
-
-  /**
-   * Anchor an ephemeral component into the durable flow after the last visible
-   * item whose seq does not exceed `seq`. Anchored content is presentation-only
-   * and drops on generation change, a null source, or `removeAnchored`.
-   */
-  appendAnchored(id: string, component: MayflyComponent, seq: number): void {
-    this.anchored.set(id, { component: new GutterComponent(component), seq, order: this.anchorOrder, cached: undefined })
-    this.anchorOrder += 1
-    this.dropRows()
-  }
-
-  /** Remove one anchored component early; unknown ids are ignored. */
-  removeAnchored(id: string): void {
-    const item = this.anchored.get(id)
-    if (item === undefined) return
-    this.anchored.delete(id)
-    this.disposeComponent(item.component)
-    this.dropRows()
-  }
-
-  /**
-   * Group anchored items by the display index they render before. Each item
-   * carries an ordering seq (a canonical node inherits the preceding one;
-   * leading canonicals keep header position), so an anchor past every seq
-   * lands at the tail of whatever items are visible — folding and grouping
-   * never displace it.
-   */
-  private anchoredInsertions(items: readonly DisplayItem[], anchors: readonly AnchoredContent[]): Map<number, AnchoredContent[]> | undefined {
-    if (anchors.length === 0) return undefined
-    const insertions = new Map<number, AnchoredContent[]>()
-    for (const anchor of [...anchors].sort((a, b) => a.seq - b.seq || a.order - b.order)) {
-      let index = 0
-      let lastSeq = Number.NEGATIVE_INFINITY
-      for (let at = 0; at < items.length; at += 1) {
-        const seq = items[at]!.seq
-        if (seq !== undefined) lastSeq = seq
-        if (lastSeq <= anchor.seq) index = at + 1
-      }
-      const list = insertions.get(index)
-      if (list === undefined) insertions.set(index, [anchor])
-      else list.push(anchor)
-    }
-    return insertions
-  }
-
-  /** Render every anchored item parked at one insertion index, cached per width. */
-  private anchoredRowsAt(insertions: Map<number, AnchoredContent[]>, index: number, width: number): string[] {
-    const items = insertions.get(index)
-    if (items === undefined) return []
-    return concatRows(...items.map(item => {
-      if (item.cached?.width !== width) item.cached = { width, rows: item.component.render(width) }
-      return item.cached.rows
-    }))
-  }
-
-  /** Render display items with their anchored locals interleaved; the parts compose lazily. */
-  private renderItems(items: readonly DisplayItem[], anchors: readonly AnchoredContent[], width: number, policy: TranscriptPresentationSnapshot): string[] {
-    const insertions = this.anchoredInsertions(items, anchors)
-    if (insertions === undefined) return concatRows(...items.map(item => this.renderItem(item, width, policy)))
-    return concatRows(
-      this.anchoredRowsAt(insertions, 0, width),
-      ...items.flatMap((item, index) => [this.renderItem(item, width, policy), this.anchoredRowsAt(insertions, index + 1, width)]),
-    )
-  }
-
-  private renderItem(item: DisplayItem, width: number, policy: TranscriptPresentationSnapshot): string[] {
-    if (item.kind !== 'entry') return this.renderRow(item, width)
-    return isSemantic(item.entry)
-      ? this.renderSemantic(item.entry, width, item, policy)
-      : this.renderCanonical(item.entry, width)
-  }
-
-  /** Render one turn header or group title through its reused row component. */
-  private renderRow(item: TurnHeaderItem | ProcessTitleItem, width: number): string[] {
-    // Header and title ids carry distinct prefixes, so an id never changes kind.
-    let row = this.rowComponents.get(item.id)
-    if (row === undefined) {
-      const t = this.renderer.t ?? interpolateLocaleMessage
-      if (item.kind === 'turn-header') {
-        const onTick = (): void => {
-          this.renderedRows = undefined
-          this.renderer.requestRender?.()
-        }
-        const target = new TurnHeaderComponent(this.renderer.colors, this.renderer.components, onTick, t)
-        row = { kind: 'turn-header', target, component: new GutterComponent(target) }
-      } else {
-        const target = new ProcessTitleComponent(this.renderer.colors, this.renderer.components, t)
-        row = { kind: 'process-title', target, component: new GutterComponent(target) }
-      }
-      this.rowComponents.set(item.id, row)
-    }
-    if (row.kind === 'turn-header') row.target.update(item as TurnHeaderItem)
-    else row.target.update(item as ProcessTitleItem)
-    return row.component.render(width)
-  }
-
-  /** Dispose header and title rows that left the display plan. */
-  private pruneRows(live: ReadonlySet<string>): void {
-    for (const [id, row] of this.rowComponents) {
-      if (live.has(id)) continue
-      this.disposeComponent(row.target)
-      this.rowComponents.delete(id)
-    }
-  }
-
-  private clearAnchored(): void {
-    for (const item of this.anchored.values()) this.disposeComponent(item.component)
-    this.anchored.clear()
-  }
-
-  private dropRows(): void {
-    this.renderedRows = undefined
-    this.prefix = undefined
-  }
-
-  /** Apply the global recent-detail expansion state to mounted entries. */
-  setExpanded(expanded: boolean): void {
-    if (this.expanded === expanded) return
-    this.expanded = expanded
-    this.dropRows()
-    for (const cached of this.cached.values()) {
-      cached.rows = undefined
-      cached.target.invalidate()
-    }
-  }
-
-  invalidate(): void {
-    this.dropRows()
-    this.canonicalRows = new WeakMap()
-    for (const cached of this.cached.values()) {
-      cached.rows = undefined
-      cached.component.invalidate()
-    }
-    for (const row of this.rowComponents.values()) row.component.invalidate()
-    for (const item of this.anchored.values()) {
-      item.cached = undefined
-      item.component.invalidate()
-    }
-  }
-
-  /** Dispose timers and async renderer resources held by cached components. */
-  dispose(): void {
-    this.dropRows()
-    this.plan = undefined
-    this.liveIds.clear()
-    this.canonicalRows = new WeakMap()
-    this.clearAnchored()
-    this.prune(new Set())
-    this.pruneRows(new Set())
-  }
-
-  private renderSemantic(entry: TranscriptEntryModel, width: number, disclosure: EntryItem, policy: TranscriptPresentationSnapshot): string[] {
-    if (this.renderer.semantic === false) return renderCanonicalNode({ kind: 'text', content: this.plainText(entry) }, width, this.renderer)
-    const revision = entryRevision(entry)
-    const variant = variantOf(entry)
-    let cached = this.cached.get(entry.id)
-    if (cached !== undefined && (cached.kind !== entry.kind || cached.variant !== variant || (cached.revision !== revision && !cached.update(entry)))) {
-      this.disposeComponent(cached.target)
-      this.cached.delete(entry.id)
-      cached = undefined
-    }
-    if (cached === undefined) {
-      cached = this.createComponent(entry)
-      this.cached.set(entry.id, cached)
-    } else if (cached.revision !== revision) {
-      cached.revision = revision
-      cached.rows = undefined
-    }
-    const target = cached.target as DisclosureTarget
-    target.setExpanded?.(disclosure.expanded)
-    target.setScope?.({ hint: disclosure.hint, turnClosed: disclosure.turnClosed })
-    const key = `${String(disclosure.expanded)}:${String(disclosure.hint)}:${String(disclosure.turnClosed)}`
-    const rendered = cached.rows
-    if (rendered?.revision === revision
-      && rendered.width === width
-      && rendered.disclosure === key
-      && rendered.policy === policy) return rendered.rows
-    const rows = cached.component.render(width)
-    cached.rows = { revision, width, disclosure: key, policy, rows }
-    return rows
-  }
-
-  private invalidateEntry(id: string): void {
-    const cached = this.cached.get(id)
-    if (cached !== undefined) cached.rows = undefined
-    this.renderedRows = undefined
-    if (this.plan?.prefixIds.has(id)) this.prefix = undefined
-  }
-
-  /** Current tree policy, or immutable shipped defaults for standalone consumers. */
-  private presentation(): TranscriptPresentationSnapshot {
-    return this.renderer?.presentation?.snapshot() ?? DEFAULT_TRANSCRIPT_PRESENTATION
-  }
-
-  private createComponent(entry: TranscriptEntryModel): CachedComponent {
-    const renderer = this.renderer
-    const t = renderer.t ?? interpolateLocaleMessage
-    let target: MayflyComponent
-    let update: (entry: TranscriptEntryModel) => boolean = () => false
-    switch (entry.kind) {
-      case 'transcript-user': {
-        const images = renderer.images()
-        target = new UserMessageComponent({
-          kind: 'user', seq: entry.seq, turn: entry.turn, text: entry.text, images: entry.images.map(asImageRef),
-        }, renderer.colors, renderer.components, {
-          ...images,
-          onReady: () => {
-            this.invalidateEntry(entry.id)
-            images.onReady?.()
-          },
-          presentation: () => this.presentation(),
-          t,
-        })
-        break
-      }
-      case 'transcript-assistant': {
-        const item = { kind: 'assistant' as const, seq: entry.seq, turn: entry.turn, step: entry.step, text: entry.text, streaming: entry.streaming }
-        target = new AssistantMessageComponent(item, renderer.colors, renderer.components)
-        update = (next): boolean => {
-          const assistant = next as Extract<TranscriptEntryModel, { readonly kind: 'transcript-assistant' }>
-          item.text = assistant.text
-          item.streaming = assistant.streaming
-          target.invalidate()
-          return true
-        }
-        break
-      }
-      case 'transcript-thinking': {
-        const item: TranscriptThinkingItem = {
-          kind: 'thinking', seq: entry.seq, turn: entry.turn, step: entry.step, text: entry.text, streaming: entry.streaming,
-          outputProgress: entry.outputProgress, durationMs: entry.durationMs,
-        }
-        target = new ThinkingComponent(item, renderer.colors, renderer.components, () => this.presentation().process.settledReasoningPreview, t)
-        update = (next): boolean => {
-          const thinking = next as Extract<TranscriptEntryModel, { readonly kind: 'transcript-thinking' }>
-          item.text = thinking.text
-          item.streaming = thinking.streaming
-          item.outputProgress = thinking.outputProgress
-          item.durationMs = thinking.durationMs
-          target.invalidate()
-          return true
-        }
-        break
-      }
-      case 'transcript-tool': {
-        if (isLineTool(entry)) {
-          const line = new ToolLineComponent(entry, renderer.colors, renderer.components, t)
-          target = line
-          update = (next): boolean => {
-            line.update(next as TranscriptToolModel)
-            return true
-          }
-          break
-        }
-        let tool = entry
-        const body = new ToolModelComponent(() => tool.presentation ?? null, renderer)
-        const component = new ToolCallComponent(asToolItem(entry), renderer.colors, renderer.components, body, toolResultChip(entry.presentation), t)
-        target = component
-        update = (next): boolean => {
-          tool = next as Extract<TranscriptEntryModel, { readonly kind: 'transcript-tool' }>
-          component.update(asToolItem(tool), toolResultChip(tool.presentation))
-          return true
-        }
-        break
-      }
-      case 'transcript-read-group': {
-        const group = new ReadGroupComponent(entry, renderer.colors, renderer.components, t)
-        target = group
-        update = (next): boolean => {
-          group.update(next as Extract<TranscriptEntryModel, { readonly kind: 'transcript-read-group' }>)
-          return true
-        }
-        break
-      }
-      case 'transcript-search-group': {
-        const group = new SearchGroupComponent(entry, renderer.colors, renderer.components, t)
-        target = group
-        update = (next): boolean => {
-          group.update(next as Extract<TranscriptEntryModel, { readonly kind: 'transcript-search-group' }>)
-          return true
-        }
-        break
-      }
-      case 'transcript-command-group': {
-        const group = new CommandGroupComponent(entry, renderer.colors, renderer.components, t)
-        target = group
-        update = (next): boolean => {
-          group.update(next as Extract<TranscriptEntryModel, { readonly kind: 'transcript-command-group' }>)
-          return true
-        }
-        break
-      }
-      case 'transcript-error':
-        target = new ErrorMessageComponent({
-          kind: 'error', seq: entry.seq, turn: entry.turn, message: entry.message,
-          ...(entry.code === undefined ? {} : { code: entry.code }),
-        }, renderer.colors, renderer.components, renderer.t)
-        break
-      case 'transcript-interrupted':
-        target = new InterruptedMarkerComponent(renderer.colors, renderer.components, renderer.t)
-        break
-      case 'transcript-compaction': {
-        const component = new CompactionRowComponent(entry, renderer.colors, renderer.components, () => {
-          this.invalidateEntry(entry.id)
-          renderer.requestRender?.()
-        }, t)
-        target = component
-        update = (next): boolean => {
-          component.update(next as TranscriptCompactionModel)
-          return true
-        }
-        break
-      }
-    }
-    return {
-      kind: entry.kind,
-      variant: variantOf(entry),
-      revision: entryRevision(entry),
-      target,
-      component: new GutterComponent(target),
-      rows: undefined,
-      update,
-    }
-  }
-
-  private plainText(entry: TranscriptEntryModel): string {
-    switch (entry.kind) {
-      case 'transcript-user': return entry.text
-      case 'transcript-assistant': return entry.text
-      case 'transcript-thinking': return entry.text
-      case 'transcript-tool': {
-        const text = entry.result?.fullText ?? entry.result?.text
-        return text === undefined ? summarizeToolCall(entry.name, entry.arguments) : summarizeToolText(text)
-      }
-      case 'transcript-read-group': {
-        const paths = groupReadsByFile(entry.reads).map(group => group.path)
-        return `Read ${String(entry.reads.length)} ${entry.reads.length === 1 ? 'call' : 'calls'}${paths.length === 0 ? '' : `: ${paths.join(', ')}`}`
-      }
-      case 'transcript-search-group': {
-        const patterns = entry.searches.map(call => call.pattern ?? 'search')
-        return `Searched ${String(entry.searches.length)} ${entry.searches.length === 1 ? 'time' : 'times'}: ${patterns.join(', ')}`
-      }
-      case 'transcript-command-group': {
-        const commands = entry.commands.slice(0, 3).map(call => call.command)
-        return `Ran ${String(entry.commands.length)} ${entry.commands.length === 1 ? 'command' : 'commands'}: ${commands.join(', ')}${entry.commands.length > 3 ? '…' : ''}`
-      }
-      case 'transcript-error': return entry.code === undefined ? entry.message : `${entry.message} (${entry.code})`
-      case 'transcript-interrupted': return 'Interrupted'
-      case 'transcript-compaction': {
-        if (entry.state === 'running') return 'Compacting context'
-        if (entry.state === 'error') return `Compaction failed${entry.error === undefined ? '' : `: ${entry.error}`}`
-        if (entry.shadowedCount === undefined) return entry.detail ?? 'Compacted'
-        return `Compacted ${String(entry.shadowedCount)} items${entry.shadowedTokens === undefined ? '' : ` (~${String(entry.shadowedTokens)} tokens)`}`
-      }
-    }
-  }
-
-  private prune(live: ReadonlySet<string>): void {
-    for (const [id, cached] of this.cached) {
-      if (live.has(id)) continue
-      this.disposeComponent(cached.target)
-      this.cached.delete(id)
-    }
-  }
-
-  private disposeComponent(component: MayflyComponent): void {
-    ;(component as MayflyComponent & { dispose?: () => void }).dispose?.()
-  }
-}
-
-interface MountedTranscript {
-  readonly component: TranscriptModelComponent
-  readonly unmount: () => void
-}
-
-/**
- * While the viewport is scrolled away, new content re-announces itself at
- * most this often: often enough to keep the follow notice alive, without a
- * notification record per streamed delta.
- */
-export const FOLLOW_NOTICE_INTERVAL_MS = 1000
-
-/** View key `setSource` mounts when a caller has a single conversation. */
-const DEFAULT_VIEW = 'default'
-
-/** One retained conversation view: its source and, once shown, its component. */
+/** One retained conversation view: its source, its options, and the facts it keeps by identity. */
 interface ControllerView {
   readonly source: Source
-  readonly renderer: Partial<TranscriptModelRenderer> | undefined
-  component: TranscriptModelComponent | undefined
+  readonly options: TranscriptViewOptions
+  readonly facts: StreamFacts
 }
 
 /**
- * The one conversation controller behind the fixed transcript slot. It keeps
- * a component per retained view, so switching the displayed conversation
- * swaps the mounted component without rebuilding the others' row caches.
+ * The one conversation controller behind the fixed transcript slot. It keeps the facts of each retained view, so
+ * switching the displayed conversation republishes the others' unchanged rows by identity.
  */
 export class TranscriptController {
   private readonly views = new Map<string, ControllerView>()
   private active: string | undefined
-  private mounted: MountedTranscript | undefined
-  private screen: MayflyScreen | undefined
-  private expanded = false
-  private localSerial = 0
-  private followNotice: { readonly paused: boolean, readonly at: number } | undefined
+  private slot: MayflyNodeSlot | undefined
+  private screen: TranscriptScreen | undefined
+  private disclosure: Disclosure = NO_DISCLOSURE
+  /** Counts the times focus moved into the stream; the list sends its cursor to the newest row once per count. */
+  private cursorRev = 0
+  /** The cursor send the slot's focus was last moved for. */
+  private sentRev = 0
+  /** Where the next cursor send lands, before the newest row: the rows a turn's toggle turned its own row into. */
+  private cursorIds: readonly string[] | undefined
+  private offTick: (() => void) | undefined
+  private search: StreamSearchState | undefined
+  /** The search is open, or opening: the stream's focus changes are the search's to announce. */
+  private searching = false
+  /** The next focus the stream takes keeps its cursor (a search ended or was abandoned). */
+  private resume = false
 
-  constructor(
-    private readonly owner: Context,
-    screen?: MayflyScreen,
-    private readonly options: TranscriptControllerOptions = {},
-  ) {
-    this.screen = screen
-  }
+  constructor(private readonly options: TranscriptControllerOptions) {}
 
-  attach(screen: MayflyScreen): void {
+  attach(screen: TranscriptScreen): void {
     this.unmount()
-    // Components cache rows for one renderer generation; a new screen rebuilds them.
-    for (const view of this.views.values()) this.release(view)
     this.screen = screen
     this.mount()
-  }
-
-  /** Mount one source as the only view. */
-  setSource(source: Source): void {
-    for (const key of this.views.keys()) if (key !== DEFAULT_VIEW) this.dropView(key)
-    this.setView(DEFAULT_VIEW, source)
-    this.show(DEFAULT_VIEW)
   }
 
   /**
    * Create or replace one retained view.
    * @param key - stable view key, such as the conversation id.
    * @param source - the view's model source.
-   * @param renderer - renderer options overriding the controller defaults for this view.
+   * @param options - how this view differs from the default.
    */
-  setView(key: string, source: Source, renderer?: Partial<TranscriptModelRenderer>): void {
-    const previous = this.views.get(key)
-    if (key === this.active) this.unmount()
-    if (previous !== undefined) this.release(previous)
-    this.views.set(key, { source, renderer, component: undefined })
-    if (key === this.active) this.mount()
+  setView(key: string, source: Source, options: TranscriptViewOptions = {}): void {
+    this.views.set(key, { source, options, facts: new StreamFacts() })
+    if (key === this.active) this.publish()
   }
 
-  /** Display one retained view; the previous one keeps its rendered rows. */
+  /** Display one retained view. */
   show(key: string | undefined): void {
     if (key === this.active) return
     const switched = this.active !== undefined && key !== undefined
-    this.unmount()
+    this.closeSearch()
     this.active = key
-    this.mount()
+    this.publish()
     // A different conversation opens at its newest content.
     if (switched) this.screen?.followContent()
   }
 
   /** Dispose one retained view. */
   dropView(key: string): void {
-    const view = this.views.get(key)
-    if (view === undefined) return
-    if (key === this.active) {
-      this.unmount()
+    if (this.views.delete(key) && key === this.active) {
       this.active = undefined
+      this.publish()
     }
-    this.release(view)
-    this.views.delete(key)
   }
 
+  /** The displayed model changed: publish it. The screen follows the tail, or counts what arrived below a view scrolled away. */
   refresh(): void {
     if (this.active === undefined) return
     const screen = this.screen
     if (screen === undefined) return
-    const paused = screen.contentChanged()
-    const now = Date.now()
-    const last = this.followNotice
-    if (last?.paused !== paused || (paused && now - last.at >= FOLLOW_NOTICE_INTERVAL_MS)) {
-      this.followNotice = { paused, at: now }
-      this.owner.emit('mayfly/transcript-content-changed', paused)
-    }
+    this.publish()
     screen.requestRender()
   }
 
-  setExpanded(expanded: boolean): void {
-    this.expanded = expanded
-    for (const view of this.views.values()) view.component?.setExpanded(expanded)
+  /** Something other than the model moved (the queued messages): publish again without announcing new content. */
+  republish(): void {
+    this.publish()
   }
 
-  /** Re-read presentation policy and invalidate every retained view. */
+  /** Ctrl-O: open or close the Verbose tier of the newest turns. @returns whether they are open now. */
+  toggleRecent(): boolean {
+    this.disclosure = { ...this.disclosure, recent: !this.disclosure.recent }
+    this.publish()
+    return this.disclosure.recent
+  }
+
+  /** Enter on a turn header: flip that turn against what the level and Ctrl-O give. */
+  toggleTurn(turn: number): void {
+    this.disclosure = toggleTurn(this.disclosure, turn)
+    this.publish()
+  }
+
+  /** Enter on a row: open the entries it stands for to their Verbose tier, or put them back. */
+  toggleRows(ids: readonly string[]): void {
+    this.disclosure = toggleRows(this.disclosure, ids)
+    this.publish()
+  }
+
+  private setDisclosure(disclosure: Disclosure): void {
+    this.disclosure = disclosure
+    this.publish()
+  }
+
+  /**
+   * `/` (toward the newer rows) or `?` (toward the older) in conversation mode: open the search line above the editor. The
+   * pattern is a regular expression; while it is typed the stream only highlights it, and `Enter` accepts it.
+   */
+  beginSearch(forward: boolean): void {
+    const screen = this.screen
+    if (screen === undefined || this.slot === undefined || this.active === undefined) return
+    this.search?.line.dispose()
+    this.searching = true
+    const line = screen.mountSearchLine({
+      prefix: forward ? '/' : '?',
+      onChange: pattern => { this.patternChanged(pattern) },
+      onAccept: () => { this.acceptSearch() },
+      onAbandon: () => { this.endSearch() },
+    })
+    const model = this.model()
+    this.search = { line, forward, pattern: '', read: { kind: 'empty' }, phase: 'input', model, result: model === null ? EMPTY_RESULT : findHits(model, { kind: 'empty' }), index: -1, visited: new Set() }
+    this.disclosure = { ...this.disclosure, forced: new Set() }
+    // The stream keeps the window it had around its cursor while the line holds the keys.
+    this.slot.spotlight(true)
+    this.slot.setKeys(BASE_KEYS)
+    this.options.focusMode?.('search')
+    this.publish()
+  }
+
+  /**
+   * End the search: the levels come back, the highlight goes, and the keys return to the conversation. Where the cursor
+   * stood on a match, it stays on that row (or on its turn's header when the row folded away).
+   */
+  endSearch(): void {
+    const search = this.search
+    if (search === undefined) return
+    const row = search.phase === 'select' ? this.slot?.cursor(STREAM.list) : undefined
+    const turn = search.result.hits[search.index]?.turn
+    this.stopSearching()
+    if (row !== undefined) {
+      this.cursorIds = [row, ...turn === undefined ? [] : [`turn-header:${String(turn)}`, `process:${String(turn)}`]]
+      this.cursorRev += 1
+    }
+    this.resume = true
+    this.options.focusMode?.('conversation')
+    this.publish()
+    this.slot?.focus()
+  }
+
+  /** The search goes without the keys returning: another conversation is shown, or the controller leaves. */
+  closeSearch(): void {
+    if (this.search === undefined) return
+    this.stopSearching()
+    this.options.focusMode?.('prompt')
+    this.publish()
+  }
+
+  private stopSearching(): void {
+    const search = this.search
+    if (search === undefined) return
+    this.search = undefined
+    this.searching = false
+    search.line.dispose()
+    this.slot?.spotlight(false)
+    this.slot?.setKeys(BASE_KEYS)
+    this.disclosure = { ...this.disclosure, forced: new Set() }
+  }
+
+  private patternChanged(pattern: string): void {
+    const search = this.search
+    if (search === undefined) return
+    search.pattern = pattern
+    search.read = readPattern(pattern)
+    search.model = this.model()
+    search.result = search.model === null ? EMPTY_RESULT : findHits(search.model, search.read)
+    search.index = -1
+    this.publish()
+  }
+
+  /** `Enter` on the pattern: the cursor goes to the first match past where it stood, and the matches become the stream's rows to walk. */
+  private acceptSearch(): void {
+    const search = this.search
+    if (search === undefined || search.result.hits.length === 0) return
+    const facts = this.active === undefined ? undefined : this.views.get(this.active)?.facts
+    const cursor = this.slot?.cursor(STREAM.list)
+    const owner = cursor === undefined ? undefined : facts?.locate(cursor)
+    const orders = owner === undefined ? [] : owner.parts.flatMap(part => search.result.orders.get(part) ?? [])
+    const start = owner?.turn === undefined ? undefined : search.result.turnStart.get(owner.turn)
+    const hits = search.result.hits
+    const first = orders.length > 0 ? Math.min(...orders) : start
+    const last = orders.length > 0 ? Math.max(...orders) : start
+    let index: number
+    // The row the cursor stands on counts: its own first match (for `/`) or last (for `?`) is where the search lands.
+    if (first === undefined || last === undefined) index = search.forward ? hits.length - 1 : 0
+    else if (search.forward) index = hits.findIndex(hit => hit.order >= first)
+    else index = hits.findLastIndex(hit => hit.order <= last)
+    // Past the last match (or before the first) the search wraps to the other end.
+    if (index < 0) index = search.forward ? 0 : hits.length - 1
+    search.index = index
+    search.phase = 'select'
+    search.line.freeze()
+    this.slot?.setKeys(SELECT_KEYS)
+    this.resume = true
+    this.options.focusMode?.('search-select')
+    this.slot?.focus()
+    this.land(search.forward ? 1 : -1)
+  }
+
+  /** `↑`/`↓` and `n`/`N` on the matches: the cursor moves to the previous or next one, wrapping. */
+  searchStep(step: number): void {
+    const search = this.search
+    if (search === undefined || search.phase !== 'select' || search.result.hits.length === 0) return
+    search.index = (search.index + step + search.result.hits.length) % search.result.hits.length
+    this.land(step)
+  }
+
+  /** `n` goes on in the direction of the search, `N` back. */
+  searchRepeat(sameWay: boolean): void {
+    const search = this.search
+    if (search !== undefined) this.searchStep(search.forward === sameWay ? 1 : -1)
+  }
+
+  /**
+   * Stand the stream on the hit at the search's index: its turn is mounted and open, and the cursor goes to the row that
+   * draws it. A hit no row draws is passed over in the direction of the step.
+   */
+  private land(step: number): void {
+    const search = this.search
+    if (search === undefined) return
+    const facts = this.active === undefined ? undefined : this.views.get(this.active)?.facts
+    const hits = search.result.hits
+    for (let tries = 0; tries < Math.max(1, hits.length); tries += 1) {
+      const hit = hits[search.index]
+      if (hit === undefined || facts === undefined) break
+      search.visited.add(hit.turn)
+      this.disclosure = { ...this.disclosure, forced: new Set(search.visited) }
+      this.publish()
+      const row = facts.rowOf(hit.part)
+      if (row !== undefined) {
+        this.cursorIds = [row]
+        this.cursorRev += 1
+        break
+      }
+      search.index = (search.index + step + hits.length) % hits.length
+    }
+    this.publish()
+  }
+
+  private searchStatus(search: StreamSearchState): string {
+    const t = this.options.t
+    const total = search.result.hits.length
+    if (search.read.kind === 'invalid') return t('Invalid regular expression · Esc to cancel')
+    if (search.phase === 'select') return t(total === 1 ? '{index}/{total} match' : '{index}/{total} matches', { index: search.index + 1, total })
+    if (search.read.kind === 'empty') return t('Type a regular expression · Enter to select · Esc to cancel')
+    if (total === 0) return t('No matches · Esc to cancel')
+    return t(total === 1 ? '{total} match · Enter to select · Esc to cancel' : '{total} matches · Enter to select · Esc to cancel', { total })
+  }
+
+  /** The displayed conversation's model, or `null`. */
+  private model(): TranscriptModel | null {
+    const view = this.active === undefined ? undefined : this.views.get(this.active)
+    return view === undefined ? null : typeof view.source === 'function' ? view.source() : view.source
+  }
+
+  /** Re-read the presentation policy and publish every row again. */
   refreshPresentationPolicy(): void {
-    for (const view of this.views.values()) view.component?.invalidate()
-    this.screen?.requestRender(true)
+    this.rewrite()
   }
 
-  /** Invalidate renderer-owned copy after a locale provider revision. */
+  /** Re-translate every row after a locale revision. */
   refreshLocale(): void {
-    for (const view of this.views.values()) view.component?.invalidate()
-    this.screen?.requestRender(true)
+    this.rewrite()
   }
 
   /** Expose the current immutable policy for diagnostics and tests. */
   presentationPolicy(): TranscriptPresentationSnapshot {
-    return this.options.renderer?.presentation?.snapshot() ?? DEFAULT_TRANSCRIPT_PRESENTATION
-  }
-
-  /**
-   * Append an ephemeral component into the displayed conversation flow at the
-   * current durable tail: later durable entries render below it and it scrolls
-   * up with the transcript instead of pinning above the editor. The entry never
-   * becomes session data and drops on generation change or explicit removal.
-   * @param component - the component to mount; the transcript applies its gutter.
-   * @returns a disposer removing the entry early; a no-op when nothing is mounted.
-   */
-  appendLocal(component: MayflyComponent): () => void {
-    const mounted = this.mounted
-    if (mounted === undefined) return () => {}
-    // `mounted` implies the active view exists; a function source may still
-    // report a null model (no session attached).
-    const source = this.views.get(this.active!)!.source
-    const model = typeof source === 'function' ? source() : source
-    let seq = -1
-    for (const entry of model?.entries ?? []) {
-      if (isSemantic(entry) && entry.seq > seq) seq = entry.seq
-    }
-    const id = `local.${this.localSerial += 1}`
-    mounted.component.appendAnchored(id, component, seq)
-    this.refresh()
-    let live = true
-    return () => {
-      if (!live) return
-      live = false
-      mounted.component.removeAnchored(id)
-      this.screen?.requestRender()
-    }
+    return this.options.presentation?.snapshot() ?? DEFAULT_TRANSCRIPT_PRESENTATION
   }
 
   dispose(): void {
+    this.offTick?.()
+    this.offTick = undefined
     this.unmount()
-    for (const view of this.views.values()) this.release(view)
     this.views.clear()
     this.active = undefined
     this.screen = undefined
   }
 
+  /** Texts and policy changed under the same ids: forget the kept rows and publish. */
+  private rewrite(): void {
+    for (const view of this.views.values()) view.facts.reset()
+    this.publish()
+    this.screen?.requestRender(true)
+  }
+
+  private publish(now = Date.now()): void {
+    const slot = this.slot
+    if (slot === undefined) return
+    const view = this.active === undefined ? undefined : this.views.get(this.active)
+    const model = view === undefined ? null : typeof view.source === 'function' ? view.source() : view.source
+    this.syncSearch(model)
+    if (view === undefined || model === null) {
+      slot.set(null)
+      slot.setTurns(0)
+      return
+    }
+    const facts = view.facts.build(model, {
+      policy: this.presentationPolicy(),
+      disclosure: this.disclosure,
+      liveTurnHeader: view.options.liveTurnHeader === true,
+      t: this.options.t,
+      now,
+      queued: this.options.queued(),
+      requests: this.options.requests?.() ?? [],
+      ...this.compactionInputs(),
+      ...(this.options.imageRefs === undefined ? {} : { imageRefs: this.options.imageRefs }),
+    })
+    slot.setTurns(latestTurnOf(facts))
+    const ids = this.cursorIds ?? []
+    const node = TranscriptStream(facts, this.cursorRev === 0 ? undefined : { rev: this.cursorRev, ...ids.length === 0 ? {} : { ids } }, this.search === undefined || this.search.read.kind !== 'ok' ? undefined : { pattern: this.search.pattern, caseSensitive: this.search.read.caseSensitive, ...this.search.phase === 'select' && this.search.index >= 0 ? { current: this.search.result.hits[this.search.index]!.nth } : {} })
+    slot.set(node)
+    // A cursor just sent also takes the keyboard focus, so the key that follows acts on that row.
+    const target = streamTarget(node)
+    if (target !== undefined && this.sentRev !== this.cursorRev) {
+      this.sentRev = this.cursorRev
+      slot.focusRow(STREAM.list, target)
+    }
+    this.keepTime(facts)
+  }
+
+  /** A conversation that moved on while a search is open: its hits are found again, and the line says how many there are now. */
+  private syncSearch(model: TranscriptModel | null): void {
+    const search = this.search
+    if (search === undefined) return
+    if (model !== search.model) {
+      const current = search.result.hits[search.index]
+      search.model = model
+      search.result = model === null ? EMPTY_RESULT : findHits(model, search.read)
+      const kept = current === undefined ? -1 : search.result.hits.findIndex(hit => hit.part === current.part && hit.nth === current.nth)
+      search.index = search.phase === 'input' ? -1 : kept >= 0 ? kept : Math.min(search.index, search.result.hits.length - 1)
+    }
+    search.line.set(this.searchStatus(search))
+  }
+
+  private compactionInputs(): { readonly compactions?: readonly CompactionMark[], readonly contextWindow?: number, readonly contextTokens?: number, readonly approvals?: readonly ApprovalMark[] } {
+    const context = this.options.context?.()
+    if (context === undefined) return {}
+    return {
+      ...context.marks === undefined ? {} : { compactions: context.marks },
+      ...context.window === undefined ? {} : { contextWindow: context.window },
+      ...context.tokens === undefined ? {} : { contextTokens: context.tokens },
+      ...context.approvals === undefined ? {} : { approvals: context.approvals },
+    }
+  }
+
+  /** A call or a compaction in flight shows its own time, so the stream is built again at each tick while one is on screen. */
+  private keepTime(facts: TranscriptViewFacts): void {
+    const running = (row: StreamRow): boolean => (row.kind === 'tool' && row.state === 'pending') || (row.kind === 'compaction' && row.facts.state === 'running')
+    const pending = facts.turns.some(turn => turn.rows.some(running) || (turn.after?.some(running) ?? false))
+    if (!pending) {
+      this.offTick?.()
+      this.offTick = undefined
+      return
+    }
+    if (this.offTick !== undefined || this.options.tick === undefined) return
+    this.offTick = this.options.tick.subscribe((now) => {
+      this.publish(now)
+      this.screen?.requestRender()
+    })
+  }
+
   private mount(): void {
     const screen = this.screen
-    const view = this.active === undefined ? undefined : this.views.get(this.active)
-    const renderer = this.options.renderer
-    if (screen === undefined || view === undefined || renderer === undefined) return
-    const source = view.source
-    view.component ??= new TranscriptModelComponent(
-      () => typeof source === 'function' ? source() : source,
-      view.renderer === undefined ? renderer : { ...renderer, ...view.renderer },
-    )
-    const component = view.component
-    component.setExpanded(this.expanded)
-    const slot = screen.mountContentSlot('transcript.conversation', component)
-    this.mounted = { component, unmount: () => slot.dispose() }
+    if (screen === undefined) return
+    this.slot = screen.mountNodeSlot('transcript.conversation', {
+      region: 'content',
+      // The stream's keys are taught on the notification pane while it holds focus, not on a row of its own.
+      hints: false,
+      // `ctrl+c` is reserved for interrupting, so the stream answers it itself while it holds focus.
+      keys: BASE_KEYS,
+      onEvent: event => { this.onEvent(event) },
+      // Focus moves up into the stream at its newest row; `Esc` and `Alt+↓` give it back to the prompt.
+      onFocus: () => {
+        // A search handing the keys back keeps the cursor where it stands.
+        if (this.resume) {
+          this.resume = false
+          this.publish()
+          return
+        }
+        // A focused stream shows the window around its cursor, so the view returns to the tail where the cursor starts: a
+        // reader who had scrolled away would otherwise find the window below the view and nothing above it.
+        this.screen?.followContent()
+        this.cursorIds = undefined
+        this.cursorRev += 1
+        this.publish()
+      },
+      onFocusChange: (focused) => { if (!this.searching) this.options.focusMode?.(focused ? 'conversation' : 'prompt') },
+      // `Esc` or `Alt+↓` while a search holds the cursor ends the search and stays in the conversation.
+      onLeave: () => { if (this.search === undefined) this.slot?.release(); else this.endSearch() },
+    })
+    this.publish()
     screen.requestRender()
   }
 
+  /** The stream's controls: where the cursor is, Enter on a row, and the keys that copy it or open it in the editor. */
+  private onEvent(event: MayflyUiEvent): void {
+    if (event.kind === 'selection-accept' && event.controlId === STREAM.list) this.accept(event.selectedIds[0])
+    else if (event.kind === 'activate' && event.actionId === STREAM.copy) this.withRowText('text', text => this.options.rows?.copy(text, 'text'))
+    else if (event.kind === 'activate' && event.actionId === STREAM.copyRaw) this.withRowText('raw', text => this.options.rows?.copy(text, 'raw'))
+    else if (event.kind === 'activate' && event.actionId === STREAM.open) this.withRowText('text', text => this.options.rows?.open(text))
+    else if (event.kind === 'activate' && event.controlId === 'keys') this.onKey(event.actionId)
+  }
+
+  /** The keys the stream answers itself: the searches, and while one is accepted the walk over its matches. */
+  private onKey(actionId: string): void {
+    if (actionId === STREAM.findDown) this.beginSearch(true)
+    else if (actionId === STREAM.findUp) this.beginSearch(false)
+    else if (actionId === STREAM.matchPrev) this.searchStep(-1)
+    else if (actionId === STREAM.matchNext) this.searchStep(1)
+    else if (actionId === STREAM.matchAgain) this.searchRepeat(true)
+    else if (actionId === STREAM.matchBack) this.searchRepeat(false)
+  }
+
+  private accept(itemId: string | undefined): void {
+    const facts = this.active === undefined ? undefined : this.views.get(this.active)?.facts
+    const owner = itemId === undefined ? undefined : facts?.locate(itemId)
+    if (facts === undefined || owner === undefined) return
+    this.cursorIds = undefined
+    // A header, a compact title, and the closing line stand for their turn: the cursor follows to the turn's other row.
+    if (owner.kind !== 'entries') {
+      if (owner.turn === undefined) return
+      this.cursorIds = [`turn-header:${String(owner.turn)}`, `process:${String(owner.turn)}`]
+      this.cursorRev += 1
+      this.toggleTurn(owner.turn)
+      return
+    }
+    // Any other row opens the parts it stands for; its row keeps its id, so the cursor stays on it. A run opens or folds whole
+    // from its head (and keeps the calls that join it in step), a call of it flips alone, and the run keeps its shape.
+    this.cursorIds = [itemId!]
+    this.cursorRev += 1
+    const run = owner.run
+    if (run === undefined) this.toggleRows(owner.parts)
+    else if (itemId === run.head) this.setDisclosure(toggleGroup(this.disclosure, run.head, run.calls))
+    else this.setDisclosure(toggleCall(this.disclosure, run.head, run.calls, owner.parts[0]!))
+  }
+
+  private withRowText(mode: CopyMode, use: (text: string) => void): void {
+    const facts = this.active === undefined ? undefined : this.views.get(this.active)?.facts
+    const cursor = this.slot?.cursor(STREAM.list)
+    const text = cursor === undefined ? undefined : facts?.textOf(cursor, mode)
+    if (text !== undefined && text !== '') use(text)
+  }
+
   private unmount(): void {
-    const mounted = this.mounted
-    if (mounted === undefined) return
-    mounted.unmount()
-    this.mounted = undefined
-  }
-
-  private release(view: ControllerView): void {
-    view.component?.dispose()
-    view.component = undefined
-  }
-}
-
-declare module '@deepseek-ai/cordis' {
-  interface Context { mayflyTranscriptLocals: TranscriptLocalsService }
-}
-
-/**
- * `ctx.mayflyTranscriptLocals` — appends ephemeral local components into the
- * mounted conversation flow. Entries render where they were appended and
- * scroll up with the transcript instead of pinning to its tail; they are
- * presentation-only and never become session events. Consumers resolve the
- * service through `ctx.get` and fall back to local content slots when absent.
- */
-export class TranscriptLocalsService extends Service {
-  constructor(ctx: Context, private readonly controller: TranscriptController) {
-    super(ctx, 'mayflyTranscriptLocals')
-  }
-
-  /** Append one ephemeral component at the current durable tail. */
-  append(component: MayflyComponent): () => void {
-    return this.controller.appendLocal(component)
+    this.closeSearch()
+    this.slot?.dispose()
+    this.slot = undefined
   }
 }

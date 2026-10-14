@@ -7,12 +7,15 @@
  *   pnpm run scenario <name> [--width N] [--height N] [--no-color] [--ascii] [--speed N]
  *   pnpm run scenario --list
  *
+ * A scenario's brief (its `review` field) prints before the product opens, and `--list` marks the briefed ones.
+ *
  * Like the runner, it gives the session a home, a session store, and storages of its own. @module script/scenario
  */
 
 import { fileURLToPath } from 'node:url'
 import { join } from 'node:path'
 import { assertDshVersion, resolveDshBin, root } from './smoke-lib.mjs'
+import { briefText, listLine } from './scenarios/brief.mjs'
 import { CATALOG, scenarioNamed } from './scenarios/catalog.mjs'
 import { prepareSession } from './scenarios/session.mjs'
 import { ensureThrowawayProfile } from './workbench/profile.mjs'
@@ -49,12 +52,15 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   if (parsed.error !== undefined) { console.error(parsed.error); process.exit(2) }
   const { options } = parsed
   if (options.list) {
-    for (const [name, scenario] of Object.entries(CATALOG)) console.log(`  ${name.padEnd(24)}${scenario.summary}`)
+    for (const [name, scenario] of Object.entries(CATALOG)) console.log(listLine(name, scenario))
+    console.log('\n* carries a brief (pnpm run scenario <name> prints it before the product opens)')
     process.exit(0)
   }
   const scenario = scenarioNamed(options.name)
   if (scenario === undefined) { console.error(`unknown scenario "${options.name}"; try pnpm run scenario --list`); process.exit(2) }
 
+  const brief = briefText(scenario.name, scenario)
+  if (brief !== '') console.log(brief)
   const dshBin = resolveDshBin()
   assertDshVersion(dshBin)
   const profile = ensureThrowawayProfile({ repo: root, gallery: scenario.source.gallery === true, dshBin, artifacts: join(root, '.artifacts/bench') })

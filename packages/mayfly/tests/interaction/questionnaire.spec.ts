@@ -48,6 +48,20 @@ describe('shared questionnaire', () => {
     await expect(pending).resolves.toEqual({ answers: [{ id: 'one', selected: ['Beta'] }, { id: 'two', selected: [] }] })
   })
 
+  it('shows the question detail and each option description, and omits a missing description', async () => {
+    const bench = await setup()
+    const pending = bench.ctx.userQuestions.ask({ questions: [
+      { id: 'pick', question: 'Which?', detail: 'Context for the choice', options: [{ label: 'Alpha', description: 'the first choice' }, { label: 'Beta' }] },
+    ] })
+    const model = bench.model()
+    const json = JSON.stringify(model.node)
+    expect(json).toContain('Context for the choice')
+    expect(json).toContain('the first choice')
+    expect(json).toContain('"Beta"')
+    model.requestClose()
+    await expect(pending).rejects.toMatchObject({ code: 'ASK_CANCELLED' })
+  })
+
   it('submits from the last question list on Enter', async () => {
     const bench = await setup()
     const pending = bench.ctx.userQuestions.ask({ questions: [

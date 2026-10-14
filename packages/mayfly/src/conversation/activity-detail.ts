@@ -1,19 +1,14 @@
 /**
- * Bounded one-line details for live process activity: the salient argument
- * of a tool call and the latest reasoning paragraph. Pure helpers shared by
- * the facts projection (which records the running action's detail for the
- * activity row) and the transcript model (which keeps a detail per tool
- * call). Details never carry control characters, so width math over them is
- * exact.
+ * Bounded one-line details of a tool call: its salient argument. Pure helpers
+ * for the transcript model (which keeps a detail per tool call) and the stream's
+ * pending lines. Details never carry control characters, so width math over
+ * them is exact.
  *
  * @module @ephemeral-ai/mayfly/conversation/activity-detail
  */
 
 /** Upper bound, in graphemes, of one detail. */
 export const LIVE_DETAIL_MAX_CHARS = 160
-
-/** Trailing code units of a reasoning text scanned for its latest paragraph. */
-export const REASONING_DETAIL_SCAN_CHARS = 4096
 
 /** Argument keys consulted for a detail, in priority order (upstream list). */
 const LIVE_DETAIL_KEYS = [
@@ -77,40 +72,4 @@ export function argumentDetail(args: unknown): string {
  */
 export function toolDetail(name: string, args: unknown): string {
   return argumentDetail(args) || normalizeDetail(name)
-}
-
-/**
- * The salient argument of one committed call's raw JSON arguments.
- * @param raw - the call's argument string as the model produced it.
- * @returns the bounded detail, or `''` for malformed or detail-free arguments.
- */
-export function callDetail(raw: string): string {
-  let args: unknown
-  try {
-    args = JSON.parse(raw)
-  } catch {
-    return ''
-  }
-  return argumentDetail(args)
-}
-
-/**
- * The latest non-empty reasoning paragraph, bold markers stripped. Only the
- * trailing {@link REASONING_DETAIL_SCAN_CHARS} code units are scanned, so a
- * per-delta call stays bounded; a paragraph cut by that window leads with `…`.
- * @param text - one step's reasoning text.
- * @returns the bounded detail, or `''`.
- */
-export function reasoningDetail(text: string): string {
-  let start = Math.max(0, text.length - REASONING_DETAIL_SCAN_CHARS)
-  // Never start inside a surrogate pair.
-  const code = text.charCodeAt(start)
-  if (start > 0 && code >= 0xdc00 && code <= 0xdfff) start += 1
-  const paragraphs = text.slice(start).split(/\r?\n[\t ]*\r?\n/)
-  for (let index = paragraphs.length - 1; index >= 0; index -= 1) {
-    const detail = normalizeDetail(paragraphs[index]!.replaceAll('**', ''))
-    if (detail === '') continue
-    return start > 0 && index === 0 ? normalizeDetail(`…${detail}`) : detail
-  }
-  return ''
 }

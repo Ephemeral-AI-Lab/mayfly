@@ -57,24 +57,28 @@ function integer(h: AdmissionHelpers, object: Fields, key: string, path: string,
 export function admitTextStyles(h: AdmissionHelpers, object: Fields, path: string): Fields {
   const value = h.own(object, 'styles', path)
   if (value === undefined) return {}
-  const styles = h.collection(value, `${path}.styles`).map((style, index) => h.enumeration<MayflyTextStyle>(style, ['strong', 'italic', 'strike'], `${path}.styles[${String(index)}]`))
+  const styles = h.collection(value, `${path}.styles`).map((style, index) => h.enumeration<MayflyTextStyle>(style, ['strong', 'italic', 'strike', 'inverse'], `${path}.styles[${String(index)}]`))
   if (new Set(styles).size !== styles.length) h.invalid(`${path}.styles contains duplicates`)
   return { styles }
 }
 
-/** A code node's `numbered`. */
+/** A code node's `numbered`, `start`, and `label`. */
 export function admitCodeFields(h: AdmissionHelpers, object: Fields, path: string): Fields {
-  return present('numbered', flag(h, object, 'numbered', path))
+  return { ...present('numbered', flag(h, object, 'numbered', path)), ...present('start', integer(h, object, 'start', path, 0, 1_000_000)), ...present('label', flag(h, object, 'label', path)) }
 }
 
-/** A diff node's `start`, `numbered`, `hunkHeader`, `context` (0 to 3), and `maxRows`. */
+/** A diff node's `start`, `beforeStart`, `numbered`, `numberWidth` (1 to 9), `hunkHeader`, `context` (0 to 3), `maxRows`, the `tail` row that ends a cut diff, and its `language`. */
 export function admitDiffFields(h: AdmissionHelpers, object: Fields, path: string): Fields {
   return {
     ...present('start', integer(h, object, 'start', path, 0, 1_000_000)),
+    ...present('beforeStart', integer(h, object, 'beforeStart', path, 0, 1_000_000)),
     ...present('numbered', flag(h, object, 'numbered', path)),
+    ...present('numberWidth', integer(h, object, 'numberWidth', path, 1, 9)),
     ...present('hunkHeader', flag(h, object, 'hunkHeader', path)),
     ...present('context', integer(h, object, 'context', path, 0, 3)),
     ...present('maxRows', integer(h, object, 'maxRows', path, 1, 10_000)),
+    ...present('tail', h.own(object, 'tail', path) === undefined ? undefined : h.label(h.own(object, 'tail', path), `${path}.tail`)),
+    ...present('language', h.own(object, 'language', path) === undefined ? undefined : h.label(h.own(object, 'language', path), `${path}.language`)),
   }
 }
 

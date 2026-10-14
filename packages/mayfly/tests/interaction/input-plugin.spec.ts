@@ -18,6 +18,7 @@ import { AttachmentId, type ImageAttachmentRef } from '@deepseek-ai/dsh-attachme
 import type { MayflyEditorSubmitRequest, MayflyEditorSubmitValue } from '@ephemeral-ai/mayfly-ui'
 import type { MayflyConversationView } from '../../src/app/conversation-views.ts'
 import * as inputPlugin from '../../src/interaction/input-plugin.ts'
+import { ACTION_MOVE_DOWN, ACTION_MOVE_UP } from '../../src/interaction/keys.ts'
 import { __setCatalogForTest } from '../../src/interaction/skills-catalog.ts'
 import * as paneQueuePlugin from '../../src/interaction/pane-queue.ts'
 import {
@@ -100,6 +101,22 @@ function sideView(side: SideFixture, revision: number): DisplayedFixture {
   return { displayed: { ...side, id: `session:${side.sessionId}`, residency: 'displayed' } as MayflyConversationView, revision }
 }
 
+/** The lane each mounted hint reads its notices from: the notices left the footer for the notification pane. */
+const noticeLanes = new WeakMap<MayflyComponent, Context>()
+
+/** The lane's notices, written as the footer used to draw them: a severity sigil, its glyph, then the message. */
+function noticesOf(hint: MayflyComponent): string[] {
+  const sigil = { info: '^', success: '^', warning: '?', error: '!' } as const
+  const glyph = { info: 'ℹ', success: '✓', warning: '⚠', error: '✗' } as const
+  const ctx = noticeLanes.get(hint)
+  // A warning or an error carries its sigil twice before the message and once after it (the emphasis of its tone).
+  return (ctx?.mayflyUiInteraction?.notificationSnapshot() ?? []).map((record) => {
+    const mark = sigil[record.severity]
+    const emphasis = record.severity === 'error' || record.severity === 'warning'
+    return `${mark}${glyph[record.severity]} ${emphasis ? mark : ''}${mark}${record.message}${emphasis ? mark : ''}`
+  })
+}
+
 async function mount(options: {
   withAgent?: boolean
   running?: boolean
@@ -162,6 +179,7 @@ async function mount(options: {
     render: width => editorRoot.render(width).slice(editor.render(width).length),
     invalidate: () => editorRoot.invalidate(),
   }
+  noticeLanes.set(hint, ctx)
   // The terminal paints one frame before it can deliver focused input. The
   // shell compiler synchronizes its nested editor focus during that frame.
   editorRoot.render(screen.columns)
@@ -234,12 +252,10 @@ describe('mayfly-input plugin', () => {
     expect(screen.children).toEqual([transcriptRow, editorRoot])
   })
 
-  it('pauses tail-follow, advertises new messages, and resumes on End', async () => {
-    const { ctx, screen, editor, editorRoot, hint, fiber } = await mount()
+  it('pages the transcript from the editor and resumes the tail on End', async () => {
+    const { screen, editor, editorRoot, hint, fiber } = await mount()
     screen.contentScrollResult = true
     screen.contentPaused = true
-    ctx.emit('mayfly/transcript-content-changed', screen.contentChanged())
-    expect(hint.render(80)).toEqual(['^ℹ ^new messages available · press End to follow'])
 
     type(editor, 'draft')
     expect(screen.sendContentInput('\x1b[5~')).toBe(true)
@@ -251,9 +267,12 @@ describe('mayfly-input plugin', () => {
       { direction: 'down', amount: 20 },
     ])
     expect(screen.sendContentInput('\x1b[F')).toBe(false)
+    // Ctrl+↓ follows the tail even with a draft, for keyboards that have no End key.
+    expect(screen.sendContentInput('\x1b[1;5B')).toBe(true)
+    expect(screen.followCount).toBe(1)
     editor.setText('')
     expect(screen.sendContentInput('\x1b[F')).toBe(true)
-    expect(screen.followCount).toBe(1)
+    expect(screen.followCount).toBe(2)
     expect(screen.contentPaused).toBe(false)
     expect(hint.render(80)).toEqual([])
 
@@ -294,7 +313,7 @@ describe('mayfly-input plugin', () => {
   it('clears input-owned navigation feedback when the session switch settles', async () => {
     const { ctx, hint, agent } = await mount()
     getSharedEditor(ctx)?.report?.('navigation', { message: 'creating rewind branch...', severity: 'info' })
-    expect(hint.render(80)).toEqual(['^ℹ ^creating rewind branch...'])
+    expect(noticesOf(hint)).toEqual(['^ℹ ^creating rewind branch...'])
     ctx.emit('test/session-changed', agent)
     expect(hint.render(80)).toEqual([])
     ;(ctx.get('testSession') as { current: Agent | null }).current = null
@@ -432,7 +451,7 @@ describe('mayfly-input plugin', () => {
 
     type(editor, '[image #1] keep this')
     editor.handleInput(KEY.enter)
-    await vi.waitFor(() => expect(hint.render(80)).toEqual(['!✗ !!child rejected the prompt!']))
+    await vi.waitFor(() => expect(noticesOf(hint)).toEqual(['!✗ !!child rejected the prompt!']))
     expect(editor.getText()).toBe('[image #1] keep this')
     expect(editor.history).toEqual([])
     expect(ctx.mayflyInteractionState.pasteImage.pastedImages.get('[image #1]')).toBe(ref)
@@ -453,7 +472,7 @@ describe('mayfly-input plugin', () => {
     installEditorTransform(missing.ctx, request => ({ text: request.text }))
     type(missing.editor, '[image #1] caption')
     missing.editor.handleInput(KEY.enter)
-    await vi.waitFor(() => expect(missing.hint.render(80)).toEqual(['!✗ !!image delivery requires the attachment store!']))
+    await vi.waitFor(() => expect(noticesOf(missing.hint)).toEqual(['!✗ !!image delivery requires the attachment store!']))
     expect(missing.ctx.mayflyInteractionState.pasteImage.pastedImages.get('[image #1]')).toBe(ref)
     await missing.fiber.dispose()
 
@@ -461,7 +480,7 @@ describe('mayfly-input plugin', () => {
     registerSubmitTransformer(unsupported.ctx, () => [{ type: 'reasoning', text: 'not human input' } as never])
     type(unsupported.editor, 'unsupported')
     unsupported.editor.handleInput(KEY.enter)
-    await vi.waitFor(() => expect(unsupported.hint.render(80)).toEqual(['!✗ !!unsupported human prompt block: reasoning!']))
+    await vi.waitFor(() => expect(noticesOf(unsupported.hint)).toEqual(['!✗ !!unsupported human prompt block: reasoning!']))
     expect(unsupported.editor.getText()).toBe('unsupported')
     await unsupported.fiber.dispose()
   })
@@ -482,7 +501,7 @@ describe('mayfly-input plugin', () => {
     expect(prompt).not.toHaveBeenCalled()
     expect(editor.getText()).toBe('keep the race-safe draft')
     expect(editor.history).toEqual([])
-    expect(hint.render(80)).toEqual(['!✗ !!the subagent is no longer available for input!'])
+    expect(noticesOf(hint)).toEqual(['!✗ !!the subagent is no longer available for input!'])
   })
 
   it('restores a submission when the child conversation closes between routing and delivery', async () => {
@@ -675,7 +694,7 @@ describe('mayfly-input plugin', () => {
 
     expect(editor.onKey?.(KEY.escape)).toBe(true)
     expect(cancel).not.toHaveBeenCalled()
-    expect(hint.render(100).join('\n')).toContain('interrupt requested with failures: subagent running-child: child refused')
+    expect(noticesOf(hint).join('\n')).toContain('interrupt requested with failures: subagent running-child: child refused')
   })
 
   it('ignores whitespace-only submissions', async () => {
@@ -692,12 +711,12 @@ describe('mayfly-input plugin', () => {
     type(editor, 'cannot send')
     editor.handleInput(KEY.enter)
     expect(followup).toHaveBeenCalledOnce()
-    expect(hint.render(80)).toEqual(['!✗ !!follow-up rejected!'])
+    expect(noticesOf(hint)).toEqual(['!✗ !!follow-up rejected!'])
 
     followup.mockImplementationOnce(() => { throw 'bare follow-up rejection' })
     type(editor, 'still cannot send')
     editor.handleInput(KEY.enter)
-    expect(hint.render(80)).toEqual(['!✗ !!bare follow-up rejection!'])
+    expect(noticesOf(hint)).toEqual(['!✗ !!bare follow-up rejection!'])
   })
 
   it('restores transformed image attachments when the follow-up is rejected', async () => {
@@ -709,7 +728,7 @@ describe('mayfly-input plugin', () => {
 
     type(editor, '[image #1] caption')
     editor.handleInput(KEY.enter)
-    await vi.waitFor(() => expect(hint.render(80)).toEqual(['!✗ !!extension follow-up rejected!']))
+    await vi.waitFor(() => expect(noticesOf(hint)).toEqual(['!✗ !!extension follow-up rejected!']))
     expect(followup).toHaveBeenCalledOnce()
     expect(ctx.mayflyInteractionState.pasteImage.pastedImages.get('[image #1]')).toBe(ref)
   })
@@ -721,7 +740,7 @@ describe('mayfly-input plugin', () => {
     type(editor, 'keep this draft')
     editor.handleInput(KEY.enter)
 
-    await vi.waitFor(() => expect(hint.render(80)).toEqual(['!✗ !!extension transform rejected!']))
+    await vi.waitFor(() => expect(noticesOf(hint)).toEqual(['!✗ !!extension transform rejected!']))
     expect(editor.getText()).toBe('keep this draft')
     expect(followup).not.toHaveBeenCalled()
   })
@@ -776,7 +795,7 @@ describe('mayfly-input plugin', () => {
     const { screen, editor, hint } = await mount({ withAgent: false })
     type(editor, 'hello')
     editor.handleInput(KEY.enter)
-    expect(hint.render(80)).toEqual(['!✗ !!no active session!'])
+    expect(noticesOf(hint)).toEqual(['!✗ !!no active session!'])
     expect(screen.renderRequests).toBeGreaterThan(0)
   })
 
@@ -786,7 +805,7 @@ describe('mayfly-input plugin', () => {
     vi.spyOn(ctx.mayflyCurrentAgent, 'current').mockReturnValue(null)
     type(editor, 'please continue')
     editor.handleInput(KEY.enter)
-    expect(hint.render(80)).toEqual(['?⚠ ??this conversation is read-only?'])
+    expect(noticesOf(hint)).toEqual(['?⚠ ??this conversation is read-only?'])
     expect(editor.getText()).toBe('please continue')
     expect(editor.history).toEqual([])
     expect(followup).not.toHaveBeenCalled()
@@ -818,7 +837,7 @@ describe('mayfly-input plugin', () => {
     ctx.commands.register({ name: 'poke', description: 'Poke the primary', handler })
     type(editor, '/poke')
     editor.handleInput(KEY.enter)
-    await vi.waitFor(() => expect(hint.render(80)).toEqual(['^ℹ ^ran']))
+    await vi.waitFor(() => expect(noticesOf(hint)).toEqual(['^ℹ ^ran']))
     expect(ctx.commands.find(agent, 'poke')).toBeDefined()
     expect(handler).toHaveBeenCalledOnce()
   })
@@ -833,7 +852,7 @@ describe('mayfly-input plugin', () => {
     type(editor, '/poke now')
     editor.handleInput(KEY.enter)
     await vi.waitFor(() => {
-      expect(hint.render(80)).toEqual(['^ℹ ^poked'])
+      expect(noticesOf(hint)).toEqual(['^ℹ ^poked'])
     })
     expect(followup).not.toHaveBeenCalled()
     const events = agent.session.snapshotEvents().filter(event => event.type === 'command/run' || event.type === 'command/done')
@@ -857,7 +876,7 @@ describe('mayfly-input plugin', () => {
       type(editor, '/q now')
       editor.handleInput(KEY.enter)
       await vi.waitFor(() => {
-        expect(hint.render(80)).toEqual(['^ℹ ^bye now'])
+        expect(noticesOf(hint)).toEqual(['^ℹ ^bye now'])
       })
     } finally {
       clear()
@@ -869,7 +888,7 @@ describe('mayfly-input plugin', () => {
     type(editor, '/missing')
     editor.handleInput(KEY.enter)
     await vi.waitFor(() => {
-      expect(hint.render(80)).toEqual(['!✗ !!unknown command: /missing!'])
+      expect(noticesOf(hint)).toEqual(['!✗ !!unknown command: /missing!'])
     })
   })
 
@@ -948,7 +967,7 @@ describe('mayfly-input plugin', () => {
     })
     type(editor, '/permission read-only')
     editor.handleInput(KEY.enter)
-    await vi.waitFor(() => { expect(hint.render(80)).toEqual(['^ℹ ^preset read-only']) })
+    await vi.waitFor(() => { expect(noticesOf(hint)).toEqual(['^ℹ ^preset read-only']) })
     expect(handler).toHaveBeenCalledOnce()
     // No panel ever took the editor slot.
     expect(screen.children).toHaveLength(1)
@@ -959,7 +978,7 @@ describe('mayfly-input plugin', () => {
     type(editor, '/permission')
     editor.handleInput(KEY.enter)
     await vi.waitFor(() => {
-      expect(hint.render(80)).toEqual(['!✗ !!unknown command: /permission!'])
+      expect(noticesOf(hint)).toEqual(['!✗ !!unknown command: /permission!'])
     })
   })
 
@@ -973,7 +992,7 @@ describe('mayfly-input plugin', () => {
     type(editor, '/fail')
     editor.handleInput(KEY.enter)
     await vi.waitFor(() => {
-      expect(hint.render(80)).toEqual(['!✗ !!broken!'])
+      expect(noticesOf(hint)).toEqual(['!✗ !!broken!'])
     })
     ctx.commands.register({
       name: 'throw',
@@ -985,7 +1004,7 @@ describe('mayfly-input plugin', () => {
     type(editor, '/throw')
     editor.handleInput(KEY.enter)
     await vi.waitFor(() => {
-      expect(hint.render(80)).toEqual(['!✗ !!boom!'])
+      expect(noticesOf(hint)).toEqual(['!✗ !!boom!'])
     })
   })
 
@@ -1002,7 +1021,7 @@ describe('mayfly-input plugin', () => {
     type(editor, '/multiline')
     editor.handleInput(KEY.enter)
     await vi.waitFor(() => {
-      expect(hint.render(120)).toEqual(['^ℹ ^Goal created · Status: active · Activation: armed'])
+      expect(noticesOf(hint)).toEqual(['^ℹ ^Goal created · Status: active · Activation: armed'])
     })
     expect(ctx.mayflyUiInteraction.notificationSnapshot().at(-1)?.detail).toBe('Goal created\nStatus: active\n\n  Activation: armed')
   })
@@ -1024,12 +1043,13 @@ describe('mayfly-input plugin', () => {
     await vi.waitFor(() => {
       expect(agent.session.snapshotEvents().some(event => event.type === 'command/done')).toBe(true)
     })
-    expect(hint.render(120)).toEqual([])
+    // Successful output goes to the Todo and footer surfaces, not the notice lane.
+    expect(noticesOf(hint)).toEqual([])
 
     type(editor, '/goal fail')
     editor.handleInput(KEY.enter)
     await vi.waitFor(() => {
-      expect(hint.render(120)).toEqual(['!✗ !!goal failed!'])
+      expect(noticesOf(hint)).toEqual(['!✗ !!goal failed!'])
     })
   })
 
@@ -1106,14 +1126,13 @@ describe('mayfly-input plugin', () => {
     expect(hint.render(80)).toEqual([])
   })
 
-  it('wraps an over-wide hint to the viewport width', async () => {
+  it('keeps an over-wide rejection whole in the lane; the notification pane truncates it at its cap', async () => {
     const { editor, hint } = await mount({ withAgent: false })
     type(editor, 'hello')
     editor.handleInput(KEY.enter)
-    const rows = hint.render(10)
-    expect(rows.length).toBeGreaterThan(1)
-    expect(rows.join('')).toContain('✗')
-    expect(rows.join('')).toContain('session')
+    const [notice] = noticesOf(hint)
+    expect(notice).toMatch(/^!✗ !/u)
+    expect(notice).toContain('session')
   })
 
   it('renders no hint row when a command succeeds without text', async () => {
@@ -1135,24 +1154,25 @@ describe('mayfly-input plugin', () => {
     const { ctx, hint } = await mount()
     const message = Array.from({ length: 10 }, (_, index) => index === 0 ? '' : `notice ${String(index)}`).join('\n')
     getSharedEditor(ctx)?.report?.('long', { message: message.replace(/\s*[\r\n]+\s*/gu, ' · ').trim(), severity: 'info', detail: message })
-    const rows = hint.render(80)
+    const rows = noticesOf(hint)
     expect(rows.join('')).toContain('notice 1')
     expect(ctx.mayflyUiInteraction.notificationSnapshot().at(-1)?.detail).toBe(message)
   })
 
-  it('orders equally severe visible notifications by creation time', async () => {
+  it('keeps equally severe notifications in the lane in creation order', async () => {
     const { ctx, hint } = await mount()
     const owner = ctx.mayflyUiInteraction.createNotificationOwner('input-order')
     owner.report('first', { kind: 'app', targetId: 'prompt' }, { severity: 'info', message: 'First' })
     owner.report('second', { kind: 'app', targetId: 'prompt' }, { severity: 'info', message: 'Second' })
-    expect(hint.render(80)).toEqual(['^ℹ ^Second'])
+    // The lane keeps both, in creation order; the notification pane shows the one to read first (pane-notification.spec).
+    expect(noticesOf(hint)).toEqual(['^ℹ ^First', '^ℹ ^Second'])
     owner.dispose()
   })
 
   it('contains synchronous hint refresh reentry from invalid extension feedback', async () => {
     const { ctx, hint } = await mount()
     ctx.mayflyEditorExtensions.register({ id: 'input.invalid-after' }, { after: { kind: 'actions', id: 'interactive-after', items: [] } as never })
-    expect(hint.render(80).join('\n')).toContain('editor extension after must be passive')
+    expect(noticesOf(hint).join('\n')).toContain('editor extension after must be passive')
   })
 
   it('renders no persistent row in any state — the footer tips teach the affordances', async () => {
@@ -1224,7 +1244,7 @@ describe('mayfly-input plugin', () => {
       editor.handleInput(KEY.escape)
       expect(editor.getText()).toBe('')
       expect(editor.getHistory()[0]).toBe('draft')
-      expect(hint.render(80).join('')).toContain('draft cleared · ↑ restores')
+      expect(noticesOf(hint).join('')).toContain('draft cleared · ↑ restores')
       expect(cancel).not.toHaveBeenCalled()
     })
 
@@ -1346,7 +1366,7 @@ describe('mayfly-input plugin', () => {
       try {
         vi.setSystemTime(1_000_000)
         expect(editor.onKey?.(KEY.ctrlC)).toBe(true)
-        expect(hint.render(80)).toEqual(['?⚠ ??press Ctrl+C again to exit?'])
+        expect(noticesOf(hint)).toEqual(['?⚠ ??press Ctrl+C again to exit?'])
       } finally {
         vi.useRealTimers()
       }
@@ -1379,7 +1399,7 @@ describe('mayfly-input plugin', () => {
         vi.setSystemTime(3_002_000)
         expect(editor.onKey?.(KEY.ctrlC)).toBe(true)
         expect(exit).not.toHaveBeenCalled()
-        expect(hint.render(80)).toEqual(['?⚠ ??press Ctrl+C again to exit?'])
+        expect(noticesOf(hint)).toEqual(['?⚠ ??press Ctrl+C again to exit?'])
       } finally {
         vi.useRealTimers()
       }
@@ -1434,7 +1454,7 @@ describe('mayfly-input plugin', () => {
 
       steer.mockImplementationOnce(() => { throw 'bare steer rejection' })
       expect(editor.onKey?.(KEY.ctrlS)).toBe(true)
-      expect(hint.render(80)).toEqual(['!✗ !!bare steer rejection!'])
+      expect(noticesOf(hint)).toEqual(['!✗ !!bare steer rejection!'])
     })
 
     it('dispatches Shift+Tab through the native plan command', async () => {
@@ -1529,7 +1549,7 @@ describe('mayfly-input plugin', () => {
       const { editor, screen, hint } = await mount()
       expect(editor.onKey?.(KEY.ctrlG)).toBe(true)
       expect(screen.suspends).toBe(0)
-      expect(hint.render(80)).toEqual(['?⚠ ??set $VISUAL or $EDITOR to edit drafts externally?'])
+      expect(noticesOf(hint)).toEqual(['?⚠ ??set $VISUAL or $EDITOR to edit drafts externally?'])
     })
 
     it('notices a launcher failure and re-arms for the next press', async () => {
@@ -1538,14 +1558,14 @@ describe('mayfly-input plugin', () => {
       fakeLauncher(() => outcome)
       editor.handleInput(KEY.ctrlG)
       await vi.waitFor(() => {
-        expect(hint.render(80)).toEqual(['!✗ !!editor gone!'])
+        expect(noticesOf(hint)).toEqual(['!✗ !!editor gone!'])
       })
       expect(screen.suspends).toBe(1)
       // A non-Error rejection stringifies into the notice.
       outcome = Promise.reject('plain failure')
       editor.handleInput(KEY.ctrlG)
       await vi.waitFor(() => {
-        expect(hint.render(80)).toEqual(['!✗ !!plain failure!'])
+        expect(noticesOf(hint)).toEqual(['!✗ !!plain failure!'])
       })
       expect(screen.suspends).toBe(2)
       outcome = Promise.resolve('second try')
@@ -1991,5 +2011,79 @@ describe('the Alt+M model cycle key', () => {
     editor.handleInput(KEY.altM)
     expect(editor.getText()).toBe('draft')
     await vi.waitFor(() => { expect(ctx.mayflyUiInteraction.notificationSnapshot().map(item => item.message)).toEqual(['no session is live yet']) })
+  })
+})
+
+describe('the prompt beside the conversation', () => {
+  it.each([['Alt+Up', 'alt+up'], ['F4', 'f4']])('moves focus up into the conversation on %s with an empty prompt', async (_name, key) => {
+    const { editor, screen } = await mount()
+    screen.focusConversationResult = true
+    expect(editor.onKey?.(key)).toBe(true)
+    expect(screen.focusConversationCalls).toBe(1)
+  })
+
+  it('leaves the key to the editor when the conversation cannot take focus, the buffer has text, or a completion list is open', async () => {
+    const { editor, screen } = await mount()
+    expect(editor.onKey?.('alt+up')).toBe(false)
+    expect(screen.focusConversationCalls).toBe(1)
+    screen.focusConversationResult = true
+    editor.setText('draft')
+    expect(editor.onKey?.('alt+up')).toBe(false)
+    editor.setText('')
+    editor.showingAutocomplete = true
+    expect(editor.onKey?.('alt+up')).toBe(false)
+    expect(screen.focusConversationCalls).toBe(1)
+  })
+
+  it('scrolls the transcript three rows per wheel notch while the prompt is focused, whatever the buffer holds', async () => {
+    const { editor, screen } = await mount()
+    type(editor, 'draft')
+    expect(screen.sendContentInput('\x1b[<64;10;5M')).toBe(true)
+    expect(screen.sendContentInput('\x1b[<65;10;5M')).toBe(true)
+    expect(screen.contentScrolls).toEqual([{ direction: 'up', amount: 3 }, { direction: 'down', amount: 3 }])
+  })
+
+  it('leaves a wheel notch to the core when the keymap binds neither direction to the arrows', async () => {
+    const { ctx, screen } = await mount()
+    const matches = ctx.mayflyKeymap.matches.bind(ctx.mayflyKeymap)
+    vi.spyOn(ctx.mayflyKeymap, 'matches').mockImplementation((data, action) => action !== ACTION_MOVE_UP && action !== ACTION_MOVE_DOWN && matches(data, action))
+    expect(screen.sendContentInput('\x1b[<64;10;5M')).toBe(false)
+    expect(screen.sendContentInput('\x1b[<65;10;5M')).toBe(false)
+    expect(screen.contentScrolls).toEqual([])
+  })
+})
+
+describe('slash feedback and command failures', () => {
+  it('filters commands that advertise an input hint like any other when nothing matches', async () => {
+    const { ctx, editor, hint } = await mount()
+    ctx.commands.register({ name: 'deploy', description: 'Deploy a build', input: { hint: '<environment>' }, handler: () => ({ kind: 'success' }) })
+    type(editor, '/dep')
+    expect(hint.render(80)).toEqual([])
+    type(editor, 'qz')
+    expect(hint.render(80)).toEqual(['~no matching command: /depqz~'])
+  })
+
+  it('shows a non-Error rejection of the command runtime as the notice text', async () => {
+    const { ctx, editor, hint } = await mount()
+    vi.spyOn(ctx.commands, 'execute').mockRejectedValue('runtime exploded')
+    type(editor, '/anything')
+    editor.handleInput(KEY.enter)
+    await vi.waitFor(() => { expect(noticesOf(hint)).toEqual(['!✗ !!runtime exploded!']) })
+  })
+
+  it('does not re-enter the footer refresh when a presentation change edits the buffer', async () => {
+    const { editor, screen } = await mount()
+    let nested = 0
+    const requestRender = screen.requestRender.bind(screen)
+    vi.spyOn(screen, 'requestRender').mockImplementation(() => {
+      requestRender()
+      if (nested > 0) return
+      nested += 1
+      // A render observer that edits the draft while the footer is being recompiled.
+      editor.setText('/nested')
+    })
+    type(editor, 'a')
+    expect(nested).toBe(1)
+    expect(editor.getText()).toBe('/nested')
   })
 })

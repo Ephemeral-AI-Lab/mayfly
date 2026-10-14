@@ -3,7 +3,7 @@
  * argument-less `new Date()` read a clock that stands at a fixed epoch until the replay driver moves it, so the events
  * written at boot, stored event times, elapsed labels, and dates on screen are the same on every run, however long the
  * boot takes. The driver moves it through `globalThis.__mayflyClock`: `at(ms)` stands it at the epoch plus a timeline
- * time, `freeze()` stops it, and `flow()` lets it run with real time. Timers are not touched. @module script/scenarios/clock
+ * time, `freeze()` stops it, and `flow()` lets it run with real time, and `stood()` reads the timeline time of the last `at`. Timers are not touched. @module script/scenarios/clock
  */
 
 /** 2026-01-01T09:00:00Z. */
@@ -14,6 +14,7 @@ const realNow = () => RealDate.now()
 let base = EPOCH
 let since = realNow()
 let frozen = true
+let stood = EPOCH
 
 const now = () => frozen ? base : base + (realNow() - since)
 
@@ -30,7 +31,9 @@ ScenarioDate.UTC = RealDate.UTC
 globalThis.Date = ScenarioDate
 globalThis.__mayflyClock = Object.freeze({
   now,
-  at(ms) { base = EPOCH + ms; since = realNow(); frozen = true },
+  at(ms) { base = EPOCH + ms; stood = base; since = realNow(); frozen = true },
+  /** The time of the last `at`: the timeline position, whether the clock stands or flows. */
+  stood() { return stood },
   freeze() { base = now(); frozen = true },
   flow() { if (frozen) { since = realNow(); frozen = false } },
 })

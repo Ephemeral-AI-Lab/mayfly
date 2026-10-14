@@ -1,18 +1,14 @@
 /**
  * Bounded activity details: the upstream argument key order, the name
- * fallback cards use, raw-argument parsing for the facts projection, control
- * stripping, and the bounded reasoning tail scan.
+ * fallback cards use, and control stripping.
  *
  * @module @ephemeral-ai/mayfly/tests/conversation/activity-detail
  */
 import { describe, expect, it } from 'vitest'
 import {
   argumentDetail,
-  callDetail,
   LIVE_DETAIL_MAX_CHARS,
   normalizeDetail,
-  REASONING_DETAIL_SCAN_CHARS,
-  reasoningDetail,
   toolDetail,
 } from '../../src/conversation/activity-detail.ts'
 
@@ -35,27 +31,12 @@ describe('activity detail', () => {
     expect(long.endsWith('…')).toBe(true)
   })
 
-  it('reads committed raw arguments without a name fallback', () => {
-    expect(callDetail('{"command":"pnpm test"}')).toBe('pnpm test')
-    expect(callDetail('{"todos":[]}')).toBe('')
-    expect(callDetail('{not json')).toBe('')
+  it('reads the salient argument of parsed arguments without a name fallback', () => {
+    expect(argumentDetail({ command: 'pnpm test' })).toBe('pnpm test')
+    expect(argumentDetail({ todos: [] })).toBe('')
   })
 
   it('replaces control characters so width math stays exact', () => {
     expect(normalizeDetail('a\x1b[31mb\tc\u0085d')).toBe('a [31mb c d')
-  })
-
-  it('picks the latest reasoning paragraph from a bounded tail', () => {
-    expect(reasoningDetail('first\n\n**second** idea\n\n  ')).toBe('second idea')
-    expect(reasoningDetail(' \n\n ')).toBe('')
-    // A paragraph cut by the scan window leads with an ellipsis.
-    const cut = reasoningDetail(`start ${'x'.repeat(REASONING_DETAIL_SCAN_CHARS)}`)
-    expect(cut.startsWith('…x')).toBe(true)
-    expect(cut).not.toContain('start')
-    // A whole paragraph inside the window reads without one.
-    expect(reasoningDetail(`${'x'.repeat(REASONING_DETAIL_SCAN_CHARS)}\n\nlast`)).toBe('last')
-    // The window never starts on a low surrogate.
-    const emoji = reasoningDetail(`${'😀'.repeat(REASONING_DETAIL_SCAN_CHARS / 2)}!`)
-    expect(emoji.startsWith('…😀')).toBe(true)
   })
 })

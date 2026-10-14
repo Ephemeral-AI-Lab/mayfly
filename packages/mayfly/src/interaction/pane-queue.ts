@@ -3,24 +3,13 @@
  */
 
 import type { Context } from '@deepseek-ai/cordis'
-import type { UserMessage } from '@deepseek-ai/dsh-session'
 import type { MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
+import { userMessageText } from '../transcript/stream-facts.ts'
 import { interactionTranslator } from './locale.ts'
 import type {} from '../app/index.ts'
 
 export const name = 'mayfly-pane-queue'
 export const inject = ['mayflyPanes', 'mayflyCurrentAgent']
-
-function messageText(message: UserMessage): string {
-  const text = message.content
-    .filter(block => block.type === 'text')
-    .map(block => block.text)
-    .join(' ')
-    .replace(/[\r\n]+/g, ' ')
-    .trim()
-  const images = message.content.filter(block => block.type === 'image').length
-  return [text, ...(images === 0 ? [] : [`[${images} image${images === 1 ? '' : 's'}]`])].filter(Boolean).join(' ')
-}
 
 /** Register one ordinary bottom pane over the selected Agent's inbox. */
 export function apply(ctx: Context): void {
@@ -29,8 +18,8 @@ export function apply(ctx: Context): void {
     const agent = ctx.mayflyCurrentAgent.current()
     if (agent === null || (agent.inbox.nextTurn.length === 0 && agent.inbox.nextStep.length === 0)) return null
     const rows = [
-      ...agent.inbox.nextTurn.filter(message => message.source.kind === 'user').map(message => t('Queued: {text}', { text: messageText(message) })),
-      ...agent.inbox.nextStep.filter(message => message.source.kind === 'user').map(message => t('Steer: {text}', { text: messageText(message) })),
+      ...agent.inbox.nextTurn.filter(message => message.source.kind === 'user').map(message => t('Queued: {text}', { text: userMessageText(message) })),
+      ...agent.inbox.nextStep.filter(message => message.source.kind === 'user').map(message => t('Steer: {text}', { text: userMessageText(message) })),
     ]
     if (rows.length === 0) return null
     return {

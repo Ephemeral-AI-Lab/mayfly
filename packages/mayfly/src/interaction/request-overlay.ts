@@ -14,6 +14,8 @@ interface RequestOverlayOptions<Result> {
   readonly dismissal?: 'confirm-dirty' | 'discard'
   /** Yield scroll keys the surface does not need to the content region behind it. */
   readonly contentScroll?: boolean
+  /** The view is a surface of its own (a decision card in the lane) and takes no request frame. */
+  readonly bare?: boolean
   /** A request that opens unprompted sets this (0-2000 ms) so stray keys typed into the editor grant nothing. */
   readonly armMs?: number
   readonly view: () => MayflyUiNode
@@ -25,8 +27,9 @@ interface RequestOverlayOptions<Result> {
 }
 
 /** Own only the pending native result; drafts, navigation, and input belong to shared UI. */
-export function requestOverlay<Result>(ctx: Context, options: RequestOverlayOptions<Result>): { readonly result: Promise<Result>, readonly cancel: () => void } {
+export function requestOverlay<Result>(ctx: Context, options: RequestOverlayOptions<Result>): { readonly result: Promise<Result>, readonly cancel: () => void, readonly refresh: () => void } {
   let cancel!: () => void
+  let refresh: () => void = () => {}
   const result = new Promise<Result>((resolve, reject) => {
     let settled = false
     let candidate: { readonly operationId: string, readonly value: Result, readonly signal: AbortSignal } | undefined
@@ -46,7 +49,7 @@ export function requestOverlay<Result>(ctx: Context, options: RequestOverlayOpti
     if (options.signal?.aborted) { stop('abort'); return }
     if (!isCurrent()) { stop('stale'); return }
     const source = [{ resourceId: options.id, revision: 1 }]
-    const frame = (child: MayflyUiNode): MayflyUiNode => ({ kind: 'surface', chrome: 'overlay', padding: 1, title: typeof options.title === 'string' ? options.title : options.title(), child })
+    const frame = (child: MayflyUiNode): MayflyUiNode => options.bare === true ? child : { kind: 'surface', chrome: 'overlay', padding: 1, title: typeof options.title === 'string' ? options.title : options.title(), child }
     const snapshot = (): MayflyUiNode => frame(options.view())
     handle = ctx.mayflyOverlays.open({
       id: options.id, presentation: 'editor', capturing: true,
@@ -83,7 +86,8 @@ export function requestOverlay<Result>(ctx: Context, options: RequestOverlayOpti
         return value
       })
     })
-    const offLocale = observeInteractionLocale(ctx, () => { handle!.set(snapshot()) })
+    refresh = () => { if (!settled) handle!.set(snapshot()) }
+    const offLocale = observeInteractionLocale(ctx, refresh)
     const offAgent = options.agent === undefined ? () => {} : ctx.mayflyCurrentAgent.subscribe(() => { if (!isCurrent()) stop('stale') })
     const onAbort = () => stop('abort')
     options.signal?.addEventListener('abort', onAbort, { once: true })
@@ -92,5 +96,5 @@ export function requestOverlay<Result>(ctx: Context, options: RequestOverlayOpti
       cancel()
     })
   })
-  return { result, cancel: () => cancel() }
+  return { result, cancel: () => cancel(), refresh: () => refresh() }
 }

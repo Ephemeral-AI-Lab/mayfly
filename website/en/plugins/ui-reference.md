@@ -171,7 +171,7 @@ type MayflyInlineSpan = {
   tone?: MayflyTone
   emphasis?: 'normal' | 'strong'
   motion?: 'shimmer' | 'loader'                        // one channel per rich-text row
-  variant?: 'bloom' | 'fill' | 'gap' | 'breath'        // with motion: 'loader'; default 'gap'
+  variant?: 'bloom' | 'fill' | 'gap' | 'breath' | 'pulse'        // with motion: 'loader'; default 'gap'
 }
 ```
 
@@ -268,7 +268,7 @@ ui.fields([
 *A multi-line code block with the `ts` language hint (width 64).*
 
 ```ts
-ui.code(value: MayflyContentField, options?: { language?: string, numbered?: boolean })
+ui.code(value: MayflyContentField, options?: { language?: string, numbered?: boolean, start?: number })
 ```
 
 Represents code or preformatted text such as patch fragments, command output,
@@ -286,8 +286,8 @@ ui.code([
 ].join('\n'), { language: 'ts' })
 ```
 
-`numbered: true` draws a muted `n │ ` gutter; a wrapped line's continuation rows
-stay under its code:
+`numbered: true` draws a muted `n │ ` gutter, counting from `start` (default 1, for a
+window of a longer text); a wrapped line's continuation rows stay under its code:
 
 ![`code` numbered](/shots/code-numbered.svg)
 
@@ -301,12 +301,14 @@ ui.code('const frame = glyphFor(state)\nreturn frame', { language: 'ts', numbere
 
 ![`diff` node rendering](/shots/diff.svg)
 
-*Multi-line before/after: old and new line numbers, changed lines marked `−`/`+` with red/green bands behind the code only (width 64).*
+*Multi-line before/after: one line-number column (old numbers on removed lines, new numbers on the rest), changed lines marked `−`/`+` with red/green bands behind the code only (width 64).*
 
 ```ts
 ui.diff(before: string, after: string, options?: {
-  start?: number      // the number of the first line (default 1)
-  numbered?: boolean  // old and new gutters (default true)
+  start?: number      // the number of the first line after the change (default 1)
+  beforeStart?: number // the number of the first line before the change (default: start)
+  numbered?: boolean  // a line-number gutter (default true)
+  numberWidth?: number // the least width of the number column, so diffs shown together share a gutter (default 1)
   hunkHeader?: boolean // an `@@` header even for one hunk (default: more than one)
   context?: number    // unchanged lines around a change, 0 to 3 (default 1)
   maxRows?: number    // then `… +N rows · Ctrl+O`
@@ -315,7 +317,7 @@ ui.diff(before: string, after: string, options?: {
 
 Represents the semantic before/after states of the same content, such as a
 pending edit. Supply plain text rather than manually adding diff colors: Mayfly
-draws muted old and new line-number gutters (ending in `│`), marks removed and
+draws one muted line-number gutter (ending in `│`; a removed line shows its number before the change, any other line its number after it), marks removed and
 added lines with `−`/`+`, and shades their code (never the gutter) with the
 theme's `diffRemovedBg`/`diffAddedBg` bands. One unchanged line stays around
 each change, a skipped run reads as one muted `⋯`, and a long line ends in `…`.
@@ -922,9 +924,10 @@ ui.list({
   maxSelected?: number
   acceptActionId?: string
   empty?: MayflyUiNode
-  marker?: 'cursor' | 'selection'
+  marker?: 'cursor' | 'selection' | 'band'
   marks?: boolean
   maxRows?: number
+  highlight?: { pattern: string, caseSensitive?: boolean }  // a regular expression drawn in reverse video wherever it matches in a row
   expandFocused?: boolean
   acceptVerb?: 'open' | 'choose' | 'expand' | 'edit' | 'restore'
   autofocus?: boolean
@@ -951,9 +954,11 @@ type MayflyListItem = {
   rightFocus?: readonly MayflyInlineSpan[]
   body?: string | MayflyListBodyNode   // built with ui.listBody(...) for content
   bodyAlways?: boolean
+  bodyLead?: readonly MayflyInlineSpan[]  // with bodyAlways and a node body
   expanded?: boolean
   wrap?: boolean
   wrapMax?: number
+  hang?: number
   meter?: { value: number, max: number, width?: number, tone?: MayflyTone }
   indent?: number
   rule?: string
@@ -1007,7 +1012,9 @@ filterable list the refusal lifts. While a search is open the filter row shows
 `N matches`, and the hint row names only what ends or clears it.
 
 **Rows.** `marker: 'selection'` keeps a muted `→` on the cursor row after
-focus leaves the list (a rail whose detail follows it). `marks: true` draws
+focus leaves the list (a rail whose detail follows it); `marker: 'band'` draws no
+arrow and paints the cursor row, with its body, in the palette's selected
+background while the list has focus (the conversation stream). `marks: true` draws
 `●`/`○` on a single choose list. `maxRows` windows the list around the cursor
 and ends it with `↑ n more · ↓ n more`. `acceptVerb` names Enter in the hint
 row, `hintLabel` names `↑/↓`, and `autofocus` makes the list the first control
@@ -1017,7 +1024,8 @@ alone. `expandFocused` opens the cursor row's body or branch. `labelSpans`
 paint the label (`label` stays the plain text a filter reads), `right` aligns
 spans to the row's right edge and `rightFocus` replaces them under the cursor,
 `meter` draws `▰▱` cells, `indent` indents the row, `wrap` wraps the row under
-its own prefix (up to `wrapMax` lines, then `▸ N more lines · Enter`), and a
+its own prefix (up to `wrapMax` lines, then `▸ N more lines · Enter`; `hang` is the
+width of a glyph that leads the text, so continuation lines start under the text), and a
 `rule` or `gap` item is a non-selectable muted rule or blank row that the arrows
 skip. In a tree, `*` opens every branch and `-` closes them; a parent of a
 multiple tree shows `◐` when only some of its children are chosen.
@@ -1027,7 +1035,9 @@ multiple tree shows `◐` when only some of its children are chosen.
 code, diff, sections, progress, an image, a divider) opens as content. A row
 with a body shows `▸`/`▾` and opens with Enter, Space, or Right (closes with
 Left); `bodyAlways` shows the body without a disclosure and `expanded` starts
-the row open. Each body admits with its item under its own budget of 32 nodes,
+the row open. `bodyLead` (with `bodyAlways` and a node body) drops the row's head line: its spans follow the
+cursor gutter and lead the body's first row, the body takes the columns that remain, and its other rows sit under
+it (the stream's answer leads its Markdown with `● `). Each body admits with its item under its own budget of 32 nodes,
 and a long list admits only the rows around the cursor, so a stream of thousands
 of rich rows needs no more of the tree's quotas than plain ones. A body is never
 a control: a list, form, actions, or tabs node inside it is refused.
@@ -1623,7 +1633,7 @@ api.overlays.open({ id: 'acme.approve', presentation: 'editor', capturing: true,
 ```ts
 ui.loader({
   message?: string
-  variant?: 'bloom' | 'fill' | 'gap' | 'breath'
+  variant?: 'bloom' | 'fill' | 'gap' | 'breath' | 'pulse'
   elapsedMs?: number
   cancelActionId?: string
   cancelLabel?: string
@@ -1635,7 +1645,7 @@ non-negative millisecond hint, shown as `45s`, `2m 10s`, or `1h 5m`. The rendere
 owns the animation, one clock for every surface at a 100 ms step: `bloom` (`· ✢ ✳
 ✶ ✻ ✽`), `fill` (a braille bar that fills and drains), and `gap` (a braille
 spinner) step each tick, and `breath` is a `●` that moves through six shades of
-the `primary` tone, dim to bright to dim, a shade every 400 ms. Never start a timer
+the `primary` tone, dim to bright to dim, a shade every 400 ms (`pulse` is the same breath on a small `•`). Never start a timer
 in `render()`. Reduced motion freezes every variant on its first frame, and ASCII
 glyphs draw `- \ | /`. A `cancelActionId` is a hint, not a button: the row
 `Esc cancel` (or `Esc` and the lower-cased `cancelLabel`) sits under the loader,

@@ -15,6 +15,7 @@ import type { SkillSummary } from '@deepseek-ai/dsh-skill'
 import type { MayflyAutocompleteProvider, MayflyComponent } from '../../src/core/types.ts'
 import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
 import CommandRuntime from '@deepseek-ai/dsh-commands'
+import { STREAM_GUTTER } from '../../src/core/gutter.ts'
 import { MayflyLocaleService } from '../../src/frontend/locale.ts'
 import * as inputPlugin from '../../src/interaction/input-plugin.ts'
 import * as editorPlus from '../../src/interaction/editor-plus.ts'
@@ -44,7 +45,7 @@ function inDirectory(ctx: Context, agent: Agent, cwd: string): void {
   testSession.current = { ...agent, id: agent.id, session: { ...agent.session, header: { cwd } } } as unknown as Agent
 }
 
-async function mount(options: { withAgent?: boolean, plusFirst?: boolean, locale?: 'en' | 'zh', locals?: { append(component: MayflyComponent): () => void } } = {}): Promise<{
+async function mount(options: { withAgent?: boolean, plusFirst?: boolean, locale?: 'en' | 'zh', } = {}): Promise<{
   ctx: Context
   screen: FakeScreen
   components: FakeMayflyComponents
@@ -62,7 +63,6 @@ async function mount(options: { withAgent?: boolean, plusFirst?: boolean, locale
     : new MayflyLocaleService(ctx, { systemLocale: options.locale })
   locale?.register('interaction', INTERACTION_LOCALE)
   locale?.register('common', COMMON_LOCALE)
-  if (options.locals !== undefined) ctx.provide('mayflyTranscriptLocals', options.locals)
   await ctx.plugin(SessionStore)
   await ctx.plugin(CommandRuntime)
   const session = ctx.sessions.create(SessionId('editor-plus-spec'))
@@ -90,10 +90,14 @@ function type(editor: FakeMayflyEditor, text: string): void {
   for (const char of text) editor.handleInput(char)
 }
 
-/** The shell echo components currently mounted in the scroll region. */
+/** The shell echo components currently mounted in the scroll region, seen without the stream gutter they sit in. */
 function echoes(screen: FakeScreen): MayflyComponent[] {
   return screen.children.filter(child => !(child instanceof FakeMayflyEditor))
-    .filter(child => child.render(80)[0]?.startsWith('$$ ') === true)
+    .map((child): MayflyComponent => ({
+      render: width => child.render(width + 2 * STREAM_GUTTER).map(row => row.slice(STREAM_GUTTER)),
+      invalidate: () => child.invalidate(),
+    }))
+    .filter(echo => echo.render(80)[0]?.startsWith('$$ ') === true)
 }
 
 describe('mayfly-editor-plus input modes', () => {
@@ -211,28 +215,6 @@ describe('mayfly-editor-plus input modes', () => {
     await vi.waitFor(() => { expect(echoes(screen)).toHaveLength(1) })
     expect(cwds).toEqual([sessionDir])
     expect(sessionDir).not.toBe(process.cwd())
-  })
-
-  it('anchors the echo into the conversation flow when the transcript seam exists', async () => {
-    const appended: MayflyComponent[] = []
-    const { screen, editor, inputFiber } = await mount({
-      locals: {
-        append(component) {
-          appended.push(component)
-          return () => { const index = appended.indexOf(component); if (index >= 0) appended.splice(index, 1) }
-        },
-      },
-    })
-    editorPlus.setShellExecutor(() => Promise.resolve({ code: 0, stdout: 'hi there\n', stderr: '' }))
-    type(editor, '!')
-    type(editor, 'echo hi')
-    editor.handleInput(KEY.enter)
-    await vi.waitFor(() => { expect(appended).toHaveLength(1) })
-    expect(appended[0]!.render(80)).toEqual(['$$ $echo hi', '_hi there_'])
-    // The echo never entered the pinned local-slot region above the editor.
-    expect(echoes(screen)).toHaveLength(0)
-    await inputFiber.dispose()
-    expect(appended).toEqual([])
   })
 
   it('requests a render when the shell echo mounts, not only on the next keypress', async () => {
@@ -1053,24 +1035,24 @@ describe('mayfly-editor-plus @ mentions', () => {
     expect(suggestions?.items).toEqual([{ value: '@top.md', label: 'top.md', description: 'top.md' }])
   })
 
-  it('notices in the hint line when the mention matches nothing', async () => {
+  it('notices in the notification lane when the mention matches nothing', async () => {
     fileMention.setFdProbe(async () => null)
-    const { ctx, editor, hint } = await mount()
+    const { ctx, editor } = await mount()
     const root = fixture()
     process.chdir(root)
     reattach(ctx)
     const provider = editor.autocompleteProvider as MayflyAutocompleteProvider
     // The empty-session-cwd corner: a directory with nothing to list (and
     // equally a prefix with no match) closes the dropdown without items —
-    // the hint line carries the feedback instead of silence.
+    // the notification lane carries the feedback instead of silence.
     const suggestions = await provider.getSuggestions(['@zzz'], 0, 4, { signal: signal() })
     expect(suggestions).toBeNull()
-    expect(hint.render(80).join('\n')).toContain('no matching files under the session cwd')
+    expect(ctx.mayflyUiInteraction.notificationSnapshot().at(-1)?.message).toBe('no matching files under the session cwd')
   })
 
   it('stays quiet when an aborted mention round returns nothing', async () => {
     fileMention.setFdProbe(async () => null)
-    const { ctx, editor, hint } = await mount()
+    const { ctx, editor } = await mount()
     const root = fixture()
     process.chdir(root)
     reattach(ctx)
@@ -1079,6 +1061,6 @@ describe('mayfly-editor-plus @ mentions', () => {
     controller.abort()
     const suggestions = await provider.getSuggestions(['@zzz'], 0, 4, { signal: controller.signal })
     expect(suggestions).toBeNull()
-    expect(hint.render(80).join('\n')).not.toContain('no matching files')
+    expect(ctx.mayflyUiInteraction.notificationSnapshot().map(item => item.message)).not.toContain('no matching files under the session cwd')
   })
 })

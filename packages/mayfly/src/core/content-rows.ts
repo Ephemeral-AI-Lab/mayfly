@@ -21,9 +21,9 @@ import type { MarkdownTheme } from '@earendil-works/pi-tui'
 import { fieldText } from './field-text.ts'
 import { commonPrefix } from './text-match.ts'
 import { CONTENT_SEGMENT_LINES, CONTENT_SEGMENT_UNITS, extendMergedLines, indexContent, indexMergedLines, scanContentLines, type ContentIndex, type ContentLineScan } from './content-segments.ts'
-import { alignDiffLines, diffModel, paintDiffSegment, type DiffModel, type DiffSegment } from './diff-align.ts'
+import { alignDiffLines, diffModel, paintDiffSegment, type DiffModel, type DiffSegment, type DiffStyle } from './diff-align.ts'
 import { ownDataErrorMessage } from './error-message.ts'
-import { highlightable, highlightCodeLines } from './highlight.ts'
+import { highlightable, highlightCodeLines, type CodePaints } from './highlight.ts'
 import { markdownBlockRows, markdownMermaidRows, markdownTheme, scanMarkdown, type MarkdownUnit, type PreparedMarkdown } from './markdown-rows.ts'
 import {
   CODE_HIGHLIGHT_MAX_BYTES,
@@ -62,6 +62,11 @@ export interface ContentRowsEnv {
   readonly errorRows: (message: string, width: number) => string[]
   /** Report a contained paint failure to the host, once per segment. */
   readonly report?: ((message: string) => void) | undefined
+  /**
+   * A source's row count moved because a segment painted (an estimate became the painted count). A scroll that already
+   * measured the content with the estimate needs another frame to place its window against the real length.
+   */
+  readonly changed?: (() => void) | undefined
 }
 
 /** Prefix sums over per-segment row counts; an estimate becomes the painted count wherever a segment is painted. */
@@ -238,8 +243,9 @@ const DIFF_CHUNK_ROWS = CONTENT_SEGMENT_LINES
  */
 interface PreparedDiff {
   readonly model: DiffModel
-  readonly numbered: boolean
+  readonly style: DiffStyle
 }
+
 
 const preparedDiffs = new WeakMap<object, PreparedDiff>()
 
@@ -250,13 +256,24 @@ function diffPrepared(node: Extract<MayflySectionContentNode, { readonly kind: '
     const after = sanitizePluginText(requireText(node.after, 'diff after'))
     const ops = alignDiffLines(before, after)
     countWork(env.counters, 'linesEstimated', ops.length)
+    const language = node.language === undefined ? '' : sanitizePluginText(requireText(node.language, 'diff language'))
+    // The code of each side is highlighted as one block, so a token that spans lines keeps its color; past the byte cap, plain.
+    const lit = highlightable(language) && Buffer.byteLength(before, 'utf8') + Buffer.byteLength(after, 'utf8') <= CODE_HIGHLIGHT_MAX_BYTES
+      ? {
+          before: highlightCodeLines(before, language, codePaints(env)),
+          after: highlightCodeLines(after, language, codePaints(env)),
+        }
+      : undefined
     prepared = {
-      numbered: node.numbered !== false,
+      style: { numbered: node.numbered !== false, start: node.start ?? 1, beforeStart: node.beforeStart ?? node.start ?? 1, ...(lit === undefined ? {} : { lit }) },
       model: diffModel(ops, {
         ...node.start === undefined ? {} : { start: node.start },
+        ...node.beforeStart === undefined ? {} : { beforeStart: node.beforeStart },
+        ...node.numberWidth === undefined ? {} : { numberWidth: node.numberWidth },
         ...node.hunkHeader === undefined ? {} : { hunkHeader: node.hunkHeader },
         ...node.context === undefined ? {} : { context: node.context },
         ...node.maxRows === undefined ? {} : { maxRows: node.maxRows },
+        ...node.tail === undefined ? {} : { tail: sanitizePluginText(node.tail) },
       }),
     }
     preparedDiffs.set(node, prepared)
@@ -339,7 +356,7 @@ class DiffRowsSource implements RowSource {
 
   private paintSafely(chunk: number): readonly string[] {
     try {
-      return paintDiffSegment(this.chunks[chunk]!, this.prepared.model.digits, this.width, this.env.components, this.env.colors, this.prepared.numbered)
+      return paintDiffSegment(this.chunks[chunk]!, this.prepared.model.digits, this.width, this.env.components, this.env.colors, this.prepared.style)
     } catch (error) {
       const message = ownDataErrorMessage(error) ?? 'unknown render failure'
       if (!this.failures.has(chunk)) {
@@ -377,6 +394,20 @@ function diffSource(node: Extract<MayflySectionContentNode, { readonly kind: 'di
   return new DiffRowsSource(diffPrepared(node, env), Math.max(1, width), env, keyOf(node, env))
 }
 
+/** A 53-bit hash of `text` (cyrb53) with its length: the content part of a painted unit's cache key. */
+function contentHash(text: string): string {
+  let h1 = 0xdeadbeef
+  let h2 = 0x41c6ce57
+  for (let index = 0; index < text.length; index += 1) {
+    const code = text.charCodeAt(index)
+    h1 = Math.imul(h1 ^ code, 2654435761)
+    h2 = Math.imul(h2 ^ code, 1597334677)
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909)
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909)
+  return `${String(text.length)}.${(4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36)}`
+}
+
 /**
  * The row source of one `markdown` node at one width: `length` is the unit row map (estimates replaced by painted
  * counts as units materialize), `row`/`prepare` paint the block or diagram under the asked rows through the content
@@ -394,6 +425,9 @@ class MarkdownRowSource implements RowSource {
   private readonly failures = new Set<number>()
   private readonly children = new Map<number, RowSource>()
   private readonly theme: MarkdownTheme
+  private readonly defsKey: string
+  /** The cache key of each unit, hashed once: a row read asks for it every time. */
+  private readonly keys: string[] = []
 
   constructor(
     private readonly prepared: PreparedMarkdown,
@@ -411,6 +445,7 @@ class MarkdownRowSource implements RowSource {
     })
     this.declaredWidth = width
     this.theme = markdownTheme(env.colors)
+    this.defsKey = prepared.defs.length === 0 ? '' : contentHash(prepared.defs.map(def => def.raw).join(''))
     // A document that fits a paint budget is painted eagerly: its row map is exact at once, like the texts.
     this.lazy = prepared.normalized.length > CONTENT_SEGMENT_UNITS
     if (!this.lazy) this.prepare(0, Number.MAX_SAFE_INTEGER)
@@ -438,11 +473,28 @@ class MarkdownRowSource implements RowSource {
       this.tree.add(unit, rows - this.counts[unit]!)
       this.counts[unit] = rows
       this.changes += 1
+      this.env.changed?.()
     }
   }
 
-  private cacheKey(unit: number): string {
-    return `${this.key}:md:${String(this.width)}:${String(unit)}`
+  /**
+   * A unit is cached by what it paints, not by the node it came from: a streamed answer is a new node on every append,
+   * and only the unit the append reached has new text. The link definitions the paint restores are part of the key.
+   */
+  private cacheKey(index: number): string {
+    let key = this.keys[index]
+    if (key === undefined) {
+      key = this.contentKey(index)
+      this.keys[index] = key
+    }
+    return key
+  }
+
+  private contentKey(index: number): string {
+    const unit = this.prepared.units[index]!
+    const text = unit.kind === 'mermaid' ? `${unit.source}\0${unit.fallback}` : this.prepared.normalized.slice(unit.start, unit.end)
+    const closed = unit.kind === 'block' && unit.closed === true ? 1 : 0
+    return `m${paintKey(this.env)}:${String(this.width)}:${String(closed)}:${this.defsKey}:${contentHash(text)}`
   }
 
   /** The segmented child painting one oversized token's raw lines, built on first demand and shared across reads. */
@@ -594,11 +646,28 @@ class MarkdownRowSource implements RowSource {
 
 const preparedMarkdowns = new WeakMap<object, PreparedMarkdown>()
 
+/** The scans of the sources that streamed most recently: a source that grows takes over the scan it extends. */
+const recentScans: PreparedMarkdown[] = []
+const RECENT_SCANS = 4
+/** A scan of a larger source is not kept: it is a document, not a stream. */
+const RECENT_SCAN_MAX_CHARS = 512 * 1024
+
+function scanOf(source: string): PreparedMarkdown {
+  const previous = recentScans.find(scan => source.length >= scan.normalized.length && source.startsWith(scan.normalized))
+  const prepared = scanMarkdown(source, previous)
+  if (previous !== undefined) recentScans.splice(recentScans.indexOf(previous), 1)
+  if (prepared.normalized.length <= RECENT_SCAN_MAX_CHARS) {
+    recentScans.push(prepared)
+    if (recentScans.length > RECENT_SCANS) recentScans.shift()
+  }
+  return prepared
+}
+
 function markdownSource(node: MayflyMarkdownNode, width: number, env: ContentRowsEnv): RowSource {
   let prepared = preparedMarkdowns.get(node)
   if (prepared === undefined) {
-    prepared = scanMarkdown(fieldText(node.source))
-    countWork(env.counters, 'linesEstimated', prepared.lines)
+    prepared = scanOf(fieldText(node.source))
+    countWork(env.counters, 'linesEstimated', prepared.scanned)
     preparedMarkdowns.set(node, prepared)
   }
   return new MarkdownRowSource(prepared, Math.max(1, width), env, keyOf(node, env))
@@ -837,10 +906,17 @@ function textSource(node: Extract<MayflySectionContentNode, { readonly kind: 'te
   }, env, keyOf(node, env))
 }
 
+/** The palette a highlighted code block or diff paints with. */
+function codePaints(env: ContentRowsEnv): CodePaints {
+  const { colors } = env
+  return { base: colors.text, keyword: colors.primary, string: colors.success, comment: colors.muted, number: colors.warning, type: colors.accent, added: colors.success, removed: colors.error }
+}
+
 function codeSource(node: Extract<MayflySectionContentNode, { readonly kind: 'code' }>, width: number, env: ContentRowsEnv): RowSource {
   const { text: code, index } = indexedField(node, node.code, env)
   const language = node.language === undefined ? '' : sanitizePluginText(requireText(node.language, 'code language'))
-  const digits = node.numbered === true ? String(index.lines).length : 0
+  const startAt = node.start ?? 1
+  const digits = node.numbered === true ? String(index.lines + startAt - 1).length : 0
   const gutter = digits === 0 ? 0 : digits + 3
   const inner = Math.max(1, width - gutter)
   // Highlighting keeps its old cap (roadmap §2.2 row 14): the first rows of a block up to 32 KB, computed once.
@@ -854,7 +930,7 @@ function codeSource(node: Extract<MayflySectionContentNode, { readonly kind: 'co
           const [start, end] = index.lineText(line)
           head.push(sanitizePluginText(code.slice(start, end)))
         }
-        highlighted = highlightCodeLines(head.join('\n'), language, { base: env.colors.text, keyword: env.colors.primary, string: env.colors.success, comment: env.colors.muted })
+        highlighted = highlightCodeLines(head.join('\n'), language, codePaints(env))
       }
     }
     return highlighted
@@ -865,7 +941,7 @@ function codeSource(node: Extract<MayflySectionContentNode, { readonly kind: 'co
       const wrapped = cut ? charWrap(painted, at, env.components) : env.components.wrapText(painted, at)
       wrapped.forEach((row, offset) => {
         if (gutter === 0) { rows.push(row); return }
-        const mark = numbered && offset === 0 ? `${String(line + 1).padStart(digits)} │ ` : ' '.repeat(gutter)
+        const mark = numbered && offset === 0 ? `${String(line + startAt).padStart(digits)} │ ` : ' '.repeat(gutter)
         rows.push(`${env.colors.muted(mark)}${row}`)
       })
     }
@@ -884,7 +960,7 @@ function codeSource(node: Extract<MayflySectionContentNode, { readonly kind: 'co
     }
     return rows
   }, env, keyOf(node, env), gutter)
-  if (language.length === 0) return body
+  if (language.length === 0 || node.label === false) return body
   countWork(env.counters, 'rowsPainted', 1)
   const label = env.colors.muted(language)
   // The label row heads the body; both are sanitized, so the whole block stays marker-free and declares its width.

@@ -1,189 +1,193 @@
-/** Plan document decisions share the renderer and preserve native labels.
+/** Plan review on the decision card: approve, keep planning, reject, revision text, copy, and the long plan.
  * @module @ephemeral-ai/mayfly/tests/interaction/plan-review-panel
  */
 import { Context } from '@deepseek-ai/cordis'
 import type { AskUserQuestionItem } from '@deepseek-ai/dsh-user-questions'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { setClipboardOsc52Emitter, setClipboardTextWriter } from '../../src/interaction/clipboard-write.ts'
-import { planDocumentNode } from '../../src/interaction/plan-document.ts'
-import { planReviewAction, planReviewAnswer, planReviewChoices, planReviewControls } from '../../src/interaction/plan-review-panel.ts'
+import { setClipboardTextWriter } from '../../src/interaction/clipboard-write.ts'
+import { planReviewAction, planReviewChoices } from '../../src/interaction/plan-review-panel.ts'
+import { visibleWidth } from '../../src/core/width.ts'
 import { requestFixture, renderRequest, flushRequests } from './request-fixture.ts'
-import type { MayflyFieldValue, MayflyUiActionEvent } from '../../../ui/src/interaction.ts'
+import type { MayflyDecisionRequest } from '../../src/core/types.ts'
 
 const contexts: Context[] = []
 afterEach(async () => {
   setClipboardTextWriter(undefined)
-  setClipboardOsc52Emitter(undefined)
   for (const ctx of contexts.splice(0)) await ctx.fiber.dispose()
 })
 async function setup() { const ctx = new Context(); contexts.push(ctx); return requestFixture(ctx) }
-const question: AskUserQuestionItem = { id: 'plan', question: 'Proceed?', detail: '# Plan\n\nChange the module.', options: [{ label: 'Keep planning' }, { label: 'Start implementation' }], intent: { kind: 'plan-review', approve: 'Start implementation' } }
-const choices = { approve: question.options![1]!, decline: question.options![0]! }
 
-describe('shared plan review', () => {
-  it('mounts the plan document into the content flow while controls stay in the editor slot', async () => {
-    const bench = await setup()
-    const review = bench.ctx.userQuestions.ask({ questions: [question] })
-    const entry = bench.ctx.mayflyOverlays.list().findLast(candidate => candidate.id.startsWith('mayfly.questions.'))!
-    expect(entry.definition).toMatchObject({ presentation: 'editor', dismissal: 'discard', capturing: true, contentScroll: true })
-    expect(entry.definition.width).toBeUndefined()
-    expect(entry.definition.maxHeight).toBeUndefined()
-    const document = bench.screen.slotTargets.get('local.mayfly.questions.1.document')
-    expect(document).toBeDefined()
-    expect(document!.render(80).join('\n')).toContain('Change the module.')
-    expect(bench.screen.followCount).toBeGreaterThan(0)
-    bench.model().requestClose()
-    await expect(review).rejects.toMatchObject({ code: 'ASK_CANCELLED' })
-    await flushRequests()
-    expect(bench.screen.children.some(child => child.render(80).join('\n').includes('Change the module.'))).toBe(false)
-    const plain = bench.ctx.userQuestions.ask({ questions: [{ id: 'q', question: 'Why?' }] })
-    const plainEntry = bench.ctx.mayflyOverlays.list().findLast(candidate => candidate.id.startsWith('mayfly.questions.'))!
-    expect(plainEntry.definition.presentation).toBe('editor')
-    expect(bench.screen.slotTargets.has('local.mayfly.questions.2.document')).toBe(false)
-    bench.model().requestClose()
-    await expect(plain).rejects.toMatchObject({ code: 'ASK_CANCELLED' })
-  })
+const note = { pagePath: [], formId: 'decision.note', fieldId: 'note' }
+const plan = (detail = '# Plan\n\nChange the module.'): AskUserQuestionItem => ({
+  id: 'plan', question: 'Proceed?', header: 'Plan', detail,
+  options: [{ label: 'Keep planning' }, { label: 'Start implementation' }],
+  intent: { kind: 'plan-review', approve: 'Start implementation', callId: 'call-plan' } as never,
+})
+const question = plan()
 
-  it('defaults to the native declining label regardless of option order', async () => {
+/** Every plan publication the plugin made, in order. */
+function plans(ctx: Context): Array<readonly MayflyDecisionRequest[]> {
+  const seen: Array<readonly MayflyDecisionRequest[]> = []
+  ctx.on('mayfly/decision-requests-changed', (source, requests) => { if (source === 'plan') seen.push(requests) })
+  return seen
+}
+
+describe('plan review decision card', () => {
+  it('is a bare card in the editor slot, and the plan stays out of it', async () => {
     const bench = await setup()
     const pending = bench.ctx.userQuestions.ask({ questions: [question] })
-    const renderer = renderRequest(bench.model())
-    expect(renderer.component.render(80).join('\n')).not.toContain('Change the module.')
-    expect(renderer.focusTarget!.captureFocusIdentity?.()).toMatchObject({ controlId: 'decision', itemId: 'reject' })
-    renderer.input('\r')
+    const entry = bench.ctx.mayflyOverlays.list().findLast(candidate => candidate.id.startsWith('mayfly.questions.'))!
+    expect(entry.definition).toMatchObject({ presentation: 'editor', capturing: true, dismissal: 'discard', contentScroll: true, armMs: 300 })
+    const model = bench.model()
+    const renderer = renderRequest(model)
+    const frame = renderer.component.render(120).join('\n')
+    expect(frame).toContain('Approve and start')
+    expect(frame.indexOf('Approve and start')).toBeLessThan(frame.indexOf('Keep planning…'))
+    expect(frame.indexOf('Keep planning…')).toBeLessThan(frame.indexOf('Reject'))
+    expect(frame).toContain('Revise')
+    expect(frame).toContain('copy plan')
+    expect(frame).toContain('open plan')
+    expect(frame).not.toContain('Change the module.')
+    model.requestClose()
     await expect(pending).resolves.toEqual({ answers: [{ id: 'plan', selected: ['Keep planning'] }] })
     renderer.runtime.dispose()
   })
 
-  it('returns the declared approving label on an explicit selection', async () => {
+  it('publishes the plan as the one pending plan request with its call, and an empty roster once it settles', async () => {
+    const bench = await setup()
+    const seen = plans(bench.ctx)
+    const pending = bench.ctx.userQuestions.ask({ questions: [question] })
+    expect(seen.at(-1)).toEqual([{ type: 'plan', toolName: 'Plan', callId: 'call-plan' }])
+    bench.model().requestClose()
+    await pending
+    expect(seen.at(-1)).toEqual([])
+  })
+
+  it('leaves a question without the plan intent as a plain question, with no plan publication', async () => {
+    const bench = await setup()
+    const seen = plans(bench.ctx)
+    const plain = { id: 'choice', question: 'Which?', options: [{ label: 'A' }, { label: 'B' }] }
+    expect(planReviewChoices(plain)).toBeUndefined()
+    const pending = bench.ctx.userQuestions.ask({ questions: [plain] })
+    expect(seen).toEqual([])
+    expect(bench.ctx.mayflyOverlays.list().findLast(candidate => candidate.id.startsWith('mayfly.questions.'))!.definition.dismissal).toBeUndefined()
+    bench.model().requestClose()
+    await expect(pending).rejects.toMatchObject({ code: 'ASK_CANCELLED' })
+  })
+
+  it('chooses approve with the digit 1 and returns the declared approving label', async () => {
     const bench = await setup()
     const pending = bench.ctx.userQuestions.ask({ questions: [question] })
-    bench.model().emit({ kind: 'selection-accept', pagePath: [], controlId: 'decision', selectedIds: ['approve'] })
+    const renderer = renderRequest(bench.model())
+    renderer.input('1')
     await expect(pending).resolves.toEqual({ answers: [{ id: 'plan', selected: ['Start implementation'] }] })
+    renderer.runtime.dispose()
   })
 
-  it('swaps in the feedback input on Other and submits the typed revision', async () => {
+  it('rejects with the declining label, and a note typed beside Reject is not sent', async () => {
     const bench = await setup()
     const pending = bench.ctx.userQuestions.ask({ questions: [question] })
     const model = bench.model()
-    model.emit({ kind: 'selection-accept', pagePath: [], controlId: 'decision', selectedIds: ['other'] })
-    await vi.waitFor(() => expect(model.form({ pagePath: [], formId: 'revision' })).toBeDefined())
-    model.edit({ pagePath: [], formId: 'revision', fieldId: 'reason' }, '  revise\nthese steps  ')
-    model.invoke('send-feedback', [])
-    await expect(pending).resolves.toEqual({ answers: [{ id: 'plan', selected: [], custom: '  revise\nthese steps  ' }] })
+    model.edit(note, 'please revise step 2')
+    model.emit({ kind: 'selection-accept', pagePath: [], controlId: 'decision.options', selectedIds: ['reject'] })
+    await expect(pending).resolves.toEqual({ answers: [{ id: 'plan', selected: ['Keep planning'] }] })
   })
 
-  it('restores the decision controls on back and on an empty submission', async () => {
+  it('sends the typed revision as custom text on Keep planning…', async () => {
     const bench = await setup()
     const pending = bench.ctx.userQuestions.ask({ questions: [question] })
     const model = bench.model()
-    model.emit({ kind: 'selection-accept', pagePath: [], controlId: 'decision', selectedIds: ['other'] })
-    await vi.waitFor(() => expect(model.form({ pagePath: [], formId: 'revision' })).toBeDefined())
-    model.invoke('back', [])
-    await vi.waitFor(() => expect(model.form({ pagePath: [], formId: 'revision' })).toBeUndefined())
-    model.emit({ kind: 'selection-accept', pagePath: [], controlId: 'decision', selectedIds: ['other'] })
-    await vi.waitFor(() => expect(model.form({ pagePath: [], formId: 'revision' })).toBeDefined())
-    model.invoke('send-feedback', [])
-    await vi.waitFor(() => expect(model.form({ pagePath: [], formId: 'revision' })).toBeUndefined())
-    expect(model.disposed).toBe(false)
+    model.edit(note, '  revise\nthese steps  ')
+    model.emit({ kind: 'selection-accept', pagePath: [], controlId: 'decision.options', selectedIds: ['keep'] })
+    await expect(pending).resolves.toEqual({ answers: [{ id: 'plan', selected: [], custom: 'revise\nthese steps' }] })
+  })
+
+  it('sends the revision typed in the note with Enter as custom text', async () => {
+    const bench = await setup()
+    const pending = bench.ctx.userQuestions.ask({ questions: [question] })
+    const model = bench.model()
+    model.edit(note, 'shorter plan')
+    model.invoke('send-note')
+    await expect(pending).resolves.toEqual({ answers: [{ id: 'plan', selected: [], custom: 'shorter plan' }] })
+  })
+
+  it('settles nothing on Keep planning… with an empty note, and asks for the revision in the note field', async () => {
+    const bench = await setup()
+    const pending = bench.ctx.userQuestions.ask({ questions: [question] })
+    const model = bench.model()
+    const renderer = renderRequest(model)
+    model.emit({ kind: 'selection-accept', pagePath: [], controlId: 'decision.options', selectedIds: ['keep'] })
+    await flushRequests()
+    expect(renderer.component.render(80).join('\n')).toContain('Write what to change first')
+    model.invoke('send-note')
+    await flushRequests()
+    expect(bench.ctx.mayflyOverlays.list().some(entry => entry.id.startsWith('mayfly.questions.'))).toBe(true)
     model.requestClose()
-    await expect(pending).rejects.toMatchObject({ code: 'ASK_CANCELLED' })
+    await expect(pending).resolves.toEqual({ answers: [{ id: 'plan', selected: ['Keep planning'] }] })
+    renderer.runtime.dispose()
   })
 
-  it('swaps in the feedback input through the Other accelerator', async () => {
+  it('declines on Esc, as the card says, without throwing', async () => {
+    const bench = await setup()
+    const pending = bench.ctx.userQuestions.ask({ questions: [question] })
+    const renderer = renderRequest(bench.model())
+    renderer.input('\x1b')
+    await expect(pending).resolves.toEqual({ answers: [{ id: 'plan', selected: ['Keep planning'] }] })
+    renderer.runtime.dispose()
+  })
+
+  it('copies the plan to the clipboard with c and reports success or failure', async () => {
     const bench = await setup()
     const pending = bench.ctx.userQuestions.ask({ questions: [question] })
     const model = bench.model()
-    model.emit({ kind: 'activate', pagePath: [], controlId: 'other-plan', actionId: 'other-plan' })
-    await vi.waitFor(() => expect(model.form({ pagePath: [], formId: 'revision' })).toBeDefined())
-    expect(model.disposed).toBe(false)
-    model.requestClose()
-    await expect(pending).rejects.toMatchObject({ code: 'ASK_CANCELLED' })
-  })
+    const writer = vi.fn(async (_text: string) => {})
+    setClipboardTextWriter(writer)
+    model.invoke('copy')
+    await vi.waitFor(() => expect(writer).toHaveBeenCalledOnce())
+    expect(writer.mock.calls[0]![0]).toBe(question.detail)
+    expect(model.feedbackSnapshot().at(-1)?.message).toBe('Plan copied to clipboard')
 
-  it('cancels the native request when Escape dismisses the feedback input', async () => {
-    const bench = await setup()
-    const pending = bench.ctx.userQuestions.ask({ questions: [question] })
-    const model = bench.model()
-    model.emit({ kind: 'activate', pagePath: [], controlId: 'other-plan', actionId: 'other-plan' })
-    await vi.waitFor(() => expect(model.form({ pagePath: [], formId: 'revision' })).toBeDefined())
-    model.requestClose()
-    await expect(pending).rejects.toMatchObject({ code: 'ASK_CANCELLED' })
-  })
-
-  it('copies the plan markdown without settling the request', async () => {
-    const copied: string[] = []
-    setClipboardOsc52Emitter(() => false)
-    setClipboardTextWriter(async text => { copied.push(text) })
-    const bench = await setup()
-    const pending = bench.ctx.userQuestions.ask({ questions: [question] })
-    const model = bench.model()
-    model.emit({ kind: 'activate', pagePath: [], controlId: 'copy-plan', actionId: 'copy-plan' })
-    await vi.waitFor(() => expect(model.feedbackSnapshot()).toEqual(expect.arrayContaining([expect.objectContaining({ severity: 'success' })])))
-    expect(copied).toEqual(['# Plan\n\nChange the module.'])
-    expect(model.disposed).toBe(false)
-    model.requestClose()
-    await expect(pending).rejects.toMatchObject({ code: 'ASK_CANCELLED' })
-  })
-
-  it('reports a copy failure and keeps the request open', async () => {
-    setClipboardOsc52Emitter(() => false)
     setClipboardTextWriter(async () => { throw new Error('no clipboard') })
-    const bench = await setup()
-    const pending = bench.ctx.userQuestions.ask({ questions: [question] })
-    const model = bench.model()
-    model.emit({ kind: 'activate', pagePath: [], controlId: 'copy-plan', actionId: 'copy-plan' })
-    await vi.waitFor(() => expect(model.feedbackSnapshot()).toEqual(expect.arrayContaining([expect.objectContaining({ severity: 'error' })])))
+    model.invoke('copy')
+    await vi.waitFor(() => expect(model.feedbackSnapshot().at(-1)?.message).toBe('Plan copy failed'))
+    expect(model.feedbackSnapshot().at(-1)?.severity).toBe('error')
     expect(model.disposed).toBe(false)
     model.requestClose()
-    await expect(pending).rejects.toMatchObject({ code: 'ASK_CANCELLED' })
+    await expect(pending).resolves.toEqual({ answers: [{ id: 'plan', selected: ['Keep planning'] }] })
   })
 
-  it('falls back to the questionnaire for a valid intent with more than two options', async () => {
+  it('keeps a long plan (600+ lines) out of the card and every card row inside the width', async () => {
     const bench = await setup()
-    const pending = bench.ctx.userQuestions.ask({ questions: [{ ...question, options: [...question.options!, { label: 'Later' }] }] })
-    const model = bench.model()
-    // The fallback is a single-question questionnaire: no wizard tabs, the
-    // answer form mounts at the surface root, and no document slot mounts.
-    expect(model.activeTab({ pagePath: [], controlId: 'questions' })).toBeUndefined()
-    expect(model.form({ pagePath: [], formId: 'answer' })).toBeDefined()
-    expect(bench.screen.slotTargets.has('local.mayfly.questions.1.document')).toBe(false)
-    model.invoke('submit-answers')
-    await expect(pending).resolves.toEqual({ answers: [{ id: 'plan', selected: [] }] })
+    const long = plan(Array.from({ length: 640 }, (_, index) => `- step ${String(index + 1)} with a long line of text to wrap somewhere`).join('\n'))
+    const pending = bench.ctx.userQuestions.ask({ questions: [long] })
+    const renderer = renderRequest(bench.model(), { columns: 40, rows: 24 })
+    const rows = renderer.component.render(40)
+    for (const row of rows) expect(visibleWidth(row)).toBeLessThanOrEqual(40)
+    expect(rows.join('\n')).not.toContain('step 300')
+    renderer.input('1')
+    await expect(pending).resolves.toEqual({ answers: [{ id: 'plan', selected: ['Start implementation'] }] })
+    renderer.runtime.dispose()
   })
 
-  it('recognizes only a valid pair and does not guess from option positions', () => {
-    const { options, ...withoutOptions } = question
-    const { detail, ...withoutDetail } = question
-    expect(planReviewChoices({ id: 'q', question: 'Q' })).toBeUndefined()
-    expect(planReviewChoices(withoutOptions)).toBeUndefined()
-    expect(planReviewChoices({ ...question, intent: { kind: 'plan-review', approve: 'missing' } })).toBeUndefined()
-    expect(planReviewChoices(question)).toEqual({ approve: question.options![1], decline: question.options![0] })
-    expect(planReviewChoices({ ...question, options: question.options!.toReversed() })).toEqual({ approve: question.options![1], decline: question.options![0] })
-    expect(JSON.stringify(planDocumentNode(withoutDetail, key => key))).toContain('"source":""')
-    expect(JSON.stringify(planReviewControls(question, choices, key => key))).toContain('"numbered":"focus"')
-    expect(JSON.stringify(planReviewControls(question, choices, key => key))).toContain('"label":"Start implementation"')
-    expect(JSON.stringify(planReviewControls(question, choices, key => key))).toContain('"label":"Other"')
-    const described = planReviewChoices({ ...question, options: [{ label: 'Keep planning', description: 'stay' }, { label: 'Start implementation', description: 'go' }] })!
-    expect(JSON.stringify(planReviewControls(question, described, key => key))).toContain('"detail":"go"')
-    expect(planReviewAnswer(question, choices, { kind: 'activate', pagePath: [], controlId: 'noop', actionId: 'noop' })).toBeUndefined()
-    expect(planReviewAnswer(question, choices, { kind: 'submit', pagePath: [], controlId: 'submit', submission: { draftRevision: 1, actionId: 'other', source: [], forms: [] } })).toBeUndefined()
-    const read = (value: unknown): MayflyUiActionEvent => ({ kind: 'activate', pagePath: [], controlId: 'send-feedback', actionId: 'send-feedback', inputs: { actionId: 'send-feedback', draftRevision: 0, source: [], forms: [{ pagePath: [], formId: 'revision', draftRevision: 0, fields: [{ id: 'reason', change: 'set', value: value as MayflyFieldValue }] }] } })
-    expect(planReviewAnswer(question, choices, read('redo this'))).toEqual({ answers: [{ id: 'plan', selected: [], custom: 'redo this' }] })
-    expect(planReviewAnswer(question, choices, read(42))).toBeUndefined()
-    expect(planReviewAnswer(question, choices, read(''))).toBeUndefined()
-    expect(planReviewAnswer(question, choices, read(undefined))).toBeUndefined()
+  it('reads a plan review only from a two-choice question whose approving label is one of its own options', () => {
+    const [keep, start] = [{ label: 'Keep planning' }, { label: 'Start implementation' }]
+    expect(planReviewChoices({ ...question, options: [keep, start, { label: 'Park' }] })).toBeUndefined()
+    expect(planReviewChoices({ ...question, options: [keep, { label: 'Park' }] })).toBeUndefined()
+    expect(planReviewChoices({ id: 'plan', question: 'Proceed?', detail: '# Plan', intent: { kind: 'plan-review', approve: 'Start implementation' } })).toBeUndefined()
+    expect(planReviewChoices({ ...question, options: [start, keep] })).toEqual({ approve: start, decline: keep })
   })
 
-  it('copies an empty detail, stringifies non-Error failures, and ignores unrelated events', async () => {
-    const copied: string[] = []
-    setClipboardOsc52Emitter(() => false)
-    setClipboardTextWriter(async text => { copied.push(text) })
-    expect(await planReviewAction({ id: 'p', question: 'P' }, choices, { kind: 'activate', pagePath: [], controlId: 'x', actionId: 'copy-plan' }, key => key)).toMatchObject({ kind: 'completed' })
-    expect(copied).toEqual([''])
-    setClipboardTextWriter(() => Promise.reject('gone'))
-    expect(await planReviewAction(question, choices, { kind: 'activate', pagePath: [], controlId: 'x', actionId: 'copy-plan' }, key => key)).toMatchObject({ kind: 'completed', feedback: { severity: 'error', detail: 'gone' } })
-    expect(await planReviewAction(question, choices, { kind: 'selection-accept', pagePath: [], controlId: 'decision', selectedIds: [] }, key => key)).toBeUndefined()
-    expect(await planReviewAction(question, choices, { kind: 'dismiss', pagePath: [] }, key => key)).toBeUndefined()
+  it('leaves a key that settles nothing to the card, and does not answer for it', async () => {
+    const bench = await setup()
+    const pending = bench.ctx.userQuestions.ask({ questions: [question] })
+    const renderer = renderRequest(bench.model())
+    renderer.input('x')
+    await flushRequests()
+    expect(bench.ctx.mayflyOverlays.list().some(entry => entry.id.startsWith('mayfly.questions.'))).toBe(true)
+    const unowned = await planReviewAction(question, { kind: 'activate', actionId: 'unowned', pagePath: [] } as never, text => text)
+    expect(unowned).toBeUndefined()
+    bench.model().requestClose()
+    await expect(pending).resolves.toEqual({ answers: [{ id: 'plan', selected: ['Keep planning'] }] })
+    renderer.runtime.dispose()
   })
 })
