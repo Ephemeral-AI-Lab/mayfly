@@ -473,6 +473,14 @@ describe('calls that wait on the user', () => {
     expect(waiting(pendingBash('cd out\nls'), approval()).waiting!.rows).toEqual([{ lead: '$', text: 'cd out' }, { lead: ' ', text: 'ls' }])
   })
 
+  it('keeps the first forty lines of a longer grouped command under the wait and counts the rest', () => {
+    const commandLines = Array.from({ length: 45 }, (_, index) => `step ${String(index + 1)}`)
+    const grouped = callsOf(commandGroup({ callId: 'wait', state: 'pending', endedAt: undefined, command: 'step 1 …', commandLines }), t, NOW, askedOf('wait', approval()))[0]!
+    expect(grouped.waiting!.rows).toHaveLength(OPEN_BODY_ROWS + 1)
+    expect(grouped.waiting!.rows[0]).toEqual({ lead: '$', text: 'step 1' })
+    expect(grouped.waiting!.rows.at(-1)).toEqual({ text: '… +5 more', tone: 'muted' })
+  })
+
   it('shows the lines of a command in a group, and checks a command that has no target for deleting', () => {
     const grouped = callsOf(commandGroup({ callId: 'wait', state: 'pending', endedAt: undefined, command: 'cd a …', commandLines: ['cd a', 'rm b'] }), t, NOW, askedOf('wait', approval()))[0]!
     expect(grouped.waiting!.rows).toEqual([{ lead: '$', text: 'cd a' }, { lead: ' ', text: 'rm b' }, { text: '⚠ deletes files', tone: 'warning' }])

@@ -89,6 +89,14 @@ describe('CompactionRow', () => {
     expect(render({ ...running, compact: true }, 120)[0]).not.toContain('▰')
   })
 
+  it('draws a settled form without a known change, and a running one without its stage line at the narrow width', () => {
+    const { change: _change, ...noChange } = settled
+    expect(render(noChange, 120)).toEqual(['✓ Compacted 84 items ▰▰▰▰▰▰▰▰▰▰ · ~148k → ~12k tokens · auto'])
+    expect(render(noChange, 40)).toEqual(['✓ Compacted 84 items · ~148k → ~12k tok…'])
+    const { progress: _progress, percent: _percent, ...unstaged } = running
+    expect(render(unstaged, 40)).toEqual(['● Compacting context · auto'])
+  })
+
   it('draws a failure as one line with the reason in danger, bar or not', () => {
     const failed: CompactionFacts = { state: 'error', title: 'Compaction failed: timeout', compact: false, bar: BAR_RUNNING }
     expect(render(failed, 120)).toEqual(['✗ Compaction failed: timeout'])

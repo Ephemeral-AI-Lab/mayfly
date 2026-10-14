@@ -133,6 +133,18 @@ describe('live draft overlays', () => {
     live.dispose()
   })
 
+  it('keeps the empty model when the tools change before any projection has been shown', () => {
+    const ctx = new Context()
+    const live = new LiveAssistantStreamService(ctx)
+    const source = new OfficialConversationModelSource(new ProjectionFake() as never, { get: () => undefined }, () => {}, {
+      subscribe: listener => live.subscribe(listener),
+      get: id => live.get(id),
+    })
+    const before = source.snapshot()
+    source.invalidateTools()
+    expect(source.snapshot()).toBe(before)
+  })
+
   it('never overlays a draft whose turn the durable projection already closed or moved past', () => {
     const ctx = new Context()
     const live = new LiveAssistantStreamService(ctx)

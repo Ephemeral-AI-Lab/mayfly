@@ -5,7 +5,7 @@ import { Context } from '@deepseek-ai/cordis'
 import type { AskUserQuestionItem } from '@deepseek-ai/dsh-user-questions'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { setClipboardTextWriter } from '../../src/interaction/clipboard-write.ts'
-import { planReviewChoices } from '../../src/interaction/plan-review-panel.ts'
+import { planReviewAction, planReviewChoices } from '../../src/interaction/plan-review-panel.ts'
 import { visibleWidth } from '../../src/core/width.ts'
 import { requestFixture, renderRequest, flushRequests } from './request-fixture.ts'
 import type { MayflyDecisionRequest } from '../../src/core/types.ts'
@@ -166,6 +166,28 @@ describe('plan review decision card', () => {
     expect(rows.join('\n')).not.toContain('step 300')
     renderer.input('1')
     await expect(pending).resolves.toEqual({ answers: [{ id: 'plan', selected: ['Start implementation'] }] })
+    renderer.runtime.dispose()
+  })
+
+  it('reads a plan review only from a two-choice question whose approving label is one of its own options', () => {
+    const [keep, start] = [{ label: 'Keep planning' }, { label: 'Start implementation' }]
+    expect(planReviewChoices({ ...question, options: [keep, start, { label: 'Park' }] })).toBeUndefined()
+    expect(planReviewChoices({ ...question, options: [keep, { label: 'Park' }] })).toBeUndefined()
+    expect(planReviewChoices({ id: 'plan', question: 'Proceed?', detail: '# Plan', intent: { kind: 'plan-review', approve: 'Start implementation' } })).toBeUndefined()
+    expect(planReviewChoices({ ...question, options: [start, keep] })).toEqual({ approve: start, decline: keep })
+  })
+
+  it('leaves a key that settles nothing to the card, and does not answer for it', async () => {
+    const bench = await setup()
+    const pending = bench.ctx.userQuestions.ask({ questions: [question] })
+    const renderer = renderRequest(bench.model())
+    renderer.input('x')
+    await flushRequests()
+    expect(bench.ctx.mayflyOverlays.list().some(entry => entry.id.startsWith('mayfly.questions.'))).toBe(true)
+    const unowned = await planReviewAction(question, { kind: 'activate', actionId: 'unowned', pagePath: [] } as never, text => text)
+    expect(unowned).toBeUndefined()
+    bench.model().requestClose()
+    await expect(pending).resolves.toEqual({ answers: [{ id: 'plan', selected: ['Keep planning'] }] })
     renderer.runtime.dispose()
   })
 })

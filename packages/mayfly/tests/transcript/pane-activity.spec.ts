@@ -246,6 +246,19 @@ describe('mayfly-pane-activity', () => {
     expect(harness.timers.live).toBe(0)
   })
 
+  it('keeps the one hold when the native settle repeats inside it', async () => {
+    const harness = await bootFacts({ phase: 'waiting' })
+    harness.stop(true)
+    harness.stop(false)
+    harness.stop(false)
+    expect(harness.timers.timeouts).toHaveLength(1)
+    expect(harness.timers.live).toBe(1)
+    harness.timers.timeouts.at(-1)!.fire()
+    expect(rows(harness.screen)[0]).not.toBe('  ■ interrupting…')
+    await harness.dispose()
+    expect(harness.timers.live).toBe(0)
+  })
+
   it('starts in the stopping row when a stop is already draining at mount', async () => {
     const harness = await bootFacts({ phase: 'waiting' }, {}, true)
     expect(rows(harness.screen)[0]).toBe('  ■ interrupting…')

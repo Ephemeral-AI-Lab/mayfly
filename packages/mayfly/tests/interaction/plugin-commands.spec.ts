@@ -625,6 +625,19 @@ describe('installer unit seams', () => {
     ])
   })
 
+  it('names a patch-file failure that is not an Error by its text', async () => {
+    updaterInternals.spawnOnce = vi.fn(async () => ok())
+    const root = mkdtempTracked('mayfly-uninstall-')
+    writeInstalledDependencies(root, ['pkg-target'])
+    updaterInternals.readTextFile = (path: string) => {
+      if (path.endsWith('cordis.patch.yml')) throw 'patch file locked'
+      return REAL.readTextFile(path)
+    }
+    const target = entry({ install: { rows: [{ id: 'target', name: 'pkg-target', activation: 'profile-patch', npm: { spec: 'pkg-target' } }] } })
+    const outcome = await uninstallEntry({ dshCommand: { command: 'dsh', args: [] }, profile: 'p', root, entry: target, source: 'npm' })
+    expect(outcome).toEqual({ kind: 'error', text: 'preparing removal of "Loop" failed: patch file locked' })
+  })
+
   it('reports patch write failures after successful package operations', async () => {
     updaterInternals.spawnOnce = vi.fn(async () => ok())
     const withPatch = entry({ install: { rows: [{ id: 'write', name: 'pkg-write', activation: 'profile-patch', npm: { spec: 'pkg-write' } }] } })

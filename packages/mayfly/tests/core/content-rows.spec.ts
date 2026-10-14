@@ -368,6 +368,17 @@ describe('contentNodeSource', () => {
     expect(env.counters.linesEstimated).toBe(aligned)
   })
 
+  it('paints a diff with its language highlighted, its before side numbered from its own start, and its tail below a cut', () => {
+    const node: WindowedContentNode = { kind: 'diff', before: 'const a = 1', after: 'const a = 2', language: 'ts', beforeStart: 10, numberWidth: 4, maxRows: 1, tail: 'read on' }
+    const { rows } = source(node, 60)
+    expect([...rows].map(row => plainText(row).trimEnd())).toEqual(['    10 │ − const a = 1', '  read on'])
+    // Past the highlight byte cap the same diff is painted plain: only the color is withheld, the text is unchanged.
+    const big = 'x'.repeat(40 * 1024)
+    const highlighted = [...source({ kind: 'diff', before: big, after: big, language: 'ts' }, 60).rows].map(row => plainText(row))
+    const plain = [...source({ kind: 'diff', before: big, after: big }, 60).rows].map(row => plainText(row))
+    expect(highlighted).toEqual(plain)
+  })
+
   it('bounds a diff outside a scroll and unclamps it inside one', () => {
     const before = Array.from({ length: 30 }, (_, index) => `v${String(index)}`).join('\n')
     const after = Array.from({ length: 30 }, (_, index) => `w${String(index)}`).join('\n')

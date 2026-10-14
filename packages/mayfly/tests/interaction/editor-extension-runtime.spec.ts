@@ -981,6 +981,25 @@ describe('editor extension shell and actions', () => {
     runtime.dispose()
   })
 
+  it('accepts an editor-state replay that fires before the first shell is built', () => {
+    const { ctx } = fakeMayflyContext()
+    const editor = new FakeMayflyEditor()
+    const replay = vi.spyOn(ctx.mayflyPromptEditor, 'subscribeEditorState').mockImplementation(listener => {
+      listener()
+      return () => {}
+    })
+    const runtime = new EditorExtensionRuntime({
+      ctx,
+      editor,
+      report: () => {},
+      shouldTransformSubmit: () => true,
+    })
+    expect(replay).toHaveBeenCalledOnce()
+    runtime.handleInput('a')
+    expect(editor.getText()).toBe('a')
+    runtime.dispose()
+  })
+
   it('leaves Escape, Tab, and Shift+Tab to the editor while a footer notice is shown', () => {
     const { ctx } = fakeMayflyContext()
     const editor = new FakeMayflyEditor()
