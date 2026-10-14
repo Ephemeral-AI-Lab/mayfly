@@ -9,8 +9,11 @@
  * that waits for an answer (an approval or a question), which the next steps answer with keys.
  */
 export const play = (until, { timed = false } = {}) => ({ step: 'play', ...(until === undefined ? {} : { until }), ...(timed ? { timed } : {}) })
-/** Capture the screen as the checkpoint `name`. */
-export const checkpoint = name => ({ step: 'checkpoint', name })
+/**
+ * Capture the screen as the checkpoint `name`. With `tick`, the product's counters (`Bash · 4s`) are ticked once at the
+ * timeline time first, so a counter does not depend on where the product's own timer fell under load.
+ */
+export const checkpoint = (name, { tick = false } = {}) => ({ step: 'checkpoint', name, ...(tick ? { tick } : {}) })
 /** Send a key by name (`enter`, `down`, `ctrl+o`, `alt+x`, or literal text), `repeat` times. */
 export const key = (name, { repeat = 1 } = {}) => ({ step: 'key', name, repeat })
 /** Type text one character at a time. */

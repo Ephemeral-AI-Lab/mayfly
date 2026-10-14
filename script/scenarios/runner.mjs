@@ -209,8 +209,8 @@ export async function runScenario(name, { root, dshBin, cols, rows, keys = [], o
   const mouse = (bytes) => { mouseOn(); pty.write(bytes) }
   /** A key or text, through the browser when there is one. */
   const press = async (keyName) => { if (browser === undefined) pty.write(keyBytes(keyName)); else await browser.key(keyName) }
-  const capture = async (checkpointName) => {
-    await settle(150, 20_000, scenario.tick === true)
+  const capture = async (checkpointName, tick = false) => {
+    await settle(150, 20_000, tick || scenario.tick === true)
     const wrapped = screen.wrappedRows()
     if (wrapped.length > 0) failures.push(`${checkpointName}: rows ${wrapped.join(', ')} are wider than the terminal`)
     const png = browser === undefined ? undefined : await browser.screenshot()
@@ -277,7 +277,7 @@ export async function runScenario(name, { root, dshBin, cols, rows, keys = [], o
           if (driver !== 'finished') await report(120_000, step.until === undefined ? 'the end of the replay' : `the mark ${step.until}`)
           await settle()
           break
-        case 'checkpoint': await capture(step.name); break
+        case 'checkpoint': await capture(step.name, step.tick === true); break
         case 'key':
           for (let count = 0; count < step.repeat; count += 1) { await press(step.name); await settle(80) }
           break

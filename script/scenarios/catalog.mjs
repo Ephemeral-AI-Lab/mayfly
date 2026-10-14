@@ -633,7 +633,7 @@ const SCRIPTS = {
   pending: [
     play('running', TIMED), checkpoint('running'),
     play('parallel', TIMED), checkpoint('parallel'),
-    play('failing', TIMED), checkpoint('failing'),
+    play('failing', TIMED), checkpoint('failing', { tick: true }),
     play(), checkpoint('end'),
   ],
   thinkingLadder: [
