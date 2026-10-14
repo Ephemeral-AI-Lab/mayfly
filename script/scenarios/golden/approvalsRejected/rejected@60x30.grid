@@ -1,0 +1,51 @@
+grid 60x30 cursor none
+| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⣿⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀  Directory: ~/workspace
+| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣿⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀  Model:     deepseek...
+| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⡠⠊⠀⠑⢄⠀⠀⠀⠀⠀⠀⠀⠀⠀  Version:   scenario
+|
+|  » Publish the release.
+|
+|  ▾ 2 tool calls · Ctrl+O to expand
+|
+|  ● Publishing means pushing the tag to main.
+|
+|  ✗ Bash(git push --force origin main) · rejected
+|
+|  ● Understood: I will push a branch and open a pull request
+|    instead.
+|
+|  ✓ Bash(git push origin release/1.4) · 0.7s
+|
+|  ● The branch is pushed.
+|
+|  » User rejected bash: use a branch instead
+|
+|  ✻ Worked for 0s · done 09:00
+|
+|  ⡀ Deep diving · 0s
+|    ⎿ Tip: /plugin to browse and install plugins
+|                               Alt+↑ conversation · Alt+↓
+|╭─────────────────────────────────── Publish the release. ─╮
+|│ >                                                        │
+|╰──────────────────────────────────────────────────────────╯
+| deepseek-flash High  .  cache 42%  context: 1% (5.5k/977k)
+styles
+0: 1-25 fg:#9a86e6; 26-47 fg:#ededf2
+1: 1-23 fg:#8371d6; 24-25 fg:#9a86e6; 26-44 fg:#e9e6f4
+2: 1-23 fg:#6c5bbf; 24-25 fg:#9a86e6; 26-47 fg:#ededf2
+4: 2-3 fg:#9a86e6; 4-23 fg:#9a86e6 b
+6: 2-34 fg:#9aa3b8
+8: 2-3 fg:#ededf2
+10: 2-3 fg:#e85454; 4-7 fg:#ededf2 b; 8 fg:#9aa3b8; 9-36 fg:#c9c0f0; 37-48 fg:#9aa3b8
+12: 2-3 fg:#ededf2
+15: 2-3 fg:#4ec87e; 4-7 fg:#ededf2 b; 8 fg:#9aa3b8; 9-35 fg:#c9c0f0; 36-43 fg:#9aa3b8
+17: 2-3 fg:#ededf2
+19: 2-3 fg:#9a86e6; 4-43 fg:#9a86e6 b
+21: 2-29 fg:#9aa3b8
+23: 0-1 fg:#ededf2; 2 fg:#9a86e6; 3-14 fg:#ededf2; 16-19 fg:#9aa3b8
+24: 0-47 fg:#9aa3b8
+25: 31-56 fg:#9aa3b8
+26: 0-35 fg:#45406b; 36-57 fg:#5c6476; 58-59 fg:#45406b
+27: 0 fg:#45406b; 4 r; 59 fg:#45406b
+28: 0-59 fg:#45406b
+29: 1-19 fg:#ededf2; 25-58 fg:#ededf2

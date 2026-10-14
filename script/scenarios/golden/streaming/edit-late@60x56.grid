@@ -1,0 +1,95 @@
+grid 60x56 cursor none
+| ⠱⣦⣄⣀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⣠⣴⠎
+| ⠀⠙⢿⣿⣿⣷⣶⣤⣀⣀⣴⣶⣦⣀⣀⣤⣶⣾⣿⣿⡿⠋⠀  mayfly
+| ⠀⠀⠀⠈⠻⢿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡿⠟⠁⠀⠀⠀  ephemeral agents, e...
+| ⠀⠀⠀⠀⠀⠀⠀⠉⠉⠁⢸⣿⡇⠈⠉⠉⠀⠀⠀⠀⠀⠀⠀
+| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢸⣿⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀  Send /help for help...
+| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⣿⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀  Directory: ~/workspace
+| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣿⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀  Model:     deepseek...
+| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⡠⠊⠀⠑⢄⠀⠀⠀⠀⠀⠀⠀⠀⠀  Version:   scenario
+|
+|  » Write the report script, then tighten the config.
+|
+|  ● Writing the script.
+|
+|  ✓ Write(scripts/report.mjs) · 34 lines · 1.9 KB
+|    1 │ export const metric1 = () => compute(1, { window: 5
+|        })
+|    2 │ export const metric2 = () => compute(2, { window: 10
+|         })
+|    3 │ export const metric3 = () => compute(3, { window: 15
+|         })
+|    4 │ export const metric4 = () => compute(4, { window: 20
+|         })
+|    5 │ export const metric5 = () => compute(5, { window: 25
+|         })
+|    6 │ export const metric6 = () => compute(6, { window: 30
+|         })
+|    … +28 more · Ctrl+O
+|
+|  ● Now the edit.
+|
+|  ● Edit(src/config.mjs)
+|    … +11 earlier · Ctrl+O
+|    10 │     setting11: 11,
+|       │ −   setting12: 12,
+|    11 │ +   sett
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|  ● Preparing to edit files
+|    ⎿ Tip: Esc to interrupt the run
+|                               Alt+↑ conversation · Alt+↓
+|╭────────────────────────── Write the report script, then ─╮
+|│ >                                                        │
+|╰──────────────────────────────────────────────────────────╯
+| deepseek-flash High  .  cache 42%  context: 5% (5.5k/128k)
+styles
+0: 1-23 fg:#f5f5f7; 24-25 fg:#9a86e6
+1: 1-23 fg:#e9e5f6; 24-25 fg:#9a86e6; 26-47 fg:#9a86e6 b
+2: 1-23 fg:#dbd3f0; 24-25 fg:#9a86e6; 26-44 fg:#c9c0f0
+3: 1-23 fg:#c9beea; 24-25 fg:#9a86e6
+4: 1-23 fg:#b2a1ec; 24-25 fg:#9a86e6; 26-44 fg:#9aa3b8
+5: 1-25 fg:#9a86e6; 26-47 fg:#ededf2
+6: 1-23 fg:#8371d6; 24-25 fg:#9a86e6; 26-44 fg:#e9e6f4
+7: 1-23 fg:#6c5bbf; 24-25 fg:#9a86e6; 26-47 fg:#ededf2
+9: 2-3 fg:#9a86e6; 4-52 fg:#9a86e6 b
+11: 2-3 fg:#ededf2
+13: 2-3 fg:#4ec87e; 4-8 fg:#ededf2 b; 9 fg:#9aa3b8; 10-27 fg:#c9c0f0; 28-48 fg:#9aa3b8
+14: 2-3 fg:#ededf2; 4-7 fg:#9aa3b8; 8-13 fg:#9a86e6; 14 fg:#ededf2; 15-19 fg:#9a86e6; 20-30 fg:#ededf2; 31-35 fg:#c9c0f0; 36-44 fg:#ededf2; 45 fg:#e8a838; 46-49 fg:#ededf2; 50-55 fg:#c9c0f0; 56-57 fg:#ededf2; 58 fg:#e8a838
+15: 4-7 fg:#9aa3b8; 8-9 fg:#ededf2
+16: 4-7 fg:#9aa3b8; 8-13 fg:#9a86e6; 14 fg:#ededf2; 15-19 fg:#9a86e6; 20-30 fg:#ededf2; 31-35 fg:#c9c0f0; 36-44 fg:#ededf2; 45 fg:#e8a838; 46-49 fg:#ededf2; 50-55 fg:#c9c0f0; 56-57 fg:#ededf2; 58-59 fg:#e8a838
+17: 4-7 fg:#9aa3b8; 8-10 fg:#ededf2
+18: 4-7 fg:#9aa3b8; 8-13 fg:#9a86e6; 14 fg:#ededf2; 15-19 fg:#9a86e6; 20-30 fg:#ededf2; 31-35 fg:#c9c0f0; 36-44 fg:#ededf2; 45 fg:#e8a838; 46-49 fg:#ededf2; 50-55 fg:#c9c0f0; 56-57 fg:#ededf2; 58-59 fg:#e8a838
+19: 4-7 fg:#9aa3b8; 8-10 fg:#ededf2
+20: 4-7 fg:#9aa3b8; 8-13 fg:#9a86e6; 14 fg:#ededf2; 15-19 fg:#9a86e6; 20-30 fg:#ededf2; 31-35 fg:#c9c0f0; 36-44 fg:#ededf2; 45 fg:#e8a838; 46-49 fg:#ededf2; 50-55 fg:#c9c0f0; 56-57 fg:#ededf2; 58-59 fg:#e8a838
+21: 4-7 fg:#9aa3b8; 8-10 fg:#ededf2
+22: 4-7 fg:#9aa3b8; 8-13 fg:#9a86e6; 14 fg:#ededf2; 15-19 fg:#9a86e6; 20-30 fg:#ededf2; 31-35 fg:#c9c0f0; 36-44 fg:#ededf2; 45 fg:#e8a838; 46-49 fg:#ededf2; 50-55 fg:#c9c0f0; 56-57 fg:#ededf2; 58-59 fg:#e8a838
+23: 4-7 fg:#9aa3b8; 8-10 fg:#ededf2
+24: 4-7 fg:#9aa3b8; 8-13 fg:#9a86e6; 14 fg:#ededf2; 15-19 fg:#9a86e6; 20-30 fg:#ededf2; 31-35 fg:#c9c0f0; 36-44 fg:#ededf2; 45 fg:#e8a838; 46-49 fg:#ededf2; 50-55 fg:#c9c0f0; 56-57 fg:#ededf2; 58-59 fg:#e8a838
+25: 4-7 fg:#9aa3b8; 8-10 fg:#ededf2
+26: 2-3 fg:#ededf2; 4-22 fg:#9aa3b8
+28: 2-3 fg:#ededf2
+30: 2 fg:#5c6476; 3 fg:#ededf2; 4-7 fg:#ededf2 b; 8 fg:#9aa3b8; 9-22 fg:#c9c0f0; 23 fg:#9aa3b8
+31: 2-3 fg:#ededf2; 4-25 fg:#9aa3b8
+32: 4-7 fg:#9aa3b8; 11-23 fg:#ededf2; 24-25 fg:#e8a838; 26 fg:#ededf2
+33: 4-7 fg:#9aa3b8; 9 fg:#e85454 bg:#43232a; 10 bg:#43232a; 11-12 fg:#ededf2 bg:#43232a; 13-21 fg:#c9c0f0 bg:#43232a; 22-23 fg:#ededf2 bg:#43232a; 24-25 fg:#e8a838 bg:#43232a; 26 fg:#ededf2 bg:#43232a; 27-55 bg:#43232a
+34: 4-7 fg:#9aa3b8; 9 fg:#4ec87e bg:#1e3a2b; 10 bg:#1e3a2b; 11-16 fg:#ededf2 bg:#1e3a2b; 17-55 bg:#1e3a2b
+49: 0-1 fg:#ededf2; 2 fg:#9a86e6; 3 fg:#ededf2; 4-26 fg:#9aa3b8
+50: 0-34 fg:#9aa3b8
+51: 31-56 fg:#9aa3b8
+52: 0-26 fg:#45406b; 27-57 fg:#5c6476; 58-59 fg:#45406b
+53: 0 fg:#45406b; 4 r; 59 fg:#45406b
+54: 0-59 fg:#45406b
+55: 1-19 fg:#ededf2; 25-58 fg:#ededf2

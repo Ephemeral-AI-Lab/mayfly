@@ -1,0 +1,112 @@
+grid 120x56 cursor none
+|  ● Then the report that names it.
+|
+|  ? Write(docs/retries.md) · waiting · +84 −0 ▮▮▮▮▮▮▮▮
+|    Creates a file in the workspace.
+|     1 │ ## Section 1
+|     2 │ export const metric2 = { name: 'metric 2', value: 14 }
+|     3 │ export const metric3 = { name: 'metric 3', value: 21 }
+|     4 │ export const metric4 = { name: 'metric 4', value: 28 }
+|     5 │ export const metric5 = { name: 'metric 5', value: 35 }
+|     6 │ export const metric6 = { name: 'metric 6', value: 42 }
+|     7 │ export const metric7 = { name: 'metric 7', value: 49 }
+|     8 │ export const metric8 = { name: 'metric 8', value: 56 }
+|     9 │ export const metric9 = { name: 'metric 9', value: 63 }
+|    10 │ export const metric10 = { name: 'metric 10', value: 70 }
+|    11 │ export const metric11 = { name: 'metric 11', value: 77 }
+|    12 │ export const metric12 = { name: 'metric 12', value: 84 }
+|    13 │ ## Section 2
+|    14 │ export const metric14 = { name: 'metric 14', value: 98 }
+|    15 │ export const metric15 = { name: 'metric 15', value: 105 }
+|    16 │ export const metric16 = { name: 'metric 16', value: 112 }
+|    17 │ export const metric17 = { name: 'metric 17', value: 119 }
+|    18 │ export const metric18 = { name: 'metric 18', value: 126 }
+|    19 │ export const metric19 = { name: 'metric 19', value: 133 }
+|    20 │ export const metric20 = { name: 'metric 20', value: 140 }
+|    21 │ export const metric21 = { name: 'metric 21', value: 147 }
+|    22 │ export const metric22 = { name: 'metric 22', value: 154 }
+|    23 │ export const metric23 = { name: 'metric 23', value: 161 }
+|    24 │ export const metric24 = { name: 'metric 24', value: 168 }
+|    25 │ ## Section 3
+|    26 │ export const metric26 = { name: 'metric 26', value: 182 }
+|    27 │ export const metric27 = { name: 'metric 27', value: 189 }
+|    28 │ export const metric28 = { name: 'metric 28', value: 196 }
+|    29 │ export const metric29 = { name: 'metric 29', value: 203 }
+|    30 │ export const metric30 = { name: 'metric 30', value: 210 }
+|    31 │ export const metric31 = { name: 'metric 31', value: 217 }
+|    32 │ export const metric32 = { name: 'metric 32', value: 224 }
+|    33 │ export const metric33 = { name: 'metric 33', value: 231 }
+|    34 │ export const metric34 = { name: 'metric 34', value: 238 }
+|    35 │ export const metric35 = { name: 'metric 35', value: 245 }
+|    36 │ export const metric36 = { name: 'metric 36', value: 252 }
+|    37 │ ## Section 4
+|    38 │ export const metric38 = { name: 'metric 38', value: 266 }
+|    39 │ export const metric39 = { name: 'metric 39', value: 273 }
+|    40 │ export const metric40 = { name: 'metric 40', value: 280 }
+|    … +44 more
+|
+|  ● Waiting for your approval · 0s
+|    ⎿ Tip: Ctrl+O to expand tool details
+|                                                                                       Alt+↑ conversation · Alt+↓ bar
+|── Decide ──────────────────────────────────────────────────────────────────────────────────────────────────────────────
+|→ 1  Allow once
+|  2  Allow write for this session
+|  3  Reject
+|  Feedback: type to explain…
+|  ↑/↓ options · Enter choose · Ctrl+G open diff · Esc reject
+| deepseek-flash High  ~/workspace                                                    cache 42%  context: 5% (5.5k/128k)
+styles
+0: 2-3 fg:#ededf2
+2: 2-3 fg:#e8a838 b; 4-8 fg:#ededf2 b; 9 fg:#9aa3b8; 10-24 fg:#c9c0f0; 25-38 fg:#9aa3b8; 39-41 fg:#4ec87e; 42 fg:#9aa3b8; 43-44 fg:#e85454; 45 fg:#9aa3b8; 46-53 fg:#4ec87e
+3: 2-3 fg:#ededf2; 4-35 fg:#9aa3b8
+4: 2-3 fg:#ededf2; 4-8 fg:#9aa3b8; 9-20 fg:#c9c0f0
+5: 4-8 fg:#9aa3b8; 9-62 fg:#ededf2
+6: 4-8 fg:#9aa3b8; 9-62 fg:#ededf2
+7: 4-8 fg:#9aa3b8; 9-62 fg:#ededf2
+8: 4-8 fg:#9aa3b8; 9-62 fg:#ededf2
+9: 4-8 fg:#9aa3b8; 9-62 fg:#ededf2
+10: 4-8 fg:#9aa3b8; 9-62 fg:#ededf2
+11: 4-8 fg:#9aa3b8; 9-62 fg:#ededf2
+12: 4-8 fg:#9aa3b8; 9-62 fg:#ededf2
+13: 4-8 fg:#9aa3b8; 9-64 fg:#ededf2
+14: 4-8 fg:#9aa3b8; 9-64 fg:#ededf2
+15: 4-8 fg:#9aa3b8; 9-64 fg:#ededf2
+16: 4-8 fg:#9aa3b8; 9-20 fg:#c9c0f0
+17: 4-8 fg:#9aa3b8; 9-64 fg:#ededf2
+18: 4-8 fg:#9aa3b8; 9-65 fg:#ededf2
+19: 4-8 fg:#9aa3b8; 9-65 fg:#ededf2
+20: 4-8 fg:#9aa3b8; 9-65 fg:#ededf2
+21: 4-8 fg:#9aa3b8; 9-65 fg:#ededf2
+22: 4-8 fg:#9aa3b8; 9-65 fg:#ededf2
+23: 4-8 fg:#9aa3b8; 9-65 fg:#ededf2
+24: 4-8 fg:#9aa3b8; 9-65 fg:#ededf2
+25: 4-8 fg:#9aa3b8; 9-65 fg:#ededf2
+26: 4-8 fg:#9aa3b8; 9-65 fg:#ededf2
+27: 4-8 fg:#9aa3b8; 9-65 fg:#ededf2
+28: 4-8 fg:#9aa3b8; 9-20 fg:#c9c0f0
+29: 4-8 fg:#9aa3b8; 9-65 fg:#ededf2
+30: 4-8 fg:#9aa3b8; 9-65 fg:#ededf2
+31: 4-8 fg:#9aa3b8; 9-65 fg:#ededf2
+32: 4-8 fg:#9aa3b8; 9-65 fg:#ededf2
+33: 4-8 fg:#9aa3b8; 9-65 fg:#ededf2
+34: 4-8 fg:#9aa3b8; 9-65 fg:#ededf2
+35: 4-8 fg:#9aa3b8; 9-65 fg:#ededf2
+36: 4-8 fg:#9aa3b8; 9-65 fg:#ededf2
+37: 4-8 fg:#9aa3b8; 9-65 fg:#ededf2
+38: 4-8 fg:#9aa3b8; 9-65 fg:#ededf2
+39: 4-8 fg:#9aa3b8; 9-65 fg:#ededf2
+40: 4-8 fg:#9aa3b8; 9-20 fg:#c9c0f0
+41: 4-8 fg:#9aa3b8; 9-65 fg:#ededf2
+42: 4-8 fg:#9aa3b8; 9-65 fg:#ededf2
+43: 4-8 fg:#9aa3b8; 9-65 fg:#ededf2
+44: 2-3 fg:#ededf2; 4-13 fg:#9aa3b8
+46: 0-1 fg:#ededf2; 2 fg:#5c6476; 3-28 fg:#ededf2; 30-33 fg:#9aa3b8
+47: 0-39 fg:#9aa3b8
+48: 87-116 fg:#9aa3b8
+49: 0-119 fg:#9aa3b8
+50: 0 fg:#9a86e6 b; 2 fg:#9aa3b8; 5-14 fg:#ededf2 b
+51: 2 fg:#9aa3b8; 5-32 fg:#ededf2
+52: 2 fg:#9aa3b8; 5-10 fg:#ededf2
+53: 2-11 fg:#ededf2; 12-27 fg:#9aa3b8
+54: 0-1 fg:#5c6476; 2-4 fg:#ededf2; 6-15 fg:#5c6476; 16-20 fg:#ededf2; 22-30 fg:#5c6476; 31-36 fg:#ededf2; 38-49 fg:#5c6476; 50-52 fg:#ededf2; 54-59 fg:#5c6476
+55: 1-19 fg:#ededf2; 22-32 fg:#9aa3b8; 85-118 fg:#ededf2
