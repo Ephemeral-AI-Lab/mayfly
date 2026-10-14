@@ -85,6 +85,8 @@ function entryText(entry: TranscriptEntryModel): string {
     case 'transcript-command-group': return entry.commands.map(commandText).join('\n\n')
     case 'transcript-error': return entry.message
     case 'transcript-interrupted': return ''
+    case 'transcript-goal-change': return [entry.objective, entry.blockedReason?.message].filter(part => part !== undefined).join('\n')
+    case 'transcript-goal-round': return ''
     case 'transcript-compaction': return join([entry.detail, entry.summary, entry.error])
   }
 }

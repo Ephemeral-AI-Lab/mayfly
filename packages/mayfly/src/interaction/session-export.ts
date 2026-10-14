@@ -58,6 +58,7 @@ type ProjectionEntry =
   | (ProjectionEntryBase & { readonly kind: 'error'; readonly message: string; readonly code?: string })
   | (ProjectionEntryBase & { readonly kind: 'interrupted' })
   | (ProjectionEntryBase & { readonly kind: 'compaction' })
+  | (ProjectionEntryBase & { readonly kind: 'goal-change' | 'goal-round' })
 interface ConversationProjection { readonly entries: readonly ProjectionEntry[]; readonly streaming: boolean }
 
 /** Flatten and ellipsize one hint string. */
@@ -410,6 +411,10 @@ function projectionItems(projection: ConversationProjection): TranscriptItem[] {
       // Compaction markers are transcript chrome; the full export already
       // renders the raw compaction/* events, so the folded overview drops them.
       case 'compaction':
+        return []
+      // The full export renders the raw `goal/change` events and goal-sourced messages; the folded overview drops the markers.
+      case 'goal-change':
+      case 'goal-round':
         return []
     }
   })

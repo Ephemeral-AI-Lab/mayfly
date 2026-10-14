@@ -35,6 +35,7 @@ const zh = Object.freeze({
   Options: '选项',
   '{count} match': '{count} 项匹配',
   '{count} matches': '{count} 项匹配',
+  '↓ {count} more': '↓ 还有 {count} 行',
   '↑ {above} more · ↓ {below} more': '↑ 还有 {above} 项 · ↓ 还有 {below} 项',
   '▸ {count} more lines · Enter': '▸ 还有 {count} 行 · Enter',
   '{count} new turn · {key}': '{count} 个新轮次 · {key}',

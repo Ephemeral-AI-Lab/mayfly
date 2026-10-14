@@ -1323,12 +1323,17 @@ function admitNode(value: unknown, path: string, state: ValidationState, depth: 
       case 'stack': {
         const gapValue = own(object, 'gap', path)
         const alignValue = own(object, 'align', path)
+        const cellsValue = own(object, 'cells', path)
+        const cells = cellsValue === undefined ? undefined : finiteInteger(cellsValue, `${path}.cells`, 1)
         const stack = {
           kind,
           direction: enumeration(required(object, 'direction', path), ['row', 'column'], `${path}.direction`),
           ...optional(gapValue === undefined ? undefined : enumeration(gapValue, [0, 1, 2] as const, `${path}.gap`), 'gap'),
           ...optional(alignValue === undefined ? undefined : enumeration(alignValue, ['stretch', 'start', 'center', 'end'], `${path}.align`), 'align'),
+          ...optional(cells, 'cells'),
         } as const
+        if (cells !== undefined && stack.direction !== 'row') invalid(`${path}.cells needs a row`)
+        if (cells !== undefined && cells > 12) invalid(`${path}.cells must be at most 12`)
         const entries = collection(required(object, 'children', path), `${path}.children`)
         const childIds = entries.map((entry, index) => own(record(entry, `${path}.children[${index}]`), 'id', `${path}.children[${index}]`)).filter(id => id !== undefined)
         if (new Set(childIds).size !== childIds.length) invalid(`${path}.children contains duplicate content ids`)
@@ -1501,7 +1506,14 @@ function admitNode(value: unknown, path: string, state: ValidationState, depth: 
         const sizeValue = own(object, 'size', path)
         return { kind, ...optional(sizeValue === undefined ? undefined : enumeration(sizeValue, [1, 2] as const, `${path}.size`), 'size') }
       }
-      case 'divider': return { kind, ...optional(optionalLabel(object, 'label', path), 'label') }
+      case 'divider': {
+        const alignValue = own(object, 'align', path)
+        const insetValue = own(object, 'inset', path)
+        const inset = insetValue === undefined ? undefined : finiteInteger(insetValue, `${path}.inset`, 0)
+        if (inset !== undefined && inset > 8) invalid(`${path}.inset must be at most 8`)
+        const toneValue = own(object, 'tone', path)
+        return { kind, ...optional(optionalLabel(object, 'label', path), 'label'), ...optional(alignValue === undefined ? undefined : enumeration(alignValue, ['start', 'center'] as const, `${path}.align`), 'align'), ...optional(inset, 'inset'), ...optional(toneValue === undefined ? undefined : enumeration(toneValue, ['default', 'muted', 'primary', 'accent', 'user', 'success', 'warning', 'danger'], `${path}.tone`), 'tone') }
+      }
       case 'image': {
         const attachmentId = text(required(object, 'attachmentId', path), `${path}.attachmentId`)
         if (attachmentId.length === 0 || attachmentId.length > MAYFLY_UI_MAX_ATTACHMENT_ID) invalid(`${path}.attachmentId must be 1 to ${String(MAYFLY_UI_MAX_ATTACHMENT_ID)} characters`)

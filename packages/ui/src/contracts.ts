@@ -119,7 +119,15 @@ export interface MayflyUiChild {
   /** What a child that does not fit does: `truncate` takes the room that is left (at least 8 cells) and fills the row, `hide` drops out while later children may still fit; without one it and every later child drop. */
   readonly overflow?: 'truncate' | 'hide'
 }
-export interface MayflyStackNode { readonly kind: 'stack', readonly direction: 'row' | 'column', readonly gap?: 0 | 1 | 2, readonly align?: 'stretch' | 'start' | 'center' | 'end', readonly children: readonly MayflyUiChild[] }
+export interface MayflyStackNode {
+  readonly kind: 'stack'
+  readonly direction: 'row' | 'column'
+  readonly gap?: 0 | 1 | 2
+  readonly align?: 'stretch' | 'start' | 'center' | 'end'
+  /** A row only: it is divided into this many equal cells and each child takes the first row of one, so a child is a fixed share of the width however many there are (more children than cells share the row evenly). */
+  readonly cells?: number
+  readonly children: readonly MayflyUiChild[]
+}
 export interface MayflySurfaceNode {
   readonly kind: 'surface'
   readonly title?: string
@@ -152,6 +160,10 @@ export interface MayflyScrollNode {
   readonly fit?: boolean
   /** `↓ N new · End` over the last row while the view is scrolled away from a followed tail. */
   readonly pill?: boolean
+  /** `false`: `Ctrl+E` does not expand the viewport and the key row does not name it (a fixed-length panel). */
+  readonly expandable?: boolean
+  /** While rows remain below the viewport its last row says how many (`↓ 6 more`); the count follows the scroll and the row is content again at the end. */
+  readonly more?: boolean
 }
 export interface MayflyTabItem {
   readonly id: string
@@ -408,7 +420,16 @@ export interface MayflyProgressNode {
   readonly transition?: { readonly from: number, readonly ms: number, readonly rev: number }
 }
 export interface MayflySpacerNode { readonly kind: 'spacer', readonly size?: 1 | 2 }
-export interface MayflyDividerNode { readonly kind: 'divider', readonly label?: string }
+export interface MayflyDividerNode {
+  readonly kind: 'divider'
+  readonly label?: string
+  /** `center`: the label sits in the middle of the rule, with a rule on each side (default: at the start). */
+  readonly align?: 'start' | 'center'
+  /** Columns kept blank after the rule (0 to 8): the right margin of a rule in a gutter, as the left gutter is its left. */
+  readonly inset?: number
+  /** The rule's tone; the quiet border color without one. */
+  readonly tone?: MayflyTone
+}
 /**
  * An inline image. The wire carries a reference, never bytes: the host tree supplies a loader that resolves
  * `attachmentId`, and `alt` shows until the bytes arrive and on a terminal without an image protocol.
@@ -502,7 +523,7 @@ export interface MayflyInteractionSnapshot { readonly scope: MayflyUiScope, read
  * entered (`Agents 5`). The summary is a separate publication from the pane's node, so a view updates its row without
  * republishing its panel.
  */
-export interface MayflyPaneSummary { readonly node: MayflyStatusNode, readonly count?: number | string }
+export interface MayflyPaneSummary { readonly node: MayflyStatusNode }
 /**
  * A pane contribution. `size` is measured in columns for `left`/`right`
  * panes and in rows for `bottom` panes, where the stacked dock grants each

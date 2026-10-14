@@ -13,7 +13,6 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
-import { GutterComponent } from '../core/gutter.ts'
 import type { MayflyDecisionRequest } from '../core/types.ts'
 // Empty type import carries the app-owned session reader/projection services.
 import type {} from '../app/index.ts'
@@ -21,7 +20,7 @@ import { copyTextToClipboard } from '../interaction/clipboard-write.ts'
 import { openInEditor } from '../interaction/decision-actions.ts'
 import { createInteractionNotificationOwner } from '../interaction/notifications.ts'
 import { mountFocusModeStatus } from './status-focus.ts'
-import { StatusFooterComponent } from './status-model.ts'
+import { mountStatusFooter } from './status-rows.ts'
 import { userMessageText } from './stream-facts.ts'
 import { TranscriptController, type StreamRowActions } from './transcript-model.ts'
 import { OfficialConversationModelSource } from './official-model.ts'
@@ -94,7 +93,6 @@ export function apply(ctx: Context): void {
   mountTranscriptLocale(ctx, 'transcript', TRANSCRIPT_LOCALE)
   const t = transcriptTranslator(ctx, 'transcript')
   const screen = ctx.mayflyScreen
-  const colors = ctx.mayflyTheme.colors
   const presentation = new TranscriptPresentationPolicy()
   // Mayfly settings ride the host settings document: the resolved `mayfly`
   // namespace (schema owned by interaction) carries the work-details mode
@@ -214,26 +212,10 @@ export function apply(ctx: Context): void {
     transcript.republish()
   }
   for (const off of [ctx.on('agent/inbox/inserted', onInbox), ctx.on('agent/inbox/claimed', onInbox), ctx.on('agent/inbox/discarded', onInbox)]) ctx.effect(() => () => off())
-  const footer = new StatusFooterComponent(
-    ctx.mayflyStatus,
-    ctx.mayflyComponents,
-    colors,
-    () => ({ columns: screen.columns, rows: screen.rows }),
-    screen.views,
-  )
-  const offStatus = ctx.mayflyStatus.subscribe(() => {
-    footer.invalidate()
-    screen.requestRender()
-  })
-  ctx.effect(() => offStatus)
   transcript.attach(screen)
-  // The footer pins to the dock's lowest slot (S12): the status row stays
-  // on the terminal's last row beneath the editor, the kimi layout dialog
-  // panels pull up over.
-  ctx.effect(() => {
-    const slot = screen.mountDockSlot('status.footer', new GutterComponent(footer), 'bottom')
-    return () => slot.dispose()
-  })
+  // The footer is the two status rows on the footer node slot; the slot pins to the dock's lowest row (S12), so the
+  // status stays on the terminal's last rows beneath the editor, and row 2 is only there while it has an entry.
+  mountStatusFooter(ctx, screen)
 
   let offKeymap: () => void = () => {}
   const registerKeymap = (): void => {

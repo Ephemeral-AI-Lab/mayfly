@@ -46,7 +46,7 @@ import {
 export const name = 'mayfly-pane-activity'
 
 /** Services required before the pane can mount. */
-export const inject = ['mayflyPanes', 'mayflySessionFacts', 'mayflyTick', 'mayflyUiInteraction']
+export const inject = ['mayflyPanes', 'mayflySessionFacts', 'mayflyTick', 'mayflyUiInteraction', 'mayflyConversations', 'mayflyKeymap']
 
 /** The label while the turn waits on the model (the retired turn header's phrase). */
 const WAITING_LABEL = 'Deep diving'

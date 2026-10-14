@@ -1,8 +1,8 @@
 /**
  * The views lane: the views of status row 2. A view is a `mayflyPanes` pane with `placement: 'views'`; the lane has no
- * rows of its own. Each view's summary joins status row 2 as a status entry; while a view is entered, its panel
- * replaces row 2 under a tab strip of every enterable view, and the lane's one focusable component carries the keys:
- * `←`/`→` switch views, `Esc` (through the panel's own unhandled-escape path) returns to the prompt, and every other
+ * rows of its own. Each view's summary joins status row 2 as a status entry, and the row stays as it is while a view
+ * is entered: the footer marks the active item in it, and the panel opens under the row. The lane's one focusable
+ * component carries the keys: `←`/`→` switch views, `Esc` (through the panel's own unhandled-escape path) returns to the prompt, and every other
  * key reaches the active panel. The lane is plain state plus painting: the renderer binds its host (colors, keymap,
  * focus, and the viewport) and the surface manager owns the focus id. Registrations carry no renderer objects.
  *
@@ -11,32 +11,25 @@
 import type { MayflyStatusEntry, MayflyStatusNode } from '@ephemeral-ai/mayfly-ui'
 import { interpolateLocaleMessage, type MayflyTranslate } from '../frontend/locale.ts'
 import { displayKey, keyActionKeys, matchesKeyAction, ACTION_SEGMENT_LEFT, ACTION_SEGMENT_RIGHT } from './key-actions.ts'
-import { glyphRows, type MayflyGlyphMode } from './glyphs.ts'
-import { sanitizePluginText } from './plugin-view.ts'
+import type { MayflyGlyphMode } from './glyphs.ts'
 import { renderOverflowRow } from './ui-patterns.ts'
 import { concatRows, mapRows, sliceRows } from './ui-rows.ts'
 import type { MayflyComponent, MayflyFocusable, MayflyKeymap, MayflySemanticColors } from './types.ts'
-import { sliceByColumn, truncateToWidth, visibleWidth } from './width.ts'
+import { sliceByColumn, visibleWidth } from './width.ts'
 
 /** The id under which the surface manager records the lane's focus (`SurfaceManager.focusedId`); no pane id can spell it. */
 export const VIEWS_FOCUS_ID = '@views'
-/** Columns between two tabs of the strip. */
-const VIEWS_TAB_GAP = 3
-/** The smallest the entered lane gets: the strip, the rule, and two panel rows. */
+/** The smallest the entered lane gets: four panel rows. */
 const VIEWS_MIN_ROWS = 4
-/** The rule under the active tab. */
-const RULE = '━'
 
-/** What a view puts in status row 2: a motion-free status node, and the count its tab shows. */
+/** What a view puts in status row 2: a motion-free status node. */
 interface ViewSummary {
   readonly node: MayflyStatusNode
-  readonly count?: number | string
 }
 
 /** A view's declaration. */
 interface ViewContribution {
   readonly id: string
-  readonly title?: string
   readonly priority?: number
   readonly summary: ViewSummary | null
 }
@@ -44,7 +37,6 @@ interface ViewContribution {
 /** One live view as the lane keeps it. */
 interface ViewState {
   readonly id: string
-  readonly title: string
   readonly priority: number
   summary: ViewSummary | null
   /** A lane-wide serial of the summary: unique across removals, so a status cache keyed by it never goes stale. */
@@ -82,8 +74,12 @@ export interface ViewsLaneHost {
 export interface MayflyViewsSource {
   /** The summaries of status row 2 as status entries (id `views/<id>`, row 2, left band), in the lane's order. */
   statusEntries(): readonly MayflyStatusEntry[]
-  /** The rows that replace row 2 while a view is entered; `undefined` otherwise. */
-  panel(width: number): readonly string[] | undefined
+  /** Whether a view is entered: its panel opens under row 2. */
+  readonly isEntered: boolean
+  /** The id of the active view (the one entered, or last entered) while it is still enterable. */
+  readonly active: string | undefined
+  /** Listen to any change of the lane (summaries, panels, entered state); the listener reads the lane again. */
+  subscribe(listener: () => void): () => void
 }
 
 /** A hint the renderer adds to a view panel's key row. */
@@ -91,10 +87,6 @@ export interface ViewHint {
   readonly id: string
   readonly keys: string
   readonly label: string
-}
-
-function chromeText(value: string): string {
-  return sanitizePluginText(value).replace(/[\r\n]+/gu, ' ')
 }
 
 function fit(row: string, width: number): string {
@@ -153,6 +145,13 @@ export class ViewsLane implements MayflyViewsSource {
     return () => { this.enteredListeners.delete(listener) }
   }
 
+  private readonly changeListeners = new Set<() => void>()
+
+  subscribe(listener: () => void): () => void {
+    this.changeListeners.add(listener)
+    return () => { this.changeListeners.delete(listener) }
+  }
+
   private announceEntered(): void {
     for (const listener of [...this.enteredListeners]) listener(this.entered)
   }
@@ -180,7 +179,7 @@ export class ViewsLane implements MayflyViewsSource {
 
   /**
    * Add a view.
-   * @param contribution - the view's id, tab title, priority, and first summary.
+   * @param contribution - the view's id, priority, and first summary.
    * @returns the registration; disposing it removes the view and, when it was entered, moves on or leaves.
    * @throws Error for an id that is already registered.
    */
@@ -188,7 +187,6 @@ export class ViewsLane implements MayflyViewsSource {
     if (this.views.has(contribution.id)) throw new Error(`Duplicate view id: ${contribution.id}`)
     const state: ViewState = {
       id: contribution.id,
-      title: chromeText(contribution.title ?? contribution.id),
       priority: Number.isFinite(contribution.priority) ? Math.floor(contribution.priority!) : 0,
       summary: contribution.summary,
       summarySerial: ++this.serial,
@@ -280,19 +278,19 @@ export class ViewsLane implements MayflyViewsSource {
     for (const view of this.views.values()) view.panel?.invalidate()
   }
 
-  /** The `←/→ tabs` hint of an entered panel, when there is more than one view to switch to. */
+  /** The `←/→ items` hint of an entered panel, when there is more than one view to switch to. */
   hints(): readonly ViewHint[] {
     const keymap = this.host?.keymap
     const left = keyActionKeys(keymap, ACTION_SEGMENT_LEFT)[0]
     const right = keyActionKeys(keymap, ACTION_SEGMENT_RIGHT)[0]
     if (this.tabs().length < 2 || left === undefined || right === undefined) return []
-    return [{ id: 'views', keys: `${displayKey(left)}/${displayKey(right)}`, label: 'tabs' }]
+    return [{ id: 'views', keys: `${displayKey(left)}/${displayKey(right)}`, label: 'items' }]
   }
 
-  /** The panel's viewport while entered: the terminal's width and what a third of its rows leave under the strip and the rule. */
+  /** The panel's viewport while entered: the terminal's width and a third of its rows. */
   viewport(): { readonly columns: number, readonly rows: number } {
     const size = this.host?.viewport() ?? { columns: 1, rows: 1 }
-    return { columns: Math.max(1, size.columns), rows: Math.max(1, this.laneRows(size.rows) - 2) }
+    return { columns: Math.max(1, size.columns), rows: Math.max(1, this.laneRows(size.rows)) }
   }
 
   statusEntries(): readonly MayflyStatusEntry[] {
@@ -312,13 +310,12 @@ export class ViewsLane implements MayflyViewsSource {
     const active = this.entered ? this.activeView() : undefined
     if (host === undefined || active === undefined) return undefined
     const available = Math.max(1, Math.floor(width))
-    const { strip, rule } = this.paintStrip(host, available)
-    const budget = Math.max(1, this.laneRows(host.viewport().rows) - 2)
+    const budget = Math.max(1, this.laneRows(host.viewport().rows))
     const rows = mapRows(active.panel!.render(available), row => fit(row, available))
     const body = rows.length <= budget || budget <= 1
       ? sliceRows(rows, 0, budget)
       : concatRows(sliceRows(rows, 0, budget - 1), [fit(host.colors.muted(renderOverflowRow(rows.length - budget + 1, host.translate ?? interpolateLocaleMessage)), available)])
-    return concatRows(glyphRows([strip, rule], host.glyphs), body)
+    return body
   }
 
   /** The component's key route: `←/→` switch views unless the panel is editing; every other key is the panel's. */
@@ -395,36 +392,6 @@ export class ViewsLane implements MayflyViewsSource {
     this.revisionValue += 1
     this.statusMemo = undefined
     this.host?.requestRender()
-  }
-
-  private paintStrip(host: ViewsLaneHost, width: number): { readonly strip: string, readonly rule: string } {
-    const tabs = this.tabs()
-    const active = this.activeView()!
-    const label = (view: ViewState): string => view.summary!.count === undefined ? view.title : `${view.title} ${chromeText(String(view.summary!.count))}`
-    const labelWidth = (view: ViewState): number => visibleWidth(label(view))
-    // The active tab always shows; the others join in order while the strip, and the `+N` that counts the rest, fit.
-    const kept = new Set<ViewState>([active])
-    const stripWidth = (): number => [...kept].reduce((sum, view) => sum + labelWidth(view), 0) + VIEWS_TAB_GAP * (kept.size - 1)
-    for (const view of tabs) {
-      if (view === active) continue
-      kept.add(view)
-      const hidden = tabs.length - kept.size
-      if (stripWidth() + (hidden === 0 ? 0 : visibleWidth(` +${String(hidden)}`)) > width) kept.delete(view)
-    }
-    const shown = tabs.filter(view => kept.has(view))
-    const hidden = tabs.length - shown.length
-    const tab = (view: ViewState): string => {
-      const color = view === active ? host.colors.primary : host.colors.muted
-      if (labelWidth(view) > width) return color(truncateToWidth(label(view), width))
-      const count = view.summary!.count
-      return count === undefined ? color(view.title) : `${color(view.title)} ${color(chromeText(String(count)))}`
-    }
-    const gap = ' '.repeat(VIEWS_TAB_GAP)
-    const before = shown.slice(0, shown.indexOf(active)).map(tab)
-    const offset = before.length === 0 ? 0 : visibleWidth(before.join(gap)) + VIEWS_TAB_GAP
-    const suffix = hidden === 0 ? '' : host.colors.muted(` +${String(hidden)}`)
-    const strip = fit(shown.map(tab).join(gap) + suffix, width)
-    const underline = Math.max(0, Math.min(labelWidth(active), width - offset))
-    return { strip, rule: `${' '.repeat(Math.min(offset, width))}${host.colors.muted(RULE.repeat(underline))}` }
+    for (const listener of [...this.changeListeners]) listener()
   }
 }

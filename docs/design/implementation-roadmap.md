@@ -110,7 +110,7 @@ keeps its row and names its successor, because the Phase 1 record cites it.
 | 1 Decision variant | B (D4). |
 | 2 Rebinding | Overrides persist in the `mayfly` settings namespace (`keybindings`); plugin action ids are namespaced `<owner>.<action>` and `ui.*` is reserved; a clash is refused with the owner's name (slice 1.7). |
 | 3 Slash-to-filter | Kept (`filterMode: 'slash'`, slice 1.4). |
-| 4 Side conversations | As drawn: identity in row 1's center band, `F7 switch · F8 close` (or `detach`) in row 2's right cluster (Phase 5). |
+| 4 Side conversations | Identity as a chip in row 1, the keys in the notification pane (Phase 5). |
 | 5 Unchecked keys | D6 plus the key audit (slices 1.0 and 1.7). `/view <level>` and `Alt+V` stay unscheduled until confirmed; the scene's `Ctrl+O` level cycling is a demo key. |
 | 6 Onboarding permissions step | Ships, with the native presets (D3); the deployment's current preset is marked `recommended`. |
 | 7 Delete session | Dropped for now (D5). |
@@ -377,7 +377,7 @@ replies are unchanged.
 
 | Seam | Change |
 | --- | --- |
-| `mayflyPanes` (public) | `MayflyPanePlacement` gains `'views'`. A views pane declares `summary: { node: MayflyStatusNode, count?: number \| string }` and updates it with the new `registration.setSummary(summary \| null)`; `null` takes the view out of row 2. Its `set(node)` publishes the panel. `size` and `narrow` do not apply; `onEvent`, `load`, `refresh`, and `loadMore` work as for other panes. The lane ships in slice 1.10; Mayfly's own views register on it in Phase 5. |
+| `mayflyPanes` (public) | `MayflyPanePlacement` gains `'views'`. A views pane declares `summary: { node: MayflyStatusNode }` and updates it with the new `registration.setSummary(summary \| null)`; `null` takes the view out of row 2. Its `set(node)` publishes the panel. `size` and `narrow` do not apply; `onEvent`, `load`, `refresh`, and `loadMore` work as for other panes. The lane ships in slice 1.10; Mayfly's own views register on it in Phase 5. |
 | `mayflyOverlays` (public) | `MayflyOverlayDefinition.armMs?: number` (0-2000, default 0): every key except `Esc` is swallowed for that long after the overlay first takes focus (slice 1.8). |
 | `mayflyStatus` (public) | No new API. Core composes row 1 and row 2 with the `ui.child` admission primitive, so a plugin entry and a Mayfly entry are admitted by one rule. |
 | `mayflyEditorExtensions` (public) | No new API. `complete()` results join the prompt's completion list; `before`/`after` decorations sit around the editor surface. |
@@ -400,7 +400,6 @@ The key scopes of D6:
 | `?` | key help (empty prompt) | text | — |
 | `F7` / `F8` | conversation switch / close or detach (global) | same | same |
 | `Ctrl+O` | the last three turns at Verbose (global) | same | same |
-| `Ctrl+T` | open the views on Todo (global; replaces the todo-pane toggle) | same | same |
 
 ### 3.5 What is not added
 
@@ -1430,7 +1429,7 @@ without a publish.
     an animation tick, and the paint epoch. `tests/core/node-slot.spec.ts`: the three shapes with keys and hint rows, a
     core reload that keeps a list cursor and a form draft, stale leases, the host's unload, and a warm slot repainted
     for a new theme, a rebound key, a new locale, and a new width.
-- **Views lane** (slice 1.10b, built). `MayflyPanePlacement` gained `'views'`; a views pane declares `summary: { node, count? }`
+- **Views lane** (slice 1.10b, built). `MayflyPanePlacement` gained `'views'`; a views pane declares `summary: { node }`
   and updates it with `registration.setSummary(summary | null)` (`null` takes the view out of row 2). `MayflyPaneEntry`
   carries `summary` (a views pane's entry is republished at the same revision and node when only the summary moves, so
   an in-flight `refresh` is not disturbed); the service refuses `size` and `narrow` on a views pane and a summary on
@@ -1441,7 +1440,7 @@ without a publish.
     last argument and admits those entries beside its registry entries, so a plugin chip and a view are admitted by one
     rule. The summary is admitted with the status validator (the status subset; slice 1.3 adds the no-motion rule to
     that validator), so an invalid summary paints the footer's error text instead of failing the pane.
-  - *The panel.* While a view is entered, `render` returns row 1, then the tab strip (titles, with the count after the
+  - *The panel (replaced in Phase 5 R1: row 2 stays as it is and the footer draws a heavy `━` line under the words of the active item; the panel opens under the line, with no tab strip, rule, title, or count, and `←/→` read `items`).* While a view was entered, `render` returned row 1, then the tab strip (titles, with the count after the
     title; the active tab in `primary`, the others `muted`, joined by three spaces, elided with a `+N` when the row is
     narrow), the `━` rule under the active tab, and the active panel's rows, at most a third of the terminal's rows
     in all (a cut panel ends in the shared `… +K more rows`). A view's title names its tab, so its panel carries no frame
@@ -1995,11 +1994,11 @@ part is accepted (§7 step 3).
 
 | Round | Parts | Status | Branch |
 | --- | --- | --- | --- |
-| R1 | T0 demo kit; 3.0 components area | effect accepted by the owner (`5d68d78`) | `feat/3a` |
-| R2 | 3a.1 turns: the stream cutover (new `TranscriptView` on the conversation node slot, planning reused from `buildDisplay`, minimal rows for the other kinds) | 3a.1 accepted (stream cutover; closing row instead of the turn rule; wrapped lines hang under the text via `hang`); perf A/B and profile smoke owed | `feat/3a` |
-| R3 | 3a.2 answers and reasoning | 3a.2 accepted (Markdown answers under a leading `●` via `bodyLead`, reasoning header with duration and text aligned under the word, a blank row after the banner; the banner stays its own block) | `feat/3a` |
+| R1 | 5a.1 footer cutover, and the work it pulled in at the owner's request: **footer** on the footer node slot (`status-rows.ts`), row 2 only while it has an item (one line by default), `StatusFooterComponent` and the todo pane deleted; **row 2 items** under the item rules (`component-library.md` §5.1: `<mark> <name> <n/m> <timer>` in one-fifth cells, a `━` line under the entered item, a content-only fixed scrolling panel with a live `↓ N more`, `viewHistory`); **Todo** (`● todo 2/12 4m 12s`, closing item) and **Goal** (marks `●` `○` `⏸` `✕` `✓`, activation followed, panel with `r` `p` `e` `c`, stream rows from durable `goal/change`, `── goal round N ──` rules, blocked notice); **row 1** `provider/model Effort` and `plan yolo` together; **conversation chip** (` main `, ` btw `, ` subagent `) with `F7`/`F8` in the notification pane; the focus chip reads `view`; Jobs stays a plain `⏵ N jobs` chip until R6 | built and accepted by the owner on 2026-10-14 (scenario `footerCutover`); tests, goldens, and the Website pass owed at the phase gate (below) | `feat/phase-5` |
+| R2 | 5a.2 row 1 facts: model and effort (0) *`provider/model Effort` and plan + yolo shown together were done in R1*; uppercase `PLAN`/`PLAN…` and `YOLO` strong chips (1), context (4, hide), directory (5, shortened path, not `.`), git (10); the width ladder at 100, 72, 52, and 36 columns and every toggle (B4 chips, C4, G16) | partly built in R1; the rest not started | `feat/phase-5` |
+| R3 | 5a.3 balance chip and conversation identity: the `⚠ ¥6.2` chip (6, right, account only, from `deepseekAccount.getBalance()`); *the conversation chip and the `F7`/`F8` keys in the notification pane were done in R1* (G17) | the identity built in R1; the balance chip not started | `feat/phase-5` |
 | R3b | 3a.3 the live turn | 3a.3 accepted (the tail chip `Back to bottom · Ctrl+↓` / `N new turns · Ctrl+↓` counting turns, a dedicated follow-tail key, the held place, the incremental Markdown scan, `W-answer` budget and `perf-stream` ceilings); the footer notice deleted | `feat/3a` |
-| R4 | 3a.4 images and cutover cleanup; 3b.1 settled tool lines | 3a.4 accepted; group 3a finalized (goldens written for the stream scenarios, spec §5.6 rewritten as accepted behavior, briefs removed); the `app-*` goldens and Website app shots wait with the Website (on hold); 3b.1 built (every tool at three tiers, spec §7.1) and its effect accepted by the owner; its tests, goldens and perf A/B run in a separate test session (spec §3.1), so it is not yet marked accepted | `feat/3a` |
+| R4 | 5b.1 the row 2 skeleton and the Goal and Todo views, *built in R1 under the owner's item rules* (they replace this row's old text: no progress rules, no `↓ views` cue, no `Ctrl+T`); what is left is the Goal's final content, which waits for what dsh gives upstream | built in R1 and accepted | `feat/phase-5` |
 | R5 | 3b.2 edit cards; 3b.3 write card (command rows were finished in 3b.1) | designed and built (scenarios `edits`, `edits-compact`, `-detailed`, `-verbose`); the owner's answers: every diff row numbered (removed rows by the old file, the rest by the new one, from 1 in each hunk), highlighted diff with an inset tint, calls named by tool; Standard shows every edit and write open; the effect is accepted by the owner (`d71a9e5`); its tests, goldens and perf A/B run in a separate test session (spec §3.1), so it is not yet marked accepted | `feat/3a` |
 | R6 | 3c.1 activity header; 3c.2 activity details and tips; 3b.4 pending call blocks (§5.3.1) | 3c.1, 3c.2 and 3b.4 built; the owner accepted the effect as it stands (tests, goldens and perf A/B run in a separate test session, spec §3.1, so it is not yet marked accepted); a later round, in a session of its own, refines how the activity row and the session flow stay in step (scenarios `phases`, `phases-off`, `thinkingLadder`, `pending`, `pending-compact`, `pending-verbose`, `activityDetail`, `activityWait`); the owner's answers and layout: the block is a constant three rows (a leading spacer, the header, one line), with the notification pane's row under it, at the stream's left margin; the line is the single action running now, else a rotating teaching tip; every wait breathes its `●` (`Waiting for your approval` / `Waiting for your answer`, and the row stays above the approval and question panels); Writing fills like Deep diving; a quiet-hints setting (`full`, `off`) blanks the tip; the division of labor between the stream and the activity row is written in component-library §5.3.1 (pending call blocks in the stream, the thinking ladder, a tip under the header outside Compact) and builds as part 3b.4 inside this round; `authorization` is the provider sign-in, so it is not an activity phase | `feat/3a` |
 | R6b | 3b.5 the tool block base; activity row in step with the stream | the owner's follow-up to R6: `transcript/tool-kinds.ts` (the descriptor every tool block is drawn from), pending lines at every level with their input (a command's lines, Edit and Write code streaming before the commit), `partial-json.ts`, group blocks from the first call (tool name and count, a branch line per call), one `▸ N tool calls` line per turn at Compact, Thinking as a streaming block, the breathing dot repainted in lists, a 24-shade breath, code highlighting to 40 rows, the activity row's second line (call arguments, provider retry), the `inFlight` fact, one host tick (`mayflyTick`) and one time format (scenarios `blocks`, `blocks-compact`, `-detailed`, `-verbose`, `streaming`, `streaming-compact`, `-verbose`, `-open`, `sync`, `fold`; `activityDetail` removed); effect accepted by the owner (`bbe68ec`; tests, goldens and perf A/B run in a separate test session, spec §3.1) | `feat/3a` |
@@ -2054,15 +2053,15 @@ points:
   band (`interaction/conversation-view-status.ts`, without its key text), and plugin entries.
 - **Row 2.** Agents (`transcript/pane-agents.ts`), Jobs (`transcript/status-jobs.ts`), Goal
   (`transcript/status-goal.ts`), and Todo (`transcript/pane-todo.ts`) become views panes; the right cue reads
-  `↓ views`, or `F7 switch · F8 close` (or `detach`) when two or more conversations exist.
+  `↓ views`, ; the conversation keys are in the notification pane.
 - **Inside a view.** Entering, switching, and leaving are the lane's (slice 1.10). In Mayfly's views `↑/↓` select;
   `Enter` opens an agent's conversation (`mayflyConversations`, `F7` returns) or a job's output; `x` stops behind the
   shared Yes/No (`subagents.interrupt(child, { kind: 'ancestor', agent })`, or `jobs.kill` after rechecking
-  `jobs.get`); `Esc` returns to the prompt. `Ctrl+T` opens the views on Todo.
+  `jobs.get`); `Esc` returns to the prompt. There is no `Ctrl+T` and no `Ctrl+E` in a view.
 - **Goal and todo panels.** The rule heading is the progress bar (`progress` with `style: 'rule'`); the goal shows
-  `● active`, `❚❚ paused`, or `✕ blocked` with its reason, from the `goal` projection; the todo panel shows at most five
+  `● active`, `⏸ paused`, or `✕ blocked` with its code and reason, from the `goal` projection; the todo panel shows at most five
   rows (in progress, the earliest pending, one slot for the latest done) and `… +N more (k done)`, then
-  `✓ Todo done 6/6 · 4m 12s` before the view leaves.
+  `✓ todo 6/6 4m 12s` before the view leaves.
 - Deletes `StatusFooterComponent`, the todo pane above the editor, and the goal chip of row 1.
 
 Decision tests: each view's registration and Fiber cleanup, the footer on the node slot within the W1 budget (§7.1),
@@ -2079,20 +2078,33 @@ languages).
 - `compactionNoWindow` shows a time-based `%` with no window: drop the `%`, or correct the round 7 brief (O3).
 
 **Phase 5 status.** The parts are those of [component-development-spec.md](./component-development-spec.md) §7, worked
-in rounds of one or two parts (about four scenarios each) on the branch `feat/phase-5` and its successors, with the
+in rounds of one or two parts (one long scenario each, chaining the round's effects) on the branch `feat/phase-5` and its successors, with the
 profile `mayfly-5`. The phase is one pull request: every Phase 5 code change lands on that branch, and the round table
 records each round as it is built. A part is `accepted` when the owner accepts it in a question round; a group finalizes
 when its last part is accepted (§7 step 3). Rounds run no tests (§3, step 7); tests and goldens come at finalization.
 
 | Round | Parts | Status | Branch |
 | --- | --- | --- | --- |
-| R1 | 5a.1 footer cutover: the footer becomes the two status rows (`status-entries.ts`, `status-rows.ts`) on the footer node slot; one admission rule for registry entries and lane summaries; plugin entries (scene 12's `↻ loop`) keep their priority | not started | `feat/phase-5` |
+| R1 | 5a.1 footer cutover: the footer becomes the two status rows (`status-rows.ts`) on the footer node slot; one admission rule for registry entries and lane summaries; plugin entries (scene 12's `↻ loop`) keep their priority; row 2 exists only while it has an admitted entry, so the footer is one line by default and two when a goal, a job, a plugin `row: 2` entry, or a view summary is there; the Goal and Todo views (compact `<mark> <name> <n/m> <timer>`, e.g. `● todo 2/12 4m 12s` and `● goal 2/8 1m 59s`, in one-fifth cells of row 2 (`stack.cells`), no `↓ views` cue; a fixed-length content-only panel on `Alt+↓` (no heading, count, or time) that scrolls with a live `↓ N more` row, no `Ctrl+E` or `Ctrl+T`; finished items only with the `viewHistory` setting; the closing item `✓ todo 6/6 4m 12s`; the focus chip reads `view`) are built here from R4's scope under the owner's item rules (`component-library.md` §5.1), and the Jobs chip is a plain `N jobs` chip in row 2 until R6 makes it a view; `StatusFooterComponent` and the todo pane above the editor are deleted | built, scenario `footerCutover` handed to the owner for review (no tests yet, §3 step 7) | `feat/phase-5` |
 | R2 | 5a.2 row 1 facts: model and effort (0), uppercase `PLAN`/`PLAN…` and `YOLO` strong chips (1), context (4, hide), directory (5, shortened path, not `.`), git (10); the width ladder at 100, 72, 52, and 36 columns and every toggle (B4 chips, C4, G16) | not started | `feat/phase-5` |
-| R3 | 5a.3 balance chip and conversation identity: the `⚠ ¥6.2` chip (6, right, account only, from `deepseekAccount.getBalance()`), and `BTW … ⇄ MAIN` or `SUBAGENT x · read-only` in the center band with no key text (G17) | not started | `feat/phase-5` |
-| R4 | 5b.1 row 2 skeleton and the Goal and Todo views: the right cue `↓ views`; Goal (`● active`, `❚❚ paused`, `✕ blocked` with its reason) and Todo (at most five rows, `… +N more (k done)`, `✓ Todo done 6/6 · 4m 12s`) as views panes with rule progress; absent when empty; `Ctrl+T` opens the views on Todo (R6) | not started | `feat/phase-5` |
-| R5 | 5b.2 Agents view and conversation keys: `Agents N ● n waiting`; live rows first; `Enter` opens the conversation (`F7` returns); `x` stops behind the shared Yes/No; the `F7 switch · F8 close` cluster when two or more conversations exist, with row 2 shown for a side conversation; the final look of a running background subagent (D2) (G23, R7) | not started | `feat/phase-5` |
-| R6 | 5b.3 Jobs view: `Jobs N ⏵ n running`; `Enter` opens the job's output (an interim target until Phase 6f); `x` rechecks `jobs.get`, then `jobs.kill` behind the Yes/No (R7) | not started | `feat/phase-5` |
+| R3 | 5a.3 balance chip and conversation identity: the `⚠ ¥6.2` chip (6, right, account only, from `deepseekAccount.getBalance()`), and the conversation chip (` main `, ` btw `, ` subagent `: strong inverse, like the focus chip, beside the model) with `F7 btw · F8 close` in the notification pane (G17); built with the goal effect | not started | `feat/phase-5` |
+| R4 | 5b.1 (the row 2 skeleton and the Goal and Todo views were built in R1 at the owner's request; what is left here is the Goal's final content (what dsh gives upstream is not known yet), and the owner's review of those views) row 2 skeleton and the Goal and Todo views: the right cue `↓ views`; Goal (`● active`, `❚❚ paused`, `✕ blocked` with its reason) and Todo (at most five rows, `… +N more (k done)`, `✓ Todo done 6/6 · 4m 12s`) as views panes with rule progress; absent when empty | not started | `feat/phase-5` |
+| R5 | 5b.2 Agents view and conversation keys (the item rules apply): `agents N waiting`; live rows first; `Enter` opens the conversation (`F7` returns); `x` stops behind the shared Yes/No;  the final look of a running background subagent (D2) (G23, R7) | not started | `feat/phase-5` |
+| R6 | 5b.3 Jobs view, following the item rules (no icon, an equal cell, a fixed-length scrolling panel, history only with `viewHistory`): `jobs N`; `Enter` opens the job's output (an interim target until Phase 6f); `x` rechecks `jobs.get`, then `jobs.kill` behind the Yes/No (R7) | not started | `feat/phase-5` |
 | R7 | 5c carry-overs from Phase 3: notices truncate with `…` and keep their count or countdown (O2); `compactionNoWindow` drops the `%` (O3); the search hint row takes its own line, and 40-column decision hints keep their labels (O4). Independent of R1 to R6, so it may come earlier | not started | `feat/phase-5` |
+
+**Owed at the phase gate, from R1** (rounds run no tests; the owner wraps the phase up): decision tests for `status-rows.ts`
+(row 2 absent when empty, five cells, the `━` line, the footer within W1) and the three new wire options (`stack.cells`,
+scroll `expandable`/`more`, divider `align`/`inset`/`tone`); the Todo and Goal items (marks and widths, the timer and the
+five-second item, activation, `viewHistory`, the `r` `p` `e` `c` keys fenced to the revision); the two projection entries
+(`goal-change`, `goal-round`, `stateVersion` 11) and their rows, the blocked notice, the conversation chip and the
+notification toggle; goldens for `footerCutover` (it ticks once per checkpoint). Specs that are stale until then:
+`status-model.spec.ts` (the file is deleted), both `width-scan.spec.ts`, `scene-13-views.spec.ts`,
+`business-rendering-drift.spec.ts`, `pane-todo.spec.ts`, `status-goal.spec.ts`, the views-lane and surface-manager specs
+(summary `count`, tab strip, panel under the row), `provider.spec.ts` (summary `count`), `key-audit.spec.ts`
+(`ACTION_TOGGLE_TODO`), `pane-notification.spec.ts`, `status-fakes.ts`, the locale-catalog spec (new, renamed, and removed keys),
+and any golden that shows a footer. Not run in this round: the round tier, `pnpm run typecheck` of the tests, lint, perf, the
+Website build (its text is updated in both languages), and `dsh --resume` on the scenario's stored session.
 
 **Phase 5 finalization** (not a round; the test session of spec §3.1, then the phase gate). Decision tests: each view's
 registration and Fiber cleanup, the footer within the W1 budget (§7.1), admission width scans, exact-Agent writes, and
@@ -2109,8 +2121,7 @@ status entries as regressions).
   prototype's priorities do not produce that order at every width.
 - The focus chip (`transcript/status-focus.ts`, priority 1, Phase 3e). Whether it survives, and where it sits beside
   `PLAN`/`YOLO`.
-- Whether an empty Agents or Jobs view shows `0`, and how long `✓ Todo done` stays before the view leaves.
-- `Ctrl+T` with no todo, and whether it toggles.
+- Whether an empty Agents or Jobs view shows `0`, and how long the closing item `✓ todo 6/6 4m 12s` stays (five seconds for now).
 - The balance threshold, the currency symbol for a USD provider, the refresh rate, and whether to raise a low-balance notice.
 - The interim target of `Enter` on a job, and the confirm copy for `x`.
 - Whether the 400 ms completion flash and the 300 ms fan-out stagger are in this phase (the roadmap says unscheduled).
@@ -2255,8 +2266,8 @@ come last: nothing below runs a check tier, a spec, or a golden until the owner 
    Then **confirm the effect** (the owner and the agent): the agent asks questions about every choice that changes
    the visible result or the API, and the final effect is agreed before any code.
 2. **Draft** (the agent). Build the component on real data through the native services, as agreed. Write the
-   workbench scenarios for its states (§5, 2a), including a narrow width and a lifecycle case, and organize all of
-   them into one list for the owner (name, command, what it shows, what to try). Run no check tier, write no
+   round's one workbench scenario, a long conversation chaining its states (§5, 2a), including a narrow width and a
+   lifecycle case, and give the owner its name, command, what it shows in order, and what to try. Run no check tier, write no
    goldens, and chase no coverage; the workbench's incremental build is the only mechanical feedback. Stop and
    tell the owner.
 3. **Review rounds** (the owner and the agent). The owner runs the profile or a scenario beside

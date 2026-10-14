@@ -66,21 +66,33 @@ export interface NotificationRowFacts {
   readonly hint?: string
   /** The keys of the mode that holds focus (the conversation's row cursor), muted at the stream's left margin; a notice keeps the right. */
   readonly keys?: string
+  /** The keys that go back and forth between conversations (`F7 btw · F8 close`): they take the right of the row, before the notice or the hint. */
+  readonly toggle?: string
 }
 
 /** The notice, right-aligned in its cell: the right band of a one-child row, which truncates a notice wider than the cell. */
-function noticeCell(facts: NotificationFacts): MayflyUiNode {
-  return ui.stack.row([ui.child(ui.richText(spans(facts)), { priority: 0, band: 'right', overflow: 'truncate' })])
+function noticeCell(facts: NotificationFacts, toggle?: string): MayflyUiNode {
+  return ui.stack.row([ui.child(ui.richText([...toggleSpans(toggle, true), ...spans(facts)]), { priority: 0, band: 'right', overflow: 'truncate' })])
 }
 
 /** The hint, laid out as a notice is: right-aligned in its cell, muted, truncated at the end. */
-function hintCell(hint: string): MayflyUiNode {
-  return ui.stack.row([ui.child(ui.richText([{ text: hint, tone: 'muted' }]), { priority: 0, band: 'right', overflow: 'truncate' })])
+function hintCell(hint: string, toggle?: string): MayflyUiNode {
+  return ui.stack.row([ui.child(ui.richText([...toggleSpans(toggle, hint !== ''), ...hint === '' ? [] : [{ text: hint, tone: 'muted' as const }]]), { priority: 0, band: 'right', overflow: 'truncate' })])
 }
 
-/** The right side of the row: the notice, else the hint, else nothing. */
+/** The way between conversations, muted, with the gap that parts it from what follows (when something does). */
+function toggleSpans(toggle: string | undefined, followed: boolean): readonly MayflyInlineSpan[] {
+  return toggle === undefined ? [] : [{ text: followed ? `${toggle}   ` : toggle, tone: 'muted' }]
+}
+
+/**
+ * The right side of the row: the way between conversations first, then the notice; without a notice the toggle replaces the
+ * idle hint, and without either the row is empty.
+ */
 function rightOf(facts: NotificationRowFacts | undefined): MayflyUiNode | undefined {
-  if (facts?.notice !== undefined) return noticeCell(facts.notice)
+  if (facts?.notice !== undefined) return noticeCell(facts.notice, facts.toggle)
+  // The way between conversations takes the place of the idle hint.
+  if (facts?.toggle !== undefined) return hintCell('', facts.toggle)
   return facts?.hint === undefined ? undefined : hintCell(facts.hint)
 }
 

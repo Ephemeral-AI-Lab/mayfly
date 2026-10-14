@@ -13,7 +13,7 @@
 import { HStack, ScrollView, VStack, compositeTuiLine, type Component } from '@earendil-works/pi-tui'
 import { allocateStackSizes, visibleStackEntries } from '@earendil-works/pi-tui/dist/components/stack.js'
 import { blankRows, concatRows, declaredWidthOf, isVirtualRows, rowSourceOf, sliceRows, virtualRows } from './ui-rows.ts'
-import { visibleWidth } from './width.ts'
+import { truncateToWidth, visibleWidth } from './width.ts'
 
 /** How many composited rows one stack remembers before its next render starts over. */
 export const ROW_STACK_ENTRIES = 4096
@@ -185,4 +185,39 @@ export class RowStack extends HStack {
     }
     return row
   }
+}
+
+/** What a cell row asks of its host. */
+interface CellRowOptions {
+  /** The cells the row is divided into; more children than cells share the row evenly. */
+  readonly cells: number
+  readonly gap: number
+  /** The children visible at this paint, in order. */
+  readonly children: () => readonly Component[]
+}
+
+/**
+ * A row divided into equal cells: each child is painted at the width of one cell, as its first row, and padded to the
+ * cell. The cell is a share of the width however many children there are, so an item stays where it is when another
+ * appears or goes. A child that does not fit is the child's to cut.
+ */
+export class CellRow implements Component {
+  constructor(private readonly options: CellRowOptions) {}
+
+  render(width: number): string[] {
+    const columns = Math.max(1, Math.floor(width))
+    const children = this.options.children()
+    if (children.length === 0) return []
+    const count = Math.max(this.options.cells, children.length)
+    const gap = this.options.gap
+    const cell = Math.max(1, Math.floor((columns - gap * (count - 1)) / count))
+    const line = children.map((child, index) => {
+      const row = child.render(cell)[0] ?? ''
+      const clipped = visibleWidth(row) > cell ? truncateToWidth(row, cell, '') : row
+      return `${clipped}\x1b[0m${' '.repeat(Math.max(0, cell - visibleWidth(clipped)))}${index === children.length - 1 ? '' : ' '.repeat(gap)}`
+    }).join('')
+    return [truncateToWidth(line.replace(/ +$/u, ''), columns, '')]
+  }
+
+  invalidate(): void {}
 }

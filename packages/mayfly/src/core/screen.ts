@@ -6,6 +6,7 @@
  */
 
 import { Context, Service } from '@deepseek-ai/cordis'
+import { GutterComponent } from './gutter.ts'
 import { NodeSlotHost, type MayflyNodeSlot, type MayflyNodeSlotCompiler, type MayflyNodeSlotOptions } from './node-slot.ts'
 import { SearchLine, type MayflySearchLine, type MayflySearchLineOptions } from './search-line.ts'
 import { concatRows } from './ui-rows.ts'
@@ -146,6 +147,14 @@ class LocalActivityRegion implements MayflyComponent {
   invalidate(): void { for (const child of this.children.values()) child.invalidate() }
 }
 
+/** The panel of an entered view: it sits under status row 1 in place of row 2 (inside the footer's gutter), and is empty (the shared empty rows) otherwise. */
+class ViewsPanelHost implements MayflyComponent {
+  constructor(private readonly lane: { panel(width: number): readonly string[] | undefined }) {}
+
+  render(width: number): string[] { return (this.lane.panel(width) ?? NO_ROWS) as string[] }
+  invalidate(): void {}
+}
+
 const CONTENT_HOSTS = ['transcript.prelude', 'transcript.conversation'] as const
 const DOCK_HOSTS = ['editor.prompt', 'status.footer'] as const
 
@@ -160,6 +169,7 @@ export class MayflyScreenService extends Service implements MayflyScreen {
   private readonly fixed = new Map<string, StableSlotHost>()
   private readonly claimed = new Set<string>()
   private readonly local = new LocalActivityRegion()
+  private readonly viewsPanel: MayflyComponent
   private searchLine: MayflySearchLine | undefined
   /** Node-backed slots claim the same fixed hosts: content as a content slot, dock as the prompt, footer as the footer. */
   private readonly nodeSlots = new NodeSlotHost(
@@ -188,12 +198,14 @@ export class MayflyScreenService extends Service implements MayflyScreen {
     this.fixed.set('status.footer', footer)
     runtime.addBottomChild(editor)
     runtime.addBottomChild(footer, 'bottom')
+    this.viewsPanel = new GutterComponent(new ViewsPanelHost(runtime.surfaces.views))
+    runtime.addBottomChild(this.viewsPanel, 'bottom')
     ctx.effect(() => () => {
       this.searchLine?.dispose()
       this.nodeSlots.dispose()
     })
     // Entering a view of status row 2 moves focus to the bar; leaving it gives focus back to the prompt.
-    ctx.effect(() => runtime.surfaces.views.onEnteredChange((entered) => { ctx.emit('mayfly/focus-mode-changed', entered ? 'bar' : 'prompt') }))
+    ctx.effect(() => runtime.surfaces.views.onEnteredChange((entered) => { ctx.emit('mayfly/focus-mode-changed', entered ? 'view' : 'prompt') }))
     runtime.requestRender()
   }
 
@@ -220,7 +232,7 @@ export class MayflyScreenService extends Service implements MayflyScreen {
    */
   get editorViewport(): { readonly columns: number, readonly rows: number } {
     const columns = this.runtime.columns
-    const footerRows = this.fixed.get('status.footer')!.render(columns).length
+    const footerRows = this.fixed.get('status.footer')!.render(columns).length + this.viewsPanel.render(columns).length
     return { columns, rows: Math.max(1, this.runtime.rows - footerRows - 1 - this.runtime.surfaceLaneRows()) }
   }
 
@@ -245,6 +257,11 @@ export class MayflyScreenService extends Service implements MayflyScreen {
    */
   enterViews(): boolean {
     return this.runtime.surfaces.views.enter()
+  }
+
+  /** Leave the entered view and hand focus back to where it was (the prompt); nothing happens while none is entered. */
+  leaveViews(): void {
+    this.runtime.surfaces.views.leave()
   }
 
   /** A registered editor-presentation overlay takes the prompt's place. */

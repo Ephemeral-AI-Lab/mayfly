@@ -101,8 +101,8 @@ describe('NotificationLine', () => {
   })
 
   it('teaches the keys that leave the prompt in the notice place, muted and right-aligned', () => {
-    const [line] = render({ hint: 'Alt+↑ conversation · Alt+↓ bar' }, 120)
-    expect(line!.trimEnd().endsWith('Alt+↑ conversation · Alt+↓ bar')).toBe(true)
+    const [line] = render({ hint: 'Alt+↑ conversation · Alt+↓ view' }, 120)
+    expect(line!.trimEnd().endsWith('Alt+↑ conversation · Alt+↓ view')).toBe(true)
     expect(visibleWidth(line!)).toBe(120)
     expect(spansOf(NotificationLine({ hint: 'hint' }))).toEqual([{ text: 'hint', tone: 'muted' }])
   })

@@ -58,13 +58,16 @@ through these steps in order, and tests come last:
    workbench runs as the only mechanical feedback. Run no check tier, no specs,
    no scenario goldens, and do not chase coverage, perf, or lint beyond what a
    failed build shows.
-4. **Scenario code.** Write the scenarios that show the round's states (a
-   replay with `mark()`s and a catalog script, including a narrow width and a
-   lifecycle case). Do not run them against goldens and do not write goldens.
-5. **Hand over.** Organize all the scenarios of the round into one list for the
-   owner: each scenario's name, the command that opens it
-   (`pnpm run scenario <name>` or `dsh --profile mayfly-<tag>`), what it shows,
-   and what to try. Then stop and tell the owner; do not test.
+4. **Scenario code.** Write **one scenario per round**: a single long
+   conversation (a replay with `mark()`s and one catalog script) that strings
+   all of the round's effects together, including a narrow width and a
+   lifecycle case. Do not add a scenario per state, and do not point the owner
+   at older scenarios to see the round. Do not run it against goldens and do
+   not write goldens.
+5. **Hand over.** Give the owner that one scenario: its name, the command that
+   opens it (`pnpm run scenario <name>` or `dsh --profile mayfly-<tag>`), the
+   order in which it shows the effects, and what to try. Then stop and tell the
+   owner; do not test.
 6. **Owner review.** The owner runs the scenarios and the live profile, and
    the agent adjusts the effect until the owner calls it final. Repeat steps
    3 to 5 as needed; an adjustment is not a reason to run tests.

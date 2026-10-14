@@ -35,16 +35,12 @@ Follow-ups you submit while the agent runs queue in the harness inbox — the pa
 
 ↑/↓ always belong to editor history — the queue pane only displays pending messages and never takes over keys (see [Input editor](/en/features/editor)).
 
-## Todo pane
+## Todo view
 
-The session's todo list (whole-list snapshots, last-write-wins) renders under a kimi-style flat-rule frame: a `Todo` title + three-state dots — `✓` completed (muted, struck through), `●` in progress (primary, bold), `○` pending.
+The session's todo list (whole-list snapshots, last-write-wins) is the **Todo view** of status row 2. Row 2 shows only `● todo 2/12 4m 12s` (done over total, and how long the list has been tracked); when the list settles it reads `✓ todo 12/12 12s` for five seconds and then goes. `Alt+↓` opens its panel under row 2 (row 2 itself stays, with a heavy line under the item): every row with three-state marks — `✓` completed (muted, struck through), `●` in progress (primary, bold), `○` pending — and no heading, count, or time. The panel has one fixed length and scrolls vertically past it, its last row counting the rows still below (`↓ 6 more`); it adds no keys of its own (`↑/↓` scroll, `←/→` switch item, `Esc` returns).
 
-- **Five-row folding** — long lists fold to all in-progress first, then the earliest pending and the latest completed; a one-row footer `… +N more (2 done · 1 pending) · ctrl+t to expand` accounts for the hidden items.
-- **Ctrl-T** toggles between folded and full (`all N items · ctrl+t to collapse`); the expanded state survives writes and resets on session change or a settled list.
-- **All-completed auto-close** — the next write reopens folded.
-
-- **Interrupted runs** — when the latest run failed or was stopped while the list is unsettled, the title adds a muted `· interrupted`.
-- **Goal** — a current goal rides the title row: `Todo · ● active · 2/5 · <objective>` (truncated to one row); only a blocked goal adds a `blocked:` reason row.
+- **History** — completed items are listed only when the `viewHistory` setting is on (off by default).
+- **Interrupted runs** — when the latest run failed or was stopped while the list is unsettled, the panel starts with a muted `interrupted`.
 
 `todo_write` calls appear in the transcript only as one-row process members (`✓ Updated the plan · 3/5 done`); this pane is the list's live surface.
 
@@ -54,7 +50,7 @@ Mayfly keeps the primary conversation and any number of side conversations open 
 
 - every conversation renders in the same transcript pane. A live BTW or continuable subagent becomes `mayflyCurrentAgent.current()`, switching the status, bottom panes, commands, and complete editor to that Session; BTW retains the full parent seed for model context, while the transcript starts at BTW's first question and hides inherited history; images, follow-ups, steer, retraction, and interrupts use the same input pipeline;
 - a one-shot child, or a continuable child that is not resident, does not activate an Agent: its transcript loads from native history into the same pane, keeps its own running-turn header (no activity row follows it), and the status marks it `read-only` or `reply to resume`. The editor stays: in a read-only conversation a submitted draft stays in the editor with a notice; in a resumable one it opens the Queue / Steer reply form seeded with the draft, and only **Send** resumes the child. Slash commands still run against the primary;
-- the centered status shows the displayed kind and label, its `F7` counterpart, its access, how many more conversations are open, and `F7 switch · F8 close`. `F7` returns to the previously displayed conversation; `F8` closes the displayed side conversation, or the `F7` counterpart while main is displayed. Closing a normal subagent only detaches it, while closing BTW also disposes its temporary Agent;
+- a chip in the status line names the displayed conversation (` main `, ` btw `, ` subagent `) while more than one is open, and the right of the notification pane shows `F7 btw · F8 close` in place of its hint (`F7 main · F8 close`, or `F8 detach` for a subagent). `F7` returns to the previously displayed conversation; `F8` closes the displayed side conversation, or the `F7` counterpart while main is displayed. Closing a normal subagent only detaches it, while closing BTW also disposes its temporary Agent;
 - opening another child keeps the others open; a new BTW replaces the previous BTW. A bare `/btw` closes the current BTW; `/new`, `/resume`, and `/fork` close every side conversation, while `/rewind` and the `/agents` browser show main first;
 - only the displayed conversation and its `F7` counterpart keep transcript state; the others hold nothing until you return to them, so many open conversations stay cheap;
 - in `/agents`, `Enter` views a child, `Space` or `←` / `→` expand a branch, and `Tab` reaches **Stop selected**, which asks a Yes / No confirmation (No focused) before stopping a live continuable child. For a one-shot or cold/inactive child, or one that still owns live descendants, Stop shows why it cannot run instead of asking. `/agents stop <id>` is the direct path. Harness recursively releases live descendants owned by a destroyed Agent, so Mayfly refuses a target that still owns live descendants and requires leaf-first teardown.

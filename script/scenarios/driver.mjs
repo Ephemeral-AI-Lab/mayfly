@@ -304,12 +304,25 @@ export function apply(ctx) {
             const goals = ctx.get('goals')
             if (goals === undefined) { log('no goal service'); break }
             const view = goals.get(agent)
+            // `ifNeeded`: the live viewer may already have done it with the panel's button.
+            if (action.ifNeeded === true && view?.phase === 'active') { log(`goal ${action.action} skipped`); break }
             if (action.action === 'create') goals.create(agent, { objective: action.objective, ...(action.maxGoalRounds === undefined ? {} : { maxGoalRounds: action.maxGoalRounds }) })
             else if (action.action === 'block') goals.block(agent, view, { code: action.code ?? 'needs-input', message: action.message ?? 'Blocked' })
             else goals[action.action](agent, view)
             // The service arms a goal for continuation; a replay only shows the state, so nothing may continue it.
             try { goals.disarm(agent) } catch { /* cleared goals have nothing to disarm */ }
             log(`goal ${action.action}`)
+            break
+          }
+          case 'goal-round': {
+            const goals = ctx.get('goals')
+            const view = goals?.get(agent)
+            if (view === undefined) { log('no goal for the round'); break }
+            // The round driver's own prompt, attributed to the exact goal revision it continues.
+            const text = `<goal_round>\nObjective: ${JSON.stringify(view.objective)}\nRound: ${String(action.round)}/${String(view.maxGoalRounds)}\n\nContinue working toward the objective in this same session.\n</goal_round>`
+            const event = agent.session.append('user/message', { id: `replay-goal-round-${String(action.round)}`, role: 'user', content: [{ type: 'text', text }], source: { kind: 'goal', goalId: view.id, revision: view.revision, round: action.round } }, { surfaceOp: 'append' })
+            lastSeqs.set(agent.session, event.seq)
+            log(`goal round ${String(action.round)}`)
             break
           }
           case 'job': {

@@ -22,6 +22,8 @@ const NAMED = new Map([
   ['alt+down', '\u001b[1;3B'],
   ['f4', '\u001bOS'],
   ['f5', '\u001b[15~'],
+  ['f7', '\u001b[18~'],
+  ['f8', '\u001b[19~'],
   ['home', '\u001b[H'],
   ['end', '\u001b[F'],
   ['pageup', '\u001b[5~'],

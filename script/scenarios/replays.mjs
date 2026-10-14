@@ -4,7 +4,7 @@
  * replay that shows its states. See `timeline.mjs` for the builders. @module script/scenarios/replays
  */
 
-import { approval, compaction, edit, editHunks, write, goal as goalItem, image, btw, job, mark, notify, pause, question, queue, raw, seed, step, subagent, text, todos, tool, turn } from './timeline.mjs'
+import { approval, compaction, edit, editHunks, write, goal as goalItem, goalRound, image, btw, job, mark, notify, pause, question, queue, raw, seed, step, subagent, text, todos, tool, turn } from './timeline.mjs'
 
 /** A reply shaped like a real answer: prose, lists, a table, and fenced code in two languages. */
 function reply() {
@@ -365,6 +365,113 @@ const goal = {
     goalItem('complete'),
     step({ text: 'The goal is complete.' }),
   ])],
+}
+
+/** How long the live `scenario` stays on one state of `footerCutover`, for the owner to look at it (the frame runner stops at the marks instead). */
+const DWELL = 10_000
+/** The states the owner enters views in, which need time for `Alt+↓`, `←/→`, and `Esc`. */
+const DWELL_VIEWS = 25_000
+
+const footerCutover = {
+  summary: 'one long conversation through the footer and the goal: one line by default, plan mode, then a goal with its rounds, a todo list, and a job in row 2 (summaries; their detail opens with Alt+Down), the goal paused, resumed, blocked, and completed, a /btw side question, and back to one line; each state stays 10 to 25 s',
+  options: { contextWindow: 65_536 },
+  items: [
+    turn('Find where the settings live and read them.', [
+      step({
+        reasoning: 'Start with the project layout, then the file that holds the timeout.',
+        text: 'Looking at the sources first.',
+        usage: { inputTokens: 3200, outputTokens: 120, cacheReadTokens: 900 },
+        tools: [
+          tool('glob', { pattern: '**/*.mjs' }, { result: 'src/config.mjs\nsrc/client.mjs\ntests/config.test.mjs', runMs: 500 }),
+          tool('grep', { pattern: 'timeoutMs', include: '*.mjs' }, { result: 'src/config.mjs:3:  timeoutMs: 3000,\nsrc/client.mjs:4:  signal: AbortSignal.timeout(config.timeoutMs)', runMs: 700 }),
+        ],
+      }),
+      step({ text: 'The settings are in `src/config.mjs`.', usage: { inputTokens: 3900, outputTokens: 60, cacheReadTokens: 3200 }, tools: [tool('read', { file_path: 'src/config.mjs' }, { result: CONFIG, runMs: 600 })] }),
+      step({ text: 'Nothing is running besides me, so the footer is one line: the model, the directory, and the context meter.', usage: { inputTokens: 4300, outputTokens: 90, cacheReadTokens: 3900 } }),
+      mark('one-line'),
+      pause(DWELL),
+    ]),
+    turn('Add a retries option and run the tests.', [
+      step({
+        text: 'Adding the option next to the timeout.',
+        usage: { inputTokens: 5000, outputTokens: 140, cacheReadTokens: 4300 },
+        tools: [edit('src/config.mjs', "  timeoutMs: 3000,\n}", "  timeoutMs: 3000,\n  retries: 2,\n}")],
+      }),
+      step({
+        text: 'Running the tests.',
+        usage: { inputTokens: 5600, outputTokens: 70, cacheReadTokens: 5000 },
+        tools: [tool('bash', { command: 'npm test 2>&1 | tail -12', description: 'Run the test suite' }, { result: `${TEST_OUTPUT}\n[exit code: 0]`, runMs: 2500 })],
+      }),
+      step({ text: 'The suite passes with the new option.', usage: { inputTokens: 6200, outputTokens: 60, cacheReadTokens: 5600 } }),
+    ]),
+    turn('Plan the landing page work before editing.', [
+      raw('plan/mode', { active: true }),
+      step({ text: 'Plan mode is on: the PLAN chip sits in row 1 beside the model.', usage: { inputTokens: 6700, outputTokens: 80, cacheReadTokens: 6200 } }),
+      mark('plan'),
+      pause(DWELL),
+      raw('permission/preset', { preset: 'danger-full-access' }),
+      raw('sandbox/mode', { mode: 'danger-full-access' }),
+      raw('approval/policy', { policy: 'never' }),
+      step({ text: 'Yolo joins it: both chips show at once, plan then yolo.', usage: { inputTokens: 6900, outputTokens: 60, cacheReadTokens: 6700 } }),
+      mark('plan-yolo'),
+      pause(DWELL),
+      raw('plan/mode', { active: false }),
+      step({ text: 'Plan mode is off; yolo stays.', usage: { inputTokens: 7000, outputTokens: 40, cacheReadTokens: 6900 } }),
+      mark('yolo'),
+      pause(DWELL),
+      raw('permission/preset', { preset: 'workspace-write' }),
+      raw('sandbox/mode', { mode: 'workspace-write' }),
+      raw('approval/policy', { policy: 'ask' }),
+    ]),
+    turn('Work towards the goal: refresh the landing page.', [
+      goalItem('create', { objective: 'Ship the landing page hero refresh and keep all 214 tests green', maxGoalRounds: 8 }),
+      step({ text: 'A goal is set: row 2 appears under the facts, with only its summary. The replay never arms it, so it reads off.', usage: { inputTokens: 7400, outputTokens: 90, cacheReadTokens: 7000 } }),
+      mark('goal'),
+      pause(DWELL),
+      goalRound(1),
+      step({
+        text: 'Round 1: the todo list joins the goal.',
+        usage: { inputTokens: 7900, outputTokens: 160, cacheReadTokens: 7400 },
+        tools: [todos([['completed', 'Update the landing page hero'], ['in_progress', 'Run the tests'], ['pending', 'Update the screenshots'], ['pending', 'Bump the changelog'], ['pending', 'Open the pull request'], ['pending', 'Announce it'], ['pending', 'Tag the release'], ['pending', 'Update the docs site'], ['pending', 'Publish the release notes'], ['pending', 'Notify the translators'], ['pending', 'Archive the old banner'], ['pending', 'Close the milestone']])],
+      }),
+      mark('goal-todo'),
+      pause(DWELL),
+      goalRound(2),
+      job('npm run watch', { lines: [[300, 'watching for changes…'], [20_000, 'rebuilt src/config.mjs in 41 ms']], endMs: 110_000, status: 'completed', detail: 'exit code: 0' }),
+      step({ text: 'Round 2: a background job joins them in row 2. Press Alt+↓ to open the views.', usage: { inputTokens: 8400, outputTokens: 100, cacheReadTokens: 7900 } }),
+      mark('goal-todo-job'),
+      pause(DWELL_VIEWS),
+      goalItem('pause'),
+      step({ text: 'The goal is paused: the mark is ⏸ and the panel says how to continue.', usage: { inputTokens: 8600, outputTokens: 80, cacheReadTokens: 8400 } }),
+      mark('paused'),
+      pause(DWELL_VIEWS),
+      goalItem('resume', { ifNeeded: true }),
+      step({ text: 'Resumed.', usage: { inputTokens: 8700, outputTokens: 40, cacheReadTokens: 8600 } }),
+      goalItem('block', { code: 'round-limit', message: 'The goal used all 8 rounds without finishing' }),
+      step({ text: 'Blocked: the round cap was reached.', usage: { inputTokens: 8800, outputTokens: 70, cacheReadTokens: 8700 } }),
+      mark('blocked'),
+      pause(DWELL_VIEWS),
+    ]),
+    btw('Which release channel does semver suggest for a breaking change?', [
+      step({ reasoning: 'A short factual answer is enough.', text: 'A breaking change goes out as a new major version, on the next channel first.', reasoningMs: 1200, textMs: 2500 }),
+    ], { label: 'release channel' }),
+    mark('btw'),
+    pause(DWELL),
+    turn('Pick the stable channel and wrap up.', [
+      goalItem('resume', { ifNeeded: true }),
+      goalItem('complete'),
+      step({
+        text: 'The goal is complete and the list is done; only the job is left in row 2.',
+        usage: { inputTokens: 9300, outputTokens: 120, cacheReadTokens: 8800 },
+        tools: [todos([['completed', 'Update the landing page hero'], ['completed', 'Run the tests'], ['completed', 'Update the screenshots'], ['completed', 'Bump the changelog'], ['completed', 'Open the pull request'], ['completed', 'Announce it'], ['completed', 'Tag the release'], ['completed', 'Update the docs site'], ['completed', 'Publish the release notes'], ['completed', 'Notify the translators'], ['completed', 'Archive the old banner'], ['completed', 'Close the milestone']])],
+      }),
+      mark('job'),
+      pause(25_000),
+      goalItem('clear'),
+      mark('settled'),
+      pause(DWELL),
+    ]),
+  ],
 }
 
 const queued = {
@@ -1196,7 +1303,7 @@ const phase3 = {
   ],
 }
 
-export const REPLAYS = { tour, toolkit, thinking, markdown, live, phases, thinkingLadder, pending, blocks, streaming, sync, activityWait, prompts, turns, toollines, toolgrow, findings, edits, errors, compaction: compactionReplay, compactionNoWindow, compactionFailed, manualCompact, context, subagents, childStream, approvals, approvalsRejected, approvalsEdit, approvalsQueue, questions, plan, planLong, goal, jobs, queued, retries, sideQuestion, notices, notificationPane, modes, edge, history, wheel, content, phase3 }
+export const REPLAYS = { tour, toolkit, thinking, markdown, live, phases, thinkingLadder, pending, blocks, streaming, sync, activityWait, prompts, turns, toollines, toolgrow, findings, edits, errors, compaction: compactionReplay, compactionNoWindow, compactionFailed, manualCompact, context, subagents, childStream, approvals, approvalsRejected, approvalsEdit, approvalsQueue, questions, plan, planLong, goal, footerCutover, jobs, queued, retries, sideQuestion, notices, notificationPane, modes, edge, history, wheel, content, phase3 }
 
 /*
  * The scenes of the Website's app shots. Each is the source of an `app-*` scenario of the catalog, whose goldens the

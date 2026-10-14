@@ -12,6 +12,7 @@ import { isAppendSurfaceEvent, type SessionEvent } from '@deepseek-ai/dsh-sessio
 // declaration merges the fold below consumes.
 import type {} from '@deepseek-ai/dsh-commands/types'
 import type {} from '@deepseek-ai/dsh-compaction/types'
+import type {} from '@deepseek-ai/dsh-goal'
 import type { ProjectionDefinition } from '@deepseek-ai/dsh-session-projection'
 import { z } from 'zod'
 import { everyAdmitted, identityAdmission } from './admission.ts'
@@ -79,6 +80,17 @@ const conversationEntriesSchema = z.array(z.discriminatedUnion('kind', [
   }),
   z.object({ ...entryBase, kind: z.literal('error'), message: z.string(), code: z.string().optional() }),
   z.object({ ...entryBase, kind: z.literal('interrupted') }),
+  z.object({
+    ...entryBase,
+    kind: z.literal('goal-change'),
+    operation: z.enum(['create', 'edit', 'pause', 'resume', 'complete', 'block', 'clear']),
+    objective: z.string().optional(),
+    blockedReason: z.object({ code: z.string(), message: z.string() }).optional(),
+    roundsStarted: z.number().int().nonnegative().optional(),
+    createdAt: z.number().optional(),
+    updatedAt: z.number().optional(),
+  }),
+  z.object({ ...entryBase, kind: z.literal('goal-round'), round: z.number().int().positive() }),
   z.object({
     ...entryBase,
     kind: z.literal('compaction'),
@@ -476,6 +488,13 @@ export function foldConversationProjection(
       // `user-question-reply` is a persisted late answer the user authored
       // through the question form (Harness 0.2.0): the transcript renders it
       // like any user message. Other injected sources stay presentation-only.
+      // An autonomous goal round is a marker in the stream, not a message the person wrote.
+      if (event.data.source.kind === 'goal') {
+        if (event.data.source.round < 1 || !isAppendSurfaceEvent(event)) return state
+        return appendEntry(state, {
+          kind: 'goal-round', id: `goal-round:${event.seq}`, seq: event.seq, updatedSeq: event.seq, turn: state.currentTurn, round: event.data.source.round,
+        })
+      }
       const rendered = event.data.source.kind === 'user' || event.data.source.kind === 'user-question-reply'
       if (!isAppendSurfaceEvent(event) || !rendered) return state
       const text = bodyText(event.data.content)
@@ -544,6 +563,22 @@ export function foldConversationProjection(
         channel: toolChannel(event.data.name),
       }
       return appendEntry(pauseThinking(state, event.seq), entry)
+    }
+    // A goal's lifecycle is a fact of the session log, shown as one row whoever made it.
+    case 'goal/change': {
+      if (state.retractedTurns.includes(state.currentTurn)) return state
+      const change = event.data
+      const base = { kind: 'goal-change' as const, id: `goal:${event.seq}`, seq: event.seq, updatedSeq: event.seq, turn: state.currentTurn }
+      if (change.operation === 'clear') return appendEntry(state, { ...base, operation: 'clear' })
+      return appendEntry(state, {
+        ...base,
+        operation: change.operation,
+        objective: change.goal.objective,
+        ...change.goal.blockedReason === undefined ? {} : { blockedReason: { code: change.goal.blockedReason.code, message: change.goal.blockedReason.message } },
+        roundsStarted: change.roundsStarted,
+        createdAt: change.createdAt,
+        updatedAt: change.updatedAt,
+      })
     }
     case 'tool/result':
       return state.retractedTurns.includes(event.data.turn) || !isAppendSurfaceEvent(event)
@@ -684,5 +719,5 @@ export const conversationProjectionDefinition: ConversationProjectionDefinition 
       return view
     },
   },
-  stateVersion: 10,
+  stateVersion: 11,
 }

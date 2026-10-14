@@ -161,7 +161,7 @@ export interface MayflyOverlayHandle {
  * or keybinding responsibility.
  */
 /** Where keyboard focus lives: the prompt, the stream's row cursor, a view of the status bar, or a search of the stream. */
-export type MayflyFocusMode = 'prompt' | 'conversation' | 'bar' | 'search' | 'search-select'
+export type MayflyFocusMode = 'prompt' | 'conversation' | 'view' | 'search' | 'search-select'
 
 export interface MayflyScreen {
   /** Whether an active overlay or editor replacement must receive input before global actions. */

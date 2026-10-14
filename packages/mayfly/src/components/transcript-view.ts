@@ -67,6 +67,10 @@ export type StreamRow =
   | { readonly kind: 'error', readonly id: string, readonly text: string }
   /** The cut-turn marker, whole: its `■` is part of the translated text. */
   | { readonly kind: 'interrupted', readonly id: string, readonly text: string }
+  /** One change of the session goal: its mark in the mark's tone, then what changed. */
+  | { readonly kind: 'goal-change', readonly id: string, readonly mark: string, readonly tone: 'accent' | 'muted' | 'success' | 'danger', readonly text: string }
+  /** An autonomous goal round starting, drawn as a rule across the stream with its label in the middle. */
+  | { readonly kind: 'goal-round', readonly id: string, readonly text: string }
   /** Any other text the stream shows. */
   | { readonly kind: 'note', readonly id: string, readonly text: string }
 
@@ -98,6 +102,9 @@ export interface TranscriptViewFacts {
 
 const span = (text: string, tone?: MayflyInlineSpan['tone'], styles?: MayflyInlineSpan['styles']): MayflyInlineSpan =>
   ({ text, ...(tone === undefined ? {} : { tone }), ...(styles === undefined ? {} : { styles }) })
+
+/** The columns a full-width block keeps free at the right edge, as the stream keeps two at the left. */
+const GUTTER_COLUMNS = 2
 
 const MOOD_TONE = { running: 'primary', done: 'muted', stopped: 'warning', failed: 'danger' } as const
 
@@ -237,6 +244,9 @@ function rowParts(row: StreamRow): readonly MayflyListItem[] {
     ]
     case 'error': return [line(row.id, [span('✗ ', 'danger'), span(row.text, 'danger')], { wrap: true, hang: 2 })]
     case 'interrupted': return [line(row.id, [span(row.text, 'warning')], { disabled: true })]
+    case 'goal-change': return [line(row.id, [span(row.mark === '' ? '  ' : `${row.mark} `, row.tone), span(row.text, row.tone === 'muted' ? 'muted' : 'default')], { wrap: true, hang: 2 })]
+    // The rule spans the stream between the margins (two columns each side), with the label in its middle.
+    case 'goal-round': return [{ id: row.id, label: row.text, body: ui.divider({ label: row.text, align: 'center', inset: GUTTER_COLUMNS, tone: 'muted' }), bodyAlways: true, bodyLead: [span('')], disabled: true }]
     case 'note': return [line(row.id, [span(row.text, 'muted')])]
   }
 }

@@ -15,6 +15,8 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import type { MayflyFeedbackRecord } from '@ephemeral-ai/mayfly-ui'
+import type { MayflyConversationView } from '../app/conversation-views.ts'
+import { ACTION_CLOSE_AGENT_VIEW, ACTION_TOGGLE_AGENT_VIEW, interactionKeyHint } from '../interaction/keys.ts'
 import { NotificationLine, type NotificationFacts, type NotificationRowFacts } from '../components/notification-line.ts'
 import type { MayflyFocusMode } from '../core/types.ts'
 import type { MayflyTranslate } from '../frontend/locale.ts'
@@ -40,7 +42,7 @@ export function selectNotification(records: readonly MayflyFeedbackRecord[], ses
 
 /**
  * Mount the notification pane under the calling Fiber.
- * @param ctx - plugin context; needs `mayflyPanes`, `mayflyUiInteraction`, and `mayflySessionFacts`.
+ * @param ctx - plugin context; needs `mayflyPanes`, `mayflyUiInteraction`, `mayflySessionFacts`, `mayflyConversations`, and `mayflyKeymap`.
  * @param t - translator for the hint the row teaches while it has no notice.
  */
 export function mountNotificationPane(ctx: Context, t: MayflyTranslate): void {
@@ -50,11 +52,24 @@ export function mountNotificationPane(ctx: Context, t: MayflyTranslate): void {
   let chip: string | undefined
   /** Where keyboard focus is: the hint of the keys that leave the prompt only teaches while focus is on it. */
   let mode: MayflyFocusMode = 'prompt'
+  const conversations = ctx.mayflyConversations
+  const kindWord = (view: MayflyConversationView): string => view.kind === 'primary' ? t('main') : view.kind === 'btw' ? t('btw') : t('subagent')
+  /** The way back and forth: `F7` names the other conversation, `F8` closes (or detaches) the side one; absent with one conversation open. */
+  const toggle = (): string | undefined => {
+    const snapshot = conversations.snapshot()
+    const displayed = snapshot.views.find(view => view.id === snapshot.displayedId)
+    const counterpart = snapshot.views.find(view => view.id === snapshot.recent[1])
+    if (displayed === undefined || counterpart === undefined) return undefined
+    const switchKey = `${interactionKeyHint(ctx.mayflyKeymap, ACTION_TOGGLE_AGENT_VIEW, 'F7')} ${kindWord(counterpart)}`
+    // `F8` acts on the displayed side conversation, or on the `F7` counterpart while the main session is displayed.
+    const target = displayed.kind === 'primary' ? counterpart : displayed
+    return `${switchKey} · ${interactionKeyHint(ctx.mayflyKeymap, ACTION_CLOSE_AGENT_VIEW, 'F8')} ${target.kind === 'subagent' ? t('detach') : t('close')}`
+  }
   const current = (): NotificationRowFacts => {
     const agent = factsService?.currentAgent
     const notice = interaction === undefined ? undefined : selectNotification(interaction.notificationSnapshot(), agent == null ? undefined : String(agent.id))
-    // With no notice the row teaches where focus can go from the prompt: up into the conversation, down to the status bar.
-    return { ...notice === undefined ? {} : { notice }, ...mode === 'prompt' ? notice === undefined ? { hint: t('Alt+↑ conversation · Alt+↓ bar') } : {} : mode === 'conversation' ? { keys: t('Enter expand · c copy · Ctrl+C JSON · Ctrl+G editor · ↑/↓ select · / ? search · Esc back') } : mode === 'search-select' ? { keys: t('Enter expand · c copy · Ctrl+C JSON · ↑/↓ or n/N match · / ? new search · Esc end search') } : {}, ...chip === undefined ? {} : { chip } }
+    // With no notice the row teaches where focus can go from the prompt: up into the conversation, down to the views of status row 2.
+    return { ...notice === undefined ? {} : { notice }, ...mode === 'prompt' ? notice === undefined ? { hint: t('Alt+↑ conversation · Alt+↓ view') } : {} : mode === 'conversation' ? { keys: t('Enter expand · c copy · Ctrl+C JSON · Ctrl+G editor · ↑/↓ select · / ? search · Esc back') } : mode === 'search-select' ? { keys: t('Enter expand · c copy · Ctrl+C JSON · ↑/↓ or n/N match · / ? new search · Esc end search') } : {}, ...chip === undefined ? {} : { chip }, ...toggle() === undefined || mode !== 'prompt' ? {} : { toggle: toggle()! } }
   }
   let shape = JSON.stringify(current() ?? null)
   const pane = ctx.mayflyPanes.register({
@@ -73,6 +88,7 @@ export function mountNotificationPane(ctx: Context, t: MayflyTranslate): void {
   const offLocale = observeTranscriptLocale(ctx, refresh)
   const offLane = interaction?.subscribe(refresh)
   const offAgent = factsService?.subscribeAgent(refresh)
+  const offConversations = conversations.subscribe(refresh)
   const offMode = ctx.on('mayfly/focus-mode-changed', (next) => {
     mode = next
     refresh()
@@ -85,6 +101,7 @@ export function mountNotificationPane(ctx: Context, t: MayflyTranslate): void {
     offLocale()
     offLane?.()
     offAgent?.()
+    offConversations()
     offTail()
     offMode()
     pane.dispose()

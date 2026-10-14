@@ -1,7 +1,7 @@
 /**
  * Views lane (roadmap slice 1.10b): a pane with `placement: 'views'` is a view of status row 2. It declares a
- * `summary` (a status node and a tab count) that joins the row, and its node is the panel shown in place of the row
- * while the view is entered (`Alt+↓`, `F5` or `F6`; `←/→` switch views; `Esc` returns to the prompt). The view
+ * `summary` (a status node) that joins the row, and its node is the panel shown under the row (which stays as it is,
+ * with the view's item marked) while the view is entered (`Alt+↓`, `F5` or `F6`; `←/→` switch views; `Esc` returns to the prompt). The view
  * updates the row with `setSummary` and takes itself out with `setSummary(null)`.
  *
  * @module @mayfly-example/ui-gallery/groups/views
@@ -11,11 +11,10 @@ import { ui, type MayflyPaneSummary } from '@ephemeral-ai/mayfly-ui'
 
 const RUNS = ['build', 'test', 'lint']
 
-/** The row-2 chip: a muted label, an accent dot, and how many runs are tracked. */
+/** The row-2 item: an accent dot, a muted label, and how many runs are tracked. */
 function summaryFor(tracked: number): MayflyPaneSummary {
   return {
-    node: ui.richText([{ text: 'Gallery ', tone: 'muted' }, { text: '●', tone: 'accent' }, { text: ` ${String(tracked)} runs` }]),
-    count: tracked,
+    node: ui.richText([{ text: '● ', tone: 'accent' }, { text: 'gallery ', tone: 'muted' }, { text: `${String(tracked)} runs` }], { overflow: 'truncate' }),
   }
 }
 

@@ -404,9 +404,17 @@ export function renderProgress(node: ProgressNode, width: number, colors: Mayfly
   return [fit(`${showLabel ? colors.text(label) : ''}${tone(bar)}${showCounter ? ` ${colors.textMuted(counter)}` : ''}${percent === '' ? '' : colors.textMuted(percent)}`, available)]
 }
 
-/** A rule across the row, or `── Label ───` with at least two dashes after the label; always the quiet border color. */
-export function renderDivider(label: string | undefined, width: number, colors: MayflySemanticColors): string[] {
-  const available = safeWidth(width)
-  const rule = label === undefined ? '─'.repeat(available) : `── ${label} ${'─'.repeat(Math.max(2, available - visibleWidth(label) - 4))}`
-  return [fit(colors.border(rule), available)]
+/** `──── Label ────`: the label between two rules that share what it leaves, the left one the shorter by a cell when they cannot be equal. */
+function centeredRule(label: string, available: number): string {
+  const room = available - visibleWidth(label) - 2
+  const left = Math.max(2, Math.floor(room / 2))
+  const right = Math.max(2, room - left)
+  return `${'─'.repeat(left)} ${label} ${'─'.repeat(right)}`
+}
+
+/** A rule across the row, or `── Label ───` with at least two dashes after the label (`center`: `──── Label ────`, the label in the middle); the quiet border color unless it names a tone. */
+export function renderDivider(label: string | undefined, width: number, colors: MayflySemanticColors, align: 'start' | 'center' = 'start', inset = 0, tone?: MayflyTone): string[] {
+  const available = Math.max(1, safeWidth(width) - inset)
+  const rule = label === undefined ? '─'.repeat(available) : align === 'center' ? centeredRule(label, available) : `── ${label} ${'─'.repeat(Math.max(2, available - visibleWidth(label) - 4))}`
+  return [fit(tone === undefined ? colors.border(rule) : paintTone(tone, rule, colors), available)]
 }

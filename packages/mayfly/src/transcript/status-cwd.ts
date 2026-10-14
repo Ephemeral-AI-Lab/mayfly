@@ -50,7 +50,7 @@ export function apply(ctx: Context): void {
   const facts = ctx.get('mayflySessionFacts') as SessionFactsService | undefined
   let text = shortenCwd(facts?.currentAgent?.session.header.cwd ?? process.cwd(), homedir())
   const node = (): MayflyStatusNode | null => text === '' ? null : { kind: 'text', content: text, tone: 'muted' }
-  const status = ctx.mayflyStatus.register({ id: 'mayfly.status.cwd', priority: 5 }, node())
+  const status = ctx.mayflyStatus.register({ id: 'mayfly.status.cwd', priority: 5, overflow: 'truncate' }, node())
 
   const offAgent = facts?.subscribeAgent((agent) => {
     const next = shortenCwd(agent?.session.header.cwd ?? process.cwd(), homedir())

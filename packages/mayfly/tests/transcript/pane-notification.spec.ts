@@ -83,14 +83,14 @@ describe('mayfly-pane-notification', () => {
   it('mounts one bottom row that teaches the focus keys while nothing needs reading', async () => {
     const harness = await boot()
     expect(harness.ctx.mayflyPanes.list().filter(entry => entry.id === 'mayfly.pane.notification')).toHaveLength(1)
-    expect(harness.screen.paneLines().join('\n')).toContain('Alt+↑ conversation · Alt+↓ bar')
+    expect(harness.screen.paneLines().join('\n')).toContain('Alt+↑ conversation · Alt+↓ view')
     await harness.dispose()
   })
 
   it('shows the lane notice for the current Agent, and the keys that leave the prompt when there is none', async () => {
     const current = fakeAgent([])
     const harness = await boot(current)
-    expect(nodeOf(harness)).toContain('Alt+↑ conversation · Alt+↓ bar')
+    expect(nodeOf(harness)).toContain('Alt+↑ conversation · Alt+↓ view')
     harness.lane.set([record('warning', 'Context 93% full', 1)])
     expect(nodeOf(harness)).toContain('Context 93% full')
     expect(nodeOf(harness)).not.toContain('Alt+↑ conversation')
@@ -129,16 +129,16 @@ describe('mayfly-pane-notification', () => {
     harness.ctx.emit('mayfly/focus-mode-changed', 'search-select')
     expect(nodeOf(harness)).toContain('Enter expand · c copy · Ctrl+C JSON · ↑/↓ or n/N match · / ? new search · Esc end search')
     harness.ctx.emit('mayfly/focus-mode-changed', 'prompt')
-    expect(nodeOf(harness)).toContain('Alt+↑ conversation · Alt+↓ bar')
+    expect(nodeOf(harness)).toContain('Alt+↑ conversation · Alt+↓ view')
     await harness.dispose()
   })
 
-  it('shows only the app records when no Agent is current, and the bar and search modes teach no keys', async () => {
+  it('shows only the app records when no Agent is current, and the view and search modes teach no keys', async () => {
     const harness = await boot(null, new HandLane())
     harness.lane.set([record('info', 'this session', 1, session('a')), record('success', 'the app', 2)])
     expect(nodeOf(harness)).toContain('the app')
     expect(nodeOf(harness)).not.toContain('this session')
-    harness.ctx.emit('mayfly/focus-mode-changed', 'bar')
+    harness.ctx.emit('mayfly/focus-mode-changed', 'view')
     expect(nodeOf(harness)).not.toContain('Alt+↑ conversation')
     expect(nodeOf(harness)).not.toContain('Enter expand')
     harness.ctx.emit('mayfly/focus-mode-changed', 'search')
@@ -154,7 +154,7 @@ describe('mayfly-pane-notification', () => {
         mountNotificationPane(ctx, transcriptTranslatorFake)
       },
     }, fakeAgent([]), {})
-    expect(nodeOf(harness)).toContain('Alt+↑ conversation · Alt+↓ bar')
+    expect(nodeOf(harness)).toContain('Alt+↑ conversation · Alt+↓ view')
     await harness.dispose()
   })
 

@@ -35,16 +35,12 @@ Standard 模式下，提示的位置改为显示当前动作：命令、路径�
 
 ↑/↓ 始终归编辑器历史浏览——queue 面板只展示排队消息，不接管按键（见[输入编辑器](/features/editor)）。
 
-## todo 面板（todo）
+## todo 视图（todo）
 
-会话的 todo 列表（整表快照，last-write-wins）在 kimi 风格的平线框下呈现：`Todo` 标题 + 三态点——`✓` 已完成（muted 加删除线）、`●` 进行中（primary 粗体）、`○` 待办。
+会话的 todo 列表（整表快照，last-write-wins）是状态栏第二行的 **todo 视图**。第二行只显示 `● todo 2/12 4m 12s`（完成数/总数，以及列表已跟踪的时间）；列表完结后显示 `✓ todo 12/12 12s` 五秒后消失。`Alt+↓` 在第二行下方打开它的面板（第二行保持不变，该条目下方画一条粗线）：带三态标记的全部行——`✓` 已完成（muted 加删除线）、`●` 进行中（primary 粗体）、`○` 待办——没有标题、计数和时间。面板长度固定，超出则纵向滚动，最后一行统计下方还有多少行（`↓ 6 more`）；它不增加自己的按键（`↑/↓` 滚动，`←/→` 切换条目，`Esc` 返回）。
 
-- **五行折叠** —— 长列表先收全部进行中，再以最早的待办与最近的完成补足；footer 一行 `… +N more (2 done · 1 pending) · ctrl+t to expand` 统计隐藏项。
-- **Ctrl-T** 在折叠/整表之间切换（`all N items · ctrl+t to collapse`）；展开态跨写入保留，会话切换或列表完结时复位。
-- **全部完成自动收起**——下一次写入重新以折叠态打开。
-
-- **中断的运行** —— 最近一次运行失败或被停止且列表未完成时，标题追加灰色的 `· interrupted`。
-- **目标（goal）** —— 当前目标并入标题行：`Todo · ● active · 2/5 · <目标>`（截断为一行）；只有被阻塞的目标才额外占一行 `blocked:` 原因。
+- **历史** —— 只有 `viewHistory` 设置打开（默认关闭）时才列出已完成项。
+- **中断的运行** —— 最近一次运行失败或被停止且列表未完成时，面板以灰色的 `interrupted` 开头。
 
 `todo_write` 调用在会话流里只作为单行过程成员出现（`✓ 更新了计划 · 已完成 3/5`）；这个面板是 todo 的实时呈现面。
 
@@ -54,7 +50,7 @@ Mayfly 同时保留主会话与任意数量的旁支会话，但 transcript 面�
 
 - 所有会话都在同一个 transcript 面板中渲染。live BTW 或 continuable subagent 成为 `mayflyCurrentAgent.current()`，状态栏、底部面板、命令与完整编辑器随之切换到该 Session；BTW 保留完整父会话种子作为模型上下文，但 transcript 从 BTW 的第一个问题开始，隐藏继承的历史；图片、follow-up、steer、撤回与中断走同一条输入管线；
 - one-shot child 或当前不驻留的 continuable child 不激活 Agent：它的 transcript 从原生历史加载到同一面板，保留自己的运行中 turn 标题（没有活动行跟随它），状态栏标注 `只读` 或 `回复以恢复`。编辑器仍在：只读会话中提交的草稿留在编辑器并给出提示；可恢复会话中提交会打开以该草稿预填的 Queue / Steer 回复表单，只有 **Send** 才会恢复 child。斜杠命令仍作用于主会话；
-- 状态栏中央显示当前会话的类型与标签、它的 `F7` 对端、访问方式、另有多少个打开的会话，以及 `F7 switch · F8 close`。`F7` 返回上一个显示的会话；`F8` 关闭当前显示的旁支会话，显示主会话时则关闭 `F7` 对端。关闭普通 subagent 只 detach，关闭 BTW 会 dispose 临时 Agent；
+- 打开的会话多于一个时，状态栏用一个标签（` main `、` btw `、` subagent `）标出当前会话，通知栏右侧用 `F7 btw · F8 close` 取代原有提示（子代理为 `F8 detach`）。`F7` 返回上一个显示的会话；`F8` 关闭当前显示的旁支会话，显示主会话时则关闭 `F7` 对端。关闭普通 subagent 只 detach，关闭 BTW 会 dispose 临时 Agent；
 - 再打开其他 child 不会关闭已打开的会话；新的 BTW 会替换旧的 BTW。无参 `/btw` 关闭当前 BTW；`/new`、`/resume`、`/fork` 会关闭所有旁支会话，`/rewind` 与 `/agents` 浏览会先显示主会话；
 - 只有当前显示的会话和它的 `F7` 对端保留 transcript 状态；其余会话在你切回之前不占用任何 transcript 资源，因此同时打开很多会话依然轻量；
 - `/agents` 中 `Enter` 查看 child，`Space` 或 `←` / `→` 展开分支，`Tab` 到 **Stop selected**，停止 live continuable child 前会弹出 Yes / No 确认（默认聚焦 No）。对 one-shot、cold/inactive 或仍有 live 后代的 child，Stop 会直接说明为何不可用而不弹确认。`/agents stop <id>` 提供直接停止路径。Harness 销毁 Agent 时会递归销毁它拥有的 live 后代，因此 Mayfly 对仍有 live 后代的目标直接拒绝，要求先从叶子节点开始停止。

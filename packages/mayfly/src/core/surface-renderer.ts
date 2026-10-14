@@ -155,7 +155,7 @@ function leadsWithRule(node: MayflyUiNode): boolean {
  * second-to-last child is not another such row. A run of two or more muted
  * rows is pane content (queued messages), not a single trailing affordance, so
  * it declines; so do row stacks, gapped stacks, and conditional/tab-scoped
- * tails. Panes that end in a fold footer (see `transcript/pane-todo.ts`) rely
+ * tails. Panes that end in a fold footer (a fold footer such as the todo panel's) rely
  * on this predicate staying true, so their specs pin it against the real node.
  */
 export function endsWithAffordance(node: MayflyUiNode): boolean {
@@ -365,7 +365,7 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
       interactive: true,
       runtime: record.runtime,
       ...counted,
-      // A view's title names its tab, so its panel carries no frame of its own.
+      // A view's panel carries no frame of its own: its item in row 2 is its title.
       ...(lane === undefined ? surfaceTitle(entry, record.interaction) : { viewHints: () => lane.hints() }),
     })
     record.renderedRevision = record.interaction.revision
@@ -418,7 +418,6 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
     if (entry.definition.placement === 'views') {
       record.component.view = runtime.surfaces.views.register({
         id: entry.id,
-        ...(entry.definition.title === undefined ? {} : { title: entry.definition.title }),
         ...(entry.definition.priority === undefined ? {} : { priority: entry.definition.priority }),
         summary: entry.summary!, // the service publishes null for a view without one
       })

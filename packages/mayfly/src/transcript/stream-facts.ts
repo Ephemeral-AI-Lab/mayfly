@@ -510,6 +510,25 @@ function reasoningRow(item: EntryItem, entry: Extract<TranscriptEntryModel, { re
   return { kind: 'reasoning', id: entry.id, label, ...(pending ? { pending: true } : {}), ...(rows.length === 0 ? {} : { rows }), ...(rest === undefined ? {} : pending ? { earlier: rest } : { more: rest }) }
 }
 
+/** The longest objective a goal row carries; the row wraps within it. */
+const GOAL_ROW_OBJECT_CHARS = 120
+
+/** The row of one goal change: the mark and tone of what happened, and the words after it. */
+function goalChangeRow(entry: Extract<TranscriptEntryModel, { readonly kind: 'transcript-goal-change' }>, t: MayflyTranslate): StreamRow {
+  const objective = entry.objective === undefined ? '' : ellipsize(sanitizePluginText(entry.objective), GOAL_ROW_OBJECT_CHARS)
+  const rounds = entry.rounds ?? 0
+  const row = (mark: string, tone: 'accent' | 'muted' | 'success' | 'danger', text: string): StreamRow => ({ kind: 'goal-change', id: entry.id, mark, tone, text })
+  switch (entry.operation) {
+    case 'create': return row('●', 'accent', `${t('Goal set')} · ${objective}`)
+    case 'edit': return row('●', 'accent', `${t('Goal edited')} · ${objective}`)
+    case 'pause': return row('⏸', 'muted', t('Goal paused'))
+    case 'resume': return row('●', 'accent', t('Goal resumed'))
+    case 'complete': return row('✓', 'success', [t('Goal complete'), t(rounds === 1 ? '1 round' : '{count} rounds', { count: rounds }), ...entry.elapsedMs === undefined ? [] : [compactElapsedMs(entry.elapsedMs)]].join(' · '))
+    case 'block': return row('✕', 'danger', `${t('Goal blocked')}${entry.blockedReason === undefined ? '' : ` · ${entry.blockedReason.code}: ${sanitizePluginText(entry.blockedReason.message)}`}`)
+    case 'clear': return row('', 'muted', t('Goal cleared'))
+  }
+}
+
 function entryRow(item: EntryItem, entry: TranscriptEntryModel, inputs: StreamInputs): StreamRow | undefined {
   const { t } = inputs
   switch (entry.kind) {
@@ -546,6 +565,8 @@ function entryRow(item: EntryItem, entry: TranscriptEntryModel, inputs: StreamIn
       return undefined
     case 'transcript-error':
       return { kind: 'error', id: entry.id, text: sanitizePluginText(entry.code === undefined ? entry.message : `${entry.message} (${entry.code})`) }
+    case 'transcript-goal-change': return goalChangeRow(entry, t)
+    case 'transcript-goal-round': return { kind: 'goal-round', id: entry.id, text: t('goal round {round}', { round: entry.round }) }
     case 'transcript-interrupted':
       return { kind: 'interrupted', id: entry.id, text: t('■ interrupted') }
     case 'transcript-compaction': return compactionRow(entry, inputs)

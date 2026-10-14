@@ -72,8 +72,15 @@ export const raw = (type, data, options = {}) => ({ kind: 'raw', type, data, ...
 /**
  * A change to the session goal through the real goal service (`create`, `pause`, `resume`, `block`, `complete`,
  * `clear`), which writes the `goal/change` events itself. The goal is disarmed afterwards, so nothing continues it.
+ * `ifNeeded` skips the verb when the goal is already active (the viewer pressed the panel's button first).
  */
 export const goal = (action, options = {}) => ({ kind: 'goal', action, ...options })
+/**
+ * One autonomous goal round starting: the `user/message` the round driver would write for the current goal (attributed to
+ * it, with the round prompt), so the stream shows its round marker. The replay never arms the goal, so the driver
+ * itself writes nothing. `round` is the next admitted round of the goal.
+ */
+export const goalRound = (round) => ({ kind: 'goal-round', round })
 /**
  * A background job in the real job registry, with no process behind it: it prints `lines` (`[afterMs, text]` pairs)
  * and settles after `endMs` as `completed`, `failed`, or `killed`; omit `endMs` for a job that keeps running.
@@ -197,6 +204,7 @@ export function compile(items, { provider = 'deepseek-official', model = 'deepse
       if (item.kind === 'pause') { t += item.ms; continue }
       if (item.kind === 'raw') { event(t, item.type, item.data, item.surface === true); t += 100; continue }
       if (item.kind === 'goal') { push(t, { op: 'goal', ...item }); t += 200; continue }
+      if (item.kind === 'goal-round') { push(t, { op: 'goal-round', round: item.round }); t += 200; continue }
       if (item.kind === 'mark') { push(t, { op: 'mark', name: item.name }); continue }
       if (item.kind === 'job') { scheduleJob(item, t); t += 100; continue }
       if (item.kind === 'queue') { scheduleQueue(item, t); t += 100; continue }
@@ -255,6 +263,7 @@ export function compile(items, { provider = 'deepseek-official', model = 'deepse
       if (item.kind === 'pause') { t += item.ms; continue }
       if (item.kind === 'raw') { event(t, item.type, item.data, item.surface === true); t += 100; continue }
       if (item.kind === 'goal') { push(t, { op: 'goal', ...item }); t += 200; continue }
+      if (item.kind === 'goal-round') { push(t, { op: 'goal-round', round: item.round }); t += 200; continue }
       if (item.kind === 'mark') { push(t, { op: 'mark', name: item.name }); continue }
       if (item.kind === 'job') { scheduleJob(item, t); t += 100; continue }
       if (item.kind === 'queue') { scheduleQueue(item, t); t += 100; continue }

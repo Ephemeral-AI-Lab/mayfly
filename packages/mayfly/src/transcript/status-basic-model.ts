@@ -4,10 +4,10 @@
  * the row immediately, before any request fires — then falls back to the
  * current app session snapshot and official conversation facts; the renderer
  * owns styling and width handling. A source carrying an explicit reasoning
- * effort appends ` <Effort>` (the id capitalized, `step-5-preview Max`);
- * the provider default leaves the bare model id. Model and effort stay
- * paired per source — a `/model` switch that drops the effort clears the
- * suffix rather than inheriting the previous request's level.
+ * effort appends ` <Effort>` (the id capitalized, `deepseek/step-5-preview Max`);
+ * the provider default leaves the bare `provider/model`. The provider, model,
+ * and effort stay paired per source — a `/model` switch that drops the effort
+ * clears the suffix rather than inheriting the previous request's level.
  *
  * @module @ephemeral-ai/mayfly/transcript/status-basic-model
  */
@@ -32,8 +32,9 @@ interface ProjectedModelSelection {
   readonly next?: { readonly provider: string, readonly model: string, readonly reasoningEffort?: string } | null
 }
 
-/** The displayed pair: the model label and its source-paired effort id. */
+/** The displayed triple: the provider, the model, and the source-paired effort id. */
 interface RowSelection {
+  readonly provider?: string
   readonly model: string
   readonly effort?: string
 }
@@ -49,9 +50,7 @@ function projectedNext(ctx: Context, session: Session | undefined): RowSelection
   const projected = ctx.sessionProjections.snapshot(session, ['modelSelection']).values.modelSelection as ProjectedModelSelection | undefined
   const next = projected?.next
   if (next === undefined || next === null) return undefined
-  return next.reasoningEffort === undefined
-    ? { model: next.model }
-    : { model: next.model, effort: next.reasoningEffort }
+  return { provider: next.provider, model: next.model, ...next.reasoningEffort === undefined ? {} : { effort: next.reasoningEffort } }
 }
 
 /** Capitalize the effort id's head: `max` → `Max`, `x-high` → `X-high`. */
@@ -73,21 +72,23 @@ export function apply(ctx: Context): void {
     const selection: RowSelection | undefined = projectedNext(ctx, agent?.session)
       ?? (facts.model === undefined
         ? undefined
-        : { model: facts.model, ...(facts.reasoningEffort === undefined ? {} : { effort: facts.reasoningEffort }) })
+        : { ...facts.provider === undefined ? {} : { provider: facts.provider }, model: facts.model, ...(facts.reasoningEffort === undefined ? {} : { effort: facts.reasoningEffort }) })
       ?? (header === undefined
         ? undefined
-        : { model: header.model, ...(header.reasoningEffort === undefined ? {} : { effort: String(header.reasoningEffort) }) })
+        : { provider: header.provider, model: header.model, ...(header.reasoningEffort === undefined ? {} : { effort: String(header.reasoningEffort) }) })
       ?? (agent?.options.model === undefined
         ? undefined
-        : { model: agent.options.model, ...(agent.options.reasoningEffort === undefined ? {} : { effort: String(agent.options.reasoningEffort) }) })
-    const model = selection?.model ?? facts.provider ?? (agent === null ? '' : 'no model')
+        : { ...agent.options.provider === undefined ? {} : { provider: agent.options.provider }, model: agent.options.model, ...(agent.options.reasoningEffort === undefined ? {} : { effort: String(agent.options.reasoningEffort) }) })
+    const model = selection === undefined
+      ? facts.provider ?? (agent === null ? '' : 'no model')
+      : selection.provider === undefined || selection.provider === '' ? selection.model : `${selection.provider}/${selection.model}`
     text = model === '' || selection?.effort === undefined
       ? model
       : `${model} ${capitalizeEffort(selection.effort)}`
   }
   derive()
   const node = (): MayflyStatusNode | null => text === '' ? null : { kind: 'text', content: text, tone: 'default' }
-  const status = ctx.mayflyStatus.register({ id: 'mayfly.status.basic', priority: 0 }, node())
+  const status = ctx.mayflyStatus.register({ id: 'mayfly.status.basic', priority: 0, overflow: 'truncate' }, node())
   let published = text
   const refresh = (): void => {
     derive()

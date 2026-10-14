@@ -548,6 +548,16 @@ function entryModel(entry: Exclude<ConversationEntry, ConversationToolEntry>): T
       }
     case 'interrupted':
       return { kind: 'transcript-interrupted', id: entry.id, seq: entry.seq, updatedSeq: entry.updatedSeq, turn: entry.turn }
+    case 'goal-change':
+      return {
+        kind: 'transcript-goal-change', id: entry.id, seq: entry.seq, updatedSeq: entry.updatedSeq, turn: entry.turn, operation: entry.operation,
+        ...(entry.objective === undefined ? {} : { objective: entry.objective }),
+        ...(entry.blockedReason === undefined ? {} : { blockedReason: entry.blockedReason }),
+        ...(entry.roundsStarted === undefined ? {} : { rounds: entry.roundsStarted }),
+        ...(entry.createdAt === undefined || entry.updatedAt === undefined ? {} : { elapsedMs: Math.max(0, entry.updatedAt - entry.createdAt) }),
+      }
+    case 'goal-round':
+      return { kind: 'transcript-goal-round', id: entry.id, seq: entry.seq, updatedSeq: entry.updatedSeq, turn: entry.turn, round: entry.round }
     case 'compaction':
       return {
         kind: 'transcript-compaction', id: entry.id, seq: entry.seq, updatedSeq: entry.updatedSeq, turn: entry.turn,
@@ -628,7 +638,7 @@ export function conversationTranscriptModel(
 }
 
 /** Entry kinds the mapper dereferences; anything else is not our wire value. */
-const ADMITTED_KINDS = new Set(['user', 'assistant', 'thinking', 'tool', 'error', 'interrupted', 'compaction'])
+const ADMITTED_KINDS = new Set(['user', 'assistant', 'thinking', 'tool', 'error', 'interrupted', 'goal-change', 'goal-round', 'compaction'])
 
 /** The entry fields this mapper dereferences; the rest stay opaque here. */
 function admissibleEntry(candidate: unknown): candidate is ConversationEntry {

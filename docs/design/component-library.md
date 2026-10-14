@@ -153,7 +153,7 @@ add a third meaning to a glyph.
 | `?` | waiting on the user |
 | `⚠` | warning (deletes files, low balance, dangerous tool) |
 | `ℹ` | information |
-| `✕` `❚❚` | goal blocked / paused |
+| `✕` `⏸` | goal blocked / paused |
 | `⎿` | detail connector under a header or a failed row |
 | `⏵` | background jobs |
 | `↻` | applies after a restart |
@@ -396,11 +396,10 @@ activity gap or a tip, never text on the chip.
 
 **Side conversations.** A BTW or a subagent shown in the main view keeps the same
 editor, with its access reflected in the placeholder (live, resumable, read-only). Its
-identity (`BTW … ⇄ MAIN`, `SUBAGENT reviewer · read-only`) stays in status row 1's
-center band, and `F7 switch · F8 close` / `F8 detach` sit in the view row's right
-cluster whenever two or more conversations exist (§5.1). `F8` names what it does:
-closing a BTW disposes its temporary agent (`close`); closing a subagent only
-detaches the view (`detach`). With no counterpart the keys are absent.
+identity is a chip in status row 1, in the form of the focus chip: ` main `, ` btw `, or ` subagent ` (strong, inverse, in the kind's tone), shown while more than one
+conversation is open, so the main session says `main` too. The way between them is in the notification pane, at its right, in place of the idle hint: `F7 btw · F8 close` (`F7 main · F8 close` / `F8 detach` from a side conversation). `F8` names what it
+does: closing a BTW disposes its temporary agent (`close`); closing a subagent only detaches the view (`detach`). With no
+counterpart the chip and the keys are absent.
 
 ### 3.4 Keyboard parity, filters, confirm and undo
 
@@ -1073,7 +1072,7 @@ Agents 5 ● 1 waiting   Jobs 3 ⏵ 2 running   Goal ● 2/8   Todo 2/6 ● Run 
 
 | Entry | Band | Priority | Overflow |
 | --- | --- | --- | --- |
-| model and effort | left | 0 | keep |
+| `provider/model Effort` (`deepseek/deepseek-flash High`) | left | 0 | truncate |
 | mode chips (`PLAN` `YOLO`) | left | 1 | keep |
 | context (`cache 34%  context: 18% (22.9k/128k)`) | right | 4 | hide |
 | directory | left | 5 | truncate |
@@ -1090,16 +1089,39 @@ summary plus a panel; the row admits them in priority order and truncates the to
 | --- | --- | --- |
 | Agents | `Agents 5 ● 1 waiting` | a windowed list, `Enter` opens that agent's conversation (§5.5) |
 | Jobs | `Jobs 3 ⏵ 2 running` | the same list; `Enter` opens the job's output |
-| Goal | `Goal ● 2/8` (`❚❚` paused, `✕` blocked) | the goal with its progress rule (§5.4) |
+| Goal | `● goal 2/8 Migrate to ESM…` (`⏸` paused, `✕` blocked, `○ … off` disarmed) | the goal's objective and its buttons (§5.4) |
 | Todo | `Todo 2/6 ● Run the tests` | the todo list with its progress rule (§5.4) |
 
-A view with nothing to show is absent (no goal means no `Goal` chip). The right end of the row says how to enter:
-`↓ views` normally, and `F7 switch · F8 close` (or `detach`) when two or more conversations exist (§3.3).
+A view with nothing to show is absent (no goal means no `Goal` chip). There is no `↓ views` cue, since the notification pane teaches `Alt+↓`; the conversation keys are in the notification pane too (§3.3).
 
-**Entering the views.** `Alt+↓` from the prompt (or `F6`) focuses the row 2 panel of the first view; `←`/`→` move
-between views, `↑`/`↓` select a row, `Enter` opens, `x` stops an agent or job behind the shared Yes/No, and `Esc`
+**Entering the views.** `Alt+↓` from the prompt (or `F6`) focuses the first view: row 2 stays exactly as it is, a heavy `━` line under that item's words marks it (never a background), and its panel opens under the line. `←`/`→` move
+the mark between items (items without a view are skipped), `↑`/`↓` select a row, `Enter` opens, `x` stops an agent or job behind the shared Yes/No, and `Esc`
 returns to the prompt. Goal and todo have no row to select: the panel scrolls (`↑`/`↓`). Goal and todo no longer
 appear in the conversation stream; they live here, so the stream carries only the conversation.
+
+**Item rules** (the owner's, for every item of row 2: jobs, agents, goal, todo). They are the style later items follow.
+
+1. **Compact.** An item is `<mark> <name> <progress n/m> <timer>`: a small mark that says its state (a dot while
+   unfinished, `⏸` paused, `✕` blocked, `✓` done, `⏵` for a job), the muted lower-case name, how far it is over how many,
+   and its time (`● todo 2/12 4m 12s`). Nothing else is in the cell: the words of the item (the current todo, the
+   goal's objective) are the panel's. Row 2 is divided into five equal cells (`stack.cells`), and an item takes one fifth
+   of the width however many items there are, in a fixed relative order (priority); what does not fit is cut with `…`.
+   An item with nothing to show is absent; with no item, row 2 is absent. There is no `↓ views` cue: the notification
+   pane already teaches `Alt+↓`.
+2. **Entering.** Row 2 does not change when a view is entered: a heavy `━` line is drawn under the words of the active item
+   (a small bottom line, not a background shade) and the panel opens under it, so there is no second look for the same
+   row (no tab strip).
+3. **Expanded.** The panel is the item's content only: no heading, no count, no time (the cell has them). It has one
+   fixed length (`VIEW_PANEL_ROWS`) and scrolls vertically past it, so `↑/↓` move through a long list, and while rows
+   remain below the window its last row counts them (`↓ 6 more`, following the scroll, content again at the end). It adds
+   no chord of its own: the lane's `↑/↓`, `←/→`, and `Esc` (no `Ctrl+E`, no `Ctrl+T`); an item's own commands are single
+   letters (`r` resume, `e` edit), named in the hint row, never buttons.
+4. **History.** Finished items (completed todos, settled jobs and agents) are not listed unless the `viewHistory`
+   setting is on; the default shows only what is live.
+5. **Timer.** The time is in the cell and runs while the item works (an armed goal, an unfinished list); when it
+   finishes, the cell holds `✓ todo 6/6 4m 12s` for five seconds and the item leaves.
+6. **Where.** `transcript/view-items.ts` holds the shared parts (`itemSummary`, `panelHeading`, `viewPanel`,
+   `followViewHistory`); an item uses them instead of building its own.
 
 ### 5.2 Editor and notices
 
@@ -1294,35 +1316,36 @@ a wording change, not a code change, and each has a Chinese counterpart.
 
 ### 5.4 Goal and todo views
 
-**Built from:** `progress` (rule), `rich-text`, `stack`, `scroll` (`fit`). Scene: Status area.
+**Built from:** `rich-text`, `stack`, `scroll` (fixed `height`, `expandable: false`) and the shared helpers of
+`transcript/view-items.ts`. Scenario: `footerCutover`.
 
-Goal and todo are views of status row 2 (§5.1), not stream rows. Each has a one-line summary in the row and a panel that
-opens under it. The panel's heading rule is the progress bar: heavy `━` for done, light `─` for what is left. There
-are no block bars and no per-item marker trail.
+Goal and todo are items of status row 2 (§5.1) that follow its item rules. Each has a compact cell in the row and a
+fixed-length panel that opens under the `━` line of the entered item.
 
 ```
-Agents 5   Jobs 3   Goal   Todo 2/6                 ← the row, with the Goal tab active
-━━━━━━━━━━━━━━──────────────────────────────────────  Goal ● active · round 2 of 8
-  Ship the hero refresh and keep all 214 tests green
+● todo 2/12 4m 12s                    ← compact: a dot while unfinished, done over total, the time it has run
+✓ todo 12/12 12s                      ← held five seconds when the list settles, then the item leaves
 
-━━━━━━━━━━━━━━━━━━━─────────────────────────────────  Todo 2 of 6
-  ✓ Update landing page hero              ← muted, struck through
-  ● Run the tests                         ← bold: the only emphasised row
-  ○ Update screenshots
-  ○ Bump changelog
-  ○ Open the PR
-  … +1 more (1 done)
+● goal 2/8 1m 59s                     ← active, armed (accent), rounds over their cap, the time it has worked
+○ goal 2/8 1m 59s                     ← active, disarmed (after resume or fork: needs /goal resume)
+⏸ goal 4/8 49s                        ← paused (one cell wide, like `⏸ plan mode on`)
+✕ goal 8/8 1m 16s                     ← blocked (danger)
+✓ goal 8/8 1m 59s                     ← completed, held five seconds
 
-━━━━━━━━━━━━────────────  Goal ❚❚ paused · round 4 of 8
-━━━━━━━━━━━━━━━━━━━━━━━━  Goal ✕ blocked · round 8 of 8
-  blocked: needs a decision on the release channel
+panel of todo (no heading):           panel of goal (no heading):
+  ● Run the tests                       Ship the hero refresh and keep all 214 tests green
+  ○ Update the screenshots              blocked · round-limit: The goal used all 8 rounds
+  …                                   
+↓ 6 more                              ← the rows still below the window; follows the scroll
 ```
 
-The panel shows at most five todo rows: every in-progress item first, then the earliest pending items, with one slot
-kept for the latest completed item; the footer counts what is hidden. The goal has paused (`❚❚`) and blocked
-(`✕`) states and says why it is blocked. The panel is a `fit` scroll, so a longer list scrolls with `↑`/`↓` and a
-short one takes exactly its rows. The only motion is the 400 ms flash when an item completes and a closing line,
-`✓ Todo done 6/6 · 4m 12s`, before the view disappears from the row.
+The goal's activation is process-local (a goal is disarmed after any session resume or fork), so the item follows
+`goal/activation-changed` as well as the durable goal. A blocked goal shows its stable code and its explanation, and the
+panel runs the `/goal` subcommands from single letters, none drawn as a button, and the hint row names the ones that apply: `r` resume (a goal that waits, while rounds remain), `p` pause (an armed one), `e` edit (it puts `/goal edit <objective>` in the prompt for the person to change and send), and `c` clear (behind the shared Yes/No). An action built for an older revision is refused. The goal lives in the stream
+as facts: each durable `goal/change` is one row (`● Goal set · …`, `⏸ Goal paused`, `● Goal resumed`,
+`✓ Goal complete · 2 rounds · 1m 59s`, `✕ Goal blocked · round-limit: …`, `Goal cleared`), each autonomous round starts at a
+`── goal round 3 ──` rule across the stream (label centered, two columns of margin each side, drawn in the muted light gray, not the quiet border purple and not pure white) (the `user/message` the round driver writes), and a blocked goal also holds a warning in the
+notification pane while it waits for the person.
 
 The queue is not a view: queued messages are the editor's truncated line (§5.2).
 
@@ -1348,8 +1371,8 @@ Agents 5   Jobs 3   Goal   Todo 2/6
   job its output; `x` is the common `delete` meaning (§3.5), so it **stops** the agent or job behind the shared
   Yes/No with No focused first (no Stop button); `Esc` leaves one layer. Live entries come first, and
   `↑ n more · ↓ n more` counts the rest.
-- **Conversation keys.** `F7 switch · F8 close` (or `detach`) sit in row 2's right cluster whenever two or more
-  conversations exist, so row 2 also appears for a side conversation with no agents or jobs (§3.3).
+- **Conversation keys.** `F7 btw · F8 close` (or `detach`) sit at the right of the notification pane (in place of its idle hint) whenever two or more
+  conversations exist, and the conversation chip in row 1 names the displayed one (§3.3).
 - **Motion.** The views have no clock (the activity row already animates). A fan-out staggers 300 ms per row once,
   and a row flashes once when its own numbers change.
 
@@ -2232,8 +2255,8 @@ implementation therefore differs from the prototype, are in
 3. **Slash-to-filter (§3.4).** Panels with bare-letter keys (marketplace, sessions, job output) filter only after `/`,
    so typing no longer filters there. Recommendation: keep; the alternative is modifier keys (`Ctrl+X`), which are
    slower and harder to discover.
-4. **Side conversations (§3.3).** Identity stays in status row 1's center band and `F7`/`F8` move to row 2's right
-   cluster, which then also shows for a side conversation with no agents or jobs. Recommendation: keep.
+4. **Side conversations (§3.3).** Answered by the owner: identity is a chip in status row 1 (` main `, ` btw `, ` subagent `)
+   and `F7`/`F8` are in the notification pane; row 2 is not involved.
 5. **Keys not yet checked against the keymap.** `Alt+↓` and `F6` entering the views, `Alt+↑` selecting the stream
    (some terminals and multiplexers bind `Alt+arrows`), `Ctrl+F` search, `Ctrl+G` external, `Ctrl+J` view
    notification (the stream search is `/` and `?`, not `Ctrl+F`), `?` key help on an empty prompt, `/view <level>` and `Alt+V` for levels. The scene's `Ctrl+K`

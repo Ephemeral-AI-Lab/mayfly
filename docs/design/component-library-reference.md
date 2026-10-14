@@ -430,7 +430,7 @@ and its §7 sets the gates; a *Full gate* note below records the Phase 1 rule. `
 | B2 | List navigation affordances | spec §4.4 | `core/ui-compiler.ts` (list runtime), `core/ui-patterns.ts` (`renderList`), locale catalogs. |
 | B3 | Busy elapsed and unsaved marker | spec §4.2, 4.7 | `core/ui-patterns.ts` (`renderActions`), `core/ui-compiler.ts` (action pending timing). |
 | C3 | Chart legend and Website gallery | spec §4.1 | `core/chart-renderer.ts`, `interaction/session-info-model.ts`, the Website gallery. |
-| C4 | Status grid and priority overflow | spec §4.7 | `transcript/status-model.ts` and the status plugins. |
+| C4 | Status grid and priority overflow | spec §4.7 | `transcript/status-rows.ts` and the status plugins. |
 | D2 | Unicode fallback | spec §8 | `core/chrome.ts`, `core/ui-patterns.ts`, `transcript/banner.ts`, `core/glyphs.ts`. |
 | F1 | Buttons on demand | spec §4.2 | `packages/ui` contract, `core/ui-patterns.ts` (`renderActions`), `core/ui-compiler.ts`, `core/ui-key-grammar.ts` (group hint), `interaction/questionnaire.ts`. Full gate. |
 | F2 | Live-following label column | spec §4.5 | `packages/ui/src/interaction.ts`, `core/ui-interaction-choice.ts`, the sessions and settings panels. |
