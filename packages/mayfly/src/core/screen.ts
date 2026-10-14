@@ -147,7 +147,7 @@ class LocalActivityRegion implements MayflyComponent {
   invalidate(): void { for (const child of this.children.values()) child.invalidate() }
 }
 
-/** The panel of an entered view: it sits under status row 1 in place of row 2 (inside the footer's gutter), and is empty (the shared empty rows) otherwise. */
+/** The panel of an entered view: it sits under the status row (inside the footer's gutter), and is empty (the shared empty rows) otherwise. */
 class ViewsPanelHost implements MayflyComponent {
   constructor(private readonly lane: { panel(width: number): readonly string[] | undefined }) {}
 
@@ -204,7 +204,7 @@ export class MayflyScreenService extends Service implements MayflyScreen {
       this.searchLine?.dispose()
       this.nodeSlots.dispose()
     })
-    // Entering a view of status row 2 moves focus to the bar; leaving it gives focus back to the prompt.
+    // Entering a view of the status row moves focus to the bar; leaving it gives focus back to the prompt.
     ctx.effect(() => runtime.surfaces.views.onEnteredChange((entered) => { ctx.emit('mayfly/focus-mode-changed', entered ? 'view' : 'prompt') }))
     runtime.requestRender()
   }
@@ -245,13 +245,13 @@ export class MayflyScreenService extends Service implements MayflyScreen {
     return { columns: this.runtime.columns, rows: Math.max(1, rows) }
   }
 
-  /** The views of status row 2, for the footer that paints their summaries and, while one is entered, its panel. */
+  /** The views of the status row, for the footer that paints their summaries and, while one is entered, its panel. */
   get views(): MayflyViewsSource {
     return this.runtime.surfaces.views
   }
 
   /**
-   * Enter the first view of status row 2 (the active one when it is still enterable): its panel replaces the row and
+   * Enter the first view of the status row (the active one when it is still enterable): its panel replaces the row and
    * takes focus. The prompt calls this on `Alt+↓`/`F5` with an empty buffer.
    * @returns whether a view was entered; `false` leaves the key to the editor.
    */

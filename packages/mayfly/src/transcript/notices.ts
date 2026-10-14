@@ -58,6 +58,8 @@ export function mountNotices(ctx: Context, t: MayflyTranslate, clock: () => numb
   const tick = ctx.get('mayflyTick') as TickSource | undefined
   if (factsService === undefined) return
   const owner = createInteractionNotificationOwner(ctx, 'mayfly.notices', 'notices')
+  /** The main sessions this has already looked at: a session is announced as resumed once, not each time the person switches back to it. */
+  const seen = new WeakSet<object>()
   let facts: ConversationFacts = factsService.current
   let offTick: (() => void) | undefined
   /** Set when the Agent changed and the facts of the new session have not been read yet. */
@@ -83,7 +85,12 @@ export function mountNotices(ctx: Context, t: MayflyTranslate, clock: () => numb
       fresh = false
       owner.clearAll()
       reportGoal()
-      if (facts.turn > 0 && !facts.active) {
+      // Only the main session is announced, and only when it is first attached: a switch between conversations (F7) is not a resume.
+      const agent = factsService.currentAgent
+      const primary = ctx.get('mayflyConversations')?.snapshot().views.find(view => view.kind === 'primary')
+      const announce = agent !== null && (primary === undefined || primary.sessionId === String(agent.id)) && !seen.has(agent)
+      if (announce) seen.add(agent)
+      if (announce && facts.turn > 0 && !facts.active) {
         const age = facts.endedAt === undefined ? undefined : Math.max(0, clock() - facts.endedAt)
         const turns = facts.turn === 1 ? t('1 turn') : t('{count} turns', { count: facts.turn })
         owner.report(RESUMED, {

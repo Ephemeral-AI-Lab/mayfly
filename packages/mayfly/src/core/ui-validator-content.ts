@@ -86,7 +86,9 @@ export function admitDiffFields(h: AdmissionHelpers, object: Fields, path: strin
 export function admitChildAdmission(h: AdmissionHelpers, object: Fields, path: string): Fields {
   const band = h.own(object, 'band', path)
   const overflow = h.own(object, 'overflow', path)
+  const mark = h.own(object, 'mark', path)
   return {
+    ...present('mark', mark === undefined ? undefined : h.enumeration(mark, ['underline'] as const, `${path}.mark`)),
     ...present('priority', integer(h, object, 'priority', path, 0, 1_000_000)),
     ...present('band', band === undefined ? undefined : h.enumeration(band, ['left', 'center', 'right'] as const, `${path}.band`)),
     ...present('overflow', overflow === undefined ? undefined : h.enumeration(overflow, ['truncate', 'hide'] as const, `${path}.overflow`)),

@@ -21,6 +21,7 @@ import type { MayflyStatusNode } from '@ephemeral-ai/mayfly-ui'
 import type { Session } from '@deepseek-ai/dsh-session'
 import type { ConversationFacts } from '../conversation/types.ts'
 import type { SessionFactsService } from './session-facts.ts'
+import { SHED, shedNode } from './status-shed.ts'
 
 /** Stable Cordis plugin name. */
 export const name = 'mayfly-status-basic-model'
@@ -64,6 +65,9 @@ export function apply(ctx: Context): void {
   let facts: ConversationFacts = factsService.current
   let agent = factsService.currentAgent
   let text = ''
+  let provider = ''
+  let model = ''
+  let effort = ''
   const derive = (): void => {
     /* The model/effort pair comes from one source only: a projected pick
        that leaves the effort undefined restores the provider default, it
@@ -79,15 +83,24 @@ export function apply(ctx: Context): void {
       ?? (agent?.options.model === undefined
         ? undefined
         : { ...agent.options.provider === undefined ? {} : { provider: agent.options.provider }, model: agent.options.model, ...(agent.options.reasoningEffort === undefined ? {} : { effort: String(agent.options.reasoningEffort) }) })
-    const model = selection === undefined
-      ? facts.provider ?? (agent === null ? '' : 'no model')
-      : selection.provider === undefined || selection.provider === '' ? selection.model : `${selection.provider}/${selection.model}`
-    text = model === '' || selection?.effort === undefined
-      ? model
-      : `${model} ${capitalizeEffort(selection.effort)}`
+    model = selection?.model ?? (selection === undefined ? facts.provider ?? (agent === null ? '' : 'no model') : '')
+    provider = selection?.provider ?? ''
+    effort = selection?.effort === undefined ? '' : capitalizeEffort(selection.effort)
+    const named = provider === '' || selection === undefined ? model : `${provider}/${model}`
+    text = effort === '' || model === '' ? named : `${named} ${effort}`
   }
   derive()
-  const node = (): MayflyStatusNode | null => text === '' ? null : { kind: 'text', content: text, tone: 'default' }
+  /** The full `provider/model Effort`, then without the provider, without the thinking level, and last not at all. */
+  const node = (): MayflyStatusNode | null => {
+    if (text === '') return null
+    const plain = (content: string): MayflyStatusNode => ({ kind: 'text', content, tone: 'default' })
+    const withEffort = effort === '' ? model : `${model} ${effort}`
+    return shedNode(plain(text), [
+      ...provider === '' ? [] : [{ rank: SHED.provider, node: plain(withEffort) }],
+      ...effort === '' ? [] : [{ rank: SHED.effort, node: plain(model) }],
+      { rank: SHED.model, node: null },
+    ])
+  }
   const status = ctx.mayflyStatus.register({ id: 'mayfly.status.basic', priority: 0, overflow: 'truncate' }, node())
   let published = text
   const refresh = (): void => {

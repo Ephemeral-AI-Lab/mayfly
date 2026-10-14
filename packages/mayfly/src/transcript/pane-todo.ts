@@ -19,7 +19,7 @@ import type { ConversationFacts } from '../conversation/types.ts'
 import type { SessionFactsService } from './session-facts.ts'
 import type { TickSource } from './tick.ts'
 import { observeTranscriptLocale, transcriptTranslator } from './locale.ts'
-import { followViewHistory, itemSummary, progressSpans, viewPanel } from './view-items.ts'
+import { followViewHistory, itemSummary, viewPanel } from './view-items.ts'
 
 /** Stable Cordis plugin name. */
 export const name = 'mayfly-pane-todo'
@@ -30,8 +30,8 @@ export const inject = ['mayflyPanes', 'mayflySessionFacts', 'mayflyTick']
 /** The Todo view's id: the pane id the views lane keeps it under. */
 export const TODO_VIEW_ID = 'mayfly.view.todo'
 
-/** The Todo view's place among the views of row 2 (after goal). */
-const VIEW_PRIORITY = 30
+/** The Todo view's place in the status row: after the model, the chips, the directory, git, jobs, and goal. */
+const VIEW_PRIORITY = 13
 
 /** How long the closing item `✓ todo 6/6 4m 12s` stays before the view leaves. */
 export const DONE_LINGER_MS = 5000
@@ -73,11 +73,11 @@ export interface TodoState {
 export function todoSummary(state: TodoState, t: MayflyTranslate): MayflyPaneSummary | null {
   if (state.done !== undefined) {
     const { total, elapsedMs } = state.done
-    return { node: itemSummary({ text: '✓', tone: 'success' }, t('todo'), progressSpans(total, total, elapsedMs)) }
+    return { node: itemSummary({ text: '✓', tone: 'success' }, t('todo'), total, total, elapsedMs) }
   }
   if (state.todos.length === 0) return null
   const done = state.todos.filter(todo => todo.status === 'completed').length
-  return { node: itemSummary({ text: '●', tone: 'accent' }, t('todo'), progressSpans(done, state.todos.length, state.elapsedMs)) }
+  return { node: itemSummary({ text: '●', tone: 'accent' }, t('todo'), done, state.todos.length, state.elapsedMs) }
 }
 
 /**

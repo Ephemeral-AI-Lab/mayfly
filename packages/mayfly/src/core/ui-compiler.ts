@@ -53,7 +53,7 @@ import {
   type PatternFocus,
 } from './ui-patterns.ts'
 import { concatRows, findMarkerRow, isVirtualRows, mapRows, prepareRows, sameMaterializedRows, sliceRows, unclampedRows, virtualRows } from './ui-rows.ts'
-import { CellRow, ColumnStack, RowStack, onScreen, placeChild } from './ui-stacks.ts'
+import { ColumnStack, RowStack, onScreen, placeChild } from './ui-stacks.ts'
 import { sliceByColumn, truncateToWidth, visibleWidth } from './width.ts'
 import { fieldActions, fieldReset, type UiFieldAction } from './ui-interaction-field-actions.ts'
 import { fieldDecor, fieldDisplayError, stepNumber } from './ui-interaction-form.ts'
@@ -1678,24 +1678,22 @@ function compileUnit(node: CompilableNode, state: FocusState, options: RuntimeCo
       return node.overflow === 'truncate' ? [truncatedRow(line, width, options.components)] : options.components.wrapText(line, Math.max(1, width))
     }, options) : leaf(node, options, paint => contentLeafComponent(node, options, paint))
     case 'stack': {
-      // A row of equal cells: each child is the first row of one share of the width.
-      if (node.direction === 'row' && node.cells !== undefined) {
-        const compiled = node.children.map((child, index) => compileNode(child.node, state, options, `${path}.${String(index)}`, mode))
-        return new CellRow({
-          cells: node.cells,
-          gap: node.gap ?? 0,
-          children: () => node.children.flatMap((child, index) => conditionMatches(child.when, safeViewport(options.getViewport)) && tabVisible(child, pagePath, options) ? [compiled[index]!] : []),
-        })
-      }
       // A row whose children carry a priority admits them while they fit, one row of the children's first rows.
       if (node.direction === 'row' && node.children.some(child => child.priority !== undefined)) {
-        const compiled = node.children.map((child, index) => compileNode(child.node, state, options, `${path}.${String(index)}`, mode))
+        // A shed child compiles each of its forms; any other child is its one form.
+        const compiled = node.children.map((child, index) => {
+          const at = `${path}.${String(index)}`
+          return child.node.kind === 'shed'
+            ? [{ rank: -1, component: compileNode(child.node.node, state, options, at, mode) as Component | null }, ...child.node.narrower.map((form, formIndex) => ({ rank: form.rank, component: form.node === null ? null : compileNode(form.node, state, options, `${at}.${String(formIndex)}`, mode) }))]
+            : [{ rank: -1, component: compileNode(child.node, state, options, at, mode) as Component | null }]
+        })
         return new AdmissionRow({
           components: options.components,
+          colors: options.colors,
           counters: options.counters,
           ...(node.gap === undefined ? {} : { gap: node.gap }),
           children: () => node.children.flatMap((child, index) => conditionMatches(child.when, safeViewport(options.getViewport)) && tabVisible(child, pagePath, options)
-            ? [{ component: compiled[index]!, band: child.band ?? 'left', ...(child.priority === undefined ? {} : { priority: child.priority }), ...(child.overflow === undefined ? {} : { overflow: child.overflow }) }]
+            ? [{ forms: compiled[index]!, band: child.band ?? 'left', ...(child.priority === undefined ? {} : { priority: child.priority }), ...(child.overflow === undefined ? {} : { overflow: child.overflow }), ...(child.mark === undefined ? {} : { mark: child.mark }) }]
             : []),
         })
       }
@@ -1950,6 +1948,8 @@ function compileUnit(node: CompilableNode, state: FocusState, options: RuntimeCo
     case 'progress': return node.transition === undefined
       ? staticComponent(width => renderProgress(node, width, options.colors), options)
       : staticComponent(width => renderProgress(node, width, options.colors, options.listRuntime.progressValue(`${JSON.stringify(pagePath)}${path}`, node as typeof node & { readonly transition: NonNullable<typeof node.transition> }, options.components.presentation?.reducedMotion === true)), options)
+    // Outside an admission row there is nothing to shed to: a shed node is its full form.
+    case 'shed': return compileNode(node.node, state, options, `${path}.node`, mode)
     case 'spacer': return staticComponent(() => Array.from({ length: node.size ?? 1 }, () => ''), options)
     case 'divider': return leaf(node, options, paint => pureStaticComponent(width => renderDivider(node.label, width, paint.colors, node.align, node.inset, node.tone), paint))
     case 'diagram': return leaf(node, options, paint => contentLeafComponent(diagramMarkdownNode(node), options, paint))

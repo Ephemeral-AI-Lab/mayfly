@@ -16,7 +16,7 @@ import type { MayflyTranslate } from '../frontend/locale.ts'
 import type { SessionFactsService } from './session-facts.ts'
 import type { TickSource } from './tick.ts'
 import { observeTranscriptLocale, transcriptTranslator } from './locale.ts'
-import { itemSummary, progressSpans, viewPanel } from './view-items.ts'
+import { itemSummary, viewPanel } from './view-items.ts'
 
 /** Stable Cordis plugin name. */
 export const name = 'mayfly-status-goal'
@@ -24,8 +24,8 @@ export const name = 'mayfly-status-goal'
 /** Native and Mayfly services required by the view. */
 export const inject = ['mayflyPanes', 'mayflyCurrentAgent', 'mayflyScreen', 'mayflySessionFacts', 'mayflyTick', 'goals']
 
-/** The goal view's place among the views of row 2 (after jobs and agents, before todo). */
-const VIEW_PRIORITY = 20
+/** The goal view's place in the status row: after the model, the chips, the directory, git, and jobs; before todo. */
+const VIEW_PRIORITY = 12
 
 /** How long the finished goal's item stays before it leaves. */
 export const GOAL_DONE_LINGER_MS = 5000
@@ -71,12 +71,12 @@ export interface GoalItemState {
 export function goalSummary(state: GoalItemState, t: MayflyTranslate): MayflyPaneSummary | null {
   if (state.done !== undefined) {
     const { rounds, total, elapsedMs } = state.done
-    return { node: itemSummary({ text: '✓', tone: 'success' }, t('goal'), progressSpans(rounds, total, elapsedMs)) }
+    return { node: itemSummary({ text: '✓', tone: 'success' }, t('goal'), rounds, total, elapsedMs) }
   }
   const current = shown(state.goal)
   if (current === undefined) return null
   const elapsed = (current.phase === 'active' && current.activation === 'armed' ? state.now : current.updatedAt) - current.createdAt
-  return { node: itemSummary(markOf(current), t('goal'), progressSpans(current.roundsStarted, current.maxGoalRounds, elapsed)) }
+  return { node: itemSummary(markOf(current), t('goal'), current.roundsStarted, current.maxGoalRounds, elapsed) }
 }
 
 /** The id of an action, fenced to the goal revision the panel was built for. */

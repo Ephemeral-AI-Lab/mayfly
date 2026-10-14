@@ -123,10 +123,10 @@ without edits, and its row renderers join the owning `width-scan.spec.ts`.
 
 ## Views lane
 
-A `mayflyPanes` pane with `placement: 'views'` is a view of status row 2, kept
+A `mayflyPanes` pane with `placement: 'views'` is a view of the status row, kept
 by `core/views-lane.ts` (`SurfaceManager.views`), not by a pane lane: it has no
-rows of its own, its summary joins row 2 through the footer, and an entered
-panel opens under row 2 (which stays, with a `━` line under the active item). A view's slot lives with its `PaneComponent`. Entry keys
+rows of its own, its summary joins the status row through the footer, and an entered
+panel opens under the status row (which stays, with a `━` line under the active item as its second line). A view's slot lives with its `PaneComponent`. Entry keys
 are the named actions `ui.focus-next`, `ui.left`/`ui.right`, and `ui.cancel`;
 `F6` walks the views before the interactive panes. Mayfly's own views register
 through the public pane service, never through core.

@@ -1294,7 +1294,7 @@ function admitNode(value: unknown, path: string, state: ValidationState, depth: 
       state.editorControls += 1
       return { kind }
     }
-    if (mode === 'status' && !['text', 'rich-text', 'fields', 'progress', 'stack'].includes(kind)) invalid(`status node kind "${kind}" is interactive or unsupported`)
+    if (mode === 'status' && !['text', 'rich-text', 'fields', 'progress', 'stack', 'shed'].includes(kind)) invalid(`status node kind "${kind}" is interactive or unsupported`)
     if (mode === 'editor' && (kind === 'diagram' || kind === 'chart' || kind === 'image')) invalid(`editor node kind "${kind}" is unsupported`)
     /* The host editor owns every key in its shell, so focusable controls other than accelerator actions are unreachable there. */
     if (mode === 'editor' && (kind === 'form' || kind === 'list' || kind === 'tabs' || kind === 'prompt')) invalid(`editor node kind "${kind}" would take focus from the editor`)
@@ -1310,6 +1310,29 @@ function admitNode(value: unknown, path: string, state: ValidationState, depth: 
           ...admitTextStyles(ADMISSION_HELPERS, object, path),
         }
       }
+      case 'shed': {
+        // The forms are plain status nodes (never another shed node), each ranked; a `null` form hides the node.
+        const form = (value: unknown, formPath: string): MayflyStatusNode => {
+          const admitted = node(value, formPath, state, depth + 1, 'status')
+          if (admitted.kind === 'shed') invalid(`${formPath} cannot be another shed node`)
+          return admitted
+        }
+        const forms = collection(required(object, 'narrower', path), `${path}.narrower`)
+        if (forms.length > 8) limit(`${path}.narrower holds more than 8 forms`)
+        return {
+          kind,
+          node: form(required(object, 'node', path), `${path}.node`),
+          narrower: forms.map((item, index) => {
+            const formPath = `${path}.narrower[${String(index)}]`
+            return enter(item, formPath, state, formObject => {
+              const rank = finiteInteger(required(formObject, 'rank', formPath), `${formPath}.rank`, 0)
+              if (rank > 1000) invalid(`${formPath}.rank must be at most 1000`)
+              const inner = required(formObject, 'node', formPath)
+              return { rank, node: inner === null ? null : form(inner, `${formPath}.node`) }
+            })
+          }),
+        }
+      }
       case 'markdown': return { kind, source: contentField(required(object, 'source', path), `${path}.source`, state) }
       case 'fields': return { kind, rows: collection(required(object, 'rows', path), `${path}.rows`).map((item, index) => field(item, `${path}.rows[${String(index)}]`, state)) }
       case 'code': return { kind, code: contentField(required(object, 'code', path), `${path}.code`, state), ...optional(optionalId(object, 'language', path), 'language'), ...admitCodeFields(ADMISSION_HELPERS, object, path) }
@@ -1323,17 +1346,12 @@ function admitNode(value: unknown, path: string, state: ValidationState, depth: 
       case 'stack': {
         const gapValue = own(object, 'gap', path)
         const alignValue = own(object, 'align', path)
-        const cellsValue = own(object, 'cells', path)
-        const cells = cellsValue === undefined ? undefined : finiteInteger(cellsValue, `${path}.cells`, 1)
         const stack = {
           kind,
           direction: enumeration(required(object, 'direction', path), ['row', 'column'], `${path}.direction`),
           ...optional(gapValue === undefined ? undefined : enumeration(gapValue, [0, 1, 2] as const, `${path}.gap`), 'gap'),
           ...optional(alignValue === undefined ? undefined : enumeration(alignValue, ['stretch', 'start', 'center', 'end'], `${path}.align`), 'align'),
-          ...optional(cells, 'cells'),
         } as const
-        if (cells !== undefined && stack.direction !== 'row') invalid(`${path}.cells needs a row`)
-        if (cells !== undefined && cells > 12) invalid(`${path}.cells must be at most 12`)
         const entries = collection(required(object, 'children', path), `${path}.children`)
         const childIds = entries.map((entry, index) => own(record(entry, `${path}.children[${index}]`), 'id', `${path}.children[${index}]`)).filter(id => id !== undefined)
         if (new Set(childIds).size !== childIds.length) invalid(`${path}.children contains duplicate content ids`)

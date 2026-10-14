@@ -30,6 +30,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { ConversationFacts } from '../conversation/types.ts'
 import type { SessionFactsService } from './session-facts.ts'
 import type { MayflyStatusNode } from '@ephemeral-ai/mayfly-ui'
+import { SHED, shedNode } from './status-shed.ts'
 
 /** Stable Cordis plugin name. */
 export const name = 'mayfly-status-context'
@@ -137,9 +138,13 @@ export function apply(ctx: Context): void {
     const occupancy = max === undefined
       ? `ctx ${formatTokens(facts.contextTokens)}`
       : `context: ${String(contextPercent(facts.contextTokens, max))}% (${formatTokens(facts.contextTokens)}/${formatTokens(max)})`
-    return { kind: 'text', content: `${cache}${occupancy}` }
+    // The cache figure goes first when the row is crowded, then the meter.
+    return shedNode({ kind: 'text', content: `${cache}${occupancy}` }, [
+      ...cache === '' ? [] : [{ rank: SHED.cache, node: { kind: 'text' as const, content: occupancy } }],
+      { rank: SHED.context, node: null },
+    ])
   }
-  const status = ctx.mayflyStatus.register({ id: 'mayfly.status.context', priority: 4, band: 'right', overflow: 'hide' }, node())
+  const status = ctx.mayflyStatus.register({ id: 'mayfly.status.context', priority: 6, band: 'right', overflow: 'hide' }, node())
   const offFacts = factsService?.subscribe(next => {
     const changed = next.contextTokens !== facts.contextTokens
       || next.contextCacheReadTokens !== facts.contextCacheReadTokens

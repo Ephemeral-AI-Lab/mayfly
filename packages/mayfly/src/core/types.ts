@@ -1018,7 +1018,7 @@ declare module '@deepseek-ai/cordis' {
     'mayfly/content-tail-changed'(label: string | undefined): void
     /**
      * Where keyboard focus lives, as a mode: the prompt, the conversation (the stream's row cursor), the bar (a view of
-     * status row 2), or a search of the stream. The status line names every mode but the prompt, and the prompt dims while
+     * the status row), or a search of the stream. The status line names every mode but the prompt, and the prompt dims while
      * it does not hold focus. Emitted by the surfaces that take focus; unfiltered.
      * @param mode - the mode that holds focus now.
      * @mode emit

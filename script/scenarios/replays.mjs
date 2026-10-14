@@ -373,7 +373,7 @@ const DWELL = 10_000
 const DWELL_VIEWS = 25_000
 
 const footerCutover = {
-  summary: 'one long conversation through the footer and the goal: one line by default, plan mode, then a goal with its rounds, a todo list, and a job in row 2 (summaries; their detail opens with Alt+Down), the goal paused, resumed, blocked, and completed, a /btw side question, and back to one line; each state stays 10 to 25 s',
+  summary: 'one long conversation through the footer and the goal: one line by default, plan mode, then a goal with its rounds, a todo list, and a job in the status row (summaries; their detail opens with Alt+Down), the goal paused, resumed, blocked, and completed, a /btw side question, and back to one line; each state stays 10 to 25 s',
   options: { contextWindow: 65_536 },
   items: [
     turn('Find where the settings live and read them.', [
@@ -406,7 +406,7 @@ const footerCutover = {
     ]),
     turn('Plan the landing page work before editing.', [
       raw('plan/mode', { active: true }),
-      step({ text: 'Plan mode is on: the PLAN chip sits in row 1 beside the model.', usage: { inputTokens: 6700, outputTokens: 80, cacheReadTokens: 6200 } }),
+      step({ text: 'Plan mode is on: the plan chip sits beside the model.', usage: { inputTokens: 6700, outputTokens: 80, cacheReadTokens: 6200 } }),
       mark('plan'),
       pause(DWELL),
       raw('permission/preset', { preset: 'danger-full-access' }),
@@ -425,7 +425,7 @@ const footerCutover = {
     ]),
     turn('Work towards the goal: refresh the landing page.', [
       goalItem('create', { objective: 'Ship the landing page hero refresh and keep all 214 tests green', maxGoalRounds: 8 }),
-      step({ text: 'A goal is set: row 2 appears under the facts, with only its summary. The replay never arms it, so it reads off.', usage: { inputTokens: 7400, outputTokens: 90, cacheReadTokens: 7000 } }),
+      step({ text: 'A goal is set: its item joins the status row after the model and the chips. The replay never arms it, so it reads off.', usage: { inputTokens: 7400, outputTokens: 90, cacheReadTokens: 7000 } }),
       mark('goal'),
       pause(DWELL),
       goalRound(1),
@@ -438,7 +438,7 @@ const footerCutover = {
       pause(DWELL),
       goalRound(2),
       job('npm run watch', { lines: [[300, 'watching for changes…'], [20_000, 'rebuilt src/config.mjs in 41 ms']], endMs: 110_000, status: 'completed', detail: 'exit code: 0' }),
-      step({ text: 'Round 2: a background job joins them in row 2. Press Alt+↓ to open the views.', usage: { inputTokens: 8400, outputTokens: 100, cacheReadTokens: 7900 } }),
+      step({ text: 'Round 2: a background job joins them in the status row. Press Alt+↓ to open the views.', usage: { inputTokens: 8400, outputTokens: 100, cacheReadTokens: 7900 } }),
       mark('goal-todo-job'),
       pause(DWELL_VIEWS),
       goalItem('pause'),
@@ -461,7 +461,7 @@ const footerCutover = {
       goalItem('resume', { ifNeeded: true }),
       goalItem('complete'),
       step({
-        text: 'The goal is complete and the list is done; only the job is left in row 2.',
+        text: 'The goal is complete and the list is done; only the job is left in the status row.',
         usage: { inputTokens: 9300, outputTokens: 120, cacheReadTokens: 8800 },
         tools: [todos([['completed', 'Update the landing page hero'], ['completed', 'Run the tests'], ['completed', 'Update the screenshots'], ['completed', 'Bump the changelog'], ['completed', 'Open the pull request'], ['completed', 'Announce it'], ['completed', 'Tag the release'], ['completed', 'Update the docs site'], ['completed', 'Publish the release notes'], ['completed', 'Notify the translators'], ['completed', 'Archive the old banner'], ['completed', 'Close the milestone']])],
       }),

@@ -37,7 +37,7 @@ import type {
 
 const ID = /^[a-z0-9][a-z0-9._/-]*$/u
 const PANE_PLACEMENTS = new Set(['header', 'left', 'right', 'bottom', 'views'])
-const SUMMARY_NODE_KINDS = new Set(['text', 'rich-text', 'fields', 'progress', 'stack'])
+const SUMMARY_NODE_KINDS = new Set(['text', 'rich-text', 'fields', 'progress', 'stack', 'shed'])
 const NARROW_POLICIES = new Set(['bottom', 'overlay', 'hidden'])
 const STATUS_BANDS = new Set(['left', 'center', 'right'])
 const STATUS_OVERFLOW = new Set(['truncate', 'hide'])
@@ -118,7 +118,7 @@ function validateSummary(value: unknown, path: string): void {
   if (Object.keys(value).some(key => key !== 'node')) throw new TypeError(`${path} contains an unknown field`)
   const node = value.node as { readonly kind?: unknown } | null | undefined
   if (node === null || typeof node !== 'object' || Array.isArray(node) || !SUMMARY_NODE_KINDS.has(node.kind as string)) {
-    throw new TypeError(`${path}.node must be a status node (text, rich-text, fields, progress, or stack)`)
+    throw new TypeError(`${path}.node must be a status node (text, rich-text, fields, progress, stack, or shed)`)
   }
 }
 
@@ -141,7 +141,6 @@ function validateStatusDefinition(definition: unknown): void {
   validateSurfaceDefinition(definition, 'status')
   optionalInteger(definition.priority, 'status priority')
   if (definition.band !== undefined && !STATUS_BANDS.has(definition.band as string)) throw new TypeError('status band is invalid')
-  if (definition.row !== undefined && (definition.row !== 1 && definition.row !== 2)) throw new TypeError('status row is invalid')
   if (definition.overflow !== undefined && !STATUS_OVERFLOW.has(definition.overflow as string)) throw new TypeError('status overflow policy is invalid')
 }
 

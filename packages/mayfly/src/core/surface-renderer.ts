@@ -349,7 +349,7 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
   const renderPane = (record: PaneRecord): void => {
     const entry = record.entry
     const node = record.interaction.decisionNode ?? record.interaction.node
-    // A views pane is a view of status row 2: the lane sizes its panel and owns Esc, and its events stay its own.
+    // A views pane is a view of the status row: the lane sizes its panel and owns Esc, and its events stay its own.
     const placement = entry.definition.placement
     const lane = placement === 'views' ? runtime.surfaces.views : undefined
     const compiled = compile(node, 'pane', {
@@ -365,7 +365,7 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
       interactive: true,
       runtime: record.runtime,
       ...counted,
-      // A view's panel carries no frame of its own: its item in row 2 is its title.
+      // A view's panel carries no frame of its own: its item in the status row is its title.
       ...(lane === undefined ? surfaceTitle(entry, record.interaction) : { viewHints: () => lane.hints() }),
     })
     record.renderedRevision = record.interaction.revision

@@ -103,7 +103,7 @@ const REVIEW = {
     implemented: [
       'Alt+Up (or F4) with an empty prompt moves focus up into the stream; the cursor starts on the newest selectable row and the view returns to the tail (a history scrolled away comes back), ↑/↓ walk the rows. Blank rows, the `✻ Worked for …` line and `■ interrupted` are not rows to select. Esc or Alt+Down (F5) gives focus back to the prompt.',
       'The selected block is a gray band, inset one column from each edge of the screen and covering the whole block: a call with its output, an answer with all its lines, a run head with the calls under it. A selected call inside a run is only its own line.',
-      'Mode: while focus is off the prompt the status line carries a `conversation` chip (at the place of the plan/yolo badges, `view` when a view of status row 2 is entered, `search` with the search in 3e.3); the prompt frame turns gray, and the notification pane (the row above the editor) teaches the stream\'s keys at the left (a copy notice keeps the right); with no notice and focus on the prompt, it teaches `Alt+↑ conversation · Alt+↓ view` at the right.',
+      'Mode: while focus is off the prompt the status line carries a `conversation` chip (at the place of the plan/yolo badges, `view` when a view of the status row is entered, `search` with the search in 3e.3); the prompt frame turns gray, and the notification pane (the row above the editor) teaches the stream\'s keys at the left (a copy notice keeps the right); with no notice and focus on the prompt, it teaches `Alt+↑ conversation · Alt+↓ view` at the right.',
       'Enter on a turn header (or a Compact `▸ N tool calls` line) opens that turn at Verbose and the cursor follows to the turn\'s new header; Enter again folds it. Enter on a call line inside a run opens only that call, in place under its line, and the run stays as it is; on the run head it opens every call, and Enter again folds them all. Enter on a prompt, an answer, or a diff lifts its cap.',
       '`c` copies what a person reads: a message as its Markdown, an edit as a diff, a command with its output, a read with its lines, a plan as Markdown. `Ctrl+C` (not the interrupt, while the stream has focus) copies the model\'s raw JSON of the row. A header or title stands for its whole turn. The notification pane says what was copied; Ctrl+G reads the same text in $EDITOR.',
     ],
@@ -819,7 +819,7 @@ const SCRIPTS = {
     resize(60, 24), checkpoint('narrow'),
   ],
   jobs: [play('running'), checkpoint('running')],
-  // The footer and the goal through one long conversation: one line (`provider/model Effort`); `plan`, then `plan yolo`, then `yolo` in row 1; a goal (its set row, round markers), a todo list, and a job in row 2; `Alt+↓` enters the views (the goal's panel, then todo's, 12 rows scrolled), `Esc` returns; the goal paused (⏸, its row and panel), blocked (the row, the notice, the panel with its code and next step); narrowed to 52 and 36 columns; a /btw side question (F7 returns); the goal completed (✓ held, its row) and the job's end, one line again.
+  // The footer and the goal through one long conversation: one line (`provider/model Effort`); `plan`, then `plan yolo`, then `yolo` in row 1; a goal (its set row, round markers), a todo list, and a job in the status row, shedding detail at 52 and 36 columns; `Alt+↓` enters the views (the goal's panel, then todo's, 12 rows scrolled), `Esc` returns; the goal paused (⏸, its row and panel), blocked (the row, the notice, the panel with its code and next step); narrowed to 52 and 36 columns; a /btw side question (F7 returns); the goal completed (✓ held, its row) and the job's end, one line again.
   footerCutover: [
     play('one-line'), checkpoint('one-line'),
     play('plan'), checkpoint('plan'),
@@ -1014,7 +1014,7 @@ export const CATALOG = Object.freeze({
     script: [checkpoint('boot')],
   },
   gallery: {
-    summary: 'the UI gallery: a side pane, a view in status row 2, and a bottom prompt pane',
+    summary: 'the UI gallery: a side pane, a view in the status row, and a bottom prompt pane',
     source: { gallery: true },
     covers: ['examples/ui-gallery/src/', 'packages/mayfly/src/core/views-lane.ts', 'packages/mayfly/src/core/surface-*.ts'],
     sizes: [DEFAULT_SIZE],

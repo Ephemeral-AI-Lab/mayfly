@@ -1,6 +1,6 @@
 /**
- * The views lane: the views of status row 2. A view is a `mayflyPanes` pane with `placement: 'views'`; the lane has no
- * rows of its own. Each view's summary joins status row 2 as a status entry, and the row stays as it is while a view
+ * The views lane: the views of the status row. A view is a `mayflyPanes` pane with `placement: 'views'`; the lane has no
+ * rows of its own. Each view's summary joins the status row as a status entry, and the row stays as it is while a view
  * is entered: the footer marks the active item in it, and the panel opens under the row. The lane's one focusable
  * component carries the keys: `←`/`→` switch views, `Esc` (through the panel's own unhandled-escape path) returns to the prompt, and every other
  * key reaches the active panel. The lane is plain state plus painting: the renderer binds its host (colors, keymap,
@@ -22,7 +22,7 @@ export const VIEWS_FOCUS_ID = '@views'
 /** The smallest the entered lane gets: four panel rows. */
 const VIEWS_MIN_ROWS = 4
 
-/** What a view puts in status row 2: a motion-free status node. */
+/** What a view puts in the status row: a motion-free status node. */
 interface ViewSummary {
   readonly node: MayflyStatusNode
 }
@@ -72,9 +72,9 @@ export interface ViewsLaneHost {
 
 /** The footer's read-only window onto the lane. */
 export interface MayflyViewsSource {
-  /** The summaries of status row 2 as status entries (id `views/<id>`, row 2, left band), in the lane's order. */
+  /** The summaries of the status row as status entries (id `views/<id>`, left band), in the lane's order. */
   statusEntries(): readonly MayflyStatusEntry[]
-  /** Whether a view is entered: its panel opens under row 2. */
+  /** Whether a view is entered: its panel opens under the status row. */
   readonly isEntered: boolean
   /** The id of the active view (the one entered, or last entered) while it is still enterable. */
   readonly active: string | undefined
@@ -130,7 +130,7 @@ export class ViewsLane implements MayflyViewsSource {
   /** Counts every change of the views, their summaries and panels, and the entered state. */
   get revision(): number { return this.revisionValue }
 
-  /** Whether a view is entered: its panel replaces row 2 and the lane holds focus. */
+  /** Whether a view is entered: its panel opens under the status row and the lane holds focus. */
   get isEntered(): boolean { return this.entered }
 
   private readonly enteredListeners = new Set<(entered: boolean) => void>()
@@ -220,7 +220,7 @@ export class ViewsLane implements MayflyViewsSource {
   }
 
   /**
-   * Enter a view: its panel replaces row 2 and takes focus.
+   * Enter a view: its panel opens under the status row and takes focus.
    * @param id - the view; absent means the first enterable one (or the one already active).
    * @returns whether a view was entered.
    */
@@ -297,7 +297,7 @@ export class ViewsLane implements MayflyViewsSource {
     if (this.statusMemo?.revision === this.revisionValue) return this.statusMemo.entries
     const entries = this.inRow().map((view): MayflyStatusEntry => Object.freeze({
       id: `views/${view.id}`,
-      definition: Object.freeze({ id: `views/${view.id}`, priority: view.priority, band: 'left' as const, row: 2 as const }),
+      definition: Object.freeze({ id: `views/${view.id}`, priority: view.priority, band: 'left' as const }),
       node: view.summary!.node,
       revision: view.summarySerial,
     }))

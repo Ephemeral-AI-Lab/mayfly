@@ -85,7 +85,7 @@ export interface MayflySettings {
   readonly reducedMotion: boolean
   /** How much the activity row and the editor teach: `full` fills the activity row's second line with a rotating tip while no action runs, `off` leaves it blank. */
   readonly quietHints: 'full' | 'off'
-  /** Whether the views of status row 2 list their finished items (completed todos, settled jobs) beside the live ones. */
+  /** Whether the views of the status row list their finished items (completed todos, settled jobs) beside the live ones. */
   readonly viewHistory: boolean
 }
 

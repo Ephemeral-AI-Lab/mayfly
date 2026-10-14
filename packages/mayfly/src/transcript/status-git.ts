@@ -26,6 +26,7 @@ import { execFile } from 'node:child_process'
 import type { Context } from '@deepseek-ai/cordis'
 import type { MayflyStatusNode } from '@ephemeral-ai/mayfly-ui'
 import type { SessionFactsService } from './session-facts.ts'
+import { SHED, shedNode } from './status-shed.ts'
 
 /** Stable Cordis plugin name. */
 export const name = 'mayfly-status-git'
@@ -287,7 +288,8 @@ export function apply(ctx: Context): void {
   let text = ''
   let probeGeneration = 0
   let inFlight: Promise<void> | undefined
-  const node = (): MayflyStatusNode | null => text === '' ? null : { kind: 'text', content: text, tone: 'muted' }
+  /** The git facts give way after the thinking level: shed, they are not shown. */
+  const node = (): MayflyStatusNode | null => text === '' ? null : shedNode({ kind: 'text', content: text, tone: 'muted' }, [{ rank: SHED.git, node: null }])
   const status = ctx.mayflyStatus.register({ id: 'mayfly.status.git', priority: 10 }, node())
   const publish = (force = false): Promise<void> => {
     if (inFlight !== undefined) return inFlight

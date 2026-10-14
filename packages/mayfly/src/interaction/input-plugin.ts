@@ -798,7 +798,7 @@ export function apply(ctx: Context): void {
       void cycleSessionModel(ctx, modelListCache, (id, feedback) => notificationOwner.report(id, notificationScope(), feedback, id))
       return true
     }
-    // Alt+Down (F5) on an empty prompt enters the views of status row 2; without a view the key stays the editor's.
+    // Alt+Down (F5) on an empty prompt enters the views of the status row; without a view the key stays the editor's.
     if (keymap.matches(data, ACTION_FOCUS_NEXT)
       && editor.getText().length === 0
       && !editor.isShowingAutocomplete()

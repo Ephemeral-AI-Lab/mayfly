@@ -41,8 +41,7 @@ export function apply(ctx: Context): void {
   }
   status = ctx.mayflyStatus.register({
     id: 'mayfly.status.jobs',
-    priority: 3,
-    row: 2,
+    priority: 11,
   }, node())
   const offJobs = ctx.jobs.events.subscribe({ owners: 'scope' }, event => {
     // Output chunks cannot change the running/stopping count: every status
