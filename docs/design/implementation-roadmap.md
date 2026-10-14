@@ -848,7 +848,7 @@ It landed in five parts, each green on its own, and a sixth after slice 1.7 merg
    `←/→ actions`, `No/Yes` on a decision, `↑/↓ fields`, `↑/↓ scroll · Ctrl+E expand`). `hintNotation` in
    `core/ui-key-grammar.ts` writes a printable accelerator as itself (`c copy`, labels lowercased) and names a shared
    modifier once (`Alt+←/→`); the transcript's fold hints and the exit notice write `Ctrl+O` and `Ctrl+C`.
-4. **Diff and code.** `paintDiffRows` draws old and new line-number gutters (muted, ending in `│`), `−`/`+`, and the
+4. **Diff and code.** `paintDiffRows` draws one line-number gutter (muted, ending in `│`: a removed line shows its number before the change, any other line its number after it), `−`/`+`, and the
    removed or added band behind the code only; one context line around each change, `⋯` for a skipped run, `…` at the
    end of a long line, an `@@` header when there is more than one hunk. It takes `start`, `numbered`, `hunkHeader`,
    `context`, and `maxRows` as painter options for slice 1.3 to put on the node; `CTX_EDGE_ROWS` became
@@ -1934,7 +1934,8 @@ The groups below are finalized in this order, each under §7. Their text is the 
     calls, with the command output tails, are the first part (3b.1); `EditCard` and `WriteCard` take their three tiers in
     3b.2 and 3b.3.
   - `EditCard` (owner's answers, R5): an edit is `✓ Edit(path) · +4 −2` with a diffstat bar and its diff, with
-    real line numbers (the Harness gives no start line, so the one gutter, which numbers the modified file and leaves removed lines blank, counts from 1 in each hunk for now),
+    one gutter that numbers every row (a removed line by its place before the edit, any other row by its place after it; the Harness gives
+    no start line, so each hunk counts from its own first row, and the gutter is as wide as the largest number of any hunk),
     syntax-highlighted code, and a tint that stops 4 columns short of the right edge; the failure reason is on the call's line. `WriteCard`: `✓
     Write(path) · 84 lines · 3.1 KB` and numbered highlighted code (highlighting capped at 40 rows and 32 KB, §2.2 row
     14). Both are open by default, 6 rows at Standard, 12 at Verbose, up to 40 with Ctrl+O, each its own block (never a
@@ -1942,7 +1943,7 @@ The groups below are finalized in this order, each under §7. Their text is the 
   - Content of any size through §4.2: a large write or edit shows its diff, never a rejection.
   - Deletes the canonical-node card path (`transcript/canonical-node-renderer.ts`) and the tool painters it replaces.
 - **3c Activity row, motion, notices, and compaction** (`ActivityRow`, `Banner`, `CompactionRow`; scenes 14, 16, 20).
-  - The row is the turn's vitals, two rows (header and one `⎿` line) at the stream's left margin, with the notification pane's row under it.
+  - The row is the turn's vitals, three rows (a leading spacer, the header, and one `⎿` line) at the stream's left margin, with the notification pane's row under it.
     The glyph by phase: thinking blooms through four named stages that deepen with time, *Deep diving* and *Writing*
     fill, waiting on the user breathes (approval or answer), a running tool keeps a still `●` while its label shimmers,
     and stopping is a static `■`. The header tail (`· 8s · ↑30.2k ↓1.1k · 38 tok/s`) is priority 1 and hides first. The
@@ -1999,12 +2000,14 @@ part is accepted (§7 step 3).
 | R3 | 3a.2 answers and reasoning | 3a.2 accepted (Markdown answers under a leading `●` via `bodyLead`, reasoning header with duration and text aligned under the word, a blank row after the banner; the banner stays its own block) | `feat/3a` |
 | R3b | 3a.3 the live turn | 3a.3 accepted (the tail chip `Back to bottom · Ctrl+↓` / `N new turns · Ctrl+↓` counting turns, a dedicated follow-tail key, the held place, the incremental Markdown scan, `W-answer` budget and `perf-stream` ceilings); the footer notice deleted | `feat/3a` |
 | R4 | 3a.4 images and cutover cleanup; 3b.1 settled tool lines | 3a.4 accepted; group 3a finalized (goldens written for the stream scenarios, spec §5.6 rewritten as accepted behavior, briefs removed); the `app-*` goldens and Website app shots wait with the Website (on hold); 3b.1 built (every tool at three tiers, spec §7.1) and its effect accepted by the owner; its tests, goldens and perf A/B run in a separate test session (spec §3.1), so it is not yet marked accepted | `feat/3a` |
-| R5 | 3b.2 edit cards; 3b.3 write card (command rows were finished in 3b.1) | designed and built (scenarios `edits`, `edits-compact`, `-detailed`, `-verbose`); the owner's answers: relative line numbers, highlighted diff with an inset tint, calls named by tool; Standard shows every edit and write open; the effect is accepted by the owner (`d71a9e5`); its tests, goldens and perf A/B run in a separate test session (spec §3.1), so it is not yet marked accepted | `feat/3a` |
-| R6 | 3c.1 activity header; 3c.2 activity details and tips; 3b.4 pending call blocks (§5.3.1) | 3c.1, 3c.2 and 3b.4 built; the owner accepted the effect as it stands (tests, goldens and perf A/B run in a separate test session, spec §3.1, so it is not yet marked accepted); a later round, in a session of its own, refines how the activity row and the session flow stay in step (scenarios `phases`, `phases-off`, `thinkingLadder`, `pending`, `pending-compact`, `pending-verbose`, `activityDetail`, `activityWait`); the owner's answers and layout: the block is a constant three rows (header, one line, a blank row before the editor) at the stream's left margin; the line is the single action running now, else a rotating teaching tip; every wait breathes its `●` (`Waiting for your approval` / `Waiting for your answer`, and the row stays above the approval and question panels); Writing fills like Deep diving; a quiet-hints setting (`full`, `off`) blanks the tip; the division of labor between the stream and the activity row is written in component-library §5.3.1 (pending call blocks in the stream, the thinking ladder, a tip under the header outside Compact) and builds as part 3b.4 inside this round; `authorization` is the provider sign-in, so it is not an activity phase | `feat/3a` |
+| R5 | 3b.2 edit cards; 3b.3 write card (command rows were finished in 3b.1) | designed and built (scenarios `edits`, `edits-compact`, `-detailed`, `-verbose`); the owner's answers: every diff row numbered (removed rows by the old file, the rest by the new one, from 1 in each hunk), highlighted diff with an inset tint, calls named by tool; Standard shows every edit and write open; the effect is accepted by the owner (`d71a9e5`); its tests, goldens and perf A/B run in a separate test session (spec §3.1), so it is not yet marked accepted | `feat/3a` |
+| R6 | 3c.1 activity header; 3c.2 activity details and tips; 3b.4 pending call blocks (§5.3.1) | 3c.1, 3c.2 and 3b.4 built; the owner accepted the effect as it stands (tests, goldens and perf A/B run in a separate test session, spec §3.1, so it is not yet marked accepted); a later round, in a session of its own, refines how the activity row and the session flow stay in step (scenarios `phases`, `phases-off`, `thinkingLadder`, `pending`, `pending-compact`, `pending-verbose`, `activityDetail`, `activityWait`); the owner's answers and layout: the block is a constant three rows (a leading spacer, the header, one line), with the notification pane's row under it, at the stream's left margin; the line is the single action running now, else a rotating teaching tip; every wait breathes its `●` (`Waiting for your approval` / `Waiting for your answer`, and the row stays above the approval and question panels); Writing fills like Deep diving; a quiet-hints setting (`full`, `off`) blanks the tip; the division of labor between the stream and the activity row is written in component-library §5.3.1 (pending call blocks in the stream, the thinking ladder, a tip under the header outside Compact) and builds as part 3b.4 inside this round; `authorization` is the provider sign-in, so it is not an activity phase | `feat/3a` |
 | R6b | 3b.5 the tool block base; activity row in step with the stream | the owner's follow-up to R6: `transcript/tool-kinds.ts` (the descriptor every tool block is drawn from), pending lines at every level with their input (a command's lines, Edit and Write code streaming before the commit), `partial-json.ts`, group blocks from the first call (tool name and count, a branch line per call), one `▸ N tool calls` line per turn at Compact, Thinking as a streaming block, the breathing dot repainted in lists, a 24-shade breath, code highlighting to 40 rows, the activity row's second line (call arguments, provider retry), the `inFlight` fact, one host tick (`mayflyTick`) and one time format (scenarios `blocks`, `blocks-compact`, `-detailed`, `-verbose`, `streaming`, `streaming-compact`, `-verbose`, `-open`, `sync`, `fold`; `activityDetail` removed); effect accepted by the owner (`bbe68ec`; tests, goldens and perf A/B run in a separate test session, spec §3.1) | `feat/3a` |
 | R7 | 3c.3 the notification pane; 3c.4 compaction | built, and the owner accepted the effect (`b6c5d09`; tests, goldens and perf A/B run in a separate test session, spec §3.1): the notification pane is one row on the blank line above the editor, right-aligned and at most half the width, showing the notification lane's records (moved from the footer, which keeps only the slash hint) and the notices the facts raise (rate limit by status 429 with its countdown, context from 92%, a resumed session); offline and a low balance are deferred (no signal); the compaction row has the progress bar (`▰▱`) with an estimated percentage that grows with the time spent summarizing (never past 90%) and fills to 100% over 800 ms when the summary lands, the stages `summarizing` and `applying`, the settled `✓ Compacted N items ▰▰ context 91% → 9% · ~148k → ~12k tokens · auto` with `⎿ Ctrl+O summary`, one line at Compact and below 56 columns, a failure row, and a manual `/compact` as its own block below the previous turn (the "Back to bottom" chip moved onto this row, centered, with the notice to its right; scenarios `notificationPane`, `notification-chip`, `notices`, `context`, `retries`, `compaction`, `compaction-compact`, `compaction-verbose`, `compactionNoWindow`, `compactionFailed`, `manualCompact`) | `feat/3a` |
 | R8 | 3d.1 approval card; 3d.2 plan review card | built, and the owner accepted the effect (tests, goldens and perf A/B run in a separate test session, spec §3.1, so it is not yet marked accepted): a call that waits on the user is the request (its own block turns into `? Bash(command) · 1 of N waiting`, open with the command, `⚠ deletes files`, the asker's reason, the diff of an edit or the code of a write, or the whole plan as Markdown of any length); the decision is a lane card in the editor's place (`── Decide ──`, numbered rows where a digit chooses at once, a `Feedback:` / `Revise:` note that travels with the choice, `Esc` rejects, `Ctrl+G` opens the request in `$EDITOR`, `c` copies the plan, the 300 ms arm delay); the settled line says `allowed` / `rejected`, or `✓ Plan approved` / `✗ Plan rejected` / `↩ Plan sent back · "your revision"` (the replays' results follow the answer); a decided plan keeps its Markdown, which `Ctrl+O` (or the Verbose level) opens again; the plugins publish the queue through `mayfly/decision-requests-changed`, the approval audit events are folded into the facts (`approvals`, stateVersion 10); `plan-document.ts` and the framed approval view are deleted (scenarios `approvals`, `approvalsRejected`, `approvalsEdit` (+ `-compact`, `-verbose`), `approvalsQueue`, `plan`, `planRevised`, `planRejected`, `planLong`) | `feat/3a` |
 | R9 | 3e.1 levels; 3e.2 row selection; 3e.3 stream search | built, and the owner accepted the effect (tests, goldens and perf A/B run in a separate test session, spec §3.1, so it is not yet marked accepted): one `Disclosure` value (Ctrl+O, Enter on a header, rows and runs opened one by one, turns a search holds open) in place of the global `expanded`; Alt+↑ moves focus into the stream with a gray band over the whole block, Enter opens a row (a run opens whole from its head, a call alone and in place), `c` / `Ctrl+C` / `Ctrl+G` copy as text, copy as JSON, open in `$EDITOR`; a focus-mode chip, a gray parked prompt frame and the keys on the notification pane; in conversation mode `/` and `?` open a vim-like search line above the editor (regular expression, smart case; typing highlights, Enter selects, ↑/↓ and n/N walk every occurrence, Esc ends it); tests in `.artifacts/handoff/3e-test-brief.md` | `feat/3a` |
+
+**Phase 3 closeout.** The closeout audit is recorded in [docs/audits/phase-3/](../audits/phase-3/), and its Resolution section gives each finding's outcome. PR #15 fixes D1 (the stream's node slot keeps its interaction model across a re-lease), D3 and D6 (replay data), and the comment and document findings C1, C2, and C5; O1 is decided and built as option A, and the rest are decided or carried to Phases 5, 7, and 8.
 
 ### Phase 4 Editor and command palette
 
@@ -2066,6 +2069,14 @@ admission width scans, and a PTY smoke that enters the views, stops a job, and r
 `features/status-bar.md`, `features/panes.md`, `plugins/status.md`, `plugins/dock.md`, `reference/keys.md` (both
 languages).
 
+**Carried from Phase 3** (closeout audit, [docs/audits/phase-3/](../audits/phase-3/)):
+
+- The final look of a background subagent that is still running (D2), and the display of todo and goal (with the Agents, Jobs, Goal, and Todo views).
+- Footer working directory collapses to `.` when the goal chip grows, instead of a shortened path (`~/...` at 28 columns) (O4).
+- The search hint row shares a line with the notice and cuts off before `Esc end search`; decision hints at 40 columns read `Enter · Ctrl+G · Esc` with no labels (O4).
+- A long notice is cut without `…` at 60 columns; keep the trailing count or countdown (O2).
+- `compactionNoWindow` shows a time-based `%` with no window: drop the `%`, or correct the round 7 brief (O3).
+
 ### Phase 6 Panels
 
 Every command panel, finalized one group at a time. §6 lists each component's facts and writes. Starting points:
@@ -2119,6 +2130,12 @@ core drives pi-tui.
   boxes on every frame (about 5 ms per frame beside the gallery after slice 1.12c), a picker that lays out once per
   arrow at its edge, re-measuring a framed list on every key, the stream with item bodies (W4b's 12 ms worst sample),
   and anything the earlier phases recorded for this phase.
+**Carried from Phase 3:**
+
+- `perf-stream` draws 3 more scroll frames and 2 more wheel frames than the merge base. The narrowest candidate is the tail chip republish through a microtask after `mayfly/content-tail-changed`: publish the chip in the same pass, or accept the cost in the perf notes (P1).
+- `perf-focus` times out at `nav /theme` on base and head, because a theme change restarts fibers and the settle wait never sees a stable frame (P2).
+- The search highlight pass has no work budget row.
+
 - **Rules.** A restructure lands with its measurement before and after; the owner reviews the felt result in the
   profile; the decision tests of the finalized components hold, or the owner accepts the changed frames.
 - **Output.** New budgets and bench ceilings that become the gate (§7.1), §4 rewritten to describe the final
@@ -2138,6 +2155,18 @@ core drives pi-tui.
   nothing is left behind.
 - Release: one release line carries the finished UI, with the incompatible `@ephemeral-ai/mayfly-ui` versioned as a
   breaking release (`pnpm run check:pack`, `pnpm release:preflight <version>`, `docs/package-release.md`).
+
+**Carried from Phase 3:**
+
+- Glyph and wording consistency (O5): a folded body reads `▸ N more lines · Enter` in prose and `… +N more · Ctrl+O` in tool bodies (and `1 more lines` has no singular); `●` is also the message and pending bullet; `✗` and `⚠` overlap in meaning; `✻` marks four states; the `────` separator touches the live region.
+- Markdown table cells break words at 28 columns (`retri` / `ed`): break at word boundaries, or fall back to a list form below a width (O6).
+- Search start: `/` lands on the newest hit and `?` on the oldest, and the hit count includes hits no row draws (O7).
+- The stream's cursor, search, and selection reset on a theme or presentation reload (the slot is disposed on purpose); keep them across it (D1, a product decision).
+- Real diff start lines, if the Harness ever exposes them, so gutter numbers do not restart at 1 in each hunk (D4).
+- A `TOOL_NOT_STARTED` written only by resume repair has no `tool/call` event and draws as an unnamed `⊘ Tool · not started`; keep the call name from the assistant message (O1).
+- Move the digit-count width arithmetic in `transcript/tool-calls.ts` into `core/width.ts` (through `mayflyComponents`), and drop its baseline entry in `tests/core/business-rendering-drift.spec.ts` (C3).
+- `transcript/tick.ts` iterates a snapshot, so a listener disposed by another listener in the same tick still runs: skip disposed listeners and add a spec case (C4).
+- The Website text of `features/streaming.md`, `approval.md`, `editor.md`, and `guide/config.md` still describes the old fold and approval behavior (release).
 
 ## 6. Mayfly components: facts, hosts, and writes
 

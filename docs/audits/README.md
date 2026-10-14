@@ -6,7 +6,7 @@ first, when it has one.
 
 ## Phase 3 closeout audit (2026-10-13)
 
-Folder: [phase-3/](phase-3/). Open; the findings are not fixed yet.
+Folder: [phase-3/](phase-3/). Closed with PR #15; fixed items are in the PR, the rest are carried to Phases 5, 7 and 8 (see the Resolution section).
 
 | Record | What it is | Read it for |
 | --- | --- | --- |

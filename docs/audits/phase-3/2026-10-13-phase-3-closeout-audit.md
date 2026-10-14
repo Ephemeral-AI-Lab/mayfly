@@ -2,8 +2,9 @@
 
 Audit baseline: `feat/3a` at `9b8d9ae` (`main` merged in) plus the closeout changes committed as `d5c6337` (docs), `9ea32cb`
 (decision tests), `cdf2826` (the `phase3` integration replay and replay repairs), and `41b6810` (goldens). Report date:
-2026-10-13. This is an audit record of that state. It does not define current behavior. The audit changed no product code;
-every finding below is open unless it says otherwise.
+2026-10-13. This is an audit record of that state. It does not define current behavior. The audit changed no product code.
+This record is closed as of the PR #15 closeout: the Resolution section gives each finding's outcome, and the findings
+below are as they stood at the baseline.
 
 ## Why this audit exists
 
@@ -32,6 +33,35 @@ What needs attention, in this order:
 
 Everything else is a decision about wording or width (O2 to O6), stale comments and documents (C1 to C6), two perf
 observations (P1, P2), and the remaining golden and snapshot review (O7).
+
+## Resolution
+
+Closed with PR #15. "Fixed" means changed in the PR; "Decided" means the owner's answer is recorded and no code change
+follows from it here; "Carried" names the phase that will design the item (see that phase in the roadmap).
+
+| Finding | Resolution | One line |
+| --- | --- | --- |
+| D1 node-slot re-lease | Fixed in PR #15 | `UiInteractionService` keeps one endpoint per slot id; `SlotRoute` dispatches only to the live lease; removed assertions restored. The stream's cursor reset on a theme or core reload is carried to Phase 8. |
+| D2 subagent finished and running | Decided; carried to Phase 5 | The look is kept; the tour replay is consistent (the child finishes before `rate-limited`). The final look of a background subagent still running is carried to Phase 5. |
+| D3 approved command shown as pending | Fixed in PR #15 | Replay data: the same command was reused. Replay fixed. |
+| D4 gutter restarts at 1 per hunk | Decided; carried to Phase 8 | Accepted effect: every diff row is numbered, counted from 1 per hunk because the Harness gives no start line. Real start lines are carried to Phase 8. |
+| D5 Esc during a write | Decided (scenario limitation) | Not a product bug; `phase3-live` no longer presses Esc. The editor refill after an interrupted Write is for the live review. |
+| D6 compaction numbers | Fixed in PR #15 | Replay data: the numbers are corrected. |
+| O1 interrupted tool call | Decided (option A), built; carried to Phase 8 | `⊘` with a short reason for calls that did not run or were aborted; `✗ ... outcome unknown` for `TOOL_OUTCOME_UNKNOWN`. A resume-only `TOOL_NOT_STARTED` without a call name is carried to Phase 8. |
+| O2 long notice cut without `…` | Carried to Phase 5 | Truncation draws `…` and keeps the trailing count or countdown. |
+| O3 percentage without a window | Carried to Phase 5 | Drop the `%` without a window, or correct the round 7 brief. |
+| O4 narrow footer and hints | Carried to Phase 5 | Footer path, search hint row, and decision hints at 40 columns. |
+| O5 glyph and wording | Carried to Phase 8 | One decision for the fold text, `●`, `✗`/`⚠`, `✻`, and the separator. |
+| O6 Markdown table cell words | Carried to Phase 8 | Break at word boundaries, or fall back to a list below a width. |
+| O7 snapshots, goldens, search start | Partly decided; carried to Phase 8 | The owner accepted the red and green status cells. The 7 snapshots and the goldens are accepted at the finalize step with `-u` and `--update`. Search start is carried to Phase 8. |
+| P1 `perf-stream` frames | Carried to Phase 7 | Publish the tail chip in the same pass, or accept the cost in the perf notes. |
+| P2 `perf-focus` timeout | Carried to Phase 7 | A theme change restarts fibers; the settle wait needs a stable frame. |
+| C1 decision-card comment | Fixed in PR #15 | Comment corrected. The owner question (warn when a typed note is dropped) has no decision recorded here. |
+| C2 activity block height | Fixed in PR #15 | Docs and comments say three rows: a leading spacer, the header, one line. |
+| C3 digit-count width arithmetic | Carried to Phase 8 | Move it into `core/width.ts`. |
+| C4 tick dispatch | Carried to Phase 8 | Skip disposed listeners and add a spec case. |
+| C5 notification row in `main` mode | Fixed in PR #15 | Docs limit the one-row claim to the alternate layout. |
+| C6 stale briefs | n/a | The briefs are not in the repository. |
 
 ## What was done
 
@@ -104,6 +134,13 @@ each hunk carries its start line; if it does, pass it through to the diff block.
 In `phase3-live`, checkpoints `tool` and `interrupted` are identical: the write stays a grey `●`, the activity row still
 says `Writing files`, and no stop row appears. The replay may simply not be able to drive an interrupt. Confirm in the live
 profile: stream a write against the stub model and press Esc. If that works, change the scenario; if not, it is a product bug.
+
+Resolved as a scenario limitation, not a product bug. Esc interrupts only when `agent.status === 'running'`
+(`interaction/input-plugin.ts` `escapeInterruptOrClear`, `app/agent-interrupt.ts`); the replay driver appends session events
+and no Agent runs the replayed turn, so Esc cleared an empty draft. A real turn against a slow stub model (a `write` call
+whose input never finishes, and a `bash sleep 60`) gave: the activity row gone, the unfinished write dropped, `■ interrupted`
+and `Stopped after 5s`; the running Bash settled as `✗ Bash(sleep 60) · Error: tool call aborted`. The scenario no longer
+presses Esc or names an `interrupted` checkpoint.
 
 ### D6. Compaction numbers disagree with the window (unconfirmed, low confidence)
 

@@ -163,7 +163,7 @@ extensions exclude `diagram` and `chart`).
 | `ui.fields` | `rows[]` (`label`, `value: spans[]`) | `label: ` muted, then the value spans, wrapped | key/value panels (status, account) |
 | `ui.markdown` | `source` | the shared markdown painter; a fenced `mermaid` block becomes a diagram | the only node whose code fences are highlighted today |
 | `ui.code` | `code`, `language?` | muted language heading, then every line in `mdCodeBlock` | **not** highlighted (roadmap C2) |
-| `ui.diff` | `before`, `after` (two strings) | aligned rows under a sign gutter, change bands padded to the width | numbered gutters, `@@` headers, and the red/green background behind the changed code (not the line numbers) are targets (ref §6 C1, spec §5.3) |
+| `ui.diff` | `before`, `after` (two strings) | aligned rows under a sign gutter, change bands padded to the width | one numbered gutter (`start`, `beforeStart`, `numberWidth`: a removed line shows its number before the change, any other its number after it), `@@` headers, and the red/green background behind the changed code (not the line numbers) (ref §6 C1, spec §5.3) |
 | `ui.sections` | `sections[]` (`title?`, `body`, `collapsed?`) | bold `primary` title, then the body; a collapsed section is its title row only (`...` when untitled) | bodies: `text`, `fields`, `code`, `diff`, nested `sections` |
 | `ui.chart` | `chart: 'line' \| 'point'`, `'bar'`, `'sparkline'`, `'heatmap'` | `simple-ascii-chart` inside the width | below |
 | `ui.diagram` | `diagram: 'mermaid'`, `source` | beautiful-mermaid ASCII, bounded | below |

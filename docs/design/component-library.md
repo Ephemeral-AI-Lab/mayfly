@@ -147,7 +147,7 @@ add a third meaning to a glyph.
 | `✻` | thinking |
 | `✓` `✗` | done / failed |
 | `⚠` | a block of calls where some failed and others worked (the head of a run, warning tone; `✗` only when every call failed) |
-| `⊘` | cancelled |
+| `⊘` | cancelled: a call the user stopped or that never ran (muted, with its short reason) |
 | `↩` | plan sent back with a revision (`↩ Plan sent back`; ASCII `<`) |
 | `■` | stopping or interrupted |
 | `?` | waiting on the user |
@@ -528,7 +528,7 @@ Content is static: it takes no focus and owns no keys. Pick the narrowest form t
 | fields | `label:` muted, then the value; the key/value panels (status, account) |
 | sections | a bold `primary` title then a body; a collapsed section is its title row only |
 | code | a muted language name, then the lines; highlighted by language (on by default); `numbered` adds a line-number gutter (the Write card, the trace JSON) |
-| diff | two numbered gutters (old, new), `−`/`+` plus a **red background behind the removed code and a green one behind the added code** (the band covers the sign and the text to the full width; the line-number gutter is never tinted), `⋯` between hunks, an `@@` header when more than one hunk |
+| diff | one numbered gutter (a removed line shows its number before the change, any other its number after it), `−`/`+` plus a **red background behind the removed code and a green one behind the added code** (the band covers the sign and the text to the full width; the line-number gutter is never tinted), `⋯` between hunks, an `@@` header when more than one hunk |
 | charts | sparkline (one row), bars (grouped, stacked, normalized; horizontal or vertical), line and point, heatmap with a legend row (`cell: 1` draws one-cell columns, 26 weeks in 26 cells) |
 | diagram | a flowchart or state diagram as ASCII within a size budget, falling back to its source |
 | spacer, divider | vertical rhythm: a blank row or a rule, optionally labelled |
@@ -1154,8 +1154,8 @@ Harness has no offline signal and the balance is not read yet. An undo toast is 
 
 **Built from:** `loader`, `rich-text`, `stack` (priority admission), `diff`, `code`. Scenes: Activity row, Tool rows and edits.
 
-The activity row is the turn's vitals, a block of constant height: a header, one line
-under it, and a blank row before the editor. It starts at the stream's left margin (two cells). It says which phase
+The activity row is the turn's vitals, a block of constant height: a leading spacer, a header, and one line
+under it (the blank row before the editor is the notification pane's). It starts at the stream's left margin (two cells). It says which phase
 the turn is in, how long it has been there, how much it has said, and how fast; it never repeats text the
 stream already shows (§5.3.1).
 
@@ -1174,7 +1174,7 @@ stream already shows (§5.3.1).
   Compact), and the one-line detail (the latest reasoning paragraph, the running command or path or query) at
   Compact, where the stream shows no process. It always leads with `⎿`, drops the `⎿` below 40 columns, and
   is blank when hints are off (`quietHints: off`) or nothing applies.
-- **Height.** Two rows while a turn runs (the header and the line under it), and the row under them is the notification
+- **Height.** Three rows while a turn runs (a leading spacer, the header, and the line under it), and the row under them is the notification
   pane's (§5.2), so nothing shifts between phases. Idle renders nothing of its own.
 - **Narrow widths** shed, in order: the header tail (time, counters, rate), then the `⎿` connector.
 - **Motion.** One channel per row: the glyph moves over a still label (Deep diving, Thinking, Writing), or the
@@ -1220,7 +1220,8 @@ Settled calls are one static line: glyph, past-tense verb, target, outcome.
    118  118 │   return { kind: 'stack', direction: 'column',
 ```
 
-- Two gutters (old, new), sized by the largest line number. Every changed line
+- One gutter, sized by the largest line number: every row has a number, a removed line's in the file before the change
+  and an added or unchanged line's in the file after it (the two counters of a unified diff in one column). Every changed line
   carries `−` or `+` as well as color. One to three context lines per hunk,
   `⋯` between hunks, `… +N rows · Ctrl+O` beyond the cap (6 rows in a
   collapsed Standard card, 12 once expanded), long lines end in
@@ -1257,7 +1258,8 @@ stream is empty. The moment a call is committed it has a block in the stream, in
 | Pending | `● Bash(pnpm test) · 4s`, the dot breathing, the time ticking; then any output there is | Calls of one kind running together stack as pending lines; they regroup into the run block when they settle |
 | Complete | `✓ Bash(pnpm test) · 4.2s` and the tier's body | unchanged from §7.1 of the development spec |
 | Failed | `✗ Bash(pnpm test) · exit 1`, the first line of the reason | |
-| Interrupted | `⊘ Bash(pnpm test)`, muted, no outcome | the turn ended before the call settled |
+| Interrupted | `⊘ Bash(pnpm test) · interrupted`, muted, with a short reason: `interrupted` for a call the user stopped (Esc, Ctrl+C), `not started` for a call that never ran | the Harness settles the call with `ABORTED`, `ABORTED_BEFORE_DISPATCH`, or `TOOL_NOT_STARTED`; it left no effect, so it is no failure and its text is not shown |
+| Outcome unknown | `✗ Bash(pnpm test) · outcome unknown`, the failed look with a short reason | the session ended while the call ran (`TOOL_OUTCOME_UNKNOWN`, closed on resume); the call may have had a side effect, so it is not drawn as cancelled |
 
 The Harness reports no output while a foreground call runs (the committed `tool/call` and `tool/result` events carry
 none; a background job has its own live tail, which the bottom bar will carry), so a pending block shows the call's
@@ -1534,7 +1536,7 @@ Verbose level) opens the summary's first lines under it. Every compaction, manua
   `▪ [image] 1 · error.png · 1280×720 · 82 KB`.
 - **An answer is Markdown**: one list item whose body is the shipped Markdown component (headings, nested lists, tables
   drawn as boxes, highlighted fences, inline emphasis, code, and links), led by `● ` on its first row and wrapped under
-  it (`bodyLead`, §4.4). Blocks are separated by the renderer's own blank row. A growing answer is scanned from its last
+  it (`bodyLead`, §4.4). Blocks are separated by the renderer's own blank row. In a table, a status cell that holds an emoji such as `✅` or `⚠️` is coloured green or red, as the owner accepted. A growing answer is scanned from its last
   unit and painted one unit per append, so a long live answer costs what its tail costs; nothing caps it.
 - **Reasoning** shows where the display plan opens process cards (the levels' policy is 3e.1): live, one italic muted
   row, `✻ <latest line>`, clipped at the width; at Verbose a streaming reasoning grows line by line under a
@@ -2187,7 +2189,7 @@ baseline verified against `main` when this was written; *new* means nothing like
 | Status | one row; goal and jobs are chips in it; a `SHELL` chip | **two composable rows**: row 1 facts (model, mode chips, context, directory, git, balance), row 2 views (agents, jobs, goal, todo) (§5.1) |
 | Editor | the conversation title and attachments are elsewhere; `! shell mode` is text in the border | the title in the frame's top-right corner; images, pastes, and `@` mentions as `[… ×]` tokens in the input with a two-step `Backspace`; one truncated queue line; `↑`/`↓` walk the queue then the history; shell mode is the border color (§5.2) |
 | Activity row | one truncated detail line; tips only while a turn runs; the interrupt key is not advertised | up to three `⎿` lines; `Esc interrupt · Ctrl+O expand` in the gap; tips only in the `Deep diving` row (§5.3) |
-| Tool rows | an edit has a two-column sign gutter; no line numbers | plain numbered old/new gutters and a red or green background behind the changed code, `A`/`M`/`D` for multi-file; write is one line, and highlighted code with line numbers when expanded (§5.3) |
+| Tool rows | an edit has a two-column sign gutter; no line numbers | one plain numbered gutter (old numbers on removed lines, new numbers on the rest) and a red or green background behind the changed code, `A`/`M`/`D` for multi-file; write is one line, and highlighted code with line numbers when expanded (§5.3) |
 | Compaction | a braille spinner and elapsed time; settles to `✓ compacted N items · ~Tk tokens` | a real occupancy bar with two stages, a drain on settle, and the before/after percentage (§5.6) |
 | Todo and goal | a flat `─` rule and a `Todo` title above the editor; the goal as a status chip | views of status row 2; the rule is the progress bar with `n of N`; goal paused and blocked states; nothing in the stream (§5.4) |
 | Subagents and jobs | a pane above the editor; jobs only as a footer count; neither selectable | views of status row 2, keyboard-selectable, `x` stops behind a confirm (§5.5) |
