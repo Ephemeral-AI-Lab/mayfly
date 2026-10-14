@@ -284,6 +284,7 @@ export async function runScenario(name, { root, dshBin, cols, rows, keys = [], o
         case 'type':
           for (const char of step.text) { await press(char); await settle(40) }
           break
+        case 'paste': pty.write(`\u001b[200~${step.text}\u001b[201~`); await settle(); break
         case 'click': {
           const cell = cellOf(step.at)
           if (browser === undefined) mouse(clickReport(cell.row, cell.col))

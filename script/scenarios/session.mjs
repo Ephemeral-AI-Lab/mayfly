@@ -11,6 +11,7 @@ import { randomBytes } from 'node:crypto'
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
+import { clipboardImage, externalEditor, workspaceFiles } from './fixtures.mjs'
 import { timelineNamed } from './replays.mjs'
 import { startStubModel } from './stub-model.mjs'
 import { compile } from './timeline.mjs'
@@ -23,7 +24,8 @@ export const WORKSPACE = /\/tmp\/mayfly-scenario-[0-9a-f]{8}/gu
 /**
  * Start a session.
  * @param {object} options
- * @param {{ source: { replay?: string, idle?: boolean, gallery?: boolean } }} options.scenario - a catalog scenario.
+ * @param {{ source: { replay?: string, idle?: boolean, gallery?: boolean }, workspace?: Record<string, string>, clipboard?: { image: number, delayMs?: number }, editor?: { append: string } }} options.scenario - a catalog scenario;
+ *   `workspace` seeds files, `clipboard.image` puts a PNG of that many KB on the clipboard, `editor.append` is an external editor.
  * @param {string} options.dir - where the overlay, the compiled replay, and the driver log go (created fresh).
  * @param {number} [options.speed] - timed playback speed when no runner controls the driver.
  * @param {string} [options.control] - the runner's control socket.
@@ -57,6 +59,12 @@ export async function prepareSession({ scenario, dir, speed = 1, control, config
   writeFileSync(file, JSON.stringify(replay === undefined ? [] : compile(replay.items, replay.options), null, 1))
   const log = join(dir, 'driver.log')
   const stub = await startStubModel()
+  if (scenario.workspace !== undefined) workspaceFiles(cwd, scenario.workspace)
+  // What a PTY lacks: a clipboard holding an image, an external editor (a scenario names them).
+  const fixtures = {
+    ...(scenario.clipboard?.image === undefined ? {} : clipboardImage(dir, scenario.clipboard.image, scenario.clipboard.delayMs)),
+    ...(scenario.editor === undefined ? {} : externalEditor(dir, scenario.editor.append)),
+  }
   return {
     cwd,
     patch,
@@ -67,6 +75,7 @@ export async function prepareSession({ scenario, dir, speed = 1, control, config
       MAYFLY_REPLAY_FILE: file, MAYFLY_REPLAY_SPEED: String(speed), MAYFLY_REPLAY_LOG: log,
       ...(control === undefined ? {} : { MAYFLY_REPLAY_CONTROL: control }),
       ...(isolate ? { HOME: tmp } : {}),
+      ...fixtures,
     },
     close: async () => {
       await stub.close()

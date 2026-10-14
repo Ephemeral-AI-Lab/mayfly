@@ -152,7 +152,6 @@ add a third meaning to a glyph.
 | `■` | stopping or interrupted |
 | `?` | waiting on the user |
 | `⚠` | warning (deletes files, low balance, dangerous tool) |
-| `ℹ` | information |
 | `✕` `❚❚` | goal blocked / paused |
 | `⎿` | detail connector under a header or a failed row |
 | `⏵` | background jobs |
@@ -209,7 +208,7 @@ renders the same patterns, so users learn them once:
 
 | State | Pattern | Example |
 | --- | --- | --- |
-| loading | gap spinner, what, elapsed | `⣾ Loading sessions…` |
+| loading | gap spinner, what, elapsed; a wait under 150 ms shows nothing | `⣾ Loading sessions…` |
 | empty | what is missing and the next action | `No plugins installed — press → to browse` |
 | error | `✗` reason and the retry key | `✗ Could not reach the market  r retry` |
 | stale or offline | `⚠` and the data's age; content stays usable | `⚠ offline · showing cached data from 2d ago` |
@@ -218,10 +217,10 @@ renders the same patterns, so users learn them once:
 A slow or failed secondary read (a balance, a catalog refresh) never blocks or alters
 the primary content.
 
-**Feedback.** `✓` success and `ℹ` info disappear after 5 s of visible time; `⚠`
+**Feedback.** `✓` success and information (words alone, no glyph, since Phase 4 round 2) disappear after 5 s of visible time; `⚠`
 warning stays until acted on; `✗` error stays and offers its retry key; progress
 never auto-dismisses. Feedback is inline in the footer of an open surface and a toast
-in the notification pane (the row above the editor, §5.2) otherwise. Glyph plus word, never color alone.
+in the notification pane (the row above the editor, §5.2) otherwise. A success, warning, or error has glyph plus word, never color alone.
 
 **Breakpoints.** At 100 columns or more a list-and-detail surface is a split view;
 from 60 to 99 it is one column and `Enter` opens the detail; below 60 it shows the name
@@ -1140,10 +1139,10 @@ queued (2)  ⏎ "also update the footer"  ⏎ "keep the hero copy shor…"  ↑ 
 **Notices** live in the **notification pane**: one row on the blank line above the editor, under the activity block,
 right-aligned and never wider than half the terminal. It shows one notice at a time, the most severe and then the
 newest, with a muted `· +N` for the ones waiting, and it is there (blank) when nothing shows, so the editor never
-shifts. Its content is the notification lane (the commands' and extensions' feedback: `✓` and `ℹ` leave after five
+shifts. Its content is the notification lane (the commands' and extensions' feedback: `✓` and information leave after five
 seconds of visible time, `⚠` and `✗` stay) and the notices the session's facts raise: `⚠ Rate limited · retrying in 9s ·
 1/5` (a provider failure with HTTP status 429; any other failure reads `Provider error`), `⚠ Context 93% full · /compact
-now` (from 92% of the window, until a compaction lowers it), and `ℹ Resumed session · 24 turns · last active 2h ago`
+now` (from 92% of the window, until a compaction lowers it), and `Resumed session · 24 turns · last active 2h ago`
 (five seconds). The footer under the editor keeps only the slash hint. When the stream is scrolled away from its
 tail, the same row carries the chip back to it, centered and inverse (`Back to bottom · Ctrl+↓`, or `2 new turns ·
 Ctrl+↓`): the notice takes only the room right of the chip, so the two never overlap (at 100 columns the notice keeps

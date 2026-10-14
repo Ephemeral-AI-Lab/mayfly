@@ -49,6 +49,7 @@ import { ACTION_BACKSPACE, ACTION_CANCEL } from './keys.ts'
 import { extractSkillPrefix, refresh, userInvocableSkills } from './skills-catalog.ts'
 import { sanitizeShellOutput } from './shell-sanitize.ts'
 import { filterSlashCommands, slashCommandLabel } from './slash-filter.ts'
+import { beginPromptWait } from './prompt-wait.ts'
 import { interactionTranslator, observeInteractionLocale } from './locale.ts'
 
 /** Shell echo output caps: both bounds apply, whichever trips first. */
@@ -115,8 +116,21 @@ function slashItemDescription(command: {
 }
 
 /** The directory `@` completion and `!` commands run in: the displayed Agent's session directory, else the launch directory. */
-function sessionCwd(ctx: Context): string {
+export function sessionCwd(ctx: Context): string {
   return ctx.mayflyCurrentAgent.current()?.session.header.cwd ?? process.cwd()
+}
+
+/**
+ * Record the mention an `@` completion just finished, so the editor shows it as a token. A file's completion ends with a
+ * space after the path; a directory's stays open for drill-down and is no mention yet.
+ * @param ctx - plugin context carrying the interaction state.
+ * @param applied - the completion's result: the new lines and the cursor.
+ */
+function rememberMention(ctx: Context, applied: { readonly lines: readonly string[], readonly cursorLine: number, readonly cursorCol: number }): void {
+  const before = (applied.lines[applied.cursorLine] ?? '').slice(0, applied.cursorCol)
+  if (!before.endsWith(' ')) return
+  const mention = extractAtPrefix(before.slice(0, -1))
+  if (mention !== null && mention.length > 1) ctx.mayflyInteractionState.mentions.add(mention)
 }
 
 /**
@@ -172,39 +186,45 @@ function createAutocompleteProvider(
       const line = lines[cursorLine] ?? ''
       const atPrefix = extractAtPrefix(line.slice(0, cursorCol))
       if (atPrefix !== null) {
-        const cwd = sessionCwd(ctx)
-        if (cwd !== builtCwd || fdPath !== builtFdPath) {
-          builtCwd = cwd
-          builtFdPath = fdPath
-          inner = components.createFileMentionProvider(cwd, fdPath)
-        }
-        let suggestions: MayflyAutocompleteSuggestions | null = null
-        // Empty-tail tokens (a bare `@` or a directory drill-down) take the
-        // one-level listing: deterministic, shallow, exactly the entries of
-        // the resolved directory. Everything else — query-bearing tokens —
-        // runs the fd pipeline (fd's genuine no-match stays null). Known
-        // unsupported path forms, or a missing/throwing fd, use the scanner.
-        suggestions = await listDirectoryMentions(cwd, atPrefix, options.signal)
-        const filesystemOnly = requiresFilesystemMention(atPrefix)
-        let fellBack = suggestions === null && (fdPath === null || filesystemOnly)
-        if (suggestions === null && fdPath !== null && !filesystemOnly) {
-          try {
-            suggestions = await inner.getSuggestions(lines, cursorLine, cursorCol, options)
-          } catch {
-            // fd failing to spawn mid-session falls back to the scanner.
-            fellBack = true
+        // The search can take a moment in a big tree: the unified loader shows it, never for a quick answer.
+        const endWait = beginPromptWait(ctx, t('Searching files…'))
+        try {
+          const cwd = sessionCwd(ctx)
+          if (cwd !== builtCwd || fdPath !== builtFdPath) {
+            builtCwd = cwd
+            builtFdPath = fdPath
+            inner = components.createFileMentionProvider(cwd, fdPath)
           }
+          let suggestions: MayflyAutocompleteSuggestions | null = null
+          // Empty-tail tokens (a bare `@` or a directory drill-down) take the
+          // one-level listing: deterministic, shallow, exactly the entries of
+          // the resolved directory. Everything else — query-bearing tokens —
+          // runs the fd pipeline (fd's genuine no-match stays null). Known
+          // unsupported path forms, or a missing/throwing fd, use the scanner.
+          suggestions = await listDirectoryMentions(cwd, atPrefix, options.signal)
+          const filesystemOnly = requiresFilesystemMention(atPrefix)
+          let fellBack = suggestions === null && (fdPath === null || filesystemOnly)
+          if (suggestions === null && fdPath !== null && !filesystemOnly) {
+            try {
+              suggestions = await inner.getSuggestions(lines, cursorLine, cursorCol, options)
+            } catch {
+              // fd failing to spawn mid-session falls back to the scanner.
+              fellBack = true
+            }
+          }
+          if (suggestions === null && fellBack) {
+            suggestions = await fsMentionSuggestions(cwd, atPrefix, options.signal, undefined, mentionCache)
+          }
+          // An empty mention result would close the dropdown without a
+          // trace — the empty-session-cwd corner read as "@ is dead". Flash
+          // the hint line instead; a superseded (aborted) round stays quiet.
+          if (suggestions === null && !options.signal.aborted) {
+            report(t('no matching files under the session cwd'))
+          }
+          return suggestions
+        } finally {
+          endWait()
         }
-        if (suggestions === null && fellBack) {
-          suggestions = await fsMentionSuggestions(cwd, atPrefix, options.signal, undefined, mentionCache)
-        }
-        // An empty mention result would close the dropdown without a
-        // trace — the empty-session-cwd corner read as "@ is dead". Flash
-        // the hint line instead; a superseded (aborted) round stays quiet.
-        if (suggestions === null && !options.signal.aborted) {
-          report(t('no matching files under the session cwd'))
-        }
-        return suggestions
       }
       // The S29 `#` skill branch: a `#`-token in progress at the cursor
       // completes the settled user-invocable skills (`./skills-catalog.ts`)
@@ -277,7 +297,9 @@ function createAutocompleteProvider(
         // Delegated whole: the combined provider's @ branch keeps the '@',
         // appends the trailing space only for files, and parks the cursor
         // inside a closing quote for quoted directories.
-        return inner.applyCompletion(lines, cursorLine, cursorCol, item, prefix)
+        const applied = inner.applyCompletion(lines, cursorLine, cursorCol, item, prefix)
+        rememberMention(ctx, applied)
+        return applied
       }
       if (prefix.startsWith('#') && extractSkillPrefix(line.slice(0, cursorCol)) !== null) {
         // The skill item's value carries its '#'. The token — unlike a
@@ -544,7 +566,7 @@ function attach(ctx: Context, shared: SharedEditor, isUnloaded: () => boolean): 
     // stash mirror matches `mayfly-input`'s, so bash entries survive a
     // theme-swap rebuild too.
     editor.addToHistory(command)
-    draft.stashHistory(editor.getHistory())
+    draft.stashHistory(editor.getHistory(), editor.getHistoryPastes())
     runShell(ctx, command, isUnloaded)
   }
   editor.onKey = (data) => {

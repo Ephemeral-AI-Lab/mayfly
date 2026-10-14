@@ -51,8 +51,9 @@
  */
 
 import { randomUUID } from 'node:crypto'
+import { existsSync } from 'node:fs'
 import type { Context } from '@deepseek-ai/cordis'
-import type { MayflyScreen, MayflySubmittedDraft } from '../core/types.ts'
+import type { MayflyEditorToken, MayflyScreen, MayflySubmittedDraft } from '../core/types.ts'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { ui, type MayflyFeedback, type MayflyUiNode, type MayflyUiScope } from '@ephemeral-ai/mayfly-ui'
 import { Editor } from '../components/editor.ts'
@@ -78,10 +79,15 @@ import {
 } from './editor-instance.ts'
 import { applyReversibleSubmitTransformers } from './prompt-submit-pipeline.ts'
 import { EditorExtensionRuntime } from './editor-extension-runtime.ts'
-import { mountEditorPlus } from './editor-plus.ts'
-import { resolveExternalEditorCommand, runExternalEditor } from './external-editor.ts'
+import { imageMarker } from './image-marker.ts'
+import { displayPath } from '../internal/paths.ts'
+import { openUiOverlay } from './ui-overlay.ts'
+import { createTokenSource, mentionFile } from './token-source.ts'
+import { mountEditorPlus, sessionCwd } from './editor-plus.ts'
+import { openFileInExternalEditor, resolveExternalEditorCommand, runExternalEditor } from './external-editor.ts'
 import { currentMayflySettings } from './settings.ts'
 import {
+  ACTION_BACKSPACE,
   ACTION_CANCEL,
   ACTION_CYCLE_MODE,
   ACTION_CYCLE_MODEL,
@@ -96,6 +102,7 @@ import {
   ACTION_FOCUS_NEXT,
   ACTION_FOCUS_PREV,
   ACTION_STEER,
+  ACTION_SUBMIT,
 } from './keys.ts'
 import { interactionTranslator } from './locale.ts'
 import { createModelListCache, cycleSessionModel } from './model-commands.ts'
@@ -134,6 +141,11 @@ interface QueuedDraft {
 interface AttachmentReader {
   readImage(ref: Extract<ContentBlock, { readonly type: 'image' }>['attachment'], signal?: AbortSignal): Promise<StoredImageAttachment>
 }
+
+/** The tallest an image preview paints, the shortest it is worth, and the rows the frame around it takes (rules, button, hint). */
+const IMAGE_PREVIEW_ROWS = 40
+const IMAGE_PREVIEW_MIN_ROWS = 4
+const IMAGE_PREVIEW_CHROME_ROWS = 6
 
 /** Convert admitted editor blocks back to the public subagent prompt wire. */
 async function subagentPromptParts(attachments: AttachmentReader | undefined, blocks: readonly ContentBlock[], signal: AbortSignal): Promise<PromptContentPart[]> {
@@ -306,11 +318,11 @@ export function apply(ctx: Context): void {
   function restoreSubmission(value: string, historyText: string | undefined, submitted: MayflySubmittedDraft | undefined): void {
     if (historyText !== undefined) {
       editor.removeLatestHistory?.(historyText)
-      draft.stashHistory(editor.getHistory())
+      stashHistory()
     }
     restoreDraftIntoEditor(submitted, value)
     currentText = editor.getText()
-    draft.stashDraft(currentText)
+    stashCurrentDraft()
   }
 
   /** Restore a subagent submission that never reached its addressed child. */
@@ -383,7 +395,7 @@ export function apply(ctx: Context): void {
   /**
    * Rebuild editable text for a queued message this editor did not submit:
    * text blocks concatenate as stored; each image block mints a fresh
-   * `[image #N]` marker into the paste-image state, so a resubmission
+   * `[image #N size]` marker into the paste-image state, so a resubmission
    * re-splits it into an image block.
    * @param message - the withdrawn message.
    * @returns the editor-ready text.
@@ -394,7 +406,7 @@ export function apply(ctx: Context): void {
       if (block.type === 'text') return block.text
       if (block.type === 'image') {
         state.pasteCount += 1
-        const marker = `[image #${state.pasteCount}]`
+        const marker = imageMarker(state.pasteCount, block.attachment.bytes)
         state.pastedImages.set(marker, block.attachment)
         return marker
       }
@@ -417,7 +429,7 @@ export function apply(ctx: Context): void {
     record?.rollback?.()
     if (record?.historyText !== undefined) {
       editor.removeLatestHistory?.(record.historyText)
-      draft.stashHistory(editor.getHistory())
+      stashHistory()
     }
     // `foreignDraftText` mints fresh image markers — the `??` keeps it lazy
     // so a recorded buffer never triggers the fallback's registrations.
@@ -425,7 +437,7 @@ export function apply(ctx: Context): void {
     if (buffer !== undefined && editor.restoreSubmittedDraft !== undefined) editor.restoreSubmittedDraft(buffer)
     else editor.setText(buffer?.raw ?? foreignDraftText(message))
     currentText = editor.getText()
-    draft.stashDraft(currentText)
+    stashCurrentDraft()
     refreshHint()
     screen.requestRender()
   }
@@ -479,7 +491,7 @@ export function apply(ctx: Context): void {
     // rebuilds this fiber (and the editor) as its own effect, so the new
     // entry must reach the reload stash before the swap tears the
     // component down.
-    draft.stashHistory(editor.getHistory())
+    stashHistory()
     const parsed = parseCommand(line)
     // A displayed conversation without a driven Agent still runs commands
     // against its primary; only its messages follow the displayed access.
@@ -599,13 +611,15 @@ export function apply(ctx: Context): void {
       // markers ride as literal text and keep resolving at submit — the
       // paste-image state is tree-owned and unaffected by setText.
       const seed = editor.getExpandedText()
+      const pasted = [...(editor.captureDraft?.().pastes.values() ?? [])]
       await screen.suspend(async () => {
         const edited = await runExternalEditor(seed, command)
         // :cq / a mid-suspend fiber unload: the draft stays untouched.
         if (edited === undefined || unloaded) return
-        editor.setText(edited.replaceAll('\r\n', '\n').replace(/\n$/, ''))
+        // The pasted blocks that came back unchanged fold into their markers again.
+        editor.setTextFolding(edited.replaceAll('\r\n', '\n').replace(/\n$/, ''), pasted)
         currentText = editor.getText()
-        draft.stashDraft(currentText)
+        stashCurrentDraft()
         refreshHint()
       })
     } catch (error) {
@@ -623,7 +637,7 @@ export function apply(ctx: Context): void {
     const text = editor.getText()
     if (text.length === 0) return false
     editor.addToHistory(text)
-    draft.stashHistory(editor.getHistory())
+    stashHistory()
     editor.setText('')
     currentText = ''
     draft.clearDraft()
@@ -682,11 +696,11 @@ export function apply(ctx: Context): void {
           && ctx.mayflyRetractions.tryRetract(candidate.messageId)) {
           candidate.rollback?.()
           editor.removeLatestHistory?.(candidate.historyText)
-          draft.stashHistory(editor.getHistory())
+          stashHistory()
           queuedDrafts.delete(candidate.messageId)
           restoreDraftIntoEditor(candidate.submitted, candidate.editorText)
           currentText = editor.getText()
-          draft.stashDraft(currentText)
+          stashCurrentDraft()
           retractionCandidate = undefined
           refreshHint()
           screen.requestRender()
@@ -699,6 +713,97 @@ export function apply(ctx: Context): void {
   }
 
   /**
+   * The hint that follows the active token: the keys that act on it, in the notification pane's teaching slot. An image
+   * has no editor to open it in.
+   * @param token - the token the caret is on or Backspace selected, or `undefined` when there is none.
+   */
+  function announceToken(token: MayflyEditorToken | undefined): void {
+    ctx.emit('mayfly/prompt-hint-changed', token === undefined ? undefined : token.kind === 'image' ? t('Ctrl+G shows it · Backspace removes') : t('Ctrl+G opens · Backspace removes'))
+    // The hint shares its place with the notices of this prompt (`pasted 1 image`): the keys of the token on show win.
+    if (token !== undefined) notificationOwner.clearAll()
+  }
+
+  /**
+   * Ctrl-G on an image token: the image in an overlay (a terminal without an image protocol shows its name and size).
+   * @param token - the image token the caret is on.
+   */
+  function showImagePreview(token: MayflyEditorToken): void {
+    const ref = ctx.mayflyInteractionState.pasteImage.pastedImages.get(token.text)
+    if (ref === undefined) return
+    // The picture's first row carries the whole image, so the surface must show it: the image is as tall as the editor's
+    // slot leaves after the frame's own rows, and the overlay may take that whole slot.
+    const rows = Math.max(IMAGE_PREVIEW_MIN_ROWS, Math.min(IMAGE_PREVIEW_ROWS, ctx.mayflyScreen.editorViewport.rows - IMAGE_PREVIEW_CHROME_ROWS))
+    const node = ui.surface({ title: token.text, chrome: 'overlay', padding: 1, child: ui.stack.column([
+      ui.image({ attachmentId: String(ref.attachmentId), alt: token.text, maxRows: rows }),
+      ui.actions({ id: 'image-actions', items: [{ id: 'close', label: t('Close'), dismiss: true }] }),
+    ]) })
+    openUiOverlay(ctx, { id: 'mayfly.image-preview', presentation: 'editor', capturing: true, dismissal: 'discard', maxHeight: '100%', title: token.text, scope: { kind: 'app', targetId: 'image-preview' } }, node, { reopen: 'replace' })
+  }
+
+  /**
+   * Ctrl-G on a token: a mentioned file or folder opens in the editor where it lies; a pasted block opens as text, and
+   * what is saved takes the token's place as plain text.
+   * @param token - the active token.
+   */
+  async function openTokenInEditor(token: MayflyEditorToken): Promise<void> {
+    const command = resolveExternalEditorCommand(process.env, currentMayflySettings(ctx).editorCommand)
+    if (command === undefined) {
+      showFeedback('external-editor', t('set $VISUAL or $EDITOR to edit drafts externally'), 'warning')
+      return
+    }
+    let file: string | undefined
+    if (token.kind === 'mention') {
+      file = mentionFile(token.text, sessionCwd(ctx))
+      if (!existsSync(file)) {
+        showFeedback('external-editor', t('{path} does not exist', { path: displayPath(file) }), 'warning')
+        return
+      }
+    }
+    externalEditorRunning = true
+    try {
+      await screen.suspend(async () => {
+        if (file !== undefined) {
+          await openFileInExternalEditor(file, command)
+          return
+        }
+        const edited = await runExternalEditor(token.content ?? token.text, command)
+        if (edited === undefined || unloaded) return
+        editor.replaceActiveToken(edited.replaceAll('\r\n', '\n').replace(/\n$/, ''))
+        currentText = editor.getText()
+        stashCurrentDraft()
+        refreshHint()
+      })
+    } catch (error) {
+      if (!unloaded) showFeedback('external-editor', error instanceof Error ? error.message : String(error), 'error')
+    } finally {
+      externalEditorRunning = false
+    }
+  }
+
+  /**
+   * Take the focused folder of the `@` list as a mention: the editor completes it (the caret ends inside a closing
+   * quote of a quoted path), a space ends the mention so the list closes, and the path is remembered as a token.
+   * @param value - the folder's completion value, `@dir/` or `@"my dir/"`.
+   */
+  function selectFolderMention(value: string): void {
+    editor.handleInput?.('\t')
+    if (value.endsWith('"') || value.endsWith("'")) editor.handleInput?.('\x1b[C')
+    editor.insertText(' ')
+    ctx.mayflyInteractionState.mentions.add(value)
+    editor.refreshAutocomplete()
+  }
+
+  /** Mirror the history and the paste tables of its entries into the reload stash. */
+  function stashHistory(): void {
+    draft.stashHistory(editor.getHistory(), editor.getHistoryPastes())
+  }
+
+  /** Mirror the live buffer and its paste table into the reload stash. */
+  function stashCurrentDraft(): void {
+    draft.stashDraft(editor.captureDraft?.() ?? { raw: editor.getText(), pastes: new Map() })
+  }
+
+  /**
    * The editor-context key chain, resolved through the keymap before the
    * pi-tui Editor sees the sequence (it swallows Ctrl-C with no behavior,
    * so interception must happen here). Returns true to consume.
@@ -707,6 +812,32 @@ export function apply(ctx: Context): void {
    */
   function handleEditorKey(data: string): boolean {
     const keymap = ctx.mayflyKeymap
+    // Backspace at a token: on a highlighted token it removes it; right after one it selects it first. The editor says
+    // which token is active, and the hint under the prompt follows it. A completion list that reopened behind the caret
+    // (the mention's own) does not keep the key.
+    if (keymap.matches(data, ACTION_BACKSPACE) && editor.tokenBackspace()) return true
+    // Ctrl-G on a token opens that, not the whole draft: a file or a pasted block in the editor, an image in a preview.
+    if (keymap.matches(data, ACTION_EXTERNAL_EDITOR)) {
+      const token = editor.activeToken()
+      if (token?.kind === 'image') {
+        showImagePreview(token)
+        return true
+      }
+      if (token !== undefined) {
+        if (!externalEditorRunning) void openTokenInEditor(token)
+        return true
+      }
+    }
+    // Enter on a folder of the `@` list takes the folder as a mention (Tab goes into it): the path lands in the prompt
+    // as a token and the list closes.
+    if (keymap.matches(data, ACTION_SUBMIT) && editor.isShowingAutocomplete()) {
+      const view = editor.completion()
+      const item = view?.kind === 'files' ? view.items[view.index] : undefined
+      if (item !== undefined && item.label.endsWith('/')) {
+        selectFolderMention(item.value)
+        return true
+      }
+    }
     // Escape: an open autocomplete dropdown owns the key (the Editor closes
     // it); otherwise interrupt a running flow — safe retraction first when
     // eligible — or clear an idle draft.
@@ -825,19 +956,35 @@ export function apply(ctx: Context): void {
   editor.onChange = (text) => {
     currentText = text
     // Mirror every edit so a theme-swap reload loses nothing.
-    draft.stashDraft(text)
+    stashCurrentDraft()
     notificationOwner.clearAll()
     refreshHint()
   }
   editor.onKey = handleEditorKey
+  editor.setTokenSource(createTokenSource(ctx))
+  // The preview's bytes: a pasted image is known by the tree until it is sent, and the stream's own loader answers after.
+  ctx.effect(() => ctx.get('mayflyUiImages')?.provide(async (attachmentId) => {
+    const ref = [...ctx.mayflyInteractionState.pasteImage.pastedImages.values()].find(candidate => String(candidate.attachmentId) === attachmentId)
+    const attachments = ctx.get('attachments') as AttachmentReader | undefined
+    if (ref === undefined || attachments === undefined) return undefined
+    try {
+      return { data: (await attachments.readImage(ref)).data, mediaType: ref.mediaType, ...ref.name === undefined ? {} : { name: ref.name } }
+    } catch {
+      return undefined
+    }
+  }) ?? (() => {}))
+  editor.onTokenChange = announceToken
+  ctx.effect(() => () => editor.setTokenSource(undefined))
 
   // Restore the draft stashed before a reload: plain text only — setText
   // fires neither a submit nor an input-mode transition. The explicit
   // re-sync mirrors submitPrompt's caution about component-owned onChange
   // timing.
   const stashed = draft.getStashedDraft()
-  if (stashed.length > 0) {
-    editor.setText(stashed)
+  if (stashed.raw.length > 0) {
+    // The paste table rides along, so a `[paste #N]` marker still expands after the reload.
+    if (editor.restoreSubmittedDraft !== undefined) editor.restoreSubmittedDraft(stashed)
+    else editor.setText(stashed.raw)
     currentText = editor.getText()
     refreshHint()
   }
@@ -845,7 +992,9 @@ export function apply(ctx: Context): void {
   // editor's Up-recall entries died with it when the reload rebuilt this
   // fiber. The stash is newest-first and pi-tui prepends, so the replay
   // walks it reversed to land the same order.
-  for (const entry of [...draft.getStashedHistory()].reverse()) editor.addToHistory(entry)
+  const stashedHistory = draft.getStashedHistory()
+  const stashedPastes = draft.getStashedHistoryPastes()
+  for (let index = stashedHistory.length - 1; index >= 0; index -= 1) editor.addToHistory(stashedHistory[index]!, stashedPastes[index])
 
   // A session switch settles navigation notices such as "resuming" and
   // "creating rewind branch". Clear the old session's transient text before
@@ -980,7 +1129,7 @@ export function apply(ctx: Context): void {
   ctx.effect(() => ctx.on('mayfly/subagent-reply-sent', sent => {
     if (editor.getText().trim() !== sent) return
     editor.addToHistory(sent)
-    draft.stashHistory(editor.getHistory())
+    stashHistory()
     editor.setText('')
     currentText = ''
     draft.clearDraft()

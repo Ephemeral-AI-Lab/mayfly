@@ -3,7 +3,7 @@
  * It shows the notification lane's records (the commands' feedback, an editor extension's report, and the notices
  * `notices.ts` raises from the session's facts) one at a time, the most severe and then the newest, scoped to the app
  * or the current session, with a muted `+N` for the ones waiting behind it. The lane keeps the records and their
- * lifetimes (`✓` and `ℹ` leave after five seconds of visible time, `⚠` and `✗` stay), so the pane holds no timer: it
+ * lifetimes (`✓` and information leave after five seconds of visible time, `⚠` and `✗` stay), so the pane holds no timer: it
  * reads the lane when the lane or the current Agent changes and publishes only when the notice on the row changed.
  * When the stream is scrolled away from its tail, the row also carries the chip back to it, centered, announced by the
  * surface renderer (`mayfly/content-tail-changed`); the notice yields the room the chip needs. With no notice the row
@@ -48,13 +48,17 @@ export function mountNotificationPane(ctx: Context, t: MayflyTranslate): void {
   const factsService = ctx.get('mayflySessionFacts') as SessionFactsService | undefined
   /** The words of the chip back to the tail of the stream while the view is scrolled away, else `undefined`. */
   let chip: string | undefined
+  /** What the prompt awaits (the clipboard, the file search), else `undefined`. */
+  let promptWait: string | undefined
+  /** What the prompt teaches about the token its caret is on (`Ctrl+G opens · Backspace removes`), else `undefined`. */
+  let promptHint: string | undefined
   /** Where keyboard focus is: the hint of the keys that leave the prompt only teaches while focus is on it. */
   let mode: MayflyFocusMode = 'prompt'
   const current = (): NotificationRowFacts => {
     const agent = factsService?.currentAgent
     const notice = interaction === undefined ? undefined : selectNotification(interaction.notificationSnapshot(), agent == null ? undefined : String(agent.id))
     // With no notice the row teaches where focus can go from the prompt: up into the conversation, down to the status bar.
-    return { ...notice === undefined ? {} : { notice }, ...mode === 'prompt' ? notice === undefined ? { hint: t('Alt+↑ conversation · Alt+↓ bar') } : {} : mode === 'conversation' ? { keys: t('Enter expand · c copy · Ctrl+C JSON · Ctrl+G editor · ↑/↓ select · / ? search · Esc back') } : mode === 'search-select' ? { keys: t('Enter expand · c copy · Ctrl+C JSON · ↑/↓ or n/N match · / ? new search · Esc end search') } : {}, ...chip === undefined ? {} : { chip } }
+    return { ...notice === undefined ? {} : { notice }, ...mode === 'prompt' ? notice === undefined ? { ...promptWait === undefined ? {} : { wait: promptWait }, hint: promptHint ?? t('Alt+↑ conversation · Alt+↓ bar') } : {} : mode === 'conversation' ? { keys: t('Enter expand · c copy · Ctrl+C JSON · Ctrl+G editor · ↑/↓ select · / ? search · Esc back') } : mode === 'search-select' ? { keys: t('Enter expand · c copy · Ctrl+C JSON · ↑/↓ or n/N match · / ? new search · Esc end search') } : {}, ...chip === undefined ? {} : { chip } }
   }
   let shape = JSON.stringify(current() ?? null)
   const pane = ctx.mayflyPanes.register({
@@ -77,6 +81,14 @@ export function mountNotificationPane(ctx: Context, t: MayflyTranslate): void {
     mode = next
     refresh()
   })
+  const offHint = ctx.on('mayfly/prompt-hint-changed', (next) => {
+    promptHint = next
+    refresh()
+  })
+  const offWait = ctx.on('mayfly/prompt-wait-changed', (next) => {
+    promptWait = next
+    refresh()
+  })
   const offTail = ctx.on('mayfly/content-tail-changed', (label) => {
     chip = label
     refresh()
@@ -86,6 +98,8 @@ export function mountNotificationPane(ctx: Context, t: MayflyTranslate): void {
     offLane?.()
     offAgent?.()
     offTail()
+    offWait()
+    offHint()
     offMode()
     pane.dispose()
   })

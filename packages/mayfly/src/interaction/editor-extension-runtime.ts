@@ -26,6 +26,7 @@ import type { MayflyEditorShellNode } from '../core/ui-contracts.ts'
 import { validateMayflyUiNode } from '../core/ui-validator.ts'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import { printableKey } from '../core/key-actions.ts'
+import { IMAGE_MARKER } from './image-marker.ts'
 import type { SubmitTransformation } from './prompt-submit-pipeline.ts'
 
 const MAX_COMPLETIONS = 200
@@ -34,7 +35,6 @@ const MAX_SUBMIT_TEXT = 20_000
 const MAX_NOTICE_TEXT = 2_000
 const COMPLETION_TIMEOUT_MS = 5_000
 const SUBMIT_TIMEOUT_MS = 30_000
-const IMAGE_MARKER = /\[image #\d+\]/gu
 const TOKEN_DELIMITERS = new Set([' ', '\t', '"', "'", '='])
 
 interface AttachmentBinding {

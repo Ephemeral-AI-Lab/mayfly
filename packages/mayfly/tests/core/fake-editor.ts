@@ -38,6 +38,13 @@ export function createFakeEditor(): MayflyEditor {
     setAutocompleteProvider: () => {},
     isShowingAutocomplete: () => false,
     completion: () => undefined,
+    setTokenSource: () => {},
+    tokenBackspace: () => false,
+    getHistoryPastes: () => [],
+    setTextFolding: () => {},
+    onTokenChange: undefined,
+    activeToken: () => undefined,
+    replaceActiveToken: () => {},
     refreshAutocomplete: () => {},
     insertText: (text: string) => { value += text; editor.onChange?.(value) },
   } as unknown as MayflyEditor

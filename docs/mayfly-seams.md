@@ -94,7 +94,7 @@ The UI events below are declared in `core/types.ts` and are unfiltered. Each has
 The notification lane is the frontend's internal record of notices, not a public service. A producer takes an owner
 from `createInteractionNotificationOwner(ctx, label)` (`interaction/notifications.ts`) and reports or clears its
 records by id; the owner's records retire with its Fiber. `transcript/pane-notification.ts` shows one record on the
-notification row: the most severe, then the newest, for the app or the current session. `✓` and `ℹ` records leave
+notification row: the most severe, then the newest, for the app or the current session. `✓` and information records leave
 after five seconds of visible time; `⚠` and `✗` records stay until cleared. The notices the session's facts raise
 (`transcript/notices.ts`) report into the same lane.
 

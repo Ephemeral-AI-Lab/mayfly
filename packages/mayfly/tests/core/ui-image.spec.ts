@@ -221,7 +221,7 @@ describe('MayflyUiImagesService', () => {
 function paint(node: ReturnType<typeof ui.image>, options: { readonly protocol?: boolean, readonly images?: MayflyUiImagesService | undefined, readonly repaint?: () => void } = {}) {
   const components = new FakeMayflyComponents()
   components.imageProtocolActive = options.protocol ?? true
-  const painter = new UiImagePainter(node, components, colors, options.images, options.repaint ?? (() => {}))
+  const painter = new UiImagePainter(node, components, colors, options.images, options.repaint ?? (() => {}), () => ['loading'])
   return { components, painter }
 }
 

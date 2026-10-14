@@ -8,7 +8,7 @@
 
 import { REPLAYS } from './replays.mjs'
 import { compile } from './timeline.mjs'
-import { checkpoint, idle, key, measure, play, resize, type, until, wait, wheel } from './steps.mjs'
+import { checkpoint, idle, key, measure, paste, play, resize, type, until, wait, wheel } from './steps.mjs'
 
 /** The size a scenario runs at unless it names its own. */
 export const DEFAULT_SIZE = Object.freeze([120, 40])
@@ -1001,6 +1001,145 @@ const EDITOR_REVIEW = {
   },
 }
 
+/** The files an `@` mention can name in the token scenarios, and the notes the pasted block holds. */
+const TOKEN_FILES = {
+  'packages/mayfly/src/core/ui-prompt.ts': '// the prompt painter\n',
+  'packages/mayfly/src/core/ui-patterns.ts': '// the surface patterns\n',
+  'docs/notes.md': '# Notes\n',
+}
+const NOTES = Array.from({ length: 14 }, (_, index) => `note ${String(index + 1)}: the hero copy says one thing and the install line says another`).join('\n')
+/** What a token scenario begins with: the session named, then a message typed up to a pasted image. */
+const WITH_IMAGE = [...RENAME('Update the landing page hero'), type('compare '), key('ctrl+v'), until('KB]')]
+const TOKEN_ENV = { clipboard: { image: 84 }, workspace: TOKEN_FILES }
+const TOKEN_REVIEW = {
+  tokens: {
+    scene: 15,
+    reference: 'prototype scene 15 (Editor: tokens, Backspace removes) · component-library §5.2 · part 4b.1 · `Editor` in mayfly-components.mjs',
+    implemented: [
+      'A pasted image, a pasted block, and an accepted `@` mention are tokens inside the text, where they were put: `[image #1 84 KB]`, `[paste #1 +14 lines]`, `@packages/mayfly/src/core/ui-prompt.ts`. The brackets and the size are muted, the label (`image #1`, `paste #1`) and a mention\'s path are accent. A short paste (under 11 lines and 1000 characters) stays plain text.',
+      'The left and right arrows step over a token as one unit. While the cursor rests on a token it is highlighted (the whole token inverse) and the row above the prompt names the keys, muted and without a symbol: `Ctrl+G opens · Backspace removes` (a pasted image has no editor to open in: `Backspace removes it`).',
+      'Backspace on a highlighted token removes it at once. With the caret right after a token, the first Backspace highlights it and the next removes it; any other key puts the highlight away. A token cut by the right edge is painted on both rows.',
+      'An `@` mention is a token when it was accepted from the list (Tab or Enter) or when it names a file or folder that exists, so a path typed out in full is one too; `@nothing-here` stays text. After the accept the caret is behind the trailing space, so the first Backspace removes the space.',
+    ],
+    focus: [
+      { look: 'The three token kinds in their tones, and a short paste that is not a token', how: 'checkpoints `image`, `short`, `paste`, `mention-list`, `mention`' },
+      { look: 'A token at the wrap edge at 60 and 40 columns', how: 'checkpoints `mention-60`, `mention-40`' },
+      { look: 'Backspace after a mention: the space goes, then the token is highlighted (the hint names the keys); with the cursor on it, one Backspace removes it', how: 'checkpoints `mention-selected`, `mention-removed`' },
+      { look: 'Backspace on a pasted block and on the image: selected, then gone; the numbers do not shift', how: 'checkpoints `paste-selected`, `paste-removed`, `image-selected`, `image-removed`' },
+      { look: 'The left arrow steps over the whole token and the cursor rests on it: the token is highlighted and the hint names the keys (Ctrl+G opens it, Backspace removes it); the right arrow steps over it again and the highlight goes', how: 'checkpoints `focused`, `stepped`' },
+      { look: 'Try it live: Ctrl+V (the clipboard holds an 84 KB image), a long paste, `@ui-pr` + Tab, then Backspace', how: '`pnpm run scenario tokens`' },
+    ],
+    differs: [
+      'The prototype keeps the tokens in a strip before the buffer and selects the last one on an empty buffer; here they stay inline in the text (owner decision for 4b.1), so Backspace acts at the token under the caret.',
+      'The image token shows its size (`84 KB`) and a serial number, a paste its line count (pi-tui\'s own), a mention its relative path (owner decision).',
+    ],
+    pending: ['The queue line and recall (4c), the placeholder ladder (4e.1), the `@` list\'s keys and `Ctrl+G` on a file (4d.3).'],
+  },
+  tokensSubmit: {
+    scene: 15,
+    reference: 'prototype scene 15 (Editor: Sent with N attachments) · part 4b.2',
+    implemented: [
+      'What is sent is what is sent today: the image marker splits the message into text and image blocks in typed order, a pasted block is sent as its full text, a mention is sent as its `@path` text.',
+      'A token you removed sends nothing: the message carries the text left.',
+    ],
+    focus: [
+      { look: 'The draft with all three tokens, then the sent message in the stream (the image shows as its attachment, the paste as the full text)', how: 'checkpoints `draft`, `sent`' },
+      { look: 'A message whose image token was removed before sending has no image', how: 'checkpoints `draft-removed`, `sent-removed`' },
+    ],
+    differs: [],
+    pending: ['Withdrawing a queued message back into the editor with its tokens (4c.2 recall).'],
+  },
+  tokensFolder: {
+    scene: 15,
+    reference: 'part 4b.1 (the `@` mention of a folder) · part 4d.3 owns the rest of the `@` list',
+    implemented: [
+      'In the `@` list a folder is a row ending in `/`. Enter takes the folder: its path lands in the prompt as a mention token (`@packages/`), a space follows, and the list closes. Tab goes into the folder instead and lists what is inside, as before.',
+      'The folder token is removed like any token: Backspace selects it, the next Backspace removes it.',
+    ],
+    focus: [
+      { look: 'The list with a folder row, then Tab drilling into it', how: 'checkpoints `folder-list`, `drilled`' },
+      { look: 'Enter takes the folder: a token, a space, the list closed; and a second folder in the same message', how: 'checkpoints `folder`, `two-folders`' },
+      { look: 'A folder token selected and removed', how: 'checkpoints `folder-selected`, `folder-removed`' },
+      { look: 'A file still completes as before (a token, a space)', how: 'checkpoint `file`' },
+    ],
+    differs: ['The prototype lists files only; the folder choice (Enter takes it, Tab goes in) is the owner\'s request for 4b.'],
+    pending: ['`Ctrl+G` opening a file and the path cut in the list (4d.3).'],
+  },
+  tokensOpen: {
+    scene: 15,
+    reference: 'part 4b.1 (Ctrl+G on a token) · part 4d.3 owns the rest of the `@` list',
+    implemented: [
+      'With the cursor on a mentioned file, `Ctrl+G` opens that file in `$EDITOR` where it lies; with it on a pasted block, `Ctrl+G` opens the block\'s full text, and what is saved takes the token\'s place (a block that is still big folds into a token again). Elsewhere `Ctrl+G` still edits the whole draft.',
+      'A pasted image has no editor to open in: no hint, and `Ctrl+G` edits the whole draft.',
+    ],
+    focus: [
+      { look: 'The cursor on a mention: highlighted, the notice names Ctrl+G', how: 'checkpoint `mention-focused`' },
+      { look: 'Ctrl+G opened the file and the prompt is as it was', how: 'checkpoint `mention-opened`' },
+      { look: 'The cursor on the pasted block, then the edited block as a token again (its text now has the appended word)', how: 'checkpoints `paste-focused`, `paste-edited`' },
+    ],
+    differs: ['The scenario\'s editor appends `(edited)` to the first line of whatever it opens, and the workspace file it opens is a scratch copy.'],
+    pending: [],
+  },
+  tokensWaiting: {
+    scene: 15,
+    reference: 'the unified loader (component-library §2.4, `ui.loader` gap) · part 4b.1',
+    implemented: [
+      'Every wait of the prompt shows the unified loader (`⣾` and its words, one clock, frozen under reduced motion) in the notification row above the prompt, never for an answer that comes in under 150 ms: `Reading the clipboard…` behind Ctrl+V, `Searching files…` behind `@`. The loader leaves when the answer comes, and the token (or the failure notice) takes its place.',
+      'An `image` node shows `⣾ Loading image…` while its bytes are read (the Ctrl+G preview, and a pasted image in the stream), then the picture or the text fallback.',
+      'Information notices have no symbol any more (`draft cleared · ↑ restores`); `✓`, `⚠`, and `✗` keep theirs.',
+    ],
+    focus: [
+      { look: 'The clipboard answers after 1.5 s: the loader and its words in the row above the prompt, then the token', how: 'checkpoints `reading`, `read`' },
+      { look: 'An information notice has no symbol', how: 'checkpoint `cleared` (Ctrl+C clears the draft)' },
+    ],
+    differs: ['The scenario\'s clipboard is a shim that sleeps; the file search and the image preview answer too fast to catch in a scenario, and show the same loader when they are slow.'],
+    pending: [],
+  },
+  tokensImage: {
+    scene: 15,
+    reference: 'part 4b.1 (the image token) · the terminal image rendering is Mayfly\'s `image` node (3a.4)',
+    implemented: [
+      'An image token is selected by the cursor like the others: the arrows step over it, it is highlighted, and the hint above the prompt says `Ctrl+G shows it · Backspace removes`. The `pasted 1 image` notice leaves when the cursor reaches the token, so the hint is visible.',
+      '`Ctrl+G` with the cursor on an image token opens an overlay with the image (the `image` node of the stream: drawn in a terminal that has an image protocol, its name and size as text elsewhere). `Esc` or Close returns to the prompt with the draft untouched.',
+    ],
+    focus: [
+      { look: 'The cursor on the image: highlighted, the hint names Ctrl+G', how: 'checkpoints `focused`, `focused-mid` (with text after it)' },
+      { look: 'The preview overlay', how: 'checkpoint `preview`' },
+      { look: 'Back at the prompt with the token and the draft as they were', how: 'checkpoint `closed`' },
+    ],
+    differs: ['The scenario terminal has no image protocol, so the preview shows the text fallback; open it in a terminal that draws images (the `--png` frames do not) to see the picture.'],
+    pending: [],
+  },
+  tokensHistory: {
+    scene: 15,
+    reference: 'part 4b.2 (history keeps the tokens)',
+    implemented: [
+      'A sent message that held a pasted block is kept in the history as it was typed: `Up` on an empty prompt brings the `[paste #1 +14 lines]` token back (not its fourteen lines), and sending it again sends the full text. `Down` walks back to the draft you had, tokens included.',
+    ],
+    focus: [
+      { look: 'The sent message in the stream carries the full pasted text', how: 'checkpoint `sent`' },
+      { look: 'Up brings the token back, one row, not fourteen', how: 'checkpoint `recalled`' },
+      { look: 'Sending the recalled message sends the full text again', how: 'checkpoint `resent`' },
+      { look: 'Walking Up and Down keeps the draft and its token', how: 'checkpoints `draft`, `up-with-draft`, `down-to-draft`' },
+    ],
+    differs: [],
+    pending: ['The queue first, then the history, with the `↑ history 2/4` counter (4c.2).'],
+  },
+  tokensEditor: {
+    scene: 15,
+    reference: 'part 4b.2 (the draft through the external editor)',
+    implemented: [
+      '`Ctrl+G` hands the draft to `$EDITOR`: a pasted block is written as its full text, an image marker and a mention as the text they are. The scenario\'s editor appends ` (edited)` to the first line.',
+      'Back in the prompt the image marker is a token again (the tree still holds its image), a mention too, and a pasted block that came back unchanged folds into its `[paste #1 +14 lines]` token again. A block you changed in the editor stays plain text.',
+    ],
+    focus: [
+      { look: 'The draft before and after the round trip', how: 'checkpoints `before`, `edited` (the image, the paste and the mention are tokens, and the appended word is in the text)' },
+    ],
+    differs: ['The theme reload of the draft (the paste table stays with the draft) cannot be shown without a terminal appearance change; it runs when `Auto` follows the system theme.'],
+    pending: [],
+  },
+}
+
 const SENTENCE = 'the quick brown fox jumps over the lazy dog and keeps typing until the prompt wraps onto a second row of the editor'
 /** Open a panel by its command, measure its cursor keys, and close it. */
 const nav = command => [type(command), key('enter'), measure(`nav ${command}`, [key('down', { repeat: 20 }), key('up', { repeat: 20 })]), key('esc'), key('esc'), key('ctrl+c')]
@@ -1143,6 +1282,147 @@ export const CATALOG = Object.freeze({
       ...RENAME('Update the landing page hero'), checkpoint('prompt'),
       type('!'), checkpoint('shell'),
       type('ls -la docs'), checkpoint('command'),
+    ],
+  },
+  // Tokens (4b.1): the three kinds in their tones, the wrap edge, and the two-key removal.
+  tokens: {
+    summary: 'tokens inline in the text: a pasted image, a pasted block, and an accepted `@` mention in their tones, a token at the wrap edge, and Backspace selecting and then removing each',
+    source: { idle: true },
+    ...TOKEN_ENV,
+    covers: EDITOR,
+    sizes: EDITOR_SIZES,
+    review: TOKEN_REVIEW.tokens,
+    script: [
+      ...WITH_IMAGE, checkpoint('image'),
+      key('left'), checkpoint('image-focused'), key('right'),
+      type(' note: '), paste('a short note'), checkpoint('short'),
+      type(' with '), paste(NOTES), checkpoint('paste'),
+      type(' and @ui-pr'), until('ui-prompt.ts'), checkpoint('mention-list'),
+      key('tab'), checkpoint('mention'),
+      resize(60, 24), checkpoint('mention-60'),
+      resize(40, 24), checkpoint('mention-40'),
+      resize(96, 24),
+      key('backspace'), key('backspace'), checkpoint('mention-selected'),
+      key('left'), checkpoint('focused'),
+      key('right'), checkpoint('stepped'),
+      key('left'), key('backspace'), checkpoint('mention-removed'),
+      key('backspace', { repeat: 5 }), key('backspace'), checkpoint('paste-selected'),
+      key('backspace'), checkpoint('paste-removed'),
+      key('backspace', { repeat: 25 }), key('backspace'), checkpoint('image-selected'),
+      key('backspace'), checkpoint('image-removed'),
+    ],
+  },
+  // Submit expansion (4b.2): what is sent is what is sent today.
+  tokensSubmit: {
+    summary: 'a message with an image, a pasted block, and a mention sent as it was typed, then a message whose image token was removed first',
+    source: { idle: true },
+    ...TOKEN_ENV,
+    covers: [...EDITOR, `${INTERACTION}paste-image.ts`, `${INTERACTION}prompt-submit-pipeline.ts`],
+    sizes: [[96, 40]],
+    review: TOKEN_REVIEW.tokensSubmit,
+    script: [
+      ...WITH_IMAGE, type(' with '), paste(NOTES), type(' and @ui-pr'), until('ui-prompt.ts'), key('tab'), type('then fix the hero'), checkpoint('draft'),
+      key('enter'), checkpoint('sent'),
+      type('and again '), key('ctrl+v'), until('KB]'), key('backspace'), key('backspace'), type('only the words'), checkpoint('draft-removed'),
+      key('enter'), checkpoint('sent-removed'),
+    ],
+  },
+  // A folder as a mention (4b.1): Enter takes it, Tab goes into it.
+  tokensFolder: {
+    summary: 'an `@` folder: Enter puts its path into the prompt as a token and closes the list, Tab goes into it; a file completes as before',
+    source: { idle: true },
+    ...TOKEN_ENV,
+    covers: EDITOR,
+    sizes: [[96, 24], [40, 24]],
+    review: TOKEN_REVIEW.tokensFolder,
+    script: [
+      ...RENAME('Update the landing page hero'),
+      type('see @pack'), until('packages/'), checkpoint('folder-list'),
+      key('tab'), checkpoint('drilled'),
+      key('ctrl+c'), type('see @pack'), until('packages/'), key('enter'), checkpoint('folder'),
+      type('and @do'), until('docs/'), key('enter'), checkpoint('two-folders'),
+      key('backspace'), key('backspace'), checkpoint('folder-selected'),
+      key('backspace'), checkpoint('folder-removed'),
+      key('ctrl+c'), type('read @ui-pr'), until('ui-prompt.ts'), key('enter'), checkpoint('file'),
+    ],
+  },
+  // Ctrl+G on a token (4b.1): a mentioned file opens where it lies, a pasted block opens as text.
+  tokensOpen: {
+    summary: 'Ctrl+G with the cursor on a mentioned file (the file opens) and on a pasted block (its text opens and the edit replaces the token)',
+    source: { idle: true },
+    ...TOKEN_ENV,
+    editor: { append: '(edited)' },
+    covers: [...EDITOR, `${INTERACTION}external-editor.ts`, `${INTERACTION}token-source.ts`],
+    sizes: [[96, 24]],
+    review: TOKEN_REVIEW.tokensOpen,
+    script: [
+      type('open '), paste(NOTES), type(' and @ui-pr'), until('ui-prompt.ts'), key('tab'),
+      key('left'), key('left'), checkpoint('mention-focused'),
+      key('ctrl+g'), wait(800), checkpoint('mention-opened'),
+      key('home'), key('right', { repeat: 5 }), checkpoint('paste-focused'),
+      key('ctrl+g'), wait(800), checkpoint('paste-edited'),
+    ],
+  },
+  // The unified loader on the prompt's waits, and an information notice without a symbol.
+  tokensWaiting: {
+    summary: 'a slow clipboard: the loader and `Reading the clipboard…` above the prompt, then the image token; Ctrl+C shows an information notice without a symbol',
+    source: { idle: true },
+    clipboard: { image: 84, delayMs: 1500 },
+    workspace: TOKEN_FILES,
+    covers: [...EDITOR, `${INTERACTION}prompt-wait.ts`, 'packages/mayfly/src/transcript/pane-notification.ts', 'packages/mayfly/src/components/notification-line.ts'],
+    sizes: [[96, 24], [40, 24]],
+    review: TOKEN_REVIEW.tokensWaiting,
+    script: [
+      type('compare '), key('ctrl+v'), wait(600), checkpoint('reading'),
+      until('KB]'), checkpoint('read'),
+      key('ctrl+c'), checkpoint('cleared'),
+    ],
+  },
+  // The image token (4b.1): selected by the cursor, and Ctrl+G shows it.
+  tokensImage: {
+    summary: 'an image token: the cursor selects it, the hint names Ctrl+G, and Ctrl+G opens the image in an overlay',
+    source: { idle: true },
+    ...TOKEN_ENV,
+    covers: EDITOR,
+    sizes: [[96, 24], [60, 24]],
+    review: TOKEN_REVIEW.tokensImage,
+    script: [
+      ...WITH_IMAGE, key('left'), checkpoint('focused'),
+      key('ctrl+g'), until('Close'), checkpoint('preview'),
+      key('esc'), checkpoint('closed'),
+      key('right'), type(' tail'), key('home'), key('right', { repeat: 8 }), checkpoint('focused-mid'),
+    ],
+  },
+  // History (4b.2): a recalled message keeps its pasted block as a token.
+  tokensHistory: {
+    summary: 'a message with a pasted block is sent; Up brings back the token, not the text; Down returns to the draft with its token',
+    source: { idle: true },
+    ...TOKEN_ENV,
+    covers: EDITOR,
+    sizes: [[96, 40]],
+    review: TOKEN_REVIEW.tokensHistory,
+    script: [
+      ...RENAME('Update the landing page hero'),
+      type('read '), paste(NOTES), type(' then fix the hero'), key('enter'), checkpoint('sent'),
+      key('up'), checkpoint('recalled'),
+      key('enter'), checkpoint('resent'),
+      type('a new draft '), paste(NOTES.replace(/note/g, 'item')), checkpoint('draft'),
+      key('home'), key('up'), checkpoint('up-with-draft'),
+      key('down'), checkpoint('down-to-draft'),
+    ],
+  },
+  // The external editor (4b.2): the draft keeps its tokens through Ctrl+G.
+  tokensEditor: {
+    summary: 'Ctrl+G with an image, a pasted block, and a mention in the draft: the editor appends a word, and the image and the mention are still tokens',
+    source: { idle: true },
+    ...TOKEN_ENV,
+    editor: { append: '(edited)' },
+    covers: [...EDITOR, `${INTERACTION}external-editor.ts`],
+    sizes: [[96, 24]],
+    review: TOKEN_REVIEW.tokensEditor,
+    script: [
+      ...WITH_IMAGE, type(' with'), key('ctrl+j'), paste(NOTES), type(' and @ui-pr'), until('ui-prompt.ts'), key('tab'), checkpoint('before'),
+      key('ctrl+g'), wait(800), checkpoint('edited'),
     ],
   },
   gallery: {

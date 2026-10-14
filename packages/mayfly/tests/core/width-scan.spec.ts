@@ -38,6 +38,13 @@ function scanEditor(text: string): MayflyEditor {
     submit: () => {},
     isShowingAutocomplete: () => false,
     completion: () => undefined,
+    setTokenSource: () => {},
+    tokenBackspace: () => false,
+    getHistoryPastes: () => [],
+    setTextFolding: () => {},
+    onTokenChange: undefined,
+    activeToken: () => undefined,
+    replaceActiveToken: () => {},
     refreshAutocomplete: () => {},
     getText: () => text,
     setText: () => {},
@@ -143,8 +150,8 @@ describe('core width-scan', () => {
         prefix: '/',
         index: 0,
         items: [
-          { label: `/${text.slice(0, 30)}`, detail: text },
-          { label: '/short', detail: 'fits' },
+          { label: `/${text.slice(0, 30)}`, value: `/${text.slice(0, 30)}`, detail: text },
+          { label: '/short', value: '/short', detail: 'fits' },
         ],
       }
       for (const width of MIGRATION_WIDTHS) {

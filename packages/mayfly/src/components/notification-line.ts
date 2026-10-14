@@ -24,14 +24,16 @@ export interface NotificationFacts {
   readonly waiting?: number
 }
 
-const GLYPHS: Readonly<Record<NotificationSeverity, readonly [string, MayflyTone]>> = {
-  success: ['✓', 'success'], info: ['ℹ', 'primary'], warning: ['⚠', 'warning'], error: ['✗', 'danger'],
+/** The glyph and tone of a notice; information has none, its words are the whole notice. */
+const GLYPHS: Readonly<Record<Exclude<NotificationSeverity, 'info'>, readonly [string, MayflyTone]>> = {
+  success: ['✓', 'success'], warning: ['⚠', 'warning'], error: ['✗', 'danger'],
 }
 
 /** The spans of a notice: the glyph, then the message (in the severity's tone for a warning or an error). */
 function spans(facts: NotificationFacts): readonly MayflyInlineSpan[] {
+  if (facts.severity === 'info') return [{ text: facts.message }]
   const [glyph, tone] = GLYPHS[facts.severity]
-  const quiet = facts.severity === 'success' || facts.severity === 'info'
+  const quiet = facts.severity === 'success'
   return [
     { text: `${glyph} `, tone },
     quiet ? { text: facts.message } : { text: facts.message, tone },
@@ -62,6 +64,8 @@ export interface NotificationRowFacts {
   readonly notice?: NotificationFacts
   /** The translated words of the chip that returns to the tail of the stream (`Back to bottom · Ctrl+↓`). */
   readonly chip?: string
+  /** What the prompt awaits (`Reading the clipboard…`), shown with the unified loader while there is no notice. */
+  readonly wait?: string
   /** What the row teaches while it has no notice: the keys that move focus off the prompt, muted, in the notice's place. */
   readonly hint?: string
   /** The keys of the mode that holds focus (the conversation's row cursor), muted at the stream's left margin; a notice keeps the right. */
@@ -78,9 +82,15 @@ function hintCell(hint: string): MayflyUiNode {
   return ui.stack.row([ui.child(ui.richText([{ text: hint, tone: 'muted' }]), { priority: 0, band: 'right', overflow: 'truncate' })])
 }
 
-/** The right side of the row: the notice, else the hint, else nothing. */
+/** The wait, laid out as a notice is: the loader cell (one clock, frozen under reduced motion), then the words. */
+function waitCell(message: string): MayflyUiNode {
+  return ui.stack.row([ui.child(ui.richText([{ text: '', motion: 'loader', variant: 'gap' }, { text: ` ${message}` }]), { priority: 0, band: 'right', overflow: 'truncate' })])
+}
+
+/** The right side of the row: the notice, else what the prompt awaits, else the hint, else nothing. */
 function rightOf(facts: NotificationRowFacts | undefined): MayflyUiNode | undefined {
   if (facts?.notice !== undefined) return noticeCell(facts.notice)
+  if (facts?.wait !== undefined) return waitCell(facts.wait)
   return facts?.hint === undefined ? undefined : hintCell(facts.hint)
 }
 

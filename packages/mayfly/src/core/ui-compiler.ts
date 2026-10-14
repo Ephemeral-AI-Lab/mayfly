@@ -709,7 +709,9 @@ function diagramMarkdownNode(node: MayflyDiagramNode): Extract<MayflyUiNode, { r
 }
 
 function imageComponent(node: MayflyImageNode, options: RuntimeCompilerOptions): MayflyComponent {
-  const painter = new UiImagePainter(node, options.components, options.colors, options.listRuntime.images, options.listRuntime.repaint)
+  const presentation = options.components.presentation
+  const pending = (width: number): string[] => renderLoader({ kind: 'loader', variant: 'gap', message: coreText(options, 'Loading image…') }, width, options.colors, motionFrame(options), presentation?.glyphs, presentation?.reducedMotion === true)
+  const painter = new UiImagePainter(node, options.components, options.colors, options.listRuntime.images, options.listRuntime.repaint, pending)
   const component = staticComponent(width => painter.render(width), options)
   return { render: component.render, invalidate: () => { painter.invalidate() } }
 }
@@ -2377,8 +2379,15 @@ export class MayflyUiSurfaceRuntime {
       return
     }
   }
-  /** Asks the renderer to paint this surface again: an image's bytes arrived. */
-  readonly repaint = (): void => { if (this.live) this.requestRender?.() }
+  /**
+   * Asks the renderer to paint this surface again: an image's bytes arrived. A list row that holds the image was
+   * painted from its item and key alone, so the memo of painted rows is dropped with the request.
+   */
+  readonly repaint = (): void => {
+    if (!this.live) return
+    this.rows.clear()
+    this.requestRender?.()
+  }
   /** The scroll position a region keeps across publishes. */
   /**
    * The place of the scroll region at `key`, made the most recent. A region is remembered by its position in the tree, so

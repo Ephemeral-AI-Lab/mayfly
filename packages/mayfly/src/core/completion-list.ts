@@ -41,6 +41,7 @@ export class CompletionList extends SelectList {
       kind: this.prefix.startsWith('/') ? 'commands' : this.prefix.startsWith('@') ? 'files' : 'completions',
       items: filteredItems.map(item => ({
         label: item.label || item.value,
+        value: item.value,
         ...(item.description === undefined ? {} : { detail: item.description }),
       })),
       index: selectedIndex,

@@ -115,7 +115,7 @@ keeps its row and names its successor, because the Phase 1 record cites it.
 | 6 Onboarding permissions step | Ships, with the native presets (D3); the deployment's current preset is marked `recommended`. |
 | 7 Delete session | Dropped for now (D5). |
 | 8 Account balance | `deepseekAccount.getBalance()` when signed in with the DeepSeek account; API-key providers hide the row (the design's *unsupported*). No identity is shown. |
-| 9 Lifetimes | 5 s of visible time for `✓` and `ℹ`; the 8 s undo is unused after D5. |
+| 9 Lifetimes | 5 s of visible time for `✓` and information; the 8 s undo is unused after D5. |
 | 10 Unicode fallback | Specified in slice 1.2 as a proposal to confirm in the foundation review (Phase 2d). |
 | 11 API additions | Approved as §3. |
 | 12 Unused builders | `sections` and `diagram` stay for plugins. |
@@ -841,8 +841,8 @@ It landed in five parts, each green on its own, and a sixth after slice 1.7 merg
    muted otherwise), the rest muted; wizard steps read `✓ ● ○` joined by a muted `›`; a strip that does not fit folds to
    `‹ active next +N ›` (slice 1.5 refines it).
 3. **Feedback and hints.** Feedback is a glyph and words (`feedbackSpans` in `core/ui-interaction-notifications.ts`):
-   `✓`/`ℹ` before a message in text color, `⚠`/`✗` in their own tone, in a surface footer and in the prompt's
-   feedback lane; the 5 s lifetime of `✓` and `ℹ` was already in place. The hint row paints keys in text and labels
+   `✓` before a message in text color (information has no glyph since Phase 4 R2), `⚠`/`✗` in their own tone, in a surface footer and in the prompt's
+   feedback lane; the 5 s lifetime of `✓` and information was already in place. The hint row paints keys in text and labels
    muted, in the kit's order (navigation, adjustment, digits, the primary operation, accelerators, filter and clear,
    tabs, groups, `Esc`) and words (`Space toggle · Enter choose`, `←/→ adjust · Enter pick`, `Enter toggle`,
    `←/→ actions`, `No/Yes` on a decision, `↑/↓ fields`, `↑/↓ scroll · Ctrl+E expand`). `hintNotation` in
@@ -872,7 +872,7 @@ arrows and marks the painters also draw; confirm it at checkpoint A):
 
 | Unicode | ASCII | Unicode | ASCII |
 | --- | --- | --- | --- |
-| `→` `←` `↑` `↓` | `>` `<` `^` `v` | `■` `?` `⚠` `ℹ` | `#` `?` `!` `i` |
+| `→` `←` `↑` `↓` | `>` `<` `^` `v` | `■` `?` `⚠` | `#` `?` `!` |
 | `▸` `▾` | `+` `-` | `⎿` `│` | `L` `:` |
 | `●` `○` `◐` | `*` `o` `~` | `━` `─` | `=` `-` |
 | `‹` `›` | `<` `>` | `▰` `▱` | `#` `.` |
@@ -2066,11 +2066,24 @@ rounds are planned in review order, one group in review at a time.
 | Round | Parts | Status | Branch |
 | --- | --- | --- | --- |
 | R1 | 4a.1 editor frame; 4a.2 shell mode | planned: the editor becomes a pure `Editor` component on the dock slot, so this round is the cutover and nothing else changes in the editor's behavior | `feat/4a` |
-| R2 | 4b.1 tokens in the buffer; 4b.2 submit expansion | planned | `feat/4a` |
+| R2 | 4b.1 tokens in the buffer; 4b.2 submit expansion | built, and the owner accepted the effect (tests, goldens and perf A/B are deferred to the end of Phase 4, spec §3.1, so it is not yet marked accepted): tokens stay inline in the text (no strip): `[image #1 84 KB]`, pi-tui's `[paste #1 +14 lines]`, and an `@` mention as its relative path, painted in tones; the arrows step over a token and highlight it, one Backspace removes a highlighted token (two after a token), the hint above the prompt names the keys (`Ctrl+G opens · Backspace removes`); `Ctrl+G` on a token opens a mentioned file or folder, a pasted block as text (it folds back into a token), or an image in a preview overlay; an `@` folder is taken with Enter and entered with Tab; a pasted block survives Up/Down history and the whole-draft `Ctrl+G`; the prompt's waits (clipboard, file search) and an `image` node show the unified loader; the `ℹ` glyph is retired; the image preview was not confirmed in a real image terminal (WezTerm over SSH stayed black: its `enable_kitty_graphics` setting or the draw order are the open suspects; the overlay now keeps the image's first row in view); scenarios `tokens`, `tokensSubmit`, `tokensEditor`, `tokensOpen`, `tokensHistory`, `tokensImage`, `tokensFolder`, `tokensWaiting` | `feat/4a` |
 | R3 | 4c.1 queue line; 4c.2 recall | planned | `feat/4a` |
 | R4 | 4d.1 the `/` list; 4d.2 palette keys | planned: the autocomplete adapter is deleted here | `feat/4a` |
 | R5 | 4d.3 `@` files; 4d.4 `#` skills and extension results | planned | `feat/4a` |
 | R6 | 4e.1 placeholders; 4e.2 keys and title; 4e.3 subagent replies | planned: the last group, so the phase gate follows (platform acceptance above) | `feat/4a` |
+
+**Loading displays (owner request, Phase 4 round 2).** Every wait a user can feel shows the one unified loader
+(`ui.loader` gap, component-library §2.4: `⣾` and its words, one clock, frozen under reduced motion), in an appropriate
+place, never for an answer under 150 ms, so a silent wait never leaves the user guessing. Built in R2 for the editor's
+own waits: an `image` node while its bytes are read (`⣾ Loading image…`; the stream row and the Ctrl+G preview), the
+clipboard read behind Ctrl+V and the file search behind `@` (the notification row above the prompt, through
+`mayfly/prompt-wait-changed` and `beginPromptWait`, `interaction/prompt-wait.ts`). `Ctrl+G` on a file or a paste hands
+the terminal to the editor at once, so it has no wait to show. **Not part of this round's components, to audit in their
+own phases** (not yet checked one by one): every other `await` that can last over about 150 ms behind a key (session and
+workspace reads, the provider model fetch and sign-in steps, the update check, MCP server and skills catalog loads,
+`/trace` aggregation, `/export`, rewind and compaction starts) should name its wait with the same loader, in the panel
+that asked or in the notification row; a panel that already has `ui.loader` (the plugin marketplace, the sessions
+list) is the model. Information notices have no symbol (`ℹ` is retired); `✓`, `⚠`, and `✗` keep theirs.
 
 ### Phase 5 Status area and views
 

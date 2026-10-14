@@ -551,7 +551,7 @@ export interface MayflyCompletionView {
   /** `commands` for a `/` prefix, `files` for `@`, `completions` otherwise. */
   readonly kind: 'commands' | 'files' | 'completions'
   /** The items, in the provider's order; `detail` is the description. */
-  readonly items: readonly { readonly label: string, readonly detail?: string }[]
+  readonly items: readonly { readonly label: string, readonly value: string, readonly detail?: string }[]
   /** The focused item. */
   readonly index: number
   /** The prefix the provider matched, as typed (`/mo`). */
@@ -617,7 +617,7 @@ export interface MayflyEditor extends MayflyFocusable {
    * Add a prompt to the history navigated with up/down arrows.
    * @param text - the submitted prompt.
    */
-  addToHistory(text: string): void
+  addToHistory(text: string, pastes?: ReadonlyMap<number, string>): void
   /**
    * Read the history entries, newest first (pi-tui stores them that way;
    * index 0 is the most recent submission). The mirror of
@@ -626,6 +626,12 @@ export interface MayflyEditor extends MayflyFocusable {
    * @returns a copy of the history entries.
    */
   getHistory(): readonly string[]
+  /**
+   * The paste tables of the history entries, index for index with {@link getHistory}: a message that held a pasted block
+   * is kept with its marker text and its table, so recalling it brings the block back as a token.
+   * @returns the tables, `undefined` for an entry with no pasted block.
+   */
+  getHistoryPastes(): readonly (ReadonlyMap<number, string> | undefined)[]
   /**
    * Remove the newest history entry only when it exactly matches `text`.
    * Optional for structural test editors; the core adapter implements it.
@@ -700,7 +706,64 @@ export interface MayflyEditor extends MayflyFocusable {
    * @param draft - the captured submission.
    */
   restoreSubmittedDraft?(draft: MayflySubmittedDraft): void
+  /**
+   * Install the source of the interaction-owned inline tokens (a pasted image's marker, an accepted `@` mention): the
+   * spans of one buffer line that show as tokens. Pasted blocks are the editor's own and need no source. The editor
+   * paints a token in its tone, and `tokenBackspace` selects and removes it.
+   * @param source - the spans of a line, or `undefined` for none.
+   */
+  setTokenSource(source: MayflyEditorTokenSource | undefined): void
+  /**
+   * Backspace at a token. A token the caret is on (highlighted) is removed at once; with the caret right after a token the
+   * call selects it (the whole token inverse) and the next call removes it. Any other input clears the selection.
+   * @returns whether a token was at the caret and the key is consumed.
+   */
+  tokenBackspace(): boolean
+  /**
+   * Called when the token the caret is on, or the one Backspace selected, changes (`undefined`: none). The caret is on a
+   * token while a block cursor would cover one of its characters; arrow keys step over a token whole.
+   */
+  onTokenChange: ((token: MayflyEditorToken | undefined) => void) | undefined
+  /**
+   * The token the caret is on or Backspace selected.
+   * @returns the token, or `undefined` when the caret is on none.
+   */
+  activeToken(): MayflyEditorToken | undefined
+  /**
+   * Replace the active token with plain text at its place (a pasted block edited in the external editor).
+   * @param text - the text that takes the token's place.
+   */
+  replaceActiveToken(text: string): void
+  /**
+   * Replace the buffer with a text that an external editor returned, folding each stretch that spells a pasted block of
+   * the buffer before back into a marker (a block that was edited stays plain text).
+   * @param text - the returned text.
+   * @param contents - the contents of the pasted blocks the buffer held when it was handed over.
+   */
+  setTextFolding(text: string, contents: readonly string[]): void
 }
+
+/** One inline token as the host sees it. */
+export interface MayflyEditorToken {
+  readonly kind: 'image' | 'mention' | 'paste'
+  /** The token as it stands in the buffer (`@packages/a.ts`, `[image #1 84 KB]`, `[paste #1 +14 lines]`). */
+  readonly text: string
+  /** Backspace selected it; the next Backspace removes it. */
+  readonly selected: boolean
+  /** A pasted block's full text. */
+  readonly content?: string
+}
+
+/** One inline token of a buffer line, half-open in UTF-16 units. */
+export interface MayflyEditorTokenSpan {
+  readonly start: number
+  readonly end: number
+  /** `image` is a pasted image's marker; `mention` an accepted `@` file mention. */
+  readonly kind: 'image' | 'mention'
+}
+
+/** The spans of the inline tokens in one buffer line. */
+export type MayflyEditorTokenSource = (line: string) => readonly MayflyEditorTokenSpan[]
 
 /**
  * One submitted buffer captured before the native submit cleared it: the
@@ -1000,6 +1063,23 @@ declare module '@deepseek-ai/cordis' {
      * @mode emit
      */
     'mayfly/decision-requests-changed'(source: 'approval' | 'plan', requests: readonly MayflyDecisionRequest[]): void
+    /**
+     * The prompt has something to teach about where its caret is (the keys that act on the token it rests on). The
+     * notification pane shows it, muted and without a severity glyph, in the place of the keys that leave the prompt,
+     * while it has no notice. Emitted by the input editor, unfiltered.
+     * @param hint - the translated words, or `undefined` when there is nothing to teach.
+     * @mode emit
+     */
+    'mayfly/prompt-hint-changed'(hint: string | undefined): void
+    /**
+     * The prompt waits on something that can take a moment (the clipboard, the file search). The notification pane shows
+     * the unified loader with these words in the place of the hint, while it has no notice, and leaves it when the wait
+     * ends. Emitted by the prompt's plugins through `beginPromptWait`, after a short delay so a quick wait never flashes;
+     * unfiltered.
+     * @param message - the translated words (`Reading the clipboard…`), or `undefined` when nothing is awaited.
+     * @mode emit
+     */
+    'mayfly/prompt-wait-changed'(message: string | undefined): void
     /**
      * The conversation scroll left or came back to its tail, or the words of its chip changed (the count of turns that
      * began below the view, a rebound key). The notification pane draws the chip, so it follows this event. Alternate

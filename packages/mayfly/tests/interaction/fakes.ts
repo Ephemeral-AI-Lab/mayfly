@@ -18,7 +18,7 @@ import {
 // the same implementations the renderer runs.
 import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/width.ts'
 import { topRule } from '../../src/core/chrome.ts'
-import type { MayflyAutocompleteItem, MayflyAutocompleteProvider, MayflyComponent, MayflyComponents, MayflyEditor, MayflyEditorOptions, MayflyEditorSubmitAttempt, MayflyFocusable, MayflyKeyAction, MayflyKeymap, MayflyMarkdown, MayflyMarkdownOptions, MayflyOverlayHandle, MayflyOverlayOptions, MayflyScreen, MayflySelectItem, MayflySelectList, MayflySelectListOptions, MayflySemanticColors, MayflySubmittedDraft, MayflyTheme } from '../../src/core/types.ts'
+import type { MayflyAutocompleteItem, MayflyAutocompleteProvider, MayflyComponent, MayflyComponents, MayflyEditor, MayflyEditorOptions, MayflyEditorToken, MayflyEditorSubmitAttempt, MayflyFocusable, MayflyKeyAction, MayflyKeymap, MayflyMarkdown, MayflyMarkdownOptions, MayflyOverlayHandle, MayflyOverlayOptions, MayflyScreen, MayflySelectItem, MayflySelectList, MayflySelectListOptions, MayflySemanticColors, MayflySubmittedDraft, MayflyTheme } from '../../src/core/types.ts'
 import type { MayflyComponentsService } from '../../src/core/components.ts'
 import type { MayflyKeymapService } from '../../src/core/keymap.ts'
 import type { MayflyScreenService } from '../../src/core/screen.ts'
@@ -329,6 +329,20 @@ export class FakeMayflyEditor implements MayflyEditor {
   isShowingAutocomplete(): boolean {
     return this.showingAutocomplete
   }
+
+  setTokenSource(): void {}
+
+  tokenBackspace(): boolean { return false }
+
+  onTokenChange: ((token: MayflyEditorToken | undefined) => void) | undefined
+
+  activeToken(): undefined { return undefined }
+
+  replaceActiveToken(): void {}
+
+  getHistoryPastes(): readonly [] { return [] }
+
+  setTextFolding(): void {}
 
   completion(): undefined {
     return undefined
