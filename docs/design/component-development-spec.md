@@ -275,10 +275,26 @@ other part needs the brief. Parts of Phases 4 to 6 are cut when their phase star
 | **3e.2 Row selection** | `Alt+↑` focuses the newest row; `Enter`, `c`, `Ctrl+G`, `Esc`/`Alt+↓`. | 18 | `tour` | focus mark; hint row; copy feedback |
 | **3e.3 Stream search** | `/` and `?` in conversation mode open a search line above the editor (regular expression, smart case); typing highlights, `Enter` selects, `↑`/`↓` and `n`/`N` walk the matches; the match turn opens at Verbose; matched text reversed. | 18 (`StreamSearch`) | `tour`, `history` | match count; stepping; `Esc` restores levels |
 
-Phases 4 to 6 follow the same rules. Their group texts in the roadmap are the starting points: Phase 4 (editor, queue,
-tokens, the `/` `@` `#` completion list, scenes 15 and 30 p1-p2); Phase 5 (the two status rows, scenes 13 and 12,
-every width of 100, 72, 52, 36); Phase 6 (the panels 6a-6f, scenes 21 p4 and 22-32). Each is cut into parts the way the
-table above cuts Phase 3: one effect group per part, a scenario per part, a brief per part.
+Phases 4 and 6 follow the same rules. Their group texts in the roadmap are the starting points: Phase 4 (editor, queue,
+tokens, the `/` `@` `#` completion list, scenes 15 and 30 p1-p2); Phase 6 (the panels 6a-6f, scenes 21 p4 and 22-32).
+Each is cut into parts the way the table above cuts Phase 3: one effect group per part, a scenario per part, a brief per
+part. Phase 5 is cut in the table below.
+
+### 7.2 Phase 5 parts
+
+Phase 5 (status area and views) is one pull request on `feat/phase-5`, cut into rounds in the roadmap's Phase 5 status
+table. Its parts follow the same rules as §7; the prototype scenes are 13 (the rows at 100, 72, 52, and 36 columns), 12
+(the plugin entry beside the model), and 18 (the rows under the stream).
+
+| Part | Effect the owner sees | Prototype | Scenarios (existing, or *new*) | Focus |
+| --- | --- | --- | --- | --- |
+| **5a.1 Footer cutover** | The footer is the two status rows on the footer node slot; look unchanged except what the admission rule decides; plugin entries keep their priority. | 13, 12 | `idle`, *footerCutover* | one admission rule for registry entries and views; the footer within the W1 budget |
+| **5a.2 Row 1 facts** | Model and effort (0); `PLAN`/`PLAN…`/`YOLO` strong chips (1); context (4, hide); directory (5, shortened path); git (10). | 13 | `modes`, `context`, *statusRows* (+ 72, 52, 36 columns), `goal` | the degradation ladder at each width; the directory's shortened path; every toggle |
+| **5a.3 Balance and identity** | The `⚠ ¥6.2` chip (6, right, account only); `BTW … ⇄ MAIN` or `SUBAGENT x · read-only` in the center band, without key text. | 13 | *balance*, `sideQuestion`, `childStream` | the threshold and currency; the identity text at narrow widths |
+| **5b.1 Goal and todo views** | Row 2 skeleton with `↓ views`; Goal and Todo as views panes with rule progress; `Ctrl+T` opens the views on Todo. | 13 | `goal`, `tour`, *views*, *viewsTodo*, *viewsNarrow* | at most five todo rows and `… +N more`; the closing line; the one-third panel cap |
+| **5b.2 Agents view** | `Agents N ● n waiting`; live rows first; `Enter` opens the conversation; `x` stops behind the Yes/No; the `F7`/`F8` cluster. | 13 | `subagents`, `appAgents`, *viewsAgents* | the running background subagent's look (D2); the cluster with two conversations |
+| **5b.3 Jobs view** | `Jobs N ⏵ n running`; `Enter` opens the job's output; `x` rechecks `jobs.get` before `jobs.kill`. | 13 | `jobs`, *viewsJobs* | the interim output target; the stop confirm |
+| **5c Carry-overs** | Notices truncate with `…`; `compactionNoWindow` drops the `%`; the search hint row takes its own line; 40-column decision hints keep labels. | 16, 20, 18 | `notices`, `compactionNoWindow`, `phase3-search`, `phase3-narrow` | O2, O3, O4 (Phase 3 closeout audit) |
 
 ### 7.1 Every tool at three tiers
 

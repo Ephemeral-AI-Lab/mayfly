@@ -570,7 +570,7 @@ product is used (D23); Phase 7 optimizes the whole architecture (D27), and Phase
 | 2 Workbench and content | 4 (2a-2d) | The live review loop and frame capture, automated and change-precise verification (tiers, scenario goldens, perf A/B, real screenshots), content at any size, the owner's review of the foundation | 1-13, 15 | changed per part; full at the end; owner review (2d) |
 | 3 Session flow | 5 (3a-3e) | The components area; the stream and its turns, tool rows, the activity row and notices, request rows and decision cards, levels, selection, search | 14, 16-21 | per component (§7); full and owner at the end |
 | 4 Editor and command palette | 1-2 | The editor as a prompt composition, the `/` `@` `#` completion palette, queue and recall | 15, 30 p1-p2 | per component; full and owner at the end |
-| 5 Status and views | 1-2 | The two status rows and Mayfly's four views | 13, 12 | per component; full and owner at the end |
+| 5 Status and views | 3 (5a-5c) | The two status rows and Mayfly's four views | 13, 12, 18 (the rows under the stream) | per round (§7); full and owner at the end |
 | 6 Panels | 6 (6a-6f) | Every command panel, questions, and the trace, keys, rewind, job output, and changes surfaces | 21 p4, 22-32 (30 p3-p6) | per component; full and owner at the end |
 | 7 Architecture performance | 1 | The finished product profiled on real workloads and restructured where measured; the final budgets and ceilings | — | full + bench report; owner |
 | 8 Finish | 1 | Website, skills, docs, release | — | full + pack + release preflight |
@@ -909,7 +909,7 @@ columns; `NO_COLOR=1 dsh --profile mayfly-ui-foundation`; `glyphs: ascii` and `r
 It landed in seven parts, each green on its own: the contract, validator, and painters; the parity specs of scenes 7, 9,
 and 10; the work-budget rows; the unit specs; then the Website, the shots, the gallery, and this text.
 
-- **Admission** (`core/ui-admission.ts`, new; `StatusFooterComponent` is untouched, Phase 3 deletes it). A `stack.row`
+- **Admission** (`core/ui-admission.ts`, new; `StatusFooterComponent` is untouched, Phase 5 deletes it). A `stack.row`
   whose children carry `priority` compiles to an `AdmissionRow`: children are admitted in priority order (ties keep their
   position) while they fit, a `gap` (2 by default) between them; a `truncate` child takes the room that is left (at least
   8 cells) and fills the row; a `hide` child drops while later ones may still fit; a child with neither ends admission, as in
@@ -1415,7 +1415,7 @@ without a publish.
     its frame when the epoch moves. Panes have no such epoch and keep their frame until their model moves; that is
     left as it is.
   - *Events.* Slots route no events yet: an action settles as succeeded without a handler, as on a disposed endpoint.
-    The first consumer that needs a reply (Phase 5's prompt submit) adds the event option.
+    The first consumer that needs a reply (Phase 4's prompt submit) adds the event option.
   - *Consumer (D20).* The slot is core-private, so it changes no public package, Website page, or gallery page. Its
     consumer in this phase is the test host `tests/core/node-slot-host.ts`, which leases a status-shaped row in the
     footer, an editor-shaped form in the dock, and a stream-shaped list in the content region from an ordinary Fiber,
@@ -1459,7 +1459,7 @@ without a publish.
     their own: the compiled panel emits into its own pane model, so an action reaches the `onEvent` of the active view.
 - **Proof (D20).** `examples/ui-gallery/src/groups/views.ts` registers a view through the public service (one import and
   one call in `index.ts`); its test drives `setSummary` and the Fiber cleanup. Mayfly's agents, jobs, goal, and todo views
-  register in Phase 3, so the product's own row 2 does not change in this phase.
+  register in Phase 5, so the product's own row 2 does not change in this phase.
 
 Scene 13 (the lane only, with the gallery view). Tests: `tests/core/views-lane.spec.ts` (the lane), `views-lane-renderer.spec.ts`
 (the renderer: F6 order, entering, switching, event routing, cleanup), the footer in `status-model.spec.ts`, the focus id in
@@ -2045,8 +2045,9 @@ At the phase gate: platform acceptance for paste, IME, and the clipboard on macO
 R7, R20 (status). Scenes 13 (100, 72, 52, and 36 columns, every toggle), 12, 18 (the rows under the stream). Starting
 points:
 
-- **Footer.** The transcript footer plugin builds `StatusRows` (§6) from `mayflyStatus.list()` and the views panes, and
-  leases the footer slot with `mountNodeSlot`; admission is slice 1.3's primitive.
+- **Footer.** The transcript footer plugin builds the two status rows (§6: `status-entries.ts` for row 1, `status-rows.ts`
+  and `views.ts` for row 2) from `mayflyStatus.list()` and the views panes, and leases the footer slot with
+  `mountNodeSlot`; admission is slice 1.3's primitive.
 - **Row 1.** The registrations, restyled: model and effort (priority 0), uppercase `PLAN`/`PLAN…` primary strong and
   `YOLO` warning strong (priority 1, `interaction/mode-status.ts`), context (4, right, hide), directory (5, truncate),
   the low-balance chip `⚠ ¥6.2` (6, right, account only, *new*), git (10), the side-conversation identity in the center
@@ -2076,6 +2077,43 @@ languages).
 - The search hint row shares a line with the notice and cuts off before `Esc end search`; decision hints at 40 columns read `Enter · Ctrl+G · Esc` with no labels (O4).
 - A long notice is cut without `…` at 60 columns; keep the trailing count or countdown (O2).
 - `compactionNoWindow` shows a time-based `%` with no window: drop the `%`, or correct the round 7 brief (O3).
+
+**Phase 5 status.** The parts are those of [component-development-spec.md](./component-development-spec.md) §7, worked
+in rounds of one or two parts (about four scenarios each) on the branch `feat/phase-5` and its successors, with the
+profile `mayfly-5`. The phase is one pull request: every Phase 5 code change lands on that branch, and the round table
+records each round as it is built. A part is `accepted` when the owner accepts it in a question round; a group finalizes
+when its last part is accepted (§7 step 3). Rounds run no tests (§3, step 7); tests and goldens come at finalization.
+
+| Round | Parts | Status | Branch |
+| --- | --- | --- | --- |
+| R1 | 5a.1 footer cutover: the footer becomes the two status rows (`status-entries.ts`, `status-rows.ts`) on the footer node slot; one admission rule for registry entries and lane summaries; plugin entries (scene 12's `↻ loop`) keep their priority | not started | `feat/phase-5` |
+| R2 | 5a.2 row 1 facts: model and effort (0), uppercase `PLAN`/`PLAN…` and `YOLO` strong chips (1), context (4, hide), directory (5, shortened path, not `.`), git (10); the width ladder at 100, 72, 52, and 36 columns and every toggle (B4 chips, C4, G16) | not started | `feat/phase-5` |
+| R3 | 5a.3 balance chip and conversation identity: the `⚠ ¥6.2` chip (6, right, account only, from `deepseekAccount.getBalance()`), and `BTW … ⇄ MAIN` or `SUBAGENT x · read-only` in the center band with no key text (G17) | not started | `feat/phase-5` |
+| R4 | 5b.1 row 2 skeleton and the Goal and Todo views: the right cue `↓ views`; Goal (`● active`, `❚❚ paused`, `✕ blocked` with its reason) and Todo (at most five rows, `… +N more (k done)`, `✓ Todo done 6/6 · 4m 12s`) as views panes with rule progress; absent when empty; `Ctrl+T` opens the views on Todo (R6) | not started | `feat/phase-5` |
+| R5 | 5b.2 Agents view and conversation keys: `Agents N ● n waiting`; live rows first; `Enter` opens the conversation (`F7` returns); `x` stops behind the shared Yes/No; the `F7 switch · F8 close` cluster when two or more conversations exist, with row 2 shown for a side conversation; the final look of a running background subagent (D2) (G23, R7) | not started | `feat/phase-5` |
+| R6 | 5b.3 Jobs view: `Jobs N ⏵ n running`; `Enter` opens the job's output (an interim target until Phase 6f); `x` rechecks `jobs.get`, then `jobs.kill` behind the Yes/No (R7) | not started | `feat/phase-5` |
+| R7 | 5c carry-overs from Phase 3: notices truncate with `…` and keep their count or countdown (O2); `compactionNoWindow` drops the `%` (O3); the search hint row takes its own line, and 40-column decision hints keep their labels (O4). Independent of R1 to R6, so it may come earlier | not started | `feat/phase-5` |
+
+**Phase 5 finalization** (not a round; the test session of spec §3.1, then the phase gate). Decision tests: each view's
+registration and Fiber cleanup, the footer within the W1 budget (§7.1), admission width scans, exact-Agent writes, and
+English and Chinese strings. Goldens for the accepted scenarios. The spec §5.1, §5.4, and §5.5 text is rewritten as
+accepted behavior and marked *Finalized*. The PTY smoke enters the views, stops a job, and returns. The Website text
+(both languages) follows: `features/status-bar.md`, `features/panes.md`, `plugins/status.md`, `plugins/dock.md`, and
+`reference/keys.md`; no Website build until the release. The phase gate runs `pnpm run check -- --tier full` and the
+owner's acceptance on `mayfly-5` (the workflow at 140 to 36 columns and a BTW side conversation; `F7`/`F8` and plugin
+status entries as regressions).
+
+**Open choices for the question rounds** (each round asks its own, §6; the agent recommends an answer for each):
+
+- The degradation order. The spec says git, then the balance chip, then the directory, then the context meter; the
+  prototype's priorities do not produce that order at every width.
+- The focus chip (`transcript/status-focus.ts`, priority 1, Phase 3e). Whether it survives, and where it sits beside
+  `PLAN`/`YOLO`.
+- Whether an empty Agents or Jobs view shows `0`, and how long `✓ Todo done` stays before the view leaves.
+- `Ctrl+T` with no todo, and whether it toggles.
+- The balance threshold, the currency symbol for a USD provider, the refresh rate, and whether to raise a low-balance notice.
+- The interim target of `Enter` on a job, and the confirm copy for `x`.
+- Whether the 400 ms completion flash and the 300 ms fan-out stagger are in this phase (the roadmap says unscheduled).
 
 ### Phase 6 Panels
 
