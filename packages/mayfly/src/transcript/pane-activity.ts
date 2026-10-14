@@ -4,7 +4,7 @@
  * the phase (`Deep diving` while waiting on the model, `Thinking`, `Writing`, the running tool category or its
  * preparing form, a wait on the user, or the latched stop), the turn's elapsed time and throughput, and under them one
  * line: a teaching tip. The row has one effect at every work-details level; the process itself is the stream's. The block is
- * two rows (header and that line); the blank row before the editor is the notification pane's (`pane-notification.ts`), so the editor never shifts. Motion belongs to core's one clock, and the
+ * three rows (a leading spacer, the header, and that line); the blank row before the editor is the notification pane's (`pane-notification.ts`), so the editor never shifts. Motion belongs to core's one clock, and the
  * seconds come from the host's one tick (`mayflyTick`, the same the stream's pending lines keep time by), so the plugin
  * republishes at each tick for the elapsed time and throughput (data, not frames) and not at all while the phase is still. The pane stays up above an approval or question panel (the
  * decision wait) while hiding under every other editor dialog. A latched user interrupt renders one static `■`

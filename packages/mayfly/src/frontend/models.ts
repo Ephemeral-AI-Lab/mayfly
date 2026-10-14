@@ -55,7 +55,17 @@ export interface TranscriptFileChangeModel {
   /** A write's new text: its size, its lines, and the first of them. */
   readonly write?: { readonly bytes: number; readonly lines: number; readonly head: readonly string[] }
 }
-interface TranscriptToolResultModel { readonly text: string; readonly fullText?: string; readonly isError: boolean; readonly endedAt: number }
+/**
+ * How the Harness cut a tool call short, from the failure code of its result: `aborted` (the user stopped it while it ran,
+ * `ABORTED`), `not-started` (it never ran: `TOOL_NOT_STARTED`, or `ABORTED_BEFORE_DISPATCH`), or `unknown` (the session ended
+ * while it ran, `TOOL_OUTCOME_UNKNOWN`, so its effect is not known).
+ */
+export type ToolInterruption = 'aborted' | 'not-started' | 'unknown'
+/** Whether an interruption cancelled the call: the user stopped it or it never started, so it is neither a success nor a failure. An `unknown` outcome stays a failure. */
+export function isCancelled(interruption: ToolInterruption | undefined): boolean {
+  return interruption === 'aborted' || interruption === 'not-started'
+}
+interface TranscriptToolResultModel { readonly text: string; readonly fullText?: string; readonly isError: boolean; readonly endedAt: number; readonly interruption?: ToolInterruption }
 /**
  * The presenter-card family a lone tool card belongs to, for the per-family
  * detail policy: `command` covers terminal cards, `edit` diff cards, `web`
@@ -117,6 +127,8 @@ export interface ReadCallModel {
   readonly totalLines?: number
   readonly state: 'pending' | 'ok' | 'error'
   readonly error?: string
+  /** Set when the error is the call being cut short rather than failing. */
+  readonly interruption?: ToolInterruption
   readonly previewLines?: readonly ReadPreviewLine[]
 }
 /** A run of consecutive read calls collapsed into one transcript entry. */
@@ -156,6 +168,8 @@ export interface SearchCallModel {
   readonly total?: number
   readonly state: 'pending' | 'ok' | 'error'
   readonly error?: string
+  /** Set when the error is the call being cut short rather than failing. */
+  readonly interruption?: ToolInterruption
 }
 /** A run of consecutive search calls collapsed into one transcript entry. */
 export interface TranscriptSearchGroupModel extends TranscriptEntryBase { readonly kind: 'transcript-search-group'; readonly step: number; readonly searches: readonly SearchCallModel[] }
@@ -187,6 +201,8 @@ export interface CommandCallModel {
   readonly exitCode?: number
   readonly signal?: string
   readonly error?: string
+  /** Set when the error is the call being cut short rather than failing. */
+  readonly interruption?: ToolInterruption
   readonly previewLines?: readonly string[]
 }
 /** A run of consecutive terminal-card calls collapsed into one transcript entry. */

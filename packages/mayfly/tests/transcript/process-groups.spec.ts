@@ -142,7 +142,7 @@ describe('work-details display plan', () => {
     seq = 0
     const steered = [user(1), tool(1), user(1, 'steer'), tool(1), reply(1, 2, 'done')]
     expect(shape(plan(steered, 'standard'))).toEqual(['user', 'header:closed:hint', 'tool', 'user', 'tool', 'assistant'])
-    // A call cut off by the stop is a process member of the stopped turn: the view draws it cancelled.
+    // A call with no result in the stopped turn is still a process member of it.
     seq = 0
     expect(shape(plan([user(1), think(1, 0), tool(1, { result: undefined }), think(1, 1)], 'standard', { turns: aborted })))
       .toEqual(['user', 'header:closed:hint', 'thinking', 'tool', 'thinking'])

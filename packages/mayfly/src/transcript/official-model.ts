@@ -22,7 +22,7 @@ import {
   type ConversationProjectionSource,
   type LiveDraftSource,
 } from './conversation-feed.ts'
-import { freezeModel, type CommandCallModel, type ReadCallModel, type SearchCallModel, type TranscriptCommandGroupModel, type TranscriptEntryModel, type TranscriptFileChangeModel, type TranscriptModel, type TranscriptReadGroupModel, type TranscriptSearchGroupModel, type TranscriptTerminalModel, type TranscriptToolFamily, type TranscriptTurnModel, type TranscriptWebModel } from '../frontend/models.ts'
+import { freezeModel, type CommandCallModel, type ReadCallModel, type SearchCallModel, type TranscriptCommandGroupModel, type TranscriptEntryModel, type TranscriptFileChangeModel, type TranscriptModel, type TranscriptReadGroupModel, type TranscriptSearchGroupModel, type ToolInterruption, type TranscriptTerminalModel, type TranscriptToolFamily, type TranscriptTurnModel, type TranscriptWebModel } from '../frontend/models.ts'
 import { diffChangeCounts } from '../core/diff-align.ts'
 import { createToolPresentationModel } from './tool-model.ts'
 import { createTranscriptModel } from './transcript-model.ts'
@@ -72,6 +72,20 @@ function toolResult(entry: ConversationToolEntry): ToolResult | undefined {
     isError: entry.result.isError,
     ...(entry.result.meta === undefined ? {} : { meta: structuredClone(entry.result.meta) }),
   }
+}
+
+const INTERRUPTIONS: Readonly<Record<string, ToolInterruption>> = {
+  ABORTED: 'aborted',
+  ABORTED_BEFORE_DISPATCH: 'not-started',
+  TOOL_NOT_STARTED: 'not-started',
+  TOOL_OUTCOME_UNKNOWN: 'unknown',
+}
+
+/** How the Harness cut an entry's call short, from the failure code of its result; nothing for a call that settled on its own. */
+function interruptionFacts(entry: ConversationToolEntry): { readonly interruption?: ToolInterruption } {
+  const result = entry.result
+  const interruption = result?.isError === true && result.code !== undefined ? INTERRUPTIONS[result.code] : undefined
+  return interruption === undefined ? {} : { interruption }
 }
 
 /** Resolve one tool entry's presenter views (contained; void on any failure). */
@@ -201,6 +215,7 @@ function readCallModel(resolved: ResolvedTool): ReadCallModel {
     ...(view?.totalLines === undefined ? {} : { totalLines: view.totalLines }),
     state,
     ...(state === 'error' ? { error: ellipsize(firstNonEmptyLine(entry.result!.text) ?? 'read failed', 120) } : {}),
+    ...interruptionFacts(entry),
     ...(lines.length === 0 ? {} : {
       previewLines: lines.slice(0, READ_PREVIEW_LINE_LIMIT).map(line => ({ number: line.number, text: line.text })),
     }),
@@ -250,6 +265,7 @@ function searchCallModel(resolved: ResolvedTool): SearchCallModel {
     ...(view?.total === undefined ? {} : { total: view.total }),
     state,
     ...(state === 'error' ? { error: ellipsize(firstNonEmptyLine(entry.result!.text) ?? 'search failed', 120) } : {}),
+    ...interruptionFacts(entry),
   }
 }
 
@@ -323,6 +339,7 @@ function commandCallModel(resolved: ResolvedTool): CommandCallModel {
         ? ellipsize(firstNonEmptyLine(entry.result!.text) ?? 'command failed', 120)
         : ellipsize(`${exit!}${exitLine === undefined ? '' : ` · ${exitLine}`}`, 120),
     } : {}),
+    ...interruptionFacts(entry),
     ...(previewLines === undefined ? {} : { previewLines }),
   }
 }
@@ -488,6 +505,7 @@ function toolModel(resolved: ResolvedTool, family: TranscriptToolFamily): Transc
         fullText: entry.result.text,
         isError: entry.result.isError,
         endedAt: entry.result.endedAt,
+        ...interruptionFacts(entry),
       },
     }),
     ...(presentation === undefined ? {} : { presentation }),

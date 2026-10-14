@@ -87,6 +87,8 @@ interface ConversationToolResult {
   readonly isError: boolean
   readonly endedAt: number
   readonly meta?: ConversationJson | undefined
+  /** The Harness's failure code of the result (`ABORTED`, `TOOL_OUTCOME_UNKNOWN`), when it carries one. */
+  readonly code?: string | undefined
 }
 
 /** One tool call, paired with its result when available. */

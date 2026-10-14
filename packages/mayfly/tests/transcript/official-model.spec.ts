@@ -367,6 +367,19 @@ describe('official conversation model mapping', () => {
     expect(group.reads[3]!['path']).toBeUndefined()
   })
 
+  it('derives how the Harness cut a call short from the failure code of its result, and only for an error', () => {
+    const result = (code: string | undefined, isError = true) => ({ content: [{ type: 'text' as const, text: 'cut' }], text: 'cut', isError, endedAt: 9, ...(code === undefined ? {} : { code }) })
+    const model = conversationTranscriptModel(projection([
+      transcriptTool({ id: 'a', callId: 'c-a', seq: 1, updatedSeq: 1, name: 'bash', arguments: '{"command":"sleep 9"}', result: result('ABORTED') }),
+      transcriptTool({ id: 'b', callId: 'c-b', seq: 2, updatedSeq: 2, name: 'bash', arguments: '{"command":"sleep 8"}', result: result('ABORTED_BEFORE_DISPATCH') }),
+      transcriptTool({ id: 'c', callId: 'c-c', seq: 3, updatedSeq: 3, name: 'bash', arguments: '{"command":"sleep 7"}', result: result('TOOL_NOT_STARTED') }),
+      transcriptTool({ id: 'd', callId: 'c-d', seq: 4, updatedSeq: 4, name: 'bash', arguments: '{"command":"sleep 6"}', result: result('TOOL_OUTCOME_UNKNOWN') }),
+      transcriptTool({ id: 'e', callId: 'c-e', seq: 5, updatedSeq: 5, name: 'bash', arguments: '{"command":"sleep 5"}', result: result('E_TOOL') }),
+      transcriptTool({ id: 'f', callId: 'c-f', seq: 6, updatedSeq: 6, name: 'bash', arguments: '{"command":"sleep 4"}', result: result('ABORTED', false) }),
+    ]), toolSource())
+    expect(model.entries.map(entry => (entry as { result?: { interruption?: string } }).result?.interruption)).toEqual(['aborted', 'not-started', 'not-started', 'unknown', undefined, undefined])
+  })
+
   it('falls back to the view path and the stock error line', () => {
     const model = conversationTranscriptModel(projection([
       transcriptTool({

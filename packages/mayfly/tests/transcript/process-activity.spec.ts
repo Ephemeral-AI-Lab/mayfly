@@ -24,11 +24,13 @@ describe('process activity', () => {
 
   it('ranks settled categories by count with first-seen ties', () => {
     const summary = summarizeProcess([
-      member('read'), member('search'), member('search'), member('read', { failed: true }), member('commands'),
+      member('read'), member('search'), member('search'), member('read', { failed: true }), member('commands'), member('commands', { interrupted: true }),
     ])
+    // A cancelled member (stopped, or never started) counts apart from the failed ones.
     expect(summary).toEqual({
-      counts: [{ activity: 'read', count: 2 }, { activity: 'search', count: 2 }, { activity: 'commands', count: 1 }],
+      counts: [{ activity: 'read', count: 2 }, { activity: 'search', count: 2 }, { activity: 'commands', count: 2 }],
       failed: 1,
+      interrupted: 1,
     })
   })
 
@@ -50,7 +52,7 @@ describe('process activity', () => {
     // The wall time runs from the first member's start to the last member's end.
     expect(summarizeProcess([
       member('read', { startedAt: 0, endedAt: 2_000 }), member('read', { startedAt: 1_000, endedAt: 3_000 }), member('commands', { startedAt: 0, endedAt: 6_000 }),
-    ])).toEqual({ counts: [{ activity: 'read', count: 2 }, { activity: 'commands', count: 1 }], failed: 0, durationMs: 6_000 })
+    ])).toEqual({ counts: [{ activity: 'read', count: 2 }, { activity: 'commands', count: 1 }], failed: 0, interrupted: 0, durationMs: 6_000 })
     // Lines a file change added and removed are summed, and a group with none has none.
     expect(summarizeProcess([member('edit', { added: 4, removed: 2 }), member('write', { added: 9 }), member('read')])).toMatchObject({ added: 13, removed: 2 })
     expect(summarizeProcess([member('read')])).not.toHaveProperty('added')

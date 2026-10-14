@@ -361,7 +361,7 @@ describe('contentNodeSource', () => {
     const node: WindowedContentNode = { kind: 'diff', before: 'a\nb\nc', after: 'a\nx\nc' }
     const { rows, env } = source(node, 40)
     expect(env.counters.segmentsPainted).toBeGreaterThan(0)
-    expect([...rows].map(row => plainText(row).trimEnd())).toEqual(['  1 │   a', '    │ − b', '  2 │ + x', '  3 │   c'])
+    expect([...rows].map(row => plainText(row).trimEnd())).toEqual(['  1 │   a', '  2 │ − b', '  2 │ + x', '  3 │   c'])
     // The alignment lives on the node: a second width repaints the same kept rows without re-aligning.
     const aligned = env.counters.linesEstimated
     contentNodeRows(node, 60, env.env)

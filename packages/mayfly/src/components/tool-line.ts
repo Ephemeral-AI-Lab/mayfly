@@ -10,7 +10,7 @@
 
 import type { MayflyInlineSpan } from '@ephemeral-ai/mayfly-ui'
 
-/** How a call stands: it still runs, it waits on the user's decision, it worked, it failed, the user sent it back with a revision, or its turn ended before it settled. */
+/** How a call stands: it still runs, it waits on the user's decision, it worked, it failed, the user sent it back with a revision, or it was cancelled (stopped by the user, or never started) and left no effect. */
 export type ToolLineState = 'pending' | 'waiting' | 'ok' | 'error' | 'returned' | 'cancelled'
 
 /** How a block of calls stands: as a call does, or `partial` when some of its calls failed and others worked. */
@@ -56,8 +56,12 @@ export interface ToolDiffHunk {
   readonly tail?: string
   /** The language of the file, which colors the code. */
   readonly language?: string
-  /** The number the first row has, for the end of a change. */
+  /** The number the first row has after the change, for the end of a change (default 1: a hunk counts from its own first row). */
   readonly start?: number
+  /** The number the first row has before the change (default `start`). */
+  readonly beforeStart?: number
+  /** The least width of the number column, which gives the hunks of one edit the gutter of the widest. */
+  readonly numberWidth?: number
 }
 
 /** The code of a write, numbered and highlighted by its language. */
@@ -71,7 +75,7 @@ export interface ToolCodeFacts {
 /** The facts of a verbose block: the line, its body, and the row that says how much of the body is left out. */
 export interface ToolBlockFacts extends ToolLineFacts {
   readonly body?: readonly ToolBodyRow[]
-  /** A file change's body: the hunks of an edit (no line numbers, the Harness gives none), or a write's code. */
+  /** A file change's body: the hunks of an edit (each numbered from its own first row, the Harness gives no file line), or a write's code. */
   readonly diff?: readonly ToolDiffHunk[]
   readonly code?: ToolCodeFacts
   /** A plan under review, as Markdown source of any length: the request's body, wrapped under the line. */
@@ -102,6 +106,8 @@ export interface ToolGroupFacts {
   readonly head: string
   /** The translated tail of the head that is a warning, such as `1 failed`. */
   readonly failed?: string
+  /** The translated tail of the head that counts the calls cancelled (stopped by the user or never started), such as `2 interrupted`: not failures, so it is muted. */
+  readonly interrupted?: string
   readonly items: readonly ToolGroupItemFacts[]
 }
 
@@ -184,6 +190,7 @@ export function ToolGroupHead(facts: ToolGroupFacts): readonly MayflyInlineSpan[
     { text: facts.name, tone: facts.state === 'cancelled' ? 'muted' : 'default', styles: ['strong'] },
     ...(facts.head === '' ? [] : [{ text: ` · ${facts.head}`, tone: 'muted' } as const]),
     ...(facts.failed === undefined ? [] : [{ text: ` · ${facts.failed}`, tone: facts.state === 'partial' ? 'warning' : 'danger' } as const]),
+    ...(facts.interrupted === undefined ? [] : [{ text: ` · ${facts.interrupted}`, tone: 'muted' } as const]),
   ]
 }
 

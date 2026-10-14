@@ -81,7 +81,7 @@ describe('edit blocks', () => {
     const value = facts([edit(oneHunk('src/a.ts', 'const a = 1', 'const a = 2'))], 'standard')
     const block = blockOf(value)
     expect(block).toMatchObject({ kind: 'tool', name: 'Edit', target: 'src/a.ts', stat: { added: 1, removed: 1 } })
-    expect(block.diff).toEqual([{ before: 'const a = 1', after: 'const a = 2', language: 'typescript' }])
+    expect(block.diff).toEqual([{ before: 'const a = 1', after: 'const a = 2', numberWidth: 1, language: 'typescript' }])
     expect(block).not.toHaveProperty('outcome')
     expect(drawn(value, 120).some(row => row.includes('✓ Edit(src/a.ts) · +1 −1 ▮▮▮▮▮▮▮▮') || row.includes('Edit(src/a.ts) · +1 −1'))).toBe(true)
   })
@@ -97,6 +97,28 @@ describe('edit blocks', () => {
     expect(block.diff).toHaveLength(2)
     const rows = drawn(value, 120)
     expect(rows.some(row => row.trim() === '⋯')).toBe(true)
+  })
+
+  it('numbers every row of a hunk from its own first row: a removed line before the change, the others after it, in one gutter as wide as the widest hunk\'s', () => {
+    // Hunk one removes two lines and adds one; hunk two (twelve lines) reaches two digits, so hunk one's gutter widens to match it.
+    const long = (prefix: string): string => Array.from({ length: 12 }, (_, index) => `${prefix}${String(index + 1)}`).join('\n')
+    const change: TranscriptFileChangeModel = {
+      path: 'src/n.ts', added: 13, removed: 14,
+      hunks: [{ before: 'top\nx\ny\nend', after: 'top\nw\nend' }, { before: `ctx\n${long('o')}\nlast`, after: `ctx\n${long('n')}\nlast` }], hiddenLines: 0,
+    }
+    const value = facts([edit(change)], 'verbose', { disclosure: { ...NO_DISCLOSURE, recent: true } })
+    const block = blockOf(value)
+    expect(block.diff?.map(hunk => hunk.numberWidth)).toEqual([2, 2])
+    expect(block.diff?.some(hunk => hunk.start !== undefined || hunk.beforeStart !== undefined)).toBe(false)
+    const rows = drawn(value, 120).filter(row => row.includes('│')).map(row => row.trimEnd())
+    expect(rows.slice(0, 5)).toEqual(['     1 │   top', '     2 │ − x', '     3 │ − y', '     2 │ + w', '     3 │   end'])
+    // The second hunk counts from 1 again; a replaced line keeps its number on both sides.
+    expect(rows[5]).toBe('     1 │   ctx')
+    expect(rows[6]).toBe('     2 │ − o1')
+    expect(rows[17]).toBe('    13 │ − o12')
+    expect(rows[18]).toBe('     2 │ + n1')
+    // At a narrow width the gutter keeps its columns and the code is cut, never the row past the width.
+    for (const row of drawn(value, 40)) expect(visibleWidth(row)).toBeLessThanOrEqual(40)
   })
 
   it('caps a long hunk by tier: six rows at Standard, twelve at Verbose, forty once Ctrl+O opens the turn, with the rows left out named', () => {
@@ -124,10 +146,9 @@ describe('edit blocks', () => {
     expect(block).not.toHaveProperty('stat')
   })
 
-  it('draws a change cut off with its turn as cancelled, with no outcome and no hunk', () => {
-    const cut = facts([edit(oneHunk('src/e.ts', 'a', 'b'), { result: undefined })], 'verbose')
-    expect(blockOf(cut)).toMatchObject({ state: 'cancelled', name: 'Edit' })
-    expect(blockOf(cut)).not.toHaveProperty('outcome')
+  it('draws a change the user stopped as cancelled, with the short reason and no hunk', () => {
+    const cut = facts([edit(undefined, { result: { text: 'Error: tool call aborted', isError: true, endedAt: 1, interruption: 'aborted' } })], 'verbose')
+    expect(blockOf(cut)).toMatchObject({ state: 'cancelled', name: 'Edit', outcome: 'interrupted' })
     expect(blockOf(cut)).not.toHaveProperty('diff')
   })
 
@@ -167,14 +188,13 @@ describe('write blocks', () => {
     expect(opened.code?.text.split('\n')).toHaveLength(OPEN_BODY_ROWS)
   })
 
-  it('draws a failed write as its reason alone, and a cancelled write as muted with no outcome and no code', () => {
+  it('draws a failed write as its reason alone, and a write that never started as cancelled with no code', () => {
     const failed = blockOf(facts([write(created, { result: { text: 'permission denied', isError: true, endedAt: 1 } })], 'standard'))
     expect(failed).toMatchObject({ state: 'error', outcome: 'permission denied' })
     expect(failed).not.toHaveProperty('code')
-    const cancelled = blockOf(facts([write(created, { result: undefined })], 'standard', { running: false }))
-    expect(cancelled).toMatchObject({ state: 'cancelled', name: 'Write' })
+    const cancelled = blockOf(facts([write(created, { result: { text: 'The tool call was not started.', isError: true, endedAt: 1, interruption: 'not-started' } })], 'standard', { running: false }))
+    expect(cancelled).toMatchObject({ state: 'cancelled', name: 'Write', outcome: 'not started' })
     expect(cancelled).not.toHaveProperty('code')
-    expect(cancelled).not.toHaveProperty('outcome')
   })
 })
 
@@ -192,7 +212,7 @@ describe('change rows at the tiers', () => {
   })
 
   it('keeps the change of a Verbose-opened block at the tier\'s cap, and the verbose row of a call draws the same diff', () => {
-    const call = callsOf(edit(longHunk('src/c.ts', 30)), true, t, 0)[0]!
+    const call = callsOf(edit(longHunk('src/c.ts', 30)), t, 0)[0]!
     const row = verboseRow(call, false, t, 'standard') as Extract<StreamRow, { kind: 'tool' }>
     expect(row.diff?.[0]?.maxRows).toBe(STANDARD_DIFF_ROWS)
     const verbose = verboseRow(call, false, t, 'verbose') as Extract<StreamRow, { kind: 'tool' }>

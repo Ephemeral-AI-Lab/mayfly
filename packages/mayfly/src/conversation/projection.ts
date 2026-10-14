@@ -74,6 +74,7 @@ const conversationEntriesSchema = z.array(z.discriminatedUnion('kind', [
       isError: z.boolean(),
       endedAt: z.number(),
       meta: jsonSchema.optional(),
+      code: z.string().optional(),
     }).optional(),
   }),
   z.object({ ...entryBase, kind: z.literal('error'), message: z.string(), code: z.string().optional() }),
@@ -403,6 +404,7 @@ function applyToolResult(
     isError,
     endedAt: event.time,
     ...(event.data.meta === undefined ? {} : { meta: event.data.meta as ConversationJson }),
+    ...(event.data.error === undefined ? {} : { code: event.data.error.code }),
   }
   const id = toolEntryId(callId)
   if (entryIndex(state.entries, id) >= 0) {
@@ -682,5 +684,5 @@ export const conversationProjectionDefinition: ConversationProjectionDefinition 
       return view
     },
   },
-  stateVersion: 9,
+  stateVersion: 10,
 }

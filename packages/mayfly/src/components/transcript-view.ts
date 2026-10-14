@@ -56,7 +56,7 @@ export type StreamRow =
   /** A run of settled calls of one kind, the standard tier: a head and one line per call. */
   | ({ readonly kind: 'tools', readonly id: string } & ToolGroupFacts)
   /** The past-tense title of a folded process group. */
-  | { readonly kind: 'title', readonly id: string, readonly text: string, readonly failed?: string, readonly partial?: true, readonly hint?: string }
+  | { readonly kind: 'title', readonly id: string, readonly text: string, readonly failed?: string, readonly partial?: true, readonly interrupted?: string, readonly hint?: string }
   /** The turn header: its lifecycle label and counts. */
   | { readonly kind: 'header', readonly id: string, readonly mood: StreamMood, readonly open: boolean, readonly label: string, readonly tail: string }
   /**
@@ -193,7 +193,7 @@ function rowParts(row: StreamRow): readonly MayflyListItem[] {
         : line(row.id, ToolLine(row)),
       ...(row.moreBefore === undefined ? [] : [line(`${row.id}.before`, ToolMore(row.moreBefore))]),
       ...(row.body ?? []).map((part, index) => line(`${row.id}.body.${String(index)}`, ToolBody(part))),
-      // An edit's hunks, each a diff of its own (the band behind the changed code, no line numbers); a write's code.
+      // An edit's hunks, each a diff of its own (the band behind the changed code, one number per row from the hunk's first row); a write's code.
       ...(row.diff ?? []).flatMap((hunk, index): MayflyListItem[] => [
         // The hunks of one edit are apart in the file: a `⋯` stands between them.
         ...(index === 0 ? [] : [line(`${row.id}.diff.${String(index)}.gap`, [span('  ⋯', 'muted')])]),
@@ -207,6 +207,8 @@ function rowParts(row: StreamRow): readonly MayflyListItem[] {
             ...(hunk.tail === undefined ? {} : { tail: hunk.tail }),
             ...(hunk.language === undefined ? {} : { language: hunk.language }),
             ...(hunk.start === undefined ? {} : { start: hunk.start }),
+            ...(hunk.beforeStart === undefined ? {} : { beforeStart: hunk.beforeStart }),
+            ...(hunk.numberWidth === undefined ? {} : { numberWidth: hunk.numberWidth }),
           }),
           bodyAlways: true,
           // A lead puts the body on the line itself (no blank head row); the diff's own indent sets its column.
@@ -225,7 +227,7 @@ function rowParts(row: StreamRow): readonly MayflyListItem[] {
       ...(row.more === undefined ? [] : [line(`${row.id}.more`, ToolMore(row.more))]),
     ]
     case 'tools': return runItems(row)
-    case 'title': return [line(row.id, [span('▸ ', 'muted'), span(row.text, 'muted'), ...(row.failed === undefined ? [] : [span(` · ${row.failed}`, row.partial === true ? 'warning' : 'danger')]), ...(row.hint === undefined ? [] : [span(` · ${row.hint}`, 'muted')])])]
+    case 'title': return [line(row.id, [span('▸ ', 'muted'), span(row.text, 'muted'), ...(row.failed === undefined ? [] : [span(` · ${row.failed}`, row.partial === true ? 'warning' : 'danger')]), ...(row.interrupted === undefined ? [] : [span(` · ${row.interrupted}`, 'muted')]), ...(row.hint === undefined ? [] : [span(` · ${row.hint}`, 'muted')])])]
     case 'header': return [line(row.id, [span(row.open ? '▾ ' : '▸ ', 'muted'), span(row.label, MOOD_TONE[row.mood]), ...(row.tail === '' ? [] : [span(row.tail, 'muted')])])]
     case 'compaction': return [
       { id: row.id, label: row.facts.title, body: CompactionRow(row.facts), bodyAlways: true, bodyLead: [span('')] } satisfies MayflyListItem,

@@ -14,7 +14,7 @@ import { alignDiffLines, diffModel } from '../core/diff-align.ts'
 import { sanitizePluginText } from '../core/plugin-view.ts'
 import { argumentDetail } from '../conversation/activity-detail.ts'
 import type { MayflyTranslate } from '../frontend/locale.ts'
-import type { CommandCallModel, ProcessActivity, ReadCallModel, SearchCallModel, TranscriptEntryModel } from '../frontend/models.ts'
+import { isCancelled, type CommandCallModel, type ProcessActivity, type ReadCallModel, type SearchCallModel, type ToolInterruption, type TranscriptEntryModel } from '../frontend/models.ts'
 import type { StreamRow } from '../components/transcript-view.ts'
 import type { ToolBodyRow, ToolDiffHunk, ToolLineState, ToolStat } from '../components/tool-line.ts'
 import { compactElapsedMs } from './agent-presentation.ts'
@@ -66,7 +66,7 @@ interface Body {
 /** The body of a file change: an edit's hunks, or the head of a write's code. */
 type ChangeBody =
   // `tail`: the change is still being written, so its last rows are what a block shows (a settled one shows its first).
-  | { readonly kind: 'diff', readonly language?: string, readonly hunks: readonly { readonly before: string, readonly after: string, readonly rows: number }[], readonly hidden: number, readonly tail?: boolean }
+  | { readonly kind: 'diff', readonly language?: string, readonly hunks: readonly { readonly before: string, readonly after: string, readonly rows: number, readonly digits: number }[], readonly hidden: number, readonly tail?: boolean }
   | { readonly kind: 'code', readonly head: readonly string[], readonly total: number, readonly language?: string, readonly tail?: boolean }
 
 /** Where a call is: its arguments still stream, it runs, or it has settled (or was cut off). */
@@ -79,6 +79,8 @@ export interface Call {
   readonly callId: string
   readonly activity: ProcessActivity
   readonly state: ToolLineState
+  /** How the Harness cut the call short, when it did: its line gives that as the reason and has no body. */
+  readonly interruption?: ToolInterruption
   readonly phase: CallPhase
   /** The tool's name as the model requested it, in the display form (`Read`, `WebSearch`). */
   readonly name: string
@@ -121,10 +123,18 @@ export interface CallRequest {
 
 type ToolEntry = Extract<TranscriptEntryModel, { readonly kind: 'transcript-tool' }>
 
-/** The state a call reads as: a call that still runs is pending, and one cut off with its turn is cancelled. */
-function stateOf(state: 'pending' | 'ok' | 'error', closed: boolean): ToolLineState {
-  if (state === 'pending') return closed ? 'cancelled' : 'pending'
-  return state
+/**
+ * The state a call reads as. A call the user stopped (`aborted`) or that never ran (`not-started`) is cancelled: it left no
+ * effect, so it is no failure. A call whose outcome is unknown stays an error, because it may have had a side effect.
+ */
+function stateOf(state: 'pending' | 'ok' | 'error', interruption?: ToolInterruption): ToolLineState {
+  return state === 'error' && isCancelled(interruption) ? 'cancelled' : state
+}
+
+/** The short reason a line gives for a call that was cut short, in place of the Harness's text. */
+function interruptionText(interruption: ToolInterruption | undefined, t: MayflyTranslate): string | undefined {
+  if (interruption === undefined) return undefined
+  return t(interruption === 'aborted' ? 'interrupted' : interruption === 'unknown' ? 'outcome unknown' : 'not started')
 }
 
 /**
@@ -191,8 +201,8 @@ function headOf(text: string, max: number): Body {
   return { rows, total }
 }
 
-function readCall(groupId: string, call: ReadCallModel, closed: boolean, t: MayflyTranslate): Call {
-  const state = stateOf(call.state, closed)
+function readCall(groupId: string, call: ReadCallModel, t: MayflyTranslate): Call {
+  const state = stateOf(call.state, call.interruption)
   const shown = call.range === undefined ? undefined : call.range.last - call.range.first + 1
   const lines = shown === undefined ? undefined
     : call.totalLines !== undefined && shown < call.totalLines ? t('{shown} of {total} lines', { shown, total: call.totalLines })
@@ -207,7 +217,8 @@ function readCall(groupId: string, call: ReadCallModel, closed: boolean, t: Mayf
     name: nameOf(call.name),
     ...(target === undefined ? {} : { target }),
     label: target ?? nameOf(call.name),
-    outcome: [state === 'error' ? reason(call.error) : lines],
+    ...(call.interruption === undefined ? {} : { interruption: call.interruption }),
+    outcome: [interruptionText(call.interruption, t) ?? (state === 'error' ? reason(call.error) : lines)],
     startedAt: call.startedAt,
     ...(call.endedAt === undefined ? {} : { endedAt: call.endedAt }),
     ...(shown === undefined ? {} : { lines: shown }),
@@ -220,8 +231,8 @@ function readCall(groupId: string, call: ReadCallModel, closed: boolean, t: Mayf
   }
 }
 
-function searchCall(groupId: string, call: SearchCallModel, closed: boolean, t: MayflyTranslate): Call {
-  const state = stateOf(call.state, closed)
+function searchCall(groupId: string, call: SearchCallModel, t: MayflyTranslate): Call {
+  const state = stateOf(call.state, call.interruption)
   let found: string | undefined
   let matches: number | undefined
   if (call.shape === 'paths') {
@@ -245,7 +256,8 @@ function searchCall(groupId: string, call: SearchCallModel, closed: boolean, t: 
     name: nameOf(call.name),
     target,
     label: target,
-    outcome: [state === 'error' ? reason(call.error) : found],
+    ...(call.interruption === undefined ? {} : { interruption: call.interruption }),
+    outcome: [interruptionText(call.interruption, t) ?? (state === 'error' ? reason(call.error) : found)],
     startedAt: call.startedAt,
     ...(call.endedAt === undefined ? {} : { endedAt: call.endedAt }),
     ...(matches === undefined ? {} : { matches }),
@@ -261,9 +273,9 @@ function searchCall(groupId: string, call: SearchCallModel, closed: boolean, t: 
   }
 }
 
-function commandCall(groupId: string, call: CommandCallModel, closed: boolean, t: MayflyTranslate): Call {
-  const state = stateOf(call.state, closed)
-  const why = state === 'error' ? exitText(call.exitCode, call.signal, t) ?? reason(call.error) : undefined
+function commandCall(groupId: string, call: CommandCallModel, t: MayflyTranslate): Call {
+  const state = stateOf(call.state, call.interruption)
+  const why = interruptionText(call.interruption, t) ?? (state === 'error' ? exitText(call.exitCode, call.signal, t) ?? reason(call.error) : undefined)
   return {
     id: `${groupId}:${call.callId}`,
     callId: call.callId,
@@ -273,6 +285,7 @@ function commandCall(groupId: string, call: CommandCallModel, closed: boolean, t
     name: nameOf(call.name),
     target: call.command,
     label: call.command,
+    ...(call.interruption === undefined ? {} : { interruption: call.interruption }),
     outcome: [why, took(call.startedAt, call.endedAt)],
     startedAt: call.startedAt,
     ...(call.endedAt === undefined ? {} : { endedAt: call.endedAt }),
@@ -347,7 +360,7 @@ function liveChange(entry: ToolEntry, fields: Readonly<Record<string, string>>, 
     content: () => ({
       kind: 'diff',
       ...styled,
-      hunks: [{ before: old.kept, after: next.kept, rows: diffModel(alignDiffLines(old.kept, next.kept), { context: 1 }).length }],
+      hunks: [{ before: old.kept, after: next.kept, ...hunkExtent(old.kept, next.kept) }],
       hidden: old.left + next.left,
       ...(entry.preparing === undefined ? {} : { tail: true }),
     }),
@@ -355,8 +368,9 @@ function liveChange(entry: ToolEntry, fields: Readonly<Record<string, string>>, 
 }
 
 /** An edit or write as a call: its tool name and path, the diffstat or the size, and the diff or code as its body. */
-function fileCall(entry: ToolEntry, closed: boolean, t: MayflyTranslate): Call {
-  const state = stateOf(entry.result === undefined ? 'pending' : entry.result.isError ? 'error' : 'ok', closed)
+function fileCall(entry: ToolEntry, t: MayflyTranslate): Call {
+  const interruption = entry.result?.interruption
+  const state = stateOf(entry.result === undefined ? 'pending' : entry.result.isError ? 'error' : 'ok', interruption)
   const change = entry.change
   // While the call is in flight the arguments are all there is: complete once it is committed, partial while they stream.
   const fields = entry.result === undefined && change === undefined ? partialStrings(entry.arguments).fields : {}
@@ -364,7 +378,8 @@ function fileCall(entry: ToolEntry, closed: boolean, t: MayflyTranslate): Call {
   const target = path ?? (entry.detail === '' ? undefined : ellipsize(sanitizePluginText(entry.detail), TARGET_MAX_CHARS))
   const name = nameOf(entry.name)
   const write = change?.write
-  const outcome = state === 'error' ? [reason(entry.result?.text)]
+  const outcome = interruption !== undefined ? [interruptionText(interruption, t)]
+    : state === 'error' ? [reason(entry.result?.text)]
     : write === undefined ? [] : [t(write.lines === 1 ? '{count} line' : '{count} lines', { count: write.lines }), sizeText(write.bytes)]
   const hasStat = state === 'ok' && change !== undefined && write === undefined
   const live = state === 'pending' ? liveChange(entry, fields, path) : undefined
@@ -377,6 +392,7 @@ function fileCall(entry: ToolEntry, closed: boolean, t: MayflyTranslate): Call {
     name,
     ...(target === undefined ? {} : { target: path === undefined ? target : ellipsize(sanitizePluginText(path), TARGET_MAX_CHARS) }),
     label: target ?? name,
+    ...(interruption === undefined ? {} : { interruption }),
     outcome,
     startedAt: entry.startedAt,
     ...(entry.result === undefined ? {} : { endedAt: entry.result.endedAt }),
@@ -391,7 +407,7 @@ function fileCall(entry: ToolEntry, closed: boolean, t: MayflyTranslate): Call {
           : {
               kind: 'diff',
               ...(languageOf(change.path) === undefined ? {} : { language: languageOf(change.path)! }),
-              hunks: change.hunks.map(hunk => ({ ...hunk, rows: diffModel(alignDiffLines(hunk.before, hunk.after), { context: 1 }).length })),
+              hunks: change.hunks.map(hunk => ({ ...hunk, ...hunkExtent(hunk.before, hunk.after) })),
               hidden: change.hiddenLines,
             },
       },
@@ -399,9 +415,10 @@ function fileCall(entry: ToolEntry, closed: boolean, t: MayflyTranslate): Call {
   }
 }
 
-function loneCall(entry: ToolEntry, closed: boolean, t: MayflyTranslate): Call {
+function loneCall(entry: ToolEntry, t: MayflyTranslate): Call {
   const exit = exitText(entry.terminal?.exitCode, entry.terminal?.signal, t)
-  const state = stateOf(entry.result === undefined ? 'pending' : entry.result.isError || exit !== undefined ? 'error' : 'ok', closed)
+  const interruption = entry.result?.interruption
+  const state = stateOf(entry.result === undefined ? 'pending' : entry.result.isError || exit !== undefined ? 'error' : 'ok', interruption)
   const web = entry.web
   const text = entry.result?.text ?? ''
   // A call whose arguments still stream names the target as far as they have gone.
@@ -416,7 +433,8 @@ function loneCall(entry: ToolEntry, closed: boolean, t: MayflyTranslate): Call {
     : salient === '' || salient === entry.name ? undefined : salient
   const outcome: (string | undefined)[] = []
   if (entry.result !== undefined) {
-    if (state === 'error') outcome.push(exit ?? reason(text))
+    if (interruption !== undefined) outcome.push(interruptionText(interruption, t))
+    else if (state === 'error') outcome.push(exit ?? reason(text))
     else if (web?.kind === 'fetch') {
       outcome.push(String(web.statusCode), `${String(Math.max(1, Math.round(text.length / 1024)))} KB`, web.truncated ? t('truncated') : undefined)
     } else if (web?.kind === 'search') {
@@ -426,7 +444,7 @@ function loneCall(entry: ToolEntry, closed: boolean, t: MayflyTranslate): Call {
   }
   // The plan under review reads as what the user decided, with how many steps it listed: approved; rejected; or sent back,
   // which the tool tells by the revision it carries (`their feedback: …`) and the line quotes.
-  const plan = entry.name === 'exit_plan_mode' && (state === 'ok' || state === 'error')
+  const plan = entry.name === 'exit_plan_mode' && (state === 'ok' || (state === 'error' && interruption === undefined))
   const revision = plan && state === 'error' ? /their feedback: ([\s\S]+)$/u.exec(entry.result?.text ?? '')?.[1] : undefined
   const sentBack = revision !== undefined && revision.trim() !== ''
   const name = plan ? t(state === 'ok' ? 'Plan approved' : sentBack ? 'Plan sent back' : 'Plan rejected') : nameOf(entry.name)
@@ -437,6 +455,7 @@ function loneCall(entry: ToolEntry, closed: boolean, t: MayflyTranslate): Call {
     callId: entry.callId,
     activity: entry.activity,
     state: sentBack ? 'returned' : state,
+    ...(interruption === undefined ? {} : { interruption }),
     phase: phaseOf(state, entry.preparing !== undefined),
     name,
     ...(target === undefined || plan ? {} : { target }),
@@ -479,23 +498,23 @@ function whilePending(call: Call, now: number): Call {
 
 /**
  * The calls of one entry, in the order they were made: a call in flight is pending with the time it has taken so far, and
- * a call cut off with its turn is cancelled. A call whose arguments still stream is pending too: the stream shows it as
+ * a call the Harness cut short is cancelled (stopped, or never started) or failed (its outcome is unknown), with a short
+ * reason. A call whose arguments still stream is pending too: the stream shows it as
  * soon as the model names it. The call a request waits on is not pending but waiting: it shows the request instead of a time.
  * @param entry - a tool or a group of read, search, or command calls.
- * @param closed - whether the entry's turn has ended.
  * @param t - translator for the transcript namespace.
  * @param now - the time, which a pending call measures its own against.
  * @param requests - the request that waits on the user and the approvals decided, by the id of the call they are about.
  * @returns the calls.
  */
-export function callsOf(entry: TranscriptEntryModel, closed: boolean, t: MayflyTranslate, now: number, requests?: CallRequests): readonly Call[] {
+export function callsOf(entry: TranscriptEntryModel, t: MayflyTranslate, now: number, requests?: CallRequests): readonly Call[] {
   const calls: Call[] = []
   switch (entry.kind) {
-    case 'transcript-read-group': for (const call of entry.reads) calls.push(readCall(entry.id, call, closed, t)); break
-    case 'transcript-search-group': for (const call of entry.searches) calls.push(searchCall(entry.id, call, closed, t)); break
-    case 'transcript-command-group': for (const call of entry.commands) calls.push(commandCall(entry.id, call, closed, t)); break
+    case 'transcript-read-group': for (const call of entry.reads) calls.push(readCall(entry.id, call, t)); break
+    case 'transcript-search-group': for (const call of entry.searches) calls.push(searchCall(entry.id, call, t)); break
+    case 'transcript-command-group': for (const call of entry.commands) calls.push(commandCall(entry.id, call, t)); break
     case 'transcript-tool':
-      calls.push(entry.change !== undefined || kindOf(entry.activity).streams ? fileCall(entry, closed, t) : loneCall(entry, closed, t))
+      calls.push(entry.change !== undefined || kindOf(entry.activity).streams ? fileCall(entry, t) : loneCall(entry, t))
       break
     default: break
   }
@@ -554,12 +573,17 @@ function awaiting(call: Call, request: CallRequest, entry: TranscriptEntryModel,
 
 function outcomeText(call: Call): string | undefined {
   const text = call.outcome.filter((part): part is string => part !== undefined && part !== '').join(' · ')
-  // A call the turn ended without settling has no outcome to report.
-  return text === '' || call.state === 'cancelled' ? undefined : sanitizePluginText(text)
+  return text === '' ? undefined : sanitizePluginText(text)
 }
 
-/** The last rows of a hunk that fit `cap` rows: the text of each side from the first kept row, and the number the first one has. */
-function tailHunk(hunk: { readonly before: string, readonly after: string }, cap: number): { readonly before: string, readonly after: string, readonly start: number, readonly rows: number, readonly kept: number } {
+/** The rows a hunk draws and the digits of its largest line number, which the hunks of one edit share as one gutter. */
+function hunkExtent(before: string, after: string): { readonly rows: number, readonly digits: number } {
+  const model = diffModel(alignDiffLines(before, after), { context: 1 })
+  return { rows: model.length, digits: model.digits }
+}
+
+/** The last rows of a hunk that fit `cap` rows: the text of each side from the first kept row, and the numbers the first row has before and after the change. */
+function tailHunk(hunk: { readonly before: string, readonly after: string }, cap: number): { readonly before: string, readonly after: string, readonly start: number, readonly beforeStart: number, readonly rows: number, readonly kept: number } {
   const ops = alignDiffLines(hunk.before, hunk.after)
   const rowsOf = (from: number): number => diffModel(ops.slice(from), { context: 1 }).length
   const total = rowsOf(0)
@@ -571,8 +595,9 @@ function tailHunk(hunk: { readonly before: string, readonly after: string }, cap
   return {
     before: kept.filter(op => op.type !== 'add').map(op => op.text).join('\n'),
     after: kept.filter(op => op.type !== 'del').map(op => op.text).join('\n'),
-    // The gutter numbers the modified file, so the rows dropped above it that exist there move the first number down.
+    // The rows dropped above the window move the first number down on each side by the lines they had there.
     start: 1 + ops.slice(0, from).filter(op => op.type !== 'del').length,
+    beforeStart: 1 + ops.slice(0, from).filter(op => op.type !== 'add').length,
     rows: total,
     kept: rowsOf(from),
   }
@@ -596,7 +621,7 @@ function changeLayout(call: Call, cap: number, open: boolean, t: MayflyTranslate
     const shown = tailHunk(content.hunks[0]!, cap)
     const left = shown.rows - shown.kept + content.hidden
     return {
-      diff: [{ before: shown.before, after: shown.after, start: shown.start, ...(content.language === undefined ? {} : { language: content.language }) }],
+      diff: [{ before: shown.before, after: shown.after, start: shown.start, beforeStart: shown.beforeStart, ...(content.language === undefined ? {} : { language: content.language }) }],
       ...(left > 0 ? { moreBefore: earlier(left) } : {}),
     }
   }
@@ -608,7 +633,8 @@ function changeLayout(call: Call, cap: number, open: boolean, t: MayflyTranslate
       ...(left > 0 ? { more: `${t('… +{count} more', { count: left })}${hint}` } : {}),
     }
   }
-  const styled = content.language === undefined ? {} : { language: content.language }
+  // The hunks of one edit share a gutter as wide as the largest number of any of them, shown or not.
+  const styled = { numberWidth: Math.max(...content.hunks.map(hunk => hunk.digits)), ...(content.language === undefined ? {} : { language: content.language }) }
   let room = cap
   let hidden = content.hidden
   const hunks: ToolDiffHunk[] = []
@@ -650,8 +676,8 @@ export function verboseRow(call: Call, open: boolean, t: MayflyTranslate, tier: 
     : running
       ? tier === 'compact' ? 0 : tier === 'standard' ? STANDARD_INPUT_ROWS : open ? OPEN_BODY_ROWS : VERBOSE_BODY_ROWS
       : open ? OPEN_BODY_ROWS : VERBOSE_BODY_ROWS
-  // A call that was cut off has no output, and a failed read or search has only its reason, which the line already gives.
-  const quiet = call.state === 'cancelled' || (call.state === 'error' && (call.activity === 'read' || call.activity === 'readImage' || call.activity === 'search'))
+  // A call the Harness cut short has no output, only the reason its line gives; and a failed read or search has only its reason, which the line already gives.
+  const quiet = call.interruption !== undefined || (call.state === 'error' && (call.activity === 'read' || call.activity === 'readImage' || call.activity === 'search'))
   const body: Body = asking ? { rows: call.waiting?.rows ?? [], total: call.waiting?.rows.length ?? 0 } : quiet ? NO_ROWS : running ? call.input() : tier === 'verbose' ? call.body() : NO_ROWS
   const rows = body.tail === true ? body.rows.slice(-cap) : body.rows.slice(0, cap)
   const left = body.total - rows.length
@@ -705,6 +731,8 @@ export function standardRow(calls: readonly Call[], t: MayflyTranslate, now: num
   const span = running ? pendingElapsed(Math.max(0, now - Math.min(...starts)))
     : ends.length === 0 ? undefined : elapsedText(Math.max(...ends) - Math.min(...starts))
   const failed = calls.filter(call => call.state === 'error').length
+  // Calls stopped or never started are not failures: they are counted apart, in the head's muted tail.
+  const interrupted = calls.filter(call => call.state === 'cancelled').length
   const names = [...new Set(calls.map(call => call.name))]
   const head = [
     unitPhrase(first.activity, calls.length, t),
@@ -719,6 +747,7 @@ export function standardRow(calls: readonly Call[], t: MayflyTranslate, now: num
     name: sanitizePluginText(names.length === 1 ? names[0]! : kindOf(first.activity).title),
     head: sanitizePluginText(head),
     ...(failed === 0 ? {} : { failed: t('{count} failed', { count: failed }) }),
+    ...(interrupted === 0 ? {} : { interrupted: t('{count} interrupted', { count: interrupted }) }),
     items: calls.map((call) => {
       const outcome = outcomeText(call)
       // An opened call shows what its Verbose block would, in place under its line: the block around it stays a run.

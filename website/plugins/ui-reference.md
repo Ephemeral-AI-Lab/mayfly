@@ -280,12 +280,14 @@ ui.code('const frame = glyphFor(state)\nreturn frame', { language: 'ts', numbere
 
 ![`diff` 节点渲染效果](/shots/diff.svg)
 
-*多行 before/after：新旧两列行号，改动行以 `−`/`+` 标出，红/绿色带只铺在代码上（宽度 64）。*
+*多行 before/after：一列行号（删除行为改动前，其余为改动后），改动行以 `−`/`+` 标出，红/绿色带只铺在代码上（宽度 64）。*
 
 ```ts
 ui.diff(before: string, after: string, options?: {
-  start?: number      // 首行行号（默认 1）
-  numbered?: boolean  // 新旧两列行号（默认 true）
+  start?: number      // 改动后首行的行号（默认 1）
+  beforeStart?: number // 改动前首行的行号（默认同 start）
+  numbered?: boolean  // 行号栏（默认 true）
+  numberWidth?: number // 行号列的最小宽度，使一起显示的多个 diff 共用同一行号栏（默认 1）
   hunkHeader?: boolean // 即使只有一个 hunk 也画 `@@` 头（默认：多于一个才画）
   context?: number    // 每处改动周围的未改动行，0 到 3（默认 1）
   maxRows?: number    // 超出后显示 `… +N rows · Ctrl+O`
@@ -293,7 +295,7 @@ ui.diff(before: string, after: string, options?: {
 ```
 
 表达同一内容修改前后的语义对比，例如待确认的编辑。插件提供原始文本，不手工
-添加 diff 颜色：Mayfly 画出新旧两列弱化行号（以 `│` 结尾），删除行与新增行以
+添加 diff 颜色：Mayfly 画出一列弱化行号（以 `│` 结尾；删除行显示改动前的行号，其余行显示改动后的行号），删除行与新增行以
 `−`/`+` 标出，并用主题的 `diffRemovedBg`/`diffAddedBg` 色带铺在代码上（从不铺在行号上）；
 每处改动保留一行上下文，跳过的未改动行显示为一个弱化的 `⋯`，过长的行以 `…` 结尾。
 上面的截图渲染的就是这个节点：

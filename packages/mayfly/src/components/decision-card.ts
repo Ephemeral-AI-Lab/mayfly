@@ -3,7 +3,8 @@
  * It is a lane at the foot of the stream, where the editor normally sits: a rule carrying the title (and how many
  * requests wait), the choices numbered so a digit chooses at once, the common grant first and the refusal last, a note
  * field under them, and hidden keys that open the request in `$EDITOR` or copy it. `Esc` rejects, and the hint row says so.
- * A choice and the note settle as one action, so the note travels with whichever choice is made. The card carries no
+ * A choice and the note settle as one action: the note travels only with a rejection (an approval's refusal) or a plan's
+ * revision, and an allow, an approve, or a plan's Reject drops it. The card carries no
  * level, no width, and no timer: the overlay it rides on holds the arm delay that keeps a stray key from granting.
  *
  * @module components/decision-card

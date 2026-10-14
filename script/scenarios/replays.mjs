@@ -146,7 +146,7 @@ const errors = {
         tool('read', { file_path: 'src/missing.mjs' }, { result: 'Error: ENOENT: no such file or directory, open src/missing.mjs', error: true, runMs: 400 }),
       ],
     })], { outcome: { error: { message: 'The provider returned an invalid request: replay error', code: 'INVALID_REQUEST' } } }),
-    turn('Try again, but I will stop you.', [step({ text: 'Starting a long task… ', tools: [tool('bash', { command: 'sleep 60', description: 'Wait' }, { result: '', runMs: 4000 })] })], { outcome: 'interrupted' }),
+    turn('Try again, but I will stop you.', [step({ text: 'Starting a long task… ', tools: [tool('bash', { command: 'sleep 60', description: 'Wait' }, { result: '', runMs: 4000, unanswered: true })] })], { outcome: 'aborted' }),
     turn('And once more.', [step({ text: 'Working on it, then the request is cut off.' })], { outcome: 'aborted' }),
   ],
 }
@@ -523,8 +523,8 @@ const turns = {
     turn(lines(7, n => `Check ${String(n)}: the ${['header', 'footer', 'editor', 'banner', 'queue', 'status row', 'overlay'][n - 1]} still fits at 40 columns.`), [step({ text: 'All seven fit; the overlay needed a one-column trim.' })], { startAt: '10:09' }),
     turn('请把这一段说明翻译成中文，并且保留原来的标点：each turn ends with one quiet closing row, and a prompt longer than four lines folds behind a muted row that opens with Enter.', [step({ text: '已翻译；标点保持不变。' })], { startAt: '10:11' }),
     turn('Run the full gate, and I will stop you halfway.', [
-      step({ text: 'Starting the full gate.', tools: [tool('bash', { command: 'pnpm run check -- --tier full', description: 'Run the full gate' }, { result: 'stopped', runMs: 1500 })] }),
-    ], { startAt: '10:14', outcome: 'interrupted' }),
+      step({ text: 'Starting the full gate.', tools: [tool('bash', { command: 'pnpm run check -- --tier full', description: 'Run the full gate' }, { result: '', runMs: 1500, unanswered: true })] }),
+    ], { startAt: '10:14', outcome: 'aborted' }),
     mark('settled'),
     turn('Now regenerate the screenshots and check that they are fresh.', [
       queue(['Then update the changelog', { steer: 'Keep the diff small' }], { holdMs: 8000 }),
@@ -590,9 +590,10 @@ const toollines = {
           tool('read', { file_path: 'package.json' }, { result: readText('package.json', '{}'), runMs: 300, meta: readMeta('package.json', 1, 1) }),
           tool('bash', { command: 'pnpm run lint', description: 'Lint' }, { result: 'src/client.mjs:4:3  error  no-unused-vars\n[exit code: 1]', runMs: 1000 }),
           tool('bash', { command: 'pnpm run build', description: 'Build' }, { result: '', runMs: 4000, unanswered: true }),
+          tool('bash', { command: 'pnpm run deploy', description: 'Deploy' }, { result: '', runMs: 50, unanswered: 'before-dispatch' }),
         ],
       }),
-    ], { startAt: '10:24', outcome: 'interrupted' }),
+    ], { startAt: '10:24', outcome: 'aborted' }),
   ],
 }
 
@@ -658,7 +659,16 @@ const edits = {
   items: [
     turn('Add a retries setting, read it in the client, and cover it with a test.', [
       step({ text: 'The setting goes into the config first.', tools: [edit('src/config.mjs', CONFIG_BEFORE, CONFIG_AFTER)] }),
-      step({ text: 'The client names the timeout in three places.', tools: [editHunks('src/client.mjs', [around(10, '  const wait = timeout', '  const wait = timeoutMs'), around(48, '  return timeout * 2', '  return timeoutMs * 2'), around(120, '  log(timeout)', '  log(timeoutMs)')])] }),
+      // One line for one, two lines for one, one line for two, and a line removed alone: the numbers before and after a change differ.
+      step({
+        text: 'The client names the timeout in four places.',
+        tools: [editHunks('src/client.mjs', [
+          around(10, '  const wait = timeout', '  const wait = timeoutMs'),
+          around(48, '  const half = timeout / 2\n  return half * 4', '  return timeoutMs * 2'),
+          around(120, '  log(timeout)', '  log(timeoutMs)\n  log(retries)'),
+          around(150, '  legacyCleanup()', ''),
+        ])],
+      }),
       mark('edited'),
       step({ text: 'Now the test for it.', tools: [write('tests/retry.test.mjs', RETRY_TEST)] }),
       step({ text: 'And the helper itself.', tools: [write('src/retry.ts', RETRY_MODULE)] }),
@@ -695,7 +705,7 @@ const edits = {
           write('src/client.mjs', lines(40, n => `export const call${String(n)} = () => request(${String(n)})`), { result: '', runMs: 4000, unanswered: true }),
         ],
       }),
-    ], { startAt: '10:34', outcome: 'interrupted' }),
+    ], { startAt: '10:34', outcome: 'aborted' }),
   ],
 }
 
@@ -742,7 +752,7 @@ const pending = {
       step({ text: 'One check failed.' }),
     ]),
     turn('Run the long migration, and I will stop you.', [
-      step({ text: 'Starting the migration.', textMs: 600, tools: [tool('bash', { command: 'pnpm run migrate', description: 'Run the migration' }, { result: '', runMs: 30_000, unanswered: true })] }),
+      step({ text: 'Starting the migration.', textMs: 600, tools: [tool('bash', { command: 'pnpm run migrate', description: 'Run the migration' }, { result: '', runMs: 30_000, unanswered: 'unknown' })] }),
     ], { outcome: 'interrupted' }),
   ],
 }
@@ -1053,9 +1063,9 @@ const phase3 = {
       step({
         text: 'Three actions need your approval.',
         tools: [
-          tool('bash', { command: 'rm -rf dist build', description: 'Delete the build output' }, { ask: approval('bash', 'The command removes files outside the tracked sources.', { queued: true }), result: '[exit code: 0]', outcomes: REJECTED, runMs: 900 }),
+          tool('bash', { command: 'rm -rf coverage .nyc_output', description: 'Delete the coverage output' }, { ask: approval('bash', 'The command removes files outside the tracked sources.', { queued: true }), result: '[exit code: 0]', outcomes: REJECTED, runMs: 900 }),
           edit('src/config.mjs', CONFIG_BEFORE, CONFIG_AFTER, { ask: approval('edit', 'Edits a file in the workspace.', { queued: true }), outcomes: REJECTED }),
-          tool('bash', { command: 'set -e\ngit clean -fd', description: 'Remove untracked files' },{ ask: approval('bash', 'The command removes untracked files.', { queued: true }), result: '[exit code: 0]', outcomes: REJECTED, runMs: 700 }),
+          tool('bash', { command: 'set -e\ngit clean -fd', description: 'Remove untracked files' }, { ask: approval('bash', 'The command removes untracked files.', { queued: true }), result: '[exit code: 0]', outcomes: REJECTED, runMs: 700 }),
         ],
       }),
       mark('queued'),
@@ -1088,13 +1098,12 @@ const phase3 = {
           subagent('Rewrite the client retry', 'Rewrite the client retry around withRetry', {
             mode: 'continuable',
             live: true,
-            outcome: 'open',
-            startMs: 500,
+            startMs: 0,
             items: [step({
               reasoning: 'Reading the current client first, then wrapping the call in withRetry. The timeout stays on each attempt.',
-              reasoningMs: 6000,
+              reasoningMs: 2000,
               text: 'Draft client:\n\nexport async function get(path) {\n  return withRetry(() => request(path), { retries: config.retries })\n}\n\nThe timeout is set per attempt, so a slow retry does not extend the first wait.',
-              textMs: 50_000,
+              textMs: 2000,
               chunk: 10,
             })],
           }, { runMs: 800 }),
@@ -1103,7 +1112,7 @@ const phase3 = {
       }),
       job('npm run watch', { lines: [[300, 'watching for changes…'], [3000, 'rebuilt src/config.mjs in 42 ms']], progress: [[500, 'watching'], [3000, 'rebuilt 1']] }),
       mark('watching'),
-      step({ text: 'The watcher keeps running and the subagent streams its draft.' }),
+      step({ text: 'The watcher keeps running and the subagent finishes its draft.' }),
     ], { startAt: '10:34' }),
     turn('Summarise the changelog, then run the check that failed before.', [
       step({
@@ -1119,10 +1128,10 @@ const phase3 = {
     ], { startAt: '10:40' }),
     turn('Keep reading the logs until the context is nearly full.', [
       step({ text: 'First log.', usage: { inputTokens: 4_000, outputTokens: 80, cacheReadTokens: 2_000 }, tools: [tool('read', { file_path: 'a.log' }, { result: LONG_LOG, runMs: 500 })] }),
-      step({ text: 'Second log: the context is nearly full.', usage: { inputTokens: 24_000, outputTokens: 80, cacheReadTokens: 14_000 }, tools: [tool('read', { file_path: 'b.log' }, { result: LONG_LOG, runMs: 500 })] }),
+      step({ text: 'Second log: the context is nearly full.', usage: { inputTokens: 18_000, outputTokens: 80, cacheReadTokens: 12_000 }, tools: [tool('read', { file_path: 'b.log' }, { result: LONG_LOG, runMs: 500 })] }),
       pause(1500),
       mark('context-full'),
-      compaction({ ms: 2500, applyMs: 1000, shadowedTokens: 30_000, shadowedItems: 8, summaryTokens: 500, marks: [{ name: 'compacting', stage: 'summarize', at: 0.6 }], summary: 'The user asked to read two logs; both were read.' }),
+      compaction({ ms: 2500, applyMs: 1000, shadowedTokens: 22_000, shadowedItems: 8, summaryTokens: 500, marks: [{ name: 'compacting', stage: 'summarize', at: 0.6 }], summary: 'The user asked to read two logs; both were read.' }),
       pause(800),
       mark('relieved'),
       step({ text: 'The context is small again.', usage: { inputTokens: 2_400, outputTokens: 40, cacheReadTokens: 0 } }),
@@ -1130,7 +1139,7 @@ const phase3 = {
     compaction({ manual: true, ms: 2000, error: 'context still over budget after summary', marks: [{ name: 'manual-failing', stage: 'summarize', at: 0.5 }] }),
     pause(600),
     mark('manual-failed'),
-    compaction({ manual: true, ms: 2000, applyMs: 1000, shadowedTokens: 9_000, shadowedItems: 3, summaryTokens: 400, summary: 'The user asked to read two logs; both were read, and the context was compacted once more.' }),
+    compaction({ manual: true, ms: 2000, applyMs: 1000, shadowedTokens: 1_600, shadowedItems: 3, summaryTokens: 400, summary: 'The user asked to read two logs; both were read, and the context was compacted once more.' }),
     pause(1200),
     mark('manual-settled'),
     turn('Refactor the parser, I will add more while you work.', [
@@ -1163,9 +1172,10 @@ const phase3 = {
           tool('read', { file_path: 'src/config.mjs' }, { result: readText('src/config.mjs', CONFIG.trimEnd()), runMs: 300, meta: readMeta('src/config.mjs', 8, 8) }),
           tool('bash', { command: 'pnpm run build', description: 'Build' }, { result: '', runMs: 4000, unanswered: true }),
           write('src/client.mjs', lines(40, n => `export const call${String(n)} = () => request(${String(n)})`), { result: '', runMs: 4000, unanswered: true }),
+          tool('bash', { command: 'pnpm run deploy', description: 'Deploy' }, { result: '', runMs: 50, unanswered: 'before-dispatch' }),
         ],
       }),
-    ], { startAt: '10:58', outcome: 'interrupted' }),
+    ], { startAt: '10:58', outcome: 'aborted' }),
     mark('cut-off'),
     turn('Run the checks.', [
       step({ text: 'Running the checks.', tools: [tool('bash', { command: 'npm run lint', description: 'Lint the project' }, { result: 'src/client.mjs:4:3  error  no-unused-vars  "signal" is assigned but never used\n[exit code: 1]', error: true, runMs: 1500 })] }),

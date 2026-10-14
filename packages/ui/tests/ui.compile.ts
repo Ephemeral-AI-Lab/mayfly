@@ -172,7 +172,7 @@ export const elided = ui.text('~/work/mayfly/packages/mayfly', { overflow: 'midd
 export const pathTail = ui.text('~/work/mayfly/packages/mayfly', { overflow: 'start', tone: 'muted' })
 export const numberedCode = ui.code('const a = 1', { language: 'ts', numbered: true })
 export const windowedCode = ui.code('const b = 2', { language: 'ts', numbered: true, start: 41 })
-export const options = ui.diff('a', 'b', { start: 41, numbered: true, hunkHeader: true, context: 3, maxRows: 12 })
+export const options = ui.diff('a', 'b', { start: 41, beforeStart: 43, numbered: true, numberWidth: 3, hunkHeader: true, context: 3, maxRows: 12 })
 export const plainDiff = ui.diff('a', 'b')
 export const yearHeatmap = ui.chart({ chart: 'heatmap', cell: 1, columns: ['w1'], columnLabels: ['Jan'], rows: ['Mon'], values: [[1]], levels: [{ value: 1, label: 'some' }] })
 export const bareLoader = ui.loader({ variant: 'bloom' })

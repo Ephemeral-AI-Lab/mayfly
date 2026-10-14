@@ -301,12 +301,14 @@ ui.code('const frame = glyphFor(state)\nreturn frame', { language: 'ts', numbere
 
 ![`diff` node rendering](/shots/diff.svg)
 
-*Multi-line before/after: old and new line numbers, changed lines marked `−`/`+` with red/green bands behind the code only (width 64).*
+*Multi-line before/after: one line-number column (old numbers on removed lines, new numbers on the rest), changed lines marked `−`/`+` with red/green bands behind the code only (width 64).*
 
 ```ts
 ui.diff(before: string, after: string, options?: {
-  start?: number      // the number of the first line (default 1)
-  numbered?: boolean  // old and new gutters (default true)
+  start?: number      // the number of the first line after the change (default 1)
+  beforeStart?: number // the number of the first line before the change (default: start)
+  numbered?: boolean  // a line-number gutter (default true)
+  numberWidth?: number // the least width of the number column, so diffs shown together share a gutter (default 1)
   hunkHeader?: boolean // an `@@` header even for one hunk (default: more than one)
   context?: number    // unchanged lines around a change, 0 to 3 (default 1)
   maxRows?: number    // then `… +N rows · Ctrl+O`
@@ -315,7 +317,7 @@ ui.diff(before: string, after: string, options?: {
 
 Represents the semantic before/after states of the same content, such as a
 pending edit. Supply plain text rather than manually adding diff colors: Mayfly
-draws muted old and new line-number gutters (ending in `│`), marks removed and
+draws one muted line-number gutter (ending in `│`; a removed line shows its number before the change, any other line its number after it), marks removed and
 added lines with `−`/`+`, and shades their code (never the gutter) with the
 theme's `diffRemovedBg`/`diffAddedBg` bands. One unchanged line stays around
 each change, a skipped run reads as one muted `⋯`, and a long line ends in `…`.

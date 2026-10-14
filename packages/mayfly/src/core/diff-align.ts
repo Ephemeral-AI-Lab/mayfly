@@ -7,8 +7,8 @@
  * under a `maxEditLength` bound; past it, lines unique to both sides anchor a
  * bounded split, and an anchorless rewrite degrades to whole-block removal plus
  * addition rather than an unbounded table.
- * Painting numbers both sides in a muted gutter and shades only the code of
- * removed and added lines (spec §4.1).
+ * Painting numbers every row in one muted gutter (a removed line by its number before the change, any other by its
+ * number after it) and shades only the code of removed and added lines (spec §4.1).
  *
  * @module @ephemeral-ai/mayfly/core/diff-align
  */
@@ -177,8 +177,10 @@ export function diffChangeCounts(before: string, after: string): { readonly adde
 /** What paints a row beyond its text: numbering and the highlighted lines of each side. */
 export interface DiffStyle {
   readonly numbered: boolean
-  /** The first line number of both sides: a row's number minus it is its index in `lit`. */
+  /** The number of the first line after the change: a row's number there minus it is its index in `lit.after`. */
   readonly start: number
+  /** The number of the first line before the change, which a removed line's number minus it indexes in `lit.before`. */
+  readonly beforeStart: number
   /** The text of each side already painted with syntax colors, one entry per line. */
   readonly lit?: { readonly before: readonly string[], readonly after: readonly string[] }
 }
@@ -188,10 +190,14 @@ const DIFF_INSET_COLUMNS = 4
 
 /** How a diff paints beyond its alignment; every field is optional. */
 export interface DiffPaintOptions {
-  /** The first line number of both sides (default 1). */
+  /** The number of the first line after the change, and before it unless `beforeStart` says otherwise (default 1). */
   readonly start?: number
-  /** A line-number gutter, which numbers the modified file and leaves a removed line's cell blank (default true). */
+  /** The number of the first line before the change (default `start`). */
+  readonly beforeStart?: number
+  /** A line-number gutter: a removed line shows its number before the change, any other its number after it (default true). */
   readonly numbered?: boolean
+  /** The least width of the number column, so the hunks of one change share a gutter (default 1). */
+  readonly numberWidth?: number
   /** An `@@` header over the rows (default: only when the diff has more than one hunk). */
   readonly hunkHeader?: boolean
   /** Unchanged lines kept around each change (default {@link DIFF_CONTEXT_ROWS}). */
@@ -234,6 +240,7 @@ export interface DiffModel {
  */
 export function diffModel(ops: readonly DiffOp[], options: DiffPaintOptions = {}): DiffModel {
   const start = options.start ?? 1
+  const beforeStart = options.beforeStart ?? start
   const context = Math.max(0, Math.floor(options.context ?? DIFF_CONTEXT_ROWS))
   const ranges: [number, number][] = []
   let beforeTotal = 0
@@ -253,11 +260,11 @@ export function diffModel(ops: readonly DiffOp[], options: DiffPaintOptions = {}
     }
   }
   const segments: DiffSegment[] = []
-  if (options.hunkHeader ?? ranges.length > 1) segments.push({ kind: 'header', text: `@@ -${String(start)},${String(beforeTotal)} +${String(start)},${String(afterTotal)} @@` })
+  if (options.hunkHeader ?? ranges.length > 1) segments.push({ kind: 'header', text: `@@ -${String(beforeStart)},${String(beforeTotal)} +${String(start)},${String(afterTotal)} @@` })
   const keptTotal = ranges.reduce((total, [lo, hi]) => total + hi - lo + 1, 0)
   const maxRows = options.maxRows
   let shown = 0
-  let old = start
+  let old = beforeStart
   let next = start
   let opIndex = 0
   let ended = false
@@ -289,7 +296,7 @@ export function diffModel(ops: readonly DiffOp[], options: DiffPaintOptions = {}
     if (tail !== undefined) segments.push({ kind: 'tail', remaining: tail, ...(options.tail === undefined ? {} : { text: options.tail }) })
   }
   if (!ended && opIndex < ops.length) segments.push({ kind: 'gap' })
-  const digits = String(Math.max(1, start - 1 + afterTotal)).length
+  const digits = Math.max(options.numberWidth ?? 1, String(Math.max(1, start - 1 + afterTotal)).length, String(Math.max(1, beforeStart - 1 + beforeTotal)).length)
   const length = segments.reduce((total, segment) => total + (segment.kind === 'rows' ? segment.rows.length : 1), 0)
   return { digits, segments, length }
 }
@@ -306,14 +313,13 @@ function paintDiffRow(
   paint: (tone: ((text: string) => string) | undefined, text: string) => string,
 ): string {
   const { numbered } = style
-  const number = (value: number | undefined): string => value === undefined ? ' '.repeat(digits) : String(value).padStart(digits)
-  // The gutter is the code block's (`N │ `, muted, numbers right-aligned): it numbers the modified file, and a removed line has no number there, so its cell stays blank.
-  const gutter = numbered ? `${paint(colors?.muted ?? colors?.diffGutter, `${number(row.new)} │`)} ` : ''
+  // The gutter is the code block's (`N │ `, muted, numbers right-aligned), one number per row: a removed line's place in the file before the change, any other line's place after it.
+  const gutter = numbered ? `${paint(colors?.muted ?? colors?.diffGutter, `${String((row.sign === '-' ? row.old : row.new) ?? '').padStart(digits)} │`)} ` : ''
   const head = `  ${gutter}`
   const room = Math.max(0, columns - helpers.visibleWidth(head))
   const text = row.text.replace(/\t/gu, '   ')
   // The code with its syntax colors when the diff has a language, else the row's plain text.
-  const lit = row.sign === '-' ? style.lit?.before[(row.old ?? 0) - style.start] : style.lit?.after[(row.new ?? 0) - style.start]
+  const lit = row.sign === '-' ? style.lit?.before[(row.old ?? 0) - style.beforeStart] : style.lit?.after[(row.new ?? 0) - style.start]
   const code = lit === undefined ? undefined : lit.replace(/\t/gu, '   ')
   if (row.sign === '') return clip(`${head}  ${code ?? paint(colors?.text, text)}`, columns)
   const tone = row.sign === '-' ? colors?.diffRemoved : colors?.diffAdded
@@ -355,7 +361,7 @@ export function paintDiffSegment(
 
 /**
  * Paint aligned ops as terminal rows no wider than `width` (spec §4.1): one line-number gutter that numbers the
- * modified file (muted, ending in `│`; a removed line's cell is blank), then `−` or `+` and the code. A removed or added line keeps its band behind the code only, never the
+ * rows (muted, ending in `│`; a removed line shows its number before the change, any other line its number after it), then `−` or `+` and the code. A removed or added line keeps its band behind the code only, never the
  * gutter, in the removed or added tone, stopping a few columns short of the right edge; an unchanged line is plain. Only {@link DiffPaintOptions.context} unchanged
  * lines stay around each change, a run of skipped lines is one muted `⋯`, a long line ends in `…`, and tabs expand to
  * three columns so a band has no tab-stop gaps.
@@ -370,6 +376,6 @@ export function paintDiffRows(ops: readonly DiffOp[], width: number, helpers: Di
   const columns = Math.max(1, width)
   const model = diffModel(ops, options)
   const out: string[] = []
-  for (const segment of model.segments) for (const row of paintDiffSegment(segment, model.digits, columns, helpers, colors, { numbered: options.numbered !== false, start: options.start ?? 1 })) out.push(row)
+  for (const segment of model.segments) for (const row of paintDiffSegment(segment, model.digits, columns, helpers, colors, { numbered: options.numbered !== false, start: options.start ?? 1, beforeStart: options.beforeStart ?? options.start ?? 1 })) out.push(row)
   return out
 }

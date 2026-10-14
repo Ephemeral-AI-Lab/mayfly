@@ -98,7 +98,10 @@ describe('code, diff, and heatmap fields', () => {
   it('admits numbered code and the diff options', () => {
     expect(accepted(ui.code('a', { language: 'ts', numbered: true }))).toMatchObject({ numbered: true })
     expect(accepted(ui.diff('a', 'b', { start: 41, numbered: false, hunkHeader: true, context: 3, maxRows: 12 }))).toMatchObject({ start: 41, numbered: false, hunkHeader: true, context: 3, maxRows: 12 })
+    expect(accepted(ui.diff('a', 'b', { start: 8, beforeStart: 12, numberWidth: 3 }))).toMatchObject({ start: 8, beforeStart: 12, numberWidth: 3 })
     expect(accepted(ui.diff('a', 'b'))).toEqual({ kind: 'diff', before: 'a', after: 'b' })
+    expect(rejected({ kind: 'diff', before: 'a', after: 'b', numberWidth: 0 })).toContain('numberWidth')
+    expect(rejected({ kind: 'diff', before: 'a', after: 'b', beforeStart: -1 })).toContain('beforeStart')
     expect(rejected({ kind: 'diff', before: 'a', after: 'b', context: 4 })).toContain('at most 3')
     expect(rejected({ kind: 'diff', before: 'a', after: 'b', start: -1 })).toContain('start')
     expect(rejected({ kind: 'diff', before: 'a', after: 'b', maxRows: 0 })).toContain('maxRows')

@@ -76,10 +76,14 @@ export interface MayflyDiffNode {
   readonly kind: 'diff'
   readonly before: string
   readonly after: string
-  /** The number of the first line (default 1). */
+  /** The number of the first line after the change, and before it unless `beforeStart` says otherwise (default 1). */
   readonly start?: number
-  /** A line-number gutter, which numbers the modified file and leaves a removed line's cell blank (default true). */
+  /** The number of the first line before the change (default `start`). */
+  readonly beforeStart?: number
+  /** A line-number gutter: a removed line shows its number before the change, any other its number after it (default true). */
   readonly numbered?: boolean
+  /** The least width of the number column, so several diffs shown together share one gutter (default 1). */
+  readonly numberWidth?: number
   /** Draw an `@@` header even for one hunk (default: only when there is more than one). */
   readonly hunkHeader?: boolean
   /** Context lines around each change, 0 to 3 (default 1). */

@@ -52,6 +52,8 @@ export interface ProcessMemberFact {
   readonly running: boolean
   readonly preparing?: boolean
   readonly failed?: boolean
+  /** Whether the call was cancelled (stopped by the user, or never started): neither a success nor a failure. */
+  readonly interrupted?: boolean
   /** Producer times of the call, for the wall time a group title reports. */
   readonly startedAt?: number
   readonly endedAt?: number
@@ -64,6 +66,8 @@ export interface ProcessMemberFact {
 export interface ProcessSummary {
   readonly counts: readonly { readonly activity: ProcessActivity, readonly count: number }[]
   readonly failed: number
+  /** Members cancelled by an interruption, which are not counted as failed. */
+  readonly interrupted: number
   /** Wall time from the first member's start to the last member's end, when every settled member has both. */
   readonly durationMs?: number
   /** Lines the members' file changes added and removed, when any made one. */
@@ -80,12 +84,14 @@ export interface ProcessSummary {
 export function summarizeProcess(members: readonly ProcessMemberFact[]): ProcessSummary {
   const counts = new Map<ProcessActivity, number>()
   let failed = 0
+  let interrupted = 0
   let added = 0
   let removed = 0
   let changed = false
   for (const member of members) {
     counts.set(member.activity, (counts.get(member.activity) ?? 0) + 1)
     if (member.failed === true) failed += 1
+    if (member.interrupted === true) interrupted += 1
     if (member.added !== undefined) {
       changed = true
       added += member.added
@@ -96,7 +102,7 @@ export function summarizeProcess(members: readonly ProcessMemberFact[]): Process
   const starts = members.flatMap(member => member.startedAt === undefined ? [] : [member.startedAt])
   const ends = members.flatMap(member => member.endedAt === undefined ? [] : [member.endedAt])
   const span = starts.length === 0 || ends.length === 0 ? undefined : Math.max(...ends) - Math.min(...starts)
-  return { counts: ranked, failed, ...(span === undefined || span < 0 ? {} : { durationMs: span }), ...(changed ? { added, removed } : {}) }
+  return { counts: ranked, failed, interrupted, ...(span === undefined || span < 0 ? {} : { durationMs: span }), ...(changed ? { added, removed } : {}) }
 }
 
 /**

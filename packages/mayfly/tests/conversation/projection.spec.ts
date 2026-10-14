@@ -252,7 +252,7 @@ describe('mayflyConversation projection', () => {
       kind: 'tool',
       callId: 'orphan',
       name: 'tool',
-      result: { text: 'bad', isError: true, endedAt: 220, meta: { details: true } },
+      result: { text: 'bad', isError: true, endedAt: 220, meta: { details: true }, code: 'E_TOOL' },
     })
     const replacementResult = foldConversationProjection(state, event('tool/result', {
       turn: 3,
@@ -528,7 +528,7 @@ describe('mayflyConversation projection', () => {
     expect(conversationProjectionSchema.safeParse({ entries: [], streaming: 'yes' }).success).toBe(false)
     expect(conversationProjectionStateSchema.safeParse(state).success).toBe(true)
     expect(conversationProjectionStateSchema.safeParse({ ...state, finalizedSteps: [1] }).success).toBe(false)
-    expect(conversationProjectionDefinition.stateVersion).toBe(9)
+    expect(conversationProjectionDefinition.stateVersion).toBe(10)
   })
 
   it('covers final-only replay, mid-stream settling, nested result text, and defensive restored ids', () => {
@@ -865,7 +865,7 @@ describe('SessionProjectionRegistry integration', () => {
     expect(changes).toEqual([2, 3])
 
     const checkpoint = ctx.sessionProjections.checkpoint(session)
-    expect(checkpoint.mayflyConversation).toMatchObject({ ver: 9, seq: 3 })
+    expect(checkpoint.mayflyConversation).toMatchObject({ ver: 10, seq: 3 })
     const obsolete = { ...checkpoint, mayflyConversation: { ...checkpoint.mayflyConversation!, ver: 4 } }
     expect(ctx.sessionProjections.restoreFloor(obsolete)).toBe(0)
     expect(ctx.sessionProjections.viewCheckpoint(obsolete)).not.toHaveProperty('mayflyConversation')

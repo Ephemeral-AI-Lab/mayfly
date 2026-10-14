@@ -423,7 +423,8 @@ function titleRow(item: ProcessTitleItem, t: MayflyTranslate): StreamRow {
     kind: 'title',
     id: item.id,
     text: sanitizePluginText(parts.join(' · ')),
-    ...(item.failed === 0 ? {} : { failed: t('{count} failed', { count: item.failed }), ...(item.failed < item.toolCalls + item.subagents ? { partial: true as const } : {}) }),
+    ...(item.failed === 0 ? {} : { failed: t('{count} failed', { count: item.failed }), ...(item.failed + item.interrupted < item.toolCalls + item.subagents ? { partial: true as const } : {}) }),
+    ...(item.interrupted === 0 ? {} : { interrupted: t('{count} interrupted', { count: item.interrupted }) }),
     ...(item.hint ? { hint: t('Ctrl+O to expand') } : {}),
   }
 }
@@ -464,7 +465,7 @@ function runsOf(display: readonly DisplayItem[], t: MayflyTranslate, now: number
   }
   for (const item of display) {
     if (item.kind === 'entry' && item.tier === 'standard' && isSemantic(item.entry) && isToolLike(item.entry) && !isUnmerged(item.entry)) {
-      for (const call of callsOf(item.entry, item.turnClosed, t, now, asked)) {
+      for (const call of callsOf(item.entry, t, now, asked)) {
         // A call that waits on the user is a block of its own, open, and ends the run.
         if (call.state === 'waiting') {
           flush()
@@ -488,7 +489,7 @@ function runsOf(display: readonly DisplayItem[], t: MayflyTranslate, now: number
 function entryRows(item: EntryItem, entry: TranscriptEntryModel, inputs: StreamInputs, asked: CallRequests): readonly StreamRow[] {
   if (isToolLike(entry)) {
     // At the compact level a call in flight is its line alone, and one that waits on the user stays open; what has settled is the title's.
-    const calls = callsOf(entry, item.turnClosed, inputs.t, inputs.now, asked)
+    const calls = callsOf(entry, inputs.t, inputs.now, asked)
     return (item.tier === 'compact' ? calls.filter(call => call.state === 'pending' || call.state === 'waiting') : calls).map(call => verboseRow(call, item.expanded || inputs.disclosure.rows.has(call.id), inputs.t, item.tier ?? 'verbose'))
   }
   const row = entryRow(item, entry, inputs)

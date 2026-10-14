@@ -10,7 +10,7 @@
  * @module @ephemeral-ai/mayfly/transcript/process-groups
  */
 
-import type { TranscriptEntryModel, TranscriptModel, TranscriptTurnModel } from '../frontend/models.ts'
+import { isCancelled, type ToolInterruption, type TranscriptEntryModel, type TranscriptModel, type TranscriptTurnModel } from '../frontend/models.ts'
 import type { ProcessPolicy } from './presentation-policy.ts'
 import { summarizeProcess, type ProcessMemberFact } from './process-activity.ts'
 
@@ -44,6 +44,8 @@ export interface ProcessTitleItem {
   readonly toolCalls: number
   readonly subagents: number
   readonly failed: number
+  /** Calls cancelled by an interruption: counted apart from the failed ones. */
+  readonly interrupted: number
   /** Wall time of the calls, once every one of them has settled. */
   readonly durationMs?: number
   /** Lines the calls' file changes added and removed, when any made one. */
@@ -63,8 +65,6 @@ export interface EntryItem {
   readonly expanded: boolean
   /** Whether Ctrl-O reaches this entry, so hints may name the key. */
   readonly hint: boolean
-  /** Whether the entry's turn has ended (pending calls read as cancelled). */
-  readonly turnClosed: boolean
   /**
    * How a tool entry is drawn: `verbose` is one block per call with its body, `standard` lets a run of calls of one kind
    * share a block, `compact` keeps only the calls still in flight, as their lines. Absent on a plain (flat) model, where
@@ -112,6 +112,12 @@ function exitFailed(entry: Extract<TranscriptEntryModel, { readonly kind: 'trans
   return terminal !== undefined && (terminal.signal !== undefined || (terminal.exitCode !== undefined && terminal.exitCode !== 0))
 }
 
+/** How a settled call counts: cancelled by an interruption (not a failure), or failed (an unknown outcome included). */
+function outcomeFacts(failed: boolean, interruption: ToolInterruption | undefined): { readonly failed: boolean, readonly interrupted: boolean } {
+  const cancelled = failed && isCancelled(interruption)
+  return { failed: failed && !cancelled, interrupted: cancelled }
+}
+
 function times(call: { readonly startedAt: number, readonly endedAt?: number }): { readonly startedAt: number, readonly endedAt?: number } {
   return { startedAt: call.startedAt, ...(call.endedAt === undefined ? {} : { endedAt: call.endedAt }) }
 }
@@ -129,17 +135,17 @@ export function memberFacts(entry: Entry, closed: boolean): ProcessMemberFact[] 
         activity: entry.activity,
         running: !closed && entry.result === undefined,
         ...(entry.preparing === undefined ? {} : { preparing: true }),
-        failed: entry.result?.isError === true || exitFailed(entry),
+        ...outcomeFacts(entry.result?.isError === true || exitFailed(entry), entry.result?.interruption),
         startedAt: entry.startedAt,
         ...(entry.result === undefined ? {} : { endedAt: entry.result.endedAt }),
         ...(entry.change === undefined ? {} : { added: entry.change.added, removed: entry.change.removed }),
       }]
     case 'transcript-read-group':
-      return entry.reads.map(read => ({ activity: read.activity, running: !closed && read.state === 'pending', failed: read.state === 'error', ...times(read) }))
+      return entry.reads.map(read => ({ activity: read.activity, running: !closed && read.state === 'pending', ...outcomeFacts(read.state === 'error', read.interruption), ...times(read) }))
     case 'transcript-search-group':
-      return entry.searches.map(call => ({ activity: call.activity, running: !closed && call.state === 'pending', failed: call.state === 'error', ...times(call) }))
+      return entry.searches.map(call => ({ activity: call.activity, running: !closed && call.state === 'pending', ...outcomeFacts(call.state === 'error', call.interruption), ...times(call) }))
     case 'transcript-command-group':
-      return entry.commands.map(call => ({ activity: call.activity, running: !closed && call.state === 'pending', failed: call.state === 'error', ...times(call) }))
+      return entry.commands.map(call => ({ activity: call.activity, running: !closed && call.state === 'pending', ...outcomeFacts(call.state === 'error', call.interruption), ...times(call) }))
     default:
       return []
   }
@@ -186,16 +192,16 @@ export function buildDisplay(input: DisplayInput): DisplayItem[] {
   const items: DisplayItem[] = []
   let lastSeq = input.previousSeq
   const turnInfo = new Map((input.turns ?? []).map(turn => [turn.turn, turn]))
-  const plainEntry = (entry: Entry, turnClosed: boolean, expanded: boolean, hint: boolean, tier?: 'verbose' | 'standard' | 'compact'): EntryItem => {
+  const plainEntry = (entry: Entry, expanded: boolean, hint: boolean, tier?: 'verbose' | 'standard' | 'compact'): EntryItem => {
     if (isSemantic(entry)) lastSeq = entry.seq
-    return { kind: 'entry', entry, seq: lastSeq, expanded: expanded || (isSemantic(entry) && input.rows.has(entry.id)), hint, turnClosed, ...(tier === undefined ? {} : { tier }) }
+    return { kind: 'entry', entry, seq: lastSeq, expanded: expanded || (isSemantic(entry) && input.rows.has(entry.id)), hint, ...(tier === undefined ? {} : { tier }) }
   }
   let index = 0
   const entries = input.entries
   while (index < entries.length) {
     const first = entries[index]!
     if (!isSemantic(first)) {
-      items.push(plainEntry(first, true, false, false))
+      items.push(plainEntry(first, false, false))
       index += 1
       continue
     }
@@ -215,7 +221,7 @@ export function buildDisplay(input: DisplayInput): DisplayItem[] {
     const inScope = input.scope.has(turn)
     const expandedTurn = input.open.has(turn)
     if (input.flat || !block.some(isMember)) {
-      for (const entry of block) items.push(plainEntry(entry, closed, expandedTurn, inScope))
+      for (const entry of block) items.push(plainEntry(entry, expandedTurn, inScope))
       continue
     }
     const lead = block.findIndex(entry => entry.kind !== 'transcript-user')
@@ -226,7 +232,7 @@ export function buildDisplay(input: DisplayInput): DisplayItem[] {
     const currentStep = rest.reduce((latest, entry) => isSemantic(entry) && 'step' in entry ? Math.max(latest, entry.step) : latest, -1)
     const facts = rest.filter(isMember).flatMap(entry => memberFacts(entry, closed)).filter(fact => fact.preparing !== true)
     const subagents = facts.filter(fact => fact.activity === 'subagents').length
-    for (const entry of block.slice(0, lead)) items.push(plainEntry(entry, closed, expandedTurn, inScope))
+    for (const entry of block.slice(0, lead)) items.push(plainEntry(entry, expandedTurn, inScope))
     // The activity row owns a running turn's lifecycle; only a tree without
     // one keeps the live header.
     if ((closed || input.runningHeader === true) && view !== 'collect') {
@@ -257,7 +263,7 @@ export function buildDisplay(input: DisplayInput): DisplayItem[] {
       let collected = calls.length === 0
       for (const entry of rest) {
         if (!isMember(entry)) {
-          items.push(plainEntry(entry, closed, expandedTurn, inScope))
+          items.push(plainEntry(entry, expandedTurn, inScope))
           continue
         }
         if (!collected) {
@@ -270,13 +276,14 @@ export function buildDisplay(input: DisplayInput): DisplayItem[] {
             toolCalls: calls.length - subagents,
             subagents,
             failed: summary.failed,
+            interrupted: summary.interrupted,
             ...(settled && summary.durationMs !== undefined ? { durationMs: summary.durationMs } : {}),
             ...(summary.added === undefined ? {} : { added: summary.added, removed: summary.removed ?? 0 }),
             hint: inScope && !expandedTurn,
           })
         }
         const inFlight = entry.kind === 'transcript-thinking' ? entry.streaming : memberFacts(entry, closed).some(fact => fact.running)
-        if (inFlight) items.push(plainEntry(entry, closed, expandedTurn, inScope, 'compact'))
+        if (inFlight) items.push(plainEntry(entry, expandedTurn, inScope, 'compact'))
         else lastSeq = (entry as TranscriptEntryModel).seq
       }
       continue
@@ -288,7 +295,7 @@ export function buildDisplay(input: DisplayInput): DisplayItem[] {
       pending = []
       for (const entry of members) {
         const verbose = view === 'cards' || (isSemantic(entry) && input.rows.has(entry.id)) || (view === 'current' && 'step' in entry && entry.step === currentStep)
-        items.push(plainEntry(entry, closed, expandedTurn, inScope, verbose ? 'verbose' : 'standard'))
+        items.push(plainEntry(entry, expandedTurn, inScope, verbose ? 'verbose' : 'standard'))
       }
     }
     for (const entry of rest) {
@@ -297,7 +304,7 @@ export function buildDisplay(input: DisplayInput): DisplayItem[] {
         continue
       }
       flush()
-      items.push(plainEntry(entry, closed, expandedTurn, inScope))
+      items.push(plainEntry(entry, expandedTurn, inScope))
     }
     flush()
   }

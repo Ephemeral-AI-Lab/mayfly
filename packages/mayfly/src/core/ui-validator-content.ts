@@ -67,11 +67,13 @@ export function admitCodeFields(h: AdmissionHelpers, object: Fields, path: strin
   return { ...present('numbered', flag(h, object, 'numbered', path)), ...present('start', integer(h, object, 'start', path, 0, 1_000_000)), ...present('label', flag(h, object, 'label', path)) }
 }
 
-/** A diff node's `start`, `numbered`, `hunkHeader`, `context` (0 to 3), `maxRows`, the `tail` row that ends a cut diff, and its `language`. */
+/** A diff node's `start`, `beforeStart`, `numbered`, `numberWidth` (1 to 9), `hunkHeader`, `context` (0 to 3), `maxRows`, the `tail` row that ends a cut diff, and its `language`. */
 export function admitDiffFields(h: AdmissionHelpers, object: Fields, path: string): Fields {
   return {
     ...present('start', integer(h, object, 'start', path, 0, 1_000_000)),
+    ...present('beforeStart', integer(h, object, 'beforeStart', path, 0, 1_000_000)),
     ...present('numbered', flag(h, object, 'numbered', path)),
+    ...present('numberWidth', integer(h, object, 'numberWidth', path, 1, 9)),
     ...present('hunkHeader', flag(h, object, 'hunkHeader', path)),
     ...present('context', integer(h, object, 'context', path, 0, 3)),
     ...present('maxRows', integer(h, object, 'maxRows', path, 1, 10_000)),

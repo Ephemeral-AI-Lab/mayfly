@@ -97,10 +97,10 @@ describe('canonical basic-content leaf renderer', () => {
     const { diffAdded, diffAddedBg, diffRemoved, diffRemovedBg, muted, text } = DARK_COLORS
     const renderDiff = (before: string, after: string, width: number): string[] =>
       renderView({ kind: 'diff', before, after }, width, undefined, DARK_COLORS)
-    // The gutter numbers the modified file (muted); a removed line's cell is blank, and the tint stops four columns short.
+    // The gutter numbers every row (muted): a removed line by the file before the change, the others by the file after it; the tint stops four columns short.
     expect(renderDiff('a\nb', 'a\nc', 20)).toEqual([
       `  ${muted('1 │')}   ${text('a')}`,
-      `  ${muted('  │')} ${diffRemovedBg(`${diffRemoved('−')} ${diffRemoved('b')}       `)}`,
+      `  ${muted('2 │')} ${diffRemovedBg(`${diffRemoved('−')} ${diffRemoved('b')}       `)}`,
       `  ${muted('2 │')} ${diffAddedBg(`${diffAdded('+')} ${diffAdded('c')}       `)}`,
     ])
     expect(visibleWidth(renderDiff('', 'one two three four', 18)[0]!)).toBe(14)

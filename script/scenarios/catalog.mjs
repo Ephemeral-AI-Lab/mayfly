@@ -248,7 +248,7 @@ const REVIEW = {
       { look: 'Live rows beyond the cap with Ctrl+O', how: '`pnpm run scenario streaming-open`, checkpoints `half`, `late`' },
       { look: 'The narrow terminal', how: '`pnpm run scenario streaming --width 60`' },
     ],
-    differs: ['The edit\'s diff has no line numbers (the Harness gives no start line); the whole old text shows as removed until the new text arrives.'],
+    differs: ['The edit\'s diff is numbered from its first row (the Harness gives no start line); the whole old text shows as removed until the new text arrives.'],
     pending: ['An interrupt during the arguments needs a live turn.'],
   },
   sync: {
@@ -479,7 +479,7 @@ const REVIEW = {
       'Verbose (and Ctrl+O): one block per call, `✓ Bash(command) · 4.2s` with the output on the lines under it (no `⎿` mark) and a body of up to 6 rows: the lines read, the matches, the command output tail, the sources, the head of a fetched page; Ctrl+O shows every row the facts carry (40).',
       'Compact: the turn folds behind its header; an interrupted turn shows one merged line per run (`▸ Ran 2 commands · Read 1 file · 1.1s · 1 failed`).',
       'Detailed: the step the model works in draws verbose blocks and the steps before it collapse to Standard blocks; a settled turn is Standard.',
-      'A failed call keeps its reason on its line at every tier; a call cut off by an interrupt reads ⊘ with no outcome. A call in flight is a pending line at every level (see `blocks`).',
+      'A failed call keeps its reason on its line at every tier; a call the user stopped reads `⊘ Bash(cmd) · interrupted`, one that never ran `⊘ Bash(cmd) · not started`, and one whose outcome is unknown (the session ended while it ran) `✗ Bash(cmd) · outcome unknown`. A call in flight is a pending line at every level (see `blocks`).',
       'A blank row separates every row of a turn, as in Claude Code.',
     ],
     focus: [
@@ -509,12 +509,12 @@ const REVIEW = {
       'Standard: every edit and every write is its own open block, never folded into a run: an edit is its line (`✓ Edit(path) · +4 −2 ▮▮▮▮▮▮▯▯`) and its diff, a write is its line (`✓ Write(path) · 84 lines · 3.1 KB`) and its code, numbered and highlighted by the file extension; both show 6 rows.',
       'Verbose and Detailed (the current step): the same blocks at 12 rows (a `⋯` between hunks, `… +N rows` after); Ctrl+O lifts both to 40.',
       'Compact: the turn folds behind its header; the merged line counts the changes and the diffstat (`Edited 3 files · Wrote 1 file · Ran 1 command · 1.8s · +33 −8`).',
-      'A failed edit is `✗ Edit(path) · <first line of the reason>` at every tier, with no diff; a write cut off by an interrupt is `⊘ Write(path)`. A running edit or write is a pending line whose code fills as the model writes it (see `streaming`).',
-      'The diff is syntax-highlighted by the file extension and has one quiet line-number gutter that numbers the modified file (a removed line has a blank cell); the tint behind a changed line stops 4 columns short of the right edge. The Harness sends three lines of context around a hunk, the diff body keeps one.',
+      'A failed edit is `✗ Edit(path) · <first line of the reason>` at every tier, with no diff; a write the user stopped is `⊘ Write(path) · interrupted`. A running edit or write is a pending line whose code fills as the model writes it (see `streaming`).',
+      'The diff is syntax-highlighted by the file extension and has one quiet line-number gutter that numbers every row (a removed line by its place before the edit, the others by their place after it); the tint behind a changed line stops 4 columns short of the right edge. The Harness sends three lines of context around a hunk, the diff body keeps one.',
     ],
     focus: [
       { look: 'The single edit: line, diffstat bar, highlighted code, the inset bands, the gutter and signs, one context line each side', how: 'checkpoint `standard`, the first edit' },
-      { look: 'The multi-hunk edit and the `⋯` between hunks', how: 'Ctrl+O is `open`; or `pnpm run scenario edits-verbose`' },
+      { look: 'The multi-hunk edit and the `⋯` between hunks: four hunks of one replaced line, two lines for one, one line for two, and one line removed alone; each counts from 1, a removed row shows its old number and the others the new one, so `−` and `+` rows of a replaced line share a number and a hunk that adds or removes lines shifts the numbers below it', how: 'checkpoint `multi-hunk` (Standard, 6 rows) and `multi-hunk-open` (Ctrl+O, every hunk); or `pnpm run scenario edits-verbose`; at `--width 40` the gutter keeps its columns and the code clips' },
       { look: 'Several changes in a row stay separate open blocks', how: 'checkpoint `standard`, the "handful of files" step' },
       { look: 'The large edit capped at 6 / 12 / 40 rows with its `… +N rows` row', how: 'compare checkpoint `standard`, `edits-verbose` and `open`' },
       { look: 'The write: highlighted numbered code, 6 rows at Standard and 12 at Verbose', how: 'checkpoint `standard`, then `pnpm run scenario edits-verbose`' },
@@ -523,7 +523,7 @@ const REVIEW = {
       { look: 'Compact and Detailed', how: '`pnpm run scenario edits-compact`, `pnpm run scenario edits-detailed` (checkpoint `live`)' },
     ],
     differs: [
-      'The line numbers are relative: the Harness gives hunk text with no start line, so each hunk counts from 1, and only the modified file is numbered (owner decision, until a real start line is available).',
+      'The line numbers are relative to the hunk: the Harness gives hunk text with no start line, so each hunk counts from its first row, and the gutter is as wide as the largest number of any hunk (accepted behavior). A removed row shows its number in the file before the edit, every other row its number in the file after it.',
       'A call is named by its tool (`Edit`, `Write`), not the prototype\'s `Edited`/`Wrote`; the verbs stay in the head of a run (owner decision).',
       'The failure reason is on the call\'s line, not on a `⎿` row (owner decision, 3b.1).',
       'Edits and writes are open at Standard and fold only at Compact (owner decision), so they never form a tree.',
@@ -777,8 +777,10 @@ const SCRIPTS = {
     key('ctrl+o'), checkpoint('open'),
     resize(72, 30), checkpoint('resized'),
   ],
-  // Standard (single edit and write, a run), Ctrl+O (every body at 40 rows), then a narrow terminal.
+  // The multi-hunk edit as it settles (removed, added and context rows, numbered per hunk), then Standard (single edit and write, a run), Ctrl+O (every body at 40 rows), then a narrow terminal.
   edits: [
+    play('edited'), checkpoint('multi-hunk'),
+    key('ctrl+o'), checkpoint('multi-hunk-open'), key('ctrl+o'),
     play(), checkpoint('standard'),
     key('ctrl+o'), checkpoint('open'),
     resize(72, 30), checkpoint('resized'),
@@ -1349,9 +1351,10 @@ export const CATALOG = Object.freeze({
       { name: 'searched', after: [key('alt+up'), key('?'), type('needle'), key('enter'), checkpoint('selected'), key('n'), checkpoint('next'), key('N'), checkpoint('prev'), key('/'), type('needle'), key('enter'), checkpoint('forward'), key('esc'), checkpoint('ended-again'), key('esc')] },
     ]),
   },
-  // The open turn streams: waiting, reasoning, a write being prepared, its decision card, then Esc during the running write.
+  // The open turn streams: waiting, reasoning, a write being prepared, its decision card, and the write running. The replay
+  // writes events and no Agent runs, so Esc interrupts nothing here; a live Esc needs a real turn (the live profile).
   'phase3-live': {
-    summary: 'the live stream of the open turn: waiting, reasoning, a write being prepared, its decision card, then Esc while the write runs',
+    summary: 'the live stream of the open turn: waiting, reasoning, a write being prepared, its decision card, and the write running (Esc interrupts nothing: no Agent runs the replayed turn)',
     source: { replay: 'phase3' },
     covers: PHASE3_COVERS,
     sizes: [DEFAULT_SIZE],
@@ -1359,7 +1362,7 @@ export const CATALOG = Object.freeze({
       { name: 'wait' },
       { name: 'reasoning' },
       { name: 'prepare' },
-      { name: 'tool', after: [key('esc'), checkpoint('interrupted')] },
+      { name: 'tool' },
     ]),
   },
   // The same session at the two narrow sizes: a table answer, an edit, a decision card, and a plan.

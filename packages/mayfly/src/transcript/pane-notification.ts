@@ -8,7 +8,7 @@
  * When the stream is scrolled away from its tail, the row also carries the chip back to it, centered, announced by the
  * surface renderer (`mayfly/content-tail-changed`); the notice yields the room the chip needs. With no notice the row
  * carries a muted hint of the keys that move focus off the prompt. `components/notification-line.ts`
- * draws it, always one row, so the editor never shifts.
+ * draws it as one row in the alternate layout the pane is compiled in (not in `main` screen mode), so the editor never shifts.
  *
  * @module @ephemeral-ai/mayfly/transcript/pane-notification
  */

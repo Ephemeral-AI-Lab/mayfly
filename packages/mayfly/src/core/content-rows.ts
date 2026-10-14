@@ -265,9 +265,11 @@ function diffPrepared(node: Extract<MayflySectionContentNode, { readonly kind: '
         }
       : undefined
     prepared = {
-      style: { numbered: node.numbered !== false, start: node.start ?? 1, ...(lit === undefined ? {} : { lit }) },
+      style: { numbered: node.numbered !== false, start: node.start ?? 1, beforeStart: node.beforeStart ?? node.start ?? 1, ...(lit === undefined ? {} : { lit }) },
       model: diffModel(ops, {
         ...node.start === undefined ? {} : { start: node.start },
+        ...node.beforeStart === undefined ? {} : { beforeStart: node.beforeStart },
+        ...node.numberWidth === undefined ? {} : { numberWidth: node.numberWidth },
         ...node.hunkHeader === undefined ? {} : { hunkHeader: node.hunkHeader },
         ...node.context === undefined ? {} : { context: node.context },
         ...node.maxRows === undefined ? {} : { maxRows: node.maxRows },

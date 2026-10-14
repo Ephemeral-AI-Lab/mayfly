@@ -1,6 +1,6 @@
 /**
- * The activity row: the one present-tense block above the editor, always two rows high while a turn is live: a header
- * (the phase's glyph and label and a muted tail of counts) and one line under it. The row before the editor under it
+ * The activity row: the one present-tense block above the editor, always three rows high while a turn is live: a leading
+ * spacer, a header (the phase's glyph and label and a muted tail of counts), and one line under it. The row before the editor under it
  * belongs to the notification line, so the editor never shifts between phases. The line under the header, after a `⎿`,
  * is what the turn is doing that the stream does not say (the arguments of the calls in flight), else a teaching tip,
  * or blank: the row has one effect at every work-details level. The glyph or the label moves, never both: a model phase animates its

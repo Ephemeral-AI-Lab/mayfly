@@ -99,13 +99,13 @@ describe('paintDiffRows', () => {
   }
   const plain = (rows: readonly string[]): string[] => rows.map(row => row.replace(/<\/?[A-Z]>|\[[AR]|[AR]\]/gu, ''))
 
-  it('numbers both sides, signs changes with −/+, and keeps the band behind the code only', () => {
+  it('numbers every row (a removed line before the change, any other after it), signs changes with −/+, and keeps the band behind the code only', () => {
     const aligned = alignDiffLines('a\nb', 'a\nc')
-    expect(paintDiffRows(aligned, 20, helpers)).toEqual(['  1 │   a', '    │ − b', '  2 │ + c'])
+    expect(paintDiffRows(aligned, 20, helpers)).toEqual(['  1 │   a', '  2 │ − b', '  2 │ + c'])
     // The tag palette counts its tags as cells, so these rows are wide enough not to clip.
     expect(paintDiffRows(aligned, 40, helpers, palette)).toEqual([
       '  <G>1 │</G>   <T>a</T>',
-      '  <G>  │</G> [R<R>−</R> <R>b</R>      R]',
+      '  <G>2 │</G> [R<R>−</R> <R>b</R>      R]',
       '  <G>2 │</G> [A<A>+</A> <A>c</A>      A]',
     ])
     expect(paintDiffRows(aligned, 30, helpers, palette, { numbered: false })).toEqual([
@@ -155,6 +155,18 @@ describe('paintDiffRows', () => {
     for (const width of [0, 1, 2, 3, 6, 12, 13]) {
       for (const row of paintDiffRows(aligned, width, helpers)) expect(visibleWidth(row)).toBeLessThanOrEqual(Math.max(1, width))
     }
-    expect(paintDiffRows(aligned, 12, helpers)).toEqual(['    │ − ab', '  1 │ + cd'])
+    expect(paintDiffRows(aligned, 12, helpers)).toEqual(['  1 │ − ab', '  1 │ + cd'])
+  })
+
+  it('counts removed lines in the file before the change and the others in the file after it, from each side\'s own start', () => {
+    // Two lines out, one in: the lines after the change are one number lower than before it.
+    const aligned = alignDiffLines('k\nx\ny\nz', 'k\nw\nz')
+    expect(plain(paintDiffRows(aligned, 40, helpers, palette)).map(row => row.trimEnd())).toEqual(['  1 │   k', '  2 │ − x', '  3 │ − y', '  2 │ + w', '  3 │   z'])
+    expect(plain(paintDiffRows(aligned, 40, helpers, palette, { start: 10, beforeStart: 20 })).map(row => row.trimEnd())).toEqual([
+      '  10 │   k', '  21 │ − x', '  22 │ − y', '  11 │ + w', '  12 │   z',
+    ])
+    // The gutter follows the largest number on either side, and never narrows below `numberWidth`.
+    expect(plain(paintDiffRows(alignDiffLines('a', 'b'), 40, helpers, palette, { start: 8, beforeStart: 98 })).map(row => row.trimEnd())).toEqual(['  98 │ − a', '   8 │ + b'])
+    expect(plain(paintDiffRows(alignDiffLines('a', 'b'), 40, helpers, palette, { numberWidth: 3 })).map(row => row.trimEnd())).toEqual(['    1 │ − a', '    1 │ + b'])
   })
 })

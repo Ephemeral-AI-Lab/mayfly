@@ -43,7 +43,7 @@ const searchGroup = (call: Record<string, unknown>): TranscriptEntryModel => ({
 
 const lines = (count: number, prefix = 'line'): string => Array.from({ length: count }, (_, index) => `${prefix} ${String(index + 1)}`).join('\n')
 const NOW = NOON + 60_000
-const callOf = (entry: TranscriptEntryModel, closed = true) => callsOf(entry, closed, t, NOW)[0]!
+const callOf = (entry: TranscriptEntryModel) => callsOf(entry, t, NOW)[0]!
 /** A verbose block, narrowed to its tool row. */
 const toolRow = (call: ReturnType<typeof callOf>, open: boolean) => verboseRow(call, open, t, 'verbose') as Extract<StreamRow, { kind: 'tool' }>
 
@@ -68,16 +68,11 @@ describe('tool calls at the three tiers', () => {
     expect(callOf(tool({ name: 'custom_tool', activity: 'tools', detail: 'q' }))).toMatchObject({ name: 'CustomTool', target: 'q', label: 'CustomTool(q)' })
   })
 
-  it('keeps a pending call pending in an open turn, and cancels it with no outcome once its turn has closed', () => {
-    // In an open turn the call in flight is a pending line (its time so far is its outcome), never a missing row.
+  it('keeps a call without a result pending, with its time so far as its outcome', () => {
+    // The Harness settles every call of a turn it ends, so a call with no result is in flight, never a missing row.
     const pending = tool({ result: undefined, startedAt: NOW - 3_000 })
-    expect(callOf(pending, false)).toMatchObject({ state: 'pending', outcome: ['3s'] })
-    expect(toolRow(callOf(pending, false), false)).toMatchObject({ kind: 'tool', state: 'pending', name: 'Bash' })
-    // Once its turn has closed without it, the call is cancelled: muted, with no outcome.
-    const cancelled = callOf(pending, true)
-    expect(cancelled).toMatchObject({ state: 'cancelled' })
-    expect(toolRow(cancelled, false)).toMatchObject({ kind: 'tool', state: 'cancelled' })
-    expect(toolRow(cancelled, false)).not.toHaveProperty('outcome')
+    expect(callOf(pending)).toMatchObject({ state: 'pending', outcome: ['3s'] })
+    expect(toolRow(callOf(pending), false)).toMatchObject({ kind: 'tool', state: 'pending', name: 'Bash' })
   })
 
   it('shows a failed read or search only its reason, and keeps a failed command\'s output tail', () => {
@@ -151,7 +146,7 @@ describe('tool calls at the three tiers', () => {
   })
 
   it('draws a Standard run of one kind as a head and one item per call', () => {
-    const calls = callsOf(tool({ id: 'x', detail: 'ls', terminal: { command: 'ls', exitCode: 0 } }), true, t, NOW)
+    const calls = callsOf(tool({ id: 'x', detail: 'ls', terminal: { command: 'ls', exitCode: 0 } }), t, NOW)
     expect(standardRow(calls, t, NOW)).toMatchObject({ kind: 'tool', name: 'Bash', target: 'ls' })
   })
 })

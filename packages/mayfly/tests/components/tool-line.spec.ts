@@ -117,7 +117,7 @@ describe('tool line glyphs and spans', () => {
 
 describe('tool calls at the three tiers', () => {
   it('names each tool kind by its own name, with its target and outcome, at Verbose', () => {
-    const callOf = (entry: TranscriptEntryModel) => callsOf(entry, true, t, NOW)[0]!
+    const callOf = (entry: TranscriptEntryModel) => callsOf(entry, t, NOW)[0]!
     expect(callOf(bash())).toMatchObject({ name: 'Bash', target: 'pnpm test', outcome: ['4.2s'] })
     expect(callOf(bash({ terminal: { command: 'pnpm test', exitCode: 2 }, result: { text: 'boom', isError: true, endedAt: 4_200 } })))
       .toMatchObject({ state: 'error', outcome: ['exit 2', '4.2s'] })
@@ -138,32 +138,28 @@ describe('tool calls at the three tiers', () => {
     expect(mcp).not.toHaveProperty('target')
   })
 
-  it('shows a call that was cut off as cancelled with no outcome, and a running call as pending with its time so far', () => {
-    const cut = callsOf(bash({ result: undefined }), true, t, NOW)[0]!
-    expect(cut).toMatchObject({ state: 'cancelled' })
-    expect(verboseRow(cut, false, t, 'verbose')).toMatchObject({ kind: 'tool', state: 'cancelled', name: 'Bash' })
-    expect(verboseRow(cut, false, t, 'verbose')).not.toHaveProperty('outcome')
-    const running = callsOf(bash({ result: undefined, startedAt: NOW - 3_000 }), false, t, NOW)[0]!
+  it('shows a call without a result as pending with its time so far', () => {
+    const running = callsOf(bash({ result: undefined, startedAt: NOW - 3_000 }), t, NOW)[0]!
     expect(running).toMatchObject({ state: 'pending', outcome: ['3s'] })
   })
 
   it('draws a failed read or search only its reason, and keeps a failed command\'s output tail', () => {
-    const failedRead = callsOf(other({ name: 'read', activity: 'read', family: 'read', result: { text: 'File not found', isError: true, endedAt: 1 }, detail: 'nope.txt', path: 'nope.txt' }), true, t, NOW)[0]!
+    const failedRead = callsOf(other({ name: 'read', activity: 'read', family: 'read', result: { text: 'File not found', isError: true, endedAt: 1 }, detail: 'nope.txt', path: 'nope.txt' }), t, NOW)[0]!
     expect(verboseRow(failedRead, false, t, 'verbose')).toMatchObject({ state: 'error', name: 'Read' })
     expect(verboseRow(failedRead, false, t, 'verbose')).not.toHaveProperty('body')
-    const failedCommand = callsOf(bash({ terminal: { command: 'tsc', exitCode: 1, output: 'error TS2304\nboom' }, result: { text: 'error TS2304\nboom', isError: true, endedAt: 1 } }), true, t, NOW)[0]!
+    const failedCommand = callsOf(bash({ terminal: { command: 'tsc', exitCode: 1, output: 'error TS2304\nboom' }, result: { text: 'error TS2304\nboom', isError: true, endedAt: 1 } }), t, NOW)[0]!
     expect(verboseRow(failedCommand, false, t, 'verbose')).toMatchObject({ state: 'error', outcome: 'exit 1', body: [{ text: 'error TS2304' }, { text: 'boom' }] })
   })
 
   it('caps a verbose body at six rows with its Ctrl+O hint, lifts the cap to forty when the turn opens, and shows a command\'s tail', () => {
     const output = lines(10)
-    const plain = callsOf(other({ name: 'custom_tool', activity: 'tools', detail: '', result: { text: output, isError: false, endedAt: 1 } }), true, t, NOW)[0]!
+    const plain = callsOf(other({ name: 'custom_tool', activity: 'tools', detail: '', result: { text: output, isError: false, endedAt: 1 } }), t, NOW)[0]!
     expect(verboseRow(plain, false, t, 'verbose')).toMatchObject({ body: expect.any(Array), more: '… +4 more · Ctrl+O' })
     expect((verboseRow(plain, false, t, 'verbose') as Extract<StreamRow, { kind: 'tool' }>).body).toHaveLength(VERBOSE_BODY_ROWS)
     const opened = verboseRow(plain, true, t, 'verbose') as Extract<StreamRow, { kind: 'tool' }>
     expect(opened.body).toHaveLength(10)
     expect(opened).not.toHaveProperty('more')
-    const command = callsOf(bash({ terminal: { command: 'pnpm test', exitCode: 0, output: lines(50) }, result: { text: lines(50), isError: false, endedAt: 1 } }), true, t, NOW)[0]!
+    const command = callsOf(bash({ terminal: { command: 'pnpm test', exitCode: 0, output: lines(50) }, result: { text: lines(50), isError: false, endedAt: 1 } }), t, NOW)[0]!
     const shut = verboseRow(command, false, t, 'verbose') as Extract<StreamRow, { kind: 'tool' }>
     expect(shut.body).toHaveLength(VERBOSE_BODY_ROWS)
     expect(shut).toMatchObject({ moreBefore: '… +44 earlier · Ctrl+O' })
@@ -175,12 +171,12 @@ describe('tool calls at the three tiers', () => {
   })
 
   it('shows no body at Standard for a single call, and draws a Standard run of one kind as a head and one item per call', () => {
-    const single = callsOf(bash({ terminal: { command: 'ls', exitCode: 0 }, detail: 'ls' }), true, t, NOW)
+    const single = callsOf(bash({ terminal: { command: 'ls', exitCode: 0 }, detail: 'ls' }), t, NOW)
     expect(standardRow(single, t, NOW)).toMatchObject({ kind: 'tool', name: 'Bash', target: 'ls' })
     expect(standardRow(single, t, NOW)).not.toHaveProperty('body')
     const run = [
-      ...callsOf(bash({ id: 'b1', terminal: { command: 'pnpm test', exitCode: 0 }, detail: 'pnpm test' }), true, t, NOW),
-      ...callsOf(bash({ id: 'b2', terminal: { command: 'pnpm build', exitCode: 2 }, detail: 'pnpm build', result: { text: 'x', isError: true, endedAt: 4_200 } }), true, t, NOW),
+      ...callsOf(bash({ id: 'b1', terminal: { command: 'pnpm test', exitCode: 0 }, detail: 'pnpm test' }), t, NOW),
+      ...callsOf(bash({ id: 'b2', terminal: { command: 'pnpm build', exitCode: 2 }, detail: 'pnpm build', result: { text: 'x', isError: true, endedAt: 4_200 } }), t, NOW),
     ]
     expect(standardRow(run, t, NOW)).toMatchObject({ kind: 'tools', name: 'Bash', state: 'partial', head: '2 calls · 4.2s', failed: '1 failed', items: [{ label: 'pnpm test', outcome: '4.2s' }, { label: 'pnpm build', state: 'error', outcome: 'exit 2 · 4.2s' }] })
   })
@@ -257,5 +253,93 @@ describe('tool rows of the stream at the three tiers and Detailed', () => {
     expect(PROCESS_POLICIES.detailed.liveProcess).toBe('current')
     expect(PROCESS_POLICIES.verbose.settledProcess).toBe('cards')
     expect(DEFAULT_TRANSCRIPT_PRESENTATION.mode).toBe('standard')
+  })
+})
+
+describe('interrupted tool calls', () => {
+  /** A bash call the Harness cut short: `sleep 9` with the long text it stores and the kind its code derives. */
+  const cut = (interruption: 'aborted' | 'not-started' | 'unknown', overrides: Record<string, unknown> = {}): TranscriptEntryModel => bash({
+    detail: 'sleep 9',
+    terminal: { command: 'sleep 9' },
+    result: {
+      text: interruption === 'unknown' ? 'The tool call was interrupted after it was recorded, but no result was durably recorded. Its outcome is unknown and it may have had side effects.' : interruption === 'aborted' ? 'Error: tool call aborted' : 'The tool call was not started.',
+      isError: true,
+      endedAt: interruption === 'not-started' ? 20 : 4_200,
+      interruption,
+    },
+    ...overrides,
+  })
+  const THREE = (): TranscriptEntryModel[] => [cut('aborted', { id: 'i1' }), cut('not-started', { id: 'i2' }), cut('unknown', { id: 'i3' })]
+
+  it('draws a stopped call and a call that never ran as a muted cancelled line with a short reason, at every tier', () => {
+    for (const mode of ['verbose', 'standard', 'detailed'] as const) {
+      const stopped = drawn(facts([user(1, 'go'), cut('aborted')], mode), 120)
+      expect(stopped).toContain('  ⊘ Bash(sleep 9) · interrupted · 4.2s')
+      const never = drawn(facts([user(1, 'go'), cut('not-started')], mode), 120)
+      expect(never).toContain('  ⊘ Bash(sleep 9) · not started')
+      for (const row of [...stopped, ...never]) expect(row).not.toMatch(/aborted|was not started/u)
+    }
+    expect(toolRowOf(facts([user(1, 'go'), cut('aborted')], 'verbose'))).toMatchObject({ kind: 'tool', state: 'cancelled', outcome: 'interrupted · 4.2s' })
+    expect(toolRowOf(facts([user(1, 'go'), cut('aborted')], 'verbose'))).not.toHaveProperty('body')
+  })
+
+  it('keeps a call whose outcome is unknown as a failure with a short reason, because it may have had a side effect', () => {
+    for (const mode of ['verbose', 'standard', 'detailed'] as const) {
+      const rows = drawn(facts([user(1, 'go'), cut('unknown')], mode), 120)
+      expect(rows).toContain('  ✗ Bash(sleep 9) · outcome unknown · 4.2s')
+      for (const row of rows) expect(row).not.toMatch(/durably|side effects/u)
+    }
+    expect(toolRowOf(facts([user(1, 'go'), cut('unknown')], 'verbose'))).toMatchObject({ kind: 'tool', state: 'error', outcome: 'outcome unknown · 4.2s' })
+    expect(toolRowOf(facts([user(1, 'go'), cut('unknown')], 'verbose'))).not.toHaveProperty('body')
+  })
+
+  it('gives a read, a search, and a file change the same short reasons', () => {
+    const read = (interruption: 'aborted' | 'unknown') => callsOf(other({ name: 'read', activity: 'read', family: 'read', detail: 'a.ts', path: 'a.ts', result: { text: 'long text', isError: true, endedAt: 1, interruption } }), t, NOW)[0]!
+    expect(read('aborted')).toMatchObject({ state: 'cancelled', outcome: ['interrupted', undefined] })
+    expect(read('unknown')).toMatchObject({ state: 'error', outcome: ['outcome unknown', undefined] })
+    const group = (interruption: 'aborted' | 'not-started' | 'unknown') => ({
+      ...base(1), id: `read:${interruption}`, kind: 'transcript-read-group', step: 0,
+      reads: [{ callId: `r-${interruption}`, activity: 'read', detail: 'a.ts', name: 'read', startedAt: 0, endedAt: 1, state: 'error', path: 'a.ts', error: 'Error: tool call aborted', interruption, seq, updatedSeq: seq, turn: 1, step: 0 }],
+    }) as unknown as TranscriptEntryModel
+    expect(callsOf(group('aborted'), t, NOW)[0]).toMatchObject({ state: 'cancelled', outcome: ['interrupted'] })
+    expect(callsOf(group('not-started'), t, NOW)[0]).toMatchObject({ state: 'cancelled', outcome: ['not started'] })
+    expect(callsOf(group('unknown'), t, NOW)[0]).toMatchObject({ state: 'error', outcome: ['outcome unknown'] })
+  })
+
+  it('counts cancelled calls apart from failed ones in a Standard head and in the Compact title', () => {
+    const standard = facts([user(1, 'go'), ...THREE()], 'standard')
+    const run = standard.turns[0]!.rows.find(row => row.kind === 'tools')!
+    expect(run).toMatchObject({ kind: 'tools', state: 'error', failed: '1 failed', interrupted: '2 interrupted', items: [{ state: 'cancelled', outcome: 'interrupted · 4.2s' }, { state: 'cancelled', outcome: 'not started' }, { state: 'error', outcome: 'outcome unknown · 4.2s' }] })
+    const rows = drawn(standard, 120)
+    expect(rows.some(row => /^ {2}✗ Bash · 3 calls · .* · 1 failed · 2 interrupted$/u.test(row))).toBe(true)
+    expect(rows).toContain('    ├ ⊘ sleep 9 · interrupted · 4.2s')
+    expect(rows).toContain('    ├ ⊘ sleep 9 · not started')
+    expect(rows).toContain('    └ ✗ sleep 9 · outcome unknown · 4.2s')
+    const compact = facts([user(1, 'go'), ...THREE()], 'compact')
+    expect(compact.turns[0]!.rows.find(row => row.kind === 'title')).toMatchObject({ kind: 'title', failed: '1 failed', interrupted: '2 interrupted' })
+    expect(drawn(compact, 120).some(row => /^ {2}▸ 3 tool calls · .* · 1 failed · 2 interrupted · Ctrl\+O to expand$/u.test(row))).toBe(true)
+    // A run that was only stopped has no failure: its head is muted and says how many were interrupted.
+    const stopped = facts([user(1, 'go'), cut('aborted', { id: 'j1' }), cut('aborted', { id: 'j2' })], 'standard')
+    expect(stopped.turns[0]!.rows.find(row => row.kind === 'tools')).toMatchObject({ state: 'cancelled', interrupted: '2 interrupted' })
+    expect(stopped.turns[0]!.rows.find(row => row.kind === 'tools')).not.toHaveProperty('failed')
+    const title = facts([user(1, 'go'), cut('aborted', { id: 'j1' }), cut('aborted', { id: 'j2' })], 'compact').turns[0]!.rows.find(row => row.kind === 'title')!
+    expect(title).toMatchObject({ interrupted: '2 interrupted' })
+    expect(title).not.toHaveProperty('failed')
+  })
+
+  it('fits every interrupted row in the width it is given, at 120 and at 40 columns, at every tier', () => {
+    const long = `pnpm vitest run ${'packages/mayfly/tests/'.repeat(8)}`
+    const many = [cut('aborted', { id: 'k1', detail: long, terminal: { command: long } }), cut('not-started', { id: 'k2' }), cut('unknown', { id: 'k3' })]
+    for (const mode of ['compact', 'standard', 'detailed', 'verbose'] as const) {
+      for (const width of [120, 40]) {
+        const rows = drawn(facts([user(1, 'go'), ...many], mode), width)
+        expect(rows.length).toBeGreaterThan(0)
+        for (const row of rows) expect(visibleWidth(row)).toBeLessThanOrEqual(width)
+      }
+    }
+    const narrow = drawn(facts([user(1, 'go'), cut('aborted'), cut('unknown', { id: 'k4' })], 'verbose'), 40)
+    expect(narrow).toContain('  ⊘ Bash(sleep 9) · interrupted · 4.2s')
+    // The list clips the end of a line, so the longer reason gives its last words.
+    expect(narrow.some(row => row.startsWith('  ✗ Bash(sleep 9) · outcome unknown'))).toBe(true)
   })
 })

@@ -27,7 +27,7 @@ const streaming = (name: string, args: string, overrides: Record<string, unknown
 const ACTIVITY: Readonly<Record<string, string>> = { bash: 'commands', edit: 'edit', write: 'write' }
 
 const row = (entry: TranscriptEntryModel, open = false, tier: 'verbose' | 'standard' | 'compact' = 'verbose') =>
-  verboseRow(callsOf(entry, false, t, NOW)[0]!, open, t, tier) as Extract<StreamRow, { kind: 'tool' }>
+  verboseRow(callsOf(entry, t, NOW)[0]!, open, t, tier) as Extract<StreamRow, { kind: 'tool' }>
 
 describe('the tool block base', () => {
   it('builds each category from one descriptor: a run head names the tool, a block merges with its neighbours, edits and writes stream and never merge', () => {
@@ -86,7 +86,7 @@ describe('a command that runs', () => {
       ...base(1), id: `tool:${String(seq)}`, kind: 'transcript-tool', step: 1, callId: 'r1', name: 'bash', family: 'command', activity: 'commands', detail: 'echo a',
       arguments: '{"command":"echo a\\necho b"}', startedAt: NOW - 3_000, terminal: { command: 'echo a\necho b' },
     } as unknown as TranscriptEntryModel
-    const call = callsOf(running, false, t, NOW)[0]!
+    const call = callsOf(running, t, NOW)[0]!
     expect(call).toMatchObject({ state: 'pending', outcome: ['3s'] })
     const block = verboseRow(call, false, t, 'verbose') as Extract<StreamRow, { kind: 'tool' }>
     expect(block.state).toBe('pending')
