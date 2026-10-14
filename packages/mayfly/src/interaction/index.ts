@@ -4,9 +4,7 @@
  * (`mayfly-input`, pi-tui Editor behind `ctx.mayflyComponents`), the built-in
  * `/quit`, `/resume`, `/new`, `/fork`, `/sessions`, `/help`, and `/theme`
  * commands (`mayfly-commands`). The optional bash-mode and autocomplete enhancement
- * layer is mounted with the editor as one interaction feature, and the
- * queued-message pane with app-owned live refresh as the
- * `./pane-queue` subpath plugin (`mayfly-pane-queue`). The session-title
+ * layer is mounted with the editor as one interaction feature. The session-title
  * terminal mirror (`mayfly-terminal-title`, the OSC 0 window title over the
  * upstream session-title fold), and the boot-time update check
  * (`mayfly-update-check`). The consolidated `mayfly` settings namespace is its

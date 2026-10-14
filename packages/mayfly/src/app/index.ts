@@ -17,7 +17,7 @@ import type {} from '@deepseek-ai/cordis-plugin-loader'
 import type {} from '@deepseek-ai/dsh-cmdline'
 import { MayflyConversationsService } from './conversation-views.ts'
 import { MayflyCurrentAgentService } from './current-agent.ts'
-import { hasRunningAgentWork, interruptAgentTree } from './agent-interrupt.ts'
+import { interruptAgent, isAgentRunning } from './agent-interrupt.ts'
 import { armExitEpitaph, epitaphFor } from './exit-epitaph.ts'
 import { profileNameFromArgv } from '../internal/profile.ts'
 import { createMayflyRequestController } from './request-lifecycle.ts'
@@ -109,7 +109,7 @@ export function apply(ctx: Context, config: Config): void {
     requests,
     message => { io.stderr.write(`dsh: ${message}\n`) },
     (agent) => {
-      const result = interruptAgentTree(ctx, agent, conversations.displayed(), { keepInbox: true })
+      const result = interruptAgent(ctx, agent, conversations.displayed())
       for (const failure of result.failures) io.stderr.write(`dsh: could not interrupt ${failure}\n`)
     },
   )
@@ -132,14 +132,11 @@ export function apply(ctx: Context, config: Config): void {
     )
   })
 
-  // A descendant-only interrupt (the selected Agent already idle) settles
-  // through the child's own status edge, so the latch retires when the whole
-  // selected tree stops running. The registry walk runs only while a stop is
-  // actually draining.
+  // The stop latch retires when the selected Agent stops running (a subagent is not interrupted, so it never holds it).
   ctx.on('agent/status', () => {
     if (!requests.stopPending()) return
     const agent = current.current()
-    if (agent !== null && !hasRunningAgentWork(ctx, agent)) requests.clearStop()
+    if (agent !== null && !isAgentRunning(agent)) requests.clearStop()
   })
 
   ctx.effect(() => () => {

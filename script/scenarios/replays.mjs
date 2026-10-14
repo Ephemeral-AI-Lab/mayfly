@@ -4,7 +4,7 @@
  * replay that shows its states. See `timeline.mjs` for the builders. @module script/scenarios/replays
  */
 
-import { approval, compaction, edit, editHunks, write, goal as goalItem, image, btw, job, mark, notify, pause, question, queue, raw, seed, step, subagent, text, todos, tool, turn } from './timeline.mjs'
+import { approval, compaction, edit, editHunks, write, goal as goalItem, image, btw, job, dequeue, mark, notify, pause, question, queue, raw, seed, step, subagent, text, todos, tool, turn } from './timeline.mjs'
 
 /** A reply shaped like a real answer: prose, lists, a table, and fenced code in two languages. */
 function reply() {
@@ -368,12 +368,12 @@ const goal = {
 }
 
 const queued = {
-  summary: 'messages typed while the agent works, waiting in the queued-message pane (Queued: for the next turn, Steer: for the next step)',
+  summary: 'messages typed while the agent works, waiting as rows at the end of the stream (`⏎ queued` for the next turn, `⏎ steering` for the next step)',
   items: [turn('Refactor the parser, I will add more while you work.', [
     queue(['Then update the README', { steer: 'Also keep the public API unchanged' }], { holdMs: 6000 }),
     step({
       reasoning: 'Reading the parser first. Two follow-up messages are already waiting.',
-      text: 'Reading the parser and listing the call sites. While this runs, the pane above the editor shows what you queued.',
+      text: 'Reading the parser and listing the call sites. While this runs, the last rows of the stream show what you queued.',
       reasoningMs: 1500,
       textMs: 4000,
       tools: [tool('read_file', { path: 'src/parser.ts' }, { result: 'export function parse() {}', runMs: 800 })],
@@ -381,6 +381,35 @@ const queued = {
     queue([{ steer: 'Skip the lexer for now' }, 'And bump the version', 'Finally run the full tests'], { holdMs: 5000 }),
     step({ text: 'Rewriting the parser entry point now.', textMs: 3000, tools: [tool('bash', { command: 'pnpm test parser', description: 'Run the parser tests' }, { result: 'ok\n[exit code: 0]', runMs: 2500 })] }),
     step({ text: 'The refactor is done; the queued messages were withdrawn.' }),
+  ])],
+}
+
+/** Four messages typed while a turn runs: a short one, a steering one, a long one and a long CJK one, to cut and to act on. */
+const QUEUE_ROWS = [
+  'Update the README once the parser is done',
+  { steer: 'Keep the public API unchanged' },
+  'Then bump the version and tag the release candidate so the nightly job picks it up on Monday morning. After that, regenerate the changelog from the merged pull requests, check that every entry names its author, and post the summary in the release channel. Keep the summary short, and do not mention the internal refactors unless a user could notice them. If the nightly job fails, tell me before you retry it, and attach the log of the first failure so that I can see what it ran against.',
+  '请在发布之前把这条很长的排队消息翻译成中文并保留所有标点，同时检查每一个窄终端下的宽度是否正确',
+]
+
+const queueRows = {
+  summary: 'a running turn with four queued messages (one steering, one long, one CJK) that wait for a person to work on them (four minutes before the agent reads the first, two more before it reads the rest); the stream shows them as rows with keys of their own, and a message the agent reads becomes a prompt',
+  items: [turn('Refactor the parser, I will add more while you work.', [
+    queue(QUEUE_ROWS, { holdMs: null, name: 'rows' }),
+    step({
+      text: 'Reading the parser and listing the call sites.',
+      textMs: 1500,
+      tools: [tool('read', { file_path: 'src/parser.ts' }, { result: 'export function parse() {}', runMs: 600 })],
+    }),
+    mark('queued'),
+    // A person has time to walk the rows and press e, s, d and u; a runner skips the wait.
+    pause(240_000),
+    // The agent reads the long message while the cursor may stand on it.
+    dequeue('rows', 2),
+    mark('read'),
+    pause(120_000),
+    dequeue('rows'),
+    step({ text: 'The refactor is done; the parser entry point is rewritten.' }),
   ])],
 }
 
@@ -1196,7 +1225,7 @@ const phase3 = {
   ],
 }
 
-export const REPLAYS = { tour, toolkit, thinking, markdown, live, phases, thinkingLadder, pending, blocks, streaming, sync, activityWait, prompts, turns, toollines, toolgrow, findings, edits, errors, compaction: compactionReplay, compactionNoWindow, compactionFailed, manualCompact, context, subagents, childStream, approvals, approvalsRejected, approvalsEdit, approvalsQueue, questions, plan, planLong, goal, jobs, queued, retries, sideQuestion, notices, notificationPane, modes, edge, history, wheel, content, phase3 }
+export const REPLAYS = { tour, toolkit, thinking, markdown, live, phases, thinkingLadder, pending, blocks, streaming, sync, activityWait, prompts, turns, toollines, toolgrow, findings, edits, errors, compaction: compactionReplay, compactionNoWindow, compactionFailed, manualCompact, context, subagents, childStream, approvals, approvalsRejected, approvalsEdit, approvalsQueue, questions, plan, planLong, goal, jobs, queued, queue: queueRows, retries, sideQuestion, notices, notificationPane, modes, edge, history, wheel, content, phase3 }
 
 /*
  * The scenes of the Website's app shots. Each is the source of an `app-*` scenario of the catalog, whose goldens the

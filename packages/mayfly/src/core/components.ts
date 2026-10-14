@@ -54,6 +54,7 @@ import type {
   MayflyEditorSubmitAttempt,
   MayflyEditorToken,
   MayflyEditorTokenSource,
+  MayflyHistoryPosition,
   MayflySubmittedDraft,
   MayflyFuzzyMatch,
   MayflyImage,
@@ -348,6 +349,11 @@ class EditorAdapter implements MayflyEditor {
     // blocks a direct overlap) is pinned by the components spec.
     const history = (this.editor as unknown as { history: string[] }).history
     return [...history]
+  }
+
+  getHistoryPosition(): MayflyHistoryPosition | undefined {
+    const internals = this.editor as unknown as { historyIndex: number, history: string[] }
+    return internals.historyIndex < 0 ? undefined : { index: internals.historyIndex + 1, total: internals.history.length }
   }
 
   removeLatestHistory(text: string): boolean {

@@ -31,8 +31,8 @@
  * pi-tui Editor sees the sequence. The mounted editor and the submit router
  * are published through
  * `./editor-instance.ts` so `mayfly-editor-plus` can layer input modes and
- * autocomplete over the same component. The `mayfly-pane-queue` enhancement
- * shows pending messages without taking over editor history. Live side
+ * autocomplete over the same component. Pending messages are rows of
+ * the conversation stream; its `e`, `s`, `d`, and `u` keys reach this editor as `mayfly/queued-action`. Live side
  * conversations use this same editor and transcript; delivery scope follows
  * the app-owned displayed conversation instead of a pane-specific input path. The
  * unsubmitted draft is mirrored
@@ -53,7 +53,7 @@
 import { randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import type { Context } from '@deepseek-ai/cordis'
-import type { MayflyEditorToken, MayflyScreen, MayflySubmittedDraft } from '../core/types.ts'
+import type { MayflyEditorToken, MayflyQueuedAction, MayflyScreen, MayflySubmittedDraft } from '../core/types.ts'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { ui, type MayflyFeedback, type MayflyUiNode, type MayflyUiScope } from '@ephemeral-ai/mayfly-ui'
 import { Editor } from '../components/editor.ts'
@@ -68,7 +68,7 @@ import { SessionId, type UserMessage } from '@deepseek-ai/dsh-session'
 // Carries the app-owned retraction service and event/service declaration merges.
 import type {} from '../app/index.ts'
 import type {} from './subagent-reply.ts'
-import { hasRunningAgentWork, interruptAgentTree } from '../app/agent-interrupt.ts'
+import { interruptAgent, isAgentRunning } from '../app/agent-interrupt.ts'
 // Empty type import carries the `permissionPresets` Context merge the
 // bare-/permission interception probes (the service rides dsh-base).
 import type {} from '@deepseek-ai/dsh-permission-presets'
@@ -415,10 +415,11 @@ export function apply(ctx: Context): void {
   }
 
   /**
-   * Put one withdrawn message back into the editor: the captured buffer —
+   * Put one withdrawn message into the editor: the captured buffer —
    * raw marker text plus its paste table — when this editor submitted it,
    * otherwise the reconstruction from content blocks. History and rollback
-   * follow the same rules as the Escape retraction restore.
+   * follow the same rules as the Escape retraction restore. A draft the
+   * prompt already held goes to the history first, so one Up brings it back.
    * @param message - the removed inbox message.
    * @param record - its restore data, snapshotted before `remove()`.
    */
@@ -427,10 +428,11 @@ export function apply(ctx: Context): void {
     queuedDrafts.delete(id)
     if (retractionCandidate?.messageId === id) retractionCandidate = undefined
     record?.rollback?.()
-    if (record?.historyText !== undefined) {
-      editor.removeLatestHistory?.(record.historyText)
-      stashHistory()
-    }
+    // The queued entry leaves the history while it is still the newest; the displaced draft joins it after.
+    if (record?.historyText !== undefined) editor.removeLatestHistory?.(record.historyText)
+    const displaced = editor.getText()
+    if (displaced.trim().length > 0) editor.addToHistory(displaced)
+    stashHistory()
     // `foreignDraftText` mints fresh image markers — the `??` keeps it lazy
     // so a recorded buffer never triggers the fallback's registrations.
     const buffer = record?.buffer
@@ -442,28 +444,66 @@ export function apply(ctx: Context): void {
     screen.requestRender()
   }
 
-  /**
-   * Withdraw the bottom-most still-pending user message into the editor:
-   * the queue pane renders nextTurn rows above nextStep rows, so the last
-   * visible entry is the steer lane tail, then the queued lane tail. A
-   * message claimed between render and keypress fails `remove()` and the
-   * next entry is tried.
-   * @returns whether a message was withdrawn.
-   */
-  function withdrawQueued(): boolean {
-    const agent = ctx.mayflyCurrentAgent.current()
-    if (agent === null) return false
-    const pending = [...agent.inbox.nextTurn, ...agent.inbox.nextStep]
-    for (const message of pending.reverse()) {
-      if (message.source.kind !== 'user') continue
-      // `remove()` emits `agent/inbox/discarded` synchronously, which
-      // retires this entry — snapshot the restore data first.
-      const record = queuedDrafts.get(String(message.id))
-      if (!agent.inbox.remove(message.id)) continue
-      restoreQueuedMessage(message, record)
-      return true
+  /** The pending user message with this id, in whichever lane of the Agent's inbox holds it. */
+  function pendingMessage(agent: Agent, id: string): { readonly message: UserMessage, readonly lane: 'turn' | 'step' } | undefined {
+    for (const [lane, messages] of [['step', agent.inbox.nextStep], ['turn', agent.inbox.nextTurn]] as const) {
+      const message = messages.find(candidate => String(candidate.id) === id && candidate.source.kind === 'user')
+      if (message !== undefined) return { message, lane }
     }
-    return false
+    return undefined
+  }
+
+  /** The last message `d` cancelled, kept for `u` while the undo window lasts. */
+  let cancelled: { readonly message: UserMessage, readonly lane: 'turn' | 'step', readonly agent: Agent, readonly at: number } | undefined
+  const UNDO_WINDOW_MS = 8000
+
+  /**
+   * One of the stream's keys on a queued message: `e` takes it into the prompt, `s` sends it now to the running
+   * turn's steer lane, `d` cancels it (the notice offers `u`), `u` takes the last cancelled one back. `remove()`
+   * emits `agent/inbox/discarded` synchronously, which retires the restore record — it is snapshotted first. A message
+   * the Agent claimed between the key and here fails `remove()`: the row is gone already, and the notice says so.
+   * @param action - what was asked.
+   * @param id - the inbox message's id; none for `undo`.
+   */
+  function queuedAction(action: MayflyQueuedAction, id: string | undefined): void {
+    const agent = ctx.mayflyCurrentAgent.current()
+    if (agent === null) return
+    if (action === 'undo') {
+      if (cancelled === undefined || cancelled.agent !== agent || Date.now() - cancelled.at > UNDO_WINDOW_MS) return
+      const { message, lane } = cancelled
+      cancelled = undefined
+      // Back in the lane it left: a steering message keeps steering.
+      if (lane === 'step') agent.steer(message)
+      else agent.followup(message)
+      notificationOwner.clearAll()
+      showFeedback('queued', t('Message queued again'), 'success')
+      return
+    }
+    const found = id === undefined ? undefined : pendingMessage(agent, id)
+    if (found === undefined) {
+      showFeedback('queued', t('The agent already read it'), 'info')
+      return
+    }
+    const { message, lane } = found
+    const record = queuedDrafts.get(String(message.id))
+    if (!agent.inbox.remove(message.id)) {
+      showFeedback('queued', t('The agent already read it'), 'info')
+      return
+    }
+    if (action === 'edit') {
+      restoreQueuedMessage(message, record)
+      return
+    }
+    if (action === 'steer') {
+      agent.steer(message)
+      // The restore record follows the message into the steer lane (a withdrawal restores the same buffer).
+      if (record !== undefined && messagePending(agent, String(message.id))) queuedDrafts.set(String(message.id), record)
+      return
+    }
+    // Cancel: the text stays one Up away in the history (it was added when it was sent); `u` brings the message back.
+    if (retractionCandidate?.messageId === String(message.id)) retractionCandidate = undefined
+    cancelled = { message, lane, agent, at: Date.now() }
+    showFeedback('queued', t('Cancelled · u undo'), 'info')
   }
 
   /**
@@ -652,7 +692,7 @@ export function apply(ctx: Context): void {
     retractionCandidate = undefined
     const agent = ctx.mayflyCurrentAgent.current()
     if (agent === null) return false
-    const result = interruptAgentTree(ctx, agent, conversations.displayed())
+    const result = interruptAgent(ctx, agent, conversations.displayed())
     if (!result.requested) return false
     ctx.mayflyRequests.interrupt()
     // The activity row answers the keypress on this frame: the native turn
@@ -665,10 +705,10 @@ export function apply(ctx: Context): void {
     return true
   }
 
-  /** Whether the selected Agent or a live descendant currently runs work. */
+  /** Whether the selected Agent currently runs a turn (a running subagent alone is not a flow of this conversation). */
   function sessionFlowInProgress(): boolean {
     const agent = ctx.mayflyCurrentAgent.current()
-    return agent !== null && hasRunningAgentWork(ctx, agent)
+    return agent !== null && isAgentRunning(agent)
   }
 
   /**
@@ -936,25 +976,26 @@ export function apply(ctx: Context): void {
       && editor.getText().length === 0
       && !editor.isShowingAutocomplete()
       && ctx.mayflyScreen.enterViews()) return true
-    // Alt+Up (F4) on an empty prompt moves focus up into the conversation, where the cursor walks its rows.
+    // Alt+Up (F4) moves focus up into the conversation, where the cursor walks its rows; a draft stays in the prompt, so it never keeps the reader from a queued message.
     if (keymap.matches(data, ACTION_FOCUS_PREV)
-      && editor.getText().length === 0
       && !editor.isShowingAutocomplete()
       && ctx.mayflyScreen.focusConversation()) return true
-    // Up on an empty prompt withdraws the newest still-pending queued
-    // message back into the draft — the folded queue pane's recall gesture.
-    // A non-empty buffer, an open autocomplete dropdown, and bash mode all
-    // keep Up for the editor's own cursor and history navigation.
-    if (keymap.matches(data, ACTION_MOVE_UP)
-      && editor.getText().length === 0
-      && !editor.isShowingAutocomplete()
-      && draft.getStashedInputMode() !== 'bash'
-      && withdrawQueued()) return true
     return false
+  }
+
+  /** Tell the notification pane where the prompt stands in its history, once per move. */
+  let recallShown = ''
+  function publishRecall(): void {
+    const position = editor.getHistoryPosition?.()
+    const key = position === undefined ? '' : `${String(position.index)}/${String(position.total)}`
+    if (key === recallShown) return
+    recallShown = key
+    ctx.emit('mayfly/prompt-recall-changed', position)
   }
 
   editor.onChange = (text) => {
     currentText = text
+    publishRecall()
     // Mirror every edit so a theme-swap reload loses nothing.
     stashCurrentDraft()
     notificationOwner.clearAll()
@@ -1024,6 +1065,8 @@ export function apply(ctx: Context): void {
     if (agent === ctx.mayflyCurrentAgent.current()) queuedDrafts.delete(String(message.id))
   })
   ctx.effect(() => () => queuedDrafts.clear())
+  // `e`, `s`, `d`, and `u` on a queued row of the stream: this editor holds the restore data of what it queued.
+  ctx.effect(() => ctx.on('mayfly/queued-action', (action, id) => { queuedAction(action, id) }))
   // The session name rides the right end of the editor's top border: the
   // official `title` projection of the exact current Agent, read through
   // the frontend session-facts bridge whenever that service is mounted.

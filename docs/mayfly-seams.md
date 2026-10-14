@@ -144,12 +144,12 @@ seeded with it instead of sending.
 list/form state. Viewport matching and visible width remain core's decision;
 use `stack.row` when pages should show side by side in a wide viewport.
 
-When the user interrupts the current Agent, Mayfly synchronously walks the
-`parentSession` lineage of the live `agents` and issues an interrupt to every
-running continuable descendant via `subagents.interrupt(..., { kind:
-'ancestor', agent })`. The operation cancels only the current turn and
-preserves Activations and the unclaimed inbox; it does not use the drain API
-that would recursively destroy the subtree.
+When the user interrupts, Mayfly cancels only the displayed Agent's current turn
+(`agent.cancel({ kind: 'user' }, { keepInbox: true })`; a displayed continuable
+child goes through `subagents.interruptByParent`). Running subagents, jobs, and
+the goal are not touched, and the queued and steering messages are kept and run
+as the next turn. See *Interrupt scope* in
+[interaction-model.md](./interaction-model.md).
 
 Plugins that need Agent identity inject `mayflyCurrentAgent`; plugins that
 show or switch conversations inject `mayflyConversations`. A plugin that

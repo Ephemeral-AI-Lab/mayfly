@@ -29,11 +29,9 @@ The one live-status row for the current Agent: the transcript only records what 
 
 In Standard, the tip's slot carries the running action instead: the command, path, or query (a generic or MCP tool shows its name, `server › tool`), or the latest reasoning paragraph while thinking. Compact stays minimal, and Detailed and Verbose already show the running card in the transcript, so they carry no detail; neither does a file write or edit, whose diff card is on screen. As the terminal narrows, the row sheds the tail first (a long detail truncates before it goes), then the rate, the counters, the elapsed time, and finally the label; it never wraps.
 
-## Queue pane
+## Queued messages
 
-Follow-ups you submit while the agent runs queue in the harness inbox — the pane leads with a divider and lists one row per message: messages awaiting the next turn carry a `Queued:` prefix and steer messages carry a `Steer:` prefix (user messages only). Empty queue, zero rows.
-
-↑/↓ always belong to editor history — the queue pane only displays pending messages and never takes over keys (see [Input editor](/en/features/editor)).
+Follow-ups you submit while the agent runs queue in the harness inbox. They are not a pane: each one is a row at the end of the conversation stream, in the prompt style, marked `⏎ queued` (waits for the next turn) or `⏎ steering` (read at the running turn's next step; user messages only). `Alt+↑` moves focus into the stream at its newest row and `↑`/`↓` walk the rows; on a queued row `e` takes the message into the prompt, `s` sends it now (as a steer), and `d` cancels it, with `u` to undo for a few seconds. `Enter` opens the whole text; `c`, `Ctrl+C` and `Ctrl+G` copy it or open it in `$EDITOR`. The prompt's `↑`/`↓` belong to editor history (see [Input editor](/en/features/editor)).
 
 ## Todo pane
 

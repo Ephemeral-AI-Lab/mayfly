@@ -8,11 +8,11 @@
  */
 
 import type { MayflyUiEvent, MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
-import { latestTurnOf, STREAM, streamTarget, TranscriptStream, type StreamRow, type TranscriptViewFacts } from '../components/transcript-view.ts'
+import { latestTurnOf, queuedIdOf, STREAM, streamTarget, TranscriptStream, type StreamRow, type TranscriptViewFacts } from '../components/transcript-view.ts'
 import type { MayflyNodeSlot } from '../core/node-slot.ts'
 import type { MayflySearchLine } from '../core/search-line.ts'
 import type { MayflyScreenService } from '../core/screen.ts'
-import type { MayflyDecisionRequest, MayflyFocusMode, MayflyScreen } from '../core/types.ts'
+import type { MayflyDecisionRequest, MayflyFocusMode, MayflyFocusRow, MayflyQueuedAction, MayflyScreen } from '../core/types.ts'
 import type { ApprovalMark, CompactionMark } from '../conversation/types.ts'
 import type { MayflyTranslate } from '../frontend/locale.ts'
 import { freezeModel, materializeTranscriptEntries, type TranscriptEntryModel, type TranscriptModel, type TranscriptTurnModel } from '../frontend/models.ts'
@@ -37,7 +37,7 @@ export interface TranscriptControllerOptions {
   readonly presentation?: TranscriptPresentationPolicy
   readonly t: MayflyTranslate
   /** The messages the user typed while the agent works; read on every publish. */
-  readonly queued: () => readonly { readonly id: string, readonly text: string }[]
+  readonly queued: () => readonly { readonly id: string, readonly text: string, readonly lane: 'turn' | 'step' }[]
   /** The requests waiting on the user, in the order they were asked; read on every publish. */
   readonly requests?: () => readonly MayflyDecisionRequest[]
   /** The clock a call that is in flight keeps its time by; absent, the stream's time only moves when it is published. */
@@ -50,6 +50,8 @@ export interface TranscriptControllerOptions {
   readonly rows?: StreamRowActions
   /** Called when the stream gains or loses keyboard focus, for the mode the status line names. */
   readonly focusMode?: (mode: MayflyFocusMode) => void
+  /** Called when the stream's cursor moves onto or off a queued message, for the keys the notification row teaches. */
+  readonly focusRow?: (row: MayflyFocusRow) => void
 }
 
 /** What a row under the cursor can be sent to: the clipboard, or the editor. */
@@ -58,6 +60,8 @@ export interface StreamRowActions {
   copy(text: string, mode: CopyMode): void
   /** Read the row's content in `$EDITOR`. */
   open(text: string): void
+  /** Do something to a queued message (`id`) the cursor stands on; `undo` takes the last cancelled one back and has no id. */
+  queued(action: MayflyQueuedAction, id: string | undefined): void
 }
 
 /** How one retained view differs from the default. */
@@ -96,7 +100,7 @@ export function appendTranscriptNode(
 const EMPTY_RESULT: SearchResult = { hits: [], turnStart: new Map(), orders: new Map() }
 
 /** The keys the stream answers itself while it holds focus: the interrupt key's second meaning, and the two searches. */
-const BASE_KEYS = { 'ctrl+c': STREAM.copyRaw, '/': STREAM.findDown, '?': STREAM.findUp } as const
+const BASE_KEYS = { 'ctrl+c': STREAM.copyRaw, '/': STREAM.findDown, '?': STREAM.findUp, e: STREAM.queuedEdit, s: STREAM.queuedSteer, d: STREAM.queuedCancel, u: STREAM.queuedUndo } as const
 
 /** Once a search is accepted the arrows walk its matches, and `n`/`N` go on and back in the direction it was made. */
 const SELECT_KEYS = { ...BASE_KEYS, up: STREAM.matchPrev, down: STREAM.matchNext, n: STREAM.matchAgain, 'shift+n': STREAM.matchBack } as const
@@ -148,6 +152,10 @@ export class TranscriptController {
   private searching = false
   /** The next focus the stream takes keeps its cursor (a search ended or was abandoned). */
   private resume = false
+  /** The stream holds keyboard focus. */
+  private focused = false
+  /** What the cursor stands on that has keys of its own, last told to `focusRow`. */
+  private row: MayflyFocusRow
 
   constructor(private readonly options: TranscriptControllerOptions) {}
 
@@ -449,6 +457,8 @@ export class TranscriptController {
       slot.focusRow(STREAM.list, target)
     }
     this.keepTime(facts)
+    // A queued row can leave or change lanes under a cursor that does not move: the keys follow what the row is now.
+    if (this.focused) this.cursorRow(slot.cursor(STREAM.list))
   }
 
   /** A conversation that moved on while a search is open: its hits are found again, and the line says how many there are now. */
@@ -502,6 +512,8 @@ export class TranscriptController {
       // `ctrl+c` is reserved for interrupting, so the stream answers it itself while it holds focus.
       keys: BASE_KEYS,
       onEvent: event => { this.onEvent(event) },
+      // The notification row teaches the keys of the row the cursor stands on.
+      cursor: { control: STREAM.list, onMove: (itemId) => { if (this.focused) this.cursorRow(itemId) } },
       // Focus moves up into the stream at its newest row; `Esc` and `Alt+↓` give it back to the prompt.
       onFocus: () => {
         // A search handing the keys back keeps the cursor where it stands.
@@ -517,7 +529,11 @@ export class TranscriptController {
         this.cursorRev += 1
         this.publish()
       },
-      onFocusChange: (focused) => { if (!this.searching) this.options.focusMode?.(focused ? 'conversation' : 'prompt') },
+      onFocusChange: (focused) => {
+        this.focused = focused
+        if (!focused) this.cursorRow(undefined)
+        if (!this.searching) this.options.focusMode?.(focused ? 'conversation' : 'prompt')
+      },
       // `Esc` or `Alt+↓` while a search holds the cursor ends the search and stays in the conversation.
       onLeave: () => { if (this.search === undefined) this.slot?.release(); else this.endSearch() },
     })
@@ -536,7 +552,8 @@ export class TranscriptController {
 
   /** The keys the stream answers itself: the searches, and while one is accepted the walk over its matches. */
   private onKey(actionId: string): void {
-    if (actionId === STREAM.findDown) this.beginSearch(true)
+    if (actionId === STREAM.queuedEdit || actionId === STREAM.queuedSteer || actionId === STREAM.queuedCancel || actionId === STREAM.queuedUndo) this.queuedKey(actionId)
+    else if (actionId === STREAM.findDown) this.beginSearch(true)
     else if (actionId === STREAM.findUp) this.beginSearch(false)
     else if (actionId === STREAM.matchPrev) this.searchStep(-1)
     else if (actionId === STREAM.matchNext) this.searchStep(1)
@@ -544,8 +561,48 @@ export class TranscriptController {
     else if (actionId === STREAM.matchBack) this.searchRepeat(false)
   }
 
+  /** `e`, `s`, `d` on a queued message under the cursor, and `u` (which needs no row) for the one cancelled last. */
+  private queuedKey(actionId: string): void {
+    if (actionId === STREAM.queuedUndo) {
+      this.options.rows?.queued('undo', undefined)
+      return
+    }
+    const facts = this.active === undefined ? undefined : this.views.get(this.active)?.facts
+    const cursor = this.slot?.cursor(STREAM.list)
+    const id = cursor === undefined ? undefined : queuedIdOf(cursor)
+    if (id === undefined) return
+    // The next turn's lane only: a steering message is already read at the running turn's next step.
+    if (actionId === STREAM.queuedSteer && facts?.queuedLane(id) !== 'turn') return
+    // The message changes lane, which takes its row away for a moment: the cursor waits for the row to come back.
+    if (actionId === STREAM.queuedSteer) {
+      this.cursorIds = [cursor!]
+      this.cursorRev += 1
+    }
+    this.options.rows?.queued(actionId === STREAM.queuedEdit ? 'edit' : actionId === STREAM.queuedSteer ? 'steer' : 'cancel', id)
+    // The message is in the prompt, ready to edit: the keyboard goes back to it.
+    if (actionId === STREAM.queuedEdit) this.slot?.release()
+  }
+
+  /** The row type the cursor stands on, told to the notification row so it teaches the keys that row has. */
+  private cursorRow(itemId: string | undefined): void {
+    const id = itemId === undefined ? undefined : queuedIdOf(itemId)
+    const facts = this.active === undefined ? undefined : this.views.get(this.active)?.facts
+    const lane = id === undefined ? undefined : facts?.queuedLane(id)
+    const row: MayflyFocusRow = lane === undefined ? undefined : lane === 'step' ? 'steering' : 'queued'
+    if (row === this.row) return
+    this.row = row
+    this.options.focusRow?.(row)
+  }
+
   private accept(itemId: string | undefined): void {
     const facts = this.active === undefined ? undefined : this.views.get(this.active)?.facts
+    // A queued message opens to its whole text and folds back; its row keeps the cursor.
+    if (itemId !== undefined && queuedIdOf(itemId) !== undefined) {
+      this.cursorIds = [itemId]
+      this.cursorRev += 1
+      this.toggleRows([itemId])
+      return
+    }
     const owner = itemId === undefined ? undefined : facts?.locate(itemId)
     if (facts === undefined || owner === undefined) return
     this.cursorIds = undefined

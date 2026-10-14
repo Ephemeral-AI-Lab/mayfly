@@ -13,7 +13,7 @@ import { textOf, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import { sanitizePluginText } from '../core/plugin-view.ts'
 import type { MayflyTranslate } from '../frontend/locale.ts'
 import { materializeTranscriptEntries, type CommandCallModel, type ReadCallModel, type SearchCallModel, type TranscriptEntryModel, type TranscriptModel, type TranscriptTurnModel } from '../frontend/models.ts'
-import type { StreamMood, StreamQueued, StreamRow, StreamTurn, TranscriptViewFacts } from '../components/transcript-view.ts'
+import { queuedIdOf, type StreamMood, type StreamQueued, type StreamRow, type StreamTurn, type TranscriptViewFacts } from '../components/transcript-view.ts'
 import { compactElapsedMs } from './agent-presentation.ts'
 import { openTurns, type Disclosure } from './disclosure.ts'
 import { buildDisplay, runningTurnOf, type DisplayItem, type EntryItem, type ProcessTitleItem, type TurnHeaderItem } from './process-groups.ts'
@@ -46,8 +46,8 @@ export interface StreamInputs {
   readonly t: MayflyTranslate
   /** The time, which a call that still runs measures its own against. */
   readonly now: number
-  /** The messages the user typed while the agent works. */
-  readonly queued: readonly { readonly id: string, readonly text: string }[]
+  /** The messages the user typed while the agent works, each in the lane of the inbox that holds it. */
+  readonly queued: readonly { readonly id: string, readonly text: string, readonly lane: 'turn' | 'step' }[]
   /** The requests waiting on the user, in the order they were asked: the first is the one on the card, and its call is the request block. */
   readonly requests?: readonly MayflyDecisionRequest[]
   /** How each approval put to the user ended, from the session's audit events. */
@@ -154,6 +154,15 @@ export class StreamFacts {
     return facts
   }
 
+  /**
+   * Which lane of the inbox holds a queued message.
+   * @param id - the inbox message's id.
+   * @returns the lane, or `undefined` once the message left the inbox.
+   */
+  queuedLane(id: string): 'turn' | 'step' | undefined {
+    return this.queued.get(id)?.lane
+  }
+
   private intern(row: StreamRow, kept: Map<string, StreamRow>): StreamRow {
     const previous = this.rows.get(row.id)
     const result = previous !== undefined && sameRow(previous, row) ? previous : row
@@ -162,12 +171,12 @@ export class StreamFacts {
   }
 
   private queuedOf(inputs: StreamInputs, kept: Map<string, StreamQueued>): readonly StreamQueued[] {
-    const suffix = inputs.t('⏎ queued')
+    const suffixes = { turn: inputs.t('⏎ queued'), step: inputs.t('⏎ steering') }
     // The inbox can hold a message twice (a step's and a turn's queue); the stream shows it once.
     return inputs.queued.filter((message, index) => inputs.queued.findIndex(other => other.id === message.id) === index).map((message) => {
-      const next: StreamQueued = { id: message.id, text: sanitizePluginText(message.text), suffix }
+      const next: StreamQueued = { id: message.id, text: sanitizePluginText(message.text), suffix: suffixes[message.lane], lane: message.lane, open: inputs.disclosure.rows.has(`queued.${message.id}`) }
       const previous = this.queued.get(message.id)
-      const result = previous !== undefined && previous.text === next.text && previous.suffix === suffix ? previous : next
+      const result = previous !== undefined && previous.text === next.text && previous.suffix === next.suffix && previous.open === next.open ? previous : next
       kept.set(message.id, result)
       return result
     })
@@ -289,6 +298,9 @@ export class StreamFacts {
    * @returns the text, or `undefined` when nothing stands behind the item.
    */
   textOf(itemId: string, mode: CopyMode): string | undefined {
+    // A queued message is not part of the session yet: its text is the same in both forms.
+    const message = queuedIdOf(itemId)
+    if (message !== undefined) return this.queued.get(message)?.text
     const parts = this.partsOf(itemId)
     if (parts === undefined) return undefined
     const texts = parts.map(part => partText(part, mode)).filter(text => text !== '')

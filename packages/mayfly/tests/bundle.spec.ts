@@ -93,7 +93,6 @@ describe('mayfly bundle', () => {
       'mayfly-status-jobs',
       'mayfly-status-goal',
       'mayfly-pane-activity',
-      'mayfly-pane-queue',
       'mayfly-pane-todo',
       'mayfly-btw-command',
       'mayfly-pane-agents',

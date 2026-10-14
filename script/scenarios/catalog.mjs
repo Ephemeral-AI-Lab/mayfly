@@ -23,6 +23,9 @@ const COMPACTION = [...STREAM, 'packages/mayfly/src/conversation/facts.ts', 'pac
 /** What draws the notification pane: the pane, the line, and the notices the facts raise into it. */
 const NOTIFICATION = [`${TRANSCRIPT}pane-notification.ts`, `${TRANSCRIPT}notices.ts`, 'packages/mayfly/src/components/notification-line.ts', 'packages/mayfly/src/conversation/facts.ts', `${INTERACTION}notifications.ts`]
 
+/** What draws and answers the queued rows of the stream: the rows, their keys, the notification row that teaches them, and the editor that restores the message. */
+const QUEUE_COVERS = [`${TRANSCRIPT}transcript-model.ts`, `${TRANSCRIPT}pane-notification.ts`, 'packages/mayfly/src/components/notification-line.ts', `${INTERACTION}input-plugin.ts`, ...STREAM]
+
 /** What draws a request that waits on the user: its block in the stream, the decision card, and what they share. */
 const REQUEST = [
   `${INTERACTION}decision-actions.ts`, `${INTERACTION}request-overlay.ts`, 'packages/mayfly/src/components/decision-card.ts',
@@ -33,7 +36,7 @@ const REQUEST = [
 const PHASE3_COVERS = [...new Set([
   `${TRANSCRIPT}tool-*.ts`, `${TRANSCRIPT}process-*.ts`, `${TRANSCRIPT}presentation-policy.ts`, `${TRANSCRIPT}official-model.ts`, 'packages/mayfly/src/frontend/models.ts',
   `${TRANSCRIPT}pane-activity.ts`, `${TRANSCRIPT}transcript-model.ts`, `${TRANSCRIPT}status-goal.ts`, `${TRANSCRIPT}status-jobs.ts`, `${TRANSCRIPT}pane-agents.ts`, `${TRANSCRIPT}child-agent-model.ts`,
-  `${INTERACTION}pane-queue.ts`, `${INTERACTION}btw-command.ts`, `${INTERACTION}approval-plugin.ts`, `${INTERACTION}questions-plugin.ts`, `${INTERACTION}plan-review-panel.ts`, `${INTERACTION}jobs.ts`, `${INTERACTION}trace-*.ts`,
+  `${INTERACTION}btw-command.ts`, `${INTERACTION}approval-plugin.ts`, `${INTERACTION}questions-plugin.ts`, `${INTERACTION}plan-review-panel.ts`, `${INTERACTION}jobs.ts`, `${INTERACTION}trace-*.ts`,
   ...STREAM, ...COMPACTION, ...NOTIFICATION, ...REQUEST,
 ])]
 
@@ -54,7 +57,7 @@ const COVERS = {
   sync: [`${TRANSCRIPT}pane-activity.ts`, `${TRANSCRIPT}session-facts.ts`, `${TRANSCRIPT}tick.ts`, 'packages/mayfly/src/conversation/facts.ts', 'packages/mayfly/src/components/activity-row.ts', ...STREAM],
   activityWait: [`${TRANSCRIPT}pane-activity.ts`, 'packages/mayfly/src/components/activity-row.ts', `${INTERACTION}approval-plugin.ts`, `${INTERACTION}questions-plugin.ts`],
   prompts: [`${TRANSCRIPT}transcript-model.ts`, `${INTERACTION}attachments.ts`, ...STREAM],
-  turns: [`${TRANSCRIPT}transcript-model.ts`, `${TRANSCRIPT}process-groups.ts`, `${TRANSCRIPT}presentation-policy.ts`, `${INTERACTION}pane-queue.ts`, 'packages/mayfly/src/core/node-slot.ts', ...STREAM],
+  turns: [`${TRANSCRIPT}transcript-model.ts`, `${TRANSCRIPT}process-groups.ts`, `${TRANSCRIPT}presentation-policy.ts`, 'packages/mayfly/src/core/node-slot.ts', ...STREAM],
   errors: [`${TRANSCRIPT}tool-*.ts`, `${TRANSCRIPT}transcript-model.ts`, ...STREAM],
   toollines: [`${TRANSCRIPT}tool-*.ts`, `${TRANSCRIPT}process-*.ts`, `${TRANSCRIPT}official-model.ts`, 'packages/mayfly/src/frontend/models.ts', ...STREAM],
   edits: [`${TRANSCRIPT}tool-*.ts`, `${TRANSCRIPT}process-*.ts`, `${TRANSCRIPT}official-model.ts`, 'packages/mayfly/src/frontend/models.ts', 'packages/mayfly/src/core/content-rows.ts', 'packages/mayfly/src/core/diff-align.ts', 'packages/mayfly/src/core/highlight.ts', ...STREAM],
@@ -74,7 +77,8 @@ const COVERS = {
   planLong: [`${INTERACTION}plan-review-panel.ts`, `${INTERACTION}questions-plugin.ts`, ...REQUEST, 'packages/mayfly/src/core/markdown-rows.ts'],
   goal: [`${TRANSCRIPT}status-goal.ts`],
   jobs: [`${TRANSCRIPT}status-jobs.ts`, `${INTERACTION}jobs.ts`],
-  queued: [`${INTERACTION}pane-queue.ts`],
+  queued: [`${TRANSCRIPT}transcript-model.ts`, ...STREAM],
+  queue: QUEUE_COVERS,
   retries: [`${TRANSCRIPT}transcript-model.ts`, `${INTERACTION}trace-*.ts`, ...NOTIFICATION, ...STREAM],
   sideQuestion: [`${INTERACTION}btw-command.ts`, `${INTERACTION}conversation-view-status.ts`],
   notices: [...NOTIFICATION],
@@ -96,6 +100,31 @@ const COVERS = {
  * that `differs` from the prototype, and `pending`. `brief.mjs` prints them. Finalizing a group removes its entries.
  */
 const REVIEW = {
+  queue: {
+    scene: 15,
+    reference: 'prototype scene 15 (Editor: the queue, `↑↓ queue then history`) · component-library §5.2 · parts 4c.1 and 4c.2, as the owner changed them: queued messages stay rows of the stream (no queue line above the editor) and `↑`/`↓` are the history only',
+    implemented: [
+      'A message typed while the agent works is a row at the end of the stream, in the prompt style, with a muted mark: `⏎ queued` waits for the next turn, `⏎ steering` is read at the running turn\'s next step. There is no queue pane and no line above the editor. The replay holds them for four minutes (then two more) so a person can work on them; the runner skips the wait.',
+      '`Alt+↑` (it works with a draft too) focuses the stream on its newest row; `↑`/`↓` walk the rows. On a queued row the notification row names the keys: `e edit · s send now · d cancel · Enter expand · c copy · ↑/↓ select · Esc back` (a steering row has no `s`). `Enter` opens the whole text, `c`, `Ctrl+C` and `Ctrl+G` copy it or open it in `$EDITOR`.',
+      '`e` takes the message into the prompt and returns focus there; a draft the prompt already held goes to the history first (`Ctrl+A`, `↑` brings it back). `s` sends it now (it becomes `⏎ steering`). `d` cancels it with `Cancelled · u undo`; `u` (within eight seconds) puts it back in the lane it left, at the end.',
+      'When the agent reads a message it leaves the row list and the stream records it as an ordinary prompt; one you took out or cancelled stays out.',
+      '`↑`/`↓` in the prompt walk the history only; the notification row reads `↑ history 2/4` while walking (below a notice, above the idle hints), `↓` ends on the draft you had, and any edit ends the walk.',
+    ],
+    focus: [
+      { look: 'The rows and their marks: queued, steering, a long one cut at four lines with its fold row, a long CJK one', how: 'checkpoint `queued` (and `--width 60`, `--width 40`)' },
+      { look: 'The keys on the notification row: a queued row, and a steering row without `s`', how: 'checkpoints `newest`, `steering`' },
+      { look: 'Enter opens the whole text of the long message', how: 'checkpoint `opened`' },
+      { look: '`e` with an empty prompt and with a draft: the draft is not lost', how: 'checkpoints `edit`, `edit-with-draft`, `draft-in-history`' },
+      { look: '`s`, then `d` and `u`: the mark, the notice, the row leaving and returning in its lane', how: 'checkpoints `steered`, `cancelled`, `undone`' },
+      { look: 'The agent reads the messages: they are prompts in the stream now', how: 'checkpoints `read`, `claimed`' },
+      { look: 'The history walk and its counter, forward to the draft', how: 'checkpoints `up-1`, `up-3`, `down-1`, `draft`, `edited`' },
+    ],
+    differs: [
+      'The prototype draws one truncated queue line above the frame (`queued (2)  ⏎ "…"  ↑ recall`) and walks the queue first with `↑`; the owner replaced it by the rows of the stream so that any message, not only the newest, can be edited, sent or cancelled, and `↑`/`↓` are the history only.',
+      'In the scenario the replay\'s Agent stands for a running one (the driver lets `s` and `u` put a message into the inbox without waking it, until the last message is read); a live `dsh` profile with a real running turn shows the same rows.',
+    ],
+    pending: ['A notice over the history counter is not scripted (it needs a notice the scenario can raise); try a failing `Ctrl+V` with nothing on the clipboard while walking.'],
+  },
   select: {
     scene: 18,
     reference: 'prototype scene 18 (Conversation stream: Alt+Up select a row, Enter expand, c copy, Ctrl+G open in editor) · component-library §5.6 · part 3e.2',
@@ -804,6 +833,31 @@ const SCRIPTS = {
     key('ctrl+o'), checkpoint('open'),
     resize(48, 24), checkpoint('narrow'),
   ],
+  // Four messages queued behind a running turn: Alt+Up lands on the newest, the arrows walk the queue, Enter opens one, the agent reads one under the cursor.
+  queue: [
+    play('queued'), checkpoint('queued'),
+    key('alt+up'), checkpoint('newest'),
+    key('up'), checkpoint('long'),
+    key('enter'), checkpoint('opened'), key('enter'),
+    key('up', { repeat: 2 }), checkpoint('steering'),
+    key('down'), key('e'), checkpoint('edit'),
+    key('alt+up'), key('up'), key('e'), checkpoint('edit-with-draft'),
+    key('ctrl+a'), key('up'), checkpoint('draft-in-history'),
+    key('alt+up'), key('s'), checkpoint('steered'),
+    key('d'), checkpoint('cancelled'),
+    key('u'), checkpoint('undone'),
+    key('esc'), wait(150), key('esc'), wait(150),
+    play('read'), checkpoint('read'),
+    play(), checkpoint('claimed'),
+    type('first: read the hero copy'), key('enter'), wait(400),
+    type('second: tighten the headline'), key('enter'), wait(400),
+    type('third: run the tests'), key('enter'), wait(400),
+    type('a draft in progress'), key('ctrl+a'), key('up'), checkpoint('up-1'),
+    key('up', { repeat: 2 }), checkpoint('up-3'),
+    key('down'), checkpoint('down-1'),
+    key('down', { repeat: 2 }), checkpoint('draft'),
+    key('ctrl+a'), key('up'), key('end'), type(' now'), checkpoint('edited'),
+  ],
   // Reasoning is a card of the open view: Standard folds it, Ctrl+O opens it, and a resize narrows the open turn.
   thinking: [
     play('thinking'), checkpoint('live'),
@@ -849,6 +903,7 @@ const SIZES = {
   planRejected: [[120, 40], [60, 30]],
   planLong: [[120, 40], [60, 30]],
   turns: [DEFAULT_SIZE, [60, 24], [40, 24]],
+  queue: [[96, 30], [60, 30], [40, 30]],
   toollines: [[120, 80], [60, 64], [40, 64]],
   edits: [[120, 90], [60, 70], [40, 70]],
   wheel: [[40, 24]],
@@ -957,12 +1012,12 @@ const EDITOR_REVIEW = {
     ],
     differs: [
       'The title is cut at its end with `…` (the prototype keeps the end of a long title): owner decision for 4a.1.',
-      'No placeholder ladder, queue line, tokens, or recall corner: they come with 4b, 4c, and 4e.',
+      'No placeholder ladder or palette list yet: they come with 4d and 4e.',
       'The `/` and `@` lists still hold pi-tui\'s state and keys (4d replaces them); only their painting moved, out of the editor into a palette over the stream, which the prototype does not draw (it grows the prompt): owner decision. The palette has no border, count, or key line, and its focus mark is an arrow, not the prototype\'s `→ ` row prefix with a bold label only.',
       'A buffer taller than the editor\'s window loses pi-tui\'s `↑ N more` rule (the frame is the surface\'s); the cursor still scrolls the window.',
       'The slash-context border (primary while the buffer starts with `/`) is gone: the frame has one border tone besides shell mode.',
     ],
-    pending: ['Placeholders by state (4e.1), tokens (4b), the queue line and recall (4c), the palette list and its key line (4d).'],
+    pending: ['Placeholders by state (4e.1), tokens (4b), the palette list and its key line (4d).'],
   },
   editorTitle: {
     scene: 15,
@@ -1033,7 +1088,7 @@ const TOKEN_REVIEW = {
       'The prototype keeps the tokens in a strip before the buffer and selects the last one on an empty buffer; here they stay inline in the text (owner decision for 4b.1), so Backspace acts at the token under the caret.',
       'The image token shows its size (`84 KB`) and a serial number, a paste its line count (pi-tui\'s own), a mention its relative path (owner decision).',
     ],
-    pending: ['The queue line and recall (4c), the placeholder ladder (4e.1), the `@` list\'s keys and `Ctrl+G` on a file (4d.3).'],
+    pending: ['The placeholder ladder (4e.1), the `@` list\'s keys and `Ctrl+G` on a file (4d.3).'],
   },
   tokensSubmit: {
     scene: 15,
@@ -1047,7 +1102,7 @@ const TOKEN_REVIEW = {
       { look: 'A message whose image token was removed before sending has no image', how: 'checkpoints `draft-removed`, `sent-removed`' },
     ],
     differs: [],
-    pending: ['Withdrawing a queued message back into the editor with its tokens (4c.2 recall).'],
+    pending: ['Taking a queued message back into the editor with its tokens (`e` on its row, `queue`).'],
   },
   tokensFolder: {
     scene: 15,
@@ -1123,7 +1178,7 @@ const TOKEN_REVIEW = {
       { look: 'Walking Up and Down keeps the draft and its token', how: 'checkpoints `draft`, `up-with-draft`, `down-to-draft`' },
     ],
     differs: [],
-    pending: ['The queue first, then the history, with the `↑ history 2/4` counter (4c.2).'],
+    pending: ['The `↑ history 2/4` counter on the notification row is in `queue`.'],
   },
   tokensEditor: {
     scene: 15,

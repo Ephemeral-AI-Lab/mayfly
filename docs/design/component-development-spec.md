@@ -289,8 +289,8 @@ hand-off.
 | **4a.2 Shell mode** | `!` as the first character turns the prompt symbol into `!` and the border to the accent color; nothing else changes (no `! shell mode` label, no `SHELL` chip); `Esc` or `Backspace` on an empty buffer leaves it. | 15 | *editorShell* | the border tone in both themes and with `NO_COLOR`; leaving the mode; the title stays |
 | **4b.1 Tokens in the buffer** | Pasted images (`[image #1 84 KB]`), pasted blocks (`[paste #1 +12 lines]`), and accepted `@` mentions (`@relative/path`) stay inline in the text, painted as tokens; `Backspace` with the caret at a token selects it (inverse), the next one removes it. | 15 | *tokens* | the token tones; the two-key removal; a token at the wrap edge; 60 columns |
 | **4b.2 Submit expansion** | What is sent is what is sent today: the submit pipeline expands each token to its content; a draft keeps its tokens (and a pasted block its content) through a theme reload and through the external editor. | 15 | *tokensSubmit*, *tokensEditor* | image, paste, and mention each expand once; a removed token sends nothing; a long paste |
-| **4c.1 Queue line** | One truncated line above the frame: the first three queued messages cut to 22 characters, then `+N`, then `↑ recall`; it never grows the editor; the queue pane is gone. | 15 | *queue* | the cut and the `+N`; the line at 60 and 40 columns; the editor never moves |
-| **4c.2 Recall** | On an empty buffer `↑` recalls the queue first (newest), then earlier messages; the corner reads `↑ history 2/4`; `↓` walks back and ends on the draft; recalling a queued message takes it out of the queue and sending it queues it again. | 15 | *recall* | the order; the counter; the draft restored; the withdrawn message not sent twice |
+| **4c.1 Queued rows** | Queued messages stay rows of the stream (`⏎ queued`, `⏎ steering`); `Alt+↑` reaches them, and on one `e` edits it, `s` sends it now, `d` cancels it (`u` undoes); the queue pane is gone and there is no queue line (owner's change from the prototype). | 15 | *queue* | the rows and marks at 96, 60 and 40 columns; the keys on the notification row; `e` with a draft; `s` and `d` then `u`; a row read by the agent under the cursor |
+| **4c.2 Prompt history** | `↑`/`↓` walk the history only; the notification row reads `↑ history 2/4` while walking; `↓` walks back and ends on the draft. | 15 | *queue* (the same run) | the counter; the draft restored; the counter at 60 and 40 columns |
 | **4d.1 The `/` list** | The completion list under the buffer with scene 30's rows: the match in bold, the description, the command's key at the right; the old select-list adapter is gone. | 30 p1-p2 | *palette* | row layout at 96, 60, and 40 columns; the match highlight; no row shift above; long descriptions |
 | **4d.2 Palette keys** | The list's own key line (`↑/↓ options · Tab complete · Enter insert · Esc close`) and nothing else under the frame; typing filters; `Esc` closes without losing the draft. | 30 p1-p2 | *paletteKeys*, *paletteNarrow* | the key line is the only hint; `Enter` on a half-typed command; scrolling a long list |
 | **4d.3 `@` files** | `@` lists files; `Enter` or `Tab` inserts a token (4b.1); `Ctrl+G` opens the file; a directory narrows the list. | 30 | *mentions* | the path cut; the token inserted; a workspace with thousands of files stays smooth |
@@ -445,7 +445,15 @@ rules, which keep the demo useful to a person and usable as a golden later:
    owner has learned them.
 7. **Covers.** The `covers` globs name the sources the scenario can reveal, so the change-based selection runs it
    (root `AGENTS.md`, *Verification*).
-8. **Modes.** The owner can run any demo with `--no-color`, `--ascii`, `--width N`, `--height N`; reduced motion is a
+8. **One scenario per round.** A round (its parts together) is one scenario that draws every state in one run, one
+   checkpoint each, with one brief; separate scenarios are for states that cannot coexist (a different source, a
+   different width ladder), not for each part or key. The owner learns one name and one walk.
+9. **Time for a person.** The live `scenario` plays at real time, so a state the owner has to operate stays long
+   enough to operate (minutes, with `pause()` between the mark and the item that ends it; a runner skips pauses). A
+   state that ends by itself (a held queue read by the agent, a notice) ends the way the product does: the replay writes
+   the session event the agent loop would have written, so what leaves one place appears in the next (a read queued
+   message becomes a prompt of the stream), never just vanishes.
+10. **Modes.** The owner can run any demo with `--no-color`, `--ascii`, `--width N`, `--height N`; reduced motion is a
    saved setting (`/settings`). The brief names the ones that matter for the part.
 
 ## 9. Commands

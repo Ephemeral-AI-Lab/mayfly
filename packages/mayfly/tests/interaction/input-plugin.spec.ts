@@ -299,7 +299,7 @@ describe('mayfly-input plugin', () => {
     const { ctx, editor, cancel } = await mount({ running: true })
     type(editor, 'keep me')
     getSharedEditor(ctx)?.abortPrompt?.()
-    expect(cancel).toHaveBeenCalledWith({ kind: 'user' })
+    expect(cancel).toHaveBeenCalledWith({ kind: 'user' }, { keepInbox: true })
     expect(editor.getText()).toBe('keep me')
   })
 
@@ -673,7 +673,7 @@ describe('mayfly-input plugin', () => {
     ctx.set('subagents', { interrupt, interruptByParent: vi.fn(), prompt: vi.fn() } as never)
 
     expect(editor.onKey?.(KEY.escape)).toBe(true)
-    expect(cancel).toHaveBeenCalledWith({ kind: 'user' })
+    expect(cancel).toHaveBeenCalledWith({ kind: 'user' }, { keepInbox: true })
     expect(interrupt).toHaveBeenCalledWith(child.id, { kind: 'ancestor', agent })
   })
 
@@ -1219,7 +1219,7 @@ describe('mayfly-input plugin', () => {
       const { editor, cancel } = await mount({ running: true })
       type(editor, 'draft')
       expect(editor.onKey?.(KEY.escape)).toBe(true)
-      expect(cancel).toHaveBeenCalledWith({ kind: 'user' })
+      expect(cancel).toHaveBeenCalledWith({ kind: 'user' }, { keepInbox: true })
       expect(editor.getText()).toBe('draft')
     })
 
@@ -1243,7 +1243,7 @@ describe('mayfly-input plugin', () => {
     it('interrupts a running agent on Escape with an empty buffer', async () => {
       const { editor, cancel } = await mount({ running: true })
       expect(editor.onKey?.(KEY.escape)).toBe(true)
-      expect(cancel).toHaveBeenCalledWith({ kind: 'user' })
+      expect(cancel).toHaveBeenCalledWith({ kind: 'user' }, { keepInbox: true })
     })
 
     it('restores the submitted message and removes its history entry after a safe Escape retraction', async () => {
@@ -1275,7 +1275,7 @@ describe('mayfly-input plugin', () => {
 
       expect(editor.onKey?.(KEY.escape)).toBe(true)
       expect(retract).not.toHaveBeenCalled()
-      expect(cancel).toHaveBeenCalledWith({ kind: 'user' })
+      expect(cancel).toHaveBeenCalledWith({ kind: 'user' }, { keepInbox: true })
       expect(editor.getText()).toBe('new draft')
     })
 
@@ -1310,7 +1310,7 @@ describe('mayfly-input plugin', () => {
     it('interrupts a running agent on Ctrl-C with an empty buffer', async () => {
       const { ctx, editor, cancel } = await mount({ running: true })
       expect(editor.onKey?.(KEY.ctrlC)).toBe(true)
-      expect(cancel).toHaveBeenCalledWith({ kind: 'user' })
+      expect(cancel).toHaveBeenCalledWith({ kind: 'user' }, { keepInbox: true })
       expect(ctx.mayflyRequests.stopPending()).toBe(true)
     })
 
@@ -1338,7 +1338,7 @@ describe('mayfly-input plugin', () => {
 
       expect(editor.onKey?.(KEY.ctrlC)).toBe(true)
       expect(retract).not.toHaveBeenCalled()
-      expect(cancel).toHaveBeenCalledWith({ kind: 'user' })
+      expect(cancel).toHaveBeenCalledWith({ kind: 'user' }, { keepInbox: true })
       expect(editor.getText()).toBe('')
       expect(editor.history).toEqual(['interrupt without retracting'])
     })

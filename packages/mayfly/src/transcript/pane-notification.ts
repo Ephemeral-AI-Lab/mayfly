@@ -16,7 +16,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { MayflyFeedbackRecord } from '@ephemeral-ai/mayfly-ui'
 import { NotificationLine, type NotificationFacts, type NotificationRowFacts } from '../components/notification-line.ts'
-import type { MayflyFocusMode } from '../core/types.ts'
+import type { MayflyFocusMode, MayflyFocusRow } from '../core/types.ts'
 import type { MayflyTranslate } from '../frontend/locale.ts'
 import { observeTranscriptLocale } from './locale.ts'
 import type { SessionFactsService } from './session-facts.ts'
@@ -52,13 +52,17 @@ export function mountNotificationPane(ctx: Context, t: MayflyTranslate): void {
   let promptWait: string | undefined
   /** What the prompt teaches about the token its caret is on (`Ctrl+G opens · Backspace removes`), else `undefined`. */
   let promptHint: string | undefined
+  /** Where the prompt stands in its history while it is browsed: the counter takes the place of the hints. */
+  let recall: string | undefined
+  /** What the stream's cursor stands on that has keys of its own, while the stream holds focus. */
+  let row: MayflyFocusRow
   /** Where keyboard focus is: the hint of the keys that leave the prompt only teaches while focus is on it. */
   let mode: MayflyFocusMode = 'prompt'
   const current = (): NotificationRowFacts => {
     const agent = factsService?.currentAgent
     const notice = interaction === undefined ? undefined : selectNotification(interaction.notificationSnapshot(), agent == null ? undefined : String(agent.id))
     // With no notice the row teaches where focus can go from the prompt: up into the conversation, down to the status bar.
-    return { ...notice === undefined ? {} : { notice }, ...mode === 'prompt' ? notice === undefined ? { ...promptWait === undefined ? {} : { wait: promptWait }, hint: promptHint ?? t('Alt+↑ conversation · Alt+↓ bar') } : {} : mode === 'conversation' ? { keys: t('Enter expand · c copy · Ctrl+C JSON · Ctrl+G editor · ↑/↓ select · / ? search · Esc back') } : mode === 'search-select' ? { keys: t('Enter expand · c copy · Ctrl+C JSON · ↑/↓ or n/N match · / ? new search · Esc end search') } : {}, ...chip === undefined ? {} : { chip } }
+    return { ...notice === undefined ? {} : { notice }, ...mode === 'prompt' ? notice === undefined ? { ...promptWait === undefined ? {} : { wait: promptWait }, hint: recall ?? promptHint ?? t('Alt+↑ conversation · Alt+↓ bar') } : {} : mode === 'conversation' ? { keys: row === 'queued' ? t('e edit · s send now · d cancel · Enter expand · c copy · ↑/↓ select · Esc back') : row === 'steering' ? t('e edit · d cancel · Enter expand · c copy · ↑/↓ select · Esc back') : t('Enter expand · c copy · Ctrl+C JSON · Ctrl+G editor · ↑/↓ select · / ? search · Esc back') } : mode === 'search-select' ? { keys: t('Enter expand · c copy · Ctrl+C JSON · ↑/↓ or n/N match · / ? new search · Esc end search') } : {}, ...chip === undefined ? {} : { chip } }
   }
   let shape = JSON.stringify(current() ?? null)
   const pane = ctx.mayflyPanes.register({
@@ -85,6 +89,14 @@ export function mountNotificationPane(ctx: Context, t: MayflyTranslate): void {
     promptHint = next
     refresh()
   })
+  const offRow = ctx.on('mayfly/focus-row-changed', (next) => {
+    row = next
+    refresh()
+  })
+  const offRecall = ctx.on('mayfly/prompt-recall-changed', (next) => {
+    recall = next === undefined ? undefined : t('↑ history {index}/{total}', { index: next.index, total: next.total })
+    refresh()
+  })
   const offWait = ctx.on('mayfly/prompt-wait-changed', (next) => {
     promptWait = next
     refresh()
@@ -99,6 +111,8 @@ export function mountNotificationPane(ctx: Context, t: MayflyTranslate): void {
     offAgent?.()
     offTail()
     offWait()
+    offRow()
+    offRecall()
     offHint()
     offMode()
     pane.dispose()

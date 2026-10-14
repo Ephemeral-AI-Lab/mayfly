@@ -2024,8 +2024,8 @@ part is accepted (§7 step 3).
 - **Shell mode** is the `!` symbol and the `accent` border only.
 - **Tokens**: pasted images, pasted blocks, and `@` mentions become prompt tokens; on submit the pipeline
   (`interaction/prompt-submit-pipeline.ts`) expands them to the content it sends today.
-- **Recall**: queued messages first, then history; recalling a queued message withdraws it (`withdrawQueued`), and
-  sending it again queues it.
+- **Recall**: `↑`/`↓` walk the history only, with `↑ history 2/4` on the notification row. Queued messages are rows of
+  the stream: `Alt+↑`, then `e` edits (through `restoreQueuedMessage`), `s` sends now, `d` cancels (`u` undoes).
 - **Placeholders** by state from spec §3.3 (main idle or running, shell, side question, subagent live or resumable,
   read-only).
 - **Subagent replies** (G18). In a live or resumable subagent conversation the editor sends through the
@@ -2048,8 +2048,9 @@ text above is the starting point; the final behavior is what the owner accepts.
   only. Parts 4a.1 and 4a.2. Deletes `setBorderLabel` and the `! shell mode` label (B4, G19, R20).
 - **4b Tokens** (scene 15). Images, pasted blocks, and `@` mentions as prompt tokens with the two-key removal; the submit
   pipeline expands them to what is sent today. Parts 4b.1 and 4b.2.
-- **4c Queue and recall** (scene 15). The one-line queue above the frame, and `↑`/`↓` through the queue and then the
-  history with `withdrawQueued`. Parts 4c.1 and 4c.2. Deletes `interaction/pane-queue.ts` as a pane (H7, G15).
+- **4c Queue and recall** (scene 15). Queued messages as rows of the stream with the keys `e`, `s`, `d` and `u` (the
+  owner's change from the prototype's queue line), and `↑`/`↓` as the history with its counter on the notification row.
+  Parts 4c.1 and 4c.2. Deletes `interaction/pane-queue.ts` and the `./pane-queue` plugin (H7, G15).
 - **4d Command palette** (scene 30 p1-p2). The editor's completion list for `/`, `@`, and `#` and the results of
   editor extensions, with its own key line. Parts 4d.1 to 4d.4. Deletes the autocomplete adapter
   (`SelectListAdapter`, `core/wrapping-select-list.ts`).
@@ -2067,10 +2068,15 @@ rounds are planned in review order, one group in review at a time.
 | --- | --- | --- | --- |
 | R1 | 4a.1 editor frame; 4a.2 shell mode | planned: the editor becomes a pure `Editor` component on the dock slot, so this round is the cutover and nothing else changes in the editor's behavior | `feat/4a` |
 | R2 | 4b.1 tokens in the buffer; 4b.2 submit expansion | built, and the owner accepted the effect (tests, goldens and perf A/B are deferred to the end of Phase 4, spec §3.1, so it is not yet marked accepted): tokens stay inline in the text (no strip): `[image #1 84 KB]`, pi-tui's `[paste #1 +14 lines]`, and an `@` mention as its relative path, painted in tones; the arrows step over a token and highlight it, one Backspace removes a highlighted token (two after a token), the hint above the prompt names the keys (`Ctrl+G opens · Backspace removes`); `Ctrl+G` on a token opens a mentioned file or folder, a pasted block as text (it folds back into a token), or an image in a preview overlay; an `@` folder is taken with Enter and entered with Tab; a pasted block survives Up/Down history and the whole-draft `Ctrl+G`; the prompt's waits (clipboard, file search) and an `image` node show the unified loader; the `ℹ` glyph is retired; the image preview was not confirmed in a real image terminal (WezTerm over SSH stayed black: its `enable_kitty_graphics` setting or the draw order are the open suspects; the overlay now keeps the image's first row in view); scenarios `tokens`, `tokensSubmit`, `tokensEditor`, `tokensOpen`, `tokensHistory`, `tokensImage`, `tokensFolder`, `tokensWaiting` | `feat/4a` |
-| R3 | 4c.1 queue line; 4c.2 recall | planned | `feat/4a` |
+| R3 | 4c.1 queued rows; 4c.2 prompt history | built, and the owner accepted the effect (tests, goldens and perf A/B are deferred to the end of Phase 4, spec §3.1, so it is not yet marked accepted); also the interrupt scope (the displayed Agent's turn only, queue kept): queued messages are rows of the stream (`⏎ queued`, `⏎ steering`); `Alt+↑` (now also with a draft in the prompt) reaches them and the notification row names `e edit · s send now · d cancel`; `e` takes the message into the prompt (a draft goes to the history first), `s` moves it to the steer lane, `d` cancels it and `u` undoes it (eight seconds, back in its lane); `↑`/`↓` are the history only, with `↑ history 2/4` on the notification row; `pane-queue` is deleted; a node slot reports its list's cursor (`cursor` option); one scenario, `queue` (rows, keys, the agent reading them, the history walk; it holds the queue four minutes for a person, a runner skips the wait); a message the agent reads becomes a prompt in the stream | `feat/4a` |
 | R4 | 4d.1 the `/` list; 4d.2 palette keys | planned: the autocomplete adapter is deleted here | `feat/4a` |
 | R5 | 4d.3 `@` files; 4d.4 `#` skills and extension results | planned | `feat/4a` |
 | R6 | 4e.1 placeholders; 4e.2 keys and title; 4e.3 subagent replies | planned: the last group, so the phase gate follows (platform acceptance above) | `feat/4a` |
+
+**Interrupt scope (owner decision, Phase 4 round 3; built).** `Esc` interrupts the current turn of the displayed
+conversation's Agent and nothing else: no subagents, jobs, goal, or plan state, and queued and steering messages are
+kept and sent. The contract is in [interaction-model.md](../interaction-model.md) (*Interrupt scope*); a change that
+touches interruption merges toward it.
 
 **Loading displays (owner request, Phase 4 round 2).** Every wait a user can feel shows the one unified loader
 (`ui.loader` gap, component-library §2.4: `⣾` and its words, one clock, frozen under reduced motion), in an appropriate

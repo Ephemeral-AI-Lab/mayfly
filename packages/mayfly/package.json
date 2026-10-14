@@ -140,10 +140,6 @@
       "types": "./lib/types/agents-command.d.ts",
       "default": "./lib/agents-command.js"
     },
-    "./pane-queue": {
-      "types": "./lib/types/pane-queue.d.ts",
-      "default": "./lib/pane-queue.js"
-    },
     "./mode-status": {
       "types": "./lib/types/mode-status.d.ts",
       "default": "./lib/mode-status.js"

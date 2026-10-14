@@ -163,6 +163,18 @@ export interface MayflyOverlayHandle {
 /** Where keyboard focus lives: the prompt, the stream's row cursor, a view of the status bar, or a search of the stream. */
 export type MayflyFocusMode = 'prompt' | 'conversation' | 'bar' | 'search' | 'search-select'
 
+/** What the stream's cursor stands on that has keys of its own: a message waiting for the next turn, or one steering the running turn. */
+export type MayflyFocusRow = 'queued' | 'steering' | undefined
+
+/** What `e`, `s`, `d`, and `u` ask of a queued message of the stream. */
+export type MayflyQueuedAction = 'edit' | 'steer' | 'cancel' | 'undo'
+
+/** Where the prompt stands in its history while it is browsed: `index` is the entry on show, counted from 1 (the newest). */
+export interface MayflyHistoryPosition {
+  readonly index: number
+  readonly total: number
+}
+
 export interface MayflyScreen {
   /** Whether an active overlay or editor replacement must receive input before global actions. */
   readonly capturesInput?: boolean
@@ -633,6 +645,11 @@ export interface MayflyEditor extends MayflyFocusable {
    */
   getHistoryPastes(): readonly (ReadonlyMap<number, string> | undefined)[]
   /**
+   * Where the prompt stands in its history: the entry on show (1 is the newest) and how many there are.
+   * @returns `undefined` while the buffer is the draft, not a recalled entry.
+   */
+  getHistoryPosition?(): MayflyHistoryPosition | undefined
+  /**
    * Remove the newest history entry only when it exactly matches `text`.
    * Optional for structural test editors; the core adapter implements it.
    * @param text - expected newest submission.
@@ -1096,5 +1113,29 @@ declare module '@deepseek-ai/cordis' {
      * @mode emit
      */
     'mayfly/focus-mode-changed'(mode: MayflyFocusMode): void
+    /**
+     * The stream's cursor moved onto or off a queued message. The notification pane teaches the keys of that row (`e`
+     * edit, `s` send now, `d` cancel) while the stream has focus. Emitted by the transcript, unfiltered.
+     * @param row - what the cursor stands on, or `undefined` for any other row.
+     * @mode emit
+     */
+    'mayfly/focus-row-changed'(row: MayflyFocusRow): void
+    /**
+     * A key of a queued message in the stream: `e` takes it into the prompt, `s` sends it now (to the running turn's
+     * steer lane), `d` cancels it, and `u` takes the last cancelled one back. The input editor holds the inbox restore
+     * data and answers. Emitted by the transcript, unfiltered.
+     * @param action - what was asked.
+     * @param messageId - the inbox message's id; none for `undo`.
+     * @mode emit
+     */
+    'mayfly/queued-action'(action: MayflyQueuedAction, messageId: string | undefined): void
+    /**
+     * The prompt is walking its history (`Up`/`Down`): where it stands, or `undefined` once it is back on the draft. The
+     * notification pane shows `↑ history 2/4` in the place of the hint, while it has no notice. Emitted by the input
+     * editor, unfiltered.
+     * @param recall - the entry on show and the history's size.
+     * @mode emit
+     */
+    'mayfly/prompt-recall-changed'(recall: MayflyHistoryPosition | undefined): void
   }
 }
