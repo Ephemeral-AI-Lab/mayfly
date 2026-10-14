@@ -26,18 +26,20 @@ dsh 原生服务。
 - **终端原生渲染**：Markdown 表格、assistant 消息中的闭合 Mermaid fence，
   以及 renderer-neutral 的 line、point、bar、sparkline 与 heatmap 节点；
   超宽或不支持的内容会安全回退为源码或文本。
-- **唯一的实时状态行**：spinner、当前步骤、回合耗时、估算 token 数与输出
-  速率都在编辑器上方的 activity 行；会话记录只记录已经发生的事。
+- **唯一的实时状态块**：当前步骤、回合耗时、估算 token 数与输出速率都在
+  编辑器上方的 activity 块；其下是通知行；会话记录只记录已经发生的事。
 - **旁支会话**：`/btw` 与 `/agents` 的 subagent 树共用 transcript 面板；
   `F7` 返回上一个会话，`F8` 关闭当前显示的会话。
 - **普通的插件模型**：直接消费 `ctx.commands`、`ctx.sessionProjections`、
   `ctx.tools` 等有文档的 dsh 服务；UI 贡献通过 `mayflyPanes`、
   `mayflyStatus`、`mayflyOverlays` 与 `mayflyEditorExtensions`。
 
-编辑器上方的 activity 行是唯一显示实时状态的位置：spinner、当前步骤（`思考中`、
-`正在运行命令`）、回合耗时，以及估算 token 数与输出速率。会话记录只记录已经发生的事：
-流式思考显示为不带标题的 `✻` 尾部，结束后收成一行 `✻ 已思考 6s`；文件修改以 diff
-卡片保留在最终回答旁。速率按每四个字符一个 token 估算，不计首个 chunk
+编辑器上方的 activity 块是唯一显示实时状态的位置：随阶段变化的字形（思考时绽放、
+输出时填充、工具运行时保持静止的 `●`、等待你时呼吸）、当前步骤（`Thinking`、
+`正在运行命令`）、回合耗时，以及估算 token 数与输出速率。第二行是提示，或正在进行的
+调用的参数。其下的通知行显示需要立即看到的通知，例如限流重试或上下文将满。会话记录只
+记录已经发生的事：流式思考显示为不带标题的 `✻` 尾部，结束后收成一行
+`✻ Thinking · 6s`；文件修改以 diff 卡片保留在最终回答旁。速率按每四个字符一个 token 估算，不计首个 chunk
 之前的等待时间；两秒没有新输出后隐藏。窄终端优先省略提示和速率。
 
 <p align="center">

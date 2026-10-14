@@ -142,6 +142,23 @@ arm delay still requires `Enter`. The decision card (approval, plan review) uses
 `Esc` for 300 ms after it opens (`armMs`), so a stray key grants nothing. The
 hint shows the real range (`1`, `1-3`, …) and is omitted while searching.
 
+### Decision card
+
+The approval and plan review cards (`components/decision-card.ts`) sit in the editor's place. A digit or `Enter`
+on the focused row chooses it. A note under the choices (`Feedback:` or `Revise:`) is edited with `↓` from the
+last choice; its `Enter` settles the card: an approval rejects with the note, a plan sends it as the revision. `Esc`
+rejects (a plan declines, with no note). `Ctrl+G` opens the request in `$EDITOR`, and a plan's `c` copies it. For
+300 ms after the card takes focus (`armMs`), every key but `Esc` is swallowed.
+
+## Stream selection and search
+
+`Alt+↑` (or `F4`) with an empty prompt moves focus to the newest row of the conversation stream, and `Alt+↓`
+or `Esc` returns to the prompt. On a row, `Enter` opens or folds it, `c` copies its text, `Ctrl+C` copies its raw
+JSON, and `Ctrl+G` opens it in `$EDITOR`. In conversation mode `/` searches toward the newer rows and `?` toward the
+older ones, as a regular expression with smart case, in a line above the editor. `Enter` selects the first match
+from the cursor, `↑`/`↓` and `n`/`N` walk every occurrence, and `Esc` ends the search (a second `Esc` returns to the
+prompt).
+
 ## Hints
 
 The hint row shows up to three fragments below 80 columns and four from 80.

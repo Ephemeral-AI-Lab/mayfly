@@ -270,7 +270,7 @@ other part needs the brief. Parts of Phases 4 to 6 are cut when their phase star
 | **3c.3 Notification pane** | One right-aligned row (half the width at most) above the editor for the notification lane's records and the notices the facts raise (rate limit, context nearly full, resumed); offline and low balance are deferred (no signal). | 16 | `notices`, `context`, `retries`, `notificationPane` | severity glyph and tone; the half-width cap; the signals that raise each |
 | **3c.4 Compaction** | `1/2 summarizing`, `2/2 applying`, the occupancy bar with its 800 ms drain, `✓ Compacted 84 items · 91% → 9%`, the failure row; a manual `/compact` below its turn. | 20 | `compaction` (+ `-compact`, `-verbose`), `compactionFailed`, `manualCompact`, `context` | the drain; the `~` estimate; the failure state |
 | **3d.1 Approval card** | The pending approval as the newest open row, and the decision card (variant B: grant first, digits, `Esc` rejects, the 300 ms arm delay, `⚠ deletes files`). | 21 | `approvals`, `approvalsRejected`, `approvalsEdit`, `approvalsQueue` | the call is the request; the stray-key case grants nothing; `1 of N waiting`; feedback line |
-| **3d.2 Plan review card** | The plan as markdown of any length, `Approve and start` / `Keep planning…` / `Reject`, `Revise:` on the same line. | 21 | `plan`, `planRevised`, `planLong` | a long plan; `Ctrl+G`; `c` copies |
+| **3d.2 Plan review card** | The plan as markdown of any length, `Approve and start` / `Keep planning…` / `Reject`, with the `Revise:` note under the choices. | 21 | `plan`, `planRevised`, `planLong` | a long plan; `Ctrl+G`; `c` copies |
 | **3e.1 Levels** | `Ctrl+O` Verbose for the last three turns; `Enter` on a header; the four levels' policies. | 18 | `tour`, `history` | exactly one place shows detail; compact counts |
 | **3e.2 Row selection** | `Alt+↑` focuses the newest row; `Enter`, `c`, `Ctrl+G`, `Esc`/`Alt+↓`. | 18 | `tour` | focus mark; hint row; copy feedback |
 | **3e.3 Stream search** | `/` and `?` in conversation mode open a search line above the editor (regular expression, smart case); typing highlights, `Enter` selects, `↑`/`↓` and `n`/`N` walk the matches; the match turn opens at Verbose; matched text reversed. | 18 (`StreamSearch`) | `tour`, `history` | match count; stepping; `Esc` restores levels |
@@ -378,6 +378,25 @@ Constraints learned while building 3b.1:
   hand-off brief, so the tester accepts them knowingly.
 - Changing a level's fold or tier changes every scenario that draws the stream: expect the goldens of all of them, and
   of the Website's `app-*` scenarios, to move at finalization.
+
+Constraints learned while building 3d (decision cards) and 3e (levels, selection, search):
+
+- A request that waits on the user is open at every level and never folds, even at Compact; the turn's fold line still
+  counts the call.
+- The arm delay of a card that opens unprompted is wall-clock time. The overlay swallows every key but `Esc` until it
+  arms, so a scenario that answers a card waits for the arm before the checkpoint that follows the answer.
+- A decided request's settled line follows the recorded answer (`allowed` or `rejected`, `✓ Plan approved`,
+  `✗ Plan rejected`, `↩ Plan sent back`), so a replay must record the answer, not a fixed script. A note steered to the
+  Agent starts a turn in a replay.
+- A second request waits behind the first. The card and the request row both read `1 of N waiting`, so a queue scenario
+  needs two requests in the timeline.
+- `c` and `Ctrl+G` mean the card's copy and open while the card is open (it is a capturing overlay), and the row's
+  copy and open while the stream holds focus. A check of one must not expect the other.
+- Stream search matches the text a person reads in the frontend models, not the painted rows, so detail a level hides
+  is found and the turn holding the match opens at Verbose.
+- A run's row id is its first call's id, and a run is handed to the grouping without the ids of its mergeable calls, so
+  opening one call never takes it out of its run.
+- A one-line command is never repeated under its own line.
 
 ## 8. Writing the demo scenario
 

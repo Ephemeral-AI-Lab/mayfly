@@ -105,9 +105,14 @@ from `transcript/stream-facts.ts`) is the first consumer.
 ## Components area
 
 `src/components/` holds the Mayfly components as pure functions of facts that
-return `ui.*` nodes (`TranscriptView`, `ToolLine`, `ActivityRow`, and the rest
-of the roadmap's component table). It has no Cordis entry and no public
-subpath, and a component is imported from its own module. A file there imports
+return `ui.*` nodes (`TranscriptView`, `ToolLine`, `ActivityRow`,
+`NotificationLine`, `CompactionRow`, and `DecisionCard`). The approval and
+questions plugins own the request queue and publish it as
+`mayfly/decision-requests-changed`; the stream turns the first request's call
+into its request block and never reads the overlay.
+
+It has no Cordis entry and no public subpath, and a component is imported from
+its own module. A file there imports
 only `@ephemeral-ai/mayfly-ui` and its siblings and contains no `node:` module,
 Cordis, `../core`, width helper, escape sequence, timer, or key binding.
 The feature plugins that publish a component's nodes own its facts, its

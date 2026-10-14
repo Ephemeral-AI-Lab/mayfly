@@ -8,7 +8,7 @@ The dock never takes more than a third of the terminal height. When several pane
 
 ## Activity pane
 
-The one live-status row for the current Agent: the transcript only records what happened, while this row says what is happening now — the spinner, a present-tense label, the turn's elapsed time, token counters (`↑` context, `↓` estimated output, characters / 4), the output rate while text streams, and a rotating tip:
+The one live-status row for the current Agent: the transcript only records what happened, while this row says what is happening now — the phase glyph, a present-tense label, the turn's elapsed time, token counters (`↑` context, `↓` estimated output, characters / 4), the output rate while text streams, and a rotating tip:
 
 ```
 🌔 Deep diving · 3s · Tip: …
@@ -19,10 +19,10 @@ The one live-status row for the current Agent: the transcript only records what 
 
 | Mode | Presentation |
 | --- | --- |
-| waiting | moon spinner + `Deep diving`; while a tool call's arguments still stream, its preparing label (`Preparing to write files`) |
-| tool | moon spinner + the running category (`Running commands`, `Reading files`, `Calling tools`); a subagent spawn keeps `Deep diving` because the agents pane shows it |
-| thinking | braille spinner + `Thinking` |
-| composing | braille spinner + `Writing` — no output cursor; this line is the "writing" signal |
+| waiting | fill glyph + `Deep diving`; while a tool call's arguments still stream, its preparing label (`Preparing to write files`) |
+| tool | still `●` + the running category (`Running commands`, `Reading files`, `Calling tools`); a subagent spawn keeps `Deep diving` because the agents pane shows it |
+| thinking | bloom glyph + `Thinking` |
+| composing | fill glyph + `Writing` — no output cursor; this line is the "writing" signal |
 | stopping | a static `■ interrupting...` while an interrupt drains |
 | idle | a one-row placeholder (stable dock edge) |
 | dialog open | the row hides (a panel holds the editor slot) |

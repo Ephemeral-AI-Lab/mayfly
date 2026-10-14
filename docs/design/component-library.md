@@ -90,7 +90,7 @@ Keystroke budget, counted from an open surface (a digit and `Enter` are one key 
 
 | Frequency | Budget | Example |
 | --- | --- | --- |
-| Every session | 1-2 keys | approve a plan (`↓`, `Enter` under variant A, §5.7) |
+| Every session | 1-2 keys | approve a plan (`Enter` or `1` on the first row, §5.7) |
 | Several per day | 2 keys | change thinking effort (`→`, `Enter`) |
 | Occasional | 3 keys | switch model (`/model`, type, `Enter`) |
 | Rare or destructive | as many as needed, with a confirm | delete a provider |
@@ -148,7 +148,7 @@ add a third meaning to a glyph.
 | `✓` `✗` | done / failed |
 | `⚠` | a block of calls where some failed and others worked (the head of a run, warning tone; `✗` only when every call failed) |
 | `⊘` | cancelled |
-| `◐` | declined (plan) |
+| `↩` | plan sent back with a revision (`↩ Plan sent back`; ASCII `<`) |
 | `■` | stopping or interrupted |
 | `?` | waiting on the user |
 | `⚠` | warning (deletes files, low balance, dangerous tool) |
@@ -1007,7 +1007,7 @@ Core and plugins reuse the same four.
 | `splitView` | a `stack` row of a list and a detail with a width ladder (`when`) | the marketplace, any list-and-detail panel |
 | `statusPage` | `surface` + `tabs` + `fields` | the status panel, any read-only key/value page |
 
-The decision skeleton and its two open variants are specified in §5.7.
+The decision card is specified in §5.7.
 
 ### 4.10 Focus, keys, and events
 
@@ -1599,109 +1599,55 @@ header when the row folded away); a second `Esc` returns to the prompt.
 The scroll position follows the same rules as any scroll region: the stream keeps the tail in view while following, a
 `N new turns · Ctrl+↓` chip stays on the last row while it is scrolled away (N counts the turns of the agent loop that began below the view, never rows, tool calls, or message blocks; with none it reads `Back to bottom · Ctrl+↓`, the way back), and `Ctrl+↓` (or `End` with an empty draft) jumps to the latest. The follow key is its own action, `mayfly.interaction.follow-tail`, because thin laptops have no End key.
 
-### 5.7 Decision cards: approval, plan review, permission
+### 5.7 Decision cards: approval, plan review
 
-**Built from:** `decisionPanel` = `surface` (lane), `list` (numbered), `form` (same-line input), hidden `actions`; the request row is a stream row (`list`, `diff`, `markdown`). Scene: Approval, plan review, permission.
+**Built from:** `components/decision-card.ts`: `ui.surface` (lane), `ui.list` (numbered), `ui.form` (the note), and hidden `ui.actions`. The tool approval and the plan review compose it with their own choices. Scene: Approval, plan review.
 
 Every "the agent asks, the user decides" moment (tool approval, plan review) is **two things in the conversation
-stream**: the agent's *request* as the newest stream row, with the same content Mayfly shows today (the command, the
-diff, the whole plan), and the *decision card* at the foot of the stream, where the editor normally sits. The card
-is one composition: a lane head (`── Decide ──`), a numbered choice list, an optional same-line input, and the hint
-row. There is no decision-specific widget, no second page, and no `Back` button.
+stream**: the agent's *request*, the newest stream row (the call's own block, open, with the same content Mayfly shows
+today: the command, the diff, the whole plan), and the *decision card* at the foot of the stream, where the editor
+normally sits. The card is one composition: a lane rule with the title (`── Decide ──`) and a `1 of N waiting` badge
+when more requests wait, the numbered choices, the note field, and the hint row. There is no second page and no `Back`
+button.
 
 ```
-  ▾ ? Approve edit  pane-activity.ts  +2 −1                  ← the request: a stream row, today's diff
-     41  41 │     const moon = state.mode === 'waiting'
-     42     │ −   const frame = moon
-         42 │ +   const frame = glyphFor(state)
-── Decide ─────────────────────────────────────────────────
-→ 1  Reject
-  2  Allow once
-  3  Allow edits this session
-  Feedback: type to explain…
-  Enter choose · Ctrl+G open diff · Esc reject
-```
-
-- **The request stays in the stream** after it is answered, as the record of what was approved, and it follows the
-  stream's rules (selectable, searchable, copyable, §5.6). Plan review keeps today's content: the plan is the
-  request row, rendered as markdown.
-- **Open in the editor.** An edit card and a plan card carry the common `external` key (`Ctrl+G`, §3.5): it opens
-  the diff or the plan in `$EDITOR` to read it properly, and closing the editor returns to the card with the
-  decision still open. A plan card also carries `c` (copy plan). Both are hidden accelerators with a hint, no buttons.
-- **Preview.** A command shows the command and a `⚠` note when it deletes files; an edit shows the diff (§5.3) on
-  a red or green background behind the changed code; a plan shows the plan above the options.
-- **Same-line input.** `Feedback:` (approval) or `Revise:` (plan) is an ordinary field
-  under the list; `↓` from the last option focuses it, typing edits in place, and the
-  whole decision settles as one action.
-- **`Esc` says what it does.** Dismissing an approval *rejects* the call, so the footer
-  reads `Esc reject`, not `Esc close`.
-- **Queue.** Pending requests are first in, first out per agent, and the request row reads
-  `1 of 3 waiting`. An allowance lives until that agent ends.
-- **Permission preset** is a *preference*, not a grant, and is not part of a conversation turn: it stays an overlay
-  surface (`/settings` and the first run open it). Digits choose at once, the current preset carries `[current]`,
-  and `Full access` asks the shared Yes/No first.
-
-**Open for review: where the cursor starts and what a digit does.** Two variants are
-drawn in the prototype's Approval scene (`Ctrl+T` switches the variant, `Ctrl+X` simulates a stray keystroke through the real key engine):
-
-Variant A, **safe-first**: the least destructive option is row 1 and focused; digits
-only move the cursor; a grant costs two keys.
-
-```
-  ▾ ? Approve command  bash · 1 of 3 waiting
+  ▾ ? Bash(rm -rf build && pnpm build) · 1 of 3 waiting   ← the request: the call's block, open
     $ rm -rf build && pnpm build
-    in ~/work/mayfly                            ⚠ deletes files
-── Decide ─────────────────────────────────────────────────
-→ 1  Reject
-  2  Allow once
-  3  Allow bash for this session
-  Feedback: type to explain…
-  Enter choose · 1-3 focus · Esc reject
-```
-
-Variant B, **grant-first**: the common grant is row 1 and focused; digits choose at
-once; a rejection is `Esc` or its digit.
-
-```
-  ▾ ? Approve command  bash · 1 of 3 waiting
-    $ rm -rf build && pnpm build
-    in ~/work/mayfly                            ⚠ deletes files
+    ⚠ deletes files
 ── Decide ─────────────────────────────────────────────────
 → 1  Allow once
   2  Allow bash for this session
-  3  Reject and tell the agent why…
+  3  Reject
   Feedback: type to explain…
   Enter choose · 1-3 choose · Esc reject
 ```
 
-| | A safe-first | B grant-first |
-| --- | --- | --- |
-| Row 1, focused | Reject | Allow once |
-| A digit | moves the cursor | chooses at once |
-| Grant | 2 keys (`↓`, `Enter`) | 1 key (`Enter` or its digit) |
-| Reject | 1 key (`Enter` or `Esc`) | 1 key (`Esc`) |
-| A stray `1` or `Enter` typed before the card is seen | at worst rejects | grants |
-| Needs an arm delay (a card that opens unprompted ignores all but `Esc` for about 300 ms) | no | yes |
-
-The recommendation is **A**: approvals are rare and a wrong grant is costly, while a
-wrong reject only costs one more request. The rest of this document assumes A; §8 lists
-it as a decision for you.
-
-Plan review under A (grants need an explicit move; `Enter` alone can never approve):
-
-```
-  ▾ ? Plan ready for review  6 steps
-    # Plan
-    1. Add activeCalls to the facts projection
-    …                                          ← the whole plan, as today
-── Decide ─────────────────────────────────────────────────
-→ 1  Reject
-  2  Approve and start
-  3  Approve and auto-accept edits
-  4  Keep planning…
-  Revise: ▌                       ← type the revision in place
-  Enter choose · c copy plan · Ctrl+G open plan · Esc reject
-```
+- **Choices.** An approval offers `Allow once`, `Allow {tool} for this session`, and `Reject`. A plan offers
+  `Approve and start`, `Keep planning…`, and `Reject`. The common grant is row 1 and focused; the refusal is last.
+- **Digits choose at once.** A digit or `Enter` on the focused row settles the card. The overlay holds a card that
+  opens unprompted for `armMs: 300` after it takes focus: every key but `Esc` is swallowed, so a stray key grants
+  nothing.
+- **`Esc` rejects.** The footer reads `Esc reject`, not `Esc close`. On a plan, `Esc` answers the decline label
+  (`Reject`) and sends no note.
+- **The note.** `Feedback:` (approval) or `Revise:` (plan) is an ordinary field under the choices; `↓` from the
+  last choice focuses it, and typing edits it in place. `Enter` in the note settles the card: on an approval it rejects
+  the call and steers the note to the agent; on a plan it sends the note as the revision for *Keep planning…*. A
+  rejection carries the note; `Reject` on a plan does not send it, so only a revision tells a plan sent back from a
+  rejected one.
+- **Open in the editor.** `Ctrl+G` opens the request in `$EDITOR`: the diff of an edit or write, the command of a shell
+  call, the plan. Closing the editor returns to the card with the decision still open. A plan card also carries `c`
+  (copy the plan). Both are hidden accelerators with a hint, no buttons.
+- **Preview.** A command shows its lines and a `⚠ deletes files` note when it deletes files; an edit or write shows its
+  diff or code (§5.3); a plan shows its Markdown above the choices, of any length.
+- **Settled.** An approval leaves `allowed` or `rejected` on the call's line. A plan leaves `✓ Plan approved`,
+  `✗ Plan rejected`, or `↩ Plan sent back · "revision"` on its block. The request stays in the stream as the record
+  of what was decided, selectable and searchable like any row (§5.6). A decided plan keeps its Markdown, which `Ctrl+O`
+  (or the Verbose level) opens again.
+- **Queue.** Pending requests are first in, first out. The card shows the first, and the request row reads
+  `1 of 3 waiting`. An approval allowance lives until that agent ends.
+- **Permission preset** is a *preference*, not a grant, and is not part of a conversation turn: it stays an overlay
+  surface (`/settings` and the first run open it). Digits choose at once, the current preset carries `[current]`,
+  and `Full access` asks the shared Yes/No first.
 
 ### 5.8 Questions
 
@@ -2249,7 +2195,7 @@ baseline verified against `main` when this was written; *new* means nothing like
 | Key cues | no persistent prompt; `Ctrl+O` cue only on the last 3 turns, three spellings of a key; `ctrl+t to expand`-style lowercase | cues live with their owner, the activity gap, and the placeholder; one `Ctrl+O` notation (§3.3) |
 | Keys | each surface binds its own keys | named actions, common meanings (`Ctrl+S` save, `c` copy, `x` delete, `r` refresh, `Ctrl+G` external, `Ctrl+F` search), and runtime rebinding with a `/keys` panel (§3.5, §5.15) |
 | Feedback | one unprefixed row | a severity glyph and fixed lifetimes (§2.4) |
-| Decisions | three shapes: approval (actions row plus a `Reject with feedback` tab), plan review (`Other`/`o`), permission preset | one skeleton; the request is a stream row and the card sits at the foot of the stream; `Esc reject`; a same-line `Feedback:`/`Revise:` field; an open-in-editor key; variant A or B pending (§5.7) |
+| Decisions | three shapes: approval (actions row plus a `Reject with feedback` tab), plan review (`Other`/`o`), permission preset | one skeleton; the request is a stream row and the card sits at the foot of the stream; `Esc reject`; a `Feedback:`/`Revise:` field under the choices; an open-in-editor key; grant-first, digits choose at once (§5.7) |
 | Questions | `Back`/`Next`/`Submit answers`/`Cancel` buttons | no buttons, a step strip with a Review page, `←`/`→` move between questions (§5.8) |
 | Tabs and rails | the active tab wrapped in `‹ ›`; `←` out of a rail's content is unreliable | text color with a heavy underline, `!` attention, a vertical rail, and a defined inner-to-outer `←` ladder (§4.5) |
 | Model picker | the thinking strip is a row under the whole list with a `Provider default` pseudo-option; `Set as default`/`Cancel` buttons; hint says `Enter open` | the strip on the row, an unpinned state, no buttons, hint `Enter choose`, `[current · high]` badge (§5.9) |
@@ -2272,8 +2218,8 @@ Decisions only you can make, each with a recommendation. The answers given after
 implementation therefore differs from the prototype, are in
 [implementation-roadmap.md §2](./implementation-roadmap.md#2-decisions-and-differences).
 
-1. **Decision panels (§5.7).** Safe-first (A) or grant-first (B)? Recommendation: **A**.
-   The Approval scene shows both and runs a stray keystroke through the real key engine.
+1. **Decision panels (§5.7).** Answered: grant-first (B), built as the decision card. The common grant is row 1,
+   digits choose at once, and the 300 ms arm delay swallows every key but `Esc`.
 2. **Rebinding (§3.5).** Where overrides persist (Mayfly settings), whether a plugin's action ids are namespaced by
    plugin name, and the conflict policy (the prototype refuses a clash and names the owner). Recommendation:
    persist in settings, namespace plugin actions, refuse clashes.
@@ -2284,7 +2230,7 @@ implementation therefore differs from the prototype, are in
    cluster, which then also shows for a side conversation with no agents or jobs. Recommendation: keep.
 5. **Keys not yet checked against the keymap.** `Alt+↓` and `F6` entering the views, `Alt+↑` selecting the stream
    (some terminals and multiplexers bind `Alt+arrows`), `Ctrl+F` search, `Ctrl+G` external, `Ctrl+J` view
-   notification, `?` key help on an empty prompt, `/view <level>` and `Alt+V` for levels. The scene's `Ctrl+K`
+   notification (the stream search is `/` and `?`, not `Ctrl+F`), `?` key help on an empty prompt, `/view <level>` and `Alt+V` for levels. The scene's `Ctrl+K`
    and `Ctrl+V` only simulate adding an image or a paste. Recommendation: approve the intent now and let the
    implementation resolve conflicts through §3.5.
 6. **Onboarding permissions step (§5.12)** adds a step to every first run. Recommendation: ship it, with `Default`

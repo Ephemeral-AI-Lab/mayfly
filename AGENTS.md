@@ -183,7 +183,7 @@ live Agent) and a `/btw` side conversation with its own Agent, drives the real
 goal and job services, writes compactions, failed provider attempts with their
 retry records, inbox messages (the queued-message pane), and notification-pane notices, and
 puts approval, question, and plan-review prompts to you, so reviewing a state
-needs no model, no quota, and no tools. The replays cover tool cards of every
+needs no model, no quota, and no tools. The replays cover tool calls of every
 kind, streaming phases, subagents, plan mode, goals, jobs, modes and model
 switches, context pressure, compaction (automatic and manual), errors and
 interrupts, retries, queued input, side questions, notices, prompt variants,
