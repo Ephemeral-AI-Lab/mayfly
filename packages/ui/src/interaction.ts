@@ -81,6 +81,8 @@ export type MayflyUiActionEvent = (
   | { readonly kind: 'token-remove', readonly controlId: string, readonly tokenId: string }
   /** `Tab` or `Enter` on a prompt's completion row. */
   | { readonly kind: 'completion-accept', readonly controlId: string, readonly itemId: string }
+  /** `Enter` on a slider: the level it pins, or `null` while nothing is pinned (it follows its inherited level). */
+  | { readonly kind: 'slider-accept', readonly controlId: string, readonly value: string | null }
   /** `Esc` on a prompt's open completion list. */
   | { readonly kind: 'completion-dismiss', readonly controlId: string }
   | { readonly kind: 'dismiss' }

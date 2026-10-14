@@ -56,6 +56,8 @@ export function mountNotificationPane(ctx: Context, t: MayflyTranslate): void {
     // With no notice the row teaches where focus can go from the prompt: up into the conversation, down to the status bar.
     return { ...notice === undefined ? {} : { notice }, ...mode === 'prompt' ? notice === undefined ? { hint: t('Alt+↑ conversation · Alt+↓ bar') } : {} : mode === 'conversation' ? { keys: t('Enter expand · c copy · Ctrl+C JSON · Ctrl+G editor · ↑/↓ select · / ? search · Esc back') } : mode === 'search-select' ? { keys: t('Enter expand · c copy · Ctrl+C JSON · ↑/↓ or n/N match · / ? new search · Esc end search') } : {}, ...chip === undefined ? {} : { chip } }
   }
+  /** A panel in the editor slot takes the status rows' place: the row stands aside until it closes. */
+  let panelOpen = false
   let shape = JSON.stringify(current() ?? null)
   const pane = ctx.mayflyPanes.register({
     id: 'mayfly.pane.notification',
@@ -65,16 +67,20 @@ export function mountNotificationPane(ctx: Context, t: MayflyTranslate): void {
   }, NotificationLine(current()))
   const refresh = (): void => {
     const next = current()
-    const key = JSON.stringify(next ?? null)
+    const key = `${panelOpen ? 'panel' : ''}${JSON.stringify(next ?? null)}`
     if (key === shape) return
     shape = key
-    pane.set(NotificationLine(next))
+    pane.set(panelOpen ? null : NotificationLine(next))
   }
   const offLocale = observeTranscriptLocale(ctx, refresh)
   const offLane = interaction?.subscribe(refresh)
   const offAgent = factsService?.subscribeAgent(refresh)
   const offMode = ctx.on('mayfly/focus-mode-changed', (next) => {
     mode = next
+    refresh()
+  })
+  const offPanel = ctx.on('mayfly/panel-open-changed', (open) => {
+    panelOpen = open
     refresh()
   })
   const offTail = ctx.on('mayfly/content-tail-changed', (label) => {
@@ -86,6 +92,7 @@ export function mountNotificationPane(ctx: Context, t: MayflyTranslate): void {
     offLane?.()
     offAgent?.()
     offTail()
+    offPanel()
     offMode()
     pane.dispose()
   })

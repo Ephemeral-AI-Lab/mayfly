@@ -14,6 +14,7 @@ import { imageGroup } from './groups/image.ts'
 import { listsGroup } from './groups/lists.ts'
 import { armDelayGroup } from './groups/arm-delay.ts'
 import { patternsPageGroup } from './groups/patterns.ts'
+import { sliderGroup } from './groups/slider.ts'
 import { tabsGroup } from './groups/tabs.ts'
 import { registerGalleryPrompt } from './groups/prompt.ts'
 import { registerGalleryView } from './groups/views.ts'
@@ -190,6 +191,7 @@ function renderGallery() {
         ...listsGroup(),
         ...armDelayGroup(),
         ...formsGroup(),
+        ...sliderGroup(),
         ...tabsGroup(),
         ...patternsPageGroup(),
       ], { gap: 1 }), { scrollbar: true }),

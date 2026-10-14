@@ -49,14 +49,14 @@ const BUILTIN: ReadonlyMap<string, ThemeTarget> = new Map([
 /** The file-backed palette, switched with a path (and optional base) config. */
 const CUSTOM: ThemeTarget = { key: 'custom', module: themeCustom }
 
-/** Theme keys in listing order. */
-const KNOWN_KEYS = ['dark', 'light', 'ocean', 'paper', 'auto', 'custom'] as const
+/** Theme keys the picker lists, in order. `custom` needs a file path, so only `/theme custom <path>` reaches it. */
+const PICKER_KEYS = ['dark', 'light', 'ocean', 'paper', 'auto'] as const
 
 /**
- * The bare `/theme` picker: a choose-list overlay over the known keys with
- * the live row carrying the one muted `[current]` badge (spec §2.2), the
- * same vocabulary as every picker. Selecting a row swaps the provider; the `custom`
- * row only flashes the usage hint since it needs a path argument. The
+ * The bare `/theme` picker: a choose-list overlay over the built-in themes with
+ * the live row in the theme color with a `✓` (spec §2.2), the same vocabulary
+ * as every picker. Selecting a row swaps the provider; `custom` is not listed
+ * because it needs a path argument (`/theme custom <path>`). The
  * registration lives on the commands fiber, which does not inject
  * `mayflyTheme`, so the picker survives the swap it triggers.
  * @param ctx - plugin context.
@@ -72,7 +72,6 @@ function openThemePicker(ctx: Context): CommandResult {
       if (event.kind !== 'selection-accept') return { kind: 'completed' }
       const key = event.selectedIds[0]
       if (key === undefined || key === ctx.mayflyInteractionState.currentThemeKey) return { kind: 'completed', dismiss: true }
-      if (key === 'custom') return { kind: 'completed', feedback: { severity: 'info', message: t(USAGE) } }
       const target = BUILTIN.get(key)
       if (target === undefined) return { kind: 'failed', message: t('unknown theme "{key}"', { key }) }
       const result = await switchTheme(ctx, target)
@@ -81,11 +80,10 @@ function openThemePicker(ctx: Context): CommandResult {
       return { kind: 'completed', dismiss: true, ...(result.text === undefined ? {} : { feedback: { severity: 'success' as const, message: result.text } }) }
     } },
   }, ui.surface({ chrome: 'overlay', title: t('Select a theme'), child: ui.list({
-    id: 'themes', role: 'choose', selectedIds: [current],
-    items: KNOWN_KEYS.map(key => ({
+    id: 'themes', role: 'choose', selectedIds: PICKER_KEYS.some(key => key === current) ? [current] : [],
+    items: PICKER_KEYS.map(key => ({
       id: key, label: key,
-      ...(key === current ? { badge: t('current') } : {}),
-      ...(key === 'custom' ? { detail: t(USAGE) } : {}),
+      ...(key === current ? { current: true } : {}),
     })),
   }) }), { reopen: 'replace' })
   return { kind: 'success' }

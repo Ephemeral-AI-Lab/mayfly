@@ -25,8 +25,9 @@ import type {} from '@deepseek-ai/dsh-agent-default-model'
 import type {} from '../app/index.ts'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { setTimeout as delay } from 'node:timers/promises'
-import { ui, type MayflyListItem, type MayflyOverlayHandle, type MayflyUiActionReply, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
-import { formatContextWindow, type ModelPickerItem } from './model-picker-model.ts'
+import type { MayflyOverlayHandle, MayflyUiActionReply, MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
+import { EffortPicker, formatContextWindow, ModelPicker, type ModelPickerRow } from '../components/model-picker.ts'
+import type { ModelPickerItem } from './model-picker-model.ts'
 import { openAgentOverlay } from './agent-overlay.ts'
 import { interactionTranslator } from './locale.ts'
 import type { InteractionFeedbackReporter } from './notifications.ts'
@@ -75,23 +76,25 @@ function sameSelection(a: MayflySessionModelSelection, b: MayflySessionModelSele
  * silent about it.
  * @param previous - the selection before the switch.
  * @param next - the selection after the switch.
+ * @param defaultEffort - the model's provider default level, when known: an unpinned selection names it.
  * @returns the single-line notice text.
  */
 function modelSwitchNotice(
   previous: MayflySessionModelSelection,
   next: MayflySessionModelSelection,
+  defaultEffort?: string,
 ): string {
   const modelChanged = previous.provider !== next.provider || previous.model !== next.model
   const effortChanged = previous.reasoningEffort !== next.reasoningEffort
+  /* The level that runs: the pinned one, else the provider default when the model advertises it. */
+  const effective = next.reasoningEffort === undefined ? defaultEffort : String(next.reasoningEffort)
   if (modelChanged) {
-    let base = `Switched to ${next.model} (${next.provider})`
-    if (next.reasoningEffort !== undefined) base += ` · thinking ${String(next.reasoningEffort)}`
-    return base
+    const base = `Switched to ${next.model} (${next.provider})`
+    return effective === undefined ? base : `${base} · thinking ${effective}`
   }
   if (effortChanged) {
-    return next.reasoningEffort === undefined
-      ? 'Thinking set to provider default'
-      : `Thinking set to ${String(next.reasoningEffort)}`
+    if (next.reasoningEffort !== undefined) return `Thinking set to ${String(next.reasoningEffort)}`
+    return defaultEffort === undefined ? 'Thinking set to provider default' : `Thinking set to provider default (${defaultEffort})`
   }
   return `Already using ${next.model} (${next.provider})`
 }
@@ -126,7 +129,19 @@ async function commitModelSelection(
     return { text: describe(error), ok: false }
   }
   if (signal?.aborted || ctx.get('mayflyCurrentAgent')?.current() !== agent) return { text: 'agent changed before model selection completed', ok: false }
-  return { ok: true, text: modelSwitchNotice(previous.read, selected) }
+  const defaultEffort = await providerDefaultEffort(ctx, selected, signal)
+  return { ok: true, text: modelSwitchNotice(previous.read, selected, defaultEffort) }
+}
+
+/** The provider's default thinking level for a selection's model; unknown when the lookup fails or the model has none. */
+async function providerDefaultEffort(ctx: Context, selection: MayflySessionModelSelection, signal?: AbortSignal): Promise<string | undefined> {
+  if (selection.reasoningEffort !== undefined) return undefined
+  try {
+    const info = await ctx.get('llm')?.resolveModelInfo(selection.provider, selection.model, signal)
+    return info?.reasoning?.defaultEffort === undefined ? undefined : String(info.reasoning.defaultEffort)
+  } catch {
+    return undefined
+  }
 }
 
 /** The llm surface the display-name helper reads. */
@@ -307,6 +322,24 @@ async function catalogRows(
 }
 
 /**
+ * Commit one selection and report the notice through the shared editor, which outlives the dismissing overlay.
+ * @param scope - the overlay's exact-Agent context.
+ * @param selection - the model and level to commit.
+ * @param signal - the UI request's cancellation signal.
+ * @returns the action reply: dismiss on success, inline failure otherwise.
+ */
+async function commitAndReport(scope: Context, selection: MayflySessionModelSelection, signal: AbortSignal): Promise<MayflyUiActionReply> {
+  const result = await commitModelSelection(scope, selection, signal)
+  if (signal.aborted) return { kind: 'cancelled' }
+  if (!result.ok) return { kind: 'failed', message: result.text }
+  /* The notice must outlive the dismissing overlay, so it goes through the
+     shared editor's channel (the Alt+M cycle's), not reply feedback. */
+  const report = getSharedEditor(scope)?.report ?? (() => {})
+  report('model-commit', { severity: 'success', message: result.text })
+  return { kind: 'completed', dismiss: true }
+}
+
+/**
  * Commit the picker's resolved row: `segmentId` carries the row's live
  * thinking-effort segment (undefined/'default' means provider default).
  * @param scope - the overlay's exact-Agent context.
@@ -323,57 +356,56 @@ async function commitPickerRow(
   t: (text: string) => string,
 ): Promise<MayflyUiActionReply> {
   if (item === undefined) return { kind: 'failed', message: t('The model is no longer available') }
-  const result = await commitModelSelection(scope, {
-    provider: item.provider, model: item.id,
-    ...(segmentId === undefined || segmentId === 'default' ? {} : { reasoningEffort: ReasoningEffortId(segmentId) }),
-  }, signal)
-  if (signal.aborted) return { kind: 'cancelled' }
-  if (!result.ok) return { kind: 'failed', message: result.text }
-  /* The notice must outlive the dismissing overlay, so it goes through the
-     shared editor's channel (the Alt+M cycle's), not reply feedback. */
-  const report = getSharedEditor(scope)?.report ?? (() => {})
-  report('model-commit', { severity: 'success', message: result.text })
-  return { kind: 'completed', dismiss: true }
+  return commitAndReport(scope, { provider: item.provider, model: item.id, ...(segmentId === undefined ? {} : { reasoningEffort: ReasoningEffortId(segmentId) }) }, signal)
 }
 
 /**
- * The shared picker surface for `/model` and `/effort`: a browse list whose
- * Enter runs `acceptActionId` through the ordinary invoke pipeline (so the
- * row's segment state rides the selections projection).
+ * The `/model` overlay: the picker surface with no buttons. `Enter` emits `selection-accept` for the focused row, with
+ * the row's pinned thinking level as `segmentId` (absent while unpinned), straight to the action handler.
  * @param ctx - plugin context.
  * @param agent - the exact Agent the overlay is scoped to.
- * @param overlayId - the registration id (reopen focuses a live one).
+ * @param node - the picker surface.
  * @param title - the overlay title.
- * @param list - the browse list node.
  * @param signal - the dispatching UI request's cancellation signal.
- * @param commit - turns the resolved selection into a reply.
+ * @param commit - turns the accepted row into a reply.
  * @returns the overlay handle.
  */
-async function openPickerOverlay(
+function openModelOverlay(
   ctx: Context,
   agent: Agent,
-  overlayId: string,
+  node: MayflyUiNode,
   title: string,
-  options: { readonly items: readonly MayflyListItem[], readonly filterable?: boolean, readonly numbered?: boolean, readonly empty?: MayflyUiNode },
   signal: AbortSignal,
   commit: (scope: Context, selectedId: string | undefined, segmentId: string | undefined, eventSignal: AbortSignal) => Promise<MayflyUiActionReply>,
 ): Promise<MayflyOverlayHandle | undefined> {
-  const t = interactionTranslator(ctx)
-  return openAgentOverlay(ctx, agent, { id: overlayId, title, presentation: 'editor', capturing: true }, ui.stack.column([
-    ui.list({
-      id: 'selection', role: 'browse', selectedIds: [], items: options.items, acceptActionId: 'default',
-      ...(options.filterable === undefined ? {} : { filterable: options.filterable }),
-      ...(options.numbered === undefined ? {} : { numbered: options.numbered }),
-      ...(options.empty === undefined ? {} : { empty: options.empty }),
-    }),
-    ui.actions({ id: `${overlayId}-actions`, items: [
-      { id: 'default', label: t('Set as default'), intent: 'primary', selections: [{ pagePath: [], controlId: 'selection' }] },
-      { id: 'cancel', label: t('Cancel'), dismiss: true },
-    ] }),
-  ]), scope => async (event, context) => {
-    if (event.kind !== 'activate' || event.actionId !== 'default') return { kind: 'completed' }
-    const selection = event.inputs?.selections?.find(entry => entry.controlId === 'selection')
-    return commit(scope, selection?.selectedIds[0], selection?.segmentId, context.signal)
+  return openAgentOverlay(ctx, agent, { id: 'mayfly.models', title, presentation: 'editor', capturing: true }, node, scope => async (event, context) => {
+    if (event.kind !== 'selection-accept') return { kind: 'completed' }
+    return commit(scope, event.selectedIds[0], event.segmentId, context.signal)
+  }, { signal, reopen: 'focus' })
+}
+
+/**
+ * The `/effort` overlay: the slider panel. `Enter` emits `slider-accept` with the pinned level (`null` while the slider
+ * follows the provider default) straight to the action handler.
+ * @param ctx - plugin context.
+ * @param agent - the exact Agent the overlay is scoped to.
+ * @param node - the slider panel.
+ * @param title - the overlay title.
+ * @param signal - the dispatching UI request's cancellation signal.
+ * @param commit - turns the accepted level into a reply.
+ * @returns the overlay handle.
+ */
+function openEffortOverlay(
+  ctx: Context,
+  agent: Agent,
+  node: MayflyUiNode,
+  title: string,
+  signal: AbortSignal,
+  commit: (scope: Context, value: string | null, eventSignal: AbortSignal) => Promise<MayflyUiActionReply>,
+): Promise<MayflyOverlayHandle | undefined> {
+  return openAgentOverlay(ctx, agent, { id: 'mayfly.effort', title, presentation: 'editor', capturing: true }, node, scope => async (event, context) => {
+    if (event.kind !== 'slider-accept') return { kind: 'completed' }
+    return commit(scope, event.value, context.signal)
   }, { signal, reopen: 'focus' })
 }
 
@@ -402,19 +434,22 @@ export async function openModelPicker(ctx: Context, signal: AbortSignal, filterP
     if (combined.aborted || ctx.get('mayflyCurrentAgent')?.current() !== agent) return { kind: 'success' }
     if ('error' in catalog) return { kind: 'error', text: catalog.error }
     const byId = new Map(catalog.items.map(item => [JSON.stringify([item.provider, item.id]), item]))
-    const rows = catalog.items.map(item => ({
-      id: JSON.stringify([item.provider, item.id]), label: `${item.providerLabel}/${item.name}`, group: item.providerLabel,
-      ...(item.contextWindow === undefined ? {} : { detail: `${formatContextWindow(item.contextWindow)} context` }),
-      ...(item.provider === selection.read.provider && item.id === selection.read.model ? { badge: t('current') } : {}),
-      ...(item.efforts === undefined ? {} : { segment: {
-        label: t('Thinking'),
-        options: [{ id: 'default', label: t('Provider default') }, ...item.efforts.map(id => ({ id, label: id }))],
-        selectedId: item.provider === selection.read.provider && item.id === selection.read.model && selection.read.reasoningEffort !== undefined && item.efforts.includes(String(selection.read.reasoningEffort)) ? String(selection.read.reasoningEffort) : 'default',
-      } }),
-    }))
-    await openPickerOverlay(ctx, agent, 'mayfly.models', t('Select a model'), {
-      items: rows, filterable: true, empty: ui.empty({ title: t('No models advertised') }),
-    }, signal, (scope, selectedId, segmentId, eventSignal) =>
+    const isLive = (item: ModelPickerItem): boolean => item.provider === selection.read.provider && item.id === selection.read.model
+    const rows = catalog.items.map((item): ModelPickerRow => {
+      const live = isLive(item)
+      const pinned = live && selection.read.reasoningEffort !== undefined ? String(selection.read.reasoningEffort) : undefined
+      return {
+        id: JSON.stringify([item.provider, item.id]), label: `${item.providerLabel}/${item.name}`, group: item.providerLabel,
+        ...(item.contextWindow === undefined ? {} : { detail: t('{size} context', { size: formatContextWindow(item.contextWindow) }) }),
+        ...(live ? { current: true } : {}),
+        ...(item.efforts === undefined ? {} : { strip: { efforts: item.efforts, inherited: item.defaultEffort, pinned } }),
+      }
+    })
+    const liveItem = catalog.items.find(isLive)
+    await openModelOverlay(ctx, agent, ModelPicker({
+      title: t('Select a model'), description: t('Your pick becomes the default for new sessions.'), thinking: t('Thinking'), rows, empty: t('No models advertised'),
+      live: liveItem === undefined ? undefined : JSON.stringify([liveItem.provider, liveItem.id]),
+    }), t('Select a model'), signal, (scope, selectedId, segmentId, eventSignal) =>
       commitPickerRow(scope, selectedId === undefined ? undefined : byId.get(selectedId), segmentId, eventSignal, t))
     return { kind: 'success' }
   } catch (error) {
@@ -475,8 +510,8 @@ export function registerModelCommands(ctx: Context): () => void {
   }
 
   /**
-   * The `/effort` handler: no argument opens the horizontal segment
-   * selector over the current model's reasoning efforts; an argument
+   * The `/effort` handler: no argument opens the slider over the current
+   * model's reasoning efforts; an argument
    * switches straight to that level (`default` restores the provider
    * default).
    * @param rawInput - the command's argument text.
@@ -505,16 +540,16 @@ export function registerModelCommands(ctx: Context): () => void {
     if (argument === '') {
       const agent = ctx.get('mayflyCurrentAgent')?.current()
       if (agent == null) return { kind: 'error', text: t('no session is live yet') }
-      const activeEffort = current.reasoningEffort === undefined ? 'default' : String(current.reasoningEffort)
-      const items: MayflyListItem[] = [
-        { id: 'default', label: t('Provider default'), ...(activeEffort === 'default' ? { badge: t('current') } : {}) },
-        ...efforts.map(effort => ({ id: String(effort.id), label: String(effort.id), ...(activeEffort === String(effort.id) ? { badge: t('current') } : {}) })),
-      ]
-      const opened = await openPickerOverlay(ctx, agent, 'mayfly.effort', `${providerDisplayName(llm, current.provider)}/${current.model}`, { items, numbered: true }, signal,
-        (scope, selectedId, _segmentId, eventSignal) => {
-          const effort = items.find(item => item.id === selectedId)
-          return commitPickerRow(scope, effort === undefined ? undefined : { provider: current.provider, providerLabel: providerDisplayName(llm, current.provider), id: current.model, name: current.model }, effort?.id, eventSignal, t)
-        })
+      const levels = efforts.map(effort => String(effort.id))
+      const inherited = info.reasoning?.defaultEffort === undefined ? undefined : String(info.reasoning.defaultEffort)
+      const model = `${providerDisplayName(llm, current.provider)}/${current.model}`
+      const opened = await openEffortOverlay(ctx, agent, EffortPicker({
+        title: t('Effort'),
+        description: inherited === undefined ? model : t('{model} · provider default: {level}', { model, level: inherited }),
+        levels, inherited, pinned: current.reasoningEffort === undefined ? undefined : String(current.reasoningEffort),
+        startCaption: t('Faster'), endCaption: t('Smarter'),
+      }), t('Effort'), signal, (scope, value, eventSignal) =>
+        commitAndReport(scope, { provider: current.provider, model: current.model, ...(value === null ? {} : { reasoningEffort: ReasoningEffortId(value) }) }, eventSignal))
       return opened !== undefined ? { kind: 'success' } : { kind: 'error', text: t('model picker is unavailable') }
     }
     if (argument === 'default') {

@@ -6,7 +6,6 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { AgentPreset } from '@deepseek-ai/dsh-agent-preset-registry'
 import type {} from '@deepseek-ai/dsh-commands'
 import { ui, type MayflyListItem, type MayflyOverlayHandle, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
-import type { MayflyTranslate } from '../frontend/locale.ts'
 import { openAgentOverlay } from './agent-overlay.ts'
 import { interactionTranslator, mountInteractionLocale, observeInteractionLocale } from './locale.ts'
 import { createInteractionNotificationOwner } from './notifications.ts'
@@ -15,11 +14,11 @@ export const name = 'mayfly-preset-command'
 export const inject = ['commands', 'agentPresets', 'mayflyCurrentAgent', 'mayflyOverlays']
 const ID = 'mayfly.presets'
 
-export function presetItems(presets: readonly AgentPreset[], current: string | undefined, t: MayflyTranslate): readonly MayflyListItem[] {
+export function presetItems(presets: readonly AgentPreset[], current: string | undefined): readonly MayflyListItem[] {
   return presets.toSorted((left, right) => (left.order ?? Infinity) - (right.order ?? Infinity) || left.id.localeCompare(right.id)).map(preset => ({
     id: preset.id, label: preset.name ?? preset.id,
     ...preset.broken === undefined ? preset.description === undefined ? {} : { detail: preset.description } : { detail: preset.broken, disabled: true, disabledReason: preset.broken },
-    ...preset.id === current ? { badge: t('current') } : {},
+    ...preset.id === current ? { current: true } : {},
   }))
 }
 
@@ -58,7 +57,7 @@ export function apply(ctx: Context): void {
         const view = (): MayflyUiNode => {
           const composed = roster.composedPreset(agent.ctx)
           return ui.surface({ title: t('Presets'), chrome: 'overlay', padding: 1, child: ui.stack.column([
-            ui.list({ id: 'presets', role: 'browse', filterable: true, selectedIds: composed === undefined ? [] : [composed], items: presetItems(catalog, composed, t), empty: ui.empty({ title: t('No presets composed') }) }),
+            ui.list({ id: 'presets', role: 'browse', filterable: true, selectedIds: composed === undefined ? [] : [composed], items: presetItems(catalog, composed), empty: ui.empty({ title: t('No presets composed') }) }),
             ui.actions({ id: 'preset-actions', items: [{ id: 'refresh', label: t('Refresh') }, { id: 'close', label: t('Close'), dismiss: true }] }),
           ]) })
         }

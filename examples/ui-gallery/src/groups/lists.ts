@@ -1,6 +1,6 @@
 /**
  * The lists of slice 1.4, to run beside scene 5 of the design prototype: numbered choose lists, a slash filter beside
- * free accelerators, selection rails, the model picker's segment strip, a tree with tri-state checks, accordions with
+ * free accelerators, selection rails, the model picker's segment line, a tree with tri-state checks, accordions with
  * bodies, wrapped rows, rules, and a windowed list, all from the public builders.
  *
  * @module @mayfly-example/ui-gallery/groups/lists
@@ -26,11 +26,11 @@ export function listsGroup() {
       { id: 'git', label: 'Git Helper', detail: 'community', right: [span('update 1.3.0', 'muted')] },
     ] }),
     ui.actions({ id: 'gallery-slash-keys', items: [{ id: 'install', label: 'Install', key: 'i', hidden: true }] }),
-    ui.text('a segment strip on the focused row: ←/→ steps, Delete unpins, it never moves a row', { tone: 'muted' }),
+    ui.text('the segment of the focused row on one line under the list: ←/→ steps, Delete unpins, it never moves a row', { tone: 'muted' }),
     ui.list({ id: 'gallery-models', role: 'browse', filterable: true, filterMode: 'slash', acceptVerb: 'choose', selectedIds: [], items: [
       { id: 'pro', label: 'opencode-go/DeepSeek V4 Pro', detail: '977k context', group: 'opencode-go', segment: effort('high') },
       { id: 'bunny', label: 'opencode-go/space-bunny-alpha', detail: '256k context', group: 'opencode-go' },
-      { id: 'flash', label: 'DeepSeek/DeepSeek-V41-Flash', badge: 'current · high', detail: '977k context', group: 'DeepSeek', segment: effort('high') },
+      { id: 'flash', label: 'DeepSeek/DeepSeek-V41-Flash', current: true, detail: '977k context', group: 'DeepSeek', segment: effort('high') },
     ] }),
     ui.text('a tree with tri-state checks and an accordion; * opens every branch, - closes them', { tone: 'muted' }),
     ui.list({ id: 'gallery-tree', role: 'choose', mode: 'multiple', tree: true, selectedIds: ['read'], items: [

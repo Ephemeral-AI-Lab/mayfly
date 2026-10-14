@@ -162,13 +162,12 @@ export function renderAutocompleteList(
   return available < 3 ? rows.map(row => sliceByColumn(row, 0, available, true)) : rows
 }
 
-/**
- * The border paint of a framed chrome: the focus color for an overlay, the quiet color for an inline surface (spec
- * §2.1), or the surface's own `border` tone.
- */
-export function surfaceBorderPaint(chrome: 'surface' | 'overlay', colors: MayflySemanticColors, border?: MayflyTone): (text: string) => string {
-  if (border !== undefined) return text => paintTone(border, text, colors)
-  return chrome === 'overlay' ? colors.borderFocus : colors.border
+/** The columns a panel's content sits in from the left edge: the title, the description, the rows, and the hint row. */
+export const PANEL_GUTTER = 2
+
+/** The paint of a panel's top rule: the surface's own `border` tone, else the brand ink (bold in monochrome). */
+function panelRulePaint(colors: MayflySemanticColors, border?: MayflyTone): (text: string) => string {
+  return border === undefined ? colors.primary : text => paintTone(border, text, colors)
 }
 
 function strongTitle(title: string, colors: MayflySemanticColors): string {
@@ -176,29 +175,9 @@ function strongTitle(title: string, colors: MayflySemanticColors): string {
 }
 
 /**
- * The inset title rule of a framed surface, `╭ Title ─── badge ╮`: the title bold in text color, the badges at the
- * right of the rule, everything else in the border paint. A narrow width drops the badges first, then ellipsises the
- * title, then drops it; the corners and at least one dash always stay.
- */
-function framedTopRule(title: string, badges: string, width: number, paint: (text: string) => string, colors: MayflySemanticColors, align: 'left' | 'right' = 'left'): string {
-  if (width < 2) return paint('╭')
-  const inner = width - 2
-  const titleWidth = title.length === 0 ? 0 : visibleWidth(title) + 2
-  const badgeWidth = badges.length === 0 ? 0 : visibleWidth(badges) + 2
-  const showBadges = badgeWidth > 0 && inner - titleWidth - badgeWidth >= 1
-  const titleRoom = inner - (showBadges ? badgeWidth : 0) - 3
-  // A right-aligned title keeps its distinguishing end (a path), so a long one loses its start.
-  const elided = (): string => align === 'right' ? truncateMiddle(title, titleRoom, 'start') : `${sliceByColumn(title, 0, titleRoom - ELLIPSIS_WIDTH, true)}${ELLIPSIS}`
-  const fitted = title.length === 0 || titleRoom < 2 ? '' : visibleWidth(title) <= titleRoom ? title : elided()
-  const titleSegment = fitted.length === 0 ? '' : `${paint(' ')}${strongTitle(fitted, colors)}${paint(' ')}`
-  const badgeSegment = showBadges ? `${paint(' ')}${badges}${paint(' ')}` : ''
-  const fill = paint('─'.repeat(Math.max(0, inner - (fitted.length === 0 ? 0 : visibleWidth(fitted) + 2) - (showBadges ? badgeWidth : 0))))
-  return align === 'right' ? `${paint('╭')}${badgeSegment}${fill}${titleSegment}${paint('╮')}` : `${paint('╭')}${titleSegment}${fill}${badgeSegment}${paint('╮')}`
-}
-
-/**
- * The rows a surface paints above its child. A framed chrome (`overlay`, `surface`) returns its top rule first and then
- * the rows that sit inside the frame (the muted subtitle); `lane` is a muted rule carrying the title (`── Title ───`);
+ * The rows a surface paints above its child. A panel chrome (`overlay`, `surface`) is borderless: a full-width heavy rule
+ * (`━`) in the brand ink, the title bold in the same ink with its badges after it, the muted description (`subtitle`), and a
+ * blank row, all but the rule inside the panel gutter. `lane` is a muted rule carrying the title (`── Title ───`);
  * `none` is the bold title alone.
  */
 export function renderSurfaceHead(node: SurfaceChromeNode, width: number, colors: MayflySemanticColors): string[] {
@@ -216,18 +195,23 @@ export function renderSurfaceHead(node: SurfaceChromeNode, width: number, colors
     const fill = available - visibleWidth(head) - visibleWidth(tail)
     rows.push(fill >= 2 ? `${colors.muted(`${head}${'─'.repeat(fill)}`)}${tail}` : fit(colors.muted(`${head}${'─'.repeat(available)}`), available))
   } else {
-    rows.push(framedTopRule(title, badges, available, surfaceBorderPaint(chrome, colors, node.border), colors, node.titleAlign))
+    const paint = panelRulePaint(colors, node.border)
+    const indent = ' '.repeat(Math.min(PANEL_GUTTER, Math.max(0, available - 1)))
+    const room = Math.max(1, available - indent.length)
+    rows.push(paint('━'.repeat(available)))
+    if (title.length > 0 || badges.length > 0) {
+      const badgeRoom = badges.length === 0 ? 0 : visibleWidth(badges) + 2
+      const titleRoom = Math.max(1, room - badgeRoom)
+      // A right-aligned title keeps its distinguishing end (a path), so a long one loses its start.
+      const fitted = visibleWidth(title) <= titleRoom ? title : node.titleAlign === 'right' ? truncateMiddle(title, titleRoom, 'start') : `${sliceByColumn(title, 0, Math.max(0, titleRoom - ELLIPSIS_WIDTH), true)}${ELLIPSIS}`
+      const heading = title.length === 0 ? '' : `\x1b[1m${paint(fitted)}\x1b[22m`
+      rows.push(fit(`${indent}${[heading, badgeRoom > 0 && titleRoom >= visibleWidth(fitted) ? badges : ''].filter(part => part.length > 0).join('  ')}`, available))
+    }
+    if (node.subtitle !== undefined) rows.push(fit(`${indent}${colors.muted(sanitizePluginText(node.subtitle).replace(/[\r\n]+/gu, ' '))}`, available))
+    rows.push('')
   }
-  if (node.subtitle !== undefined) rows.push(fit(colors.muted(sanitizePluginText(node.subtitle).replace(/[\r\n]+/gu, ' ')), available))
+  if (chrome !== 'overlay' && chrome !== 'surface' && node.subtitle !== undefined) rows.push(fit(colors.muted(sanitizePluginText(node.subtitle).replace(/[\r\n]+/gu, ' ')), available))
   return rows
-}
-
-/** The bottom rule of a framed surface; `lane` and `none` have none. */
-export function renderSurfaceTail(node: SurfaceChromeNode, width: number, colors: MayflySemanticColors): string[] {
-  const chrome = node.chrome ?? 'none'
-  if (chrome === 'none' || chrome === 'lane') return []
-  const available = safeWidth(width)
-  return [surfaceBorderPaint(chrome, colors, node.border)(available < 2 ? '╰' : `╰${'─'.repeat(available - 2)}╯`)]
 }
 
 /**
@@ -320,12 +304,12 @@ export interface HintPart {
 }
 
 /**
- * The hint row (spec §3.2): indented two columns, each fragment `Keys label` with the key in text color and its label
+ * The hint row (spec §3.2): indented two columns (none inside a panel, whose gutter already indents it), each fragment `Keys label` with the key in text color and its label
  * muted, joined by a muted ` · `, so the eye lands on the key.
  */
-export function renderHintRow(parts: readonly HintPart[], colors: MayflySemanticColors): string {
+export function renderHintRow(parts: readonly HintPart[], colors: MayflySemanticColors, indent = 2): string {
   const fragments = parts.map(part => `${colors.text(part.keys)}${part.label === undefined ? '' : ` ${colors.textMuted(part.label)}`}`)
-  return `${colors.textMuted('  ')}${fragments.join(colors.textMuted(' · '))}`
+  return `${colors.textMuted(' '.repeat(indent))}${fragments.join(colors.textMuted(' · '))}`
 }
 
 /**

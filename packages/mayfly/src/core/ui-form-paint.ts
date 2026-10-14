@@ -170,7 +170,7 @@ export function paintFormField(paint: FormFieldPaint): string[] {
 
   const labelText = (padded: boolean): string => {
     const cells = padded ? `${label}${' '.repeat(Math.max(1, labelColumn - visibleWidth(label)))}` : label
-    return field.disabled === true ? colors.muted(cells) : focused ? `\x1b[1m${colors.text(cells)}\x1b[22m` : colors.text(cells)
+    return field.disabled === true ? colors.muted(cells) : focused ? `\x1b[1m${colors.textStrong(cells)}\x1b[22m` : colors.text(cells)
   }
 
   if (field.kind === 'textarea' && (focused || editingText)) {
@@ -179,7 +179,7 @@ export function paintFormField(paint: FormFieldPaint): string[] {
     rows.push(...textareaBox(paint, width, field.value).map(row => clip(row, width)))
   } else if (picking) {
     // An open picker shows the label alone; the option rows carry the value, the arrow standing under the help's indent.
-    rows.push(clip(`${lead}\x1b[1m${colors.text(field.label)}\x1b[22m`, width))
+    rows.push(clip(`${lead}\x1b[1m${colors.textStrong(field.label)}\x1b[22m`, width))
     const options = choice!.options
     for (const option of options) {
       const selected = choice!.kind === 'select' ? choice!.value === option.id : choice!.value.includes(option.id)

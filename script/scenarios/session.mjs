@@ -29,7 +29,7 @@ export const WORKSPACE = /\/tmp\/mayfly-scenario-[0-9a-f]{8}/gu
  * @param {string} [options.control] - the runner's control socket.
  * @param {Record<string, Record<string, unknown>>} [options.config] - settings the overlay pins, by composition row id
  *   (the `mayfly` presentation, the banner's version, …).
- * @param {readonly string[]} [options.disabled] - composition rows the overlay disables.
+ * @param {readonly string[]} [options.disabled] - composition rows the overlay disables (a scenario adds its own `disabled`).
  * @param {boolean} [options.isolate] - give the session a home, a session store, and storages of its own.
  * @returns {Promise<{ cwd: string, patch: string, log: string, env: Record<string, string>, stub: { inFlight(): number }, close(): Promise<void> }>}
  */
@@ -47,7 +47,7 @@ export async function prepareSession({ scenario, dir, speed = 1, control, config
   const pinned = { ...config }
   for (const [id, settings] of Object.entries(scenario.config ?? {})) pinned[id] = { ...pinned[id], ...settings }
   for (const [id, settings] of Object.entries(pinned)) rows.push(`- id: ${id}\n  config:\n${Object.entries(settings).map(([key, value]) => `    ${key}: ${JSON.stringify(value)}\n`).join('')}`)
-  for (const id of disabled) rows.push(`- id: ${id}\n  disabled: true\n`)
+  for (const id of new Set([...disabled, ...(scenario.disabled ?? [])])) rows.push(`- id: ${id}\n  disabled: true\n`)
   if (isolate) {
     rows.push(`- id: session-persistence-jsonl\n  config:\n    root: ${JSON.stringify(join(dir, 'store/sessions'))}\n`)
     rows.push(`- id: storage-json\n  config:\n    root: ${JSON.stringify(join(dir, 'store/storages'))}\n`)

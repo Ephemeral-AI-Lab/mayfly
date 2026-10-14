@@ -31,7 +31,7 @@ import type { MayflyWorkCounters } from './ui-work-counters.ts'
 const OVERLAY_DEFAULT_WIDTH = '70%'
 const OVERLAY_DEFAULT_MAX_HEIGHT = '33.333333333333336%'
 /** Editor-slot pickers default to half the terminal, never fewer than ten rows when the slot allows it. */
-const EDITOR_DEFAULT_MAX_HEIGHT = '50%'
+const EDITOR_DEFAULT_MAX_HEIGHT = '70%'
 const EDITOR_MIN_ROWS = 10
 
 interface SurfaceSnapshot {
@@ -606,6 +606,14 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
       editorOccupied = occupied
       ctx.emit('mayfly/editor-slot-swapped', occupied)
     }
+    // A panel stands in for the editor and the status rows; a decision card (a lane) keeps the status rows.
+    const root = editor?.interaction.node
+    const panel = root?.kind === 'surface' && (root.chrome === 'overlay' || root.chrome === 'surface')
+    if (panel !== panelOpen) {
+      panelOpen = panel
+      ctx.mayflyScreen.setStatusHidden(panel)
+      ctx.emit('mayfly/panel-open-changed', panel)
+    }
     ctx.mayflyScreen.setEditorReplacement(editor?.component ?? null)
     ctx.mayflyUiInteraction.setNotificationVisibility(!occupied)
     appliedRevision = Math.max(appliedRevision, snapshot.revision)
@@ -693,6 +701,7 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
   }
   let registryRevision = 0
   let editorOccupied = false
+  let panelOpen = false
   const publish = (): void => schedule({
     revision: ++registryRevision,
     panes: ctx.mayflyUiInteraction.panes().toSorted((left, right) => (left.definition.priority ?? 0) - (right.definition.priority ?? 0) || left.id.localeCompare(right.id)),
@@ -736,6 +745,7 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
     ctx.mayflyScreen.setEditorReplacement(null)
     ctx.mayflyUiInteraction.setNotificationVisibility(false)
     if (editorOccupied) ctx.emit('mayfly/editor-slot-swapped', false)
+    if (panelOpen) { ctx.mayflyScreen.setStatusHidden(false); ctx.emit('mayfly/panel-open-changed', false) }
     panes.clear()
     pending = undefined
   })

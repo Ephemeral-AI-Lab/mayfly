@@ -227,6 +227,8 @@ export interface MayflyListItem {
   readonly detail?: string
   readonly detailSpans?: readonly MayflyInlineSpan[]
   readonly badge?: string
+  /** The live row of a picker: its label turns the theme color (`primary`) and a `✓` follows it (replaces a `[current]` badge). */
+  readonly current?: boolean
   readonly group?: string
   readonly disabled?: boolean
   readonly disabledReason?: string
@@ -465,6 +467,40 @@ export interface MayflyPromptNode {
   readonly autofocus?: boolean
 }
 
+/** One level of a slider. */
+export interface MayflySliderLevel {
+  readonly id: string
+  /** The text drawn under the track. */
+  readonly label: string
+  readonly disabled?: boolean
+  readonly disabledReason?: string
+}
+
+/**
+ * The slider: a horizontal discrete level selector (a thinking effort). Core draws a rule with a marker over the active
+ * level and the level labels under it, steps it with `←`/`→`, `Home`/`End`, and unpins it with `Delete`, and keeps the
+ * pinned level in the surface model, so a republish never loses what was chosen. `selectedId` seeds the pinned level;
+ * `inheritedId` is the level the control follows while nothing is pinned (a provider default): it carries `(default)`,
+ * stepping onto it unpins, and `Delete` returns to it. `Enter` answers `slider-accept` with the pinned level, or `null`
+ * while nothing is pinned.
+ */
+export interface MayflySliderNode {
+  readonly kind: 'slider'
+  readonly id: string
+  readonly levels: readonly MayflySliderLevel[]
+  /** The level pinned at the start. */
+  readonly selectedId?: string
+  /** The level followed while nothing is pinned. */
+  readonly inheritedId?: string
+  /** The caption over the left end of the track (`Faster`). */
+  readonly startCaption?: string
+  /** The caption over the right end of the track (`Smarter`). */
+  readonly endCaption?: string
+  /** The word the hint row gives `←`/`→` (default `adjust`). */
+  readonly hintLabel?: string
+  readonly autofocus?: boolean
+}
+
 export interface MayflyChartPoint { readonly x: number, readonly y: number | null }
 export interface MayflyChartSeries { readonly id: string, readonly label?: string, readonly tone?: MayflyTone, readonly points: readonly MayflyChartPoint[] }
 export interface MayflyBarChartSeries { readonly id: string, readonly label?: string, readonly tone?: MayflyTone, readonly values: readonly (number | null)[], readonly empty?: boolean }
@@ -488,7 +524,7 @@ interface MayflyHeatmapChartNode {
 export type MayflyChartNode = MayflyLineChartNode | MayflyBarChartNode | MayflySparklineChartNode | MayflyHeatmapChartNode
 
 export type MayflyContentNode = MayflyTextNode | MayflyMarkdownNode | MayflyFieldsNode | MayflyCodeNode | MayflyDiffNode | MayflySectionsNode | MayflyRichTextNode | MayflyDiagramNode | MayflyChartNode
-export type MayflyUiNode = MayflyContentNode | MayflyStackNode | MayflySurfaceNode | MayflyScrollNode | MayflyTabsNode | MayflyListNode | MayflyFormNode | MayflyActionsNode | MayflyLoaderNode | MayflyEmptyNode | MayflyProgressNode | MayflySpacerNode | MayflyDividerNode | MayflyImageNode | MayflyPromptNode
+export type MayflyUiNode = MayflyContentNode | MayflyStackNode | MayflySurfaceNode | MayflyScrollNode | MayflyTabsNode | MayflyListNode | MayflyFormNode | MayflyActionsNode | MayflyLoaderNode | MayflyEmptyNode | MayflyProgressNode | MayflySpacerNode | MayflyDividerNode | MayflyImageNode | MayflyPromptNode | MayflySliderNode
 
 interface MayflyRegistryUpsert<Entry> { readonly kind: 'upsert', readonly entry: Entry }
 interface MayflyRegistryRemove { readonly kind: 'remove', readonly id: string, readonly revision: number }

@@ -29,6 +29,8 @@ class StableSlotHost implements MayflyFocusable {
   private active = true
   private focusedValue = false
   private replacement: MayflyComponent | null = null
+  /** A hidden host paints no rows (the status footer stands aside while a panel is open); its target is untouched. */
+  private hiddenValue = false
 
   constructor(
     readonly id: string,
@@ -37,6 +39,11 @@ class StableSlotHost implements MayflyFocusable {
   ) {}
 
   get focused(): boolean { return this.active && this.focusedValue }
+  set hidden(value: boolean) {
+    if (this.hiddenValue === value) return
+    this.hiddenValue = value
+    this.runtime.requestRender()
+  }
   get editorReplaced(): boolean { return this.active && this.replacement !== null }
   set focused(value: boolean) {
     this.focusedValue = this.active && this.currentTarget() !== null && value
@@ -70,7 +77,7 @@ class StableSlotHost implements MayflyFocusable {
     this.runtime.setFocus(this)
   }
 
-  render(width: number): string[] { return this.currentTarget()?.render(width) ?? NO_ROWS }
+  render(width: number): string[] { return this.hiddenValue ? NO_ROWS : this.currentTarget()?.render(width) ?? NO_ROWS }
   invalidate(): void { this.currentTarget()?.invalidate() }
   handleInput(data: string): void { this.currentTarget()?.handleInput?.(data) }
 
@@ -245,6 +252,11 @@ export class MayflyScreenService extends Service implements MayflyScreen {
    */
   enterViews(): boolean {
     return this.runtime.surfaces.views.enter()
+  }
+
+  /** A panel stands in for the editor and the status rows: while one is open the status footer paints nothing. */
+  setStatusHidden(hidden: boolean): void {
+    this.fixed.get('status.footer')!.hidden = hidden
   }
 
   /** A registered editor-presentation overlay takes the prompt's place. */

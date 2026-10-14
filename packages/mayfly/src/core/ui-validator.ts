@@ -43,6 +43,7 @@ import { stripTerminalText } from './escape-sequences.ts'
 import { countWork, type MayflyWorkCounters } from './ui-work-counters.ts'
 import { admitFieldPresentation, admitTextRules } from './ui-validator-form.ts'
 import { admitPromptFields, MAYFLY_UI_MAX_DRAFT_TEXT, type PromptAdmissionHelpers } from './ui-validator-prompt.ts'
+import { admitSliderFields, type SliderAdmissionHelpers } from './ui-validator-slider.ts'
 import { admitChildAdmission, admitCodeFields, admitDiffFields, admitHeatmapFields, admitProgressFields, admitScrollFields, admitSurfaceFields, admitTextStyles, countMotion, type AdmissionHelpers } from './ui-validator-content.ts'
 import { admitTabItemFields, admitTabsFields } from './ui-validator-tabs.ts'
 
@@ -343,6 +344,7 @@ function requiredId(value: unknown, path: string): string {
 /** The primitives the content admission module (`ui-validator-content.ts`) builds its field rules from. */
 const ADMISSION_HELPERS: AdmissionHelpers = { own, invalid, enumeration, finiteInteger, boolean, text, label, identifier: requiredId, collection }
 const PROMPT_HELPERS: PromptAdmissionHelpers<ValidationState> = { ...ADMISSION_HELPERS, draftText, enter }
+const SLIDER_HELPERS: SliderAdmissionHelpers<ValidationState> = { ...ADMISSION_HELPERS, enter }
 
 function collection(value: unknown, path: string): readonly unknown[] {
   if (!Array.isArray(value)) invalid(`${path} must be an array`)
@@ -477,6 +479,7 @@ function admitListItem(value: unknown, path: string, counters?: MayflyWorkCounte
   const state = validationState(counters === undefined ? undefined : { ...emptyBudget(), counters })
   return enter(value, path, state, object => {
     const disabledValue = own(object, 'disabled', path)
+    const currentValue = own(object, 'current', path)
     const detailSpansValue = own(object, 'detailSpans', path)
     const segmentValue = own(object, 'segment', path)
     const unavailableValue = own(object, 'unavailableActions', path)
@@ -487,6 +490,7 @@ function admitListItem(value: unknown, path: string, counters?: MayflyWorkCounte
       ...optional(optionalLabel(object, 'detail', path), 'detail'),
       ...optional(detailSpansValue === undefined ? undefined : spans(detailSpansValue, `${path}.detailSpans`, state, false, true), 'detailSpans'),
       ...optional(optionalLabel(object, 'badge', path), 'badge'),
+      ...optional(currentValue === undefined ? undefined : boolean(currentValue, `${path}.current`), 'current'),
       ...optional(optionalLabel(object, 'group', path), 'group'),
       ...optional(optionalLabel(object, 'disabledReason', path), 'disabledReason'),
       ...optional(optionalId(object, 'parentId', path), 'parentId'),
@@ -1297,7 +1301,7 @@ function admitNode(value: unknown, path: string, state: ValidationState, depth: 
     if (mode === 'status' && !['text', 'rich-text', 'fields', 'progress', 'stack'].includes(kind)) invalid(`status node kind "${kind}" is interactive or unsupported`)
     if (mode === 'editor' && (kind === 'diagram' || kind === 'chart' || kind === 'image')) invalid(`editor node kind "${kind}" is unsupported`)
     /* The host editor owns every key in its shell, so focusable controls other than accelerator actions are unreachable there. */
-    if (mode === 'editor' && (kind === 'form' || kind === 'list' || kind === 'tabs' || kind === 'prompt')) invalid(`editor node kind "${kind}" would take focus from the editor`)
+    if (mode === 'editor' && (kind === 'form' || kind === 'list' || kind === 'tabs' || kind === 'prompt' || kind === 'slider')) invalid(`editor node kind "${kind}" would take focus from the editor`)
     if (viewOnly && !['text', 'fields', 'code', 'diff', 'sections'].includes(kind)) invalid(`${path} must be section content`)
     switch (kind) {
       case 'text': {
@@ -1516,6 +1520,7 @@ function admitNode(value: unknown, path: string, state: ValidationState, depth: 
         }
       }
       case 'prompt': return { kind, id: identifier(required(object, 'id', path), `${path}.id`, state, true), ...admitPromptFields(PROMPT_HELPERS, object, path, state) }
+      case 'slider': return { kind, id: identifier(required(object, 'id', path), `${path}.id`, state, true), ...admitSliderFields(SLIDER_HELPERS, object, path, state) }
       case 'diagram': return { kind, diagram: enumeration(required(object, 'diagram', path), ['mermaid'], `${path}.diagram`), source: contentField(required(object, 'source', path), `${path}.source`, state) }
       case 'chart': {
         const chart = enumeration(required(object, 'chart', path), ['line', 'point', 'bar', 'sparkline', 'heatmap'], `${path}.chart`)

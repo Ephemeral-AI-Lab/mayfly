@@ -39,6 +39,6 @@ export function sessionWorkspaceItem(workspace: SessionWorkspace, currentCwd: st
     label: sessionWorkspaceLabel(workspace.cwd, home, t),
     detail: t(workspace.count === 1 ? '1 session' : '{count} sessions', { count: workspace.count }),
     searchText: workspace.cwd ?? t('No working directory'),
-    ...(workspace.cwd === currentCwd ? { badge: t('current') } : {}),
+    ...(workspace.cwd === currentCwd ? { current: true } : {}),
   }
 }

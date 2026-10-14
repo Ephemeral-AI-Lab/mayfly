@@ -205,6 +205,9 @@ Run it
 Implemented
   · …
 
+Shared components used   (per scenario: which basic shared panel components drew it, and any gap found in them)
+  · …
+
 Look at
   1. … — <how to reach it>
   2. …
@@ -217,6 +220,8 @@ Not done yet
 
 Questions: (asked next, in the question tool)
 ```
+
+The *Shared components used* section is required from Phase 6 on: the owner has not audited the shared panel layer, so each hand-off names the basic components (`surface`, `list`, `segment`, `slider`, `empty`, `actions`, `tabs`, `form`, `patterns.*`) that drew each scenario, and each scenario's `review.reference` ends with a `built from:` list of them.
 
 A delta hand-off after a round lists only what changed, how to re-check it, and which earlier question it answers.
 

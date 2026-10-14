@@ -96,6 +96,96 @@ const COVERS = {
  * that `differs` from the prototype, and `pending`. `brief.mjs` prints them. Finalizing a group removes its entries.
  */
 const REVIEW = {
+  effort: {
+    scene: 23,
+    reference: 'prototype scene 23 (/model and /effort, page 2) and the owner\'s Claude-style effort picture · component-library §5.9 · part 6a.2 · built from: ui.surface (borderless chrome, title, description, derived hint row), the new ui.slider, ui.spacer',
+    implemented: [
+      'A borderless panel titled `Effort` with the model and its provider default as the muted description, over a slider centered in the panel: `Faster` and `Smarter` over the ends of a rule, a `▲` over the active level, the level labels under it.',
+      'The provider default level always carries a muted `(default)`. Nothing pinned: the marker rests on the default; `→`/`←` pin another level (bold theme-color label and marker), `Home`/`End` jump to the ends, stepping onto the default or `Delete` returns to it.',
+      '`Enter` commits the level and closes with a notice (`Thinking set to low`, or `Thinking set to provider default (high)` when nothing is pinned); `Esc` leaves the session as it was and reopening starts from the live level.',
+      'A model with levels but no known default (`bravo-mini`) shows no marker until the first `←`/`→`; a model with no levels keeps the error `the current model exposes no reasoning efforts`.',
+      'At a width too narrow for the labels the track folds to one row: `‹ high (default) › +2`.',
+    ],
+    focus: [
+      { look: 'The panel against the reference picture: rule, title, description, captions, track, marker, labels', how: 'checkpoint `open` (`--png` shows the colors)' },
+      { look: 'Pinning, the ends, and returning to the default', how: 'checkpoints `right`, `home`, `end`, `unpinned`' },
+      { look: 'Commit and its notice, then reopening on the live level', how: 'checkpoints `commit`, `reopened`, `cancelled`' },
+      { look: 'The no-default and no-levels models', how: 'checkpoints `no-default`, `no-default-pinned`, `no-levels`' },
+      { look: 'Narrow widths: the captions drop first, then the fold', how: '`--width 60`, `--width 40 --height 20`, checkpoints `open`, `right`' },
+    ],
+    differs: [
+      'No `s` (this session only) key and no relative-cost line: the Harness has no session-only selection and no per-level cost (owner decision).',
+      'The hint row keeps Mayfly\'s `Enter confirm` / `Delete use default` wording from the shared grammar.',
+    ],
+    pending: [],
+  },
+  panels: {
+    reference: 'the shared panel base components (borderless panel chrome, list rows, thinking line) on the commands that already exist · component-library §2.1, §4.4, §4.6 · adjustment 1 of part 6a · built from: ui.surface (borderless chrome, derived hint row), ui.list (rows, groups, description column, ✓ current, overflow marks), ui.tabs, ui.form, ui.fields, railPanel, statusPage, as each panel uses them',
+    implemented: [
+      'Every panel is borderless: one full-width rule in the brand ink, the bold title under it, an optional muted description, the content two columns in, a blank row, and the hint row. No box, no side bars.',
+      'While a panel is open the status rows and the notification row stand aside; both come back when it closes (the last checkpoint).',
+      'List rows are numbered with a `→` cursor and a bold label on the cursor row; a description is a muted column; the live row is in the theme color with `✓`; rows past the window are counted in `… +N more` and marked `↑`/`↓` in the gutter.',
+    ],
+    focus: [
+      { look: 'The one look on a command list, a help page and a settings form', how: 'checkpoints `help`, `settings`, `theme`' },
+      { look: 'Tabs and key/value pages in the same chrome', how: 'checkpoints `status`, `sessions`' },
+      { look: 'A long list: the window, the `… +N more` row and the edge glyphs', how: 'checkpoint `trace`' },
+      { look: 'The status row is gone while a panel is open and returns after Esc', how: 'checkpoints `theme` (absent) and `back` (present)' },
+      { look: 'Narrow widths: rule, title and rows at 60 and 40 columns', how: '`--width 60`, `--width 40 --height 20`, checkpoints `settings`, `trace`' },
+    ],
+    differs: ['The decision cards (approvals, plan review) keep their lane rule and their status rows for now.'],
+    pending: ['Tabs, forms and rails keep their own painters; anything that looks wrong here is a finding for the next adjustment, not a defect of the round.'],
+  },
+  model: {
+    scene: 23,
+    reference: 'prototype scene 23 (/model and /effort, page 1) and the owner\'s Claude-style picture · component-library §5.9 · part 6a.1 · built from: ui.surface (borderless chrome, title, description, derived hint row), ui.list (browse, numbered, filter, groups, description column, ✓ current, thinking segment line, overflow marks, empty), ui.empty',
+    implemented: [
+      'A borderless panel: a full-width rule, the bold title, a muted description, then one numbered, filterable list of models grouped by provider; label and `977k context` are aligned columns, the cursor row\'s label is bold, `→` marks the cursor.',
+      'The live model is in the theme color (purple by default) with `✓` and the cursor opens on it. There is no badge, no `Provider default` option and no buttons.',
+      'One line under the list names the focused row\'s thinking level: `○ Thinking: high (default)` while it follows the provider default, `● Thinking: max` once `→`/`←` pinned a level, `○ Thinking: —` for a model with no default; a model without thinking levels shows `○ Thinking: no choice`, so the line is never an unexplained gap and no row moves. `Delete` returns to the default.',
+      'Enter commits the model with the pinned level (none while unpinned) and closes. Type filters (`/ deep`), Ctrl+U clears, Esc ends the search and a second Esc closes; a filter with no match says `No matches`.',
+      'The status rows and the notification row stand aside while the panel is open and return on close. A list taller than the panel shows `… +N more` and `↑`/`↓` on the edge rows.',
+    ],
+    focus: [
+      { look: 'The panel as a whole against the reference picture: rule, title, description, columns, `→`, theme-color `✓`', how: 'checkpoint `list` (`--png` shows the colors)' },
+      { look: 'The thinking line in its three states and its `no choice` state', how: 'checkpoints `unpinned`, `pinned`, `no-default`, `no-thinking`' },
+      { look: 'A model with its own default and its own levels', how: 'checkpoint `acme-default`' },
+      { look: 'Filtering and its end states', how: 'checkpoints `filter`, `no-match`, `ended`, `closed`' },
+      { look: 'Narrow widths: the description column drops first, then names clip; the line shortens', how: '`--width 60`, `--width 40 --height 20`, checkpoints `list`, `acme-default`' },
+    ],
+    differs: [
+      'The hint row keeps Mayfly\'s `Enter choose` wording, not `Enter to set as default` (shared hint grammar, not part of this adjustment).',
+      'A row with no known default shows `○ Thinking: —` and Enter commits no level; the shared reducer no longer falls back to the first level (spec §5.9 no-default state).',
+    ],
+    pending: [],
+  },
+  modelCommit: {
+    scene: 23,
+    reference: 'prototype scene 23 (/model and /effort, page 1) · component-library §5.9 · part 6a.1 · built from: ui.surface (borderless chrome), ui.list (selection-accept with segmentId, thinking line), ui.empty',
+    implemented: [
+      'Esc leaves the model untouched: a pinned draft is gone when the picker is reopened, and the cursor is on the live row again.',
+      'Enter commits the focused model with its pinned level and closes; the notice names the model and the level that runs, the status rows return, and the status line follows the new model.',
+      'Reopening shows the new live row in the theme color with `✓`; `/model acme-plain` switches without opening anything and names no level (the model has none).',
+    ],
+    focus: [
+      { look: 'A cancelled draft does not stick, and the cursor returns to the live row', how: 'checkpoints `draft`, `cancelled`, `reopened`' },
+      { look: 'The commit notice, the status line, and the moved `✓`', how: 'checkpoints `committed`, `live-moved`' },
+      { look: 'The direct switch by id', how: 'checkpoint `direct`' },
+    ],
+    differs: [],
+    pending: ['Committing saves the default through the Harness; the scenario disables `config-editor` so nothing is written.', 'The notice is cut by the notification pane\'s half-width limit (open point from the last hand-off).'],
+  },
+  theme: {
+    scene: 23,
+    reference: 'component-library §2.2 (the one live mark) · part 6a.2 · built from: ui.surface (borderless chrome), ui.list (choose role, ✓ current)',
+    implemented: ['`/theme` lists the built-in themes in the borderless panel with the live theme in the theme color with `✓` (no `[current]` badge, no `●`/`○` marks); choosing a row switches the theme at once and closes.'],
+    focus: [
+      { look: 'The picker and its single theme-color `✓`', how: 'checkpoint `picker`, and `--width 40 --height 20`' },
+      { look: 'The picker after the switch: the whole screen repaints in the new theme', how: 'checkpoint `switched` (`--png`)' },
+    ],
+    differs: ['No `●`/`○` marks (owner decision: one live mark).'],
+    pending: [],
+  },
   select: {
     scene: 18,
     reference: 'prototype scene 18 (Conversation stream: Alt+Up select a row, Enter expand, c copy, Ctrl+G open in editor) · component-library §5.6 · part 3e.2',
@@ -627,6 +717,31 @@ const PHASE3_REVIEW = {
   pending: [],
 }
 
+/**
+ * The model catalog the model-family scenarios open (`/model`, `/effort`): the stock DeepSeek rows (1M context, off to
+ * max, default `high`), a provider with a default level and one model without thinking, and a provider whose
+ * models advertise levels but no default. `/model` only lists these, so the base URL is a placeholder. The
+ * `config-editor` row is off because a committed model would otherwise be saved as the default into the shared bench
+ * profile and move every later scenario.
+ */
+const MODEL_PROVIDERS = Object.freeze({
+  'llm-pi-ai': {
+    providers: {
+      acme: {
+        displayName: 'Acme Gateway', api: 'anthropic-messages', baseURL: 'http://127.0.0.1:9', apiKeyEnv: 'DEEPSEEK_API_KEY', reasoning: 'high',
+        models: [
+          { id: 'acme-think', name: 'Acme Think', contextWindow: 262144, input: [], reasoningEfforts: { low: 'low', medium: 'medium', high: 'high' } },
+          { id: 'acme-plain', name: 'Acme Plain', contextWindow: 32768, input: [], reasoningEfforts: false },
+        ],
+      },
+      bravo: {
+        displayName: 'Bravo', api: 'anthropic-messages', baseURL: 'http://127.0.0.1:9', apiKeyEnv: 'DEEPSEEK_API_KEY',
+        models: [{ id: 'bravo-mini', name: 'Bravo Mini', contextWindow: 131072, input: [], reasoningEfforts: { low: 'low', high: 'high' } }],
+      },
+    },
+  },
+})
+
 const SCRIPTS = {
   phase3: PHASE3_END,
   // A command that runs, two at once, one that fails, and one cut off; the row names the phase while the stream holds the calls.
@@ -979,6 +1094,97 @@ const PERF = {
 
 /** The catalog, by scenario name. */
 export const CATALOG = Object.freeze({
+  model: {
+    summary: 'the /model picker: the thinking strip on the focused row, the live row\'s badge, the footer fallback, filtering',
+    source: { idle: true },
+    config: MODEL_PROVIDERS,
+    disabled: ['config-editor'],
+    covers: [`${INTERACTION}model-commands.ts`, 'packages/mayfly/src/components/model-picker.ts', 'packages/mayfly/src/core/ui-list-*.ts'],
+    sizes: [[100, 30], [80, 30], [60, 24], [40, 20]],
+    script: [
+      type('/model'), key('enter'), until('Select a model'), checkpoint('list'),
+      key('right'), checkpoint('pinned'),
+      key('delete'), checkpoint('unpinned'),
+      key('up', { repeat: 1 }), checkpoint('no-default'),
+      key('up'), checkpoint('no-thinking'),
+      key('up'), checkpoint('acme-default'),
+      type('deep'), checkpoint('filter'),
+      key('ctrl+u'), type('zzz'), checkpoint('no-match'),
+      key('esc'), checkpoint('ended'),
+      key('esc'), checkpoint('closed'),
+    ],
+    review: REVIEW.model,
+  },
+  effort: {
+    summary: 'the /effort slider: the marker on the provider default, pinning, the ends, Delete, Enter and its notice, a model without a default, a model without levels',
+    source: { idle: true },
+    config: MODEL_PROVIDERS,
+    disabled: ['config-editor'],
+    covers: [`${INTERACTION}model-commands.ts`, 'packages/mayfly/src/components/model-picker.ts', 'packages/mayfly/src/core/ui-slider-paint.ts', 'packages/mayfly/src/core/ui-interaction-slider.ts'],
+    sizes: [[100, 30], [60, 24], [40, 20]],
+    script: [
+      type('/effort'), key('enter'), until('Effort'), checkpoint('open'),
+      key('right'), checkpoint('right'),
+      key('home'), checkpoint('home'),
+      key('end'), checkpoint('end'),
+      key('delete'), checkpoint('unpinned'),
+      key('left'), key('enter'), checkpoint('commit'),
+      type('/effort'), key('enter'), until('Effort'), checkpoint('reopened'),
+      key('esc'), checkpoint('cancelled'),
+      type('/model bravo-mini'), key('enter'), checkpoint('to-bravo'),
+      type('/effort'), key('enter'), until('Effort'), checkpoint('no-default'),
+      key('right'), checkpoint('no-default-pinned'),
+      key('esc'), checkpoint('closed'),
+      type('/model acme-plain'), key('enter'), checkpoint('to-plain'),
+      type('/effort'), key('enter'), checkpoint('no-levels'),
+    ],
+    review: REVIEW.effort,
+  },
+  modelCommit: {
+    summary: 'committing a model: Esc leaves it untouched, Enter switches with the pinned level and a notice, /model <id> switches directly',
+    source: { idle: true },
+    config: MODEL_PROVIDERS,
+    disabled: ['config-editor'],
+    covers: [`${INTERACTION}model-commands.ts`, 'packages/mayfly/src/components/model-picker.ts'],
+    sizes: [[100, 30], [60, 24]],
+    script: [
+      type('/model'), key('enter'), until('Select a model'),
+      key('down'), key('right'), checkpoint('draft'),
+      key('esc'), checkpoint('cancelled'),
+      type('/model'), key('enter'), until('Select a model'), checkpoint('reopened'),
+      key('down'), key('right'), key('enter'), checkpoint('committed'),
+      type('/model'), key('enter'), until('Select a model'), checkpoint('live-moved'),
+      key('esc'), checkpoint('closed'),
+      type('/model acme-plain'), key('enter'), checkpoint('direct'),
+    ],
+    review: REVIEW.modelCommit,
+  },
+  theme: {
+    summary: 'the /theme picker: one [current] badge, and the switch repaints the screen',
+    source: { idle: true },
+    covers: [`${INTERACTION}theme-switch.ts`],
+    sizes: [[100, 30], [40, 20]],
+    script: [
+      type('/theme'), key('enter'), until('Select a theme'), checkpoint('picker'),
+      key('down'), key('enter'), checkpoint('switched'),
+    ],
+    review: REVIEW.theme,
+  },
+  panels: {
+    summary: 'the borderless panel on the existing commands: help, theme, settings, status, sessions, trace, and the status row coming back',
+    source: { idle: true },
+    covers: ['packages/mayfly/src/core/ui-patterns.ts', 'packages/mayfly/src/core/ui-list-paint.ts', `${INTERACTION}help.ts`, `${INTERACTION}settings-command.ts`, `${INTERACTION}trace-command.ts`],
+    sizes: [[100, 30], [60, 24], [40, 20]],
+    script: [
+      type('/help'), key('enter'), until('Esc'), checkpoint('help'), key('esc'), checkpoint('help-closed'),
+      type('/theme'), key('enter'), until('Select a theme'), checkpoint('theme'), key('esc'), checkpoint('theme-closed'),
+      type('/settings'), key('enter'), until('Esc'), checkpoint('settings'), key('esc'), checkpoint('settings-closed'),
+      type('/status'), key('enter'), until('Esc'), checkpoint('status'), key('esc'), checkpoint('status-closed'),
+      type('/sessions'), key('enter'), until('Esc'), checkpoint('sessions'), key('esc'), checkpoint('sessions-closed'),
+      type('/trace'), key('enter'), until('Esc'), checkpoint('trace'), key('esc'), checkpoint('back'),
+    ],
+    review: REVIEW.panels,
+  },
   idle: {
     summary: 'the product on an empty session: the banner, the editor, and the status row',
     source: { idle: true },

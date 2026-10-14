@@ -22,7 +22,7 @@ export function visualLanguageGroup() {
     ui.list({
       id: 'gallery-marks', role: 'choose', selectedIds: [],
       items: [
-        { id: 'default', label: 'Default', badge: 'current' },
+        { id: 'default', label: 'Default', current: true },
         { id: 'edits', label: 'Accept edits' },
         { id: 'full', label: 'Full access', disabled: true, disabledReason: 'managed by policy' },
       ],

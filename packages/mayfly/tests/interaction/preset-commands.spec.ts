@@ -82,7 +82,7 @@ describe('native preset selection UI', () => {
   })
 
   it('projects stable ordered choices, native labels, and disabled failures', () => {
-    const rows = presetItems([preset('z'), preset('broken', { broken: 'Bad composition', order: 1 }), preset('first', { name: 'First', order: 0, description: 'Description' })], 'first', key => key)
+    const rows = presetItems([preset('z'), preset('broken', { broken: 'Bad composition', order: 1 }), preset('first', { name: 'First', order: 0, description: 'Description' })], 'first')
     expect(rows.map(row => row.id)).toEqual(['first', 'broken', 'z'])
     expect(rows[0]).toMatchObject({ label: 'First', detail: 'Description', badge: 'current' })
     expect(rows[1]).toMatchObject({ disabled: true, disabledReason: 'Bad composition' })

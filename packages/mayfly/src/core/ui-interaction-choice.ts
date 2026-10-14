@@ -428,14 +428,14 @@ export function choicePinned(state: UiChoiceState, itemId: string): string | nul
 }
 
 /**
- * Resolve a row's effective segment option: the pinned one, else the option it inherits, else (a segment that inherits
- * nothing) the first enabled option.
+ * Resolve a row's effective segment option: the pinned one, else the option it inherits; a segment that inherits
+ * nothing has none until the first step pins one (the spec's no-default state).
  */
 export function choiceSegment(state: UiChoiceState, itemId: string): string | undefined {
   const index = admittedListIndex(state.definition.items, itemId)
   const segment = index < 0 ? undefined : admittedListItem(state.definition.items, index)?.segment
   if (segment === undefined) return undefined
-  return choicePinned(state, itemId) ?? segment.inheritedId ?? segment.options.find(option => option.disabled !== true)?.id
+  return choicePinned(state, itemId) ?? segment.inheritedId
 }
 
 /** The segment id a selection event reports: the pinned option, or for a row that inherits one, nothing while unpinned. */

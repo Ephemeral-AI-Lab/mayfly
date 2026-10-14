@@ -12,7 +12,7 @@ import type { MayflyInlineSpan, MayflyListItem, MayflyListNode } from '@ephemera
 import type { MayflySemanticColors } from './types.ts'
 import { scanContentLines, type ContentLineScan } from './content-segments.ts'
 import { paintSpan, paintTone } from './ui-paint.ts'
-import { inlineSegmentStrip, segmentFitsInline, segmentFooter, type SegmentView } from './ui-list-segment.ts'
+import { segmentLine, type SegmentView } from './ui-list-segment.ts'
 import type { UiRowCache } from './ui-row-cache.ts'
 import { countWork, type MayflyWorkCounters } from './ui-work-counters.ts'
 import { concatRows, mapRows, sliceRows, virtualRows } from './ui-rows.ts'
@@ -119,16 +119,60 @@ function meterText(meter: NonNullable<MayflyListItem['meter']>, colors: MayflySe
   return `${paintTone(meter.tone ?? 'primary', '▰'.repeat(filled), colors)}${colors.muted('▱'.repeat(width - filled))}`
 }
 
-/** The text after the label: badge, meter, detail, and the reason a row is disabled. */
-function trailer(item: MayflyListItem, width: number, colors: MayflySemanticColors): string {
+/** The text after the label: the live mark, badge, and meter. The description follows in its own column. */
+function labelTail(item: MayflyListItem, colors: MayflySemanticColors): string {
+  const current = item.current === true ? ` ${colors.primary('✓')}` : ''
   const badge = item.badge === undefined ? '' : ` ${colors.muted(`[${item.badge}]`)}`
   const meter = item.meter === undefined ? '' : ` ${meterText(item.meter, colors)}`
-  if (width <= DETAIL_MIN_WIDTH) return `${badge}${meter}`
+  return `${current}${badge}${meter}`
+}
+
+/** The row's description, muted: the item's `detail` (or `detailSpans`) and the reason a row is disabled; empty when it has none. */
+function descriptionOf(item: MayflyListItem, colors: MayflySemanticColors): string {
   const detail = item.detailSpans !== undefined
-    ? item.detailSpans.length === 0 ? '' : ` ${colors.muted('—')} ${spansText(item.detailSpans, colors)}`
-    : item.detail === undefined ? '' : ` ${colors.muted(item.detail.startsWith('—') ? item.detail : `— ${item.detail}`)}`
-  const reason = item.disabled === true && item.disabledReason !== undefined ? ` ${colors.muted(`— ${item.disabledReason}`)}` : ''
-  return `${badge}${meter}${detail}${reason}`
+    ? item.detailSpans.length === 0 ? '' : spansText(item.detailSpans, colors)
+    : item.detail === undefined ? '' : colors.muted(item.detail.startsWith('—') ? item.detail.slice(1).trimStart() : item.detail)
+  const reason = item.disabled === true && item.disabledReason !== undefined ? colors.muted(`— ${item.disabledReason}`) : ''
+  return [detail, reason].filter(part => part.length > 0).join(' ')
+}
+
+/** The columns between a row's label and its description. */
+const COLUMN_GAP = 2
+/** The widest share of the row the label column may take, so a long name never pushes its description off the row. */
+const COLUMN_SHARE = 0.6
+const labelColumns = new WeakMap<readonly MayflyListItem[], number>()
+
+/** The visible width of a row's label with its live mark, badge, and meter: what the description column lines up behind. */
+function labelWidth(item: MayflyListItem): number {
+  const label = item.labelSpans !== undefined ? item.labelSpans.reduce((sum, span) => sum + visibleWidth(span.text), 0) : visibleWidth(item.label)
+  const current = item.current === true ? 2 : 0
+  const badge = item.badge === undefined ? 0 : visibleWidth(item.badge) + 3
+  const meter = item.meter === undefined ? 0 : (item.meter.width ?? DEFAULT_METER_WIDTH) + 1
+  return label + current + badge + meter
+}
+
+const segmentLists = new WeakMap<readonly MayflyListItem[], { readonly label: string | undefined } | null>()
+
+/** The segment a list carries (the caption its first segment names itself with), or `null` when no row has one; kept for the list's items. */
+function segmentOf(items: readonly MayflyListItem[]): { readonly label: string | undefined } | null {
+  let found = segmentLists.get(items)
+  if (found === undefined) {
+    const first = items.find(item => item.segment !== undefined)
+    found = first === undefined ? null : { label: first.segment!.label }
+    segmentLists.set(items, found)
+  }
+  return found
+}
+
+/** The widest label of a list, kept for the list's items: the column stays put while a filter narrows the rows. */
+function labelColumn(items: readonly MayflyListItem[]): number {
+  let width = labelColumns.get(items)
+  if (width === undefined) {
+    width = 0
+    for (const item of items) if (item.gap !== true && item.rule === undefined && item.wrap !== true) width = Math.max(width, labelWidth(item))
+    labelColumns.set(items, width)
+  }
+  return width
 }
 
 interface RowState {
@@ -140,6 +184,8 @@ interface RowState {
   readonly marker: string
   readonly check: string
   readonly number: string
+  /** The columns the label (with its mark) takes before the description column starts; 0 when the row has no column. */
+  readonly column: number
   readonly view: SegmentView | undefined
 }
 
@@ -155,7 +201,7 @@ function prefixOf(state: RowState, colors: MayflySemanticColors): string {
   const guides = spec.depth === 0 ? '' : `${'  '.repeat(spec.depth - 1)}${colors.muted(spec.last ? '╰ ' : '│ ')}`
   const glyph = spec.open ? '▾' : '▸'
   const disclosure = spec.expandable ? `${on ? colors.primary(glyph) : colors.muted(glyph)} ` : ''
-  const number = state.number === '' ? '' : `${colors.muted(state.number)}  `
+  const number = state.number === '' ? '' : `${colors.muted(`${state.number}.`)} `
   const check = state.check === '' ? '' : `${state.check === '○' || disabled ? colors.muted(state.check) : colors.primary(state.check)} `
   return `${gutter}${indent}${guides}${disclosure}${number}${check}`
 }
@@ -164,13 +210,21 @@ function labelOf(state: RowState, colors: MayflySemanticColors): string {
   const item = state.spec.item
   if (item.labelSpans !== undefined) return spansText(item.labelSpans, colors)
   if (item.disabled === true) return colors.muted(item.label)
-  return state.on ? strong(colors.text(item.label)) : colors.text(item.label)
+  // One rule for every picker: the cursor row is bold white, the live row takes the theme color (bold when the cursor is on it).
+  const painted = item.current === true ? colors.primary(item.label) : state.on ? colors.textStrong(item.label) : colors.text(item.label)
+  return state.on ? strong(painted) : painted
 }
 
 /** The row's head as one painted line, before wrapping, the strip, and the right spans. */
 function headOf(state: RowState, colors: MayflySemanticColors): { readonly prefix: string, readonly line: string } {
   const prefix = prefixOf(state, colors)
-  return { prefix, line: `${prefix}${labelOf(state, colors)}${trailer(state.spec.item, state.width, colors)}` }
+  const item = state.spec.item
+  const head = `${prefix}${labelOf(state, colors)}${labelTail(item, colors)}`
+  const description = state.width <= DETAIL_MIN_WIDTH ? '' : descriptionOf(item, colors)
+  if (description.length === 0) return { prefix, line: head }
+  // The description starts in a column behind the widest label; a wrapped row keeps it one space after its label.
+  const lead = state.column === 0 ? 1 : Math.max(COLUMN_GAP, visibleWidth(prefix) + state.column + COLUMN_GAP - visibleWidth(head))
+  return { prefix, line: `${head}${' '.repeat(lead)}${description}` }
 }
 
 /**
@@ -212,10 +266,6 @@ function headLines(state: RowState, colors: MayflySemanticColors, translate: Lis
   }
   const head = headOf(state, colors)
   let line = head.line
-  if (state.on && state.focused && state.view !== undefined) {
-    const strip = inlineSegmentStrip(state.view, width - visibleWidth(head.line) - 2, colors)
-    if (strip !== undefined) return [`${padTo(head.line, width - strip.width)}${strip.text}`]
-  }
   const spans = state.on && item.rightFocus !== undefined ? item.rightFocus : item.right
   if (spans !== undefined) {
     const right = spansText(spans, colors)
@@ -289,11 +339,6 @@ function leadedLines(state: RowState, colors: MayflySemanticColors, paintBody: L
   return mapRows(rows, (line, index) => `${index === 0 ? `${prefix}${lead}` : pad}${line}`)
 }
 
-/** The width of a row's head: what the strip has to share the line with. */
-function headWidth(state: RowState, colors: MayflySemanticColors): number {
-  return visibleWidth(headOf({ ...state, on: true }, colors).line)
-}
-
 /** Where the current match of a search stands: which entry, which of its rows, and which match of that row. */
 interface CurrentMatch {
   readonly entry: number
@@ -335,11 +380,17 @@ export function paintList(node: ListNodeView, width: number, height: number, col
   // The wrapper hands over a finite width; the floor of one column keeps every ladder total.
   const available = Math.max(1, Math.floor(width))
   const numbered = node.numbered !== undefined && node.numbered !== false
+  const digits = String(options.total ?? options.rows.length).length
+  const prefixGuess = 2 + (numbered ? digits + 2 : 0)
+  const column = Math.min(labelColumn(node.items), Math.max(8, Math.floor((available - prefixGuess) * COLUMN_SHARE)))
   const entries: Entry[] = []
   let group: string | undefined
   let footerFor: SegmentView | undefined
   if (options.lead !== undefined) entries.push({ kind: 'group', lines: [options.lead] })
-  let needsFooter = false
+  // The line is reserved while any row of the list carries a segment, so focus never moves a row.
+  const segmentInfo = segmentOf(node.items)
+  const needsFooter = segmentInfo !== null
+  let focusedWithout = false
   // Which item each row sits under, so a band can follow the chain from a body to its call to the head.
   const find = highlightPattern(node.highlight)
   const parents = new Map<string, string>()
@@ -356,19 +407,18 @@ export function paintList(node: ListNodeView, width: number, height: number, col
     const state: RowState = {
       node, spec, on, focused: options.focused, width: available, marker: options.marker,
       check: checkOf(node, spec, selected, options.selectedIds),
-      number: numbered && spec.position < 9 ? String(spec.position + 1) : '',
+      number: numbered ? String(spec.position + 1).padStart(digits) : '',
+      column,
       view,
     }
-    if (view !== undefined) {
-      if (!segmentFitsInline(view, available - headWidth(state, colors) - 2, colors)) needsFooter = true
-      if (on && options.focused) footerFor = view
-    }
+    // The line under the rows names the focused row's level; a row without a segment leaves it blank.
+    if (on && options.focused) { if (view === undefined) focusedWithout = true; else footerFor = view }
     if (item.gap === true || item.rule !== undefined) {
       entries.push({ kind: item.gap === true ? 'gap' : 'rule', lines: headLines(state, colors, options.translate) })
       continue
     }
     const key = [
-      available, state.marker, on ? 1 : 0, options.focused ? 1 : 0, node.marker ?? '', state.check, state.number,
+      available, column, state.marker, on ? 1 : 0, options.focused ? 1 : 0, node.marker ?? '', state.check, state.number,
       spec.depth, spec.last ? 1 : 0, spec.expandable ? 1 : 0, spec.open ? 1 : 0,
       `${String(view?.active)}\0${String(view?.pinned)}`, options.flow === true ? 1 : 0,
     ].join('\x01')
@@ -416,31 +466,53 @@ export function paintList(node: ListNodeView, width: number, height: number, col
 
   // The prefix sums of the shown entries' line counts place the cursor row, whatever height each row has.
   const footer = needsFooter ? 2 : 0
-  const more = hiddenAbove > 0 || hiddenBelow > 0 ? 1 : 0
-  const limit = Math.max(1, (Number.isFinite(height) ? Math.floor(height) : 1) - footer - more)
+  const baseHidden = hiddenAbove + hiddenBelow
   const starts: number[] = []
   let lineCount = 0
   for (const entry of shown) { starts.push(lineCount); lineCount += entry.lines.length }
+  const room = Math.max(1, (Number.isFinite(height) ? Math.floor(height) : 1) - footer)
+  // A window cut by height hides rows too: the overflow row is reserved before the rows are cut.
+  const windowed = lineCount > room - (baseHidden > 0 ? 1 : 0)
+  const limit = Math.max(1, room - (baseHidden > 0 || windowed ? 1 : 0))
   // The entries stay parts: an open body may be a virtual array, and the concat reads only the rows the window asks for.
   let lines: string[] = concatRows(...shown.map(entry => entry.lines))
+  let begin = 0
   if (lineCount > limit) {
     const focusAt = shown.findIndex(entry => entry.kind === 'item' && entry.id === options.cursorId)
     const first = focusAt < 0 ? 0 : starts[focusAt]!
     const rows = focusAt < 0 ? 1 : shown[focusAt]!.lines.length
-    let begin = focusAt < 0 ? 0 : Math.min(Math.max(0, first - Math.floor(limit / 2) + Math.floor(rows / 2)), lineCount - limit)
+    begin = focusAt < 0 ? 0 : Math.min(Math.max(0, first - Math.floor(limit / 2) + Math.floor(rows / 2)), lineCount - limit)
     if (focusAt >= 0) begin = Math.max(Math.min(begin, first), first + rows - limit)
     // A search match inside a block taller than the window decides where the window sits: the match is centered.
     const target = current === undefined ? -1 : shown.indexOf(laid[current.entry]!)
     if (target >= 0) begin = Math.max(0, Math.min(starts[target]! + current!.line - Math.floor(limit / 2), lineCount - limit))
     lines = sliceRows(lines, begin, begin + limit)
+    hiddenAbove += begin
+    hiddenBelow += lineCount - begin - limit
+  }
+  // Rows past either edge are marked in the gutter of the edge row (`↑`, `↓`) and counted in a muted row under the list.
+  const marked = hiddenAbove + hiddenBelow > 0
+  if (marked) {
+    const last = Math.min(lineCount, limit) - 1
+    lines = mapRows(lines, (line, index) => {
+      const glyph = index === 0 && hiddenAbove > 0 ? '↑' : index === last && hiddenBelow > 0 ? '↓' : undefined
+      return glyph === undefined || !line.startsWith(' ') ? line : `${colors.muted(glyph)}${line.slice(1)}`
+    })
   }
   const tail: string[] = []
-  if (more > 0) {
-    const text = options.translate?.('↑ {above} more · ↓ {below} more', { above: hiddenAbove, below: hiddenBelow }) ?? `↑ ${String(hiddenAbove)} more · ↓ ${String(hiddenBelow)} more`
+  if (marked) {
+    const count = hiddenAbove + hiddenBelow
+    const text = options.translate?.('… +{count} more', { count }) ?? `… +${String(count)} more`
     tail.push(`   ${colors.muted(text)}`)
   }
   if (needsFooter) {
-    tail.push('', footerFor === undefined ? '' : segmentFooter(footerFor, available, colors, footerFor.segment.label ?? options.segmentLabel ?? 'Options'))
+    // A focused row without a segment says so on the same line, so the line is never an unexplained gap.
+    const absent = (): string => {
+      const label = segmentInfo.label ?? options.segmentLabel ?? 'Options'
+      const reason = options.translate?.('no choice') ?? 'no choice'
+      return `  ${colors.muted(`○ ${label}: ${reason}`)}`
+    }
+    tail.push('', footerFor !== undefined ? segmentLine(footerFor, available, colors, footerFor.segment.label ?? options.segmentLabel ?? 'Options') : focusedWithout ? clipRow(absent(), available) : '')
   }
   return tail.length === 0 ? lines : concatRows(lines, tail)
 }

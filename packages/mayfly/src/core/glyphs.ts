@@ -17,7 +17,7 @@ export type MayflyGlyphMode = 'unicode' | 'ascii'
  * marks the painters also emit (`← ↑ ↓ ↩`, `−`, `⋯`, the square corners, `•`, `✕`, `✻`, `»`, `⏵`, `⇥`).
  */
 export const ASCII_GLYPHS: Readonly<Record<string, string>> = Object.freeze({
-  '→': '>', '←': '<', '↑': '^', '↓': 'v', '↩': '<',
+  '→': '>', '←': '<', '↑': '^', '↓': 'v', '↩': '<', '▲': '^',
   '▸': '+', '▾': '-',
   '●': '*', '○': 'o', '◐': '~',
   '‹': '<', '›': '>',

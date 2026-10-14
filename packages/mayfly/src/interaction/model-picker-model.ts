@@ -10,13 +10,3 @@ export interface ModelPickerItem {
   readonly efforts?: readonly string[] | undefined
   readonly defaultEffort?: string | undefined
 }
-
-export function formatContextWindow(tokens: number): string {
-  if (tokens < 1024) return `${tokens}`
-  const units = ['k', 'm', 'g']
-  let value = tokens
-  let unit = -1
-  while (value >= 1024 && unit < units.length - 1) { value /= 1024; unit += 1 }
-  const text = Number.isInteger(value) || value >= 10 ? `${Math.round(value)}` : value.toFixed(1)
-  return `${text}${units[unit]}`
-}

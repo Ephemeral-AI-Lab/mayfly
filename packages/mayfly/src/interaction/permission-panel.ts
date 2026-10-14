@@ -93,7 +93,7 @@ export function openPermissionPanel(ctx: Context): void {
       id: name,
       label,
       detail: presetDescription(spec),
-      ...(name === current ? { badge: t('current') } : {}),
+      ...(name === current ? { current: true } : {}),
       /* Full access changes the sandbox and approval policy together, so it
          runs through the shared decision with its consequence spelled out. */
       ...(spec.sandbox === 'danger-full-access' ? { confirm: {

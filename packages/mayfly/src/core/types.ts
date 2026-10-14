@@ -991,6 +991,13 @@ declare module '@deepseek-ai/cordis' {
      */
     'mayfly/editor-slot-swapped'(occupied: boolean): void
     /**
+     * A panel (an editor-presentation overlay whose root is a borderless `overlay` or `surface`, never a decision card)
+     * opened or closed. The status footer and the notification row stand aside while it is open.
+     * @param open - whether a panel is the editor slot's occupant.
+     * @mode emit
+     */
+    'mayfly/panel-open-changed'(open: boolean): void
+    /**
      * The decision the user is being asked for changed: an approval, a question, or a plan review became the active
      * panel, or the last one settled. The activity row names the wait (and stays up above the panel) while one is
      * pending. Emitted by `mayfly-approval` and `mayfly-questions`; unfiltered.

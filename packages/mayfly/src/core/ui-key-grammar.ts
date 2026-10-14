@@ -56,6 +56,8 @@ export type GrammarControl =
     readonly stuckLeft?: true
   }
   | { readonly kind: 'empty-list' }
+  /** The slider: `label` names `←`/`→`; `stuckLeft` means `←` would change nothing (the first level shows), `unpin` that `Delete` has a pin to drop. */
+  | { readonly kind: 'slider', readonly label: string, readonly adjustable: boolean, readonly stuckLeft?: true, readonly unpin?: boolean }
   /** The prompt: what its keys can do now (`ui-interaction-prompt.ts` holds the draft the booleans summarize). */
   | {
     readonly kind: 'prompt'
@@ -154,6 +156,10 @@ export type GrammarIntent =
   | { readonly kind: 'complete' }
   | { readonly kind: 'number-step', readonly delta: -1 | 1 }
   | { readonly kind: 'prompt', readonly op: PromptOperation }
+  | { readonly kind: 'slider-step', readonly delta: -1 | 1 }
+  | { readonly kind: 'slider-edge', readonly end: 'start' | 'end' }
+  | { readonly kind: 'slider-unpin' }
+  | { readonly kind: 'slider-accept' }
 
 /** What a prompt key does; the compiler applies each to the prompt's draft or its editor. */
 export type PromptOperation =
@@ -190,7 +196,7 @@ const ESCAPE_LABEL: Readonly<Record<EscapeStep, string>> = {
 }
 
 /** Hint priorities: Escape is reserved, then the primary operation, then navigation; digits repeat Enter, so they yield to arrows. */
-const PRIORITY = { escape: 120, primary: 100, accelerator: 96, adjust: 95, rail: 94, navigate: 90, numbered: 88, secondary: 85, group: 80 } as const
+const PRIORITY = { escape: 120, primary: 100, accelerator: 96, adjust: 95, rail: 94, filter: 93, navigate: 90, numbered: 88, secondary: 85, group: 80 } as const
 
 const action = (id: string): GrammarMatch => ({ kind: 'action', action: id })
 
@@ -323,7 +329,7 @@ function listText(bindings: GrammarBinding[], state: GrammarState): void {
   // A slash list takes typed text only once `/` has started the search; a type list starts one with any printable key.
   if (list.filterMode === 'slash' && !list.searching) return
   push(bindings, { kind: 'text', space: list.searching }, { kind: 'search-type' },
-    list.searching ? undefined : { id: 'search', keys: 'Type', label: 'filter', priority: PRIORITY.primary })
+    list.searching ? undefined : { id: 'search', keys: 'Type', label: 'filter', priority: PRIORITY.filter })
 }
 
 function rowMovement(bindings: GrammarBinding[], state: GrammarState, control: Extract<GrammarControl, { readonly kind: 'row' }>): void {
@@ -462,6 +468,21 @@ export function keyGrammar(state: GrammarState): readonly GrammarBinding[] {
       rowBindings(bindings, state, control)
       listText(bindings, state)
       break
+    case 'slider': {
+      // Like a segment strip: `←` is the slider's only while a level is before the one on show; at the first level it goes to the rail.
+      const stuck = control.stuckLeft === true
+      if (control.adjustable) {
+        const adjust = { id: 'adjust', label: control.label, priority: PRIORITY.adjust, actions: [ACTION_SEGMENT_LEFT, ACTION_SEGMENT_RIGHT] }
+        if (!stuck) push(bindings, action(ACTION_SEGMENT_LEFT), { kind: 'slider-step', delta: -1 }, adjust)
+        push(bindings, action(ACTION_SEGMENT_RIGHT), { kind: 'slider-step', delta: 1 }, stuck ? adjust : undefined)
+        push(bindings, action(ACTION_HOME), { kind: 'slider-edge', end: 'start' })
+        push(bindings, action(ACTION_END), { kind: 'slider-edge', end: 'end' })
+      }
+      if (stuck || !control.adjustable) railLeft(bindings, state)
+      if (control.unpin === true) push(bindings, action(ACTION_RESET_FIELD), { kind: 'slider-unpin' }, { id: 'reset', label: 'use default', priority: PRIORITY.adjust - 1, actions: [ACTION_RESET_FIELD] })
+      push(bindings, action(ACTION_SUBMIT), { kind: 'slider-accept' }, { id: 'activate', label: 'confirm', priority: PRIORITY.primary, actions: [ACTION_SUBMIT] })
+      break
+    }
     case 'empty-list':
       push(bindings, action(ACTION_SUBMIT), { kind: 'accept' })
       railLeft(bindings, state)

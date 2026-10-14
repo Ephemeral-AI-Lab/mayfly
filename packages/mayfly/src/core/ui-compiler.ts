@@ -12,6 +12,7 @@ import type {
   MayflyDiagramNode,
   MayflyImageNode,
   MayflyPromptNode,
+  MayflySliderNode,
   MayflyFormField,
   MayflyInlineSpan,
   MayflyListItem,
@@ -27,7 +28,7 @@ import type {
   MayflyPagePath,
 } from '@ephemeral-ai/mayfly-ui'
 import { textOf } from '@ephemeral-ai/mayfly-ui'
-import { CURSOR_MARKER, HStack, ScrollView, type Component } from '@earendil-works/pi-tui'
+import { CURSOR_MARKER, ScrollView, type Component } from '@earendil-works/pi-tui'
 import { renderLayoutFrame, type LayoutBox, type LayoutRect } from '@earendil-works/pi-tui/dist/layout.js'
 import { getLayoutNode, LAYOUT_NODE, type LayoutNode, type LayoutViewport } from '@earendil-works/pi-tui/dist/layout-node.js'
 import { glyphRows } from './glyphs.ts'
@@ -45,16 +46,15 @@ import {
   renderOverflowRow,
   renderProgress,
   renderHintRow,
+  PANEL_GUTTER,
   renderSurfaceHead,
-  renderSurfaceTail,
-  surfaceBorderPaint,
   type HintPart,
   renderTabs,
   type PatternFocus,
 } from './ui-patterns.ts'
 import { concatRows, findMarkerRow, isVirtualRows, mapRows, prepareRows, sameMaterializedRows, sliceRows, unclampedRows, virtualRows } from './ui-rows.ts'
 import { ColumnStack, RowStack, onScreen, placeChild } from './ui-stacks.ts'
-import { sliceByColumn, truncateToWidth, visibleWidth } from './width.ts'
+import { sliceByColumn, visibleWidth } from './width.ts'
 import { fieldActions, fieldReset, type UiFieldAction } from './ui-interaction-field-actions.ts'
 import { fieldDecor, fieldDisplayError, stepNumber } from './ui-interaction-form.ts'
 import { editorWidth, formHeading, formLabelWidth, matchingSuggestions, paintFormField, type FieldDecor } from './ui-form-paint.ts'
@@ -87,6 +87,8 @@ import { canStepLeft, railGroupFor, type TabsTraits } from './ui-focus-levels.ts
 import { isRail, tabsShape } from './ui-tabs-paint.ts'
 import { UiImagePainter } from './ui-image.ts'
 import { paintPrompt, UiPromptEditor, type PromptPaint } from './ui-prompt.ts'
+import { sliderGrammar } from './ui-interaction-slider.ts'
+import { paintSlider } from './ui-slider-paint.ts'
 import { promptCompletionsOpen, promptRecallActive } from './ui-interaction-prompt.ts'
 import type { MayflyUiImageSource } from './ui-images.ts'
 import { countWork, type MayflyWorkCounters } from './ui-work-counters.ts'
@@ -361,6 +363,7 @@ type ControlDescriptor =
   | (ControlBase & { readonly kind: 'field-action', readonly address: MayflyFieldAddress, readonly action: UiFieldAction })
   | (ControlBase & { readonly kind: 'editor' })
   | (ControlBase & { readonly kind: 'prompt', readonly node: MayflyPromptNode })
+  | (ControlBase & { readonly kind: 'slider', readonly node: MayflySliderNode })
   | (ControlBase & { readonly kind: 'scroll' })
   | (ControlBase & { readonly kind: 'list', readonly node: MayflyListNode })
 
@@ -754,6 +757,20 @@ function promptComponent(node: MayflyPromptNode, state: FocusState, options: Run
   return component
 }
 
+/**
+ * A `slider`: the rows of `ui-slider-paint.ts` over the level the surface model holds for it. Outside an interactive
+ * surface (no model) the node's own seed is drawn and the control takes no focus.
+ */
+function sliderComponent(node: MayflySliderNode, state: FocusState, options: RuntimeCompilerOptions, key: string): MayflyComponent {
+  const runtime = options.listRuntime
+  const model = runtime.interaction
+  const address = { pagePath: runtime.pagePath(node), controlId: node.id }
+  const component = staticComponent(width => paintSlider({ node, model: model?.slider(address), width, colors: options.colors }), options)
+  if (model === undefined) return component
+  state.bindControls([key], { component, axis: 'none' })
+  return component
+}
+
 /** A chart's rows depend on its node, the width, and the palette alone, so they are painted once per width. */
 function chartComponent(node: MayflyChartNode, options: RuntimeCompilerOptions): MayflyComponent {
   return pureStaticComponent(width => renderChartRows(node, Math.max(1, width), options.components, options.colors), options)
@@ -882,88 +899,22 @@ function pad(component: Component, amount: number, options: RuntimeCompilerOptio
 }
 
 /**
- * A framed surface (`overlay` or `surface` chrome): the inset title rule, side bars, and bottom rule in the chrome's
- * border paint, with at least one column of gutter inside each bar (`padding` 2 adds a second).
+ * A surface: the head (a panel's full-width rule, title, description, and blank row; a lane's titled rule; or the bold
+ * title) over the child, the footer, and the hint row. A panel (`overlay` or `surface` chrome) is borderless: its child,
+ * footer, and hint sit inside the panel gutter (`padding` widens it), and the head's own rows carry the same indent.
  */
-function framedSurfaceComponent(node: Extract<CompilableNode, { readonly kind: 'surface' }>, chrome: 'surface' | 'overlay', child: Component, footer: Component | undefined, contextHint: Component | undefined, options: RuntimeCompilerOptions): MayflyComponent & { [LAYOUT_NODE](): LayoutNode } {
-  const body = retain(new ColumnStack(), 'surface body', options)
-  body.addChild(retain(staticComponent(width => renderSurfaceHead(withDirtyBadge(node, options), width, options.colors).slice(1), options), 'surface head', options))
-  body.addChild(child, options.listRuntime.interaction === undefined ? {} : { grow: 1, minSize: 1 })
-  if (footer !== undefined) body.addChild(footer)
-  if (contextHint !== undefined) body.addChild(contextHint)
-
-  const paint = surfaceBorderPaint(chrome, options.colors, node.border)
-  const glyphs = options.components.presentation?.glyphs
-  const bar = glyphRows(['│'], glyphs)[0]!
-  const gutter = Math.max(1, node.padding ?? 0)
-  let layoutRows = 1
-  const captureLayoutRows = (viewport: LayoutViewport): boolean => {
-    layoutRows = Math.min(LAYOUT_VALUE_MAX, Math.max(1, Math.floor(viewport.height)))
-    return viewport.width >= 3
-  }
-  const frameVisible = (viewport: LayoutViewport): boolean => viewport.width >= 3
-  const paddingVisible = (index: number) => (viewport: LayoutViewport): boolean => viewport.width >= 5 + index * 2
-  // The bars are as tall as the layout's frame; both sides share the rows painted for one height.
-  let bars: { readonly rows: number, readonly lines: string[] } | undefined
-  const borderRows = (): string[] => {
-    if (bars?.rows !== layoutRows) bars = { rows: layoutRows, lines: Array.from({ length: layoutRows }, () => paint(bar)) }
-    return bars.lines
-  }
-  const middle = new HStack()
-  middle.addChild(staticComponent(borderRows, options, false), { basis: 1, grow: 0, shrink: 1, visible: captureLayoutRows })
-  for (let index = 0; index < gutter; index += 1) {
-    middle.addChild(staticComponent(() => BLANK_ROW, options, false), { basis: 1, grow: 0, shrink: 100, visible: paddingVisible(index) })
-  }
-  middle.addChild(body, { basis: 1, grow: 1, shrink: 1, minSize: 0 })
-  for (let index = 0; index < gutter; index += 1) {
-    middle.addChild(staticComponent(() => BLANK_ROW, options, false), { basis: 1, grow: 0, shrink: 100, visible: paddingVisible(index) })
-  }
-  middle.addChild(staticComponent(borderRows, options, false), { basis: 1, grow: 0, shrink: 1, visible: captureLayoutRows })
-
-  const layout = new ColumnStack()
-  layout.addChild(retain(staticComponent(width => renderSurfaceHead(withDirtyBadge(node, options), width, options.colors).slice(0, 1), options), 'surface head', options), { basis: 1, grow: 0, shrink: 0, visible: frameVisible })
-  layout.addChild(middle, { basis: 0, grow: 1, shrink: 1, minSize: 0 })
-  layout.addChild(retain(staticComponent(width => renderSurfaceTail(node, width, options.colors), options), 'surface tail', options), { basis: 1, grow: 0, shrink: 0, visible: frameVisible })
-
-  const framed = {
-    [LAYOUT_NODE](): LayoutNode { return layout[LAYOUT_NODE]() },
-    render(width: number): string[] {
-      const available = Math.max(1, Math.floor(width))
-      if (available < 3) return mapRows(body.render(available), row => { countWork(options.counters, 'stringsMeasured'); return truncateToWidth(row, available, '') })
-      const horizontalPadding = Math.min(gutter, Math.max(0, Math.floor((available - 3) / 2)))
-      const contentWidth = Math.max(1, available - 2 - horizontalPadding * 2)
-      // The frame's own rows convert to the glyph mode here; the body's painters converted theirs.
-      const head = glyphRows(renderSurfaceHead(withDirtyBadge(node, options), available, options.colors).slice(0, 1), glyphs)
-      const bodyRows = body.render(contentWidth)
-      const tail = glyphRows(renderSurfaceTail(node, available, options.colors), glyphs)
-      const border = paint(bar)
-      const inset = ' '.repeat(horizontalPadding)
-      const rows = mapRows(bodyRows, row => {
-        // A row that fits is measured once; only a row that overflows is clipped and measured again.
-        countWork(options.counters, 'stringsMeasured')
-        const rowWidth = visibleWidth(row)
-        if (rowWidth <= contentWidth) return `${border}${inset}${row}${' '.repeat(contentWidth - rowWidth)}${inset}${border}`
-        countWork(options.counters, 'stringsMeasured')
-        const clipped = truncateToWidth(row, contentWidth, '')
-        return `${border}${inset}${clipped}${' '.repeat(Math.max(0, contentWidth - visibleWidth(clipped)))}${inset}${border}`
-      }, { declaredWidth: available })
-      return concatRows(head, rows, tail)
-    },
-    invalidate(): void { layout.invalidate() },
-  }
-  // The body starts under the frame's title rule, in a render and in a layout alike.
-  placeChild(body, framed, 1)
-  return framed
-}
-
 function surfaceComponent(node: Extract<CompilableNode, { readonly kind: 'surface' }>, child: Component, footer: Component | undefined, contextHint: Component | undefined, options: RuntimeCompilerOptions): MayflyComponent {
-  if (node.chrome === 'overlay' || node.chrome === 'surface') return framedSurfaceComponent(node, node.chrome, child, footer, contextHint, options)
+  const panel = node.chrome === 'overlay' || node.chrome === 'surface'
   const component = new ColumnStack()
   component.addChild(retain(staticComponent(width => renderSurfaceHead(withDirtyBadge(node, options), width, options.colors), options), 'surface head', options))
-  component.addChild(child, options.listRuntime.interaction === undefined ? {} : { grow: 1, minSize: 1 })
-  if (footer !== undefined) component.addChild(footer)
-  if (contextHint !== undefined) component.addChild(contextHint)
-  return pad(component, node.padding ?? 0, options)
+  const body = panel ? new ColumnStack() : component
+  body.addChild(child, options.listRuntime.interaction === undefined ? {} : { grow: 1, minSize: 1 })
+  if (footer !== undefined) body.addChild(footer)
+  // A panel sets its hint row off from the content by a blank row.
+  if (panel && contextHint !== undefined) body.addChild(staticComponent(() => BLANK_ROW, options, false))
+  if (contextHint !== undefined) body.addChild(contextHint)
+  if (panel) component.addChild(pad(body, PANEL_GUTTER + Math.max(0, (node.padding ?? 0) - 1), options), options.listRuntime.interaction === undefined ? {} : { grow: 1, minSize: 1 })
+  return panel ? component : pad(component, node.padding ?? 0, options)
 }
 
 function controlKey(kind: string, controlId: string, itemId?: string, pagePath: MayflyPagePath = []): string {
@@ -1105,6 +1056,11 @@ function grammarStateFor(state: FocusState, options: RuntimeCompilerOptions, con
       case 'scroll': return { kind: 'scroll' }
       case 'list': return { kind: 'empty-list' }
       case 'prompt': return { kind: 'prompt', ...runtime.promptGrammar(active.node), ...(active.node.submitLabel === undefined ? {} : { submitLabel: active.node.submitLabel }), ...(active.node.recallLabel === undefined ? {} : { recallLabel: active.node.recallLabel }) }
+      case 'slider': {
+        const slider = interaction?.slider({ pagePath: runtime.pagePath(active.node), controlId: active.node.id })
+        const facts = slider === undefined ? undefined : sliderGrammar(slider)
+        return { kind: 'slider', label: (active.node.hintLabel ?? 'adjust').toLowerCase(), adjustable: facts?.adjustable ?? false, ...(facts?.stuckLeft === true ? { stuckLeft: true as const } : {}), ...(facts?.unpin === true ? { unpin: true } : {}) }
+      }
       case 'toggle': return { kind: 'toggle', ...(formEnterAction(active.form) === undefined ? {} : { enterSubmits: true }) }
       case 'submit': return { kind: 'submit' }
       case 'field-action': return { kind: 'field-action' }
@@ -1285,7 +1241,7 @@ function hintLimit(width: number): number {
   return width >= 80 ? 4 : 3
 }
 
-function contextKeyHintRows(state: FocusState, options: RuntimeCompilerOptions, width: number, mode: CompilerMode, escapeLabel: EscapeLabel | undefined): string[] {
+function contextKeyHintRows(state: FocusState, options: RuntimeCompilerOptions, width: number, mode: CompilerMode, escapeLabel: EscapeLabel | undefined, indent = 2): string[] {
   if (!state.focused) return []
   const controls = reconcile(state)
   const parts = contextualKeyHints(state, options, controls, controls[state.lastIndex], mode, escapeLabel, hintLimit(width))
@@ -1309,12 +1265,12 @@ function contextKeyHintRows(state: FocusState, options: RuntimeCompilerOptions, 
   const safeWidth = Math.max(1, Math.floor(width))
   // The painted row is a pure function of the translated candidates, the width, and the palette, so an unchanged hint
   // answers from the surface's memo while the parts themselves are still read fresh on every paint.
-  const key = `${String(safeWidth)}\0${candidates.map(candidate => candidate.map(part => `${part.keys}\x03${part.label ?? ''}`).join('\x01')).join('\x02')}`
+  const key = `${String(safeWidth)}\0${String(indent)}\0${candidates.map(candidate => candidate.map(part => `${part.keys}\x03${part.label ?? ''}`).join('\x01')).join('\x02')}`
   const memo = options.listRuntime.hintMemo
   if (memo !== undefined && memo.colors === options.colors && memo.key === key) return memo.rows
   let rows: string[] = []
   for (const candidate of candidates) {
-    const row = renderHintRow(candidate, options.colors)
+    const row = renderHintRow(candidate, options.colors, indent)
     countWork(options.counters, 'stringsMeasured')
     if (visibleWidth(row) <= safeWidth) { rows = [row]; break }
   }
@@ -1324,8 +1280,8 @@ function contextKeyHintRows(state: FocusState, options: RuntimeCompilerOptions, 
   return rows
 }
 
-function contextKeyHintComponent(state: FocusState, options: RuntimeCompilerOptions, mode: CompilerMode, escapeLabel: EscapeLabel | undefined, open?: () => boolean): Component {
-  return staticComponent(width => open?.() === false ? [] : contextKeyHintRows(state, options, width, mode, escapeLabel), options, false)
+function contextKeyHintComponent(state: FocusState, options: RuntimeCompilerOptions, mode: CompilerMode, escapeLabel: EscapeLabel | undefined, open?: () => boolean, indent = 2): Component {
+  return staticComponent(width => open?.() === false ? [] : contextKeyHintRows(state, options, width, mode, escapeLabel, indent), options, false)
 }
 
 /** Printable text or the opening of a bracketed paste. */
@@ -1471,6 +1427,9 @@ function walkControls(node: CompilableNode, options: RuntimeCompilerOptions, pat
         break
       case 'prompt':
         if (options.listRuntime.interaction !== undefined) controls.push({ kind: 'prompt', node: current, key: scopedControlKey('prompt', current.id), renderKey: current.id, identity: scopedFocusIdentity(current.id), preferred: current.autofocus === true, group: scopedControlGroup('prompt', current.id), navigation: 'none' })
+        break
+      case 'slider':
+        if (options.listRuntime.interaction !== undefined) controls.push({ kind: 'slider', node: current, key: scopedControlKey('slider', current.id), renderKey: current.id, identity: scopedFocusIdentity(current.id), preferred: current.autofocus === true, group: scopedControlGroup('slider', current.id), navigation: 'none' })
         break
       case 'actions': {
         const scope = current.scope === undefined ? {} : { scope: [current.scope].flat() }
@@ -1844,7 +1803,7 @@ function compileUnit(node: CompilableNode, state: FocusState, options: RuntimeCo
             segment: item => {
               if (item.segment === undefined) return undefined
               return choice === undefined
-                ? { segment: item.segment, pinned: item.segment.selectedId ?? null, active: item.segment.selectedId ?? item.segment.inheritedId ?? item.segment.options.find(option => option.disabled !== true)?.id }
+                ? { segment: item.segment, pinned: item.segment.selectedId ?? null, active: item.segment.selectedId ?? item.segment.inheritedId }
                 : { segment: item.segment, pinned: choicePinned(choice, item.id), active: choiceSegment(choice, item.id) }
             },
           },
@@ -1945,6 +1904,7 @@ function compileUnit(node: CompilableNode, state: FocusState, options: RuntimeCo
     case 'chart': return chartComponent(node, options)
     case 'image': return imageComponent(node, options)
     case 'prompt': return promptComponent(node, state, options, scopedControlKey('prompt', node.id))
+    case 'slider': return sliderComponent(node, state, options, scopedControlKey('slider', node.id))
   }
 }
 
@@ -1953,7 +1913,7 @@ function compileUnit(node: CompilableNode, state: FocusState, options: RuntimeCo
  * that declares itself the default, else the first control's group.
  */
 function homeGroup(controls: readonly ControlDescriptor[]): string | undefined {
-  const declared = controls.find(control => (control.kind === 'event' ? control.listEntry?.node : control.kind === 'list' || control.kind === 'prompt' ? control.node : undefined)?.autofocus === true)
+  const declared = controls.find(control => (control.kind === 'event' ? control.listEntry?.node : control.kind === 'list' || control.kind === 'prompt' || control.kind === 'slider' ? control.node : undefined)?.autofocus === true)
     ?? controls.find(control => control.kind === 'event' && control.role === 'action' && control.preferred)
   return declared?.group ?? controls[0]?.group
 }
@@ -2740,8 +2700,10 @@ class CompiledSurface implements MayflyEditorShellComponent {
     runtimeOptions.reuse.beginPass()
     // A surface with `hint: 'completions'` draws its hint row only while the editor's completion list is open.
     const hintOpen = node.kind === 'surface' && node.hint === 'completions' ? () => runtimeOptions.completionsOpen?.() === true || this.surfaceRuntime.promptCompletionsOpen() : undefined
-    const contextHint = contextKeyHints ? contextKeyHintComponent(this.state, runtimeOptions, mode, escapeLabel, hintOpen) : undefined
-    this.hintRowsFor = contextKeyHints ? width => hintOpen?.() === false ? [] : contextKeyHintRows(this.state, runtimeOptions, width, mode, escapeLabel) : undefined
+    // A panel's gutter indents its hint row; every other root keeps the row's own two-column indent.
+    const hintIndent = node.kind === 'surface' && (node.chrome === 'overlay' || node.chrome === 'surface') ? 0 : 2
+    const contextHint = contextKeyHints ? contextKeyHintComponent(this.state, runtimeOptions, mode, escapeLabel, hintOpen, hintIndent) : undefined
+    this.hintRowsFor = contextKeyHints ? width => hintOpen?.() === false ? [] : contextKeyHintRows(this.state, runtimeOptions, width, mode, escapeLabel, hintIndent) : undefined
     const compiledRoot = compileNode(node, this.state, runtimeOptions, '$', mode, node.kind === 'surface' ? contextHint : undefined)
     if (contextHint === undefined || node.kind === 'surface') this.root = compiledRoot
     else {
@@ -3421,6 +3383,15 @@ class CompiledSurface implements MayflyEditorShellComponent {
       case 'numbered': this.numbered(data, active!); return
       case 'tab-switch': this.switchTab(intent.delta, controls, active); return
       case 'prompt': this.promptKey(intent.op, data, active as Extract<ControlDescriptor, { readonly kind: 'prompt' }>); return
+      case 'slider-step':
+      case 'slider-edge':
+      case 'slider-unpin':
+      case 'slider-accept': {
+        const slider = active as Extract<ControlDescriptor, { readonly kind: 'slider' }>
+        const address = { pagePath: this.surfaceRuntime.pagePath(slider.node), controlId: slider.node.id }
+        model?.updateSlider(address, intent.kind === 'slider-step' ? { kind: 'step', delta: intent.delta } : intent.kind === 'slider-edge' ? { kind: 'edge', end: intent.end } : intent.kind === 'slider-unpin' ? { kind: 'unpin' } : { kind: 'accept' })
+        return
+      }
       case 'search-clear': {
         this.surfaceRuntime.search(listNode!).clear()
         model!.updateChoice(listAddress!, { kind: 'clear-search' })
