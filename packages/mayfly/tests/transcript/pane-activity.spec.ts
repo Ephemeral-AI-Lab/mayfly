@@ -1,66 +1,59 @@
 /**
- * `mayfly-pane-activity` plugin: the mode machine and the sole live-status
- * row. Covers the moon/braille rows per phase with their present-tense
- * labels, the turn's elapsed time, the Standard-only live detail (and the
- * file changes that carry none), the teaching-tip rotation (picked on
- * loading-kind change, the kimi semantics), the dialog empty render, the
- * idle placeholder ratchet, snapshot-seeded attach, the per-style intervals,
- * the responsive width ladder, and unload cleanup.
+ * `mayfly-pane-activity` plugin: the activity row above the editor. Decision tests of the phases and their labels, the
+ * header and its tail, the second line (the arguments of the calls in flight, else the tip), the tick that re-reads the
+ * elapsed time while the row is live, the dialog hide, the stopping hold, the locale switch, the seed on attach, the
+ * responsive narrowing, and the unload.
+ * @module @ephemeral-ai/mayfly/tests/transcript/pane-activity
  */
 
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
+import type { Context } from '@deepseek-ai/cordis'
 import * as activity from '../../src/transcript/pane-activity.ts'
 import { buildTipRotation } from '../../src/transcript/status-tips.ts'
-import { MOON_SPINNER_FRAMES, MOON_SPINNER_INTERVAL_MS } from '../../src/transcript/spinners.ts'
+import { loaderFrameGlyph } from '../../src/core/ui-loader-animation.ts'
 import { STATUS_TIPS } from '../../src/transcript/tips-content.ts'
-import { fakeMayflyComponents } from './helpers.ts'
-import { bootPanePlugin, type PanePluginHarness } from './pane-fakes.ts'
-import { asAgent, fakeAgent, type FakeAgent } from './status-fakes.ts'
-import {
-  assistantEvent,
-  event,
-  reasoningDelta,
-  resetSeq,
-  textDelta,
-  toolCallEvent,
-  toolResultEvent,
-  turnEnd,
-  turnStart,
-} from './helpers.ts'
-import { visibleWidth } from '../../src/core/width.ts'
-import type { Context } from '@deepseek-ai/cordis'
-import type { SessionEvent } from '@deepseek-ai/dsh-session'
-// Empty type import activates the 'settings/document-updated' Events merge.
-import type {} from '@deepseek-ai/dsh-settings'
+import type { TickSource } from '../../src/transcript/tick.ts'
 import { MayflyLocaleService } from '../../src/frontend/locale.ts'
 import { initialConversationFacts } from '../../src/conversation/facts.ts'
+import { visibleWidth } from '../../src/core/width.ts'
+import { bootPanePlugin, type PaneFakeScreen, type PanePluginHarness } from './pane-fakes.ts'
+import { asAgent, fakeAgent, type FakeAgent } from './status-fakes.ts'
+import { assistantEvent, reasoningDelta, resetSeq, textDelta, toolCallEvent, toolResultEvent, turnEnd, turnStart } from './helpers.ts'
+// Empty type import activates the 'settings/document-updated' Events merge.
+import type {} from '@deepseek-ai/dsh-settings'
 
-/** Fake timers recording interval creation/clearing; ticks run manually. */
+/** The host's one-second tick, driven by the spec: each `fire` is one tick, and the subscriptions are counted. */
+class FakeTick implements TickSource {
+  private readonly listeners = new Set<(now: number) => void>()
+  subscribe(listener: (now: number) => void): () => void {
+    this.listeners.add(listener)
+    return () => { this.listeners.delete(listener) }
+  }
+  fire(now: number): void {
+    for (const listener of [...this.listeners]) listener(now)
+  }
+  get subscribers(): number { return this.listeners.size }
+}
+
+/** Stopping hold timers, recorded: the hold is the only timer the row owns. */
 class FakeTimers implements activity.ActivityTimers {
-  readonly ticks: (() => void)[] = []
-  readonly intervals: number[] = []
-  readonly timeouts: { readonly ms: number, fire(): void }[] = []
-  cleared = 0
-
-  setInterval(callback: () => void, ms: number): ReturnType<typeof setInterval> {
-    this.ticks.push(callback)
-    this.intervals.push(ms)
-    return this.ticks.length as unknown as ReturnType<typeof setInterval>
-  }
-
-  clearInterval(_handle: ReturnType<typeof setInterval>): void {
-    this.cleared += 1
-  }
-
+  readonly timeouts: { readonly ms: number, fire: () => void, cleared: boolean }[] = []
   setTimeout(callback: () => void, ms: number): ReturnType<typeof setTimeout> {
-    const entry = { ms, fire: callback }
+    // A timer that fired or was cleared is no longer live.
+    const entry = { ms, cleared: false, fire: (): void => { entry.cleared = true; callback() } }
     this.timeouts.push(entry)
-    return this.timeouts.length as unknown as ReturnType<typeof setTimeout>
+    return entry as unknown as ReturnType<typeof setTimeout>
   }
+  clearTimeout(handle: ReturnType<typeof setTimeout>): void {
+    const entry = handle as unknown as { cleared: boolean }
+    entry.cleared = true
+  }
+  get live(): number { return this.timeouts.filter(entry => !entry.cleared).length }
+}
 
-  clearTimeout(_handle: ReturnType<typeof setTimeout>): void {
-    this.cleared += 1
-  }
+/** The notification line above the editor is another pane's: the activity rows are the non-blank lines it does not draw. */
+function rows(screen: PaneFakeScreen, width?: number): string[] {
+  return screen.paneLines(width).filter(line => line.trim() !== '' && !line.includes('Alt+'))
 }
 
 afterEach(() => {
@@ -69,113 +62,238 @@ afterEach(() => {
   resetSeq()
 })
 
-/** The pinned activity clock: one minute after the fixture event epoch. */
+/** The pinned clock: one minute after the fixture event epoch. */
 const NOW = 1_700_000_060_000
+const FIRST_TIP = buildTipRotation(STATUS_TIPS)[0]!.text
+/** The loader glyph of a model phase at a frame: `fill` for the writing and waiting phases. */
+const fill = (frame = 0): string => loaderFrameGlyph('fill', frame)
 
-interface ActivityHarness extends PanePluginHarness {
-  timers: FakeTimers
+/** A fake agent whose status is running. */
+function runningAgent(agent: FakeAgent): FakeAgent {
+  agent.status = 'running'
+  return agent
 }
+
+type Facts = ReturnType<typeof initialConversationFacts>
 
 /**
- * Boot the pane with fake timers installed.
- * @param current - agent preloaded onto `mayflySession.current`, if any.
+ * Boot the pane over a hand-driven facts stream, a mutable `mayfly` settings section, a fake tick, and a pinned clock.
+ * @param initial - the facts the row starts from (the session is active unless said otherwise).
+ * @param settings - the `mayfly` settings section the row reads.
+ * @param stopPending - whether a stop is latched.
  */
-async function boot(current: FakeAgent | null = null): Promise<ActivityHarness> {
+async function bootFacts(initial: Partial<Facts>, settings: Record<string, unknown> = {}, stopPending = false, status: 'running' | 'idle' = 'running') {
   const timers = new FakeTimers()
   activity.setActivityTimers(timers)
-  activity.setActivityClock(() => NOW)
-  const harness = await bootPanePlugin(activity, current)
-  return { ...harness, timers }
-}
-
-/** A fake agent preset to the given status. */
-function runningAgent(running: FakeAgent): FakeAgent {
-  running.status = 'running'
-  return running
-}
-
-/** The first moon-row tip: slot 0 of the SWRR rotation. */
-const FIRST_TIP = buildTipRotation(STATUS_TIPS)[0]!.text
-
-/** The waiting row: moon frame, the `Deep diving` label, and a tip. */
-const waiting = (frame = 0, tip = FIRST_TIP): string => `${MOON_SPINNER_FRAMES[frame]!} Deep diving · Tip: ${tip}`
-
-/** Emit one session event for the agent's session. */
-function emit2(ctx: Context, agent: FakeAgent, event: SessionEvent): void {
-  ctx.emit('session/event', agent.session as never, event)
+  let now = NOW
+  activity.setActivityClock(() => now)
+  const tick = new FakeTick()
+  const agent = fakeAgent([])
+  agent.status = status
+  let listener: ((value: Facts) => void) | undefined
+  const agentListeners = new Set<(value: ReturnType<typeof asAgent>) => void>()
+  let facts: Facts = { ...initialConversationFacts(), active: true, ...initial }
+  const section = { value: settings }
+  let stop = stopPending
+  const harness: PanePluginHarness = await bootPanePlugin(activity, agent, {
+    mayflyTick: tick,
+    mayflyUiInteraction: { notificationSnapshot: (): readonly never[] => [], subscribe: () => () => {}, createNotificationOwner: () => ({ report() {}, clear() {}, clearAll() {}, dispose() {} }) },
+    mayflyInteractionState: { settingsSource: () => section.value },
+    mayflyRequests: { stopPending: () => stop },
+    mayflySessionFacts: {
+      get current() { return facts },
+      currentAgent: asAgent(agent),
+      subscribe(next: (value: Facts) => void) {
+        listener = next
+        next(facts)
+        return () => {}
+      },
+      subscribeAgent(next: (value: ReturnType<typeof asAgent>) => void) {
+        agentListeners.add(next)
+        next(asAgent(agent))
+        return () => { agentListeners.delete(next) }
+      },
+    },
+  })
+  return {
+    ...harness,
+    timers,
+    tick,
+    /** The turn ends: the facts go inactive and the Agent's status flips back to idle. */
+    idle() {
+      facts = { ...facts, active: false, phase: 'idle' }
+      listener?.(facts)
+      agent.status = 'idle'
+      for (const next of agentListeners) next(asAgent(agent))
+    },
+    push(next: Partial<Facts>) {
+      facts = { ...facts, ...next }
+      listener?.(facts)
+    },
+    advance(ms: number) { now += ms },
+    settings(value: Record<string, unknown>) {
+      section.value = value
+      harness.ctx.emit('settings/document-updated', 'mayfly' as never, 1)
+    },
+    stop(pending: boolean) {
+      stop = pending
+      harness.ctx.emit('mayfly/request-stop-changed', pending)
+    },
+  }
 }
 
 describe('mayfly-pane-activity', () => {
-  it('mounts one bottom pane that renders the kimi placeholder row while idle', async () => {
-    const { ctx, screen, dispose } = await boot()
+  it('registers one bottom pane over its stable inject list, and draws no row while idle', async () => {
     expect(activity.name).toBe('mayfly-pane-activity')
-    expect(activity.inject).toEqual(['mayflyPanes', 'mayflySessionFacts', 'mayflyComponents'])
-    expect(ctx.mayflyPanes.list().find(entry => entry.id === 'mayfly.pane.activity')?.definition.title).toBeUndefined()
-    expect(screen.bottomChildren).toHaveLength(1)
-    // kimi's Spacer(1): the placeholder row is always present when the
-    // spinner is not, so the dock never jumps at the activity edges.
-    expect(screen.paneLines()).toEqual([''])
-    await dispose()
-    expect(screen.bottomChildren).toHaveLength(0)
-  })
-
-  it('keeps the activity row while the dedicated Agents pane is visible', async () => {
-    const harness = await boot(runningAgent(fakeAgent([])))
-    const agents = harness.ctx.mayflyPanes.register({
-      id: 'mayfly.pane.agents',
-      title: 'Agents',
-      placement: 'bottom',
-    }, { kind: 'text', content: 'agent row' })
-    expect(harness.screen.paneLines()).toEqual([
-      waiting(),
-      'agent row',
-    ])
-    agents.set(null)
-    expect(harness.screen.paneLines()).toEqual([waiting()])
-    agents.dispose()
+    expect(activity.inject).toEqual(['mayflyPanes', 'mayflySessionFacts', 'mayflyTick', 'mayflyUiInteraction'])
+    const harness = await bootFacts({ active: false, phase: 'idle' }, {}, false, 'idle')
+    expect(harness.ctx.mayflyPanes.list().find(entry => entry.id === 'mayfly.pane.activity')?.definition.title).toBeUndefined()
+    expect(rows(harness.screen)).toEqual([])
     await harness.dispose()
   })
 
-  it('shows the moon row with a teaching tip for a running agent (waiting)', async () => {
-    const agent = runningAgent(fakeAgent([]))
-    const { screen, timers, dispose } = await boot(agent)
-    expect(screen.paneLines()).toEqual([waiting()])
-    expect(timers.intervals).toEqual([120])
-
-    // Each tick advances the frame and requests a redraw.
-    const baseline = screen.renderRequests.length
-    timers.ticks[0]!()
-    expect(screen.paneLines()).toEqual([waiting(1)])
-    expect(screen.renderRequests.length).toBe(baseline + 1)
-
-    // The frame wraps around the moon cycle.
-    for (let index = 0; index < MOON_SPINNER_FRAMES.length - 1; index += 1) timers.ticks[0]!()
-    expect(screen.paneLines()).toEqual([waiting()])
-
-    // Unloading stops the animation.
-    await dispose()
-    expect(timers.cleared).toBe(1)
+  it('draws the waiting row with its tip on the line under it, and holds the tick only while the row is live', async () => {
+    const harness = await bootFacts({ phase: 'waiting', turnStartedAt: NOW })
+    expect(rows(harness.screen)).toEqual([`  ${fill()} Deep diving · 0s`, `    ⎿ Tip: ${FIRST_TIP}`])
+    // The glyph moves on the core's clock, not the pane's: the pane owns no frame timer, only the shared tick.
+    expect(harness.tick.subscribers).toBe(1)
+    expect(harness.timers.live).toBe(0)
+    harness.idle()
+    expect(rows(harness.screen)).toEqual([])
+    expect(harness.tick.subscribers).toBe(0)
+    await harness.dispose()
+    expect(harness.tick.subscribers).toBe(0)
   })
 
-  it('holds the spinner glyph still under reduced motion while each tick still republishes', async () => {
-    const timers = new FakeTimers()
-    activity.setActivityTimers(timers)
+  it('re-reads the elapsed time from the turn start on each tick', async () => {
+    const harness = await bootFacts({ phase: 'waiting', turnStartedAt: NOW - 3_000 })
+    expect(rows(harness.screen)[0]).toBe(`  ${fill()} Deep diving · 3s`)
+    harness.advance(2_000)
+    harness.tick.fire(NOW + 2_000)
+    expect(rows(harness.screen)[0]).toBe(`  ${fill()} Deep diving · 5s`)
+    // An idle Agent carries no elapsed anchor.
+    harness.idle()
+    expect(rows(harness.screen)).toEqual([])
+    await harness.dispose()
+  })
+
+  it('names the running category by its present-tense label, and puts the calls\' arguments on the line under it', async () => {
+    const harness = await bootFacts({ phase: 'tool', inFlight: [{ callId: 'c1', name: 'bash', detail: 'pnpm test' }] })
+    expect(rows(harness.screen)).toEqual(['  ● Running commands', '    ⎿ pnpm test'])
+    // Several calls in flight of different categories count instead of naming one.
+    harness.push({ inFlight: [{ callId: 'c1', name: 'bash', detail: 'pnpm test' }, { callId: 'c2', name: 'read', detail: 'src/a.ts' }] })
+    expect(rows(harness.screen)[0]).toBe('  ● Running 2 tools')
+    // A call whose arguments still stream is named by its preparing label.
+    harness.push({ inFlight: [{ callId: 'c3', name: 'write', preparing: true }] })
+    expect(rows(harness.screen)[0]).toBe(`  ● Preparing to write files`)
+    // A spawn is not named by the row: the agents pane owns its detail.
+    harness.push({ inFlight: [{ callId: 'c4', name: 'subagent', detail: 'Review' }] })
+    expect(rows(harness.screen)[0]).toBe('  ● Coordinating subagents')
+    await harness.dispose()
+  })
+
+  it('names the thinking stage by how long the model has thought, and the writing phase by its label', async () => {
+    const harness = await bootFacts({ phase: 'thinking', outputProgress: { chars: 0, initialChars: 0, startedAt: NOW - 1_000, updatedAt: NOW } })
+    expect(rows(harness.screen)[0]).toMatch(/^ {2}\S Pondering/u)
+    harness.push({ outputProgress: { chars: 0, initialChars: 0, startedAt: NOW - 20_000, updatedAt: NOW } })
+    expect(rows(harness.screen)[0]).toMatch(/^ {2}\S DeepThinking/u)
+    harness.push({ phase: 'composing', outputProgress: undefined })
+    expect(rows(harness.screen)[0]).toBe(`  ${fill()} Writing`)
+    await harness.dispose()
+  })
+
+  it('hides the row while a dialog takes the editor slot, and returns with a fresh tip', async () => {
+    const harness = await bootFacts({ phase: 'waiting', turnStartedAt: NOW })
+    expect(rows(harness.screen)).toHaveLength(2)
+    harness.ctx.emit('mayfly/editor-slot-swapped', true)
+    expect(rows(harness.screen)).toEqual([])
+    expect(harness.tick.subscribers).toBe(0)
+    harness.ctx.emit('mayfly/editor-slot-swapped', false)
+    expect(rows(harness.screen)[1]).toBe(`    ⎿ Tip: ${buildTipRotation(STATUS_TIPS)[1]!.text}`)
+    await harness.dispose()
+  })
+
+  it('shows the static stopping row while a stop drains, held for its minimum once the turn settles', async () => {
+    const harness = await bootFacts({ phase: 'tool', inFlight: [{ callId: 'c1', name: 'bash', detail: 'sleep 9' }] })
+    harness.stop(true)
+    expect(rows(harness.screen)).toEqual(['  ■ interrupting…', `    ⎿ Tip: ${FIRST_TIP}`])
+    // The turn settles at once: the acknowledgment holds for the rest of its 600 ms.
+    harness.push({ active: false, phase: 'idle', inFlight: [] })
+    harness.stop(false)
+    expect(rows(harness.screen)[0]).toBe('  ■ interrupting…')
+    expect(harness.timers.timeouts.at(-1)).toMatchObject({ ms: 600 })
+    harness.timers.timeouts.at(-1)!.fire()
+    expect(rows(harness.screen)).toEqual([`  ${fill()} Deep diving`, `    ⎿ Tip: ${FIRST_TIP}`])
+    await harness.dispose()
+    expect(harness.timers.live).toBe(0)
+  })
+
+  it('cancels a pending stopping hold when a fresh stop lands, and when the pane unloads', async () => {
+    const harness = await bootFacts({ phase: 'waiting' })
+    harness.stop(true)
+    harness.stop(false)
+    expect(harness.timers.live).toBe(1)
+    harness.stop(true)
+    expect(harness.timers.live).toBe(0)
+    harness.stop(false)
+    expect(harness.timers.live).toBe(1)
+    await harness.dispose()
+    expect(harness.timers.live).toBe(0)
+  })
+
+  it('starts in the stopping row when a stop is already draining at mount', async () => {
+    const harness = await bootFacts({ phase: 'waiting' }, {}, true)
+    expect(rows(harness.screen)[0]).toBe('  ■ interrupting…')
+    await harness.dispose()
+  })
+
+  it('keeps the header whole while it fits, sheds its counters and then its time as the row narrows, and never draws past the width', async () => {
+    const harness = await bootFacts({ phase: 'composing', turnStartedAt: NOW - 21_000, flowUp: 30 * 1024, flowDownChars: 16 * 1024 })
+    expect(rows(harness.screen, 200)).toEqual([`  ${fill()} Writing · 21s · ↑30k ↓4k`, `    ⎿ Tip: ${FIRST_TIP}`])
+    // The counters go first, then the time; the label stays.
+    expect(rows(harness.screen, 30)[0]).toBe(`  ${fill()} Writing · 21s · ↑30k ↓4k`)
+    expect(rows(harness.screen, 22)[0]).toBe(`  ${fill()} Writing`)
+    for (const width of [30, 22, 16, 12, 4]) {
+      expect(rows(harness.screen, width).every(line => visibleWidth(line) <= width)).toBe(true)
+    }
+    await harness.dispose()
+  })
+
+  it('reads the locale of the labels again when the locale changes, in place', async () => {
+    const harness = await bootFacts({ phase: 'tool', inFlight: [{ callId: 'c1', name: 'bash', detail: 'ls' }] })
+    const pane = harness.screen.bottomChildren.find(child => child !== undefined)
+    const localeFiber = await harness.ctx.plugin({
+      name: 'activity-locale-zh',
+      apply(ctx: Context) {
+        const locale = new MayflyLocaleService(ctx, { systemLocale: 'zh' })
+        ctx.effect(() => () => locale.dispose())
+      },
+    })
+    await Promise.resolve()
+    expect(rows(harness.screen)[0]).toContain('正在运行命令')
+    expect(harness.screen.bottomChildren.find(child => child !== undefined)).toBe(pane)
+    await localeFiber.dispose()
+    await harness.dispose()
+  })
+
+  it('seeds the phase from the snapshot on attach, and counts from the phase\'s own start', async () => {
     activity.setActivityClock(() => NOW)
-    const components = { ...fakeMayflyComponents(), presentation: { glyphs: 'unicode' as const, monochrome: false, reducedMotion: true } }
-    const { screen, dispose } = await bootPanePlugin(activity, runningAgent(fakeAgent([])), { mayflyComponents: components })
-    expect(timers.intervals).toEqual([120])
-    timers.ticks[0]!()
-    timers.ticks[0]!()
-    expect(screen.paneLines()).toEqual([waiting()])
-    await dispose()
+    const agent = runningAgent(fakeAgent([turnStart(1), reasoningDelta(1, 1, 'mid-thought')]))
+    const harness = await bootPanePlugin(activity, agent, {
+      mayflyTick: new FakeTick(),
+      mayflyUiInteraction: { notificationSnapshot: (): readonly never[] => [], subscribe: () => () => {}, createNotificationOwner: () => ({ report() {}, clear() {}, clearAll() {}, dispose() {} }) },
+    })
+    // The turn started a minute before the pinned clock: the thinking stage has reached its last label.
+    expect(rows(harness.screen)[0]).toMatch(/^ {2}\S Fathoming · \d+[sm]/u)
+    await harness.dispose()
   })
 
-  it('uses Agent status as the waiting fallback while the projection is still idle', async () => {
-    const timers = new FakeTimers()
-    activity.setActivityTimers(timers)
+  it('takes the phase from the Agent status while the projection is still idle', async () => {
     const agent = runningAgent(fakeAgent([]))
     const facts = initialConversationFacts()
     const harness = await bootPanePlugin(activity, agent, {
+      mayflyTick: new FakeTick(),
+      mayflyUiInteraction: { notificationSnapshot: (): readonly never[] => [], subscribe: () => () => {}, createNotificationOwner: () => ({ report() {}, clear() {}, clearAll() {}, dispose() {} }) },
       mayflySessionFacts: {
         current: facts,
         currentAgent: asAgent(agent),
@@ -189,555 +307,87 @@ describe('mayfly-pane-activity', () => {
         },
       },
     })
-    expect(harness.screen.paneLines()).toEqual([waiting()])
+    expect(rows(harness.screen)).toEqual([`  ${fill()} Deep diving`, `    ⎿ Tip: ${FIRST_TIP}`])
     await harness.dispose()
   })
 
-  it('switches the mounted activity row in place when locale changes', async () => {
-    const harness = await boot(runningAgent(fakeAgent([])))
-    const pane = harness.screen.bottomChildren[0]
-    const localeFiber = await harness.ctx.plugin({
-      name: 'activity-locale',
-      apply(ctx: Context) {
-        const locale = new MayflyLocaleService(ctx, { systemLocale: 'en' })
-        ctx.effect(() => () => locale.dispose())
-      },
+  it('follows the projection events of its own session: a text delta is writing, a finished turn is gone', async () => {
+    const agent = runningAgent(fakeAgent([]))
+    const harness = await bootPanePlugin(activity, agent, {
+      mayflyTick: new FakeTick(),
+      mayflyUiInteraction: { notificationSnapshot: (): readonly never[] => [], subscribe: () => () => {}, createNotificationOwner: () => ({ report() {}, clear() {}, clearAll() {}, dispose() {} }) },
     })
-    await Promise.resolve()
-    expect(harness.screen.paneLines()[0]).toContain(' · Tip: ')
-    harness.ctx.mayflyLocale.setPreference('zh')
-    expect(harness.screen.bottomChildren[0]).toBe(pane)
-    expect(harness.screen.paneLines()[0]).toContain(' · 提示：')
-    await localeFiber.dispose()
+    expect(rows(harness.screen)[0]).toBe(`  ${fill()} Deep diving`)
+    harness.ctx.emit('session/event', agent.session as never, textDelta(1, 1, 'answering'))
+    expect(rows(harness.screen)[0]).toMatch(/^ {2}\S Writing/u)
+    harness.ctx.emit('session/event', agent.session as never, toolCallEvent(1, 1, 'c0', 'bash', '{"command":"pnpm test"}'))
+    expect(rows(harness.screen)[0]).toBe('  ● Running commands')
+    harness.ctx.emit('session/event', agent.session as never, toolResultEvent(1, 1, 'c0', 'done'))
+    harness.ctx.emit('session/event', agent.session as never, assistantEvent(1, 1, [{ type: 'text', text: 'done' }]))
+    harness.ctx.emit('session/event', agent.session as never, turnEnd(1))
+    expect(rows(harness.screen)).toEqual([])
     await harness.dispose()
   })
 
-  it('shows the static interrupting row while a stop request drains', async () => {
-    const timers = new FakeTimers()
-    activity.setActivityTimers(timers)
-    let pending = false
-    const harness = await bootPanePlugin(activity, runningAgent(fakeAgent([])), {
-      mayflyRequests: { stopPending: () => pending },
-    })
-    const { ctx, screen, dispose } = harness
-    expect(screen.paneLines()).toEqual([waiting()])
-    expect(timers.intervals).toEqual([120])
-
-    vi.useFakeTimers()
-    try {
-      vi.setSystemTime(10_000)
-      pending = true
-      ctx.emit('mayfly/request-stop-changed', true)
-      expect(screen.paneLines()).toEqual(['■ interrupting…'])
-      // The static row never arms the spinner: the animation timer stops and a
-      // late tick cannot make the accepted interrupt look ignored again.
-      expect(timers.cleared).toBe(1)
-      expect(timers.intervals).toEqual([120])
-      timers.ticks[0]!()
-      expect(screen.paneLines()).toEqual(['■ interrupting…'])
-      for (const width of [18, 12, 4]) {
-        expect(screen.paneLines(width).every(line => visibleWidth(line) <= width)).toBe(true)
-      }
-
-      // The turn settles immediately: the acknowledgment holds for the rest of
-      // its minimum visible duration instead of losing the render race.
-      vi.setSystemTime(10_050)
-      pending = false
-      ctx.emit('mayfly/request-stop-changed', false)
-      expect(screen.paneLines()).toEqual(['■ interrupting…'])
-      expect(timers.timeouts).toHaveLength(1)
-      expect(timers.timeouts[0]!.ms).toBe(550)
-
-      // A second release inside the hold does not stack another timer.
-      ctx.emit('mayfly/request-stop-changed', false)
-      expect(timers.timeouts).toHaveLength(1)
-
-      // A fresh stop while the hold runs cancels it and restarts the clock.
-      vi.setSystemTime(10_400)
-      pending = true
-      ctx.emit('mayfly/request-stop-changed', true)
-      expect(timers.cleared).toBe(2)
-      expect(screen.paneLines()).toEqual(['■ interrupting…'])
-      vi.setSystemTime(10_450)
-      pending = false
-      ctx.emit('mayfly/request-stop-changed', false)
-      expect(timers.timeouts).toHaveLength(2)
-      expect(timers.timeouts[1]!.ms).toBe(550)
-
-      timers.timeouts[1]!.fire()
-      // The moon kind re-enters, so the rotation advances to its next slot and
-      // the shared frame counter survived the stopping detour.
-      expect(screen.paneLines()).toEqual([waiting(1, buildTipRotation(STATUS_TIPS)[1]!.text)])
-      expect(timers.intervals).toEqual([120, 120])
-    } finally {
-      vi.useRealTimers()
-    }
-    await dispose()
-  })
-
-  it('holds and releases the stopping row through the process timers', async () => {
-    // No injected fake here: the default timer primitives run under vi's clock.
-    const harness = await bootPanePlugin(activity, runningAgent(fakeAgent([])))
-    const { ctx, screen, dispose } = harness
-    vi.useFakeTimers()
-    try {
-      ctx.emit('mayfly/request-stop-changed', true)
-      expect(screen.paneLines()).toEqual(['■ interrupting…'])
-      ctx.emit('mayfly/request-stop-changed', false)
-      // The turn settled at once; the acknowledgment holds out its minimum.
-      expect(screen.paneLines()).toEqual(['■ interrupting…'])
-      // A fresh stop cancels the pending hold through the default clearTimeout.
-      ctx.emit('mayfly/request-stop-changed', true)
-      expect(screen.paneLines()).toEqual(['■ interrupting…'])
-      vi.advanceTimersByTime(600)
-      expect(screen.paneLines()).toEqual(['■ interrupting…'])
-      ctx.emit('mayfly/request-stop-changed', false)
-      vi.advanceTimersByTime(600)
-      expect(screen.paneLines()[0]).toContain(' · Tip: ')
-    } finally {
-      vi.useRealTimers()
-    }
-    await dispose()
-  })
-
-  it('cancels a pending stopping hold when the pane unloads', async () => {
-    const timers = new FakeTimers()
-    activity.setActivityTimers(timers)
-    let pending = false
-    const harness = await bootPanePlugin(activity, runningAgent(fakeAgent([])), {
-      mayflyRequests: { stopPending: () => pending },
-    })
-    const { ctx, dispose } = harness
-    vi.useFakeTimers()
-    try {
-      vi.setSystemTime(30_000)
-      pending = true
-      ctx.emit('mayfly/request-stop-changed', true)
-      pending = false
-      ctx.emit('mayfly/request-stop-changed', false)
-      expect(timers.timeouts).toHaveLength(1)
-      const clearedBefore = timers.cleared
-      await dispose()
-      // The unload clears the hold, so its callback can never fire late.
-      expect(timers.cleared).toBe(clearedBefore + 1)
-    } finally {
-      vi.useRealTimers()
-    }
-  })
-
-  it('starts in the stopping row when a stop is already draining at mount', async () => {
-    const timers = new FakeTimers()
-    activity.setActivityTimers(timers)
-    const harness = await bootPanePlugin(activity, runningAgent(fakeAgent([])), {
-      mayflyRequests: { stopPending: () => true },
-    })
-    const { screen, dispose } = harness
-    expect(screen.paneLines()).toEqual(['■ interrupting…'])
-    await dispose()
-  })
-
-  it('releases the stopping row at once when the hold already elapsed', async () => {
-    const timers = new FakeTimers()
-    activity.setActivityTimers(timers)
-    let pending = false
-    const harness = await bootPanePlugin(activity, runningAgent(fakeAgent([])), {
-      mayflyRequests: { stopPending: () => pending },
-    })
-    const { ctx, screen, dispose } = harness
-    vi.useFakeTimers()
-    try {
-      vi.setSystemTime(20_000)
-      pending = true
-      ctx.emit('mayfly/request-stop-changed', true)
-      expect(screen.paneLines()).toEqual(['■ interrupting…'])
-
-      // A drain that outlasts the hold releases on the event itself.
-      vi.setSystemTime(20_900)
-      pending = false
-      ctx.emit('mayfly/request-stop-changed', false)
-      expect(timers.timeouts).toEqual([])
-      expect(screen.paneLines()[0]).toContain(' · Tip: ')
-    } finally {
-      vi.useRealTimers()
-    }
-    await dispose()
-  })
-
-  it('shows the kimi working row with a fresh tip while composing', async () => {
-    const agent = runningAgent(fakeAgent([]))
-    const { ctx, screen, timers, dispose } = await boot(agent)
-    expect(screen.paneLines()).toEqual([waiting()])
-    // Composing flips to the braille style at 80 ms; the kind change picks
-    // the next rotation slot and the row is the kimi shape: primary frame,
-    // plain label, riding tip (the user's second dogfood ruling restored
-    // the row — kimi's assistant block has no cursor).
-    emit2(ctx, agent, textDelta(1, 1, 'answering'))
-    const composingTip = buildTipRotation(STATUS_TIPS)[1]!.text
-    // The streamed chars ride as the live ↓ counter (9 chars → ↓2).
-    expect(screen.paneLines()).toEqual([`⠋ Writing · ↓2 · Tip: ${composingTip}`])
-    expect(timers.intervals).toEqual([120, 80])
-    // A tick advances the shared frame counter.
-    timers.ticks[1]!()
-    expect(screen.paneLines()).toEqual([`⠙ Writing · ↓2 · Tip: ${composingTip}`])
-    // A tool call re-enters the moon kind; the shared frame counter survived
-    // the style flip, so the moon picks up where the cycle left off. A
-    // generic tool's detail falls back to its name, in the tip's slot.
-    emit2(ctx, agent, toolCallEvent(1, 1, 'c0', 'worker', '{}'))
-    emit2(ctx, agent, toolResultEvent(1, 1, 'c0', 'done'))
-    expect(screen.paneLines()).toEqual([`${MOON_SPINNER_FRAMES[1]!} Calling tools · ↓2 · worker`])
-    await dispose()
-  })
-
-  it('drops the composing tip then the whole row under width pressure', async () => {
-    const agent = runningAgent(fakeAgent([]))
-    const { ctx, screen, dispose } = await boot(agent)
-    emit2(ctx, agent, textDelta(1, 1, 'answering'))
-    const tip = buildTipRotation(STATUS_TIPS)[1]!.text
-    const full = `⠋ Writing · ↓2 · Tip: ${tip}`
-    const visible = visibleWidth(full)
-    expect(screen.paneLines(visible)).toEqual([full])
-    // The tip goes first, then the counter, then the label.
-    expect(screen.paneLines(visible - 1)).toEqual(['⠋ Writing · ↓2'])
-    expect(screen.paneLines(12)).toEqual(['⠋ Writing'])
-    expect(screen.paneLines(5)).toEqual(['⠋'])
-    for (const width of [visible - 1, 12, 10]) {
-      expect(screen.paneLines(width).every(line => visibleWidth(line) <= width)).toBe(true)
-    }
-    emit2(ctx, agent, toolCallEvent(1, 1, 'c0', 'worker', '{}'))
-    emit2(ctx, agent, toolResultEvent(1, 1, 'c0', 'done'))
-    expect(screen.paneLines(2).every(line => visibleWidth(line) <= 2)).toBe(true)
-    await dispose()
-  })
-
-  it('rides the turn token flow: ↑ from the latest usage, ↓ from streamed chars, reset per turn', async () => {
-    const agent = runningAgent(fakeAgent([]))
-    const { ctx, screen, dispose } = await boot(agent)
-    // Before any data the moon row carries no counter.
-    expect(screen.paneLines()).toEqual([waiting()])
-    // Streams that carry no text (boundary records, tool-call deltas) count
-    // nothing.
-    emit2(ctx, agent, event('assistant/attempt', {
-      turn: 1, step: 1,
-      stream: [{ type: 'chunk', time: 1, chunk: { type: 'block-start', index: 0, blockType: 'text' } }],
-    }))
-    expect(screen.paneLines()[0]).not.toContain('↓')
-    // A finished response contributes its input side as ↑ (context tokens:
-    // input + cache reads/writes).
-    const finished = assistantEvent(1, 1, [{ type: 'text', text: 'done' }])
-    finished.data.usage = { inputTokens: 2000, outputTokens: 5, cacheReadTokens: 1024 }
-    emit2(ctx, agent, finished)
-    expect(screen.paneLines()).toEqual([`${MOON_SPINNER_FRAMES[0]!} Deep diving · ↑3k · Tip: ${FIRST_TIP}`])
-    // Streamed text and reasoning accumulate as ↓ (chars over the 4-chars
-    // per-token heuristic); both counters ride together.
-    emit2(ctx, agent, textDelta(1, 2, 'answering'))
-    emit2(ctx, agent, reasoningDelta(1, 2, 'thinking hard'))
-    emit2(ctx, agent, toolCallEvent(1, 2, 'c0', 'worker', '{}'))
-    emit2(ctx, agent, toolResultEvent(1, 2, 'c0', 'done'))
-    expect(screen.paneLines()[0]).toContain('↑3k ↓5')
-    // A new turn resets both (the tip rotation is independent — assert the
-    // counters, not the tip slot).
-    emit2(ctx, agent, turnEnd(1))
-    emit2(ctx, agent, turnStart(2))
-    const resetRow = screen.paneLines()[0] ?? ''
-    expect(resetRow).not.toContain('↑')
-    expect(resetRow).not.toContain('↓')
-    // Empty deltas do not start a new output phase or publish a counter.
-    emit2(ctx, agent, textDelta(2, 1, ''))
-    const composingRow = screen.paneLines()[0] ?? ''
-    expect(composingRow).not.toContain('Writing')
-    expect(composingRow).not.toContain('↓')
-    await dispose()
-  })
-
-  it('lets streamed output counters ride the spinner tick instead of every delta', async () => {
-    const agent = runningAgent(fakeAgent([]))
-    const { ctx, screen, timers, dispose } = await boot(agent)
-    emit2(ctx, agent, textDelta(1, 1, 'x'.repeat(40)))
-    expect(screen.paneLines()[0]).toContain('↓10')
-    emit2(ctx, agent, textDelta(1, 1, 'y'.repeat(80)))
-    // The row keeps its last counter until the running spinner repaints.
-    expect(screen.paneLines()[0]).toContain('↓10')
-    timers.ticks.at(-1)!()
-    await Promise.resolve()
-    expect(screen.paneLines()[0]).toMatch(/↓(20|30) /u)
-    await dispose()
-  })
-
-  it('keeps a thinking row while the model reasons, so the dock never collapses', async () => {
-    const agent = runningAgent(fakeAgent([]))
-    const { ctx, screen, timers, dispose } = await boot(agent)
-    emit2(ctx, agent, reasoningDelta(1, 1, 'pondering'))
-    // The braille style takes over from the moon; Standard shows the latest
-    // reasoning paragraph in the tip's slot.
-    expect(screen.paneLines()).toEqual(['⠋ Thinking · ↓2 · pondering'])
-    expect(timers.intervals).toEqual([120, 80])
-    expect(timers.cleared).toBe(1)
-    // Once active, the idle placeholder ratchet holds a blank row.
-    emit2(ctx, agent, turnEnd(1))
-    expect(screen.paneLines()).toEqual([''])
-    await dispose()
-  })
-
-  it('shows the moon row without the composing label while a tool runs', async () => {
-    const agent = runningAgent(fakeAgent([]))
-    const { ctx, screen, dispose } = await boot(agent)
-    emit2(ctx, agent, toolCallEvent(1, 1, 'c1', 'bash', '{}'))
-    // waiting → tool keeps the moon loading kind, so the tip survives; the
-    // row names the running category.
-    expect(screen.paneLines()).toEqual([`${MOON_SPINNER_FRAMES[0]!} Running commands · Tip: ${FIRST_TIP}`])
-    // Standard appends the salient argument in the tip's slot.
-    emit2(ctx, agent, toolCallEvent(1, 1, 'c2', 'bash', '{"command":"pnpm test"}'))
-    expect(screen.paneLines()).toEqual([`${MOON_SPINNER_FRAMES[0]!} Running commands · pnpm test`])
-    emit2(ctx, agent, toolCallEvent(1, 1, 'c3', 'mcp__github__create_issue', '{}'))
-    expect(screen.paneLines()).toEqual([`${MOON_SPINNER_FRAMES[0]!} Calling tools · github › create_issue`])
-    // A plan update names its category, never the raw tool name.
-    emit2(ctx, agent, toolCallEvent(1, 1, 'c4', 'todo_write', '{"todos":[]}'))
-    expect(screen.paneLines()).toEqual([`${MOON_SPINNER_FRAMES[0]!} Updating the plan · Tip: ${FIRST_TIP}`])
-    // A file change already shows as a transcript card: no detail.
-    emit2(ctx, agent, toolCallEvent(1, 1, 'c5', 'edit', '{"file_path":"src/a.ts"}'))
-    expect(screen.paneLines()).toEqual([`${MOON_SPINNER_FRAMES[0]!} Editing files · Tip: ${FIRST_TIP}`])
-    // A subagent spawn is not named: the agents pane above owns its live detail.
-    emit2(ctx, agent, toolCallEvent(1, 1, 'c6', 'subagent', '{"description":"Review"}'))
-    expect(screen.paneLines()).toEqual([waiting()])
-    await dispose()
-  })
-
-  it('keeps the moon up through invisible reasoning', async () => {
-    const agent = runningAgent(fakeAgent([]))
-    const { ctx, screen, dispose } = await boot(agent)
-    emit2(ctx, agent, reasoningDelta(1, 1, ' '))
-    expect(screen.paneLines()).toEqual([waiting()])
-    await dispose()
-  })
-
-  it('hides while a dialog panel occupies the editor slot', async () => {
-    const agent = runningAgent(fakeAgent([]))
-    const { ctx, screen, timers, dispose } = await boot(agent)
-    expect(screen.paneLines()).toEqual([waiting()])
-    ctx.emit('mayfly/editor-slot-swapped', true)
-    expect(screen.paneLines()).toEqual([])
-    expect(timers.cleared).toBe(1)
-    // Returning re-enters the moon loading kind: a fresh tip from the next
-    // rotation slot.
-    ctx.emit('mayfly/editor-slot-swapped', false)
-    expect(screen.paneLines()).toEqual([waiting(0, buildTipRotation(STATUS_TIPS)[1]!.text)])
-    expect(timers.intervals).toEqual([120, 120])
-    await dispose()
-  })
-
-  it('parks the idle placeholder and resets stale idle on wake', async () => {
+  it('leaves the other agents\' status flips and the foreign sessions\' events alone', async () => {
     const agent = fakeAgent([])
-    const { ctx, screen, timers, dispose } = await boot(agent)
-    // kimi's Spacer(1): the placeholder shows even before any activity.
-    expect(screen.paneLines()).toEqual([''])
-
-    agent.status = 'running'
-    ctx.emit('agent/status', { agent: asAgent(agent), status: 'running' })
-    expect(screen.paneLines()).toEqual([waiting()])
-    emit2(ctx, agent, turnEnd(1))
-    expect(screen.paneLines()).toEqual([''])
-
-    // A turn that ended leaves the phase idle; waking the agent treats the
-    // stale idle as a fresh waiting turn until an event lands.
-    agent.status = 'idle'
-    ctx.emit('agent/status', { agent: asAgent(agent), status: 'idle' })
-    expect(screen.paneLines()).toEqual([''])
-    agent.status = 'running'
-    ctx.emit('agent/status', { agent: asAgent(agent), status: 'running' })
-    expect(screen.paneLines()).toEqual([waiting(0, buildTipRotation(STATUS_TIPS)[1]!.text)])
-    await dispose()
-    expect(timers.cleared).toBe(2)
-  })
-
-  it('filters other agents\' flips and foreign sessions\' events', async () => {
-    const agent = fakeAgent([])
-    const { ctx, screen, timers, dispose } = await boot(agent)
-    ctx.emit('agent/status', { agent: asAgent(runningAgent(fakeAgent([]))), status: 'running' })
-    expect(timers.ticks).toHaveLength(0)
-    expect(screen.paneLines()).toEqual([''])
-
-    // A foreign session's events never reach the tracker.
-    agent.status = 'running'
-    ctx.emit('agent/status', { agent: asAgent(agent), status: 'running' })
+    const harness = await bootPanePlugin(activity, agent, {
+      mayflyTick: new FakeTick(),
+      mayflyUiInteraction: { notificationSnapshot: (): readonly never[] => [], subscribe: () => () => {}, createNotificationOwner: () => ({ report() {}, clear() {}, clearAll() {}, dispose() {} }) },
+    })
+    harness.ctx.emit('agent/status', { agent: asAgent(runningAgent(fakeAgent([]))), status: 'running' })
+    expect(rows(harness.screen)).toEqual([])
     const foreign = fakeAgent([])
-    ctx.emit('session/event', foreign.session as never, textDelta(1, 1, 'x'))
-    expect(screen.paneLines()).toEqual([waiting()])
-    await dispose()
-  })
-
-  it('seeds the phase from the snapshot on attach', async () => {
-    // The snapshot ends mid-thinking: the resumed pane shows the thinking row at once.
-    const agent = runningAgent(fakeAgent([
-      turnStart(1),
-      reasoningDelta(1, 1, 'mid-thought'),
-    ]))
-    const { screen, dispose } = await boot(agent)
-    // The turn started a minute before the pinned clock.
-    expect(screen.paneLines()[0]).toMatch(/^⠋ Thinking · (59s|1m) · ↓\d · mid-thought$/u)
-    await dispose()
-  })
-
-  it('drops the tip under width pressure and the row entirely below it', async () => {
-    const agent = runningAgent(fakeAgent([]))
-    const { screen, dispose } = await boot(agent)
-    const full = waiting()
-    // The width measure is pi-tui's (D48): the moon glyph spans two cells.
-    const visible = visibleWidth(MOON_SPINNER_FRAMES[0]!) + ' Deep diving · Tip: '.length + FIRST_TIP.length
-    expect(screen.paneLines(visible)).toEqual([full])
-    for (const width of [visible - 1, 2, 1]) {
-      expect(screen.paneLines(width).every(line => visibleWidth(line) <= width)).toBe(true)
-    }
-    await dispose()
-  })
-
-  it('animates with the default timers when none are injected', async () => {
-    const harness = await bootPanePlugin(activity, runningAgent(fakeAgent([])))
-    const baseline = harness.screen.renderRequests.length
-    await new Promise(resolve => setTimeout(resolve, MOON_SPINNER_INTERVAL_MS * 2 + 50))
-    expect(harness.screen.renderRequests.length).toBeGreaterThan(baseline)
+    harness.ctx.emit('session/event', foreign.session as never, textDelta(1, 1, 'x'))
+    expect(rows(harness.screen)).toEqual([])
     await harness.dispose()
   })
-  describe('the live-status row', () => {
-    type Facts = ReturnType<typeof initialConversationFacts>
-    /** Boot over a hand-driven facts stream and a mutable `mayfly` settings section. */
-    async function bootFacts(initial: Partial<Facts>, settings: Record<string, unknown> = {}) {
-      const timers = new FakeTimers()
-      activity.setActivityTimers(timers)
-      let now = NOW
-      activity.setActivityClock(() => now)
-      const agent = runningAgent(fakeAgent([]))
-      let listener: ((value: Facts) => void) | undefined
-      let facts: Facts = { ...initialConversationFacts(), active: true, ...initial }
-      const section = { value: settings }
-      const harness = await bootPanePlugin(activity, agent, {
-        mayflyInteractionState: { settingsSource: () => section.value },
-        mayflySessionFacts: {
-          get current() { return facts },
-          currentAgent: asAgent(agent),
-          subscribe(next: (value: Facts) => void) {
-            listener = next
-            next(facts)
-            return () => {}
-          },
-          subscribeAgent(next: (value: ReturnType<typeof asAgent>) => void) {
-            next(asAgent(agent))
-            return () => {}
-          },
-        },
-      })
-      return {
-        ...harness,
-        timers,
-        push(next: Partial<Facts>) {
-          facts = { ...facts, ...next }
-          listener?.(facts)
-        },
-        advance(ms: number) { now += ms },
-        settings(value: Record<string, unknown>) {
-          section.value = value
-          harness.ctx.emit('settings/document-updated', 'mayfly' as never, 1)
-        },
-      }
-    }
+  it('climbs the thinking ladder at 5, 15 and 45 seconds of one reasoning phase', async () => {
+    const harness = await bootFacts({ phase: 'thinking', outputProgress: { chars: 0, initialChars: 0, startedAt: NOW - 4_000, updatedAt: NOW } })
+    expect(rows(harness.screen)[0]).toMatch(/^ {2}\S Pondering/u)
+    harness.push({ outputProgress: { chars: 0, initialChars: 0, startedAt: NOW - 5_000, updatedAt: NOW } })
+    expect(rows(harness.screen)[0]).toMatch(/^ {2}\S Mulling/u)
+    harness.push({ outputProgress: { chars: 0, initialChars: 0, startedAt: NOW - 15_000, updatedAt: NOW } })
+    expect(rows(harness.screen)[0]).toMatch(/^ {2}\S DeepThinking/u)
+    harness.push({ outputProgress: { chars: 0, initialChars: 0, startedAt: NOW - 45_000, updatedAt: NOW } })
+    expect(rows(harness.screen)[0]).toMatch(/^ {2}\S Fathoming/u)
+    await harness.dispose()
+  })
 
-    it('counts the turn elapsed time from its session start on the spinner ticks', async () => {
-      const harness = await bootFacts({ phase: 'waiting', turnStartedAt: NOW - 3_000 })
-      expect(harness.screen.paneLines()).toEqual([`${MOON_SPINNER_FRAMES[0]!} Deep diving · 3s · Tip: ${FIRST_TIP}`])
-      // No new timer: the existing frame tick re-reads the clock.
-      harness.advance(2_000)
-      harness.timers.ticks[0]!()
-      expect(harness.screen.paneLines()).toEqual([`${MOON_SPINNER_FRAMES[1]!} Deep diving · 5s · Tip: ${FIRST_TIP}`])
-      expect(harness.timers.intervals).toEqual([120])
-      // An inactive facts value carries no elapsed anchor.
-      harness.push({ active: false, phase: 'idle' })
-      expect(harness.screen.paneLines()[0]).not.toMatch(/\ds/u)
-      await harness.dispose()
-    })
+  it('rotates the tip every fifteen ticks while the row is live', async () => {
+    const harness = await bootFacts({ phase: 'waiting', turnStartedAt: NOW })
+    const rotation = buildTipRotation(STATUS_TIPS)
+    expect(rows(harness.screen)[1]).toBe(`    ⎿ Tip: ${rotation[0]!.text}`)
+    for (let tick = 1; tick < 15; tick += 1) harness.tick.fire(NOW + tick * 1_000)
+    expect(rows(harness.screen)[1]).toBe(`    ⎿ Tip: ${rotation[0]!.text}`)
+    harness.tick.fire(NOW + 15_000)
+    expect(rows(harness.screen)[1]).toBe(`    ⎿ Tip: ${rotation[1]!.text}`)
+    await harness.dispose()
+  })
 
-    it('names a call whose arguments still stream by its preparing label', async () => {
-      const harness = await bootFacts({ phase: 'waiting', activity: { kind: 'tool', name: 'write', preparing: true } })
-      expect(harness.screen.paneLines()).toEqual([`${MOON_SPINNER_FRAMES[0]!} Preparing to write files · Tip: ${FIRST_TIP}`])
-      // A durable tool marker left from an earlier step never labels a waiting row.
-      harness.push({ activity: { kind: 'tool', name: 'bash', detail: 'ls' } })
-      expect(harness.screen.paneLines()).toEqual([waiting()])
-      // A preparing spawn stays with the agents pane.
-      harness.push({ activity: { kind: 'tool', name: 'subagent', preparing: true } })
-      expect(harness.screen.paneLines()).toEqual([waiting()])
-      await harness.dispose()
-    })
+  it('leaves the line under the header blank when the quiet hints are off, and keeps the call arguments', async () => {
+    const harness = await bootFacts({ phase: 'waiting', turnStartedAt: NOW })
+    expect(rows(harness.screen)).toHaveLength(2)
+    harness.settings({ quietHints: 'off' })
+    expect(rows(harness.screen)).toEqual([`  ${fill()} Deep diving · 0s`])
+    harness.settings({ quietHints: 'full' })
+    expect(rows(harness.screen)).toHaveLength(2)
+    await harness.dispose()
+  })
 
-    it('shows the detail only in Standard, following a mode switch mid-turn', async () => {
-      const running = { phase: 'tool', activity: { kind: 'tool', name: 'bash', detail: 'pnpm test' } } as const
-      const harness = await bootFacts(running, { transcriptView: 'compact' })
-      expect(harness.screen.paneLines()).toEqual([`${MOON_SPINNER_FRAMES[0]!} Running commands · Tip: ${FIRST_TIP}`])
-      const before = harness.screen.renderRequests.length
-      harness.settings({ transcriptView: 'standard' })
-      expect(harness.screen.paneLines()).toEqual([`${MOON_SPINNER_FRAMES[0]!} Running commands · pnpm test`])
-      expect(harness.screen.renderRequests.length).toBeGreaterThan(before)
-      for (const view of ['detailed', 'verbose']) {
-        harness.settings({ transcriptView: view })
-        expect(harness.screen.paneLines()).toEqual([`${MOON_SPINNER_FRAMES[0]!} Running commands · Tip: ${FIRST_TIP}`])
-      }
-      // An unrelated settings namespace changes nothing.
-      harness.ctx.emit('settings/document-updated', 'shell' as never, 1)
-      harness.push({ phase: 'thinking', activity: { kind: 'reasoning', detail: 'weigh the retry' } })
-      expect(harness.screen.paneLines()[0]).toBe(`⠋ Thinking · Tip: ${buildTipRotation(STATUS_TIPS)[1]!.text}`)
-      harness.settings({ transcriptView: 'standard' })
-      expect(harness.screen.paneLines()[0]).toBe('⠋ Thinking · weigh the retry')
-      // A text phase and a reasoning marker without detail carry none.
-      harness.push({ phase: 'composing', activity: { kind: 'text' } })
-      expect(harness.screen.paneLines()[0]).toContain('Writing · Tip: ')
-      harness.push({ phase: 'thinking', activity: { kind: 'text' } })
-      expect(harness.screen.paneLines()[0]).toContain('Thinking · Tip: ')
-      await harness.dispose()
-    })
-
-    it('truncates a long detail before dropping elapsed time and counters', async () => {
-      const detail = `pnpm vitest run ${'packages/mayfly/tests/'.repeat(5)}`
-      const harness = await bootFacts({
-        phase: 'tool', turnStartedAt: NOW - 21_000, flowUp: 30 * 1024, flowDownChars: 16 * 1024,
-        activity: { kind: 'tool', name: 'bash', detail },
-      })
-      const head = `${MOON_SPINNER_FRAMES[0]!} Running commands · 21s · ↑30k ↓4k`
-      expect(harness.screen.paneLines(200)).toEqual([`${head} · ${detail}`])
-      // Narrower rows keep the head whole and cut the detail to a budget.
-      const cut = harness.screen.paneLines(visibleWidth(head) + 20)[0]!
-      expect(cut.startsWith(`${head} · `)).toBe(true)
-      expect(cut.endsWith('…')).toBe(true)
-      expect(visibleWidth(cut)).toBeLessThanOrEqual(visibleWidth(head) + 20)
-      // Below the smallest budget the detail goes, then counters, then time.
-      expect(harness.screen.paneLines(visibleWidth(head) + 3)).toEqual([head])
-      expect(harness.screen.paneLines(visibleWidth(head) - 1)).toEqual([`${MOON_SPINNER_FRAMES[0]!} Running commands · 21s`])
-      expect(harness.screen.paneLines(22)).toEqual([`${MOON_SPINNER_FRAMES[0]!} Running commands`])
-      expect(harness.screen.paneLines(10)).toEqual([MOON_SPINNER_FRAMES[0]!])
-      // A wide-glyph detail truncates by cells, never past its budget.
-      harness.push({ activity: { kind: 'tool', name: 'bash', detail: '界'.repeat(80) } })
-      for (const width of [visibleWidth(head) + 16, visibleWidth(head) + 30, visibleWidth(head) + 70]) {
-        const row = harness.screen.paneLines(width)[0]!
-        expect(visibleWidth(row)).toBeLessThanOrEqual(width)
-      }
-      await harness.dispose()
-    })
-
-    it('localizes the phase and running labels', async () => {
-      const harness = await bootFacts({ phase: 'tool', activity: { kind: 'tool', name: 'bash' } })
-      const localeFiber = await harness.ctx.plugin({
-        name: 'activity-locale-zh',
-        apply(ctx: Context) {
-          const locale = new MayflyLocaleService(ctx, { systemLocale: 'zh' })
-          ctx.effect(() => () => locale.dispose())
-        },
-      })
-      await Promise.resolve()
-      expect(harness.screen.paneLines()[0]).toContain('正在运行命令')
-      harness.push({ phase: 'waiting', activity: undefined })
-      expect(harness.screen.paneLines()[0]).toContain('深度求索中')
-      harness.push({ phase: 'thinking', activity: { kind: 'reasoning' } })
-      expect(harness.screen.paneLines()[0]).toContain('思考中')
-      harness.push({ phase: 'composing', activity: { kind: 'text' } })
-      expect(harness.screen.paneLines()[0]).toContain('输出中')
-      await localeFiber.dispose()
-      await harness.dispose()
-    })
+  it('keeps the wait for a decision above an approval panel, and hides under any other dialog', async () => {
+    const harness = await bootFacts({ phase: 'tool', inFlight: [{ callId: 'c1', name: 'bash', detail: 'rm -rf build' }] })
+    harness.ctx.emit('mayfly/decision-wait-changed', { kind: 'approval' } as never)
+    harness.ctx.emit('mayfly/editor-slot-swapped', true)
+    // The wait breathes its dot and shows how long it has waited.
+    expect(rows(harness.screen)).toHaveLength(2)
+    expect(rows(harness.screen)[0]).toMatch(/^ {2}\S? ?Waiting for your approval · 0s$/u)
+    expect(rows(harness.screen)[1]).toBe(`    ⎿ Tip: ${FIRST_TIP}`)
+    // A question waits in the same slot, and the row names the answer it waits for.
+    harness.ctx.emit('mayfly/decision-wait-changed', undefined as never)
+    expect(rows(harness.screen)).toEqual([])
+    harness.ctx.emit('mayfly/decision-wait-changed', { kind: 'answer' } as never)
+    expect(rows(harness.screen)[0]).toMatch(/^ {2}\S? ?Waiting for your answer · 0s$/u)
+    await harness.dispose()
   })
 })

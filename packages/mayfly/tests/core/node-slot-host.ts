@@ -80,6 +80,7 @@ export function nodeSlotRuntime(initialColumns = 100, initialRows = 40): NodeSlo
     surfaces: new SurfaceManager(),
     surfaceViewport: () => ({ columns, rows }),
     surfaceLaneRows: () => 0,
+    dockRows: () => 0,
     hasCapturingOverlay: () => false,
     releaseSurfaceFocus() {},
     setFocus(component: MayflyComponent | null) {

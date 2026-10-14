@@ -101,17 +101,17 @@ describe('paintDiffRows', () => {
 
   it('numbers both sides, signs changes with −/+, and keeps the band behind the code only', () => {
     const aligned = alignDiffLines('a\nb', 'a\nc')
-    expect(paintDiffRows(aligned, 20, helpers)).toEqual(['    1   1 │   a', '    2     │ − b', '        2 │ + c'])
+    expect(paintDiffRows(aligned, 20, helpers)).toEqual(['  1 │   a', '    │ − b', '  2 │ + c'])
     // The tag palette counts its tags as cells, so these rows are wide enough not to clip.
     expect(paintDiffRows(aligned, 40, helpers, palette)).toEqual([
-      '  <G>  1   1 │</G>   <T>a</T>',
-      '  <G>  2     │</G> [R<R>−</R> <R>b</R>    R]',
-      '  <G>      2 │</G> [A<A>+</A> <A>c</A>    A]',
+      '  <G>1 │</G>   <T>a</T>',
+      '  <G>  │</G> [R<R>−</R> <R>b</R>      R]',
+      '  <G>2 │</G> [A<A>+</A> <A>c</A>      A]',
     ])
     expect(paintDiffRows(aligned, 30, helpers, palette, { numbered: false })).toEqual([
       '    <T>a</T>',
-      '  [R<R>−</R> <R>b</R>           R]',
-      '  [A<A>+</A> <A>c</A>           A]',
+      '  [R<R>−</R> <R>b</R>       R]',
+      '  [A<A>+</A> <A>c</A>       A]',
     ])
   })
 
@@ -122,8 +122,8 @@ describe('paintDiffRows', () => {
     expect(rows[0]).toBe('@@ -100,12 +100,12 @@')
     expect(rows).toContain('  ⋯')
     expect(rows.filter(row => row === '  ⋯')).toHaveLength(3)
-    expect(rows).toContain('  101 101 │   l1')
-    expect(rows).not.toContain('  100 100 │   l0')
+    expect(rows).toContain('  101 │   l1')
+    expect(rows).not.toContain('  100 │   l0')
     expect(paintDiffRows(alignDiffLines(before.join('\n'), after.join('\n')), 40, helpers, undefined, { hunkHeader: false, context: 0 })).toHaveLength(7)
     // One hunk has no header unless asked.
     expect(paintDiffRows(alignDiffLines('a\nb', 'a\nc'), 40, helpers)[0]).not.toContain('@@')
@@ -132,7 +132,7 @@ describe('paintDiffRows', () => {
 
   it('stops after maxRows with the remaining count and the Ctrl+O key', () => {
     const rows = plain(paintDiffRows(alignDiffLines('', 'a\nb\nc\nd'), 80, helpers, palette, { maxRows: 2 }))
-    expect(rows.map(row => row.trimEnd())).toEqual(['        1 │ + a', '        2 │ + b', '  … +2 rows · Ctrl+O'])
+    expect(rows.map(row => row.trimEnd())).toEqual(['  1 │ + a', '  2 │ + b', '  … +2 rows · Ctrl+O'])
   })
 
   it('ends a long line in … and pads real SGR bands to exactly the width', () => {
@@ -140,13 +140,14 @@ describe('paintDiffRows', () => {
     const band = (text: string): string => `\x1b[48;2;4;5;6m${text}\x1b[49m`
     const real = { text: red, diffAdded: red, diffRemoved: red, diffAddedBg: band, diffRemovedBg: band, diffMeta: red, diffGutter: red }
     const rows = paintDiffRows(alignDiffLines('', 'x\n\ty\nlong line that does not fit\n'), 24, helpers, real)
-    expect(rows.map(row => visibleWidth(row))).toEqual([24, 24, 24])
+    // A tint stops DIFF_INSET_COLUMNS short of the edge, so a changed row is that much narrower than the width.
+    expect(rows.map(row => visibleWidth(row))).toEqual([20, 20, 20])
     expect(rows[1]).not.toContain('\t')
     expect(rows[1]).toContain('   y')
-    expect(plainText(rows[2]!)).toBe('        3 │ + long line…')
+    expect(plainText(rows[2]!)).toBe('  3 │ + long line t…')
     // The band stays open through the ellipsis and the fill.
     expect(rows[2]!.slice(rows[2]!.indexOf('\x1b[48;2;4;5;6m'), -'\x1b[49m'.length)).not.toContain('\x1b[0m')
-    expect(paintDiffRows(alignDiffLines('a long context line', 'a long context line\nb'), 16, helpers)[0]).toBe('    1   1 │   a…')
+    expect(paintDiffRows(alignDiffLines('a long context line', 'a long context line\nb'), 16, helpers)[0]).toBe('  1 │   a long …')
   })
 
   it('never paints past a degenerate width', () => {
@@ -154,6 +155,6 @@ describe('paintDiffRows', () => {
     for (const width of [0, 1, 2, 3, 6, 12, 13]) {
       for (const row of paintDiffRows(aligned, width, helpers)) expect(visibleWidth(row)).toBeLessThanOrEqual(Math.max(1, width))
     }
-    expect(paintDiffRows(aligned, 12, helpers)).toEqual(['    1     │ ', '        1 │ '])
+    expect(paintDiffRows(aligned, 12, helpers)).toEqual(['    │ − ab', '  1 │ + cd'])
   })
 })

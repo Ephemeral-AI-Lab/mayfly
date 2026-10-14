@@ -1035,24 +1035,24 @@ describe('mayfly-editor-plus @ mentions', () => {
     expect(suggestions?.items).toEqual([{ value: '@top.md', label: 'top.md', description: 'top.md' }])
   })
 
-  it('notices in the hint line when the mention matches nothing', async () => {
+  it('notices in the notification lane when the mention matches nothing', async () => {
     fileMention.setFdProbe(async () => null)
-    const { ctx, editor, hint } = await mount()
+    const { ctx, editor } = await mount()
     const root = fixture()
     process.chdir(root)
     reattach(ctx)
     const provider = editor.autocompleteProvider as MayflyAutocompleteProvider
     // The empty-session-cwd corner: a directory with nothing to list (and
     // equally a prefix with no match) closes the dropdown without items —
-    // the hint line carries the feedback instead of silence.
+    // the notification lane carries the feedback instead of silence.
     const suggestions = await provider.getSuggestions(['@zzz'], 0, 4, { signal: signal() })
     expect(suggestions).toBeNull()
-    expect(hint.render(80).join('\n')).toContain('no matching files under the session cwd')
+    expect(ctx.mayflyUiInteraction.notificationSnapshot().at(-1)?.message).toBe('no matching files under the session cwd')
   })
 
   it('stays quiet when an aborted mention round returns nothing', async () => {
     fileMention.setFdProbe(async () => null)
-    const { ctx, editor, hint } = await mount()
+    const { ctx, editor } = await mount()
     const root = fixture()
     process.chdir(root)
     reattach(ctx)
@@ -1061,6 +1061,6 @@ describe('mayfly-editor-plus @ mentions', () => {
     controller.abort()
     const suggestions = await provider.getSuggestions(['@zzz'], 0, 4, { signal: controller.signal })
     expect(suggestions).toBeNull()
-    expect(hint.render(80).join('\n')).not.toContain('no matching files')
+    expect(ctx.mayflyUiInteraction.notificationSnapshot().map(item => item.message)).not.toContain('no matching files under the session cwd')
   })
 })

@@ -79,8 +79,8 @@ describe('SessionFactsService', () => {
     live.accept(selected, { type: 'chunk', attemptId: 'active' as never, revision: 2, index: 0, time: 1, chunk: { type: 'reasoning-delta', index: 0, text: 'thought' } })
     await Promise.resolve()
     expect(facts.current).toMatchObject({ phase: 'thinking', flowDownChars: 7 })
-    // The overlay carries the latest reasoning paragraph for the activity row.
-    expect(facts.current.activity).toEqual({ kind: 'reasoning', detail: 'thought' })
+    // The overlay names the phase for the activity row; the reasoning text itself is the stream's, not the row's.
+    expect(facts.current.activity).toEqual({ kind: 'reasoning' })
     live.accept(selected, { type: 'chunk', attemptId: 'active' as never, revision: 3, index: 1, time: 2, chunk: { type: 'block-end', index: 0, block: { type: 'reasoning', text: 'thought' } } })
     await Promise.resolve()
     expect(facts.current.phase).toBe('waiting')

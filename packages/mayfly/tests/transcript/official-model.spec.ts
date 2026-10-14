@@ -356,7 +356,7 @@ describe('official conversation model mapping', () => {
     const group = model.entries[0] as unknown as { reads: Array<Record<string, unknown>> }
     expect(group.reads[0]).toMatchObject({
       callId: 'c-rich', path: 'big.ts', requestedRange: { first: 101, last: 108 }, range: { first: 101, last: 108 },
-      totalLines: 400, state: 'ok', previewLines: { length: 5 },
+      totalLines: 400, state: 'ok', previewLines: { length: 8 },
     })
     expect((group.reads[0]!['previewLines'] as Array<{ number: number }>)[0]).toMatchObject({ number: 101 })
     expect(group.reads[1]).toMatchObject({ callId: 'c-pending', path: 'next.ts', state: 'pending', requestedRange: { first: 5, last: 34 } })

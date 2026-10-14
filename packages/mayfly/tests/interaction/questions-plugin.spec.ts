@@ -3,12 +3,22 @@
  */
 import { Context } from '@deepseek-ai/cordis'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { AskUserQuestionItem } from '@deepseek-ai/dsh-user-questions'
+import type { MayflyDecisionRequest } from '../../src/core/types.ts'
 import { requestFixture } from './request-fixture.ts'
 
 const contexts: Context[] = []
 afterEach(async () => { for (const ctx of contexts.splice(0)) await ctx.fiber.dispose() })
 async function setup() { const ctx = new Context(); contexts.push(ctx); return requestFixture(ctx) }
 const questions = [{ id: 'q', question: 'Why?' }]
+const plan: AskUserQuestionItem = { id: 'plan', question: 'Proceed?', header: 'Plan', detail: '# Plan', options: [{ label: 'Keep planning' }, { label: 'Start implementation' }], intent: { kind: 'plan-review', approve: 'Start implementation' } }
+
+/** Every plan publication of the questions plugin, in order. */
+function plans(ctx: Context): Array<readonly MayflyDecisionRequest[]> {
+  const seen: Array<readonly MayflyDecisionRequest[]> = []
+  ctx.on('mayfly/decision-requests-changed', (source, requests) => { if (source === 'plan') seen.push(requests) })
+  return seen
+}
 
 describe('native questions provider', () => {
   it('distinguishes human dismissal, dirty dismissal confirmation, and native abort', async () => {
@@ -81,5 +91,31 @@ describe('native questions provider', () => {
     bench.model().invoke('submit-answers')
     abort.abort()
     await expect(pending).rejects.toMatchObject({ code: 'ASK_ABORTED' })
+  })
+
+  it.each(['agent-change', 'frontend-unload', 'app-unload', 'abort'] as const)('withdraws a plan review after %s and publishes an empty plan roster', async mode => {
+    const bench = await setup()
+    const seen = plans(bench.ctx)
+    const abort = new AbortController()
+    const pending = bench.ctx.userQuestions.ask({ questions: [plan], agent: bench.agent, signal: abort.signal })
+    const result = expect(pending).rejects.toMatchObject({ code: 'ASK_ABORTED' })
+    expect(seen.at(-1)!.map(request => request.type)).toEqual(['plan'])
+    const model = bench.model()
+    if (mode === 'agent-change') bench.ctx.mayflyConversations.selectPrimary(bench.other)
+    else if (mode === 'abort') abort.abort()
+    else await (mode === 'frontend-unload' ? bench.front : bench.app).dispose()
+    await result
+    expect(seen.at(-1)).toEqual([])
+    expect(model.disposed).toBe(true)
+  })
+
+  it('declines a plan review on Esc and clears its plan publication', async () => {
+    const bench = await setup()
+    const seen = plans(bench.ctx)
+    const pending = bench.ctx.userQuestions.ask({ questions: [plan] })
+    expect(seen.at(-1)).toEqual([{ type: 'plan', toolName: 'Plan' }])
+    bench.model().requestClose()
+    await expect(pending).resolves.toEqual({ answers: [{ id: 'plan', selected: ['Keep planning'] }] })
+    expect(seen.at(-1)).toEqual([])
   })
 })

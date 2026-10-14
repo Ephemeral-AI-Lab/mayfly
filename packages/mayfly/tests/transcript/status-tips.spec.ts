@@ -37,7 +37,11 @@ describe('buildTipRotation', () => {
     expect(tips.buildTipRotation(STATUS_TIPS)).toEqual(rotation)
   })
 
-  it('does not duplicate context-sensitive keyboard guidance', () => {
-    expect(STATUS_TIPS.map(tip => tip.text).join('\n')).not.toMatch(/ctrl\+|shift\+tab|esc to/iu)
+  it('teaches each tip once: no tip repeats another, and the key guidance appears once in the pool', () => {
+    const texts = STATUS_TIPS.map(tip => tip.text)
+    expect(new Set(texts).size).toBe(texts.length)
+    // The activity row's line teaches the interrupt and the tool detail once each; the footer keeps no key hint of its own.
+    expect(texts.filter(text => /^Esc to interrupt/u.test(text))).toHaveLength(1)
+    expect(texts.filter(text => /^Ctrl\+O to expand/u.test(text))).toHaveLength(1)
   })
 })

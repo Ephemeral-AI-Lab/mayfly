@@ -17,7 +17,9 @@ function fakeScreen() {
   const slot = { published: [] as (MayflyUiNode | null)[], disposed: false, turns: 0 }
   const lease: MayflyNodeSlot = {
     id: 'transcript.conversation', get disposed() { return slot.disposed },
-    set: (node) => { slot.published.push(node) }, setTurns: (latest) => { slot.turns = latest }, focus: () => {}, dispose: () => { slot.disposed = true },
+    set: (node) => { slot.published.push(node) }, setTurns: (latest) => { slot.turns = latest },
+    focus: () => {}, release: () => {}, setKeys: () => {}, spotlight: () => {}, focusRow: () => {}, cursor: () => undefined,
+    dispose: () => { slot.disposed = true },
   }
   const mounted: { id: string, region: string }[] = []
   const screen = {
@@ -25,7 +27,13 @@ function fakeScreen() {
     followContent: vi.fn(),
     requestRender: vi.fn(),
   } as unknown as TranscriptScreen
-  const latest = (): MayflyListNode | null => slot.published.at(-1) as MayflyListNode | null
+  // The slot holds the stream and its key actions: the list is the first child of the column.
+  const latest = (): MayflyListNode | null => {
+    const node = slot.published.at(-1)
+    if (node === null || node === undefined) return null
+    const list = node.kind === 'stack' ? node.children[0]!.node : node
+    return list as MayflyListNode
+  }
   return { screen, slot, mounted, latest }
 }
 
@@ -70,8 +78,11 @@ describe('TranscriptController', () => {
     controller.show('main')
     controller.attach(screen)
     expect(latest()!.items[0]!.wrapMax).toBe(4)
-    controller.setExpanded(true)
+    // Ctrl-O opens the prompts of the turns its reach covers, and a second press closes them again.
+    expect(controller.toggleRecent()).toBe(true)
     expect(latest()!.items[0]!.wrapMax).toBeUndefined()
+    controller.toggleRecent()
+    expect(latest()!.items[0]!.wrapMax).toBe(4)
     queued.push({ id: 'q', text: 'later' })
     controller.republish()
     expect(latest()!.items.at(-1)!.label).toContain('later')

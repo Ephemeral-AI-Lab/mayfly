@@ -13,6 +13,7 @@ import type { MayflyNodeSlot } from '../../src/core/node-slot.ts'
 import { MayflyScreenService } from '../../src/core/screen.ts'
 import type { MayflyTerminalRuntime } from '../../src/core/terminal.ts'
 import { UiInteractionService } from '../../src/core/ui-interaction-state.ts'
+import { SurfaceManager } from '../../src/core/surface-manager.ts'
 import {
   MayflyUiSurfaceRuntime,
   compileMayflyStatusNode,
@@ -137,7 +138,7 @@ class SlotScreen {
   constructor(counters: MayflyWorkCounters) {
     const root = new Context()
     const runtime = {
-      mode: 'alternate', columns: WIDTH, rows: ROWS, surfaceLaneRows: () => 0, hasCapturingOverlay: () => false,
+      mode: 'alternate', columns: WIDTH, rows: ROWS, surfaceLaneRows: () => 0, dockRows: () => 0, surfaces: new SurfaceManager(), hasCapturingOverlay: () => false,
       addChild: (component: MayflyComponent) => { this.added.push(component) },
       addBottomChild: (component: MayflyComponent) => { this.bottom.push(component) },
       setFocus: (component: MayflyComponent | null) => { if (component !== null) (component as MayflyFocusable).focused = true },

@@ -9,8 +9,9 @@ import type { MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import type { StreamRow, StreamTurn } from '../../src/components/transcript-view.ts'
 import { createTranscriptModel } from '../../src/transcript/transcript-model.ts'
 import type { TranscriptEntryModel, TranscriptModel } from '../../src/frontend/models.ts'
-import { DEFAULT_TRANSCRIPT_PRESENTATION, TranscriptPresentationPolicy, type TranscriptPresentationSnapshot } from '../../src/transcript/presentation-policy.ts'
+import { DEFAULT_TRANSCRIPT_PRESENTATION, PROCESS_POLICIES, TranscriptPresentationPolicy, type TranscriptPresentationSnapshot } from '../../src/transcript/presentation-policy.ts'
 import { clockTime, StreamFacts, type StreamInputs } from '../../src/transcript/stream-facts.ts'
+import { NO_DISCLOSURE } from '../../src/transcript/disclosure.ts'
 
 let seq = 0
 const base = (turn: number) => ({ seq: (seq += 1), updatedSeq: seq, turn })
@@ -25,7 +26,7 @@ const interrupted = (turn: number): TranscriptEntryModel => ({ ...base(turn), id
 
 const NOON = Date.UTC(2026, 0, 1, 12, 5)
 const t = (key: string, values?: Record<string, unknown>): string => key.replace(/\{(\w+)\}/gu, (_, name: string) => String(values?.[name] ?? ''))
-const inputs = (more: Partial<StreamInputs> = {}): StreamInputs => ({ policy: DEFAULT_TRANSCRIPT_PRESENTATION, expanded: false, liveTurnHeader: false, t, queued: [], ...more })
+const inputs = (more: Partial<StreamInputs> = {}): StreamInputs => ({ policy: DEFAULT_TRANSCRIPT_PRESENTATION, disclosure: NO_DISCLOSURE, liveTurnHeader: false, t, queued: [], now: NOON, ...more })
 const model = (entries: TranscriptEntryModel[], turns: TranscriptModel['turns'], streaming = false): TranscriptModel => createTranscriptModel('spec', entries, streaming, 0, turns)
 const rowsOf = (turn: StreamTurn | undefined): StreamRow[] => [...(turn?.rows ?? [])]
 
@@ -47,55 +48,62 @@ describe('StreamFacts', () => {
     expect(rowsOf(facts.turns[0]).map(row => row.kind)).toEqual(['prompt', 'answer'])
   })
 
-  it('folds a completed turn with process behind its header and opens it with the Ctrl-O reach', () => {
+  it('collects a completed turn\'s process into one title line at Compact, and opens it with the Ctrl-O reach', () => {
     const entries = [user(1, 'run it'), thinking(1, 'plan the run\nsecond line'), tool(1, 'bash', 'pnpm test'), assistant(1, 'done')]
     const turns = [{ turn: 1, startedAt: NOON, endedAt: NOON + 4_000, outcome: 'completed' }]
-    const folded = new StreamFacts().build(model(entries, turns, false), inputs())
-    expect(rowsOf(folded.turns[0]).map(row => row.kind)).toEqual(['prompt', 'header', 'answer'])
-    expect(rowsOf(folded.turns[0])[1]).toMatchObject({ kind: 'header', mood: 'done', open: false, label: '1 tool call · Ctrl+O to expand', tail: '' })
-    // Streaming models carry the lifecycle; a flat model draws the entries alone.
-    const open = new StreamFacts().build(model(entries, turns, true), inputs({ expanded: true }))
-    expect(rowsOf(open.turns[0]).map(row => row.kind)).toEqual(['prompt', 'header', 'reasoning', 'step', 'answer'])
+    const compact = { ...DEFAULT_TRANSCRIPT_PRESENTATION, mode: 'compact', process: PROCESS_POLICIES.compact } as const
+    // Compact: the calls of the turn are one title line where the first call was; no header folds them away.
+    const collected = new StreamFacts().build(model(entries, turns, false), inputs({ policy: compact }))
+    expect(rowsOf(collected.turns[0]).map(row => row.kind)).toEqual(['prompt', 'title', 'answer'])
+    expect(rowsOf(collected.turns[0])[1]).toEqual({ kind: 'title', id: expect.any(String), text: '1 tool call', hint: 'Ctrl+O to expand' })
+    // Ctrl-O opens the turn: its blocks draw verbose under an open header, the reasoning included.
+    const open = new StreamFacts().build(model(entries, turns, true), inputs({ disclosure: { ...NO_DISCLOSURE, recent: true }, policy: compact }))
+    expect(rowsOf(open.turns[0]).map(row => row.kind)).toEqual(['prompt', 'header', 'reasoning', 'tool', 'answer'])
     expect(rowsOf(open.turns[0])[0]).toMatchObject({ kind: 'prompt', open: true })
+    // Standard keeps the same turn open: its blocks draw inline, with no fold to open.
+    const standard = new StreamFacts().build(model(entries, turns, false), inputs())
+    expect(rowsOf(standard.turns[0]).map(row => row.kind)).toEqual(['prompt', 'header', 'reasoning', 'tool', 'answer'])
   })
 
   it('labels a stopped turn, its cut marker, and a failed call', () => {
     const entries = [user(1, 'go'), tool(1, 'bash', 'sleep 9', false), interrupted(1)]
     const facts = new StreamFacts().build(model(entries, [{ turn: 1, startedAt: NOON, endedAt: NOON + 1_000, outcome: 'interrupted' }], true), inputs())
     const rows = rowsOf(facts.turns[0])
-    expect(rows.map(row => row.kind)).toEqual(['prompt', 'header', 'title', 'interrupted'].filter(kind => rows.some(row => row.kind === kind)))
+    expect(rows.map(row => row.kind)).toEqual(['prompt', 'header', 'tool', 'interrupted'])
     expect(rows.find(row => row.kind === 'header')).toMatchObject({ mood: 'stopped', label: 'Stopped' })
     expect(rows.find(row => row.kind === 'interrupted')).toMatchObject({ text: '■ interrupted' })
   })
 
-  it('streams a reasoning line by line under its header at Verbose, shows its tail line at Detailed, and nothing at Standard', () => {
-    const entries = [user(1, 'q'), thinking(1, 'first\nsecond thought\n', true), thinking(1, '   ')]
-    const live = (mode: 'verbose' | 'detailed' | 'standard') => {
+  it('streams a reasoning block as its last lines, capped by tier: eight at Verbose, three at Standard, forty once opened', () => {
+    const ten = Array.from({ length: 10 }, (_, index) => `thought ${String(index + 1)}`).join('\n')
+    const entries = [user(1, 'q'), thinking(1, `${ten}\n`, true), thinking(1, '   ')]
+    const live = (mode: 'verbose' | 'detailed' | 'standard', disclosure = NO_DISCLOSURE) => {
       const policy = new TranscriptPresentationPolicy()
       policy.apply({ transcriptView: mode })
-      return new StreamFacts().build(model(entries, [{ turn: 1, startedAt: NOON }], true), inputs({ policy: policy.snapshot() }))
+      return new StreamFacts().build(model(entries, [{ turn: 1, startedAt: NOON }], true), inputs({ policy: policy.snapshot(), disclosure }))
     }
     const reasoning = (facts: ReturnType<typeof live>) => rowsOf(facts.turns[0]).filter(row => row.kind === 'reasoning')
-    // Blank reasoning draws nothing; Verbose grows the whole text under the label.
-    expect(reasoning(live('verbose'))).toEqual([expect.objectContaining({ label: 'Thinking', text: 'first\nsecond thought' })])
-    expect(reasoning(live('detailed'))).toEqual([expect.objectContaining({ text: 'second thought' })])
-    expect(reasoning(live('detailed'))[0]).not.toHaveProperty('label')
-    // Standard keeps a running turn's process out of the stream: the activity row says what it is doing.
-    expect(reasoning(live('standard'))).toEqual([])
+    // Blank reasoning draws nothing; a live block is the reasoning's end, with the earlier lines above it.
+    expect(reasoning(live('verbose'))).toEqual([{ kind: 'reasoning', id: expect.any(String), label: 'Thinking', pending: true, rows: expect.arrayContaining(['thought 3', 'thought 10']), earlier: '… +2 earlier · Ctrl+O' }])
+    expect(reasoning(live('verbose'))[0]).toMatchObject({ rows: Array.from({ length: 8 }, (_, index) => `thought ${String(index + 3)}`) })
+    expect(reasoning(live('standard'))[0]).toMatchObject({ rows: ['thought 8', 'thought 9', 'thought 10'], earlier: '… +7 earlier · Ctrl+O' })
+    // Detailed draws the latest step verbose: a single step is the latest one.
+    expect(reasoning(live('detailed'))[0]).toMatchObject({ rows: expect.any(Array), earlier: '… +2 earlier · Ctrl+O' })
+    // Opened, the block shows every line it carries.
+    expect(reasoning(live('standard', { ...NO_DISCLOSURE, recent: true }))[0]).toMatchObject({ rows: Array.from({ length: 10 }, (_, index) => `thought ${String(index + 1)}`) })
+    expect(reasoning(live('standard', { ...NO_DISCLOSURE, recent: true }))[0]).not.toHaveProperty('earlier')
   })
 
-  it('shows a settled reasoning whole under a label, or as its first line where the mode previews it', () => {
+  it('shows a settled reasoning under its label with its duration, its lines capped by tier', () => {
     const entries = [user(1, 'q'), thinking(1, 'first line\nsecond line')]
     const verbose = new TranscriptPresentationPolicy()
     verbose.apply({ transcriptView: 'verbose' })
     const whole = new StreamFacts().build(model(entries, [], false), inputs({ policy: verbose.snapshot() }))
-    expect(rowsOf(whole.turns[0]).find(row => row.kind === 'reasoning')).toMatchObject({ kind: 'reasoning', label: 'Thinking · 4s', text: 'first line\nsecond line' })
-    const detailed = new TranscriptPresentationPolicy()
-    detailed.apply({ transcriptView: 'detailed' })
-    // A flat model draws its entries alone, so the preview is reachable without the turn fold.
-    const preview = new StreamFacts().build(createTranscriptModel('spec', entries), inputs({ policy: detailed.snapshot() }))
-    expect(rowsOf(preview.turns[0]).find(row => row.kind === 'reasoning')).toMatchObject({ kind: 'reasoning', text: 'first line' })
-    expect(rowsOf(preview.turns[0]).find(row => row.kind === 'reasoning')).not.toHaveProperty('label')
+    expect(rowsOf(whole.turns[0]).find(row => row.kind === 'reasoning')).toMatchObject({ kind: 'reasoning', label: 'Thinking · 4s', rows: ['first line', 'second line'] })
+    expect(rowsOf(whole.turns[0]).find(row => row.kind === 'reasoning')).not.toHaveProperty('pending')
+    // A flat model draws its entries alone, with no tier: the reasoning's full block (up to the Verbose cap).
+    const flat = new StreamFacts().build(createTranscriptModel('spec', entries), inputs())
+    expect(rowsOf(flat.turns[0]).find(row => row.kind === 'reasoning')).toMatchObject({ kind: 'reasoning', label: 'Thinking · 4s', rows: ['first line', 'second line'] })
   })
 
   it('keeps each prompt image as an attachment id with its fallback text, and remembers the reference for the loader', () => {

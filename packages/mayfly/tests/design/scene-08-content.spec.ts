@@ -85,8 +85,8 @@ describe('scene 8 Content', () => {
 
   it('draws a diff node with the defaults, a start line, a row budget, and a context of zero', () => {
     const rows = (options: Parameters<typeof ui.diff>[2]) => paint(ui.diff('a\nb\nc\nd\ne', 'a\nB\nc\nd\nE', options), 60).map(plainText)
-    expect(rows({})[0]).toBe('    1   1 │   a')
-    expect(rows({ start: 10 })[0]).toContain(' 10  10 │')
+    expect(rows({})[0]).toBe('  1 │   a')
+    expect(rows({ start: 10 })[0]).toContain('10 │')
     expect(rows({ context: 0 }).filter(row => row.includes('⋯'))).toHaveLength(2)
     expect(rows({ maxRows: 2 }).at(-1)).toMatch(/^ {2}… \+\d+ rows · Ctrl\+O$/u)
   })

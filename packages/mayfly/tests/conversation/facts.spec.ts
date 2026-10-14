@@ -44,7 +44,7 @@ function toolResult(callId: string, content: unknown[] | null, isError = false):
 
 describe('mayflyConversationFacts projection', () => {
   it('invalidates checkpoints after the turn-start anchor, activity detail, and compaction metering are added', () => {
-    expect(conversationFactsProjectionDefinition.stateVersion).toBe(8)
+    expect(conversationFactsProjectionDefinition.stateVersion).toBe(10)
   })
 
   it('records the turn start and the running action detail for the activity row', () => {
@@ -53,13 +53,15 @@ describe('mayflyConversationFacts projection', () => {
     expect(state.turnStartedAt).toBe(5_000)
     state = foldConversationFacts(state, event('step/start', { turn: 1, step: 0 }))
     state = foldConversationFacts(state, attempt(1, 0, 'reasoning', 'Plan.\n\n**Read the auth module**'))
-    expect(state.activity).toEqual({ kind: 'reasoning', detail: 'Read the auth module' })
+    // Reasoning names no detail: the row says `Thinking` and the stream shows the thought itself.
+    expect(state.activity).toEqual({ kind: 'reasoning' })
     state = foldConversationFacts(state, event('tool/call', { turn: 1, step: 0, callId: 'c1', name: 'bash', arguments: '{"command":"pnpm test"}' }))
-    expect(state.activity).toEqual({ kind: 'tool', name: 'bash', detail: 'pnpm test' })
-    // A plan update carries no detail, so the row never shows the raw tool name.
+    // A running call names its tool; its arguments are the stream's pending line, which the row's second line draws.
+    expect(state.activity).toEqual({ kind: 'tool', name: 'bash' })
+    // A plan update names its category in the row, never the raw tool name.
     state = foldConversationFacts(state, event('tool/call', { turn: 1, step: 0, callId: 'c2', name: 'todo_write', arguments: '{"todos":[]}' }))
-    expect(state.activity).toEqual({ kind: 'tool', name: 'todo_write', detail: '' })
-    // The agents pane owns spawn detail.
+    expect(state.activity).toEqual({ kind: 'tool', name: 'todo_write' })
+    // A spawn names no detail: the agents pane owns it.
     state = foldConversationFacts(state, event('tool/call', { turn: 1, step: 0, callId: 'c3', name: 'subagent', arguments: '{"description":"Review"}' }))
     expect(state.activity).toEqual({ kind: 'tool', name: 'subagent' })
     state = foldConversationFacts(state, event('turn/end', { turn: 1, reason: { kind: 'completed' } }))

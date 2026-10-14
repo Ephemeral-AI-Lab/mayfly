@@ -48,14 +48,17 @@ async function bench(keys: string[] = []) {
   })
   mountMayflySurfaceRenderer(owner as never, runtime, { translate: (key, values) => key.replace('{count}', String(values?.count)).replace('{key}', String(values?.key)), revision: () => 0 })
   const slot = root.mayflyScreen.mountNodeSlot('transcript.conversation', { region: 'content' })
+  // The chip is drawn by the notification pane, which this bench does not mount: its words arrive as an announcement.
+  let announced: string | undefined
+  root.on('mayfly/content-tail-changed', (next: string | undefined) => { announced = next })
   const state = { length: 30 }
   runtime.addChild({ render: () => Array.from({ length: state.length }, (_, index) => `row-${String(index)}`), invalidate: () => {} })
   runtime.requestRender(true)
   await waitForRender()
   return {
     runtime, terminal, state, slot,
-    /** The viewport's last row: the terminal keeps its own last row free, so it is the one above it. */
-    lastRow: async (): Promise<string | undefined> => (await terminal.screen()).at(-2),
+    /** The chip's words as the last announcement named them, or `undefined` at the tail. */
+    chip: (): string | undefined => announced,
     paint: async (): Promise<void> => { runtime.requestRender(); await waitForRender() },
     scrollUp: async (): Promise<void> => { terminal.sendInput(WHEEL_UP); await waitForRender() },
     dispose: async (): Promise<void> => { owner.dispose(); await runtime.stop(); terminal.dispose() },
@@ -64,43 +67,43 @@ async function bench(keys: string[] = []) {
 
 describe('the tail chip', () => {
   it('shows nothing at the tail, the way back once scrolled away, and the turns that began below the view', async () => {
-    const { runtime, terminal, state, slot, lastRow, paint, scrollUp, dispose } = await bench()
+    const { runtime, terminal, state, slot, chip, paint, scrollUp, dispose } = await bench()
     slot.setTurns(3)
     // Following the tail: rows scroll in and no chip shows.
     state.length += 5
     await paint()
-    expect(await lastRow()).not.toMatch(/Ctrl/u)
+    expect(chip()).toBeUndefined()
 
     // Scrolled away with nothing new below: the chip stays, as the way back to the bottom.
     await scrollUp()
     expect(runtime.contentTail()).toMatchObject({ away: true })
-    expect(await lastRow()).toMatch(/ Back to bottom · Ctrl\+↓ $/u)
+    expect(chip()).toBe('Back to bottom · Ctrl+↓')
 
     // Rows arrive inside the same turn: still no new turn.
     state.length += 4
     await paint()
-    expect(await lastRow()).toMatch(/ Back to bottom · Ctrl\+↓ $/u)
+    expect(chip()).toBe('Back to bottom · Ctrl+↓')
 
-    // Two turns of the agent loop begin below the view: the chip counts turns, at the right edge, once.
+    // Two turns of the agent loop begin below the view: the chip counts turns.
     state.length += 7
     slot.setTurns(5)
     await paint()
-    expect(await lastRow()).toMatch(/ 2 new turns · Ctrl\+↓ $/u)
-    expect((await terminal.screen()).filter(row => row.includes('Ctrl+↓'))).toHaveLength(1)
+    expect(chip()).toBe('2 new turns · Ctrl+↓')
+    expect((await terminal.screen()).filter(row => row.includes('Ctrl+↓'))).toHaveLength(0)
 
     // Following the tail takes the chip away.
     runtime.followContent()
     await waitForRender()
-    expect((await terminal.screen()).filter(row => row.includes('Ctrl+↓'))).toHaveLength(0)
+    expect(chip()).toBeUndefined()
     await dispose()
   })
 
   it('names the keys the keymap binds to the follow action', async () => {
-    const { state, lastRow, paint, scrollUp, dispose } = await bench(['ctrl+down', 'end'])
+    const { state, chip, paint, scrollUp, dispose } = await bench(['ctrl+down', 'end'])
     await scrollUp()
     state.length += 4
     await paint()
-    expect(await lastRow()).toMatch(/ Back to bottom · Ctrl\+↓\/End $/u)
+    expect(chip()).toBe('Back to bottom · Ctrl+↓/End')
     await dispose()
   })
 

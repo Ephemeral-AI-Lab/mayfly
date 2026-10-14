@@ -85,7 +85,7 @@ describe('transcript width-scan', () => {
     })
 
     it(`activity row survives ${name}`, async () => {
-      activityPane.setActivityTimers({ setInterval: () => 0 as never, clearInterval: () => {}, setTimeout: () => 0 as never, clearTimeout: () => {} })
+      activityPane.setActivityTimers({ setTimeout: () => 0 as never, clearTimeout: () => {} })
       activityPane.setActivityClock(() => 3_723_000)
       let facts = { ...initialConversationFacts(), active: true, turnStartedAt: 0, flowUp: 30_200, flowDownChars: 16_400 }
       let listener: ((value: typeof facts) => void) | undefined
@@ -93,6 +93,7 @@ describe('transcript width-scan', () => {
       const agent = fakeAgent([])
       agent.status = 'running'
       const harness = await bootPanePlugin(activityPane, agent, {
+        mayflyTick: { subscribe: () => () => {} },
         mayflyInteractionState: { settingsSource: () => section.value },
         mayflySessionFacts: {
           get current() { return facts },

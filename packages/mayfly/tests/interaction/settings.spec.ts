@@ -151,6 +151,7 @@ describe('mayfly-settings schema and registration', () => {
       glyphs: 'auto',
       monochrome: false,
       reducedMotion: false,
+      quietHints: 'full',
     })
     expect(resolveConfig({ transcriptView: 'verbose' }).transcriptView).toBe('verbose')
     expect(resolveConfig({ keybindings: { 'ui.delete': { keys: ['d'], label: 'delete' } } }).keybindings).toEqual({ 'ui.delete': { keys: ['d'], label: 'delete' } })
@@ -193,6 +194,7 @@ describe('mayfly-settings schema and registration', () => {
       glyphs: 'auto',
       monochrome: false,
       reducedMotion: false,
+      quietHints: 'full',
     })
     expect(ready.at(-1)).toMatchObject({ editorCommand: 'my-editor --wait' })
 

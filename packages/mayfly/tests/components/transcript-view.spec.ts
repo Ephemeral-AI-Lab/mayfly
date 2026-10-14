@@ -26,7 +26,8 @@ describe('TranscriptView', () => {
       turn('turn:2', [prompt('u2', 'two')], 'Stopped after 3s · done 10:14'),
       turn('turn:3', [prompt('u3', 'three')]),
     ]))
-    expect(items.map(item => item.id)).toEqual(['u1', 'a1', 'turn:1.end.gap', 'turn:1.end', 'turn:2.gap', 'u2', 'turn:2.end.gap', 'turn:2.end', 'turn:3.gap', 'u3'])
+    // Every row after the first of the stream opens with a blank row.
+    expect(items.map(item => item.id)).toEqual(['u1', 'a1.gap', 'a1', 'turn:1.end.gap', 'turn:1.end', 'turn:2.gap', 'u2', 'turn:2.end.gap', 'turn:2.end', 'turn:3.gap', 'u3'])
     expect(items.find(item => item.id === 'turn:1.end')).toMatchObject({ label: '✻ Worked for 17s · done 10:13', labelSpans: [{ text: '✻ ', tone: 'muted' }, { text: 'Worked for 17s · done 10:13', tone: 'muted' }] })
     expect(items.find(item => item.id === 'turn:2.gap')).toMatchObject({ gap: true, disabled: true })
     // No line is drawn anywhere, and a running turn has no closing row.
@@ -67,17 +68,24 @@ describe('TranscriptView', () => {
     expect(items[0]).toMatchObject({ id: 'a1', label: '', bodyAlways: true, bodyLead: [{ text: '● ' }], body: { kind: 'markdown', source: 'Summary\n\n- one\n  - nested' } })
   })
 
-  it('draws reasoning as one clipped line, or as a header with its whole text aligned under the label', () => {
+  it('draws reasoning as a label row with its rows under it, aligned past the mark', () => {
     const items = itemsOf(facts([turn('turn:1', [
-      { kind: 'reasoning', id: 'r1', text: 'check the factors' },
-      { kind: 'reasoning', id: 'r2', label: 'Thinking · 9s', text: 'first\n\nsecond' },
+      { kind: 'reasoning', id: 'r1', label: 'Thinking', rows: ['check the factors'] },
+      { kind: 'reasoning', id: 'r2', label: 'Thinking · 9s', rows: ['first', 'second'], more: '… +3 more · Ctrl+O' },
     ])]))
-    expect(items.map(item => item.id)).toEqual(['r1', 'r2', 'r2.text'])
-    expect(items[0]).toMatchObject({ label: '✻ check the factors', labelSpans: [{ text: '✻ ', tone: 'muted' }, { text: 'check the factors', tone: 'muted', styles: ['italic'] }] })
-    expect(items[0]!.wrap).toBeUndefined()
-    expect(items[1]).toMatchObject({ label: '✻ Thinking · 9s', labelSpans: [{ text: '✻ ', tone: 'muted' }, { text: 'Thinking · 9s', tone: 'muted' }] })
-    // The text starts in the column of the label's first letter: the two columns of `✻ ` lead it.
-    expect(items[2]).toMatchObject({ label: '', bodyAlways: true, bodyLead: [{ text: '  ' }], body: { kind: 'text', tone: 'muted', styles: ['italic'] } })
+    expect(items.map(item => item.id)).toEqual(['r1', 'r1.row.0', 'r2.gap', 'r2', 'r2.row.0', 'r2.row.1', 'r2.more'])
+    expect(items[0]).toMatchObject({ label: '✻ Thinking', labelSpans: [{ text: '✻ ', tone: 'muted' }, { text: 'Thinking', tone: 'muted' }] })
+    // The rows start in the column of the label's first letter: the two columns of `✻ ` lead them.
+    expect(items[1]).toMatchObject({ label: '  check the factors', labelSpans: [{ text: '  ' }, { text: 'check the factors', tone: 'muted' }] })
+    expect(items[3]).toMatchObject({ label: '✻ Thinking · 9s' })
+    expect(items[6]).toMatchObject({ label: '  … +3 more · Ctrl+O', disabled: true })
+  })
+
+  it('draws a live reasoning block with a breathing dot and the earlier lines above its rows', () => {
+    const items = itemsOf(facts([turn('turn:1', [{ kind: 'reasoning', id: 'r1', label: 'Thinking', pending: true, rows: ['b'], earlier: '… +4 earlier' }])]))
+    expect(items.map(item => item.id)).toEqual(['r1', 'r1.earlier', 'r1.row.0'])
+    expect(items[0]).toMatchObject({ bodyAlways: true, bodyLead: [{ text: '' }] })
+    expect(items[1]).toMatchObject({ label: '  … +4 earlier' })
   })
 
   it('reports the newest turn, so the screen counts turns of the agent loop and never rows inside one', () => {
@@ -91,7 +99,7 @@ describe('TranscriptView', () => {
     const items = itemsOf(facts([turn('turn:1', [prompt('u1', 'one'), prompt('u1', 'one again')])], [{ id: 'q', text: 'x', suffix: '⏎ queued' }, { id: 'q', text: 'y', suffix: '⏎ queued' }]))
     const ids = items.map(item => item.id)
     expect(new Set(ids).size).toBe(ids.length)
-    expect(ids).toEqual(['u1', 'u1~2', 'queued.q.gap', 'queued.q', 'queued.q.gap~2', 'queued.q~2'])
+    expect(ids).toEqual(['u1', 'u1.gap', 'u1~2', 'queued.q.gap', 'queued.q', 'queued.q.gap~2', 'queued.q~2'])
     // The nodes still admit as a stream.
     expect(() => freezeWire(TranscriptView(facts([turn('turn:1', [prompt('u1', 'a'), prompt('u1', 'b')])])))).not.toThrow()
   })

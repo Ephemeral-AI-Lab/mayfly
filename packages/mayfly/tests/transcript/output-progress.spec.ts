@@ -14,14 +14,32 @@ import { foldConversationProjection, initialConversationState, conversationProje
 import { conversationTranscriptModel } from '../../src/transcript/official-model.ts'
 import { TranscriptPresentationPolicy } from '../../src/transcript/presentation-policy.ts'
 import { StreamFacts } from '../../src/transcript/stream-facts.ts'
+import { NO_DISCLOSURE } from '../../src/transcript/disclosure.ts'
 import { TranscriptView } from '../../src/components/transcript-view.ts'
 import { outputRate } from '../../src/transcript/output-rate.ts'
 import * as activity from '../../src/transcript/pane-activity.ts'
-import { BRAILLE_SPINNER_FRAMES, BRAILLE_SPINNER_INTERVAL_MS } from '../../src/transcript/spinners.ts'
+import type { TickSource } from '../../src/transcript/tick.ts'
 import { bootPanePlugin } from './pane-fakes.ts'
 import { fakeAgent } from './status-fakes.ts'
 import { assistantEvent, event, resetSeq, turnEnd, turnStart } from './helpers.ts'
 import { expectLinesFit, SCAN_WIDTHS } from '../core/width-scan.ts'
+
+/** The host's one tick, fired by the spec: the activity row re-reads its time and rate on each one. */
+class ManualTick implements TickSource {
+  private readonly listeners = new Set<(now: number) => void>()
+  subscribe(listener: (now: number) => void): () => void {
+    this.listeners.add(listener)
+    return () => { this.listeners.delete(listener) }
+  }
+  fire(now: number): void {
+    for (const listener of [...this.listeners]) listener(now)
+  }
+}
+
+/** The activity row's lines: the header and the line under it (the notification row and the blank row are not the row's). */
+const rowLines = (screen: { paneLines(width?: number): string[] }, width?: number): string[] => screen.paneLines(width).filter(line => line.trim() !== '' && !line.includes('Alt+'))
+/** A header without its margin and glyph, so the spec pins the words and not the motion frame. */
+const wordsOf = (line: string | undefined): string => (line ?? '').replace(/^ {2}\S? ?/u, '')
 
 afterEach(() => {
   vi.useRealTimers()
@@ -60,7 +78,7 @@ describe('phase-local output', () => {
     expect(outputRate(undefined, 1_000)).toBe('')
     expect(outputRate(first, 1_000)).toBe('')
     const next = appendOutputProgress(first, 168, 2_000)
-    expect(outputRate(next, 2_000)).toBe('≈42 tok/s')
+    expect(outputRate(next, 2_000)).toBe('42 tok/s')
     expect(outputRate(next, 4_001)).toBe('')
     expect(appendOutputProgress(next, 4, 500)).toMatchObject({ chars: 176, updatedAt: 2_000 })
     expect(outputProgressSchema.safeParse(next).success).toBe(true)
@@ -72,7 +90,8 @@ describe('phase-local output', () => {
     vi.setSystemTime(1_000)
     const agent = fakeAgent([])
     agent.status = 'running'
-    const harness = await bootPanePlugin(activity, agent)
+    const tick = new ManualTick()
+    const harness = await bootPanePlugin(activity, agent, { mayflyTick: tick, mayflyUiInteraction: { notificationSnapshot: (): readonly never[] => [], subscribe: () => () => {}, createNotificationOwner: () => ({ report() {}, clear() {}, clearAll() {}, dispose() {} }) } })
     let state = initialConversationState()
     const presentation = new TranscriptPresentationPolicy()
     presentation.apply({ transcriptView: 'verbose' })
@@ -80,7 +99,7 @@ describe('phase-local output', () => {
     // The stream's rows as text: what the transcript shows of the live turn, with the activity row apart from it.
     const streamText = (): string => TranscriptView(facts.build(conversationTranscriptModel(
       { entries: state.entries, streaming: state.active, settledSteps: state.finalizedSteps, turns: [] }, { get: () => undefined },
-    ), { policy: presentation.snapshot(), expanded: false, liveTurnHeader: false, t: key => key, queued: [] })).items.map(rowText).join('\n')
+    ), { policy: presentation.snapshot(), disclosure: NO_DISCLOSURE, liveTurnHeader: false, t: key => key, queued: [], now: Date.now() })).items.map(rowText).join('\n')
     const send = (next: SessionEvent): void => {
       state = foldConversationProjection(state, next)
       harness.ctx.emit('session/event', agent.session as never, next)
@@ -99,49 +118,50 @@ describe('phase-local output', () => {
       replay(reasoning('seed', 1_000))
       // The activity row owns the phase, time, and throughput; the live
       // reasoning block is a `Thinking` header and its text, with no counters.
-      expect(streamText()).toContain('✻ ')
+      expect(streamText()).toContain('Thinking')
       expect(streamText()).not.toMatch(/↓|tok\/s/u)
       // Thinking keeps the activity row: the dock never collapses mid-turn.
-      expect(harness.screen.paneLines()[0]).toContain('Thinking · 0s · ↓1 · seed')
+      expect(wordsOf(rowLines(harness.screen)[0])).toBe('Pondering · 0s · ↓1')
       vi.setSystemTime(2_000)
       replay(reasoning('x'.repeat(168), 2_000))
-      expect(streamText()).toContain('✻ ')
+      expect(streamText()).toContain('Thinking')
       expect(streamText()).not.toMatch(/↓|tok\/s/u)
-      expect(harness.screen.paneLines()[0]).toContain('Thinking · 1s · ↓43 · ≈42 tok/s')
+      tick.fire(2_000)
+      expect(wordsOf(rowLines(harness.screen)[0])).toBe('Pondering · 1s · ↓43 · 42 tok/s')
       replay(answer('', 2_010))
       replay(reasoning('\n', 2_020))
-      expect(streamText()).toContain('✻ ')
+      expect(streamText()).toContain('Thinking')
       vi.setSystemTime(3_000)
       replay(answer('seed', 3_000))
       // The reasoning settles in place into its whole text under a label.
       expect(streamText()).toContain('✻ Thinking')
-      expect(harness.screen.paneLines()[0]).toContain('Writing · 2s · ↓1')
-      expect(harness.screen.paneLines()[0]).not.toContain('tok/s')
+      tick.fire(3_000)
+      expect(wordsOf(rowLines(harness.screen)[0])).toBe('Writing · 2s · ↓1')
+      expect(rowLines(harness.screen)[0]).not.toContain('tok/s')
       vi.setSystemTime(4_000)
       replay(answer('y'.repeat(80), 4_000))
-      // Streamed counters repaint on the running spinner's next frame.
-      vi.advanceTimersByTime(BRAILLE_SPINNER_INTERVAL_MS)
-      expect(harness.screen.paneLines()[0]).toContain('Writing · 3s · ↓21 · ≈20 tok/s')
+      // Streamed counters repaint on the shared tick, one second on.
+      tick.fire(4_000)
+      expect(wordsOf(rowLines(harness.screen)[0])).toBe('Writing · 3s · ↓21 · 20 tok/s')
       for (const width of SCAN_WIDTHS) expectLinesFit('Activity/TPS', harness.screen.paneLines(width), width)
-      expect(harness.screen.paneLines(40)[0]).toContain('≈20 tok/s')
-      expect(harness.screen.paneLines(40)[0]).not.toContain('Tip:')
-      expect(harness.screen.paneLines(20)[0]).toContain('↓21')
-      expect(harness.screen.paneLines(20)[0]).not.toContain('tok/s')
-      expect(harness.screen.paneLines(12)[0]).toBe(`${BRAILLE_SPINNER_FRAMES[1]!} Writing`)
+      expect(rowLines(harness.screen, 40)[0]).toContain('20 tok/s')
+      // The counters and the rate shed first as the row narrows; the label stays whole.
+      expect(wordsOf(rowLines(harness.screen, 20)[0])).toBe('Writing')
+      expect(wordsOf(rowLines(harness.screen, 12)[0])).toBe('Writing')
 
-      vi.advanceTimersByTime(2_100)
-      expect(harness.screen.paneLines()[0]).not.toContain('tok/s')
+      tick.fire(6_100)
+      expect(rowLines(harness.screen)[0]).not.toContain('tok/s')
 
       const final = { ...assistantEvent(1, 1, [{ type: 'reasoning', text: 'corrected thought' }, { type: 'text', text: 'final answer' }]), surfaceOp: 'append' as const }
       send(final)
       expect(streamText()).toContain('corrected thought')
-      expect(harness.screen.paneLines().join('\n')).not.toContain('Writing')
+      expect(rowLines(harness.screen).join('\n')).not.toContain('Writing')
       send(reasoning('late', 7_000))
       expect(streamText()).not.toContain('late')
-      expect(harness.screen.paneLines().join('\n')).not.toContain('tok/s')
+      expect(rowLines(harness.screen).join('\n')).not.toContain('tok/s')
       send(turnEnd(1))
       send(answer('late', 8_000))
-      expect(harness.screen.paneLines()).toEqual([''])
+      expect(rowLines(harness.screen)).toEqual([])
     } finally {
       await harness.dispose()
     }

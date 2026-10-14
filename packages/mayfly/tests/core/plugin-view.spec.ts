@@ -94,15 +94,16 @@ describe('canonical basic-content leaf renderer', () => {
     expect(renderView({ kind: 'code', language: 'ts', code: long }, 80).at(-1)).toBe('<text>const a = 1</text>')
     expect(renderView({ kind: 'code', language: 'ts', code: `const a = 1\n${'中'.repeat(Math.ceil(CODE_HIGHLIGHT_MAX_BYTES / 3))}` }, 80)[1]).toBe('<text>const a = 1</text>')
     // A change is numbered and keeps its band behind the code only; a long line ends in an ellipsis.
-    const { diffAdded, diffAddedBg, diffRemoved, diffRemovedBg, diffGutter, text } = DARK_COLORS
+    const { diffAdded, diffAddedBg, diffRemoved, diffRemovedBg, muted, text } = DARK_COLORS
     const renderDiff = (before: string, after: string, width: number): string[] =>
       renderView({ kind: 'diff', before, after }, width, undefined, DARK_COLORS)
+    // The gutter numbers the modified file (muted); a removed line's cell is blank, and the tint stops four columns short.
     expect(renderDiff('a\nb', 'a\nc', 20)).toEqual([
-      `  ${diffGutter('  1   1 │')}   ${text('a')}`,
-      `  ${diffGutter('  2     │')} ${diffRemovedBg(`${diffRemoved('−')} ${diffRemoved('b')}     `)}`,
-      `  ${diffGutter('      2 │')} ${diffAddedBg(`${diffAdded('+')} ${diffAdded('c')}     `)}`,
+      `  ${muted('1 │')}   ${text('a')}`,
+      `  ${muted('  │')} ${diffRemovedBg(`${diffRemoved('−')} ${diffRemoved('b')}       `)}`,
+      `  ${muted('2 │')} ${diffAddedBg(`${diffAdded('+')} ${diffAdded('c')}       `)}`,
     ])
-    expect(visibleWidth(renderDiff('', 'one two three four', 18)[0]!)).toBe(18)
+    expect(visibleWidth(renderDiff('', 'one two three four', 18)[0]!)).toBe(14)
     expect(renderView({
       kind: 'sections',
       sections: [

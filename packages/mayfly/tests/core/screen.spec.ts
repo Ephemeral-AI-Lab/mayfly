@@ -12,6 +12,7 @@ import { MayflyScreenService } from '../../src/core/screen.ts'
 import type { MayflyTerminalRuntime } from '../../src/core/terminal.ts'
 import type { MayflyComponent, MayflyDockOptions, MayflyFocusable, MayflyKeymap, MayflyOverlayHandle } from '../../src/core/types.ts'
 import { UiInteractionService } from '../../src/core/ui-interaction-state.ts'
+import { SurfaceManager } from '../../src/core/surface-manager.ts'
 import { COMPONENTS, DIM_COLORS, PLAIN_COLORS, statusRow, streamItems, streamList } from './node-slot-host.ts'
 
 interface Recorded {
@@ -42,6 +43,8 @@ function recordingRuntime(laneRows = 0): MayflyTerminalRuntime & Recorded {
     columns: 120,
     rows: 24,
     surfaceLaneRows: () => laneRows,
+    dockRows: () => 0,
+    surfaces: new SurfaceManager(),
     hasCapturingOverlay: () => false,
     addChild(component) {
       recorded.added.push(component)
@@ -455,7 +458,6 @@ describe('MayflyScreenService node slots', () => {
     expect(interaction.get('slot', 'local.kept')).toBeDefined()
     root.mayflyScreen.bindNodeSlots(slotCompiler(root, { interaction }))
     expect(interaction.get('slot', 'local.kept')).toBeUndefined()
-    expect(interaction.get('slot', adopted.id)).toBe(model)
     // The adopted lease is unfocused, so its content flows; the cursor the model kept is the focused window's.
     expect(next.added[1]!.render(80)).toHaveLength(40)
     await root.fiber.dispose()

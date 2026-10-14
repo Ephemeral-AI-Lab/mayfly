@@ -265,6 +265,8 @@ async function bootTranscript(
     agents: { get: (id: unknown) => [primary, btw?.agent].find(agent => agent != null && String(agent.id) === String(id)) },
     mayflyInteractionState: { settingsSource: () => mayflyState.settings },
     sessionProjections: projections,
+    // The host's one-second tick: the spec never advances it, so no time-dependent row republishes on its own.
+    mayflyTick: { subscribe: () => () => {} },
     sessions: { list: () => active === null ? [] : [active.session] },
     mayflyConversationReady: { key: 'mayflyConversation' },
     tools: options.tools ?? { get: () => undefined },
@@ -459,19 +461,22 @@ describe('mayfly-transcript through the real Loader', () => {
       harness.ctx.emit('session/event', agent.session, reasoningDelta(1, 1, 'working'))
       return contentLines(harness.screen).join('\n')
     }
-    // Compact and Standard leave a reasoning-only group untitled: the activity row says Thinking.
-    for (const view of ['compact', 'standard']) {
-      const text = await live(view)
-      expect(text).toContain('think')
-      expect(text).not.toMatch(/working|Deep diving|Thinking|Analyzing the request/u)
-    }
-    // Detailed shows the latest line of the reasoning, captionless; Verbose grows the text under a `Thinking` header.
+    // Compact draws the reasoning still in flight as its own line, with no text of it: the activity row names the phase.
+    const compact = await live('compact')
+    expect(compact).toContain('think')
+    expect(compact).toMatch(/● Thinking/u)
+    expect(compact).not.toMatch(/working|Deep diving|Analyzing the request/u)
+    // Standard draws the reasoning in flight under its pending label, with its latest text under it.
+    const standard = await live('standard')
+    expect(standard).toMatch(/● Thinking\n\s+working/u)
+    expect(standard).not.toMatch(/Deep diving|Running/u)
+    // Detailed shows the reasoning in flight under its label too; Verbose grows the same block.
     const detailed = await live('detailed')
     expect(detailed).toContain('think')
-    expect(detailed).toMatch(/✻ .*working/u)
-    expect(detailed).not.toMatch(/Deep diving|Thinking/u)
+    expect(detailed).toMatch(/● Thinking\n\s+working/u)
+    expect(detailed).not.toMatch(/Deep diving|Running/u)
     const verbose = await live('verbose')
-    expect(verbose).toMatch(/✻ Thinking\n\s+.*working/u)
+    expect(verbose).toMatch(/● Thinking\n\s+working/u)
     expect(verbose).not.toMatch(/Deep diving/u)
   })
 
