@@ -1236,9 +1236,9 @@ const HINT_ORDER: Readonly<Record<string, number>> = {
   expand: 50, other: 55, search: 60, clear: 60, newline: 60, complete: 65, tabs: 70, group: 80, escape: 90, dismiss: 90, labels: 20,
 }
 
-/** Hint fragments admitted at a width: three on narrow terminals, four from 80 columns. */
+/** Hint fragments admitted at a width: three on narrow terminals, four from 80 columns, six from 100. */
 function hintLimit(width: number): number {
-  return width >= 80 ? 4 : 3
+  return width >= 100 ? 6 : width >= 80 ? 4 : 3
 }
 
 function contextKeyHintRows(state: FocusState, options: RuntimeCompilerOptions, width: number, mode: CompilerMode, escapeLabel: EscapeLabel | undefined, indent = 2): string[] {

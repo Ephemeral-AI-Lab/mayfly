@@ -64,7 +64,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const dshBin = resolveDshBin()
   assertDshVersion(dshBin)
   const profile = ensureThrowawayProfile({ repo: root, gallery: scenario.source.gallery === true, dshBin, artifacts: join(root, '.artifacts/bench') })
-  const replay = await prepareSession({ scenario, dir: join(root, '.artifacts/replay'), speed: options.speed, isolate: true })
+  const replay = await prepareSession({ scenario, dir: join(root, '.artifacts/replay'), speed: options.speed, isolate: true, dshHome: profile.dshHome })
   const session = superviseDsh({
     dshBin,
     profile: 'bench',

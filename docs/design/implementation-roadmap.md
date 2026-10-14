@@ -2127,7 +2127,7 @@ own when its last part is accepted. `/permission` and 6e wait for Phase 3d, `/ch
 | P0 | Setup: worktree, profile, status table | done | `feat/6a` |
 | R1a | 6a.1 model picker; 6a.2 `/theme` mark | built, adjusted to the borderless panel style (shared panel base components), in owner review (scenarios `model`, `modelCommit`, `theme`, `panels`) | `feat/6a` |
 | R1b | 6a.2 `/effort` as the new shared `ui.slider` | built, in owner review (scenario `effort`) | `feat/6a` |
-| R2 | 6d.1 tabs and keys; 6d.2 split view and detail; 6d.3 operation, offline, restart banner | not started | |
+| R2 | 6d.1 tabs, rows, filter, keys; 6d.2 split view and detail; 6d.3 operations, offline and stale, restart banner and footer chip | built, effect final (tests, goldens and docs deferred to the end of Phase 6; scenarios `plugin`, `pluginGroup`, `pluginNarrow`, `pluginManage`, `pluginRollback`, `pluginOffline`, `pluginStale`, `pluginEmpty`): Installed · Updates · Browse tabs, category/source grouping with `g`, facet-token filter, state icons with a legend, detail beside the list with a rule, `i u x s a r` keys, pending-restart banner and chip | `feat/6a` |
 | R3 | 6c.1 status shell; 6c.2 Usage tab | not started | |
 | R4 | 6c.3 `/account`; 6c.4 onboarding | not started | |
 | R5 | 6b.1 `/settings`; 6b.2 `/sessions` | not started | |

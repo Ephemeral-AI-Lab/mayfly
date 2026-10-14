@@ -134,7 +134,7 @@ export async function runScenario(name, { root, dshBin, cols, rows, keys = [], o
   const profile = ensureThrowawayProfile({ repo: root, gallery: scenario.source.gallery === true, dshBin, artifacts: join(root, '.artifacts/bench') })
   const socketPath = `/tmp/mayfly-replay-${randomBytes(6).toString('hex')}.sock`
   const control = await listenControl(socketPath)
-  const session = await prepareSession({ scenario, dir: join(root, '.artifacts/scenarios', `${name}-${String(width)}x${String(height)}`), control: socketPath, config: RUNNER_CONFIG, disabled: RUNNER_DISABLED, isolate: true })
+  const session = await prepareSession({ scenario, dir: join(root, '.artifacts/scenarios', `${name}-${String(width)}x${String(height)}`), control: socketPath, config: RUNNER_CONFIG, disabled: RUNNER_DISABLED, isolate: true, dshHome: profile.dshHome })
   const logs = ['mayfly-overflow.log', 'pi-crash.log'].map(file => join(profile.env.PI_CODING_AGENT_DIR, file))
   const logSizes = logs.map(sizeOf)
   const env = { ...profile.env, ...session.env, TZ: 'UTC', NODE_OPTIONS: `--import=${pathToFileURL(CLOCK).href}${profileDir === undefined ? '' : ` --cpu-prof --cpu-prof-dir=${profileDir}`}`, ...extraEnv }

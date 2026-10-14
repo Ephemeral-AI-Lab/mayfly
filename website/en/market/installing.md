@@ -10,12 +10,13 @@ title: Installing & updating
 /plugin                 # browse, search, open details
 /plugin install <id>    # e.g. /plugin install loop
 /plugin install <id> --source github   # install from a GitHub source
-/plugin list            # installed / updates / removed-from-market
+/plugin list            # open on the Installed tab
+/plugin updates         # open on the Updates tab (updates, repairs, deprecated or removed plugins)
 /plugin uninstall <id>
 /plugin refresh         # force an index refresh
 ```
 
-In the list, **Enter** opens the detail panel; `i` installs, `u` removes (with confirmation), `r` refreshes; other printable keys filter.
+The panel has **Installed**, **Updates**, and **Browse** tabs (`Alt+←/→` or `F2`/`F3`), rows grouped by category, and the focused plugin's detail beside the list from 100 columns. `i` installs, `u` updates, `x` removes (with confirmation), `s` switches the install source, `a` updates everything on the Updates tab, `r` refreshes, `g` cycles the grouping (category, source, none), and `/` filters: it searches names, descriptions, authors, tools, and commands, and takes facet tokens such as `source:official`, `cat:tools`, `surface:web`, and `needs:network`. **Enter** opens the detail panel where the list is alone. A completed change stays pending in a banner and in the status footer until you restart.
 
 ## With the dsh CLI (any profile)
 
@@ -37,4 +38,4 @@ dsh plugin --profile mayfly add 'github:Ephemeral-AI-Lab/dsh-plugins#main&path:p
 
 ## Updates & offline
 
-`/plugin list` marks entries with newer versions (`↑`). The index caches under `$DSH_HOME/storages/mayfly-plugin-market/` and refreshes hourly by default; on failure the cached catalog still renders. Point the `mayfly.marketIndexUrl` setting at a mirror or a private marketplace if you need to.
+The Updates tab lists entries with newer versions (shown as `1.2.1→1.3.0`). The index caches under `$DSH_HOME/storages/mayfly-plugin-market/` and refreshes hourly by default; on failure the cached catalog still renders. Point the `mayfly.marketIndexUrl` setting at a mirror or a private marketplace if you need to.

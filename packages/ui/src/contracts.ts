@@ -286,10 +286,12 @@ export interface MayflyListNode {
   readonly maxRows?: number
   /** Text to find: wherever it matches in a row's painted text it is drawn in reverse video. The rows themselves do not change. */
   readonly highlight?: MayflyListHighlight
+  /** A blank row before each group heading but the first, so groups read apart. */
+  readonly groupGap?: boolean
   /** The cursor row opens its body or branch while it holds the cursor. */
   readonly expandFocused?: boolean
-  /** The word the hint row gives `Enter`. */
-  readonly acceptVerb?: 'open' | 'choose' | 'expand' | 'edit' | 'restore'
+  /** The word the hint row gives `Enter`; `none` leaves `Enter` unbound and unnamed (a list whose detail already shows beside it). */
+  readonly acceptVerb?: 'open' | 'choose' | 'expand' | 'edit' | 'restore' | 'none'
   /** The list takes focus first when its surface opens. */
   readonly autofocus?: boolean
   /** Moves the cursor to `id` (and opens its parents) whenever `rev` changes. */

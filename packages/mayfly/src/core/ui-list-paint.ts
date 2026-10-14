@@ -110,7 +110,7 @@ function checkOf(node: ListNodeView, spec: ListRowSpec, selected: boolean, selec
   return selected ? '●' : '○'
 }
 
-type ListNodeView = Pick<MayflyListNode, 'items' | 'marker' | 'marks' | 'mode' | 'tree' | 'numbered' | 'maxRows' | 'highlight'>
+type ListNodeView = Pick<MayflyListNode, 'items' | 'marker' | 'marks' | 'mode' | 'tree' | 'numbered' | 'maxRows' | 'highlight' | 'groupGap'>
 
 /** A one-row meter: `▰` filled in the tone, `▱` empty and muted. */
 function meterText(meter: NonNullable<MayflyListItem['meter']>, colors: MayflySemanticColors): string {
@@ -398,8 +398,8 @@ export function paintList(node: ListNodeView, width: number, height: number, col
   for (const spec of options.rows) {
     const item = spec.item
     if (item.group !== undefined && item.group !== group) {
+      entries.push({ kind: 'group', lines: [...group !== undefined && node.groupGap === true ? [''] : [], clipRow(colors.muted(item.group), available)] })
       group = item.group
-      entries.push({ kind: 'group', lines: [clipRow(colors.muted(item.group), available)] })
     }
     const on = options.cursorId === item.id && item.disabled !== true
     const selected = options.selectedIds.includes(item.id)

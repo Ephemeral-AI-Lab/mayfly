@@ -314,6 +314,9 @@ function rowBindings(bindings: GrammarBinding[], state: GrammarState, control: E
   if (control.multiple) {
     push(bindings, action(ACTION_TOGGLE), { kind: 'toggle-row' }, { id: 'toggle', label: 'toggle', priority: PRIORITY.adjust, actions: [ACTION_TOGGLE] })
     push(bindings, action(ACTION_SUBMIT), control.enterToggles === true ? { kind: 'branch' } : { kind: 'commit' }, activate)
+  } else if (control.verb === 'none') {
+    // `acceptVerb: 'none'`: Enter does nothing on this list and the hint row does not name it.
+    push(bindings, action(ACTION_SUBMIT), { kind: 'swallow' })
   } else {
     push(bindings, action(ACTION_SUBMIT), control.enterToggles === true ? { kind: 'branch' } : { kind: 'accept' }, activate)
     // A tree's Space keeps its old meaning; a body opens with Space too, but ←/→ carries its hint.
@@ -332,6 +335,11 @@ function listText(bindings: GrammarBinding[], state: GrammarState): void {
     list.searching ? undefined : { id: 'search', keys: 'Type', label: 'filter', priority: PRIORITY.filter })
 }
 
+/** A plain row (no segment, branch, or body) under a horizontal tab strip gives `←`/`→` to the strip. */
+function arrowsSwitchTabs(state: GrammarState, control: Extract<GrammarControl, { readonly kind: 'row' }>): boolean {
+  return state.tabs && state.railBack !== true && state.list?.searching !== true && control.segment === undefined && !control.tree && control.expandable !== true
+}
+
 function rowMovement(bindings: GrammarBinding[], state: GrammarState, control: Extract<GrammarControl, { readonly kind: 'row' }>): void {
   // While a search is typing, arrows still move the cursor, but the hint names only what ends or clears the search.
   listMovement(bindings, control.label ?? 'options', state.list?.searching !== true && control.segment === undefined)
@@ -348,6 +356,10 @@ function rowMovement(bindings: GrammarBinding[], state: GrammarState, control: E
     if (!stuck) push(bindings, action(ACTION_SEGMENT_LEFT), { kind: 'branch', expand: false }, branch)
     push(bindings, action(ACTION_SEGMENT_RIGHT), { kind: 'branch', expand: true }, stuck ? branch : undefined)
     if (stuck) railLeft(bindings, state)
+  } else if (arrowsSwitchTabs(state, control)) {
+    // A plain row under a horizontal tab strip has no use for `←`/`→`: they switch the tab, as on the strip itself.
+    push(bindings, action(ACTION_SEGMENT_LEFT), { kind: 'tab-switch', delta: -1 }, { id: 'tabs', label: state.tabsLabel ?? 'tabs', priority: PRIORITY.accelerator + 1, actions: [ACTION_SEGMENT_LEFT, ACTION_SEGMENT_RIGHT] })
+    push(bindings, action(ACTION_SEGMENT_RIGHT), { kind: 'tab-switch', delta: 1 })
   } else {
     // Rows move vertically; left/right leave the list for the nearest control beside it.
     if (!railLeft(bindings, state)) push(bindings, action(ACTION_SEGMENT_LEFT), { kind: 'navigate', direction: 'left' })
@@ -444,7 +456,7 @@ export function keyGrammar(state: GrammarState): readonly GrammarBinding[] {
     push(bindings, { kind: 'digit' }, { kind: 'numbered' }, { id: 'numbered', keys: list.numbered.count === 1 ? '1' : `1-${String(list.numbered.count)}`, label: list.numbered.accept ? 'choose' : 'focus', priority: PRIORITY.numbered })
   }
   // A search in progress hints only what ends or clears it.
-  tabSwitches(bindings, state, control.kind !== 'tab' && list?.searching !== true)
+  tabSwitches(bindings, state, control.kind !== 'tab' && list?.searching !== true && !(control.kind === 'row' && arrowsSwitchTabs(state, control)))
   groupMoves(bindings, state, control.kind !== 'tab' && list?.searching !== true)
   focusLevels(bindings)
   if (list?.searching === true) push(bindings, { kind: 'backspace' }, { kind: 'search-type' })

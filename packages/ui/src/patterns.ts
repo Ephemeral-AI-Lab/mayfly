@@ -60,6 +60,14 @@ export interface MayflySplitViewProps {
   readonly listWidth?: number
   /** The width from which the detail sits beside the list; below it the list is alone. Default 100. */
   readonly breakpoint?: number
+  /** A node between the list and the detail (a vertical rule), one column wide; it appears with the detail only. */
+  readonly separator?: MayflyUiNode
+  /** The list where it stands alone (below `breakpoint`), in place of `list`: it needs no height of its own. */
+  readonly aloneList?: MayflyUiNode
+  /** The list for a viewport narrower than `compactBelow` (shorter row texts), in place of `aloneList`. */
+  readonly compactList?: MayflyUiNode
+  /** The width under which `compactList` replaces `list`; default 56. Needs `compactList`. */
+  readonly compactBelow?: number
 }
 
 export interface MayflyStatusPageProps {
@@ -121,10 +129,19 @@ function railPanel(props: MayflyRailPanelProps): MayflySurfaceNode {
 /** A list and a live detail side by side from `breakpoint` columns, the list alone below it. */
 function splitView(props: MayflySplitViewProps) {
   const breakpoint = props.breakpoint ?? 100
+  const compactBelow = props.compactBelow ?? 56
+  const aloneList = props.aloneList ?? props.list
+  const alone = props.compactList === undefined
+    ? [ui.child(aloneList, { grow: 1, when: { maxWidth: breakpoint - 1 } })]
+    : [
+        ui.child(aloneList, { grow: 1, when: { minWidth: compactBelow, maxWidth: breakpoint - 1 } }),
+        ui.child(props.compactList, { grow: 1, when: { maxWidth: compactBelow - 1 } }),
+      ]
   return ui.stack.row([
-    ui.child(props.list, { basis: props.listWidth ?? 58, when: { minWidth: breakpoint } }),
-    ui.child(props.detail, { grow: 1, when: { minWidth: breakpoint } }),
-    ui.child(props.list, { grow: 1, when: { maxWidth: breakpoint - 1 } }),
+    ui.child(props.list, { basis: props.listWidth ?? 58, shrink: 0, when: { minWidth: breakpoint } }),
+    ...props.separator === undefined ? [] : [ui.child(props.separator, { basis: 1, shrink: 0, when: { minWidth: breakpoint } })],
+    ui.child(props.detail, { basis: 0, grow: 1, when: { minWidth: breakpoint } }),
+    ...alone,
   ], { gap: 2 })
 }
 

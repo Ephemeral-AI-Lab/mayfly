@@ -596,6 +596,7 @@ function listNodeFields(object: Record<string, unknown>, path: string, state: Va
   const marks = own(object, 'marks', path)
   const maxRows = own(object, 'maxRows', path)
   const expandFocused = own(object, 'expandFocused', path)
+  const groupGap = own(object, 'groupGap', path)
   const acceptVerb = own(object, 'acceptVerb', path)
   const autofocus = own(object, 'autofocus', path)
   const focusItem = own(object, 'focusItem', path)
@@ -616,7 +617,8 @@ function listNodeFields(object: Record<string, unknown>, path: string, state: Va
     ...optional(marks === undefined ? undefined : boolean(marks, `${path}.marks`), 'marks'),
     ...optional(maxRows === undefined ? undefined : finiteInteger(maxRows, `${path}.maxRows`, 1), 'maxRows'),
     ...optional(expandFocused === undefined ? undefined : boolean(expandFocused, `${path}.expandFocused`), 'expandFocused'),
-    ...optional(acceptVerb === undefined ? undefined : enumeration(acceptVerb, ['open', 'choose', 'expand', 'edit', 'restore'], `${path}.acceptVerb`), 'acceptVerb'),
+    ...optional(groupGap === undefined ? undefined : boolean(groupGap, `${path}.groupGap`), 'groupGap'),
+    ...optional(acceptVerb === undefined ? undefined : enumeration(acceptVerb, ['open', 'choose', 'expand', 'edit', 'restore', 'none'], `${path}.acceptVerb`), 'acceptVerb'),
     ...optional(autofocus === undefined ? undefined : boolean(autofocus, `${path}.autofocus`), 'autofocus'),
     ...optional(focusItem === undefined ? undefined : enter(focusItem, `${path}.focusItem`, state, target => ({
       id: identifier(required(target, 'id', path), `${path}.focusItem.id`, state),

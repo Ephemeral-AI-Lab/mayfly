@@ -83,12 +83,13 @@ function freezeChoice(state: UiChoiceState): UiChoiceState {
 
 function filtered(definition: MayflyListNode, query: string): readonly number[] | undefined {
   if (query.length === 0) return undefined
-  const needle = query.toLocaleLowerCase()
+  // Every whitespace-separated term must occur, in any order (`source:official cat:tools`).
+  const needles = query.toLocaleLowerCase().split(/\s+/u).filter(term => term.length > 0)
   const result: number[] = []
   for (let index = 0; index < definition.items.length; index += 1) {
     const item = admittedListItem(definition.items, index)!
-    const haystack = item.searchText ?? `${item.label} ${item.detail ?? ''}`
-    if (haystack.toLocaleLowerCase().includes(needle)) result.push(index)
+    const haystack = (item.searchText ?? `${item.label} ${item.detail ?? ''}`).toLocaleLowerCase()
+    if (needles.every(needle => haystack.includes(needle))) result.push(index)
   }
   return result
 }

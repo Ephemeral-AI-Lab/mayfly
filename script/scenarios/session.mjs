@@ -11,6 +11,7 @@ import { randomBytes } from 'node:crypto'
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
+import { prepareMarket } from './market.mjs'
 import { timelineNamed } from './replays.mjs'
 import { startStubModel } from './stub-model.mjs'
 import { compile } from './timeline.mjs'
@@ -31,9 +32,10 @@ export const WORKSPACE = /\/tmp\/mayfly-scenario-[0-9a-f]{8}/gu
  *   (the `mayfly` presentation, the banner's version, …).
  * @param {readonly string[]} [options.disabled] - composition rows the overlay disables (a scenario adds its own `disabled`).
  * @param {boolean} [options.isolate] - give the session a home, a session store, and storages of its own.
+ * @param {string} [options.dshHome] - the `bench` profile's home, which a scenario with a `market` seeds (`market.mjs`).
  * @returns {Promise<{ cwd: string, patch: string, log: string, env: Record<string, string>, stub: { inFlight(): number }, close(): Promise<void> }>}
  */
-export async function prepareSession({ scenario, dir, speed = 1, control, config = {}, disabled = [], isolate = false }) {
+export async function prepareSession({ scenario, dir, speed = 1, control, config = {}, disabled = [], isolate = false, dshHome }) {
   const replay = scenario.source.replay === undefined ? undefined : timelineNamed(scenario.source.replay)
   if (scenario.source.replay !== undefined && replay === undefined) throw new Error(`unknown replay "${scenario.source.replay}"`)
   const tmp = `/tmp/mayfly-scenario-${randomBytes(4).toString('hex')}`
@@ -45,6 +47,12 @@ export async function prepareSession({ scenario, dir, speed = 1, control, config
   const rows = [`- insert:\n    - id: mayfly-replay-driver\n      name: ${pathToFileURL(DRIVER).href}\n`]
   // A scenario may pin settings of its own (a work-details mode) over the runner's.
   const pinned = { ...config }
+  let market
+  if (scenario.market !== undefined) {
+    if (dshHome === undefined) throw new Error('a market scenario seeds the bench profile: run it with pnpm run scenario or pnpm run frame')
+    market = await prepareMarket({ market: scenario.market, dshHome, dir })
+    for (const [id, settings] of Object.entries(market.config)) pinned[id] = { ...pinned[id], ...settings }
+  }
   for (const [id, settings] of Object.entries(scenario.config ?? {})) pinned[id] = { ...pinned[id], ...settings }
   for (const [id, settings] of Object.entries(pinned)) rows.push(`- id: ${id}\n  config:\n${Object.entries(settings).map(([key, value]) => `    ${key}: ${JSON.stringify(value)}\n`).join('')}`)
   for (const id of new Set([...disabled, ...(scenario.disabled ?? [])])) rows.push(`- id: ${id}\n  disabled: true\n`)
@@ -67,8 +75,10 @@ export async function prepareSession({ scenario, dir, speed = 1, control, config
       MAYFLY_REPLAY_FILE: file, MAYFLY_REPLAY_SPEED: String(speed), MAYFLY_REPLAY_LOG: log,
       ...(control === undefined ? {} : { MAYFLY_REPLAY_CONTROL: control }),
       ...(isolate ? { HOME: tmp } : {}),
+      ...market?.env,
     },
     close: async () => {
+      await market?.close()
       await stub.close()
       rmSync(tmp, { recursive: true, force: true })
     },
