@@ -32,7 +32,7 @@ grid 120x40 cursor none
 |
 |  ● The changelog lists three changes: a faster parser, a new CLI flag, and a fix for Windows paths.
 |
-|  ⡀ Deep diving · 11s · ↑7.8k
+|  ⡀ Deep diving · 18s · ↑7.8k
 |
 |                                                              ⚠ The clipboard tool is missing; falling back to OSC 52
 |╭───────────────────────────────────────────────────────────────────────────────────────────── Here is the timeout on ─╮

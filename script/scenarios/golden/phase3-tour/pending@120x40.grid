@@ -30,7 +30,7 @@ grid 120x40 cursor none
 |
 |  ● Running the suite while I finish reading.
 |
-|  ● Bash(pnpm test)
+|  ● Bash(pnpm test) · 4s
 |
 |  ● Running commands
 |    ⎿ Run the tests
@@ -38,7 +38,7 @@ grid 120x40 cursor none
 |╭───────────────────────────────────────────────────────────────────────────────────────────── Here is the timeout on ─╮
 |│ >                                                                                                                    │
 |╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
-| deepseek-official/deepseek-flash High  ~/workspace  ● todo 0/3 2s                  cache ▰▰▱▱▱ 42%  ctx ▰▰▱▱▱▱▱▱▱▱ 18%
+| deepseek-official/deepseek-flash High  ~/workspace  ● todo 0/3 7s                  cache ▰▰▱▱▱ 42%  ctx ▰▰▱▱▱▱▱▱▱▱ 18%
 styles
 1: 4-5 fg:#c9c0f0
 2: 4-5 fg:#c9c0f0; 32-36 fg:#c9c0f0
@@ -59,7 +59,7 @@ styles
 25: 2-3 fg:#4ec87e; 4-12 fg:#ededf2 b; 13 fg:#9aa3b8; 14-44 fg:#c9c0f0; 45-52 fg:#9aa3b8
 27: 2-3 fg:#4ec87e; 4-11 fg:#ededf2 b; 12 fg:#9aa3b8; 13-44 fg:#c9c0f0; 45-65 fg:#9aa3b8
 29: 2-3 fg:#ededf2
-31: 2 fg:#5c6476; 3 fg:#ededf2; 4-7 fg:#ededf2 b; 8 fg:#9aa3b8; 9-17 fg:#c9c0f0; 18 fg:#9aa3b8
+31: 2 fg:#5c6476; 3 fg:#ededf2; 4-7 fg:#ededf2 b; 8 fg:#9aa3b8; 9-17 fg:#c9c0f0; 18-23 fg:#9aa3b8
 33: 0-1 fg:#ededf2; 2 fg:#9a86e6; 3 fg:#ededf2; 4-19 fg:#9aa3b8
 34: 0-5 fg:#9aa3b8; 6-18 fg:#ededf2
 35: 86-116 fg:#9aa3b8

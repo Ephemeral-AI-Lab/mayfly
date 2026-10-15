@@ -38,7 +38,7 @@ grid 120x40 cursor none
 |╭───────────────────────────────────────────────────────────────────────────────────────────── Here is the timeout on ─╮
 |│ >                                                                                                                    │
 |╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
-| deepseek-official/deepseek-flash High  ~/workspace  ● todo 0/3 3m 58s              cache ▰▰▱▱▱ 42%  ctx ▰▰▱▱▱▱▱▱▱▱ 18%
+| deepseek-official/deepseek-flash High  ~/workspace  ● todo 0/3 3m 59s              cache ▰▰▱▱▱ 42%  ctx ▰▰▱▱▱▱▱▱▱▱ 18%
 styles
 0: 6 fg:#ededf2
 1: 4-6 fg:#45406b

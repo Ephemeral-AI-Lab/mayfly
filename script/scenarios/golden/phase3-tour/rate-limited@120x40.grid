@@ -32,9 +32,9 @@ grid 120x40 cursor none
 |
 |  » Summarise the changelog, then run the check that failed before.
 |
-|  ⡀ Deep diving · 1s
+|  ⡀ Deep diving · 4s
 |
-|                                                                                ⚠ Rate limited · retrying in 9s · 1/5
+|                                                                                ⚠ Rate limited · retrying in 7s · 1/5
 |╭───────────────────────────────────────────────────────────────────────────────────────────── Here is the timeout on ─╮
 |│ >                                                                                                                    │
 |╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯

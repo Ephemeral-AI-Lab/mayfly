@@ -568,13 +568,13 @@ const PHASE3_MARKS = [...new Set(compile(REPLAYS.phase3.items, REPLAYS.phase3.op
  * A prompt stops playback, so the script plays to the prompt, answers it, and plays to the mark again.
  */
 const PHASE3_PROMPTS = {
-  approved: [['approval-card', [key('1')]]],
-  queued: [['queue-card-1', [key('1')]], ['queue-card-2', [key('1')]], ['queue-card-3', [key('1')]]],
-  rejected: [['reject-card', [key('3')]]],
-  'plan-revised': [['plan-card', [key('2'), type('add a rollback step'), key('enter')]]],
-  'plan-accepted': [['plan-card-2', [key('1')]]],
-  answered: [['question-card', [key('enter')]]],
-  tool: [['open-card', [key('1')]]],
+  approved: [['approval-card', 'Decide', [key('1')]]],
+  queued: [['queue-card-1', '1 of 3 waiting', [key('1')]], ['queue-card-2', '1 of 2 waiting', [key('1')]], ['queue-card-3', 'Decide', [key('1')]]],
+  rejected: [['reject-card', 'Decide', [key('3')]]],
+  'plan-revised': [['plan-card', 'Decide', [key('2'), type('add a rollback step'), key('enter')]]],
+  'plan-accepted': [['plan-card-2', 'Plan: migrate to ESM (revised)', [key('1')]]],
+  answered: [['question-card', 'Which runtime should the project target?', [key('enter')]]],
+  tool: [['open-card', 'Decide', [key('1')]]],
 }
 /**
  * Play the phase3 session to the mark `name`, answering the prompts before it. Each card is checkpointed before its
@@ -586,7 +586,8 @@ const PHASE3_PROMPTS = {
 const goto = name => {
   const prompts = PHASE3_PROMPTS[name] ?? []
   if (prompts.length === 0) return [play(name)]
-  return [play(name), ...prompts.flatMap(([card, keys]) => [wait(ARMED), checkpoint(card), ...keys]), ...prompts.map(() => play(name))]
+  // Each card is waited for by its own text, not a fixed delay: a card that has not drawn yet would checkpoint the frame before it.
+  return [play(name), ...prompts.flatMap(([card, text, keys]) => [until(text), checkpoint(card), ...keys]), ...prompts.map(() => play(name))]
 }
 /** Play the phase3 session through the mark `name` without a checkpoint. */
 const through = name => PHASE3_MARKS.slice(0, PHASE3_MARKS.indexOf(name) + 1).flatMap(mark => goto(mark))
@@ -1538,6 +1539,9 @@ export const CATALOG = Object.freeze({
   ...APP,
   ...PERF,
 })
+
+// The phase 3 session has running counters and retry countdowns, so its scenarios tick the scenario clock once per checkpoint too.
+for (const scenario of Object.values(CATALOG)) if (scenario.source?.replay?.startsWith('phase3')) scenario.tick = true
 
 /** Each Website app shot, with the scenario checkpoint whose golden (at the scenario's first size) it is painted from. */
 export const APP_SHOTS = Object.freeze(Object.entries(CATALOG).flatMap(([name, scenario]) => Object.entries(scenario.shots ?? {}).map(([checkpointName, id]) => ({ id, scenario: name, checkpoint: checkpointName, cols: scenario.sizes[0][0], rows: scenario.sizes[0][1] }))))

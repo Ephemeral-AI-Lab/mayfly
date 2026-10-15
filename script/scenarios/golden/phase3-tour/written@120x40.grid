@@ -32,7 +32,7 @@ grid 120x40 cursor none
 |    6 │   assert.match(describe(), /2 retries/)
 |    … +1 more · Ctrl+O
 |
-|  ⡀ Deep diving · 4s · ↑5.5k
+|  ⡀ Deep diving · 5s · ↑5.5k
 |
 |                                                                                      Alt+↑ conversation · Alt+↓ view
 |╭───────────────────────────────────────────────────────────────────────────────────────────── Here is the timeout on ─╮

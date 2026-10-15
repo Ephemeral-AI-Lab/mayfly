@@ -31,7 +31,7 @@ grid 120x40 cursor none
 |
 |  ● The context is small again.
 |
-|  ● Compacting context ▱▱▱▱▱▱▱▱▱▱ 2% summarizing · 0s
+|  ● Compacting context ▰▰▰▰▱▱▱▱▱▱ 40% summarizing · 1s
 |
 |  ✻ Worked for 10s · done 10:44
 |                                                                                      Alt+↑ conversation · Alt+↓ view
@@ -56,7 +56,7 @@ styles
 27: 2-3 fg:#4ec87e; 4-21 fg:#ededf2; 23-32 fg:#4ec87e; 34-50 fg:#9aa3b8; 52-74 fg:#9aa3b8; 76-81 fg:#9aa3b8
 28: 2-19 fg:#9aa3b8
 30: 2-3 fg:#ededf2
-32: 2 fg:#5c6476; 3-21 fg:#ededf2; 23-32 fg:#9aa3b8; 33-35 fg:#ededf2; 37-52 fg:#9aa3b8
+32: 2 fg:#5c6476; 3-21 fg:#ededf2; 23-26 fg:#9a86e6; 27-32 fg:#9aa3b8; 33-36 fg:#ededf2; 38-53 fg:#9aa3b8
 34: 2-30 fg:#9aa3b8
 35: 86-116 fg:#9aa3b8
 36: 0-93 fg:#45406b; 94-117 fg:#5c6476; 118-119 fg:#45406b

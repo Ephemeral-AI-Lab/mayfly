@@ -48,7 +48,7 @@ grid 120x50 cursor none
 |  3  Reject
 |  Revise: type the revision in place
 |  Enter choose · c copy plan · Ctrl+G open plan · Esc reject
-| deepseek-official/deepseek-flash High  plan  ~/workspace  ● todo 0/3 16m 2s        cache ▰▰▱▱▱ 42%  ctx ▰▰▱▱▱▱▱▱▱▱ 18%
+| deepseek-official/deepseek-flash High  plan  ~/workspace  ● todo 0/3 16m 1s        cache ▰▰▱▱▱ 42%  ctx ▰▰▱▱▱▱▱▱▱▱ 18%
 styles
 0: 4-6 fg:#9aa3b8; 10 fg:#ededf2
 1: 4 fg:#9aa3b8

@@ -32,7 +32,7 @@ grid 120x40 cursor none
 |    Line 38 of a long chain of thought about whether the retry delays grow as intended.
 |    Line 39 of a long chain
 |
-|  · Fathoming · 45s · ↓693 · 15 tok/s
+|  · Fathoming · 52s · ↓801 · 15 tok/s
 |
 |                                                                                      Alt+↑ conversation · Alt+↓ view
 |╭───────────────────────────────────────────────────────────────────────────────────────────── Here is the timeout on ─╮

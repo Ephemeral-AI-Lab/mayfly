@@ -32,7 +32,7 @@ grid 120x40 cursor none
 |  ✓ Compacted 65 items ▰▰▰▰▰▰▰▰▰▰ context 92% → 26% · ~29.3k → ~8.3k tokens · auto
 |    ⎿ Ctrl+O summary
 |
-|  ⡀ Deep diving · 6s · ↑29.3k
+|  ⡀ Deep diving · 9s · ↑29.3k
 |
 |                                                                                      Alt+↑ conversation · Alt+↓ view
 |╭───────────────────────────────────────────────────────────────────────────────────────────── Here is the timeout on ─╮

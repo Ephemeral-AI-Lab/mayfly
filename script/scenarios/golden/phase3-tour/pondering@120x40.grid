@@ -32,7 +32,7 @@ grid 120x40 cursor none
 |  ● Thinking
 |    Line 1 of a long chain of thought about whether the retry delays grow
 |
-|  · Pondering · 0s · ↓3
+|  · Pondering · 1s · ↓17 · 15 tok/s
 |
 |                                                                                      Alt+↑ conversation · Alt+↓ view
 |╭───────────────────────────────────────────────────────────────────────────────────────────── Here is the timeout on ─╮
@@ -61,7 +61,7 @@ styles
 28: 2-3 fg:#9a86e6; 4-71 fg:#9a86e6 b
 30: 2 fg:#5c6476; 3-11 fg:#9aa3b8
 31: 2-3 fg:#ededf2; 4-72 fg:#9aa3b8
-33: 0-1 fg:#ededf2; 2 fg:#9a86e6; 3-12 fg:#9aa3b8; 14-22 fg:#9aa3b8
+33: 0-1 fg:#ededf2; 2 fg:#9a86e6; 3-12 fg:#9aa3b8; 14-34 fg:#9aa3b8
 35: 86-116 fg:#9aa3b8
 36: 0-93 fg:#45406b; 94-117 fg:#5c6476; 118-119 fg:#45406b
 37: 0 fg:#45406b; 4 r; 119 fg:#45406b
