@@ -2073,6 +2073,9 @@ rounds are planned in review order, one group in review at a time.
 | R5 | 4d.3 `@` files; 4d.4 `#` skills and extension results | built, and the owner accepted the effect (accepted; tests and goldens in the Phase 4 wrap-up, PR #18); the owner's answers: `Ctrl+G` on the focused `@` file row opens it in `$EDITOR` (draft and list stay) and the row ends with a muted `↗ Ctrl+G` cue (files only, a knowing exception to round 4's no-key-at-the-edge); an `@` row is the whole path and nothing else (a folder as `.agents/skills/`, cut at the left when wider than the row; no description column); the rows an editor extension adds end with its id as a muted tag; a wait shows as the palette's last line (`Waiting for wiki…`) while a list is open; a completion item may carry `problem` (public contract): the row ends with a red `!` and, focused, a line under it gives the reason; a source that throws or times out is a row of its own with the same mark (Enter and Tab change nothing), and its notification-row notice is gone; `#` skills are unchanged; scenario `completions` (workspace of 3,000 files and four skills, three scenario extensions in `script/scenarios/extensions.mjs`) | `feat/4a` |
 | R6 | 4e.1 placeholders; 4e.2 keys and title; 4e.3 subagent replies | accepted by the owner (`b638662`), the last group: the empty prompt's placeholder is a ladder per state (quiet hints `off` blanks the teaching ladders); `?` on an empty prompt opens key help; `Ctrl+Enter` steers (it replaced `Ctrl+S` in the editor, which saves in a surface); the editor sends to a live or resumable subagent (`Enter` queues, `Ctrl+Enter` steers, a stored child wakes, and the reply form is gone); the frame's corner shows the official session title, or the view's name when the view has none; `/btw` no longer inherits the parent's unclaimed inbox. Open for the phase gate: platform acceptance for paste, IME, and the clipboard on macOS, Linux, and Windows | `feat/4a` |
 
+**Merged with Phase 5 (2026-10-15).** `feat/4a` (PR #18, at `ee1a98b`) was merged into `feat/phase-5` (PR #19) before either
+reached `main`; the decisions taken where the two met are in the Phase 5 section (*Merge with Phase 4*).
+
 **Interrupt scope (owner decision, Phase 4 round 3; built).** `Esc` interrupts the current turn of the displayed
 conversation's Agent and nothing else: no subagents, jobs, goal, or plan state, and queued and steering messages are
 kept and sent. The contract is in [interaction-model.md](../interaction-model.md) (*Interrupt scope*); a change that
@@ -2178,6 +2181,18 @@ for the wrap-up of the whole phase, and this is what it did.
   (`features/status-bar.md`, `features/panes.md`, `plugins/status.md`, `plugins/dock.md`, `plugins/ui-reference.md`, `reference/keys.md`,
   `guide/faq.md`) and the views example of `script/shots/manifest.mjs` follows the item style; no Website build until the release, and
   the `views-summary` shot waits for `pnpm run shots:sync`. The Phase 3 audit's O2 to O4 are marked fixed.
+
+**Merge with Phase 4 (2026-10-15).** Phase 4 (`feat/4a`, PR #18 at `ee1a98b`) was merged into this branch before either reached
+`main`; PR #18 and then PR #19 merge after the owner's visual check. The owner's answers where the two met:
+
+- The notification row's right side with no notice: the `F7`/`F8` toggle first, then what the prompt awaits, else the history
+  counter, else the token keys; the generic hint (`Alt+↑ conversation · Alt+↓ view`, rotating while a turn runs) gives way to the toggle.
+- The keys of a queued or steering row are parts that shed by priority: the row's verbs read first (`e edit · s send now · d cancel ·
+  Enter expand · c copy · ↑/↓ select · Esc back`) and survive in the order `Esc`, `e`, `d`, `s`, `Enter`, `↑/↓`, `c`.
+- Decided by the merge: information notices have no glyph (Phase 4 retired `ℹ`); `editorRowsFromBottom` counts the views panel.
+- Scenarios for the check: `mergeDock` and `mergeConversations`. Owed at the test session: the goldens of both phases (511 conflicted
+  grids took PR #18's side as placeholders; every scenario under the merged editor and status row is re-accepted), the decision tests of
+  the merged notification row (the toggle with a hint, the queued and steering key parts), and the pack budget (2.95 MB, unmeasured).
 
 **Open choices for the question rounds** (each round asks its own, §6; the agent recommends an answer for each):
 
