@@ -76,6 +76,10 @@ export interface MayflySettings {
   readonly keybindings: Readonly<Record<string, MayflyKeybindingOverride>>
   /** Hint rows lead with the key that has no Alt, for hosts that do not deliver Alt. */
   readonly preferPlainKeys: boolean
+  /** Token prices per million by `provider/model` for `/stats`; they win over the built-in DeepSeek table and the models.dev catalog. */
+  readonly prices: Readonly<Record<string, MayflyPrice>>
+  /** CNY per USD, to show a USD price in CNY (Chinese UI) and a CNY price in USD (English UI). */
+  readonly usdCnyRate: number
   // Presentation (slice 1.2): read by core through `core/presentation.ts`; a change reloads the live theme provider.
   /** Glyph vocabulary: `auto` follows the locale's charset; `ascii` is the one-cell fallback table. */
   readonly glyphs: 'auto' | 'unicode' | 'ascii'
@@ -92,6 +96,21 @@ interface MayflyKeybindingOverride {
   readonly keys: readonly string[]
   readonly label?: string
 }
+
+/** One model's token price per million, in `currency`; a missing cache price follows the input price. */
+interface MayflyPrice {
+  readonly input: number
+  readonly output: number
+  readonly cacheRead?: number
+  readonly cacheWrite?: number
+  readonly currency: 'USD' | 'CNY'
+}
+
+/** User token prices by `provider/model` (a dict, typed by hand so the declaration stays portable). */
+const PRICES: z<Record<string, { input: number, output: number, cacheRead?: number, cacheWrite?: number, currency: 'USD' | 'CNY' }>> = z.dict(z.object({
+  input: z.number().min(0).required(), output: z.number().min(0).required(), cacheRead: z.number().min(0), cacheWrite: z.number().min(0),
+  currency: z.union([z.const('USD'), z.const('CNY')]).default('USD'),
+}))
 
 /** Saved key overrides by action id (a dict, typed by hand so the declaration stays portable). */
 const KEYBINDINGS: z<Record<string, { keys: string[], label?: string }>> = z.dict(z.object({ keys: z.array(z.string()).default([]), label: z.string() }))
@@ -111,6 +130,8 @@ export const Config = z.object({
   marketIndexUrl: z.string().default('').volatile(),
   keybindings: KEYBINDINGS.default({}).volatile(),
   preferPlainKeys: z.boolean().default(false).volatile(),
+  prices: PRICES.default({}).volatile(),
+  usdCnyRate: z.number().min(0.01).default(7.2).volatile(),
   // Presentation (slice 1.2).
   glyphs: z.union([z.const('auto'), z.const('unicode'), z.const('ascii')]).default('auto').volatile(),
   monochrome: z.boolean().default(false).volatile(),
@@ -133,6 +154,8 @@ export const DEFAULT_SETTINGS: MayflySettings = {
   marketIndexUrl: '',
   keybindings: {},
   preferPlainKeys: false,
+  prices: {},
+  usdCnyRate: 7.2,
   // Presentation (slice 1.2).
   glyphs: 'auto',
   monochrome: false,

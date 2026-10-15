@@ -13,13 +13,15 @@ import { CHANGELOG_ENTRIES } from './changelog-content.ts'
 import { interactionTranslator, mountInteractionLocale, observeInteractionLocale } from './locale.ts'
 import { openUiOverlay } from './ui-overlay.ts'
 import { openAgentOverlay } from './agent-overlay.ts'
-import { changelogNode, statusNode, usageNode, versionNode, type SessionInfoFacts } from './session-info-model.ts'
+import { changelogNode, usageNode, versionNode, type SessionInfoFacts } from './session-info-model.ts'
 
 export const name = 'mayfly-session-information'
 export const inject = ['commands', 'mayflyOverlays']
 export interface Config { readonly displayVersion?: string }
-const KEYS = ['sessionStats', 'tokenUsage', 'contextPressure', 'contextBreakdown', 'modelSelection'] as const
-const HARNESS_LINE = '0.2.0-rc.2'
+/** The projections one session-information read takes in a single snapshot. */
+export const SESSION_INFO_KEYS = ['sessionStats', 'tokenUsage', 'contextPressure', 'contextBreakdown', 'modelSelection'] as const
+const KEYS = SESSION_INFO_KEYS
+export const HARNESS_LINE = '0.2.0-rc.2'
 
 /** One native snapshot gives every displayed projection the same session cursor. */
 export function sessionInfoFacts(ctx: Context, agent: Agent): SessionInfoFacts {
@@ -32,6 +34,7 @@ export function sessionInfoFacts(ctx: Context, agent: Agent): SessionInfoFacts {
     id: String(agent.id), createdAt: agent.session.header.createdAt, status: agent.status,
     ...agent.session.header.cwd === undefined ? {} : { cwd: agent.session.header.cwd },
     turns: values.sessionStats?.turns ?? 0, steps: values.sessionStats?.steps ?? 0,
+    ...values.sessionStats === undefined ? {} : { timing: { llmMs: values.sessionStats.llmMs, toolMs: values.sessionStats.toolMs, ttftMs: values.sessionStats.ttftMs, ttftSteps: values.sessionStats.ttftSteps, decodeMs: values.sessionStats.decodeMs, decodeTokens: values.sessionStats.decodeTokens } },
     ...model === undefined ? {} : { model },
     usage: {
       buckets: { input: usage?.uncachedInputTokens ?? 0, cacheRead: usage?.cacheReadTokens ?? 0, cacheWrite: usage?.cacheWriteTokens ?? 0, output: usage?.outputTokens ?? 0 },
@@ -71,18 +74,18 @@ export function apply(ctx: Context, config: Config = {}): void {
     },
   })
   ctx.inject(['mayflyCurrentAgent', 'sessionProjections'], owner => {
-    for (const command of ['status', 'context'] as const) owner.commands.register({
-      name: command, description: t(command === 'status' ? 'Show the session header, model, and context status' : 'Show token usage and the context window'),
+    for (const command of ['context'] as const) owner.commands.register({
+      name: command, description: t('Show token usage and the context window'),
       handler: async invocation => {
         const agent = invocation.agent
         if (lifetime.signal.aborted || invocation.signal.aborted) return { kind: 'success' }
         if (owner.mayflyCurrentAgent.current() !== agent) return { kind: 'error', text: t('no session is live yet') }
         const id = `mayfly.${command}`
         const read = () => {
-          const title = command === 'status' ? 'Status' : 'Context'
+          const title = 'Context'
           try {
             const facts = sessionInfoFacts(owner, agent)
-            return { ok: true, node: frame(title, command === 'status' ? statusNode(facts, version, t) : usageNode(facts, t)) }
+            return { ok: true, node: frame(title, usageNode(facts, t)) }
           } catch { return { ok: false, node: frame(title, ui.text(t('Session information unavailable'), { tone: 'danger' })) } }
         }
         let node = read().node

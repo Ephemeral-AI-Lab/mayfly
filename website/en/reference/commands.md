@@ -27,7 +27,7 @@ Typing `/` triggers fuzzy autocomplete and discovery hints (see [Input editor](/
 | `/skills` | — | — | List available skills (the `#` prompt invokes one) | `mayfly-commands` (skills-command) |
 | `/theme` | see [Theming](/en/guide/theme) | | List or switch themes | `mayfly-commands` (theme-switch) |
 | `/init` | — | — | Analyze the codebase and write `AGENTS.md` | `mayfly-commands` (session-init) |
-| `/status` | — | — | Show the session header, model, and context status | `mayfly-commands` (session-commands) |
+| `/stats` | — | — | Show this session, the history of your sessions (activity heatmap, streaks), and the usage and cost per model | `mayfly-commands` (stats-command) |
 | `/context` | — | — | Show token usage and the context window | `mayfly-commands` (session-commands) |
 | `/version` | — | — | Show the Mayfly and harness versions and the live model | `mayfly-commands` (session-commands) |
 | `/changelog` | — | — | Show the release changelog (what's new, one section per release, the running version badged `· current`) | `mayfly-commands` (session-commands) |

@@ -100,9 +100,10 @@ export const text = value => ({ type: 'text', text: value })
 export const image = (name, { width = 1280, height = 720, bytes = 84_000 } = {}) => ({ type: 'image', attachment: { attachmentId: `replay-${name}`, mediaType: 'image/png', bytes, width, height, name } })
 /**
  * Earlier conversations in the session store, written where the item stands: each session `{ id, at, items, title,
- * cwd, parent }` is created `at` milliseconds from the start of playback (negative for the past) in the workspace, or
- * in its sibling directory `cwd`, under the seeded session `parent`, holds the turns `items` (committed at once, at
- * their own times) and an optional user-given `title`, and is released afterwards: `/sessions` lists it as stored, not
+ * cwd, parent, provider, model }` is created `at` milliseconds from the start of playback (negative for the past) in the
+ * workspace, or in its sibling directory `cwd`, under the seeded session `parent`, holds the turns `items` (committed at
+ * once, at their own times, by the replay's model unless `provider` and `model` name another) and an optional
+ * user-given `title`, and is released afterwards: `/sessions` lists it as stored, not
  * live. Seeded sessions need an isolated session store (the scenario runner gives every run one).
  */
 export const seed = sessions => ({ kind: 'seed', sessions })
@@ -384,8 +385,8 @@ export function compile(items, { provider = 'deepseek-official', model = 'deepse
   }
 
   /** A seeded session's events, at their own times: its turns compiled as a conversation of their own, then its title. */
-  function seeded({ id: sessionId, at, items: turns, title, cwd, parent }) {
-    const events = compile(turns.map(item => item.kind === 'turn' ? { ...item, items: item.items.map(entry => entry.kind === 'step' ? { ...entry, stream: false } : entry) } : item), { provider, model, contextWindow })
+  function seeded({ id: sessionId, at, items: turns, title, cwd, parent, provider: sessionProvider = provider, model: sessionModel = model }) {
+    const events = compile(turns.map(item => item.kind === 'turn' ? { ...item, items: item.items.map(entry => entry.kind === 'step' ? { ...entry, stream: false } : entry) } : item), { provider: sessionProvider, model: sessionModel, contextWindow })
       .map((action) => {
         if (action.op !== 'append') throw new Error(`a seeded session holds turns only, not ${action.op}`)
         return { at: at + action.at, type: action.type, data: action.data, ...(action.surface === undefined ? {} : { surface: action.surface }) }

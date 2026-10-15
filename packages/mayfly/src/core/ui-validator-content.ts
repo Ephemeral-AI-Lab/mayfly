@@ -144,16 +144,35 @@ export function admitProgressFields(h: AdmissionHelpers, object: Fields, path: s
   }
 }
 
-/** A heatmap's `cell` (1 or 2) and `columnLabels`, one per column. */
+/** A heatmap's `cell` (1 or 2), `columnLabels`, one per column, and the `range` legend's two words. */
 export function admitHeatmapFields(h: AdmissionHelpers, object: Fields, path: string, columns: number): Fields {
   const cell = h.own(object, 'cell', path)
   const labels = h.own(object, 'columnLabels', path)
+  const range = h.own(object, 'range', path)
+  let rangeLegend: { less: string, more: string } | undefined
+  if (range !== undefined) {
+    if (typeof range !== 'object' || range === null || Array.isArray(range)) h.invalid(`${path}.range must be an object`)
+    const entry = range as Fields
+    rangeLegend = { less: h.label(h.own(entry, 'less', `${path}.range`), `${path}.range.less`), more: h.label(h.own(entry, 'more', `${path}.range`), `${path}.range.more`) }
+  }
   const columnLabels = labels === undefined ? undefined : h.collection(labels, `${path}.columnLabels`).map((item, index) => h.label(item, `${path}.columnLabels[${String(index)}]`))
   if (columnLabels !== undefined && columnLabels.length !== columns) h.invalid(`${path}.columnLabels must match columns`)
-  return { ...present('cell', cell === undefined ? undefined : h.enumeration(cell, [1, 2] as const, `${path}.cell`)), ...present('columnLabels', columnLabels) }
+  return { ...present('cell', cell === undefined ? undefined : h.enumeration(cell, [1, 2] as const, `${path}.cell`)), ...present('columnLabels', columnLabels), ...present('range', rangeLegend) }
 }
 
 /** A rich-text row has one motion channel: at most one span shimmers or is a loader cell. */
 export function countMotion(h: AdmissionHelpers, spans: readonly MayflyInlineSpan[], path: string): void {
   if (spans.filter(span => span.motion !== undefined).length > 1) h.invalid(`${path} has more than one motion channel in a row`)
+}
+
+/** A line chart's `xLabels` (the text of each integer x tick), `yFormat` and `legend`. */
+export function admitLineChartFields(h: AdmissionHelpers, object: Fields, path: string): Fields {
+  const labels = h.own(object, 'xLabels', path)
+  const format = h.own(object, 'yFormat', path)
+  const legend = h.own(object, 'legend', path)
+  return {
+    ...present('legend', legend === undefined ? undefined : h.boolean(legend, `${path}.legend`)),
+    ...present('xLabels', labels === undefined ? undefined : h.collection(labels, `${path}.xLabels`).map((item, index) => h.label(item, `${path}.xLabels[${String(index)}]`))),
+    ...present('yFormat', format === undefined ? undefined : h.enumeration(format, ['compact'] as const, `${path}.yFormat`)),
+  }
 }

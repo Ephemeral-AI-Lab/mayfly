@@ -15,6 +15,7 @@ import * as presetCommand from '../interaction/preset-commands.ts'
 import * as toolsCommand from '../interaction/tools-commands.ts'
 import * as mcpCommand from '../interaction/mcp-commands.ts'
 import * as sessionInformation from '../interaction/session-commands.ts'
+import * as statsCommand from '../interaction/stats-command.ts'
 import * as skillsCatalog from '../interaction/skills-catalog.ts'
 import * as skillsCommand from '../interaction/skills-command.ts'
 import { LiveAssistantStreamService } from '../conversation/live-stream.ts'
@@ -64,6 +65,7 @@ export function apply(ctx: Context, config: Config = {}): void {
   ctx.plugin(toolsCommand)
   ctx.plugin(mcpCommand)
   ctx.plugin(sessionInformation, config)
+  ctx.plugin(statsCommand, config)
   ctx.plugin(skillsCatalog)
   ctx.plugin(skillsCommand)
 }

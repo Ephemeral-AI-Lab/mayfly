@@ -145,13 +145,13 @@ function splitView(props: MayflySplitViewProps) {
   ], { gap: 2 })
 }
 
-/** A key/value read-only page under a tab strip. */
+/** A read-only page under a tab strip; each tab's page takes the room under the strip, so a page can scroll its own content. */
 function statusPage(props: MayflyStatusPageProps): MayflySurfaceNode {
   const { tabs, pages } = props
   if (pages === undefined && props.body === undefined && props.rows === undefined) throw new TypeError('statusPage needs rows, a body, or pages')
   const body = pages === undefined
     ? [props.body ?? ui.fields(props.rows!)]
-    : tabs.items.flatMap(item => pages[item.id] === undefined ? [] : [ui.child(pages[item.id]!, { tab: { controlId: tabs.id, itemId: item.id } })])
+    : tabs.items.flatMap(item => pages[item.id] === undefined ? [] : [ui.child(pages[item.id]!, { tab: { controlId: tabs.id, itemId: item.id }, grow: 1, minSize: 1 })])
   return ui.surface({
     title: props.title,
     chrome: 'overlay',

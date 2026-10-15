@@ -87,6 +87,8 @@ export class ScrollRegion implements Component, UiScrollControl {
 
   get viewportHeight(): number { return this.viewport }
 
+  get expandable(): boolean { return this.options.expanded() || (this.options.expandedHeight > this.viewport && this.rows > this.viewport) }
+
   private get max(): number { return Math.max(0, this.rows - this.viewport) }
 
   private sync(): void {

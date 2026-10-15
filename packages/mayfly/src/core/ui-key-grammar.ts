@@ -26,7 +26,7 @@ export type Direction = 'up' | 'down' | 'left' | 'right'
 export type GrammarControl =
   | { readonly kind: 'none' }
   | { readonly kind: 'editor' }
-  | { readonly kind: 'scroll' }
+  | { readonly kind: 'scroll', readonly expandable?: boolean }
   /** `completes`: the field is being edited and one of its suggestions starts with what is typed, so `Tab` takes it. */
   | { readonly kind: 'text', readonly field: 'input' | 'textarea' | 'secret' | 'number', readonly editing: boolean, readonly enterSubmits: boolean, readonly completes?: boolean }
   /** `stuckLeft`: `←` would change nothing (the first option is current), so it is not this control's key now. */
@@ -448,7 +448,7 @@ export function keyGrammar(state: GrammarState): readonly GrammarBinding[] {
     // A slash list names its key: bare letters are free, so `/` is how a search starts.
     if (!list.searching) push(bindings, action(ACTION_FILTER), { kind: 'search-start' }, list.filterMode === 'slash' ? { id: 'search', label: 'filter', priority: PRIORITY.primary, actions: [ACTION_FILTER] } : undefined)
   }
-  if (control.kind === 'scroll') push(bindings, action(ACTION_EXPAND), { kind: 'expand' }, { id: 'expand', label: 'expand', priority: PRIORITY.adjust, actions: [ACTION_EXPAND] })
+  if (control.kind === 'scroll' && control.expandable !== false) push(bindings, action(ACTION_EXPAND), { kind: 'expand' }, { id: 'expand', label: 'expand', priority: PRIORITY.adjust, actions: [ACTION_EXPAND] })
   // Printable accelerators never pre-empt a control that consumes typed text.
   // A type-to-filter list reads every printable key as text; a slash list does only once its search is open.
   accelerators(bindings, state, control.kind !== 'text' && !(list?.filterable === true && (list.filterMode !== 'slash' || list.searching)))

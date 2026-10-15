@@ -28,12 +28,24 @@ interface ModelsDevMatch {
   readonly efforts?: readonly string[]
   /** The catalog explicitly marks the model non-reasoning. */
   readonly nonReasoning?: boolean
+  /** The catalog's list price in USD per million tokens, when it carries one. */
+  readonly cost?: ModelsDevCost
+}
+
+/** A model's list price, USD per million tokens; a missing cache price follows the input price when priced. */
+export interface ModelsDevCost {
+  readonly input: number
+  readonly output: number
+  readonly cacheRead?: number
+  readonly cacheWrite?: number
 }
 
 /** A loaded, queryable catalog index. */
 export interface ModelsDevIndex {
   /** Look one model id up (case-insensitive, provider-prefix tolerant). */
   lookup(id: string): ModelsDevMatch | undefined
+  /** The list price of a model under the catalog provider of the same id, else of any provider that lists the model. */
+  lookupCost(provider: string, id: string): ModelsDevCost | undefined
 }
 
 /** The public catalog endpoint (the kimi default). */
@@ -91,6 +103,7 @@ interface RawModelEntry {
   readonly reasoning?: unknown
   readonly reasoning_options?: unknown
   readonly status?: unknown
+  readonly cost?: { readonly input?: unknown, readonly output?: unknown, readonly cache_read?: unknown, readonly cache_write?: unknown }
 }
 
 /** One raw models.dev provider entry. */
@@ -106,18 +119,23 @@ interface RawProviderEntry {
  */
 export function buildIndex(payload: unknown): ModelsDevIndex {
   const matches = new Map<string, ModelsDevMatch>()
-  if (typeof payload !== 'object' || payload === null) return { lookup: () => undefined }
-  for (const entry of Object.values(payload as Record<string, RawProviderEntry>)) {
+  const routeCosts = new Map<string, ModelsDevCost>()
+  if (typeof payload !== 'object' || payload === null) return { lookup: () => undefined, lookupCost: () => undefined }
+  for (const [provider, entry] of Object.entries(payload as Record<string, RawProviderEntry>)) {
     if (entry?.models === undefined) continue
     for (const [id, model] of Object.entries(entry.models)) {
       if (model?.status === 'deprecated') continue
       const match = matchOf(model)
-      if (match !== undefined) matches.set(id.toLowerCase(), match)
+      if (match === undefined) continue
+      matches.set(id.toLowerCase(), match)
+      if (match.cost !== undefined) routeCosts.set(`${provider.toLowerCase()}/${id.toLowerCase()}`, match.cost)
     }
   }
+  const lookup = (id: string): ModelsDevMatch | undefined => matches.get(modelsDevKey(id)) ?? matches.get(bareKey(id))
   return {
-    lookup: (id: string): ModelsDevMatch | undefined =>
-      matches.get(modelsDevKey(id)) ?? matches.get(bareKey(id)),
+    lookup,
+    lookupCost: (provider: string, id: string): ModelsDevCost | undefined =>
+      routeCosts.get(`${modelsDevKey(provider)}/${modelsDevKey(id)}`) ?? routeCosts.get(`${modelsDevKey(provider)}/${bareKey(id)}`) ?? lookup(id)?.cost,
   }
 }
 
@@ -137,10 +155,12 @@ function matchOf(model: RawModelEntry): ModelsDevMatch | undefined {
   const contextWindow = positiveNumber(model.limit?.context)
   const maxTokens = positiveNumber(model.limit?.output)
   const { efforts, nonReasoning } = effortFacts(model)
-  if (contextWindow === undefined && efforts === undefined && nonReasoning === undefined) {
+  const cost = costOf(model)
+  if (contextWindow === undefined && efforts === undefined && nonReasoning === undefined && cost === undefined) {
     return undefined
   }
   return {
+    ...(cost !== undefined ? { cost } : {}),
     ...(contextWindow !== undefined ? { contextWindow } : {}),
     ...(maxTokens !== undefined ? { maxTokens } : {}),
     ...(efforts !== undefined ? { efforts } : {}),
@@ -175,6 +195,21 @@ function effortFacts(model: RawModelEntry): { efforts?: readonly string[], nonRe
   }
   if (model.reasoning === false) return { nonReasoning: true }
   return {}
+}
+
+/** The list price of one raw entry: a price needs an input and an output rate. */
+function costOf(model: RawModelEntry): ModelsDevCost | undefined {
+  const input = nonNegativeNumber(model.cost?.input)
+  const output = nonNegativeNumber(model.cost?.output)
+  if (input === undefined || output === undefined) return undefined
+  const cacheRead = nonNegativeNumber(model.cost?.cache_read)
+  const cacheWrite = nonNegativeNumber(model.cost?.cache_write)
+  return { input, output, ...cacheRead === undefined ? {} : { cacheRead }, ...cacheWrite === undefined ? {} : { cacheWrite } }
+}
+
+/** A non-negative finite number, or undefined. */
+function nonNegativeNumber(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : undefined
 }
 
 /** A positive finite number, or undefined. */

@@ -96,6 +96,32 @@ const COVERS = {
  * that `differs` from the prototype, and `pending`. `brief.mjs` prints them. Finalizing a group removes its entries.
  */
 const REVIEW = {
+  stats: {
+    scene: 26,
+    reference: 'prototype scene 26 (/status, now /stats) · component-library §5.10 · your two reference images (History, Models) · part 6c · built from: patterns.statusPage (tabs + pages), ui.fields, ui.chart (heatmap with the Less/More range legend, line with dated ticks and compact y labels), ui.richText (gap loader span), ui.scroll, ui.actions (hidden keys)',
+    implemented: [
+      '`/stats` replaces `/status`: three tabs, `Session · History · Models`, no buttons. The tab strip takes plain `←/→` (and `F2`/`F3`, `Alt+←/→`).',
+      'Session: the live session as aligned rows (directory, agent, model and thinking, context with its severity colour, turns and steps, the token line with the cache hit rate, cost, model/tool time and tokens per second, created and id, versions). A session that used two or more models adds a `By model` block. A model nobody prices hides its amount and the total says `+ unpriced`. `r` re-reads.',
+      'History: the activity heatmap (turns per day, Sunday first, Mon/Wed/Fri labelled, month header, `Less · ░ ▒ ▓ █ More`; 52 weeks from 64 columns, 26 from 38, 13 below), the range line `All time · Last 7 days · Last 30 days` (`r` cycles it) with the workspace scope, two columns of figures (favorite model, sessions, active days, most active day; total tokens, longest session, streaks), and the muted token line with the money.',
+      'Models: two line charts, `Tokens per day` and `Cost per day` (USD or CNY by language; left out when no model has a price), side by side from 100 columns and stacked below, one line per model (four at most, the rest one `other` line) with dated x ticks and compact y labels, then a block per model with its share, money beside the name, tokens and cache, in two columns from 80 columns.',
+      'The stored sessions are read once the first time History or Models is shown, newest first (at most 300), four at a time, with a `⣾ indexing 12/80 sessions` line that never blocks a key or the Session tab. `w` switches all workspaces / this workspace and reads again; `c` copies the tab as text.',
+      'Money: your price (`mayfly.prices` in settings.yaml), then the built-in DeepSeek table (USD and CNY, double at peak hours in Beijing time), then the models.dev list price. English shows `≈ $`, Chinese `≈ ¥` (a USD price converted at `mayfly.usdCnyRate`, default 7.2).',
+    ],
+    focus: [
+      { look: 'The Session rows: is anything missing or noisy? Does the cost line read right (`≈ $` at a peak hour for the live deepseek-flash session)?', how: 'checkpoint `session` at 100x36, 60x28 and 40x24' },
+      { look: 'The heatmap: the Less/More legend, the month names, the empty days as dots, today in the last column', how: 'checkpoints `all`, `week`, `month` of `statsHistory`' },
+      { look: 'The figures beside the heatmap follow the range; the workspace scope changes them', how: 'checkpoints `all`, `week`, `month`, `this-workspace`' },
+      { look: 'The two line charts and the model blocks: lines tell the models apart without colour (names are in the blocks); the cost chart follows peak and off-peak prices', how: 'checkpoints `all`, `week` of `statsModels`' },
+      { look: 'Narrow widths: 26 and 13 weeks, one column of figures and model blocks', how: 'scenario `statsNarrow`' },
+    ],
+    differs: [
+      '`c` copies (the product-wide copy key), not `ctrl+s` as in your reference image.',
+      'The Session tab has no context progress bar, only the text with its colour (rows in one aligned block).',
+      'The tokens-per-day line uses zero for days with no use, so a line falls to the axis between active days.',
+      'The Chinese UI cannot be reached from a scenario; switch the language in `/settings` to see `≈ ¥` and the zh texts.',
+    ],
+    pending: ['No persisted digest: the first History visit after a restart reads the stored sessions again.', 'A Chinese public holiday counts as a peak day for DeepSeek.'],
+  },
   plugin: {
     scene: 27,
     reference: 'prototype scene 27 (/plugin marketplace) · component-library §5.11 · part 6d · built from: ui.surface (borderless chrome, subtitle, footer banner), ui.tabs (counts, attention), patterns.splitView (list and live detail), ui.list (slash filter, group headings, right columns, selection marker, per-row unavailable keys), ui.sections and ui.fields (detail), ui.scroll, ui.actions (hidden keys, semantic delete and refresh), ui.empty',
@@ -1199,6 +1225,63 @@ const PERF = {
 
 /** The catalog, by scenario name. */
 export const CATALOG = Object.freeze({
+  stats: {
+    summary: '/stats: the Session tab of a live session in a workspace with a year of stored sessions, the cost at DeepSeek\'s peak rate',
+    source: { replay: 'appStats' },
+    covers: [`${INTERACTION}stats-command.ts`, `${INTERACTION}stats-facts.ts`, `${INTERACTION}pricing.ts`, 'packages/mayfly/src/components/stats-panel.ts'],
+    sizes: [[100, 36], [60, 28], [40, 24]],
+    script: [
+      play(), type('/stats'), key('enter'), until('Stats'), checkpoint('session'),
+      key('r'), checkpoint('refreshed'),
+      key('esc'), checkpoint('closed'),
+    ],
+    review: REVIEW.stats,
+  },
+  statsHistory: {
+    summary: '/stats History: the activity heatmap, the three date ranges, the workspace scope, copying the tab',
+    source: { replay: 'appStats' },
+    covers: [`${INTERACTION}stats-command.ts`, `${INTERACTION}stats-facts.ts`, `${INTERACTION}stats-index/`, 'packages/mayfly/src/components/stats-panel.ts', 'packages/mayfly/src/core/chart-renderer.ts'],
+    sizes: [[100, 36], [80, 32]],
+    script: [
+      play(), type('/stats'), key('enter'), until('Stats'),
+      key('right'), until('Favorite model'), checkpoint('all'),
+      key('enter'), checkpoint('in-page'), key('esc'), checkpoint('back-on-tabs'),
+      key('r'), checkpoint('week'),
+      key('r'), checkpoint('month'),
+      key('r'), checkpoint('all-again'),
+      key('w'), checkpoint('this-workspace'),
+      key('c'), checkpoint('copied'),
+      key('esc'), checkpoint('closed'),
+    ],
+    review: REVIEW.stats,
+  },
+  statsModels: {
+    summary: '/stats Models: tokens per day by model and each model\'s share, tokens and money',
+    source: { replay: 'appStats' },
+    covers: [`${INTERACTION}stats-command.ts`, `${INTERACTION}stats-facts.ts`, `${INTERACTION}stats-index/`, 'packages/mayfly/src/components/stats-panel.ts', 'packages/mayfly/src/core/chart-renderer.ts'],
+    sizes: [[100, 40], [80, 36]],
+    script: [
+      play(), type('/stats'), key('enter'), until('Stats'),
+      key('right'), key('right'), until('Tokens per day'), checkpoint('all'),
+      key('r'), checkpoint('week'),
+      key('w'), checkpoint('this-workspace'),
+      key('esc'), checkpoint('closed'),
+    ],
+    review: REVIEW.stats,
+  },
+  statsNarrow: {
+    summary: '/stats History and Models at narrow widths: fewer weeks, one column',
+    source: { replay: 'appStats' },
+    covers: [`${INTERACTION}stats-facts.ts`, 'packages/mayfly/src/components/stats-panel.ts'],
+    sizes: [[60, 30], [40, 26]],
+    script: [
+      play(), type('/stats'), key('enter'), until('Stats'),
+      key('right'), until('Less'), checkpoint('history'),
+      key('right'), until('Tokens per day'), checkpoint('models'),
+      key('esc'), checkpoint('closed'),
+    ],
+    review: REVIEW.stats,
+  },
   plugin: {
     summary: 'the /plugin marketplace: the Installed, Updates, and Browse tabs, rows grouped by category, the detail beside the list, the slash filter with facet tokens',
     source: { idle: true },
@@ -1399,7 +1482,7 @@ export const CATALOG = Object.freeze({
     review: REVIEW.theme,
   },
   panels: {
-    summary: 'the borderless panel on the existing commands: help, theme, settings, status, sessions, trace, and the status row coming back',
+    summary: 'the borderless panel on the existing commands: help, theme, settings, stats, sessions, trace, and the status row coming back',
     source: { idle: true },
     covers: ['packages/mayfly/src/core/ui-patterns.ts', 'packages/mayfly/src/core/ui-list-paint.ts', `${INTERACTION}help.ts`, `${INTERACTION}settings-command.ts`, `${INTERACTION}trace-command.ts`],
     sizes: [[100, 30], [60, 24], [40, 20]],
@@ -1407,7 +1490,7 @@ export const CATALOG = Object.freeze({
       type('/help'), key('enter'), until('Esc'), checkpoint('help'), key('esc'), checkpoint('help-closed'),
       type('/theme'), key('enter'), until('Select a theme'), checkpoint('theme'), key('esc'), checkpoint('theme-closed'),
       type('/settings'), key('enter'), until('Esc'), checkpoint('settings'), key('esc'), checkpoint('settings-closed'),
-      type('/status'), key('enter'), until('Esc'), checkpoint('status'), key('esc'), checkpoint('status-closed'),
+      type('/stats'), key('enter'), until('Esc'), checkpoint('stats'), key('esc'), checkpoint('stats-closed'),
       type('/sessions'), key('enter'), until('Esc'), checkpoint('sessions'), key('esc'), checkpoint('sessions-closed'),
       type('/trace'), key('enter'), until('Esc'), checkpoint('trace'), key('esc'), checkpoint('back'),
     ],

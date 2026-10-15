@@ -1808,6 +1808,11 @@ its first prompt and last outcome.
 form of §4.3. Each group keeps its own draft; `←` follows the ladder of §4.5: a select or number adjusts first, and a `←`
 the field cannot use (a text field, a toggle, a select already at its first option) returns to the rail.
 
+> **Phase 6, round 3 (built, not yet documented here).** `/status` became `/stats`, one command with the tabs Session,
+> History and Models (activity heatmap, per-model tokens and cost per day, prices from the user setting, the built-in
+> DeepSeek table and models.dev). The text below describes the earlier five-tab sketch. Tests, scenario goldens and the
+> rewrite of this section are deferred to the end of Phase 6.
+
 **Status** is read-only: tabs `Overview`, `Usage`, `Account`, `Connections`,
 `About`, with a right-hand `!` on a tab that needs attention.
 

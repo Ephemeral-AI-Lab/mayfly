@@ -18,6 +18,8 @@ export interface SessionInfoFacts {
   readonly model?: { readonly provider: string, readonly model: string, readonly reasoningEffort?: string }
   readonly usage: UsageFacts
   readonly composition?: CompositionFacts
+  /** The session's wall time by kind, from `sessionStats`. */
+  readonly timing?: { readonly llmMs: number, readonly toolMs: number, readonly ttftMs: number, readonly ttftSteps: number, readonly decodeMs: number, readonly decodeTokens: number }
 }
 
 export function formatCreated(createdAt: number): string {
@@ -53,35 +55,6 @@ function contextWindowField(facts: UsageFacts['context'], t: MayflyTranslate): M
   if (window === undefined || window <= 0 || used === undefined) return undefined
   const severity = ratioSeverity(usageRatio(used, window))
   return field(t('Context window'), `${formatTokens(used)} / ${formatTokens(window)} (${usagePercent(used, window)}%)`, severity === 'danger' ? 'danger' : severity === 'warn' ? 'warning' : 'success')
-}
-
-export function contextNode(facts: UsageFacts['context'], t: MayflyTranslate): MayflyUiNode {
-  const window = tokenInteger(facts.window)
-  if (window === undefined || window <= 0) return ui.text(t('not advertised for the current model'), { tone: 'muted' })
-  const used = tokenInteger(facts.used)
-  if (used === undefined) return ui.text(t('no request has reported usage yet'), { tone: 'muted' })
-  return ui.stack.column([
-    ui.progress({ value: Math.min(used, window), max: window }),
-    ui.fields([contextWindowField(facts, t)!]),
-  ])
-}
-
-export function statusNode(facts: SessionInfoFacts, version: VersionFacts, t: MayflyTranslate): MayflyUiNode {
-  return ui.stack.column([
-    ui.divider({ label: t('Session') }),
-    ui.fields([
-      field('ID', facts.id), field(t('Working directory'), facts.cwd ?? t('(unknown)')),
-      field(t('Created'), formatCreated(facts.createdAt)), field(t('Agent'), t(facts.status)),
-      field(t('Turns'), String(facts.turns)), field(t('Steps'), String(facts.steps)),
-    ]),
-    ui.divider({ label: t('Model') }),
-    ui.fields([
-      field(t('Model'), facts.model === undefined ? t('not set') : `${facts.model.model} (${facts.model.provider})`),
-      ...facts.model?.reasoningEffort === undefined ? [] : [field(t('Thinking effort'), facts.model.reasoningEffort)],
-    ]),
-    contextNode(facts.usage.context, t),
-    ui.divider({ label: t('Version') }), versionNode(version),
-  ])
 }
 
 export function usageNode(facts: SessionInfoFacts, t: MayflyTranslate): MayflyUiNode {

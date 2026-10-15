@@ -17,6 +17,8 @@ export interface UiScrollControl {
   setScrollbarActive(active: boolean): void
   /** The control paints its own viewport rows, so the surface keeps its natural height around it. */
   readonly inline?: boolean
+  /** `false` while `Ctrl+E` would show no more rows (the viewport already is its expanded height, or holds all its content). */
+  readonly expandable?: boolean
 }
 
 /** Compiled control and scroll handles for the current generation. */

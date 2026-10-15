@@ -99,10 +99,28 @@ function summary(node: Exclude<MayflyChartNode, { readonly chart: 'sparkline' | 
   return result
 }
 
+/** `420.8M`, `12k`, `7`: decimal thousands with one decimal below ten of a unit. */
+export function compactChartNumber(value: number): string {
+  const size = Math.abs(value)
+  for (const [limit, suffix] of [[1e12, 'T'], [1e9, 'B'], [1e6, 'M'], [1e3, 'k']] as const) {
+    if (size >= limit) return `${String(Number((value / limit).toFixed(size / limit < 10 ? 2 : 1)))}${suffix}`
+  }
+  return formatChartNumber(value)
+}
+
 function renderNumeric(node: Extract<MayflyChartNode, { readonly chart: 'line' | 'point' }>, width: number, components: MayflyComponents, colors: MayflySemanticColors): string[] | undefined {
   const tones = node.series.map((series, index) => toneAt(series.tone, index))
+  const { xLabels, yFormat } = node
+  // The library puts y ticks on whole numbers, so a chart whose values stay below ten would show none: it plots the
+  // values scaled up by a power of ten and writes the ticks scaled back.
+  const top = Math.max(0, ...node.series.flatMap(series => series.points.flatMap(point => point.y === null ? [] : [Math.abs(point.y)])))
+  const scale = top > 0 && top < 10 ? 10 ** Math.ceil(Math.log10(10 / top)) : 1
+  const formatter = xLabels === undefined && yFormat === undefined && scale === 1 ? undefined : (value: number, helpers: { readonly axis: 'x' | 'y' }): number | string => {
+    if (helpers.axis === 'y') return yFormat === 'compact' ? compactChartNumber(value / scale) : scale === 1 ? value : formatChartNumber(value / scale)
+    return xLabels === undefined ? value : xLabels[Math.min(xLabels.length - 1, Math.max(0, Math.round(value)))] ?? ''
+  }
   return checkedRows((plotWidth, compact) => plot(
-    node.series.map(series => series.points.map(point => [point.x, point.y] as const)),
+    node.series.map(series => series.points.map(point => [point.x, point.y === null ? null : point.y * scale] as const)),
     {
       width: plotWidth,
       height: node.height ?? 10,
@@ -110,12 +128,13 @@ function renderNumeric(node: Extract<MayflyChartNode, { readonly chart: 'line' |
       interpolation: 'linear',
       overflow: 'clip',
       color: tones.map(vendorColor),
+      ...(formatter === undefined ? {} : { formatter }),
       ...(compact ? { hideXAxisTicks: true, hideYAxisTicks: true } : {
         showTickLabel: true,
         ...(node.title === undefined ? {} : { title: components.truncateToWidth(node.title, width) }),
         ...(node.xLabel === undefined ? {} : { xLabel: components.truncateToWidth(node.xLabel, width) }),
         ...(node.yLabel === undefined ? {} : { yLabel: components.truncateToWidth(node.yLabel, width) }),
-        ...(node.series.length < 2 ? {} : { legend: { position: 'bottom' as const, series: node.series.map(series => series.label ?? series.id) } }),
+        ...(node.series.length < 2 || node.legend === false ? {} : { legend: { position: 'bottom' as const, series: node.series.map(series => series.label ?? series.id) } }),
       }),
     },
   ), width, tones, components, colors)
@@ -229,7 +248,8 @@ function heatmapGlyph(index: number, levels: number, oneCell: boolean): string {
 
 /**
  * The kit's heatmap: a title, a header of column names (or `columnLabels`, each written where its column starts in
- * one-cell mode), one row of cells per row label, and the legend row `legend: ░░ low  ▒▒ mid  ██ high`. A value with
+ * one-cell mode), one row of cells per row label, and the legend row `legend: ░░ low  ▒▒ mid  ██ high` (or the `range`
+ * row, `Less · ░ ▒ ▓ █ More`). A value with
  * no level is blank; rows wider than the room are clipped, not summarized.
  */
 function renderHeatmap(node: Extract<MayflyChartNode, { readonly chart: 'heatmap' }>, width: number, components: MayflyComponents, colors: MayflySemanticColors): string[] {
@@ -251,12 +271,14 @@ function renderHeatmap(node: Extract<MayflyChartNode, { readonly chart: 'heatmap
     const index = node.levels.findIndex(level => level.value === value)
     return `${index < 0 ? ' '.repeat(oneCell ? 1 : 2) : painted(index)}${gap}`
   }).join('')}`.trimEnd())
-  const legend = `${colors.muted('legend:')} ${node.levels.map((level, index) => `${painted(index)} ${level.label}`).join('  ')}`
+  const legend = node.range === undefined
+    ? [`${colors.muted('legend:')} ${node.levels.map((level, index) => `${painted(index)} ${level.label}`).join('  ')}`]
+    : [`${' '.repeat(label + 1)}${colors.muted(node.range.less)} ${node.levels.map((_level, index) => painted(index)).join(' ')} ${colors.muted(node.range.more)}`]
   return [
     ...node.title === undefined ? [] : [colors.muted(node.title)],
     `${' '.repeat(label + 1)}${header.trimEnd()}`,
     ...body,
-    legend,
+    ...legend,
   ].map(row => components.truncateToWidth(row, width, ''))
 }
 

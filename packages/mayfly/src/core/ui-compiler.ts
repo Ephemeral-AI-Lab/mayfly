@@ -1053,7 +1053,7 @@ function grammarStateFor(state: FocusState, options: RuntimeCompilerOptions, con
     if (active === undefined) return { kind: 'none' }
     switch (active.kind) {
       case 'editor': return { kind: 'editor' }
-      case 'scroll': return { kind: 'scroll' }
+      case 'scroll': return state.scrollViews.get(active.key)?.expandable === false ? { kind: 'scroll', expandable: false } : { kind: 'scroll' }
       case 'list': return { kind: 'empty-list' }
       case 'prompt': return { kind: 'prompt', ...runtime.promptGrammar(active.node), ...(active.node.submitLabel === undefined ? {} : { submitLabel: active.node.submitLabel }), ...(active.node.recallLabel === undefined ? {} : { recallLabel: active.node.recallLabel }) }
       case 'slider': {

@@ -507,7 +507,21 @@ export interface MayflyChartPoint { readonly x: number, readonly y: number | nul
 export interface MayflyChartSeries { readonly id: string, readonly label?: string, readonly tone?: MayflyTone, readonly points: readonly MayflyChartPoint[] }
 export interface MayflyBarChartSeries { readonly id: string, readonly label?: string, readonly tone?: MayflyTone, readonly values: readonly (number | null)[], readonly empty?: boolean }
 export interface MayflyChartLevel { readonly value: number | string, readonly label: string, readonly tone?: MayflyTone }
-interface MayflyLineChartNode { readonly kind: 'chart', readonly chart: 'line' | 'point', readonly series: readonly MayflyChartSeries[], readonly title?: string, readonly xLabel?: string, readonly yLabel?: string, readonly height?: number }
+interface MayflyLineChartNode {
+  readonly kind: 'chart'
+  readonly chart: 'line' | 'point'
+  readonly series: readonly MayflyChartSeries[]
+  readonly title?: string
+  readonly xLabel?: string
+  readonly yLabel?: string
+  readonly height?: number
+  /** The text of the x tick at each integer x (a date for a day index); a tick between two keeps the nearest one's. */
+  readonly xLabels?: readonly string[]
+  /** `compact` writes the y ticks as `420.8M`, `12k`; the plain number otherwise. */
+  readonly yFormat?: 'compact'
+  /** `false` leaves out the series legend a chart of two or more series draws under the plot. */
+  readonly legend?: boolean
+}
 interface MayflyBarChartNode { readonly kind: 'chart', readonly chart: 'bar', readonly layout?: 'grouped' | 'stacked' | 'normalized', readonly orientation?: 'vertical' | 'horizontal', readonly categories: readonly string[], readonly series: readonly MayflyBarChartSeries[], readonly title?: string, readonly yLabel?: string, readonly height?: number }
 interface MayflySparklineChartNode { readonly kind: 'chart', readonly chart: 'sparkline', readonly values: readonly (number | null)[], readonly label?: string, readonly tone?: MayflyTone }
 interface MayflyHeatmapChartNode {
@@ -522,6 +536,8 @@ interface MayflyHeatmapChartNode {
   readonly cell?: 1 | 2
   /** The header's labels, one per column (one-cell mode writes each where its column starts); the column names otherwise. */
   readonly columnLabels?: readonly string[]
+  /** Replaces the level legend with one range row, `Less · ░ ▒ ▓ █ More`, over the levels in order. */
+  readonly range?: { readonly less: string, readonly more: string }
 }
 export type MayflyChartNode = MayflyLineChartNode | MayflyBarChartNode | MayflySparklineChartNode | MayflyHeatmapChartNode
 

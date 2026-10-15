@@ -1259,7 +1259,47 @@ const appSessions = {
   ],
 }
 
-export const SCENES = { appConversation, appAgents, appSessions }
+/**
+ * A year of stored conversations for /stats: about ninety sessions over 52 weeks (busier on weekdays and in the last
+ * months, a streak ending today), mostly `deepseek-flash`, some `deepseek-v4-pro`, a few on an unpriced `acme-think`
+ * route, some in the sibling workspaces `docs` and `api`, at hours that fall in and out of DeepSeek's peak window (the
+ * scenario clock stands at Thursday 2026-01-01 09:00 UTC, which is 17:00 in Beijing: a peak hour). Today's turn is the
+ * live session's own.
+ */
+const statsSeeds = () => {
+  const sessions = []
+  for (let day = 1; day <= 360; day += 1) {
+    const hash = (day * 2_654_435_761) % 100
+    const weekday = (4 - (day % 7) + 7) % 7
+    const busy = weekday >= 1 && weekday <= 5
+    const recent = day <= 120
+    const active = day <= 5 || hash < (busy ? (recent ? 52 : 34) : (recent ? 14 : 8))
+    if (!active) continue
+    const route = day % 11 === 0 ? { provider: 'deepseek-official', model: 'deepseek-v4-pro' } : day % 17 === 0 ? { provider: 'acme', model: 'acme-think' } : {}
+    const turns = 1 + (hash % 5)
+    sessions.push({
+      id: `seed-stats-${String(day)}`, at: -day * DAY - (day % 3) * 5 * HOUR, title: `Stats seed ${String(day)}`,
+      ...day % 5 === 0 ? { cwd: day % 10 === 0 ? 'docs' : 'api' } : {}, ...route,
+      items: Array.from({ length: turns }, (_unused, index) => turn(`Question ${String(index + 1)} of day ${String(day)}.`, [step({
+        text: `Answer ${String(index + 1)}.`,
+        usage: { inputTokens: 4_000 + hash * 300, outputTokens: 600 + hash * 40, cacheReadTokens: 30_000 + hash * 900 },
+      })])),
+    })
+  }
+  return sessions
+}
+const appStats = {
+  summary: 'a year of stored conversations in three workspaces, two priced models and one unpriced, then a live session',
+  items: [
+    seed(statsSeeds()),
+    turn('Summarise the stats panel work so far.', [
+      step({ text: 'The panel has three tabs now.', usage: { inputTokens: 21_000, outputTokens: 1_400, cacheReadTokens: 160_000 } }),
+      step({ text: 'History and Models read the stored sessions.', usage: { inputTokens: 9_000, outputTokens: 2_100, cacheReadTokens: 180_000 } }),
+    ]),
+  ],
+}
+
+export const SCENES = { appConversation, appAgents, appSessions, appStats }
 
 /** A replay or a scene by name. */
 export const timelineNamed = name => Object.hasOwn(REPLAYS, name) ? REPLAYS[name] : Object.hasOwn(SCENES, name) ? SCENES[name] : undefined

@@ -27,7 +27,7 @@
 | `/skills` | — | — | 列出可用技能（`#` 前缀调用） | `mayfly-commands`（skills-command） |
 | `/theme` | — | 见[主题](/guide/theme) | 列出或切换主题 | `mayfly-commands`（theme-switch） |
 | `/init` | — | — | 分析代码库并在项目根写 `AGENTS.md` | `mayfly-commands`（session-init） |
-| `/status` | — | — | 显示会话头、模型与上下文状态 | `mayfly-commands`（session-commands） |
+| `/stats` | — | — | 显示当前会话、会话历史（活跃热力图、连续天数）以及各模型的用量和费用 | `mayfly-commands`（stats-command） |
 | `/context` | — | — | 显示 token 用量与上下文窗口 | `mayfly-commands`（session-commands） |
 | `/version` | — | — | 显示 Mayfly 与 harness 版本及实时模型 | `mayfly-commands`（session-commands） |
 | `/changelog` | — | — | 显示发版 changelog（what's new，逐版本分节，当前版本带 `· current` 徽章） | `mayfly-commands`（session-commands） |
