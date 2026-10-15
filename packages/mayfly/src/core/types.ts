@@ -498,6 +498,10 @@ export interface MayflyAutocompleteItem {
   label: string
   /** Secondary text shown beside the label. */
   description?: string
+  /** Who supplied the row when it is not the editor itself (an editor extension's id); shown as a muted tag. */
+  source?: string
+  /** What is wrong with the row (a source that failed): the row shows a red `!`, and the focused row says why below it. */
+  problem?: string
 }
 
 /** The suggestion set returned by {@link MayflyAutocompleteProvider.getSuggestions}. */
@@ -562,8 +566,8 @@ export interface MayflyAutocompleteProvider {
 export interface MayflyCompletionView {
   /** `commands` for a `/` prefix, `files` for `@`, `completions` otherwise. */
   readonly kind: 'commands' | 'files' | 'completions'
-  /** The items, in the provider's order; `detail` is the description. */
-  readonly items: readonly { readonly label: string, readonly value: string, readonly detail?: string }[]
+  /** The items, in the provider's order; `detail` is the description, `source` the extension that supplied the row, and `problem` what is wrong with it. */
+  readonly items: readonly { readonly label: string, readonly value: string, readonly detail?: string, readonly source?: string, readonly problem?: string }[]
   /** The focused item. */
   readonly index: number
   /** The prefix the provider matched, as typed (`/mo`). */

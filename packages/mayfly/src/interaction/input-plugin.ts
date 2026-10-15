@@ -821,6 +821,32 @@ export function apply(ctx: Context): void {
   }
 
   /**
+   * Ctrl-G on the focused file of the `@` list: the file opens in the editor where it lies; the draft, the caret and the
+   * list stay as they were.
+   * @param value - the file's completion value, `@path` or `@"my path"`.
+   */
+  async function openFocusedMention(value: string): Promise<void> {
+    const command = resolveExternalEditorCommand(process.env, currentMayflySettings(ctx).editorCommand)
+    if (command === undefined) {
+      showFeedback('external-editor', t('set $VISUAL or $EDITOR to edit drafts externally'), 'warning')
+      return
+    }
+    const file = mentionFile(value, sessionCwd(ctx))
+    if (!existsSync(file)) {
+      showFeedback('external-editor', t('{path} does not exist', { path: displayPath(file) }), 'warning')
+      return
+    }
+    externalEditorRunning = true
+    try {
+      await screen.suspend(() => openFileInExternalEditor(file, command))
+    } catch (error) {
+      if (!unloaded) showFeedback('external-editor', error instanceof Error ? error.message : String(error), 'error')
+    } finally {
+      externalEditorRunning = false
+    }
+  }
+
+  /**
    * Take the focused folder of the `@` list as a mention: the editor completes it (the caret ends inside a closing
    * quote of a quoted path), a space ends the mention so the list closes, and the path is remembered as a token.
    * @param value - the folder's completion value, `@dir/` or `@"my dir/"`.
@@ -858,6 +884,14 @@ export function apply(ctx: Context): void {
     if (keymap.matches(data, ACTION_BACKSPACE) && editor.tokenBackspace()) return true
     // Ctrl-G on a token opens that, not the whole draft: a file or a pasted block in the editor, an image in a preview.
     if (keymap.matches(data, ACTION_EXTERNAL_EDITOR)) {
+      // With the `@` list open, the focused file is what Ctrl-G opens, before any token behind the caret (a folder is
+      // taken with Enter or entered with Tab).
+      const view = editor.isShowingAutocomplete() ? editor.completion() : undefined
+      const row = view?.kind === 'files' ? view.items[view.index] : undefined
+      if (row !== undefined && row.source === undefined && row.problem === undefined && !row.label.endsWith('/')) {
+        if (!externalEditorRunning) void openFocusedMention(row.value)
+        return true
+      }
       const token = editor.activeToken()
       if (token?.kind === 'image') {
         showImagePreview(token)
@@ -1086,7 +1120,15 @@ export function apply(ctx: Context): void {
     slot.focus()
     // The completion list is plain rows over the stream, as wide as the frame and ending on the row above it: neither the
     // editor nor the conversation reflows when it opens.
+    // What the prompt waits for shows as the palette's last line while a list is open (the notification row's loader is
+    // under the palette then).
+    let waiting: string | undefined
+    const offWait = ctx.on('mayfly/prompt-wait-changed', message => {
+      waiting = message
+      screen.requestRender()
+    })
     const drawer = new CompletionDrawer({
+      wait: () => waiting,
       view: () => editor.completion(),
       frameWidth: () => screen.columns,
       colors: ctx.mayflyTheme.colors,
@@ -1120,6 +1162,7 @@ export function apply(ctx: Context): void {
       clearSharedEditor(ctx)
       ctx.emit('mayfly/input-editor-changed')
       detachEditorPlus()
+      offWait()
       drawerHandle.hide()
       extensionRuntime.dispose()
       slot.dispose()

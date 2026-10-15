@@ -231,9 +231,9 @@ lists, tabs, decision panels, questionnaire, loader/progress/empty). The
 starting sketch; the owner's acceptance in the running terminal decides, and a
 finalized section describes accepted behavior. Its
 [implementation reference](../../docs/design/component-library-reference.md) holds
-the wire mechanics. Never hand-roll pi-tui panels outside `core/`; the editor
-autocomplete list (`core/wrapping-select-list.ts`) is not a model, and roadmap
-Phase 4 deletes it. A component that replaces a surface deletes the old code in
+the wire mechanics. Never hand-roll pi-tui panels outside `core/`; the editor's
+completion list is state only (`core/completion-list.ts`) and the palette that
+paints it is `core/completion-drawer.ts`. A component that replaces a surface deletes the old code in
 the same change; nothing is kept for a later cleanup.
 
 ## Native writes and sensitive data

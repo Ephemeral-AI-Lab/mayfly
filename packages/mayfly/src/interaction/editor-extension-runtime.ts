@@ -27,6 +27,8 @@ import { validateMayflyUiNode } from '../core/ui-validator.ts'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import { printableKey } from '../core/key-actions.ts'
 import { IMAGE_MARKER } from './image-marker.ts'
+import { interactionTranslator } from './locale.ts'
+import { beginPromptWait } from './prompt-wait.ts'
 import type { SubmitTransformation } from './prompt-submit-pipeline.ts'
 
 const MAX_COMPLETIONS = 200
@@ -54,6 +56,8 @@ interface CompletionApplication {
   readonly item: MayflyAutocompleteItem
   readonly prefix: string
   readonly insertText?: string
+  /** A failed source's row: accepting it changes nothing. */
+  readonly inert?: boolean
 }
 
 interface ExtensionActionBinding {
@@ -174,12 +178,14 @@ function completionItems(result: unknown): Admission<readonly MayflyEditorComple
       const label = ownData(candidate, 'label')
       const insertText = ownData(candidate, 'insertText')
       const detail = optionalOwnData(candidate, 'detail')
+      const problem = optionalOwnData(candidate, 'problem')
       if (typeof id !== 'string' || id.length === 0 || id.length > 128 || seen.has(id)) throw new Error(`completion item ${String(index)} has an invalid or duplicate id`)
       if (typeof label !== 'string' || label.length > MAX_COMPLETION_TEXT) throw new Error(`completion item ${String(index)} has an invalid label`)
       if (typeof insertText !== 'string' || insertText.length > MAX_COMPLETION_TEXT) throw new Error(`completion item ${String(index)} has invalid insertText`)
       if (detail !== undefined && (typeof detail !== 'string' || detail.length > MAX_COMPLETION_TEXT)) throw new Error(`completion item ${String(index)} has an invalid detail`)
+      if (problem !== undefined && (typeof problem !== 'string' || problem.length > MAX_COMPLETION_TEXT)) throw new Error(`completion item ${String(index)} has an invalid problem`)
       seen.add(id)
-      return Object.freeze({ id, label, insertText, ...(detail === undefined ? {} : { detail }) })
+      return Object.freeze({ id, label, insertText, ...(detail === undefined ? {} : { detail }), ...(problem === undefined ? {} : { problem }) })
     })
     return { ok: true, value: Object.freeze(items) }
   } catch (error) {
@@ -543,6 +549,7 @@ export class EditorExtensionRuntime implements MayflyFocusable {
         }))
         if (signal.aborted) return null
         const output: MayflyAutocompleteItem[] = []
+        const failures: Array<{ id: string, headline: string, reason: string }> = []
         let prefix = context?.prefix
         for (const { source, result } of base) {
           if (result === null) continue
@@ -558,32 +565,46 @@ export class EditorExtensionRuntime implements MayflyFocusable {
           const requests = entries.filter(entry => entry.complete !== undefined).map(async entry => {
             const deadline = new AbortController()
             const entrySignal = AbortSignal.any([signal, deadline.signal])
-            const outcome = await settleCallback(
-              () => entry.complete!(Object.freeze(context.request), { surfaceId: entry.id, source: entry.source, signal: entrySignal, revision, operationId: `${entry.id}:${String(revision)}`, report: () => {} }),
-              entrySignal,
-              COMPLETION_TIMEOUT_MS,
-            )
-            if (outcome.kind === 'timeout') deadline.abort()
-            return outcome
+            // A slow extension shows the unified loader with its id; the wait ends with the answer, the deadline, or an abort.
+            const endWait = beginPromptWait(this.options.ctx, interactionTranslator(this.options.ctx)('Waiting for {id}…', { id: entry.id }))
+            try {
+              const outcome = await settleCallback(
+                () => entry.complete!(Object.freeze(context.request), { surfaceId: entry.id, source: entry.source, signal: entrySignal, revision, operationId: `${entry.id}:${String(revision)}`, report: () => {} }),
+                entrySignal,
+                COMPLETION_TIMEOUT_MS,
+              )
+              if (outcome.kind === 'timeout') deadline.abort()
+              return { id: entry.id, outcome }
+            } finally {
+              endWait()
+            }
           })
-          for (const outcome of await Promise.all(requests)) {
+          for (const { id, outcome } of await Promise.all(requests)) {
             if (signal.aborted || this.entries !== entries) return null
-            if (outcome.kind === 'timeout') { this.report('completion', 'editor extension completion timed out'); continue }
-            if (outcome.kind === 'rejected') { this.report('completion', boundedMessage(outcome.error, 'editor extension completion failed')); continue }
+            if (outcome.kind === 'timeout') { failures.push({ id, headline: 'completion timed out', reason: 'it did not answer in time' }); continue }
+            if (outcome.kind === 'rejected') { failures.push({ id, headline: 'completion failed', reason: boundedMessage(outcome.error, 'completion failed') }); continue }
             /* an aborted entry necessarily sets the shared signal tested above. */
             if (outcome.kind !== 'value') return null
             const result = completionItems(outcome.value)
-            if (!result.ok) { this.report('completion', result.message); continue }
+            if (!result.ok) { failures.push({ id, headline: 'completion failed', reason: result.message }); continue }
             for (const candidate of result.value) {
               if (output.length >= MAX_COMPLETIONS) break
               const item: MayflyAutocompleteItem = {
                 value: candidate.insertText,
                 label: candidate.label,
                 ...(candidate.detail === undefined ? {} : { description: candidate.detail }),
+                ...(candidate.problem === undefined ? {} : { problem: candidate.problem }),
+                source: id,
               }
               output.push(item)
               applications.set(item, { item, prefix: context.prefix, insertText: candidate.insertText })
             }
+          }
+          // A source that failed is a row of its own after the rest: a red `!`, and the focused row says why.
+          for (const { id, headline, reason } of failures) {
+            const item: MayflyAutocompleteItem = { value: id, label: id, description: headline, problem: reason }
+            output.push(item)
+            applications.set(item, { item, prefix: context.prefix, inert: true })
           }
         }
         return output.length === 0 ? null : { items: output, prefix: prefix ?? context?.prefix ?? '' }
@@ -591,6 +612,7 @@ export class EditorExtensionRuntime implements MayflyFocusable {
       applyCompletion: (lines, cursorLine, cursorCol, item, prefix) => {
         const application = applications.get(item)
         if (application?.provider !== undefined) return application.provider.applyCompletion(lines, cursorLine, cursorCol, application.item, application.prefix)
+        if (application?.inert === true) return { lines: [...lines], cursorLine, cursorCol }
         const replace = application?.insertText ?? item.value
         const current = lines[cursorLine] ?? ''
         const appliedPrefix = application?.prefix ?? prefix

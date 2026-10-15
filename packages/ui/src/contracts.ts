@@ -535,7 +535,7 @@ export interface MayflyStatusEntry { readonly id: string, readonly definition: M
 export interface MayflyStatusRegistration extends MayflyRegistration { readonly revision: number, set(node: MayflyStatusNode | null): void }
 export interface MayflyStatusRegistry { register(definition: MayflyStatusDefinition, initialNode?: MayflyStatusNode | null): MayflyStatusRegistration, list(): readonly MayflyStatusEntry[], subscribe(listener: (delta: MayflyRegistryDelta<MayflyStatusEntry>) => void): () => void }
 
-export interface MayflyEditorCompletionItem { readonly id: string, readonly label: string, readonly insertText: string, readonly detail?: string }
+export interface MayflyEditorCompletionItem { readonly id: string, readonly label: string, readonly insertText: string, readonly detail?: string, readonly problem?: string }
 export interface MayflyEditorCompletionRequest { readonly query: string, readonly trigger: '/' | '@' | '#' | 'manual' }
 interface MayflyEditorDiagnostic { readonly id: string, readonly message: string, readonly tone?: MayflyTone }
 export interface MayflyEditorAttachment { readonly id: string, readonly label: string, readonly mediaType?: string, readonly size?: number }

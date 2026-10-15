@@ -13,7 +13,7 @@ import type { MayflyCompletionView } from './types.ts'
 
 /** The private pi-tui row state the view reads (see module doc). */
 interface SelectListInternals {
-  readonly filteredItems: SelectItem[]
+  readonly filteredItems: (SelectItem & { readonly source?: string, readonly problem?: string })[]
   readonly selectedIndex: number
 }
 
@@ -43,6 +43,8 @@ export class CompletionList extends SelectList {
         label: item.label || item.value,
         value: item.value,
         ...(item.description === undefined ? {} : { detail: item.description }),
+        ...(item.source === undefined ? {} : { source: item.source }),
+        ...(item.problem === undefined ? {} : { problem: item.problem }),
       })),
       index: selectedIndex,
       prefix: this.prefix,

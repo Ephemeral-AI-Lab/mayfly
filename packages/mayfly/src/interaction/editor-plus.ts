@@ -43,7 +43,7 @@ import {
   registerEditorAutocompleteSource,
   type SharedEditor,
 } from './editor-instance.ts'
-import { detectFdPath, extractAtPrefix, createMentionScanCache, fsMentionSuggestions, listDirectoryMentions } from './file-mention.ts'
+import { detectFdPath, extractAtPrefix, createMentionScanCache, fsMentionSuggestions, listDirectoryMentions, withPathLabels } from './file-mention.ts'
 import { requiresFilesystemMention } from '../internal/mention.ts'
 import { ACTION_BACKSPACE, ACTION_CANCEL } from './keys.ts'
 import { extractSkillPrefix, refresh, userInvocableSkills } from './skills-catalog.ts'
@@ -206,7 +206,7 @@ function createAutocompleteProvider(
           let fellBack = suggestions === null && (fdPath === null || filesystemOnly)
           if (suggestions === null && fdPath !== null && !filesystemOnly) {
             try {
-              suggestions = await inner.getSuggestions(lines, cursorLine, cursorCol, options)
+              suggestions = withPathLabels(await inner.getSuggestions(lines, cursorLine, cursorCol, options))
             } catch {
               // fd failing to spawn mid-session falls back to the scanner.
               fellBack = true

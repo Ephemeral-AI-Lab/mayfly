@@ -263,6 +263,23 @@ function rankFsMentionCandidates(candidates: readonly FsMentionCandidate[], quer
 }
 
 /**
+ * Give every row of a mention list the whole path as its label and no description, whatever backend produced it (the
+ * fd pipeline labels a row by its name and describes it by its path).
+ * @param suggestions - the list, or `null`.
+ * @returns the list with path labels, or `null`.
+ */
+export function withPathLabels(suggestions: MayflyAutocompleteSuggestions | null): MayflyAutocompleteSuggestions | null {
+  if (suggestions === null) return null
+  return {
+    ...suggestions,
+    items: suggestions.items.map(({ description: _description, ...item }) => ({
+      ...item,
+      label: item.value.startsWith('@"') ? item.value.slice(2, -1) : item.value.slice(1),
+    })),
+  }
+}
+
+/**
  * Shape one candidate as a mention item, matching the fd pipeline's item
  * contract: the value carries the `@` (quoted when the path has spaces),
  * directories keep their trailing `/` in value and label so acceptance
@@ -277,8 +294,7 @@ function toMentionItem(candidate: FsMentionCandidate): MayflyAutocompleteItem {
   const value = valuePath.includes(' ') ? `@"${valuePath}"` : `@${valuePath}`
   return {
     value,
-    label: `${posix.basename(candidate.path)}${candidate.isDirectory ? '/' : ''}`,
-    description: candidate.path,
+    label: valuePath,
   }
 }
 
@@ -393,8 +409,7 @@ export async function listDirectoryMentions(
     const valuePath = isDirectory ? `${displayPath}/` : displayPath
     items.push({
       value: valuePath.includes(' ') ? `@"${valuePath}"` : `@${valuePath}`,
-      label: `${entry.name}${isDirectory ? '/' : ''}`,
-      description: displayPath,
+      label: valuePath,
     })
   }
   items.sort((a, b) => {

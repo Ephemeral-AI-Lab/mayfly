@@ -17,6 +17,7 @@ import { startStubModel } from './stub-model.mjs'
 import { compile } from './timeline.mjs'
 
 const DRIVER = fileURLToPath(new URL('./driver.mjs', import.meta.url))
+const EXTENSIONS = fileURLToPath(new URL('./extensions.mjs', import.meta.url))
 
 /** A workspace path of fixed width: `/tmp/mayfly-scenario-` and eight hex digits. */
 export const WORKSPACE = /\/tmp\/mayfly-scenario-[0-9a-f]{8}/gu
@@ -24,8 +25,8 @@ export const WORKSPACE = /\/tmp\/mayfly-scenario-[0-9a-f]{8}/gu
 /**
  * Start a session.
  * @param {object} options
- * @param {{ source: { replay?: string, idle?: boolean, gallery?: boolean }, workspace?: Record<string, string>, clipboard?: { image: number, delayMs?: number }, editor?: { append: string } }} options.scenario - a catalog scenario;
- *   `workspace` seeds files, `clipboard.image` puts a PNG of that many KB on the clipboard, `editor.append` is an external editor.
+ * @param {{ source: { replay?: string, idle?: boolean, gallery?: boolean }, workspace?: Record<string, string>, extensions?: boolean, clipboard?: { image: number, delayMs?: number }, editor?: { append: string } }} options.scenario - a catalog scenario;
+ *   `workspace` seeds files, `extensions` loads the editor extensions of `extensions.mjs`, `clipboard.image` puts a PNG of that many KB on the clipboard, `editor.append` is an external editor.
  * @param {string} options.dir - where the overlay, the compiled replay, and the driver log go (created fresh).
  * @param {number} [options.speed] - timed playback speed when no runner controls the driver.
  * @param {string} [options.control] - the runner's control socket.
@@ -45,6 +46,7 @@ export async function prepareSession({ scenario, dir, speed = 1, control, config
   mkdirSync(dir, { recursive: true })
   const patch = join(dir, 'overlay.yml')
   const rows = [`- insert:\n    - id: mayfly-replay-driver\n      name: ${pathToFileURL(DRIVER).href}\n`]
+  if (scenario.extensions === true) rows.push(`- insert:\n    - id: mayfly-scenario-extensions\n      name: ${pathToFileURL(EXTENSIONS).href}\n`)
   // A scenario may pin settings of its own (a work-details mode) over the runner's.
   const pinned = { ...config }
   for (const [id, settings] of Object.entries(scenario.config ?? {})) pinned[id] = { ...pinned[id], ...settings }
@@ -72,6 +74,7 @@ export async function prepareSession({ scenario, dir, speed = 1, control, config
     stub,
     env: {
       DEEPSEEK_BASE_URL: `${stub.baseURL}/v1`, DEEPSEEK_API_KEY: 'replay-key',
+      ...(scenario.extensions === true ? { MAYFLY_SCENARIO_EXTENSIONS: '1' } : {}),
       MAYFLY_REPLAY_FILE: file, MAYFLY_REPLAY_SPEED: String(speed), MAYFLY_REPLAY_LOG: log,
       ...(control === undefined ? {} : { MAYFLY_REPLAY_CONTROL: control }),
       ...(isolate ? { HOME: tmp } : {}),

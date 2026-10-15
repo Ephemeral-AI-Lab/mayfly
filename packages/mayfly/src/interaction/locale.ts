@@ -666,6 +666,7 @@ const zh: Readonly<Record<string, string>> = {
   'Ctrl+G shows it · Backspace removes': 'Ctrl+G 查看 · Backspace 删除',
   'Reading the clipboard…': '正在读取剪贴板…',
   'Searching files…': '正在搜索文件…',
+  'Waiting for {id}…': '正在等待 {id}…',
   'Ctrl+G opens · Backspace removes': 'Ctrl+G 打开 · Backspace 删除',
   '{path} does not exist': '{path} 不存在',
   'plan mode is unavailable': '计划模式不可用',

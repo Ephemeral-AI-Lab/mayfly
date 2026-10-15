@@ -27,7 +27,10 @@ export function apply(ctx: Context): void {
 ```
 
 Callback context carries an AbortSignal, surface id, and revision.
-Completions are bounded to 5 seconds and submit transforms to 30 seconds.
+Completions are bounded to 5 seconds and submit transforms to 30 seconds. A
+completion item may carry `problem`: the row gets a red `!` and, while it is
+focused, one line under it says why. An extension that throws or times out
+shows as a row of its own with the same mark.
 Late results after unload, generation change, or abort are discarded.
 
 Extension nodes are a restricted tree without editor-control. Render, event,

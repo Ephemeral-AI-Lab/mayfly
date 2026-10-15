@@ -988,6 +988,8 @@ const EDITOR = [
 const RENAME = title => [type(`/rename ${title}`), key('enter')]
 /** Empty the draft: Escape clears an idle prompt (the wait keeps the next key from reading as Alt+key). */
 const CLEAR = [key('esc'), wait(150)]
+/** Empty the draft whether or not a list is open (Escape only closes a list; Ctrl+C clears the draft). */
+const WIPE = [key('ctrl+c'), wait(150)]
 const EDITOR_SIZES = [[96, 24], [60, 24], [40, 24]]
 const EDITOR_REVIEW = {
   editor: {
@@ -1192,6 +1194,53 @@ const TOKEN_REVIEW = {
     ],
     differs: ['The theme reload of the draft (the paste table stays with the draft) cannot be shown without a terminal appearance change; it runs when `Auto` follows the system theme.'],
     pending: [],
+  },
+}
+
+/** The workspace of the completion scenario: files for `@`, a long name and a deep folder, 3,000 generated modules, and skills for `#`. */
+const COMPLETION_FILES = {
+  ...TOKEN_FILES,
+  'packages/mayfly/src/core/completion-list.ts': '// the completion state\n',
+  'packages/mayfly/src/core/completion-drawer-with-a-very-long-name.ts': '// the palette\n',
+  'packages/mayfly/src/interaction/prompts/shortcuts/long-folder-names/ui-notes.md': '# Notes\n',
+  ...Object.fromEntries(Array.from({ length: 3000 }, (_, index) => [`generated/area-${String(Math.floor(index / 100)).padStart(2, '0')}/module-${String(index).padStart(4, '0')}.ts`, `export const id = ${String(index)}\n`])),
+  '.agents/skills/release-notes/SKILL.md': '---\nname: release-notes\ndescription: draft release notes from the merged changes\n---\nWrite the notes.\n',
+  '.agents/skills/code-review/SKILL.md': '---\nname: code-review\ndescription: review a diff for defects\n---\nReview the diff.\n',
+  '.agents/skills/frontend-design/SKILL.md': '---\nname: frontend-design\ndescription: build distinctive interfaces\n---\nDesign it.\n',
+  '.agents/skills/deploy-checklist/SKILL.md': '---\nname: deploy-checklist\ndescription: walk the deploy checklist before a release\ndisable-model-invocation: true\n---\nWalk it.\n',
+}
+const COMPLETION_REVIEW = {
+  completions: {
+    scene: 30,
+    reference: 'prototype scenes 15 and 30 (the `@` and `#` rows) · component-library §5.2 · parts 4d.3 and 4d.4, as the owner decided them in round 5',
+    implemented: [
+      '`@` lists files in the palette as whole paths and nothing else: `→ packages/mayfly/src/core/ui-prompt.ts`, a folder as `→ .agents/skills/` (no description column). A path wider than the row is cut at the left with `…`, so its end stays. A folder row ends in `/`. A workspace of 3,000 files answers a query in the same list.',
+      'On the focused file row a muted `↗ Ctrl+G` stands at the right edge; `Ctrl+G` opens that file in `$EDITOR` where it lies and the draft, the caret and the list stay as they were. A folder row has no cue: Enter takes the folder as a token, Tab goes into it (round 2). The cue is shed on a row too narrow to keep eight columns of description.',
+      '`#` lists the skills you can invoke, as before; a skill the model cannot invoke starts its description with `user-only ·`. Accepting one inserts `#name ` and does not send.',
+      'Rows an editor extension adds to the list carry its id as a muted tag at the right edge (`issue-tracker`); the rows of skills and files carry none. The three extensions of this scenario: `issue-tracker` (quick: `#123`, `#124`, `#flaky-tests`, and `#bug-triage`, which it marks with a problem), `wiki` (answers a query starting `wi` after two seconds) and `flaky` (throws for a query starting `fl`).',
+      'While an extension is slow, a muted line `Waiting for wiki…` is the palette\'s last line (after a short delay, never for a quick answer; with no list open the notification row carries the loader as before); the list is complete when the answers are in.',
+      'A row an extension marks with a problem ends with a red `!` in every list; focused, one more line under it says why (`#bug-triage`: `the tracker is offline; this issue is from the cache`).',
+      'An extension that throws or times out becomes a row of its own after the others: its id, a red `!`, and `completion failed` / `completion timed out`. Focused, one more line under it says why (`upstream refused the request`). Enter or Tab on it changes nothing; the other rows are untouched. The notification-row notice for it is gone.',
+    ],
+    focus: [
+      { look: 'The cue on the first row, then on the second after Down; whole paths, one per row; a long path', how: 'checkpoints `files`, `files-down`, `files-long`; live: type `look at @ui-` then `@completion`' },
+      { look: 'A deep path cut at the left, a folder row without the cue, Tab going into a folder', how: 'checkpoints `files-deep`, `files-folder`, `files-drilled`; live: `@ui-notes`, `@pack`, then Tab' },
+      { look: 'Ctrl+G opens the focused file and the list and draft stay (the scenario editor appends `(edited)` to the file)', how: 'checkpoint `files-opened`; live: with the list open press Ctrl+G' },
+      { look: 'The 3,000-file workspace stays smooth: type `@module-29` and keep typing', how: 'checkpoint `files-big`' },
+      { look: 'The cue and the tags at 60 and 40 columns: shed first, the paths and names stay', how: 'checkpoints `files-60`, `files-40`, `ext-60`, `ext-40` (`pnpm run scenario completions --width 60`)' },
+      { look: 'Skills, and the `user-only` one', how: 'checkpoints `skills`, `skills-user-only`; live: `#`, then `#dep`' },
+      { look: 'Extension rows with their tag next to the skills', how: 'checkpoint `ext`; live: `fix #1` or `#`' },
+      { look: 'The wait line with the extension\'s name, then its rows', how: 'checkpoints `ext-slow`, `ext-slow-done`; live: `#wi`' },
+      { look: 'A row with a problem: the red `!` at the end of `#bug-triage` in the plain `#` list, and its reason line when it is focused', how: 'checkpoints `ext-problem` (focused: the reason line), `ext-problem-away` (focus moved on: the `!` stays, the line goes), `ext-problem-40`; live: `#`, then Down to it' },
+      { look: 'A throwing extension: its row with the red `!` after the others, the reason line when it is focused', how: 'checkpoints `ext-throw`, `ext-throw-focused`, `ext-throw-40`; live: `#fl`, then Down' },
+      { look: 'Escape and typing again while the slow one answers: no stale rows, no loader left behind', how: 'checkpoints `ext-restarted`, `ext-idle`' },
+    ],
+    differs: [
+      'The prototype\'s file row shows a name, a folder column and a size (`2 KB`); the list shows the whole path only (owner decision).',
+      'The cue is a key at the right edge of a row; round 4 ruled that out for `/` (no command has a bound key), and the owner allowed it for the focused file row.',
+      'The prototype\'s `Files` overlay (Enter opens, Tab inserts) is not a separate surface: Enter and Tab insert, Ctrl+G opens (D9).',
+    ],
+    pending: ['Placeholders by state (4e.1).'],
   },
 }
 
@@ -1478,6 +1527,49 @@ export const CATALOG = Object.freeze({
     script: [
       ...WITH_IMAGE, type(' with'), key('ctrl+j'), paste(NOTES), type(' and @ui-pr'), until('ui-prompt.ts'), key('tab'), checkpoint('before'),
       key('ctrl+g'), wait(800), checkpoint('edited'),
+    ],
+  },
+  // The completion list (4d.3, 4d.4): `@` files with the open cue, `#` skills, and the rows, wait and failure of editor extensions.
+  completions: {
+    summary: 'the `@` and `#` lists: file rows with the folder and the Ctrl+G cue, skills, and editor-extension rows with their source tag, a named wait and a named failure',
+    source: { idle: true },
+    workspace: COMPLETION_FILES,
+    extensions: true,
+    editor: { append: '(edited)' },
+    covers: [...EDITOR, 'packages/mayfly/src/core/completion-drawer.ts', 'packages/mayfly/src/core/completion-list.ts', `${INTERACTION}file-mention.ts`, `${INTERACTION}skills-catalog.ts`, `${INTERACTION}prompt-wait.ts`, 'script/scenarios/extensions.mjs'],
+    sizes: EDITOR_SIZES,
+    review: COMPLETION_REVIEW.completions,
+    script: [
+      ...RENAME('Update the landing page hero'),
+      type('look at @ui-'), until('ui-patterns.ts'), checkpoint('files'),
+      key('down'), checkpoint('files-down'),
+      ...WIPE, type('and @completion'), until('completion-list.ts'), checkpoint('files-long'),
+      resize(60, 24), checkpoint('files-60'),
+      resize(40, 24), checkpoint('files-40'),
+      resize(96, 24),
+      ...WIPE, type('see @ui-notes'), until('ui-notes.md'), checkpoint('files-deep'),
+      ...WIPE, type('see @pack'), until('packages/'), checkpoint('files-folder'),
+      key('tab'), checkpoint('files-drilled'),
+      ...WIPE, type('open @ui-pr'), until('ui-prompt.ts'), key('ctrl+g'), wait(800), checkpoint('files-opened'),
+      ...WIPE, type('@module-29'), until('module-29'), checkpoint('files-big'),
+      ...WIPE, type('use #'), until('release-notes'), checkpoint('skills'),
+      type('dep'), until('user-only'), checkpoint('skills-user-only'),
+      ...WIPE, type('fix #1'), until('issue-tracker'), checkpoint('ext'),
+      resize(60, 24), checkpoint('ext-60'),
+      resize(40, 24), checkpoint('ext-40'),
+      resize(96, 24),
+      ...WIPE, type('read #wi'), wait(600), checkpoint('ext-slow'),
+      until('wiki-home'), checkpoint('ext-slow-done'),
+      ...WIPE, type('#'), until('release-notes'), key('down', { repeat: 6 }), checkpoint('ext-problem'),
+      key('down'), checkpoint('ext-problem-away'),
+      resize(40, 24), checkpoint('ext-problem-40'),
+      resize(96, 24),
+      ...WIPE, type('#fl'), until('flaky-tests'), wait(400), checkpoint('ext-throw'),
+      key('down'), checkpoint('ext-throw-focused'),
+      resize(40, 24), checkpoint('ext-throw-40'),
+      resize(96, 24),
+      ...WIPE, type('#wi'), wait(300), ...WIPE, type('#wi'), wait(300), checkpoint('ext-restarted'),
+      until('wiki-home'), ...WIPE, wait(300), checkpoint('ext-idle'),
     ],
   },
   gallery: {

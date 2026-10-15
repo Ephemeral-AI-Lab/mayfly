@@ -302,7 +302,7 @@ the row is full; admitted entries then lay out in their band.
 | decoration `hint` | one muted line; extensions never get a hint row (spec §3.2) |
 | decoration `diagnostics[]` | `{ id, message, tone? }` rows under the editor |
 | decoration `actions[]` | action items that bind **modifier** accelerators only (ref §4) |
-| definition `complete(request)` | `{ query, trigger: '/' \| '@' \| '#' \| 'manual' }` → `{ id, label, insertText, detail? }[]` for the completion list |
+| definition `complete(request)` | `{ query, trigger: '/' \| '@' \| '#' \| 'manual' }` → `{ id, label, insertText, detail?, problem? }[]` for the completion list; a `problem` marks the row with a red `!` and, while the row is focused, a line under it says why |
 | definition `transformSubmit(request)` | `{ text, attachments[] }` → `{ text }`, run before the prompt is sent; an attachment is `{ id, label, mediaType?, size? }` |
 
 Authors do not size or place any of these: they choose the definition fields
