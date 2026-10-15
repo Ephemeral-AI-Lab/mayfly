@@ -16,13 +16,13 @@ grid 60x24 cursor none
 |
 |    Line 23 of the report is about something else.
 |
-|  Enter expand · c copy · Ctrl+C JSON · ↑/↓ or n/N match …
+|  ↑/↓ or n/N match · Enter expand · Esc end search
 |  / needle
 |    7/12 matches
 |╭─────────────────────────────── Find where the needle is ─╮
 |│ >                                                        │
 |╰──────────────────────────────────────────────────────────╯
-| deepseek-flash High   search   ~/workspace
+| deepseek-flash   search   workspace      ctx ▰▱▱▱▱▱▱▱▱▱ 5%
 styles
 0: 0-8 fg:#5c6476
 1: 1-58 bg:#2b2b30
@@ -41,10 +41,10 @@ styles
 14: 1-58 bg:#2b2b30
 15: 1-58 bg:#2b2b30
 16: 1-58 bg:#2b2b30
-17: 0-56 fg:#9aa3b8
+17: 2-17 fg:#9aa3b8; 19-32 fg:#9aa3b8; 34-49 fg:#9aa3b8
 18: 2-3 fg:#9a86e6
 19: 4-15 fg:#9aa3b8
 20: 0-59 fg:#5c6476
 21: 0 fg:#5c6476; 4 r; 59 fg:#5c6476
 22: 0-59 fg:#5c6476
-23: 1-19 fg:#ededf2; 22-29 fg:#9a86e6 b r; 32-42 fg:#9aa3b8
+23: 1-14 fg:#ededf2; 17-24 fg:#9a86e6 b r; 27-35 fg:#9aa3b8; 42-45 fg:#ededf2; 46 fg:#9a86e6; 47-55 fg:#9aa3b8; 56-58 fg:#ededf2

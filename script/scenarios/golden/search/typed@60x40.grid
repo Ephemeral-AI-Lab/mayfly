@@ -38,7 +38,7 @@ grid 60x40 cursor none
 |╭───────────────────────── Survey the transcript code and ─╮
 |│ >                                                        │
 |╰──────────────────────────────────────────────────────────╯
-| deepseek-flash High   search   ~/workspace
+| deepseek-flash   search   workspace      ctx ▰▱▱▱▱▱▱▱▱▱ 5%
 styles
 0: 1-25 fg:#9a86e6; 26-47 fg:#ededf2
 1: 1-23 fg:#8371d6; 24-25 fg:#9a86e6; 26-44 fg:#e9e6f4
@@ -63,4 +63,4 @@ styles
 36: 0-59 fg:#5c6476
 37: 0 fg:#5c6476; 4 r; 59 fg:#5c6476
 38: 0-59 fg:#5c6476
-39: 1-19 fg:#ededf2; 22-29 fg:#9a86e6 b r; 32-42 fg:#9aa3b8
+39: 1-14 fg:#ededf2; 17-24 fg:#9a86e6 b r; 27-35 fg:#9aa3b8; 42-45 fg:#ededf2; 46 fg:#9a86e6; 47-55 fg:#9aa3b8; 56-58 fg:#ededf2

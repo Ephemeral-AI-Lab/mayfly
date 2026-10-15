@@ -18,7 +18,7 @@ grid 40x24 cursor none
 |
 |  · Pondering · 0s · ↓3
 |    ⎿ Tip: Esc to interrupt the run
-|                                Alt+↑
+|      Alt+↑ conversation · Alt+↓ view
 |╭────── Show me every activity phase. ─╮
 |│ >                                    │
 |╰──────────────────────────────────────╯
@@ -31,7 +31,7 @@ styles
 5: 2-3 fg:#ededf2; 4-39 fg:#9aa3b8
 17: 0-1 fg:#ededf2; 2 fg:#9a86e6; 3-12 fg:#9aa3b8; 14-22 fg:#9aa3b8
 18: 0-34 fg:#9aa3b8
-19: 32-36 fg:#9aa3b8
+19: 6-36 fg:#9aa3b8
 20: 0-6 fg:#45406b; 7-37 fg:#5c6476; 38-39 fg:#45406b
 21: 0 fg:#45406b; 4 r; 39 fg:#45406b
 22: 0-39 fg:#45406b

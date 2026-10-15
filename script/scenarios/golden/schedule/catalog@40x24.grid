@@ -10,7 +10,7 @@ grid 40x24 cursor none
 |
 |
 |
-|                                Alt+↑
+|      Alt+↑ conversation · Alt+↓ view
 |╭ Reminders ───────────────────────────╮
 |│ Reminders follow their original      │
 |│ session, even when no Agent is       │
@@ -24,7 +24,7 @@ grid 40x24 cursor none
 |╰──────────────────────────────────────╯
 | deepseek-flash  ~/workspace
 styles
-11: 32-36 fg:#9aa3b8
+11: 6-36 fg:#9aa3b8
 12: 0-1 fg:#dcd7f2; 2-10 fg:#f5f5f7 b; 11-39 fg:#dcd7f2
 13: 0 fg:#dcd7f2; 2-32 fg:#ededf2; 39 fg:#dcd7f2
 14: 0 fg:#dcd7f2; 2-31 fg:#ededf2; 39 fg:#dcd7f2

@@ -24,11 +24,11 @@ grid 60x30 cursor none
 |  ● The context is small again.
 |
 |  ✻ Worked for 15s · done 09:00
-|                               Alt+↑ conversation · Alt+↓
+|                          Alt+↑ conversation · Alt+↓ view
 |╭─────────────────────────────── Summarise the changelog. ─╮
 |│ >                                                        │
 |╰──────────────────────────────────────────────────────────╯
-| deepseek-flash High  ...  cache 0%  context: 8% (2.3k/32k)
+| deepseek-flash  workspace                ctx ▰▱▱▱▱▱▱▱▱▱ 8%
 styles
 0: 2-3 fg:#9a86e6; 4-27 fg:#9a86e6 b
 2: 2-3 fg:#ededf2
@@ -43,8 +43,8 @@ styles
 20: 2-19 fg:#9aa3b8
 22: 2-3 fg:#ededf2
 24: 2-30 fg:#9aa3b8
-25: 31-56 fg:#9aa3b8
+25: 26-56 fg:#9aa3b8
 26: 0-31 fg:#45406b; 32-57 fg:#5c6476; 58-59 fg:#45406b
 27: 0 fg:#45406b; 4 r; 59 fg:#45406b
 28: 0-59 fg:#45406b
-29: 1-19 fg:#ededf2; 27-58 fg:#ededf2
+29: 1-14 fg:#ededf2; 17-25 fg:#9aa3b8; 42-45 fg:#ededf2; 46 fg:#9a86e6; 47-55 fg:#9aa3b8; 56-58 fg:#ededf2

@@ -58,11 +58,11 @@ grid 120x64 cursor none
 |  ● Both are in place.
 |
 |  ✻ Worked for 24s · done 09:00
-|                                                                                       Alt+↑ conversation · Alt+↓ bar
+|                                                                                      Alt+↑ conversation · Alt+↓ view
 |╭────────────────────────────────────────────────────────────────────────────────────── Write the report script, then ─╮
 |│ >                                                                                                                    │
 |╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
-| deepseek-flash High  ~/workspace                                                    cache 42%  context: 5% (5.5k/128k)
+| deepseek-official/deepseek-flash High  ~/workspace                                  cache ▰▰▱▱▱ 42%  ctx ▰▱▱▱▱▱▱▱▱▱ 5%
 styles
 1: 2-3 fg:#9a86e6; 4-52 fg:#9a86e6 b
 3: 2-15 fg:#9aa3b8
@@ -115,8 +115,8 @@ styles
 54: 4-6 fg:#9aa3b8; 10-11 fg:#ededf2; 12-19 fg:#c9c0f0; 20-21 fg:#ededf2; 22 fg:#e8a838; 23 fg:#ededf2
 56: 2-3 fg:#ededf2
 58: 2-30 fg:#9aa3b8
-59: 87-116 fg:#9aa3b8
+59: 86-116 fg:#9aa3b8
 60: 0-86 fg:#45406b; 87-117 fg:#5c6476; 118-119 fg:#45406b
 61: 0 fg:#45406b; 4 r; 119 fg:#45406b
 62: 0-119 fg:#45406b
-63: 1-19 fg:#ededf2; 22-32 fg:#9aa3b8; 85-118 fg:#ededf2
+63: 1-37 fg:#ededf2; 40-50 fg:#9aa3b8; 85-90 fg:#ededf2; 91-92 fg:#e8a838; 93-95 fg:#9aa3b8; 96-99 fg:#ededf2; 102-105 fg:#ededf2; 106 fg:#9a86e6; 107-115 fg:#9aa3b8; 116-118 fg:#ededf2

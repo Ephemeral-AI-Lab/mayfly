@@ -18,11 +18,11 @@ grid 60x24 cursor none
 |
 |  ⡀ Deep diving · 0s
 |    ⎿ Tip: /help: show commands
-|                               Alt+↑ conversation · Alt+↓
+|                          Alt+↑ conversation · Alt+↓ view
 |╭─────────────────────────── Update the landing page hero ─╮
 |│ >                                                        │
 |╰──────────────────────────────────────────────────────────╯
-| deepseek-flash High  .  cache 42%  context: 5% (5.5k/128k)
+| deepseek-flash  workspace                ctx ▰▱▱▱▱▱▱▱▱▱ 5%
 styles
 1: 2-3 fg:#9aa3b8; 4-7 fg:#9aa3b8 b; 8 fg:#9aa3b8; 9-37 fg:#c9c0f0; 38-59 fg:#9aa3b8
 3: 2-14 fg:#e8a838
@@ -36,8 +36,8 @@ styles
 15: 0-25 fg:#9aa3b8
 17: 0-1 fg:#ededf2; 2 fg:#9a86e6; 3-14 fg:#ededf2; 16-19 fg:#9aa3b8
 18: 0-30 fg:#9aa3b8
-19: 31-56 fg:#9aa3b8
+19: 26-56 fg:#9aa3b8
 20: 0-27 fg:#45406b; 28-57 fg:#5c6476; 58-59 fg:#45406b
 21: 0 fg:#45406b; 4 r; 59 fg:#45406b
 22: 0-59 fg:#45406b
-23: 1-19 fg:#ededf2; 25-58 fg:#ededf2
+23: 1-14 fg:#ededf2; 17-25 fg:#9aa3b8; 42-45 fg:#ededf2; 46 fg:#9a86e6; 47-55 fg:#9aa3b8; 56-58 fg:#ededf2

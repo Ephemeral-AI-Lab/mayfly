@@ -1,0 +1,65 @@
+grid 120x40 cursor none
+|
+|  ● Round 1: the todo list joins the goal.
+|
+|  ✓ TodoWrite · 0.2s
+|
+|  ─────────────────────────────────────────────────── goal round 2 ───────────────────────────────────────────────────
+|
+|  ● Round 2: a background job joins them in the status row. Press Alt+↓ to open the views.
+|
+|  ⏸ Goal paused
+|
+|  ● The goal is paused: the mark is ⏸ and the panel says how to continue.
+|
+|  ● Goal resumed
+|
+|  ● Resumed.
+|
+|  ✕ Goal blocked · round-limit: The goal used all 8 rounds without finishing
+|
+|  ● Blocked: the round cap was reached.
+|
+|  ✻ Worked for 1m 43s · done 09:02
+|
+|  » Pick the stable channel and wrap up.
+|
+|  ● Goal resumed
+|
+|  ✓ Goal complete · 2 rounds · 2m 0s
+|
+|  ● The goal is complete and the list is done; only the job is left in the status row.
+|
+|  ✓ TodoWrite · 0.2s
+|
+|  ⡀ Deep diving · 2s · ↑17.7k
+|    ⎿ Tip: /sessions to browse and resume earlier sessions
+|                                                                                                    F7 btw · F8 close
+|╭─────────────────────────────────────────────────────────────────────────────────────── Find where the settings live ─╮
+|│ >                                                                                                                    │
+|╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+| deepseek-flash High   main   ~/workspace  ● jobs 1  ✓ goal 2/8  ✓ todo 12/12       cache ▰▰▱▱▱ 48%  ctx ▰▰▰▱▱▱▱▱▱▱ 28%
+styles
+1: 2-3 fg:#ededf2
+3: 2-3 fg:#4ec87e; 4-12 fg:#ededf2 b; 13-19 fg:#9aa3b8
+5: 2-117 fg:#9aa3b8
+7: 2-3 fg:#ededf2
+9: 2-14 fg:#9aa3b8
+11: 2-3 fg:#ededf2
+13: 2-15 fg:#c9c0f0
+15: 2-3 fg:#ededf2
+17: 2-75 fg:#e85454
+19: 2-3 fg:#ededf2
+21: 2-33 fg:#9aa3b8
+23: 2-3 fg:#9a86e6; 4-39 fg:#9a86e6 b
+25: 2-15 fg:#c9c0f0
+27: 2-35 fg:#4ec87e
+29: 2-3 fg:#ededf2
+31: 2-3 fg:#4ec87e; 4-12 fg:#ededf2 b; 13-19 fg:#9aa3b8
+33: 0-1 fg:#ededf2; 2 fg:#9a86e6; 3-14 fg:#ededf2; 16-28 fg:#9aa3b8
+34: 0-57 fg:#9aa3b8
+35: 100-116 fg:#9aa3b8
+36: 0-87 fg:#45406b; 88-117 fg:#5c6476; 118-119 fg:#45406b
+37: 0 fg:#45406b; 4 r; 119 fg:#45406b
+38: 0-119 fg:#45406b
+39: 1-19 fg:#ededf2; 22-27 fg:#9a86e6 b r; 30-40 fg:#9aa3b8; 43 fg:#c9c0f0; 44 fg:#ededf2; 45-49 fg:#9aa3b8; 50 fg:#ededf2; 53 fg:#4ec87e; 54 fg:#ededf2; 55-59 fg:#9aa3b8; 60-62 fg:#ededf2; 65 fg:#4ec87e; 66 fg:#ededf2; 67-71 fg:#9aa3b8; 72-76 fg:#ededf2; 84-89 fg:#ededf2; 90-91 fg:#e8a838; 92-94 fg:#9aa3b8; 95-98 fg:#ededf2; 101-104 fg:#ededf2; 105-107 fg:#9a86e6; 108-114 fg:#9aa3b8; 115-118 fg:#ededf2

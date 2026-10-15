@@ -1,0 +1,65 @@
+grid 120x40 cursor none
+|    3 │   }
+|
+|  ● Running the tests.
+|
+|  ✓ Bash(npm test 2>&1 | tail -12) · 2.5s
+|
+|  ● The suite passes with the new option.
+|
+|  ✻ Worked for 6s · done 09:00
+|
+|  » Plan the landing page work before editing.
+|
+|  ● Plan mode is on: the plan chip sits beside the model.
+|
+|  ● Yolo joins it: both chips show at once, plan then yolo.
+|
+|  ● Plan mode is off; yolo stays.
+|
+|  ✻ Worked for 34s · done 09:00
+|
+|  » Work towards the goal: refresh the landing page.
+|
+|  ● Goal set · Ship the landing page hero refresh and keep all 214 tests green
+|
+|  ● A goal is set: its item joins the status row after the model and the chips. The replay never arms it, so it reads
+|    off.
+|
+|  ─────────────────────────────────────────────────── goal round 1 ───────────────────────────────────────────────────
+|
+|  ● Round 1: the todo list joins the goal.
+|
+|  ✓ TodoWrite · 0.2s
+|
+|  ⡀ Deep diving · 13s · ↑14.9k
+|    ⎿ Tip: ! to run a shell command
+|                                                                                      Alt+↑ conversation · Alt+↓ view
+|╭─────────────────────────────────────────────────────────────────────────────────────── Find where the settings live ─╮
+|│ >                                                                                                                    │
+|╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+| deepseek-official/deepseek-flash High  ~/workspace  ○ goal 1/8 0s  ● todo 1/12 0s  cache ▰▰▱▱▱ 48%  ctx ▰▰▱▱▱▱▱▱▱▱ 24%
+styles
+0: 4-6 fg:#9aa3b8; 10 fg:#ededf2
+2: 2-3 fg:#ededf2
+4: 2-3 fg:#4ec87e; 4-7 fg:#ededf2 b; 8 fg:#9aa3b8; 9-32 fg:#c9c0f0; 33-40 fg:#9aa3b8
+6: 2-3 fg:#ededf2
+8: 2-29 fg:#9aa3b8
+10: 2-3 fg:#9a86e6; 4-45 fg:#9a86e6 b
+12: 2-3 fg:#ededf2
+14: 2-3 fg:#ededf2
+16: 2-3 fg:#ededf2
+18: 2-30 fg:#9aa3b8
+20: 2-3 fg:#9a86e6; 4-51 fg:#9a86e6 b
+22: 2-77 fg:#c9c0f0
+24: 2-3 fg:#ededf2
+27: 2-117 fg:#9aa3b8
+29: 2-3 fg:#ededf2
+31: 2-3 fg:#4ec87e; 4-12 fg:#ededf2 b; 13-19 fg:#9aa3b8
+33: 0-1 fg:#ededf2; 2 fg:#9a86e6; 3-14 fg:#ededf2; 16-29 fg:#9aa3b8
+34: 0-34 fg:#9aa3b8
+35: 86-116 fg:#9aa3b8
+36: 0-87 fg:#45406b; 88-117 fg:#5c6476; 118-119 fg:#45406b
+37: 0 fg:#45406b; 4 r; 119 fg:#45406b
+38: 0-119 fg:#45406b
+39: 1-37 fg:#ededf2; 40-50 fg:#9aa3b8; 53 fg:#9aa3b8; 54 fg:#ededf2; 55-59 fg:#9aa3b8; 60-62 fg:#ededf2; 63-65 fg:#9aa3b8; 68 fg:#c9c0f0; 69 fg:#ededf2; 70-74 fg:#9aa3b8; 75-78 fg:#ededf2; 79-81 fg:#9aa3b8; 84-89 fg:#ededf2; 90-91 fg:#e8a838; 92-94 fg:#9aa3b8; 95-98 fg:#ededf2; 101-104 fg:#ededf2; 105-106 fg:#9a86e6; 107-114 fg:#9aa3b8; 115-118 fg:#ededf2

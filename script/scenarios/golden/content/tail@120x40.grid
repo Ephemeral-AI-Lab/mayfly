@@ -17,7 +17,7 @@ grid 120x40 cursor none
 |    … +3994 more · Ctrl+O
 |
 |  ✻ Worked for 3s · done 09:00
-|                                                                                       Alt+↑ conversation · Alt+↓ bar
+|                                                                                      Alt+↑ conversation · Alt+↓ view
 |╭ Trace detail #13 ────────────────────────────────────────────────────────────────────────────────────────────────────╮
 |│ Type:    tool/call                                                                                                   │
 |│ Surface: log-only                                                                                                    │
@@ -38,7 +38,7 @@ grid 120x40 cursor none
 |│  Copy trace item   Close                                                                                             │
 |│   ↑/↓ scroll · Ctrl+E expand · Tab/Shift+Tab groups · Esc close                                                      │
 |╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
-| deepseek-flash High  ~/workspace                                                    cache 42%  context: 5% (5.5k/128k)
+| deepseek-official/deepseek-flash High  ~/workspace                                  cache ▰▰▱▱▱ 42%  ctx ▰▱▱▱▱▱▱▱▱▱ 5%
 styles
 0: 4-7 fg:#9aa3b8; 8-13 fg:#9a86e6; 14 fg:#ededf2; 15-19 fg:#9a86e6; 20-36 fg:#ededf2; 37-41 fg:#c9c0f0; 42-43 fg:#ededf2; 44 fg:#e8a838; 45-46 fg:#ededf2; 47-53 fg:#c9c0f0; 54 fg:#ededf2
 1: 4-7 fg:#9aa3b8; 8-119 fg:#4ec87e
@@ -57,7 +57,7 @@ styles
 14: 4-7 fg:#9aa3b8; 8-97 fg:#4ec87e; 98-99 fg:#ededf2
 15: 2-3 fg:#ededf2; 4-24 fg:#9aa3b8
 17: 2-29 fg:#9aa3b8
-18: 87-116 fg:#9aa3b8
+18: 86-116 fg:#9aa3b8
 19: 0-1 fg:#dcd7f2; 2-17 fg:#f5f5f7 b; 18-119 fg:#dcd7f2
 20: 0 fg:#dcd7f2; 2-9 fg:#9aa3b8; 11-19 fg:#ededf2; 119 fg:#dcd7f2
 21: 0 fg:#dcd7f2; 2-9 fg:#9aa3b8; 11-18 fg:#ededf2; 119 fg:#dcd7f2
@@ -78,4 +78,4 @@ styles
 36: 0 fg:#dcd7f2; 3-17 fg:#ededf2; 21-25 fg:#ededf2; 119 fg:#dcd7f2
 37: 0 fg:#dcd7f2; 2-3 fg:#5c6476; 4-6 fg:#ededf2; 8-16 fg:#5c6476; 17-22 fg:#ededf2; 24-32 fg:#5c6476; 33-45 fg:#ededf2; 47-55 fg:#5c6476; 56-58 fg:#ededf2; 60-64 fg:#5c6476; 119 fg:#dcd7f2
 38: 0-119 fg:#dcd7f2
-39: 1-19 fg:#ededf2; 22-32 fg:#9aa3b8; 85-118 fg:#ededf2
+39: 1-37 fg:#ededf2; 40-50 fg:#9aa3b8; 85-90 fg:#ededf2; 91-92 fg:#e8a838; 93-95 fg:#9aa3b8; 96-99 fg:#ededf2; 102-105 fg:#ededf2; 106 fg:#9a86e6; 107-115 fg:#9aa3b8; 116-118 fg:#ededf2

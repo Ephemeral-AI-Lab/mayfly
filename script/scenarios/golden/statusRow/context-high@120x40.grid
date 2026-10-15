@@ -1,0 +1,64 @@
+grid 120x40 cursor none
+| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⡠⠊⠀⠑⢄⠀⠀⠀⠀⠀⠀⠀⠀⠀  Version:   scenario
+|
+|  » Where do the landing page styles live?
+|
+|  ▾ 1 tool call · Ctrl+O to expand
+|
+|  ● The styles are in src/hero.css. The row now shows the model and effort, the shortened directory, the git branch with
+|    its changes, and the cache and context bars at the right edge.
+|
+|  ✓ Grep("hero")
+|
+|  ✻ Worked for 12s · done 09:00
+|
+|  » Plan the redesign before editing.
+|
+|  ● Plan mode is on: plan sits after the model.
+|
+|  ● Yolo joins it: plan yolo.
+|
+|  ● Plan mode is off; yolo stays.
+|
+|  ✻ Worked for 33s · done 09:00
+|
+|  » Read the whole stylesheet set.
+|
+|  ● Reading the stylesheets: the context bar is at 61%, in its normal tone, and the cache bar at 80% is green.
+|
+|  ● This provider reported no cache reads for the next step, so the cache bar is gone and the context bar passes 70% in
+|    its warning tone.
+|
+|  ● The window is nearly full: the context bar turns to its danger tone from 90%, and a cache hit rate under 30% turns
+|    the cache bar red too.
+|
+|  ⡀ Deep diving · 24s · ↑29.3k
+|    ⎿ Tip: /plugin to browse and install plugins
+|                                                                                    ⚠ Context 92% full · /compact now
+|╭────────────────────────────────────────────────────────────────────────────────────────── Where do the landing page ─╮
+|│ >                                                                                                                    │
+|╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+| deepseek-official/deepseek-flash High  yolo  …/web/apps/landing  main [+3 -1]      cache ▰▱▱▱▱ 10%  ctx ▰▰▰▰▰▰▰▰▰▱ 92%
+styles
+0: 1-23 fg:#6c5bbf; 24-25 fg:#9a86e6; 26-107 fg:#ededf2
+2: 2-3 fg:#9a86e6; 4-41 fg:#9a86e6 b
+4: 2-33 fg:#9aa3b8
+6: 2-3 fg:#ededf2; 22-33 fg:#c9c0f0
+9: 2-3 fg:#4ec87e; 4-7 fg:#ededf2 b; 8 fg:#9aa3b8; 9-14 fg:#c9c0f0; 15 fg:#9aa3b8
+11: 2-30 fg:#9aa3b8
+13: 2-3 fg:#9a86e6; 4-36 fg:#9a86e6 b
+15: 2-3 fg:#ededf2; 21-24 fg:#c9c0f0
+17: 2-3 fg:#ededf2; 19-27 fg:#c9c0f0
+19: 2-3 fg:#ededf2; 22-25 fg:#c9c0f0
+21: 2-30 fg:#9aa3b8
+23: 2-3 fg:#9a86e6; 4-33 fg:#9a86e6 b
+25: 2-3 fg:#ededf2
+27: 2-3 fg:#ededf2
+30: 2-3 fg:#ededf2
+33: 0-1 fg:#ededf2; 2 fg:#9a86e6; 3-14 fg:#ededf2; 16-29 fg:#9aa3b8
+34: 0-47 fg:#9aa3b8
+35: 84 fg:#e8a838; 86-116 fg:#e8a838
+36: 0-90 fg:#45406b; 91-117 fg:#5c6476; 118-119 fg:#45406b
+37: 0 fg:#45406b; 4 r; 119 fg:#45406b
+38: 0-119 fg:#45406b
+39: 1-37 fg:#ededf2; 40-43 fg:#e8a838; 46-63 fg:#9aa3b8; 66-77 fg:#9aa3b8; 84-89 fg:#ededf2; 90 fg:#e85454; 91-94 fg:#9aa3b8; 95-98 fg:#ededf2; 101-104 fg:#ededf2; 105-113 fg:#e85454; 114 fg:#9aa3b8; 115-118 fg:#ededf2

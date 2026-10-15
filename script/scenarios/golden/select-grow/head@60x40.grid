@@ -34,11 +34,11 @@ grid 60x40 cursor none
 |
 |  ⡀ Deep diving · 2s · ↑5.5k
 |    ⎿ Tip: Esc to interrupt the run
-|  Enter expand · c copy · Ctrl+C JSON · Ctrl+G editor · ↑…
+|  ↑/↓ select · Enter expand · / ? search · Esc back
 |╭─────────────────────────────── Look up how the terminal ─╮
 |│ >                                                        │
 |╰──────────────────────────────────────────────────────────╯
-| deepseek-flash High   conversation   ~/workspace
+| deepseek-flash   conversation   workspace           ctx 5%
 styles
 0: 1-23 fg:#f5f5f7; 24-25 fg:#9a86e6
 1: 1-23 fg:#e9e5f6; 24-25 fg:#9a86e6; 26-47 fg:#9a86e6 b
@@ -57,8 +57,8 @@ styles
 17: 1 bg:#2b2b30; 2-5 fg:#9aa3b8 bg:#2b2b30; 6-33 fg:#c9c0f0 bg:#2b2b30; 34-51 fg:#9aa3b8 bg:#2b2b30; 52-58 bg:#2b2b30
 33: 0-1 fg:#ededf2; 2 fg:#9a86e6; 3-14 fg:#ededf2; 16-27 fg:#9aa3b8
 34: 0-34 fg:#9aa3b8
-35: 0-56 fg:#9aa3b8
+35: 2-11 fg:#9aa3b8; 13-26 fg:#9aa3b8; 28-39 fg:#9aa3b8; 41-50 fg:#9aa3b8
 36: 0-59 fg:#5c6476
 37: 0 fg:#5c6476; 4 r; 59 fg:#5c6476
 38: 0-59 fg:#5c6476
-39: 1-19 fg:#ededf2; 22-35 fg:#9a86e6 b r; 38-48 fg:#9aa3b8
+39: 1-14 fg:#ededf2; 17-30 fg:#9a86e6 b r; 33-41 fg:#9aa3b8; 53-58 fg:#ededf2

@@ -1,0 +1,43 @@
+grid 52x24 cursor none
+|  ⏸ Goal paused
+|
+|  ● The goal is paused: the mark is ⏸ and the panel
+|    says how to continue.
+|
+|  ● Goal resumed
+|
+|  ● Resumed.
+|
+|  ✕ Goal blocked · round-limit: The goal used all 8
+|    rounds without finishing
+|
+|  ● Blocked: the round cap was reached.
+|
+|  ⡀ Deep diving · 1m 18s · ↑17.1k
+|    ⎿ Tip: @: mention files
+|  ⚠ Goal blocked · round-limit: The goal used al…
+|╭─────────────────── Find where the settings live ─╮
+|│ >                                                │
+|╰──────────────────────────────────────────────────╯
+|  view   workspace  ● jobs 1  ✕ goal 2/8
+|                    ━━━━━━━━
+| → ● npm run watch  54s
+|   Enter open · x stop · Esc close
+styles
+0: 2-14 fg:#9aa3b8
+2: 2-3 fg:#ededf2
+5: 2-15 fg:#c9c0f0
+7: 2-3 fg:#ededf2
+9: 2-50 fg:#e85454
+10: 4-27 fg:#e85454
+12: 2-3 fg:#ededf2
+14: 0-1 fg:#ededf2; 2 fg:#9a86e6; 3-14 fg:#ededf2; 16-32 fg:#9aa3b8
+15: 0-26 fg:#9aa3b8
+16: 2 fg:#e8a838; 4-47 fg:#e8a838
+17: 0-51 fg:#5c6476
+18: 0 fg:#5c6476; 4 r; 51 fg:#5c6476
+19: 0-51 fg:#5c6476
+20: 1-6 fg:#9a86e6 b r; 9-17 fg:#9aa3b8; 20 fg:#c9c0f0; 21 fg:#ededf2; 22-26 fg:#9aa3b8; 27 fg:#ededf2; 30 fg:#e85454; 31 fg:#ededf2; 32-36 fg:#9aa3b8; 37-39 fg:#ededf2
+21: 1-27 fg:#9a86e6
+22: 1 fg:#9a86e6 b; 3 fg:#c9c0f0; 4-17 fg:#ededf2; 20-22 fg:#9aa3b8
+23: 1-2 fg:#5c6476; 3-7 fg:#ededf2; 9-15 fg:#5c6476; 16 fg:#ededf2; 18-24 fg:#5c6476; 25-27 fg:#ededf2; 29-33 fg:#5c6476

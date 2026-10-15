@@ -38,7 +38,7 @@ grid 120x40 cursor none
 |╭─────────────────────────────────────────────────────────────────────────────────────────── Summarise the changelog. ─╮
 |│ >                                                                                                                    │
 |╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
-| deepseek-flash High  ~/workspace                                                  cache 36%  context: 100% (37.1k/32k)
+| deepseek-official/deepseek-flash High  ~/workspace                                cache ▰▰▱▱▱ 36%  ctx ▰▰▰▰▰▰▰▰▰▰ 100%
 styles
 0: 1-23 fg:#f5f5f7; 24-25 fg:#9a86e6
 1: 1-23 fg:#e9e5f6; 24-25 fg:#9a86e6; 26-107 fg:#9a86e6 b
@@ -58,8 +58,8 @@ styles
 23: 2-3 fg:#4ec87e; 4-7 fg:#ededf2 b; 8 fg:#9aa3b8; 9-13 fg:#c9c0f0; 14 fg:#9aa3b8
 33: 0-1 fg:#ededf2; 2 fg:#9a86e6; 3-14 fg:#ededf2; 16-28 fg:#9aa3b8
 34: 0-39 fg:#9aa3b8
-35: 83-116 fg:#e8a838
+35: 83 fg:#e8a838; 85-116 fg:#e8a838
 36: 0-91 fg:#45406b; 92-117 fg:#5c6476; 118-119 fg:#45406b
 37: 0 fg:#45406b; 4 r; 119 fg:#45406b
 38: 0-119 fg:#45406b
-39: 1-19 fg:#ededf2; 22-32 fg:#9aa3b8; 83-118 fg:#ededf2
+39: 1-37 fg:#ededf2; 40-50 fg:#9aa3b8; 83-88 fg:#ededf2; 89-90 fg:#e8a838; 91-93 fg:#9aa3b8; 94-97 fg:#ededf2; 100-103 fg:#ededf2; 104-113 fg:#e85454; 114-118 fg:#ededf2

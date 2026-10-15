@@ -24,11 +24,11 @@ grid 60x30 cursor none
 |
 |  ⡀ Deep diving · 0s · ↑58.1k
 |    ⎿ Tip: Esc to interrupt the run
-|                               Alt+↑ conversation · Alt+↓
+|                          Alt+↑ conversation · Alt+↓ view
 |╭─────────────────────────────── Keep going with the long ─╮
 |│ >                                                        │
 |╰──────────────────────────────────────────────────────────╯
-| deepseek-flash High    cache 32%  context: 91% (58.1k/64k)
+| deepseek-flash  workspace               ctx ▰▰▰▰▰▰▰▰▰▱ 91%
 styles
 0: 1-23 fg:#f5f5f7; 24-25 fg:#9a86e6
 1: 1-23 fg:#e9e5f6; 24-25 fg:#9a86e6; 26-47 fg:#9a86e6 b
@@ -43,8 +43,8 @@ styles
 13: 2 fg:#5c6476; 3-21 fg:#ededf2; 23-32 fg:#9aa3b8; 33-35 fg:#ededf2; 37-52 fg:#9aa3b8; 54-59 fg:#9aa3b8
 23: 0-1 fg:#ededf2; 2 fg:#9a86e6; 3-14 fg:#ededf2; 16-28 fg:#9aa3b8
 24: 0-34 fg:#9aa3b8
-25: 31-56 fg:#9aa3b8
+25: 26-56 fg:#9aa3b8
 26: 0-31 fg:#45406b; 32-57 fg:#5c6476; 58-59 fg:#45406b
 27: 0 fg:#45406b; 4 r; 59 fg:#45406b
 28: 0-59 fg:#45406b
-29: 1-19 fg:#ededf2; 24-58 fg:#ededf2
+29: 1-14 fg:#ededf2; 17-25 fg:#9aa3b8; 41-44 fg:#ededf2; 45-53 fg:#e85454; 54 fg:#9aa3b8; 55-58 fg:#ededf2

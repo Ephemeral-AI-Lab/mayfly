@@ -22,11 +22,11 @@ grid 80x28 cursor none
 |  ● Understood; I will go on from your decision.
 |
 |  ✻ Worked for 5s · done 09:00
-|                                               Alt+↑ conversation · Alt+↓ bar
+|                                              Alt+↑ conversation · Alt+↓ view
 |╭────────────────────────────────────────────────── Plan the migration to ESM ─╮
 |│ >                                                                            │
 |╰──────────────────────────────────────────────────────────────────────────────╯
-| deepseek-flash High  plan  ~/workspace      cache 42%  context: 5% (5.5k/128k)
+| deepseek-flash High  plan  ~/workspace      cache ▰▰▱▱▱ 42%  ctx ▰▱▱▱▱▱▱▱▱▱ 5%
 styles
 0: 2-3 fg:#ededf2; 4-67 fg:#9aa3b8
 2: 2-3 fg:#ededf2
@@ -42,8 +42,8 @@ styles
 18: 4-8 fg:#f5f5f7; 18-24 fg:#c9c0f0; 37-49 fg:#c9c0f0
 20: 2-3 fg:#ededf2
 22: 2-29 fg:#9aa3b8
-23: 47-76 fg:#9aa3b8
+23: 46-76 fg:#9aa3b8
 24: 0-50 fg:#45406b; 51-77 fg:#5c6476; 78-79 fg:#45406b
 25: 0 fg:#45406b; 4 r; 79 fg:#45406b
 26: 0-79 fg:#45406b
-27: 1-19 fg:#ededf2; 22-25 fg:#c9c0f0; 28-38 fg:#9aa3b8; 45-78 fg:#ededf2
+27: 1-19 fg:#ededf2; 22-25 fg:#c9c0f0; 28-38 fg:#9aa3b8; 45-50 fg:#ededf2; 51-52 fg:#e8a838; 53-55 fg:#9aa3b8; 56-59 fg:#ededf2; 62-65 fg:#ededf2; 66 fg:#9a86e6; 67-75 fg:#9aa3b8; 76-78 fg:#ededf2

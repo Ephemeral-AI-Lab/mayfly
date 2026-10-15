@@ -22,13 +22,13 @@ grid 100x30 cursor none
 |    Line 49 of the report is about something else.
 |
 |    Line 50 of the report is about something else.
-|  Enter expand · c copy · Ctrl+C JSON · ↑/↓ or n/N match · / ? new search · Esc end search
+|  ↑/↓ or n/N match · Enter expand · c copy · / ? new search · Ctrl+C JSON · Esc end search
 |  / needle
 |    8/12 matches
 |╭─────────────────────────────────────────────────────────────────────── Find where the needle is ─╮
 |│ >                                                                                                │
 |╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
-| deepseek-flash High   search   ~/workspace                      cache 42%  context: 5% (5.5k/128k)
+| deepseek-official/deepseek-flash High   search   ~/workspace    cache ▰▰▱▱▱ 42%  ctx ▰▱▱▱▱▱▱▱▱▱ 5%
 styles
 0: 0-8 fg:#5c6476
 1: 1-98 bg:#2b2b30
@@ -53,10 +53,10 @@ styles
 20: 1-98 bg:#2b2b30
 21: 1-98 bg:#2b2b30
 22: 1-98 bg:#2b2b30
-23: 0-89 fg:#9aa3b8
+23: 2-17 fg:#9aa3b8; 19-32 fg:#9aa3b8; 34-41 fg:#9aa3b8; 43-58 fg:#9aa3b8; 60-72 fg:#9aa3b8; 74-89 fg:#9aa3b8
 24: 2-3 fg:#9a86e6
 25: 4-15 fg:#9aa3b8
 26: 0-99 fg:#5c6476
 27: 0 fg:#5c6476; 4 r; 99 fg:#5c6476
 28: 0-99 fg:#5c6476
-29: 1-19 fg:#ededf2; 22-29 fg:#9a86e6 b r; 32-42 fg:#9aa3b8; 65-98 fg:#ededf2
+29: 1-37 fg:#ededf2; 40-47 fg:#9a86e6 b r; 50-60 fg:#9aa3b8; 65-70 fg:#ededf2; 71-72 fg:#e8a838; 73-75 fg:#9aa3b8; 76-79 fg:#ededf2; 82-85 fg:#ededf2; 86 fg:#9a86e6; 87-95 fg:#9aa3b8; 96-98 fg:#ededf2

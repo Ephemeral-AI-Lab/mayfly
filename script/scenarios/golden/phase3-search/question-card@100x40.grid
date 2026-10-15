@@ -24,11 +24,11 @@ grid 100x40 cursor none
 |
 |  ● One question before I start.
 |
-|  ● AskUserQuestion
+|  ● AskUserQuestion · 1s
 |
 |  ● Waiting for your answer · 0s
 |
-|                                                                   Alt+↑ conversation · Alt+↓ bar
+|                                                                  Alt+↑ conversation · Alt+↓ view
 |╭ Questions ───────────────────────────────────────────────────────────────────────────────────────╮
 |│ Which runtime should the project target?                                                         │
 |│ → 1  Node 22 (Recommended) — Current LTS line                                                    │
@@ -38,7 +38,7 @@ grid 100x40 cursor none
 |│  [ Submit answers ]   Cancel                                                                     │
 |│   ↑/↓ options · 1-3 choose · Enter choose · Esc close                                            │
 |╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
-| deepseek-flash High  plan  ~/workspace                          cache 42%  context: 18% (5.5k/32k)
+| deepseek-flash High  plan  ~/workspace  ● todo 0/3             cache ▰▰▱▱▱ 42%  ctx ▰▰▱▱▱▱▱▱▱▱ 18%
 styles
 1: 2-34 fg:#9aa3b8
 3: 2-3 fg:#ededf2
@@ -52,9 +52,9 @@ styles
 19: 2-3 fg:#ededf2
 21: 2-3 fg:#4ec87e; 4-16 fg:#ededf2 b; 17-45 fg:#9aa3b8
 23: 2-3 fg:#ededf2
-25: 2 fg:#5c6476; 3 fg:#ededf2; 4-18 fg:#ededf2 b
+25: 2 fg:#5c6476; 3 fg:#ededf2; 4-18 fg:#ededf2 b; 19-23 fg:#9aa3b8
 27: 0-1 fg:#ededf2; 2 fg:#5c6476; 3-26 fg:#ededf2; 28-31 fg:#9aa3b8
-29: 67-96 fg:#9aa3b8
+29: 66-96 fg:#9aa3b8
 30: 0-1 fg:#dcd7f2; 2-10 fg:#f5f5f7 b; 11-99 fg:#dcd7f2
 31: 0 fg:#dcd7f2; 2-41 fg:#c9c0f0; 99 fg:#dcd7f2
 32: 0 fg:#dcd7f2; 2 fg:#9a86e6 b; 4 fg:#9aa3b8; 7-27 fg:#ededf2 b; 29-46 fg:#9aa3b8; 99 fg:#dcd7f2
@@ -64,4 +64,4 @@ styles
 36: 0 fg:#dcd7f2; 3-20 fg:#9a86e6; 24-29 fg:#ededf2; 99 fg:#dcd7f2
 37: 0 fg:#dcd7f2; 2-3 fg:#5c6476; 4-6 fg:#ededf2; 8-17 fg:#5c6476; 18-20 fg:#ededf2; 22-30 fg:#5c6476; 31-35 fg:#ededf2; 37-45 fg:#5c6476; 46-48 fg:#ededf2; 50-54 fg:#5c6476; 99 fg:#dcd7f2
 38: 0-99 fg:#dcd7f2
-39: 1-19 fg:#ededf2; 22-25 fg:#c9c0f0; 28-38 fg:#9aa3b8; 65-98 fg:#ededf2
+39: 1-19 fg:#ededf2; 22-25 fg:#c9c0f0; 28-38 fg:#9aa3b8; 41 fg:#c9c0f0; 42 fg:#ededf2; 43-47 fg:#9aa3b8; 48-50 fg:#ededf2; 64-69 fg:#ededf2; 70-71 fg:#e8a838; 72-74 fg:#9aa3b8; 75-78 fg:#ededf2; 81-84 fg:#ededf2; 85-86 fg:#9a86e6; 87-94 fg:#9aa3b8; 95-98 fg:#ededf2

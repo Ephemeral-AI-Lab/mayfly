@@ -1,0 +1,64 @@
+grid 120x40 cursor none
+|  » Plan the redesign before editing.
+|
+|  ● Plan mode is on: plan sits after the model.
+|
+|  ● Yolo joins it: plan yolo.
+|
+|  ● Plan mode is off; yolo stays.
+|
+|  ✻ Worked for 33s · done 09:00
+|
+|  » Read the whole stylesheet set.
+|
+|  ● Reading the stylesheets: the context bar is at 61%, in its normal tone, and the cache bar at 80% is green.
+|
+|  ● This provider reported no cache reads for the next step, so the cache bar is gone and the context bar passes 70% in
+|    its warning tone.
+|
+|  ● The window is nearly full: the context bar turns to its danger tone from 90%, and a cache hit rate under 30% turns
+|    the cache bar red too.
+|
+|  ✻ Worked for 34s · done 09:01
+|
+|  » Work towards the goal: refresh the hero.
+|
+|  ● Goal set · Refresh the landing page hero and keep every test green
+|
+|  ─────────────────────────────────────────────────── goal round 1 ───────────────────────────────────────────────────
+|
+|  ● Round 1: the todo list and a background job join the goal; with plan and yolo on, this is the whole row. Resize the
+|    terminal to 100, 72, 52, and 36 columns and press Alt+↓ to enter a view.
+|
+|  ✓ TodoWrite · 0.2s
+|
+|  ⡀ Deep diving · 3s · ↑14.6k
+|    ⎿ Tip: ! to run a shell command
+|                                                                                      Alt+↑ conversation · Alt+↓ view
+|╭────────────────────────────────────────────────────────────────────────────────────────── Where do the landing page ─╮
+|│ >                                                                                                                    │
+|╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+| deepseek-flash  plan yolo  …/web/apps/landing  ● jobs 1  ○ goal 1/8  ● todo 1/4    cache ▰▰▱▱▱ 40%  ctx ▰▰▰▰▰▱▱▱▱▱ 46%
+styles
+0: 2-3 fg:#9a86e6; 4-36 fg:#9a86e6 b
+2: 2-3 fg:#ededf2; 21-24 fg:#c9c0f0
+4: 2-3 fg:#ededf2; 19-27 fg:#c9c0f0
+6: 2-3 fg:#ededf2; 22-25 fg:#c9c0f0
+8: 2-30 fg:#9aa3b8
+10: 2-3 fg:#9a86e6; 4-33 fg:#9a86e6 b
+12: 2-3 fg:#ededf2
+14: 2-3 fg:#ededf2
+17: 2-3 fg:#ededf2
+20: 2-30 fg:#9aa3b8
+22: 2-3 fg:#9a86e6; 4-43 fg:#9a86e6 b
+24: 2-69 fg:#c9c0f0
+26: 2-117 fg:#9aa3b8
+28: 2-3 fg:#ededf2
+31: 2-3 fg:#4ec87e; 4-12 fg:#ededf2 b; 13-19 fg:#9aa3b8
+33: 0-1 fg:#ededf2; 2 fg:#9a86e6; 3-14 fg:#ededf2; 16-28 fg:#9aa3b8
+34: 0-34 fg:#9aa3b8
+35: 86-116 fg:#9aa3b8
+36: 0-90 fg:#45406b; 91-117 fg:#5c6476; 118-119 fg:#45406b
+37: 0 fg:#45406b; 4 r; 119 fg:#45406b
+38: 0-119 fg:#45406b
+39: 1-14 fg:#ededf2; 17-20 fg:#c9c0f0; 22-25 fg:#e8a838; 28-45 fg:#9aa3b8; 48 fg:#c9c0f0; 49 fg:#ededf2; 50-54 fg:#9aa3b8; 55 fg:#ededf2; 58 fg:#9aa3b8; 59 fg:#ededf2; 60-64 fg:#9aa3b8; 65-67 fg:#ededf2; 70 fg:#c9c0f0; 71 fg:#ededf2; 72-76 fg:#9aa3b8; 77-79 fg:#ededf2; 84-89 fg:#ededf2; 90-91 fg:#e8a838; 92-94 fg:#9aa3b8; 95-98 fg:#ededf2; 101-104 fg:#ededf2; 105-109 fg:#9a86e6; 110-114 fg:#9aa3b8; 115-118 fg:#ededf2

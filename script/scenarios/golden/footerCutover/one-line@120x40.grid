@@ -1,0 +1,67 @@
+grid 120x40 cursor none
+| ⠱⣦⣄⣀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⣠⣴⠎
+| ⠀⠙⢿⣿⣿⣷⣶⣤⣀⣀⣴⣶⣦⣀⣀⣤⣶⣾⣿⣿⡿⠋⠀  mayfly
+| ⠀⠀⠀⠈⠻⢿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡿⠟⠁⠀⠀⠀  ephemeral agents, enduring works
+| ⠀⠀⠀⠀⠀⠀⠀⠉⠉⠁⢸⣿⡇⠈⠉⠉⠀⠀⠀⠀⠀⠀⠀
+| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢸⣿⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀  Send /help for help information.
+| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⣿⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀  Directory: ~/workspace
+| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣿⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀  Model:     deepseek-flash · deepseek-official
+| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⡠⠊⠀⠑⢄⠀⠀⠀⠀⠀⠀⠀⠀⠀  Version:   scenario
+|
+|  » Find where the settings live and read them.
+|
+|  ✻ Thinking · 1s
+|    Start with the project layout, then the file that holds the timeout.
+|
+|  ● Looking at the sources first.
+|
+|  ✓ Search · 2 searches · 0.8s
+|    ├ "**/*.mjs"
+|    └ "timeoutMs"
+|
+|  ● The settings are in src/config.mjs.
+|
+|  ✓ Read(src/config.mjs)
+|
+|  ● Nothing is running besides me, so the footer is one line: the model, the directory, and the context meter.
+|
+|
+|
+|
+|
+|
+|
+|
+|  ⡀ Deep diving · 5s · ↑8k
+|    ⎿ Tip: Esc to interrupt the run
+|                                                                                      Alt+↑ conversation · Alt+↓ view
+|╭─────────────────────────────────────────────────────────────────────────────────────── Find where the settings live ─╮
+|│ >                                                                                                                    │
+|╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+| deepseek-official/deepseek-flash High  ~/workspace                                 cache ▰▰▱▱▱ 47%  ctx ▰▱▱▱▱▱▱▱▱▱ 13%
+styles
+0: 1-23 fg:#f5f5f7; 24-25 fg:#9a86e6
+1: 1-23 fg:#e9e5f6; 24-25 fg:#9a86e6; 26-107 fg:#9a86e6 b
+2: 1-23 fg:#dbd3f0; 24-25 fg:#9a86e6; 26-107 fg:#c9c0f0
+3: 1-23 fg:#c9beea; 24-25 fg:#9a86e6
+4: 1-23 fg:#b2a1ec; 24-25 fg:#9a86e6; 26-107 fg:#9aa3b8
+5: 1-25 fg:#9a86e6; 26-107 fg:#ededf2
+6: 1-23 fg:#8371d6; 24-25 fg:#9a86e6; 26-107 fg:#e9e6f4
+7: 1-23 fg:#6c5bbf; 24-25 fg:#9a86e6; 26-107 fg:#ededf2
+9: 2-3 fg:#9a86e6; 4-46 fg:#9a86e6 b
+11: 2-16 fg:#9aa3b8
+12: 2-3 fg:#ededf2; 4-71 fg:#9aa3b8
+14: 2-3 fg:#ededf2
+16: 2-3 fg:#4ec87e; 4-9 fg:#ededf2 b; 10-29 fg:#9aa3b8
+17: 2-5 fg:#9aa3b8; 6-15 fg:#c9c0f0
+18: 2-5 fg:#9aa3b8; 6-16 fg:#c9c0f0
+20: 2-3 fg:#ededf2; 24-37 fg:#c9c0f0
+22: 2-3 fg:#4ec87e; 4-7 fg:#ededf2 b; 8 fg:#9aa3b8; 9-22 fg:#c9c0f0; 23 fg:#9aa3b8
+24: 2-3 fg:#ededf2
+33: 0-1 fg:#ededf2; 2 fg:#9a86e6; 3-14 fg:#ededf2; 16-25 fg:#9aa3b8
+34: 0-34 fg:#9aa3b8
+35: 86-116 fg:#9aa3b8
+36: 0-87 fg:#45406b; 88-117 fg:#5c6476; 118-119 fg:#45406b
+37: 0 fg:#45406b; 4 r; 119 fg:#45406b
+38: 0-119 fg:#45406b
+39: 1-37 fg:#ededf2; 40-50 fg:#9aa3b8; 84-89 fg:#ededf2; 90-91 fg:#e8a838; 92-94 fg:#9aa3b8; 95-98 fg:#ededf2; 101-104 fg:#ededf2; 105 fg:#9a86e6; 106-114 fg:#9aa3b8; 115-118 fg:#ededf2

@@ -18,11 +18,11 @@ grid 40x24 cursor none
 |
 |  ● Preparing to edit files
 |    ⎿ Tip: Esc to interrupt the run
-|                                Alt+↑
+|      Alt+↑ conversation · Alt+↓ view
 |╭────── Show me every activity phase. ─╮
 |│ >                                    │
 |╰──────────────────────────────────────╯
-| deepseek-flash High  ~/workspace
+| deepseek-flash  workspace       ctx 5%
 styles
 1: 2-3 fg:#4ec87e; 4-7 fg:#ededf2 b; 8 fg:#9aa3b8; 9-30 fg:#c9c0f0; 31-36 fg:#9aa3b8
 3: 2-3 fg:#ededf2
@@ -36,8 +36,8 @@ styles
 15: 4-6 fg:#9aa3b8; 8 fg:#e85454 bg:#43232a; 9 bg:#43232a; 10-11 fg:#ededf2 bg:#43232a; 12-19 fg:#c9c0f0 bg:#43232a; 20-21 fg:#ededf2 bg:#43232a; 22 fg:#e8a838 bg:#43232a; 23 fg:#ededf2 bg:#43232a; 24-35 bg:#43232a
 17: 0-1 fg:#ededf2; 2 fg:#9a86e6; 3 fg:#ededf2; 4-26 fg:#9aa3b8
 18: 0-34 fg:#9aa3b8
-19: 32-36 fg:#9aa3b8
+19: 6-36 fg:#9aa3b8
 20: 0-6 fg:#45406b; 7-37 fg:#5c6476; 38-39 fg:#45406b
 21: 0 fg:#45406b; 4 r; 39 fg:#45406b
 22: 0-39 fg:#45406b
-23: 1-19 fg:#ededf2; 22-32 fg:#9aa3b8
+23: 1-14 fg:#ededf2; 17-25 fg:#9aa3b8; 33-38 fg:#ededf2

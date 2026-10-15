@@ -1,0 +1,65 @@
+grid 120x40 cursor none
+| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⡠⠊⠀⠑⢄⠀⠀⠀⠀⠀⠀⠀⠀⠀  Version:   scenario
+|
+|  » Start the watchers.
+|
+|  ● Two watchers and a background subagent run. The status row counts only the two jobs: the subagent belongs to the
+|    Agents item.
+|
+|  ✻ Worked for 0s · done 09:00
+|
+|  » Build, test, and leave a long sleep running.
+|
+|  ● The build passed and the tests failed; they have left the list. Three jobs are live: watch, dev, and the sleep.
+|    Press Alt+↓ to open the Jobs view, ↓ to choose, Enter to read one, x to stop one.
+|
+|  ✻ Worked for 0s · done 09:00
+|
+|  ● This is a replay session: the model is a stub. Type nothing; the conversation above is scripted.
+|
+|  ✻ Worked for 0s · done 09:00
+|
+|  » Let the watchers finish.
+|
+|  ● The sleep was stopped by hand; the watchers end on their own: the item holds its closing line, then leaves.
+|
+|  ● This is a replay session: the model is a stub. Type nothing; the conversation above is scripted.
+|
+|  ✻ Worked for 3s · done 09:00
+|
+|  » Start one more.
+|
+|  ● A new job starts after the closing line: the item is back.
+|
+|  ⡀ Deep diving · 1s · ↑9.7k
+|    ⎿ Tip: /help: show commands
+|                                                                                      Alt+↑ conversation · Alt+↓ view
+|╭──────────────────────────────────────────────────────────────────────────────────────────────── Start the watchers. ─╮
+|│ > /jobs                                                                                                              │
+|╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+|│   → /jobs       Browse background jobs                                                                               │
+| deepseek-official/deepseek-flash High  ~/workspace  ● jobs 1 1s                     cache ▰▰▱▱▱ 48%  ctx ▱▱▱▱▱▱▱▱▱▱ 1%
+styles
+0: 1-23 fg:#6c5bbf; 24-25 fg:#9a86e6; 26-107 fg:#ededf2
+2: 2-3 fg:#9a86e6; 4-22 fg:#9a86e6 b
+4: 2-3 fg:#ededf2
+7: 2-29 fg:#9aa3b8
+9: 2-3 fg:#9a86e6; 4-47 fg:#9a86e6 b
+11: 2-3 fg:#ededf2
+14: 2-29 fg:#9aa3b8
+16: 2-3 fg:#ededf2
+18: 2-29 fg:#9aa3b8
+20: 2-3 fg:#9a86e6; 4-27 fg:#9a86e6 b
+22: 2-3 fg:#ededf2
+24: 2-3 fg:#ededf2
+26: 2-29 fg:#9aa3b8
+28: 2-3 fg:#9a86e6; 4-18 fg:#9a86e6 b
+30: 2-3 fg:#ededf2
+32: 0-1 fg:#ededf2; 2 fg:#9a86e6; 3-14 fg:#ededf2; 16-27 fg:#9aa3b8
+33: 0-30 fg:#9aa3b8
+34: 86-116 fg:#9aa3b8
+35: 0-96 fg:#9a86e6; 97-117 fg:#5c6476; 118-119 fg:#9a86e6
+36: 0 fg:#9a86e6; 4-8 fg:#9a86e6 b; 9 r; 119 fg:#9a86e6
+37: 0-119 fg:#9a86e6
+38: 0 fg:#9a86e6; 4-39 fg:#9a86e6; 119 fg:#9a86e6
+39: 1-37 fg:#ededf2; 40-50 fg:#9aa3b8; 53 fg:#c9c0f0; 54 fg:#ededf2; 55-59 fg:#9aa3b8; 60 fg:#ededf2; 61-63 fg:#9aa3b8; 85-90 fg:#ededf2; 91-92 fg:#e8a838; 93-95 fg:#9aa3b8; 96-99 fg:#ededf2; 102-105 fg:#ededf2; 106-115 fg:#9aa3b8; 116-118 fg:#ededf2

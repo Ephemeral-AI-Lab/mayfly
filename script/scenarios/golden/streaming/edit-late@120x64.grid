@@ -58,11 +58,11 @@ grid 120x64 cursor none
 |
 |  ● Preparing to edit files
 |    ⎿ Tip: Esc to interrupt the run
-|                                                                                       Alt+↑ conversation · Alt+↓ bar
+|                                                                                      Alt+↑ conversation · Alt+↓ view
 |╭────────────────────────────────────────────────────────────────────────────────────── Write the report script, then ─╮
 |│ >                                                                                                                    │
 |╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
-| deepseek-flash High  ~/workspace                                                    cache 42%  context: 5% (5.5k/128k)
+| deepseek-official/deepseek-flash High  ~/workspace                                  cache ▰▰▱▱▱ 42%  ctx ▰▱▱▱▱▱▱▱▱▱ 5%
 styles
 0: 1-23 fg:#f5f5f7; 24-25 fg:#9a86e6
 1: 1-23 fg:#e9e5f6; 24-25 fg:#9a86e6; 26-107 fg:#9a86e6 b
@@ -90,8 +90,8 @@ styles
 28: 4-7 fg:#9aa3b8; 9 fg:#4ec87e bg:#1e3a2b; 10 bg:#1e3a2b; 11-16 fg:#ededf2 bg:#1e3a2b; 17-115 bg:#1e3a2b
 57: 0-1 fg:#ededf2; 2 fg:#9a86e6; 3 fg:#ededf2; 4-26 fg:#9aa3b8
 58: 0-34 fg:#9aa3b8
-59: 87-116 fg:#9aa3b8
+59: 86-116 fg:#9aa3b8
 60: 0-86 fg:#45406b; 87-117 fg:#5c6476; 118-119 fg:#45406b
 61: 0 fg:#45406b; 4 r; 119 fg:#45406b
 62: 0-119 fg:#45406b
-63: 1-19 fg:#ededf2; 22-32 fg:#9aa3b8; 85-118 fg:#ededf2
+63: 1-37 fg:#ededf2; 40-50 fg:#9aa3b8; 85-90 fg:#ededf2; 91-92 fg:#e8a838; 93-95 fg:#9aa3b8; 96-99 fg:#ededf2; 102-105 fg:#ededf2; 106 fg:#9a86e6; 107-115 fg:#9aa3b8; 116-118 fg:#ededf2

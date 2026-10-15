@@ -24,11 +24,11 @@ grid 60x30 cursor none
 |
 |  ⡀ Deep diving · 8s · ↑37.1k
 |    ⎿ Tip: Ctrl+O to expand tool details
-|                                    ⚠ Context 100% full ·
+|                       ⚠ Context 100% full · /compact now
 |╭─────────────────────────────── Summarise the changelog. ─╮
 |│ >                                                        │
 |╰──────────────────────────────────────────────────────────╯
-| deepseek-flash High   cache 36%  context: 100% (37.1k/32k)
+| deepseek-flash  workspace              ctx ▰▰▰▰▰▰▰▰▰▰ 100%
 styles
 0: 1-23 fg:#c9beea; 24-25 fg:#9a86e6
 1: 1-23 fg:#b2a1ec; 24-25 fg:#9a86e6; 26-44 fg:#9aa3b8
@@ -45,8 +45,8 @@ styles
 21: 2-3 fg:#4ec87e; 4-7 fg:#ededf2 b; 8 fg:#9aa3b8; 9-13 fg:#c9c0f0; 14 fg:#9aa3b8
 23: 0-1 fg:#ededf2; 2 fg:#9a86e6; 3-14 fg:#ededf2; 16-28 fg:#9aa3b8
 24: 0-39 fg:#9aa3b8
-25: 36-56 fg:#e8a838
+25: 23 fg:#e8a838; 25-56 fg:#e8a838
 26: 0-31 fg:#45406b; 32-57 fg:#5c6476; 58-59 fg:#45406b
 27: 0 fg:#45406b; 4 r; 59 fg:#45406b
 28: 0-59 fg:#45406b
-29: 1-19 fg:#ededf2; 23-58 fg:#ededf2
+29: 1-14 fg:#ededf2; 17-25 fg:#9aa3b8; 40-43 fg:#ededf2; 44-53 fg:#e85454; 54-58 fg:#ededf2

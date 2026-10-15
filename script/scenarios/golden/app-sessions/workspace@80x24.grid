@@ -12,7 +12,7 @@ grid 80x24 cursor none
 |  ● The Website app shots now come from the accepted goldens.
 |
 |  ✻ Worked for 1s · done 09:00
-|                                               Alt+↑ conversation · Alt+↓ bar
+|                                              Alt+↑ conversation · Alt+↓ view
 |╭ Workspace sessions ──────────────────────────────────────────────────────────╮
 |│ ~/workspace                                                                  │
 |│ → Search this workspace’s conversations:                                     │
@@ -22,7 +22,7 @@ grid 80x24 cursor none
 |│  Search contents   All sessions   Workspaces                                 │
 |│   ↑/↓ fields · Enter edit · Esc close                                        │
 |╰──────────────────────────────────────────────────────────────────────────────╯
-| deepseek-flash High  ~/workspace            cache 42%  context: 5% (5.5k/128k)
+| deepseek-flash High  ~/workspace            cache ▰▰▱▱▱ 42%  ctx ▰▱▱▱▱▱▱▱▱▱ 5%
 styles
 0: 1-23 fg:#e9e5f6; 24-25 fg:#9a86e6; 26-67 fg:#9a86e6 b
 1: 1-23 fg:#dbd3f0; 24-25 fg:#9a86e6; 26-67 fg:#c9c0f0
@@ -34,7 +34,7 @@ styles
 8: 2-3 fg:#9a86e6; 4-55 fg:#9a86e6 b
 10: 2-3 fg:#ededf2
 12: 2-29 fg:#9aa3b8
-13: 47-76 fg:#9aa3b8
+13: 46-76 fg:#9aa3b8
 14: 0-1 fg:#dcd7f2; 2-19 fg:#f5f5f7 b; 20-79 fg:#dcd7f2
 15: 0 fg:#dcd7f2; 2-12 fg:#9aa3b8; 79 fg:#dcd7f2
 16: 0 fg:#dcd7f2; 2 fg:#9a86e6; 4-42 fg:#ededf2 b; 79 fg:#dcd7f2
@@ -44,4 +44,4 @@ styles
 20: 0 fg:#dcd7f2; 3-17 fg:#ededf2; 21-32 fg:#ededf2; 36-45 fg:#ededf2; 79 fg:#dcd7f2
 21: 0 fg:#dcd7f2; 2-3 fg:#5c6476; 4-6 fg:#ededf2; 8-16 fg:#5c6476; 17-21 fg:#ededf2; 23-29 fg:#5c6476; 30-32 fg:#ededf2; 34-38 fg:#5c6476; 79 fg:#dcd7f2
 22: 0-79 fg:#dcd7f2
-23: 1-19 fg:#ededf2; 22-32 fg:#9aa3b8; 45-78 fg:#ededf2
+23: 1-19 fg:#ededf2; 22-32 fg:#9aa3b8; 45-50 fg:#ededf2; 51-52 fg:#e8a838; 53-55 fg:#9aa3b8; 56-59 fg:#ededf2; 62-65 fg:#ededf2; 66 fg:#9a86e6; 67-75 fg:#9aa3b8; 76-78 fg:#ededf2

@@ -1,0 +1,37 @@
+grid 36x24 cursor none
+|  » Build, test, and leave a long
+|    sleep running.
+|
+|  ● The build passed and the tests
+|    failed; they have left the list.
+|    Three jobs are live: watch, dev,
+|    and the sleep. Press Alt+↓ to
+|    open the Jobs view, ↓ to choose,
+|    Enter to read one, x to stop
+|    one.
+|
+|  ✻ Worked for 0s · done 09:00
+|
+|  ● This is a replay session: the
+|    model is a stub. Type nothing;
+|    the conversation above is
+|    scripted.
+|
+|  ✻ Worked for 0s · done 09:00
+|  Alt+↑ conversation · Alt+↓ view
+|╭──────────── Start the watchers. ─╮
+|│ >                                │
+|╰──────────────────────────────────╯
+| workspace  ● jobs 2
+styles
+0: 2-3 fg:#9a86e6; 4-32 fg:#9a86e6 b
+1: 4-17 fg:#9a86e6 b
+3: 2-3 fg:#ededf2
+11: 2-29 fg:#9aa3b8
+13: 2-3 fg:#ededf2
+18: 2-29 fg:#9aa3b8
+19: 2-32 fg:#9aa3b8
+20: 0-12 fg:#45406b; 13-33 fg:#5c6476; 34-35 fg:#45406b
+21: 0 fg:#45406b; 4 r; 35 fg:#45406b
+22: 0-35 fg:#45406b
+23: 1-9 fg:#9aa3b8; 12 fg:#c9c0f0; 13 fg:#ededf2; 14-18 fg:#9aa3b8; 19 fg:#ededf2

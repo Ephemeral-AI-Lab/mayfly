@@ -24,11 +24,11 @@ grid 60x30 cursor none
 |
 |  ⡀ Deep diving · 0s
 |    ⎿ Tip: Ctrl+O to expand tool details
-|                                 ✓ Copied the last answer
+|                ✓ Copied the last answer to the clipboard
 |╭─────────────────────────────── Summarise the changelog. ─╮
 |│ >                                                        │
 |╰──────────────────────────────────────────────────────────╯
-| deepseek-flash High  .  cache 25%  context: 25% (7.8k/32k)
+| deepseek-flash  workspace               ctx ▰▰▰▱▱▱▱▱▱▱ 25%
 styles
 0: 1-23 fg:#f5f5f7; 24-25 fg:#9a86e6
 1: 1-23 fg:#e9e5f6; 24-25 fg:#9a86e6; 26-47 fg:#9a86e6 b
@@ -44,8 +44,8 @@ styles
 16: 2-3 fg:#9a86e6; 4-39 fg:#9a86e6 b
 23: 0-1 fg:#ededf2; 2 fg:#9a86e6; 3-14 fg:#ededf2; 16-19 fg:#9aa3b8
 24: 0-39 fg:#9aa3b8
-25: 33-34 fg:#4ec87e; 35-56 fg:#ededf2
+25: 16 fg:#4ec87e; 18-56 fg:#ededf2
 26: 0-31 fg:#45406b; 32-57 fg:#5c6476; 58-59 fg:#45406b
 27: 0 fg:#45406b; 4 r; 59 fg:#45406b
 28: 0-59 fg:#45406b
-29: 1-19 fg:#ededf2; 25-58 fg:#ededf2
+29: 1-14 fg:#ededf2; 17-25 fg:#9aa3b8; 41-44 fg:#ededf2; 45-47 fg:#9a86e6; 48-54 fg:#9aa3b8; 55-58 fg:#ededf2

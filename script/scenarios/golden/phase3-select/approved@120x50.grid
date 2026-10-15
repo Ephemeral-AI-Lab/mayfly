@@ -1,4 +1,9 @@
 grid 120x50 cursor none
+|  ✓ Edit(src/client.mjs) · +3 −3 ▮▮▮▮▮▮▮▮
+|    1 │     const row13 = paint(13)
+|    2 │ −   const wait = timeout
+|    2 │ +   const wait = timeoutMs
+|    3 │     const row21 = paint(21)
 |    ⋯
 |    1 │     const row51 = paint(51)
 |    … +7 rows · Ctrl+O
@@ -36,55 +41,50 @@ grid 120x50 cursor none
 |  ● This deletes the build directory, which needs your approval.
 |
 |  ✓ Bash(rm -rf dist build) · allowed · 0.9s
-|────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-|  Todo
-|  ● Check the retry path
-|  ○ Run the tests
-|  ○ Summarise
 |
 |  ⡀ Deep diving · 2s · ↑5.5k
 |
-|                                                                                       Alt+↑ conversation · Alt+↓ bar
+|                                                                                      Alt+↑ conversation · Alt+↓ view
 |╭───────────────────────────────────────────────────────────────────────────────────────────── Here is the timeout on ─╮
 |│ >                                                                                                                    │
 |╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
-| deepseek-flash High  ~/workspace                                                    cache 42%  context: 18% (5.5k/32k)
+| deepseek-official/deepseek-flash High  ~/workspace  ● todo 0/3 10m 0s              cache ▰▰▱▱▱ 42%  ctx ▰▰▱▱▱▱▱▱▱▱ 18%
 styles
-0: 2-4 fg:#9aa3b8
+0: 2-3 fg:#4ec87e; 4-7 fg:#ededf2 b; 8 fg:#9aa3b8; 9-22 fg:#c9c0f0; 23-26 fg:#9aa3b8; 27-28 fg:#4ec87e; 29 fg:#9aa3b8; 30-31 fg:#e85454; 32 fg:#9aa3b8; 33-36 fg:#4ec87e; 37-40 fg:#e85454
 1: 4-6 fg:#9aa3b8; 10-11 fg:#ededf2; 12-16 fg:#9a86e6; 17-31 fg:#ededf2; 32-33 fg:#e8a838; 34 fg:#ededf2
-2: 4-21 fg:#9aa3b8
-4: 2-3 fg:#ededf2
-6: 2-3 fg:#4ec87e; 4-8 fg:#ededf2 b; 9 fg:#9aa3b8; 10-29 fg:#c9c0f0; 30-48 fg:#9aa3b8
-7: 2-3 fg:#ededf2; 4-7 fg:#9aa3b8; 8-13 fg:#9a86e6; 14-21 fg:#ededf2; 22-25 fg:#9a86e6; 26 fg:#ededf2; 27-46 fg:#4ec87e
-8: 4-7 fg:#9aa3b8; 8-13 fg:#9a86e6; 14-19 fg:#ededf2; 20-23 fg:#9a86e6; 24 fg:#ededf2; 25-35 fg:#4ec87e
-9: 4-7 fg:#9aa3b8; 8-13 fg:#9a86e6; 14-27 fg:#ededf2; 28-31 fg:#9a86e6; 32 fg:#ededf2; 33-51 fg:#4ec87e
-10: 4-7 fg:#9aa3b8
-11: 4-7 fg:#9aa3b8; 8-12 fg:#ededf2; 13-40 fg:#4ec87e; 41-42 fg:#ededf2; 43-47 fg:#c9c0f0; 48-49 fg:#ededf2
-12: 4-7 fg:#9aa3b8; 8-34 fg:#ededf2; 35-45 fg:#4ec87e; 46 fg:#ededf2
-13: 2-3 fg:#ededf2; 4-21 fg:#9aa3b8
-15: 2-3 fg:#ededf2
-17: 2-3 fg:#4ec87e; 4-8 fg:#ededf2 b; 9 fg:#9aa3b8; 10-23 fg:#c9c0f0; 24-44 fg:#9aa3b8
-18: 2-3 fg:#ededf2; 4-7 fg:#9aa3b8; 8-19 fg:#c9c0f0
-19: 4-7 fg:#9aa3b8; 8-61 fg:#ededf2
-20: 4-7 fg:#9aa3b8; 8-61 fg:#ededf2
-21: 4-7 fg:#9aa3b8; 8-61 fg:#ededf2
-22: 4-7 fg:#9aa3b8; 8-61 fg:#ededf2
-23: 4-7 fg:#9aa3b8; 8-61 fg:#ededf2
-24: 2-3 fg:#ededf2; 4-22 fg:#9aa3b8
-26: 2-3 fg:#ededf2
-28: 2-3 fg:#e85454; 4-7 fg:#ededf2 b; 8 fg:#9aa3b8; 9-22 fg:#c9c0f0; 23-104 fg:#9aa3b8
-30: 2-29 fg:#9aa3b8
-32: 2-3 fg:#9a86e6; 4-71 fg:#9a86e6 b
-34: 2-3 fg:#ededf2
-36: 2-3 fg:#4ec87e; 4-7 fg:#ededf2 b; 8 fg:#9aa3b8; 9-25 fg:#c9c0f0; 26-43 fg:#9aa3b8
-37: 0-119 fg:#45406b
-38: 0-5 fg:#c9c0f0 b
-39: 0-3 fg:#c9c0f0 b; 4-23 fg:#ededf2
-40: 0-3 fg:#9aa3b8; 4-16 fg:#ededf2
-41: 0-3 fg:#9aa3b8; 4-12 fg:#ededf2
+2: 4-6 fg:#9aa3b8; 8 fg:#e85454 bg:#43232a; 9 bg:#43232a; 10-11 fg:#ededf2 bg:#43232a; 12-16 fg:#9a86e6 bg:#43232a; 17-31 fg:#ededf2 bg:#43232a; 32-115 bg:#43232a
+3: 4-6 fg:#9aa3b8; 8 fg:#4ec87e bg:#1e3a2b; 9 bg:#1e3a2b; 10-11 fg:#ededf2 bg:#1e3a2b; 12-16 fg:#9a86e6 bg:#1e3a2b; 17-33 fg:#ededf2 bg:#1e3a2b; 34-115 bg:#1e3a2b
+4: 4-6 fg:#9aa3b8; 10-11 fg:#ededf2; 12-16 fg:#9a86e6; 17-31 fg:#ededf2; 32-33 fg:#e8a838; 34 fg:#ededf2
+5: 2-4 fg:#9aa3b8
+6: 4-6 fg:#9aa3b8; 10-11 fg:#ededf2; 12-16 fg:#9a86e6; 17-31 fg:#ededf2; 32-33 fg:#e8a838; 34 fg:#ededf2
+7: 4-21 fg:#9aa3b8
+9: 2-3 fg:#ededf2
+11: 2-3 fg:#4ec87e; 4-8 fg:#ededf2 b; 9 fg:#9aa3b8; 10-29 fg:#c9c0f0; 30-48 fg:#9aa3b8
+12: 2-3 fg:#ededf2; 4-7 fg:#9aa3b8; 8-13 fg:#9a86e6; 14-21 fg:#ededf2; 22-25 fg:#9a86e6; 26 fg:#ededf2; 27-46 fg:#4ec87e
+13: 4-7 fg:#9aa3b8; 8-13 fg:#9a86e6; 14-19 fg:#ededf2; 20-23 fg:#9a86e6; 24 fg:#ededf2; 25-35 fg:#4ec87e
+14: 4-7 fg:#9aa3b8; 8-13 fg:#9a86e6; 14-27 fg:#ededf2; 28-31 fg:#9a86e6; 32 fg:#ededf2; 33-51 fg:#4ec87e
+15: 4-7 fg:#9aa3b8
+16: 4-7 fg:#9aa3b8; 8-12 fg:#ededf2; 13-40 fg:#4ec87e; 41-42 fg:#ededf2; 43-47 fg:#c9c0f0; 48-49 fg:#ededf2
+17: 4-7 fg:#9aa3b8; 8-34 fg:#ededf2; 35-45 fg:#4ec87e; 46 fg:#ededf2
+18: 2-3 fg:#ededf2; 4-21 fg:#9aa3b8
+20: 2-3 fg:#ededf2
+22: 2-3 fg:#4ec87e; 4-8 fg:#ededf2 b; 9 fg:#9aa3b8; 10-23 fg:#c9c0f0; 24-44 fg:#9aa3b8
+23: 2-3 fg:#ededf2; 4-7 fg:#9aa3b8; 8-19 fg:#c9c0f0
+24: 4-7 fg:#9aa3b8; 8-61 fg:#ededf2
+25: 4-7 fg:#9aa3b8; 8-61 fg:#ededf2
+26: 4-7 fg:#9aa3b8; 8-61 fg:#ededf2
+27: 4-7 fg:#9aa3b8; 8-61 fg:#ededf2
+28: 4-7 fg:#9aa3b8; 8-61 fg:#ededf2
+29: 2-3 fg:#ededf2; 4-22 fg:#9aa3b8
+31: 2-3 fg:#ededf2
+33: 2-3 fg:#e85454; 4-7 fg:#ededf2 b; 8 fg:#9aa3b8; 9-22 fg:#c9c0f0; 23-104 fg:#9aa3b8
+35: 2-29 fg:#9aa3b8
+37: 2-3 fg:#9a86e6; 4-71 fg:#9a86e6 b
+39: 2-3 fg:#ededf2
+41: 2-3 fg:#4ec87e; 4-7 fg:#ededf2 b; 8 fg:#9aa3b8; 9-25 fg:#c9c0f0; 26-43 fg:#9aa3b8
 43: 0-1 fg:#ededf2; 2 fg:#9a86e6; 3-14 fg:#ededf2; 16-27 fg:#9aa3b8
-45: 87-116 fg:#9aa3b8
+45: 86-116 fg:#9aa3b8
 46: 0-93 fg:#45406b; 94-117 fg:#5c6476; 118-119 fg:#45406b
 47: 0 fg:#45406b; 4 r; 119 fg:#45406b
 48: 0-119 fg:#45406b
-49: 1-19 fg:#ededf2; 22-32 fg:#9aa3b8; 85-118 fg:#ededf2
+49: 1-37 fg:#ededf2; 40-50 fg:#9aa3b8; 53 fg:#c9c0f0; 54 fg:#ededf2; 55-59 fg:#9aa3b8; 60-62 fg:#ededf2; 63-69 fg:#9aa3b8; 84-89 fg:#ededf2; 90-91 fg:#e8a838; 92-94 fg:#9aa3b8; 95-98 fg:#ededf2; 101-104 fg:#ededf2; 105-106 fg:#9a86e6; 107-114 fg:#9aa3b8; 115-118 fg:#ededf2

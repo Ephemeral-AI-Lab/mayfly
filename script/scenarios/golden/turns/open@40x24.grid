@@ -18,11 +18,11 @@ grid 40x24 cursor none
 |    wrote 14 files.
 |
 |  ✻ Worked for 4s · done 10:16
-|                                Alt+↑
+|      Alt+↑ conversation · Alt+↓ view
 |╭─────── Update the landing page hero ─╮
 |│ >                                    │
 |╰──────────────────────────────────────╯
-| deepseek-flash High  ~/workspace
+| deepseek-flash  workspace       ctx 5%
 styles
 1: 2-14 fg:#e8a838
 3: 2-32 fg:#9aa3b8
@@ -34,8 +34,8 @@ styles
 13: 2-23 fg:#ededf2
 15: 2-3 fg:#ededf2
 18: 2-29 fg:#9aa3b8
-19: 32-36 fg:#9aa3b8
+19: 6-36 fg:#9aa3b8
 20: 0-7 fg:#45406b; 8-37 fg:#5c6476; 38-39 fg:#45406b
 21: 0 fg:#45406b; 4 r; 39 fg:#45406b
 22: 0-39 fg:#45406b
-23: 1-19 fg:#ededf2; 22-32 fg:#9aa3b8
+23: 1-14 fg:#ededf2; 17-25 fg:#9aa3b8; 33-38 fg:#ededf2

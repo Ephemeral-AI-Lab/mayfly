@@ -15,14 +15,14 @@ grid 80x24 cursor none
 |    pass.
 |
 |  ✻ Worked for 8s · done 09:00
-|                                               Alt+↑ conversation · Alt+↓ bar
+|                                              Alt+↑ conversation · Alt+↓ view
 |╭ Permissions ─────────────────────────────────────────────────────────────────╮
 |│   1  read-only — sandbox read-only · approval ask                            │
 |│ → 2  workspace-write [current] — sandbox workspace-write · approval ask      │
 |│   3  danger-full-access — sandbox danger-full-access · approval never        │
 |│   ↑/↓ options · Enter choose · Esc close                                     │
 |╰──────────────────────────────────────────────────────────────────────────────╯
-| deepseek-flash High  ~/workspace          cache 34%  context: 18% (22.9k/128k)
+| deepseek-flash High  ~/workspace           cache ▰▰▱▱▱ 34%  ctx ▰▰▱▱▱▱▱▱▱▱ 18%
 styles
 1: 2-34 fg:#9aa3b8
 3: 2-16 fg:#9aa3b8
@@ -32,11 +32,11 @@ styles
 10: 2-3 fg:#4ec87e; 4-7 fg:#ededf2 b; 8 fg:#9aa3b8; 9-21 fg:#c9c0f0; 22-29 fg:#9aa3b8
 12: 2-3 fg:#ededf2
 15: 2-29 fg:#9aa3b8
-16: 47-76 fg:#9aa3b8
+16: 46-76 fg:#9aa3b8
 17: 0-1 fg:#dcd7f2; 2-12 fg:#f5f5f7 b; 13-79 fg:#dcd7f2
 18: 0 fg:#dcd7f2; 4 fg:#9aa3b8; 7-15 fg:#ededf2; 17-50 fg:#9aa3b8; 79 fg:#dcd7f2
 19: 0 fg:#dcd7f2; 2 fg:#9a86e6 b; 4 fg:#9aa3b8; 7-21 fg:#ededf2 b; 23-31 fg:#9aa3b8; 33-72 fg:#9aa3b8; 79 fg:#dcd7f2
 20: 0 fg:#dcd7f2; 4 fg:#9aa3b8; 7-24 fg:#ededf2; 26-70 fg:#9aa3b8; 79 fg:#dcd7f2
 21: 0 fg:#dcd7f2; 2-3 fg:#5c6476; 4-6 fg:#ededf2; 8-17 fg:#5c6476; 18-22 fg:#ededf2; 24-32 fg:#5c6476; 33-35 fg:#ededf2; 37-41 fg:#5c6476; 79 fg:#dcd7f2
 22: 0-79 fg:#dcd7f2
-23: 1-19 fg:#ededf2; 22-32 fg:#9aa3b8; 43-78 fg:#ededf2
+23: 1-19 fg:#ededf2; 22-32 fg:#9aa3b8; 44-49 fg:#ededf2; 50-51 fg:#e8a838; 52-54 fg:#9aa3b8; 55-58 fg:#ededf2; 61-64 fg:#ededf2; 65-66 fg:#9a86e6; 67-74 fg:#9aa3b8; 75-78 fg:#ededf2

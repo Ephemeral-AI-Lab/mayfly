@@ -34,11 +34,11 @@ grid 120x40 cursor none
 |
 |  ⡀ Deep diving · 5s
 |    ⎿ Tip: Esc to interrupt the run
-|                                                                    ⚠ Provider error · retrying in 4s · 2/5 · timeout
+|                                                                    ⚠ Provider error · timeout · retrying in 4s · 2/5
 |╭─────────────────────────────────────────────────────────────────────────────────────────── Summarise the changelog. ─╮
 |│ >                                                                                                                    │
 |╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
-| deepseek-flash High  ~/workspace
+| deepseek-official/deepseek-flash High  ~/workspace
 styles
 0: 1-23 fg:#f5f5f7; 24-25 fg:#9a86e6
 1: 1-23 fg:#e9e5f6; 24-25 fg:#9a86e6; 26-107 fg:#9a86e6 b
@@ -51,8 +51,8 @@ styles
 9: 2-3 fg:#9a86e6; 4-27 fg:#9a86e6 b
 33: 0-1 fg:#ededf2; 2 fg:#9a86e6; 3-14 fg:#ededf2; 16-19 fg:#9aa3b8
 34: 0-34 fg:#9aa3b8
-35: 68-116 fg:#e8a838
+35: 68 fg:#e8a838; 70-93 fg:#e8a838; 95-116 fg:#e8a838
 36: 0-91 fg:#45406b; 92-117 fg:#5c6476; 118-119 fg:#45406b
 37: 0 fg:#45406b; 4 r; 119 fg:#45406b
 38: 0-119 fg:#45406b
-39: 1-19 fg:#ededf2; 22-32 fg:#9aa3b8
+39: 1-37 fg:#ededf2; 40-50 fg:#9aa3b8

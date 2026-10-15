@@ -14,7 +14,7 @@ grid 60x30 cursor none
 |
 |  ✓ Read(README.md)
 |
-|  ● Compacting context ▰▰▰▰▰▰▰▰▰▰ 100% applying · auto
+|  ● Compacting context ▰▰▰▰▰▰▰▰▰▰ applying · auto
 |
 |
 |
@@ -24,7 +24,7 @@ grid 60x30 cursor none
 |
 |  ⡀ Deep diving · 1s · ↑58.1k
 |    ⎿ Tip: Esc to interrupt the run
-|                               Alt+↑ conversation · Alt+↓
+|                          Alt+↑ conversation · Alt+↓ view
 |╭────────────────────────── Read the readme and summarise ─╮
 |│ >                                                        │
 |╰──────────────────────────────────────────────────────────╯
@@ -41,10 +41,10 @@ styles
 9: 2-3 fg:#9a86e6; 4-36 fg:#9a86e6 b
 11: 2-3 fg:#ededf2
 13: 2-3 fg:#4ec87e; 4-7 fg:#ededf2 b; 8 fg:#9aa3b8; 9-17 fg:#c9c0f0; 18 fg:#9aa3b8
-15: 2 fg:#5c6476; 3-21 fg:#ededf2; 23-32 fg:#9a86e6; 33-37 fg:#ededf2; 39-46 fg:#9aa3b8; 48-53 fg:#9aa3b8
+15: 2 fg:#5c6476; 3-21 fg:#ededf2; 23-32 fg:#9a86e6; 34-41 fg:#9aa3b8; 43-48 fg:#9aa3b8
 23: 0-1 fg:#ededf2; 2 fg:#9a86e6; 3-14 fg:#ededf2; 16-28 fg:#9aa3b8
 24: 0-34 fg:#9aa3b8
-25: 31-56 fg:#9aa3b8
+25: 26-56 fg:#9aa3b8
 26: 0-26 fg:#45406b; 27-57 fg:#5c6476; 58-59 fg:#45406b
 27: 0 fg:#45406b; 4 r; 59 fg:#45406b
 28: 0-59 fg:#45406b

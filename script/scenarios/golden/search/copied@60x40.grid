@@ -32,13 +32,13 @@ grid 60x40 cursor none
 |    2 problems (1 error, 1 warning)
 |
 |  ✓ Bash(pnpm run check -- --tier round --base origin/main …
-|  Enter expand · c copy · Ctrl+C JSON…        ✓ Copied 21
+|  ↑/↓ or n/N match · Enter expand · Esc end search      ✓
 |  / lint
 |    1/4 matches
 |╭───────────────────────── Survey the transcript code and ─╮
 |│ >                                                        │
 |╰──────────────────────────────────────────────────────────╯
-| deepseek-flash High   search   ~/workspace
+| deepseek-flash   search   workspace      ctx ▰▱▱▱▱▱▱▱▱▱ 5%
 styles
 0: 0-9 fg:#5c6476
 1: 2-3 fg:#ededf2; 4-21 fg:#9aa3b8; 22-43 fg:#ededf2
@@ -67,10 +67,10 @@ styles
 29: 2-44 fg:#ededf2
 30: 2-34 fg:#ededf2
 32: 2-3 fg:#4ec87e; 4-7 fg:#ededf2 b; 8 fg:#9aa3b8; 9-59 fg:#c9c0f0
-33: 0-36 fg:#9aa3b8; 46-47 fg:#4ec87e; 48-56 fg:#ededf2
+33: 2-17 fg:#9aa3b8; 19-32 fg:#9aa3b8; 34-49 fg:#9aa3b8; 56 fg:#4ec87e
 34: 2-3 fg:#9a86e6
 35: 4-14 fg:#9aa3b8
 36: 0-59 fg:#5c6476
 37: 0 fg:#5c6476; 4 r; 59 fg:#5c6476
 38: 0-59 fg:#5c6476
-39: 1-19 fg:#ededf2; 22-29 fg:#9a86e6 b r; 32-42 fg:#9aa3b8
+39: 1-14 fg:#ededf2; 17-24 fg:#9a86e6 b r; 27-35 fg:#9aa3b8; 42-45 fg:#ededf2; 46 fg:#9a86e6; 47-55 fg:#9aa3b8; 56-58 fg:#ededf2

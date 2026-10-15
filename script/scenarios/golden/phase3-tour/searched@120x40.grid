@@ -1,5 +1,9 @@
 grid 120x40 cursor none
 |
+|  ● Checking the logs and the notes.
+|
+|  ✓ Bash(grep -rn needle logs) · 0.5s
+|
 |  ✓ Edit(docs/notes.md) · +1 −1 ▮▮▮▮▮▮▮▮
 |    1 │ − Keep the needle short.
 |    1 │ + Keep the needle short and named.
@@ -27,30 +31,24 @@ grid 120x40 cursor none
 |    Line 11 is about something else.
 |
 |    Line 12 mentions the needle again.
-|────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-|  Todo · ● active · 0/8 · Land the retries setting and keep the tests green
-|  ● Rewrite the client retry
-|  ○ Run the watcher checks
 |
 |  ⡀ Deep diving · 5s · ↑5.5k
 |
-|                                                                  ℹ Resumed session · 13 turns · last active just now
+|                                                                                      Alt+↑ conversation · Alt+↓ view
 |╭───────────────────────────────────────────────────────────────────────────────────────────── Here is the timeout on ─╮
 |│ >                                                                                                                    │
 |╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
-| deepseek-flash High  Goal active · round 0/8 · auto-continue off  plan  ⏵ 1 job  .  cache 42%  context: 18% (5.5k/32k)
+| deepseek-flash  plan  ~/workspace  ✓ agents 1/1  ● jobs 1  ○ goal 0/8  ● todo 0/2  cache ▰▰▱▱▱ 42%  ctx ▰▰▱▱▱▱▱▱▱▱ 18%
 styles
-1: 2-3 fg:#4ec87e; 4-7 fg:#ededf2 b; 8 fg:#9aa3b8; 9-21 fg:#c9c0f0; 22-25 fg:#9aa3b8; 26-27 fg:#4ec87e; 28 fg:#9aa3b8; 29-30 fg:#e85454; 31 fg:#9aa3b8; 32-35 fg:#4ec87e; 36-39 fg:#e85454
-2: 4-6 fg:#9aa3b8; 8 fg:#e85454 bg:#43232a; 9 bg:#43232a; 10-31 fg:#ededf2 bg:#43232a; 32-115 bg:#43232a
-3: 4-6 fg:#9aa3b8; 8 fg:#4ec87e bg:#1e3a2b; 9 bg:#1e3a2b; 10-41 fg:#ededf2 bg:#1e3a2b; 42-115 bg:#1e3a2b
-5: 2-3 fg:#ededf2
-28: 0-119 fg:#45406b
-29: 0-5 fg:#c9c0f0 b; 6-8 fg:#9aa3b8; 9-16 fg:#c9c0f0 b; 17-74 fg:#9aa3b8
-30: 0-3 fg:#c9c0f0 b; 4-27 fg:#ededf2
-31: 0-3 fg:#9aa3b8; 4-25 fg:#ededf2
+1: 2-3 fg:#ededf2
+3: 2-3 fg:#4ec87e; 4-7 fg:#ededf2 b; 8 fg:#9aa3b8; 9-28 fg:#c9c0f0; 29-36 fg:#9aa3b8
+5: 2-3 fg:#4ec87e; 4-7 fg:#ededf2 b; 8 fg:#9aa3b8; 9-21 fg:#c9c0f0; 22-25 fg:#9aa3b8; 26-27 fg:#4ec87e; 28 fg:#9aa3b8; 29-30 fg:#e85454; 31 fg:#9aa3b8; 32-35 fg:#4ec87e; 36-39 fg:#e85454
+6: 4-6 fg:#9aa3b8; 8 fg:#e85454 bg:#43232a; 9 bg:#43232a; 10-31 fg:#ededf2 bg:#43232a; 32-115 bg:#43232a
+7: 4-6 fg:#9aa3b8; 8 fg:#4ec87e bg:#1e3a2b; 9 bg:#1e3a2b; 10-41 fg:#ededf2 bg:#1e3a2b; 42-115 bg:#1e3a2b
+9: 2-3 fg:#ededf2
 33: 0-1 fg:#ededf2; 2 fg:#9a86e6; 3-14 fg:#ededf2; 16-27 fg:#9aa3b8
-35: 66-67 fg:#9a86e6; 68-116 fg:#ededf2
+35: 86-116 fg:#9aa3b8
 36: 0-93 fg:#45406b; 94-117 fg:#5c6476; 118-119 fg:#45406b
 37: 0 fg:#45406b; 4 r; 119 fg:#45406b
 38: 0-119 fg:#45406b
-39: 1-19 fg:#ededf2; 22-64 fg:#c9c0f0; 67-70 fg:#c9c0f0; 73-79 fg:#9a86e6; 85-118 fg:#ededf2
+39: 1-14 fg:#ededf2; 17-20 fg:#c9c0f0; 23-33 fg:#9aa3b8; 36 fg:#4ec87e; 37 fg:#ededf2; 38-44 fg:#9aa3b8; 45-47 fg:#ededf2; 50 fg:#c9c0f0; 51 fg:#ededf2; 52-56 fg:#9aa3b8; 57 fg:#ededf2; 60 fg:#9aa3b8; 61 fg:#ededf2; 62-66 fg:#9aa3b8; 67-69 fg:#ededf2; 72 fg:#c9c0f0; 73 fg:#ededf2; 74-78 fg:#9aa3b8; 79-81 fg:#ededf2; 84-89 fg:#ededf2; 90-91 fg:#e8a838; 92-94 fg:#9aa3b8; 95-98 fg:#ededf2; 101-104 fg:#ededf2; 105-106 fg:#9a86e6; 107-114 fg:#9aa3b8; 115-118 fg:#ededf2

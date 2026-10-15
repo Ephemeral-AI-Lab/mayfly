@@ -1,0 +1,41 @@
+grid 40x24 cursor none
+|  ● The changelog lists three changes: a
+|    faster parser, a new CLI flag, and a
+|    fix for Windows paths.
+|
+|  ● The logs agree with the changelog.
+|
+|  ✻ Worked for 23s · done 09:00
+|
+|  » Compact the context, then look for
+|    the needle.
+|
+|  ● Reading the readme.
+|
+|  ✓ Read(README.md)
+|
+|  ● Compacting context · applying · auto
+|
+|  ⡀ Deep diving · 1s · ↑58.1k
+|    ⎿ Tip: Ctrl+O to expand tool details
+|      Alt+↑ conversation · Alt+↓ view
+|╭─────────── Summarise the changelog. ─╮
+|│ >                                    │
+|╰──────────────────────────────────────╯
+| deepseek-flash  ~/workspace   ctx 7.2k
+styles
+0: 2-3 fg:#ededf2
+4: 2-3 fg:#ededf2
+6: 2-30 fg:#9aa3b8
+8: 2-3 fg:#9a86e6; 4-37 fg:#9a86e6 b
+9: 4-14 fg:#9a86e6 b
+11: 2-3 fg:#ededf2
+13: 2-3 fg:#4ec87e; 4-7 fg:#ededf2 b; 8 fg:#9aa3b8; 9-17 fg:#c9c0f0; 18 fg:#9aa3b8
+15: 2 fg:#5c6476; 3-21 fg:#ededf2; 22-39 fg:#9aa3b8
+17: 0-1 fg:#ededf2; 2 fg:#9a86e6; 3-14 fg:#ededf2; 16-28 fg:#9aa3b8
+18: 0-39 fg:#9aa3b8
+19: 6-36 fg:#9aa3b8
+20: 0-11 fg:#45406b; 12-37 fg:#5c6476; 38-39 fg:#45406b
+21: 0 fg:#45406b; 4 r; 39 fg:#45406b
+22: 0-39 fg:#45406b
+23: 1-14 fg:#ededf2; 17-27 fg:#9aa3b8; 31-38 fg:#ededf2

@@ -1,0 +1,50 @@
+grid 60x30 cursor none
+|
+|  » Summarise the changelog.
+|
+|  ● The changelog lists three changes: a faster parser, a
+|    new CLI flag, and a fix for Windows paths.
+|
+|  ● The logs agree with the changelog.
+|
+|  ✻ Worked for 23s · done 09:00
+|
+|  » Compact the context, then look for the needle.
+|
+|  ● Reading the readme.
+|
+|  ✓ Read(README.md)
+|
+|  ✓ Compacted 6 items · ~58.1k → ~7.2k tokens · auto
+|    ⎿ Ctrl+O summary
+|
+|  ● Checking the logs.
+|
+|  ✓ Bash(grep -rn needle logs) · 0.5s
+|
+|  ⡀ Deep diving · 10s · ↑6.3k
+|    ⎿ Tip: Ctrl+O to expand tool details
+|  ⚠ The clipboard tool is missing; falling back to OSC 5…
+|╭─────────────────────────────── Summarise the changelog. ─╮
+|│ >                                                        │
+|╰──────────────────────────────────────────────────────────╯
+| deepseek-flash High  ~/workspace                  ctx 6.3k
+styles
+1: 2-3 fg:#9a86e6; 4-27 fg:#9a86e6 b
+3: 2-3 fg:#ededf2
+6: 2-3 fg:#ededf2
+8: 2-30 fg:#9aa3b8
+10: 2-3 fg:#9a86e6; 4-49 fg:#9a86e6 b
+12: 2-3 fg:#ededf2
+14: 2-3 fg:#4ec87e; 4-7 fg:#ededf2 b; 8 fg:#9aa3b8; 9-17 fg:#c9c0f0; 18 fg:#9aa3b8
+16: 2-3 fg:#4ec87e; 4-20 fg:#ededf2; 22-44 fg:#9aa3b8; 46-51 fg:#9aa3b8
+17: 2-19 fg:#9aa3b8
+19: 2-3 fg:#ededf2
+21: 2-3 fg:#4ec87e; 4-7 fg:#ededf2 b; 8 fg:#9aa3b8; 9-28 fg:#c9c0f0; 29-36 fg:#9aa3b8
+23: 0-1 fg:#ededf2; 2 fg:#9a86e6; 3-14 fg:#ededf2; 16-28 fg:#9aa3b8
+24: 0-39 fg:#9aa3b8
+25: 2 fg:#e8a838; 4-55 fg:#e8a838
+26: 0-31 fg:#45406b; 32-57 fg:#5c6476; 58-59 fg:#45406b
+27: 0 fg:#45406b; 4 r; 59 fg:#45406b
+28: 0-59 fg:#45406b
+29: 1-19 fg:#ededf2; 22-32 fg:#9aa3b8; 51-58 fg:#ededf2

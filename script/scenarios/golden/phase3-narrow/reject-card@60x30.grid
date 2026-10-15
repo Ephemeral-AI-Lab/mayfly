@@ -21,14 +21,14 @@ grid 60x30 cursor none
 |
 |  ● Waiting for your approval · 0s
 |
-|                               Alt+↑ conversation · Alt+↓
+|                          Alt+↑ conversation · Alt+↓ view
 |── Decide ──────────────────────────────────────────────────
 |→ 1  Allow once
 |  2  Allow bash for this session
 |  3  Reject
 |  Feedback: type to explain…
 |  Enter choose · Ctrl+G open command · Esc reject
-| deepseek-flash High  .  cache 42%  context: 18% (5.5k/32k)
+| deepseek-flash  workspace  ● todo 0/3   ctx ▰▰▱▱▱▱▱▱▱▱ 18%
 styles
 0: 2-3 fg:#4ec87e; 4-7 fg:#ededf2 b; 8 fg:#9aa3b8; 9-22 fg:#c9c0f0; 23-36 fg:#9aa3b8; 37-38 fg:#4ec87e; 39 fg:#9aa3b8; 40-41 fg:#e85454; 42 fg:#9aa3b8; 43-47 fg:#4ec87e; 48-50 fg:#e85454
 1: 4-6 fg:#9aa3b8; 10-22 fg:#ededf2; 23-26 fg:#e8a838; 27 fg:#ededf2
@@ -45,11 +45,11 @@ styles
 17: 2-3 fg:#e8a838 b; 4-7 fg:#ededf2 b; 8 fg:#9aa3b8; 9-36 fg:#c9c0f0; 37-47 fg:#9aa3b8
 18: 2-3 fg:#ededf2; 4-44 fg:#9aa3b8
 20: 0-1 fg:#ededf2; 2 fg:#5c6476; 3-28 fg:#ededf2; 30-33 fg:#9aa3b8
-22: 31-56 fg:#9aa3b8
+22: 26-56 fg:#9aa3b8
 23: 0-59 fg:#9aa3b8
 24: 0 fg:#9a86e6 b; 2 fg:#9aa3b8; 5-14 fg:#ededf2 b
 25: 2 fg:#9aa3b8; 5-31 fg:#ededf2
 26: 2 fg:#9aa3b8; 5-10 fg:#ededf2
 27: 2-11 fg:#ededf2; 12-27 fg:#9aa3b8
 28: 0-1 fg:#5c6476; 2-6 fg:#ededf2; 8-16 fg:#5c6476; 17-22 fg:#ededf2; 24-38 fg:#5c6476; 39-41 fg:#ededf2; 43-48 fg:#5c6476
-29: 1-19 fg:#ededf2; 25-58 fg:#ededf2
+29: 1-14 fg:#ededf2; 17-25 fg:#9aa3b8; 28 fg:#c9c0f0; 29 fg:#ededf2; 30-34 fg:#9aa3b8; 35-37 fg:#ededf2; 41-44 fg:#ededf2; 45-46 fg:#9a86e6; 47-54 fg:#9aa3b8; 55-58 fg:#ededf2

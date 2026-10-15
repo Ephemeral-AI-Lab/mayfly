@@ -22,13 +22,13 @@ grid 40x30 cursor none
 |
 |  ● Checking the docs online.
 |
-|  Enter expand · c copy · Ctrl+C JSON…
+|  ↑/↓ or n/N match · Esc end search
 |  / pnpm run lint
 |    1/2 matches
 |╭───── Survey the transcript code and ─╮
 |│ >                                    │
 |╰──────────────────────────────────────╯
-| deepseek-flash High   search   ~/wo...
+| deepseek-flash   search   workspace
 styles
 0: 0-9 fg:#5c6476
 2: 2-3 fg:#ededf2
@@ -47,10 +47,10 @@ styles
 18: 2-16 fg:#ededf2
 19: 2-5 fg:#ededf2
 21: 2-3 fg:#ededf2
-23: 0-36 fg:#9aa3b8
+23: 2-17 fg:#9aa3b8; 19-34 fg:#9aa3b8
 24: 2-3 fg:#9a86e6
 25: 4-14 fg:#9aa3b8
 26: 0-39 fg:#5c6476
 27: 0 fg:#5c6476; 4 r; 39 fg:#5c6476
 28: 0-39 fg:#5c6476
-29: 1-19 fg:#ededf2; 22-29 fg:#9a86e6 b r; 32-35 fg:#9aa3b8
+29: 1-14 fg:#ededf2; 17-24 fg:#9a86e6 b r; 27-35 fg:#9aa3b8

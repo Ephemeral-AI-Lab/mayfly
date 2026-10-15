@@ -18,11 +18,11 @@ grid 40x24 cursor none
 |  ● Done.
 |
 |  ✻ Worked for 35s · done 09:00
-|                                Alt+↑
+|      Alt+↑ conversation · Alt+↓ view
 |╭────── Show me every activity phase. ─╮
 |│ >                                    │
 |╰──────────────────────────────────────╯
-| deepseek-flash High  ~/workspace
+| deepseek-flash  workspace       ctx 5%
 styles
 1: 2-3 fg:#ededf2
 5: 2-3 fg:#ededf2
@@ -36,8 +36,8 @@ styles
 14: 4-21 fg:#9aa3b8
 16: 2-3 fg:#ededf2
 18: 2-30 fg:#9aa3b8
-19: 32-36 fg:#9aa3b8
+19: 6-36 fg:#9aa3b8
 20: 0-6 fg:#45406b; 7-37 fg:#5c6476; 38-39 fg:#45406b
 21: 0 fg:#45406b; 4 r; 39 fg:#45406b
 22: 0-39 fg:#45406b
-23: 1-19 fg:#ededf2; 22-32 fg:#9aa3b8
+23: 1-14 fg:#ededf2; 17-25 fg:#9aa3b8; 33-38 fg:#ededf2

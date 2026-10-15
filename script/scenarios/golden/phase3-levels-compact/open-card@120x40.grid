@@ -31,14 +31,14 @@ grid 120x40 cursor none
 |
 |  ● Waiting for your approval · 0s
 |
-|                                                                  ℹ Resumed session · 13 turns · last active just now
+|                                                                                      Alt+↑ conversation · Alt+↓ view
 |── Decide ──────────────────────────────────────────────────────────────────────────────────────────────────────────────
 |→ 1  Allow once
 |  2  Allow write for this session
 |  3  Reject
 |  Feedback: type to explain…
 |  ↑/↓ options · Enter choose · Ctrl+G open diff · Esc reject
-| deepseek-flash High  Goal active · round 0/8 · auto-continue off  plan  ⏵ 1 job  .  cache 42%  context: 18% (5.5k/32k)
+| deepseek-flash  plan  ~/workspace  ✓ agents 1/1  ● jobs 1  ○ goal 0/8  ● todo 0/2  cache ▰▰▱▱▱ 42%  ctx ▰▰▱▱▱▱▱▱▱▱ 18%
 styles
 1: 2-3 fg:#9a86e6; 4-42 fg:#9a86e6 b
 3: 2-33 fg:#9aa3b8
@@ -66,11 +66,11 @@ styles
 27: 4-8 fg:#9aa3b8; 9-54 fg:#c9c0f0
 28: 4-8 fg:#9aa3b8; 9-54 fg:#c9c0f0
 30: 0-1 fg:#ededf2; 2 fg:#5c6476; 3-28 fg:#ededf2; 30-33 fg:#9aa3b8
-32: 66-67 fg:#9a86e6; 68-116 fg:#ededf2
+32: 86-116 fg:#9aa3b8
 33: 0-119 fg:#9aa3b8
 34: 0 fg:#9a86e6 b; 2 fg:#9aa3b8; 5-14 fg:#ededf2 b
 35: 2 fg:#9aa3b8; 5-32 fg:#ededf2
 36: 2 fg:#9aa3b8; 5-10 fg:#ededf2
 37: 2-11 fg:#ededf2; 12-27 fg:#9aa3b8
 38: 0-1 fg:#5c6476; 2-4 fg:#ededf2; 6-15 fg:#5c6476; 16-20 fg:#ededf2; 22-30 fg:#5c6476; 31-36 fg:#ededf2; 38-49 fg:#5c6476; 50-52 fg:#ededf2; 54-59 fg:#5c6476
-39: 1-19 fg:#ededf2; 22-64 fg:#c9c0f0; 67-70 fg:#c9c0f0; 73-79 fg:#9a86e6; 85-118 fg:#ededf2
+39: 1-14 fg:#ededf2; 17-20 fg:#c9c0f0; 23-33 fg:#9aa3b8; 36 fg:#4ec87e; 37 fg:#ededf2; 38-44 fg:#9aa3b8; 45-47 fg:#ededf2; 50 fg:#c9c0f0; 51 fg:#ededf2; 52-56 fg:#9aa3b8; 57 fg:#ededf2; 60 fg:#9aa3b8; 61 fg:#ededf2; 62-66 fg:#9aa3b8; 67-69 fg:#ededf2; 72 fg:#c9c0f0; 73 fg:#ededf2; 74-78 fg:#9aa3b8; 79-81 fg:#ededf2; 84-89 fg:#ededf2; 90-91 fg:#e8a838; 92-94 fg:#9aa3b8; 95-98 fg:#ededf2; 101-104 fg:#ededf2; 105-106 fg:#9a86e6; 107-114 fg:#9aa3b8; 115-118 fg:#ededf2

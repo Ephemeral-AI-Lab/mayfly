@@ -44,11 +44,11 @@ grid 120x50 cursor none
 |  ■ interrupted
 |
 |  ✻ Stopped after 5s · done 10:24
-|  Enter expand · c copy · Ctrl+C JSON · Ctrl+G editor · ↑/↓ select · / ? search · Esc back
+|  ↑/↓ select · Enter expand · c copy · / ? search · Ctrl+G editor · Ctrl+C JSON · Esc back
 |╭───────────────────────────────────────────────────────────────────────────────────── Survey the transcript code and ─╮
 |│ >                                                                                                                    │
 |╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
-| deepseek-flash High   conversation   ~/workspace                                    cache 42%  context: 5% (5.5k/128k)
+| deepseek-official/deepseek-flash High   conversation   ~/workspace                  cache ▰▰▱▱▱ 42%  ctx ▰▱▱▱▱▱▱▱▱▱ 5%
 styles
 0: 1-23 fg:#e9e5f6; 24-25 fg:#9a86e6; 26-107 fg:#9a86e6 b
 1: 1-23 fg:#dbd3f0; 24-25 fg:#9a86e6; 26-107 fg:#c9c0f0
@@ -77,8 +77,8 @@ styles
 40: 2-3 fg:#9aa3b8; 4-7 fg:#9aa3b8 b; 8 fg:#9aa3b8; 9-23 fg:#c9c0f0; 24-38 fg:#9aa3b8
 42: 2-14 fg:#e8a838
 44: 2-32 fg:#9aa3b8
-45: 0-89 fg:#9aa3b8
+45: 2-11 fg:#9aa3b8; 13-26 fg:#9aa3b8; 28-35 fg:#9aa3b8; 37-48 fg:#9aa3b8; 50-64 fg:#9aa3b8; 66-78 fg:#9aa3b8; 80-89 fg:#9aa3b8
 46: 0-119 fg:#5c6476
 47: 0 fg:#5c6476; 4 r; 119 fg:#5c6476
 48: 0-119 fg:#5c6476
-49: 1-19 fg:#ededf2; 22-35 fg:#9a86e6 b r; 38-48 fg:#9aa3b8; 85-118 fg:#ededf2
+49: 1-37 fg:#ededf2; 40-53 fg:#9a86e6 b r; 56-66 fg:#9aa3b8; 85-90 fg:#ededf2; 91-92 fg:#e8a838; 93-95 fg:#9aa3b8; 96-99 fg:#ededf2; 102-105 fg:#ededf2; 106 fg:#9a86e6; 107-115 fg:#9aa3b8; 116-118 fg:#ededf2

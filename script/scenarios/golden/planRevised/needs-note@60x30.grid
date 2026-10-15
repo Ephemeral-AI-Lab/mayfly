@@ -20,7 +20,7 @@ grid 60x30 cursor none
 |
 |  ● Waiting for your approval · 0s
 |    ⎿ Tip: Esc to interrupt the run
-|                               Alt+↑ conversation · Alt+↓
+|                          Alt+↑ conversation · Alt+↓ view
 |── Decide ──────────────────────────────────────────────────
 |  1  Approve and start
 |  2  Keep planning…
@@ -28,7 +28,7 @@ grid 60x30 cursor none
 |→ Revise: type the revision in place
 |    ! Write what to change first
 |  Enter submit · Ctrl+G open plan · Esc back
-| deepseek-flash High  plan  ~/workspace
+| deepseek-flash  plan  workspace          ctx ▰▱▱▱▱▱▱▱▱▱ 5%
 styles
 1: 2-3 fg:#ededf2
 3: 2-3 fg:#4ec87e; 4-7 fg:#ededf2 b; 8 fg:#9aa3b8; 9-19 fg:#c9c0f0; 20 fg:#9aa3b8
@@ -43,7 +43,7 @@ styles
 17: 4-8 fg:#f5f5f7; 18-24 fg:#c9c0f0; 37-49 fg:#c9c0f0
 19: 0-1 fg:#ededf2; 2 fg:#5c6476; 3-28 fg:#ededf2; 30-33 fg:#9aa3b8
 20: 0-34 fg:#9aa3b8
-21: 31-56 fg:#9aa3b8
+21: 26-56 fg:#9aa3b8
 22: 0-59 fg:#9aa3b8
 23: 2 fg:#9aa3b8; 5-21 fg:#ededf2
 24: 2 fg:#9aa3b8; 5-18 fg:#ededf2 b
@@ -51,4 +51,4 @@ styles
 26: 0 fg:#9a86e6; 2-9 fg:#ededf2 b; 10-35 fg:#9aa3b8
 27: 4-31 fg:#e85454
 28: 0-1 fg:#5c6476; 2-6 fg:#ededf2; 8-16 fg:#5c6476; 17-22 fg:#ededf2; 24-35 fg:#5c6476; 36-38 fg:#ededf2; 40-43 fg:#5c6476
-29: 1-19 fg:#ededf2; 22-25 fg:#c9c0f0; 28-38 fg:#9aa3b8
+29: 1-14 fg:#ededf2; 17-20 fg:#c9c0f0; 23-31 fg:#9aa3b8; 42-45 fg:#ededf2; 46 fg:#9a86e6; 47-55 fg:#9aa3b8; 56-58 fg:#ededf2

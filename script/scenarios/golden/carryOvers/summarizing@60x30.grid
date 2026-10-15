@@ -1,0 +1,52 @@
+grid 60x30 cursor none
+| ⠀⠀⠀⠀⠀⠀⠀⠉⠉⠁⢸⣿⡇⠈⠉⠉⠀⠀⠀⠀⠀⠀⠀
+| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢸⣿⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀  Send /help for help...
+| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⣿⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀  Directory: ~/workspace
+| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣿⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀  Model:     deepseek...
+| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⡠⠊⠀⠑⢄⠀⠀⠀⠀⠀⠀⠀⠀⠀  Version:   scenario
+|
+|  » Summarise the changelog.
+|
+|  ● The changelog lists three changes: a faster parser, a
+|    new CLI flag, and a fix for Windows paths.
+|
+|  ● The logs agree with the changelog.
+|
+|  ✻ Worked for 23s · done 09:00
+|
+|  » Compact the context, then look for the needle.
+|
+|  ● Reading the readme.
+|
+|  ✓ Read(README.md)
+|
+|  ● Compacting context ▱▱▱▱▱▱▱▱▱▱ summarizing · 0s · auto
+|
+|  ⡀ Deep diving · 1s · ↑58.1k
+|    ⎿ Tip: Ctrl+O to expand tool details
+|                          Alt+↑ conversation · Alt+↓ view
+|╭─────────────────────────────── Summarise the changelog. ─╮
+|│ >                                                        │
+|╰──────────────────────────────────────────────────────────╯
+| deepseek-flash High  ~/workspace                 ctx 58.1k
+styles
+0: 1-23 fg:#c9beea; 24-25 fg:#9a86e6
+1: 1-23 fg:#b2a1ec; 24-25 fg:#9a86e6; 26-44 fg:#9aa3b8
+2: 1-25 fg:#9a86e6; 26-47 fg:#ededf2
+3: 1-23 fg:#8371d6; 24-25 fg:#9a86e6; 26-44 fg:#e9e6f4
+4: 1-23 fg:#6c5bbf; 24-25 fg:#9a86e6; 26-47 fg:#ededf2
+6: 2-3 fg:#9a86e6; 4-27 fg:#9a86e6 b
+8: 2-3 fg:#ededf2
+11: 2-3 fg:#ededf2
+13: 2-30 fg:#9aa3b8
+15: 2-3 fg:#9a86e6; 4-49 fg:#9a86e6 b
+17: 2-3 fg:#ededf2
+19: 2-3 fg:#4ec87e; 4-7 fg:#ededf2 b; 8 fg:#9aa3b8; 9-17 fg:#c9c0f0; 18 fg:#9aa3b8
+21: 2 fg:#5c6476; 3-21 fg:#ededf2; 23-32 fg:#9aa3b8; 34-49 fg:#9aa3b8; 51-56 fg:#9aa3b8
+23: 0-1 fg:#ededf2; 2 fg:#9a86e6; 3-14 fg:#ededf2; 16-28 fg:#9aa3b8
+24: 0-39 fg:#9aa3b8
+25: 26-56 fg:#9aa3b8
+26: 0-31 fg:#45406b; 32-57 fg:#5c6476; 58-59 fg:#45406b
+27: 0 fg:#45406b; 4 r; 59 fg:#45406b
+28: 0-59 fg:#45406b
+29: 1-19 fg:#ededf2; 22-32 fg:#9aa3b8; 50-58 fg:#ededf2

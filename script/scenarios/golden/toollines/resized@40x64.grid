@@ -24,11 +24,11 @@ grid 72x30 cursor none
 |  ■ interrupted
 |
 |  ✻ Stopped after 5s · done 10:24
-|                                       Alt+↑ conversation · Alt+↓ bar
+|                                      Alt+↑ conversation · Alt+↓ view
 |╭───────────────────────────────────── Survey the transcript code and ─╮
 |│ >                                                                    │
 |╰──────────────────────────────────────────────────────────────────────╯
-| deepseek-flash High  ~/workspace    cache 42%  context: 5% (5.5k/128k)
+| deepseek-flash High  ~/workspace    cache ▰▰▱▱▱ 42%  ctx ▰▱▱▱▱▱▱▱▱▱ 5%
 styles
 0: 2-16 fg:#ededf2
 2: 2-3 fg:#ededf2
@@ -44,8 +44,8 @@ styles
 20: 2-3 fg:#9aa3b8; 4-7 fg:#9aa3b8 b; 8 fg:#9aa3b8; 9-23 fg:#c9c0f0; 24-38 fg:#9aa3b8
 22: 2-14 fg:#e8a838
 24: 2-32 fg:#9aa3b8
-25: 39-68 fg:#9aa3b8
+25: 38-68 fg:#9aa3b8
 26: 0-37 fg:#45406b; 38-69 fg:#5c6476; 70-71 fg:#45406b
 27: 0 fg:#45406b; 4 r; 71 fg:#45406b
 28: 0-71 fg:#45406b
-29: 1-19 fg:#ededf2; 22-32 fg:#9aa3b8; 37-70 fg:#ededf2
+29: 1-19 fg:#ededf2; 22-32 fg:#9aa3b8; 37-42 fg:#ededf2; 43-44 fg:#e8a838; 45-47 fg:#9aa3b8; 48-51 fg:#ededf2; 54-57 fg:#ededf2; 58 fg:#9a86e6; 59-67 fg:#9aa3b8; 68-70 fg:#ededf2

@@ -31,14 +31,14 @@ grid 120x40 cursor none
 |
 |  ● Waiting for your approval · 0s
 |
-|                                                                                       Alt+↑ conversation · Alt+↓ bar
+|                                                                                      Alt+↑ conversation · Alt+↓ view
 |── Decide ──────────────────────────────────────────────────────────────────────────────────────────────────────────────
 |→ 1  Approve and start
 |  2  Keep planning…
 |  3  Reject
 |  Revise: type the revision in place
 |  Enter choose · c copy plan · Ctrl+G open plan · Esc reject
-| deepseek-flash High  plan  ~/workspace                                              cache 42%  context: 18% (5.5k/32k)
+| deepseek-official/deepseek-flash High  plan  ~/workspace  ● todo 0/3 16m 2s        cache ▰▰▱▱▱ 42%  ctx ▰▰▱▱▱▱▱▱▱▱ 18%
 styles
 0: 2-3 fg:#9a86e6; 4-27 fg:#9a86e6 b
 2: 2-34 fg:#9aa3b8
@@ -58,11 +58,11 @@ styles
 27: 4-6 fg:#c9c0f0
 28: 4-6 fg:#c9c0f0
 30: 0-1 fg:#ededf2; 2 fg:#5c6476; 3-28 fg:#ededf2; 30-33 fg:#9aa3b8
-32: 87-116 fg:#9aa3b8
+32: 86-116 fg:#9aa3b8
 33: 0-119 fg:#9aa3b8
 34: 0 fg:#9a86e6 b; 2 fg:#9aa3b8; 5-21 fg:#ededf2 b
 35: 2 fg:#9aa3b8; 5-18 fg:#ededf2
 36: 2 fg:#9aa3b8; 5-10 fg:#ededf2
 37: 2-9 fg:#ededf2; 10-35 fg:#9aa3b8
 38: 0-1 fg:#5c6476; 2-6 fg:#ededf2; 8-16 fg:#5c6476; 17 fg:#ededf2; 19-30 fg:#5c6476; 31-36 fg:#ededf2; 38-49 fg:#5c6476; 50-52 fg:#ededf2; 54-59 fg:#5c6476
-39: 1-19 fg:#ededf2; 22-25 fg:#c9c0f0; 28-38 fg:#9aa3b8; 85-118 fg:#ededf2
+39: 1-37 fg:#ededf2; 40-43 fg:#c9c0f0; 46-56 fg:#9aa3b8; 59 fg:#c9c0f0; 60 fg:#ededf2; 61-65 fg:#9aa3b8; 66-68 fg:#ededf2; 69-75 fg:#9aa3b8; 84-89 fg:#ededf2; 90-91 fg:#e8a838; 92-94 fg:#9aa3b8; 95-98 fg:#ededf2; 101-104 fg:#ededf2; 105-106 fg:#9a86e6; 107-114 fg:#9aa3b8; 115-118 fg:#ededf2

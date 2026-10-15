@@ -24,11 +24,11 @@ grid 60x30 cursor none
 |
 |  ⡀ Deep diving · 7s · ↑29.8k
 |    ⎿ Tip: Esc to interrupt the run
-|                               Alt+↑ conversation · Alt+↓
+|                          Alt+↑ conversation · Alt+↓ view
 |╭───────────────────────── Keep reading until the context ─╮
 |│ >                                                        │
 |╰──────────────────────────────────────────────────────────╯
-| deepseek-flash High  ~/workspace   context: 10% (2.9k/32k)
+| deepseek-flash High  ~/workspace        ctx ▰▱▱▱▱▱▱▱▱▱ 10%
 styles
 0: 2-3 fg:#9a86e6; 4-49 fg:#9a86e6 b
 2: 2-3 fg:#ededf2
@@ -44,8 +44,8 @@ styles
 21: 2-19 fg:#9aa3b8
 23: 0-1 fg:#ededf2; 2 fg:#9a86e6; 3-14 fg:#ededf2; 16-28 fg:#9aa3b8
 24: 0-34 fg:#9aa3b8
-25: 31-56 fg:#9aa3b8
+25: 26-56 fg:#9aa3b8
 26: 0-25 fg:#45406b; 26-57 fg:#5c6476; 58-59 fg:#45406b
 27: 0 fg:#45406b; 4 r; 59 fg:#45406b
 28: 0-59 fg:#45406b
-29: 1-19 fg:#ededf2; 22-32 fg:#9aa3b8; 36-58 fg:#ededf2
+29: 1-19 fg:#ededf2; 22-32 fg:#9aa3b8; 41-44 fg:#ededf2; 45 fg:#9a86e6; 46-54 fg:#9aa3b8; 55-58 fg:#ededf2

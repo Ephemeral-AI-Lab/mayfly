@@ -1,0 +1,58 @@
+grid 60x30 cursor none
+|  (20/34)
+|  ✓ Read(README.md)
+|
+|  ✓ Compacted 6 items · ~58.1k → ~7.2k tokens · auto
+|    ⎿ Ctrl+O summary
+|
+|  ● Checking the logs.
+|
+|  ✓ Bash(grep -rn needle logs) · 0.5s
+|    logs/app-1.log:1: nothing here
+|    logs/app-2.log:2: nothing here
+|    logs/app-3.log:3: nothing here
+|    logs/app-4.log:4: needle found in request 4
+|    logs/app-5.log:5: nothing here
+|    logs/app-6.log:6: nothing here
+|    logs/app-7.log:7: nothing here
+|    logs/app-8.log:8: needle found in request 8
+|    logs/app-9.log:9: nothing here
+|    logs/app-10.log:10: nothing here
+|    logs/app-11.log:11: nothing here
+|
+|  ⡀ Deep diving · 14s · ↑6.3k
+|    ⎿ Tip: Ctrl+O to expand tool details
+|  ↑/↓ or n/N match · Enter expand · Esc end search      ⚠
+|  ? needle
+|    5/5 matches
+|╭─────────────────────────────── Summarise the changelog. ─╮
+|│ >                                                        │
+|╰──────────────────────────────────────────────────────────╯
+| deepseek-flash High   search   ~/workspace        ctx 6.3k
+styles
+0: 0-8 fg:#5c6476
+1: 2-3 fg:#4ec87e; 4-7 fg:#ededf2 b; 8 fg:#9aa3b8; 9-17 fg:#c9c0f0; 18 fg:#9aa3b8
+3: 2-3 fg:#4ec87e; 4-20 fg:#ededf2; 22-44 fg:#9aa3b8; 46-51 fg:#9aa3b8
+4: 2-19 fg:#9aa3b8
+6: 2-3 fg:#ededf2
+8: 1 bg:#2b2b30; 2-3 fg:#4ec87e bg:#2b2b30; 4-7 fg:#ededf2 bg:#2b2b30 b; 8 fg:#9aa3b8 bg:#2b2b30; 9-17 fg:#c9c0f0 bg:#2b2b30; 18-23 fg:#c9c0f0 bg:#2b2b30 r; 24-28 fg:#c9c0f0 bg:#2b2b30; 29-36 fg:#9aa3b8 bg:#2b2b30; 37-58 bg:#2b2b30
+9: 1 bg:#2b2b30; 2-33 fg:#ededf2 bg:#2b2b30; 34-58 bg:#2b2b30
+10: 1 bg:#2b2b30; 2-33 fg:#ededf2 bg:#2b2b30; 34-58 bg:#2b2b30
+11: 1 bg:#2b2b30; 2-33 fg:#ededf2 bg:#2b2b30; 34-58 bg:#2b2b30
+12: 1 bg:#2b2b30; 2-21 fg:#ededf2 bg:#2b2b30; 22-27 fg:#ededf2 bg:#2b2b30 r; 28-46 fg:#ededf2 bg:#2b2b30; 47-58 bg:#2b2b30
+13: 1 bg:#2b2b30; 2-33 fg:#ededf2 bg:#2b2b30; 34-58 bg:#2b2b30
+14: 1 bg:#2b2b30; 2-33 fg:#ededf2 bg:#2b2b30; 34-58 bg:#2b2b30
+15: 1 bg:#2b2b30; 2-33 fg:#ededf2 bg:#2b2b30; 34-58 bg:#2b2b30
+16: 1 bg:#2b2b30; 2-21 fg:#ededf2 bg:#2b2b30; 22-27 fg:#ededf2 bg:#2b2b30 b u r; 28-46 fg:#ededf2 bg:#2b2b30; 47-58 bg:#2b2b30
+17: 1 bg:#2b2b30; 2-33 fg:#ededf2 bg:#2b2b30; 34-58 bg:#2b2b30
+18: 1 bg:#2b2b30; 2-35 fg:#ededf2 bg:#2b2b30; 36-58 bg:#2b2b30
+19: 1 bg:#2b2b30; 2-35 fg:#ededf2 bg:#2b2b30; 36-58 bg:#2b2b30
+21: 0-1 fg:#ededf2; 2 fg:#9a86e6; 3-14 fg:#ededf2; 16-28 fg:#9aa3b8
+22: 0-39 fg:#9aa3b8
+23: 2-17 fg:#9aa3b8; 19-32 fg:#9aa3b8; 34-49 fg:#9aa3b8; 56 fg:#e8a838
+24: 2-3 fg:#9a86e6
+25: 4-14 fg:#9aa3b8
+26: 0-59 fg:#5c6476
+27: 0 fg:#5c6476; 4 r; 59 fg:#5c6476
+28: 0-59 fg:#5c6476
+29: 1-19 fg:#ededf2; 22-29 fg:#9a86e6 b r; 32-42 fg:#9aa3b8; 51-58 fg:#ededf2

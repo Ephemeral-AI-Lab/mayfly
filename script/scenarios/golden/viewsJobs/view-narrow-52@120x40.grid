@@ -1,0 +1,39 @@
+grid 52x24 cursor none
+|  » Build, test, and leave a long sleep running.
+|
+|  ● The build passed and the tests failed; they have
+|    left the list. Three jobs are live: watch, dev,
+|    and the sleep. Press Alt+↓ to open the Jobs
+|    view, ↓ to choose, Enter to read one, x to stop
+|    one.
+|
+|  ✻ Worked for 0s · done 09:00
+|
+|  ● This is a replay session: the model is a stub.
+|    Type nothing; the conversation above is
+|    scripted.
+|
+|  ✻ Worked for 0s · done 09:00
+|
+|╭──────────────────────────── Start the watchers. ─╮
+|│ >                                                │
+|╰──────────────────────────────────────────────────╯
+| deepseek-flash High   view   ~/workspace  ● jobs 2
+|                                           ━━━━━━━━
+|   ● npm run watch  rebuilt 1       23s
+| → ● npm run dev    ready on :3000  23s
+|   Enter open · x stop · Esc close
+styles
+0: 2-3 fg:#9a86e6; 4-47 fg:#9a86e6 b
+2: 2-3 fg:#ededf2
+8: 2-29 fg:#9aa3b8
+10: 2-3 fg:#ededf2
+14: 2-29 fg:#9aa3b8
+16: 0-51 fg:#5c6476
+17: 0 fg:#5c6476; 4 r; 51 fg:#5c6476
+18: 0-51 fg:#5c6476
+19: 1-19 fg:#ededf2; 22-27 fg:#9a86e6 b r; 30-40 fg:#9aa3b8; 43 fg:#c9c0f0; 44 fg:#ededf2; 45-49 fg:#9aa3b8; 50 fg:#ededf2
+20: 1-50 fg:#9a86e6
+21: 3 fg:#c9c0f0; 4-17 fg:#ededf2; 20-28 fg:#9aa3b8; 36-38 fg:#9aa3b8
+22: 1 fg:#9a86e6 b; 3 fg:#c9c0f0; 4-15 fg:#ededf2; 20-33 fg:#9aa3b8; 36-38 fg:#9aa3b8
+23: 1-2 fg:#5c6476; 3-7 fg:#ededf2; 9-15 fg:#5c6476; 16 fg:#ededf2; 18-24 fg:#5c6476; 25-27 fg:#ededf2; 29-33 fg:#5c6476

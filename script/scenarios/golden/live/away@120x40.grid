@@ -34,11 +34,11 @@ grid 120x40 cursor none
 |          for line in lines:
 |              if not line:
 |                  rows.append('')
-|                                                  2 new turns · Ctrl+↓                 Alt+↑ conversation · Alt+↓ bar
+|                                                  2 new turns · Ctrl+↓                Alt+↑ conversation · Alt+↓ view
 |╭──────────────────────────────────────────────────────────────────────────────────── Explain the rendering pipeline. ─╮
 |│ >                                                                                                                    │
 |╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
-| deepseek-flash High  ~/workspace                                                    cache 42%  context: 5% (5.5k/128k)
+| deepseek-official/deepseek-flash High  ~/workspace                                  cache ▰▰▱▱▱ 42%  ctx ▰▱▱▱▱▱▱▱▱▱ 5%
 styles
 2: 4-5 fg:#c9c0f0
 3: 4-5 fg:#c9c0f0; 25-29 fg:#c9c0f0
@@ -62,8 +62,8 @@ styles
 32: 6-9 fg:#ededf2; 10-12 fg:#9a86e6; 13-18 fg:#ededf2; 19-20 fg:#9a86e6; 21-27 fg:#ededf2
 33: 6-13 fg:#ededf2; 14-15 fg:#9a86e6; 16 fg:#ededf2; 17-19 fg:#9a86e6; 20-25 fg:#ededf2
 34: 6-29 fg:#ededf2; 30-31 fg:#4ec87e; 32 fg:#ededf2
-35: 49-70 fg:#ededf2 r; 87-116 fg:#9aa3b8
+35: 49-70 fg:#ededf2 r; 86-116 fg:#9aa3b8
 36: 0-84 fg:#45406b; 85-117 fg:#5c6476; 118-119 fg:#45406b
 37: 0 fg:#45406b; 4 r; 119 fg:#45406b
 38: 0-119 fg:#45406b
-39: 1-19 fg:#ededf2; 22-32 fg:#9aa3b8; 85-118 fg:#ededf2
+39: 1-37 fg:#ededf2; 40-50 fg:#9aa3b8; 85-90 fg:#ededf2; 91-92 fg:#e8a838; 93-95 fg:#9aa3b8; 96-99 fg:#ededf2; 102-105 fg:#ededf2; 106 fg:#9a86e6; 107-115 fg:#9aa3b8; 116-118 fg:#ededf2

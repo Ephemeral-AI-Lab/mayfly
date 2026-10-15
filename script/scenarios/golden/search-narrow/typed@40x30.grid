@@ -28,7 +28,7 @@ grid 40x30 cursor none
 |╭───── Survey the transcript code and ─╮
 |│ >                                    │
 |╰──────────────────────────────────────╯
-| deepseek-flash High   search   ~/wo...
+| deepseek-flash   search   workspace
 styles
 0: 0-8 fg:#5c6476
 1: 2-3 fg:#ededf2
@@ -49,4 +49,4 @@ styles
 26: 0-39 fg:#5c6476
 27: 0 fg:#5c6476; 4 r; 39 fg:#5c6476
 28: 0-39 fg:#5c6476
-29: 1-19 fg:#ededf2; 22-29 fg:#9a86e6 b r; 32-35 fg:#9aa3b8
+29: 1-14 fg:#ededf2; 17-24 fg:#9a86e6 b r; 27-35 fg:#9aa3b8

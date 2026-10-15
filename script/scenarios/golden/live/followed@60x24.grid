@@ -18,11 +18,11 @@ grid 60x24 cursor none
 |  ● All of them pass.
 |
 |  ✻ Worked for 1s · done 09:00
-|                               Alt+↑ conversation · Alt+↓
+|                          Alt+↑ conversation · Alt+↓ view
 |╭──────────────────────── Explain the rendering pipeline. ─╮
 |│ >                                                        │
 |╰──────────────────────────────────────────────────────────╯
-| deepseek-flash High  .  cache 42%  context: 5% (5.5k/128k)
+| deepseek-flash  workspace                ctx ▰▱▱▱▱▱▱▱▱▱ 5%
 styles
 0: 2-29 fg:#9aa3b8
 2: 2-3 fg:#9a86e6; 4-24 fg:#9a86e6 b
@@ -35,8 +35,8 @@ styles
 16: 2-3 fg:#ededf2
 17: 59 bg:p8
 18: 2-29 fg:#9aa3b8; 59 bg:p8
-19: 31-56 fg:#9aa3b8
+19: 26-56 fg:#9aa3b8
 20: 0-24 fg:#45406b; 25-57 fg:#5c6476; 58-59 fg:#45406b
 21: 0 fg:#45406b; 4 r; 59 fg:#45406b
 22: 0-59 fg:#45406b
-23: 1-19 fg:#ededf2; 25-58 fg:#ededf2
+23: 1-14 fg:#ededf2; 17-25 fg:#9aa3b8; 42-45 fg:#ededf2; 46 fg:#9a86e6; 47-55 fg:#9aa3b8; 56-58 fg:#ededf2

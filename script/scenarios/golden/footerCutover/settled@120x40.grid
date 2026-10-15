@@ -1,0 +1,65 @@
+grid 120x40 cursor none
+|  ✓ TodoWrite · 0.2s
+|
+|  ─────────────────────────────────────────────────── goal round 2 ───────────────────────────────────────────────────
+|
+|  ● Round 2: a background job joins them in the status row. Press Alt+↓ to open the views.
+|
+|  ⏸ Goal paused
+|
+|  ● The goal is paused: the mark is ⏸ and the panel says how to continue.
+|
+|  ● Goal resumed
+|
+|  ● Resumed.
+|
+|  ✕ Goal blocked · round-limit: The goal used all 8 rounds without finishing
+|
+|  ● Blocked: the round cap was reached.
+|
+|  ✻ Worked for 1m 43s · done 09:02
+|
+|  » Pick the stable channel and wrap up.
+|
+|  ▾ 1 tool call · Ctrl+O to expand
+|
+|  ● Goal resumed
+|
+|  ✓ Goal complete · 2 rounds · 2m 0s
+|
+|  ● The goal is complete and the list is done; only the job is left in the status row.
+|
+|  ✓ TodoWrite · 0.2s
+|
+|    Goal cleared
+|
+|  ✻ Worked for 0s · done 09:00
+|                                                                                                    F7 btw · F8 close
+|╭─────────────────────────────────────────────────────────────────────────────────────── Find where the settings live ─╮
+|│ >                                                                                                                    │
+|╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+| deepseek-official/deepseek-flash High   main   ~/workspace
+styles
+0: 2-3 fg:#4ec87e; 4-12 fg:#ededf2 b; 13-19 fg:#9aa3b8
+2: 2-117 fg:#9aa3b8
+4: 2-3 fg:#ededf2
+6: 2-14 fg:#9aa3b8
+8: 2-3 fg:#ededf2
+10: 2-15 fg:#c9c0f0
+12: 2-3 fg:#ededf2
+14: 2-75 fg:#e85454
+16: 2-3 fg:#ededf2
+18: 2-33 fg:#9aa3b8
+20: 2-3 fg:#9a86e6; 4-39 fg:#9a86e6 b
+22: 2-33 fg:#9aa3b8
+24: 2-15 fg:#c9c0f0
+26: 2-35 fg:#4ec87e
+28: 2-3 fg:#ededf2
+30: 2-3 fg:#4ec87e; 4-12 fg:#ededf2 b; 13-19 fg:#9aa3b8
+32: 2-15 fg:#9aa3b8
+34: 2-29 fg:#9aa3b8
+35: 100-116 fg:#9aa3b8
+36: 0-87 fg:#45406b; 88-117 fg:#5c6476; 118-119 fg:#45406b
+37: 0 fg:#45406b; 4 r; 119 fg:#45406b
+38: 0-119 fg:#45406b
+39: 1-37 fg:#ededf2; 40-45 fg:#9a86e6 b r; 48-58 fg:#9aa3b8

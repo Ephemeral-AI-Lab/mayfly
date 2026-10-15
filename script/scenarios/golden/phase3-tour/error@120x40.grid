@@ -1,4 +1,8 @@
 grid 120x40 cursor none
+|    Line 11 is about something else.
+|
+|    Line 12 mentions the needle again.
+|
 |  ✻ Worked for 5s · done 10:54
 |
 |  » Keep going with the cleanup, and I will stop you.
@@ -30,38 +34,30 @@ grid 120x40 cursor none
 |  ✗ The provider returned an invalid request: replay error (INVALID_REQUEST)
 |
 |  ✻ Failed after 2s · done 11:02
-|────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-|  Todo · ● active · 0/8 · interrupted · Land the retries setting and keep the tests green
-|  ● Rewrite the client retry
-|  ○ Run the watcher checks
-|                                                                  ℹ Resumed session · 13 turns · last active just now
+|                                                                                      Alt+↑ conversation · Alt+↓ view
 |╭───────────────────────────────────────────────────────────────────────────────────────────── Here is the timeout on ─╮
 |│ >                                                                                                                    │
 |╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
-| deepseek-flash High  Goal active · round 0/8 · auto-continue off  plan  ⏵ 1 job  .  cache 42%  context: 18% (5.5k/32k)
+| deepseek-flash  plan  ~/workspace  ✓ agents 1/1  ● jobs 1  ○ goal 0/8  ● todo 0/2  cache ▰▰▱▱▱ 42%  ctx ▰▰▱▱▱▱▱▱▱▱ 18%
 styles
-0: 2-29 fg:#9aa3b8
-2: 2-3 fg:#9a86e6; 4-52 fg:#9a86e6 b
-4: 2-3 fg:#9aa3b8; 4-10 fg:#e8a838; 11-44 fg:#9aa3b8
-6: 2-3 fg:#ededf2
-8: 2-3 fg:#4ec87e; 4-7 fg:#ededf2 b; 8 fg:#9aa3b8; 9-22 fg:#c9c0f0; 23-33 fg:#9aa3b8
-10: 2-3 fg:#9aa3b8; 4-7 fg:#9aa3b8 b; 8 fg:#9aa3b8; 9-22 fg:#c9c0f0; 23-42 fg:#9aa3b8
-12: 2-3 fg:#9aa3b8; 4-8 fg:#9aa3b8 b; 9 fg:#9aa3b8; 10-23 fg:#c9c0f0; 24-38 fg:#9aa3b8
-14: 2-3 fg:#9aa3b8; 4-7 fg:#9aa3b8 b; 8 fg:#9aa3b8; 9-23 fg:#c9c0f0; 24-38 fg:#9aa3b8
-16: 2-14 fg:#e8a838
-18: 2-32 fg:#9aa3b8
-20: 2-3 fg:#9a86e6; 4-18 fg:#9a86e6 b
-22: 2-3 fg:#9aa3b8; 4-9 fg:#e85454; 10-42 fg:#9aa3b8
-24: 2-3 fg:#ededf2
-26: 2-3 fg:#e85454; 4-7 fg:#ededf2 b; 8 fg:#9aa3b8; 9-20 fg:#c9c0f0; 21-106 fg:#9aa3b8
-28: 2-75 fg:#e85454
-30: 2-31 fg:#9aa3b8
-31: 0-119 fg:#45406b
-32: 0-5 fg:#c9c0f0 b; 6-8 fg:#9aa3b8; 9-16 fg:#c9c0f0 b; 17-88 fg:#9aa3b8
-33: 0-3 fg:#c9c0f0 b; 4-27 fg:#ededf2
-34: 0-3 fg:#9aa3b8; 4-25 fg:#ededf2
-35: 66-67 fg:#9a86e6; 68-116 fg:#ededf2
+4: 2-29 fg:#9aa3b8
+6: 2-3 fg:#9a86e6; 4-52 fg:#9a86e6 b
+8: 2-3 fg:#9aa3b8; 4-10 fg:#e8a838; 11-44 fg:#9aa3b8
+10: 2-3 fg:#ededf2
+12: 2-3 fg:#4ec87e; 4-7 fg:#ededf2 b; 8 fg:#9aa3b8; 9-22 fg:#c9c0f0; 23-33 fg:#9aa3b8
+14: 2-3 fg:#9aa3b8; 4-7 fg:#9aa3b8 b; 8 fg:#9aa3b8; 9-22 fg:#c9c0f0; 23-42 fg:#9aa3b8
+16: 2-3 fg:#9aa3b8; 4-8 fg:#9aa3b8 b; 9 fg:#9aa3b8; 10-23 fg:#c9c0f0; 24-38 fg:#9aa3b8
+18: 2-3 fg:#9aa3b8; 4-7 fg:#9aa3b8 b; 8 fg:#9aa3b8; 9-23 fg:#c9c0f0; 24-38 fg:#9aa3b8
+20: 2-14 fg:#e8a838
+22: 2-32 fg:#9aa3b8
+24: 2-3 fg:#9a86e6; 4-18 fg:#9a86e6 b
+26: 2-3 fg:#9aa3b8; 4-9 fg:#e85454; 10-42 fg:#9aa3b8
+28: 2-3 fg:#ededf2
+30: 2-3 fg:#e85454; 4-7 fg:#ededf2 b; 8 fg:#9aa3b8; 9-20 fg:#c9c0f0; 21-106 fg:#9aa3b8
+32: 2-75 fg:#e85454
+34: 2-31 fg:#9aa3b8
+35: 86-116 fg:#9aa3b8
 36: 0-93 fg:#45406b; 94-117 fg:#5c6476; 118-119 fg:#45406b
 37: 0 fg:#45406b; 4 r; 119 fg:#45406b
 38: 0-119 fg:#45406b
-39: 1-19 fg:#ededf2; 22-64 fg:#c9c0f0; 67-70 fg:#c9c0f0; 73-79 fg:#9a86e6; 85-118 fg:#ededf2
+39: 1-14 fg:#ededf2; 17-20 fg:#c9c0f0; 23-33 fg:#9aa3b8; 36 fg:#4ec87e; 37 fg:#ededf2; 38-44 fg:#9aa3b8; 45-47 fg:#ededf2; 50 fg:#c9c0f0; 51 fg:#ededf2; 52-56 fg:#9aa3b8; 57 fg:#ededf2; 60 fg:#9aa3b8; 61 fg:#ededf2; 62-66 fg:#9aa3b8; 67-69 fg:#ededf2; 72 fg:#c9c0f0; 73 fg:#ededf2; 74-78 fg:#9aa3b8; 79-81 fg:#ededf2; 84-89 fg:#ededf2; 90-91 fg:#e8a838; 92-94 fg:#9aa3b8; 95-98 fg:#ededf2; 101-104 fg:#ededf2; 105-106 fg:#9a86e6; 107-114 fg:#9aa3b8; 115-118 fg:#ededf2

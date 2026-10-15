@@ -24,11 +24,11 @@ grid 60x30 cursor none
 |
 |  ⡀ Deep diving · 5s
 |    ⎿ Tip: Esc to interrupt the run
-|                                 ✓ Copied the last answer
+|                ✓ Copied the last answer to the clipboard
 |╭────────────────────────────────── Show me every kind of ─╮
 |│ >                                                        │
 |╰──────────────────────────────────────────────────────────╯
-| deepseek-flash  ~/workspace
+| deepseek-official/deepseek-flash  ~/workspace
 styles
 0: 1-23 fg:#f5f5f7; 24-25 fg:#9a86e6
 1: 1-23 fg:#e9e5f6; 24-25 fg:#9a86e6; 26-47 fg:#9a86e6 b
@@ -41,8 +41,8 @@ styles
 9: 2-3 fg:#9a86e6; 4-32 fg:#9a86e6 b
 23: 0-1 fg:#ededf2; 2 fg:#9a86e6; 3-14 fg:#ededf2; 16-19 fg:#9aa3b8
 24: 0-34 fg:#9aa3b8
-25: 33-34 fg:#4ec87e; 35-56 fg:#ededf2
+25: 16 fg:#4ec87e; 18-56 fg:#ededf2
 26: 0-34 fg:#45406b; 35-57 fg:#5c6476; 58-59 fg:#45406b
 27: 0 fg:#45406b; 4 r; 59 fg:#45406b
 28: 0-59 fg:#45406b
-29: 1-14 fg:#ededf2; 17-27 fg:#9aa3b8
+29: 1-32 fg:#ededf2; 35-45 fg:#9aa3b8

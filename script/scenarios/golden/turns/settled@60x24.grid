@@ -18,11 +18,11 @@ grid 60x24 cursor none
 |  ■ interrupted
 |
 |  ✻ Stopped after 2s · done 10:14
-|                               Alt+↑ conversation · Alt+↓
+|                          Alt+↑ conversation · Alt+↓ view
 |╭─────────────────────────── Update the landing page hero ─╮
 |│ >                                                        │
 |╰──────────────────────────────────────────────────────────╯
-| deepseek-flash High  .  cache 42%  context: 5% (5.5k/128k)
+| deepseek-flash  workspace                ctx ▰▱▱▱▱▱▱▱▱▱ 5%
 styles
 0: 4-55 fg:#9a86e6 b
 1: 4-59 fg:#9a86e6 b
@@ -35,8 +35,8 @@ styles
 14: 2-3 fg:#9aa3b8; 4-7 fg:#9aa3b8 b; 8 fg:#9aa3b8; 9-37 fg:#c9c0f0; 38-59 fg:#9aa3b8
 16: 2-14 fg:#e8a838
 18: 2-32 fg:#9aa3b8
-19: 31-56 fg:#9aa3b8
+19: 26-56 fg:#9aa3b8
 20: 0-27 fg:#45406b; 28-57 fg:#5c6476; 58-59 fg:#45406b
 21: 0 fg:#45406b; 4 r; 59 fg:#45406b
 22: 0-59 fg:#45406b
-23: 1-19 fg:#ededf2; 25-58 fg:#ededf2
+23: 1-14 fg:#ededf2; 17-25 fg:#9aa3b8; 42-45 fg:#ededf2; 46 fg:#9a86e6; 47-55 fg:#9aa3b8; 56-58 fg:#ededf2

@@ -1,0 +1,68 @@
+grid 120x40 cursor none
+|
+|  ✓ Subagent(Map the transcript files) · 25s
+|
+|  ● Explore is done. Now lint, also in the foreground; it fails.
+|
+|  ✗ Subagent(Sweep the oxlint findings) · The subagent failed: the provider returned an invalid request · 12s
+|
+|  ● Lint failed; review and plan keep running in the background. Press Alt+↓ to open the Agents view, ↓ to choose, Enter
+|    to open one, x to stop one, b to try moving one to the background.
+|
+|  ✻ Worked for 1m 44s · done 09:01
+|
+|  » Wait for the tracks to finish.
+|
+|  ● Both background tracks have finished: the item stays, now ✓ agents 4/4, and the panel still lists all four.
+|
+|  ✻ Worked for 11s · done 09:01
+|
+|  » Start one long track and stop it by hand.
+|
+|  ● A second group: one long background track to open, follow, and stop.
+|
+|  ✓ Subagent(Migrate the footer specs) · 0.6s
+|
+|  ⡀ Deep diving · 4s · ↑10.2k
+|    ⎿ Tip: @: mention files
+|
+|╭────────────────────────────────────────────────────────────────────────────────────── Split the migration into four ─╮
+|│ >                                                                                                                    │
+|╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+| deepseek-official/deepseek-flash High   main    view   ~/workspace  ● agents 5/6    cache ▰▰▱▱▱ 48%  ctx ▰▱▱▱▱▱▱▱▱▱ 8%
+|                                                                     ━━━━━━━━━━━━
+| → ● migrate  Migrate the footer specs            bg  0 tools  7                ↓7       3 tok/s     3s
+|   ✓ review   Audit the facts projection          bg  2 tools  11.2k   ↑10.9k   ↓240                37s
+|   ✓ plan     Draft the migration plan            bg  1 tool   11.2k   ↑10.9k   ↓240                58s
+|   ⊘ notes    Draft the release notes             bg  0 tools  5.6k    ↑5.5k    ↓120                 2s
+|   ✓ explore  Map the transcript files            fg  2 tools  11.2k   ↑10.9k   ↓240                25s
+|   ✕ lint     Sweep the oxlint findings           fg  1 tool   5.6k    ↑5.5k    ↓120                 3s
+|   ↑/↓ options · Enter open · x stop · Esc close
+| ✓ stopped subagent replay-child-6-44aae98b
+styles
+1: 2-3 fg:#4ec87e; 4-11 fg:#ededf2 b; 12 fg:#9aa3b8; 13-36 fg:#c9c0f0; 37-43 fg:#9aa3b8
+3: 2-3 fg:#ededf2
+5: 2-3 fg:#e85454; 4-11 fg:#ededf2 b; 12 fg:#9aa3b8; 13-37 fg:#c9c0f0; 38-108 fg:#9aa3b8
+7: 2-3 fg:#ededf2
+10: 2-33 fg:#9aa3b8
+12: 2-3 fg:#9a86e6; 4-33 fg:#9a86e6 b
+14: 2-3 fg:#ededf2; 62-73 fg:#c9c0f0
+16: 2-30 fg:#9aa3b8
+18: 2-3 fg:#9a86e6; 4-44 fg:#9a86e6 b
+20: 2-3 fg:#ededf2
+22: 2-3 fg:#4ec87e; 4-11 fg:#ededf2 b; 12 fg:#9aa3b8; 13-36 fg:#c9c0f0; 37-44 fg:#9aa3b8
+24: 0-1 fg:#ededf2; 2 fg:#9a86e6; 3-14 fg:#ededf2; 16-28 fg:#9aa3b8
+25: 0-26 fg:#9aa3b8
+27: 0-119 fg:#5c6476
+28: 0 fg:#5c6476; 4 r; 119 fg:#5c6476
+29: 0-119 fg:#5c6476
+30: 1-37 fg:#ededf2; 40-45 fg:#9a86e6 b r; 48-53 fg:#9a86e6 b r; 56-66 fg:#9aa3b8; 69 fg:#c9c0f0; 70 fg:#ededf2; 71-77 fg:#9aa3b8; 78-80 fg:#ededf2; 85-90 fg:#ededf2; 91-92 fg:#e8a838; 93-95 fg:#9aa3b8; 96-99 fg:#ededf2; 102-105 fg:#ededf2; 106 fg:#9a86e6; 107-115 fg:#9aa3b8; 116-118 fg:#ededf2
+31: 1-80 fg:#9a86e6
+32: 1 fg:#9a86e6 b; 3 fg:#c9c0f0; 4 fg:#ededf2; 5-11 fg:#c9c0f0; 14-37 fg:#ededf2; 50-51 fg:#9aa3b8; 54-60 fg:#9aa3b8; 63 fg:#9aa3b8; 80-81 fg:#9aa3b8; 89-95 fg:#9aa3b8; 101-102 fg:#9aa3b8
+33: 3 fg:#4ec87e; 4 fg:#ededf2; 5-10 fg:#c9c0f0; 14-39 fg:#9aa3b8; 50-51 fg:#9aa3b8; 54-60 fg:#9aa3b8; 63-67 fg:#9aa3b8; 71-76 fg:#9aa3b8; 80-83 fg:#9aa3b8; 100-102 fg:#9aa3b8
+34: 3 fg:#4ec87e; 4 fg:#ededf2; 5-8 fg:#c9c0f0; 14-37 fg:#9aa3b8; 50-51 fg:#9aa3b8; 54-59 fg:#9aa3b8; 63-67 fg:#9aa3b8; 71-76 fg:#9aa3b8; 80-83 fg:#9aa3b8; 100-102 fg:#9aa3b8
+35: 3 fg:#9aa3b8; 4 fg:#ededf2; 5-9 fg:#c9c0f0; 14-36 fg:#9aa3b8; 50-51 fg:#9aa3b8; 54-60 fg:#9aa3b8; 63-66 fg:#9aa3b8; 71-75 fg:#9aa3b8; 80-83 fg:#9aa3b8; 101-102 fg:#9aa3b8
+36: 3 fg:#4ec87e; 4 fg:#ededf2; 5-11 fg:#c9c0f0; 14-37 fg:#9aa3b8; 50-51 fg:#9aa3b8; 54-60 fg:#9aa3b8; 63-67 fg:#9aa3b8; 71-76 fg:#9aa3b8; 80-83 fg:#9aa3b8; 100-102 fg:#9aa3b8
+37: 3 fg:#e85454; 4 fg:#ededf2; 5-8 fg:#c9c0f0; 14-38 fg:#9aa3b8; 50-51 fg:#9aa3b8; 54-59 fg:#9aa3b8; 63-66 fg:#9aa3b8; 71-75 fg:#9aa3b8; 80-83 fg:#9aa3b8; 101-102 fg:#9aa3b8
+38: 1-2 fg:#5c6476; 3-5 fg:#ededf2; 7-16 fg:#5c6476; 17-21 fg:#ededf2; 23-29 fg:#5c6476; 30 fg:#ededf2; 32-38 fg:#5c6476; 39-41 fg:#ededf2; 43-47 fg:#5c6476
+39: 1-2 fg:#4ec87e; 3-42 fg:#ededf2

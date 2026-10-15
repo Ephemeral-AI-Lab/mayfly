@@ -22,7 +22,7 @@ grid 40x24 cursor none
 |╭─────────────────────────────── ping ─╮
 |│ >                                    │
 |╰──────────────────────────────────────╯
-| deepseek-flash High  ~/workspace
+| deepseek-flash  workspace       ctx 5%
 styles
 10: 39 bg:p8
 11: 39 bg:p8
@@ -34,4 +34,4 @@ styles
 20: 0-31 fg:#45406b; 32-37 fg:#5c6476; 38-39 fg:#45406b
 21: 0 fg:#45406b; 4 r; 39 fg:#45406b
 22: 0-39 fg:#45406b
-23: 1-19 fg:#ededf2; 22-32 fg:#9aa3b8
+23: 1-14 fg:#ededf2; 17-25 fg:#9aa3b8; 33-38 fg:#ededf2

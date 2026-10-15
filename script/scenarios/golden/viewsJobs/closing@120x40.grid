@@ -1,0 +1,67 @@
+grid 120x40 cursor none
+| ⠱⣦⣄⣀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⣠⣴⠎
+| ⠀⠙⢿⣿⣿⣷⣶⣤⣀⣀⣴⣶⣦⣀⣀⣤⣶⣾⣿⣿⡿⠋⠀  mayfly
+| ⠀⠀⠀⠈⠻⢿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡿⠟⠁⠀⠀⠀  ephemeral agents, enduring works
+| ⠀⠀⠀⠀⠀⠀⠀⠉⠉⠁⢸⣿⡇⠈⠉⠉⠀⠀⠀⠀⠀⠀⠀
+| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢸⣿⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀  Send /help for help information.
+| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⣿⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀  Directory: ~/workspace
+| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣿⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀  Model:     deepseek-flash · deepseek-official
+| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⡠⠊⠀⠑⢄⠀⠀⠀⠀⠀⠀⠀⠀⠀  Version:   scenario
+|
+|  » Start the watchers.
+|
+|  ● Two watchers and a background subagent run. The status row counts only the two jobs: the subagent belongs to the
+|    Agents item.
+|
+|  ✻ Worked for 0s · done 09:00
+|
+|  » Build, test, and leave a long sleep running.
+|
+|  ● The build passed and the tests failed; they have left the list. Three jobs are live: watch, dev, and the sleep.
+|    Press Alt+↓ to open the Jobs view, ↓ to choose, Enter to read one, x to stop one.
+|
+|  ✻ Worked for 0s · done 09:00
+|
+|  ● This is a replay session: the model is a stub. Type nothing; the conversation above is scripted.
+|
+|  ✻ Worked for 0s · done 09:00
+|
+|  » Let the watchers finish.
+|
+|  ● The sleep was stopped by hand; the watchers end on their own: the item holds its closing line, then leaves.
+|
+|  ● This is a replay session: the model is a stub. Type nothing; the conversation above is scripted.
+|
+|  ✻ Worked for 3s · done 09:00
+|
+|                                                                                      Alt+↑ conversation · Alt+↓ view
+|╭──────────────────────────────────────────────────────────────────────────────────────────────── Start the watchers. ─╮
+|│ >                                                                                                                    │
+|╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+| deepseek-official/deepseek-flash High  ~/workspace  ✕ jobs 5/5 52s
+styles
+0: 1-23 fg:#f5f5f7; 24-25 fg:#9a86e6
+1: 1-23 fg:#e9e5f6; 24-25 fg:#9a86e6; 26-107 fg:#9a86e6 b
+2: 1-23 fg:#dbd3f0; 24-25 fg:#9a86e6; 26-107 fg:#c9c0f0
+3: 1-23 fg:#c9beea; 24-25 fg:#9a86e6
+4: 1-23 fg:#b2a1ec; 24-25 fg:#9a86e6; 26-107 fg:#9aa3b8
+5: 1-25 fg:#9a86e6; 26-107 fg:#ededf2
+6: 1-23 fg:#8371d6; 24-25 fg:#9a86e6; 26-107 fg:#e9e6f4
+7: 1-23 fg:#6c5bbf; 24-25 fg:#9a86e6; 26-107 fg:#ededf2
+9: 2-3 fg:#9a86e6; 4-22 fg:#9a86e6 b
+11: 2-3 fg:#ededf2
+14: 2-29 fg:#9aa3b8
+16: 2-3 fg:#9a86e6; 4-47 fg:#9a86e6 b
+18: 2-3 fg:#ededf2
+21: 2-29 fg:#9aa3b8
+23: 2-3 fg:#ededf2
+25: 2-29 fg:#9aa3b8
+27: 2-3 fg:#9a86e6; 4-27 fg:#9a86e6 b
+29: 2-3 fg:#ededf2
+31: 2-3 fg:#ededf2
+33: 2-29 fg:#9aa3b8
+35: 86-116 fg:#9aa3b8
+36: 0-96 fg:#45406b; 97-117 fg:#5c6476; 118-119 fg:#45406b
+37: 0 fg:#45406b; 4 r; 119 fg:#45406b
+38: 0-119 fg:#45406b
+39: 1-37 fg:#ededf2; 40-50 fg:#9aa3b8; 53 fg:#e85454; 54 fg:#ededf2; 55-59 fg:#9aa3b8; 60-62 fg:#ededf2; 63-66 fg:#9aa3b8

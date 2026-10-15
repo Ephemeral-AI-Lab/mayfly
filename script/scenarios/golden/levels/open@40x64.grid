@@ -58,11 +58,11 @@ grid 40x64 cursor none
 |  ■ interrupted
 |
 |  ✻ Stopped after 5s · done 10:24
-|                                Alt+↑
+|      Alt+↑ conversation · Alt+↓ view
 |╭───── Survey the transcript code and ─╮
 |│ >                                    │
 |╰──────────────────────────────────────╯
-| deepseek-flash High  ~/workspace
+| deepseek-flash  workspace       ctx 5%
 styles
 0: 2-39 fg:#ededf2
 1: 2-39 fg:#ededf2
@@ -107,8 +107,8 @@ styles
 54: 2-3 fg:#9aa3b8; 4-7 fg:#9aa3b8 b; 8 fg:#9aa3b8; 9-23 fg:#c9c0f0; 24-38 fg:#9aa3b8
 56: 2-14 fg:#e8a838
 58: 2-32 fg:#9aa3b8
-59: 32-36 fg:#9aa3b8
+59: 6-36 fg:#9aa3b8
 60: 0-5 fg:#45406b; 6-37 fg:#5c6476; 38-39 fg:#45406b
 61: 0 fg:#45406b; 4 r; 39 fg:#45406b
 62: 0-39 fg:#45406b
-63: 1-19 fg:#ededf2; 22-32 fg:#9aa3b8
+63: 1-14 fg:#ededf2; 17-25 fg:#9aa3b8; 33-38 fg:#ededf2

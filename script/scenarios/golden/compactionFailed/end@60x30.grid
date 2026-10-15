@@ -24,11 +24,11 @@ grid 60x30 cursor none
 |
 |
 |
-|                                     ⚠ Context 94% full ·
+|                        ⚠ Context 94% full · /compact now
 |╭─────────────────────────────── Keep going with the long ─╮
 |│ >                                                        │
 |╰──────────────────────────────────────────────────────────╯
-| deepseek-flash High    cache 32%  context: 94% (59.6k/64k)
+| deepseek-flash  workspace               ctx ▰▰▰▰▰▰▰▰▰▱ 94%
 styles
 0: 1-23 fg:#f5f5f7; 24-25 fg:#9a86e6
 1: 1-23 fg:#e9e5f6; 24-25 fg:#9a86e6; 26-47 fg:#9a86e6 b
@@ -43,8 +43,8 @@ styles
 13: 2-58 fg:#e85454
 15: 2-3 fg:#ededf2
 18: 2-29 fg:#9aa3b8
-25: 37-56 fg:#e8a838
+25: 24 fg:#e8a838; 26-56 fg:#e8a838
 26: 0-31 fg:#45406b; 32-57 fg:#5c6476; 58-59 fg:#45406b
 27: 0 fg:#45406b; 4 r; 59 fg:#45406b
 28: 0-59 fg:#45406b
-29: 1-19 fg:#ededf2; 24-58 fg:#ededf2
+29: 1-14 fg:#ededf2; 17-25 fg:#9aa3b8; 41-44 fg:#ededf2; 45-53 fg:#e85454; 54 fg:#9aa3b8; 55-58 fg:#ededf2

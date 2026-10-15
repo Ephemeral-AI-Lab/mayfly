@@ -1,0 +1,65 @@
+grid 120x40 cursor none
+| ⠱⣦⣄⣀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⣠⣴⠎
+| ⠀⠙⢿⣿⣿⣷⣶⣤⣀⣀⣴⣶⣦⣀⣀⣤⣶⣾⣿⣿⡿⠋⠀  mayfly
+| ⠀⠀⠀⠈⠻⢿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡿⠟⠁⠀⠀⠀  ephemeral agents, enduring works
+| ⠀⠀⠀⠀⠀⠀⠀⠉⠉⠁⢸⣿⡇⠈⠉⠉⠀⠀⠀⠀⠀⠀⠀
+| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢸⣿⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀  Send /help for help information.
+| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⣿⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀  Directory: ~/workspace/clients/web/apps/landing
+| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣿⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀  Model:     deepseek-flash · deepseek-official
+| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⡠⠊⠀⠑⢄⠀⠀⠀⠀⠀⠀⠀⠀⠀  Version:   scenario
+|
+|  » Where do the landing page styles live?
+|
+|  ▾ 1 tool call · Ctrl+O to expand
+|
+|  ● The styles are in src/hero.css. The row now shows the model and effort, the shortened directory, the git branch with
+|    its changes, and the cache and context bars at the right edge.
+|
+|  ✓ Grep("hero")
+|
+|  ✻ Worked for 12s · done 09:00
+|
+|  » Plan the redesign before editing.
+|
+|  ● Plan mode is on: plan sits after the model.
+|
+|  ● Yolo joins it: plan yolo.
+|
+|
+|
+|
+|
+|
+|
+|
+|  ⡀ Deep diving · 12s · ↑6.9k
+|    ⎿ Tip: Ctrl+O to expand tool details
+|                                                                                      Alt+↑ conversation · Alt+↓ view
+|╭────────────────────────────────────────────────────────────────────────────────────────── Where do the landing page ─╮
+|│ >                                                                                                                    │
+|╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+| deepseek-flash High  plan yolo  …/web/apps/landing  main [+3 -1]                   cache ▰▰▱▱▱ 45%  ctx ▰▰▱▱▱▱▱▱▱▱ 22%
+styles
+0: 1-23 fg:#f5f5f7; 24-25 fg:#9a86e6
+1: 1-23 fg:#e9e5f6; 24-25 fg:#9a86e6; 26-107 fg:#9a86e6 b
+2: 1-23 fg:#dbd3f0; 24-25 fg:#9a86e6; 26-107 fg:#c9c0f0
+3: 1-23 fg:#c9beea; 24-25 fg:#9a86e6
+4: 1-23 fg:#b2a1ec; 24-25 fg:#9a86e6; 26-107 fg:#9aa3b8
+5: 1-25 fg:#9a86e6; 26-107 fg:#ededf2
+6: 1-23 fg:#8371d6; 24-25 fg:#9a86e6; 26-107 fg:#e9e6f4
+7: 1-23 fg:#6c5bbf; 24-25 fg:#9a86e6; 26-107 fg:#ededf2
+9: 2-3 fg:#9a86e6; 4-41 fg:#9a86e6 b
+11: 2-33 fg:#9aa3b8
+13: 2-3 fg:#ededf2; 22-33 fg:#c9c0f0
+16: 2-3 fg:#4ec87e; 4-7 fg:#ededf2 b; 8 fg:#9aa3b8; 9-14 fg:#c9c0f0; 15 fg:#9aa3b8
+18: 2-30 fg:#9aa3b8
+20: 2-3 fg:#9a86e6; 4-36 fg:#9a86e6 b
+22: 2-3 fg:#ededf2; 21-24 fg:#c9c0f0
+24: 2-3 fg:#ededf2; 19-27 fg:#c9c0f0
+33: 0-1 fg:#ededf2; 2 fg:#9a86e6; 3-14 fg:#ededf2; 16-28 fg:#9aa3b8
+34: 0-39 fg:#9aa3b8
+35: 86-116 fg:#9aa3b8
+36: 0-90 fg:#45406b; 91-117 fg:#5c6476; 118-119 fg:#45406b
+37: 0 fg:#45406b; 4 r; 119 fg:#45406b
+38: 0-119 fg:#45406b
+39: 1-19 fg:#ededf2; 22-25 fg:#c9c0f0; 27-30 fg:#e8a838; 33-50 fg:#9aa3b8; 53-64 fg:#9aa3b8; 84-89 fg:#ededf2; 90-91 fg:#e8a838; 92-94 fg:#9aa3b8; 95-98 fg:#ededf2; 101-104 fg:#ededf2; 105-106 fg:#9a86e6; 107-114 fg:#9aa3b8; 115-118 fg:#ededf2

@@ -18,18 +18,18 @@ grid 60x24 cursor none
 |  ● Noted: needle needle.
 |
 |  ✻ Worked for 1s · done 12:05
-|                               Alt+↑ conversation · Alt+↓
+|                          Alt+↑ conversation · Alt+↓ view
 |╭─────────────────────────────── Find where the needle is ─╮
 |│ >                                                        │
 |╰──────────────────────────────────────────────────────────╯
-| deepseek-flash High  .  cache 42%  context: 5% (5.5k/128k)
+| deepseek-flash  workspace                ctx ▰▱▱▱▱▱▱▱▱▱ 5%
 styles
 12: 2-29 fg:#9aa3b8
 14: 2-3 fg:#9a86e6; 4-48 fg:#9a86e6 b
 16: 2-3 fg:#ededf2
 18: 2-29 fg:#9aa3b8
-19: 31-56 fg:#9aa3b8
+19: 26-56 fg:#9aa3b8
 20: 0-31 fg:#45406b; 32-57 fg:#5c6476; 58-59 fg:#45406b
 21: 0 fg:#45406b; 4 r; 59 fg:#45406b
 22: 0-59 fg:#45406b
-23: 1-19 fg:#ededf2; 25-58 fg:#ededf2
+23: 1-14 fg:#ededf2; 17-25 fg:#9aa3b8; 42-45 fg:#ededf2; 46 fg:#9a86e6; 47-55 fg:#9aa3b8; 56-58 fg:#ededf2
