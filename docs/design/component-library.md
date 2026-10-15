@@ -1077,7 +1077,6 @@ deepseek-flash High  plan yolo  ~/workspace  ⏵ 1 job  ● goal 2/8  ● todo 2
 | mode chips (`plan` `yolo`) | 2 | |
 | context (two bars, `cache ▰▰▱▱▱ 34%  ctx ▰▰▱▱▱▱▱▱▱▱ 18%`, right; the context bar warns from 70% and turns danger from 90%, the cache bar warns under 60% and turns danger under 30%) | 6 | the cache bar (50), the context bar down to `ctx 18%` (55), the readout (60) |
 | directory (`~/work/mayfly`) | 7 | its depth, down to the last segment (40) |
-| balance chip (`⚠ ¥6.2`, only when low) | 8 | |
 | git (`main ±3`) | 10 | the whole entry (30) |
 | jobs (`⏵ 1 job`) | 11 | |
 | goal (`● goal 2/8 1m 59s`) | 12 | the time (5) |
@@ -1883,8 +1882,8 @@ they never block the other tabs.
   refresh key. States: available, low (warning, threshold configurable),
   loading (`⣾ checking balance…`), unavailable (`— unavailable (network)  r
   retry`), and unsupported (the row is hidden). A failed check never affects
-  the conversation, and the key never appears in the panel. When low, the
-  status bar may carry a small `⚠ ¥6.2` chip.
+  the conversation, and the key never appears in the panel. The status row carries no balance chip (dropped by the owner on
+  2026-10-14).
 - Overview also carries a one-line `Balance` row so the answer is visible
   without opening the tab.
 
