@@ -16,8 +16,8 @@ declare module '@deepseek-ai/cordis' {
     /** Close the displayed side conversation, or the F7 counterpart while the primary is displayed. */
     'mayfly/request-close-conversation'(): void
     /**
-     * Open the shared reply form for the displayed continuable child, seeded
-     * with an optional editor draft; does not send or resume it.
+     * Address the editor to a continuable child: display its conversation and seed the prompt with an optional text
+     * when the prompt holds no draft. Does not send or resume it; sending is the editor's `Enter` or `Ctrl+Enter`.
      */
     'mayfly/request-subagent-reply'(target: MayflySubagentOpen, draft?: string): void
   }

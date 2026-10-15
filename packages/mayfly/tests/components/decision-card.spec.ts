@@ -143,7 +143,8 @@ describe('decision card frames', () => {
     const rows = open.frame().split('\n')
     for (const row of rows) expect(visibleWidth(row)).toBeLessThanOrEqual(40)
     expect(rows[0]).toBe('── Decide ─────────────── 1 of 3 waiting')
-    expect(rows.at(-1)).toBe('  Enter · Ctrl+G · Esc')
+    // The row keeps its labels and gives up the least important part (the open key) before it gives up a label.
+    expect(rows.at(-1)).toBe('  Enter choose · Esc reject')
   })
 
   it('shows the plan review at 120 and 40 columns with the fixed rows and the revision note', async () => {

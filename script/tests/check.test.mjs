@@ -142,25 +142,29 @@ test('the coverage advice reports changed lines whose statements never ran', () 
 
 test('a golden runs its scenario, a covered source the scenarios that cover it, other product code the smoke set, the machinery all', () => {
   const scenarios = file => classifyChanges([file]).tests.scenarios
-  assert.deepEqual(scenarios('script/scenarios/golden/tour/end@120x40.grid'), ['tour'])
-  assert.deepEqual(scenarios('packages/mayfly/src/transcript/pane-todo.ts'), ['tour'])
-  assert.deepEqual(scenarios('packages/mayfly/src/core/ui-compiler.ts'), ['idle', 'tour'])
-  assert.deepEqual(scenarios('examples/ui-gallery/src/index.ts'), ['gallery'])
+  assert.deepEqual(scenarios('script/scenarios/golden/mergeDock/items@100x30.grid'), ['mergeDock'])
+  assert.deepEqual(scenarios('packages/mayfly/src/interaction/btw-command.ts'), ['mergeConversations'])
+  // A product source no golden scenario covers runs the smoke set.
+  assert.deepEqual(scenarios('packages/mayfly/src/transcript/pane-todo.ts'), ['mergeConversations', 'mergeDock'])
+  // The gallery has only its perf scenario, which the perf step measures.
+  assert.deepEqual(scenarios('examples/ui-gallery/src/index.ts'), [])
   assert.deepEqual(scenarios('docs/README.md'), [])
   const machinery = classifyChanges(['script/scenarios/runner.mjs'])
   assert.deepEqual(machinery.tests.scenarios, [...GOLDEN_SCENARIOS].sort())
   assert.deepEqual(machinery.tests.perf, [...PERF_SCENARIOS].sort())
-  assert.equal(machinery.tests.why['scenario idle'].at(-2), 'script/scenarios.mjs')
+  assert.equal(machinery.tests.why['scenario mergeDock'].at(-2), 'script/scenarios.mjs')
   const everything = [...GOLDEN_SCENARIOS, ...PERF_SCENARIOS].sort()
   for (const file of ['script/scenarios.mjs', 'script/scenarios/replays.mjs', 'script/scenarios/golden.mjs', 'script/workbench/profile.mjs']) {
     const plan = classifyChanges([file])
     assert.deepEqual([...plan.tests.scenarios, ...plan.tests.perf].sort(), everything, file)
   }
   // An import the command makes only to orchestrate is not machinery.
-  for (const file of ['script/change-files.mjs', 'script/smoke-lib.mjs', 'script/shots/app.mjs', 'packages/mayfly/package.json']) {
+  for (const file of ['script/change-files.mjs', 'script/smoke-lib.mjs', 'script/shots/app.mjs']) {
     const plan = classifyChanges([file])
     assert.deepEqual([...plan.tests.scenarios, ...plan.tests.perf], [], file)
   }
+  // The driver resolves the Harness's session package through the Mayfly manifest to build a side conversation's fork seed, so that manifest is machinery.
+  assert.deepEqual(classifyChanges(['packages/mayfly/package.json']).tests.scenarios, [...GOLDEN_SCENARIOS].sort())
   assert.equal(stepsFor(classifyChanges(['packages/mayfly/src/transcript/stream-facts.ts']), 'pr', { root: ROOT }).find(step => step.kind === 'scenarios').args[3], 'all')
 })
 

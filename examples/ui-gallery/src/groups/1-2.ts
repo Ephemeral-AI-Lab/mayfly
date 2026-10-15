@@ -33,7 +33,7 @@ export function visualLanguageGroup() {
     }),
     ui.richText([span('● ', 'primary', true), span('running  '), span('✓ ', 'success', true), span('done  '), span('✗ ', 'danger', true), span('failed  '), span('⊘ ', 'muted', true), span('cancelled  '), span('? ', 'warning', true), span('waiting')]),
     ui.richText([span('✓ ', 'success'), span('Installed Git Helper')]),
-    ui.richText([span('ℹ ', 'primary'), span('Resumed session · 24 turns')]),
+    ui.richText([span('Resumed session · 24 turns')]),
     ui.richText([span('⚠ ', 'warning'), span('Balance low', 'warning')]),
     ui.richText([span('✗ ', 'danger'), span('Sign-in failed', 'danger'), span('  r retry', 'muted')]),
     ui.code(['const frame = glyphFor(state)', "if (state.mode === 'waiting') {", "  return { kind: 'loader', variant: 'gap' }", '}'].join('\n'), { language: 'typescript' }),

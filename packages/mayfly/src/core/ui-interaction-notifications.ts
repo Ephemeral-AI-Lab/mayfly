@@ -4,24 +4,24 @@
 import { freezeWire, textOf, type MayflyFeedback, type MayflyFeedbackRecord, type MayflyInlineSpan, type MayflyUiScope } from '@ephemeral-ai/mayfly-ui'
 import { clipLabel, validateMayflyUiNode } from './ui-validator.ts'
 
-/** `✓` success and `ℹ` info leave after this much visible time; `⚠` and `✗` stay (spec §2.4). */
+/** `✓` success and information leave after this much visible time; `⚠` and `✗` stay (spec §2.4). */
 const SHORT_VISIBLE_MS = 5_000
 
-const FEEDBACK_GLYPHS: Readonly<Record<MayflyFeedback['severity'], readonly [string, NonNullable<MayflyInlineSpan['tone']>]>> = {
-  success: ['✓', 'success'], info: ['ℹ', 'primary'], warning: ['⚠', 'warning'], error: ['✗', 'danger'],
+const FEEDBACK_GLYPHS: Readonly<Record<Exclude<MayflyFeedback['severity'], 'info'>, readonly [string, NonNullable<MayflyInlineSpan['tone']>]>> = {
+  success: ['✓', 'success'], warning: ['⚠', 'warning'], error: ['✗', 'danger'],
 }
 
 /**
- * Feedback as a glyph and words, never color alone (spec §2.4): `✓` success and `ℹ` info before a message in text
- * color; `⚠` warning and `✗` error with the message in their own tone.
+ * Feedback as a glyph and words, never color alone (spec §2.4): `✓` success before a message in text color; `⚠` warning
+ * and `✗` error with the message in their own tone; information is its words alone, with no glyph.
  * @param severity - the feedback severity.
  * @param message - the message, one line.
  * @returns the spans of the feedback row.
  */
 export function feedbackSpans(severity: MayflyFeedback['severity'], message: string): readonly MayflyInlineSpan[] {
+  if (severity === 'info') return [{ text: message }]
   const [glyph, tone] = FEEDBACK_GLYPHS[severity]
-  const quiet = severity === 'success' || severity === 'info'
-  return [{ text: `${glyph} `, tone }, quiet ? { text: message } : { text: message, tone }]
+  return [{ text: `${glyph} `, tone }, severity === 'success' ? { text: message } : { text: message, tone }]
 }
 
 interface UiNotificationIdentity {
@@ -73,6 +73,7 @@ export class UiNotificationStore {
         visibleMs,
         message: admitNotificationMessage(feedback.message),
         ...(feedback.detail === undefined ? {} : { detail: admitNotificationMessage(feedback.detail) }),
+        ...(feedback.tail === undefined ? {} : { tail: admitNotificationMessage(feedback.tail) }),
       })
       this.records.set(id, record)
       this.accruedAt.set(id, now)

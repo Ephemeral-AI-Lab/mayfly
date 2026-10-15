@@ -11,9 +11,9 @@ const app = { kind: 'app' as const, targetId: 'test' }
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks() })
 
 describe('feedback spans', () => {
-  it('pairs every severity with its glyph, and keeps quiet messages in text color', () => {
+  it('gives an information notice no glyph, and keeps quiet messages in text color', () => {
     expect(feedbackSpans('success', 'Saved')).toEqual([{ text: '✓ ', tone: 'success' }, { text: 'Saved' }])
-    expect(feedbackSpans('info', 'Resumed')).toEqual([{ text: 'ℹ ', tone: 'primary' }, { text: 'Resumed' }])
+    expect(feedbackSpans('info', 'Resumed')).toEqual([{ text: 'Resumed' }])
     expect(feedbackSpans('warning', 'Low')).toEqual([{ text: '⚠ ', tone: 'warning' }, { text: 'Low', tone: 'warning' }])
     expect(feedbackSpans('error', 'Failed')).toEqual([{ text: '✗ ', tone: 'danger' }, { text: 'Failed', tone: 'danger' }])
   })
@@ -34,6 +34,17 @@ describe('notification records', () => {
     expect(changed).toHaveBeenCalledTimes(2)
     expect(store.snapshot()).toHaveLength(2)
     store.setVisible(false)
+  })
+
+  it('keeps the tail of a message, which a narrow row shows whole, bounded like the message', () => {
+    const store = new UiNotificationStore(vi.fn())
+    store.report('retry', { owner: 'owner', scope: app }, { severity: 'warning', message: 'Rate limited · retrying in 9s · 1/5', tail: 'retrying in 9s · 1/5' })
+    expect(store.get('retry')).toMatchObject({ message: 'Rate limited · retrying in 9s · 1/5', tail: 'retrying in 9s · 1/5' })
+    store.report('plain', { owner: 'owner', scope: app }, { severity: 'info', message: 'saved' })
+    expect(store.get('plain')).not.toHaveProperty('tail')
+    // A tail that is not bounded text degrades the record as an invalid message does.
+    store.report('bad', { owner: 'owner', scope: app }, { severity: 'warning', message: 'x', tail: 7 as never })
+    expect(store.get('bad')).toMatchObject({ severity: 'error', message: 'The operation returned invalid feedback' })
   })
 
   it('accrues each visible interval once across reports, snapshots, and hiding', async () => {

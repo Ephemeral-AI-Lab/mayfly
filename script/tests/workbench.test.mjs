@@ -77,8 +77,8 @@ test('a malformed review is refused, and a part with more than eight focus items
 })
 
 test('scenario names resolve through the catalog', () => {
-  assert.equal(scenarioNamed('gallery').source.gallery, true)
-  assert.equal(scenarioNamed('tour').source.replay, 'tour')
+  assert.equal(scenarioNamed('perf-gallery').source.gallery, true)
+  assert.equal(scenarioNamed('mergeDock').source.replay, 'mergeDock')
   assert.equal(scenarioNamed('toString'), undefined)
   assert.deepEqual(parseScenarioArgs(['stream', '--ascii']).options.ascii, true)
   assert.match(parseScenarioArgs([]).error, /usage/u)
@@ -180,12 +180,14 @@ test('outcomes, todos, edits, compaction, subagents, and asks compile to their e
 })
 
 /** A fake `ctx` for the driver: a recording session, children, emitted frames, and answerers. */
-function fakeContext() {
+function fakeContext({ forkable = true } = {}) {
   const log = { appended: [], frames: [], children: [], asked: [], goals: [], jobs: [], inbox: [], agents: [], opened: [], closed: [], disposed: [], notices: [], stored: [], folded: [] }
   let seq = 0
   const session = id => ({ id, header: { cwd: '/work' }, requestHeader: () => undefined, snapshotEvents: () => log.appended.filter(entry => entry.id === id).map(entry => ({ type: entry.type, seq: entry.seq, surfaceOp: entry.options?.surfaceOp })), append(type, data, options) { seq += 1; log.appended.push({ id, type, data, options, seq }); return { seq } } })
   const main = session('main')
   main.header = { cwd: '/work', agentPreset: 'default' }
+  // A side conversation inherits the main log through the Harness's fork seed, which needs whole events: a spec that opens one has the fake main hand over none.
+  if (!forkable) main.snapshotEvents = () => []
   const agent = { id: 'main', session: main, inbox: { append: (target, message) => log.inbox.push(['append', target, message.content[0].text, message.id]), remove: id => log.inbox.push(['remove', id]) } }
   const answer = kind => async request => { log.asked.push({ kind, request }); return 'ok' }
   const ctx = {
@@ -454,7 +456,7 @@ test('the driver queues input without waking the agent, fails attempts, and runs
     ])
     writeFileSync(join(dir, 'replay.json'), JSON.stringify(actions))
     Object.assign(process.env, { MAYFLY_REPLAY_FILE: join(dir, 'replay.json'), MAYFLY_REPLAY_SPEED: '1000', MAYFLY_REPLAY_LOG: join(dir, 'driver.log') })
-    const { ctx, log } = fakeContext()
+    const { ctx, log } = fakeContext({ forkable: false })
     applyDriver(ctx)
     for (let tries = 0; tries < 400 && !readFileSyncSafe(join(dir, 'driver.log')).includes('replay finished'); tries += 1) await new Promise(resolve => setTimeout(resolve, 10))
     assert.match(readFileSyncSafe(join(dir, 'driver.log')), /replay finished/u)

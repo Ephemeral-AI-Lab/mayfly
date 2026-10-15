@@ -105,7 +105,7 @@ export function jobOutputNode(job: JobView, feed: { readonly dropped: boolean, r
 }
 
 /** A read result is retained in its child Fiber, never reread by rendering or scrolling. */
-async function showOutput(ctx: Context, agent: Agent, job: JobView, read: JobOutputRead, signal: AbortSignal, t: MayflyTranslate): Promise<void> {
+async function showOutput(ctx: Context, agent: Agent, job: JobView, read: JobOutputRead, signal: AbortSignal, t: MayflyTranslate): Promise<MayflyOverlayHandle | undefined> {
   const feed: JobOutputFeed = { cursor: read.next, dropped: read.lossy, chunks: read.chunks.map(chunk => ui.chunk(chunk.text)) }
   settleOutput(feed.chunks)
   ctx.mayflyOverlays.close('mayfly.jobs.output')
@@ -128,6 +128,32 @@ async function showOutput(ctx: Context, agent: Agent, job: JobView, read: JobOut
   }, { signal, reopen: 'replace' })
   // Whatever appended between the first read and the open (or before the subscription went in) is caught up here.
   if (handle?.closed === false && appendOutput(feed, ctx.jobs.readAt(job.id, feed.cursor, agent.id))) handle.set(jobOutputNode(job, feed, t))
+  return handle
+}
+
+/**
+ * Open one job's retained output in the reader overlay: the target of `Enter` in the Jobs view and of Read output in
+ * `/jobs`. The job is read and rechecked under the exact Agent; the overlay replaces a live reader of the same id.
+ * @param ctx - plugin context that owns the overlay; needs `jobs`, `mayflyCurrentAgent`, and `mayflyOverlays`.
+ * @param agent - the exact Agent that owns the job.
+ * @param id - the job to read.
+ * @param signal - ends the read and closes the overlay.
+ * @param t - translator for the overlay's words.
+ * @param onClose - called once when the reader is gone (closed by the user, or never opened), unless `signal` ended first.
+ */
+export async function openJobOutput(ctx: Context, agent: Agent, id: JobId, signal: AbortSignal, t: MayflyTranslate, onClose?: () => void): Promise<void> {
+  const job = ctx.jobs.get(id, agent.id)
+  const output = ctx.jobs.readAt(id, 0, agent.id)
+  if (signal.aborted || ctx.mayflyCurrentAgent.current() !== agent) return
+  const handle = await showOutput(ctx, agent, job, output, signal, t)
+  if (onClose === undefined) return
+  if (handle === undefined || handle.closed) { if (!signal.aborted) onClose(); return }
+  const off = ctx.mayflyOverlays.subscribe((delta) => {
+      if (delta.kind !== 'remove' || delta.id !== 'mayfly.jobs.output' || !handle.closed) return
+    off()
+    if (!signal.aborted) onClose()
+  })
+  signal.addEventListener('abort', off, { once: true })
 }
 
 export function apply(ctx: Context): void {
@@ -181,9 +207,8 @@ export function apply(ctx: Context): void {
         const handle = await openAgentOverlay(owner, agent, { id: 'mayfly.jobs.detail', presentation: 'editor', capturing: true, source: jobSource(job) }, node, scope => async (event, context) => {
           if (event.kind !== 'activate' || context.signal.aborted) return { kind: 'completed' }
           if (event.actionId === 'read') {
-            const output = jobs.readAt(id, 0, agent.id)
             if (context.signal.aborted || !current()) return { kind: 'cancelled' }
-            await showOutput(scope, agent, job, output, signal, t)
+            await openJobOutput(scope, agent, id, signal, t)
             return { kind: 'completed' }
           }
           if (event.actionId === 'stop') {

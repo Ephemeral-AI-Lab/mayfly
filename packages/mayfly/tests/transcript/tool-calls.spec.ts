@@ -659,3 +659,48 @@ describe('a run of calls as a standard block', () => {
     expect(standardRow([run[0]!], t, NOW, new Set([run[0]!.id]))).toMatchObject({ kind: 'tool', name: 'Read' })
   })
 })
+
+describe('a spawn line that follows its child', () => {
+  /** A subagent spawn call: the model's call, with its acknowledgement and the prompt it gave. */
+  const spawn = (overrides: Record<string, unknown> = {}): TranscriptEntryModel => tool({
+    name: 'subagent', family: 'agent', activity: 'subagents', detail: 'Audit the facts', arguments: JSON.stringify({ name: 'review', prompt: 'audit it' }),
+    startedAt: NOW - 3_000, result: { text: 'started subagent child-1', isError: false, endedAt: NOW - 2_900 }, ...overrides,
+  })
+  const child = (state: 'running' | 'ok' | 'failed' | 'stopped', endedAt?: number) => ({
+    byId: new Map([['child-1', state === 'running' ? { state: 'running' as const } : { state: 'settled' as const, failed: state === 'failed', ...state === 'stopped' ? { stopped: true } : {}, ...endedAt === undefined ? {} : { endedAt } }]]),
+    byPrompt: new Map(),
+  })
+  const facts = (children: ReturnType<typeof child>) => ({ asked: new Map(), decided: new Map(), children })
+  const call = (entry: TranscriptEntryModel, children?: ReturnType<typeof child>) => callsOf(entry, t, NOW, children === undefined ? undefined : facts(children))[0]!
+
+  it('stays pending, running in background, while its child works, though its acknowledgement landed at once', () => {
+    expect(call(spawn())).toMatchObject({ state: 'ok' })
+    const running = call(spawn(), child('running'))
+    expect(running).toMatchObject({ state: 'pending', phase: 'running', outcome: ['running in background', '3s'] })
+    expect(running).not.toHaveProperty('endedAt')
+  })
+
+  it('settles with its own time when the child ends, with `failed` or `stopped` when the child says so', () => {
+    expect(call(spawn(), child('ok', NOW - 1_000))).toMatchObject({ state: 'ok', phase: 'settled', endedAt: NOW - 1_000, outcome: [undefined, '2s'] })
+    expect(call(spawn(), child('failed', NOW - 1_000))).toMatchObject({ state: 'error', phase: 'settled', outcome: ['failed', '2s'] })
+    expect(call(spawn(), child('stopped', NOW - 1_000))).toMatchObject({ state: 'cancelled', phase: 'settled', outcome: ['stopped', '2s'] })
+    // A child that never reported an end falls back on the call's own.
+    expect(call(spawn(), child('ok'))).toMatchObject({ phase: 'settled', endedAt: NOW - 2_900 })
+  })
+
+  it('settles a call that is still open with a child that has no end to report: no time to read, no end to carry', () => {
+    const open = call(spawn({ result: undefined }), { byId: new Map(), byPrompt: new Map([['audit it', { state: 'settled' as const, failed: false }]]) })
+    expect(open).toMatchObject({ state: 'ok', phase: 'settled', outcome: [undefined, undefined] })
+    expect(open).not.toHaveProperty('endedAt')
+    // With no prompt in its arguments and no acknowledgement, there is no child to find.
+    expect(call(spawn({ result: undefined, arguments: '{}' }), { byId: new Map(), byPrompt: new Map([['audit it', { state: 'running' as const }]]) })).toMatchObject({ phase: 'running' })
+  })
+
+  it('finds a child by its prompt when the acknowledgement names none, and leaves a call with no child alone', () => {
+    const byPrompt = { byId: new Map(), byPrompt: new Map([['audit it', { state: 'running' as const }]]) }
+    expect(call(spawn({ result: undefined }), byPrompt)).toMatchObject({ state: 'pending', phase: 'running', outcome: ['running in background', '3s'] })
+    expect(call(spawn(), { byId: new Map(), byPrompt: new Map() })).toMatchObject({ state: 'ok' })
+    // Only a call that is running or done reads as its child; a failed call keeps its own failure.
+    expect(call(spawn({ result: { text: 'boom', isError: true, endedAt: NOW - 2_900 } }), child('running'))).toMatchObject({ state: 'error' })
+  })
+})

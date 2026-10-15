@@ -16,29 +16,32 @@
  * @module @ephemeral-ai/mayfly/interaction/draft-stash
  */
 
+import type { MayflySubmittedDraft } from '../core/types.ts'
+
 /** Draft, mode, and history owned by one frontend tree. */
 export class DraftStash {
-  private draft = ''
+  private draft: MayflySubmittedDraft = { raw: '', pastes: new Map() }
   private inputMode: 'prompt' | 'bash' = 'prompt'
   private history: readonly string[] = []
+  private historyPastes: readonly (ReadonlyMap<number, string> | undefined)[] = []
 
 /**
- * Mirror the editor's current text into the stash.
- * @param text - the editor content to preserve across reloads.
+ * Mirror the editor's current buffer into the stash.
+ * @param draft - the raw text and its paste table, which a reload restores together.
  */
-  stashDraft(text: string): void { this.draft = text }
+  stashDraft(draft: MayflySubmittedDraft): void { this.draft = draft }
 
 /** Clear the draft stash; called when the draft is consumed (submitted/steered). */
   clearDraft(): void {
-    this.draft = ''
+    this.draft = { raw: '', pastes: new Map() }
     this.inputMode = 'prompt'
   }
 
 /**
  * Read the stashed draft.
- * @returns the preserved editor text, or `''` when nothing is stashed.
+ * @returns the preserved buffer and paste table; empty text when nothing is stashed.
  */
-  getStashedDraft(): string { return this.draft }
+  getStashedDraft(): MayflySubmittedDraft { return this.draft }
 
 /**
  * Mirror the editor's input mode into the stash.
@@ -55,8 +58,12 @@ export class DraftStash {
 /**
  * Mirror the editor's prompt history into the stash.
  * @param entries - the history entries, newest first.
+ * @param pastes - the paste table of each entry, index for index, `undefined` for one with no pasted block.
  */
-  stashHistory(entries: readonly string[]): void { this.history = [...entries] }
+  stashHistory(entries: readonly string[], pastes: readonly (ReadonlyMap<number, string> | undefined)[] = []): void {
+    this.history = [...entries]
+    this.historyPastes = [...pastes]
+  }
 
 /**
  * Read the stashed history.
@@ -65,8 +72,15 @@ export class DraftStash {
  */
   getStashedHistory(): readonly string[] { return this.history }
 
+/**
+ * Read the paste tables of the stashed history.
+ * @returns one per entry, in the entries' order.
+ */
+  getStashedHistoryPastes(): readonly (ReadonlyMap<number, string> | undefined)[] { return this.historyPastes }
+
   clearAll(): void {
     this.clearDraft()
     this.history = []
+    this.historyPastes = []
   }
 }

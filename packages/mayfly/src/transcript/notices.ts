@@ -3,7 +3,7 @@
  * provider request waiting to be retried (a rate limit by its status), a context that is nearly full, and a session
  * resumed with its history. Each is a pure function of `mayflySessionFacts`: nothing here folds events, and the lane
  * owns the lifetimes (the warnings stay while their fact holds and are cleared with it, the resume notice is `info`
- * and leaves after five seconds). The retry countdown is re-reported on the host's one tick. Offline and a low balance
+ * and leaves after five seconds), and a blocked goal (it waits for you, so the notice stays while it is blocked). The retry countdown is re-reported on the host's one tick. Offline and a low balance
  * are not raised: the Harness has no signal for the first and the balance is not read yet.
  *
  * @module @ephemeral-ai/mayfly/transcript/notices
@@ -23,19 +23,23 @@ export const CONTEXT_WARN_PERCENT = 92
 const RETRY = 'notice/retry'
 const CONTEXT = 'notice/context'
 const RESUMED = 'notice/resumed'
+const GOAL = 'notice/goal'
 
 const MINUTE = 60_000
 const HOUR = 60 * MINUTE
 const DAY = 24 * HOUR
 
-/** The notice text of a retry wait: a rate limit by its HTTP status, any other failure as a provider error. */
-function retryText(retrying: NonNullable<ConversationFacts['retrying']>, now: number, t: MayflyTranslate): string {
+/**
+ * The notice of a retry wait: a rate limit by its HTTP status, any other failure as a provider error with its reason. The wait
+ * (the countdown and the attempt) ends the message and is its `tail`, so a narrow row cuts the front and keeps the countdown.
+ */
+function retryText(retrying: NonNullable<ConversationFacts['retrying']>, now: number, t: MayflyTranslate): { readonly message: string, readonly tail: string } {
   const seconds = Math.max(0, Math.ceil((retrying.at + retrying.delayMs - now) / 1000))
   const attempt = Number.isFinite(retrying.maxRetries) ? `${retrying.retry}/${retrying.maxRetries}` : String(retrying.retry)
   const rateLimited = retrying.status === 429
   const head = rateLimited ? 'Rate limited' : 'Provider error'
   const wait = seconds === 0 ? t('retrying {attempt}…', { attempt }) : t('retrying in {seconds}s · {attempt}', { seconds, attempt })
-  return [t(head), wait, ...rateLimited || retrying.reason === undefined ? [] : [retrying.reason]].join(' · ')
+  return { message: [t(head), ...rateLimited || retrying.reason === undefined ? [] : [retrying.reason], wait].join(' · '), tail: wait }
 }
 
 /** How long ago, as the session list says it (`5m ago`, `2h ago`, `3d ago`). */
@@ -57,6 +61,8 @@ export function mountNotices(ctx: Context, t: MayflyTranslate, clock: () => numb
   const tick = ctx.get('mayflyTick') as TickSource | undefined
   if (factsService === undefined) return
   const owner = createInteractionNotificationOwner(ctx, 'mayfly.notices', 'notices')
+  /** The main sessions this has already looked at: a session is announced as resumed once, not each time the person switches back to it. */
+  const seen = new WeakSet<object>()
   let facts: ConversationFacts = factsService.current
   let offTick: (() => void) | undefined
   /** Set when the Agent changed and the facts of the new session have not been read yet. */
@@ -65,7 +71,13 @@ export function mountNotices(ctx: Context, t: MayflyTranslate, clock: () => numb
   const reportRetry = (now: number): void => {
     const retrying = facts.retrying
     if (retrying === undefined) return
-    owner.report(RETRY, { severity: 'warning', message: retryText(retrying, now, t) })
+    owner.report(RETRY, { severity: 'warning', ...retryText(retrying, now, t) })
+  }
+  /** A blocked goal waits for the person: the notice holds while the goal is blocked and leaves with it. */
+  const reportGoal = (): void => {
+    const blocked = factsService.currentGoal?.goal.blockedReason
+    if (factsService.currentGoal?.goal.phase !== 'blocked' || blocked === undefined) owner.clear(GOAL)
+    else owner.report(GOAL, { severity: 'warning', message: t('Goal blocked · {code}: {message}', { code: blocked.code, message: blocked.message }) })
   }
   const stopTick = (): void => {
     offTick?.()
@@ -75,7 +87,13 @@ export function mountNotices(ctx: Context, t: MayflyTranslate, clock: () => numb
     if (fresh) {
       fresh = false
       owner.clearAll()
-      if (facts.turn > 0 && !facts.active) {
+      reportGoal()
+      // Only the main session is announced, and only when it is first attached: a switch between conversations (F7) is not a resume.
+      const agent = factsService.currentAgent
+      const primary = ctx.get('mayflyConversations')?.snapshot().views.find(view => view.kind === 'primary')
+      const announce = agent !== null && (primary === undefined || primary.sessionId === String(agent.id)) && !seen.has(agent)
+      if (announce) seen.add(agent)
+      if (announce && facts.turn > 0 && !facts.active) {
         const age = facts.endedAt === undefined ? undefined : Math.max(0, clock() - facts.endedAt)
         const turns = facts.turn === 1 ? t('1 turn') : t('{count} turns', { count: facts.turn })
         owner.report(RESUMED, {
@@ -97,6 +115,7 @@ export function mountNotices(ctx: Context, t: MayflyTranslate, clock: () => numb
     else owner.clear(CONTEXT)
   }
 
+  const offGoal = factsService.subscribeGoal(reportGoal)
   const offAgent = factsService.subscribeAgent(() => { fresh = true })
   const offFacts = factsService.subscribe((next) => {
     facts = next
@@ -104,6 +123,7 @@ export function mountNotices(ctx: Context, t: MayflyTranslate, clock: () => numb
   })
   ctx.effect(() => () => {
     offAgent()
+    offGoal()
     offFacts()
     stopTick()
   })

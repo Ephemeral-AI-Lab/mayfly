@@ -20,6 +20,7 @@ import type { MayflyComponent, MayflyComponents, MayflyFocusable, MayflyKeyActio
 import type { MayflyTerminalRuntime } from '../../src/core/terminal.ts'
 import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/width.ts'
 import { createFakeEditor } from './fake-editor.ts'
+import type { ViewsLane } from '../../src/core/views-lane.ts'
 import { flush, plain, plainColors } from '../helpers.ts'
 
 const colors = plainColors()
@@ -200,7 +201,7 @@ async function fixture(runtime = createRuntime(), compilerComponents: MayflyComp
 
 
 
-const row2 = (text: string, count?: number | string) => ({ node: ui.richText([{ text }]), ...(count === undefined ? {} : { count }) })
+const item = (text: string) => ({ node: ui.richText([{ text }]) })
 const press = (f: Fixture, key: string): void => { (f.runtime.focused() as MayflyFocusable).handleInput?.(key) }
 const LEFT = '\x1b[D'
 const RIGHT = '\x1b[C'
@@ -209,26 +210,31 @@ function actions(id: string, label: string) {
   return () => ui.actions({ id, items: [{ id: `${id}-run`, label }] })
 }
 
+/** The panel rows of the lane behind the screen's read-only window (the footer reads only its items). */
+function lanePanel(views: unknown, width: number): readonly string[] | undefined {
+  return (views as ViewsLane).panel(width)
+}
+
 describe('views lane through the direct pane renderer', () => {
-  it('takes a views pane into row 2 and nowhere else', async () => {
+  it('takes a views pane into the status row and nowhere else', async () => {
     const f = await fixture()
     try {
-      const pane = f.register({ id: 'agents', placement: 'views', title: 'Agents', priority: 1, summary: row2('Agents 5 ● 1 waiting', 5), render: actions('a', 'Open') })
+      const pane = f.register({ id: 'agents', placement: 'views', title: 'Agents', priority: 1, summary: item('Agents 5 ● 1 waiting'), render: actions('a', 'Open') })
       await flush(8)
       const lane = f.runtime.surfaces.views
       expect(lane.statusEntries().map(entry => entry.id)).toEqual(['views/agents'])
-      expect(lane.statusEntries()[0]!.node).toEqual(row2('Agents 5 ● 1 waiting').node)
+      expect(lane.statusEntries()[0]!.node).toEqual(item('Agents 5 ● 1 waiting').node)
       const layout: SurfaceLayout = f.runtime.surfaces.linearLayout(120, 20)
       expect([layout.header, layout.left, layout.right, layout.bottom]).toEqual([undefined, undefined, undefined, undefined])
       expect(f.runtime.surfaces.empty).toBe(true)
-      pane.setSummary(row2('Agents 6', 6))
+      pane.setSummary(item('Agents 6'))
       await flush(8)
-      expect(lane.statusEntries()[0]!.node).toEqual(row2('Agents 6').node)
+      expect(lane.statusEntries()[0]!.node).toEqual(item('Agents 6').node)
       pane.setSummary(null)
       await flush(8)
       expect(lane.statusEntries()).toEqual([])
       expect(lane.enterable).toBe(false)
-      pane.setSummary(row2('Agents 7', 7))
+      pane.setSummary(item('Agents 7'))
       await flush(8)
       expect(lane.statusEntries()).toHaveLength(1)
     } finally {
@@ -239,7 +245,7 @@ describe('views lane through the direct pane renderer', () => {
   it('enters the first view on F6 ahead of the interactive panes, walks on to them, and returns to the prompt', async () => {
     const f = await fixture()
     try {
-      f.register({ id: 'agents', placement: 'views', title: 'Agents', summary: row2('Agents'), render: actions('a', 'Open') })
+      f.register({ id: 'agents', placement: 'views', title: 'Agents', summary: item('Agents'), render: actions('a', 'Open') })
       f.register({ id: 'pane', placement: 'bottom', render: actions('p', 'Pane action') })
       await flush(8)
       const lane = f.runtime.surfaces.views
@@ -262,25 +268,24 @@ describe('views lane through the direct pane renderer', () => {
     }
   })
 
-  it('enters from the prompt through the screen, shows the panel under the tab strip and the lane hints, and Esc returns', async () => {
+  it('enters from the prompt through the screen, shows the panel and the lane hints, and Esc returns', async () => {
     const f = await fixture(createRuntime(), components, { translate: key => key, revision: () => 0 })
     try {
-      f.register({ id: 'agents', placement: 'views', title: 'Agents', priority: 1, summary: row2('Agents', 5), render: actions('a', 'Open agent') })
-      f.register({ id: 'jobs', placement: 'views', title: 'Jobs', priority: 2, summary: row2('Jobs', 3), render: actions('j', 'Open job') })
+      f.register({ id: 'agents', placement: 'views', title: 'Agents', priority: 1, summary: item('Agents'), render: actions('a', 'Open agent') })
+      f.register({ id: 'jobs', placement: 'views', title: 'Jobs', priority: 2, summary: item('Jobs'), render: actions('j', 'Open job') })
       await flush(8)
-      expect(f.root.mayflyScreen.views.panel(80)).toBeUndefined()
+      expect(lanePanel(f.root.mayflyScreen.views, 80)).toBeUndefined()
       expect(f.root.mayflyScreen.enterViews()).toBe(true)
-      const rows = plain(f.root.mayflyScreen.views.panel(80))
-      expect(rows[0]).toBe('Agents 5   Jobs 3')
-      expect(rows[1]).toBe('━━━━━━━━')
+      const rows = plain(lanePanel(f.root.mayflyScreen.views, 80))
       expect(rows.join('\n')).toContain('Open agent')
-      expect(rows.at(-1)).toContain('←/→ tabs')
+      expect(rows.join('\n')).not.toContain('Agents')
+      expect(rows.at(-1)).toContain('←/→ items')
       expect(rows.at(-1)).toContain('Esc close')
       press(f, '\x1b')
       await flush(8)
       expect(f.runtime.surfaces.views.isEntered).toBe(false)
       expect(f.runtime.focused()).toBe(f.runtime.editor)
-      expect(f.root.mayflyScreen.views.panel(80)).toBeUndefined()
+      expect(lanePanel(f.root.mayflyScreen.views, 80)).toBeUndefined()
     } finally {
       await f.dispose()
     }
@@ -291,8 +296,8 @@ describe('views lane through the direct pane renderer', () => {
     try {
       const agent = vi.fn(() => ({ kind: 'completed' as const }))
       const job = vi.fn(() => ({ kind: 'completed' as const }))
-      f.register({ id: 'agents', placement: 'views', title: 'Agents', priority: 1, summary: row2('Agents'), render: actions('a', 'Open agent'), onEvent: { action: agent } })
-      f.register({ id: 'jobs', placement: 'views', title: 'Jobs', priority: 2, summary: row2('Jobs'), render: actions('j', 'Open job'), onEvent: { action: job } })
+      f.register({ id: 'agents', placement: 'views', title: 'Agents', priority: 1, summary: item('Agents'), render: actions('a', 'Open agent'), onEvent: { action: agent } })
+      f.register({ id: 'jobs', placement: 'views', title: 'Jobs', priority: 2, summary: item('Jobs'), render: actions('j', 'Open job'), onEvent: { action: job } })
       await flush(8)
       f.root.mayflyScreen.enterViews()
       press(f, '\r')
@@ -300,7 +305,7 @@ describe('views lane through the direct pane renderer', () => {
       expect([agent.mock.calls.length, job.mock.calls.length]).toEqual([1, 0])
       press(f, RIGHT)
       expect(f.runtime.surfaces.views.active).toBe('jobs')
-      expect(plain(f.root.mayflyScreen.views.panel(80)).join('\n')).toContain('Open job')
+      expect(plain(lanePanel(f.root.mayflyScreen.views, 80)).join('\n')).toContain('Open job')
       press(f, '\r')
       await flush(8)
       expect([agent.mock.calls.length, job.mock.calls.length]).toEqual([1, 1])
@@ -314,7 +319,7 @@ describe('views lane through the direct pane renderer', () => {
   it('keeps a view with no panel yet in the row, enters it once the panel arrives, and leaves when it goes', async () => {
     const f = await fixture()
     try {
-      const pane = f.register({ id: 'late', placement: 'views', summary: row2('Late'), render: () => null as never })
+      const pane = f.register({ id: 'late', placement: 'views', summary: item('Late'), render: () => null as never })
       await flush(8)
       const lane = f.runtime.surfaces.views
       expect(lane.statusEntries()).toHaveLength(1)
@@ -322,8 +327,8 @@ describe('views lane through the direct pane renderer', () => {
       pane.set(ui.text('arrived'))
       await flush(8)
       expect(f.root.mayflyScreen.enterViews()).toBe(true)
-      const rows = plain(f.root.mayflyScreen.views.panel(40))
-      expect(rows.slice(0, 3)).toEqual(['late', '━━━━', 'arrived'])
+      const rows = plain(lanePanel(f.root.mayflyScreen.views, 40))
+      expect(rows[0]).toBe('arrived')
       pane.set(null)
       await flush(8)
       expect(lane.isEntered).toBe(false)
@@ -337,8 +342,8 @@ describe('views lane through the direct pane renderer', () => {
   it('removes the view with its registration, and with the renderer', async () => {
     const f = await fixture()
     try {
-      const pane = f.register({ id: 'agents', placement: 'views', summary: row2('Agents'), render: actions('a', 'Open') })
-      f.register({ id: 'jobs', placement: 'views', priority: 2, summary: row2('Jobs'), render: actions('j', 'Open') })
+      const pane = f.register({ id: 'agents', placement: 'views', summary: item('Agents'), render: actions('a', 'Open') })
+      f.register({ id: 'jobs', placement: 'views', priority: 2, summary: item('Jobs'), render: actions('j', 'Open') })
       await flush(8)
       f.root.mayflyScreen.enterViews()
       pane.dispose()
@@ -354,17 +359,25 @@ describe('views lane through the direct pane renderer', () => {
     }
   })
 
-  it('replaces the content of an entered panel for a pending decision and keeps its tab', async () => {
+  it('replaces the content of an entered panel for a pending decision and keeps its view', async () => {
     const f = await fixture()
     try {
-      f.register({ id: 'agents', placement: 'views', title: 'Agents', summary: row2('Agents', 1), render: () => ui.actions({ id: 'a', items: [{ id: 'stop', label: 'Stop', confirm: 'Stop this?' }] }) })
+      f.register({ id: 'agents', placement: 'views', title: 'Agents', summary: item('Agents'), render: () => ui.actions({ id: 'a', items: [{ id: 'stop', label: 'Stop', confirm: 'Stop this?' }] }) })
       await flush(8)
       f.root.mayflyScreen.enterViews()
       press(f, '\r')
       await flush(8)
-      const rows = plain(f.root.mayflyScreen.views.panel(60))
-      expect(rows[0]).toBe('Agents 1')
+      const rows = plain(lanePanel(f.root.mayflyScreen.views, 60))
       expect(rows.join('\n')).toContain('Stop this?')
+      expect(f.runtime.surfaces.views.active).toBe('agents')
+      // Esc answers the pending Yes/No with No and stays in the view; a bare Esc then leaves it.
+      press(f, '\x1b')
+      await flush(8)
+      expect(f.runtime.surfaces.views.isEntered).toBe(true)
+      expect(plain(lanePanel(f.root.mayflyScreen.views, 60)).join('\n')).not.toContain('Stop this?')
+      press(f, '\x1b')
+      await flush(8)
+      expect(f.runtime.surfaces.views.isEntered).toBe(false)
     } finally {
       await f.dispose()
     }

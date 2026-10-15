@@ -16,11 +16,11 @@ import { sanitizePluginText } from './plugin-view.ts'
 import { paintSpan, paintTone } from './ui-paint.ts'
 import { paintList, type ListPaintOptions, type ListRowMemo, type ListRowSpec } from './ui-list-paint.ts'
 import { paintTabs, type TabsPaintOptions } from './ui-tabs-paint.ts'
-import { sliceByColumn, truncateMiddle, truncateToWidth, visibleWidth, wrapTextWithAnsi } from './width.ts'
+import { sliceByColumn, truncateMiddle, visibleWidth, wrapTextWithAnsi } from './width.ts'
 import { listSelectedIds } from './ui-list-selection.ts'
 
 type SurfaceNode = Extract<MayflyUiNode, { readonly kind: 'surface' }>
-type SurfaceChromeNode = Pick<SurfaceNode, 'badges' | 'border' | 'chrome' | 'subtitle' | 'title' | 'titleAlign'>
+type SurfaceChromeNode = Pick<SurfaceNode, 'badges' | 'border' | 'chrome' | 'subtitle' | 'title' | 'titleAlign' | 'titleCut'>
 type TabsNode = Extract<MayflyUiNode, { readonly kind: 'tabs' }>
 type ListNode = Extract<MayflyUiNode, { readonly kind: 'list' }>
 type ActionsNode = Extract<MayflyUiNode, { readonly kind: 'actions' }>
@@ -41,34 +41,8 @@ export interface PatternFocus {
 const RULE_CELLS = 24
 const CELLS = 10
 const PARTIAL_BLOCKS = ['', '▏', '▎', '▍', '▌', '▋', '▊', '▉', '█'] as const
-const DEFAULT_PRIMARY_COLUMN_WIDTH = 32
-const PRIMARY_COLUMN_GAP = 2
-const MIN_DESCRIPTION_WIDTH = 10
-const DESCRIPTION_MAX_LINES = 2
 const ELLIPSIS = '…'
 const ELLIPSIS_WIDTH = visibleWidth(ELLIPSIS)
-
-// Plain autocomplete content sits inside theme paint. Remove the reset that
-// pi-tui's truncator appends so it cannot cancel that enclosing paint.
-// oxlint-disable-next-line no-control-regex -- ESC (\x1b) matches ANSI SGR resets
-const TRAILING_ANSI_RESET = /(?:\x1b\[0m)+$/
-
-/** Renderer paint and layout supplied by the thin pi-tui select adapter. */
-interface AutocompleteListPatternOptions {
-  readonly selectedText: (text: string) => string
-  readonly description: (text: string) => string
-  readonly scrollInfo: (text: string) => string
-  readonly noMatch: (text: string) => string
-  readonly minPrimaryColumnWidth?: number
-  readonly maxPrimaryColumnWidth?: number
-  readonly truncatePrimary?: (context: {
-    readonly id: string
-    readonly text: string
-    readonly maxWidth: number
-    readonly columnWidth: number
-    readonly isSelected: boolean
-  }) => string
-}
 
 function safeWidth(width: number): number {
   return Math.max(1, Number.isFinite(width) ? Math.floor(width) : 1)
@@ -79,89 +53,6 @@ function fit(value: string, width: number): string {
   return visibleWidth(value) <= available ? value : sliceByColumn(value, 0, available, true)
 }
 
-function truncatePlainToWidth(text: string, maxWidth: number): string {
-  return truncateToWidth(text, maxWidth, '').replace(TRAILING_ANSI_RESET, '')
-}
-
-function wrapDescription(text: string, width: number): string[] {
-  const wrapped = wrapTextWithAnsi(text, width)
-  if (wrapped.length <= DESCRIPTION_MAX_LINES) return wrapped
-  const kept = wrapped.slice(0, DESCRIPTION_MAX_LINES - 1)
-  const rest = wrapped.slice(DESCRIPTION_MAX_LINES - 1).join(' ')
-  const clipped = truncatePlainToWidth(rest, width - ELLIPSIS_WIDTH).trimEnd()
-  return [...kept, `${clipped}${ELLIPSIS}`]
-}
-
-/** Render the editor's canonical list node with its compact description rows. */
-export function renderAutocompleteList(
-  node: ListNode,
-  width: number,
-  maxVisible: number,
-  options: AutocompleteListPatternOptions,
-): string[] {
-  const available = safeWidth(width)
-  if (node.items.length === 0) return [options.noMatch(fit('  No matching commands', available))]
-
-  const selectedId = listSelectedIds(node)[0]
-  const selectedIndex = Math.max(0, node.items.findIndex(item => item.id === selectedId))
-  const visibleCount = Math.max(1, Math.floor(maxVisible))
-  const startIndex = Math.max(0, Math.min(selectedIndex - Math.floor(visibleCount / 2), node.items.length - visibleCount))
-  const endIndex = Math.min(startIndex + visibleCount, node.items.length)
-  const rawMin = options.minPrimaryColumnWidth ?? options.maxPrimaryColumnWidth ?? DEFAULT_PRIMARY_COLUMN_WIDTH
-  const rawMax = options.maxPrimaryColumnWidth ?? options.minPrimaryColumnWidth ?? DEFAULT_PRIMARY_COLUMN_WIDTH
-  const min = Math.max(1, Math.min(rawMin, rawMax))
-  const max = Math.max(1, Math.max(rawMin, rawMax))
-  const widest = node.items.reduce((current, item) => Math.max(current, visibleWidth(item.label) + PRIMARY_COLUMN_GAP), 0)
-  const primaryColumnWidth = Math.max(min, Math.min(widest, max))
-  const rows: string[] = []
-
-  for (let index = startIndex; index < endIndex; index += 1) {
-    const item = node.items[index]!
-    const selected = item.id === selectedId
-    const prefix = selected ? '→ ' : '  '
-    const prefixWidth = visibleWidth(prefix)
-    const detail = item.detail?.replaceAll(/[\r\n]+/g, ' ').trim()
-    const primary = (maxWidth: number, columnWidth: number): string => {
-      const transformed = options.truncatePrimary?.({
-        id: item.id,
-        text: item.label,
-        maxWidth,
-        columnWidth,
-        isSelected: selected,
-      }) ?? item.label
-      return truncatePlainToWidth(transformed, maxWidth)
-    }
-
-    if (detail !== undefined && detail.length > 0 && available > 40) {
-      const effectiveColumnWidth = Math.max(1, Math.min(primaryColumnWidth, available - prefixWidth - 4))
-      const value = primary(Math.max(1, effectiveColumnWidth - PRIMARY_COLUMN_GAP), effectiveColumnWidth)
-      const spacing = ' '.repeat(Math.max(1, effectiveColumnWidth - visibleWidth(value)))
-      const detailStart = prefixWidth + visibleWidth(value) + spacing.length
-      const remaining = available - detailStart - 2
-      if (remaining > MIN_DESCRIPTION_WIDTH) {
-        const detailRows = wrapDescription(detail, remaining)
-        const indent = ' '.repeat(detailStart)
-        rows.push(...detailRows.map((line, lineIndex) => selected
-          ? options.selectedText(lineIndex === 0 ? `${prefix}${value}${spacing}${line}` : `${indent}${line}`)
-          : lineIndex === 0 ? `${prefix}${value}${options.description(`${spacing}${line}`)}` : options.description(`${indent}${line}`)))
-        continue
-      }
-    }
-
-    const maxWidth = Math.max(1, available - prefixWidth - 2)
-    const value = primary(maxWidth, maxWidth)
-    rows.push(selected ? options.selectedText(`${prefix}${value}`) : `${prefix}${value}`)
-  }
-
-  if (startIndex > 0 || endIndex < node.items.length) {
-    const indicator = `  (${String(selectedIndex + 1)}/${String(node.items.length)})`
-    rows.push(options.scrollInfo(truncatePlainToWidth(indicator, Math.max(1, available - 2))))
-  }
-  // Only the fixed two-column pointer can out-wide a viewport mid-resize.
-  // Normal rows remain untouched so theme paint composes outside this seam.
-  return available < 3 ? rows.map(row => sliceByColumn(row, 0, available, true)) : rows
-}
-
 /** The columns a panel's content sits in from the left edge: the title, the description, the rows, and the hint row. */
 export const PANEL_GUTTER = 2
 
@@ -170,14 +61,45 @@ function panelRulePaint(colors: MayflySemanticColors, border?: MayflyTone): (tex
   return border === undefined ? colors.primary : text => paintTone(border, text, colors)
 }
 
+/**
+ * The border paint of the framed `surface` chrome (the editor's frame): the quiet color (spec §2.1), or the surface's
+ * own `border` tone.
+ */
+export function surfaceBorderPaint(colors: MayflySemanticColors, border?: MayflyTone): (text: string) => string {
+  if (border !== undefined) return text => paintTone(border, text, colors)
+  return colors.border
+}
+
 function strongTitle(title: string, colors: MayflySemanticColors): string {
   return `\x1b[1m${colors.textStrong(title)}\x1b[22m`
 }
 
 /**
- * The rows a surface paints above its child. A panel chrome (`overlay`, `surface`) is borderless: a full-width heavy rule
- * (`━`) in the brand ink, the title bold in the same ink with its badges after it, the muted description (`subtitle`), and a
- * blank row, all but the rule inside the panel gutter. `lane` is a muted rule carrying the title (`── Title ───`);
+ * The inset title rule of a framed surface, `╭ Title ─── badge ╮`: the title bold in text color, the badges at the
+ * right of the rule, everything else in the border paint. A narrow width drops the badges first, then ellipsises the
+ * title, then drops it; the corners and at least one dash always stay.
+ */
+function framedTopRule(title: string, badges: string, width: number, paint: (text: string) => string, colors: MayflySemanticColors, align: 'left' | 'right' = 'left', cut: 'start' | 'end' = align === 'right' ? 'start' : 'end'): string {
+  if (width < 2) return paint('╭')
+  const inner = width - 2
+  const titleWidth = title.length === 0 ? 0 : visibleWidth(title) + 2
+  const badgeWidth = badges.length === 0 ? 0 : visibleWidth(badges) + 2
+  const showBadges = badgeWidth > 0 && inner - titleWidth - badgeWidth >= 1
+  const titleRoom = inner - (showBadges ? badgeWidth : 0) - 3
+  // A title that cuts its start keeps its distinguishing end (a path); one that cuts its end keeps its name.
+  const elided = (): string => cut === 'start' ? truncateMiddle(title, titleRoom, 'start') : `${sliceByColumn(title, 0, titleRoom - ELLIPSIS_WIDTH, true)}${ELLIPSIS}`
+  const fitted = title.length === 0 || titleRoom < 2 ? '' : visibleWidth(title) <= titleRoom ? title : elided()
+  const titleSegment = fitted.length === 0 ? '' : `${paint(' ')}${strongTitle(fitted, colors)}${paint(' ')}`
+  const badgeSegment = showBadges ? `${paint(' ')}${badges}${paint(' ')}` : ''
+  const fill = paint('─'.repeat(Math.max(0, inner - (fitted.length === 0 ? 0 : visibleWidth(fitted) + 2) - (showBadges ? badgeWidth : 0))))
+  return align === 'right' ? `${paint('╭')}${badgeSegment}${fill}${titleSegment}${paint('╮')}` : `${paint('╭')}${titleSegment}${fill}${badgeSegment}${paint('╮')}`
+}
+
+/**
+ * The rows a surface paints above its child. A panel (`overlay`) is borderless: a full-width heavy rule (`━`) in the
+ * brand ink, the title bold in the same ink with its badges after it, the muted description (`subtitle`), and a blank
+ * row, all but the rule inside the panel gutter. The framed `surface` (the editor) returns its top rule `╭ Title ─╮`,
+ * and its subtitle sits inside the frame. `lane` is a muted rule carrying the title (`── Title ───`);
  * `none` is the bold title alone.
  */
 export function renderSurfaceHead(node: SurfaceChromeNode, width: number, colors: MayflySemanticColors): string[] {
@@ -195,6 +117,11 @@ export function renderSurfaceHead(node: SurfaceChromeNode, width: number, colors
     const fill = available - visibleWidth(head) - visibleWidth(tail)
     rows.push(fill >= 2 ? `${colors.muted(`${head}${'─'.repeat(fill)}`)}${tail}` : fit(colors.muted(`${head}${'─'.repeat(available)}`), available))
   } else {
+    if (chrome === 'surface') {
+      rows.push(framedTopRule(title, badges, available, surfaceBorderPaint(colors, node.border), colors, node.titleAlign, node.titleCut))
+      if (node.subtitle !== undefined) rows.push(fit(colors.muted(sanitizePluginText(node.subtitle).replace(/[\r\n]+/gu, ' ')), available))
+      return rows
+    }
     const paint = panelRulePaint(colors, node.border)
     const indent = ' '.repeat(Math.min(PANEL_GUTTER, Math.max(0, available - 1)))
     const room = Math.max(1, available - indent.length)
@@ -210,8 +137,15 @@ export function renderSurfaceHead(node: SurfaceChromeNode, width: number, colors
     if (node.subtitle !== undefined) rows.push(fit(`${indent}${colors.muted(sanitizePluginText(node.subtitle).replace(/[\r\n]+/gu, ' '))}`, available))
     rows.push('')
   }
-  if (chrome !== 'overlay' && chrome !== 'surface' && node.subtitle !== undefined) rows.push(fit(colors.muted(sanitizePluginText(node.subtitle).replace(/[\r\n]+/gu, ' ')), available))
+  if (chrome !== 'overlay' && node.subtitle !== undefined) rows.push(fit(colors.muted(sanitizePluginText(node.subtitle).replace(/[\r\n]+/gu, ' ')), available))
   return rows
+}
+
+/** The bottom rule of the framed `surface` chrome; every other chrome has none. */
+export function renderSurfaceTail(node: SurfaceChromeNode, width: number, colors: MayflySemanticColors): string[] {
+  if (node.chrome !== 'surface') return []
+  const available = safeWidth(width)
+  return [surfaceBorderPaint(colors, node.border)(available < 2 ? '╰' : `╰${'─'.repeat(available - 2)}╯`)]
 }
 
 /**
@@ -388,9 +322,17 @@ export function renderProgress(node: ProgressNode, width: number, colors: Mayfly
   return [fit(`${showLabel ? colors.text(label) : ''}${tone(bar)}${showCounter ? ` ${colors.textMuted(counter)}` : ''}${percent === '' ? '' : colors.textMuted(percent)}`, available)]
 }
 
-/** A rule across the row, or `── Label ───` with at least two dashes after the label; always the quiet border color. */
-export function renderDivider(label: string | undefined, width: number, colors: MayflySemanticColors): string[] {
-  const available = safeWidth(width)
-  const rule = label === undefined ? '─'.repeat(available) : `── ${label} ${'─'.repeat(Math.max(2, available - visibleWidth(label) - 4))}`
-  return [fit(colors.border(rule), available)]
+/** `──── Label ────`: the label between two rules that share what it leaves, the left one the shorter by a cell when they cannot be equal. */
+function centeredRule(label: string, available: number): string {
+  const room = available - visibleWidth(label) - 2
+  const left = Math.max(2, Math.floor(room / 2))
+  const right = Math.max(2, room - left)
+  return `${'─'.repeat(left)} ${label} ${'─'.repeat(right)}`
+}
+
+/** A rule across the row, or `── Label ───` with at least two dashes after the label (`center`: `──── Label ────`, the label in the middle); the quiet border color unless it names a tone. */
+export function renderDivider(label: string | undefined, width: number, colors: MayflySemanticColors, align: 'start' | 'center' = 'start', inset = 0, tone?: MayflyTone): string[] {
+  const available = Math.max(1, safeWidth(width) - inset)
+  const rule = label === undefined ? '─'.repeat(available) : align === 'center' ? centeredRule(label, available) : `── ${label} ${'─'.repeat(Math.max(2, available - visibleWidth(label) - 4))}`
+  return [fit(tone === undefined ? colors.border(rule) : paintTone(tone, rule, colors), available)]
 }

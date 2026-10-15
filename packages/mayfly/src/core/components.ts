@@ -10,6 +10,7 @@
 
 import { Context, Service } from '@deepseek-ai/cordis'
 import {
+  CURSOR_MARKER,
   CombinedAutocompleteProvider,
   Editor,
   Image,
@@ -19,6 +20,7 @@ import {
   fuzzyMatch,
   getCapabilities,
   getImageDimensions,
+  matchesKey,
   truncateToWidth,
   visibleWidth,
   wrapTextWithAnsi,
@@ -30,7 +32,6 @@ import {
   type SelectListTheme,
   type TUI,
 } from '@earendil-works/pi-tui'
-import type { MayflyGlyphMode } from './glyphs.ts'
 import { expandMarkdownRules, markdownTheme } from './markdown-rows.ts'
 import { readPresentation, type MayflyPresentation } from './presentation.ts'
 import { renderMermaidRows, splitRichDocument } from './rich-document.ts'
@@ -39,20 +40,22 @@ import { displayPath } from '../internal/paths.ts'
 import {
   highlightLeadingSlashToken,
   injectGhostHint,
-  injectPromptSymbol,
-  padColumns,
+  splitEditorRows,
   topRule as renderTopRule,
-  withSideBorders,
 } from './chrome.ts'
-import { sanitizePluginText } from './plugin-view.ts'
-import { WrappingSelectList } from './wrapping-select-list.ts'
+import { CompletionList } from './completion-list.ts'
+import { pickPlaceholder } from './ui-prompt.ts'
+import { expandPastes, findTokenRanges, foldSegments, paintTokenRows, type EditorTokenPaints, type EditorTokenRange, type EditorTokenText } from './editor-tokens.ts'
 import type {
   MayflyAutocompleteProvider,
-  MayflyColorFn,
   MayflyComponents,
+  MayflyCompletionView,
   MayflyEditor,
   MayflyEditorOptions,
   MayflyEditorSubmitAttempt,
+  MayflyEditorToken,
+  MayflyEditorTokenSource,
+  MayflyHistoryPosition,
   MayflySubmittedDraft,
   MayflyFuzzyMatch,
   MayflyImage,
@@ -74,13 +77,8 @@ declare module '@deepseek-ai/cordis' {
 }
 
 /**
- * Map the palette to an editor theme: the frame's neutral border plus the
- * autocomplete dropdown. The default border is the neutral gray `border`
- * token — with the S11 rounded-box chrome the contextual cues (slash
- * context and bash mode recolor the border through `setBorderColor`)
- * carry the focus, the kimi treatment; the S10 interim that pinned the
- * idle border to `primary` retired with the bare two-line editor it was
- * compensating for.
+ * Map the palette to an editor theme: the rule color pi-tui draws its own top and bottom rules in (the adapter drops
+ * them; the frame belongs to the prompt's surface) plus the autocomplete dropdown.
  */
 function editorTheme(colors: MayflySemanticColors): EditorTheme {
   return { borderColor: colors.border, selectList: selectListTheme(colors) }
@@ -112,27 +110,29 @@ interface AutocompleteListFactory {
   createAutocompleteList: (prefix: string, items: MayflySelectItem[]) => SelectList
 }
 
-/** The slash-menu primary column clamp, mirroring upstream's constant. */
-const SLASH_SELECT_LIST_LAYOUT = { minPrimaryColumnWidth: 12, maxPrimaryColumnWidth: 32 }
-
-/** Theme-derived paints the editor chrome overlays (S14 completion polish). */
+/** Theme-derived paints the editor overlays on its first row (S14 completion polish). */
 interface EditorChromePaints {
   /** Styling for the leading `/command` token (bold + `primary`). */
   readonly slashTokenPaint: (text: string) => string
   /** Styling for the argument-hint ghost (`textMuted`). */
   readonly ghostHintPaint: (text: string) => string
-  /** Styling for the top-border title (`textMuted`). */
-  readonly borderTitlePaint: (text: string) => string
-  /** Styling for the frame while the editor does not hold keyboard focus (`textMuted`): the prompt reads as parked. */
-  readonly parkedBorderPaint: (text: string) => string
-  /** The glyph mode the frame is drawn in; the typed text is never converted. */
-  readonly glyphs?: MayflyGlyphMode
+  /** The tones of the inline tokens: the label in `accent`, the brackets and size muted. */
+  readonly tokenPaints: EditorTokenPaints
 }
 
 function withoutFakeEditorCursor(row: string): string {
   // pi-tui paints exactly one grapheme (or trailing space) in inverse video
   // even while unfocused; form navigation needs the text without that caret.
   return row.replace(/\x1b\[7m([\s\S]*?)\x1b\[0m/u, '$1')
+}
+
+/** The token the first Backspace selected: where it sits and what it spells. */
+interface SelectedToken {
+  readonly line: number
+  readonly start: number
+  readonly end: number
+  readonly text: string
+  readonly kind: EditorTokenRange['kind']
 }
 
 /** Delegate exposing a pi-tui `Editor` through the Mayfly contract. */
@@ -168,24 +168,43 @@ class EditorAdapter implements MayflyEditor {
   /** Buffer and paste table captured by the in-flight native submission. */
   private submittedDraft: MayflySubmittedDraft | undefined
 
-  /** The prompt symbol overlaid on the first content row; none while unset. */
-  private promptSymbol: string | undefined
-
-  /** Pre-styled text laid into the top border; none while unset. */
-  private borderLabel: string | undefined
-
-  /** Sanitized one-line title laid into the top border's right end; none while unset. */
-  private borderTitle: string | undefined
-
-  /** Whether the top corners open into a panel docked above (S13 btw dock). */
-  private connectedAbove = false
+  /** Whether the buffer is a shell command: a leading `/` is then a path, not a command, and stays unpainted. */
+  private shellMode = false
 
   /** The argument-hint ghost (S14); none while unset. */
   private ghostHint: string | undefined
 
+  /** The empty buffer's placeholder ladder, longest first; none while unset. */
+  private placeholder: readonly string[] = []
+
+  /** The interaction-owned inline tokens (image markers, accepted mentions); none while unset. */
+  private tokenSource: MayflyEditorTokenSource | undefined
+
+  /** The token the first Backspace selected; valid only while its text still sits at that place. */
+  private selectedToken: SelectedToken | undefined
+
+  /** Whether `tokenBackspace` ran during the current input, so the input does not clear its selection. */
+  private tokenHandled = false
+
+  /** The latest snapshot of the buffer and its paste table (a submit, a steer, a clear): the text a history entry came from. */
+  private lastCaptured: MayflySubmittedDraft | undefined
+
+  /** The paste tables of the history entries, index for index with pi-tui's own list (newest first). */
+  private historyPastes: Array<ReadonlyMap<number, string> | undefined> = []
+
+  /** The paste table of the draft that history browsing left, which `Down` back to the draft re-arms. */
+  private draftPastes: ReadonlyMap<number, string> = new Map()
+
+  /** What `onTokenChange` last told the host, to speak only on a change. */
+  private announcedToken: string | undefined
+
+  onTokenChange: ((token: MayflyEditorToken | undefined) => void) | undefined
+
   constructor(
     private readonly editor: Editor,
     private readonly chrome: EditorChromePaints,
+    /** The list pi-tui's factory last made; it is the open list while the editor shows one. */
+    private readonly completions: { list: CompletionList | undefined },
   ) {
     this.observedBuffer = { raw: editor.getText(), expanded: editor.getExpandedText() }
     const bridge = editor as unknown as { submitValue(): void }
@@ -206,7 +225,11 @@ class EditorAdapter implements MayflyEditor {
     // instance field; the structural cast is pinned by the components spec,
     // the `getHistory` precedent.
     const internals = this.editor as unknown as { pastes: Map<number, string> }
-    return { raw: this.editor.getText(), pastes: new Map(internals.pastes) }
+    const captured = { raw: this.editor.getText(), pastes: new Map(internals.pastes) }
+    // The latest buffer that held a pasted block stays the source of its history entry, which is added after the buffer
+    // was cleared (and the clear's own capture is empty).
+    if (captured.pastes.size > 0) this.lastCaptured = captured
+    return captured
   }
 
   consumeSubmittedDraft(): MayflySubmittedDraft | undefined {
@@ -220,12 +243,26 @@ class EditorAdapter implements MayflyEditor {
     // `setText` cleared the paste table; repopulate it (and never rewind
     // `pasteCounter` below the marker ids) so the restored `[paste #N]`
     // markers expand again — the same private-field cast as `captureDraft`.
+    this.armPastes(draft.pastes)
+    this.observeMutation()
+  }
+
+  /** Make `table` the paste table, never rewinding `pasteCounter` below its ids (the private fields the draft capture reads). */
+  private armPastes(table: ReadonlyMap<number, string>): void {
     const internals = this.editor as unknown as { pastes: Map<number, string>, pasteCounter: number }
-    internals.pastes = new Map(draft.pastes)
-    for (const id of draft.pastes.keys()) {
-      internals.pasteCounter = Math.max(internals.pasteCounter, id)
+    internals.pastes = new Map(table)
+    internals.pasteCounter = Math.max(0, ...table.keys())
+  }
+
+  setTextFolding(text: string, contents: readonly string[]): void {
+    this.setText('')
+    for (const segment of foldSegments(text, contents)) {
+      // A paste goes in as the terminal sends one, so the editor folds it into a marker again when it is big enough.
+      if (segment.paste) this.editor.handleInput(`\x1b[200~${segment.text}\x1b[201~`)
+      else this.editor.insertTextAtCursor(segment.text)
     }
     this.observeMutation()
+    this.announceToken()
   }
 
   get focused(): boolean {
@@ -273,8 +310,10 @@ class EditorAdapter implements MayflyEditor {
   }
 
   setText(text: string): void {
+    this.selectedToken = undefined
     this.editor.setText(text)
     this.observeMutation()
+    this.announceToken()
   }
 
   submit(): void {
@@ -282,8 +321,30 @@ class EditorAdapter implements MayflyEditor {
     this.requestSubmit()
   }
 
-  addToHistory(text: string): void {
-    this.editor.addToHistory(text)
+  addToHistory(text: string, pastes?: ReadonlyMap<number, string>): void {
+    // A message that held a pasted block is kept as it was typed (the marker and its table), not as the expanded text:
+    // recalling it brings the token back. The text may be the expansion of the latest capture, or its raw buffer.
+    const trimmed = text.trim()
+    const capture = [this.lastCaptured, this.snapshot()].find(candidate => candidate !== undefined && candidate.pastes.size > 0
+      && (candidate.raw.trim() === trimmed || expandPastes(candidate.raw, candidate.pastes).trim() === trimmed))
+    const entry = pastes === undefined ? (capture === undefined ? trimmed : capture.raw.trim()) : trimmed
+    const table = pastes ?? capture?.pastes
+    const internals = this.editor as unknown as { history: string[] }
+    const length = internals.history.length
+    const head = internals.history[0]
+    this.editor.addToHistory(entry)
+    if (internals.history.length !== length || internals.history[0] !== head) this.historyPastes.unshift(table)
+    else if (entry !== '' && entry === head) this.historyPastes[0] = table
+    this.historyPastes.length = internals.history.length
+  }
+
+  /** The buffer and paste table as they stand, without making them the latest capture. */
+  private snapshot(): MayflySubmittedDraft {
+    return { raw: this.editor.getText(), pastes: new Map((this.editor as unknown as { pastes: Map<number, string> }).pastes) }
+  }
+
+  getHistoryPastes(): readonly (ReadonlyMap<number, string> | undefined)[] {
+    return [...this.historyPastes]
   }
 
   getHistory(): readonly string[] {
@@ -294,36 +355,182 @@ class EditorAdapter implements MayflyEditor {
     return [...history]
   }
 
+  getHistoryPosition(): MayflyHistoryPosition | undefined {
+    const internals = this.editor as unknown as { historyIndex: number, history: string[] }
+    return internals.historyIndex < 0 ? undefined : { index: internals.historyIndex + 1, total: internals.history.length }
+  }
+
   removeLatestHistory(text: string): boolean {
     const history = (this.editor as unknown as { history: string[] }).history
-    if (history[0] !== text) return false
+    const head = history[0]
+    if (head === undefined || (head !== text && expandPastes(head, this.historyPastes[0] ?? new Map()) !== text)) return false
     history.shift()
+    this.historyPastes.shift()
     return true
   }
 
-  setBorderColor(color: MayflyColorFn): void {
-    this.editor.borderColor = color
-  }
-
-  setPromptSymbol(symbol: '>' | '!' | undefined): void {
-    this.promptSymbol = symbol
-  }
-
-  setBorderLabel(text: string | undefined): void {
-    this.borderLabel = text
-  }
-
-  setBorderTitle(text: string | undefined): void {
-    const title = text === undefined ? '' : sanitizePluginText(text).replace(/\s+/gu, ' ').trim()
-    this.borderTitle = title === '' ? undefined : title
-  }
-
-  setConnectedAbove(connected: boolean): void {
-    this.connectedAbove = connected
+  setShellMode(shell: boolean): void {
+    this.shellMode = shell
   }
 
   setGhostHint(hint: string | undefined): void {
     this.ghostHint = hint
+  }
+
+  setPlaceholder(ladder: readonly string[]): void {
+    this.placeholder = ladder
+  }
+
+  setTokenSource(source: MayflyEditorTokenSource | undefined): void {
+    this.tokenSource = source
+    this.selectedToken = undefined
+    this.announceToken()
+  }
+
+  /** The tokens of one buffer line. */
+  private rangesOf(text: string): EditorTokenRange[] {
+    return findTokenRanges(text, this.pasteIds(), this.tokenSource?.(text))
+  }
+
+  /**
+   * The token the caret is on: one a block cursor would cover (`start <= col < end`), else the one that ends at the caret.
+   * @returns the token with its place, or `undefined` when the caret is on none.
+   */
+  private tokenAtCaret(): SelectedToken | undefined {
+    const { line, col } = this.editor.getCursor()
+    const text = this.editor.getLines()[line] ?? ''
+    const ranges = this.rangesOf(text)
+    const range = ranges.find(candidate => col >= candidate.start && col < candidate.end) ?? ranges.find(candidate => col > candidate.start && col === candidate.end)
+    return range === undefined ? undefined : { line, start: range.start, end: range.end, text: text.slice(range.start, range.end), kind: range.kind }
+  }
+
+  /** Whether the caret's block cursor covers the token (as opposed to resting right after it). */
+  private covers(token: SelectedToken): boolean {
+    const { line, col } = this.editor.getCursor()
+    return token.line === line && col >= token.start && col < token.end
+  }
+
+  /** The selection, if it still names the text under the caret. */
+  private validSelection(): SelectedToken | undefined {
+    const selected = this.selectedToken
+    const here = this.tokenAtCaret()
+    if (selected === undefined || here === undefined) return undefined
+    return selected.line === here.line && selected.start === here.start && selected.end === here.end && selected.text === here.text ? selected : undefined
+  }
+
+  tokenBackspace(): boolean {
+    this.tokenHandled = true
+    const here = this.tokenAtCaret()
+    if (here === undefined) {
+      this.selectedToken = undefined
+      return false
+    }
+    // A token the caret is on is already highlighted: Backspace removes it. Right after it, the first press selects it.
+    if (this.validSelection() !== undefined || this.covers(here)) {
+      this.removeToken(here)
+      return true
+    }
+    this.selectedToken = here
+    // A list that reopened behind the mention would cover the hint that says what the next key does.
+    this.closeCompletion()
+    this.announceToken()
+    return true
+  }
+
+  activeToken(): MayflyEditorToken | undefined {
+    const selected = this.validSelection()
+    const token = selected ?? this.tokenAtCaret()
+    // The caret resting right after a token is not on it until Backspace selects it.
+    if (token === undefined || (selected === undefined && !this.covers(token))) return undefined
+    const id = token.kind === 'paste' ? Number(/#(\d+)/u.exec(token.text)?.[1]) : undefined
+    const content = id === undefined ? undefined : (this.editor as unknown as { pastes: Map<number, string> }).pastes.get(id)
+    return { kind: token.kind, text: token.text, selected: selected !== undefined, ...content === undefined ? {} : { content } }
+  }
+
+  replaceActiveToken(text: string): void {
+    const token = this.validSelection() ?? this.tokenAtCaret()
+    if (token === undefined) return
+    this.removeToken(token)
+    // As a paste, so a block that is still big folds into a token again.
+    if (token.kind === 'paste') this.editor.handleInput(`\x1b[200~${text}\x1b[201~`)
+    else this.editor.insertTextAtCursor(text)
+    this.observeMutation()
+    this.announceToken()
+  }
+
+  /** Tell the host when the active token changes. */
+  private announceToken(): void {
+    const token = this.focused ? this.activeToken() : undefined
+    const key = token === undefined ? undefined : `${token.kind}|${token.text}|${String(token.selected)}`
+    if (key === this.announcedToken) return
+    this.announcedToken = key
+    this.onTokenChange?.(token)
+  }
+
+  /**
+   * Left and Right step over a token as one unit: Left from the end lands on its start (the block cursor covers it),
+   * Right from its start lands on its end. A caret elsewhere moves as the editor moves it.
+   * @returns whether the key was the step over a token.
+   */
+  private stepOverToken(data: string): boolean {
+    const right = matchesKey(data, 'right')
+    if (!right && !matchesKey(data, 'left')) return false
+    const { line, col } = this.editor.getCursor()
+    const ranges = this.rangesOf(this.editor.getLines()[line] ?? '')
+    if (right) {
+      const range = ranges.find(candidate => col >= candidate.start && col < candidate.end)
+      if (range === undefined) return false
+      for (let guard = range.end - range.start; guard > 0 && this.editor.getCursor().col < range.end; guard -= 1) this.editor.handleInput('\x1b[C')
+      return true
+    }
+    const range = ranges.find(candidate => col > candidate.start && col <= candidate.end)
+    if (range === undefined) return false
+    for (let guard = range.end - range.start; guard > 0 && this.editor.getCursor().col > range.start; guard -= 1) this.editor.handleInput('\x1b[D')
+    return true
+  }
+
+  /** The ids of the editor's paste table, which decide which `[paste #N]` markers are tokens. */
+  private pasteIds(): ReadonlySet<number> {
+    return new Set((this.editor as unknown as { pastes: Map<number, string> }).pastes.keys())
+  }
+
+  /**
+   * Remove a token through the editor's own keys, so undo, change events, and a pasted block's renumbering are pi-tui's:
+   * the caret moves to the token's end, then one Backspace removes a pasted block (it is one unit) and one per
+   * character removes the rest.
+   */
+  private removeToken(token: SelectedToken): void {
+    this.selectedToken = undefined
+    for (let guard = token.end - token.start; guard > 0 && this.editor.getCursor().col < token.end; guard -= 1) this.editor.handleInput('\x1b[C')
+    if (token.kind === 'paste') this.editor.handleInput('\x7f')
+    else for (let left = token.end - token.start; left > 0 && this.editor.getCursor().col > token.start; left -= 1) this.editor.handleInput('\x7f')
+    this.closeCompletion()
+    this.observeMutation()
+    this.announceToken()
+  }
+
+  /** Close the completion list; `cancelAutocomplete` is private in 0.84.2, the structural cast the components spec pins. */
+  private closeCompletion(): void {
+    if (!this.editor.isShowingAutocomplete()) return
+    const cancel = this.editor as unknown as { cancelAutocomplete(): void }
+    cancel.cancelAutocomplete()
+  }
+
+  /** The rendered rows with every token of the buffer in its tone, the selected one inverse. */
+  private paintTokens(rows: string[]): string[] {
+    const ids = this.pasteIds()
+    // The selected token, else the one the caret covers (only while the editor has the keys).
+    const selected = this.validSelection() ?? (this.focused ? this.tokenAtCaret() : undefined)
+    const showing = selected !== undefined && (this.selectedToken !== undefined || this.covers(selected)) ? selected : undefined
+    const tokens: EditorTokenText[] = []
+    let chosen: number | undefined
+    this.editor.getLines().forEach((line, index) => {
+      for (const range of findTokenRanges(line, ids, this.tokenSource?.(line))) {
+        if (showing !== undefined && showing.line === index && showing.start === range.start && showing.end === range.end) chosen = tokens.length
+        tokens.push({ text: line.slice(range.start, range.end), kind: range.kind })
+      }
+    })
+    return tokens.length === 0 ? rows : paintTokenRows(rows, tokens, chosen, this.chrome.tokenPaints, CURSOR_MARKER)
   }
 
   /**
@@ -365,8 +572,8 @@ class EditorAdapter implements MayflyEditor {
     }
     try {
       const rows = this.editor.render(Math.max(1, width)).slice(1, -1)
-      if (this.focused) return rows
-      return rows.map(withoutFakeEditorCursor)
+      if (masked) return this.focused ? rows : rows.map(withoutFakeEditorCursor)
+      return this.paintTokens(this.focused ? rows : rows.map(withoutFakeEditorCursor))
     } finally {
       state.lines = original
       if (masked) this.editor.invalidate()
@@ -374,12 +581,18 @@ class EditorAdapter implements MayflyEditor {
   }
 
   insertText(text: string): void {
+    this.selectedToken = undefined
     this.editor.insertTextAtCursor(text)
     this.observeMutation()
+    this.announceToken()
   }
 
   isShowingAutocomplete(): boolean {
     return this.editor.isShowingAutocomplete()
+  }
+
+  completion(): MayflyCompletionView | undefined {
+    return this.editor.isShowingAutocomplete() ? this.completions.list?.view() : undefined
   }
 
   refreshAutocomplete(): void {
@@ -388,56 +601,67 @@ class EditorAdapter implements MayflyEditor {
   }
 
   render(width: number): string[] {
-    const renderWidth = this.connectedAbove ? Math.max(1, width - 2) : width
-    const lines = this.editor.render(renderWidth)
-    // The first content row (row index 1 under the top border — a
-    // scrolled-away top rule keeps that indexing) carries the S14
-    // completion polish in the kimi order: the leading `/command` token
-    // paints bold+primary, the argument-hint ghost splices in after the
-    // cursor, and the prompt symbol overlays last. The bash proxy: the `!`
-    // prompt symbol is the bash triple's first leg, so while it is set a
-    // leading `/` is a path separator, not a command, and stays unpainted.
-    /* the real editor always renders at least one content row between the rules, so lines[1] exists */
-    let row = lines[1] ?? ''
-    if (this.promptSymbol !== '!' && this.editor.getText().trimStart().startsWith('/')) {
+    const safeWidth = Math.max(1, width)
+    // pi-tui draws its own rules around the content; the prompt's surface owns the frame, so only the content rows and
+    // the completion list under them leave. The first content row carries the S14 completion polish in the kimi order:
+    // the leading `/command` token paints bold+primary, then the argument-hint ghost splices in after the cursor. In
+    // shell mode a leading `/` is a path separator, not a command, and stays unpainted.
+    const split = splitEditorRows(this.editor.render(safeWidth))
+    const list = split.list
+    const content = this.paintTokens(split.content)
+    /* the real editor always renders at least one content row between the rules, so content[0] exists */
+    let row = content[0] ?? ''
+    if (!this.shellMode && this.editor.getText().trimStart().startsWith('/')) {
       row = highlightLeadingSlashToken(row, this.chrome.slashTokenPaint) ?? row
     }
     if (this.ghostHint !== undefined && this.cursorAtInputEnd()) {
-      row = injectGhostHint(row, this.ghostHint, this.editor.getText(), renderWidth, this.chrome.ghostHintPaint)
+      row = injectGhostHint(row, this.ghostHint, this.editor.getText(), safeWidth, this.chrome.ghostHintPaint)
     }
-    // The bash `!` shares the border hue so the mode reads as one unit; the
-    // neutral `>` stays in the terminal's default foreground (kimi rule).
-    const symbol = this.promptSymbol
-    if (symbol !== undefined) {
-      const painted = injectPromptSymbol(
-        row,
-        symbol,
-        symbol === '!' ? (text: string) => this.editor.borderColor(text) : undefined,
-      )
-      if (painted !== undefined) row = painted
+    if (this.ghostHint === undefined && this.placeholder.length > 0 && this.editor.getText() === '') {
+      // One cell for the caret and one to spare, as the design's ladder counts; the longest variant that fits shows.
+      const ghost = pickPlaceholder(this.placeholder, safeWidth - 2, { visibleWidth, truncateToWidth })
+      if (ghost !== '') row = injectGhostHint(row, ghost, '', safeWidth, this.chrome.ghostHintPaint)
     }
-    lines[1] = row
-    // Corners and bars route through the live `borderColor` property, so a
-    // host recolor via `setBorderColor` (slash context, bash mode) repaints
-    // the whole frame in sync without re-entering this adapter. An editor that
-    // does not hold keyboard focus (the conversation or a bar has it) draws a
-    // muted frame, so the prompt reads as parked.
-    const framed = withSideBorders(lines, (text: string) => this.focused ? this.editor.borderColor(text) : this.chrome.parkedBorderPaint(text), {
-      connectedAbove: this.connectedAbove,
-      label: this.borderLabel,
-      title: this.borderTitle,
-      titlePaint: this.chrome.borderTitlePaint,
-      glyphs: this.chrome.glyphs,
-    })
-    return this.connectedAbove ? padColumns(framed, 1) : framed
+    return [row, ...content.slice(1), ...list]
   }
 
   handleInput(data: string): void {
-    // The onKey hook intercepts before delegation; true consumes the input.
-    if (this.onKey?.(data) === true) return
-    this.editor.handleInput(data)
+    // The onKey hook intercepts before delegation; true consumes the input. Any input but the token's own Backspace
+    // clears a token's selection.
+    this.tokenHandled = false
+    if (this.onKey?.(data) === true) {
+      if (!this.tokenHandled) this.selectedToken = undefined
+      this.announceToken()
+      return
+    }
+    this.selectedToken = undefined
+    const browsing = this.historyBrowse()
+    if (!this.stepOverToken(data)) this.editor.handleInput(data)
+    this.followHistory(browsing)
     this.observeMutation()
     this.reopenAutocompleteAfterInput()
+    this.announceToken()
+  }
+
+  /** Where history browsing stands before an input, with the paste table of the buffer it is about to leave. */
+  private historyBrowse(): { readonly index: number, readonly pastes: ReadonlyMap<number, string> } {
+    const internals = this.editor as unknown as { historyIndex: number, pastes: Map<number, string> }
+    return { index: internals.historyIndex, pastes: new Map(internals.pastes) }
+  }
+
+  /**
+   * History recall swaps the buffer's text but not the editor's paste table, so a recalled `[paste #N]` marker would
+   * have no content. After an input that moved through history, the table of the entry now shown is armed (the
+   * draft's own when it is back to the draft).
+   */
+  private followHistory(before: { readonly index: number, readonly pastes: ReadonlyMap<number, string> }): void {
+    const internals = this.editor as unknown as { historyIndex: number }
+    const index = internals.historyIndex
+    if (index === before.index) return
+    if (before.index === -1) this.draftPastes = before.pastes
+    this.armPastes(index === -1 ? this.draftPastes : this.historyPastes[index] ?? new Map())
+    // The text moved before its table did: the host's mirror of the draft reads both.
+    this.editor.onChange?.(this.editor.getText())
   }
 
   /** Invalidate an outstanding attempt when the expanded buffer changed. */
@@ -676,10 +900,9 @@ export class MayflyComponentsService extends Service implements MayflyComponents
   strike(text: string): string { return `\x1b[9m${text}\x1b[29m` }
 
   /**
-   * Create a palette-themed multi-line input editor. The editor's
-   * autocomplete dropdown renders slash-command descriptions wrapped to two
-   * lines (`WrappingSelectList`) while every other completion keeps the
-   * stock single-line list — the S14 kimi treatment.
+   * Create a palette-themed multi-line input editor. Its autocomplete list
+   * keeps pi-tui's state and keys but paints no rows (`CompletionList`): the
+   * host draws it as a drawer over the stream, so the editor never grows.
    * @param options - editor options.
    * @returns the editor component.
    */
@@ -692,23 +915,20 @@ export class MayflyComponentsService extends Service implements MayflyComponents
     // initializer, which defeats inference otherwise.
     const editor: Editor = new Editor(this.tui, theme, editorOptions)
     // pi-tui's Editor instantiates the dropdown list through its private
-    // createAutocompleteList; the own-property shadow swaps in the wrapping
-    // list for slash menus. The theme rides along so a theme swap rebuilds
-    // the factory with fresh paints (the editor itself is per-theme). The
-    // cast lands on a local — the repo's no-semicolon style cannot start a
-    // statement with `(`.
+    // createAutocompleteList; the own-property shadow swaps in the state-only
+    // list and remembers it for the adapter. The cast lands on a local — the
+    // repo's no-semicolon style cannot start a statement with `(`.
+    const completions: { list: CompletionList | undefined } = { list: undefined }
     const factory = editor as unknown as AutocompleteListFactory
-    factory.createAutocompleteList = (prefix: string, items: MayflySelectItem[]): SelectList =>
-      prefix.startsWith('/')
-        ? new WrappingSelectList(items, editor.getAutocompleteMaxVisible(), theme.selectList, SLASH_SELECT_LIST_LAYOUT)
-        : new SelectList(items, editor.getAutocompleteMaxVisible(), theme.selectList)
+    factory.createAutocompleteList = (prefix: string, items: MayflySelectItem[]): SelectList => {
+      completions.list = new CompletionList(items, editor.getAutocompleteMaxVisible(), theme.selectList, prefix)
+      return completions.list
+    }
     return new EditorAdapter(editor, {
       slashTokenPaint: (text) => `\x1b[1m${colors.primary(text)}\x1b[22m`,
       ghostHintPaint: colors.textMuted,
-      borderTitlePaint: colors.textMuted,
-      parkedBorderPaint: colors.textMuted,
-      glyphs: this.presentation.glyphs,
-    })
+      tokenPaints: { label: colors.accent, detail: colors.muted },
+    }, completions)
   }
 
   /**

@@ -9,7 +9,6 @@
 | 键 | 动作 | 说明 |
 | --- | --- | --- |
 | `Ctrl-O` | 切换工具输出展开 | 在最近 **3 个 turn** 的工具卡与思考块的一行摘要与完整输出之间切换 |
-| `Ctrl-T` | 切换 todo 面板折叠 | 五行折叠视图 ↔ 整表视图 |
 | `F6` / `Shift+F6` | 切换 surface 焦点 | 在 Editor、状态栏视图与 pane lane 间前进/后退：有可进入的视图时 `F6` 先进入视图，再按布局顺序进入可交互的 pane；到边界回到 Editor |
 | `F7` | 上一个会话 | 将整套 UI 切回上一个显示的会话（主会话、BTW 或 subagent）；没有其他打开的会话时显示提示 |
 | `F8` | 关闭旁支会话 | 关闭当前显示的旁支会话（显示主会话时关闭 `F7` 对端）：detach subagent 或 dispose 临时 BTW Agent |
@@ -39,7 +38,7 @@
 | `Ctrl+E` | 将聚焦的可滚动内容展开为全屏 |
 | `Delete` | 将已修改的字段恢复为继承值或默认值 |
 | `Alt+Enter 或 Ctrl+J` | 在多行字段中插入换行 |
-| `Enter, Alt+Enter, ↑/↓, Backspace` | 在提示符中：发送、插入换行、在空提示符处翻阅历史（排队消息在前），或先选中再删除最后一个标记 |
+| `Enter, Ctrl+Enter, Alt+Enter, ↑/↓, Backspace` | 在提示符中：发送、作为引导发送、插入换行、在空提示符处翻阅历史，或先选中再删除最后一个标记 |
 | `Ctrl+S, c, x, r, Ctrl+G, Ctrl+F` | 在面板提供相应含义时保存、复制、删除、刷新、在 $EDITOR 中打开或搜索 |
 <!-- END shared-keys -->
 
@@ -61,11 +60,13 @@
 | --- | --- | --- |
 | `Escape` | 中断会话流 / 清空草稿 | 会话流进行中（所选 Agent 或 live 后代运行中）中断该流：buffer 为空且刚提交的消息可安全撤回时优先撤回并恢复进编辑器，草稿保留；空闲时清空草稿，草稿保留在历史中、按一次 `↑` 即可取回；补全弹层打开时只关弹层 |
 | `Ctrl-C` | 清空草稿 → 中断 → 退出 | 有草稿时只清空草稿（按一次 `↑` 可取回）、流继续；空 buffer 且会话流进行中时中断当前 Agent 与所有 running continuable 后代；整棵树空闲且 buffer 为空时 **1 秒内第二次按下**退出 Mayfly |
-| `Ctrl-S` | steer 注入 | 把非空草稿作为转向指令注入当前 turn，并清空 buffer |
+| `Ctrl-Enter` | steer 注入 | 把非空草稿作为转向指令注入当前 turn，并清空 buffer |
 | `Ctrl-V` | 粘贴图片 | 剪贴板图片入附件库，光标处插入 `[image #N]` 标记 |
 | `Ctrl-G` | 外部编辑器 | 草稿交给外部编辑器全屏编辑（`mayfly.editorCommand` 设置 → `$VISUAL` → `$EDITOR`；Mayfly 挂起让出终端）；以 `:cq` 退出则草稿原样保留 |
 | `Alt+M` | 循环会话模型 | 当前 provider 的模型列表里逐个切换（与 `/model` 走同一通道，Host 会同步持久化默认；按键被消费，草稿不动） |
 | `Backspace` | 退格 / 退模式 | 空的 `!` bash 提示符上退格即退回 prompt 模式 |
+| `?` | 键位帮助 | 空提示符上打开键位帮助；其他情况下 `?` 作为字符输入 |
+| `Alt+↑` | 聚焦会话流 | 在提示符上聚焦会话流的最新一行；排队消息那一行上 `e` 编辑、`s` 立即发送、`d` 取消、`u` 撤销。提示符中的 `↑`/`↓` 只翻阅历史 |
 | `Shift+Tab` | 切换计划状态 | normal ↔ plan，保留当前权限与 YOLO（见[会话模式](/features/modes)） |
 
 提示符下方显示通知时，这些键依旧送达编辑器。编辑器扩展只能把动作绑定到组合键（如 `Alt+R`）上；`Esc`、`Tab`、`Shift+Tab` 以及所有未加修饰键的按键都归编辑器。
@@ -85,7 +86,7 @@
 | `/permission` 选择器 | `1`–`9` 或 ↑↓ + `Enter` 切换预设；完全访问会先弹出默认聚焦“否”的确认 |
 | `/agents` 浏览器 | 输入即筛选；↑↓ 选择，`Space` 或 `←` / `→` 展开/折叠，`Enter` 查看；`Tab` 到 **Stop selected**，停止前先确认，对 one-shot、未运行或仍有运行中下级的行会直接说明原因 |
 | `/plugin` 市场 | Installed / Not installed 标签（标签栏上 `←` / `→` 或 `Alt+←` / `Alt+→`，也可用 `F2` / `F3`）；输入即筛选；`Tab` 到 Details、Install 或 Update/repair 与 Remove，可用性按行判断；`Ctrl+R` 刷新 |
-| 旁支会话 | 使用完整主编辑器与同一套 panel 键位；`PageUp` / `PageDown` 滚动其 transcript；可恢复会话中 `Enter` 打开回复表单；`F7` 切回、`F8` 关闭 |
+| 旁支会话 | 使用完整主编辑器与同一套 panel 键位；`PageUp` / `PageDown` 滚动其 transcript；可恢复会话中发送会唤醒子 Agent：`Enter` 把消息排队到它的下一个 turn，`Ctrl+Enter` 转向它；`F7` 切回、`F8` 关闭 |
 
 ## 命名动作与自定义键位
 

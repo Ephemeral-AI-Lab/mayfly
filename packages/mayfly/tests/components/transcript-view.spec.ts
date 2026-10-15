@@ -55,7 +55,7 @@ describe('TranscriptView', () => {
   })
 
   it('puts the messages queued behind the stream after the last turn, marked as queued', () => {
-    const items = itemsOf(facts([turn('turn:1', [prompt('u1', 'one')])], [{ id: 'q1', text: 'then update the changelog', suffix: '⏎ queued' }]))
+    const items = itemsOf(facts([turn('turn:1', [prompt('u1', 'one')])], [{ id: 'q1', text: 'then update the changelog', suffix: '⏎ queued', lane: 'turn', open: false }]))
     expect(items.map(item => item.id)).toEqual(['u1', 'queued.q1.gap', 'queued.q1'])
     const queued = items.at(-1)!
     expect(queued.labelSpans?.at(-1)).toEqual({ text: '  ⏎ queued', tone: 'muted' })
@@ -90,13 +90,13 @@ describe('TranscriptView', () => {
 
   it('reports the newest turn, so the screen counts turns of the agent loop and never rows inside one', () => {
     expect(latestTurnOf(facts([]))).toBe(0)
-    expect(latestTurnOf(facts([turn('turn:4', [prompt('u4', 'go')]), turn('turn:5', [prompt('u5', 'again'), answer('a5', 'done')])], [{ id: 'q', text: 'later', suffix: '⏎ queued' }]))).toBe(5)
+    expect(latestTurnOf(facts([turn('turn:4', [prompt('u4', 'go')]), turn('turn:5', [prompt('u5', 'again'), answer('a5', 'done')])], [{ id: 'q', text: 'later', suffix: '⏎ queued', lane: 'turn', open: false }]))).toBe(5)
     // The window drops old turns without lowering the number.
     expect(latestTurnOf(facts([turn('turn:15', [prompt('u15', 'x')]), turn('turn:16', [prompt('u16', 'y')])]))).toBe(16)
   })
 
   it('numbers a repeated id instead of letting the list be refused whole', () => {
-    const items = itemsOf(facts([turn('turn:1', [prompt('u1', 'one'), prompt('u1', 'one again')])], [{ id: 'q', text: 'x', suffix: '⏎ queued' }, { id: 'q', text: 'y', suffix: '⏎ queued' }]))
+    const items = itemsOf(facts([turn('turn:1', [prompt('u1', 'one'), prompt('u1', 'one again')])], [{ id: 'q', text: 'x', suffix: '⏎ queued', lane: 'turn', open: false }, { id: 'q', text: 'y', suffix: '⏎ queued', lane: 'turn', open: false }]))
     const ids = items.map(item => item.id)
     expect(new Set(ids).size).toBe(ids.length)
     expect(ids).toEqual(['u1', 'u1.gap', 'u1~2', 'queued.q.gap', 'queued.q', 'queued.q.gap~2', 'queued.q~2'])

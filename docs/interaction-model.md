@@ -202,3 +202,41 @@ core `core-context-hints` catalog.
   `agent/disposed`, not per displayed view.
 - Clearing a non-empty prompt draft with Escape or `Ctrl+C` stores it in
   history so one `↑` restores it.
+
+## Interrupt scope
+
+`Esc`, or `Ctrl+C` on an empty prompt, interrupts **the current turn of the
+Agent whose conversation is displayed, and nothing else** (owner decision,
+Phase 4 round 3; `app/agent-interrupt.ts`). A change that also touches
+interruption (for example one that stops interrupting subagents) merges toward
+this contract.
+
+- **Subagents are not interrupted.** Running children of the displayed Agent
+  keep their turns and Activations. A displayed *continuable* child is itself
+  "the Agent whose conversation is displayed": interrupting there stops that
+  child's turn through its parent's authority (`interruptByParent`), never its
+  siblings or parent.
+- **Everything else is untouched:** background jobs, the goal and its
+  continuation, plan mode and todos, pending decision cards, and the Agent's
+  Activation.
+- **Queued and steering messages are kept** (`agent.cancel({ kind: 'user' },
+  { keepInbox: true })`) and are sent now: Harness's driver starts the next turn
+  from the pending inbox as soon as the aborted turn has settled (the
+  `turn()` loop in `dsh-agent-loop` continues while the inbox has pending
+  input). Nothing the user queued is discarded by an interrupt; the user
+  cancels a message with `d` on its row of the stream.
+- **A flow in progress** (the test that makes `Esc` interrupt instead of
+  clearing the draft, and that holds the `■ interrupting…` latch open) is the
+  displayed Agent running, not a descendant. With only a subagent running,
+  `Esc` behaves as at rest.
+
+Surfaces: `interruptAgent` and `isAgentRunning` in `app/agent-interrupt.ts`
+(the former tree walk and `hasRunningAgentWork` are gone), the `interrupt` and
+`sessionFlowInProgress` functions of `interaction/input-plugin.ts`, the
+retraction callback and the `agent/status` stop latch in `app/index.ts`.
+
+Known limits, to check against a live model: a *foreground* subagent call is
+part of the parent's turn, so aborting that turn aborts the call as Harness
+defines it; Mayfly adds no cancellation of its own to any child. The behavior
+was verified against the Harness source and the unit specs, not yet with a
+running model.

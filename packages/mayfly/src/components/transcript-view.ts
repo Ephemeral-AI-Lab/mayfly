@@ -67,6 +67,10 @@ export type StreamRow =
   | { readonly kind: 'error', readonly id: string, readonly text: string }
   /** The cut-turn marker, whole: its `■` is part of the translated text. */
   | { readonly kind: 'interrupted', readonly id: string, readonly text: string }
+  /** One change of the session goal: its mark in the mark's tone, then what changed. */
+  | { readonly kind: 'goal-change', readonly id: string, readonly mark: string, readonly tone: 'accent' | 'muted' | 'success' | 'danger', readonly text: string }
+  /** An autonomous goal round starting, drawn as a rule across the stream with its label in the middle. */
+  | { readonly kind: 'goal-round', readonly id: string, readonly text: string }
   /** Any other text the stream shows. */
   | { readonly kind: 'note', readonly id: string, readonly text: string }
 
@@ -86,8 +90,12 @@ export interface StreamTurn {
 export interface StreamQueued {
   readonly id: string
   readonly text: string
-  /** The translated mark after the text, such as `⏎ queued`. */
+  /** The translated mark after the text: `⏎ queued` for the next turn's lane, `⏎ steering` for the running turn's. */
   readonly suffix: string
+  /** Which lane of the Agent's inbox holds it: `turn` waits for the next turn, `step` is read at the running turn's next step. */
+  readonly lane: 'turn' | 'step'
+  /** Enter opened it: the whole text, not the folded lines. */
+  readonly open: boolean
 }
 
 /** The facts of the stream. */
@@ -98,6 +106,9 @@ export interface TranscriptViewFacts {
 
 const span = (text: string, tone?: MayflyInlineSpan['tone'], styles?: MayflyInlineSpan['styles']): MayflyInlineSpan =>
   ({ text, ...(tone === undefined ? {} : { tone }), ...(styles === undefined ? {} : { styles }) })
+
+/** The columns a full-width block keeps free at the right edge, as the stream keeps two at the left. */
+const GUTTER_COLUMNS = 2
 
 const MOOD_TONE = { running: 'primary', done: 'muted', stopped: 'warning', failed: 'danger' } as const
 
@@ -237,6 +248,9 @@ function rowParts(row: StreamRow): readonly MayflyListItem[] {
     ]
     case 'error': return [line(row.id, [span('✗ ', 'danger'), span(row.text, 'danger')], { wrap: true, hang: 2 })]
     case 'interrupted': return [line(row.id, [span(row.text, 'warning')], { disabled: true })]
+    case 'goal-change': return [line(row.id, [span(row.mark === '' ? '  ' : `${row.mark} `, row.tone), span(row.text, row.tone === 'muted' ? 'muted' : 'default')], { wrap: true, hang: 2 })]
+    // The rule spans the stream between the margins (two columns each side), with the label in its middle.
+    case 'goal-round': return [{ id: row.id, label: row.text, body: ui.divider({ label: row.text, align: 'center', inset: GUTTER_COLUMNS, tone: 'muted' }), bodyAlways: true, bodyLead: [span('')], disabled: true }]
     case 'note': return [line(row.id, [span(row.text, 'muted')])]
   }
 }
@@ -290,12 +304,21 @@ function closingOf(turn: StreamTurn): readonly MayflyListItem[] {
   return items
 }
 
+/**
+ * The message a queued row's item stands for.
+ * @param itemId - the id of a list item the stream drew.
+ * @returns the inbox message's id, or `undefined` for any other item (a queued row's gap is not a row).
+ */
+export function queuedIdOf(itemId: string): string | undefined {
+  return itemId.startsWith('queued.') && !itemId.endsWith('.gap') ? itemId.slice('queued.'.length) : undefined
+}
+
 const queuedCache = new WeakMap<StreamQueued, readonly MayflyListItem[]>()
 
 function queuedItems(message: StreamQueued): readonly MayflyListItem[] {
   let items = queuedCache.get(message)
   if (items === undefined) {
-    items = freezeWire([blank(`queued.${message.id}.gap`), promptItem(`queued.${message.id}`, message.text, false, message.suffix)])
+    items = freezeWire([blank(`queued.${message.id}.gap`), promptItem(`queued.${message.id}`, message.text, message.open, message.suffix)])
     queuedCache.set(message, items)
   }
   return items
@@ -339,7 +362,7 @@ function withUniqueIds(items: MayflyListItem[]): MayflyListItem[] {
 }
 
 /** The ids the stream's controls carry: the list the cursor walks, and the hidden keys scoped to it. */
-export const STREAM = Object.freeze({ list: 'stream', keys: 'stream.keys', copy: 'copy', copyRaw: 'copy-raw', open: 'open', findDown: 'find-down', findUp: 'find-up', matchPrev: 'match-prev', matchNext: 'match-next', matchAgain: 'match-again', matchBack: 'match-back' })
+export const STREAM = Object.freeze({ list: 'stream', keys: 'stream.keys', copy: 'copy', copyRaw: 'copy-raw', open: 'open', queuedEdit: 'queued-edit', queuedSteer: 'queued-steer', queuedCancel: 'queued-cancel', queuedUndo: 'queued-undo', findDown: 'find-down', findUp: 'find-up', matchPrev: 'match-prev', matchNext: 'match-next', matchAgain: 'match-again', matchBack: 'match-back' })
 
 /** Where the stream's cursor is sent from outside: the newest row when the reader moves focus up into the stream. */
 export interface StreamCursor {

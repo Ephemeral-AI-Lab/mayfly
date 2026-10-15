@@ -14,7 +14,7 @@ export type MayflyGlyphMode = 'unicode' | 'ascii'
 
 /**
  * The fallback table: the roadmap's slice 1.2 proposal (to be confirmed at checkpoint A), plus the arrows, rules, and
- * marks the painters also emit (`← ↑ ↓ ↩`, `−`, `⋯`, the square corners, `•`, `✕`, `✻`, `»`, `⏵`, `⇥`).
+ * marks the painters also emit (`← ↑ ↓ ↩`, `−`, `⋯`, the square corners, `•`, `✕`, `✻`, `»`, `⏵`, `⏸`, `⇥`).
  */
 export const ASCII_GLYPHS: Readonly<Record<string, string>> = Object.freeze({
   '→': '>', '←': '<', '↑': '^', '↓': 'v', '↩': '<', '▲': '^',
@@ -23,12 +23,12 @@ export const ASCII_GLYPHS: Readonly<Record<string, string>> = Object.freeze({
   '‹': '<', '›': '>',
   '✓': 'v', '✗': 'x', '✕': 'x', '⊘': '/',
   '░': '.', '▒': ':', '▓': '*', '█': '#',
-  '■': '#', '⚠': '!', 'ℹ': 'i',
+  '■': '#', '⚠': '!',
   '⎿': 'L', '│': ':',
   '━': '=', '─': '-',
   '▰': '#', '▱': '.',
   '╭': '+', '╮': '+', '╰': '+', '╯': '+', '┌': '+', '┐': '+', '└': '+', '┘': '+', '├': '+', '┤': '+',
-  '−': '-', '⋯': ':', '•': '*', '✻': '*', '»': '>', '⏵': '>', '⇥': '>',
+  '−': '-', '⋯': ':', '•': '*', '✻': '*', '»': '>', '⏵': '>', '⏸': '|', '⇥': '>',
 })
 
 /** The spinner every loader variant becomes in ASCII mode. */

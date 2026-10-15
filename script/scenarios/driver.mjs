@@ -15,9 +15,11 @@
 
 import { randomBytes } from 'node:crypto'
 import { appendFileSync, readFileSync } from 'node:fs'
+import { createRequire } from 'node:module'
 import { createConnection } from 'node:net'
 import { dirname, join } from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
+import { pathToFileURL } from 'node:url'
 
 export const name = 'mayfly-replay-driver'
 export const inject = ['mayflyCurrentAgent', 'sessions']
@@ -172,6 +174,8 @@ export function apply(ctx) {
     const lastSeqs = new Map()
     const streams = new Map()
     const jobsById = new Map()
+    /** The Agent's own `followup` and `steer`, while a held queue stands them in. */
+    let heldAgent
     let notifier
     // Persisted sessions need new ids on every run, and the scenario clock repeats Date.now(), so the tag is random.
     const runTag = randomBytes(4).toString('hex')
@@ -307,12 +311,25 @@ export function apply(ctx) {
             const goals = ctx.get('goals')
             if (goals === undefined) { log('no goal service'); break }
             const view = goals.get(agent)
+            // `ifNeeded`: the live viewer may already have done it with the panel's button.
+            if (action.ifNeeded === true && view?.phase === 'active') { log(`goal ${action.action} skipped`); break }
             if (action.action === 'create') goals.create(agent, { objective: action.objective, ...(action.maxGoalRounds === undefined ? {} : { maxGoalRounds: action.maxGoalRounds }) })
             else if (action.action === 'block') goals.block(agent, view, { code: action.code ?? 'needs-input', message: action.message ?? 'Blocked' })
             else goals[action.action](agent, view)
             // The service arms a goal for continuation; a replay only shows the state, so nothing may continue it.
             try { goals.disarm(agent) } catch { /* cleared goals have nothing to disarm */ }
             log(`goal ${action.action}`)
+            break
+          }
+          case 'goal-round': {
+            const goals = ctx.get('goals')
+            const view = goals?.get(agent)
+            if (view === undefined) { log('no goal for the round'); break }
+            // The round driver's own prompt, attributed to the exact goal revision it continues.
+            const text = `<goal_round>\nObjective: ${JSON.stringify(view.objective)}\nRound: ${String(action.round)}/${String(view.maxGoalRounds)}\n\nContinue working toward the objective in this same session.\n</goal_round>`
+            const event = agent.session.append('user/message', { id: `replay-goal-round-${String(action.round)}`, role: 'user', content: [{ type: 'text', text }], source: { kind: 'goal', goalId: view.id, revision: view.revision, round: action.round } }, { surfaceOp: 'append' })
+            lastSeqs.set(agent.session, event.seq)
+            log(`goal round ${String(action.round)}`)
             break
           }
           case 'job': {
@@ -336,7 +353,14 @@ export function apply(ctx) {
             break
           }
           case 'queue': {
-            // Pending input enters the inbox without waking the agent (`followup` would start a turn).
+            // Pending input enters the inbox without waking the agent (`followup` would start a turn). The replay's Agent
+            // stands for a running one, so the product's own `s` (steer) and `u` (queue again) must not wake it either,
+            // until the last message is read.
+            if (heldAgent === undefined) {
+              heldAgent = { followup: agent.followup, steer: agent.steer }
+              agent.followup = message => { agent.inbox.append('next-turn', message) }
+              agent.steer = message => { agent.inbox.append('next-step', message) }
+            }
             action.rows.forEach((row, index) => {
               const steer = typeof row === 'object' && row !== null
               agent.inbox.append(steer ? 'next-step' : 'next-turn', { id: action.ids[index], role: 'user', content: [{ type: 'text', text: steer ? row.steer : row }], source: { kind: 'user' } })
@@ -345,8 +369,19 @@ export function apply(ctx) {
             break
           }
           case 'queue-clear': {
-            for (const id of action.ids) agent.inbox.remove(id)
-            log(`queue cleared ${String(action.ids.length)} messages`)
+            // The agent reads the messages still in the inbox: each becomes the prompt the session records, as when the loop
+            // claims it (one the reader took out or cancelled stays out).
+            action.ids.forEach((id, index) => {
+              if (id === undefined || !agent.inbox.remove(id)) return
+              const claimed = main.append('user/message', { id, role: 'user', content: [{ type: 'text', text: action.texts[index] }], source: { kind: 'user' } }, { surfaceOp: 'append' })
+              lastSeqs.set(main, claimed.seq)
+            })
+            if (heldAgent !== undefined && agent.inbox.nextTurn.length + agent.inbox.nextStep.length === 0) {
+              agent.followup = heldAgent.followup
+              agent.steer = heldAgent.steer
+              heldAgent = undefined
+            }
+            log(`queue read ${String(action.ids.length)} messages`)
             break
           }
           case 'notify': {
@@ -369,10 +404,15 @@ export function apply(ctx) {
             if (agents === undefined || conversations === undefined || presets === undefined || defaultModel === undefined) { log('no side conversation services'); break }
             const selected = main.requestHeader()?.config ?? defaultModel.currentSelection()
             const preset = main.header.agentPreset
+            // Like `/btw`: the side conversation inherits the main log, so its facts carry the main's calls too.
+            const { buildForkSeed, SessionLogOffset } = await import(pathToFileURL(createRequire(new URL('../../packages/mayfly/package.json', import.meta.url)).resolve('@deepseek-ai/dsh-session')).href)
+            const inherited = main.snapshotEvents()
+            const lastSeq = inherited.at(-1)?.seq
             const handle = await agents.create({
               sessionId: `btw-replay-${runTag}`,
-              meta: { cwd: main.header.cwd ?? process.cwd(), parentSession: agent.id },
-              seed: [],
+              meta: { cwd: main.header.cwd ?? process.cwd(), parentSession: agent.id, ...(inherited.length === 0 ? {} : { isSeeded: true }) },
+              ...(inherited.length === 0 ? {} : { inheritedEventCount: SessionLogOffset(inherited.length) }),
+              seed: lastSeq === undefined ? [] : buildForkSeed(inherited, lastSeq),
               signal: abort.signal,
               agentOptions: { provider: selected.provider, model: selected.model, ...(selected.reasoningEffort === undefined ? {} : { reasoningEffort: selected.reasoningEffort }) },
               setup: async agentCtx => { await presets.mount(agentCtx, preset) },

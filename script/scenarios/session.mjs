@@ -7,25 +7,46 @@
  * @module script/scenarios/session
  */
 
+import { execFileSync } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { prepareMarket } from './market.mjs'
+import { clipboardImage, externalEditor, workspaceFiles } from './fixtures.mjs'
 import { timelineNamed } from './replays.mjs'
 import { startStubModel } from './stub-model.mjs'
 import { compile } from './timeline.mjs'
 
 const DRIVER = fileURLToPath(new URL('./driver.mjs', import.meta.url))
 const FAKE_ACCOUNT = fileURLToPath(new URL('./fake-account.mjs', import.meta.url))
+const EXTENSIONS = fileURLToPath(new URL('./extensions.mjs', import.meta.url))
 
 /** A workspace path of fixed width: `/tmp/mayfly-scenario-` and eight hex digits. */
 export const WORKSPACE = /\/tmp\/mayfly-scenario-[0-9a-f]{8}/gu
 
 /**
+ * Make `cwd` a git repository on `branch` with one committed file and an uncommitted change of `added` and `deleted` lines,
+ * so the status row shows a branch with its changes. The commit is dated, so a run's repository does not depend on the clock.
+ * @param {string} cwd - the directory to initialise.
+ * @param {{ branch: string, added: number, deleted: number }} change - the branch and the size of the change.
+ */
+function initRepository(cwd, { branch, added, deleted }) {
+  const git = (...args) => execFileSync('git', ['-c', 'user.name=Replay', '-c', 'user.email=replay@example.com', ...args], { cwd, stdio: 'ignore', env: { ...process.env, GIT_AUTHOR_DATE: '2026-01-01T00:00:00Z', GIT_COMMITTER_DATE: '2026-01-01T00:00:00Z' } })
+  const lines = prefix => Array.from({ length: Math.max(added, deleted) + 2 }, (_, index) => `${prefix} ${String(index)}`)
+  git('init', '-q', '-b', branch)
+  writeFileSync(join(cwd, 'hero.css'), `${lines('rule').join('\n')}\n`)
+  git('add', '.')
+  git('commit', '-q', '-m', 'Add the hero styles')
+  const kept = lines('rule').slice(deleted)
+  writeFileSync(join(cwd, 'hero.css'), `${[...kept, ...Array.from({ length: added }, (_, index) => `new ${String(index)}`)].join('\n')}\n`)
+}
+
+/**
  * Start a session.
  * @param {object} options
- * @param {{ source: { replay?: string, idle?: boolean, gallery?: boolean } }} options.scenario - a catalog scenario.
+ * @param {{ source: { replay?: string, idle?: boolean, gallery?: boolean }, workspace?: Record<string, string>, extensions?: boolean, clipboard?: { image: number, delayMs?: number }, editor?: { append: string } }} options.scenario - a catalog scenario;
+ *   `workspace` seeds files, `extensions` loads the editor extensions of `extensions.mjs`, `clipboard.image` puts a PNG of that many KB on the clipboard, `editor.append` is an external editor.
  * @param {string} options.dir - where the overlay, the compiled replay, and the driver log go (created fresh).
  * @param {number} [options.speed] - timed playback speed when no runner controls the driver.
  * @param {string} [options.control] - the runner's control socket.
@@ -42,14 +63,17 @@ export async function prepareSession({ scenario, dir, speed = 1, control, config
   const tmp = `/tmp/mayfly-scenario-${randomBytes(4).toString('hex')}`
   // The bench profile's credential file is shared by every run: a `firstRun` scenario that saves a key must not leave it for the next.
   if (scenario.firstRun === true && dshHome !== undefined) rmSync(join(dshHome, '.credentials.yaml'), { force: true })
-  const cwd = isolate ? join(tmp, 'workspace') : tmp
+  const base = isolate ? join(tmp, 'workspace') : tmp
+  const cwd = replay?.workspace?.path === undefined ? base : join(base, replay.workspace.path)
   mkdirSync(cwd, { recursive: true })
+  if (replay?.workspace?.git !== undefined) initRepository(cwd, replay.workspace.git)
   rmSync(dir, { recursive: true, force: true })
   mkdirSync(dir, { recursive: true })
   const patch = join(dir, 'overlay.yml')
   const rows = [`- insert:\n    - id: mayfly-replay-driver\n      name: ${pathToFileURL(DRIVER).href}\n`]
   // An `account` scenario swaps the Platform account service for one that answers from memory (fake-account.mjs).
   if (scenario.account?.signed !== undefined) rows.push(`- insert:\n    - id: mayfly-scenario-account\n      name: ${pathToFileURL(FAKE_ACCOUNT).href}\n`, '- id: deepseek-account\n  disabled: true\n')
+  if (scenario.extensions === true) rows.push(`- insert:\n    - id: mayfly-scenario-extensions\n      name: ${pathToFileURL(EXTENSIONS).href}\n`)
   // A scenario may pin settings of its own (a work-details mode) over the runner's.
   const pinned = { ...config }
   let market
@@ -78,6 +102,12 @@ export async function prepareSession({ scenario, dir, speed = 1, control, config
   }
   const log = join(dir, 'driver.log')
   const stub = await startStubModel({ balance: scenario.account?.balance })
+  if (scenario.workspace !== undefined) workspaceFiles(cwd, scenario.workspace)
+  // What a PTY lacks: a clipboard holding an image, an external editor (a scenario names them).
+  const fixtures = {
+    ...(scenario.clipboard?.image === undefined ? {} : clipboardImage(dir, scenario.clipboard.image, scenario.clipboard.delayMs)),
+    ...(scenario.editor === undefined ? {} : externalEditor(dir, scenario.editor.append)),
+  }
   return {
     cwd,
     patch,
@@ -86,12 +116,14 @@ export async function prepareSession({ scenario, dir, speed = 1, control, config
     env: {
       // A `firstRun` scenario has no key, so the first-run guide opens (its Language step needs the Host's `locale` namespace, which the bench profile lacks).
       DEEPSEEK_BASE_URL: `${stub.baseURL}/v1`, ...(scenario.firstRun === true ? {} : { DEEPSEEK_API_KEY: 'replay-key' }),
+      ...(scenario.extensions === true ? { MAYFLY_SCENARIO_EXTENSIONS: '1' } : {}),
       MAYFLY_REPLAY_FILE: file, MAYFLY_REPLAY_SPEED: String(speed), MAYFLY_REPLAY_LOG: log,
       ...(control === undefined ? {} : { MAYFLY_REPLAY_CONTROL: control }),
       ...(scenario.account?.signed === undefined ? {} : { MAYFLY_FAKE_ACCOUNT: scenario.account.signed }),
       ...(isolate ? { HOME: tmp } : {}),
       ...browserEnv,
       ...market?.env,
+      ...fixtures,
     },
     close: async () => {
       await market?.close()

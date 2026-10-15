@@ -26,8 +26,8 @@ Harness provides for this purpose.
 
 | Service | Registration shape | Renderer |
 | --- | --- | --- |
-| `mayflyPanes` | `register(definition, node)` / `set(node \| null)` | core header/left/right/bottom lanes |
-| `mayflyStatus` | `register(definition, node)` / `set(node \| null)` | transcript footer |
+| `mayflyPanes` | `register(definition, node)` / `set(node \| null)`; a `views` pane adds `setSummary(summary \| null)` | core header/left/right/bottom lanes; a views pane's summary joins the status row and its panel opens under it (`core/views-lane.ts`) |
+| `mayflyStatus` | `register(definition, node)` / `set(node \| null)`; a node may be `ui.shed(full, narrower)` | the one status row on the footer node slot (`transcript/status-rows.ts`) |
 | `mayflyOverlays` | `open(definition, node)` / `set(node)` | core overlay stack |
 | `mayflyEditorExtensions` | `register(definition, decoration)` / `set(decoration)` | interaction editor |
 
@@ -94,7 +94,7 @@ The UI events below are declared in `core/types.ts` and are unfiltered. Each has
 The notification lane is the frontend's internal record of notices, not a public service. A producer takes an owner
 from `createInteractionNotificationOwner(ctx, label)` (`interaction/notifications.ts`) and reports or clears its
 records by id; the owner's records retire with its Fiber. `transcript/pane-notification.ts` shows one record on the
-notification row: the most severe, then the newest, for the app or the current session. `✓` and `ℹ` records leave
+notification row: the most severe, then the newest, for the app or the current session. `✓` and information records leave
 after five seconds of visible time; `⚠` and `✗` records stay until cleared. The notices the session's facts raise
 (`transcript/notices.ts`) report into the same lane.
 
@@ -131,9 +131,9 @@ stream the user sees start from the BTW's own first question, without
 repeating primary-session history.
 
 `@ephemeral-ai/mayfly/app` declares the `mayfly/request-subagent-reply` event.
-An external plugin can request the shared reply form for the currently
-displayed continuable child session; the event itself does not send a message
-or resume an Agent. On submit the user explicitly chooses Queue or Steer; the
+An external plugin can ask for the currently displayed continuable child session to be
+shown with the editor seeded by the given text; the event itself does not send a message
+or resume an Agent. The user sends it from the editor: `Enter` queues, `Ctrl+Enter` steers; the
 write still goes through the native addressed-subagent path and checks the
 exact identities of the primary Agent and the online child Agent. Browsing and
 draft editing of an unloaded child session stay readonly. The event carries an
@@ -144,12 +144,12 @@ seeded with it instead of sending.
 list/form state. Viewport matching and visible width remain core's decision;
 use `stack.row` when pages should show side by side in a wide viewport.
 
-When the user interrupts the current Agent, Mayfly synchronously walks the
-`parentSession` lineage of the live `agents` and issues an interrupt to every
-running continuable descendant via `subagents.interrupt(..., { kind:
-'ancestor', agent })`. The operation cancels only the current turn and
-preserves Activations and the unclaimed inbox; it does not use the drain API
-that would recursively destroy the subtree.
+When the user interrupts, Mayfly cancels only the displayed Agent's current turn
+(`agent.cancel({ kind: 'user' }, { keepInbox: true })`; a displayed continuable
+child goes through `subagents.interruptByParent`). Running subagents, jobs, and
+the goal are not touched, and the queued and steering messages are kept and run
+as the next turn. See *Interrupt scope* in
+[interaction-model.md](./interaction-model.md).
 
 Plugins that need Agent identity inject `mayflyCurrentAgent`; plugins that
 show or switch conversations inject `mayflyConversations`. A plugin that

@@ -168,19 +168,17 @@
       name: '@ephemeral-ai/mayfly/mode-status'
     - id: mayfly-status-jobs
       name: '@ephemeral-ai/mayfly/status-jobs'
+    - id: mayfly-status-agents
+      name: '@ephemeral-ai/mayfly/status-agents'
     - id: mayfly-status-goal
       name: '@ephemeral-ai/mayfly/status-goal'
 
     - id: mayfly-pane-activity
       name: '@ephemeral-ai/mayfly/pane-activity'
-    - id: mayfly-pane-queue
-      name: '@ephemeral-ai/mayfly/pane-queue'
     - id: mayfly-pane-todo
       name: '@ephemeral-ai/mayfly/pane-todo'
     - id: mayfly-btw-command
       name: '@ephemeral-ai/mayfly/btw-command'
-    - id: mayfly-pane-agents
-      name: '@ephemeral-ai/mayfly/pane-agents'
     - id: mayfly-pane-workflow
       name: '@ephemeral-ai/mayfly/pane-workflow'
 

@@ -46,12 +46,11 @@ export const DATA_READS = [
 ]
 
 /**
- * The scenarios a product source no scenario covers runs: the empty session and a full turn for the product, and the
- * gallery for its own sources.
+ * The scenarios a product source no scenario covers runs: the two long conversations of the catalog, which show the
+ * stream, the editor, the notification row, and the status row together.
  */
 export const SCENARIO_SMOKE = [
-  { pattern: /^examples\/ui-gallery\/src\//u, scenarios: ['gallery'] },
-  { pattern: /^packages\/(?:mayfly|ui)\/src\//u, scenarios: ['idle', 'tour'] },
+  { pattern: /^packages\/(?:mayfly|ui)\/src\//u, scenarios: ['mergeConversations', 'mergeDock'] },
 ]
 
 /**

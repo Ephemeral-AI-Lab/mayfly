@@ -13,7 +13,6 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
-import { GutterComponent } from '../core/gutter.ts'
 import type { MayflyDecisionRequest } from '../core/types.ts'
 // Empty type import carries the app-owned session reader/projection services.
 import type {} from '../app/index.ts'
@@ -21,13 +20,14 @@ import { copyTextToClipboard } from '../interaction/clipboard-write.ts'
 import { openInEditor } from '../interaction/decision-actions.ts'
 import { createInteractionNotificationOwner } from '../interaction/notifications.ts'
 import { mountFocusModeStatus } from './status-focus.ts'
-import { StatusFooterComponent } from './status-model.ts'
+import { mountStatusFooter } from './status-rows.ts'
 import { userMessageText } from './stream-facts.ts'
 import { TranscriptController, type StreamRowActions } from './transcript-model.ts'
 import { OfficialConversationModelSource } from './official-model.ts'
 import type { LiveDraftSource } from './conversation-feed.ts'
 import { ConversationSlots } from './conversation-slots.ts'
 import type { SessionFactsService } from './session-facts.ts'
+import type { SpawnedChild, SpawnedChildren } from './tool-calls.ts'
 import {
   DEFAULT_EXPAND_TURNS,
   followPresentationSettings,
@@ -94,7 +94,6 @@ export function apply(ctx: Context): void {
   mountTranscriptLocale(ctx, 'transcript', TRANSCRIPT_LOCALE)
   const t = transcriptTranslator(ctx, 'transcript')
   const screen = ctx.mayflyScreen
-  const colors = ctx.mayflyTheme.colors
   const presentation = new TranscriptPresentationPolicy()
   // Mayfly settings ride the host settings document: the resolved `mayfly`
   // namespace (schema owned by interaction) carries the work-details mode
@@ -115,11 +114,13 @@ export function apply(ctx: Context): void {
   // the queue pane does), never while a model is being published: a read inside a session event disturbs the
   // activity row's own bookkeeping of that event.
   let selected: Agent | null = null
-  let queued: readonly { readonly id: string, readonly text: string }[] = []
+  let queued: readonly { readonly id: string, readonly text: string, readonly lane: 'turn' | 'step' }[] = []
   const readQueued = (): void => {
-    queued = selected === null ? [] : [...selected.inbox.nextStep, ...selected.inbox.nextTurn]
-      .filter(message => message.source.kind === 'user')
-      .map(message => ({ id: String(message.id), text: userMessageText(message) }))
+    queued = selected === null ? [] : [
+      ...selected.inbox.nextStep.map(message => ({ message, lane: 'step' as const })),
+      ...selected.inbox.nextTurn.map(message => ({ message, lane: 'turn' as const })),
+    ].filter(({ message }) => message.source.kind === 'user')
+      .map(({ message, lane }) => ({ id: String(message.id), text: userMessageText(message), lane }))
   }
   // The wire carries an attachment id; the byte loader resolves it through the attachment store with the reference the
   // stream kept when it built the prompt's row. A missing store or file leaves the text fallback.
@@ -149,6 +150,8 @@ export function apply(ctx: Context): void {
         if (reply.kind === 'failed') rowNotices.report('open', { message: reply.message, severity: 'error' })
       })
     },
+    // The input editor holds the inbox restore data of the messages it queued, so it answers.
+    queued: (action, id) => { ctx.emit('mayfly/queued-action', action, id) },
   }
   // The compaction rows read the selected Agent's occupancy marks; the stream is published again when a mark lands.
   const sessionFacts = ctx.get('mayflySessionFacts') as SessionFactsService | undefined
@@ -156,7 +159,9 @@ export function apply(ctx: Context): void {
   // queues, and the stream turns the first one's call into the request block.
   const queues: Record<'approval' | 'plan', readonly MayflyDecisionRequest[]> = { approval: [], plan: [] }
   let requests: readonly MayflyDecisionRequest[] = []
-  const transcript: TranscriptController = new TranscriptController({ presentation, t, queued: () => queued, requests: () => requests, imageRefs, rows, focusMode: mode => ctx.emit('mayfly/focus-mode-changed', mode), tick: ctx.mayflyTick, context: () => sessionFacts === undefined ? undefined : { marks: sessionFacts.current.compactions, window: sessionFacts.current.contextWindow, tokens: sessionFacts.current.contextTokens, approvals: sessionFacts.current.approvals } })
+  // The children the displayed conversation spawned: a spawn's line follows its child (running, settled, failed).
+  let children: SpawnedChildren = { byId: new Map(), byPrompt: new Map() }
+  const transcript: TranscriptController = new TranscriptController({ presentation, t, queued: () => queued, requests: () => requests, imageRefs, rows, focusMode: mode => ctx.emit('mayfly/focus-mode-changed', mode), focusRow: row => ctx.emit('mayfly/focus-row-changed', row), tick: ctx.mayflyTick, context: () => sessionFacts === undefined ? undefined : { marks: sessionFacts.current.compactions, window: sessionFacts.current.contextWindow, tokens: sessionFacts.current.contextTokens, approvals: sessionFacts.current.approvals, children } })
   let marks = sessionFacts?.current.compactions
   let window = sessionFacts?.current.contextWindow
   let approvals = sessionFacts?.current.approvals
@@ -168,6 +173,25 @@ export function apply(ctx: Context): void {
     transcript.republish()
   })
   ctx.effect(() => () => offMarks?.())
+  let childrenKey = ''
+  const offChildren = sessionFacts?.subscribeChildren((list) => {
+    const byId = new Map<string, SpawnedChild>()
+    const byPrompt = new Map<string, SpawnedChild>()
+    for (const child of list) {
+      const spawned: SpawnedChild = child.phase === 'completed' || child.phase === 'failed'
+        ? { state: 'settled', failed: child.phase === 'failed', ...child.stopped === true ? { stopped: true } : {}, ...child.endedAt === undefined ? {} : { endedAt: child.endedAt } }
+        : { state: 'running' }
+      byId.set(child.id, spawned)
+      if (child.promptText !== undefined && !byPrompt.has(child.promptText)) byPrompt.set(child.promptText, spawned)
+    }
+    // Only a change of state republishes: the streamed counters of a running child are the item's, not the stream's.
+    const key = JSON.stringify([...byId])
+    if (key === childrenKey) return
+    childrenKey = key
+    children = { byId, byPrompt }
+    transcript.republish()
+  })
+  ctx.effect(() => () => offChildren?.())
   ctx.effect(() => ctx.on('mayfly/decision-requests-changed', (source, next) => {
     queues[source] = next
     requests = [...queues.approval, ...queues.plan]
@@ -214,26 +238,10 @@ export function apply(ctx: Context): void {
     transcript.republish()
   }
   for (const off of [ctx.on('agent/inbox/inserted', onInbox), ctx.on('agent/inbox/claimed', onInbox), ctx.on('agent/inbox/discarded', onInbox)]) ctx.effect(() => () => off())
-  const footer = new StatusFooterComponent(
-    ctx.mayflyStatus,
-    ctx.mayflyComponents,
-    colors,
-    () => ({ columns: screen.columns, rows: screen.rows }),
-    screen.views,
-  )
-  const offStatus = ctx.mayflyStatus.subscribe(() => {
-    footer.invalidate()
-    screen.requestRender()
-  })
-  ctx.effect(() => offStatus)
   transcript.attach(screen)
-  // The footer pins to the dock's lowest slot (S12): the status row stays
-  // on the terminal's last row beneath the editor, the kimi layout dialog
-  // panels pull up over.
-  ctx.effect(() => {
-    const slot = screen.mountDockSlot('status.footer', new GutterComponent(footer), 'bottom')
-    return () => slot.dispose()
-  })
+  // The footer is the two status rows on the footer node slot; the slot pins to the dock's lowest row (S12), so the
+  // status stays on the terminal's last rows beneath the editor, and the status row is only there while it has an entry.
+  mountStatusFooter(ctx, screen)
 
   let offKeymap: () => void = () => {}
   const registerKeymap = (): void => {

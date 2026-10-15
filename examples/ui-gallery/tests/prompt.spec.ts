@@ -32,7 +32,7 @@ describe('ui gallery prompt', () => {
     const { entry, prompt } = await boot()
     expect(entry().definition.placement).toBe('bottom')
     expect(prompt().tokens.map(token => token.id)).toEqual(['image-1'])
-    expect(prompt().recall.map(item => item.kind)).toEqual(['queued', 'history', 'history'])
+    expect(prompt().recall.map(item => item.text)).toEqual(['run the width scan again', 'bump the changelog too'])
     expect(prompt().completions).toBeUndefined()
   })
 
@@ -70,13 +70,13 @@ describe('ui gallery prompt', () => {
   it('acknowledges a submit with a new node, a longer history, and a cleared prompt', async () => {
     const { promptOf, observe, act } = await boot()
     const submit = (text: string) => ({ kind: 'submit' as const, controlId: 'gallery-prompt', submission: { actionId: 'gallery-prompt', draftRevision: 1, source: [], forms: [{ pagePath: [], formId: 'gallery-prompt', draftRevision: 1, fields: [{ id: 'text', change: 'set' as const, value: text }, { id: 'tokens', change: 'set' as const, value: ['image-1'] }] }] } })
-    await observe({ kind: 'recall-change', controlId: 'gallery-prompt', source: 'queued', index: 0 })
+    await observe({ kind: 'recall-change', controlId: 'gallery-prompt', source: 'history', index: 0 })
     const sent = await act(submit('also update the footer'))
     expect(sent).toMatchObject({ kind: 'accepted', feedback: { severity: 'success', message: 'Sent with 1 attachment' } })
     const acknowledged = promptOf((sent as { node: unknown }).node)
     expect(acknowledged.tokens).toEqual([])
-    // The recalled queued message left the queue, and what was sent is the newest history entry.
-    expect(acknowledged.recall.map(item => `${item.kind}:${item.text}`)).toEqual(['history:also update the footer', 'history:run the width scan again', 'history:bump the changelog too'])
+    // What was sent is the newest history entry.
+    expect(acknowledged.recall.map(item => item.text)).toEqual(['also update the footer', 'run the width scan again', 'bump the changelog too'])
     await observe({ kind: 'recall-change', controlId: 'gallery-prompt', source: 'draft', index: -1 })
     const blank = await act({ ...submit('plain'), submission: { ...submit('plain').submission, forms: [{ ...submit('plain').submission.forms[0]!, fields: [{ id: 'text', change: 'set' as const, value: '   ' }] }] } })
     expect(blank).toMatchObject({ feedback: { message: 'Sent' } })

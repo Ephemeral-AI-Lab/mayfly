@@ -28,7 +28,7 @@ import type {
   MayflyPagePath,
 } from '@ephemeral-ai/mayfly-ui'
 import { textOf } from '@ephemeral-ai/mayfly-ui'
-import { CURSOR_MARKER, ScrollView, type Component } from '@earendil-works/pi-tui'
+import { CURSOR_MARKER, HStack, ScrollView, type Component } from '@earendil-works/pi-tui'
 import { renderLayoutFrame, type LayoutBox, type LayoutRect } from '@earendil-works/pi-tui/dist/layout.js'
 import { getLayoutNode, LAYOUT_NODE, type LayoutNode, type LayoutViewport } from '@earendil-works/pi-tui/dist/layout-node.js'
 import { glyphRows } from './glyphs.ts'
@@ -48,13 +48,15 @@ import {
   renderHintRow,
   PANEL_GUTTER,
   renderSurfaceHead,
+  renderSurfaceTail,
+  surfaceBorderPaint,
   type HintPart,
   renderTabs,
   type PatternFocus,
 } from './ui-patterns.ts'
 import { concatRows, findMarkerRow, isVirtualRows, mapRows, prepareRows, sameMaterializedRows, sliceRows, unclampedRows, virtualRows } from './ui-rows.ts'
 import { ColumnStack, PageGroup, PageHold, RowStack, onScreen, placeChild } from './ui-stacks.ts'
-import { sliceByColumn, visibleWidth } from './width.ts'
+import { sliceByColumn, truncateToWidth, visibleWidth } from './width.ts'
 import { fieldActions, fieldReset, type UiFieldAction } from './ui-interaction-field-actions.ts'
 import { fieldDecor, fieldDisplayError, stepNumber } from './ui-interaction-form.ts'
 import { editorWidth, formHeading, formLabelWidth, matchingSuggestions, paintFormField, type FieldDecor } from './ui-form-paint.ts'
@@ -86,7 +88,7 @@ import { UiRowCache } from './ui-row-cache.ts'
 import { canStepLeft, railGroupFor, type TabsTraits } from './ui-focus-levels.ts'
 import { isRail, tabsShape } from './ui-tabs-paint.ts'
 import { UiImagePainter } from './ui-image.ts'
-import { paintPrompt, UiPromptEditor, type PromptPaint } from './ui-prompt.ts'
+import { paintHostedPrompt, paintPrompt, placeholderLadder, UiPromptEditor, type PromptPaint } from './ui-prompt.ts'
 import { sliderGrammar } from './ui-interaction-slider.ts'
 import { paintSlider } from './ui-slider-paint.ts'
 import { promptCompletionsOpen, promptRecallActive } from './ui-interaction-prompt.ts'
@@ -364,7 +366,7 @@ type ControlDescriptor =
   | (ControlBase & { readonly kind: 'editor' })
   | (ControlBase & { readonly kind: 'prompt', readonly node: MayflyPromptNode })
   | (ControlBase & { readonly kind: 'slider', readonly node: MayflySliderNode })
-  | (ControlBase & { readonly kind: 'scroll' })
+  | (ControlBase & { readonly kind: 'scroll', readonly fixed?: true })
   | (ControlBase & { readonly kind: 'list', readonly node: MayflyListNode })
 
 interface ControlGroup {
@@ -714,7 +716,9 @@ function diagramMarkdownNode(node: MayflyDiagramNode): Extract<MayflyUiNode, { r
 }
 
 function imageComponent(node: MayflyImageNode, options: RuntimeCompilerOptions): MayflyComponent {
-  const painter = new UiImagePainter(node, options.components, options.colors, options.listRuntime.images, options.listRuntime.repaint)
+  const presentation = options.components.presentation
+  const pending = (width: number): string[] => renderLoader({ kind: 'loader', variant: 'gap', message: coreText(options, 'Loading image…') }, width, options.colors, motionFrame(options), presentation?.glyphs, presentation?.reducedMotion === true)
+  const painter = new UiImagePainter(node, options.components, options.colors, options.listRuntime.images, options.listRuntime.repaint, pending)
   const component = staticComponent(width => painter.render(width), options)
   return { render: component.render, invalidate: () => { painter.invalidate() } }
 }
@@ -769,6 +773,33 @@ function sliderComponent(node: MayflySliderNode, state: FocusState, options: Run
   const address = { pagePath: runtime.pagePath(node), controlId: node.id }
   const component = staticComponent(width => paintSlider({ node, model: model?.slider(address), width, colors: options.colors }), options)
   if (model === undefined) return component
+  state.bindControls([key], { component, axis: 'none' })
+  return component
+}
+
+/**
+ * The `prompt` of an editor shell: its symbol and frame come from the tree, while the buffer's rows (and the completion
+ * list under them) and every key belong to the host's own editor. There is no draft in a surface model: the editor is
+ * the draft, and the shell repaints it on every frame because it is volatile.
+ */
+function hostedPromptComponent(node: MayflyPromptNode, state: FocusState, options: RuntimeCompilerOptions, key: string, editor: MayflyEditor): MayflyComponent {
+  const component: MayflyComponent = {
+    render: width => {
+      try {
+        editor.focused = state.focused && state.activeKey === key
+        editor.setPlaceholder(placeholderLadder(node.placeholder))
+        const rows = paintHostedPrompt({ node, width: Math.max(1, width), colors: options.colors, components: options.components, buffer: room => editor.render(room) })
+        countWork(options.counters, 'rowsPainted', rows.length)
+        countWork(options.counters, 'componentRenders')
+        return rows
+      } catch (error) {
+        const message = renderFailure(error, 'unknown editor failure')
+        options.reportRuntimeFailure(message)
+        return errorRows(message, width, options.colors)
+      }
+    },
+    invalidate: () => editor.invalidate(),
+  }
   state.bindControls([key], { component, axis: 'none' })
   return component
 }
@@ -901,12 +932,88 @@ function pad(component: Component, amount: number, options: RuntimeCompilerOptio
 }
 
 /**
+ * The framed `surface` chrome (the editor's frame): the inset title rule, side bars, and bottom rule in the border paint, with at least one column of gutter inside each bar (`padding` 2 adds a second).
+ */
+function framedSurfaceComponent(node: Extract<CompilableNode, { readonly kind: 'surface' }>, child: Component, footer: Component | undefined, contextHint: Component | undefined, options: RuntimeCompilerOptions): MayflyComponent & { [LAYOUT_NODE](): LayoutNode } {
+  const body = retain(new ColumnStack(), 'surface body', options)
+  body.addChild(retain(staticComponent(width => renderSurfaceHead(withDirtyBadge(node, options), width, options.colors).slice(1), options), 'surface head', options))
+  body.addChild(child, options.listRuntime.interaction === undefined ? {} : { grow: 1, minSize: 1 })
+  if (footer !== undefined) body.addChild(footer)
+  if (contextHint !== undefined) body.addChild(contextHint)
+
+  const paint = surfaceBorderPaint(options.colors, node.border)
+  const glyphs = options.components.presentation?.glyphs
+  const bar = glyphRows(['│'], glyphs)[0]!
+  const gutter = Math.max(1, node.padding ?? 0)
+  let layoutRows = 1
+  const captureLayoutRows = (viewport: LayoutViewport): boolean => {
+    layoutRows = Math.min(LAYOUT_VALUE_MAX, Math.max(1, Math.floor(viewport.height)))
+    return viewport.width >= 3
+  }
+  const frameVisible = (viewport: LayoutViewport): boolean => viewport.width >= 3
+  const paddingVisible = (index: number) => (viewport: LayoutViewport): boolean => viewport.width >= 5 + index * 2
+  // The bars are as tall as the layout's frame; both sides share the rows painted for one height.
+  let bars: { readonly rows: number, readonly lines: string[] } | undefined
+  const borderRows = (): string[] => {
+    if (bars?.rows !== layoutRows) bars = { rows: layoutRows, lines: Array.from({ length: layoutRows }, () => paint(bar)) }
+    return bars.lines
+  }
+  const middle = new HStack()
+  middle.addChild(staticComponent(borderRows, options, false), { basis: 1, grow: 0, shrink: 1, visible: captureLayoutRows })
+  for (let index = 0; index < gutter; index += 1) {
+    middle.addChild(staticComponent(() => BLANK_ROW, options, false), { basis: 1, grow: 0, shrink: 100, visible: paddingVisible(index) })
+  }
+  middle.addChild(body, { basis: 1, grow: 1, shrink: 1, minSize: 0 })
+  for (let index = 0; index < gutter; index += 1) {
+    middle.addChild(staticComponent(() => BLANK_ROW, options, false), { basis: 1, grow: 0, shrink: 100, visible: paddingVisible(index) })
+  }
+  middle.addChild(staticComponent(borderRows, options, false), { basis: 1, grow: 0, shrink: 1, visible: captureLayoutRows })
+
+  const layout = new ColumnStack()
+  layout.addChild(retain(staticComponent(width => renderSurfaceHead(withDirtyBadge(node, options), width, options.colors).slice(0, 1), options), 'surface head', options), { basis: 1, grow: 0, shrink: 0, visible: frameVisible })
+  layout.addChild(middle, { basis: 0, grow: 1, shrink: 1, minSize: 0 })
+  layout.addChild(retain(staticComponent(width => renderSurfaceTail(node, width, options.colors), options), 'surface tail', options), { basis: 1, grow: 0, shrink: 0, visible: frameVisible })
+
+  const framed = {
+    [LAYOUT_NODE](): LayoutNode { return layout[LAYOUT_NODE]() },
+    render(width: number): string[] {
+      const available = Math.max(1, Math.floor(width))
+      if (available < 3) return mapRows(body.render(available), row => { countWork(options.counters, 'stringsMeasured'); return truncateToWidth(row, available, '') })
+      const horizontalPadding = Math.min(gutter, Math.max(0, Math.floor((available - 3) / 2)))
+      const contentWidth = Math.max(1, available - 2 - horizontalPadding * 2)
+      // The frame's own rows convert to the glyph mode here; the body's painters converted theirs.
+      const head = glyphRows(renderSurfaceHead(withDirtyBadge(node, options), available, options.colors).slice(0, 1), glyphs)
+      const bodyRows = body.render(contentWidth)
+      const tail = glyphRows(renderSurfaceTail(node, available, options.colors), glyphs)
+      const border = paint(bar)
+      const inset = ' '.repeat(horizontalPadding)
+      const rows = mapRows(bodyRows, row => {
+        // A row that fits is measured once; only a row that overflows is clipped and measured again.
+        countWork(options.counters, 'stringsMeasured')
+        const rowWidth = visibleWidth(row)
+        if (rowWidth <= contentWidth) return `${border}${inset}${row}${' '.repeat(contentWidth - rowWidth)}${inset}${border}`
+        countWork(options.counters, 'stringsMeasured')
+        const clipped = truncateToWidth(row, contentWidth, '')
+        return `${border}${inset}${clipped}${' '.repeat(Math.max(0, contentWidth - visibleWidth(clipped)))}${inset}${border}`
+      }, { declaredWidth: available })
+      return concatRows(head, rows, tail)
+    },
+    invalidate(): void { layout.invalidate() },
+  }
+  // The body starts under the frame's title rule, in a render and in a layout alike.
+  placeChild(body, framed, 1)
+  return framed
+}
+
+/**
  * A surface: the head (a panel's full-width rule, title, description, and blank row; a lane's titled rule; or the bold
- * title) over the child, the footer, and the hint row. A panel (`overlay` or `surface` chrome) is borderless: its child,
- * footer, and hint sit inside the panel gutter (`padding` widens it), and the head's own rows carry the same indent.
+ * title) over the child, the footer, and the hint row. A panel (`overlay` chrome) is borderless: its child, footer, and
+ * hint sit inside the panel gutter (`padding` widens it), and the head's own rows carry the same indent. The `surface`
+ * chrome is the framed one.
  */
 function surfaceComponent(node: Extract<CompilableNode, { readonly kind: 'surface' }>, child: Component, footer: Component | undefined, contextHint: Component | undefined, options: RuntimeCompilerOptions): MayflyComponent {
-  const panel = node.chrome === 'overlay' || node.chrome === 'surface'
+  if (node.chrome === 'surface') return framedSurfaceComponent(node, child, footer, contextHint, options)
+  const panel = node.chrome === 'overlay'
   const component = new ColumnStack()
   component.addChild(retain(staticComponent(width => renderSurfaceHead(withDirtyBadge(node, options), width, options.colors), options), 'surface head', options))
   const body = panel ? new ColumnStack() : component
@@ -1055,7 +1162,8 @@ function grammarStateFor(state: FocusState, options: RuntimeCompilerOptions, con
     if (active === undefined) return { kind: 'none' }
     switch (active.kind) {
       case 'editor': return { kind: 'editor' }
-      case 'scroll': return state.scrollViews.get(active.key)?.expandable === false ? { kind: 'scroll', expandable: false } : { kind: 'scroll' }
+      /* An author's `expandable: false`, or a held viewport that cannot grow, leaves Ctrl+E to others. */
+      case 'scroll': return active.fixed === true || state.scrollViews.get(active.key)?.expandable === false ? { kind: 'scroll', fixed: true } : { kind: 'scroll' }
       case 'list': return { kind: 'empty-list' }
       case 'prompt': return { kind: 'prompt', ...runtime.promptGrammar(active.node), ...(active.node.submitLabel === undefined ? {} : { submitLabel: active.node.submitLabel }), ...(active.node.recallLabel === undefined ? {} : { recallLabel: active.node.recallLabel }) }
       case 'slider': {
@@ -1252,7 +1360,10 @@ function contextKeyHintRows(state: FocusState, options: RuntimeCompilerOptions, 
   const translate = (key: string): string => {
     try { return options.contextHints?.translate?.(key) ?? key } catch { return key }
   }
-  const candidates: HintPart[][] = []
+  // Labels outrank completeness: the labeled row sheds its least important part before any part loses its label, down to two
+  // parts; only then do the bare keys of every part (and last, of one) take over.
+  const labeled: HintPart[][] = []
+  const bare: HintPart[][] = []
   for (let count = parts.length; count > 0; count -= 1) {
     const retained = new Set(parts
       .map((part, index) => ({ part, index }))
@@ -1260,11 +1371,13 @@ function contextKeyHintRows(state: FocusState, options: RuntimeCompilerOptions, 
       .slice(0, count)
       .map(entry => entry.part.id))
     const candidate = parts.filter(part => retained.has(part.id))
-    candidates.push(
-      candidate.map(part => part.label === undefined ? { keys: part.keys } : { keys: part.keys, label: translate(part.label) }),
-      candidate.map(part => ({ keys: part.compact })),
-    )
+    const row = candidate.map(part => part.label === undefined ? { keys: part.keys } : { keys: part.keys, label: translate(part.label) })
+    const keys = candidate.map(part => ({ keys: part.compact }))
+    if (count >= Math.min(2, parts.length)) labeled.push(row)
+    else bare.push(row)
+    bare.push(keys)
   }
+  const candidates = [...labeled, ...bare]
   const safeWidth = Math.max(1, Math.floor(width))
   // The painted row is a pure function of the translated candidates, the width, and the palette, so an unchanged hint
   // answers from the surface's memo while the parts themselves are still read fresh on every paint.
@@ -1344,15 +1457,12 @@ function walkControls(node: CompilableNode, options: RuntimeCompilerOptions, pat
     const scopedControlGroup = (kind: string, id: string) => controlGroup(kind, id, pagePath)
     const scopedFocusIdentity = (id: string, itemId?: string) => focusIdentity(id, itemId, pagePath)
     const controls = isHidden ? hidden : visible
-    if (current.kind !== 'editor-control' && isDeferredUiNode(current as MayflyUiNode)) {
+    if (isDeferredUiNode(current as MayflyUiNode)) {
       const admitted = materializeDeferredUiNode(current as MayflyUiNode)
       if (admitted?.ok === true) { options.listRuntime.admitDeferred(admitted.value, pagePath); visit(admitted.value, currentPath, isHidden) }
       return
     }
     switch (current.kind) {
-      case 'editor-control':
-        controls.push({ kind: 'editor', key: scopedControlKey('editor', 'editor-control'), renderKey: 'editor-control', identity: scopedFocusIdentity('editor-control'), preferred: true, group: scopedControlGroup('editor', 'editor-control'), navigation: 'none' })
-        break
       case 'stack':
         for (const [index, child] of current.children.entries()) {
           const shown = conditionMatches(child.when, safeViewport(options.getViewport)) && tabVisible(child, pagePath, options)
@@ -1377,7 +1487,7 @@ function walkControls(node: CompilableNode, options: RuntimeCompilerOptions, pat
         visit(current.child, `${currentPath}.scroll`, isHidden)
         if (controls.length === before && (options.screenMode === 'alternate' || options.listRuntime.interaction !== undefined)) {
           const key = scopedControlKey('scroll', currentPath)
-          controls.push({ kind: 'scroll', key, renderKey: currentPath, identity: scopedFocusIdentity(key), preferred: true, group: scopedControlGroup('scroll', currentPath), navigation: 'none', ...(current.id === undefined ? {} : { scopeId: current.id }) })
+          controls.push({ kind: 'scroll', key, renderKey: currentPath, identity: scopedFocusIdentity(key), preferred: true, group: scopedControlGroup('scroll', currentPath), navigation: 'none', ...(current.expandable === false ? { fixed: true as const } : {}), ...(current.id === undefined ? {} : { scopeId: current.id }) })
         }
         break
       }
@@ -1429,7 +1539,9 @@ function walkControls(node: CompilableNode, options: RuntimeCompilerOptions, pat
         if (current.submitActionId !== undefined && formDrawsSubmit(current)) controls.push({ kind: 'submit', key: scopedControlKey('form-submit', current.id), renderKey: 'submit', identity: scopedFocusIdentity(current.submitActionId), preferred: false, group: scopedControlGroup('form', current.id), navigation: 'vertical', form: current })
         break
       case 'prompt':
-        if (options.listRuntime.interaction !== undefined) controls.push({ kind: 'prompt', node: current, key: scopedControlKey('prompt', current.id), renderKey: current.id, identity: scopedFocusIdentity(current.id), preferred: current.autofocus === true, group: scopedControlGroup('prompt', current.id), navigation: 'none' })
+        // The prompt of an editor shell is the host editor's face: one editor control, keyed by the prompt's id.
+        if (options.editor !== undefined) controls.push({ kind: 'editor', key: scopedControlKey('editor', current.id), renderKey: current.id, identity: scopedFocusIdentity(current.id), preferred: true, group: scopedControlGroup('editor', current.id), navigation: 'none' })
+        else if (options.listRuntime.interaction !== undefined) controls.push({ kind: 'prompt', node: current, key: scopedControlKey('prompt', current.id), renderKey: current.id, identity: scopedFocusIdentity(current.id), preferred: current.autofocus === true, group: scopedControlGroup('prompt', current.id), navigation: 'none' })
         break
       case 'slider':
         if (options.listRuntime.interaction !== undefined) controls.push({ kind: 'slider', node: current, key: scopedControlKey('slider', current.id), renderKey: current.id, identity: scopedFocusIdentity(current.id), preferred: current.autofocus === true, group: scopedControlGroup('slider', current.id), navigation: 'none' })
@@ -1460,7 +1572,7 @@ function walkControls(node: CompilableNode, options: RuntimeCompilerOptions, pat
 }
 
 function containsDeferredNode(node: CompilableNode): boolean {
-  if (node.kind !== 'editor-control' && isDeferredUiNode(node as MayflyUiNode)) {
+  if (isDeferredUiNode(node as MayflyUiNode)) {
     const admitted = materializedDeferredUiNode(node as MayflyUiNode)
     if (admitted === undefined) return deferredUiNodeMayHaveControls(node as MayflyUiNode)
     return admitted.ok && containsDeferredNode(admitted.value)
@@ -1578,7 +1690,7 @@ const UNRETAINED_KINDS: ReadonlySet<string> = new Set(['text', 'fields', 'code',
  * Node kinds that paint a live editing engine: they always paint, and so does whatever contains them. An image is not
  * one of them: its bytes arrive through the surface's repaint request, which moves the epoch.
  */
-const VOLATILE_KINDS: ReadonlySet<string> = new Set(['editor-control', 'prompt'])
+const VOLATILE_KINDS: ReadonlySet<string> = new Set(['prompt'])
 
 /** Node kinds that paint only from their admitted node, the width, the colors, and the components. */
 const REUSABLE_KINDS: ReadonlySet<string> = new Set(['text', 'fields', 'code', 'diff', 'sections', 'rich-text', 'divider', 'markdown', 'diagram'])
@@ -1600,32 +1712,13 @@ function compileUnit(node: CompilableNode, state: FocusState, options: RuntimeCo
   const pagePath = options.listRuntime.pagePath(node)
   const scopedControlKey = (kind: string, id: string, itemId?: string) => controlKey(kind, id, itemId, pagePath)
   const scopedControlGroup = (kind: string, id: string) => controlGroup(kind, id, pagePath)
-  if (node.kind !== 'editor-control' && isDeferredUiNode(node as MayflyUiNode)) return deferredComponent(node as MayflyUiNode, state, options, path, mode)
+  if (isDeferredUiNode(node as MayflyUiNode)) return deferredComponent(node as MayflyUiNode, state, options, path, mode)
   if (REUSABLE_KINDS.has(node.kind)) {
     const reused = options.reuse.take(node, options)
     if (reused !== undefined) return reused
   }
   countWork(options.counters, 'unitsCompiled')
   switch (node.kind) {
-    case 'editor-control': {
-      const editor = options.editor
-      if (editor === undefined) throw new Error('editor-control requires a host editor')
-      const component: MayflyComponent = {
-        render: width => {
-          try {
-            editor.focused = state.focused && state.activeKey === scopedControlKey('editor', 'editor-control')
-            return editor.render(Math.max(1, width))
-          } catch (error) {
-            const message = renderFailure(error, 'unknown editor failure')
-            options.reportRuntimeFailure(message)
-            return errorRows(message, width, options.colors)
-          }
-        },
-        invalidate: () => editor.invalidate(),
-      }
-      state.bindControls([scopedControlKey('editor', 'editor-control')], { component, axis: 'none' })
-      return component
-    }
     case 'text':
     case 'fields':
     case 'code':
@@ -1642,13 +1735,20 @@ function compileUnit(node: CompilableNode, state: FocusState, options: RuntimeCo
     case 'stack': {
       // A row whose children carry a priority admits them while they fit, one row of the children's first rows.
       if (node.direction === 'row' && node.children.some(child => child.priority !== undefined)) {
-        const compiled = node.children.map((child, index) => compileNode(child.node, state, options, `${path}.${String(index)}`, mode))
+        // A shed child compiles each of its forms; any other child is its one form.
+        const compiled = node.children.map((child, index) => {
+          const at = `${path}.${String(index)}`
+          return child.node.kind === 'shed'
+            ? [{ rank: -1, component: compileNode(child.node.node, state, options, at, mode) as Component | null }, ...child.node.narrower.map((form, formIndex) => ({ rank: form.rank, component: form.node === null ? null : compileNode(form.node, state, options, `${at}.${String(formIndex)}`, mode) }))]
+            : [{ rank: -1, component: compileNode(child.node, state, options, at, mode) as Component | null }]
+        })
         return new AdmissionRow({
           components: options.components,
+          colors: options.colors,
           counters: options.counters,
           ...(node.gap === undefined ? {} : { gap: node.gap }),
           children: () => node.children.flatMap((child, index) => conditionMatches(child.when, safeViewport(options.getViewport)) && tabVisible(child, pagePath, options)
-            ? [{ component: compiled[index]!, band: child.band ?? 'left', ...(child.priority === undefined ? {} : { priority: child.priority }), ...(child.overflow === undefined ? {} : { overflow: child.overflow }) }]
+            ? [{ forms: compiled[index]!, band: child.band ?? 'left', ...(child.priority === undefined ? {} : { priority: child.priority }), ...(child.overflow === undefined ? {} : { overflow: child.overflow }), ...(child.mark === undefined ? {} : { mark: child.mark }) }]
             : []),
         })
       }
@@ -1729,6 +1829,8 @@ function compileUnit(node: CompilableNode, state: FocusState, options: RuntimeCo
           components: options.components,
           counters: options.counters,
           pillText: count => coreText(options, '↓ {count} new · End', { count }),
+          more: node.more === true,
+          moreText: count => coreText(options, '↓ {count} more', { count }),
           anchors: resolve === undefined ? undefined : {
             state: () => model!.document(address!),
             rowOf: (document, width) => documentAnchorRow(document, width, resolve),
@@ -1915,12 +2017,14 @@ function compileUnit(node: CompilableNode, state: FocusState, options: RuntimeCo
     case 'progress': return node.transition === undefined
       ? staticComponent(width => renderProgress(node, width, options.colors), options)
       : staticComponent(width => renderProgress(node, width, options.colors, options.listRuntime.progressValue(`${JSON.stringify(pagePath)}${path}`, node as typeof node & { readonly transition: NonNullable<typeof node.transition> }, options.components.presentation?.reducedMotion === true)), options)
+    // Outside an admission row there is nothing to shed to: a shed node is its full form.
+    case 'shed': return compileNode(node.node, state, options, `${path}.node`, mode)
     case 'spacer': return staticComponent(() => Array.from({ length: node.size ?? 1 }, () => ''), options)
-    case 'divider': return leaf(node, options, paint => pureStaticComponent(width => renderDivider(node.label, width, paint.colors), paint))
+    case 'divider': return leaf(node, options, paint => pureStaticComponent(width => renderDivider(node.label, width, paint.colors, node.align, node.inset, node.tone), paint))
     case 'diagram': return leaf(node, options, paint => contentLeafComponent(diagramMarkdownNode(node), options, paint))
     case 'chart': return chartComponent(node, options)
     case 'image': return imageComponent(node, options)
-    case 'prompt': return promptComponent(node, state, options, scopedControlKey('prompt', node.id))
+    case 'prompt': return options.editor === undefined ? promptComponent(node, state, options, scopedControlKey('prompt', node.id)) : hostedPromptComponent(node, state, options, scopedControlKey('editor', node.id), options.editor)
     case 'slider': return sliderComponent(node, state, options, scopedControlKey('slider', node.id))
     /* The surface model swaps a review for the list it reads from the drafts; without a model there are no drafts to list. */
     case 'review': return staticComponent(() => [], options)
@@ -2395,8 +2499,15 @@ export class MayflyUiSurfaceRuntime {
       return
     }
   }
-  /** Asks the renderer to paint this surface again: an image's bytes arrived. */
-  readonly repaint = (): void => { if (this.live) this.requestRender?.() }
+  /**
+   * Asks the renderer to paint this surface again: an image's bytes arrived. A list row that holds the image was
+   * painted from its item and key alone, so the memo of painted rows is dropped with the request.
+   */
+  readonly repaint = (): void => {
+    if (!this.live) return
+    this.rows.clear()
+    this.requestRender?.()
+  }
   /** The scroll position a region keeps across publishes. */
   /**
    * The place of the scroll region at `key`, made the most recent. A region is remembered by its position in the tree, so
@@ -2633,7 +2744,7 @@ export class MayflyUiSurfaceRuntime {
 
   private admitFields(current: CompilableNode, active: Set<string>, pagePath: MayflyPagePath = []): void {
     this.nodePages.set(current, pagePath)
-    if (current.kind !== 'editor-control' && isDeferredUiNode(current as MayflyUiNode)) {
+    if (isDeferredUiNode(current as MayflyUiNode)) {
       const admitted = materializedDeferredUiNode(current as MayflyUiNode)
       if (admitted?.ok === true) this.admitFields(admitted.value, active, pagePath)
       return
@@ -3069,7 +3180,9 @@ class CompiledSurface implements MayflyEditorShellComponent {
       return cached.result
     }
     const result = this.renderFrame(width, maxRows)
-    this.frameResult = { current, width, maxRows, columns: viewport.columns, rows: viewport.rows, revision, keymapRevision, localeRevision, completions, animationFrame, result }
+    // A shell paints the host editor, whose rows change on their own (a completion list that resolves late), so its
+    // frame is painted again every time it is asked for.
+    if (this.editor === undefined) this.frameResult = { current, width, maxRows, columns: viewport.columns, rows: viewport.rows, revision, keymapRevision, localeRevision, completions, animationFrame, result }
     return result
   }
 

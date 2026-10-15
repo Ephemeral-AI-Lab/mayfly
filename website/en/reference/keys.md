@@ -9,7 +9,6 @@ In effect unless a capturing panel (a picker, form, or approval in the editor sl
 | Key | Action | Description |
 | --- | --- | --- |
 | `Ctrl-O` | Toggle tool output expansion | Switch the most recent **3 turns** of tool cards and thinking blocks between one-line summary and full output |
-| `Ctrl-T` | Toggle todo pane folding | Five-row folded view ↔ full list |
 | `F6` / `Shift+F6` | Move surface focus | Traverse the Editor, the views of the status bar, and the pane lanes: with a view available `F6` enters the views first, then the interactive panes in layout order; crossing an end returns to the Editor |
 | `F7` | Previous conversation | Switch the complete UI back to the previously displayed conversation (main, BTW, or subagent); show a notice when no other conversation is open |
 | `F8` | Close side conversation | Close the displayed side conversation (from main, the `F7` counterpart): detach a subagent or dispose the temporary BTW Agent |
@@ -39,7 +38,7 @@ Every panel, picker, and form follows one key grammar. The hint row at the botto
 | `Ctrl+E` | Expand focused scrollable content to full screen |
 | `Delete` | Return a changed field to its inherited or default value |
 | `Alt+Enter or Ctrl+J` | Insert a newline in a multi-line field |
-| `Enter, Alt+Enter, ↑/↓, Backspace` | In a prompt: send, insert a newline, walk the recall of an empty prompt (queued messages first), or select and then remove the last token |
+| `Enter, Ctrl+Enter, Alt+Enter, ↑/↓, Backspace` | In a prompt: send, send as a steer, insert a newline, walk the history of an empty prompt, or select and then remove the last token |
 | `Ctrl+S, c, x, r, Ctrl+G, Ctrl+F` | Save, copy, delete, refresh, open in $EDITOR, or search, wherever a panel offers that meaning |
 <!-- END shared-keys -->
 
@@ -61,11 +60,13 @@ Text-editing keys (cursor movement, multi-line, undo, kill-ring) belong to the u
 | --- | --- | --- |
 | `Escape` | Interrupt the flow / clear the draft | While a session flow is in progress (the selected Agent or a live descendant runs), interrupt it: safe retraction of the just-submitted message first when the buffer is empty and eligible, restoring it into the editor, with the draft preserved; idle, it clears the draft, which stays one `↑` away in history; an open completion popup only closes |
 | `Ctrl-C` | Clear draft → interrupt → exit | With a draft it only empties the box (the draft stays one `↑` away) and the flow continues; with an empty buffer while a session flow is in progress it interrupts the selected Agent and all running continuable descendants; when the whole tree is idle and the buffer is empty, a **second press within 1 second** exits Mayfly |
-| `Ctrl-S` | Steer | Inject the non-empty draft as a steering instruction into the current turn, clearing the buffer |
+| `Ctrl-Enter` | Steer | Inject the non-empty draft as a steering instruction into the current turn, clearing the buffer |
 | `Ctrl-V` | Paste image | Store the clipboard image in the attachment library, inserting an `[image #N]` marker at the cursor |
 | `Ctrl-G` | External editor | Hand the draft to an external editor for full-screen editing (`mayfly.editorCommand` setting → `$VISUAL` → `$EDITOR`; Mayfly suspends and yields the terminal); quitting with `:cq` leaves the draft untouched |
 | `Alt+M` | Cycle session model | Step through the current provider's models (same channel as `/model` — the Host persists the default in the background; the press is consumed, the draft stays intact) |
 | `Backspace` | Delete / exit mode | Backspace on an empty `!` bash prompt exits back to prompt mode |
+| `?` | Key help | On an empty prompt, open key help; anywhere else `?` is typed as text |
+| `Alt+↑` | Focus the conversation | From the prompt, focus the newest row of the stream; a queued message there takes `e` edit, `s` send now, `d` cancel, and `u` undo. In the prompt, `↑`/`↓` walk the history only |
 | `Shift+Tab` | Toggle plan state | normal ↔ plan, preserving permissions and YOLO (see [Session modes](/en/features/modes)) |
 
 These keys reach the editor even while a notice is shown under the prompt. Editor extensions may add actions only on modifier keys (such as `Alt+R`); the editor keeps `Esc`, `Tab`, `Shift+Tab`, and every unmodified key.
@@ -85,7 +86,7 @@ These keys reach the editor even while a notice is shown under the prompt. Edito
 | `/permission` picker | `1`–`9` or ↑↓ + `Enter` switch presets; full access first asks a Yes/No decision with No focused |
 | `/agents` browser | Type to filter; ↑↓ selects, `Space` or `←` / `→` expands/collapses, `Enter` views; `Tab` reaches **Stop selected**, which asks first and names why it cannot run for a one-shot, cold, or parent-of-live row |
 | `/plugin` marketplace | Installed / Not installed tabs (`←` / `→` on the strip or `Alt+←` / `Alt+→`, also `F2` / `F3`); type to filter; `Tab` reaches Details, Install or Update/repair, and Remove, each available per row; `Ctrl+R` refreshes |
-| Side conversation | Uses the complete main editor and the same panel keys; `PageUp` / `PageDown` scroll its transcript; in a resumable one `Enter` opens the reply form; `F7` switches back and `F8` closes it |
+| Side conversation | Uses the complete main editor and the same panel keys; `PageUp` / `PageDown` scroll its transcript; in a resumable one a send wakes the child: `Enter` queues the message for its next turn and `Ctrl+Enter` steers it; `F7` switches back and `F8` closes it |
 
 ## Named actions and custom bindings
 

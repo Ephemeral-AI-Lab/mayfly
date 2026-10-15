@@ -17,6 +17,11 @@ export class UiRowCache {
   private colors: object | undefined
   private rows = new WeakMap<object, Map<string, readonly string[]>>()
 
+  /** Forget every painted row: something a row was painted from outside its item and key (an image's bytes) moved. */
+  clear(): void {
+    this.rows = new WeakMap()
+  }
+
   /** The painted row for `item` in the state named by `key`; `paint` runs, and is counted, only on a miss. */
   read(colors: object, item: object, key: string, paint: () => string, counters?: MayflyWorkCounters): string {
     return this.readLines(colors, item, key, () => [paint()], counters)[0]!

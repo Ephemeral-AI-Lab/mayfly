@@ -77,7 +77,8 @@ slots, never arbitrary root components.
   running turn header.
 - A submitted reply acknowledges its form snapshot before dismissal. The
   editor stays visible for every conversation: readonly ones keep the draft,
-  resumable ones hand it to the explicit reply form.
+  resumable ones take a send: `Enter` queues it for the child's next turn and
+  `Ctrl+Enter` steers it, and the send wakes the child.
 - Schedule reminders belong to the Host, not a session projection. `/schedule`
   reads the exact selected Agent's Session through the optional native service,
   observes `schedule/changed`, and fences late reads across selection and unload.
@@ -123,10 +124,10 @@ without edits, and its row renderers join the owning `width-scan.spec.ts`.
 
 ## Views lane
 
-A `mayflyPanes` pane with `placement: 'views'` is a view of status row 2, kept
+A `mayflyPanes` pane with `placement: 'views'` is a view of the status row, kept
 by `core/views-lane.ts` (`SurfaceManager.views`), not by a pane lane: it has no
-rows of its own, its summary joins row 2 through the footer, and an entered
-panel replaces row 2. A view's slot lives with its `PaneComponent`. Entry keys
+rows of its own, its summary joins the status row through the footer, and an entered
+panel opens under the status row (which stays, with a `━` line under the active item as its second line). A view's slot lives with its `PaneComponent`. Entry keys
 are the named actions `ui.focus-next`, `ui.left`/`ui.right`, and `ui.cancel`;
 `F6` walks the views before the interactive panes. Mayfly's own views register
 through the public pane service, never through core.
@@ -231,9 +232,9 @@ lists, tabs, decision panels, questionnaire, loader/progress/empty). The
 starting sketch; the owner's acceptance in the running terminal decides, and a
 finalized section describes accepted behavior. Its
 [implementation reference](../../docs/design/component-library-reference.md) holds
-the wire mechanics. Never hand-roll pi-tui panels outside `core/`; the editor
-autocomplete list (`core/wrapping-select-list.ts`) is not a model, and roadmap
-Phase 4 deletes it. A component that replaces a surface deletes the old code in
+the wire mechanics. Never hand-roll pi-tui panels outside `core/`; the editor's
+completion list is state only (`core/completion-list.ts`) and the palette that
+paints it is `core/completion-drawer.ts`. A component that replaces a surface deletes the old code in
 the same change; nothing is kept for a later cleanup.
 
 ## Native writes and sensitive data
@@ -274,9 +275,9 @@ real consumers, replay/abort/late-result tests, width and whole-tree composition
 coverage, and dedicated-profile acceptance.
 
 The scenario catalog (`script/scenarios/catalog.mjs`) is the registry of live
-states behind `pnpm run scenario` and `pnpm run frame`: a component draft adds
-one scenario per state, a replay of `script/scenarios/replays.mjs` with the
-marks its script plays to, played into the real product by
+states behind `pnpm run scenario` and `pnpm run frame`, kept small: a round adds
+one long scenario (root `AGENTS.md`, Round workflow), a replay of
+`script/scenarios/replays.mjs` with the marks its script plays to, played into the real product by
 `script/scenarios/driver.mjs`. The Website's app shots are checkpoints of the
 `app-*` scenarios, painted from their goldens.
 

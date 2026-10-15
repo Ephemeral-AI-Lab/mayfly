@@ -115,6 +115,30 @@ interface ConversationInterruptedEntry extends ConversationEntryBase {
   readonly kind: 'interrupted'
 }
 
+/** The goal verbs the durable `goal/change` event records. */
+export type ConversationGoalOperation = 'create' | 'edit' | 'pause' | 'resume' | 'complete' | 'block' | 'clear'
+
+/**
+ * One change of the session goal, from its durable `goal/change` event (whoever made it: the model, `/goal`, or the
+ * round driver). A clear carries only the operation; every other verb carries the post-change snapshot.
+ */
+export interface ConversationGoalChangeEntry extends ConversationEntryBase {
+  readonly kind: 'goal-change'
+  readonly operation: ConversationGoalOperation
+  readonly objective?: string | undefined
+  readonly blockedReason?: { readonly code: string, readonly message: string } | undefined
+  readonly roundsStarted?: number | undefined
+  readonly createdAt?: number | undefined
+  readonly updatedAt?: number | undefined
+}
+
+/** One autonomous goal round starting: the `user/message` the round driver wrote, which the stream shows as a marker. */
+export interface ConversationGoalRoundEntry extends ConversationEntryBase {
+  readonly kind: 'goal-round'
+  /** The positive round the driver admitted. */
+  readonly round: number
+}
+
 /**
  * One compaction transaction's lifecycle: opened by the initiating
  * `command/run` (manual) or `compaction/start` (automatic), filled by
@@ -155,6 +179,8 @@ export type ConversationEntry =
   | ConversationErrorEntry
   | ConversationInterruptedEntry
   | ConversationCompactionEntry
+  | ConversationGoalChangeEntry
+  | ConversationGoalRoundEntry
 
 /** Client-visible whole value served by `sessionProjections`. */
 export interface ConversationProjection {
@@ -216,6 +242,9 @@ export interface ConversationFacts {
   readonly epochTokens?: number | undefined
   /** Projection-private usage buckets retained as plain readonly data. */
   readonly usageByStep?: Readonly<Record<string, number>> | undefined
+  /** Per-run output tokens with the same replace-per-step semantics; the rest of `epochTokens` is input (cache included). */
+  readonly epochOutputTokens?: number | undefined
+  readonly outputByStep?: Readonly<Record<string, number>> | undefined
   /**
    * Latest running activity marker; `preparing` marks a call whose arguments
    * are still streaming.
@@ -238,6 +267,8 @@ export interface ConversationFacts {
   readonly approvals?: readonly ApprovalMark[] | undefined
   /** Terminal outcome of the latest run. */
   readonly runOutcome?: 'completed' | 'failed' | undefined
+  /** The run ended because it was stopped (aborted or interrupted), not because it failed on its own. */
+  readonly runStopped?: boolean | undefined
   /** Envelope timestamp of the latest terminal outcome. */
   readonly endedAt?: number | undefined
   readonly agentCalls: readonly ConversationAgentCall[]

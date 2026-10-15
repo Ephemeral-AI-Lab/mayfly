@@ -1,12 +1,8 @@
 /**
- * The chrome helper layer: the `withSideBorders` / `injectPromptSymbol`
- * pure functions over representative row shapes — plain rules, pre-painted
- * rules, scroll indicators, content rows with and without SGR at the
- * outermost columns — plus the S13 panel chrome (`topRule` / `padColumns`),
- * and the S14 completion
- * polish (`highlightLeadingSlashToken` / `injectGhostHint`) over their
- * branch matrices: titles, hints, footers, paints, gutter indentation,
- * token bounds, and ghost-room accounting.
+ * The chrome helper layer: the S13 panel chrome (`topRule` / `padColumns`)
+ * and the S14 completion polish (`highlightLeadingSlashToken` /
+ * `injectGhostHint`) over their branch matrices: titles, hints, footers,
+ * paints, gutter indentation, token bounds, and ghost-room accounting.
  */
 
 import { visibleWidth } from '@earendil-works/pi-tui'
@@ -14,155 +10,10 @@ import { describe, expect, it } from 'vitest'
 import {
   highlightLeadingSlashToken,
   injectGhostHint,
-  injectPromptSymbol,
   padColumns,
   topRule,
-  withSideBorders,
 } from '../../src/core/chrome.ts'
 import { identity } from '../helpers.ts'
-
-describe('withSideBorders', () => {
-  it('boxes plain rules into rounded corners', () => {
-    const boxed = withSideBorders(
-      ['────', '  x  ', '────'],
-      identity,
-    )
-    expect(boxed).toEqual(['╭──╮', '│ x │', '╰──╯'])
-  })
-
-  it('repaints pre-painted rules as one span and strips the old SGR', () => {
-    const boxed = withSideBorders(
-      ['\x1b[38;2;1;2;3m────\x1b[0m', '    '],
-      text => `[${text}]`,
-    )
-    expect(boxed[0]).toBe('[╭──╮]')
-    expect(boxed[1]).toBe('[│]  [│]')
-  })
-
-  it('draws the frame in the ASCII fallback without touching the title', () => {
-    const boxed = withSideBorders(['─'.repeat(16), ' '.repeat(16), '─'.repeat(16)], identity, { glyphs: 'ascii', title: '→ title' })
-    expect(boxed).toEqual(['+---- → title -+', `:${' '.repeat(14)}:`, `+${'-'.repeat(14)}+`])
-  })
-
-  it('draws connected corners on top when a panel sits above', () => {
-    const boxed = withSideBorders(['──', '  '], identity, { connectedAbove: true })
-    expect(boxed).toEqual(['├┤', '││'])
-  })
-
-  it('lays a fitting label into the top rule only', () => {
-    const label = '\x1b[38;5;99mtag\x1b[0m'
-    const boxed = withSideBorders(
-      ['─'.repeat(10), ' '.repeat(10), '─'.repeat(10)],
-      identity,
-      { label },
-    )
-    // The label's visible width is 3, leaving five of the eight dashes.
-    expect(boxed[0]).toBe(`╭${label}─────╮`)
-    expect(boxed[2]).toBe(`╰${'─'.repeat(8)}╯`)
-  })
-
-  it('drops an oversized label instead of overflowing the rule', () => {
-    const boxed = withSideBorders(['────', '    '], identity, { label: 'too wide' })
-    expect(boxed[0]).toBe('╭──╮')
-  })
-
-  it('never labels a scroll-indicator rule', () => {
-    // `── ↑ 2 more ──` keeps its text; the label is skipped because the
-    // middle is not a pure dash run.
-    const boxed = withSideBorders(
-      [`── ↑ 2 more ${'─'.repeat(2)}`, '  ', '─'.repeat(12)],
-      identity,
-      { label: '\x1b[38;5;99mtag\x1b[0m' },
-    )
-    expect(boxed[0]).toBe(`╭─ ↑ 2 more ─╮`)
-    expect(boxed[2]).toBe(`╰${'─'.repeat(10)}╯`)
-  })
-
-  it('lays a title into the right end of the top rule only', () => {
-    const boxed = withSideBorders(
-      ['─'.repeat(20), ' '.repeat(20), '─'.repeat(20)],
-      identity,
-      { title: 'my-session', titlePaint: text => `<${text}>` },
-    )
-    // 18 dashes: 5 remain on the left, then ` my-session ` and one dash.
-    expect(boxed[0]).toBe(`╭─────< my-session >─╮`)
-    expect(visibleWidth(boxed[0]!.replace(/[<>]/g, ''))).toBe(20)
-    expect(boxed[2]).toBe(`╰${'─'.repeat(18)}╯`)
-  })
-
-  it('paints the title with the border paint when no title paint is given', () => {
-    const boxed = withSideBorders(['─'.repeat(14), ' '.repeat(14)], text => `[${text}]`, { title: 'name' })
-    expect(boxed[0]).toBe('[╭][─────][ name ][─][╮]')
-  })
-
-  it('keeps the label whole and fits the title into the remaining room', () => {
-    const boxed = withSideBorders(['─'.repeat(22), ' '.repeat(22)], identity, { label: 'mode', title: 'a-long-session-name' })
-    // 20 dashes − 4 label − 1 separator − 3 title chrome leaves 12 columns.
-    expect(boxed[0]).toBe('╭mode─ a-long-sess… ─╮')
-    expect(visibleWidth(boxed[0]!)).toBe(22)
-  })
-
-  it('ellipsizes wide titles without splitting a double-width character', () => {
-    const boxed = withSideBorders(['─'.repeat(14), ' '.repeat(14)], identity, { title: '对话名称测试' })
-    // 12 dashes leave 8 title columns; 7 before `…` hold only three glyphs.
-    expect(boxed[0]).toBe('╭── 对话名… ─╮')
-    expect(visibleWidth(boxed[0]!)).toBe(14)
-  })
-
-  it('drops a title that no longer fits the minimum width, or is empty', () => {
-    expect(withSideBorders(['─'.repeat(11)], identity, { title: 'session' })[0]).toBe(`╭${'─'.repeat(9)}╮`)
-    expect(withSideBorders(['─'.repeat(12)], identity, { title: 'session' })[0]).toBe('╭─ sessi… ─╮')
-    expect(withSideBorders(['─'.repeat(12)], identity, { title: '' })[0]).toBe(`╭${'─'.repeat(10)}╮`)
-  })
-
-  it('never titles a scroll-indicator rule and keeps the connected corners', () => {
-    expect(withSideBorders([`── ↑ 2 more ${'─'.repeat(10)}`], identity, { title: 'session' })[0]).toBe(`╭─ ↑ 2 more ${'─'.repeat(9)}╮`)
-    expect(withSideBorders(['─'.repeat(16)], identity, { title: 'session', connectedAbove: true })[0]).toBe('├──── session ─┤')
-  })
-
-  it('renders a lone dash row as a single corner cell', () => {
-    expect(withSideBorders(['─'], identity)).toEqual(['╭'])
-  })
-
-  it('keeps empty rows and overlays bars only on literal outer spaces', () => {
-    const boxed = withSideBorders(
-      [
-        '─────',
-        '',
-        '     ',
-        ' ',
-        'x   ',
-        '  x\x1b[7m \x1b[0m',
-      ],
-      text => `[${text}]`,
-    )
-    expect(boxed[1]).toBe('')
-    // A single-space row collapses to its bar.
-    expect(boxed[3]).toBe('[│]')
-    // A non-space first cell keeps its byte: the head bar is skipped, the
-    // trailing-space tail still lands.
-    expect(boxed[4]).toBe('x  [│]')
-    // An SGR-tagged last cell (the inverse-video cursor) blocks the tail
-    // bar while its escape sequence survives the head-side slice intact.
-    expect(boxed[5]).toBe('[│] x\x1b[7m \x1b[0m')
-  })
-})
-
-describe('injectPromptSymbol', () => {
-  it('overlays the symbol at column 2 of a padded row', () => {
-    expect(injectPromptSymbol('    rest', '>')).toBe('  > rest')
-  })
-
-  it('paints the symbol through the injected color function', () => {
-    expect(injectPromptSymbol('    x', '!', text => `«b:${text}»`)).toBe('  «b:!» x')
-  })
-
-  it('declines rows shorter than the padding or with content in it', () => {
-    expect(injectPromptSymbol('   ', '>')).toBeUndefined()
-    expect(injectPromptSymbol('  x ', '>')).toBeUndefined()
-    expect(injectPromptSymbol('x   ', '>')).toBeUndefined()
-  })
-})
 
 describe('topRule', () => {
   it('renders the kimi in-border title with a joiner and dash fill', () => {
@@ -304,24 +155,24 @@ describe('injectGhostHint', () => {
   })
 
   it('ellipsizes the ghost when the room runs short', () => {
-    // width 20, text 4: room 7 — the hint clips to ` <ques…`.
+    // width 12, text 4: room 7 — the hint clips to ` <ques…`.
     const row = `    /btw${CURSOR_BLOCK}${' '.repeat(11)}`
-    const ghosted = injectGhostHint(row, ' <question>', '/btw', 20, identity)
+    const ghosted = injectGhostHint(row, ' <question>', '/btw', 12, identity)
     expect(ghosted).toBe(`    /btw${CURSOR_BLOCK} <ques…${' '.repeat(4)}`)
     expect(visibleWidth(ghosted)).toBe(20)
   })
 
   it('reduces the ghost to a lone ellipsis when a single column remains', () => {
-    // width 14, text 4, cursor 1: room 1 — the hint clips to bare `…`.
+    // width 6, text 4, cursor 1: room 1 — the hint clips to bare `…`.
     const row = `    /btw${CURSOR_BLOCK}${' '.repeat(5)}`
-    const ghosted = injectGhostHint(row, ' <q>', '/btw', 14, identity)
+    const ghosted = injectGhostHint(row, ' <q>', '/btw', 6, identity)
     expect(ghosted).toBe(`    /btw${CURSOR_BLOCK}…${' '.repeat(4)}`)
     expect(visibleWidth(ghosted)).toBe(14)
   })
 
   it('returns the row unchanged when there is no room at all', () => {
     const row = `    /btw${CURSOR_BLOCK}${' '.repeat(3)}`
-    expect(injectGhostHint(row, ' <q>', '/btw', 12, identity)).toBe(row)
+    expect(injectGhostHint(row, ' <q>', '/btw', 4, identity)).toBe(row)
   })
 
   it('declines while the cursor sits mid-text', () => {
@@ -335,9 +186,9 @@ describe('injectGhostHint', () => {
     // An unfocused editor renders no cursor; the ghost lands at the
     // content-end column instead. The bracket paint adds 2 columns and the
     // display-width clamp trims them from the trailing padding.
-    const row = `    /btw${' '.repeat(12)}`
-    const ghosted = injectGhostHint(row, ' <q>', '/btw', 20, text => `[${text}]`)
-    expect(ghosted).toBe(`    /btw[ <q>]${' '.repeat(8)}`)
+    const row = `/btw${' '.repeat(16)}`
+    const ghosted = injectGhostHint(row, ' <q>', '/btw', 12, text => `[${text}]`)
+    expect(ghosted).toBe(`/btw[ <q>]${' '.repeat(12)}`)
     // Unpainted width 20; the bracket paint again adds its 2 columns.
     expect(visibleWidth(ghosted)).toBe(22)
   })
@@ -346,16 +197,16 @@ describe('injectGhostHint', () => {
     // Text `路径` is 4 columns wide; width 20 leaves contentWidth 12 and
     // room 7, so ` 文件路径` (9 columns) clips to ` 文件…` (6 columns).
     const row = `    路径${CURSOR_BLOCK}${' '.repeat(11)}`
-    const ghosted = injectGhostHint(row, ' 文件路径', '路径', 20, identity)
+    const ghosted = injectGhostHint(row, ' 文件路径', '路径', 12, identity)
     expect(ghosted).toBe(`    路径${CURSOR_BLOCK} 文件…${' '.repeat(5)}`)
     expect(visibleWidth(ghosted)).toBe(20)
   })
 
   it('never splits an emoji grapheme while ellipsizing', () => {
-    // Text `a` is 1 column; width 14 leaves contentWidth 6 and room 4, so
+    // Text `a` is 1 column; width 6 leaves contentWidth 6 and room 4, so
     // exactly one 2-column emoji fits beside the ellipsis.
     const row = `    a${CURSOR_BLOCK}${' '.repeat(8)}`
-    const ghosted = injectGhostHint(row, ' 😀😀', 'a', 14, identity)
+    const ghosted = injectGhostHint(row, ' 😀😀', 'a', 6, identity)
     expect(ghosted).toBe(`    a${CURSOR_BLOCK} 😀…${' '.repeat(4)}`)
     expect(visibleWidth(ghosted)).toBe(14)
   })

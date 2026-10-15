@@ -112,6 +112,8 @@ describe('ScrollRegion over a virtual leaf', () => {
     pill: false,
     follow: false,
     scrollbar: true,
+    more: false,
+    moreText: String,
     expanded: () => false,
     colors,
     components,
@@ -128,6 +130,37 @@ describe('ScrollRegion over a virtual leaf', () => {
     const end = view.render(20)
     expect(end[5]).toContain('row 999999')
     expect(leaf.reads.length).toBeLessThanOrEqual(12)
+  })
+})
+
+describe('ScrollRegion that counts the rows below', () => {
+  const counted = (child: Component, offset = 0): ScrollRegion => new ScrollRegion({
+    child, memory: { offset, following: undefined, away: 0 }, height: 4, expandedHeight: 9, fit: false, pill: false, follow: false, scrollbar: false,
+    more: true, moreText: count => `↓ ${String(count)} more`, expanded: () => false, colors, components, pillText: String,
+  })
+  const leaf = (count: number): Component => ({ render: () => Array.from({ length: count }, (_, index) => `row ${String(index)}`), invalidate: () => {} })
+
+  it('puts the count of the rows still below on the last row, and follows the scroll', () => {
+    const view = counted(leaf(10))
+    expect(view.render(20).map(row => row.trimEnd())).toEqual(['row 0', 'row 1', 'row 2', '↓ 7 more'])
+    view.scrollBy(2)
+    expect(view.render(20).map(row => row.trimEnd())).toEqual(['row 2', 'row 3', 'row 4', '↓ 5 more'])
+  })
+
+  it('is content again once the end is reached, and says nothing when everything fits', () => {
+    const view = counted(leaf(10))
+    view.render(20)
+    view.scrollToEnd()
+    expect(view.render(20).map(row => row.trimEnd())).toEqual(['row 6', 'row 7', 'row 8', 'row 9'])
+    expect(counted(leaf(3)).render(20).map(row => row.trimEnd())).toEqual(['row 0', 'row 1', 'row 2', ''])
+  })
+
+  it('keeps a one-row viewport as content: there is no room for the count', () => {
+    const one = new ScrollRegion({
+      child: leaf(5), memory: { offset: 0, following: undefined, away: 0 }, height: 1, expandedHeight: 1, fit: false, pill: false, follow: false, scrollbar: false,
+      more: true, moreText: count => `↓ ${String(count)} more`, expanded: () => false, colors, components, pillText: String,
+    })
+    expect(one.render(20).map(row => row.trimEnd())).toEqual(['row 0'])
   })
 })
 

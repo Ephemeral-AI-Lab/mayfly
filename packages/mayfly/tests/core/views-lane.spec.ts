@@ -1,11 +1,10 @@
-/** The views lane: summaries as row-2 entries, the entered panel under its tab strip, and the lane's keys.
+/** The views lane: summaries as status-row entries, the entered panel under the row, and the lane's keys.
  * @module @ephemeral-ai/mayfly/tests/core/views-lane
  */
 import { describe, expect, it, vi } from 'vitest'
 import { ui } from '../../../ui/src/index.ts'
 import type { MayflyComponent, MayflyFocusable, MayflyFocusIdentity, MayflySemanticColors } from '../../src/core/types.ts'
 import { VIEWS_FOCUS_ID, ViewsLane, type ViewRegistration, type ViewsLaneHost } from '../../src/core/views-lane.ts'
-import { visibleWidth } from '../../src/core/width.ts'
 import { plain } from '../helpers.ts'
 
 const PRIMARY = '\x1b[35m'
@@ -57,24 +56,25 @@ function panel(rows: readonly string[]): Panel {
   return { component: target, target }
 }
 
-const summary = (text: string, count?: number | string) => ({ node: ui.richText([{ text }]), ...(count === undefined ? {} : { count }) })
+const summary = (text: string) => ({ node: ui.richText([{ text }]) })
 
-function view(lane: ViewsLane, id: string, options: { title?: string, priority?: number, count?: number | string, rows?: readonly string[], enterable?: boolean } = {}): { registration: ViewRegistration, panel: Panel } {
-  const registration = lane.register({ id, ...(options.title === undefined ? {} : { title: options.title }), ...(options.priority === undefined ? {} : { priority: options.priority }), summary: summary(id, options.count) })
+function view(lane: ViewsLane, id: string, options: { priority?: number, rows?: readonly string[], enterable?: boolean } = {}): { registration: ViewRegistration, panel: Panel } {
+  const registration = lane.register({ id, ...(options.priority === undefined ? {} : { priority: options.priority }), summary: summary(id) })
   const made = panel(options.rows ?? [`${id} body`])
   if (options.enterable !== false) registration.setPanel(made.component, made.target)
   return { registration, panel: made }
 }
 
-describe('ViewsLane registration and the row-2 entries', () => {
-  it('lists summaries as ordered status entries on row 2, and a null summary leaves the row', () => {
+describe('ViewsLane registration and the status-row entries', () => {
+  it('lists summaries as ordered status entries in the left band, and a null summary leaves the row', () => {
     const { lane } = harness()
     const a = view(lane, 'b.second', { priority: 5 })
     view(lane, 'a.first', { priority: 1 })
     view(lane, 'c.tie', { priority: 5 })
     const entries = lane.statusEntries()
     expect(entries.map(entry => entry.id)).toEqual(['views/a.first', 'views/b.second', 'views/c.tie'])
-    expect(entries[0]!.definition).toMatchObject({ row: 2, band: 'left', priority: 1 })
+    expect(entries[0]!.definition).toMatchObject({ band: 'left', priority: 1 })
+    expect(entries[0]!.definition).not.toHaveProperty('row')
     expect(lane.statusEntries()).toBe(entries)
     const serial = entries[1]!.revision
     a.registration.setSummary(summary('changed'))
@@ -112,13 +112,13 @@ describe('ViewsLane registration and the row-2 entries', () => {
     expect(lane.statusEntries()).toEqual([])
   })
 
-  it('normalizes the title and the priority', () => {
+  it('normalizes the priority', () => {
     const { lane } = harness()
-    const odd = lane.register({ id: 'odd', title: 'A\u001b[31mgents', priority: Number.NaN, summary: summary('x') })
+    const odd = lane.register({ id: 'odd', priority: Number.NaN, summary: summary('x') })
     const made = panel(['body'])
     odd.setPanel(made.component, made.target)
     expect(lane.enter()).toBe(true)
-    expect(plain(lane.panel(40))[0]).toBe('Agents')
+    expect(plain(lane.panel(40))[0]).toBe('body')
     expect(lane.statusEntries()[0]!.definition.priority).toBe(0)
   })
 })
@@ -141,8 +141,8 @@ describe('ViewsLane entering and leaving', () => {
 
   it('enters the first view with focus, switches in place, and leaves back through the host', () => {
     const { lane, calls } = harness()
-    view(lane, 'agents', { priority: 1, count: 5 })
-    view(lane, 'jobs', { priority: 2, count: 3 })
+    view(lane, 'agents', { priority: 1 })
+    view(lane, 'jobs', { priority: 2 })
     expect(lane.enterable).toBe(true)
     expect(lane.isEntered).toBe(false)
     expect(lane.enter()).toBe(true)
@@ -228,45 +228,19 @@ describe('ViewsLane entering and leaving', () => {
 })
 
 describe('ViewsLane painting', () => {
-  it('paints the strip, the rule under the active tab, and the panel in place of row 2', () => {
+  it('paints the active panel alone, with no strip, rule, title, or count: the row names the items', () => {
     const { lane } = harness()
-    view(lane, 'agents', { title: 'Agents', priority: 1, count: 5, rows: ['one', 'two'] })
-    view(lane, 'jobs', { title: 'Jobs', priority: 2, count: 3 })
-    view(lane, 'goal', { title: 'Goal', priority: 3 })
+    view(lane, 'agents', { priority: 1, rows: ['one', 'two'] })
+    view(lane, 'jobs', { priority: 2 })
+    view(lane, 'goal', { priority: 3 })
     lane.enter('jobs')
-    expect(plain(lane.panel(60))).toEqual(['Agents 5   Jobs 3   Goal', `${' '.repeat(11)}${'━'.repeat(6)}`, 'jobs body'])
-    expect(lane.panel(60)![0]).toBe(`${MUTED}Agents\x1b[22m ${MUTED}5\x1b[22m   ${PRIMARY}Jobs\x1b[39m ${PRIMARY}3\x1b[39m   ${MUTED}Goal\x1b[22m`)
-    expect(lane.component.render(60)).toHaveLength(3)
+    expect(plain(lane.panel(60))).toEqual(['jobs body'])
+    expect(lane.component.render(60)).toHaveLength(1)
     lane.switchView(-1)
-    expect(plain(lane.panel(60))).toEqual(['Agents 5   Jobs 3   Goal', '━'.repeat(8), 'one', 'two'])
+    expect(plain(lane.panel(60))).toEqual(['one', 'two'])
   })
 
-  it('counts are stringified and cleaned', () => {
-    const { lane } = harness()
-    view(lane, 'todo', { title: 'Todo', count: '2/6\u0007' })
-    lane.enter()
-    expect(plain(lane.panel(30))[0]).toBe('Todo 2/6')
-  })
-
-  it('elides tabs that do not fit into a "+N" and keeps the active one', () => {
-    const { lane } = harness()
-    for (const [index, id] of ['aaaa', 'bbbb', 'cccc', 'dddd'].entries()) view(lane, id, { priority: index })
-    lane.enter('cccc')
-    const [strip, rule] = plain(lane.panel(16))
-    expect(strip).toBe('aaaa   cccc +2')
-    expect(rule).toBe(`${' '.repeat(7)}${'━'.repeat(4)}`)
-  })
-
-  it('truncates an active tab wider than the row', () => {
-    const { lane } = harness()
-    view(lane, 'long', { title: 'A very long view title', count: 12 })
-    lane.enter()
-    const [strip, rule] = plain(lane.panel(10))
-    expect(visibleWidth(strip!)).toBeLessThanOrEqual(10)
-    expect(rule).toBe('━'.repeat(10))
-  })
-
-  it('shows the lane at most a third of the terminal and names the rows it cuts', () => {
+  it('shows the lane at most a third of the terminal, at least four rows, and names the rows it cuts', () => {
     const { lane, size } = harness()
     view(lane, 'a', { rows: Array.from({ length: 20 }, (_, index) => `row ${String(index)}`) })
     lane.enter()
@@ -274,40 +248,29 @@ describe('ViewsLane painting', () => {
     const rows = lane.panel(40)!
     expect(rows).toHaveLength(10)
     expect(rows.at(-1)).toContain('more rows')
-    expect(lane.viewport()).toEqual({ columns: 40, rows: 8 })
+    expect(lane.viewport()).toEqual({ columns: 40, rows: 10 })
     size.rows = 6
     expect(lane.panel(40)).toHaveLength(4)
-    expect(lane.viewport().rows).toBe(2)
-    view(lane, 'b')
+    expect(lane.viewport().rows).toBe(4)
     size.rows = 3
-    expect(lane.viewport().rows).toBe(2)
+    expect(lane.viewport().rows).toBe(4)
   })
 
-  it('clamps rows wider than the width and cuts a single-row budget without an overflow row', () => {
-    const { lane, size } = harness()
+  it('clamps rows wider than the width', () => {
+    const { lane } = harness()
     view(lane, 'a', { rows: ['x'.repeat(50), 'y'] })
     lane.enter()
-    expect(lane.panel(20)![2]).toBe('x'.repeat(20))
-    size.rows = 3
-    // Budget is never below two panel rows.
-    expect(lane.panel(20)).toHaveLength(4)
+    expect(lane.panel(20)).toEqual(['x'.repeat(20), 'y'])
   })
 
   it('paints nothing before a host or an entered view exist', () => {
     const lane = new ViewsLane()
     view(lane, 'a')
     expect(lane.panel(20)).toBeUndefined()
-    expect(lane.viewport()).toEqual({ columns: 1, rows: 2 })
+    expect(lane.viewport()).toEqual({ columns: 1, rows: 4 })
     const { lane: bound } = harness()
     view(bound, 'a')
     expect(bound.panel(20)).toBeUndefined()
-  })
-
-  it('draws the strip in ASCII glyphs when asked', () => {
-    const { lane } = harness({ glyphs: 'ascii' })
-    view(lane, 'a', { title: 'A' })
-    lane.enter()
-    expect(plain(lane.panel(10))[1]).toBe('=')
   })
 })
 
@@ -362,13 +325,13 @@ describe('ViewsLane keys', () => {
     expect(lane.active).toBe('b')
   })
 
-  it('follows a rebound key and offers the tabs hint only with a second view', () => {
+  it('follows a rebound key and offers the items hint only with a second view', () => {
     const keymap = { getKeys: (id: string) => id === 'ui.left' ? ['h'] : id === 'ui.right' ? ['l'] : [], matches: (data: string, id: string) => (id === 'ui.left' && data === 'h') || (id === 'ui.right' && data === 'l') } as never
     const { lane } = harness({ keymap })
     view(lane, 'a', { priority: 1 })
     expect(lane.hints()).toEqual([])
     view(lane, 'b', { priority: 2 })
-    expect(lane.hints()).toEqual([{ id: 'views', keys: 'H/L', label: 'tabs' }])
+    expect(lane.hints()).toEqual([{ id: 'views', keys: 'H/L', label: 'items' }])
     lane.enter('a')
     lane.component.handleInput!('\x1b[C')
     expect(lane.active).toBe('a')

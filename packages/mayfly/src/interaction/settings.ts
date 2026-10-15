@@ -94,6 +94,8 @@ export interface MayflySettings {
   readonly reducedMotion: boolean
   /** How much the activity row and the editor teach: `full` fills the activity row's second line with a rotating tip while no action runs, `off` leaves it blank. */
   readonly quietHints: 'full' | 'off'
+  /** Whether the views of the status row list their finished items (completed todos, settled jobs) beside the live ones. */
+  readonly viewHistory: boolean
 }
 
 /** One saved key override: the keys that replace an action's defaults, and its label for when it is not loaded. */
@@ -145,6 +147,7 @@ export const Config = z.object({
   monochrome: z.boolean().default(false).volatile(),
   reducedMotion: z.boolean().default(false).volatile(),
   quietHints: z.union([z.const('full'), z.const('off')]).default('full').volatile(),
+  viewHistory: z.boolean().default(false).volatile(),
 })
 
 /** The resolved defaults, used until a settings service layers overrides. */
@@ -172,6 +175,7 @@ export const DEFAULT_SETTINGS: MayflySettings = {
   monochrome: false,
   reducedMotion: false,
   quietHints: 'full',
+  viewHistory: false,
 }
 
 /** Stable Cordis plugin name. */

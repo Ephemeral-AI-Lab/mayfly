@@ -8,7 +8,7 @@
  */
 
 import { hasMotion } from './ui-motion-text.ts'
-import type { MayflyInlineSpan, MayflyListItem, MayflyListNode } from '@ephemeral-ai/mayfly-ui'
+import type { MayflyInlineSpan, MayflyListCell, MayflyListItem, MayflyListNode } from '@ephemeral-ai/mayfly-ui'
 import type { MayflySemanticColors } from './types.ts'
 import { scanContentLines, type ContentLineScan } from './content-segments.ts'
 import { paintSpan, paintTone } from './ui-paint.ts'
@@ -179,6 +179,8 @@ function labelColumn(items: readonly MayflyListItem[]): number {
 
 interface RowState {
   readonly node: ListNodeView
+  /** The list's columns at this width, when its rows carry cells. */
+  readonly plan: CellPlan | undefined
   readonly spec: ListRowSpec
   readonly on: boolean
   readonly focused: boolean
@@ -191,6 +193,100 @@ interface RowState {
   readonly view: SegmentView | undefined
   /** The text of an `input` row; empty for every other row. */
   readonly text: string
+}
+
+/** Columns between two cells of a row, and the least width a column gives up to before the row sheds a whole one. */
+const CELL_GAP = 2
+const CELL_MIN_WIDTH = 10
+
+/** The columns of a list's cells at one width: how wide each is, and which the row has given up. */
+interface CellPlan {
+  /** The width of each column; `0` for a column given up. */
+  readonly widths: readonly number[]
+  /** Identifies the plan in a row's memo key. */
+  readonly signature: string
+}
+
+const cellPlans = new WeakMap<readonly MayflyListItem[], { readonly width: number, readonly colors: MayflySemanticColors, readonly plan: CellPlan | undefined }>()
+
+const cellText = (cell: MayflyListCell | undefined, colors: MayflySemanticColors): string => cell === undefined ? '' : spansText(cell.spans, colors)
+
+/**
+ * The columns of a list's cells: each is as wide as its widest cell over all the list's rows (not only the window), so
+ * the rows line up however the window scrolls. A row wider than `width` first narrows the columns that have a `max`
+ * (widest first), then gives up whole columns, the highest `shed` first; `undefined` when no row carries cells.
+ */
+function cellPlanOf(node: ListNodeView, width: number, colors: MayflySemanticColors): CellPlan | undefined {
+  const held = cellPlans.get(node.items)
+  if (held !== undefined && held.width === width && held.colors === colors) return held.plan
+  const rows = node.items.filter(item => item.cells !== undefined)
+  const count = rows.reduce((most, item) => Math.max(most, item.cells!.length), 0)
+  let plan: CellPlan | undefined
+  if (count > 0) {
+    const natural: number[] = []
+    const cap: (number | undefined)[] = []
+    const shed: (number | undefined)[] = []
+    const reserve: number[] = []
+    for (let column = 0; column < count; column += 1) {
+      let widest = 0
+      for (const item of rows) {
+        const cell = item.cells![column]
+        if (cell === undefined) continue
+        widest = Math.max(widest, visibleWidth(cellText(cell, colors)))
+        if (cell.max !== undefined) cap[column] = Math.max(cap[column] ?? 0, cell.max)
+        if (cell.shed !== undefined) shed[column] = Math.max(shed[column] ?? 0, cell.shed)
+        if (cell.min !== undefined) reserve[column] = Math.max(reserve[column] ?? 0, cell.min)
+      }
+      natural.push(Math.max(reserve[column] ?? 0, cap[column] === undefined ? widest : Math.min(widest, cap[column]!)))
+    }
+    // What leads every row before its cells: the cursor gutter and the row's own label.
+    const lead = rows.reduce((most, item) => Math.max(most, 2 + (item.indent ?? 0) + visibleWidth(item.labelSpans === undefined ? item.label : spansText(item.labelSpans, colors))), 0)
+    // A column no row fills takes no room, unless it reserves some.
+    const kept = natural.map(w => w > 0)
+    const fit = (): number[] | undefined => {
+      const widths = natural.map((w, column) => kept[column] ? w : 0)
+      const shown = kept.filter(Boolean).length
+      let excess = lead + widths.reduce((sum, w) => sum + w, 0) + CELL_GAP * Math.max(0, shown - 1) - width
+      while (excess > 0) {
+        let widest = -1
+        for (let column = 0; column < count; column += 1) {
+          if (kept[column] && cap[column] !== undefined && widths[column]! > CELL_MIN_WIDTH && (widest < 0 || widths[column]! > widths[widest]!)) widest = column
+        }
+        if (widest < 0) return undefined
+        widths[widest]! -= 1
+        excess -= 1
+      }
+      return widths
+    }
+    let widths = fit()
+    while (widths === undefined) {
+      let drop = -1
+      for (let column = 0; column < count; column += 1) {
+        if (kept[column] && shed[column] !== undefined && (drop < 0 || shed[column]! >= shed[drop]!)) drop = column
+      }
+      if (drop < 0) { widths = natural.map((w, column) => kept[column] ? w : 0); break }
+      kept[drop] = false
+      widths = fit()
+    }
+    plan = { widths, signature: widths.join(',') }
+  }
+  cellPlans.set(node.items, { width, colors, plan })
+  return plan
+}
+
+/** A row's cells in the list's columns, a gap between two: padded to its column, right-aligned or left, cut with an ellipsis when it is wider. */
+function cellsOf(item: MayflyListItem, plan: CellPlan | undefined, colors: MayflySemanticColors): string {
+  if (plan === undefined || item.cells === undefined) return ''
+  let line = ''
+  plan.widths.forEach((width, column) => {
+    if (width === 0) return
+    const gap = line === '' ? '' : ' '.repeat(CELL_GAP)
+    const cell = item.cells![column]
+    const text = clipRow(cellText(cell, colors), width)
+    const spare = ' '.repeat(Math.max(0, width - visibleWidth(text)))
+    line += `${gap}${cell?.align === 'right' ? `${spare}${text}` : `${text}${spare}`}`
+  })
+  return line
 }
 
 /** The columns before the label: the gutter, indent, tree guides, disclosure, number, and check. */
@@ -233,12 +329,14 @@ function labelOf(state: RowState, colors: MayflySemanticColors): string {
 function headOf(state: RowState, colors: MayflySemanticColors): { readonly prefix: string, readonly line: string } {
   const prefix = prefixOf(state, colors)
   const item = state.spec.item
-  const head = `${prefix}${labelOf(state, colors)}${labelTail(item, colors)}`
+  // A row with cells lines them up in the list's columns (the label is then its lead); its description follows them.
+  const cells = cellsOf(item, state.plan, colors)
+  const head = `${prefix}${labelOf(state, colors)}${labelTail(item, colors)}${cells}`
   const placeholder = item.input?.placeholder !== undefined && state.text === '' ? colors.muted(item.input.placeholder) : undefined
   const description = state.width <= DETAIL_MIN_WIDTH ? '' : placeholder ?? descriptionOf(item, colors)
   if (description.length === 0) return { prefix, line: head }
   // The description starts in a column behind the widest label; a wrapped row keeps it one space after its label.
-  const lead = state.column === 0 ? 1 : Math.max(COLUMN_GAP, visibleWidth(prefix) + state.column + COLUMN_GAP - visibleWidth(head))
+  const lead = cells !== '' ? COLUMN_GAP : state.column === 0 ? 1 : Math.max(COLUMN_GAP, visibleWidth(prefix) + state.column + COLUMN_GAP - visibleWidth(head))
   return { prefix, line: `${head}${' '.repeat(lead)}${description}` }
 }
 
@@ -406,6 +504,7 @@ export function paintList(node: ListNodeView, width: number, height: number, col
   const segmentInfo = segmentOf(node.items)
   const needsFooter = segmentInfo !== null
   let focusedWithout = false
+  const plan = cellPlanOf(node, available, colors)
   // Which item each row sits under, so a band can follow the chain from a body to its call to the head.
   const find = highlightPattern(node.highlight)
   const parents = new Map<string, string>()
@@ -420,7 +519,7 @@ export function paintList(node: ListNodeView, width: number, height: number, col
     const selected = options.selectedIds.includes(item.id)
     const view = options.segment?.(item)
     const state: RowState = {
-      node, spec, on, focused: options.focused, width: available, marker: options.marker,
+      node, plan, spec, on, focused: options.focused, width: available, marker: options.marker,
       check: checkOf(node, spec, selected, options.selectedIds),
       number: numbered ? String(spec.position + 1).padStart(digits) : '',
       column,
@@ -436,7 +535,7 @@ export function paintList(node: ListNodeView, width: number, height: number, col
     const key = [
       available, column, state.marker, on ? 1 : 0, options.focused ? 1 : 0, node.marker ?? '', state.check, state.number,
       spec.depth, spec.last ? 1 : 0, spec.expandable ? 1 : 0, spec.open ? 1 : 0,
-      `${String(view?.active)}\0${String(view?.pinned)}`, options.flow === true ? 1 : 0, state.text,
+      `${String(view?.active)}\0${String(view?.pinned)}`, options.flow === true ? 1 : 0, state.text, item.cells === undefined ? '' : plan?.signature ?? '',
     ].join('\x01')
     const leaded = item.bodyLead !== undefined && spec.open && item.body !== undefined
     const paintHead = (): readonly string[] => leaded ? leadedLines(state, colors, options.body) : headLines(state, colors, options.translate)

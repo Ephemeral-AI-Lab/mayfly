@@ -346,7 +346,7 @@ export class SurfaceManager {
   private readonly collapsed: Record<'left' | 'right', boolean> = { left: false, right: false }
   private readonly layouts = new Map<string, SurfaceLayout>()
   private readonly linearLayouts = new Map<string, SurfaceLayout>()
-  /** The views of status row 2: no lane rows of their own, but a focus of their own (`VIEWS_FOCUS_ID`). */
+  /** The views of the status row: no lane rows of their own, but a focus of their own (`VIEWS_FOCUS_ID`). */
   readonly views = new ViewsLane()
   private revision = 0
   private readonly activePlacements: Partial<Record<SurfacePlacement, string>> = {}

@@ -87,6 +87,7 @@ async function mount(options: MountOptions = {}) {
   setSharedEditor(ctx, {
     editor: { focused: false, render: () => [], invalidate: () => {} } as never,
     submitPrompt: () => {},
+    setShell: () => {},
     report: (_id, feedback) => { notices.push(feedback.message) },
   })
   return { ctx, agent, plan, runs, currentPreset: () => currentPreset }

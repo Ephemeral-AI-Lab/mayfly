@@ -228,6 +228,9 @@ describe.each(['pane', 'overlay'] as const)('%s action publication', kind => {
     { kind: 'failed', message: 'failure', feedback: { message: 'failed', severity: 'unknown' } },
     { kind: 'failed', message: 'failure', feedback: { message: 'failed', severity: 'error', purpose: 'unknown' } },
     { kind: 'failed', message: 'failure', feedback: { message: 'failed', severity: 'error', detail: 1 } },
+    { kind: 'failed', message: 'failure', feedback: { message: 'failed', severity: 'error', tail: 1 } },
+    { kind: 'failed', message: 'failure', feedback: { message: 'failed', severity: 'error', tail: '' } },
+    { kind: 'failed', message: 'failure', feedback: { message: 'Rate limited · retrying in 9s', severity: 'warning', tail: 'elsewhere' } },
   ])('contains invalid action reply %j before publication', async reply => {
     const { current } = await setup(kind, () => reply as never)
     const before = current()

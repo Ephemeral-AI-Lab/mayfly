@@ -4,9 +4,7 @@
  * (`mayfly-input`, pi-tui Editor behind `ctx.mayflyComponents`), the built-in
  * `/quit`, `/resume`, `/new`, `/fork`, `/sessions`, `/help`, and `/theme`
  * commands (`mayfly-commands`). The optional bash-mode and autocomplete enhancement
- * layer is mounted with the editor as one interaction feature, and the
- * queued-message pane with app-owned live refresh as the
- * `./pane-queue` subpath plugin (`mayfly-pane-queue`). The session-title
+ * layer is mounted with the editor as one interaction feature. The session-title
  * terminal mirror (`mayfly-terminal-title`, the OSC 0 window title over the
  * upstream session-title fold), and the boot-time update check
  * (`mayfly-update-check`). The consolidated `mayfly` settings namespace is its
@@ -25,7 +23,6 @@ import * as deliverablesCommand from './deliverables-command.ts'
 import * as commandsPlugin from './commands-plugin.ts'
 import * as inputPlugin from './input-plugin.ts'
 import * as keysPlugin from './keys.ts'
-import * as subagentReplyPlugin from './subagent-reply.ts'
 import * as terminalTitlePlugin from './terminal-title.ts'
 import * as updateCheckPlugin from './updater/check.ts'
 import { PromptEditorController } from './editor-instance.ts'
@@ -58,7 +55,6 @@ export function apply(ctx: Context): void {
   ctx.plugin(deliverablesCommand)
   ctx.plugin(scheduleCommand)
   ctx.plugin(inputPlugin)
-  ctx.plugin(subagentReplyPlugin)
   ctx.plugin(terminalTitlePlugin)
   ctx.plugin(updateCheckPlugin)
 }

@@ -1,13 +1,12 @@
 /**
  * The width-scan contract for core's own rendering surfaces (D48): the
- * gutter wrapper, the shared `framePanel` framer, `WrappingSelectList`
- * (the slash-command dropdown), the diff band painter, and the
+ * gutter wrapper, the shared `framePanel` framer, the completion drawer
+ * (the slash-command list), the diff band painter, and the
  * `clampRowsToWidth` backstop itself — each must honor the `MayflyComponent` contract at every scan
  * width against every adversarial fixture.
  */
 
 import { describe, expect, it } from 'vitest'
-import type { SelectItem, SelectListTheme } from '@earendil-works/pi-tui'
 import { clampRowsToWidth } from '../../src/core/chrome.ts'
 import { renderChartRows } from '../../src/core/chart-renderer.ts'
 import { alignDiffLines, paintDiffRows } from '../../src/core/diff-align.ts'
@@ -21,20 +20,11 @@ import { UiSurfaceModel } from '../../src/core/ui-interaction-surface.ts'
 import { ui } from '../../../ui/src/index.ts'
 import { createRealSurface, probeComponents } from '../design/probe.ts'
 import type { MayflyComponents, MayflyEditor, MayflySemanticColors } from '../../src/core/types.ts'
-import { WrappingSelectList } from '../../src/core/wrapping-select-list.ts'
+import { paintDrawer } from '../../src/core/completion-drawer.ts'
 import { sliceByColumn, truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/width.ts'
 import { ViewsLane } from '../../src/core/views-lane.ts'
 import { ADVERSARIAL, SCAN_WIDTHS, expectLinesFit } from './width-scan.ts'
 import { plainColors } from '../helpers.ts'
-
-/** Identity paints: the scan measures true columns, not bracket markers. */
-const selectTheme: SelectListTheme = {
-  selectedPrefix: text => text,
-  selectedText: text => text,
-  description: text => text,
-  scrollInfo: text => text,
-  noMatch: text => text,
-}
 
 /** W4a migration sweep: every integer width in the supported fixture range. */
 const MIGRATION_WIDTHS = Array.from({ length: 119 }, (_, index) => index + 2)
@@ -47,16 +37,21 @@ function scanEditor(text: string): MayflyEditor {
     setSubmitBarrier: () => {},
     submit: () => {},
     isShowingAutocomplete: () => false,
+    completion: () => undefined,
+    setTokenSource: () => {},
+    tokenBackspace: () => false,
+    getHistoryPastes: () => [],
+    setTextFolding: () => {},
+    onTokenChange: undefined,
+    activeToken: () => undefined,
+    replaceActiveToken: () => {},
     refreshAutocomplete: () => {},
     getText: () => text,
     setText: () => {},
     addToHistory: () => {},
     getHistory: () => [],
-    setBorderColor: () => {},
-    setPromptSymbol: () => {},
-    setBorderLabel: () => {},
-    setBorderTitle: () => {},
-    setConnectedAbove: () => {},
+    setShellMode: () => {},
+    setPlaceholder: () => {},
     setGhostHint: () => {},
     setAutocompleteProvider: () => {},
     getExpandedText: () => text,
@@ -135,7 +130,7 @@ describe('core width-scan', () => {
       const prompts = [
         ui.prompt({ id: 'p', value: text, tokens: [{ id: 't1', label: text.slice(0, 60), size: text.slice(0, 60) }, { id: 't2', label: 'notes.md', size: '2 KB' }], placeholder: [text.slice(0, 200), 'Ask'], symbol: '! ', symbolTone: 'accent' }),
         ui.prompt({ id: 'p', placeholder: [text.slice(0, 90), `${text.slice(0, 90)} · ${text.slice(0, 90)}`], completions: { items: [{ id: 'a', label: text.slice(0, 300), detail: text.slice(0, 300), right: text.slice(0, 60) }, { id: 'b', label: 'short' }] } }),
-        ui.prompt({ id: 'p', recall: [{ kind: 'queued', text }, { kind: 'history', text: 'older' }], recallLabel: text.slice(0, 24), tokens: [{ id: 't', label: 'Image #1', size: '84 KB' }] }),
+        ui.prompt({ id: 'p', recall: [{ text }, { text: 'older' }], recallLabel: text.slice(0, 24), tokens: [{ id: 't', label: 'Image #1', size: '84 KB' }] }),
       ]
       for (const [index, prompt] of prompts.entries()) for (const width of SCAN_WIDTHS) {
         const surface = createRealSurface(ui.surface({ title: text, titleAlign: 'right', chrome: 'surface', hint: 'completions', child: prompt }), width, { components: probeComponents() })
@@ -150,17 +145,18 @@ describe('core width-scan', () => {
       }
     })
 
-    it(`WrappingSelectList survives ${name}`, () => {
-      const items: SelectItem[] = [
-        { value: text, label: `/${text.slice(0, 30)}`, description: text },
-        { value: 'short', label: '/short', description: 'fits' },
-      ]
-      const list = new WrappingSelectList(items, 5, selectTheme, {
-        minPrimaryColumnWidth: 12,
-        maxPrimaryColumnWidth: 32,
-      })
+    it(`the completion drawer survives ${name}`, () => {
+      const view = {
+        kind: 'commands' as const,
+        prefix: '/',
+        index: 0,
+        items: [
+          { label: `/${text.slice(0, 30)}`, value: `/${text.slice(0, 30)}`, detail: text },
+          { label: '/short', value: '/short', detail: 'fits' },
+        ],
+      }
       for (const width of MIGRATION_WIDTHS) {
-        expectLinesFit(`WrappingSelectList/${name}`, list.render(width), width)
+        expectLinesFit(`completion drawer/${name}`, paintDrawer({ view, width, colors: plainColors(), components: probeComponents(), glyphs: undefined, wait: undefined }), width)
       }
     })
 
@@ -196,7 +192,7 @@ describe('core width-scan', () => {
         direction: 'column',
         children: [
           { node: { kind: 'rich-text', spans: [{ text, tone: 'accent', styles: ['strong'] }] } },
-          { node: { kind: 'editor-control' } },
+          { node: { kind: 'prompt', id: 'prompt' } },
         ],
       }, {
         editor,
@@ -368,12 +364,12 @@ describe('core width-scan', () => {
   }
 
   for (const { name, text } of ADVERSARIAL) {
-    it(`views lane strip, rule, and panel survive ${name}`, () => {
+    it(`views lane panel survives ${name}`, () => {
       const lane = new ViewsLane()
       lane.bind({ colors: statusColors as unknown as MayflySemanticColors, focus: () => {}, release: () => {}, requestRender: () => {}, viewport: () => ({ columns: 120, rows: 30 }) })
       for (const [index, id] of ['agents', 'jobs', 'goal'].entries()) {
         const panel = { render: () => [text.slice(0, 90), text], invalidate: () => {}, focused: false, handleInput: () => {} }
-        lane.register({ id, title: index === 0 ? text.slice(0, 50) : id, priority: index, summary: { node: { kind: 'text', content: text }, count: text.slice(0, 20) } }).setPanel(panel, panel)
+        lane.register({ id, priority: index, summary: { node: { kind: 'text', content: index === 0 ? text.slice(0, 50) : id } } }).setPanel(panel, panel)
       }
       for (const id of ['agents', 'jobs', 'goal']) {
         lane.enter(id)

@@ -2,7 +2,7 @@
 
 ## Pane
 
-`mayflyPanes` supports `header`, `left`, `right`, and `bottom` placement, and `views` for a view of status row 2 (see [Views of status row 2](/en/plugins/ui-reference#views-of-status-row-2)).
+`mayflyPanes` supports `header`, `left`, `right`, and `bottom` placement, and `views` for a view of the status row (see [Views of the status row](/en/plugins/ui-reference#views-of-the-status-row)).
 
 ```ts
 export const inject = ['mayflyPanes']
@@ -36,8 +36,8 @@ entry never costs two dock rows.
 
 ### Views
 
-A `views` pane has no lane of its own: it declares a `summary` that joins status row 2 and updates it with
-`setSummary()` (`null` takes the view out of the row). `set(node)` publishes the panel that replaces row 2 while the
+A `views` pane has no lane of its own: it declares a `summary` that joins the status row and updates it with
+`setSummary()` (`null` takes the view out of the row). `set(node)` publishes the panel that opens under the row while the
 view is entered with `Alt+↓`, `F5`, or `F6`. `size` and `narrow` do not apply.
 
 ## Overlay

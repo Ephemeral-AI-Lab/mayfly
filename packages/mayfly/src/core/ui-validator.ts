@@ -18,6 +18,7 @@ import type {
   MayflyFormField,
   MayflyInlineSpan,
   MayflyListBodyNode,
+  MayflyListCell,
   MayflyListItem,
   MayflyListNode,
   MayflyListSegment,
@@ -530,6 +531,7 @@ function assertListBody(admitted: MayflyUiNode, path: string): void {
 function listItemRowFields(object: Record<string, unknown>, path: string, state: ValidationState): Partial<MayflyListItem> {
   const labelSpans = own(object, 'labelSpans', path)
   const right = own(object, 'right', path)
+  const cellsValue = own(object, 'cells', path)
   const rightFocus = own(object, 'rightFocus', path)
   const bodyValue = own(object, 'body', path)
   const bodyAlways = own(object, 'bodyAlways', path)
@@ -550,6 +552,7 @@ function listItemRowFields(object: Record<string, unknown>, path: string, state:
   if (gap === true && ruleValue !== undefined) invalid(`${path} cannot be both a rule and a gap`)
   return {
     ...optional(labelSpans === undefined ? undefined : spans(labelSpans, `${path}.labelSpans`, state, false, true), 'labelSpans'),
+    ...optional(cellsValue === undefined ? undefined : listCells(cellsValue, `${path}.cells`, state), 'cells'),
     ...optional(right === undefined ? undefined : spans(right, `${path}.right`, state, false, true), 'right'),
     ...optional(rightFocus === undefined ? undefined : spans(rightFocus, `${path}.rightFocus`, state, false, true), 'rightFocus'),
     ...optional(body, 'body'),
@@ -565,6 +568,28 @@ function listItemRowFields(object: Record<string, unknown>, path: string, state:
     ...optional(gap === undefined ? undefined : boolean(gap, `${path}.gap`), 'gap'),
     ...optional(under, 'under'),
   }
+}
+
+/** The most columns one row's cells may have, and the widest a column may be asked to grow. */
+const LIST_CELL_LIMITS = { count: 12, max: 200, shed: 100 } as const
+
+function listCells(value: unknown, path: string, state: ValidationState): readonly MayflyListCell[] {
+  const cells = collection(value, path)
+  if (cells.length > LIST_CELL_LIMITS.count) invalid(`${path} must hold at most ${String(LIST_CELL_LIMITS.count)} cells`)
+  return cells.map((entry, index) => enter(entry, `${path}[${String(index)}]`, state, object => {
+    const cell = `${path}[${String(index)}]`
+    const align = own(object, 'align', cell)
+    const min = own(object, 'min', cell)
+    const max = own(object, 'max', cell)
+    const shed = own(object, 'shed', cell)
+    return {
+      spans: spans(required(object, 'spans', cell), `${cell}.spans`, state, false, true),
+      ...optional(align === undefined ? undefined : enumeration(align, ['left', 'right'], `${cell}.align`), 'align'),
+      ...optional(min === undefined ? undefined : Math.min(finiteInteger(min, `${cell}.min`, 1), LIST_CELL_LIMITS.max), 'min'),
+      ...optional(max === undefined ? undefined : Math.min(finiteInteger(max, `${cell}.max`, 1), LIST_CELL_LIMITS.max), 'max'),
+      ...optional(shed === undefined ? undefined : Math.min(finiteInteger(shed, `${cell}.shed`), LIST_CELL_LIMITS.shed), 'shed'),
+    }
+  }))
 }
 
 function listMeter(value: unknown, path: string, state: ValidationState): NonNullable<MayflyListItem['meter']> {
@@ -1300,15 +1325,15 @@ function admitNode(value: unknown, path: string, state: ValidationState, depth: 
   return enter(value, path, state, object => {
     const kind = own(object, 'kind', path)
     if (typeof kind !== 'string') invalid(`${path}.kind must be a string`)
-    if (kind === 'editor-control') {
-      if (mode !== 'editor' || !editorSlotAllowed) invalid('editor-control is only valid in an editor shell slot')
-      state.editorControls += 1
-      return { kind }
-    }
-    if (mode === 'status' && !['text', 'rich-text', 'fields', 'progress', 'stack'].includes(kind)) invalid(`status node kind "${kind}" is interactive or unsupported`)
+    if (mode === 'status' && !['text', 'rich-text', 'fields', 'progress', 'stack', 'shed'].includes(kind)) invalid(`status node kind "${kind}" is interactive or unsupported`)
     if (mode === 'editor' && (kind === 'diagram' || kind === 'chart' || kind === 'image')) invalid(`editor node kind "${kind}" is unsupported`)
     /* The host editor owns every key in its shell, so focusable controls other than accelerator actions are unreachable there. */
-    if (mode === 'editor' && (kind === 'form' || kind === 'list' || kind === 'tabs' || kind === 'prompt' || kind === 'slider' || kind === 'review')) invalid(`editor node kind "${kind}" would take focus from the editor`)
+    if (mode === 'editor' && (kind === 'form' || kind === 'list' || kind === 'tabs' || kind === 'slider' || kind === 'review')) invalid(`editor node kind "${kind}" would take focus from the editor`)
+    /* The one prompt of an editor shell is the face of the host editor: its symbol and frame are the tree's, its buffer and keys the host's. */
+    if (mode === 'editor' && kind === 'prompt') {
+      if (!editorSlotAllowed) invalid('the editor prompt is only valid in an editor shell slot')
+      state.editorControls += 1
+    }
     if (viewOnly && !['text', 'fields', 'code', 'diff', 'sections'].includes(kind)) invalid(`${path} must be section content`)
     switch (kind) {
       case 'text': {
@@ -1319,6 +1344,29 @@ function admitNode(value: unknown, path: string, state: ValidationState, depth: 
           ...optional(toneValue === undefined ? undefined : enumeration(toneValue, ['default', 'muted', 'primary', 'accent', 'user', 'success', 'warning', 'danger'], `${path}.tone`), 'tone'),
           ...optional(textOverflow(object, path, true), 'overflow'),
           ...admitTextStyles(ADMISSION_HELPERS, object, path),
+        }
+      }
+      case 'shed': {
+        // The forms are plain status nodes (never another shed node), each ranked; a `null` form hides the node.
+        const form = (value: unknown, formPath: string): MayflyStatusNode => {
+          const admitted = node(value, formPath, state, depth + 1, 'status')
+          if (admitted.kind === 'shed') invalid(`${formPath} cannot be another shed node`)
+          return admitted
+        }
+        const forms = collection(required(object, 'narrower', path), `${path}.narrower`)
+        if (forms.length > 8) limit(`${path}.narrower holds more than 8 forms`)
+        return {
+          kind,
+          node: form(required(object, 'node', path), `${path}.node`),
+          narrower: forms.map((item, index) => {
+            const formPath = `${path}.narrower[${String(index)}]`
+            return enter(item, formPath, state, formObject => {
+              const rank = finiteInteger(required(formObject, 'rank', formPath), `${formPath}.rank`, 0)
+              if (rank > 1000) invalid(`${formPath}.rank must be at most 1000`)
+              const inner = required(formObject, 'node', formPath)
+              return { rank, node: inner === null ? null : form(inner, `${formPath}.node`) }
+            })
+          }),
         }
       }
       case 'markdown': return { kind, source: contentField(required(object, 'source', path), `${path}.source`, state) }
@@ -1513,7 +1561,14 @@ function admitNode(value: unknown, path: string, state: ValidationState, depth: 
         const sizeValue = own(object, 'size', path)
         return { kind, ...optional(sizeValue === undefined ? undefined : enumeration(sizeValue, [1, 2] as const, `${path}.size`), 'size') }
       }
-      case 'divider': return { kind, ...optional(optionalLabel(object, 'label', path), 'label') }
+      case 'divider': {
+        const alignValue = own(object, 'align', path)
+        const insetValue = own(object, 'inset', path)
+        const inset = insetValue === undefined ? undefined : finiteInteger(insetValue, `${path}.inset`, 0)
+        if (inset !== undefined && inset > 8) invalid(`${path}.inset must be at most 8`)
+        const toneValue = own(object, 'tone', path)
+        return { kind, ...optional(optionalLabel(object, 'label', path), 'label'), ...optional(alignValue === undefined ? undefined : enumeration(alignValue, ['start', 'center'] as const, `${path}.align`), 'align'), ...optional(inset, 'inset'), ...optional(toneValue === undefined ? undefined : enumeration(toneValue, ['default', 'muted', 'primary', 'accent', 'user', 'success', 'warning', 'danger'], `${path}.tone`), 'tone') }
+      }
       case 'image': {
         const attachmentId = text(required(object, 'attachmentId', path), `${path}.attachmentId`)
         if (attachmentId.length === 0 || attachmentId.length > MAYFLY_UI_MAX_ATTACHMENT_ID) invalid(`${path}.attachmentId must be 1 to ${String(MAYFLY_UI_MAX_ATTACHMENT_ID)} characters`)
@@ -1617,7 +1672,7 @@ function freeze<Value>(value: Value): Value {
 }
 
 function containsEditorControl(node: MayflyEditorShellNode): boolean {
-  if (node.kind === 'editor-control') return true
+  if (node.kind === 'prompt') return true
   if (node.kind === 'stack') return node.children.some(child => containsEditorControl(child.node))
   if (node.kind === 'surface') return containsEditorControl(node.child) || (node.footer !== undefined && containsEditorControl(node.footer))
   return false
@@ -1628,10 +1683,10 @@ function assertEditorControlVisible(node: MayflyEditorShellNode, path = '$'): vo
     for (const [index, child] of node.children.entries()) {
       const childPath = `${path}.children[${String(index)}]`
       if (containsEditorControl(child.node)) {
-        if (child.when !== undefined) invalid(`${childPath}.when cannot hide editor-control`)
-        if (child.maxSize === 0) invalid(`${childPath}.maxSize cannot hide editor-control`)
+        if (child.when !== undefined) invalid(`${childPath}.when cannot hide the editor prompt`)
+        if (child.maxSize === 0) invalid(`${childPath}.maxSize cannot hide the editor prompt`)
         if (child.basis === 0 && (child.grow ?? 0) === 0 && (child.minSize ?? 0) === 0) {
-          invalid(`${childPath} cannot allocate zero size to editor-control`)
+          invalid(`${childPath} cannot allocate zero size to the editor prompt`)
         }
       }
       assertEditorControlVisible(child.node, `${childPath}.node`)
@@ -1653,7 +1708,7 @@ function validate<Value>(value: unknown, mode: ValidationMode, counters?: Mayfly
         ? node(value, '$', state, 0, 'status')
         : node(value, '$', state, 0, 'editor', false, true)
     if (mode === 'editor') {
-      if (state.editorControls !== 1) invalid(`editor shell must contain exactly one editor-control; received ${String(state.editorControls)}`)
+      if (state.editorControls !== 1) invalid(`editor shell must contain exactly one prompt; received ${String(state.editorControls)}`)
       assertEditorControlVisible(result as MayflyEditorShellNode)
     }
     validatePages(state.budget)

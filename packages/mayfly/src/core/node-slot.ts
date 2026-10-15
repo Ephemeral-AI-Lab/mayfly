@@ -37,6 +37,8 @@ export interface MayflyNodeSlotOptions {
    * owner as an `activate` event of the control `keys`. For a key a surface action may not claim (`ctrl+c` is reserved).
    */
   readonly keys?: Readonly<Record<string, string>>
+  /** A list of the slot moved its cursor to another row (or lost it): the control and what the owner does with the row's item id. */
+  readonly cursor?: { readonly control: string, readonly onMove: (itemId: string | undefined) => void }
   /** The reader asked to leave the focused slot (`Esc` or `Alt+↓`); the owner decides, typically with {@link MayflyNodeSlot.release}. */
   readonly onLeave?: () => void
 }
@@ -283,6 +285,8 @@ class NodeSlotLease implements MayflyNodeSlot {
 
   /** The route this lease holds; it is the interaction service's, so the next lease of the same id finds the same one. */
   private route: SlotRoute | undefined
+  /** Ends the watch of the cursor the owner asked for. */
+  private cursorOff: (() => void) | undefined
 
   get disposed(): boolean { return !this.live }
 
@@ -351,6 +355,16 @@ class NodeSlotLease implements MayflyNodeSlot {
     const model = compiler.interaction.upsert('slot', snapshot, compiler.counters === undefined ? {} : { counters: compiler.counters })
     model.setVisible(this.node !== null)
     this.interaction = compiler.interaction
+    const watched = this.options.cursor
+    if (watched !== undefined && this.cursorOff === undefined) {
+      let last: string | undefined
+      this.cursorOff = model.subscribe(() => {
+        const next = this.cursor(watched.control)
+        if (next === last) return
+        last = next
+        watched.onMove(next)
+      })
+    }
     // The route is one object per id for as long as the owner keeps the id, so the owner hands every lease of it the one model.
     this.surface.attachment ??= new SlotAttachment(model, compiler, this.viewport, () => { this.surface.invalidate() }, this.region === 'content', this.options.hints !== false)
   }
@@ -364,6 +378,8 @@ class NodeSlotLease implements MayflyNodeSlot {
   /** The screen's teardown (of a live lease): the lease ends and its model stays for the next lease of its id. */
   revoke(): void {
     this.live = false
+    this.cursorOff?.()
+    this.cursorOff = undefined
     this.route?.letGo(this)
     this.route = undefined
     this.detach()

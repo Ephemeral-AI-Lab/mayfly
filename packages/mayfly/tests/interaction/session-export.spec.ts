@@ -614,6 +614,9 @@ describe('registerExportCommands', () => {
             { kind: 'interrupted', id: 'i', seq: 7, turn: 0 },
             // Compaction markers are transcript chrome; the overview drops them.
             { kind: 'compaction', id: 'cmp', seq: 8, turn: 0, state: 'ok', trigger: 'manual', startedAt: 1, endedAt: 2 },
+            // Goal markers are chrome of the stream too: the full export renders the raw events instead.
+            { kind: 'goal-change', id: 'goal:9', seq: 9, turn: 0, operation: 'create', objective: 'GOAL-OBJECTIVE-NOT-EXPORTED' },
+            { kind: 'goal-round', id: 'goal-round:10', seq: 10, turn: 0, round: 2 },
           ],
         },
       } }),
@@ -626,6 +629,7 @@ describe('registerExportCommands', () => {
     expect(markdown).toContain('Tool Call: read')
     expect(markdown).toContain('request failed: failed')
     expect(markdown).toContain('(interrupted)')
+    expect(markdown).not.toContain('GOAL-OBJECTIVE-NOT-EXPORTED')
     expect(notices.join('\n')).toContain('exported 8 items')
     await fiber.dispose()
   })

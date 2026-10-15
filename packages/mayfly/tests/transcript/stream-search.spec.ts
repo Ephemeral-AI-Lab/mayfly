@@ -28,7 +28,7 @@ const entries = (): TranscriptEntryModel[] => [
 ]
 
 /** The fake slot and line the controller drives: it records what the controller asked and lets the test move the cursor. */
-function fakeScreen() {
+function fakeScreen(options: { queued?: { id: string, text: string, lane: 'turn' | 'step' }[], rows?: Record<string, ReturnType<typeof vi.fn>>, focusRow?: (row: string | undefined) => void } = {}) {
   const slot = {
     published: [] as (MayflyUiNode | null)[],
     cursor: undefined as string | undefined,
@@ -38,6 +38,8 @@ function fakeScreen() {
     focused: 0,
     released: 0,
     handlers: undefined as undefined | { onEvent: (event: unknown) => void, onLeave: () => void, onFocus: () => void },
+    onMove: undefined as undefined | ((itemId: string | undefined) => void),
+    onFocusChange: undefined as undefined | ((focused: boolean) => void),
   }
   const lease: MayflyNodeSlot = {
     id: 'transcript.conversation', disposed: false,
@@ -55,6 +57,8 @@ function fakeScreen() {
   const screen = {
     mountNodeSlot: (_id: string, options: Parameters<TranscriptScreen['mountNodeSlot']>[1]) => {
       slot.handlers = { onEvent: options.onEvent as never, onLeave: () => { options.onLeave?.() }, onFocus: () => { options.onFocus?.() } }
+      slot.onMove = (options.cursor as { onMove?: (itemId: string | undefined) => void } | undefined)?.onMove
+      slot.onFocusChange = options.onFocusChange as never
       return lease
     },
     mountSearchLine: (options: MayflySearchLineOptions): MayflySearchLine => {
@@ -72,7 +76,7 @@ function fakeScreen() {
     requestRender: vi.fn(),
   } as unknown as TranscriptScreen
   const focusMode: string[] = []
-  const controller = new TranscriptController({ t: interpolateLocaleMessage, queued: () => [], focusMode: mode => { focusMode.push(mode) } })
+  const controller = new TranscriptController({ t: interpolateLocaleMessage, queued: () => options.queued ?? [], focusMode: mode => { focusMode.push(mode) }, rows: options.rows as never, focusRow: options.focusRow as never })
   controller.setView('main', modelOf(entries()))
   controller.show('main')
   controller.attach(screen)
@@ -94,7 +98,7 @@ describe('opening and typing a search', () => {
     expect(s.lines).toHaveLength(1)
     expect(s.lines[0]!.options.prefix).toBe('/')
     expect(s.slot.spotlit.at(-1)).toBe(true)
-    expect(s.slot.keys.at(-1)).toEqual({ 'ctrl+c': STREAM.copyRaw, '/': STREAM.findDown, '?': STREAM.findUp })
+    expect(s.slot.keys.at(-1)).toEqual({ 'ctrl+c': STREAM.copyRaw, '/': STREAM.findDown, '?': STREAM.findUp, d: 'queued-cancel', e: 'queued-edit', s: 'queued-steer', u: 'queued-undo' })
     expect(s.focusMode.at(-1)).toBe('search')
     expect(s.lines[0]!.status.at(-1)).toBe('Type a regular expression · Enter to select · Esc to cancel')
   })
@@ -266,7 +270,7 @@ describe('ending a search', () => {
     s.abandon()
     expect(s.lines[0]!.disposed).toBe(true)
     expect(s.slot.spotlit.at(-1)).toBe(false)
-    expect(s.slot.keys.at(-1)).toEqual({ 'ctrl+c': STREAM.copyRaw, '/': STREAM.findDown, '?': STREAM.findUp })
+    expect(s.slot.keys.at(-1)).toEqual({ 'ctrl+c': STREAM.copyRaw, '/': STREAM.findDown, '?': STREAM.findUp, d: 'queued-cancel', e: 'queued-edit', s: 'queued-steer', u: 'queued-undo' })
     expect(s.slot.focusRows).toHaveLength(before)
     expect(s.focusMode.at(-1)).toBe('conversation')
     expect(s.listOf().highlight).toBeUndefined()
@@ -324,5 +328,68 @@ describe('ending a search', () => {
     s.controller.setView('main', modelOf([...entries(), answer(3, 'a needle too')]))
     s.controller.refresh()
     expect(s.lines[0]!.status.at(-1)).toBe('2/4 matches')
+  })
+})
+
+describe('the keys of a queued message under the cursor', () => {
+  const queuedMessages = [{ id: 'm1', text: 'later', lane: 'turn' as const }, { id: 'm2', text: 'steer now', lane: 'step' as const }]
+  const rig = () => {
+    const rows = { queued: vi.fn() }
+    const focusRow = vi.fn()
+    const s = fakeScreen({ queued: queuedMessages, rows, focusRow })
+    return { ...s, rows, focusRow }
+  }
+
+  it('edits the queued message under the cursor, and gives the keyboard back to the prompt', () => {
+    const s = rig()
+    s.slot.cursor = 'queued.m1'
+    s.press(STREAM.queuedEdit)
+    expect(s.rows.queued).toHaveBeenCalledWith('edit', 'm1')
+    expect(s.slot.released).toBe(1)
+  })
+
+  it('steers a message of the next turn, but not one already steering', () => {
+    const s = rig()
+    s.slot.cursor = 'queued.m2'
+    s.press(STREAM.queuedSteer)
+    expect(s.rows.queued).not.toHaveBeenCalled()
+    s.slot.cursor = 'queued.m1'
+    s.press(STREAM.queuedSteer)
+    expect(s.rows.queued).toHaveBeenCalledWith('steer', 'm1')
+    expect(s.slot.released).toBe(0)
+  })
+
+  it('cancels a message under the cursor, and undoes the last cancelled one without a cursor', () => {
+    const s = rig()
+    s.slot.cursor = 'queued.m2'
+    s.press(STREAM.queuedCancel)
+    expect(s.rows.queued).toHaveBeenCalledWith('cancel', 'm2')
+    s.slot.cursor = undefined
+    s.press(STREAM.queuedEdit)
+    expect(s.rows.queued).toHaveBeenCalledTimes(1)
+    s.press(STREAM.queuedUndo)
+    expect(s.rows.queued).toHaveBeenLastCalledWith('undo', undefined)
+  })
+
+  it('names the row type under the cursor to the notification row, and clears it off a message', () => {
+    const s = rig()
+    s.slot.cursor = 'queued.m1'
+    s.slot.onFocusChange!(true)
+    s.slot.onMove!('queued.m1')
+    expect(s.focusRow).toHaveBeenLastCalledWith('queued')
+    s.slot.onMove!('queued.m2')
+    expect(s.focusRow).toHaveBeenLastCalledWith('steering')
+    s.slot.onMove!('user:1')
+    expect(s.focusRow).toHaveBeenLastCalledWith(undefined)
+    s.slot.onMove!('queued.m1')
+    s.slot.onFocusChange!(false)
+    expect(s.focusRow).toHaveBeenLastCalledWith(undefined)
+  })
+
+  it('opens a queued message to its whole text on Enter, as a selection of its own row', () => {
+    const s = rig()
+    const published = s.slot.published.length
+    s.slot.handlers!.onEvent({ kind: 'selection-accept', controlId: STREAM.list, selectedIds: ['queued.m1'] })
+    expect(s.slot.published.length).toBeGreaterThan(published)
   })
 })

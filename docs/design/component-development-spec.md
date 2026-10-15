@@ -39,8 +39,9 @@ only once the effect is final (§3). The Website is never part of a round (§1 r
 7. **Design, ask, then build.** A round starts as a design: Claude Code analyzes the round under plan mode and writes
    the solution; the owner approves it. Claude then asks the owner every open choice with something to look at (§6),
    and the two confirm the final effect. Development begins only after that.
-8. **Scenarios after the build, and no rush to test.** When development is done Claude writes the scenario code (§8),
-   organizes all of the round's scenarios, and tells the owner the commands and the brief. It does not run the tests
+8. **Scenarios after the build, and no rush to test.** When development is done Claude writes the scenario code (§8)
+   as **one scenario for the round**, a long conversation that strings all of the round's effects together, and tells
+   the owner its command and the brief. It does not run the tests
    at this point: the owner verifies and adjusts the effect, Claude applies it, and the loop repeats until the owner
    says the effect is final.
 9. **Test last, in a session of its own.** Tests, decision tests, goldens, and the round and pr tiers run only after the
@@ -78,7 +79,7 @@ steps 1-6 are design, build, and the owner's effect review.
 | 2 Design | agent, owner | The round is analyzed and designed under plan mode: the effects, the files and the order of work, the risks, the scenarios that will show each effect, and whether it is one round or two. The plan is not code. | The owner approves the plan. |
 | 3 Questions | agent, owner | The agent asks every open choice (§6), with something to look at and a recommendation, and records the answers; the spec's open points and the prototype's gaps are settled here, not during the build. | The owner and the agent have confirmed the final effect, in words and frames. |
 | 4 Build | agent | The component in `packages/mayfly/src/components/` and the feature-plugin wiring (roadmap §4, §6), one effect at a time. Only the build the scenarios need runs (`pnpm run build:changed`, or `pnpm run dev` watching); tests, lint sweeps, and goldens do not. | The effects of the plan appear in the running product. |
-| 5 Scenarios and hand-off | agent | The agent writes the scenario code (replay, catalog entry with `mark()`s and a script, brief; §8), organizes **all** the round's scenarios, and tells the owner the commands and the brief (§5, §9). It checks that each scenario runs and reaches its checkpoints, and does not run the tests. | The owner has the commands, the brief, and what is not done yet. |
+| 5 Scenarios and hand-off | agent | The agent writes the scenario code (replay, catalog entry with `mark()`s and a script, brief; §8), as **one scenario for the round** (a long conversation chaining every effect), and tells the owner its command and the brief (§5, §9). It checks that each scenario runs and reaches its checkpoints, and does not run the tests. | The owner has the commands, the brief, and what is not done yet. |
 | 6 Effect review | owner, agent | The owner verifies the effect on the scenarios and in the profile and asks for changes; the agent applies them and hands off a short delta; this repeats. Questions of §6 are asked here too. No tests, no goldens, no PR checks. | The owner says the effect is final. |
 | 7 Test | tester session (§3.1) | Now the tests: the round tier (`pnpm run check -- --tier round`, reading `.artifacts/verify/summary.md`), the decision tests and work budgets the part needs (§10), the perf A/B for a change on the frame path, the profile smoke. Fix what fails. The Website is not tested (§1 rule 10). | The round tier is green and the decision tests record what was decided. |
 | 8 Close the part | agent | Commit the part (one commit per part on the group's branch, stacked), mark it accepted in the group's status table, record the decisions of the question rounds (§6), update the PR. Goldens are not written yet. | Part status `accepted`. |
@@ -254,8 +255,8 @@ caller in the same change (D21).
 
 The plan cuts each group of the roadmap into parts. It is the starting point; a part may be split, merged, or reordered
 when review shows a better cut, and the group's status table records it. **Tooling part T0** comes first because every
-other part needs the brief. Parts of Phases 4 to 6 are cut when their phase starts, from the same reference table
-(§4) and the roadmap's group text.
+other part needs the brief. Phase 4's and Phase 5's parts are cut below (*Phase 4 parts*, §7.2); parts of Phase 6 are cut when its phase starts,
+from the same reference table (§4) and the roadmap's group text.
 
 | Part | Effect the owner sees | Prototype | Scenarios (existing, or *new*) | Focus |
 | --- | --- | --- | --- | --- |
@@ -280,10 +281,51 @@ other part needs the brief. Parts of Phases 4 to 6 are cut when their phase star
 | **3e.2 Row selection** | `Alt+↑` focuses the newest row; `Enter`, `c`, `Ctrl+G`, `Esc`/`Alt+↓`. | 18 | `tour` | focus mark; hint row; copy feedback |
 | **3e.3 Stream search** | `/` and `?` in conversation mode open a search line above the editor (regular expression, smart case); typing highlights, `Enter` selects, `↑`/`↓` and `n`/`N` walk the matches; the match turn opens at Verbose; matched text reversed. | 18 (`StreamSearch`) | `tour`, `history` | match count; stepping; `Esc` restores levels |
 
-Phases 4 to 6 follow the same rules. Their group texts in the roadmap are the starting points: Phase 4 (editor, queue,
-tokens, the `/` `@` `#` completion list, scenes 15 and 30 p1-p2); Phase 5 (the two status rows, scenes 13 and 12,
-every width of 100, 72, 52, 36); Phase 6 (the panels 6a-6f, scenes 21 p4 and 22-32). Each is cut into parts the way the
-table above cuts Phase 3: one effect group per part, a scenario per part, a brief per part.
+Phase 6 follows the same rules. Its group text in the roadmap is the starting point (the panels 6a-6f, scenes 21 p4
+and 22-32), and it is cut into parts the way the table above cuts Phase 3: one effect group per part, a scenario per part,
+a brief per part. Phases 4 and 5 are cut in the tables below.
+
+### Phase 4 parts (*Finalized*)
+
+Groups 4a to 4e are finalized: the owner accepted the built effect round by round, and the code is the record of the behavior. Where a row below still reads as a plan (the planned prototype wording, or a scenario name that changed), the built code and its scenarios are right. Each row's `Effect` names what shipped.
+
+Phase 4 (editor and command palette) is cut ahead of its start, so the rounds can be planned while Phase 3 is in test.
+It is the same cut as Phase 3's: one effect group per part, a scenario per part, a brief per part. The roadmap's Phase 4
+section holds the groups (4a-4e) and the status table of rounds. A part may be split, merged, or reordered when review
+shows a better cut, as for Phase 3; the status table records it. The scenario names are proposals, final at the part's
+hand-off.
+
+| Part | Effect the owner sees | Prototype | Scenarios (*new*) | Focus |
+| --- | --- | --- | --- | --- |
+| **4a.1 Editor frame** | The rounded frame with the conversation title in its top-right corner around the `ui.prompt` (symbol, buffer, caret), as a pure `Editor` component on the editor dock slot; the frame is the same at 96, 60, and 40 columns. | 15 | *editor*, *editorTitle* | title cut at narrow widths; the caret and wrapped lines; CJK and multi-line buffers; the frame never shifts the rows above |
+| **4a.2 Shell mode** | `!` as the first character turns the prompt symbol into `!` and the border to the accent color; nothing else changes (no `! shell mode` label, no `SHELL` chip); `Esc` or `Backspace` on an empty buffer leaves it. | 15 | *editorShell* | the border tone in both themes and with `NO_COLOR`; leaving the mode; the title stays |
+| **4b.1 Tokens in the buffer** | Pasted images (`[image #1 84 KB]`), pasted blocks (`[paste #1 +12 lines]`), and accepted `@` mentions (`@relative/path`) stay inline in the text, painted as tokens; `Backspace` with the caret at a token selects it (inverse), the next one removes it. | 15 | *tokens* | the token tones; the two-key removal; a token at the wrap edge; 60 columns |
+| **4b.2 Submit expansion** | What is sent is what is sent today: the submit pipeline expands each token to its content; a draft keeps its tokens (and a pasted block its content) through a theme reload and through the external editor. | 15 | *tokensSubmit*, *tokensEditor* | image, paste, and mention each expand once; a removed token sends nothing; a long paste |
+| **4c.1 Queued rows** | Queued messages stay rows of the stream (`⏎ queued`, `⏎ steering`); `Alt+↑` reaches them, and on one `e` edits it, `s` sends it now, `d` cancels it (`u` undoes); the queue pane is gone and there is no queue line (owner's change from the prototype). | 15 | *queue* | the rows and marks at 96, 60 and 40 columns; the keys on the notification row; `e` with a draft; `s` and `d` then `u`; a row read by the agent under the cursor |
+| **4c.2 Prompt history** | `↑`/`↓` walk the history only; the notification row reads `↑ history 2/4` while walking; `↓` walks back and ends on the draft. | 15 | *queue* (the same run) | the counter; the draft restored; the counter at 60 and 40 columns |
+| **4d.1 The `/` list** | Met by round 1 (4a.2); no change in round 4. The `/` list is the borderless palette over the stream: up to six plain rows as wide as the frame, `→` on the focused row, the typed part of a name in bold, descriptions muted, no key at the right edge (no command has a bound key). The select-list adapter was deleted in round 1; pi-tui's `SelectList` state and keys stay in `core/completion-list.ts`. | 30 p1-p2 | `editor` (checkpoints `commands`, `commands-down`, `commands-60`, `commands-40`) | row layout at 96, 60, and 40 columns; no row shift above; long descriptions |
+| **4d.2 Palette keys** | Met by round 1; no change in round 4, and **no key line** (owner decision). Typing filters; `↑`/`↓` move; `Tab` completes the name; `Enter` accepts a `/` command and runs it (as today; `#` and `@` insert without submitting); `Esc` closes the list and keeps the draft. | 30 p1-p2 | `editor` | `Enter` on a half-typed command; scrolling a long list |
+| **4d.3 `@` files** | `@` lists files; `Enter` or `Tab` inserts a token (4b.1); `Ctrl+G` opens the file; a directory narrows the list. | 30 | *mentions* | the path cut; the token inserted; a workspace with thousands of files stays smooth |
+| **4d.4 `#` skills and extensions** | `#` lists skills and inserts text; the `complete()` results of editor extensions join the list under their own heading. | 30 | *skills*, *extensionComplete* | the source of each row; an extension that throws or is slow; one list |
+| **4e.1 Placeholders** | The empty prompt teaches the typed prefixes by state: main idle or running, shell, side question, subagent live or resumable, read-only; the longest variant that fits is chosen with no width read in code; the quiet-hints setting blanks it. | 15 | *placeholders* | one ladder per state; the shed order at 60 and 40; hints off |
+| **4e.2 Keys and title** | `Alt+↑` focuses the stream, `Alt+↓` or `F6` enters the views, `?` on an empty prompt opens key help, `Ctrl+Enter` steers, `Ctrl+G` opens the draft in `$EDITOR`; the title follows the official `title` projection. | 15 | *editorKeys* | each key from the prompt and from the stream; `?` in a non-empty buffer is text; the title when a session is renamed |
+| **4e.3 Subagent replies** | In a live or resumable subagent conversation the editor sends through the addressed-subagent path: `Enter` queues, `Ctrl+Enter` steers; the reply form with its `Send` and `Cancel` buttons and delivery select is gone. | 15 | *subagentReply* | the delivery choice is the editor's own pair; the placeholder names the subagent; a resumable one wakes |
+
+### 7.2 Phase 5 parts
+
+Phase 5 (status area and views) is one pull request on `feat/phase-5`, cut into rounds in the roadmap's Phase 5 status
+table. Its parts follow the same rules as §7; the prototype scenes are 13 (the rows at 100, 72, 52, and 36 columns), 12
+(the plugin entry beside the model), and 18 (the rows under the stream).
+
+| Part | Effect the owner sees | Prototype | Scenarios (existing, or *new*) | Focus |
+| --- | --- | --- | --- | --- |
+| **5a.1 Footer cutover** | The footer is the one status row on the footer node slot (the facts and the items together; Goal and Todo are views whose detail opens on `Alt+↓`; Jobs is a plain item until its view); it sheds detail by rank before the admission rule decides; plugin entries keep their priority. | 13, 12 | `idle`, `gallery`, *footerCutover* | one admission rule for registry entries and views; the footer within the W1 budget |
+| **5a.2 The row's facts** | Model and effort (0; `provider/model Effort` and plan + yolo together are built); the lowercase `plan`/`plan…`/`yolo` chips (2); context as two bars, `cache ▰▰▱▱▱ 34%  ctx ▰▰▱▱▱▱▱▱▱▱ 18%` (6, right; the context bar warns from 70% and turns to danger from 90%, the cache bar the other way round: danger under 30%, warning under 60%, success from 60%); directory (7, shortened path); git (10). | 13 | `modes`, `context`, *statusRow* (100, 72, 52, and 36 columns), `goal` | the shed ladder at each width; the directory's shortened path; every toggle |
+| **5a.3 Identity** | The conversation chip (` main `, ` btw `, ` subagent `) in the row, with `F7`/`F8` in the notification pane (built in R1). The low-balance chip `⚠ ¥6.2` was dropped by the owner on 2026-10-14. | 13 | `sideQuestion`, `childStream` | the identity text at narrow widths |
+| **5b.1 Goal and todo views** | Goal and Todo as items of the one status row (built in R1, see the roadmap's R1 and R4 rows). | 13 | `goal`, `tour`, *views*, *viewsTodo*, *viewsNarrow* | at most five todo rows and `… +N more`; the closing line; the one-third panel cap |
+| **5b.2 Agents view** | `● agents 1/3 41s`; a list with a cursor, live rows first; `Enter` opens the conversation as `/agents` does; `x` stops behind the Yes/No; the stream's spawn line follows its child (D2); the `F7`/`F8` cluster. | 13 | `subagents`, `appAgents`, *viewsAgents* | the running background subagent's look (D2); the cluster with two conversations |
+| **5b.3 Jobs view** | `● jobs 2 41s` (live count, longest time; `✓ jobs 3/3` held five seconds when the last settles); a list with a cursor, live first, settled only with `viewHistory`; subagent jobs left to Agents; `Enter` opens the job's output; `x` rechecks `jobs.get` before `jobs.kill`, behind the Yes/No. | 13 | `jobs`, *viewsJobs* | the interim output target; the stop confirm; the closing line |
+| **5c Carry-overs** | Notices truncate with `…`; `compactionNoWindow` drops the `%`; the search hint row takes its own line; 40-column decision hints keep labels. | 16, 20, 18 | `notices`, `compactionNoWindow`, `phase3-search`, `phase3-narrow` | O2, O3, O4 (Phase 3 closeout audit) |
 
 ### 7.1 Every tool at three tiers
 
@@ -413,7 +455,9 @@ Constraints learned while building 3d (decision cards) and 3e (levels, selection
 The scenario is the mock command. It follows the machinery described in root `AGENTS.md` (*Review loop*) and these
 rules, which keep the demo useful to a person and usable as a golden later:
 
-1. **It shows the part's states in one run.** Use `mark()`s so `play('<mark>')` stops at each state and a checkpoint
+1. **One scenario per round, and it shows every state in one run.** The round's effects are strung together in one long
+   conversation (turns, goal, jobs, side questions, resizes, as the effects need), never one scenario per state and
+   never a hand-over that sends the owner to older scenarios. Use `mark()`s so `play('<mark>')` stops at each state and a checkpoint
    names it. A person walking through it should meet every focus item of the brief without editing anything.
 2. **Real data paths.** The replay appends the session events and frames the agent loop would have written; it does
    not fake the component's output. A state the Harness cannot produce is not drawn; the brief says so.
@@ -427,7 +471,15 @@ rules, which keep the demo useful to a person and usable as a golden later:
    owner has learned them.
 7. **Covers.** The `covers` globs name the sources the scenario can reveal, so the change-based selection runs it
    (root `AGENTS.md`, *Verification*).
-8. **Modes.** The owner can run any demo with `--no-color`, `--ascii`, `--width N`, `--height N`; reduced motion is a
+8. **One scenario per round.** A round (its parts together) is one scenario that draws every state in one run, one
+   checkpoint each, with one brief; separate scenarios are for states that cannot coexist (a different source, a
+   different width ladder), not for each part or key. The owner learns one name and one walk.
+9. **Time for a person.** The live `scenario` plays at real time, so a state the owner has to operate stays long
+   enough to operate (minutes, with `pause()` between the mark and the item that ends it; a runner skips pauses). A
+   state that ends by itself (a held queue read by the agent, a notice) ends the way the product does: the replay writes
+   the session event the agent loop would have written, so what leaves one place appears in the next (a read queued
+   message becomes a prompt of the stream), never just vanishes.
+10. **Modes.** The owner can run any demo with `--no-color`, `--ascii`, `--width N`, `--height N`; reduced motion is a
    saved setting (`/settings`). The brief names the ones that matter for the part.
 
 ## 9. Commands

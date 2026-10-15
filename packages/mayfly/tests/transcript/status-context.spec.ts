@@ -12,6 +12,7 @@ import { describe, expect, it } from 'vitest'
 import type { TokenUsage } from '@deepseek-ai/dsh-llm'
 import type { Session, SessionEvent } from '@deepseek-ai/dsh-session'
 import * as context from '../../src/transcript/status-context.ts'
+import { SHED } from '../../src/transcript/status-shed.ts'
 import { assistantEvent, reasoningDelta, resetSeq, userEvent } from './helpers.ts'
 import { asAgent, bootStatusPlugin, COLORS, fakeAgent } from './status-fakes.ts'
 
@@ -86,6 +87,10 @@ describe('contextTokens, formatTokens, contextPercent', () => {
   })
 })
 
+/** A painted entry without escape sequences or the blank cells the compiler pads it with. */
+const ANSI = /\x1b(?:\][^\x07]*(?:\x07|\x1b\\)|\[[0-?]*[ -/]*[@-~]|.)/gu
+const flat = (row: string): string => row.replace(ANSI, '').trimEnd()
+
 describe('mayfly-status-context', () => {
   it('renders nothing without a session or without usage data', async () => {
     const noSession = await bootStatusPlugin(context)
@@ -109,12 +114,10 @@ describe('mayfly-status-context', () => {
     ])
     const harness = await bootStatusPlugin(context, agent)
     expect(harness.entry.id).toBe('mayfly.status.context')
-    expect(harness.entry.priority).toBe(4)
+    expect(harness.entry.priority).toBe(6)
     expect(harness.entry.align).toBe('right')
-    // No `row`: the entry shares the footer's single row with the left band.
-    expect(harness.entry.row).toBeUndefined()
-    // 1300 of 12300 occupied tokens are cache reads: 10.5% rounded down.
-    expect(harness.entry.render(80)).toBe('cache 10%  ctx 12k')
+    // The entry shares the status row's one line, at its right edge. With no window there is no share to draw: the plain count.
+    expect(harness.entry.render(80)).toBe('ctx 12k')
     await harness.dispose()
   })
 
@@ -125,8 +128,8 @@ describe('mayfly-status-context', () => {
       { contextWindow: 131_072 },
     )
     const harness = await bootStatusPlugin(context, agent)
-    // 48378/58978 = 82.03% → 82; 58978 → 57.6k of 128k, 45% rounded up.
-    expect(harness.entry.render(80)).toBe('cache 82%  context: 45% (57.6k/128k)')
+    // 48378/58978 = 82.03% → 82 (four of five cells); 58978 of 131072 is 45% rounded up (five of ten cells). No token counts in the row.
+    expect(flat(harness.entry.render(80))).toBe('cache ▰▰▰▰▱ 82%  ctx ▰▰▰▰▰▱▱▱▱▱ 45%')
     await harness.dispose()
   })
 
@@ -134,20 +137,20 @@ describe('mayfly-status-context', () => {
     resetSeq()
     const agent = fakeAgent([usageEvent(1, 1, { inputTokens: 1000, outputTokens: 1 })], { contextWindow: 4096 })
     const { ctx, screen, entry, dispose } = await bootStatusPlugin(context, agent)
-    expect(entry.render(80)).toBe('context: 25% (1000/4k)')
+    expect(flat(entry.render(80))).toBe('ctx ▰▰▰▱▱▱▱▱▱▱ 25%')
     const baseline = screen.renderRequests.length
 
     ctx.emit('session/event', agent.session as unknown as Session, usageEvent(1, 2, { inputTokens: 0, outputTokens: 1, cacheReadTokens: 1000 }))
-    expect(entry.render(80)).toBe('cache 100%  context: 25% (1000/4k)')
+    expect(flat(entry.render(80))).toBe('cache ▰▰▰▰▰ 100%  ctx ▰▰▰▱▱▱▱▱▱▱ 25%')
     expect(screen.renderRequests.length).toBe(baseline + 1)
 
     // Same occupancy, new cache share: a redraw is still requested.
     ctx.emit('session/event', agent.session as unknown as Session, usageEvent(1, 3, { inputTokens: 1000, outputTokens: 1, cacheReadTokens: 0 }))
-    expect(entry.render(80)).toBe('cache 0%  context: 25% (1000/4k)')
+    expect(flat(entry.render(80))).toBe('cache ▱▱▱▱▱ 0%  ctx ▰▰▰▱▱▱▱▱▱▱ 25%')
     expect(screen.renderRequests.length).toBe(baseline + 2)
 
     ctx.emit('session/event', agent.session as unknown as Session, usageEvent(1, 4, { inputTokens: 1000, outputTokens: 1 }))
-    expect(entry.render(80)).toBe('context: 25% (1000/4k)')
+    expect(flat(entry.render(80))).toBe('ctx ▰▰▰▱▱▱▱▱▱▱ 25%')
     expect(screen.renderRequests.length).toBe(baseline + 3)
     await dispose()
   })
@@ -160,8 +163,8 @@ describe('mayfly-status-context', () => {
     )
     const text = (body: string): string => `[T]${body}[/T]`
     const harness = await bootStatusPlugin(context, agent, { colors: { ...COLORS, text } })
-    // 4200/8192 = 51.3% rounded up; 4200 → 4.1k on the 1024 base.
-    expect(harness.entry.render(80)).toBe('[T]context: 52% (4.1k/8k)[/T]')
+    // 4200/8192 = 51.3% rounded up: the label and the percentage take the text tier, the bar its own tone.
+    expect(harness.entry.render(80)).toBe('[T]ctx [/T]▰▰▰▰▰▱▱▱▱▱[T] 52%[/T]')
     await harness.dispose()
   })
 
@@ -173,7 +176,7 @@ describe('mayfly-status-context', () => {
     const baseline = screen.renderRequests.length
 
     ctx.emit('session/event', agent.session as unknown as Session, windowEvent(2048))
-    expect(entry.render(80)).toBe('context: 49% (999/2k)')
+    expect(flat(entry.render(80))).toBe('ctx ▰▰▰▰▰▱▱▱▱▱ 49%')
     expect(screen.renderRequests.length).toBe(baseline + 1)
 
     // A restated window requests no redraw.
@@ -183,7 +186,7 @@ describe('mayfly-status-context', () => {
     // A foreign session's window does not touch the entry.
     const other = fakeAgent([])
     ctx.emit('session/event', other.session as unknown as Session, windowEvent(4096))
-    expect(entry.render(80)).toBe('context: 49% (999/2k)')
+    expect(flat(entry.render(80))).toBe('ctx ▰▰▰▰▰▱▱▱▱▱ 49%')
 
     // A model switch withdrawing the advertised window degrades the entry.
     ctx.emit('session/event', agent.session as unknown as Session, windowEvent(undefined))
@@ -262,11 +265,11 @@ describe('mayfly-status-context', () => {
       { contextWindow: 4096 },
     )
     ctx.emit('test/session-changed', asAgent(second))
-    expect(entry.render(80)).toBe('context: 50% (2k/4k)')
+    expect(flat(entry.render(80))).toBe('ctx ▰▰▰▰▰▱▱▱▱▱ 50%')
     await dispose()
   })
 
-  it('honors the width budget for its ASCII-only text', async () => {
+  it('honors the width budget: the plain count fits or goes whole, and the bars give way in rank order', async () => {
     resetSeq()
     const agent = fakeAgent([usageEvent(1, 1, { inputTokens: 999, outputTokens: 1 })])
     const harness = await bootStatusPlugin(context, agent)
@@ -279,10 +282,38 @@ describe('mayfly-status-context', () => {
       [usageEvent(1, 1, { inputTokens: 10_600, outputTokens: 1, cacheReadTokens: 48_378 })],
       { contextWindow: 131_072 },
     ))
-    const full = 'cache 82%  context: 45% (57.6k/128k)'
-    expect(cached.entry.render(full.length)).toBe(full)
-    expect(cached.entry.render(full.length - 1)).toBe('')
+    const full = 'cache ▰▰▰▰▱ 82%  ctx ▰▰▰▰▰▱▱▱▱▱ 45%'
+    expect(flat(cached.entry.render(full.length))).toBe(full)
+    // A narrower cell clips the full form; the ladder the entry sheds down is the row's (`SHED.cache`, `bar`, `context`).
+    expect(flat(cached.entry.render(full.length - 1)).length).toBeLessThan(full.length)
+    const node = cached.models.list()[0]!.node as unknown as { readonly kind: string, readonly narrower: readonly { readonly rank: number, readonly node: unknown }[] }
+    expect(node.kind).toBe('shed')
+    expect(node.narrower.map(form => form.rank)).toEqual([SHED.cache, SHED.bar, SHED.context])
+    expect(node.narrower[1]!.node).toEqual({ kind: 'text', content: 'ctx 45%' })
+    expect(node.narrower[2]!.node).toBeNull()
     await cached.dispose()
+  })
+
+  it('tones the bars: context warns from 70% and fails from 90%, the cache the other way round', async () => {
+    const toneOf = async (used: number, cacheRead: number | undefined): Promise<{ readonly context: string, readonly cache?: string }> => {
+      resetSeq()
+      const harness = await bootStatusPlugin(context, fakeAgent(
+        [usageEvent(1, 1, { inputTokens: used, outputTokens: 1, ...cacheRead === undefined ? {} : { cacheReadTokens: cacheRead } })],
+        { contextWindow: 1000 },
+      ))
+      const node = harness.models.list()[0]!.node as unknown as { readonly node: { readonly kind: string, readonly tone?: string, readonly children?: readonly { readonly node: { readonly label: string, readonly tone: string } }[] } }
+      await harness.dispose()
+      const bars = node.node.kind === 'progress' ? [node.node as unknown as { label: string, tone: string }] : node.node.children!.map(child => child.node)
+      return Object.fromEntries(bars.map(bar => [bar.label === 'ctx' ? 'context' : 'cache', bar.tone])) as { context: string, cache?: string }
+    }
+    expect((await toneOf(690, undefined)).context).toBe('primary')
+    expect((await toneOf(700, undefined)).context).toBe('warning')
+    expect((await toneOf(890, undefined)).context).toBe('warning')
+    expect((await toneOf(900, undefined)).context).toBe('danger')
+    // 20 of 100 cached → danger; 59 → warning; 60 → success.
+    expect((await toneOf(80, 20)).cache).toBe('danger')
+    expect((await toneOf(41, 59)).cache).toBe('warning')
+    expect((await toneOf(40, 60)).cache).toBe('success')
   })
 
   it('unregisters the entry when the fiber unloads', async () => {

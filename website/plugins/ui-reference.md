@@ -1362,7 +1362,7 @@ ui.prompt(options: {
   symbolTone?: MayflyTone
   value?: string                       // 控件初始的草稿
   tokens?: { id: string, label: string, size?: string }[]
-  recall?: { kind: 'queued' | 'history', text: string }[]
+  recall?: { text: string }[]                 // history, newest first
   recallLabel?: string                 // 默认 'history'
   placeholder?: string | string[]      // 阶梯，从长到短
   completions?: { items: { id: string, label: string, detail?: string, right?: string }[] }
@@ -1398,10 +1398,10 @@ ui.prompt(options: {
 
 *空提示符上按两次 `↑`（宽度 64）。*
 
-缓冲区为空或已是某条回溯内容时，`↑`/`↓` 遍历 `recall`：排队的消息在前，从新到旧；右上角显示
+缓冲区为空或已是某条回溯内容时，`↑`/`↓` 遍历 `recall`：从新到旧；右上角显示
 `↑ history 2/3`，回溯的文本成为草稿。越过最新一条再按 `↓` 会恢复之前的草稿。每一步发送观察事件
-`recall-change`（`source` 为 `queued`、`history` 或 `draft`，`index` 是 `recall` 中的位置，草稿为 `-1`）。
-宿主撤回已回溯的排队消息时，重新发布去掉它的 `recall`，遍历位置保持不变。
+`recall-change`（`source` 为 `history` 或 `draft`，`index` 是 `recall` 中的位置，草稿为 `-1`）。
+宿主撤掉已回溯的那一条时，重新发布去掉它的 `recall`，遍历位置保持不变。
 
 提示符获得焦点时的按键：
 
@@ -1653,51 +1653,52 @@ ui.image(options: { attachmentId: string, alt: string, maxRows?: number })
 ui.image({ attachmentId: 'att-1', alt: '[Image #1 84 KB]', maxRows: 12 })
 ```
 
-## 状态栏第 2 行的视图
+## 状态栏的视图
 
-`placement: 'views'` 的 pane 是一个**视图**：状态栏第 2 行里的一小段摘要，可以打开自己的面板。视图 lane 没有自己的行：
-每个摘要与状态条目一起进入第 2 行；进入某个视图后，它的面板在所有视图的标签条下取代第 2 行。
+`placement: 'views'` 的 pane 是一个**视图**：状态栏里的一个条目（`<标记> <名称> <n/m> <计时>`，如 `● todo 2/12 4m 12s`），可以打开自己的面板。视图 lane 没有自己的行：
+每个摘要与状态条目一起进入同一行状态栏；进入某个视图后状态栏保持不变，该条目的文字下方画一条粗线 `━`（状态栏的第二行），面板在状态栏下方打开。
 
 ```ts
 export const inject = ['mayflyPanes']
 
 export function apply(ctx: Context): void {
+  const full = ui.richText([{ text: '● ', tone: 'accent' }, { text: 'builds ', tone: 'muted' }, { text: '2 ' }, { text: '3m 12s', tone: 'muted' }])
   const view = ctx.mayflyPanes.register({
     id: 'acme.builds',
-    title: 'Builds',          // 标签
     placement: 'views',
-    priority: 50,             // 越小在行和标签条中越靠前
-    summary: { node: ui.richText([{ text: 'Builds ', tone: 'muted' }, { text: '2 running', tone: 'accent' }]), count: 2 },
+    priority: 50,             // 越小在行中越靠前
+    // 行拥挤时最先去掉计时。
+    summary: { node: ui.shed(full, [{ rank: 5, node: ui.richText([{ text: '● builds 2' }]) }]) },
     onEvent: { action: () => ({ kind: 'completed' }) },
   }, ui.list({ id: 'builds', role: 'browse', selectedIds: [], items: [{ id: 'main', label: 'main' }] }))
 
-  // 更新第 2 行无需重发面板；null 让该视图离开第 2 行。
-  view.setSummary({ node: ui.richText([{ text: 'Builds 1 running' }]), count: 1 })
+  // 更新条目无需重发面板；null 让该视图离开状态栏。
+  view.setSummary({ node: ui.richText([{ text: '● builds 1' }]) })
   view.setSummary(null)
 }
 ```
 
-![视图在状态栏第 2 行中的 `summary` 节点](/shots/views-summary.svg)
+![视图在状态栏中的 `summary` 节点](/shots/views-summary.svg)
 
-*示例视图的摘要在状态栏第 2 行中的样子（宽度 48）。*
+*示例视图的条目在状态栏中的样子（宽度 48）。*
 
 | 字段 | 规则 |
 | --- | --- |
-| `summary.node` | 非交互 status 节点（`text`、`richText`、`fields`、`progress` 或它们的 stack），与其他 status 条目同样准入；一行，无动效 |
-| `summary.count` | 数字或不超过 32 个字符的字符串；标签在标题后显示（`Agents 5`） |
-| `title` | 标签文字；缺省为 id |
+| `summary.node` | 非交互 status 节点（`text`、`richText`、`fields`、`progress`、它们的 stack，或 `ui.shed(full, narrower)`），与其他 status 条目同样准入；一行，无动效 |
+| 作为 `ui.shed` 的 `summary.node` | 更窄的形态（各带 0 到 1000 的 rank，`null` 表示隐藏该条目）在整行范围内按 rank 从低到高依次启用，先于按 priority 容纳 |
 | `size`、`narrow` | 不适用；views pane 设置任一项都会被拒绝 |
 | 其他 placement 上的 `summary` | 被拒绝；只有 views pane 有 summary 和 `setSummary` |
 
 `set(node)` 发布面板；`onEvent`、`load`、`refresh`、`loadMore` 与其他 pane 相同，面板里的动作只会到达它所在视图的
-`onEvent`。没有 summary 的视图不出现在第 2 行；有 summary 但尚无面板的视图显示在行中，但不能进入。进入后的 lane
-最多占终端行数的三分之一；视图多于一个时，面板自己的提示行会写出 `←/→ tabs`。
+`onEvent`。没有 summary 的视图不出现在状态栏；有 summary 但尚无面板的视图显示在行中，但不能进入。面板在状态栏下方打开，
+最多占终端行数的三分之一（至少四行）；视图多于一个时，提示行会写出 `←/→ items`。固定长度的面板用
+`ui.scroll(…, { expandable: false, more: true })`：没有 `Ctrl+E`，最后一行统计下方还有多少行（`↓ 6 more`）；列表行可以用 `cells` 与其他行的各列对齐。
 
 | 键 | 效果 |
 | --- | --- |
 | 空提示符处 `Alt+↓` 或 `F5` | 进入第一个视图 |
 | `F6` / `Shift+F6` | 先进入视图，再依次进入可交互的 pane；越过两端回到提示符 |
-| `←` / `→` | 切换视图（正在编辑的字段保留方向键） |
+| `←` / `→` | 切换条目（正在编辑的字段保留方向键） |
 | `Esc` | 面板退出自己的各层后回到提示符 |
 
 它们是命名动作 `ui.focus-next`、`ui.left`/`ui.right` 与 `ui.cancel`，重绑定会同时移动这些键及其提示。可运行的视图见
@@ -1897,7 +1898,7 @@ handle 的 `set(node, { reason: 'data', source })` 或 editor-extension registra
 | Surface | 可用节点 | 交互规则 |
 | --- | --- | --- |
 | `panes` | 完整 `MayflyUiNode` | controls 可用，事件交给 pane `onEvent` |
-| `placement: 'views'` 的 `panes` | 面板为完整 `MayflyUiNode`，摘要为 status 节点 | 进入后面板取代状态栏第 2 行；摘要始终非交互 |
+| `placement: 'views'` 的 `panes` | 面板为完整 `MayflyUiNode`，摘要为 status 节点 | 进入后面板在状态栏下方打开；摘要始终非交互 |
 | capturing overlay | 完整 `MayflyUiNode` | 获取焦点并处理 Escape 关闭 |
 | non-capturing overlay | 只使用 passive 内容/layout | tabs/list/form/actions/prompt 等 controls 会使整棵渲染树降级为错误提示 |
 | additive `status` | text、rich-text、fields、progress、递归 stack | 始终非交互，不接受 surface/scroll/control |

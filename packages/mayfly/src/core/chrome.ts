@@ -1,10 +1,10 @@
 /**
- * The shared chrome helper layer (D25): pure `string[]` post-processing that
- * turns pi-tui's bare horizontal rules into rounded boxes. Everything here
- * is theme-agnostic math — callers inject the paint function — so the module
- * carries no pi-tui component machinery and no lifecycle. The module is
- * core-private; renderer adapters use narrow `MayflyComponents` methods rather
- * than importing its algorithms. The algorithms are kimi-code ports kept ANSI-safe: visible
+ * The shared chrome helper layer (D25): pure `string[]` post-processing of
+ * pi-tui's editor rows and the panel rules. Everything here is theme-agnostic
+ * math — callers inject the paint function — so the module carries no pi-tui
+ * component machinery and no lifecycle. The module is core-private; renderer
+ * adapters use narrow `MayflyComponents` methods rather than importing its
+ * algorithms. The algorithms are kimi-code ports kept ANSI-safe: visible
  * columns are located by stripping SGR runs, and styled cells are never
  * clobbered.
  *
@@ -12,7 +12,6 @@
  */
 
 import { sliceByColumn, truncateToWidth, visibleWidth } from '@earendil-works/pi-tui'
-import { asciiText, type MayflyGlyphMode } from './glyphs.ts'
 import { mapRows } from './ui-rows.ts'
 import { OVERFLOW_ELLIPSIS } from './width.ts'
 
@@ -96,8 +95,8 @@ export function highlightLeadingSlashToken(
   return line.slice(0, rawStart) + paint(line.slice(rawStart, rawEnd)) + line.slice(rawEnd)
 }
 
-/** The editor's horizontal padding; the ghost splices into a padded content row. */
-const EDITOR_LEFT_PADDING = 4
+/** The editor's horizontal padding: its content rows are the prompt's buffer, so there is none. */
+const EDITOR_PADDING = 0
 /** pi-tui renders the end-of-input cursor as an inverse-video space. */
 // oxlint-disable-next-line no-control-regex -- the cursor block is a raw SGR sequence
 const CURSOR_BLOCK = '\x1b[7m \x1b[0m'
@@ -125,7 +124,7 @@ function truncateHint(hint: string, maxLen: number): string {
  * that would overflow the content area is ellipsized instead. When the
  * cursor block sits before trailing non-padding text (cursor mid-text), the
  * row is returned unchanged: the ghost belongs at the end of the input.
- * @param line - the first content row of an editor render (`paddingX: 4`).
+ * @param line - the first content row of an editor render.
  * @param hint - the ghost text, already lead-spaced by the caller.
  * @param text - the real editor text; its display width reserves the room.
  * @param width - the full render width of the row.
@@ -147,142 +146,32 @@ export function injectGhostHint(
     // belong here; otherwise the cursor is mid-text and the hint declines.
     if (stripSgr(line.slice(cursorIdx + CURSOR_BLOCK.length)).trim().length > 0) return line
   }
-  const contentWidth = Math.max(1, width - EDITOR_LEFT_PADDING * 2)
+  const contentWidth = Math.max(1, width - EDITOR_PADDING * 2)
   const available = contentWidth - visibleWidth(text) - (cursorPresent ? 1 : 0)
   const trimmed = truncateHint(hint, available)
   if (trimmed === '') return line
   const insertAt = cursorPresent
     ? cursorIdx + CURSOR_BLOCK.length
-    : visibleIndexToRaw(line, EDITOR_LEFT_PADDING + [...text].length)
+    : visibleIndexToRaw(line, EDITOR_PADDING + [...text].length)
   const trailing = line.length - insertAt
   return line.slice(0, insertAt) + paint(trimmed) + ' '.repeat(Math.max(0, trailing - visibleWidth(trimmed)))
 }
 
-/** Options for {@link withSideBorders}. */
-interface SideBordersOptions {
-  /** Draw `├┤` top corners instead of `╭╮` (a panel is docked above). */
-  readonly connectedAbove?: boolean
-  /**
-   * Pre-styled text overlaid on the left of the top border (e.g. a mode
-   * badge), replacing the leading dash run. Never applied to a scroll
-   * indicator row.
-   */
-  readonly label?: string | undefined
-  /**
-   * Plain one-line text laid into the right end of the top border as
-   * `─ title ─╮`. It takes only the columns the label leaves free (one dash
-   * always separates the two), is ellipsized to fit, and is dropped when
-   * fewer than {@link MIN_BORDER_TITLE_COLUMNS} columns remain. Never applied
-   * to a scroll indicator row.
-   */
-  readonly title?: string | undefined
-  /** Styling for the title text; defaults to the border paint. */
-  readonly titlePaint?: ((text: string) => string) | undefined
-  /** The glyph mode: `ascii` draws the corners, rules, and bars with the one-cell fallback. */
-  readonly glyphs?: MayflyGlyphMode | undefined
-}
-
-/** Narrowest title, in visible columns, worth laying into a top border. */
-const MIN_BORDER_TITLE_COLUMNS = 6
-
 /**
- * Fit a border title into `maxWidth` visible columns, ending an elided
- * title with `…`.
- * @param title - plain one-line title text.
- * @param maxWidth - the columns available for the title text.
- * @returns the fitted title, or `undefined` when it is empty or no longer
- *   fits {@link MIN_BORDER_TITLE_COLUMNS}.
+ * Split pi-tui's editor rows into the content rows and the completion list. The editor renders a top rule, its content
+ * rows, a bottom rule, and then the list while one is open. A rule row starts with `─` and does not end in a space; a
+ * content row always does, because it is padded to the width with at least the cell of the cursor.
+ * @param rows - the rows of a pi-tui editor render.
+ * @returns the content rows between the rules, and the list rows after the bottom rule.
  */
-function fitBorderTitle(title: string | undefined, maxWidth: number): string | undefined {
-  if (title === undefined || title === '' || maxWidth < MIN_BORDER_TITLE_COLUMNS) return undefined
-  return visibleWidth(title) <= maxWidth ? title : `${sliceByColumn(title, 0, maxWidth - 1, true)}…`
-}
-
-/**
- * Post-process a bordered block's rows into a full box: pi-tui-style rows
- * whose first visible character is `─` (plain rules and `── ↑ N more ──`
- * scroll indicators alike) gain `╭╮` / `╰╯` corners — `├┤` on top when
- * `connectedAbove` — and are repainted as one box-drawn span. Content rows
- * keep their inner SGR intact; `│` is overlaid on column 0 and the last
- * column only when they hold a literal space, which protects the
- * inverse-video cursor an editor can park in the outermost column. The
- * `label` (left) and `title` (right) are laid into the top border only when
- * its middle is a pure dash run: the label only when it fits whole, the
- * title in whatever room the label leaves.
- * @param lines - the block's rendered rows, all padded to one width.
- * @param paint - the border color function for corners, bars, and rules.
- * @param options - corner style, top-border label, and top-border title.
- * @returns the boxed rows, width preserved.
- */
-export function withSideBorders(
-  lines: string[],
-  borderPaint: (text: string) => string,
-  options: SideBordersOptions = {},
-): string[] {
-  const paint = options.glyphs === 'ascii' ? (text: string): string => borderPaint(asciiText(text)) : borderPaint
-  let seenTop = false
-  return lines.map(line => {
-    const plain = stripSgr(line)
-    if (plain.length > 0 && plain[0] === '─') {
-      const leftCorner = seenTop ? '╰' : options.connectedAbove === true ? '├' : '╭'
-      const rightCorner = seenTop ? '╯' : options.connectedAbove === true ? '┤' : '╮'
-      const isTop = !seenTop
-      seenTop = true
-      if (plain.length === 1) return paint(leftCorner)
-      const middle = plain.slice(1, -1)
-      if (isTop && /^─+$/.test(middle)) {
-        const label = options.label !== undefined && visibleWidth(options.label) <= middle.length ? options.label : undefined
-        const labelWidth = label === undefined ? 0 : visibleWidth(label)
-        // The title segment is ` title ─` after at least one separating dash.
-        const title = fitBorderTitle(options.title, middle.length - labelWidth - 4)
-        if (label !== undefined || title !== undefined) {
-          const titleWidth = title === undefined ? 0 : visibleWidth(title) + 3
-          return (
-            paint(leftCorner)
-            + (label ?? '')
-            + paint('─'.repeat(middle.length - labelWidth - titleWidth))
-            + (title === undefined ? '' : (options.titlePaint ?? borderPaint)(` ${title} `) + paint('─'))
-            + paint(rightCorner)
-          )
-        }
-      }
-      return paint(leftCorner + middle + rightCorner)
-    }
-    if (line.length === 0) return line
-    // charAt (not indexing): a plain `string` return keeps the impossible
-    // `undefined` arm of noUncheckedIndexedAccess out of the branch count.
-    const firstCh = line.charAt(0)
-    const lastCh = line.charAt(line.length - 1)
-    const head = firstCh === ' ' ? paint('│') : firstCh
-    const tail = line.length > 1 && lastCh === ' ' ? paint('│') : lastCh
-    if (line.length === 1) return head
-    return head + line.slice(1, -1) + tail
-  })
-}
-
-/**
- * Overlay a terminal-style prompt symbol on an editor content row. The row
- * must start with four literal spaces (`paddingX: 4`): columns 0-1 stay
- * blank for the side border and its gap, the symbol lands in column 2, and
- * column 3 separates it from the content. Without `paint` the symbol emits
- * no SGR and renders in the terminal's default foreground.
- * @param line - the first content row of an editor render.
- * @param symbol - the one-character prompt symbol.
- * @param paint - optional color function for the symbol.
- * @returns the row with the symbol overlaid, or `undefined` when the row is
- *   too short or does not begin with the expected padding.
- */
-export function injectPromptSymbol(
-  line: string,
-  symbol: string,
-  paint?: (text: string) => string,
-): string | undefined {
-  if (line.length < 4) return undefined
-  for (let i = 0; i < 4; i++) {
-    if (line[i] !== ' ') return undefined
+export function splitEditorRows(rows: readonly string[]): { readonly content: string[], readonly list: string[] } {
+  const isRule = (row: string): boolean => {
+    const plain = stripSgr(row)
+    return plain.startsWith('─') && !plain.endsWith(' ')
   }
-  const rendered = paint === undefined ? symbol : paint(symbol)
-  return '  ' + rendered + ' ' + line.slice(4)
+  const bottom = rows.findIndex((row, index) => index > 0 && isRule(row))
+  if (bottom < 0) return { content: rows.slice(1), list: [] }
+  return { content: rows.slice(1, bottom), list: rows.slice(bottom + 1) }
 }
 
 const identity = (text: string): string => text

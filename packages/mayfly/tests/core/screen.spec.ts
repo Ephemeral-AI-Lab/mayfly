@@ -137,6 +137,29 @@ describe('MayflyScreenService', () => {
     await ctx.fiber.dispose()
   })
 
+  it('opens the panel of an entered view under the footer, and leaves it blank otherwise', async () => {
+    const runtime = recordingRuntime()
+    const ctx = new Context()
+    await ctx.plugin(MayflyScreenService, runtime)
+    const screen = ctx.mayflyScreen
+    // The editor, the footer, and, last, the views panel: it paints nothing until a view is entered.
+    const panel = runtime.bottomAdded.at(-1)!
+    expect(panel.render(40)).toEqual([])
+    expect(screen.enterViews()).toBe(false)
+    screen.leaveViews()
+    const lane = runtime.surfaces.views
+    const host = { focus: (component: { focused: boolean }) => { component.focused = true }, release: () => { lane.component.focused = false; lane.focusLost() }, requestRender: () => {}, viewport: () => ({ columns: 40, rows: 24 }), colors: new Proxy({}, { get: () => (text: string) => text }) as never }
+    lane.bind(host)
+    const target = { focused: false, render: () => ['panel row'], invalidate: () => {}, handleInput: () => {} }
+    lane.register({ id: 'jobs', summary: { node: { kind: 'text', content: 'jobs' } } }).setPanel(target, target)
+    expect(screen.enterViews()).toBe(true)
+    expect(panel.render(40)).toEqual([' panel row'])  // inside the footer's one-column gutter
+    expect(() => panel.invalidate()).not.toThrow()
+    screen.leaveViews()
+    expect(panel.render(40)).toEqual([])
+    await ctx.fiber.dispose()
+  })
+
   it('registers as ctx.mayflyScreen and unregisters when the fiber disposes', async () => {
     const ctx = new Context()
     const fiber = ctx.plugin(MayflyScreenService, recordingRuntime())
@@ -155,7 +178,8 @@ describe('MayflyScreenService', () => {
     expect(screen.columns).toBe(120)
     expect(screen.rows).toBe(24)
     expect(runtime.added).toHaveLength(3)
-    expect(runtime.bottomAdded).toHaveLength(2)
+    // The editor slot, the footer slot, and the views panel under the footer.
+    expect(runtime.bottomAdded).toHaveLength(3)
     expect(runtime.added.flatMap(child => child.render(20))).toEqual([])
 
     const content = screen.mountContentSlot('transcript.prelude', component)

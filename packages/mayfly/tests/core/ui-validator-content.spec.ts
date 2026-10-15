@@ -52,7 +52,7 @@ describe('inline motion', () => {
     expect(rejected(ui.surface({ badges: [{ text: 'x', motion: 'shimmer' }], child: ui.text('x') }))).toContain('only supported in rich text')
     expect(rejected(rich({ text: 'x', motion: 'shimmer' }), 'status')).toContain('only supported in rich text')
     expect(rejected({ kind: 'stack', direction: 'row', children: [{ node: rich({ text: '', motion: 'loader' }) }] }, 'status')).toContain('only supported in rich text')
-    const result = validateMayflyEditorShellNode({ kind: 'stack', direction: 'column', children: [{ node: { kind: 'editor-control' } }, { node: rich({ text: 'x', motion: 'shimmer' }) }] })
+    const result = validateMayflyEditorShellNode({ kind: 'stack', direction: 'column', children: [{ node: { kind: 'prompt', id: 'prompt' } }, { node: rich({ text: 'x', motion: 'shimmer' }) }] })
     expect(result.ok).toBe(true)
   })
 })

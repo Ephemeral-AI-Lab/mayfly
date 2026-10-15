@@ -1,14 +1,15 @@
 /**
  * `mayfly-input` plugin: the bottom input editor, backed by the pi-tui Editor
  * through `ctx.mayflyComponents.createEditor` (multi-line, kill-ring, undo,
- * history, and paste markers are the component's own). The editor mounts
- * with `paddingX: 4` and the `>` prompt symbol, feeding the rounded-box
- * chrome the core adapter overlays; slash-prefixed input highlights the
- * frame in `primary` and any other text returns the neutral border. Submit
+ * history, and paste markers are the component's own). The editor's frame
+ * is the `Editor` component (`../components/editor.ts`): a rounded surface
+ * with the conversation title in its top-right corner around the prompt,
+ * whose buffer is this editor's own; shell mode shows as the `!` symbol and
+ * the accent border. Submit
  * dispatches a slash command through `ctx.commands` when the line parses as
  * one, otherwise queues the text as a user follow-up message on the current
  * agent (the harness inbox queues it when the agent is running). S29: the
- * follow-up and Ctrl-S steer paths rewrite `#name` tokens naming settled
+ * follow-up and Ctrl+Enter steer paths rewrite `#name` tokens naming settled
  * user-invocable skills into the `/name` harness gesture form (the
  * `./skills-catalog.ts` rewrite — line-start slashes stay a strict command
  * domain; skills reach the model through the follow-up channel, and the
@@ -24,14 +25,14 @@
  * interrupts a running session flow — safe retraction first when the buffer
  * is empty and eligible — and clears an idle draft; Ctrl-C empties the box
  * while a flow runs, interrupts with an empty buffer, and owns the idle
- * double-press-exit chain; Ctrl-S steer, Ctrl-G external
+ * double-press-exit chain; Ctrl+Enter steer, Ctrl-G external
  * editor) resolves through
  * `ctx.mayflyKeymap` in the editor's `onKey` hook, which runs before the
  * pi-tui Editor sees the sequence. The mounted editor and the submit router
  * are published through
  * `./editor-instance.ts` so `mayfly-editor-plus` can layer input modes and
- * autocomplete over the same component. The `mayfly-pane-queue` enhancement
- * shows pending messages without taking over editor history. Live side
+ * autocomplete over the same component. Pending messages are rows of
+ * the conversation stream; its `e`, `s`, `d`, and `u` keys reach this editor as `mayfly/queued-action`. Live side
  * conversations use this same editor and transcript; delivery scope follows
  * the app-owned displayed conversation instead of a pane-specific input path. The
  * unsubmitted draft is mirrored
@@ -50,11 +51,15 @@
  */
 
 import { randomUUID } from 'node:crypto'
+import { existsSync } from 'node:fs'
 import type { Context } from '@deepseek-ai/cordis'
-import type { MayflyScreen, MayflySubmittedDraft } from '../core/types.ts'
+import type { MayflyEditorToken, MayflyQueuedAction, MayflyScreen, MayflySubmittedDraft } from '../core/types.ts'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { ui, type MayflyFeedback, type MayflyUiNode, type MayflyUiScope } from '@ephemeral-ai/mayfly-ui'
+import { Editor } from '../components/editor.ts'
+import { CompletionDrawer } from '../core/completion-drawer.ts'
 import { normalizeWheelInput } from '../core/terminal.ts'
+import { CURSOR_RIGHT_SEQUENCE } from '../core/key-actions.ts'
 import { parseCommand } from '@deepseek-ai/dsh-commands'
 import type { PromptContentPart, StoredImageAttachment } from '@deepseek-ai/dsh-attachment'
 import { createUserMessage, type ContentBlock } from '@deepseek-ai/dsh-llm'
@@ -63,8 +68,7 @@ import type {} from '@deepseek-ai/dsh-subagent'
 import { SessionId, type UserMessage } from '@deepseek-ai/dsh-session'
 // Carries the app-owned retraction service and event/service declaration merges.
 import type {} from '../app/index.ts'
-import type {} from './subagent-reply.ts'
-import { hasRunningAgentWork, interruptAgentTree } from '../app/agent-interrupt.ts'
+import { interruptAgent, isAgentRunning } from '../app/agent-interrupt.ts'
 // Empty type import carries the `permissionPresets` Context merge the
 // bare-/permission interception probes (the service rides dsh-base).
 import type {} from '@deepseek-ai/dsh-permission-presets'
@@ -75,10 +79,15 @@ import {
 } from './editor-instance.ts'
 import { applyReversibleSubmitTransformers } from './prompt-submit-pipeline.ts'
 import { EditorExtensionRuntime } from './editor-extension-runtime.ts'
-import { mountEditorPlus } from './editor-plus.ts'
-import { resolveExternalEditorCommand, runExternalEditor } from './external-editor.ts'
+import { imageMarker } from './image-marker.ts'
+import { displayPath } from '../internal/paths.ts'
+import { openUiOverlay } from './ui-overlay.ts'
+import { createTokenSource, mentionFile } from './token-source.ts'
+import { mountEditorPlus, sessionCwd } from './editor-plus.ts'
+import { openFileInExternalEditor, resolveExternalEditorCommand, runExternalEditor } from './external-editor.ts'
 import { currentMayflySettings } from './settings.ts'
 import {
+  ACTION_BACKSPACE,
   ACTION_CANCEL,
   ACTION_CYCLE_MODE,
   ACTION_CYCLE_MODEL,
@@ -93,8 +102,10 @@ import {
   ACTION_FOCUS_NEXT,
   ACTION_FOCUS_PREV,
   ACTION_STEER,
+  ACTION_SUBMIT,
 } from './keys.ts'
 import { interactionTranslator } from './locale.ts'
+import { placeholderLadder, placeholderState } from './placeholder.ts'
 import { createModelListCache, cycleSessionModel } from './model-commands.ts'
 import { cycleMode } from './mode-commands.ts'
 import { openPermissionPanel } from './permission-panel.ts'
@@ -131,6 +142,11 @@ interface QueuedDraft {
 interface AttachmentReader {
   readImage(ref: Extract<ContentBlock, { readonly type: 'image' }>['attachment'], signal?: AbortSignal): Promise<StoredImageAttachment>
 }
+
+/** The tallest an image preview paints, the shortest it is worth, and the rows the frame around it takes (rules, button, hint). */
+const IMAGE_PREVIEW_ROWS = 40
+const IMAGE_PREVIEW_MIN_ROWS = 4
+const IMAGE_PREVIEW_CHROME_ROWS = 6
 
 /** Convert admitted editor blocks back to the public subagent prompt wire. */
 async function subagentPromptParts(attachments: AttachmentReader | undefined, blocks: readonly ContentBlock[], signal: AbortSignal): Promise<PromptContentPart[]> {
@@ -175,7 +191,6 @@ export const inject = ['mayflyScreen', 'mayflyTheme', 'mayflyComponents', 'mayfl
 export function apply(ctx: Context): void {
   const t = interactionTranslator(ctx)
   const screen = ctx.mayflyScreen
-  const colors = ctx.mayflyTheme.colors
   const conversations = ctx.mayflyConversations
   const requests = ctx.mayflyRequests
   const subagents = ctx.subagents
@@ -216,16 +231,16 @@ export function apply(ctx: Context): void {
    * for services through the dead context.
    */
   let unloaded = false
-  const pendingSubagentPrompts = new Set<AbortController>()
+  /** The subagent prompts still on their way to an inbox, each with the child it addresses. */
+  const pendingSubagentPrompts = new Map<AbortController, string>()
   ctx.effect(() => () => {
     unloaded = true
-    for (const controller of pendingSubagentPrompts) controller.abort()
+    for (const controller of pendingSubagentPrompts.keys()) controller.abort()
     pendingSubagentPrompts.clear()
   })
-  const editor = ctx.mayflyComponents.createEditor({ paddingX: 4 })
-  // The padding reserves columns 0-3 for the side border, its gap, and the
-  // `>` prompt symbol the rounded-box chrome overlays.
-  editor.setPromptSymbol('>')
+  const editor = ctx.mayflyComponents.createEditor()
+  /** The facts of the editor's frame: the conversation title (sanitized, one line) and whether the buffer is a shell command. */
+  const frame: { title: string | undefined, shell: boolean } = { title: undefined, shell: false }
 
   const notificationOwner = ctx.mayflyUiInteraction.createNotificationOwner('mayfly.input')
   ctx.effect(() => () => notificationOwner.dispose())
@@ -243,11 +258,15 @@ export function apply(ctx: Context): void {
     const fullDetail = detail ?? (summary === message ? undefined : message)
     notificationOwner.report(id, notificationScope(), { message: summary, severity, ...(fullDetail === undefined ? {} : { detail: fullDetail }) }, id)
   }
+  // The quiet-hints setting is read when it changes, not on every frame: resolving the settings document is not free.
+  // Declared before the runtime, whose constructor compiles the first frame and so reads the placeholder.
+  let quietHintsOff: boolean | undefined
   const extensionRuntime = new EditorExtensionRuntime({
     ctx,
     editor,
     report: (id, feedback) => notificationOwner.report(`editor-extension/${id}`, notificationScope(), feedback, id),
     footer: feedbackNode,
+    frame: ({ parked }) => Editor({ ...titleNow() === undefined ? {} : { title: titleNow()! }, shell: frame.shell, parked, placeholder: placeholderNow() }),
     shouldTransformSubmit: text => ctx.mayflyCurrentAgent.current() !== null
       && draft.getStashedInputMode() !== 'bash'
       && parseCommand(text.trim()) === undefined,
@@ -277,6 +296,27 @@ export function apply(ctx: Context): void {
     return undefined
   }
 
+  /** The ladder the empty prompt shows now: the displayed conversation's state, quiet hints, and the language. */
+  function placeholderNow(): readonly string[] {
+    quietHintsOff ??= currentMayflySettings(ctx).quietHints === 'off'
+    return placeholderLadder(placeholderState(conversations.displayed(), frame.shell, sessionFlowInProgress()), quietHintsOff, t)
+  }
+  /** The corner title: the session's title, else the name of the side conversation shown (a view without a title of its own). */
+  function titleNow(): string | undefined {
+    if (frame.title !== undefined) return frame.title
+    const shown = conversations.displayed()
+    const line = shown === null || shown.kind === 'primary' ? '' : shown.label.replace(/\s+/gu, ' ').trim()
+    return line === '' ? undefined : line
+  }
+  /** Recompile the frame when the placeholder or the corner title changed: what they follow moves without a keystroke. */
+  let placeholderShape = ''
+  function syncPlaceholder(): void {
+    const shape = JSON.stringify([placeholderNow(), titleNow()])
+    if (shape === placeholderShape) return
+    placeholderShape = shape
+    refreshHint()
+  }
+
   /** Recompile the prompt footer from the slash state. */
   let refreshingHint = false
   function refreshHint(): void {
@@ -304,11 +344,11 @@ export function apply(ctx: Context): void {
   function restoreSubmission(value: string, historyText: string | undefined, submitted: MayflySubmittedDraft | undefined): void {
     if (historyText !== undefined) {
       editor.removeLatestHistory?.(historyText)
-      draft.stashHistory(editor.getHistory())
+      stashHistory()
     }
     restoreDraftIntoEditor(submitted, value)
     currentText = editor.getText()
-    draft.stashDraft(currentText)
+    stashCurrentDraft()
   }
 
   /** Restore a subagent submission that never reached its addressed child. */
@@ -331,15 +371,20 @@ export function apply(ctx: Context): void {
     historyText: string | undefined,
     transformed: ReturnType<typeof applyReversibleSubmitTransformers>,
     submitted: MayflySubmittedDraft | undefined,
+    delivery: 'queue' | 'steer',
   ): boolean {
     const target = conversations.displayed()
     if (target?.kind !== 'subagent' || target.mode !== 'continuable' || target.access === 'readonly') {
       restoreSubagentSubmission(value, historyText, transformed, submitted, 'the subagent is no longer available for input')
       return false
     }
-    const viewRevision = conversations.revision()
+    // The wake of a resumable child republishes the registry, so the view is judged by the child it shows, not a revision.
+    const stillShown = (): boolean => {
+      const shown = conversations.displayed()
+      return shown?.kind === 'subagent' && shown.sessionId === target.sessionId
+    }
     const controller = new AbortController()
-    pendingSubagentPrompts.add(controller)
+    pendingSubagentPrompts.set(controller, target.sessionId)
     const ref = requests.begin('subagent')
     const attachments = ctx.get('attachments') as AttachmentReader | undefined
     void subagentPromptParts(attachments, transformed.blocks, controller.signal).then(content => subagents.prompt({
@@ -347,12 +392,20 @@ export function apply(ctx: Context): void {
       parentSessionId: SessionId(target.parentSessionId),
       childSessionId: SessionId(target.sessionId),
       mode: 'continuable',
-      // Queue for the child's next turn: the child conversation's editor is a
-      // follow-up channel, not mid-step steering (the upstream host default).
-      delivery: 'queue',
+      // `Enter` queues for the child's next turn, `Ctrl+Enter` steers its running one; either wakes a resumable child.
+      delivery,
       content,
     }, controller.signal)).then(receipt => {
-      if (unloaded || controller.signal.aborted || conversations.revision() !== viewRevision) return
+      if (unloaded || controller.signal.aborted || !stillShown()) return
+      // The child's rows follow the main Agent's: a message still waiting in its inbox is withdrawable with its buffer.
+      const child = ctx.agents.get(target.sessionId as Agent['id'])
+      if (child !== undefined && messagePending(child, String(receipt.messageId))) {
+        queuedDrafts.set(String(receipt.messageId), {
+          ...(submitted === undefined ? {} : { buffer: submitted }),
+          ...(historyText === undefined ? {} : { historyText }),
+          ...(transformed.rollback === undefined ? {} : { rollback: transformed.rollback }),
+        })
+      }
       retractionCandidate = {
         messageId: String(receipt.messageId),
         editorText: value,
@@ -362,7 +415,7 @@ export function apply(ctx: Context): void {
       }
     }, error => {
       requests.transition(ref, 'failed', error instanceof Error ? error.message : String(error))
-      if (unloaded || controller.signal.aborted || conversations.revision() !== viewRevision) {
+      if (unloaded || controller.signal.aborted || !stillShown()) {
         transformed.rollback?.()
         return
       }
@@ -373,6 +426,20 @@ export function apply(ctx: Context): void {
     return true
   }
 
+  /** The model-facing blocks of a submitted line: the extension runtime's prepared transformation, then the `#skill` rewrite. */
+  function transformSubmission(value: string, line: string): ReturnType<typeof applyReversibleSubmitTransformers> {
+    const prepared = extensionRuntime.takePrepared(value)
+    const preparedTransformation = prepared?.transformation
+    return preparedTransformation === undefined
+      ? applyReversibleSubmitTransformers(ctx, rewriteSkillTokens(ctx, prepared?.text ?? line))
+      : {
+          ...preparedTransformation,
+          blocks: preparedTransformation.blocks.map(block => block.type === 'text'
+            ? { ...block, text: rewriteSkillTokens(ctx, block.text) }
+            : block),
+        }
+  }
+
   /** Whether the message still sits in either of the Agent's pending lanes. */
   function messagePending(agent: Agent, messageId: string): boolean {
     return [...agent.inbox.nextTurn, ...agent.inbox.nextStep].some(message => String(message.id) === messageId)
@@ -381,7 +448,7 @@ export function apply(ctx: Context): void {
   /**
    * Rebuild editable text for a queued message this editor did not submit:
    * text blocks concatenate as stored; each image block mints a fresh
-   * `[image #N]` marker into the paste-image state, so a resubmission
+   * `[image #N size]` marker into the paste-image state, so a resubmission
    * re-splits it into an image block.
    * @param message - the withdrawn message.
    * @returns the editor-ready text.
@@ -392,7 +459,7 @@ export function apply(ctx: Context): void {
       if (block.type === 'text') return block.text
       if (block.type === 'image') {
         state.pasteCount += 1
-        const marker = `[image #${state.pasteCount}]`
+        const marker = imageMarker(state.pasteCount, block.attachment.bytes)
         state.pastedImages.set(marker, block.attachment)
         return marker
       }
@@ -401,10 +468,11 @@ export function apply(ctx: Context): void {
   }
 
   /**
-   * Put one withdrawn message back into the editor: the captured buffer —
+   * Put one withdrawn message into the editor: the captured buffer —
    * raw marker text plus its paste table — when this editor submitted it,
    * otherwise the reconstruction from content blocks. History and rollback
-   * follow the same rules as the Escape retraction restore.
+   * follow the same rules as the Escape retraction restore. A draft the
+   * prompt already held goes to the history first, so one Up brings it back.
    * @param message - the removed inbox message.
    * @param record - its restore data, snapshotted before `remove()`.
    */
@@ -413,43 +481,82 @@ export function apply(ctx: Context): void {
     queuedDrafts.delete(id)
     if (retractionCandidate?.messageId === id) retractionCandidate = undefined
     record?.rollback?.()
-    if (record?.historyText !== undefined) {
-      editor.removeLatestHistory?.(record.historyText)
-      draft.stashHistory(editor.getHistory())
-    }
+    // The queued entry leaves the history while it is still the newest; the displaced draft joins it after.
+    if (record?.historyText !== undefined) editor.removeLatestHistory?.(record.historyText)
+    const displaced = editor.getText()
+    if (displaced.trim().length > 0) editor.addToHistory(displaced)
+    stashHistory()
     // `foreignDraftText` mints fresh image markers — the `??` keeps it lazy
     // so a recorded buffer never triggers the fallback's registrations.
     const buffer = record?.buffer
     if (buffer !== undefined && editor.restoreSubmittedDraft !== undefined) editor.restoreSubmittedDraft(buffer)
     else editor.setText(buffer?.raw ?? foreignDraftText(message))
     currentText = editor.getText()
-    draft.stashDraft(currentText)
+    stashCurrentDraft()
     refreshHint()
     screen.requestRender()
   }
 
-  /**
-   * Withdraw the bottom-most still-pending user message into the editor:
-   * the queue pane renders nextTurn rows above nextStep rows, so the last
-   * visible entry is the steer lane tail, then the queued lane tail. A
-   * message claimed between render and keypress fails `remove()` and the
-   * next entry is tried.
-   * @returns whether a message was withdrawn.
-   */
-  function withdrawQueued(): boolean {
-    const agent = ctx.mayflyCurrentAgent.current()
-    if (agent === null) return false
-    const pending = [...agent.inbox.nextTurn, ...agent.inbox.nextStep]
-    for (const message of pending.reverse()) {
-      if (message.source.kind !== 'user') continue
-      // `remove()` emits `agent/inbox/discarded` synchronously, which
-      // retires this entry — snapshot the restore data first.
-      const record = queuedDrafts.get(String(message.id))
-      if (!agent.inbox.remove(message.id)) continue
-      restoreQueuedMessage(message, record)
-      return true
+  /** The pending user message with this id, in whichever lane of the Agent's inbox holds it. */
+  function pendingMessage(agent: Agent, id: string): { readonly message: UserMessage, readonly lane: 'turn' | 'step' } | undefined {
+    for (const [lane, messages] of [['step', agent.inbox.nextStep], ['turn', agent.inbox.nextTurn]] as const) {
+      const message = messages.find(candidate => String(candidate.id) === id && candidate.source.kind === 'user')
+      if (message !== undefined) return { message, lane }
     }
-    return false
+    return undefined
+  }
+
+  /** The last message `d` cancelled, kept for `u` while the undo window lasts. */
+  let cancelled: { readonly message: UserMessage, readonly lane: 'turn' | 'step', readonly agent: Agent, readonly at: number } | undefined
+  const UNDO_WINDOW_MS = 8000
+
+  /**
+   * One of the stream's keys on a queued message: `e` takes it into the prompt, `s` sends it now to the running
+   * turn's steer lane, `d` cancels it (the notice offers `u`), `u` takes the last cancelled one back. `remove()`
+   * emits `agent/inbox/discarded` synchronously, which retires the restore record — it is snapshotted first. A message
+   * the Agent claimed between the key and here fails `remove()`: the row is gone already, and the notice says so.
+   * @param action - what was asked.
+   * @param id - the inbox message's id; none for `undo`.
+   */
+  function queuedAction(action: MayflyQueuedAction, id: string | undefined): void {
+    const agent = ctx.mayflyCurrentAgent.current()
+    if (agent === null) return
+    if (action === 'undo') {
+      if (cancelled === undefined || cancelled.agent !== agent || Date.now() - cancelled.at > UNDO_WINDOW_MS) return
+      const { message, lane } = cancelled
+      cancelled = undefined
+      // Back in the lane it left: a steering message keeps steering.
+      if (lane === 'step') agent.steer(message)
+      else agent.followup(message)
+      notificationOwner.clearAll()
+      showFeedback('queued', t('Message queued again'), 'success')
+      return
+    }
+    const found = id === undefined ? undefined : pendingMessage(agent, id)
+    if (found === undefined) {
+      showFeedback('queued', t('The agent already read it'), 'info')
+      return
+    }
+    const { message, lane } = found
+    const record = queuedDrafts.get(String(message.id))
+    if (!agent.inbox.remove(message.id)) {
+      showFeedback('queued', t('The agent already read it'), 'info')
+      return
+    }
+    if (action === 'edit') {
+      restoreQueuedMessage(message, record)
+      return
+    }
+    if (action === 'steer') {
+      agent.steer(message)
+      // The restore record follows the message into the steer lane (a withdrawal restores the same buffer).
+      if (record !== undefined && messagePending(agent, String(message.id))) queuedDrafts.set(String(message.id), record)
+      return
+    }
+    // Cancel: the text stays one Up away in the history (it was added when it was sent); `u` brings the message back.
+    if (retractionCandidate?.messageId === String(message.id)) retractionCandidate = undefined
+    cancelled = { message, lane, agent, at: Date.now() }
+    showFeedback('queued', t('Cancelled · u undo'), 'info')
   }
 
   /**
@@ -477,7 +584,7 @@ export function apply(ctx: Context): void {
     // rebuilds this fiber (and the editor) as its own effect, so the new
     // entry must reach the reload stash before the swap tears the
     // component down.
-    draft.stashHistory(editor.getHistory())
+    stashHistory()
     const parsed = parseCommand(line)
     // A displayed conversation without a driven Agent still runs commands
     // against its primary; only its messages follow the displayed access.
@@ -488,28 +595,21 @@ export function apply(ctx: Context): void {
         showFeedback('prompt-submit', t('no active session'), 'error')
         return
       }
+      // A stored continuable child is sent to like a live one: the prompt wakes it.
+      if (displayed.kind === 'subagent' && displayed.access === 'resumable') {
+        deliverSubagentPrompt(value, line, transformSubmission(value, line), submitted, 'queue')
+        return
+      }
       restoreSubmission(value, line, submitted)
-      // A stored continuable child resumes only through the explicit reply
-      // form; the draft stays here until that form sends it.
-      if (displayed.kind === 'subagent' && displayed.access === 'resumable') ctx.emit('mayfly/request-subagent-reply', displayed, line)
-      else showFeedback('prompt-submit', t('this conversation is read-only'), 'warning')
+      showFeedback('prompt-submit', t('this conversation is read-only'), 'warning')
       screen.requestRender()
       return
     }
     if (parsed === undefined) {
-      const prepared = extensionRuntime.takePrepared(value)
-      const preparedTransformation = prepared?.transformation
-      const transformed = preparedTransformation === undefined
-        ? applyReversibleSubmitTransformers(ctx, rewriteSkillTokens(ctx, prepared?.text ?? line))
-        : {
-            ...preparedTransformation,
-            blocks: preparedTransformation.blocks.map(block => block.type === 'text'
-              ? { ...block, text: rewriteSkillTokens(ctx, block.text) }
-              : block),
-          }
+      const transformed = transformSubmission(value, line)
       const displayed = conversations.displayed()
       if (displayed?.kind === 'subagent') {
-        deliverSubagentPrompt(value, line, transformed, submitted)
+        deliverSubagentPrompt(value, line, transformed, submitted, 'queue')
         return
       }
       try {
@@ -597,13 +697,15 @@ export function apply(ctx: Context): void {
       // markers ride as literal text and keep resolving at submit — the
       // paste-image state is tree-owned and unaffected by setText.
       const seed = editor.getExpandedText()
+      const pasted = [...(editor.captureDraft?.().pastes.values() ?? [])]
       await screen.suspend(async () => {
         const edited = await runExternalEditor(seed, command)
         // :cq / a mid-suspend fiber unload: the draft stays untouched.
         if (edited === undefined || unloaded) return
-        editor.setText(edited.replaceAll('\r\n', '\n').replace(/\n$/, ''))
+        // The pasted blocks that came back unchanged fold into their markers again.
+        editor.setTextFolding(edited.replaceAll('\r\n', '\n').replace(/\n$/, ''), pasted)
         currentText = editor.getText()
-        draft.stashDraft(currentText)
+        stashCurrentDraft()
         refreshHint()
       })
     } catch (error) {
@@ -621,7 +723,7 @@ export function apply(ctx: Context): void {
     const text = editor.getText()
     if (text.length === 0) return false
     editor.addToHistory(text)
-    draft.stashHistory(editor.getHistory())
+    stashHistory()
     editor.setText('')
     currentText = ''
     draft.clearDraft()
@@ -636,7 +738,7 @@ export function apply(ctx: Context): void {
     retractionCandidate = undefined
     const agent = ctx.mayflyCurrentAgent.current()
     if (agent === null) return false
-    const result = interruptAgentTree(ctx, agent, conversations.displayed())
+    const result = interruptAgent(ctx, agent, conversations.displayed())
     if (!result.requested) return false
     ctx.mayflyRequests.interrupt()
     // The activity row answers the keypress on this frame: the native turn
@@ -649,10 +751,10 @@ export function apply(ctx: Context): void {
     return true
   }
 
-  /** Whether the selected Agent or a live descendant currently runs work. */
+  /** Whether the selected Agent currently runs a turn (a running subagent alone is not a flow of this conversation). */
   function sessionFlowInProgress(): boolean {
     const agent = ctx.mayflyCurrentAgent.current()
-    return agent !== null && hasRunningAgentWork(ctx, agent)
+    return agent !== null && isAgentRunning(agent)
   }
 
   /**
@@ -680,11 +782,11 @@ export function apply(ctx: Context): void {
           && ctx.mayflyRetractions.tryRetract(candidate.messageId)) {
           candidate.rollback?.()
           editor.removeLatestHistory?.(candidate.historyText)
-          draft.stashHistory(editor.getHistory())
+          stashHistory()
           queuedDrafts.delete(candidate.messageId)
           restoreDraftIntoEditor(candidate.submitted, candidate.editorText)
           currentText = editor.getText()
-          draft.stashDraft(currentText)
+          stashCurrentDraft()
           retractionCandidate = undefined
           refreshHint()
           screen.requestRender()
@@ -697,6 +799,123 @@ export function apply(ctx: Context): void {
   }
 
   /**
+   * The hint that follows the active token: the keys that act on it, in the notification pane's teaching slot. An image
+   * has no editor to open it in.
+   * @param token - the token the caret is on or Backspace selected, or `undefined` when there is none.
+   */
+  function announceToken(token: MayflyEditorToken | undefined): void {
+    ctx.emit('mayfly/prompt-hint-changed', token === undefined ? undefined : token.kind === 'image' ? t('Ctrl+G shows it · Backspace removes') : t('Ctrl+G opens · Backspace removes'))
+    // The hint shares its place with the notices of this prompt (`pasted 1 image`): the keys of the token on show win.
+    if (token !== undefined) notificationOwner.clearAll()
+  }
+
+  /**
+   * Ctrl-G on an image token: the image in an overlay (a terminal without an image protocol shows its name and size).
+   * @param token - the image token the caret is on.
+   */
+  function showImagePreview(token: MayflyEditorToken): void {
+    const ref = ctx.mayflyInteractionState.pasteImage.pastedImages.get(token.text)
+    if (ref === undefined) return
+    // The picture's first row carries the whole image, so the surface must show it: the image is as tall as the editor's
+    // slot leaves after the frame's own rows, and the overlay may take that whole slot.
+    const rows = Math.max(IMAGE_PREVIEW_MIN_ROWS, Math.min(IMAGE_PREVIEW_ROWS, ctx.mayflyScreen.editorViewport.rows - IMAGE_PREVIEW_CHROME_ROWS))
+    const node = ui.surface({ title: token.text, chrome: 'overlay', padding: 1, child: ui.stack.column([
+      ui.image({ attachmentId: String(ref.attachmentId), alt: token.text, maxRows: rows }),
+      ui.actions({ id: 'image-actions', items: [{ id: 'close', label: t('Close'), dismiss: true }] }),
+    ]) })
+    openUiOverlay(ctx, { id: 'mayfly.image-preview', presentation: 'editor', capturing: true, dismissal: 'discard', maxHeight: '100%', title: token.text, scope: { kind: 'app', targetId: 'image-preview' } }, node, { reopen: 'replace' })
+  }
+
+  /**
+   * Ctrl-G on a token: a mentioned file or folder opens in the editor where it lies; a pasted block opens as text, and
+   * what is saved takes the token's place as plain text.
+   * @param token - the active token.
+   */
+  async function openTokenInEditor(token: MayflyEditorToken): Promise<void> {
+    const command = resolveExternalEditorCommand(process.env, currentMayflySettings(ctx).editorCommand)
+    if (command === undefined) {
+      showFeedback('external-editor', t('set $VISUAL or $EDITOR to edit drafts externally'), 'warning')
+      return
+    }
+    let file: string | undefined
+    if (token.kind === 'mention') {
+      file = mentionFile(token.text, sessionCwd(ctx))
+      if (!existsSync(file)) {
+        showFeedback('external-editor', t('{path} does not exist', { path: displayPath(file) }), 'warning')
+        return
+      }
+    }
+    externalEditorRunning = true
+    try {
+      await screen.suspend(async () => {
+        if (file !== undefined) {
+          await openFileInExternalEditor(file, command)
+          return
+        }
+        const edited = await runExternalEditor(token.content ?? token.text, command)
+        if (edited === undefined || unloaded) return
+        editor.replaceActiveToken(edited.replaceAll('\r\n', '\n').replace(/\n$/, ''))
+        currentText = editor.getText()
+        stashCurrentDraft()
+        refreshHint()
+      })
+    } catch (error) {
+      if (!unloaded) showFeedback('external-editor', error instanceof Error ? error.message : String(error), 'error')
+    } finally {
+      externalEditorRunning = false
+    }
+  }
+
+  /**
+   * Ctrl-G on the focused file of the `@` list: the file opens in the editor where it lies; the draft, the caret and the
+   * list stay as they were.
+   * @param value - the file's completion value, `@path` or `@"my path"`.
+   */
+  async function openFocusedMention(value: string): Promise<void> {
+    const command = resolveExternalEditorCommand(process.env, currentMayflySettings(ctx).editorCommand)
+    if (command === undefined) {
+      showFeedback('external-editor', t('set $VISUAL or $EDITOR to edit drafts externally'), 'warning')
+      return
+    }
+    const file = mentionFile(value, sessionCwd(ctx))
+    if (!existsSync(file)) {
+      showFeedback('external-editor', t('{path} does not exist', { path: displayPath(file) }), 'warning')
+      return
+    }
+    externalEditorRunning = true
+    try {
+      await screen.suspend(() => openFileInExternalEditor(file, command))
+    } catch (error) {
+      if (!unloaded) showFeedback('external-editor', error instanceof Error ? error.message : String(error), 'error')
+    } finally {
+      externalEditorRunning = false
+    }
+  }
+
+  /**
+   * Take the focused folder of the `@` list as a mention: the editor completes it (the caret ends inside a closing
+   * quote of a quoted path), a space ends the mention so the list closes, and the path is remembered as a token.
+   * @param value - the folder's completion value, `@dir/` or `@"my dir/"`.
+   */
+  function selectFolderMention(value: string): void {
+    editor.handleInput?.('\t')
+    if (value.endsWith('"') || value.endsWith("'")) editor.handleInput?.(CURSOR_RIGHT_SEQUENCE)
+    editor.insertText(' ')
+    ctx.mayflyInteractionState.mentions.add(value)
+    editor.refreshAutocomplete()
+  }
+
+  /** Mirror the history and the paste tables of its entries into the reload stash. */
+  function stashHistory(): void {
+    draft.stashHistory(editor.getHistory(), editor.getHistoryPastes())
+  }
+
+  /** Mirror the live buffer and its paste table into the reload stash. */
+  function stashCurrentDraft(): void {
+    draft.stashDraft(editor.captureDraft?.() ?? { raw: editor.getText(), pastes: new Map() })
+  }
+
+  /**
    * The editor-context key chain, resolved through the keymap before the
    * pi-tui Editor sees the sequence (it swallows Ctrl-C with no behavior,
    * so interception must happen here). Returns true to consume.
@@ -705,6 +924,45 @@ export function apply(ctx: Context): void {
    */
   function handleEditorKey(data: string): boolean {
     const keymap = ctx.mayflyKeymap
+    // Backspace at a token: on a highlighted token it removes it; right after one it selects it first. The editor says
+    // which token is active, and the hint under the prompt follows it. A completion list that reopened behind the caret
+    // (the mention's own) does not keep the key.
+    if (keymap.matches(data, ACTION_BACKSPACE) && editor.tokenBackspace()) return true
+    // `?` on an empty prompt opens key help; anywhere else (a draft, a shell command, a list) it is the character.
+    if (data === '?' && editor.getText().length === 0 && !frame.shell && !editor.isShowingAutocomplete()) {
+      ctx.emit('mayfly/request-help')
+      return true
+    }
+    // Ctrl-G on a token opens that, not the whole draft: a file or a pasted block in the editor, an image in a preview.
+    if (keymap.matches(data, ACTION_EXTERNAL_EDITOR)) {
+      // With the `@` list open, the focused file is what Ctrl-G opens, before any token behind the caret (a folder is
+      // taken with Enter or entered with Tab).
+      const view = editor.isShowingAutocomplete() ? editor.completion() : undefined
+      const row = view?.kind === 'files' ? view.items[view.index] : undefined
+      if (row !== undefined && row.source === undefined && row.problem === undefined && !row.label.endsWith('/')) {
+        if (!externalEditorRunning) void openFocusedMention(row.value)
+        return true
+      }
+      const token = editor.activeToken()
+      if (token?.kind === 'image') {
+        showImagePreview(token)
+        return true
+      }
+      if (token !== undefined) {
+        if (!externalEditorRunning) void openTokenInEditor(token)
+        return true
+      }
+    }
+    // Enter on a folder of the `@` list takes the folder as a mention (Tab goes into it): the path lands in the prompt
+    // as a token and the list closes.
+    if (keymap.matches(data, ACTION_SUBMIT) && editor.isShowingAutocomplete()) {
+      const view = editor.completion()
+      const item = view?.kind === 'files' ? view.items[view.index] : undefined
+      if (item !== undefined && item.label.endsWith('/')) {
+        selectFolderMention(item.value)
+        return true
+      }
+    }
     // Escape: an open autocomplete dropdown owns the key (the Editor closes
     // it); otherwise interrupt a running flow — safe retraction first when
     // eligible — or clear an idle draft.
@@ -730,12 +988,14 @@ export function apply(ctx: Context): void {
       showFeedback('exit', t('press Ctrl+C again to exit'), 'warning')
       return true
     }
-    // Ctrl-S: steer the current turn with the draft — an idle agent starts
-    // a turn, a running one consumes it at the next step boundary.
+    // Ctrl+Enter: send the draft as a steer — an idle agent starts a turn, a running one consumes it at the next step
+    // boundary; a resumable child is woken by it.
     if (keymap.matches(data, ACTION_STEER)) {
       const text = editor.getText().trim()
       const agent = ctx.mayflyCurrentAgent.current()
-      if (text.length === 0 || agent === null) return false
+      const shown = conversations.displayed()
+      const resumable = shown?.kind === 'subagent' && shown.access === 'resumable'
+      if (text.length === 0 || (agent === null && !resumable)) return false
       // The steer path never crosses the submit funnel, so snapshot the
       // buffer and paste table directly for a possible withdrawal.
       const submitted = editor.captureDraft?.()
@@ -744,7 +1004,7 @@ export function apply(ctx: Context): void {
       const transformed = applyReversibleSubmitTransformers(ctx, rewriteSkillTokens(ctx, text))
       const displayed = conversations.displayed()
       if (displayed?.kind === 'subagent') {
-        if (deliverSubagentPrompt(text, undefined, transformed, submitted)) {
+        if (deliverSubagentPrompt(text, undefined, transformed, submitted, 'steer')) {
           editor.setText('')
           currentText = ''
           draft.clearDraft()
@@ -752,6 +1012,7 @@ export function apply(ctx: Context): void {
         }
         return true
       }
+      if (agent === null) return false
       try {
         const message = createUserMessage({ content: transformed.blocks, source: { kind: 'user' } })
         agent.steer(message)
@@ -798,48 +1059,67 @@ export function apply(ctx: Context): void {
       void cycleSessionModel(ctx, modelListCache, (id, feedback) => notificationOwner.report(id, notificationScope(), feedback, id))
       return true
     }
-    // Alt+Down (F5) on an empty prompt enters the views of status row 2; without a view the key stays the editor's.
+    // Alt+Down (F5) on an empty prompt enters the views of the status row; without a view the key stays the editor's.
     if (keymap.matches(data, ACTION_FOCUS_NEXT)
       && editor.getText().length === 0
       && !editor.isShowingAutocomplete()
       && ctx.mayflyScreen.enterViews()) return true
-    // Alt+Up (F4) on an empty prompt moves focus up into the conversation, where the cursor walks its rows.
+    // Alt+Up (F4) moves focus up into the conversation, where the cursor walks its rows; a draft stays in the prompt, so it never keeps the reader from a queued message.
     if (keymap.matches(data, ACTION_FOCUS_PREV)
-      && editor.getText().length === 0
       && !editor.isShowingAutocomplete()
       && ctx.mayflyScreen.focusConversation()) return true
-    // Up on an empty prompt withdraws the newest still-pending queued
-    // message back into the draft — the folded queue pane's recall gesture.
-    // A non-empty buffer, an open autocomplete dropdown, and bash mode all
-    // keep Up for the editor's own cursor and history navigation.
-    if (keymap.matches(data, ACTION_MOVE_UP)
-      && editor.getText().length === 0
-      && !editor.isShowingAutocomplete()
-      && draft.getStashedInputMode() !== 'bash'
-      && withdrawQueued()) return true
     return false
   }
 
+  /** Tell the notification pane where the prompt stands in its history, once per move. */
+  let recallShown = ''
+  function publishRecall(): void {
+    const position = editor.getHistoryPosition?.()
+    const key = position === undefined ? '' : `${String(position.index)}/${String(position.total)}`
+    if (key === recallShown) return
+    recallShown = key
+    ctx.emit('mayfly/prompt-recall-changed', position)
+  }
+
+  let lastSlash = false
   editor.onChange = (text) => {
     currentText = text
+    publishRecall()
     // Mirror every edit so a theme-swap reload loses nothing.
-    draft.stashDraft(text)
-    // Slash context highlights the frame in `primary`; any other text
-    // returns the neutral border. `mayfly-editor-plus` re-asserts its shell
-    // hue on top while bash mode is active.
-    editor.setBorderColor(text.trimStart().startsWith('/') ? colors.primary : colors.border)
+    stashCurrentDraft()
     notificationOwner.clearAll()
-    refreshHint()
+    // The slash hint is a footer of the frame: an edit that enters or leaves a slash line recompiles it. Other edits
+    // change only the placeholder or title, which `syncPlaceholder` checks without recompiling the frame each key.
+    const slash = text.trimStart().startsWith('/')
+    if (slash || lastSlash) refreshHint()
+    else syncPlaceholder()
+    lastSlash = slash
   }
   editor.onKey = handleEditorKey
+  editor.setTokenSource(createTokenSource(ctx))
+  // The preview's bytes: a pasted image is known by the tree until it is sent, and the stream's own loader answers after.
+  ctx.effect(() => ctx.get('mayflyUiImages')?.provide(async (attachmentId) => {
+    const ref = [...ctx.mayflyInteractionState.pasteImage.pastedImages.values()].find(candidate => String(candidate.attachmentId) === attachmentId)
+    const attachments = ctx.get('attachments') as AttachmentReader | undefined
+    if (ref === undefined || attachments === undefined) return undefined
+    try {
+      return { data: (await attachments.readImage(ref)).data, mediaType: ref.mediaType, ...ref.name === undefined ? {} : { name: ref.name } }
+    } catch {
+      return undefined
+    }
+  }) ?? (() => {}))
+  editor.onTokenChange = announceToken
+  ctx.effect(() => () => editor.setTokenSource(undefined))
 
   // Restore the draft stashed before a reload: plain text only — setText
   // fires neither a submit nor an input-mode transition. The explicit
   // re-sync mirrors submitPrompt's caution about component-owned onChange
   // timing.
   const stashed = draft.getStashedDraft()
-  if (stashed.length > 0) {
-    editor.setText(stashed)
+  if (stashed.raw.length > 0) {
+    // The paste table rides along, so a `[paste #N]` marker still expands after the reload.
+    if (editor.restoreSubmittedDraft !== undefined) editor.restoreSubmittedDraft(stashed)
+    else editor.setText(stashed.raw)
     currentText = editor.getText()
     refreshHint()
   }
@@ -847,7 +1127,9 @@ export function apply(ctx: Context): void {
   // editor's Up-recall entries died with it when the reload rebuilt this
   // fiber. The stash is newest-first and pi-tui prepends, so the replay
   // walks it reversed to land the same order.
-  for (const entry of [...draft.getStashedHistory()].reverse()) editor.addToHistory(entry)
+  const stashedHistory = draft.getStashedHistory()
+  const stashedPastes = draft.getStashedHistoryPastes()
+  for (let index = stashedHistory.length - 1; index >= 0; index -= 1) editor.addToHistory(stashedHistory[index]!, stashedPastes[index])
 
   // A session switch settles navigation notices such as "resuming" and
   // "creating rewind branch". Clear the old session's transient text before
@@ -859,14 +1141,26 @@ export function apply(ctx: Context): void {
       sessionId = nextId
       retractionCandidate = undefined
       queuedDrafts.clear()
-      for (const controller of pendingSubagentPrompts) controller.abort()
-      pendingSubagentPrompts.clear()
+      // A prompt that wakes a resumable child makes the child's Agent appear: that prompt stays, every other one is stale.
+      for (const [controller, child] of pendingSubagentPrompts) {
+        if (child === String(nextId)) continue
+        controller.abort()
+        pendingSubagentPrompts.delete(controller)
+      }
     }
     extensionRuntime.invalidateSession()
     notificationOwner.clearAll()
     refreshHint()
   })
   ctx.effect(() => sessionRegistration)
+  // The empty prompt's placeholder follows what the displayed conversation accepts and whether its turn runs.
+  ctx.effect(() => conversations.subscribe(syncPlaceholder))
+  ctx.on('agent/status', ({ agent }) => { if (agent === ctx.mayflyCurrentAgent.current()) syncPlaceholder() })
+  ctx.on('settings/document-updated', (namespace) => {
+    if (String(namespace) !== 'mayfly') return
+    quietHintsOff = currentMayflySettings(ctx).quietHints === 'off'
+    syncPlaceholder()
+  })
   // A queued draft is only useful while its message still waits in the
   // current Agent's inbox: claims consume it for real, discards and
   // withdrawals retire the record.
@@ -877,26 +1171,61 @@ export function apply(ctx: Context): void {
     if (agent === ctx.mayflyCurrentAgent.current()) queuedDrafts.delete(String(message.id))
   })
   ctx.effect(() => () => queuedDrafts.clear())
+  // `e`, `s`, `d`, and `u` on a queued row of the stream: this editor holds the restore data of what it queued.
+  ctx.effect(() => ctx.on('mayfly/queued-action', (action, id) => { queuedAction(action, id) }))
   // The session name rides the right end of the editor's top border: the
   // official `title` projection of the exact current Agent, read through
   // the frontend session-facts bridge whenever that service is mounted.
   ctx.inject(['mayflySessionFacts'], owner => {
     const offTitle = owner.mayflySessionFacts.subscribeTitle(title => {
-      editor.setBorderTitle(title)
-      screen.requestRender()
+      const line = title === undefined ? '' : title.replace(/\s+/gu, ' ').trim()
+      frame.title = line === '' ? undefined : line
+      refreshHint()
     })
     owner.effect(() => () => {
       offTitle()
-      editor.setBorderTitle(undefined)
+      frame.title = undefined
+      // The frame drops the title it drew: a departing facts service leaves no stale corner text behind.
+      if (!unloaded) refreshHint()
     })
   })
   ctx.effect(() => {
     const slot = screen.mountDockSlot('editor.prompt', extensionRuntime)
     slot.focus()
+    // The completion list is plain rows over the stream, as wide as the frame and ending on the row above it: neither the
+    // editor nor the conversation reflows when it opens.
+    // What the prompt waits for shows as the palette's last line while a list is open (the notification row's loader is
+    // under the palette then).
+    let waiting: string | undefined
+    const offWait = ctx.on('mayfly/prompt-wait-changed', message => {
+      waiting = message
+      screen.requestRender()
+    })
+    const drawer = new CompletionDrawer({
+      wait: () => waiting,
+      view: () => editor.completion(),
+      frameWidth: () => screen.columns,
+      colors: ctx.mayflyTheme.colors,
+      components: ctx.mayflyComponents,
+      glyphs: ctx.mayflyComponents.presentation?.glyphs,
+    })
+    const drawerHandle = screen.showOverlay(drawer, {
+      anchor: 'bottom-left',
+      nonCapturing: true,
+      get width() { return drawer.width },
+      get offsetY() { return -screen.editorRowsFromBottom },
+      visible: () => drawer.open,
+    })
     const shared = {
       editor,
       submitPrompt,
       abortPrompt: () => { interruptOrClear() },
+      setShell: (shell: boolean) => {
+        if (frame.shell === shell) return
+        frame.shell = shell
+        editor.setShellMode(shell)
+        refreshHint()
+      },
       report: (id: string, feedback: MayflyFeedback) => notificationOwner.report(id, notificationScope(), feedback, id),
     }
     setSharedEditor(ctx, shared)
@@ -907,6 +1236,8 @@ export function apply(ctx: Context): void {
       clearSharedEditor(ctx)
       ctx.emit('mayfly/input-editor-changed')
       detachEditorPlus()
+      offWait()
+      drawerHandle.hide()
       extensionRuntime.dispose()
       slot.dispose()
     }
@@ -954,14 +1285,16 @@ export function apply(ctx: Context): void {
     return () => dispose?.()
   })
   /* notification is driven by live streaming events */
-  // A reply form opened from this draft sent it: the draft left the editor.
-  ctx.effect(() => ctx.on('mayfly/subagent-reply-sent', sent => {
-    if (editor.getText().trim() !== sent) return
-    editor.addToHistory(sent)
-    draft.stashHistory(editor.getHistory())
-    editor.setText('')
-    currentText = ''
-    draft.clearDraft()
+  // A plugin addresses the editor to a subagent: the conversation is shown and the prompt is seeded with the text unless it
+  // holds a draft already. Nothing is sent or resumed until the user sends.
+  ctx.effect(() => ctx.on('mayfly/request-subagent-reply', (target, text) => {
+    const shown = conversations.displayed()
+    if (shown?.kind !== 'subagent' || shown.sessionId !== target.sessionId) conversations.open(target)
+    if (text !== undefined && editor.getText().trim() === '') {
+      editor.setText(text)
+      currentText = editor.getText()
+      stashCurrentDraft()
+    }
     refreshHint()
     screen.requestRender()
   }))

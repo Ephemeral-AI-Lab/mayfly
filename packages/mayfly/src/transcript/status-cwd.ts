@@ -2,7 +2,7 @@
  * `mayfly-status-cwd` plugin: enhancement footer entry showing the session's
  * working directory, home-shortened and abbreviated to its last three
  * segments on deep paths (the kimi `shortenCwd` port) in the `muted` tier at
- * priority 5. The cwd comes from the app-owned current-session snapshot and
+ * priority 7, shed to its last segment when the row is crowded. The cwd comes from the app-owned current-session snapshot and
  * falls back to `process.cwd()`. An empty path renders '' and occupies nothing.
  *
  * @module @ephemeral-ai/mayfly/transcript/status-cwd
@@ -12,6 +12,7 @@ import { homedir } from 'node:os'
 import type { Context } from '@deepseek-ai/cordis'
 import type { MayflyStatusNode } from '@ephemeral-ai/mayfly-ui'
 import type { SessionFactsService } from './session-facts.ts'
+import { SHED, shedNode } from './status-shed.ts'
 import { displayPath, homeRelative } from '../internal/paths.ts'
 
 /** Stable Cordis plugin name. */
@@ -49,8 +50,13 @@ export function shortenCwd(path: string, home: string, platform: NodeJS.Platform
 export function apply(ctx: Context): void {
   const facts = ctx.get('mayflySessionFacts') as SessionFactsService | undefined
   let text = shortenCwd(facts?.currentAgent?.session.header.cwd ?? process.cwd(), homedir())
-  const node = (): MayflyStatusNode | null => text === '' ? null : { kind: 'text', content: text, tone: 'muted' }
-  const status = ctx.mayflyStatus.register({ id: 'mayfly.status.cwd', priority: 5 }, node())
+  /** The directory gives up its depth when the row is crowded: only its last segment stays. */
+  const node = (): MayflyStatusNode | null => {
+    if (text === '') return null
+    const leaf = text.split('/').filter(segment => segment.length > 0 && segment !== '…' && segment !== '~').at(-1)
+    return shedNode({ kind: 'text', content: text, tone: 'muted' }, leaf === undefined || leaf === text ? [] : [{ rank: SHED.cwd, node: { kind: 'text', content: leaf, tone: 'muted' } }])
+  }
+  const status = ctx.mayflyStatus.register({ id: 'mayfly.status.cwd', priority: 7, overflow: 'truncate' }, node())
 
   const offAgent = facts?.subscribeAgent((agent) => {
     const next = shortenCwd(agent?.session.header.cwd ?? process.cwd(), homedir())

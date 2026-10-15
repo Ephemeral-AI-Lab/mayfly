@@ -7,7 +7,7 @@ import { JobId, type JobView } from '@deepseek-ai/dsh-jobs'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { textOf, ui, type MayflyUiEvent, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import * as agentOverlay from '../../src/interaction/agent-overlay.ts'
-import { JOB_OUTPUT_FEED_CHUNKS, formatJobDuration, isLiveJob, jobDetailsNode, jobItems, jobOutputNode, sortJobs } from '../../src/interaction/jobs.ts'
+import { JOB_OUTPUT_FEED_CHUNKS, formatJobDuration, isLiveJob, jobDetailsNode, jobItems, jobOutputNode, openJobOutput, sortJobs } from '../../src/interaction/jobs.ts'
 import type { UiSurfaceModel } from '../../src/core/ui-interaction-surface.ts'
 import { validateMayflyUiNode } from '../../src/core/ui-validator.ts'
 import { jobsFixture } from './jobs-fixture.ts'
@@ -28,6 +28,62 @@ async function prepare(model: UiSurfaceModel, event: MayflyUiEvent) {
   try { return (await model.endpoint.prepare(event, { surfaceId: model.id, source: model.source, revision: model.revision, operationId: 'test-request', signal: abort.signal, report: vi.fn() })).reply }
   finally { abort.abort() }
 }
+
+describe('the job output reader opened from a view', () => {
+  const t = (key: string): string => key
+  const outputOpen = (bench: Awaited<ReturnType<typeof setup>>): boolean => bench.ctx.mayflyOverlays.list().some(entry => entry.id === 'mayfly.jobs.output')
+
+  it('calls back once when the reader closes, so the view that opened it can return', async () => {
+    const bench = await setup()
+    const source = bench.start({ output: 'built' })
+    const onClose = vi.fn()
+    await openJobOutput(bench.ctx, bench.agent, source.id, new AbortController().signal, t, onClose)
+    expect(outputOpen(bench)).toBe(true)
+    expect(onClose).not.toHaveBeenCalled()
+    bench.ctx.mayflyOverlays.close('mayfly.jobs.output')
+    expect(onClose).toHaveBeenCalledTimes(1)
+    // A later close of something else, or of the same id again, says nothing more.
+    bench.ctx.mayflyOverlays.close('mayfly.jobs.output')
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not call back once the caller gave up, and opens plain when nobody asked to be called', async () => {
+    const bench = await setup()
+    const source = bench.start({ output: 'built' })
+    const abort = new AbortController()
+    const onClose = vi.fn()
+    await openJobOutput(bench.ctx, bench.agent, source.id, abort.signal, t, onClose)
+    abort.abort()
+    bench.ctx.mayflyOverlays.close('mayfly.jobs.output')
+    expect(onClose).not.toHaveBeenCalled()
+    await openJobOutput(bench.ctx, bench.agent, source.id, new AbortController().signal, t)
+    expect(outputOpen(bench)).toBe(true)
+  })
+
+  it('calls back at once when the reader came back already closed', async () => {
+    const bench = await setup()
+    const source = bench.start({ output: 'built' })
+    vi.spyOn(agentOverlay, 'openAgentOverlay').mockResolvedValueOnce({ closed: true, set: () => {} } as never)
+    const onClose = vi.fn()
+    await openJobOutput(bench.ctx, bench.agent, source.id, new AbortController().signal, t, onClose)
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  it('calls back at once when the reader was already gone by the time it returns', async () => {
+    const bench = await setup()
+    const source = bench.start({ output: 'built' })
+    vi.spyOn(agentOverlay, 'openAgentOverlay').mockResolvedValueOnce(undefined)
+    const onClose = vi.fn()
+    await openJobOutput(bench.ctx, bench.agent, source.id, new AbortController().signal, t, onClose)
+    expect(onClose).toHaveBeenCalledTimes(1)
+    const gone = vi.fn()
+    vi.spyOn(agentOverlay, 'openAgentOverlay').mockResolvedValueOnce(undefined)
+    const aborted = new AbortController()
+    aborted.abort()
+    await openJobOutput(bench.ctx, bench.agent, source.id, aborted.signal, t, gone)
+    expect(gone).not.toHaveBeenCalled()
+  })
+})
 
 describe('shared jobs browsing', () => {
   it('keeps the browser usable when an overlay opening is withdrawn before returning a handle', async () => {

@@ -135,7 +135,9 @@ import type { MayflyComponentFactory } from '@ephemeral-ai/mayfly-ui'
 export interface MetricProps { readonly label: string, readonly value: number }
 export declare const metric: MayflyComponentFactory<MetricProps>
 `)
-    const packedKit = JSON.parse(execFileSync('npm', ['pack', '--json', '--pack-destination', kitTarballs], { cwd: kitRoot, encoding: 'utf8' }))[0]
+    // npm 10+ keys its JSON report by package name; older versions print an array.
+    const packedReport = JSON.parse(execFileSync('npm', ['pack', '--json', '--pack-destination', kitTarballs], { cwd: kitRoot, encoding: 'utf8' }))
+    const packedKit = Array.isArray(packedReport) ? packedReport[0] : Object.values(packedReport)[0]
     const kitTarball = join(kitTarballs, packedKit.filename)
     writeFileSync(join(consumerRoot, 'package.json'), `${JSON.stringify({
       private: true,
@@ -240,10 +242,15 @@ verifyExternalUiKit(tarballs.get('@ephemeral-ai/mayfly-ui'))
 // runtime rebinding, and key decoder of slice 1.7 about 41 KB, and the visual language of slice 1.2 about 26 KB, and the image node and its byte source of slice 1.9a about 30 KB, and the content, layout, and motion of slice 1.3 about 60 KB, and the views lane of slice 1.10b about 27 KB, and the prompt of slice 1.9b about 40 KB, and the patterns of slice 1.8b one declaration file and about 4 KB, and the retained rows, the placing stacks, and the frame counters of slice 1.12 about 29 KB, and the segmented content rows, diff aligner, and Markdown scanner of slice 2c about 80 KB,
 // and the wired native clipboard probes and their shared probe declarations
 // of audit-fix C one declaration file and about 17 KB, and the leaf-import
-// chunk retopology of audit-fix D about 20 chunks and 11 KB); retain headroom
-// while still catching accidental entry/chunk growth.
+// chunk retopology of audit-fix D about 20 chunks and 11 KB, and the Phase 5
+// status row (the shed ladder, the items and their views, the Agents and Jobs
+// panels with aligned cells, the notification row's key parts and tail, and the
+// goal and compaction changes) about 110 KB); retain headroom while still
+// catching accidental entry/chunk growth.
 if (libraryFiles > 260) fail(`library lib output has ${libraryFiles} files; budget is 260`)
-if (libraryBytes > 2_700_000) fail(`library lib output has ${libraryBytes} bytes; budget is 2700000`)
+// Phase 4 (the editor frame, tokens, the completion palette, placeholders, and the subagent send) added about 50 KB on top
+// of the Phase 5 budget; the size of the two together is measured at the merge's test session.
+if (libraryBytes > 2_950_000) fail(`library lib output has ${libraryBytes} bytes; budget is 2950000`)
 
 if (problems.length > 0) {
   console.error(`pack contract failed with ${problems.length} problem(s)`)

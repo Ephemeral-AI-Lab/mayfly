@@ -228,6 +228,7 @@ async function mount(options: {
   setSharedEditor(ctx, {
     editor: { focused: false, render: () => [], invalidate: () => {} } as never,
     submitPrompt: () => {},
+    setShell: () => {},
     report: (_id, feedback) => { notices.push(feedback.message) },
   })
   const fiber = await ctx.plugin(commandsPlugin)
@@ -894,6 +895,7 @@ describe('cycleSessionModel (the Alt+M hotkey)', () => {
     setSharedEditor(ctx, {
       editor: { focused: false, render: () => [], invalidate: () => {} } as never,
       submitPrompt: () => {},
+      setShell: () => {},
       report: (_id, feedback) => { notices.push(feedback.message) },
     })
     return ctx

@@ -74,9 +74,9 @@ keeps its row and names its successor, because the Phase 1 record cites it.
 | D3 | **Native options only** for permissions and plan review. | The permission panel and the onboarding step list the native presets (`read-only`, `workspace-write`, `danger-full-access`). The plan card offers *Approve and start*, *Keep planning…*, *Reject*; there is no *Accept edits* preset and no *Approve and auto-accept edits*. |
 | D4 | **Decision cards use variant B, grant-first.** | The common grant is row 1 and focused, digits choose at once, `Esc` rejects, and every card that opens unprompted gets the 300 ms arm delay (E4, slice 1.8). |
 | D5 | **No session delete.** The Harness has no deletion (`SessionPersistence` offers `create`, `open`, `flush`, `stat`, `list`). | `/sessions` ships without `x` and without the `u undo · 8s` toast. They return when the Harness exposes deletion. |
-| D6 | **Keys are scoped by focus.** | In the editor `Ctrl+S` stays *steer* and `Ctrl+F`/`Ctrl+J` keep their pi-tui editing meaning; inside surfaces `Ctrl+S` is `ui.save`; `Ctrl+F` searches only while the stream or a list has focus; the toast drops `Ctrl+J view` (§3.4 has the table). |
+| D6 | **Keys are scoped by focus.** | In the editor `Ctrl+Enter` is *steer* (Phase 4 round 6 moved it from `Ctrl+S`) and `Ctrl+F`/`Ctrl+J` keep their pi-tui editing meaning; inside surfaces `Ctrl+S` is `ui.save`; `Ctrl+F` searches only while the stream or a list has focus; the toast drops `Ctrl+J view` (§3.4 has the table). |
 | D7 | **One components area**, `packages/mayfly/src/components/`, with no Cordis entry and no public subpath. | `packages/mayfly/AGENTS.md` gains the area and its layering rule. |
-| D8 | **The `/` palette is the editor's completion list.** | Scene 15's inline list, drawn with scene 30's row layout (match bold, description, the command's key at the right). No palette overlay. |
+| D8 | **The `/` palette is the editor's completion list.** | Drawn with scene 30's row layout (match bold, description), as a borderless palette over the stream on the rows above the frame (owner decision, Phase 4 round 1), with no key line and no key at the right edge (round 4). |
 | D9 | **`@` completions: `Enter` or `Tab` insert the token; `Ctrl+G` opens the focused file externally** (`ui.external`, the row shows `↗ code`). | Scene 30's *Files* overlay is not a separate surface. |
 | D10 | **Rewind keeps today's conversation branch**, without the restore-scope strip (the Harness has no file checkpoints). | The checkpoint list takes the new look only. |
 | D11 | **Changed files opens from a new `/changes` command.** | Data comes from the session's edit and write calls. |
@@ -110,12 +110,12 @@ keeps its row and names its successor, because the Phase 1 record cites it.
 | 1 Decision variant | B (D4). |
 | 2 Rebinding | Overrides persist in the `mayfly` settings namespace (`keybindings`); plugin action ids are namespaced `<owner>.<action>` and `ui.*` is reserved; a clash is refused with the owner's name (slice 1.7). |
 | 3 Slash-to-filter | Kept (`filterMode: 'slash'`, slice 1.4). |
-| 4 Side conversations | As drawn: identity in row 1's center band, `F7 switch · F8 close` (or `detach`) in row 2's right cluster (Phase 5). |
+| 4 Side conversations | Identity as a chip in row 1, the keys in the notification pane (Phase 5). |
 | 5 Unchecked keys | D6 plus the key audit (slices 1.0 and 1.7). `/view <level>` and `Alt+V` stay unscheduled until confirmed; the scene's `Ctrl+O` level cycling is a demo key. |
 | 6 Onboarding permissions step | Ships, with the native presets (D3); the deployment's current preset is marked `recommended`. |
 | 7 Delete session | Dropped for now (D5). |
 | 8 Account balance | `deepseekAccount.getBalance()` when signed in with the DeepSeek account; API-key providers hide the row (the design's *unsupported*). No identity is shown. |
-| 9 Lifetimes | 5 s of visible time for `✓` and `ℹ`; the 8 s undo is unused after D5. |
+| 9 Lifetimes | 5 s of visible time for `✓` and information; the 8 s undo is unused after D5. |
 | 10 Unicode fallback | Specified in slice 1.2 as a proposal to confirm in the foundation review (Phase 2d). |
 | 11 API additions | Approved as §3. |
 | 12 Unused builders | `sections` and `diagram` stay for plugins. |
@@ -145,7 +145,7 @@ spec section of their component when it is finalized.
 | Δ10 | 19 | Seven prompt styles | Style A (the turn rule) only; the list item `block` field is not added | Spec §5.6 chose A |
 | Δ11 | 15 | `Ctrl+K`/`Ctrl+V` add demo tokens | Real flows: pasted images and pastes (`interaction/paste-image.ts`), `@` mentions as tokens | Demo keys |
 | Δ12 | 18 | `c` and `Ctrl+G` report what they would do | Real clipboard (`interaction/clipboard-write.ts`) and `$EDITOR` (`interaction/external-editor.ts`) | Demo keys |
-| Δ13 | 13, 18 | Row 2 always drawn | Row 2 renders only while a view or a row-2 entry has something to show | Spec §5.1; spec §9 notes the simplification |
+| Δ13 | 13, 18 | Row 2 always drawn | Phase 5 R1 replaced the two rows with one status row: the items sit in it with the facts, and nothing is drawn for an item with nothing to show | Spec §5.1; spec §9 notes the simplification |
 | Δ14 | 20 | The after-percentage as a known number | `~` estimate from `compaction/summary.shadowedTokenCount` until the next request reports usage | No native after-value until then |
 | Δ15 | 21, 18 | `⚠ deletes files` on a command | A documented Mayfly heuristic on the command text (`rm`, `rmdir`, `unlink`, `git clean`, `del`, …) | No native signal |
 | Δ16 | 26, 28 | A balance for every provider | Only with the DeepSeek account sign-in; otherwise the row is hidden | §2.2 row 8 |
@@ -338,7 +338,7 @@ export interface MayflyPromptNode {
   readonly symbolTone?: MayflyTone
   readonly value?: string
   readonly tokens?: readonly { readonly id: string, readonly label: string, readonly size?: string }[]
-  readonly recall?: readonly { readonly kind: 'queued' | 'history', readonly text: string }[]
+  readonly recall?: readonly { readonly text: string }[]
   readonly recallLabel?: string
   readonly placeholder?: string | readonly string[]  // a ladder, longest first
   readonly completions?: { readonly items: readonly { readonly id: string, readonly label: string, readonly detail?: string, readonly right?: string }[] }
@@ -364,7 +364,7 @@ references. A component's `render` is already required to be pure, which is what
 | Event | Class | Carries | Emitted by |
 | --- | --- | --- | --- |
 | `focus-change` | observation | `controlId`, `itemId?` | a list cursor move, at most once per render frame (detail follows the cursor) |
-| `recall-change` | observation | `controlId`, `source: 'queued' \| 'history' \| 'draft'`, `index` | the prompt walking its recall |
+| `recall-change` | observation | `controlId`, `source: 'history' \| 'draft'`, `index` | the prompt walking its recall |
 | `token-remove` | action | `controlId`, `tokenId` | the prompt's second `Backspace` |
 | `completion-accept` | action | `controlId`, `itemId` | `Tab` or `Enter` on a completion |
 | `completion-dismiss` | action | `controlId` | `Esc` on an open completion list |
@@ -377,9 +377,9 @@ replies are unchanged.
 
 | Seam | Change |
 | --- | --- |
-| `mayflyPanes` (public) | `MayflyPanePlacement` gains `'views'`. A views pane declares `summary: { node: MayflyStatusNode, count?: number \| string }` and updates it with the new `registration.setSummary(summary \| null)`; `null` takes the view out of row 2. Its `set(node)` publishes the panel. `size` and `narrow` do not apply; `onEvent`, `load`, `refresh`, and `loadMore` work as for other panes. The lane ships in slice 1.10; Mayfly's own views register on it in Phase 5. |
+| `mayflyPanes` (public) | `MayflyPanePlacement` gains `'views'`. A views pane declares `summary: { node: MayflyStatusNode }` and updates it with the new `registration.setSummary(summary \| null)`; `null` takes the view out of the status row. Its `set(node)` publishes the panel. `size` and `narrow` do not apply; `onEvent`, `load`, `refresh`, and `loadMore` work as for other panes. The lane ships in slice 1.10; Mayfly's own views register on it in Phase 5. |
 | `mayflyOverlays` (public) | `MayflyOverlayDefinition.armMs?: number` (0-2000, default 0): every key except `Esc` is swallowed for that long after the overlay first takes focus (slice 1.8). |
-| `mayflyStatus` (public) | No new API. Core composes row 1 and row 2 with the `ui.child` admission primitive, so a plugin entry and a Mayfly entry are admitted by one rule. |
+| `mayflyStatus` (public) | Core composes the one status row with the `ui.child` admission primitive, so a plugin entry and a Mayfly entry are admitted by one rule. Phase 5 R1 added the shed node (`ui.shed(full, narrower)`: narrower forms the row falls back through by rank before it admits) and the child `mark: 'underline'`; the definition's `row` field was removed. |
 | `mayflyEditorExtensions` (public) | No new API. `complete()` results join the prompt's completion list; `before`/`after` decorations sit around the editor surface. |
 | `mayflyKeymap` (core service) | Scopes (`global`, `editor`, `surface`, `stream`); `bind(id, keys)`, `reset(id)`, `resetAll()`, `list()` (label, scope, defaults, effective keys, owner, overridden), `preferPlain`. Conflicts are refused per scope with the owner's name (the existing `KEY_CONFLICT`). |
 | `mayflyScreen` (core-private) | *New* `mountNodeSlot(id, { region: 'content' \| 'dock' \| 'footer' })` returns `{ set(node), dispose() }`; core compiles the node like a surface, with its interaction state in `mayflyUiInteraction`. It ships in slice 1.10 beside `mountContentSlot` and `mountDockSlot`, exercised by a test host; the conversation (Phase 3), the editor (Phase 4), and the footer (Phase 5) use it. |
@@ -389,7 +389,8 @@ The key scopes of D6:
 
 | Key | Editor (prompt focused) | Surface (overlay or pane focused) | Stream focused |
 | --- | --- | --- | --- |
-| `Ctrl+S` | steer (`mayfly.interaction.steer`) | `ui.save` | — |
+| `Ctrl+Enter` | steer (`mayfly.interaction.steer`) | — | — |
+| `Ctrl+S` | — | `ui.save` | — |
 | `Ctrl+F` | cursor right (pi-tui) | `ui.search`, when a list has focus | `ui.search` |
 | `Ctrl+G` | `ui.external`: the draft in `$EDITOR` (today's behavior) | `ui.external`: the focused content | `ui.external`: the row |
 | `Ctrl+J` | newline (pi-tui) | `ui.newline` in a textarea | — |
@@ -400,7 +401,6 @@ The key scopes of D6:
 | `?` | key help (empty prompt) | text | — |
 | `F7` / `F8` | conversation switch / close or detach (global) | same | same |
 | `Ctrl+O` | the last three turns at Verbose (global) | same | same |
-| `Ctrl+T` | open the views on Todo (global; replaces the todo-pane toggle) | same | same |
 
 ### 3.5 What is not added
 
@@ -569,8 +569,8 @@ product is used (D23); Phase 7 optimizes the whole architecture (D27), and Phase
 | 1 Foundation | 13 slices (1.0-1.12) | The oracle, the engine, the visual language, every basic component, the key engine, the patterns, the prompt and image nodes, the host seams, the API freeze, the frame cost | 1-12, 15 (the prompt alone), 13 (the lane) | full for each slice (the Phase 1 rules) |
 | 2 Workbench and content | 4 (2a-2d) | The live review loop and frame capture, automated and change-precise verification (tiers, scenario goldens, perf A/B, real screenshots), content at any size, the owner's review of the foundation | 1-13, 15 | changed per part; full at the end; owner review (2d) |
 | 3 Session flow | 5 (3a-3e) | The components area; the stream and its turns, tool rows, the activity row and notices, request rows and decision cards, levels, selection, search | 14, 16-21 | per component (§7); full and owner at the end |
-| 4 Editor and command palette | 1-2 | The editor as a prompt composition, the `/` `@` `#` completion palette, queue and recall | 15, 30 p1-p2 | per component; full and owner at the end |
-| 5 Status and views | 1-2 | The two status rows and Mayfly's four views | 13, 12 | per component; full and owner at the end |
+| 4 Editor and command palette | 4 (4a-4e) | The editor as a prompt composition, the `/` `@` `#` completion palette, queue and recall | 15, 30 p1-p2 | per component; full and owner at the end |
+| 5 Status and views | 3 (5a-5c) | The one status row and Mayfly's four views | 13, 12, 18 (the rows under the stream) | per round (§7); full and owner at the end |
 | 6 Panels | 6 (6a-6f) | Every command panel, questions, and the trace, keys, rewind, job output, and changes surfaces | 21 p4, 22-32 (30 p3-p6) | per component; full and owner at the end |
 | 7 Architecture performance | 1 | The finished product profiled on real workloads and restructured where measured; the final budgets and ceilings | — | full + bench report; owner |
 | 8 Finish | 1 | Website, skills, docs, release | — | full + pack + release preflight |
@@ -841,8 +841,8 @@ It landed in five parts, each green on its own, and a sixth after slice 1.7 merg
    muted otherwise), the rest muted; wizard steps read `✓ ● ○` joined by a muted `›`; a strip that does not fit folds to
    `‹ active next +N ›` (slice 1.5 refines it).
 3. **Feedback and hints.** Feedback is a glyph and words (`feedbackSpans` in `core/ui-interaction-notifications.ts`):
-   `✓`/`ℹ` before a message in text color, `⚠`/`✗` in their own tone, in a surface footer and in the prompt's
-   feedback lane; the 5 s lifetime of `✓` and `ℹ` was already in place. The hint row paints keys in text and labels
+   `✓` before a message in text color (information has no glyph since Phase 4 R2), `⚠`/`✗` in their own tone, in a surface footer and in the prompt's
+   feedback lane; the 5 s lifetime of `✓` and information was already in place. The hint row paints keys in text and labels
    muted, in the kit's order (navigation, adjustment, digits, the primary operation, accelerators, filter and clear,
    tabs, groups, `Esc`) and words (`Space toggle · Enter choose`, `←/→ adjust · Enter pick`, `Enter toggle`,
    `←/→ actions`, `No/Yes` on a decision, `↑/↓ fields`, `↑/↓ scroll · Ctrl+E expand`). `hintNotation` in
@@ -872,7 +872,7 @@ arrows and marks the painters also draw; confirm it at checkpoint A):
 
 | Unicode | ASCII | Unicode | ASCII |
 | --- | --- | --- | --- |
-| `→` `←` `↑` `↓` | `>` `<` `^` `v` | `■` `?` `⚠` `ℹ` | `#` `?` `!` `i` |
+| `→` `←` `↑` `↓` | `>` `<` `^` `v` | `■` `?` `⚠` | `#` `?` `!` |
 | `▸` `▾` | `+` `-` | `⎿` `│` | `L` `:` |
 | `●` `○` `◐` | `*` `o` `~` | `━` `─` | `=` `-` |
 | `‹` `›` | `<` `>` | `▰` `▱` | `#` `.` |
@@ -909,7 +909,7 @@ columns; `NO_COLOR=1 dsh --profile mayfly-ui-foundation`; `glyphs: ascii` and `r
 It landed in seven parts, each green on its own: the contract, validator, and painters; the parity specs of scenes 7, 9,
 and 10; the work-budget rows; the unit specs; then the Website, the shots, the gallery, and this text.
 
-- **Admission** (`core/ui-admission.ts`, new; `StatusFooterComponent` is untouched, Phase 3 deletes it). A `stack.row`
+- **Admission** (`core/ui-admission.ts`, new; `StatusFooterComponent` is untouched, Phase 5 deletes it). A `stack.row`
   whose children carry `priority` compiles to an `AdmissionRow`: children are admitted in priority order (ties keep their
   position) while they fit, a `gap` (2 by default) between them; a `truncate` child takes the room that is left (at least
   8 cells) and fills the row; a `hide` child drops while later ones may still fit; a child with neither ends admission, as in
@@ -1186,7 +1186,7 @@ slice landed in six parts, each green on its own:
    batch. The constant names (`ACTION_MOVE_UP` …) stayed, so the grammar did not change; their values are the named
    actions. Every Alt default gained a plain second key (`F2`/`F3` tabs, `F4`/`F5` focus, `Ctrl+J` newline). A key action
    carries a `scope` (`global`, `editor`, `surface`, `stream`) and a conflict is refused only within overlapping
-   scopes, naming the owner, so `Ctrl+S` steers in the editor and saves in a surface (D6). Product actions kept their
+   scopes, naming the owner, so `Ctrl+Enter` steers in the editor and `Ctrl+S` saves in a surface (D6). Product actions kept their
    ids and gained a scope; plan-mode toggling became its own editor action, `mayfly.interaction.cycle-mode`, instead of
    riding the surface's `Shift+Tab`. The slash filter dispatches through `ui.filter`.
 2. **The actions contract.** `MayflyActionItem` gained `semantic` (a `MayflyCommonMeaning`), `action`, and `hintLabel`;
@@ -1415,7 +1415,7 @@ without a publish.
     its frame when the epoch moves. Panes have no such epoch and keep their frame until their model moves; that is
     left as it is.
   - *Events.* Slots route no events yet: an action settles as succeeded without a handler, as on a disposed endpoint.
-    The first consumer that needs a reply (Phase 5's prompt submit) adds the event option.
+    The first consumer that needs a reply (Phase 4's prompt submit) adds the event option.
   - *Consumer (D20).* The slot is core-private, so it changes no public package, Website page, or gallery page. Its
     consumer in this phase is the test host `tests/core/node-slot-host.ts`, which leases a status-shaped row in the
     footer, an editor-shaped form in the dock, and a stream-shaped list in the content region from an ordinary Fiber,
@@ -1430,7 +1430,7 @@ without a publish.
     an animation tick, and the paint epoch. `tests/core/node-slot.spec.ts`: the three shapes with keys and hint rows, a
     core reload that keeps a list cursor and a form draft, stale leases, the host's unload, and a warm slot repainted
     for a new theme, a rebound key, a new locale, and a new width.
-- **Views lane** (slice 1.10b, built). `MayflyPanePlacement` gained `'views'`; a views pane declares `summary: { node, count? }`
+- **Views lane** (slice 1.10b, built). `MayflyPanePlacement` gained `'views'`; a views pane declares `summary: { node }`
   and updates it with `registration.setSummary(summary | null)` (`null` takes the view out of row 2). `MayflyPaneEntry`
   carries `summary` (a views pane's entry is republished at the same revision and node when only the summary moves, so
   an in-flight `refresh` is not disturbed); the service refuses `size` and `narrow` on a views pane and a summary on
@@ -1441,7 +1441,7 @@ without a publish.
     last argument and admits those entries beside its registry entries, so a plugin chip and a view are admitted by one
     rule. The summary is admitted with the status validator (the status subset; slice 1.3 adds the no-motion rule to
     that validator), so an invalid summary paints the footer's error text instead of failing the pane.
-  - *The panel.* While a view is entered, `render` returns row 1, then the tab strip (titles, with the count after the
+  - *The panel (replaced in Phase 5 R1: row 2 stays as it is and the footer draws a heavy `━` line under the words of the active item; the panel opens under the line, with no tab strip, rule, title, or count, and `←/→` read `items`).* While a view was entered, `render` returned row 1, then the tab strip (titles, with the count after the
     title; the active tab in `primary`, the others `muted`, joined by three spaces, elided with a `+N` when the row is
     narrow), the `━` rule under the active tab, and the active panel's rows, at most a third of the terminal's rows
     in all (a cut panel ends in the shared `… +K more rows`). A view's title names its tab, so its panel carries no frame
@@ -1459,7 +1459,7 @@ without a publish.
     their own: the compiled panel emits into its own pane model, so an action reaches the `onEvent` of the active view.
 - **Proof (D20).** `examples/ui-gallery/src/groups/views.ts` registers a view through the public service (one import and
   one call in `index.ts`); its test drives `setSummary` and the Fiber cleanup. Mayfly's agents, jobs, goal, and todo views
-  register in Phase 3, so the product's own row 2 does not change in this phase.
+  register in Phase 5, so the product's own row 2 does not change in this phase.
 
 Scene 13 (the lane only, with the gallery view). Tests: `tests/core/views-lane.spec.ts` (the lane), `views-lane-renderer.spec.ts`
 (the renderer: F6 order, entering, switching, event routing, cleanup), the footer in `status-model.spec.ts`, the focus id in
@@ -2018,50 +2018,106 @@ part is accepted (§7 step 3).
   characters), then `ui.surface({ titleAlign: 'right', chrome: 'surface', hint: 'completions', border })` around
   `ui.prompt`. `interaction/input-plugin.ts` publishes it into the editor dock slot through `mountNodeSlot`.
 - **The command palette** is the editor's completion list (D8): `/` commands with scene 30's row layout (the match bold,
-  the description, the command's key at the right), `@` files through `createFileMentionProvider` (`Enter`/`Tab`
+  the description; no key line, no key at the right edge), `@` files through `createFileMentionProvider` (`Enter`/`Tab`
   insert, `Ctrl+G` opens, D9), and `#` skills; editor-extension `complete()` results join them.
 - **Title** from the official `title` session projection (the source `interaction/terminal-title.ts` mirrors).
 - **Shell mode** is the `!` symbol and the `accent` border only.
 - **Tokens**: pasted images, pasted blocks, and `@` mentions become prompt tokens; on submit the pipeline
   (`interaction/prompt-submit-pipeline.ts`) expands them to the content it sends today.
-- **Recall**: queued messages first, then history; recalling a queued message withdraws it (`withdrawQueued`), and
-  sending it again queues it.
+- **Recall**: `↑`/`↓` walk the history only, with `↑ history 2/4` on the notification row. Queued messages are rows of
+  the stream: `Alt+↑`, then `e` edits (through `restoreQueuedMessage`), `s` sends now, `d` cancels (`u` undoes).
 - **Placeholders** by state from spec §3.3 (main idle or running, shell, side question, subagent live or resumable,
   read-only).
 - **Subagent replies** (G18). In a live or resumable subagent conversation the editor sends through the
-  addressed-subagent path in `interaction/subagent-reply.ts`, and the delivery choice is the editor's own pair: `Enter`
-  queues, `Ctrl+S` steers. `mayfly/request-subagent-reply` remains the plugins' entry point.
+  addressed-subagent path in `interaction/input-plugin.ts` (`deliverSubagentPrompt`), and the delivery choice is the editor's own pair: `Enter`
+  queues, `Ctrl+Enter` steers. `mayfly/request-subagent-reply` remains the plugins' entry point.
 - **Keys** in the editor scope: `Alt+↑` focuses the stream, `Alt+↓`/`F6` enter the views, `?` opens key help on an empty
-  prompt, `Ctrl+S` steers, `Ctrl+G` opens the draft externally.
-- Deletes the autocomplete adapter (`SelectListAdapter`, `core/wrapping-select-list.ts`), `setBorderLabel`
+  prompt, `Ctrl+Enter` steers, `Ctrl+G` opens the draft externally.
+- Deletes `setBorderLabel`
   (`interaction/editor-plus.ts`), `interaction/pane-queue.ts` as a pane, and the reply form's `Send`/`Cancel` buttons
   and delivery select.
 
 At the phase gate: platform acceptance for paste, IME, and the clipboard on macOS, Linux, and Windows.
 
+The groups below are finalized in this order, each under §7 and the procedure of
+[component-development-spec.md](./component-development-spec.md); their parts are the spec's §7 *Phase 4 parts*. The
+text above is the starting point; the final behavior is what the owner accepts.
+
+- **4a Editor frame** (`Editor`; scene 15). The frame with the title in its top-right corner around `ui.prompt`,
+  published into the editor dock slot with `mountNodeSlot`, and shell mode as the `!` symbol and the `accent` border
+  only. Parts 4a.1 and 4a.2. Deletes `setBorderLabel` and the `! shell mode` label (B4, G19, R20).
+- **4b Tokens** (scene 15). Images, pasted blocks, and `@` mentions as prompt tokens with the two-key removal; the submit
+  pipeline expands them to what is sent today. Parts 4b.1 and 4b.2.
+- **4c Queue and recall** (scene 15). Queued messages as rows of the stream with the keys `e`, `s`, `d` and `u` (the
+  owner's change from the prototype's queue line), and `↑`/`↓` as the history with its counter on the notification row.
+  Parts 4c.1 and 4c.2. Deletes `interaction/pane-queue.ts` and the `./pane-queue` plugin (H7, G15).
+- **4d Command palette** (scene 30 p1-p2). The editor's completion list for `/`, `@`, and `#` and the results of
+  editor extensions, as plain rows with no key line. Parts 4d.1 to 4d.4. The autocomplete adapter
+  (`SelectListAdapter`, `core/wrapping-select-list.ts`) was deleted in round 1.
+- **4e Placeholders, keys, and subagent replies** (scene 15). The placeholder ladder by state, the editor-scope keys
+  and the title projection, and the subagent reply through the editor (G18, H8, R11). Parts 4e.1 to 4e.3. Deletes the
+  reply form's `Send`/`Cancel` buttons and delivery select.
+
+**Phase 4 status.** Worked in rounds of two to three parts (about four scenarios each; the 4a.1 frame is the first
+round and the cutover of the editor) on the branch `feat/4a` and its successors, with the profile `mayfly-4`. A part is
+`accepted` when the owner accepts it in a question round; a group finalizes when its last part is accepted (§7 step 3).
+Phase 4 starts after Phase 3's last group is merged, or earlier on a branch off `feat/3a` if the owner says so; the
+rounds are planned in review order, one group in review at a time.
+
+| Round | Parts | Status | Branch |
+| --- | --- | --- | --- |
+| R1 | 4a.1 editor frame; 4a.2 shell mode | accepted by the owner (`a248831`): the editor becomes a pure `Editor` component on the dock slot, so this round is the cutover and nothing else changes in the editor's behavior; tests and goldens in the Phase 4 wrap-up (PR #18) | `feat/4a` |
+| R2 | 4b.1 tokens in the buffer; 4b.2 submit expansion | built, and the owner accepted the effect (accepted; tests and goldens in the Phase 4 wrap-up, PR #18): tokens stay inline in the text (no strip): `[image #1 84 KB]`, pi-tui's `[paste #1 +14 lines]`, and an `@` mention as its relative path, painted in tones; the arrows step over a token and highlight it, one Backspace removes a highlighted token (two after a token), the hint above the prompt names the keys (`Ctrl+G opens · Backspace removes`); `Ctrl+G` on a token opens a mentioned file or folder, a pasted block as text (it folds back into a token), or an image in a preview overlay; an `@` folder is taken with Enter and entered with Tab; a pasted block survives Up/Down history and the whole-draft `Ctrl+G`; the prompt's waits (clipboard, file search) and an `image` node show the unified loader; the `ℹ` glyph is retired; the image preview was not confirmed in a real image terminal (WezTerm over SSH stayed black: its `enable_kitty_graphics` setting or the draw order are the open suspects; the overlay now keeps the image's first row in view); scenarios `tokens`, `tokensSubmit`, `tokensEditor`, `tokensOpen`, `tokensHistory`, `tokensImage`, `tokensFolder`, `tokensWaiting` | `feat/4a` |
+| R3 | 4c.1 queued rows; 4c.2 prompt history | built, and the owner accepted the effect (accepted; tests and goldens in the Phase 4 wrap-up, PR #18); also the interrupt scope (the displayed Agent's turn only, queue kept): queued messages are rows of the stream (`⏎ queued`, `⏎ steering`); `Alt+↑` (now also with a draft in the prompt) reaches them and the notification row names `e edit · s send now · d cancel`; `e` takes the message into the prompt (a draft goes to the history first), `s` moves it to the steer lane, `d` cancels it and `u` undoes it (eight seconds, back in its lane); `↑`/`↓` are the history only, with `↑ history 2/4` on the notification row; `pane-queue` is deleted; a node slot reports its list's cursor (`cursor` option); one scenario, `queue` (rows, keys, the agent reading them, the history walk; it holds the queue four minutes for a person, a runner skips the wait); a message the agent reads becomes a prompt in the stream | `feat/4a` |
+| R4 | 4d.1 the `/` list; 4d.2 palette keys | no change, decided in a question round (2026-10-14): round 1 already built the `/` palette and deleted the adapter. The owner kept it as it is: no key line, `Enter` on a `/` command still accepts and runs it (`Tab` completes the name), no key at the right edge (no command has a binding), pi-tui's `SelectList` state and keys kept (`core/completion-list.ts`). Review it in scenario `editor` (`commands*` checkpoints). `hint: 'completions'` stays a `ui.surface` option for plugin prompts; the editor's palette does not draw it | `feat/4a` |
+| R5 | 4d.3 `@` files; 4d.4 `#` skills and extension results | built, and the owner accepted the effect (accepted; tests and goldens in the Phase 4 wrap-up, PR #18); the owner's answers: `Ctrl+G` on the focused `@` file row opens it in `$EDITOR` (draft and list stay) and the row ends with a muted `↗ Ctrl+G` cue (files only, a knowing exception to round 4's no-key-at-the-edge); an `@` row is the whole path and nothing else (a folder as `.agents/skills/`, cut at the left when wider than the row; no description column); the rows an editor extension adds end with its id as a muted tag; a wait shows as the palette's last line (`Waiting for wiki…`) while a list is open; a completion item may carry `problem` (public contract): the row ends with a red `!` and, focused, a line under it gives the reason; a source that throws or times out is a row of its own with the same mark (Enter and Tab change nothing), and its notification-row notice is gone; `#` skills are unchanged; scenario `completions` (workspace of 3,000 files and four skills, three scenario extensions in `script/scenarios/extensions.mjs`) | `feat/4a` |
+| R6 | 4e.1 placeholders; 4e.2 keys and title; 4e.3 subagent replies | accepted by the owner (`b638662`), the last group: the empty prompt's placeholder is a ladder per state (quiet hints `off` blanks the teaching ladders); `?` on an empty prompt opens key help; `Ctrl+Enter` steers (it replaced `Ctrl+S` in the editor, which saves in a surface); the editor sends to a live or resumable subagent (`Enter` queues, `Ctrl+Enter` steers, a stored child wakes, and the reply form is gone); the frame's corner shows the official session title, or the view's name when the view has none; `/btw` no longer inherits the parent's unclaimed inbox. Open for the phase gate: platform acceptance for paste, IME, and the clipboard on macOS, Linux, and Windows | `feat/4a` |
+
+**Merged with Phase 5 (2026-10-15).** `feat/4a` (PR #18, at `ee1a98b`) was merged into `feat/phase-5` (PR #19) before either
+reached `main`; the decisions taken where the two met are in the Phase 5 section (*Merge with Phase 4*).
+
+**Interrupt scope (owner decision, Phase 4 round 3; built).** `Esc` interrupts the current turn of the displayed
+conversation's Agent and nothing else: no subagents, jobs, goal, or plan state, and queued and steering messages are
+kept and sent. The contract is in [interaction-model.md](../interaction-model.md) (*Interrupt scope*); a change that
+touches interruption merges toward it.
+
+**Loading displays (owner request, Phase 4 round 2).** Every wait a user can feel shows the one unified loader
+(`ui.loader` gap, component-library §2.4: `⣾` and its words, one clock, frozen under reduced motion), in an appropriate
+place, never for an answer under 150 ms, so a silent wait never leaves the user guessing. Built in R2 for the editor's
+own waits: an `image` node while its bytes are read (`⣾ Loading image…`; the stream row and the Ctrl+G preview), the
+clipboard read behind Ctrl+V and the file search behind `@` (the notification row above the prompt, through
+`mayfly/prompt-wait-changed` and `beginPromptWait`, `interaction/prompt-wait.ts`). `Ctrl+G` on a file or a paste hands
+the terminal to the editor at once, so it has no wait to show. **Not part of this round's components, to audit in their
+own phases** (not yet checked one by one): every other `await` that can last over about 150 ms behind a key (session and
+workspace reads, the provider model fetch and sign-in steps, the update check, MCP server and skills catalog loads,
+`/trace` aggregation, `/export`, rewind and compaction starts) should name its wait with the same loader, in the panel
+that asked or in the notification row; a panel that already has `ui.loader` (the plugin marketplace, the sessions
+list) is the model. Information notices have no symbol (`ℹ` is retired); `✓`, `⚠`, and `✗` keep theirs.
+
 ### Phase 5 Status area and views
 
-**Goal.** Two composable rows; row 2 views through the public pane API. **Backlog:** B4 (chips), C4, G16, G17, G23, R6,
+**Goal.** One composable status row (the facts and the items); the items' views through the public pane API. **Backlog:** B4 (chips), C4, G16, G17, G23, R6,
 R7, R20 (status). Scenes 13 (100, 72, 52, and 36 columns, every toggle), 12, 18 (the rows under the stream). Starting
 points:
 
-- **Footer.** The transcript footer plugin builds `StatusRows` (§6) from `mayflyStatus.list()` and the views panes, and
-  leases the footer slot with `mountNodeSlot`; admission is slice 1.3's primitive.
-- **Row 1.** The registrations, restyled: model and effort (priority 0), uppercase `PLAN`/`PLAN…` primary strong and
-  `YOLO` warning strong (priority 1, `interaction/mode-status.ts`), context (4, right, hide), directory (5, truncate),
-  the low-balance chip `⚠ ¥6.2` (6, right, account only, *new*), git (10), the side-conversation identity in the center
-  band (`interaction/conversation-view-status.ts`, without its key text), and plugin entries.
-- **Row 2.** Agents (`transcript/pane-agents.ts`), Jobs (`transcript/status-jobs.ts`), Goal
-  (`transcript/status-goal.ts`), and Todo (`transcript/pane-todo.ts`) become views panes; the right cue reads
-  `↓ views`, or `F7 switch · F8 close` (or `detach`) when two or more conversations exist.
+- **Footer.** The transcript footer plugin builds the one status row (`status-rows.ts`) from `mayflyStatus.list()` and the
+  views lane's items, and leases the footer slot with `mountNodeSlot`; admission is slice 1.3's primitive, and the row sheds
+  detail by rank before it admits (`ui.shed`, `status-shed.ts`).
+- **The facts.** The registrations, restyled: model and effort (priority 0), the lowercase `plan`/`plan…` (accent) and `yolo`
+  (warning) chips (2, `interaction/mode-status.ts`), context (6, right, hide: two bars, `cache ▰▰▱▱▱ 34%  ctx ▰▰▱▱▱▱▱▱▱▱ 18%`, giving up the
+  cache bar, then the context bar's width, then the readout), directory (7, `~/…` shortened, its last segment when crowded), git (10), the conversation chip (1, ` main ` ` btw ` ` subagent `,
+  `interaction/conversation-view-status.ts`), and plugin entries.
+- **The items.** Agents (`transcript/status-agents.ts`), Jobs (`transcript/status-jobs.ts`), Goal (`transcript/status-goal.ts`),
+  and Todo (`transcript/pane-todo.ts`) become views panes whose summaries sit in the same row after the facts (11 to 13); the
+  conversation keys are in the notification pane.
 - **Inside a view.** Entering, switching, and leaving are the lane's (slice 1.10). In Mayfly's views `↑/↓` select;
   `Enter` opens an agent's conversation (`mayflyConversations`, `F7` returns) or a job's output; `x` stops behind the
   shared Yes/No (`subagents.interrupt(child, { kind: 'ancestor', agent })`, or `jobs.kill` after rechecking
-  `jobs.get`); `Esc` returns to the prompt. `Ctrl+T` opens the views on Todo.
+  `jobs.get`); `Esc` returns to the prompt. There is no `Ctrl+T` and no `Ctrl+E` in a view.
 - **Goal and todo panels.** The rule heading is the progress bar (`progress` with `style: 'rule'`); the goal shows
-  `● active`, `❚❚ paused`, or `✕ blocked` with its reason, from the `goal` projection; the todo panel shows at most five
+  `● active`, `⏸ paused`, or `✕ blocked` with its code and reason, from the `goal` projection; the todo panel shows at most five
   rows (in progress, the earliest pending, one slot for the latest done) and `… +N more (k done)`, then
-  `✓ Todo done 6/6 · 4m 12s` before the view leaves.
+  `✓ todo 6/6 4m 12s` before the view leaves.
 - Deletes `StatusFooterComponent`, the todo pane above the editor, and the goal chip of row 1.
 
 Decision tests: each view's registration and Fiber cleanup, the footer on the node slot within the W1 budget (§7.1),
@@ -2072,10 +2128,84 @@ languages).
 **Carried from Phase 3** (closeout audit, [docs/audits/phase-3/](../audits/phase-3/)):
 
 - The final look of a background subagent that is still running (D2), and the display of todo and goal (with the Agents, Jobs, Goal, and Todo views).
-- Footer working directory collapses to `.` when the goal chip grows, instead of a shortened path (`~/...` at 28 columns) (O4).
-- The search hint row shares a line with the notice and cuts off before `Esc end search`; decision hints at 40 columns read `Enter · Ctrl+G · Esc` with no labels (O4).
-- A long notice is cut without `…` at 60 columns; keep the trailing count or countdown (O2).
-- `compactionNoWindow` shows a time-based `%` with no window: drop the `%`, or correct the round 7 brief (O3).
+- Footer working directory collapses to `.` when the goal chip grows, instead of a shortened path (`~/...` at 28 columns) (O4). *Fixed in Phase 5 (R2).*
+- The search hint row shares a line with the notice and cuts off before `Esc end search`; decision hints at 40 columns read `Enter · Ctrl+G · Esc` with no labels (O4). *Fixed in Phase 5 (R7).*
+- A long notice is cut without `…` at 60 columns; keep the trailing count or countdown (O2). *Fixed in Phase 5 (R7).*
+- `compactionNoWindow` shows a time-based `%` with no window: drop the `%`, or correct the round 7 brief (O3). *Fixed in Phase 5 (R7): no `%` without a window.*
+
+**Phase 5 status.** The parts are those of [component-development-spec.md](./component-development-spec.md) §7, worked
+in rounds of one or two parts (one long scenario each, chaining the round's effects) on the branch `feat/phase-5` and its successors, with the
+profile `mayfly-5`. The phase is one pull request: every Phase 5 code change lands on that branch, and the round table
+records each round as it is built. A part is `accepted` when the owner accepts it in a question round; a group finalizes
+when its last part is accepted (§7 step 3). Rounds run no tests (§3, step 7); tests and goldens come at finalization.
+
+| Round | Parts | Status | Branch |
+| --- | --- | --- | --- |
+| R1 | 5a.1 footer cutover, and the work it pulled in at the owner's request: **footer** on the footer node slot (`status-rows.ts`), `StatusFooterComponent` and the todo pane deleted; **one status row** (the facts and the items together, a heavy `━` second line under the entered item) that sheds in a set order when it is crowded (`ui.shed`, `status-shed.ts`: item time, provider, thinking level, git, directory depth, cache, context, model); **items** under the item rules (`component-library.md` §5.1: `<mark> <name> <n/m> <timer>`, a content-only fixed scrolling panel with a live `↓ N more`, `viewHistory`); **Todo** (`● todo 2/12 4m 12s`, closing item) and **Goal** (marks `●` `○` `⏸` `✕` `✓`, activation followed, panel with `r` `p` `e` `c`, stream rows from durable `goal/change`, `── goal round N ──` rules, blocked notice); **row 1 facts** `provider/model Effort` and `plan yolo` together; **conversation chip** (` main `, ` btw `, ` subagent `) with `F7`/`F8` at the right of the notification pane; the focus chip reads `view`; Jobs stays a plain `⏵ N jobs` item until R6 | built and accepted by the owner on 2026-10-14 (scenario `footerCutover`), including the one-row redesign and the row order (model, chips, plan/yolo, directory, git, then jobs, goal, todo; context at the right edge); decision tests, goldens, and the Website text done at the phase gate (below) | `feat/phase-5` |
+| R2 | 5a.2 the facts of the one row and its width ladder: model and effort (0) *and plan + yolo together were done in R1*; the chips stay lowercase `plan` `plan…` `yolo` (the owner's answer: the uppercase strong chips of B4 are retired); context as two cell bars, `cache ▰▰▱▱▱ 34%  ctx ▰▰▱▱▱▱▱▱▱▱ 18%` (6, right; the context bar is primary, warning from 70%, danger from 90%; the cache bar the other way round, danger under 30%, warning under 60%, success from 60%; no counts in the row; sheds the cache bar, then the context bar to `ctx 18%`: `SHED.bar`, then the readout); directory (7, shortened path, its last segment when crowded, never `.`), git (10); the ladder at 100, 72, 52, and 36 columns and every toggle (B4 chips, C4, G16); the stale "row 1 / row 2" text retired. Observed, kept as the owner chose (shed table unchanged): at 52 and 36 columns the model is shed before the items, which have no narrower form | built and accepted by the owner on 2026-10-14 (scenario `statusRow`, `a1bed00`); decision tests and goldens written at the phase gate (below) | `feat/phase-5` |
+| R3 | 5a.3 balance chip (dropped) and conversation identity: the `⚠ ¥6.2` chip (6, right, account only, from `deepseekAccount.getBalance()`); *the conversation chip and the `F7`/`F8` keys in the notification pane were done in R1* (G17) | **dropped by the owner on 2026-10-14**: the `⚠ ¥6.2` chip is not built (no chip, threshold, balance read, or low-balance notice); the identity half was built in R1 | `feat/phase-5` |
+| R4 | 5b.1 the Goal and Todo items, *built in R1 under the owner's item rules* (they replace this row's old text: no progress rules, no `↓ views` cue, no `Ctrl+T`); what is left is the Goal's final content, which waits for what dsh gives upstream | built in R1 and accepted | `feat/phase-5` |
+| R5 | 5b.2 Agents view and conversation keys, under the item rules except where the owner overrode them: **item** `● agents 1/3 41s` driven by the parent's spawn calls (so a very short subagent still shows; a call without its result is a **foreground** subagent that blocks the turn, one with its `started subagent` acknowledgement a **background** one), settled over all and the time of the oldest working one (the longest, once all settled); **it stays for the conversation** (`✓ agents 4/4`, `✕` when one failed; no closing line, `viewHistory` does not apply) until a new conversation; priority 11 between git (10) and jobs (now 12; goal 13, todo 14) (`transcript/status-agents.ts`); **panel** a list with a cursor, every subagent of the conversation, live first, `● review   Audit facts projection   bg · 41s · 6 tools · ↓6.4k`; `Enter` opens the conversation exactly as `/agents` does (`F7` returns), `x` stops behind the shared Yes/No through the one shared stop (`interaction/agents-stop.ts`); **`b`** (foreground to background) is listed but unavailable, since dsh has no call that ends a running foreground call early (to ask upstream); a fresh child reads running (`projectChildSessionFacts`: no outcome yet is `waiting`, not `completed`); the dock pane `pane-agents.ts` is deleted; **D2** the stream's spawn line follows its child: `● Subagent(…) · running in background`, then `✓ … 41s` or `✕ … failed` (`tool-calls.ts` `whileSpawned`) (G23, R7) | built; revised on 2026-10-14 after the owner found no reaction in the status row (members from the spawn calls, fg/bg, completed ones kept), and again after the item still did not show: its pane priority was `10.5` and the registry refuses non-integers, so the plugin threw at load (fixed; the scenario now runs headless without a driver failure); the same pass made `Esc` answer a pending Yes/No before leaving the views, and `←/→` reach the Yes/No instead of switching views (`surface-renderer.ts`, `views-lane.ts`); accepted by the owner on 2026-10-15, then extended the same day: a subagent the user stopped (`⊘ stopped`: `runStopped` in the conversation facts, `stateVersion` 11, `stopped` on the child facts, `x` from the panel) is told apart from one that failed on its own (`✕ failed`), and the item lists only the subagents its own conversation spawned (`session.isOwnSeq`), so `/btw` and subagent conversations never fall back to the main's (scenario `viewsAgents`; the entered item's `━` line is now the theme's primary color; no tests or goldens in the round); decision tests and goldens written at the phase gate (below) | `feat/phase-5` |
+| R6 | 5b.3 Jobs view, under the item rules in full (a fixed-length scrolling panel, history only with `viewHistory`; the owner's answers 2026-10-15): **item** `● jobs 2 41s` (live count and the longest time; `countSummary` in `view-items.ts`), `✓ jobs 3/3 41s` (`✕` when one failed) held five seconds when the last live job settles, then it leaves; priority 12 between agents and goal; **subagent-kind jobs are excluded** (the Agents item owns them); **panel** a list with a cursor, live first, label then `41s · rebuilt 2` (progress while live, terminal detail once settled, `stopped`, `stopping`), settled rows only with `viewHistory`; `Enter` opens the output reader `/jobs` uses (`openJobOutput`, an interim target until Phase 6f); `x` rechecks `jobs.get` for `running`, then `jobs.kill` behind the Yes/No, fenced to the exact Agent; `/jobs` stays (`transcript/status-jobs.ts`, `interaction/jobs.ts`) | built; the owner's review rounds (2026-10-15) added: **returns to the view**: `Esc` from a job's output returns to the Jobs view and `F8` from a subagent opened from the Agents view returns to it, while the same reader or child reached from `/jobs` or `/agents` returns to the command's own page (`openJobOutput` takes an `onClose`; the Agents view tracks only the conversation it opened); **aligned columns** in the Agents and Jobs panels, the time last: a new list-row `cells` contract (`MayflyListCell`: `spans`, `align`, `min`, `max`, `shed`; admitted in `core/ui-validator.ts`, painted in `core/ui-list-paint.ts` with the widths taken over every row of the list, narrow rows shrinking the capped columns to 10 and then giving up columns by `shed`); the Agents row is mark, name, task (34 to 52 columns), `fg`/`bg`, tools, total tokens, `↑` in, `↓` out, rate, time (no status word: the mark says how it ended), the token and rate columns keeping their room; the child facts carry `epochOutputTokens`/`outputByStep` (facts and projection `stateVersion` 12), and `ChildSessionFacts` carries `inputTokens`, `outputTokens`, and the live `outputProgress`; effect accepted by the owner on 2026-10-15 (scenarios `viewsJobs`, `viewsAgents`; frame runs read clean); decision tests and goldens written at the phase gate (below) | `feat/phase-5` |
+| R7 | 5c carry-overs from Phase 3 (the owner's answers 2026-10-15): **O2** a lone notice may use the whole row between the stream's margins (it was capped at half), and one that is still too long is cut at its front with `…` and keeps its **tail**, the count or countdown it ends with (`⚠ Rate lim… · retrying in 9s · 1/5`); `MayflyFeedback` gains an optional `tail` (a non-empty end of `message`), the retry notice orders its text reason before the wait (`Provider error · timeout · retrying in 9s · 1/5`) and reports the wait as its tail; the notice row is an admission row (glyph, tail, `+N`, then the front); **O3** the compaction bar prints no `%` when there is no context window (`CompactionBar.labeled`; the bar still moves by the time estimate); **O4** the mode keys of the conversation and search are parts that shed by priority on the same row (`↑/↓ select · Enter expand · c copy · / ? search · Ctrl+G editor · Ctrl+C JSON · Esc back`, `Esc` last to go; the notice yields to its glyph and tail while the mode holds), and the hint row of a card or panel keeps labels over completeness (labeled parts shed their least important part down to two before the bare keys take over: `Enter choose · Esc reject` at 40 columns); the footer path half of O4 was fixed by R2; also a core fix: `layoutBands` no longer pushes a right cluster that fills the row by a gap column when the left band is empty (`core/ui-admission.ts`) | built; the owner moved on to the phase wrap-up on 2026-10-15 (scenario `carryOvers`, run at 100, 60, and 40 columns; frame runs read clean); decision tests and goldens written at the phase gate (below) | `feat/phase-5` |
+
+**Phase 5 finalization (2026-10-15; the test session of spec §3.1, then the phase gate).** The rounds ran no tests; the owner then asked
+for the wrap-up of the whole phase, and this is what it did.
+
+- **Decision tests written.** `status-rows.spec.ts` (the one row: order by priority then id, bands, the `━` line under the entered item,
+  publication only on a change, the lease released with the Fiber) and the shed table; `ui-admission.spec.ts` (`ui.shed` forms
+  given up in rank order across children, ties by position, the `underline` mark in each band, `layoutBands` with an empty left band);
+  `status-agents.spec.ts` (rows from spawn calls and children: foreground, background, failed, stopped, by prompt; summary; the
+  aligned panel and its shed ladder; `Enter` and `F8` returning to the view; `x` through the shared stop; `b` unavailable; own calls only),
+  `status-jobs.spec.ts` (live count and longest time, the closing line and its group, subagent jobs left out, `viewHistory`, the stop
+  recheck and the Agent fence, the reader opening and returning), `status-goal.spec.ts` (marks, time, panel keys fenced to the revision,
+  `r` `p` `e` `c`, the closing item), `pane-todo.spec.ts` (summary, panel, closing item, `viewHistory`, interrupted, session
+  change), `goal-rows.spec.ts` (the `goal/change` and goal-round projection entries, the transcript model, the stream rows, the painted
+  rule), `notices.spec.ts` (the retry text with its tail, the blocked-goal notice), `pane-notification.spec.ts` and
+  `notification-line.spec.ts` (the whole-row notice, `…` with a kept tail, the toggle, the mode keys shed by priority), `compaction-row.spec.ts`
+  (no `%` without a window), `ui-validator.spec.ts` (shed, divider, list cells, scroll flags), `ui-list-paint.spec.ts` (aligned cells, caps,
+  reserves, the shed ladder), `ui-row-pipes.spec.ts` (the count of the rows below), `ui-compiler.spec.ts` (a fixed panel without
+  `Ctrl+E`; hint rows that keep their labels), `screen.spec.ts`, `views-lane*.spec.ts`, `jobs.spec.ts` (`openJobOutput` with a return), the
+  tail in the feedback validation, the lane records, and the fixtures of `packages/ui`, and the width scans of every item.
+- **Stale specs repaired or deleted.** `status-model.spec.ts` and `pane-agents.spec.ts` (their modules are gone), `pane-todo`, `status-goal`,
+  `status-jobs`, `status-context` (the two bars), `status-basic`, `status-cwd`, `conversation-view-status`, `session-facts`, `plugin`,
+  `pane-activity`, `settings`, `key-audit` (no `Ctrl+T`), `business-rendering-drift`, `scene-13-views` (frames regenerated from the real
+  footer), the views-lane and renderer specs, `provider`/`views` of `packages/ui`, the gallery view, and the repo workflow tests.
+- **Goldens: not yet accepted.** `node script/scenarios.mjs` (the full run) reports 156 of 156 runs with differences. Most are intended
+  (the footer, the notification row, and the mode keys changed), but they have not been reviewed one by one, so nothing is written
+  with `--update`. Six search and select scenarios (`search-live`, `search-block`, `search-narrow`, `phase3-select`, `phase3-search`,
+  and `phase3-narrow` at 40 columns) also fail with *the product did not exit on Ctrl+C*: the runner's Esc-then-Ctrl+C exit does not
+  close the product in those states. Whether `main` does the same is not yet checked. New scenarios `footerCutover`, `statusRow`,
+  `viewsAgents`, `viewsJobs`, and `carryOvers` still need their first goldens.
+- **Docs.** The component library (§5.1, §5.2, §5.4, §5.5) is marked *Finalized*; the Website text is updated in both languages
+  (`features/status-bar.md`, `features/panes.md`, `plugins/status.md`, `plugins/dock.md`, `plugins/ui-reference.md`, `reference/keys.md`,
+  `guide/faq.md`) and the views example of `script/shots/manifest.mjs` follows the item style; no Website build until the release, and
+  the `views-summary` shot waits for `pnpm run shots:sync`. The Phase 3 audit's O2 to O4 are marked fixed.
+
+**Merge with Phase 4 (2026-10-15).** Phase 4 (`feat/4a`, PR #18 at `ee1a98b`) was merged into this branch before either reached
+`main`; PR #18 and then PR #19 merge after the owner's visual check. The owner's answers where the two met:
+
+- The notification row's right side with no notice: the `F7`/`F8` toggle first, then what the prompt awaits, else the history
+  counter, else the token keys; the generic hint (`Alt+↑ conversation · Alt+↓ view`, rotating while a turn runs) gives way to the toggle.
+- The keys of a queued or steering row are parts that shed by priority: the row's verbs read first (`e edit · s send now · d cancel ·
+  Enter expand · c copy · ↑/↓ select · Esc back`) and survive in the order `Esc`, `e`, `d`, `s`, `Enter`, `↑/↓`, `c`.
+- Decided by the merge: information notices have no glyph (Phase 4 retired `ℹ`); `editorRowsFromBottom` counts the views panel.
+- Scenarios for the check: `mergeDock` and `mergeConversations`, accepted by the owner with their goldens. At the owner's request the
+  catalog keeps only these two, the `perf-*` scenarios, and the `app-*` scenes; every other scenario, replay, and golden is deleted
+  (maintaining them cost more than they found). Owed at the test session: the `app-conversation` and `app-agents` goldens (they predate
+  the merged editor and status row), the decision tests of the merged notification row (the toggle with a hint, the queued and steering
+  key parts), and the pack budget (2.95 MB, unmeasured).
+
+**Open choices for the question rounds** (each round asks its own, §6; the agent recommends an answer for each):
+
+- The degradation order: settled in R1 and R2 (`status-shed.ts`: item time, provider, thinking level, git, directory depth,
+  cache bar, context bar width, context readout, model). Still open: whether items get a narrower form
+  (the model is shed before them at 52 and 36 columns).
+- The focus chip (`transcript/status-focus.ts`, priority 1, Phase 3e). Whether it survives, and where it sits beside
+  `plan`/`yolo`.
+- Whether an empty Agents or Jobs view shows `0`, and how long the closing item `✓ todo 6/6 4m 12s` stays (five seconds for now).
+- The interim target of `Enter` on a job, and the confirm copy for `x`.
+- Whether the 400 ms completion flash and the 300 ms fan-out stagger are in this phase (the roadmap says unscheduled).
 
 ### Phase 6 Panels
 
@@ -2200,7 +2330,7 @@ code each component deletes is listed with its group in §5.
 
 | Component (spec §6.2) | `components/` module | Facts from | Published through | Writes | Phase |
 | --- | --- | --- | --- | --- | --- |
-| `StatusBar` (row 1 entries) | `status-entries.ts` | `status-basic-model.ts`, `sessionModeSnapshot` (plan projection, permission knobs), the token meter in `status-context.ts`, `status-cwd.ts`, `status-git.ts`, `deepseekAccount.getBalance()`, `mayflyConversations.snapshot()` | `mayflyStatus` | — | 5 |
+| `StatusBar` (row 1 entries) | `status-entries.ts` | `status-basic-model.ts`, `sessionModeSnapshot` (plan projection, permission knobs), the token meter in `status-context.ts`, `status-cwd.ts`, `status-git.ts`, `mayflyConversations.snapshot()` | `mayflyStatus` | — | 5 |
 | `ViewRow`, `ViewPanel` | `status-rows.ts`, `views.ts` | `mayflySessionFacts` (`agentCalls`, `todos`), `child-agent-model.ts`, `jobs.list/get`, the `goal` projection (`phase`, `roundsStarted`, `maxGoalRounds`, `blockedReason`) | views panes; the footer slot | `mayflyConversations.open/display`, `subagents.interrupt`, `jobs.kill` | 5 |
 | `ActivityRow` | `activity-row.ts` | `mayflySessionFacts` (phase, activity detail, `turnStartedAt`, `outputProgress`, `flowUp`), `mayfly/request-stop-changed`, tips | the `mayfly.pane.activity` bottom pane | — | 3c |
 | `NotificationLine` | `notification-line.ts` | the notification lane, the retry and context facts, the session controller | the notification pane (the row above the editor) | — | 3c |
@@ -2241,8 +2371,8 @@ come last: nothing below runs a check tier, a spec, or a golden until the owner 
    Then **confirm the effect** (the owner and the agent): the agent asks questions about every choice that changes
    the visible result or the API, and the final effect is agreed before any code.
 2. **Draft** (the agent). Build the component on real data through the native services, as agreed. Write the
-   workbench scenarios for its states (§5, 2a), including a narrow width and a lifecycle case, and organize all of
-   them into one list for the owner (name, command, what it shows, what to try). Run no check tier, write no
+   round's one workbench scenario, a long conversation chaining its states (§5, 2a), including a narrow width and a
+   lifecycle case, and give the owner its name, command, what it shows in order, and what to try. Run no check tier, write no
    goldens, and chase no coverage; the workbench's incremental build is the only mechanical feedback. Stop and
    tell the owner.
 3. **Review rounds** (the owner and the agent). The owner runs the profile or a scenario beside

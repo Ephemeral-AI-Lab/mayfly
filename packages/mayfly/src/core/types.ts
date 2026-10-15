@@ -161,7 +161,19 @@ export interface MayflyOverlayHandle {
  * or keybinding responsibility.
  */
 /** Where keyboard focus lives: the prompt, the stream's row cursor, a view of the status bar, or a search of the stream. */
-export type MayflyFocusMode = 'prompt' | 'conversation' | 'bar' | 'search' | 'search-select'
+export type MayflyFocusMode = 'prompt' | 'conversation' | 'view' | 'search' | 'search-select'
+
+/** What the stream's cursor stands on that has keys of its own: a message waiting for the next turn, or one steering the running turn. */
+export type MayflyFocusRow = 'queued' | 'steering' | undefined
+
+/** What `e`, `s`, `d`, and `u` ask of a queued message of the stream. */
+export type MayflyQueuedAction = 'edit' | 'steer' | 'cancel' | 'undo'
+
+/** Where the prompt stands in its history while it is browsed: `index` is the entry on show, counted from 1 (the newest). */
+export interface MayflyHistoryPosition {
+  readonly index: number
+  readonly total: number
+}
 
 export interface MayflyScreen {
   /** Whether an active overlay or editor replacement must receive input before global actions. */
@@ -486,6 +498,10 @@ export interface MayflyAutocompleteItem {
   label: string
   /** Secondary text shown beside the label. */
   description?: string
+  /** Who supplied the row when it is not the editor itself (an editor extension's id); shown as a muted tag. */
+  source?: string
+  /** What is wrong with the row (a source that failed): the row shows a red `!`, and the focused row says why below it. */
+  problem?: string
 }
 
 /** The suggestion set returned by {@link MayflyAutocompleteProvider.getSuggestions}. */
@@ -546,6 +562,18 @@ export interface MayflyAutocompleteProvider {
   shouldTriggerFileCompletion?(lines: string[], cursorLine: number, cursorCol: number): boolean
 }
 
+/** One completion list as facts: what the typed prefix selects, the items it kept, and the focused one. */
+export interface MayflyCompletionView {
+  /** `commands` for a `/` prefix, `files` for `@`, `completions` otherwise. */
+  readonly kind: 'commands' | 'files' | 'completions'
+  /** The items, in the provider's order; `detail` is the description, `source` the extension that supplied the row, and `problem` what is wrong with it. */
+  readonly items: readonly { readonly label: string, readonly value: string, readonly detail?: string, readonly source?: string, readonly problem?: string }[]
+  /** The focused item. */
+  readonly index: number
+  /** The prefix the provider matched, as typed (`/mo`). */
+  readonly prefix: string
+}
+
 /**
  * A multi-line input editor. The submit/change callbacks and `disableSubmit`
  * are mutable properties, set after creation, matching the underlying
@@ -586,6 +614,12 @@ export interface MayflyEditor extends MayflyFocusable {
   /** Re-query the active autocomplete provider without changing the buffer. */
   refreshAutocomplete(): void
   /**
+   * The open completion list as facts, or `undefined` while none is open. The editor paints no rows for the list (its
+   * rows never grow with it); the host draws it as a drawer over the stream.
+   * @returns the list's kind, items, and focused index.
+   */
+  completion(): MayflyCompletionView | undefined
+  /**
    * Read the current text.
    * @returns the editor content.
    */
@@ -599,7 +633,7 @@ export interface MayflyEditor extends MayflyFocusable {
    * Add a prompt to the history navigated with up/down arrows.
    * @param text - the submitted prompt.
    */
-  addToHistory(text: string): void
+  addToHistory(text: string, pastes?: ReadonlyMap<number, string>): void
   /**
    * Read the history entries, newest first (pi-tui stores them that way;
    * index 0 is the most recent submission). The mirror of
@@ -609,6 +643,17 @@ export interface MayflyEditor extends MayflyFocusable {
    */
   getHistory(): readonly string[]
   /**
+   * The paste tables of the history entries, index for index with {@link getHistory}: a message that held a pasted block
+   * is kept with its marker text and its table, so recalling it brings the block back as a token.
+   * @returns the tables, `undefined` for an entry with no pasted block.
+   */
+  getHistoryPastes(): readonly (ReadonlyMap<number, string> | undefined)[]
+  /**
+   * Where the prompt stands in its history: the entry on show (1 is the newest) and how many there are.
+   * @returns `undefined` while the buffer is the draft, not a recalled entry.
+   */
+  getHistoryPosition?(): MayflyHistoryPosition | undefined
+  /**
    * Remove the newest history entry only when it exactly matches `text`.
    * Optional for structural test editors; the core adapter implements it.
    * @param text - expected newest submission.
@@ -616,37 +661,11 @@ export interface MayflyEditor extends MayflyFocusable {
    */
   removeLatestHistory?(text: string): boolean
   /**
-   * Restyle the editor frame (e.g. focused vs. unfocused border).
-   * @param color - the new border color function.
+   * Mark the buffer as a shell command. The editor paints the leading `/command` token of a prompt bold and primary;
+   * in shell mode a leading `/` is a path separator, and the token stays unpainted.
+   * @param shell - whether the buffer is a shell command.
    */
-  setBorderColor(color: MayflyColorFn): void
-  /**
-   * Overlay a prompt symbol on the editor's first content row. Requires the
-   * editor to be created with `paddingX: 4`; the bash `!` renders in the
-   * current border color, the neutral `>` in the default foreground.
-   * @param symbol - the symbol, or `undefined` to remove it.
-   */
-  setPromptSymbol(symbol: '>' | '!' | undefined): void
-  /**
-   * Lay pre-styled text into the editor's top border (e.g. a mode badge);
-   * scroll-indicator borders are never labeled. Requires `paddingX: 4`.
-   * @param text - the styled label, or `undefined` to remove it.
-   */
-  setBorderLabel(text: string | undefined): void
-  /**
-   * Lay plain text into the right end of the editor's top border as
-   * `─ title ─╮` (the session name). Core strips terminal controls,
-   * collapses whitespace, ellipsizes the title to the room the border label
-   * leaves, and drops it on narrow or scroll-indicator borders.
-   * @param text - the plain title, or `undefined` (or blank) to remove it.
-   */
-  setBorderTitle(text: string | undefined): void
-  /**
-   * Switch the top corners between `╭╮` and `├┤`, the latter reading as a
-   * frame docked to a panel above (the S13 btw dock).
-   * @param connected - whether a panel is docked above the editor.
-   */
-  setConnectedAbove(connected: boolean): void
+  setShellMode(shell: boolean): void
   /**
    * Overlay a dimmed argument-hint ghost after the typed text on the first
    * content row (the S14 slash-command parameter hint, e.g. `<question>`
@@ -658,6 +677,12 @@ export interface MayflyEditor extends MayflyFocusable {
    *   remove it.
    */
   setGhostHint(hint: string | undefined): void
+  /**
+   * Set the placeholder ladder an empty buffer shows after the cursor, longest variant first; the longest that fits the
+   * row is drawn muted. An argument-hint ghost wins over it, and none shows once the buffer holds anything.
+   * @param ladder - the variants, or an empty list for none.
+   */
+  setPlaceholder(ladder: readonly string[]): void
   /**
    * Attach the autocomplete provider driving the suggestion dropdown.
    * @param provider - the suggestion source.
@@ -708,7 +733,64 @@ export interface MayflyEditor extends MayflyFocusable {
    * @param draft - the captured submission.
    */
   restoreSubmittedDraft?(draft: MayflySubmittedDraft): void
+  /**
+   * Install the source of the interaction-owned inline tokens (a pasted image's marker, an accepted `@` mention): the
+   * spans of one buffer line that show as tokens. Pasted blocks are the editor's own and need no source. The editor
+   * paints a token in its tone, and `tokenBackspace` selects and removes it.
+   * @param source - the spans of a line, or `undefined` for none.
+   */
+  setTokenSource(source: MayflyEditorTokenSource | undefined): void
+  /**
+   * Backspace at a token. A token the caret is on (highlighted) is removed at once; with the caret right after a token the
+   * call selects it (the whole token inverse) and the next call removes it. Any other input clears the selection.
+   * @returns whether a token was at the caret and the key is consumed.
+   */
+  tokenBackspace(): boolean
+  /**
+   * Called when the token the caret is on, or the one Backspace selected, changes (`undefined`: none). The caret is on a
+   * token while a block cursor would cover one of its characters; arrow keys step over a token whole.
+   */
+  onTokenChange: ((token: MayflyEditorToken | undefined) => void) | undefined
+  /**
+   * The token the caret is on or Backspace selected.
+   * @returns the token, or `undefined` when the caret is on none.
+   */
+  activeToken(): MayflyEditorToken | undefined
+  /**
+   * Replace the active token with plain text at its place (a pasted block edited in the external editor).
+   * @param text - the text that takes the token's place.
+   */
+  replaceActiveToken(text: string): void
+  /**
+   * Replace the buffer with a text that an external editor returned, folding each stretch that spells a pasted block of
+   * the buffer before back into a marker (a block that was edited stays plain text).
+   * @param text - the returned text.
+   * @param contents - the contents of the pasted blocks the buffer held when it was handed over.
+   */
+  setTextFolding(text: string, contents: readonly string[]): void
 }
+
+/** One inline token as the host sees it. */
+export interface MayflyEditorToken {
+  readonly kind: 'image' | 'mention' | 'paste'
+  /** The token as it stands in the buffer (`@packages/a.ts`, `[image #1 84 KB]`, `[paste #1 +14 lines]`). */
+  readonly text: string
+  /** Backspace selected it; the next Backspace removes it. */
+  readonly selected: boolean
+  /** A pasted block's full text. */
+  readonly content?: string
+}
+
+/** One inline token of a buffer line, half-open in UTF-16 units. */
+export interface MayflyEditorTokenSpan {
+  readonly start: number
+  readonly end: number
+  /** `image` is a pasted image's marker; `mention` an accepted `@` file mention. */
+  readonly kind: 'image' | 'mention'
+}
+
+/** The spans of the inline tokens in one buffer line. */
+export type MayflyEditorTokenSource = (line: string) => readonly MayflyEditorTokenSpan[]
 
 /**
  * One submitted buffer captured before the native submit cleared it: the
@@ -1016,6 +1098,23 @@ declare module '@deepseek-ai/cordis' {
      */
     'mayfly/decision-requests-changed'(source: 'approval' | 'plan', requests: readonly MayflyDecisionRequest[]): void
     /**
+     * The prompt has something to teach about where its caret is (the keys that act on the token it rests on). The
+     * notification pane shows it, muted and without a severity glyph, in the place of the keys that leave the prompt,
+     * while it has no notice. Emitted by the input editor, unfiltered.
+     * @param hint - the translated words, or `undefined` when there is nothing to teach.
+     * @mode emit
+     */
+    'mayfly/prompt-hint-changed'(hint: string | undefined): void
+    /**
+     * The prompt waits on something that can take a moment (the clipboard, the file search). The notification pane shows
+     * the unified loader with these words in the place of the hint, while it has no notice, and leaves it when the wait
+     * ends. Emitted by the prompt's plugins through `beginPromptWait`, after a short delay so a quick wait never flashes;
+     * unfiltered.
+     * @param message - the translated words (`Reading the clipboard…`), or `undefined` when nothing is awaited.
+     * @mode emit
+     */
+    'mayfly/prompt-wait-changed'(message: string | undefined): void
+    /**
      * The conversation scroll left or came back to its tail, or the words of its chip changed (the count of turns that
      * began below the view, a rebound key). The notification pane draws the chip, so it follows this event. Alternate
      * screen only; emitted by the surface renderer, unfiltered.
@@ -1025,11 +1124,35 @@ declare module '@deepseek-ai/cordis' {
     'mayfly/content-tail-changed'(label: string | undefined): void
     /**
      * Where keyboard focus lives, as a mode: the prompt, the conversation (the stream's row cursor), the bar (a view of
-     * status row 2), or a search of the stream. The status line names every mode but the prompt, and the prompt dims while
+     * the status row), or a search of the stream. The status line names every mode but the prompt, and the prompt dims while
      * it does not hold focus. Emitted by the surfaces that take focus; unfiltered.
      * @param mode - the mode that holds focus now.
      * @mode emit
      */
     'mayfly/focus-mode-changed'(mode: MayflyFocusMode): void
+    /**
+     * The stream's cursor moved onto or off a queued message. The notification pane teaches the keys of that row (`e`
+     * edit, `s` send now, `d` cancel) while the stream has focus. Emitted by the transcript, unfiltered.
+     * @param row - what the cursor stands on, or `undefined` for any other row.
+     * @mode emit
+     */
+    'mayfly/focus-row-changed'(row: MayflyFocusRow): void
+    /**
+     * A key of a queued message in the stream: `e` takes it into the prompt, `s` sends it now (to the running turn's
+     * steer lane), `d` cancels it, and `u` takes the last cancelled one back. The input editor holds the inbox restore
+     * data and answers. Emitted by the transcript, unfiltered.
+     * @param action - what was asked.
+     * @param messageId - the inbox message's id; none for `undo`.
+     * @mode emit
+     */
+    'mayfly/queued-action'(action: MayflyQueuedAction, messageId: string | undefined): void
+    /**
+     * The prompt is walking its history (`Up`/`Down`): where it stands, or `undefined` once it is back on the draft. The
+     * notification pane shows `↑ history 2/4` in the place of the hint, while it has no notice. Emitted by the input
+     * editor, unfiltered.
+     * @param recall - the entry on show and the history's size.
+     * @mode emit
+     */
+    'mayfly/prompt-recall-changed'(recall: MayflyHistoryPosition | undefined): void
   }
 }

@@ -9,6 +9,7 @@
 import { homedir } from 'node:os'
 import { describe, expect, it } from 'vitest'
 import * as cwd from '../../src/transcript/status-cwd.ts'
+import { SHED } from '../../src/transcript/status-shed.ts'
 import { asAgent, bootStatusPlugin, COLORS, fakeAgent } from './status-fakes.ts'
 
 describe('shortenCwd', () => {
@@ -50,7 +51,7 @@ describe('shortenCwd', () => {
 })
 
 describe('mayfly-status-cwd', () => {
-  it('abbreviates the session cwd at priority 5 in the muted tier', async () => {
+  it('abbreviates the session cwd at priority 7 in the muted tier, and sheds to its last segment', async () => {
     const muted = (text: string): string => `[Mu]${text}[/Mu]`
     const harness = await bootStatusPlugin(
       cwd,
@@ -58,9 +59,22 @@ describe('mayfly-status-cwd', () => {
       { colors: { ...COLORS, muted } },
     )
     expect(harness.entry.id).toBe('mayfly.status.cwd')
-    expect(harness.entry.priority).toBe(5)
+    expect(harness.entry.priority).toBe(7)
     expect(harness.entry.render(80)).toBe('[Mu]…/c/d/e[/Mu]')
+    // The row gives up the directory's depth before anything but the time, the provider, the effort, and git: only its last segment stays.
+    const node = harness.models.list()[0]!.node as unknown as { readonly kind: string, readonly narrower: readonly { readonly rank: number, readonly node: { readonly content: string } }[] }
+    expect(node.kind).toBe('shed')
+    expect(node.narrower.map(form => [form.rank, form.node.content])).toEqual([[SHED.cwd, 'e']])
     await harness.dispose()
+  })
+
+  it('has no narrower form for a directory that is only home or the root', async () => {
+    const home = await bootStatusPlugin(cwd, fakeAgent([], { cwd: homedir() }))
+    expect(home.models.list()[0]!.node).toMatchObject({ kind: 'text', content: '~' })
+    await home.dispose()
+    const root = await bootStatusPlugin(cwd, fakeAgent([], { cwd: '/' }))
+    expect(root.models.list()[0]!.node).toMatchObject({ kind: 'text', content: '/' })
+    await root.dispose()
   })
 
   it('falls back to the process cwd without a session', async () => {

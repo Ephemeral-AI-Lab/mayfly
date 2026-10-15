@@ -33,7 +33,7 @@ import { COLORS } from '../transcript/status-fakes.ts'
 import { MayflyStatusService } from '../../../ui/src/services.ts'
 import { MayflyConversationsService } from '../../src/app/conversation-views.ts'
 import * as conversationViewStatus from '../../src/interaction/conversation-view-status.ts'
-import { StatusFooterComponent } from '../../src/transcript/status-model.ts'
+import { footerRows } from '../transcript/footer-fakes.ts'
 import { renderRequest, requestFixture } from './request-fixture.ts'
 import { settingsFixture, settingsField } from './settings-fixture.ts'
 
@@ -229,10 +229,10 @@ describe('interaction width-scan', () => {
       conversations.open({ kind: 'subagent', sessionId: 'cold', parentSessionId: 'primary', label: text, mode: 'continuable' })
       const status = new MayflyStatusService(ctx)
       await ctx.plugin(conversationViewStatus)
-      const footer = new StatusFooterComponent(status, fakeMayflyComponents(), COLORS)
-      for (const width of SCAN_WIDTHS) expectLinesFit(`ConversationViewStatus/${name}`, footer.render(width), width)
+      const footer = (width: number): string[] => footerRows(status.list(), width, fakeMayflyComponents(), COLORS)
+      for (const width of SCAN_WIDTHS) expectLinesFit(`ConversationViewStatus/${name}`, footer(width), width)
       conversations.back()
-      for (const width of SCAN_WIDTHS) expectLinesFit(`ConversationViewStatus/back/${name}`, footer.render(width), width)
+      for (const width of SCAN_WIDTHS) expectLinesFit(`ConversationViewStatus/back/${name}`, footer(width), width)
       await ctx.fiber.dispose()
     })
 

@@ -153,7 +153,7 @@ describe('fsMentionSuggestions', () => {
     const root = fixture()
     expect((await fsMentionSuggestions(root, '@src/a', signal()))?.items.map(item => item.value)).toEqual(['@src/a.ts'])
     expect((await fsMentionSuggestions(root, '@"a b', signal()))?.items.map(item => item.value)).toEqual(['@"a b.txt"'])
-    expect((await fsMentionSuggestions(root, `@${root}/src/a`, signal()))?.items[0]?.description).toBe(`${root.split(sep).join('/')}/src/a.ts`)
+    expect((await fsMentionSuggestions(root, `@${root}/src/a`, signal()))?.items[0]?.label).toBe(`${root.split(sep).join('/')}/src/a.ts`)
     if (process.platform !== 'win32') {
       writeFileSync(join(root, 'literal\\name.txt'), 'x')
       expect((await fsMentionSuggestions(root, '@literal\\na', signal(), 'linux'))?.items[0]?.value).toBe('@literal\\name.txt')
@@ -222,7 +222,7 @@ describe('fsMentionSuggestions', () => {
     const root = fixture()
     symlinkSync(join(root, 'no-such-target'), join(root, 'broken'), process.platform === 'win32' ? 'junction' : 'dir')
     const suggestions = await fsMentionSuggestions(root, '@broken', signal())
-    expect(suggestions?.items).toEqual([{ value: '@broken', label: 'broken', description: 'broken' }])
+    expect(suggestions?.items).toEqual([{ value: '@broken', label: 'broken' }])
   })
 
   it('stops the scan at the entry cap, leaving deeper trees unlisted', async () => {
@@ -265,11 +265,11 @@ describe('fsMentionSuggestions', () => {
     // 'op' sits inside top.md's basename but not at its start; src/a.ts
     // matches only through its path.
     const suggestions = await fsMentionSuggestions(root, '@op', signal())
-    expect(suggestions?.items.map(item => item.description)).toEqual(['top.md'])
+    expect(suggestions?.items.map(item => item.label)).toEqual(['top.md'])
     // A directory matching the query outranks its own contents: the +10
     // bonus rides the 80-point basename prefix.
     const ranked = await fsMentionSuggestions(root, '@s', signal())
-    expect(ranked?.items[0]).toEqual({ value: '@src/', label: 'src/', description: 'src' })
+    expect(ranked?.items[0]).toEqual({ value: '@src/', label: 'src/' })
   })
 
   it('breaks score ties between a deep directory and a shallow file directory-first', async () => {
@@ -303,10 +303,10 @@ describe('fsMentionSuggestions', () => {
     expect(suggestions).toEqual({
       prefix: '@',
       items: [
-        { value: '@.hidden/', label: '.hidden/', description: '.hidden' },
-        { value: '@src/', label: 'src/', description: 'src' },
-        { value: '@"a b.txt"', label: 'a b.txt', description: 'a b.txt' },
-        { value: '@top.md', label: 'top.md', description: 'top.md' },
+        { value: '@.hidden/', label: '.hidden/' },
+        { value: '@src/', label: 'src/' },
+        { value: '@"a b.txt"', label: 'a b.txt' },
+        { value: '@top.md', label: 'top.md' },
       ],
     })
   })
@@ -316,7 +316,7 @@ describe('fsMentionSuggestions', () => {
     const relative = await listDirectoryMentions(root, '@src/', signal())
     expect(relative?.items.map(item => item.value)).toEqual(['@src/a.ts', '@src/b.ts'])
     const absolute = await listDirectoryMentions(root, `@${root}/`, signal())
-    expect(absolute?.items.map(item => item.description)).toContain(`${root.split(sep).join('/')}/src`)
+    expect(absolute?.items.map(item => item.label)).toContain(`${root.split(sep).join('/')}/src/`)
     const home = await listDirectoryMentions(root, '@~/', signal())
     expect(home).not.toBeNull()
   })

@@ -25,6 +25,7 @@ export function apply(ctx: Context): void {
 }
 ```
 
+Completion item 可带 `problem`：该行末尾显示红色 `!`，聚焦时其下一行说明原因；抛错或超时的 extension 以同样的标记单独成行。
 Callback context 带 `AbortSignal`、surface id 与 revision。异步 completion
 最长 5 秒，submit transform 最长 30 秒；unload、selection/renderer generation
 变化或 abort 后的迟到结果会丢弃。

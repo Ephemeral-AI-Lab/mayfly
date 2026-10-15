@@ -45,7 +45,7 @@ export interface EditorHost {
 
 /** The demo host of scene 15: it answers the prompt's events and republishes the `Editor` node. */
 export function editorHost(): EditorHost {
-  const state = { tokens: [] as { id: string, label: string, size: string }[], queued: ['also update the footer'], history: [...HISTORY], running: false, shell: false, ctx: 0, w: 0, reset: { rev: 0, value: '' }, pulled: null as number | null, n: 1 }
+  const state = { tokens: [] as { id: string, label: string, size: string }[], history: [...HISTORY], running: false, shell: false, ctx: 0, w: 0, reset: { rev: 0, value: '' }, n: 1 }
   const widths = [96, 60, 40]
   let revision = 1
   let model!: UiSurfaceModel
@@ -63,7 +63,7 @@ export function editorHost(): EditorHost {
       title: context.title, titleAlign: 'right', chrome: 'surface', hint: 'completions', ...(state.shell ? { border: 'accent' as const } : {}),
       child: ui.prompt({
         id: 'prompt', autofocus: true, symbol: state.shell ? '! ' : '> ', ...(state.shell ? { symbolTone: 'accent' as const } : {}),
-        tokens: state.tokens, recall: [...state.queued.map(text => ({ kind: 'queued' as const, text })), ...state.history.map(text => ({ kind: 'history' as const, text }))],
+        tokens: state.tokens, recall: state.history.map(text => ({ text })),
         placeholder, ...(pool.length === 0 ? {} : { completions: { items: pool.map(({ id, label, detail }) => ({ id, label, detail })) } }), reset: state.reset, recallLabel: 'history',
       }),
     })
@@ -79,11 +79,9 @@ export function editorHost(): EditorHost {
       if (word[0] === '@') { state.tokens.push({ id: `t${String(state.n++)}`, label: item.label, size: item.size! }); setText(text.slice(0, -word.length)) }
       else setText(`${text.slice(0, -word.length)}${item.label} `)
     } else if (event.kind === 'token-remove') state.tokens = state.tokens.filter(token => token.id !== event.tokenId)
-    else if (event.kind === 'recall-change') state.pulled = event.source === 'queued' ? event.index : null
     else if (event.kind === 'submit') {
       const text = event.submission.forms[0]!.fields.find(field => field.id === 'text')!.value as string
-      if (state.pulled !== null) { state.queued.splice(state.pulled, 1); state.pulled = null }
-      if (!state.shell) { if (state.running) state.queued.push(text); else state.history.unshift(text) }
+      if (!state.shell) state.history.unshift(text)
       state.tokens = []
     }
   }

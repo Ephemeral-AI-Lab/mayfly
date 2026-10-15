@@ -124,9 +124,9 @@
       "types": "./lib/types/banner-content.d.ts",
       "default": "./lib/banner-content.js"
     },
-    "./pane-agents": {
-      "types": "./lib/types/pane-agents.d.ts",
-      "default": "./lib/pane-agents.js"
+    "./status-agents": {
+      "types": "./lib/types/status-agents.d.ts",
+      "default": "./lib/status-agents.js"
     },
     "./pane-workflow": {
       "types": "./lib/types/pane-workflow.d.ts",
@@ -139,10 +139,6 @@
     "./agents-command": {
       "types": "./lib/types/agents-command.d.ts",
       "default": "./lib/agents-command.js"
-    },
-    "./pane-queue": {
-      "types": "./lib/types/pane-queue.d.ts",
-      "default": "./lib/pane-queue.js"
     },
     "./mode-status": {
       "types": "./lib/types/mode-status.d.ts",

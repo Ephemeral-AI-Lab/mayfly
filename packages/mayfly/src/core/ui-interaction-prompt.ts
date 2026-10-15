@@ -53,7 +53,7 @@ export type UiPromptIntent =
 /** What a reduction asks the surface model to tell the host. */
 export type UiPromptEffect =
   | { readonly kind: 'value-change', readonly value: string, readonly draftRevision: number }
-  | { readonly kind: 'recall-change', readonly source: 'queued' | 'history' | 'draft', readonly index: number }
+  | { readonly kind: 'recall-change', readonly source: 'history' | 'draft', readonly index: number }
   | { readonly kind: 'token-remove', readonly tokenId: string }
   | { readonly kind: 'completion-accept', readonly itemId: string }
   | { readonly kind: 'completion-dismiss' }
@@ -83,7 +83,7 @@ export function createPromptModel(address: UiControlAddress, definition: MayflyP
 }
 
 function sameEntry(left: MayflyPromptRecall, right: MayflyPromptRecall): boolean {
-  return left.kind === right.kind && left.text === right.text
+  return left.text === right.text
 }
 
 /** The recall walk against the list the host published now: it follows its entry, or the place the entry left. */
@@ -94,7 +94,7 @@ function reconcileRecall(recall: UiPromptRecall | undefined, entries: readonly M
   if (same !== undefined && sameEntry(same, recall.entry)) return recall
   const found = entries.findIndex(entry => sameEntry(entry, recall.entry!))
   if (found >= 0) return { ...recall, index: found }
-  // The entry was withdrawn (a recalled queued message leaves the queue): the walk stands where it was, before the next one.
+  // The entry was withdrawn from the list: the walk stands where it was, before the next one.
   return { index: Math.min(recall.index, entries.length) - 1, draft: recall.draft }
 }
 
@@ -174,7 +174,7 @@ export function reducePrompt(model: UiPromptModel, intent: UiPromptIntent): UiPr
       }
       const entry = entries[index]!
       const next = withText(model, entry.text, { recall: { index, draft: walk?.draft ?? model.text, entry }, selectedToken: undefined })
-      return { model: next, effects: [{ kind: 'recall-change', source: entry.kind, index }, { kind: 'value-change', value: entry.text, draftRevision: next.revision }] }
+      return { model: next, effects: [{ kind: 'recall-change', source: 'history', index }, { kind: 'value-change', value: entry.text, draftRevision: next.revision }] }
     }
     case 'complete-move': {
       if (!promptCompletionsOpen(model)) return none

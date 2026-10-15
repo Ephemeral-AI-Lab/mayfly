@@ -37,6 +37,7 @@ const zh = Object.freeze({
   '{count} matches': '{count} 项匹配',
   '… +{count} more': '… 另有 {count} 项',
   'no choice': '无可选项',
+  '↓ {count} more': '↓ 还有 {count} 行',
   '▸ {count} more lines · Enter': '▸ 还有 {count} 行 · Enter',
   '{count} new turn · {key}': '{count} 个新轮次 · {key}',
   '{count} new turns · {key}': '{count} 个新轮次 · {key}',
@@ -48,6 +49,8 @@ const zh = Object.freeze({
   queued: '排队中',
   send: '发送',
   insert: '插入',
+  // The wait of an `image` node while its bytes are read (the unified loader's words).
+  'Loading image…': '正在载入图片…',
   // Field provenance and conflict resolution.
   inherited: '继承',
   override: '显式覆盖',

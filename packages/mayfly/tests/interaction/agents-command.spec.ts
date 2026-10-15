@@ -16,9 +16,9 @@ import {
   agentMetricsText,
   agentTreeItems,
   formatAgentElapsed,
-  liveAgentDescendantCount,
   type MayflySubagentTreeEntry,
 } from '../../src/interaction/agents-command.ts'
+import { liveAgentDescendantCount } from '../../src/interaction/agents-stop.ts'
 import { FakeMayflyComponents, FakeKeymap, FakeScreen, FakeTheme } from './fakes.ts'
 import { renderRequest, flushRequests } from './request-fixture.ts'
 import type { MayflyComponent } from '../../src/core/types.ts'

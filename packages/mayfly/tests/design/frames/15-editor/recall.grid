@@ -10,16 +10,16 @@ styles
 ## up
 grid 96x3 cursor none
 |╭──────────────────────────────────────────────────────────────── Update the landing page hero ╮
-|│ > also update the footer▌                                                       ↑ queued 1/4 │
+|│ > run the width scan again▌                                                    ↑ history 1/3 │
 |╰──────────────────────────────────────────────────────────────────────────────────────────────╯
 styles
 0: 0-65 fg:border; 66-93 fg:textStrong b; 94-95 fg:border
-1: 0 fg:border; 2-3 fg:text; 82-93 fg:muted; 95 fg:border
+1: 0 fg:border; 2-3 fg:text; 81-93 fg:muted; 95 fg:border
 2: 0-95 fg:border
 ## up
 grid 96x3 cursor none
 |╭──────────────────────────────────────────────────────────────── Update the landing page hero ╮
-|│ > run the width scan again▌                                                    ↑ history 2/4 │
+|│ > bump the changelog too▌                                                      ↑ history 2/3 │
 |╰──────────────────────────────────────────────────────────────────────────────────────────────╯
 styles
 0: 0-65 fg:border; 66-93 fg:textStrong b; 94-95 fg:border
@@ -28,9 +28,9 @@ styles
 ## down
 grid 96x3 cursor none
 |╭──────────────────────────────────────────────────────────────── Update the landing page hero ╮
-|│ > also update the footer▌                                                       ↑ queued 1/4 │
+|│ > run the width scan again▌                                                    ↑ history 1/3 │
 |╰──────────────────────────────────────────────────────────────────────────────────────────────╯
 styles
 0: 0-65 fg:border; 66-93 fg:textStrong b; 94-95 fg:border
-1: 0 fg:border; 2-3 fg:text; 82-93 fg:muted; 95 fg:border
+1: 0 fg:border; 2-3 fg:text; 81-93 fg:muted; 95 fg:border
 2: 0-95 fg:border
