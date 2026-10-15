@@ -59,7 +59,9 @@ function paintStrip(node: MayflyTabsNode, width: number, focus: TabsFocus, color
     const badge = badgeOf(item)
     if (node.mode === 'wizard') {
       const done = !active && completed.includes(item.id)
-      const plain = `${done ? '✓' : active ? '●' : '○'} ${item.label}`
+      // A step before the current one with no answer was passed over: `–` in muted, so the strip shows what is missing.
+      const passed = !active && !done && index < activeIndex
+      const plain = `${done ? '✓' : active ? '●' : passed ? '–' : '○'} ${item.label}`
       const text = done ? `${colors.success('✓')} ${colors.text(item.label)}`
         : active ? `${colors.primary('●')} ${strong(colors.primary(item.label))}` : colors.muted(plain)
       return { plain, text }
@@ -72,19 +74,35 @@ function paintStrip(node: MayflyTabsNode, width: number, focus: TabsFocus, color
   const separator = wizard ? colors.muted('  ›  ') : ' '.repeat(TAB_GAP)
   const separatorWidth = wizard ? WIZARD_SEPARATOR_WIDTH : TAB_GAP
   const total = tokens.reduce((sum, token) => sum + visibleWidth(token.plain), 0) + separatorWidth * Math.max(0, tokens.length - 1)
-  if (total > width) return [paintFolded(tokens, activeIndex, width, colors, focused ? focus.marker : '')]
+  const progress = wizard ? wizardProgress(node, activeIndex) : ''
+  if (total > width) return [paintFolded(tokens, activeIndex, width, colors, focused ? focus.marker : '', progress)]
   const offset = tokens.slice(0, activeIndex).reduce((sum, token) => sum + visibleWidth(token.plain) + separatorWidth, 0)
   const rule = '━'.repeat(visibleWidth(tokens[activeIndex]?.plain ?? ''))
   // The strip's rule is bold while it has focus; the wizard's is not.
   const underline = `${' '.repeat(offset)}${focused ? (wizard ? colors.primary(rule) : strong(colors.primary(rule))) : colors.muted(rule)}${focused ? focus.marker : ''}`
-  return [tokens.map(token => token.text).join(separator), fit(underline, width)]
+  const line = tokens.map(token => token.text).join(separator)
+  // The `n/m` of the questions sits at the right edge when the strip leaves room for it.
+  const gap = width - total - visibleWidth(progress)
+  return [gap >= 2 && progress !== '' ? `${line}${' '.repeat(gap)}${colors.muted(progress)}` : line, fit(underline, width)]
+}
+
+/** `2/3`: the current step over the steps that ask something; the review page, which asks nothing, has none. */
+function wizardProgress(node: MayflyTabsNode, activeIndex: number): string {
+  if (node.items[activeIndex]?.review === true) return ''
+  const total = node.items.filter(item => item.review !== true).length
+  return total < 2 ? '' : `${String(activeIndex + 1)}/${String(total)}`
 }
 
 /**
  * A strip that does not fit folds around the active tab: `‹ active next +N ›`, then `‹ active +N ›`, then the same row
  * cut to the width. The cursor mark rides at the end when the row leaves a column for it.
  */
-function paintFolded(tokens: readonly { readonly text: string, readonly plain: string }[], activeIndex: number, width: number, colors: MayflySemanticColors, marker: string): string {
+function paintFolded(tokens: readonly { readonly text: string, readonly plain: string }[], activeIndex: number, width: number, colors: MayflySemanticColors, marker: string, progress = ''): string {
+  /* A wizard folds to its current step and where it stands (`‹ Region · 2/3 ›`), which is all a narrow strip can say. */
+  if (progress !== '') {
+    const wizardFold = `${colors.muted('‹ ')}${tokens[activeIndex]!.text}${colors.muted(` · ${progress} ›`)}`
+    if (visibleWidth(wizardFold) <= width) return marker !== '' && visibleWidth(wizardFold) < width ? `${wizardFold}${marker}` : wizardFold
+  }
   const fold = (shown: readonly { readonly text: string }[]): string => {
     const rest = tokens.length - shown.length
     return `${colors.muted('‹ ')}${shown.map(token => token.text).join('  ')}${colors.muted(rest > 0 ? `  +${String(rest)} ›` : ' ›')}`

@@ -415,6 +415,34 @@ function fileCall(entry: ToolEntry, t: MayflyTranslate): Call {
   }
 }
 
+/**
+ * What the user answered a question call: how many questions, and a row each (the question's header or id, then the choice,
+ * the typed answer, or `— skipped`). Undefined when the result is not the Harness's answer batch.
+ */
+function answeredQuestions(entry: ToolEntry, t: MayflyTranslate): { readonly count: number, readonly rows: readonly ToolBodyRow[] } | undefined {
+  let answers: unknown
+  try { answers = (JSON.parse(entry.result?.text ?? '') as { answers?: unknown }).answers } catch { return undefined }
+  if (!Array.isArray(answers) || answers.length === 0) return undefined
+  let asked: unknown
+  try { asked = (JSON.parse(entry.arguments) as { questions?: unknown }).questions } catch { asked = undefined }
+  const known = Array.isArray(asked) ? asked as readonly { id?: unknown, header?: unknown }[] : []
+  const names = (answers as readonly { id?: unknown }[]).map(answer => {
+    const id = typeof answer.id === 'string' ? answer.id : ''
+    const header = known.find(question => question.id === id)?.header
+    return typeof header === 'string' ? header : id
+  })
+  // The answers start in one column, behind the longest question name.
+  const wide = Math.max(...names.map(name => name.length))
+  const rows = (answers as readonly { id?: unknown, selected?: unknown, custom?: unknown }[]).map((answer, index): ToolBodyRow => {
+    const lead = names[index]!.padEnd(wide)
+    const given = [...Array.isArray(answer.selected) ? answer.selected as unknown[] : [], ...typeof answer.custom === 'string' && answer.custom !== '' ? [answer.custom] : []].filter((part): part is string => typeof part === 'string')
+    return given.length === 0
+      ? bodyRow(t('— skipped'), lead, 'warning')
+      : bodyRow(given.join(' · '), lead)
+  })
+  return { count: rows.length, rows }
+}
+
 function loneCall(entry: ToolEntry, t: MayflyTranslate): Call {
   const exit = exitText(entry.terminal?.exitCode, entry.terminal?.signal, t)
   const interruption = entry.result?.interruption
@@ -449,6 +477,18 @@ function loneCall(entry: ToolEntry, t: MayflyTranslate): Call {
   const sentBack = revision !== undefined && revision.trim() !== ''
   const name = plan ? t(state === 'ok' ? 'Plan approved' : sentBack ? 'Plan sent back' : 'Plan rejected') : nameOf(entry.name)
   const planText = plan ? partialStrings(entry.arguments).fields['plan'] : undefined
+  // A question the user answered reads as what happened; Verbose lists each question with its answer.
+  const answered = entry.activity === 'questions' && state === 'ok' && interruption === undefined ? answeredQuestions(entry, t) : undefined
+  if (answered !== undefined) {
+    return {
+      id: entry.id, callId: entry.callId, activity: entry.activity, state, phase: phaseOf(state, false),
+      name: t(answered.count === 1 ? 'Answered {count} question' : 'Answered {count} questions', { count: answered.count }),
+      label: t(answered.count === 1 ? 'Answered {count} question' : 'Answered {count} questions', { count: answered.count }),
+      outcome, startedAt: entry.startedAt, ...(entry.result === undefined ? {} : { endedAt: entry.result.endedAt }),
+      input: () => NO_ROWS,
+      body: () => ({ rows: answered.rows, total: answered.rows.length }),
+    }
+  }
   if (plan) outcome.splice(0, outcome.length, planSteps(planText, t), sentBack ? `"${flat(revision, REASON_MAX_CHARS) ?? ''}"` : undefined)
   return {
     id: entry.id,

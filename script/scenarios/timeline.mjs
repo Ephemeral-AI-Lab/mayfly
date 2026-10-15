@@ -376,7 +376,7 @@ export function compile(items, { provider = 'deepseek-official', model = 'deepse
       // `outcomes` are the results the call has for the other answers to its ask (`rejected`, `declined`, `revised`); the driver plays the one the answer picks.
       const variants = call.outcomes === undefined ? undefined : Object.fromEntries(Object.entries(call.outcomes).map(([key, outcome]) => [key, resultData(outcome.result, outcome.error === true, outcome.meta)]))
       if (call.unanswered !== undefined && call.unanswered !== false) event(resultAt, 'tool/result', cutShortData(), true)
-      else event(resultAt, 'tool/result', resultData(call.result ?? '', call.error === true, call.meta), true, variants === undefined ? {} : { variants, answerOf: call.callId })
+      else event(resultAt, 'tool/result', resultData(call.result ?? '', call.error === true, call.meta), true, variants === undefined && call.ask === undefined ? {} : { ...variants === undefined ? {} : { variants }, answerOf: call.callId })
       last = Math.max(last, resultAt)
     })
     event(last + 100, 'step/end', { turn: turnNo, step: stepNo })

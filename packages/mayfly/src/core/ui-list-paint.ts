@@ -45,6 +45,8 @@ export interface ListPaintOptions {
   /** The focus marker that rides after the arrow. */
   readonly marker: string
   readonly selectedIds: readonly string[]
+  /** The text typed into each `input` row, by item id. */
+  readonly inputs?: Readonly<Record<string, string>> | undefined
   /** A row's segment state, for the strip on the focused row. */
   readonly segment?: ((item: MayflyListItem) => SegmentView | undefined) | undefined
   /** The strip's caption in the reserved footer when the segment has no label of its own. */
@@ -187,6 +189,8 @@ interface RowState {
   /** The columns the label (with its mark) takes before the description column starts; 0 when the row has no column. */
   readonly column: number
   readonly view: SegmentView | undefined
+  /** The text of an `input` row; empty for every other row. */
+  readonly text: string
 }
 
 /** The columns before the label: the gutter, indent, tree guides, disclosure, number, and check. */
@@ -206,8 +210,18 @@ function prefixOf(state: RowState, colors: MayflySemanticColors): string {
   return `${gutter}${indent}${guides}${disclosure}${number}${check}`
 }
 
+/** An `input` row's label and what was typed after it, with a block where the next character lands while the cursor is on it. */
+function inputOf(state: RowState, colors: MayflySemanticColors): string {
+  const item = state.spec.item
+  const label = state.on ? strong(colors.textStrong(item.label)) : colors.text(item.label)
+  if (state.text === '' && !(state.on && state.focused)) return label
+  const caret = state.on && state.focused ? '\x1b[7m \x1b[27m' : ''
+  return `${label}${colors.muted(':')} ${state.text === '' ? '' : state.on ? colors.textStrong(state.text) : colors.text(state.text)}${caret}`
+}
+
 function labelOf(state: RowState, colors: MayflySemanticColors): string {
   const item = state.spec.item
+  if (item.input !== undefined) return inputOf(state, colors)
   if (item.labelSpans !== undefined) return spansText(item.labelSpans, colors)
   if (item.disabled === true) return colors.muted(item.label)
   // One rule for every picker: the cursor row is bold white, the live row takes the theme color (bold when the cursor is on it).
@@ -220,7 +234,8 @@ function headOf(state: RowState, colors: MayflySemanticColors): { readonly prefi
   const prefix = prefixOf(state, colors)
   const item = state.spec.item
   const head = `${prefix}${labelOf(state, colors)}${labelTail(item, colors)}`
-  const description = state.width <= DETAIL_MIN_WIDTH ? '' : descriptionOf(item, colors)
+  const placeholder = item.input?.placeholder !== undefined && state.text === '' ? colors.muted(item.input.placeholder) : undefined
+  const description = state.width <= DETAIL_MIN_WIDTH ? '' : placeholder ?? descriptionOf(item, colors)
   if (description.length === 0) return { prefix, line: head }
   // The description starts in a column behind the widest label; a wrapped row keeps it one space after its label.
   const lead = state.column === 0 ? 1 : Math.max(COLUMN_GAP, visibleWidth(prefix) + state.column + COLUMN_GAP - visibleWidth(head))
@@ -410,6 +425,7 @@ export function paintList(node: ListNodeView, width: number, height: number, col
       number: numbered ? String(spec.position + 1).padStart(digits) : '',
       column,
       view,
+      text: item.input === undefined ? '' : options.inputs?.[item.id] ?? '',
     }
     // The line under the rows names the focused row's level; a row without a segment leaves it blank.
     if (on && options.focused) { if (view === undefined) focusedWithout = true; else footerFor = view }
@@ -420,7 +436,7 @@ export function paintList(node: ListNodeView, width: number, height: number, col
     const key = [
       available, column, state.marker, on ? 1 : 0, options.focused ? 1 : 0, node.marker ?? '', state.check, state.number,
       spec.depth, spec.last ? 1 : 0, spec.expandable ? 1 : 0, spec.open ? 1 : 0,
-      `${String(view?.active)}\0${String(view?.pinned)}`, options.flow === true ? 1 : 0,
+      `${String(view?.active)}\0${String(view?.pinned)}`, options.flow === true ? 1 : 0, state.text,
     ].join('\x01')
     const leaded = item.bodyLead !== undefined && spec.open && item.body !== undefined
     const paintHead = (): readonly string[] => leaded ? leadedLines(state, colors, options.body) : headLines(state, colors, options.translate)

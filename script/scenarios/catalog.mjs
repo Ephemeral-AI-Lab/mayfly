@@ -38,6 +38,7 @@ const PHASE3_COVERS = [...new Set([
 ])]
 
 /** What each replay shows, as the sources whose change it can reveal. */
+const QUESTION_COVERS = [`${INTERACTION}questions-plugin.ts`, `${INTERACTION}questionnaire.ts`, 'packages/mayfly/src/components/question-wizard.ts', 'packages/ui/src/patterns.ts', 'packages/mayfly/src/core/ui-validator-review.ts']
 const COVERS = {
   phase3: PHASE3_COVERS,
   levels: [`${TRANSCRIPT}tool-*.ts`, `${TRANSCRIPT}process-*.ts`, `${TRANSCRIPT}presentation-policy.ts`, `${TRANSCRIPT}disclosure.ts`, `${TRANSCRIPT}official-model.ts`, 'packages/mayfly/src/frontend/models.ts', ...STREAM],
@@ -69,7 +70,9 @@ const COVERS = {
   approvalsRejected: [`${INTERACTION}approval-plugin.ts`, ...REQUEST],
   approvalsEdit: [`${INTERACTION}approval-plugin.ts`, ...REQUEST, 'packages/mayfly/src/core/content-rows.ts'],
   approvalsQueue: [`${INTERACTION}approval-plugin.ts`, ...REQUEST],
-  questions: [`${INTERACTION}questions-plugin.ts`, `${INTERACTION}questionnaire.ts`],
+  questions: QUESTION_COVERS,
+  questionsMore: QUESTION_COVERS,
+  questionOne: QUESTION_COVERS,
   plan: [`${INTERACTION}plan-review-panel.ts`, `${INTERACTION}questions-plugin.ts`, ...REQUEST],
   planLong: [`${INTERACTION}plan-review-panel.ts`, `${INTERACTION}questions-plugin.ts`, ...REQUEST, 'packages/mayfly/src/core/markdown-rows.ts'],
   goal: [`${TRANSCRIPT}status-goal.ts`],
@@ -96,6 +99,33 @@ const COVERS = {
  * that `differs` from the prototype, and `pending`. `brief.mjs` prints them. Finalizing a group removes its entries.
  */
 const REVIEW = {
+  questionsMore: {
+    scene: 22,
+    reference: 'prototype scene 22 (Questions) · component-library §5.8 · part 6e · built from: patterns.wizard (new) over ui.tabs wizard strip + tab pages, ui.list (choose, marks, numbered, new typed `input` row), ui.review (new), ui.actions (hidden Enter actions), ui.surface (borderless panel)',
+    implemented: [
+      'One wizard step per question and a Review page; a single question drops the strip and the review. The strip marks `✓` answered, `–` passed over without an answer, `●` here, `○` to come, with `n/m` at the right edge; below the width it folds to `‹ Auth · 1/3 ›`.',
+      'No buttons. A digit answers at once and moves on; `Enter` takes the focused row (or, in a multiple choice, the ticked rows) and moves on; `←/→` and `Alt+←/→` move between questions without answering; `Esc` walks back one question, and on the first one cancels (asking first when something is typed).',
+      '`Other` is the last row of every list and is typed in place: put the cursor on it (the last digit, `↓`, or `End`) and type; it ticks itself while it holds text; `Backspace` edits, `Ctrl+U` clears. A question with no options is one typed row, `Answer`.',
+      'Choices are `●` chosen and `○` not on single and multiple lists; typing into `Other` of a single list replaces the choice, and a multiple list keeps its ticks.',
+      'The Review page (`ui.review`) lists each question with the answer the panel holds (`— skipped` in warning when none), and `Submit answers`. `1`-`N` or `Enter` on an answer goes back to that question; the draft is kept.',
+      'The settled call in the stream reads `✓ Answered 3 questions · 0.5s`; at Verbose (`Ctrl+O` on the row) each question follows with its answer, `— skipped` in warning.',
+    ],
+    focus: [
+      { look: 'The strip marks and the n/m counter while you answer, skip, and come back', how: 'scenario `questionsSkip` (checkpoints `passed`, `review`, `back`, `review-again`)' },
+      { look: 'Typing into `Other`: where the cursor sits, the tick, the placeholder, multiple choice with Other', how: 'checkpoints `scopes-other`, `notes`, `typed` of `questionsMore`' },
+      { look: 'The review page and what `Enter` does on each row', how: 'checkpoints `review`; try it live with `pnpm run scenario questionsMore`' },
+      { look: 'One question alone: no strip, no review, a digit submits', how: 'scenario `questionOne`' },
+      { look: 'Narrow widths and the folded strip', how: 'scenario `questionsNarrow` (60x24 and 40x20)' },
+      { look: 'Esc and the discard question', how: 'scenario `questionsCancel` (checkpoints `confirm`, `stay`; answer Yes by hand)' },
+    ],
+    differs: [
+      '`Other` has no caret movement: it is edited at its end (typing, Backspace, Ctrl+U); `←/→` while it holds the cursor still move between questions (the prototype keeps them for the caret).',
+      'The strip folds to `‹ Auth · 1/3 ›` only when the full strip does not fit, not at a fixed 60 columns.',
+      'The `No selection` row and the Back/Next/Cancel buttons are gone; a question is skipped by moving on without answering.',
+      'Review answers show in one column behind the longest question name (spans of the row, so a narrow list keeps them).',
+    ],
+    pending: ['The question panel stays an overlay (not on the decision lane).', 'Tests, goldens and the design-doc rewrite are deferred to the end of Phase 6 (see the test brief in .artifacts/handoff).'],
+  },
   statsAccount: {
     scene: 26,
     reference: 'component-library §5.10 (Account balance states) · part 6c · built from: ui.fields (aligned rows), the gap loader line, a warning `!` on the tab (ui.tabs attention); an information page with no keys of its own',
@@ -953,6 +983,28 @@ const SCRIPTS = {
     key('enter'),
     play(), checkpoint('end'),
   ],
+  // Two questions answered by digits; the review page lists both answers, and Submit sends them.
+  questions: [
+    play(), checkpoint('first'),
+    key('2'), checkpoint('second'),
+    key('1'), checkpoint('review'),
+    key('end'), checkpoint('submit'),
+    key('enter'), play(), checkpoint('end'),
+  ],
+  // Three kinds of question: a digit answers, Space toggles, `Other` is typed in place; the review page, Submit.
+  questionsMore: [
+    play(), checkpoint('auth'),
+    key('2'), checkpoint('scopes'),
+    key('space'), key('down'), key('space'), checkpoint('toggled'),
+    key('end'), type('billing'), checkpoint('scopes-other'),
+    key('enter'), checkpoint('notes'),
+    type('Use pnpm please'), checkpoint('typed'),
+    key('enter'), checkpoint('review'),
+    key('end'), key('enter'), play(), checkpoint('end'),
+    key('alt+up'), key('ctrl+o'), checkpoint('verbose'),
+  ],
+  // One question: no strip and no review; a digit answers it.
+  questionOne: [play(), checkpoint('asking'), key('3'), play(), checkpoint('end')],
   // A command that deletes files waits on you: the request and the card, the narrow card, and Allow once.
   approvals: [
     play(), wait(ARMED), checkpoint('asking'),
@@ -1115,6 +1167,9 @@ const SIZES = {
   approvalsEdit: [[120, 56], [60, 44]],
   approvalsQueue: [[120, 56], [60, 44]],
   plan: [[120, 40], [60, 30]],
+  questions: [[120, 40], [60, 30]],
+  questionsMore: [[120, 40], [60, 30]],
+  questionOne: [[120, 40], [60, 30]],
   planRevised: [[120, 40], [60, 30]],
   planRejected: [[120, 40], [60, 30]],
   planLong: [[120, 40], [60, 30]],
@@ -2080,6 +2135,52 @@ export const CATALOG = Object.freeze({
     covers: [...PHASE3_COVERS, `${INTERACTION}native-sessions.ts`],
     sizes: [DEFAULT_SIZE],
     script: visit([{ name: 'image', after: [...SESSIONS_OPEN, key('down'), key('down'), checkpoint('sessions'), key('enter'), until('Open conversation'), key('enter'), until('Resumed session'), checkpoint('resumed')] }]),
+  },
+  // A question passed over without an answer: `–` in the strip, `— skipped` on the review page, and a digit there goes back.
+  questionsSkip: {
+    summary: 'three questions with two passed over unanswered: the `–` marks, the review page with `— skipped`, and going back to a question from it',
+    source: { replay: 'questionsMore' },
+    covers: QUESTION_COVERS,
+    sizes: [[100, 30]],
+    script: [
+      play(), key('right'), checkpoint('passed'),
+      key('right'), key('right'), checkpoint('review'),
+      key('1'), checkpoint('back'),
+      key('1'), key('right'), key('right'), checkpoint('review-again'),
+      key('end'), key('enter'), play(), checkpoint('end'),
+    ],
+  },
+  // The narrow sizes: the strip folds to the current question and its place, the typed row and the review page keep their rows.
+  questionsNarrow: {
+    summary: 'the three-question panel at 60 and 40 columns: the folded strip, a typed Other row, and the review page',
+    source: { replay: 'questionsMore' },
+    covers: QUESTION_COVERS,
+    sizes: [[60, 24], [40, 20]],
+    script: [
+      play(), checkpoint('auth'),
+      key('2'), key('end'), type('billing'), checkpoint('scopes'),
+      key('enter'), type('Use pnpm'), checkpoint('notes'),
+      key('enter'), checkpoint('review'),
+      key('end'), key('enter'), play(), checkpoint('end'),
+    ],
+  },
+  // Lifecycle: Esc walks back one question at a time; with an answer typed, Esc on the first question asks before it discards.
+  questionsCancel: {
+    summary: 'Esc walks back one question; with a typed answer, Esc on the first question asks before discarding and No keeps the panel (Yes cancels the request: a dismissed question fails its tool call, which the frame runner refuses, so try Yes with `pnpm run scenario questionsCancel`)',
+    source: { replay: 'questionsMore' },
+    covers: QUESTION_COVERS,
+    sizes: [[100, 30]],
+    script: [
+      play(), key('2'), checkpoint('scopes'),
+      key('esc'), checkpoint('back-to-auth'),
+      key('end'), type('maybe'), checkpoint('typed'),
+      key('esc'), checkpoint('confirm'),
+      key('enter'), checkpoint('stay'),
+      key('esc'), checkpoint('confirm-again'),
+      key('esc'), checkpoint('closed-confirm'),
+      key('ctrl+u'), key('home'), key('1'), checkpoint('replaced'),
+      key('right'), key('right'), key('end'), key('enter'), play(), checkpoint('end'),
+    ],
   },
   ...APP,
   ...PERF,

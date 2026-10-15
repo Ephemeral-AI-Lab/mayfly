@@ -54,6 +54,8 @@ export type GrammarControl =
     readonly label?: string
     /** The row has a `←` of its own (a segment strip, a branch), but it would change nothing now. */
     readonly stuckLeft?: true
+    /** The row is a text typed in place: printable keys and Backspace edit it before any other binding sees them. */
+    readonly input?: true
   }
   | { readonly kind: 'empty-list' }
   /** The slider: `label` names `←`/`→`; `stuckLeft` means `←` would change nothing (the first level shows), `unpin` that `Delete` has a pin to drop. */
@@ -160,6 +162,7 @@ export type GrammarIntent =
   | { readonly kind: 'slider-edge', readonly end: 'start' | 'end' }
   | { readonly kind: 'slider-unpin' }
   | { readonly kind: 'slider-accept' }
+  | { readonly kind: 'row-input', readonly op: 'type' | 'backspace' | 'clear' }
 
 /** What a prompt key does; the compiler applies each to the prompt's draft or its editor. */
 export type PromptOperation =
@@ -211,11 +214,9 @@ function accelerators(bindings: GrammarBinding[], state: GrammarState, printable
   }
 }
 
-function groupMoves(bindings: GrammarBinding[], state: GrammarState, hinted: boolean): void {
-  const hint = hinted && state.groups > 1
-    ? { id: 'group', label: 'groups', priority: PRIORITY.group, actions: [ACTION_NEXT_CONTROL, ACTION_SHIFT_TAB], compact: 'Tab' }
-    : undefined
-  push(bindings, action(ACTION_NEXT_CONTROL), { kind: 'group', delta: 1 }, hint)
+function groupMoves(bindings: GrammarBinding[]): void {
+  /* Tab and Shift+Tab still move between groups; the hint row no longer names them (every panel already shows its arrows). */
+  push(bindings, action(ACTION_NEXT_CONTROL), { kind: 'group', delta: 1 })
   push(bindings, action(ACTION_SHIFT_TAB), { kind: 'group', delta: -1 })
 }
 
@@ -281,7 +282,7 @@ function textEditing(bindings: GrammarBinding[], state: GrammarState, control: E
   formSave(bindings, state)
   // A suggestion that matches takes Tab; the group move is hinted only when Tab has nothing to complete.
   if (control.completes === true) push(bindings, action(ACTION_NEXT_CONTROL), { kind: 'complete' }, { id: 'complete', label: 'complete', priority: PRIORITY.adjust, actions: [ACTION_NEXT_CONTROL] })
-  groupMoves(bindings, state, control.completes !== true)
+  groupMoves(bindings)
   const textarea = control.field === 'textarea'
   push(bindings, action(ACTION_NEWLINE), textarea ? { kind: 'text-newline' } : { kind: 'swallow' },
     textarea ? { id: 'newline', label: 'newline', priority: PRIORITY.adjust, actions: [ACTION_NEWLINE] } : undefined)
@@ -291,7 +292,7 @@ function textEditing(bindings: GrammarBinding[], state: GrammarState, control: E
 
 function picker(bindings: GrammarBinding[], state: GrammarState, control: Extract<GrammarControl, { readonly kind: 'select' }>): void {
   formSave(bindings, state)
-  groupMoves(bindings, state, true)
+  groupMoves(bindings)
   const moves: readonly (readonly [string, -1 | 1])[] = [[ACTION_MOVE_UP, -1], [ACTION_MOVE_DOWN, 1], [ACTION_SEGMENT_LEFT, -1], [ACTION_SEGMENT_RIGHT, 1]]
   for (const [index, [id, delta]] of moves.entries()) {
     push(bindings, action(id), { kind: 'picker-move', delta },
@@ -407,7 +408,7 @@ function promptBindings(bindings: GrammarBinding[], state: GrammarState, control
     push(bindings, action(ACTION_MOVE_DOWN), op('recall-newer'))
   }
   tabSwitches(bindings, state, false)
-  groupMoves(bindings, state, false)
+  groupMoves(bindings)
   type()
   return bindings
 }
@@ -441,6 +442,12 @@ export function keyGrammar(state: GrammarState): readonly GrammarBinding[] {
   if (control.kind === 'text' && control.editing) { textEditing(bindings, state, control); return bindings }
   if (control.kind === 'select' && control.picker) { picker(bindings, state, control); return bindings }
 
+  /* A row typed in place takes its text before digits, accelerators, and the filter see a key. */
+  if (control.kind === 'row' && control.input === true) {
+    push(bindings, { kind: 'key', key: 'ctrl+u' }, { kind: 'row-input', op: 'clear' })
+    push(bindings, { kind: 'backspace' }, { kind: 'row-input', op: 'backspace' })
+    push(bindings, { kind: 'text', space: true }, { kind: 'row-input', op: 'type' }, { id: 'type', keys: 'Type', label: 'your answer', priority: PRIORITY.adjust })
+  }
   const list = state.list
   if (list?.pasting === true) push(bindings, { kind: 'any' }, { kind: 'search-type' })
   if (list?.filterable === true) {
@@ -457,7 +464,7 @@ export function keyGrammar(state: GrammarState): readonly GrammarBinding[] {
   }
   // A search in progress hints only what ends or clears it.
   tabSwitches(bindings, state, control.kind !== 'tab' && list?.searching !== true && !(control.kind === 'row' && arrowsSwitchTabs(state, control)))
-  groupMoves(bindings, state, control.kind !== 'tab' && list?.searching !== true)
+  groupMoves(bindings)
   focusLevels(bindings)
   if (list?.searching === true) push(bindings, { kind: 'backspace' }, { kind: 'search-type' })
   // A declared Delete accelerator keeps its key; otherwise Delete resets a changed field.

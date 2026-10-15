@@ -21,6 +21,7 @@ import type {
   MayflyRichTextNode,
   MayflyScrollNode,
   MayflySection,
+  MayflyReviewNode,
   MayflySliderNode,
   MayflySpacerNode,
   MayflyStackNode,
@@ -229,6 +230,10 @@ function slider(options: Omit<MayflySliderNode, 'kind'>): MayflySliderNode {
   return frozen({ ...frozen(options), kind: 'slider' })
 }
 
+function review(options: Omit<MayflyReviewNode, 'kind'>): MayflyReviewNode {
+  return frozen({ ...frozen(options), kind: 'review' })
+}
+
 function diagram(source: MayflyContentField): MayflyDiagramNode {
   return frozen({ kind: 'diagram', diagram: 'mermaid', source })
 }
@@ -267,6 +272,7 @@ export const ui = Object.freeze({
   image,
   prompt,
   slider,
+  review,
   diagram,
   chart,
 })

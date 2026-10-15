@@ -1,5 +1,5 @@
 /**
- * Public UI patterns: four compositions of the builders that plugins and Mayfly core both reuse. A pattern has no
+ * Public UI patterns: five compositions of the builders that plugins and Mayfly core both reuse. A pattern has no
  * renderer of its own; each call is pure and returns a frozen node tree made only from `ui.*`.
  * @module @ephemeral-ai/mayfly-ui/patterns
  */
@@ -9,10 +9,12 @@ import type {
   MayflyField,
   MayflyInlineSpan,
   MayflyListItem,
+  MayflyReviewItem,
   MayflySurfaceNode,
   MayflyTabsNode,
   MayflyUiNode,
 } from './contracts.ts'
+import type { MayflyFormAddress, MayflyPagePath, MayflySelectionAddress } from './interaction.ts'
 
 /** How long a decision panel that opens unprompted swallows every key but `Esc`, in milliseconds. */
 const DECISION_ARM_MS = 300
@@ -81,6 +83,46 @@ export interface MayflyStatusPageProps {
   /** One page per tab id, shown under the strip while that tab is active; the strip switches them without a republish. */
   readonly pages?: Readonly<Record<string, MayflyUiNode>>
   readonly footer?: MayflyUiNode
+}
+
+/** One step of a wizard: its page and the controls on that page whose drafts the wizard reads. */
+export interface MayflyWizardStep {
+  readonly id: string
+  readonly label: string
+  /** The step's page. Its lists name {@link patterns.wizardNext} as their `acceptActionId`, so `Enter` takes the answer and moves on. */
+  readonly body: MayflyUiNode
+  /** Ids of the forms on the page: `Enter` validates them before the next step, and the submission carries them. */
+  readonly forms?: readonly string[]
+  /** Ids of the lists on the page: the submission carries their selections. */
+  readonly lists?: readonly string[]
+}
+
+/** The answer a review row shows, as a control on one step's page. */
+export interface MayflyWizardReviewItem {
+  readonly stepId: string
+  readonly label: string
+  readonly source: { readonly kind: 'list', readonly controlId: string } | { readonly kind: 'form', readonly formId: string, readonly fieldId: string }
+}
+
+export interface MayflyWizardProps {
+  /** The prefix of the wizard's controls: the strip is `<id>`, the review page `<id>.review`; default `wizard`. */
+  readonly id?: string
+  readonly title: string
+  readonly badges?: readonly MayflyInlineSpan[]
+  readonly steps: readonly MayflyWizardStep[]
+  /** The step shown first; default the first. */
+  readonly activeId?: string
+  /** The last page, listing every answer before the submit row. Without it the last step's `Enter` submits. */
+  readonly review?: {
+    readonly label: string
+    readonly items: readonly MayflyWizardReviewItem[]
+    readonly skippedLabel: string
+    readonly submitLabel: string
+  }
+  /** The action the review page's submit row runs; default `<id>.submit`. Without a review, the last step's {@link patterns.wizardNext} action submits. */
+  readonly submitActionId?: string
+  /** The word the hint row gives the strip's arrows (default `step`). */
+  readonly hintLabel?: string
 }
 
 const isNode = (value: unknown): value is MayflyUiNode => typeof value === 'object' && value !== null && 'kind' in value
@@ -161,12 +203,73 @@ function statusPage(props: MayflyStatusPageProps): MayflySurfaceNode {
   })
 }
 
+const wizardNext = (id: string, stepId: string): string => `${id}.next.${stepId}`
+
+/**
+ * A multi-step form: a step strip, one page per step, and an optional review page. Marks follow the answers (`✓` answered,
+ * `–` passed without one, `●` here, `○` to come), `Esc` walks back one step, `Alt+←/→` and (on a choose row) plain `←/→`
+ * move between steps, and `Enter` takes the answer and moves on: no buttons. A wizard of one step drops the strip and the
+ * review and submits at once. Drafts stay in the surface while the reader moves between steps.
+ */
+function wizard(props: MayflyWizardProps): MayflySurfaceNode {
+  const id = props.id ?? 'wizard'
+  const { steps, review } = props
+  if (steps.length === 0) throw new TypeError('wizard needs at least one step')
+  const submitActionId = props.submitActionId ?? `${id}.submit`
+  const single = steps.length === 1 && review === undefined
+  const pathOf = (stepId: string): MayflyPagePath => single ? [] : [{ controlId: id, itemId: stepId }]
+  const forms = steps.flatMap((step): MayflyFormAddress[] => (step.forms ?? []).map(formId => ({ pagePath: pathOf(step.id), formId })))
+  const selections = steps.flatMap((step): MayflySelectionAddress[] => (step.lists ?? []).map(controlId => ({ pagePath: pathOf(step.id), controlId })))
+  const submit = { id: submitActionId, label: review?.submitLabel ?? 'Submit', hidden: true, intent: 'primary' as const, submit: forms, ...selections.length === 0 ? {} : { selections } }
+  const reviewId = `${id}.review`
+  const reviewPath: MayflyPagePath = [{ controlId: id, itemId: reviewId }]
+  const pages = steps.map((step, index) => {
+    const last = index === steps.length - 1
+    const read = (step.forms ?? []).map(formId => ({ pagePath: pathOf(step.id), formId }))
+    const next = last && review === undefined ? { ...submit, id: wizardNext(id, step.id) } : {
+      id: wizardNext(id, step.id), label: 'Next', hidden: true,
+      ...read.length === 0 ? {} : { read },
+      navigate: last ? reviewPath : pathOf(steps[index + 1]!.id),
+    }
+    const content = ui.stack.column([step.body, ui.actions({ id: `${id}.keys.${step.id}`, items: [next] })])
+    return single ? content : ui.child(content, { tab: { controlId: id, itemId: step.id } })
+  })
+  if (single) return ui.surface({ title: props.title, chrome: 'overlay', escapeLabel: 'cancel', ...props.badges === undefined ? {} : { badges: props.badges }, child: pages[0] as MayflyUiNode })
+  const reviewItems: MayflyReviewItem[] = review === undefined ? [] : review.items.map(item => ({
+    id: item.stepId, label: item.label,
+    source: item.source.kind === 'list' ? { kind: 'list', pagePath: pathOf(item.stepId), controlId: item.source.controlId } : { kind: 'form', pagePath: pathOf(item.stepId), formId: item.source.formId, fieldId: item.source.fieldId },
+  }))
+  const reviewPage = review === undefined ? [] : [ui.child(ui.stack.column([
+    ui.review({ id: reviewId, tabsId: id, items: reviewItems, skippedLabel: review.skippedLabel, submitLabel: review.submitLabel, submitActionId, autofocus: true }),
+    ui.actions({ id: `${id}.keys.review`, items: [submit] }),
+  ]), { tab: { controlId: id, itemId: reviewId } })]
+  const items = [
+    ...steps.map((step, index) => ({ id: step.id, label: step.label, ...index === 0 ? {} : { backId: steps[index - 1]!.id } })),
+    ...review === undefined ? [] : [{ id: reviewId, label: review.label, review: true as const, backId: steps.at(-1)!.id }],
+  ]
+  return ui.surface({
+    title: props.title,
+    chrome: 'overlay',
+    escapeLabel: 'cancel',
+    ...props.badges === undefined ? {} : { badges: props.badges },
+    child: ui.stack.column([
+      ui.tabs({ id, mode: 'wizard', activeId: props.activeId ?? steps[0]!.id, items, hintLabel: props.hintLabel ?? 'step' }),
+      ui.spacer(),
+      ...pages,
+      ...reviewPage,
+    ]),
+  })
+}
+
 /** The patterns, pure and frozen, and the arm delay a decision panel's overlay sets (`decisionArmMs`). */
 export const patterns = Object.freeze({
   decisionPanel,
   railPanel,
   splitView,
   statusPage,
+  wizard,
+  /** The id of the hidden action that takes a step's answer and moves to the next page; a step's lists name it as `acceptActionId`. */
+  wizardNext,
   /** The `armMs` of an overlay that shows a decision panel unprompted (slice 1.8a): stray keys grant nothing for this long. */
   decisionArmMs: DECISION_ARM_MS,
 })

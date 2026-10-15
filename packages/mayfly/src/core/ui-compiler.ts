@@ -53,7 +53,7 @@ import {
   type PatternFocus,
 } from './ui-patterns.ts'
 import { concatRows, findMarkerRow, isVirtualRows, mapRows, prepareRows, sameMaterializedRows, sliceRows, unclampedRows, virtualRows } from './ui-rows.ts'
-import { ColumnStack, RowStack, onScreen, placeChild } from './ui-stacks.ts'
+import { ColumnStack, PageGroup, PageHold, RowStack, onScreen, placeChild } from './ui-stacks.ts'
 import { sliceByColumn, visibleWidth } from './width.ts'
 import { fieldActions, fieldReset, type UiFieldAction } from './ui-interaction-field-actions.ts'
 import { fieldDecor, fieldDisplayError, stepNumber } from './ui-interaction-form.ts'
@@ -1098,6 +1098,7 @@ function grammarStateFor(state: FocusState, options: RuntimeCompilerOptions, con
           ...(expandable ? { expandable: true } : {}),
           ...(enterToggles ? { enterToggles: true } : {}),
           ...(stuckLeft ? { stuckLeft: true as const } : {}),
+          ...(item.input === undefined ? {} : { input: true as const }),
           ...(list.acceptVerb === undefined ? {} : { verb: list.acceptVerb }),
           ...(list.hintLabel === undefined ? {} : { label: list.hintLabel }),
         }
@@ -1657,8 +1658,20 @@ function compileUnit(node: CompilableNode, state: FocusState, options: RuntimeCo
       const stack = !spatial || node.direction === 'column'
         ? new ColumnStack([], stackOptions)
         : new RowStack([], stackOptions)
+      // The pages of one tab strip keep one height between them.
+      const groups = new Map<string, PageGroup>()
       for (const [index, child] of node.children.entries()) {
-        const compiled = compileNode(child.node, state, options, `${path}.${String(index)}`, mode)
+        let compiled = compileNode(child.node, state, options, `${path}.${String(index)}`, mode)
+        if (spatial && child.tab !== undefined) {
+          const tabs = child.tab.controlId
+          let group = groups.get(tabs)
+          if (group === undefined) {
+            group = new PageGroup(options.listRuntime.pagePeaks(`${JSON.stringify(pagePath)}\0${path}\0${tabs}`), paint => options.listRuntime.measure(paint))
+            groups.set(tabs, group)
+          }
+          const viewport = (): string => { const size = safeViewport(options.getViewport); return `${String(size.columns)}x${String(size.rows)}` }
+          compiled = new PageHold(compiled as Component, group, viewport) as unknown as typeof compiled
+        }
         const layout = !spatial
           ? { visible: () => conditionMatches(child.when, safeViewport(options.getViewport)) && tabVisible(child, pagePath, options) }
           : {
@@ -1797,6 +1810,7 @@ function compileUnit(node: CompilableNode, state: FocusState, options: RuntimeCo
             before: entries[0]!.position,
             after: visibleCount - entries.at(-1)!.position - 1,
             total: visibleCount,
+            inputs: choice?.inputs,
             translate,
             flow: options.listRuntime.flow,
             body: paintBody,
@@ -1906,6 +1920,8 @@ function compileUnit(node: CompilableNode, state: FocusState, options: RuntimeCo
     case 'image': return imageComponent(node, options)
     case 'prompt': return promptComponent(node, state, options, scopedControlKey('prompt', node.id))
     case 'slider': return sliderComponent(node, state, options, scopedControlKey('slider', node.id))
+    /* The surface model swaps a review for the list it reads from the drafts; without a model there are no drafts to list. */
+    case 'review': return staticComponent(() => [], options)
   }
 }
 
@@ -2280,6 +2296,35 @@ export class MayflyUiSurfaceRuntime {
     return this.loaderAnimation?.frame ?? 0
   }
 
+  private measuring = 0
+  private readonly peaks = new Map<string, Map<number, number>>()
+
+  /** The tallest height of a tab strip's pages by width, which outlasts a recompile so the panel does not shrink and grow back. */
+  pagePeaks(key: string): Map<number, number> {
+    let peaks = this.peaks.get(key)
+    if (peaks === undefined) {
+      peaks = new Map()
+      // The oldest strips go first, as scroll positions do.
+      if (this.peaks.size >= 32) this.peaks.delete(this.peaks.keys().next().value!)
+      this.peaks.set(key, peaks)
+    }
+    return peaks
+  }
+
+  /**
+   * Paint something to learn its size: whatever it draws, it arms no clock and leaves no mark on the render around it, so a
+   * loader on a page nobody sees does not wake the surface.
+   */
+  measure<Result>(paint: () => Result): Result {
+    this.measuring += 1
+    const scope: RenderScope = { animated: false, moves: false, volatile: false, moving: new Map() }
+    this.renders.push(scope)
+    try { return paint() } finally {
+      this.renders.pop()
+      this.measuring -= 1
+    }
+  }
+
   /** Counts what can change a row this surface painted, the clock aside; a retained render holds for one value. */
   get epoch(): number { return this.epochValue }
   /** Something that can change a painted row happened: every retained render of this surface is stale. */
@@ -2303,6 +2348,7 @@ export class MayflyUiSurfaceRuntime {
   }
   /** The render in progress painted a cell that moves with the clock; outside any retained render the clock is armed at once. */
   markAnimated(): void {
+    if (this.measuring > 0) return
     const scope = this.renders.at(-1)
     if (scope === undefined) {
       this.loaderAnimation?.render()
@@ -2321,6 +2367,7 @@ export class MayflyUiSurfaceRuntime {
    * holds for this frame too, and the surface joins the clock when one of the cells can be seen.
    */
   showMoving(cells: ReadonlyMap<Component, number>): void {
+    if (this.measuring > 0) return
     const scope = this.renders.at(-1)
     if (scope !== undefined) {
       scope.animated = true
@@ -3391,6 +3438,16 @@ class CompiledSurface implements MayflyEditorShellComponent {
         const slider = active as Extract<ControlDescriptor, { readonly kind: 'slider' }>
         const address = { pagePath: this.surfaceRuntime.pagePath(slider.node), controlId: slider.node.id }
         model?.updateSlider(address, intent.kind === 'slider-step' ? { kind: 'step', delta: intent.delta } : intent.kind === 'slider-edge' ? { kind: 'edge', end: intent.end } : intent.kind === 'slider-unpin' ? { kind: 'unpin' } : { kind: 'accept' })
+        return
+      }
+      case 'row-input': {
+        const row = active as Extract<ControlDescriptor, { readonly kind: 'event' }>
+        const item = admittedListItem(row.listEntry!.node.items, row.listEntry!.index)!
+        const text = model!.choice(listAddress!)?.inputs?.[item.id] ?? ''
+        // A paste arrives in one chunk; control bytes and bracketed-paste markers are not text.
+        const typed = data.replace(/\x1b\[20[01]~/gu, '').replace(/[\x00-\x1f\x7f-\x9f]/gu, '')
+        const next = intent.op === 'clear' ? '' : intent.op === 'backspace' ? Array.from(text).slice(0, -1).join('') : `${text}${typed}`
+        model!.updateChoice(listAddress!, { kind: 'input', id: item.id, text: next })
         return
       }
       case 'search-clear': {

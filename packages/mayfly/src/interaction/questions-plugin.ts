@@ -29,7 +29,7 @@ export function apply(ctx: Context): void {
     ctx.emit('mayfly/decision-wait-changed', { kind: review ? 'approval' : 'answer' })
     return requestOverlay(ctx, {
       id, title: () => review ? single.header ?? t('Plan review') : t('Questions'),
-      ...review ? { dismissal: 'discard', bare: true, contentScroll: true, armMs: patterns.decisionArmMs } : {},
+      ...review ? { dismissal: 'discard', bare: true, contentScroll: true, armMs: patterns.decisionArmMs } : { bare: true },
       ...request.agent === undefined ? {} : { agent: request.agent },
       ...request.signal === undefined ? {} : { signal: request.signal },
       view: () => review ? planReviewCard(t) : questionnaireView(questions, t),

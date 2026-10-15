@@ -43,6 +43,7 @@ import { stripTerminalText } from './escape-sequences.ts'
 import { countWork, type MayflyWorkCounters } from './ui-work-counters.ts'
 import { admitFieldPresentation, admitTextRules } from './ui-validator-form.ts'
 import { admitPromptFields, MAYFLY_UI_MAX_DRAFT_TEXT, type PromptAdmissionHelpers } from './ui-validator-prompt.ts'
+import { admitReviewFields, type ReviewAdmissionHelpers } from './ui-validator-review.ts'
 import { admitSliderFields, type SliderAdmissionHelpers } from './ui-validator-slider.ts'
 import { admitChildAdmission, admitCodeFields, admitDiffFields, admitBarChartFields, admitHeatmapFields, admitLineChartFields, admitProgressFields, admitScrollFields, admitSurfaceFields, admitTextStyles, countMotion, type AdmissionHelpers } from './ui-validator-content.ts'
 import { admitTabItemFields, admitTabsFields } from './ui-validator-tabs.ts'
@@ -345,6 +346,7 @@ function requiredId(value: unknown, path: string): string {
 const ADMISSION_HELPERS: AdmissionHelpers = { own, invalid, enumeration, finiteInteger, boolean, text, label, identifier: requiredId, collection }
 const PROMPT_HELPERS: PromptAdmissionHelpers<ValidationState> = { ...ADMISSION_HELPERS, draftText, enter }
 const SLIDER_HELPERS: SliderAdmissionHelpers<ValidationState> = { ...ADMISSION_HELPERS, enter }
+const REVIEW_HELPERS: ReviewAdmissionHelpers<ValidationState> = { ...ADMISSION_HELPERS, enter, pageSegment }
 
 function collection(value: unknown, path: string): readonly unknown[] {
   if (!Array.isArray(value)) invalid(`${path} must be an array`)
@@ -484,9 +486,11 @@ function admitListItem(value: unknown, path: string, counters?: MayflyWorkCounte
     const segmentValue = own(object, 'segment', path)
     const unavailableValue = own(object, 'unavailableActions', path)
     const confirmValue = own(object, 'confirm', path)
+    const inputValue = own(object, 'input', path)
     return {
       id: idText(required(object, 'id', path), `${path}.id`),
       label: label(required(object, 'label', path), `${path}.label`),
+      ...optional(inputValue === undefined ? undefined : enter(inputValue, `${path}.input`, state, input => ({ ...optional(optionalLabel(input, 'placeholder', `${path}.input`), 'placeholder') })), 'input'),
       ...optional(optionalLabel(object, 'detail', path), 'detail'),
       ...optional(detailSpansValue === undefined ? undefined : spans(detailSpansValue, `${path}.detailSpans`, state, false, true), 'detailSpans'),
       ...optional(optionalLabel(object, 'badge', path), 'badge'),
@@ -992,7 +996,6 @@ function actionItem(value: unknown, path: string, state: ValidationState): Mayfl
       formId: identifier(required(target, 'formId', path), `${path}.submit[${index}].formId`, state),
       pagePath: collection(required(target, 'pagePath', path), `${path}.submit[${index}].pagePath`).map((segment, segmentIndex) => pageSegment(segment, `${path}.submit[${index}].pagePath[${segmentIndex}]`, state)),
     })))
-    if (submit !== undefined && (submit.length === 0 || new Set(submit.map(target => pageControl(target.pagePath, target.formId))).size !== submit.length)) invalid(`${path}.submit requires unique form addresses`)
     const readValue = own(object, 'read', path)
     const navigateValue = own(object, 'navigate', path)
     const navigate = navigateValue === undefined ? undefined : collection(navigateValue, `${path}.navigate`).map((segment, index) => pageSegment(segment, `${path}.navigate[${index}]`, state))
@@ -1007,6 +1010,8 @@ function actionItem(value: unknown, path: string, state: ValidationState): Mayfl
       controlId: identifier(required(target, 'controlId', path), `${path}.selections[${index}].controlId`, state),
       pagePath: collection(required(target, 'pagePath', path), `${path}.selections[${index}].pagePath`).map((segment, segmentIndex) => pageSegment(segment, `${path}.selections[${index}].pagePath[${segmentIndex}]`, state)),
     })))
+    /* A submission may carry selections alone (a wizard of lists), so `submit` is empty only beside them. */
+    if (submit !== undefined && ((submit.length === 0 && (selections === undefined || selections.length === 0)) || new Set(submit.map(target => pageControl(target.pagePath, target.formId))).size !== submit.length)) invalid(`${path}.submit requires unique form addresses`)
     return {
       id: idText(required(object, 'id', path), `${path}.id`),
       label: label(required(object, 'label', path), `${path}.label`),
@@ -1303,7 +1308,7 @@ function admitNode(value: unknown, path: string, state: ValidationState, depth: 
     if (mode === 'status' && !['text', 'rich-text', 'fields', 'progress', 'stack'].includes(kind)) invalid(`status node kind "${kind}" is interactive or unsupported`)
     if (mode === 'editor' && (kind === 'diagram' || kind === 'chart' || kind === 'image')) invalid(`editor node kind "${kind}" is unsupported`)
     /* The host editor owns every key in its shell, so focusable controls other than accelerator actions are unreachable there. */
-    if (mode === 'editor' && (kind === 'form' || kind === 'list' || kind === 'tabs' || kind === 'prompt' || kind === 'slider')) invalid(`editor node kind "${kind}" would take focus from the editor`)
+    if (mode === 'editor' && (kind === 'form' || kind === 'list' || kind === 'tabs' || kind === 'prompt' || kind === 'slider' || kind === 'review')) invalid(`editor node kind "${kind}" would take focus from the editor`)
     if (viewOnly && !['text', 'fields', 'code', 'diff', 'sections'].includes(kind)) invalid(`${path} must be section content`)
     switch (kind) {
       case 'text': {
@@ -1523,6 +1528,7 @@ function admitNode(value: unknown, path: string, state: ValidationState, depth: 
       }
       case 'prompt': return { kind, id: identifier(required(object, 'id', path), `${path}.id`, state, true), ...admitPromptFields(PROMPT_HELPERS, object, path, state) }
       case 'slider': return { kind, id: identifier(required(object, 'id', path), `${path}.id`, state, true), ...admitSliderFields(SLIDER_HELPERS, object, path, state) }
+      case 'review': return { kind, id: identifier(required(object, 'id', path), `${path}.id`, state, true), ...admitReviewFields(REVIEW_HELPERS, object, path, state) }
       case 'diagram': return { kind, diagram: enumeration(required(object, 'diagram', path), ['mermaid'], `${path}.diagram`), source: contentField(required(object, 'source', path), `${path}.source`, state) }
       case 'chart': {
         const chart = enumeration(required(object, 'chart', path), ['line', 'point', 'bar', 'sparkline', 'heatmap'], `${path}.chart`)

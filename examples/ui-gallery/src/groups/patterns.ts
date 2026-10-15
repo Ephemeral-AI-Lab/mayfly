@@ -1,6 +1,6 @@
 /**
- * The four patterns of slice 1.8b, to run beside scene 11 of the design prototype: a decision panel, a rail panel, a
- * split view, and a status page, each called with the props the scene passes. The gallery is a pane, so the decision
+ * The patterns of slice 1.8b and Phase 6, to run beside scene 11 of the design prototype: a decision panel, a rail panel, a
+ * split view, a status page, and a wizard, each called with the props the scene passes. The gallery is a pane, so the decision
  * panel is drawn as a card; a plugin that opens it as an overlay passes `armMs: patterns.decisionArmMs`.
  *
  * @module @mayfly-example/ui-gallery/groups/patterns
@@ -46,6 +46,34 @@ export function patternsPageGroup() {
         items: [{ id: 'a', label: 'Loop', detail: 'official', right: [muted('1.4.0')] }, { id: 'b', label: 'Git Helper', detail: 'community', right: [muted('update 1.3.0')] }],
       }),
       detail: ui.fields([{ label: 'Name', value: [{ text: 'Loop' }] }, { label: 'Source', value: [{ text: 'official' }] }, { label: 'Status', value: [{ text: '✓ installed 1.4.0', tone: 'success' }] }]),
+    }),
+    ui.text('wizard: a step per question, Enter takes the answer and moves on, a typed Other row, and a review page; Esc walks back', { tone: 'muted' }),
+    patterns.wizard({
+      id: 'gallery-wizard',
+      title: 'Questions',
+      steps: [
+        { id: 'region', label: 'Region', lists: ['pick'], body: ui.stack.column([
+          ui.text('Which region should the service deploy to?', { styles: ['strong'] }),
+          ui.list({
+            id: 'pick', role: 'choose', numbered: true, marks: true, autofocus: true, selectedIds: [], acceptActionId: patterns.wizardNext('gallery-wizard', 'region'),
+            items: [{ id: 'us', label: 'us-east-1', detail: 'lowest latency' }, { id: 'eu', label: 'eu-west-1', detail: 'GDPR data residency' }, { id: 'other', label: 'Other', input: { placeholder: 'type your own answer' } }],
+          }),
+        ]) },
+        { id: 'scopes', label: 'Scopes', lists: ['pick'], body: ui.stack.column([
+          ui.text('Which scopes should the token carry?', { styles: ['strong'] }),
+          ui.list({
+            id: 'pick', role: 'choose', mode: 'multiple', autofocus: true, selectedIds: [], acceptActionId: patterns.wizardNext('gallery-wizard', 'scopes'),
+            items: [{ id: 'read', label: 'read' }, { id: 'write', label: 'write' }, { id: 'other', label: 'Other', input: { placeholder: 'type your own answer' } }],
+          }),
+        ]) },
+      ],
+      review: {
+        label: 'Review', skippedLabel: '— skipped', submitLabel: 'Submit answers',
+        items: [
+          { stepId: 'region', label: 'Region', source: { kind: 'list', controlId: 'pick' } },
+          { stepId: 'scopes', label: 'Scopes', source: { kind: 'list', controlId: 'pick' } },
+        ],
+      },
     }),
     ui.text('statusPage: a read-only key/value page under tabs', { tone: 'muted' }),
     patterns.statusPage({

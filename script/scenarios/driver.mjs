@@ -223,8 +223,11 @@ export function apply(ctx) {
             const session = target(action)
             if (session === undefined) { log(`no session ${action.session} for ${action.type}`); break }
             // The settled message carries the stream's own timing, so its reasoning keeps the duration it took.
-            const answered = action.variants === undefined ? undefined : answers.get(action.answerOf)
-            const base = answered === undefined || action.variants[answered.key] === undefined ? action.data : withFeedback(action.variants[answered.key], answered.feedback)
+            const answered = action.answerOf === undefined ? undefined : answers.get(action.answerOf)
+            const scripted = answered === undefined || action.variants?.[answered.key] === undefined ? action.data : withFeedback(action.variants[answered.key], answered.feedback)
+            // A question call scripted with the result `{answers}` settles with the batch the user submitted, as the Harness's tool does.
+            const base = answered?.batch !== undefined && scripted.message?.content?.[0]?.text === '{answers}'
+              ? { ...scripted, message: { ...scripted.message, content: [{ type: 'text', text: JSON.stringify(answered.batch) }] } } : scripted
             const data = action.streamTiming === undefined ? base : { ...base, stream: settledStream(action.streamTiming) }
             const event = action.surface === undefined ? session.append(action.type, data) : session.append(action.type, data, { surfaceOp: action.surface })
             lastSeqs.set(session, event.seq)
@@ -471,7 +474,7 @@ export function apply(ctx) {
               const questions = action.questions.map(question => question.intent === undefined || question.intent.callId !== undefined ? question : { ...question, intent: { ...question.intent, callId: action.callId } })
               const answer = await ctx.get('userQuestions').ask({ agent: owner, questions, signal: abort.signal })
               const first = questions[0]
-              if (first !== undefined) answers.set(action.callId, { key: questionKey(first, answer), feedback: answer.answers.find(entry => entry.id === first.id)?.custom })
+              if (first !== undefined) answers.set(action.callId, { key: questionKey(first, answer), feedback: answer.answers.find(entry => entry.id === first.id)?.custom, batch: answer })
             }
             log('ask answered')
             break

@@ -20,6 +20,8 @@ export interface UiChoiceState {
   readonly expandedIds: readonly string[]
   /** Per-row segment drafts keyed by item id; `null` is an explicit unpin. Ephemeral and excluded from `dirty`. */
   readonly segments?: Readonly<Record<string, string | null>>
+  /** The text of each `input` row, by item id. A row counts as selected only while its text is not empty. */
+  readonly inputs?: Readonly<Record<string, string>>
   /** The `focusItem.rev` the cursor last followed, so a republish with the same rev leaves the cursor alone. */
   readonly focusRev?: number
   readonly treeIndex?: UiChoiceTreeIndex
@@ -60,6 +62,8 @@ export type UiChoiceIntent =
   | { readonly kind: 'expand-all' }
   | { readonly kind: 'collapse-all' }
   | { readonly kind: 'unpin', readonly id: string }
+  /** Replace the text of an `input` row; a non-empty text selects the row (alone in a single list), an empty one drops it. */
+  | { readonly kind: 'input', readonly id: string, readonly text: string }
 
 const ownedIndexes = new WeakSet<readonly unknown[]>()
 
@@ -77,6 +81,7 @@ function freezeChoice(state: UiChoiceState): UiChoiceState {
     expandedIds: immutable(state.expandedIds),
     matches: state.matches === undefined ? undefined : immutable(state.matches),
     ...(state.segments === undefined ? {} : { segments: Object.freeze({ ...state.segments }) }),
+    ...(state.inputs === undefined ? {} : { inputs: Object.freeze({ ...state.inputs }) }),
     ...(state.visibleTreeIndices === undefined ? {} : { visibleTreeIndices: immutable(state.visibleTreeIndices) }),
   })
 }
@@ -179,6 +184,7 @@ export function createChoiceState(definition: MayflyListNode): UiChoiceState {
     definition, focusedIndex, focusedPosition: 0, focusedId: undefined,
     selectedIds: listSelectedIds(definition), dirty: false, query, searching: false, searchAnchor: undefined, matches, expandedIds,
     segments: {},
+    inputs: {},
     ...(index === undefined ? {} : { treeIndex: index }),
   })
   return freezeChoice(followFocusItem(settleFocus(state, focusedIndex), definition))
@@ -309,9 +315,13 @@ export function reconcileChoice(state: UiChoiceState, definition: MayflyListNode
     const itemIndex = admittedListIndex(definition.items, id)
     return itemIndex >= 0 && admittedListItem(definition.items, itemIndex)?.segment !== undefined
   }))
+  const inputs = Object.fromEntries(Object.entries(state.inputs ?? {}).filter(([id]) => {
+    const itemIndex = admittedListIndex(definition.items, id)
+    return itemIndex >= 0 && admittedListItem(definition.items, itemIndex)?.input !== undefined
+  }))
   const { treeIndex: _treeIndex, ...previous } = state
   return freezeChoice(followFocusItem(settleFocus(refreshTreeVisibility({
-    ...previous, definition, focusedIndex, segments, matches,
+    ...previous, definition, focusedIndex, segments, inputs, matches,
     ...(index === undefined ? {} : { treeIndex: index }),
     selectedIds: state.dirty ? state.selectedIds : listSelectedIds(definition),
   }), focusedIndex), definition))
@@ -382,6 +392,18 @@ export function reduceChoice(state: UiChoiceState, intent: UiChoiceIntent): UiCh
     // Stepping onto the inherited option is unpinning.
     return freezeChoice({ ...state, segments: { ...state.segments, [intent.id]: next.id === segment.inheritedId ? null : next.id } })
   }
+  if (intent.kind === 'input') {
+    const index = admittedListIndex(definition.items, intent.id)
+    const item = index < 0 ? undefined : admittedListItem(definition.items, index)
+    if (item?.input === undefined || item.disabled === true || definition.role !== 'choose' || (state.inputs?.[intent.id] ?? '') === intent.text) return state
+    const inputs = { ...state.inputs, [intent.id]: intent.text }
+    if (intent.text === '') delete inputs[intent.id]
+    const multiple = definition.mode === 'multiple'
+    const others = state.selectedIds.filter(id => id !== intent.id)
+    const selectedIds = intent.text === '' ? others : multiple ? [...others, intent.id] : [intent.id]
+    const declared = listSelectedIds(definition)
+    return freezeChoice({ ...state, inputs, selectedIds, dirty: selectedIds.length !== declared.length || selectedIds.some(id => !declared.includes(id)) || intent.text !== '' })
+  }
   if (intent.kind === 'expand-all') {
     const ids = Array.from({ length: definition.items.length }, (_, at) => admittedListItem(definition.items, at)!).filter(item => item.body !== undefined || state.treeIndex?.parents.has(item.id) === true).map(item => item.id)
     return freezeChoice(refreshTreeVisibility({ ...state, expandedIds: ids }))
@@ -412,6 +434,8 @@ export function reduceChoice(state: UiChoiceState, intent: UiChoiceIntent): UiCh
   for (const id of ids) {
     const item = admittedListItem(definition.items, admittedListIndex(definition.items, id))
     if (item === undefined || item.disabled === true) return state
+    // An input row is chosen by typing into it: empty, it is not an answer.
+    if (item.input !== undefined && (state.inputs?.[id] ?? '') === '') return state
   }
   const declared = listSelectedIds(definition)
   const dirty = ids.length !== declared.length || ids.some(id => !declared.includes(id))

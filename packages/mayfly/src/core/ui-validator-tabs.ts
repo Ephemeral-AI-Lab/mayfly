@@ -22,7 +22,9 @@ export function admitTabItemFields(h: AdmissionHelpers, entry: Fields, path: str
   const attention = h.own(entry, 'attention', path)
   const group = h.own(entry, 'group', path)
   const clip = h.own(entry, 'clip', path)
+  const review = h.own(entry, 'review', path)
   return {
+    ...present('review', review === undefined ? undefined : h.boolean(review, `${path}.review`)),
     ...present('count', count === undefined ? undefined : typeof count === 'string' ? h.label(count, `${path}.count`) : h.finiteInteger(count, `${path}.count`)),
     ...present('attention', attention === undefined ? undefined : h.boolean(attention, `${path}.attention`)),
     ...present('group', group === undefined ? undefined : h.label(group, `${path}.group`)),

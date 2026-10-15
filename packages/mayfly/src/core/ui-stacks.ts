@@ -186,3 +186,59 @@ export class RowStack extends HStack {
     return row
   }
 }
+
+/** The tallest each page of one tab strip has been, by the width it was painted at; it lives as long as the surface. */
+export type PagePeaks = Map<number, number>
+
+/** The pages of one tab strip in one compile, and the height each is known to have at the width last measured. */
+export class PageGroup {
+  readonly pages: PageHold[] = []
+  private measuredAt = ''
+  private readonly heights = new Map<PageHold, number>()
+
+  constructor(readonly peaks: PagePeaks, readonly measure: <Result>(paint: () => Result) => Result) {}
+
+  /** The height of every other page at `key`, measured once per key: a hidden page costs nothing again until the width or the viewport changes. */
+  others(except: PageHold, width: number, key: string): number {
+    if (key !== this.measuredAt) { this.measuredAt = key; this.heights.clear() }
+    let tallest = 0
+    for (const page of this.pages) {
+      if (page === except) continue
+      let rows = this.heights.get(page)
+      if (rows === undefined) { rows = this.measure(() => page.inner.render(width)).length; this.heights.set(page, rows) }
+      tallest = Math.max(tallest, rows)
+    }
+    return tallest
+  }
+
+  /** The page on show painted `rows`: that is its height now. */
+  shown(page: PageHold, rows: number, key: string): void {
+    if (key === this.measuredAt) this.heights.set(page, rows)
+  }
+}
+
+/**
+ * One page of a tab strip. A panel with several pages keeps one height: the page on show is padded with blank rows to the
+ * tallest page ever painted at this width, so switching pages (or a list that narrows to a few matches) never moves the
+ * rows under the panel. The other pages are measured with the clock and the focus bindings of the visible page left alone.
+ */
+export class PageHold implements Component {
+  constructor(readonly inner: Component, private readonly group: PageGroup, private readonly viewport: () => string) {
+    group.pages.push(this)
+  }
+
+  render(width: number): string[] {
+    const rows = this.inner.render(width)
+    const key = `${String(width)}|${this.viewport()}`
+    const peaks = this.group.peaks
+    const peak = Math.max(peaks.get(width) ?? 0, rows.length, this.group.others(this, width, key))
+    this.group.shown(this, rows.length, key)
+    peaks.delete(width)
+    peaks.set(width, peak)
+    // A handful of widths is remembered (a resize drags through many); the oldest go first.
+    while (peaks.size > 6) peaks.delete(peaks.keys().next().value!)
+    return rows.length >= peak ? rows : concatRows(rows, blankRows(peak - rows.length))
+  }
+
+  invalidate(): void { this.inner.invalidate?.() }
+}

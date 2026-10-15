@@ -21,4 +21,7 @@ export {
   type MayflyRailPanelProps,
   type MayflySplitViewProps,
   type MayflyStatusPageProps,
+  type MayflyWizardProps,
+  type MayflyWizardReviewItem,
+  type MayflyWizardStep,
 } from './patterns.ts'

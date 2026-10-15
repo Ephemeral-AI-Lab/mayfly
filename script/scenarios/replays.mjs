@@ -239,17 +239,18 @@ const approvalsRejected = {
   ])],
 }
 
+const QUESTIONS_TWO = [
+  { id: 'runtime', header: 'Runtime', question: 'Which runtime should the project target?', options: [{ label: 'Node 22 (Recommended)', description: 'Current LTS line' }, { label: 'Node 24', description: 'Latest release' }, { label: 'Bun', description: 'Alternative runtime' }] },
+  { id: 'tests', header: 'Tests', question: 'Which test runner do you want?', options: [{ label: 'node:test', description: 'Built in, no dependency' }, { label: 'vitest', description: 'Fast, watch mode' }] },
+]
 const questions = {
   summary: 'a question panel with options; answer it with the keys, then the turn continues',
   items: [turn('Set up the project for me; ask me what you need.', [
     step({
       text: 'Two quick questions before I start.',
-      tools: [tool('ask_user_question', { questions: [] }, {
-        ask: question([
-          { id: 'runtime', header: 'Runtime', question: 'Which runtime should the project target?', options: [{ label: 'Node 22 (Recommended)', description: 'Current LTS line' }, { label: 'Node 24', description: 'Latest release' }, { label: 'Bun', description: 'Alternative runtime' }] },
-          { id: 'tests', header: 'Tests', question: 'Which test runner do you want?', options: [{ label: 'node:test', description: 'Built in, no dependency' }, { label: 'vitest', description: 'Fast, watch mode' }] },
-        ]),
-        result: 'The user answered: Node 22, node:test.',
+      tools: [tool('ask_user_question', { questions: QUESTIONS_TWO }, {
+        ask: question(QUESTIONS_TWO),
+        result: '{answers}',
         runMs: 500,
       })],
     }),
@@ -257,6 +258,44 @@ const questions = {
   ])],
 }
 
+
+/** Three questions of every kind: one choice, a multiple choice, and one with no options to pick (a typed answer). */
+const QUESTIONS_THREE = [
+  { id: 'auth', header: 'Auth', question: 'Which auth method should the CLI use?', options: [{ label: 'OAuth', description: 'browser sign-in, tokens refresh automatically' }, { label: 'API key', description: 'paste a token; you rotate it yourself' }] },
+  { id: 'scopes', header: 'Scopes', question: 'Which scopes should the token carry?', multiSelect: true, options: [{ label: 'read', description: 'list and fetch resources' }, { label: 'write', description: 'create and update resources' }, { label: 'admin', description: 'manage members and billing' }] },
+  { id: 'notes', header: 'Notes', question: 'Anything else I should know?' },
+]
+const questionsMore = {
+  summary: 'three questions in one panel (a choice, a multiple choice, a typed answer) and the review page; answer them with the keys, then the turn continues',
+  items: [turn('Set up the service; ask me what you need.', [
+    step({
+      text: 'Three quick questions before I start.',
+      tools: [tool('ask_user_question', { questions: QUESTIONS_THREE }, {
+        ask: question(QUESTIONS_THREE),
+        result: '{answers}',
+        runMs: 500,
+      })],
+    }),
+    step({ text: 'Thanks. I will use those answers.' }),
+  ])],
+}
+
+/** One question: the panel has no strip and no review, and a digit answers it. */
+const QUESTION_RUNTIME = [{ id: 'runtime', question: 'Which runtime should the project target?', options: [{ label: 'Node 22 (Recommended)', description: 'Current LTS line' }, { label: 'Node 24', description: 'Latest release' }, { label: 'Bun', description: 'Alternative runtime' }] }]
+const questionOne = {
+  summary: 'a single question: no strip and no review page; a digit answers it at once',
+  items: [turn('Pick a runtime for me.', [
+    step({
+      text: 'One question before I start.',
+      tools: [tool('ask_user_question', { questions: QUESTION_RUNTIME }, {
+        ask: question(QUESTION_RUNTIME),
+        result: '{answers}',
+        runMs: 500,
+      })],
+    }),
+    step({ text: 'Thanks. I will target that runtime.' }),
+  ])],
+}
 
 const lines = (count, make) => Array.from({ length: count }, (_, index) => make(index + 1)).join('\n')
 const LONG_LOG = lines(90, n => `[${String(n).padStart(2, '0')}] build step ${String(n)} finished in ${String(10 + n * 3)} ms`)
@@ -1196,7 +1235,7 @@ const phase3 = {
   ],
 }
 
-export const REPLAYS = { tour, toolkit, thinking, markdown, live, phases, thinkingLadder, pending, blocks, streaming, sync, activityWait, prompts, turns, toollines, toolgrow, findings, edits, errors, compaction: compactionReplay, compactionNoWindow, compactionFailed, manualCompact, context, subagents, childStream, approvals, approvalsRejected, approvalsEdit, approvalsQueue, questions, plan, planLong, goal, jobs, queued, retries, sideQuestion, notices, notificationPane, modes, edge, history, wheel, content, phase3 }
+export const REPLAYS = { tour, toolkit, thinking, markdown, live, phases, thinkingLadder, pending, blocks, streaming, sync, activityWait, prompts, turns, toollines, toolgrow, findings, edits, errors, compaction: compactionReplay, compactionNoWindow, compactionFailed, manualCompact, context, subagents, childStream, approvals, approvalsRejected, approvalsEdit, approvalsQueue, questions, questionsMore, questionOne, plan, planLong, goal, jobs, queued, retries, sideQuestion, notices, notificationPane, modes, edge, history, wheel, content, phase3 }
 
 /*
  * The scenes of the Website's app shots. Each is the source of an `app-*` scenario of the catalog, whose goldens the

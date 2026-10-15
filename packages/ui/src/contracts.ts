@@ -162,6 +162,8 @@ export interface MayflyTabItem {
   /** A muted count after the label (a rail draws it right-aligned); a string reads as given, e.g. `2/6`. */
   readonly count?: number | string
   readonly backId?: string
+  /** A wizard's last page, the one that lists the answers: it is not counted in the strip's `n/m` progress. */
+  readonly review?: boolean
   /** Draws a warning `!` in place of the count. */
   readonly attention?: boolean
   /** A vertical rail's heading: consecutive items with the same group sit under one muted, upper-cased heading. */
@@ -246,6 +248,12 @@ export interface MayflyListItem {
   readonly unavailableActions?: Readonly<Record<string, string>>
   /** Shared decision shown before accepting this single row. */
   readonly confirm?: string | MayflyConfirmation
+  /**
+   * The row is a text field typed in place (an `Other` answer): while the cursor is on it, printable keys edit its text
+   * instead of choosing or filtering, and the row counts as selected while the text is not empty. The text lives in the
+   * surface model and is reported in the submission's `selections[].inputs`, keyed by item id.
+   */
+  readonly input?: { readonly placeholder?: string }
 }
 /** What a list marks in its rows: a regular expression, matched against each painted line (a match a wrap cut in two is not found). */
 export interface MayflyListHighlight {
@@ -505,6 +513,35 @@ export interface MayflySliderNode {
   readonly autofocus?: boolean
 }
 
+/** One answer on a review page: where the answer lives and the step that asked for it. */
+export interface MayflyReviewItem {
+  /** The wizard step (tab item id) the row jumps back to. */
+  readonly id: string
+  readonly label: string
+  /** The control that holds the answer, read from the surface's drafts: a list's selection (and typed row) or a form field. */
+  readonly source:
+    | { readonly kind: 'list', readonly pagePath: MayflyPagePath, readonly controlId: string }
+    | { readonly kind: 'form', readonly pagePath: MayflyPagePath, readonly formId: string, readonly fieldId: string }
+}
+
+/**
+ * The review page of a wizard: one numbered row per step with the answer the surface holds for it (`skippedLabel` in
+ * warning when there is none), then a `submitLabel` row. Core reads the drafts, so the wire carries no values: `1`-`N`
+ * or `Enter` on an answer returns to its step in the `tabs` strip named by `tabsId`, and the submit row runs
+ * `submitActionId`, an action declared on the surface. The page behaves as a choose list.
+ */
+export interface MayflyReviewNode {
+  readonly kind: 'review'
+  readonly id: string
+  /** The wizard strip the rows jump in. */
+  readonly tabsId: string
+  readonly items: readonly MayflyReviewItem[]
+  readonly skippedLabel: string
+  readonly submitLabel: string
+  readonly submitActionId: string
+  readonly autofocus?: boolean
+}
+
 export interface MayflyChartPoint { readonly x: number, readonly y: number | null }
 export interface MayflyChartSeries { readonly id: string, readonly label?: string, readonly tone?: MayflyTone, readonly points: readonly MayflyChartPoint[] }
 export interface MayflyBarChartSeries { readonly id: string, readonly label?: string, readonly tone?: MayflyTone, readonly values: readonly (number | null)[], readonly empty?: boolean }
@@ -561,7 +598,7 @@ interface MayflyHeatmapChartNode {
 export type MayflyChartNode = MayflyLineChartNode | MayflyBarChartNode | MayflySparklineChartNode | MayflyHeatmapChartNode
 
 export type MayflyContentNode = MayflyTextNode | MayflyMarkdownNode | MayflyFieldsNode | MayflyCodeNode | MayflyDiffNode | MayflySectionsNode | MayflyRichTextNode | MayflyDiagramNode | MayflyChartNode
-export type MayflyUiNode = MayflyContentNode | MayflyStackNode | MayflySurfaceNode | MayflyScrollNode | MayflyTabsNode | MayflyListNode | MayflyFormNode | MayflyActionsNode | MayflyLoaderNode | MayflyEmptyNode | MayflyProgressNode | MayflySpacerNode | MayflyDividerNode | MayflyImageNode | MayflyPromptNode | MayflySliderNode
+export type MayflyUiNode = MayflyContentNode | MayflyStackNode | MayflySurfaceNode | MayflyScrollNode | MayflyTabsNode | MayflyListNode | MayflyFormNode | MayflyActionsNode | MayflyLoaderNode | MayflyEmptyNode | MayflyProgressNode | MayflySpacerNode | MayflyDividerNode | MayflyImageNode | MayflyPromptNode | MayflySliderNode | MayflyReviewNode
 
 interface MayflyRegistryUpsert<Entry> { readonly kind: 'upsert', readonly entry: Entry }
 interface MayflyRegistryRemove { readonly kind: 'remove', readonly id: string, readonly revision: number }

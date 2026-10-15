@@ -4,7 +4,7 @@
 import { freezeWire } from '@ephemeral-ai/mayfly-ui'
 import type {
   MayflyActionItem, MayflyConfirmation, MayflyFeedback, MayflyFieldError, MayflyFeedbackRecord, MayflyFieldAddress, MayflyFieldValue, MayflyFormAddress,
-  MayflyFormNode, MayflyPagePath, MayflySnapshotChange, MayflySourceStamp, MayflySubmission,
+  MayflyFormNode, MayflyListItem, MayflyListNode, MayflyPagePath, MayflyReviewNode, MayflySnapshotChange, MayflySourceStamp, MayflySubmission,
   MayflyScrollNode, MayflyTabsNode, MayflyUiActionReply, MayflyUiEvent, MayflyUiEventEndpoint, MayflyUiNode, MayflyUiScope,
 } from '@ephemeral-ai/mayfly-ui'
 import { createFormState, formAddressKey, formDirty, inspectForm, reconcileForm, reduceForm, submitForm, validateForm, type UiFormIntent, type UiFormState } from './ui-interaction-form.ts'
@@ -18,6 +18,7 @@ import { moveDocument, reconcileDocument, type UiDocumentAnchor, type UiDocument
 import { admitNotificationMessage, UiNotificationStore } from './ui-interaction-notifications.ts'
 import { untranslated, type UiTranslate } from './ui-interaction-locale.ts'
 import { listSelectedIds } from './ui-list-selection.ts'
+import { visibleWidth } from './width.ts'
 
 export interface UiSurfaceSnapshot {
   readonly id: string
@@ -104,7 +105,11 @@ function baselineData(node: MayflyUiNode | null): string {
 export class UiSurfaceModel {
   private live = true
   private rawNode: MayflyUiNode | null = null
+  /** The admitted tree as the wire sent it. `admittedNode` is the same tree with each review replaced by the list of the drafts it shows. */
+  private sourceNode: MayflyUiNode | null = null
   private admittedNode: MayflyUiNode | null = null
+  private readonly reviews = new Map<string, { readonly node: MayflyReviewNode, readonly pagePath: MayflyPagePath }>()
+  private reviewSignature = ''
   /** Subtrees and list items this surface admitted before; a republish that shares them validates only what changed. */
   private readonly admission = createAdmissionCache()
   private admissionError: MayflyUiNode | undefined
@@ -193,10 +198,20 @@ export class UiSurfaceModel {
         .map(([key, form]) => [key, form.draftRevision, form.schemaRevision, Object.values(form.fields).map(field => [field.definition.id, field.revision, field.conflict, field.error !== undefined]).toSorted((left, right) => String(left[0]).localeCompare(String(right[0])))]).toSorted((left, right) => String(left[0]).localeCompare(String(right[0]))),
       [...this.choices].flatMap(([key, choice]) => {
         const segments = JSON.parse(key)[0] as [string, string][]
-        return JSON.stringify(segments.slice(0, pagePath.length)) === prefix ? [[key, choice.selectedIds]] : []
+        return JSON.stringify(segments.slice(0, pagePath.length)) === prefix ? [[key, choice.selectedIds, choice.inputs ?? {}]] : []
       }),
     ])
   }
+  /** The forms and lists on one step's page (and the pages under it): what the step's answer is made of. */
+  private stepControls(stepPath: MayflyPagePath): { readonly forms: readonly UiFormState[], readonly choices: readonly UiChoiceState[] } {
+    const path = JSON.stringify(stepPath)
+    const prefix = JSON.stringify(stepPath.map(segment => [segment.controlId, segment.itemId]))
+    return {
+      forms: [...this.forms.values()].filter(form => JSON.stringify(form.address.pagePath.slice(0, stepPath.length)) === path),
+      choices: [...this.choices].flatMap(([key, choice]) => JSON.stringify((JSON.parse(key)[0] as [string, string][]).slice(0, stepPath.length)) === prefix ? [choice] : []),
+    }
+  }
+
   feedbackSnapshot(): readonly MayflyFeedbackRecord[] { return this.notifications.snapshot() }
   setVisible(visible: boolean): void { if (this.live) this.notifications.setVisible(visible) }
   operationSnapshot(): readonly UiOperation[] { return freezeWire([...this.operations.values()]) }
@@ -247,12 +262,12 @@ export class UiSurfaceModel {
       this.notifications.clear('snapshot', false)
       this.cancelTasks()
       this.forms.clear(); this.formDefinitions.clear(); this.choices.clear(); this.prompts.clear(); this.sliders.clear(); this.tabs.clear(); this.documents.clear(); this.actions.clear()
-      this.rawNode = null; this.admittedNode = null; this.input = snapshot
+      this.rawNode = null; this.sourceNode = null; this.admittedNode = null; this.reviews.clear(); this.reviewSignature = ''; this.input = snapshot
       this.changed()
       return
     }
     const admitted = this.publication?.source === snapshot.node ? { ok: true as const, value: this.publication.admitted }
-      : snapshot.node === this.rawNode && this.admittedNode !== null ? { ok: true as const, value: this.admittedNode } : validateMayflyUiNode(snapshot.node, this.bindings.counters, this.admission)
+      : snapshot.node === this.rawNode && this.sourceNode !== null ? { ok: true as const, value: this.sourceNode } : validateMayflyUiNode(snapshot.node, this.bindings.counters, this.admission)
     if (!admitted.ok) {
       // The technical JSON-pointer path stays in the report/log; the surface
       // shows a user-facing sentence instead.
@@ -265,7 +280,10 @@ export class UiSurfaceModel {
     const sourceChanged = !sameUiSource(this.input.source, snapshot.source)
     const firstAdmit = this.admittedNode === null
     this.rawNode = snapshot.node
-    this.admittedNode = admitted.value
+    this.sourceNode = admitted.value
+    this.collectReviews(admitted.value)
+    this.reviewSignature = this.reviewSignatureNow()
+    this.admittedNode = this.resolveReviews(admitted.value)
     this.input = snapshot
     if (this.decision !== undefined && sourceChanged) this.decision = undefined
     this.reconcileControls(snapshot.update)
@@ -302,7 +320,7 @@ export class UiSurfaceModel {
         }
       }
     }
-    for (const [key] of this.choices) if (declarations.complete && declarations.controls.get(key)?.kind !== 'list') { this.choices.delete(key); changed = true }
+    for (const [key] of this.choices) if (declarations.complete && declarations.controls.get(key)?.kind !== 'list' && declarations.controls.get(key)?.kind !== 'review') { this.choices.delete(key); changed = true }
     for (const [key] of this.prompts) if (declarations.complete && declarations.controls.get(key)?.kind !== 'prompt') { this.prompts.delete(key); changed = true }
     for (const [key] of this.sliders) if (declarations.complete && declarations.controls.get(key)?.kind !== 'slider') { this.sliders.delete(key); changed = true }
     for (const [key] of this.tabs) if (declarations.complete && declarations.controls.get(key)?.kind !== 'tabs') { this.tabs.delete(key); changed = true }
@@ -623,17 +641,17 @@ export class UiSurfaceModel {
     }
     if (action.item.navigate !== undefined) {
       if (!this.canNavigate(action.item.navigate)) { this.report(key, { message: this.t('The destination page is unavailable'), severity: 'error' }); return }
-      if (targets !== undefined) for (const [index, segment] of pagePath.entries()) {
+      for (const [index, segment] of pagePath.entries()) {
         const address = { pagePath: pagePath.slice(0, index), controlId: segment.controlId }
-        const key = uiControlKey(address)
-        const tabs = this.tabs.get(key)
+        const tabsKey = uiControlKey(address)
+        const tabs = this.tabs.get(tabsKey)
         if (tabs?.definition.mode !== 'wizard') continue
         const stepPath = pagePath.slice(0, index + 1)
-        const stepForms = [...this.forms.values()].filter(form => JSON.stringify(form.address.pagePath.slice(0, stepPath.length)) === JSON.stringify(stepPath))
-        if (stepForms.length === 0 || stepForms.some(form => !targets.some(target => formAddressKey(target) === formAddressKey(form.address)))) continue
-        const completed = new Map(tabs.completed)
-        completed.set(segment.itemId, this.stepRevision(stepPath))
-        this.tabs.set(key, { ...tabs, completed })
+        const { forms: stepForms, choices } = this.stepControls(stepPath)
+        /* A step the action does not read in full is not answered by it. */
+        if (stepForms.some(form => targets?.some(target => formAddressKey(target) === formAddressKey(form.address)) !== true)) continue
+        if (stepForms.length === 0 && !choices.some(choice => choice.selectedIds.length > 0)) continue
+        this.tabs.set(tabsKey, { ...tabs, completed: new Map(tabs.completed).set(segment.itemId, this.stepRevision(stepPath)) })
       }
       this.clearFeedback(key)
       this.navigate(action.item.navigate)
@@ -642,10 +660,11 @@ export class UiSurfaceModel {
     const inputs = targets === undefined && selections.length === 0 ? undefined : freezeWire({ actionId, draftRevision: this.revision, source: this.source, forms: forms.map(form => submitForm(form!)), selections: selections.map(selection => {
       const selected = selection.state!
       const segmentId = selected.selectedIds.length === 1 && selected.definition.mode !== 'multiple' ? choiceReportedSegment(selected, selected.selectedIds[0]!) : undefined
-      return segmentId === undefined ? { ...selection.address, selectedIds: selected.selectedIds } : { ...selection.address, selectedIds: selected.selectedIds, segmentId }
+      const typed = Object.fromEntries(selected.selectedIds.filter(id => (selected.inputs?.[id] ?? '') !== '').map(id => [id, selected.inputs![id]!]))
+      return { ...selection.address, selectedIds: selected.selectedIds, ...segmentId === undefined ? {} : { segmentId }, ...Object.keys(typed).length === 0 ? {} : { inputs: typed } }
     }) })
     const submission = action.item.submit === undefined ? undefined : inputs
-    this.start(key, submission !== undefined ? { kind: 'submit', pagePath, controlId: forms[0]!.definition.id, submission }
+    this.start(key, submission !== undefined ? { kind: 'submit', pagePath, controlId: forms[0]?.definition.id ?? actionId, submission }
       : inputs !== undefined ? { kind: 'activate', pagePath, controlId: actionId, actionId, inputs } : event, submission)
   }
 
@@ -666,19 +685,33 @@ export class UiSurfaceModel {
     this.report(key, { message: this.t('Fix the highlighted fields'), severity: 'warning' })
   }
 
-  /** Moving forward through a wizard strip validates the step being left, like its Next read boundary. */
+  /** Moving forward through a wizard strip validates every step passed, like each step's own Next read boundary. */
   private wizardStepValid(address: UiControlAddress, tabId: string): boolean {
     const key = uiControlKey(address)
-    const tabs = this.tabs.get(key)
-    if (tabs?.definition.mode !== 'wizard') return true
-    const items = tabs.definition.items
-    if (items.findIndex(item => item.id === tabId) <= items.findIndex(item => item.id === tabs.activeId)) return true
-    const stepPath = [...address.pagePath, { controlId: address.controlId, itemId: tabs.activeId }]
-    const prefix = JSON.stringify(stepPath)
-    const stepForms = [...this.forms.values()].filter(form => JSON.stringify(form.address.pagePath.slice(0, stepPath.length)) === prefix)
-    const errors = stepForms.flatMap(form => validateForm(form, this.t.bind(this)))
-    if (errors.length > 0) { this.showValidationErrors(key, errors); return false }
-    if (stepForms.length > 0) this.tabs.set(key, { ...tabs, completed: new Map(tabs.completed).set(tabs.activeId, this.stepRevision(stepPath)) })
+    const first = this.tabs.get(key)
+    if (first?.definition.mode !== 'wizard') return true
+    const items = first.definition.items
+    const from = items.findIndex(item => item.id === first.activeId)
+    const to = items.findIndex(item => item.id === tabId)
+    if (to <= from) return true
+    for (let index = from; index < to; index += 1) {
+      const item = items[index]!
+      const stepPath = [...address.pagePath, { controlId: address.controlId, itemId: item.id }]
+      const { forms, choices } = this.stepControls(stepPath)
+      const errors = forms.flatMap(form => validateForm(form, this.t.bind(this)))
+      const choiceProblem = choices.map(choice => choiceError(choice, this.t.bind(this))).find(message => message !== undefined)
+      if (errors.length > 0 || choiceProblem !== undefined) {
+        // A step further on that cannot be passed is brought forward, so the reader sees what to fix.
+        if (item.id !== this.tabs.get(key)!.activeId) this.activateTab(address, item.id)
+        if (errors.length > 0) this.showValidationErrors(key, errors)
+        else this.report(key, { message: choiceProblem!, severity: 'warning' })
+        return false
+      }
+      if (forms.length > 0 || choices.some(choice => choice.selectedIds.length > 0)) {
+        const current = this.tabs.get(key)!
+        this.tabs.set(key, { ...current, completed: new Map(current.completed).set(item.id, this.stepRevision(stepPath)) })
+      }
+    }
     return true
   }
 
@@ -686,7 +719,11 @@ export class UiSurfaceModel {
     const key = uiControlKey(event)
     const state = this.choices.get(key)
     if (state === undefined) return
+    const review = this.reviews.get(key)
+    if (review !== undefined) { this.acceptReview(review, event.selectedIds[0]); return }
     const single = event.selectedIds.length === 1 ? admittedListItem(state.definition.items, admittedListIndex(state.definition.items, event.selectedIds[0]!)) : undefined
+    // A row typed in place is an answer only once something is typed.
+    if (single?.input !== undefined && (state.inputs?.[single.id] ?? '') === '') return
     /* A row that asks for confirmation shows the shared decision before its selection changes. */
     if (!confirmed && single?.confirm !== undefined && single.disabled !== true) {
       this.decision = { confirmation: typeof single.confirm === 'string' ? { title: single.confirm } : single.confirm, event, source: this.source }
@@ -768,7 +805,7 @@ export class UiSurfaceModel {
   private start(key: string, event: MayflyUiEvent, submission?: MayflySubmission): void {
     const id = `${this.instanceId}/${++this.nextOperation}`
     const controller = new AbortController()
-    const task: UiTask = { id, key, controller, event, source: this.source, sourceNode: this.admittedNode, formKeys: new Set((submission ?? (event.kind === 'activate' ? event.inputs : undefined))?.forms.map(formAddressKey)), ...(submission === undefined ? {} : { submission }) }
+    const task: UiTask = { id, key, controller, event, source: this.source, sourceNode: this.sourceNode, formKeys: new Set((submission ?? (event.kind === 'activate' ? event.inputs : undefined))?.forms.map(formAddressKey)), ...(submission === undefined ? {} : { submission }) }
     for (const form of submission?.forms ?? []) this.updateForm(form, { kind: 'submit', operationId: id })
     this.notifications.clear(key, false)
     for (const operation of this.operations.values()) if (operation.key === key && operation.phase !== 'running') this.notifications.clear(operation.id, false)
@@ -806,7 +843,7 @@ export class UiSurfaceModel {
           this.admitVisibleControls()
         }
         if (task.controller.signal.aborted) return
-        const currentData = baselineData(this.admittedNode)
+        const currentData = baselineData(this.sourceNode)
         const dataChanged = currentData !== baselineData(task.sourceNode) || !sameUiSource(this.source, task.source)
         const confirmsCurrent = this.source.length > 0
           ? reply.source !== undefined && sameUiSource(this.source, reply.source)
@@ -912,8 +949,100 @@ export class UiSurfaceModel {
       if (operation.phase !== 'running' && this.notifications.get(id) === undefined) this.operations.delete(id)
     }
   }
+  /** The review nodes of the admitted tree, with the page each one is on. */
+  private collectReviews(source: MayflyUiNode): void {
+    this.reviews.clear()
+    visitUiControls(source, (current, pagePath) => {
+      if (current.kind === 'review') this.reviews.set(uiControlKey({ pagePath, controlId: current.id }), { node: current, pagePath })
+    })
+  }
+
+  /** What the drafts hold for one review row, or undefined when the reader gave no answer. */
+  private answerText(item: MayflyReviewNode['items'][number]): string | undefined {
+    const source = item.source
+    if (source.kind === 'form') {
+      const value = this.form({ pagePath: source.pagePath, formId: source.formId })?.fields[source.fieldId]?.value
+      const text = Array.isArray(value) ? value.join(' · ') : value === undefined || value === null ? '' : String(value)
+      return text === '' ? undefined : text
+    }
+    const state = this.choice({ pagePath: source.pagePath, controlId: source.controlId })
+    if (state === undefined) return undefined
+    const texts = state.selectedIds.flatMap(id => {
+      const row = admittedListItem(state.definition.items, admittedListIndex(state.definition.items, id))
+      return row === undefined ? [] : [row.input === undefined ? row.label : state.inputs?.[id] ?? '']
+    }).filter(text => text !== '')
+    return texts.length === 0 ? undefined : texts.join(' · ')
+  }
+
+  private reviewSignatureNow(): string {
+    return JSON.stringify([...this.reviews.values()].map(({ node }) => node.items.map(item => this.answerText(item) ?? null)))
+  }
+
+  /** The list a review shows: one numbered row per step with its answer after the label, then the submit row. */
+  private reviewList(node: MayflyReviewNode): MayflyListNode {
+    // The answers line up in a column behind the longest label. They are spans of the label, not a description: a narrow list drops a description, and here the answer is the point.
+    const column = Math.max(...node.items.map(item => visibleWidth(item.label))) + 2
+    const rows: MayflyListItem[] = node.items.map(item => {
+      const answer = this.answerText(item)
+      const lead = { text: `${item.label}${' '.repeat(column - visibleWidth(item.label))}` }
+      return { id: `step:${item.id}`, label: item.label, labelSpans: [lead, answer === undefined ? { text: node.skippedLabel, tone: 'warning' as const } : { text: answer }] }
+    })
+    rows.push({ id: 'submit', label: node.submitLabel, labelSpans: [{ text: node.submitLabel, styles: ['strong'] }] })
+    return freezeWire({ kind: 'list', id: node.id, role: 'choose', numbered: true, selectedIds: [], items: rows, ...node.autofocus === true ? { autofocus: true } : {} })
+  }
+
+  /** The admitted tree with each review replaced by the list of the drafts it shows; subtrees without one keep their identity. */
+  private resolveReviews(source: MayflyUiNode): MayflyUiNode {
+    if (this.reviews.size === 0) return source
+    const swap = (node: MayflyUiNode): MayflyUiNode => {
+      switch (node.kind) {
+        case 'review': return this.reviewList(node)
+        case 'stack': {
+          let replaced = false
+          const children = node.children.map(child => {
+            const next = swap(child.node)
+            if (next === child.node) return child
+            replaced = true
+            return { ...child, node: next }
+          })
+          return replaced ? freezeWire({ ...node, children }) : node
+        }
+        case 'surface': {
+          const child = swap(node.child)
+          const footer = node.footer === undefined ? undefined : swap(node.footer)
+          return child === node.child && footer === node.footer ? node : freezeWire({ ...node, child, ...footer === undefined ? {} : { footer } })
+        }
+        case 'scroll': {
+          const child = swap(node.child)
+          return child === node.child ? node : freezeWire({ ...node, child })
+        }
+        default: return node
+      }
+    }
+    return swap(source)
+  }
+
+  /** A draft a review shows changed: rebuild its list so the page reads the drafts as they are. */
+  private refreshReviews(): void {
+    if (this.reviews.size === 0 || this.sourceNode === null) return
+    const signature = this.reviewSignatureNow()
+    if (signature === this.reviewSignature) return
+    this.reviewSignature = signature
+    this.admittedNode = this.resolveReviews(this.sourceNode)
+    this.reconcileControls({ reason: 'data' })
+  }
+
+  /** `Enter` or a digit on a review row: back to the step it names, or the submit action. */
+  private acceptReview(review: { readonly node: MayflyReviewNode, readonly pagePath: MayflyPagePath }, itemId: string | undefined): void {
+    if (itemId === 'submit') { this.invoke(review.node.submitActionId, review.pagePath); return }
+    if (itemId === undefined || !itemId.startsWith('step:')) return
+    const base = review.pagePath.slice(0, Math.max(0, review.pagePath.findLastIndex(segment => segment.controlId === review.node.tabsId)))
+    this.navigate([...base, { controlId: review.node.tabsId, itemId: itemId.slice('step:'.length) }])
+  }
+
   private changed(): void {
     if (!this.live) return
+    this.refreshReviews()
     for (const task of this.tasks.values()) this.readInputsCurrent(task)
     this.revisionValue += 1
     for (const listener of this.listeners) {
