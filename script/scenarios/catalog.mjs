@@ -1014,12 +1014,11 @@ const EDITOR_REVIEW = {
     ],
     differs: [
       'The title is cut at its end with `…` (the prototype keeps the end of a long title): owner decision for 4a.1.',
-      'No placeholder ladder or palette list yet: they come with 4d and 4e.',
       'The `/` and `@` lists still hold pi-tui\'s state and keys (4d replaces them); only their painting moved, out of the editor into a palette over the stream, which the prototype does not draw (it grows the prompt): owner decision. The palette has no border, count, or key line, and its focus mark is an arrow, not the prototype\'s `→ ` row prefix with a bold label only.',
       'A buffer taller than the editor\'s window loses pi-tui\'s `↑ N more` rule (the frame is the surface\'s); the cursor still scrolls the window.',
       'The slash-context border (primary while the buffer starts with `/`) is gone: the frame has one border tone besides shell mode.',
     ],
-    pending: ['Placeholders by state (4e.1), tokens (4b), the palette list and its key line (4d).'],
+    pending: [],
   },
   editorTitle: {
     scene: 15,
@@ -1035,7 +1034,7 @@ const EDITOR_REVIEW = {
       { look: 'A CJK title', how: 'checkpoints `cjk`, `cjk-40`' },
     ],
     differs: ['The end of a long title is cut (the prototype keeps the end): owner decision for 4a.1; other right-aligned titles keep the end (`titleCut`).'],
-    pending: ['The title follows the official `title` projection already; 4e.2 adds the rename walk and its tests.'],
+    pending: [],
   },
   editorShell: {
     scene: 15,
@@ -1054,7 +1053,7 @@ const EDITOR_REVIEW = {
       { look: 'Without color the shell prompt is still told by its `!`', how: '`pnpm run scenario editorShell --no-color`, or `editorShell-mono`' },
     ],
     differs: ['Submitting a shell command leaves the mode (today\'s behavior); the prototype keeps the border until Esc.'],
-    pending: ['A placeholder for shell mode (4e.1).'],
+    pending: [],
   },
 }
 
@@ -1090,7 +1089,7 @@ const TOKEN_REVIEW = {
       'The prototype keeps the tokens in a strip before the buffer and selects the last one on an empty buffer; here they stay inline in the text (owner decision for 4b.1), so Backspace acts at the token under the caret.',
       'The image token shows its size (`84 KB`) and a serial number, a paste its line count (pi-tui\'s own), a mention its relative path (owner decision).',
     ],
-    pending: ['The placeholder ladder (4e.1), the `@` list\'s keys and `Ctrl+G` on a file (4d.3).'],
+    pending: ['The `@` list\'s keys and `Ctrl+G` on a file (4d.3).'],
   },
   tokensSubmit: {
     scene: 15,
@@ -1240,7 +1239,7 @@ const COMPLETION_REVIEW = {
       'The cue is a key at the right edge of a row; round 4 ruled that out for `/` (no command has a bound key), and the owner allowed it for the focused file row.',
       'The prototype\'s `Files` overlay (Enter opens, Tab inserts) is not a separate surface: Enter and Tab insert, Ctrl+G opens (D9).',
     ],
-    pending: ['Placeholders by state (4e.1).'],
+    pending: [],
   },
 }
 
@@ -1297,6 +1296,78 @@ const PERF = {
     ],
   },
 }
+
+/** The review briefs of round 6 (Phase 4, group 4e), printed by `brief.mjs`. */
+const KEYS_REVIEW = {
+  placeholders: {
+    scene: 15,
+    reference: 'prototype scene 15 (Editor contexts) · component-library §3.3 (the placeholder) · part 4e.1',
+    implemented: [
+      'The empty prompt shows a muted ghost text after the caret; it is gone with the first character and back when the buffer empties. It is a ladder per state, longest first, whole triggers only, and the longest that fits the row shows: main idle `Ask anything · / commands · @ files · # skills · ! shell`, shed from the right (`! shell`, `# skills`, `@ files`, `/ commands`), main running `Type a follow-up to queue it · @ files · # skills`, a side question `Continue the side question · …`, a live subagent `Message <name> · …`, shell `Run a shell command · Esc leaves shell mode`, a stored subagent `Reply to <name> — sending resumes it`, read-only `Read-only conversation`.',
+      'The state follows the displayed conversation and its Agent: switch with F7 or /agents, and start a turn (a prompt that holds `hold:240000` keeps the real Agent running for four minutes; the stub model answers after that).',
+      'A command\'s argument hint (`/btw `) wins over the placeholder; a multi-line buffer shows none.',
+    ],
+    focus: [
+      { look: 'Main idle, and the shed order at 60 and 40 columns', how: 'checkpoints `main`, `main-60`, `main-40`' },
+      { look: 'Shell mode: the `!` symbol, the accent border and the shell ladder; one character removes it', how: 'checkpoints `shell`, `typed`, `typed-gone`' },
+      { look: 'A stored subagent says sending resumes it; once a message woke it the prompt names it; a one-shot one is read-only', how: 'checkpoints `resumable`, `live`, `read-only` (and `-60`, `-40`)' },
+      { look: 'A side question', how: 'checkpoints `side-question`, `-60`, `-40`' },
+      { look: 'Main running: the follow-up ladder', how: 'checkpoints `main-running`, `-60`, `-40`' },
+    ],
+    differs: ['The spec\'s `minimal` quiet-hints value does not exist; the setting is `full` or `off`.'],
+    pending: [],
+  },
+  placeholdersOff: {
+    scene: 15,
+    reference: 'component-library §3.3 · part 4e.1, quiet hints `off`',
+    implemented: ['With quiet hints off the ladders that teach (main idle and running, a side question, a live subagent) are blank; the ones that state a condition keep their text: shell, a stored subagent, read-only.'],
+    focus: [{ look: 'Blank prompts for the teaching states, text for the three condition states', how: 'checkpoints `main`, `live`, `side-question`, `main-running` (blank) and `shell`, `resumable`, `read-only`' }],
+    differs: [],
+    pending: [],
+  },
+  editorKeys: {
+    scene: 15,
+    reference: 'prototype scene 15 · component-library §3.3 and §5.2 · part 4e.2, as the owner changed it: `Ctrl+Enter` sends as a steer (it replaces the editor\'s `Ctrl+S`), the persistent hint rotates while a turn runs',
+    implemented: [
+      '`?` on an empty prompt opens the help overlay (the same as `/help`); in a draft, in shell mode, or with a list open it is the character.',
+      '`Alt+↑` focuses the stream (also with a draft), `Alt+↓` from the prompt enters the views, `Esc` returns.',
+      '`Ctrl+Enter` sends the draft as a steer in the main session, a side question and a subagent (the running turn takes it at its next step); plain `Enter` queues. It needs a terminal that reports the modifier (kitty or modifyOtherKeys); elsewhere it arrives as `Enter`. `Ctrl+S` no longer steers; it saves forms.',
+      'The notification row\'s hint (no notice, prompt focused) is `Alt+↑ conversation · Alt+↓ bar` when idle; while a turn runs it rotates every 15 seconds through that, `Ctrl+Enter steer · Esc interrupt`, `Ctrl+C clear · Ctrl+G editor`, and `Shift+Tab plan · Alt+M model`. Quiet hints off keeps the first only.',
+      'The title in the frame\'s corner follows the session title (a rename shows at once); a view whose Agent has no title shows the view\'s name.',
+    ],
+    focus: [
+      { look: '`?` opens help on an empty prompt, is text in a draft and in shell mode', how: 'checkpoints `help`, `question-text`, `shell-question`' },
+      { look: 'Alt+Up and Alt+Down from the prompt', how: 'checkpoints `stream`, `back`, `views`, `stream-with-draft`' },
+      { look: 'A rename, and a subagent view\'s title', how: 'checkpoints `renamed`, `renamed-40`, `title-subagent`' },
+      { look: 'The hint rotating while the turn runs', how: 'checkpoints `hint-1` to `hint-4` (15 seconds apart)' },
+      { look: 'Ctrl+Enter: the message is a steering row', how: 'checkpoints `steered`, `steered-60`, `steered-40`' },
+    ],
+    differs: ['The scenario terminal sends `Ctrl+Enter` as the CSI-u sequence `ESC [ 13 ; 5 u`.'],
+    pending: [],
+  },
+  subagentReply: {
+    scene: 15,
+    reference: 'prototype scene 15 · component-library §3.3 and §5.2 · part 4e.3 · queued rows as in part 4c.1',
+    implemented: [
+      'The editor sends to the displayed subagent: `Enter` queues, `Ctrl+Enter` steers; the reply form with its `Send` and `Cancel` buttons and delivery select is gone. The message is a row of the child\'s stream (`⏎ queued`, `⏎ steering`) and `Alt+↑`, `e`, `s`, `d`, `u` work on it exactly as in the main session (`e` brings the tokens and the history entry back).',
+      'A stored (resumable) child is sent to in the same way and the message wakes it; the placeholder said so beforehand. A one-shot child is read-only: Enter keeps the draft and says so.',
+      'Esc interrupts the displayed child only.',
+    ],
+    focus: [
+      { look: 'A stored child: the placeholder, then the first message wakes it', how: 'checkpoints `stored`, `woken-once`, `woken-twice` (each message wakes the child again once its turn is done), `woken` (this message holds the child\'s turn so it stays running)' },
+      { look: 'A live child: a queued row, a steering row', how: 'checkpoints `queued`, `steering`' },
+      { look: 'The rows\' keys on a child, like the main session', how: 'checkpoints `rows`, `edit`, `requeued`, `steered`, `cancelled`, `undone`, and the widths `rows-60`, `rows-40`' },
+      { look: 'A one-shot child refuses', how: 'checkpoint `read-only`' },
+    ],
+    differs: ['The subagent is a real one the stub model starts (`spawn:Stored writer` in the main prompt) and it answers with the stub model.'],
+    pending: [],
+  },
+}
+
+/** Open a subagent from the agents browser by a part of its name (the list filters as you type), and wait for its view. */
+/** Have the stub model start a real continuable subagent (stored once its turn is done). */
+const SPAWN = name => [type(`spawn:${name}`), key('enter'), wait(6000)]
+const OPEN_VIEW = name => [type('/agents'), key('enter'), until('Subagents'), type(name), key('enter'), wait(500)]
 
 /** The catalog, by scenario name. */
 export const CATALOG = Object.freeze({
@@ -1570,6 +1641,109 @@ export const CATALOG = Object.freeze({
       resize(96, 24),
       ...WIPE, type('#wi'), wait(300), ...WIPE, type('#wi'), wait(300), checkpoint('ext-restarted'),
       until('wiki-home'), ...WIPE, wait(300), checkpoint('ext-idle'),
+    ],
+  },
+  // The empty prompt's placeholder by state (4e.1).
+  placeholders: {
+    summary: 'the empty prompt\'s ghost text by state: main idle and running, shell, a stored subagent (a real one the stub model starts) and the same one woken by a message, a read-only one, and a side question; shed at 60 and 40 columns',
+    source: { replay: 'subagentViews' },
+    covers: [...EDITOR, `${INTERACTION}placeholder.ts`, 'script/scenarios/stub-model.mjs'],
+    sizes: EDITOR_SIZES,
+    review: KEYS_REVIEW.placeholders,
+    script: [
+      play('children'), checkpoint('main'),
+      resize(60, 24), checkpoint('main-60'),
+      resize(40, 24), checkpoint('main-40'),
+      resize(96, 24),
+      type('!'), checkpoint('shell'), key('backspace'),
+      type('x'), checkpoint('typed'), key('backspace'), checkpoint('typed-gone'),
+      ...SPAWN('Stored writer'), ...OPEN_VIEW('Stored writer'), checkpoint('resumable'),
+      resize(60, 24), checkpoint('resumable-60'),
+      resize(40, 24), checkpoint('resumable-40'),
+      resize(96, 24), type('hold:240000 wake up'), key('enter'), wait(1500), checkpoint('live'),
+      resize(60, 24), checkpoint('live-60'),
+      resize(40, 24), checkpoint('live-40'),
+      resize(96, 24), key('f7'),
+      ...OPEN_VIEW('One-shot linter'), checkpoint('read-only'), key('f7'),
+      play('side'), checkpoint('side-question'),
+      resize(60, 24), checkpoint('side-question-60'),
+      resize(40, 24), checkpoint('side-question-40'),
+      resize(96, 24), key('f7'),
+      type('hold:240000 build the packages'), key('enter'), wait(800), checkpoint('main-running'),
+      resize(60, 24), checkpoint('main-running-60'),
+      resize(40, 24), checkpoint('main-running-40'),
+    ],
+  },
+  placeholdersOff: {
+    summary: 'quiet hints off: the teaching ladders (main, side question, live subagent) are blank; shell, stored and read-only keep their state text',
+    source: { replay: 'subagentViews' },
+    config: { mayfly: NO_TIPS },
+    covers: [...EDITOR, `${INTERACTION}placeholder.ts`],
+    sizes: EDITOR_SIZES,
+    review: KEYS_REVIEW.placeholdersOff,
+    script: [
+      play('children'), checkpoint('main'),
+      type('!'), checkpoint('shell'), key('backspace'),
+      ...SPAWN('Stored writer'), ...OPEN_VIEW('Stored writer'), checkpoint('resumable'),
+      type('hold:240000 wake up'), key('enter'), wait(1500), checkpoint('live'), key('f7'),
+      ...OPEN_VIEW('One-shot linter'), checkpoint('read-only'), key('f7'),
+      play('side'), checkpoint('side-question'), key('f7'),
+      type('hold:240000 build the packages'), key('enter'), wait(800), checkpoint('main-running'),
+    ],
+  },
+  // `?`, the stream and the views from the prompt, Ctrl+Enter, the rotating hint and the title (4e.2).
+  editorKeys: {
+    summary: '`?` on an empty prompt opens key help (and is a character otherwise), Alt+Up and Alt+Down leave the prompt, the notification row\'s hint rotates while a turn runs, Ctrl+Enter sends a steer, and the title follows a rename',
+    source: { replay: 'subagentViews' },
+    covers: [...EDITOR, `${TRANSCRIPT}pane-notification.ts`, `${INTERACTION}commands-plugin.ts`, `${INTERACTION}keys.ts`, 'script/scenarios/stub-model.mjs'],
+    sizes: EDITOR_SIZES,
+    review: KEYS_REVIEW.editorKeys,
+    script: [
+      ...RENAME('Fix the build'), play('children'), checkpoint('idle'),
+      type('?'), until('Help'), checkpoint('help'), key('esc'), wait(150),
+      type('is this a question'), type('?'), checkpoint('question-text'), ...WIPE,
+      type('!'), type('?'), checkpoint('shell-question'), ...WIPE, key('backspace'),
+      key('alt+up'), checkpoint('stream'), key('alt+down'), checkpoint('back'),
+      key('alt+down'), checkpoint('views'), key('esc'), wait(150),
+      type('draft'), key('alt+up'), checkpoint('stream-with-draft'), key('esc'), wait(150), ...WIPE,
+      ...RENAME('Fix the build for good'), checkpoint('renamed'),
+      resize(40, 24), checkpoint('renamed-40'), resize(96, 24),
+      ...SPAWN('Stored writer'), ...OPEN_VIEW('Stored writer'), checkpoint('title-subagent'), key('f7'),
+      type('hold:240000 build the packages'), key('enter'), wait(800), checkpoint('hint-1'),
+      wait(15_500), checkpoint('hint-2'),
+      wait(15_500), checkpoint('hint-3'),
+      wait(15_500), checkpoint('hint-4'),
+      type('use the fast path'), key('ctrl+enter'), wait(400), checkpoint('steered'),
+      resize(60, 24), checkpoint('steered-60'),
+      resize(40, 24), checkpoint('steered-40'),
+    ],
+  },
+  // Replying to a subagent from the editor (4e.3): Enter queues, Ctrl+Enter steers, a stored child wakes, a one-shot one refuses.
+  subagentReply: {
+    summary: 'the editor sends to a subagent: a message to a stored one wakes it, Enter queues and Ctrl+Enter steers, its queued rows take e, s, d and u like the main session\'s, and a one-shot one is read-only',
+    source: { replay: 'subagentViews' },
+    covers: [...EDITOR, `${INTERACTION}placeholder.ts`, 'packages/mayfly/src/app/conversation-views.ts', 'script/scenarios/stub-model.mjs'],
+    sizes: EDITOR_SIZES,
+    review: KEYS_REVIEW.subagentReply,
+    script: [
+      play('children'),
+      ...SPAWN('Stored writer'), ...OPEN_VIEW('Stored writer'), checkpoint('stored'),
+      type('add a Windows line to the install section'), key('enter'), wait(3000), checkpoint('woken-once'),
+      type('and a WSL line too'), key('enter'), wait(3000), checkpoint('woken-twice'),
+      type('hold:240000 recheck every heading'), key('enter'), wait(1500), checkpoint('woken'),
+      type('and the title too'), key('enter'), wait(500), checkpoint('queued'),
+      type('use the short form'), key('ctrl+enter'), wait(500), checkpoint('steering'),
+      key('alt+up'), checkpoint('rows'),
+      key('up'), key('e'), checkpoint('edit'),
+      key('enter'), wait(500), checkpoint('requeued'),
+      key('alt+up'), key('s'), checkpoint('steered'),
+      key('d'), checkpoint('cancelled'),
+      key('u'), checkpoint('undone'),
+      key('esc'), wait(150),
+      resize(60, 24), checkpoint('rows-60'),
+      resize(40, 24), checkpoint('rows-40'),
+      resize(96, 24), key('f7'),
+      ...OPEN_VIEW('One-shot linter'), type('hello'), key('enter'), wait(300), checkpoint('read-only'),
     ],
   },
   gallery: {

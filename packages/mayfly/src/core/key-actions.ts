@@ -83,7 +83,7 @@ export const DEFAULT_ACTION_KEYS: Readonly<Record<string, readonly string[]>> = 
   [ACTION_EXTERNAL_EDITOR]: ['ctrl+g'],
   [ACTION_SEARCH]: ['ctrl+f'],
   [ACTION_INTERRUPT]: ['ctrl+c'],
-  [ACTION_STEER]: ['ctrl+s'],
+  [ACTION_STEER]: ['ctrl+enter'],
   [ACTION_BACKSPACE]: ['backspace'],
   [ACTION_CYCLE_MODE]: ['shift+tab'],
   [ACTION_CYCLE_MODEL]: ['alt+m'],

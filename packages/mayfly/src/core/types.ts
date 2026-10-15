@@ -678,6 +678,12 @@ export interface MayflyEditor extends MayflyFocusable {
    */
   setGhostHint(hint: string | undefined): void
   /**
+   * Set the placeholder ladder an empty buffer shows after the cursor, longest variant first; the longest that fits the
+   * row is drawn muted. An argument-hint ghost wins over it, and none shows once the buffer holds anything.
+   * @param ladder - the variants, or an empty list for none.
+   */
+  setPlaceholder(ladder: readonly string[]): void
+  /**
    * Attach the autocomplete provider driving the suggestion dropdown.
    * @param provider - the suggestion source.
    */

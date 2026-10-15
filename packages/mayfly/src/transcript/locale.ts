@@ -129,6 +129,9 @@ export const TRANSCRIPT_LOCALE: MayflyLocaleCatalog = TRANSCRIPT_MESSAGES
 /** Activity-pane copy: phase labels plus the running and preparing process labels. */
 export const ACTIVITY_LOCALE = identityCatalog({
   'Alt+↑ conversation · Alt+↓ bar': 'Alt+↑ 选对话 · Alt+↓ 选底栏',
+  'Ctrl+Enter steer · Esc interrupt': 'Ctrl+Enter 引导 · Esc 中断',
+  'Ctrl+C clear · Ctrl+G editor': 'Ctrl+C 清空 · Ctrl+G 编辑器',
+  'Shift+Tab plan · Alt+M model': 'Shift+Tab 计划 · Alt+M 模型',
   'Enter expand · c copy · Ctrl+C JSON · Ctrl+G editor · ↑/↓ select · / ? search · Esc back': 'Enter 展开 · c 复制 · Ctrl+C 复制 JSON · Ctrl+G 编辑器 · ↑/↓ 选择 · / ? 搜索 · Esc 返回',
   'Enter expand · c copy · Ctrl+C JSON · ↑/↓ or n/N match · / ? new search · Esc end search': 'Enter 展开 · c 复制 · Ctrl+C 复制 JSON · ↑/↓ 或 n/N 切换匹配 · / ? 新搜索 · Esc 结束搜索',
   'Invalid regular expression · Esc to cancel': '正则表达式无效 · Esc 取消',

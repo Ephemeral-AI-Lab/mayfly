@@ -2,7 +2,8 @@
  * The editor's frame: a rounded surface with the conversation title in its top-right corner around the prompt, whose
  * symbol and buffer the host editor supplies. Shell mode shows as the `!` symbol in the accent tone and the accent
  * border on every row, never as text; a prompt that does not hold keyboard focus is parked, its frame muted. A title
- * too long for the rule keeps its start and ends in `…`; one that has no room is dropped. A pure function of facts:
+ * too long for the rule keeps its start and ends in `…`; one that has no room is dropped. The placeholder is the ladder
+ * of the empty prompt, as data. A pure function of facts:
  * the title arrives sanitized and final.
  *
  * @module components/editor
@@ -18,6 +19,8 @@ export interface EditorFacts {
   readonly shell: boolean
   /** Keyboard focus is elsewhere (the conversation or a bar): the frame is muted. */
   readonly parked?: boolean
+  /** The empty prompt's placeholder variants, longest first; the prompt shows the longest that fits. None: no placeholder. */
+  readonly placeholder?: readonly string[]
 }
 
 /**
@@ -38,6 +41,7 @@ export function Editor(facts: EditorFacts): MayflyUiNode {
       id: 'prompt',
       symbol: facts.shell ? '! ' : '> ',
       ...facts.shell ? { symbolTone: 'accent' as const } : {},
+      ...facts.placeholder === undefined || facts.placeholder.length === 0 ? {} : { placeholder: facts.placeholder },
     }),
   })
 }

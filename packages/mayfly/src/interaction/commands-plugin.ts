@@ -25,6 +25,13 @@ import { registerThemeCommand } from './theme-switch.ts'
 import { registerUpdateCommand } from './update-command.ts'
 import { registerTraceCommand } from './trace-command.ts'
 import { interactionTranslator, observeInteractionLocale } from './locale.ts'
+
+declare module '@deepseek-ai/cordis' {
+  interface Events {
+    /** Open the help overlay: the `/help` command, and `?` on an empty prompt. */
+    'mayfly/request-help'(): void
+  }
+}
 import { rewindCandidates } from './rewind.ts'
 import { openUiOverlay } from './ui-overlay.ts'
 import { createInteractionNotificationOwner } from './notifications.ts'
@@ -143,6 +150,9 @@ export function apply(ctx: Context): void {
     offLocale = observeInteractionLocale(ctx, () => { handle.set(view()) })
     return { kind: 'success' }
   }
+
+  // `?` on an empty prompt asks for the same overlay as `/help`.
+  ctx.effect(() => ctx.on('mayfly/request-help', () => { showHelp() }))
 
   ctx.effect(() => {
     const quit = ctx.commands.register({

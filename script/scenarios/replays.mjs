@@ -216,6 +216,26 @@ const childStream = {
   ])],
 }
 
+const subagentViews = {
+  summary: 'a main session with a one-shot read-only subagent and a side question; type `spawn:Stored writer` to have the stub model start a real continuable subagent (stored once it finishes, so a message wakes it); open a subagent from /agents, F7 goes back; type `hold:240000 build it` to keep the main Agent running (the stub answers after four minutes)',
+  items: [
+    turn('Lint the README.', [
+      step({
+        text: 'One helper is on it.',
+        tools: [
+          subagent('One-shot linter', 'Lint the README', { startMs: 400, items: [step({ stream: false, text: 'No lint errors in the README.' })] }, { runMs: 600 }),
+        ],
+      }),
+      step({ text: 'The linter is done.' }),
+      mark('children'),
+    ]),
+    btw('Does the install section need Windows notes?', [
+      mark('side'),
+      step({ reasoning: 'A short answer is enough.', text: 'Yes: one line on PowerShell, one on WSL.', reasoningMs: 800, textMs: 1500 }),
+    ], { label: 'windows notes' }),
+  ],
+}
+
 const approvals = {
   summary: 'a command that deletes files waits for your permission: its call is the request, a card decides; a digit chooses, Esc rejects',
   items: [turn('Clean the build output.', [
@@ -1225,7 +1245,7 @@ const phase3 = {
   ],
 }
 
-export const REPLAYS = { tour, toolkit, thinking, markdown, live, phases, thinkingLadder, pending, blocks, streaming, sync, activityWait, prompts, turns, toollines, toolgrow, findings, edits, errors, compaction: compactionReplay, compactionNoWindow, compactionFailed, manualCompact, context, subagents, childStream, approvals, approvalsRejected, approvalsEdit, approvalsQueue, questions, plan, planLong, goal, jobs, queued, queue: queueRows, retries, sideQuestion, notices, notificationPane, modes, edge, history, wheel, content, phase3 }
+export const REPLAYS = { tour, toolkit, thinking, markdown, live, phases, thinkingLadder, pending, blocks, streaming, sync, activityWait, prompts, turns, toollines, toolgrow, findings, edits, errors, compaction: compactionReplay, compactionNoWindow, compactionFailed, manualCompact, context, subagents, childStream, subagentViews, approvals, approvalsRejected, approvalsEdit, approvalsQueue, questions, plan, planLong, goal, jobs, queued, queue: queueRows, retries, sideQuestion, notices, notificationPane, modes, edge, history, wheel, content, phase3 }
 
 /*
  * The scenes of the Website's app shots. Each is the source of an `app-*` scenario of the catalog, whose goldens the

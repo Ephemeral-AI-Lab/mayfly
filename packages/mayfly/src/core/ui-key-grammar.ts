@@ -590,6 +590,6 @@ export const SHARED_KEY_REFERENCE: readonly { readonly keys: string, readonly ac
   { keys: 'Ctrl+E', action: 'Expand focused scrollable content to full screen' },
   { keys: 'Delete', action: 'Return a changed field to its inherited or default value' },
   { keys: 'Alt+Enter or Ctrl+J', action: 'Insert a newline in a multi-line field' },
-  { keys: 'Enter, Alt+Enter, ↑/↓, Backspace', action: 'In a prompt: send, insert a newline, walk the history of an empty prompt, or select and then remove the last token' },
+  { keys: 'Enter, Ctrl+Enter, Alt+Enter, ↑/↓, Backspace', action: 'In a prompt: send, send as a steer, insert a newline, walk the history of an empty prompt, or select and then remove the last token' },
   { keys: 'Ctrl+S, c, x, r, Ctrl+G, Ctrl+F', action: 'Save, copy, delete, refresh, open in $EDITOR, or search, wherever a panel offers that meaning' },
 ])

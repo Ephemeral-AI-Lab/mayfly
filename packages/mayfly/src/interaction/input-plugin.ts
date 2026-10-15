@@ -9,7 +9,7 @@
  * dispatches a slash command through `ctx.commands` when the line parses as
  * one, otherwise queues the text as a user follow-up message on the current
  * agent (the harness inbox queues it when the agent is running). S29: the
- * follow-up and Ctrl-S steer paths rewrite `#name` tokens naming settled
+ * follow-up and Ctrl+Enter steer paths rewrite `#name` tokens naming settled
  * user-invocable skills into the `/name` harness gesture form (the
  * `./skills-catalog.ts` rewrite — line-start slashes stay a strict command
  * domain; skills reach the model through the follow-up channel, and the
@@ -25,7 +25,7 @@
  * interrupts a running session flow — safe retraction first when the buffer
  * is empty and eligible — and clears an idle draft; Ctrl-C empties the box
  * while a flow runs, interrupts with an empty buffer, and owns the idle
- * double-press-exit chain; Ctrl-S steer, Ctrl-G external
+ * double-press-exit chain; Ctrl+Enter steer, Ctrl-G external
  * editor) resolves through
  * `ctx.mayflyKeymap` in the editor's `onKey` hook, which runs before the
  * pi-tui Editor sees the sequence. The mounted editor and the submit router
@@ -67,7 +67,6 @@ import type {} from '@deepseek-ai/dsh-subagent'
 import { SessionId, type UserMessage } from '@deepseek-ai/dsh-session'
 // Carries the app-owned retraction service and event/service declaration merges.
 import type {} from '../app/index.ts'
-import type {} from './subagent-reply.ts'
 import { interruptAgent, isAgentRunning } from '../app/agent-interrupt.ts'
 // Empty type import carries the `permissionPresets` Context merge the
 // bare-/permission interception probes (the service rides dsh-base).
@@ -105,6 +104,7 @@ import {
   ACTION_SUBMIT,
 } from './keys.ts'
 import { interactionTranslator } from './locale.ts'
+import { placeholderLadder, placeholderState } from './placeholder.ts'
 import { createModelListCache, cycleSessionModel } from './model-commands.ts'
 import { cycleMode } from './mode-commands.ts'
 import { openPermissionPanel } from './permission-panel.ts'
@@ -230,10 +230,11 @@ export function apply(ctx: Context): void {
    * for services through the dead context.
    */
   let unloaded = false
-  const pendingSubagentPrompts = new Set<AbortController>()
+  /** The subagent prompts still on their way to an inbox, each with the child it addresses. */
+  const pendingSubagentPrompts = new Map<AbortController, string>()
   ctx.effect(() => () => {
     unloaded = true
-    for (const controller of pendingSubagentPrompts) controller.abort()
+    for (const controller of pendingSubagentPrompts.keys()) controller.abort()
     pendingSubagentPrompts.clear()
   })
   const editor = ctx.mayflyComponents.createEditor()
@@ -261,7 +262,7 @@ export function apply(ctx: Context): void {
     editor,
     report: (id, feedback) => notificationOwner.report(`editor-extension/${id}`, notificationScope(), feedback, id),
     footer: feedbackNode,
-    frame: ({ parked }) => Editor({ ...frame.title === undefined ? {} : { title: frame.title }, shell: frame.shell, parked }),
+    frame: ({ parked }) => Editor({ ...titleNow() === undefined ? {} : { title: titleNow()! }, shell: frame.shell, parked, placeholder: placeholderNow() }),
     shouldTransformSubmit: text => ctx.mayflyCurrentAgent.current() !== null
       && draft.getStashedInputMode() !== 'bash'
       && parseCommand(text.trim()) === undefined,
@@ -289,6 +290,30 @@ export function apply(ctx: Context): void {
     )
     if (matches.length === 0) return `no matching command: /${parsed?.name ?? ''}`
     return undefined
+  }
+
+  /** The ladder the empty prompt shows now: the displayed conversation's state, quiet hints, and the language. */
+  function placeholderNow(): readonly string[] {
+    return placeholderLadder(
+      placeholderState(conversations.displayed(), frame.shell, sessionFlowInProgress()),
+      currentMayflySettings(ctx).quietHints === 'off',
+      t,
+    )
+  }
+  /** The corner title: the session's title, else the name of the side conversation shown (a view without a title of its own). */
+  function titleNow(): string | undefined {
+    if (frame.title !== undefined) return frame.title
+    const shown = conversations.displayed()
+    const line = shown === null || shown.kind === 'primary' ? '' : shown.label.replace(/\s+/gu, ' ').trim()
+    return line === '' ? undefined : line
+  }
+  /** Recompile the frame when the placeholder or the corner title changed: what they follow moves without a keystroke. */
+  let placeholderShape = ''
+  function syncPlaceholder(): void {
+    const shape = JSON.stringify([placeholderNow(), titleNow()])
+    if (shape === placeholderShape) return
+    placeholderShape = shape
+    refreshHint()
   }
 
   /** Recompile the prompt footer from the slash state. */
@@ -345,15 +370,20 @@ export function apply(ctx: Context): void {
     historyText: string | undefined,
     transformed: ReturnType<typeof applyReversibleSubmitTransformers>,
     submitted: MayflySubmittedDraft | undefined,
+    delivery: 'queue' | 'steer',
   ): boolean {
     const target = conversations.displayed()
     if (target?.kind !== 'subagent' || target.mode !== 'continuable' || target.access === 'readonly') {
       restoreSubagentSubmission(value, historyText, transformed, submitted, 'the subagent is no longer available for input')
       return false
     }
-    const viewRevision = conversations.revision()
+    // The wake of a resumable child republishes the registry, so the view is judged by the child it shows, not a revision.
+    const stillShown = (): boolean => {
+      const shown = conversations.displayed()
+      return shown?.kind === 'subagent' && shown.sessionId === target.sessionId
+    }
     const controller = new AbortController()
-    pendingSubagentPrompts.add(controller)
+    pendingSubagentPrompts.set(controller, target.sessionId)
     const ref = requests.begin('subagent')
     const attachments = ctx.get('attachments') as AttachmentReader | undefined
     void subagentPromptParts(attachments, transformed.blocks, controller.signal).then(content => subagents.prompt({
@@ -361,12 +391,20 @@ export function apply(ctx: Context): void {
       parentSessionId: SessionId(target.parentSessionId),
       childSessionId: SessionId(target.sessionId),
       mode: 'continuable',
-      // Queue for the child's next turn: the child conversation's editor is a
-      // follow-up channel, not mid-step steering (the upstream host default).
-      delivery: 'queue',
+      // `Enter` queues for the child's next turn, `Ctrl+Enter` steers its running one; either wakes a resumable child.
+      delivery,
       content,
     }, controller.signal)).then(receipt => {
-      if (unloaded || controller.signal.aborted || conversations.revision() !== viewRevision) return
+      if (unloaded || controller.signal.aborted || !stillShown()) return
+      // The child's rows follow the main Agent's: a message still waiting in its inbox is withdrawable with its buffer.
+      const child = ctx.agents.get(target.sessionId as Agent['id'])
+      if (child !== undefined && messagePending(child, String(receipt.messageId))) {
+        queuedDrafts.set(String(receipt.messageId), {
+          ...(submitted === undefined ? {} : { buffer: submitted }),
+          ...(historyText === undefined ? {} : { historyText }),
+          ...(transformed.rollback === undefined ? {} : { rollback: transformed.rollback }),
+        })
+      }
       retractionCandidate = {
         messageId: String(receipt.messageId),
         editorText: value,
@@ -376,7 +414,7 @@ export function apply(ctx: Context): void {
       }
     }, error => {
       requests.transition(ref, 'failed', error instanceof Error ? error.message : String(error))
-      if (unloaded || controller.signal.aborted || conversations.revision() !== viewRevision) {
+      if (unloaded || controller.signal.aborted || !stillShown()) {
         transformed.rollback?.()
         return
       }
@@ -385,6 +423,20 @@ export function apply(ctx: Context): void {
       pendingSubagentPrompts.delete(controller)
     })
     return true
+  }
+
+  /** The model-facing blocks of a submitted line: the extension runtime's prepared transformation, then the `#skill` rewrite. */
+  function transformSubmission(value: string, line: string): ReturnType<typeof applyReversibleSubmitTransformers> {
+    const prepared = extensionRuntime.takePrepared(value)
+    const preparedTransformation = prepared?.transformation
+    return preparedTransformation === undefined
+      ? applyReversibleSubmitTransformers(ctx, rewriteSkillTokens(ctx, prepared?.text ?? line))
+      : {
+          ...preparedTransformation,
+          blocks: preparedTransformation.blocks.map(block => block.type === 'text'
+            ? { ...block, text: rewriteSkillTokens(ctx, block.text) }
+            : block),
+        }
   }
 
   /** Whether the message still sits in either of the Agent's pending lanes. */
@@ -542,28 +594,21 @@ export function apply(ctx: Context): void {
         showFeedback('prompt-submit', t('no active session'), 'error')
         return
       }
+      // A stored continuable child is sent to like a live one: the prompt wakes it.
+      if (displayed.kind === 'subagent' && displayed.access === 'resumable') {
+        deliverSubagentPrompt(value, line, transformSubmission(value, line), submitted, 'queue')
+        return
+      }
       restoreSubmission(value, line, submitted)
-      // A stored continuable child resumes only through the explicit reply
-      // form; the draft stays here until that form sends it.
-      if (displayed.kind === 'subagent' && displayed.access === 'resumable') ctx.emit('mayfly/request-subagent-reply', displayed, line)
-      else showFeedback('prompt-submit', t('this conversation is read-only'), 'warning')
+      showFeedback('prompt-submit', t('this conversation is read-only'), 'warning')
       screen.requestRender()
       return
     }
     if (parsed === undefined) {
-      const prepared = extensionRuntime.takePrepared(value)
-      const preparedTransformation = prepared?.transformation
-      const transformed = preparedTransformation === undefined
-        ? applyReversibleSubmitTransformers(ctx, rewriteSkillTokens(ctx, prepared?.text ?? line))
-        : {
-            ...preparedTransformation,
-            blocks: preparedTransformation.blocks.map(block => block.type === 'text'
-              ? { ...block, text: rewriteSkillTokens(ctx, block.text) }
-              : block),
-          }
+      const transformed = transformSubmission(value, line)
       const displayed = conversations.displayed()
       if (displayed?.kind === 'subagent') {
-        deliverSubagentPrompt(value, line, transformed, submitted)
+        deliverSubagentPrompt(value, line, transformed, submitted, 'queue')
         return
       }
       try {
@@ -882,6 +927,11 @@ export function apply(ctx: Context): void {
     // which token is active, and the hint under the prompt follows it. A completion list that reopened behind the caret
     // (the mention's own) does not keep the key.
     if (keymap.matches(data, ACTION_BACKSPACE) && editor.tokenBackspace()) return true
+    // `?` on an empty prompt opens key help; anywhere else (a draft, a shell command, a list) it is the character.
+    if (data === '?' && editor.getText().length === 0 && !frame.shell && !editor.isShowingAutocomplete()) {
+      ctx.emit('mayfly/request-help')
+      return true
+    }
     // Ctrl-G on a token opens that, not the whole draft: a file or a pasted block in the editor, an image in a preview.
     if (keymap.matches(data, ACTION_EXTERNAL_EDITOR)) {
       // With the `@` list open, the focused file is what Ctrl-G opens, before any token behind the caret (a folder is
@@ -937,12 +987,14 @@ export function apply(ctx: Context): void {
       showFeedback('exit', t('press Ctrl+C again to exit'), 'warning')
       return true
     }
-    // Ctrl-S: steer the current turn with the draft — an idle agent starts
-    // a turn, a running one consumes it at the next step boundary.
+    // Ctrl+Enter: send the draft as a steer — an idle agent starts a turn, a running one consumes it at the next step
+    // boundary; a resumable child is woken by it.
     if (keymap.matches(data, ACTION_STEER)) {
       const text = editor.getText().trim()
       const agent = ctx.mayflyCurrentAgent.current()
-      if (text.length === 0 || agent === null) return false
+      const shown = conversations.displayed()
+      const resumable = shown?.kind === 'subagent' && shown.access === 'resumable'
+      if (text.length === 0 || (agent === null && !resumable)) return false
       // The steer path never crosses the submit funnel, so snapshot the
       // buffer and paste table directly for a possible withdrawal.
       const submitted = editor.captureDraft?.()
@@ -951,7 +1003,7 @@ export function apply(ctx: Context): void {
       const transformed = applyReversibleSubmitTransformers(ctx, rewriteSkillTokens(ctx, text))
       const displayed = conversations.displayed()
       if (displayed?.kind === 'subagent') {
-        if (deliverSubagentPrompt(text, undefined, transformed, submitted)) {
+        if (deliverSubagentPrompt(text, undefined, transformed, submitted, 'steer')) {
           editor.setText('')
           currentText = ''
           draft.clearDraft()
@@ -959,6 +1011,7 @@ export function apply(ctx: Context): void {
         }
         return true
       }
+      if (agent === null) return false
       try {
         const message = createUserMessage({ content: transformed.blocks, source: { kind: 'user' } })
         agent.steer(message)
@@ -1081,14 +1134,22 @@ export function apply(ctx: Context): void {
       sessionId = nextId
       retractionCandidate = undefined
       queuedDrafts.clear()
-      for (const controller of pendingSubagentPrompts) controller.abort()
-      pendingSubagentPrompts.clear()
+      // A prompt that wakes a resumable child makes the child's Agent appear: that prompt stays, every other one is stale.
+      for (const [controller, child] of pendingSubagentPrompts) {
+        if (child === String(nextId)) continue
+        controller.abort()
+        pendingSubagentPrompts.delete(controller)
+      }
     }
     extensionRuntime.invalidateSession()
     notificationOwner.clearAll()
     refreshHint()
   })
   ctx.effect(() => sessionRegistration)
+  // The empty prompt's placeholder follows what the displayed conversation accepts and whether its turn runs.
+  ctx.effect(() => conversations.subscribe(syncPlaceholder))
+  ctx.on('agent/status', ({ agent }) => { if (agent === ctx.mayflyCurrentAgent.current()) syncPlaceholder() })
+  ctx.on('settings/document-updated', (namespace) => { if (String(namespace) === 'mayfly') syncPlaceholder() })
   // A queued draft is only useful while its message still waits in the
   // current Agent's inbox: claims consume it for real, discards and
   // withdrawals retire the record.
@@ -1211,14 +1272,16 @@ export function apply(ctx: Context): void {
     return () => dispose?.()
   })
   /* notification is driven by live streaming events */
-  // A reply form opened from this draft sent it: the draft left the editor.
-  ctx.effect(() => ctx.on('mayfly/subagent-reply-sent', sent => {
-    if (editor.getText().trim() !== sent) return
-    editor.addToHistory(sent)
-    stashHistory()
-    editor.setText('')
-    currentText = ''
-    draft.clearDraft()
+  // A plugin addresses the editor to a subagent: the conversation is shown and the prompt is seeded with the text unless it
+  // holds a draft already. Nothing is sent or resumed until the user sends.
+  ctx.effect(() => ctx.on('mayfly/request-subagent-reply', (target, text) => {
+    const shown = conversations.displayed()
+    if (shown?.kind !== 'subagent' || shown.sessionId !== target.sessionId) conversations.open(target)
+    if (text !== undefined && editor.getText().trim() === '') {
+      editor.setText(text)
+      currentText = editor.getText()
+      stashCurrentDraft()
+    }
     refreshHint()
     screen.requestRender()
   }))

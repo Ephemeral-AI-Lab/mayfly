@@ -86,7 +86,7 @@ import { UiRowCache } from './ui-row-cache.ts'
 import { canStepLeft, railGroupFor, type TabsTraits } from './ui-focus-levels.ts'
 import { isRail, tabsShape } from './ui-tabs-paint.ts'
 import { UiImagePainter } from './ui-image.ts'
-import { paintHostedPrompt, paintPrompt, UiPromptEditor, type PromptPaint } from './ui-prompt.ts'
+import { paintHostedPrompt, paintPrompt, placeholderLadder, UiPromptEditor, type PromptPaint } from './ui-prompt.ts'
 import { promptCompletionsOpen, promptRecallActive } from './ui-interaction-prompt.ts'
 import type { MayflyUiImageSource } from './ui-images.ts'
 import { countWork, type MayflyWorkCounters } from './ui-work-counters.ts'
@@ -766,6 +766,7 @@ function hostedPromptComponent(node: MayflyPromptNode, state: FocusState, option
     render: width => {
       try {
         editor.focused = state.focused && state.activeKey === key
+        editor.setPlaceholder(placeholderLadder(node.placeholder))
         const rows = paintHostedPrompt({ node, width: Math.max(1, width), colors: options.colors, components: options.components, buffer: room => editor.render(room) })
         countWork(options.counters, 'rowsPainted', rows.length)
         countWork(options.counters, 'componentRenders')

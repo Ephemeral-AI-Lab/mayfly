@@ -44,6 +44,7 @@ import {
   topRule as renderTopRule,
 } from './chrome.ts'
 import { CompletionList } from './completion-list.ts'
+import { pickPlaceholder } from './ui-prompt.ts'
 import { expandPastes, findTokenRanges, foldSegments, paintTokenRows, type EditorTokenPaints, type EditorTokenRange, type EditorTokenText } from './editor-tokens.ts'
 import type {
   MayflyAutocompleteProvider,
@@ -172,6 +173,9 @@ class EditorAdapter implements MayflyEditor {
 
   /** The argument-hint ghost (S14); none while unset. */
   private ghostHint: string | undefined
+
+  /** The empty buffer's placeholder ladder, longest first; none while unset. */
+  private placeholder: readonly string[] = []
 
   /** The interaction-owned inline tokens (image markers, accepted mentions); none while unset. */
   private tokenSource: MayflyEditorTokenSource | undefined
@@ -371,6 +375,10 @@ class EditorAdapter implements MayflyEditor {
 
   setGhostHint(hint: string | undefined): void {
     this.ghostHint = hint
+  }
+
+  setPlaceholder(ladder: readonly string[]): void {
+    this.placeholder = ladder
   }
 
   setTokenSource(source: MayflyEditorTokenSource | undefined): void {
@@ -608,6 +616,11 @@ class EditorAdapter implements MayflyEditor {
     }
     if (this.ghostHint !== undefined && this.cursorAtInputEnd()) {
       row = injectGhostHint(row, this.ghostHint, this.editor.getText(), safeWidth, this.chrome.ghostHintPaint)
+    }
+    if (this.ghostHint === undefined && this.placeholder.length > 0 && this.editor.getText() === '') {
+      // One cell for the caret and one to spare, as the design's ladder counts; the longest variant that fits shows.
+      const ghost = pickPlaceholder(this.placeholder, safeWidth - 2, { visibleWidth, truncateToWidth })
+      if (ghost !== '') row = injectGhostHint(row, ghost, '', safeWidth, this.chrome.ghostHintPaint)
     }
     return [row, ...content.slice(1), ...list]
   }

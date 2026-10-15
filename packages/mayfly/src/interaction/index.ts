@@ -23,7 +23,6 @@ import * as deliverablesCommand from './deliverables-command.ts'
 import * as commandsPlugin from './commands-plugin.ts'
 import * as inputPlugin from './input-plugin.ts'
 import * as keysPlugin from './keys.ts'
-import * as subagentReplyPlugin from './subagent-reply.ts'
 import * as terminalTitlePlugin from './terminal-title.ts'
 import * as updateCheckPlugin from './updater/check.ts'
 import { PromptEditorController } from './editor-instance.ts'
@@ -56,7 +55,6 @@ export function apply(ctx: Context): void {
   ctx.plugin(deliverablesCommand)
   ctx.plugin(scheduleCommand)
   ctx.plugin(inputPlugin)
-  ctx.plugin(subagentReplyPlugin)
   ctx.plugin(terminalTitlePlugin)
   ctx.plugin(updateCheckPlugin)
 }
