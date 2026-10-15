@@ -26,11 +26,11 @@ export function skillsNode(skills: readonly SkillSummary[], complete: boolean, t
   })
   return ui.surface({ title: t('Skills'), chrome: 'overlay', padding: 1, child: ui.stack.column([
     ...complete ? [] : [ui.text(t('Skill catalog is incomplete; showing the last complete catalog'), { tone: 'warning' })],
-    ui.list({ id: 'skills', role: 'browse', filterable: true, selectedIds: [], items: sorted.map(skill => ({
+    ui.list({ id: 'skills', role: 'browse', filterable: true, filterMode: 'slash', selectedIds: [], items: sorted.map(skill => ({
       id: skill.name, label: skill.name, group: t(skillGroup(skill.source)), detail: skill.description,
       ...skill.invocation.modelInvocable ? {} : { badge: t('user-only') },
     })), empty: ui.empty({ title: t('No skills available') }) }),
-    ui.actions({ id: 'skills-actions', items: [{ id: 'refresh', label: t('Refresh') }, { id: 'close', label: t('Close'), dismiss: true }] }),
+    ui.actions({ id: 'skills-actions', items: [{ id: 'refresh', label: t('Refresh'), hintLabel: t('refresh'), semantic: 'refresh', hidden: true }] }),
   ]) })
 }
 
@@ -65,7 +65,6 @@ export function apply(ctx: Context): void {
             ui.text(skill.description), ...skill.whenToUse === undefined ? [] : [ui.text(skill.whenToUse)],
             ui.fields([{ label: t('Source'), value: [{ text: skill.source }] }, { label: t('Provider'), value: [{ text: skill.provider }] }]),
           ]), { scrollbar: true }), { basis: 0, grow: 1, minSize: 1 }),
-          ui.actions({ id: 'detail-actions', items: [{ id: 'close', label: t('Close'), dismiss: true }] }),
         ]) })
         let child: MayflyOverlayHandle | undefined
         const refreshDetail = () => {

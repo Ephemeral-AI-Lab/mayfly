@@ -142,8 +142,8 @@ export function apply(ctx: Context): void {
     name: 'settings', description: 'Edit user settings by namespace',
     handler: () => {
       const view = () => ui.surface({ child: ui.stack.column([
-        ui.list({ id: 'namespaces', role: 'browse', selectedIds: [], filterable: true, items: ctx.settings.describe({ redactSecrets: true }).map(item => ({ id: String(item.ns), label: String(item.ns) })), empty: ui.empty({ title: t('No settings namespaces') }) }),
-        ui.actions({ id: 'browser-actions', items: [{ id: 'refresh', label: t('Refresh') }, { id: 'open-file', label: t('Open settings.yaml in $EDITOR'), disabled: !ctx.settings.writable }, { id: 'close', label: t('Close'), dismiss: true }] }),
+        ui.list({ id: 'namespaces', role: 'browse', selectedIds: [], filterable: true, filterMode: 'slash', items: ctx.settings.describe({ redactSecrets: true }).map(item => ({ id: String(item.ns), label: String(item.ns) })), empty: ui.empty({ title: t('No settings namespaces') }) }),
+        ui.actions({ id: 'browser-actions', items: [{ id: 'refresh', label: t('Refresh'), hintLabel: t('refresh'), semantic: 'refresh', hidden: true }, { id: 'open-file', label: t('Open settings.yaml in $EDITOR'), hintLabel: 'settings.yaml', semantic: 'external', hidden: true, disabled: !ctx.settings.writable }] }),
       ]), title: t('Settings'), chrome: 'overlay', padding: 1 })
       let teardown: (() => void) | undefined
       const opened = openUiOverlay(ctx, {

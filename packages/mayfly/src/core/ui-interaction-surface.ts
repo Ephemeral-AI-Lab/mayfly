@@ -154,9 +154,12 @@ export class UiSurfaceModel {
   get decisionNode(): MayflyUiNode | undefined {
     if (this.decision === undefined) return undefined
     const { title, detail, confirmLabel, cancelLabel, tone } = this.decision.confirmation
+    // A panel draws no buttons: `y` answers yes and `n` no, both named on the hint row; Esc is No.
+    const yes = confirmLabel ?? this.t('Yes')
+    const no = cancelLabel ?? this.t('No')
     const actions: MayflyUiNode = { kind: 'actions', id: 'mayfly.decision', items: [
-      { id: DECISION_NO, label: cancelLabel ?? this.t('No'), defaultFocus: true },
-      { id: DECISION_YES, label: confirmLabel ?? this.t('Yes'), ...(tone === 'danger' ? { intent: 'danger' as const } : {}) },
+      { id: DECISION_YES, label: yes, hintLabel: yes.toLocaleLowerCase(), key: 'y', hidden: true, ...(tone === 'danger' ? { intent: 'danger' as const } : {}) },
+      { id: DECISION_NO, label: no, hintLabel: no.toLocaleLowerCase(), key: 'n', hidden: true },
     ] }
     return freezeWire({ kind: 'surface', chrome: 'overlay', title, child: detail === undefined ? actions : {
       kind: 'stack', direction: 'column', gap: 1, children: [{ node: { kind: 'text', content: detail, tone: 'warning' } }, { node: actions }],

@@ -34,8 +34,8 @@ export async function openMcpResources(ctx: Context, agent: Agent, server: strin
   }
   await load(signal)
   const node = (): MayflyUiNode => ui.surface({ title: `${server} · ${templates ? 'Templates' : 'Resources'}`, chrome: 'overlay', child: ui.stack.column([
-    ui.list({ id: 'resources', role: 'browse', filterable: true, selectedIds: [], items: items.map((item, index) => ({ id: String(index), label: String(item.name ?? item.uri ?? item.uriTemplate ?? index), detail: String(item.description ?? item.uri ?? item.uriTemplate ?? '') })), empty: ui.empty({ title: 'No resources' }) }),
-    ui.actions({ id: 'resource-actions', items: [...cursor === undefined ? [] : [{ id: 'more', label: 'More' }], { id: 'close', label: 'Close', dismiss: true }] }),
+    ui.list({ id: 'resources', role: 'browse', filterable: true, filterMode: 'slash', selectedIds: [], items: items.map((item, index) => ({ id: String(index), label: String(item.name ?? item.uri ?? item.uriTemplate ?? index), detail: String(item.description ?? item.uri ?? item.uriTemplate ?? '') })), empty: ui.empty({ title: 'No resources' }) }),
+    ui.actions({ id: 'resource-actions', items: [...cursor === undefined ? [] : [{ id: 'more', label: 'More', hintLabel: 'more', key: 'm', hidden: true }]] }),
   ]) })
   await openAgentOverlay(ctx, agent, { id: 'mayfly.mcp.resources', title: server, presentation: 'editor', capturing: true }, node(), owner => async (event, context) => {
     if (event.kind === 'activate' && event.actionId === 'more') {
@@ -48,8 +48,8 @@ export async function openMcpResources(ctx: Context, agent: Agent, server: strin
     const initial = String(item.uri ?? item.uriTemplate ?? '')
     await openAgentOverlay(owner, agent, { id: 'mayfly.mcp.resource', title: String(item.name ?? initial), presentation: 'editor', capturing: true }, ui.surface({ title: String(item.name ?? initial), chrome: 'overlay', child: ui.stack.column([
       ui.text(String(item.description ?? '')),
-      ui.form({ id: 'resource-uri', fields: [{ kind: 'input', id: 'uri', label: 'Resource URI', value: initial }] }),
-      ui.actions({ id: 'read-actions', items: [{ id: 'read', label: 'Read', read: [{ pagePath: [], formId: 'resource-uri' }] }, { id: 'close', label: 'Close', dismiss: true }] }),
+      ui.form({ id: 'resource-uri', enterSubmits: 'read', fields: [{ kind: 'input', id: 'uri', label: 'Resource URI', value: initial }] }),
+      ui.actions({ id: 'read-actions', items: [{ id: 'read', label: 'Read', hintLabel: 'read', hidden: true, read: [{ pagePath: [], formId: 'resource-uri' }] }] }),
     ]) }), scope => async (action, operation) => {
       if (action.kind !== 'activate' || action.actionId !== 'read') return { kind: 'completed' }
       const uri = action.inputs?.forms[0]?.fields.find(field => field.id === 'uri')?.value
@@ -59,7 +59,7 @@ export async function openMcpResources(ctx: Context, agent: Agent, server: strin
       const contents = Array.isArray(value.contents) ? value.contents as Record<string, unknown>[] : []
       const text = contents.map(content => typeof content.text === 'string' ? content.text : `Binary resource: ${String(content.uri ?? uri)} (${String(content.mimeType ?? 'unknown media type')})`).join('\n\n')
       await openAgentOverlay(scope, agent, { id: 'mayfly.mcp.resource.body', title: uri, presentation: 'editor', capturing: true }, ui.surface({ title: uri, chrome: 'overlay', child: ui.stack.column([
-        ui.scroll(ui.text(text), { scrollbar: true }), ui.actions({ id: 'body-actions', items: [{ id: 'close', label: 'Close', dismiss: true }] }),
+        ui.scroll(ui.text(text), { scrollbar: true }),
       ]) }), () => () => ({ kind: 'completed' }), { signal, reopen: 'replace' })
       return { kind: 'completed' }
     }, { signal, reopen: 'replace' })

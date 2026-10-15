@@ -56,10 +56,9 @@ export function registerRenameCommand(ctx: Context): () => void {
           return result.kind === 'error' ? { kind: 'failed', message: result.text } : { kind: 'completed', dismiss: true }
         } },
       }, ui.surface({ title: t('Rename session'), chrome: 'overlay', child: ui.stack.column([
-        ui.form({ id: RENAME_FORM, fields: [{ kind: 'input', id: 'title', label: t('Session name'), value: currentTitle }] }),
+        ui.form({ id: RENAME_FORM, enterSubmits: 'save', fields: [{ kind: 'input', id: 'title', label: t('Session name'), value: currentTitle }] }),
         ui.actions({ id: 'rename-actions', items: [
-          { id: 'save', label: t('Rename'), read: [{ pagePath: [], formId: RENAME_FORM }] },
-          { id: 'close', label: t('Cancel'), dismiss: true },
+          { id: 'save', label: t('Rename'), hintLabel: t('rename'), hidden: true, read: [{ pagePath: [], formId: RENAME_FORM }] },
         ] }),
       ]) }), { reopen: 'focus' })
       return { kind: 'success' }

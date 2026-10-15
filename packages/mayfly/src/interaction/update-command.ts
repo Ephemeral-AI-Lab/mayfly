@@ -75,7 +75,6 @@ export function updatePanelModel(
   toVersion: string,
   t: MayflyTranslate = interpolateLocaleMessage,
 ): MayflyUiNode {
-  const settled = state.outcome !== undefined || state.blockedMessage !== undefined
   const stepItems = STEP_ROWS.flatMap(row => {
     const value = state.steps.get(row.step)
     if (value === undefined && row.step === 'rollback') return []
@@ -106,13 +105,6 @@ export function updatePanelModel(
     padding: 1,
     child: ui.stack.column([
       ...nodes,
-      ui.actions({ id: 'update-actions', items: [{
-        id: 'close',
-        label: t('Close'),
-        dismiss: true,
-        disabled: !settled,
-        ...(settled ? {} : { disabledReason: t('The update is still running') }),
-      }] }),
     ]),
   })
 }
@@ -148,8 +140,8 @@ function confirmUpdate(ctx: Context, fromVersion: string, toVersion: string, det
     } } }, ui.surface({ chrome: 'overlay', title: t('Update Mayfly'), child: ui.stack.column([
       ui.text(t('Update to v{version}?', { version: toVersion })),
       ui.text([`v${fromVersion} → v${toVersion}`, detail, t('The update is kept only after a successful startup check.')].filter(Boolean).join(' · '), { tone: 'warning' }),
-      /* Same shape as the shared decision: No first and focused, Yes second. */
-      ui.actions({ id: 'update-confirm-actions', items: [{ id: 'no', label: t('No'), defaultFocus: true }, { id: 'yes', label: t('Yes'), intent: 'primary' }] }),
+      /* Same keys as the shared decision: `y` yes, `n` no, Esc cancels. */
+      ui.actions({ id: 'update-confirm-actions', items: [{ id: 'yes', label: t('Yes'), hintLabel: t('yes'), key: 'y', hidden: true }, { id: 'no', label: t('No'), hintLabel: t('no'), key: 'n', hidden: true }] }),
     ]) }), { reopen: 'replace' })
     off = ctx.mayflyOverlays.subscribe(delta => {
       if (delta.kind === 'remove' && delta.id === id) finish(false)

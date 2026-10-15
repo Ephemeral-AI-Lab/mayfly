@@ -188,8 +188,7 @@ export function accountPanelNode(
       ui.text(t('Account models need no API key.'), { tone: 'muted' }),
       ui.spacer(),
       ui.actions({ id: 'account-actions', items: [
-        { id: 'sign-out', label: t('Sign out'), intent: 'danger' as const, confirm: t('Sign out of the DeepSeek account?') },
-        { id: 'close', label: t('Close'), dismiss: true },
+        { id: 'sign-out', label: t('Sign out'), hintLabel: t('sign out'), key: 'o', hidden: true, intent: 'danger' as const, confirm: t('Sign out of the DeepSeek account?') },
       ] }),
     ]))
   }

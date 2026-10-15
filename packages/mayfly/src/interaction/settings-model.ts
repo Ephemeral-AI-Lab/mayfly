@@ -125,9 +125,8 @@ export function settingsProjection(descriptor: SettingsDescriptor, writable: boo
     ui.form({ id: 'settings-form', fields: [...bindings.values()].map(binding => binding.field) }),
     ...readonly,
     ui.actions({ id: 'settings-actions', items: [
-      { id: 'save', label: t('Save'), submit: [{ pagePath: [], formId: 'settings-form' }], disabled: !writable || bindings.size === 0 },
-      { id: 'refresh', label: t('Refresh') },
-      { id: 'cancel', label: t('Cancel'), dismiss: true },
+      { id: 'save', label: t('Save'), hintLabel: t('save'), semantic: 'save', hidden: true, submit: [{ pagePath: [], formId: 'settings-form' }], disabled: !writable || bindings.size === 0 },
+      { id: 'refresh', label: t('Refresh'), hintLabel: t('refresh'), semantic: 'refresh', hidden: true },
     ] }),
   ]) }
 }

@@ -36,8 +36,8 @@ export function openAuthorization(ctx: Context, route: string, onAuthorized: () 
     return { kind: 'completed' as const }
   }
   const copyActions = () => ui.actions({ id: 'authorization-copy', items: [
-    ...(notice?.url === undefined ? [] : [{ id: 'copy-url', label: t('Copy URL') }]),
-    ...(notice?.code === undefined ? [] : [{ id: 'copy-code', label: t('Copy code') }]),
+    ...(notice?.url === undefined ? [] : [{ id: 'copy-url', label: t('Copy URL'), hintLabel: t('copy URL'), key: 'u', hidden: true }]),
+    ...(notice?.code === undefined ? [] : [{ id: 'copy-code', label: t('Copy code'), hintLabel: t('copy code'), semantic: 'copy' as const, hidden: true }]),
   ] })
   const view = () => {
     const running = authorization.describe(credentialKey('llm-pi-ai', route))?.inFlight === true
@@ -45,8 +45,7 @@ export function openAuthorization(ctx: Context, route: string, onAuthorized: () 
     instructions(notice), copyActions(),
     ...(running ? [ui.loader({ message: t('Waiting for authorization') })] : []),
     ui.actions({ id: 'authorization-actions', items: [
-      ...finished ? [] : [{ id: 'start', label: t(authorized ? 'Finish setup' : 'Sign in'), disabled: running }],
-      { id: 'cancel', label: t(finished ? 'Close' : 'Cancel'), dismiss: true },
+      ...finished ? [] : [{ id: 'start', label: t(authorized ? 'Finish setup' : 'Sign in'), hintLabel: t(authorized ? 'finish setup' : 'sign in'), key: 's', hidden: true, disabled: running }],
     ] }),
     ])
   }
@@ -76,8 +75,7 @@ export function openAuthorization(ctx: Context, route: string, onAuthorized: () 
         ? ui.list({ id: 'authorization-options', role: 'choose', numbered: true, selectedIds: answer === undefined ? [] : [answer.value], minSelected: 1, items: request.options.map(option => ({ id: option.id, label: option.label, ...(option.description === undefined ? {} : { detail: option.description }) })), empty: ui.empty({ title: t('No authorization options are available') }) })
         : ui.form({ id: 'authorization-answer', enterSubmits: 'submit-answer', fields: [{ kind: request.kind === 'secret' ? 'secret' : 'input', id: 'answer', label: t('Answer'), value: '', required: true, ...(request.placeholder === undefined ? {} : { placeholder: request.placeholder }) }] }),
       ui.actions({ id: 'authorization-prompt-actions', items: [
-        ...(request.kind === 'select' ? [] : [{ id: 'submit-answer', label: t('Continue'), submit: [{ pagePath: [], formId: 'authorization-answer' }] }]),
-        { id: 'cancel', label: t('Cancel'), dismiss: true },
+        ...(request.kind === 'select' ? [] : [{ id: 'submit-answer', label: t('Continue'), hintLabel: t('continue'), hidden: true, submit: [{ pagePath: [], formId: 'authorization-answer' }] }]),
       ] }),
     ])
     child = openUiOverlay(ctx, {

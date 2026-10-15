@@ -25,7 +25,7 @@ export function toolItems(schemas: readonly ToolSchema[]): readonly MayflyListIt
   return schemas.toSorted((left, right) => left.name.localeCompare(right.name)).map(schema => ({ id: schema.name, label: schema.name, detail: firstSentence(schema.description) }))
 }
 
-const detailActions = (t: MayflyTranslate) => ui.actions({ id: 'tool-actions', items: [{ id: 'refresh', label: t('Refresh') }, { id: 'close', label: t('Close'), dismiss: true }] })
+const detailActions = (t: MayflyTranslate) => ui.actions({ id: 'tool-actions', items: [{ id: 'refresh', label: t('Refresh'), hintLabel: t('refresh'), semantic: 'refresh', hidden: true }] })
 
 /** Preserve the full description and JSON Schema; core alone wraps their text. */
 export function toolDetailNode(schema: ToolSchema, t: MayflyTranslate): MayflyUiNode {
@@ -98,8 +98,8 @@ export function apply(ctx: Context): void {
       try { items = toolItems(tools.schemas(agent)) } catch { available = false }
       return ui.surface({ title: t('Tools'), chrome: 'overlay', padding: 1, child: ui.stack.column([
         ...available ? [] : [ui.text(t('Tool catalog unavailable'), { tone: 'danger' })],
-        ui.list({ id: 'tools', role: 'browse', filterable: true, selectedIds: [], items, empty: ui.empty({ title: t('No tools visible to this session') }) }),
-        ui.actions({ id: 'catalog-actions', items: [{ id: 'refresh', label: t('Refresh') }, { id: 'close', label: t('Close'), dismiss: true }] }),
+        ui.list({ id: 'tools', role: 'browse', filterable: true, filterMode: 'slash', selectedIds: [], items, empty: ui.empty({ title: t('No tools visible to this session') }) }),
+        ui.actions({ id: 'catalog-actions', items: [{ id: 'refresh', label: t('Refresh'), hintLabel: t('refresh'), semantic: 'refresh', hidden: true }] }),
       ]) })
     }
     let handle: MayflyOverlayHandle | undefined

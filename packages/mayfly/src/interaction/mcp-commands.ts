@@ -56,9 +56,9 @@ export function mcpServerNode(server: McpServerView, t: MayflyTranslate): Mayfly
   const prefix = `mcp__${server.serverName}__`
   return ui.surface({ title: server.serverName, chrome: 'overlay', padding: 1, child: ui.stack.column([
     ui.tabs({ id: 'server-pages', activeId: 'tools', items: [{ id: 'tools', label: t('Tools'), count: server.toolsVisible.length }, { id: 'config', label: t('Configuration') }] }),
-    ui.child(ui.list({ id: 'tools', role: 'browse', filterable: true, selectedIds: [], items: server.toolsVisible.map(schema => ({ id: schema.name, label: schema.name.slice(prefix.length), detail: firstSentence(schema.description) })), empty: ui.empty({ title: t(server.registeredCount > 0 ? 'No tools visible to this session' : 'No tools registered') }) }), { tab: { controlId: 'server-pages', itemId: 'tools' } }),
+    ui.child(ui.list({ id: 'tools', role: 'browse', filterable: true, filterMode: 'slash', selectedIds: [], items: server.toolsVisible.map(schema => ({ id: schema.name, label: schema.name.slice(prefix.length), detail: firstSentence(schema.description) })), empty: ui.empty({ title: t(server.registeredCount > 0 ? 'No tools visible to this session' : 'No tools registered') }) }), { tab: { controlId: 'server-pages', itemId: 'tools' } }),
     ui.child(ui.scroll(serverConfigNode(server, t), { scrollbar: true }), { tab: { controlId: 'server-pages', itemId: 'config' }, basis: 0, grow: 1, minSize: 1 }),
-    ui.actions({ id: 'server-actions', items: [{ id: 'resources', label: 'Resources' }, { id: 'templates', label: 'Templates' }, { id: 'refresh', label: t('Refresh') }, { id: 'close', label: t('Close'), dismiss: true }] }),
+    ui.actions({ id: 'server-actions', items: [{ id: 'resources', label: 'Resources', hintLabel: 'resources', key: 'v', hidden: true }, { id: 'templates', label: 'Templates', hintLabel: 'templates', key: 't', hidden: true }, { id: 'refresh', label: t('Refresh'), hintLabel: t('refresh'), semantic: 'refresh', hidden: true }] }),
   ]) })
 }
 
@@ -83,9 +83,9 @@ export function apply(ctx: Context): void {
       let available = true
       const view = () => ui.surface({ title: t('MCP servers'), chrome: 'overlay', padding: 1, child: ui.stack.column([
         ...available ? [] : [ui.text(t('MCP catalog unavailable; showing the last snapshot'), { tone: 'danger' })],
-        ui.list({ id: 'servers', role: 'browse', selectedIds: [], filterable: true, items: serverItems(catalog, t), empty: ui.empty({ title: t('No MCP servers are declared') }) }),
+        ui.list({ id: 'servers', role: 'browse', selectedIds: [], filterable: true, filterMode: 'slash', items: serverItems(catalog, t), empty: ui.empty({ title: t('No MCP servers are declared') }) }),
         ...catalog.orphanCount === 0 ? [] : [ui.text(t('{count} registered MCP tools have no declared server', { count: catalog.orphanCount }), { tone: 'muted' })],
-        ui.actions({ id: 'mcp-actions', items: [{ id: 'refresh', label: t('Refresh') }, { id: 'close', label: t('Close'), dismiss: true }] }),
+        ui.actions({ id: 'mcp-actions', items: [{ id: 'refresh', label: t('Refresh'), hintLabel: t('refresh'), semantic: 'refresh', hidden: true }] }),
       ]) })
       const publish = () => {
         if (!current() || root?.closed !== false) return

@@ -21,8 +21,7 @@ export function apply(ctx: Context): void {
     if (ctx.mayflyCurrentAgent.current() !== agent) return { kind: 'error', text: 'No current Agent' }
     const files = () => ctx.sessionProjections.snapshot(agent.session, ['mayflyDeliverables']).values.mayflyDeliverables ?? []
     const node = () => ui.surface({ title: 'Delivered files', chrome: 'overlay', child: ui.stack.column([
-      ui.list({ id: 'files', role: 'browse', filterable: true, selectedIds: [], items: files().map(file => ({ id: file.id, label: file.path, ...(file.description === undefined ? {} : { detail: file.description }) })), empty: ui.empty({ title: 'No delivered files' }) }),
-      ui.actions({ id: 'files-actions', items: [{ id: 'close', label: 'Close', dismiss: true }] }),
+      ui.list({ id: 'files', role: 'browse', filterable: true, filterMode: 'slash', selectedIds: [], items: files().map(file => ({ id: file.id, label: file.path, ...(file.description === undefined ? {} : { detail: file.description }) })), empty: ui.empty({ title: 'No delivered files' }) }),
     ]) })
     let handle: MayflyOverlayHandle | undefined
     handle = await openAgentOverlay(ctx, agent, { id: 'mayfly.files', title: 'Delivered files', presentation: 'editor', capturing: true }, node(), owner => {
@@ -39,9 +38,8 @@ export function apply(ctx: Context): void {
         await openAgentOverlay(owner, agent, { id: 'mayfly.files.detail', title: file.path, presentation: 'editor', capturing: true }, ui.surface({ title: file.path, chrome: 'overlay', child: ui.stack.column([
           ui.text(`${file.description ?? ''}\n${target.displayPath}\n${stat === undefined ? t('File unavailable') : `${stat.type} · ${stat.size ?? t('unknown')} ${t('bytes')}`}`),
           ui.actions({ id: 'file-actions', items: [
-            { id: 'copy', label: 'Copy path' },
-            ...(stat?.type === 'file' ? [{ id: 'preview', label: 'Preview text' }, ...(ctx.sessionController.canOpenWorkspacePath() ? [{ id: 'open', label: 'Open' }] : [])] : []),
-            { id: 'close', label: 'Close', dismiss: true },
+            { id: 'copy', label: 'Copy path', hintLabel: 'copy path', semantic: 'copy' as const, hidden: true },
+            ...(stat?.type === 'file' ? [{ id: 'preview', label: 'Preview text', hintLabel: 'preview', key: 'p', hidden: true }, ...(ctx.sessionController.canOpenWorkspacePath() ? [{ id: 'open', label: 'Open', hintLabel: 'open', key: 'o', hidden: true }] : [])] : []),
           ] }),
         ]) }), scope => async (action, operation) => {
           if (action.kind !== 'activate') return { kind: 'completed' }
@@ -53,7 +51,7 @@ export function apply(ctx: Context): void {
             const bytes = await fs.readBytes(target, operation.signal, 256 * 1024)
             const text = bytes.includes(0) ? 'Binary file; use Open in an external application.' : new TextDecoder().decode(bytes)
             await openAgentOverlay(scope, agent, { id: 'mayfly.files.preview', title: file.path, presentation: 'editor', capturing: true }, ui.surface({ title: file.path, chrome: 'overlay', child: ui.stack.column([
-              ui.scroll(ui.text(text), { scrollbar: true }), ui.actions({ id: 'preview-actions', items: [{ id: 'close', label: 'Close', dismiss: true }] }),
+              ui.scroll(ui.text(text), { scrollbar: true }),
             ]) }), () => () => ({ kind: 'completed' }), { signal: lifetime.signal, reopen: 'replace' })
           }
           return { kind: 'completed' }

@@ -21,11 +21,11 @@ const copiedVia = (method: ClipboardCopyMethod, t: MayflyTranslate) => method ==
 
 export function tracePanelModel(sessionId: string, items: readonly TraceItem[], t: MayflyTranslate = interpolateLocaleMessage): MayflyUiNode {
   return ui.surface({ title: `${t('Trace')} · ${sessionId}`, chrome: 'overlay', padding: 1, child: ui.stack.column([
-    ui.list({ id: 'trace-events', role: 'browse', selectedIds: [], filterable: true, items: items.map(item => ({
+    ui.list({ id: 'trace-events', role: 'browse', selectedIds: [], filterable: true, filterMode: 'slash', items: items.map(item => ({
       id: String(item.seq), label: `${traceTime(item.time)} ${sequence(item)} ${item.title}`,
       detail: item.summary.replaceAll(/\s+/g, ' ').trim().slice(0, 512), badge: item.surface,
     })), empty: ui.empty({ title: t('no trace events yet') }) }),
-    ui.actions({ id: 'trace-actions', items: [{ id: 'copy-all', label: t('Copy all') }, { id: 'close', label: t('Close'), dismiss: true }] }),
+    ui.actions({ id: 'trace-actions', items: [{ id: 'copy-all', label: t('Copy all'), hintLabel: t('copy all'), key: 'a', hidden: true }] }),
   ]) })
 }
 
@@ -33,7 +33,7 @@ export function traceDetailPanelModel(item: TraceItem, document: string, t: Mayf
   return ui.surface({ title: `${t('Trace detail')} ${sequence(item)}`, chrome: 'overlay', padding: 1, child: ui.stack.column([
     ui.fields([{ label: t('Type'), value: [{ text: item.type }] }, { label: t('Surface'), value: [{ text: item.surface }] }]),
     ui.child(ui.scroll(ui.code(document, { language: 'json' }), { id: 'trace-document', scrollbar: true }), { basis: 0, grow: 1, minSize: 1 }),
-    ui.actions({ id: 'trace-detail-actions', items: [{ id: 'copy', label: t('Copy trace item') }, { id: 'close', label: t('Close'), dismiss: true }] }),
+    ui.actions({ id: 'trace-detail-actions', items: [{ id: 'copy', label: t('Copy trace item'), hintLabel: t('copy'), semantic: 'copy', hidden: true }] }),
   ]) })
 }
 

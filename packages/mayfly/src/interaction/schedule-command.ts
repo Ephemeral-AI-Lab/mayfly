@@ -100,8 +100,7 @@ export function scheduleNode(records: readonly ScheduleRecord[] | undefined, now
   }))
   return ui.surface({ title: t('Reminders'), chrome: 'overlay', child: ui.stack.column([
     ui.text(t('Reminders follow their original session, even when no Agent is running. Create or cancel reminders through the conversation.')),
-    ...(records === undefined ? [ui.empty({ title: t('Schedule unavailable'), description: t('The Schedule capability is a Host service; enable it in profile files.') })] : [ui.list({ id: 'reminders', role: 'browse', filterable: true, selectedIds: [], items, empty: ui.empty({ title: t('No active reminders') }) })]),
-    ui.actions({ id: 'reminder-actions', items: [{ id: 'close', label: t('Close'), dismiss: true }] }),
+    ...(records === undefined ? [ui.empty({ title: t('Schedule unavailable'), description: t('The Schedule capability is a Host service; enable it in profile files.') })] : [ui.list({ id: 'reminders', role: 'browse', filterable: true, filterMode: 'slash', selectedIds: [], items, empty: ui.empty({ title: t('No active reminders') }) })]),
   ]) })
 }
 

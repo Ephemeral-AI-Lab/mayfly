@@ -57,8 +57,8 @@ export function apply(ctx: Context): void {
         const view = (): MayflyUiNode => {
           const composed = roster.composedPreset(agent.ctx)
           return ui.surface({ title: t('Presets'), chrome: 'overlay', padding: 1, child: ui.stack.column([
-            ui.list({ id: 'presets', role: 'browse', filterable: true, selectedIds: composed === undefined ? [] : [composed], items: presetItems(catalog, composed), empty: ui.empty({ title: t('No presets composed') }) }),
-            ui.actions({ id: 'preset-actions', items: [{ id: 'refresh', label: t('Refresh') }, { id: 'close', label: t('Close'), dismiss: true }] }),
+            ui.list({ id: 'presets', role: 'browse', filterable: true, filterMode: 'slash', selectedIds: composed === undefined ? [] : [composed], items: presetItems(catalog, composed), empty: ui.empty({ title: t('No presets composed') }) }),
+            ui.actions({ id: 'preset-actions', items: [{ id: 'refresh', label: t('Refresh'), hintLabel: t('refresh'), semantic: 'refresh', hidden: true }] }),
           ]) })
         }
         let handle: MayflyOverlayHandle | undefined

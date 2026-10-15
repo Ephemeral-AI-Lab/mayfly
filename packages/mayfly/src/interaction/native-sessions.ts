@@ -31,14 +31,13 @@ export async function openSessions(ctx: Context, signal: AbortSignal, t: MayflyT
     ...(loading ? [ui.loader({ message: t('Loading workspaces…') })] : []),
     ...(message === '' ? [] : [ui.text(message, { tone: 'warning' })]),
     ...(groups.length === 0 && loading ? [] : [ui.list({
-      id: 'workspaces', role: 'browse', filterable: true, selectedIds: [],
+      id: 'workspaces', role: 'browse', filterable: true, filterMode: 'slash', selectedIds: [],
       items: groups.map(group => sessionWorkspaceItem(group, currentCwd(), home, t)),
       empty: ui.empty({ title: t('No workspaces') }),
     })]),
     ui.actions({ id: 'workspace-actions', items: [
-      { id: 'refresh', label: t('Refresh'), disabled: loading },
-      { id: 'search-all', label: t('Search all contents'), disabled: loading },
-      { id: 'close', label: t('Close'), dismiss: true },
+      { id: 'refresh', label: t('Refresh'), hintLabel: t('refresh'), semantic: 'refresh', hidden: true, disabled: loading },
+      { id: 'search-all', label: t('Search all contents'), hintLabel: t('search all'), semantic: 'search', hidden: true, disabled: loading },
     ] }),
   ]) })
   const publish = () => {

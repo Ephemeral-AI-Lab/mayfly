@@ -36,7 +36,6 @@ export function helpNode(
     padding: 1,
     child: ui.stack.column([
       ui.child(ui.scroll(ui.richText(spans), { id: 'help-document', scrollbar: true }), { basis: 0, grow: 1, minSize: 1 }),
-      ui.actions({ id: 'help-actions', items: [{ id: 'close', label: t('Close'), dismiss: true }] }),
     ]),
   })
 }

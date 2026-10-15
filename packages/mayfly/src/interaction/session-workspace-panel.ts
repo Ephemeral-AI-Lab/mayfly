@@ -174,9 +174,9 @@ export function openSessionWorkspace(ctx: Context, signal: AbortSignal, t: Mayfl
     ...(options.loading() || loadingReminders ? [ui.loader({ message: t('Loading workspace sessions…') })] : []),
     ...(recovering ? [ui.loader({ message: t('Loading session names… {done}/{total}', { done: completedNames, total: totalNames }) })] : []),
     ...(!recovering && failedNames > 0 ? [ui.text(t(failedNames === 1 ? '1 session name could not be loaded. Refresh to retry.' : '{count} session names could not be loaded. Refresh to retry.', { count: failedNames }), { tone: 'warning' })] : []),
-    ui.form({ id: 'content-search', fields: [{ kind: 'input', id: 'query', label: t(scope.kind === 'workspace' ? 'Search this workspace’s conversations' : 'Search all conversation contents'), maxLength: 500, value: '' }] }),
-    ui.list({ id: 'sessions', role: 'browse', tree: searchItems === undefined, filterable: true, selectedIds: [], items: rows(), empty: ui.empty({ title: t(options.loading() ? 'Waiting for sessions…' : scope.kind === 'search' && searchItems === undefined ? 'Enter text to search all workspaces' : 'No sessions') }) }),
-    ui.actions({ id: 'session-actions', items: [{ id: 'search', label: 'Search contents', disabled: options.loading(), read: [{ pagePath: [], formId: 'content-search' }] }, ...(scope.kind === 'workspace' ? [{ id: 'refresh', label: 'All sessions', disabled: options.loading() }] : []), { id: 'back', label: t('Workspaces'), dismiss: true }] }),
+    ui.form({ id: 'content-search', enterSubmits: 'search', fields: [{ kind: 'input', id: 'query', label: t(scope.kind === 'workspace' ? 'Search this workspace’s conversations' : 'Search all conversation contents'), maxLength: 500, value: '' }] }),
+    ui.list({ id: 'sessions', role: 'browse', tree: searchItems === undefined, filterable: true, filterMode: 'slash', selectedIds: [], items: rows(), empty: ui.empty({ title: t(options.loading() ? 'Waiting for sessions…' : scope.kind === 'search' && searchItems === undefined ? 'Enter text to search all workspaces' : 'No sessions') }) }),
+    ui.actions({ id: 'session-actions', items: [{ id: 'search', label: 'Search contents', hintLabel: 'search', hidden: true, disabled: options.loading(), read: [{ pagePath: [], formId: 'content-search' }] }, ...(scope.kind === 'workspace' ? [{ id: 'refresh', label: 'All sessions', hintLabel: 'all sessions', key: 'a', hidden: true, disabled: options.loading() }] : [])] }),
   ]) })
   try {
     adoptRows()
@@ -246,9 +246,9 @@ export function openSessionWorkspace(ctx: Context, signal: AbortSignal, t: Mayfl
           sessionDetailNode(facts, now, t),
           ...(activity === '' ? [] : [ui.text(activity, { tone: 'warning' })]),
           ui.actions({ id: 'session-detail-actions', items: [
-            { id: 'open', label: 'Open conversation', disabled: archived, ...(archived ? { disabledReason: 'Restore the session first' } : {}) },
-            { id: archived ? 'restore' : 'archive', label: archived ? 'Restore' : 'Archive', confirm: archived ? 'Restore this session?' : 'Archive this session?' },
-            ...(activity === '' ? [] : [{ id: 'stop-archive', label: 'Stop activity and archive', intent: 'danger' as const, confirm: { title: 'Stop this session’s activity and archive it?', detail: activity, confirmLabel: 'Stop and archive', tone: 'danger' as const } }]),
+            { id: 'open', label: 'Open conversation', hintLabel: 'open', key: 'o', hidden: true, disabled: archived, ...(archived ? { disabledReason: 'Restore the session first' } : {}) },
+            { id: archived ? 'restore' : 'archive', label: archived ? 'Restore' : 'Archive', hintLabel: archived ? 'restore' : 'archive', key: 'a', hidden: true, confirm: archived ? 'Restore this session?' : 'Archive this session?' },
+            ...(activity === '' ? [] : [{ id: 'stop-archive', label: 'Stop activity and archive', hintLabel: 'stop and archive', key: 's', hidden: true, intent: 'danger' as const, confirm: { title: 'Stop this session’s activity and archive it?', detail: activity, confirmLabel: 'Stop and archive', tone: 'danger' as const } }]),
             { id: 'close', label: 'Close', dismiss: true },
           ] }),
         ]) })

@@ -56,8 +56,7 @@ export function apply(ctx: Context, config: Config = {}): void {
   const frame = (title: string, body: MayflyUiNode, scrollable = true, refreshable = true): MayflyUiNode => ui.surface({ title: t(title), chrome: 'overlay', padding: 1, child: ui.stack.column([
     ...(scrollable ? [ui.child(ui.scroll(body, { scrollbar: true }), { basis: 0, grow: 1, minSize: 1 })] : [body]),
     ui.actions({ id: 'information-actions', items: [
-      ...refreshable ? [{ id: 'refresh', label: t('Refresh') }] : [],
-      { id: 'close', label: t('Close'), dismiss: true },
+      ...refreshable ? [{ id: 'refresh', label: t('Refresh'), hintLabel: t('refresh'), semantic: 'refresh' as const, hidden: true }] : [],
     ] }),
   ]) })
   for (const command of ['version', 'changelog'] as const) ctx.commands.register({

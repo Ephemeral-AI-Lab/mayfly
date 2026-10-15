@@ -456,7 +456,7 @@ export function apply(ctx: Context): void {
           ctx.logger.warn(`provider onboarding could not open: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}`)
           if (lifetime.signal.aborted || ctx.mayflyOverlays.focus('mayfly.provider.onboarding')) return
           const t = interactionTranslator(ctx)
-          openUiOverlay(ctx, { id: 'mayfly.provider.onboarding', title: t('Provider setup'), presentation: 'editor', capturing: true, scope: { kind: 'app', targetId: DEEPSEEK_KEY } }, ui.empty({ title: t('Provider setup could not be checked'), actions: ui.actions({ id: 'setup-error-actions', items: [{ id: 'close', label: t('Close'), dismiss: true }] }) }), { signal: lifetime.signal, reopen: 'focus' })
+          openUiOverlay(ctx, { id: 'mayfly.provider.onboarding', title: t('Provider setup'), presentation: 'editor', capturing: true, scope: { kind: 'app', targetId: DEEPSEEK_KEY } }, ui.empty({ title: t('Provider setup could not be checked') }), { signal: lifetime.signal, reopen: 'focus' })
         })
       })
       reader.effect(() => off)

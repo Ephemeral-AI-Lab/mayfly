@@ -122,7 +122,6 @@ export async function openProviderEditor(ctx: Context, route: string, signal?: A
   const node = (view: ProviderView): MayflyUiNode => {
     if (view.profile === undefined || (openedRef !== undefined && view.ref !== openedRef)) return ui.stack.column([
       ui.text(t(view.profile === undefined ? 'Provider configuration is no longer available' : 'Provider credential reference changed; reopen the provider')),
-      ui.actions({ id: 'provider-closed-actions', items: [{ id: 'close', label: t('Close'), dismiss: true }] }),
     ])
     const writable = settings.writable
     const selectedModels = [...new Set([...configuredIds(view.profile), ...customModels.keys()])]

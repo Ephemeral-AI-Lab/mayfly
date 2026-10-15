@@ -42,9 +42,8 @@ export function jobDetailsNode(job: JobView, t: MayflyTranslate): MayflyUiNode {
       ...job.detail === undefined ? [] : [{ label: t('Detail'), value: [{ text: job.detail }] }],
     ]),
     ui.actions({ id: 'job-actions', items: [
-      { id: 'read', label: t('Read output') },
-      { id: 'stop', label: t('Stop job'), intent: 'danger', disabled: job.status !== 'running', confirm: t('Stop {job}?', { job: job.label }) },
-      { id: 'close', label: t('Close'), dismiss: true },
+      { id: 'read', label: t('Read output'), hintLabel: t('output'), key: 'o', hidden: true },
+      { id: 'stop', label: t('Stop job'), hintLabel: t('stop'), key: 'x', hidden: true, intent: 'danger', disabled: job.status !== 'running', confirm: t('Stop {job}?', { job: job.label }) },
     ] }),
   ]) })
 }
@@ -100,7 +99,6 @@ export function jobOutputNode(job: JobView, feed: { readonly dropped: boolean, r
     ui.fields([{ label: t('Status at read'), value: [{ text: t(job.status) }] }]),
     ...feed.dropped ? [ui.text(t('(earlier output was dropped by retention)'), { tone: 'muted' })] : [],
     ui.child(ui.scroll(feed.chunks.length === 0 ? ui.text(t(isLiveJob(job) ? '(no output yet)' : '(no output)'), { tone: 'muted' }) : ui.code([...feed.chunks]), { id: 'job-output-document', scrollbar: true, follow: 'end' }), { basis: 0, grow: 1, minSize: 1 }),
-    ui.actions({ id: 'output-actions', items: [{ id: 'close', label: t('Close'), dismiss: true }] }),
   ]) })
 }
 
@@ -175,8 +173,8 @@ export function apply(ctx: Context): void {
     const readList = () => jobs.list(agent.id)
     const view = (rows: readonly JobView[], available = true) => ui.surface({ title: t('Jobs'), chrome: 'overlay', padding: 1, child: ui.stack.column([
       ...available ? [] : [ui.text(t('Job registry unavailable'), { tone: 'danger' })],
-      ui.list({ id: 'jobs', role: 'browse', filterable: true, selectedIds: [], items: jobItems(rows, Date.now(), t), empty: ui.empty({ title: t('no background jobs') }) }),
-      ui.actions({ id: 'jobs-actions', items: [{ id: 'refresh', label: t('Refresh') }, { id: 'close', label: t('Close'), dismiss: true }] }),
+      ui.list({ id: 'jobs', role: 'browse', filterable: true, filterMode: 'slash', selectedIds: [], items: jobItems(rows, Date.now(), t), empty: ui.empty({ title: t('no background jobs') }) }),
+      ui.actions({ id: 'jobs-actions', items: [{ id: 'refresh', label: t('Refresh'), hintLabel: t('refresh'), semantic: 'refresh', hidden: true }] }),
     ]) })
     const refresh = () => {
       if (root?.closed !== false || !current()) { stopTimer(); return }

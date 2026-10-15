@@ -189,10 +189,9 @@ export function apply(ctx: Context): void {
     }))
     const stopBlocked = (entry: Extract<MayflySubagentTreeEntry, { readonly kind: 'child' }>): string | undefined => stopBlockedReason(ctx, t, entries, entry)
     const view = () => ui.surface({ title: t('Subagents'), chrome: 'overlay', child: ui.stack.column([
-      ui.list({ id: 'subagents', role: 'browse', tree: true, selectedIds: [], filterable: true, items: agentTreeItems(entries, Date.now(), stopBlocked) }),
+      ui.list({ id: 'subagents', role: 'browse', tree: true, selectedIds: [], filterable: true, filterMode: 'slash', items: agentTreeItems(entries, Date.now(), stopBlocked) }),
       ui.actions({ id: 'subagent-actions', items: [
-        { id: 'stop', label: t('Stop selected'), intent: 'danger', confirm: { title: t('Stop selected subagent?'), detail: t('Its live Agent shuts down; the stored conversation stays browsable.'), confirmLabel: t('Stop'), tone: 'danger' }, selections: [{ pagePath: [], controlId: 'subagents' }] },
-        { id: 'close', label: t('Close'), dismiss: true },
+        { id: 'stop', label: t('Stop selected'), hintLabel: t('stop'), key: 'x', hidden: true, intent: 'danger', confirm: { title: t('Stop selected subagent?'), detail: t('Its live Agent shuts down; the stored conversation stays browsable.'), confirmLabel: t('Stop'), tone: 'danger' }, selections: [{ pagePath: [], controlId: 'subagents' }] },
       ] }),
     ]) })
     const publish = (force: boolean): void => {

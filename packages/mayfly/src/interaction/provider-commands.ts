@@ -60,8 +60,8 @@ export function apply(ctx: Context): void {
           return { id: provider.id, label: provider.name || provider.id, ...(parts.length === 0 ? {} : { detail: parts.join(' · ') }) }
         }))
         return ui.stack.column([
-          ui.list({ id: 'providers', role: 'browse', selectedIds: [], filterable: true, items, empty: ui.empty({ title: t('No configured providers') }) }),
-          ui.actions({ id: 'provider-list-actions', items: [{ id: 'add', label: t('Add provider') }, { id: 'close', label: t('Close'), dismiss: true }] }),
+          ui.list({ id: 'providers', role: 'browse', selectedIds: [], filterable: true, filterMode: 'slash', items, empty: ui.empty({ title: t('No configured providers') }) }),
+          ui.actions({ id: 'provider-list-actions', items: [{ id: 'add', label: t('Add provider'), hintLabel: t('add'), key: 'a', hidden: true }] }),
         ])
       }
       let offSettings: (() => void) | undefined

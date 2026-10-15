@@ -821,7 +821,6 @@ export function apply(ctx: Context): void {
     const rows = Math.max(IMAGE_PREVIEW_MIN_ROWS, Math.min(IMAGE_PREVIEW_ROWS, ctx.mayflyScreen.editorViewport.rows - IMAGE_PREVIEW_CHROME_ROWS))
     const node = ui.surface({ title: token.text, chrome: 'overlay', padding: 1, child: ui.stack.column([
       ui.image({ attachmentId: String(ref.attachmentId), alt: token.text, maxRows: rows }),
-      ui.actions({ id: 'image-actions', items: [{ id: 'close', label: t('Close'), dismiss: true }] }),
     ]) })
     openUiOverlay(ctx, { id: 'mayfly.image-preview', presentation: 'editor', capturing: true, dismissal: 'discard', maxHeight: '100%', title: token.text, scope: { kind: 'app', targetId: 'image-preview' } }, node, { reopen: 'replace' })
   }
