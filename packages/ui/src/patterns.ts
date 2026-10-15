@@ -95,6 +95,15 @@ export interface MayflyWizardStep {
   readonly forms?: readonly string[]
   /** Ids of the lists on the page: the submission carries their selections. */
   readonly lists?: readonly string[]
+  /**
+   * `Enter` reaches the consumer instead of only moving on: the step's forms and selections arrive as a `submit`, and the
+   * reply decides. An `accepted` reply that carries `navigate` marks the step answered (`✓`) and moves to the page it names;
+   * any other reply leaves the step as it was. For a step whose answer is written as it is given (a connection, a preset).
+   * A form on the page names {@link patterns.wizardNext} as its `enterSubmits`. Ignored on the last step of a wizard with no review.
+   */
+  readonly settle?: boolean
+  /** `Esc` does not walk back from this step: it reaches the consumer as a dismiss, which can answer `dismiss: false` to step back inside the page. */
+  readonly holdBack?: boolean
 }
 
 /** The answer a review row shows, as a control on one step's page. */
@@ -226,7 +235,13 @@ function wizard(props: MayflyWizardProps): MayflySurfaceNode {
   const pages = steps.map((step, index) => {
     const last = index === steps.length - 1
     const read = (step.forms ?? []).map(formId => ({ pagePath: pathOf(step.id), formId }))
-    const next = last && review === undefined ? { ...submit, id: wizardNext(id, step.id) } : {
+    const stepLists = (step.lists ?? []).map(controlId => ({ pagePath: pathOf(step.id), controlId }))
+    const next = last && review === undefined ? { ...submit, id: wizardNext(id, step.id) } : step.settle === true ? {
+      id: wizardNext(id, step.id), label: 'Next', hidden: true, intent: 'primary' as const,
+      /* a page with nothing to submit (a sign-in under way) has an Enter that is a plain action */
+      ...read.length === 0 && stepLists.length === 0 ? {} : { submit: read },
+      ...stepLists.length === 0 ? {} : { selections: stepLists },
+    } : {
       id: wizardNext(id, step.id), label: 'Next', hidden: true,
       ...read.length === 0 ? {} : { read },
       navigate: last ? reviewPath : pathOf(steps[index + 1]!.id),
@@ -244,7 +259,7 @@ function wizard(props: MayflyWizardProps): MayflySurfaceNode {
     ui.actions({ id: `${id}.keys.review`, items: [submit] }),
   ]), { tab: { controlId: id, itemId: reviewId } })]
   const items = [
-    ...steps.map((step, index) => ({ id: step.id, label: step.label, ...index === 0 ? {} : { backId: steps[index - 1]!.id } })),
+    ...steps.map((step, index) => ({ id: step.id, label: step.label, ...index === 0 || step.holdBack === true ? {} : { backId: steps[index - 1]!.id } })),
     ...review === undefined ? [] : [{ id: reviewId, label: review.label, review: true as const, backId: steps.at(-1)!.id }],
   ]
   return ui.surface({

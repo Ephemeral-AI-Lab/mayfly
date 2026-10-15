@@ -53,6 +53,8 @@ export interface MayflySettings {
   readonly updateCheck: boolean
   /** The dist-tag the update check follows (`latest` by default). */
   readonly updateChannel: string
+  /** The interface language; `system` follows the process locale and means none was chosen yet (the first-run guide offers the choice). */
+  readonly language: 'system' | 'en' | 'zh'
   /** The default theme, applied at startup; `/theme` overrides per session. */
   readonly theme: 'dark' | 'light' | 'ocean' | 'paper' | 'auto'
   /** Native Harness work-detail mode. */
@@ -122,6 +124,7 @@ const KEYBINDINGS: z<Record<string, { keys: string[], label?: string }>> = z.dic
 export const Config = z.object({
   updateCheck: z.boolean().default(true).volatile(),
   updateChannel: z.string().default('latest').volatile(),
+  language: z.union([z.const('system'), z.const('en'), z.const('zh')]).default('system').volatile(),
   theme: z.union([z.const('dark'), z.const('light'), z.const('ocean'), z.const('paper'), z.const('auto')]).default('dark').volatile(),
   transcriptView: z.union([z.const('compact'), z.const('standard'), z.const('detailed'), z.const('verbose')]).default('standard').volatile(),
   windowTurns: z.number().step(1).min(1).default(15).volatile(),
@@ -148,6 +151,7 @@ export const Config = z.object({
 export const DEFAULT_SETTINGS: MayflySettings = {
   updateCheck: true,
   updateChannel: 'latest',
+  language: 'system',
   theme: 'dark',
   transcriptView: 'standard',
   windowTurns: 15,
@@ -246,13 +250,15 @@ async function syncPresentation(ctx: Context, isUnloaded: () => boolean): Promis
 }
 
 /**
- * Follow the Host-shared `locale.preference`: an explicit `zh`/`en` selects
- * the live Mayfly locale, an absent value returns to the process locale.
+ * Follow the language the user chose: the Host-shared `locale.preference` when the host carries that namespace (the web
+ * app), else `mayfly.language`. An explicit `zh`/`en` selects the live Mayfly locale; `system` or an absent value returns to
+ * the process locale.
  * @param ctx - plugin context.
  */
 function syncLocale(ctx: Context): void {
   const value = ctx.get('settings')?.describe().find(entry => String(entry.ns) === 'locale')?.value
-  const stored = cell(value !== null && typeof value === 'object' ? (value as Record<string, unknown>).preference : undefined)
+  const host = cell(value !== null && typeof value === 'object' ? (value as Record<string, unknown>).preference : undefined)
+  const stored = host === 'zh' || host === 'en' ? host : currentMayflySettings(ctx).language
   ctx.get('mayflyLocale')?.setPreference(stored === 'zh' || stored === 'en' ? stored : undefined)
 }
 
@@ -291,7 +297,7 @@ export function apply(ctx: Context): void {
   let attached = ctx.mayflyCurrentAgent.current() !== null
   ctx.on('settings/document-updated', (ns) => {
     if (!attached) return
-    if (String(ns) === 'locale') syncLocale(ctx)
+    if (String(ns) === 'locale' || String(ns) === 'mayfly') syncLocale(ctx)
     if (String(ns) === 'mayfly') sync()
   })
   // Session attach is the post-boot signal (the terminal-title precedent):

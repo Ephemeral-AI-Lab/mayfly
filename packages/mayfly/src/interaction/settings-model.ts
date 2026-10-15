@@ -9,7 +9,7 @@ import type { MayflyTranslate } from '../frontend/locale.ts'
 
 const LABELS: Readonly<Record<string, string>> = {
   'locale.preference': 'Language', 'mayfly.updateCheck': 'Update check', 'mayfly.updateChannel': 'Update channel',
-  'mayfly.theme': 'Theme',
+  'mayfly.language': 'Language', 'mayfly.theme': 'Theme',
   'mayfly.transcriptView': 'Work details',
   'mayfly.windowTurns': 'Transcript window (turns)',
   'mayfly.expandTurns': 'Ctrl+O range (turns)', 'mayfly.userFoldLines': 'User fold lines', 'mayfly.userFoldChars': 'User fold chars',

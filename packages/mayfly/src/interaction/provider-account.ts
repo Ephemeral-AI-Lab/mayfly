@@ -18,6 +18,7 @@ import { MAYFLY_VERSION } from '../transcript/banner-content.ts'
 import { interactionTranslator } from './locale.ts'
 import { copyTextToClipboard } from './clipboard-write.ts'
 import { openUiOverlay } from './ui-overlay.ts'
+import { signInBody, type SignInFacts, type SignInIds } from '../components/account-sign-in.ts'
 
 /** The settings namespace the account adapter owns; routes in it are not pi-ai profiles. */
 export const ACCOUNT_SETTINGS_NS = 'llm-deepseek-account'
@@ -29,14 +30,19 @@ export const accountInternals = {
     const deadline = AbortSignal.any([signal, AbortSignal.timeout(30_000)])
     return await fetch(url, { signal: deadline, redirect: 'manual' })
   },
-  /** Spawn one opener command detached; resolves false when the opener is missing. */
+  /**
+   * Spawn one opener command detached. Resolves false when the opener is missing or fails: an opener that exits non-zero
+   * within a moment (no display, no browser configured) did not open anything, while one that keeps running (a browser
+   * that outlives its launcher) or exits clean did.
+   */
   spawnOpener: async (command: string, args: readonly string[]): Promise<boolean> => {
     try {
       const { spawn } = await import('node:child_process')
       return await new Promise<boolean>(resolve => {
         const child = spawn(command, args, { stdio: 'ignore', detached: true })
-        child.once('error', () => resolve(false))
-        child.once('spawn', () => { child.unref(); resolve(true) })
+        const timer = setTimeout(() => { child.unref(); resolve(true) }, OPENER_GRACE_MS)
+        child.once('error', () => { clearTimeout(timer); resolve(false) })
+        child.once('exit', code => { clearTimeout(timer); resolve(code === 0) })
       })
     } catch {
       /* node:child_process and spawn failures surface as the error event */
@@ -44,6 +50,9 @@ export const accountInternals = {
     }
   },
 }
+
+/** How long an opener may run before it counts as having handed the URL to a browser. */
+const OPENER_GRACE_MS = 1500
 
 /** The system browser opener for one platform; every platform opens one URL. */
 export function openerFor(platform: NodeJS.Platform): { command: string, prefix: readonly string[] } {
@@ -54,6 +63,8 @@ export function openerFor(platform: NodeJS.Platform): { command: string, prefix:
 
 /** Open one URL in the system browser; a failure leaves the visible link as the fallback. */
 export async function openUrlInBrowser(url: string): Promise<boolean> {
+  /* a Linux session with no display (a bare SSH login) has no browser to open */
+  if (process.platform === 'linux' && !process.env.DISPLAY && !process.env.WAYLAND_DISPLAY) return false
   const opener = openerFor(process.platform)
   return await accountInternals.spawnOpener(opener.command, [...opener.prefix, url])
 }
@@ -71,7 +82,7 @@ export function callbackOrigin(ctx: Context): string | undefined {
 }
 
 /** Whether one attempt phase is terminal (no cancel, maybe retry). */
-function attemptTerminal(attempt: SignInAttemptView): boolean {
+export function attemptTerminal(attempt: SignInAttemptView): boolean {
   return attempt.phase === 'succeeded' || attempt.phase === 'cancelled' || attempt.phase === 'expired' || attempt.phase === 'failed'
 }
 
@@ -102,16 +113,29 @@ function outcomeText(attempt: SignInAttemptView, t: (key: string) => string): st
 
 /** Presentation options for the account panel node. */
 interface AccountPanelOptions {
-  /** Render inside the first-run guide: adds the step line and the Start chatting close. */
-  readonly guide?: boolean
-  /** BCP 47 locale for the expiry time; the runtime default when omitted. */
-  readonly locale?: string | undefined
+  /** The browser launch has no result yet. */
+  readonly launching?: boolean
+  /** The browser could not be opened for the link: the page says so and the paste-back field is open and focused. */
+  readonly focusPaste?: boolean
+  /** The reader asked for the other-machine view (`p`). */
+  readonly pasteOpen?: boolean
+  /** The clock the countdown reads, in epoch milliseconds (the current time when omitted). */
+  readonly now?: number
+  /** The whole life of the link in milliseconds, for the countdown bar; the time left when omitted. */
+  readonly expiryTotalMs?: number
+}
+
+/** The ids the sign-in page's events are read by in this panel. */
+const PANEL_SIGN_IN: SignInIds = {
+  pagePath: [], keys: 'account-actions', form: 'callback-paste', field: 'callback-url', copy: 'copy-link', restart: 'restart-sign-in',
+  other: 'show-paste', deliver: 'deliver-callback', retryList: 'unused-retry-list', retry: 'unused-retry',
 }
 
 /**
- * The panel content for one account view.
- * @param callbackPort - the live loopback callback port while an attempt
- * waits for a browser; omit it to render without the paste-back rows.
+ * The panel for one account view. Signing in is the shared sign-in page (`components/account-sign-in.ts`): getting the link,
+ * opening the browser, waiting with a countdown, and the other-machine paste when this browser could not be opened. The
+ * rest are one-sentence states with a single action; the shortcuts live only in the hint row.
+ * @param callbackPort - the live loopback callback port while an attempt waits for a browser; omit it to render without the paste-back.
  */
 export function accountPanelNode(
   view: AccountView,
@@ -123,63 +147,78 @@ export function accountPanelNode(
   const attempt = view.attempt
   const stored = view.status === 'credential-stored'
   const live = attempt !== null && !attemptTerminal(attempt)
-  const waiting = live && attempt.authorizeUrl !== undefined
+  const linked = live && attempt.authorizeUrl !== undefined
   // A cancelled, expired or failed attempt is over: sign-in is offered again.
   const retry = attempt !== null && !live && attempt.phase !== 'succeeded'
-  const justConnected = stored && attempt?.phase === 'succeeded'
-  return ui.stack.column([
-    ...(options.guide === true && !stored ? [ui.text(t('Step 2 of 2 · Finish in your browser'), { tone: 'muted' })] : []),
-    ui.fields([
-      { label: t('Status'), value: [{ text: t(stored ? 'Signed in' : 'Not signed in') }] },
-      ...(live ? [{ label: t('Sign-in'), value: [{ text: t('Signing in…') }] }] : retry ? [{ label: t('Sign-in'), value: [{ text: outcomeText(attempt, t) }] }] : []),
-      ...(waiting && attempt.expiresAt !== undefined ? [{ label: t('Expires'), value: [{ text: new Intl.DateTimeFormat(options.locale, { timeStyle: 'medium' }).format(new Date(attempt.expiresAt)) }] }] : []),
-    ]),
-    ...(justConnected ? [ui.text(t('Connected — account models need no API key.'), { tone: 'muted' })] : []),
-    ...(waiting ? [
-      ui.text(t('Approve in the browser — on this machine sign-in finishes by itself'), { tone: 'muted' }),
-      ui.fields([{ label: t('Sign-in link'), value: [{ text: attempt.authorizeUrl! }] }]),
-      ui.text(t('Ctrl+Y copy link · Ctrl+R new link'), { tone: 'muted' }),
-      ...(callbackPort === undefined ? [] : [
-        ui.text(t('Browser on another machine? Paste the address it ends on (the page may fail to load) — otherwise leave this empty'), { tone: 'muted' }),
-        ui.form({ id: 'callback-paste', enterSubmits: 'deliver-callback', fields: [{ kind: 'input', id: 'callback-url', label: t('Callback link'), value: '', placeholder: `http://localhost:${String(callbackPort)}/oauth/callback?…` }] }),
-      ]),
-    ] : []),
-    ...(stored || canSignIn ? [] : [ui.text(t('Sign in from a DeepSeek Harness Desktop or Web host on this machine — the stored login is shared across hosts. Account models then need no API key.'), { tone: 'muted' })]),
-    ui.actions({ id: 'account-actions', items: [
-      ...(!stored && canSignIn && !live ? [{ id: 'sign-in', label: retry && attempt.phase !== 'cancelled' ? t('Try again') : t('Sign in'), intent: 'primary' as const }] : []),
-      // Waiting-state controls are shortcuts, not buttons: keep the panel quiet.
-      ...(waiting ? [{ id: 'copy-link', label: t('Copy link'), key: 'ctrl+y', hidden: true }, { id: 'restart-sign-in', label: t('New link'), key: 'ctrl+r', hidden: true }] : []),
-      ...(waiting && callbackPort !== undefined ? [{ id: 'deliver-callback', label: t('Deliver callback'), hidden: true, submit: [{ pagePath: [], formId: 'callback-paste' }] }] : []),
-      ...(stored ? [{ id: 'sign-out', label: t('Sign out'), intent: 'danger' as const, confirm: t('Sign out of the DeepSeek account?') }] : []),
-      { id: 'close', label: justConnected && options.guide === true ? t('Start chatting') : t('Close'), dismiss: true },
-    ] }),
-  ])
+  const frame = (child: MayflyUiNode, escapeLabel: 'cancel' | 'close' = 'close'): MayflyUiNode => ui.surface({ title: t('DeepSeek Account'), chrome: 'overlay', escapeLabel, child })
+
+  if (live) {
+    const left = attempt.expiresAt === undefined ? undefined : attempt.expiresAt - (options.now ?? Date.now())
+    const facts: SignInFacts = {
+      stage: attempt.phase === 'exchanging' || attempt.phase === 'committing' ? 'finishing' : linked ? 'waiting' : 'starting',
+      browser: options.launching === true ? 'pending' : options.focusPaste === true ? 'failed' : 'opened',
+      manual: options.pasteOpen === true,
+      ...attempt.authorizeUrl === undefined ? {} : { url: attempt.authorizeUrl },
+      ...left === undefined ? {} : { remainingMs: left },
+      ...options.expiryTotalMs === undefined ? {} : { totalMs: options.expiryTotalMs },
+      ...callbackPort === undefined ? {} : { callbackPort },
+    }
+    return frame(signInBody(facts, {
+      starting: t('Getting your sign-in link…'),
+      opening: t('Opening your browser…'),
+      waiting: t('Waiting for you to sign in in your browser'),
+      noBrowser: t('Couldn’t open a browser. Copy the link below and open it yourself, then paste the address it ends on (the page may fail to load).'),
+      otherMachine: t('Open the link below in a browser on another machine, then paste the address it ends on (the page may fail to load).'),
+      finishing: t('Signing you in…'),
+      connected: t('Signed in'),
+      expires: (time: string) => t('expires in {time}', { time }),
+      callbackLabel: t('Callback URL'),
+      callbackPlaceholder: `http://localhost:${String(callbackPort ?? '')}/oauth/callback?…`,
+      retry: t('Try again'),
+      copyLink: t('Copy link'),
+      newLink: t('New link'),
+      otherMachineKey: t('Other machine'),
+      deliver: t('Deliver callback'),
+    }, PANEL_SIGN_IN), 'cancel')
+  }
+
+  if (stored) {
+    return frame(ui.stack.column([
+      ui.richText([{ text: '✓ ', tone: 'success' }, { text: t('Signed in') }]),
+      ui.text(t('Account models need no API key.'), { tone: 'muted' }),
+      ui.spacer(),
+      ui.actions({ id: 'account-actions', items: [
+        { id: 'sign-out', label: t('Sign out'), intent: 'danger' as const, confirm: t('Sign out of the DeepSeek account?') },
+        { id: 'close', label: t('Close'), dismiss: true },
+      ] }),
+    ]))
+  }
+
+  return frame(ui.stack.column([
+    ...retry ? [ui.text(outcomeText(attempt, t), { tone: 'warning' }), ui.spacer()] : [],
+    ui.text(canSignIn
+      ? t('Sign in with your DeepSeek account — models are billed to it and need no API key.')
+      : t('Sign in from a DeepSeek Harness Desktop or Web host on this machine — the stored login is shared across hosts. Account models then need no API key.'), { tone: 'muted' }),
+    ui.spacer(),
+    ui.actions({ id: 'account-actions', items: canSignIn
+      ? [{ id: 'sign-in', label: retry && attempt.phase !== 'cancelled' ? t('Try again') : t('Sign in'), intent: 'primary' as const }]
+      : [{ id: 'close', label: t('Close'), dismiss: true }] }),
+  ]))
 }
 
-/** How long the guide shows the connected confirmation before closing. */
-export const GUIDE_CLOSE_DELAY_MS = 1500
-
-/** The way back the first-run guide hands the account panel so no path dead-ends. */
-interface AccountGuideExits {
-  /** Closing the panel before connecting returns to the guide's choice. */
-  readonly onBack: () => void
-  /** A finished sign-in closed the panel: the guide continues with model selection. */
-  readonly onConnected: () => void
-}
+/** How long a started sign-in waits for the platform to issue the link before the panel stops expecting it. */
+const LINK_WAIT_MS = 15_000
 
 /**
  * Open the DeepSeek account panel for the account provider route.
  * @param ctx - Host context with the overlays service.
  * @param route - The provider route the Providers list selected.
  * @param signal - Optional caller lifetime.
- * @param guide - Set by the first-run guide: closing the panel before a
- * sign-in completes reopens the guide's choice, and a completed sign-in
- * hands over to model selection.
  * @returns true when the panel opened (the route is the account adapter and
  * the native account service is available); false when the route is not the
  * account adapter, so callers fall back to their own handling.
  */
-export async function openAccountPanel(ctx: Context, route: string, signal?: AbortSignal, guide?: AccountGuideExits): Promise<boolean> {
+export async function openAccountPanel(ctx: Context, route: string, signal?: AbortSignal): Promise<boolean> {
   const service = ctx.get('deepseekAccount')
   const overlays = ctx.get('mayflyOverlays')
   if (service === undefined || overlays === undefined) return false
@@ -192,15 +231,41 @@ export async function openAccountPanel(ctx: Context, route: string, signal?: Abo
   const releaseLifetime = ctx.effect(() => () => lifetime.abort())
   /* reassigned to the watch-disposal effect before the overlay can close */
   let cleanup = (): void => {}
+  /** The browser could not be opened for the current link, so the paste-back field is the way on and takes the focus. */
+  let browserFailed = false
+  /** A sign-in just started and the browser launch has no result yet: the watch holds its repaint so the paste-back field first appears with the right focus. */
+  let launching = false
+  /** Resolves with the link once the platform has issued it (it comes a moment after a sign-in starts), or undefined when the attempt ends first or the wait runs out. */
+  let linkWaiter: ((url: string | undefined) => void) | undefined
+  const awaitLink = (view: AccountView): Promise<string | undefined> => {
+    const ready = view.attempt?.authorizeUrl
+    if (ready !== undefined) return Promise.resolve(ready)
+    if (view.attempt === null || attemptTerminal(view.attempt)) return Promise.resolve(undefined)
+    return new Promise(resolve => {
+      const done = (url: string | undefined): void => { clearTimeout(timer); linkWaiter = undefined; resolve(url) }
+      const timer = setTimeout(() => done(undefined), LINK_WAIT_MS)
+      linkWaiter = done
+    })
+  }
+  /** The reader asked for the paste-back field (`p`) for the current attempt. */
+  let pasteOpen = false
+  /** The whole life of the current link, noted when it first shows, so the countdown bar has its full length. */
+  let expiryTotalMs: number | undefined
+  let expiryAttempt: string | undefined
   /** Paint one view: while an attempt waits, accept pasted callback delivery. */
   const paint = (view: AccountView): MayflyUiNode => {
     const server = ctx.get('webServer')
     const waiting = view.attempt !== null && view.attempt.authorizeUrl !== undefined && !attemptTerminal(view.attempt)
-    return accountPanelNode(view, t, server !== undefined, waiting && server !== undefined ? server.port : undefined, { guide: guide !== undefined, locale: ctx.get('mayflyLocale')?.snapshot.locale })
+    if (waiting && view.attempt!.expiresAt !== undefined && expiryAttempt !== view.attempt!.id) {
+      expiryAttempt = view.attempt!.id
+      expiryTotalMs = Math.max(0, view.attempt!.expiresAt - Date.now())
+    }
+    return accountPanelNode(view, t, server !== undefined, waiting && server !== undefined ? server.port : undefined, {
+      launching, focusPaste: browserFailed, pasteOpen, ...expiryTotalMs === undefined ? {} : { expiryTotalMs },
+    })
   }
-  let connected = false
   let handle = openUiOverlay(ctx, {
-    id, title: t('DeepSeek Account'), presentation: 'editor', capturing: true,
+    id, presentation: 'editor', capturing: true,
     scope: { kind: 'app', targetId: `account/${route}` },
     onEvent: { action: async (event, context): Promise<MayflyUiActionReply> => {
       /* activate and the paste submit are the only panel events */
@@ -215,6 +280,10 @@ export async function openAccountPanel(ctx: Context, route: string, signal?: Abo
         } catch {
           return { kind: 'failed', message: t('The link could not be copied — select it in the panel instead') }
         }
+      }
+      if (event.kind === 'activate' && event.actionId === 'show-paste') {
+        pasteOpen = true
+        return { kind: 'accepted', node: paint(await service.getState()), source: [] }
       }
       if (event.kind === 'activate' && event.actionId === 'sign-out') {
         try {
@@ -255,22 +324,35 @@ export async function openAccountPanel(ctx: Context, route: string, signal?: Abo
             /* the restart action only renders while a live attempt waits */
             if (current !== null && !attemptTerminal(current)) await service.cancelSignIn(current.id)
             const restarted = await service.startSignIn(clientMetadata(ctx), origin, 'desktop')
-            const url = restarted.attempt?.authorizeUrl
-            /* a fresh attempt may still be initializing without its URL */
+            /* a fresh attempt comes back initializing, without its link: wait for the link, then try the browser */
+            const url = await awaitLink(restarted)
             const opened = url === undefined ? false : await openUrlInBrowser(url)
+            browserFailed = url !== undefined && !opened
+            /* the watch painted before the launch result was known: paint again with it */
+            if (!handle?.closed) handle?.set(paint(await service.getState()))
             // Two state hops (retire, then fresh attempt) race the watch
             // repaint; the watch stream owns the final node, this replies
             // with the outcome only.
             return { kind: 'completed', feedback: { severity: 'success', message: opened ? t('Opened the sign-in page in a browser') : t('Sign-in restarted with a fresh link') } }
           }
-          const view = await service.startSignIn(clientMetadata(ctx), origin, 'desktop')
-          const url = view.attempt?.authorizeUrl
-          const opened = url === undefined ? false : await openUrlInBrowser(url)
+          launching = true
+          pasteOpen = false
+          let opened: boolean
+          let linked: boolean
+          try {
+            const started = await service.startSignIn(clientMetadata(ctx), origin, 'desktop')
+            /* the platform issues the link a moment after the attempt starts: wait for it, then try the browser */
+            const url = await awaitLink(started)
+            linked = url !== undefined
+            opened = url === undefined ? false : await openUrlInBrowser(url)
+            browserFailed = linked && !opened
+          } finally { launching = false }
           return {
             kind: 'accepted',
-            node: paint(view),
+            node: paint(await service.getState()),
             source: [],
-            feedback: { severity: 'success', message: opened ? t('Opened the sign-in page in a browser') : t('Sign-in started — open the link below in a browser') },
+            /* when the browser did not open, the panel's instruction says so: no second notice */
+            ...opened ? { feedback: { severity: 'success' as const, message: t('Opened the sign-in page in a browser') } } : {},
           }
         } catch {
           return { kind: 'failed', message: t('Sign-in could not start — try again') }
@@ -279,28 +361,24 @@ export async function openAccountPanel(ctx: Context, route: string, signal?: Abo
       /* only the panel actions above reach activate */
       return { kind: 'completed' }
     } },
-  }, paint(await service.getState()), { signal: cancellation, reopen: 'focus', onClosed: () => {
-    // The lifetime aborts before this hook on unload, so only a user close is deliberate.
-    const deliberate = !cancellation.aborted
-    cleanup()
-    // Backing out of the account step returns to the guide, never to nothing.
-    if (guide !== undefined && !connected && deliberate) guide.onBack()
-  } })
+  }, paint(await service.getState()), { signal: cancellation, reopen: 'focus', onClosed: () => { cleanup() } })
   if (handle === undefined) { releaseLifetime(); return true }
-  let closing = false
+  /* the countdown bar moves each second while a link waits */
+  let lastView: AccountView | undefined
+  let ticker: ReturnType<typeof setInterval> | undefined
+  ctx.effect(() => () => { if (ticker !== undefined) clearInterval(ticker) })
+  const syncTicker = (view: AccountView): void => {
+    lastView = view
+    const counting = view.attempt?.phase === 'waiting-browser' && view.attempt.expiresAt !== undefined
+    if (counting && ticker === undefined) ticker = setInterval(() => { if (lastView !== undefined && !handle?.closed && !launching) handle?.set(paint(lastView)) }, 1000)
+    else if (!counting && ticker !== undefined) { clearInterval(ticker); ticker = undefined }
+  }
   const repaint = (view: AccountView): void => {
-    connected = view.status === 'credential-stored'
+    syncTicker(view)
+    if (view.attempt?.authorizeUrl !== undefined) linkWaiter?.(view.attempt.authorizeUrl)
+    else if (view.attempt !== null && attemptTerminal(view.attempt)) linkWaiter?.(undefined)
     /* the watch stops with the panel; a late view races its own abort */
-    if (!handle?.closed) handle?.set(paint(view))
-    // Inside the guide a finished sign-in is the end of setup: show the
-    // confirmation briefly, then hand the session back.
-    if (guide !== undefined && !closing && view.status === 'credential-stored' && view.attempt?.phase === 'succeeded') {
-      closing = true
-      ctx.effect(() => {
-        const timer = setTimeout(() => { handle?.close(); guide.onConnected() }, GUIDE_CLOSE_DELAY_MS)
-        return () => clearTimeout(timer)
-      })
-    }
+    if (!handle?.closed && !launching) handle?.set(paint(view))
   }
   const offWatch = ctx.effect(() => {
     const controller = new AbortController()

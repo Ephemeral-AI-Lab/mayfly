@@ -38,6 +38,11 @@ const PHASE3_COVERS = [...new Set([
 ])]
 
 /** What each replay shows, as the sources whose change it can reveal. */
+/** What draws the first-run guide: its component, its plugin, the language step, and the wizard pattern it stands on. */
+const ONBOARDING_COVERS = [
+  `${INTERACTION}provider-onboarding.ts`, `${INTERACTION}onboarding-language.ts`, `${INTERACTION}provider-account.ts`, `${INTERACTION}permission-panel.ts`,
+  'packages/mayfly/src/components/onboarding-wizard.ts', 'packages/ui/src/patterns.ts',
+]
 const QUESTION_COVERS = [`${INTERACTION}questions-plugin.ts`, `${INTERACTION}questionnaire.ts`, 'packages/mayfly/src/components/question-wizard.ts', 'packages/ui/src/patterns.ts', 'packages/mayfly/src/core/ui-validator-review.ts']
 const COVERS = {
   phase3: PHASE3_COVERS,
@@ -99,6 +104,32 @@ const COVERS = {
  * that `differs` from the prototype, and `pending`. `brief.mjs` prints them. Finalizing a group removes its entries.
  */
 const REVIEW = {
+  onboarding: {
+    scene: 29,
+    reference: 'prototype scene 29 (Onboarding) · component-library §5.12 · part 6c.4 · built on patterns.wizard (R5a) with the new `settle` step flag; the account panel stays as it is',
+    implemented: [
+      'The first run is one wizard, `Preferences › Connect › Welcome`. `Preferences` holds the language and theme (always offered on a first install, preselected with what is already set, even a stored choice; each applied the moment it is switched) and the permission preset (the native presets, starting on the current one; written on `Enter`, so passing through the others writes nothing). No buttons: digits answer at once, `Enter` takes the row, `←/→` and `Alt+←/→` move between steps, `Esc` walks back.',
+      '`Connect`: `1 Sign in with a DeepSeek account` (recommended, only when sign-in is composed), `2 Enter a DeepSeek API key`, `3 Skip for now`. Choosing 2 swaps the page for a masked key field; `Enter` saves it, `Esc` returns to the choices. Choosing 1 starts the sign-in on the same page, with no second panel: a loading line while the link is fetched, then either (a) the browser opened, so a waiting line and the countdown (`p` for the other-machine view), or (b) it could not open, so one sentence, the link, the countdown and the callback field (focused). Pasting the callback address shows a loading line on the same page; when the login lands the model list opens, and after a pick the welcome page greets you. `Esc` while signing in cancels it and returns to the choices.',
+      'The permission preset is a field of `Preferences`, not a step of its own: `danger-full-access` is chosen like the others, with no confirmation. `Enter` runs `/permission <name>` on the current Agent (nothing runs when it is already the current preset).',
+      'The welcome page (the last step): what was set (`○ DeepSeek not connected · /provider to connect` when skipped) and the five things to try; `Enter` on `Start chatting` closes the guide. The model list of the provider just connected opens before it, right after connecting (a key or an account).',
+    ],
+    focus: [
+      { look: 'Does the strip read right as the guide advances (`✓` answered, `●` here, `○` to come)?', how: 'checkpoints `connect`, `permissions`, `ready` of `onboarding`' },
+      { look: 'The key field: masked, focused at once, `Esc` back', how: 'checkpoints `key-field`, `key-typed` of `onboarding`; `onboardingResume`' },
+      { look: 'The unsandboxed preset chosen directly, with no confirmation, ', how: 'scenario `onboardingFull`' },
+      { look: 'Signing in on one page: the loading line, the waiting page with the countdown (browser opened), the link page with one sentence and the callback field (browser could not open), and the move to the model list and the welcome page', how: 'scenarios `onboardingSignInOpened` (a), `onboardingSignIn` (b), `onboardingSignInCancel`' },
+      { look: 'Any panel covers the bottom status bar (model, directory) while it is open', how: 'every `onboarding*` frame' },
+      { look: 'The Preferences step: a language or theme switch takes hold at once, the preset only on Enter', how: 'scenarios `onboarding` (checkpoint `language`) and `onboardingLanguage`' },
+      { look: 'Narrow widths', how: '`onboardingNarrow` at 60 and 40 columns' },
+    ],
+    differs: [
+      'Skip for now is not remembered: the guide opens again on the next start while nothing is connected (as before).',
+      'The language is a new setting, `mayfly.language` (`system` until chosen, then `en` or `zh`; a Row in `/settings`). The Host `locale.preference` still wins where a host carries it (the web app), and is written too.',
+      'The language step\'s one-line theme preview of the spec is not built.',
+      'The strip stays three steps wide while the key field is open (the field takes the Connect page); it is not a fifth step.',
+    ],
+    pending: ['The sign-in success path (the account panel closing after a finished sign-in, then Permissions) needs a fake account that can finish a sign-in; try it live.'],
+  },
   questionsMore: {
     scene: 22,
     reference: 'prototype scene 22 (Questions) · component-library §5.8 · part 6e · built from: patterns.wizard (new) over ui.tabs wizard strip + tab pages, ui.list (choose, marks, numbered, new typed `input` row), ui.review (new), ui.actions (hidden Enter actions), ui.surface (borderless panel)',
@@ -2181,6 +2212,190 @@ export const CATALOG = Object.freeze({
       key('ctrl+u'), key('home'), key('1'), checkpoint('replaced'),
       key('right'), key('right'), key('end'), key('enter'), play(), checkpoint('end'),
     ],
+  },
+  // First run: no key, so the guide opens. Connect (the API key row swaps the page for a masked field), Permissions, Ready, then the model list.
+  onboarding: {
+    summary: 'the first-run guide end to end: Language and Theme, Connect with an API key, Permissions, Ready, then the model list of the provider just connected',
+    source: { idle: true },
+    firstRun: true,
+    covers: ONBOARDING_COVERS,
+    sizes: [[100, 34], [60, 30]],
+    script: [
+      until('Set up how Mayfly'), checkpoint('language'),
+      key('enter'), until('needs a DeepSeek connection'), checkpoint('connect'),
+      key('2'), until('saved as a credential'), checkpoint('key-field'),
+      type('sk-onboarding-demo-key'), checkpoint('key-typed'),
+      key('enter'), until('Select a model'), checkpoint('models'),
+      key('enter'), until('Things to try'), checkpoint('welcome'),
+      key('enter'), wait(800), checkpoint('closed'),
+    ],
+    review: REVIEW.onboarding,
+  },
+  // The Language and Theme step: both apply at once, so the rest of the guide speaks the chosen language.
+  onboardingLanguage: {
+    summary: 'the Preferences step with 简体中文 and the ocean theme chosen: each switch applies as soon as it is made (the step relabels in Chinese, the theme repaints), and the steps after it and the Ready checklist read in Chinese',
+    source: { idle: true },
+    firstRun: true,
+    covers: ONBOARDING_COVERS,
+    sizes: [[100, 34]],
+    script: [
+      until('Set up how Mayfly'), checkpoint('language'),
+      key('right'), wait(800), checkpoint('language-applied'),
+      key('down'), key('right'), key('right'), wait(1200), checkpoint('theme-applied'),
+      key('enter'), until('DeepSeek'), wait(600), checkpoint('connect-zh'),
+      key('3'), wait(800), checkpoint('ready-zh'),
+      key('enter'), wait(800), type('/theme'), key('enter'), wait(1000), checkpoint('theme-panel'),
+    ],
+    review: REVIEW.onboarding,
+  },
+  // A first install with a language and theme already stored (an earlier install, a settings file): the step still opens, preselected.
+  onboardingConfigured: {
+    summary: 'the first-run guide when a language and theme are already stored (zh, ocean): Preferences still opens, in that language, with both preselected',
+    source: { idle: true },
+    firstRun: true,
+    config: { mayfly: { language: 'zh', theme: 'ocean' } },
+    covers: ONBOARDING_COVERS,
+    sizes: [[100, 34]],
+    script: [
+      until('Mayfly 的外观'), checkpoint('preferences'),
+      key('enter'), until('DeepSeek'), wait(600), checkpoint('connect'),
+    ],
+    review: REVIEW.onboarding,
+  },
+  // Skip for now: Connect is passed over, the Ready checklist says so, and nothing opens afterwards.
+  onboardingSkip: {
+    summary: 'the first-run guide with Skip for now: Connect answered without a connection, the permission preset left as it is, Ready with `○ not connected`',
+    source: { idle: true },
+    firstRun: true,
+    covers: ONBOARDING_COVERS,
+    sizes: [[100, 34]],
+    script: [
+      until('Set up how Mayfly'), key('enter'), until('needs a DeepSeek connection'), key('3'), until('Things to try'), checkpoint('ready'),
+      key('enter'), wait(800), checkpoint('closed'),
+    ],
+    review: REVIEW.onboarding,
+  },
+  // A first install with a language and theme already stored (an earlier install, a settings file): the step still opens, preselected.
+  onboardingConfigured: {
+    summary: 'the first-run guide when a language and theme are already stored (zh, ocean): Preferences still opens, in that language, with both preselected',
+    source: { idle: true },
+    firstRun: true,
+    config: { mayfly: { language: 'zh', theme: 'ocean' } },
+    covers: ONBOARDING_COVERS,
+    sizes: [[100, 34]],
+    script: [
+      until('Mayfly 的外观'), checkpoint('preferences'),
+      key('enter'), until('DeepSeek'), wait(600), checkpoint('connect'),
+    ],
+    review: REVIEW.onboarding,
+  },
+  // Skip for now: Connect is passed over, the Ready checklist says so, and nothing opens afterwards.
+  onboardingSkip: {
+    summary: 'the first-run guide with Skip for now: Connect answered without a connection, the permission preset left as it is, Ready with `○ not connected`',
+    source: { idle: true },
+    firstRun: true,
+    covers: ONBOARDING_COVERS,
+    sizes: [[100, 34]],
+    script: [
+      until('Set up how Mayfly'), key('enter'), until('needs a DeepSeek connection'), key('3'), until('Things to try'), checkpoint('ready'),
+      key('enter'), wait(800), checkpoint('closed'),
+    ],
+    review: REVIEW.onboarding,
+  },
+  // The account path with no browser to open (a bare SSH login): the link and the callback field, then the login lands.
+  onboardingSignIn: {
+    summary: 'choosing the account with no browser to open: one loading line, then the link, one sentence and the callback field (focused); the login then lands on the same page, the model list opens, and the welcome page follows',
+    source: { idle: true },
+    firstRun: true,
+    account: { signed: 'flow' },
+    covers: ONBOARDING_COVERS,
+    sizes: [[100, 34], [60, 30]],
+    script: [
+      until('Set up how Mayfly'), key('enter'), until('needs a DeepSeek connection'), key('1'), checkpoint('loading'),
+      until('open a browser'), checkpoint('no-browser'),
+      type('http://localhost:1/oauth/callback?code=demo'), checkpoint('typed'),
+      until('Signing you in'), checkpoint('finishing'),
+      until('Select a model'), checkpoint('models'),
+      key('esc'), until('all set'), checkpoint('welcome'),
+    ],
+    review: REVIEW.onboarding,
+  },
+  // The account path with a browser that opens: waiting and the countdown only; `p` shows the other-machine view.
+  onboardingSignInOpened: {
+    summary: 'choosing the account when the browser opens: a waiting line and the countdown only, `p` for the other-machine view, and the same finish',
+    source: { idle: true },
+    firstRun: true,
+    browser: 'opens',
+    account: { signed: 'flow' },
+    covers: ONBOARDING_COVERS,
+    sizes: [[100, 34]],
+    script: [
+      until('Set up how Mayfly'), key('enter'), until('needs a DeepSeek connection'), key('1'), checkpoint('loading'),
+      until('Waiting for you to sign in'), checkpoint('waiting'),
+      key('p'), until('another machine'), checkpoint('other-machine'),
+      until('Select a model'), checkpoint('models'),
+      key('esc'), until('all set'), checkpoint('welcome'),
+    ],
+    review: REVIEW.onboarding,
+  },
+  // Esc on the sign-in steps back to the choices and cancels the attempt.
+  onboardingSignInCancel: {
+    summary: 'Esc while signing in returns to the Connect choices and cancels the attempt; choosing the account again starts a fresh one',
+    source: { idle: true },
+    firstRun: true,
+    browser: 'opens',
+    account: { signed: 'flow' },
+    covers: ONBOARDING_COVERS,
+    sizes: [[100, 34]],
+    script: [
+      until('Set up how Mayfly'), key('enter'), until('needs a DeepSeek connection'), key('1'), until('Waiting for you to sign in'),
+      key('esc'), until('needs a DeepSeek connection'), checkpoint('choices'),
+      key('1'), until('Waiting for you to sign in'), checkpoint('again'),
+    ],
+    review: REVIEW.onboarding,
+  },
+  // The unsandboxed preset is chosen like any other: one Enter, no confirmation.
+  onboardingFull: {
+    summary: 'the Preferences step with danger-full-access chosen directly: no confirmation, the preset is written on Enter and Ready names it',
+    source: { idle: true },
+    firstRun: true,
+    covers: ONBOARDING_COVERS,
+    sizes: [[100, 34]],
+    script: [
+      until('Set up how Mayfly'), key('down'), key('down'), checkpoint('workspace-write'),
+      key('right'), wait(500), checkpoint('danger'),
+      key('enter'), until('needs a DeepSeek connection'), key('3'), until('Things to try'), checkpoint('ready'),
+    ],
+    review: REVIEW.onboarding,
+  },
+  // The narrow sizes: the strip folds, the rows wrap their detail, and the key field keeps its row.
+  onboardingNarrow: {
+    summary: 'the first-run guide at 60 and 40 columns: the folded strip, wrapped rows, the masked key field',
+    source: { idle: true },
+    firstRun: true,
+    covers: ONBOARDING_COVERS,
+    sizes: [[60, 28], [40, 22]],
+    script: [
+      until('Set up how Mayfly'), key('enter'), until('needs a DeepSeek'), checkpoint('connect'),
+      key('2'), until('saved as a'), type('sk-onboarding-demo-key'), checkpoint('key'),
+      key('enter'), until('Select a model'), checkpoint('models'),
+      key('enter'), until('Things to try'), checkpoint('welcome'),
+    ],
+    review: REVIEW.onboarding,
+  },
+  // Lifecycle: Esc on the key field returns to the choices, Esc on the choices closes the guide, and nothing is written.
+  onboardingResume: {
+    summary: 'Esc on the key field returns to the choices; Esc on the choices closes the guide with nothing saved (it opens again on the next start while nothing is connected)',
+    source: { idle: true },
+    firstRun: true,
+    covers: ONBOARDING_COVERS,
+    sizes: [[100, 34]],
+    script: [
+      until('Set up how Mayfly'), key('enter'), until('needs a DeepSeek connection'), key('2'), until('saved as a credential'), type('half-typed'), checkpoint('typed'),
+      key('esc'), wait(400), checkpoint('editing-left'), key('esc'), until('needs a DeepSeek connection'), checkpoint('choices'),
+      wait(400), key('esc'), wait(800), checkpoint('closed'),
+    ],
+    review: REVIEW.onboarding,
   },
   ...APP,
   ...PERF,

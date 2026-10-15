@@ -40,6 +40,8 @@ export async function prepareSession({ scenario, dir, speed = 1, control, config
   const replay = scenario.source.replay === undefined ? undefined : timelineNamed(scenario.source.replay)
   if (scenario.source.replay !== undefined && replay === undefined) throw new Error(`unknown replay "${scenario.source.replay}"`)
   const tmp = `/tmp/mayfly-scenario-${randomBytes(4).toString('hex')}`
+  // The bench profile's credential file is shared by every run: a `firstRun` scenario that saves a key must not leave it for the next.
+  if (scenario.firstRun === true && dshHome !== undefined) rmSync(join(dshHome, '.credentials.yaml'), { force: true })
   const cwd = isolate ? join(tmp, 'workspace') : tmp
   mkdirSync(cwd, { recursive: true })
   rmSync(dir, { recursive: true, force: true })
@@ -66,6 +68,14 @@ export async function prepareSession({ scenario, dir, speed = 1, control, config
   writeFileSync(patch, rows.join(''))
   const file = join(dir, 'replay.json')
   writeFileSync(file, JSON.stringify(replay === undefined ? [] : compile(replay.items, replay.options), null, 1))
+  // A `browser: 'opens'` scenario has a display and an opener that succeeds, so sign-in finds a browser; without it nothing opens (no display).
+  let browserEnv = {}
+  if (scenario.browser === 'opens') {
+    const bin = join(dir, 'bin')
+    mkdirSync(bin, { recursive: true })
+    writeFileSync(join(bin, 'xdg-open'), '#!/bin/sh\nexit 0\n', { mode: 0o755 })
+    browserEnv = { DISPLAY: ':99', PATH: `${bin}:${process.env.PATH ?? ''}` }
+  }
   const log = join(dir, 'driver.log')
   const stub = await startStubModel({ balance: scenario.account?.balance })
   return {
@@ -74,11 +84,13 @@ export async function prepareSession({ scenario, dir, speed = 1, control, config
     log,
     stub,
     env: {
-      DEEPSEEK_BASE_URL: `${stub.baseURL}/v1`, DEEPSEEK_API_KEY: 'replay-key',
+      // A `firstRun` scenario has no key, so the first-run guide opens (its Language step needs the Host's `locale` namespace, which the bench profile lacks).
+      DEEPSEEK_BASE_URL: `${stub.baseURL}/v1`, ...(scenario.firstRun === true ? {} : { DEEPSEEK_API_KEY: 'replay-key' }),
       MAYFLY_REPLAY_FILE: file, MAYFLY_REPLAY_SPEED: String(speed), MAYFLY_REPLAY_LOG: log,
       ...(control === undefined ? {} : { MAYFLY_REPLAY_CONTROL: control }),
       ...(scenario.account?.signed === undefined ? {} : { MAYFLY_FAKE_ACCOUNT: scenario.account.signed }),
       ...(isolate ? { HOME: tmp } : {}),
+      ...browserEnv,
       ...market?.env,
     },
     close: async () => {

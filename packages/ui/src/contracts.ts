@@ -350,6 +350,8 @@ export interface MayflyFormNode {
   /** Button text for `cancelActionId`; defaults to a localized "Cancel". */
   readonly cancelLabel?: string
   readonly enterSubmits?: string
+  /** The form's first field takes focus first when its surface opens (or when a republish brings the form in). */
+  readonly autofocus?: boolean
 }
 /** Shared Yes/No decision shown before an action runs; No is focused first. */
 export interface MayflyConfirmation {

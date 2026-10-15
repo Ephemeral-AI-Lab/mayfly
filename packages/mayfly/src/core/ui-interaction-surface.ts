@@ -326,6 +326,8 @@ export class UiSurfaceModel {
     for (const [key] of this.tabs) if (declarations.complete && declarations.controls.get(key)?.kind !== 'tabs') { this.tabs.delete(key); changed = true }
     for (const [key] of this.documents) if (declarations.complete && declarations.controls.get(key)?.kind !== 'scroll') { this.documents.delete(key); changed = true }
     this.actions.clear()
+    /** The wizard steps a driven move left (they count as answered when they hold an answer) and the pages it arrived on (focus starts there, as after any navigation). */
+    const drivenSteps: { readonly left: MayflyPagePath, readonly to: MayflyPagePath }[] = []
     visitUiControls(node, (current, pagePath) => {
       if (current.kind === 'form') {
         const address = { pagePath, formId: current.id }
@@ -376,7 +378,10 @@ export class UiSurfaceModel {
       } else if (current.kind === 'tabs') {
         const key = uiControlKey({ pagePath, controlId: current.id })
         const previous = this.tabs.get(key)
-        const activeId = previous !== undefined && current.items.some(item => item.id === previous.activeId && item.disabled !== true) ? previous.activeId : current.activeId
+        /* a republish that names another active step than the last publish did moves the reader there (a consumer finishing work in the background); one that repeats it leaves the reader where they are */
+        const driven = previous !== undefined && previous.definition.activeId !== current.activeId && current.items.some(item => item.id === current.activeId && item.disabled !== true)
+        const activeId = driven ? current.activeId : previous !== undefined && current.items.some(item => item.id === previous.activeId && item.disabled !== true) ? previous.activeId : current.activeId
+        if (driven && current.mode === 'wizard') drivenSteps.push({ left: [...pagePath, { controlId: current.id, itemId: previous.activeId }], to: [...pagePath, { controlId: current.id, itemId: current.activeId }] })
         if (previous?.definition !== current || previous.activeId !== activeId) {
           this.tabs.set(key, { definition: current, activeId, completed: new Map([...(current.mode === previous?.definition.mode ? previous?.completed : undefined) ?? []].filter(([id]) => current.items.some(item => item.id === id))) }); changed = true
         }
@@ -396,6 +401,7 @@ export class UiSurfaceModel {
         this.actions.set(uiControlKey({ pagePath, controlId: current.cancelActionId }), { pagePath, item: { id: current.cancelActionId, label: 'Cancel' } })
       }
     })
+    for (const move of drivenSteps) { this.completeSteps(move.left); this.navigate(move.to) }
     for (const task of this.tasks.values()) {
       if (update.reason === 'ack' && update.operationId === task.id) continue
       if ([...task.formKeys].some(key => {
@@ -668,6 +674,19 @@ export class UiSurfaceModel {
       : inputs !== undefined ? { kind: 'activate', pagePath, controlId: actionId, actionId, inputs } : event, submission)
   }
 
+  /** Mark every wizard step on a page path answered, when it holds a form or a selection (the rule of a step's own Next). */
+  private completeSteps(pagePath: MayflyPagePath): void {
+    for (const [index, segment] of pagePath.entries()) {
+      const tabsKey = uiControlKey({ pagePath: pagePath.slice(0, index), controlId: segment.controlId })
+      const tabs = this.tabs.get(tabsKey)
+      if (tabs?.definition.mode !== 'wizard') continue
+      const stepPath = pagePath.slice(0, index + 1)
+      const { forms, choices } = this.stepControls(stepPath)
+      if (forms.length === 0 && !choices.some(choice => choice.selectedIds.length > 0)) continue
+      this.tabs.set(tabsKey, { ...tabs, completed: new Map(tabs.completed).set(segment.itemId, this.stepRevision(stepPath)) })
+    }
+  }
+
   private showValidationErrors(key: string, errors: readonly MayflyFieldError[]): void {
     for (const error of errors) {
       const field = this.form(error)!.fields[error.fieldId]!
@@ -874,8 +893,13 @@ export class UiSurfaceModel {
       this.setPhase(task, reply.kind === 'accepted' || reply.kind === 'completed' ? 'succeeded' : reply.kind === 'cancelled' ? 'cancelled' : 'failed')
       if (reply.feedback !== undefined) this.report(task.id, reply.feedback)
       else if (reply.kind === 'failed' || reply.kind === 'conflict') this.report(task.id, { severity: 'error', message: reply.message })
-      if (reply.navigate !== undefined && reply.navigate.length > 0) this.navigate(reply.navigate)
-      if ((reply.dismiss === true || task.event.kind === 'dismiss') && (reply.kind === 'accepted' || reply.kind === 'completed' || reply.kind === 'cancelled')) this.bindings.close?.()
+      if (reply.navigate !== undefined && reply.navigate.length > 0) {
+        /* A step that settles its own answer is answered once the consumer accepts it and the reader moves on. */
+        if (reply.kind === 'accepted') this.completeSteps(task.event.pagePath)
+        this.navigate(reply.navigate)
+      }
+      /* a handler of a dismiss may keep the surface open with `dismiss: false` (a back step inside the page) */
+      if ((reply.dismiss === true || (task.event.kind === 'dismiss' && reply.dismiss !== false)) && (reply.kind === 'accepted' || reply.kind === 'completed' || reply.kind === 'cancelled')) this.bindings.close?.()
     } catch (error) {
       if (this.live && !task.controller.signal.aborted) {
         this.setPhase(task, nativeAccepted ? 'succeeded' : 'failed')

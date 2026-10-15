@@ -1468,7 +1468,8 @@ function admitNode(value: unknown, path: string, state: ValidationState, depth: 
         }
         const enterSubmits = optionalId(object, 'enterSubmits', path)
         if (enterSubmits !== undefined && enterSubmits.trim().length === 0) invalid(`${path}.enterSubmits must not be empty`)
-        return { kind, id, fields, ...optional(submitActionId, 'submitActionId'), ...optional(optionalLabel(object, 'submitLabel', path), 'submitLabel'), ...optional(cancelActionId, 'cancelActionId'), ...optional(optionalLabel(object, 'cancelLabel', path), 'cancelLabel'), ...optional(enterSubmits, 'enterSubmits') }
+        const autofocus = own(object, 'autofocus', path)
+        return { kind, id, fields, ...optional(autofocus === undefined ? undefined : boolean(autofocus, `${path}.autofocus`), 'autofocus'), ...optional(submitActionId, 'submitActionId'), ...optional(optionalLabel(object, 'submitLabel', path), 'submitLabel'), ...optional(cancelActionId, 'cancelActionId'), ...optional(optionalLabel(object, 'cancelLabel', path), 'cancelLabel'), ...optional(enterSubmits, 'enterSubmits') }
       }
       case 'actions': {
         const scope = actionScope(own(object, 'scope', path), `${path}.scope`, state)

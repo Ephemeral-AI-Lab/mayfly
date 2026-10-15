@@ -396,6 +396,8 @@ interface FocusState {
   editingKey: string | undefined
   expandedKey: string | undefined
   readonly groupActiveKeys: Map<string, string>
+  /** The first field of each `autofocus` form that has already taken the focus: it takes it once each time it appears. */
+  readonly autofocusClaimed: Set<string>
   readonly controlBindings: Map<string, ControlBinding>
   readonly scrollViews: Map<string, ScrollControl>
   lastTabGroupIndex: number
@@ -1926,11 +1928,11 @@ function compileUnit(node: CompilableNode, state: FocusState, options: RuntimeCo
 }
 
 /**
- * The group a surface opens on and `Esc` returns to: a list that declares `autofocus` takes focus first, then an action
+ * The group a surface opens on and `Esc` returns to: a list, prompt, slider, or form that declares `autofocus` takes focus first, then an action
  * that declares itself the default, else the first control's group.
  */
 function homeGroup(controls: readonly ControlDescriptor[]): string | undefined {
-  const declared = controls.find(control => (control.kind === 'event' ? control.listEntry?.node : control.kind === 'list' || control.kind === 'prompt' || control.kind === 'slider' ? control.node : undefined)?.autofocus === true)
+  const declared = controls.find(control => (control.kind === 'event' ? control.listEntry?.node : control.kind === 'list' || control.kind === 'prompt' || control.kind === 'slider' ? control.node : control.kind === 'text' || control.kind === 'select' || control.kind === 'toggle' ? control.form : undefined)?.autofocus === true)
     ?? controls.find(control => control.kind === 'event' && control.role === 'action' && control.preferred)
   return declared?.group ?? controls[0]?.group
 }
@@ -1971,6 +1973,17 @@ function reconcileFocus(state: FocusState): readonly ControlDescriptor[] {
   const groups = controlGroups(controls)
   const tabGroups = groups.filter(group => group.kind === 'tabs')
   state.blurInactiveEditors(controls)
+  /* a form that declares `autofocus` takes the focus when it appears, not only when its surface opens */
+  const autofocusFields = new Map<string, ControlDescriptor>()
+  for (const control of controls) if ((control.kind === 'text' || control.kind === 'select' || control.kind === 'toggle') && control.form.autofocus === true && !autofocusFields.has(control.form.id)) autofocusFields.set(control.form.id, control)
+  const present = new Set([...autofocusFields.values()].map(control => control.key))
+  for (const key of state.autofocusClaimed) if (!present.has(key)) state.autofocusClaimed.delete(key)
+  for (const control of autofocusFields.values()) {
+    if (state.autofocusClaimed.has(control.key)) continue
+    state.autofocusClaimed.add(control.key)
+    state.desiredKey = control.key
+    state.desiredGroup = control.group
+  }
   const allControls = state.allControls()
   const allKeys = new Set(allControls.map(control => control.key))
   for (const [group, key] of state.groupActiveKeys) {
@@ -2024,7 +2037,9 @@ function reconcileFocus(state: FocusState): readonly ControlDescriptor[] {
     return controls
   }
   const groupIds = groups.map(group => group.id)
-  const requestedGroup = desiredHidden ? state.desiredGroup : state.activeGroup
+  /* the focused control is gone: a form that declares `autofocus` claims the focus before the neighbours do */
+  const claimed = controls.find(control => (control.kind === 'text' || control.kind === 'select' || control.kind === 'toggle') && control.form.autofocus === true)?.group
+  const requestedGroup = claimed ?? (desiredHidden ? state.desiredGroup : state.activeGroup)
   const fallbackGroup = requestedGroup !== undefined && groupIds.includes(requestedGroup) ? requestedGroup : homeGroup(controls)!
   state.lastIndex = groupTarget(controls, fallbackGroup, state.groupActiveKeys.get(fallbackGroup))
   state.activeKey = controls[state.lastIndex]!.key
@@ -2199,6 +2214,7 @@ export class MayflyUiSurfaceRuntime {
       editingKey: undefined,
       expandedKey: undefined,
       groupActiveKeys: new Map(),
+      autofocusClaimed: new Set(),
       controlBindings: this.controls.bindings,
       scrollViews: this.controls.scrolls,
       lastTabGroupIndex: 0,
