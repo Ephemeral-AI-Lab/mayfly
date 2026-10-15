@@ -14,7 +14,7 @@ import { SessionId, type Session } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-session-projection'
 import type {} from '@deepseek-ai/dsh-session-title/types'
 import type { LiveAssistantDraft, LiveAssistantStreamService } from '../conversation/live-stream.ts'
-import type { ConversationFacts } from '../conversation/types.ts'
+import type { ConversationFacts, OutputProgress } from '../conversation/types.ts'
 import { initialConversationFacts } from '../conversation/facts.ts'
 
 /** Renderer-neutral facts for one admitted child session. */
@@ -23,13 +23,20 @@ export interface ChildSessionFacts {
   readonly promptText?: string | undefined
   readonly phase: 'waiting' | 'running' | 'completed' | 'failed'
   readonly tokens: number
+  /** The run's tokens split: input (cache included) and output, settled steps only. */
+  readonly inputTokens: number
+  readonly outputTokens: number
   readonly toolCount: number
   /** Streamed output chars of the live attempt; undefined once it settles. */
   readonly liveChars?: number | undefined
+  /** The live attempt's output progress, for the token rate. */
+  readonly outputProgress?: OutputProgress | undefined
   readonly activity?: string | undefined
   readonly model?: string | undefined
   readonly effort?: string | undefined
   readonly endedAt?: number | undefined
+  /** A `failed` run that was stopped (by the user) rather than one that failed on its own. */
+  readonly stopped?: boolean | undefined
 }
 
 declare module '@deepseek-ai/cordis' {
@@ -39,7 +46,7 @@ declare module '@deepseek-ai/cordis' {
 /**
  * Children whose only change is the streamed-character count republish on
  * this trailing cadence; every other child change publishes at once. The
- * agents pane already repaints volatile counters on the same cadence.
+ * Agents item repaints its volatile counters on the same cadence.
  */
 export const CHILD_VOLATILE_MS = 250
 
@@ -77,7 +84,7 @@ function draftActivity(draft: LiveAssistantDraft, durable: ConversationFacts['ac
 
 /**
  * The calls in flight: the committed calls awaiting a result, then the calls whose arguments still stream in the draft
- * (a call the durable list already holds is committed, so it is not preparing). Spawn calls belong to the agents pane.
+ * (a call the durable list already holds is committed, so it is not preparing). Spawn calls belong to the Agents item.
  */
 function inFlightOf(draft: LiveAssistantDraft, durable: ConversationFacts): ConversationFacts['inFlight'] {
   const committed = durable.inFlight ?? []
@@ -364,7 +371,8 @@ export function projectChildSessionFacts(id: string, facts: ConversationFacts, d
     ? draft : undefined
   const phase = facts.active
     ? liveDraft !== undefined && liveDraft.phase !== 'waiting' ? 'running' : facts.phase === 'waiting' ? 'waiting' : 'running'
-    : facts.runOutcome ?? 'completed'
+    // A child whose first turn has not begun has no outcome yet: it is about to work, not finished.
+    : facts.runOutcome ?? 'waiting'
   const marker = facts.activity
   const activity = liveDraft !== undefined && liveDraft.phase !== 'waiting'
     ? liveDraft.phase === 'thinking' ? 'Thinking…' : 'Writing…'
@@ -375,12 +383,15 @@ export function projectChildSessionFacts(id: string, facts: ConversationFacts, d
         : marker?.kind === 'text' ? 'Writing…' : facts.active ? 'Starting…' : undefined
   return {
     id, phase, tokens: facts.epochTokens ?? 0, toolCount: facts.epochToolCount ?? 0,
+    inputTokens: Math.max(0, (facts.epochTokens ?? 0) - (facts.epochOutputTokens ?? 0)), outputTokens: facts.epochOutputTokens ?? 0,
     ...(liveDraft !== undefined && liveDraft.chars > 0 ? { liveChars: liveDraft.chars } : {}),
+    ...(liveDraft?.outputProgress === undefined ? {} : { outputProgress: liveDraft.outputProgress }),
     ...(facts.promptText === undefined ? {} : { promptText: facts.promptText }),
     ...(activity === undefined ? {} : { activity }),
     ...(facts.model === undefined ? {} : { model: facts.model }),
     ...(facts.reasoningEffort === undefined ? {} : { effort: facts.reasoningEffort }),
     ...(facts.endedAt === undefined ? {} : { endedAt: facts.endedAt }),
+    ...(facts.runStopped === true ? { stopped: true } : {}),
   }
 }
 

@@ -18,7 +18,7 @@ import { compactElapsedMs } from './agent-presentation.ts'
 import { openTurns, type Disclosure } from './disclosure.ts'
 import { buildDisplay, runningTurnOf, type DisplayItem, type EntryItem, type ProcessTitleItem, type TurnHeaderItem } from './process-groups.ts'
 import { diffStat, elapsedText } from './process-activity.ts'
-import { callsOf, standardRow, verboseRow, type Call, type CallRequests } from './tool-calls.ts'
+import { callsOf, standardRow, verboseRow, type Call, type CallFacts, type SpawnedChildren } from './tool-calls.ts'
 import { kindOf } from './tool-kinds.ts'
 import type { TranscriptPresentationSnapshot } from './presentation-policy.ts'
 import { ellipsize } from './present.ts'
@@ -52,6 +52,8 @@ export interface StreamInputs {
   readonly requests?: readonly MayflyDecisionRequest[]
   /** How each approval put to the user ended, from the session's audit events. */
   readonly approvals?: readonly ApprovalMark[]
+  /** The children the displayed conversation spawned, which a spawn's line follows. */
+  readonly children?: SpawnedChildren
   /** The context occupancy around each recent compaction, for its bar. */
   readonly compactions?: readonly CompactionMark[]
   /** The selected Agent's context window and occupancy, for a compaction whose marks have not landed. */
@@ -208,7 +210,7 @@ export class StreamFacts {
     const lifecycle = new Map((model.turns ?? []).map(turn => [turn.turn, turn]))
     const buckets: { readonly turn: number, readonly rows: StreamRow[] }[] = []
     let lead: StreamRow[] = []
-    const asked = requestOf(inputs.requests, inputs.approvals)
+    const asked = requestOf(inputs.requests, inputs.approvals, inputs.children)
     runsOf(display, inputs.t, inputs.now, asked).forEach((item, position) => {
       const turn = turnOf(item)
       const mapped = this.rowsOf(item, inputs, position, asked).map(row => this.intern(row, kept))
@@ -327,7 +329,7 @@ export class StreamFacts {
     })
   }
 
-  private rowsOf(item: DisplayItem | RunUnit, inputs: StreamInputs, position: number, asked: CallRequests): readonly StreamRow[] {
+  private rowsOf(item: DisplayItem | RunUnit, inputs: StreamInputs, position: number, asked: CallFacts): readonly StreamRow[] {
     if (item.kind === 'run') return [standardRow(item.calls, inputs.t, inputs.now, openedOf(item.calls, inputs.disclosure))]
     if (item.kind === 'turn-header') return [headerRow(item, inputs.t)]
     if (item.kind === 'process-title') return [titleRow(item, inputs.t)]
@@ -354,7 +356,7 @@ function namelessRequestRow(request: MayflyDecisionRequest, total: number, t: Ma
  * so only its call waits; the calls behind it keep running lines until their turn. Its place reads `1 of N` among the
  * requests of its own kind.
  */
-function requestOf(requests: readonly MayflyDecisionRequest[] | undefined, approvals: readonly ApprovalMark[] | undefined): CallRequests {
+function requestOf(requests: readonly MayflyDecisionRequest[] | undefined, approvals: readonly ApprovalMark[] | undefined, children: SpawnedChildren | undefined): CallFacts {
   const first = requests?.[0]
   const decided = new Map<string, 'allowed' | 'rejected'>()
   for (const mark of approvals ?? []) {
@@ -362,9 +364,9 @@ function requestOf(requests: readonly MayflyDecisionRequest[] | undefined, appro
     if (mark.outcome === 'allowed-once') decided.set(mark.callId, 'allowed')
     else if (mark.outcome === 'rejected') decided.set(mark.callId, 'rejected')
   }
-  if (first?.callId === undefined) return { asked: new Map(), decided }
+  if (first?.callId === undefined) return { asked: new Map(), decided, ...children === undefined ? {} : { children } }
   const total = requests!.filter(request => request.type === first.type).length
-  return { asked: new Map([[first.callId, { type: first.type, index: 1, total, ...(first.reason === undefined ? {} : { reason: first.reason }) }]]), decided }
+  return { asked: new Map([[first.callId, { type: first.type, index: 1, total, ...(first.reason === undefined ? {} : { reason: first.reason }) }]]), decided, ...children === undefined ? {} : { children } }
 }
 
 /** What a row stands for: a run, all its calls; any other row, itself (a row's id is its entry's, or its call's). */
@@ -468,7 +470,7 @@ function isUnmerged(entry: TranscriptEntryModel): boolean {
  * entries they came in, are one block. Anything else (a reasoning, an answer, a file change, a header) ends the run, and
  * a call that still runs is a line of its own and ends it.
  */
-function runsOf(display: readonly DisplayItem[], t: MayflyTranslate, now: number, asked: CallRequests): readonly (DisplayItem | RunUnit)[] {
+function runsOf(display: readonly DisplayItem[], t: MayflyTranslate, now: number, asked: CallFacts): readonly (DisplayItem | RunUnit)[] {
   const units: (DisplayItem | RunUnit)[] = []
   let run: { turn: number, calls: Call[] } | undefined
   const flush = (): void => {
@@ -498,7 +500,7 @@ function runsOf(display: readonly DisplayItem[], t: MayflyTranslate, now: number
 }
 
 /** The rows of one entry: none for an empty one, one per call for a tool, group, or run of calls drawn as verbose blocks. */
-function entryRows(item: EntryItem, entry: TranscriptEntryModel, inputs: StreamInputs, asked: CallRequests): readonly StreamRow[] {
+function entryRows(item: EntryItem, entry: TranscriptEntryModel, inputs: StreamInputs, asked: CallFacts): readonly StreamRow[] {
   if (isToolLike(entry)) {
     // At the compact level a call in flight is its line alone, and one that waits on the user stays open; what has settled is the title's.
     const calls = callsOf(entry, inputs.t, inputs.now, asked)
@@ -520,6 +522,25 @@ function reasoningRow(item: EntryItem, entry: Extract<TranscriptEntryModel, { re
   const left = lines.length - rows.length
   const rest = left > 0 && cap > 0 ? `${t(pending ? '… +{count} earlier' : '… +{count} more', { count: left })}${item.expanded ? '' : t(' · Ctrl+O')}` : undefined
   return { kind: 'reasoning', id: entry.id, label, ...(pending ? { pending: true } : {}), ...(rows.length === 0 ? {} : { rows }), ...(rest === undefined ? {} : pending ? { earlier: rest } : { more: rest }) }
+}
+
+/** The longest objective a goal row carries; the row wraps within it. */
+const GOAL_ROW_OBJECT_CHARS = 120
+
+/** The row of one goal change: the mark and tone of what happened, and the words after it. */
+function goalChangeRow(entry: Extract<TranscriptEntryModel, { readonly kind: 'transcript-goal-change' }>, t: MayflyTranslate): StreamRow {
+  const objective = entry.objective === undefined ? '' : ellipsize(sanitizePluginText(entry.objective), GOAL_ROW_OBJECT_CHARS)
+  const rounds = entry.rounds ?? 0
+  const row = (mark: string, tone: 'accent' | 'muted' | 'success' | 'danger', text: string): StreamRow => ({ kind: 'goal-change', id: entry.id, mark, tone, text })
+  switch (entry.operation) {
+    case 'create': return row('●', 'accent', `${t('Goal set')} · ${objective}`)
+    case 'edit': return row('●', 'accent', `${t('Goal edited')} · ${objective}`)
+    case 'pause': return row('⏸', 'muted', t('Goal paused'))
+    case 'resume': return row('●', 'accent', t('Goal resumed'))
+    case 'complete': return row('✓', 'success', [t('Goal complete'), t(rounds === 1 ? '1 round' : '{count} rounds', { count: rounds }), ...entry.elapsedMs === undefined ? [] : [compactElapsedMs(entry.elapsedMs)]].join(' · '))
+    case 'block': return row('✕', 'danger', `${t('Goal blocked')}${entry.blockedReason === undefined ? '' : ` · ${entry.blockedReason.code}: ${sanitizePluginText(entry.blockedReason.message)}`}`)
+    case 'clear': return row('', 'muted', t('Goal cleared'))
+  }
 }
 
 function entryRow(item: EntryItem, entry: TranscriptEntryModel, inputs: StreamInputs): StreamRow | undefined {
@@ -558,6 +579,8 @@ function entryRow(item: EntryItem, entry: TranscriptEntryModel, inputs: StreamIn
       return undefined
     case 'transcript-error':
       return { kind: 'error', id: entry.id, text: sanitizePluginText(entry.code === undefined ? entry.message : `${entry.message} (${entry.code})`) }
+    case 'transcript-goal-change': return goalChangeRow(entry, t)
+    case 'transcript-goal-round': return { kind: 'goal-round', id: entry.id, text: t('goal round {round}', { round: entry.round }) }
     case 'transcript-interrupted':
       return { kind: 'interrupted', id: entry.id, text: t('■ interrupted') }
     case 'transcript-compaction': return compactionRow(entry, inputs)
@@ -607,13 +630,14 @@ function compactionRow(entry: TranscriptCompactionModel, inputs: StreamInputs): 
   const estimate = progressAt(now - entry.startedAt, mark?.before ?? inputs.contextTokens)
   // The share while summarizing is the estimate; once the summary has landed the bar fills from where it stood to 100.
   const percent = applying ? summarized ?? estimate : estimate
-  const bar = { from: percent, to: applying || entry.state === 'ok' ? 100 : percent, drain: applying, rev: entry.seq }
+  // The share is a guess from the time spent, so it is printed only where the occupancy is known (a window); without one the bar moves unlabeled.
+  const bar = { from: percent, to: applying || entry.state === 'ok' ? 100 : percent, drain: applying, rev: entry.seq, labeled: window !== undefined }
   const trigger = entry.trigger === 'auto' ? t('auto') : undefined
   const id = entry.id
   if (running) {
     const stage = applying ? t('applying') : t('summarizing')
     const elapsed = applying ? [] : [compactElapsedMs(Math.max(0, now - entry.startedAt))]
-    const facts: CompactionFacts = { state: 'running', title: t('Compacting context'), compact, bar, percent: applying ? summarized ?? estimate : estimate, progress: [stage, ...elapsed], ...trigger === undefined ? {} : { trigger } }
+    const facts: CompactionFacts = { state: 'running', title: t('Compacting context'), compact, bar, ...window === undefined ? {} : { percent }, progress: [stage, ...elapsed], ...trigger === undefined ? {} : { trigger } }
     return { kind: 'compaction', id, facts }
   }
   if (entry.state === 'error') {

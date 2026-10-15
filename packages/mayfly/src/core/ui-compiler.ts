@@ -361,7 +361,7 @@ type ControlDescriptor =
   | (ControlBase & { readonly kind: 'field-action', readonly address: MayflyFieldAddress, readonly action: UiFieldAction })
   | (ControlBase & { readonly kind: 'editor' })
   | (ControlBase & { readonly kind: 'prompt', readonly node: MayflyPromptNode })
-  | (ControlBase & { readonly kind: 'scroll' })
+  | (ControlBase & { readonly kind: 'scroll', readonly fixed?: true })
   | (ControlBase & { readonly kind: 'list', readonly node: MayflyListNode })
 
 interface ControlGroup {
@@ -1131,7 +1131,7 @@ function grammarStateFor(state: FocusState, options: RuntimeCompilerOptions, con
     if (active === undefined) return { kind: 'none' }
     switch (active.kind) {
       case 'editor': return { kind: 'editor' }
-      case 'scroll': return { kind: 'scroll' }
+      case 'scroll': return active.fixed === true ? { kind: 'scroll', fixed: true } : { kind: 'scroll' }
       case 'list': return { kind: 'empty-list' }
       case 'prompt': return { kind: 'prompt', ...runtime.promptGrammar(active.node), ...(active.node.submitLabel === undefined ? {} : { submitLabel: active.node.submitLabel }), ...(active.node.recallLabel === undefined ? {} : { recallLabel: active.node.recallLabel }) }
       case 'toggle': return { kind: 'toggle', ...(formEnterAction(active.form) === undefined ? {} : { enterSubmits: true }) }
@@ -1322,7 +1322,10 @@ function contextKeyHintRows(state: FocusState, options: RuntimeCompilerOptions, 
   const translate = (key: string): string => {
     try { return options.contextHints?.translate?.(key) ?? key } catch { return key }
   }
-  const candidates: HintPart[][] = []
+  // Labels outrank completeness: the labeled row sheds its least important part before any part loses its label, down to two
+  // parts; only then do the bare keys of every part (and last, of one) take over.
+  const labeled: HintPart[][] = []
+  const bare: HintPart[][] = []
   for (let count = parts.length; count > 0; count -= 1) {
     const retained = new Set(parts
       .map((part, index) => ({ part, index }))
@@ -1330,11 +1333,13 @@ function contextKeyHintRows(state: FocusState, options: RuntimeCompilerOptions, 
       .slice(0, count)
       .map(entry => entry.part.id))
     const candidate = parts.filter(part => retained.has(part.id))
-    candidates.push(
-      candidate.map(part => part.label === undefined ? { keys: part.keys } : { keys: part.keys, label: translate(part.label) }),
-      candidate.map(part => ({ keys: part.compact })),
-    )
+    const row = candidate.map(part => part.label === undefined ? { keys: part.keys } : { keys: part.keys, label: translate(part.label) })
+    const keys = candidate.map(part => ({ keys: part.compact }))
+    if (count >= Math.min(2, parts.length)) labeled.push(row)
+    else bare.push(row)
+    bare.push(keys)
   }
+  const candidates = [...labeled, ...bare]
   const safeWidth = Math.max(1, Math.floor(width))
   // The painted row is a pure function of the translated candidates, the width, and the palette, so an unchanged hint
   // answers from the surface's memo while the parts themselves are still read fresh on every paint.
@@ -1444,7 +1449,7 @@ function walkControls(node: CompilableNode, options: RuntimeCompilerOptions, pat
         visit(current.child, `${currentPath}.scroll`, isHidden)
         if (controls.length === before && (options.screenMode === 'alternate' || options.listRuntime.interaction !== undefined)) {
           const key = scopedControlKey('scroll', currentPath)
-          controls.push({ kind: 'scroll', key, renderKey: currentPath, identity: scopedFocusIdentity(key), preferred: true, group: scopedControlGroup('scroll', currentPath), navigation: 'none', ...(current.id === undefined ? {} : { scopeId: current.id }) })
+          controls.push({ kind: 'scroll', key, renderKey: currentPath, identity: scopedFocusIdentity(key), preferred: true, group: scopedControlGroup('scroll', currentPath), navigation: 'none', ...(current.expandable === false ? { fixed: true as const } : {}), ...(current.id === undefined ? {} : { scopeId: current.id }) })
         }
         break
       }
@@ -1689,13 +1694,20 @@ function compileUnit(node: CompilableNode, state: FocusState, options: RuntimeCo
     case 'stack': {
       // A row whose children carry a priority admits them while they fit, one row of the children's first rows.
       if (node.direction === 'row' && node.children.some(child => child.priority !== undefined)) {
-        const compiled = node.children.map((child, index) => compileNode(child.node, state, options, `${path}.${String(index)}`, mode))
+        // A shed child compiles each of its forms; any other child is its one form.
+        const compiled = node.children.map((child, index) => {
+          const at = `${path}.${String(index)}`
+          return child.node.kind === 'shed'
+            ? [{ rank: -1, component: compileNode(child.node.node, state, options, at, mode) as Component | null }, ...child.node.narrower.map((form, formIndex) => ({ rank: form.rank, component: form.node === null ? null : compileNode(form.node, state, options, `${at}.${String(formIndex)}`, mode) }))]
+            : [{ rank: -1, component: compileNode(child.node, state, options, at, mode) as Component | null }]
+        })
         return new AdmissionRow({
           components: options.components,
+          colors: options.colors,
           counters: options.counters,
           ...(node.gap === undefined ? {} : { gap: node.gap }),
           children: () => node.children.flatMap((child, index) => conditionMatches(child.when, safeViewport(options.getViewport)) && tabVisible(child, pagePath, options)
-            ? [{ component: compiled[index]!, band: child.band ?? 'left', ...(child.priority === undefined ? {} : { priority: child.priority }), ...(child.overflow === undefined ? {} : { overflow: child.overflow }) }]
+            ? [{ forms: compiled[index]!, band: child.band ?? 'left', ...(child.priority === undefined ? {} : { priority: child.priority }), ...(child.overflow === undefined ? {} : { overflow: child.overflow }), ...(child.mark === undefined ? {} : { mark: child.mark }) }]
             : []),
         })
       }
@@ -1763,6 +1775,8 @@ function compileUnit(node: CompilableNode, state: FocusState, options: RuntimeCo
           components: options.components,
           counters: options.counters,
           pillText: count => coreText(options, '↓ {count} new · End', { count }),
+          more: node.more === true,
+          moreText: count => coreText(options, '↓ {count} more', { count }),
           anchors: resolve === undefined ? undefined : {
             state: () => model!.document(address!),
             rowOf: (document, width) => documentAnchorRow(document, width, resolve),
@@ -1948,8 +1962,10 @@ function compileUnit(node: CompilableNode, state: FocusState, options: RuntimeCo
     case 'progress': return node.transition === undefined
       ? staticComponent(width => renderProgress(node, width, options.colors), options)
       : staticComponent(width => renderProgress(node, width, options.colors, options.listRuntime.progressValue(`${JSON.stringify(pagePath)}${path}`, node as typeof node & { readonly transition: NonNullable<typeof node.transition> }, options.components.presentation?.reducedMotion === true)), options)
+    // Outside an admission row there is nothing to shed to: a shed node is its full form.
+    case 'shed': return compileNode(node.node, state, options, `${path}.node`, mode)
     case 'spacer': return staticComponent(() => Array.from({ length: node.size ?? 1 }, () => ''), options)
-    case 'divider': return leaf(node, options, paint => pureStaticComponent(width => renderDivider(node.label, width, paint.colors), paint))
+    case 'divider': return leaf(node, options, paint => pureStaticComponent(width => renderDivider(node.label, width, paint.colors, node.align, node.inset, node.tone), paint))
     case 'diagram': return leaf(node, options, paint => contentLeafComponent(diagramMarkdownNode(node), options, paint))
     case 'chart': return chartComponent(node, options)
     case 'image': return imageComponent(node, options)

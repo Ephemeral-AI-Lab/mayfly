@@ -57,6 +57,10 @@ describe('layoutBands', () => {
     expect(lay('ab', '', '', 10)).toBe('ab')
     expect(lay('', '', 'yz', 6)).toBe('    yz')
     expect(lay('abcd', '', 'wxyz', 9)).toBe('abcd  wxyz')
+    // A right cluster that fills the row sits at its edge: the gap parts it from a left cluster only, never pushes it past the end.
+    expect(lay('', '', 'abcdef', 6)).toBe('abcdef')
+    expect(lay('', '', 'abcdef', 8)).toBe('  abcdef')
+    expect(lay('ab', '', 'cdef', 6)).toBe('ab  cdef')
   })
 
   it('centers the middle cluster between its neighbours and gives way to them', () => {
@@ -101,11 +105,84 @@ describe('AdmissionRow', () => {
     if (!result.ok) throw new Error(result.message)
     expect(result.value.component.render(10).map(painted => painted.replaceAll('\x1b[0m', ''))).toEqual(['a        b'])
     expect(counters.rowsPainted).toBeGreaterThanOrEqual(1)
-    const direct = new AdmissionRow({ components, children: () => [] })
+    const direct = new AdmissionRow({ components, colors, children: () => [] })
     expect(direct.render(5)).toEqual([''])
-    const silent = new AdmissionRow({ components, children: () => [{ component: { render: () => [], invalidate: () => {} }, band: 'left' }] })
+    const silent = new AdmissionRow({ components, colors, children: () => [{ forms: [{ rank: -1, component: { render: () => [], invalidate: () => {} } }], band: 'left' }] })
     expect(silent.render(5).map(painted => painted.replaceAll('\x1b[0m', ''))).toEqual([''])
     direct.invalidate()
+  })
+
+  describe('shedding and the underline mark', () => {
+    const words = (text: string) => ui.richText([{ text }])
+    /** Three shed nodes: a time that goes first, a git fact next, and a model that goes last. */
+    const shedRow = (width: number, extra: readonly ReturnType<typeof ui.child>[] = []) => row(width, ui.stack.row([
+      ui.child(ui.shed(words('model High'), [{ rank: 70, node: words('model') }]), { priority: 0 }),
+      ui.child(ui.shed(words('● jobs 2 41s'), [{ rank: 5, node: words('● jobs 2') }]), { priority: 12 }),
+      ui.child(ui.shed(words('main*↑2'), [{ rank: 30, node: null }]), { priority: 10 }),
+      ...extra,
+    ]))
+
+    it('gives up the narrower forms in rank order, across every child, until the row fits', () => {
+      expect(shedRow(60)).toEqual(['model High  ● jobs 2 41s  main*↑2'])
+      // 32 columns: the time (rank 5) goes first.
+      expect(shedRow(32)).toEqual(['model High  ● jobs 2  main*↑2'])
+      // 20: then git (rank 30) is hidden; the model keeps its effort until its own rank (70).
+      expect(shedRow(20)).toEqual(['model High  ● jobs 2'])
+      expect(shedRow(16)).toEqual(['model  ● jobs 2'])
+      // Where even the thinnest forms do not fit, admission drops what ranks last in priority.
+      expect(shedRow(12)).toEqual(['model'])
+    })
+
+    it('paints a heavy line under the words of a marked child on the row below, and nowhere else', () => {
+      const marked = ui.stack.row([
+        ui.child(words('model'), { priority: 0 }),
+        ui.child(words('● jobs 2'), { priority: 1, mark: 'underline' }),
+        ui.child(words('● goal'), { priority: 2 }),
+      ])
+      expect(row(40, marked)).toEqual(['model  ● jobs 2  ● goal', `       ${'━'.repeat('● jobs 2'.length)}`])
+      // The mark follows its child when the row sheds and when the child sits in the right band.
+      const right = ui.stack.row([ui.child(words('model'), { priority: 0 }), ui.child(words('ctx 18%'), { priority: 1, band: 'right', mark: 'underline' })])
+      const [line, underline] = row(20, right)
+      expect(line).toBe(`model${' '.repeat(8)}ctx 18%`)
+      expect(underline).toBe(`${' '.repeat(13)}${'━'.repeat(7)}`)
+    })
+
+    it('puts the heavy line under a marked child that has no right neighbour', () => {
+      const [line, underline] = row(30, ui.stack.row([ui.child(words('lonely'), { priority: 0, mark: 'underline' })]))
+      expect(line).toBe('lonely')
+      expect(underline).toBe('━'.repeat(6))
+    })
+
+    it('puts the heavy line under a lone center child, and under one with only a left or only a right neighbour', () => {
+      const alone = ui.stack.row([ui.child(words('MID'), { priority: 0, band: 'center', mark: 'underline' })])
+      const [line, underline] = row(21, alone)
+      expect(line!.trim()).toBe('MID')
+      expect(underline!.indexOf('━')).toBe(line!.indexOf('MID'))
+      const withLeft = ui.stack.row([ui.child(words('left'), { priority: 0 }), ui.child(words('MID'), { priority: 1, band: 'center', mark: 'underline' })])
+      expect(row(21, withLeft)[1]!.indexOf('━')).toBe(row(21, withLeft)[0]!.indexOf('MID'))
+      const withRight = ui.stack.row([ui.child(words('MID'), { priority: 0, band: 'center', mark: 'underline' }), ui.child(words('right'), { priority: 1, band: 'right' })])
+      expect(row(21, withRight)[1]!.indexOf('━')).toBe(row(21, withRight)[0]!.indexOf('MID'))
+    })
+
+    it('puts the heavy line under a marked child in the center band, and a shed node of equal rank gives up in order of position', () => {
+      const center = ui.stack.row([
+        ui.child(words('left'), { priority: 0 }),
+        ui.child(words('MID'), { priority: 1, band: 'center', mark: 'underline' }),
+        ui.child(words('right'), { priority: 2, band: 'right' }),
+      ])
+      const [line, underline] = row(30, center)
+      expect(line!.indexOf('MID')).toBe(Math.floor((30 - 3) / 2))
+      expect(underline!.indexOf('━')).toBe(line!.indexOf('MID'))
+      expect(underline!.trimEnd().length - underline!.indexOf('━')).toBe(3)
+      // Two nodes shed at the same rank: the earlier one goes first, and the row stops shedding as soon as it fits.
+      const tie = (width: number) => row(width, ui.stack.row([
+        ui.child(ui.shed(words('aaaa aaaa'), [{ rank: 5, node: words('aaaa') }]), { priority: 0 }),
+        ui.child(ui.shed(words('bbbb bbbb'), [{ rank: 5, node: words('bbbb') }]), { priority: 1 }),
+      ]))
+      expect(tie(30)).toEqual(['aaaa aaaa  bbbb bbbb'])
+      expect(tie(18)).toEqual(['aaaa  bbbb bbbb'])
+      expect(tie(10)).toEqual(['aaaa  bbbb'])
+    })
   })
 
   it.each(ADVERSARIAL)('never exceeds its width over $name, from 24 to 140 columns', ({ text }) => {

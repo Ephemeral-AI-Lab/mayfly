@@ -242,11 +242,15 @@ verifyExternalUiKit(tarballs.get('@ephemeral-ai/mayfly-ui'))
 // runtime rebinding, and key decoder of slice 1.7 about 41 KB, and the visual language of slice 1.2 about 26 KB, and the image node and its byte source of slice 1.9a about 30 KB, and the content, layout, and motion of slice 1.3 about 60 KB, and the views lane of slice 1.10b about 27 KB, and the prompt of slice 1.9b about 40 KB, and the patterns of slice 1.8b one declaration file and about 4 KB, and the retained rows, the placing stacks, and the frame counters of slice 1.12 about 29 KB, and the segmented content rows, diff aligner, and Markdown scanner of slice 2c about 80 KB,
 // and the wired native clipboard probes and their shared probe declarations
 // of audit-fix C one declaration file and about 17 KB, and the leaf-import
-// chunk retopology of audit-fix D about 20 chunks and 11 KB); retain headroom
-// while still catching accidental entry/chunk growth.
+// chunk retopology of audit-fix D about 20 chunks and 11 KB, and the Phase 5
+// status row (the shed ladder, the items and their views, the Agents and Jobs
+// panels with aligned cells, the notification row's key parts and tail, and the
+// goal and compaction changes) about 110 KB); retain headroom while still
+// catching accidental entry/chunk growth.
 if (libraryFiles > 260) fail(`library lib output has ${libraryFiles} files; budget is 260`)
-// Phase 4 (the editor frame, tokens, the completion palette, placeholders, and the subagent send) added about 50 KB, so the budget moved from 2.7 MB to 2.8 MB.
-if (libraryBytes > 2_800_000) fail(`library lib output has ${libraryBytes} bytes; budget is 2800000`)
+// Phase 4 (the editor frame, tokens, the completion palette, placeholders, and the subagent send) added about 50 KB on top
+// of the Phase 5 budget; the size of the two together is measured at the merge's test session.
+if (libraryBytes > 2_950_000) fail(`library lib output has ${libraryBytes} bytes; budget is 2950000`)
 
 if (problems.length > 0) {
   console.error(`pack contract failed with ${problems.length} problem(s)`)

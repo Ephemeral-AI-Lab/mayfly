@@ -39,8 +39,9 @@ only once the effect is final (§3). The Website is never part of a round (§1 r
 7. **Design, ask, then build.** A round starts as a design: Claude Code analyzes the round under plan mode and writes
    the solution; the owner approves it. Claude then asks the owner every open choice with something to look at (§6),
    and the two confirm the final effect. Development begins only after that.
-8. **Scenarios after the build, and no rush to test.** When development is done Claude writes the scenario code (§8),
-   organizes all of the round's scenarios, and tells the owner the commands and the brief. It does not run the tests
+8. **Scenarios after the build, and no rush to test.** When development is done Claude writes the scenario code (§8)
+   as **one scenario for the round**, a long conversation that strings all of the round's effects together, and tells
+   the owner its command and the brief. It does not run the tests
    at this point: the owner verifies and adjusts the effect, Claude applies it, and the loop repeats until the owner
    says the effect is final.
 9. **Test last, in a session of its own.** Tests, decision tests, goldens, and the round and pr tiers run only after the
@@ -78,7 +79,7 @@ steps 1-6 are design, build, and the owner's effect review.
 | 2 Design | agent, owner | The round is analyzed and designed under plan mode: the effects, the files and the order of work, the risks, the scenarios that will show each effect, and whether it is one round or two. The plan is not code. | The owner approves the plan. |
 | 3 Questions | agent, owner | The agent asks every open choice (§6), with something to look at and a recommendation, and records the answers; the spec's open points and the prototype's gaps are settled here, not during the build. | The owner and the agent have confirmed the final effect, in words and frames. |
 | 4 Build | agent | The component in `packages/mayfly/src/components/` and the feature-plugin wiring (roadmap §4, §6), one effect at a time. Only the build the scenarios need runs (`pnpm run build:changed`, or `pnpm run dev` watching); tests, lint sweeps, and goldens do not. | The effects of the plan appear in the running product. |
-| 5 Scenarios and hand-off | agent | The agent writes the scenario code (replay, catalog entry with `mark()`s and a script, brief; §8), organizes **all** the round's scenarios, and tells the owner the commands and the brief (§5, §9). It checks that each scenario runs and reaches its checkpoints, and does not run the tests. | The owner has the commands, the brief, and what is not done yet. |
+| 5 Scenarios and hand-off | agent | The agent writes the scenario code (replay, catalog entry with `mark()`s and a script, brief; §8), as **one scenario for the round** (a long conversation chaining every effect), and tells the owner its command and the brief (§5, §9). It checks that each scenario runs and reaches its checkpoints, and does not run the tests. | The owner has the commands, the brief, and what is not done yet. |
 | 6 Effect review | owner, agent | The owner verifies the effect on the scenarios and in the profile and asks for changes; the agent applies them and hands off a short delta; this repeats. Questions of §6 are asked here too. No tests, no goldens, no PR checks. | The owner says the effect is final. |
 | 7 Test | tester session (§3.1) | Now the tests: the round tier (`pnpm run check -- --tier round`, reading `.artifacts/verify/summary.md`), the decision tests and work budgets the part needs (§10), the perf A/B for a change on the frame path, the profile smoke. Fix what fails. The Website is not tested (§1 rule 10). | The round tier is green and the decision tests record what was decided. |
 | 8 Close the part | agent | Commit the part (one commit per part on the group's branch, stacked), mark it accepted in the group's status table, record the decisions of the question rounds (§6), update the PR. Goldens are not written yet. | Part status `accepted`. |
@@ -249,8 +250,8 @@ caller in the same change (D21).
 
 The plan cuts each group of the roadmap into parts. It is the starting point; a part may be split, merged, or reordered
 when review shows a better cut, and the group's status table records it. **Tooling part T0** comes first because every
-other part needs the brief. Phase 4's parts are cut below (*Phase 4 parts*); parts of Phases 5 and 6 are cut when their phase starts, from the
-same reference table (§4) and the roadmap's group text.
+other part needs the brief. Phase 4's and Phase 5's parts are cut below (*Phase 4 parts*, §7.2); parts of Phase 6 are cut when its phase starts,
+from the same reference table (§4) and the roadmap's group text.
 
 | Part | Effect the owner sees | Prototype | Scenarios (existing, or *new*) | Focus |
 | --- | --- | --- | --- | --- |
@@ -274,6 +275,10 @@ same reference table (§4) and the roadmap's group text.
 | **3e.1 Levels** | `Ctrl+O` Verbose for the last three turns; `Enter` on a header; the four levels' policies. | 18 | `tour`, `history` | exactly one place shows detail; compact counts |
 | **3e.2 Row selection** | `Alt+↑` focuses the newest row; `Enter`, `c`, `Ctrl+G`, `Esc`/`Alt+↓`. | 18 | `tour` | focus mark; hint row; copy feedback |
 | **3e.3 Stream search** | `/` and `?` in conversation mode open a search line above the editor (regular expression, smart case); typing highlights, `Enter` selects, `↑`/`↓` and `n`/`N` walk the matches; the match turn opens at Verbose; matched text reversed. | 18 (`StreamSearch`) | `tour`, `history` | match count; stepping; `Esc` restores levels |
+
+Phase 6 follows the same rules. Its group text in the roadmap is the starting point (the panels 6a-6f, scenes 21 p4
+and 22-32), and it is cut into parts the way the table above cuts Phase 3: one effect group per part, a scenario per part,
+a brief per part. Phases 4 and 5 are cut in the tables below.
 
 ### Phase 4 parts (*Finalized*)
 
@@ -301,9 +306,21 @@ hand-off.
 | **4e.2 Keys and title** | `Alt+↑` focuses the stream, `Alt+↓` or `F6` enters the views, `?` on an empty prompt opens key help, `Ctrl+Enter` steers, `Ctrl+G` opens the draft in `$EDITOR`; the title follows the official `title` projection. | 15 | *editorKeys* | each key from the prompt and from the stream; `?` in a non-empty buffer is text; the title when a session is renamed |
 | **4e.3 Subagent replies** | In a live or resumable subagent conversation the editor sends through the addressed-subagent path: `Enter` queues, `Ctrl+Enter` steers; the reply form with its `Send` and `Cancel` buttons and delivery select is gone. | 15 | *subagentReply* | the delivery choice is the editor's own pair; the placeholder names the subagent; a resumable one wakes |
 
-Phases 5 and 6 follow the same rules. Their group texts in the roadmap are the starting points: Phase 5 (the two status
-rows, scenes 13 and 12, every width of 100, 72, 52, 36); Phase 6 (the panels 6a-6f, scenes 21 p4 and 22-32). Each is
-cut into parts the way the table above cuts Phase 3: one effect group per part, a scenario per part, a brief per part.
+### 7.2 Phase 5 parts
+
+Phase 5 (status area and views) is one pull request on `feat/phase-5`, cut into rounds in the roadmap's Phase 5 status
+table. Its parts follow the same rules as §7; the prototype scenes are 13 (the rows at 100, 72, 52, and 36 columns), 12
+(the plugin entry beside the model), and 18 (the rows under the stream).
+
+| Part | Effect the owner sees | Prototype | Scenarios (existing, or *new*) | Focus |
+| --- | --- | --- | --- | --- |
+| **5a.1 Footer cutover** | The footer is the one status row on the footer node slot (the facts and the items together; Goal and Todo are views whose detail opens on `Alt+↓`; Jobs is a plain item until its view); it sheds detail by rank before the admission rule decides; plugin entries keep their priority. | 13, 12 | `idle`, `gallery`, *footerCutover* | one admission rule for registry entries and views; the footer within the W1 budget |
+| **5a.2 The row's facts** | Model and effort (0; `provider/model Effort` and plan + yolo together are built); the lowercase `plan`/`plan…`/`yolo` chips (2); context as two bars, `cache ▰▰▱▱▱ 34%  ctx ▰▰▱▱▱▱▱▱▱▱ 18%` (6, right; the context bar warns from 70% and turns to danger from 90%, the cache bar the other way round: danger under 30%, warning under 60%, success from 60%); directory (7, shortened path); git (10). | 13 | `modes`, `context`, *statusRow* (100, 72, 52, and 36 columns), `goal` | the shed ladder at each width; the directory's shortened path; every toggle |
+| **5a.3 Identity** | The conversation chip (` main `, ` btw `, ` subagent `) in the row, with `F7`/`F8` in the notification pane (built in R1). The low-balance chip `⚠ ¥6.2` was dropped by the owner on 2026-10-14. | 13 | `sideQuestion`, `childStream` | the identity text at narrow widths |
+| **5b.1 Goal and todo views** | Goal and Todo as items of the one status row (built in R1, see the roadmap's R1 and R4 rows). | 13 | `goal`, `tour`, *views*, *viewsTodo*, *viewsNarrow* | at most five todo rows and `… +N more`; the closing line; the one-third panel cap |
+| **5b.2 Agents view** | `● agents 1/3 41s`; a list with a cursor, live rows first; `Enter` opens the conversation as `/agents` does; `x` stops behind the Yes/No; the stream's spawn line follows its child (D2); the `F7`/`F8` cluster. | 13 | `subagents`, `appAgents`, *viewsAgents* | the running background subagent's look (D2); the cluster with two conversations |
+| **5b.3 Jobs view** | `● jobs 2 41s` (live count, longest time; `✓ jobs 3/3` held five seconds when the last settles); a list with a cursor, live first, settled only with `viewHistory`; subagent jobs left to Agents; `Enter` opens the job's output; `x` rechecks `jobs.get` before `jobs.kill`, behind the Yes/No. | 13 | `jobs`, *viewsJobs* | the interim output target; the stop confirm; the closing line |
+| **5c Carry-overs** | Notices truncate with `…`; `compactionNoWindow` drops the `%`; the search hint row takes its own line; 40-column decision hints keep labels. | 16, 20, 18 | `notices`, `compactionNoWindow`, `phase3-search`, `phase3-narrow` | O2, O3, O4 (Phase 3 closeout audit) |
 
 ### 7.1 Every tool at three tiers
 
@@ -433,7 +450,9 @@ Constraints learned while building 3d (decision cards) and 3e (levels, selection
 The scenario is the mock command. It follows the machinery described in root `AGENTS.md` (*Review loop*) and these
 rules, which keep the demo useful to a person and usable as a golden later:
 
-1. **It shows the part's states in one run.** Use `mark()`s so `play('<mark>')` stops at each state and a checkpoint
+1. **One scenario per round, and it shows every state in one run.** The round's effects are strung together in one long
+   conversation (turns, goal, jobs, side questions, resizes, as the effects need), never one scenario per state and
+   never a hand-over that sends the owner to older scenarios. Use `mark()`s so `play('<mark>')` stops at each state and a checkpoint
    names it. A person walking through it should meet every focus item of the brief without editing anything.
 2. **Real data paths.** The replay appends the session events and frames the agent loop would have written; it does
    not fake the component's output. A state the Harness cannot produce is not drawn; the brief says so.

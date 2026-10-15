@@ -45,8 +45,8 @@ function nodesOf(node: unknown, kind: string): Record<string, unknown>[] {
   return [...own, ...Object.values(record).flatMap(value => nodesOf(value, kind))]
 }
 
-const BAR_RUNNING = { from: 40, to: 40, drain: false, rev: 1 }
-const BAR_SETTLED = { from: 100, to: 100, drain: false, rev: 1 }
+const BAR_RUNNING = { from: 40, to: 40, drain: false, rev: 1, labeled: true }
+const BAR_SETTLED = { from: 100, to: 100, drain: false, rev: 1, labeled: true }
 const settled: CompactionFacts = {
   state: 'ok', title: 'Compacted 84 items', compact: false, bar: BAR_SETTLED, change: 'context 91% → 9%', tokens: '~148k → ~12k tokens', trigger: 'auto',
 }
@@ -58,6 +58,13 @@ describe('CompactionRow', () => {
   it('draws the running form with its bar, its estimated share, the stage and the elapsed time', () => {
     // The glyph before the title is a breathing dot; the text after it is decided.
     expect(render(running, 120)[0]!.slice(2)).toBe('Compacting context ▰▰▰▰▱▱▱▱▱▱ 40% summarizing · 4s · auto')
+  })
+
+  it('leaves the percentage out of the bar and of the one-line form when the bar is not labeled', () => {
+    const unlabeled: CompactionFacts = { ...running, bar: { ...BAR_RUNNING, labeled: false } }
+    const { percent: _percent, ...withoutPercent } = unlabeled
+    expect(render(withoutPercent, 120)[0]!.slice(2)).toBe('Compacting context ▰▰▰▰▱▱▱▱▱▱ summarizing · 4s · auto')
+    expect(render(withoutPercent, 40)[0]!.slice(2)).toBe('Compacting context · summarizing · 4s…')
   })
 
   it('draws the settled form with the full bar, the context change, the token estimate and the trigger', () => {
@@ -104,7 +111,7 @@ describe('CompactionRow', () => {
   })
 
   it('drains the bar once from where the summary left it, with the same revision for the life of the row', () => {
-    const drain = (rev: number) => nodesOf(CompactionRow({ ...settled, bar: { from: 40, to: 100, drain: true, rev } }), 'progress')
+    const drain = (rev: number) => nodesOf(CompactionRow({ ...settled, bar: { from: 40, to: 100, drain: true, rev, labeled: true } }), 'progress')
     const [bar] = drain(7)
     expect(bar).toMatchObject({ value: 100, max: 100, transition: { from: 40, ms: COMPACTION_DRAIN_MS, rev: 7 } })
     // A bar at rest has no transition.
@@ -141,12 +148,22 @@ describe('compaction rows in the stream', () => {
   const compactionRow = (turns: readonly StreamTurn[]): Extract<StreamRow, { kind: 'compaction' }> => rowsOf(turns).find((row): row is Extract<StreamRow, { kind: 'compaction' }> => row.kind === 'compaction')!
 
   it('shows the running stage with the estimated share, and says applying once the summary lands', () => {
-    const summarizing = compactionRow(stream([user(1), compaction(1)], { now: NOW + 4_000 }))
-    expect(summarizing.facts).toMatchObject({ state: 'running', percent: progressAt(4_000, undefined), progress: ['summarizing', '4s'], trigger: 'auto' })
+    const summarizing = compactionRow(stream([user(1), compaction(1)], { now: NOW + 4_000, contextWindow: 64_000 }))
+    expect(summarizing.facts).toMatchObject({ state: 'running', percent: progressAt(4_000, undefined), progress: ['summarizing', '4s'], trigger: 'auto', bar: { labeled: true } })
     // The summary has landed (the end record follows it) and the fill has not finished: the stage is applying.
     const landed = compaction(1, { state: 'ok', summaryAt: NOW + 10_000, endedAt: NOW + 10_000, shadowedCount: 84, shadowedTokens: 148_000 })
+    const applying = compactionRow(stream([user(1), landed], { now: NOW + 10_500, contextWindow: 64_000 }))
+    expect(applying.facts).toMatchObject({ state: 'running', progress: ['applying'], bar: { drain: true, labeled: true } })
+  })
+
+  it('writes no percentage when the model advertises no context window, and the bar still moves', () => {
+    const summarizing = compactionRow(stream([user(1), compaction(1)], { now: NOW + 4_000 }))
+    expect(summarizing.facts).toMatchObject({ state: 'running', progress: ['summarizing', '4s'], bar: { labeled: false, from: progressAt(4_000, undefined) } })
+    expect(summarizing.facts).not.toHaveProperty('percent')
+    const landed = compaction(1, { state: 'ok', summaryAt: NOW + 10_000, endedAt: NOW + 10_000, shadowedCount: 84, shadowedTokens: 148_000 })
     const applying = compactionRow(stream([user(1), landed], { now: NOW + 10_500 }))
-    expect(applying.facts).toMatchObject({ state: 'running', progress: ['applying'], bar: { drain: true } })
+    expect(applying.facts).toMatchObject({ state: 'running', bar: { drain: true, labeled: false, to: 100 } })
+    expect(applying.facts).not.toHaveProperty('percent')
   })
 
   it('holds the settled look until the bar has filled, one second after the summary lands', () => {

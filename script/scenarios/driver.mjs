@@ -15,9 +15,11 @@
 
 import { randomBytes } from 'node:crypto'
 import { appendFileSync, readFileSync } from 'node:fs'
+import { createRequire } from 'node:module'
 import { createConnection } from 'node:net'
 import { dirname, join } from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
+import { pathToFileURL } from 'node:url'
 
 export const name = 'mayfly-replay-driver'
 export const inject = ['mayflyCurrentAgent', 'sessions']
@@ -306,12 +308,25 @@ export function apply(ctx) {
             const goals = ctx.get('goals')
             if (goals === undefined) { log('no goal service'); break }
             const view = goals.get(agent)
+            // `ifNeeded`: the live viewer may already have done it with the panel's button.
+            if (action.ifNeeded === true && view?.phase === 'active') { log(`goal ${action.action} skipped`); break }
             if (action.action === 'create') goals.create(agent, { objective: action.objective, ...(action.maxGoalRounds === undefined ? {} : { maxGoalRounds: action.maxGoalRounds }) })
             else if (action.action === 'block') goals.block(agent, view, { code: action.code ?? 'needs-input', message: action.message ?? 'Blocked' })
             else goals[action.action](agent, view)
             // The service arms a goal for continuation; a replay only shows the state, so nothing may continue it.
             try { goals.disarm(agent) } catch { /* cleared goals have nothing to disarm */ }
             log(`goal ${action.action}`)
+            break
+          }
+          case 'goal-round': {
+            const goals = ctx.get('goals')
+            const view = goals?.get(agent)
+            if (view === undefined) { log('no goal for the round'); break }
+            // The round driver's own prompt, attributed to the exact goal revision it continues.
+            const text = `<goal_round>\nObjective: ${JSON.stringify(view.objective)}\nRound: ${String(action.round)}/${String(view.maxGoalRounds)}\n\nContinue working toward the objective in this same session.\n</goal_round>`
+            const event = agent.session.append('user/message', { id: `replay-goal-round-${String(action.round)}`, role: 'user', content: [{ type: 'text', text }], source: { kind: 'goal', goalId: view.id, revision: view.revision, round: action.round } }, { surfaceOp: 'append' })
+            lastSeqs.set(agent.session, event.seq)
+            log(`goal round ${String(action.round)}`)
             break
           }
           case 'job': {
@@ -386,10 +401,15 @@ export function apply(ctx) {
             if (agents === undefined || conversations === undefined || presets === undefined || defaultModel === undefined) { log('no side conversation services'); break }
             const selected = main.requestHeader()?.config ?? defaultModel.currentSelection()
             const preset = main.header.agentPreset
+            // Like `/btw`: the side conversation inherits the main log, so its facts carry the main's calls too.
+            const { buildForkSeed, SessionLogOffset } = await import(pathToFileURL(createRequire(new URL('../../packages/mayfly/package.json', import.meta.url)).resolve('@deepseek-ai/dsh-session')).href)
+            const inherited = main.snapshotEvents()
+            const lastSeq = inherited.at(-1)?.seq
             const handle = await agents.create({
               sessionId: `btw-replay-${runTag}`,
-              meta: { cwd: main.header.cwd ?? process.cwd(), parentSession: agent.id },
-              seed: [],
+              meta: { cwd: main.header.cwd ?? process.cwd(), parentSession: agent.id, ...(inherited.length === 0 ? {} : { isSeeded: true }) },
+              ...(inherited.length === 0 ? {} : { inheritedEventCount: SessionLogOffset(inherited.length) }),
+              seed: lastSeq === undefined ? [] : buildForkSeed(inherited, lastSeq),
               signal: abort.signal,
               agentOptions: { provider: selected.provider, model: selected.model, ...(selected.reasoningEffort === undefined ? {} : { reasoningEffort: selected.reasoningEffort }) },
               setup: async agentCtx => { await presets.mount(agentCtx, preset) },

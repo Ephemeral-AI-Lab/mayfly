@@ -1,0 +1,50 @@
+grid 60x30 cursor none
+| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣿⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀  Model:     deepseek...
+| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⡠⠊⠀⠑⢄⠀⠀⠀⠀⠀⠀⠀⠀⠀  Version:   scenario
+|
+|  » Refactor the parser, I will add more while you work.
+|
+|  ● A reviewer audits the hero in the background while I
+|    read the parser.
+|
+|  ✓ Subagent(Audit the hero copy) · 0.6s
+|
+|  ✓ Read(src/parser.ts)
+|
+|  ● Your three messages wait at the end of the stream. Alt+↑
+|    reaches them: e edits, s sends now, d cancels (u
+|    undoes).
+|
+|  » Keep the public API unchanged  ⏎ steering
+|
+|  » Update the README once the parser is done  ⏎ queued
+|
+|  » Then bump the version and tag the release candidate  ⏎
+|    queued
+|
+|  ⡀ Deep diving · 10s
+|    ⎿ Tip: Esc to interrupt the run
+|  e edit · d cancel · Esc back  ⚠ · retrying in 24s · 1/5
+|╭───────────────────────────── Refactor the parser, I will ╮
+|│ >  Ask anything · / commands · @ files · # skills        │
+|╰──────────────────────────────────────────────────────────╯
+| deepseek-flash   conversation   workspace  ● agents 0/1
+styles
+0: 1-23 fg:#8371d6; 24-25 fg:#9a86e6; 26-44 fg:#e9e6f4
+1: 1-23 fg:#6c5bbf; 24-25 fg:#9a86e6; 26-47 fg:#ededf2
+3: 2-3 fg:#9a86e6; 4-55 fg:#9a86e6 b
+5: 2-3 fg:#ededf2
+8: 2-3 fg:#4ec87e; 4-11 fg:#ededf2 b; 12 fg:#9aa3b8; 13-31 fg:#c9c0f0; 32-39 fg:#9aa3b8
+10: 2-3 fg:#4ec87e; 4-7 fg:#ededf2 b; 8 fg:#9aa3b8; 9-21 fg:#c9c0f0; 22 fg:#9aa3b8
+12: 2-3 fg:#ededf2
+16: 2-3 fg:#9a86e6; 4-32 fg:#9a86e6 b; 33-44 fg:#9aa3b8
+18: 1 bg:#2b2b30; 2-3 fg:#9a86e6 bg:#2b2b30; 4-44 fg:#9a86e6 bg:#2b2b30 b; 45-58 fg:#9aa3b8 bg:#2b2b30; 59 fg:#9aa3b8
+20: 2-3 fg:#9a86e6; 4-54 fg:#9a86e6 b; 55-57 fg:#9aa3b8
+21: 4-9 fg:#9aa3b8
+23: 0-1 fg:#ededf2; 2 fg:#9a86e6; 3-14 fg:#ededf2; 16-20 fg:#9aa3b8
+24: 0-34 fg:#9aa3b8
+25: 2-7 fg:#9aa3b8; 9-18 fg:#9aa3b8; 20-29 fg:#9aa3b8; 32 fg:#e8a838; 34-56 fg:#e8a838
+26: 0-30 fg:#9aa3b8; 31-57 fg:#f5f5f7 b; 58-59 fg:#9aa3b8
+27: 0 fg:#9aa3b8; 2-3 fg:#ededf2; 4 r; 5-50 fg:#5c6476; 59 fg:#9aa3b8
+28: 0-59 fg:#9aa3b8
+29: 1-14 fg:#ededf2; 17-30 fg:#9a86e6 b r; 33-41 fg:#9aa3b8; 44 fg:#c9c0f0; 45 fg:#ededf2; 46-52 fg:#9aa3b8; 53-55 fg:#ededf2

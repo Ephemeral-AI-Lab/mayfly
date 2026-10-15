@@ -18,6 +18,7 @@ import * as agentsCommand from '../src/interaction/agents-command.ts'
 import * as jobsCommand from '../src/interaction/jobs.ts'
 import * as statusGoal from '../src/transcript/status-goal.ts'
 import * as statusJobs from '../src/transcript/status-jobs.ts'
+import * as statusAgents from '../src/transcript/status-agents.ts'
 import * as paneWorkflow from '../src/transcript/pane-workflow.ts'
 
 /** The patch file's own directory (fixtures and structure live next to src). */
@@ -91,11 +92,11 @@ describe('mayfly bundle', () => {
       'mayfly-status-context',
       'mayfly-status-mode',
       'mayfly-status-jobs',
+      'mayfly-status-agents',
       'mayfly-status-goal',
       'mayfly-pane-activity',
       'mayfly-pane-todo',
       'mayfly-btw-command',
-      'mayfly-pane-agents',
       'mayfly-pane-workflow',
       'mayfly-attachments',
       'mayfly-paste-image',
@@ -121,8 +122,9 @@ describe('mayfly bundle', () => {
   })
 
   it('composes the tool panels as ordinary native-service siblings', () => {
-    expect(statusGoal.inject).toEqual(['mayflyStatus', 'mayflyCurrentAgent', 'mayflySessionFacts', 'goals'])
-    expect(statusJobs.inject).toEqual(['mayflyStatus', 'mayflyCurrentAgent', 'jobs'])
+    expect(statusGoal.inject).toEqual(['mayflyPanes', 'mayflyCurrentAgent', 'mayflyScreen', 'mayflySessionFacts', 'mayflyTick', 'goals'])
+    expect(statusJobs.inject).toEqual(['mayflyPanes', 'mayflyCurrentAgent', 'mayflyScreen', 'mayflyTick', 'mayflyOverlays', 'jobs'])
+    expect(statusAgents.inject).toEqual(['mayflyPanes', 'mayflyCurrentAgent', 'mayflyScreen', 'mayflySessionFacts', 'mayflyTick', 'mayflyConversations', 'subagents', 'agents'])
     expect(paneWorkflow.inject).toEqual(['mayflyPanes', 'mayflyCurrentAgent', 'mayflySessionFacts', 'sessions'])
     expect(jobsCommand.inject).toEqual(['commands', 'jobs', 'mayflyCurrentAgent', 'mayflyOverlays'])
     expect(agentsCommand.inject).toEqual([
@@ -140,6 +142,7 @@ describe('mayfly bundle', () => {
     const dependencies = [
       ...statusGoal.inject,
       ...statusJobs.inject,
+      ...statusAgents.inject,
       ...paneWorkflow.inject,
       ...jobsCommand.inject,
       ...agentsCommand.inject,

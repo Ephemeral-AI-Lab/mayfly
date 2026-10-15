@@ -6,6 +6,7 @@
  */
 
 import { Context, Service } from '@deepseek-ai/cordis'
+import { GutterComponent } from './gutter.ts'
 import { NodeSlotHost, type MayflyNodeSlot, type MayflyNodeSlotCompiler, type MayflyNodeSlotOptions } from './node-slot.ts'
 import { SearchLine, type MayflySearchLine, type MayflySearchLineOptions } from './search-line.ts'
 import { concatRows } from './ui-rows.ts'
@@ -146,6 +147,14 @@ class LocalActivityRegion implements MayflyComponent {
   invalidate(): void { for (const child of this.children.values()) child.invalidate() }
 }
 
+/** The panel of an entered view: it sits under the status row (inside the footer's gutter), and is empty (the shared empty rows) otherwise. */
+class ViewsPanelHost implements MayflyComponent {
+  constructor(private readonly lane: { panel(width: number): readonly string[] | undefined }) {}
+
+  render(width: number): string[] { return (this.lane.panel(width) ?? NO_ROWS) as string[] }
+  invalidate(): void {}
+}
+
 const CONTENT_HOSTS = ['transcript.prelude', 'transcript.conversation'] as const
 const DOCK_HOSTS = ['editor.prompt', 'status.footer'] as const
 
@@ -160,6 +169,7 @@ export class MayflyScreenService extends Service implements MayflyScreen {
   private readonly fixed = new Map<string, StableSlotHost>()
   private readonly claimed = new Set<string>()
   private readonly local = new LocalActivityRegion()
+  private readonly viewsPanel: MayflyComponent
   private searchLine: MayflySearchLine | undefined
   /** Node-backed slots claim the same fixed hosts: content as a content slot, dock as the prompt, footer as the footer. */
   private readonly nodeSlots = new NodeSlotHost(
@@ -188,12 +198,14 @@ export class MayflyScreenService extends Service implements MayflyScreen {
     this.fixed.set('status.footer', footer)
     runtime.addBottomChild(editor)
     runtime.addBottomChild(footer, 'bottom')
+    this.viewsPanel = new GutterComponent(new ViewsPanelHost(runtime.surfaces.views))
+    runtime.addBottomChild(this.viewsPanel, 'bottom')
     ctx.effect(() => () => {
       this.searchLine?.dispose()
       this.nodeSlots.dispose()
     })
-    // Entering a view of status row 2 moves focus to the bar; leaving it gives focus back to the prompt.
-    ctx.effect(() => runtime.surfaces.views.onEnteredChange((entered) => { ctx.emit('mayfly/focus-mode-changed', entered ? 'bar' : 'prompt') }))
+    // Entering a view of the status row moves focus to the bar; leaving it gives focus back to the prompt.
+    ctx.effect(() => runtime.surfaces.views.onEnteredChange((entered) => { ctx.emit('mayfly/focus-mode-changed', entered ? 'view' : 'prompt') }))
     runtime.requestRender()
   }
 
@@ -220,17 +232,18 @@ export class MayflyScreenService extends Service implements MayflyScreen {
    */
   get editorViewport(): { readonly columns: number, readonly rows: number } {
     const columns = this.runtime.columns
-    const footerRows = this.fixed.get('status.footer')!.render(columns).length
+    const footerRows = this.fixed.get('status.footer')!.render(columns).length + this.viewsPanel.render(columns).length
     return { columns, rows: Math.max(1, this.runtime.rows - footerRows - 1 - this.runtime.surfaceLaneRows()) }
   }
 
   /**
-   * The rows from the top of the editor's frame to the bottom of the screen: the editor host and the status footer. An
-   * overlay that grows out of the frame's top edge (the completion drawer) anchors this far above the bottom.
+   * The rows from the top of the editor's frame to the bottom of the screen: the editor host, the status footer, and the
+   * panel of an entered view. An overlay that grows out of the frame's top edge (the completion drawer) anchors this far
+   * above the bottom.
    */
   get editorRowsFromBottom(): number {
     const columns = this.runtime.columns
-    return this.fixed.get('editor.prompt')!.render(columns).length + this.fixed.get('status.footer')!.render(columns).length
+    return this.fixed.get('editor.prompt')!.render(columns).length + this.fixed.get('status.footer')!.render(columns).length + this.viewsPanel.render(columns).length
   }
 
   /**
@@ -242,18 +255,23 @@ export class MayflyScreenService extends Service implements MayflyScreen {
     return { columns: this.runtime.columns, rows: Math.max(1, rows) }
   }
 
-  /** The views of status row 2, for the footer that paints their summaries and, while one is entered, its panel. */
+  /** The views of the status row, for the footer that paints their summaries and, while one is entered, its panel. */
   get views(): MayflyViewsSource {
     return this.runtime.surfaces.views
   }
 
   /**
-   * Enter the first view of status row 2 (the active one when it is still enterable): its panel replaces the row and
+   * Enter the first view of the status row (the active one when it is still enterable): its panel replaces the row and
    * takes focus. The prompt calls this on `Alt+↓`/`F5` with an empty buffer.
    * @returns whether a view was entered; `false` leaves the key to the editor.
    */
   enterViews(): boolean {
     return this.runtime.surfaces.views.enter()
+  }
+
+  /** Leave the entered view and hand focus back to where it was (the prompt); nothing happens while none is entered. */
+  leaveViews(): void {
+    this.runtime.surfaces.views.leave()
   }
 
   /** A registered editor-presentation overlay takes the prompt's place. */

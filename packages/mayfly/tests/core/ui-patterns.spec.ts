@@ -326,6 +326,20 @@ describe('private UI pattern painters', () => {
     expect(renderDivider(undefined, Number.NaN, colors)).toEqual(['─'])
   })
 
+  it('centers a divider label between two rules, keeps the inset free at the right, and paints a named tone', () => {
+    const rule = (count: number): string => '─'.repeat(count)
+    expect(renderDivider('goal round 2', 30, plainColors(), 'center')).toEqual([`${rule(8)} goal round 2 ${rule(8)}`])
+    // An odd room gives the left rule the shorter share; the right margin is kept blank.
+    expect(renderDivider('goal round 2', 29, plainColors(), 'center')).toEqual([`${rule(7)} goal round 2 ${rule(8)}`])
+    expect(renderDivider('goal round 2', 32, plainColors(), 'center', 2)).toEqual([`${rule(8)} goal round 2 ${rule(8)}`])
+    expect(renderDivider(undefined, 10, plainColors(), 'center', 3)).toEqual([rule(7)])
+    // Even a label wider than the row keeps two rule cells each side before it is fit to the width.
+    expect(visibleWidth(renderDivider('x'.repeat(40), 20, plainColors(), 'center')[0]!)).toBe(20)
+    const tinted = { ...plainColors(), warning: (text: string) => `<w>${text}</w>`, border: (text: string) => `<b>${text}</b>` } as never
+    expect(renderDivider('r', 10, tinted, 'start', 0, 'warning')[0]).toMatch(/^<w>── r ─+/u)
+    expect(renderDivider('r', 10, tinted)[0]).toMatch(/^<b>── r ─+/u)
+  })
+
   it('renders numeric units and expanded select and multiselect options', () => {
     expect(renderFormField({ kind: 'number', id: 'count', label: 'Count', value: 2, unit: 'ms' }, 30, idle, colors)[0]).toContain('2 ms')
     expect(renderFormField({ kind: 'number', id: 'count', label: 'Count', value: null }, 30, idle, colors)[0]).toContain('Count:')

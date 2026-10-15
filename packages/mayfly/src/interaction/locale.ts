@@ -633,11 +633,9 @@ const zh: Readonly<Record<string, string>> = {
   'Return to the previous conversation': '返回上一个对话',
   'Close the displayed side conversation': '关闭当前显示的旁支对话',
   // Rewind, session, pane, and status chrome wired through t() (issue #63).
-  'MAIN': '主',
-  'SUBAGENT': '子代理',
-  ' · read-only': ' · 只读',
-  ' · reply to resume': ' · 回复以恢复',
-  ' · {count} more open': ' · 另有 {count} 个打开',
+  'main': '主会话',
+  'btw': '旁问',
+  'subagent': '子代理',
   'this conversation is read-only': '此对话为只读',
   'help is unavailable: the Mayfly keymap is not mounted': '帮助不可用：Mayfly 键位表尚未挂载',
   'exit is unavailable: the launcher provided no appExit hook': '退出不可用：启动器未提供 appExit 钩子',
@@ -698,6 +696,7 @@ const zh: Readonly<Record<string, string>> = {
   'Monochrome': '单色',
   'Reduced motion': '减少动效',
   'Quiet hints': '安静提示',
+  'View history': '视图历史',
 }
 
 const en = Object.freeze(Object.fromEntries(Object.keys(zh).map(key => [key, key])))

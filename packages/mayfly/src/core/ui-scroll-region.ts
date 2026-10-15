@@ -1,7 +1,7 @@
 /**
  * A scroll region with a declared viewport: `height` rows (`expandedHeight` while expanded with `Ctrl+E`), a scrollbar
  * column drawn beside the content (`█` thumb, `░` track), `fit` to shrink around short content, and the `↓ N new · End`
- * pill while the view is scrolled away from a followed tail. It paints its own rows, so the surface around it keeps its
+ * pill while the view is scrolled away from a followed tail, and `more` for the `↓ N more` count of the rows below. It paints its own rows, so the surface around it keeps its
  * natural height instead of stretching to the viewport the way a layout-driven scroll does.
  *
  * @module @ephemeral-ai/mayfly/core/ui-scroll-region
@@ -50,6 +50,8 @@ interface ScrollRegionOptions {
   readonly expandedHeight: number
   readonly fit: boolean
   readonly pill: boolean
+  /** Say how many rows remain below the viewport on its last row, while any do. */
+  readonly more: boolean
   /** Keep the tail in view while following. */
   readonly follow: boolean
   readonly scrollbar: boolean
@@ -59,6 +61,8 @@ interface ScrollRegionOptions {
   readonly components: Pick<MayflyComponents, 'visibleWidth' | 'truncateToWidth'>
   /** The pill's words for `count` rows that arrived while the view was away from the tail. */
   readonly pillText: (count: number) => string
+  /** The words for `count` rows below the viewport. */
+  readonly moreText: (count: number) => string
   readonly anchors?: ScrollRegionAnchors | undefined
   /** The work sink; the region counts the viewport rows it paints. */
   readonly counters?: MayflyWorkCounters | undefined
@@ -160,6 +164,8 @@ export class ScrollRegion implements Component, UiScrollControl {
     const max = this.max
     const view = lines.slice(this.offset, this.offset + this.viewport)
     while (view.length < this.viewport) view.push('')
+    // The last row names what is still below; the end of the content shows the row itself again.
+    if (this.options.more && this.offset < max && this.viewport > 1) view[this.viewport - 1] = colors.muted(this.options.moreText(lines.length - (this.offset + this.viewport - 1)))
     const pill = this.options.pill && this.offset < max && lines.length > this.away ? `\x1b[7m ${this.options.pillText(lines.length - this.away)} \x1b[27m` : ''
     const pillWidth = components.visibleWidth(pill)
     const thumb = Math.max(1, Math.round((this.viewport * this.viewport) / Math.max(this.viewport, lines.length)))

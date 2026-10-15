@@ -116,10 +116,18 @@ export interface MayflyUiChild {
   readonly priority?: number
   /** Where an admitted child sits in its row (default `left`). */
   readonly band?: 'left' | 'center' | 'right'
+  /** `underline`: a heavy line under the child's words, on a second row of the admission row (the entered item of a status row). */
+  readonly mark?: 'underline'
   /** What a child that does not fit does: `truncate` takes the room that is left (at least 8 cells) and fills the row, `hide` drops out while later children may still fit; without one it and every later child drop. */
   readonly overflow?: 'truncate' | 'hide'
 }
-export interface MayflyStackNode { readonly kind: 'stack', readonly direction: 'row' | 'column', readonly gap?: 0 | 1 | 2, readonly align?: 'stretch' | 'start' | 'center' | 'end', readonly children: readonly MayflyUiChild[] }
+export interface MayflyStackNode {
+  readonly kind: 'stack'
+  readonly direction: 'row' | 'column'
+  readonly gap?: 0 | 1 | 2
+  readonly align?: 'stretch' | 'start' | 'center' | 'end'
+  readonly children: readonly MayflyUiChild[]
+}
 export interface MayflySurfaceNode {
   readonly kind: 'surface'
   readonly title?: string
@@ -154,6 +162,10 @@ export interface MayflyScrollNode {
   readonly fit?: boolean
   /** `↓ N new · End` over the last row while the view is scrolled away from a followed tail. */
   readonly pill?: boolean
+  /** `false`: `Ctrl+E` does not expand the viewport and the key row does not name it (a fixed-length panel). */
+  readonly expandable?: boolean
+  /** While rows remain below the viewport its last row says how many (`↓ 6 more`); the count follows the scroll and the row is content again at the end. */
+  readonly more?: boolean
 }
 export interface MayflyTabItem {
   readonly id: string
@@ -193,11 +205,29 @@ export interface MayflyListSegment {
 export type MayflyListBodyNode = MayflyContentNode | MayflyImageNode | MayflyProgressNode | MayflySpacerNode | MayflyDividerNode | MayflyListBodyStackNode
 interface MayflyListBodyChild extends Omit<MayflyUiChild, 'node' | 'tab'> { readonly node: MayflyListBodyNode }
 export interface MayflyListBodyStackNode extends Omit<MayflyStackNode, 'children'> { readonly children: readonly MayflyListBodyChild[] }
+/**
+ * One column of a list row. The cells of a list's rows line up: column `n` is as wide as the widest cell `n` of any row
+ * (capped by `max`), the rows' own spans lead each row, and the columns follow left to right, two columns apart.
+ */
+export interface MayflyListCell {
+  readonly spans: readonly MayflyInlineSpan[]
+  /** Where the text sits in the column; `right` suits a number. */
+  readonly align?: 'left' | 'right'
+  /** The room the column keeps when its cells are empty or short, so a figure that comes and goes (a live counter) does not move the columns after it. */
+  readonly min?: number
+  /** The widest the column grows, in columns; a longer cell is cut with an ellipsis. Such a column also gives room first when the row is narrow. */
+  readonly max?: number
+  /** A narrow row gives up whole columns, the highest `shed` first; a column without one stays. */
+  readonly shed?: number
+}
+
 export interface MayflyListItem {
   readonly id: string
   /** Plain text: what a filter and the accessible name read. `labelSpans` paints it instead when present. */
   readonly label: string
   readonly labelSpans?: readonly MayflyInlineSpan[]
+  /** Columns after the label that line up across the list's rows. */
+  readonly cells?: readonly MayflyListCell[]
   /** Spans aligned to the right edge of the row; they carry their own spacing. */
   readonly right?: readonly MayflyInlineSpan[]
   /** The right spans while this row holds the cursor. */
@@ -409,8 +439,35 @@ export interface MayflyProgressNode {
   /** A renderer-owned one-shot: when `rev` first arrives the bar drains linearly from `from` to `value` over `ms`. */
   readonly transition?: { readonly from: number, readonly ms: number, readonly rev: number }
 }
+/** One narrower form of a {@link MayflyShedNode}: what takes the node's place once the row sheds down to `rank`. */
+export interface MayflyShedForm {
+  /** The shed rank (0 to 1000): the lower ranks give way first, across every shed node of the row. */
+  readonly rank: number
+  /** The narrower form, or `null` to hide the node. */
+  readonly node: MayflyStatusNode | null
+}
+/**
+ * A status node that has narrower forms. While its row does not fit, the row gives up the forms in rank order, lowest first
+ * and across all of its shed nodes, until it fits: a node falls back to its form of the highest rank reached, and a `null`
+ * form hides it. A row that fits shows every node in full.
+ */
+export interface MayflyShedNode {
+  readonly kind: 'shed'
+  /** The full form. */
+  readonly node: MayflyStatusNode
+  readonly narrower: readonly MayflyShedForm[]
+}
 export interface MayflySpacerNode { readonly kind: 'spacer', readonly size?: 1 | 2 }
-export interface MayflyDividerNode { readonly kind: 'divider', readonly label?: string }
+export interface MayflyDividerNode {
+  readonly kind: 'divider'
+  readonly label?: string
+  /** `center`: the label sits in the middle of the rule, with a rule on each side (default: at the start). */
+  readonly align?: 'start' | 'center'
+  /** Columns kept blank after the rule (0 to 8): the right margin of a rule in a gutter, as the left gutter is its left. */
+  readonly inset?: number
+  /** The rule's tone; the quiet border color without one. */
+  readonly tone?: MayflyTone
+}
 /**
  * An inline image. The wire carries a reference, never bytes: the host tree supplies a loader that resolves
  * `attachmentId`, and `alt` shows until the bytes arrive and on a terminal without an image protocol.
@@ -490,7 +547,7 @@ interface MayflyHeatmapChartNode {
 export type MayflyChartNode = MayflyLineChartNode | MayflyBarChartNode | MayflySparklineChartNode | MayflyHeatmapChartNode
 
 export type MayflyContentNode = MayflyTextNode | MayflyMarkdownNode | MayflyFieldsNode | MayflyCodeNode | MayflyDiffNode | MayflySectionsNode | MayflyRichTextNode | MayflyDiagramNode | MayflyChartNode
-export type MayflyUiNode = MayflyContentNode | MayflyStackNode | MayflySurfaceNode | MayflyScrollNode | MayflyTabsNode | MayflyListNode | MayflyFormNode | MayflyActionsNode | MayflyLoaderNode | MayflyEmptyNode | MayflyProgressNode | MayflySpacerNode | MayflyDividerNode | MayflyImageNode | MayflyPromptNode
+export type MayflyUiNode = MayflyContentNode | MayflyShedNode | MayflyStackNode | MayflySurfaceNode | MayflyScrollNode | MayflyTabsNode | MayflyListNode | MayflyFormNode | MayflyActionsNode | MayflyLoaderNode | MayflyEmptyNode | MayflyProgressNode | MayflySpacerNode | MayflyDividerNode | MayflyImageNode | MayflyPromptNode
 
 interface MayflyRegistryUpsert<Entry> { readonly kind: 'upsert', readonly entry: Entry }
 interface MayflyRegistryRemove { readonly kind: 'remove', readonly id: string, readonly revision: number }
@@ -500,24 +557,24 @@ type MayflyPanePlacement = 'header' | 'left' | 'right' | 'bottom' | 'views'
 export interface MayflyInteractionDefinition { readonly scope?: MayflyUiScope, readonly source?: readonly MayflySourceStamp[] }
 export interface MayflyInteractionSnapshot { readonly scope: MayflyUiScope, readonly source: readonly MayflySourceStamp[] }
 /**
- * A views pane's entry in status row 2: a motion-free status node, and the count the view's tab carries when it is
+ * A views pane's entry in the status row: a motion-free status node, and the count the view's tab carries when it is
  * entered (`Agents 5`). The summary is a separate publication from the pane's node, so a view updates its row without
  * republishing its panel.
  */
-export interface MayflyPaneSummary { readonly node: MayflyStatusNode, readonly count?: number | string }
+export interface MayflyPaneSummary { readonly node: MayflyStatusNode }
 /**
  * A pane contribution. `size` is measured in columns for `left`/`right`
  * panes and in rows for `bottom` panes, where the stacked dock grants each
  * pane at least `min` rows (default 1, its head row) and never more than
  * `max` before truncating its tail.
  *
- * A `views` pane is a view of status row 2: it declares a `summary` that joins the row, and its node is the panel
+ * A `views` pane is a view of the status row: it declares a `summary` that joins the row, and its node is the panel
  * shown in place of the row while the view is entered. It takes neither `size` nor `narrow`, and its `title` names
  * its tab. Lower `priority` values come first in the row.
  */
 export interface MayflyPaneDefinition extends MayflyInteractionDefinition { readonly id: string, readonly title?: string, readonly priority?: number, readonly placement: MayflyPanePlacement, readonly size?: { readonly min?: number, readonly preferred?: number | 'auto', readonly max?: number }, readonly narrow?: 'bottom' | 'overlay' | 'hidden', readonly summary?: MayflyPaneSummary, readonly onEvent?: MayflyUiEventHandlers<MayflyUiNode | null>, readonly load?: MayflySnapshotProvider<MayflyUiNode | null> }
 export interface MayflyPaneEntry extends MayflyInteractionSnapshot { readonly id: string, readonly definition: MayflyPaneDefinition, readonly node: MayflyUiNode | null, readonly revision: number, readonly update: MayflySnapshotChange, readonly events: MayflyUiEventEndpoint<MayflyUiNode | null>, readonly summary?: MayflyPaneSummary | null }
-/** `setSummary(null)` takes a views pane out of row 2; the pane's panel and revision are untouched. Only a views pane has a summary. */
+/** `setSummary(null)` takes a views pane out of the status row; the pane's panel and revision are untouched. Only a views pane has a summary. */
 export interface MayflyPaneRegistration extends MayflyNodeRegistration<MayflyUiNode> { refresh(): Promise<void>, loadMore(): Promise<boolean>, setSummary(summary: MayflyPaneSummary | null): void }
 export interface MayflyPaneRegistry { register(definition: MayflyPaneDefinition, initialNode?: MayflyUiNode | null): MayflyPaneRegistration, list(): readonly MayflyPaneEntry[], subscribe(listener: (delta: MayflyRegistryDelta<MayflyPaneEntry>) => void): () => void }
 
@@ -527,10 +584,10 @@ export interface MayflyOverlayEntry extends MayflyInteractionSnapshot { readonly
 export interface MayflyOverlayHandle extends MayflyRegistration { readonly revision: number, readonly closed: boolean, set(node: MayflyUiNode, update?: MayflySnapshotUpdate): void, focus(): void, hide(): void, show(): void, close(): void }
 export interface MayflyOverlayRegistry { open(definition: MayflyOverlayDefinition, initialNode: MayflyUiNode): MayflyOverlayHandle, close(id: string): boolean, focus(id: string): boolean, list(): readonly MayflyOverlayEntry[], subscribe(listener: (delta: MayflyRegistryDelta<MayflyOverlayEntry>) => void): () => void }
 
-export type MayflyStatusNode = MayflyTextNode | MayflyRichTextNode | MayflyFieldsNode | MayflyProgressNode | MayflyStatusStackNode
+export type MayflyStatusNode = MayflyTextNode | MayflyRichTextNode | MayflyFieldsNode | MayflyProgressNode | MayflyStatusStackNode | MayflyShedNode
 export interface MayflyStatusChild extends Omit<MayflyUiChild, 'node' | 'tab'> { readonly node: MayflyStatusNode }
 interface MayflyStatusStackNode extends Omit<MayflyStackNode, 'children'> { readonly children: readonly MayflyStatusChild[] }
-export interface MayflyStatusDefinition { readonly id: string, readonly priority?: number, readonly band?: 'left' | 'center' | 'right', readonly row?: 1 | 2, readonly overflow?: 'truncate' | 'hide' }
+export interface MayflyStatusDefinition { readonly id: string, readonly priority?: number, readonly band?: 'left' | 'center' | 'right', readonly overflow?: 'truncate' | 'hide' }
 export interface MayflyStatusEntry { readonly id: string, readonly definition: MayflyStatusDefinition, readonly node: MayflyStatusNode | null, readonly revision: number }
 export interface MayflyStatusRegistration extends MayflyRegistration { readonly revision: number, set(node: MayflyStatusNode | null): void }
 export interface MayflyStatusRegistry { register(definition: MayflyStatusDefinition, initialNode?: MayflyStatusNode | null): MayflyStatusRegistration, list(): readonly MayflyStatusEntry[], subscribe(listener: (delta: MayflyRegistryDelta<MayflyStatusEntry>) => void): () => void }

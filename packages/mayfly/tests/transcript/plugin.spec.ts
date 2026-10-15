@@ -21,9 +21,9 @@ import type { MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import { mkdtempTracked, registerTempDirCleanup } from '../core/temp-dir.ts'
 import { ACTION_TOGGLE_COLLAPSE, apply, inject } from '../../src/transcript/index.ts'
 import { LiveAssistantStreamService } from '../../src/conversation/live-stream.ts'
-import { SessionFactsService } from '../../src/transcript/session-facts.ts'
+import { SessionFactsService, type ChildSessionFacts } from '../../src/transcript/session-facts.ts'
 import * as statusBasicModel from '../../src/transcript/status-basic-model.ts'
-import { assistantEvent, fakeMayflyComponents, imageBlock, reasoningDelta, resetSeq, stepStart, textDelta, toolCallEvent, toolResultEvent, turnStart, userEvent } from './helpers.ts'
+import { assistantEvent, fakeMayflyComponents, imageBlock, reasoningDelta, resetSeq, stepStart, subagentCallEvent, textDelta, toolCallEvent, toolResultEvent, turnStart, userEvent } from './helpers.ts'
 import { fakeAgent, plainColors } from '../helpers.ts'
 import { FakeProjectionService } from './pane-fakes.ts'
 import { mountFakeScreenSlot } from '../core/fake-screen-slot.ts'
@@ -56,6 +56,8 @@ class FakeScreen implements MayflyScreen {
   readonly nodes = new Map<string, MayflyUiNode | null>()
   /** The options each node slot was mounted with: the events a stream answers arrive through `onEvent`. */
   readonly slotOptions = new Map<string, { readonly onEvent: (event: unknown) => void }>()
+  /** The views lane's read-only window the footer reads: no view is registered in this tree. */
+  readonly views = { statusEntries: () => [] as never[], isEntered: false, active: undefined as string | undefined, subscribe: () => () => {} }
   /** The row the stream's cursor stands on, read by the controller when it copies or opens a row. */
   cursorRow: string | undefined
   mountNodeSlot(id: string, options: { readonly region: 'content' | 'dock' | 'footer', readonly onEvent?: (event: never) => void }) {
@@ -161,6 +163,8 @@ async function bootTranscript(
     readonly withoutSessionFacts?: boolean
     /** Provide the interaction notification owner, so the transcript's reports are observable. */
     readonly interaction?: boolean
+    /** Replace the children feed of the session facts with one the spec drives: `emit` publishes the facts of the displayed Agent's children. */
+    readonly children?: { emit: ((list: readonly ChildSessionFacts[]) => void) | undefined }
   } = {},
 ): Promise<Harness> {
   const dir = mkdtempTracked('mayfly-transcript-')
@@ -309,6 +313,14 @@ async function bootTranscript(
   const liveStream = new LiveAssistantStreamService(ctx)
   if (options.withoutSessionFacts !== true) {
     const facts = new SessionFactsService(ctx, liveStream)
+    const feed = options.children
+    if (feed !== undefined) {
+      facts.subscribeChildren = (listener) => {
+        feed.emit = listener
+        listener([])
+        return () => { feed.emit = undefined }
+      }
+    }
     ctx.effect(() => () => facts.dispose())
   }
   ctx.effect(() => () => liveStream.dispose())
@@ -325,27 +337,31 @@ function stripGutter(lines: string[]): string[] {
   return lines.map(line => line === ' ' ? '' : line.slice(1))
 }
 
-/** The rows of the nodes published into node slots, compiled the way a mounted slot paints them at 80 columns. */
-function nodeLines(screen: FakeScreen): string[] {
-  return [...screen.nodes.values()].flatMap((node) => {
-    if (node === null) return []
-    const compiled = compileMayflyUiNode(node, {
-      components: fakeMayflyComponents(),
-      colors: COLORS,
-      getViewport: () => ({ columns: 80, rows: 1000 }),
-      screenMode: 'main',
-      emit: () => {},
-    })
-    return (compiled.ok ? compiled.value.component : compiled.errorComponent).render(80)
+/** One node compiled the way a mounted slot paints it at 80 columns. */
+function paint(node: MayflyUiNode | null | undefined, screenMode: 'main' | 'alternate' = 'main'): string[] {
+  if (node === null || node === undefined) return []
+  const compiled = compileMayflyUiNode(node, {
+    components: fakeMayflyComponents(),
+    colors: COLORS,
+    getViewport: () => ({ columns: 80, rows: 1000 }),
+    screenMode,
+    emit: () => {},
   })
+  return (compiled.ok ? compiled.value.component : compiled.errorComponent).render(80)
+}
+
+/** The rows of the nodes published into node slots, except the footer, which has its own reader. */
+function nodeLines(screen: FakeScreen): string[] {
+  return [...screen.nodes].filter(([id]) => id !== 'status.footer').flatMap(([, node]) => paint(node))
 }
 
 function contentLines(screen: FakeScreen): string[] {
   return [...stripGutter(screen.children.flatMap(component => component.render(80))), ...nodeLines(screen)]
 }
 
+/** The footer: the status row the transcript publishes into the footer node slot, and the bottom children besides it. */
 function footerLines(screen: FakeScreen): string[] {
-  return stripGutter(screen.bottomChildren.flatMap(component => component.render(80)))
+  return [...paint(screen.nodes.get('status.footer'), 'alternate'), ...stripGutter(screen.bottomChildren.flatMap(component => component.render(80)))]
 }
 
 describe('mayfly-transcript through the real Loader', () => {
@@ -625,6 +641,32 @@ describe('mayfly-transcript queued messages, facts, images, and row actions', ()
 
     projections.emitFacts(agent.session, { ...facts, approvals: [{ id: 'a1', callId: 'call-1', outcome: 'allowed-once' }] })
     expect(screen.renderRequests.length).toBeGreaterThan(steady)
+  })
+
+  it('makes a spawn line follow its child: running in background while it works, then settled with its end', async () => {
+    resetSeq()
+    const agent = fakeParent([
+      userEvent('audit it'),
+      subagentCallEvent(1, 1, 'spawn-1', 'subagent', 'Audit the facts', 'audit it', { time: 1_700_000_000_100 }),
+      toolResultEvent(1, 1, 'spawn-1', 'started subagent child-1', { time: 1_700_000_000_200 }),
+    ])
+    const children: { emit: ((list: readonly ChildSessionFacts[]) => void) | undefined } = { emit: undefined }
+    const { screen } = await bootTranscript(agent, { children })
+    const child = (extra: Partial<ChildSessionFacts>): ChildSessionFacts => ({ id: 'child-1', phase: 'running', tokens: 0, inputTokens: 0, outputTokens: 0, toolCount: 0, ...extra })
+    expect(contentLines(screen).join('\n')).not.toContain('running in background')
+    children.emit!([child({})])
+    expect(contentLines(screen).join('\n')).toContain('running in background')
+    // Streamed counters of the running child are the Agents item's, not the stream's: the same state republishes nothing.
+    const before = screen.renderRequests.length
+    children.emit!([child({ liveChars: 4_000, toolCount: 2 })])
+    expect(screen.renderRequests.length).toBe(before)
+    // A child found by its prompt, with an end, a failure, and the user's stop, each says its own word.
+    children.emit!([child({ phase: 'failed', promptText: 'audit it', endedAt: 1_700_000_005_000 })])
+    expect(contentLines(screen).join('\n')).toContain('failed')
+    children.emit!([child({ phase: 'failed', stopped: true, endedAt: 1_700_000_005_000 })])
+    expect(contentLines(screen).join('\n')).toContain('stopped')
+    children.emit!([child({ phase: 'completed', promptText: 'audit it' }), child({ id: 'child-2', phase: 'running', promptText: 'audit it' })])
+    expect(contentLines(screen).join('\n')).not.toContain('running in background')
   })
 
   it('keeps the transcript working when the host publishes no session facts', async () => {

@@ -12,7 +12,6 @@ import { keyGrammar, type EscapeStep, type GrammarBinding, type GrammarControl, 
 import { INTERACTION_KEY_ACTIONS } from '../../src/interaction/keys.ts'
 import { ACTION_IMAGE_PASTE } from '../../src/interaction/paste-image.ts'
 import { ACTION_TOGGLE_COLLAPSE } from '../../src/transcript/index.ts'
-import { ACTION_TOGGLE_TODO } from '../../src/transcript/pane-todo.ts'
 import type { MayflyKeyAction, MayflyKeyScope } from '../../src/core/types.ts'
 import { DEFAULT_KEYMAP } from '../../../../docs/design/prototypes/ui-kit.mjs'
 
@@ -22,7 +21,6 @@ const PRODUCT_KEY_ACTIONS: readonly (MayflyKeyAction & { readonly source: string
   { id: 'mayfly.surface.previous', keys: 'shift+f6', source: '../../src/core/surface-renderer.ts', handler: () => {} },
   { id: ACTION_IMAGE_PASTE, keys: 'ctrl+v', source: '../../src/interaction/paste-image.ts' },
   { id: ACTION_TOGGLE_COLLAPSE, keys: 'ctrl+o', source: '../../src/transcript/index.ts', handler: () => {} },
-  { id: ACTION_TOGGLE_TODO, keys: 'ctrl+t', source: '../../src/transcript/pane-todo.ts', handler: () => {} },
 ]
 
 /**

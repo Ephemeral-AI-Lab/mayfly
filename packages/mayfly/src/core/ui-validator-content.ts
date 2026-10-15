@@ -86,7 +86,9 @@ export function admitDiffFields(h: AdmissionHelpers, object: Fields, path: strin
 export function admitChildAdmission(h: AdmissionHelpers, object: Fields, path: string): Fields {
   const band = h.own(object, 'band', path)
   const overflow = h.own(object, 'overflow', path)
+  const mark = h.own(object, 'mark', path)
   return {
+    ...present('mark', mark === undefined ? undefined : h.enumeration(mark, ['underline'] as const, `${path}.mark`)),
     ...present('priority', integer(h, object, 'priority', path, 0, 1_000_000)),
     ...present('band', band === undefined ? undefined : h.enumeration(band, ['left', 'center', 'right'] as const, `${path}.band`)),
     ...present('overflow', overflow === undefined ? undefined : h.enumeration(overflow, ['truncate', 'hide'] as const, `${path}.overflow`)),
@@ -109,12 +111,12 @@ export function admitSurfaceFields(h: AdmissionHelpers, object: Fields, path: st
   }
 }
 
-/** A scroll's `height`, `expandedHeight` (not shorter than `height`), `fit`, and `pill`. */
+/** A scroll's `height`, `expandedHeight` (not shorter than `height`), `fit`, `pill`, `expandable`, and `more`. */
 export function admitScrollFields(h: AdmissionHelpers, object: Fields, path: string): Fields {
   const height = integer(h, object, 'height', path, 1, SCROLL_HEIGHT_MAX)
   const expandedHeight = integer(h, object, 'expandedHeight', path, 1, SCROLL_HEIGHT_MAX)
   if (height !== undefined && expandedHeight !== undefined && expandedHeight < height) h.invalid(`${path}.expandedHeight must not be shorter than height`)
-  return { ...present('height', height), ...present('expandedHeight', expandedHeight), ...present('fit', flag(h, object, 'fit', path)), ...present('pill', flag(h, object, 'pill', path)) }
+  return { ...present('height', height), ...present('expandedHeight', expandedHeight), ...present('fit', flag(h, object, 'fit', path)), ...present('pill', flag(h, object, 'pill', path)), ...present('expandable', flag(h, object, 'expandable', path)), ...present('more', flag(h, object, 'more', path)) }
 }
 
 /**

@@ -19,7 +19,7 @@ async function api(): Promise<Context> {
 describe('views pane definitions', () => {
   it('registers with an initial summary and lists it on the entry, not on the definition-only entries of other panes', async () => {
     const ctx = await api()
-    const summary: MayflyPaneSummary = { node: summaryNode, count: 5 }
+    const summary: MayflyPaneSummary = { node: summaryNode }
     ctx.mayflyPanes.register(view('test.agents', { summary }), ui.text('panel'))
     ctx.mayflyPanes.register({ id: 'test.bottom', placement: 'bottom' }, ui.text('bottom'))
     const [agents, bottom] = ctx.mayflyPanes.list()
@@ -28,7 +28,7 @@ describe('views pane definitions', () => {
     expect('summary' in bottom!).toBe(false)
   })
 
-  it('starts without a summary as null, so the view stays out of row 2 until it declares one', async () => {
+  it('starts without a summary as null, so the view stays out of the status row until it declares one', async () => {
     const ctx = await api()
     ctx.mayflyPanes.register(view('test.agents'), ui.text('panel'))
     expect(ctx.mayflyPanes.list()[0]!.summary).toBeNull()
@@ -54,34 +54,35 @@ describe('views pane definitions', () => {
     ['a null node', { node: null }, 'must be a status node'],
     ['an array node', { node: [] }, 'must be a status node'],
     ['an interactive node', { node: ui.loader({ message: 'busy' }) }, 'must be a status node'],
-    ['a non-finite count', { node: summaryNode, count: Number.POSITIVE_INFINITY }, 'count must be'],
-    ['an object count', { node: summaryNode, count: {} }, 'count must be'],
-    ['a long count', { node: summaryNode, count: 'x'.repeat(33) }, 'count must be'],
+    ['a count, which a view no longer carries', { node: summaryNode, count: 5 }, 'unknown field'],
   ])('refuses %s', async (_name, summary, message) => {
     const ctx = await api()
     expect(() => ctx.mayflyPanes.register(view('test.agents', { summary: summary as never }))).toThrow(message)
   })
 
-  it('accepts a string count and a stack summary', async () => {
+  it('accepts a stack summary and a shed summary with narrower forms', async () => {
     const ctx = await api()
-    ctx.mayflyPanes.register(view('test.todo', { summary: { node: ui.stack.row([ui.child(ui.text('Todo'))]) as never, count: '2/6' } }))
-    expect(ctx.mayflyPanes.list()[0]!.summary!.count).toBe('2/6')
+    ctx.mayflyPanes.register(view('test.todo', { summary: { node: ui.stack.row([ui.child(ui.text('Todo'))]) as never } }))
+    const shed = ui.shed(ui.richText([{ text: '● todo 2/12 4m 12s' }]), [{ rank: 5, node: ui.richText([{ text: '● todo 2/12' }]) }])
+    ctx.mayflyPanes.register(view('test.shed', { summary: { node: shed } }))
+    expect(ctx.mayflyPanes.list().find(entry => entry.id === 'test.shed')!.summary!.node).toEqual(shed)
   })
 })
 
 describe('setSummary', () => {
-  it('republishes the entry at the same revision and node, and null takes the view out of row 2', async () => {
+  it('republishes the entry at the same revision and node, and null takes the view out of the status row', async () => {
     const ctx = await api()
     const deltas = vi.fn()
-    const pane = ctx.mayflyPanes.register(view('test.agents', { summary: { node: summaryNode, count: 5 } }), ui.text('panel'))
+    const pane = ctx.mayflyPanes.register(view('test.agents', { summary: { node: summaryNode } }), ui.text('panel'))
     ctx.mayflyPanes.subscribe(deltas)
     deltas.mockClear()
     const before = ctx.mayflyPanes.list()[0]!
-    pane.setSummary({ node: ui.richText([{ text: 'Agents 6' }]), count: 6 })
+    const six = ui.richText([{ text: 'Agents 6' }])
+    pane.setSummary({ node: six })
     const after = ctx.mayflyPanes.list()[0]!
     expect(after.revision).toBe(before.revision)
     expect(after.node).toBe(before.node)
-    expect(after.summary!.count).toBe(6)
+    expect(after.summary!.node).toEqual(six)
     expect(pane.revision).toBe(0)
     expect(deltas).toHaveBeenCalledTimes(1)
     pane.setSummary(null)
@@ -95,21 +96,22 @@ describe('setSummary', () => {
     const gate = new Promise<void>(resolve => { release = resolve })
     const load: MayflySnapshotProvider<MayflyUiNode | null> = async () => { await gate; return { node: ui.text('loaded') } }
     const pane = ctx.mayflyPanes.register(view('test.agents', { load, summary: { node: summaryNode } }))
-    pane.setSummary({ node: summaryNode, count: 2 })
+    const two = ui.richText([{ text: 'Agents 2' }])
+    pane.setSummary({ node: two })
     release()
     await new Promise<void>(resolve => { setImmediate(resolve) })
     const entry = ctx.mayflyPanes.list()[0]!
     expect(entry.node).toEqual(ui.text('loaded'))
-    expect(entry.summary!.count).toBe(2)
+    expect(entry.summary!.node).toEqual(two)
     pane.set(ui.text('again'))
-    expect(ctx.mayflyPanes.list()[0]!.summary!.count).toBe(2)
+    expect(ctx.mayflyPanes.list()[0]!.summary!.node).toEqual(two)
   })
 
   it('validates what it is given and leaves the previous summary on a refusal', async () => {
     const ctx = await api()
-    const pane = ctx.mayflyPanes.register(view('test.agents', { summary: { node: summaryNode, count: 1 } }))
+    const pane = ctx.mayflyPanes.register(view('test.agents', { summary: { node: summaryNode } }))
     expect(() => pane.setSummary({ node: ui.loader({ message: 'busy' }) as never })).toThrow('must be a status node')
-    expect(ctx.mayflyPanes.list()[0]!.summary!.count).toBe(1)
+    expect(ctx.mayflyPanes.list()[0]!.summary!.node).toEqual(summaryNode)
   })
 
   it('does nothing after disposal and is refused on a pane that is not a view', async () => {

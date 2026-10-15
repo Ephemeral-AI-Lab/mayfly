@@ -26,8 +26,8 @@ Harness provides for this purpose.
 
 | Service | Registration shape | Renderer |
 | --- | --- | --- |
-| `mayflyPanes` | `register(definition, node)` / `set(node \| null)` | core header/left/right/bottom lanes |
-| `mayflyStatus` | `register(definition, node)` / `set(node \| null)` | transcript footer |
+| `mayflyPanes` | `register(definition, node)` / `set(node \| null)`; a `views` pane adds `setSummary(summary \| null)` | core header/left/right/bottom lanes; a views pane's summary joins the status row and its panel opens under it (`core/views-lane.ts`) |
+| `mayflyStatus` | `register(definition, node)` / `set(node \| null)`; a node may be `ui.shed(full, narrower)` | the one status row on the footer node slot (`transcript/status-rows.ts`) |
 | `mayflyOverlays` | `open(definition, node)` / `set(node)` | core overlay stack |
 | `mayflyEditorExtensions` | `register(definition, decoration)` / `set(decoration)` | interaction editor |
 

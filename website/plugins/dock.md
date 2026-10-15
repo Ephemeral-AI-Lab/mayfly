@@ -2,7 +2,7 @@
 
 ## Pane
 
-`mayflyPanes` 支持 `header`、`left`、`right`、`bottom` 四个 placement，另有 `views`，用于状态栏第 2 行的视图（见[状态栏第 2 行的视图](/plugins/ui-reference#状态栏第-2-行的视图)）。
+`mayflyPanes` 支持 `header`、`left`、`right`、`bottom` 四个 placement，另有 `views`，用于状态栏的视图（见[状态栏的视图](/plugins/ui-reference#状态栏的视图)）。
 
 ```ts
 export const inject = ['mayflyPanes']
@@ -34,8 +34,8 @@ export function apply(ctx: Context): void {
 
 ### 视图
 
-`views` pane 没有自己的 lane：它声明一个进入状态栏第 2 行的 `summary`，并用 `setSummary()` 更新（`null` 让视图离开该行）。
-`set(node)` 发布面板；用 `Alt+↓`、`F5` 或 `F6` 进入该视图后，面板取代第 2 行。`size` 与 `narrow` 不适用。
+`views` pane 没有自己的 lane：它声明一个进入状态栏的 `summary`，并用 `setSummary()` 更新（`null` 让视图离开该行）。
+`set(node)` 发布面板；用 `Alt+↓`、`F5` 或 `F6` 进入该视图后，面板在状态栏下方打开。`size` 与 `narrow` 不适用。
 
 ## Overlay
 

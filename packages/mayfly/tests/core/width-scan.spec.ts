@@ -364,12 +364,12 @@ describe('core width-scan', () => {
   }
 
   for (const { name, text } of ADVERSARIAL) {
-    it(`views lane strip, rule, and panel survive ${name}`, () => {
+    it(`views lane panel survives ${name}`, () => {
       const lane = new ViewsLane()
       lane.bind({ colors: statusColors as unknown as MayflySemanticColors, focus: () => {}, release: () => {}, requestRender: () => {}, viewport: () => ({ columns: 120, rows: 30 }) })
       for (const [index, id] of ['agents', 'jobs', 'goal'].entries()) {
         const panel = { render: () => [text.slice(0, 90), text], invalidate: () => {}, focused: false, handleInput: () => {} }
-        lane.register({ id, title: index === 0 ? text.slice(0, 50) : id, priority: index, summary: { node: { kind: 'text', content: text }, count: text.slice(0, 20) } }).setPanel(panel, panel)
+        lane.register({ id, priority: index, summary: { node: { kind: 'text', content: index === 0 ? text.slice(0, 50) : id } } }).setPanel(panel, panel)
       }
       for (const id of ['agents', 'jobs', 'goal']) {
         lane.enter(id)

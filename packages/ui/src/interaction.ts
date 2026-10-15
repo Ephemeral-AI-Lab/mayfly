@@ -37,6 +37,8 @@ export interface MayflyFeedback {
   readonly severity: 'info' | 'success' | 'warning' | 'error'
   readonly purpose?: 'feedback' | 'progress'
   readonly detail?: string
+  /** The end of `message` that a row too narrow for it keeps whole while the front is cut with `…`: a count or a countdown. */
+  readonly tail?: string
 }
 export interface MayflyFeedbackRecord extends MayflyFeedback {
   readonly id: string

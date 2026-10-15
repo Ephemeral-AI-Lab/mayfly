@@ -8,7 +8,10 @@ import {
   type MayflyOverlayDefinition,
   type MayflyPaneDefinition,
   type MayflyPaneRegistration,
+  type MayflyFeedback,
+  type MayflyListItem,
   type MayflyPaneSummary,
+  type MayflyStatusDefinition,
   type MayflyRailPanelProps,
   type MayflySplitViewProps,
   type MayflyStatusPageProps,
@@ -291,9 +294,18 @@ hoisted('{size}', { size: true })
 picker.render({ names: ['a'] })
 
 // The views lane (slice 1.10b): a views pane declares a motion-free status summary and updates it separately.
-export const agentsView: MayflyPaneDefinition = { id: 'agents', placement: 'views', title: 'Agents', priority: 2, summary: { node: ui.richText([{ text: 'Agents 5' }]), count: 5 } }
+export const agentsView: MayflyPaneDefinition = { id: 'agents', placement: 'views', title: 'Agents', priority: 2, summary: { node: ui.richText([{ text: 'Agents 5' }]) } }
 export const summaryOnly: MayflyPaneSummary = { node: ui.text('idle') }
-export const retire = (registration: MayflyPaneRegistration): void => { registration.setSummary({ node: ui.text('running'), count: '2/6' }); registration.setSummary(null) }
+export const retire = (registration: MayflyPaneRegistration): void => { registration.setSummary({ node: ui.text('running') }); registration.setSummary(null) }
+// The status row (Phase 5): shed nodes with narrower forms, the underline mark of the entered item, list cells that line up, a scroll panel that counts what is below, and a notice tail.
+export const shedSummary: MayflyPaneSummary = { node: ui.shed(ui.richText([{ text: '● todo 2/12 4m 12s' }]), [{ rank: 5, node: ui.richText([{ text: '● todo 2/12' }]) }, { rank: 70, node: null }]) }
+export const markedRow = ui.stack.row([ui.child(ui.text('jobs 2'), { priority: 12, mark: 'underline' })])
+export const cellRow: MayflyListItem = { id: 'a', label: 'review', cells: [{ spans: [{ text: 'Audit facts' }], min: 12, max: 52, shed: 2 }, { spans: [{ text: '41s' }], align: 'right' }] }
+export const panel = ui.scroll(ui.text('rows'), { id: 'panel', height: 7, expandable: false, more: true })
+export const centeredRule = ui.divider({ label: 'goal round 2', align: 'center', inset: 2, tone: 'muted' })
+export const tailed: MayflyFeedback = { severity: 'warning', message: 'Rate limited · retrying in 9s · 1/5', tail: 'retrying in 9s · 1/5' }
+// @ts-expect-error a status definition has one row: the second row was removed
+export const secondRow: MayflyStatusDefinition = { id: 'x', row: 2 }
 // @ts-expect-error a pane placement is one of the five
 export const sidePane: MayflyPaneDefinition = { id: 'x', placement: 'floating' }
 // @ts-expect-error a summary is a status node: a list is not one

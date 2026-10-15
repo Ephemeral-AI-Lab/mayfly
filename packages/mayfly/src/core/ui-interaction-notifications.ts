@@ -73,6 +73,7 @@ export class UiNotificationStore {
         visibleMs,
         message: admitNotificationMessage(feedback.message),
         ...(feedback.detail === undefined ? {} : { detail: admitNotificationMessage(feedback.detail) }),
+        ...(feedback.tail === undefined ? {} : { tail: admitNotificationMessage(feedback.tail) }),
       })
       this.records.set(id, record)
       this.accruedAt.set(id, now)

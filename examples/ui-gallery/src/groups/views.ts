@@ -1,7 +1,7 @@
 /**
- * Views lane (roadmap slice 1.10b): a pane with `placement: 'views'` is a view of status row 2. It declares a
- * `summary` (a status node and a tab count) that joins the row, and its node is the panel shown in place of the row
- * while the view is entered (`Alt+↓`, `F5` or `F6`; `←/→` switch views; `Esc` returns to the prompt). The view
+ * Views lane (roadmap slice 1.10b): a pane with `placement: 'views'` is a view of the status row. It declares a
+ * `summary` (a status node) that joins the row, and its node is the panel shown under the row (which stays as it is,
+ * with the view's item marked) while the view is entered (`Alt+↓`, `F5` or `F6`; `←/→` switch views; `Esc` returns to the prompt). The view
  * updates the row with `setSummary` and takes itself out with `setSummary(null)`.
  *
  * @module @mayfly-example/ui-gallery/groups/views
@@ -11,18 +11,17 @@ import { ui, type MayflyPaneSummary } from '@ephemeral-ai/mayfly-ui'
 
 const RUNS = ['build', 'test', 'lint']
 
-/** The row-2 chip: a muted label, an accent dot, and how many runs are tracked. */
+/** The status-row item: an accent dot, a muted label, and how many runs are tracked. */
 function summaryFor(tracked: number): MayflyPaneSummary {
   return {
-    node: ui.richText([{ text: 'Gallery ', tone: 'muted' }, { text: '●', tone: 'accent' }, { text: ` ${String(tracked)} runs` }]),
-    count: tracked,
+    node: ui.richText([{ text: '● ', tone: 'accent' }, { text: 'gallery ', tone: 'muted' }, { text: `${String(tracked)} runs` }], { overflow: 'truncate' }),
   }
 }
 
 /** The panel: the tracked runs and the actions that change the summary. */
 function panelFor(tracked: number) {
   return ui.stack.column([
-    ui.text('A view of status row 2. Its summary sits in the row; this panel replaces the row while you are inside.', { tone: 'muted' }),
+    ui.text('A view of the status row. Its summary sits in the row; this panel opens under the row while you are inside.', { tone: 'muted' }),
     ui.list({
       id: 'gallery-view-runs',
       role: 'browse',
@@ -41,7 +40,7 @@ function panelFor(tracked: number) {
 
 /**
  * Register the gallery's view through the public pane service. The panel reacts to its own actions: tracking a run
- * republishes the panel and the summary, and hiding the view takes it out of row 2 until the next track.
+ * republishes the panel and the summary, and hiding the view takes it out of the status row until the next track.
  * @param ctx - a context that injects `mayflyPanes`.
  */
 export function registerGalleryView(ctx: Context): void {

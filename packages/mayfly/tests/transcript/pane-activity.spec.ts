@@ -112,6 +112,8 @@ async function bootFacts(initial: Partial<Facts>, settings: Record<string, unkno
         next(facts)
         return () => {}
       },
+      currentGoal: null,
+      subscribeGoal() { return () => {} },
       subscribeAgent(next: (value: ReturnType<typeof asAgent>) => void) {
         agentListeners.add(next)
         next(asAgent(agent))
@@ -150,7 +152,7 @@ async function bootFacts(initial: Partial<Facts>, settings: Record<string, unkno
 describe('mayfly-pane-activity', () => {
   it('registers one bottom pane over its stable inject list, and draws no row while idle', async () => {
     expect(activity.name).toBe('mayfly-pane-activity')
-    expect(activity.inject).toEqual(['mayflyPanes', 'mayflySessionFacts', 'mayflyTick', 'mayflyUiInteraction'])
+    expect(activity.inject).toEqual(['mayflyPanes', 'mayflySessionFacts', 'mayflyTick', 'mayflyUiInteraction', 'mayflyConversations', 'mayflyKeymap'])
     const harness = await bootFacts({ active: false, phase: 'idle' }, {}, false, 'idle')
     expect(harness.ctx.mayflyPanes.list().find(entry => entry.id === 'mayfly.pane.activity')?.definition.title).toBeUndefined()
     expect(rows(harness.screen)).toEqual([])
@@ -320,6 +322,8 @@ describe('mayfly-pane-activity', () => {
           listener(facts)
           return () => {}
         },
+        currentGoal: null,
+        subscribeGoal() { return () => {} },
         subscribeAgent(listener: (value: ReturnType<typeof asAgent>) => void) {
           listener(asAgent(agent))
           return () => {}

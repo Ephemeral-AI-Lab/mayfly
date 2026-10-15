@@ -14,7 +14,7 @@ grid 80x24 cursor none
 |
 |  ✻ Worked for 1s · done 09:00
 |
-|                                               Alt+↑ conversation · Alt+↓ bar
+|                                              Alt+↑ conversation · Alt+↓ view
 |╭ Sessions · Workspaces ───────────────────────────────────────────────────────╮
 |│ → ~/workspace [current] — 6 sessions                                         │
 |│   ~/docs — 1 session                                                         │
@@ -22,7 +22,7 @@ grid 80x24 cursor none
 |│  Refresh   Search all contents   Close                                       │
 |│   Enter open · Type filter · Esc close                                       │
 |╰──────────────────────────────────────────────────────────────────────────────╯
-| deepseek-flash High  ~/workspace            cache 42%  context: 5% (5.5k/128k)
+| deepseek-flash High  ~/workspace            cache ▰▰▱▱▱ 42%  ctx ▰▱▱▱▱▱▱▱▱▱ 5%
 styles
 0: 1-23 fg:#f5f5f7; 24-25 fg:#9a86e6
 1: 1-23 fg:#e9e5f6; 24-25 fg:#9a86e6; 26-67 fg:#9a86e6 b
@@ -35,7 +35,7 @@ styles
 9: 2-3 fg:#9a86e6; 4-55 fg:#9a86e6 b
 11: 2-3 fg:#ededf2
 13: 2-29 fg:#9aa3b8
-15: 47-76 fg:#9aa3b8
+15: 46-76 fg:#9aa3b8
 16: 0-1 fg:#dcd7f2; 2-22 fg:#f5f5f7 b; 23-79 fg:#dcd7f2
 17: 0 fg:#dcd7f2; 2 fg:#9a86e6 b; 4-14 fg:#ededf2 b; 16-24 fg:#9aa3b8; 26-37 fg:#9aa3b8; 79 fg:#dcd7f2
 18: 0 fg:#dcd7f2; 4-9 fg:#ededf2; 11-21 fg:#9aa3b8; 79 fg:#dcd7f2
@@ -43,4 +43,4 @@ styles
 20: 0 fg:#dcd7f2; 3-9 fg:#ededf2; 13-31 fg:#ededf2; 35-39 fg:#ededf2; 79 fg:#dcd7f2
 21: 0 fg:#dcd7f2; 2-3 fg:#5c6476; 4-8 fg:#ededf2; 10-16 fg:#5c6476; 17-20 fg:#ededf2; 22-30 fg:#5c6476; 31-33 fg:#ededf2; 35-39 fg:#5c6476; 79 fg:#dcd7f2
 22: 0-79 fg:#dcd7f2
-23: 1-19 fg:#ededf2; 22-32 fg:#9aa3b8; 45-78 fg:#ededf2
+23: 1-19 fg:#ededf2; 22-32 fg:#9aa3b8; 45-50 fg:#ededf2; 51-52 fg:#e8a838; 53-55 fg:#9aa3b8; 56-59 fg:#ededf2; 62-65 fg:#ededf2; 66 fg:#9a86e6; 67-75 fg:#9aa3b8; 76-78 fg:#ededf2

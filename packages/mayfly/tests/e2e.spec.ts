@@ -17,6 +17,7 @@ import {
   resetDirectMayfly,
 } from './e2e-boot.ts'
 import { plainBlock } from './helpers.ts'
+import type { ViewsLane } from '../src/core/views-lane.ts'
 
 afterEach(async () => { await resetDirectMayfly() })
 
@@ -26,6 +27,11 @@ async function waitForSelections(count: number, tree: Awaited<ReturnType<typeof 
     await Promise.resolve()
   }
   throw new Error(`expected ${String(count)} Agent selections`)
+}
+
+/** The panel rows of the lane behind the screen's read-only window (the footer reads only its items). */
+function lanePanel(views: unknown, width: number): readonly string[] | undefined {
+  return (views as ViewsLane).panel(width)
 }
 
 describe('Mayfly direct-service whole tree', () => {
@@ -187,7 +193,7 @@ describe('Mayfly direct-service whole tree', () => {
           id: 'e2e.view',
           title: 'Builds',
           placement: 'views',
-          summary: { node: { kind: 'text', content: 'Builds 3' }, count: 3 },
+          summary: { node: { kind: 'text', content: 'Builds 3' } },
           onEvent: { action: event => { seen.push(event.kind); return { kind: 'completed' } } },
         }, ui.list({ id: 'builds', role: 'choose', selectedIds: [], items: [{ id: 'one', label: 'build one' }, { id: 'two', label: 'build two' }] }))
       },
@@ -208,7 +214,7 @@ describe('Mayfly direct-service whole tree', () => {
     await waitForRender()
     tree.terminal.sendInput('\x1b')
     await waitForRender()
-    expect(tree.ctx.mayflyScreen.views.panel(80)).toBeUndefined()
+    expect(lanePanel(tree.ctx.mayflyScreen.views, 80)).toBeUndefined()
 
     // A core reload replays the view from the registry; the panel keeps its cursor.
     const core = [...tree.ctx.loader.entries()].find(candidate => candidate.options.id === 'mayfly-core')!
@@ -221,14 +227,14 @@ describe('Mayfly direct-service whole tree', () => {
     await waitForRender()
     expect(tree.terminal.written.slice(mark).join('')).toContain('Builds 3')
     expect(tree.ctx.mayflyScreen.enterViews()).toBe(true)
-    const rows = plainBlock(tree.ctx.mayflyScreen.views.panel(80))
+    const rows = plainBlock(lanePanel(tree.ctx.mayflyScreen.views, 80))
     expect(rows).toMatch(/→\S* build two/u)
 
     await fiber.dispose()
     await waitForRender()
     expect(tree.ctx.mayflyPanes.list().map(pane => pane.id)).not.toContain('e2e.view')
     expect(tree.ctx.mayflyScreen.views.statusEntries()).toEqual([])
-    expect(tree.ctx.mayflyScreen.views.panel(80)).toBeUndefined()
+    expect(lanePanel(tree.ctx.mayflyScreen.views, 80)).toBeUndefined()
   })
 
   it('passes every newly selected exact Agent to native scoped services', async () => {

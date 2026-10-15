@@ -9,7 +9,7 @@ grid 80x24 cursor none
 |    pass.
 |
 |  ✻ Worked for 8s · done 09:00
-|                                               Alt+↑ conversation · Alt+↓ bar
+|                                              Alt+↑ conversation · Alt+↓ view
 |╭ Trace detail #16 ────────────────────────────────────────────────────────────╮
 |│ Type:    tool/result                                                         │
 |│ Surface: current                                                             │
@@ -22,14 +22,14 @@ grid 80x24 cursor none
 |│  Copy trace item   Close                                                     │
 |│   ↑/↓ scroll · Ctrl+E expand · Esc close                                     │
 |╰──────────────────────────────────────────────────────────────────────────────╯
-| deepseek-flash High  ~/workspace          cache 34%  context: 18% (22.9k/128k)
+| deepseek-flash High  ~/workspace           cache ▰▰▱▱▱ 34%  ctx ▰▰▱▱▱▱▱▱▱▱ 18%
 styles
 0: 2-3 fg:#ededf2
 2: 2-3 fg:#4ec87e; 4-7 fg:#ededf2 b; 8 fg:#9aa3b8; 9-24 fg:#c9c0f0; 25 fg:#9aa3b8
 4: 2-3 fg:#4ec87e; 4-7 fg:#ededf2 b; 8 fg:#9aa3b8; 9-21 fg:#c9c0f0; 22-29 fg:#9aa3b8
 6: 2-3 fg:#ededf2
 9: 2-29 fg:#9aa3b8
-10: 47-76 fg:#9aa3b8
+10: 46-76 fg:#9aa3b8
 11: 0-1 fg:#dcd7f2; 2-17 fg:#f5f5f7 b; 18-79 fg:#dcd7f2
 12: 0 fg:#dcd7f2; 2-9 fg:#9aa3b8; 11-21 fg:#ededf2; 79 fg:#dcd7f2
 13: 0 fg:#dcd7f2; 2-9 fg:#9aa3b8; 11-17 fg:#ededf2; 79 fg:#dcd7f2
@@ -42,4 +42,4 @@ styles
 20: 0 fg:#dcd7f2; 3-17 fg:#ededf2; 21-25 fg:#ededf2; 79 fg:#dcd7f2
 21: 0 fg:#dcd7f2; 2-3 fg:#5c6476; 4-6 fg:#ededf2; 8-16 fg:#5c6476; 17-22 fg:#ededf2; 24-32 fg:#5c6476; 33-35 fg:#ededf2; 37-41 fg:#5c6476; 79 fg:#dcd7f2
 22: 0-79 fg:#dcd7f2
-23: 1-19 fg:#ededf2; 22-32 fg:#9aa3b8; 43-78 fg:#ededf2
+23: 1-19 fg:#ededf2; 22-32 fg:#9aa3b8; 44-49 fg:#ededf2; 50-51 fg:#e8a838; 52-54 fg:#9aa3b8; 55-58 fg:#ededf2; 61-64 fg:#ededf2; 65-66 fg:#9a86e6; 67-74 fg:#9aa3b8; 75-78 fg:#ededf2

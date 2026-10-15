@@ -7,8 +7,11 @@
  * reads the lane when the lane or the current Agent changes and publishes only when the notice on the row changed.
  * When the stream is scrolled away from its tail, the row also carries the chip back to it, centered, announced by the
  * surface renderer (`mayfly/content-tail-changed`); the notice yields the room the chip needs. With no notice the row
- * carries a muted hint of the keys that move focus off the prompt; while the turn runs the hint rotates on the host tick
- * through that group, the keys that steer or stop the turn, the draft's keys, and the keys that switch plan and model (the first alone with quiet hints off). `components/notification-line.ts`
+ * carries what the prompt awaits, its history counter, the keys of the token under its caret, or else a muted hint of the keys
+ * that move focus off the prompt; while the turn runs that hint rotates on the host tick through that group, the keys that
+ * steer or stop the turn, the draft's keys, and the keys that switch plan and model (the first alone with quiet hints off).
+ * While a second conversation is open, its keys (`F7 btw · F8 close`) come first on the right and take the place of that
+ * generic hint. While the stream holds focus the left carries the keys of the row the cursor is on. `components/notification-line.ts`
  * draws it as one row in the alternate layout the pane is compiled in (not in `main` screen mode), so the editor never shifts.
  *
  * @module @ephemeral-ai/mayfly/transcript/pane-notification
@@ -16,7 +19,9 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import type { MayflyFeedbackRecord } from '@ephemeral-ai/mayfly-ui'
-import { NotificationLine, type NotificationFacts, type NotificationRowFacts } from '../components/notification-line.ts'
+import type { MayflyConversationView } from '../app/conversation-views.ts'
+import { ACTION_CLOSE_AGENT_VIEW, ACTION_TOGGLE_AGENT_VIEW, interactionKeyHint } from '../interaction/keys.ts'
+import { NotificationLine, type NotificationFacts, type NotificationKeyPart, type NotificationRowFacts } from '../components/notification-line.ts'
 import type { MayflyFocusMode, MayflyFocusRow } from '../core/types.ts'
 import type { MayflyTranslate } from '../frontend/locale.ts'
 import { observeTranscriptLocale } from './locale.ts'
@@ -28,7 +33,7 @@ const HINT_TICKS = 15
 
 /** The groups the hint rotates through while a turn runs: where focus goes, how to steer or stop the turn, how to clear or edit the draft, how to switch plan and model. */
 const RUNNING_HINTS = [
-  'Alt+↑ conversation · Alt+↓ bar',
+  'Alt+↑ conversation · Alt+↓ view',
   'Ctrl+Enter steer · Esc interrupt',
   'Ctrl+C clear · Ctrl+G editor',
   'Shift+Tab plan · Alt+M model',
@@ -48,12 +53,47 @@ export function selectNotification(records: readonly MayflyFeedbackRecord[], ses
     .toSorted((left, right) => RANK[left.severity] - RANK[right.severity] || left.createdAt - right.createdAt)
   const top = visible.at(-1)
   if (top === undefined) return undefined
-  return { severity: top.severity, message: top.message, ...visible.length > 1 ? { waiting: visible.length - 1 } : {} }
+  return { severity: top.severity, message: top.message, ...top.tail === undefined ? {} : { tail: top.tail }, ...visible.length > 1 ? { waiting: visible.length - 1 } : {} }
+}
+
+/**
+ * The keys of a mode as the row sheds them: lower numbers survive a narrow row, so leaving the mode, moving, and opening a row go last.
+ * The first part reads first and is the one that stays, because the row writes the separator before every part but the first.
+ */
+function conversationKeys(t: MayflyTranslate): readonly NotificationKeyPart[] {
+  return [
+    { text: t('↑/↓ select'), priority: 1 }, { text: t('Enter expand'), priority: 2 }, { text: t('c copy'), priority: 4 }, { text: t('/ ? search'), priority: 3 },
+    { text: t('Ctrl+G editor'), priority: 5 }, { text: t('Ctrl+C JSON'), priority: 6 }, { text: t('Esc back'), priority: 0 },
+  ]
+}
+
+/** The keys on a queued message: the row's own verbs read first and outlast the rest, after `Esc back`. */
+function queuedKeys(t: MayflyTranslate): readonly NotificationKeyPart[] {
+  return [
+    { text: t('e edit'), priority: 1 }, { text: t('s send now'), priority: 3 }, { text: t('d cancel'), priority: 2 }, { text: t('Enter expand'), priority: 4 },
+    { text: t('c copy'), priority: 6 }, { text: t('↑/↓ select'), priority: 5 }, { text: t('Esc back'), priority: 0 },
+  ]
+}
+
+/** The keys on a steering message: as on a queued one, without `s send now` (it is already in the steer lane). */
+function steeringKeys(t: MayflyTranslate): readonly NotificationKeyPart[] {
+  return [
+    { text: t('e edit'), priority: 1 }, { text: t('d cancel'), priority: 2 }, { text: t('Enter expand'), priority: 3 },
+    { text: t('c copy'), priority: 5 }, { text: t('↑/↓ select'), priority: 4 }, { text: t('Esc back'), priority: 0 },
+  ]
+}
+
+/** The keys while a search holds focus; `Esc end search` is the last to go. */
+function searchKeys(t: MayflyTranslate): readonly NotificationKeyPart[] {
+  return [
+    { text: t('↑/↓ or n/N match'), priority: 1 }, { text: t('Enter expand'), priority: 2 }, { text: t('c copy'), priority: 4 }, { text: t('/ ? new search'), priority: 3 },
+    { text: t('Ctrl+C JSON'), priority: 5 }, { text: t('Esc end search'), priority: 0 },
+  ]
 }
 
 /**
  * Mount the notification pane under the calling Fiber.
- * @param ctx - plugin context; needs `mayflyPanes`, `mayflyUiInteraction`, and `mayflySessionFacts`.
+ * @param ctx - plugin context; needs `mayflyPanes`, `mayflyUiInteraction`, `mayflySessionFacts`, `mayflyConversations`, and `mayflyKeymap`.
  * @param t - translator for the hint the row teaches while it has no notice.
  */
 export function mountNotificationPane(ctx: Context, t: MayflyTranslate): void {
@@ -78,11 +118,33 @@ export function mountNotificationPane(ctx: Context, t: MayflyTranslate): void {
   const hintsOff = (): boolean => ctx.get('mayflyInteractionState')?.settingsSource()?.quietHints === 'off'
   /** Where keyboard focus is: the hint of the keys that leave the prompt only teaches while focus is on it. */
   let mode: MayflyFocusMode = 'prompt'
+  const conversations = ctx.mayflyConversations
+  const kindWord = (view: MayflyConversationView): string => view.kind === 'primary' ? t('main') : view.kind === 'btw' ? t('btw') : t('subagent')
+  /** The way back and forth: `F7` names the other conversation, `F8` closes (or detaches) the side one; absent with one conversation open. */
+  const toggle = (): string | undefined => {
+    const snapshot = conversations.snapshot()
+    const displayed = snapshot.views.find(view => view.id === snapshot.displayedId)
+    const counterpart = snapshot.views.find(view => view.id === snapshot.recent[1])
+    if (displayed === undefined || counterpart === undefined) return undefined
+    const switchKey = `${interactionKeyHint(ctx.mayflyKeymap, ACTION_TOGGLE_AGENT_VIEW, 'F7')} ${kindWord(counterpart)}`
+    // `F8` acts on the displayed side conversation, or on the `F7` counterpart while the main session is displayed.
+    const target = displayed.kind === 'primary' ? counterpart : displayed
+    return `${switchKey} · ${interactionKeyHint(ctx.mayflyKeymap, ACTION_CLOSE_AGENT_VIEW, 'F8')} ${target.kind === 'subagent' ? t('detach') : t('close')}`
+  }
   const current = (): NotificationRowFacts => {
     const agent = factsService?.currentAgent
     const notice = interaction === undefined ? undefined : selectNotification(interaction.notificationSnapshot(), agent == null ? undefined : String(agent.id))
-    // With no notice the row teaches where focus can go from the prompt: up into the conversation, down to the status bar.
-    return { ...notice === undefined ? {} : { notice }, ...mode === 'prompt' ? notice === undefined ? { ...promptWait === undefined ? {} : { wait: promptWait }, hint: recall ?? promptHint ?? t(RUNNING_HINTS[running && !hintsOff() ? group : 0]!) } : {} : mode === 'conversation' ? { keys: row === 'queued' ? t('e edit · s send now · d cancel · Enter expand · c copy · ↑/↓ select · Esc back') : row === 'steering' ? t('e edit · d cancel · Enter expand · c copy · ↑/↓ select · Esc back') : t('Enter expand · c copy · Ctrl+C JSON · Ctrl+G editor · ↑/↓ select · / ? search · Esc back') } : mode === 'search-select' ? { keys: t('Enter expand · c copy · Ctrl+C JSON · ↑/↓ or n/N match · / ? new search · Esc end search') } : {}, ...chip === undefined ? {} : { chip } }
+    const base = { ...notice === undefined ? {} : { notice }, ...chip === undefined ? {} : { chip } }
+    if (mode !== 'prompt') {
+      const keys = mode === 'conversation' ? row === 'queued' ? queuedKeys(t) : row === 'steering' ? steeringKeys(t) : conversationKeys(t) : mode === 'search-select' ? searchKeys(t) : undefined
+      return { ...base, ...keys === undefined ? {} : { keys } }
+    }
+    const way = toggle()
+    // With no notice the row teaches: where the history walk stands, the keys of the token under the caret, else where focus can go
+    // from the prompt (up into the conversation, down to the items of the status row), rotating while a turn runs. The way between
+    // conversations takes the place of that last, generic hint; what the prompt awaits is shown before any hint.
+    const hint = recall ?? promptHint ?? (way === undefined ? t(RUNNING_HINTS[running && !hintsOff() ? group : 0]!) : undefined)
+    return { ...base, ...way === undefined ? {} : { toggle: way }, ...notice !== undefined ? {} : { ...promptWait === undefined ? {} : { wait: promptWait }, ...hint === undefined ? {} : { hint } } }
   }
   let shape = JSON.stringify(current() ?? null)
   const pane = ctx.mayflyPanes.register({
@@ -126,6 +188,7 @@ export function mountNotificationPane(ctx: Context, t: MayflyTranslate): void {
   const offLocale = observeTranscriptLocale(ctx, refresh)
   const offLane = interaction?.subscribe(refresh)
   const offAgent = factsService?.subscribeAgent(() => { syncRunning(); refresh() })
+  const offConversations = conversations.subscribe(refresh)
   const offMode = ctx.on('mayfly/focus-mode-changed', (next) => {
     mode = next
     refresh()
@@ -157,6 +220,7 @@ export function mountNotificationPane(ctx: Context, t: MayflyTranslate): void {
     offTick?.()
     offLane?.()
     offAgent?.()
+    offConversations()
     offTail()
     offWait()
     offRow()

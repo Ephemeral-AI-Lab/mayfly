@@ -12,7 +12,7 @@ import { withOverrides, type Overrides } from '../fixture-fields.ts'
 
 const child: ChildSessionFacts = {
   id: '9f5c4086a0674b55b621c3eaf8b88c0e', promptText: 'survey', phase: 'running',
-  tokens: 125, toolCount: 2, liveChars: 2_048, activity: 'Using read', model: 'deepseek-v4', effort: 'high',
+  tokens: 125, inputTokens: 80, outputTokens: 45, toolCount: 2, liveChars: 2_048, activity: 'Using read', model: 'deepseek-v4', effort: 'high',
 }
 
 function member(overrides: Overrides<TranscriptToolItem> = {}): TranscriptToolItem {

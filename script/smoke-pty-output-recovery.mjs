@@ -73,7 +73,8 @@ try {
   await sleep(300)
 
   if (!(await waitFor(() => clean().includes('[cordis:bleed-fixture]'), 'delayed Host console output'))) throw new Error('Host console output')
-  if (!clean().includes('host-bleed-35')) throw new Error('large Host JSON did not reach the raw PTY stream')
+  // The fixture writes its JSON in chunks: wait for the last line rather than the marker that opens it.
+  if (!(await waitFor(() => clean().includes('host-bleed-35'), 'large Host JSON'))) throw new Error('large Host JSON did not reach the raw PTY stream')
 
   await sleep(250)
   const recovered = (await screen()).join('\n')

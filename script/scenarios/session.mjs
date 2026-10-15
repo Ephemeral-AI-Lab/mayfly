@@ -7,6 +7,7 @@
  * @module script/scenarios/session
  */
 
+import { execFileSync } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -21,6 +22,23 @@ const EXTENSIONS = fileURLToPath(new URL('./extensions.mjs', import.meta.url))
 
 /** A workspace path of fixed width: `/tmp/mayfly-scenario-` and eight hex digits. */
 export const WORKSPACE = /\/tmp\/mayfly-scenario-[0-9a-f]{8}/gu
+
+/**
+ * Make `cwd` a git repository on `branch` with one committed file and an uncommitted change of `added` and `deleted` lines,
+ * so the status row shows a branch with its changes. The commit is dated, so a run's repository does not depend on the clock.
+ * @param {string} cwd - the directory to initialise.
+ * @param {{ branch: string, added: number, deleted: number }} change - the branch and the size of the change.
+ */
+function initRepository(cwd, { branch, added, deleted }) {
+  const git = (...args) => execFileSync('git', ['-c', 'user.name=Replay', '-c', 'user.email=replay@example.com', ...args], { cwd, stdio: 'ignore', env: { ...process.env, GIT_AUTHOR_DATE: '2026-01-01T00:00:00Z', GIT_COMMITTER_DATE: '2026-01-01T00:00:00Z' } })
+  const lines = prefix => Array.from({ length: Math.max(added, deleted) + 2 }, (_, index) => `${prefix} ${String(index)}`)
+  git('init', '-q', '-b', branch)
+  writeFileSync(join(cwd, 'hero.css'), `${lines('rule').join('\n')}\n`)
+  git('add', '.')
+  git('commit', '-q', '-m', 'Add the hero styles')
+  const kept = lines('rule').slice(deleted)
+  writeFileSync(join(cwd, 'hero.css'), `${[...kept, ...Array.from({ length: added }, (_, index) => `new ${String(index)}`)].join('\n')}\n`)
+}
 
 /**
  * Start a session.
@@ -40,8 +58,10 @@ export async function prepareSession({ scenario, dir, speed = 1, control, config
   const replay = scenario.source.replay === undefined ? undefined : timelineNamed(scenario.source.replay)
   if (scenario.source.replay !== undefined && replay === undefined) throw new Error(`unknown replay "${scenario.source.replay}"`)
   const tmp = `/tmp/mayfly-scenario-${randomBytes(4).toString('hex')}`
-  const cwd = isolate ? join(tmp, 'workspace') : tmp
+  const base = isolate ? join(tmp, 'workspace') : tmp
+  const cwd = replay?.workspace?.path === undefined ? base : join(base, replay.workspace.path)
   mkdirSync(cwd, { recursive: true })
+  if (replay?.workspace?.git !== undefined) initRepository(cwd, replay.workspace.git)
   rmSync(dir, { recursive: true, force: true })
   mkdirSync(dir, { recursive: true })
   const patch = join(dir, 'overlay.yml')

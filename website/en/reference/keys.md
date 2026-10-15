@@ -9,7 +9,6 @@ In effect unless a capturing panel (a picker, form, or approval in the editor sl
 | Key | Action | Description |
 | --- | --- | --- |
 | `Ctrl-O` | Toggle tool output expansion | Switch the most recent **3 turns** of tool cards and thinking blocks between one-line summary and full output |
-| `Ctrl-T` | Toggle todo pane folding | Five-row folded view ↔ full list |
 | `F6` / `Shift+F6` | Move surface focus | Traverse the Editor, the views of the status bar, and the pane lanes: with a view available `F6` enters the views first, then the interactive panes in layout order; crossing an end returns to the Editor |
 | `F7` | Previous conversation | Switch the complete UI back to the previously displayed conversation (main, BTW, or subagent); show a notice when no other conversation is open |
 | `F8` | Close side conversation | Close the displayed side conversation (from main, the `F7` counterpart): detach a subagent or dispose the temporary BTW Agent |

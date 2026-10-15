@@ -3,6 +3,9 @@
  */
 import type {
   MayflyContentChunk,
+  MayflyShedForm,
+  MayflyShedNode,
+  MayflyStatusNode,
   MayflyContentField,
   MayflyListBodyNode,
   MayflyListBodyStackNode,
@@ -208,6 +211,11 @@ function progress(options: Omit<MayflyProgressNode, 'kind'>): MayflyProgressNode
   return frozen({ ...frozen(options), kind: 'progress' })
 }
 
+/** A status node with narrower forms, given up in rank order while its row does not fit. */
+function shed(node: MayflyStatusNode, narrower: readonly MayflyShedForm[]): MayflyShedNode {
+  return frozen({ kind: 'shed', node, narrower })
+}
+
 function spacer(options: Omit<MayflySpacerNode, 'kind'> = {}): MayflySpacerNode {
   return frozen({ ...frozen(options), kind: 'spacer' })
 }
@@ -258,6 +266,7 @@ export const ui = Object.freeze({
   empty,
   progress,
   spacer,
+  shed,
   divider,
   image,
   prompt,

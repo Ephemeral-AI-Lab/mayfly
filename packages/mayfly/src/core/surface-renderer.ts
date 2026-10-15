@@ -155,7 +155,7 @@ function leadsWithRule(node: MayflyUiNode): boolean {
  * second-to-last child is not another such row. A run of two or more muted
  * rows is pane content (queued messages), not a single trailing affordance, so
  * it declines; so do row stacks, gapped stacks, and conditional/tab-scoped
- * tails. Panes that end in a fold footer (see `transcript/pane-todo.ts`) rely
+ * tails. Panes that end in a fold footer (a fold footer such as the todo panel's) rely
  * on this predicate staying true, so their specs pin it against the real node.
  */
 export function endsWithAffordance(node: MayflyUiNode): boolean {
@@ -349,7 +349,7 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
   const renderPane = (record: PaneRecord): void => {
     const entry = record.entry
     const node = record.interaction.decisionNode ?? record.interaction.node
-    // A views pane is a view of status row 2: the lane sizes its panel and owns Esc, and its events stay its own.
+    // A views pane is a view of the status row: the lane sizes its panel and owns Esc, and its events stay its own.
     const placement = entry.definition.placement
     const lane = placement === 'views' ? runtime.surfaces.views : undefined
     const compiled = compile(node, 'pane', {
@@ -359,13 +359,14 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
       viewport: () => lane === undefined ? paneViewport(entry.id) : lane.viewport(),
       mode: runtime.mode,
       emit: record.interaction.emit.bind(record.interaction),
-      onEscape: () => lane === undefined ? runtime.releaseSurfaceFocus(entry.id) : lane.leave(),
+      // A pending decision answers No first; only a bare Esc leaves the pane or the views.
+      onEscape: () => record.interaction.decisionNode !== undefined ? record.interaction.answerDecision(false) : lane === undefined ? runtime.releaseSurfaceFocus(entry.id) : lane.leave(),
       escapeHint: lane === undefined ? 'leave' : 'close',
       ...(contextHints === undefined ? {} : { contextHints }),
       interactive: true,
       runtime: record.runtime,
       ...counted,
-      // A view's title names its tab, so its panel carries no frame of its own.
+      // A view's panel carries no frame of its own: its item in the status row is its title.
       ...(lane === undefined ? surfaceTitle(entry, record.interaction) : { viewHints: () => lane.hints() }),
     })
     record.renderedRevision = record.interaction.revision
@@ -418,7 +419,6 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
     if (entry.definition.placement === 'views') {
       record.component.view = runtime.surfaces.views.register({
         id: entry.id,
-        ...(entry.definition.title === undefined ? {} : { title: entry.definition.title }),
         ...(entry.definition.priority === undefined ? {} : { priority: entry.definition.priority }),
         summary: entry.summary!, // the service publishes null for a view without one
       })

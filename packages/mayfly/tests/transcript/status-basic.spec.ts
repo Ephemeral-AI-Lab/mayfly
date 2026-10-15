@@ -11,6 +11,7 @@ import { describe, expect, it } from 'vitest'
 import { ReasoningEffortId } from '@deepseek-ai/dsh-llm'
 import type { Session } from '@deepseek-ai/dsh-session'
 import * as basic from '../../src/transcript/status-basic-model.ts'
+import { SHED } from '../../src/transcript/status-shed.ts'
 import { event, userEvent } from './helpers.ts'
 import { asAgent, bootStatusPlugin, COLORS, fakeAgent } from './status-fakes.ts'
 
@@ -99,7 +100,7 @@ describe('mayfly-status-basic-model', () => {
     // A committed `/model` pick updates the projection's `next` view without
     // any request/header event; the row must follow at once.
     harness.setModelSelection(agent.session, { next: { provider: 'deepseek', model: 'switched-model' } })
-    expect(harness.entry.render(80)).toBe('switched-model')
+    expect(harness.entry.render(80)).toBe('deepseek/switched-model')
     await harness.dispose()
   })
 
@@ -107,10 +108,10 @@ describe('mayfly-status-basic-model', () => {
     const agent = fakeAgent([], { model: 'boot-model', headerModel: 'header-model' })
     const harness = await bootStatusPlugin(basic, agent)
     harness.setModelSelection(agent.session, { next: { provider: 'deepseek', model: 'step-5-preview', reasoningEffort: 'max' } })
-    expect(harness.entry.render(80)).toBe('step-5-preview Max')
+    expect(harness.entry.render(80)).toBe('deepseek/step-5-preview Max')
     // An explicit 'off' is a selection too, not the provider default.
     harness.setModelSelection(agent.session, { next: { provider: 'deepseek', model: 'step-5-preview', reasoningEffort: 'off' } })
-    expect(harness.entry.render(80)).toBe('step-5-preview Off')
+    expect(harness.entry.render(80)).toBe('deepseek/step-5-preview Off')
     await harness.dispose()
   })
 
@@ -121,7 +122,7 @@ describe('mayfly-status-basic-model', () => {
     // `/model <id>` commits without an effort; the stale header level must
     // not bleed into the new model's row.
     harness.setModelSelection(agent.session, { next: { provider: 'deepseek', model: 'fresh-model' } })
-    expect(harness.entry.render(80)).toBe('fresh-model')
+    expect(harness.entry.render(80)).toBe('deepseek/fresh-model')
     await harness.dispose()
   })
 
@@ -145,7 +146,7 @@ describe('mayfly-status-basic-model', () => {
       header: { config: { provider: 'deepseek', model: 'event-model', reasoningEffort: ReasoningEffortId('high') } },
       reason: 'change',
     }))
-    expect(entry.render(80)).toBe('event-model High')
+    expect(entry.render(80)).toBe('deepseek/event-model High')
     await dispose()
   })
 
@@ -174,5 +175,18 @@ describe('mayfly-status-basic-model', () => {
     expect(harness.models.list()).toHaveLength(1)
     await harness.dispose()
     expect(harness.models.list()).toHaveLength(0)
+  })
+  it('sheds the provider, then the thinking level, then the model itself, as the row narrows', async () => {
+    const agent = fakeAgent([])
+    const harness = await bootStatusPlugin(basic, agent)
+    harness.setModelSelection(agent.session, { next: { provider: 'deepseek', model: 'deepseek-v4', reasoningEffort: 'high' } })
+    const node = harness.models.list().find(model => model.id === 'mayfly.status.basic')!.node
+    expect(node).toMatchObject({ kind: 'shed' })
+    const forms = (node as unknown as { readonly narrower: readonly { readonly rank: number, readonly node: { readonly content: string } | null }[] }).narrower
+    expect(forms.map(form => [form.rank, form.node === null ? null : form.node.content])).toEqual([[SHED.provider, 'deepseek-v4 High'], [SHED.effort, 'deepseek-v4'], [SHED.model, null]])
+    expect(harness.entry.render(80)).toBe('deepseek/deepseek-v4 High')
+    // The model is the row's anchor: it overflows by truncation and is the last thing given up.
+    expect(harness.models.list().find(model => model.id === 'mayfly.status.basic')!.definition).toMatchObject({ priority: 0, overflow: 'truncate' })
+    await harness.dispose()
   })
 })

@@ -48,9 +48,9 @@ follows from it here; "Carried" names the phase that will design the item (see t
 | D5 Esc during a write | Decided (scenario limitation) | Not a product bug; `phase3-live` no longer presses Esc. The editor refill after an interrupted Write is for the live review. |
 | D6 compaction numbers | Fixed in PR #15 | Replay data: the numbers are corrected. |
 | O1 interrupted tool call | Decided (option A), built; carried to Phase 8 | `⊘` with a short reason for calls that did not run or were aborted; `✗ ... outcome unknown` for `TOOL_OUTCOME_UNKNOWN`. A resume-only `TOOL_NOT_STARTED` without a call name is carried to Phase 8. |
-| O2 long notice cut without `…` | Carried to Phase 5 | Truncation draws `…` and keeps the trailing count or countdown. |
-| O3 percentage without a window | Carried to Phase 5 | Drop the `%` without a window, or correct the round 7 brief. |
-| O4 narrow footer and hints | Carried to Phase 5 | Footer path, search hint row, and decision hints at 40 columns. |
+| O2 long notice cut without `…` | Fixed in Phase 5 (R7) | A lone notice uses the whole row; a longer one is cut at its front with `…` and keeps its tail (`MayflyFeedback.tail`: the countdown and the attempt of a retry). |
+| O3 percentage without a window | Fixed in Phase 5 (R7) | The `%` is dropped when the model advertises no context window (`CompactionBar.labeled`); the bar still moves by the time estimate. |
+| O4 narrow footer and hints | Fixed in Phase 5 (R2, R7) | The footer path is a shortened directory that sheds to its last segment, never `.` (R2); the mode keys of the notification row are parts that shed by priority with `Esc` last (R7); a hint row keeps its labels and sheds its least important part before any part loses its label (R7: `Enter choose · Esc reject` at 40 columns). |
 | O5 glyph and wording | Carried to Phase 8 | One decision for the fold text, `●`, `✗`/`⚠`, `✻`, and the separator. |
 | O6 Markdown table cell words | Carried to Phase 8 | Break at word boundaries, or fall back to a list below a width. |
 | O7 snapshots, goldens, search start | Partly decided; carried to Phase 8 | The owner accepted the red and green status cells. The 7 snapshots and the goldens are accepted at the finalize step with `-u` and `--update`. Search start is carried to Phase 8. |

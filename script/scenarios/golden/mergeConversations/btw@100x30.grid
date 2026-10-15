@@ -1,0 +1,49 @@
+grid 100x30 cursor none
+|
+|  ▾ 1 tool call · 1 subagent · Ctrl+O to expand
+|
+|  ● A reviewer audits the hero in the background while I read the parser.
+|
+|  ✓ Subagent(Audit the hero copy) · 0.6s
+|
+|  ✓ Read(src/parser.ts)
+|
+|  ● Your three messages wait at the end of the stream. Alt+↑ reaches them: e edits, s sends now, d
+|    cancels (u undoes).
+|
+|  ● Rewriting the parser entry point now.
+|
+|  » Update the README once the parser is done
+|
+|  » Keep the public API unchanged
+|
+|  » Then bump the version and tag the release candidate
+|
+|  ● I read your messages: they are prompts in the stream now.
+|
+|  » Does the install section need Windows notes?
+|
+|  ✻ Worked for 0s · done 09:01
+|                                                                               F7 main · F8 close
+|╭───────────────────────────────────────────────────────────────────── Refactor the parser, I will ╮
+|│ >  Continue the side question · @ files · # skills                                               │
+|╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
+| deepseek-official/deepseek-flash High   btw   ~/workspace       cache ▰▰▱▱▱ 42%  ctx ▰▱▱▱▱▱▱▱▱▱ 5%
+styles
+1: 2-46 fg:#9aa3b8
+3: 2-3 fg:#ededf2
+5: 2-3 fg:#4ec87e; 4-11 fg:#ededf2 b; 12 fg:#9aa3b8; 13-31 fg:#c9c0f0; 32-39 fg:#9aa3b8
+7: 2-3 fg:#4ec87e; 4-7 fg:#ededf2 b; 8 fg:#9aa3b8; 9-21 fg:#c9c0f0; 22 fg:#9aa3b8
+9: 2-3 fg:#ededf2
+12: 2-3 fg:#ededf2
+14: 2-3 fg:#9a86e6; 4-44 fg:#9a86e6 b
+16: 2-3 fg:#9a86e6; 4-32 fg:#9a86e6 b
+18: 2-3 fg:#9a86e6; 4-54 fg:#9a86e6 b
+20: 2-3 fg:#ededf2
+22: 2-3 fg:#9a86e6; 4-47 fg:#9a86e6 b
+24: 2-29 fg:#9aa3b8
+25: 79-96 fg:#9aa3b8
+26: 0-70 fg:#45406b; 71-97 fg:#f5f5f7 b; 98-99 fg:#45406b
+27: 0 fg:#45406b; 2-3 fg:#ededf2; 4 r; 5-51 fg:#5c6476; 99 fg:#45406b
+28: 0-99 fg:#45406b
+29: 1-37 fg:#ededf2; 40-44 fg:#9a86e6 b r; 47-57 fg:#9aa3b8; 65-70 fg:#ededf2; 71-72 fg:#e8a838; 73-75 fg:#9aa3b8; 76-79 fg:#ededf2; 82-85 fg:#ededf2; 86 fg:#9a86e6; 87-95 fg:#9aa3b8; 96-98 fg:#ededf2
