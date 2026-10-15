@@ -171,7 +171,7 @@ function phaseOf(mode: ActivityMode): ActivityPhase | undefined {
 
 /**
  * The present-tense label for one mode: the phase, or the calls in flight (their category, or how many). Subagent
- * spawns keep the waiting label because the agents pane owns them.
+ * spawns keep the waiting label because the Agents item owns them.
  */
 function activityLabel(mode: ActivityMode, facts: ConversationFacts, decision: MayflyDecisionWait | undefined): { readonly key: string, readonly values?: { readonly count: number } } {
   if (mode === 'stopping') return { key: STOPPING_LABEL }

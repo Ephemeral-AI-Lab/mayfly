@@ -18,7 +18,7 @@ import { compactElapsedMs } from './agent-presentation.ts'
 import { openTurns, type Disclosure } from './disclosure.ts'
 import { buildDisplay, runningTurnOf, type DisplayItem, type EntryItem, type ProcessTitleItem, type TurnHeaderItem } from './process-groups.ts'
 import { diffStat, elapsedText } from './process-activity.ts'
-import { callsOf, standardRow, verboseRow, type Call, type CallRequests } from './tool-calls.ts'
+import { callsOf, standardRow, verboseRow, type Call, type CallFacts, type SpawnedChildren } from './tool-calls.ts'
 import { kindOf } from './tool-kinds.ts'
 import type { TranscriptPresentationSnapshot } from './presentation-policy.ts'
 import { ellipsize } from './present.ts'
@@ -52,6 +52,8 @@ export interface StreamInputs {
   readonly requests?: readonly MayflyDecisionRequest[]
   /** How each approval put to the user ended, from the session's audit events. */
   readonly approvals?: readonly ApprovalMark[]
+  /** The children the displayed conversation spawned, which a spawn's line follows. */
+  readonly children?: SpawnedChildren
   /** The context occupancy around each recent compaction, for its bar. */
   readonly compactions?: readonly CompactionMark[]
   /** The selected Agent's context window and occupancy, for a compaction whose marks have not landed. */
@@ -199,7 +201,7 @@ export class StreamFacts {
     const lifecycle = new Map((model.turns ?? []).map(turn => [turn.turn, turn]))
     const buckets: { readonly turn: number, readonly rows: StreamRow[] }[] = []
     let lead: StreamRow[] = []
-    const asked = requestOf(inputs.requests, inputs.approvals)
+    const asked = requestOf(inputs.requests, inputs.approvals, inputs.children)
     runsOf(display, inputs.t, inputs.now, asked).forEach((item, position) => {
       const turn = turnOf(item)
       const mapped = this.rowsOf(item, inputs, position, asked).map(row => this.intern(row, kept))
@@ -315,7 +317,7 @@ export class StreamFacts {
     })
   }
 
-  private rowsOf(item: DisplayItem | RunUnit, inputs: StreamInputs, position: number, asked: CallRequests): readonly StreamRow[] {
+  private rowsOf(item: DisplayItem | RunUnit, inputs: StreamInputs, position: number, asked: CallFacts): readonly StreamRow[] {
     if (item.kind === 'run') return [standardRow(item.calls, inputs.t, inputs.now, openedOf(item.calls, inputs.disclosure))]
     if (item.kind === 'turn-header') return [headerRow(item, inputs.t)]
     if (item.kind === 'process-title') return [titleRow(item, inputs.t)]
@@ -342,7 +344,7 @@ function namelessRequestRow(request: MayflyDecisionRequest, total: number, t: Ma
  * so only its call waits; the calls behind it keep running lines until their turn. Its place reads `1 of N` among the
  * requests of its own kind.
  */
-function requestOf(requests: readonly MayflyDecisionRequest[] | undefined, approvals: readonly ApprovalMark[] | undefined): CallRequests {
+function requestOf(requests: readonly MayflyDecisionRequest[] | undefined, approvals: readonly ApprovalMark[] | undefined, children: SpawnedChildren | undefined): CallFacts {
   const first = requests?.[0]
   const decided = new Map<string, 'allowed' | 'rejected'>()
   for (const mark of approvals ?? []) {
@@ -350,9 +352,9 @@ function requestOf(requests: readonly MayflyDecisionRequest[] | undefined, appro
     if (mark.outcome === 'allowed-once') decided.set(mark.callId, 'allowed')
     else if (mark.outcome === 'rejected') decided.set(mark.callId, 'rejected')
   }
-  if (first?.callId === undefined) return { asked: new Map(), decided }
+  if (first?.callId === undefined) return { asked: new Map(), decided, ...children === undefined ? {} : { children } }
   const total = requests!.filter(request => request.type === first.type).length
-  return { asked: new Map([[first.callId, { type: first.type, index: 1, total, ...(first.reason === undefined ? {} : { reason: first.reason }) }]]), decided }
+  return { asked: new Map([[first.callId, { type: first.type, index: 1, total, ...(first.reason === undefined ? {} : { reason: first.reason }) }]]), decided, ...children === undefined ? {} : { children } }
 }
 
 /** What a row stands for: a run, all its calls; any other row, itself (a row's id is its entry's, or its call's). */
@@ -456,7 +458,7 @@ function isUnmerged(entry: TranscriptEntryModel): boolean {
  * entries they came in, are one block. Anything else (a reasoning, an answer, a file change, a header) ends the run, and
  * a call that still runs is a line of its own and ends it.
  */
-function runsOf(display: readonly DisplayItem[], t: MayflyTranslate, now: number, asked: CallRequests): readonly (DisplayItem | RunUnit)[] {
+function runsOf(display: readonly DisplayItem[], t: MayflyTranslate, now: number, asked: CallFacts): readonly (DisplayItem | RunUnit)[] {
   const units: (DisplayItem | RunUnit)[] = []
   let run: { turn: number, calls: Call[] } | undefined
   const flush = (): void => {
@@ -486,7 +488,7 @@ function runsOf(display: readonly DisplayItem[], t: MayflyTranslate, now: number
 }
 
 /** The rows of one entry: none for an empty one, one per call for a tool, group, or run of calls drawn as verbose blocks. */
-function entryRows(item: EntryItem, entry: TranscriptEntryModel, inputs: StreamInputs, asked: CallRequests): readonly StreamRow[] {
+function entryRows(item: EntryItem, entry: TranscriptEntryModel, inputs: StreamInputs, asked: CallFacts): readonly StreamRow[] {
   if (isToolLike(entry)) {
     // At the compact level a call in flight is its line alone, and one that waits on the user stays open; what has settled is the title's.
     const calls = callsOf(entry, inputs.t, inputs.now, asked)

@@ -24,8 +24,8 @@ export const name = 'mayfly-status-goal'
 /** Native and Mayfly services required by the view. */
 export const inject = ['mayflyPanes', 'mayflyCurrentAgent', 'mayflyScreen', 'mayflySessionFacts', 'mayflyTick', 'goals']
 
-/** The goal view's place in the status row: after the model, the chips, the directory, git, and jobs; before todo. */
-const VIEW_PRIORITY = 12
+/** The goal view's place in the status row: after the model, the chips, the directory, git, agents, and jobs; before todo. */
+const VIEW_PRIORITY = 13
 
 /** How long the finished goal's item stays before it leaves. */
 export const GOAL_DONE_LINGER_MS = 5000

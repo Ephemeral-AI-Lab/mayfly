@@ -1097,7 +1097,7 @@ pane too (§3.3).
 
 | View | Summary | Panel |
 | --- | --- | --- |
-| Agents | `Agents 5 ● 1 waiting` | a windowed list, `Enter` opens that agent's conversation (§5.5) |
+| Agents | `● agents 1/3 41s` (`✓` when all settled, `✕` when one failed; stays for the conversation) | a list with a cursor, one line per subagent of the conversation, completed ones included; `Enter` opens that agent's conversation, `x` stops it (§5.5) |
 | Jobs | `⏵ 3 jobs` | the same list; `Enter` opens the job's output |
 | Goal | `● goal 2/8 1m 59s` (`○` disarmed, `⏸` paused, `✕` blocked) | the goal's objective and its keys (§5.4) |
 | Todo | `● todo 2/12 4m 12s` | the todo list (§5.4) |
@@ -1115,7 +1115,7 @@ todo no longer appear in the conversation stream; they live here, so the stream 
    and its time (`● todo 2/12 4m 12s`); the time is the first thing the row sheds. Nothing else is in it: the words of the
    item (the current todo, the goal's objective) are the panel's. The items sit in the status row in a fixed relative order
    (priority). An item with nothing to show is absent.
-2. **Entering.** The row does not change when a view is entered: a heavy `━` line is drawn under the words of the active
+2. **Entering.** The row does not change when a view is entered: a heavy `━` line in the theme's primary color is drawn under the words of the active
    item (a small bottom line, not a background shade) and the panel opens under it, so there is no second look for the
    same row (no tab strip).
 3. **Expanded.** The panel is the item's content only: no heading, no count, no time (the cell has them). It has one
@@ -1123,7 +1123,7 @@ todo no longer appear in the conversation stream; they live here, so the stream 
    remain below the window its last row counts them (`↓ 6 more`, following the scroll, content again at the end). It adds
    no chord of its own: the lane's `↑/↓`, `←/→`, and `Esc` (no `Ctrl+E`, no `Ctrl+T`); an item's own commands are single
    letters (`r` resume, `e` edit), named in the hint row, never buttons.
-4. **History.** Finished items (completed todos, settled jobs and agents) are not listed unless the `viewHistory`
+4. **History.** Finished items (completed todos, settled jobs; not agents, §5.5) are not listed unless the `viewHistory`
    setting is on; the default shows only what is live.
 5. **Timer.** The time is in the item and runs while it works (an armed goal, an unfinished list); when it finishes, it
    holds `✓ todo 6/6 4m 12s` for five seconds and the item leaves.
@@ -1358,30 +1358,41 @@ The queue is not a view: queued messages are the editor's truncated line (§5.2)
 
 ### 5.5 Agents and jobs views
 
-**Built from:** `surface` (`none`), `tabs`, `list` (windowed), `actions` (hidden `delete`). Scene: Status area.
+**Built from:** `surface` (`none`), `list` (windowed), `actions` (hidden `delete` and `b`). Scene: Status area.
 
-Agents and jobs are the first two views of the status row (§5.1). Idle, each shows its count and, for the live ones, a
-`● 1 waiting` or `⏵ 2 running` tail, never names. `Alt+↓` opens the panel on that view:
+Agents and jobs are items of the status row (§5.1). **Agents is the one item that keeps its finished members**: a
+completed subagent is part of the conversation, not history, so the item and its panel keep every subagent of the
+conversation until a new conversation starts (rules 4 and 5 of §5.1 do not apply to it; `viewHistory` has no effect on
+it). Its members are the parent's spawn calls, so a subagent shows from the moment its call starts, however short it
+lives. The item reads `● agents 1/3 41s` while any works (settled over all, and how long the oldest working one has run),
+and `✓ agents 3/3 41s` (the longest that ran; `✕` when one failed) when all have settled. `Alt+↓` opens its panel under
+the row, a list of every subagent with a cursor (the one panel that is not a plain scroll, because a row has to be chosen):
 
 ```
-Agents 5   Jobs 3   Goal   Todo 2/6
-━━━━━━━━
-→ ● review   Audit facts projection     41s · 6 tools · ↓6.4k
-  ● plan     Draft migration plan       waiting · reply needed
-  ✓ explore  Map transcript files       12s · 8 tools
-  ✓ lint     Sweep oxlint findings      9s · 3 tools
-   ↑ 0 more · ↓ 1 more
-  ←/→ tabs · Enter open · x stop · Esc back
+  ● review   Audit facts projection            bg · 41s · 6 tools · ↓6.4k
+  ● explore  Map transcript files              fg · 12s · 8 tools
+  ✓ plan     Draft migration plan              bg · 12s · 2 tools
+  ✕ lint     Sweep oxlint findings   failed · fg · 9s · 3 tools
+  ↑/↓ select · Enter open · x stop · b background · Esc back
 ```
 
-- **Keys:** `←`/`→` switch views; `↑`/`↓` select; `Enter` on an agent opens its conversation (`F7` returns) and on a
-  job its output; `x` is the common `delete` meaning (§3.5), so it **stops** the agent or job behind the shared
-  Yes/No with No focused first (no Stop button); `Esc` leaves one layer. Live entries come first, and
-  `↑ n more · ↓ n more` counts the rest.
+- **Foreground and background.** A **foreground** subagent is a spawn call still without its result: it blocks the turn
+  that spawned it. A **background** one carries its `started subagent` acknowledgement (or `run_in_background`) and does
+  not. Each row says which (`fg`, `bg`). `b` would move the chosen foreground one to the background; dsh has no call that
+  ends a running foreground call early, so `b` is listed and says why it is unavailable until dsh offers one.
+- **Failed and stopped.** A subagent that failed on its own reads `✕ … failed` (and turns the item `✕`); one the user stopped (an interrupt, an abort, or `x` in the panel) reads `⊘ … stopped` and is no failure. The stream's spawn line says the same (`✕ … failed`, `⊘ … stopped`).
+- **Own subagents only.** The item lists the subagents the displayed conversation spawned itself. A `/btw` side conversation or a subagent conversation inherits its parent's log, but not its subagents: it has no Agents item unless it spawns its own, and never shows the main conversation's.
+- **Rows.** The mark, the agent's name, its task, then `fg`/`bg`, its time, tool count, and streamed output. Live
+  subagents first, then the finished ones, each in spawn order. There is no `waiting` state: a fresh child reads running.
+- **Keys.** `↑`/`↓` choose, `Enter` opens that child's conversation exactly as `/agents` does (the access, interactive,
+  resumable, or read-only, comes from the child; `F7` returns), `x` is the common `delete` meaning (§3.5): it **stops**
+  a continuable child behind the shared Yes/No with No focused first (no Stop button), through the one stop `/agents` uses.
+  A row that cannot take a key says why in place of it. `Esc` leaves one layer.
+- **The spawn line.** In the stream, a spawn whose child still runs reads `● Subagent(task) · running in background`, and
+  follows the child: `✓ … · 41s` when it settles, `✕ … · failed` when it fails.
 - **Conversation keys.** `F7 btw · F8 close` (or `detach`) sit at the right of the notification pane (in place of its idle hint) whenever two or more
   conversations exist, and the conversation chip in the status row names the displayed one (§3.3).
-- **Motion.** The views have no clock (the activity row already animates). A fan-out staggers 300 ms per row once,
-  and a row flashes once when its own numbers change.
+- **Motion.** The item has no clock of its own beyond the shared one-second tick that runs the times.
 
 ### 5.6 Transcript
 

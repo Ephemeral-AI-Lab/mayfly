@@ -15,6 +15,7 @@ import { openUiOverlay } from './ui-overlay.ts'
 import { formatTokens } from './usage.ts'
 import { compactElapsedMs } from '../transcript/agent-presentation.ts'
 import { outputCounter } from '../transcript/output-rate.ts'
+import { stopBlockedReason, stopSubagent, describe, type AgentStopResult } from './agents-stop.ts'
 import { conversationId } from '../app/conversation-views.ts'
 
 /** Stable Cordis plugin name. */
@@ -97,46 +98,6 @@ export function agentTreeItems(entries: readonly MayflySubagentTreeEntry[], now 
   })
 }
 
-/** Count live Agent descendants whose teardown would follow the selected root. */
-export function liveAgentDescendantCount(
-  entries: readonly SubagentDescendantListEntry[],
-  rootId: string,
-  isLive: (entry: Extract<SubagentDescendantListEntry, { readonly kind: 'child' }>) => boolean,
-): number {
-  const byId = new Map(entries.map(entry => [String(entry.id), entry]))
-  let count = 0
-  for (const entry of entries) {
-    if (entry.kind !== 'child' || !isLive(entry) || String(entry.id) === rootId) continue
-    let parentId = String(entry.parentId)
-    const seen = new Set<string>()
-    while (!seen.has(parentId)) {
-      if (parentId === rootId) {
-        count += 1
-        break
-      }
-      seen.add(parentId)
-      const parent = byId.get(parentId)
-      if (parent === undefined) break
-      parentId = String(parent.parentId)
-    }
-  }
-  return count
-}
-
-function descendantStopError(entry: SubagentDescendantListEntry, count: number): AgentCommandResult | undefined {
-  if (count === 0) return undefined
-  return {
-    kind: 'error',
-    text: `subagent ${String(entry.id)} owns ${String(count)} live descendant${count === 1 ? '' : 's'}; stop its live descendants first`,
-  }
-}
-
-function describe(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
-}
-
-type AgentCommandResult = Readonly<{ kind: 'success' | 'error', text: string }>
-
 function withLiveMetrics(
   ctx: Context,
   entries: readonly SubagentDescendantListEntry[],
@@ -190,44 +151,7 @@ export function apply(ctx: Context): void {
   ctx.on('workflow/agent-start', (_info, agent) => { rememberWorkflowLabel(agent) })
   ctx.on('workflow/agent-end', (_info, agent) => { rememberWorkflowLabel(agent) })
 
-  const stopEntry = async (entryId: string, signal: AbortSignal): Promise<AgentCommandResult> => {
-    const primary = ctx.mayflyCurrentAgent.primary()
-    if (primary === null) return { kind: 'error', text: t('no session is live yet') }
-    let latest: readonly SubagentDescendantListEntry[]
-    try {
-      latest = await ctx.subagents.listDescendants(primary.id, signal)
-    } catch (error) {
-      return { kind: 'error', text: describe(error) }
-    }
-    if (unloaded || ctx.mayflyCurrentAgent.primary() !== primary) {
-      return { kind: 'error', text: `subagent ${entryId} stop request is stale` }
-    }
-    const current = latest.find(candidate => candidate.kind === 'child' && String(candidate.id) === entryId)
-    if (current?.kind !== 'child') return { kind: 'error', text: `unknown subagent: ${entryId}` }
-    if (current.mode !== 'continuable') {
-      return { kind: 'error', text: `subagent ${String(current.id)} is not continuable` }
-    }
-    const descendantError = descendantStopError(current, liveAgentDescendantCount(
-      latest,
-      String(current.id),
-      candidate => ctx.agents.get(candidate.id) !== undefined,
-    ))
-    if (descendantError !== undefined) return descendantError
-    if (ctx.agents.get(current.id) === undefined) {
-      return { kind: 'error', text: `subagent ${String(current.id)} is not live; there is no running Agent to stop` }
-    }
-    const directParent = ctx.agents.get(current.parentId)
-    if (directParent === undefined) {
-      return { kind: 'error', text: `cannot stop subagent ${String(current.id)}: its direct parent is not live` }
-    }
-    ctx.mayflyConversations.close(conversationId(String(current.id)))
-    try {
-      await ctx.subagents.drainContinuableChildren(directParent, [current.id])
-      return { kind: 'success', text: `stopped subagent ${String(current.id)}` }
-    } catch (error) {
-      return { kind: 'error', text: `could not stop subagent ${String(current.id)}: ${describe(error)}` }
-    }
-  }
+  const stopEntry = (entryId: string, signal: AbortSignal): Promise<AgentStopResult> => stopSubagent(ctx, entryId, signal, t, () => unloaded)
 
   async function showAgents(signal: AbortSignal): Promise<CommandResult> {
     if (ctx.get('mayflyOverlays') === undefined) return { kind: 'error', text: t('agents panel is unavailable: the Mayfly screen is not mounted') }
@@ -263,14 +187,7 @@ export function apply(ctx: Context): void {
     disposers.push(ctx.mayflyCurrentAgent.subscribe(next => {
       if (next !== parent) close()
     }))
-    /* Mirrors stopEntry's native checks so Stop explains itself per row. */
-    const stopBlocked = (entry: Extract<MayflySubagentTreeEntry, { readonly kind: 'child' }>): string | undefined => {
-      if (entry.mode !== 'continuable') return t('Only continuable subagents can be stopped')
-      if (ctx.agents.get(entry.id) === undefined) return t('Not live; there is nothing to stop')
-      return liveAgentDescendantCount(entries, String(entry.id), candidate => ctx.agents.get(candidate.id) !== undefined) > 0
-        ? t('Stop its live descendants first')
-        : undefined
-    }
+    const stopBlocked = (entry: Extract<MayflySubagentTreeEntry, { readonly kind: 'child' }>): string | undefined => stopBlockedReason(ctx, t, entries, entry)
     const view = () => ui.surface({ title: t('Subagents'), chrome: 'overlay', child: ui.stack.column([
       ui.list({ id: 'subagents', role: 'browse', tree: true, selectedIds: [], filterable: true, items: agentTreeItems(entries, Date.now(), stopBlocked) }),
       ui.actions({ id: 'subagent-actions', items: [

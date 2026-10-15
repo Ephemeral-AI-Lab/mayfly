@@ -264,6 +264,8 @@ export interface ConversationFacts {
   readonly approvals?: readonly ApprovalMark[] | undefined
   /** Terminal outcome of the latest run. */
   readonly runOutcome?: 'completed' | 'failed' | undefined
+  /** The run ended because it was stopped (aborted or interrupted), not because it failed on its own. */
+  readonly runStopped?: boolean | undefined
   /** Envelope timestamp of the latest terminal outcome. */
   readonly endedAt?: number | undefined
   readonly agentCalls: readonly ConversationAgentCall[]

@@ -8,7 +8,7 @@
  */
 
 import type { Context } from '@deepseek-ai/cordis'
-import { ui, type MayflyInlineSpan, type MayflyRichTextNode, type MayflyStatusNode, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
+import { ui, type MayflyInlineSpan, type MayflyListItem, type MayflyRichTextNode, type MayflyStatusNode, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import { compactElapsedMs } from './agent-presentation.ts'
 import { SHED, shedNode } from './status-shed.ts'
 
@@ -46,6 +46,19 @@ export function itemSummary(mark: MayflyInlineSpan, label: string, done: number,
 export function viewPanel(id: string, rows: readonly MayflyUiNode[], actions?: MayflyUiNode): MayflyUiNode {
   const scroll = ui.scroll(ui.stack.column(rows), { id, height: VIEW_PANEL_ROWS, expandable: false, more: true, scrollbar: rows.length > VIEW_PANEL_ROWS })
   return actions === undefined ? scroll : ui.stack.column([scroll, actions])
+}
+
+/**
+ * The expanded panel of an item whose rows can be chosen (agents, jobs): the rows in a list of {@link VIEW_PANEL_ROWS}
+ * that holds a cursor (`↑/↓` select, `Enter` opens) and counts the rows above and below, with the item's keys beside it.
+ * It is the one place a panel is not a plain scroll, since a row has to be chosen.
+ * @param id - the list's id.
+ * @param items - the rows.
+ * @param actions - the item's keys (a hidden `actions` node), which may act on the selected row.
+ * @returns the panel node.
+ */
+export function viewList(id: string, items: readonly MayflyListItem[], actions: MayflyUiNode): MayflyUiNode {
+  return ui.stack.column([ui.list({ id, role: 'browse', items, maxRows: VIEW_PANEL_ROWS, acceptVerb: 'open', autofocus: true }), actions])
 }
 
 /**

@@ -103,14 +103,26 @@ export interface Call {
   readonly file?: { readonly stat: ToolStat, readonly statInLine: boolean, readonly content: () => ChangeBody }
   /** A plan that was under review, once the user has decided it: its Markdown, which Ctrl+O opens again. */
   readonly plan?: string
+  /** A subagent spawn: how its child is found among the children (the id its acknowledgement names, the prompt it was given). */
+  readonly spawn?: { readonly childId?: string, readonly prompt?: string }
   /** A call that waits on the user's decision: what the request shows under its line (the command, the asker's reason, a warning), or the plan under review. */
   readonly waiting?: { readonly rows: readonly ToolBodyRow[], readonly markdown?: string }
 }
 
-/** What the user was asked about calls: the request on the card, and how each approval ended, by call id. */
-export interface CallRequests {
+/** How a subagent the stream spawned stands: still working, or settled (`endedAt` and whether it failed). */
+export type SpawnedChild = { readonly state: 'running' } | { readonly state: 'settled', readonly failed: boolean, readonly stopped?: boolean, readonly endedAt?: number }
+
+/** The children of the displayed conversation, by their session id and by the prompt they were given (a spawn finds its child by either). */
+export interface SpawnedChildren {
+  readonly byId: ReadonlyMap<string, SpawnedChild>
+  readonly byPrompt: ReadonlyMap<string, SpawnedChild>
+}
+
+/** What the stream knows about calls beyond the model: what the user was asked and how each approval ended, by call id, and the children spawned. */
+export interface CallFacts {
   readonly asked: ReadonlyMap<string, CallRequest>
   readonly decided: ReadonlyMap<string, 'allowed' | 'rejected'>
+  readonly children?: SpawnedChildren
 }
 
 /** The request that waits on the user about a call: its place in the queue and what the asker said. */
@@ -463,6 +475,7 @@ function loneCall(entry: ToolEntry, t: MayflyTranslate): Call {
     outcome,
     startedAt: entry.startedAt,
     ...(entry.result === undefined ? {} : { endedAt: entry.result.endedAt }),
+    ...(entry.activity === 'subagents' ? { spawn: spawnOf(entry) } : {}),
     // A command on one line is its line; the rows under a call are the lines the line cannot carry.
     ...(planText === undefined || planText.trim() === '' ? {} : { plan: sanitizePluginText(planText) }),
     input: () => further.total > 1 ? further : NO_ROWS,
@@ -479,6 +492,37 @@ function loneCall(entry: ToolEntry, t: MayflyTranslate): Call {
       }
       return headOf(text, OPEN_BODY_ROWS)
     },
+  }
+}
+
+/** What finds a spawn's child: the id its acknowledgement names, and the prompt it was given. */
+function spawnOf(entry: ToolEntry): NonNullable<Call['spawn']> {
+  const childId = /started subagent ([\w-]+)/u.exec(entry.result?.text ?? '')?.[1]
+  const prompt = partialStrings(entry.arguments).fields['prompt']
+  return { ...(childId === undefined ? {} : { childId }), ...(prompt === undefined ? {} : { prompt }) }
+}
+
+/**
+ * A spawn whose child is known reads as the child does: a child still working keeps the call pending (`running in
+ * background`, with the time so far), a child that settled gives the call its own time and, when it failed, its failure.
+ * The acknowledgement of a background spawn lands within milliseconds, so the call alone would read finished at once.
+ */
+function whileSpawned(call: Call, children: SpawnedChildren | undefined, t: MayflyTranslate, now: number): Call {
+  if (call.spawn === undefined || children === undefined || call.state !== 'ok' && call.state !== 'pending') return call
+  const child = (call.spawn.childId === undefined ? undefined : children.byId.get(call.spawn.childId))
+    ?? (call.spawn.prompt === undefined ? undefined : children.byPrompt.get(call.spawn.prompt))
+  if (child === undefined) return call
+  const { endedAt: _ended, ...open } = call
+  if (child.state === 'running') {
+    return { ...open, state: 'pending', phase: 'running', outcome: [t('running in background'), pendingElapsed(Math.max(0, now - call.startedAt))] }
+  }
+  const endedAt = child.endedAt ?? call.endedAt
+  return {
+    ...open,
+    state: child.stopped === true ? 'cancelled' : child.failed ? 'error' : 'ok',
+    phase: 'settled',
+    outcome: [child.stopped === true ? t('stopped') : child.failed ? t('failed') : undefined, took(call.startedAt, endedAt)],
+    ...(endedAt === undefined ? {} : { endedAt }),
   }
 }
 
@@ -504,10 +548,10 @@ function whilePending(call: Call, now: number): Call {
  * @param entry - a tool or a group of read, search, or command calls.
  * @param t - translator for the transcript namespace.
  * @param now - the time, which a pending call measures its own against.
- * @param requests - the request that waits on the user and the approvals decided, by the id of the call they are about.
+ * @param requests - the request that waits on the user and the approvals decided, by the id of the call they are about, and the children the spawns started.
  * @returns the calls.
  */
-export function callsOf(entry: TranscriptEntryModel, t: MayflyTranslate, now: number, requests?: CallRequests): readonly Call[] {
+export function callsOf(entry: TranscriptEntryModel, t: MayflyTranslate, now: number, requests?: CallFacts): readonly Call[] {
   const calls: Call[] = []
   switch (entry.kind) {
     case 'transcript-read-group': for (const call of entry.reads) calls.push(readCall(entry.id, call, t)); break
@@ -521,7 +565,7 @@ export function callsOf(entry: TranscriptEntryModel, t: MayflyTranslate, now: nu
   return calls.map((call) => {
     const request = call.state === 'pending' && call.phase === 'running' ? requests?.asked.get(call.callId) : undefined
     if (request !== undefined) return awaiting(call, request, entry, t)
-    return decided(whilePending(call, now), requests?.decided.get(call.callId), t)
+    return decided(whileSpawned(whilePending(call, now), requests?.children, t, now), requests?.decided.get(call.callId), t)
   })
 }
 

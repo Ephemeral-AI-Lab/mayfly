@@ -44,7 +44,7 @@ function toolResult(callId: string, content: unknown[] | null, isError = false):
 
 describe('mayflyConversationFacts projection', () => {
   it('invalidates checkpoints after the turn-start anchor, activity detail, and compaction metering are added', () => {
-    expect(conversationFactsProjectionDefinition.stateVersion).toBe(10)
+    expect(conversationFactsProjectionDefinition.stateVersion).toBe(11)
   })
 
   it('records the turn start and the running action detail for the activity row', () => {

@@ -21,6 +21,7 @@ import type { CopyMode } from './row-text.ts'
 import { findHits, readPattern, type SearchPattern, type SearchResult } from './search.ts'
 import { StreamFacts } from './stream-facts.ts'
 import type { TickSource } from './tick.ts'
+import type { SpawnedChildren } from './tool-calls.ts'
 import {
   DEFAULT_TRANSCRIPT_PRESENTATION,
   type TranscriptPresentationPolicy,
@@ -43,7 +44,7 @@ export interface TranscriptControllerOptions {
   /** The clock a call that is in flight keeps its time by; absent, the stream's time only moves when it is published. */
   readonly tick?: TickSource
   /** The selected Agent's context window and occupancy and the marks around each recent compaction; read on every publish. */
-  readonly context?: () => { readonly marks?: readonly CompactionMark[] | undefined, readonly window?: number | undefined, readonly tokens?: number | undefined, readonly approvals?: readonly ApprovalMark[] | undefined } | undefined
+  readonly context?: () => { readonly marks?: readonly CompactionMark[] | undefined, readonly window?: number | undefined, readonly tokens?: number | undefined, readonly approvals?: readonly ApprovalMark[] | undefined, readonly children?: SpawnedChildren | undefined } | undefined
   /** Where the references of the images the stream shows are kept for the byte loader. */
   readonly imageRefs?: Map<string, { readonly attachmentId: string, readonly mediaType: string }>
   /** What `c` and `Ctrl+G` do with the row under the cursor. */
@@ -465,7 +466,7 @@ export class TranscriptController {
     search.line.set(this.searchStatus(search))
   }
 
-  private compactionInputs(): { readonly compactions?: readonly CompactionMark[], readonly contextWindow?: number, readonly contextTokens?: number, readonly approvals?: readonly ApprovalMark[] } {
+  private compactionInputs(): { readonly compactions?: readonly CompactionMark[], readonly contextWindow?: number, readonly contextTokens?: number, readonly approvals?: readonly ApprovalMark[], readonly children?: SpawnedChildren } {
     const context = this.options.context?.()
     if (context === undefined) return {}
     return {
@@ -473,6 +474,7 @@ export class TranscriptController {
       ...context.window === undefined ? {} : { contextWindow: context.window },
       ...context.tokens === undefined ? {} : { contextTokens: context.tokens },
       ...context.approvals === undefined ? {} : { approvals: context.approvals },
+      ...context.children === undefined ? {} : { children: context.children },
     }
   }
 

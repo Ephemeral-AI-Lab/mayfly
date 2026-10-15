@@ -322,7 +322,9 @@ export class ViewsLane implements MayflyViewsSource {
   handleInput(data: string): void {
     const active = this.entered ? this.activeView() : undefined
     if (active === undefined) return
-    const editing = active.focusTarget!.captureFocusIdentity?.()?.editing === true
+    // A field being edited and a Yes/No being answered both keep `←/→` for themselves.
+    const focus = active.focusTarget!.captureFocusIdentity?.()
+    const editing = focus?.editing === true || focus?.controlId.startsWith('mayfly.decision.') === true
     const keymap = this.host?.keymap
     if (!editing && matchesKeyAction(keymap, data, ACTION_SEGMENT_LEFT)) { this.switchView(-1); return }
     if (!editing && matchesKeyAction(keymap, data, ACTION_SEGMENT_RIGHT)) { this.switchView(1); return }

@@ -15,9 +15,11 @@
 
 import { randomBytes } from 'node:crypto'
 import { appendFileSync, readFileSync } from 'node:fs'
+import { createRequire } from 'node:module'
 import { createConnection } from 'node:net'
 import { dirname, join } from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
+import { pathToFileURL } from 'node:url'
 
 export const name = 'mayfly-replay-driver'
 export const inject = ['mayflyCurrentAgent', 'sessions']
@@ -379,10 +381,15 @@ export function apply(ctx) {
             if (agents === undefined || conversations === undefined || presets === undefined || defaultModel === undefined) { log('no side conversation services'); break }
             const selected = main.requestHeader()?.config ?? defaultModel.currentSelection()
             const preset = main.header.agentPreset
+            // Like `/btw`: the side conversation inherits the main log, so its facts carry the main's calls too.
+            const { buildForkSeed, SessionLogOffset } = await import(pathToFileURL(createRequire(new URL('../../packages/mayfly/package.json', import.meta.url)).resolve('@deepseek-ai/dsh-session')).href)
+            const inherited = main.snapshotEvents()
+            const lastSeq = inherited.at(-1)?.seq
             const handle = await agents.create({
               sessionId: `btw-replay-${runTag}`,
-              meta: { cwd: main.header.cwd ?? process.cwd(), parentSession: agent.id },
-              seed: [],
+              meta: { cwd: main.header.cwd ?? process.cwd(), parentSession: agent.id, ...(inherited.length === 0 ? {} : { isSeeded: true }) },
+              ...(inherited.length === 0 ? {} : { inheritedEventCount: SessionLogOffset(inherited.length) }),
+              seed: lastSeq === undefined ? [] : buildForkSeed(inherited, lastSeq),
               signal: abort.signal,
               agentOptions: { provider: selected.provider, model: selected.model, ...(selected.reasoningEffort === undefined ? {} : { reasoningEffort: selected.reasoningEffort }) },
               setup: async agentCtx => { await presets.mount(agentCtx, preset) },

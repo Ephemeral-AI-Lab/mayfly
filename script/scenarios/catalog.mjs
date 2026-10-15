@@ -32,7 +32,7 @@ const REQUEST = [
 /** What the phase3 session shows: every source of its states (tools, edits, prompts, plan, compaction, notices, jobs, queue, search). */
 const PHASE3_COVERS = [...new Set([
   `${TRANSCRIPT}tool-*.ts`, `${TRANSCRIPT}process-*.ts`, `${TRANSCRIPT}presentation-policy.ts`, `${TRANSCRIPT}official-model.ts`, 'packages/mayfly/src/frontend/models.ts',
-  `${TRANSCRIPT}pane-activity.ts`, `${TRANSCRIPT}transcript-model.ts`, `${TRANSCRIPT}status-goal.ts`, `${TRANSCRIPT}status-jobs.ts`, `${TRANSCRIPT}pane-agents.ts`, `${TRANSCRIPT}child-agent-model.ts`,
+  `${TRANSCRIPT}pane-activity.ts`, `${TRANSCRIPT}transcript-model.ts`, `${TRANSCRIPT}status-goal.ts`, `${TRANSCRIPT}status-jobs.ts`, `${TRANSCRIPT}status-agents.ts`, `${TRANSCRIPT}child-agent-model.ts`,
   `${INTERACTION}pane-queue.ts`, `${INTERACTION}btw-command.ts`, `${INTERACTION}approval-plugin.ts`, `${INTERACTION}questions-plugin.ts`, `${INTERACTION}plan-review-panel.ts`, `${INTERACTION}jobs.ts`, `${INTERACTION}trace-*.ts`,
   ...STREAM, ...COMPACTION, ...NOTIFICATION, ...REQUEST,
 ])]
@@ -63,8 +63,9 @@ const COVERS = {
   compactionNoWindow: [...COMPACTION],
   manualCompact: [...COMPACTION],
   context: [`${TRANSCRIPT}status-context.ts`, `${TRANSCRIPT}notices.ts`, ...COMPACTION],
-  subagents: [`${TRANSCRIPT}pane-agents.ts`, `${TRANSCRIPT}child-agent-model.ts`],
-  childStream: [`${TRANSCRIPT}pane-agents.ts`, `${INTERACTION}agents-command.ts`],
+  subagents: [`${TRANSCRIPT}status-agents.ts`, `${TRANSCRIPT}child-agent-model.ts`],
+  childStream: [`${TRANSCRIPT}status-agents.ts`, `${INTERACTION}agents-command.ts`, `${INTERACTION}agents-stop.ts`],
+  viewsAgents: [`${TRANSCRIPT}status-agents.ts`, `${TRANSCRIPT}view-items.ts`, `${TRANSCRIPT}child-agent-model.ts`, `${TRANSCRIPT}tool-calls.ts`, `${TRANSCRIPT}stream-facts.ts`, `${TRANSCRIPT}status-rows.ts`, `${INTERACTION}agents-command.ts`, `${INTERACTION}agents-stop.ts`, 'packages/mayfly/src/core/views-lane.ts', 'packages/mayfly/src/app/conversation-views.ts', ...STREAM],
   approvals: [`${INTERACTION}approval-plugin.ts`, `${INTERACTION}permission-panel.ts`, ...REQUEST],
   approvalsRejected: [`${INTERACTION}approval-plugin.ts`, ...REQUEST],
   approvalsEdit: [`${INTERACTION}approval-plugin.ts`, ...REQUEST, 'packages/mayfly/src/core/content-rows.ts'],
@@ -846,6 +847,38 @@ const SCRIPTS = {
     play('job'), checkpoint('job'),
     play('settled'), checkpoint('settled'),
   ],
+  // The Agents item through one conversation: a foreground subagent holding its turn beside two background ones (`● agents 2/3`, the `fg`/`bg`
+  // tags, the stream's spawn lines that follow their children), a failing foreground one, `Alt+↓` into the panel, `b` on a working foreground row (it says
+  // why it cannot), `Enter` into a child (`F7` back), `x` behind the Yes/No (No first, then Yes), the item staying with `✓ agents 4/4` and the completed
+  // ones listed, a second group, 52 and 36 columns with a view entered at 52, and a /btw side question (`F7` returns).
+  viewsAgents: [
+    play('foreground'), checkpoint('foreground'),
+    key('alt+down'), key('home'), key('down'), key('down'), checkpoint('view-foreground'),
+    key('b'), checkpoint('b-unavailable'), key('esc'),
+    play('spawned'), checkpoint('spawned'),
+    play('lint'), checkpoint('lint'),
+    play('working'), checkpoint('working'),
+    key('alt+down'), key('home'), checkpoint('view'),
+    key('down'), checkpoint('view-settled-row'),
+    key('enter'), checkpoint('finished-open'), key('f7'),
+    key('alt+down'), key('home'), key('enter'), checkpoint('child-open'),
+    key('f7'), checkpoint('child-back'),
+    key('alt+down'), key('home'), key('x'), checkpoint('stop-confirm'),
+    key('esc'), checkpoint('stop-declined'),
+    key('esc'),
+    play('settled'), checkpoint('settled'),
+    key('alt+down'), key('home'), checkpoint('view-settled'), key('esc'),
+    play('second-group'), checkpoint('second-group'),
+    key('alt+down'), key('home'), key('x'), checkpoint('stop-confirm-2'), key('right'), key('enter'), checkpoint('stopped'),
+    resize(52, 24), checkpoint('narrow-52'),
+    key('alt+down'), checkpoint('view-narrow-52'), key('esc'),
+    resize(36, 24), checkpoint('narrow-36'),
+    resize(...DEFAULT_SIZE),
+    play('btw'), checkpoint('btw'),
+    key('alt+down'), checkpoint('btw-view'),
+    key('f7'), checkpoint('btw-back'),
+    key('alt+down'), key('home'), checkpoint('main-view-again'), key('esc'),
+  ],
   // The facts of the one status row through one conversation: the deep directory and git branch, plan and yolo, the cache and context bars and
   // (with and without cache), every item at once, then the whole row at 100, 72, 52, and 36 columns with a view
   // entered at 52, a /btw chip, and back to one line.
@@ -910,7 +943,7 @@ const SIZES = {
  * timer sets: under load the timer fires before or after the scenario clock moves, so a checkpoint ticks it once at the
  * timeline time and the counter is exact. The timed scenarios (`play(…, TIMED)`) keep the product's own timer.
  */
-const TICKED = new Set(['notices', 'blocks', 'footerCutover', 'statusRow'])
+const TICKED = new Set(['notices', 'blocks', 'footerCutover', 'statusRow', 'viewsAgents'])
 const replayScenario = (name, replay) => ({
   summary: replay.summary,
   source: { replay: name },
@@ -957,7 +990,7 @@ const APP = {
   'app-agents': {
     summary: 'the Website shot of subagents: done, running, and waiting in the agents pane',
     source: { replay: 'appAgents' },
-    covers: [`${TRANSCRIPT}pane-agents.ts`, `${TRANSCRIPT}child-agent-model.ts`],
+    covers: [`${TRANSCRIPT}status-agents.ts`, `${TRANSCRIPT}child-agent-model.ts`],
     // Six rows taller, so the agents pane is not cut to its overflow row; the width keeps the shots' scale.
     sizes: [[80, 30]],
     shots: { running: 'app-agents' },

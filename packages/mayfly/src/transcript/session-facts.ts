@@ -30,6 +30,8 @@ export interface ChildSessionFacts {
   readonly model?: string | undefined
   readonly effort?: string | undefined
   readonly endedAt?: number | undefined
+  /** A `failed` run that was stopped (by the user) rather than one that failed on its own. */
+  readonly stopped?: boolean | undefined
 }
 
 declare module '@deepseek-ai/cordis' {
@@ -39,7 +41,7 @@ declare module '@deepseek-ai/cordis' {
 /**
  * Children whose only change is the streamed-character count republish on
  * this trailing cadence; every other child change publishes at once. The
- * agents pane already repaints volatile counters on the same cadence.
+ * Agents item repaints its volatile counters on the same cadence.
  */
 export const CHILD_VOLATILE_MS = 250
 
@@ -77,7 +79,7 @@ function draftActivity(draft: LiveAssistantDraft, durable: ConversationFacts['ac
 
 /**
  * The calls in flight: the committed calls awaiting a result, then the calls whose arguments still stream in the draft
- * (a call the durable list already holds is committed, so it is not preparing). Spawn calls belong to the agents pane.
+ * (a call the durable list already holds is committed, so it is not preparing). Spawn calls belong to the Agents item.
  */
 function inFlightOf(draft: LiveAssistantDraft, durable: ConversationFacts): ConversationFacts['inFlight'] {
   const committed = durable.inFlight ?? []
@@ -364,7 +366,8 @@ export function projectChildSessionFacts(id: string, facts: ConversationFacts, d
     ? draft : undefined
   const phase = facts.active
     ? liveDraft !== undefined && liveDraft.phase !== 'waiting' ? 'running' : facts.phase === 'waiting' ? 'waiting' : 'running'
-    : facts.runOutcome ?? 'completed'
+    // A child whose first turn has not begun has no outcome yet: it is about to work, not finished.
+    : facts.runOutcome ?? 'waiting'
   const marker = facts.activity
   const activity = liveDraft !== undefined && liveDraft.phase !== 'waiting'
     ? liveDraft.phase === 'thinking' ? 'Thinking…' : 'Writing…'
@@ -381,6 +384,7 @@ export function projectChildSessionFacts(id: string, facts: ConversationFacts, d
     ...(facts.model === undefined ? {} : { model: facts.model }),
     ...(facts.reasoningEffort === undefined ? {} : { effort: facts.reasoningEffort }),
     ...(facts.endedAt === undefined ? {} : { endedAt: facts.endedAt }),
+    ...(facts.runStopped === true ? { stopped: true } : {}),
   }
 }
 

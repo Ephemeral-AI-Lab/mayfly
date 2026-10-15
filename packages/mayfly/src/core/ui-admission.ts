@@ -120,7 +120,7 @@ export function layoutBands(bands: { readonly left: string, readonly center: str
 interface AdmissionRowOptions {
   readonly components: Pick<MayflyComponents, 'visibleWidth' | 'truncateToWidth'>
   /** Paints the mark under a child (`muted`). */
-  readonly colors: Pick<MayflySemanticColors, 'muted'>
+  readonly colors: Pick<MayflySemanticColors, 'muted' | 'primary'>
   readonly gap?: number | undefined
   /** The work sink; the row counts the one row it paints. */
   readonly counters?: MayflyWorkCounters | undefined
@@ -208,7 +208,7 @@ export class AdmissionRow implements Component {
       if (child.mark === undefined) continue
       underline += ' '.repeat(Math.max(0, at - components.visibleWidth(underline))) + MARK_GLYPH.repeat(Math.max(0, Math.min(own, columns - at)))
     }
-    return [line, this.options.colors.muted(underline)]
+    return [line, this.options.colors.primary(underline)]
   }
 
   invalidate(): void {}

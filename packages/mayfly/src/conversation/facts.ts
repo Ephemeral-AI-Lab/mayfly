@@ -61,6 +61,8 @@ export const conversationFactsSchema = z.object({
   compactions: z.array(z.object({ id: z.string(), before: z.number().nonnegative(), after: z.number().nonnegative().optional(), window: z.number().positive().optional() })).optional(),
   approvals: z.array(z.object({ id: z.string(), callId: z.string().optional(), outcome: z.enum(['allowed-once', 'rejected', 'cancelled', 'unavailable']).optional() })).optional(),
   runOutcome: z.enum(['completed', 'failed']).optional(),
+  /** The run ended because it was stopped (aborted or interrupted), not because it failed on its own. */
+  runStopped: z.boolean().optional(),
   endedAt: z.number().optional(),
   agentCalls: z.array(z.object({
     seq: z.number().int(), turn: z.number().int().nonnegative(), step: z.number().int().nonnegative(),
@@ -205,7 +207,7 @@ function foldFacts(
       return {
         ...state, phase: 'waiting', active: true, turn: event.data.turn, turnStartedAt: event.time, flowUp: undefined,
         flowDownChars: 0, outputProgress: undefined, epochToolCount: 0, epochTokens: 0, usageByStep: {},
-        activity: undefined, inFlight: undefined, retrying: undefined, runOutcome: undefined, endedAt: undefined, currentStep: undefined, lastCompletedStep: undefined,
+        activity: undefined, inFlight: undefined, retrying: undefined, runOutcome: undefined, runStopped: undefined, endedAt: undefined, currentStep: undefined, lastCompletedStep: undefined,
       }
     case 'user/message': {
       if (event.data.source?.kind !== 'user') return state
@@ -300,6 +302,7 @@ function foldFacts(
       return {
         ...state, phase: 'idle', active: false, turn: event.data.turn, outputProgress: undefined, inFlight: undefined, retrying: undefined,
         runOutcome: event.data.reason.kind === 'completed' ? 'completed' : 'failed', endedAt: event.time,
+        ...(event.data.reason.kind === 'aborted' || event.data.reason.kind === 'interrupted' ? { runStopped: true } : { runStopped: undefined }),
       }
     case 'todo/write':
       return { ...state, todos: event.data.todos.map(todo => ({ ...todo })) }
@@ -387,5 +390,5 @@ export const conversationFactsProjectionDefinition: ConversationFactsProjectionD
       todos: state.todos.map(todo => ({ ...todo })),
     }),
   },
-  stateVersion: 10,
+  stateVersion: 11,
 }

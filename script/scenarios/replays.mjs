@@ -176,7 +176,7 @@ const compactionFailed = {
 }
 
 const subagents = {
-  summary: 'one step spawning five subagents: done, running, waiting, failed, and interrupted; open them from the agents pane',
+  summary: 'one step spawning five subagents: done, running, waiting, failed, and interrupted; open them from the Agents item or /agents',
   items: [turn('Split the rebranding into parallel tracks.', [
     step({
       text: 'I will run three tracks in parallel.',
@@ -471,6 +471,92 @@ const footerCutover = {
       mark('settled'),
       pause(DWELL),
     ]),
+  ],
+}
+
+
+/** A spawn with a name and a task, so the Agents panel row has both columns: `● review   Audit the facts projection`. */
+const agent = (name, task, prompt, child, options = {}) => tool('subagent', { name, description: task, prompt }, { runMs: 400, child: { prompt, ...child }, ...options })
+
+const viewsAgents = {
+  summary: 'one long conversation through the Agents item: two background subagents (continuable, live) and two foreground ones (one finishing, one failing, each holding its turn) in the status row with count and time, the panel (fg/bg tags, ↑/↓, Enter opens a child with F7 back, x stops behind the Yes/No, b unavailable), the stream line of a spawn that follows its child, completed subagents staying listed, a second group, the 52 and 36 column rows, and a /btw side question; each state stays 10 to 25 s',
+  items: [
+    turn('Split the migration into four parallel tracks.', [
+      step({
+        text: 'Three background subagents first: review and plan keep running while I carry on; notes is cut off by the user.',
+        usage: { inputTokens: 4200, outputTokens: 180, cacheReadTokens: 1200 },
+        tools: [
+          agent('review', 'Audit the facts projection', 'Audit every field of the facts projection and list the unused ones', {
+            mode: 'continuable', live: true, startMs: 400,
+            items: [
+              step({ stream: false, tools: [tool('read', { file_path: 'src/conversation/facts.ts' }, { result: 'facts', runMs: 900 }), tool('grep', { pattern: 'agentCalls', include: '*.ts' }, { result: 'src/conversation/facts.ts:65', runMs: 900 })] }),
+              step({ reasoning: 'Cross-checking each field against its readers.', reasoningMs: 3000, text: 'Two fields are unused: `usageByStep` keys and `approvals` marks older than the window.', textMs: 30_000, chunk: 10 }),
+            ],
+          }, { runMs: 600 }),
+          agent('plan', 'Draft the migration plan', 'Draft the plan for migrating the status row to items, with the order of the steps', {
+            mode: 'continuable', live: true, startMs: 800,
+            items: [
+              step({ stream: false, tools: [tool('read', { file_path: 'docs/design/implementation-roadmap.md' }, { result: 'roadmap', runMs: 900 })] }),
+              step({ reasoning: 'Ordering the steps so each one ships on its own.', reasoningMs: 4000, text: 'Plan: 1. move the facts, 2. add the items, 3. delete the old pane, 4. update the docs.', textMs: 50_000, chunk: 10 }),
+            ],
+          }, { runMs: 600 }),
+          agent('notes', 'Draft the release notes', 'Draft the release notes from the merged pull requests', {
+            startMs: 500, outcome: 'interrupted',
+            items: [step({ stream: false, text: 'Collecting the pull requests…' })],
+          }, { runMs: 600 }),
+        ],
+      }),
+      step({
+        text: 'Now explore, in the foreground: it holds this turn until it is done.',
+        usage: { inputTokens: 4400, outputTokens: 60, cacheReadTokens: 4200 },
+        marks: [{ block: 'tool', at: 0.6, name: 'foreground' }],
+        tools: [
+          agent('explore', 'Map the transcript files', 'Map the files of the transcript folder and what each one owns', {
+            startMs: 300,
+            items: [step({ stream: false, tools: [tool('glob', { pattern: 'src/transcript/*.ts' }, { result: 'status-rows.ts\nstatus-goal.ts', runMs: 600 }), tool('bash', { command: 'pnpm exec madge src', description: 'Map the imports' }, { result: 'mapped', runMs: 22_000 })] }), step({ stream: false, text: 'Mapped 62 files.' })],
+          }, { result: 'Mapped 62 files.', runMs: 26_000 }),
+        ],
+      }),
+      mark('spawned'),
+      pause(DWELL),
+      step({
+        text: 'Explore is done. Now lint, also in the foreground; it fails.',
+        usage: { inputTokens: 4600, outputTokens: 60, cacheReadTokens: 4200 },
+        marks: [{ block: 'tool', at: 0.6, name: 'lint' }],
+        tools: [agent('lint', 'Sweep the oxlint findings', 'Run oxlint over the packages and fix the findings', {
+          startMs: 300, outcome: { error: { message: 'The provider returned an invalid request', code: 'INVALID_REQUEST' } },
+          items: [step({ stream: false, text: 'Sweeping…', tools: [tool('bash', { command: 'pnpm exec oxlint packages', description: 'Lint' }, { result: '[exit code: 2]', error: true, runMs: 900 })] })],
+        }, { result: 'The subagent failed: the provider returned an invalid request', error: true, runMs: 12_000 })],
+      }),
+      step({ text: 'Lint failed; review and plan keep running in the background. Press Alt+↓ to open the Agents view, ↓ to choose, Enter to open one, x to stop one, b to try moving one to the background.', usage: { inputTokens: 4900, outputTokens: 90, cacheReadTokens: 4600 } }),
+      mark('working'),
+      pause(DWELL_VIEWS),
+      pause(DWELL_VIEWS),
+    ]),
+    turn('Wait for the tracks to finish.', [
+      step({ text: 'Both background tracks have finished: the item stays, now `✓ agents 4/4`, and the panel still lists all four.', usage: { inputTokens: 5000, outputTokens: 60, cacheReadTokens: 4700 } }),
+      mark('settled'),
+      pause(DWELL),
+    ]),
+    turn('Start one long track and stop it by hand.', [
+      step({
+        text: 'A second group: one long background track to open, follow, and stop.',
+        usage: { inputTokens: 5400, outputTokens: 80, cacheReadTokens: 5000 },
+        tools: [agent('migrate', 'Migrate the footer specs', 'Migrate the footer specs to the one status row, file by file', {
+          mode: 'continuable', live: true, startMs: 400,
+          items: [step({ reasoning: 'Going through the specs one by one.', reasoningMs: 4000, text: 'Migrating the specs. This takes a while, one file after another, with the assertions rewritten for the one row.', textMs: 140_000, chunk: 10 })],
+        }, { runMs: 600 })],
+      }),
+      pause(3000),
+      mark('second-group'),
+      pause(DWELL_VIEWS),
+      pause(DWELL_VIEWS),
+    ]),
+    btw('Which of the tracks finished first?', [
+      step({ reasoning: 'Explore finished first; lint failed right after.', text: 'Explore finished first, then lint failed; review and plan finished last.', reasoningMs: 1200, textMs: 2500 }),
+    ], { label: 'first track' }),
+    mark('btw'),
+    pause(DWELL),
   ],
 }
 
@@ -1383,7 +1469,7 @@ const phase3 = {
   ],
 }
 
-export const REPLAYS = { tour, toolkit, thinking, markdown, live, phases, thinkingLadder, pending, blocks, streaming, sync, activityWait, prompts, turns, toollines, toolgrow, findings, edits, errors, compaction: compactionReplay, compactionNoWindow, compactionFailed, manualCompact, context, subagents, childStream, approvals, approvalsRejected, approvalsEdit, approvalsQueue, questions, plan, planLong, goal, footerCutover, statusRow, jobs, queued, retries, sideQuestion, notices, notificationPane, modes, edge, history, wheel, content, phase3 }
+export const REPLAYS = { tour, toolkit, thinking, markdown, live, phases, thinkingLadder, pending, blocks, streaming, sync, activityWait, prompts, turns, toollines, toolgrow, findings, edits, errors, compaction: compactionReplay, compactionNoWindow, compactionFailed, manualCompact, context, subagents, childStream, approvals, approvalsRejected, approvalsEdit, approvalsQueue, questions, plan, planLong, goal, footerCutover, statusRow, viewsAgents, jobs, queued, retries, sideQuestion, notices, notificationPane, modes, edge, history, wheel, content, phase3 }
 
 /*
  * The scenes of the Website's app shots. Each is the source of an `app-*` scenario of the catalog, whose goldens the
@@ -1407,7 +1493,7 @@ const appConversation = {
 }
 
 const appAgents = {
-  summary: 'one step spawning three subagents, done, running, and waiting, shown in the agents pane',
+  summary: 'one step spawning three subagents, done, running, and waiting, shown in the Agents item',
   items: [
     turn('Split the rebranding into parallel tracks.', [
       step({

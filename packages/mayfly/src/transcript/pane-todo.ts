@@ -30,8 +30,8 @@ export const inject = ['mayflyPanes', 'mayflySessionFacts', 'mayflyTick']
 /** The Todo view's id: the pane id the views lane keeps it under. */
 export const TODO_VIEW_ID = 'mayfly.view.todo'
 
-/** The Todo view's place in the status row: after the model, the chips, the directory, git, jobs, and goal. */
-const VIEW_PRIORITY = 13
+/** The Todo view's place in the status row: after the model, the chips, the directory, git, agents, jobs, and goal. */
+const VIEW_PRIORITY = 14
 
 /** How long the closing item `✓ todo 6/6 4m 12s` stays before the view leaves. */
 export const DONE_LINGER_MS = 5000

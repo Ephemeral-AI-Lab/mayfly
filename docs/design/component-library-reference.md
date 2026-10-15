@@ -462,7 +462,7 @@ findings in the 2026-09-28 audit (PR #77) are cited as `UX-nn`.
 | G19 | Bash mode writes `! shell mode` into the editor's left border, the only text besides the session title | `interaction/editor-plus.ts` | B4 |
 | G20 | The activity row truncates the running action to one line (`DETAIL_BUDGETS`); a long command or reasoning paragraph is cut | `transcript/pane-activity.ts` | R2 |
 | G22 | Diff rows have only a two-column sign gutter (`GUTTER_COLUMNS = 2`); there are no old or new line numbers | `core/diff-align.ts`, `core/plugin-view.ts` | R3 |
-| G23 | Subagents live in a pane above the editor and jobs only as a footer count; neither can be selected from the keyboard | `transcript/pane-agents.ts`, `transcript/status-jobs.ts` | R7 |
+| G23 | Subagents live in a pane above the editor and jobs only as a footer count; neither can be selected from the keyboard | `transcript/status-agents.ts`, `transcript/status-jobs.ts` | R7 |
 | G24 | Tabs cannot render a vertical rail that follows the cursor; the label column switches only on `Enter` (ref §6 F2) | `core/ui-compiler.ts` | R9 |
 | G25 | The spec §5 panels (`/plugin`, sessions, tray, scenarios) call for bare printable accelerators beside a list, but the validator rejects a printable `key` on any surface with a type-to-filter list | `core/ui-validator.ts` (`printableKey`), spec §5.10–spec §5.11 | E5 |
 
@@ -475,7 +475,7 @@ findings in the 2026-09-28 audit (PR #77) are cited as `UX-nn`.
 | R4 | Loader variants and determinate bar (spec §4.8) | `core/ui-patterns.ts`, `packages/ui/src/contracts.ts` |
 | R5 | Compaction bar and settled rule (spec §5.6) | `transcript/compaction.ts`, `conversation/facts.ts` |
 | R6 | Todo and goal rule progress, moved from the stream to items of the status row (spec §5.4) | `transcript/pane-todo.ts`, `transcript/status-goal.ts` |
-| R7 | Agents and jobs views as items of the status row (spec §5.1, §5.5) | `transcript/pane-agents.ts`, `transcript/status-jobs.ts`, `interaction/agents-command.ts`, `interaction/jobs.ts`; overlay for the focused view (ref §3.2), `packages/ui` unchanged |
+| R7 | Agents and jobs views as items of the status row (spec §5.1, §5.5) | `transcript/status-agents.ts`, `transcript/status-jobs.ts`, `interaction/agents-command.ts`, `interaction/jobs.ts`; overlay for the focused view (ref §3.2), `packages/ui` unchanged |
 | R8 | Decision skeleton and question wizard (spec §5.7) | `interaction/approval-plugin.ts`, `interaction/questionnaire.ts`, `core/ui-key-grammar.ts` |
 | R9 | Text-color tabs, live-following rail, expandable lists, form refinements (spec §4.4) | `core/ui-patterns.ts`, `core/ui-compiler.ts`, `core/theme-palette.ts`; `packages/ui/src/contracts.ts` (`MayflyFormFieldBase.help`/`group`, `MayflyTabItem.attention`, `MayflyTabsNode.orientation`, `MayflyListItem.body`), `core/ui-validator.ts` |
 | R10 | Sessions, settings, and status panels; account balance (spec §5.10) | `interaction/session-list-model.ts`, `interaction/session-workspace-panel.ts`, `interaction/settings.ts`, `interaction/usage.ts`; `filterMode: 'slash'` for the sessions list |

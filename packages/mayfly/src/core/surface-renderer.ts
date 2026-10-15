@@ -359,7 +359,8 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
       viewport: () => lane === undefined ? paneViewport(entry.id) : lane.viewport(),
       mode: runtime.mode,
       emit: record.interaction.emit.bind(record.interaction),
-      onEscape: () => lane === undefined ? runtime.releaseSurfaceFocus(entry.id) : lane.leave(),
+      // A pending decision answers No first; only a bare Esc leaves the pane or the views.
+      onEscape: () => record.interaction.decisionNode !== undefined ? record.interaction.answerDecision(false) : lane === undefined ? runtime.releaseSurfaceFocus(entry.id) : lane.leave(),
       escapeHint: lane === undefined ? 'leave' : 'close',
       ...(contextHints === undefined ? {} : { contextHints }),
       interactive: true,

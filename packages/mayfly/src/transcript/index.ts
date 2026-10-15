@@ -27,6 +27,7 @@ import { OfficialConversationModelSource } from './official-model.ts'
 import type { LiveDraftSource } from './conversation-feed.ts'
 import { ConversationSlots } from './conversation-slots.ts'
 import type { SessionFactsService } from './session-facts.ts'
+import type { SpawnedChild, SpawnedChildren } from './tool-calls.ts'
 import {
   DEFAULT_EXPAND_TURNS,
   followPresentationSettings,
@@ -154,7 +155,9 @@ export function apply(ctx: Context): void {
   // queues, and the stream turns the first one's call into the request block.
   const queues: Record<'approval' | 'plan', readonly MayflyDecisionRequest[]> = { approval: [], plan: [] }
   let requests: readonly MayflyDecisionRequest[] = []
-  const transcript: TranscriptController = new TranscriptController({ presentation, t, queued: () => queued, requests: () => requests, imageRefs, rows, focusMode: mode => ctx.emit('mayfly/focus-mode-changed', mode), tick: ctx.mayflyTick, context: () => sessionFacts === undefined ? undefined : { marks: sessionFacts.current.compactions, window: sessionFacts.current.contextWindow, tokens: sessionFacts.current.contextTokens, approvals: sessionFacts.current.approvals } })
+  // The children the displayed conversation spawned: a spawn's line follows its child (running, settled, failed).
+  let children: SpawnedChildren = { byId: new Map(), byPrompt: new Map() }
+  const transcript: TranscriptController = new TranscriptController({ presentation, t, queued: () => queued, requests: () => requests, imageRefs, rows, focusMode: mode => ctx.emit('mayfly/focus-mode-changed', mode), tick: ctx.mayflyTick, context: () => sessionFacts === undefined ? undefined : { marks: sessionFacts.current.compactions, window: sessionFacts.current.contextWindow, tokens: sessionFacts.current.contextTokens, approvals: sessionFacts.current.approvals, children } })
   let marks = sessionFacts?.current.compactions
   let window = sessionFacts?.current.contextWindow
   let approvals = sessionFacts?.current.approvals
@@ -166,6 +169,25 @@ export function apply(ctx: Context): void {
     transcript.republish()
   })
   ctx.effect(() => () => offMarks?.())
+  let childrenKey = ''
+  const offChildren = sessionFacts?.subscribeChildren((list) => {
+    const byId = new Map<string, SpawnedChild>()
+    const byPrompt = new Map<string, SpawnedChild>()
+    for (const child of list) {
+      const spawned: SpawnedChild = child.phase === 'completed' || child.phase === 'failed'
+        ? { state: 'settled', failed: child.phase === 'failed', ...child.stopped === true ? { stopped: true } : {}, ...child.endedAt === undefined ? {} : { endedAt: child.endedAt } }
+        : { state: 'running' }
+      byId.set(child.id, spawned)
+      if (child.promptText !== undefined && !byPrompt.has(child.promptText)) byPrompt.set(child.promptText, spawned)
+    }
+    // Only a change of state republishes: the streamed counters of a running child are the item's, not the stream's.
+    const key = JSON.stringify([...byId])
+    if (key === childrenKey) return
+    childrenKey = key
+    children = { byId, byPrompt }
+    transcript.republish()
+  })
+  ctx.effect(() => () => offChildren?.())
   ctx.effect(() => ctx.on('mayfly/decision-requests-changed', (source, next) => {
     queues[source] = next
     requests = [...queues.approval, ...queues.plan]
