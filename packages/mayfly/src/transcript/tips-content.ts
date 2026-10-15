@@ -27,7 +27,7 @@ export interface StatusTip {
 
 /** The rotation pool. */
 export const STATUS_TIPS: readonly StatusTip[] = [
-  { text: 'Esc to interrupt the run', priority: 2 },
+  { text: 'Esc to interrupt the turn', priority: 2 },
   { text: 'Ctrl+O to expand tool details', priority: 2 },
   { text: '/help: show commands' },
   { text: '/sessions to browse and resume earlier sessions' },

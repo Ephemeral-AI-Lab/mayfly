@@ -235,8 +235,11 @@ Surfaces: `interruptAgent` and `isAgentRunning` in `app/agent-interrupt.ts`
 `sessionFlowInProgress` functions of `interaction/input-plugin.ts`, the
 retraction callback and the `agent/status` stop latch in `app/index.ts`.
 
-Known limits, to check against a live model: a *foreground* subagent call is
-part of the parent's turn, so aborting that turn aborts the call as Harness
-defines it; Mayfly adds no cancellation of its own to any child. The behavior
-was verified against the Harness source and the unit specs, not yet with a
-running model.
+The one accepted limit (owner decision at the merge of Phase 6): a tool call
+the interrupted turn itself is running, a *foreground* subagent or a
+foreground `bash` command, is part of that turn, and Harness aborts it with the
+turn through the call's `exec.signal`. Harness has no option to detach it.
+Background and continuable subagents, background jobs and their watchers, and
+schedules run on signals of their own and are never touched; Mayfly adds no
+cancellation of its own to any child. The `mergeEsc` scenario shows both
+sides.
