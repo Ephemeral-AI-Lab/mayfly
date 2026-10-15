@@ -824,6 +824,89 @@ const carryOvers = {
   ],
 }
 
+/** A reviewer that works in the background for minutes (continuable, live), so the Agents item of the merge scenarios stays live. */
+const reviewer = () => agent('review', 'Audit the hero copy', 'Audit the hero copy against the brand notes and list what to change', {
+  mode: 'continuable', live: true, startMs: 400,
+  items: [step({ reasoning: 'Reading the hero and the brand notes side by side.', reasoningMs: 4000, text: 'Three changes: shorten the headline to five words, name the three pillars in the subtitle, and move the install line above the fold. The rest of the copy already matches the brand notes, so nothing else needs to move before the screenshots are retaken.', textMs: 400_000, chunk: 4 })],
+}, { runMs: 600 })
+
+/**
+ * Where Phase 4 (the editor) and Phase 5 (the status row) meet at the bottom of the screen, after the two were merged: the
+ * notification row, the editor frame, and the one status row with its items and views. The turn ends at `items` so the person
+ * (or the frame script) can run a real turn of their own (`hold:240000 …`) while the reviewer and the watcher keep going.
+ */
+const mergeDock = {
+  summary: 'where the editor (Phase 4) and the status row (Phase 5) meet: the idle hint and placeholder over the status row\'s items, the `/` palette, a pasted token and its keys, a turn of your own (`hold:240000 keep going`) with the hint rotating every 15 s, the history counter, a view entered under the row, 60 and 40 columns, and Esc interrupting your turn while the reviewer and the watcher go on until the watcher settles (`✓ jobs 1/1`, then gone)',
+  items: [
+    turn('Refresh the landing page hero.', [
+      goalItem('create', { objective: 'Refresh the landing page hero and keep every test green', maxGoalRounds: 8 }),
+      step({
+        text: 'A reviewer runs in the background and the todo list is set.',
+        usage: { inputTokens: 5200, outputTokens: 140, cacheReadTokens: 3000 },
+        tools: [reviewer(), todos([['completed', 'Read the brand notes'], ['in_progress', 'Rewrite the hero'], ['pending', 'Retake the screenshots'], ['pending', 'Run the tests']])],
+      }),
+      job('npm run watch', { lines: [[300, 'watching for changes…'], [20_000, 'rebuilt src/hero.css in 41 ms']], progress: [[500, 'watching'], [20_000, 'rebuilt 1']], endMs: 150_000, status: 'completed', detail: 'exit code: 0' }),
+      step({
+        text: 'The status row now carries the agents, jobs, goal, and todo items under the editor. Try the bottom of the screen: `/` opens the palette over the stream; a long paste becomes a token (`←` onto it names its keys); send `hold:240000 keep going` for a turn that keeps running (the hint above the editor rotates every 15 s; `↑` walks the history; `Alt+↓` enters a view); `Esc` interrupts that turn while the reviewer and the watcher go on.',
+        usage: { inputTokens: 5600, outputTokens: 160, cacheReadTokens: 5000 },
+      }),
+    ]),
+    mark('items'),
+    // The watcher settles 1 s before `closing`, so its `✓ jobs 1/1` line is held there.
+    pause(145_000),
+    pause(2000),
+    mark('closing'),
+    pause(8000),
+    mark('gone'),
+    pause(DWELL),
+  ],
+}
+
+/** Three messages typed while the main turn runs: a queued one, a steering one, and a second queued one (the newest). */
+const MERGE_ROWS = [
+  'Update the README once the parser is done',
+  { steer: 'Keep the public API unchanged' },
+  'Then bump the version and tag the release candidate',
+]
+
+/**
+ * The conversations after the merge: Phase 4's queued and steering rows with Phase 5's shed keys and tailed notices on the
+ * notification row, then a /btw side conversation and a subagent opened from the Agents view, each with Phase 5's chip and
+ * `F7`/`F8` keys beside Phase 4's placeholder and frame title.
+ */
+const mergeConversations = {
+  summary: 'the conversations after the merge: queued and steering rows (Alt+↑) with their keys on the notification row, a rate-limit notice beside those keys, d and u, the keys shed at 60 and 40 columns, the agent reading the rows, then a /btw side question (its chip, frame title, placeholder, and `F7 main · F8 close` with the history counter after it) and a subagent opened from the Agents view (`F8 detach` returns to the view); each state stays 25 s',
+  items: [
+    turn('Refactor the parser, I will add more while you work.', [
+      queue(MERGE_ROWS, { holdMs: null, name: 'rows' }),
+      step({
+        text: 'A reviewer audits the hero in the background while I read the parser.',
+        usage: { inputTokens: 4200, outputTokens: 120, cacheReadTokens: 2000 },
+        tools: [reviewer(), tool('read', { file_path: 'src/parser.ts' }, { result: 'export function parse() {}', runMs: 600 })],
+      }),
+      step({ text: 'Your three messages wait at the end of the stream. Alt+↑ reaches them: e edits, s sends now, d cancels (u undoes).', usage: { inputTokens: 4500, outputTokens: 60, cacheReadTokens: 4000 } }),
+      mark('queued'),
+      step({
+        failedAttempts: [{ text: 'Rewriting the entry', failure: { message: 'Rate limit reached for requests', code: 'rate_limited', status: 429 }, delayMs: 30_000 }],
+        marks: [{ name: 'rate-limited', block: 'retry', attempt: 0, at: 0.2 }],
+        text: 'Rewriting the parser entry point now.',
+        usage: { inputTokens: 5000, outputTokens: 80, cacheReadTokens: 4500 },
+      }),
+      pause(DWELL_VIEWS),
+      dequeue('rows'),
+      step({ text: 'I read your messages: they are prompts in the stream now.', usage: { inputTokens: 5400, outputTokens: 60, cacheReadTokens: 5000 } }),
+      mark('read'),
+      pause(DWELL),
+    ]),
+    btw('Does the install section need Windows notes?', [
+      step({ reasoning: 'A short answer is enough.', text: 'Yes: one line on PowerShell, one on WSL. Send `hold:240000 and the WSL line?` to keep this side question running; F7 goes back to main.', reasoningMs: 800, textMs: 1500 }),
+    ], { label: 'windows notes' }),
+    mark('btw'),
+    pause(DWELL_VIEWS),
+    pause(DWELL_VIEWS),
+  ],
+}
+
 const notificationPane = {
   summary: 'the notification pane: a rate-limit countdown, a lane notice over a turn, a context that fills up and is relieved, and a resumed session',
   options: { contextWindow: 32_768 },
@@ -1600,7 +1683,7 @@ const phase3 = {
   ],
 }
 
-export const REPLAYS = { tour, toolkit, thinking, markdown, live, phases, thinkingLadder, pending, blocks, streaming, sync, activityWait, prompts, turns, toollines, toolgrow, findings, edits, errors, compaction: compactionReplay, compactionNoWindow, compactionFailed, manualCompact, context, subagents, childStream, subagentViews, approvals, approvalsRejected, approvalsEdit, approvalsQueue, questions, plan, planLong, goal, footerCutover, statusRow, viewsAgents, viewsJobs, jobs, queued, queue: queueRows, retries, sideQuestion, notices, carryOvers, notificationPane, modes, edge, history, wheel, content, phase3 }
+export const REPLAYS = { tour, toolkit, thinking, markdown, live, phases, thinkingLadder, pending, blocks, streaming, sync, activityWait, prompts, turns, toollines, toolgrow, findings, edits, errors, compaction: compactionReplay, compactionNoWindow, compactionFailed, manualCompact, context, subagents, childStream, subagentViews, approvals, approvalsRejected, approvalsEdit, approvalsQueue, questions, plan, planLong, goal, footerCutover, statusRow, viewsAgents, viewsJobs, jobs, queued, queue: queueRows, retries, sideQuestion, notices, carryOvers, mergeDock, mergeConversations, notificationPane, modes, edge, history, wheel, content, phase3 }
 
 /*
  * The scenes of the Website's app shots. Each is the source of an `app-*` scenario of the catalog, whose goldens the
