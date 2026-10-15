@@ -112,7 +112,7 @@ export function admitScrollFields(h: AdmissionHelpers, object: Fields, path: str
   const height = integer(h, object, 'height', path, 1, SCROLL_HEIGHT_MAX)
   const expandedHeight = integer(h, object, 'expandedHeight', path, 1, SCROLL_HEIGHT_MAX)
   if (height !== undefined && expandedHeight !== undefined && expandedHeight < height) h.invalid(`${path}.expandedHeight must not be shorter than height`)
-  return { ...present('height', height), ...present('expandedHeight', expandedHeight), ...present('fit', flag(h, object, 'fit', path)), ...present('pill', flag(h, object, 'pill', path)) }
+  return { ...present('height', height), ...present('expandedHeight', expandedHeight), ...present('fit', flag(h, object, 'fit', path)), ...present('hold', flag(h, object, 'hold', path)), ...present('pill', flag(h, object, 'pill', path)) }
 }
 
 /**
@@ -174,5 +174,15 @@ export function admitLineChartFields(h: AdmissionHelpers, object: Fields, path: 
     ...present('legend', legend === undefined ? undefined : h.boolean(legend, `${path}.legend`)),
     ...present('xLabels', labels === undefined ? undefined : h.collection(labels, `${path}.xLabels`).map((item, index) => h.label(item, `${path}.xLabels[${String(index)}]`))),
     ...present('yFormat', format === undefined ? undefined : h.enumeration(format, ['compact'] as const, `${path}.yFormat`)),
+  }
+}
+
+/** A bar chart's `yFormat` and `legend`. */
+export function admitBarChartFields(h: AdmissionHelpers, object: Fields, path: string): Fields {
+  const format = h.own(object, 'yFormat', path)
+  const legend = h.own(object, 'legend', path)
+  return {
+    ...present('yFormat', format === undefined ? undefined : h.enumeration(format, ['compact'] as const, `${path}.yFormat`)),
+    ...present('legend', legend === undefined ? undefined : h.boolean(legend, `${path}.legend`)),
   }
 }

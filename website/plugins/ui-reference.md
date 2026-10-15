@@ -407,6 +407,10 @@ ui.chart({
   title?: string,
   yLabel?: string,
   height?: number, // 4..20
+  // 纵向图每个 category 一组柱，纵轴从 0 起（取整的顶、中、0），柱顶用八分块；
+  // category 多于列数时相邻项合并（数值相加）。
+  yFormat?: 'compact', // 纵轴写成 420.8M、12k
+  legend?: false, // 不画 x 标签下的 series 图例
   categories: readonly string[],
   series: [{ id: string, label?: string, tone?: MayflyTone, empty?: boolean, values: readonly (number | null)[] }],
 })

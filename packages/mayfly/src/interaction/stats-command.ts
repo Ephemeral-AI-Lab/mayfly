@@ -14,8 +14,9 @@ import type { ModelTokens, PriceSources, UserPrice } from './pricing.ts'
 import { HARNESS_LINE, SESSION_INFO_KEYS, sessionInfoFacts } from './session-commands.ts'
 import { currentMayflySettings } from './settings.ts'
 import { buildStatsFacts, statsSummary, STATS_TABS, type IndexState, type StatsTab } from './stats-facts.ts'
-import { foldDigest } from './stats-index/digest.ts'
+import { foldDigest, type SessionDigest } from './stats-index/digest.ts'
 import { createStatsIndex, readDigests, refreshStatsIndex } from './stats-index/index.ts'
+import { readAccountSnapshot, type AccountSnapshot } from './stats-account.ts'
 import { aggregate, RANGES, type StatsRange } from './stats-index/stats.ts'
 import { openUiOverlay } from './ui-overlay.ts'
 
@@ -26,6 +27,8 @@ export interface Config { readonly displayVersion?: string }
 const OVERLAY_ID = 'mayfly.stats'
 /** The index repaints at most this often while sessions are read. */
 const REPAINT_MS = 100
+/** A provider read is reused this long; a failed one is read again when the tab is shown. */
+const ACCOUNT_FRESH_MS = 5 * 60 * 1000
 
 export function apply(ctx: Context, config: Config = {}): void {
   mountInteractionLocale(ctx)
@@ -33,6 +36,9 @@ export function apply(ctx: Context, config: Config = {}): void {
   ctx.effect(() => () => lifetime.abort())
   const t = interactionTranslator(ctx)
   const index = createStatsIndex(ctx)
+  /** The last provider read, kept across panel opens for its route. */
+  let accountCache: AccountSnapshot | undefined
+  ctx.effect(() => () => { accountCache = undefined })
   const version = { mayfly: config.displayVersion ?? MAYFLY_VERSION, harness: HARNESS_LINE }
   ctx.inject(['mayflyCurrentAgent', 'sessionProjections', 'mayflyInteractionState'], owner => {
     owner.commands.register({
@@ -51,30 +57,70 @@ export function apply(ctx: Context, config: Config = {}): void {
         let generation: AbortController | undefined
         let started: boolean | undefined
         let modelsDev: ModelsDevIndex | undefined
-        let memo: { readonly events: number, readonly tokens: readonly ModelTokens[] } | undefined
+        let accountGeneration: AbortController | undefined
+        let accountLoading = false
+        let memo: { readonly events: number, readonly digest: SessionDigest | undefined, readonly tokens: readonly ModelTokens[] } | undefined
         let handle: MayflyOverlayHandle | undefined
         let timer: ReturnType<typeof setTimeout> | undefined
 
         const readSession = (): ReturnType<typeof sessionInfoFacts> | undefined => {
           try { return sessionInfoFacts(owner, agent) } catch { return undefined }
         }
-        /** The session's tokens by model, folded again only when its log grew. */
-        const sessionTokens = (): readonly ModelTokens[] => {
+        /** The current session folded from its own events, again only when its log grew: it counts before it is stored. */
+        const liveDigest = (): { readonly digest: SessionDigest | undefined, readonly tokens: readonly ModelTokens[] } => {
           const events = agent.session.snapshotEvents()
-          if (memo?.events === events.length) return memo.tokens
+          if (memo?.events === events.length) return memo
           const digest = foldDigest(String(agent.id), agent.session.header.cwd, events)
           const tokens = digest === undefined ? [] : aggregate([digest], 'all', Date.now()).models
-          memo = { events: events.length, tokens }
-          return tokens
+          memo = { events: events.length, digest, tokens }
+          return memo
+        }
+        const sessionTokens = (): readonly ModelTokens[] => liveDigest().tokens
+        /** The stored sessions the index has read, with the current one (from its live events) in place of its stored copy. */
+        const digests = (): readonly SessionDigest[] => {
+          const stored = readDigests(index, cwd())
+          const live = liveDigest().digest
+          if (live === undefined || (cwd() !== undefined && live.cwd !== cwd())) return stored
+          return [live, ...stored.filter(digest => digest.id !== live.id)]
         }
         const sources = (): PriceSources => {
           const settings = currentMayflySettings(owner)
           return { user: settings.prices as Readonly<Record<string, UserPrice>>, modelsDev, usdCnyRate: settings.usdCnyRate }
         }
+        /** The provider route of the current model. */
+        const routeOf = (): string | undefined => readSession()?.model?.provider
+        /**
+         * Read the provider of the current model once per five minutes (and again after a failed read). The last result
+         * stays on show while a newer one loads.
+         */
+        const loadAccount = (): void => {
+          const route = routeOf()
+          if (route === undefined || accountLoading) return
+          const cached = accountCache?.route === route ? accountCache : undefined
+          const failed = cached?.balance?.status === 'unavailable' && cached.balance.reason !== 'signed-out' && cached.balance.reason !== 'no-key'
+          if (cached !== undefined && !failed && Date.now() - cached.at < ACCOUNT_FRESH_MS) return
+          accountGeneration?.abort()
+          const mine = new AbortController()
+          accountGeneration = mine
+          accountLoading = true
+          const retire = AbortSignal.any([signal, mine.signal])
+          schedule()
+          void readAccountSnapshot(owner, route, retire).then(snapshot => {
+            if (!retire.aborted) accountCache = snapshot
+          }).catch((error: unknown) => {
+            if (!retire.aborted) owner.logger.warn(`stats: account read failed: ${error instanceof Error ? error.message : String(error)}`)
+          }).finally(() => {
+            if (accountGeneration !== mine || closed) return
+            accountLoading = false
+            publish()
+          })
+        }
         const cwd = (): string | undefined => allWorkspaces ? undefined : agent.session.header.cwd
         const facts = () => buildStatsFacts({
           t, locale: owner.get('mayflyLocale')?.locale === 'zh' ? 'zh' : 'en', now: Date.now(), tab, range, allWorkspaces,
-          session: readSession(), sessionTokens: sessionTokens(), digests: readDigests(index, cwd()), index: progress, sources: sources(), version,
+          session: readSession(), sessionTokens: sessionTokens(), digests: digests(), index: progress, sources: sources(), version,
+          account: { snapshot: accountCache?.route === routeOf() ? accountCache : undefined, loading: accountLoading },
+          lowBalance: { CNY: currentMayflySettings(owner).lowBalanceCny, USD: currentMayflySettings(owner).lowBalanceUsd },
         })
         const node = () => StatsPanel(facts())
         const publish = (): void => {
@@ -100,7 +146,10 @@ export function apply(ctx: Context, config: Config = {}): void {
           void refreshStatsIndex(owner, index, cwd(), retire, state => {
             if (generation === mine) { progress = { running: true, ...state }; schedule() }
           }).catch((error: unknown) => {
-            if (!retire.aborted) owner.logger.warn(`stats: index failed: ${error instanceof Error ? error.message : String(error)}`)
+            if (retire.aborted) return
+            const message = error instanceof Error ? error.message : String(error)
+            owner.logger.warn(`stats: index failed: ${message}`)
+            if (generation === mine) progress = { running: false, done: 0, total: 0, skipped: 0, failed: 0, error: message }
           }).finally(() => {
             if (generation !== mine || closed) return
             progress = progress === undefined ? undefined : { ...progress, running: false }
@@ -110,7 +159,8 @@ export function apply(ctx: Context, config: Config = {}): void {
         const showTab = (next: StatsTab): void => {
           if (next === tab) return
           tab = next
-          if (tab !== 'session' && started !== true) startIndex()
+          if ((tab === 'history' || tab === 'models') && started !== true) startIndex()
+          if (tab === 'account') loadAccount()
           publish()
         }
 
@@ -156,6 +206,7 @@ export function apply(ctx: Context, config: Config = {}): void {
           closed = true
           if (timer !== undefined) clearTimeout(timer)
           generation?.abort()
+          accountGeneration?.abort()
           overlay.abort()
           for (const off of offs.splice(0)) off()
         } })
@@ -168,6 +219,7 @@ export function apply(ctx: Context, config: Config = {}): void {
           owner.mayflyCurrentAgent.subscribe(current => { if (current !== agent) live.close() }),
         )
         // The best-effort price catalog arrives later; the panel is complete without it.
+        loadAccount()
         void loadModelsDevIndex(owner, signal).then(loaded => { modelsDev = loaded; schedule() }).catch(() => {})
         return { kind: 'success' }
       },

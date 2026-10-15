@@ -5,7 +5,9 @@
  */
 
 import type { MayflyChartNode, MayflyTone } from '@ephemeral-ai/mayfly-ui'
-import { plot, renderChart, type Color } from 'simple-ascii-chart'
+import { plot, type Color } from 'simple-ascii-chart'
+import { compactChartNumber, formatChartNumber } from './chart-format.ts'
+import { renderColumns } from './chart-columns.ts'
 import { paintPluginTone } from './plugin-view.ts'
 import type { MayflyComponents, MayflySemanticColors } from './types.ts'
 
@@ -71,11 +73,6 @@ function checkedRows(
   return undefined
 }
 
-/** Format a chart summary value without corrupting scientific exponents. */
-export function formatChartNumber(value: number): string {
-  return Number.isInteger(value) ? String(value) : String(Number(value.toPrecision(4)))
-}
-
 function summary(node: Exclude<MayflyChartNode, { readonly chart: 'sparkline' | 'heatmap' }>, width: number, components: MayflyComponents, colors: MayflySemanticColors): string[] {
   const result: string[] = []
   if ('title' in node && node.title !== undefined) result.push(colors.textStrong(components.truncateToWidth(node.title, width)))
@@ -97,15 +94,6 @@ function summary(node: Exclude<MayflyChartNode, { readonly chart: 'sparkline' | 
       break
   }
   return result
-}
-
-/** `420.8M`, `12k`, `7`: decimal thousands with one decimal below ten of a unit. */
-export function compactChartNumber(value: number): string {
-  const size = Math.abs(value)
-  for (const [limit, suffix] of [[1e12, 'T'], [1e9, 'B'], [1e6, 'M'], [1e3, 'k']] as const) {
-    if (size >= limit) return `${String(Number((value / limit).toFixed(size / limit < 10 ? 2 : 1)))}${suffix}`
-  }
-  return formatChartNumber(value)
 }
 
 function renderNumeric(node: Extract<MayflyChartNode, { readonly chart: 'line' | 'point' }>, width: number, components: MayflyComponents, colors: MayflySemanticColors): string[] | undefined {
@@ -138,26 +126,6 @@ function renderNumeric(node: Extract<MayflyChartNode, { readonly chart: 'line' |
       }),
     },
   ), width, tones, components, colors)
-}
-
-function renderBars(node: Extract<MayflyChartNode, { readonly chart: 'bar' }>, width: number, components: MayflyComponents, colors: MayflySemanticColors): string[] | undefined {
-  const tones = node.series.map((series, index) => toneAt(series.tone, index))
-  return checkedRows((plotWidth, compact) => renderChart({
-    width: plotWidth,
-    height: node.height ?? 10,
-    series: node.series.map((series, index) => ({
-      id: series.id,
-      name: series.label ?? series.id,
-      data: node.categories.map((category, categoryIndex) => [category, series.values[categoryIndex] ?? null] as const),
-      mode: 'bar' as const,
-      color: vendorColor(tones[index]!),
-    })),
-    xAxis: { scale: 'band' as const, ...(compact ? { ticks: 0 } : {}) },
-    ...(compact || node.yLabel === undefined ? {} : { yAxis: { label: components.truncateToWidth(node.yLabel, width) } }),
-    ...(compact || node.title === undefined ? {} : { title: components.truncateToWidth(node.title, width) }),
-    ...(compact || node.series.length < 2 ? {} : { legend: { position: 'bottom' as const, series: true } }),
-    barLayout: node.layout ?? 'grouped',
-  }), width, tones, components, colors)
 }
 
 /** Horizontal normalized bars: each category folds its proportional series fill row-major over a `height`-row grid of ~1% cells painted two columns wide; `empty` series paint as the muted empty track. */
@@ -289,7 +257,9 @@ export function renderChartRows(node: MayflyChartNode, width: number, components
     case 'sparkline': return renderSparkline(node, safeWidth, components, colors)
     case 'line':
     case 'point': return renderNumeric(node, safeWidth, components, colors) ?? summary(node, safeWidth, components, colors)
-    case 'bar': return (node.orientation === 'horizontal' ? renderHorizontalBars(node, safeWidth, components, colors) : renderBars(node, safeWidth, components, colors)) ?? summary(node, safeWidth, components, colors)
+    case 'bar': return (node.orientation === 'horizontal' ? renderHorizontalBars(node, safeWidth, components, colors) : renderColumns(node, safeWidth, components, colors)) ?? summary(node, safeWidth, components, colors)
     case 'heatmap': return renderHeatmap(node, safeWidth, components, colors)
   }
 }
+
+export { compactChartNumber, formatChartNumber }

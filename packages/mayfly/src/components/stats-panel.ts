@@ -1,7 +1,8 @@
 /**
- * The stats panel: three tabs over one `patterns.statusPage`. Session is the live session as aligned rows; History is the
+ * The stats panel: four tabs over one `patterns.statusPage`. Session is the live session as aligned rows; Account is the
+ * provider of the current model (its key or sign-in, balance and links, read-only); History is the
  * activity heatmap (the weeks that fit), the date range, two columns of figures, and the token line; Models is the
- * tokens-per-day line chart per model beside each model's share. The panel has no buttons: `r` cycles the range
+ * tokens and cost per day as stacked columns, one colour per model, beside each model's share. The panel has no buttons: `r` cycles the range
  * (refreshes on Session), `w` switches the workspace scope, `c` copies the summary. Every text is final (translated by
  * the command that publishes the facts).
  *
@@ -24,6 +25,15 @@ export interface SessionTabFacts {
   /** Shown instead of the rows while the session facts cannot be read. */
   readonly unavailable?: string | undefined
   readonly refresh: string
+}
+
+/** The Account tab: the provider of the current model as rows, with the state of the balance read under them. */
+export interface AccountTabFacts {
+  readonly rows: readonly StatsRow[]
+  /** `⣾ checking balance…` while the read runs. */
+  readonly loading?: string | undefined
+  /** A muted line under the rows (`No balance information for this provider`). */
+  readonly note?: string | undefined
 }
 
 /** The date range line and the workspace scope, shared by History and Models. */
@@ -108,8 +118,11 @@ export interface ModelsTabFacts extends StatsRangeFacts, StatsIndexFacts {
 export interface StatsFacts {
   readonly title: string
   readonly activeTab: string
-  readonly tabs: { readonly session: string, readonly history: string, readonly models: string }
+  readonly tabs: { readonly session: string, readonly account: string, readonly history: string, readonly models: string }
+  /** A low balance puts a warning `!` on the Account tab. */
+  readonly accountAttention: boolean
   readonly session: SessionTabFacts
+  readonly account: AccountTabFacts
   readonly history: HistoryTabFacts
   readonly models: ModelsTabFacts
 }
@@ -188,12 +201,22 @@ const PAGE_HEIGHTS = [
   { maxHeight: 24, height: 10 },
 ] as const
 
-/** A tab page: the content in a viewport that fits the panel and scrolls beyond it, the hidden keys beside it. */
-function scrolled(id: string, content: MayflyUiNode, keys: MayflyUiNode): MayflyUiNode {
+/**
+ * A tab page: the content in a viewport of the panel's page height (`hold`: a short page is padded, so the panel keeps
+ * one height whichever tab is on show) that scrolls beyond it, the hidden keys beside it.
+ */
+function scrolled(id: string, content: MayflyUiNode, keys?: MayflyUiNode): MayflyUiNode {
   return ui.stack.column([
-    ...PAGE_HEIGHTS.map(({ height, ...when }) => ui.child(ui.scroll(content, { id, height, expandedHeight: height, fit: true, scrollbar: true }), { when })),
-    ui.child(keys),
+    ...PAGE_HEIGHTS.map(({ height, ...when }) => ui.child(ui.scroll(content, { id, height, expandedHeight: height, fit: true, hold: true, scrollbar: true }), { when })),
+    ...keys === undefined ? [] : [ui.child(keys)],
   ])
+}
+
+function accountPage(facts: AccountTabFacts): MayflyUiNode {
+  return scrolled('stats-account-scroll', ui.stack.column([
+    ui.child(ui.fields(facts.rows)),
+    ...status(facts).map(node => ui.child(node)),
+  ]))
 }
 
 function historyPage(facts: HistoryTabFacts): MayflyUiNode {
@@ -218,13 +241,14 @@ function modelBlock(model: ModelBlock): MayflyUiNode {
   ])
 }
 
-/** A per-day chart under its title; one line per model, in the tone of the model's block below. */
+/** A per-day chart under its title: one stacked column per day, one colour per model, the tone of the model's block below. */
 function chartBlock(chart: ModelsChart): MayflyUiNode {
   return ui.stack.column([
     ui.child(ui.richText([{ text: chart.title, styles: ['strong'] }], { overflow: 'truncate' })),
     ui.child(ui.chart({
-      chart: 'line', height: 5, legend: false, xLabels: chart.xLabels, yFormat: 'compact',
-      series: chart.series.map(series => ({ id: series.id, label: series.label, tone: series.tone, points: series.points.map((y, x) => ({ x, y })) })),
+      chart: 'bar', layout: 'stacked', orientation: 'vertical', height: 7, legend: false, yFormat: 'compact',
+      categories: chart.xLabels,
+      series: chart.series.map(series => ({ id: series.id, label: series.label, tone: series.tone, values: series.points })),
     })),
   ])
 }
@@ -265,11 +289,13 @@ export function StatsPanel(facts: StatsFacts): MayflySurfaceNode {
     title: facts.title,
     tabs: { id: TABS_ID, activeId: facts.activeTab, hintLabel: 'tabs', items: [
       { id: 'session', label: facts.tabs.session },
+      { id: 'account', label: facts.tabs.account, ...facts.accountAttention ? { attention: true } : {} },
       { id: 'history', label: facts.tabs.history },
       { id: 'models', label: facts.tabs.models },
     ] },
     pages: {
       session: sessionPage(facts.session),
+      account: accountPage(facts.account),
       history: historyPage(facts.history),
       models: modelsPage(facts.models),
     },

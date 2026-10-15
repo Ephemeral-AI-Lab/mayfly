@@ -1705,6 +1705,7 @@ function compileUnit(node: CompilableNode, state: FocusState, options: RuntimeCo
           height: node.height ?? SCROLL_DEFAULT_HEIGHT,
           expandedHeight: node.expandedHeight ?? SCROLL_DEFAULT_EXPANDED_HEIGHT,
           fit: node.fit === true,
+          hold: node.hold === true,
           pill: node.pill === true,
           follow: node.follow === 'end',
           scrollbar: node.scrollbar !== false,

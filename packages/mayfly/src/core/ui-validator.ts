@@ -44,7 +44,7 @@ import { countWork, type MayflyWorkCounters } from './ui-work-counters.ts'
 import { admitFieldPresentation, admitTextRules } from './ui-validator-form.ts'
 import { admitPromptFields, MAYFLY_UI_MAX_DRAFT_TEXT, type PromptAdmissionHelpers } from './ui-validator-prompt.ts'
 import { admitSliderFields, type SliderAdmissionHelpers } from './ui-validator-slider.ts'
-import { admitChildAdmission, admitCodeFields, admitDiffFields, admitHeatmapFields, admitLineChartFields, admitProgressFields, admitScrollFields, admitSurfaceFields, admitTextStyles, countMotion, type AdmissionHelpers } from './ui-validator-content.ts'
+import { admitChildAdmission, admitCodeFields, admitDiffFields, admitBarChartFields, admitHeatmapFields, admitLineChartFields, admitProgressFields, admitScrollFields, admitSurfaceFields, admitTextStyles, countMotion, type AdmissionHelpers } from './ui-validator-content.ts'
 import { admitTabItemFields, admitTabsFields } from './ui-validator-tabs.ts'
 
 /** Maximum UTF-16 units in one id, key, or action name; a longer value is rejected. */
@@ -1565,6 +1565,7 @@ function admitNode(value: unknown, path: string, state: ValidationState, depth: 
             ...optional(optionalLabel(object, 'title', path), 'title'),
             ...optional(optionalLabel(object, 'yLabel', path), 'yLabel'),
             ...optional(chartHeight(object, path), 'height'),
+            ...admitBarChartFields(ADMISSION_HELPERS, object, path),
           }
         }
         if (chart === 'sparkline') {

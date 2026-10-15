@@ -181,18 +181,19 @@ export interface DailySeries {
   readonly points: readonly number[]
 }
 
-/** A per-day chart: one value per model per step, `days` naming each step's first day. */
+/** A per-day chart: one value per model per day, `days` naming each. */
 export interface DailyChart {
   readonly days: readonly string[]
   readonly series: readonly DailySeries[]
 }
 
-const MAX_STEPS = 40
+/** The days a per-day chart covers, ending today: more than any terminal shows, so the chart cuts it to the width. */
+export const CHART_DAYS = 200
 const MAX_LINES = 4
 
 /**
- * A per-day measure of each model over the range (tokens, money), in at most 40 steps and the four busiest models (the
- * rest are one `other` line).
+ * A per-day measure of each model over the last `CHART_DAYS` days (days outside the range are zero), in the four busiest
+ * models (the rest are one `other` line). One value per calendar day: the chart decides how many it shows.
  * @param aggregated - the range's figures.
  * @param now - today.
  * @param measure - the value of one model's tokens of one day.
@@ -200,17 +201,13 @@ const MAX_LINES = 4
  */
 export function dailyChart(aggregated: StatsAggregate, now: number, measure: (model: ModelTotals, day: DayTokens) => number): DailyChart {
   const last = dayNumber(dayKey(now))
-  const first = last - aggregated.rangeDays + 1
-  const span = last - first + 1
-  const step = Math.max(1, Math.ceil(span / MAX_STEPS))
-  const steps = Math.ceil(span / step)
-  const dayAt = (index: number): string => new Date((first + index * step) * DAY_MS).toISOString().slice(0, 10)
-  const days = Array.from({ length: steps }, (_unused, index) => dayAt(index))
+  const first = last - CHART_DAYS + 1
+  const days = Array.from({ length: CHART_DAYS }, (_unused, index) => new Date((first + index) * DAY_MS).toISOString().slice(0, 10))
   const pointsOf = (models: readonly ModelTotals[]): number[] => {
-    const points = Array.from({ length: steps }, () => 0)
+    const points = Array.from({ length: CHART_DAYS }, () => 0)
     for (const model of models) for (const [day, tokens] of aggregated.daily.get(`${model.provider}\u0000${model.model}`) ?? []) {
-      const index = Math.floor((dayNumber(day) - first) / step)
-      if (index >= 0 && index < steps) points[index]! += measure(model, tokens)
+      const index = dayNumber(day) - first
+      if (index >= 0 && index < CHART_DAYS) points[index]! += measure(model, tokens)
     }
     return points
   }

@@ -17,6 +17,7 @@ import { startStubModel } from './stub-model.mjs'
 import { compile } from './timeline.mjs'
 
 const DRIVER = fileURLToPath(new URL('./driver.mjs', import.meta.url))
+const FAKE_ACCOUNT = fileURLToPath(new URL('./fake-account.mjs', import.meta.url))
 
 /** A workspace path of fixed width: `/tmp/mayfly-scenario-` and eight hex digits. */
 export const WORKSPACE = /\/tmp\/mayfly-scenario-[0-9a-f]{8}/gu
@@ -45,6 +46,8 @@ export async function prepareSession({ scenario, dir, speed = 1, control, config
   mkdirSync(dir, { recursive: true })
   const patch = join(dir, 'overlay.yml')
   const rows = [`- insert:\n    - id: mayfly-replay-driver\n      name: ${pathToFileURL(DRIVER).href}\n`]
+  // An `account` scenario swaps the Platform account service for one that answers from memory (fake-account.mjs).
+  if (scenario.account?.signed !== undefined) rows.push(`- insert:\n    - id: mayfly-scenario-account\n      name: ${pathToFileURL(FAKE_ACCOUNT).href}\n`, '- id: deepseek-account\n  disabled: true\n')
   // A scenario may pin settings of its own (a work-details mode) over the runner's.
   const pinned = { ...config }
   let market
@@ -64,7 +67,7 @@ export async function prepareSession({ scenario, dir, speed = 1, control, config
   const file = join(dir, 'replay.json')
   writeFileSync(file, JSON.stringify(replay === undefined ? [] : compile(replay.items, replay.options), null, 1))
   const log = join(dir, 'driver.log')
-  const stub = await startStubModel()
+  const stub = await startStubModel({ balance: scenario.account?.balance })
   return {
     cwd,
     patch,
@@ -74,6 +77,7 @@ export async function prepareSession({ scenario, dir, speed = 1, control, config
       DEEPSEEK_BASE_URL: `${stub.baseURL}/v1`, DEEPSEEK_API_KEY: 'replay-key',
       MAYFLY_REPLAY_FILE: file, MAYFLY_REPLAY_SPEED: String(speed), MAYFLY_REPLAY_LOG: log,
       ...(control === undefined ? {} : { MAYFLY_REPLAY_CONTROL: control }),
+      ...(scenario.account?.signed === undefined ? {} : { MAYFLY_FAKE_ACCOUNT: scenario.account.signed }),
       ...(isolate ? { HOME: tmp } : {}),
       ...market?.env,
     },

@@ -7,16 +7,18 @@
  */
 import { homedir } from 'node:os'
 import type { MayflyInlineSpan, MayflyTone } from '@ephemeral-ai/mayfly-ui'
-import type { StatsFacts, StatsRow, ModelBlock, ModelsChart, HeatmapVariant } from '../components/stats-panel.ts'
+import type { AccountTabFacts, StatsFacts, StatsRow, ModelBlock, ModelsChart, HeatmapVariant } from '../components/stats-panel.ts'
 import type { MayflyTranslate } from '../frontend/locale.ts'
 import { formatCreated, type SessionInfoFacts } from './session-info-model.ts'
+import { formatAgo } from './session-list-model.ts'
+import { isLowBalance, type AccountSnapshot, type BalanceResult, type WalletCurrency } from './stats-account.ts'
 import { formatMoney, moneyOf, type Currency, type Money, type ModelTokens, type PriceSources } from './pricing.ts'
 import { aggregate, dailyChart, heatmapGrid, RANGES, type DayTokens, type ModelTotals, type StatsAggregate, type StatsRange } from './stats-index/stats.ts'
 import type { SessionDigest } from './stats-index/digest.ts'
 import { formatTokens, ratioSeverity, usagePercent, usageRatio } from './usage.ts'
 
-export type StatsTab = 'session' | 'history' | 'models'
-export const STATS_TABS: readonly StatsTab[] = ['session', 'history', 'models']
+export type StatsTab = 'session' | 'account' | 'history' | 'models'
+export const STATS_TABS: readonly StatsTab[] = ['session', 'account', 'history', 'models']
 
 /** The index's state as the panel shows it. */
 export interface IndexState {
@@ -25,6 +27,8 @@ export interface IndexState {
   readonly total: number
   readonly skipped: number
   readonly failed: number
+  /** Why the stored sessions could not be listed at all. */
+  readonly error?: string | undefined
 }
 
 /** Everything the panel's texts are made from. */
@@ -41,6 +45,10 @@ export interface StatsInput {
   readonly digests: readonly SessionDigest[]
   readonly index: IndexState | undefined
   readonly sources: PriceSources
+  /** The provider of the current model: what is known and whether a read is running. */
+  readonly account: { readonly snapshot: AccountSnapshot | undefined, readonly loading: boolean }
+  /** A balance under this in every currency it holds is low. */
+  readonly lowBalance: Readonly<Record<WalletCurrency, number>>
   readonly version: { readonly mayfly: string, readonly harness: string }
 }
 
@@ -126,10 +134,18 @@ function rangeFacts(input: StatsInput): { ranges: { id: string, label: string, a
 function indexFacts(input: StatsInput): { loading?: string, note?: string } {
   const { t, index } = input
   if (index === undefined) return {}
+  if (index.error !== undefined) return { note: t('Could not read the stored sessions: {error}', { error: index.error }) }
   if (index.running) return { loading: t('indexing {done}/{total} sessions', { done: index.done, total: index.total }) }
   if (index.failed > 0) return { note: t('{count} sessions could not be read', { count: index.failed }) }
   if (index.skipped > 0) return { note: t('latest {count} sessions', { count: index.total }) }
   return {}
+}
+
+/** Why there is nothing to count: the index never ran, or it listed this many stored sessions and none had a turn. */
+function emptyText(input: StatsInput): string {
+  const { t, index } = input
+  if (index === undefined) return t('No sessions yet')
+  return t('No session with a turn yet · {stored} stored sessions found', { stored: index.total })
 }
 
 function historyTab(input: StatsInput, aggregated: StatsAggregate, currency: Currency): StatsFacts['history'] {
@@ -146,7 +162,7 @@ function historyTab(input: StatsInput, aggregated: StatsAggregate, currency: Cur
   const money = moneyText(moneyOf(aggregated.models, currency, input.sources), currency, t)
   const date = (key: string): string => new Intl.DateTimeFormat(intl, { month: 'short', day: 'numeric' }).format(new Date(`${key}T00:00:00`))
   const { buckets } = aggregated
-  const empty = aggregated.sessions === 0 && input.index?.running !== true ? t('No sessions yet') : undefined
+  const empty = aggregated.sessions === 0 && input.index?.running !== true && input.index?.error === undefined ? emptyText(input) : undefined
   return {
     ...rangeFacts(input), ...indexFacts(input),
     variants: [variant(52, 64), variant(26, 38), variant(13, 0)],
@@ -208,8 +224,66 @@ function modelsTab(input: StatsInput, aggregated: StatsAggregate, currency: Curr
       ],
     }
   })
-  const empty = aggregated.models.length === 0 && input.index?.running !== true ? t('No sessions yet') : undefined
+  const empty = aggregated.models.length === 0 && input.index?.running !== true && input.index?.error === undefined ? emptyText(input) : undefined
   return { ...rangeFacts(input), ...indexFacts(input), ...tokensChart === undefined ? {} : { tokensChart }, ...costChart === undefined ? {} : { costChart }, models: blocks, ...empty === undefined ? {} : { empty }, keys: keys(t) }
+}
+
+const WALLET_SYMBOL: Readonly<Record<WalletCurrency, string>> = { CNY: '¥', USD: '$' }
+const walletAmount = (currency: WalletCurrency, amount: string): string => `${WALLET_SYMBOL[currency]} ${amount}`
+
+/** The balance rows: one per currency, or the reason there is none. */
+function balanceRows(input: StatsInput, balance: BalanceResult): StatsRow[] {
+  const { t, lowBalance } = input
+  const label = t('Balance')
+  if (balance.status === 'unavailable') {
+    const text = balance.reason === 'signed-out' ? t('— sign in from /provider to see the balance')
+      : balance.reason === 'no-key' ? t('— no API key to ask with')
+        : balance.reason === 'rejected' ? t('— unavailable (key rejected)') : t('— unavailable (network)')
+    return [{ label, value: [{ text, tone: 'muted' }] }]
+  }
+  const low = isLowBalance(balance, lowBalance)
+  if (balance.wallets.length === 0) return [{ label, value: [{ text: balance.available === false ? t('⚠ not enough for API calls') : '—', tone: balance.available === false ? 'warning' : 'muted' }] }]
+  return balance.wallets.map((wallet, index): StatsRow => {
+    const total = walletAmount(wallet.currency, wallet.total)
+    const parts = wallet.toppedUp !== undefined && wallet.granted !== undefined
+      ? t('{total} · top-up {toppedUp} · granted {granted}', { total, toppedUp: walletAmount(wallet.currency, wallet.toppedUp), granted: walletAmount(wallet.currency, wallet.granted) })
+      : total
+    const text = balance.available === false
+      ? t('⚠ {total} not enough for API calls', { total })
+      : low ? t('⚠ {total} low balance · below {limit}', { total, limit: walletAmount(wallet.currency, lowBalance[wallet.currency].toFixed(2)) }) : parts
+    return { label: index === 0 ? label : '', value: [{ text, ...low || balance.available === false ? { tone: 'warning' as const } : {} }] }
+  })
+}
+
+/** The Account tab: the provider of the current model, read-only. */
+function accountTab(input: StatsInput): AccountTabFacts {
+  const { t, now } = input
+  const { snapshot, loading } = input.account
+  const model = input.session?.model
+  if (snapshot === undefined) {
+    return {
+      rows: [{ label: t('Provider'), value: text(model === undefined ? t('not set') : model.provider) }],
+      ...loading ? { loading: t('checking balance…') } : {},
+    }
+  }
+  const rows: StatsRow[] = [{ label: t('Provider'), value: text(snapshot.name === snapshot.route ? snapshot.route : `${snapshot.name} (${snapshot.route})`) }]
+  const key = snapshot.key === undefined ? undefined : t(snapshot.key.configured ? 'configured ({ref})' : 'not configured ({ref})', { ref: snapshot.key.ref })
+  if (snapshot.kind === 'account') {
+    const who = [snapshot.profile?.name, snapshot.profile?.contact].filter((part): part is string => part !== null && part !== undefined && part !== '')
+    rows.push({ label: t('Account'), value: text(snapshot.signedIn === true ? [t('Signed in'), ...who].join(' · ') : t('Not signed in')) })
+  } else {
+    if (snapshot.endpoint !== undefined) rows.push({ label: t('Endpoint'), value: text(snapshot.endpoint) })
+    if (snapshot.models !== undefined) rows.push({ label: t('Models'), value: text(t('{count} configured', { count: snapshot.models })) })
+    if (key !== undefined) rows.push({ label: t('Key'), value: text(key, snapshot.key?.configured === true ? undefined : 'warning') })
+  }
+  if (snapshot.balance === undefined) rows.push({ label: t('Balance'), value: text(t('No balance information for this provider'), 'muted') })
+  else if (loading) rows.push({ label: t('Balance'), value: text('—', 'muted') })
+  else rows.push(...balanceRows(input, snapshot.balance))
+  if (snapshot.links !== undefined) {
+    rows.push({ label: t('Top up'), value: text(snapshot.links.topUp) }, { label: t('Usage'), value: text(snapshot.links.usage) })
+  }
+  rows.push({ label: t('Checked'), value: text(formatAgo(Math.max(0, now - snapshot.at), t), 'muted') })
+  return { rows, ...loading ? { loading: t('checking balance…') } : {} }
 }
 
 /**
@@ -223,8 +297,10 @@ export function buildStatsFacts(input: StatsInput): StatsFacts {
   const aggregated = aggregate(input.digests, input.range, input.now)
   return {
     title: t('Stats'), activeTab: input.tab,
-    tabs: { session: t('Session'), history: t('History'), models: t('Models') },
+    tabs: { session: t('Session'), account: t('Account'), history: t('History'), models: t('Models') },
+    accountAttention: isLowBalance(input.account.snapshot?.balance, input.lowBalance),
     session: sessionTab(input, currency),
+    account: accountTab(input),
     history: historyTab(input, aggregated, currency),
     models: modelsTab(input, aggregated, currency),
   }

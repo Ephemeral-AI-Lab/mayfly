@@ -150,6 +150,8 @@ export interface MayflyScrollNode {
   readonly expandedHeight?: number
   /** Shrink the viewport to short content, and draw the scrollbar only when the content overflows. */
   readonly fit?: boolean
+  /** With `fit`: keep the viewport at `height` whatever the content (short content is padded with blank rows), so a panel whose pages differ does not change height; the scrollbar still shows only on overflow. */
+  readonly hold?: boolean
   /** `↓ N new · End` over the last row while the view is scrolled away from a followed tail. */
   readonly pill?: boolean
 }
@@ -522,7 +524,24 @@ interface MayflyLineChartNode {
   /** `false` leaves out the series legend a chart of two or more series draws under the plot. */
   readonly legend?: boolean
 }
-interface MayflyBarChartNode { readonly kind: 'chart', readonly chart: 'bar', readonly layout?: 'grouped' | 'stacked' | 'normalized', readonly orientation?: 'vertical' | 'horizontal', readonly categories: readonly string[], readonly series: readonly MayflyBarChartSeries[], readonly title?: string, readonly yLabel?: string, readonly height?: number }
+interface MayflyBarChartNode {
+  readonly kind: 'chart'
+  readonly chart: 'bar'
+  /** A vertical chart piles (`stacked`) or sets side by side (`grouped`, the default) the series of a category, or stretches each category to a hundred percent (`normalized`); a horizontal chart is always normalized. */
+  readonly layout?: 'grouped' | 'stacked' | 'normalized'
+  readonly orientation?: 'vertical' | 'horizontal'
+  /** The x label of each category; a vertical chart with more categories than columns merges neighbours (their values add). */
+  readonly categories: readonly string[]
+  readonly series: readonly MayflyBarChartSeries[]
+  readonly title?: string
+  readonly yLabel?: string
+  /** The rows of the plot (default 8). */
+  readonly height?: number
+  /** `compact` writes the y labels as `420.8M`, `12k`; the plain number otherwise. */
+  readonly yFormat?: 'compact'
+  /** `false` leaves out the series legend a vertical chart of two or more series draws under the x labels. */
+  readonly legend?: boolean
+}
 interface MayflySparklineChartNode { readonly kind: 'chart', readonly chart: 'sparkline', readonly values: readonly (number | null)[], readonly label?: string, readonly tone?: MayflyTone }
 interface MayflyHeatmapChartNode {
   readonly kind: 'chart'

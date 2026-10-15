@@ -438,6 +438,11 @@ ui.chart({
   title?: string,
   yLabel?: string,
   height?: number, // 4..20
+  // A vertical chart draws one column group per category on an axis from zero
+  // (a rounded top, a middle, zero), with eighths on top; more categories than
+  // columns merge neighbours (their values add).
+  yFormat?: 'compact', // y labels as 420.8M, 12k
+  legend?: false, // leaves out the series legend under the x labels
   categories: readonly string[],
   series: [{ id: string, label?: string, tone?: MayflyTone, empty?: boolean, values: readonly (number | null)[] }],
 })

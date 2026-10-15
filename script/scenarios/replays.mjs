@@ -1260,12 +1260,21 @@ const appSessions = {
 }
 
 /**
- * A year of stored conversations for /stats: about ninety sessions over 52 weeks (busier on weekdays and in the last
- * months, a streak ending today), mostly `deepseek-flash`, some `deepseek-v4-pro`, a few on an unpriced `acme-think`
- * route, some in the sibling workspaces `docs` and `api`, at hours that fall in and out of DeepSeek's peak window (the
+ * A year of stored conversations for /stats: about a hundred and fifty sessions over 52 weeks (busier on weekdays and in the last
+ * months, a streak ending today) on up to nine models that change with the period (DeepSeek Flash and Pro, Claude, GPT, Kimi,
+ * GLM, one gateway route, and the Flash id under three providers), some in the sibling workspaces `docs` and `api`, at hours that fall in and out of DeepSeek's peak window (the
  * scenario clock stands at Thursday 2026-01-01 09:00 UTC, which is 17:00 in Beijing: a peak hour). Today's turn is the
  * live session's own.
  */
+/** The models a period of the year used, with their weights and how much each turn spends (a multiple of the base usage). */
+const STATS_POOLS = [
+  // More than 240 days ago: DeepSeek Flash, a gateway and a trial.
+  [['deepseek-official', 'deepseek-flash', 6, 1], ['bravo', 'bravo-mini', 2, 0.6], ['acme', 'acme-think', 1, 0.8]],
+  // 120 to 240 days ago: Pro and a Claude model join.
+  [['deepseek-official', 'deepseek-flash', 5, 1], ['deepseek-official', 'deepseek-v4-pro', 3, 2.2], ['anthropic', 'claude-sonnet-5-5', 2, 2.8], ['bravo', 'bravo-mini', 1, 0.6]],
+  // The last 120 days: seven models, the same Flash id under three providers.
+  [['deepseek-official', 'deepseek-flash', 5, 1], ['deepseek-official', 'deepseek-v4-pro', 3, 2.2], ['anthropic', 'claude-sonnet-5-5', 3, 2.8], ['openai', 'gpt-5', 2, 2.4], ['moonshotai', 'kimi-k2', 2, 1.4], ['zhipuai', 'glm-5', 1, 1.2], ['openrouter', 'deepseek/deepseek-flash', 1, 1], ['deepseek', 'deepseek-flash', 1, 1], ['acme', 'acme-think', 1, 0.8]],
+]
 const statsSeeds = () => {
   const sessions = []
   for (let day = 1; day <= 360; day += 1) {
@@ -1273,18 +1282,25 @@ const statsSeeds = () => {
     const weekday = (4 - (day % 7) + 7) % 7
     const busy = weekday >= 1 && weekday <= 5
     const recent = day <= 120
-    const active = day <= 5 || hash < (busy ? (recent ? 52 : 34) : (recent ? 14 : 8))
+    const active = day <= 5 || hash < (busy ? (day <= 60 ? 92 : recent ? 66 : 30) : (day <= 60 ? 40 : recent ? 18 : 6))
     if (!active) continue
-    const route = day % 11 === 0 ? { provider: 'deepseek-official', model: 'deepseek-v4-pro' } : day % 17 === 0 ? { provider: 'acme', model: 'acme-think' } : {}
-    const turns = 1 + (hash % 5)
-    sessions.push({
-      id: `seed-stats-${String(day)}`, at: -day * DAY - (day % 3) * 5 * HOUR, title: `Stats seed ${String(day)}`,
-      ...day % 5 === 0 ? { cwd: day % 10 === 0 ? 'docs' : 'api' } : {}, ...route,
-      items: Array.from({ length: turns }, (_unused, index) => turn(`Question ${String(index + 1)} of day ${String(day)}.`, [step({
-        text: `Answer ${String(index + 1)}.`,
-        usage: { inputTokens: 4_000 + hash * 300, outputTokens: 600 + hash * 40, cacheReadTokens: 30_000 + hash * 900 },
-      })])),
-    })
+    const pool = STATS_POOLS[day > 240 ? 0 : day > 120 ? 1 : 2]
+    // The recent weeks are the busiest: up to four sessions a day, each on a model the weights pick.
+    const perDay = day <= 60 ? 1 + (hash % 4) : recent ? 1 + (hash % 3 === 0 ? 1 : 0) + (hash % 5 === 0 ? 1 : 0) : 1 + (hash % 6 === 0 ? 1 : 0)
+    for (let nth = 0; nth < perDay; nth += 1) {
+      const pick = (day * 31 + nth * 17 + hash) % pool.reduce((sum, entry) => sum + entry[2], 0)
+      let at = 0
+      const [provider, model, , spend] = pool.find(entry => (at += entry[2]) > pick)
+      const turns = 1 + ((hash + nth) % 5)
+      sessions.push({
+        id: `seed-stats-${String(day)}-${String(nth)}`, at: -day * DAY - (day % 3) * 5 * HOUR - nth * 2 * HOUR, title: `Stats seed ${String(day)}.${String(nth)}`,
+        ...day % 5 === 0 ? { cwd: day % 10 === 0 ? 'docs' : 'api' } : {}, provider, model,
+        items: Array.from({ length: turns }, (_unused, index) => turn(`Question ${String(index + 1)} of day ${String(day)}.`, [step({
+          text: `Answer ${String(index + 1)}.`,
+          usage: { inputTokens: Math.round((4_000 + hash * 300) * spend), outputTokens: Math.round((600 + hash * 40) * spend), cacheReadTokens: Math.round((30_000 + hash * 900) * spend) },
+        })])),
+      })
+    }
   }
   return sessions
 }
@@ -1299,7 +1315,16 @@ const appStats = {
   ],
 }
 
-export const SCENES = { appConversation, appAgents, appSessions, appStats }
+/** One short conversation on the DeepSeek account route, and one on a pi-ai gateway route, for the Account tab of /stats. */
+const accountConversation = (provider, model, text) => ({
+  summary: `a short conversation on the ${provider} route`,
+  options: { provider, model },
+  items: [turn('Is the account ready?', [step({ text, usage: { inputTokens: 4_000, outputTokens: 300, cacheReadTokens: 2_000 } })])],
+})
+const appAccountSignedIn = accountConversation('deepseek-account', 'deepseek-flash', 'Yes, the account is connected.')
+const appAccountGateway = accountConversation('acme', 'acme-think', 'Yes, the gateway answers.')
+
+export const SCENES = { appConversation, appAgents, appSessions, appStats, appAccountSignedIn, appAccountGateway }
 
 /** A replay or a scene by name. */
 export const timelineNamed = name => Object.hasOwn(REPLAYS, name) ? REPLAYS[name] : Object.hasOwn(SCENES, name) ? SCENES[name] : undefined

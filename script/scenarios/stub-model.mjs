@@ -18,16 +18,32 @@ const sse = text => [
   { type: 'message_stop' },
 ].map(event => `data: ${JSON.stringify(event)}\n\n`).join('')
 
+/** DeepSeek's `GET /user/balance` answers a scenario can ask for (`account.balance`); `rejected` and `down` are statuses. */
+const BALANCES = {
+  ok: { is_available: true, balance_infos: [{ currency: 'CNY', total_balance: '110.00', granted_balance: '10.00', topped_up_balance: '100.00' }] },
+  low: { is_available: true, balance_infos: [{ currency: 'CNY', total_balance: '6.20', granted_balance: '6.20', topped_up_balance: '0.00' }] },
+  multi: { is_available: true, balance_infos: [{ currency: 'CNY', total_balance: '110.00', granted_balance: '10.00', topped_up_balance: '100.00' }, { currency: 'USD', total_balance: '4.20', granted_balance: '0.00', topped_up_balance: '4.20' }] },
+  insufficient: { is_available: false, balance_infos: [{ currency: 'CNY', total_balance: '0.00', granted_balance: '0.00', topped_up_balance: '0.00' }] },
+}
+const BALANCE_STATUS = { rejected: 401, down: 503 }
+
 /**
  * Start the stub. Requests without tools (title generation) get the title; the rest get the notice.
+ * @param options - `balance`: the `/user/balance` answer (`ok`, `low`, `multi`, `insufficient`, or the statuses `rejected` and `down`).
  * @returns `{ baseURL, inFlight(), close() }`: `inFlight()` counts the requests not answered yet, so a scenario settles
  *   only after the title the product asks for has arrived.
  */
-export async function startStubModel() {
+export async function startStubModel({ balance = 'ok' } = {}) {
   const open = new Set()
   const server = createServer((request, response) => {
     open.add(response)
     response.on('close', () => open.delete(response))
+    if (request.method === 'GET' && (request.url ?? '').split('?')[0] === '/user/balance') {
+      const status = BALANCE_STATUS[balance]
+      if (status !== undefined) response.writeHead(status).end()
+      else response.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(BALANCES[balance]))
+      return
+    }
     if (request.method !== 'POST' || !(request.url ?? '').split('?')[0].endsWith('/v1/messages')) { response.writeHead(404).end(); return }
     let raw = ''
     request.on('data', (data) => { raw += data })

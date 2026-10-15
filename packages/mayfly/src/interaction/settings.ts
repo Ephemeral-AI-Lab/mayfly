@@ -80,6 +80,9 @@ export interface MayflySettings {
   readonly prices: Readonly<Record<string, MayflyPrice>>
   /** CNY per USD, to show a USD price in CNY (Chinese UI) and a CNY price in USD (English UI). */
   readonly usdCnyRate: number
+  /** A provider balance below this in every currency it holds is low (the `/stats` Account tab warns). */
+  readonly lowBalanceCny: number
+  readonly lowBalanceUsd: number
   // Presentation (slice 1.2): read by core through `core/presentation.ts`; a change reloads the live theme provider.
   /** Glyph vocabulary: `auto` follows the locale's charset; `ascii` is the one-cell fallback table. */
   readonly glyphs: 'auto' | 'unicode' | 'ascii'
@@ -132,6 +135,8 @@ export const Config = z.object({
   preferPlainKeys: z.boolean().default(false).volatile(),
   prices: PRICES.default({}).volatile(),
   usdCnyRate: z.number().min(0.01).default(7.2).volatile(),
+  lowBalanceCny: z.number().min(0).default(10).volatile(),
+  lowBalanceUsd: z.number().min(0).default(1.5).volatile(),
   // Presentation (slice 1.2).
   glyphs: z.union([z.const('auto'), z.const('unicode'), z.const('ascii')]).default('auto').volatile(),
   monochrome: z.boolean().default(false).volatile(),
@@ -156,6 +161,8 @@ export const DEFAULT_SETTINGS: MayflySettings = {
   preferPlainKeys: false,
   prices: {},
   usdCnyRate: 7.2,
+  lowBalanceCny: 10,
+  lowBalanceUsd: 1.5,
   // Presentation (slice 1.2).
   glyphs: 'auto',
   monochrome: false,
