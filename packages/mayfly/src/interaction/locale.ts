@@ -45,7 +45,7 @@ const zh: Readonly<Record<string, string>> = {
   'Page or jump in lists and documents': '在列表和文档中翻页或跳转',
   'Choose, run, open a picker, apply it, or start editing a field': '选择、执行、打开或应用选择器，或开始编辑字段',
   'Toggle a checkbox or multi-select row, open a multiselect, or fold a tree branch': '切换复选框或多选行、打开多选字段，或折叠树节点',
-  'Move to the next or previous control group, committing text and pickers': '移动到下一个或上一个控件组，并提交文本和选择器',
+  'Commit a text field or picker and move to the next or previous control (while editing a field)': '提交文本或选择器，并移动到下一个或上一个控件（仅在编辑字段时）',
   'Leave the innermost layer: picker, editing, search, back, return to the first control, then close': '退出最内层：选择器、编辑、搜索、返回、回到第一个控件，最后关闭',
   'Close the surface, asking first when there are unsaved changes': '关闭面板；有未保存修改时先确认',
   'Filter a filterable list; Ctrl+U clears the filter': '筛选可筛选的列表；Ctrl+U 清除筛选',

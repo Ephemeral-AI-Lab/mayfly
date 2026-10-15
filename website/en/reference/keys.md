@@ -31,7 +31,7 @@ Every panel, picker, and form follows one key grammar. The hint row at the botto
 | `PgUp/PgDn, Home/End` | Page or jump in lists and documents |
 | `Enter` | Choose, run, open a picker, apply it, or start editing a field |
 | `Space` | Toggle a checkbox or multi-select row, open a multiselect, or fold a tree branch |
-| `Tab/Shift+Tab` | Move to the next or previous control group, committing text and pickers |
+| `Tab/Shift+Tab` | Commit a text field or picker and move to the next or previous control (while editing a field) |
 | `Esc` | Leave the innermost layer: picker, editing, search, back, return to the first control, then close |
 | `Ctrl+C` | Close the surface, asking first when there are unsaved changes |
 | `Type or /` | Filter a filterable list; Ctrl+U clears the filter |

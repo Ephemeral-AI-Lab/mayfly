@@ -215,7 +215,7 @@ function accelerators(bindings: GrammarBinding[], state: GrammarState, printable
 }
 
 function groupMoves(bindings: GrammarBinding[]): void {
-  /* Tab and Shift+Tab still move between groups; the hint row no longer names them (every panel already shows its arrows). */
+  /* Tab and Shift+Tab leave a field that is being edited, committing its text or picker; the hint row does not name them. */
   push(bindings, action(ACTION_NEXT_CONTROL), { kind: 'group', delta: 1 })
   push(bindings, action(ACTION_SHIFT_TAB), { kind: 'group', delta: -1 })
 }
@@ -464,7 +464,7 @@ export function keyGrammar(state: GrammarState): readonly GrammarBinding[] {
   }
   // A search in progress hints only what ends or clears it.
   tabSwitches(bindings, state, control.kind !== 'tab' && list?.searching !== true && !(control.kind === 'row' && arrowsSwitchTabs(state, control)))
-  groupMoves(bindings)
+  /* Outside editing, arrows leave a control at its edge, Alt+↑/↓ hop between groups and Esc goes home: Tab has nothing left to add. */
   focusLevels(bindings)
   if (list?.searching === true) push(bindings, { kind: 'backspace' }, { kind: 'search-type' })
   // A declared Delete accelerator keeps its key; otherwise Delete resets a changed field.
@@ -622,7 +622,7 @@ export const SHARED_KEY_REFERENCE: readonly { readonly keys: string, readonly ac
   { keys: 'PgUp/PgDn, Home/End', action: 'Page or jump in lists and documents' },
   { keys: 'Enter', action: 'Choose, run, open a picker, apply it, or start editing a field' },
   { keys: 'Space', action: 'Toggle a checkbox or multi-select row, open a multiselect, or fold a tree branch' },
-  { keys: 'Tab/Shift+Tab', action: 'Move to the next or previous control group, committing text and pickers' },
+  { keys: 'Tab/Shift+Tab', action: 'Commit a text field or picker and move to the next or previous control (while editing a field)' },
   { keys: 'Esc', action: 'Leave the innermost layer: picker, editing, search, back, return to the first control, then close' },
   { keys: 'Ctrl+C', action: 'Close the surface, asking first when there are unsaved changes' },
   { keys: 'Type or /', action: 'Filter a filterable list; Ctrl+U clears the filter' },
