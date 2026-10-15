@@ -1659,6 +1659,11 @@ button.
 
 **Built from:** `surface`, `tabs` (wizard), `list` (numbered or multiple), `form` (Other), `text`. Scene: Questions.
 
+**Shared wizard.** Questions, onboarding (6c.4) and the provider forms (`/provider add|edit`, the price form) are
+all multi-step forms. They share one wizard pattern (`patterns.wizard`, built in Phase 6 round R5): a step strip, a
+per-step body, an optional Review page, back and next, per-step validation, and a draft kept across steps. This
+section describes the question case of that pattern.
+
 A multi-question prompt is one wizard step per question plus a **Review** page; a single
 question drops the strip. Digits answer at once (a question is a preference, not a grant),
 `Enter` accepts and advances, and on the last page `Enter` submits every answer as one
