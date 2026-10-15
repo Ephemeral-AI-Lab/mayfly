@@ -76,7 +76,7 @@ keeps its row and names its successor, because the Phase 1 record cites it.
 | D5 | **No session delete.** The Harness has no deletion (`SessionPersistence` offers `create`, `open`, `flush`, `stat`, `list`). | `/sessions` ships without `x` and without the `u undo · 8s` toast. They return when the Harness exposes deletion. |
 | D6 | **Keys are scoped by focus.** | In the editor `Ctrl+S` stays *steer* and `Ctrl+F`/`Ctrl+J` keep their pi-tui editing meaning; inside surfaces `Ctrl+S` is `ui.save`; `Ctrl+F` searches only while the stream or a list has focus; the toast drops `Ctrl+J view` (§3.4 has the table). |
 | D7 | **One components area**, `packages/mayfly/src/components/`, with no Cordis entry and no public subpath. | `packages/mayfly/AGENTS.md` gains the area and its layering rule. |
-| D8 | **The `/` palette is the editor's completion list.** | Scene 15's inline list, drawn with scene 30's row layout (match bold, description, the command's key at the right). No palette overlay. |
+| D8 | **The `/` palette is the editor's completion list.** | Drawn with scene 30's row layout (match bold, description), as a borderless palette over the stream on the rows above the frame (owner decision, Phase 4 round 1), with no key line and no key at the right edge (round 4). |
 | D9 | **`@` completions: `Enter` or `Tab` insert the token; `Ctrl+G` opens the focused file externally** (`ui.external`, the row shows `↗ code`). | Scene 30's *Files* overlay is not a separate surface. |
 | D10 | **Rewind keeps today's conversation branch**, without the restore-scope strip (the Harness has no file checkpoints). | The checkpoint list takes the new look only. |
 | D11 | **Changed files opens from a new `/changes` command.** | Data comes from the session's edit and write calls. |
@@ -2018,7 +2018,7 @@ part is accepted (§7 step 3).
   characters), then `ui.surface({ titleAlign: 'right', chrome: 'surface', hint: 'completions', border })` around
   `ui.prompt`. `interaction/input-plugin.ts` publishes it into the editor dock slot through `mountNodeSlot`.
 - **The command palette** is the editor's completion list (D8): `/` commands with scene 30's row layout (the match bold,
-  the description, the command's key at the right), `@` files through `createFileMentionProvider` (`Enter`/`Tab`
+  the description; no key line, no key at the right edge), `@` files through `createFileMentionProvider` (`Enter`/`Tab`
   insert, `Ctrl+G` opens, D9), and `#` skills; editor-extension `complete()` results join them.
 - **Title** from the official `title` session projection (the source `interaction/terminal-title.ts` mirrors).
 - **Shell mode** is the `!` symbol and the `accent` border only.
@@ -2033,7 +2033,7 @@ part is accepted (§7 step 3).
   queues, `Ctrl+S` steers. `mayfly/request-subagent-reply` remains the plugins' entry point.
 - **Keys** in the editor scope: `Alt+↑` focuses the stream, `Alt+↓`/`F6` enter the views, `?` opens key help on an empty
   prompt, `Ctrl+S` steers, `Ctrl+G` opens the draft externally.
-- Deletes the autocomplete adapter (`SelectListAdapter`, `core/wrapping-select-list.ts`), `setBorderLabel`
+- Deletes `setBorderLabel`
   (`interaction/editor-plus.ts`), `interaction/pane-queue.ts` as a pane, and the reply form's `Send`/`Cancel` buttons
   and delivery select.
 
@@ -2052,8 +2052,8 @@ text above is the starting point; the final behavior is what the owner accepts.
   owner's change from the prototype's queue line), and `↑`/`↓` as the history with its counter on the notification row.
   Parts 4c.1 and 4c.2. Deletes `interaction/pane-queue.ts` and the `./pane-queue` plugin (H7, G15).
 - **4d Command palette** (scene 30 p1-p2). The editor's completion list for `/`, `@`, and `#` and the results of
-  editor extensions, with its own key line. Parts 4d.1 to 4d.4. Deletes the autocomplete adapter
-  (`SelectListAdapter`, `core/wrapping-select-list.ts`).
+  editor extensions, as plain rows with no key line. Parts 4d.1 to 4d.4. The autocomplete adapter
+  (`SelectListAdapter`, `core/wrapping-select-list.ts`) was deleted in round 1.
 - **4e Placeholders, keys, and subagent replies** (scene 15). The placeholder ladder by state, the editor-scope keys
   and the title projection, and the subagent reply through the editor (G18, H8, R11). Parts 4e.1 to 4e.3. Deletes the
   reply form's `Send`/`Cancel` buttons and delivery select.
@@ -2069,7 +2069,7 @@ rounds are planned in review order, one group in review at a time.
 | R1 | 4a.1 editor frame; 4a.2 shell mode | planned: the editor becomes a pure `Editor` component on the dock slot, so this round is the cutover and nothing else changes in the editor's behavior | `feat/4a` |
 | R2 | 4b.1 tokens in the buffer; 4b.2 submit expansion | built, and the owner accepted the effect (tests, goldens and perf A/B are deferred to the end of Phase 4, spec §3.1, so it is not yet marked accepted): tokens stay inline in the text (no strip): `[image #1 84 KB]`, pi-tui's `[paste #1 +14 lines]`, and an `@` mention as its relative path, painted in tones; the arrows step over a token and highlight it, one Backspace removes a highlighted token (two after a token), the hint above the prompt names the keys (`Ctrl+G opens · Backspace removes`); `Ctrl+G` on a token opens a mentioned file or folder, a pasted block as text (it folds back into a token), or an image in a preview overlay; an `@` folder is taken with Enter and entered with Tab; a pasted block survives Up/Down history and the whole-draft `Ctrl+G`; the prompt's waits (clipboard, file search) and an `image` node show the unified loader; the `ℹ` glyph is retired; the image preview was not confirmed in a real image terminal (WezTerm over SSH stayed black: its `enable_kitty_graphics` setting or the draw order are the open suspects; the overlay now keeps the image's first row in view); scenarios `tokens`, `tokensSubmit`, `tokensEditor`, `tokensOpen`, `tokensHistory`, `tokensImage`, `tokensFolder`, `tokensWaiting` | `feat/4a` |
 | R3 | 4c.1 queued rows; 4c.2 prompt history | built, and the owner accepted the effect (tests, goldens and perf A/B are deferred to the end of Phase 4, spec §3.1, so it is not yet marked accepted); also the interrupt scope (the displayed Agent's turn only, queue kept): queued messages are rows of the stream (`⏎ queued`, `⏎ steering`); `Alt+↑` (now also with a draft in the prompt) reaches them and the notification row names `e edit · s send now · d cancel`; `e` takes the message into the prompt (a draft goes to the history first), `s` moves it to the steer lane, `d` cancels it and `u` undoes it (eight seconds, back in its lane); `↑`/`↓` are the history only, with `↑ history 2/4` on the notification row; `pane-queue` is deleted; a node slot reports its list's cursor (`cursor` option); one scenario, `queue` (rows, keys, the agent reading them, the history walk; it holds the queue four minutes for a person, a runner skips the wait); a message the agent reads becomes a prompt in the stream | `feat/4a` |
-| R4 | 4d.1 the `/` list; 4d.2 palette keys | planned: the autocomplete adapter is deleted here | `feat/4a` |
+| R4 | 4d.1 the `/` list; 4d.2 palette keys | no change, decided in a question round (2026-10-14): round 1 already built the `/` palette and deleted the adapter. The owner kept it as it is: no key line, `Enter` on a `/` command still accepts and runs it (`Tab` completes the name), no key at the right edge (no command has a binding), pi-tui's `SelectList` state and keys kept (`core/completion-list.ts`). Review it in scenario `editor` (`commands*` checkpoints). `hint: 'completions'` stays a `ui.surface` option for plugin prompts; the editor's palette does not draw it | `feat/4a` |
 | R5 | 4d.3 `@` files; 4d.4 `#` skills and extension results | planned | `feat/4a` |
 | R6 | 4e.1 placeholders; 4e.2 keys and title; 4e.3 subagent replies | planned: the last group, so the phase gate follows (platform acceptance above) | `feat/4a` |
 

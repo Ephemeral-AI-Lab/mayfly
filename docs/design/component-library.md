@@ -348,7 +348,7 @@ thing it acts on, so the screen never repeats a sentence and the user never has 
 | a capturing surface | that surface's hint row (§3.2) | `Enter open · Type filter · Esc close` |
 | a view | the view panel's own hint row | `Enter open · x stop · Esc back` |
 | a stream row | the hint row, once the stream has focus | `Enter expand · c copy · Ctrl+G open in editor` |
-| the completion list | the last line of the list | `↑/↓ options · Tab complete · Enter run · Esc close` |
+| the editor's completion list | no cue: the list is plain rows (§5.2) | — |
 | a foldable block | the block's own summary row, on the newest block | `▸ Took 6s · 2 tool calls · Ctrl+O expand` |
 | the running turn | the **activity row's right gap** (§5.3) | `Esc interrupt · Ctrl+O expand` |
 | the typed prefixes `/` `@` `#` `!` | the **editor's empty-state placeholder** | `Ask anything · / commands · @ files · # skills · ! shell` |
@@ -1131,13 +1131,15 @@ Inside it is the `ui.prompt` (§4.3): the prompt symbol, the tokens, the buffer,
 - **Alt+↑** moves focus into the conversation stream (§5.6); `Alt+↓` returns. The editor teaches neither: see below.
 - **No hint row.** The editor frame never draws a key line (§3.3): the placeholder teaches the typed prefixes, the
   notification row names the keys of a queued row, the activity gap carries `Esc interrupt`, and `Alt+↑` is cued by a tip and by the
-  stream's own hint row once it has focus. The one exception is the open completion list, whose last line is its key
-  line (`↑/↓ options · Tab complete · Enter insert · Esc close`). A surface opts in with `hint: 'none'` or
-  `hint: 'completions'`.
+  stream's own hint row once it has focus. The open completion list has no key line either (owner decision, Phase 4
+  rounds 1 and 4). A `ui.prompt` in a plugin surface still opts in to a key line for its own list with
+  `hint: 'completions'`; the editor's palette does not draw it.
 - **The placeholder ladder** (§3.3) is the same text in whole-trigger variants, each a child with a `when` range, so
   the renderer picks the longest that fits and no code reads a width.
-- **Completions** are a `choose` list under the buffer: `@` files (inserted as a token), `/` commands, `#` skills
-  (inserted as text), each with its own key line (`Tab complete · Enter insert · Esc close`).
+- **Completions** are one borderless palette over the stream, on the rows right above the frame (owner decision, Phase 4
+  round 1): `@` files (inserted as a token), `/` commands (`Enter` accepts and runs, `Tab` completes the name), `#`
+  skills (inserted as text). It holds up to six plain rows with the focused row marked `→`, the typed part of a name in
+  bold and the description muted, and no border, count, key line, or key at the right edge. `Esc` closes it and keeps the draft.
 
 **Notices** live in the **notification pane**: one row on the blank line above the editor, under the activity block,
 right-aligned and never wider than half the terminal. It shows one notice at a time, the most severe and then the
