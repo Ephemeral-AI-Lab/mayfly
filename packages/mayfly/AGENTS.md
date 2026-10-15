@@ -77,7 +77,8 @@ slots, never arbitrary root components.
   running turn header.
 - A submitted reply acknowledges its form snapshot before dismissal. The
   editor stays visible for every conversation: readonly ones keep the draft,
-  resumable ones hand it to the explicit reply form.
+  resumable ones take a send: `Enter` queues it for the child's next turn and
+  `Ctrl+Enter` steers it, and the send wakes the child.
 - Schedule reminders belong to the Host, not a session projection. `/schedule`
   reads the exact selected Agent's Session through the optional native service,
   observes `schedule/changed`, and fences late reads across selection and unload.
