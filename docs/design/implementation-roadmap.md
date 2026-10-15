@@ -74,9 +74,9 @@ keeps its row and names its successor, because the Phase 1 record cites it.
 | D3 | **Native options only** for permissions and plan review. | The permission panel and the onboarding step list the native presets (`read-only`, `workspace-write`, `danger-full-access`). The plan card offers *Approve and start*, *Keep planning…*, *Reject*; there is no *Accept edits* preset and no *Approve and auto-accept edits*. |
 | D4 | **Decision cards use variant B, grant-first.** | The common grant is row 1 and focused, digits choose at once, `Esc` rejects, and every card that opens unprompted gets the 300 ms arm delay (E4, slice 1.8). |
 | D5 | **No session delete.** The Harness has no deletion (`SessionPersistence` offers `create`, `open`, `flush`, `stat`, `list`). | `/sessions` ships without `x` and without the `u undo · 8s` toast. They return when the Harness exposes deletion. |
-| D6 | **Keys are scoped by focus.** | In the editor `Ctrl+S` stays *steer* and `Ctrl+F`/`Ctrl+J` keep their pi-tui editing meaning; inside surfaces `Ctrl+S` is `ui.save`; `Ctrl+F` searches only while the stream or a list has focus; the toast drops `Ctrl+J view` (§3.4 has the table). |
+| D6 | **Keys are scoped by focus.** | In the editor `Ctrl+Enter` is *steer* (Phase 4 round 6 moved it from `Ctrl+S`) and `Ctrl+F`/`Ctrl+J` keep their pi-tui editing meaning; inside surfaces `Ctrl+S` is `ui.save`; `Ctrl+F` searches only while the stream or a list has focus; the toast drops `Ctrl+J view` (§3.4 has the table). |
 | D7 | **One components area**, `packages/mayfly/src/components/`, with no Cordis entry and no public subpath. | `packages/mayfly/AGENTS.md` gains the area and its layering rule. |
-| D8 | **The `/` palette is the editor's completion list.** | Scene 15's inline list, drawn with scene 30's row layout (match bold, description, the command's key at the right). No palette overlay. |
+| D8 | **The `/` palette is the editor's completion list.** | Drawn with scene 30's row layout (match bold, description), as a borderless palette over the stream on the rows above the frame (owner decision, Phase 4 round 1), with no key line and no key at the right edge (round 4). |
 | D9 | **`@` completions: `Enter` or `Tab` insert the token; `Ctrl+G` opens the focused file externally** (`ui.external`, the row shows `↗ code`). | Scene 30's *Files* overlay is not a separate surface. |
 | D10 | **Rewind keeps today's conversation branch**, without the restore-scope strip (the Harness has no file checkpoints). | The checkpoint list takes the new look only. |
 | D11 | **Changed files opens from a new `/changes` command.** | Data comes from the session's edit and write calls. |
@@ -115,7 +115,7 @@ keeps its row and names its successor, because the Phase 1 record cites it.
 | 6 Onboarding permissions step | Ships, with the native presets (D3); the deployment's current preset is marked `recommended`. |
 | 7 Delete session | Dropped for now (D5). |
 | 8 Account balance | `deepseekAccount.getBalance()` when signed in with the DeepSeek account; API-key providers hide the row (the design's *unsupported*). No identity is shown. |
-| 9 Lifetimes | 5 s of visible time for `✓` and `ℹ`; the 8 s undo is unused after D5. |
+| 9 Lifetimes | 5 s of visible time for `✓` and information; the 8 s undo is unused after D5. |
 | 10 Unicode fallback | Specified in slice 1.2 as a proposal to confirm in the foundation review (Phase 2d). |
 | 11 API additions | Approved as §3. |
 | 12 Unused builders | `sections` and `diagram` stay for plugins. |
@@ -338,7 +338,7 @@ export interface MayflyPromptNode {
   readonly symbolTone?: MayflyTone
   readonly value?: string
   readonly tokens?: readonly { readonly id: string, readonly label: string, readonly size?: string }[]
-  readonly recall?: readonly { readonly kind: 'queued' | 'history', readonly text: string }[]
+  readonly recall?: readonly { readonly text: string }[]
   readonly recallLabel?: string
   readonly placeholder?: string | readonly string[]  // a ladder, longest first
   readonly completions?: { readonly items: readonly { readonly id: string, readonly label: string, readonly detail?: string, readonly right?: string }[] }
@@ -364,7 +364,7 @@ references. A component's `render` is already required to be pure, which is what
 | Event | Class | Carries | Emitted by |
 | --- | --- | --- | --- |
 | `focus-change` | observation | `controlId`, `itemId?` | a list cursor move, at most once per render frame (detail follows the cursor) |
-| `recall-change` | observation | `controlId`, `source: 'queued' \| 'history' \| 'draft'`, `index` | the prompt walking its recall |
+| `recall-change` | observation | `controlId`, `source: 'history' \| 'draft'`, `index` | the prompt walking its recall |
 | `token-remove` | action | `controlId`, `tokenId` | the prompt's second `Backspace` |
 | `completion-accept` | action | `controlId`, `itemId` | `Tab` or `Enter` on a completion |
 | `completion-dismiss` | action | `controlId` | `Esc` on an open completion list |
@@ -389,7 +389,8 @@ The key scopes of D6:
 
 | Key | Editor (prompt focused) | Surface (overlay or pane focused) | Stream focused |
 | --- | --- | --- | --- |
-| `Ctrl+S` | steer (`mayfly.interaction.steer`) | `ui.save` | — |
+| `Ctrl+Enter` | steer (`mayfly.interaction.steer`) | — | — |
+| `Ctrl+S` | — | `ui.save` | — |
 | `Ctrl+F` | cursor right (pi-tui) | `ui.search`, when a list has focus | `ui.search` |
 | `Ctrl+G` | `ui.external`: the draft in `$EDITOR` (today's behavior) | `ui.external`: the focused content | `ui.external`: the row |
 | `Ctrl+J` | newline (pi-tui) | `ui.newline` in a textarea | — |
@@ -569,7 +570,7 @@ product is used (D23); Phase 7 optimizes the whole architecture (D27), and Phase
 | 1 Foundation | 13 slices (1.0-1.12) | The oracle, the engine, the visual language, every basic component, the key engine, the patterns, the prompt and image nodes, the host seams, the API freeze, the frame cost | 1-12, 15 (the prompt alone), 13 (the lane) | full for each slice (the Phase 1 rules) |
 | 2 Workbench and content | 4 (2a-2d) | The live review loop and frame capture, automated and change-precise verification (tiers, scenario goldens, perf A/B, real screenshots), content at any size, the owner's review of the foundation | 1-13, 15 | changed per part; full at the end; owner review (2d) |
 | 3 Session flow | 5 (3a-3e) | The components area; the stream and its turns, tool rows, the activity row and notices, request rows and decision cards, levels, selection, search | 14, 16-21 | per component (§7); full and owner at the end |
-| 4 Editor and command palette | 1-2 | The editor as a prompt composition, the `/` `@` `#` completion palette, queue and recall | 15, 30 p1-p2 | per component; full and owner at the end |
+| 4 Editor and command palette | 4 (4a-4e) | The editor as a prompt composition, the `/` `@` `#` completion palette, queue and recall | 15, 30 p1-p2 | per component; full and owner at the end |
 | 5 Status and views | 1-2 | The two status rows and Mayfly's four views | 13, 12 | per component; full and owner at the end |
 | 6 Panels | 6 (6a-6f) | Every command panel, questions, and the trace, keys, rewind, job output, and changes surfaces | 21 p4, 22-32 (30 p3-p6) | per component; full and owner at the end |
 | 7 Architecture performance | 1 | The finished product profiled on real workloads and restructured where measured; the final budgets and ceilings | — | full + bench report; owner |
@@ -841,8 +842,8 @@ It landed in five parts, each green on its own, and a sixth after slice 1.7 merg
    muted otherwise), the rest muted; wizard steps read `✓ ● ○` joined by a muted `›`; a strip that does not fit folds to
    `‹ active next +N ›` (slice 1.5 refines it).
 3. **Feedback and hints.** Feedback is a glyph and words (`feedbackSpans` in `core/ui-interaction-notifications.ts`):
-   `✓`/`ℹ` before a message in text color, `⚠`/`✗` in their own tone, in a surface footer and in the prompt's
-   feedback lane; the 5 s lifetime of `✓` and `ℹ` was already in place. The hint row paints keys in text and labels
+   `✓` before a message in text color (information has no glyph since Phase 4 R2), `⚠`/`✗` in their own tone, in a surface footer and in the prompt's
+   feedback lane; the 5 s lifetime of `✓` and information was already in place. The hint row paints keys in text and labels
    muted, in the kit's order (navigation, adjustment, digits, the primary operation, accelerators, filter and clear,
    tabs, groups, `Esc`) and words (`Space toggle · Enter choose`, `←/→ adjust · Enter pick`, `Enter toggle`,
    `←/→ actions`, `No/Yes` on a decision, `↑/↓ fields`, `↑/↓ scroll · Ctrl+E expand`). `hintNotation` in
@@ -872,7 +873,7 @@ arrows and marks the painters also draw; confirm it at checkpoint A):
 
 | Unicode | ASCII | Unicode | ASCII |
 | --- | --- | --- | --- |
-| `→` `←` `↑` `↓` | `>` `<` `^` `v` | `■` `?` `⚠` `ℹ` | `#` `?` `!` `i` |
+| `→` `←` `↑` `↓` | `>` `<` `^` `v` | `■` `?` `⚠` | `#` `?` `!` |
 | `▸` `▾` | `+` `-` | `⎿` `│` | `L` `:` |
 | `●` `○` `◐` | `*` `o` `~` | `━` `─` | `=` `-` |
 | `‹` `›` | `<` `>` | `▰` `▱` | `#` `.` |
@@ -1186,7 +1187,7 @@ slice landed in six parts, each green on its own:
    batch. The constant names (`ACTION_MOVE_UP` …) stayed, so the grammar did not change; their values are the named
    actions. Every Alt default gained a plain second key (`F2`/`F3` tabs, `F4`/`F5` focus, `Ctrl+J` newline). A key action
    carries a `scope` (`global`, `editor`, `surface`, `stream`) and a conflict is refused only within overlapping
-   scopes, naming the owner, so `Ctrl+S` steers in the editor and saves in a surface (D6). Product actions kept their
+   scopes, naming the owner, so `Ctrl+Enter` steers in the editor and `Ctrl+S` saves in a surface (D6). Product actions kept their
    ids and gained a scope; plan-mode toggling became its own editor action, `mayfly.interaction.cycle-mode`, instead of
    riding the surface's `Shift+Tab`. The slash filter dispatches through `ui.filter`.
 2. **The actions contract.** `MayflyActionItem` gained `semantic` (a `MayflyCommonMeaning`), `action`, and `hintLabel`;
@@ -2018,26 +2019,78 @@ part is accepted (§7 step 3).
   characters), then `ui.surface({ titleAlign: 'right', chrome: 'surface', hint: 'completions', border })` around
   `ui.prompt`. `interaction/input-plugin.ts` publishes it into the editor dock slot through `mountNodeSlot`.
 - **The command palette** is the editor's completion list (D8): `/` commands with scene 30's row layout (the match bold,
-  the description, the command's key at the right), `@` files through `createFileMentionProvider` (`Enter`/`Tab`
+  the description; no key line, no key at the right edge), `@` files through `createFileMentionProvider` (`Enter`/`Tab`
   insert, `Ctrl+G` opens, D9), and `#` skills; editor-extension `complete()` results join them.
 - **Title** from the official `title` session projection (the source `interaction/terminal-title.ts` mirrors).
 - **Shell mode** is the `!` symbol and the `accent` border only.
 - **Tokens**: pasted images, pasted blocks, and `@` mentions become prompt tokens; on submit the pipeline
   (`interaction/prompt-submit-pipeline.ts`) expands them to the content it sends today.
-- **Recall**: queued messages first, then history; recalling a queued message withdraws it (`withdrawQueued`), and
-  sending it again queues it.
+- **Recall**: `↑`/`↓` walk the history only, with `↑ history 2/4` on the notification row. Queued messages are rows of
+  the stream: `Alt+↑`, then `e` edits (through `restoreQueuedMessage`), `s` sends now, `d` cancels (`u` undoes).
 - **Placeholders** by state from spec §3.3 (main idle or running, shell, side question, subagent live or resumable,
   read-only).
 - **Subagent replies** (G18). In a live or resumable subagent conversation the editor sends through the
-  addressed-subagent path in `interaction/subagent-reply.ts`, and the delivery choice is the editor's own pair: `Enter`
-  queues, `Ctrl+S` steers. `mayfly/request-subagent-reply` remains the plugins' entry point.
+  addressed-subagent path in `interaction/input-plugin.ts` (`deliverSubagentPrompt`), and the delivery choice is the editor's own pair: `Enter`
+  queues, `Ctrl+Enter` steers. `mayfly/request-subagent-reply` remains the plugins' entry point.
 - **Keys** in the editor scope: `Alt+↑` focuses the stream, `Alt+↓`/`F6` enter the views, `?` opens key help on an empty
-  prompt, `Ctrl+S` steers, `Ctrl+G` opens the draft externally.
-- Deletes the autocomplete adapter (`SelectListAdapter`, `core/wrapping-select-list.ts`), `setBorderLabel`
+  prompt, `Ctrl+Enter` steers, `Ctrl+G` opens the draft externally.
+- Deletes `setBorderLabel`
   (`interaction/editor-plus.ts`), `interaction/pane-queue.ts` as a pane, and the reply form's `Send`/`Cancel` buttons
   and delivery select.
 
 At the phase gate: platform acceptance for paste, IME, and the clipboard on macOS, Linux, and Windows.
+
+The groups below are finalized in this order, each under §7 and the procedure of
+[component-development-spec.md](./component-development-spec.md); their parts are the spec's §7 *Phase 4 parts*. The
+text above is the starting point; the final behavior is what the owner accepts.
+
+- **4a Editor frame** (`Editor`; scene 15). The frame with the title in its top-right corner around `ui.prompt`,
+  published into the editor dock slot with `mountNodeSlot`, and shell mode as the `!` symbol and the `accent` border
+  only. Parts 4a.1 and 4a.2. Deletes `setBorderLabel` and the `! shell mode` label (B4, G19, R20).
+- **4b Tokens** (scene 15). Images, pasted blocks, and `@` mentions as prompt tokens with the two-key removal; the submit
+  pipeline expands them to what is sent today. Parts 4b.1 and 4b.2.
+- **4c Queue and recall** (scene 15). Queued messages as rows of the stream with the keys `e`, `s`, `d` and `u` (the
+  owner's change from the prototype's queue line), and `↑`/`↓` as the history with its counter on the notification row.
+  Parts 4c.1 and 4c.2. Deletes `interaction/pane-queue.ts` and the `./pane-queue` plugin (H7, G15).
+- **4d Command palette** (scene 30 p1-p2). The editor's completion list for `/`, `@`, and `#` and the results of
+  editor extensions, as plain rows with no key line. Parts 4d.1 to 4d.4. The autocomplete adapter
+  (`SelectListAdapter`, `core/wrapping-select-list.ts`) was deleted in round 1.
+- **4e Placeholders, keys, and subagent replies** (scene 15). The placeholder ladder by state, the editor-scope keys
+  and the title projection, and the subagent reply through the editor (G18, H8, R11). Parts 4e.1 to 4e.3. Deletes the
+  reply form's `Send`/`Cancel` buttons and delivery select.
+
+**Phase 4 status.** Worked in rounds of two to three parts (about four scenarios each; the 4a.1 frame is the first
+round and the cutover of the editor) on the branch `feat/4a` and its successors, with the profile `mayfly-4`. A part is
+`accepted` when the owner accepts it in a question round; a group finalizes when its last part is accepted (§7 step 3).
+Phase 4 starts after Phase 3's last group is merged, or earlier on a branch off `feat/3a` if the owner says so; the
+rounds are planned in review order, one group in review at a time.
+
+| Round | Parts | Status | Branch |
+| --- | --- | --- | --- |
+| R1 | 4a.1 editor frame; 4a.2 shell mode | accepted by the owner (`a248831`): the editor becomes a pure `Editor` component on the dock slot, so this round is the cutover and nothing else changes in the editor's behavior; tests and goldens in the Phase 4 wrap-up (PR #18) | `feat/4a` |
+| R2 | 4b.1 tokens in the buffer; 4b.2 submit expansion | built, and the owner accepted the effect (accepted; tests and goldens in the Phase 4 wrap-up, PR #18): tokens stay inline in the text (no strip): `[image #1 84 KB]`, pi-tui's `[paste #1 +14 lines]`, and an `@` mention as its relative path, painted in tones; the arrows step over a token and highlight it, one Backspace removes a highlighted token (two after a token), the hint above the prompt names the keys (`Ctrl+G opens · Backspace removes`); `Ctrl+G` on a token opens a mentioned file or folder, a pasted block as text (it folds back into a token), or an image in a preview overlay; an `@` folder is taken with Enter and entered with Tab; a pasted block survives Up/Down history and the whole-draft `Ctrl+G`; the prompt's waits (clipboard, file search) and an `image` node show the unified loader; the `ℹ` glyph is retired; the image preview was not confirmed in a real image terminal (WezTerm over SSH stayed black: its `enable_kitty_graphics` setting or the draw order are the open suspects; the overlay now keeps the image's first row in view); scenarios `tokens`, `tokensSubmit`, `tokensEditor`, `tokensOpen`, `tokensHistory`, `tokensImage`, `tokensFolder`, `tokensWaiting` | `feat/4a` |
+| R3 | 4c.1 queued rows; 4c.2 prompt history | built, and the owner accepted the effect (accepted; tests and goldens in the Phase 4 wrap-up, PR #18); also the interrupt scope (the displayed Agent's turn only, queue kept): queued messages are rows of the stream (`⏎ queued`, `⏎ steering`); `Alt+↑` (now also with a draft in the prompt) reaches them and the notification row names `e edit · s send now · d cancel`; `e` takes the message into the prompt (a draft goes to the history first), `s` moves it to the steer lane, `d` cancels it and `u` undoes it (eight seconds, back in its lane); `↑`/`↓` are the history only, with `↑ history 2/4` on the notification row; `pane-queue` is deleted; a node slot reports its list's cursor (`cursor` option); one scenario, `queue` (rows, keys, the agent reading them, the history walk; it holds the queue four minutes for a person, a runner skips the wait); a message the agent reads becomes a prompt in the stream | `feat/4a` |
+| R4 | 4d.1 the `/` list; 4d.2 palette keys | no change, decided in a question round (2026-10-14): round 1 already built the `/` palette and deleted the adapter. The owner kept it as it is: no key line, `Enter` on a `/` command still accepts and runs it (`Tab` completes the name), no key at the right edge (no command has a binding), pi-tui's `SelectList` state and keys kept (`core/completion-list.ts`). Review it in scenario `editor` (`commands*` checkpoints). `hint: 'completions'` stays a `ui.surface` option for plugin prompts; the editor's palette does not draw it | `feat/4a` |
+| R5 | 4d.3 `@` files; 4d.4 `#` skills and extension results | built, and the owner accepted the effect (accepted; tests and goldens in the Phase 4 wrap-up, PR #18); the owner's answers: `Ctrl+G` on the focused `@` file row opens it in `$EDITOR` (draft and list stay) and the row ends with a muted `↗ Ctrl+G` cue (files only, a knowing exception to round 4's no-key-at-the-edge); an `@` row is the whole path and nothing else (a folder as `.agents/skills/`, cut at the left when wider than the row; no description column); the rows an editor extension adds end with its id as a muted tag; a wait shows as the palette's last line (`Waiting for wiki…`) while a list is open; a completion item may carry `problem` (public contract): the row ends with a red `!` and, focused, a line under it gives the reason; a source that throws or times out is a row of its own with the same mark (Enter and Tab change nothing), and its notification-row notice is gone; `#` skills are unchanged; scenario `completions` (workspace of 3,000 files and four skills, three scenario extensions in `script/scenarios/extensions.mjs`) | `feat/4a` |
+| R6 | 4e.1 placeholders; 4e.2 keys and title; 4e.3 subagent replies | accepted by the owner (`b638662`), the last group: the empty prompt's placeholder is a ladder per state (quiet hints `off` blanks the teaching ladders); `?` on an empty prompt opens key help; `Ctrl+Enter` steers (it replaced `Ctrl+S` in the editor, which saves in a surface); the editor sends to a live or resumable subagent (`Enter` queues, `Ctrl+Enter` steers, a stored child wakes, and the reply form is gone); the frame's corner shows the official session title, or the view's name when the view has none; `/btw` no longer inherits the parent's unclaimed inbox. Open for the phase gate: platform acceptance for paste, IME, and the clipboard on macOS, Linux, and Windows | `feat/4a` |
+
+**Interrupt scope (owner decision, Phase 4 round 3; built).** `Esc` interrupts the current turn of the displayed
+conversation's Agent and nothing else: no subagents, jobs, goal, or plan state, and queued and steering messages are
+kept and sent. The contract is in [interaction-model.md](../interaction-model.md) (*Interrupt scope*); a change that
+touches interruption merges toward it.
+
+**Loading displays (owner request, Phase 4 round 2).** Every wait a user can feel shows the one unified loader
+(`ui.loader` gap, component-library §2.4: `⣾` and its words, one clock, frozen under reduced motion), in an appropriate
+place, never for an answer under 150 ms, so a silent wait never leaves the user guessing. Built in R2 for the editor's
+own waits: an `image` node while its bytes are read (`⣾ Loading image…`; the stream row and the Ctrl+G preview), the
+clipboard read behind Ctrl+V and the file search behind `@` (the notification row above the prompt, through
+`mayfly/prompt-wait-changed` and `beginPromptWait`, `interaction/prompt-wait.ts`). `Ctrl+G` on a file or a paste hands
+the terminal to the editor at once, so it has no wait to show. **Not part of this round's components, to audit in their
+own phases** (not yet checked one by one): every other `await` that can last over about 150 ms behind a key (session and
+workspace reads, the provider model fetch and sign-in steps, the update check, MCP server and skills catalog loads,
+`/trace` aggregation, `/export`, rewind and compaction starts) should name its wait with the same loader, in the panel
+that asked or in the notification row; a panel that already has `ui.loader` (the plugin marketplace, the sessions
+list) is the model. Information notices have no symbol (`ℹ` is retired); `✓`, `⚠`, and `✗` keep theirs.
 
 ### Phase 5 Status area and views
 

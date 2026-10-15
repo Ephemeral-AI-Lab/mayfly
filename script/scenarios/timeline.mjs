@@ -80,11 +80,14 @@ export const goal = (action, options = {}) => ({ kind: 'goal', action, ...option
  */
 export const job = (label, options = {}) => ({ kind: 'job', label, ...options })
 /**
- * Messages typed while the agent is busy, shown in the queued-message pane: `rows` are `[text]` for a `Queued:` row
- * (next turn) or `{ steer: text }` for a `Steer:` row (next step). They enter the inbox without waking the agent and
- * leave it after `holdMs` (the user withdrawing them), so the session never ends with pending input.
+ * Messages typed while the agent is busy, shown as rows at the end of the stream: `rows` are `text` for a `⏎ queued` row
+ * (next turn) or `{ steer: text }` for a `⏎ steering` row (next step). They enter the inbox without waking the agent and
+ * leave it after `holdMs` (the agent reading them: the session records each as a prompt), so the session never ends with pending input. `holdMs: null`
+ * keeps them until a later `dequeue(name)` (the agent reading them), so a scenario's keys act on them first.
  */
-export const queue = (rows, { holdMs = 4000 } = {}) => ({ kind: 'queue', rows, holdMs })
+export const queue = (rows, { holdMs = 4000, name } = {}) => ({ kind: 'queue', rows, holdMs, name })
+/** The agent reads messages of a `queue(rows, { name })`: all of them, or those at the `indexes` (they leave the inbox and become prompts; one the reader already took out stays out). */
+export const dequeue = (name, ...indexes) => ({ kind: 'dequeue', name, indexes })
 /**
  * A side question (`/btw`) answered by a live Agent of its own: the replay opens it as the displayed side conversation
  * and plays `items` into it (dismiss it with F7 or `/btw`). `closeAfterMs` dismisses it by itself.
@@ -151,6 +154,8 @@ export function compile(items, { provider = 'deepseek-official', model = 'deepse
   /** Sessions with a live Agent, whose output also streams. */
   const live = new Set()
   const id = prefix => `replay-${prefix}-${String(++messageSeq)}`
+  /** The ids of the named queues, for a later `dequeue`. */
+  const queues = new Map()
 
   const push = (at, op) => actions.push({ at: Math.round(at), ...(skew === 0 ? {} : { skew }), ...op })
 
@@ -165,8 +170,16 @@ export function compile(items, { provider = 'deepseek-official', model = 'deepse
   /** Queued messages enter the inbox, then leave it after their hold. */
   function scheduleQueue(item, t) {
     const ids = item.rows.map(() => id('queued'))
+    const texts = item.rows.map(row => typeof row === 'object' && row !== null ? row.steer : row)
     push(t, { op: 'queue', ids, rows: item.rows })
-    push(t + item.holdMs, { op: 'queue-clear', ids })
+    if (item.name !== undefined) queues.set(item.name, { ids, texts })
+    if (item.holdMs !== null) push(t + item.holdMs, { op: 'queue-clear', ids, texts })
+  }
+  /** The agent reads queued messages: they leave the inbox and the session records them as prompts. */
+  function scheduleDequeue(item, t) {
+    const held = queues.get(item.name) ?? { ids: [], texts: [] }
+    const picked = item.indexes.length === 0 ? held.ids.map((_, index) => index) : item.indexes
+    push(t, { op: 'queue-clear', ids: picked.map(index => held.ids[index]), texts: picked.map(index => held.texts[index]) })
   }
   /** A notice shows, then clears after its hold. */
   function scheduleNotice(item, t) {
@@ -200,6 +213,7 @@ export function compile(items, { provider = 'deepseek-official', model = 'deepse
       if (item.kind === 'mark') { push(t, { op: 'mark', name: item.name }); continue }
       if (item.kind === 'job') { scheduleJob(item, t); t += 100; continue }
       if (item.kind === 'queue') { scheduleQueue(item, t); t += 100; continue }
+      if (item.kind === 'dequeue') { scheduleDequeue(item, t); t += 100; continue }
       if (item.kind === 'notify') { scheduleNotice(item, t); t += item.holdMs + 300; continue }
       if (item.kind === 'seed') { push(t, { op: 'seed', sessions: item.sessions.map(seeded) }); t += 100; continue }
       if (item.kind === 'btw') {
@@ -258,6 +272,7 @@ export function compile(items, { provider = 'deepseek-official', model = 'deepse
       if (item.kind === 'mark') { push(t, { op: 'mark', name: item.name }); continue }
       if (item.kind === 'job') { scheduleJob(item, t); t += 100; continue }
       if (item.kind === 'queue') { scheduleQueue(item, t); t += 100; continue }
+      if (item.kind === 'dequeue') { scheduleDequeue(item, t); t += 100; continue }
       if (item.kind === 'notify') { scheduleNotice(item, t); t += item.holdMs + 300; continue }
       if (item.kind === 'compaction') { t = compact(item, t, session, turnNo, event); continue }
       stepNo += 1

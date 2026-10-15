@@ -72,7 +72,7 @@ async function mount(options: { withAgent?: boolean, plusFirst?: boolean, locale
   const inputFiber = await ctx.plugin(inputPlugin)
   const editor = components.editors.at(-1)!
   const editorRoot = screen.children.at(-1)!
-  const hint: MayflyComponent = { render: width => editorRoot.render(width).slice(editor.render(width).length), invalidate: () => editorRoot.invalidate() }
+  const hint: MayflyComponent = { render: width => editorRoot.render(width).slice(editor.render(width).length + 2), invalidate: () => editorRoot.invalidate() }
   return {
     ctx,
     screen,
@@ -105,46 +105,39 @@ describe('mayfly-editor-plus input modes', () => {
     const { editor } = await mount()
     type(editor, '!')
     expect(editor.getText()).toBe('')
-    expect(editor.borderColor('x')).toBe('$x$')
+    expect(editor.shellMode).toBe(true)
   })
 
-  it('applies the bash triple: ! symbol, border label, and shell hue', async () => {
+  it('marks the editor as a shell command while bash mode is active', async () => {
     const { editor } = await mount()
-    expect(editor.promptSymbol).toBe('>')
+    expect(editor.shellMode).toBe(false)
     type(editor, '!')
-    expect(editor.promptSymbol).toBe('!')
-    expect(editor.borderLabel).toBe(' $! shell mode$ ')
-    expect(editor.borderColor('x')).toBe('$x$')
+    expect(editor.shellMode).toBe(true)
   })
 
-  it('keeps the shell hue over the slash-context resolution while bash is active', async () => {
+  it('keeps bash mode while a path with a leading slash is typed', async () => {
     const { editor } = await mount()
     type(editor, '!')
-    // A leading `/` is a path separator in bash mode; mayfly-input's
-    // primary-highlight must not win over the re-asserted shell hue.
+    // A leading `/` is a path separator in bash mode, not a command.
     type(editor, '/etc/passwd')
-    expect(editor.borderColor('x')).toBe('$x$')
+    expect(editor.shellMode).toBe(true)
   })
 
   it('exits bash mode on Escape with an empty buffer', async () => {
     const { editor } = await mount()
     type(editor, '!')
-    expect(editor.promptSymbol).toBe('!')
+    expect(editor.shellMode).toBe(true)
     // The kimi bash exit: Escape on the empty `!` prompt returns to prompt
     // mode, consumed by the editor chain.
     expect(editor.onKey?.(KEY.escape)).toBe(true)
-    expect(editor.promptSymbol).toBe('>')
-    expect(editor.borderLabel).toBeUndefined()
-    expect(editor.borderColor('x')).toBe('x')
+    expect(editor.shellMode).toBe(false)
   })
 
   it('exits bash mode on Backspace with an empty buffer', async () => {
     const { editor } = await mount()
     type(editor, '!')
     expect(editor.onKey?.('\x7f')).toBe(true)
-    expect(editor.promptSymbol).toBe('>')
-    expect(editor.borderLabel).toBeUndefined()
-    expect(editor.borderColor('x')).toBe('x')
+    expect(editor.shellMode).toBe(false)
   })
 
   it('keeps bash mode when Escape clears a non-empty buffer', async () => {
@@ -154,22 +147,19 @@ describe('mayfly-editor-plus input modes', () => {
     // Escape clears the draft through mayfly-input's chain; the mode stays.
     editor.onKey?.(KEY.escape)
     expect(editor.getText()).toBe('')
-    expect(editor.promptSymbol).toBe('!')
-    expect(editor.borderColor('x')).toBe('$x$')
+    expect(editor.shellMode).toBe(true)
     // The next Escape on the now-empty prompt exits.
     expect(editor.onKey?.(KEY.escape)).toBe(true)
-    expect(editor.promptSymbol).toBe('>')
+    expect(editor.shellMode).toBe(false)
   })
 
-  it('restores the prompt symbol and drops the label on a bash submission', async () => {
+  it('leaves bash mode on a bash submission', async () => {
     const { editor } = await mount()
     editorPlus.setShellExecutor(() => Promise.resolve({ code: 0, stdout: '', stderr: '' }))
     type(editor, '!')
     type(editor, 'true')
     editor.handleInput(KEY.enter)
-    expect(editor.promptSymbol).toBe('>')
-    expect(editor.borderLabel).toBeUndefined()
-    expect(editor.borderColor('x')).toBe('x')
+    expect(editor.shellMode).toBe(false)
   })
 
   it("keeps a later '!' in the buffer while in bash mode", async () => {
@@ -177,7 +167,7 @@ describe('mayfly-editor-plus input modes', () => {
     type(editor, '!')
     type(editor, '!ls')
     expect(editor.getText()).toBe('!ls')
-    expect(editor.borderColor('x')).toBe('$x$')
+    expect(editor.shellMode).toBe(true)
   })
 
   it('executes a bash submission, echoes it, records history, and reverts to prompt mode', async () => {
@@ -192,7 +182,7 @@ describe('mayfly-editor-plus input modes', () => {
     const echo = echoes(screen)[0] as MayflyComponent
     expect(echo.render(80)).toEqual(['$$ $echo hi', '_hi there_'])
     echo.invalidate()
-    expect(editor.borderColor('x')).toBe('x')
+    expect(editor.shellMode).toBe(false)
     expect(editor.history).toEqual(['echo hi'])
     expect(editor.getText()).toBe('')
     // Prompt mode again: plain text routes to the agent follow-up.
@@ -304,7 +294,7 @@ describe('mayfly-editor-plus input modes', () => {
     type(editor, '   ')
     editor.handleInput(KEY.enter)
     expect(executor).not.toHaveBeenCalled()
-    expect(editor.borderColor('x')).toBe('x')
+    expect(editor.shellMode).toBe(false)
     type(editor, 'plain')
     editor.handleInput(KEY.enter)
     expect(followup).toHaveBeenCalledOnce()
@@ -446,7 +436,7 @@ describe('mayfly-editor-plus attach lifecycle', () => {
     const { editor } = await mount({ plusFirst: true })
     expect(editor.autocompleteProvider).toBeDefined()
     type(editor, '!')
-    expect(editor.borderColor('x')).toBe('$x$')
+    expect(editor.shellMode).toBe(true)
   })
 
   it('refreshes only an open completion dropdown when the locale changes', async () => {
@@ -464,16 +454,13 @@ describe('mayfly-editor-plus attach lifecycle', () => {
   it('re-attaches to the new editor when mayfly-input remounts (theme reload)', async () => {
     const { ctx, components, editor, inputFiber } = await mount()
     type(editor, '!')
-    expect(editor.borderColor('x')).toBe('$x$')
+    expect(editor.shellMode).toBe(true)
     await inputFiber.dispose()
-    // Detach restored the old editor's prompt-mode frame.
-    expect(editor.borderColor('x')).toBe('x')
-    expect(editor.promptSymbol).toBe('>')
     await ctx.plugin(inputPlugin)
     const remounted = components.editors.at(-1)!
     expect(remounted).not.toBe(editor)
     type(remounted, '!')
-    expect(remounted.borderColor('x')).toBe('$x$')
+    expect(remounted.shellMode).toBe(true)
   })
 
   it('rebuilds bash mode on the remounted editor from the reload stash', async () => {
@@ -483,11 +470,9 @@ describe('mayfly-editor-plus attach lifecycle', () => {
     await inputFiber.dispose()
     await ctx.plugin(inputPlugin)
     const remounted = components.editors.at(-1)!
-    // The draft text and the bash triple both survive the rebuild.
+    // The draft text and the shell mode both survive the rebuild.
     expect(remounted.getText()).toBe('ls -la')
-    expect(remounted.promptSymbol).toBe('!')
-    expect(remounted.borderLabel).toBe(' $! shell mode$ ')
-    expect(remounted.borderColor('x')).toBe('$x$')
+    expect(remounted.shellMode).toBe(true)
   })
 
 })
@@ -901,7 +886,7 @@ describe('mayfly-editor-plus @ mentions', () => {
     const { ctx, editor, components } = await mount()
     await fileMention.detectFdPath(ctx.mayflyInteractionState.fdProbe)
     const delegated = vi.fn<MayflyAutocompleteProvider['getSuggestions']>(async () => ({
-      items: [{ value: '@src/a.ts', label: 'a.ts', description: 'src/a.ts' }],
+      items: [{ value: '@src/a.ts', label: 'src/a.ts' }],
       prefix: '@sr',
     }))
     components.mentionGetSuggestions = delegated
@@ -909,7 +894,7 @@ describe('mayfly-editor-plus @ mentions', () => {
     const options = { signal: signal() }
     const suggestions = await provider.getSuggestions(['see @sr'], 0, 7, options)
     expect(suggestions).toEqual({
-      items: [{ value: '@src/a.ts', label: 'a.ts', description: 'src/a.ts' }],
+      items: [{ value: '@src/a.ts', label: 'src/a.ts' }],
       prefix: '@sr',
     })
     expect(delegated).toHaveBeenCalledOnce()
@@ -991,7 +976,7 @@ describe('mayfly-editor-plus @ mentions', () => {
     reattach(ctx)
     const provider = editor.autocompleteProvider as MayflyAutocompleteProvider
     const scoped = await provider.getSuggestions(['@src/a'], 0, 6, { signal: signal() })
-    expect(scoped?.items).toEqual([{ value: '@src/a.ts', label: 'a.ts', description: 'src/a.ts' }])
+    expect(scoped?.items).toEqual([{ value: '@src/a.ts', label: 'src/a.ts' }])
   })
 
   it('returns null when the fallback finds no match in an unreadable tree', async () => {
@@ -1032,7 +1017,7 @@ describe('mayfly-editor-plus @ mentions', () => {
     await fileMention.detectFdPath(ctx.mayflyInteractionState.fdProbe)
     const provider = editor.autocompleteProvider as MayflyAutocompleteProvider
     const suggestions = await provider.getSuggestions(['@top'], 0, 4, { signal: signal() })
-    expect(suggestions?.items).toEqual([{ value: '@top.md', label: 'top.md', description: 'top.md' }])
+    expect(suggestions?.items).toEqual([{ value: '@top.md', label: 'top.md' }])
   })
 
   it('notices in the notification lane when the mention matches nothing', async () => {
@@ -1062,5 +1047,28 @@ describe('mayfly-editor-plus @ mentions', () => {
     const suggestions = await provider.getSuggestions(['@zzz'], 0, 4, { signal: controller.signal })
     expect(suggestions).toBeNull()
     expect(ctx.mayflyUiInteraction.notificationSnapshot().map(item => item.message)).not.toContain('no matching files under the session cwd')
+  })
+})
+
+describe('mayfly-editor-plus: the mention an @ completion leaves behind', () => {
+  it('remembers a finished file mention as a token, and nothing else the completion leaves', async () => {
+    const { editor, components, ctx } = await mount()
+    const applied = { lines: ['see @src/a.ts '], cursorLine: 0, cursorCol: 14 }
+    components.mentionGetSuggestions = async () => ({ items: [{ value: '@src/a.ts', label: 'a.ts' }], prefix: '@sr' })
+    components.mentionApplyCompletion = () => applied
+    const provider = editor.autocompleteProvider as MayflyAutocompleteProvider
+    const item = (await provider.getSuggestions(['see @sr'], 0, 7, { signal: signal() }))!.items[0]!
+    provider.applyCompletion(['see @sr'], 0, 7, item, '@sr')
+    expect([...ctx.mayflyInteractionState.mentions]).toEqual(['@src/a.ts'])
+    // A completion that does not end in a space is still open for drill-down: no mention yet.
+    components.mentionApplyCompletion = () => ({ lines: ['see @src/'], cursorLine: 0, cursorCol: 9 })
+    provider.applyCompletion(['see @sr'], 0, 7, item, '@sr')
+    expect([...ctx.mayflyInteractionState.mentions]).toEqual(['@src/a.ts'])
+    // A bare @ with a space is no mention, and neither is a space after plain words.
+    components.mentionApplyCompletion = () => ({ lines: ['see @ '], cursorLine: 0, cursorCol: 5 })
+    provider.applyCompletion(['see @'], 0, 5, item, '@')
+    components.mentionApplyCompletion = () => ({ lines: ['hello '], cursorLine: 0, cursorCol: 6 })
+    provider.applyCompletion(['hello'], 0, 5, item, 'hello')
+    expect([...ctx.mayflyInteractionState.mentions]).toEqual(['@src/a.ts'])
   })
 })

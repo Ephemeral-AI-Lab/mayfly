@@ -142,6 +142,14 @@ export function apply(ctx: Context): void {
       return { kind: 'error', text: 'the side question was replaced before it opened' }
     }
     owned = entry
+    try {
+      // The inbox projection folds the inherited prefix too, so the fork starts with the parent's unclaimed queued and
+      // steering messages; the side question must not run them.
+      handle.agent.inbox.clear()
+    } catch (error) {
+      await disposeOwned(entry)
+      return { kind: 'error', text: `could not start the side session: ${error instanceof Error ? error.message : String(error)}` }
+    }
     const id = conversations.open({
       kind: 'btw',
       sessionId: String(handle.agent.id),

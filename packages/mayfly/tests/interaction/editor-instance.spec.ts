@@ -44,6 +44,7 @@ describe('editor extension host state', () => {
     const shared: SharedEditor = {
       editor: {} as SharedEditor['editor'],
       submitPrompt: () => {},
+      setShell: () => {},
     }
     let notifications = 0
     ctx.mayflyPromptEditor.subscribeEditorState(() => { notifications += 1 })

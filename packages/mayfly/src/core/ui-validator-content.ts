@@ -93,14 +93,16 @@ export function admitChildAdmission(h: AdmissionHelpers, object: Fields, path: s
   }
 }
 
-/** A surface's `titleAlign`, `border`, `escapeLabel`, and `hint`. */
+/** A surface's `titleAlign`, `titleCut`, `border`, `escapeLabel`, and `hint`. */
 export function admitSurfaceFields(h: AdmissionHelpers, object: Fields, path: string): Fields {
   const titleAlign = h.own(object, 'titleAlign', path)
+  const titleCut = h.own(object, 'titleCut', path)
   const border = h.own(object, 'border', path)
   const escapeLabel = h.own(object, 'escapeLabel', path)
   const hint = h.own(object, 'hint', path)
   return {
     ...present('titleAlign', titleAlign === undefined ? undefined : h.enumeration(titleAlign, ['left', 'right'] as const, `${path}.titleAlign`)),
+    ...present('titleCut', titleCut === undefined ? undefined : h.enumeration(titleCut, ['start', 'end'] as const, `${path}.titleCut`)),
     ...present('border', border === undefined ? undefined : h.enumeration<MayflyTone>(border, TONES, `${path}.border`)),
     ...present('escapeLabel', escapeLabel === undefined ? undefined : h.enumeration(escapeLabel, ['close', 'back', 'cancel', 'reject', 'leave'] as const, `${path}.escapeLabel`)),
     ...present('hint', hint === undefined ? undefined : h.enumeration(hint, ['auto', 'none', 'completions'] as const, `${path}.hint`)),

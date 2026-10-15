@@ -34,6 +34,7 @@ function agent(id: string): FakeAgent {
     options: { provider: 'mock', model: 'mock' },
     status: 'idle',
     followup: vi.fn(),
+    inbox: { clear: vi.fn() },
   } as unknown as FakeAgent
 }
 

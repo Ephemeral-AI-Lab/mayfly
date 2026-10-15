@@ -98,10 +98,10 @@ wide layouts show both columns, while narrow layouts use tabs with retained
 selection and search. Task details can open the owner's conversation.
 
 Generic Mayfly navigation owns the conversation registry, exact-Agent
-selection, F7 returning to the previous conversation, and F8 closure. The public `mayfly/request-subagent-reply` event opens the shared
-reply form for the displayed continuable child. Queue waits until the current
-turn ends; Steer delivers at the next step boundary. Browsing cold history and
-editing drafts do not resume a child; only Send uses the native addressed prompt.
+selection, F7 returning to the previous conversation, and F8 closure. The public `mayfly/request-subagent-reply` event opens the
+continuable child and seeds the editor with the given text; nothing is sent until the user sends it. `Enter` queues the message for the
+child's next turn; `Ctrl+Enter` steers, delivered at the next step boundary. Browsing cold history and
+editing drafts do not resume a child; only a send uses the native addressed prompt.
 Closing a view does not stop a teammate.
 
 Team write scopes are advisory. Members share a checkout and the upstream

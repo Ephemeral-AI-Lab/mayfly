@@ -19,8 +19,8 @@ grid 60x24 cursor none
 |  Enter expand · c copy · Ctrl+C JSON · ↑/↓ or n/N match …
 |  / needle
 |    7/12 matches
-|╭─────────────────────────────── Find where the needle is ─╮
-|│ >                                                        │
+|╭──────────────────────────────── Find where the needle is ╮
+|│ >  Ask anything · / commands · @ files · # skills        │
 |╰──────────────────────────────────────────────────────────╯
 | deepseek-flash High   search   ~/workspace
 styles
@@ -44,7 +44,7 @@ styles
 17: 0-56 fg:#9aa3b8
 18: 2-3 fg:#9a86e6
 19: 4-15 fg:#9aa3b8
-20: 0-59 fg:#5c6476
-21: 0 fg:#5c6476; 4 r; 59 fg:#5c6476
-22: 0-59 fg:#5c6476
+20: 0-33 fg:#9aa3b8; 34-57 fg:#f5f5f7 b; 58-59 fg:#9aa3b8
+21: 0 fg:#9aa3b8; 2-3 fg:#ededf2; 4 r; 5-50 fg:#5c6476; 59 fg:#9aa3b8
+22: 0-59 fg:#9aa3b8
 23: 1-19 fg:#ededf2; 22-29 fg:#9a86e6 b r; 32-42 fg:#9aa3b8

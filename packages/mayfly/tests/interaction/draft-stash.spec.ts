@@ -42,7 +42,7 @@ describe('editor draft stash', () => {
     const firstFiber = await ctx.plugin(inputPlugin)
     const first = components.editors[0] as FakeMayflyEditor
     type(first, 'half-written thought')
-    expect(ctx.mayflyInteractionState.draft.getStashedDraft()).toBe('half-written thought')
+    expect(ctx.mayflyInteractionState.draft.getStashedDraft().raw).toBe('half-written thought')
     // The reload: the fiber disposes and re-runs, rebuilding the editor.
     await firstFiber.dispose()
     const secondFiber = await ctx.plugin(inputPlugin)
@@ -52,7 +52,7 @@ describe('editor draft stash', () => {
     // Submitting consumes the draft; the stash goes with it.
     second.handleInput(KEY.enter)
     expect(followup).toHaveBeenCalledOnce()
-    expect(ctx.mayflyInteractionState.draft.getStashedDraft()).toBe('')
+    expect(ctx.mayflyInteractionState.draft.getStashedDraft().raw).toBe('')
     // A second reload therefore starts empty.
     await secondFiber.dispose()
     await ctx.plugin(inputPlugin)
@@ -64,10 +64,10 @@ describe('editor draft stash', () => {
     const firstFiber = await ctx.plugin(inputPlugin)
     const first = components.editors[0] as FakeMayflyEditor
     type(first, 'draft')
-    expect(ctx.mayflyInteractionState.draft.getStashedDraft()).toBe('draft')
+    expect(ctx.mayflyInteractionState.draft.getStashedDraft().raw).toBe('draft')
     first.handleInput(KEY.escape)
     expect(first.getText()).toBe('')
-    expect(ctx.mayflyInteractionState.draft.getStashedDraft()).toBe('')
+    expect(ctx.mayflyInteractionState.draft.getStashedDraft().raw).toBe('')
     await firstFiber.dispose()
     await ctx.plugin(inputPlugin)
     expect(components.editors[1]?.getText()).toBe('')
@@ -78,9 +78,9 @@ describe('editor draft stash', () => {
     stash.stashInputMode('bash')
     expect(stash.getStashedInputMode()).toBe('bash')
     // Consuming the draft resets the mode with it.
-    stash.stashDraft('ls')
+    stash.stashDraft({ raw: 'ls', pastes: new Map() })
     stash.clearDraft()
     expect(stash.getStashedInputMode()).toBe('prompt')
-    expect(stash.getStashedDraft()).toBe('')
+    expect(stash.getStashedDraft().raw).toBe('')
   })
 })

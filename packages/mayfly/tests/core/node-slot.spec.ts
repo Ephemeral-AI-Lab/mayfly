@@ -118,7 +118,7 @@ describe('node slot test host', () => {
     expect(draft()).toBe('')
     before.handleInput!('\x1b[A')
     expect(draft()).toBe('also update the footer')
-    expect(rows(before)[1]).toContain('↑ queued 1/2')
+    expect(rows(before)[1]).toContain('↑ history 1/2')
     await tree.core.dispose()
     const terminal = nodeSlotRuntime()
     await tree.root.plugin(nodeSlotCore(terminal.runtime))
@@ -126,7 +126,7 @@ describe('node slot test host', () => {
     tree.keys()
     const after = hosts(terminal).editor
     expect(draft()).toBe('also update the footer')
-    expect(rows(after)[1]).toContain('also update the footer')
+    expect(rows(after)[1]).toContain('also update the')
     tree.state.editor!.focus()
     after.handleInput!('\x1b[A')
     expect(rows(after)[1]).toContain('↑ history 2/2')

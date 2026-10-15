@@ -25,8 +25,8 @@ grid 60x30 cursor none
 |  ⡀ Deep diving · 8s
 |    ⎿ Tip: Esc to interrupt the run
 |                                  ⚠ The clipboard tool is
-|╭────────────────────────────────── Show me every kind of ─╮
-|│ >                                                        │
+|╭─────────────────────────────────── Show me every kind of ╮
+|│ >  Ask anything · / commands · @ files · # skills        │
 |╰──────────────────────────────────────────────────────────╯
 | deepseek-flash  ~/workspace
 styles
@@ -42,7 +42,7 @@ styles
 23: 0-1 fg:#ededf2; 2 fg:#9a86e6; 3-14 fg:#ededf2; 16-19 fg:#9aa3b8
 24: 0-34 fg:#9aa3b8
 25: 34-56 fg:#e8a838
-26: 0-34 fg:#45406b; 35-57 fg:#5c6476; 58-59 fg:#45406b
-27: 0 fg:#45406b; 4 r; 59 fg:#45406b
+26: 0-36 fg:#45406b; 37-57 fg:#f5f5f7 b; 58-59 fg:#45406b
+27: 0 fg:#45406b; 2-3 fg:#ededf2; 4 r; 5-50 fg:#5c6476; 59 fg:#45406b
 28: 0-59 fg:#45406b
 29: 1-14 fg:#ededf2; 17-27 fg:#9aa3b8

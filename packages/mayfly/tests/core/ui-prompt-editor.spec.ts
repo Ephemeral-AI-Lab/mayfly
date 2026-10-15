@@ -107,7 +107,7 @@ describe('the prompt over the real editor', () => {
   })
 
   it('shows a recalled message with the cursor at its end and edits it in place', () => {
-    const prompt = open({ recall: [{ kind: 'history', text: 'run the scan' }] })
+    const prompt = open({ recall: [{ text: 'run the scan' }] })
     prompt.press('\x1b[A')
     expect(prompt.rows()[0]!.trimEnd()).toMatch(/^> run the scan\s+↑ history 1\/1$/u)
     prompt.press(...'!')
@@ -116,7 +116,7 @@ describe('the prompt over the real editor', () => {
 
   it.each(ADVERSARIAL.map(({ name, text }) => [name, text] as const))('keeps every row of the real editor within the width over %s', (name, text) => {
     for (const width of SCAN_WIDTHS) {
-      const prompt = open({ value: text, tokens: [{ id: 't', label: 'Image #1', size: '84 KB' }], recall: [{ kind: 'history', text }] }, width)
+      const prompt = open({ value: text, tokens: [{ id: 't', label: 'Image #1', size: '84 KB' }], recall: [{ text }] }, width)
       expectLinesFit(`prompt/${name}`, prompt.surface.component.render(width), width)
       prompt.press('\x1b[A')
       expectLinesFit(`prompt-recall/${name}`, prompt.surface.component.render(width), width)

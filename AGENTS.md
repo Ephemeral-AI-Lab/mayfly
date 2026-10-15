@@ -58,13 +58,14 @@ through these steps in order, and tests come last:
    workbench runs as the only mechanical feedback. Run no check tier, no specs,
    no scenario goldens, and do not chase coverage, perf, or lint beyond what a
    failed build shows.
-4. **Scenario code.** Write the scenarios that show the round's states (a
+4. **Scenario code.** Write one scenario that shows all the round's states (a
    replay with `mark()`s and a catalog script, including a narrow width and a
-   lifecycle case). Do not run them against goldens and do not write goldens.
-5. **Hand over.** Organize all the scenarios of the round into one list for the
-   owner: each scenario's name, the command that opens it
-   (`pnpm run scenario <name>` or `dsh --profile mayfly-<tag>`), what it shows,
-   and what to try. Then stop and tell the owner; do not test.
+   lifecycle case), paced so a person can operate each state in the live
+   `pnpm run scenario` (long `pause()`s; what ends a state writes the events the
+   product would). Do not run it against goldens and do not write goldens.
+5. **Hand over.** Give the owner the round's scenario: its name, the command
+   that opens it (`pnpm run scenario <name>` or `dsh --profile mayfly-<tag>`),
+   what it shows, and what to try. Then stop and tell the owner; do not test.
 6. **Owner review.** The owner runs the scenarios and the live profile, and
    the agent adjusts the effect until the owner calls it final. Repeat steps
    3 to 5 as needed; an adjustment is not a reason to run tests.
@@ -181,7 +182,7 @@ into the live session by a driver plugin loaded with `dsh --patch`. The driver a
 agent loop would have written, creates child sessions (continuable ones with a
 live Agent) and a `/btw` side conversation with its own Agent, drives the real
 goal and job services, writes compactions, failed provider attempts with their
-retry records, inbox messages (the queued-message pane), and notification-pane notices, and
+retry records, inbox messages (the queued rows of the stream), and notification-pane notices, and
 puts approval, question, and plan-review prompts to you, so reviewing a state
 needs no model, no quota, and no tools. The replays cover tool calls of every
 kind, streaming phases, subagents, plan mode, goals, jobs, modes and model

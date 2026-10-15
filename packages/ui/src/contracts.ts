@@ -129,8 +129,10 @@ export interface MayflySurfaceNode {
   readonly padding?: 0 | 1 | 2
   readonly child: MayflyUiNode
   readonly footer?: MayflyUiNode
-  /** `right` puts the title in the top-right corner (a long one is elided at its start); badges take the left. */
+  /** `right` puts the title in the top-right corner (a long one is elided at its start unless `titleCut` says otherwise); badges take the left. */
   readonly titleAlign?: 'left' | 'right'
+  /** Which end of a title too long for the rule is cut: `start` keeps its end (a path), `end` keeps its start (a name). A right-aligned title defaults to `start`, a left-aligned one to `end`. */
+  readonly titleCut?: 'start' | 'end'
   /** The border tone; the chrome's own (focus color for an overlay, quiet for a surface) otherwise. */
   readonly border?: MayflyTone
   /** What `Esc` does, as the hint row names it; `reject` dismisses as a rejection. */
@@ -424,8 +426,8 @@ export interface MayflyImageNode {
 
 /** A `[label size ×]` attachment shown inside the prompt's input row; the host owns the list and removes one on `token-remove`. */
 interface MayflyPromptToken { readonly id: string, readonly label: string, readonly size?: string }
-/** One earlier message the prompt can recall: a queued message first, then history. */
-export interface MayflyPromptRecall { readonly kind: 'queued' | 'history', readonly text: string }
+/** One earlier message the prompt can recall (history, newest first). */
+export interface MayflyPromptRecall { readonly text: string }
 /** One row of the prompt's completion list. */
 interface MayflyPromptCompletion {
   readonly id: string
@@ -533,7 +535,7 @@ export interface MayflyStatusEntry { readonly id: string, readonly definition: M
 export interface MayflyStatusRegistration extends MayflyRegistration { readonly revision: number, set(node: MayflyStatusNode | null): void }
 export interface MayflyStatusRegistry { register(definition: MayflyStatusDefinition, initialNode?: MayflyStatusNode | null): MayflyStatusRegistration, list(): readonly MayflyStatusEntry[], subscribe(listener: (delta: MayflyRegistryDelta<MayflyStatusEntry>) => void): () => void }
 
-export interface MayflyEditorCompletionItem { readonly id: string, readonly label: string, readonly insertText: string, readonly detail?: string }
+export interface MayflyEditorCompletionItem { readonly id: string, readonly label: string, readonly insertText: string, readonly detail?: string, readonly problem?: string }
 export interface MayflyEditorCompletionRequest { readonly query: string, readonly trigger: '/' | '@' | '#' | 'manual' }
 interface MayflyEditorDiagnostic { readonly id: string, readonly message: string, readonly tone?: MayflyTone }
 export interface MayflyEditorAttachment { readonly id: string, readonly label: string, readonly mediaType?: string, readonly size?: number }

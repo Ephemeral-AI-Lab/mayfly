@@ -11,11 +11,11 @@ describe('InteractionStateService', () => {
   it('isolates product state between frontend trees', () => {
     const first = new InteractionStateService(new Context(), DEFAULT_SETTINGS)
     const second = new InteractionStateService(new Context(), DEFAULT_SETTINGS)
-    first.draft.stashDraft('first tree')
+    first.draft.stashDraft({ raw: 'first tree', pastes: new Map() })
     first.currentThemeKey = 'custom'
     first.pasteImage.pasteCount = 2
 
-    expect(second.draft.getStashedDraft()).toBe('')
+    expect(second.draft.getStashedDraft().raw).toBe('')
     expect(second.currentThemeKey).toBe('dark')
     expect(second.pasteImage.pasteCount).toBe(0)
   })
@@ -23,7 +23,7 @@ describe('InteractionStateService', () => {
   it('releases cached and registered state on disposal', () => {
     const service = new InteractionStateService(new Context(), DEFAULT_SETTINGS)
     service.aliases.register('quit', ['q'])
-    service.draft.stashDraft('draft')
+    service.draft.stashDraft({ raw: 'draft', pastes: new Map() })
     service.draft.stashInputMode('bash')
     service.draft.stashHistory(['one'])
     service.modelsDevCache = { at: 1, index: { lookup: vi.fn() } }
@@ -42,7 +42,7 @@ describe('InteractionStateService', () => {
     service.dispose()
 
     expect(service.aliases.canonicalOf('q')).toBeUndefined()
-    expect(service.draft.getStashedDraft()).toBe('')
+    expect(service.draft.getStashedDraft().raw).toBe('')
     expect(service.draft.getStashedInputMode()).toBe('prompt')
     expect(service.draft.getStashedHistory()).toEqual([])
     expect(service.modelsDevCache).toBeUndefined()

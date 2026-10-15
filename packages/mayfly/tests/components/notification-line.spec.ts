@@ -51,9 +51,9 @@ describe('NotificationLine', () => {
     for (const width of [120, 40]) expect(render(undefined, width)).toEqual([''])
   })
 
-  it('pairs each severity with its glyph and tone, and keeps a quiet message in the text color', () => {
+  it('pairs each severity with its glyph and tone, and gives an information notice no glyph (R2)', () => {
     expect(spansOf(NotificationLine({ notice: notice('success', 'Saved') }))).toEqual([{ text: '✓ ', tone: 'success' }, { text: 'Saved' }])
-    expect(spansOf(NotificationLine({ notice: notice('info', 'Resumed') }))).toEqual([{ text: 'ℹ ', tone: 'primary' }, { text: 'Resumed' }])
+    expect(spansOf(NotificationLine({ notice: notice('info', 'Resumed') }))).toEqual([{ text: 'Resumed' }])
     expect(spansOf(NotificationLine({ notice: notice('warning', 'Rate limited') }))).toEqual([{ text: '⚠ ', tone: 'warning' }, { text: 'Rate limited', tone: 'warning' }])
     expect(spansOf(NotificationLine({ notice: notice('error', 'Failed') }))).toEqual([{ text: '✗ ', tone: 'danger' }, { text: 'Failed', tone: 'danger' }])
   })
@@ -61,8 +61,8 @@ describe('NotificationLine', () => {
   it('puts a notice at the right edge with a three-column margin, and counts the notices waiting behind it', () => {
     const [line] = render({ notice: notice('info', 'Resumed session') }, 120)
     expect(visibleWidth(line!)).toBe(120)
-    expect(line!.slice(0, 120 - 3 - 'ℹ Resumed session'.length)).toBe(' '.repeat(120 - 3 - 'ℹ Resumed session'.length))
-    expect(line!.slice(120 - 3 - 'ℹ Resumed session'.length)).toBe('ℹ Resumed session   ')
+    expect(line!.slice(0, 120 - 3 - 'Resumed session'.length)).toBe(' '.repeat(120 - 3 - 'Resumed session'.length))
+    expect(line!.slice(120 - 3 - 'Resumed session'.length)).toBe('Resumed session   ')
     expect(render({ notice: notice('warning', 'Rate limited', 2) }, 120)[0]!.trimEnd().endsWith('⚠ Rate limited · +2')).toBe(true)
     // The notice reads the same in the main screen mode: the text is there, whatever the row count.
     expect(render({ notice: notice('warning', 'Rate limited') }, 120, 'main').join('\n')).toContain('⚠ Rate limited')
@@ -85,7 +85,7 @@ describe('NotificationLine', () => {
       const [line] = render({ chip: 'Back to bottom · Ctrl+↓', notice: notice('info', 'Resumed session') }, width)
       const chipAt = line!.indexOf(' Back to bottom · Ctrl+↓ ')
       // At 60 columns the notice yields room: its glyph and first words are what stays.
-      const noticeAt = line!.indexOf('ℹ Resumed')
+      const noticeAt = line!.indexOf('Resumed')
       expect(chipAt).toBeGreaterThan(0)
       expect(noticeAt).toBeGreaterThan(chipAt + ' Back to bottom · Ctrl+↓ '.length - 1)
       expect(visibleWidth(line!)).toBeLessThanOrEqual(width)
@@ -110,7 +110,7 @@ describe('NotificationLine', () => {
   it('draws the keys of a focus mode at the left, with a notice keeping the right', () => {
     const [line] = render({ keys: 'Enter expand · c copy', notice: notice('info', 'Resumed') }, 80)
     expect(line!.startsWith('  Enter expand · c copy')).toBe(true)
-    expect(line!.trimEnd().endsWith('ℹ Resumed')).toBe(true)
+    expect(line!.trimEnd().endsWith('Resumed')).toBe(true)
   })
 
   it('fits every adversarial text as a notice, a chip, a hint, or keys, at each width', () => {

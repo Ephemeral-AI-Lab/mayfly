@@ -85,7 +85,7 @@ describe('admission cache', () => {
 
   it('does not memoize editor slots or filterable lists with printable accelerators', () => {
     const cache = createAdmissionCache()
-    const shell = ui.stack.column([ui.child({ kind: 'editor-control' } as never), ui.child(ui.text('hint'))])
+    const shell = ui.stack.column([ui.child({ kind: 'prompt', id: 'prompt' } as never), ui.child(ui.text('hint'))])
     expect(validateMayflyEditorShellNode(shell, undefined, cache)).toMatchObject({ ok: true })
     expect(validateMayflyEditorShellNode(shell, undefined, cache)).toMatchObject({ ok: true })
     const list = ui.list({ id: 'l', role: 'browse', selectedIds: [], filterable: true, items: [{ id: 'a', label: 'A' }] })

@@ -43,7 +43,7 @@ export const PROMPT_SURFACE: MayflyUiNode = ui.surface({
   title: 'Prompt', titleAlign: 'right', chrome: 'surface', hint: 'completions',
   child: ui.prompt({
     id: 'composer', autofocus: true, tokens: [{ id: 'img', label: 'Image #1', size: '84 KB' }],
-    recall: [{ kind: 'queued', text: 'also update the footer' }, { kind: 'history', text: 'run the width scan again' }],
+    recall: [{ text: 'also update the footer' }, { text: 'run the width scan again' }],
     placeholder: ['Ask anything · / commands', 'Ask anything'],
   }),
 })

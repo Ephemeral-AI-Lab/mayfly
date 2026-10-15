@@ -249,8 +249,8 @@ caller in the same change (D21).
 
 The plan cuts each group of the roadmap into parts. It is the starting point; a part may be split, merged, or reordered
 when review shows a better cut, and the group's status table records it. **Tooling part T0** comes first because every
-other part needs the brief. Parts of Phases 4 to 6 are cut when their phase starts, from the same reference table
-(§4) and the roadmap's group text.
+other part needs the brief. Phase 4's parts are cut below (*Phase 4 parts*); parts of Phases 5 and 6 are cut when their phase starts, from the
+same reference table (§4) and the roadmap's group text.
 
 | Part | Effect the owner sees | Prototype | Scenarios (existing, or *new*) | Focus |
 | --- | --- | --- | --- | --- |
@@ -275,10 +275,35 @@ other part needs the brief. Parts of Phases 4 to 6 are cut when their phase star
 | **3e.2 Row selection** | `Alt+↑` focuses the newest row; `Enter`, `c`, `Ctrl+G`, `Esc`/`Alt+↓`. | 18 | `tour` | focus mark; hint row; copy feedback |
 | **3e.3 Stream search** | `/` and `?` in conversation mode open a search line above the editor (regular expression, smart case); typing highlights, `Enter` selects, `↑`/`↓` and `n`/`N` walk the matches; the match turn opens at Verbose; matched text reversed. | 18 (`StreamSearch`) | `tour`, `history` | match count; stepping; `Esc` restores levels |
 
-Phases 4 to 6 follow the same rules. Their group texts in the roadmap are the starting points: Phase 4 (editor, queue,
-tokens, the `/` `@` `#` completion list, scenes 15 and 30 p1-p2); Phase 5 (the two status rows, scenes 13 and 12,
-every width of 100, 72, 52, 36); Phase 6 (the panels 6a-6f, scenes 21 p4 and 22-32). Each is cut into parts the way the
-table above cuts Phase 3: one effect group per part, a scenario per part, a brief per part.
+### Phase 4 parts (*Finalized*)
+
+Groups 4a to 4e are finalized: the owner accepted the built effect round by round, and the code is the record of the behavior. Where a row below still reads as a plan (the planned prototype wording, or a scenario name that changed), the built code and its scenarios are right. Each row's `Effect` names what shipped.
+
+Phase 4 (editor and command palette) is cut ahead of its start, so the rounds can be planned while Phase 3 is in test.
+It is the same cut as Phase 3's: one effect group per part, a scenario per part, a brief per part. The roadmap's Phase 4
+section holds the groups (4a-4e) and the status table of rounds. A part may be split, merged, or reordered when review
+shows a better cut, as for Phase 3; the status table records it. The scenario names are proposals, final at the part's
+hand-off.
+
+| Part | Effect the owner sees | Prototype | Scenarios (*new*) | Focus |
+| --- | --- | --- | --- | --- |
+| **4a.1 Editor frame** | The rounded frame with the conversation title in its top-right corner around the `ui.prompt` (symbol, buffer, caret), as a pure `Editor` component on the editor dock slot; the frame is the same at 96, 60, and 40 columns. | 15 | *editor*, *editorTitle* | title cut at narrow widths; the caret and wrapped lines; CJK and multi-line buffers; the frame never shifts the rows above |
+| **4a.2 Shell mode** | `!` as the first character turns the prompt symbol into `!` and the border to the accent color; nothing else changes (no `! shell mode` label, no `SHELL` chip); `Esc` or `Backspace` on an empty buffer leaves it. | 15 | *editorShell* | the border tone in both themes and with `NO_COLOR`; leaving the mode; the title stays |
+| **4b.1 Tokens in the buffer** | Pasted images (`[image #1 84 KB]`), pasted blocks (`[paste #1 +12 lines]`), and accepted `@` mentions (`@relative/path`) stay inline in the text, painted as tokens; `Backspace` with the caret at a token selects it (inverse), the next one removes it. | 15 | *tokens* | the token tones; the two-key removal; a token at the wrap edge; 60 columns |
+| **4b.2 Submit expansion** | What is sent is what is sent today: the submit pipeline expands each token to its content; a draft keeps its tokens (and a pasted block its content) through a theme reload and through the external editor. | 15 | *tokensSubmit*, *tokensEditor* | image, paste, and mention each expand once; a removed token sends nothing; a long paste |
+| **4c.1 Queued rows** | Queued messages stay rows of the stream (`⏎ queued`, `⏎ steering`); `Alt+↑` reaches them, and on one `e` edits it, `s` sends it now, `d` cancels it (`u` undoes); the queue pane is gone and there is no queue line (owner's change from the prototype). | 15 | *queue* | the rows and marks at 96, 60 and 40 columns; the keys on the notification row; `e` with a draft; `s` and `d` then `u`; a row read by the agent under the cursor |
+| **4c.2 Prompt history** | `↑`/`↓` walk the history only; the notification row reads `↑ history 2/4` while walking; `↓` walks back and ends on the draft. | 15 | *queue* (the same run) | the counter; the draft restored; the counter at 60 and 40 columns |
+| **4d.1 The `/` list** | Met by round 1 (4a.2); no change in round 4. The `/` list is the borderless palette over the stream: up to six plain rows as wide as the frame, `→` on the focused row, the typed part of a name in bold, descriptions muted, no key at the right edge (no command has a bound key). The select-list adapter was deleted in round 1; pi-tui's `SelectList` state and keys stay in `core/completion-list.ts`. | 30 p1-p2 | `editor` (checkpoints `commands`, `commands-down`, `commands-60`, `commands-40`) | row layout at 96, 60, and 40 columns; no row shift above; long descriptions |
+| **4d.2 Palette keys** | Met by round 1; no change in round 4, and **no key line** (owner decision). Typing filters; `↑`/`↓` move; `Tab` completes the name; `Enter` accepts a `/` command and runs it (as today; `#` and `@` insert without submitting); `Esc` closes the list and keeps the draft. | 30 p1-p2 | `editor` | `Enter` on a half-typed command; scrolling a long list |
+| **4d.3 `@` files** | `@` lists files; `Enter` or `Tab` inserts a token (4b.1); `Ctrl+G` opens the file; a directory narrows the list. | 30 | *mentions* | the path cut; the token inserted; a workspace with thousands of files stays smooth |
+| **4d.4 `#` skills and extensions** | `#` lists skills and inserts text; the `complete()` results of editor extensions join the list under their own heading. | 30 | *skills*, *extensionComplete* | the source of each row; an extension that throws or is slow; one list |
+| **4e.1 Placeholders** | The empty prompt teaches the typed prefixes by state: main idle or running, shell, side question, subagent live or resumable, read-only; the longest variant that fits is chosen with no width read in code; the quiet-hints setting blanks it. | 15 | *placeholders* | one ladder per state; the shed order at 60 and 40; hints off |
+| **4e.2 Keys and title** | `Alt+↑` focuses the stream, `Alt+↓` or `F6` enters the views, `?` on an empty prompt opens key help, `Ctrl+Enter` steers, `Ctrl+G` opens the draft in `$EDITOR`; the title follows the official `title` projection. | 15 | *editorKeys* | each key from the prompt and from the stream; `?` in a non-empty buffer is text; the title when a session is renamed |
+| **4e.3 Subagent replies** | In a live or resumable subagent conversation the editor sends through the addressed-subagent path: `Enter` queues, `Ctrl+Enter` steers; the reply form with its `Send` and `Cancel` buttons and delivery select is gone. | 15 | *subagentReply* | the delivery choice is the editor's own pair; the placeholder names the subagent; a resumable one wakes |
+
+Phases 5 and 6 follow the same rules. Their group texts in the roadmap are the starting points: Phase 5 (the two status
+rows, scenes 13 and 12, every width of 100, 72, 52, 36); Phase 6 (the panels 6a-6f, scenes 21 p4 and 22-32). Each is
+cut into parts the way the table above cuts Phase 3: one effect group per part, a scenario per part, a brief per part.
 
 ### 7.1 Every tool at three tiers
 
@@ -422,7 +447,15 @@ rules, which keep the demo useful to a person and usable as a golden later:
    owner has learned them.
 7. **Covers.** The `covers` globs name the sources the scenario can reveal, so the change-based selection runs it
    (root `AGENTS.md`, *Verification*).
-8. **Modes.** The owner can run any demo with `--no-color`, `--ascii`, `--width N`, `--height N`; reduced motion is a
+8. **One scenario per round.** A round (its parts together) is one scenario that draws every state in one run, one
+   checkpoint each, with one brief; separate scenarios are for states that cannot coexist (a different source, a
+   different width ladder), not for each part or key. The owner learns one name and one walk.
+9. **Time for a person.** The live `scenario` plays at real time, so a state the owner has to operate stays long
+   enough to operate (minutes, with `pause()` between the mark and the item that ends it; a runner skips pauses). A
+   state that ends by itself (a held queue read by the agent, a notice) ends the way the product does: the replay writes
+   the session event the agent loop would have written, so what leaves one place appears in the next (a read queued
+   message becomes a prompt of the stream), never just vanishes.
+10. **Modes.** The owner can run any demo with `--no-color`, `--ascii`, `--width N`, `--height N`; reduced motion is a
    saved setting (`/settings`). The brief names the ones that matter for the part.
 
 ## 9. Commands

@@ -55,8 +55,8 @@ grid 120x60 cursor none
 |
 |  ✻ Stopped after 5s · done 10:24
 |  Enter expand · c copy · Ctrl+C JSON · Ctrl+G editor · ↑/↓ select · / ? sear…        ✓ Copied 416 characters of JSON
-|╭───────────────────────────────────────────────────────────────────────────────────── Survey the transcript code and ─╮
-|│ >                                                                                                                    │
+|╭────────────────────────────────────────────────────────────────────────────────────── Survey the transcript code and ╮
+|│ >  Ask anything · / commands · @ files · # skills · ! shell                                                          │
 |╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
 | deepseek-flash High   conversation   ~/workspace                                    cache 42%  context: 5% (5.5k/128k)
 styles
@@ -98,7 +98,7 @@ styles
 52: 2-14 fg:#e8a838
 54: 2-32 fg:#9aa3b8
 55: 0-76 fg:#9aa3b8; 86-87 fg:#4ec87e; 88-116 fg:#ededf2
-56: 0-119 fg:#5c6476
-57: 0 fg:#5c6476; 4 r; 119 fg:#5c6476
-58: 0-119 fg:#5c6476
+56: 0-87 fg:#9aa3b8; 88-117 fg:#f5f5f7 b; 118-119 fg:#9aa3b8
+57: 0 fg:#9aa3b8; 2-3 fg:#ededf2; 4 r; 5-60 fg:#5c6476; 119 fg:#9aa3b8
+58: 0-119 fg:#9aa3b8
 59: 1-19 fg:#ededf2; 22-35 fg:#9a86e6 b r; 38-48 fg:#9aa3b8; 85-118 fg:#ededf2

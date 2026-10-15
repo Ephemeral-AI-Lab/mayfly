@@ -1,0 +1,36 @@
+grid 40x24 cursor none
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|    #frontend-design  build distinctiv…
+|    #release-notes    draft release no…
+|    #123              Fix flaky cache …
+|    #124              Add retry to the…
+|    #bug-triage       Triage the ope… !
+|  → #flaky-tests      Quarantine the f…
+|╭──────── Update the landing page hero ╮
+|│ > #                                  │
+|╰──────────────────────────────────────╯
+| deepseek-flash  ~/workspace
+styles
+14: 4 fg:#ededf2 b; 5-19 fg:#ededf2; 22-37 fg:#9aa3b8
+15: 4 fg:#ededf2 b; 5-17 fg:#ededf2; 22-37 fg:#9aa3b8
+16: 4 fg:#ededf2 b; 5-7 fg:#ededf2; 22-37 fg:#9aa3b8
+17: 4 fg:#ededf2 b; 5-7 fg:#ededf2; 22-37 fg:#9aa3b8
+18: 4 fg:#ededf2 b; 5-14 fg:#ededf2; 22-35 fg:#9aa3b8; 38 fg:#e85454 b
+19: 2 fg:#9a86e6; 4-15 fg:#9a86e6 b; 22-37 fg:#ededf2
+20: 0-9 fg:#45406b; 10-37 fg:#f5f5f7 b; 38-39 fg:#45406b
+21: 0 fg:#45406b; 2-3 fg:#ededf2; 5 r; 39 fg:#45406b
+22: 0-39 fg:#45406b
+23: 1-14 fg:#ededf2; 17-27 fg:#9aa3b8

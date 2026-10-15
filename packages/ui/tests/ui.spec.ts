@@ -111,7 +111,7 @@ describe('ui builders', () => {
       ui.spacer({ size: 2 }),
       ui.divider({ label: 'More' }),
       ui.image({ attachmentId: 'att-1', alt: '[Image #1 84 KB]', maxRows: 12 }),
-      ui.prompt({ id: 'prompt', tokens: [{ id: 't', label: 'Image #1', size: '84 KB' }], recall: [{ kind: 'queued', text: 'x' }], placeholder: ['a', 'b'], completions: { items: [{ id: 'c', label: '/model' }] }, reset: { rev: 0, value: '' } }),
+      ui.prompt({ id: 'prompt', tokens: [{ id: 't', label: 'Image #1', size: '84 KB' }], recall: [{ text: 'x' }], placeholder: ['a', 'b'], completions: { items: [{ id: 'c', label: '/model' }] }, reset: { rev: 0, value: '' } }),
     ]
     expect(nodes.map(node => node.kind)).toEqual(['tabs', 'list', 'form', 'actions', 'loader', 'empty', 'progress', 'spacer', 'divider', 'image', 'prompt'])
     for (const node of nodes) expectDeepFrozen(node)

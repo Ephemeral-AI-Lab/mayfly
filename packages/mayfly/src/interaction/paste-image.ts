@@ -19,7 +19,7 @@
  * Every kind flashes a one-shot notice; nothing is installed or worked
  * around on the user's behalf (D49). Images are admitted through
  * `ctx.attachments.saveImage` — the store cross-checks the declared type
- * against the sniffed bytes — and land in the editor as an `[image #N]`
+ * against the sniffed bytes — and land in the editor as an `[image #N 84 KB]`
  * marker recorded in the frontend tree's marker→ref map. A submit transformer
  * (`./editor-instance.ts`) then splits submitted text on known markers into
  * text and image content blocks; unknown markers stay literal text. The map
@@ -45,6 +45,9 @@ import {
   getSharedEditor,
   type SharedEditor,
 } from './editor-instance.ts'
+import { IMAGE_MARKER, imageMarker } from './image-marker.ts'
+import { interactionTranslator } from './locale.ts'
+import { beginPromptWait } from './prompt-wait.ts'
 import { registerSubmitTransformer, type SubmitTransformation } from './prompt-submit-pipeline.ts'
 import { ADMITTED_IMAGE_TYPES, EXT_BY_MEDIA_TYPE, sniffImageMediaType } from './attachments.ts'
 import {
@@ -398,11 +401,8 @@ function failureNotice(result: FailureResult, platform: NodeJS.Platform): string
   }
 }
 
-/** The marker shape inserted into the editor text. */
-const IMAGE_MARKER = /\[image #\d+\]/g
-
 /**
- * Submit transformer splitting the submitted line on known `[image #N]`
+ * Submit transformer splitting the submitted line on known `[image #N size]`
  * markers: text runs become text blocks unaltered apart from the marker
  * removal, each known marker becomes an image block, and consumed markers
  * leave the map. Unknown (expired or never pasted) markers stay literal
@@ -449,20 +449,21 @@ function transformImageMarkers(ctx: Context, text: string): ContentBlock[] | Sub
 async function pasteFlow(ctx: Context, config: Config, shared: SharedEditor, isUnloaded: () => boolean): Promise<void> {
   const report = shared.report ?? (() => {})
   // The probe can take seconds (a wedged wl-paste costs its whole timeout);
-  // flash an in-progress notice so the wait reads as work, not a dead key.
-  // The marker insertion's own change event clears it on success; a failure
-  // notice overwrites it in place.
-  report('paste-image', { message: 'pasting image...', severity: 'info', purpose: 'progress' })
+  // the unified loader shows the wait so it reads as work, not a dead key.
+  // A probe that answers at once never shows it.
+  const endWait = beginPromptWait(ctx, interactionTranslator(ctx)('Reading the clipboard…'))
   let result: ClipboardImageResult
   try {
     result = await (clipboardImageReader?.() ?? defaultClipboardImageReader(ctx, config, ctx.attachments.imageLimits))
   } catch (error) {
+    endWait()
     // An injected reader rejecting degrades to the same notice family.
     if (isUnloaded()) return
     const message = error instanceof Error ? error.message : String(error)
     report('paste-image', { message: `clipboard read failed: ${message}`, severity: 'error' })
     return
   }
+  endWait()
   if (isUnloaded()) return
   if (result.kind !== 'image' && result.kind !== 'images') {
     report('paste-image', { message: failureNotice(result, process.platform), severity: 'error' })
@@ -483,7 +484,7 @@ async function pasteFlow(ctx: Context, config: Config, shared: SharedEditor, isU
     const markers = refs.map(ref => {
       const state = ctx.mayflyInteractionState.pasteImage
       state.pasteCount += 1
-      const marker = `[image #${state.pasteCount}]`
+      const marker = imageMarker(state.pasteCount, ref.bytes)
       state.pastedImages.set(marker, ref)
       return marker
     })

@@ -56,7 +56,7 @@ describe('validation', () => {
     expect(validateMayflyStatusNode(ui.stack.row([ui.child(ui.text('a')), ui.child(ui.text('b'))]), status).ok).toBe(true)
     expect(status.nodesValidated).toBe(3)
     const shell = createWorkCounters()
-    expect(validateMayflyEditorShellNode({ kind: 'editor-control' }, shell).ok).toBe(true)
+    expect(validateMayflyEditorShellNode({ kind: 'prompt', id: 'prompt' }, shell).ok).toBe(true)
     expect(shell.nodesValidated).toBe(1)
   })
 
@@ -143,7 +143,7 @@ describe('compilation', () => {
     expect(counters.unitsCompiled).toBeGreaterThanOrEqual(3)
     expect(compileMayflyStatusNode(ui.text('plain'), base).ok).toBe(true)
     const editor: MayflyEditor = createFakeEditor()
-    const shell = compileMayflyEditorShellNode({ kind: 'editor-control' }, { ...base, emit: () => {}, editor, counters })
+    const shell = compileMayflyEditorShellNode({ kind: 'prompt', id: 'prompt' }, { ...base, emit: () => {}, editor, counters })
     expect(shell.ok).toBe(true)
     expect(counters.nodesValidated).toBe(4)
   })

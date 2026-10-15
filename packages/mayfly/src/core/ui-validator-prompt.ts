@@ -76,10 +76,7 @@ function tokens<State>(h: PromptAdmissionHelpers<State>, value: unknown, path: s
 function recall<State>(h: PromptAdmissionHelpers<State>, value: unknown, path: string, state: State): MayflyPromptNode['recall'] {
   return h.collection(value, path).map((item, index) => h.enter(item, `${path}[${String(index)}]`, state, object => {
     const at = `${path}[${String(index)}]`
-    return {
-      kind: h.enumeration(required(h, object, 'kind', at), ['queued', 'history'] as const, `${at}.kind`),
-      text: h.draftText(required(h, object, 'text', at), `${at}.text`, state),
-    }
+    return { text: h.draftText(required(h, object, 'text', at), `${at}.text`, state) }
   }))
 }
 

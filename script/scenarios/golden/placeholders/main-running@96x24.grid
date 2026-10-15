@@ -1,0 +1,41 @@
+grid 96x24 cursor none
+|  ✓ Subagent(One-shot linter) · 0.6s
+|
+|  ● The linter is done.
+|
+|  » spawn:Stored writer
+|
+|  ✓ Subagent(Stored writer)
+|
+|  ✻ Worked for 0s · done 09:00
+|
+|  ● This is a replay session: the model is a stub. Type nothing; the conversation above is
+|    scripted.
+|
+|  ✻ Worked for 0s · done 09:00
+|
+|  » hold:240000 build the packages
+|
+|  ⡀ Deep diving · 0s
+|    ⎿ Tip: @: mention files
+|                                                      Resumed session · 2 turns · last active
+|╭──────────────────────────────────────────────────────────────────────────── Lint the README. ╮
+|│ >  Type a follow-up to queue it · @ files · # skills                                         │
+|╰──────────────────────────────────────────────────────────────────────────────────────────────╯
+| deepseek-flash High  ~/wor...  MAIN ⇄ BTW · windows notes · 2 more open · F7 switch · F8 close
+styles
+0: 2-3 fg:#4ec87e; 4-11 fg:#ededf2 b; 12 fg:#9aa3b8; 13-27 fg:#c9c0f0; 28-35 fg:#9aa3b8
+2: 2-3 fg:#ededf2
+4: 2-3 fg:#9a86e6; 4-22 fg:#9a86e6 b
+6: 2-3 fg:#4ec87e; 4-11 fg:#ededf2 b; 12 fg:#9aa3b8; 13-25 fg:#c9c0f0; 26 fg:#9aa3b8
+8: 2-29 fg:#9aa3b8
+10: 2-3 fg:#ededf2
+13: 2-29 fg:#9aa3b8
+15: 2-3 fg:#9a86e6; 4-33 fg:#9a86e6 b
+17: 0-1 fg:#ededf2; 2 fg:#9a86e6; 3-14 fg:#ededf2; 16-19 fg:#9aa3b8
+18: 0-26 fg:#9aa3b8
+19: 54-92 fg:#ededf2
+20: 0-77 fg:#45406b; 78-93 fg:#f5f5f7 b; 94-95 fg:#45406b
+21: 0 fg:#45406b; 2-3 fg:#ededf2; 4 r; 5-53 fg:#5c6476; 95 fg:#45406b
+22: 0-95 fg:#45406b
+23: 1-19 fg:#ededf2; 22-26 fg:#9aa3b8; 32-35 fg:#c9c0f0 b; 36-94 fg:#9aa3b8

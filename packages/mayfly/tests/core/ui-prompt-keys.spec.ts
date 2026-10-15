@@ -9,7 +9,7 @@ import { plainText } from '../helpers.ts'
 
 const KEY = { up: '\x1b[A', down: '\x1b[B', left: '\x1b[D', enter: '\r', esc: '\x1b', tab: '\t', backspace: '\x7f', altEnter: '\x1b\r', ctrlJ: '\n', ctrlC: '\x03', paste: '\x1b[200~', pasteEnd: '\x1b[201~' } as const
 const TOKENS = [{ id: 't1', label: 'Image #1', size: '84 KB' }, { id: 't2', label: 'notes.md', size: '2 KB' }]
-const RECALL = [{ kind: 'queued', text: 'also update the footer' }, { kind: 'history', text: 'run the width scan again' }, { kind: 'history', text: 'bump the changelog too' }] as const
+const RECALL = [{ text: 'also update the footer' }, { text: 'run the width scan again' }, { text: 'bump the changelog too' }] as const
 const ITEMS = [{ id: 'c1', label: '/model', detail: 'switch model' }, { id: 'c2', label: '/sessions' }, { id: 'c3', label: '/trace' }]
 
 const surfaces: RealSurface[] = []
@@ -156,11 +156,11 @@ describe('the two-step Backspace on an empty buffer', () => {
 })
 
 describe('the recall walk', () => {
-  it('walks queued messages first, then history, newest first, and ↓ restores the draft', () => {
+  it('walks the history newest first, and ↓ restores the draft', () => {
     const prompt = open({ recall: RECALL })
     prompt.press(KEY.up)
     expect(prompt.inside()[0]).toContain('also update the footer')
-    expect(prompt.inside()[0]).toContain('↑ queued 1/3')
+    expect(prompt.inside()[0]).toContain('↑ history 1/3')
     prompt.press(KEY.up)
     expect(prompt.inside()[0]).toContain('run the width scan again')
     expect(prompt.inside()[0]).toContain('↑ history 2/3')
@@ -169,9 +169,9 @@ describe('the recall walk', () => {
     expect(prompt.inside()[0]).toBe('>')
     const recalls = prompt.events.filter(event => event.kind === 'recall-change')
     expect(recalls).toMatchObject([
-      { controlId: 'p', source: 'queued', index: 0 },
+      { controlId: 'p', source: 'history', index: 0 },
       { source: 'history', index: 1 },
-      { source: 'queued', index: 0 },
+      { source: 'history', index: 0 },
       { source: 'draft', index: -1 },
     ])
   })
@@ -180,7 +180,7 @@ describe('the recall walk', () => {
     const prompt = open({ recall: RECALL })
     prompt.press(KEY.up)
     prompt.type('!')
-    expect(prompt.inside()[0]).not.toContain('↑ queued')
+    expect(prompt.inside()[0]).not.toContain('↑ history')
     expect(prompt.inside()[0]).toContain('also update the footer!')
     prompt.press(KEY.enter)
     expect(prompt.events.at(-1)).toMatchObject({ kind: 'submit', submission: { forms: [{ fields: [{ value: 'also update the footer!' }, { value: [] }] }] } })
@@ -285,7 +285,7 @@ describe('republishing', () => {
     prompt.dispose()
   })
 
-  it('walks a recall list the host shrinks when it hands a queued message back', () => {
+  it('walks a recall list the host shrinks when it takes its newest entry back', () => {
     const prompt = host({ recall: RECALL })
     prompt.press(KEY.up)
     prompt.publish({ recall: [RECALL[1], RECALL[2]] })

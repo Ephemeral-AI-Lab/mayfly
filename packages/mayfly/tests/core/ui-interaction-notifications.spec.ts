@@ -11,9 +11,9 @@ const app = { kind: 'app' as const, targetId: 'test' }
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks() })
 
 describe('feedback spans', () => {
-  it('pairs every severity with its glyph, and keeps quiet messages in text color', () => {
+  it('gives an information notice no glyph, and keeps quiet messages in text color', () => {
     expect(feedbackSpans('success', 'Saved')).toEqual([{ text: '✓ ', tone: 'success' }, { text: 'Saved' }])
-    expect(feedbackSpans('info', 'Resumed')).toEqual([{ text: 'ℹ ', tone: 'primary' }, { text: 'Resumed' }])
+    expect(feedbackSpans('info', 'Resumed')).toEqual([{ text: 'Resumed' }])
     expect(feedbackSpans('warning', 'Low')).toEqual([{ text: '⚠ ', tone: 'warning' }, { text: 'Low', tone: 'warning' }])
     expect(feedbackSpans('error', 'Failed')).toEqual([{ text: '✗ ', tone: 'danger' }, { text: 'Failed', tone: 'danger' }])
   })

@@ -108,7 +108,7 @@ function recallCorner(paint: PromptPaint): { readonly text: string, readonly wid
   const entries = paint.node.recall ?? []
   const entry = model?.recall === undefined ? undefined : entries[model.recall.index]
   if (model?.recall === undefined || entry === undefined) return undefined
-  const word = entry.kind === 'queued' ? paint.translate('queued') : paint.node.recallLabel ?? paint.translate('history')
+  const word = paint.node.recallLabel ?? paint.translate('history')
   const plain = glyphRows([`↑ ${word} ${String(model.recall.index + 1)}/${String(entries.length)}`], paint.glyphs)[0]!
   return { text: paint.colors.muted(plain), width: paint.components.visibleWidth(plain) }
 }
@@ -174,6 +174,31 @@ export function paintPrompt(paint: PromptPaint): string[] {
   }
   rows.push(...paintCompletions(paint))
   return rows
+}
+
+/** What the host-editor painter reads: the node, the width, the palette, and the host's buffer. */
+export interface HostedPromptPaint {
+  readonly node: MayflyPromptNode
+  readonly width: number
+  readonly colors: MayflySemanticColors
+  readonly components: Measure
+  /** The host editor's rows at a width: its buffer with the cursor, and the completion list it opens under it. */
+  readonly buffer: (width: number) => string[]
+}
+
+/**
+ * The rows of the prompt of an editor shell: the symbol (bold in its tone) beside the host editor's first row, the later
+ * rows under the symbol's indent. The draft, the placeholder, and the tokens are the surface model's and a shell has
+ * none; the editor paints its own cursor.
+ */
+export function paintHostedPrompt(paint: HostedPromptPaint): string[] {
+  const { node, colors, components } = paint
+  const width = Math.max(1, paint.width)
+  const symbol = node.symbol ?? '> '
+  const symbolWidth = components.visibleWidth(symbol)
+  const head = node.symbolTone === undefined ? colors.text(symbol) : strong(paintTone(node.symbolTone, symbol, colors))
+  const [first = '', ...rest] = paint.buffer(Math.max(MIN_EDITOR_WIDTH, width - symbolWidth))
+  return [components.truncateToWidth(`${head}${first}`, width, ''), ...rest.map(row => components.truncateToWidth(`${' '.repeat(symbolWidth)}${row}`, width, ''))]
 }
 
 /**

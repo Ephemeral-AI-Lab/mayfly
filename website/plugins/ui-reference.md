@@ -1358,7 +1358,7 @@ ui.prompt(options: {
   symbolTone?: MayflyTone
   value?: string                       // 控件初始的草稿
   tokens?: { id: string, label: string, size?: string }[]
-  recall?: { kind: 'queued' | 'history', text: string }[]
+  recall?: { text: string }[]                 // history, newest first
   recallLabel?: string                 // 默认 'history'
   placeholder?: string | string[]      // 阶梯，从长到短
   completions?: { items: { id: string, label: string, detail?: string, right?: string }[] }
@@ -1394,10 +1394,10 @@ ui.prompt(options: {
 
 *空提示符上按两次 `↑`（宽度 64）。*
 
-缓冲区为空或已是某条回溯内容时，`↑`/`↓` 遍历 `recall`：排队的消息在前，从新到旧；右上角显示
+缓冲区为空或已是某条回溯内容时，`↑`/`↓` 遍历 `recall`：从新到旧；右上角显示
 `↑ history 2/3`，回溯的文本成为草稿。越过最新一条再按 `↓` 会恢复之前的草稿。每一步发送观察事件
-`recall-change`（`source` 为 `queued`、`history` 或 `draft`，`index` 是 `recall` 中的位置，草稿为 `-1`）。
-宿主撤回已回溯的排队消息时，重新发布去掉它的 `recall`，遍历位置保持不变。
+`recall-change`（`source` 为 `history` 或 `draft`，`index` 是 `recall` 中的位置，草稿为 `-1`）。
+宿主撤掉已回溯的那一条时，重新发布去掉它的 `recall`，遍历位置保持不变。
 
 提示符获得焦点时的按键：
 

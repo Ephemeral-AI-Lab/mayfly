@@ -47,8 +47,8 @@ export function interactionKeyHint(keymap: MayflyKeymap, action: string, fallbac
 
 /**
  * The full interaction key batch, registered as one unit: the kit's `ui.*` navigation and common-meaning actions, then
- * the product actions. Each carries the scope its binding is live in (roadmap D6), so `Ctrl+S` can steer in the editor
- * and save in a surface, and `Shift+Tab` can toggle plan mode in the editor and move back a group in a surface.
+ * the product actions. Each carries the scope its binding is live in (roadmap D6), so `Ctrl+Enter` can steer in the editor and `Ctrl+S`
+ * can save in a surface, and `Shift+Tab` can toggle plan mode in the editor and move back a group in a surface.
  */
 export const INTERACTION_KEY_ACTIONS: readonly MayflyKeyAction[] = [
   { id: ACTION_SUBMIT, keys: 'enter', scope: 'surface', description: 'Submit input / confirm selection' },
@@ -80,7 +80,7 @@ export const INTERACTION_KEY_ACTIONS: readonly MayflyKeyAction[] = [
   { id: ACTION_EXTERNAL_EDITOR, keys: 'ctrl+g', scope: 'global', description: 'Edit the draft in your external editor ($VISUAL/$EDITOR)' },
   { id: ACTION_SEARCH, keys: 'ctrl+f', scope: 'surface', description: 'Search the whole conversation or list' },
   { id: ACTION_INTERRUPT, keys: 'ctrl+c', scope: 'global', description: 'Clear input / interrupt with an empty buffer / press twice to exit' },
-  { id: ACTION_STEER, keys: 'ctrl+s', scope: 'editor', description: 'Steer the current turn with the draft' },
+  { id: ACTION_STEER, keys: 'ctrl+enter', scope: 'editor', description: 'Send the draft as a steer: the running turn takes it at its next step' },
   { id: ACTION_BACKSPACE, keys: 'backspace', scope: 'editor', description: 'Delete backward / exit bash mode on an empty prompt' },
   { id: ACTION_CYCLE_MODE, keys: 'shift+tab', scope: 'editor', description: 'Toggle plan mode' },
   { id: ACTION_CYCLE_MODEL, keys: 'alt+m', scope: 'editor', description: 'Cycle the session model within the current provider (contextual)' },

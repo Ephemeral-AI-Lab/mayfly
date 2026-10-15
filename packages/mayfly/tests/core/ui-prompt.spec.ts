@@ -39,7 +39,7 @@ const draw = (node: Omit<MayflyPromptNode, 'kind'>, width: number, options: { re
 }
 const LADDER = ['Ask anything · / commands · @ files · # skills · ! shell', 'Ask anything · / commands · @ files · # skills', 'Ask anything · / commands · @ files', 'Ask anything']
 const TOKENS = [{ id: 't1', label: 'Image #1', size: '84 KB' }, { id: 't2', label: 'notes.md', size: '2 KB' }]
-const RECALL = [{ kind: 'queued', text: 'also update the footer' }, { kind: 'history', text: 'run the width scan again' }] as const
+const RECALL = [{ text: 'also update the footer' }, { text: 'run the width scan again' }] as const
 
 describe('the placeholder ladder', () => {
   it('uses the caller\'s ladder as given and degrades a plain string by whole triggers', () => {
@@ -113,22 +113,22 @@ describe('the first row', () => {
     expect(plain(draw({ id: 'p', tokens: many }, 40))[0]).toMatch(/^> \+\d \[/u)
   })
 
-  it('shows the recall position in the right corner, queued entries by their kind', () => {
+  it('shows the recall position in the right corner, labelled by the recall word', () => {
     const walk = (count: number) => draw({ id: 'p', recall: RECALL }, 96, { model: Array.from({ length: count }, () => ({ kind: 'recall', direction: 'older' }) as const) })[0]!
-    expect(plain([walk(1)])[0]).toBe(`> also update the footer${' '.repeat(96 - 2 - 22 - 12)}↑ queued 1/2`)
+    expect(plain([walk(1)])[0]).toBe(`> also update the footer${' '.repeat(96 - 2 - 22 - 13)}↑ history 1/2`)
     expect(visibleWidth(plain([walk(2)])[0]!)).toBe(96)
     expect(plain([walk(2)])[0]!.endsWith('↑ history 2/2')).toBe(true)
     expect(plain(draw({ id: 'p', recall: RECALL, recallLabel: 'earlier' }, 96, { model: [{ kind: 'recall', direction: 'older' }, { kind: 'recall', direction: 'older' }] }))[0]!.endsWith('↑ earlier 2/2')).toBe(true)
-    expect(draw({ id: 'p', recall: RECALL }, 60, { model: [{ kind: 'recall', direction: 'older' }], glyphs: 'ascii' })[0]).toContain('^ queued 1/2')
+    expect(draw({ id: 'p', recall: RECALL }, 60, { model: [{ kind: 'recall', direction: 'older' }], glyphs: 'ascii' })[0]).toContain('^ history 1/2')
     // The corner never pushes the buffer off the row.
-    expect(visibleWidth(plain(draw({ id: 'p', recall: [{ kind: 'history', text: 'x'.repeat(200) }] }, 30, { model: [{ kind: 'recall', direction: 'older' }], buffer: rowWidth => ['y'.repeat(rowWidth)] }))[0]!)).toBe(30)
+    expect(visibleWidth(plain(draw({ id: 'p', recall: [{ text: 'x'.repeat(200) }] }, 30, { model: [{ kind: 'recall', direction: 'older' }], buffer: rowWidth => ['y'.repeat(rowWidth)] }))[0]!)).toBe(30)
   })
 
   it('translates the corner words through the host catalog', () => {
     const admitted = admit({ id: 'p', recall: RECALL })
     const model = reducePrompt(createPromptModel(address, admitted), { kind: 'recall', direction: 'older' }).model
     const [row] = paintPrompt({ node: admitted, model, width: 80, focused: true, colors, components, glyphs: undefined, translate: key => `<${key}>`, buffer: () => [model.text] })
-    expect(row).toContain('<queued>')
+    expect(row).toContain('<history>')
   })
 
   it('paints a prompt outside an interactive surface from its value, one row a line', () => {

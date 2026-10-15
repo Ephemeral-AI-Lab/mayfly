@@ -18,6 +18,8 @@ export const checkpoint = (name, { tick = false } = {}) => ({ step: 'checkpoint'
 export const key = (name, { repeat = 1 } = {}) => ({ step: 'key', name, repeat })
 /** Type text one character at a time. */
 export const type = text => ({ step: 'type', text })
+/** Paste text as one bracketed paste, as a terminal sends it (the editor folds a long one into a `[paste #N …]` token). */
+export const paste = text => ({ step: 'paste', text })
 /** Click a cell: `{ row, col }`, or `{ text }` for the first visible occurrence of a text. */
 export const click = at => ({ step: 'click', at })
 /** Turn the wheel `count` notches (`up` or `down`) over a cell (default the middle of the screen). */

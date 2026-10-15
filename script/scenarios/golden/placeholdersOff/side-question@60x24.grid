@@ -1,0 +1,41 @@
+grid 60x24 cursor none
+| ⠱⣦⣄⣀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⣠⣴⠎
+| ⠀⠙⢿⣿⣿⣷⣶⣤⣀⣀⣴⣶⣦⣀⣀⣤⣶⣾⣿⣿⡿⠋⠀  mayfly
+| ⠀⠀⠀⠈⠻⢿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡿⠟⠁⠀⠀⠀  ephemeral agents, e...
+| ⠀⠀⠀⠀⠀⠀⠀⠉⠉⠁⢸⣿⡇⠈⠉⠉⠀⠀⠀⠀⠀⠀⠀
+| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢸⣿⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀  Send /help for help...
+| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⣿⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀  Directory: ~/workspace
+| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣿⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀  Model:     deepseek...
+| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⡠⠊⠀⠑⢄⠀⠀⠀⠀⠀⠀⠀⠀⠀  Version:   scenario
+|
+|  » Does the install section need Windows notes?
+|
+|
+|
+|
+|
+|
+|
+|  ⡀ Deep diving · 0s
+|
+|                               Alt+↑ conversation · Alt+↓
+|╭─────────────────────────── Does the install section need ╮
+|│ >                                                        │
+|╰──────────────────────────────────────────────────────────╯
+| deepseek-flash High  BTW · windows notes ⇄ MAIN · 2 more
+styles
+0: 1-23 fg:#f5f5f7; 24-25 fg:#9a86e6
+1: 1-23 fg:#e9e5f6; 24-25 fg:#9a86e6; 26-47 fg:#9a86e6 b
+2: 1-23 fg:#dbd3f0; 24-25 fg:#9a86e6; 26-44 fg:#c9c0f0
+3: 1-23 fg:#c9beea; 24-25 fg:#9a86e6
+4: 1-23 fg:#b2a1ec; 24-25 fg:#9a86e6; 26-44 fg:#9aa3b8
+5: 1-25 fg:#9a86e6; 26-47 fg:#ededf2
+6: 1-23 fg:#8371d6; 24-25 fg:#9a86e6; 26-44 fg:#e9e6f4
+7: 1-23 fg:#6c5bbf; 24-25 fg:#9a86e6; 26-47 fg:#ededf2
+9: 2-3 fg:#9a86e6; 4-47 fg:#9a86e6 b
+17: 0-1 fg:#ededf2; 2 fg:#9a86e6; 3-14 fg:#ededf2; 16-19 fg:#9aa3b8
+19: 31-56 fg:#9aa3b8
+20: 0-28 fg:#45406b; 29-57 fg:#f5f5f7 b; 58-59 fg:#45406b
+21: 0 fg:#45406b; 2-3 fg:#ededf2; 4 r; 59 fg:#45406b
+22: 0-59 fg:#45406b
+23: 1-19 fg:#ededf2; 22-24 fg:#9a86e6 b; 25-58 fg:#9aa3b8

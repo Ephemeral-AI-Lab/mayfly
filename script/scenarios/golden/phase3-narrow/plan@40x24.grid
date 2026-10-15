@@ -19,7 +19,7 @@ grid 40x24 cursor none
 |  ⡀ Deep diving · 0s
 |
 |                                Alt+↑
-|╭───────────── Here is the timeout on ─╮
+|╭────────────── Here is the timeout on ╮
 |│ >                                    │
 |╰──────────────────────────────────────╯
 | deepseek-flash High  plan  ~/workspace
@@ -36,7 +36,7 @@ styles
 15: 0-15 fg:#5c6476
 17: 0-1 fg:#ededf2; 2 fg:#9a86e6; 3-14 fg:#ededf2; 16-19 fg:#9aa3b8
 19: 32-36 fg:#9aa3b8
-20: 0-13 fg:#45406b; 14-37 fg:#5c6476; 38-39 fg:#45406b
-21: 0 fg:#45406b; 4 r; 39 fg:#45406b
+20: 0-15 fg:#45406b; 16-37 fg:#f5f5f7 b; 38-39 fg:#45406b
+21: 0 fg:#45406b; 2-3 fg:#ededf2; 4 r; 39 fg:#45406b
 22: 0-39 fg:#45406b
 23: 1-19 fg:#ededf2; 22-25 fg:#c9c0f0; 28-38 fg:#9aa3b8

@@ -17,8 +17,8 @@ grid 60x22 cursor none
 |  ⡀ Deep diving · 8s · ↑37.1k
 |    ⎿ Tip: Ctrl+O to expand tool details
 |                  Back to bottom · Ctrl+↓       ⚠ Context
-|╭─────────────────────────────── Summarise the changelog. ─╮
-|│ >                                                        │
+|╭──────────────────────────────── Summarise the changelog. ╮
+|│ >  Ask anything · / commands · @ files · # skills        │
 |╰──────────────────────────────────────────────────────────╯
 | deepseek-flash High   cache 36%  context: 100% (37.1k/32k)
 styles
@@ -35,7 +35,7 @@ styles
 15: 0-1 fg:#ededf2; 2 fg:#9a86e6; 3-14 fg:#ededf2; 16-28 fg:#9aa3b8
 16: 0-39 fg:#9aa3b8
 17: 17-41 fg:#ededf2 r; 48-56 fg:#e8a838
-18: 0-31 fg:#45406b; 32-57 fg:#5c6476; 58-59 fg:#45406b
-19: 0 fg:#45406b; 4 r; 59 fg:#45406b
+18: 0-33 fg:#45406b; 34-57 fg:#f5f5f7 b; 58-59 fg:#45406b
+19: 0 fg:#45406b; 2-3 fg:#ededf2; 4 r; 5-50 fg:#5c6476; 59 fg:#45406b
 20: 0-59 fg:#45406b
 21: 1-19 fg:#ededf2; 23-58 fg:#ededf2

@@ -1,0 +1,54 @@
+grid 40x30 cursor none
+|  » Refactor the parser, I will add more
+|    while you work.
+|
+|  ● Reading the parser and listing the
+|    call sites.
+|
+|  ✓ Read(src/parser.ts)
+|
+|  » Keep the public API unchanged  ⏎
+|    steering
+|
+|  » Then bump the version and tag the
+|    release candidate so the nightly job
+|    picks it up on Monday morning. After
+|    that, regenerate the changelog from
+|    ▸ 11 more lines · Enter
+|
+|  » 请在发布之前把这条很长的排队消息翻译
+|    成中文并保留所有标点，同时检查每一个
+|    窄终端下的宽度是否正确  ⏎ queued
+|
+|
+|  ⡀ Deep diving · 3s · ↑5.5k
+|    ⎿ Tip: Esc to interrupt the run
+|                                Alt+↑
+|╭───────── Refactor the parser, I will ╮
+|│ > Update the README once the         │
+|│   parser is done                     │
+|╰──────────────────────────────────────╯
+| deepseek-flash High  ~/workspace
+styles
+0: 2-3 fg:#9a86e6; 4-39 fg:#9a86e6 b
+1: 4-18 fg:#9a86e6 b
+3: 2-3 fg:#ededf2
+6: 2-3 fg:#4ec87e; 4-7 fg:#ededf2 b; 8 fg:#9aa3b8; 9-21 fg:#c9c0f0; 22 fg:#9aa3b8
+8: 2-3 fg:#9a86e6; 4-32 fg:#9a86e6 b; 33-35 fg:#9aa3b8
+9: 4-11 fg:#9aa3b8
+11: 2-3 fg:#9a86e6; 4-36 fg:#9a86e6 b
+12: 4-39 fg:#9a86e6 b
+13: 4-39 fg:#9a86e6 b
+14: 4-38 fg:#9a86e6 b
+15: 4-26 fg:#9aa3b8
+17: 2-3 fg:#9a86e6; 4-39 fg:#9a86e6 b
+18: 4-39 fg:#9a86e6 b
+19: 4-25 fg:#9a86e6 b; 26-35 fg:#9aa3b8
+22: 0-1 fg:#ededf2; 2 fg:#9a86e6; 3-14 fg:#ededf2; 16-27 fg:#9aa3b8
+23: 0-34 fg:#9aa3b8
+24: 32-36 fg:#9aa3b8
+25: 0-10 fg:#45406b; 11-37 fg:#f5f5f7 b; 38-39 fg:#45406b
+26: 0 fg:#45406b; 2-3 fg:#ededf2; 39 fg:#45406b
+27: 0 fg:#45406b; 18 r; 39 fg:#45406b
+28: 0-39 fg:#45406b
+29: 1-19 fg:#ededf2; 22-32 fg:#9aa3b8

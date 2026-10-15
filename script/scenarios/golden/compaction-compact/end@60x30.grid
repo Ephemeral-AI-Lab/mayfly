@@ -25,8 +25,8 @@ grid 60x30 cursor none
 |
 |
 |                               Alt+↑ conversation · Alt+↓
-|╭────────────────────────── Read the readme and summarise ─╮
-|│ >                                                        │
+|╭─────────────────────────── Read the readme and summarise ╮
+|│ >  Ask anything · / commands · @ files · # skills        │
 |╰──────────────────────────────────────────────────────────╯
 | deepseek-flash High  ..  cache 0%  context: 10% (6.3k/64k)
 styles
@@ -45,7 +45,7 @@ styles
 17: 2-3 fg:#ededf2
 20: 2-30 fg:#9aa3b8
 25: 31-56 fg:#9aa3b8
-26: 0-26 fg:#45406b; 27-57 fg:#5c6476; 58-59 fg:#45406b
-27: 0 fg:#45406b; 4 r; 59 fg:#45406b
+26: 0-28 fg:#45406b; 29-57 fg:#f5f5f7 b; 58-59 fg:#45406b
+27: 0 fg:#45406b; 2-3 fg:#ededf2; 4 r; 5-50 fg:#5c6476; 59 fg:#45406b
 28: 0-59 fg:#45406b
 29: 1-19 fg:#ededf2; 26-58 fg:#ededf2

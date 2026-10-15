@@ -98,7 +98,7 @@ describe('action naming', () => {
 
   it('leaves a meaning out of an editor shell, which owns unmodified keys', () => {
     const shell = { kind: 'stack', direction: 'column', children: [
-      { node: { kind: 'editor-control' } },
+      { node: { kind: 'prompt', id: 'prompt' } },
       { node: ui.actions({ id: 'bar', items: [{ id: 'save', label: 'Save', semantic: 'save' }] }) },
     ] }
     expect(validateMayflyEditorShellNode(shell)).toMatchObject({ ok: false, message: expect.stringContaining('needs a modifier accelerator') })

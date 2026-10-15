@@ -59,8 +59,8 @@ grid 60x64 cursor none
 |
 |  ✻ Stopped after 5s · done 10:24
 |                               Alt+↑ conversation · Alt+↓
-|╭───────────────────────── Survey the transcript code and ─╮
-|│ >                                                        │
+|╭────────────────────────── Survey the transcript code and ╮
+|│ >  Ask anything · / commands · @ files · # skills        │
 |╰──────────────────────────────────────────────────────────╯
 | deepseek-flash High  .  cache 42%  context: 5% (5.5k/128k)
 styles
@@ -103,7 +103,7 @@ styles
 56: 2-14 fg:#e8a838
 58: 2-32 fg:#9aa3b8
 59: 31-56 fg:#9aa3b8
-60: 0-25 fg:#45406b; 26-57 fg:#5c6476; 58-59 fg:#45406b
-61: 0 fg:#45406b; 4 r; 59 fg:#45406b
+60: 0-27 fg:#45406b; 28-57 fg:#f5f5f7 b; 58-59 fg:#45406b
+61: 0 fg:#45406b; 2-3 fg:#ededf2; 4 r; 5-50 fg:#5c6476; 59 fg:#45406b
 62: 0-59 fg:#45406b
 63: 1-19 fg:#ededf2; 25-58 fg:#ededf2
