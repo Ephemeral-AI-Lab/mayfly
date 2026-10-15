@@ -14,7 +14,7 @@ import { SessionId, type Session } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-session-projection'
 import type {} from '@deepseek-ai/dsh-session-title/types'
 import type { LiveAssistantDraft, LiveAssistantStreamService } from '../conversation/live-stream.ts'
-import type { ConversationFacts } from '../conversation/types.ts'
+import type { ConversationFacts, OutputProgress } from '../conversation/types.ts'
 import { initialConversationFacts } from '../conversation/facts.ts'
 
 /** Renderer-neutral facts for one admitted child session. */
@@ -23,9 +23,14 @@ export interface ChildSessionFacts {
   readonly promptText?: string | undefined
   readonly phase: 'waiting' | 'running' | 'completed' | 'failed'
   readonly tokens: number
+  /** The run's tokens split: input (cache included) and output, settled steps only. */
+  readonly inputTokens: number
+  readonly outputTokens: number
   readonly toolCount: number
   /** Streamed output chars of the live attempt; undefined once it settles. */
   readonly liveChars?: number | undefined
+  /** The live attempt's output progress, for the token rate. */
+  readonly outputProgress?: OutputProgress | undefined
   readonly activity?: string | undefined
   readonly model?: string | undefined
   readonly effort?: string | undefined
@@ -378,7 +383,9 @@ export function projectChildSessionFacts(id: string, facts: ConversationFacts, d
         : marker?.kind === 'text' ? 'Writing…' : facts.active ? 'Starting…' : undefined
   return {
     id, phase, tokens: facts.epochTokens ?? 0, toolCount: facts.epochToolCount ?? 0,
+    inputTokens: Math.max(0, (facts.epochTokens ?? 0) - (facts.epochOutputTokens ?? 0)), outputTokens: facts.epochOutputTokens ?? 0,
     ...(liveDraft !== undefined && liveDraft.chars > 0 ? { liveChars: liveDraft.chars } : {}),
+    ...(liveDraft?.outputProgress === undefined ? {} : { outputProgress: liveDraft.outputProgress }),
     ...(facts.promptText === undefined ? {} : { promptText: facts.promptText }),
     ...(activity === undefined ? {} : { activity }),
     ...(facts.model === undefined ? {} : { model: facts.model }),

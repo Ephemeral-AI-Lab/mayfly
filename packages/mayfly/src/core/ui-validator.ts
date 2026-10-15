@@ -18,6 +18,7 @@ import type {
   MayflyFormField,
   MayflyInlineSpan,
   MayflyListBodyNode,
+  MayflyListCell,
   MayflyListItem,
   MayflyListNode,
   MayflyListSegment,
@@ -522,6 +523,7 @@ function assertListBody(admitted: MayflyUiNode, path: string): void {
 function listItemRowFields(object: Record<string, unknown>, path: string, state: ValidationState): Partial<MayflyListItem> {
   const labelSpans = own(object, 'labelSpans', path)
   const right = own(object, 'right', path)
+  const cellsValue = own(object, 'cells', path)
   const rightFocus = own(object, 'rightFocus', path)
   const bodyValue = own(object, 'body', path)
   const bodyAlways = own(object, 'bodyAlways', path)
@@ -542,6 +544,7 @@ function listItemRowFields(object: Record<string, unknown>, path: string, state:
   if (gap === true && ruleValue !== undefined) invalid(`${path} cannot be both a rule and a gap`)
   return {
     ...optional(labelSpans === undefined ? undefined : spans(labelSpans, `${path}.labelSpans`, state, false, true), 'labelSpans'),
+    ...optional(cellsValue === undefined ? undefined : listCells(cellsValue, `${path}.cells`, state), 'cells'),
     ...optional(right === undefined ? undefined : spans(right, `${path}.right`, state, false, true), 'right'),
     ...optional(rightFocus === undefined ? undefined : spans(rightFocus, `${path}.rightFocus`, state, false, true), 'rightFocus'),
     ...optional(body, 'body'),
@@ -557,6 +560,28 @@ function listItemRowFields(object: Record<string, unknown>, path: string, state:
     ...optional(gap === undefined ? undefined : boolean(gap, `${path}.gap`), 'gap'),
     ...optional(under, 'under'),
   }
+}
+
+/** The most columns one row's cells may have, and the widest a column may be asked to grow. */
+const LIST_CELL_LIMITS = { count: 12, max: 200, shed: 100 } as const
+
+function listCells(value: unknown, path: string, state: ValidationState): readonly MayflyListCell[] {
+  const cells = collection(value, path)
+  if (cells.length > LIST_CELL_LIMITS.count) invalid(`${path} must hold at most ${String(LIST_CELL_LIMITS.count)} cells`)
+  return cells.map((entry, index) => enter(entry, `${path}[${String(index)}]`, state, object => {
+    const cell = `${path}[${String(index)}]`
+    const align = own(object, 'align', cell)
+    const min = own(object, 'min', cell)
+    const max = own(object, 'max', cell)
+    const shed = own(object, 'shed', cell)
+    return {
+      spans: spans(required(object, 'spans', cell), `${cell}.spans`, state, false, true),
+      ...optional(align === undefined ? undefined : enumeration(align, ['left', 'right'], `${cell}.align`), 'align'),
+      ...optional(min === undefined ? undefined : Math.min(finiteInteger(min, `${cell}.min`, 1), LIST_CELL_LIMITS.max), 'min'),
+      ...optional(max === undefined ? undefined : Math.min(finiteInteger(max, `${cell}.max`, 1), LIST_CELL_LIMITS.max), 'max'),
+      ...optional(shed === undefined ? undefined : Math.min(finiteInteger(shed, `${cell}.shed`), LIST_CELL_LIMITS.shed), 'shed'),
+    }
+  }))
 }
 
 function listMeter(value: unknown, path: string, state: ValidationState): NonNullable<MayflyListItem['meter']> {

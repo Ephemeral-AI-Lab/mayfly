@@ -156,8 +156,13 @@ const TRANSCRIPT_MESSAGES = identityCatalog({
   'paused': '已暂停',
   'blocked': '受阻',
   'complete': '已完成',
-  '⏵ 1 job': '⏵ 1 个任务',
-  '⏵ {count} jobs': '⏵ {count} 个任务',
+  'jobs': '任务',
+  'stopping': '停止中',
+  'Already stopping': '已在停止中',
+  'Stop this job?': '停止此任务？',
+  'The job is asked to end; its output stays readable.': '会请求任务结束；它的输出仍可查看。',
+  'Select a job first': '请先选择一个任务',
+  'Stopping {job}': '正在停止 {job}',
 })
 
 /** The transcript catalog. */

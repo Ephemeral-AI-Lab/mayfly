@@ -17,13 +17,14 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { ui, type MayflyInlineSpan, type MayflyListItem, type MayflyPaneSummary, type MayflyUiActionEvent, type MayflyUiActionReply, type MayflyUiEventContext, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
-import type { ConversationAgentCall } from '../conversation/types.ts'
+import type { ConversationAgentCall, OutputProgress } from '../conversation/types.ts'
 import type { MayflyTranslate } from '../frontend/locale.ts'
 import { interactionTranslator } from '../interaction/locale.ts'
 import { stopSubagent } from '../interaction/agents-stop.ts'
 import { agentCallLabel, compactElapsedMs } from './agent-presentation.ts'
 import { observeTranscriptLocale, transcriptTranslator } from './locale.ts'
-import { outputCounter } from './output-rate.ts'
+import { outputRate } from './output-rate.ts'
+import { formatTokens } from './status-context.ts'
 import { parseToolArguments } from './present.ts'
 import type { ChildSessionFacts, SessionFactsService } from './session-facts.ts'
 import type { TickSource } from './tick.ts'
@@ -65,7 +66,13 @@ export interface AgentRow {
   /** The subagent was stopped by the user (interrupted, aborted, or stopped from the panel), which is no failure. */
   readonly stopped: boolean
   readonly toolCount: number
+  /** Tokens of the settled steps: input (cache included) and output. */
+  readonly inputTokens: number
+  readonly outputTokens: number
+  /** Streamed characters of the live attempt, which count toward the output until the step settles. */
   readonly liveChars: number
+  /** The live attempt's output progress, for the token rate. */
+  readonly outputProgress?: OutputProgress
   readonly startedAt: number
   readonly endedAt?: number
 }
@@ -106,19 +113,29 @@ function markOf(row: AgentRow): MayflyInlineSpan {
 /** One row: `● review   Audit facts projection        bg · 41s · 6 tools · ↓6.4k`. */
 function agentItem(row: AgentRow, now: number, t: MayflyTranslate, unavailable: Readonly<Record<string, string>>): MayflyListItem {
   const elapsed = compactElapsedMs(Math.max(0, (row.live ? now : row.endedAt ?? now) - row.startedAt))
-  const down = outputCounter(row.liveChars)
-  const facts = [
-    ...row.failed ? [t('failed')] : row.stopped ? [t('stopped')] : [],
-    t(row.foreground ? 'fg' : 'bg'),
-    elapsed,
-    t(row.toolCount === 1 ? '{count} tool' : '{count} tools', { count: row.toolCount }),
-    ...down === '' ? [] : [down],
-  ].join(' · ')
+  const up = row.inputTokens
+  const down = row.outputTokens + Math.floor(row.liveChars / 4)
+  const count = (mark: string, tokens: number): string => tokens === 0 ? '' : `${mark}${formatTokens(tokens)}`
+  const measured = row.live ? outputRate(row.outputProgress, now) : ''
+  const rate = measured.startsWith('0 ') ? '' : measured
+  const muted = (text: string): readonly MayflyInlineSpan[] => text === '' ? [] : [{ text, tone: 'muted' }]
+  // The columns line up down the list: the name, the task, then the facts (tokens in and out, the rate), and the time last; the mark says how it ended.
   return {
     id: row.id,
     label: `${row.label}${row.task === undefined ? '' : `  ${row.task}`}`,
-    labelSpans: [markOf(row), { text: ' ' }, { text: row.label, tone: 'accent' }, ...row.task === undefined ? [] : [{ text: `  ${row.task}`, tone: row.live ? 'default' as const : 'muted' as const }]],
-    right: [{ text: facts, tone: 'muted' }],
+    labelSpans: [markOf(row), { text: ' ' }],
+    cells: [
+      { spans: [{ text: row.label, tone: 'accent' }], max: 16 },
+      { spans: row.task === undefined ? [] : [{ text: row.task, tone: row.live ? 'default' : 'muted' }], min: 34, max: 52 },
+      { spans: muted(t(row.foreground ? 'fg' : 'bg')), shed: 3 },
+      { spans: muted(t(row.toolCount === 1 ? '{count} tool' : '{count} tools', { count: row.toolCount })), shed: 4 },
+      // The token columns keep their room when a figure is not there yet, so the live ones do not move the row.
+      { spans: muted(count('', up + down)), min: 6, shed: 2 },
+      { spans: muted(count('↑', up)), min: 7, shed: 6 },
+      { spans: muted(count('↓', down)), min: 7, shed: 5 },
+      { spans: muted(rate), min: 9, shed: 7 },
+      { spans: muted(elapsed), align: 'right' },
+    ],
     unavailableActions: unavailable,
   }
 }
@@ -201,7 +218,10 @@ export function agentRows(calls: readonly ConversationAgentCall[], children: rea
       failed,
       stopped,
       toolCount: child?.toolCount ?? 0,
+      inputTokens: child?.inputTokens ?? 0,
+      outputTokens: child?.outputTokens ?? 0,
       liveChars: live ? child?.liveChars ?? 0 : 0,
+      ...live && child?.outputProgress !== undefined ? { outputProgress: child.outputProgress } : {},
       startedAt: call.startedAt,
       ...endedAt === undefined ? {} : { endedAt },
     }
@@ -217,6 +237,10 @@ export function apply(ctx: Context): void {
   let unloaded = false
   /** The children the user stopped from the panel: their last facts may still read working. */
   const stoppedByUser = new Set<string>()
+
+  /** The conversation this view opened, until it closes: closing it (`F8`) returns to this view instead of the prompt. */
+  let opened: string | undefined
+  let displayed: string | null = null
 
   const act = async (event: MayflyUiActionEvent, context: MayflyUiEventContext): Promise<MayflyUiActionReply> => {
     const agent = ctx.mayflyCurrentAgent.current()
@@ -235,7 +259,7 @@ export function apply(ctx: Context): void {
         const entry = (await ctx.subagents.listChildren(agent.id, context.signal)).find(candidate => String(candidate.id) === row.childId)
         if (entry === undefined || entry.mode === 'unknown') return { kind: 'failed', message: t('This subagent cannot be opened') }
         ctx.mayflyScreen.leaveViews()
-        ctx.mayflyConversations.open({ kind: 'subagent', sessionId: row.childId, parentSessionId: String(agent.id), label: entry.label ?? row.label, mode: entry.mode })
+        opened = ctx.mayflyConversations.open({ kind: 'subagent', sessionId: row.childId, parentSessionId: String(agent.id), label: entry.label ?? row.label, mode: entry.mode })
         return { kind: 'completed' }
       }
       const result = await stopSubagent(ctx, row.childId, context.signal, ti, () => unloaded)
@@ -335,6 +359,23 @@ export function apply(ctx: Context): void {
     children = next
     refresh()
   })
+  const offConversations = ctx.mayflyConversations.subscribe((snapshot) => {
+    const wasDisplayed = displayed
+    displayed = snapshot.displayedId
+    if (opened === undefined) return
+    if (snapshot.views.some(view => view.id === opened)) {
+      // Left for another conversation (`F7`): a later display of it is no longer this view's doing (`/agents` may reopen it).
+      if (wasDisplayed === opened && snapshot.displayedId !== opened) opened = undefined
+      return
+    }
+    const closed = opened
+    opened = undefined
+    // The displayed child was closed and the parent shows again: back into the view that opened it.
+    // Focus goes back to the prompt as the conversation changes, so the view is entered after that.
+    if (wasDisplayed !== closed || snapshot.displayedId !== snapshot.primaryId) return
+    const agent = owner
+    setImmediate(() => { if (!unloaded && ctx.mayflyCurrentAgent.current() === agent) ctx.mayflyScreen.enterViews() })
+  })
   const offLocale = observeTranscriptLocale(ctx, () => { published = ''; publish() })
   // A continuable child's Agent coming or going changes whether it works.
   ctx.effect(() => ctx.on('agent/created', () => { refresh() }))
@@ -344,6 +385,7 @@ export function apply(ctx: Context): void {
     offAgent()
     offFacts()
     offChildren()
+    offConversations()
     offLocale()
     offTick?.()
     pane.dispose()

@@ -560,6 +560,48 @@ const viewsAgents = {
   ],
 }
 
+const viewsJobs = {
+  summary: 'one long conversation through the Jobs item: two background jobs and a background subagent (not listed) in the status row, a build and a test that settle, a long sleep, the panel (↑/↓, Enter opens the output reader, x stops behind the Yes/No), the closing line when the last job settles, the item leaving, a new job, the 52 and 36 column rows, and a /btw side question; each state stays 10 to 25 s',
+  items: [
+    turn('Start the watchers.', [
+      job('npm run watch', { lines: [[300, 'watching for changes…'], [12_000, 'rebuilt src/config.mjs in 41 ms'], [30_000, 'rebuilt src/client.mjs in 38 ms']], progress: [[500, 'watching'], [12_000, 'rebuilt 1'], [30_000, 'rebuilt 2']], endMs: 46_000, status: 'completed', detail: 'exit code: 0' }),
+      job('npm run dev', { lines: [[300, 'starting…'], [3000, 'ready on :3000']], progress: [[400, 'starting'], [3000, 'ready on :3000']], endMs: 52_000, status: 'failed', detail: 'exit code: 1' }),
+      job('Audit the facts projection', { jobKind: 'subagent', lines: [[300, 'reading…']] }),
+      step({ text: 'Two watchers and a background subagent run. The status row counts only the two jobs: the subagent belongs to the Agents item.', usage: { inputTokens: 4200, outputTokens: 90, cacheReadTokens: 1200 } }),
+      mark('two'),
+      pause(DWELL),
+    ]),
+    turn('Build, test, and leave a long sleep running.', [
+      job('npm run build', { lines: [[200, 'compiling…'], [3000, 'done in 2.8 s']], endMs: 3500, status: 'completed', detail: 'exit code: 0' }),
+      job('npm test', { lines: [[200, '✔ config'], [4500, '✖ client: timeout ignored']], endMs: 5000, status: 'failed', detail: 'exit code: 1' }),
+      job('sleep 600', { lines: [[200, 'sleeping…']], progress: [[300, 'waiting']] }),
+      step({ text: 'The build passed and the tests failed; they have left the list. Three jobs are live: watch, dev, and the sleep. Press Alt+↓ to open the Jobs view, ↓ to choose, Enter to read one, x to stop one.', usage: { inputTokens: 4600, outputTokens: 120, cacheReadTokens: 4200 } }),
+      pause(8000),
+      mark('mixed'),
+      pause(DWELL_VIEWS),
+    ]),
+    turn('Let the watchers finish.', [
+      step({ text: 'The sleep was stopped by hand; the watchers end on their own: the item holds its closing line, then leaves.', usage: { inputTokens: 4900, outputTokens: 100, cacheReadTokens: 4600 } }),
+      pause(2000),
+      mark('closing'),
+      pause(8000),
+      mark('gone'),
+      pause(DWELL),
+    ]),
+    turn('Start one more.', [
+      job('npm run lint', { lines: [[300, 'linting packages…']], progress: [[500, 'packages 1/4']] }),
+      step({ text: 'A new job starts after the closing line: the item is back.', usage: { inputTokens: 5100, outputTokens: 60, cacheReadTokens: 4800 } }),
+      mark('again'),
+      pause(DWELL_VIEWS),
+    ]),
+    btw('Which job failed?', [
+      step({ reasoning: 'The test run failed, and so did the dev server.', text: 'The tests and the dev server failed; the build passed.', reasoningMs: 1200, textMs: 2500 }),
+    ], { label: 'failed job' }),
+    mark('btw'),
+    pause(DWELL),
+  ],
+}
+
 /** The workspace of `statusRow`: a deep path (so the directory shows its shortened form) holding a git repository with changes. */
 const STATUS_WORKSPACE = { path: 'clients/web/apps/landing', git: { branch: 'main', added: 3, deleted: 1 } }
 
@@ -1469,7 +1511,7 @@ const phase3 = {
   ],
 }
 
-export const REPLAYS = { tour, toolkit, thinking, markdown, live, phases, thinkingLadder, pending, blocks, streaming, sync, activityWait, prompts, turns, toollines, toolgrow, findings, edits, errors, compaction: compactionReplay, compactionNoWindow, compactionFailed, manualCompact, context, subagents, childStream, approvals, approvalsRejected, approvalsEdit, approvalsQueue, questions, plan, planLong, goal, footerCutover, statusRow, viewsAgents, jobs, queued, retries, sideQuestion, notices, notificationPane, modes, edge, history, wheel, content, phase3 }
+export const REPLAYS = { tour, toolkit, thinking, markdown, live, phases, thinkingLadder, pending, blocks, streaming, sync, activityWait, prompts, turns, toollines, toolgrow, findings, edits, errors, compaction: compactionReplay, compactionNoWindow, compactionFailed, manualCompact, context, subagents, childStream, approvals, approvalsRejected, approvalsEdit, approvalsQueue, questions, plan, planLong, goal, footerCutover, statusRow, viewsAgents, viewsJobs, jobs, queued, retries, sideQuestion, notices, notificationPane, modes, edge, history, wheel, content, phase3 }
 
 /*
  * The scenes of the Website's app shots. Each is the source of an `app-*` scenario of the catalog, whose goldens the

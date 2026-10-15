@@ -27,8 +27,24 @@ export const VIEW_PANEL_ROWS = 7
  * @returns the status node.
  */
 export function itemSummary(mark: MayflyInlineSpan, label: string, done: number, total: number, elapsedMs: number): MayflyStatusNode {
+  return summaryNode(mark, label, `${String(done)}/${String(total)}`, elapsedMs)
+}
+
+/**
+ * The compact summary of an item that has a count and no total (jobs): `● jobs 2 41s`. Shed like {@link itemSummary}.
+ * @param mark - the small mark at the left.
+ * @param label - the translated label (`jobs`).
+ * @param count - how many are live.
+ * @param elapsedMs - how long the longest one has run.
+ * @returns the status node.
+ */
+export function countSummary(mark: MayflyInlineSpan, label: string, count: number, elapsedMs: number): MayflyStatusNode {
+  return summaryNode(mark, label, String(count), elapsedMs)
+}
+
+function summaryNode(mark: MayflyInlineSpan, label: string, progress: string, elapsedMs: number): MayflyStatusNode {
   const words = (time: boolean): MayflyRichTextNode => ui.richText([
-    mark, { text: ' ' }, { text: `${label} `, tone: 'muted' }, { text: `${String(done)}/${String(total)}` },
+    mark, { text: ' ' }, { text: `${label} `, tone: 'muted' }, { text: progress },
     ...time ? [{ text: ` ${compactElapsedMs(Math.max(0, elapsedMs))}`, tone: 'muted' as const }] : [],
   ])
   return shedNode(words(true), [{ rank: SHED.time, node: words(false) }])

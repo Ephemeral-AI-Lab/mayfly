@@ -51,6 +51,8 @@ export const conversationFactsSchema = z.object({
   epochToolCount: z.number().int().nonnegative().optional(),
   epochTokens: z.number().nonnegative().optional(),
   usageByStep: z.record(z.string(), z.number().nonnegative()).optional(),
+  epochOutputTokens: z.number().nonnegative().optional(),
+  outputByStep: z.record(z.string(), z.number().nonnegative()).optional(),
   activity: z.object({
     kind: z.enum(['reasoning', 'text', 'tool']),
     name: z.string().optional(),
@@ -206,7 +208,7 @@ function foldFacts(
     case 'turn/start':
       return {
         ...state, phase: 'waiting', active: true, turn: event.data.turn, turnStartedAt: event.time, flowUp: undefined,
-        flowDownChars: 0, outputProgress: undefined, epochToolCount: 0, epochTokens: 0, usageByStep: {},
+        flowDownChars: 0, outputProgress: undefined, epochToolCount: 0, epochTokens: 0, usageByStep: {}, epochOutputTokens: 0, outputByStep: {},
         activity: undefined, inFlight: undefined, retrying: undefined, runOutcome: undefined, runStopped: undefined, endedAt: undefined, currentStep: undefined, lastCompletedStep: undefined,
       }
     case 'user/message': {
@@ -246,7 +248,9 @@ function foldFacts(
       const key = `${event.data.turn}/${event.data.step}`
       const usageByStep = { ...streamed.usageByStep, [key]: total }
       const epochTokens = Object.values(usageByStep).reduce((sum, value) => sum + value, 0)
-      return { ...streamed, contextTokens: used, contextCacheReadTokens: usage.cacheReadTokens, flowUp: used, usageByStep, epochTokens }
+      const outputByStep = { ...streamed.outputByStep, [key]: usage.outputTokens }
+      const epochOutputTokens = Object.values(outputByStep).reduce((sum, value) => sum + value, 0)
+      return { ...streamed, contextTokens: used, contextCacheReadTokens: usage.cacheReadTokens, flowUp: used, usageByStep, epochTokens, outputByStep, epochOutputTokens }
     }
     case 'tool/call':
       if (isSpawnToolName(event.data.name)) {
@@ -365,13 +369,15 @@ type ConversationFactsProjectionDefinition = Omit<
    stays strictly checked on each view. */
 const admitAgentCalls = everyAdmitted(identityAdmission(conversationFactsSchema.shape.agentCalls.element))
 const admitUsageByStep = identityAdmission(conversationFactsSchema.shape.usageByStep.unwrap())
-const factsRemainderSchema = conversationFactsSchema.omit({ agentCalls: true, usageByStep: true })
+const admitOutputByStep = identityAdmission(conversationFactsSchema.shape.outputByStep.unwrap())
+const factsRemainderSchema = conversationFactsSchema.omit({ agentCalls: true, usageByStep: true, outputByStep: true })
 
 function isFactsView(value: unknown): value is ConversationFactsState {
   if (typeof value !== 'object' || value === null) return false
-  const { agentCalls, usageByStep, ...remainder } = value as Record<string, unknown>
+  const { agentCalls, usageByStep, outputByStep, ...remainder } = value as Record<string, unknown>
   return admitAgentCalls(agentCalls)
     && (usageByStep === undefined || admitUsageByStep(usageByStep))
+    && (outputByStep === undefined || admitOutputByStep(outputByStep))
     && factsRemainderSchema.safeParse(remainder).success
 }
 
@@ -390,5 +396,5 @@ export const conversationFactsProjectionDefinition: ConversationFactsProjectionD
       todos: state.todos.map(todo => ({ ...todo })),
     }),
   },
-  stateVersion: 11,
+  stateVersion: 12,
 }

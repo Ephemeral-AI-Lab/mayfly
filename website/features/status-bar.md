@@ -16,11 +16,12 @@ service，并使用 renderer-neutral `MayflyStatusNode`；节点可以是 shed �
 | context | 6（right） | 最近一步的 cache 命中率与 context 占用，如 两条进度条，`cache ▰▰▰▰▱ 82%  ctx ▰▰▰▰▱▱▱▱▱▱ 45%`（context 条超过 70% 变为警告色，超过 90% 变为危险色；cache 条低于 60% 变为警告色，低于 30% 变为危险色）；provider 未报告 cache 时省略 `cache` 段；拥挤时先丢弃 cache 条，再把 context 条缩成 `ctx 45%`，最后丢弃整个读数 |
 | cwd | 7 | 当前工作目录；拥挤时丢弃层级，只留最后一段 |
 | git | 10 | branch 与变更摘要；事实里最先被丢弃 |
-| jobs | 11 | `⏵ N jobs`——live（running/stopping）后台任务数；没有时隐藏 |
-| goal | 12 | `● goal 2/8 1m 59s`——标记就是状态；没有 goal 时隐藏 |
-| todo | 13 | `● todo 2/12 4m 12s`；没有列表时隐藏 |
+| agents | 11 | `● agents 1/3 41s`——本会话的子智能体；保留到新会话开始 |
+| jobs | 12 | `● jobs 2 41s`——live（running/stopping）后台任务数和最久一个已运行的时间；最后一个结束时 `✓ jobs 3/3 41s`（有失败则 `✕`）保留五秒后消失；子智能体任务归 Agents 条目 |
+| goal | 13 | `● goal 2/8 1m 59s`——标记就是状态；没有 goal 时隐藏 |
+| todo | 14 | `● todo 2/12 4m 12s`；没有列表时隐藏 |
 
-事实在前，条目在后（jobs、goal、todo，排在目录和 git 之后）。
+事实在前，条目在后（agents、jobs、goal、todo，排在目录和 git 之后）。
 
 行拥挤时，会先按固定顺序收起细节，再考虑丢弃条目：条目的计时、provider、thinking 级别、git 信息、目录层级、cache 数字、context
 meter，最后是 model。条目是 view：行里是简短摘要（`<标记> <名称> <n/m> <计时>`），按 `Alt+↓` 后条目下方出现一条粗线，详情面板在

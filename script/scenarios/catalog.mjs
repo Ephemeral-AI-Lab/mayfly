@@ -77,6 +77,7 @@ const COVERS = {
   footerCutover: ['packages/mayfly/src/conversation/projection.ts', `${TRANSCRIPT}status-basic-model.ts`, `${TRANSCRIPT}stream-facts.ts`, 'packages/mayfly/src/components/transcript-view.ts', `${TRANSCRIPT}notices.ts`, `${INTERACTION}mode-status.ts`, `${INTERACTION}conversation-view-status.ts`, `${TRANSCRIPT}status-rows.ts`, `${TRANSCRIPT}status-goal.ts`, `${TRANSCRIPT}pane-todo.ts`, `${TRANSCRIPT}view-items.ts`, `${TRANSCRIPT}status-jobs.ts`, 'packages/mayfly/src/core/views-lane.ts', 'packages/mayfly/src/core/ui-admission.ts', 'packages/mayfly/src/core/node-slot.ts'],
   statusRow: [`${TRANSCRIPT}status-*.ts`, `${INTERACTION}mode-status.ts`, `${INTERACTION}conversation-view-status.ts`, 'packages/mayfly/src/core/ui-admission.ts', 'packages/mayfly/src/core/views-lane.ts', 'packages/mayfly/src/core/node-slot.ts'],
   jobs: [`${TRANSCRIPT}status-jobs.ts`, `${INTERACTION}jobs.ts`],
+  viewsJobs: [`${TRANSCRIPT}status-jobs.ts`, `${TRANSCRIPT}view-items.ts`, `${TRANSCRIPT}status-rows.ts`, `${INTERACTION}jobs.ts`, 'packages/mayfly/src/core/views-lane.ts', ...STREAM],
   queued: [`${INTERACTION}pane-queue.ts`],
   retries: [`${TRANSCRIPT}transcript-model.ts`, `${INTERACTION}trace-*.ts`, ...NOTIFICATION, ...STREAM],
   sideQuestion: [`${INTERACTION}btw-command.ts`, `${INTERACTION}conversation-view-status.ts`],
@@ -849,7 +850,7 @@ const SCRIPTS = {
   ],
   // The Agents item through one conversation: a foreground subagent holding its turn beside two background ones (`● agents 2/3`, the `fg`/`bg`
   // tags, the stream's spawn lines that follow their children), a failing foreground one, `Alt+↓` into the panel, `b` on a working foreground row (it says
-  // why it cannot), `Enter` into a child (`F7` back), `x` behind the Yes/No (No first, then Yes), the item staying with `✓ agents 4/4` and the completed
+  // why it cannot), `Enter` into a child (`F7` back; `F8` closes it and returns to the view), `x` behind the Yes/No (No first, then Yes), the item staying with `✓ agents 4/4` and the completed
   // ones listed, a second group, 52 and 36 columns with a view entered at 52, and a /btw side question (`F7` returns).
   viewsAgents: [
     play('foreground'), checkpoint('foreground'),
@@ -863,6 +864,7 @@ const SCRIPTS = {
     key('enter'), checkpoint('finished-open'), key('f7'),
     key('alt+down'), key('home'), key('enter'), checkpoint('child-open'),
     key('f7'), checkpoint('child-back'),
+    key('alt+down'), key('home'), key('enter'), checkpoint('child-reopened'), key('f8'), checkpoint('child-closed'), key('esc'),
     key('alt+down'), key('home'), key('x'), checkpoint('stop-confirm'),
     key('esc'), checkpoint('stop-declined'),
     key('esc'),
@@ -878,6 +880,29 @@ const SCRIPTS = {
     key('alt+down'), checkpoint('btw-view'),
     key('f7'), checkpoint('btw-back'),
     key('alt+down'), key('home'), checkpoint('main-view-again'), key('esc'),
+  ],
+  // The Jobs item through one conversation: two background jobs and a subagent job that is not counted (`● jobs 2`), a build and a test that settle and leave the list, a long sleep (`● jobs 3`), `Alt+↓` into the panel, `Enter` into a job's output (`Esc` returns to the view), the same reader reached from `/jobs` (`Esc` returns to its detail page, not the view), `x` behind the Yes/No (No first, then Yes), 52 and 36 columns with a view entered, the closing line when the last job settles (`✕ jobs 5/5`, then gone), a new job, and a /btw side question (no jobs there; `F7` returns).
+  viewsJobs: [
+    play('two'), checkpoint('two'),
+    play('mixed'), checkpoint('mixed'),
+    key('alt+down'), key('home'), checkpoint('view'),
+    key('down'), checkpoint('view-second'),
+    key('enter'), checkpoint('output'), key('esc'), checkpoint('output-closed'),
+    key('home'), key('down', { repeat: 2 }), key('x'), checkpoint('stop-confirm'),
+    key('esc'), checkpoint('stop-declined'),
+    key('x'), key('right'), key('enter'), checkpoint('stopped'), key('esc'),
+    resize(52, 24), checkpoint('narrow-52'),
+    key('alt+down'), checkpoint('view-narrow-52'), key('esc'),
+    resize(36, 24), checkpoint('narrow-36'),
+    resize(...DEFAULT_SIZE),
+    play('closing'), checkpoint('closing'),
+    play('gone'), checkpoint('gone'),
+    play('again'), checkpoint('again'),
+    key('alt+down'), key('home'), checkpoint('view-again'), key('esc'),
+    checkpoint('left-view'), type('/jobs'), checkpoint('cmd-typed'), key('enter'), checkpoint('cmd-list'), key('enter'), checkpoint('cmd-detail'), key('enter'), checkpoint('cmd-output'), key('esc'), checkpoint('cmd-output-closed'), key('esc'), checkpoint('cmd-list-back'), key('esc'),
+    play('btw'), checkpoint('btw'),
+    key('alt+down'), checkpoint('btw-view'),
+    key('f7'), checkpoint('btw-back'),
   ],
   // The facts of the one status row through one conversation: the deep directory and git branch, plan and yolo, the cache and context bars and
   // (with and without cache), every item at once, then the whole row at 100, 72, 52, and 36 columns with a view
@@ -943,7 +968,7 @@ const SIZES = {
  * timer sets: under load the timer fires before or after the scenario clock moves, so a checkpoint ticks it once at the
  * timeline time and the counter is exact. The timed scenarios (`play(…, TIMED)`) keep the product's own timer.
  */
-const TICKED = new Set(['notices', 'blocks', 'footerCutover', 'statusRow', 'viewsAgents'])
+const TICKED = new Set(['notices', 'blocks', 'footerCutover', 'statusRow', 'viewsAgents', 'viewsJobs'])
 const replayScenario = (name, replay) => ({
   summary: replay.summary,
   source: { replay: name },

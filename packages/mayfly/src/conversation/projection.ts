@@ -719,5 +719,5 @@ export const conversationProjectionDefinition: ConversationProjectionDefinition 
       return view
     },
   },
-  stateVersion: 11,
+  stateVersion: 12,
 }

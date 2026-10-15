@@ -242,6 +242,9 @@ export interface ConversationFacts {
   readonly epochTokens?: number | undefined
   /** Projection-private usage buckets retained as plain readonly data. */
   readonly usageByStep?: Readonly<Record<string, number>> | undefined
+  /** Per-run output tokens with the same replace-per-step semantics; the rest of `epochTokens` is input (cache included). */
+  readonly epochOutputTokens?: number | undefined
+  readonly outputByStep?: Readonly<Record<string, number>> | undefined
   /**
    * Latest running activity marker; `preparing` marks a call whose arguments
    * are still streaming.

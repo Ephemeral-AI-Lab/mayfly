@@ -176,7 +176,7 @@ Rendered states (illustrative; the Content scene of the prototype draws them):
 text        Saved to clipboard                          tone: success
             Waiting for the provider…                   tone: muted, overflow: truncate
 
-rich-text   deepseek-chat High  plan  ⏵ 2 jobs           spans: default · accent strong · warning
+rich-text   deepseek-chat High  plan  ● jobs 2           spans: default · accent strong · warning
 
 fields      Provider: DeepSeek
             Balance: ¥ 128.40                           label muted, value spans

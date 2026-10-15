@@ -203,11 +203,29 @@ export interface MayflyListSegment {
 export type MayflyListBodyNode = MayflyContentNode | MayflyImageNode | MayflyProgressNode | MayflySpacerNode | MayflyDividerNode | MayflyListBodyStackNode
 interface MayflyListBodyChild extends Omit<MayflyUiChild, 'node' | 'tab'> { readonly node: MayflyListBodyNode }
 export interface MayflyListBodyStackNode extends Omit<MayflyStackNode, 'children'> { readonly children: readonly MayflyListBodyChild[] }
+/**
+ * One column of a list row. The cells of a list's rows line up: column `n` is as wide as the widest cell `n` of any row
+ * (capped by `max`), the rows' own spans lead each row, and the columns follow left to right, two columns apart.
+ */
+export interface MayflyListCell {
+  readonly spans: readonly MayflyInlineSpan[]
+  /** Where the text sits in the column; `right` suits a number. */
+  readonly align?: 'left' | 'right'
+  /** The room the column keeps when its cells are empty or short, so a figure that comes and goes (a live counter) does not move the columns after it. */
+  readonly min?: number
+  /** The widest the column grows, in columns; a longer cell is cut with an ellipsis. Such a column also gives room first when the row is narrow. */
+  readonly max?: number
+  /** A narrow row gives up whole columns, the highest `shed` first; a column without one stays. */
+  readonly shed?: number
+}
+
 export interface MayflyListItem {
   readonly id: string
   /** Plain text: what a filter and the accessible name read. `labelSpans` paints it instead when present. */
   readonly label: string
   readonly labelSpans?: readonly MayflyInlineSpan[]
+  /** Columns after the label that line up across the list's rows. */
+  readonly cells?: readonly MayflyListCell[]
   /** Spans aligned to the right edge of the row; they carry their own spacing. */
   readonly right?: readonly MayflyInlineSpan[]
   /** The right spans while this row holds the cursor. */
