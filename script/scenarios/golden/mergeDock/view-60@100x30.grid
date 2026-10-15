@@ -1,0 +1,52 @@
+grid 60x30 cursor none
+|  ● A reviewer runs in the background and the todo list is
+|    set.
+|
+|  ✓ Subagent(Audit the hero copy) · 0.6s
+|
+|  ✓ TodoWrite · 0.2s
+|
+|  ● The status row now carries the agents, jobs, goal, and
+|    todo items under the editor. Try the bottom of the
+|    screen: / opens the palette over the stream; a long
+|    paste becomes a token (← onto it names its keys); send
+|    hold:240000 keep going for a turn that keeps running
+|    (the hint above the editor rotates every 15 s; ↑ walks
+|    the history; Alt+↓ enters a view); Esc interrupts that
+|    turn while the reviewer and the watcher go on.
+|
+|  » hold:240000 keep refreshing the hero
+|
+|  ✻ Worked for 0s · done 09:00
+|
+|  ⡀ Deep diving · 0s
+|    ⎿ Tip: @: mention files
+|
+|╭────────────────────────── Refresh the landing page hero. ╮
+|│ >  Type a follow-up to queue it · @ files · # skills     │
+|╰──────────────────────────────────────────────────────────╯
+|  view   workspace  ● agents 0/1  ● jobs 1  ○ goal 0/8
+|                    ━━━━━━━━━━━━
+| → ● review  Audit the h…  bg  0 tools  11      ↓11      5s
+|   Enter open · x stop · Esc close
+styles
+0: 2-3 fg:#ededf2
+3: 2-3 fg:#4ec87e; 4-11 fg:#ededf2 b; 12 fg:#9aa3b8; 13-31 fg:#c9c0f0; 32-39 fg:#9aa3b8
+5: 2-3 fg:#4ec87e; 4-12 fg:#ededf2 b; 13-19 fg:#9aa3b8
+7: 2-3 fg:#ededf2
+9: 12 fg:#c9c0f0
+10: 27 fg:#c9c0f0
+11: 4-25 fg:#c9c0f0
+12: 51 fg:#c9c0f0
+13: 17-21 fg:#c9c0f0; 39-41 fg:#c9c0f0
+16: 2-3 fg:#9a86e6; 4-39 fg:#9a86e6 b
+18: 2-29 fg:#9aa3b8
+20: 0-1 fg:#ededf2; 2 fg:#9a86e6; 3-14 fg:#ededf2; 16-19 fg:#9aa3b8
+21: 0-26 fg:#9aa3b8
+23: 0-27 fg:#9aa3b8; 28-57 fg:#f5f5f7 b; 58-59 fg:#9aa3b8
+24: 0 fg:#9aa3b8; 2-3 fg:#ededf2; 4 r; 5-53 fg:#5c6476; 59 fg:#9aa3b8
+25: 0-59 fg:#9aa3b8
+26: 1-6 fg:#9a86e6 b r; 9-17 fg:#9aa3b8; 20 fg:#c9c0f0; 21 fg:#ededf2; 22-28 fg:#9aa3b8; 29-31 fg:#ededf2; 34 fg:#c9c0f0; 35 fg:#ededf2; 36-40 fg:#9aa3b8; 41 fg:#ededf2; 44 fg:#9aa3b8; 45 fg:#ededf2; 46-50 fg:#9aa3b8; 51-53 fg:#ededf2
+27: 1-31 fg:#9a86e6
+28: 1 fg:#9a86e6 b; 3 fg:#c9c0f0; 4 fg:#ededf2; 5-10 fg:#c9c0f0; 13-24 fg:#ededf2; 27-28 fg:#9aa3b8; 31-37 fg:#9aa3b8; 40-41 fg:#9aa3b8; 48-50 fg:#9aa3b8; 57-58 fg:#9aa3b8
+29: 1-2 fg:#5c6476; 3-7 fg:#ededf2; 9-15 fg:#5c6476; 16 fg:#ededf2; 18-24 fg:#5c6476; 25-27 fg:#ededf2; 29-33 fg:#5c6476

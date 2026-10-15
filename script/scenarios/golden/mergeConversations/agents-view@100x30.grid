@@ -1,0 +1,50 @@
+grid 100x30 cursor none
+|  ▾ 1 tool call · 1 subagent · Ctrl+O to expand
+|
+|  ● A reviewer audits the hero in the background while I read the parser.
+|
+|  ● Subagent(Audit the hero copy) · running in background · 1m 15s
+|
+|  ✓ Read(src/parser.ts)
+|
+|  ● Your three messages wait at the end of the stream. Alt+↑ reaches them: e edits, s sends now, d
+|    cancels (u undoes).
+|
+|  ● Rewriting the parser entry point now.
+|
+|  » Update the README once the parser is done
+|
+|  » Keep the public API unchanged
+|
+|  » Then bump the version and tag the release candidate
+|
+|  ● I read your messages: they are prompts in the stream now.
+|
+|  ✻ Worked for 1m 12s · done 09:01
+|
+|╭───────────────────────────────────────────────────────────────────── Refactor the parser, I will ╮
+|│ >  Ask anything · / commands · @ files · # skills · ! shell                                      │
+|╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
+| deepseek-flash High   main    view   ~/workspace  ● agents 0/1  cache ▰▰▱▱▱ 48%  ctx ▰▱▱▱▱▱▱▱▱▱ 8%
+|                                                   ━━━━━━━━━━━━
+| → ● review  Audit the hero copy           bg  0 tools  23               ↓23                 1m 15s
+|   ↑/↓ options · Enter open · x stop · Esc close
+styles
+0: 2-46 fg:#9aa3b8
+2: 2-3 fg:#ededf2
+4: 2 fg:#5c6476; 3 fg:#ededf2; 4-11 fg:#ededf2 b; 12 fg:#9aa3b8; 13-31 fg:#c9c0f0; 32-65 fg:#9aa3b8
+6: 2-3 fg:#4ec87e; 4-7 fg:#ededf2 b; 8 fg:#9aa3b8; 9-21 fg:#c9c0f0; 22 fg:#9aa3b8
+8: 2-3 fg:#ededf2
+11: 2-3 fg:#ededf2
+13: 2-3 fg:#9a86e6; 4-44 fg:#9a86e6 b
+15: 2-3 fg:#9a86e6; 4-32 fg:#9a86e6 b
+17: 2-3 fg:#9a86e6; 4-54 fg:#9a86e6 b
+19: 2-3 fg:#ededf2
+21: 2-33 fg:#9aa3b8
+23: 0-70 fg:#9aa3b8; 71-97 fg:#f5f5f7 b; 98-99 fg:#9aa3b8
+24: 0 fg:#9aa3b8; 2-3 fg:#ededf2; 4 r; 5-60 fg:#5c6476; 99 fg:#9aa3b8
+25: 0-99 fg:#9aa3b8
+26: 1-19 fg:#ededf2; 22-27 fg:#9a86e6 b r; 30-35 fg:#9a86e6 b r; 38-48 fg:#9aa3b8; 51 fg:#c9c0f0; 52 fg:#ededf2; 53-59 fg:#9aa3b8; 60-62 fg:#ededf2; 65-70 fg:#ededf2; 71-72 fg:#e8a838; 73-75 fg:#9aa3b8; 76-79 fg:#ededf2; 82-85 fg:#ededf2; 86 fg:#9a86e6; 87-95 fg:#9aa3b8; 96-98 fg:#ededf2
+27: 1-62 fg:#9a86e6
+28: 1 fg:#9a86e6 b; 3 fg:#c9c0f0; 4 fg:#ededf2; 5-10 fg:#c9c0f0; 13-31 fg:#ededf2; 43-44 fg:#9aa3b8; 47-53 fg:#9aa3b8; 56-57 fg:#9aa3b8; 73-75 fg:#9aa3b8; 93-98 fg:#9aa3b8
+29: 1-2 fg:#5c6476; 3-5 fg:#ededf2; 7-16 fg:#5c6476; 17-21 fg:#ededf2; 23-29 fg:#5c6476; 30 fg:#ededf2; 32-38 fg:#5c6476; 39-41 fg:#ededf2; 43-47 fg:#5c6476

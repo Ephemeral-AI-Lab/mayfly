@@ -142,16 +142,17 @@ test('the coverage advice reports changed lines whose statements never ran', () 
 
 test('a golden runs its scenario, a covered source the scenarios that cover it, other product code the smoke set, the machinery all', () => {
   const scenarios = file => classifyChanges([file]).tests.scenarios
-  assert.deepEqual(scenarios('script/scenarios/golden/tour/end@120x40.grid'), ['tour'])
-  assert.deepEqual(scenarios('packages/mayfly/src/transcript/pane-todo.ts'), ['footerCutover', 'tour'])
-  // The editor scenarios cover the compiler (their covers name the core), so they select it instead of the smoke set.
-  assert.ok(scenarios('packages/mayfly/src/core/ui-compiler.ts').includes('editor'))
-  assert.deepEqual(scenarios('examples/ui-gallery/src/index.ts'), ['gallery'])
+  assert.deepEqual(scenarios('script/scenarios/golden/mergeDock/items@100x30.grid'), ['mergeDock'])
+  assert.deepEqual(scenarios('packages/mayfly/src/interaction/btw-command.ts'), ['mergeConversations'])
+  // A product source no golden scenario covers runs the smoke set.
+  assert.deepEqual(scenarios('packages/mayfly/src/transcript/pane-todo.ts'), ['mergeConversations', 'mergeDock'])
+  // The gallery has only its perf scenario, which the perf step measures.
+  assert.deepEqual(scenarios('examples/ui-gallery/src/index.ts'), [])
   assert.deepEqual(scenarios('docs/README.md'), [])
   const machinery = classifyChanges(['script/scenarios/runner.mjs'])
   assert.deepEqual(machinery.tests.scenarios, [...GOLDEN_SCENARIOS].sort())
   assert.deepEqual(machinery.tests.perf, [...PERF_SCENARIOS].sort())
-  assert.equal(machinery.tests.why['scenario idle'].at(-2), 'script/scenarios.mjs')
+  assert.equal(machinery.tests.why['scenario mergeDock'].at(-2), 'script/scenarios.mjs')
   const everything = [...GOLDEN_SCENARIOS, ...PERF_SCENARIOS].sort()
   for (const file of ['script/scenarios.mjs', 'script/scenarios/replays.mjs', 'script/scenarios/golden.mjs', 'script/workbench/profile.mjs']) {
     const plan = classifyChanges([file])

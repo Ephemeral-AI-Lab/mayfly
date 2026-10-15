@@ -2190,9 +2190,11 @@ for the wrap-up of the whole phase, and this is what it did.
 - The keys of a queued or steering row are parts that shed by priority: the row's verbs read first (`e edit · s send now · d cancel ·
   Enter expand · c copy · ↑/↓ select · Esc back`) and survive in the order `Esc`, `e`, `d`, `s`, `Enter`, `↑/↓`, `c`.
 - Decided by the merge: information notices have no glyph (Phase 4 retired `ℹ`); `editorRowsFromBottom` counts the views panel.
-- Scenarios for the check: `mergeDock` and `mergeConversations`. Owed at the test session: the goldens of both phases (511 conflicted
-  grids took PR #18's side as placeholders; every scenario under the merged editor and status row is re-accepted), the decision tests of
-  the merged notification row (the toggle with a hint, the queued and steering key parts), and the pack budget (2.95 MB, unmeasured).
+- Scenarios for the check: `mergeDock` and `mergeConversations`, accepted by the owner with their goldens. At the owner's request the
+  catalog keeps only these two, the `perf-*` scenarios, and the `app-*` scenes; every other scenario, replay, and golden is deleted
+  (maintaining them cost more than they found). Owed at the test session: the `app-conversation` and `app-agents` goldens (they predate
+  the merged editor and status row), the decision tests of the merged notification row (the toggle with a hint, the queued and steering
+  key parts), and the pack budget (2.95 MB, unmeasured).
 
 **Open choices for the question rounds** (each round asks its own, §6; the agent recommends an answer for each):
 

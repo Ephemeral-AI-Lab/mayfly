@@ -275,9 +275,9 @@ real consumers, replay/abort/late-result tests, width and whole-tree composition
 coverage, and dedicated-profile acceptance.
 
 The scenario catalog (`script/scenarios/catalog.mjs`) is the registry of live
-states behind `pnpm run scenario` and `pnpm run frame`: a component draft adds
-one scenario per state, a replay of `script/scenarios/replays.mjs` with the
-marks its script plays to, played into the real product by
+states behind `pnpm run scenario` and `pnpm run frame`, kept small: a round adds
+one long scenario (root `AGENTS.md`, Round workflow), a replay of
+`script/scenarios/replays.mjs` with the marks its script plays to, played into the real product by
 `script/scenarios/driver.mjs`. The Website's app shots are checkpoints of the
 `app-*` scenarios, painted from their goldens.
 

@@ -1,0 +1,51 @@
+grid 100x30 cursor none
+| ⠱⣦⣄⣀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⣠⣴⠎
+| ⠀⠙⢿⣿⣿⣷⣶⣤⣀⣀⣴⣶⣦⣀⣀⣤⣶⣾⣿⣿⡿⠋⠀  mayfly
+| ⠀⠀⠀⠈⠻⢿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡿⠟⠁⠀⠀⠀  ephemeral agents, enduring works
+| ⠀⠀⠀⠀⠀⠀⠀⠉⠉⠁⢸⣿⡇⠈⠉⠉⠀⠀⠀⠀⠀⠀⠀
+| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢸⣿⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀  Send /help for help information.
+| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⣿⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀  Directory: ~/workspace
+| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣿⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀  Model:     deepseek-flash · deepseek-official
+| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⡠⠊⠀⠑⢄⠀⠀⠀⠀⠀⠀⠀⠀⠀  Version:   scenario
+|
+|  » Audit the hero copy against the brand notes and list what to change
+|
+|  ✻ Thinking · 3s
+|    Reading the hero and the brand notes side by side.
+|
+|  ● Three changes: shorten the headline to five
+|
+|
+|
+|
+|
+|
+|
+|
+|  ⡀ Writing · 1m 13s · ↓11
+|    ⎿ Tip: ! to run a shell command
+|                                                                              F7 main · F8 detach
+|╭───────────────────────────────────────────────────────────────────── Audit the hero copy against ╮
+|│ >  Message Audit the hero copy · @ files · # skills                                              │
+|╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
+| deepseek-official/deepseek-flash High   subagent   ~/workspace
+styles
+0: 1-23 fg:#f5f5f7; 24-25 fg:#9a86e6
+1: 1-23 fg:#e9e5f6; 24-25 fg:#9a86e6; 26-87 fg:#9a86e6 b
+2: 1-23 fg:#dbd3f0; 24-25 fg:#9a86e6; 26-87 fg:#c9c0f0
+3: 1-23 fg:#c9beea; 24-25 fg:#9a86e6
+4: 1-23 fg:#b2a1ec; 24-25 fg:#9a86e6; 26-87 fg:#9aa3b8
+5: 1-25 fg:#9a86e6; 26-87 fg:#ededf2
+6: 1-23 fg:#8371d6; 24-25 fg:#9a86e6; 26-87 fg:#e9e6f4
+7: 1-23 fg:#6c5bbf; 24-25 fg:#9a86e6; 26-87 fg:#ededf2
+9: 2-3 fg:#9a86e6; 4-70 fg:#9a86e6 b
+11: 2-16 fg:#9aa3b8
+12: 2-3 fg:#ededf2; 4-53 fg:#9aa3b8
+14: 2-3 fg:#ededf2
+23: 0-1 fg:#ededf2; 2 fg:#9a86e6; 3-10 fg:#ededf2; 12-25 fg:#9aa3b8
+24: 0-34 fg:#9aa3b8
+25: 78-96 fg:#9aa3b8
+26: 0-70 fg:#45406b; 71-97 fg:#f5f5f7 b; 98-99 fg:#45406b
+27: 0 fg:#45406b; 2-3 fg:#ededf2; 4 r; 5-52 fg:#5c6476; 99 fg:#45406b
+28: 0-99 fg:#45406b
+29: 1-37 fg:#ededf2; 40-49 fg:#9a86e6 b r; 52-62 fg:#9aa3b8

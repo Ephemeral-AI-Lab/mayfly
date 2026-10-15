@@ -188,11 +188,11 @@ live Agent) and a `/btw` side conversation with its own Agent, drives the real
 goal and job services, writes compactions, failed provider attempts with their
 retry records, inbox messages (the queued rows of the stream), and notification-pane notices, and
 puts approval, question, and plan-review prompts to you, so reviewing a state
-needs no model, no quota, and no tools. The replays cover tool calls of every
-kind, streaming phases, subagents, plan mode, goals, jobs, modes and model
-switches, context pressure, compaction (automatic and manual), errors and
-interrupts, retries, queued input, side questions, notices, prompt variants,
-rendering edge cases, and a 150-turn history. A finished job wakes the agent,
+needs no model, no quota, and no tools. The catalog is kept small, since every
+scenario's goldens are maintained by hand: two long conversations (`mergeDock`,
+`mergeConversations`: the stream, the editor, the notification row, and the
+status row with its views), the `perf-*` scenarios, and the `app-*` scenes of
+the Website's app shots. A finished job wakes the agent,
 which answers with the stub notice at real time. Replay events must keep a
 stored session loadable (for example `request/header` inside an open turn, one
 `retryId` per retry chain), so check that a new replay resumes with

@@ -77,8 +77,8 @@ test('a malformed review is refused, and a part with more than eight focus items
 })
 
 test('scenario names resolve through the catalog', () => {
-  assert.equal(scenarioNamed('gallery').source.gallery, true)
-  assert.equal(scenarioNamed('tour').source.replay, 'tour')
+  assert.equal(scenarioNamed('perf-gallery').source.gallery, true)
+  assert.equal(scenarioNamed('mergeDock').source.replay, 'mergeDock')
   assert.equal(scenarioNamed('toString'), undefined)
   assert.deepEqual(parseScenarioArgs(['stream', '--ascii']).options.ascii, true)
   assert.match(parseScenarioArgs([]).error, /usage/u)
