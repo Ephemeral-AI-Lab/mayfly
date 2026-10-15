@@ -48,7 +48,7 @@ interface ViewState {
 /** A view's slot in the lane. */
 export interface ViewRegistration {
   readonly disposed: boolean
-  /** Replace the row-2 summary; `null` takes the view out of the row. Identity-equal summaries change nothing. */
+  /** Replace the item the view has in the status row; `null` takes the view out of the row. Identity-equal summaries change nothing. */
   setSummary(summary: ViewSummary | null): void
   /** Replace the panel and its focus target; a view with no panel, or none to focus, is in the row but cannot be entered. */
   setPanel(panel: MayflyComponent | null, focusTarget: MayflyFocusable | null): void

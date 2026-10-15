@@ -29,14 +29,17 @@ const MINUTE = 60_000
 const HOUR = 60 * MINUTE
 const DAY = 24 * HOUR
 
-/** The notice text of a retry wait: a rate limit by its HTTP status, any other failure as a provider error. */
-function retryText(retrying: NonNullable<ConversationFacts['retrying']>, now: number, t: MayflyTranslate): string {
+/**
+ * The notice of a retry wait: a rate limit by its HTTP status, any other failure as a provider error with its reason. The wait
+ * (the countdown and the attempt) ends the message and is its `tail`, so a narrow row cuts the front and keeps the countdown.
+ */
+function retryText(retrying: NonNullable<ConversationFacts['retrying']>, now: number, t: MayflyTranslate): { readonly message: string, readonly tail: string } {
   const seconds = Math.max(0, Math.ceil((retrying.at + retrying.delayMs - now) / 1000))
   const attempt = Number.isFinite(retrying.maxRetries) ? `${retrying.retry}/${retrying.maxRetries}` : String(retrying.retry)
   const rateLimited = retrying.status === 429
   const head = rateLimited ? 'Rate limited' : 'Provider error'
   const wait = seconds === 0 ? t('retrying {attempt}…', { attempt }) : t('retrying in {seconds}s · {attempt}', { seconds, attempt })
-  return [t(head), wait, ...rateLimited || retrying.reason === undefined ? [] : [retrying.reason]].join(' · ')
+  return { message: [t(head), ...rateLimited || retrying.reason === undefined ? [] : [retrying.reason], wait].join(' · '), tail: wait }
 }
 
 /** How long ago, as the session list says it (`5m ago`, `2h ago`, `3d ago`). */
@@ -68,7 +71,7 @@ export function mountNotices(ctx: Context, t: MayflyTranslate, clock: () => numb
   const reportRetry = (now: number): void => {
     const retrying = facts.retrying
     if (retrying === undefined) return
-    owner.report(RETRY, { severity: 'warning', message: retryText(retrying, now, t) })
+    owner.report(RETRY, { severity: 'warning', ...retryText(retrying, now, t) })
   }
   /** A blocked goal waits for the person: the notice holds while the goal is blocked and leaves with it. */
   const reportGoal = (): void => {

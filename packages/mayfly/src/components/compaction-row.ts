@@ -3,6 +3,7 @@
  * the estimated progress (`▰▱`) with its percentage, and the stage (`summarizing` with the seconds, then `applying`).
  * The Harness reports no progress inside a compaction, so the share is an estimate that grows with the time spent
  * summarizing and never passes 90% until the summary lands; the bar then fills to 100% over 800 ms, and it stays full.
+ * With no context window to measure against, the bar still moves but the percentage is not written (`bar.labeled`).
  * Settled it is `✓`, what was compacted, the full bar, the context occupancy before and after, the token estimate, and
  * `auto` for a compaction the context pressure started. A row that does not fit sheds the bar first, then the token
  * estimate, then `auto`; at the Compact level, and below the width that holds a bar, it is one line: the title, the
@@ -24,6 +25,8 @@ export interface CompactionBar {
   readonly drain: boolean
   /** The compaction's identity for the one-shot: the same number for the whole life of the row. */
   readonly rev: number
+  /** Whether the bar prints its share: false when the context window is unknown, so the guess is drawn but never written as a number. */
+  readonly labeled: boolean
 }
 
 /** The facts of one compaction row. Every text is final: translated, sanitized, and without escape sequences. */
@@ -83,7 +86,7 @@ function bar(facts: CompactionFacts, shape: CompactionBar): MayflyUiNode {
     value: shape.drain || facts.state !== 'running' ? shape.to : shape.from,
     max: 100,
     showCount: false,
-    showPercent: facts.state === 'running',
+    showPercent: facts.state === 'running' && shape.labeled,
     tone: facts.state === 'running' ? 'primary' : 'success',
     ...shape.drain ? { transition: { from: shape.from, ms: COMPACTION_DRAIN_MS, rev: shape.rev } } : {},
   })

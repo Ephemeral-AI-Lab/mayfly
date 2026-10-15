@@ -58,7 +58,7 @@ The git badge probes lazily through a TTL cache (branch 5s, status 15s), refresh
 
 ## What happens when the status bar runs out of room?
 
-The footer is one row by default (an entry may still declare `row: 2` to take a second row of its own). Entries admit in `priority`, then id, order across the whole row regardless of band: an entry that fits keeps its full width, an over-wide entry truncates to the remaining budget (entries declaring `overflow: hide` hide entirely rather than truncate), and once the row is full, later entries stop appearing. Admitted entries then lay out in their declared left/center/right band. The session name no longer competes for footer space — it sits at the right end of the editor's top border.
+The footer is one row (an entry has no row of its own: the only second line is the heavy `━` under the item whose view is entered). When the row is crowded it first gives up detail in a set order (an item's time, the provider, the thinking level, git, the directory's depth, the cache bar, the context bar, and last the model). Entries then admit in `priority`, then id, order across the whole row regardless of band: an entry that fits keeps its full width, an over-wide entry truncates to the remaining budget (entries declaring `overflow: hide` hide entirely rather than truncate), and once the row is full, later entries stop appearing. Admitted entries then lay out in their declared left/center/right band. The session name no longer competes for footer space — it sits at the right end of the editor's top border.
 
 ## Does bash-mode output enter the session history?
 

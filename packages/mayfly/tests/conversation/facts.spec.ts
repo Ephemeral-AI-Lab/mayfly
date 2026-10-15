@@ -43,8 +43,8 @@ function toolResult(callId: string, content: unknown[] | null, isError = false):
 }
 
 describe('mayflyConversationFacts projection', () => {
-  it('invalidates checkpoints after the turn-start anchor, activity detail, and compaction metering are added', () => {
-    expect(conversationFactsProjectionDefinition.stateVersion).toBe(11)
+  it('invalidates checkpoints after the turn-start anchor, activity detail, compaction metering, the stopped outcome, and the child token split are added', () => {
+    expect(conversationFactsProjectionDefinition.stateVersion).toBe(12)
   })
 
   it('records the turn start and the running action detail for the activity row', () => {

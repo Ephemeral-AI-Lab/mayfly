@@ -519,3 +519,51 @@ describe('list paint decisions at the edges', () => {
     expect(plain(bare)).toEqual(['→|head', '       first hit', '       second'])
   })
 })
+
+describe('list rows with aligned cells', () => {
+  const cell = (text: string, extra: Partial<NonNullable<MayflyListItem['cells']>[number]> = {}) => ({ spans: [{ text }], ...extra })
+  const rows = (items: readonly MayflyListItem[], width: number, cursorId?: string) => plain(renderList(ui.list({ id: 'rows', role: 'browse', selectedIds: [], items }), width, 20, cursorId === undefined ? idle : on(cursorId), colors, 0, undefined, { rows: specs(items), ...cursorId === undefined ? {} : { cursorId } }))
+
+  it('lines the columns up down the rows, two apart, the time right-aligned and last', () => {
+    const items: MayflyListItem[] = [
+      { id: 'a', label: 'a', labelSpans: [{ text: '● ' }], cells: [cell('review'), cell('Audit the facts projection'), cell('bg'), cell('41s', { align: 'right' })] },
+      { id: 'b', label: 'b', labelSpans: [{ text: '● ' }], cells: [cell('docs'), cell('Fix the typos'), cell('fg'), cell('2m 5s', { align: 'right' })] },
+    ]
+    expect(rows(items, 80)).toEqual([
+      '  ● review  Audit the facts projection  bg    41s',
+      '  ● docs    Fix the typos               fg  2m 5s',
+    ])
+  })
+
+  it('caps a column at its max with an ellipsis, and reserves its min when its cells are short or empty', () => {
+    const items: MayflyListItem[] = [
+      { id: 'a', label: 'a', labelSpans: [{ text: '● ' }], cells: [cell('a very long task name', { max: 10 }), cell('', { min: 6 }), cell('end')] },
+      { id: 'b', label: 'b', labelSpans: [{ text: '● ' }], cells: [cell('short', { max: 10 }), cell('↓1k', { min: 6 }), cell('end')] },
+    ]
+    expect(rows(items, 80)).toEqual(['  ● a very lo…          end', '  ● short       ↓1k     end'])
+  })
+
+  it('gives up whole columns by their shed number, the highest first, when the row is narrow', () => {
+    const items: MayflyListItem[] = [
+      { id: 'a', label: 'a', labelSpans: [{ text: '● ' }], cells: [cell('review'), cell('Audit the facts'), cell('bg', { shed: 3 }), cell('6 tools', { shed: 4 }), cell('↓6k', { shed: 2 }), cell('41s', { align: 'right' })] },
+    ]
+    const widths = [60, 42, 36, 30, 24].map(width => rows(items, width)[0]!.trimEnd())
+    // The tools column (shed 4) goes first, then the tag and the figure (3 and 2); the name, the task, and the time are the row.
+    expect(widths).toEqual([
+      '  ● review  Audit the facts  bg  6 tools  ↓6k  41s',
+      '  ● review  Audit the facts  bg  ↓6k  41s',
+      '  ● review  Audit the facts  41s',
+      '  ● review  Audit the facts  …',
+      '  ● review  Audit the f…',
+    ])
+  })
+
+  it('keeps a row\'s own cells independent of its neighbours\' when they have none, and a missing cell is empty', () => {
+    const items: MayflyListItem[] = [
+      { id: 'a', label: 'a', labelSpans: [{ text: '● ' }], cells: [cell('one'), cell('two')] },
+      { id: 'b', label: 'b', labelSpans: [{ text: '● ' }], cells: [cell('uno')] },
+      { id: 'c', label: 'c', labelSpans: [{ text: '● ' }] },
+    ]
+    expect(rows(items, 40).map(row => row.trimEnd())).toEqual(['  ● one  two', '  ● uno', '  ●'])
+  })
+})

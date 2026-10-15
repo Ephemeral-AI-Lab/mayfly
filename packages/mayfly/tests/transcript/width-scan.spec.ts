@@ -11,23 +11,23 @@
 import { homedir } from 'node:os'
 import { describe, expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
-import type { GoalProjection } from '@deepseek-ai/dsh-goal'
 import type { MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import { MayflyStatusService } from '../../../ui/src/provider.ts'
 import type { MayflySemanticColors } from '../../src/core/types.ts'
 import * as activityPane from '../../src/transcript/pane-activity.ts'
-import * as agentsPane from '../../src/transcript/pane-agents.ts'
 import { initialConversationFacts } from '../../src/conversation/facts.ts'
 import { MayflyLocaleService } from '../../src/frontend/locale.ts'
 import * as todoPane from '../../src/transcript/pane-todo.ts'
 import { workflowNode, type WorkflowRunState } from '../../src/transcript/pane-workflow.ts'
-import { goalStatusText } from '../../src/transcript/status-goal.ts'
-import { StatusFooterComponent } from '../../src/transcript/status-model.ts'
+import * as goalStatus from '../../src/transcript/status-goal.ts'
+import * as agentsStatus from '../../src/transcript/status-agents.ts'
+import * as jobsStatus from '../../src/transcript/status-jobs.ts'
+import { footerRows } from './footer-fakes.ts'
 import { bannerLayout, composeBannerLines, shortenHome } from '../../src/transcript/banner.ts'
 import { fakeMayflyComponents } from './helpers.ts'
 import { bootPanePlugin } from './pane-fakes.ts'
 import { COLORS, fakeAgent } from './status-fakes.ts'
-import { event, subagentCallEvent } from './helpers.ts'
+import { transcriptTranslatorFake } from './notices-fakes.ts'
 import { ADVERSARIAL, SCAN_WIDTHS, expectLinesFit } from '../core/width-scan.ts'
 import { compileMayflyUiNode } from '../../src/core/ui-compiler.ts'
 
@@ -69,18 +69,45 @@ describe('transcript width-scan', () => {
       }
     })
 
-    it(`agents pane survives ${name}`, async () => {
-      agentsPane.setPaneAgentsClock(() => 2_000)
-      const harness = await bootPanePlugin(agentsPane, fakeAgent([
-        subagentCallEvent(1, 1, 'width-agent', 'subagent', text, text, { time: 1_000 }),
-      ]))
-      try {
-        for (const width of SCAN_WIDTHS) {
-          expectLinesFit(`AgentsPane/${name}`, harness.screen.paneLines(width), width)
-        }
-      } finally {
-        await harness.dispose()
-        agentsPane.setPaneAgentsClock(undefined)
+    it(`agents item survives ${name}`, () => {
+      const t = transcriptTranslatorFake
+      const rows = agentsStatus.agentRows([
+        { seq: 1, turn: 1, step: 1, callId: 'fg', name: 'subagent', arguments: JSON.stringify({ name: text, description: text, prompt: text }), startedAt: 1_000 },
+        { seq: 2, turn: 1, step: 1, callId: 'bg', name: 'subagent', arguments: JSON.stringify({ name: text, description: text }), startedAt: 1_000, result: { text: 'started subagent c1', isError: false, endedAt: 2_000 } },
+        { seq: 3, turn: 1, step: 1, callId: 'bad', name: 'subagent', arguments: JSON.stringify({ name: text }), startedAt: 1_000, result: { text, isError: true, endedAt: 9_000 } },
+      ], [{ id: 'c1', phase: 'running', tokens: 99_999, inputTokens: 90_000, outputTokens: 9_999, toolCount: 12_345, liveChars: 40_000, activity: text }], { turn: 1, active: true })
+      const state = { rows, now: 3_000 }
+      const panel = agentsStatus.agentsPanel(state, t, () => ({ 'agents-stop': text, 'agents-background': text }))
+      if (panel === null) throw new Error('agents width fixture did not render')
+      for (const width of SCAN_WIDTHS) {
+        expectLinesFit(`AgentsPanel/${name}`, renderNode(panel, width), width)
+        expectLinesFit(`AgentsItem/${name}`, footerRows([{ id: 'views/agents', definition: { id: 'views/agents', priority: 11 }, node: agentsStatus.agentsSummary(state, t)!.node, revision: 1 }], width, fakeMayflyComponents(), colors), width)
+      }
+    })
+
+    it(`jobs item survives ${name}`, () => {
+      const t = transcriptTranslatorFake
+      const jobs = [
+        { id: 'a', kind: 'bash', label: text, status: 'running', startedAt: 1_000, progress: text, output: { total: 0, earliest: 0 } },
+        { id: 'b', kind: 'bash', label: text, status: 'failed', startedAt: 1_000, finishedAt: 5_000, detail: text, output: { total: 0, earliest: 0 } },
+      ] as never[]
+      const state = { jobs, now: 3_000, history: true }
+      const panel = jobsStatus.jobsPanel(state, t, () => ({ 'jobs-stop': text }))
+      if (panel === null) throw new Error('jobs width fixture did not render')
+      for (const width of SCAN_WIDTHS) {
+        expectLinesFit(`JobsPanel/${name}`, renderNode(panel, width), width)
+        expectLinesFit(`JobsItem/${name}`, footerRows([{ id: 'views/jobs', definition: { id: 'views/jobs', priority: 12 }, node: jobsStatus.jobsSummary(state, t)!.node, revision: 1 }], width, fakeMayflyComponents(), colors), width)
+      }
+    })
+
+    it(`todo item survives ${name}`, () => {
+      const t = transcriptTranslatorFake
+      const state = { todos: [{ content: text, status: 'in_progress' }, { content: text, status: 'pending' }, ...Array.from({ length: 9 }, () => ({ content: text, status: 'completed' }))] as never[], interrupted: true, history: true, elapsedMs: 4_000_000 }
+      const panel = todoPane.todoPanel(state, t)
+      if (panel === null) throw new Error('todo width fixture did not render')
+      for (const width of SCAN_WIDTHS) {
+        expectLinesFit(`TodoPanel/${name}`, renderNode(panel, width), width)
+        expectLinesFit(`TodoItem/${name}`, footerRows([{ id: 'views/todo', definition: { id: 'views/todo', priority: 14 }, node: todoPane.todoSummary(state, t)!.node, revision: 1 }], width, fakeMayflyComponents(), colors), width)
       }
     })
 
@@ -98,6 +125,8 @@ describe('transcript width-scan', () => {
         mayflySessionFacts: {
           get current() { return facts },
           subscribe(next: (value: typeof facts) => void) { listener = next; next(facts); return () => {} },
+          currentGoal: null,
+          subscribeGoal() { return () => {} },
           subscribeAgent(next: (value: unknown) => void) { next(agent); return () => {} },
         },
       })
@@ -138,27 +167,19 @@ describe('transcript width-scan', () => {
       }
     })
 
-    it(`goal badge survives ${name}`, async () => {
-      const harness = await bootPanePlugin(todoPane, fakeAgent([
-        event('todo/write', { todos: [{ content: 'next', status: 'pending' }] }),
-      ]))
-      harness.facts.setGoal({
-        goal: {
-          id: 'width-goal',
-          revision: 1,
-          objective: text,
-          phase: 'blocked',
-          blockedReason: { code: 'width', message: text },
-          maxGoalRounds: 8,
-        },
-        roundsStarted: 2,
-        createdAt: 1,
-        updatedAt: 2,
-      } as GoalProjection)
+    it(`goal item survives ${name}`, () => {
+      const t = transcriptTranslatorFake
+      const view = {
+        id: 'width-goal', revision: 1, objective: text, phase: 'blocked', blockedReason: { code: 'width', message: text },
+        maxGoalRounds: 8, roundsStarted: 2, createdAt: 1, updatedAt: 2, activation: 'armed',
+      } as never
+      const state = { goal: view, now: 1_000_000 }
+      const panel = goalStatus.goalPanel(state, t)
+      if (panel === null) throw new Error('goal width fixture did not render')
       for (const width of SCAN_WIDTHS) {
-        expectLinesFit(`GoalBadge/${name}`, harness.screen.paneLines(width), width)
+        expectLinesFit(`GoalPanel/${name}`, renderNode(panel, width), width)
+        expectLinesFit(`GoalItem/${name}`, footerRows([{ id: 'views/goal', definition: { id: 'views/goal', priority: 13 }, node: goalStatus.goalSummary(state, t)!.node, revision: 1 }], width, fakeMayflyComponents(), colors), width)
       }
-      await harness.dispose()
     })
 
     it(`banner (composeBannerLines) survives ${name}`, () => {
@@ -182,34 +203,23 @@ describe('transcript width-scan', () => {
     })
   }
 
-  it('StatusFooterComponent survives truncating long models at every width', () => {
+  it('the status row survives long models, directories, and chips at every width, and shows what was registered', () => {
     for (const { name, text } of ADVERSARIAL) {
       const components = fakeMayflyComponents()
       const status = new MayflyStatusService(new Context())
-      const footer = new StatusFooterComponent(status, components, colors)
       status.register({ id: 'scan-title', priority: 90, band: 'right' }, { kind: 'text', content: text })
       status.register({ id: 'scan-left', priority: 10 }, { kind: 'text', content: text })
-      status.register({ id: 'scan-context', priority: 4, band: 'right', overflow: 'hide' }, { kind: 'text', content: 'cache 34%  context: 18% (22.9k/128k)' })
-      status.register({ id: 'scan-center', priority: 0, band: 'center' }, { kind: 'rich-text', spans: [{ text: 'MAIN', tone: 'accent' }, { text: ` · ${text}`, tone: 'muted' }] })
-      status.register({ id: 'scan-goal', priority: 2, overflow: 'hide' }, {
-        kind: 'text',
-        content: goalStatusText({
-          id: 'goal-width' as never,
-          revision: 1,
-          objective: text,
-          phase: 'active',
-          maxGoalRounds: 256,
-          roundsStarted: 128,
-          createdAt: 1,
-          updatedAt: 2,
-          activation: 'armed',
-        }),
-      })
+      status.register({ id: 'scan-context', priority: 4, band: 'right', overflow: 'hide' }, { kind: 'text', content: 'cache ▰▰▱▱▱ 34%  ctx ▰▰▱▱▱▱▱▱▱▱ 18%' })
+      status.register({ id: 'scan-center', priority: 0, band: 'center', overflow: 'truncate' }, { kind: 'rich-text', spans: [{ text: 'MAIN', tone: 'accent' }, { text: ` · ${text}`, tone: 'muted' }] })
+      status.register({ id: 'scan-goal', priority: 2, overflow: 'hide' }, goalStatus.goalSummary({
+        goal: { id: 'goal-width' as never, revision: 1, objective: text, phase: 'active', maxGoalRounds: 256, roundsStarted: 128, createdAt: 1, updatedAt: 2, activation: 'armed' } as never,
+        now: 1_000_000,
+      }, transcriptTranslatorFake)!.node)
       // The footer paints what was registered: a scan of empty rows would pass for any width.
-      expect(footer.render(120).join('')).toContain('MAIN')
-      for (const width of SCAN_WIDTHS) {
-        expectLinesFit(`FooterShell/${name}`, footer.render(width), width)
-      }
+      expect(footerRows(status.list(), 120, components, colors).join('')).toContain('MAIN')
+      for (const width of SCAN_WIDTHS) expectLinesFit(`StatusRow/${name}`, footerRows(status.list(), width, components, colors), width)
+      // The entered item's heavy second line also fits.
+      for (const width of SCAN_WIDTHS) expectLinesFit(`StatusRow/entered/${name}`, footerRows(status.list(), width, components, colors, { active: 'scan-goal' }), width)
     }
   })
 

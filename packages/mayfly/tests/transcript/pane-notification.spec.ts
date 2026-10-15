@@ -10,7 +10,7 @@ import { describe, expect, it } from 'vitest'
 import type { MayflyFeedbackRecord } from '@ephemeral-ai/mayfly-ui'
 import { mountNotificationPane, selectNotification } from '../../src/transcript/pane-notification.ts'
 import { transcriptTranslatorFake } from './notices-fakes.ts'
-import { bootPanePlugin, type PanePluginHarness } from './pane-fakes.ts'
+import { bootPanePlugin, FakeConversations, type PanePluginHarness } from './pane-fakes.ts'
 import { fakeAgent, type FakeAgent } from './status-fakes.ts'
 
 /** A lane record, as the lane keeps it: the scope, the severity, the message, and the creation time. */
@@ -35,6 +35,12 @@ describe('selectNotification', () => {
     ]
     expect(selectNotification(records, 'a')).toEqual({ severity: 'warning', message: 'context full', waiting: 3 })
     expect(selectNotification([record('info', 'only', 1)], 'a')).toEqual({ severity: 'info', message: 'only' })
+  })
+
+  it('carries the tail of the record it shows, so a narrow row can keep the countdown', () => {
+    const waiting = { ...record('warning', 'Rate limited · retrying in 9s · 1/5', 2), tail: 'retrying in 9s · 1/5' } as MayflyFeedbackRecord
+    expect(selectNotification([record('info', 'resumed', 1), waiting], 'a')).toEqual({ severity: 'warning', message: 'Rate limited · retrying in 9s · 1/5', tail: 'retrying in 9s · 1/5', waiting: 1 })
+    expect(selectNotification([waiting], 'a')).not.toHaveProperty('waiting')
   })
 
   it('reads the records of the app and of the current session only', () => {
@@ -65,18 +71,32 @@ class HandLane {
   }
 }
 
-async function boot(current: FakeAgent | null = fakeAgent([]), lane = new HandLane()): Promise<PanePluginHarness & { readonly lane: HandLane }> {
+async function boot(current: FakeAgent | null = fakeAgent([]), lane = new HandLane(), conversations = new FakeConversations()): Promise<PanePluginHarness & { readonly lane: HandLane, readonly conversations: FakeConversations }> {
   const harness = await bootPanePlugin({
     name: 'pane-notification-under-test',
-    inject: [],
+    inject: ['mayflyConversations'],
     apply(ctx) {
       mountNotificationPane(ctx, transcriptTranslatorFake)
     },
-  }, current, { mayflyUiInteraction: lane })
-  return { ...harness, lane }
+  }, current, { mayflyUiInteraction: lane, mayflyConversations: conversations })
+  return { ...harness, lane, conversations }
 }
 
 /** The node the pane publishes, as JSON, so a spec reads its texts without its shape. */
+/** The admitted children of the row, in order: their first span's text and their priority. */
+const partsOf = (harness: PanePluginHarness): { text: string, priority: number }[] => {
+  const found: { text: string, priority: number }[] = []
+  const walk = (node: unknown): void => {
+    if (node === null || typeof node !== 'object') return
+    const record = node as { children?: { priority?: number, node: { kind?: string, spans?: { text: string }[] } }[] }
+    for (const child of record.children ?? []) {
+      if (child.priority !== undefined && child.node.kind === 'rich-text') found.push({ text: child.node.spans![0]!.text, priority: child.priority })
+      walk(child.node)
+    }
+  }
+  walk(harness.ctx.mayflyPanes.list().find(entry => entry.id === 'mayfly.pane.notification')?.node)
+  return found
+}
 const nodeOf = (harness: PanePluginHarness): string => JSON.stringify(harness.ctx.mayflyPanes.list().find(entry => entry.id === 'mayfly.pane.notification')?.node ?? null)
 
 describe('mayfly-pane-notification', () => {
@@ -94,6 +114,9 @@ describe('mayfly-pane-notification', () => {
     harness.lane.set([record('warning', 'Context 93% full', 1)])
     expect(nodeOf(harness)).toContain('Context 93% full')
     expect(nodeOf(harness)).not.toContain('Alt+↑ conversation')
+    // A record with a tail hands it to the line, which keeps it whole on a narrow row.
+    harness.lane.set([{ ...record('warning', 'Rate limited · retrying in 9s · 1/5', 2), tail: 'retrying in 9s · 1/5' } as MayflyFeedbackRecord])
+    expect(partsOf(harness).map(part => part.text)).toEqual(['⚠', 'Rate limited', '· retrying in 9s · 1/5'])
     await harness.dispose()
   })
 
@@ -122,14 +145,41 @@ describe('mayfly-pane-notification', () => {
     await harness.dispose()
   })
 
-  it('teaches the keys of a focus mode in the notice place, and the hint only at the prompt', async () => {
+  it('teaches the keys of a focus mode as parts the row sheds by priority, Esc the last to go', async () => {
     const harness = await boot()
+    const keys = (): { text: string, priority: number }[] => partsOf(harness).map(part => ({ ...part, text: part.text.replace(/^· /u, '') }))
     harness.ctx.emit('mayfly/focus-mode-changed', 'conversation')
-    expect(nodeOf(harness)).toContain('Enter expand · c copy · Ctrl+C JSON · Ctrl+G editor · ↑/↓ select · / ? search · Esc back')
+    expect(keys().map(part => part.text)).toEqual(['↑/↓ select', 'Enter expand', 'c copy', '/ ? search', 'Ctrl+G editor', 'Ctrl+C JSON', 'Esc back'])
+    const rank = (parts: { text: string, priority: number }[]) => parts.toSorted((left, right) => left.priority - right.priority).map(part => part.text)
+    expect(rank(keys())).toEqual(['Esc back', '↑/↓ select', 'Enter expand', '/ ? search', 'c copy', 'Ctrl+G editor', 'Ctrl+C JSON'])
     harness.ctx.emit('mayfly/focus-mode-changed', 'search-select')
-    expect(nodeOf(harness)).toContain('Enter expand · c copy · Ctrl+C JSON · ↑/↓ or n/N match · / ? new search · Esc end search')
+    expect(keys().map(part => part.text)).toEqual(['↑/↓ or n/N match', 'Enter expand', 'c copy', '/ ? new search', 'Ctrl+C JSON', 'Esc end search'])
+    expect(rank(keys())[0]).toBe('Esc end search')
     harness.ctx.emit('mayfly/focus-mode-changed', 'prompt')
     expect(nodeOf(harness)).toContain('Alt+↑ conversation · Alt+↓ view')
+    await harness.dispose()
+  })
+
+  it('names the other conversation and the close key while a side conversation is open, in the notice place', async () => {
+    const harness = await boot()
+    expect(nodeOf(harness)).not.toContain('F7')
+    harness.conversations.open('side', 'btw')
+    // The displayed side conversation closes with F8; F7 returns to the main one.
+    expect(nodeOf(harness)).toContain('F7 main · F8 close')
+    expect(nodeOf(harness)).not.toContain('Alt+↑ conversation')
+    harness.conversations.back()
+    // On the main conversation F7 names the side one, and F8 acts on it.
+    expect(nodeOf(harness)).toContain('F7 btw · F8 close')
+    harness.conversations.close()
+    harness.conversations.open('child', 'subagent')
+    harness.conversations.back()
+    expect(nodeOf(harness)).toContain('F7 subagent · F8 detach')
+    // A notice follows the toggle; the focus modes leave the toggle out.
+    harness.lane.set([record('info', 'saved', 1)])
+    expect(nodeOf(harness)).toContain('F7 subagent · F8 detach')
+    expect(nodeOf(harness)).toContain('saved')
+    harness.ctx.emit('mayfly/focus-mode-changed', 'conversation')
+    expect(nodeOf(harness)).not.toContain('F7')
     await harness.dispose()
   })
 
@@ -149,11 +199,11 @@ describe('mayfly-pane-notification', () => {
   it('keeps the row and its focus keys when the editor has no lane to read', async () => {
     const harness = await bootPanePlugin({
       name: 'pane-notification-without-lane',
-      inject: [],
+      inject: ['mayflyConversations'],
       apply(ctx) {
         mountNotificationPane(ctx, transcriptTranslatorFake)
       },
-    }, fakeAgent([]), {})
+    }, fakeAgent([]), { mayflyConversations: new FakeConversations() })
     expect(nodeOf(harness)).toContain('Alt+↑ conversation · Alt+↓ view')
     await harness.dispose()
   })

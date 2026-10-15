@@ -735,6 +735,46 @@ const notices = {
   ])],
 }
 
+const carryOvers = {
+  summary: 'the Phase 3 carry-overs in one conversation: a rate-limit and a provider-error notice (the front cut with `…`, the countdown kept), a compaction with no context window (no percentage), the mode keys shed by priority beside a notice, and an approval card whose hint keeps its labels',
+  options: { contextWindow: null },
+  items: [
+    turn('Summarise the changelog.', [
+      step({
+        failedAttempts: [{ text: 'The changelog lists', failure: { message: 'Rate limit reached for requests', code: 'rate_limited', status: 429 }, delayMs: 9000 }],
+        marks: [{ name: 'rate-limited', block: 'retry', attempt: 0, at: 0.3 }],
+        text: 'The changelog lists three changes: a faster parser, a new CLI flag, and a fix for Windows paths.',
+        usage: { inputTokens: 6_000, outputTokens: 80, cacheReadTokens: 2_000 },
+      }),
+      step({
+        failedAttempts: [{ text: 'Now the logs', failure: { message: 'The upstream gateway timed out while waiting for the model to answer', code: 'timeout', status: 504 }, delayMs: 9000 }],
+        marks: [{ name: 'provider-error', block: 'retry', attempt: 0, at: 0.3 }],
+        text: 'The logs agree with the changelog.',
+        usage: { inputTokens: 7_000, outputTokens: 60, cacheReadTokens: 3_000 },
+      }),
+    ]),
+    turn('Compact the context, then look for the needle.', [
+      step({ text: 'Reading the readme.', usage: { inputTokens: 40_000, outputTokens: 120, cacheReadTokens: 19_500 }, tools: [tool('read', { file_path: 'README.md' }, { result: '# replay-app', runMs: 500 })] }),
+      compaction({ ms: 4000, applyMs: 1600, shadowedTokens: 53_000, shadowedItems: 14, summaryTokens: 900, marks: [{ name: 'summarizing', stage: 'summarize', at: 0.7 }, { name: 'applying', stage: 'apply', at: 0.4 }], summary: 'The user asked for a summary of README.md.' }),
+      pause(1800),
+      mark('compacted'),
+      step({
+        text: 'Checking the logs.',
+        tools: [tool('bash', { command: 'grep -rn needle logs', description: 'Search the logs' }, { result: lines(14, n => (n % 4 === 0 ? `logs/app-${String(n)}.log:${String(n)}: needle found in request ${String(n)}` : `logs/app-${String(n)}.log:${String(n)}: nothing here`)), runMs: 500 })],
+        usage: { inputTokens: 6_500, outputTokens: 40, cacheReadTokens: 0 },
+      }),
+      notify('warning', 'The clipboard tool is missing; falling back to OSC 52 until xclip or wl-clipboard is installed', { holdMs: 60_000, marks: [{ name: 'notice', at: 0.05 }] }),
+    ]),
+    turn('Clean the build output.', [
+      step({
+        text: 'This deletes the build directory, which needs your approval.',
+        tools: [tool('bash', { command: 'rm -rf dist build', description: 'Delete the build output' }, { ask: approval('bash', 'The command removes files outside the tracked sources.'), result: '[exit code: 0]', runMs: 900 })],
+      }),
+      step({ text: 'That is settled.' }),
+    ]),
+  ],
+}
+
 const notificationPane = {
   summary: 'the notification pane: a rate-limit countdown, a lane notice over a turn, a context that fills up and is relieved, and a resumed session',
   options: { contextWindow: 32_768 },
@@ -1511,7 +1551,7 @@ const phase3 = {
   ],
 }
 
-export const REPLAYS = { tour, toolkit, thinking, markdown, live, phases, thinkingLadder, pending, blocks, streaming, sync, activityWait, prompts, turns, toollines, toolgrow, findings, edits, errors, compaction: compactionReplay, compactionNoWindow, compactionFailed, manualCompact, context, subagents, childStream, approvals, approvalsRejected, approvalsEdit, approvalsQueue, questions, plan, planLong, goal, footerCutover, statusRow, viewsAgents, viewsJobs, jobs, queued, retries, sideQuestion, notices, notificationPane, modes, edge, history, wheel, content, phase3 }
+export const REPLAYS = { tour, toolkit, thinking, markdown, live, phases, thinkingLadder, pending, blocks, streaming, sync, activityWait, prompts, turns, toollines, toolgrow, findings, edits, errors, compaction: compactionReplay, compactionNoWindow, compactionFailed, manualCompact, context, subagents, childStream, approvals, approvalsRejected, approvalsEdit, approvalsQueue, questions, plan, planLong, goal, footerCutover, statusRow, viewsAgents, viewsJobs, jobs, queued, retries, sideQuestion, notices, carryOvers, notificationPane, modes, edge, history, wheel, content, phase3 }
 
 /*
  * The scenes of the Website's app shots. Each is the source of an `app-*` scenario of the catalog, whose goldens the

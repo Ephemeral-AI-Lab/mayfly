@@ -240,6 +240,57 @@ export class FakeProjectionService {
   }
 }
 
+/** The host's one-second tick, fired by hand: the listeners hear the time the spec gives. */
+export class HandTick {
+  private readonly listeners = new Set<(now: number) => void>()
+  subscribe(listener: (now: number) => void): () => void {
+    this.listeners.add(listener)
+    return () => { this.listeners.delete(listener) }
+  }
+  fire(now: number): void {
+    for (const listener of [...this.listeners]) listener(now)
+  }
+  get subscribers(): number { return this.listeners.size }
+}
+
+/** The registry of open conversations, hand-driven: the displayed one, the F7 counterpart, and the listeners. */
+export class FakeConversations {
+  views: { id: string, kind: 'primary' | 'btw' | 'subagent', sessionId?: string }[]
+  displayedId = 'main'
+  recent = ['main']
+  private readonly listeners = new Set<() => void>()
+  /** @param primarySessionId - the session id of the main conversation, which a resume notice is matched against. */
+  constructor(primarySessionId?: string) {
+    this.views = [{ id: 'main', kind: 'primary', ...primarySessionId === undefined ? {} : { sessionId: primarySessionId } }]
+  }
+  snapshot(): { readonly primaryId: string, readonly displayedId: string, readonly recent: readonly string[], readonly views: readonly { readonly id: string, readonly kind: 'primary' | 'btw' | 'subagent', readonly sessionId?: string }[], readonly revision: number } {
+    return { primaryId: 'main', displayedId: this.displayedId, recent: this.recent, views: this.views, revision: 0 }
+  }
+  subscribe(listener: () => void): () => void {
+    this.listeners.add(listener)
+    return () => { this.listeners.delete(listener) }
+  }
+  private publish(): void { for (const listener of this.listeners) listener() }
+  /** Open a side conversation and display it; the primary stays the F7 counterpart. */
+  open(id: string, kind: 'btw' | 'subagent'): void {
+    this.views = [...this.views, { id, kind }]
+    this.displayedId = id
+    this.recent = [id, 'main']
+    this.publish()
+  }
+  back(): void {
+    this.displayedId = 'main'
+    this.recent = ['main', ...this.views.filter(view => view.id !== 'main').map(view => view.id)]
+    this.publish()
+  }
+  close(): void {
+    this.views = this.views.slice(0, 1)
+    this.displayedId = 'main'
+    this.recent = ['main']
+    this.publish()
+  }
+}
+
 /** A plugin module shape accepted by `ctx.plugin`. */
 export interface PanePluginModule {
   name: string
@@ -298,6 +349,7 @@ export async function bootPanePlugin(
       },
     },
     mayflySessionFacts: facts,
+    mayflyConversations: new FakeConversations(selected === null ? undefined : String(asAgent(selected).id)),
     sessionProjections: projections,
     commands,
     facts,

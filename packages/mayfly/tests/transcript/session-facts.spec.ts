@@ -257,9 +257,30 @@ describe('SessionFactsService', () => {
     expect(projectChildSessionFacts('starting', {
       ...base, active: true, phase: 'waiting',
     })).toMatchObject({ phase: 'waiting', activity: 'Starting…' })
-    expect(projectChildSessionFacts('done', base)).toEqual({
-      id: 'done', phase: 'completed', tokens: 0, toolCount: 0,
+    // A child whose first turn has not begun has no outcome yet: it is about to work, not finished.
+    expect(projectChildSessionFacts('fresh', base)).toEqual({
+      id: 'fresh', phase: 'waiting', tokens: 0, inputTokens: 0, outputTokens: 0, toolCount: 0,
     })
+    expect(projectChildSessionFacts('done', { ...base, runOutcome: 'completed' as const, endedAt: 9 })).toEqual({
+      id: 'done', phase: 'completed', tokens: 0, inputTokens: 0, outputTokens: 0, toolCount: 0, endedAt: 9,
+    })
+  })
+
+  it('splits a child run tokens into input and output, and tells a stopped run from one that failed', () => {
+    const base = { ...initialConversationFacts(), runOutcome: 'failed' as const, endedAt: 7, epochTokens: 5_000, epochOutputTokens: 1_200, epochToolCount: 3 }
+    expect(projectChildSessionFacts('failed', base)).toMatchObject({ phase: 'failed', tokens: 5_000, inputTokens: 3_800, outputTokens: 1_200, toolCount: 3 })
+    expect(projectChildSessionFacts('failed', base)).not.toHaveProperty('stopped')
+    expect(projectChildSessionFacts('stopped', { ...base, runStopped: true })).toMatchObject({ phase: 'failed', stopped: true })
+    // The output never exceeds the total: a child that reports more output than total reads zero input.
+    expect(projectChildSessionFacts('odd', { ...base, epochTokens: 100, epochOutputTokens: 400 })).toMatchObject({ inputTokens: 0, outputTokens: 400 })
+  })
+
+  it('carries the live attempt output progress, for the rate the Agents row shows', () => {
+    const base = { ...initialConversationFacts(), active: true, phase: 'waiting' as const, turn: 2, currentStep: 1 }
+    const outputProgress = { chars: 400, at: 9 } as never
+    const draft = { sessionId: 'child', attemptId: 'a', revision: 4, turn: 2, step: 1, phase: 'composing' as const, reasoning: '', text: 'x', outputProgress, chars: 400, updatedAt: 5 }
+    expect(projectChildSessionFacts('child', base, draft)).toMatchObject({ phase: 'running', liveChars: 400, outputProgress })
+    expect(projectChildSessionFacts('child', base, { ...draft, outputProgress: undefined })).not.toHaveProperty('outputProgress')
   })
 
   it('overlays a fresh child draft and rejects stale or foreign drafts', () => {
@@ -299,7 +320,7 @@ describe('SessionFactsService', () => {
     const service = new SessionFactsService(ctx, live)
     const children: Array<readonly ChildSessionFacts[]> = []
     service.subscribeChildren(value => children.push(value))
-    expect(children.at(-1)).toEqual([{ id: 'child', activity: 'Starting…', phase: 'waiting', tokens: 0, toolCount: 0, promptText: 'delegate' }])
+    expect(children.at(-1)).toEqual([{ id: 'child', activity: 'Starting…', phase: 'waiting', tokens: 0, inputTokens: 0, outputTokens: 0, toolCount: 0, promptText: 'delegate' }])
     live.accept(childAgent, { type: 'start', attemptId: 'run' as never, revision: 1, turn: 1, step: 0 })
     live.accept(childAgent, { type: 'chunk', attemptId: 'run' as never, revision: 2, index: 0, time: 1, chunk: { type: 'reasoning-delta', index: 0, text: 'thinking' } })
     await Promise.resolve()

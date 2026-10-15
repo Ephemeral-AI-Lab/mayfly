@@ -1711,6 +1711,17 @@ describe('compileMayflyUiSurfaceNode contextual hints', () => {
       .toBe('  ↑/↓ scroll · Ctrl+E collapse · Esc collapse')
   })
 
+  it('draws a fixed-length scroll panel: no Ctrl+E in its hints, and the count of the rows below on its last row', () => {
+    const panel = ui.scroll(ui.stack.column(Array.from({ length: 10 }, (_, index) => ui.text(`row-${String(index)}`))), { id: 'panel', height: 4, expandable: false, more: true })
+    expect(focusedHint(panel, [], { onUnhandledEscape: () => {} })).toBe('  ↑/↓ scroll · Esc close')
+    expect(focusedHint(panel, ['\x05'], { onUnhandledEscape: () => {} })).toBe('  ↑/↓ scroll · Esc close')
+    const result = compiled(panel, fixture({ screenMode: 'alternate', getViewport: () => ({ columns: 30, rows: 12 }) }).options)
+    const rows = (result.component as Component).render(30).map(stripTerminalSequences).map(row => row.trimEnd())
+    // The panel draws its scrollbar beside the rows once they pass its length.
+    expect(rows.slice(0, 3).map(row => row.replace(/\s+\S$/u, ''))).toEqual(['row-0', 'row-1', 'row-2'])
+    expect(rows[3]).toMatch(/^↓ 7 more/u)
+  })
+
   it('derives empty-list, passive, field, and explicit dismissal hints', () => {
     expect(focusedHint(ui.list({ id: 'empty', role: 'choose', filterable: true, selectedIds: [], items: [] }), [], { onUnhandledEscape: () => {} }))
       .toBe('  Esc close')
@@ -2043,6 +2054,10 @@ describe('compileMayflyUiSurfaceNode contextual hints', () => {
     widths.focusTarget!.focused = true
     expect(widths.component.render(80).at(-1)).toBe('  ←/→ actions · Enter run · Alt+←/→ tabs · Esc close')
     expect(widths.component.render(40).at(-1)).toBe('  ←/→ actions · Enter run · Esc close')
+    // Labels outrank completeness: the row sheds its least important part before any part loses its label, and the bare keys come last.
+    expect(widths.component.render(30).at(-1)).toBe('  Enter run · Esc close')
+    expect(widths.component.render(24).at(-1)).toBe('  Enter run · Esc close')
+    expect(widths.component.render(22).at(-1)).toBe('  ←/→ · Enter · Esc')
     expect(widths.component.render(18).at(-1)).toBe('  Enter · Esc')
     expect(widths.component.render(8).at(-1)).toBe('  Esc')
     expect(widths.component.render(6).join('\n')).not.toContain('Ent')

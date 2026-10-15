@@ -877,3 +877,63 @@ describe('list rows and bodies', () => {
     expect(counters.nodesValidated).toBe(1 + 1 + 3)
   })
 })
+
+describe('the status-row options of the wire', () => {
+  const words = (text: string) => ({ kind: 'rich-text', spans: [{ text }] })
+  const shed = (narrower: unknown[], full: unknown = words('● todo 2/12 4m 12s')) => ({ kind: 'shed', node: full, narrower })
+  const status = (value: unknown) => validateMayflyStatusNode(value)
+
+  it('admits a shed node with ranked narrower forms, and a null form that hides the node', () => {
+    const node = shed([{ rank: 5, node: words('● todo 2/12') }, { rank: 70, node: null }])
+    expect(status(node)).toMatchObject({ ok: true, value: node })
+    expect(status(ui.stack.row([ui.child(node as never, { priority: 1, mark: 'underline' })]))).toMatchObject({ ok: true })
+  })
+
+  it.each([
+    [shed([{ rank: 5, node: shed([]) }]), 'cannot be another shed node'],
+    [shed([], shed([])), 'cannot be another shed node'],
+    [shed(Array.from({ length: 9 }, (_, index) => ({ rank: index, node: null }))), 'more than 8 forms'],
+    [shed([{ rank: 1001, node: null }]), 'must be at most 1000'],
+    [shed([{ rank: -1, node: null }]), 'finite integer'],
+    [shed([{ node: null }]), 'required'],
+    [{ kind: 'shed', narrower: [] }, 'required'],
+  ])('refuses a malformed shed node %j', (value, message) => {
+    expect(status(value)).toMatchObject({ ok: false, message: expect.stringContaining(message) })
+  })
+
+  it('admits a divider that is centered, inset, and toned, and refuses what it cannot draw', () => {
+    const rule = { kind: 'divider', label: 'goal round 2', align: 'center', inset: 2, tone: 'muted' }
+    expect(accepted(rule)).toEqual(rule)
+    expect(accepted({ kind: 'divider' })).toEqual({ kind: 'divider' })
+    for (const [value, message] of [
+      [{ kind: 'divider', align: 'end' }, 'align'],
+      [{ kind: 'divider', inset: 9 }, 'at most 8'],
+      [{ kind: 'divider', inset: -1 }, 'finite integer'],
+      [{ kind: 'divider', inset: 1.5 }, 'finite integer'],
+      [{ kind: 'divider', tone: 'neon' }, 'tone'],
+    ] as const) expect(validateMayflyUiNode(value)).toMatchObject({ ok: false, message: expect.stringContaining(message) })
+  })
+
+  it('admits list cells with their alignment and limits, caps what is large, and refuses what is malformed', () => {
+    const cells = [{ spans: [{ text: 'a' }], align: 'right', min: 6, max: 52, shed: 3 }, { spans: [{ text: 'b' }] }]
+    const list = (value: unknown) => ({ kind: 'list', id: 'rows', role: 'browse', selectedIds: [], items: [{ id: 'a', label: 'a', cells: value }] })
+    expect(accepted(list(cells))).toMatchObject({ items: [{ cells }] })
+    // A figure past the limit is held to it, not refused.
+    expect(accepted(list([{ spans: [], min: 9_999, max: 9_999, shed: 9_999 }]))).toMatchObject({ items: [{ cells: [{ min: 200, max: 200, shed: 100 }] }] })
+    for (const [value, message] of [
+      [Array.from({ length: 13 }, () => ({ spans: [] })), 'at most 12 cells'],
+      [[{ spans: [], align: 'center' }], 'align'],
+      [[{ spans: [], max: 0 }], 'finite integer'],
+      [[{ spans: [], shed: -1 }], 'finite integer'],
+      [[{}], 'required'],
+      ['cells', 'array'],
+    ] as const) expect(validateMayflyUiNode(list(value))).toMatchObject({ ok: false, message: expect.stringContaining(message) })
+  })
+
+  it('admits a scroll that is fixed and counts the rows below, and refuses a flag that is not a boolean', () => {
+    const scroll = { kind: 'scroll', id: 'panel', height: 7, expandable: false, more: true, child: { kind: 'text', content: 'rows' } }
+    expect(accepted(scroll)).toEqual(scroll)
+    expect(validateMayflyUiNode({ ...scroll, expandable: 'no' })).toMatchObject({ ok: false, message: expect.stringContaining('boolean') })
+    expect(validateMayflyUiNode({ ...scroll, more: 1 })).toMatchObject({ ok: false, message: expect.stringContaining('boolean') })
+  })
+})

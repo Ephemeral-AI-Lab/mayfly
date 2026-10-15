@@ -618,13 +618,14 @@ function compactionRow(entry: TranscriptCompactionModel, inputs: StreamInputs): 
   const estimate = progressAt(now - entry.startedAt, mark?.before ?? inputs.contextTokens)
   // The share while summarizing is the estimate; once the summary has landed the bar fills from where it stood to 100.
   const percent = applying ? summarized ?? estimate : estimate
-  const bar = { from: percent, to: applying || entry.state === 'ok' ? 100 : percent, drain: applying, rev: entry.seq }
+  // The share is a guess from the time spent, so it is printed only where the occupancy is known (a window); without one the bar moves unlabeled.
+  const bar = { from: percent, to: applying || entry.state === 'ok' ? 100 : percent, drain: applying, rev: entry.seq, labeled: window !== undefined }
   const trigger = entry.trigger === 'auto' ? t('auto') : undefined
   const id = entry.id
   if (running) {
     const stage = applying ? t('applying') : t('summarizing')
     const elapsed = applying ? [] : [compactElapsedMs(Math.max(0, now - entry.startedAt))]
-    const facts: CompactionFacts = { state: 'running', title: t('Compacting context'), compact, bar, percent: applying ? summarized ?? estimate : estimate, progress: [stage, ...elapsed], ...trigger === undefined ? {} : { trigger } }
+    const facts: CompactionFacts = { state: 'running', title: t('Compacting context'), compact, bar, ...window === undefined ? {} : { percent }, progress: [stage, ...elapsed], ...trigger === undefined ? {} : { trigger } }
     return { kind: 'compaction', id, facts }
   }
   if (entry.state === 'error') {

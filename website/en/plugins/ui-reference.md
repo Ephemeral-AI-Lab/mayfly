@@ -1821,53 +1821,56 @@ this node, with no loader in the screenshot host:
 ui.image({ attachmentId: 'att-1', alt: '[Image #1 84 KB]', maxRows: 12 })
 ```
 
-## Views of status row 2
+## Views of the status row
 
-A pane with `placement: 'views'` is a **view**: a short summary in status row 2 that opens its own panel. The lane has
-no rows of its own. Each summary joins row 2 beside the status entries, and while a view is entered its panel takes the
-place of row 2 under a tab strip of every view.
+A pane with `placement: 'views'` is a **view**: an item of the status row (`<mark> <name> <n/m> <timer>`, such as `● todo 2/12 4m 12s`)
+that opens its own panel. The lane has no rows of its own. Each summary joins the one status row beside the status entries;
+while a view is entered the row stays as it is, a heavy `━` line is drawn under the words of its item (the row's second line),
+and the panel opens under the row.
 
 ```ts
 export const inject = ['mayflyPanes']
 
 export function apply(ctx: Context): void {
+  const full = ui.richText([{ text: '● ', tone: 'accent' }, { text: 'builds ', tone: 'muted' }, { text: '2 ' }, { text: '3m 12s', tone: 'muted' }])
   const view = ctx.mayflyPanes.register({
     id: 'acme.builds',
-    title: 'Builds',          // the tab
     placement: 'views',
-    priority: 50,             // lower comes first in the row and the tab strip
-    summary: { node: ui.richText([{ text: 'Builds ', tone: 'muted' }, { text: '2 running', tone: 'accent' }]), count: 2 },
+    priority: 50,             // lower comes first in the row
+    // The time is the first thing a crowded row gives up.
+    summary: { node: ui.shed(full, [{ rank: 5, node: ui.richText([{ text: '● builds 2' }]) }]) },
     onEvent: { action: () => ({ kind: 'completed' }) },
   }, ui.list({ id: 'builds', role: 'browse', selectedIds: [], items: [{ id: 'main', label: 'main' }] }))
 
-  // The row updates without republishing the panel; null takes the view out of row 2.
-  view.setSummary({ node: ui.richText([{ text: 'Builds 1 running' }]), count: 1 })
+  // The row updates without republishing the panel; null takes the view out of the row.
+  view.setSummary({ node: ui.richText([{ text: '● builds 1' }]) })
   view.setSummary(null)
 }
 ```
 
-![The `summary` node of a view in status row 2](/shots/views-summary.svg)
+![The `summary` node of a view in the status row](/shots/views-summary.svg)
 
-*The summary of the example view, as it sits in status row 2 (width 48).*
+*The item of the example view, as it sits in the status row (width 48).*
 
 | Field | Rule |
 | --- | --- |
-| `summary.node` | A passive status node (`text`, `richText`, `fields`, `progress`, or a stack of them), admitted like any status entry; one row, no motion |
-| `summary.count` | A number or a string of up to 32 characters; the tab shows it after the title (`Agents 5`) |
-| `title` | The tab label; the id when absent |
+| `summary.node` | A passive status node (`text`, `richText`, `fields`, `progress`, a stack of them, or `ui.shed(full, narrower)`), admitted like any status entry; one row, no motion |
+| `summary.node` as `ui.shed` | The narrower forms (each at a rank 0 to 1000, `null` hides the item) are given up in rank order, lowest first across the whole row, before the row admits by priority |
 | `size`, `narrow` | Do not apply; a views pane that sets either is refused |
 | `summary` on another placement | Refused; only a views pane has a summary or `setSummary` |
 
 `set(node)` publishes the panel; `onEvent`, `load`, `refresh`, and `loadMore` work as for any pane, and an action in the
-panel reaches the `onEvent` of the view it was taken in. A view with no summary is absent from row 2; a view with a
-summary but no panel yet shows in the row and cannot be entered. The entered lane takes at most a third of the
-terminal's rows, and the panel's own hint row names `←/→ tabs` when there is more than one view.
+panel reaches the `onEvent` of the view it was taken in. A view with no summary is absent from the row; a view with a
+summary but no panel yet shows in the row and cannot be entered. The panel opens under the row and takes at most a third
+of the terminal's rows (at least four); with more than one view its hint row names `←/→ items`. A panel that is a fixed
+`ui.scroll(…, { expandable: false, more: true })` has no `Ctrl+E` and counts the rows still below on its last row
+(`↓ 6 more`); a list row can line its columns up with the other rows through `cells`.
 
 | Key | Effect |
 | --- | --- |
 | `Alt+↓` or `F5` on an empty prompt | Enter the first view |
 | `F6` / `Shift+F6` | Enter the views first, then walk the interactive panes; crossing an end returns to the prompt |
-| `←` / `→` | Switch views (a field being edited keeps its arrows) |
+| `←` / `→` | Switch items (a field being edited keeps its arrows) |
 | `Esc` | Return to the prompt after the panel has left its own layers |
 
 These are the named actions `ui.focus-next`, `ui.left`/`ui.right`, and `ui.cancel`, so a rebinding moves them and their
@@ -2078,7 +2081,7 @@ the corresponding editor-extension `set()`. A new instance or scope uses
 | Surface | Allowed nodes | Interaction rule |
 | --- | --- | --- |
 | `panes` | Full `MayflyUiNode` | Controls work and events go to pane `onEvent` |
-| `panes` with `placement: 'views'` | Full `MayflyUiNode` for the panel; a status node for the summary | The panel replaces status row 2 while entered; the summary is passive |
+| `panes` with `placement: 'views'` | Full `MayflyUiNode` for the panel; a status node (or a shed node) for the summary | The panel opens under the status row while entered; the summary is passive |
 | Capturing overlay | Full `MayflyUiNode` | Receives focus and handles Escape dismissal |
 | Non-capturing overlay | Passive content/layout only | Tabs/list/form/actions/prompt controls replace the whole render tree with an error message |
 | Additive `status` | text, rich-text, fields, progress, recursive stack | Always passive; no surface, scroll, or controls |

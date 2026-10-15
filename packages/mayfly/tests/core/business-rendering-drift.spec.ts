@@ -30,13 +30,11 @@ const widthOperators = new Set([
 
 const approvedWidthMath = new Set([
   'packages/mayfly/src/transcript/banner.ts:const logoWidth = Math.max(...LOGO_ART.map(art => art.length))',
-  "packages/mayfly/src/transcript/status-model.ts:const renderWidth = result.ok && result.value.node.kind === 'text'",
   // A digit count of a line number for the edit gutter (an ASCII numeral, not display width); the painter owns the gutter.
   'packages/mayfly/src/transcript/tool-calls.ts:const width = String(preview.at(-1)?.number ?? 0).length',
 ])
 
 const approvedPresentation = new Set([
-  "border:packages/mayfly/src/transcript/pane-agents.ts:return [row, ui.text(`  ${last ? '   ' : '│  '}    ${failed ? `Error: ${detailLine}` : detailLine}`, { tone: failed ? 'danger' : 'muted', overflow: 'truncate' })]",
   "border:packages/mayfly/src/transcript/agent-presentation.ts:return last ? '└─' : '├─'",
   "border:packages/mayfly/src/components/tool-line.ts:{ text: last ? '  └ ' : '  ├ ', tone: 'muted' },",
   "border:packages/mayfly/src/components/transcript-view.ts:const guide = span(last ? '      ' : '  │   ', 'muted')",
@@ -51,10 +49,6 @@ const approvedPresentation = new Set([
   "padding:packages/mayfly/src/transcript/banner-art.ts:'⠱⣦⣄⣀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⣠⣴⠎'.padEnd(LOGO_COLS),",
   "padding:packages/mayfly/src/transcript/banner.ts:return { text: `${truncated}${' '.repeat(pad)}`, style }",
   "padding:packages/mayfly/src/transcript/banner.ts:{ text: ' '.repeat(LOGO_TEXT_GAP), style: 'logo' },",
-  "padding:packages/mayfly/src/transcript/status-model.ts:? leftText + ' '.repeat(Math.max(0, width - leftWidth))",
-  "padding:packages/mayfly/src/transcript/status-model.ts:? ' '.repeat(Math.max(0, width - rightWidth)) + rightText",
-  "padding:packages/mayfly/src/transcript/status-model.ts:+ ' '.repeat(Math.max(0, centerStart - leftWidth))",
-  "padding:packages/mayfly/src/transcript/status-model.ts:+ ' '.repeat(Math.max(0, width - centerStart - centerWidth - rightWidth))",
   "pointer:packages/mayfly/src/interaction/update-command.ts:ui.text([`v${fromVersion} → v${toVersion}`, detail, t('The update is kept only after a successful startup check.')].filter(Boolean).join(' · '), { tone: 'warning' }),",
   "pointer:packages/mayfly/src/interaction/update-command.ts:{ kind: 'divider', label: `v${fromVersion} → v${toVersion}` },",
   "pointer:packages/mayfly/src/transcript/stream-facts.ts:const tokens = mark?.before !== undefined && mark.after !== undefined ? `${approx(mark.before)} → ${approx(mark.after)} ${t('tokens')}`",

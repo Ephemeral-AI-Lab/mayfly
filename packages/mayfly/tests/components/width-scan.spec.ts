@@ -65,7 +65,7 @@ function renderStream(rows: readonly StreamRow[], width: number, text: string): 
 
 /** The stream rows of one adversarial text: every content-rendering row kind, in each of its tiers and shapes. */
 function streamRows(text: string): StreamRow[] {
-  const compaction: CompactionFacts = { state: 'running', title: text, compact: false, bar: { from: 40, to: 40, drain: false, rev: 1 }, progress: ['summarizing', text], percent: 40 }
+  const compaction: CompactionFacts = { state: 'running', title: text, compact: false, bar: { from: 40, to: 40, drain: false, rev: 1, labeled: true }, progress: ['summarizing', text], percent: 40 }
   return [
     { kind: 'prompt', id: 'u1', text, images: [{ attachmentId: 'a1', alt: `[image] 1 · ${text}` }], open: false },
     { kind: 'prompt', id: 'u2', text: `${text}\n${text}\n${text}\n${text}\n${text}\n${text}`, images: [], open: true },
@@ -103,7 +103,7 @@ function streamRows(text: string): StreamRow[] {
     { kind: 'tools', id: 'g6', state: 'partial', name: text, head: text, failed: text, interrupted: text, items: [{ state: 'cancelled', label: text, outcome: 'interrupted' }, { state: 'error', label: text, outcome: 'outcome unknown' }, { state: 'ok', label: text }] },
     // The compaction row: running, settled, failed, the Compact level, a summary, and a manual `/compact` after its turn.
     { kind: 'compaction', id: 'c1', facts: compaction, hint: text, summary: [text, text], more: text },
-    { kind: 'compaction', id: 'c2', facts: { state: 'ok', title: text, compact: false, change: text, tokens: text, trigger: text, bar: { from: 100, to: 100, drain: false, rev: 2 } } },
+    { kind: 'compaction', id: 'c2', facts: { state: 'ok', title: text, compact: false, change: text, tokens: text, trigger: text, bar: { from: 100, to: 100, drain: false, rev: 2, labeled: true } } },
     { kind: 'compaction', id: 'c3', facts: { state: 'error', title: text, compact: true } },
     { kind: 'compaction', id: 'c4', facts: { state: 'ok', title: text, compact: true, change: text }, trailing: true },
     { kind: 'error', id: 'e1', text },
@@ -134,8 +134,8 @@ function notificationFacts(text: string): (NotificationRowFacts | undefined)[] {
     { chip: text },
     { chip: text, notice: { severity: 'error', message: text, waiting: 3 } },
     { hint: text },
-    { keys: text, hint: text },
-    { keys: text, notice: { severity: 'warning', message: text } },
+    { keys: [{ text, priority: 0 }, { text, priority: 1 }], hint: text },
+    { keys: [{ text, priority: 0 }, { text, priority: 1 }], notice: { severity: 'warning', message: text, tail: text.slice(-3) } },
   ]
 }
 
@@ -170,9 +170,9 @@ describe('components width-scan', () => {
 
     it(`CompactionRow survives ${name}`, () => {
       const facts: CompactionFacts[] = [
-        { state: 'running', title: text, compact: false, bar: { from: 40, to: 40, drain: false, rev: 1 }, progress: ['applying', text], percent: 40 },
+        { state: 'running', title: text, compact: false, bar: { from: 40, to: 40, drain: false, rev: 1, labeled: true }, progress: ['applying', text], percent: 40 },
         { state: 'running', title: text, compact: true, progress: [text] },
-        { state: 'ok', title: text, compact: false, bar: { from: 40, to: 100, drain: true, rev: 2 }, change: text, tokens: text, trigger: 'auto' },
+        { state: 'ok', title: text, compact: false, bar: { from: 40, to: 100, drain: true, rev: 2, labeled: true }, change: text, tokens: text, trigger: 'auto' },
         { state: 'error', title: text, compact: false },
       ]
       for (const item of facts) {

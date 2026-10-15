@@ -1,6 +1,6 @@
 # Bottom panes
 
-Between the transcript and the input editor sits the **bottom dock**: five passive panes stacked by priority, top to bottom workflow → agents → todo → queue → activity, so the activity row sits directly above the editor (the status bar stays below it). Panes with nothing to say render zero rows, so the dock does not jump. BTW and sessions opened from `/agents` are not panes: they are side conversations shown in the transcript pane.
+Between the transcript and the input editor sits the **bottom dock**: four passive panes stacked by priority, top to bottom workflow → queue → activity → notification, so the notification row sits directly above the editor (the status bar stays below it). Agents, jobs, goal, and todo are not panes: they are the items of the status row ([Status bar](/en/features/status-bar)). Panes with nothing to say render zero rows, so the dock does not jump. BTW and sessions opened from `/agents` are not panes: they are side conversations shown in the transcript pane.
 
 ## Dock budget
 
@@ -20,7 +20,7 @@ The one live-status row for the current Agent: the transcript only records what 
 | Mode | Presentation |
 | --- | --- |
 | waiting | fill glyph + `Deep diving`; while a tool call's arguments still stream, its preparing label (`Preparing to write files`) |
-| tool | still `●` + the running category (`Running commands`, `Reading files`, `Calling tools`); a subagent spawn keeps `Deep diving` because the agents pane shows it |
+| tool | still `●` + the running category (`Running commands`, `Reading files`, `Calling tools`); a subagent spawn keeps `Deep diving` because the Agents item shows it |
 | thinking | bloom glyph + `Thinking` |
 | composing | fill glyph + `Writing` — no output cursor; this line is the "writing" signal |
 | stopping | a static `■ interrupting...` while an interrupt drains |
@@ -28,6 +28,12 @@ The one live-status row for the current Agent: the transcript only records what 
 | dialog open | the row hides (a panel holds the editor slot) |
 
 In Standard, the tip's slot carries the running action instead: the command, path, or query (a generic or MCP tool shows its name, `server › tool`), or the latest reasoning paragraph while thinking. Compact stays minimal, and Detailed and Verbose already show the running card in the transcript, so they carry no detail; neither does a file write or edit, whose diff card is on screen. As the terminal narrows, the row sheds the tail first (a long detail truncates before it goes), then the rate, the counters, the elapsed time, and finally the label; it never wraps.
+
+## Notification pane
+
+One row on the line above the editor — blank when there is nothing to say, so the editor never moves. It shows the notice to read now, the most severe and then the newest of the app's and the current session's records, with a muted `· +N` for the ones waiting behind it. The notice sits at the right edge and may use the whole row between the margins; a notice that is still too long is cut at its front with `…` and keeps its tail, the count or countdown it ends with (`⚠ Rate lim… · retrying in 9s · 1/5`). When the stream is scrolled away from its tail the row also carries the centered `Back to bottom · Ctrl+↓` chip. Side conversations put `F7 btw · F8 close` at its right in place of its idle hint.
+
+While focus is on the conversation or on a search, the keys of that mode take the left of the row as parts the row sheds by priority — `↑/↓ select · Enter expand · c copy · / ? search · Ctrl+G editor · Ctrl+C JSON · Esc back` — and `Esc` is the last to go; the notice yields to its glyph and its tail while the mode holds.
 
 ## Queue pane
 
@@ -55,12 +61,12 @@ Mayfly keeps the primary conversation and any number of side conversations open 
 - only the displayed conversation and its `F7` counterpart keep transcript state; the others hold nothing until you return to them, so many open conversations stay cheap;
 - in `/agents`, `Enter` views a child, `Space` or `←` / `→` expand a branch, and `Tab` reaches **Stop selected**, which asks a Yes / No confirmation (No focused) before stopping a live continuable child. For a one-shot or cold/inactive child, or one that still owns live descendants, Stop shows why it cannot run instead of asking. `/agents stop <id>` is the direct path. Harness recursively releases live descendants owned by a destroyed Agent, so Mayfly refuses a target that still owns live descendants and requires leaf-first teardown.
 
-## Subagent-group pane (agents)
+## Agents view
 
-While the agent's **subagent group** runs, its group card stays in the dock above the todo pane (the kimi swarm-pane semantics). Spawn-class calls (`subagent` and any `subagent_*` provider) appear in the transcript as one-row members, count as subagents in the settled turn header, and join a group title (`Coordinated subagents`) once they settle; the activity row leaves them to this pane. This pane alone shows each agent live: its task, phase, model, effort, estimated output (`↓`, characters / 4), tools, elapsed time, tokens, and current activity. The summary row adds a phase breakdown only when phases differ, and a group clock only when several agents run. A settled group stays until the next turn starts; a call left unanswered when its turn ended reads `cancelled` rather than running forever.
+The subagents of the conversation are the **Agents view** of the status row, not a dock pane. The row shows `● agents 1/3 41s` (settled over all, and how long the oldest working one has run), and it stays for the whole conversation: `✓ agents 3/3 41s`, or `✕` when one failed on its own; a subagent you stopped is no failure. Spawn-class calls (`subagent` and any `subagent_*` provider) are the members, so a subagent shows from the moment its call starts: a call without a result is a **foreground** subagent that blocks the turn (`fg`), one whose `started subagent` acknowledgement landed is a **background** one (`bg`). In the transcript the call's line follows its child: `● Subagent(…) · running in background`, then `✓ … 41s`, `✕ … failed`, or `⊘ … stopped`.
 
-The card stays compact as the group grows: every member is one truncated row; with more than three members, running members are listed first and the current activity folds into the end of each row instead of a line of its own (a failed member keeps its `Error:` line); and with more than six members the card keeps every running member, then the most recent settled ones, closing with `└─ … +K more (3 done, 1 failed)`. The summary counts always cover the whole group.
+`Alt+↓` opens the panel under the row: a list of every subagent of the conversation, the working ones first, one aligned line each — the mark (`●` working, `✓` done, `✕` failed, `⊘` stopped), the name, the task, `fg`/`bg`, tool count, tokens (total, `↑` in, `↓` out), the output rate while it streams, and the time last. A narrow row gives up columns in a set order (the rate, the `↑` count, the `↓` count, the tag, the tools) and keeps the name, the task, and the time. `↑/↓` choose a row, `Enter` opens its conversation exactly as `/agents` does (`F8` closes it and returns to the view that opened it; `/agents` opens its own browser, which does not return here), `x` stops a continuable child behind a Yes / No confirmation (No focused), and `b` (foreground to background) is listed but unavailable until Harness has a call that ends a running foreground call early. A side conversation (`/btw` or a subagent) lists only the subagents it spawned itself.
 
 ## Workflow pane
 
-After native `workflow/*` lifecycle facts are attributed to the current Agent, this pane shows the workflow name, current phase, running/completed/failed child-Agent tree, and elapsed time updated once per second. Like the agents card, a run with more than six agents lists its running agents first and counts the rest in a closing `… +K more` row. A settled summary remains until the next relevant state replacement; switching the displayed conversation switches this pane with every other session-scoped surface.
+After native `workflow/*` lifecycle facts are attributed to the current Agent, this pane shows the workflow name, current phase, running/completed/failed child-Agent tree, and elapsed time updated once per second. A run with more than six agents lists its running agents first and counts the rest in a closing `… +K more` row. A settled summary remains until the next relevant state replacement; switching the displayed conversation switches this pane with every other session-scoped surface.

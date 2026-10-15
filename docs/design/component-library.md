@@ -1054,7 +1054,7 @@ basic-component addition (§6.4), never private code.
 
 ### 5.1 Status area
 
-**Built from:** `rich-text`, `stack` (priority admission) for both rows; `surface`, `tabs`, `list`, `scroll`, `actions` for the views panel. Scene: Status area.
+**Built from:** `rich-text`, `shed`, `stack` (priority admission, with the `underline` mark of a child) for the row; `list` (with `cells`), `scroll` (`expandable: false`, `more`), `actions` for the views panels. Scene: Status area. *Effect accepted in the Phase 5 rounds; the goldens are pending the phase gate (implementation-roadmap, Phase 5 finalization).*
 
 The status area is **one row** under the editor, built from the priority-admission row, so a plugin adds an entry to it
 (the Loop plugin's `↻ loop 15m` beside the model) with the same call as the facts and the items. It carries the facts of
@@ -1107,7 +1107,7 @@ pane too (§3.3).
 `━` line under that item's words marks it (never a background), and its panel opens under the line. `←`/`→` move the mark
 between items (items without a view are skipped), `↑`/`↓` select a row, `Enter` opens, `x` stops an agent or job behind the
 shared Yes/No, and `Esc` returns to the prompt. Goal and todo have no row to select: the panel scrolls (`↑`/`↓`). Goal and
-todo no longer appear in the conversation stream; they live here, so the stream carries only the conversation.
+todo list does not appear in the conversation stream. Goal changes and goal rounds still appear there as rows (`Goal set · …`, `── goal round N ──`).
 
 **Item rules** (the owner's, for every item: jobs, agents, goal, todo). They are the style later items follow.
 
@@ -1168,16 +1168,20 @@ queued (2)  ⏎ "also update the footer"  ⏎ "keep the hero copy shor…"  ↑ 
   (inserted as text), each with its own key line (`Tab complete · Enter insert · Esc close`).
 
 **Notices** live in the **notification pane**: one row on the blank line above the editor, under the activity block,
-right-aligned and never wider than half the terminal. It shows one notice at a time, the most severe and then the
-newest, with a muted `· +N` for the ones waiting, and it is there (blank) when nothing shows, so the editor never
-shifts. Its content is the notification lane (the commands' and extensions' feedback: `✓` and `ℹ` leave after five
+right-aligned, using the whole row between the stream's margins (a three-column margin at the right edge) when nothing else
+shares it. It shows one notice at a time, the most severe and then the newest, with a muted `· +N` for the ones waiting,
+and it is there (blank) when nothing shows, so the editor never shifts. A notice still too long for the row is cut at its
+front with `…` and keeps its **tail**, the end of its message a count or a countdown makes (`⚠ Rate lim… · retrying in 9s ·
+1/5`; `MayflyFeedback.tail`, an end of `message`); a tail wider than the row falls back to the plain cut.
+The keys of the focus mode (conversation and search) take the left of the same row, as parts that shed by priority
+(`↑/↓ select · Enter expand · c copy · / ? search · Ctrl+G editor · Ctrl+C JSON · Esc back`; `Esc` is the last to go), and the notice yields to its glyph
+and its tail while the mode holds. Its content is the notification lane (the commands' and extensions' feedback: `✓` and `ℹ` leave after five
 seconds of visible time, `⚠` and `✗` stay) and the notices the session's facts raise: `⚠ Rate limited · retrying in 9s ·
 1/5` (a provider failure with HTTP status 429; any other failure reads `Provider error`), `⚠ Context 93% full · /compact
 now` (from 92% of the window, until a compaction lowers it), and `ℹ Resumed session · 24 turns · last active 2h ago`
 (five seconds; once, when the main session is first attached, never when switching between conversations). The footer under the editor keeps only the slash hint. When the stream is scrolled away from its
 tail, the same row carries the chip back to it, centered and inverse (`Back to bottom · Ctrl+↓`, or `2 new turns ·
-Ctrl+↓`): the notice takes only the room right of the chip, so the two never overlap (at 100 columns the notice keeps
-about 40 columns, at 60 about 12). Offline and a low balance are not raised: the
+Ctrl+↓`): the notice takes only the room right of the chip, so the two never overlap. Offline and a low balance are not raised: the
 Harness has no offline signal and the balance is not read yet. An undo toast is not built.
 
 ### 5.3 Activity row and tool rows
@@ -1324,7 +1328,7 @@ a wording change, not a code change, and each has a Chinese counterpart.
 
 ### 5.4 Goal and todo views
 
-**Built from:** `rich-text`, `stack`, `scroll` (fixed `height`, `expandable: false`) and the shared helpers of
+**Built from:** `rich-text`, `stack`, `scroll` (fixed `height`, `expandable: false`) and the shared helpers of *Effect accepted in the Phase 5 rounds; the goldens are pending the phase gate (implementation-roadmap, Phase 5 finalization).*
 `transcript/view-items.ts`. Scenario: `footerCutover`.
 
 Goal and todo are items of the status row (§5.1) that follow its item rules. Each has a compact form in the row and a
@@ -1359,7 +1363,7 @@ The queue is not a view: queued messages are the editor's truncated line (§5.2)
 
 ### 5.5 Agents and jobs views
 
-**Built from:** `surface` (`none`), `list` (windowed), `actions` (hidden `delete` and `b`). Scene: Status area.
+**Built from:** `surface` (`none`), `list` (windowed), `actions` (hidden `delete` and `b`). Scene: Status area. *Effect accepted in the Phase 5 rounds; the goldens are pending the phase gate (implementation-roadmap, Phase 5 finalization).*
 
 Agents and jobs are items of the status row (§5.1). **Agents is the one item that keeps its finished members**: a
 completed subagent is part of the conversation, not history, so the item and its panel keep every subagent of the
@@ -2405,8 +2409,8 @@ interactive scene is driven by the kit's key engine, so what you press is what a
   flow is the editor's); `c`, `x`, and `n` in sessions act on mock data; `Ctrl+Y` / `Ctrl+R` in the account scene
   fire a feedback line; the stream's `c` and `Ctrl+G` only report what they would copy or open; some scenes use a
   `Ctrl` key where the design names a bare one because bare letters are the scene's own demo toggles.
-- **Motion.** The views' fan-out stagger and row flash are not drawn, and row 2 is always present instead of only while
-  a view has something to show.
+- **Motion.** The views' fan-out stagger and row flash are not drawn. The prototype's second row is gone: the status area is
+  one row, and an item with nothing to show is absent.
 - **Illustrative painters.** Charts, the Mermaid diagram, markdown, and highlighted code are hand-drawn approximations;
   this document is the specification.
 - **Mock data.** Plugins, sessions, balances, models, the trace, the activity heatmap, and the conversation are

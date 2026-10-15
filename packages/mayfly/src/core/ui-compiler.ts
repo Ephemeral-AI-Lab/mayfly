@@ -1293,7 +1293,10 @@ function contextKeyHintRows(state: FocusState, options: RuntimeCompilerOptions, 
   const translate = (key: string): string => {
     try { return options.contextHints?.translate?.(key) ?? key } catch { return key }
   }
-  const candidates: HintPart[][] = []
+  // Labels outrank completeness: the labeled row sheds its least important part before any part loses its label, down to two
+  // parts; only then do the bare keys of every part (and last, of one) take over.
+  const labeled: HintPart[][] = []
+  const bare: HintPart[][] = []
   for (let count = parts.length; count > 0; count -= 1) {
     const retained = new Set(parts
       .map((part, index) => ({ part, index }))
@@ -1301,11 +1304,13 @@ function contextKeyHintRows(state: FocusState, options: RuntimeCompilerOptions, 
       .slice(0, count)
       .map(entry => entry.part.id))
     const candidate = parts.filter(part => retained.has(part.id))
-    candidates.push(
-      candidate.map(part => part.label === undefined ? { keys: part.keys } : { keys: part.keys, label: translate(part.label) }),
-      candidate.map(part => ({ keys: part.compact })),
-    )
+    const row = candidate.map(part => part.label === undefined ? { keys: part.keys } : { keys: part.keys, label: translate(part.label) })
+    const keys = candidate.map(part => ({ keys: part.compact }))
+    if (count >= Math.min(2, parts.length)) labeled.push(row)
+    else bare.push(row)
+    bare.push(keys)
   }
+  const candidates = [...labeled, ...bare]
   const safeWidth = Math.max(1, Math.floor(width))
   // The painted row is a pure function of the translated candidates, the width, and the palette, so an unchanged hint
   // answers from the surface's memo while the parts themselves are still read fresh on every paint.

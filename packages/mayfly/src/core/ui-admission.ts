@@ -93,7 +93,7 @@ function contentWidth(row: string, components: Pick<MayflyComponents, 'visibleWi
  * It mirrors `layoutBands` exactly: the same room for the center, the same right edge.
  */
 function bandStarts(widths: { readonly left: number, readonly center: number, readonly right: number }, width: number, gap: number): { readonly left: number, readonly center: number, readonly right: number } {
-  if (widths.center === 0) return { left: 0, center: 0, right: widths.right === 0 ? widths.left : widths.left + Math.max(gap, width - widths.left - widths.right) }
+  if (widths.center === 0) return { left: 0, center: 0, right: widths.right === 0 ? widths.left : widths.left + Math.max(widths.left === 0 ? 0 : gap, width - widths.left - widths.right) }
   const roomStart = widths.left + (widths.left === 0 ? 0 : gap)
   const roomEnd = Math.max(roomStart, width - widths.right - (widths.right === 0 ? 0 : gap))
   const start = Math.min(Math.max(roomStart, Math.floor((width - widths.center) / 2)), Math.max(roomStart, roomEnd - widths.center))
@@ -108,7 +108,8 @@ export function layoutBands(bands: { readonly left: string, readonly center: str
   const left = components.visibleWidth(bands.left)
   const center = components.visibleWidth(bands.center)
   const right = components.visibleWidth(bands.right)
-  if (bands.center === '') return bands.right === '' ? bands.left : `${bands.left}${' '.repeat(Math.max(gap, width - left - right))}${bands.right}`
+  // With nothing at the left a right cluster sits at the edge and may fill the row; the gap only parts it from a left cluster.
+  if (bands.center === '') return bands.right === '' ? bands.left : `${bands.left}${' '.repeat(Math.max(bands.left === '' ? 0 : gap, width - left - right))}${bands.right}`
   const roomStart = left + (bands.left === '' ? 0 : gap)
   const roomEnd = Math.max(roomStart, width - right - (bands.right === '' ? 0 : gap))
   const start = Math.min(Math.max(roomStart, Math.floor((width - center) / 2)), Math.max(roomStart, roomEnd - center))

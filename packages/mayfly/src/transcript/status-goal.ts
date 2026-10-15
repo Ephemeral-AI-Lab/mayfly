@@ -1,5 +1,5 @@
 /**
- * The Goal item of status row 2: a views pane whose summary (`● goal 2/8 1m 59s`: the mark, the rounds over their cap, and
+ * The Goal item of the status row: a views pane whose summary (`● goal 2/8 1m 59s`: the mark, the rounds over their cap, and
  * the time) sits in the row and whose panel (the whole objective, a blocked goal's code and reason, and the keys of the
  * `/goal` subcommands: `r` resume, `p` pause, `e` edit, `c` clear) opens under the row while the view is entered. The mark is the phase (`●` active and armed, `○` active but disarmed,
  * `⏸` paused, `✕` blocked, `✓` complete); a goal that finishes keeps its item for a few seconds and then leaves.
@@ -61,7 +61,7 @@ export interface GoalItemState {
 }
 
 /**
- * The row-2 summary: its mark, `goal`, the rounds over their cap, and the time: `● goal 2/8 1m 59s`. An armed goal's time
+ * The item in the row: its mark, `goal`, the rounds over their cap, and the time: `● goal 2/8 1m 59s`. An armed goal's time
  * runs; any other state shows the time it had at its last change. Just completed it is `✓ goal 2/8 1m 59s`. The
  * objective and the state in words are the panel's.
  * @param state - the goal.

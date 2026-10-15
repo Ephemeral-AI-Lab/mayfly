@@ -1,4 +1,4 @@
-/** The gallery's view of status row 2, registered through the public pane service.
+/** The gallery's view of the status row, registered through the public pane service.
  * @module @mayfly-example/ui-gallery/tests/views
  */
 import { Context } from '@deepseek-ai/cordis'
@@ -28,25 +28,25 @@ describe('ui gallery view', () => {
   it('registers a view with a summary beside the showcase pane', async () => {
     const { entry, ctx } = await boot()
     expect(entry().definition.placement).toBe('views')
-    expect(entry().summary!.count).toBe(2)
+    expect(JSON.stringify(entry().summary)).toContain('2 runs')
     expect(ctx.mayflyPanes.list().map(pane => pane.id)).toContain('example.ui-gallery.showcase')
   })
 
   it('tracks another run by republishing the summary and the panel, up to the last run', async () => {
     const { entry, activate } = await boot()
     await expect(activate('gallery-view-track')).resolves.toMatchObject({ kind: 'completed' })
-    expect(entry().summary!.count).toBe(3)
+    expect(JSON.stringify(entry().summary)).toContain('3 runs')
     expect(JSON.stringify(entry().node)).toContain('gallery-view-lint')
     await activate('gallery-view-track')
-    expect(entry().summary!.count).toBe(3)
+    expect(JSON.stringify(entry().summary)).toContain('3 runs')
   })
 
-  it('takes itself out of row 2 and comes back on the next track; other events settle quietly', async () => {
+  it('takes itself out of the status row and comes back on the next track; other events settle quietly', async () => {
     const { entry, activate } = await boot()
     await activate('gallery-view-clear')
     expect(entry().summary).toBeNull()
     await activate('gallery-view-track')
-    expect(entry().summary!.count).toBe(3)
+    expect(JSON.stringify(entry().summary)).toContain('3 runs')
     const current = entry()
     const quiet = await current.definition.onEvent!.action!({ kind: 'dismiss', pagePath: [] } as never, { surfaceId: current.id, operationId: 'q', source: current.source, revision: current.revision, signal: new AbortController().signal, report: vi.fn() })
     expect(quiet).toEqual({ kind: 'completed' })

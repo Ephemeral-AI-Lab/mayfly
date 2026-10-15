@@ -86,7 +86,6 @@ export interface StatusEntryView {
   readonly id: string
   readonly priority: number
   readonly align: 'left' | 'right' | undefined
-  readonly row: 1 | 2 | undefined
   render(width: number): string
 }
 
@@ -393,7 +392,6 @@ export async function bootStatusPlugin(
     get id() { return currentModel()?.id ?? '' },
     get priority() { return currentModel()?.definition.priority ?? 0 },
     get align() { return currentModel()?.definition.band === 'right' ? 'right' : currentModel() === undefined ? undefined : 'left' },
-    get row() { return currentModel()?.definition.row },
     render: width => {
       const model = currentModel()
       if (model === undefined || width <= 0) return ''

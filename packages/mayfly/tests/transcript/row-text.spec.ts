@@ -75,6 +75,14 @@ describe('partText in text mode', () => {
     expect(text(entry(search))).toBe('web_search(mayfly)\nA https://a.dev\nhttps://b.dev\ndone')
   })
 
+  it('gives a goal change its objective and, when it is blocked, the reason; a round marker has no text to copy', () => {
+    const goal = (extra: Record<string, unknown>) => ({ ...base, id: 'goal:1', kind: 'transcript-goal-change', operation: 'block', ...extra }) as unknown as TranscriptEntryModel
+    expect(text(entry(goal({ objective: 'ship the footer', blockedReason: { code: 'tests-red', message: 'the suite fails' } })))).toBe('ship the footer\nthe suite fails')
+    expect(text(entry(goal({ operation: 'pause' })))).toBe('')
+    expect(text(entry(goal({ operation: 'create', objective: 'ship it' })))).toBe('ship it')
+    expect(text(entry({ ...base, id: 'goal-round:2', kind: 'transcript-goal-round', round: 2 } as unknown as TranscriptEntryModel))).toBe('')
+  })
+
   it('gives a plan as its Markdown from the arguments', () => {
     expect(text(entry(tool({ name: 'plan', activity: 'plan', arguments: JSON.stringify({ plan: '# Step 1\n- 做' }) })))).toBe('# Step 1\n- 做')
   })

@@ -82,6 +82,7 @@ const COVERS = {
   retries: [`${TRANSCRIPT}transcript-model.ts`, `${INTERACTION}trace-*.ts`, ...NOTIFICATION, ...STREAM],
   sideQuestion: [`${INTERACTION}btw-command.ts`, `${INTERACTION}conversation-view-status.ts`],
   notices: [...NOTIFICATION],
+  carryOvers: [...NOTIFICATION, ...COMPACTION, ...REQUEST, `${INTERACTION}approval-plugin.ts`, `${TRANSCRIPT}status-cwd.ts`, 'packages/ui/src/interaction.ts'],
   notificationPane: [...NOTIFICATION, ...COMPACTION],
   modes: [`${INTERACTION}mode-status.ts`, `${TRANSCRIPT}status-rows.ts`],
   edge: [...STREAM, 'packages/mayfly/src/core/width.ts'],
@@ -763,6 +764,23 @@ const SCRIPTS = {
     play('relieved', TIMED), checkpoint('relieved'),
     play(), checkpoint('end'),
   ],
+  // The Phase 3 carry-overs (O2, O3, O4) in one conversation: a rate-limit and a provider-error notice over a turn (the front cut with `…`
+  // at the narrow widths, the countdown kept), a compaction with no context window (the bar moves, no percentage), a notice that stays
+  // while the conversation's keys and then a search take the left of the row (they shed by priority, `Esc` last), and the approval
+  // card's hint row (labels kept at 40 columns). Run it at 100, 60, and 40 columns (`--width`).
+  carryOvers: [
+    play('rate-limited', TIMED), checkpoint('rate-limited'),
+    play('provider-error', TIMED), checkpoint('provider-error'),
+    play('summarizing', TIMED), checkpoint('summarizing'),
+    play('applying', TIMED), checkpoint('applying'),
+    play('compacted', TIMED), checkpoint('compacted'),
+    play('notice', TIMED), checkpoint('notice'),
+    key('alt+up'), checkpoint('conversation-keys'),
+    key('?'), type('needle'), key('enter'), checkpoint('search-keys'),
+    key('esc'), checkpoint('search-ended'), key('esc'),
+    play(), wait(ARMED), checkpoint('asking'),
+    key('1'), play(), checkpoint('end'),
+  ],
   // Each severity of the lane over a running turn, one at a time.
   notices: [
     play('info', TIMED), checkpoint('info'),
@@ -948,6 +966,7 @@ const SIZES = {
   manualCompact: [[120, 40], [60, 30]],
   context: [[120, 40], [60, 30]],
   notices: [[120, 40], [60, 30]],
+  carryOvers: [[100, 40], [60, 30], [40, 24]],
   approvals: [[120, 40], [60, 30]],
   approvalsRejected: [[120, 40], [60, 30]],
   approvalsEdit: [[120, 56], [60, 44]],

@@ -9,6 +9,7 @@
 
 import { describe, expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
+import type { GoalProjection } from '@deepseek-ai/dsh-goal'
 import { initialConversationFacts } from '../../src/conversation/facts.ts'
 import type { ConversationFacts } from '../../src/conversation/types.ts'
 import { UiInteractionService } from '../../src/core/ui-interaction-state.ts'
@@ -22,6 +23,8 @@ const NOW = 1_700_000_000_000
 class HandFacts {
   current: ConversationFacts = initialConversationFacts()
   currentAgent: { readonly id: string, readonly status: string } | undefined = { id: 'agent-1', status: 'idle' }
+  currentGoal: GoalProjection | null = null
+  private readonly goalListeners = new Set<(goal: GoalProjection | null) => void>()
   private readonly listeners = new Set<(facts: ConversationFacts) => void>()
   private readonly agentListeners = new Set<(agent: unknown) => void>()
 
@@ -41,6 +44,16 @@ class HandFacts {
     this.listeners.add(listener)
     listener(this.current)
     return () => { this.listeners.delete(listener) }
+  }
+
+  setGoal(goal: GoalProjection | null): void {
+    this.currentGoal = goal
+    for (const listener of this.goalListeners) listener(goal)
+  }
+
+  subscribeGoal(listener: (goal: GoalProjection | null) => void): () => void {
+    this.goalListeners.add(listener)
+    return () => { this.goalListeners.delete(listener) }
   }
 
   subscribeAgent(listener: (agent: unknown) => void): () => void {
@@ -69,6 +82,8 @@ interface Harness {
   clock: { now: number }
   /** The texts of the notices the lane holds, by their producer id. */
   notices(): Record<string, string>
+  /** The tails the lane records carry (the end of the message that a narrow row keeps whole), by producer id. */
+  tails(): Record<string, string | undefined>
   dispose(): Promise<void>
 }
 
@@ -89,6 +104,7 @@ async function boot(facts = new HandFacts(), provided: { readonly facts?: boolea
   return {
     ctx, facts, tick, lane, clock,
     notices: () => Object.fromEntries(lane.notificationSnapshot().map(record => [record.id.replace(/^mayfly\.notices\/\d+\//u, ''), record.message])),
+    tails: () => Object.fromEntries(lane.notificationSnapshot().map(record => [record.id.replace(/^mayfly\.notices\/\d+\//u, ''), record.tail])),
     dispose: () => fiber.dispose(),
   }
 }
@@ -103,13 +119,16 @@ describe('notices from the session facts', () => {
     const harness = await boot()
     harness.facts.set({ retrying: retry(429) })
     expect(harness.notices()).toEqual({ 'notice/retry': 'Rate limited · retrying in 5s · 1/5' })
+    expect(harness.tails()).toEqual({ 'notice/retry': 'retrying in 5s · 1/5' })
     await harness.dispose()
   })
 
   it('says any other failure as a provider error, with the reason the Harness gave', async () => {
     const harness = await boot()
     harness.facts.set({ retrying: retry(503, { reason: 'overloaded' }) })
-    expect(harness.notices()).toEqual({ 'notice/retry': 'Provider error · retrying in 5s · 1/5 · overloaded' })
+    expect(harness.notices()).toEqual({ 'notice/retry': 'Provider error · overloaded · retrying in 5s · 1/5' })
+    // The wait is the tail: a narrow row cuts the front and keeps the countdown.
+    expect(harness.tails()).toEqual({ 'notice/retry': 'retrying in 5s · 1/5' })
     await harness.dispose()
   })
 
@@ -121,6 +140,7 @@ describe('notices from the session facts', () => {
     expect(harness.notices()).toEqual({ 'notice/retry': 'Rate limited · retrying in 3s · 1/5' })
     harness.tick.fire(NOW + 5_000)
     expect(harness.notices()).toEqual({ 'notice/retry': 'Rate limited · retrying 1/5…' })
+    expect(harness.tails()).toEqual({ 'notice/retry': 'retrying 1/5…' })
     await harness.dispose()
   })
 
@@ -232,5 +252,29 @@ describe('notices from the session facts', () => {
     await harness.dispose()
     expect(harness.lane.notificationSnapshot()).toEqual([])
     expect(harness.tick.listeners.size).toBe(0)
+  })
+  it('holds a notice while the goal is blocked, with its code and message, and clears it with the block', async () => {
+    const harness = await boot()
+    const goal = (phase: 'active' | 'blocked'): GoalProjection => ({
+      goal: { id: 'goal-1', revision: 2, objective: 'ship it', phase, ...phase === 'blocked' ? { blockedReason: { code: 'tests-red', message: 'the suite fails' } } : {}, maxGoalRounds: 8 },
+      roundsStarted: 1, createdAt: 1, updatedAt: 2,
+    } as unknown as GoalProjection)
+    harness.facts.setGoal(goal('blocked'))
+    expect(harness.notices()).toEqual({ 'notice/goal': 'Goal blocked · tests-red: the suite fails' })
+    expect(harness.lane.notificationSnapshot()[0]).toMatchObject({ severity: 'warning' })
+    harness.facts.setGoal(goal('active'))
+    expect(harness.notices()).toEqual({})
+    harness.facts.setGoal(goal('blocked'))
+    harness.facts.setGoal(null)
+    expect(harness.notices()).toEqual({})
+    await harness.dispose()
+  })
+
+  it('reports a goal that is already blocked when the Agent switches to its session', async () => {
+    const harness = await boot()
+    harness.facts.currentGoal = { goal: { id: 'g', revision: 1, objective: 'o', phase: 'blocked', blockedReason: { code: 'cap', message: 'round cap reached' }, maxGoalRounds: 8 }, roundsStarted: 8, createdAt: 1, updatedAt: 2 } as unknown as GoalProjection
+    harness.facts.switchTo({ id: 'agent-2', status: 'idle' }, {})
+    expect(harness.notices()).toMatchObject({ 'notice/goal': 'Goal blocked · cap: round cap reached' })
+    await harness.dispose()
   })
 })

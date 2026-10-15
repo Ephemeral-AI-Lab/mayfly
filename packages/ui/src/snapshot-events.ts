@@ -70,6 +70,7 @@ function validateFeedback(feedback: MayflyFeedback): void {
   if (!['info', 'success', 'warning', 'error'].includes(feedback.severity)) throw new TypeError('feedback severity is invalid')
   if (feedback.purpose !== undefined && feedback.purpose !== 'feedback' && feedback.purpose !== 'progress') throw new TypeError('feedback purpose is invalid')
   if (feedback.detail !== undefined && typeof feedback.detail !== 'string') throw new TypeError('feedback detail must be a string')
+  if (feedback.tail !== undefined && (typeof feedback.tail !== 'string' || feedback.tail.length === 0 || !feedback.message.endsWith(feedback.tail))) throw new TypeError('feedback tail must be a non-empty end of the message')
 }
 
 function isObservation(event: MayflyUiEvent): event is MayflyUiObservationEvent {

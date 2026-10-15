@@ -1,5 +1,5 @@
 /**
- * `mayfly-pane-todo` plugin: the Todo view of status row 2, a views pane over the attached session's todo list. The
+ * `mayfly-pane-todo` plugin: the Todo item of the status row, a views pane over the attached session's todo list. The
  * list comes from the replay/live whole value exposed by `mayflySessionFacts`, backed by the official
  * `mayflyConversationFacts` projection. The conversation projection routes `todo_write` calls away from transcript
  * presentation, so this view is the list's only surface. While the list is unfinished the row carries `● todo 2/12 4m 12s`
@@ -64,7 +64,7 @@ export interface TodoState {
 }
 
 /**
- * The row-2 summary: its mark, `todo`, how many are done of the list, and the elapsed time: `● todo 2/12 4m 12s`. Just
+ * The item in the row: its mark, `todo`, how many are done of the list, and the elapsed time: `● todo 2/12 4m 12s`. Just
  * settled it is `✓ todo 12/12 12s`. The item in progress and the rest are the panel's.
  * @param state - the list.
  * @param t - translator for the label.

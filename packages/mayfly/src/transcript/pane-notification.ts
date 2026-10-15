@@ -17,7 +17,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { MayflyFeedbackRecord } from '@ephemeral-ai/mayfly-ui'
 import type { MayflyConversationView } from '../app/conversation-views.ts'
 import { ACTION_CLOSE_AGENT_VIEW, ACTION_TOGGLE_AGENT_VIEW, interactionKeyHint } from '../interaction/keys.ts'
-import { NotificationLine, type NotificationFacts, type NotificationRowFacts } from '../components/notification-line.ts'
+import { NotificationLine, type NotificationFacts, type NotificationKeyPart, type NotificationRowFacts } from '../components/notification-line.ts'
 import type { MayflyFocusMode } from '../core/types.ts'
 import type { MayflyTranslate } from '../frontend/locale.ts'
 import { observeTranscriptLocale } from './locale.ts'
@@ -37,7 +37,26 @@ export function selectNotification(records: readonly MayflyFeedbackRecord[], ses
     .toSorted((left, right) => RANK[left.severity] - RANK[right.severity] || left.createdAt - right.createdAt)
   const top = visible.at(-1)
   if (top === undefined) return undefined
-  return { severity: top.severity, message: top.message, ...visible.length > 1 ? { waiting: visible.length - 1 } : {} }
+  return { severity: top.severity, message: top.message, ...top.tail === undefined ? {} : { tail: top.tail }, ...visible.length > 1 ? { waiting: visible.length - 1 } : {} }
+}
+
+/**
+ * The keys of a mode as the row sheds them: lower numbers survive a narrow row, so leaving the mode, moving, and opening a row go last.
+ * The first part reads first and is the one that stays, because the row writes the separator before every part but the first.
+ */
+function conversationKeys(t: MayflyTranslate): readonly NotificationKeyPart[] {
+  return [
+    { text: t('↑/↓ select'), priority: 1 }, { text: t('Enter expand'), priority: 2 }, { text: t('c copy'), priority: 4 }, { text: t('/ ? search'), priority: 3 },
+    { text: t('Ctrl+G editor'), priority: 5 }, { text: t('Ctrl+C JSON'), priority: 6 }, { text: t('Esc back'), priority: 0 },
+  ]
+}
+
+/** The keys while a search holds focus; `Esc end search` is the last to go. */
+function searchKeys(t: MayflyTranslate): readonly NotificationKeyPart[] {
+  return [
+    { text: t('↑/↓ or n/N match'), priority: 1 }, { text: t('Enter expand'), priority: 2 }, { text: t('c copy'), priority: 4 }, { text: t('/ ? new search'), priority: 3 },
+    { text: t('Ctrl+C JSON'), priority: 5 }, { text: t('Esc end search'), priority: 0 },
+  ]
 }
 
 /**
@@ -68,8 +87,8 @@ export function mountNotificationPane(ctx: Context, t: MayflyTranslate): void {
   const current = (): NotificationRowFacts => {
     const agent = factsService?.currentAgent
     const notice = interaction === undefined ? undefined : selectNotification(interaction.notificationSnapshot(), agent == null ? undefined : String(agent.id))
-    // With no notice the row teaches where focus can go from the prompt: up into the conversation, down to the views of status row 2.
-    return { ...notice === undefined ? {} : { notice }, ...mode === 'prompt' ? notice === undefined ? { hint: t('Alt+↑ conversation · Alt+↓ view') } : {} : mode === 'conversation' ? { keys: t('Enter expand · c copy · Ctrl+C JSON · Ctrl+G editor · ↑/↓ select · / ? search · Esc back') } : mode === 'search-select' ? { keys: t('Enter expand · c copy · Ctrl+C JSON · ↑/↓ or n/N match · / ? new search · Esc end search') } : {}, ...chip === undefined ? {} : { chip }, ...toggle() === undefined || mode !== 'prompt' ? {} : { toggle: toggle()! } }
+    // With no notice the row teaches where focus can go from the prompt: up into the conversation, down to the items of the status row.
+    return { ...notice === undefined ? {} : { notice }, ...mode === 'prompt' ? notice === undefined ? { hint: t('Alt+↑ conversation · Alt+↓ view') } : {} : mode === 'conversation' ? { keys: conversationKeys(t) } : mode === 'search-select' ? { keys: searchKeys(t) } : {}, ...chip === undefined ? {} : { chip }, ...toggle() === undefined || mode !== 'prompt' ? {} : { toggle: toggle()! } }
   }
   let shape = JSON.stringify(current() ?? null)
   const pane = ctx.mayflyPanes.register({

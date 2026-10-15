@@ -1,529 +1,220 @@
 /**
- * `mayfly-pane-todo` plugin: the todo-list bottom pane. Covers the zero-row
- * empty render, the last-write-wins snapshot scan with the folded default,
- * the kimi row selection (`selectVisibleTodos`) and its footer distribution,
- * live `session/event` increments filtered by session, the Ctrl-T
- * expand/collapse toggle with the expansion persisting across writes, the
- * dialog-slot hide/restore behavior, settled-list auto-close,
- * session-change rebinding, and the width rules.
+ * The Todo item of the status row (`pane-todo`): its summary and panel as pure functions of the list, and the view that
+ * follows the attached session's `todo/write` snapshots. Covers the unfinished summary (`● todo 2/12 4m 12s`) and the
+ * time it gives up first, the closing item (`✓ todo 6/6 12s`) held five seconds, the fixed-length scrolling panel with no
+ * heading or count, the `viewHistory` setting that lists finished rows, the interrupted line, a list that settled before
+ * the session loaded, session changes, and the Fiber's cleanup.
  */
 
+import { Context } from '@deepseek-ai/cordis'
 import { describe, expect, it } from 'vitest'
+import { MayflyLocaleService } from '../../src/frontend/locale.ts'
 import type { Session, SessionEvent } from '@deepseek-ai/dsh-session'
-import type { GoalPhase, GoalProjection } from '@deepseek-ai/dsh-goal'
 import type { TodoItem } from '@deepseek-ai/dsh-tool-todo'
-import { endsWithAffordance } from '../../src/core/surface-renderer.ts'
-import type { MayflyTranslate } from '../../src/frontend/locale.ts'
 import * as todo from '../../src/transcript/pane-todo.ts'
-import { event, resetSeq, turnEnd, turnStart, userEvent } from './helpers.ts'
-import { plainText } from '../helpers.ts'
-import { bootPanePlugin } from './pane-fakes.ts'
-import { asAgent, fakeAgent } from './status-fakes.ts'
+import { SHED } from '../../src/transcript/status-shed.ts'
+import { VIEW_PANEL_ROWS } from '../../src/transcript/view-items.ts'
+import { event, resetSeq, turnEnd, turnStart } from './helpers.ts'
+import { transcriptTranslatorFake } from './notices-fakes.ts'
+import { bootPanePlugin, HandTick } from './pane-fakes.ts'
+import { fakeAgent } from './status-fakes.ts'
 
 /** A `todo/write` whole-list snapshot event. */
 function todoWrite(todos: TodoItem[]): SessionEvent<'todo/write'> {
   return event('todo/write', { todos })
 }
 
-function goalProjection(phase: GoalPhase, options: { rounds?: number, max?: number, message?: string } = {}): GoalProjection {
-  return {
-    goal: {
-      id: 'goal-1' as GoalProjection['goal']['id'],
-      revision: 3,
-      objective: 'ship the badge',
-      phase,
-      ...(options.message === undefined ? {} : { blockedReason: { code: 'tests-red', message: options.message } }),
-      maxGoalRounds: options.max ?? 8,
-    },
-    roundsStarted: options.rounds ?? 2,
-    createdAt: 1_000,
-    updatedAt: 2_000,
-  }
+const item = (content: string, status: TodoItem['status']): TodoItem => ({ content, status })
+
+/** The text of every rich-text span under a node, in order, and the spans themselves. */
+function spansOf(node: unknown): { readonly text: string, readonly tone?: string, readonly styles?: readonly string[] }[] {
+  if (node === null || typeof node !== 'object') return []
+  if (Array.isArray(node)) return node.flatMap(spansOf)
+  const record = node as Record<string, unknown>
+  return [...record.kind === 'rich-text' ? record.spans as never[] : [], ...Object.entries(record).filter(([key]) => key !== 'spans').flatMap(([, value]) => spansOf(value))]
 }
+/** A summary's words at its full form. */
+const fullText = (summary: { readonly node: unknown } | null | undefined): string => spansOf((summary!.node as { readonly node: unknown }).node).map(span => span.text).join('')
 
-/** The canonical divider at the given width. */
-function rule(width = 80): string {
-  return '─'.repeat(width)
-}
+describe('todoSummary', () => {
+  const t = transcriptTranslatorFake
+  const state = (todos: TodoItem[], extra: Partial<todo.TodoState> = {}): todo.TodoState => ({ todos, interrupted: false, history: false, elapsedMs: 252_000, ...extra })
 
-/** The pane title row after terminal styling is stripped by the fixture. */
-const TITLE = '  Todo'
-
-/** One indented content row (identity colors: the marker paints vanish). */
-function row(glyph: string, text: string): string {
-  return `  ${glyph} ${text}`
-}
-
-/** In-progress marker. */
-const IN_PROGRESS = '●'
-
-/** Styling is renderer-owned; source-plane assertions retain the content. */
-function strike(text: string): string {
-  return text
-}
-
-/** The folded view's footer (identity colors: the muted paint vanishes). */
-function foldFooter(hidden: number, distribution = ''): string {
-  return `  … +${hidden} more${distribution.length > 0 ? ` (${distribution})` : ''} · Ctrl+T to expand`
-}
-
-/** The expanded view's footer. */
-function allFooter(total: number): string {
-  return `  all ${total} items · Ctrl+T to collapse`
-}
-
-describe('selectVisibleTodos', () => {
-  it('returns every row under the cap with nothing hidden', () => {
-    const todos: TodoItem[] = [
-      { content: 'a', status: 'completed' },
-      { content: 'b', status: 'in_progress' },
-      { content: 'c', status: 'pending' },
-    ]
-    const visible = todo.selectVisibleTodos(todos)
-    expect(visible.rows).toEqual(todos)
-    expect(visible.hidden).toBe(0)
-    expect(visible.hiddenCounts).toEqual({ completed: 0, in_progress: 0, pending: 0 })
+  it('has no summary for no list', () => {
+    expect(todo.todoSummary(state([]), t)).toBeNull()
   })
 
-  it('folds an all-pending list to the earliest rows', () => {
-    const todos = Array.from({ length: 7 }, (_, index): TodoItem => ({ content: `t${index}`, status: 'pending' }))
-    const visible = todo.selectVisibleTodos(todos)
-    expect(visible.rows.map(rowItem => rowItem.content)).toEqual(['t0', 't1', 't2', 't3', 't4'])
-    expect(visible.hidden).toBe(2)
-    expect(visible.hiddenCounts).toEqual({ completed: 0, in_progress: 0, pending: 2 })
+  it('says the mark, done over total, and the time, with the time as the form the row gives up first', () => {
+    const list = [...Array.from({ length: 2 }, (_, index) => item(`d${index}`, 'completed')), item('now', 'in_progress'), ...Array.from({ length: 9 }, (_, index) => item(`p${index}`, 'pending'))]
+    const summary = todo.todoSummary(state(list), t)!
+    expect(fullText(summary)).toBe('● todo 2/12 4m 12s')
+    const shed = summary.node as unknown as { readonly kind: string, readonly narrower: readonly { readonly rank: number, readonly node: unknown }[] }
+    expect(shed.kind).toBe('shed')
+    expect(shed.narrower.map(form => [form.rank, spansOf(form.node).map(span => span.text).join('')])).toEqual([[SHED.time, '● todo 2/12']])
+    expect(spansOf(summary.node)[0]).toEqual({ text: '●', tone: 'accent' })
   })
 
-  it('prioritizes every in-progress item, capped at the row budget', () => {
-    const todos: TodoItem[] = [
-      { content: 'p0', status: 'pending' },
-      { content: 'ip1', status: 'in_progress' },
-      { content: 'p2', status: 'pending' },
-      { content: 'ip3', status: 'in_progress' },
-      { content: 'p4', status: 'pending' },
-      { content: 'p5', status: 'pending' },
-    ]
-    const visible = todo.selectVisibleTodos(todos)
-    // Both in-progress rows plus the earliest three pending, original order.
-    expect(visible.rows.map(rowItem => rowItem.content)).toEqual(['p0', 'ip1', 'p2', 'ip3', 'p4'])
-    expect(visible.hiddenCounts).toEqual({ completed: 0, in_progress: 0, pending: 1 })
-
-    const sixBusy = Array.from({ length: 6 }, (_, index): TodoItem => ({ content: `b${index}`, status: 'in_progress' }))
-    const capped = todo.selectVisibleTodos([...sixBusy, { content: 'tail', status: 'pending' }])
-    expect(capped.rows.map(rowItem => rowItem.content)).toEqual(['b0', 'b1', 'b2', 'b3', 'b4'])
-    expect(capped.hiddenCounts).toEqual({ completed: 0, in_progress: 1, pending: 1 })
-  })
-
-  it('reserves one slot for the latest completed beside the earliest pending', () => {
-    const todos: TodoItem[] = [
-      { content: 'done-1', status: 'completed' },
-      { content: 'done-2', status: 'completed' },
-      { content: 'done-3', status: 'completed' },
-      { content: 'p1', status: 'pending' },
-      { content: 'p2', status: 'pending' },
-      { content: 'p3', status: 'pending' },
-      { content: 'p4', status: 'pending' },
-    ]
-    const visible = todo.selectVisibleTodos(todos)
-    expect(visible.rows.map(rowItem => rowItem.content)).toEqual(['done-3', 'p1', 'p2', 'p3', 'p4'])
-    expect(visible.hiddenCounts).toEqual({ completed: 2, in_progress: 0, pending: 0 })
-  })
-
-  it('lets the completed side expand when the pending side runs short', () => {
-    const todos: TodoItem[] = [
-      { content: 'only-next', status: 'pending' },
-      ...Array.from({ length: 5 }, (_, index): TodoItem => ({ content: `d${index}`, status: 'completed' })),
-    ]
-    const visible = todo.selectVisibleTodos(todos)
-    // The pending row, then the four most recent completed, original order.
-    expect(visible.rows.map(rowItem => rowItem.content)).toEqual(['only-next', 'd1', 'd2', 'd3', 'd4'])
-    expect(visible.hidden).toBe(1)
-    expect(visible.hiddenCounts).toEqual({ completed: 1, in_progress: 0, pending: 0 })
-  })
-
-  it('fills every free slot with completed rows when nothing is pending', () => {
-    const todos: TodoItem[] = [
-      { content: 'running', status: 'in_progress' },
-      ...Array.from({ length: 5 }, (_, index): TodoItem => ({ content: `d${index}`, status: 'completed' })),
-    ]
-    const visible = todo.selectVisibleTodos(todos)
-    // The in-progress row plus the four most recent completed, original order.
-    expect(visible.rows.map(rowItem => rowItem.content)).toEqual(['running', 'd1', 'd2', 'd3', 'd4'])
-    expect(visible.hidden).toBe(1)
-    expect(visible.hiddenCounts).toEqual({ completed: 1, in_progress: 0, pending: 0 })
-  })
-
-  it('formats the hidden distribution in the kimi label order, dropping zeros', () => {
-    expect(todo.formatHiddenCounts({ completed: 2, in_progress: 1, pending: 0 })).toBe('2 done · 1 in progress')
-    expect(todo.formatHiddenCounts({ completed: 0, in_progress: 0, pending: 3 })).toBe('3 pending')
-    expect(todo.formatHiddenCounts({ completed: 0, in_progress: 0, pending: 0 })).toBe('')
+  it('closes with the success mark and the whole list once it settles', () => {
+    const closing = todo.todoSummary(state([], { done: { total: 12, elapsedMs: 12_000 } }), t)!
+    expect(fullText(closing)).toBe('✓ todo 12/12 12s')
+    expect(spansOf(closing.node)[0]).toEqual({ text: '✓', tone: 'success' })
   })
 })
 
+describe('todoPanel', () => {
+  const t = transcriptTranslatorFake
+  const list = [item('first', 'completed'), item('now', 'in_progress'), item('next', 'pending')]
+  const panel = (todos: TodoItem[], extra: Partial<todo.TodoState> = {}) => todo.todoPanel({ todos, interrupted: false, history: false, elapsedMs: 0, ...extra }, t)
+
+  it('has no panel for no list or a settled one', () => {
+    expect(panel([])).toBeNull()
+  })
+
+  it('is a fixed-length scroll with no heading, count, or time: its rows are the list', () => {
+    const node = panel(list, { history: true }) as unknown as { readonly kind: string, readonly id: string, readonly height: number, readonly expandable: boolean, readonly more: boolean, readonly scrollbar: boolean }
+    expect(node).toMatchObject({ kind: 'scroll', height: VIEW_PANEL_ROWS, expandable: false, more: true, scrollbar: false })
+    expect(spansOf(node).map(span => span.text)).toEqual(['  ✓ ', 'first', '  ● ', 'now', '  ○ ', 'next'])
+    expect(spansOf(node).find(span => span.text === 'now')).toEqual({ text: 'now' })
+    expect(spansOf(node).find(span => span.text === '  ● ')).toEqual({ text: '  ● ', tone: 'accent', styles: ['strong'] })
+    expect(spansOf(node).find(span => span.text === 'first')).toEqual({ text: 'first', tone: 'muted' })
+  })
+
+  it('lists the finished rows only with viewHistory, and draws a scrollbar only past the panel length', () => {
+    expect(spansOf(panel(list)).map(span => span.text)).toEqual(['  ● ', 'now', '  ○ ', 'next'])
+    const long = Array.from({ length: VIEW_PANEL_ROWS + 1 }, (_, index) => item(`t${index}`, 'pending'))
+    expect(panel(long)).toMatchObject({ scrollbar: true })
+    expect(panel(long.slice(0, VIEW_PANEL_ROWS))).toMatchObject({ scrollbar: false })
+  })
+
+  it('starts with a muted `interrupted` when the run failed or was stopped while the list was unfinished', () => {
+    expect(JSON.stringify(panel(list, { interrupted: true }))).toContain('"tone":"muted","kind":"text","content":"  interrupted"')
+    expect(JSON.stringify(panel(list))).not.toContain('interrupted')
+  })
+})
+
+async function bootTodo(initial: SessionEvent[] = [], services: Record<string, unknown> = {}) {
+  const agent = fakeAgent(initial)
+  const tick = new HandTick()
+  const harness = await bootPanePlugin(todo, agent, { mayflyTick: tick, ...services })
+  const entry = () => harness.ctx.mayflyPanes.list().find(candidate => candidate.id === todo.TODO_VIEW_ID)!
+  const write = (todos: TodoItem[]): void => { harness.ctx.emit('session/event', agent.session as unknown as Session, todoWrite(todos)) }
+  return { ...harness, agent, tick, entry, write }
+}
+
 describe('mayfly-pane-todo', () => {
-  it('renders zero rows without a session or without any todo/write', async () => {
-    const noSession = await bootPanePlugin(todo)
-    expect(todo.name).toBe('mayfly-pane-todo')
-    expect(noSession.screen.bottomChildren).toHaveLength(0)
-    expect(noSession.screen.paneLines()).toEqual([])
-    await noSession.dispose()
-    expect(noSession.screen.bottomChildren).toHaveLength(0)
-
+  it('registers a views pane at priority 14 that has no item until the first todo/write', async () => {
     resetSeq()
-    const noTodos = await bootPanePlugin(todo, fakeAgent([userEvent('hi')]))
-    expect(noTodos.screen.paneLines()).toEqual([])
-    await noTodos.dispose()
-  })
-
-  it('does not open a Todo pane for a goal without todo items', async () => {
-    const harness = await bootPanePlugin(todo)
-    for (const phase of ['active', 'paused', 'blocked', 'complete'] as const) {
-      harness.facts.setGoal(goalProjection(phase))
-      expect(harness.screen.paneLines()).toEqual([])
-    }
-    harness.facts.setGoal(null)
-    expect(harness.screen.paneLines()).toEqual([])
+    const harness = await bootTodo()
+    expect(harness.entry().definition).toMatchObject({ placement: 'views', priority: 14, title: 'Todo' })
+    expect(harness.entry().summary).toBeNull()
+    expect(harness.entry().node).toBeNull()
+    expect(harness.tick.subscribers).toBe(0)
     await harness.dispose()
   })
 
-  it('adds active, paused, and blocked goal context to an existing Todo pane', async () => {
-    const harness = await bootPanePlugin(todo, fakeAgent([todoWrite([{ content: 'next task', status: 'pending' }])]))
-    harness.facts.setGoal(goalProjection('active'))
-    // The objective folds into the title row instead of taking a row of its own.
-    expect(harness.screen.paneLines()).toEqual([
-      rule(), '  Todo · ● active · 2/8 · ship the badge', row('○', 'next task'),
-    ])
-    harness.facts.setGoal(goalProjection('paused', { rounds: 4, max: 12 }))
-    expect(harness.screen.paneLines()).toEqual([
-      rule(), '  Todo · ❚❚ paused · 4/12 · ship the badge', row('○', 'next task'),
-    ])
-    harness.facts.setGoal(goalProjection('blocked', { message: 'tests are red' }))
-    expect(harness.screen.paneLines()).toEqual([
-      rule(),
-      '  Todo · ✕ blocked · 2/8 · ship the badge',
-      '  blocked: tests are red',
-      row('○', 'next task'),
-    ])
-    harness.facts.setGoal(goalProjection('complete'))
-    expect(harness.screen.paneLines()).toEqual([rule(), TITLE, row('○', 'next task')])
-    harness.facts.setGoal(null)
-    expect(harness.screen.paneLines()).toEqual([rule(), TITLE, row('○', 'next task')])
+  it('shows done over total and the panel from the latest whole-list snapshot, and runs the clock only while a list is tracked', async () => {
+    resetSeq()
+    const harness = await bootTodo()
+    harness.write([item('a', 'completed'), item('b', 'in_progress'), item('c', 'pending')])
+    expect(fullText(harness.entry().summary)).toMatch(/^● todo 1\/3/u)
+    expect(harness.tick.subscribers).toBe(1)
+    expect(spansOf(harness.entry().node).map(span => span.text)).toEqual(['  ● ', 'b', '  ○ ', 'c'])
+    // The last write wins: a whole list replaces the one before it.
+    harness.write([item('a', 'completed'), item('b', 'completed'), item('c', 'in_progress')])
+    expect(fullText(harness.entry().summary)).toMatch(/^● todo 2\/3/u)
+    // The time is measured from the first write of the list, by the shared tick.
+    harness.tick.fire(Date.now() + 252_000)
+    expect(fullText(harness.entry().summary)).toMatch(/^● todo 2\/3 4m 1[0-9]s$/u)
     await harness.dispose()
   })
 
-  it('omits the reason row for a blocked goal without a message', async () => {
-    const harness = await bootPanePlugin(todo, fakeAgent([todoWrite([{ content: 'next task', status: 'pending' }])]))
-    harness.facts.setGoal(goalProjection('blocked'))
-    // The ✕ badge carries the state; an empty reason never renders a bare
-    // `blocked: ` line.
-    expect(harness.screen.paneLines()).toEqual([
-      rule(),
-      '  Todo · ✕ blocked · 2/8 · ship the badge',
-      row('○', 'next task'),
-    ])
+  it('holds the closing item five seconds when a tracked list settles, then leaves with its clock', async () => {
+    resetSeq()
+    const harness = await bootTodo()
+    harness.write([item('a', 'in_progress'), item('b', 'pending')])
+    const before = Date.now()
+    harness.write([item('a', 'completed'), item('b', 'completed')])
+    const after = Date.now()
+    expect(fullText(harness.entry().summary)).toMatch(/^✓ todo 2\/2 /u)
+    expect(harness.entry().node).toBeNull()
+    expect(harness.tick.subscribers).toBe(1)
+    harness.tick.fire(before + todo.DONE_LINGER_MS - 1)
+    expect(harness.entry().summary).not.toBeNull()
+    harness.tick.fire(after + todo.DONE_LINGER_MS + 1_000)
+    expect(harness.entry().summary).toBeNull()
+    expect(harness.tick.subscribers).toBe(0)
+    // The next list starts fresh.
+    harness.write([item('c', 'pending')])
+    expect(fullText(harness.entry().summary)).toMatch(/^● todo 0\/1/u)
     await harness.dispose()
   })
 
-  it('marks an unsettled list after an interrupted or failed run, alone or beside a goal', async () => {
+  it('shows nothing for a snapshot that already settled when the session loaded', async () => {
     resetSeq()
-    const agent = fakeAgent([turnStart(1), todoWrite([{ content: 'half done', status: 'in_progress' }])])
-    const harness = await bootPanePlugin(todo, agent)
-    expect(harness.screen.paneLines()[1]).toBe('  Todo')
-    harness.ctx.emit('session/event', agent.session as unknown as Session, turnEnd(1, { kind: 'aborted', reason: { kind: 'user' } } as never))
-    expect(harness.screen.paneLines()[1]).toBe('  Todo · interrupted')
-    harness.facts.setGoal(goalProjection('active'))
-    expect(harness.screen.paneLines()[1]).toBe('  Todo · ● active · 2/8 · interrupted · ship the badge')
-    // The next run clears the marker.
-    harness.ctx.emit('session/event', agent.session as unknown as Session, turnStart(2))
-    expect(harness.screen.paneLines()[1]).toBe('  Todo · ● active · 2/8 · ship the badge')
+    const harness = await bootTodo([todoWrite([item('a', 'completed'), item('b', 'completed')])])
+    expect(harness.entry().summary).toBeNull()
+    expect(harness.entry().node).toBeNull()
+    expect(harness.tick.subscribers).toBe(0)
     await harness.dispose()
   })
 
-  it('keeps todos visible when a goal completes and resets the badge on session change', async () => {
+  it('marks the panel interrupted when the run failed or was stopped with the list unfinished', async () => {
     resetSeq()
-    const first = fakeAgent([todoWrite([{ content: 'keep me', status: 'pending' }])])
-    const harness = await bootPanePlugin(todo, first)
-    harness.facts.setGoal(goalProjection('blocked'))
-    expect(harness.screen.paneLines()).toContain('  Todo · ✕ blocked · 2/8 · ship the badge')
-    // No message means no reason row — the badge alone carries the state.
-    expect(harness.screen.paneLines()).not.toContain('  blocked: ')
-    harness.facts.setGoal(goalProjection('complete'))
-    expect(harness.screen.paneLines()).toEqual([rule(), TITLE, row('○', 'keep me')])
-    harness.ctx.emit('test/session-changed', asAgent(fakeAgent([])))
-    expect(harness.screen.paneLines()).toEqual([])
+    const harness = await bootTodo([turnStart(1), todoWrite([item('a', 'in_progress')])])
+    expect(JSON.stringify(harness.entry().node)).not.toContain('interrupted')
+    harness.ctx.emit('session/event', harness.agent.session as unknown as Session, turnEnd(1, { kind: 'failed' } as never))
+    expect(JSON.stringify(harness.entry().node)).toContain('"content":"  interrupted"')
     await harness.dispose()
   })
 
-  it('reads the latest whole-list snapshot and shows it folded by default', async () => {
+  it('lists finished rows only when the viewHistory setting is on, and follows the setting live', async () => {
     resetSeq()
-    const agent = fakeAgent([
-      todoWrite([{ content: 'stale', status: 'in_progress' }]),
-      userEvent('hi'),
-      todoWrite([
-        { content: 'done', status: 'completed' },
-        { content: 'later', status: 'pending' },
-      ]),
-    ])
-    const { screen, dispose } = await bootPanePlugin(todo, agent)
-    expect(screen.paneLines()).toEqual([rule(), TITLE, row('✓', strike('done')), row('○', 'later')])
-    await dispose()
+    const settings = { value: { viewHistory: false } as Record<string, unknown> }
+    const harness = await bootTodo([], { mayflyInteractionState: { settingsSource: () => settings.value } })
+    harness.write([item('done', 'completed'), item('now', 'in_progress')])
+    expect(spansOf(harness.entry().node).map(span => span.text)).toEqual(['  ● ', 'now'])
+    settings.value = { viewHistory: true }
+    harness.ctx.emit('settings/document-updated', 'mayfly' as never, 1)
+    expect(spansOf(harness.entry().node).map(span => span.text)).toEqual(['  ✓ ', 'done', '  ● ', 'now'])
+    // Another namespace changing says nothing.
+    harness.ctx.emit('settings/document-updated', 'other' as never, 1)
+    expect(spansOf(harness.entry().node)).toHaveLength(4)
+    await harness.dispose()
   })
 
-  it('renders every status marker, completed content struck through', async () => {
+  it('clears the list when the session changes, and answers only its own session\'s writes', async () => {
     resetSeq()
-    const agent = fakeAgent([todoWrite([
-      { content: 'done', status: 'completed' },
-      { content: 'doing', status: 'in_progress' },
-      { content: 'later', status: 'pending' },
-    ])])
-    const { screen, dispose } = await bootPanePlugin(todo, agent)
-    expect(screen.paneLines()).toEqual([rule(), TITLE, row('✓', strike('done')), row(IN_PROGRESS, 'doing'), row('○', 'later')])
-    await dispose()
+    const harness = await bootTodo([todoWrite([item('a', 'in_progress')])])
+    expect(harness.entry().summary).not.toBeNull()
+    // A write on another session is not this view's.
+    const other = fakeAgent([])
+    harness.ctx.emit('session/event', other.session as unknown as Session, todoWrite([item('x', 'in_progress'), item('y', 'pending')]))
+    expect(fullText(harness.entry().summary)).toMatch(/^● todo 0\/1/u)
+    harness.ctx.emit('test/session-changed', other as never)
+    expect(harness.entry().summary).toBeNull()
+    expect(harness.tick.subscribers).toBe(0)
+    await harness.dispose()
   })
 
-  it('tracks live todo/write increments on the attached session only', async () => {
+  it('republishes when the language changes, and when the viewHistory setting is repeated unchanged it says nothing', async () => {
     resetSeq()
-    const agent = fakeAgent([todoWrite([{ content: 'a', status: 'pending' }])])
-    const { ctx, screen, dispose } = await bootPanePlugin(todo, agent)
-    expect(screen.paneLines()).toEqual([rule(), TITLE, row('○', 'a')])
-    const baseline = screen.renderRequests.length
-
-    // Other sessions and other event types are ignored.
-    ctx.emit('session/event', fakeAgent([]).session as unknown as Session, todoWrite([{ content: 'x', status: 'pending' }]))
-    ctx.emit('session/event', agent.session as unknown as Session, userEvent('not a todo'))
-    expect(screen.paneLines()).toEqual([rule(), TITLE, row('○', 'a')])
-    expect(screen.renderRequests.length).toBe(baseline)
-
-    ctx.emit('session/event', agent.session as unknown as Session, todoWrite([
-      { content: 'a', status: 'completed' },
-      { content: 'b', status: 'in_progress' },
-    ]))
-    expect(screen.paneLines()).toEqual([rule(), TITLE, row('✓', strike('a')), row(IN_PROGRESS, 'b')])
-
-    // An identical rewrite changes no signature and requests no redraw.
-    const before = screen.renderRequests.length
-    ctx.emit('session/event', agent.session as unknown as Session, todoWrite([
-      { content: 'a', status: 'completed' },
-      { content: 'b', status: 'in_progress' },
-    ]))
-    expect(screen.renderRequests.length).toBe(before)
-    await dispose()
+    const settings = { value: { viewHistory: false } as Record<string, unknown> }
+    const harness = await bootTodo([todoWrite([item('a', 'in_progress')])], { mayflyInteractionState: { settingsSource: () => settings.value } })
+    await harness.ctx.plugin({ name: 'item-locale', apply(owner: Context) { const service = new MayflyLocaleService(owner, { systemLocale: 'en' }); owner.effect(() => () => service.dispose()) } })
+    harness.ctx.mayflyLocale.setPreference('zh')
+    expect(harness.entry().summary).not.toBeNull()
+    const revision = harness.entry().revision
+    harness.ctx.emit('settings/document-updated', 'mayfly' as never, 2)
+    expect(harness.entry().revision).toBe(revision)
+    await harness.dispose()
   })
 
-  it('folds a long list by the kimi selection and toggles to the full list with Ctrl-T', async () => {
+  it('removes its view and its clock with its Fiber', async () => {
     resetSeq()
-    const seven: TodoItem[] = [
-      { content: 'done-1', status: 'completed' },
-      { content: 'done-2', status: 'completed' },
-      { content: 'done-3', status: 'completed' },
-      { content: 'p1', status: 'pending' },
-      { content: 'p2', status: 'pending' },
-      { content: 'p3', status: 'pending' },
-      { content: 'p4', status: 'pending' },
-    ]
-    const agent = fakeAgent([todoWrite(seven)])
-    const { ctx, screen, keymap, dispose } = await bootPanePlugin(todo, agent)
-    expect(keymap.actions.map(action => action.id)).toEqual([todo.ACTION_TOGGLE_TODO])
-    expect(keymap.actions[0]!.keys).toBe('ctrl+t')
-    // The folded default: the latest completed row, the four pending rows,
-    // and the footer counting the two hidden completed entries.
-    expect(screen.paneLines()).toEqual([
-      rule(),
-      TITLE,
-      row('✓', strike('done-3')),
-      row('○', 'p1'),
-      row('○', 'p2'),
-      row('○', 'p3'),
-      row('○', 'p4'),
-      foldFooter(2, '2 done'),
-    ])
-
-    keymap.handler(todo.ACTION_TOGGLE_TODO)()
-    expect(screen.renderRequests.length).toBeGreaterThan(0)
-    expect(screen.paneLines()).toEqual([
-      rule(),
-      TITLE,
-      row('✓', strike('done-1')),
-      row('✓', strike('done-2')),
-      row('✓', strike('done-3')),
-      row('○', 'p1'),
-      row('○', 'p2'),
-      row('○', 'p3'),
-      row('○', 'p4'),
-      allFooter(7),
-    ])
-
-    // The expansion persists across a mid-run write (kimi setTodos
-    // semantics): the refreshed list still renders in full.
-    ctx.emit('session/event', agent.session as unknown as Session, todoWrite([
-      ...seven.slice(0, 6),
-      { content: 'p4 now running', status: 'in_progress' },
-    ]))
-    expect(screen.paneLines()).toEqual([
-      rule(),
-      TITLE,
-      row('✓', strike('done-1')),
-      row('✓', strike('done-2')),
-      row('✓', strike('done-3')),
-      row('○', 'p1'),
-      row('○', 'p2'),
-      row('○', 'p3'),
-      row(IN_PROGRESS, 'p4 now running'),
-      allFooter(7),
-    ])
-
-    keymap.handler(todo.ACTION_TOGGLE_TODO)()
-    expect(screen.paneLines()).toEqual([
-      rule(),
-      TITLE,
-      row('✓', strike('done-3')),
-      row('○', 'p1'),
-      row('○', 'p2'),
-      row('○', 'p3'),
-      row(IN_PROGRESS, 'p4 now running'),
-      foldFooter(2, '2 done'),
-    ])
-    await dispose()
-    expect(keymap.actions).toHaveLength(0)
-  })
-
-  it('hides for an editor-slot dialog and restores the current expanded list', async () => {
-    resetSeq()
-    const initial = Array.from({ length: 6 }, (_, index): TodoItem => ({
-      content: `task-${index}`,
-      status: index === 0 ? 'in_progress' : 'pending',
-    }))
-    const agent = fakeAgent([todoWrite(initial)])
-    const { ctx, screen, keymap, dispose } = await bootPanePlugin(todo, agent)
-    keymap.handler(todo.ACTION_TOGGLE_TODO)()
-    expect(screen.paneLines()).toContain(row(IN_PROGRESS, 'task-0'))
-    expect(screen.paneLines()).toContain(allFooter(6))
-
-    const beforeHide = screen.renderRequests.length
-    ctx.emit('mayfly/editor-slot-swapped', true)
-    expect(screen.paneLines()).toEqual([])
-    expect(screen.renderRequests.length).toBe(beforeHide + 1)
-    // Repeating the same slot state is inert.
-    ctx.emit('mayfly/editor-slot-swapped', true)
-    expect(screen.renderRequests.length).toBe(beforeHide + 1)
-
-    // Writes continue updating the hidden model; neither the contents nor the
-    // user's expanded choice are discarded while the dialog owns the slot.
-    ctx.emit('session/event', agent.session as unknown as Session, todoWrite([
-      { content: 'task-0 done', status: 'completed' },
-      ...initial.slice(1),
-    ]))
-    expect(screen.paneLines()).toEqual([])
-    ctx.emit('mayfly/editor-slot-swapped', false)
-    expect(screen.paneLines()).toContain(row('✓', strike('task-0 done')))
-    expect(screen.paneLines()).toContain(allFooter(6))
-    await dispose()
-  })
-
-  it('closes the pane when the list settles and reopens folded on the next write', async () => {
-    resetSeq()
-    const agent = fakeAgent([todoWrite([{ content: 'a', status: 'in_progress' }])])
-    const { ctx, screen, dispose } = await bootPanePlugin(todo, agent)
-    expect(screen.paneLines()).toEqual([rule(), TITLE, row(IN_PROGRESS, 'a')])
-
-    ctx.emit('session/event', agent.session as unknown as Session, todoWrite([
-      { content: 'a', status: 'completed' },
-      { content: 'b', status: 'completed' },
-    ]))
-    expect(screen.paneLines()).toEqual([])
-    expect(screen.renderRequests.length).toBeGreaterThan(0)
-
-    // The next list starts from the folded default (the expansion reset).
-    ctx.emit('session/event', agent.session as unknown as Session, todoWrite([{ content: 'c', status: 'pending' }]))
-    expect(screen.paneLines()).toEqual([rule(), TITLE, row('○', 'c')])
-    await dispose()
-  })
-
-  it('renders nothing for a snapshot that already settled', async () => {
-    resetSeq()
-    const agent = fakeAgent([todoWrite([
-      { content: 'a', status: 'completed' },
-      { content: 'b', status: 'completed' },
-    ])])
-    const { screen, dispose } = await bootPanePlugin(todo, agent)
-    expect(screen.paneLines()).toEqual([])
-    await dispose()
-  })
-
-  it('toggles even with an empty list, rendering nothing', async () => {
-    const { screen, keymap, dispose } = await bootPanePlugin(todo)
-    keymap.handler(todo.ACTION_TOGGLE_TODO)()
-    expect(screen.renderRequests.length).toBeGreaterThan(0)
-    expect(screen.paneLines()).toEqual([])
-    await dispose()
-  })
-
-  it('toggles a short list with no visual difference: no footer either way', async () => {
-    resetSeq()
-    const agent = fakeAgent([todoWrite([
-      { content: 'a', status: 'completed' },
-      { content: 'b', status: 'pending' },
-    ])])
-    const { screen, keymap, dispose } = await bootPanePlugin(todo, agent)
-    const folded = [rule(), TITLE, row('✓', strike('a')), row('○', 'b')]
-    expect(screen.paneLines()).toEqual(folded)
-    keymap.handler(todo.ACTION_TOGGLE_TODO)()
-    expect(screen.renderRequests.length).toBeGreaterThan(0)
-    // Under the cap the folded and expanded renders are identical rows —
-    // no footer in either state.
-    expect(screen.paneLines()).toEqual(folded)
-    await dispose()
-  })
-
-  it('re-attaches on test/session-changed and drops the stale subscription', async () => {
-    resetSeq()
-    const first = fakeAgent([todoWrite([{ content: 'first', status: 'pending' }])])
-    const { ctx, screen, dispose } = await bootPanePlugin(todo, first)
-    expect(screen.paneLines()).toEqual([rule(), TITLE, row('○', 'first')])
-
-    resetSeq()
-    const second = fakeAgent([userEvent('fresh')])
-    ctx.emit('test/session-changed', asAgent(second))
-    expect(screen.paneLines()).toEqual([])
-
-    // The stale subscription to the first session stays inert.
-    const baseline = screen.renderRequests.length
-    ctx.emit('session/event', first.session as unknown as Session, todoWrite([{ content: 'ghost', status: 'pending' }]))
-    expect(screen.paneLines()).toEqual([])
-    expect(screen.renderRequests.length).toBe(baseline)
-
-    ctx.emit('session/event', second.session as unknown as Session, todoWrite([{ content: 'now', status: 'in_progress' }]))
-    expect(screen.paneLines()).toEqual([rule(), TITLE, row(IN_PROGRESS, 'now')])
-    await dispose()
-  })
-
-  it('keeps canonical rows within the width budget at narrow widths', async () => {
-    resetSeq()
-    const long: TodoItem[] = [
-      { content: 'a very long todo line', status: 'in_progress' },
-      ...Array.from({ length: 5 }, (_, index): TodoItem => ({ content: `fill${index}`, status: 'pending' })),
-    ]
-    const agent = fakeAgent([todoWrite(long)])
-    const { screen, dispose } = await bootPanePlugin(todo, agent)
-    const pane = screen.bottomChildren[0]!
-    const narrow = pane.render(10)
-    expect(narrow.length).toBeGreaterThan(0)
-    for (const line of narrow) {
-      expect(plainText(line).length).toBeLessThanOrEqual(10)
-    }
-    expect(pane.render(3).length).toBeGreaterThan(0)
-    pane.invalidate()
-    expect(pane.render(10)).toEqual(narrow)
-    await dispose()
-  })
-
-  it('pins the fold-affordance contract to the real todo node', () => {
-    const t: MayflyTranslate = key => key
-    const many: readonly TodoItem[] = Array.from({ length: 6 }, (_, index): TodoItem => ({ content: `t${String(index)}`, status: 'pending' }))
-    const state = (expanded: boolean, todos: readonly TodoItem[]): todo.TodoState => ({ todos, goal: null, expanded, dialog: false, interrupted: false })
-    // Folded and expanded past the cap both end in the muted fold/expand footer.
-    expect(endsWithAffordance(todo.todoNode(state(false, many), t, 'Ctrl+T'))).toBe(true)
-    expect(endsWithAffordance(todo.todoNode(state(true, many), t, 'Ctrl+T'))).toBe(true)
-    // A short list has no footer, so the tail is ordinary content.
-    expect(endsWithAffordance(todo.todoNode(state(false, many.slice(0, 2)), t, 'Ctrl+T'))).toBe(false)
+    const harness = await bootTodo([todoWrite([item('a', 'in_progress')])])
+    expect(harness.tick.subscribers).toBe(1)
+    await harness.dispose()
+    expect(harness.ctx.mayflyPanes.list().some(candidate => candidate.id === todo.TODO_VIEW_ID)).toBe(false)
+    expect(harness.tick.subscribers).toBe(0)
   })
 })
