@@ -58,6 +58,9 @@ that froze at its end (D16), and the full gate for every slice. From Phase 2 on,
    bounded by what is on screen, never by a quota on what is published (§4.2). The deterministic work budgets (§7.1)
    stay in the gate. A performance problem seen in review is fixed in that round when it is local; one that needs the
    architecture to change is recorded for Phase 7 (D27), which may break anything to remove it.
+7. **No height jumps.** A surface that switches pages in place (tabs, wizard steps, rails, the views of the status row)
+   keeps the height of its tallest page at the current width and viewport, enforced once in core (`holdHeight`); see
+   [component-development-spec.md](./component-development-spec.md) §1 rule 13.
 
 ## 2. Decisions and differences
 

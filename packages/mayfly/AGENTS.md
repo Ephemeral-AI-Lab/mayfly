@@ -216,6 +216,10 @@ epoch of the surface (`MayflyUiSurfaceRuntime.epoch`). The rules a painter lives
   child's `visible` must not adopt the unbounded viewport of a measuring render.
 - Stacks are `ColumnStack` and `RowStack`: pi-tui's rows, the row each child
   starts at, and a horizontal stack that remembers composited rows.
+- Pages switched in place keep one height, the tallest page's at the current
+  width and viewport: `holdHeight` (`core/ui-stacks.ts`) pads the page on show
+  for tab pages (`PageHold`) and for the views lane. Components never pin page
+  heights of their own to the same end.
 
 Every spec outside `tests/perf/` runs with `MAYFLY_UI_VERIFY_MEMO=1` (the vitest
 `suite` project): every memo hit paints again and throws when the rows differ. A

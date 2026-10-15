@@ -202,12 +202,12 @@ const PAGE_HEIGHTS = [
 ] as const
 
 /**
- * A tab page: the content in a viewport of the panel's page height (`hold`: a short page is padded, so the panel keeps
- * one height whichever tab is on show) that scrolls beyond it, the hidden keys beside it.
+ * A tab page: the content in a viewport of at most the panel's page height that scrolls beyond it, the hidden keys beside
+ * it. The panel keeps one height whichever tab is on show: core pads every page to the tallest (its tab-page hold).
  */
 function scrolled(id: string, content: MayflyUiNode, keys?: MayflyUiNode): MayflyUiNode {
   return ui.stack.column([
-    ...PAGE_HEIGHTS.map(({ height, ...when }) => ui.child(ui.scroll(content, { id, height, expandedHeight: height, fit: true, hold: true, scrollbar: true }), { when })),
+    ...PAGE_HEIGHTS.map(({ height, ...when }) => ui.child(ui.scroll(content, { id, height, expandedHeight: height, fit: true, scrollbar: true }), { when })),
     ...keys === undefined ? [] : [ui.child(keys)],
   ])
 }

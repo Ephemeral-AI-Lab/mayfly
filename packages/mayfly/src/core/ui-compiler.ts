@@ -55,7 +55,7 @@ import {
   type PatternFocus,
 } from './ui-patterns.ts'
 import { concatRows, findMarkerRow, isVirtualRows, mapRows, prepareRows, sameMaterializedRows, sliceRows, unclampedRows, virtualRows } from './ui-rows.ts'
-import { ColumnStack, PageGroup, PageHold, RowStack, onScreen, placeChild } from './ui-stacks.ts'
+import { ColumnStack, PageGroup, PageHold, RowStack, onScreen, placeChild, type PagePeaks } from './ui-stacks.ts'
 import { sliceByColumn, truncateToWidth, visibleWidth } from './width.ts'
 import { fieldActions, fieldReset, type UiFieldAction } from './ui-interaction-field-actions.ts'
 import { fieldDecor, fieldDisplayError, stepNumber } from './ui-interaction-form.ts'
@@ -1162,7 +1162,7 @@ function grammarStateFor(state: FocusState, options: RuntimeCompilerOptions, con
     if (active === undefined) return { kind: 'none' }
     switch (active.kind) {
       case 'editor': return { kind: 'editor' }
-      /* An author's `expandable: false`, or a held viewport that cannot grow, leaves Ctrl+E to others. */
+      /* An author's `expandable: false`, or a viewport that cannot grow, leaves Ctrl+E to others. */
       case 'scroll': return active.fixed === true || state.scrollViews.get(active.key)?.expandable === false ? { kind: 'scroll', fixed: true } : { kind: 'scroll' }
       case 'list': return { kind: 'empty-list' }
       case 'prompt': return { kind: 'prompt', ...runtime.promptGrammar(active.node), ...(active.node.submitLabel === undefined ? {} : { submitLabel: active.node.submitLabel }), ...(active.node.recallLabel === undefined ? {} : { recallLabel: active.node.recallLabel }) }
@@ -1820,7 +1820,6 @@ function compileUnit(node: CompilableNode, state: FocusState, options: RuntimeCo
           height: node.height ?? SCROLL_DEFAULT_HEIGHT,
           expandedHeight: node.expandedHeight ?? SCROLL_DEFAULT_EXPANDED_HEIGHT,
           fit: node.fit === true,
-          hold: node.hold === true,
           pill: node.pill === true,
           follow: node.follow === 'end',
           scrollbar: node.scrollbar !== false,
@@ -2417,10 +2416,10 @@ export class MayflyUiSurfaceRuntime {
   }
 
   private measuring = 0
-  private readonly peaks = new Map<string, Map<number, number>>()
+  private readonly peaks = new Map<string, PagePeaks>()
 
-  /** The tallest height of a tab strip's pages by width, which outlasts a recompile so the panel does not shrink and grow back. */
-  pagePeaks(key: string): Map<number, number> {
+  /** The tallest height of a tab strip's pages by width and viewport, which outlasts a recompile so the panel does not shrink and grow back. */
+  pagePeaks(key: string): PagePeaks {
     let peaks = this.peaks.get(key)
     if (peaks === undefined) {
       peaks = new Map()

@@ -116,7 +116,7 @@ export function admitScrollFields(h: AdmissionHelpers, object: Fields, path: str
   const height = integer(h, object, 'height', path, 1, SCROLL_HEIGHT_MAX)
   const expandedHeight = integer(h, object, 'expandedHeight', path, 1, SCROLL_HEIGHT_MAX)
   if (height !== undefined && expandedHeight !== undefined && expandedHeight < height) h.invalid(`${path}.expandedHeight must not be shorter than height`)
-  return { ...present('height', height), ...present('expandedHeight', expandedHeight), ...present('fit', flag(h, object, 'fit', path)), ...present('hold', flag(h, object, 'hold', path)), ...present('pill', flag(h, object, 'pill', path)), ...present('expandable', flag(h, object, 'expandable', path)), ...present('more', flag(h, object, 'more', path)) }
+  return { ...present('height', height), ...present('expandedHeight', expandedHeight), ...present('fit', flag(h, object, 'fit', path)), ...present('pill', flag(h, object, 'pill', path)), ...present('expandable', flag(h, object, 'expandable', path)), ...present('more', flag(h, object, 'more', path)) }
 }
 
 /**

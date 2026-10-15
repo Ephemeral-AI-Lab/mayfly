@@ -373,7 +373,7 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
     if (placement === 'views') {
       if (compiled === null) record.runtime.deactivate()
       record.component.replace(compiled)
-      record.component.view!.setPanel(compiled === null ? null : record.component, compiled?.focusTarget == null ? null : record.component)
+      record.component.view!.setPanel(compiled === null ? null : record.component, compiled?.focusTarget == null ? null : record.component, paint => record.runtime.measure(paint))
       runtime.requestRender()
       return
     }

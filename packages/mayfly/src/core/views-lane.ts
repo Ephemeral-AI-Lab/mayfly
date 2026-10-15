@@ -14,6 +14,7 @@ import { displayKey, keyActionKeys, matchesKeyAction, ACTION_SEGMENT_LEFT, ACTIO
 import type { MayflyGlyphMode } from './glyphs.ts'
 import { renderOverflowRow } from './ui-patterns.ts'
 import { concatRows, mapRows, sliceRows } from './ui-rows.ts'
+import { holdHeight, type PagePeaks } from './ui-stacks.ts'
 import type { MayflyComponent, MayflyFocusable, MayflyKeymap, MayflySemanticColors } from './types.ts'
 import { sliceByColumn, visibleWidth } from './width.ts'
 
@@ -43,15 +44,23 @@ interface ViewState {
   summarySerial: number
   panel: MayflyComponent | null
   focusTarget: MayflyFocusable | null
+  /** Paints the panel to learn its height with no clock armed, while another view is on show. */
+  measure: PanelMeasure | undefined
 }
+
+/** Paint a panel to learn its size: it arms no clock and leaves no mark (`MayflyUiSurfaceRuntime.measure`). */
+type PanelMeasure = <Result>(paint: () => Result) => Result
 
 /** A view's slot in the lane. */
 export interface ViewRegistration {
   readonly disposed: boolean
   /** Replace the item the view has in the status row; `null` takes the view out of the row. Identity-equal summaries change nothing. */
   setSummary(summary: ViewSummary | null): void
-  /** Replace the panel and its focus target; a view with no panel, or none to focus, is in the row but cannot be entered. */
-  setPanel(panel: MayflyComponent | null, focusTarget: MayflyFocusable | null): void
+  /**
+   * Replace the panel and its focus target; a view with no panel, or none to focus, is in the row but cannot be entered.
+   * `measure` paints the panel to learn its height while another view is on show (the lane keeps one height for all).
+   */
+  setPanel(panel: MayflyComponent | null, focusTarget: MayflyFocusable | null, measure?: PanelMeasure): void
   dispose(): void
 }
 
@@ -126,6 +135,11 @@ export class ViewsLane implements MayflyViewsSource {
   /** Where the active view sorted, so a vanished view hands over to the one now at its place. */
   private activeAt: { readonly priority: number, readonly id: string } | undefined
   private statusMemo: { readonly revision: number, readonly entries: readonly MayflyStatusEntry[] } | undefined
+  /** The tallest the views' panels have been, by size, while the same views are enterable. */
+  private readonly peaks: PagePeaks = new Map()
+  private peaksFor = ''
+  /** The other views' heights at one size and lane revision, measured once. */
+  private heights: { readonly key: string, readonly rows: Map<string, number> } | undefined
 
   /** Counts every change of the views, their summaries and panels, and the entered state. */
   get revision(): number { return this.revisionValue }
@@ -192,6 +206,7 @@ export class ViewsLane implements MayflyViewsSource {
       summarySerial: ++this.serial,
       panel: null,
       focusTarget: null,
+      measure: undefined,
     }
     this.views.set(state.id, state)
     this.changed()
@@ -204,7 +219,8 @@ export class ViewsLane implements MayflyViewsSource {
         state.summarySerial = ++this.serial
         this.settle()
       },
-      setPanel: (panel, focusTarget) => {
+      setPanel: (panel, focusTarget, measure) => {
+        state.measure = measure
         if (disposed || (state.panel === panel && state.focusTarget === focusTarget)) return
         state.panel = panel
         state.focusTarget = focusTarget
@@ -310,12 +326,40 @@ export class ViewsLane implements MayflyViewsSource {
     const active = this.entered ? this.activeView() : undefined
     if (host === undefined || active === undefined) return undefined
     const available = Math.max(1, Math.floor(width))
-    const budget = Math.max(1, this.laneRows(host.viewport().rows))
-    const rows = mapRows(active.panel!.render(available), row => fit(row, available))
+    const viewportRows = host.viewport().rows
+    const budget = Math.max(1, this.laneRows(viewportRows))
+    // Every view keeps the height of the tallest one (component-development-spec §1 rule 13), so `←/→` never moves the rows.
+    const key = `${String(available)}|${String(viewportRows)}`
+    const rows = holdHeight(mapRows(active.panel!.render(available), row => fit(row, available)), this.heldPeaks(), key, this.othersHeight(active, available, key))
     const body = rows.length <= budget || budget <= 1
       ? sliceRows(rows, 0, budget)
       : concatRows(sliceRows(rows, 0, budget - 1), [fit(host.colors.muted(renderOverflowRow(rows.length - budget + 1, host.translate ?? interpolateLocaleMessage)), available)])
     return body
+  }
+
+  /** The remembered heights, forgotten when the set of enterable views changes (a view that left no longer counts). */
+  private heldPeaks(): PagePeaks {
+    const views = this.tabs().map(view => view.id).join('\0')
+    if (views !== this.peaksFor) { this.peaksFor = views; this.peaks.clear() }
+    return this.peaks
+  }
+
+  /** The tallest of the other enterable views at this size, each measured once per size and lane revision. */
+  private othersHeight(active: ViewState, width: number, size: string): number {
+    const key = `${size}|${String(this.revisionValue)}`
+    if (this.heights?.key !== key) this.heights = { key, rows: new Map() }
+    let tallest = 0
+    for (const view of this.tabs()) {
+      if (view === active) continue
+      let rows = this.heights.rows.get(view.id)
+      if (rows === undefined) {
+        const paint = (): number => view.panel!.render(width).length
+        rows = view.measure === undefined ? paint() : view.measure(paint)
+        this.heights.rows.set(view.id, rows)
+      }
+      tallest = Math.max(tallest, rows)
+    }
+    return tallest
   }
 
   /** The component's key route: `←/→` switch views unless the panel is editing; every other key is the panel's. */

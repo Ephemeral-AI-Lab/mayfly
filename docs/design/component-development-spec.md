@@ -56,6 +56,12 @@ only once the effect is final (§3). The Website is never part of a round (§1 r
 12. **The architecture rules still hold.** Components are pure (roadmap §1 rule 3); only `core/` knows widths, ANSI,
    and clocks; effects are Fiber-owned. The demo must not need a back door for any of them: it plays through the same
    native services and host slots the product uses.
+13. **No height jumps between pages.** A surface that switches pages in place (a tab strip, wizard steps, a record
+    rail, the views of the status row) keeps one height: the height of its tallest page at the current width and
+    viewport, capped by the room the surface has. Core enforces it in one place (`holdHeight` in `core/ui-stacks.ts`,
+    used by the tab-page hold of the compiler and by the views lane); a component never hardcodes per-panel page
+    heights, a padded scroll, or blank rows to get the same effect. A page change that moves the rows around the
+    surface is a defect.
 
 ## 2. Vocabulary
 

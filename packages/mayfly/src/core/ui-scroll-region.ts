@@ -49,8 +49,6 @@ interface ScrollRegionOptions {
   readonly height: number
   readonly expandedHeight: number
   readonly fit: boolean
-  /** With `fit`: the viewport keeps its height and short content is padded. */
-  readonly hold: boolean
   readonly pill: boolean
   /** Say how many rows remain below the viewport on its last row, while any do. */
   readonly more: boolean
@@ -144,7 +142,7 @@ export class ScrollRegion implements Component, UiScrollControl {
       if (full.length <= target) { lines = full; inner = columns; barred = false }
     }
     this.width = inner
-    this.viewport = fit && !this.options.hold ? Math.min(target, Math.max(1, lines.length)) : target
+    this.viewport = fit ? Math.min(target, Math.max(1, lines.length)) : target
     const anchors = this.options.anchors
     const state = anchors?.state()
     const resolve = (): void => {

@@ -160,8 +160,6 @@ export interface MayflyScrollNode {
   readonly expandedHeight?: number
   /** Shrink the viewport to short content, and draw the scrollbar only when the content overflows. */
   readonly fit?: boolean
-  /** With `fit`: keep the viewport at `height` whatever the content (short content is padded with blank rows), so a panel whose pages differ does not change height; the scrollbar still shows only on overflow. */
-  readonly hold?: boolean
   /** `↓ N new · End` over the last row while the view is scrolled away from a followed tail. */
   readonly pill?: boolean
   /** `false`: `Ctrl+E` does not expand the viewport and the key row does not name it (a fixed-length panel). */

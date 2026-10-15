@@ -187,8 +187,28 @@ export class RowStack extends HStack {
   }
 }
 
-/** The tallest each page of one tab strip has been, by the width it was painted at; it lives as long as the surface. */
-export type PagePeaks = Map<number, number>
+/** The tallest a group of pages has been, by `width|viewport rows`; it lives as long as its owner (the surface, the views lane). */
+export type PagePeaks = Map<string, number>
+
+/**
+ * The one height rule of every surface that switches pages in place (a tab strip, a wizard, a record rail, the views of
+ * the status row): the page on show is padded with blank rows to the tallest page of its group at this width and
+ * viewport (component-development-spec §1 rule 13), so switching pages never moves the rows around the surface. The
+ * tallest is remembered per `key`, so a page that narrows (a filter, a list that empties) does not shrink the group; a
+ * different viewport is a different key, so a shorter terminal lowers the hold.
+ * @param rows - the page on show.
+ * @param peaks - the group's remembered heights.
+ * @param key - the width and the viewport rows, `${width}|${rows}`.
+ * @param others - the tallest of the other pages now.
+ */
+export function holdHeight(rows: string[], peaks: PagePeaks, key: string, others: number): string[] {
+  const peak = Math.max(peaks.get(key) ?? 0, rows.length, others)
+  peaks.delete(key)
+  peaks.set(key, peak)
+  // A handful of sizes is remembered (a resize drags through many); the oldest go first.
+  while (peaks.size > 6) peaks.delete(peaks.keys().next().value!)
+  return rows.length >= peak ? rows : concatRows(rows, blankRows(peak - rows.length))
+}
 
 /** The pages of one tab strip in one compile, and the height each is known to have at the width last measured. */
 export class PageGroup {
@@ -218,9 +238,9 @@ export class PageGroup {
 }
 
 /**
- * One page of a tab strip. A panel with several pages keeps one height: the page on show is padded with blank rows to the
- * tallest page ever painted at this width, so switching pages (or a list that narrows to a few matches) never moves the
- * rows under the panel. The other pages are measured with the clock and the focus bindings of the visible page left alone.
+ * One page of a tab strip. A panel with several pages keeps one height ({@link holdHeight}): the page on show is padded
+ * with blank rows to the tallest page at this width and viewport, so switching pages (or a list that narrows to a few
+ * matches) never moves the rows under the panel. The other pages are measured with the clock and the focus bindings of the visible page left alone.
  */
 export class PageHold implements Component {
   constructor(readonly inner: Component, private readonly group: PageGroup, private readonly viewport: () => string) {
@@ -230,14 +250,9 @@ export class PageHold implements Component {
   render(width: number): string[] {
     const rows = this.inner.render(width)
     const key = `${String(width)}|${this.viewport()}`
-    const peaks = this.group.peaks
-    const peak = Math.max(peaks.get(width) ?? 0, rows.length, this.group.others(this, width, key))
+    const others = this.group.others(this, width, key)
     this.group.shown(this, rows.length, key)
-    peaks.delete(width)
-    peaks.set(width, peak)
-    // A handful of widths is remembered (a resize drags through many); the oldest go first.
-    while (peaks.size > 6) peaks.delete(peaks.keys().next().value!)
-    return rows.length >= peak ? rows : concatRows(rows, blankRows(peak - rows.length))
+    return holdHeight(rows, this.group.peaks, key, others)
   }
 
   invalidate(): void { this.inner.invalidate?.() }
