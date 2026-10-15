@@ -40,6 +40,11 @@ describe('buildStatusFooter', () => {
     expect(rows([entry('model', 'model', { priority: 0 }), entry('ctx', 'ctx 18%', { priority: 6, band: 'right' })], 30)).toEqual([`model${' '.repeat(30 - 2 - 'model'.length - 'ctx 18%'.length)}ctx 18%`])
   })
 
+  it('keeps a truncated rich-text item beside the others: a cut row declares its own width, not the probe\'s', () => {
+    const cut = { id: 'views/gallery', definition: { id: 'views/gallery', priority: 100 }, node: { kind: 'rich-text', overflow: 'truncate', spans: [{ text: '● ', tone: 'accent' }, { text: 'gallery 2 runs' }] }, revision: 1 } as unknown as MayflyStatusEntry
+    expect(rows([entry('model', 'model', { priority: 0 }), cut], 60)).toEqual(['model  ● gallery 2 runs'])
+  })
+
   it('draws a heavy line on the row below, under the words of the item that is entered, and under no other', () => {
     const entries = [entry('model', 'model', { priority: 0 }), entry('views/jobs', '● jobs 2', { priority: 12 }), entry('views/goal', '● goal 2/8', { priority: 13 })]
     expect(rows(entries, 60, 'views/jobs')).toEqual(['model  ● jobs 2  ● goal 2/8', `       ${'━'.repeat('● jobs 2'.length)}`])

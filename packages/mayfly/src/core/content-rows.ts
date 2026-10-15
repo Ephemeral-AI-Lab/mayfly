@@ -36,7 +36,7 @@ import {
   styledText,
   truncatedRow,
 } from './plugin-view.ts'
-import { terminalSequenceAt } from './escape-sequences.ts'
+import { stripEscapeSequences, terminalSequenceAt } from './escape-sequences.ts'
 import { concatSources, mapSource, rowsSource, type RowSource } from './ui-rows.ts'
 import { paintedRowsBytes, type MayflyContentCache } from './ui-content-cache.ts'
 import type { MayflyComponents, MayflySemanticColors } from './types.ts'
@@ -775,6 +775,15 @@ function eager(rows: string[], env: ContentRowsEnv): RowSource {
   return rowsSource(rows)
 }
 
+/**
+ * One painted row that is cut to the leaf's width. It declares the row's own visible width: a cut row is padded to the width it
+ * was cut to, and a leaf with no declared width reads as that full width, so a status item would claim the whole row.
+ */
+function eagerRow(row: string, env: ContentRowsEnv): RowSource {
+  const source = eager([row], env)
+  return { ...source, declaredWidth: env.components.visibleWidth(stripEscapeSequences(row).trimEnd()) }
+}
+
 interface SanitizedSpan {
   readonly tone?: MayflyTone | undefined
   readonly styles?: readonly MayflyTextStyle[] | undefined
@@ -881,7 +890,7 @@ function textSource(node: Extract<MayflySectionContentNode, { readonly kind: 'te
   const painted = (row: string): string => styledText(tone(row), node.styles)
   if (node.overflow !== undefined && node.overflow !== 'wrap') {
     const content = fieldText(node.content)
-    if (node.overflow === 'truncate') return eager([painted(truncatedRow(sanitizePluginText(content), width, env.components))], env)
+    if (node.overflow === 'truncate') return eagerRow(painted(truncatedRow(sanitizePluginText(content), width, env.components)), env)
     return eager([painted(truncateMiddle(sanitizePluginText(content).replace(/[\r\n\t]+/gu, ' '), width, node.overflow))], env)
   }
   const { text: content, index } = indexedField(node, node.content, env)
@@ -1062,7 +1071,7 @@ function richTextSource(node: MayflyRichTextNode, width: number, env: ContentRow
     if (typeof span !== 'object' || span === null) throw new TypeError('rich-text span must be an object')
     return { tone: span.tone, styles: span.styles, text: sanitizePluginText(requireText(span.text, 'rich-text span text')) }
   })
-  if (node.overflow === 'truncate') return eager([truncatedRow(spans.map(span => paintSpan(span, env.colors)).join(''), width, env.components)], env)
+  if (node.overflow === 'truncate') return eagerRow(truncatedRow(spans.map(span => paintSpan(span, env.colors)).join(''), width, env.components), env)
   const raw = spans.map(span => span.text).join('')
   const index = indexedField(node, () => raw, env).index
   return new SegmentedContent(index, () => raw, width, (segment, at) => {
