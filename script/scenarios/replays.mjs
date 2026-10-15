@@ -474,6 +474,86 @@ const footerCutover = {
   ],
 }
 
+/** The workspace of `statusRow`: a deep path (so the directory shows its shortened form) holding a git repository with changes. */
+const STATUS_WORKSPACE = { path: 'clients/web/apps/landing', git: { branch: 'main', added: 3, deleted: 1 } }
+
+const statusRow = {
+  summary: 'one long conversation through the facts of the one status row: the model and effort, a deep directory and a git branch with changes, plan and yolo, the cache and context bars that fill (with and without cache, in their success, warning, and danger tones), then every item together (goal, todo, job) and the whole row narrowed to 100, 72, 52, and 36 columns with a view entered, a /btw chip, and back to one line; each state stays 10 to 25 s',
+  options: { contextWindow: 32_768 },
+  workspace: STATUS_WORKSPACE,
+  items: [
+    turn('Where do the landing page styles live?', [
+      step({
+        text: 'The styles are in `src/hero.css`. The row now shows the model and effort, the shortened directory, the git branch with its changes, and the cache and context bars at the right edge.',
+        usage: { inputTokens: 3200, outputTokens: 120, cacheReadTokens: 1600 },
+        tools: [tool('grep', { pattern: 'hero', include: '*.css' }, { result: 'src/hero.css:1:.hero {', runMs: 500 })],
+      }),
+      mark('facts'),
+      pause(DWELL),
+    ]),
+    turn('Plan the redesign before editing.', [
+      raw('plan/mode', { active: true }),
+      step({ text: 'Plan mode is on: `plan` sits after the model.', usage: { inputTokens: 3600, outputTokens: 60, cacheReadTokens: 2400 } }),
+      mark('plan'),
+      pause(DWELL),
+      raw('permission/preset', { preset: 'danger-full-access' }),
+      raw('sandbox/mode', { mode: 'danger-full-access' }),
+      raw('approval/policy', { policy: 'never' }),
+      step({ text: 'Yolo joins it: `plan yolo`.', usage: { inputTokens: 3900, outputTokens: 50, cacheReadTokens: 3200 } }),
+      mark('plan-yolo'),
+      pause(DWELL),
+      raw('plan/mode', { active: false }),
+      step({ text: 'Plan mode is off; `yolo` stays.', usage: { inputTokens: 4100, outputTokens: 40, cacheReadTokens: 3600 } }),
+      mark('yolo'),
+      pause(DWELL),
+    ]),
+    turn('Read the whole stylesheet set.', [
+      step({ text: 'Reading the stylesheets: the context bar is at 61%, in its normal tone, and the cache bar at 80% is green.', usage: { inputTokens: 4000, outputTokens: 80, cacheReadTokens: 16_000 } }),
+      mark('context-cache'),
+      pause(DWELL),
+      step({ text: 'This provider reported no cache reads for the next step, so the cache bar is gone and the context bar passes 70% in its warning tone.', usage: { inputTokens: 24_000, outputTokens: 80, cacheReadTokens: undefined } }),
+      mark('context-nocache'),
+      pause(DWELL),
+      step({ text: 'The window is nearly full: the context bar turns to its danger tone from 90%, and a cache hit rate under 30% turns the cache bar red too.', usage: { inputTokens: 27_000, outputTokens: 80, cacheReadTokens: 3000 } }),
+      mark('context-high'),
+      pause(DWELL),
+    ]),
+    turn('Work towards the goal: refresh the hero.', [
+      raw('plan/mode', { active: true }),
+      goalItem('create', { objective: 'Refresh the landing page hero and keep every test green', maxGoalRounds: 8 }),
+      goalRound(1),
+      step({
+        text: 'Round 1: the todo list and a background job join the goal; with plan and yolo on, this is the whole row. Resize the terminal to 100, 72, 52, and 36 columns and press Alt+↓ to enter a view.',
+        usage: { inputTokens: 9000, outputTokens: 160, cacheReadTokens: 6000 },
+        tools: [todos([['completed', 'Read the styles'], ['in_progress', 'Rewrite the hero'], ['pending', 'Update the screenshots'], ['pending', 'Run the tests']])],
+      }),
+      job('npm run watch', { lines: [[300, 'watching for changes…']], endMs: 200_000, status: 'completed', detail: 'exit code: 0' }),
+      mark('items'),
+      pause(DWELL_VIEWS),
+    ]),
+    btw('Which colour contrast ratio does WCAG AA ask for?', [
+      step({ reasoning: 'A short factual answer is enough.', text: 'Normal text needs 4.5:1; large text needs 3:1.', reasoningMs: 1200, textMs: 2000 }),
+    ], { label: 'contrast ratio' }),
+    mark('btw'),
+    pause(DWELL),
+    turn('Wrap up.', [
+      raw('plan/mode', { active: false }),
+      raw('permission/preset', { preset: 'workspace-write' }),
+      raw('sandbox/mode', { mode: 'workspace-write' }),
+      raw('approval/policy', { policy: 'ask' }),
+      goalItem('resume', { ifNeeded: true }),
+      goalItem('complete'),
+      step({
+        text: 'The goal and the list are done; only the job is left.',
+        usage: { inputTokens: 10_000, outputTokens: 90, cacheReadTokens: 7000 },
+        tools: [todos([['completed', 'Read the styles'], ['completed', 'Rewrite the hero'], ['completed', 'Update the screenshots'], ['completed', 'Run the tests']])],
+      }),
+      mark('settled'),
+      pause(DWELL),
+    ]),
+  ],
+}
+
 const queued = {
   summary: 'messages typed while the agent works, waiting in the queued-message pane (Queued: for the next turn, Steer: for the next step)',
   items: [turn('Refactor the parser, I will add more while you work.', [
@@ -1303,7 +1383,7 @@ const phase3 = {
   ],
 }
 
-export const REPLAYS = { tour, toolkit, thinking, markdown, live, phases, thinkingLadder, pending, blocks, streaming, sync, activityWait, prompts, turns, toollines, toolgrow, findings, edits, errors, compaction: compactionReplay, compactionNoWindow, compactionFailed, manualCompact, context, subagents, childStream, approvals, approvalsRejected, approvalsEdit, approvalsQueue, questions, plan, planLong, goal, footerCutover, jobs, queued, retries, sideQuestion, notices, notificationPane, modes, edge, history, wheel, content, phase3 }
+export const REPLAYS = { tour, toolkit, thinking, markdown, live, phases, thinkingLadder, pending, blocks, streaming, sync, activityWait, prompts, turns, toollines, toolgrow, findings, edits, errors, compaction: compactionReplay, compactionNoWindow, compactionFailed, manualCompact, context, subagents, childStream, approvals, approvalsRejected, approvalsEdit, approvalsQueue, questions, plan, planLong, goal, footerCutover, statusRow, jobs, queued, retries, sideQuestion, notices, notificationPane, modes, edge, history, wheel, content, phase3 }
 
 /*
  * The scenes of the Website's app shots. Each is the source of an `app-*` scenario of the catalog, whose goldens the

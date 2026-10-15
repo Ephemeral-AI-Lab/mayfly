@@ -1,6 +1,6 @@
 /**
  * The focus mode on the status line: while keyboard focus is off the prompt (on the conversation's row cursor, on a view
- * of status row 2, or in a search of the stream) one inverse chip names where it is, at the place the plan and yolo badges
+ * of the status row, or in a search of the stream) one inverse chip names where it is, at the place the plan and yolo badges
  * take, so the reader never has to guess which keys are live. The prompt itself has no chip. The chip follows
  * `mayfly/focus-mode-changed`; the registration is the Fiber's and leaves with it.
  *

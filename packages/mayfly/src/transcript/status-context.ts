@@ -1,27 +1,21 @@
 /**
  * `mayfly-status-context` plugin: enhancement footer entry showing the context
- * occupancy of the latest model step — right-aligned on the single footer row
- * in the full `text` foreground, the kimi footer's readout. Its priority 4
- * ranks it after the model, mode, goal, and jobs entries but ahead of the cwd
- * and git entries, so under width pressure those truncate or drop first and
- * the readout hides only when it no longer fits whole. Occupancy is
- * the `assistant/message` usage's disjoint input side — `inputTokens +
- * cacheReadTokens + cacheWriteTokens` (output and reasoning tokens are new
- * generation, not occupied context). When the session-facts projection
- * advertises a context window — its durable `contextWindow` value —
- * — the entry renders `context: N% (K/M)`: N is the occupancy share rounded
- * up (a non-zero share always at least 1, clamped to 100), K and M the
- * 1024-base-abbreviated counts (`x.yk` from 1024, `x.yM` from 1 MiB,
- * rounded at 100k — context windows are powers of two, so 262144 renders as
- * `256k`). The share is a lower bound: the window covers request and
- * response combined while K counts the input side only. Without a window
- * the entry degrades to `ctx N` (the pre-S15 form); a session with no usage
- * data yet renders ''. When the step reports `cacheReadTokens`, the readout
- * is prefixed with `cache N%  ` — the cache-read share of the occupancy,
- * rounded down so a partial hit never reads as 100%; providers that omit
- * the field get no cache segment. Attach follows the session-facts projection's
- * replay/live whole-value feed; this producer never scans an Agent or Session
- * event log.
+ * occupancy of the latest model step at the right edge of the one status row
+ * (priority 6). Occupancy is the `assistant/message` usage's disjoint input side
+ * — `inputTokens + cacheReadTokens + cacheWriteTokens` (output and reasoning
+ * tokens are new generation, not occupied context). When the session-facts
+ * projection advertises a context window — its durable `contextWindow` value —
+ * the entry draws two cell bars, `cache ▰▰▱▱▱ 40%  ctx ▰▰▱▱▱▱▱▱▱▱ 18%`: the
+ * context bar's share is rounded up (a non-zero share is at least 1, clamped to
+ * 100) and its tone warns from 70% and turns to danger from 90%; the cache bar
+ * is the cache-read share of the occupancy, rounded down so a partial hit never
+ * reads as 100%, in a tone that warns under 60% and turns to danger under 30%
+ * (a low hit rate is a costlier prompt), and is omitted when the provider reports no cache reads. A crowded row gives
+ * up the cache bar, then turns the context bar into `ctx 18%`, then hides the
+ * entry. Without a window the entry is the plain count `ctx 5.5k`; a session
+ * with no usage data yet renders nothing. Attach follows the session-facts
+ * projection's replay/live whole-value feed; this producer never scans an Agent
+ * or Session event log.
  *
  * @module @ephemeral-ai/mayfly/transcript/status-context
  */
@@ -101,6 +95,29 @@ export function cachePercent(cacheRead: number, used: number): number {
   return Math.min(100, Math.floor((cacheRead / used) * 100))
 }
 
+/** The context bar's cells, and the cache bar's (a hit rate needs less room than the limit it sits beside). */
+const CONTEXT_CELLS = 10
+const CACHE_CELLS = 5
+
+/**
+ * The context bar's tone: the limit is the thing to watch, so it warns from 70% and turns to danger from 90%.
+ * @param percent - the occupancy share in percent.
+ * @returns the filled part's tone.
+ */
+function contextTone(percent: number): 'primary' | 'warning' | 'danger' {
+  return percent >= 90 ? 'danger' : percent >= 70 ? 'warning' : 'primary'
+}
+
+/**
+ * The cache bar's tone, the other way round: a low hit rate means a costlier and slower prompt, so it is danger under 30%,
+ * warning under 60%, and success from 60%.
+ * @param percent - the cache-read share in percent.
+ * @returns the filled part's tone.
+ */
+function cacheTone(percent: number): 'success' | 'warning' | 'danger' {
+  return percent < 30 ? 'danger' : percent < 60 ? 'warning' : 'success'
+}
+
 /**
  * Normalize an advertised context window: only a positive finite number is
  * a window, anything else (undefined included) means "not advertised" and
@@ -132,15 +149,20 @@ export function apply(ctx: Context): void {
   const node = (): MayflyStatusNode | null => {
     if (facts.contextTokens <= 0) return null
     const max = normalizeWindow(facts.contextWindow)
-    const cache = facts.contextCacheReadTokens === undefined
-      ? ''
-      : `cache ${String(cachePercent(facts.contextCacheReadTokens, facts.contextTokens))}%  `
-    const occupancy = max === undefined
-      ? `ctx ${formatTokens(facts.contextTokens)}`
-      : `context: ${String(contextPercent(facts.contextTokens, max))}% (${formatTokens(facts.contextTokens)}/${formatTokens(max)})`
-    // The cache figure goes first when the row is crowded, then the meter.
-    return shedNode({ kind: 'text', content: `${cache}${occupancy}` }, [
-      ...cache === '' ? [] : [{ rank: SHED.cache, node: { kind: 'text' as const, content: occupancy } }],
+    // Without an advertised window there is no share to draw: the plain count, shed whole when the row is crowded.
+    if (max === undefined) return shedNode({ kind: 'text', content: `ctx ${formatTokens(facts.contextTokens)}` }, [{ rank: SHED.context, node: null }])
+    const percent = contextPercent(facts.contextTokens, max)
+    const context: MayflyStatusNode = {
+      kind: 'progress', label: 'ctx', value: percent, max: 100, style: 'cells', width: CONTEXT_CELLS, tone: contextTone(percent), showCount: false, showPercent: true,
+    }
+    if (facts.contextCacheReadTokens === undefined) return shedNode(context, [{ rank: SHED.bar, node: { kind: 'text', content: `ctx ${String(percent)}%` } }, { rank: SHED.context, node: null }])
+    const cache: MayflyStatusNode = {
+      kind: 'progress', label: 'cache', value: cachePercent(facts.contextCacheReadTokens, facts.contextTokens), max: 100, style: 'cells', width: CACHE_CELLS, tone: cacheTone(cachePercent(facts.contextCacheReadTokens, facts.contextTokens)), showCount: false, showPercent: true,
+    }
+    // The cache bar goes first when the row is crowded, then the context bar becomes its percentage, then the readout.
+    return shedNode({ kind: 'stack', direction: 'row', gap: 2, children: [{ node: cache }, { node: context }] }, [
+      { rank: SHED.cache, node: context },
+      { rank: SHED.bar, node: { kind: 'text', content: `ctx ${String(percent)}%` } },
       { rank: SHED.context, node: null },
     ])
   }

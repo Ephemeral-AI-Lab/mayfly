@@ -176,7 +176,7 @@ Rendered states (illustrative; the Content scene of the prototype draws them):
 text        Saved to clipboard                          tone: success
             Waiting for the provider…                   tone: muted, overflow: truncate
 
-rich-text   deepseek-chat High  PLAN  ⏵ 2 jobs           spans: default · accent strong · warning
+rich-text   deepseek-chat High  plan  ⏵ 2 jobs           spans: default · accent strong · warning
 
 fields      Provider: DeepSeek
             Balance: ¥ 128.40                           label muted, value spans
@@ -385,7 +385,7 @@ Verification duties for any new or changed surface:
    (spec §5.7) on every surface that opens without the user asking for it.
 8. Key prompts: every key a screen state makes useful is visible in that state
    (spec §3.3) — the surface row inside overlays, the owner's own footer for pane
-   and block keys, status row 2 for editor and session keys. A new global key or
+   and block keys, the notification pane for editor and session keys. A new global key or
    state extends the spec §3.3 fragment catalog and its exact-row spec.
 9. Diagrams are exact renderings at a stated width: the top rule, every row,
    and the bottom rule of a box share one width.
@@ -408,7 +408,7 @@ and its §7 sets the gates; a *Full gate* note below records the Phase 1 rule. `
 | --- | --- | --- | --- |
 | A2 | Rounded chrome everywhere | spec §2.1 | `core/ui-patterns.ts` (`renderSurfaceHead`, `renderSurfaceTail`); every `surface*` / `app-*` shot. |
 | A4 | Consolidate the transcript glyph vocabulary | spec §2.2 | `transcript/components.ts`, `transcript/thinking.ts`, `transcript/pane-activity.ts`, `interaction/symbols.ts`. |
-| B4 | Mode chips in status row 1, an undecorated editor whose border color is the shell mode | spec §3.3, §5.2 | `interaction/mode-status.ts` (uppercase `PLAN`/`YOLO` chips, priority 1; no `SHELL` chip), `interaction/editor-plus.ts` (drop `setBorderLabel` for bash, keep `setBorderColor` and `setPromptSymbol`; the title moves to the top-right corner), `interaction/mode-commands.ts` (still owns the mode snapshot); `website/**/features/status-bar.md` and `modes.md`. |
+| B4 | Mode chips in the status row, an undecorated editor whose border color is the shell mode | spec §3.3, §5.2 | `interaction/mode-status.ts` (lowercase `plan`/`yolo` chips, priority 2; no `SHELL` chip), `interaction/editor-plus.ts` (drop `setBorderLabel` for bash, keep `setBorderColor` and `setPromptSymbol`; the title moves to the top-right corner), `interaction/mode-commands.ts` (still owns the mode snapshot); `website/**/features/status-bar.md` and `modes.md`. |
 | B5 | Feedback severity prefix | spec §2.4 | `core/ui-compiler.ts` (feedback row), `core/ui-interaction-notifications.ts`. |
 | C1 | Use the diff tokens and add hunk headers | spec §4.1 | `core/diff-align.ts`, `core/plugin-view.ts`; `diff.svg`. |
 | C2 | Highlight standalone code | spec §4.1 | `core/plugin-view.ts` (code arm), `core/highlight.ts`. |
@@ -456,7 +456,7 @@ findings in the 2026-09-28 audit (PR #77) are cited as `UX-nn`.
 | G13 | (spec §7: the idle screen stays empty by decision; tips live in the `Deep diving` row's gap.) Tips rotate only while a turn runs; the idle screen teaches nothing, and the `#` skills prefix is cued nowhere (`!` and `@` appear in the rotation) | `transcript/tips-content.ts`, `interaction/editor-plus.ts` | H5, H8 |
 | G14 | No keyboard route to blocks older than `expandTurns` | `transcript/transcript-model.ts` | H6 |
 | G15 | The Website says the queue pane never takes `↑`, but `↑` on an empty prompt withdraws the newest queued message (`withdrawQueued`) | `website/**/features/panes.md`, `editor.md`; `interaction/input-plugin.ts` | H7 |
-| G16 | The status-bar page documents a single-row footer with plan/yolo as lowercase text; the footer already renders two rows and nothing uses row 2 | `website/**/features/status-bar.md`, `transcript/status-model.ts` | H1, B4 |
+| G16 | The status-bar page documents a single-row footer with plan/yolo as lowercase text; the footer is one row with the facts and the items | `website/**/features/status-bar.md`, `transcript/status-model.ts` | H1, B4 |
 | G17 | Side-conversation identity and `F7`/`F8` share one centered entry on the crowded state row; `F8` says `close` for a subagent although it only detaches | `interaction/conversation-view-status.ts` | H1 |
 | G18 | The subagent reply form draws `Send` and `Cancel` buttons, and `Enter` in its textarea does not send | `interaction/subagent-reply.ts` | H1 |
 | G19 | Bash mode writes `! shell mode` into the editor's left border, the only text besides the session title | `interaction/editor-plus.ts` | B4 |
@@ -474,8 +474,8 @@ findings in the 2026-09-28 audit (PR #77) are cited as `UX-nn`.
 | R3 | Edit diff with line numbers and a red or green background behind the changed code (not the line numbers); Write as one line, highlighted code when expanded (spec §5.3) | `core/diff-align.ts`, `core/plugin-view.ts`, `transcript/tool-line.ts`, `transcript/process-rows.ts` |
 | R4 | Loader variants and determinate bar (spec §4.8) | `core/ui-patterns.ts`, `packages/ui/src/contracts.ts` |
 | R5 | Compaction bar and settled rule (spec §5.6) | `transcript/compaction.ts`, `conversation/facts.ts` |
-| R6 | Todo and goal rule progress, moved from the stream to status row 2 (spec §5.4) | `transcript/pane-todo.ts`, `transcript/status-goal.ts` |
-| R7 | Agents and jobs views in status row 2 (spec §5.1, §5.5) | `transcript/pane-agents.ts`, `transcript/status-jobs.ts`, `interaction/agents-command.ts`, `interaction/jobs.ts`; overlay for the focused view (ref §3.2), `packages/ui` unchanged |
+| R6 | Todo and goal rule progress, moved from the stream to items of the status row (spec §5.4) | `transcript/pane-todo.ts`, `transcript/status-goal.ts` |
+| R7 | Agents and jobs views as items of the status row (spec §5.1, §5.5) | `transcript/pane-agents.ts`, `transcript/status-jobs.ts`, `interaction/agents-command.ts`, `interaction/jobs.ts`; overlay for the focused view (ref §3.2), `packages/ui` unchanged |
 | R8 | Decision skeleton and question wizard (spec §5.7) | `interaction/approval-plugin.ts`, `interaction/questionnaire.ts`, `core/ui-key-grammar.ts` |
 | R9 | Text-color tabs, live-following rail, expandable lists, form refinements (spec §4.4) | `core/ui-patterns.ts`, `core/ui-compiler.ts`, `core/theme-palette.ts`; `packages/ui/src/contracts.ts` (`MayflyFormFieldBase.help`/`group`, `MayflyTabItem.attention`, `MayflyTabsNode.orientation`, `MayflyListItem.body`), `core/ui-validator.ts` |
 | R10 | Sessions, settings, and status panels; account balance (spec §5.10) | `interaction/session-list-model.ts`, `interaction/session-workspace-panel.ts`, `interaction/settings.ts`, `interaction/usage.ts`; `filterMode: 'slash'` for the sessions list |

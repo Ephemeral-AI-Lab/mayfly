@@ -1,5 +1,5 @@
 /**
- * The conversation chip of status row 1: while more than one conversation is open it names the displayed one in the
+ * The conversation chip of the status row: while more than one conversation is open it names the displayed one in the
  * form of the focus chip (` view `, ` conversation `): a strong inverse word, in the one primary tone for every kind so
  * switching never changes the chip's color, ` main ` for the main
  * session, ` btw ` and ` subagent ` for a side conversation. The keys that switch and close live in the notification

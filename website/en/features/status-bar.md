@@ -13,7 +13,7 @@ editor's top border. Bash mode keeps its left-edge `! shell mode` label.
 | conversation-view, focus | 1 | While more than one conversation is open, a chip names the displayed one (` main `, ` btw `, ` subagent `); the `F7`/`F8` keys are in the notification pane. While focus is off the prompt, a chip names where it is (` conversation `, ` view `, ` search `) |
 | mode | 2 | plan/yolo state, both shown when both are on |
 | schedule | 2 | reminder count (hidden with no reminders) |
-| context | 6 (right) | latest-step cache hit rate and context occupancy, e.g. `cache 82%  context: 45% (57.6k/128k)`; the `cache` segment is omitted when the provider reports no cache reads; it gives up the cache figure, then the meter |
+| context | 6 (right) | latest-step cache hit rate and context occupancy, e.g. two bars, `cache ▰▰▰▰▱ 82%  ctx ▰▰▰▰▱▱▱▱▱▱ 45%` (the context bar turns warning from 70% and danger from 90%; the cache bar turns warning under 60% and danger under 30%); the `cache` segment is omitted when the provider reports no cache reads; it gives up the cache bar, then the width of the context bar (`ctx 45%`), then the whole readout |
 | cwd | 7 | current working directory; it gives up its depth, down to the last segment |
 | git | 10 | branch and change summary; it is the first of the facts to go |
 | jobs | 11 | `⏵ N jobs` — live (running/stopping) background-job count; hidden when none |

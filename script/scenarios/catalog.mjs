@@ -74,6 +74,7 @@ const COVERS = {
   planLong: [`${INTERACTION}plan-review-panel.ts`, `${INTERACTION}questions-plugin.ts`, ...REQUEST, 'packages/mayfly/src/core/markdown-rows.ts'],
   goal: [`${TRANSCRIPT}status-goal.ts`],
   footerCutover: ['packages/mayfly/src/conversation/projection.ts', `${TRANSCRIPT}status-basic-model.ts`, `${TRANSCRIPT}stream-facts.ts`, 'packages/mayfly/src/components/transcript-view.ts', `${TRANSCRIPT}notices.ts`, `${INTERACTION}mode-status.ts`, `${INTERACTION}conversation-view-status.ts`, `${TRANSCRIPT}status-rows.ts`, `${TRANSCRIPT}status-goal.ts`, `${TRANSCRIPT}pane-todo.ts`, `${TRANSCRIPT}view-items.ts`, `${TRANSCRIPT}status-jobs.ts`, 'packages/mayfly/src/core/views-lane.ts', 'packages/mayfly/src/core/ui-admission.ts', 'packages/mayfly/src/core/node-slot.ts'],
+  statusRow: [`${TRANSCRIPT}status-*.ts`, `${INTERACTION}mode-status.ts`, `${INTERACTION}conversation-view-status.ts`, 'packages/mayfly/src/core/ui-admission.ts', 'packages/mayfly/src/core/views-lane.ts', 'packages/mayfly/src/core/node-slot.ts'],
   jobs: [`${TRANSCRIPT}status-jobs.ts`, `${INTERACTION}jobs.ts`],
   queued: [`${INTERACTION}pane-queue.ts`],
   retries: [`${TRANSCRIPT}transcript-model.ts`, `${INTERACTION}trace-*.ts`, ...NOTIFICATION, ...STREAM],
@@ -845,6 +846,28 @@ const SCRIPTS = {
     play('job'), checkpoint('job'),
     play('settled'), checkpoint('settled'),
   ],
+  // The facts of the one status row through one conversation: the deep directory and git branch, plan and yolo, the cache and context bars and
+  // (with and without cache), every item at once, then the whole row at 100, 72, 52, and 36 columns with a view
+  // entered at 52, a /btw chip, and back to one line.
+  statusRow: [
+    play('facts'), checkpoint('facts'),
+    play('plan'), checkpoint('plan'),
+    play('plan-yolo'), checkpoint('plan-yolo'),
+    play('yolo'), checkpoint('yolo'),
+    play('context-cache'), checkpoint('context-cache'),
+    play('context-nocache'), checkpoint('context-nocache'),
+    play('context-high'), checkpoint('context-high'),
+    play('items'), checkpoint('items'),
+    resize(100, 24), checkpoint('w100'),
+    resize(72, 24), checkpoint('w72'),
+    resize(52, 24), checkpoint('w52'),
+    key('alt+down'), checkpoint('w52-view'), key('esc'),
+    resize(36, 24), checkpoint('w36'),
+    resize(...DEFAULT_SIZE),
+    play('btw'), checkpoint('btw'),
+    key('f7'), checkpoint('btw-back'),
+    play('settled'), checkpoint('settled'),
+  ],
   // The wheel scrolls the transcript back: the two checkpoints differ only by the scroll.
   wheel: [play(), checkpoint('end'), wheel('up', { count: 3 }), checkpoint('wheel')],
   // The collapsed write card, then /trace on its tool call: the megabyte document in one scroll, paged and resized.
@@ -887,7 +910,7 @@ const SIZES = {
  * timer sets: under load the timer fires before or after the scenario clock moves, so a checkpoint ticks it once at the
  * timeline time and the counter is exact. The timed scenarios (`play(…, TIMED)`) keep the product's own timer.
  */
-const TICKED = new Set(['notices', 'blocks', 'footerCutover'])
+const TICKED = new Set(['notices', 'blocks', 'footerCutover', 'statusRow'])
 const replayScenario = (name, replay) => ({
   summary: replay.summary,
   source: { replay: name },

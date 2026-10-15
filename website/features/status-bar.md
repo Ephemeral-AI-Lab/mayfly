@@ -13,7 +13,7 @@ service，并使用 renderer-neutral `MayflyStatusNode`；节点可以是 shed �
 | conversation-view、focus | 1 | 打开的会话多于一个时，用标签标出当前会话（` main `、` btw `、` subagent `），`F7`/`F8` 的提示在通知栏；焦点不在输入框时，用标签标出焦点位置（` conversation `、` view `、` search `） |
 | mode | 2 | plan/yolo 状态，两者同时开启时同时显示 |
 | schedule | 2 | 提醒数（无提醒时隐藏） |
-| context | 6（right） | 最近一步的 cache 命中率与 context 占用，如 `cache 82%  context: 45% (57.6k/128k)`；provider 未报告 cache 时省略 `cache` 段；拥挤时先丢弃 cache 数字，再丢弃整个 meter |
+| context | 6（right） | 最近一步的 cache 命中率与 context 占用，如 两条进度条，`cache ▰▰▰▰▱ 82%  ctx ▰▰▰▰▱▱▱▱▱▱ 45%`（context 条超过 70% 变为警告色，超过 90% 变为危险色；cache 条低于 60% 变为警告色，低于 30% 变为危险色）；provider 未报告 cache 时省略 `cache` 段；拥挤时先丢弃 cache 条，再把 context 条缩成 `ctx 45%`，最后丢弃整个读数 |
 | cwd | 7 | 当前工作目录；拥挤时丢弃层级，只留最后一段 |
 | git | 10 | branch 与变更摘要；事实里最先被丢弃 |
 | jobs | 11 | `⏵ N jobs`——live（running/stopping）后台任务数；没有时隐藏 |

@@ -381,16 +381,16 @@ no hint, badge, or mode text: **input mode is the prompt symbol and the frame's 
 draws `!` and an accent border), never a chip.
 
 **Mode chips.** Session modes are status, so they sit in the status row next to the model they modify, bold in
-their own tone (no merged "highest alert" hue):
+their own tone, in lower case (no merged "highest alert" hue):
 
 ```
   normal      deepseek-chat High
-  plan        deepseek-chat High  PLAN
-  yolo        deepseek-chat High  YOLO
-  plan+yolo   deepseek-chat High  PLAN  YOLO
+  plan        deepseek-chat High  plan
+  yolo        deepseek-chat High  yolo
+  plan+yolo   deepseek-chat High  plan yolo
 ```
 
-`PLAN` is primary, `YOLO` is warning; `PLAN…` marks a pending toggle. Chips outrank the other entries
+`plan` is accent, `yolo` is warning; `plan…` marks a pending toggle. Chips outrank the other entries
 when the row is full, and a chip never carries a "dirty" word. The way to change a mode is a key cue in the
 activity gap or a tip, never text on the chip.
 
@@ -951,7 +951,7 @@ focus, and narrow behavior.
   stack by priority, a pane with nothing to say renders zero rows, and a side pane says
   what it becomes on a narrow terminal: it moves to the dock, becomes an on-demand overlay,
   or hides. Built-in panes are passive; an interactive pane is reached with `F6`.
-- **Status area.** Two rows, each its own component (§5.1). Entries sit in a left or right band and are admitted in
+- **Status area.** One row (§5.1). Entries sit in a left or right band and are admitted in
   priority order across the row; an entry marked *hide* drops out instead of truncating, and once the row is
   full later entries are dropped.
 - **Width ladders.** A layout is several variants with disjoint width (or height) ranges;
@@ -1065,7 +1065,7 @@ heavy `━` line under that item is its second line, and the panel opens under i
 ╭────────────────────────────────────────── Update the landing page hero ╮
 │ > ▌Ask anything · / commands · @ files · # skills · ! shell            │
 ╰────────────────────────────────────────────────────────────────────────╯
-deepseek-flash High  plan yolo  ~/workspace  ⏵ 1 job  ● goal 2/8  ● todo 2/12      cache 34%  context: 18% (22.9k/128k)
+deepseek-flash High  plan yolo  ~/workspace  ⏵ 1 job  ● goal 2/8  ● todo 2/12      cache ▰▰▱▱▱ 34%  ctx ▰▰▱▱▱▱▱▱▱▱ 18%
 ```
 
 **The row.** Entries sit in the left band (the facts and the items, in priority order) or the right band (the context meter).
@@ -1075,7 +1075,7 @@ deepseek-flash High  plan yolo  ~/workspace  ⏵ 1 job  ● goal 2/8  ● todo 2
 | `provider/model Effort` | 0 | the provider (10), the thinking level (20), the model (70) |
 | conversation chip (` main ` ` btw ` ` subagent `), focus chip (` view `) | 1 | |
 | mode chips (`plan` `yolo`) | 2 | |
-| context (`cache 34%  context: 18% (22.9k/128k)`, right) | 6 | the cache figure (50), the meter (60) |
+| context (two bars, `cache ▰▰▱▱▱ 34%  ctx ▰▰▱▱▱▱▱▱▱▱ 18%`, right; the context bar warns from 70% and turns danger from 90%, the cache bar warns under 60% and turns danger under 30%) | 6 | the cache bar (50), the context bar down to `ctx 18%` (55), the readout (60) |
 | directory (`~/work/mayfly`) | 7 | its depth, down to the last segment (40) |
 | balance chip (`⚠ ¥6.2`, only when low) | 8 | |
 | git (`main ±3`) | 10 | the whole entry (30) |

@@ -569,7 +569,7 @@ product is used (D23); Phase 7 optimizes the whole architecture (D27), and Phase
 | 2 Workbench and content | 4 (2a-2d) | The live review loop and frame capture, automated and change-precise verification (tiers, scenario goldens, perf A/B, real screenshots), content at any size, the owner's review of the foundation | 1-13, 15 | changed per part; full at the end; owner review (2d) |
 | 3 Session flow | 5 (3a-3e) | The components area; the stream and its turns, tool rows, the activity row and notices, request rows and decision cards, levels, selection, search | 14, 16-21 | per component (§7); full and owner at the end |
 | 4 Editor and command palette | 1-2 | The editor as a prompt composition, the `/` `@` `#` completion palette, queue and recall | 15, 30 p1-p2 | per component; full and owner at the end |
-| 5 Status and views | 3 (5a-5c) | The two status rows and Mayfly's four views | 13, 12, 18 (the rows under the stream) | per round (§7); full and owner at the end |
+| 5 Status and views | 3 (5a-5c) | The one status row and Mayfly's four views | 13, 12, 18 (the rows under the stream) | per round (§7); full and owner at the end |
 | 6 Panels | 6 (6a-6f) | Every command panel, questions, and the trace, keys, rewind, job output, and changes surfaces | 21 p4, 22-32 (30 p3-p6) | per component; full and owner at the end |
 | 7 Architecture performance | 1 | The finished product profiled on real workloads and restructured where measured; the final budgets and ceilings | — | full + bench report; owner |
 | 8 Finish | 1 | Website, skills, docs, release | — | full + pack + release preflight |
@@ -2040,20 +2040,21 @@ At the phase gate: platform acceptance for paste, IME, and the clipboard on macO
 
 ### Phase 5 Status area and views
 
-**Goal.** Two composable rows; row 2 views through the public pane API. **Backlog:** B4 (chips), C4, G16, G17, G23, R6,
+**Goal.** One composable status row (the facts and the items); the items' views through the public pane API. **Backlog:** B4 (chips), C4, G16, G17, G23, R6,
 R7, R20 (status). Scenes 13 (100, 72, 52, and 36 columns, every toggle), 12, 18 (the rows under the stream). Starting
 points:
 
-- **Footer.** The transcript footer plugin builds the two status rows (§6: `status-entries.ts` for row 1, `status-rows.ts`
-  and `views.ts` for row 2) from `mayflyStatus.list()` and the views panes, and leases the footer slot with
-  `mountNodeSlot`; admission is slice 1.3's primitive.
-- **Row 1.** The registrations, restyled: model and effort (priority 0), uppercase `PLAN`/`PLAN…` primary strong and
-  `YOLO` warning strong (priority 1, `interaction/mode-status.ts`), context (4, right, hide), directory (5, truncate),
-  the low-balance chip `⚠ ¥6.2` (6, right, account only, *new*), git (10), the side-conversation identity in the center
-  band (`interaction/conversation-view-status.ts`, without its key text), and plugin entries.
-- **Row 2.** Agents (`transcript/pane-agents.ts`), Jobs (`transcript/status-jobs.ts`), Goal
-  (`transcript/status-goal.ts`), and Todo (`transcript/pane-todo.ts`) become views panes; the right cue reads
-  `↓ views`, ; the conversation keys are in the notification pane.
+- **Footer.** The transcript footer plugin builds the one status row (`status-rows.ts`) from `mayflyStatus.list()` and the
+  views lane's items, and leases the footer slot with `mountNodeSlot`; admission is slice 1.3's primitive, and the row sheds
+  detail by rank before it admits (`ui.shed`, `status-shed.ts`).
+- **The facts.** The registrations, restyled: model and effort (priority 0), the lowercase `plan`/`plan…` (accent) and `yolo`
+  (warning) chips (2, `interaction/mode-status.ts`), context (6, right, hide: two bars, `cache ▰▰▱▱▱ 34%  ctx ▰▰▱▱▱▱▱▱▱▱ 18%`, giving up the
+  cache bar, then the context bar's width, then the readout), directory (7, `~/…` shortened, its last segment when crowded), the low-balance
+  chip `⚠ ¥6.2` (8, *new*, R3), git (10), the conversation chip (1, ` main ` ` btw ` ` subagent `,
+  `interaction/conversation-view-status.ts`), and plugin entries.
+- **The items.** Agents (`transcript/pane-agents.ts`), Jobs (`transcript/status-jobs.ts`), Goal (`transcript/status-goal.ts`),
+  and Todo (`transcript/pane-todo.ts`) become views panes whose summaries sit in the same row after the facts (11 to 13); the
+  conversation keys are in the notification pane.
 - **Inside a view.** Entering, switching, and leaving are the lane's (slice 1.10). In Mayfly's views `↑/↓` select;
   `Enter` opens an agent's conversation (`mayflyConversations`, `F7` returns) or a job's output; `x` stops behind the
   shared Yes/No (`subagents.interrupt(child, { kind: 'ancestor', agent })`, or `jobs.kill` after rechecking
@@ -2086,7 +2087,7 @@ when its last part is accepted (§7 step 3). Rounds run no tests (§3, step 7); 
 | Round | Parts | Status | Branch |
 | --- | --- | --- | --- |
 | R1 | 5a.1 footer cutover, and the work it pulled in at the owner's request: **footer** on the footer node slot (`status-rows.ts`), `StatusFooterComponent` and the todo pane deleted; **one status row** (the facts and the items together, a heavy `━` second line under the entered item) that sheds in a set order when it is crowded (`ui.shed`, `status-shed.ts`: item time, provider, thinking level, git, directory depth, cache, context, model); **items** under the item rules (`component-library.md` §5.1: `<mark> <name> <n/m> <timer>`, a content-only fixed scrolling panel with a live `↓ N more`, `viewHistory`); **Todo** (`● todo 2/12 4m 12s`, closing item) and **Goal** (marks `●` `○` `⏸` `✕` `✓`, activation followed, panel with `r` `p` `e` `c`, stream rows from durable `goal/change`, `── goal round N ──` rules, blocked notice); **row 1 facts** `provider/model Effort` and `plan yolo` together; **conversation chip** (` main `, ` btw `, ` subagent `) with `F7`/`F8` at the right of the notification pane; the focus chip reads `view`; Jobs stays a plain `⏵ N jobs` item until R6 | built and accepted by the owner on 2026-10-14 (scenario `footerCutover`), including the one-row redesign and the row order (model, chips, plan/yolo, directory, git, then jobs, goal, todo; context at the right edge); tests, goldens, and the Website pass owed at the phase gate (below) | `feat/phase-5` |
-| R2 | 5a.2 row 1 facts: model and effort (0) *`provider/model Effort` and plan + yolo shown together were done in R1*; uppercase `PLAN`/`PLAN…` and `YOLO` strong chips (1), context (4, hide), directory (5, shortened path, not `.`), git (10); the width ladder at 100, 72, 52, and 36 columns and every toggle (B4 chips, C4, G16) | partly built in R1; the rest not started | `feat/phase-5` |
+| R2 | 5a.2 the facts of the one row and its width ladder: model and effort (0) *and plan + yolo together were done in R1*; the chips stay lowercase `plan` `plan…` `yolo` (the owner's answer: the uppercase strong chips of B4 are retired); context as two cell bars, `cache ▰▰▱▱▱ 34%  ctx ▰▰▱▱▱▱▱▱▱▱ 18%` (6, right; the context bar is primary, warning from 70%, danger from 90%; the cache bar the other way round, danger under 30%, warning under 60%, success from 60%; no counts in the row; sheds the cache bar, then the context bar to `ctx 18%`: `SHED.bar`, then the readout); directory (7, shortened path, its last segment when crowded, never `.`), git (10); the ladder at 100, 72, 52, and 36 columns and every toggle (B4 chips, C4, G16); the stale "row 1 / row 2" text retired. Observed, kept as the owner chose (shed table unchanged): at 52 and 36 columns the model is shed before the items, which have no narrower form | built, in the owner's review (scenario `statusRow`) | `feat/phase-5` |
 | R3 | 5a.3 balance chip and conversation identity: the `⚠ ¥6.2` chip (6, right, account only, from `deepseekAccount.getBalance()`); *the conversation chip and the `F7`/`F8` keys in the notification pane were done in R1* (G17) | the identity built in R1; the balance chip not started | `feat/phase-5` |
 | R4 | 5b.1 the Goal and Todo items, *built in R1 under the owner's item rules* (they replace this row's old text: no progress rules, no `↓ views` cue, no `Ctrl+T`); what is left is the Goal's final content, which waits for what dsh gives upstream | built in R1 and accepted | `feat/phase-5` |
 | R5 | 5b.2 Agents view and conversation keys (the item rules apply): `agents N waiting`; live rows first; `Enter` opens the conversation (`F7` returns); `x` stops behind the shared Yes/No;  the final look of a running background subagent (D2) (G23, R7) | not started | `feat/phase-5` |
@@ -2097,8 +2098,8 @@ when its last part is accepted (§7 step 3). Rounds run no tests (§3, step 7); 
 (the one row, the `━` line, the footer within W1), the shed ladder (`AdmissionRow` shedding by rank, `ui.shed`, the `mark` second line), and the new wire options (scroll `expandable`/`more`, divider `align`/`inset`/`tone`; `stack.cells` and the `row` field of a status definition were removed again); the Todo and Goal items (marks and widths, the timer and the
 five-second item, activation, `viewHistory`, the `r` `p` `e` `c` keys fenced to the revision); the two projection entries
 (`goal-change`, `goal-round`, `stateVersion` 11) and their rows, the blocked notice, the conversation chip and the
-notification toggle; goldens for `footerCutover` (it ticks once per checkpoint). Specs that are stale until then:
-`status-model.spec.ts` (the file is deleted), both `width-scan.spec.ts`, `scene-13-views.spec.ts`,
+notification toggle; goldens for `footerCutover` and `statusRow` (they tick once per checkpoint; `statusRow` runs in a deep directory inside a git repository the replay creates). Specs that are stale until then:
+`status-model.spec.ts` (the file is deleted), `status-context.spec.ts` (the two bars, their tones, and `SHED.bar`, from R2), both `width-scan.spec.ts`, `scene-13-views.spec.ts`,
 `business-rendering-drift.spec.ts`, `pane-todo.spec.ts`, `status-goal.spec.ts`, the views-lane and surface-manager specs
 (summary `count`, tab strip, panel under the row), `provider.spec.ts` (summary `count`), `key-audit.spec.ts`
 (`ACTION_TOGGLE_TODO`), `pane-notification.spec.ts`, `status-fakes.ts`, the locale-catalog spec (new, renamed, and removed keys),
@@ -2116,10 +2117,11 @@ status entries as regressions).
 
 **Open choices for the question rounds** (each round asks its own, §6; the agent recommends an answer for each):
 
-- The degradation order. The spec says git, then the balance chip, then the directory, then the context meter; the
-  prototype's priorities do not produce that order at every width.
+- The degradation order: settled in R1 and R2 (`status-shed.ts`: item time, provider, thinking level, git, directory depth,
+  cache bar, context bar width, context readout, model). Still open: the balance chip's rank (R3), and whether items get a narrower form
+  (the model is shed before them at 52 and 36 columns).
 - The focus chip (`transcript/status-focus.ts`, priority 1, Phase 3e). Whether it survives, and where it sits beside
-  `PLAN`/`YOLO`.
+  `plan`/`yolo`.
 - Whether an empty Agents or Jobs view shows `0`, and how long the closing item `✓ todo 6/6 4m 12s` stays (five seconds for now).
 - The balance threshold, the currency symbol for a USD provider, the refresh rate, and whether to raise a low-balance notice.
 - The interim target of `Enter` on a job, and the confirm copy for `x`.
