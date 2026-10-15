@@ -608,7 +608,6 @@ const zh: Readonly<Record<string, string>> = {
   'Move to the last item': '移到最后一项',
   'Toggle the focused choice in a multi-select': '切换多选中的当前选项',
   'Clear input / interrupt with an empty buffer / press twice to exit': '清空输入 / 空缓冲时中断 / 连按两次退出',
-  'Steer the current turn with the draft': '用草稿引导当前轮次',
   'Delete backward / exit bash mode on an empty prompt': '向后删除 / 空提示时退出 bash 模式',
   'Move left: step a value, a segment, or a tab, or close a branch': '向左：调整值、分段或标签，或折叠分支',
   'Move right: step a value, a segment, or a tab, or open a branch': '向右：调整值、分段或标签，或展开分支',

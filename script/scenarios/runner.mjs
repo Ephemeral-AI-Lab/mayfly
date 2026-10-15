@@ -45,6 +45,8 @@ export function maskGrid(grid) {
     .replace(WORKSPACE, match => match.replace(/[0-9a-f]{8}$/u, 'xxxxxxxx'))
     .replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gu, 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx')
     .replace(/\bcmd-[0-9a-f]{8}-/gu, 'cmd-xxxxxxxx-')
+    // A session id the terminal cuts at the right edge keeps only its head.
+    .replace(/session-[0-9a-f]{8}-[0-9a-f-]*/gu, 'session-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx')
 }
 
 /** The runner's end of the control socket: JSON lines, one connection (the driver). */

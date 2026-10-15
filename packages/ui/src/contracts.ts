@@ -426,8 +426,8 @@ export interface MayflyImageNode {
 
 /** A `[label size ×]` attachment shown inside the prompt's input row; the host owns the list and removes one on `token-remove`. */
 interface MayflyPromptToken { readonly id: string, readonly label: string, readonly size?: string }
-/** One earlier message the prompt can recall: a queued message first, then history. */
-export interface MayflyPromptRecall { readonly kind: 'queued' | 'history', readonly text: string }
+/** One earlier message the prompt can recall (history, newest first). */
+export interface MayflyPromptRecall { readonly text: string }
 /** One row of the prompt's completion list. */
 interface MayflyPromptCompletion {
   readonly id: string

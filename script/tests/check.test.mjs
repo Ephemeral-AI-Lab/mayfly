@@ -144,7 +144,8 @@ test('a golden runs its scenario, a covered source the scenarios that cover it, 
   const scenarios = file => classifyChanges([file]).tests.scenarios
   assert.deepEqual(scenarios('script/scenarios/golden/tour/end@120x40.grid'), ['tour'])
   assert.deepEqual(scenarios('packages/mayfly/src/transcript/pane-todo.ts'), ['tour'])
-  assert.deepEqual(scenarios('packages/mayfly/src/core/ui-compiler.ts'), ['idle', 'tour'])
+  // The editor scenarios cover the compiler (their covers name the core), so they select it instead of the smoke set.
+  assert.ok(scenarios('packages/mayfly/src/core/ui-compiler.ts').includes('editor'))
   assert.deepEqual(scenarios('examples/ui-gallery/src/index.ts'), ['gallery'])
   assert.deepEqual(scenarios('docs/README.md'), [])
   const machinery = classifyChanges(['script/scenarios/runner.mjs'])

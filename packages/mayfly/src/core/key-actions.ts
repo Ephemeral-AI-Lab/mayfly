@@ -41,6 +41,9 @@ export const ACTION_EXTERNAL_EDITOR = 'ui.external'
 export const ACTION_SEARCH = 'ui.search'
 // Product actions keep their ids.
 export const ACTION_INTERRUPT = 'mayfly.interaction.interrupt'
+/** The cursor-right key as the terminal sends it: the interaction layer steps over a closing quote with it. */
+export const CURSOR_RIGHT_SEQUENCE = '\x1b[C'
+
 export const ACTION_STEER = 'mayfly.interaction.steer'
 export const ACTION_BACKSPACE = 'mayfly.interaction.backspace'
 export const ACTION_CYCLE_MODE = 'mayfly.interaction.cycle-mode'

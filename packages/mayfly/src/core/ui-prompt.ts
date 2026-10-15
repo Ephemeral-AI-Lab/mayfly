@@ -108,7 +108,7 @@ function recallCorner(paint: PromptPaint): { readonly text: string, readonly wid
   const entries = paint.node.recall ?? []
   const entry = model?.recall === undefined ? undefined : entries[model.recall.index]
   if (model?.recall === undefined || entry === undefined) return undefined
-  const word = entry.kind === 'queued' ? paint.translate('queued') : paint.node.recallLabel ?? paint.translate('history')
+  const word = paint.node.recallLabel ?? paint.translate('history')
   const plain = glyphRows([`↑ ${word} ${String(model.recall.index + 1)}/${String(entries.length)}`], paint.glyphs)[0]!
   return { text: paint.colors.muted(plain), width: paint.components.visibleWidth(plain) }
 }

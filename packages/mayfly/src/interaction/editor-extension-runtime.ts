@@ -94,6 +94,11 @@ interface EditorExtensionRuntimeOptions {
   readonly shouldTransformSubmit: (text: string) => boolean
 }
 
+/** What a compiled shell depends on: the envelope's nodes, its actions, and the focus that mutes the frame. */
+function shapeOf(envelope: { readonly node: MayflyEditorShellNode, readonly actions: ReadonlyMap<string, ExtensionActionBinding> }, focused: boolean): string {
+  return JSON.stringify([envelope.node, [...envelope.actions.keys()], focused])
+}
+
 function failureMessage(value: unknown, fallback: string): string {
   try {
     if (typeof value === 'string') return value.trim() || fallback
@@ -252,6 +257,8 @@ export class EditorExtensionRuntime implements MayflyFocusable {
   private component: MayflyComponent
   private focusTarget: MayflyFocusable
   private shell: EditorShell
+  /** The envelope the shell was last compiled from; an unchanged one keeps its component. */
+  private compiledShape: string | undefined
   private readonly pending = new Set<AbortController>()
   private actionGeneration = 0
   private completionLifecycle = new AbortController()
@@ -304,7 +311,13 @@ export class EditorExtensionRuntime implements MayflyFocusable {
     try { this.options.report(id, feedback) } catch { /* feedback consumers cannot break editor work */ }
   }
   refreshPresentation(): void {
-    this.activateShell(this.compileShell())
+    // Typing changes the buffer, which the editor draws itself: the shell is recompiled only when its envelope changes.
+    const envelope = this.extensionEnvelope()
+    const shape = shapeOf(envelope, this.ownFocused)
+    if (shape !== this.compiledShape) {
+      this.compiledShape = shape
+      this.activateShell(this.compileShell(envelope))
+    }
     this.options.ctx.mayflyScreen.requestRender()
   }
 
@@ -354,7 +367,9 @@ export class EditorExtensionRuntime implements MayflyFocusable {
 
   private syncExtensions(): void {
     this.abortPending()
-    this.activateShell(this.compileShell())
+    const envelope = this.extensionEnvelope()
+    this.compiledShape = shapeOf(envelope, this.ownFocused)
+    this.activateShell(this.compileShell(envelope))
     const transforms = this.entries.some(entry => entry.transformSubmit !== undefined)
     this.options.editor.setSubmitBarrier(transforms ? attempt => { this.beginSubmit(attempt) } : undefined)
     this.installCompletionProvider()
@@ -469,8 +484,7 @@ export class EditorExtensionRuntime implements MayflyFocusable {
     }
   }
 
-  private compileShell(): EditorShell {
-    const envelope = this.extensionEnvelope()
+  private compileShell(envelope: { readonly node: MayflyEditorShellNode, readonly actions: ReadonlyMap<string, ExtensionActionBinding> }): EditorShell {
     let shell!: EditorShell
     const result = compileMayflyEditorShellNode(envelope.node, {
       editor: this.options.editor,

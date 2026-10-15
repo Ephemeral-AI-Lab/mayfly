@@ -59,6 +59,7 @@ import { ui, type MayflyFeedback, type MayflyUiNode, type MayflyUiScope } from '
 import { Editor } from '../components/editor.ts'
 import { CompletionDrawer } from '../core/completion-drawer.ts'
 import { normalizeWheelInput } from '../core/terminal.ts'
+import { CURSOR_RIGHT_SEQUENCE } from '../core/key-actions.ts'
 import { parseCommand } from '@deepseek-ai/dsh-commands'
 import type { PromptContentPart, StoredImageAttachment } from '@deepseek-ai/dsh-attachment'
 import { createUserMessage, type ContentBlock } from '@deepseek-ai/dsh-llm'
@@ -257,6 +258,9 @@ export function apply(ctx: Context): void {
     const fullDetail = detail ?? (summary === message ? undefined : message)
     notificationOwner.report(id, notificationScope(), { message: summary, severity, ...(fullDetail === undefined ? {} : { detail: fullDetail }) }, id)
   }
+  // The quiet-hints setting is read when it changes, not on every frame: resolving the settings document is not free.
+  // Declared before the runtime, whose constructor compiles the first frame and so reads the placeholder.
+  let quietHintsOff: boolean | undefined
   const extensionRuntime = new EditorExtensionRuntime({
     ctx,
     editor,
@@ -294,11 +298,8 @@ export function apply(ctx: Context): void {
 
   /** The ladder the empty prompt shows now: the displayed conversation's state, quiet hints, and the language. */
   function placeholderNow(): readonly string[] {
-    return placeholderLadder(
-      placeholderState(conversations.displayed(), frame.shell, sessionFlowInProgress()),
-      currentMayflySettings(ctx).quietHints === 'off',
-      t,
-    )
+    quietHintsOff ??= currentMayflySettings(ctx).quietHints === 'off'
+    return placeholderLadder(placeholderState(conversations.displayed(), frame.shell, sessionFlowInProgress()), quietHintsOff, t)
   }
   /** The corner title: the session's title, else the name of the side conversation shown (a view without a title of its own). */
   function titleNow(): string | undefined {
@@ -898,7 +899,7 @@ export function apply(ctx: Context): void {
    */
   function selectFolderMention(value: string): void {
     editor.handleInput?.('\t')
-    if (value.endsWith('"') || value.endsWith("'")) editor.handleInput?.('\x1b[C')
+    if (value.endsWith('"') || value.endsWith("'")) editor.handleInput?.(CURSOR_RIGHT_SEQUENCE)
     editor.insertText(' ')
     ctx.mayflyInteractionState.mentions.add(value)
     editor.refreshAutocomplete()
@@ -1080,13 +1081,19 @@ export function apply(ctx: Context): void {
     ctx.emit('mayfly/prompt-recall-changed', position)
   }
 
+  let lastSlash = false
   editor.onChange = (text) => {
     currentText = text
     publishRecall()
     // Mirror every edit so a theme-swap reload loses nothing.
     stashCurrentDraft()
     notificationOwner.clearAll()
-    refreshHint()
+    // The slash hint is a footer of the frame: an edit that enters or leaves a slash line recompiles it. Other edits
+    // change only the placeholder or title, which `syncPlaceholder` checks without recompiling the frame each key.
+    const slash = text.trimStart().startsWith('/')
+    if (slash || lastSlash) refreshHint()
+    else syncPlaceholder()
+    lastSlash = slash
   }
   editor.onKey = handleEditorKey
   editor.setTokenSource(createTokenSource(ctx))
@@ -1149,7 +1156,11 @@ export function apply(ctx: Context): void {
   // The empty prompt's placeholder follows what the displayed conversation accepts and whether its turn runs.
   ctx.effect(() => conversations.subscribe(syncPlaceholder))
   ctx.on('agent/status', ({ agent }) => { if (agent === ctx.mayflyCurrentAgent.current()) syncPlaceholder() })
-  ctx.on('settings/document-updated', (namespace) => { if (String(namespace) === 'mayfly') syncPlaceholder() })
+  ctx.on('settings/document-updated', (namespace) => {
+    if (String(namespace) !== 'mayfly') return
+    quietHintsOff = currentMayflySettings(ctx).quietHints === 'off'
+    syncPlaceholder()
+  })
   // A queued draft is only useful while its message still waits in the
   // current Agent's inbox: claims consume it for real, discards and
   // withdrawals retire the record.
@@ -1174,6 +1185,8 @@ export function apply(ctx: Context): void {
     owner.effect(() => () => {
       offTitle()
       frame.title = undefined
+      // The frame drops the title it drew: a departing facts service leaves no stale corner text behind.
+      if (!unloaded) refreshHint()
     })
   })
   ctx.effect(() => {
