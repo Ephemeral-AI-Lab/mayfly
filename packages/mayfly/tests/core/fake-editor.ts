@@ -34,6 +34,7 @@ export function createFakeEditor(): MayflyEditor {
     addToHistory: () => {},
     getHistory: () => [],
     setShellMode: () => {},
+    setPlaceholder: () => {},
     setGhostHint: () => {},
     setAutocompleteProvider: () => {},
     isShowingAutocomplete: () => false,

@@ -33,9 +33,9 @@ const run = (start: UiPromptModel, ...intents: UiPromptIntent[]) => {
 }
 const TOKENS = [{ id: 't1', label: 'Image #1', size: '84 KB' }, { id: 't2', label: 'notes.md' }]
 const RECALL = [
-  { kind: 'queued', text: 'also update the footer' },
-  { kind: 'history', text: 'run the width scan again' },
-  { kind: 'history', text: 'bump the changelog too' },
+  { text: 'also update the footer' },
+  { text: 'run the width scan again' },
+  { text: 'bump the changelog too' },
 ] as const
 const ITEMS = Array.from({ length: 9 }, (_, index) => ({ id: `c${String(index)}`, label: `/c${String(index)}` }))
 
@@ -95,11 +95,11 @@ describe('the two-step Backspace on an empty buffer', () => {
 describe('the recall walk', () => {
   const start = () => model({ id: 'prompt', recall: RECALL, value: '' })
 
-  it('walks queued messages first, then history, and ↓ returns the draft', () => {
+  it('walks the history newest first, and ↓ returns the draft', () => {
     const up = run(start(), { kind: 'recall', direction: 'older' })
     expect(up.model).toMatchObject({ text: 'also update the footer', recall: { index: 0, draft: '' } })
     expect(up.effects).toEqual([
-      { kind: 'recall-change', source: 'queued', index: 0 },
+      { kind: 'recall-change', source: 'history', index: 0 },
       { kind: 'value-change', value: 'also update the footer', draftRevision: up.model.revision },
     ])
     const older = run(up.model, { kind: 'recall', direction: 'older' })
@@ -107,7 +107,7 @@ describe('the recall walk', () => {
     expect(older.effects[0]).toEqual({ kind: 'recall-change', source: 'history', index: 1 })
     const newer = run(older.model, { kind: 'recall', direction: 'newer' })
     expect(newer.model.text).toBe('also update the footer')
-    expect(newer.effects[0]).toEqual({ kind: 'recall-change', source: 'queued', index: 0 })
+    expect(newer.effects[0]).toEqual({ kind: 'recall-change', source: 'history', index: 0 })
     const draft = run(newer.model, { kind: 'recall', direction: 'newer' })
     expect(draft.model).toMatchObject({ text: '', recall: undefined })
     expect(draft.effects).toEqual([
@@ -124,13 +124,13 @@ describe('the recall walk', () => {
   })
 
   it('does not start a walk from typed text', () => {
-    const typed = model({ id: 'prompt', recall: [{ kind: 'history', text: 'same' }], value: 'x' })
+    const typed = model({ id: 'prompt', recall: [{ text: 'same' }], value: 'x' })
     expect(promptRecallActive(typed)).toBe(false)
     expect(reducePrompt(typed, { kind: 'recall', direction: 'older' }).model).toBe(typed)
   })
 
   it('reports no value change when the draft that returns is the text on show', () => {
-    const blank = [{ kind: 'history', text: '' }] as const
+    const blank = [{ text: '' }] as const
     const walking = run(model({ id: 'prompt', recall: blank }), { kind: 'recall', direction: 'older' })
     expect(walking.model.recall).toMatchObject({ index: 0, draft: '' })
     const back = run(walking.model, { kind: 'recall', direction: 'newer' })
@@ -148,12 +148,12 @@ describe('the recall walk', () => {
     expect(walking.recall).toMatchObject({ index: 1, entry: RECALL[1] })
     const same = reconcilePrompt(walking, admit({ kind: 'prompt', id: 'prompt', recall: [...RECALL] }))
     expect(same.recall?.index).toBe(1)
-    const shifted = reconcilePrompt(walking, admit({ kind: 'prompt', id: 'prompt', recall: [{ kind: 'history', text: 'newer' }, ...RECALL] }))
+    const shifted = reconcilePrompt(walking, admit({ kind: 'prompt', id: 'prompt', recall: [{ text: 'newer' }, ...RECALL] }))
     expect(shifted.recall?.index).toBe(2)
     expect(shifted.text).toBe('run the width scan again')
   })
 
-  it('stands before the next entry when the entry on show was withdrawn, as a recalled queued message is', () => {
+  it('stands before the next entry when the entry on show was withdrawn from the list', () => {
     const queued = run(start(), { kind: 'recall', direction: 'older' }).model
     const withdrawn = reconcilePrompt(queued, admit({ kind: 'prompt', id: 'prompt', recall: [RECALL[1], RECALL[2]] }))
     expect(withdrawn.recall).toEqual({ index: -1, draft: '' })

@@ -181,7 +181,7 @@ describe('validateMayflyUiNode', () => {
     expect(validateMayflyStatusNode(ui.markdown('x'))).toMatchObject({ ok: false })
     expect(validateMayflyEditorShellNode({ kind: 'stack', direction: 'column', children: [
       { node: ui.diagram('graph TD') },
-      { node: { kind: 'editor-control' } },
+      { node: { kind: 'prompt', id: 'prompt' } },
     ] })).toMatchObject({ ok: false })
   })
 
@@ -547,7 +547,7 @@ describe('validateMayflyUiNode', () => {
 
   it('requires modifier accelerators for editor-shell actions', () => {
     const shell = (key?: string) => ({ kind: 'stack', direction: 'column', children: [
-      { node: { kind: 'editor-control' } },
+      { node: { kind: 'prompt', id: 'prompt' } },
       { node: ui.actions({ id: 'actions', items: [{ id: 'run', label: 'Run', ...(key === undefined ? {} : { key }) }] }) },
     ] })
     expect(validateMayflyEditorShellNode(shell('ctrl+r'))).toMatchObject({ ok: true })
@@ -736,22 +736,22 @@ describe('narrow validators', () => {
     expect(validateMayflyStatusNode(ui.stack.column([ui.actions({ id: 'bad', items: [] })]))).toMatchObject({ ok: false, code: 'MAYFLY_INVALID_CONTRIBUTION', message: expect.stringContaining('interactive') })
   })
 
-  it('requires exactly one editor-control and rejects it from ordinary UI', () => {
-    expect(validateMayflyUiNode({ kind: 'editor-control' })).toMatchObject({ ok: false, code: 'MAYFLY_INVALID_CONTRIBUTION' })
+  it('requires exactly one prompt in an editor shell', () => {
+    expect(validateMayflyUiNode({ kind: 'prompt', id: 'prompt' })).toMatchObject({ ok: true })
     expect(validateMayflyEditorShellNode(ui.text('none'))).toMatchObject({ ok: false, message: expect.stringContaining('received 0') })
-    expect(validateMayflyEditorShellNode({ kind: 'surface', child: { kind: 'stack', direction: 'column', children: [{ node: ui.text('before') }, { node: { kind: 'editor-control' } }] }, footer: ui.text('after') }).ok).toBe(true)
-    expect(validateMayflyEditorShellNode({ kind: 'surface', child: { kind: 'editor-control' } }).ok).toBe(true)
-    expect(validateMayflyEditorShellNode({ kind: 'surface', child: ui.text('head'), footer: { kind: 'editor-control' } }).ok).toBe(true)
-    expect(validateMayflyEditorShellNode({ kind: 'stack', direction: 'column', children: [{ node: { kind: 'editor-control' } }, { node: { kind: 'editor-control' } }] })).toMatchObject({ ok: false, message: expect.stringContaining('received 2') })
-    expect(validateMayflyEditorShellNode({ kind: 'scroll', child: { kind: 'editor-control' } })).toMatchObject({ ok: false, message: expect.stringContaining('shell slot') })
-    expect(validateMayflyEditorShellNode({ kind: 'scroll', child: { kind: 'stack', direction: 'column', children: [{ node: { kind: 'editor-control' } }] } })).toMatchObject({ ok: false, message: expect.stringContaining('shell slot') })
+    expect(validateMayflyEditorShellNode({ kind: 'surface', child: { kind: 'stack', direction: 'column', children: [{ node: ui.text('before') }, { node: { kind: 'prompt', id: 'prompt' } }] }, footer: ui.text('after') }).ok).toBe(true)
+    expect(validateMayflyEditorShellNode({ kind: 'surface', child: { kind: 'prompt', id: 'prompt' } }).ok).toBe(true)
+    expect(validateMayflyEditorShellNode({ kind: 'surface', child: ui.text('head'), footer: { kind: 'prompt', id: 'prompt' } }).ok).toBe(true)
+    expect(validateMayflyEditorShellNode({ kind: 'stack', direction: 'column', children: [{ node: { kind: 'prompt', id: 'prompt' } }, { node: { kind: 'prompt', id: 'second' } }] })).toMatchObject({ ok: false, message: expect.stringContaining('received 2') })
+    expect(validateMayflyEditorShellNode({ kind: 'scroll', child: { kind: 'prompt', id: 'prompt' } })).toMatchObject({ ok: false, message: expect.stringContaining('received 0') })
+    expect(validateMayflyEditorShellNode({ kind: 'scroll', child: { kind: 'stack', direction: 'column', children: [{ node: { kind: 'prompt', id: 'prompt' } }] } })).toMatchObject({ ok: false, message: expect.stringContaining('received 0') })
   })
 
   it('rejects shell layouts that can deterministically hide the editor control', () => {
     const shell = (child: Record<string, unknown>) => ({
       kind: 'stack',
       direction: 'column',
-      children: [{ node: { kind: 'editor-control' }, ...child }],
+      children: [{ node: { kind: 'prompt', id: 'prompt' }, ...child }],
     })
     expect(validateMayflyEditorShellNode(shell({ when: { minWidth: 40 } }))).toMatchObject({ ok: false, message: expect.stringContaining('.when') })
     expect(validateMayflyEditorShellNode(shell({ maxSize: 0 }))).toMatchObject({ ok: false, message: expect.stringContaining('.maxSize') })
@@ -762,7 +762,7 @@ describe('narrow validators', () => {
       direction: 'column',
       children: [{
         when: { minHeight: 2 },
-        node: { kind: 'stack', direction: 'column', children: [{ node: { kind: 'editor-control' } }] },
+        node: { kind: 'stack', direction: 'column', children: [{ node: { kind: 'prompt', id: 'prompt' } }] },
       }],
     })).toMatchObject({ ok: false, message: expect.stringContaining('.when') })
     expect(validateMayflyEditorShellNode({
@@ -770,7 +770,7 @@ describe('narrow validators', () => {
       direction: 'column',
       children: [{
         maxSize: 0,
-        node: { kind: 'surface', child: ui.text('head'), footer: { kind: 'editor-control' } },
+        node: { kind: 'surface', child: ui.text('head'), footer: { kind: 'prompt', id: 'prompt' } },
       }],
     })).toMatchObject({ ok: false, message: expect.stringContaining('.maxSize') })
     expect(validateMayflyEditorShellNode({
@@ -778,7 +778,7 @@ describe('narrow validators', () => {
       child: {
         kind: 'stack',
         direction: 'column',
-        children: [{ node: ui.text('row') }, { node: { kind: 'editor-control' }, when: { maxHeight: 3 } }],
+        children: [{ node: ui.text('row') }, { node: { kind: 'prompt', id: 'prompt' }, when: { maxHeight: 3 } }],
       },
     })).toMatchObject({ ok: false, message: expect.stringContaining('.when') })
   })

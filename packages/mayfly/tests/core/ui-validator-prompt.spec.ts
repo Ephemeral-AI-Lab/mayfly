@@ -34,7 +34,7 @@ describe('prompt admission', () => {
     const full = ui.prompt({
       id: 'p', symbol: '! ', symbolTone: 'accent', value: 'draft\nsecond',
       tokens: [{ id: 't1', label: 'Image #1', size: '84 KB' }, { id: 't2', label: 'notes.md' }],
-      recall: [{ kind: 'queued', text: 'also update the footer' }, { kind: 'history', text: 'run the width scan again' }],
+      recall: [{ text: 'also update the footer' }, { text: 'run the width scan again' }],
       recallLabel: 'earlier', placeholder: ['Ask anything · / commands', 'Ask anything'],
       completions: { items: [{ id: 'c1', label: '/model', detail: 'switch model', right: 'Ctrl+M' }, { id: 'c2', label: '/trace' }] },
       reset: { rev: 2, value: 'again' }, submitLabel: 'queue', autofocus: true,
@@ -44,7 +44,7 @@ describe('prompt admission', () => {
   })
 
   it('strips terminal sequences from what a person typed, but keeps its line breaks', () => {
-    const result = admitted({ kind: 'prompt', id: 'p', value: 'a\x1b[31mb\nc\td\x07e', recall: [{ kind: 'history', text: '\x1b]0;title\x07x' }], reset: { rev: 0, value: 'r\x1b[2Js' } })
+    const result = admitted({ kind: 'prompt', id: 'p', value: 'a\x1b[31mb\nc\td\x07e', recall: [{ text: '\x1b]0;title\x07x' }], reset: { rev: 0, value: 'r\x1b[2Js' } })
     expect(result).toMatchObject({ value: 'ab\nc\tde', recall: [{ text: 'x' }], reset: { value: 'rs' } })
   })
 
@@ -61,9 +61,8 @@ describe('prompt admission', () => {
     [{ kind: 'prompt', id: 'p', tokens: [{ id: 't' }] }, 'tokens[0].label is required'],
     [{ kind: 'prompt', id: 'p', tokens: [{ id: 't', label: 'x', size: 1 }] }, 'tokens[0].size must be a string'],
     [{ kind: 'prompt', id: 'p', tokens: [{ id: 't', label: 'x' }, { id: 't', label: 'y' }] }, 'tokens contains duplicate ids'],
-    [{ kind: 'prompt', id: 'p', recall: [{ kind: 'pinned', text: 'x' }] }, 'recall[0].kind is invalid'],
-    [{ kind: 'prompt', id: 'p', recall: [{ kind: 'history' }] }, 'recall[0].text is required'],
-    [{ kind: 'prompt', id: 'p', recall: [{ kind: 'history', text: 1 }] }, 'recall[0].text must be a string'],
+    [{ kind: 'prompt', id: 'p', recall: [{}] }, 'recall[0].text is required'],
+    [{ kind: 'prompt', id: 'p', recall: [{ text: 1 }] }, 'recall[0].text must be a string'],
     [{ kind: 'prompt', id: 'p', recallLabel: 1 }, 'recallLabel must be a string'],
     [{ kind: 'prompt', id: 'p', placeholder: [] }, 'placeholder must hold 1 to'],
     [{ kind: 'prompt', id: 'p', placeholder: 1 }, 'placeholder must be an array'],
@@ -121,9 +120,8 @@ describe('prompt admission', () => {
     const status = validateMayflyStatusNode(ui.prompt({ id: 'p' }) as never)
     expect(status).toMatchObject({ ok: false })
     expect(status.ok ? '' : status.message).toContain('interactive or unsupported')
-    const decoration = validateMayflyEditorShellNode(ui.prompt({ id: 'p' }) as never)
-    expect(decoration).toMatchObject({ ok: false })
-    expect(decoration.ok ? '' : decoration.message).toContain('would take focus from the editor')
+    // The editor shell's one prompt is the host editor's face, so it is admitted at the shell's root.
+    expect(validateMayflyEditorShellNode(ui.prompt({ id: 'p' }) as never)).toMatchObject({ ok: true })
   })
 
   it('is never replayed from the admission memo, so every publish counts its text again', () => {

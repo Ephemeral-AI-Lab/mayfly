@@ -37,7 +37,7 @@ function fakeScreen() {
   return { screen, slot, mounted, latest }
 }
 
-const options = { t: (key: string) => key, queued: () => [] as { id: string, text: string }[] }
+const options = { t: (key: string) => key, queued: () => [] as { id: string, text: string, lane: 'turn' | 'step' }[] }
 
 describe('TranscriptController', () => {
   it('mounts the conversation node slot in the content region and publishes the displayed view', () => {
@@ -72,7 +72,7 @@ describe('TranscriptController', () => {
 
   it('opens the prompts the Ctrl-O reach covers, republishes the queue, and unmounts on dispose', () => {
     const { screen, slot, latest } = fakeScreen()
-    const queued: { id: string, text: string }[] = []
+    const queued: { id: string, text: string, lane: 'turn' | 'step' }[] = []
     const controller = new TranscriptController({ ...options, queued: () => queued })
     controller.setView('main', createTranscriptModel('a', [user(1, 'a\nb\nc\nd\ne\nf')], true, 0, [{ turn: 1, startedAt: 0 }]))
     controller.show('main')
@@ -83,7 +83,7 @@ describe('TranscriptController', () => {
     expect(latest()!.items[0]!.wrapMax).toBeUndefined()
     controller.toggleRecent()
     expect(latest()!.items[0]!.wrapMax).toBe(4)
-    queued.push({ id: 'q', text: 'later' })
+    queued.push({ id: 'q', text: 'later', lane: 'turn' })
     controller.republish()
     expect(latest()!.items.at(-1)!.label).toContain('later')
     controller.dispose()

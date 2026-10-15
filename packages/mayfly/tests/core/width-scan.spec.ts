@@ -51,6 +51,7 @@ function scanEditor(text: string): MayflyEditor {
     addToHistory: () => {},
     getHistory: () => [],
     setShellMode: () => {},
+    setPlaceholder: () => {},
     setGhostHint: () => {},
     setAutocompleteProvider: () => {},
     getExpandedText: () => text,
@@ -129,7 +130,7 @@ describe('core width-scan', () => {
       const prompts = [
         ui.prompt({ id: 'p', value: text, tokens: [{ id: 't1', label: text.slice(0, 60), size: text.slice(0, 60) }, { id: 't2', label: 'notes.md', size: '2 KB' }], placeholder: [text.slice(0, 200), 'Ask'], symbol: '! ', symbolTone: 'accent' }),
         ui.prompt({ id: 'p', placeholder: [text.slice(0, 90), `${text.slice(0, 90)} · ${text.slice(0, 90)}`], completions: { items: [{ id: 'a', label: text.slice(0, 300), detail: text.slice(0, 300), right: text.slice(0, 60) }, { id: 'b', label: 'short' }] } }),
-        ui.prompt({ id: 'p', recall: [{ kind: 'queued', text }, { kind: 'history', text: 'older' }], recallLabel: text.slice(0, 24), tokens: [{ id: 't', label: 'Image #1', size: '84 KB' }] }),
+        ui.prompt({ id: 'p', recall: [{ text }, { text: 'older' }], recallLabel: text.slice(0, 24), tokens: [{ id: 't', label: 'Image #1', size: '84 KB' }] }),
       ]
       for (const [index, prompt] of prompts.entries()) for (const width of SCAN_WIDTHS) {
         const surface = createRealSurface(ui.surface({ title: text, titleAlign: 'right', chrome: 'surface', hint: 'completions', child: prompt }), width, { components: probeComponents() })
@@ -155,7 +156,7 @@ describe('core width-scan', () => {
         ],
       }
       for (const width of MIGRATION_WIDTHS) {
-        expectLinesFit(`completion drawer/${name}`, paintDrawer({ view, width, colors: plainColors(), components: probeComponents(), glyphs: undefined }), width)
+        expectLinesFit(`completion drawer/${name}`, paintDrawer({ view, width, colors: plainColors(), components: probeComponents(), glyphs: undefined, wait: undefined }), width)
       }
     })
 
@@ -191,7 +192,7 @@ describe('core width-scan', () => {
         direction: 'column',
         children: [
           { node: { kind: 'rich-text', spans: [{ text, tone: 'accent', styles: ['strong'] }] } },
-          { node: { kind: 'editor-control' } },
+          { node: { kind: 'prompt', id: 'prompt' } },
         ],
       }, {
         editor,

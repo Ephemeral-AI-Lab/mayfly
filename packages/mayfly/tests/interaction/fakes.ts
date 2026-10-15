@@ -18,7 +18,7 @@ import {
 // the same implementations the renderer runs.
 import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/width.ts'
 import { topRule } from '../../src/core/chrome.ts'
-import type { MayflyAutocompleteItem, MayflyAutocompleteProvider, MayflyComponent, MayflyComponents, MayflyEditor, MayflyEditorOptions, MayflyEditorToken, MayflyEditorSubmitAttempt, MayflyFocusable, MayflyKeyAction, MayflyKeymap, MayflyMarkdown, MayflyMarkdownOptions, MayflyOverlayHandle, MayflyOverlayOptions, MayflyScreen, MayflySelectItem, MayflySelectList, MayflySelectListOptions, MayflySemanticColors, MayflySubmittedDraft, MayflyTheme } from '../../src/core/types.ts'
+import type { MayflyAutocompleteItem, MayflyAutocompleteProvider, MayflyCompletionView, MayflyComponent, MayflyComponents, MayflyEditor, MayflyEditorOptions, MayflyEditorToken, MayflyEditorSubmitAttempt, MayflyFocusable, MayflyKeyAction, MayflyKeymap, MayflyMarkdown, MayflyMarkdownOptions, MayflyOverlayHandle, MayflyOverlayOptions, MayflyScreen, MayflySelectItem, MayflySelectList, MayflySelectListOptions, MayflySemanticColors, MayflySubmittedDraft, MayflyTheme } from '../../src/core/types.ts'
 import type { MayflyComponentsService } from '../../src/core/components.ts'
 import type { MayflyKeymapService } from '../../src/core/keymap.ts'
 import type { MayflyScreenService } from '../../src/core/screen.ts'
@@ -60,6 +60,7 @@ const SEQUENCE_BY_KEY_ID: Record<string, string> = {
   'ctrl+c': '\x03',
   'ctrl+d': '\x04',
   'ctrl+s': '\x13',
+  'ctrl+enter': '\x1b[13;5u',
   'ctrl+g': '\x07',
   'ctrl+v': '\x16',
   'alt+m': '\x1bm',
@@ -84,7 +85,9 @@ export const KEY = {
   ctrlC: '\x03',
   ctrlD: '\x04',
   ctrlS: '\x13',
+  ctrlEnter: '\x1b[13;5u',
   ctrlG: '\x07',
+  backspace: '\x7f',
   ctrlR: '\x12',
   ctrlV: '\x16',
   altEnter: '\x1b\r',
@@ -229,6 +232,7 @@ export class FakeMayflyEditor implements MayflyEditor {
   readonly inserted: string[] = []
   /** Whether the buffer was last marked as a shell command. */
   shellMode = false
+  placeholder: readonly string[] = []
   /** The last ghost hint set, if any. */
   ghostHint: string | undefined
   /** The last autocomplete provider attached, if any. */
@@ -314,6 +318,10 @@ export class FakeMayflyEditor implements MayflyEditor {
     this.onChange?.(this.text)
   }
 
+  setPlaceholder(ladder: readonly string[]): void {
+    this.placeholder = ladder
+  }
+
   setShellMode(shell: boolean): void {
     this.shellMode = shell
   }
@@ -332,20 +340,29 @@ export class FakeMayflyEditor implements MayflyEditor {
 
   setTokenSource(): void {}
 
-  tokenBackspace(): boolean { return false }
+  /** Scripted token state: the token the caret is on, and whether Backspace takes it (the interaction suites set both). */
+  token: MayflyEditorToken | undefined = undefined
+  backspaceTakesToken = false
+  replaced: string[] = []
+
+  tokenBackspace(): boolean { return this.backspaceTakesToken }
 
   onTokenChange: ((token: MayflyEditorToken | undefined) => void) | undefined
 
-  activeToken(): undefined { return undefined }
+  activeToken(): MayflyEditorToken | undefined { return this.token }
 
-  replaceActiveToken(): void {}
+  replaceActiveToken(text: string): void { this.replaced.push(text) }
 
   getHistoryPastes(): readonly [] { return [] }
 
-  setTextFolding(): void {}
+  // The fake keeps the folded text as plain text: a pasted block that came back unchanged folds in the real editor only.
+  setTextFolding(text: string): void { this.setText(text) }
 
-  completion(): undefined {
-    return undefined
+  /** The list the editor shows, when a test scripts one. */
+  completionView: MayflyCompletionView | undefined = undefined
+
+  completion(): MayflyCompletionView | undefined {
+    return this.completionView
   }
 
   refreshAutocomplete(): void {
@@ -879,7 +896,8 @@ export class FakeScreen implements MayflyScreen {
       },
     }
     this.overlays.push(overlay)
-    this.setFocus(component)
+    // A non-capturing overlay (the completion palette) never takes focus from the prompt.
+    if (options?.nonCapturing !== true) this.setFocus(component)
   }
 
   requestRender(): void {

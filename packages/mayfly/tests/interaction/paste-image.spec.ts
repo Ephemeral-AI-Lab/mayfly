@@ -96,7 +96,7 @@ describe('mayfly-paste-image plugin', () => {
     ctx = mayfly.ctx
     keymap = mayfly.keymap
     ctx.provide('attachments', { imageLimits, saveImage, saveImages })
-    setSharedEditor(ctx, { editor, submitPrompt: () => {}, report: (_id, feedback) => notices.push(feedback.message) })
+    setSharedEditor(ctx, { editor, submitPrompt: () => {}, setShell: () => {}, report: (_id, feedback) => notices.push(feedback.message) })
   })
 
   afterEach(async () => {
@@ -142,7 +142,7 @@ describe('mayfly-paste-image plugin', () => {
     expect(consumed).toEqual([KEY.escape])
     // No prior handler for a wrapped bare editor: the wrapper reports false.
     const bare = new FakeMayflyEditor()
-    setSharedEditor(ctx, { editor: bare, submitPrompt: () => {} })
+    setSharedEditor(ctx, { editor: bare, submitPrompt: () => {}, setShell: () => {} })
     ctx.emit('mayfly/input-editor-changed')
     expect(bare.onKey?.('x')).toBe(false)
     expect(bare.getText()).toBe('')
@@ -166,7 +166,7 @@ describe('mayfly-paste-image plugin', () => {
     await mount()
     const first = editor.onKey
     const second = new FakeMayflyEditor()
-    setSharedEditor(ctx, { editor: second, submitPrompt: () => {} })
+    setSharedEditor(ctx, { editor: second, submitPrompt: () => {}, setShell: () => {} })
     ctx.emit('mayfly/input-editor-changed')
     // The first editor's handler chain was restored (undefined originally).
     expect(editor.onKey).toBeUndefined()
@@ -175,7 +175,7 @@ describe('mayfly-paste-image plugin', () => {
     // A second emission replaces, not stacks: the wrapper delegates through
     // at most one paste wrapper, observable by both keys still routing.
     const third = new FakeMayflyEditor()
-    setSharedEditor(ctx, { editor: third, submitPrompt: () => {} })
+    setSharedEditor(ctx, { editor: third, submitPrompt: () => {}, setShell: () => {} })
     ctx.emit('mayfly/input-editor-changed')
     expect(second.onKey).toBeUndefined()
     expect(third.onKey).toBeDefined()
@@ -183,7 +183,7 @@ describe('mayfly-paste-image plugin', () => {
     clearSharedEditor(ctx)
     ctx.emit('mayfly/input-editor-changed')
     // Re-arming for afterEach teardown checks.
-    setSharedEditor(ctx, { editor: third, submitPrompt: () => {} })
+    setSharedEditor(ctx, { editor: third, submitPrompt: () => {}, setShell: () => {} })
   })
 
   it('pastes a declared image as an incrementing marker and splits it on submit', async () => {
@@ -194,7 +194,7 @@ describe('mayfly-paste-image plugin', () => {
       expect(editor.inserted).toHaveLength(1)
     })
     const firstMarker = editor.inserted[0]!
-    expect(firstMarker).toMatch(/^\[image #\d+\]$/)
+    expect(firstMarker).toMatch(/^\[image #\d+ [^\]]+\]$/)
     const firstRef = saveImage.mock.calls[0]![0] as SaveImageAttachment
     expect(firstRef.mediaType).toBe('image/png')
     expect(firstRef.name).toBe('pasted-image.png')
@@ -261,7 +261,7 @@ describe('mayfly-paste-image plugin', () => {
     await vi.waitFor(() => {
       expect(editor.inserted).toHaveLength(1)
     })
-    expect(notices).toEqual(['pasting image...', 'pasted image via X11 fallback; verify it is current'])
+    expect(notices).toEqual(['pasted image via X11 fallback; verify it is current'])
 
     pasteImage.setClipboardImageReader(() => Promise.resolve({
       kind: 'image',
@@ -294,7 +294,7 @@ describe('mayfly-paste-image plugin', () => {
       expect.objectContaining({ mediaType: 'image/png', name: 'first.png' }),
       expect.objectContaining({ mediaType: 'image/gif', name: 'second.gif' }),
     ])
-    expect(editor.inserted[0]!.match(/\[image #\d+\]/g)).toHaveLength(2)
+    expect(editor.inserted[0]!.match(/\[image #\d+ [^\]]+\]/g)).toHaveLength(2)
     expect(ctx.mayflyPromptSubmissions.apply(editor.inserted[0]!)).toEqual([
       { type: 'image', attachment: expect.objectContaining({ mediaType: 'image/png' }) },
       { type: 'text', text: ' ' },
@@ -319,12 +319,9 @@ describe('mayfly-paste-image plugin', () => {
       pressPaste()
       seen += 1
       await vi.waitFor(() => {
-        expect(notices).toHaveLength(seen * 2)
+        expect(notices).toHaveLength(seen)
       })
-      // Each press flashes the in-progress notice first; the failure notice
-      // overwrites its slot in the sequence.
-      expect(notices[(seen - 1) * 2]).toBe('pasting image...')
-      expect(notices[seen * 2 - 1]).toBe(expected)
+      expect(notices[seen - 1]).toBe(expected)
     }
     expect(editor.inserted).toHaveLength(0)
   })
@@ -334,14 +331,14 @@ describe('mayfly-paste-image plugin', () => {
     pasteImage.setClipboardImageReader(() => Promise.reject(new Error('tool broke')))
     pressPaste()
     await vi.waitFor(() => {
-      expect(notices).toEqual(['pasting image...', 'clipboard read failed: tool broke'])
+      expect(notices).toEqual(['clipboard read failed: tool broke'])
     })
     pasteImage.setClipboardImageReader(() => Promise.reject('raw failure'))
     pressPaste()
     await vi.waitFor(() => {
-      expect(notices).toHaveLength(4)
+      expect(notices).toHaveLength(2)
     })
-    expect(notices[3]).toBe('clipboard read failed: raw failure')
+    expect(notices[1]).toBe('clipboard read failed: raw failure')
     expect(editor.inserted).toHaveLength(0)
   })
 
@@ -352,7 +349,7 @@ describe('mayfly-paste-image plugin', () => {
     pasteImage.setClipboardImageReader(() => Promise.resolve(image))
     pressPaste()
     await vi.waitFor(() => {
-      expect(notices).toEqual(['pasting image...', 'image rejected: image exceeds the per-image byte limit'])
+      expect(notices).toEqual(['image rejected: image exceeds the per-image byte limit'])
     })
     expect(editor.inserted).toHaveLength(0)
 
@@ -362,9 +359,7 @@ describe('mayfly-paste-image plugin', () => {
     pressPaste()
     await vi.waitFor(() => {
       expect(notices).toEqual([
-        'pasting image...',
         'image rejected: image exceeds the per-image byte limit',
-        'pasting image...',
         'image rejected: raw failure',
       ])
     })
@@ -374,7 +369,7 @@ describe('mayfly-paste-image plugin', () => {
   it('stays silent without a notice callback', async () => {
     await mount()
     const plain = new FakeMayflyEditor()
-    setSharedEditor(ctx, { editor: plain, submitPrompt: () => {} })
+    setSharedEditor(ctx, { editor: plain, submitPrompt: () => {}, setShell: () => {} })
     ctx.emit('mayfly/input-editor-changed')
     pasteImage.setClipboardImageReader(() => Promise.resolve({ kind: 'no-image' }))
     plain.handleInput(KEY.ctrlV)
@@ -394,7 +389,7 @@ describe('mayfly-paste-image plugin', () => {
     await flush()
     expect(editor.inserted).toHaveLength(0)
     // Only the in-progress flash landed before the unload; nothing follows.
-    expect(notices).toEqual(['pasting image...'])
+    expect(notices).toEqual([])
     expect(saveImage).not.toHaveBeenCalled()
 
     // The same unload gate covers a rejecting reader: no notice flashes
@@ -407,7 +402,7 @@ describe('mayfly-paste-image plugin', () => {
     fiber = undefined
     rejection.reject(new Error('too late'))
     await flush()
-    expect(notices).toEqual(['pasting image...', 'pasting image...'])
+    expect(notices).toEqual([])
   })
 
   it('no-ops when the fiber unloads before the save settles or the rejection lands', async () => {
@@ -438,7 +433,7 @@ describe('mayfly-paste-image plugin', () => {
     fiber = undefined
     failure.reject(new AttachmentError('late', 'IMAGE_TOO_LARGE'))
     await flush()
-    expect(notices).toEqual(['pasting image...', 'pasting image...'])
+    expect(notices).toEqual([])
   })
 })
 
@@ -474,7 +469,7 @@ describe('default clipboard image reader', () => {
     const mayfly = fakeMayflyContext()
     ctx = mayfly.ctx
     ctx.provide('attachments', { imageLimits, saveImage, saveImages })
-    setSharedEditor(ctx, { editor, submitPrompt: () => {}, report: (_id, feedback) => notices.push(feedback.message) })
+    setSharedEditor(ctx, { editor, submitPrompt: () => {}, setShell: () => {}, report: (_id, feedback) => notices.push(feedback.message) })
   })
 
   afterEach(async () => {
@@ -596,7 +591,7 @@ exit 1
     fiber = undefined
     editor = new FakeMayflyEditor()
     notices = []
-    setSharedEditor(ctx, { editor, submitPrompt: () => {}, report: (_id, feedback) => notices.push(feedback.message) })
+    setSharedEditor(ctx, { editor, submitPrompt: () => {}, setShell: () => {}, report: (_id, feedback) => notices.push(feedback.message) })
     tool(bin, 'wl-paste', wlPasteFake('image/png\nimage/jpeg\n', {
       'image/png': shBytes(GIF_1X1),
       'image/jpeg': shBytes(JPEG_PREFIX),
@@ -625,7 +620,7 @@ exit 1
     await vi.waitFor(() => {
       expect(editor.inserted).toHaveLength(1)
     })
-    expect(notices).toEqual(['pasting image...', 'pasted 2 images'])
+    expect(notices).toEqual(['pasted 2 images'])
     expect(editor.inserted).toHaveLength(1)
     expect(saveImages).toHaveBeenCalledWith([
       expect.objectContaining({ data: expect.any(Uint8Array), mediaType: 'image/png', name: 'castle image.png' }),
@@ -633,7 +628,7 @@ exit 1
     ])
     expect(Array.from(saveImages.mock.calls[0]![0][0]!.data)).toEqual(Array.from(PNG_1X1))
     expect(Array.from(saveImages.mock.calls[0]![0][1]!.data)).toEqual(Array.from(GIF_1X1))
-    expect(editor.inserted[0]!.match(/\[image #\d+\]/g)).toHaveLength(2)
+    expect(editor.inserted[0]!.match(/\[image #\d+ [^\]]+\]/g)).toHaveLength(2)
   })
 
   it('supports GNOME copied-files and treats cut as a read-only paste', async () => {
@@ -702,7 +697,7 @@ exit 1
       fiber = undefined
       editor = new FakeMayflyEditor()
       notices = []
-      setSharedEditor(ctx, { editor, submitPrompt: () => {}, report: (_id, feedback) => notices.push(feedback.message) })
+      setSharedEditor(ctx, { editor, submitPrompt: () => {}, setShell: () => {}, report: (_id, feedback) => notices.push(feedback.message) })
     }
   })
 
@@ -734,7 +729,7 @@ exit 1
       fiber = undefined
       editor = new FakeMayflyEditor()
       notices = []
-      setSharedEditor(ctx, { editor, submitPrompt: () => {}, report: (_id, feedback) => notices.push(feedback.message) })
+      setSharedEditor(ctx, { editor, submitPrompt: () => {}, setShell: () => {}, report: (_id, feedback) => notices.push(feedback.message) })
     }
   })
 
@@ -768,7 +763,7 @@ exit 1
       fiber = undefined
       editor = new FakeMayflyEditor()
       notices = []
-      setSharedEditor(ctx, { editor, submitPrompt: () => {}, report: (_id, feedback) => notices.push(feedback.message) })
+      setSharedEditor(ctx, { editor, submitPrompt: () => {}, setShell: () => {}, report: (_id, feedback) => notices.push(feedback.message) })
     }
     expect(saveImages).not.toHaveBeenCalled()
   })
@@ -790,7 +785,7 @@ exit 1
       fiber = undefined
       editor = new FakeMayflyEditor()
       notices = []
-      setSharedEditor(ctx, { editor, submitPrompt: () => {}, report: (_id, feedback) => notices.push(feedback.message) })
+      setSharedEditor(ctx, { editor, submitPrompt: () => {}, setShell: () => {}, report: (_id, feedback) => notices.push(feedback.message) })
     }
   })
 
@@ -800,7 +795,7 @@ exit 1
     process.env.PATH = bin
     await mountDefault('wayland')
     await vi.waitFor(() => {
-      expect(notices).toEqual(['pasting image...', 'clipboard read failed: wl-paste exited with code 1'])
+      expect(notices).toEqual(['clipboard read failed: wl-paste exited with code 1'])
     })
   })
 
@@ -819,7 +814,7 @@ exit 1
     await fiber!.dispose()
     fiber = undefined
     editor = new FakeMayflyEditor()
-    setSharedEditor(ctx, { editor, submitPrompt: () => {}, report: (_id, feedback) => notices.push(feedback.message) })
+    setSharedEditor(ctx, { editor, submitPrompt: () => {}, setShell: () => {}, report: (_id, feedback) => notices.push(feedback.message) })
     await mountDefault('wayland')
     await vi.waitFor(() => {
       expect(editor.inserted).toHaveLength(1)
@@ -829,7 +824,7 @@ exit 1
     await fiber!.dispose()
     fiber = undefined
     editor = new FakeMayflyEditor()
-    setSharedEditor(ctx, { editor, submitPrompt: () => {}, report: (_id, feedback) => notices.push(feedback.message) })
+    setSharedEditor(ctx, { editor, submitPrompt: () => {}, setShell: () => {}, report: (_id, feedback) => notices.push(feedback.message) })
     process.env.WAYLAND_DISPLAY = 'wayland-1'
     process.env.XDG_RUNTIME_DIR = '/tmp/mayfly-runtime'
     await mountDefault()
@@ -862,14 +857,13 @@ exit 1
       user = next
     }
     const mayflyNs = 'mayfly' as SettingsNamespace
-    /** One paste, awaited by its outcome notice (after the 'pasting image...' lead-in). */
+    /** One paste, awaited by its outcome notice. */
     const pasteAndSettle = async (): Promise<void> => {
       const before = notices.length
       editor.handleInput(KEY.ctrlV)
       // The tool timeout path can take seconds on a slow spawn host.
       await vi.waitFor(() => {
         expect(notices.length).toBeGreaterThan(before)
-        expect(notices.at(-1)).not.toBe('pasting image...')
       }, { timeout: 10_000, interval: 50 })
     }
     /** One paste expected to save an image (a plain success notices nothing). */
@@ -953,7 +947,7 @@ exit 1
     process.env.PATH = bin
     await mountDefault()
     await vi.waitFor(() => {
-      expect(notices).toEqual(['pasting image...', 'clipboard image type image/bmp is not supported'])
+      expect(notices).toEqual(['clipboard image type image/bmp is not supported'])
     })
     expect(editor.inserted).toHaveLength(0)
   })
@@ -963,7 +957,7 @@ exit 1
     process.env.PATH = bin
     await mountDefault()
     await vi.waitFor(() => {
-      expect(notices).toEqual(['pasting image...', 'clipboard image tool missing: install wl-clipboard (wl-paste) or xclip'])
+      expect(notices).toEqual(['clipboard image tool missing: install wl-clipboard (wl-paste) or xclip'])
     })
     expect(saveImage).not.toHaveBeenCalled()
   })
@@ -975,7 +969,7 @@ exit 1
       Object.defineProperty(process, 'platform', { value: 'darwin' })
       await mountDefault()
       await vi.waitFor(() => {
-        expect(notices).toEqual(['pasting image...', 'clipboard image tool missing: osascript or sips is unavailable'])
+        expect(notices).toEqual(['clipboard image tool missing: osascript or sips is unavailable'])
       })
       await fiber?.dispose()
       fiber = undefined
@@ -983,7 +977,7 @@ exit 1
       Object.defineProperty(process, 'platform', { value: 'win32' })
       await mountDefault()
       await vi.waitFor(() => {
-        expect(notices).toEqual(['pasting image...', 'clipboard image tool missing: powershell.exe is unavailable'])
+        expect(notices).toEqual(['clipboard image tool missing: powershell.exe is unavailable'])
       })
     } finally {
       if (savedPlatform !== undefined) Object.defineProperty(process, 'platform', savedPlatform)
@@ -998,7 +992,7 @@ exit 1
     process.env.PATH = bin
     await mountDefault()
     await vi.waitFor(() => {
-      expect(notices).toEqual(['pasting image...', 'clipboard unreachable: DISPLAY/WAYLAND_DISPLAY is not set in this session'])
+      expect(notices).toEqual(['clipboard unreachable: DISPLAY/WAYLAND_DISPLAY is not set in this session'])
     })
   })
 
@@ -1012,7 +1006,7 @@ exit 1
     process.env.PATH = bin
     await mountDefault()
     await vi.waitFor(() => {
-      expect(notices).toEqual(['pasting image...', 'clipboard image tool missing: install wl-clipboard (wl-paste) or xclip'])
+      expect(notices).toEqual(['clipboard image tool missing: install wl-clipboard (wl-paste) or xclip'])
     })
   })
 
@@ -1023,7 +1017,7 @@ exit 1
     process.env.PATH = bin
     await mountDefault()
     await vi.waitFor(() => {
-      expect(notices).toEqual(['pasting image...', 'clipboard unreachable: DISPLAY/WAYLAND_DISPLAY is not set in this session'])
+      expect(notices).toEqual(['clipboard unreachable: DISPLAY/WAYLAND_DISPLAY is not set in this session'])
     })
   })
 
@@ -1039,7 +1033,7 @@ exit 1
     setClipboardToolTimeout(200)
     await mountDefault()
     await vi.waitFor(() => {
-      expect(notices).toEqual(['pasting image...', 'clipboard read timed out'])
+      expect(notices).toEqual(['clipboard read timed out'])
     }, { timeout: 4000 })
     expect(saveImage).not.toHaveBeenCalled()
   })
@@ -1053,7 +1047,7 @@ exit 1
     setClipboardToolTimeout(200)
     await mountDefault('wayland')
     await vi.waitFor(() => {
-      expect(notices).toEqual(['pasting image...', 'clipboard read timed out'])
+      expect(notices).toEqual(['clipboard read timed out'])
     }, { timeout: 4000 })
 
     tool(bin, 'wl-paste', wlPasteFake('image/png\n', { 'image/png': shBytes(PNG_1X1) }))
@@ -1068,7 +1062,7 @@ exit 1
     delete process.env.XDG_RUNTIME_DIR
     editor.handleInput(KEY.ctrlV)
     await vi.waitFor(() => {
-      expect(notices).toHaveLength(5)
+      expect(notices).toHaveLength(3)
     })
     expect(notices.at(-1)).toBe('clipboard read timed out')
     expect(editor.inserted).toHaveLength(1)
@@ -1090,7 +1084,7 @@ exit 2
     process.env.PATH = bin
     await mountDefault()
     await vi.waitFor(() => {
-      expect(notices).toEqual(['pasting image...', 'clipboard read failed: wl-paste exited with code 2: boom'])
+      expect(notices).toEqual(['clipboard read failed: wl-paste exited with code 2: boom'])
     })
   })
 
@@ -1104,7 +1098,7 @@ exit 3
     process.env.PATH = bin
     await mountDefault()
     await vi.waitFor(() => {
-      expect(notices).toEqual(['pasting image...', 'clipboard read failed: wl-paste exited with code 3: first boom'])
+      expect(notices).toEqual(['clipboard read failed: wl-paste exited with code 3: first boom'])
     })
   })
 
@@ -1117,7 +1111,7 @@ exit 3
     process.env.PATH = bin
     await mountDefault('wayland')
     await vi.waitFor(() => {
-      expect(notices).toEqual(['pasting image...', 'clipboard read failed: wl-paste returned invalid bytes for image/png'])
+      expect(notices).toEqual(['clipboard read failed: wl-paste returned invalid bytes for image/png'])
     })
   })
 
@@ -1127,7 +1121,7 @@ exit 3
     process.env.PATH = bin
     await mountDefault()
     await vi.waitFor(() => {
-      expect(notices).toEqual(['pasting image...', 'no image available from the clipboard'])
+      expect(notices).toEqual(['no image available from the clipboard'])
     })
   })
 
@@ -1138,7 +1132,7 @@ exit 3
     process.env.PATH = bin
     await mountDefault('x11')
     await vi.waitFor(() => {
-      expect(notices).toEqual(['pasting image...', 'no image available from the clipboard'])
+      expect(notices).toEqual(['no image available from the clipboard'])
     })
   })
 
@@ -1148,7 +1142,7 @@ exit 3
     process.env.PATH = bin
     await mountDefault('wayland')
     await vi.waitFor(() => {
-      expect(notices).toEqual(['pasting image...', 'clipboard read failed: wl-paste exited with code 1'])
+      expect(notices).toEqual(['clipboard read failed: wl-paste exited with code 1'])
     })
   })
 
@@ -1165,7 +1159,7 @@ exit 1
     process.env.PATH = bin
     await mountDefault()
     await vi.waitFor(() => {
-      expect(notices).toEqual(['pasting image...', 'clipboard unreachable: DISPLAY/WAYLAND_DISPLAY is not set in this session'])
+      expect(notices).toEqual(['clipboard unreachable: DISPLAY/WAYLAND_DISPLAY is not set in this session'])
     })
   })
 
@@ -1178,7 +1172,7 @@ exit 1
     process.env.PATH = bin
     await mountDefault()
     await vi.waitFor(() => {
-      expect(notices).toEqual(['pasting image...', 'no image available from the clipboard'])
+      expect(notices).toEqual(['no image available from the clipboard'])
     })
   })
 
@@ -1214,7 +1208,7 @@ process.exit(0)
     process.env.PATH = mkdtempTracked('mayfly-paste-bin-')
     await mountDefault()
     await vi.waitFor(() => {
-      expect(notices).toEqual(['pasting image...', 'clipboard image tool missing: powershell.exe is unavailable'])
+      expect(notices).toEqual(['clipboard image tool missing: powershell.exe is unavailable'])
     })
   })
 })

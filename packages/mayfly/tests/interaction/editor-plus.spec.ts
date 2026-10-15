@@ -886,7 +886,7 @@ describe('mayfly-editor-plus @ mentions', () => {
     const { ctx, editor, components } = await mount()
     await fileMention.detectFdPath(ctx.mayflyInteractionState.fdProbe)
     const delegated = vi.fn<MayflyAutocompleteProvider['getSuggestions']>(async () => ({
-      items: [{ value: '@src/a.ts', label: 'a.ts', description: 'src/a.ts' }],
+      items: [{ value: '@src/a.ts', label: 'src/a.ts' }],
       prefix: '@sr',
     }))
     components.mentionGetSuggestions = delegated
@@ -894,7 +894,7 @@ describe('mayfly-editor-plus @ mentions', () => {
     const options = { signal: signal() }
     const suggestions = await provider.getSuggestions(['see @sr'], 0, 7, options)
     expect(suggestions).toEqual({
-      items: [{ value: '@src/a.ts', label: 'a.ts', description: 'src/a.ts' }],
+      items: [{ value: '@src/a.ts', label: 'src/a.ts' }],
       prefix: '@sr',
     })
     expect(delegated).toHaveBeenCalledOnce()
@@ -976,7 +976,7 @@ describe('mayfly-editor-plus @ mentions', () => {
     reattach(ctx)
     const provider = editor.autocompleteProvider as MayflyAutocompleteProvider
     const scoped = await provider.getSuggestions(['@src/a'], 0, 6, { signal: signal() })
-    expect(scoped?.items).toEqual([{ value: '@src/a.ts', label: 'a.ts', description: 'src/a.ts' }])
+    expect(scoped?.items).toEqual([{ value: '@src/a.ts', label: 'src/a.ts' }])
   })
 
   it('returns null when the fallback finds no match in an unreadable tree', async () => {
@@ -1017,7 +1017,7 @@ describe('mayfly-editor-plus @ mentions', () => {
     await fileMention.detectFdPath(ctx.mayflyInteractionState.fdProbe)
     const provider = editor.autocompleteProvider as MayflyAutocompleteProvider
     const suggestions = await provider.getSuggestions(['@top'], 0, 4, { signal: signal() })
-    expect(suggestions?.items).toEqual([{ value: '@top.md', label: 'top.md', description: 'top.md' }])
+    expect(suggestions?.items).toEqual([{ value: '@top.md', label: 'top.md' }])
   })
 
   it('notices in the notification lane when the mention matches nothing', async () => {
@@ -1047,5 +1047,28 @@ describe('mayfly-editor-plus @ mentions', () => {
     const suggestions = await provider.getSuggestions(['@zzz'], 0, 4, { signal: controller.signal })
     expect(suggestions).toBeNull()
     expect(ctx.mayflyUiInteraction.notificationSnapshot().map(item => item.message)).not.toContain('no matching files under the session cwd')
+  })
+})
+
+describe('mayfly-editor-plus: the mention an @ completion leaves behind', () => {
+  it('remembers a finished file mention as a token, and nothing else the completion leaves', async () => {
+    const { editor, components, ctx } = await mount()
+    const applied = { lines: ['see @src/a.ts '], cursorLine: 0, cursorCol: 14 }
+    components.mentionGetSuggestions = async () => ({ items: [{ value: '@src/a.ts', label: 'a.ts' }], prefix: '@sr' })
+    components.mentionApplyCompletion = () => applied
+    const provider = editor.autocompleteProvider as MayflyAutocompleteProvider
+    const item = (await provider.getSuggestions(['see @sr'], 0, 7, { signal: signal() }))!.items[0]!
+    provider.applyCompletion(['see @sr'], 0, 7, item, '@sr')
+    expect([...ctx.mayflyInteractionState.mentions]).toEqual(['@src/a.ts'])
+    // A completion that does not end in a space is still open for drill-down: no mention yet.
+    components.mentionApplyCompletion = () => ({ lines: ['see @src/'], cursorLine: 0, cursorCol: 9 })
+    provider.applyCompletion(['see @sr'], 0, 7, item, '@sr')
+    expect([...ctx.mayflyInteractionState.mentions]).toEqual(['@src/a.ts'])
+    // A bare @ with a space is no mention, and neither is a space after plain words.
+    components.mentionApplyCompletion = () => ({ lines: ['see @ '], cursorLine: 0, cursorCol: 5 })
+    provider.applyCompletion(['see @'], 0, 5, item, '@')
+    components.mentionApplyCompletion = () => ({ lines: ['hello '], cursorLine: 0, cursorCol: 6 })
+    provider.applyCompletion(['hello'], 0, 5, item, 'hello')
+    expect([...ctx.mayflyInteractionState.mentions]).toEqual(['@src/a.ts'])
   })
 })

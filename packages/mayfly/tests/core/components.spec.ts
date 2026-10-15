@@ -150,7 +150,7 @@ describe('MayflyComponentsService registration', () => {
     stop()
   })
 
-  it('records the presentation it was built for and frames the editor in its glyphs', () => {
+  it('records the presentation it was built for; the editor draws its buffer, its frame is the Editor component', () => {
     const { tui, stop } = bootTui()
     const ctx = new Context()
     ctx.provide('mayflyInteractionState', { settingsSource: () => ({ glyphs: 'ascii', reducedMotion: true }) } as never)
@@ -159,8 +159,7 @@ describe('MayflyComponentsService registration', () => {
     const editor = components.createEditor()
     editor.setText('a → b')
     const rows = editor.render(20).map(row => stripTerminalSequences(row))
-    expect(rows[0]).toMatch(/^\+-+\+$/u)
-    expect(rows[1]).toContain('a → b')
+    expect(rows.some(row => row.includes('a → b'))).toBe(true)
     stop()
   })
 
@@ -419,47 +418,6 @@ describe('createEditor', () => {
     await waitForRender()
     expect(suggestions).toHaveBeenCalledTimes(2)
     expect(editor.getText()).toBe(before)
-    stop()
-  })
-
-  it('swaps the wrapping dropdown in for slash prefixes and the stock list otherwise', async () => {
-    const { tui, stop } = bootTui()
-    const components = createService(tui)
-    const editor = components.createEditor({ paddingX: 4 })
-    const provider: MayflyAutocompleteProvider = {
-      triggerCharacters: ['@'],
-      getSuggestions: lines =>
-        Promise.resolve(lines[0]?.startsWith('@')
-          ? {
-              items: [{ value: 'pkg', label: '@pkg', description: 'aaaa bbbb cccc dddd eeee ffff' }],
-              prefix: '@pkg',
-            }
-          : {
-              items: [{ value: 'btw', label: '/btw', description: 'aaaa bbbb cccc dddd eeee ffff' }],
-              prefix: '/btw',
-            }),
-      applyCompletion: () => ({ lines: [''], cursorLine: 0, cursorCol: 0 }),
-    }
-    editor.setAutocompleteProvider(provider)
-
-    // Slash prefix: the WrappingSelectList carries the description onto a
-    // second indented line, both under the selected paint (content width 42,
-    // description column 26 — the probe numbers of the wrapping spec).
-    editor.handleInput!('/')
-    await waitForRender()
-    const slash = editor.render(50)
-    expect(slash).toHaveLength(5)
-    expect(slash.join('\n')).toContain('«primary:→ /btw        aaaa bbbb cccc dddd eeee»')
-    expect(slash.join('\n')).toContain(`«primary:${' '.repeat(14)}ffff»`)
-
-    // Any other prefix keeps pi-tui's stock single-row truncation.
-    editor.setText('')
-    editor.handleInput!('@')
-    await waitForRender()
-    const plain = editor.render(50)
-    expect(plain).toHaveLength(4)
-    expect(plain.join('\n')).toContain('@pkg')
-    expect(plain.join('\n')).not.toContain(`«primary:${' '.repeat(14)}ffff»`)
     stop()
   })
 
@@ -1247,5 +1205,105 @@ describe('EditorAdapter mention drill-down reopen', () => {
       expect(getSuggestions).toHaveBeenCalledTimes(1)
     })
     stop()
+  })
+})
+
+describe('createEditor: the paste tables of its history and its folded text', () => {
+  const PASTED = Array.from({ length: 12 }, (_, index) => `line ${index + 1}`).join('\n')
+
+  it('keeps the paste table of a sent message with its history entry, and recalls it as its marker', () => {
+    const { tui, stop } = bootTui()
+    try {
+      const editor = createService(tui).createEditor()
+      editor.handleInput!(`\x1b[200~${PASTED}\x1b[201~`)
+      // The submission funnel captures the buffer, clears it, and then records the message in the history.
+      editor.captureDraft!()
+      editor.setText('')
+      editor.addToHistory('[paste #1 +12 lines]')
+      expect(editor.getHistory()).toEqual(['[paste #1 +12 lines]'])
+      expect(editor.getHistoryPastes()[0]!.get(1)).toBe(PASTED)
+      editor.handleInput!('\x1b[A')
+      expect(editor.getText()).toBe('[paste #1 +12 lines]')
+      expect(editor.getExpandedText()).toBe(PASTED)
+    } finally {
+      stop()
+    }
+  })
+
+  it('takes an explicit paste table for a history entry, and replaces the table of a repeated head', () => {
+    const { tui, stop } = bootTui()
+    try {
+      const editor = createService(tui).createEditor()
+      const table = new Map([[7, PASTED]])
+      editor.addToHistory('[paste #7 +12 lines]', table)
+      expect(editor.getHistoryPastes()[0]).toBe(table)
+      const replaced = new Map([[7, 'other']])
+      editor.addToHistory('[paste #7 +12 lines]', replaced)
+      expect(editor.getHistory()).toEqual(['[paste #7 +12 lines]'])
+      expect(editor.getHistoryPastes()[0]).toBe(replaced)
+      editor.addToHistory('   ')
+      expect(editor.getHistory()).toEqual(['[paste #7 +12 lines]'])
+    } finally {
+      stop()
+    }
+  })
+
+  it('removes the latest history entry only when it is the text given, expanded or as typed', () => {
+    const { tui, stop } = bootTui()
+    try {
+      const editor = createService(tui).createEditor()
+      expect(editor.removeLatestHistory!('anything')).toBe(false)
+      editor.addToHistory('[paste #3 +12 lines]', new Map([[3, PASTED]]))
+      expect(editor.removeLatestHistory!('not the entry')).toBe(false)
+      expect(editor.removeLatestHistory!(PASTED)).toBe(true)
+      expect(editor.getHistory()).toEqual([])
+      editor.addToHistory('plain')
+      expect(editor.removeLatestHistory!('plain')).toBe(true)
+      expect(editor.getHistoryPastes()).toEqual([])
+    } finally {
+      stop()
+    }
+  })
+
+  it('folds a block of the text given back into a paste marker, and keeps the rest as typed', () => {
+    const { tui, stop } = bootTui()
+    try {
+      const editor = createService(tui).createEditor()
+      editor.setTextFolding(`before ${PASTED} after`, [PASTED])
+      expect(editor.getText()).toBe('before [paste #1 +12 lines] after')
+      expect(editor.getExpandedText()).toBe(`before ${PASTED} after`)
+    } finally {
+      stop()
+    }
+  })
+})
+
+describe('createEditor: a recalled message by its expansion, and the completion view', () => {
+  const PASTED = Array.from({ length: 12 }, (_, index) => `item ${index + 1}`).join('\n')
+
+  it('recalls a message given as its expansion as the marker it was sent with', () => {
+    const { tui, stop } = bootTui()
+    try {
+      const editor = createService(tui).createEditor()
+      editor.handleInput!(`\x1b[200~${PASTED}\x1b[201~`)
+      editor.captureDraft!()
+      editor.setText('')
+      editor.addToHistory(PASTED)
+      expect(editor.getHistory()).toEqual(['[paste #1 +12 lines]'])
+      expect(editor.getHistoryPastes()[0]!.get(1)).toBe(PASTED)
+    } finally {
+      stop()
+    }
+  })
+
+  it('has no completion view until the @ or slash list is open', () => {
+    const { tui, stop } = bootTui()
+    try {
+      const editor = createService(tui).createEditor()
+      expect(editor.completion()).toBeUndefined()
+      expect(editor.isShowingAutocomplete()).toBe(false)
+    } finally {
+      stop()
+    }
   })
 })

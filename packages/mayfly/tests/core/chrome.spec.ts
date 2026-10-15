@@ -155,24 +155,24 @@ describe('injectGhostHint', () => {
   })
 
   it('ellipsizes the ghost when the room runs short', () => {
-    // width 20, text 4: room 7 — the hint clips to ` <ques…`.
+    // width 12, text 4: room 7 — the hint clips to ` <ques…`.
     const row = `    /btw${CURSOR_BLOCK}${' '.repeat(11)}`
-    const ghosted = injectGhostHint(row, ' <question>', '/btw', 20, identity)
+    const ghosted = injectGhostHint(row, ' <question>', '/btw', 12, identity)
     expect(ghosted).toBe(`    /btw${CURSOR_BLOCK} <ques…${' '.repeat(4)}`)
     expect(visibleWidth(ghosted)).toBe(20)
   })
 
   it('reduces the ghost to a lone ellipsis when a single column remains', () => {
-    // width 14, text 4, cursor 1: room 1 — the hint clips to bare `…`.
+    // width 6, text 4, cursor 1: room 1 — the hint clips to bare `…`.
     const row = `    /btw${CURSOR_BLOCK}${' '.repeat(5)}`
-    const ghosted = injectGhostHint(row, ' <q>', '/btw', 14, identity)
+    const ghosted = injectGhostHint(row, ' <q>', '/btw', 6, identity)
     expect(ghosted).toBe(`    /btw${CURSOR_BLOCK}…${' '.repeat(4)}`)
     expect(visibleWidth(ghosted)).toBe(14)
   })
 
   it('returns the row unchanged when there is no room at all', () => {
     const row = `    /btw${CURSOR_BLOCK}${' '.repeat(3)}`
-    expect(injectGhostHint(row, ' <q>', '/btw', 12, identity)).toBe(row)
+    expect(injectGhostHint(row, ' <q>', '/btw', 4, identity)).toBe(row)
   })
 
   it('declines while the cursor sits mid-text', () => {
@@ -186,9 +186,9 @@ describe('injectGhostHint', () => {
     // An unfocused editor renders no cursor; the ghost lands at the
     // content-end column instead. The bracket paint adds 2 columns and the
     // display-width clamp trims them from the trailing padding.
-    const row = `    /btw${' '.repeat(12)}`
-    const ghosted = injectGhostHint(row, ' <q>', '/btw', 20, text => `[${text}]`)
-    expect(ghosted).toBe(`    /btw[ <q>]${' '.repeat(8)}`)
+    const row = `/btw${' '.repeat(16)}`
+    const ghosted = injectGhostHint(row, ' <q>', '/btw', 12, text => `[${text}]`)
+    expect(ghosted).toBe(`/btw[ <q>]${' '.repeat(12)}`)
     // Unpainted width 20; the bracket paint again adds its 2 columns.
     expect(visibleWidth(ghosted)).toBe(22)
   })
@@ -197,16 +197,16 @@ describe('injectGhostHint', () => {
     // Text `路径` is 4 columns wide; width 20 leaves contentWidth 12 and
     // room 7, so ` 文件路径` (9 columns) clips to ` 文件…` (6 columns).
     const row = `    路径${CURSOR_BLOCK}${' '.repeat(11)}`
-    const ghosted = injectGhostHint(row, ' 文件路径', '路径', 20, identity)
+    const ghosted = injectGhostHint(row, ' 文件路径', '路径', 12, identity)
     expect(ghosted).toBe(`    路径${CURSOR_BLOCK} 文件…${' '.repeat(5)}`)
     expect(visibleWidth(ghosted)).toBe(20)
   })
 
   it('never splits an emoji grapheme while ellipsizing', () => {
-    // Text `a` is 1 column; width 14 leaves contentWidth 6 and room 4, so
+    // Text `a` is 1 column; width 6 leaves contentWidth 6 and room 4, so
     // exactly one 2-column emoji fits beside the ellipsis.
     const row = `    a${CURSOR_BLOCK}${' '.repeat(8)}`
-    const ghosted = injectGhostHint(row, ' 😀😀', 'a', 14, identity)
+    const ghosted = injectGhostHint(row, ' 😀😀', 'a', 6, identity)
     expect(ghosted).toBe(`    a${CURSOR_BLOCK} 😀…${' '.repeat(4)}`)
     expect(visibleWidth(ghosted)).toBe(14)
   })

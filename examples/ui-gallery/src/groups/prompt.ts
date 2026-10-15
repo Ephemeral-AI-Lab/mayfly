@@ -1,8 +1,8 @@
 /**
  * Prompt (roadmap slice 1.9b): `ui.prompt` is the one text control that is not a field. It draws a symbol, `[label size ×]`
  * tokens, and the buffer in one input row; a placeholder ladder while it is empty; `↑ history 2/4` in its corner while
- * `↑`/`↓` walk the recall (queued messages first); and a completion list under the buffer. The pane below is a small host:
- * it keeps the tokens, the queue, and the history, offers completions for a leading `/`, `@`, or `#` word, and answers the
+ * `↑`/`↓` walk the recall (history, newest first); and a completion list under the buffer. The pane below is a small host:
+ * it keeps the tokens and the history, offers completions for a leading `/`, `@`, or `#` word, and answers the
  * prompt's events by republishing the node. Core keeps the draft, so a republish never loses what was typed.
  *
  * @module @mayfly-example/ui-gallery/groups/prompt
@@ -47,9 +47,7 @@ export function registerGalleryPrompt(ctx: Context): void {
   const state = {
     text: '',
     tokens: [{ id: 'image-1', label: 'Image #1', size: '84 KB' }] as { id: string, label: string, size: string }[],
-    queued: ['also update the footer'],
     history: ['run the width scan again', 'bump the changelog too'],
-    pulled: undefined as number | undefined,
     resets: 0,
     attachments: 1,
   }
@@ -64,7 +62,7 @@ export function registerGalleryPrompt(ctx: Context): void {
         child: ui.prompt({
           id: 'gallery-prompt',
           tokens: state.tokens,
-          recall: [...state.queued.map(text => ({ kind: 'queued' as const, text })), ...state.history.map(text => ({ kind: 'history' as const, text }))],
+          recall: state.history.map(text => ({ text })),
           recallLabel: 'history',
           placeholder: PLACEHOLDER,
           ...(entries.length === 0 ? {} : { completions: { items: entries.map(({ id, label, detail }) => ({ id, label, detail })) } }),
@@ -84,7 +82,7 @@ export function registerGalleryPrompt(ctx: Context): void {
           const before = offered(state.text).entries.map(entry => entry.id).join()
           state.text = event.value as string
           if (offered(state.text).entries.map(entry => entry.id).join() !== before) pane.set(promptNode())
-        } else if (event.kind === 'recall-change') state.pulled = event.source === 'queued' ? event.index : undefined
+        }
       },
       action: (event: MayflyUiActionEvent) => {
         if (event.kind === 'completion-accept') {
@@ -110,9 +108,6 @@ export function registerGalleryPrompt(ctx: Context): void {
         }
         if (event.kind === 'submit') {
           const text = event.submission.forms[0]!.fields.find(field => field.id === 'text')!.value as string
-          // A recalled queued message leaves the queue when it is sent.
-          if (state.pulled !== undefined) state.queued = state.queued.filter((_, index) => index !== state.pulled)
-          state.pulled = undefined
           if (text.trim() !== '') state.history = [text, ...state.history]
           const sent = state.tokens.length
           state.tokens = []

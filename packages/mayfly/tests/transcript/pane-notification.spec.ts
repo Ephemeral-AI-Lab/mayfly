@@ -165,3 +165,32 @@ describe('mayfly-pane-notification', () => {
     expect(harness.ctx.mayflyPanes.list().some(entry => entry.id === 'mayfly.pane.notification')).toBe(false)
   })
 })
+
+describe('mayfly-pane-notification: the prompt row while the prompt waits', () => {
+  it('shows the history position in place of the hint while recalling, and what the prompt waits on; both clear again', async () => {
+    const harness = await boot()
+    harness.ctx.emit('mayfly/prompt-hint-changed', 'a hint of the prompt')
+    expect(nodeOf(harness)).toContain('a hint of the prompt')
+    harness.ctx.emit('mayfly/prompt-recall-changed', { index: 1, total: 3 })
+    expect(nodeOf(harness)).toContain('↑ history 1/3')
+    expect(nodeOf(harness)).not.toContain('a hint of the prompt')
+    harness.ctx.emit('mayfly/prompt-recall-changed', undefined)
+    expect(nodeOf(harness)).toContain('a hint of the prompt')
+    harness.ctx.emit('mayfly/prompt-wait-changed', 'waiting on approval')
+    expect(nodeOf(harness)).toContain('waiting on approval')
+    harness.ctx.emit('mayfly/prompt-wait-changed', undefined)
+    expect(nodeOf(harness)).not.toContain('waiting on approval')
+    await harness.dispose()
+  })
+
+  it('shows a notice in place of the prompt wait, and the prompt wait again once the notice is gone', async () => {
+    const harness = await boot(fakeAgent([]), new HandLane())
+    harness.ctx.emit('mayfly/prompt-wait-changed', 'waiting on approval')
+    harness.lane.set([record('info', 'saved', 1)])
+    expect(nodeOf(harness)).toContain('saved')
+    expect(nodeOf(harness)).not.toContain('waiting on approval')
+    harness.lane.set([])
+    expect(nodeOf(harness)).toContain('waiting on approval')
+    await harness.dispose()
+  })
+})
