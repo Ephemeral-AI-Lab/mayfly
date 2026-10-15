@@ -131,9 +131,9 @@ stream the user sees start from the BTW's own first question, without
 repeating primary-session history.
 
 `@ephemeral-ai/mayfly/app` declares the `mayfly/request-subagent-reply` event.
-An external plugin can request the shared reply form for the currently
-displayed continuable child session; the event itself does not send a message
-or resume an Agent. On submit the user explicitly chooses Queue or Steer; the
+An external plugin can ask for the currently displayed continuable child session to be
+shown with the editor seeded by the given text; the event itself does not send a message
+or resume an Agent. The user sends it from the editor: `Enter` queues, `Ctrl+Enter` steers; the
 write still goes through the native addressed-subagent path and checks the
 exact identities of the primary Agent and the online child Agent. Browsing and
 draft editing of an unloaded child session stay readonly. The event carries an

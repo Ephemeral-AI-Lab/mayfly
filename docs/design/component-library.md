@@ -601,7 +601,7 @@ ui.form({ id, fields, enterSubmits?, submitLabel? })
 field: { id, kind: 'input' | 'textarea' | 'secret' | 'number' | 'select' | 'multiselect' | 'toggle', label, value,
          placeholder?, help?, group?, required?, pattern?, suggestions?, origin?: 'inherited', resetValue?,
          options?, min?, max?, step?, unit?, disabled?, disabledReason? }
-ui.prompt({ id, symbol?, symbolTone?, value?, tokens?: [{ id, label, size? }], recall?: [{ kind: 'queued' | 'history', text }],
+ui.prompt({ id, symbol?, symbolTone?, value?, tokens?: [{ id, label, size? }], recall?: [{ text }],
             placeholder?: string | string[], completions?: { items }, reset?: { rev, value }, submitLabel?, recallLabel? })
 ```
 
@@ -1035,7 +1035,7 @@ dismiss; actions can.
 | `tab-change` | observation | `controlId`, `tabId` |
 | `focus-change` | observation | `controlId`, `from` |
 | `token-remove` | action | `controlId`, `tokenId` (the second `Backspace`) |
-| `recall-change` | observation | `controlId`, `source: 'queued' \| 'history' \| 'draft'`, `index` |
+| `recall-change` | observation | `controlId`, `source: 'history' \| 'draft'`, `index` |
 | `completion-accept` / `completion-dismiss` | action | `controlId`, `itemId?` |
 | `selection-accept` | action | `controlId`, `itemId`, `selectedIds`, `segmentId?`, `actionId?` |
 | `activate` | action | `controlId`, `actionId`, `inputs` (every form's values), `selected` (each list's cursor row) |

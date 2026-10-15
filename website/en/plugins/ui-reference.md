@@ -1487,7 +1487,7 @@ ui.prompt(options: {
   symbolTone?: MayflyTone
   value?: string                       // the draft the control starts with
   tokens?: { id: string, label: string, size?: string }[]
-  recall?: { kind: 'queued' | 'history', text: string }[]
+  recall?: { text: string }[]          // history, newest first
   recallLabel?: string                 // default 'history'
   placeholder?: string | string[]      // a ladder, longest first
   completions?: { items: { id: string, label: string, detail?: string, right?: string }[] }
@@ -1533,11 +1533,11 @@ to show the key line only while a list is open.
 *`↑` twice on an empty prompt (width 64).*
 
 `recall` is walked with `↑`/`↓` while the buffer is empty or already a recalled
-entry, queued messages first, newest first; the right corner reads
+entry, newest first; the right corner reads
 `↑ history 2/3` and the recalled text becomes the draft. `↓` past the newest
 returns the draft that was there before. Each step sends the observation
-`recall-change` (`source` `queued`, `history`, or `draft`, and the `index` into
-`recall`, `-1` for the draft). A host that withdraws a recalled queued message
+`recall-change` (`source` `history` or `draft`, and the `index` into
+`recall`, `-1` for the draft). A host that withdraws a recalled entry
 republishes `recall` without it; the walk keeps its place.
 
 Keys while the prompt has focus:

@@ -275,7 +275,9 @@ same reference table (§4) and the roadmap's group text.
 | **3e.2 Row selection** | `Alt+↑` focuses the newest row; `Enter`, `c`, `Ctrl+G`, `Esc`/`Alt+↓`. | 18 | `tour` | focus mark; hint row; copy feedback |
 | **3e.3 Stream search** | `/` and `?` in conversation mode open a search line above the editor (regular expression, smart case); typing highlights, `Enter` selects, `↑`/`↓` and `n`/`N` walk the matches; the match turn opens at Verbose; matched text reversed. | 18 (`StreamSearch`) | `tour`, `history` | match count; stepping; `Esc` restores levels |
 
-### Phase 4 parts
+### Phase 4 parts (*Finalized*)
+
+Groups 4a to 4e are finalized: the owner accepted the built effect round by round, and the code is the record of the behavior. Where a row below still reads as a plan (the planned prototype wording, or a scenario name that changed), the built code and its scenarios are right. Each row's `Effect` names what shipped.
 
 Phase 4 (editor and command palette) is cut ahead of its start, so the rounds can be planned while Phase 3 is in test.
 It is the same cut as Phase 3's: one effect group per part, a scenario per part, a brief per part. The roadmap's Phase 4
@@ -296,8 +298,8 @@ hand-off.
 | **4d.3 `@` files** | `@` lists files; `Enter` or `Tab` inserts a token (4b.1); `Ctrl+G` opens the file; a directory narrows the list. | 30 | *mentions* | the path cut; the token inserted; a workspace with thousands of files stays smooth |
 | **4d.4 `#` skills and extensions** | `#` lists skills and inserts text; the `complete()` results of editor extensions join the list under their own heading. | 30 | *skills*, *extensionComplete* | the source of each row; an extension that throws or is slow; one list |
 | **4e.1 Placeholders** | The empty prompt teaches the typed prefixes by state: main idle or running, shell, side question, subagent live or resumable, read-only; the longest variant that fits is chosen with no width read in code; the quiet-hints setting blanks it. | 15 | *placeholders* | one ladder per state; the shed order at 60 and 40; hints off |
-| **4e.2 Keys and title** | `Alt+↑` focuses the stream, `Alt+↓` or `F6` enters the views, `?` on an empty prompt opens key help, `Ctrl+S` steers, `Ctrl+G` opens the draft in `$EDITOR`; the title follows the official `title` projection. | 15 | *editorKeys* | each key from the prompt and from the stream; `?` in a non-empty buffer is text; the title when a session is renamed |
-| **4e.3 Subagent replies** | In a live or resumable subagent conversation the editor sends through the addressed-subagent path: `Enter` queues, `Ctrl+S` steers; the reply form with its `Send` and `Cancel` buttons and delivery select is gone. | 15 | *subagentReply* | the delivery choice is the editor's own pair; the placeholder names the subagent; a resumable one wakes |
+| **4e.2 Keys and title** | `Alt+↑` focuses the stream, `Alt+↓` or `F6` enters the views, `?` on an empty prompt opens key help, `Ctrl+Enter` steers, `Ctrl+G` opens the draft in `$EDITOR`; the title follows the official `title` projection. | 15 | *editorKeys* | each key from the prompt and from the stream; `?` in a non-empty buffer is text; the title when a session is renamed |
+| **4e.3 Subagent replies** | In a live or resumable subagent conversation the editor sends through the addressed-subagent path: `Enter` queues, `Ctrl+Enter` steers; the reply form with its `Send` and `Cancel` buttons and delivery select is gone. | 15 | *subagentReply* | the delivery choice is the editor's own pair; the placeholder names the subagent; a resumable one wakes |
 
 Phases 5 and 6 follow the same rules. Their group texts in the roadmap are the starting points: Phase 5 (the two status
 rows, scenes 13 and 12, every width of 100, 72, 52, 36); Phase 6 (the panels 6a-6f, scenes 21 p4 and 22-32). Each is
