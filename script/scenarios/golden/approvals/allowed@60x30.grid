@@ -23,8 +23,8 @@ grid 80x28 cursor none
 |
 |
 |                                               Alt+↑ conversation · Alt+↓ bar
-|╭──────────────────────────────────────────────────── Clean the build output. ─╮
-|│ >                                                                            │
+|╭───────────────────────────────────────────────────── Clean the build output. ╮
+|│ >  Ask anything · / commands · @ files · # skills · ! shell                  │
 |╰──────────────────────────────────────────────────────────────────────────────╯
 | deepseek-flash High  ~/workspace            cache 42%  context: 5% (5.5k/128k)
 styles
@@ -43,7 +43,7 @@ styles
 17: 2-3 fg:#ededf2
 19: 2-29 fg:#9aa3b8
 23: 47-76 fg:#9aa3b8
-24: 0-52 fg:#45406b; 53-77 fg:#5c6476; 78-79 fg:#45406b
-25: 0 fg:#45406b; 4 r; 79 fg:#45406b
+24: 0-54 fg:#45406b; 55-77 fg:#f5f5f7 b; 78-79 fg:#45406b
+25: 0 fg:#45406b; 2-3 fg:#ededf2; 4 r; 5-60 fg:#5c6476; 79 fg:#45406b
 26: 0-79 fg:#45406b
 27: 1-19 fg:#ededf2; 22-32 fg:#9aa3b8; 45-78 fg:#ededf2

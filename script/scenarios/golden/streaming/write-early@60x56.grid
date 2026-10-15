@@ -51,8 +51,8 @@ grid 60x56 cursor none
 |  ● Preparing to write files
 |    ⎿ Tip: Esc to interrupt the run
 |                               Alt+↑ conversation · Alt+↓
-|╭────────────────────────── Write the report script, then ─╮
-|│ >                                                        │
+|╭─────────────────────────── Write the report script, then ╮
+|│ >  Ask anything · / commands · @ files · # skills        │
 |╰──────────────────────────────────────────────────────────╯
 | deepseek-flash High  ~/workspace
 styles
@@ -77,7 +77,7 @@ styles
 49: 0-1 fg:#ededf2; 2 fg:#9a86e6; 3 fg:#ededf2; 4-27 fg:#9aa3b8
 50: 0-34 fg:#9aa3b8
 51: 31-56 fg:#9aa3b8
-52: 0-26 fg:#45406b; 27-57 fg:#5c6476; 58-59 fg:#45406b
-53: 0 fg:#45406b; 4 r; 59 fg:#45406b
+52: 0-28 fg:#45406b; 29-57 fg:#f5f5f7 b; 58-59 fg:#45406b
+53: 0 fg:#45406b; 2-3 fg:#ededf2; 4 r; 5-50 fg:#5c6476; 59 fg:#45406b
 54: 0-59 fg:#45406b
 55: 1-19 fg:#ededf2; 22-32 fg:#9aa3b8

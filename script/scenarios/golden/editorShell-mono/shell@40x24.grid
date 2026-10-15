@@ -1,0 +1,30 @@
+grid 40x24 cursor none
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|                                Alt+↑
+|╭──────── Update the landing page hero ╮
+|│ !  Run a shell command · Esc leave…  │
+|╰──────────────────────────────────────╯
+| deepseek-flash  ~/workspace
+styles
+19: 32-36 d
+20: 10-37 b
+21: 2-3 b; 4 r; 5-35 d
+23: 17-27 d

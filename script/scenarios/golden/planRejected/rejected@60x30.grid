@@ -25,8 +25,8 @@ grid 60x30 cursor none
 |
 |  ✻ Worked for 5s · done 09:00
 |                               Alt+↑ conversation · Alt+↓
-|╭────────────────────────────── Plan the migration to ESM ─╮
-|│ >                                                        │
+|╭─────────────────────────────── Plan the migration to ESM ╮
+|│ >  Ask anything · / commands · @ files · # skills        │
 |╰──────────────────────────────────────────────────────────╯
 | deepseek-flash High  plan  ~/workspace
 styles
@@ -46,7 +46,7 @@ styles
 22: 2-3 fg:#ededf2
 24: 2-29 fg:#9aa3b8
 25: 31-56 fg:#9aa3b8
-26: 0-30 fg:#45406b; 31-57 fg:#5c6476; 58-59 fg:#45406b
-27: 0 fg:#45406b; 4 r; 59 fg:#45406b
+26: 0-32 fg:#45406b; 33-57 fg:#f5f5f7 b; 58-59 fg:#45406b
+27: 0 fg:#45406b; 2-3 fg:#ededf2; 4 r; 5-50 fg:#5c6476; 59 fg:#45406b
 28: 0-59 fg:#45406b
 29: 1-19 fg:#ededf2; 22-25 fg:#c9c0f0; 28-38 fg:#9aa3b8

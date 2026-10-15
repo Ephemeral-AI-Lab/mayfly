@@ -1,0 +1,47 @@
+grid 60x24 cursor none
+|
+|  ● One helper is on it.
+|
+|  ✓ Subagent(One-shot linter) · 0.6s
+|
+|  ● The linter is done.
+|────────────────────────────────────────────────────────────
+|● Running 1 agent
+|  └─ running One-shot linter · deepseek-flash · high · 0 to…
+|         Starting…
+|                               renamed session to Fix the
+|╭ Help ────────────────────────────────────────────────────╮
+|│ Commands                                                 │
+|│ /agents  Browse this session's subagents, view one, or   │
+|│ stop a continuable child                                 │
+|│ /btw  Ask a side question in a temporary Agent session   │
+|│ /changelog  Show the release changelog (what's new)      │
+|│ /compact  Compact older conversation history             │
+|│ /context  Show token usage and the context window        │
+|│ /copy  Copy the last assistant message to the clipboard  │
+|│  Close                                                   │
+|│   ↑/↓ scroll · Ctrl+E expand · Esc close                 │
+|╰──────────────────────────────────────────────────────────╯
+| deepseek-flash High  .  cache 42%  context: 5% (5.5k/128k)
+styles
+1: 2-3 fg:#ededf2
+3: 2-3 fg:#4ec87e; 4-11 fg:#ededf2 b; 12 fg:#9aa3b8; 13-27 fg:#c9c0f0; 28-35 fg:#9aa3b8
+5: 2-3 fg:#ededf2
+6: 0-59 fg:#45406b
+7: 0-1 fg:#c9c0f0; 2-16 fg:#c9c0f0 b
+8: 0-4 fg:#9aa3b8; 5-12 fg:#c9c0f0 b; 13-27 fg:#c9c0f0; 28-58 fg:#9aa3b8
+9: 0-17 fg:#9aa3b8
+10: 31-56 fg:#ededf2
+11: 0-1 fg:#dcd7f2; 2-5 fg:#f5f5f7 b; 6-59 fg:#dcd7f2
+12: 0 fg:#dcd7f2; 2-57 fg:#c9c0f0 b; 59 fg:#dcd7f2
+13: 0 fg:#dcd7f2; 2-8 fg:#c9c0f0 b; 9-57 fg:#9aa3b8; 59 fg:#dcd7f2
+14: 0 fg:#dcd7f2; 2-25 fg:#9aa3b8; 26-57 fg:#c9c0f0 b; 59 fg:#dcd7f2
+15: 0 fg:#dcd7f2; 2-5 fg:#c9c0f0 b; 6-55 fg:#9aa3b8; 56-57 fg:#c9c0f0 b; 59 fg:#dcd7f2
+16: 0 fg:#dcd7f2; 2-11 fg:#c9c0f0 b; 12-52 fg:#9aa3b8; 53-57 fg:#c9c0f0 b; 59 fg:#dcd7f2
+17: 0 fg:#dcd7f2; 2-9 fg:#c9c0f0 b; 10-45 fg:#9aa3b8; 46-57 fg:#c9c0f0 b; 59 fg:#dcd7f2
+18: 0 fg:#dcd7f2; 2-9 fg:#c9c0f0 b; 10-50 fg:#9aa3b8; 51-57 fg:#c9c0f0 b; 59 fg:#dcd7f2
+19: 0 fg:#dcd7f2; 2-6 fg:#c9c0f0 b; 7-56 fg:#9aa3b8; 57 fg:#c9c0f0 b; 59 fg:#dcd7f2
+20: 0 fg:#dcd7f2; 3-7 fg:#ededf2; 59 fg:#dcd7f2
+21: 0 fg:#dcd7f2; 2-3 fg:#5c6476; 4-6 fg:#ededf2; 8-16 fg:#5c6476; 17-22 fg:#ededf2; 24-32 fg:#5c6476; 33-35 fg:#ededf2; 37-41 fg:#5c6476; 59 fg:#dcd7f2
+22: 0-59 fg:#dcd7f2
+23: 1-19 fg:#ededf2; 25-58 fg:#ededf2

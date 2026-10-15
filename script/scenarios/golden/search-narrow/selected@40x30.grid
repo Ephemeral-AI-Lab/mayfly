@@ -25,8 +25,8 @@ grid 40x30 cursor none
 |  Enter expand · c copy · Ctrl+C JSON…
 |  / pnpm run lint
 |    1/2 matches
-|╭───── Survey the transcript code and ─╮
-|│ >                                    │
+|╭────── Survey the transcript code and ╮
+|│ >  Ask anything · / commands         │
 |╰──────────────────────────────────────╯
 | deepseek-flash High   search   ~/wo...
 styles
@@ -50,7 +50,7 @@ styles
 23: 0-36 fg:#9aa3b8
 24: 2-3 fg:#9a86e6
 25: 4-14 fg:#9aa3b8
-26: 0-39 fg:#5c6476
-27: 0 fg:#5c6476; 4 r; 39 fg:#5c6476
-28: 0-39 fg:#5c6476
+26: 0-7 fg:#9aa3b8; 8-37 fg:#f5f5f7 b; 38-39 fg:#9aa3b8
+27: 0 fg:#9aa3b8; 2-3 fg:#ededf2; 4 r; 5-29 fg:#5c6476; 39 fg:#9aa3b8
+28: 0-39 fg:#9aa3b8
 29: 1-19 fg:#ededf2; 22-29 fg:#9a86e6 b r; 32-35 fg:#9aa3b8

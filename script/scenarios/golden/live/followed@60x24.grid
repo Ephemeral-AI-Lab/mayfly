@@ -19,8 +19,8 @@ grid 60x24 cursor none
 |
 |  ✻ Worked for 1s · done 09:00
 |                               Alt+↑ conversation · Alt+↓
-|╭──────────────────────── Explain the rendering pipeline. ─╮
-|│ >                                                        │
+|╭───────────────────────── Explain the rendering pipeline. ╮
+|│ >  Ask anything · / commands · @ files · # skills        │
 |╰──────────────────────────────────────────────────────────╯
 | deepseek-flash High  .  cache 42%  context: 5% (5.5k/128k)
 styles
@@ -36,7 +36,7 @@ styles
 17: 59 bg:p8
 18: 2-29 fg:#9aa3b8; 59 bg:p8
 19: 31-56 fg:#9aa3b8
-20: 0-24 fg:#45406b; 25-57 fg:#5c6476; 58-59 fg:#45406b
-21: 0 fg:#45406b; 4 r; 59 fg:#45406b
+20: 0-26 fg:#45406b; 27-57 fg:#f5f5f7 b; 58-59 fg:#45406b
+21: 0 fg:#45406b; 2-3 fg:#ededf2; 4 r; 5-50 fg:#5c6476; 59 fg:#45406b
 22: 0-59 fg:#45406b
 23: 1-19 fg:#ededf2; 25-58 fg:#ededf2

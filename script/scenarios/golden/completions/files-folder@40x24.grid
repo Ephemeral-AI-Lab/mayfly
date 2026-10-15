@@ -1,0 +1,44 @@
+grid 96x24 cursor none
+| ⠱⣦⣄⣀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⣠⣴⠎
+| ⠀⠙⢿⣿⣿⣷⣶⣤⣀⣀⣴⣶⣦⣀⣀⣤⣶⣾⣿⣿⡿⠋⠀  mayfly
+| ⠀⠀⠀⠈⠻⢿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡿⠟⠁⠀⠀⠀  ephemeral agents, enduring works
+| ⠀⠀⠀⠀⠀⠀⠀⠉⠉⠁⢸⣿⡇⠈⠉⠉⠀⠀⠀⠀⠀⠀⠀
+| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢸⣿⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀  Send /help for help information.
+| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⣿⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀  Directory: ~/workspace
+| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣿⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀  Model:     deepseek-flash · deepseek-official
+| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⡠⠊⠀⠑⢄⠀⠀⠀⠀⠀⠀⠀⠀⠀  Version:   scenario
+|
+|
+|
+|
+|
+|
+|  → packages/
+|    packages/mayfly/
+|    packages/mayfly/src/
+|    packages/mayfly/src/core/
+|    packages/mayfly/src/interaction/
+|    packages/mayfly/src/interaction/prompts/
+|╭──────────────────────────────────────────────────────────────── Update the landing page hero ╮
+|│ > see @pack                                                                                  │
+|╰──────────────────────────────────────────────────────────────────────────────────────────────╯
+| deepseek-flash  ~/workspace
+styles
+0: 1-23 fg:#f5f5f7; 24-25 fg:#9a86e6
+1: 1-23 fg:#e9e5f6; 24-25 fg:#9a86e6; 26-83 fg:#9a86e6 b
+2: 1-23 fg:#dbd3f0; 24-25 fg:#9a86e6; 26-83 fg:#c9c0f0
+3: 1-23 fg:#c9beea; 24-25 fg:#9a86e6
+4: 1-23 fg:#b2a1ec; 24-25 fg:#9a86e6; 26-83 fg:#9aa3b8
+5: 1-25 fg:#9a86e6; 26-83 fg:#ededf2
+6: 1-23 fg:#8371d6; 24-25 fg:#9a86e6; 26-83 fg:#e9e6f4
+7: 1-23 fg:#6c5bbf; 24-25 fg:#9a86e6; 26-83 fg:#ededf2
+14: 2 fg:#9a86e6; 4-12 fg:#9a86e6 b
+15: 4-19 fg:#ededf2
+16: 4-23 fg:#ededf2
+17: 4-28 fg:#ededf2
+18: 4-35 fg:#ededf2
+19: 4-43 fg:#ededf2
+20: 0-65 fg:#45406b; 66-93 fg:#f5f5f7 b; 94-95 fg:#45406b
+21: 0 fg:#45406b; 2-3 fg:#ededf2; 13 r; 95 fg:#45406b
+22: 0-95 fg:#45406b
+23: 1-14 fg:#ededf2; 17-27 fg:#9aa3b8

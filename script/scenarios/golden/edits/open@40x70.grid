@@ -65,8 +65,8 @@ grid 40x70 cursor none
 |
 |  ✻ Stopped after 5s · done 10:34
 |                                Alt+↑
-|╭──────── Add a retries setting, read ─╮
-|│ >                                    │
+|╭───────── Add a retries setting, read ╮
+|│ >  Ask anything · / commands         │
 |╰──────────────────────────────────────╯
 | deepseek-flash High  ~/workspace
 styles
@@ -124,7 +124,7 @@ styles
 62: 2-14 fg:#e8a838
 64: 2-32 fg:#9aa3b8
 65: 32-36 fg:#9aa3b8
-66: 0-8 fg:#45406b; 9-37 fg:#5c6476; 38-39 fg:#45406b
-67: 0 fg:#45406b; 4 r; 39 fg:#45406b
+66: 0-10 fg:#45406b; 11-37 fg:#f5f5f7 b; 38-39 fg:#45406b
+67: 0 fg:#45406b; 2-3 fg:#ededf2; 4 r; 5-29 fg:#5c6476; 39 fg:#45406b
 68: 0-39 fg:#45406b
 69: 1-19 fg:#ededf2; 22-32 fg:#9aa3b8

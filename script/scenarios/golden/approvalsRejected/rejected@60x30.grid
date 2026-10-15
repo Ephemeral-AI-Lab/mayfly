@@ -25,8 +25,8 @@ grid 60x30 cursor none
 |  ⡀ Deep diving · 0s
 |    ⎿ Tip: /plugin to browse and install plugins
 |                               Alt+↑ conversation · Alt+↓
-|╭─────────────────────────────────── Publish the release. ─╮
-|│ >                                                        │
+|╭──────────────────────────────────── Publish the release. ╮
+|│ >  Ask anything · / commands · @ files · # skills        │
 |╰──────────────────────────────────────────────────────────╯
 | deepseek-flash High  .  cache 42%  context: 1% (5.5k/977k)
 styles
@@ -45,7 +45,7 @@ styles
 23: 0-1 fg:#ededf2; 2 fg:#9a86e6; 3-14 fg:#ededf2; 16-19 fg:#9aa3b8
 24: 0-47 fg:#9aa3b8
 25: 31-56 fg:#9aa3b8
-26: 0-35 fg:#45406b; 36-57 fg:#5c6476; 58-59 fg:#45406b
-27: 0 fg:#45406b; 4 r; 59 fg:#45406b
+26: 0-37 fg:#45406b; 38-57 fg:#f5f5f7 b; 58-59 fg:#45406b
+27: 0 fg:#45406b; 2-3 fg:#ededf2; 4 r; 5-50 fg:#5c6476; 59 fg:#45406b
 28: 0-59 fg:#45406b
 29: 1-19 fg:#ededf2; 25-58 fg:#ededf2

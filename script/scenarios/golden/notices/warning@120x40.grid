@@ -35,8 +35,8 @@ grid 120x40 cursor none
 |  ⡀ Deep diving · 8s
 |    ⎿ Tip: Esc to interrupt the run
 |                                                               ⚠ The clipboard tool is missing; falling back to OSC 5
-|╭────────────────────────────────────────────────────────────────────────────────────────────── Show me every kind of ─╮
-|│ >                                                                                                                    │
+|╭─────────────────────────────────────────────────────────────────────────────────────────────── Show me every kind of ╮
+|│ >  Ask anything · / commands · @ files · # skills · ! shell                                                          │
 |╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
 | deepseek-flash  ~/workspace
 styles
@@ -52,7 +52,7 @@ styles
 33: 0-1 fg:#ededf2; 2 fg:#9a86e6; 3-14 fg:#ededf2; 16-19 fg:#9aa3b8
 34: 0-34 fg:#9aa3b8
 35: 63-116 fg:#e8a838
-36: 0-94 fg:#45406b; 95-117 fg:#5c6476; 118-119 fg:#45406b
-37: 0 fg:#45406b; 4 r; 119 fg:#45406b
+36: 0-96 fg:#45406b; 97-117 fg:#f5f5f7 b; 118-119 fg:#45406b
+37: 0 fg:#45406b; 2-3 fg:#ededf2; 4 r; 5-60 fg:#5c6476; 119 fg:#45406b
 38: 0-119 fg:#45406b
 39: 1-14 fg:#ededf2; 17-27 fg:#9aa3b8

@@ -35,8 +35,8 @@ grid 60x40 cursor none
 |  ⡀ Deep diving · 2s · ↑5.5k
 |    ⎿ Tip: Esc to interrupt the run
 |  Enter expand · c copy · Ctrl+C JSON · Ctrl+G editor · ↑…
-|╭─────────────────────────────── Look up how the terminal ─╮
-|│ >                                                        │
+|╭──────────────────────────────── Look up how the terminal ╮
+|│ >  Ask anything · / commands · @ files · # skills        │
 |╰──────────────────────────────────────────────────────────╯
 | deepseek-flash High   conversation   ~/workspace
 styles
@@ -58,7 +58,7 @@ styles
 33: 0-1 fg:#ededf2; 2 fg:#9a86e6; 3-14 fg:#ededf2; 16-27 fg:#9aa3b8
 34: 0-34 fg:#9aa3b8
 35: 0-56 fg:#9aa3b8
-36: 0-59 fg:#5c6476
-37: 0 fg:#5c6476; 4 r; 59 fg:#5c6476
-38: 0-59 fg:#5c6476
+36: 0-33 fg:#9aa3b8; 34-57 fg:#f5f5f7 b; 58-59 fg:#9aa3b8
+37: 0 fg:#9aa3b8; 2-3 fg:#ededf2; 4 r; 5-50 fg:#5c6476; 59 fg:#9aa3b8
+38: 0-59 fg:#9aa3b8
 39: 1-19 fg:#ededf2; 22-35 fg:#9a86e6 b r; 38-48 fg:#9aa3b8

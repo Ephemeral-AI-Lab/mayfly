@@ -1,0 +1,41 @@
+grid 40x24 cursor none
+|  » Write one short line about the
+|    README.
+|    Your parent agent id is
+|    "session-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+|    ▸ 13 more lines · Enter
+|
+|  ● This is a replay session: the model
+|    is a stub. Type nothing; the
+|    conversation above is scripted.
+|
+|  ✻ Worked for 0s · done 09:00
+|
+|  » hold:240000 wake up
+|
+|
+|
+|
+|  ⡀ Deep diving · 0s
+|    ⎿ Tip: /plugin to browse and instal…
+|                      Resumed session
+|╭────────── Write one short line about ╮
+|│ >  Message Stored writer             │
+|╰──────────────────────────────────────╯
+| deepseek-flash High  SUBAGENT · Stored
+styles
+0: 2-3 fg:#9a86e6; 4-33 fg:#9a86e6 b
+1: 4-10 fg:#9a86e6 b
+2: 4-26 fg:#9a86e6 b
+3: 4-39 fg:#9a86e6 b
+4: 4-26 fg:#9aa3b8
+6: 2-3 fg:#ededf2
+10: 2-29 fg:#9aa3b8
+12: 2-3 fg:#9a86e6; 4-22 fg:#9a86e6 b
+17: 0-1 fg:#ededf2; 2 fg:#9a86e6; 3-14 fg:#ededf2; 16-19 fg:#9aa3b8
+18: 0-38 fg:#9aa3b8
+19: 22-36 fg:#ededf2
+20: 0-11 fg:#45406b; 12-37 fg:#f5f5f7 b; 38-39 fg:#45406b
+21: 0 fg:#45406b; 2-3 fg:#ededf2; 4 r; 5-25 fg:#5c6476; 39 fg:#45406b
+22: 0-39 fg:#45406b
+23: 1-19 fg:#ededf2; 22-29 fg:#9a86e6 b; 30-38 fg:#9aa3b8

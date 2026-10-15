@@ -1,4 +1,7 @@
 grid 40x24 cursor none
+|  ▾ Stopped · 1 tool call · Ctrl+O to e…
+|
+|  ● Starting the full gate.
 |
 |  ⊘ Bash(pnpm run check -- --tier full)…
 |
@@ -9,35 +12,31 @@ grid 40x24 cursor none
 |  » Now regenerate the screenshots and
 |    check that they are fresh.
 |
-|  » Keep the diff small  ⏎ queued
+|  » Keep the diff small  ⏎ steering
 |
 |  » Then update the changelog  ⏎ queued
-|────────────────────────────────────────
-|Queued: Then update the changelog
-|Steer: Keep the diff small
 |
 |  ⡀ Deep diving · 0s
 |    ⎿ Tip: /help: show commands
 |                                Alt+↑
-|╭─────── Update the landing page hero ─╮
-|│ >                                    │
+|╭──────── Update the landing page hero ╮
+|│ >  Ask anything · / commands         │
 |╰──────────────────────────────────────╯
 | deepseek-flash High  ~/workspace
 styles
-1: 2-3 fg:#9aa3b8; 4-7 fg:#9aa3b8 b; 8 fg:#9aa3b8; 9-37 fg:#c9c0f0; 38-39 fg:#9aa3b8
-3: 2-14 fg:#e8a838
-5: 2-32 fg:#9aa3b8
-7: 2-3 fg:#9a86e6; 4-37 fg:#9a86e6 b
-8: 4-29 fg:#9a86e6 b
-10: 2-3 fg:#9a86e6; 4-22 fg:#9a86e6 b; 23-32 fg:#9aa3b8
-12: 2-3 fg:#9a86e6; 4-28 fg:#9a86e6 b; 29-38 fg:#9aa3b8
-13: 0-39 fg:#45406b
-14: 0-32 fg:#9aa3b8
-15: 0-25 fg:#9aa3b8
+0: 2-3 fg:#9aa3b8; 4-10 fg:#e8a838; 11-39 fg:#9aa3b8
+2: 2-3 fg:#ededf2
+4: 2-3 fg:#9aa3b8; 4-7 fg:#9aa3b8 b; 8 fg:#9aa3b8; 9-37 fg:#c9c0f0; 38-39 fg:#9aa3b8
+6: 2-14 fg:#e8a838
+8: 2-32 fg:#9aa3b8
+10: 2-3 fg:#9a86e6; 4-37 fg:#9a86e6 b
+11: 4-29 fg:#9a86e6 b
+13: 2-3 fg:#9a86e6; 4-22 fg:#9a86e6 b; 23-34 fg:#9aa3b8
+15: 2-3 fg:#9a86e6; 4-28 fg:#9a86e6 b; 29-38 fg:#9aa3b8
 17: 0-1 fg:#ededf2; 2 fg:#9a86e6; 3-14 fg:#ededf2; 16-19 fg:#9aa3b8
 18: 0-30 fg:#9aa3b8
 19: 32-36 fg:#9aa3b8
-20: 0-7 fg:#45406b; 8-37 fg:#5c6476; 38-39 fg:#45406b
-21: 0 fg:#45406b; 4 r; 39 fg:#45406b
+20: 0-9 fg:#45406b; 10-37 fg:#f5f5f7 b; 38-39 fg:#45406b
+21: 0 fg:#45406b; 2-3 fg:#ededf2; 4 r; 5-29 fg:#5c6476; 39 fg:#45406b
 22: 0-39 fg:#45406b
 23: 1-19 fg:#ededf2; 22-32 fg:#9aa3b8

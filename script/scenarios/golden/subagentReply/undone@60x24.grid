@@ -1,0 +1,41 @@
+grid 60x24 cursor none
+|  (23/23)
+|
+|  ✻ Worked for 0s · done 09:00
+|
+|  » and a WSL line too
+|
+|  ● This is a replay session: the model is a stub. Type
+|    nothing; the conversation above is scripted.
+|
+|  ✻ Worked for 0s · done 09:00
+|
+|  » hold:240000 recheck every heading
+|
+|  » use the short form  ⏎ steering
+|
+|  » and the title too  ⏎ queued
+|
+|  ⡀ Deep diving · 0s
+|    ⎿ Tip: @: mention files
+|  e edit · s send now · d cancel · En…   ✓ Message queued
+|╭────────────────────────────── Write one short line about ╮
+|│ >  Message Stored writer · @ files · # skills            │
+|╰──────────────────────────────────────────────────────────╯
+| deepseek-flash High  SUBAGENT · Stored writer ⇄ MAIN · F7
+styles
+0: 0-8 fg:#5c6476
+2: 2-29 fg:#9aa3b8
+4: 2-3 fg:#9a86e6; 4-21 fg:#9a86e6 b
+6: 2-3 fg:#ededf2
+9: 2-29 fg:#9aa3b8
+11: 2-3 fg:#9a86e6; 4-36 fg:#9a86e6 b
+13: 2-3 fg:#9a86e6; 4-21 fg:#9a86e6 b; 22-33 fg:#9aa3b8
+15: 1 bg:#2b2b30; 2-3 fg:#9a86e6 bg:#2b2b30; 4-20 fg:#9a86e6 bg:#2b2b30 b; 21-58 fg:#9aa3b8 bg:#2b2b30; 59 fg:#9aa3b8
+17: 0-1 fg:#ededf2; 2 fg:#9a86e6; 3-14 fg:#ededf2; 16-19 fg:#9aa3b8
+18: 0-26 fg:#9aa3b8
+19: 0-36 fg:#9aa3b8; 41-42 fg:#4ec87e; 43-56 fg:#ededf2
+20: 0-31 fg:#9aa3b8; 32-57 fg:#f5f5f7 b; 58-59 fg:#9aa3b8
+21: 0 fg:#9aa3b8; 2-3 fg:#ededf2; 4 r; 5-46 fg:#5c6476; 59 fg:#9aa3b8
+22: 0-59 fg:#9aa3b8
+23: 1-19 fg:#ededf2; 22-29 fg:#9a86e6 b; 30-58 fg:#9aa3b8

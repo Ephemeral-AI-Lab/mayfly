@@ -1,5 +1,5 @@
 grid 100x40 cursor none
-|  (228/228)
+|  (234/234)
 |  ✓ Edit(docs/notes.md) · +1 −1 ▮▮▮▮▮▮▮▮
 |    1 │ − Keep the needle short.
 |    1 │ + Keep the needle short and named.
@@ -34,8 +34,8 @@ grid 100x40 cursor none
 |
 |  ⡀ Deep diving · 5s · ↑5.5k
 |
-|  Enter expand · c copy · Ctrl+C JSON · Ctrl+G editor · ↑/↓ sel…   ℹ Resumed session · 13 turns ·
-|╭───────────────────────────────────────────────────────────────────────── Here is the timeout on ─╮
+|  Enter expand · c copy · Ctrl+C JSON · Ctrl+G editor · ↑/↓ sel…     Resumed session · 13 turns ·
+|╭────────────────────────────────────────────────────────────────────────── Here is the timeout on ╮
 |│ >                                                                                                │
 |╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
 | deepseek-flash High   conversation   Goal active · round 0/8 · auto-continue off  plan  ⏵ 1 job  .
@@ -72,8 +72,8 @@ styles
 30: 0-3 fg:#c9c0f0 b; 4-27 fg:#ededf2
 31: 0-3 fg:#9aa3b8; 4-25 fg:#ededf2
 33: 0-1 fg:#ededf2; 2 fg:#9a86e6; 3-14 fg:#ededf2; 16-27 fg:#9aa3b8
-35: 0-62 fg:#9aa3b8; 67-68 fg:#9a86e6; 69-96 fg:#ededf2
-36: 0-99 fg:#5c6476
-37: 0 fg:#5c6476; 4 r; 99 fg:#5c6476
-38: 0-99 fg:#5c6476
+35: 0-62 fg:#9aa3b8; 69-96 fg:#ededf2
+36: 0-75 fg:#9aa3b8; 76-97 fg:#f5f5f7 b; 98-99 fg:#9aa3b8
+37: 0 fg:#9aa3b8; 2-3 fg:#ededf2; 4 r; 99 fg:#9aa3b8
+38: 0-99 fg:#9aa3b8
 39: 1-19 fg:#ededf2; 22-35 fg:#9a86e6 b r; 38-80 fg:#c9c0f0; 83-86 fg:#c9c0f0; 89-95 fg:#9a86e6

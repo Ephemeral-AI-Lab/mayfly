@@ -31,7 +31,7 @@ grid 120x40 cursor none
 |
 |  ● Waiting for your approval · 0s
 |
-|                                                                  ℹ Resumed session · 13 turns · last active just now
+|                                                                    Resumed session · 13 turns · last active just now
 |── Decide ──────────────────────────────────────────────────────────────────────────────────────────────────────────────
 |→ 1  Allow once
 |  2  Allow write for this session
@@ -66,7 +66,7 @@ styles
 27: 4-8 fg:#9aa3b8; 9-54 fg:#c9c0f0
 28: 4-8 fg:#9aa3b8; 9-54 fg:#c9c0f0
 30: 0-1 fg:#ededf2; 2 fg:#5c6476; 3-28 fg:#ededf2; 30-33 fg:#9aa3b8
-32: 66-67 fg:#9a86e6; 68-116 fg:#ededf2
+32: 68-116 fg:#ededf2
 33: 0-119 fg:#9aa3b8
 34: 0 fg:#9a86e6 b; 2 fg:#9aa3b8; 5-14 fg:#ededf2 b
 35: 2 fg:#9aa3b8; 5-32 fg:#ededf2

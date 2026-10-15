@@ -1,0 +1,31 @@
+grid 40x24 cursor none
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|                                Alt+↑
+|╭──────── Update the landing page hero ╮
+|│ !  Run a shell command · Esc leave…  │
+|╰──────────────────────────────────────╯
+| deepseek-flash  ~/workspace
+styles
+19: 32-36 fg:#9aa3b8
+20: 0-9 fg:#c9c0f0; 10-37 fg:#f5f5f7 b; 38-39 fg:#c9c0f0
+21: 0 fg:#c9c0f0; 2-3 fg:#c9c0f0 b; 4 r; 5-35 fg:#5c6476; 39 fg:#c9c0f0
+22: 0-39 fg:#c9c0f0
+23: 1-14 fg:#ededf2; 17-27 fg:#9aa3b8

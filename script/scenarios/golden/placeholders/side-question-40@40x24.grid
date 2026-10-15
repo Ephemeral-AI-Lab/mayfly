@@ -1,0 +1,35 @@
+grid 40x24 cursor none
+|  » Does the install section need
+|    Windows notes?
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|  ⡀ Deep diving · 0s
+|    ⎿ Tip: ! to run a shell command
+|                                Alt+↑
+|╭─────── Does the install section need ╮
+|│ >  Continue the side question        │
+|╰──────────────────────────────────────╯
+| deepseek-flash High  ..  BTW · windows
+styles
+0: 2-3 fg:#9a86e6; 4-32 fg:#9a86e6 b
+1: 4-17 fg:#9a86e6 b
+17: 0-1 fg:#ededf2; 2 fg:#9a86e6; 3-14 fg:#ededf2; 16-19 fg:#9aa3b8
+18: 0-34 fg:#9aa3b8
+19: 32-36 fg:#9aa3b8
+20: 0-8 fg:#45406b; 9-37 fg:#f5f5f7 b; 38-39 fg:#45406b
+21: 0 fg:#45406b; 2-3 fg:#ededf2; 4 r; 5-30 fg:#5c6476; 39 fg:#45406b
+22: 0-39 fg:#45406b
+23: 1-19 fg:#ededf2; 26-28 fg:#9a86e6 b; 29-38 fg:#9aa3b8
