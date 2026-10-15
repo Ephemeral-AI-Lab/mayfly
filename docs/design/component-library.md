@@ -107,12 +107,13 @@ paint.
    focused row and, inside it, the active choice (the `‹ high ›` token, the active
    tab, the primary action). Never body text, badges, headings, or a second
    highlighted row. If two things on a surface are both violet, one is wrong.
-2. **The inset title rule.** `╭ Title ─────╮`: a rounded frame whose title sits inside
-   the top rule. It is the only decorative line; no double rules, heavy borders, or
-   boxed sub-panels. Overlays and inline surfaces both use the rounded frame (the
-   overlay in the focus border color, the inline surface in the quiet border color);
-   a `lane` is rules only. A frame's title may sit in the right corner instead (the editor's conversation
-   title, §5.2).
+2. **Two chromes, one rule each.** A panel (`overlay`, every command panel) is borderless:
+   a full-width heavy rule `━` in the brand ink, the bold title and its muted description in
+   a two-column gutter, the content, and one hint row; no buttons (an action is a key named on
+   the hint row) and no boxed sub-panels. The editor's `surface` is the one rounded frame,
+   `╭ Title ─────╮`, in the quiet border color, its title in the right corner (§5.2). A `lane`
+   is rules only. Pages switched in place keep the height of the tallest page
+   (component-development-spec §1 rule 13).
 3. **Words and weight, not paint.** Everything else is typographic: weight, dimness,
    the `→` mark, and words. No filled color blocks except the diff's changed code, and no emoji.
 
@@ -914,8 +915,8 @@ ui.scroll({ id, child, height?, expandedHeight?, fit?, follow?: 'end' | 'none', 
 ╰────────────────────────────────────────────────────────╯
 ```
 
-Four chromes: **overlay** (rounded, focus border color), **surface** (rounded, quiet
-border color), **lane** (rules only, as a decision card in the stream), and **none** (a bare
+Four chromes: **overlay** (borderless: the heavy `━` rule, the bold title, the gutter, the hint row;
+the frame examples in this section predate it), **surface** (rounded, quiet border color: the editor), **lane** (rules only, as a decision card in the stream), and **none** (a bare
 bold title, as the views panel). `titleAlign: 'right'` moves the title into the top-right corner (the editor's
 conversation title) and `border` recolors the frame (the editor's shell mode); both keep the glyphs the same. A scroll
 with `fit` shrinks to short content and shows its scrollbar only when it overflows. A header badge on the right of the title rule carries a

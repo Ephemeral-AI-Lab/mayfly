@@ -4,7 +4,7 @@
  * scenes are the timelines of the perf and app scenarios. See `timeline.mjs` for the builders. @module script/scenarios/replays
  */
 
-import { btw, dequeue, goal as goalItem, job, mark, pause, queue, seed, step, subagent, todos, tool, turn } from './timeline.mjs'
+import { btw, dequeue, goal as goalItem, job, mark, pause, queue, question, seed, step, subagent, todos, tool, turn } from './timeline.mjs'
 /** A reply shaped like a real answer: prose, lists, a table, and fenced code in two languages. */
 function reply() {
   const parts = []
@@ -114,7 +114,6 @@ const mergeConversations = {
   ],
 }
 
-export const REPLAYS = { mergeDock, mergeConversations }
 
 /*
  * The scenes: the timelines of the perf scenarios (a long streamed answer, a megabyte write) and of the Website's app
@@ -197,3 +196,119 @@ export const SCENES = { markdown, content, appConversation, appAgents, appSessio
 
 /** A replay or a scene by name. */
 export const timelineNamed = name => Object.hasOwn(REPLAYS, name) ? REPLAYS[name] : Object.hasOwn(SCENES, name) ? SCENES[name] : undefined
+
+/*
+ * The merge of Phase 6 (PR 16, the panels) into main (Phases 4 and 5): the panels over the merged dock, the one height of
+ * pages switched in place, and Esc that stops your turn only.
+ */
+
+/**
+ * A year of stored conversations for /stats: about a hundred and fifty sessions over 52 weeks on up to nine models that change
+ * with the period, some in the sibling workspaces `docs` and `api`, so History has a heatmap and Models its columns.
+ */
+const STATS_POOLS = [
+  [['deepseek-official', 'deepseek-flash', 6, 1], ['bravo', 'bravo-mini', 2, 0.6], ['acme', 'acme-think', 1, 0.8]],
+  [['deepseek-official', 'deepseek-flash', 5, 1], ['deepseek-official', 'deepseek-v4-pro', 3, 2.2], ['anthropic', 'claude-sonnet-5-5', 2, 2.8], ['bravo', 'bravo-mini', 1, 0.6]],
+  [['deepseek-official', 'deepseek-flash', 5, 1], ['deepseek-official', 'deepseek-v4-pro', 3, 2.2], ['anthropic', 'claude-sonnet-5-5', 3, 2.8], ['openai', 'gpt-5', 2, 2.4], ['moonshotai', 'kimi-k2', 2, 1.4], ['zhipuai', 'glm-5', 1, 1.2], ['openrouter', 'deepseek/deepseek-flash', 1, 1], ['acme', 'acme-think', 1, 0.8]],
+]
+const statsSeeds = () => {
+  const sessions = []
+  for (let day = 1; day <= 360; day += 1) {
+    const hash = (day * 2_654_435_761) % 100
+    const weekday = (4 - (day % 7) + 7) % 7
+    const busy = weekday >= 1 && weekday <= 5
+    const recent = day <= 120
+    const active = day <= 5 || hash < (busy ? (day <= 60 ? 92 : recent ? 66 : 30) : (day <= 60 ? 40 : recent ? 18 : 6))
+    if (!active) continue
+    const pool = STATS_POOLS[day > 240 ? 0 : day > 120 ? 1 : 2]
+    const perDay = day <= 60 ? 1 + (hash % 4) : recent ? 1 + (hash % 3 === 0 ? 1 : 0) + (hash % 5 === 0 ? 1 : 0) : 1 + (hash % 6 === 0 ? 1 : 0)
+    for (let nth = 0; nth < perDay; nth += 1) {
+      const pick = (day * 31 + nth * 17 + hash) % pool.reduce((sum, entry) => sum + entry[2], 0)
+      let at = 0
+      const [provider, model, , spend] = pool.find(entry => (at += entry[2]) > pick)
+      const turns = 1 + ((hash + nth) % 5)
+      sessions.push({
+        id: `seed-stats-${String(day)}-${String(nth)}`, at: -day * DAY - (day % 3) * 5 * HOUR - nth * 2 * HOUR, title: `Stats seed ${String(day)}.${String(nth)}`,
+        ...day % 5 === 0 ? { cwd: day % 10 === 0 ? 'docs' : 'api' } : {}, provider, model,
+        items: Array.from({ length: turns }, (_unused, index) => turn(`Question ${String(index + 1)} of day ${String(day)}.`, [step({
+          text: `Answer ${String(index + 1)}.`,
+          usage: { inputTokens: Math.round((4_000 + hash * 300) * spend), outputTokens: Math.round((600 + hash * 40) * spend), cacheReadTokens: Math.round((30_000 + hash * 900) * spend) },
+        })])),
+      })
+    }
+  }
+  return sessions
+}
+
+/** Three questions of every kind (a choice, a multiple choice, a typed answer): the wizard's pages and its review differ in height. */
+const MERGE_QUESTIONS = [
+  { id: 'auth', header: 'Auth', question: 'Which auth method should the CLI use?', options: [{ label: 'OAuth', description: 'browser sign-in, tokens refresh automatically' }, { label: 'API key', description: 'paste a token; you rotate it yourself' }] },
+  { id: 'scopes', header: 'Scopes', question: 'Which scopes should the token carry?', multiSelect: true, options: [{ label: 'read', description: 'list and fetch resources' }, { label: 'write', description: 'create and update resources' }, { label: 'admin', description: 'manage members and billing' }, { label: 'audit', description: 'read the audit log' }] },
+  { id: 'notes', header: 'Notes', question: 'Anything else I should know?' },
+]
+
+/** One question: no strip and no review; a digit answers it. */
+const MERGE_QUESTION = [{ id: 'runtime', question: 'Which runtime should the project target?', options: [{ label: 'Node 22 (Recommended)', description: 'Current LTS line' }, { label: 'Node 24', description: 'Latest release' }, { label: 'Bun', description: 'Alternative runtime' }] }]
+
+/** A watcher that keeps running for the whole scenario. */
+const watcher = () => job('npm run watch', { lines: [[300, 'watching for changes…'], [20_000, 'rebuilt src/hero.css in 41 ms']], progress: [[500, 'watching'], [20_000, 'rebuilt 1']], endMs: 3_600_000, status: 'completed', detail: 'exit code: 0' })
+
+/**
+ * The live work every view shows: a goal, a reviewer in the background, six todos, and a watcher, then a year of stored
+ * conversations for /stats; then the agent asks `questions` (the script plays on to them).
+ */
+const panelItems = (prompt, text, questions) => [
+  seed(statsSeeds()),
+  turn(prompt, [
+    goalItem('create', { objective: 'Refresh the landing page hero and keep every test green', maxGoalRounds: 8 }),
+    step({
+      text: 'A reviewer runs in the background, the todo list is set, and a watcher rebuilds the styles.',
+      usage: { inputTokens: 5200, outputTokens: 140, cacheReadTokens: 3000 },
+      tools: [reviewer(), todos([['completed', 'Read the brand notes'], ['completed', 'Collect the screenshots'], ['in_progress', 'Rewrite the hero'], ['pending', 'Retake the screenshots'], ['pending', 'Update the README'], ['pending', 'Run the tests']])],
+    }),
+    watcher(),
+    step({ text, usage: { inputTokens: 5600, outputTokens: 160, cacheReadTokens: 5000 } }),
+  ]),
+  mark('ready'),
+  pause(DWELL_VIEWS),
+  // The question waits for an answer: a script plays on to it with `play()`.
+  turn('Set up the service; ask me what you need.', [
+    step({
+      text: questions.length === 1 ? 'One question before I start.' : 'A few questions before I start.',
+      tools: [tool('ask_user_question', { questions }, { ask: question(questions), result: '{answers}', runMs: 500 })],
+    }),
+    step({ text: 'Thanks. I will use those answers.' }),
+  ]),
+  mark('answered'),
+  pause(DWELL),
+]
+
+/** The panels of Phase 6 over the merged dock (Phase 4's editor frame, Phase 5's status row and views). */
+const mergePanels = {
+  summary: 'the panels after the merge: /model, /effort, /stats (each tab), /plugin (each tab), and the restyled /agents, /jobs, /mcp, /help, /settings in the /stats chrome (rule and title, no buttons, the keys on the hint row), the y/n confirm of a view\'s x, and a question arriving while a view is entered (the view leaves); the editor frame and the status row return when a panel closes',
+  items: panelItems('Refresh the landing page hero.', 'Every panel now has the /stats look: a rule and a title, the keys on one hint row, no buttons. Try /model, /effort, /stats, /plugin, /agents, /jobs, /mcp, /help, /settings; Alt+↓ enters the views, where x asks y/n.', MERGE_QUESTION),
+}
+
+/** Pages switched in place keep one height: the tallest page's (component-development-spec §1 rule 13). */
+const mergeHeights = {
+  summary: 'one height for pages switched in place: the /stats tabs, the /plugin tabs, the question wizard\'s steps and review, and the views of the status row (Agents, Jobs, Goal, Todo); the rows around them never move, and a shorter terminal lowers the height',
+  items: panelItems('Refresh the landing page hero.', 'Switch pages and watch the rows under each panel: /stats (←/→), /plugin (Alt+←/→), the views (Alt+↓ then ←/→). None of them moves.', MERGE_QUESTIONS),
+}
+
+/**
+ * Esc after the merge: your turn stops; a background subagent (a real one, `spawn:`), the watcher, and the queued message
+ * stay. A foreground subagent is the turn's own tool call, so it stops with the turn (the one accepted limit).
+ */
+const mergeEsc = {
+  summary: 'Esc stops your turn only: with a real background subagent running (`spawn:… child-hold:240000`), a watcher job, and a queued message, Esc ends your turn while the subagent and the job stay live and the queued message is sent next; Esc on an open panel closes the panel and leaves the turn running; a foreground subagent (`spawn-fg:`) stops with the turn that waits on it',
+  items: [
+    turn('Watch the styles while we work.', [
+      watcher(),
+      step({ text: 'The watcher runs in the background. Send `spawn:Background reviewer child-hold:240000 review the README` for a turn that starts a real background subagent and keeps running; type a message while it runs (it queues), then press Esc.', usage: { inputTokens: 3000, outputTokens: 90, cacheReadTokens: 1000 } }),
+    ]),
+    mark('ready'),
+    pause(DWELL_VIEWS),
+  ],
+}
+
+export const REPLAYS = { mergeDock, mergeConversations, mergePanels, mergeHeights, mergeEsc }

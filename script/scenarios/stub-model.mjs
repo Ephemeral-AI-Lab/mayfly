@@ -17,14 +17,24 @@ const holdOf = body => {
   return match === null ? 0 : Number(match[1])
 }
 
-/** A prompt that holds `spawn:<description>` makes the model call the subagent tool once, so the product creates a real child. */
+/**
+ * A prompt that holds `spawn:<description>` makes the model call the subagent tool once, so the product creates a real
+ * child in the background; `spawn-fg:<description>` asks for a foreground child, which the turn waits on. `child-hold:<ms>` in the same prompt gives the child a prompt that holds its own turn that long.
+ */
 const spawnOf = body => {
   const messages = body.messages ?? []
-  const at = messages.findLastIndex(message => /spawn:[\w -]+/u.test(JSON.stringify(message)))
+  const at = messages.findLastIndex(message => /spawn(?:-fg)?:[\w -]+/u.test(JSON.stringify(message)))
   if (at < 0) return undefined
   // The call is made once: after it the conversation holds the tool's use or result.
   if (messages.slice(at + 1).some(message => /tool_(use|result)/u.test(JSON.stringify(message)))) return undefined
-  return /spawn:([\w -]+)/u.exec(JSON.stringify(messages[at]))?.[1]
+  const text = JSON.stringify(messages[at])
+  const [, foreground, description] = /spawn(-fg)?:([\w -]+)/u.exec(text)
+  const childHold = /child-hold:(\d+)/u.exec(text)?.[1]
+  return {
+    description: description.replace(/\s+child-hold$/u, '').trim(),
+    prompt: childHold === undefined ? 'Write one short line about the README.' : `hold:${childHold} Keep reviewing the README until you are stopped.`,
+    run_in_background: foreground === undefined,
+  }
 }
 
 const toolSse = (name, input) => [
@@ -81,7 +91,7 @@ export async function startStubModel({ balance = 'ok' } = {}) {
       try { body = JSON.parse(raw) } catch { /* answered as a prompt */ }
       response.writeHead(200, { 'content-type': 'text/event-stream; charset=utf-8', 'cache-control': 'no-cache' })
       const spawn = Array.isArray(body.tools) && body.tools.some(tool => tool.name === 'subagent') ? spawnOf(body) : undefined
-      if (spawn !== undefined) { response.end(toolSse('subagent', { description: spawn, prompt: 'Write one short line about the README.' })); return }
+      if (spawn !== undefined) { response.end(toolSse('subagent', spawn)); return }
       const answer = sse(Array.isArray(body.tools) && body.tools.length > 0 ? REPLY : TITLE)
       const hold = Array.isArray(body.tools) && body.tools.length > 0 ? holdOf(body) : 0
       if (hold === 0) { response.end(answer); return }

@@ -7,7 +7,7 @@
  */
 
 import { REPLAYS } from './replays.mjs'
-import { checkpoint, idle, key, measure, paste, play, resize, type, wait, wheel } from './steps.mjs'
+import { checkpoint, idle, key, measure, paste, play, resize, type, until, wait, wheel } from './steps.mjs'
 
 /** The size a scenario runs at unless it names its own. */
 export const DEFAULT_SIZE = Object.freeze([120, 40])
@@ -23,8 +23,18 @@ const NOTIFICATION = [`${TRANSCRIPT}pane-notification.ts`, `${TRANSCRIPT}notices
 /** What draws and answers the queued rows of the stream: the rows, their keys, the notification row that teaches them, and the editor that restores the message. */
 const QUEUE_COVERS = [`${TRANSCRIPT}transcript-model.ts`, `${TRANSCRIPT}pane-notification.ts`, 'packages/mayfly/src/components/notification-line.ts', `${INTERACTION}input-plugin.ts`, ...STREAM]
 
+/** What draws the panels of Phase 6 and the chrome every overlay now shares. */
+const PANELS = [
+  'packages/mayfly/src/components/', 'packages/mayfly/src/core/ui-patterns.ts', 'packages/mayfly/src/core/ui-compiler.ts', 'packages/mayfly/src/core/ui-stacks.ts',
+  'packages/mayfly/src/core/ui-interaction-surface.ts', 'packages/mayfly/src/core/surface-renderer.ts', 'packages/mayfly/src/core/screen.ts', `${INTERACTION}*-command*.ts`,
+  `${INTERACTION}model-commands.ts`, `${INTERACTION}stats-*.ts`, `${INTERACTION}plugin-*.ts`, `${INTERACTION}jobs.ts`, `${INTERACTION}help.ts`, `${INTERACTION}settings-*.ts`,
+]
+
 /** What each replay shows, as the sources whose change it can reveal. */
 const COVERS = {
+  mergePanels: [...PANELS, `${TRANSCRIPT}status-*.ts`, 'packages/mayfly/src/core/views-lane.ts', `${INTERACTION}questions-plugin.ts`],
+  mergeHeights: [...PANELS, 'packages/mayfly/src/core/views-lane.ts', `${TRANSCRIPT}view-items.ts`, `${TRANSCRIPT}status-*.ts`, `${TRANSCRIPT}pane-todo.ts`, `${INTERACTION}questions-plugin.ts`],
+  mergeEsc: ['packages/mayfly/src/app/agent-interrupt.ts', 'packages/mayfly/src/app/index.ts', `${INTERACTION}input-plugin.ts`, `${TRANSCRIPT}status-agents.ts`, `${TRANSCRIPT}status-jobs.ts`, ...NOTIFICATION],
   mergeDock: [
     ...NOTIFICATION, `${TRANSCRIPT}status-rows.ts`, `${TRANSCRIPT}view-items.ts`, `${TRANSCRIPT}status-agents.ts`, `${TRANSCRIPT}status-jobs.ts`, 'packages/mayfly/src/core/views-lane.ts', 'packages/mayfly/src/core/screen.ts',
     'packages/mayfly/src/components/editor.ts', `${INTERACTION}input-plugin.ts`, `${INTERACTION}placeholder.ts`, 'packages/mayfly/src/core/completion-drawer.ts', 'packages/mayfly/src/core/editor-tokens.ts',
@@ -41,6 +51,65 @@ const COVERS = {
  * that `differs` from the prototype, and `pending`. `brief.mjs` prints them. Finalizing a group removes its entries.
  */
 const REVIEW = {
+  mergePanels: {
+    scene: 23,
+    reference: 'the merge of Phase 6 (PR 16, the panels) into main (Phases 4 and 5) · component-development-spec §1 · roadmap Phase 6',
+    implemented: [
+      'Every overlay has the /stats chrome: a full-width `━` rule, the bold title, the muted description, a two-column gutter, and one hint row; no panel draws buttons any more.',
+      'Former buttons are keys on the hint row: Close and Cancel are Esc; r refresh, c copy, Ctrl+S save, Ctrl+G settings.yaml, Ctrl+F search all, Enter submits a form, and a letter for the rest (x stop, o open or output, a add or archive, s sign in, p preview, m more, v resources, t templates, u copy URL). Lists with letter keys filter with `/`, as /plugin does.',
+      'The shared Yes/No confirm is keys: `y` yes, `n` no, Esc no (a view\'s `x`, /jobs stop, /agents stop, /update).',
+      'Phase 4\'s editor keeps its rounded frame (`chrome: \'surface\'`); only overlays are borderless. A panel stands in for the editor and the status row; when one opens over an entered view, the view leaves.',
+    ],
+    focus: [
+      { look: '/model and /effort over the merged dock', how: 'checkpoints `model`, `effort`' },
+      { look: '/stats: each tab, the same height', how: 'checkpoints `stats-session` to `stats-models`' },
+      { look: '/plugin: Browse and Updates', how: 'checkpoints `plugin`, `plugin-updates`' },
+      { look: 'The restyled panels: no buttons, keys on the hint row', how: 'checkpoints `agents`, `jobs`, `mcp`, `help`, `settings`' },
+      { look: 'A view\'s `x`: the y/n confirm, then `n`', how: 'checkpoints `view-jobs`, `confirm`, `declined`' },
+      { look: 'A question arriving while a view is entered: the view leaves, the question takes the dock; a digit answers it', how: 'checkpoints `question`, `answered`' },
+      { look: 'The panels at 60 and 40 columns', how: 'checkpoints `stats-60`, `jobs-60`, `stats-40`' },
+    ],
+    differs: ['The panels\' contents are as they were: only their chrome changed. The per-panel redesign is R6 to R8.'],
+    pending: ['/update needs a published version to confirm; its y/n is the shared confirm\'s and is not scripted.'],
+  },
+  mergeHeights: {
+    scene: 26,
+    reference: 'component-development-spec §1 rule 13: a surface that switches pages in place keeps the height of its tallest page · `holdHeight` in core/ui-stacks.ts',
+    implemented: [
+      'Tab pages (/stats, /plugin, the wizard\'s steps and review, any `tab` child of a stack) are padded to the tallest page at this width and viewport.',
+      'The views of the status row (Agents, Jobs, Goal, Todo) keep one height: the tallest enterable view, within the lane\'s third of the screen.',
+      'A shorter terminal lowers the height (the peak is remembered per width and viewport rows); a filter that narrows a list does not shrink the panel.',
+      '/stats no longer pads its own scrolls, and the scroll `hold` field is gone.',
+    ],
+    focus: [
+      { look: '/stats: the rule under the panel stays put across the four tabs', how: 'checkpoints `stats-session`, `stats-account`, `stats-history`, `stats-models`' },
+      { look: '/plugin: the three tabs, then a filter with no match', how: 'checkpoints `plugin-browse`, `plugin-updates`, `plugin-installed`, `plugin-filtered`' },
+      { look: 'The views: Agents (one row) as tall as Todo (six todos)', how: 'checkpoints `view-agents`, `view-jobs`, `view-goal`, `view-todo`' },
+      { look: 'A shorter terminal: the views and /stats lower their height', how: 'checkpoints `view-short`, `stats-short`' },
+      { look: 'The question wizard: three steps and the review, one height', how: 'checkpoints `wizard-auth`, `wizard-scopes`, `wizard-notes`, `wizard-review`' },
+    ],
+    differs: [],
+    pending: ['The split view of /plugin keeps its own viewport bands for the detail beside the list (the detail follows the cursor, not a tab); it is not a page switch.'],
+  },
+  mergeEsc: {
+    scene: 15,
+    reference: 'docs/interaction-model.md, Interrupt scope · Phase 4 round 3, kept by the merge of Phase 6',
+    implemented: [
+      'Esc, or Ctrl+C on an empty prompt, stops the current turn of the conversation on screen and nothing else: background and continuable subagents, jobs and their watchers, the goal, todos, and the queued messages stay (the queue is sent next).',
+      'Esc on an open panel closes the panel only; the turn under it keeps running.',
+      'The one accepted limit: a foreground subagent is the turn\'s own tool call, and Harness stops it with the turn.',
+    ],
+    focus: [
+      { look: 'Your turn running beside a real background subagent and the watcher', how: 'checkpoint `running` (`spawn:… child-hold:240000` starts the child)' },
+      { look: 'A message typed while it runs, queued', how: 'checkpoint `queued`' },
+      { look: 'Esc: the turn stops; agents and jobs stay ● in the status row; the queued message is sent next', how: 'checkpoints `interrupted`, `agents-live`' },
+      { look: 'The kept message on its row; `s` sends it now', how: 'checkpoints `kept`, `sent`' },
+      { look: 'Esc on /help closes the panel; the turn keeps running; a second Esc stops it', how: 'checkpoints `panel`, `panel-closed`, `interrupted-again`' },
+      { look: 'A foreground subagent stops with the turn', how: 'checkpoints `foreground`, `foreground-stopped`' },
+    ],
+    differs: ['The turns and the subagents are the stub model\'s: `child-hold:` holds the child\'s turn, and every later prompt of the session holds too, since the stub reads the whole conversation.'],
+    pending: [],
+  },
   mergeDock: {
     scene: 15,
     reference: 'the merge of Phase 4 (PR 18, the editor) and Phase 5 (PR 19, the status row and views) · prototype scenes 15 and 13 · component-library §5.1, §5.2, and the notification pane in §5.2',
@@ -95,8 +164,77 @@ const TIMED = { timed: true }
 /** A pasted block long enough to fold into a `[paste #1 +12 lines]` token. */
 const MERGE_PASTE = Array.from({ length: 12 }, (_, index) => `note ${String(index + 1)}: the hero copy and the install line disagree`).join('\n')
 
+/** Open a panel by its command and wait for its title; the wait first lets focus return to the prompt from a panel just closed. */
+const open = (command, title) => [wait(300), type(command), key('enter'), until(title)]
+
 /** The script of each replay: `play` to its marks, the keys a person would press, resizes, and named checkpoints. */
 const SCRIPTS = {
+  // The panels over the merged dock: each in the /stats chrome with its keys on the hint row, the y/n confirm, and a question
+  // arriving while a view is entered.
+  mergePanels: [
+    play('ready'), checkpoint('ready'),
+    ...open('/model', 'Select a model'), checkpoint('model'), key('esc'),
+    ...open('/effort', 'Effort'), checkpoint('effort'), key('esc'),
+    ...open('/stats', 'Stats'), checkpoint('stats-session'),
+    key('right'), checkpoint('stats-account'),
+    key('right'), until('Less'), checkpoint('stats-history'),
+    key('right'), checkpoint('stats-models'), key('esc'),
+    ...open('/plugin', 'Plugin marketplace'), until('Browse'), checkpoint('plugin'),
+    key('alt+left'), checkpoint('plugin-updates'), key('esc'),
+    ...open('/agents', 'Subagents'), checkpoint('agents'), key('esc'),
+    ...open('/jobs', 'Jobs'), checkpoint('jobs'), key('esc'),
+    ...open('/mcp', 'MCP'), checkpoint('mcp'), key('esc'),
+    ...open('/help', 'Help'), checkpoint('help'), key('esc'),
+    ...open('/settings', 'Settings'), checkpoint('settings'), key('esc'),
+    wait(300), key('alt+down'), key('right'), checkpoint('view-jobs'),
+    key('x'), checkpoint('confirm'), key('n'), checkpoint('declined'),
+    play(), until('Which runtime'), checkpoint('question'), key('1'), wait(500), checkpoint('answered'),
+    resize(60, 30), ...open('/stats', 'Stats'), checkpoint('stats-60'), key('esc'),
+    ...open('/jobs', 'Jobs'), checkpoint('jobs-60'), key('esc'),
+    resize(40, 30), ...open('/stats', 'Stats'), checkpoint('stats-40'), key('esc'),
+    resize(100, 30), checkpoint('closed'),
+  ],
+  // One height for pages switched in place: the /stats and /plugin tabs, the views, a shorter terminal, and the wizard.
+  mergeHeights: [
+    play('ready'),
+    ...open('/stats', 'Stats'), checkpoint('stats-session'),
+    key('right'), checkpoint('stats-account'),
+    key('right'), until('Less'), checkpoint('stats-history'),
+    key('right'), checkpoint('stats-models'), key('esc'),
+    ...open('/plugin', 'Plugin marketplace'), until('Browse'), checkpoint('plugin-browse'),
+    key('alt+left'), checkpoint('plugin-updates'),
+    key('alt+left'), checkpoint('plugin-installed'),
+    // Esc ends the search, then steps back from the filter, then closes the panel.
+    type('/'), type('zzz'), checkpoint('plugin-filtered'), key('esc'), wait(200), key('esc'), wait(200), key('esc'),
+    wait(300), key('alt+down'), checkpoint('view-agents'),
+    key('right'), checkpoint('view-jobs'),
+    key('right'), checkpoint('view-goal'),
+    key('right'), checkpoint('view-todo'), key('esc'),
+    resize(100, 22), wait(300), key('alt+down'), checkpoint('view-short'), key('esc'),
+    ...open('/stats', 'Stats'), checkpoint('stats-short'), key('esc'),
+    resize(100, 30),
+    play(), until('Auth'), checkpoint('wizard-auth'),
+    key('right'), checkpoint('wizard-scopes'),
+    key('right'), checkpoint('wizard-notes'),
+    key('right'), checkpoint('wizard-review'),
+  ],
+  // Esc stops your turn only: a real background subagent, the watcher, and a queued message stay; Esc on a panel closes it;
+  // a foreground subagent stops with the turn.
+  mergeEsc: [
+    play('ready'), checkpoint('ready'),
+    type('spawn:Background reviewer child-hold:240000 review the README'), key('enter'), wait(3000), checkpoint('running'),
+    type('Then bump the version'), key('enter'), wait(400), checkpoint('queued'),
+    key('esc'), wait(1000), checkpoint('interrupted'),
+    wait(300), key('alt+down'), checkpoint('agents-live'), key('esc'), wait(150),
+    // The kept message, sent now from its row, is a turn that runs (the stub holds every prompt of this conversation).
+    key('alt+up'), checkpoint('kept'), key('s'), wait(1000), key('esc'), wait(150), checkpoint('sent'),
+    ...open('/help', 'Help'), checkpoint('panel'), key('esc'), wait(400), checkpoint('panel-closed'),
+    key('esc'), wait(1000), checkpoint('interrupted-again'),
+    type('spawn-fg:Foreground checker child-hold:240000 check the links'), key('enter'), wait(3000), checkpoint('foreground'),
+    key('esc'), wait(1500), checkpoint('foreground-stopped'),
+    resize(60, 30), checkpoint('narrow-60'),
+    resize(100, 30),
+  ],
   // Where the editor and the status row meet (the merge of Phases 4 and 5): the idle hint and placeholder over the items, the `/` palette,
   // a pasted token and its keys, a turn of the stub model (`hold:`) with the hint rotating, the history counter, a view entered, 60 and 40
   // columns, then Esc interrupting that turn while the reviewer and the watcher go on until the watcher's closing line.
@@ -147,14 +285,24 @@ const SCRIPTS = {
 
 /** Replays that run at a size of their own. */
 const SIZES = {
+  mergePanels: [[100, 30]],
+  mergeHeights: [[100, 30]],
+  mergeEsc: [[100, 30]],
   mergeDock: [[100, 30]],
   mergeConversations: [[100, 30]],
 }
 
-/** A replay as a scenario: its script, covers, sizes, and brief from the tables above. */
+/** What a replay's session needs beyond the replay: the /plugin catalog of the bench profile, a DeepSeek balance. */
+const OPTIONS = {
+  mergePanels: { market: { installed: 'full' }, account: { balance: 'ok' } },
+  mergeHeights: { market: { installed: 'full' }, account: { balance: 'ok' } },
+}
+
+/** A replay as a scenario: its script, covers, sizes, options, and brief from the tables above. */
 const replayScenario = (name, replay) => ({
   summary: replay.summary,
   source: { replay: name },
+  ...OPTIONS[name],
   covers: COVERS[name] ?? [],
   sizes: SIZES[name] ?? [DEFAULT_SIZE],
   script: SCRIPTS[name] ?? [play(), checkpoint('end')],

@@ -353,7 +353,8 @@ export class ViewsLane implements MayflyViewsSource {
       if (view === active) continue
       let rows = this.heights.rows.get(view.id)
       if (rows === undefined) {
-        const paint = (): number => view.panel!.render(width).length
+        // A view off screen paints unfocused, so without the one hint row (it sheds, never wraps) it shows once entered.
+        const paint = (): number => view.panel!.render(width).length + 1
         rows = view.measure === undefined ? paint() : view.measure(paint)
         this.heights.rows.set(view.id, rows)
       }
