@@ -101,7 +101,6 @@ describe('default keys', () => {
     const shared = new Map<string, string[]>()
     for (const action of defaults()) for (const key of keysOf(action)) shared.set(key, [...shared.get(key) ?? [], action.id])
     expect([...shared].filter(([, ids]) => ids.length > 1).sort()).toEqual([
-      ['ctrl+s', ['ui.save', 'mayfly.interaction.steer']],
       ['shift+tab', ['ui.prev-group', 'mayfly.interaction.cycle-mode']],
     ])
   })

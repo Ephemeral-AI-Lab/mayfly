@@ -58,7 +58,7 @@ function renderStream(rows: readonly StreamRow[], width: number, text: string): 
       { id: 'turn:1', number: 1, closing: `Worked for ${text} · done 10:13`, rows: [{ kind: 'prompt', id: 'u0', text: 'first', images: [], open: false }] },
       { id: 'turn:2', number: 2, closing: text, rows },
     ],
-    queued: [{ id: 'q', text, suffix: '⏎ queued' }],
+    queued: [{ id: 'q', text, suffix: '⏎ queued', lane: 'turn', open: false }],
   })
   return render(node, width)
 }

@@ -237,6 +237,16 @@ export class MayflyScreenService extends Service implements MayflyScreen {
   }
 
   /**
+   * The rows from the top of the editor's frame to the bottom of the screen: the editor host, the status footer, and the
+   * panel of an entered view. An overlay that grows out of the frame's top edge (the completion drawer) anchors this far
+   * above the bottom.
+   */
+  get editorRowsFromBottom(): number {
+    const columns = this.runtime.columns
+    return this.fixed.get('editor.prompt')!.render(columns).length + this.fixed.get('status.footer')!.render(columns).length + this.viewsPanel.render(columns).length
+  }
+
+  /**
    * The rows of the scroll region that stay in view: the terminal minus the dock and the lanes. A focused list windows
    * around its cursor to this many rows, so the cursor is never in the part the dock covers.
    */

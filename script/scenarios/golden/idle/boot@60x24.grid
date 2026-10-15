@@ -20,7 +20,7 @@ grid 60x24 cursor none
 |
 |                          Alt+↑ conversation · Alt+↓ view
 |╭──────────────────────────────────────────────────────────╮
-|│ >                                                        │
+|│ >  Ask anything · / commands · @ files · # skills        │
 |╰──────────────────────────────────────────────────────────╯
 | deepseek-official/deepseek-flash  ~/workspace
 styles
@@ -34,6 +34,6 @@ styles
 7: 1-23 fg:#6c5bbf; 24-25 fg:#9a86e6; 26-47 fg:#ededf2
 19: 26-56 fg:#9aa3b8
 20: 0-59 fg:#45406b
-21: 0 fg:#45406b; 4 r; 59 fg:#45406b
+21: 0 fg:#45406b; 2-3 fg:#ededf2; 4 r; 5-50 fg:#5c6476; 59 fg:#45406b
 22: 0-59 fg:#45406b
 23: 1-32 fg:#ededf2; 35-45 fg:#9aa3b8

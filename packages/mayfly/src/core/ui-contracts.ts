@@ -12,7 +12,6 @@ export type MayflyValidationResult<Value> =
   | { readonly ok: true, readonly value: Value }
   | { readonly ok: false, readonly code: MayflyUiErrorCode, readonly message: string }
 
-interface MayflyEditorControlNode { readonly kind: 'editor-control' }
 export interface MayflyEditorChild extends Omit<MayflyUiChild, 'node'> { readonly node: MayflyEditorShellNode }
 interface MayflyEditorStackNode extends Omit<MayflyStackNode, 'children'> { readonly children: readonly MayflyEditorChild[] }
 interface MayflyEditorSurfaceNode extends Omit<MayflySurfaceNode, 'child' | 'footer'> {
@@ -20,9 +19,8 @@ interface MayflyEditorSurfaceNode extends Omit<MayflySurfaceNode, 'child' | 'foo
   readonly footer?: MayflyEditorShellNode
 }
 
-/** Core-private tree that injects the one Mayfly-owned editor control. */
+/** Core-private tree whose one `prompt` node is the face of the Mayfly-owned editor: the host paints its buffer and takes its keys. */
 export type MayflyEditorShellNode =
   | Exclude<MayflyUiNode, MayflyStackNode | MayflySurfaceNode>
   | MayflyEditorStackNode
   | MayflyEditorSurfaceNode
-  | MayflyEditorControlNode

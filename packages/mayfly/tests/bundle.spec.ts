@@ -95,7 +95,6 @@ describe('mayfly bundle', () => {
       'mayfly-status-agents',
       'mayfly-status-goal',
       'mayfly-pane-activity',
-      'mayfly-pane-queue',
       'mayfly-pane-todo',
       'mayfly-btw-command',
       'mayfly-pane-workflow',

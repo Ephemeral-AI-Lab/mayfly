@@ -54,11 +54,11 @@ grid 120x60 cursor none
 |  ■ interrupted
 |
 |  ✻ Stopped after 5s · done 10:24
-|  ↑/↓ select · Enter expand · c copy · / ? search · Ctrl+G editor · Ctrl+C JSON · Esc back ✗ no editor configur… · +1
-|╭───────────────────────────────────────────────────────────────────────────────────── Survey the transcript code and ─╮
-|│ >                                                                                                                    │
+|  Enter expand · c copy · Ctrl+C JSON · Ctrl+G editor · ↑/↓ select · / ? sear…                 ✗ no editor configured
+|╭────────────────────────────────────────────────────────────────────────────────────── Survey the transcript code and ╮
+|│ >  Ask anything · / commands · @ files · # skills · ! shell                                                          │
 |╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
-| deepseek-official/deepseek-flash High   conversation   ~/workspace                  cache ▰▰▱▱▱ 42%  ctx ▰▱▱▱▱▱▱▱▱▱ 5%
+| deepseek-flash High   conversation   ~/workspace                                    cache 42%  context: 5% (5.5k/128k)
 styles
 0: 0-8 fg:#5c6476
 1: 2-3 fg:#e8a838; 4-7 fg:#ededf2 b; 8-35 fg:#9aa3b8; 36-46 fg:#e8a838
@@ -97,8 +97,8 @@ styles
 50: 2-7 fg:#9aa3b8; 8-22 fg:#c9c0f0; 23-36 fg:#9aa3b8
 52: 2-14 fg:#e8a838
 54: 2-32 fg:#9aa3b8
-55: 2-11 fg:#9aa3b8; 13-26 fg:#9aa3b8; 28-35 fg:#9aa3b8; 37-48 fg:#9aa3b8; 50-64 fg:#9aa3b8; 66-78 fg:#9aa3b8; 80-89 fg:#9aa3b8; 91 fg:#e85454; 93-110 fg:#e85454; 113-116 fg:#9aa3b8
-56: 0-119 fg:#5c6476
-57: 0 fg:#5c6476; 4 r; 119 fg:#5c6476
-58: 0-119 fg:#5c6476
-59: 1-37 fg:#ededf2; 40-53 fg:#9a86e6 b r; 56-66 fg:#9aa3b8; 85-90 fg:#ededf2; 91-92 fg:#e8a838; 93-95 fg:#9aa3b8; 96-99 fg:#ededf2; 102-105 fg:#ededf2; 106 fg:#9a86e6; 107-115 fg:#9aa3b8; 116-118 fg:#ededf2
+55: 0-76 fg:#9aa3b8; 95-116 fg:#e85454
+56: 0-87 fg:#9aa3b8; 88-117 fg:#f5f5f7 b; 118-119 fg:#9aa3b8
+57: 0 fg:#9aa3b8; 2-3 fg:#ededf2; 4 r; 5-60 fg:#5c6476; 119 fg:#9aa3b8
+58: 0-119 fg:#9aa3b8
+59: 1-19 fg:#ededf2; 22-35 fg:#9a86e6 b r; 38-48 fg:#9aa3b8; 85-118 fg:#ededf2

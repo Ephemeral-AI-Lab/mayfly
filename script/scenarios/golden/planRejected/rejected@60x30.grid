@@ -24,11 +24,11 @@ grid 60x30 cursor none
 |  ● Understood; I will go on from your decision.
 |
 |  ✻ Worked for 5s · done 09:00
-|                          Alt+↑ conversation · Alt+↓ view
-|╭────────────────────────────── Plan the migration to ESM ─╮
-|│ >                                                        │
+|                               Alt+↑ conversation · Alt+↓
+|╭─────────────────────────────── Plan the migration to ESM ╮
+|│ >  Ask anything · / commands · @ files · # skills        │
 |╰──────────────────────────────────────────────────────────╯
-| deepseek-flash  plan  workspace          ctx ▰▱▱▱▱▱▱▱▱▱ 5%
+| deepseek-flash High  plan  ~/workspace
 styles
 0: 1-23 fg:#b2a1ec; 24-25 fg:#9a86e6; 26-44 fg:#9aa3b8
 1: 1-25 fg:#9a86e6; 26-47 fg:#ededf2
@@ -45,8 +45,8 @@ styles
 20: 2-3 fg:#e85454; 4-16 fg:#ededf2 b; 17-45 fg:#9aa3b8
 22: 2-3 fg:#ededf2
 24: 2-29 fg:#9aa3b8
-25: 26-56 fg:#9aa3b8
-26: 0-30 fg:#45406b; 31-57 fg:#5c6476; 58-59 fg:#45406b
-27: 0 fg:#45406b; 4 r; 59 fg:#45406b
+25: 31-56 fg:#9aa3b8
+26: 0-32 fg:#45406b; 33-57 fg:#f5f5f7 b; 58-59 fg:#45406b
+27: 0 fg:#45406b; 2-3 fg:#ededf2; 4 r; 5-50 fg:#5c6476; 59 fg:#45406b
 28: 0-59 fg:#45406b
-29: 1-14 fg:#ededf2; 17-20 fg:#c9c0f0; 23-31 fg:#9aa3b8; 42-45 fg:#ededf2; 46 fg:#9a86e6; 47-55 fg:#9aa3b8; 56-58 fg:#ededf2
+29: 1-19 fg:#ededf2; 22-25 fg:#c9c0f0; 28-38 fg:#9aa3b8

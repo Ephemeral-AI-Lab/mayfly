@@ -10,7 +10,7 @@ import type { StreamRow, StreamTurn } from '../../src/components/transcript-view
 import { createTranscriptModel } from '../../src/transcript/transcript-model.ts'
 import type { TranscriptEntryModel, TranscriptModel } from '../../src/frontend/models.ts'
 import { DEFAULT_TRANSCRIPT_PRESENTATION, PROCESS_POLICIES, TranscriptPresentationPolicy, type TranscriptPresentationSnapshot } from '../../src/transcript/presentation-policy.ts'
-import { clockTime, StreamFacts, type StreamInputs } from '../../src/transcript/stream-facts.ts'
+import { clockTime, StreamFacts, userMessageText, type StreamInputs } from '../../src/transcript/stream-facts.ts'
 import { NO_DISCLOSURE } from '../../src/transcript/disclosure.ts'
 
 let seq = 0
@@ -116,7 +116,7 @@ describe('StreamFacts', () => {
   })
 
   it('shows a message that sits twice in the inbox once', () => {
-    const facts = new StreamFacts().build(model([user(1, 'q')], [{ turn: 1, startedAt: NOON }], true), inputs({ queued: [{ id: 'm1', text: 'later' }, { id: 'm1', text: 'later' }, { id: 'm2', text: 'then' }] }))
+    const facts = new StreamFacts().build(model([user(1, 'q')], [{ turn: 1, startedAt: NOON }], true), inputs({ queued: [{ id: 'm1', text: 'later', lane: 'turn' }, { id: 'm1', text: 'later', lane: 'turn' }, { id: 'm2', text: 'then', lane: 'turn' }] }))
     expect(facts.queued.map(message => message.id)).toEqual(['m1', 'm2'])
   })
 
@@ -144,9 +144,9 @@ describe('StreamFacts', () => {
 
   it('maps the queued messages to rows of their own and keeps them by identity', () => {
     const kept = new StreamFacts()
-    const queued = [{ id: 'q1', text: 'then the \x1b[31mchangelog\x1b[0m' }]
+    const queued = [{ id: 'q1', text: 'then the \x1b[31mchangelog\x1b[0m', lane: 'turn' as const }]
     const first = kept.build(model([user(1, 'go')], [{ turn: 1, startedAt: NOON }], true), inputs({ queued }))
-    expect(first.queued).toEqual([{ id: 'q1', text: 'then the changelog', suffix: '⏎ queued' }])
+    expect(first.queued).toEqual([{ id: 'q1', text: 'then the changelog', suffix: '⏎ queued', lane: 'turn', open: false }])
     expect(kept.build(model([user(1, 'go')], [{ turn: 1, startedAt: NOON }], true), inputs({ queued })).queued[0]).toBe(first.queued[0])
   })
 
@@ -183,5 +183,276 @@ describe('StreamFacts', () => {
       // A request with no reason asks the same, and a child-less stream is unchanged.
       expect(lineOf({ requests: [{ type: 'plan', callId: 'other-call' } as never] })).not.toContain('running in background')
     })
+  })
+})
+
+describe('StreamFacts: how a turn reads when it failed', () => {
+  const failed = (turn: number, name: string): TranscriptEntryModel => ({ ...tool(turn, name, 'boom'), result: { text: 'boom', isError: true, endedAt: 2 } } as TranscriptEntryModel)
+
+  it('closes a turn that ended in error with its duration, and counts the failed calls in its title', () => {
+    const entries = [user(1, 'run both'), tool(1, 'bash', 'pnpm test'), failed(1, 'bash'), assistant(1, 'stopped')]
+    const turns = [{ turn: 1, startedAt: NOON, endedAt: NOON + 4_000, outcome: 'error' }]
+    const compact = { ...DEFAULT_TRANSCRIPT_PRESENTATION, mode: 'compact', process: PROCESS_POLICIES.compact } as const
+    const facts = new StreamFacts().build(model(entries, turns, false), inputs({ policy: compact }))
+    expect(facts.turns[0]!.closing).toBe(`Failed after 4s · done ${clockTime(NOON + 4_000)}`)
+    expect(rowsOf(facts.turns[0])[1]).toMatchObject({ kind: 'title', text: '2 tool calls' })
+  })
+
+  it('reads a turn that is still running without a closing line, and with the header tail at Verbose', () => {
+    const entries = [user(1, 'working'), tool(1, 'bash', 'pnpm test', false)]
+    const verbose = { ...DEFAULT_TRANSCRIPT_PRESENTATION, mode: 'verbose', process: PROCESS_POLICIES.verbose } as const
+    const facts = new StreamFacts().build(model(entries, [{ turn: 1, startedAt: NOON }], true), inputs({ policy: verbose, liveTurnHeader: true }))
+    expect(facts.turns[0]!.closing).toBeUndefined()
+    expect(rowsOf(facts.turns[0]).length).toBeGreaterThan(1)
+  })
+})
+
+describe('StreamFacts: the remaining decisions', () => {
+  const failedCall = (turn: number, callId: string): TranscriptEntryModel => ({ ...tool(turn, 'bash', 'exit 1'), callId, result: { text: 'boom', isError: true, endedAt: 2 } } as TranscriptEntryModel)
+  const okCall = (turn: number, callId: string): TranscriptEntryModel => ({ ...tool(turn, 'bash', 'ls'), callId } as TranscriptEntryModel)
+  const compaction = (overrides: Partial<Extract<TranscriptEntryModel, { kind: 'transcript-compaction' }>>): TranscriptEntryModel => ({
+    ...base(1), id: 'cmp:1', kind: 'transcript-compaction', state: 'ok', trigger: 'auto', startedAt: NOON, ...overrides,
+  } as TranscriptEntryModel)
+  const one = (facts: ReturnType<StreamFacts['build']>) => rowsOf(facts.turns[0])
+
+  it('reads the text of a user message: its text, and a count of its images', () => {
+    const text = { type: 'text', text: 'look' } as const
+    const image = { type: 'image', mediaType: 'image/png', data: '' } as never
+    expect(userMessageText({ role: 'user', content: [text, { type: 'text', text: 'at\nthis' }] } as never)).toBe('look at this')
+    expect(userMessageText({ role: 'user', content: [text, image] } as never)).toBe('look [1 image]')
+    expect(userMessageText({ role: 'user', content: [text, image, image] } as never)).toBe('look [2 images]')
+    expect(userMessageText({ role: 'user', content: [image] } as never)).toBe('[1 image]')
+  })
+
+  it('draws no turns and no queued messages for a view with no model attached', () => {
+    const facts = new StreamFacts().build(null, inputs({ queued: [{ id: 'q1', text: 'later', lane: 'turn' }] }))
+    expect(facts.turns).toEqual([])
+    expect(facts.queued.map(message => message.id)).toEqual(['q1'])
+  })
+
+  it('draws a canonical node between two turns in the turn it follows, as a note of its own text', () => {
+    const between = createTranscriptModel('spec', [user(1, 'q'), { kind: 'text', content: 'between' } as MayflyUiNode, assistant(1, 'a')], false, 0, [{ turn: 1, startedAt: NOON, endedAt: NOON + 1, outcome: 'completed' }])
+    expect(rowsOf(new StreamFacts().build(between, inputs()).turns[0]).map(row => row.kind)).toEqual(['prompt', 'note', 'answer'])
+    const code = createTranscriptModel('spec', [user(1, 'q'), { kind: 'code', code: 'npm test' } as unknown as MayflyUiNode], false, 0, [{ turn: 1, startedAt: NOON }])
+    expect(rowsOf(new StreamFacts().build(code, inputs()).turns[0])[1]).toMatchObject({ kind: 'note', text: 'npm test' })
+    const other = createTranscriptModel('spec', [user(1, 'q'), { kind: 'image', alt: 'x' } as unknown as MayflyUiNode], false, 0, [{ turn: 1, startedAt: NOON }])
+    expect(rowsOf(new StreamFacts().build(other, inputs()).turns[0])[1]).toMatchObject({ kind: 'note', text: '[image]' })
+  })
+
+  it('draws a request that names no call as a block of its own at the end of the stream', () => {
+    const requests = [{ type: 'approval' as const, toolName: 'web_fetch', reason: 'fetch the spec' }, { type: 'approval' as const, toolName: 'web_fetch' }]
+    const facts = new StreamFacts().build(model([user(1, 'q')], [{ turn: 1, startedAt: NOON }], true), inputs({ requests }))
+    expect(one(facts).at(-1)).toEqual({ kind: 'tool', id: 'request:approval:web_fetch', state: 'waiting', name: 'web_fetch', outcome: '1 of 2 waiting', body: [{ text: 'fetch the spec', tone: 'muted' }] })
+    const plan = new StreamFacts().build(model([user(1, 'q')], [{ turn: 1, startedAt: NOON }], true), inputs({ requests: [{ type: 'plan', toolName: 'exit_plan_mode', reason: '' }] }))
+    expect(one(plan).at(-1)).toEqual({ kind: 'tool', id: 'request:plan:exit_plan_mode', state: 'waiting', name: 'exit_plan_mode', outcome: 'waiting' })
+  })
+
+  it('reads the text of a queued message and of a call inside a group, in both forms', () => {
+    const stream = new StreamFacts()
+    stream.build(model([user(1, 'go')], [{ turn: 1, startedAt: NOON }], true), inputs({ queued: [{ id: 'q1', text: 'then', lane: 'turn' }] }))
+    expect(stream.textOf('queued.q1', 'text')).toBe('then')
+    expect(stream.textOf('queued.q1', 'raw')).toBe('then')
+    expect(stream.textOf('queued.q9', 'text')).toBeUndefined()
+    const search = { id: 'search:1', kind: 'transcript-search-group', seq: 1, updatedSeq: 1, turn: 1, step: 0, searches: [{ callId: 's1', activity: 'search', detail: 'needle', seq: 1, updatedSeq: 1, turn: 1, step: 0, name: 'grep', startedAt: 0, pattern: 'needle', shape: 'lines', state: 'ok', matches: [] }] } as unknown as TranscriptEntryModel
+    const commands = { id: 'command:1', kind: 'transcript-command-group', seq: 2, updatedSeq: 2, turn: 1, step: 0, commands: [{ callId: 'g1', activity: 'commands', detail: 'ls', seq: 2, updatedSeq: 2, turn: 1, step: 0, name: 'bash', startedAt: 0, command: 'ls', state: 'ok' }] } as unknown as TranscriptEntryModel
+    const grouped = new StreamFacts()
+    grouped.build(model([user(1, 'go'), search, commands], [{ turn: 1, startedAt: NOON, endedAt: NOON + 1, outcome: 'completed' }]), inputs({ disclosure: { ...NO_DISCLOSURE, groups: new Set(['search:1:s1', 'command:1:g1']) } }))
+    const searchRow = grouped.rowOf('search:1:s1')
+    const commandRow = grouped.rowOf('command:1:g1')
+    expect(searchRow).toBeDefined()
+    expect(grouped.textOf(searchRow!, 'text')).toContain('needle')
+    expect(grouped.textOf(commandRow!, 'raw')).toContain('ls')
+  })
+
+  it('answers a call that waits on the user with its own block, and says what the user decided on the others', () => {
+    const waiting = { ...tool(1, 'bash', 'sleep 9', false), callId: 'wait-1' } as TranscriptEntryModel
+    const requests = [{ type: 'approval' as const, callId: 'wait-1', toolName: 'bash', reason: 'delete the cache' }]
+    const asked = new StreamFacts().build(model([user(1, 'q'), waiting], [{ turn: 1, startedAt: NOON }], true), inputs({ requests }))
+    expect(one(asked).find(row => row.kind === 'tool' && row.state === 'waiting')).toBeDefined()
+    const approvals = [{ id: 'a1', callId: 'c-ok', outcome: 'allowed-once' as const }, { id: 'a2', callId: 'c-err', outcome: 'rejected' as const }, { id: 'a3', outcome: 'rejected' as const }, { id: 'a4', callId: 'c-x', outcome: 'cancelled' as const }]
+    const decided = new StreamFacts().build(model([user(1, 'q'), okCall(1, 'c-ok'), failedCall(1, 'c-err')], [{ turn: 1, startedAt: NOON, endedAt: NOON + 1, outcome: 'completed' }], false), inputs({ approvals, requests: [] }))
+    const text = JSON.stringify(one(decided))
+    expect(text).toContain('allowed')
+    expect(text).toContain('rejected')
+  })
+
+  it('names the request on the card with its reason, or without one', () => {
+    const call = { ...tool(1, 'bash', 'sleep 9', false), callId: 'wait-2' } as TranscriptEntryModel
+    const noReason = new StreamFacts().build(model([user(1, 'q'), call], [{ turn: 1, startedAt: NOON }], true), inputs({ requests: [{ type: 'approval', callId: 'wait-2', toolName: 'bash' }] }))
+    expect(one(noReason).find(row => row.kind === 'tool' && row.state === 'waiting')).toBeDefined()
+    const withReason = new StreamFacts().build(model([user(1, 'q'), call], [{ turn: 1, startedAt: NOON }], true), inputs({ requests: [{ type: 'approval', callId: 'wait-2', toolName: 'bash', reason: 'remove it' }, { type: 'approval', toolName: 'other' }] }))
+    expect(JSON.stringify(one(withReason))).toContain('remove it')
+  })
+
+  it('closes a turn that ended in error with a Failed header, and counts its subagents on the header', () => {
+    const subagent = { ...tool(1, 'task', 'explore'), activity: 'subagents' } as TranscriptEntryModel
+    const failed = new StreamFacts().build(model([user(1, 'q'), subagent, failedCall(1, 'c-f')], [{ turn: 1, startedAt: NOON, endedAt: NOON + 2, outcome: 'error' }]), inputs())
+    expect(one(failed).find(row => row.kind === 'header')).toMatchObject({ kind: 'header', mood: 'failed', label: 'Failed' })
+    const onlyAgents = new StreamFacts().build(model([user(1, 'q'), { ...subagent, id: 'tool:agent' } as TranscriptEntryModel], [{ turn: 1, startedAt: NOON, endedAt: NOON + 2, outcome: 'completed' }]), inputs())
+    expect(one(onlyAgents).find(row => row.kind === 'header')).toMatchObject({ label: '1 subagent · Ctrl+O to expand' })
+  })
+
+  it('titles a compact turn with only its subagents, and withholds the Ctrl-O hint from a turn past the expand reach', () => {
+    const compact = { ...DEFAULT_TRANSCRIPT_PRESENTATION, mode: 'compact', process: PROCESS_POLICIES.compact } as const
+    const subagent = { ...tool(1, 'task', 'explore'), activity: 'subagents' } as TranscriptEntryModel
+    const onlyAgents = new StreamFacts().build(model([user(1, 'q'), subagent], [{ turn: 1, startedAt: NOON, endedAt: NOON + 2, outcome: 'completed' }]), inputs({ policy: compact }))
+    expect(one(onlyAgents).find(row => row.kind === 'title')).toMatchObject({ text: '1 subagent', hint: 'Ctrl+O to expand' })
+    const turns = [1, 2, 3, 4].map(turn => ({ turn, startedAt: NOON + turn, endedAt: NOON + turn + 1, outcome: 'completed' as const }))
+    const entries = [1, 2, 3, 4].flatMap(turn => [user(turn, `q${String(turn)}`), okCall(turn, `c${String(turn)}`)])
+    const far = new StreamFacts().build(model(entries, turns), inputs({ policy: { ...compact, windowTurns: 10 } }))
+    expect(rowsOf(far.turns[0]).find(row => row.kind === 'title')).not.toHaveProperty('hint')
+    expect(rowsOf(far.turns[3]).find(row => row.kind === 'title')).toHaveProperty('hint')
+  })
+
+  it('lists a reasoning block of a compact turn with no lines, and caps a settled block with a more line', () => {
+    const compact = { ...DEFAULT_TRANSCRIPT_PRESENTATION, mode: 'compact', process: PROCESS_POLICIES.compact } as const
+    const live = new StreamFacts().build(model([user(1, 'q'), thinking(1, 'pondering', true)], [{ turn: 1, startedAt: NOON }], true), inputs({ policy: compact }))
+    expect(one(live).find(row => row.kind === 'reasoning')).toEqual({ kind: 'reasoning', id: expect.any(String), label: 'Thinking', pending: true })
+    const ten = Array.from({ length: 10 }, (_, index) => `thought ${String(index + 1)}`).join('\n')
+    const verbose = new TranscriptPresentationPolicy()
+    verbose.apply({ transcriptView: 'verbose' })
+    const settled = new StreamFacts().build(model([user(1, 'q'), thinking(1, ten)], [{ turn: 1, startedAt: NOON, endedAt: NOON + 9, outcome: 'completed' }]), inputs({ policy: verbose.snapshot() }))
+    expect(one(settled).find(row => row.kind === 'reasoning')).toMatchObject({ rows: Array.from({ length: 8 }, (_, index) => `thought ${String(index + 1)}`), more: '… +2 more · Ctrl+O' })
+  })
+
+  it('shows a call that waits on the user as a block of its own in a standard run', () => {
+    const runs = [okCall(1, 'r1'), { ...tool(1, 'bash', 'sleep 9', false), callId: 'wait-3' } as TranscriptEntryModel, okCall(1, 'r2')]
+    const facts = new StreamFacts().build(model([user(1, 'q'), ...runs], [{ turn: 1, startedAt: NOON }], true), inputs({ requests: [{ type: 'approval', callId: 'wait-3', toolName: 'bash' }] }))
+    expect(one(facts).filter(row => row.kind === 'tool')).toHaveLength(3)
+    expect(one(facts).find(row => row.kind === 'tool' && row.state === 'waiting')).toBeDefined()
+  })
+
+  it('draws an error entry with its code, and a compaction by its stage, its failure, and its summary', () => {
+    const error = { ...base(1), id: 'error:1', kind: 'transcript-error', message: 'rate limited', code: '429' } as unknown as TranscriptEntryModel
+    const plain = { ...base(1), id: 'error:2', kind: 'transcript-error', message: 'offline' } as unknown as TranscriptEntryModel
+    const errors = new StreamFacts().build(model([user(1, 'q'), error, plain], [{ turn: 1, startedAt: NOON }], true), inputs())
+    expect(one(errors)).toEqual(expect.arrayContaining([expect.objectContaining({ kind: 'error', text: 'rate limited (429)' }), expect.objectContaining({ kind: 'error', text: 'offline' })]))
+    const build = (entry: TranscriptEntryModel, more: Partial<StreamInputs> = {}) => one(new StreamFacts().build(model([user(1, 'q'), entry], [{ turn: 1, startedAt: NOON }], true), inputs(more))).find(row => row.kind === 'compaction')
+    expect(build(compaction({ state: 'running', shadowedCount: 4 }))).toMatchObject({ facts: { state: 'running', progress: ['applying'] } })
+    expect(build(compaction({ state: 'running' }))).toMatchObject({ facts: { state: 'running', progress: ['summarizing', expect.any(String)] } })
+    expect(build(compaction({ state: 'error' }))).toMatchObject({ facts: { state: 'error', title: 'Compaction failed' } })
+    expect(build(compaction({ state: 'error', error: 'boom\nsecond line' }))).toMatchObject({ facts: { state: 'error', title: 'Compaction failed: boom' } })
+    expect(build(compaction({ state: 'error', detail: '   ' }))).toMatchObject({ facts: { state: 'error', title: 'Compaction failed' } })
+    expect(build(compaction({ endedAt: NOON + 1, shadowedCount: 4 }))).toMatchObject({ facts: { state: 'ok', title: 'Compacted 4 items' } })
+    expect(build(compaction({ endedAt: NOON + 1, detail: '   ' }))).toMatchObject({ facts: { state: 'ok', title: 'Compacted' } })
+    expect(build(compaction({ endedAt: NOON + 1, detail: 'Kept the plan' }))).toMatchObject({ facts: { state: 'ok', title: 'Kept the plan' } })
+    const summary = Array.from({ length: 10 }, (_, index) => `point ${String(index + 1)}`).join('\n')
+    const opened = build(compaction({ endedAt: NOON + 1, summary }), { disclosure: { ...NO_DISCLOSURE, recent: true } })
+    expect(opened).toMatchObject({ summary: Array.from({ length: 8 }, (_, index) => `point ${String(index + 1)}`), more: '… +2 more' })
+    expect(build(compaction({ endedAt: NOON + 1, summary }))).toMatchObject({ hint: 'Ctrl+O summary' })
+  })
+})
+
+describe('StreamFacts: the turn of a view with no turn, the text of a header, and a compaction in every state', () => {
+  const compaction = (overrides: Partial<Extract<TranscriptEntryModel, { kind: 'transcript-compaction' }>>): TranscriptEntryModel => ({
+    ...base(1), id: 'cmp:1', kind: 'transcript-compaction', state: 'ok', trigger: 'auto', startedAt: NOON, ...overrides,
+  } as TranscriptEntryModel)
+  const build = (entries: TranscriptEntryModel[], more: Partial<StreamInputs> = {}, streaming = true) => new StreamFacts().build(model(entries, [{ turn: 1, startedAt: NOON }], streaming), inputs(more))
+  const compactionRow = (facts: ReturnType<typeof build>) => rowsOf(facts.turns[0]).find(row => row.kind === 'compaction')
+
+  it('keeps the canonical nodes of a view with no turn in a turn numbered zero', () => {
+    const facts = new StreamFacts().build(createTranscriptModel('spec', [{ kind: 'text', content: 'a notice' } as MayflyUiNode]), inputs())
+    expect(facts.turns).toEqual([{ id: 'turn:-1', number: 0, rows: [{ kind: 'note', id: 'node:0', text: 'a notice' }] }])
+  })
+
+  it('reads the text of a turn header as its entries, bracketed in raw form, and of an unknown item as nothing', () => {
+    const stream = new StreamFacts()
+    stream.build(model([user(1, 'first'), assistant(1, 'answer')], [{ turn: 1, startedAt: NOON, endedAt: NOON + 1, outcome: 'completed' }]), inputs())
+    expect(stream.textOf('turn:1.end', 'text')).toBe('first\n\nanswer')
+    expect(stream.textOf('turn:1.end', 'raw')).toMatch(/^\[\n[\s\S]*\n\]$/u)
+    expect(stream.textOf('unknown:9', 'text')).toBeUndefined()
+    expect(new StreamFacts().textOf('user:1', 'text')).toBeUndefined()
+  })
+
+  it('reads the text of a read group run', () => {
+    const read = { callId: 'r1', activity: 'read', detail: 'a.ts', seq: 1, updatedSeq: 1, turn: 1, step: 0, name: 'read', startedAt: 0, endedAt: 1, state: 'ok', path: 'a.ts', range: { first: 1, last: 2 }, totalLines: 2, previewLines: [{ number: 1, text: 'const a = 1' }] }
+    const group = { id: 'read:1', kind: 'transcript-read-group', seq: 1, updatedSeq: 1, turn: 1, step: 0, reads: [read] } as unknown as TranscriptEntryModel
+    const stream = new StreamFacts()
+    stream.build(model([user(1, 'go'), group], [{ turn: 1, startedAt: NOON, endedAt: NOON + 1, outcome: 'completed' }]), inputs({ disclosure: { ...NO_DISCLOSURE, rows: new Set(['read:1:r1']) } }))
+    const row = stream.rowOf('read:1:r1')
+    expect(row).toBeDefined()
+    expect(stream.textOf(row!, 'text')).toContain('a.ts')
+  })
+
+  it('shows a settled compaction with the token counts of its marks and its change of context, and a manual one after its turn', () => {
+    const marks = [{ id: 'c-1', before: 80_000, after: 20_000, window: 100_000 }]
+    const settled = compactionRow(build([user(1, 'q'), compaction({ endedAt: NOON + 1, summaryAt: NOON + 1, compactionId: 'c-1' })], { compactions: marks, now: NOON + 60_000 }, false))
+    expect(settled).toMatchObject({ facts: { state: 'ok', change: 'context 80% → 20%', tokens: '~78.1k → ~19.5k tokens', trigger: 'auto' } })
+    expect(build([user(1, 'q'), compaction({ endedAt: NOON + 1, shadowedTokens: 5_000, trigger: 'manual' })], {}, false).turns[0]).toMatchObject({ after: [{ kind: 'compaction' }] })
+    expect(compactionRow(build([user(1, 'q'), compaction({ endedAt: NOON + 1, shadowedTokens: 5_000 })], { contextWindow: 100_000 }, false))).toMatchObject({ facts: { tokens: '~4.9k tokens' } })
+    expect(compactionRow(build([user(1, 'q'), compaction({ state: 'running', startedAt: NOON - 4_000, trigger: 'manual' })]))).toMatchObject({ facts: { state: 'running', progress: ['summarizing', expect.any(String)] } })
+  })
+
+  it('keeps a compaction that has just landed in its applying state until the bar fills', () => {
+    const landed = compaction({ endedAt: NOON + 1, summaryAt: NOON + 500, state: 'ok', shadowedCount: 3 })
+    const filling = compactionRow(build([user(1, 'q'), landed], { now: NOON + 600 }))
+    expect(filling).toMatchObject({ facts: { state: 'running', progress: ['applying'] } })
+    expect(compactionRow(build([user(1, 'q'), landed], { now: NOON + 60_000 }, false))).toMatchObject({ facts: { state: 'ok', title: 'Compacted 3 items' } })
+  })
+})
+
+describe('StreamFacts: the compact title, the live call, and the plain entries', () => {
+  const compact = { ...DEFAULT_TRANSCRIPT_PRESENTATION, mode: 'compact', process: PROCESS_POLICIES.compact } as const
+  const failedTool = (turn: number, callId: string, interruption?: 'aborted' | 'unknown'): TranscriptEntryModel => ({
+    ...tool(turn, 'bash', 'exit 1'), callId, result: { text: 'boom', isError: true, endedAt: 2, ...(interruption === undefined ? {} : { interruption }) },
+  } as TranscriptEntryModel)
+  const okTool = (turn: number, callId: string): TranscriptEntryModel => ({ ...tool(turn, 'bash', 'ls'), callId } as TranscriptEntryModel)
+  const titleOf = (entries: TranscriptEntryModel[], turns: { turn: number, startedAt: number, endedAt?: number, outcome?: 'completed' }[] = [{ turn: 1, startedAt: NOON, endedAt: NOON + 4_000, outcome: 'completed' }], streaming = false) => {
+    const facts = new StreamFacts().build(model(entries, turns as never, streaming), inputs({ policy: compact }))
+    return rowsOf(facts.turns[0]).find(row => row.kind === 'title')
+  }
+
+  it('counts the failed calls of a settled compact turn, and says whether the others succeeded', () => {
+    expect(titleOf([user(1, 'q'), okTool(1, 'c1'), failedTool(1, 'c2')])).toMatchObject({ text: '2 tool calls', failed: '1 failed', partial: true })
+    expect(titleOf([user(1, 'q'), failedTool(1, 'c3')])).toEqual({ kind: 'title', id: expect.any(String), text: '1 tool call', failed: '1 failed', hint: 'Ctrl+O to expand' })
+  })
+
+  it('names the calls the user cancelled as interrupted, apart from the failed ones', () => {
+    expect(titleOf([user(1, 'q'), failedTool(1, 'c4', 'aborted')])).toMatchObject({ interrupted: '1 interrupted' })
+    expect(titleOf([user(1, 'q'), failedTool(1, 'c5', 'aborted')])).not.toHaveProperty('failed')
+    expect(titleOf([user(1, 'q'), failedTool(1, 'c6', 'unknown')])).toMatchObject({ failed: '1 failed' })
+  })
+
+  it('adds the lines an edit changed to the title', () => {
+    const edit = { ...okTool(1, 'c7'), change: { kind: 'edit', added: 3, removed: 1 } } as unknown as TranscriptEntryModel
+    expect(titleOf([user(1, 'q'), edit])).toMatchObject({ text: '1 tool call · +3 −1' })
+  })
+
+  it('leaves the duration out of a title whose turn still runs, and draws a call in flight on its own line', () => {
+    const running = { ...tool(1, 'bash', 'sleep 9', false), callId: 'c8' } as TranscriptEntryModel
+    const facts = new StreamFacts().build(model([user(1, 'q'), okTool(1, 'c9'), running], [{ turn: 1, startedAt: NOON }], true), inputs({ policy: compact }))
+    const rows = rowsOf(facts.turns[0])
+    expect(rows.find(row => row.kind === 'title')).toMatchObject({ text: '2 tool calls' })
+    expect(rows.filter(row => row.kind === 'tool')).toHaveLength(1)
+  })
+
+  it('draws a plain entry by its id, and an item suffixed to it', () => {
+    const stream = new StreamFacts()
+    const first = user(1, 'first')
+    stream.build(model([first], [{ turn: 1, startedAt: NOON, endedAt: NOON + 1, outcome: 'completed' }]), inputs())
+    expect(stream.textOf(first.id, 'text')).toBe('first')
+    expect(stream.textOf(`${first.id}.body`, 'text')).toBe('first')
+  })
+
+  it('draws neither a blank answer nor an image with no name by name', () => {
+    const blank = new StreamFacts().build(model([user(1, 'q'), assistant(1, '   ')], [{ turn: 1, startedAt: NOON }], true), inputs())
+    expect(rowsOf(blank.turns[0]).map(row => row.kind)).toEqual(['prompt'])
+    const image = { attachmentId: 'att-2', mediaType: 'image/png' as const, bytes: 1024, width: 2, height: 2 }
+    const named = new StreamFacts().build(model([{ ...user(1, 'look'), images: [image] } as TranscriptEntryModel], [{ turn: 1, startedAt: NOON }], true), inputs())
+    expect(rowsOf(named.turns[0])[0]).toMatchObject({ images: [{ alt: '[image] 1 · 2×2 · 1 KB' }] })
+  })
+
+  it('shows every line of an opened reasoning block that carries more than its rows, without the Ctrl-O hint', () => {
+    const many = Array.from({ length: 45 }, (_, index) => `step ${String(index + 1)}`).join('\n')
+    const block = thinking(1, many)
+    const opened = new StreamFacts().build(model([user(1, 'q'), block], [{ turn: 1, startedAt: NOON, endedAt: NOON + 9, outcome: 'completed' }]), inputs({ disclosure: { ...NO_DISCLOSURE, rows: new Set([block.id]) } }))
+    expect(rowsOf(opened.turns[0]).find(row => row.kind === 'reasoning')).toMatchObject({ rows: expect.any(Array), more: '… +5 more' })
+  })
+
+  it('shows the summary of a compaction in full when it has few lines', () => {
+    const entry = { ...base(1), id: 'cmp:2', kind: 'transcript-compaction', state: 'ok', trigger: 'auto', startedAt: NOON, endedAt: NOON + 1, summary: 'kept\nthe plan' } as TranscriptEntryModel
+    const facts = new StreamFacts().build(model([user(1, 'q'), entry], [{ turn: 1, startedAt: NOON }], true), inputs({ disclosure: { ...NO_DISCLOSURE, recent: true }, now: NOON + 60_000 }))
+    expect(rowsOf(facts.turns[0]).find(row => row.kind === 'compaction')).toMatchObject({ summary: ['kept', 'the plan'] })
+    expect(rowsOf(facts.turns[0]).find(row => row.kind === 'compaction')).not.toHaveProperty('more')
   })
 })

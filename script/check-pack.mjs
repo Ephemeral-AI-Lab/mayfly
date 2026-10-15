@@ -135,7 +135,9 @@ import type { MayflyComponentFactory } from '@ephemeral-ai/mayfly-ui'
 export interface MetricProps { readonly label: string, readonly value: number }
 export declare const metric: MayflyComponentFactory<MetricProps>
 `)
-    const packedKit = JSON.parse(execFileSync('npm', ['pack', '--json', '--pack-destination', kitTarballs], { cwd: kitRoot, encoding: 'utf8' }))[0]
+    // npm 10+ keys its JSON report by package name; older versions print an array.
+    const packedReport = JSON.parse(execFileSync('npm', ['pack', '--json', '--pack-destination', kitTarballs], { cwd: kitRoot, encoding: 'utf8' }))
+    const packedKit = Array.isArray(packedReport) ? packedReport[0] : Object.values(packedReport)[0]
     const kitTarball = join(kitTarballs, packedKit.filename)
     writeFileSync(join(consumerRoot, 'package.json'), `${JSON.stringify({
       private: true,
@@ -246,7 +248,9 @@ verifyExternalUiKit(tarballs.get('@ephemeral-ai/mayfly-ui'))
 // goal and compaction changes) about 110 KB); retain headroom while still
 // catching accidental entry/chunk growth.
 if (libraryFiles > 260) fail(`library lib output has ${libraryFiles} files; budget is 260`)
-if (libraryBytes > 2_900_000) fail(`library lib output has ${libraryBytes} bytes; budget is 2900000`)
+// Phase 4 (the editor frame, tokens, the completion palette, placeholders, and the subagent send) added about 50 KB on top
+// of the Phase 5 budget; the size of the two together is measured at the merge's test session.
+if (libraryBytes > 2_950_000) fail(`library lib output has ${libraryBytes} bytes; budget is 2950000`)
 
 if (problems.length > 0) {
   console.error(`pack contract failed with ${problems.length} problem(s)`)

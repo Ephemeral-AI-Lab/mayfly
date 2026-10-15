@@ -1,0 +1,45 @@
+grid 60x24 cursor none
+| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢸⣿⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀  Send /help for help...
+| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⣿⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀  Directory: ~/workspace
+| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣿⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀  Model:     deepseek...
+| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⡠⠊⠀⠑⢄⠀⠀⠀⠀⠀⠀⠀⠀⠀  Version:   scenario
+|
+|  » Lint the README.
+|
+|  ● One helper is on it.
+|
+|  ✓ Subagent(One-shot linter) · 0.6s
+|
+|  ● The linter is done.
+|────────────────────────────────────────────────────────────
+|● Running 1 agent
+|  └─ running One-shot linter · deepseek-flash · high · 0 to…
+|         Starting…
+|
+|  ⡀ Deep diving · 2s · ↑5.5k
+|    ⎿ Tip: Esc to interrupt the run
+|                               Alt+↑ conversation · Alt+↓
+|╭──────────────────────────────────────── Lint the README. ╮
+|│ >  Ask anything · / commands · @ files · # skills        │
+|╰──────────────────────────────────────────────────────────╯
+| deepseek-flash High  .  cache 42%  context: 5% (5.5k/128k)
+styles
+0: 1-23 fg:#b2a1ec; 24-25 fg:#9a86e6; 26-44 fg:#9aa3b8
+1: 1-25 fg:#9a86e6; 26-47 fg:#ededf2
+2: 1-23 fg:#8371d6; 24-25 fg:#9a86e6; 26-44 fg:#e9e6f4
+3: 1-23 fg:#6c5bbf; 24-25 fg:#9a86e6; 26-47 fg:#ededf2
+5: 2-3 fg:#9a86e6; 4-19 fg:#9a86e6 b
+7: 2-3 fg:#ededf2
+9: 2-3 fg:#4ec87e; 4-11 fg:#ededf2 b; 12 fg:#9aa3b8; 13-27 fg:#c9c0f0; 28-35 fg:#9aa3b8
+11: 2-3 fg:#ededf2
+12: 0-59 fg:#45406b
+13: 0-1 fg:#c9c0f0; 2-16 fg:#c9c0f0 b
+14: 0-4 fg:#9aa3b8; 5-12 fg:#c9c0f0 b; 13-27 fg:#c9c0f0; 28-58 fg:#9aa3b8
+15: 0-17 fg:#9aa3b8
+17: 0-1 fg:#ededf2; 2 fg:#9a86e6; 3-14 fg:#ededf2; 16-27 fg:#9aa3b8
+18: 0-34 fg:#9aa3b8
+19: 31-56 fg:#9aa3b8
+20: 0-41 fg:#45406b; 42-57 fg:#f5f5f7 b; 58-59 fg:#45406b
+21: 0 fg:#45406b; 2-3 fg:#ededf2; 4 r; 5-50 fg:#5c6476; 59 fg:#45406b
+22: 0-59 fg:#45406b
+23: 1-19 fg:#ededf2; 25-58 fg:#ededf2

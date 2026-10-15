@@ -13,6 +13,7 @@ import { CommandAliasRegistry } from './command-meta.ts'
 import { DraftStash } from './draft-stash.ts'
 import type { FdProbeRuntimeState } from './file-mention.ts'
 import type { ModelsDevIndex } from './models-dev.ts'
+import type { PromptWaits } from './prompt-wait.ts'
 import type { MayflySettings } from './settings.ts'
 
 declare module '@deepseek-ai/cordis' {
@@ -38,6 +39,10 @@ export class InteractionStateService extends Service {
   modelsDevCache: { at: number, index: ModelsDevIndex } | undefined
   readonly fdProbe: FdProbeRuntimeState = { result: undefined }
   updateInFlight = false
+  /** The `@` mentions the user accepted from the completion list; the editor shows each as a token while its text stands. */
+  readonly mentions = new Set<string>()
+  /** The prompt's waits in flight (`prompt-wait.ts`). */
+  readonly promptWaits: PromptWaits = { active: [] }
   readonly pasteImage: PasteImageRuntimeState = {
     backendOverride: undefined,
     backendCooldowns: new Map(),
@@ -60,6 +65,8 @@ export class InteractionStateService extends Service {
     this.fdProbe.result = undefined
     this.pasteImage.backendCooldowns.clear()
     this.pasteImage.pastedImages.clear()
+    this.mentions.clear()
+    for (const wait of this.promptWaits.active.splice(0)) if (wait.timer !== undefined) clearTimeout(wait.timer)
     this.pasteImage.pasteCount = 0
     this.updateInFlight = false
   }

@@ -34,11 +34,11 @@ grid 100x40 cursor none
 |
 |  ⡀ Deep diving · 3s · ↑5.5k
 |    ⎿ Tip: Esc to interrupt the run
-|  ↑/↓ select · Enter expand · c copy · / ? search · Ctrl+G editor · Ctrl+C JSON · Esc back
-|╭─────────────────────────────────────────────────────────────────────── Look up how the terminal ─╮
-|│ >                                                                                                │
+|  Enter expand · c copy · Ctrl+C JSON · Ctrl+G editor · ↑/↓ select · / ? search · Esc back
+|╭──────────────────────────────────────────────────────────────────────── Look up how the terminal ╮
+|│ >  Ask anything · / commands · @ files · # skills · ! shell                                      │
 |╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
-| deepseek-flash High   conversation   ~/workspace                cache ▰▰▱▱▱ 42%  ctx ▰▱▱▱▱▱▱▱▱▱ 5%
+| deepseek-flash High   conversation   ~/workspace                cache 42%  context: 5% (5.5k/128k)
 styles
 0: 1-23 fg:#f5f5f7; 24-25 fg:#9a86e6
 1: 1-23 fg:#e9e5f6; 24-25 fg:#9a86e6; 26-87 fg:#9a86e6 b
@@ -57,8 +57,8 @@ styles
 17: 1 bg:#2b2b30; 2-5 fg:#9aa3b8 bg:#2b2b30; 6-29 fg:#c9c0f0 bg:#2b2b30; 30-47 fg:#9aa3b8 bg:#2b2b30; 48-98 bg:#2b2b30
 33: 0-1 fg:#ededf2; 2 fg:#9a86e6; 3-14 fg:#ededf2; 16-27 fg:#9aa3b8
 34: 0-34 fg:#9aa3b8
-35: 2-11 fg:#9aa3b8; 13-26 fg:#9aa3b8; 28-35 fg:#9aa3b8; 37-48 fg:#9aa3b8; 50-64 fg:#9aa3b8; 66-78 fg:#9aa3b8; 80-89 fg:#9aa3b8
-36: 0-99 fg:#5c6476
-37: 0 fg:#5c6476; 4 r; 99 fg:#5c6476
-38: 0-99 fg:#5c6476
-39: 1-19 fg:#ededf2; 22-35 fg:#9a86e6 b r; 38-48 fg:#9aa3b8; 65-70 fg:#ededf2; 71-72 fg:#e8a838; 73-75 fg:#9aa3b8; 76-79 fg:#ededf2; 82-85 fg:#ededf2; 86 fg:#9a86e6; 87-95 fg:#9aa3b8; 96-98 fg:#ededf2
+35: 0-89 fg:#9aa3b8
+36: 0-73 fg:#9aa3b8; 74-97 fg:#f5f5f7 b; 98-99 fg:#9aa3b8
+37: 0 fg:#9aa3b8; 2-3 fg:#ededf2; 4 r; 5-60 fg:#5c6476; 99 fg:#9aa3b8
+38: 0-99 fg:#9aa3b8
+39: 1-19 fg:#ededf2; 22-35 fg:#9a86e6 b r; 38-48 fg:#9aa3b8; 65-98 fg:#ededf2

@@ -1314,15 +1314,15 @@ function admitNode(value: unknown, path: string, state: ValidationState, depth: 
   return enter(value, path, state, object => {
     const kind = own(object, 'kind', path)
     if (typeof kind !== 'string') invalid(`${path}.kind must be a string`)
-    if (kind === 'editor-control') {
-      if (mode !== 'editor' || !editorSlotAllowed) invalid('editor-control is only valid in an editor shell slot')
-      state.editorControls += 1
-      return { kind }
-    }
     if (mode === 'status' && !['text', 'rich-text', 'fields', 'progress', 'stack', 'shed'].includes(kind)) invalid(`status node kind "${kind}" is interactive or unsupported`)
     if (mode === 'editor' && (kind === 'diagram' || kind === 'chart' || kind === 'image')) invalid(`editor node kind "${kind}" is unsupported`)
     /* The host editor owns every key in its shell, so focusable controls other than accelerator actions are unreachable there. */
-    if (mode === 'editor' && (kind === 'form' || kind === 'list' || kind === 'tabs' || kind === 'prompt')) invalid(`editor node kind "${kind}" would take focus from the editor`)
+    if (mode === 'editor' && (kind === 'form' || kind === 'list' || kind === 'tabs')) invalid(`editor node kind "${kind}" would take focus from the editor`)
+    /* The one prompt of an editor shell is the face of the host editor: its symbol and frame are the tree's, its buffer and keys the host's. */
+    if (mode === 'editor' && kind === 'prompt') {
+      if (!editorSlotAllowed) invalid('the editor prompt is only valid in an editor shell slot')
+      state.editorControls += 1
+    }
     if (viewOnly && !['text', 'fields', 'code', 'diff', 'sections'].includes(kind)) invalid(`${path} must be section content`)
     switch (kind) {
       case 'text': {
@@ -1656,7 +1656,7 @@ function freeze<Value>(value: Value): Value {
 }
 
 function containsEditorControl(node: MayflyEditorShellNode): boolean {
-  if (node.kind === 'editor-control') return true
+  if (node.kind === 'prompt') return true
   if (node.kind === 'stack') return node.children.some(child => containsEditorControl(child.node))
   if (node.kind === 'surface') return containsEditorControl(node.child) || (node.footer !== undefined && containsEditorControl(node.footer))
   return false
@@ -1667,10 +1667,10 @@ function assertEditorControlVisible(node: MayflyEditorShellNode, path = '$'): vo
     for (const [index, child] of node.children.entries()) {
       const childPath = `${path}.children[${String(index)}]`
       if (containsEditorControl(child.node)) {
-        if (child.when !== undefined) invalid(`${childPath}.when cannot hide editor-control`)
-        if (child.maxSize === 0) invalid(`${childPath}.maxSize cannot hide editor-control`)
+        if (child.when !== undefined) invalid(`${childPath}.when cannot hide the editor prompt`)
+        if (child.maxSize === 0) invalid(`${childPath}.maxSize cannot hide the editor prompt`)
         if (child.basis === 0 && (child.grow ?? 0) === 0 && (child.minSize ?? 0) === 0) {
-          invalid(`${childPath} cannot allocate zero size to editor-control`)
+          invalid(`${childPath} cannot allocate zero size to the editor prompt`)
         }
       }
       assertEditorControlVisible(child.node, `${childPath}.node`)
@@ -1692,7 +1692,7 @@ function validate<Value>(value: unknown, mode: ValidationMode, counters?: Mayfly
         ? node(value, '$', state, 0, 'status')
         : node(value, '$', state, 0, 'editor', false, true)
     if (mode === 'editor') {
-      if (state.editorControls !== 1) invalid(`editor shell must contain exactly one editor-control; received ${String(state.editorControls)}`)
+      if (state.editorControls !== 1) invalid(`editor shell must contain exactly one prompt; received ${String(state.editorControls)}`)
       assertEditorControlVisible(result as MayflyEditorShellNode)
     }
     validatePages(state.budget)

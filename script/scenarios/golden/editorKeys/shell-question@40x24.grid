@@ -1,0 +1,41 @@
+grid 40x24 cursor none
+|  » Lint the README.
+|
+|  ● One helper is on it.
+|
+|  ✓ Subagent(One-shot linter) · 0.6s
+|
+|  ● The linter is done.
+|
+|
+|
+|
+|
+|────────────────────────────────────────
+|● Running 1 agent
+|  └─ running One-shot linter · deepseek…
+|         Starting…
+|
+|  ⡀ Deep diving · 2s · ↑5.5k
+|    ⎿ Tip: Ctrl+O to expand tool details
+|                                Alt+↑
+|╭─────────────────────── Fix the build ╮
+|│ ! ?                                  │
+|╰──────────────────────────────────────╯
+| deepseek-flash High  ~/workspace
+styles
+0: 2-3 fg:#9a86e6; 4-19 fg:#9a86e6 b
+2: 2-3 fg:#ededf2
+4: 2-3 fg:#4ec87e; 4-11 fg:#ededf2 b; 12 fg:#9aa3b8; 13-27 fg:#c9c0f0; 28-35 fg:#9aa3b8
+6: 2-3 fg:#ededf2
+12: 0-39 fg:#45406b
+13: 0-1 fg:#c9c0f0; 2-16 fg:#c9c0f0 b
+14: 0-4 fg:#9aa3b8; 5-12 fg:#c9c0f0 b; 13-27 fg:#c9c0f0; 28-38 fg:#9aa3b8
+15: 0-17 fg:#9aa3b8
+17: 0-1 fg:#ededf2; 2 fg:#9a86e6; 3-14 fg:#ededf2; 16-27 fg:#9aa3b8
+18: 0-39 fg:#9aa3b8
+19: 32-36 fg:#9aa3b8
+20: 0-24 fg:#c9c0f0; 25-37 fg:#f5f5f7 b; 38-39 fg:#c9c0f0
+21: 0 fg:#c9c0f0; 2-3 fg:#c9c0f0 b; 5 r; 39 fg:#c9c0f0
+22: 0-39 fg:#c9c0f0
+23: 1-19 fg:#ededf2; 22-32 fg:#9aa3b8

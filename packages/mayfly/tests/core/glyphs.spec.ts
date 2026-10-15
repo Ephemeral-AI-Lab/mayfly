@@ -13,7 +13,7 @@ describe('ASCII glyph fallback', () => {
   })
 
   it('converts the roadmap table and keeps the width of painted rows', () => {
-    expect(asciiText('→ ▸ ▾ ● ○ ◐ ‹ › ✓ ✗ ⊘ ░▒▓█ ■ ? ⚠ ℹ ⎿ │ ━ ─ ▰ ▱ ╭╮╰╯')).toBe('> + - * o ~ < > v x / .:*# # ? ! i L : = - # . ++++')
+    expect(asciiText('→ ▸ ▾ ● ○ ◐ ‹ › ✓ ✗ ⊘ ░▒▓█ ■ ? ⚠ ⎿ │ ━ ─ ▰ ▱ ╭╮╰╯')).toBe('> + - * o ~ < > v x / .:*# # ? ! L : = - # . ++++')
     const painted = '\x1b[38;2;1;2;3m╭ Title ─╮\x1b[39m'
     expect(asciiText(painted)).toBe('\x1b[38;2;1;2;3m+ Title -+\x1b[39m')
     expect(visibleWidth(asciiText(painted))).toBe(visibleWidth(painted))

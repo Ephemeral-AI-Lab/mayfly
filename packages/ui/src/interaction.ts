@@ -73,7 +73,7 @@ export type MayflyUiObservationEvent = (
   /** Focus moved to a control (or one of its items); reported at most once per render frame, with the newest position. */
   | { readonly kind: 'focus-change', readonly controlId: string, readonly itemId?: string }
   /** The prompt walked its recall: `index` is the entry in `recall`, or `-1` when the draft returned. */
-  | { readonly kind: 'recall-change', readonly controlId: string, readonly source: 'queued' | 'history' | 'draft', readonly index: number }
+  | { readonly kind: 'recall-change', readonly controlId: string, readonly source: 'history' | 'draft', readonly index: number }
 ) & { readonly pagePath: MayflyPagePath }
 export type MayflyUiActionEvent = (
   | { readonly kind: 'activate', readonly controlId: string, readonly actionId: string, readonly itemId?: string, readonly inputs?: MayflySubmission }

@@ -35,6 +35,14 @@ function createTestEditor(): MayflyEditor {
     onKey: undefined,
     disableSubmit: false,
     setSubmitBarrier: () => {},
+    completion: () => undefined,
+    setTokenSource: () => {},
+    tokenBackspace: () => false,
+    getHistoryPastes: () => [],
+    setTextFolding: () => {},
+    onTokenChange: undefined,
+    activeToken: () => undefined,
+    replaceActiveToken: () => {},
     submit: () => { if (!editor.disableSubmit) editor.onSubmit?.(value) },
     getText: () => value,
     getExpandedText: () => value,
@@ -69,11 +77,8 @@ function createTestEditor(): MayflyEditor {
     },
     addToHistory: () => {},
     getHistory: () => [],
-    setBorderColor: () => {},
-    setPromptSymbol: () => {},
-    setBorderLabel: () => {},
-    setBorderTitle: () => {},
-    setConnectedAbove: () => {},
+    setShellMode: () => {},
+    setPlaceholder: () => {},
     setGhostHint: () => {},
     setAutocompleteProvider: () => {},
     isShowingAutocomplete: () => false,
@@ -185,7 +190,6 @@ function compiledStatus(value: unknown, options: MayflyStatusCompilerOptions = s
 function compiledEditorShell(value: unknown, editor: MayflyEditor, overrides: Partial<MayflyEditorShellCompilerOptions> = {}) {
   const base = fixture(overrides)
   const result = compileMayflyEditorShellNode(value, { ...base.options, editor, ...overrides })
-  expect(result.ok).toBe(true)
   if (!result.ok) throw new Error(result.message)
   return { ...base, result: result.value }
 }
@@ -1246,7 +1250,7 @@ describe('compileMayflyUiNode', () => {
   })
 
   it('fences an editor shell focus request after its private runtime is disposed', () => {
-    const shell = compiledEditorShell({ kind: 'editor-control' }, createTestEditor()).result
+    const shell = compiledEditorShell({ kind: 'prompt', id: 'prompt' }, createTestEditor()).result
     const runtime = (shell.component as unknown as { surfaceRuntime: MayflyUiSurfaceRuntime }).surfaceRuntime
     runtime.dispose()
     expect(() => shell.focusTarget.focusEditor?.()).not.toThrow()
@@ -1654,7 +1658,7 @@ describe('compileMayflyUiSurfaceNode contextual hints', () => {
 
     const editor = createTestEditor()
     editor.setText('draft')
-    const shell = compiledEditorShell({ kind: 'editor-control' }, editor).result
+    const shell = compiledEditorShell({ kind: 'prompt', id: 'prompt' }, editor).result
     shell.focusTarget.focused = true
     expect(shell.component.render(80).join('\n')).not.toContain('Enter finish')
 
@@ -2172,7 +2176,7 @@ describe('compileMayflyEditorShellNode', () => {
       direction: 'column',
       children: [
         { node: ui.text('before') },
-        { node: { kind: 'editor-control' } },
+        { node: { kind: 'prompt', id: 'prompt' } },
         { node: ui.actions({ id: 'actions', items: [{ id: 'apply', label: 'Apply', key: 'ctrl+r' }] }) },
       ],
     }
@@ -2209,7 +2213,7 @@ describe('compileMayflyEditorShellNode', () => {
   it('delegates Tab completion to the editor whether or not the shell carries actions', () => {
     const editorOnly = createTestEditor()
     const editorOnlyInput = vi.spyOn(editorOnly, 'handleInput')
-    const root = compiledEditorShell({ kind: 'editor-control' }, editorOnly).result
+    const root = compiledEditorShell({ kind: 'prompt', id: 'prompt' }, editorOnly).result
     root.focusTarget.focused = true
     root.component.render(40)
 
@@ -2226,7 +2230,7 @@ describe('compileMayflyEditorShellNode', () => {
       kind: 'stack',
       direction: 'column',
       children: [
-        { node: { kind: 'editor-control' } },
+        { node: { kind: 'prompt', id: 'prompt' } },
         { node: ui.actions({ id: 'actions', items: [{ id: 'apply', label: 'Apply', key: 'ctrl+r' }] }) },
       ],
     }, decorated).result
@@ -2246,7 +2250,7 @@ describe('compileMayflyEditorShellNode', () => {
       kind: 'stack',
       direction: 'column',
       children: [
-        { node: { kind: 'editor-control' } },
+        { node: { kind: 'prompt', id: 'prompt' } },
         { node: ui.actions({ id: 'actions', items: [{ id: 'apply', label: 'Apply', key: 'ctrl+r' }] }) },
       ],
     }
@@ -2280,7 +2284,7 @@ describe('compileMayflyEditorShellNode', () => {
 
     const broken = createTestEditor()
     broken.render = () => { throw new Error('checked editor exploded') }
-    const brokenShell = compiledEditorShell({ kind: 'editor-control' }, broken).result.component
+    const brokenShell = compiledEditorShell({ kind: 'prompt', id: 'prompt' }, broken).result.component
     const failed = brokenShell.renderChecked(20)
     expect(failed.runtimeFailure).toBe('checked editor exploded')
     expect(failed.rows.join('')).toContain('checked editor exploded')
@@ -2299,7 +2303,7 @@ describe('compileMayflyEditorShellNode', () => {
       ui.tabs({ id: 'tabs', activeId: 'a', items: [{ id: 'a', label: 'A' }] }),
       ui.loader({ message: 'Working', cancelActionId: 'cancel' }),
     ]) {
-      const result = compileMayflyEditorShellNode({ kind: 'stack', direction: 'column', children: [{ node: { kind: 'editor-control' } }, { node }] }, { ...fixture().options, editor })
+      const result = compileMayflyEditorShellNode({ kind: 'stack', direction: 'column', children: [{ node: { kind: 'prompt', id: 'prompt' } }, { node }] }, { ...fixture().options, editor })
       expect(result.ok).toBe(false)
       if (!result.ok) expect(result.message).toContain('would take focus from the editor')
     }
@@ -2308,7 +2312,7 @@ describe('compileMayflyEditorShellNode', () => {
   it('compiles a root slot and contains validation, setup, and editor render failures', () => {
     const editor = createTestEditor()
     editor.setText('same object')
-    const root = compiledEditorShell({ kind: 'editor-control' }, editor).result
+    const root = compiledEditorShell({ kind: 'prompt', id: 'prompt' }, editor).result
     root.focusTarget.focused = true
     expect(root.component.render(20).join('')).toContain('same object')
 
@@ -2317,18 +2321,9 @@ describe('compileMayflyEditorShellNode', () => {
     if (invalid.ok) throw new Error('expected failure')
     for (const width of [1, 2, 10]) expectLinesFit('editor shell rejection', invalid.errorComponent.render(width), width)
 
-    expect(compileMayflyEditorShellNode({ kind: 'editor-control' }, {
-      ...fixture().options,
-      editor: undefined as never,
-    })).toMatchObject({
-      ok: false,
-      code: 'MAYFLY_INVALID_CONTRIBUTION',
-      message: 'Mayfly editor shell compilation failed safely',
-    })
-
     const broken = createTestEditor()
     broken.render = () => { throw new Error('editor exploded') }
-    const contained = compiledEditorShell({ kind: 'editor-control' }, broken).result.component.render(20)
+    const contained = compiledEditorShell({ kind: 'prompt', id: 'prompt' }, broken).result.component.render(20)
     expect(contained.join('')).toContain('editor exploded')
     expectLinesFit('editor shell runtime failure', contained, 20)
 
@@ -2337,7 +2332,7 @@ describe('compileMayflyEditorShellNode', () => {
       if (key === 'getViewport') throw new Error('setup')
       return Reflect.get(target, key, receiver)
     } })
-    expect(compileMayflyEditorShellNode({ kind: 'editor-control' }, options)).toMatchObject({
+    expect(compileMayflyEditorShellNode({ kind: 'prompt', id: 'prompt' }, options)).toMatchObject({
       ok: false,
       code: 'MAYFLY_INVALID_CONTRIBUTION',
       message: 'Mayfly editor shell compilation failed safely',

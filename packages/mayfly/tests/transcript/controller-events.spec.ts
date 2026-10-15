@@ -223,7 +223,7 @@ describe('Enter on a row', () => {
 })
 
 describe('copying and opening the row under the cursor', () => {
-  const rows = () => ({ copy: vi.fn(), open: vi.fn() })
+  const rows = () => ({ copy: vi.fn(), open: vi.fn(), queued: vi.fn() })
 
   it('sends its text, its model JSON, or its text to the editor, each to the one action that takes it', () => {
     const actions = rows()

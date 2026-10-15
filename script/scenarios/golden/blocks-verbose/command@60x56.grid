@@ -50,11 +50,11 @@ grid 60x56 cursor none
 |
 |  ● Running commands
 |    ⎿ The release script
-|                          Alt+↑ conversation · Alt+↓ view
-|╭──────────────────────────── Look into the config loader ─╮
-|│ >                                                        │
+|                               Alt+↑ conversation · Alt+↓
+|╭───────────────────────────── Look into the config loader ╮
+|│ >  Ask anything · / commands · @ files · # skills        │
 |╰──────────────────────────────────────────────────────────╯
-| deepseek-flash  workspace                ctx ▰▱▱▱▱▱▱▱▱▱ 5%
+| deepseek-flash High  .  cache 42%  context: 5% (5.5k/128k)
 styles
 0: 1-23 fg:#f5f5f7; 24-25 fg:#9a86e6
 1: 1-23 fg:#e9e5f6; 24-25 fg:#9a86e6; 26-47 fg:#9a86e6 b
@@ -88,8 +88,8 @@ styles
 40: 2-3 fg:#ededf2; 4-21 fg:#9aa3b8
 49: 0-1 fg:#ededf2; 2 fg:#9a86e6; 3 fg:#ededf2; 4-19 fg:#9aa3b8
 50: 0-5 fg:#9aa3b8; 6-23 fg:#ededf2
-51: 26-56 fg:#9aa3b8
-52: 0-28 fg:#45406b; 29-57 fg:#5c6476; 58-59 fg:#45406b
-53: 0 fg:#45406b; 4 r; 59 fg:#45406b
+51: 31-56 fg:#9aa3b8
+52: 0-30 fg:#45406b; 31-57 fg:#f5f5f7 b; 58-59 fg:#45406b
+53: 0 fg:#45406b; 2-3 fg:#ededf2; 4 r; 5-50 fg:#5c6476; 59 fg:#45406b
 54: 0-59 fg:#45406b
-55: 1-14 fg:#ededf2; 17-25 fg:#9aa3b8; 42-45 fg:#ededf2; 46 fg:#9a86e6; 47-55 fg:#9aa3b8; 56-58 fg:#ededf2
+55: 1-19 fg:#ededf2; 25-58 fg:#ededf2

@@ -24,11 +24,11 @@ grid 60x30 cursor none
 |    ⎿ Ctrl+O summary
 |
 |
-|                          Alt+↑ conversation · Alt+↓ view
-|╭─────────────────────────────────────── Read the readme. ─╮
-|│ >                                                        │
+|                               Alt+↑ conversation · Alt+↓
+|╭──────────────────────────────────────── Read the readme. ╮
+|│ >  Ask anything · / commands · @ files · # skills        │
 |╰──────────────────────────────────────────────────────────╯
-| deepseek-flash High  ~/workspace        ctx ▰▱▱▱▱▱▱▱▱▱ 14%
+| deepseek-flash High  ~/workspace   context: 14% (8.8k/64k)
 styles
 0: 1-23 fg:#f5f5f7; 24-25 fg:#9a86e6
 1: 1-23 fg:#e9e5f6; 24-25 fg:#9a86e6; 26-47 fg:#9a86e6 b
@@ -46,8 +46,8 @@ styles
 19: 2-29 fg:#9aa3b8
 21: 2-3 fg:#4ec87e; 4-20 fg:#ededf2; 22-31 fg:#4ec87e; 33-49 fg:#9aa3b8
 22: 2-19 fg:#9aa3b8
-25: 26-56 fg:#9aa3b8
-26: 0-39 fg:#45406b; 40-57 fg:#5c6476; 58-59 fg:#45406b
-27: 0 fg:#45406b; 4 r; 59 fg:#45406b
+25: 31-56 fg:#9aa3b8
+26: 0-41 fg:#45406b; 42-57 fg:#f5f5f7 b; 58-59 fg:#45406b
+27: 0 fg:#45406b; 2-3 fg:#ededf2; 4 r; 5-50 fg:#5c6476; 59 fg:#45406b
 28: 0-59 fg:#45406b
-29: 1-19 fg:#ededf2; 22-32 fg:#9aa3b8; 41-44 fg:#ededf2; 45 fg:#9a86e6; 46-54 fg:#9aa3b8; 55-58 fg:#ededf2
+29: 1-19 fg:#ededf2; 22-32 fg:#9aa3b8; 36-58 fg:#ededf2

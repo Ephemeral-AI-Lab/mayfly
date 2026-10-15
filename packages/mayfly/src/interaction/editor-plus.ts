@@ -1,11 +1,10 @@
 /**
  * `mayfly-editor-plus` plugin: enhancement layer over the shared input editor
  * mounted by `mayfly-input` — the `prompt | bash` input mode with shell
- * execution and echo (bash carries the triple cue: `!` prompt symbol,
- * ` ! shell mode ` border label, and the shellMode frame hue, re-asserted
- * over `mayfly-input`'s slash-context resolution while the mode is active),
- * plus the S14 completion polish: slash-command and `@`-file autocomplete
- * with fuzzy matching over the command names (`./slash-filter.ts`), slash
+ * execution and echo (bash shows as the `!` prompt symbol and the accent
+ * frame border, set through the shared editor's `setShell`), plus the S14
+ * completion polish: slash-command and `@`-file autocomplete with fuzzy
+ * matching over the command names (`./slash-filter.ts`), slash
  * values that carry their leading slash so a single Enter accepts the
  * selection and submits, and the argument-hint ghost driven from each
  * command's `input.hint`. `@` mentions run the S22 kimi composition
@@ -18,7 +17,7 @@
  * without submitting (pi-tui's non-slash completion semantics), and the
  * applied token takes a trailing space mid-line. The mode is
  * mirrored into `./draft-stash.ts`, so a theme-swap reload re-applies the
- * triple on the rebuilt editor. The editor reference comes from the
+ * shell frame on the rebuilt editor. The editor reference comes from the
  * package-local shared ref (`./editor-instance.ts`): `inject` cannot order
  * this plugin after `mayfly-input` (which provides no service), so
  * attach/detach is driven by the `'mayfly/input-editor-changed'` event, which
@@ -44,12 +43,13 @@ import {
   registerEditorAutocompleteSource,
   type SharedEditor,
 } from './editor-instance.ts'
-import { detectFdPath, extractAtPrefix, createMentionScanCache, fsMentionSuggestions, listDirectoryMentions } from './file-mention.ts'
+import { detectFdPath, extractAtPrefix, createMentionScanCache, fsMentionSuggestions, listDirectoryMentions, withPathLabels } from './file-mention.ts'
 import { requiresFilesystemMention } from '../internal/mention.ts'
 import { ACTION_BACKSPACE, ACTION_CANCEL } from './keys.ts'
 import { extractSkillPrefix, refresh, userInvocableSkills } from './skills-catalog.ts'
 import { sanitizeShellOutput } from './shell-sanitize.ts'
 import { filterSlashCommands, slashCommandLabel } from './slash-filter.ts'
+import { beginPromptWait } from './prompt-wait.ts'
 import { interactionTranslator, observeInteractionLocale } from './locale.ts'
 
 /** Shell echo output caps: both bounds apply, whichever trips first. */
@@ -116,8 +116,21 @@ function slashItemDescription(command: {
 }
 
 /** The directory `@` completion and `!` commands run in: the displayed Agent's session directory, else the launch directory. */
-function sessionCwd(ctx: Context): string {
+export function sessionCwd(ctx: Context): string {
   return ctx.mayflyCurrentAgent.current()?.session.header.cwd ?? process.cwd()
+}
+
+/**
+ * Record the mention an `@` completion just finished, so the editor shows it as a token. A file's completion ends with a
+ * space after the path; a directory's stays open for drill-down and is no mention yet.
+ * @param ctx - plugin context carrying the interaction state.
+ * @param applied - the completion's result: the new lines and the cursor.
+ */
+function rememberMention(ctx: Context, applied: { readonly lines: readonly string[], readonly cursorLine: number, readonly cursorCol: number }): void {
+  const before = (applied.lines[applied.cursorLine] ?? '').slice(0, applied.cursorCol)
+  if (!before.endsWith(' ')) return
+  const mention = extractAtPrefix(before.slice(0, -1))
+  if (mention !== null && mention.length > 1) ctx.mayflyInteractionState.mentions.add(mention)
 }
 
 /**
@@ -173,39 +186,45 @@ function createAutocompleteProvider(
       const line = lines[cursorLine] ?? ''
       const atPrefix = extractAtPrefix(line.slice(0, cursorCol))
       if (atPrefix !== null) {
-        const cwd = sessionCwd(ctx)
-        if (cwd !== builtCwd || fdPath !== builtFdPath) {
-          builtCwd = cwd
-          builtFdPath = fdPath
-          inner = components.createFileMentionProvider(cwd, fdPath)
-        }
-        let suggestions: MayflyAutocompleteSuggestions | null = null
-        // Empty-tail tokens (a bare `@` or a directory drill-down) take the
-        // one-level listing: deterministic, shallow, exactly the entries of
-        // the resolved directory. Everything else — query-bearing tokens —
-        // runs the fd pipeline (fd's genuine no-match stays null). Known
-        // unsupported path forms, or a missing/throwing fd, use the scanner.
-        suggestions = await listDirectoryMentions(cwd, atPrefix, options.signal)
-        const filesystemOnly = requiresFilesystemMention(atPrefix)
-        let fellBack = suggestions === null && (fdPath === null || filesystemOnly)
-        if (suggestions === null && fdPath !== null && !filesystemOnly) {
-          try {
-            suggestions = await inner.getSuggestions(lines, cursorLine, cursorCol, options)
-          } catch {
-            // fd failing to spawn mid-session falls back to the scanner.
-            fellBack = true
+        // The search can take a moment in a big tree: the unified loader shows it, never for a quick answer.
+        const endWait = beginPromptWait(ctx, t('Searching files…'))
+        try {
+          const cwd = sessionCwd(ctx)
+          if (cwd !== builtCwd || fdPath !== builtFdPath) {
+            builtCwd = cwd
+            builtFdPath = fdPath
+            inner = components.createFileMentionProvider(cwd, fdPath)
           }
+          let suggestions: MayflyAutocompleteSuggestions | null = null
+          // Empty-tail tokens (a bare `@` or a directory drill-down) take the
+          // one-level listing: deterministic, shallow, exactly the entries of
+          // the resolved directory. Everything else — query-bearing tokens —
+          // runs the fd pipeline (fd's genuine no-match stays null). Known
+          // unsupported path forms, or a missing/throwing fd, use the scanner.
+          suggestions = await listDirectoryMentions(cwd, atPrefix, options.signal)
+          const filesystemOnly = requiresFilesystemMention(atPrefix)
+          let fellBack = suggestions === null && (fdPath === null || filesystemOnly)
+          if (suggestions === null && fdPath !== null && !filesystemOnly) {
+            try {
+              suggestions = withPathLabels(await inner.getSuggestions(lines, cursorLine, cursorCol, options))
+            } catch {
+              // fd failing to spawn mid-session falls back to the scanner.
+              fellBack = true
+            }
+          }
+          if (suggestions === null && fellBack) {
+            suggestions = await fsMentionSuggestions(cwd, atPrefix, options.signal, undefined, mentionCache)
+          }
+          // An empty mention result would close the dropdown without a
+          // trace — the empty-session-cwd corner read as "@ is dead". Flash
+          // the hint line instead; a superseded (aborted) round stays quiet.
+          if (suggestions === null && !options.signal.aborted) {
+            report(t('no matching files under the session cwd'))
+          }
+          return suggestions
+        } finally {
+          endWait()
         }
-        if (suggestions === null && fellBack) {
-          suggestions = await fsMentionSuggestions(cwd, atPrefix, options.signal, undefined, mentionCache)
-        }
-        // An empty mention result would close the dropdown without a
-        // trace — the empty-session-cwd corner read as "@ is dead". Flash
-        // the hint line instead; a superseded (aborted) round stays quiet.
-        if (suggestions === null && !options.signal.aborted) {
-          report(t('no matching files under the session cwd'))
-        }
-        return suggestions
       }
       // The S29 `#` skill branch: a `#`-token in progress at the cursor
       // completes the settled user-invocable skills (`./skills-catalog.ts`)
@@ -278,7 +297,9 @@ function createAutocompleteProvider(
         // Delegated whole: the combined provider's @ branch keeps the '@',
         // appends the trailing space only for files, and parks the cursor
         // inside a closing quote for quoted directories.
-        return inner.applyCompletion(lines, cursorLine, cursorCol, item, prefix)
+        const applied = inner.applyCompletion(lines, cursorLine, cursorCol, item, prefix)
+        rememberMention(ctx, applied)
+        return applied
       }
       if (prefix.startsWith('#') && extractSkillPrefix(line.slice(0, cursorCol)) !== null) {
         // The skill item's value carries its '#'. The token — unlike a
@@ -449,9 +470,6 @@ function runShell(ctx: Context, command: string, isUnloaded: () => boolean): voi
   )
 }
 
-/** The bash-mode border label text (styled at attach time). */
-const BASH_LABEL = '! shell mode'
-
 /**
  * Chain the mode routing and autocomplete provider onto the shared editor,
  * preserving the handlers `mayfly-input` installed.
@@ -463,7 +481,6 @@ const BASH_LABEL = '! shell mode'
  */
 function attach(ctx: Context, shared: SharedEditor, isUnloaded: () => boolean): () => void {
   const { editor } = shared
-  const colors = ctx.mayflyTheme.colors
   const aliases = ctx.mayflyInteractionState.aliases
   const draft = ctx.mayflyInteractionState.draft
   let mode: 'prompt' | 'bash' = draft.getStashedInputMode()
@@ -471,31 +488,22 @@ function attach(ctx: Context, shared: SharedEditor, isUnloaded: () => boolean): 
   const previousOnSubmit = editor.onSubmit
   const previousOnKey = editor.onKey
 
-  /** Apply the bash triple: `!` symbol, border label, and shell hue. */
+  /** Enter bash mode: the frame turns into the shell's (the `!` symbol, the accent border). */
   const enterBash = (): void => {
     mode = 'bash'
     draft.stashInputMode('bash')
-    editor.setPromptSymbol('!')
-    editor.setBorderLabel(` ${colors.shellMode(BASH_LABEL)} `)
-    editor.setBorderColor(colors.shellMode)
+    shared.setShell(true)
   }
 
-  /** Restore the prompt-mode frame without touching the reload stash. */
-  const applyPromptFrame = (): void => {
-    editor.setPromptSymbol('>')
-    editor.setBorderLabel(undefined)
-    editor.setBorderColor(colors.border)
-  }
-
-  /** Leave bash mode: prompt frame plus the stash update. */
+  /** Leave bash mode: the prompt frame plus the stash update. */
   const exitBash = (): void => {
     mode = 'prompt'
     draft.stashInputMode('prompt')
-    applyPromptFrame()
+    shared.setShell(false)
   }
 
   // A theme-swap reload rebuilt the editor while bash mode was stashed:
-  // re-apply the triple so the restored draft still reads as shell input.
+  // re-apply the frame so the restored draft still reads as shell input.
   if (mode === 'bash') enterBash()
 
   /**
@@ -532,16 +540,13 @@ function attach(ctx: Context, shared: SharedEditor, isUnloaded: () => boolean): 
   editor.onChange = (text) => {
     previousOnChange?.(text)
     // A buffer holding exactly '!' switches to bash mode without polluting
-    // the buffer; the mode cue is the symbol + label + hue triple.
+    // the buffer; the mode cue is the `!` symbol and the accent border.
     if (mode === 'prompt' && text === '!') {
       enterBash()
       editor.setText('')
       editor.setGhostHint(undefined)
       return
     }
-    // While bash is active the shell hue wins over `mayfly-input`'s
-    // slash-context resolution (a leading `/` is a path separator here).
-    if (mode === 'bash') editor.setBorderColor(colors.shellMode)
     refreshGhost(text)
   }
   // The editor clears its buffer before invoking onSubmit; the callback
@@ -561,7 +566,7 @@ function attach(ctx: Context, shared: SharedEditor, isUnloaded: () => boolean): 
     // stash mirror matches `mayfly-input`'s, so bash entries survive a
     // theme-swap rebuild too.
     editor.addToHistory(command)
-    draft.stashHistory(editor.getHistory())
+    draft.stashHistory(editor.getHistory(), editor.getHistoryPastes())
     runShell(ctx, command, isUnloaded)
   }
   editor.onKey = (data) => {
@@ -594,11 +599,9 @@ function attach(ctx: Context, shared: SharedEditor, isUnloaded: () => boolean): 
     editor.onChange = previousOnChange
     editor.onSubmit = previousOnSubmit
     editor.onKey = previousOnKey
+    // The frame goes with the editor; the reload stash keeps the mode the
+    // user was in, so a remount (theme swap) rebuilds bash where it left off.
     editor.setGhostHint(undefined)
-    // Visual restore only — the reload stash keeps the mode the user was
-    // in, so a remount (theme swap) rebuilds bash where it left off.
-    if (mode === 'bash') applyPromptFrame()
-    else editor.setBorderColor(colors.border)
   }
 }
 

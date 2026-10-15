@@ -38,11 +38,11 @@ grid 60x44 cursor none
 |  ● Both files are in place.
 |
 |  ✻ Worked for 4s · done 09:00
-|                          Alt+↑ conversation · Alt+↓ view
-|╭───────────────────────────────── Add a retries setting. ─╮
-|│ >                                                        │
+|                               Alt+↑ conversation · Alt+↓
+|╭────────────────────────────────── Add a retries setting. ╮
+|│ >  Ask anything · / commands · @ files · # skills        │
 |╰──────────────────────────────────────────────────────────╯
-| deepseek-flash  workspace                ctx ▰▱▱▱▱▱▱▱▱▱ 5%
+| deepseek-flash High  .  cache 42%  context: 5% (5.5k/128k)
 styles
 0: 1-23 fg:#b2a1ec; 24-25 fg:#9a86e6; 26-44 fg:#9aa3b8
 1: 1-25 fg:#9a86e6; 26-47 fg:#ededf2
@@ -75,8 +75,8 @@ styles
 34: 2-3 fg:#ededf2; 4-22 fg:#9aa3b8
 36: 2-3 fg:#ededf2
 38: 2-29 fg:#9aa3b8
-39: 26-56 fg:#9aa3b8
-40: 0-33 fg:#45406b; 34-57 fg:#5c6476; 58-59 fg:#45406b
-41: 0 fg:#45406b; 4 r; 59 fg:#45406b
+39: 31-56 fg:#9aa3b8
+40: 0-35 fg:#45406b; 36-57 fg:#f5f5f7 b; 58-59 fg:#45406b
+41: 0 fg:#45406b; 2-3 fg:#ededf2; 4 r; 5-50 fg:#5c6476; 59 fg:#45406b
 42: 0-59 fg:#45406b
-43: 1-14 fg:#ededf2; 17-25 fg:#9aa3b8; 42-45 fg:#ededf2; 46 fg:#9a86e6; 47-55 fg:#9aa3b8; 56-58 fg:#ededf2
+43: 1-19 fg:#ededf2; 25-58 fg:#ededf2

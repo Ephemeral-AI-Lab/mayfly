@@ -163,7 +163,8 @@ describe('mayfly-pane-activity', () => {
     const harness = await bootFacts({ phase: 'waiting', turnStartedAt: NOW })
     expect(rows(harness.screen)).toEqual([`  ${fill()} Deep diving · 0s`, `    ⎿ Tip: ${FIRST_TIP}`])
     // The glyph moves on the core's clock, not the pane's: the pane owns no frame timer, only the shared tick.
-    expect(harness.tick.subscribers).toBe(1)
+    // The row and the notification row's hint rotation (R6) share the host tick while a turn runs.
+    expect(harness.tick.subscribers).toBe(2)
     expect(harness.timers.live).toBe(0)
     harness.idle()
     expect(rows(harness.screen)).toEqual([])
@@ -214,7 +215,7 @@ describe('mayfly-pane-activity', () => {
     expect(rows(harness.screen)).toHaveLength(2)
     harness.ctx.emit('mayfly/editor-slot-swapped', true)
     expect(rows(harness.screen)).toEqual([])
-    expect(harness.tick.subscribers).toBe(0)
+    expect(harness.tick.subscribers).toBe(1)
     harness.ctx.emit('mayfly/editor-slot-swapped', false)
     expect(rows(harness.screen)[1]).toBe(`    ⎿ Tip: ${buildTipRotation(STATUS_TIPS)[1]!.text}`)
     await harness.dispose()
@@ -379,11 +380,13 @@ describe('mayfly-pane-activity', () => {
   it('rotates the tip every fifteen ticks while the row is live', async () => {
     const harness = await bootFacts({ phase: 'waiting', turnStartedAt: NOW })
     const rotation = buildTipRotation(STATUS_TIPS)
-    expect(rows(harness.screen)[1]).toBe(`    ⎿ Tip: ${rotation[0]!.text}`)
+    // The tip is found by its text: the notification row's hint rotation (R6) joins the rows above it at the same tick.
+    const tipRow = (): string | undefined => rows(harness.screen).find(row => row.includes('Tip: '))
+    expect(tipRow()).toBe(`    ⎿ Tip: ${rotation[0]!.text}`)
     for (let tick = 1; tick < 15; tick += 1) harness.tick.fire(NOW + tick * 1_000)
-    expect(rows(harness.screen)[1]).toBe(`    ⎿ Tip: ${rotation[0]!.text}`)
+    expect(tipRow()).toBe(`    ⎿ Tip: ${rotation[0]!.text}`)
     harness.tick.fire(NOW + 15_000)
-    expect(rows(harness.screen)[1]).toBe(`    ⎿ Tip: ${rotation[1]!.text}`)
+    expect(tipRow()).toBe(`    ⎿ Tip: ${rotation[1]!.text}`)
     await harness.dispose()
   })
 

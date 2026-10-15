@@ -8,7 +8,7 @@
 
 import { REPLAYS } from './replays.mjs'
 import { compile } from './timeline.mjs'
-import { checkpoint, idle, key, measure, play, resize, type, until, wait, wheel } from './steps.mjs'
+import { checkpoint, idle, key, measure, paste, play, resize, type, until, wait, wheel } from './steps.mjs'
 
 /** The size a scenario runs at unless it names its own. */
 export const DEFAULT_SIZE = Object.freeze([120, 40])
@@ -23,6 +23,9 @@ const COMPACTION = [...STREAM, 'packages/mayfly/src/conversation/facts.ts', 'pac
 /** What draws the notification pane: the pane, the line, and the notices the facts raise into it. */
 const NOTIFICATION = [`${TRANSCRIPT}pane-notification.ts`, `${TRANSCRIPT}notices.ts`, 'packages/mayfly/src/components/notification-line.ts', 'packages/mayfly/src/conversation/facts.ts', `${INTERACTION}notifications.ts`]
 
+/** What draws and answers the queued rows of the stream: the rows, their keys, the notification row that teaches them, and the editor that restores the message. */
+const QUEUE_COVERS = [`${TRANSCRIPT}transcript-model.ts`, `${TRANSCRIPT}pane-notification.ts`, 'packages/mayfly/src/components/notification-line.ts', `${INTERACTION}input-plugin.ts`, ...STREAM]
+
 /** What draws a request that waits on the user: its block in the stream, the decision card, and what they share. */
 const REQUEST = [
   `${INTERACTION}decision-actions.ts`, `${INTERACTION}request-overlay.ts`, 'packages/mayfly/src/components/decision-card.ts',
@@ -33,7 +36,7 @@ const REQUEST = [
 const PHASE3_COVERS = [...new Set([
   `${TRANSCRIPT}tool-*.ts`, `${TRANSCRIPT}process-*.ts`, `${TRANSCRIPT}presentation-policy.ts`, `${TRANSCRIPT}official-model.ts`, 'packages/mayfly/src/frontend/models.ts',
   `${TRANSCRIPT}pane-activity.ts`, `${TRANSCRIPT}transcript-model.ts`, `${TRANSCRIPT}status-goal.ts`, `${TRANSCRIPT}status-jobs.ts`, `${TRANSCRIPT}status-agents.ts`, `${TRANSCRIPT}child-agent-model.ts`,
-  `${INTERACTION}pane-queue.ts`, `${INTERACTION}btw-command.ts`, `${INTERACTION}approval-plugin.ts`, `${INTERACTION}questions-plugin.ts`, `${INTERACTION}plan-review-panel.ts`, `${INTERACTION}jobs.ts`, `${INTERACTION}trace-*.ts`,
+  `${INTERACTION}btw-command.ts`, `${INTERACTION}approval-plugin.ts`, `${INTERACTION}questions-plugin.ts`, `${INTERACTION}plan-review-panel.ts`, `${INTERACTION}jobs.ts`, `${INTERACTION}trace-*.ts`,
   ...STREAM, ...COMPACTION, ...NOTIFICATION, ...REQUEST,
 ])]
 
@@ -54,7 +57,7 @@ const COVERS = {
   sync: [`${TRANSCRIPT}pane-activity.ts`, `${TRANSCRIPT}session-facts.ts`, `${TRANSCRIPT}tick.ts`, 'packages/mayfly/src/conversation/facts.ts', 'packages/mayfly/src/components/activity-row.ts', ...STREAM],
   activityWait: [`${TRANSCRIPT}pane-activity.ts`, 'packages/mayfly/src/components/activity-row.ts', `${INTERACTION}approval-plugin.ts`, `${INTERACTION}questions-plugin.ts`],
   prompts: [`${TRANSCRIPT}transcript-model.ts`, `${INTERACTION}attachments.ts`, ...STREAM],
-  turns: [`${TRANSCRIPT}transcript-model.ts`, `${TRANSCRIPT}process-groups.ts`, `${TRANSCRIPT}presentation-policy.ts`, `${INTERACTION}pane-queue.ts`, 'packages/mayfly/src/core/node-slot.ts', ...STREAM],
+  turns: [`${TRANSCRIPT}transcript-model.ts`, `${TRANSCRIPT}process-groups.ts`, `${TRANSCRIPT}presentation-policy.ts`, 'packages/mayfly/src/core/node-slot.ts', ...STREAM],
   errors: [`${TRANSCRIPT}tool-*.ts`, `${TRANSCRIPT}transcript-model.ts`, ...STREAM],
   toollines: [`${TRANSCRIPT}tool-*.ts`, `${TRANSCRIPT}process-*.ts`, `${TRANSCRIPT}official-model.ts`, 'packages/mayfly/src/frontend/models.ts', ...STREAM],
   edits: [`${TRANSCRIPT}tool-*.ts`, `${TRANSCRIPT}process-*.ts`, `${TRANSCRIPT}official-model.ts`, 'packages/mayfly/src/frontend/models.ts', 'packages/mayfly/src/core/content-rows.ts', 'packages/mayfly/src/core/diff-align.ts', 'packages/mayfly/src/core/highlight.ts', ...STREAM],
@@ -78,7 +81,8 @@ const COVERS = {
   statusRow: [`${TRANSCRIPT}status-*.ts`, `${INTERACTION}mode-status.ts`, `${INTERACTION}conversation-view-status.ts`, 'packages/mayfly/src/core/ui-admission.ts', 'packages/mayfly/src/core/views-lane.ts', 'packages/mayfly/src/core/node-slot.ts'],
   jobs: [`${TRANSCRIPT}status-jobs.ts`, `${INTERACTION}jobs.ts`],
   viewsJobs: [`${TRANSCRIPT}status-jobs.ts`, `${TRANSCRIPT}view-items.ts`, `${TRANSCRIPT}status-rows.ts`, `${INTERACTION}jobs.ts`, 'packages/mayfly/src/core/views-lane.ts', ...STREAM],
-  queued: [`${INTERACTION}pane-queue.ts`],
+  queued: [`${TRANSCRIPT}transcript-model.ts`, ...STREAM],
+  queue: QUEUE_COVERS,
   retries: [`${TRANSCRIPT}transcript-model.ts`, `${INTERACTION}trace-*.ts`, ...NOTIFICATION, ...STREAM],
   sideQuestion: [`${INTERACTION}btw-command.ts`, `${INTERACTION}conversation-view-status.ts`],
   notices: [...NOTIFICATION],
@@ -101,6 +105,31 @@ const COVERS = {
  * that `differs` from the prototype, and `pending`. `brief.mjs` prints them. Finalizing a group removes its entries.
  */
 const REVIEW = {
+  queue: {
+    scene: 15,
+    reference: 'prototype scene 15 (Editor: the queue, `↑↓ queue then history`) · component-library §5.2 · parts 4c.1 and 4c.2, as the owner changed them: queued messages stay rows of the stream (no queue line above the editor) and `↑`/`↓` are the history only',
+    implemented: [
+      'A message typed while the agent works is a row at the end of the stream, in the prompt style, with a muted mark: `⏎ queued` waits for the next turn, `⏎ steering` is read at the running turn\'s next step. There is no queue pane and no line above the editor. The replay holds them for four minutes (then two more) so a person can work on them; the runner skips the wait.',
+      '`Alt+↑` (it works with a draft too) focuses the stream on its newest row; `↑`/`↓` walk the rows. On a queued row the notification row names the keys: `e edit · s send now · d cancel · Enter expand · c copy · ↑/↓ select · Esc back` (a steering row has no `s`). `Enter` opens the whole text, `c`, `Ctrl+C` and `Ctrl+G` copy it or open it in `$EDITOR`.',
+      '`e` takes the message into the prompt and returns focus there; a draft the prompt already held goes to the history first (`Ctrl+A`, `↑` brings it back). `s` sends it now (it becomes `⏎ steering`). `d` cancels it with `Cancelled · u undo`; `u` (within eight seconds) puts it back in the lane it left, at the end.',
+      'When the agent reads a message it leaves the row list and the stream records it as an ordinary prompt; one you took out or cancelled stays out.',
+      '`↑`/`↓` in the prompt walk the history only; the notification row reads `↑ history 2/4` while walking (below a notice, above the idle hints), `↓` ends on the draft you had, and any edit ends the walk.',
+    ],
+    focus: [
+      { look: 'The rows and their marks: queued, steering, a long one cut at four lines with its fold row, a long CJK one', how: 'checkpoint `queued` (and `--width 60`, `--width 40`)' },
+      { look: 'The keys on the notification row: a queued row, and a steering row without `s`', how: 'checkpoints `newest`, `steering`' },
+      { look: 'Enter opens the whole text of the long message', how: 'checkpoint `opened`' },
+      { look: '`e` with an empty prompt and with a draft: the draft is not lost', how: 'checkpoints `edit`, `edit-with-draft`, `draft-in-history`' },
+      { look: '`s`, then `d` and `u`: the mark, the notice, the row leaving and returning in its lane', how: 'checkpoints `steered`, `cancelled`, `undone`' },
+      { look: 'The agent reads the messages: they are prompts in the stream now', how: 'checkpoints `read`, `claimed`' },
+      { look: 'The history walk and its counter, forward to the draft', how: 'checkpoints `up-1`, `up-3`, `down-1`, `draft`, `edited`' },
+    ],
+    differs: [
+      'The prototype draws one truncated queue line above the frame (`queued (2)  ⏎ "…"  ↑ recall`) and walks the queue first with `↑`; the owner replaced it by the rows of the stream so that any message, not only the newest, can be edited, sent or cancelled, and `↑`/`↓` are the history only.',
+      'In the scenario the replay\'s Agent stands for a running one (the driver lets `s` and `u` put a message into the inbox without waking it, until the last message is read); a live `dsh` profile with a real running turn shows the same rows.',
+    ],
+    pending: ['A notice over the history counter is not scripted (it needs a notice the scenario can raise); try a failing `Ctrl+V` with nothing on the clipboard while walking.'],
+  },
   select: {
     scene: 18,
     reference: 'prototype scene 18 (Conversation stream: Alt+Up select a row, Enter expand, c copy, Ctrl+G open in editor) · component-library §5.6 · part 3e.2',
@@ -415,7 +444,7 @@ const REVIEW = {
     reference: 'prototype scene 16 (Notices and banners) · component-library §5.2 · part 3c.3',
     implemented: [
       'One row between the activity block and the editor carries the notice to read now: right-aligned, never wider than half the terminal, one notice at a time (the most severe, then the newest) with a muted `· +N` for the ones waiting.',
-      'It shows the notification lane (commands\' and extensions\' feedback: `✓`/`ℹ` leave after 5 s, `⚠`/`✗` stay) and three notices the session\'s facts raise: a rate limit or provider error with its countdown (`Rate limited · retrying in 9s · 1/5`), a context 92% full (`Context 93% full · /compact now`), and a resumed session (`Resumed session · 2 turns · last active 3h ago`, which leaves after 5 s).',
+      'It shows the notification lane (commands\' and extensions\' feedback: `✓` and information leave after 5 s, `⚠`/`✗` stay) and three notices the session\'s facts raise: a rate limit or provider error with its countdown (`Rate limited · retrying in 9s · 1/5`), a context 92% full (`Context 93% full · /compact now`), and a resumed session (`Resumed session · 2 turns · last active 3h ago`, which leaves after 5 s).',
       'The row is there when nothing shows (blank), so the editor never moves; the footer under the editor keeps only the slash hint.',
     ],
     focus: [
@@ -827,6 +856,31 @@ const SCRIPTS = {
     key('ctrl+o'), checkpoint('open'),
     resize(48, 24), checkpoint('narrow'),
   ],
+  // Four messages queued behind a running turn: Alt+Up lands on the newest, the arrows walk the queue, Enter opens one, the agent reads one under the cursor.
+  queue: [
+    play('queued'), checkpoint('queued'),
+    key('alt+up'), checkpoint('newest'),
+    key('up'), checkpoint('long'),
+    key('enter'), checkpoint('opened'), key('enter'),
+    key('up', { repeat: 2 }), checkpoint('steering'),
+    key('down'), key('e'), checkpoint('edit'),
+    key('alt+up'), key('up'), key('e'), checkpoint('edit-with-draft'),
+    key('ctrl+a'), key('up'), checkpoint('draft-in-history'),
+    key('alt+up'), key('s'), checkpoint('steered'),
+    key('d'), checkpoint('cancelled'),
+    key('u'), checkpoint('undone'),
+    key('esc'), wait(150), key('esc'), wait(150),
+    play('read'), checkpoint('read'),
+    play(), checkpoint('claimed'),
+    type('first: read the hero copy'), key('enter'), wait(400),
+    type('second: tighten the headline'), key('enter'), wait(400),
+    type('third: run the tests'), key('enter'), wait(400),
+    type('a draft in progress'), key('ctrl+a'), key('up'), checkpoint('up-1'),
+    key('up', { repeat: 2 }), checkpoint('up-3'),
+    key('down'), checkpoint('down-1'),
+    key('down', { repeat: 2 }), checkpoint('draft'),
+    key('ctrl+a'), key('up'), key('end'), type(' now'), checkpoint('edited'),
+  ],
   // Reasoning is a card of the open view: Standard folds it, Ctrl+O opens it, and a resize narrows the open turn.
   thinking: [
     play('thinking'), checkpoint('live'),
@@ -977,6 +1031,7 @@ const SIZES = {
   planRejected: [[120, 40], [60, 30]],
   planLong: [[120, 40], [60, 30]],
   turns: [DEFAULT_SIZE, [60, 24], [40, 24]],
+  queue: [[96, 30], [60, 30], [40, 30]],
   toollines: [[120, 80], [60, 64], [40, 64]],
   edits: [[120, 90], [60, 70], [40, 70]],
   wheel: [[40, 24]],
@@ -1051,6 +1106,44 @@ const APP = {
   },
 }
 
+/** What draws the editor's frame: the component, its facts, the shell that compiles it around the host editor, and the prompt painter. */
+const EDITOR = [
+  'packages/mayfly/src/components/editor.ts', `${INTERACTION}input-plugin.ts`, `${INTERACTION}editor-extension-runtime.ts`, `${INTERACTION}editor-plus.ts`,
+  `${INTERACTION}editor-instance.ts`, 'packages/mayfly/src/core/components.ts', 'packages/mayfly/src/core/chrome.ts', 'packages/mayfly/src/core/ui-prompt.ts',
+  'packages/mayfly/src/core/ui-patterns.ts', 'packages/mayfly/src/core/ui-compiler.ts', 'packages/mayfly/src/core/ui-validator.ts',
+]
+/** The session names the editor scenarios give the conversation (the command `/rename`, then Enter). */
+const RENAME = title => [type(`/rename ${title}`), key('enter')]
+/** Empty the draft: Escape clears an idle prompt (the wait keeps the next key from reading as Alt+key). */
+const CLEAR = [key('esc'), wait(150)]
+/** Empty the draft whether or not a list is open (Escape only closes a list; Ctrl+C clears the draft). */
+const WIPE = [key('ctrl+c'), wait(150)]
+const EDITOR_SIZES = [[96, 24], [60, 24], [40, 24]]
+
+/** The files an `@` mention can name in the token scenarios, and the notes the pasted block holds. */
+const TOKEN_FILES = {
+  'packages/mayfly/src/core/ui-prompt.ts': '// the prompt painter\n',
+  'packages/mayfly/src/core/ui-patterns.ts': '// the surface patterns\n',
+  'docs/notes.md': '# Notes\n',
+}
+const NOTES = Array.from({ length: 14 }, (_, index) => `note ${String(index + 1)}: the hero copy says one thing and the install line says another`).join('\n')
+/** What a token scenario begins with: the session named, then a message typed up to a pasted image. */
+const WITH_IMAGE = [...RENAME('Update the landing page hero'), type('compare '), key('ctrl+v'), until('KB]')]
+const TOKEN_ENV = { clipboard: { image: 84 }, workspace: TOKEN_FILES }
+
+/** The workspace of the completion scenario: files for `@`, a long name and a deep folder, 3,000 generated modules, and skills for `#`. */
+const COMPLETION_FILES = {
+  ...TOKEN_FILES,
+  'packages/mayfly/src/core/completion-list.ts': '// the completion state\n',
+  'packages/mayfly/src/core/completion-drawer-with-a-very-long-name.ts': '// the palette\n',
+  'packages/mayfly/src/interaction/prompts/shortcuts/long-folder-names/ui-notes.md': '# Notes\n',
+  ...Object.fromEntries(Array.from({ length: 3000 }, (_, index) => [`generated/area-${String(Math.floor(index / 100)).padStart(2, '0')}/module-${String(index).padStart(4, '0')}.ts`, `export const id = ${String(index)}\n`])),
+  '.agents/skills/release-notes/SKILL.md': '---\nname: release-notes\ndescription: draft release notes from the merged changes\n---\nWrite the notes.\n',
+  '.agents/skills/code-review/SKILL.md': '---\nname: code-review\ndescription: review a diff for defects\n---\nReview the diff.\n',
+  '.agents/skills/frontend-design/SKILL.md': '---\nname: frontend-design\ndescription: build distinctive interfaces\n---\nDesign it.\n',
+  '.agents/skills/deploy-checklist/SKILL.md': '---\nname: deploy-checklist\ndescription: walk the deploy checklist before a release\ndisable-model-invocation: true\n---\nWalk it.\n',
+}
+
 const SENTENCE = 'the quick brown fox jumps over the lazy dog and keeps typing until the prompt wraps onto a second row of the editor'
 /** Open a panel by its command, measure its cursor keys, and close it. */
 const nav = command => [type(command), key('enter'), measure(`nav ${command}`, [key('down', { repeat: 20 }), key('up', { repeat: 20 })]), key('esc'), key('esc'), key('ctrl+c')]
@@ -1105,6 +1198,12 @@ const PERF = {
   },
 }
 
+
+/** Have the stub model start a real continuable subagent (stored once its turn is done). */
+const SPAWN = name => [type(`spawn:${name}`), key('enter'), wait(6000)]
+/** Open a subagent from the agents browser by a part of its name (the list filters as you type), and wait for its view. */
+const OPEN_VIEW = name => [type('/agents'), key('enter'), until('Subagents'), type(name), key('enter'), wait(500)]
+
 /** The catalog, by scenario name. */
 export const CATALOG = Object.freeze({
   idle: {
@@ -1113,6 +1212,358 @@ export const CATALOG = Object.freeze({
     covers: [`${TRANSCRIPT}banner*.ts`, `${TRANSCRIPT}status-*.ts`, `${INTERACTION}input-plugin.ts`],
     sizes: [DEFAULT_SIZE, [60, 24]],
     script: [checkpoint('boot')],
+  },
+  // The editor's frame (4a.1): the title in the corner, the buffer wrapped inside, the `/` list under it, at three widths.
+  editor: {
+    summary: 'the editor\'s frame: the conversation title at the top right, a short, a wrapped, a multi-line, and a CJK buffer, the caret, and the `/` list as a borderless palette over the stream, at 96, 60, and 40 columns',
+    source: { idle: true },
+    covers: EDITOR,
+    sizes: EDITOR_SIZES,
+    script: [
+      checkpoint('start'),
+      ...RENAME('Update the landing page hero'), checkpoint('titled'),
+      type('Add the install line to the README'), checkpoint('typed'),
+      ...CLEAR, type('the quick brown fox jumps over the lazy dog and keeps typing until the prompt wraps onto a second row of the editor'), checkpoint('wrapped'),
+      key('left', { repeat: 40 }), checkpoint('caret'),
+      resize(60, 24), checkpoint('wrapped-60'),
+      resize(40, 24), checkpoint('wrapped-40'),
+      resize(96, 24),
+      ...CLEAR, type('first line'), key('ctrl+j'), type('a second line that is a little longer'), key('ctrl+j'), type('third'), checkpoint('multiline'),
+      ...CLEAR, type('把落地页的标题改短一点，再检查一下安装说明和链接是否都还有效'), checkpoint('cjk'),
+      resize(40, 24), checkpoint('cjk-40'),
+      resize(96, 24),
+      ...CLEAR, type('/mo'), checkpoint('commands'),
+      key('down'), checkpoint('commands-down'),
+      resize(60, 24), checkpoint('commands-60'),
+      resize(40, 24), checkpoint('commands-40'),
+      resize(96, 24),
+      ...CLEAR, ...CLEAR, type('/'), checkpoint('commands-all'),
+      key('down', { repeat: 8 }), checkpoint('commands-scroll'),
+      key('esc'), checkpoint('commands-closed'),
+    ],
+  },
+  // The title (4a.1): whole, cut at its end, replaced, and wide.
+  editorTitle: {
+    summary: 'the editor\'s title: a short one, a long one cut with `…` at 60, 40, and 24 columns, a rename, and a CJK title',
+    source: { idle: true },
+    covers: EDITOR,
+    sizes: EDITOR_SIZES,
+    script: [
+      ...RENAME('Update the landing page hero'), checkpoint('short'),
+      ...RENAME('Update the landing page hero and rewrite the install section of the README'), checkpoint('long'),
+      resize(60, 24), checkpoint('long-60'),
+      resize(40, 24), checkpoint('long-40'),
+      resize(24, 24), checkpoint('long-24'),
+      resize(96, 24),
+      ...RENAME('Fix the build'), checkpoint('renamed'),
+      ...RENAME('更新落地页首屏的标题和安装说明'), checkpoint('cjk'),
+      resize(40, 24), checkpoint('cjk-40'),
+    ],
+  },
+  // Shell mode (4a.2): the `!` symbol and the accent border, the ways out, and the mode without color.
+  editorShell: {
+    summary: 'shell mode: a `!` turns the symbol and the border to the accent color, nothing else changes; Backspace or Esc on an empty buffer leaves, and so does a submit',
+    source: { idle: true },
+    covers: EDITOR,
+    sizes: EDITOR_SIZES,
+    script: [
+      ...RENAME('Update the landing page hero'), checkpoint('prompt'),
+      type('!'), checkpoint('shell'),
+      type('ls -la docs and then print the first lines of the changelog so the command wraps'), checkpoint('command'),
+      resize(60, 24), checkpoint('command-60'),
+      resize(40, 24), checkpoint('command-40'),
+      resize(96, 24),
+      key('backspace', { repeat: 80 }), checkpoint('emptied'),
+      key('backspace'), checkpoint('left'),
+      type('!'), key('esc'), checkpoint('left-esc'),
+      type('!echo hi'), key('enter'), checkpoint('submitted'),
+    ],
+  },
+  'editorShell-mono': {
+    summary: 'shell mode without color: the bold `!` is the only cue',
+    source: { idle: true },
+    config: { mayfly: { monochrome: true } },
+    covers: EDITOR,
+    sizes: [[96, 24], [40, 24]],
+    script: [
+      ...RENAME('Update the landing page hero'), checkpoint('prompt'),
+      type('!'), checkpoint('shell'),
+      type('ls -la docs'), checkpoint('command'),
+    ],
+  },
+  // Tokens (4b.1): the three kinds in their tones, the wrap edge, and the two-key removal.
+  tokens: {
+    summary: 'tokens inline in the text: a pasted image, a pasted block, and an accepted `@` mention in their tones, a token at the wrap edge, and Backspace selecting and then removing each',
+    source: { idle: true },
+    ...TOKEN_ENV,
+    covers: EDITOR,
+    sizes: EDITOR_SIZES,
+    script: [
+      ...WITH_IMAGE, checkpoint('image'),
+      key('left'), checkpoint('image-focused'), key('right'),
+      type(' note: '), paste('a short note'), checkpoint('short'),
+      type(' with '), paste(NOTES), checkpoint('paste'),
+      type(' and @ui-pr'), until('ui-prompt.ts'), checkpoint('mention-list'),
+      key('tab'), checkpoint('mention'),
+      resize(60, 24), checkpoint('mention-60'),
+      resize(40, 24), checkpoint('mention-40'),
+      resize(96, 24),
+      key('backspace'), key('backspace'), checkpoint('mention-selected'),
+      key('left'), checkpoint('focused'),
+      key('right'), checkpoint('stepped'),
+      key('left'), key('backspace'), checkpoint('mention-removed'),
+      key('backspace', { repeat: 5 }), key('backspace'), checkpoint('paste-selected'),
+      key('backspace'), checkpoint('paste-removed'),
+      key('backspace', { repeat: 25 }), key('backspace'), checkpoint('image-selected'),
+      key('backspace'), checkpoint('image-removed'),
+    ],
+  },
+  // Submit expansion (4b.2): what is sent is what is sent today.
+  tokensSubmit: {
+    summary: 'a message with an image, a pasted block, and a mention sent as it was typed, then a message whose image token was removed first',
+    source: { idle: true },
+    ...TOKEN_ENV,
+    covers: [...EDITOR, `${INTERACTION}paste-image.ts`, `${INTERACTION}prompt-submit-pipeline.ts`],
+    sizes: [[96, 40]],
+    script: [
+      ...WITH_IMAGE, type(' with '), paste(NOTES), type(' and @ui-pr'), until('ui-prompt.ts'), key('tab'), type('then fix the hero'), checkpoint('draft'),
+      key('enter'), until('Worked for'), checkpoint('sent'),
+      type('and again '), key('ctrl+v'), until('KB]'), key('backspace'), key('backspace'), type('only the words'), checkpoint('draft-removed'),
+      key('enter'), until('Worked for'), checkpoint('sent-removed'),
+    ],
+  },
+  // A folder as a mention (4b.1): Enter takes it, Tab goes into it.
+  tokensFolder: {
+    summary: 'an `@` folder: Enter puts its path into the prompt as a token and closes the list, Tab goes into it; a file completes as before',
+    source: { idle: true },
+    ...TOKEN_ENV,
+    covers: EDITOR,
+    sizes: [[96, 24], [40, 24]],
+    script: [
+      ...RENAME('Update the landing page hero'),
+      type('see @pack'), until('packages/'), checkpoint('folder-list'),
+      key('tab'), checkpoint('drilled'),
+      key('ctrl+c'), type('see @pack'), until('packages/'), key('enter'), checkpoint('folder'),
+      type('and @do'), until('docs/'), key('enter'), checkpoint('two-folders'),
+      key('backspace'), key('backspace'), checkpoint('folder-selected'),
+      key('backspace'), checkpoint('folder-removed'),
+      key('ctrl+c'), type('read @ui-pr'), until('ui-prompt.ts'), key('enter'), checkpoint('file'),
+    ],
+  },
+  // Ctrl+G on a token (4b.1): a mentioned file opens where it lies, a pasted block opens as text.
+  tokensOpen: {
+    summary: 'Ctrl+G with the cursor on a mentioned file (the file opens) and on a pasted block (its text opens and the edit replaces the token)',
+    source: { idle: true },
+    ...TOKEN_ENV,
+    editor: { append: '(edited)' },
+    covers: [...EDITOR, `${INTERACTION}external-editor.ts`, `${INTERACTION}token-source.ts`],
+    sizes: [[96, 24]],
+    script: [
+      type('open '), paste(NOTES), type(' and @ui-pr'), until('ui-prompt.ts'), key('tab'),
+      key('left'), key('left'), checkpoint('mention-focused'),
+      key('ctrl+g'), wait(800), checkpoint('mention-opened'),
+      key('home'), key('right', { repeat: 5 }), checkpoint('paste-focused'),
+      key('ctrl+g'), wait(800), checkpoint('paste-edited'),
+    ],
+  },
+  // The unified loader on the prompt's waits, and an information notice without a symbol.
+  tokensWaiting: {
+    summary: 'a slow clipboard: the loader and `Reading the clipboard…` above the prompt, then the image token; Ctrl+C shows an information notice without a symbol',
+    source: { idle: true },
+    clipboard: { image: 84, delayMs: 1500 },
+    workspace: TOKEN_FILES,
+    covers: [...EDITOR, `${INTERACTION}prompt-wait.ts`, 'packages/mayfly/src/transcript/pane-notification.ts', 'packages/mayfly/src/components/notification-line.ts'],
+    sizes: [[96, 24], [40, 24]],
+    script: [
+      type('compare '), key('ctrl+v'), wait(600), checkpoint('reading'),
+      until('KB]'), checkpoint('read'),
+      key('ctrl+c'), checkpoint('cleared'),
+    ],
+  },
+  // The image token (4b.1): selected by the cursor, and Ctrl+G shows it.
+  tokensImage: {
+    summary: 'an image token: the cursor selects it, the hint names Ctrl+G, and Ctrl+G opens the image in an overlay',
+    source: { idle: true },
+    ...TOKEN_ENV,
+    covers: EDITOR,
+    sizes: [[96, 24], [60, 24]],
+    script: [
+      ...WITH_IMAGE, key('left'), checkpoint('focused'),
+      key('ctrl+g'), until('Close'), checkpoint('preview'),
+      key('esc'), checkpoint('closed'),
+      key('right'), type(' tail'), key('home'), key('right', { repeat: 8 }), checkpoint('focused-mid'),
+    ],
+  },
+  // History (4b.2): a recalled message keeps its pasted block as a token.
+  tokensHistory: {
+    summary: 'a message with a pasted block is sent; Up brings back the token, not the text; Down returns to the draft with its token',
+    source: { idle: true },
+    ...TOKEN_ENV,
+    covers: EDITOR,
+    sizes: [[96, 40]],
+    script: [
+      ...RENAME('Update the landing page hero'),
+      type('read '), paste(NOTES), type(' then fix the hero'), key('enter'), until('Worked for'), checkpoint('sent'),
+      key('up'), checkpoint('recalled'),
+      key('enter'), until('Worked for'), checkpoint('resent'),
+      type('a new draft '), paste(NOTES.replace(/note/g, 'item')), checkpoint('draft'),
+      key('home'), key('up'), checkpoint('up-with-draft'),
+      key('down'), checkpoint('down-to-draft'),
+    ],
+  },
+  // The external editor (4b.2): the draft keeps its tokens through Ctrl+G.
+  tokensEditor: {
+    summary: 'Ctrl+G with an image, a pasted block, and a mention in the draft: the editor appends a word, and the image and the mention are still tokens',
+    source: { idle: true },
+    ...TOKEN_ENV,
+    editor: { append: '(edited)' },
+    covers: [...EDITOR, `${INTERACTION}external-editor.ts`],
+    sizes: [[96, 24]],
+    script: [
+      ...WITH_IMAGE, type(' with'), key('ctrl+j'), paste(NOTES), type(' and @ui-pr'), until('ui-prompt.ts'), key('tab'), checkpoint('before'),
+      key('ctrl+g'), wait(800), checkpoint('edited'),
+    ],
+  },
+  // The completion list (4d.3, 4d.4): `@` files with the open cue, `#` skills, and the rows, wait and failure of editor extensions.
+  completions: {
+    summary: 'the `@` and `#` lists: file rows with the folder and the Ctrl+G cue, skills, and editor-extension rows with their source tag, a named wait and a named failure',
+    source: { idle: true },
+    workspace: COMPLETION_FILES,
+    extensions: true,
+    editor: { append: '(edited)' },
+    covers: [...EDITOR, 'packages/mayfly/src/core/completion-drawer.ts', 'packages/mayfly/src/core/completion-list.ts', `${INTERACTION}file-mention.ts`, `${INTERACTION}skills-catalog.ts`, `${INTERACTION}prompt-wait.ts`, 'script/scenarios/extensions.mjs'],
+    sizes: EDITOR_SIZES,
+    script: [
+      ...RENAME('Update the landing page hero'),
+      type('look at @ui-'), until('ui-patterns.ts'), checkpoint('files'),
+      key('down'), checkpoint('files-down'),
+      ...WIPE, type('and @completion'), until('completion-list.ts'), checkpoint('files-long'),
+      resize(60, 24), checkpoint('files-60'),
+      resize(40, 24), checkpoint('files-40'),
+      resize(96, 24),
+      ...WIPE, type('see @ui-notes'), until('ui-notes.md'), checkpoint('files-deep'),
+      ...WIPE, type('see @pack'), until('packages/'), checkpoint('files-folder'),
+      key('tab'), checkpoint('files-drilled'),
+      ...WIPE, type('open @ui-pr'), until('ui-prompt.ts'), key('ctrl+g'), wait(800), checkpoint('files-opened'),
+      ...WIPE, type('@module-29'), until('module-29'), checkpoint('files-big'),
+      ...WIPE, type('use #'), until('release-notes'), checkpoint('skills'),
+      type('dep'), until('user-only'), checkpoint('skills-user-only'),
+      ...WIPE, type('fix #1'), until('issue-tracker'), checkpoint('ext'),
+      resize(60, 24), checkpoint('ext-60'),
+      resize(40, 24), checkpoint('ext-40'),
+      resize(96, 24),
+      ...WIPE, type('read #wi'), wait(600), checkpoint('ext-slow'),
+      until('wiki-home'), checkpoint('ext-slow-done'),
+      ...WIPE, type('#'), until('release-notes'), key('down', { repeat: 6 }), checkpoint('ext-problem'),
+      key('down'), checkpoint('ext-problem-away'),
+      resize(40, 24), checkpoint('ext-problem-40'),
+      resize(96, 24),
+      ...WIPE, type('#fl'), until('flaky-tests'), wait(400), checkpoint('ext-throw'),
+      key('down'), checkpoint('ext-throw-focused'),
+      resize(40, 24), checkpoint('ext-throw-40'),
+      resize(96, 24),
+      ...WIPE, type('#wi'), wait(300), ...WIPE, type('#wi'), wait(300), checkpoint('ext-restarted'),
+      until('wiki-home'), ...WIPE, wait(300), checkpoint('ext-idle'),
+    ],
+  },
+  // The empty prompt's placeholder by state (4e.1).
+  placeholders: {
+    summary: 'the empty prompt\'s ghost text by state: main idle and running, shell, a stored subagent (a real one the stub model starts) and the same one woken by a message, a read-only one, and a side question; shed at 60 and 40 columns',
+    source: { replay: 'subagentViews' },
+    covers: [...EDITOR, `${INTERACTION}placeholder.ts`, 'script/scenarios/stub-model.mjs'],
+    sizes: EDITOR_SIZES,
+    script: [
+      play('children'), checkpoint('main'),
+      resize(60, 24), checkpoint('main-60'),
+      resize(40, 24), checkpoint('main-40'),
+      resize(96, 24),
+      type('!'), checkpoint('shell'), key('backspace'),
+      type('x'), checkpoint('typed'), key('backspace'), checkpoint('typed-gone'),
+      ...SPAWN('Stored writer'), ...OPEN_VIEW('Stored writer'), checkpoint('resumable'),
+      resize(60, 24), checkpoint('resumable-60'),
+      resize(40, 24), checkpoint('resumable-40'),
+      resize(96, 24), type('hold:240000 wake up'), key('enter'), wait(1500), checkpoint('live'),
+      resize(60, 24), checkpoint('live-60'),
+      resize(40, 24), checkpoint('live-40'),
+      resize(96, 24), key('f7'),
+      ...OPEN_VIEW('One-shot linter'), checkpoint('read-only'), key('f7'),
+      play('side'), checkpoint('side-question'),
+      resize(60, 24), checkpoint('side-question-60'),
+      resize(40, 24), checkpoint('side-question-40'),
+      resize(96, 24), key('f7'),
+      type('hold:240000 build the packages'), key('enter'), wait(800), checkpoint('main-running'),
+      resize(60, 24), checkpoint('main-running-60'),
+      resize(40, 24), checkpoint('main-running-40'),
+    ],
+  },
+  placeholdersOff: {
+    summary: 'quiet hints off: the teaching ladders (main, side question, live subagent) are blank; shell, stored and read-only keep their state text',
+    source: { replay: 'subagentViews' },
+    config: { mayfly: NO_TIPS },
+    covers: [...EDITOR, `${INTERACTION}placeholder.ts`],
+    sizes: EDITOR_SIZES,
+    script: [
+      play('children'), checkpoint('main'),
+      type('!'), checkpoint('shell'), key('backspace'),
+      ...SPAWN('Stored writer'), ...OPEN_VIEW('Stored writer'), checkpoint('resumable'),
+      type('hold:240000 wake up'), key('enter'), wait(1500), checkpoint('live'), key('f7'),
+      ...OPEN_VIEW('One-shot linter'), checkpoint('read-only'), key('f7'),
+      play('side'), checkpoint('side-question'), key('f7'),
+      type('hold:240000 build the packages'), key('enter'), wait(800), checkpoint('main-running'),
+    ],
+  },
+  // `?`, the stream and the views from the prompt, Ctrl+Enter, the rotating hint and the title (4e.2).
+  editorKeys: {
+    summary: '`?` on an empty prompt opens key help (and is a character otherwise), Alt+Up and Alt+Down leave the prompt, the notification row\'s hint rotates while a turn runs, Ctrl+Enter sends a steer, and the title follows a rename',
+    source: { replay: 'subagentViews' },
+    covers: [...EDITOR, `${TRANSCRIPT}pane-notification.ts`, `${INTERACTION}commands-plugin.ts`, `${INTERACTION}keys.ts`, 'script/scenarios/stub-model.mjs'],
+    sizes: EDITOR_SIZES,
+    script: [
+      ...RENAME('Fix the build'), play('children'), checkpoint('idle'),
+      type('?'), until('Help'), checkpoint('help'), key('esc'), wait(150),
+      type('is this a question'), type('?'), checkpoint('question-text'), ...WIPE,
+      type('!'), type('?'), checkpoint('shell-question'), ...WIPE, key('backspace'),
+      key('alt+up'), checkpoint('stream'), key('alt+down'), checkpoint('back'),
+      key('alt+down'), checkpoint('views'), key('esc'), wait(150),
+      type('draft'), key('alt+up'), checkpoint('stream-with-draft'), key('esc'), wait(150), ...WIPE,
+      ...RENAME('Fix the build for good'), checkpoint('renamed'),
+      resize(40, 24), checkpoint('renamed-40'), resize(96, 24),
+      ...SPAWN('Stored writer'), ...OPEN_VIEW('Stored writer'), checkpoint('title-subagent'), key('f7'),
+      type('hold:240000 build the packages'), key('enter'), wait(800), checkpoint('hint-1'),
+      wait(15_500), checkpoint('hint-2'),
+      wait(15_500), checkpoint('hint-3'),
+      wait(15_500), checkpoint('hint-4'),
+      type('use the fast path'), key('ctrl+enter'), wait(400), checkpoint('steered'),
+      resize(60, 24), checkpoint('steered-60'),
+      resize(40, 24), checkpoint('steered-40'),
+    ],
+  },
+  // Replying to a subagent from the editor (4e.3): Enter queues, Ctrl+Enter steers, a stored child wakes, a one-shot one refuses.
+  subagentReply: {
+    summary: 'the editor sends to a subagent: a message to a stored one wakes it, Enter queues and Ctrl+Enter steers, its queued rows take e, s, d and u like the main session\'s, and a one-shot one is read-only',
+    source: { replay: 'subagentViews' },
+    covers: [...EDITOR, `${INTERACTION}placeholder.ts`, 'packages/mayfly/src/app/conversation-views.ts', 'script/scenarios/stub-model.mjs'],
+    sizes: EDITOR_SIZES,
+    script: [
+      play('children'),
+      ...SPAWN('Stored writer'), ...OPEN_VIEW('Stored writer'), checkpoint('stored'),
+      type('add a Windows line to the install section'), key('enter'), wait(3000), checkpoint('woken-once'),
+      type('and a WSL line too'), key('enter'), wait(3000), checkpoint('woken-twice'),
+      type('hold:240000 recheck every heading'), key('enter'), wait(1500), checkpoint('woken'),
+      type('and the title too'), key('enter'), wait(500), checkpoint('queued'),
+      type('use the short form'), key('ctrl+enter'), wait(500), checkpoint('steering'),
+      key('alt+up'), checkpoint('rows'),
+      key('up'), key('e'), checkpoint('edit'),
+      key('enter'), wait(500), checkpoint('requeued'),
+      key('alt+up'), key('s'), checkpoint('steered'),
+      key('d'), checkpoint('cancelled'),
+      key('u'), checkpoint('undone'),
+      key('esc'), wait(150),
+      resize(60, 24), checkpoint('rows-60'),
+      resize(40, 24), checkpoint('rows-40'),
+      resize(96, 24), key('f7'),
+      ...OPEN_VIEW('One-shot linter'), type('hello'), key('enter'), wait(300), checkpoint('read-only'),
+    ],
   },
   gallery: {
     summary: 'the UI gallery: a side pane, a view in the status row, and a bottom prompt pane',
@@ -1336,7 +1787,8 @@ export const CATALOG = Object.freeze({
     script: [
       play('three'), key('alt+up'), key('/'), type('width'), checkpoint('three'),
       play('four'), checkpoint('four'),
-      key('esc'), key('esc'),
+      // Over SSH pi-tui holds a lone Esc for 100 ms, so the two Escs are spaced to arrive as two reads and each closes a level.
+      key('esc'), wait(150), key('esc'), wait(150),
       play(), checkpoint('end'),
     ],
   },
@@ -1359,7 +1811,7 @@ export const CATALOG = Object.freeze({
       key('up'), checkpoint('answer-second'),
       key('up'), checkpoint('answer-first'),
       key('down', { repeat: 2 }), checkpoint('forward'),
-      key('esc'), key('esc'),
+      key('esc'), wait(150), key('esc'), wait(150),
     ],
   },
   'search-narrow': {
@@ -1370,7 +1822,7 @@ export const CATALOG = Object.freeze({
     script: [
       play(), key('alt+up'), key('/'), type('pnpm run lint'), checkpoint('typed'),
       key('enter'), checkpoint('selected'),
-      key('esc'), key('esc'),
+      key('esc'), wait(150), key('esc'), wait(150),
     ],
   },
   // The same at the Compact level: a turn is one `▸ N tool calls` line, and Enter on it opens the turn.
@@ -1488,7 +1940,7 @@ export const CATALOG = Object.freeze({
       { name: 'pending', after: [key('alt+up'), checkpoint('tool-line'), key('alt+down')] },
       { name: 'edited', after: [key('alt+up'), checkpoint('edit-card'), key('up'), checkpoint('edit-walk'), key('alt+down')] },
       { name: 'approved', after: [key('alt+up'), checkpoint('approval-row'), key('up', { repeat: 2 }), checkpoint('approval-walk'), key('alt+down')] },
-      { name: 'manual-settled', after: [key('alt+up'), checkpoint('compaction-row'), key('up'), checkpoint('compaction-walk'), key('esc')] },
+      { name: 'manual-settled', after: [key('alt+up'), checkpoint('compaction-row'), key('up'), checkpoint('compaction-walk'), key('esc'), wait(150)] },
     ]),
   },
   // / and ? over a compaction summary, then over a command output, an answer, and an edit hunk, with n, N, and Esc.
@@ -1500,7 +1952,7 @@ export const CATALOG = Object.freeze({
     sizes: [[100, 40]],
     script: visit([
       { name: 'manual-settled', after: [key('alt+up'), key('?'), type('once more'), key('enter'), checkpoint('compaction-text'), key('esc'), checkpoint('ended'), key('esc')] },
-      { name: 'searched', after: [key('alt+up'), key('?'), type('needle'), key('enter'), checkpoint('selected'), key('n'), checkpoint('next'), key('N'), checkpoint('prev'), key('/'), type('needle'), key('enter'), checkpoint('forward'), key('esc'), checkpoint('ended-again'), key('esc')] },
+      { name: 'searched', after: [key('alt+up'), key('?'), type('needle'), key('enter'), checkpoint('selected'), key('n'), checkpoint('next'), key('N'), checkpoint('prev'), key('/'), type('needle'), key('enter'), checkpoint('forward'), key('esc'), checkpoint('ended-again'), key('esc'), wait(150)] },
     ]),
   },
   // The open turn streams: waiting, reasoning, a write being prepared, its decision card, and the write running. The replay

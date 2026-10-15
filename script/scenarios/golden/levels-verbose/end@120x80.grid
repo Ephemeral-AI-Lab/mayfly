@@ -74,11 +74,11 @@ grid 120x80 cursor none
 |  ■ interrupted
 |
 |  ✻ Stopped after 5s · done 10:24
-|                                                                                      Alt+↑ conversation · Alt+↓ view
-|╭───────────────────────────────────────────────────────────────────────────────────── Survey the transcript code and ─╮
-|│ >                                                                                                                    │
+|                                                                                       Alt+↑ conversation · Alt+↓ bar
+|╭────────────────────────────────────────────────────────────────────────────────────── Survey the transcript code and ╮
+|│ >  Ask anything · / commands · @ files · # skills · ! shell                                                          │
 |╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
-| deepseek-official/deepseek-flash High  ~/workspace                                  cache ▰▰▱▱▱ 42%  ctx ▰▱▱▱▱▱▱▱▱▱ 5%
+| deepseek-flash High  ~/workspace                                                    cache 42%  context: 5% (5.5k/128k)
 styles
 0: 2-3 fg:#4ec87e; 4-7 fg:#ededf2 b; 8 fg:#9aa3b8; 9-26 fg:#c9c0f0; 27-34 fg:#9aa3b8
 1: 2-14 fg:#ededf2
@@ -134,8 +134,8 @@ styles
 70: 2-3 fg:#9aa3b8; 4-7 fg:#9aa3b8 b; 8 fg:#9aa3b8; 9-23 fg:#c9c0f0; 24-38 fg:#9aa3b8
 72: 2-14 fg:#e8a838
 74: 2-32 fg:#9aa3b8
-75: 86-116 fg:#9aa3b8
-76: 0-85 fg:#45406b; 86-117 fg:#5c6476; 118-119 fg:#45406b
-77: 0 fg:#45406b; 4 r; 119 fg:#45406b
+75: 87-116 fg:#9aa3b8
+76: 0-87 fg:#45406b; 88-117 fg:#f5f5f7 b; 118-119 fg:#45406b
+77: 0 fg:#45406b; 2-3 fg:#ededf2; 4 r; 5-60 fg:#5c6476; 119 fg:#45406b
 78: 0-119 fg:#45406b
-79: 1-37 fg:#ededf2; 40-50 fg:#9aa3b8; 85-90 fg:#ededf2; 91-92 fg:#e8a838; 93-95 fg:#9aa3b8; 96-99 fg:#ededf2; 102-105 fg:#ededf2; 106 fg:#9a86e6; 107-115 fg:#9aa3b8; 116-118 fg:#ededf2
+79: 1-19 fg:#ededf2; 22-32 fg:#9aa3b8; 85-118 fg:#ededf2

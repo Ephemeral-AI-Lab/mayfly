@@ -21,6 +21,7 @@ import { EditorExtensionRuntime } from '../../src/interaction/editor-extension-r
 import {
   registerEditorAutocompleteSource,
 } from '../../src/interaction/editor-instance.ts'
+import { Editor } from '../../src/components/editor.ts'
 import { FakeMayflyEditor, fakeMayflyContext, KEY } from './fakes.ts'
 import { flush } from '../helpers.ts'
 
@@ -62,7 +63,7 @@ function runtimeFixture(entries: readonly TestEditorExtension[] = []): {
     ctx,
     editor,
     report: (_id, feedback) => notices.push(feedback.message),
-    shouldTransformSubmit: () => true,
+    frame: ({ parked }) => Editor({ shell: false, parked }), shouldTransformSubmit: () => true,
   })
   return {
     ctx,
@@ -81,6 +82,11 @@ function suggestions(provider: MayflyAutocompleteProvider, text: string, force?:
     signal: new AbortController().signal,
     ...(force === undefined ? {} : { force }),
   })
+}
+
+/** A failing source is one problem row of its own, and the list carries nothing else from it. */
+function problemsOf(list: { readonly items: readonly { readonly problem?: string }[] } | null): (string | undefined)[] {
+  return (list?.items ?? []).map(item => item.problem)
 }
 
 function privateSubmit(runtime: EditorExtensionRuntime, attempt: MayflyEditorSubmitAttempt): void {
@@ -268,8 +274,8 @@ describe('editor extension completion multiplexer', () => {
       id: 'acme.invalid-completion',
       complete: async () => callbackResult as readonly MayflyEditorCompletionItem[],
     }])
-    await expect(suggestions(editor.autocompleteProvider!, '/bad')).resolves.toBeNull()
-    expect(notices.some(notice => notice.includes(expectedNotice))).toBe(true)
+    expect(problemsOf(await suggestions(editor.autocompleteProvider!, '/bad'))).toEqual([expect.stringContaining(expectedNotice)])
+    expect(notices).toEqual([])
     runtime.dispose()
   })
 
@@ -292,18 +298,17 @@ describe('editor extension completion multiplexer', () => {
       id: 'acme.hostile-completion',
       complete: async () => result as unknown as readonly MayflyEditorCompletionItem[],
     }])
-    await expect(suggestions(editor.autocompleteProvider!, '/hostile')).resolves.toBeNull()
-    expect(notices.some(notice => notice.includes(expectedNotice))).toBe(true)
+    expect(problemsOf(await suggestions(editor.autocompleteProvider!, '/hostile'))).toEqual([expect.stringContaining(expectedNotice)])
+    expect(notices).toEqual([])
     runtime.dispose()
   })
 
   it('contains a rejected completion promise', async () => {
-    const { editor, runtime, notices } = runtimeFixture([{
+    const { editor, runtime } = runtimeFixture([{
       id: 'acme.rejected-completion',
       complete: async () => { throw new Error('rejected completion promise') },
     }])
-    await expect(suggestions(editor.autocompleteProvider!, '#x')).resolves.toBeNull()
-    expect(notices).toContain('rejected completion promise')
+    expect(problemsOf(await suggestions(editor.autocompleteProvider!, '#x'))).toEqual(['rejected completion promise'])
     runtime.dispose()
   })
 
@@ -315,16 +320,14 @@ describe('editor extension completion multiplexer', () => {
       id: 'acme.hostile-rejection',
       complete: async () => { throw hostile },
     }])
-    await expect(suggestions(first.editor.autocompleteProvider!, '/hostile')).resolves.toBeNull()
-    expect(first.notices).toContain('editor extension completion failed')
+    expect(problemsOf(await suggestions(first.editor.autocompleteProvider!, '/hostile'))).toEqual(['completion failed'])
     first.runtime.dispose()
 
     const second = runtimeFixture([{
       id: 'acme.empty-rejection',
       complete: async () => { throw new Error('') },
     }])
-    await expect(suggestions(second.editor.autocompleteProvider!, '/empty')).resolves.toBeNull()
-    expect(second.notices).toContain('editor extension completion failed')
+    expect(problemsOf(await suggestions(second.editor.autocompleteProvider!, '/empty'))).toEqual(['completion failed'])
     second.runtime.dispose()
   })
 
@@ -332,12 +335,11 @@ describe('editor extension completion multiplexer', () => {
     const item = new Proxy({}, {
       getOwnPropertyDescriptor: () => { throw 'raw completion trap' },
     })
-    const { editor, runtime, notices } = runtimeFixture([{
+    const { editor, runtime } = runtimeFixture([{
       id: 'acme.raw-admission',
       complete: async () => [item] as never,
     }])
-    await expect(suggestions(editor.autocompleteProvider!, '/trap')).resolves.toBeNull()
-    expect(notices).toContain('completion result was rejected')
+    expect(problemsOf(await suggestions(editor.autocompleteProvider!, '/trap'))).toEqual(['completion result was rejected'])
     runtime.dispose()
   })
 
@@ -449,7 +451,7 @@ describe('editor extension completion multiplexer', () => {
   it('times out a hung extension while retaining settled base suggestions', async () => {
     vi.useFakeTimers()
     const hung = new Promise<readonly MayflyEditorCompletionItem[]>(() => {})
-    const { ctx, editor, runtime, notices } = runtimeFixture([{
+    const { ctx, editor, runtime } = runtimeFixture([{
       id: 'acme.hung-completion',
       complete: () => hung,
     }])
@@ -461,8 +463,11 @@ describe('editor extension completion multiplexer', () => {
     try {
       const pending = suggestions(editor.autocompleteProvider!, '/b')
       await vi.advanceTimersByTimeAsync(5_000)
-      await expect(pending).resolves.toEqual({ items: [baseItem], prefix: '/b' })
-      expect(notices).toContain('editor extension completion timed out')
+      // The hung source is one problem row after the base suggestions it did not block.
+      await expect(pending).resolves.toEqual({
+        items: [baseItem, expect.objectContaining({ label: 'acme.hung-completion', problem: 'it did not answer in time' })],
+        prefix: '/b',
+      })
     } finally {
       runtime.dispose()
       unregister()
@@ -559,7 +564,7 @@ describe('editor extension submit barrier', () => {
       ctx: declinedMayfly.ctx,
       editor: declinedEditor,
       report: () => {},
-      shouldTransformSubmit: () => false,
+      frame: ({ parked }) => Editor({ shell: false, parked }), shouldTransformSubmit: () => false,
     })
     registerExtensions(declinedMayfly.ctx, [{ id: 'acme.declined', transformSubmit: request => success({ text: request.text }) }])
     const declinedCommit = vi.fn(() => true)
@@ -771,10 +776,10 @@ describe('editor extension submit barrier', () => {
       { id: 'acme.two', transformSubmit: request => { requests.push(request); return success({ text: `two:${request.text}` }) } },
     ]
     const { ctx, editor, runtime } = runtimeFixture(entries)
-    ctx.mayflyInteractionState.pasteImage.pastedImages.set('[image #1]', ref)
+    ctx.mayflyInteractionState.pasteImage.pastedImages.set('[image #1 70 B]', ref)
     let prepared: ReturnType<EditorExtensionRuntime['takePrepared']>
     editor.onSubmit = source => { prepared = runtime.takePrepared(source) }
-    editor.setText('[image #1] hello')
+    editor.setText('[image #1 70 B] hello')
     editor.submit()
     await vi.waitFor(() => expect(prepared).toBeDefined())
 
@@ -792,10 +797,10 @@ describe('editor extension submit barrier', () => {
       { type: 'text', text: 'two:one:hello' },
       { type: 'image', attachment: ref },
     ])
-    expect(ctx.mayflyInteractionState.pasteImage.pastedImages.has('[image #1]')).toBe(false)
+    expect(ctx.mayflyInteractionState.pasteImage.pastedImages.has('[image #1 70 B]')).toBe(false)
     prepared!.transformation?.rollback?.()
     prepared!.transformation?.rollback?.()
-    expect(ctx.mayflyInteractionState.pasteImage.pastedImages.get('[image #1]')).toBe(ref)
+    expect(ctx.mayflyInteractionState.pasteImage.pastedImages.get('[image #1 70 B]')).toBe(ref)
     runtime.dispose()
   })
 
@@ -806,27 +811,27 @@ describe('editor extension submit barrier', () => {
       id: 'acme.attachment-race',
       transformSubmit: request => success({ text: request.text }),
     }])
-    ctx.mayflyInteractionState.pasteImage.pastedImages.set('[image #1]', original)
+    ctx.mayflyInteractionState.pasteImage.pastedImages.set('[image #1 70 B]', original)
     let raced: ReturnType<EditorExtensionRuntime['takePrepared']>
     editor.onSubmit = source => {
-      ctx.mayflyInteractionState.pasteImage.pastedImages.set('[image #1]', replacement)
+      ctx.mayflyInteractionState.pasteImage.pastedImages.set('[image #1 70 B]', replacement)
       raced = runtime.takePrepared(source)
     }
-    editor.setText('[image #1] caption')
+    editor.setText('[image #1 70 B] caption')
     editor.submit()
     await vi.waitFor(() => expect(raced).toBeDefined())
     expect(raced!.transformation?.blocks).toEqual([{ type: 'text', text: 'caption' }])
-    expect(ctx.mayflyInteractionState.pasteImage.pastedImages.get('[image #1]')).toBe(replacement)
+    expect(ctx.mayflyInteractionState.pasteImage.pastedImages.get('[image #1 70 B]')).toBe(replacement)
 
-    ctx.mayflyInteractionState.pasteImage.pastedImages.set('[image #1]', original)
+    ctx.mayflyInteractionState.pasteImage.pastedImages.set('[image #1 70 B]', original)
     let prepared: ReturnType<EditorExtensionRuntime['takePrepared']>
     editor.onSubmit = source => { prepared = runtime.takePrepared(source) }
-    editor.setText('[image #1] caption')
+    editor.setText('[image #1 70 B] caption')
     editor.submit()
     await vi.waitFor(() => expect(prepared).toBeDefined())
-    ctx.mayflyInteractionState.pasteImage.pastedImages.set('[image #1]', replacement)
+    ctx.mayflyInteractionState.pasteImage.pastedImages.set('[image #1 70 B]', replacement)
     prepared!.transformation?.rollback?.()
-    expect(ctx.mayflyInteractionState.pasteImage.pastedImages.get('[image #1]')).toBe(replacement)
+    expect(ctx.mayflyInteractionState.pasteImage.pastedImages.get('[image #1 70 B]')).toBe(replacement)
     runtime.dispose()
   })
 
@@ -842,10 +847,10 @@ describe('editor extension submit barrier', () => {
       id: 'acme.image-only',
       transformSubmit: request => success({ text: request.text }),
     }])
-    ctx.mayflyInteractionState.pasteImage.pastedImages.set('[image #1]', ref)
+    ctx.mayflyInteractionState.pasteImage.pastedImages.set('[image #1 70 B]', ref)
     let prepared: ReturnType<EditorExtensionRuntime['takePrepared']>
     editor.onSubmit = source => { prepared = runtime.takePrepared(source) }
-    editor.setText('[image #1]')
+    editor.setText('[image #1 70 B]')
     editor.submit()
     await vi.waitFor(() => expect(prepared).toBeDefined())
     expect(prepared!.text).toBe('')
@@ -864,11 +869,11 @@ describe('editor extension submit barrier', () => {
     }])
     let prepared: ReturnType<EditorExtensionRuntime['takePrepared']>
     editor.onSubmit = source => { prepared = runtime.takePrepared(source) }
-    editor.setText('keep [image #77] literal')
+    editor.setText('keep [image #77 1 B] literal')
     editor.submit()
     await vi.waitFor(() => expect(prepared).toBeDefined())
-    expect(requests).toEqual([{ text: 'keep [image #77] literal', attachments: [] }])
-    expect(prepared).toEqual({ text: 'keep [image #77] literal' })
+    expect(requests).toEqual([{ text: 'keep [image #77 1 B] literal', attachments: [] }])
+    expect(prepared).toEqual({ text: 'keep [image #77 1 B] literal' })
     runtime.dispose()
   })
 
@@ -992,7 +997,7 @@ describe('editor extension shell and actions', () => {
       ctx,
       editor,
       report: () => {},
-      shouldTransformSubmit: () => true,
+      frame: ({ parked }) => Editor({ shell: false, parked }), shouldTransformSubmit: () => true,
     })
     expect(replay).toHaveBeenCalledOnce()
     runtime.handleInput('a')
@@ -1009,7 +1014,7 @@ describe('editor extension shell and actions', () => {
       ctx,
       editor,
       report: () => {},
-      shouldTransformSubmit: () => true,
+      frame: ({ parked }) => Editor({ shell: false, parked }), shouldTransformSubmit: () => true,
       footer: () => ({ kind: 'text', content: 'interrupt requested' }),
     })
     runtime.focused = true
@@ -1052,7 +1057,7 @@ describe('editor extension shell and actions', () => {
       ctx,
       editor: new FakeMayflyEditor(),
       report: (_id, feedback) => notices.push(feedback.message),
-      shouldTransformSubmit: () => true,
+      frame: ({ parked }) => Editor({ shell: false, parked }), shouldTransformSubmit: () => true,
       footer: () => ({ kind: 'actions', id: 'invalid-footer', items: [] }),
     })
     runtime.render(80)
@@ -1064,7 +1069,7 @@ describe('editor extension shell and actions', () => {
       ctx,
       editor: new FakeMayflyEditor(),
       report: (_id, feedback) => invalidNotices.push(feedback.message),
-      shouldTransformSubmit: () => true,
+      frame: ({ parked }) => Editor({ shell: false, parked }), shouldTransformSubmit: () => true,
       footer: () => ({ kind: 'unknown' }) as never,
     })
     invalid.render(80)
@@ -1075,7 +1080,7 @@ describe('editor extension shell and actions', () => {
       ctx,
       editor: new FakeMayflyEditor(),
       report: () => {},
-      shouldTransformSubmit: () => true,
+      frame: ({ parked }) => Editor({ shell: false, parked }), shouldTransformSubmit: () => true,
       footer: () => ({ kind: 'text', content: 'footer' }),
     })
     expect(valid.render(80).join('\n')).toContain('footer')
@@ -1100,7 +1105,7 @@ describe('editor extension shell and actions', () => {
       return off
     })
     const notices: string[] = []
-    const runtime = new EditorExtensionRuntime({ ctx, editor: new FakeMayflyEditor(), report: (_id, feedback) => notices.push(feedback.message), shouldTransformSubmit: () => true })
+    const runtime = new EditorExtensionRuntime({ ctx, editor: new FakeMayflyEditor(), report: (_id, feedback) => notices.push(feedback.message), frame: ({ parked }) => Editor({ shell: false, parked }), shouldTransformSubmit: () => true })
     try {
       expect(runtime.focused).toBe(false)
       runtime.render(80)
@@ -1211,7 +1216,7 @@ describe('editor extension shell and actions', () => {
       return () => {}
     })
     const notices: string[] = []
-    const runtime = new EditorExtensionRuntime({ ctx, editor: new FakeMayflyEditor(), report: (_id, feedback) => notices.push(feedback.message), shouldTransformSubmit: () => true })
+    const runtime = new EditorExtensionRuntime({ ctx, editor: new FakeMayflyEditor(), report: (_id, feedback) => notices.push(feedback.message), frame: ({ parked }) => Editor({ shell: false, parked }), shouldTransformSubmit: () => true })
     privateDispatch(runtime, { kind: 'activate', pagePath: [], controlId: 'extension-0-0', actionId: 'extension-0-0' })
     await vi.waitFor(() => expect(actionContext).toBeDefined())
     runtime.invalidateSession()
@@ -1240,7 +1245,7 @@ describe('editor extension shell and actions', () => {
       ctx,
       editor,
       report: () => { throw new Error('report failed') },
-      shouldTransformSubmit: () => true,
+      frame: ({ parked }) => Editor({ shell: false, parked }), shouldTransformSubmit: () => true,
     })
     privateDispatch(runtime, { kind: 'activate', pagePath: [], controlId: 'extension-0-0', actionId: 'extension-0-0' })
     privateDispatch(runtime, { kind: 'activate', pagePath: [], controlId: 'extension-0-0', actionId: 'extension-0-0' })
@@ -1312,7 +1317,7 @@ describe('editor extension shell and actions', () => {
       ctx,
       editor,
       report: () => {},
-      shouldTransformSubmit: () => true,
+      frame: ({ parked }) => Editor({ shell: false, parked }), shouldTransformSubmit: () => true,
     })
     privateDispatch(runtime, { kind: 'activate', pagePath: [], controlId: 'extension-0-0', actionId: 'extension-0-0' })
     await vi.waitFor(() => expect(signal).toBeDefined())
@@ -1344,7 +1349,7 @@ describe('editor extension shell and actions', () => {
       ctx,
       editor,
       report: () => {},
-      shouldTransformSubmit: () => true,
+      frame: ({ parked }) => Editor({ shell: false, parked }), shouldTransformSubmit: () => true,
     })
 
     privateDispatch(runtime, { kind: 'activate', pagePath: [], controlId: 'extension-0-0', actionId: 'extension-0-0' })
@@ -1377,7 +1382,7 @@ describe('editor extension shell and actions', () => {
       ctx,
       editor,
       report: () => {},
-      shouldTransformSubmit: () => true,
+      frame: ({ parked }) => Editor({ shell: false, parked }), shouldTransformSubmit: () => true,
     })
 
     privateDispatch(runtime, { kind: 'activate', pagePath: [], controlId: 'extension-0-0', actionId: 'extension-0-0' })
@@ -1458,5 +1463,30 @@ describe('editor extension shell and actions', () => {
       runtime.dispose()
       vi.useRealTimers()
     }
+  })
+})
+
+describe('editor extension completion items: problems, details, and inert rows', () => {
+  it('carries a valid problem onto its item, and turns an invalid problem or detail into a failed source row', async () => {
+    const { editor, runtime } = runtimeFixture([
+      { id: 'acme.with-problem', complete: async () => success([{ id: 'ok', label: 'Ok', insertText: 'ok', problem: 'needs login' }]) },
+      { id: 'acme.bad-problem', complete: async () => success([{ id: 'bad', label: 'Bad', insertText: 'bad', problem: 42 } as never]) },
+      { id: 'acme.bad-detail', complete: async () => success([{ id: 'detail', label: 'Detail', insertText: 'detail', detail: 7 } as never]) },
+    ])
+    const result = await suggestions(editor.autocompleteProvider!, '/', true)
+    expect(result?.items.find(item => item.value === 'ok')).toMatchObject({ problem: 'needs login' })
+    expect(problemsOf(result)).toEqual(expect.arrayContaining(['completion item 0 has an invalid problem', 'completion item 0 has an invalid detail']))
+    runtime.dispose()
+  })
+
+  it('applies a failed source row as nothing: the lines stay as they were', async () => {
+    const { editor, runtime } = runtimeFixture([
+      { id: 'acme.failing', complete: async () => { throw new Error('boom') } },
+    ])
+    const result = await suggestions(editor.autocompleteProvider!, '/', true)
+    const row = result?.items.find(item => item.value === 'acme.failing')
+    expect(row).toBeDefined()
+    expect(editor.autocompleteProvider!.applyCompletion(['/x'], 0, 2, row!, '/')).toEqual({ lines: ['/x'], cursorLine: 0, cursorCol: 2 })
+    runtime.dispose()
   })
 })

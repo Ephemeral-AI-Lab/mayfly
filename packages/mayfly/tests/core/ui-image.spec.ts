@@ -85,7 +85,7 @@ describe('image admission', () => {
   it('refuses images in status rows and editor shells, and admits them in a responsive branch', () => {
     const image = ui.image({ attachmentId: 'a', alt: 'x' })
     expect(validateMayflyStatusNode(image)).toMatchObject({ ok: false })
-    expect(validateMayflyEditorShellNode(ui.stack.column([image, { kind: 'editor-control' } as never]))).toMatchObject({ ok: false })
+    expect(validateMayflyEditorShellNode(ui.stack.column([image, { kind: 'prompt', id: 'prompt' } as never]))).toMatchObject({ ok: false })
     const responsive = ui.stack.column([ui.child(image, { when: { minWidth: 40 } })])
     expect(validateMayflyUiNode(responsive)).toMatchObject({ ok: true })
   })
@@ -221,7 +221,7 @@ describe('MayflyUiImagesService', () => {
 function paint(node: ReturnType<typeof ui.image>, options: { readonly protocol?: boolean, readonly images?: MayflyUiImagesService | undefined, readonly repaint?: () => void } = {}) {
   const components = new FakeMayflyComponents()
   components.imageProtocolActive = options.protocol ?? true
-  const painter = new UiImagePainter(node, components, colors, options.images, options.repaint ?? (() => {}))
+  const painter = new UiImagePainter(node, components, colors, options.images, options.repaint ?? (() => {}), () => ['loading'])
   return { components, painter }
 }
 
@@ -234,7 +234,8 @@ describe('UiImagePainter', () => {
     images.provide(loader)
     const repaint = vi.fn()
     const { components, painter } = paint(node, { images, repaint })
-    expect(painter.render(40)).toEqual(['«textMuted:[Image #1 84 KB]»'])
+    // R2: the unified loader while the bytes are read, the alt once the image is known to be missing or fails.
+    expect(painter.render(40)).toEqual(['loading'])
     waiting.get('a')!.resolve(PHOTO)
     await flush()
     expect(repaint).toHaveBeenCalledTimes(1)
@@ -308,7 +309,7 @@ describe('compiled image nodes', () => {
     const counters = createWorkCounters()
     const result = compileMayflyUiSurfaceNode(ui.image({ attachmentId: 'a', alt: '[Image #1]' }), { ...base(runtime), counters })
     if (!result.ok) throw new Error(result.message)
-    expect(result.value.component.render(40)).toEqual(['«textMuted:[Image #1]»'])
+    expect(result.value.component.render(40)).toEqual(['«primary:⣾» «text:Loading image…»'])
     await flush()
     expect(repaint).toHaveBeenCalledTimes(1)
     // The renderer's repaint invalidates the surface, as a pane's does, before it paints again.

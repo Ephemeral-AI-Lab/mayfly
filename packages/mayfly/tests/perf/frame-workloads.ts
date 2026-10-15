@@ -12,6 +12,7 @@
 import { Context } from '@deepseek-ai/cordis'
 import type { MayflyPaneRegistration, MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import { ui } from '@ephemeral-ai/mayfly-ui'
+import { Editor } from '../../src/components/editor.ts'
 import { apply as applyUiProvider } from '@ephemeral-ai/mayfly-ui/provider'
 import { MayflyComponentsService } from '../../src/core/components.ts'
 import { contextHintTranslator, mountContextHintLocale } from '../../src/core/context-hint-locale.ts'
@@ -295,7 +296,7 @@ export const FRAME_WORKLOADS: readonly FrameWorkload[] = [
       const keymap = new CountingKeymap(ctx)
       keymap.register([...INTERACTION_KEY_ACTIONS])
       const extension = ctx.mayflyEditorExtensions.register({ id: 'perf.editor' }, { hint: 'An extension hint row' })
-      const runtime = new EditorExtensionRuntime({ ctx, editor: new FakeMayflyEditor(), report: () => {}, shouldTransformSubmit: () => true })
+      const runtime = new EditorExtensionRuntime({ ctx, editor: new FakeMayflyEditor(), report: () => {}, frame: ({ parked }) => Editor({ shell: false, parked }), shouldTransformSubmit: () => true })
       runtime.refreshPresentation()
       reset(counters)
       return {

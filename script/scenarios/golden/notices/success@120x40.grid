@@ -35,10 +35,10 @@ grid 120x40 cursor none
 |  ⡀ Deep diving · 5s
 |    ⎿ Tip: Esc to interrupt the run
 |                                                                            ✓ Copied the last answer to the clipboard
-|╭────────────────────────────────────────────────────────────────────────────────────────────── Show me every kind of ─╮
-|│ >                                                                                                                    │
+|╭─────────────────────────────────────────────────────────────────────────────────────────────── Show me every kind of ╮
+|│ >  Ask anything · / commands · @ files · # skills · ! shell                                                          │
 |╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
-| deepseek-official/deepseek-flash  ~/workspace
+| deepseek-flash  ~/workspace
 styles
 0: 1-23 fg:#f5f5f7; 24-25 fg:#9a86e6
 1: 1-23 fg:#e9e5f6; 24-25 fg:#9a86e6; 26-107 fg:#9a86e6 b
@@ -51,8 +51,8 @@ styles
 9: 2-3 fg:#9a86e6; 4-32 fg:#9a86e6 b
 33: 0-1 fg:#ededf2; 2 fg:#9a86e6; 3-14 fg:#ededf2; 16-19 fg:#9aa3b8
 34: 0-34 fg:#9aa3b8
-35: 76 fg:#4ec87e; 78-116 fg:#ededf2
-36: 0-94 fg:#45406b; 95-117 fg:#5c6476; 118-119 fg:#45406b
-37: 0 fg:#45406b; 4 r; 119 fg:#45406b
+35: 76-77 fg:#4ec87e; 78-116 fg:#ededf2
+36: 0-96 fg:#45406b; 97-117 fg:#f5f5f7 b; 118-119 fg:#45406b
+37: 0 fg:#45406b; 2-3 fg:#ededf2; 4 r; 5-60 fg:#5c6476; 119 fg:#45406b
 38: 0-119 fg:#45406b
-39: 1-32 fg:#ededf2; 35-45 fg:#9aa3b8
+39: 1-14 fg:#ededf2; 17-27 fg:#9aa3b8

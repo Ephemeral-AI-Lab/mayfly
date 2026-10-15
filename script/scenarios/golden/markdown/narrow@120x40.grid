@@ -18,11 +18,11 @@ grid 60x24 cursor none
 |
 |    ```ts
 |      export function section8(input: readonly string[],
-|                          Alt+↑ conversation · Alt+↓ view
-|╭──────────────────────── Explain the rendering pipeline. ─╮
-|│ >                                                        │
+|                               Alt+↑ conversation · Alt+↓
+|╭───────────────────────── Explain the rendering pipeline. ╮
+|│ >  Ask anything · / commands · @ files · # skills        │
 |╰──────────────────────────────────────────────────────────╯
-| deepseek-flash  workspace                ctx ▱▱▱▱▱▱▱▱▱▱ 3%
+| deepseek-flash High  .  cache 66%  context: 3% (3.5k/128k)
 styles
 0: 6 fg:#ededf2
 1: 4-6 fg:#45406b
@@ -37,8 +37,8 @@ styles
 15: 8-9 fg:#c9c0f0
 17: 4-8 fg:#45406b
 18: 6-11 fg:#9a86e6; 12 fg:#ededf2; 13-20 fg:#9a86e6; 22-29 fg:#c9c0f0; 31-37 fg:#ededf2; 38-45 fg:#9a86e6; 47-52 fg:#c9c0f0
-19: 26-56 fg:#9aa3b8
-20: 0-24 fg:#45406b; 25-57 fg:#5c6476; 58-59 fg:#45406b
-21: 0 fg:#45406b; 4 r; 59 fg:#45406b
+19: 31-56 fg:#9aa3b8
+20: 0-26 fg:#45406b; 27-57 fg:#f5f5f7 b; 58-59 fg:#45406b
+21: 0 fg:#45406b; 2-3 fg:#ededf2; 4 r; 5-50 fg:#5c6476; 59 fg:#45406b
 22: 0-59 fg:#45406b
-23: 1-14 fg:#ededf2; 17-25 fg:#9aa3b8; 42-45 fg:#ededf2; 46-55 fg:#9aa3b8; 56-58 fg:#ededf2
+23: 1-19 fg:#ededf2; 25-58 fg:#ededf2

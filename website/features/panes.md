@@ -1,6 +1,6 @@
 # 底部面板
 
-会话记录与输入编辑器之间是**底部 dock**：四个被动面板按优先级自上而下叠放——workflow → queue → activity → 通知栏，通知栏紧贴编辑器上方（状态栏仍在编辑器下方）。agents、jobs、goal、todo 不是面板：它们是状态栏里的条目（见[状态栏](/features/status-bar)）。无内容时各面板渲染零行——dock 不会跳变。BTW 和 `/agents` 打开的会话不属于 pane：它们是显示在 transcript 面板中的旁支会话。
+会话记录与输入编辑器之间是**底部 dock**：三个被动面板按优先级自上而下叠放——workflow → activity → 通知栏，通知栏紧贴编辑器上方（状态栏仍在编辑器下方）。agents、jobs、goal、todo 不是面板：它们是状态栏里的条目（见[状态栏](/features/status-bar)）。无内容时各面板渲染零行——dock 不会跳变。BTW 和 `/agents` 打开的会话不属于 pane：它们是显示在 transcript 面板中的旁支会话。
 
 ## Dock 行数预算
 
@@ -31,15 +31,15 @@ Standard 模式下，提示的位置改为显示当前动作：命令、路径�
 
 ## 通知栏（notification）
 
-编辑器上方的一行——无内容时为空行，所以编辑器不会移动。它显示此刻该读的通知：应用与当前会话的记录中最严重、其次最新的一条，后面用灰色 `· +N` 表示排在后面的条数。通知靠右，可以用满左右边距之间的整行；仍然太长时在前部以 `…` 截断，并保留结尾的计数或倒计时（`⚠ Rate lim… · retrying in 9s · 1/5`）。会话流滚离尾部时，这一行还会在中间显示 `Back to bottom · Ctrl+↓` 标签。旁支会话在右侧用 `F7 btw · F8 close` 取代空闲提示。
+编辑器上方的一行——无内容时为空行，所以编辑器不会移动。它显示此刻该读的通知：应用与当前会话的记录中最严重、其次最新的一条，后面用灰色 `· +N` 表示排在后面的条数。通知靠右，可以用满左右边距之间的整行；仍然太长时在前部以 `…` 截断，并保留结尾的计数或倒计时（`⚠ Rate lim… · retrying in 9s · 1/5`）。普通信息没有标记字形，文字本身就是通知。会话流滚离尾部时，这一行还会在中间显示 `Back to bottom · Ctrl+↓` 标签。
 
-焦点在会话或搜索时，该模式的按键占据这一行的左侧，按优先级从后往前收起——`↑/↓ select · Enter expand · c copy · / ? search · Ctrl+G editor · Ctrl+C JSON · Esc back`，`Esc` 最后才被收起；模式持续期间通知退让为它的标记和结尾。
+没有通知时，这一行显示提示符正在等待的内容（`Searching files…`，带加载动画）、提示符历史的位置（`↑ history 2/4`），或光标所在 token 的按键；否则提示离开提示符的按键（`Alt+↑ conversation · Alt+↓ view`），回合运行期间轮换显示引导或中断回合的按键、草稿的按键，以及计划与模型的按键。打开旁支会话时，右侧以 `F7 btw · F8 close` 开头，并取代这条通用提示。
 
-## 排队消息面板（queue）
+焦点在会话或搜索时，该模式的按键占据这一行的左侧，按优先级从后往前收起——`↑/↓ select · Enter expand · c copy · / ? search · Ctrl+G editor · Ctrl+C JSON · Esc back`，`Esc` 最后才被收起；在排队或引导消息上，该行自己的按键排在前面（`e edit · s send now · d cancel · Enter expand · c copy · ↑/↓ select · Esc back`）。模式持续期间通知退让为它的标记和结尾。
 
-你在 agent 运行中提交的 follow-up 进入 harness inbox 排队——面板以 divider 起头、每条一行列出队列：等待下一 turn 的消息带 `Queued:` 前缀，转向当前 step 的消息带 `Steer:` 前缀（均只列用户消息）。队列空时零行。
+## 排队消息
 
-↑/↓ 始终归编辑器历史浏览——queue 面板只展示排队消息，不接管按键（见[输入编辑器](/features/editor)）。
+你在 agent 运行中提交的 follow-up 进入 harness inbox 排队。它们不是面板：每条是会话流末尾的一行（提示符样式），标记为 `⏎ 排队中`（等待下一 turn）或 `⏎ 引导中`（在当前 turn 的下一个 step 读取；仅用户消息）。`Alt+↑` 把焦点移入会话流并落在最新一行，`↑`/`↓` 逐行移动；在排队消息行上，`e` 把消息取回提示符编辑，`s` 立即发送（作为 steer），`d` 取消，几秒内可按 `u` 撤销。`Enter` 展开全文；`c`、`Ctrl+C`、`Ctrl+G` 复制或在 `$EDITOR` 中打开。提示符的 `↑`/`↓` 归编辑器历史（见[输入编辑器](/features/editor)）。
 
 ## todo 视图（todo）
 
@@ -55,8 +55,8 @@ Standard 模式下，提示的位置改为显示当前动作：命令、路径�
 Mayfly 同时保留主会话与任意数量的旁支会话，但 transcript 面板一次只显示其中一个。`/btw <question>` 创建临时旁路 Agent——以当前会话的全量事件流为种子，并继承 provider、model、reasoning effort 和 agent preset。`/agents` 则打开当前主会话的完整 descendant 树：
 
 - 所有会话都在同一个 transcript 面板中渲染。live BTW 或 continuable subagent 成为 `mayflyCurrentAgent.current()`，状态栏、底部面板、命令与完整编辑器随之切换到该 Session；BTW 保留完整父会话种子作为模型上下文，但 transcript 从 BTW 的第一个问题开始，隐藏继承的历史；图片、follow-up、steer、撤回与中断走同一条输入管线；
-- one-shot child 或当前不驻留的 continuable child 不激活 Agent：它的 transcript 从原生历史加载到同一面板，保留自己的运行中 turn 标题（没有活动行跟随它），状态栏标注 `只读` 或 `回复以恢复`。编辑器仍在：只读会话中提交的草稿留在编辑器并给出提示；可恢复会话中提交会打开以该草稿预填的 Queue / Steer 回复表单，只有 **Send** 才会恢复 child。斜杠命令仍作用于主会话；
-- 打开的会话多于一个时，状态栏用一个标签（` main `、` btw `、` subagent `）标出当前会话，通知栏右侧用 `F7 btw · F8 close` 取代原有提示（子代理为 `F8 detach`）。`F7` 返回上一个显示的会话；`F8` 关闭当前显示的旁支会话，显示主会话时则关闭 `F7` 对端。关闭普通 subagent 只 detach，关闭 BTW 会 dispose 临时 Agent；
+- one-shot child 或当前不驻留的 continuable child 不激活 Agent：它的 transcript 从原生历史加载到同一面板，保留自己的运行中 turn 标题（没有活动行跟随它），状态栏标注 `只读` 或 `回复以恢复`。编辑器仍在：只读会话中提交的草稿留在编辑器并给出提示；可恢复会话中发送会唤醒 child：`Enter` 把消息排队到它的下一个 turn，`Ctrl+Enter` 转向它。斜杠命令仍作用于主会话；
+- 打开的会话多于一个时，状态栏用一个标签（` main `、` btw `、` subagent `）标出当前会话，通知栏右侧以 `F7 btw · F8 close` 开头（子代理为 `F8 detach`），取代通用的按键提示。`F7` 返回上一个显示的会话；`F8` 关闭当前显示的旁支会话，显示主会话时则关闭 `F7` 对端。关闭普通 subagent 只 detach，关闭 BTW 会 dispose 临时 Agent；
 - 再打开其他 child 不会关闭已打开的会话；新的 BTW 会替换旧的 BTW。无参 `/btw` 关闭当前 BTW；`/new`、`/resume`、`/fork` 会关闭所有旁支会话，`/rewind` 与 `/agents` 浏览会先显示主会话；
 - 只有当前显示的会话和它的 `F7` 对端保留 transcript 状态；其余会话在你切回之前不占用任何 transcript 资源，因此同时打开很多会话依然轻量；
 - `/agents` 中 `Enter` 查看 child，`Space` 或 `←` / `→` 展开分支，`Tab` 到 **Stop selected**，停止 live continuable child 前会弹出 Yes / No 确认（默认聚焦 No）。对 one-shot、cold/inactive 或仍有 live 后代的 child，Stop 会直接说明为何不可用而不弹确认。`/agents stop <id>` 提供直接停止路径。Harness 销毁 Agent 时会递归销毁它拥有的 live 后代，因此 Mayfly 对仍有 live 后代的目标直接拒绝，要求先从叶子节点开始停止。

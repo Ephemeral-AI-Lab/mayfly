@@ -24,11 +24,11 @@ grid 60x30 cursor none
 |
 |
 |
-|         ℹ Resumed session · 2 turns · last active 3h ago
-|╭─────────────────────────────────────────── Earlier work ─╮
-|│ >                                                        │
+|                                Resumed session · 2 turns
+|╭──────────────────────────────────────────── Earlier work ╮
+|│ >  Ask anything · / commands · @ files · # skills        │
 |╰──────────────────────────────────────────────────────────╯
-| deepseek-flash  workspace               ctx ▰▰▱▱▱▱▱▱▱▱ 16%
+| deepseek-flash High  ..  cache 0%  context: 16% (4.9k/32k)
 styles
 0: 1-23 fg:#f5f5f7; 24-25 fg:#9a86e6
 1: 1-23 fg:#e9e5f6; 24-25 fg:#9a86e6; 26-47 fg:#9a86e6 b
@@ -44,8 +44,8 @@ styles
 15: 2-3 fg:#9a86e6; 4-27 fg:#9a86e6 b
 17: 2-3 fg:#ededf2
 19: 2-29 fg:#9aa3b8
-25: 9 fg:#9a86e6; 11-56 fg:#ededf2
-26: 0-43 fg:#45406b; 44-57 fg:#5c6476; 58-59 fg:#45406b
-27: 0 fg:#45406b; 4 r; 59 fg:#45406b
+25: 32-56 fg:#ededf2
+26: 0-45 fg:#45406b; 46-57 fg:#f5f5f7 b; 58-59 fg:#45406b
+27: 0 fg:#45406b; 2-3 fg:#ededf2; 4 r; 5-50 fg:#5c6476; 59 fg:#45406b
 28: 0-59 fg:#45406b
-29: 1-14 fg:#ededf2; 17-25 fg:#9aa3b8; 41-44 fg:#ededf2; 45-46 fg:#9a86e6; 47-54 fg:#9aa3b8; 55-58 fg:#ededf2
+29: 1-19 fg:#ededf2; 26-58 fg:#ededf2

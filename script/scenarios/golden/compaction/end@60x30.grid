@@ -24,11 +24,11 @@ grid 60x30 cursor none
 |    and a client module.
 |
 |  ✻ Worked for 10s · done 09:00
-|                          Alt+↑ conversation · Alt+↓ view
-|╭────────────────────────── Read the readme and summarise ─╮
-|│ >                                                        │
+|                               Alt+↑ conversation · Alt+↓
+|╭─────────────────────────── Read the readme and summarise ╮
+|│ >  Ask anything · / commands · @ files · # skills        │
 |╰──────────────────────────────────────────────────────────╯
-| deepseek-flash  workspace               ctx ▰▱▱▱▱▱▱▱▱▱ 10%
+| deepseek-flash High  ..  cache 0%  context: 10% (6.3k/64k)
 styles
 0: 1-23 fg:#dbd3f0; 24-25 fg:#9a86e6; 26-44 fg:#c9c0f0
 1: 1-23 fg:#c9beea; 24-25 fg:#9a86e6
@@ -47,8 +47,8 @@ styles
 19: 2-27 fg:#9aa3b8
 21: 2-3 fg:#ededf2
 24: 2-30 fg:#9aa3b8
-25: 26-56 fg:#9aa3b8
-26: 0-26 fg:#45406b; 27-57 fg:#5c6476; 58-59 fg:#45406b
-27: 0 fg:#45406b; 4 r; 59 fg:#45406b
+25: 31-56 fg:#9aa3b8
+26: 0-28 fg:#45406b; 29-57 fg:#f5f5f7 b; 58-59 fg:#45406b
+27: 0 fg:#45406b; 2-3 fg:#ededf2; 4 r; 5-50 fg:#5c6476; 59 fg:#45406b
 28: 0-59 fg:#45406b
-29: 1-14 fg:#ededf2; 17-25 fg:#9aa3b8; 41-44 fg:#ededf2; 45 fg:#9a86e6; 46-54 fg:#9aa3b8; 55-58 fg:#ededf2
+29: 1-19 fg:#ededf2; 26-58 fg:#ededf2

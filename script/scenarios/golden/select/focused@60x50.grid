@@ -44,11 +44,11 @@ grid 60x50 cursor none
 |  ■ interrupted
 |
 |  ✻ Stopped after 5s · done 10:24
-|  ↑/↓ select · Enter expand · / ? search · Esc back
-|╭───────────────────────── Survey the transcript code and ─╮
-|│ >                                                        │
+|  Enter expand · c copy · Ctrl+C JSON · Ctrl+G editor · ↑…
+|╭────────────────────────── Survey the transcript code and ╮
+|│ >  Ask anything · / commands · @ files · # skills        │
 |╰──────────────────────────────────────────────────────────╯
-| deepseek-flash   conversation   workspace           ctx 5%
+| deepseek-flash High   conversation   ~/workspace
 styles
 0: 0-8 fg:#5c6476
 2: 2-3 fg:#ededf2
@@ -78,8 +78,8 @@ styles
 40: 1 bg:#2b2b30; 2-7 fg:#9aa3b8 bg:#2b2b30; 8-22 fg:#c9c0f0 bg:#2b2b30; 23-36 fg:#9aa3b8 bg:#2b2b30; 37-58 bg:#2b2b30
 42: 2-14 fg:#e8a838
 44: 2-32 fg:#9aa3b8
-45: 2-11 fg:#9aa3b8; 13-26 fg:#9aa3b8; 28-39 fg:#9aa3b8; 41-50 fg:#9aa3b8
-46: 0-59 fg:#5c6476
-47: 0 fg:#5c6476; 4 r; 59 fg:#5c6476
-48: 0-59 fg:#5c6476
-49: 1-14 fg:#ededf2; 17-30 fg:#9a86e6 b r; 33-41 fg:#9aa3b8; 53-58 fg:#ededf2
+45: 0-56 fg:#9aa3b8
+46: 0-27 fg:#9aa3b8; 28-57 fg:#f5f5f7 b; 58-59 fg:#9aa3b8
+47: 0 fg:#9aa3b8; 2-3 fg:#ededf2; 4 r; 5-50 fg:#5c6476; 59 fg:#9aa3b8
+48: 0-59 fg:#9aa3b8
+49: 1-19 fg:#ededf2; 22-35 fg:#9a86e6 b r; 38-48 fg:#9aa3b8

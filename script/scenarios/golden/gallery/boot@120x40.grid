@@ -24,9 +24,8 @@ grid 120x40 cursor none
 |                                                                                    │                                  │
 |                                                                                    │  Expanded section                │
 |                                                                                    │    Section bodies stay           │
-|                                                                                    │    lightweight content nodes.    │
 |                                                                                    ╰──────────────────────────────────╯
-|                                                                                      Alt+↑ conversation · Alt+↓ view
+|                                                                                       Alt+↑ conversation · Alt+↓ bar
 |╭ Gallery prompt ──────────────────────────────────────────────────────────────────────────────────────────────────────╮
 |│ Backspace on an empty prompt selects, then removes, the last token. Up and Down recall; type / @ or # for            │
 |│ completions.                                                                                                         │
@@ -36,9 +35,10 @@ grid 120x40 cursor none
 |│ ╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯ │
 |╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
 |╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
-|│ >                                                                                                                    │
+|│ >  Ask anything · / commands · @ files · # skills · ! shell                                                          │
 |╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
-| deepseek-official/deepseek-flash  ~/workspace  ● gallery 2 runs
+| deepseek-flash  ~/workspace
+| Gallery ● 2 runs
 styles
 0: 1-23 fg:#f5f5f7; 24-25 fg:#9a86e6; 84-85 fg:#dcd7f2; 86-95 fg:#f5f5f7 b; 96-119 fg:#dcd7f2
 1: 1-23 fg:#e9e5f6; 24-25 fg:#9a86e6; 26-70 fg:#9a86e6 b; 84 fg:#dcd7f2; 119 fg:#dcd7f2
@@ -65,18 +65,18 @@ styles
 22: 84 fg:#dcd7f2; 119 fg:#dcd7f2
 23: 84 fg:#dcd7f2; 87-102 fg:#9a86e6 b; 119 fg:#dcd7f2
 24: 84 fg:#dcd7f2; 89-107 fg:#ededf2; 119 fg:#dcd7f2
-25: 84 fg:#dcd7f2; 89-114 fg:#ededf2; 119 fg:#dcd7f2
-26: 84-119 fg:#dcd7f2
-27: 86-116 fg:#9aa3b8
-28: 0-1 fg:#dcd7f2; 2-15 fg:#f5f5f7 b; 16-119 fg:#dcd7f2
-29: 0 fg:#dcd7f2; 2-106 fg:#9aa3b8; 119 fg:#dcd7f2
-30: 0 fg:#dcd7f2; 2-13 fg:#9aa3b8; 119 fg:#dcd7f2
-31: 0 fg:#dcd7f2; 119 fg:#dcd7f2
-32: 0 fg:#dcd7f2; 2-101 fg:#45406b; 102-115 fg:#f5f5f7 b; 116-117 fg:#45406b; 119 fg:#dcd7f2
-33: 0 fg:#dcd7f2; 2 fg:#45406b; 4-5 fg:#ededf2; 6 fg:#9aa3b8; 7-14 fg:#c9c0f0; 15-23 fg:#9aa3b8; 117 fg:#45406b; 119 fg:#dcd7f2
-34: 0 fg:#dcd7f2; 2-117 fg:#45406b; 119 fg:#dcd7f2
-35: 0-119 fg:#dcd7f2
-36: 0-119 fg:#45406b
-37: 0 fg:#45406b; 4 r; 119 fg:#45406b
-38: 0-119 fg:#45406b
-39: 1-32 fg:#ededf2; 35-45 fg:#9aa3b8; 48-49 fg:#c9c0f0; 50-57 fg:#9aa3b8; 58-63 fg:#ededf2
+25: 84-119 fg:#dcd7f2
+26: 87-116 fg:#9aa3b8
+27: 0-1 fg:#dcd7f2; 2-15 fg:#f5f5f7 b; 16-119 fg:#dcd7f2
+28: 0 fg:#dcd7f2; 2-106 fg:#9aa3b8; 119 fg:#dcd7f2
+29: 0 fg:#dcd7f2; 2-13 fg:#9aa3b8; 119 fg:#dcd7f2
+30: 0 fg:#dcd7f2; 119 fg:#dcd7f2
+31: 0 fg:#dcd7f2; 2-101 fg:#45406b; 102-115 fg:#f5f5f7 b; 116-117 fg:#45406b; 119 fg:#dcd7f2
+32: 0 fg:#dcd7f2; 2 fg:#45406b; 4-5 fg:#ededf2; 6 fg:#9aa3b8; 7-14 fg:#c9c0f0; 15-23 fg:#9aa3b8; 117 fg:#45406b; 119 fg:#dcd7f2
+33: 0 fg:#dcd7f2; 2-117 fg:#45406b; 119 fg:#dcd7f2
+34: 0-119 fg:#dcd7f2
+35: 0-119 fg:#45406b
+36: 0 fg:#45406b; 2-3 fg:#ededf2; 4 r; 5-60 fg:#5c6476; 119 fg:#45406b
+37: 0-119 fg:#45406b
+38: 1-14 fg:#ededf2; 17-27 fg:#9aa3b8
+39: 1-8 fg:#9aa3b8; 9 fg:#c9c0f0; 10-16 fg:#ededf2

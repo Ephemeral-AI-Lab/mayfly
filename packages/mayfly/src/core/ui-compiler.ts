@@ -86,7 +86,7 @@ import { UiRowCache } from './ui-row-cache.ts'
 import { canStepLeft, railGroupFor, type TabsTraits } from './ui-focus-levels.ts'
 import { isRail, tabsShape } from './ui-tabs-paint.ts'
 import { UiImagePainter } from './ui-image.ts'
-import { paintPrompt, UiPromptEditor, type PromptPaint } from './ui-prompt.ts'
+import { paintHostedPrompt, paintPrompt, placeholderLadder, UiPromptEditor, type PromptPaint } from './ui-prompt.ts'
 import { promptCompletionsOpen, promptRecallActive } from './ui-interaction-prompt.ts'
 import type { MayflyUiImageSource } from './ui-images.ts'
 import { countWork, type MayflyWorkCounters } from './ui-work-counters.ts'
@@ -709,7 +709,9 @@ function diagramMarkdownNode(node: MayflyDiagramNode): Extract<MayflyUiNode, { r
 }
 
 function imageComponent(node: MayflyImageNode, options: RuntimeCompilerOptions): MayflyComponent {
-  const painter = new UiImagePainter(node, options.components, options.colors, options.listRuntime.images, options.listRuntime.repaint)
+  const presentation = options.components.presentation
+  const pending = (width: number): string[] => renderLoader({ kind: 'loader', variant: 'gap', message: coreText(options, 'Loading image…') }, width, options.colors, motionFrame(options), presentation?.glyphs, presentation?.reducedMotion === true)
+  const painter = new UiImagePainter(node, options.components, options.colors, options.listRuntime.images, options.listRuntime.repaint, pending)
   const component = staticComponent(width => painter.render(width), options)
   return { render: component.render, invalidate: () => { painter.invalidate() } }
 }
@@ -749,6 +751,33 @@ function promptComponent(node: MayflyPromptNode, state: FocusState, options: Run
       }
     },
     invalidate: () => { runtime.promptEditor(key, address).invalidate() },
+  }
+  state.bindControls([key], { component, axis: 'none' })
+  return component
+}
+
+/**
+ * The `prompt` of an editor shell: its symbol and frame come from the tree, while the buffer's rows (and the completion
+ * list under them) and every key belong to the host's own editor. There is no draft in a surface model: the editor is
+ * the draft, and the shell repaints it on every frame because it is volatile.
+ */
+function hostedPromptComponent(node: MayflyPromptNode, state: FocusState, options: RuntimeCompilerOptions, key: string, editor: MayflyEditor): MayflyComponent {
+  const component: MayflyComponent = {
+    render: width => {
+      try {
+        editor.focused = state.focused && state.activeKey === key
+        editor.setPlaceholder(placeholderLadder(node.placeholder))
+        const rows = paintHostedPrompt({ node, width: Math.max(1, width), colors: options.colors, components: options.components, buffer: room => editor.render(room) })
+        countWork(options.counters, 'rowsPainted', rows.length)
+        countWork(options.counters, 'componentRenders')
+        return rows
+      } catch (error) {
+        const message = renderFailure(error, 'unknown editor failure')
+        options.reportRuntimeFailure(message)
+        return errorRows(message, width, options.colors)
+      }
+    },
+    invalidate: () => editor.invalidate(),
   }
   state.bindControls([key], { component, axis: 'none' })
   return component
@@ -1390,15 +1419,12 @@ function walkControls(node: CompilableNode, options: RuntimeCompilerOptions, pat
     const scopedControlGroup = (kind: string, id: string) => controlGroup(kind, id, pagePath)
     const scopedFocusIdentity = (id: string, itemId?: string) => focusIdentity(id, itemId, pagePath)
     const controls = isHidden ? hidden : visible
-    if (current.kind !== 'editor-control' && isDeferredUiNode(current as MayflyUiNode)) {
+    if (isDeferredUiNode(current as MayflyUiNode)) {
       const admitted = materializeDeferredUiNode(current as MayflyUiNode)
       if (admitted?.ok === true) { options.listRuntime.admitDeferred(admitted.value, pagePath); visit(admitted.value, currentPath, isHidden) }
       return
     }
     switch (current.kind) {
-      case 'editor-control':
-        controls.push({ kind: 'editor', key: scopedControlKey('editor', 'editor-control'), renderKey: 'editor-control', identity: scopedFocusIdentity('editor-control'), preferred: true, group: scopedControlGroup('editor', 'editor-control'), navigation: 'none' })
-        break
       case 'stack':
         for (const [index, child] of current.children.entries()) {
           const shown = conditionMatches(child.when, safeViewport(options.getViewport)) && tabVisible(child, pagePath, options)
@@ -1475,7 +1501,9 @@ function walkControls(node: CompilableNode, options: RuntimeCompilerOptions, pat
         if (current.submitActionId !== undefined && formDrawsSubmit(current)) controls.push({ kind: 'submit', key: scopedControlKey('form-submit', current.id), renderKey: 'submit', identity: scopedFocusIdentity(current.submitActionId), preferred: false, group: scopedControlGroup('form', current.id), navigation: 'vertical', form: current })
         break
       case 'prompt':
-        if (options.listRuntime.interaction !== undefined) controls.push({ kind: 'prompt', node: current, key: scopedControlKey('prompt', current.id), renderKey: current.id, identity: scopedFocusIdentity(current.id), preferred: current.autofocus === true, group: scopedControlGroup('prompt', current.id), navigation: 'none' })
+        // The prompt of an editor shell is the host editor's face: one editor control, keyed by the prompt's id.
+        if (options.editor !== undefined) controls.push({ kind: 'editor', key: scopedControlKey('editor', current.id), renderKey: current.id, identity: scopedFocusIdentity(current.id), preferred: true, group: scopedControlGroup('editor', current.id), navigation: 'none' })
+        else if (options.listRuntime.interaction !== undefined) controls.push({ kind: 'prompt', node: current, key: scopedControlKey('prompt', current.id), renderKey: current.id, identity: scopedFocusIdentity(current.id), preferred: current.autofocus === true, group: scopedControlGroup('prompt', current.id), navigation: 'none' })
         break
       case 'actions': {
         const scope = current.scope === undefined ? {} : { scope: [current.scope].flat() }
@@ -1503,7 +1531,7 @@ function walkControls(node: CompilableNode, options: RuntimeCompilerOptions, pat
 }
 
 function containsDeferredNode(node: CompilableNode): boolean {
-  if (node.kind !== 'editor-control' && isDeferredUiNode(node as MayflyUiNode)) {
+  if (isDeferredUiNode(node as MayflyUiNode)) {
     const admitted = materializedDeferredUiNode(node as MayflyUiNode)
     if (admitted === undefined) return deferredUiNodeMayHaveControls(node as MayflyUiNode)
     return admitted.ok && containsDeferredNode(admitted.value)
@@ -1621,7 +1649,7 @@ const UNRETAINED_KINDS: ReadonlySet<string> = new Set(['text', 'fields', 'code',
  * Node kinds that paint a live editing engine: they always paint, and so does whatever contains them. An image is not
  * one of them: its bytes arrive through the surface's repaint request, which moves the epoch.
  */
-const VOLATILE_KINDS: ReadonlySet<string> = new Set(['editor-control', 'prompt'])
+const VOLATILE_KINDS: ReadonlySet<string> = new Set(['prompt'])
 
 /** Node kinds that paint only from their admitted node, the width, the colors, and the components. */
 const REUSABLE_KINDS: ReadonlySet<string> = new Set(['text', 'fields', 'code', 'diff', 'sections', 'rich-text', 'divider', 'markdown', 'diagram'])
@@ -1643,32 +1671,13 @@ function compileUnit(node: CompilableNode, state: FocusState, options: RuntimeCo
   const pagePath = options.listRuntime.pagePath(node)
   const scopedControlKey = (kind: string, id: string, itemId?: string) => controlKey(kind, id, itemId, pagePath)
   const scopedControlGroup = (kind: string, id: string) => controlGroup(kind, id, pagePath)
-  if (node.kind !== 'editor-control' && isDeferredUiNode(node as MayflyUiNode)) return deferredComponent(node as MayflyUiNode, state, options, path, mode)
+  if (isDeferredUiNode(node as MayflyUiNode)) return deferredComponent(node as MayflyUiNode, state, options, path, mode)
   if (REUSABLE_KINDS.has(node.kind)) {
     const reused = options.reuse.take(node, options)
     if (reused !== undefined) return reused
   }
   countWork(options.counters, 'unitsCompiled')
   switch (node.kind) {
-    case 'editor-control': {
-      const editor = options.editor
-      if (editor === undefined) throw new Error('editor-control requires a host editor')
-      const component: MayflyComponent = {
-        render: width => {
-          try {
-            editor.focused = state.focused && state.activeKey === scopedControlKey('editor', 'editor-control')
-            return editor.render(Math.max(1, width))
-          } catch (error) {
-            const message = renderFailure(error, 'unknown editor failure')
-            options.reportRuntimeFailure(message)
-            return errorRows(message, width, options.colors)
-          }
-        },
-        invalidate: () => editor.invalidate(),
-      }
-      state.bindControls([scopedControlKey('editor', 'editor-control')], { component, axis: 'none' })
-      return component
-    }
     case 'text':
     case 'fields':
     case 'code':
@@ -1960,7 +1969,7 @@ function compileUnit(node: CompilableNode, state: FocusState, options: RuntimeCo
     case 'diagram': return leaf(node, options, paint => contentLeafComponent(diagramMarkdownNode(node), options, paint))
     case 'chart': return chartComponent(node, options)
     case 'image': return imageComponent(node, options)
-    case 'prompt': return promptComponent(node, state, options, scopedControlKey('prompt', node.id))
+    case 'prompt': return options.editor === undefined ? promptComponent(node, state, options, scopedControlKey('prompt', node.id)) : hostedPromptComponent(node, state, options, scopedControlKey('editor', node.id), options.editor)
   }
 }
 
@@ -2387,8 +2396,15 @@ export class MayflyUiSurfaceRuntime {
       return
     }
   }
-  /** Asks the renderer to paint this surface again: an image's bytes arrived. */
-  readonly repaint = (): void => { if (this.live) this.requestRender?.() }
+  /**
+   * Asks the renderer to paint this surface again: an image's bytes arrived. A list row that holds the image was
+   * painted from its item and key alone, so the memo of painted rows is dropped with the request.
+   */
+  readonly repaint = (): void => {
+    if (!this.live) return
+    this.rows.clear()
+    this.requestRender?.()
+  }
   /** The scroll position a region keeps across publishes. */
   /**
    * The place of the scroll region at `key`, made the most recent. A region is remembered by its position in the tree, so
@@ -2625,7 +2641,7 @@ export class MayflyUiSurfaceRuntime {
 
   private admitFields(current: CompilableNode, active: Set<string>, pagePath: MayflyPagePath = []): void {
     this.nodePages.set(current, pagePath)
-    if (current.kind !== 'editor-control' && isDeferredUiNode(current as MayflyUiNode)) {
+    if (isDeferredUiNode(current as MayflyUiNode)) {
       const admitted = materializedDeferredUiNode(current as MayflyUiNode)
       if (admitted?.ok === true) this.admitFields(admitted.value, active, pagePath)
       return
@@ -3059,7 +3075,9 @@ class CompiledSurface implements MayflyEditorShellComponent {
       return cached.result
     }
     const result = this.renderFrame(width, maxRows)
-    this.frameResult = { current, width, maxRows, columns: viewport.columns, rows: viewport.rows, revision, keymapRevision, localeRevision, completions, animationFrame, result }
+    // A shell paints the host editor, whose rows change on their own (a completion list that resolves late), so its
+    // frame is painted again every time it is asked for.
+    if (this.editor === undefined) this.frameResult = { current, width, maxRows, columns: viewport.columns, rows: viewport.rows, revision, keymapRevision, localeRevision, completions, animationFrame, result }
     return result
   }
 

@@ -34,11 +34,11 @@ grid 120x40 cursor none
 |
 |  ⡀ Writing · 3s · ↓990 · 329 tok/s
 |    ⎿ Tip: Esc to interrupt the run
-|                                                 Back to bottom · Ctrl+↓              Alt+↑ conversation · Alt+↓ view
-|╭──────────────────────────────────────────────────────────────────────────────────── Explain the rendering pipeline. ─╮
-|│ >                                                                                                                    │
+|                                                 Back to bottom · Ctrl+↓               Alt+↑ conversation · Alt+↓ bar
+|╭───────────────────────────────────────────────────────────────────────────────────── Explain the rendering pipeline. ╮
+|│ >  Ask anything · / commands · @ files · # skills · ! shell                                                          │
 |╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
-| deepseek-official/deepseek-flash High  ~/workspace
+| deepseek-flash High  ~/workspace
 styles
 2: 4-5 fg:#c9c0f0
 3: 4-5 fg:#c9c0f0; 25-29 fg:#c9c0f0
@@ -67,8 +67,8 @@ styles
 31: 6-18 fg:#ededf2
 33: 0-1 fg:#ededf2; 2 fg:#9a86e6; 3-10 fg:#ededf2; 12-34 fg:#9aa3b8
 34: 0-34 fg:#9aa3b8
-35: 48-72 fg:#ededf2 r; 86-116 fg:#9aa3b8
-36: 0-84 fg:#45406b; 85-117 fg:#5c6476; 118-119 fg:#45406b
-37: 0 fg:#45406b; 4 r; 119 fg:#45406b
+35: 48-72 fg:#ededf2 r; 87-116 fg:#9aa3b8
+36: 0-86 fg:#45406b; 87-117 fg:#f5f5f7 b; 118-119 fg:#45406b
+37: 0 fg:#45406b; 2-3 fg:#ededf2; 4 r; 5-60 fg:#5c6476; 119 fg:#45406b
 38: 0-119 fg:#45406b
-39: 1-37 fg:#ededf2; 40-50 fg:#9aa3b8
+39: 1-19 fg:#ededf2; 22-32 fg:#9aa3b8

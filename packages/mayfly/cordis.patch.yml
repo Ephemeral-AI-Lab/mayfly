@@ -175,8 +175,6 @@
 
     - id: mayfly-pane-activity
       name: '@ephemeral-ai/mayfly/pane-activity'
-    - id: mayfly-pane-queue
-      name: '@ephemeral-ai/mayfly/pane-queue'
     - id: mayfly-pane-todo
       name: '@ephemeral-ai/mayfly/pane-todo'
     - id: mayfly-btw-command

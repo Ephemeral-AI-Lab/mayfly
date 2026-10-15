@@ -114,11 +114,13 @@ export function apply(ctx: Context): void {
   // the queue pane does), never while a model is being published: a read inside a session event disturbs the
   // activity row's own bookkeeping of that event.
   let selected: Agent | null = null
-  let queued: readonly { readonly id: string, readonly text: string }[] = []
+  let queued: readonly { readonly id: string, readonly text: string, readonly lane: 'turn' | 'step' }[] = []
   const readQueued = (): void => {
-    queued = selected === null ? [] : [...selected.inbox.nextStep, ...selected.inbox.nextTurn]
-      .filter(message => message.source.kind === 'user')
-      .map(message => ({ id: String(message.id), text: userMessageText(message) }))
+    queued = selected === null ? [] : [
+      ...selected.inbox.nextStep.map(message => ({ message, lane: 'step' as const })),
+      ...selected.inbox.nextTurn.map(message => ({ message, lane: 'turn' as const })),
+    ].filter(({ message }) => message.source.kind === 'user')
+      .map(({ message, lane }) => ({ id: String(message.id), text: userMessageText(message), lane }))
   }
   // The wire carries an attachment id; the byte loader resolves it through the attachment store with the reference the
   // stream kept when it built the prompt's row. A missing store or file leaves the text fallback.
@@ -148,6 +150,8 @@ export function apply(ctx: Context): void {
         if (reply.kind === 'failed') rowNotices.report('open', { message: reply.message, severity: 'error' })
       })
     },
+    // The input editor holds the inbox restore data of the messages it queued, so it answers.
+    queued: (action, id) => { ctx.emit('mayfly/queued-action', action, id) },
   }
   // The compaction rows read the selected Agent's occupancy marks; the stream is published again when a mark lands.
   const sessionFacts = ctx.get('mayflySessionFacts') as SessionFactsService | undefined
@@ -157,7 +161,7 @@ export function apply(ctx: Context): void {
   let requests: readonly MayflyDecisionRequest[] = []
   // The children the displayed conversation spawned: a spawn's line follows its child (running, settled, failed).
   let children: SpawnedChildren = { byId: new Map(), byPrompt: new Map() }
-  const transcript: TranscriptController = new TranscriptController({ presentation, t, queued: () => queued, requests: () => requests, imageRefs, rows, focusMode: mode => ctx.emit('mayfly/focus-mode-changed', mode), tick: ctx.mayflyTick, context: () => sessionFacts === undefined ? undefined : { marks: sessionFacts.current.compactions, window: sessionFacts.current.contextWindow, tokens: sessionFacts.current.contextTokens, approvals: sessionFacts.current.approvals, children } })
+  const transcript: TranscriptController = new TranscriptController({ presentation, t, queued: () => queued, requests: () => requests, imageRefs, rows, focusMode: mode => ctx.emit('mayfly/focus-mode-changed', mode), focusRow: row => ctx.emit('mayfly/focus-row-changed', row), tick: ctx.mayflyTick, context: () => sessionFacts === undefined ? undefined : { marks: sessionFacts.current.compactions, window: sessionFacts.current.contextWindow, tokens: sessionFacts.current.contextTokens, approvals: sessionFacts.current.approvals, children } })
   let marks = sessionFacts?.current.compactions
   let window = sessionFacts?.current.contextWindow
   let approvals = sessionFacts?.current.approvals

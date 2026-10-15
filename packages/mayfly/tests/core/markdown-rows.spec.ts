@@ -12,7 +12,7 @@ import { describe, expect, it } from 'vitest'
 import { Markdown, type MarkdownTheme } from '@earendil-works/pi-tui'
 import { contentNodeSource, type ContentRowsEnv, type WindowedContentNode } from '../../src/core/content-rows.ts'
 import { virtualRows } from '../../src/core/ui-rows.ts'
-import { expandMarkdownRules, markdownTheme, scanMarkdown, type MarkdownUnit } from '../../src/core/markdown-rows.ts'
+import { expandMarkdownRules, markdownMermaidRows, markdownTheme, scanMarkdown, type MarkdownUnit } from '../../src/core/markdown-rows.ts'
 import { renderMermaidRows, splitRichDocument } from '../../src/core/rich-document.ts'
 import { CONTENT_SEGMENT_UNITS } from '../../src/core/content-segments.ts'
 import { DARK_COLORS } from '../../src/core/theme-dark.ts'
@@ -169,6 +169,39 @@ describe('scanMarkdown', () => {
     expect(scanMarkdown('para\n[a]: /x\n\nuse [x][a]').defs).toHaveLength(0)
     // A def nested in a quote resolves document-wide, so it joins the preamble.
     expect(scanMarkdown('> [q]: /nested\n\nuse [x][q]').defs.map(def => def.raw).join('')).toBe('[q]: /nested\n')
+  })
+
+  it('matches a latex block at the very start of the document, and one just past its first character', () => {
+    const text = '$$\nx^2\n$$\n\ntext'
+    expect(scanMarkdown(text).units).toEqual([{ kind: 'block', start: 0, end: text.length, estimate: 7, flow: text.length }])
+    expect(lazyRows(text, 40, makeEnv())).toEqual(eagerRows(text, 40))
+    // marked offers a start callback the source with its first character cut off, so a block one character in
+    // is matched at the start of that view, with no newline before it.
+    const inline = 'a$$\nx^2\n$$\n\ntext'
+    expect(lazyRows(inline, 40, makeEnv())).toEqual(eagerRows(inline, 40))
+  })
+
+  it('rescans a grown source whose tail defines a link, instead of appending to the previous units', () => {
+    const previous = scanMarkdown('para\n\nlast')
+    const grown = 'para\n\nlast\n\n[r]: /t\n\nuse [r]'
+    const { scanned: _a, ...grownScan } = scanMarkdown(grown, previous)
+    const { scanned: _b, ...wholeScan } = scanMarkdown(grown)
+    expect(grownScan).toEqual(wholeScan)
+    expect(scanMarkdown(grown, previous).defs.map(def => def.raw).join('')).toBe('[r]: /t\n')
+  })
+
+  it('places a repeated link definition whose raw took its newline, and paints it like the eager render', () => {
+    const text = '[a]: /y\n\n[a]: /y\n'
+    const { units, normalized } = scanMarkdown(text)
+    expect(units.at(-1)).toMatchObject({ kind: 'block', end: normalized.length })
+    expect(lazyRows(text, 40, makeEnv())).toEqual(eagerRows(text, 40))
+  })
+
+  it('cuts a tail the lines unit before it leaves unplaced, and still covers the whole source', () => {
+    const big = 'w'.repeat(9000)
+    const text = `[a]: /y\n\n\n${big}\n[a]: /y\n\n[a]: /y\n`
+    const { units, normalized } = scanMarkdown(text)
+    expect(units.at(-1)).toMatchObject({ kind: 'block', end: normalized.length })
   })
 })
 
@@ -344,6 +377,15 @@ describe('lazy units', () => {
   })
 })
 
+describe('mermaid units', () => {
+  it('paints the source fallback of an unrenderable diagram, and leaves an oversized fallback to raw lines', () => {
+    const small = '```mermaid\nnot a diagram\n```'
+    expect(markdownMermaidRows('not a diagram', small, 40, theme, hr)?.join('\n')).toContain('not a diagram')
+    const oversized = `\`\`\`mermaid\n${'z'.repeat(CONTENT_SEGMENT_UNITS + 1)}\n\`\`\``
+    expect(markdownMermaidRows('not a diagram', oversized, 40, theme, hr)).toBeUndefined()
+  })
+})
+
 describe('scanMarkdown of a growing source', () => {
   const block = (index: number): string => [
     `## Part ${String(index)}`,
@@ -393,5 +435,36 @@ describe('scanMarkdown of a growing source', () => {
     expect(sans(scanMarkdown(defined, first))).toEqual(sans(scanMarkdown(defined)))
     const other = 'something else entirely\n\nwith blocks'
     expect(sans(scanMarkdown(other, first))).toEqual(sans(scanMarkdown(other)))
+  })
+})
+
+describe('pending latex while a reply streams', () => {
+  it('holds an open bracket block to the end of the source, as one pending unit', () => {
+    const text = 'intro\n\n\\[\nx + y'
+    const { units, normalized } = scanMarkdown(text)
+    const last = units.at(-1)!
+    expect(last.kind).toBe('block')
+    if (last.kind === 'block') expect(normalized.slice(last.start, last.end)).toContain('x + y')
+    // The pending block is the same rows the eager renderer draws, at any width the reply is read at.
+    const env = makeEnv()
+    expect(lazyRows(text, 40, env)).toEqual(eagerRows(text, 40))
+  })
+
+  it('holds an open dollar block only while what follows looks like math, and reads plain text as text', () => {
+    const math = 'before\n\n$$\n\\alpha + \\beta'
+    const plain = 'before\n\n$$\nhello there'
+    for (const text of [math, plain]) {
+      const env = makeEnv()
+      expect(lazyRows(text, 40, env)).toEqual(eagerRows(text, 40))
+    }
+    const { units, normalized } = scanMarkdown(math)
+    const last = units.at(-1)!
+    if (last.kind === 'block') expect(normalized.slice(last.start, last.end)).toContain('\\alpha')
+  })
+
+  it('leaves a source with no latex start, and a blank-line-cut source, to the paragraphs they are', () => {
+    expect(scanMarkdown('one\n\ntwo words here').units).toHaveLength(1)
+    const cut = 'para one\n\nplain two\n\n$$\nx^2\n$$'
+    expect(lazyRows(cut, 30, makeEnv())).toEqual(eagerRows(cut, 30))
   })
 })

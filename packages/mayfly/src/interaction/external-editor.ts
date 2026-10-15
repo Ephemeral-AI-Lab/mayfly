@@ -86,7 +86,41 @@ async function editInExternalEditor(initialText: string, command: string): Promi
   }
 }
 
+/**
+ * Open a file in the editor where it lies, with no seed and no read-back.
+ * @param path - the file or folder to open.
+ * @param command - the resolved editor command.
+ */
+type ExternalFileOpener = (path: string, command: string) => Promise<void>
+
+/** The default opener: the command handed the tty and the path, resolved when it exits. */
+async function openInExternalEditor(path: string, command: string): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    const child = spawn(`${command} ${quoteShellArg(path)}`, { stdio: 'inherit', shell: true })
+    child.on('exit', () => { resolve() })
+    child.on('error', reject)
+  })
+}
+
 let externalEditorLauncher: ExternalEditorLauncher = editInExternalEditor
+let externalFileOpener: ExternalFileOpener = openInExternalEditor
+
+/**
+ * Replace the file opener (tests inject a fake here).
+ * @param opener - the replacement, or `undefined` to restore the default.
+ */
+export function setExternalFileOpener(opener: ExternalFileOpener | undefined): void {
+  externalFileOpener = opener ?? openInExternalEditor
+}
+
+/**
+ * Open a file or folder in the external editor.
+ * @param path - the absolute path.
+ * @param command - the resolved editor command.
+ */
+export async function openFileInExternalEditor(path: string, command: string): Promise<void> {
+  return externalFileOpener(path, command)
+}
 
 /**
  * Replace the external-editor launcher (tests inject a fake here).

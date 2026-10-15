@@ -155,7 +155,7 @@ describe('mayfly-interaction through the real Loader', () => {
     const { ctx } = await bootInteraction()
     expect(ctx.get('mayflyKeymap')?.getKeys('ui.accept')).toEqual(['enter'])
     expect(ctx.get('mayflyKeymap')?.getKeys('mayfly.interaction.interrupt')).toEqual(['ctrl+c'])
-    expect(ctx.get('mayflyKeymap')?.getKeys('mayfly.interaction.steer')).toEqual(['ctrl+s'])
+    expect(ctx.get('mayflyKeymap')?.getKeys('mayfly.interaction.steer')).toEqual(['ctrl+enter'])
     expect(ctx.commands.find(lookupAgent(), 'quit')).toBeDefined()
     expect(ctx.commands.find(lookupAgent(), 'sessions')).toBeDefined()
     const controller = new AbortController()

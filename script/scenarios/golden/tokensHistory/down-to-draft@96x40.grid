@@ -1,0 +1,69 @@
+grid 96x40 cursor none
+| ⠱⣦⣄⣀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⣠⣴⠎
+| ⠀⠙⢿⣿⣿⣷⣶⣤⣀⣀⣴⣶⣦⣀⣀⣤⣶⣾⣿⣿⡿⠋⠀  mayfly
+| ⠀⠀⠀⠈⠻⢿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡿⠟⠁⠀⠀⠀  ephemeral agents, enduring works
+| ⠀⠀⠀⠀⠀⠀⠀⠉⠉⠁⢸⣿⡇⠈⠉⠉⠀⠀⠀⠀⠀⠀⠀
+| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢸⣿⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀  Send /help for help information.
+| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⣿⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀  Directory: ~/workspace
+| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣿⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀  Model:     deepseek-flash · deepseek-official
+| ⠀⠀⠀⠀⠀⠀⠀⠀⠀⡠⠊⠀⠑⢄⠀⠀⠀⠀⠀⠀⠀⠀⠀  Version:   scenario
+|
+|  » read note 1: the hero copy says one thing and the install line says another
+|    note 2: the hero copy says one thing and the install line says another
+|    note 3: the hero copy says one thing and the install line says another
+|    note 4: the hero copy says one thing and the install line says another
+|    ▸ 10 more lines · Enter
+|
+|  ● This is a replay session: the model is a stub. Type nothing; the conversation above is
+|    scripted.
+|
+|  ✻ Worked for 0s · done 09:00
+|
+|  » read note 1: the hero copy says one thing and the install line says another
+|    note 2: the hero copy says one thing and the install line says another
+|    note 3: the hero copy says one thing and the install line says another
+|    note 4: the hero copy says one thing and the install line says another
+|    ▸ 10 more lines · Enter
+|
+|  ● This is a replay session: the model is a stub. Type nothing; the conversation above is
+|    scripted.
+|
+|  ✻ Worked for 0s · done 09:00
+|
+|
+|
+|
+|
+|                                                               Alt+↑ conversation · Alt+↓ bar
+|╭──────────────────────────────────────────────────────────────── Update the landing page hero ╮
+|│ > a new draft [paste #1 +14 lines]                                                           │
+|╰──────────────────────────────────────────────────────────────────────────────────────────────╯
+| deepseek-flash High  ~/workspace
+styles
+0: 1-23 fg:#f5f5f7; 24-25 fg:#9a86e6
+1: 1-23 fg:#e9e5f6; 24-25 fg:#9a86e6; 26-83 fg:#9a86e6 b
+2: 1-23 fg:#dbd3f0; 24-25 fg:#9a86e6; 26-83 fg:#c9c0f0
+3: 1-23 fg:#c9beea; 24-25 fg:#9a86e6
+4: 1-23 fg:#b2a1ec; 24-25 fg:#9a86e6; 26-83 fg:#9aa3b8
+5: 1-25 fg:#9a86e6; 26-83 fg:#ededf2
+6: 1-23 fg:#8371d6; 24-25 fg:#9a86e6; 26-83 fg:#e9e6f4
+7: 1-23 fg:#6c5bbf; 24-25 fg:#9a86e6; 26-83 fg:#ededf2
+9: 2-3 fg:#9a86e6; 4-78 fg:#9a86e6 b
+10: 4-73 fg:#9a86e6 b
+11: 4-73 fg:#9a86e6 b
+12: 4-73 fg:#9a86e6 b
+13: 4-26 fg:#9aa3b8
+15: 2-3 fg:#ededf2
+18: 2-29 fg:#9aa3b8
+20: 2-3 fg:#9a86e6; 4-78 fg:#9a86e6 b
+21: 4-73 fg:#9a86e6 b
+22: 4-73 fg:#9a86e6 b
+23: 4-73 fg:#9a86e6 b
+24: 4-26 fg:#9aa3b8
+26: 2-3 fg:#ededf2
+29: 2-29 fg:#9aa3b8
+35: 63-92 fg:#9aa3b8
+36: 0-65 fg:#45406b; 66-93 fg:#f5f5f7 b; 94-95 fg:#45406b
+37: 0 fg:#45406b; 2-3 fg:#ededf2; 4 r; 16 fg:#9aa3b8; 17-24 fg:#c9c0f0; 25-35 fg:#9aa3b8; 95 fg:#45406b
+38: 0-95 fg:#45406b
+39: 1-19 fg:#ededf2; 22-32 fg:#9aa3b8

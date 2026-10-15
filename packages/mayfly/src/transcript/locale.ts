@@ -43,6 +43,8 @@ const TRANSCRIPT_MESSAGES = identityCatalog({
   '{count} steps': '{count} 步',
   '{index} of {total} waiting': '第 {index} 个，共 {total} 个等待',
   '⏎ queued': '⏎ 排队中',
+  '⏎ steering': '⏎ 引导中',
+  '↑ history {index}/{total}': '↑ 历史 {index}/{total}',
   ...PROCESS_ACTIVE_ZH,
   ...PROCESS_DONE_ZH,
   'Deep diving...': '深度求索中',
@@ -169,8 +171,14 @@ export const TRANSCRIPT_LOCALE: MayflyLocaleCatalog = TRANSCRIPT_MESSAGES
 /** Activity-pane copy: phase labels plus the running and preparing process labels. */
 export const ACTIVITY_LOCALE = identityCatalog({
   'Alt+↑ conversation · Alt+↓ view': 'Alt+↑ 选对话 · Alt+↓ 选视图',
+  'Ctrl+Enter steer · Esc interrupt': 'Ctrl+Enter 引导 · Esc 中断',
+  'Ctrl+C clear · Ctrl+G editor': 'Ctrl+C 清空 · Ctrl+G 编辑器',
+  'Shift+Tab plan · Alt+M model': 'Shift+Tab 计划 · Alt+M 模型',
   '↑/↓ select': '↑/↓ 选择',
   '↑/↓ or n/N match': '↑/↓ 或 n/N 切换匹配',
+  'e edit': 'e 编辑',
+  's send now': 's 立即发送',
+  'd cancel': 'd 取消',
   'Enter expand': 'Enter 展开',
   'c copy': 'c 复制',
   '/ ? search': '/ ? 搜索',

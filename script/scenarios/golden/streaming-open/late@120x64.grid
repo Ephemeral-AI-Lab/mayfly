@@ -58,11 +58,11 @@ grid 120x64 cursor none
 |
 |  ● Preparing to write files
 |    ⎿ Tip: Esc to interrupt the run
-|                                                                                      Alt+↑ conversation · Alt+↓ view
-|╭────────────────────────────────────────────────────────────────────────────────────── Write the report script, then ─╮
-|│ >                                                                                                                    │
+|                                                                                       Alt+↑ conversation · Alt+↓ bar
+|╭─────────────────────────────────────────────────────────────────────────────────────── Write the report script, then ╮
+|│ >  Ask anything · / commands · @ files · # skills · ! shell                                                          │
 |╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
-| deepseek-official/deepseek-flash High  ~/workspace
+| deepseek-flash High  ~/workspace
 styles
 0: 1-23 fg:#f5f5f7; 24-25 fg:#9a86e6
 1: 1-23 fg:#e9e5f6; 24-25 fg:#9a86e6; 26-107 fg:#9a86e6 b
@@ -111,8 +111,8 @@ styles
 47: 4-8 fg:#9aa3b8; 9-14 fg:#9a86e6; 15 fg:#ededf2; 16-20 fg:#9a86e6; 21-23 fg:#ededf2
 57: 0-1 fg:#ededf2; 2 fg:#9a86e6; 3 fg:#ededf2; 4-27 fg:#9aa3b8
 58: 0-34 fg:#9aa3b8
-59: 86-116 fg:#9aa3b8
-60: 0-86 fg:#45406b; 87-117 fg:#5c6476; 118-119 fg:#45406b
-61: 0 fg:#45406b; 4 r; 119 fg:#45406b
+59: 87-116 fg:#9aa3b8
+60: 0-88 fg:#45406b; 89-117 fg:#f5f5f7 b; 118-119 fg:#45406b
+61: 0 fg:#45406b; 2-3 fg:#ededf2; 4 r; 5-60 fg:#5c6476; 119 fg:#45406b
 62: 0-119 fg:#45406b
-63: 1-37 fg:#ededf2; 40-50 fg:#9aa3b8
+63: 1-19 fg:#ededf2; 22-32 fg:#9aa3b8

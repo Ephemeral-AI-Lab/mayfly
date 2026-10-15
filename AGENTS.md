@@ -61,7 +61,9 @@ through these steps in order, and tests come last:
 4. **Scenario code.** Write **one scenario per round**: a single long
    conversation (a replay with `mark()`s and one catalog script) that strings
    all of the round's effects together, including a narrow width and a
-   lifecycle case. Do not add a scenario per state, and do not point the owner
+   lifecycle case, paced so a person can operate each state in the live
+   `pnpm run scenario` (long `pause()`s; what ends a state writes the events the
+   product would). Do not add a scenario per state, and do not point the owner
    at older scenarios to see the round. Do not run it against goldens and do
    not write goldens.
 5. **Hand over.** Give the owner that one scenario: its name, the command that
@@ -184,7 +186,7 @@ into the live session by a driver plugin loaded with `dsh --patch`. The driver a
 agent loop would have written, creates child sessions (continuable ones with a
 live Agent) and a `/btw` side conversation with its own Agent, drives the real
 goal and job services, writes compactions, failed provider attempts with their
-retry records, inbox messages (the queued-message pane), and notification-pane notices, and
+retry records, inbox messages (the queued rows of the stream), and notification-pane notices, and
 puts approval, question, and plan-review prompts to you, so reviewing a state
 needs no model, no quota, and no tools. The replays cover tool calls of every
 kind, streaming phases, subagents, plan mode, goals, jobs, modes and model

@@ -152,7 +152,6 @@ add a third meaning to a glyph.
 | `■` | stopping or interrupted |
 | `?` | waiting on the user |
 | `⚠` | warning (deletes files, low balance, dangerous tool) |
-| `ℹ` | information |
 | `✕` `⏸` | goal blocked / paused |
 | `⎿` | detail connector under a header or a failed row |
 | `⏵` | background jobs |
@@ -209,7 +208,7 @@ renders the same patterns, so users learn them once:
 
 | State | Pattern | Example |
 | --- | --- | --- |
-| loading | gap spinner, what, elapsed | `⣾ Loading sessions…` |
+| loading | gap spinner, what, elapsed; a wait under 150 ms shows nothing | `⣾ Loading sessions…` |
 | empty | what is missing and the next action | `No plugins installed — press → to browse` |
 | error | `✗` reason and the retry key | `✗ Could not reach the market  r retry` |
 | stale or offline | `⚠` and the data's age; content stays usable | `⚠ offline · showing cached data from 2d ago` |
@@ -218,10 +217,10 @@ renders the same patterns, so users learn them once:
 A slow or failed secondary read (a balance, a catalog refresh) never blocks or alters
 the primary content.
 
-**Feedback.** `✓` success and `ℹ` info disappear after 5 s of visible time; `⚠`
+**Feedback.** `✓` success and information (words alone, no glyph, since Phase 4 round 2) disappear after 5 s of visible time; `⚠`
 warning stays until acted on; `✗` error stays and offers its retry key; progress
 never auto-dismisses. Feedback is inline in the footer of an open surface and a toast
-in the notification pane (the row above the editor, §5.2) otherwise. Glyph plus word, never color alone.
+in the notification pane (the row above the editor, §5.2) otherwise. A success, warning, or error has glyph plus word, never color alone.
 
 **Breakpoints.** At 100 columns or more a list-and-detail surface is a split view;
 from 60 to 99 it is one column and `Enter` opens the detail; below 60 it shows the name
@@ -335,7 +334,7 @@ synonym.
 | `copy` / `delete` / `refresh` / `search` / `save` | the common meanings (§3.5), always these words | stream rows, lists, forms |
 | `open in editor` / `open diff` | hand the content to `$EDITOR` (`external`, §3.5) | edits, plans, trace events |
 | `select` / `stream` | move focus up into the conversation stream | the stream's own hint row (`Alt+↓ prompt`) |
-| `history` / `queue` | recall earlier messages, queued ones first | the prompt (`↑/↓ history`) |
+| `history` | recall earlier messages; queued messages are rows of the stream with their own keys | the prompt (`↑/↓ history`) |
 | `Esc` words | `collapse` `cancel` `done` `end search` `back` `close` `leave` | the current layer |
 
 ### 3.3 Where key cues live
@@ -349,7 +348,7 @@ thing it acts on, so the screen never repeats a sentence and the user never has 
 | a capturing surface | that surface's hint row (§3.2) | `Enter open · Type filter · Esc close` |
 | a view | the view panel's own hint row | `Enter open · x stop · Esc back` |
 | a stream row | the hint row, once the stream has focus | `Enter expand · c copy · Ctrl+G open in editor` |
-| the completion list | the last line of the list | `↑/↓ options · Tab complete · Enter run · Esc close` |
+| the editor's completion list | no cue: the list is plain rows (§5.2) | — |
 | a foldable block | the block's own summary row, on the newest block | `▸ Took 6s · 2 tool calls · Ctrl+O expand` |
 | the running turn | the **activity row's right gap** (§5.3) | `Esc interrupt · Ctrl+O expand` |
 | the typed prefixes `/` `@` `#` `!` | the **editor's empty-state placeholder** | `Ask anything · / commands · @ files · # skills · ! shell` |
@@ -601,7 +600,7 @@ ui.form({ id, fields, enterSubmits?, submitLabel? })
 field: { id, kind: 'input' | 'textarea' | 'secret' | 'number' | 'select' | 'multiselect' | 'toggle', label, value,
          placeholder?, help?, group?, required?, pattern?, suggestions?, origin?: 'inherited', resetValue?,
          options?, min?, max?, step?, unit?, disabled?, disabledReason? }
-ui.prompt({ id, symbol?, symbolTone?, value?, tokens?: [{ id, label, size? }], recall?: [{ kind: 'queued' | 'history', text }],
+ui.prompt({ id, symbol?, symbolTone?, value?, tokens?: [{ id, label, size? }], recall?: [{ text }],
             placeholder?: string | string[], completions?: { items }, reset?: { rev, value }, submitLabel?, recallLabel? })
 ```
 
@@ -705,7 +704,7 @@ it. Its keys:
 | --- | --- |
 | typing | edits the buffer; a leading `@`, `/`, or `#` word offers completions (`↑`/`↓` move, `Tab` or `Enter` inserts, `Esc` closes) |
 | `Backspace` on an empty buffer | the first press **selects** the last token (inverse), the second **removes** it (`token-remove`); any other key deselects |
-| `↑` / `↓` on an empty buffer | recall: queued messages first, then history, newest first; the corner reads `↑ history 2/4`; `↓` returns to the draft |
+| `↑` / `↓` on an empty buffer | recall: history, newest first; the notification row reads `↑ history 2/4`; `↓` returns to the draft |
 | `Enter` / `Alt+Enter` | send (or queue while the agent runs) / newline |
 | `Alt+↑` | move focus up into the conversation stream (§5.6) |
 
@@ -1035,7 +1034,7 @@ dismiss; actions can.
 | `tab-change` | observation | `controlId`, `tabId` |
 | `focus-change` | observation | `controlId`, `from` |
 | `token-remove` | action | `controlId`, `tokenId` (the second `Backspace`) |
-| `recall-change` | observation | `controlId`, `source: 'queued' \| 'history' \| 'draft'`, `index` |
+| `recall-change` | observation | `controlId`, `source: 'history' \| 'draft'`, `index` |
 | `completion-accept` / `completion-dismiss` | action | `controlId`, `itemId?` |
 | `selection-accept` | action | `controlId`, `itemId`, `selectedIds`, `segmentId?`, `actionId?` |
 | `activate` | action | `controlId`, `actionId`, `inputs` (every form's values), `selected` (each list's cursor row) |
@@ -1139,7 +1138,6 @@ The editor is a rounded frame that carries **the conversation title in its top-r
 Inside it is the `ui.prompt` (§4.3): the prompt symbol, the tokens, the buffer, and the caret.
 
 ```
-queued (2)  ⏎ "also update the footer"  ⏎ "keep the hero copy shor…"  ↑ recall
 ╭────────────────────────────────────────────────── Update the landing page hero ╮
 │ > [Image #1 84 KB ×] [notes.md 2 KB ×] explain @pane-act▌                      │
 ╰────────────────────────────────────────────────────────────────────────────────╯
@@ -1151,21 +1149,27 @@ queued (2)  ⏎ "also update the footer"  ⏎ "keep the hero copy shor…"  ↑ 
 - **Tokens live in the input.** Images, pasted blocks, and `@` mentions are `[label size ×]` tokens in the
   buffer. `Backspace` on an empty buffer selects the last token (inverse) and the next `Backspace` removes it, so a
   token is removed with two predictable keys and never by accident.
-- **Queued messages** are one truncated line above the frame: the first three, each cut to 22 characters, then `+N`,
-  then `↑ recall`. They never grow the editor.
-- **History and queue share `↑`/`↓`.** On an empty buffer `↑` recalls the queue first (newest queued message), then
-  earlier messages; the right corner reads `↑ history 2/4`; `↓` walks back and ends on the draft. Recalling a queued
-  message takes it out of the queue; sending it again re-queues it.
+- **Queued messages** are rows of the conversation stream (§5.6), not a line above the editor: the prompt style with
+  a muted mark, `⏎ queued` (next turn) or `⏎ steering` (the running turn's next step). `Alt+↑` focuses the stream at its
+  newest row (it works with a draft in the prompt, which stays); on a queued row the notification row names the keys:
+  `e` takes the message into the prompt (a draft already there goes to the history first, one `↑` brings it back) and
+  returns focus, `s` sends it now (to the steer lane; not offered on a steering row), `d` cancels it at once with
+  `u undo` for eight seconds (the message returns to the lane it left, at its end); `Enter` opens the whole text.
+- **`↑`/`↓` are the history.** On an empty buffer (or at the start of a draft) `↑` recalls earlier messages and `↓`
+  walks back and ends on the draft. While walking, the notification row reads `↑ history 2/4` (above the idle
+  hints, below a notice); the conversation title stays in the frame's corner. The queue is not part of the walk.
 - **Alt+↑** moves focus into the conversation stream (§5.6); `Alt+↓` returns. The editor teaches neither: see below.
 - **No hint row.** The editor frame never draws a key line (§3.3): the placeholder teaches the typed prefixes, the
-  queue line carries `↑ recall`, the activity gap carries `Esc interrupt`, and `Alt+↑` is cued by a tip and by the
-  stream's own hint row once it has focus. The one exception is the open completion list, whose last line is its key
-  line (`↑/↓ options · Tab complete · Enter insert · Esc close`). A surface opts in with `hint: 'none'` or
-  `hint: 'completions'`.
+  notification row names the keys of a queued row, the activity gap carries `Esc interrupt`, and `Alt+↑` is cued by a tip and by the
+  stream's own hint row once it has focus. The open completion list has no key line either (owner decision, Phase 4
+  rounds 1 and 4). A `ui.prompt` in a plugin surface still opts in to a key line for its own list with
+  `hint: 'completions'`; the editor's palette does not draw it.
 - **The placeholder ladder** (§3.3) is the same text in whole-trigger variants, each a child with a `when` range, so
   the renderer picks the longest that fits and no code reads a width.
-- **Completions** are a `choose` list under the buffer: `@` files (inserted as a token), `/` commands, `#` skills
-  (inserted as text), each with its own key line (`Tab complete · Enter insert · Esc close`).
+- **Completions** are one borderless palette over the stream, on the rows right above the frame (owner decision, Phase 4
+  round 1): `@` files (inserted as a token), `/` commands (`Enter` accepts and runs, `Tab` completes the name), `#`
+  skills (inserted as text). It holds up to six plain rows with the focused row marked `→`, the typed part of a name in
+  bold and the description muted, and no border, count, key line, or key at the right edge. `Esc` closes it and keeps the draft.
 
 **Notices** live in the **notification pane**: one row on the blank line above the editor, under the activity block,
 right-aligned, using the whole row between the stream's margins (a three-column margin at the right edge) when nothing else
@@ -1174,12 +1178,17 @@ and it is there (blank) when nothing shows, so the editor never shifts. A notice
 front with `…` and keeps its **tail**, the end of its message a count or a countdown makes (`⚠ Rate lim… · retrying in 9s ·
 1/5`; `MayflyFeedback.tail`, an end of `message`); a tail wider than the row falls back to the plain cut.
 The keys of the focus mode (conversation and search) take the left of the same row, as parts that shed by priority
-(`↑/↓ select · Enter expand · c copy · / ? search · Ctrl+G editor · Ctrl+C JSON · Esc back`; `Esc` is the last to go), and the notice yields to its glyph
-and its tail while the mode holds. Its content is the notification lane (the commands' and extensions' feedback: `✓` and `ℹ` leave after five
+(`↑/↓ select · Enter expand · c copy · / ? search · Ctrl+G editor · Ctrl+C JSON · Esc back`; `Esc` is the last to go; on a
+queued or steering message the row's verbs read first and outlast the rest: `e edit · s send now · d cancel · Enter expand ·
+c copy · ↑/↓ select · Esc back`), and the notice yields to its glyph and its tail while the mode holds. Its content is the
+notification lane (the commands' and extensions' feedback: `✓` and information leave after five
 seconds of visible time, `⚠` and `✗` stay) and the notices the session's facts raise: `⚠ Rate limited · retrying in 9s ·
 1/5` (a provider failure with HTTP status 429; any other failure reads `Provider error`), `⚠ Context 93% full · /compact
-now` (from 92% of the window, until a compaction lowers it), and `ℹ Resumed session · 24 turns · last active 2h ago`
-(five seconds; once, when the main session is first attached, never when switching between conversations). The footer under the editor keeps only the slash hint. When the stream is scrolled away from its
+now` (from 92% of the window, until a compaction lowers it), and `Resumed session · 24 turns · last active 2h ago`
+(five seconds; once, when the main session is first attached, never when switching between conversations). Information
+has no glyph: its words are the notice. While a second conversation is open, its keys (`F7 btw · F8 close`) come first on
+the right; without a notice, what the prompt awaits, its history counter, or the keys of the token under the caret follow
+them, and the generic hint of the keys that leave the prompt gives way to them. The footer under the editor keeps only the slash hint. When the stream is scrolled away from its
 tail, the same row carries the chip back to it, centered and inverse (`Back to bottom · Ctrl+↓`, or `2 new turns ·
 Ctrl+↓`): the notice takes only the room right of the chip, so the two never overlap. Offline and a low balance are not raised: the
 Harness has no offline signal and the balance is not read yet. An undo toast is not built.
@@ -1359,7 +1368,7 @@ as facts: each durable `goal/change` is one row (`● Goal set · …`, `⏸ Goa
 `── goal round 3 ──` rule across the stream (label centered, two columns of margin each side, drawn in the muted light gray, not the quiet border purple and not pure white) (the `user/message` the round driver writes), and a blocked goal also holds a warning in the
 notification pane while it waits for the person.
 
-The queue is not a view: queued messages are the editor's truncated line (§5.2).
+The queue is not a view: queued messages are rows of the conversation stream (§5.2, §5.6).
 
 ### 5.5 Agents and jobs views
 
@@ -2083,7 +2092,7 @@ Every step is reversible with `Esc`, and `Skip for now` never blocks:
 | `@` file picker | recent first, fuzzy on name and path; the focused row shows `↗ code` | `Enter` **open in the external editor** · `Tab` insert the mention · `Esc` close |
 | Changed files | `M`/`A`/`D` with stat; `Enter` opens at the first changed line | `Enter` open · `d` diff |
 | Notifications and undo | right-aligned toast in the notification pane above the editor (`✓ build finished · 22s`); a destructive action offers `u undo · 8s` | `Ctrl+J` view · `u` undo |
-| Queued messages, attachments | one truncated `queued (2)` line above the editor; attachments and pasted blocks are `[Image #1 84 KB ×]` tokens inside the input (§5.2) | `↑` recall · `Backspace` selects then removes a token |
+| Queued messages, attachments | queued messages are rows of the stream marked `⏎ queued` / `⏎ steering`; attachments and pasted blocks are `[Image #1 84 KB ×]` tokens inside the input (§5.2) | `Alt+↑` then `e` edit · `s` send now · `d` cancel · `Backspace` selects then removes a token |
 | Rewind | checkpoint list with a restore scope `‹ conversation + code ›` | `↑↓` · `←/→` scope · `Enter` restore |
 | Diff hunk review | per-hunk accept or reject on the numbered diff | `a`/`r` · `A`/`R` all · `n`/`p` hunk |
 | Banners | rate limit with countdown, offline, context nearly full, low balance, resumed session | `Esc` cancel · `r` retry |
@@ -2268,7 +2277,7 @@ baseline verified against `main` when this was written; *new* means nothing like
 | Chrome | inline surfaces use square corners | rounded frames everywhere; overlay in the focus color, surface in the quiet color (§2.1) |
 | Motion | a two-cell wave ripple (120 ms) and a braille spinner (80 ms), label `Deep diving` | bloom, fill, shimmer, breath, and gap; one motion channel per row; the label stays `Deep diving`; the ripple and the `tide` loader retire (§2.3) |
 | Status | one row; goal and jobs are chips in it; a `SHELL` chip | **one row** of facts (`provider/model Effort`, mode chips, context, directory, git, balance) and items (agents, jobs, goal, todo), shedding detail in a set order when it is crowded (§5.1) |
-| Editor | the conversation title and attachments are elsewhere; `! shell mode` is text in the border | the title in the frame's top-right corner; images, pastes, and `@` mentions as `[… ×]` tokens in the input with a two-step `Backspace`; one truncated queue line; `↑`/`↓` walk the queue then the history; shell mode is the border color (§5.2) |
+| Editor | the conversation title and attachments are elsewhere; `! shell mode` is text in the border | the title in the frame's top-right corner; images, pastes, and `@` mentions as `[… ×]` tokens in the input with a two-step `Backspace`; queued messages are rows of the stream with `e`/`s`/`d`; `↑`/`↓` walk the history with a counter; shell mode is the border color (§5.2) |
 | Activity row | one truncated detail line; tips only while a turn runs; the interrupt key is not advertised | up to three `⎿` lines; `Esc interrupt · Ctrl+O expand` in the gap; tips only in the `Deep diving` row (§5.3) |
 | Tool rows | an edit has a two-column sign gutter; no line numbers | one plain numbered gutter (old numbers on removed lines, new numbers on the rest) and a red or green background behind the changed code, `A`/`M`/`D` for multi-file; write is one line, and highlighted code with line numbers when expanded (§5.3) |
 | Compaction | a braille spinner and elapsed time; settles to `✓ compacted N items · ~Tk tokens` | a real occupancy bar with two stages, a drain on settle, and the before/after percentage (§5.6) |

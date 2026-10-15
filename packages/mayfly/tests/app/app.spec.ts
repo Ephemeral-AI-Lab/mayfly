@@ -204,20 +204,6 @@ describe('mayfly app driver', () => {
       type: 'turn/end', seq: 1, time: 1, data: { turn: 0, reason: { kind: 'interrupted' } },
     } as never)
     expect(test.ctx.mayflyRequests.stopPending()).toBe(false)
-
-    // A descendant-only interrupt (the selected Agent already idle) settles
-    // through the child's own status edge, not the selected session's.
-    const child = fakeAgent('draining-child')
-    ;(child.session as { header: { parentSession?: unknown } }).header.parentSession = agent.id
-    ;(child as { status: string }).status = 'running'
-    test.live.set(String(child.id), child)
-    test.ctx.mayflyRequests.requestStop()
-    expect(stops).toEqual([true, false, true])
-    test.ctx.emit('agent/status', { agent: child, status: 'running' })
-    expect(test.ctx.mayflyRequests.stopPending()).toBe(true)
-    ;(child as { status: string }).status = 'idle'
-    test.ctx.emit('agent/status', { agent: child, status: 'idle' })
-    expect(test.ctx.mayflyRequests.stopPending()).toBe(false)
   })
 
   it('serializes resume and new navigation while keeping failures non-fatal', async () => {

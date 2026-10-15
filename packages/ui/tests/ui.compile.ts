@@ -58,7 +58,7 @@ export const composer = ui.prompt({
   symbolTone: 'accent',
   value: 'draft',
   tokens: [{ id: 't1', label: 'Image #1', size: '84 KB' }, { id: 't2', label: 'notes.md' }],
-  recall: [{ kind: 'queued', text: 'also update the footer' }, { kind: 'history', text: 'run the width scan again' }],
+  recall: [{ text: 'also update the footer' }, { text: 'run the width scan again' }],
   recallLabel: 'history',
   placeholder: ['Ask anything · / commands', 'Ask anything'],
   completions: { items: [{ id: 'c1', label: '/model', detail: 'switch model', right: 'Ctrl+M' }, { id: 'c2', label: '/trace' }] },
@@ -110,7 +110,7 @@ export const statusPrompt: MayflyStatusNode = composer
 export const editorPrompt: MayflyEditorExtensionNode = composer
 // @ts-expect-error a prompt names its control
 ui.prompt({ placeholder: 'missing id' })
-// @ts-expect-error a recalled message is queued or history
+// @ts-expect-error a recalled message is text (history), not a kind
 ui.prompt({ id: 'p', recall: [{ kind: 'pinned', text: 'x' }] })
 // @ts-expect-error a token carries a label
 ui.prompt({ id: 'p', tokens: [{ id: 't' }] })

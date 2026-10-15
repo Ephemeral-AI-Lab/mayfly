@@ -284,13 +284,14 @@ describe('direct pane surface renderer', () => {
       f.register({ id: 'photo', render: () => ui.stack.column([ui.text('caption'), ui.image({ attachmentId: 'att-1', alt: '[Image #1 84 KB]' })]) })
       await flush(8)
       const pane = entry(f.runtime.surfaces, 'photo').component
-      expect(pane.render(40).join('\n')).toContain('[Image #1 84 KB]')
+      // R2: the unified loader stands in for the image until its bytes arrive; the alt is the picture's text fallback.
+      expect(pane.render(40).join('\n')).toContain('Loading image…')
       expect(loader).toHaveBeenCalledOnce()
       bytes.resolve({ data: new Uint8Array([1]), mediaType: 'image/png' })
       await flush(8)
       const rows = pane.render(40).join('\n')
       expect(rows).toContain('<image>')
-      expect(rows).not.toContain('[Image #1 84 KB]')
+      expect(rows).not.toContain('Loading image…')
       release()
     } finally {
       await f.dispose()

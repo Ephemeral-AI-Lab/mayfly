@@ -14,31 +14,31 @@ grid 120x40 cursor none
 |
 |  ● I will run three tracks in parallel.
 |
-|  ● Subagent · 5 subagents · 4s · 1 failed · 1 interrupted
-|    ├ Subagent(Survey shot embeds) · 4s
-|    ├ • Subagent(Rewrite README hero) · running in background · 3s
-|    ├ • Subagent(Regenerate shot gallery) · running in background · 3s
-|    ├ ✗ Subagent(Check the links) · failed · 3.6s
-|    └ ⊘ Subagent(Draft release notes) · stopped · 2.9s
+|  ✓ Subagent · 5 subagents · 1s
+|    ├ Subagent(Survey shot embeds) · 0.8s
+|    ├ Subagent(Rewrite README hero) · 0.8s
+|    ├ Subagent(Regenerate shot gallery) · 0.8s
+|    ├ Subagent(Check the links) · 0.8s
+|    └ Subagent(Draft release notes) · 0.8s
 |
 |  ● All three tracks are started. I will wait for the survey to finish.
 |
 |  ✻ Worked for 4s · done 09:00
 |
-|
-|
-|
-|
-|
-|
-|
-|
-|
-|                                                                                      Alt+↑ conversation · Alt+↓ view
-|╭───────────────────────────────────────────────────────────────────────────────── Split the rebranding into parallel ─╮
-|│ >                                                                                                                    │
+|────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+|● Running 5 agents (1 done, 2 failed, 1 running, 1 waiting) · 10m 2s
+|  ├─ running Rewrite README hero · deepseek-flash · high · 1 tool · 10m 2s · 5.6k tokens · Using bash
+|  ├─ waiting Regenerate shot gallery · 0 tools · 10m 2s · Starting…
+|  ├─ done Survey shot embeds · deepseek-flash · high · 1 tool · 4s · 11.2k tokens · Using read
+|  ├─ failed Check the links · deepseek-flash · high · 1 tool · 3s · 5.6k tokens
+|  │      Error: Failed
+|  └─ failed Draft release notes · deepseek-flash · high · 0 tools · 2s · 5.6k tokens
+|         Error: Failed
+|                                                                                       Alt+↑ conversation · Alt+↓ bar
+|╭────────────────────────────────────────────────────────────────────────────────── Split the rebranding into parallel ╮
+|│ >  Ask anything · / commands · @ files · # skills · ! shell                                                          │
 |╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
-| deepseek-official/deepseek-flash High  ~/workspace  ● agents 3/5 10m 2s             cache ▰▰▱▱▱ 42%  ctx ▰▱▱▱▱▱▱▱▱▱ 5%
+| deepseek-flash High  ~/workspace                                                    cache 42%  context: 5% (5.5k/128k)
 styles
 0: 1-23 fg:#f5f5f7; 24-25 fg:#9a86e6
 1: 1-23 fg:#e9e5f6; 24-25 fg:#9a86e6; 26-107 fg:#9a86e6 b
@@ -51,16 +51,25 @@ styles
 9: 2-3 fg:#9a86e6; 4-45 fg:#9a86e6 b
 11: 2-33 fg:#9aa3b8
 13: 2-3 fg:#ededf2
-15: 2 fg:#5c6476; 3 fg:#ededf2; 4-11 fg:#ededf2 b; 12-30 fg:#9aa3b8; 31-41 fg:#e85454; 42-57 fg:#9aa3b8
-16: 2-5 fg:#9aa3b8; 6-33 fg:#c9c0f0; 34-38 fg:#9aa3b8
-17: 2-5 fg:#9aa3b8; 6 fg:#5c6476; 7 fg:#ededf2; 8-36 fg:#c9c0f0; 37-65 fg:#9aa3b8
-18: 2-5 fg:#9aa3b8; 6 fg:#5c6476; 7 fg:#ededf2; 8-40 fg:#c9c0f0; 41-69 fg:#9aa3b8
-19: 2-5 fg:#9aa3b8; 6-7 fg:#e85454; 8-32 fg:#c9c0f0; 33-48 fg:#9aa3b8
-20: 2-7 fg:#9aa3b8; 8-36 fg:#c9c0f0; 37-53 fg:#9aa3b8
+15: 2-3 fg:#4ec87e; 4-11 fg:#ededf2 b; 12-30 fg:#9aa3b8
+16: 2-5 fg:#9aa3b8; 6-33 fg:#c9c0f0; 34-40 fg:#9aa3b8
+17: 2-5 fg:#9aa3b8; 6-34 fg:#c9c0f0; 35-41 fg:#9aa3b8
+18: 2-5 fg:#9aa3b8; 6-38 fg:#c9c0f0; 39-45 fg:#9aa3b8
+19: 2-5 fg:#9aa3b8; 6-30 fg:#c9c0f0; 31-37 fg:#9aa3b8
+20: 2-5 fg:#9aa3b8; 6-34 fg:#c9c0f0; 35-41 fg:#9aa3b8
 22: 2-3 fg:#ededf2
 24: 2-29 fg:#9aa3b8
-35: 86-116 fg:#9aa3b8
-36: 0-81 fg:#45406b; 82-117 fg:#5c6476; 118-119 fg:#45406b
-37: 0 fg:#45406b; 4 r; 119 fg:#45406b
+26: 0-119 fg:#45406b
+27: 0-1 fg:#c9c0f0; 2-17 fg:#c9c0f0 b; 18-67 fg:#9aa3b8
+28: 0-4 fg:#9aa3b8; 5-12 fg:#c9c0f0 b; 13-31 fg:#c9c0f0; 32-100 fg:#9aa3b8
+29: 0-4 fg:#9aa3b8; 5-12 fg:#e8a838 b; 13-35 fg:#c9c0f0; 36-66 fg:#9aa3b8
+30: 0-4 fg:#9aa3b8; 5-9 fg:#4ec87e b; 10-27 fg:#c9c0f0; 28-93 fg:#9aa3b8
+31: 0-4 fg:#9aa3b8; 5-11 fg:#e85454 b; 12-26 fg:#c9c0f0; 27-78 fg:#9aa3b8
+32: 0-21 fg:#e85454
+33: 0-4 fg:#9aa3b8; 5-11 fg:#e85454 b; 12-30 fg:#c9c0f0; 31-83 fg:#9aa3b8
+34: 0-21 fg:#e85454
+35: 87-116 fg:#9aa3b8
+36: 0-83 fg:#45406b; 84-117 fg:#f5f5f7 b; 118-119 fg:#45406b
+37: 0 fg:#45406b; 2-3 fg:#ededf2; 4 r; 5-60 fg:#5c6476; 119 fg:#45406b
 38: 0-119 fg:#45406b
-39: 1-37 fg:#ededf2; 40-50 fg:#9aa3b8; 53 fg:#c9c0f0; 54 fg:#ededf2; 55-61 fg:#9aa3b8; 62-64 fg:#ededf2; 65-71 fg:#9aa3b8; 85-90 fg:#ededf2; 91-92 fg:#e8a838; 93-95 fg:#9aa3b8; 96-99 fg:#ededf2; 102-105 fg:#ededf2; 106 fg:#9a86e6; 107-115 fg:#9aa3b8; 116-118 fg:#ededf2
+39: 1-19 fg:#ededf2; 22-32 fg:#9aa3b8; 85-118 fg:#ededf2

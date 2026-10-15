@@ -35,10 +35,10 @@ grid 120x40 cursor none
 |  ⡀ Deep diving · 7s · ↑29.8k
 |    ⎿ Tip: Esc to interrupt the run
 |                                                                                    ⚠ Context 94% full · /compact now
-|╭───────────────────────────────────────────────────────────────────────────────────── Keep reading until the context ─╮
-|│ >                                                                                                                    │
+|╭────────────────────────────────────────────────────────────────────────────────────── Keep reading until the context ╮
+|│ >  Ask anything · / commands · @ files · # skills · ! shell                                                          │
 |╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
-| deepseek-official/deepseek-flash High  ~/workspace                                 cache ▰▰▰▱▱ 65%  ctx ▰▰▰▰▰▰▰▰▰▱ 94%
+| deepseek-flash High  ~/workspace                                                   cache 65%  context: 94% (29.8k/32k)
 styles
 0: 1-23 fg:#f5f5f7; 24-25 fg:#9a86e6
 1: 1-23 fg:#e9e5f6; 24-25 fg:#9a86e6; 26-107 fg:#9a86e6 b
@@ -60,8 +60,8 @@ styles
 27: 2-3 fg:#ededf2
 33: 0-1 fg:#ededf2; 2 fg:#9a86e6; 3-14 fg:#ededf2; 16-28 fg:#9aa3b8
 34: 0-34 fg:#9aa3b8
-35: 84 fg:#e8a838; 86-116 fg:#e8a838
-36: 0-85 fg:#45406b; 86-117 fg:#5c6476; 118-119 fg:#45406b
-37: 0 fg:#45406b; 4 r; 119 fg:#45406b
+35: 84-116 fg:#e8a838
+36: 0-87 fg:#45406b; 88-117 fg:#f5f5f7 b; 118-119 fg:#45406b
+37: 0 fg:#45406b; 2-3 fg:#ededf2; 4 r; 5-60 fg:#5c6476; 119 fg:#45406b
 38: 0-119 fg:#45406b
-39: 1-37 fg:#ededf2; 40-50 fg:#9aa3b8; 84-89 fg:#ededf2; 90-92 fg:#4ec87e; 93-94 fg:#9aa3b8; 95-98 fg:#ededf2; 101-104 fg:#ededf2; 105-113 fg:#e85454; 114 fg:#9aa3b8; 115-118 fg:#ededf2
+39: 1-19 fg:#ededf2; 22-32 fg:#9aa3b8; 84-118 fg:#ededf2

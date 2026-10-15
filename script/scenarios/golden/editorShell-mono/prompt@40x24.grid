@@ -1,0 +1,30 @@
+grid 40x24 cursor none
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|                      renamed session
+|╭──────── Update the landing page hero ╮
+|│ >  Ask anything · / commands         │
+|╰──────────────────────────────────────╯
+| deepseek-flash  ~/workspace
+styles
+20: 0-9 d; 10-37 b; 38-39 d
+21: 0 d; 4 r; 5-29 d; 39 d
+22: 0-39 d
+23: 17-27 d

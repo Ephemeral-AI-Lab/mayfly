@@ -48,6 +48,8 @@ const zh = Object.freeze({
   queued: '排队中',
   send: '发送',
   insert: '插入',
+  // The wait of an `image` node while its bytes are read (the unified loader's words).
+  'Loading image…': '正在载入图片…',
   // Field provenance and conflict resolution.
   inherited: '继承',
   override: '显式覆盖',

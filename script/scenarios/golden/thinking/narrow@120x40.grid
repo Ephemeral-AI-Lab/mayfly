@@ -18,11 +18,11 @@ grid 48x24 cursor none
 |    31 returns zero).
 |
 |  ✻ Worked for 10s · done 09:00
-|              Alt+↑ conversation · Alt+↓ view
-|╭───────────────────────── Is 2^31 - 1 prime? ─╮
-|│ >                                            │
+|                           Alt+↑ conversation
+|╭────────────────────────── Is 2^31 - 1 prime? ╮
+|│ >  Ask anything · / commands · @ files       │
 |╰──────────────────────────────────────────────╯
-| deepseek-flash  workspace    ctx ▱▱▱▱▱▱▱▱▱▱ 3%
+| deepseek-flash High  ~/workspace
 styles
 0: 2-3 fg:#ededf2; 4-47 fg:#9aa3b8
 1: 2-3 fg:#ededf2; 4-47 fg:#9aa3b8
@@ -39,8 +39,8 @@ styles
 12: 2-3 fg:#ededf2; 4-47 fg:#9aa3b8
 14: 2-3 fg:#ededf2
 18: 2-30 fg:#9aa3b8
-19: 14-44 fg:#9aa3b8
-20: 0-25 fg:#45406b; 26-45 fg:#5c6476; 46-47 fg:#45406b
-21: 0 fg:#45406b; 4 r; 47 fg:#45406b
+19: 27-44 fg:#9aa3b8
+20: 0-27 fg:#45406b; 28-45 fg:#f5f5f7 b; 46-47 fg:#45406b
+21: 0 fg:#45406b; 2-3 fg:#ededf2; 4 r; 5-39 fg:#5c6476; 47 fg:#45406b
 22: 0-47 fg:#45406b
-23: 1-14 fg:#ededf2; 17-25 fg:#9aa3b8; 30-33 fg:#ededf2; 34-43 fg:#9aa3b8; 44-46 fg:#ededf2
+23: 1-19 fg:#ededf2; 22-32 fg:#9aa3b8

@@ -174,6 +174,8 @@ export function apply(ctx) {
     const lastSeqs = new Map()
     const streams = new Map()
     const jobsById = new Map()
+    /** The Agent's own `followup` and `steer`, while a held queue stands them in. */
+    let heldAgent
     let notifier
     // Persisted sessions need new ids on every run, and the scenario clock repeats Date.now(), so the tag is random.
     const runTag = randomBytes(4).toString('hex')
@@ -348,7 +350,14 @@ export function apply(ctx) {
             break
           }
           case 'queue': {
-            // Pending input enters the inbox without waking the agent (`followup` would start a turn).
+            // Pending input enters the inbox without waking the agent (`followup` would start a turn). The replay's Agent
+            // stands for a running one, so the product's own `s` (steer) and `u` (queue again) must not wake it either,
+            // until the last message is read.
+            if (heldAgent === undefined) {
+              heldAgent = { followup: agent.followup, steer: agent.steer }
+              agent.followup = message => { agent.inbox.append('next-turn', message) }
+              agent.steer = message => { agent.inbox.append('next-step', message) }
+            }
             action.rows.forEach((row, index) => {
               const steer = typeof row === 'object' && row !== null
               agent.inbox.append(steer ? 'next-step' : 'next-turn', { id: action.ids[index], role: 'user', content: [{ type: 'text', text: steer ? row.steer : row }], source: { kind: 'user' } })
@@ -357,8 +366,19 @@ export function apply(ctx) {
             break
           }
           case 'queue-clear': {
-            for (const id of action.ids) agent.inbox.remove(id)
-            log(`queue cleared ${String(action.ids.length)} messages`)
+            // The agent reads the messages still in the inbox: each becomes the prompt the session records, as when the loop
+            // claims it (one the reader took out or cancelled stays out).
+            action.ids.forEach((id, index) => {
+              if (id === undefined || !agent.inbox.remove(id)) return
+              const claimed = main.append('user/message', { id, role: 'user', content: [{ type: 'text', text: action.texts[index] }], source: { kind: 'user' } }, { surfaceOp: 'append' })
+              lastSeqs.set(main, claimed.seq)
+            })
+            if (heldAgent !== undefined && agent.inbox.nextTurn.length + agent.inbox.nextStep.length === 0) {
+              agent.followup = heldAgent.followup
+              agent.steer = heldAgent.steer
+              heldAgent = undefined
+            }
+            log(`queue read ${String(action.ids.length)} messages`)
             break
           }
           case 'notify': {

@@ -4,7 +4,8 @@
  * scrolled away from its tail, the chip that returns to it, centered. The notice sits at the right and may use the whole
  * row between the stream's margins (less, beside the chip or the mode's keys); a notice that is too long is cut at its
  * front with `…` and keeps its tail, the count or countdown it ends with. The mode's keys take the left and are shed by
- * priority, the notice taking the rest. The row exists whether or not there is a notice (a
+ * priority, the notice taking the rest. Without a notice the right shows what the prompt awaits (with the loader) or a muted
+ * hint, after the keys that go between conversations. The row exists whether or not there is a notice (a
  * blank row then), so the editor never shifts. A pure function of facts: the text arrives translated and final, and
  * the glyph carries the severity beside the tone, never the color alone.
  *
@@ -27,8 +28,9 @@ export interface NotificationFacts {
   readonly waiting?: number
 }
 
-const GLYPHS: Readonly<Record<NotificationSeverity, readonly [string, MayflyTone]>> = {
-  success: ['✓', 'success'], info: ['ℹ', 'primary'], warning: ['⚠', 'warning'], error: ['✗', 'danger'],
+/** The glyph and tone of a notice; information has none, its words are the whole notice. */
+const GLYPHS: Readonly<Record<Exclude<NotificationSeverity, 'info'>, readonly [string, MayflyTone]>> = {
+  success: ['✓', 'success'], warning: ['⚠', 'warning'], error: ['✗', 'danger'],
 }
 
 /** One key of the mode that holds focus: its words, and how long it survives a narrow row (the lower, the longer). */
@@ -55,11 +57,13 @@ export interface NotificationRowFacts {
   readonly notice?: NotificationFacts
   /** The translated words of the chip that returns to the tail of the stream (`Back to bottom · Ctrl+↓`). */
   readonly chip?: string
+  /** What the prompt awaits (`Reading the clipboard…`), shown with the unified loader while there is no notice. */
+  readonly wait?: string
   /** What the row teaches while it has no notice: the keys that move focus off the prompt, muted, in the notice's place. */
   readonly hint?: string
   /** The keys of the mode that holds focus (the conversation's row cursor), muted at the stream's left margin, in the order they read; the row sheds them by `priority`. A notice takes what they leave. */
   readonly keys?: readonly NotificationKeyPart[]
-  /** The keys that go back and forth between conversations (`F7 btw · F8 close`): they take the right of the row, before the notice or the hint. */
+  /** The keys that go back and forth between conversations (`F7 btw · F8 close`): they take the right of the row, before the notice, the wait, or the hint. */
   readonly toggle?: string
 }
 
@@ -67,20 +71,19 @@ export interface NotificationRowFacts {
 const GAP = 1
 
 /**
- * The children of a notice, in reading order: the glyph, the front of the message (cut with `…` when
+ * The children of a notice, in reading order: the glyph (information has none), the front of the message (cut with `…` when
  * the room is short, so it is admitted last, at `back`), the tail the message ends with (a count or a countdown, kept whole), and the
  * muted `+N` of the notices waiting; all but the front are admitted from `front` on.
  */
 function noticeChildren(facts: NotificationFacts, front: number, back: number): readonly MayflyUiChild[] {
-  const [glyph, tone] = GLYPHS[facts.severity]
-  const quiet = facts.severity === 'success' || facts.severity === 'info'
+  const mark = facts.severity === 'info' ? undefined : GLYPHS[facts.severity]
   const tail = facts.tail !== undefined && facts.message.length > facts.tail.length && facts.message.endsWith(facts.tail) ? facts.tail : undefined
   const head = tail === undefined ? facts.message : facts.message.slice(0, facts.message.length - tail.length).replace(/\s*·\s*$/u, '')
   const waiting = facts.waiting === undefined || facts.waiting <= 0 ? undefined : facts.waiting
-  const style = quiet ? {} : { tone }
+  const style = mark === undefined || facts.severity === 'success' ? {} : { tone: mark[1] }
   const right = { band: 'right' } as const
   return [
-    ui.child(ui.richText([{ text: glyph, tone }]), { ...right, priority: front }),
+    ...mark === undefined ? [] : [ui.child(ui.richText([{ text: mark[0], tone: mark[1] }]), { ...right, priority: front })],
     ui.child(ui.richText([{ text: head, ...style }], { overflow: 'truncate' }), { ...right, priority: back, overflow: 'truncate' }),
     ...tail === undefined ? [] : [ui.child(ui.richText([{ text: `· ${tail}`, ...style }]), { ...right, priority: front + 1 })],
     ...waiting === undefined ? [] : [ui.child(ui.richText([{ text: `· +${String(waiting)}`, tone: 'muted' }]), { ...right, priority: front + 2 })],
@@ -92,16 +95,27 @@ function toggleChild(toggle: string, followed: boolean): MayflyUiChild {
   return ui.child(ui.richText([{ text: followed ? `${toggle}  ` : toggle, tone: 'muted' }]), { band: 'right', priority: 0 })
 }
 
+/** What the prompt awaits, laid out as a notice is: the loader cell (one clock, frozen under reduced motion), then the words. */
+function waitChild(message: string): MayflyUiChild {
+  return ui.child(ui.richText([{ text: '', motion: 'loader', variant: 'gap' }, { text: ` ${message}` }], { overflow: 'truncate' }), { band: 'right', priority: 1, overflow: 'truncate' })
+}
+
+/** The hint, muted; it is cut at its end on a narrow row. */
+function hintChild(hint: string): MayflyUiChild {
+  return ui.child(ui.richText([{ text: hint, tone: 'muted' }], { overflow: 'truncate' }), { band: 'right', priority: 1, overflow: 'truncate' })
+}
+
 /**
  * The right side of the row as one admission row: the way between conversations first, then the notice, which gives up its
- * front before anything else; without a notice the toggle replaces the idle hint, and without either the row is empty.
+ * front before anything else; without a notice, what the prompt awaits, else the hint, follows the toggle; with none of
+ * them the row is empty.
  */
 function rightOf(facts: NotificationRowFacts | undefined): MayflyUiNode | undefined {
-  if (facts?.notice !== undefined) return ui.stack.row([...facts.toggle === undefined ? [] : [toggleChild(facts.toggle, true)], ...noticeChildren(facts.notice, 1, 4)], { gap: GAP })
-  // The way between conversations takes the place of the idle hint.
-  if (facts?.toggle !== undefined) return ui.stack.row([toggleChild(facts.toggle, false)], { gap: GAP })
-  if (facts?.hint === undefined) return undefined
-  return ui.stack.row([ui.child(ui.richText([{ text: facts.hint, tone: 'muted' }], { overflow: 'truncate' }), { band: 'right', priority: 0, overflow: 'truncate' })], { gap: GAP })
+  const toggle = facts?.toggle
+  if (facts?.notice !== undefined) return ui.stack.row([...toggle === undefined ? [] : [toggleChild(toggle, true)], ...noticeChildren(facts.notice, 1, 4)], { gap: GAP })
+  const after = facts?.wait !== undefined ? waitChild(facts.wait) : facts?.hint !== undefined ? hintChild(facts.hint) : undefined
+  if (toggle === undefined && after === undefined) return undefined
+  return ui.stack.row([...toggle === undefined ? [] : [toggleChild(toggle, after !== undefined)], ...after === undefined ? [] : [after]], { gap: GAP })
 }
 
 /**
