@@ -3,10 +3,10 @@
  * conversation. Its members are the parent's spawn calls, so a subagent shows from the moment its call starts, however
  * short it lives: a call without its result is a foreground subagent (it blocks the turn), a call whose acknowledgement
  * (`started subagent <id>`) landed is a background one; the child's own facts add its tools, time, and output. The row
- * carries `● agents 1/3 41s` (settled over all, and the time the oldest working one has run, or the longest that ran) and
- * stays, `✓ agents 3/3 41s`, until a new conversation. The panel, shown under the row while the view is entered
- * (`Alt+↓`), is a list of every subagent of the conversation, live first, one line each: the mark, the name and task,
- * then `fg` or `bg`, its time, tool count, and streamed output. `↑/↓` choose a row, `Enter` opens its conversation (the
+ * carries `● agents 1/3` (settled over all) and stays, `✓ agents 3/3`, until a new conversation. The panel, shown under
+ * the row while the view is entered (`Alt+↓`), is a list of every subagent of the conversation, live first, one line
+ * each: the mark, the name with `(fg)` or `(bg)`, and what it is doing (its streamed activity while it works, its task
+ * once it settled), then at the right edge its tokens in and out, its rate, and its time. `↑/↓` choose a row, `Enter` opens its conversation (the
  * same view `/agents` opens; `F7` returns), `x` stops a continuable child behind the shared Yes/No, and `b` would move a
  * foreground one to the background (dsh offers no such call yet, so it is listed as unavailable). The registration is
  * the Fiber's.
@@ -65,7 +65,8 @@ export interface AgentRow {
   readonly failed: boolean
   /** The subagent was stopped by the user (interrupted, aborted, or stopped from the panel), which is no failure. */
   readonly stopped: boolean
-  readonly toolCount: number
+  /** What the child is doing now (`Thinking…`, `Using bash`), while its facts say so. */
+  readonly activity?: string
   /** Tokens of the settled steps: input (cache included) and output. */
   readonly inputTokens: number
   readonly outputTokens: number
@@ -86,22 +87,18 @@ export interface AgentsState {
 }
 
 /**
- * The summary in the row: the mark, `agents`, how many have settled over how many there are, and the time: how long the
- * oldest working one has run, or, when none works, the longest that ran: `● agents 1/3 41s`, then `✓ agents 3/3 41s`
- * (`✕` when one failed on its own; one the user stopped is no failure). It stays for the conversation.
+ * The summary in the row: the mark, `agents`, and how many have settled over how many there are: `● agents 1/3`, then
+ * `✓ agents 3/3` (`✕` when one failed on its own; one the user stopped is no failure). It stays for the conversation.
  * @param state - the rows.
  * @param t - translator for the label.
  * @returns the summary, or `null` when the conversation has no subagent.
  */
 export function agentsSummary(state: AgentsState, t: MayflyTranslate): MayflyPaneSummary | null {
-  const { rows, now } = state
+  const { rows } = state
   if (rows.length === 0) return null
   const live = rows.filter(row => row.live)
-  const elapsed = live.length > 0
-    ? now - Math.min(...live.map(row => row.startedAt))
-    : Math.max(...rows.map(row => (row.endedAt ?? now) - row.startedAt))
   const mark: MayflyInlineSpan = live.length > 0 ? { text: '●', tone: 'accent' } : rows.some(row => row.failed) ? { text: '✕', tone: 'danger' } : { text: '✓', tone: 'success' }
-  return { node: itemSummary(mark, t('agents'), rows.length - live.length, rows.length, elapsed) }
+  return { node: itemSummary(mark, t('agents'), rows.length - live.length, rows.length) }
 }
 
 function markOf(row: AgentRow): MayflyInlineSpan {
@@ -110,7 +107,7 @@ function markOf(row: AgentRow): MayflyInlineSpan {
   return row.failed ? { text: '✕', tone: 'danger' } : { text: '✓', tone: 'success' }
 }
 
-/** One row: `● review   Audit facts projection        bg · 41s · 6 tools · ↓6.4k`. */
+/** One row: `● review(bg)  Using bash                         ↑5.2k ↓6.4k 38 tok/s 41s`. */
 function agentItem(row: AgentRow, now: number, t: MayflyTranslate, unavailable: Readonly<Record<string, string>>): MayflyListItem {
   const elapsed = compactElapsedMs(Math.max(0, (row.live ? now : row.endedAt ?? now) - row.startedAt))
   const up = row.inputTokens
@@ -118,24 +115,21 @@ function agentItem(row: AgentRow, now: number, t: MayflyTranslate, unavailable: 
   const count = (mark: string, tokens: number): string => tokens === 0 ? '' : `${mark}${formatTokens(tokens)}`
   const measured = row.live ? outputRate(row.outputProgress, now) : ''
   const rate = measured.startsWith('0 ') ? '' : measured
-  const muted = (text: string): readonly MayflyInlineSpan[] => text === '' ? [] : [{ text, tone: 'muted' }]
-  // The columns line up down the list: the name, the task, then the facts (tokens in and out, the rate), and the time last; the mark says how it ended.
+  // What the facts hold, closest to the edge last (tokens in and out, the rate, the time), one space apart.
+  const facts = [count('↑', up), count('↓', down), rate, elapsed].filter(text => text !== '')
+  const right: MayflyInlineSpan[] = facts.flatMap((text, index) => index === 0 ? [{ text, tone: 'muted' as const }] : [{ text: ' ' }, { text, tone: 'muted' as const }])
+  // The mark says how it ended; the brief is what it does now (its streamed activity) and its task once it settled.
+  const doing = row.live && row.activity !== undefined
+  const brief = doing ? row.activity : row.task
   return {
     id: row.id,
     label: `${row.label}${row.task === undefined ? '' : `  ${row.task}`}`,
     labelSpans: [markOf(row), { text: ' ' }],
     cells: [
-      { spans: [{ text: row.label, tone: 'accent' }], max: 16 },
-      { spans: row.task === undefined ? [] : [{ text: row.task, tone: row.live ? 'default' : 'muted' }], min: 34, max: 52 },
-      { spans: muted(t(row.foreground ? 'fg' : 'bg')), shed: 3 },
-      { spans: muted(t(row.toolCount === 1 ? '{count} tool' : '{count} tools', { count: row.toolCount })), shed: 4 },
-      // The token columns keep their room when a figure is not there yet, so the live ones do not move the row.
-      { spans: muted(count('', up + down)), min: 6, shed: 2 },
-      { spans: muted(count('↑', up)), min: 7, shed: 6 },
-      { spans: muted(count('↓', down)), min: 7, shed: 5 },
-      { spans: muted(rate), min: 9, shed: 7 },
-      { spans: muted(elapsed), align: 'right' },
+      { spans: [{ text: row.label, tone: 'accent' }, { text: `(${t(row.foreground ? 'fg' : 'bg')})`, tone: 'muted' }], max: 28 },
+      { spans: brief === undefined ? [] : [{ text: brief, tone: doing ? 'default' : 'muted' }], max: 52, shed: 1 },
     ],
+    right,
     unavailableActions: unavailable,
   }
 }
@@ -217,7 +211,7 @@ export function agentRows(calls: readonly ConversationAgentCall[], children: rea
       live,
       failed,
       stopped,
-      toolCount: child?.toolCount ?? 0,
+      ...child?.activity === undefined ? {} : { activity: child.activity },
       inputTokens: child?.inputTokens ?? 0,
       outputTokens: child?.outputTokens ?? 0,
       liveChars: live ? child?.liveChars ?? 0 : 0,

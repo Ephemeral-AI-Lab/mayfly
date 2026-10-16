@@ -1,6 +1,6 @@
 /**
  * What every item of the status row shares (todo, goal, and the jobs and agents that follow): a compact summary of a
- * mark, one muted label, and its progress and time (`● todo 2/12 4m 12s`), an expanded panel of one fixed length that scrolls when its content is
+ * mark, one muted label, and its progress (`● todo 2/12`), an expanded panel of one fixed length that scrolls when its content is
  * longer, and the `viewHistory` setting that decides whether finished items are listed beside the live ones. The panel
  * names no extra key: the lane's own keys (`↑/↓` to scroll, `←/→` between items, `Esc` back) are all it uses.
  *
@@ -8,46 +8,37 @@
  */
 
 import type { Context } from '@deepseek-ai/cordis'
-import { ui, type MayflyInlineSpan, type MayflyListItem, type MayflyRichTextNode, type MayflyStatusNode, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
-import { compactElapsedMs } from './agent-presentation.ts'
-import { SHED, shedNode } from './status-shed.ts'
+import { ui, type MayflyInlineSpan, type MayflyListItem, type MayflyStatusNode, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 
 /** The rows of every expanded panel; a longer panel scrolls and counts the rows below. */
 export const VIEW_PANEL_ROWS = 7
 
 /**
- * The compact summary of an item: its mark, its muted label, how far it is over how many, and its time: `● todo 2/12 4m 12s`.
- * The time is the first thing the status row gives up when it is crowded (`SHED.time`), so the narrower form is
- * `● todo 2/12`. Cut to the room it is given by the row.
+ * The compact summary of an item: its mark, its muted label, and how far it is over how many: `● todo 2/12`. The time
+ * is the panel's, never the row's. Cut to the room it is given by the row.
  * @param mark - the small mark at the left.
  * @param label - the translated label (`todo`).
  * @param done - how many are finished (a goal's rounds started).
  * @param total - how many there are (the goal's round cap).
- * @param elapsedMs - the time the item has been tracked.
  * @returns the status node.
  */
-export function itemSummary(mark: MayflyInlineSpan, label: string, done: number, total: number, elapsedMs: number): MayflyStatusNode {
-  return summaryNode(mark, label, `${String(done)}/${String(total)}`, elapsedMs)
+export function itemSummary(mark: MayflyInlineSpan, label: string, done: number, total: number): MayflyStatusNode {
+  return summaryNode(mark, label, `${String(done)}/${String(total)}`)
 }
 
 /**
- * The compact summary of an item that has a count and no total (jobs): `● jobs 2 41s`. Shed like {@link itemSummary}.
+ * The compact summary of an item that has a count and no total (jobs): `● jobs 2`.
  * @param mark - the small mark at the left.
  * @param label - the translated label (`jobs`).
  * @param count - how many are live.
- * @param elapsedMs - how long the longest one has run.
  * @returns the status node.
  */
-export function countSummary(mark: MayflyInlineSpan, label: string, count: number, elapsedMs: number): MayflyStatusNode {
-  return summaryNode(mark, label, String(count), elapsedMs)
+export function countSummary(mark: MayflyInlineSpan, label: string, count: number): MayflyStatusNode {
+  return summaryNode(mark, label, String(count))
 }
 
-function summaryNode(mark: MayflyInlineSpan, label: string, progress: string, elapsedMs: number): MayflyStatusNode {
-  const words = (time: boolean): MayflyRichTextNode => ui.richText([
-    mark, { text: ' ' }, { text: `${label} `, tone: 'muted' }, { text: progress },
-    ...time ? [{ text: ` ${compactElapsedMs(Math.max(0, elapsedMs))}`, tone: 'muted' as const }] : [],
-  ])
-  return shedNode(words(true), [{ rank: SHED.time, node: words(false) }])
+function summaryNode(mark: MayflyInlineSpan, label: string, progress: string): MayflyStatusNode {
+  return ui.richText([mark, { text: ' ' }, { text: `${label} `, tone: 'muted' }, { text: progress }])
 }
 
 /**
@@ -67,14 +58,16 @@ export function viewPanel(id: string, rows: readonly MayflyUiNode[], actions?: M
 /**
  * The expanded panel of an item whose rows can be chosen (agents, jobs): the rows in a list of {@link VIEW_PANEL_ROWS}
  * that holds a cursor (`↑/↓` select, `Enter` opens) and counts the rows above and below, with the item's keys beside it.
- * It is the one place a panel is not a plain scroll, since a row has to be chosen.
+ * It is the one place a panel is not a plain scroll, since a row has to be chosen. A shorter list is padded with blank
+ * rows to the panel's length, so the hint row sits at the bottom as it does under a scroll.
  * @param id - the list's id.
  * @param items - the rows.
  * @param actions - the item's keys (a hidden `actions` node), which may act on the selected row.
  * @returns the panel node.
  */
 export function viewList(id: string, items: readonly MayflyListItem[], actions: MayflyUiNode): MayflyUiNode {
-  return ui.stack.column([ui.list({ id, role: 'browse', items, maxRows: VIEW_PANEL_ROWS, acceptVerb: 'open', autofocus: true }), actions])
+  const padding = Array.from({ length: Math.max(0, VIEW_PANEL_ROWS - items.length) }, (_, index): MayflyListItem => ({ id: `${id}-pad-${String(index)}`, label: '', gap: true }))
+  return ui.stack.column([ui.list({ id, role: 'browse', items: [...items, ...padding], maxRows: VIEW_PANEL_ROWS, acceptVerb: 'open', autofocus: true }), actions])
 }
 
 /**

@@ -241,12 +241,14 @@ function cellPlanOf(node: ListNodeView, width: number, colors: MayflySemanticCol
     }
     // What leads every row before its cells: the cursor gutter and the row's own label.
     const lead = rows.reduce((most, item) => Math.max(most, 2 + (item.indent ?? 0) + visibleWidth(item.labelSpans === undefined ? item.label : spansText(item.labelSpans, colors))), 0)
+    // The widest right-edge text of any row, and the column before it, are kept out of the columns' room.
+    const edge = rows.reduce((most, item) => Math.max(most, item.right === undefined ? 0 : visibleWidth(spansText(item.right, colors)) + 1), 0)
     // A column no row fills takes no room, unless it reserves some.
     const kept = natural.map(w => w > 0)
     const fit = (): number[] | undefined => {
       const widths = natural.map((w, column) => kept[column] ? w : 0)
       const shown = kept.filter(Boolean).length
-      let excess = lead + widths.reduce((sum, w) => sum + w, 0) + CELL_GAP * Math.max(0, shown - 1) - width
+      let excess = lead + widths.reduce((sum, w) => sum + w, 0) + CELL_GAP * Math.max(0, shown - 1) + edge - width
       while (excess > 0) {
         let widest = -1
         for (let column = 0; column < count; column += 1) {

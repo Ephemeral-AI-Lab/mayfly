@@ -1,6 +1,5 @@
 /**
- * The Goal item of the status row: a views pane whose summary (`● goal 2/8 1m 59s`: the mark, the rounds over their cap, and
- * the time) sits in the row and whose panel (the whole objective, a blocked goal's code and reason, and the keys of the
+ * The Goal item of the status row: a views pane whose summary (`● goal 2/8`: the mark, the rounds over their cap) sits in the row and whose panel (the whole objective, a blocked goal's code and reason, and the keys of the
  * `/goal` subcommands: `r` resume, `p` pause, `e` edit, `c` clear) opens under the row while the view is entered. The mark is the phase (`●` active and armed, `○` active but disarmed,
  * `⏸` paused, `✕` blocked, `✓` complete); a goal that finishes keeps its item for a few seconds and then leaves.
  * Activation is process-local, so the item follows `goal/activation-changed` as well as the durable goal. The
@@ -54,29 +53,25 @@ function markOf(goal: Shown): MayflyInlineSpan {
 export interface GoalItemState {
   /** The current goal, if any. */
   readonly goal: GoalView | undefined
-  /** The goal that just completed: its rounds and how long it took; it leaves the row after {@link GOAL_DONE_LINGER_MS}. */
-  readonly done?: { readonly rounds: number, readonly total: number, readonly elapsedMs: number }
-  /** The time the elapsed figure is measured against. */
-  readonly now: number
+  /** The goal that just completed: its rounds over their cap; it leaves the row after {@link GOAL_DONE_LINGER_MS}. */
+  readonly done?: { readonly rounds: number, readonly total: number }
 }
 
 /**
- * The item in the row: its mark, `goal`, the rounds over their cap, and the time: `● goal 2/8 1m 59s`. An armed goal's time
- * runs; any other state shows the time it had at its last change. Just completed it is `✓ goal 2/8 1m 59s`. The
- * objective and the state in words are the panel's.
+ * The item in the row: its mark, `goal`, and the rounds over their cap: `● goal 2/8`. Just completed it is `✓ goal 2/8`.
+ * The objective and the state in words are the panel's.
  * @param state - the goal.
  * @param t - translator for the label.
  * @returns the summary, or `null` for no goal.
  */
 export function goalSummary(state: GoalItemState, t: MayflyTranslate): MayflyPaneSummary | null {
   if (state.done !== undefined) {
-    const { rounds, total, elapsedMs } = state.done
-    return { node: itemSummary({ text: '✓', tone: 'success' }, t('goal'), rounds, total, elapsedMs) }
+    const { rounds, total } = state.done
+    return { node: itemSummary({ text: '✓', tone: 'success' }, t('goal'), rounds, total) }
   }
   const current = shown(state.goal)
   if (current === undefined) return null
-  const elapsed = (current.phase === 'active' && current.activation === 'armed' ? state.now : current.updatedAt) - current.createdAt
-  return { node: itemSummary(markOf(current), t('goal'), current.roundsStarted, current.maxGoalRounds, elapsed) }
+  return { node: itemSummary(markOf(current), t('goal'), current.roundsStarted, current.maxGoalRounds) }
 }
 
 /** The id of an action, fenced to the goal revision the panel was built for. */
@@ -109,7 +104,7 @@ function goalKeys(goal: Shown, t: MayflyTranslate): MayflyUiNode {
 
 /**
  * The panel: the whole objective and a blocked goal's code and reason, in the fixed-length scroll every item shares, with
- * no heading, count, or time (the cell says them), and the goal's keys (`r`, `p`, `e`, `c`) beside the scroll. There is no
+ * no heading, count, or time, and the goal's keys (`r`, `p`, `e`, `c`) beside the scroll. There is no
  * panel once the goal has completed.
  * @param state - the goal.
  * @param t - translator for the words.
@@ -164,10 +159,9 @@ export function apply(ctx: Context): void {
   let now = Date.now()
   let published = ''
   let offTick: (() => void) | undefined
-  /** The clock runs while an armed goal's elapsed time moves or the closing item is up. */
+  /** The clock runs while the closing item is up. */
   const syncTick = (): void => {
-    const needed = done !== undefined || (goal?.phase === 'active' && goal.activation === 'armed')
-    if (!needed) { offTick?.(); offTick = undefined; return }
+    if (done === undefined) { offTick?.(); offTick = undefined; return }
     offTick ??= tick?.subscribe((at) => {
       now = at
       if (done !== undefined && at - done.at >= GOAL_DONE_LINGER_MS) { done = undefined; tracked = undefined }
@@ -176,7 +170,7 @@ export function apply(ctx: Context): void {
   }
   const publish = (): void => {
     syncTick()
-    const state: GoalItemState = { goal, now, ...done === undefined ? {} : { done: { rounds: done.rounds, total: done.total, elapsedMs: done.elapsedMs } } }
+    const state: GoalItemState = { goal, ...done === undefined ? {} : { done: { rounds: done.rounds, total: done.total } } }
     const summary = goalSummary(state, t)
     const panel = goalPanel(state, t)
     const key = JSON.stringify([summary, panel])
@@ -195,7 +189,7 @@ export function apply(ctx: Context): void {
     }
     now = Date.now()
     if (next?.phase === 'complete') {
-      if (tracked === next.id && done === undefined) done = { rounds: next.roundsStarted, total: next.maxGoalRounds, elapsedMs: next.updatedAt - next.createdAt, at: now }
+      if (tracked === next.id && done === undefined) done = { rounds: next.roundsStarted, total: next.maxGoalRounds, at: now }
     } else {
       tracked = next?.id
       done = undefined
