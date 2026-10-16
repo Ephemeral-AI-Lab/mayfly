@@ -15,14 +15,6 @@ const identityCatalog = (zh: Readonly<Record<string, string>>): MayflyLocaleCata
   zh: Object.freeze(zh),
 })
 
-/** Welcome-banner copy. */
-export const BANNER_LOCALE = identityCatalog({
-  'Send /help for help information.': '输入 /help 查看帮助信息。',
-  'Directory: ': '目录：     ',
-  'Model:     ': '模型：     ',
-  'Version:   ': '版本：     ',
-})
-
 /** Transcript renderer chrome, work-details rows, and fold hints. */
 const TRANSCRIPT_MESSAGES = identityCatalog({
   'Toggle detail expansion (tool output, long messages)': '切换详细内容展开状态（工具输出、长消息）',

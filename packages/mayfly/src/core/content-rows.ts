@@ -918,7 +918,7 @@ function textSource(node: Extract<MayflySectionContentNode, { readonly kind: 'te
 /** The palette a highlighted code block or diff paints with. */
 function codePaints(env: ContentRowsEnv): CodePaints {
   const { colors } = env
-  return { base: colors.text, keyword: colors.primary, string: colors.success, comment: colors.muted, number: colors.warning, type: colors.accent, added: colors.success, removed: colors.error }
+  return { base: colors.text, keyword: colors.primary, string: colors.success, comment: colors.muted, number: colors.warning, type: colors.accent, added: colors.diffAdded, removed: colors.diffRemoved }
 }
 
 function codeSource(node: Extract<MayflySectionContentNode, { readonly kind: 'code' }>, width: number, env: ContentRowsEnv): RowSource {

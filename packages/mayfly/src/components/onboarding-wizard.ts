@@ -48,7 +48,7 @@ export interface OnboardingFacts {
       readonly value: string
       readonly theme: string
       readonly languages: readonly { readonly id: string, readonly label: string }[]
-      readonly themes: readonly string[]
+      readonly themes: readonly { readonly id: string, readonly label: string }[]
     }
     /** Present when the composition has permission presets: the rows, the current one preselected. */
     readonly permissions?: readonly OnboardingPresetRow[]
@@ -104,7 +104,7 @@ function preferencesBody(facts: OnboardingFacts['preferences'], labels: Onboardi
       id: ONBOARDING_PREFERENCES_FORM, enterSubmits: next(ONBOARDING_PREFERENCES), autofocus: true,
       fields: [
         { kind: 'select' as const, id: 'language', label: labels.language, value: language.value, options: language.languages.map(item => ({ id: item.id, label: item.label })) },
-        { kind: 'select' as const, id: 'theme', label: labels.theme, value: language.theme, options: language.themes.map(key => ({ id: key, label: key })) },
+        { kind: 'select' as const, id: 'theme', label: labels.theme, value: language.theme, options: language.themes.map(item => ({ id: item.id, label: item.label })) },
         ...permissions === undefined ? [] : [
           { kind: 'select' as const, id: ONBOARDING_PERMISSION_FIELD, label: labels.permissions, value: current?.id ?? null, options: permissions.map(row => ({ id: row.id, label: row.label })) },
         ],

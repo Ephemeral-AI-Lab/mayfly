@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * A specimen of each palette in `theme-palettes.mjs`: the welcome banner, a stretch of conversation (a prompt, a
+ * A specimen of each palette in `theme-palettes.mjs`: the welcome banner with the s10 mark, a stretch of conversation (a prompt, a
  * Markdown answer, an edit with its diff, a failed and a retried call), a command panel, the editor, and the status
  * row, each painted with the token its shipped component uses (`core/ui-list-paint.ts`, `core/ui-patterns.ts`,
  * `core/markdown-rows.ts`, `core/diff-align.ts`, `core/ui-loader-animation.ts`). Every cell is drawn on the
@@ -15,6 +15,7 @@
  * @module docs/design/prototypes/theme-preview
  */
 
+import { LOGOS } from './logo-preview.mjs'
 import { SHIPPED, THEMES, mix, themeById } from './theme-palettes.mjs'
 
 const argv = process.argv.slice(2)
@@ -54,27 +55,35 @@ function line(theme, runs, fill) {
 }
 
 // ======================================================================= the specimen
-// The shipped braille mark (`transcript/banner-art.ts`), one logo gradient stop per row.
-const MARK = [
-  '⠱⣦⣄⣀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⣠⣴⠎',
-  '⠀⠙⢿⣿⣿⣷⣶⣤⣀⣀⣴⣶⣦⣀⣀⣤⣶⣾⣿⣿⡿⠋⠀',
-  '⠀⠀⠀⠈⠻⢿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡿⠟⠁⠀⠀⠀',
-  '⠀⠀⠀⠀⠀⠀⠀⠉⠉⠁⢸⣿⡇⠈⠉⠉⠀⠀⠀⠀⠀⠀⠀',
-  '⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢸⣿⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀',
-  '⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⣿⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀',
-  '⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣿⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀',
-  '⠀⠀⠀⠀⠀⠀⠀⠀⠀⡠⠊⠀⠑⢄⠀⠀⠀⠀⠀⠀⠀⠀⠀',
-]
+// The s10 mark (`logo-preview.mjs`) in quadrant blocks: two pixels per cell across and down, `B`/`T` in the body ink,
+// `W` in the wing ink. A shipped palette has no inks, so its mark takes `primary` and `accent`.
+const S10 = LOGOS.find(logo => logo.id === 's10').rows
+const QUAD = ' ▘▝▀▖▌▞▛▗▚▐▜▄▙▟█'
 
-/** The banner's status column by row, as `transcript/banner.ts` paints it. */
-const BANNER_STATUS = new Map([
-  [1, [['mayfly', { fg: 'primary', bold: true }]]],
-  [2, [['ephemeral agents, enduring works', { fg: 'accent' }]]],
-  [4, [['Send /help for help information.', { fg: 'muted' }]]],
-  [5, [['Directory: ~/dev/mayfly', {}]]],
-  [6, [['Model:     deepseek-chat · deepseek', { fg: 'modelHighlight' }]]],
-  [7, [['Version:   0.1.3', {}]]],
-])
+/** The mark as rows of cells, each `[glyph, hex]` or a blank. */
+function mark(theme) {
+  const [body, wing] = theme.logoInks ?? [theme.foregrounds.primary, theme.foregrounds.accent]
+  const ink = { B: body, T: body, W: wing }
+  const rows = []
+  for (let y = 0; y < S10.length; y += 2) {
+    const cellsOfRow = []
+    for (let x = 0; x < S10[0].length; x += 2) {
+      const quad = [S10[y][x], S10[y][x + 1], S10[y + 1][x], S10[y + 1][x + 1]].map(k => ink[k] ?? null)
+      const hex = quad.find(Boolean)
+      cellsOfRow.push(hex === undefined ? [' '] : [QUAD[quad.reduce((m, q, i) => (q === hex ? m | (1 << i) : m), 0)], { hex }])
+    }
+    rows.push(cellsOfRow)
+  }
+  return rows
+}
+
+/** The compact banner's lines beside the mark (PR 22 option B), as `transcript/banner.ts` paints them. */
+const BANNER_LINES = [
+  [['mayfly', { fg: 'primary', bold: true }], [' v0.1.3', { fg: 'textMuted' }]],
+  [['ephemeral agents, enduring works', { fg: 'accent' }]],
+  [['deepseek-chat · deepseek', { fg: 'modelHighlight' }]],
+  [['~/dev/mayfly', { fg: 'muted' }]],
+]
 
 /** The breath loader's six shades: `primary` blended toward `textMuted` (`breathPaint`). */
 const breath = theme => [0.15, 0.35, 0.55, 0.75, 0.9, 1].map(t => mix(theme.foregrounds.textMuted, theme.foregrounds.primary, t))
@@ -92,7 +101,7 @@ function specimen(theme) {
   blank()
 
   // Banner.
-  MARK.forEach((mark, i) => rows.push(L([[' '], [mark, { hex: theme.logoGradient[i] }], ...(BANNER_STATUS.has(i) ? [['  '], ...BANNER_STATUS.get(i)] : [])])))
+  mark(theme).forEach((cellsOfRow, i) => rows.push(L([[' '], ...cellsOfRow, ['  '], ...BANNER_LINES[i]])))
   blank()
 
   // Conversation.
@@ -104,7 +113,7 @@ function specimen(theme) {
   rows.push(L([['   │ ', { fg: 'mdQuoteBorder' }], ['Scarce violet ink: one primary per surface.', { fg: 'mdQuote' }]]))
   blank()
   rows.push(L([[' ✓ ', { fg: 'success' }], ['Edit', { fg: 'textStrong', bold: true }], ['(core/theme-light.ts)', { fg: 'muted' }], [' · '], ['+2', { fg: 'diffAdded' }], [' '], ['−1', { fg: 'diffRemoved' }]]))
-  const diff = (n, sign, runs, band) => rows.push(L([[`   ${String(n).padStart(2)} `, { fg: 'diffGutter' }], [sign === ' ' ? '  ' : `${sign} `, { fg: sign === '+' ? 'diffAdded' : 'diffRemoved' }], ...runs], band))
+  const diff = (n, sign, runs, band) => rows.push(L([[`   ${String(n).padStart(2)} `, { fg: 'muted' }], [sign === ' ' ? '  ' : `${sign} `, { fg: sign === '+' ? 'diffAdded' : 'diffRemoved' }], ...runs], band))
   diff(11, ' ', code(['export const ', 'kw'], ['LIGHT', 'type'], [' = {']))
   diff(12, '−', code(['  name: ', ''], ["'Light'", 'str'], [',']), 'diffRemovedBg')
   diff(12, '+', code(['  name: ', ''], ["'Mayfly Light'", 'str'], [',']), 'diffAddedBg')

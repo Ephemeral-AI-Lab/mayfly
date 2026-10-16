@@ -1,33 +1,30 @@
 /**
- * The welcome banner's logo — the Mayfly mark in braille block art, eight
- * rows tall, rendered frameless to the left of the status column. This
- * module stays the logo's single home; every consumer imports the rows from
- * here and never hardcodes a copy.
+ * The welcome banner's mark — the Mayfly s10 mark from PR 22
+ * (`docs/design/prototypes/logo-preview.mjs`): a squat body with slit eyes,
+ * two antennae, and speed-line wings, as pixel rows that `core/quad-mark.ts`
+ * draws in quadrant blocks, two pixels per cell across and down. 26 × 8 pixels
+ * make 13 columns × 4 rows. This module stays the mark's single home; every
+ * consumer imports the rows from here and never hardcodes a copy.
  *
- * Rows are written left-padded to a uniform width so the right-hand status
- * text lands on one aligned column whatever the mark's silhouette.
+ * Keys: `B` body, `T` antennae and tails (the body's ink), `W` wings, `.` none.
+ * The eyes are holes left in the body.
  *
  * @module @ephemeral-ai/mayfly/transcript/banner-art
  */
 
-/** The logo's uniform column width — every row is padded to this. */
-export const LOGO_COLS = 23
+import { liftWings } from '../core/quad-mark.ts'
 
-/**
- * The Mayfly mark: eight rows of braille block art, each padded to
- * {@link LOGO_COLS} columns. The braille-blank margins are part of the
- * mark's silhouette, so the rows read flush against the status column.
- */
-export const LOGO_ART: readonly string[] = [
-  '⠱⣦⣄⣀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⣠⣴⠎'.padEnd(LOGO_COLS),
-  '⠀⠙⢿⣿⣿⣷⣶⣤⣀⣀⣴⣶⣦⣀⣀⣤⣶⣾⣿⣿⡿⠋⠀'.padEnd(LOGO_COLS),
-  '⠀⠀⠀⠈⠻⢿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡿⠟⠁⠀⠀⠀'.padEnd(LOGO_COLS),
-  '⠀⠀⠀⠀⠀⠀⠀⠉⠉⠁⢸⣿⡇⠈⠉⠉⠀⠀⠀⠀⠀⠀⠀'.padEnd(LOGO_COLS),
-  '⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢸⣿⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀'.padEnd(LOGO_COLS),
-  '⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⣿⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀'.padEnd(LOGO_COLS),
-  '⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣿⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀'.padEnd(LOGO_COLS),
-  '⠀⠀⠀⠀⠀⠀⠀⠀⠀⡠⠊⠀⠑⢄⠀⠀⠀⠀⠀⠀⠀⠀⠀'.padEnd(LOGO_COLS),
+/** The mark at rest. */
+export const MARK_ROWS: readonly string[] = [
+  '........T........T........',
+  '.......T..........T.......',
+  '......BBBBBBBBBBBBBB......',
+  'WWWWW.BBB.BBBBBB.BBB.WWWWW',
+  '......BBB.BBBBBB.BBB......',
+  '..WWW.BBBBBBBBBBBBBB.WWW..',
+  '.......BBBBBBBBBBBB.......',
+  '.........T......T.........',
 ]
 
-/** The logo's row count — the status column's vertical anchor. */
-export const LOGO_ROWS = LOGO_ART.length
+/** The mark with its wings up: the wing beat's second frame. */
+export const MARK_BEAT: readonly string[] = liftWings(MARK_ROWS)

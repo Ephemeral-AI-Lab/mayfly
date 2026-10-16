@@ -160,7 +160,7 @@ The `/settings` panel writes the fields below. Every key is optional; defaults a
 mayfly:
   updateCheck: true        # the boot update check (false is the offline switch)
   updateChannel: latest    # the dist-tag the update check follows
-  theme: dark              # persisted default theme: dark | light | ocean | paper | auto (applied at startup)
+  theme: dark              # persisted default theme: a built-in palette key (dark, light, tide, …) or auto (applied at startup)
   transcriptView: standard # compact | standard | detailed | verbose
   windowTurns: 15          # transcript window: only the newest N completed turns stay mounted
   expandTurns: 3           # ctrl+o expansion scope (turns counted from the end)
@@ -187,7 +187,7 @@ settings.yaml effects show up right in the UI: the `/model` panel lists each rou
 
 ## Themes
 
-`/theme dark|light|ocean|paper|auto` switches instantly; `/theme custom <path>` mounts a custom JSON palette — hot switches never lose your draft. `/theme` is the session-level switch; the persisted default theme is set through the `/settings` panel or `mayfly.theme` in settings.yaml (applied at startup). The full semantic token table and the custom file format are in [Theming](/en/guide/theme).
+`/theme <key>` (for example `/theme tide`) or `/theme auto` switches instantly; `/theme custom <path>` mounts a custom JSON palette — hot switches never lose your draft. `/theme` is the session-level switch; the persisted default theme is set through the `/settings` panel or `mayfly.theme` in settings.yaml (applied at startup). The full semantic token table and the custom file format are in [Theming](/en/guide/theme).
 
 ## Other configuration surfaces
 

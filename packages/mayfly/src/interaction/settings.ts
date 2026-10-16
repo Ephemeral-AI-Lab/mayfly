@@ -37,6 +37,7 @@ import z from '@deepseek-ai/schemastery'
 // Empty type import carries the app-owned current-Agent Context merge.
 import type {} from '../app/index.ts'
 import type { TranscriptViewMode } from '../transcript/presentation-policy.ts'
+import { PALETTE_KEYS, type MayflyPaletteKey } from '../core/palettes.ts'
 import { resolvePresentation, samePresentation } from '../core/presentation.ts'
 import { applyTheme, reloadTheme } from './theme-switch.ts'
 
@@ -56,7 +57,7 @@ export interface MayflySettings {
   /** The interface language; `system` follows the process locale and means none was chosen yet (the first-run guide offers the choice). */
   readonly language: 'system' | 'en' | 'zh'
   /** The default theme, applied at startup; `/theme` overrides per session. */
-  readonly theme: 'dark' | 'light' | 'ocean' | 'paper' | 'auto'
+  readonly theme: MayflyPaletteKey | 'auto'
   /** Native Harness work-detail mode. */
   readonly transcriptView: TranscriptViewMode
   /** Completed turns kept mounted in the transcript window (mirrors transcript's DEFAULT_WINDOW_TURNS). */
@@ -122,12 +123,23 @@ const PRICES: z<Record<string, { input: number, output: number, cacheRead?: numb
 /** Saved key overrides by action id (a dict, typed by hand so the declaration stays portable). */
 const KEYBINDINGS: z<Record<string, { keys: string[], label?: string }>> = z.dict(z.object({ keys: z.array(z.string()).default([]), label: z.string() }))
 
+/**
+ * The `mayfly.theme` values: every built-in palette and `auto`. A stored value that names no palette (one since
+ * removed, such as `ocean`) reads as the default instead of failing validation, which would drop every `mayfly`
+ * setting with it; the settings form lists only the palettes.
+ */
+const THEME: z<MayflySettings['theme']> = z.union([
+  ...PALETTE_KEYS.map(key => z.const(key)),
+  z.const('auto'),
+  z.transform(z.string(), (): MayflySettings['theme'] => 'dark'),
+])
+
 /** The settings schema; defaults double as the composition base. */
 export const Config = z.object({
   updateCheck: z.boolean().default(true).volatile(),
   updateChannel: z.string().default('latest').volatile(),
   language: z.union([z.const('system'), z.const('en'), z.const('zh')]).default('system').volatile(),
-  theme: z.union([z.const('dark'), z.const('light'), z.const('ocean'), z.const('paper'), z.const('auto')]).default('dark').volatile(),
+  theme: THEME.default('dark').volatile(),
   transcriptView: z.union([z.const('compact'), z.const('standard'), z.const('detailed'), z.const('verbose')]).default('standard').volatile(),
   windowTurns: z.number().step(1).min(1).default(15).volatile(),
   expandTurns: z.number().step(1).min(1).default(3).volatile(),

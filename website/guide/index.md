@@ -70,7 +70,7 @@ mayfly 修复登录页的空指针       # 直接执行任务
 
 - 输入 `/` 查看斜杠命令补全，`/help` 打开命令与键位总览；
 - 随手问点什么，观察流式回复与工具卡片；
-- `/theme` 列出全部六套主题并标出当前（`dark`/`light`/`ocean`/`paper`/`auto`/`custom`），`/theme ocean` 热切换——输入草稿不会丢；`/settings` 面板的 Theme 行循环修改则实时生效并落盘为默认；
+- `/theme` 按名称列出十套内置调色板（Mayfly Dark、Mayfly Light、Tide、Dusk……）与 Auto，标出当前项，`/theme tide` 热切换——输入草稿不会丢；`/settings` 面板的 Theme 行循环修改则实时生效并落盘为默认；
 - 退出时最后一行是**会话遗言**：会话 id 与一行恢复命令（三击整行即选），下次直接续上。
 
 ## 界面预览

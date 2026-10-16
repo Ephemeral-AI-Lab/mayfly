@@ -1,7 +1,9 @@
 /**
  * The `/theme` command and the provider swap behind it. The command knows
- * the six core theme subpath plugins (dark/light/ocean/paper/auto/custom) and switches
- * by disposing the live provider's fibers — `ctx.registry.delete` keys
+ * the ten built-in palettes of `core/palettes.ts` (the default through
+ * `mayfly-theme-dark`, the rest through `mayfly-theme-builtin` with the palette
+ * in its config), `auto`, and `custom`, and switches by disposing the live
+ * provider's fibers — `ctx.registry.delete` keys
  * runtimes by plugin callback identity, and the loader-loaded baseline
  * `mayfly-theme-dark` row resolves to the same module this file statically
  * imports, so one registry record covers both — then mounting the
@@ -16,41 +18,62 @@
 import type { Context, Plugin } from '@deepseek-ai/cordis'
 import type { CommandResult } from '@deepseek-ai/dsh-commands'
 import { ui } from '@ephemeral-ai/mayfly-ui'
+import { PALETTES, PALETTE_KEYS, paletteOf } from '../core/palettes.ts'
 import * as themeAuto from '../core/theme-auto.ts'
+import * as themeBuiltin from '../core/theme-builtin.ts'
 import * as themeCustom from '../core/theme-custom.ts'
 import * as themeDark from '../core/theme-dark.ts'
-import * as themeLight from '../core/theme-light.ts'
-import * as themeOcean from '../core/theme-ocean.ts'
-import * as themePaper from '../core/theme-paper.ts'
 import { interactionTranslator } from './locale.ts'
 import { openUiOverlay } from './ui-overlay.ts'
 
-/** Usage text returned for malformed `/theme` invocations. */
-const USAGE = 'usage: /theme [dark|light|ocean|paper|auto|custom <path> [dark|light|ocean|paper]]'
+/** Usage text returned for malformed `/theme` invocations; `{keys}` lists the palettes, `{bases}` the custom bases. */
+const USAGE = 'usage: /theme [{keys}|auto|custom <path> [{bases}]]'
 
-/** One switchable theme provider: the command-facing key and the plugin module. */
+/** The values the usage text and the input hint fill in. */
+const USAGE_VALUES = { keys: PALETTE_KEYS.join('|'), bases: PALETTE_KEYS.join('|') }
+
+/** One switchable theme provider: the command-facing key, its display name, the plugin module, and its config. */
 interface ThemeTarget {
   readonly key: string
+  readonly name: string
   readonly module: Plugin
+  readonly config?: themeBuiltin.Config | themeCustom.Config
 }
 
 /** The baseline provider, also the fallback restored after a failed mount. */
-const DARK: ThemeTarget = { key: 'dark', module: themeDark }
+const DARK: ThemeTarget = { key: 'dark', name: paletteOf('dark').name, module: themeDark }
 
-/** The built-in palettes, switchable without extra config. */
+/** The display name of `auto`; it is not a palette, so the interaction locale translates it. */
+const AUTO_NAME = 'Auto'
+
+/** The picker's line for `auto`. */
+const AUTO_IDEA = 'Mayfly Dark or Light, as the terminal'
+
+/** The built-in palettes in picker order, then `auto`; all switchable without a path. */
 const BUILTIN: ReadonlyMap<string, ThemeTarget> = new Map([
-  ['dark', DARK],
-  ['light', { key: 'light', module: themeLight }],
-  ['ocean', { key: 'ocean', module: themeOcean }],
-  ['paper', { key: 'paper', module: themePaper }],
-  ['auto', { key: 'auto', module: themeAuto }],
+  ...PALETTES.map(palette => [palette.key, palette.key === DARK.key
+    ? DARK
+    : { key: palette.key, name: palette.name, module: themeBuiltin, config: { palette: palette.key } }] as const),
+  ['auto', { key: 'auto', name: AUTO_NAME, module: themeAuto }],
 ])
 
-/** The file-backed palette, switched with a path (and optional base) config. */
-const CUSTOM: ThemeTarget = { key: 'custom', module: themeCustom }
+/**
+ * The display name of a theme key: a palette's name (a proper noun), `Auto` translated, or the key itself.
+ * @param key - a theme key.
+ * @param t - the interaction translator.
+ * @returns the name to show.
+ */
+export function themeName(key: string, t: (key: string) => string): string {
+  const target = BUILTIN.get(key)
+  if (target === undefined) return key
+  return target.key === 'auto' ? t(target.name) : target.name
+}
 
-/** Theme keys the picker lists, in order. `custom` needs a file path, so only `/theme custom <path>` reaches it. */
-const PICKER_KEYS = ['dark', 'light', 'ocean', 'paper', 'auto'] as const
+/** The file-backed palette, switched with a path (and optional base) config. */
+const CUSTOM: ThemeTarget = { key: 'custom', name: 'Custom', module: themeCustom }
+
+/** The picker's one-line description of each listed key. `custom` needs a file path, so only `/theme custom <path>` reaches it. */
+const PICKER_IDEAS: ReadonlyMap<string, string> = new Map([...PALETTES.map(palette => [palette.key, palette.idea] as const), ['auto', AUTO_IDEA]])
 
 /**
  * The bare `/theme` picker: a choose-list overlay over the built-in themes with
@@ -80,10 +103,10 @@ function openThemePicker(ctx: Context): CommandResult {
       return { kind: 'completed', dismiss: true, ...(result.text === undefined ? {} : { feedback: { severity: 'success' as const, message: result.text } }) }
     } },
   }, ui.surface({ chrome: 'overlay', title: t('Select a theme'), child: ui.list({
-    id: 'themes', role: 'choose', selectedIds: PICKER_KEYS.some(key => key === current) ? [current] : [],
-    items: PICKER_KEYS.map(key => ({
-      id: key, label: key,
-      ...(key === current ? { current: true } : {}),
+    id: 'themes', role: 'choose', selectedIds: BUILTIN.has(current) ? [current] : [],
+    items: [...BUILTIN.values()].map(target => ({
+      id: target.key, label: themeName(target.key, t), detail: t(PICKER_IDEAS.get(target.key)!),
+      ...(target.key === current ? { current: true } : {}),
     })),
   }) }), { reopen: 'replace' })
   return { kind: 'success' }
@@ -93,11 +116,10 @@ function openThemePicker(ctx: Context): CommandResult {
  * Swap the live provider for `next`: dispose every fiber of the current
  * module, then mount the replacement. A mount failure restores dark.
  * @param ctx - plugin context.
- * @param next - the theme to activate.
- * @param config - the custom-theme config; omitted for built-ins.
+ * @param next - the theme to activate, with its config when it takes one.
  * @returns the command outcome.
  */
-async function switchTheme(ctx: Context, next: ThemeTarget, config?: themeCustom.Config): Promise<CommandResult> {
+async function switchTheme(ctx: Context, next: ThemeTarget): Promise<CommandResult> {
   const t = interactionTranslator(ctx)
   const current = ctx.mayflyInteractionState.currentThemeKey === 'custom'
     ? CUSTOM
@@ -111,7 +133,7 @@ async function switchTheme(ctx: Context, next: ThemeTarget, config?: themeCustom
     await Promise.all([...runtime.fibers].map(fiber => fiber.dispose()))
   }
   try {
-    await (config === undefined ? ctx.plugin(next.module) : ctx.plugin(next.module, config))
+    await (next.config === undefined ? ctx.plugin(next.module) : ctx.plugin(next.module, next.config))
   } catch (error) {
     ctx.mayflyInteractionState.currentThemeKey = DARK.key
     // A restore failure propagates and settles as a command error.
@@ -123,7 +145,7 @@ async function switchTheme(ctx: Context, next: ThemeTarget, config?: themeCustom
     }
   }
   ctx.mayflyInteractionState.currentThemeKey = next.key
-  return { kind: 'success', text: t('switched to theme "{key}"', { key: next.key }) }
+  return { kind: 'success', text: t('switched to theme "{key}"', { key: themeName(next.key, t) }) }
 }
 
 /**
@@ -160,7 +182,7 @@ export function registerThemeCommand(ctx: Context): () => void {
   return ctx.commands.register({
     name: 'theme',
     description: 'Switch the color theme',
-    input: { hint: '[dark|light|ocean|paper|auto|custom <path> [dark|light|ocean|paper]]' },
+    input: { hint: `[${USAGE_VALUES.keys}|auto|custom <path> [${USAGE_VALUES.bases}]]` },
     handler: async (invocation): Promise<CommandResult> => {
       const trimmed = invocation.rawInput.trim()
       const args = trimmed.length === 0 ? [] : trimmed.split(/\s+/)
@@ -168,18 +190,18 @@ export function registerThemeCommand(ctx: Context): () => void {
       if (name === undefined) return openThemePicker(ctx)
       const builtin = BUILTIN.get(name)
       if (builtin !== undefined) {
-        if (args.length > 0) return { kind: 'error', text: t(USAGE) }
+        if (args.length > 0) return { kind: 'error', text: t(USAGE, USAGE_VALUES) }
         return switchTheme(ctx, builtin)
       }
       if (name === 'custom') {
         const path = args.shift()
         const base = args.shift()
-        if (path === undefined || args.length > 0) return { kind: 'error', text: t(USAGE) }
+        if (path === undefined || args.length > 0) return { kind: 'error', text: t(USAGE, USAGE_VALUES) }
         // The base reaches theme-custom's Config schema unvalidated: an
         // invalid value fails the mount, and switchTheme restores dark.
-        return switchTheme(ctx, CUSTOM, { path, base: base ?? 'dark' } as themeCustom.Config)
+        return switchTheme(ctx, { ...CUSTOM, config: { path, base: base ?? 'dark' } as themeCustom.Config })
       }
-      return { kind: 'error', text: t(USAGE) }
+      return { kind: 'error', text: t(USAGE, USAGE_VALUES) }
     },
   })
 }

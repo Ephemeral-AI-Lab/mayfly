@@ -1,6 +1,6 @@
 /**
- * `mayfly-theme-auto` plugin: follows the terminal's color scheme. Mounts the
- * dark or light built-in palette according to the probed
+ * `mayfly-theme-auto` plugin: follows the terminal's color scheme. Mounts
+ * Mayfly Dark or Mayfly Light (one brand, two backgrounds) according to the probed
  * `mayflyTerminalInfo.background` (`undefined` falls back to dark), then
  * tracks `'mayfly/terminal-theme-changed'`: when the reported scheme implies
  * the other palette, the current provider sub-fiber is disposed and a fresh
@@ -11,9 +11,8 @@
  */
 
 import type { Context, Fiber } from '@deepseek-ai/cordis'
-import { defineThemeService, themeModel } from './theme-palette.ts'
-import { DARK_COLORS, DARK_FOREGROUNDS, DARK_BACKGROUNDS } from './theme-dark.ts'
-import { LIGHT_COLORS, LIGHT_FOREGROUNDS, LIGHT_BACKGROUNDS } from './theme-light.ts'
+import { paletteColors, paletteModel } from './palettes.ts'
+import { defineThemeService } from './theme-palette.ts'
 // Empty type imports carry the `mayflyTerminalInfo` Context merge and the
 // `mayfly/terminal-theme-changed` Events merge used below.
 import type {} from './terminal-info.ts'
@@ -25,11 +24,8 @@ export const name = 'mayfly-theme-auto'
 /** The probed terminal background selects the initial palette. */
 export const inject = ['mayflyTerminalInfo']
 
-const PALETTES = { dark: DARK_COLORS, light: LIGHT_COLORS } as const
-const MODELS = {
-  dark: themeModel('dark', 'Dark', true, DARK_FOREGROUNDS, DARK_BACKGROUNDS),
-  light: themeModel('light', 'Light', false, LIGHT_FOREGROUNDS, LIGHT_BACKGROUNDS),
-} as const
+const PALETTES = { dark: paletteColors('dark'), light: paletteColors('light') } as const
+const MODELS = { dark: paletteModel('dark'), light: paletteModel('light') } as const
 
 /**
  * Provide the scheme-matching built-in palette as `ctx.mayflyTheme`, swapping

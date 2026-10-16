@@ -2452,7 +2452,8 @@ interactive scene is driven by the kit's key engine, so what you press is what a
 ### Brand sketches
 
 Four more scripts sketch the brand mark, the welcome banner, and the launch screen. They stand apart from the kit and
-draw their own colors; the shipped banner keeps the braille mark until an implementation round replaces it.
+draw their own colors. The banner (option B with the fly-in) ships as `transcript/banner.ts` on `core/quad-mark.ts`,
+painting the mark with each palette's `logoInks`; the launch screen is not built yet.
 
 | File | What it is |
 | --- | --- |
@@ -2475,13 +2476,13 @@ appearance and is skipped under reduced motion (§2.3).
 
 ### Theme sketches
 
-Two scripts propose the theme palettes. They stand apart from the kit and draw their own colors; the shipped themes
-keep their palettes until an implementation round copies these tables into `core/theme-*.ts`.
+Two scripts design the theme palettes. They stand apart from the kit and draw their own colors; `core/palettes.ts`
+copies their tables as they are.
 
 | File | What it is |
 | --- | --- |
-| [`prototypes/theme-palettes.mjs`](./prototypes/theme-palettes.mjs) | the palettes, in the shape of `*_FOREGROUNDS`, `*_BACKGROUNDS`, and `*_LOGO_GRADIENT`: Mayfly Dark (the default, unchanged), Mayfly Light (made from it), Tide and Dusk (dark), Linen and Mist (light); the recipe measured from the default as rules (`--check`), and a palette file for `/theme custom` (`--json`) |
-| [`prototypes/theme-preview.mjs`](./prototypes/theme-preview.mjs) | a specimen of each palette on its own canvas: the banner, a prompt, a Markdown answer, an edit with its diff, a failed and a retried call, a command panel, the editor, and the status row |
+| [`prototypes/theme-palettes.mjs`](./prototypes/theme-palettes.mjs) | the ten named palettes with their picker lines, foregrounds, backgrounds, and mark inks: Mayfly Dark (the default) and Mayfly Light, Tide, Dusk, and Graphite (dark), Linen, Mist, and Heather (light), Obsidian and Porcelain (high contrast); the recipe measured from the default as rules (`--check`), and a palette file for `/theme custom` (`--json`) |
+| [`prototypes/theme-preview.mjs`](./prototypes/theme-preview.mjs) | a specimen of each palette on its own canvas: the banner with the s10 mark, a prompt, a Markdown answer, an edit with its diff, a failed and a retried call, a command panel, the editor, and the status row |
 
 ```
 node docs/design/prototypes/theme-palettes.mjs [id | --check [--shipped] | --json <id>]
@@ -2490,5 +2491,5 @@ node docs/design/prototypes/theme-preview.mjs [id... | --shipped | --width <n> |
 
 The recipe: four neutral inks of one quiet hue; one brand hue for `primary` and every token around it (`accent` its
 quieter tint, `border` its deep shade); the status hues fixed and 45° or more from `primary`; `selectedBg` a neutral
-step off the canvas. `--check --shipped` shows where the shipped light, ocean, and paper palettes leave it, and
-`--shipped` sets each beside the palette that replaces it.
+step off the canvas; the two high-contrast palettes raise every tone to 7:1. `--check --shipped` shows where the
+former light, ocean, and paper palettes left it, and `--shipped` sets each beside the palette that replaced it.

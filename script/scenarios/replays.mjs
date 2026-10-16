@@ -4,7 +4,7 @@
  * scenes are the timelines of the perf and app scenarios. See `timeline.mjs` for the builders. @module script/scenarios/replays
  */
 
-import { btw, dequeue, goal as goalItem, job, mark, pause, queue, question, seed, step, subagent, todos, tool, turn } from './timeline.mjs'
+import { btw, dequeue, edit, goal as goalItem, job, mark, notify, pause, queue, question, seed, step, subagent, todos, tool, turn } from './timeline.mjs'
 /** A reply shaped like a real answer: prose, lists, a table, and fenced code in two languages. */
 function reply() {
   const parts = []
@@ -379,4 +379,45 @@ const viewItems = {
   ],
 }
 
-export const REPLAYS = { mergeDock, mergeConversations, mergePanels, mergeHeights, mergeEsc, viewItems, newMessages }
+/** An answer that paints every role of a palette: a heading, strong text, inline code, a link, a list, a quote, highlighted code, and a diff fence. */
+const PALETTE_ANSWER = [
+  '## What a palette paints',
+  'Every row takes its color from **one semantic table**: the brand hue for `primary` and its tints, four neutral inks for text, and the status colors kept apart from the brand. The recipe is in [the palette sketches](docs/design/prototypes/theme-palettes.mjs).',
+  ['- `primary`: the focus arrow, the panel rule, the scroll thumb', '- `accent`: inline code, list bullets, tokens in the prompt', '- `muted` and `textMuted`: secondary text and the hints'].join('\n'),
+  '> Scarce violet ink: one primary per surface.',
+  ['```ts', '// The banner mark has five inks: body, wings, and three trail shades.', 'export const LOGO_INK_COUNT: number = 5', "export function inkOf(key: string): number {", "  return key === 'W' ? 1 : 0", '}', '```'].join('\n'),
+  ['```diff', "-theme: ocean", "+theme: tide", '```'].join('\n'),
+].join('\n\n')
+
+/**
+ * The palettes and the banner of the theme round: the s10 mark flies in on the empty session (live; the frame runner has
+ * reduced motion), then one answer, an edit, a failed call, and a warning paint every role, for a walk through the ten
+ * named palettes. A `/clear` greets the fresh conversation with the fly-in again; a `/theme` switch never replays it.
+ */
+const brandThemes = {
+  summary: 'the welcome banner with the s10 mark flying in, then an answer, an edit, a failed call, and a warning that paint every color role: walk the ten named palettes with `/theme` (the picker) or `/theme <key>`, look at the banner at 60 and 40 columns, and `/clear` for the fly-in on a fresh conversation',
+  items: [
+    // The fly-in plays while the session is empty: nothing else moves on screen until the turn starts.
+    pause(DWELL),
+    mark('banner'),
+    turn('Show me every color the theme paints.', [
+      step({ reasoning: 'One answer that touches every token: a heading, emphasis, code, a link, a quote, a diff.', text: PALETTE_ANSWER, usage: { inputTokens: 2400, outputTokens: 420, cacheReadTokens: 1000 } }),
+      step({
+        usage: { inputTokens: 3100, outputTokens: 120, cacheReadTokens: 2400 },
+        tools: [
+          edit('settings.yaml', 'mayfly:\n  theme: ocean\n  reducedMotion: false\n', 'mayfly:\n  theme: tide\n  reducedMotion: false\n'),
+          tool('bash', { command: 'pnpm run check:themes', description: 'Check the palettes' }, { result: 'paper: primary is 16° from error\n[exit code: 1]', error: true, runMs: 900 }),
+        ],
+      }),
+      step({
+        text: 'Now walk the palettes. `/theme` opens the picker: each palette by name with a line about it, the live one checked; `Enter` switches. `/theme tide`, `/theme dusk`, `/theme graphite`, `/theme linen`, `/theme mist`, `/theme heather`, `/theme obsidian`, `/theme porcelain`, `/theme light`, and `/theme dark` switch at once; `/theme auto` follows the terminal. Narrow the terminal below 42 columns for the banner without its mark. `/clear` starts a fresh conversation: the mark flies in again. A `/theme` switch never replays it.',
+        usage: { inputTokens: 3300, outputTokens: 160, cacheReadTokens: 3000 },
+      }),
+    ]),
+    notify('warning', 'Rate limited · retrying in 4 s', { holdMs: 600_000 }),
+    mark('ready'),
+    pause(DWELL_VIEWS * 8),
+  ],
+}
+
+export const REPLAYS = { mergeDock, mergeConversations, mergePanels, mergeHeights, mergeEsc, viewItems, newMessages, brandThemes }

@@ -46,6 +46,10 @@ const COVERS = {
     ...NOTIFICATION, `${TRANSCRIPT}status-rows.ts`, `${TRANSCRIPT}view-items.ts`, `${TRANSCRIPT}status-agents.ts`, `${TRANSCRIPT}status-jobs.ts`, 'packages/mayfly/src/core/views-lane.ts', 'packages/mayfly/src/core/screen.ts',
     'packages/mayfly/src/components/editor.ts', `${INTERACTION}input-plugin.ts`, `${INTERACTION}placeholder.ts`, 'packages/mayfly/src/core/completion-drawer.ts', 'packages/mayfly/src/core/editor-tokens.ts',
   ],
+  brandThemes: [
+    'packages/mayfly/src/core/palettes.ts', 'packages/mayfly/src/core/theme-*.ts', 'packages/mayfly/src/core/quad-mark.ts', 'packages/mayfly/src/core/presentation.ts',
+    `${TRANSCRIPT}banner*.ts`, `${INTERACTION}theme-switch.ts`, `${INTERACTION}settings*.ts`, `${INTERACTION}onboarding-language.ts`,
+  ],
   mergeConversations: [
     ...QUEUE_COVERS, ...NOTIFICATION, `${INTERACTION}btw-command.ts`, `${INTERACTION}conversation-view-status.ts`, `${INTERACTION}placeholder.ts`, `${TRANSCRIPT}status-agents.ts`,
     'packages/mayfly/src/app/conversation-views.ts', 'packages/mayfly/src/components/editor.ts', 'packages/mayfly/src/core/views-lane.ts',
@@ -58,6 +62,35 @@ const COVERS = {
  * that `differs` from the prototype, and `pending`. `brief.mjs` prints them. Finalizing a group removes its entries.
  */
 const REVIEW = {
+  brandThemes: {
+    reference: 'PR 22\'s banner (docs/design/prototypes/banner-preview.mjs, fly-in.mjs, logo-preview.mjs s10) · the palettes (theme-palettes.mjs, theme-preview.mjs) · component-library §2.1, Brand sketches, Theme sketches',
+    implemented: [
+      'The welcome banner is PR 22\'s option B: the s10 mark (13 columns × 4 rows of quadrant blocks) beside `mayfly v<version>`, the slogan, `model · provider`, and the working directory; no labels and no help line.',
+      'On a fresh conversation (startup, `/new`, `/clear`) the mark flies in from the right edge, the four lines appear in its wake behind a fading trail, it lands, beats its wings twice, and rests (1.55 s). A resumed or forked session shows it at rest, reduced motion never plays it, and a `/theme` switch mid-flight carries on instead of replaying.',
+      'Ten named palettes: Mayfly Dark (unchanged) and Mayfly Light, Tide, Dusk, Graphite, Linen, Mist, Heather, and the high-contrast Obsidian and Porcelain. ocean, paper, and the GitHub-style light are gone; a saved `ocean` or `paper` starts on Mayfly Dark and keeps every other setting.',
+      'The `/theme` picker lists every palette by name with a muted line about it, then Auto (Mayfly Dark or Light, as the terminal); the live row is checked. `/settings` and the first-run guide show the same names.',
+      'Below 42 columns, and in ASCII glyph mode, the banner shows its four lines without the mark, cut with `…`.',
+      'Tokens no painter read are gone (`borderFocus`, `diffAddedStrong`, `diffRemovedStrong`, `diffGutter`); the mark paints with each palette\'s five `logoInks`; a highlighted diff fence paints with the diff tokens.',
+    ],
+    focus: [
+      { look: 'The fly-in: the entry from the right edge, the text appearing in its wake, the trail, the landing and the two wing beats', how: 'live only: watch the first two seconds of `pnpm run scenario brandThemes`; `/clear` plays it again' },
+      { look: 'The banner at rest beside its four lines', how: 'checkpoint `banner`' },
+      { look: 'The picker: the names, the muted line under each, the check on the live row, Auto last', how: 'checkpoint `picker`' },
+      { look: 'Each palette on the answer, the diff bands, the failed call, and the warning', how: 'checkpoints `light`, `tide`, `dusk`, `graphite`, `linen`, `mist`, `heather`, `obsidian`, `porcelain`, `auto`; set the terminal background to the palette\'s canvas (theme-preview.mjs) for the intended look' },
+      { look: 'The banner at 60 columns with its mark and at 40 without (after `/clear`, so it is on screen)', how: 'checkpoints `narrow-60`, `narrow-40`' },
+      { look: 'A fresh conversation greets with the fly-in; a `/theme` switch never replays it', how: 'checkpoint `fresh`; live: `/theme tide` right after `/clear`' },
+      { look: 'Monochrome and ASCII', how: '`pnpm run scenario brandThemes --no-color` (the mark in weight only) and `--ascii` (no mark)' },
+    ],
+    differs: [
+      'The runner pins the banner\'s version to `scenario`, so it reads `mayfly scenario`; a release reads `mayfly v0.1.3`.',
+      'Themes paint no background: on a terminal not set to a palette\'s canvas its colors sit on your own background, where the sketches paint the canvas.',
+      'The trail fades through each palette\'s own three inks; Mayfly Dark keeps PR 22\'s exact violet shades.',
+    ],
+    pending: [
+      'PR 22\'s launch screen (splash) is not built.',
+      'Decision tests, goldens, and the Website shots wait for your acceptance (round workflow step 7).',
+    ],
+  },
   mergePanels: {
     scene: 23,
     reference: 'the merge of Phase 6 (PR 16, the panels) into main (Phases 4 and 5) · component-development-spec §1 · roadmap Phase 6',
@@ -214,8 +247,29 @@ const MERGE_PASTE = Array.from({ length: 12 }, (_, index) => `note ${String(inde
 /** Open a panel by its command and wait for its title; the wait first lets focus return to the prompt from a panel just closed. */
 const open = (command, title) => [wait(300), type(command), key('enter'), until(title)]
 
+/** The built-in palettes after the default, in picker order: the theme round's walk. */
+const PALETTE_WALK = ['tide', 'dusk', 'graphite', 'linen', 'mist', 'heather', 'obsidian', 'porcelain']
+
+/** Switch the theme by its key and wait for the switch to settle. */
+const theme = name => [wait(300), type(`/theme ${name}`), key('enter'), wait(600)]
+
 /** The script of each replay: `play` to its marks, the keys a person would press, resizes, and named checkpoints. */
 const SCRIPTS = {
+  // The theme round: the banner at rest (the runner has reduced motion), the picker, every palette on the answer, a fresh
+  // conversation after `/clear`, and its banner at 60 and 40 columns.
+  brandThemes: [
+    play('banner'), checkpoint('banner'),
+    play('ready'), checkpoint('dark'),
+    ...open('/theme', 'Select a theme'), checkpoint('picker'),
+    key('down'), key('enter'), wait(600), checkpoint('light'),
+    ...PALETTE_WALK.flatMap(name => [...theme(name), checkpoint(name)]),
+    ...theme('auto'), checkpoint('auto'),
+    ...theme('dark'),
+    wait(300), type('/clear'), key('enter'), wait(1000), checkpoint('fresh'),
+    resize(60, 30), checkpoint('narrow-60'),
+    resize(40, 30), checkpoint('narrow-40'),
+    resize(100, 30),
+  ],
   // The panels over the merged dock: each in the /stats chrome with its keys on the hint row, the y/n confirm, and a question
   // arriving while a view is entered.
   mergePanels: [
@@ -363,6 +417,7 @@ const SCRIPTS = {
 
 /** Replays that run at a size of their own. */
 const SIZES = {
+  brandThemes: [[100, 30]],
   mergePanels: [[100, 30]],
   mergeHeights: [[100, 30]],
   mergeEsc: [[100, 30]],

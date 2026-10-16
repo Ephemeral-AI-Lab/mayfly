@@ -1,7 +1,8 @@
 /**
  * `mayfly-theme-custom` plugin: a user palette loaded from a JSON file and
- * layered over a built-in base palette. The file maps semantic token names
- * to `#rrggbb` hexes; entries that name unknown tokens or carry invalid
+ * layered over a built-in base palette (any key of `palettes.ts`). The file
+ * maps semantic token names to `#rrggbb` hexes, and `logoInks` to the banner
+ * mark's five inks; entries that name unknown tokens or carry invalid
  * colors are dropped (with a warning) and fall back to the base palette
  * entry, and an unreadable or malformed file falls back to the whole base
  * palette. Ships as a subpath entry so it can replace `mayfly-theme-dark`
@@ -13,9 +14,8 @@
 import { readFile } from 'node:fs/promises'
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
-import { BACKGROUND_TOKENS, backgroundColor, defineThemeService, foregroundColor, themeModel } from './theme-palette.ts'
-import { DARK_COLORS, DARK_FOREGROUNDS, DARK_BACKGROUNDS } from './theme-dark.ts'
-import { LIGHT_COLORS, LIGHT_FOREGROUNDS, LIGHT_BACKGROUNDS } from './theme-light.ts'
+import { PALETTE_KEYS, paletteColors, paletteOf, type MayflyPaletteKey } from './palettes.ts'
+import { BACKGROUND_TOKENS, LOGO_INK_COUNT, backgroundColor, defineThemeService, foregroundColor, themeModel } from './theme-palette.ts'
 import type { MayflyColorFn, MayflySemanticColors } from './types.ts'
 
 /** Stable Cordis plugin name. */
@@ -25,14 +25,14 @@ export const name = 'mayfly-theme-custom'
 export interface Config {
   /** Path to the JSON palette file. */
   path: string
-  /** Base palette for tokens the file does not override. Defaults to `'dark'`. */
-  base: 'dark' | 'light'
+  /** Built-in palette for tokens the file does not override. Defaults to `'dark'`. */
+  base: MayflyPaletteKey
 }
 
 /** Validated plugin config; `base` defaults to `'dark'`. */
 export const Config: z<Config> = z.object({
   path: z.string().required(),
-  base: z.union([z.const('dark'), z.const('light')]).default('dark'),
+  base: z.union(PALETTE_KEYS.map(key => z.const(key))).default('dark'),
 })
 
 const HEX_COLOR = /^#[0-9a-fA-F]{6}$/
@@ -45,10 +45,9 @@ const HEX_COLOR = /^#[0-9a-fA-F]{6}$/
  */
 export async function apply(ctx: Context, config: Config): Promise<void> {
   const logger = ctx.logger(name)
-  const base = config.base === 'light' ? LIGHT_COLORS : DARK_COLORS
-  const baseForegrounds = config.base === 'light' ? LIGHT_FOREGROUNDS : DARK_FOREGROUNDS
-  const baseBackgrounds = config.base === 'light' ? LIGHT_BACKGROUNDS : DARK_BACKGROUNDS
-  const baseModel = themeModel('custom', 'Custom', config.base !== 'light', baseForegrounds, baseBackgrounds)
+  const palette = paletteOf(config.base)
+  const base = paletteColors(config.base)
+  const baseModel = themeModel('custom', 'Custom', palette.dark, palette.foregrounds, palette.backgrounds)
   let parsed: unknown
   try {
     parsed = JSON.parse(await readFile(config.path, 'utf8'))
@@ -69,9 +68,9 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
       logger.warn('ignoring unknown theme token %s', token)
       continue
     }
-    if (token === 'logoGradient') {
-      if (!Array.isArray(value) || value.length === 0 || value.some(entry => typeof entry !== 'string' || !HEX_COLOR.test(entry))) {
-        logger.warn('ignoring invalid gradient for theme token %s; using the base palette entry', token)
+    if (token === 'logoInks') {
+      if (!Array.isArray(value) || value.length !== LOGO_INK_COUNT || value.some(entry => typeof entry !== 'string' || !HEX_COLOR.test(entry))) {
+        logger.warn('ignoring invalid inks for theme token %s (%d hexes expected); using the base palette entry', token, LOGO_INK_COUNT)
         continue
       }
       overrides[token] = Object.freeze(value.map(entry => foregroundColor(entry)))
