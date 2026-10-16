@@ -160,7 +160,7 @@ llm-pi-ai:
 mayfly:
   updateCheck: true        # 启动时的 Mayfly 更新检查（false 即离线开关）
   updateChannel: latest    # 更新检查跟踪的 dist-tag
-  theme: dark              # 持久默认主题：dark | light | ocean | paper | auto（启动时应用）
+  theme: dark              # 持久默认主题：任一内置调色板的键（dark、light、tide……）或 auto（启动时应用）
   transcriptView: standard # compact | standard | detailed | verbose
   windowTurns: 15          # transcript 窗口：只挂载最近 N 个已完成回合
   expandTurns: 3           # ctrl+o 展开的作用范围（自末尾起的回合数）
@@ -187,7 +187,7 @@ settings.yaml 的效果则直接在界面里看：`/model` 面板列出各路由
 
 ## 主题
 
-`/theme dark|light|ocean|paper|auto` 一键切换，`/theme custom <path>` 挂载自定义 JSON 调色板——热切换不丢输入草稿。`/theme` 是会话级切换；持久默认主题用 `/settings` 面板或 settings.yaml 的 `mayfly.theme` 设置（启动时应用）。完整语义 token 表与 custom 文件格式见[主题](/guide/theme)。
+`/theme <键>`（如 `/theme tide`）或 `/theme auto` 一键切换，`/theme custom <path>` 挂载自定义 JSON 调色板——热切换不丢输入草稿。`/theme` 是会话级切换；持久默认主题用 `/settings` 面板或 settings.yaml 的 `mayfly.theme` 设置（启动时应用）。完整语义 token 表与 custom 文件格式见[主题](/guide/theme)。
 
 ## 更多配置面
 

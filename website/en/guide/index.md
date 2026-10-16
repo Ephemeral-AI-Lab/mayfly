@@ -71,7 +71,7 @@ A few things to try first:
 
 - type `/` to see slash-command autocomplete, `/help` for the command and key overview;
 - ask something and watch the streaming reply and tool cards;
-- `/theme` lists all six themes with the current one marked (`dark`/`light`/`ocean`/`paper`/`auto`/`custom`); `/theme ocean` hot-swaps and your draft survives. The Theme row in the `/settings` panel cycles the same palettes live and persists the default;
+- `/theme` lists the 32 built-in palettes (Mayfly's own and ports of Catppuccin, Dracula, Nord, Tokyo Night, …) by name, grouped for dark and for light terminals, with Auto and the current one checked; `/theme tide` hot-swaps and your draft survives. The Theme row in the `/settings` panel cycles the same palettes live and persists the default;
 - on exit, the last line is the **session epitaph**: the session id and a one-line resume command (a triple-click selects exactly it) — pick the conversation right back up next time.
 
 ## Interface preview

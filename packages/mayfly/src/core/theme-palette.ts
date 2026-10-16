@@ -1,6 +1,6 @@
 /**
  * Shared palette machinery for the theme plugin family (`mayfly-theme-dark`,
- * `mayfly-theme-light`, `mayfly-theme-auto`, `mayfly-theme-custom`): the hex →
+ * `mayfly-theme-builtin`, `mayfly-theme-auto`, `mayfly-theme-custom`): the hex →
  * ANSI truecolor wrappers, the hex table → frozen semantic color table
  * builder, and the `mayflyTheme` Service subclass factory. Internal module —
  * not a package subpath export; the theme plugins are the public surface.
@@ -42,15 +42,18 @@ const BACKGROUND_TOKEN_NAMES = ['selectedBg', 'diffAddedBg', 'diffRemovedBg'] as
 /** The palette tokens painted as backgrounds rather than foregrounds. */
 export const BACKGROUND_TOKENS: ReadonlySet<string> = new Set(BACKGROUND_TOKEN_NAMES)
 
+/** How many inks a palette's `logoInks` holds: the mark's body, its wings, and three trail shades. */
+export const LOGO_INK_COUNT = 5
+
 /** The background tokens of a palette as `#rrggbb` hexes. */
-type MayflyBackgroundHexes = Record<typeof BACKGROUND_TOKEN_NAMES[number], string>
+export type MayflyBackgroundHexes = Record<typeof BACKGROUND_TOKEN_NAMES[number], string>
 
 /**
  * The foreground tokens of a palette as `#rrggbb` hexes. The background
- * tokens and the logo gradient are excluded and passed separately to
+ * tokens and the logo inks are excluded and passed separately to
  * {@link colorsFromForegrounds}.
  */
-type MayflyForegroundHexes = Record<Exclude<keyof MayflySemanticColors, keyof MayflyBackgroundHexes | 'logoGradient'>, string>
+export type MayflyForegroundHexes = Record<Exclude<keyof MayflySemanticColors, keyof MayflyBackgroundHexes | 'logoInks'>, string>
 
 /** Build the renderer-neutral companion model for a semantic palette. */
 export function themeModel(id: string, name: string, dark: boolean, foregrounds: MayflyForegroundHexes, backgrounds: MayflyBackgroundHexes): Omit<ThemeModel, 'colors'> & { readonly colors: Readonly<Record<string, string>> } {
@@ -61,14 +64,14 @@ export function themeModel(id: string, name: string, dark: boolean, foregrounds:
  * Build the frozen semantic color table from palette hexes.
  * @param foregrounds - one hex per foreground token.
  * @param backgrounds - one hex per background token.
- * @param logoGradient - the banner logo foregrounds, top row first.
+ * @param logoInks - the banner mark's inks: body, wings, and the trail from nearest to farthest.
  * @returns the frozen semantic color table.
  */
-export function colorsFromForegrounds(foregrounds: MayflyForegroundHexes, backgrounds: MayflyBackgroundHexes, logoGradient: readonly string[]): MayflySemanticColors {
+export function colorsFromForegrounds(foregrounds: MayflyForegroundHexes, backgrounds: MayflyBackgroundHexes, logoInks: readonly string[]): MayflySemanticColors {
   return Object.freeze({
     ...Object.fromEntries(Object.entries(foregrounds).map(([role, hex]) => [role, foregroundColor(hex)])),
     ...Object.fromEntries(Object.entries(backgrounds).map(([role, hex]) => [role, backgroundColor(hex)])),
-    logoGradient: Object.freeze(logoGradient.map(hex => foregroundColor(hex))),
+    logoInks: Object.freeze(logoInks.map(hex => foregroundColor(hex))),
   }) as MayflySemanticColors
 }
 

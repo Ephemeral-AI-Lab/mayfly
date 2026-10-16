@@ -84,10 +84,13 @@ const plain: MayflyColorFn = text => text
 
 /** The weight each token keeps in monochrome; every other token paints plain. */
 const MONOCHROME_WEIGHT: Readonly<Partial<Record<keyof MayflySemanticColors, MayflyColorFn>>> = {
-  textStrong: bold, primary: bold, warning: bold, error: bold, borderFocus: bold, mdHeading: bold,
+  textStrong: bold, primary: bold, warning: bold, error: bold, mdHeading: bold,
   muted: dim, textMuted: dim, border: dim, mdLinkUrl: dim, mdCodeBlockBorder: dim, mdQuoteBorder: dim, mdHr: dim,
-  diffGutter: dim, diffMeta: dim,
+  diffMeta: dim,
 }
+
+/** The mark's inks in monochrome: body and wings plain, the trail dim. */
+const MONOCHROME_LOGO: readonly MayflyColorFn[] = Object.freeze([plain, plain, dim, dim, dim])
 
 const monochromeCache = new WeakMap<MayflySemanticColors, MayflySemanticColors>()
 
@@ -100,8 +103,8 @@ const monochromeCache = new WeakMap<MayflySemanticColors, MayflySemanticColors>(
 export function monochromeColors(colors: MayflySemanticColors): MayflySemanticColors {
   const cached = monochromeCache.get(colors)
   if (cached !== undefined) return cached
-  const entries = Object.keys(colors).map(token => token === 'logoGradient'
-    ? [token, Object.freeze(colors.logoGradient.map(() => plain))]
+  const entries = Object.keys(colors).map(token => token === 'logoInks'
+    ? [token, MONOCHROME_LOGO]
     : [token, MONOCHROME_WEIGHT[token as keyof MayflySemanticColors] ?? plain])
   const result = Object.freeze(Object.fromEntries(entries)) as MayflySemanticColors
   monochromeCache.set(colors, result)

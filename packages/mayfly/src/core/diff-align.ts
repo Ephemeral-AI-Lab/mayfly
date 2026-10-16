@@ -35,7 +35,7 @@ const TRAILING_RESET = /(?:\x1b\[0m)+$/u
 export const DIFF_CONTEXT_ROWS = 1
 
 /** The palette slice a diff panel paints with. */
-export type DiffPaintColors = Pick<MayflySemanticColors, 'text' | 'diffAdded' | 'diffRemoved' | 'diffAddedBg' | 'diffRemovedBg' | 'diffMeta' | 'diffGutter'> & Partial<Pick<MayflySemanticColors, 'muted'>>
+export type DiffPaintColors = Pick<MayflySemanticColors, 'text' | 'muted' | 'diffAdded' | 'diffRemoved' | 'diffAddedBg' | 'diffRemovedBg' | 'diffMeta'>
 
 /** The width truth a diff panel clips and pads with. */
 export type DiffWidthHelpers = Pick<MayflyComponents, 'truncateToWidth' | 'visibleWidth'>
@@ -314,7 +314,7 @@ function paintDiffRow(
 ): string {
   const { numbered } = style
   // The gutter is the code block's (`N │ `, muted, numbers right-aligned), one number per row: a removed line's place in the file before the change, any other line's place after it.
-  const gutter = numbered ? `${paint(colors?.muted ?? colors?.diffGutter, `${String((row.sign === '-' ? row.old : row.new) ?? '').padStart(digits)} │`)} ` : ''
+  const gutter = numbered ? `${paint(colors?.muted, `${String((row.sign === '-' ? row.old : row.new) ?? '').padStart(digits)} │`)} ` : ''
   const head = `  ${gutter}`
   const room = Math.max(0, columns - helpers.visibleWidth(head))
   const text = row.text.replace(/\t/gu, '   ')

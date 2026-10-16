@@ -24,21 +24,24 @@ export const RELEASED_VERSION = parseManifestText(readFileSync(new URL('../../pa
 const write = (terminal, data) => new Promise(resolve => { terminal.write(data, resolve) })
 
 /**
- * Show the banner's pinned placeholder as `version`: the row's text changes, and the runs after it move with it.
+ * Show the banner's pinned placeholder (`mayfly scenario`, beside the mark) as the release `v<version>`: the row's
+ * text changes, and the runs after it move with it.
  * @param {import('../scenarios/grid.mjs').Grid} grid
  * @param {string} version
  */
 export function withVersion(grid, version) {
-  const placeholder = `Version:   ${RUNNER_CONFIG['mayfly-banner'].displayVersion}`
+  const pinned = RUNNER_CONFIG['mayfly-banner'].displayVersion
+  const placeholder = `mayfly ${pinned}`
   const row = grid.lines.findIndex(line => line.trimEnd().endsWith(placeholder))
   if (row < 0) return grid
-  const start = grid.lines[row].lastIndexOf(placeholder) + placeholder.length - RUNNER_CONFIG['mayfly-banner'].displayVersion.length
-  const end = start + RUNNER_CONFIG['mayfly-banner'].displayVersion.length - 1
-  const delta = version.length - (end - start + 1)
-  const lines = grid.lines.with(row, `${grid.lines[row].slice(0, start)}${version}${grid.lines[row].slice(end + 1)}`)
+  const shown = `v${version}`
+  const start = grid.lines[row].lastIndexOf(placeholder) + placeholder.length - pinned.length
+  const end = start + pinned.length - 1
+  const delta = shown.length - (end - start + 1)
+  const lines = grid.lines.with(row, `${grid.lines[row].slice(0, start)}${shown}${grid.lines[row].slice(end + 1)}`)
   const runs = grid.styles[row].map((run) => {
     if (run.from > end) return { ...run, from: run.from + delta, to: run.to + delta }
-    if (run.to >= end) return { ...run, to: Math.max(run.to + Math.min(delta, 0), start + version.length - 1) }
+    if (run.to >= end) return { ...run, to: Math.max(run.to + Math.min(delta, 0), start + shown.length - 1) }
     return run
   })
   return { ...grid, lines, styles: grid.styles.with(row, runs) }

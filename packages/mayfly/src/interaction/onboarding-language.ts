@@ -8,13 +8,14 @@
  */
 import type { Context } from '@deepseek-ai/cordis'
 import type { SettingsPathOp } from '@deepseek-ai/dsh-settings'
+import { PALETTE_KEYS } from '../core/palettes.ts'
 import { applyTheme } from './theme-switch.ts'
 import { currentMayflySettings } from './settings.ts'
 
 /** Languages the guide offers; labels stay in their own language. */
 export const LANGUAGES = [{ id: 'en', label: 'English' }, { id: 'zh', label: '简体中文' }] as const
-/** Persistable default themes, in the order `/theme` lists them. */
-export const THEMES = ['dark', 'light', 'ocean', 'paper', 'auto'] as const
+/** Persistable default themes, in the order `/theme` lists them: the built-in palettes, then `auto`. */
+export const THEMES = [...PALETTE_KEYS, 'auto'] as const
 
 export type Language = typeof LANGUAGES[number]['id']
 export type ThemeKey = typeof THEMES[number]

@@ -72,7 +72,7 @@ export const INERT = [
   /^website\//u,
   /^\.gitignore$/u,
   /^docs\//u,
-  /^(?:packages|examples)\/[^/]+\/(?:README(?:\.zh)?\.md|LICENSE|\.gitignore|CHANGELOG\.md)$/u,
+  /^(?:packages|examples)\/[^/]+\/(?:README(?:\.zh)?\.md|LICENSE|THIRD-PARTY-NOTICES\.md|\.gitignore|CHANGELOG\.md)$/u,
 ]
 
 /** A repository path that changes how a package is built rather than one implementation. */

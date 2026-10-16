@@ -2452,7 +2452,8 @@ interactive scene is driven by the kit's key engine, so what you press is what a
 ### Brand sketches
 
 Four more scripts sketch the brand mark, the welcome banner, and the launch screen. They stand apart from the kit and
-draw their own colors; the shipped banner keeps the braille mark until an implementation round replaces it.
+draw their own colors. The banner (option B with the fly-in) ships as `transcript/banner.ts` on `core/quad-mark.ts`,
+painting the mark with each palette's `logoInks`; the launch screen is not built yet.
 
 | File | What it is |
 | --- | --- |
@@ -2472,3 +2473,25 @@ of it. The splash's mark swoops in from the left edge and lands at 1.2 s, the wo
 list and input box are there from the first frame, so nothing waits on the motion. The banner's mark crosses the status
 column from the right edge and lands at 1.1 s, the four lines appearing in its wake. The fly-in plays once per
 appearance and is skipped under reduced motion (§2.3).
+
+### Theme sketches
+
+Three scripts design the theme palettes (with `prototypes/color.mjs`, their color math). They stand apart from the kit
+and draw their own colors; `core/palettes.ts` copies their tables as they are, in picker order: the palettes for dark
+terminals, then those for light ones.
+
+| File | What it is |
+| --- | --- |
+| [`prototypes/theme-palettes.mjs`](./prototypes/theme-palettes.mjs) | the ten named palettes with their picker lines, foregrounds, backgrounds, and mark inks: Mayfly Dark (the default) and Mayfly Light, Tide, Dusk, and Graphite (dark), Linen, Mist, and Heather (light), Obsidian and Porcelain (high contrast); the recipe measured from the default as rules (`--check`), and a palette file for `/theme custom` (`--json`) |
+| [`prototypes/theme-ports.mjs`](./prototypes/theme-ports.mjs) | 22 ports of ready-made palettes (Catppuccin, Rosé Pine, Dracula, Nord, Tokyo Night, Solarized, Gruvbox, One, Kanagawa, Everforest): each scheme's own colors by their upstream names, assigned to roles, a tone nudged in lightness only where it reads under 4.5:1 (every nudge recorded), with the sources and licenses (`FAMILIES`) |
+| [`prototypes/theme-preview.mjs`](./prototypes/theme-preview.mjs) | a specimen of each palette on its own canvas: the banner with the s10 mark, a prompt, a Markdown answer, an edit with its diff, a failed and a retried call, a command panel, the editor, and the status row |
+
+```
+node docs/design/prototypes/theme-palettes.mjs [id | --check [--shipped] | --json <id>]
+node docs/design/prototypes/theme-preview.mjs [id... | --shipped | --width <n> | --columns <n>]
+```
+
+The recipe: four neutral inks of one quiet hue; one brand hue for `primary` and every token around it (`accent` its
+quieter tint, `border` its deep shade); the status hues fixed and 45° or more from `primary`; `selectedBg` a neutral
+step off the canvas; the two high-contrast palettes raise every tone to 7:1. `--check --shipped` shows where the
+former light, ocean, and paper palettes left it, and `--shipped` sets each beside the palette that replaced it.

@@ -60,9 +60,9 @@
       "types": "./lib/types/theme-dark.d.ts",
       "default": "./lib/theme-dark.js"
     },
-    "./theme-light": {
-      "types": "./lib/types/theme-light.d.ts",
-      "default": "./lib/theme-light.js"
+    "./theme-builtin": {
+      "types": "./lib/types/theme-builtin.d.ts",
+      "default": "./lib/theme-builtin.js"
     },
     "./theme-auto": {
       "types": "./lib/types/theme-auto.d.ts",
@@ -71,14 +71,6 @@
     "./theme-custom": {
       "types": "./lib/types/theme-custom.d.ts",
       "default": "./lib/theme-custom.js"
-    },
-    "./theme-ocean": {
-      "types": "./lib/types/theme-ocean.d.ts",
-      "default": "./lib/theme-ocean.js"
-    },
-    "./theme-paper": {
-      "types": "./lib/types/theme-paper.d.ts",
-      "default": "./lib/theme-paper.js"
     },
     "./status-basic-model": {
       "types": "./lib/types/status-basic-model.d.ts",
@@ -163,7 +155,8 @@
     "lib/*.js",
     "lib/types/**/*.d.ts",
     "cordis.patch.yml",
-    "presets/"
+    "presets/",
+    "THIRD-PARTY-NOTICES.md"
   ],
   "license": "MIT",
   "homepage": "https://may-fly.dev",

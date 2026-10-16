@@ -70,7 +70,7 @@
 - **`/export [path]`** —— 当前会话导出为 Markdown；不带路径时写入默认文件名 `mayfly-export-{id8}-{YYYYMMDD-HHMMSS}.md`。
 - **`/copy`** —— 最近一条助手消息的文本进剪贴板：优先 OSC 52 转义序列（经 stdout 到达本地终端模拟器，**SSH 远程会话也能复制到本地剪贴板**），失败再走回退管线。
 - **`/trace`** —— 通过 harness 官方会话查询读取当前执行时间线；↑/↓ 选择条目，Enter 打开完整 JSON，PageUp/PageDown 滚动详情，`c` 复制单项，`a` 复制完整轨迹。
-- **`/theme`** —— 完整用法 `usage: /theme [dark|light|ocean|paper|auto|custom <path> [dark|light|ocean|paper]]`，详见[主题](/guide/theme)。
+- **`/theme`** —— 完整用法 `usage: /theme [<theme>|auto|custom <path> [<base theme>]]`，详见[主题](/guide/theme)。
 - **`/quit`** —— agent attach 前输入显示 `no active session`（见 [FAQ](/guide/faq)）。
 
 命令不进入模型轮——成功/错误文本在编辑器 hint 行闪现。下游插件经 `ctx.commands` 注册的命令会自动出现在补全菜单与 `/help` 里；别名不在 `ctx.commands` 注册，由输入层在分发前重写为规范名（kimi `aliases` 移植）。`/permission` 属另一情形：命令由上游 `dsh-permission-presets` 注册进命令表（补全与 `/help` 都会列出），但 Mayfly 输入层在分发前截获**裸调用**、直接打开预设选择面板。

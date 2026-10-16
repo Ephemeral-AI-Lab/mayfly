@@ -250,9 +250,8 @@ export type MayflyColorFn = (text: string) => string
 /**
  * The semantic color table. Keys name roles, not presentation. Every token is
  * required so a palette is compile-checked for completeness. `selectedBg`,
- * `diffAddedBg`, and `diffRemovedBg` are background colors and `logoGradient`
- * is the banner's row-wise foreground sweep; all other entries style one
- * foreground role.
+ * `diffAddedBg`, and `diffRemovedBg` are background colors and `logoInks`
+ * are the banner mark's inks; all other entries style one foreground role.
  */
 export interface MayflySemanticColors {
   /** Default foreground. */
@@ -269,8 +268,6 @@ export interface MayflySemanticColors {
   primary: MayflyColorFn
   /** Overlay and editor borders. */
   border: MayflyColorFn
-  /** Border of the focused overlay or editor. */
-  borderFocus: MayflyColorFn
   /** Affirmative status (tool success, confirmations). */
   success: MayflyColorFn
   /** Failure status. */
@@ -307,12 +304,6 @@ export interface MayflySemanticColors {
   diffAdded: MayflyColorFn
   /** Removed diff line. */
   diffRemoved: MayflyColorFn
-  /** Emphasized added diff line (hunk headers, focused hunks). */
-  diffAddedStrong: MayflyColorFn
-  /** Emphasized removed diff line (hunk headers, focused hunks). */
-  diffRemovedStrong: MayflyColorFn
-  /** Diff line-number gutter. */
-  diffGutter: MayflyColorFn
   /** Diff metadata (file paths, hunk ranges). */
   diffMeta: MayflyColorFn
   /** Background band behind an added diff line. */
@@ -321,8 +312,11 @@ export interface MayflySemanticColors {
   diffRemovedBg: MayflyColorFn
   /** Banner model-row highlight. */
   modelHighlight: MayflyColorFn
-  /** Banner logo foregrounds from top row to bottom row. */
-  logoGradient: readonly MayflyColorFn[]
+  /**
+   * The banner mark's inks, in order: the body (with its antennae and tails), the wings, then the fly-in's trail from
+   * the nearest pixel to the farthest: five entries.
+   */
+  logoInks: readonly MayflyColorFn[]
 }
 
 /** `ctx.mayflyTheme` — the semantic color provider. */

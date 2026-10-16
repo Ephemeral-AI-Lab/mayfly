@@ -6,6 +6,7 @@ import { createHash } from 'node:crypto'
 import type { SettingsDescriptor, SettingsPathOp } from '@deepseek-ai/dsh-settings'
 import { ui, type MayflyFieldValue, type MayflyFormField, type MayflySubmittedForm, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import type { MayflyTranslate } from '../frontend/locale.ts'
+import { themeLabel } from './theme-names.ts'
 
 const LABELS: Readonly<Record<string, string>> = {
   'locale.preference': 'Language', 'mayfly.updateCheck': 'Update check', 'mayfly.updateChannel': 'Update channel',
@@ -25,6 +26,11 @@ const LABELS: Readonly<Record<string, string>> = {
   'mayfly.prices': 'Token prices', 'mayfly.usdCnyRate': 'CNY per USD', 'mayfly.lowBalanceCny': 'Low balance (CNY)', 'mayfly.lowBalanceUsd': 'Low balance (USD)',
 }
 
+/** Display labels of select options by setting path; other options show their value. */
+const OPTION_LABELS: Readonly<Record<string, (value: string, t: MayflyTranslate) => string>> = {
+  'mayfly.theme': themeLabel,
+}
+
 interface SettingBinding { readonly path: readonly string[], readonly field: MayflyFormField, readonly encoded: boolean }
 export interface SettingsProjection { readonly node: MayflyUiNode, readonly bindings: ReadonlyMap<string, SettingBinding>, readonly revision: string }
 export interface SettingsChoices { readonly permission?: readonly string[], readonly agentPresets?: readonly string[] }
@@ -40,7 +46,8 @@ function scalar(value: unknown): value is string | number | boolean | null {
 function candidates(schema: Schema): readonly (string | number | boolean | null)[] | undefined {
   if (schema.type === 'const') return scalar(schema.value) ? [schema.value] : undefined
   if (schema.type !== 'union' || schema.list === undefined) return undefined
-  const values = schema.list.map(item => item.type === 'const' && scalar(item.value) ? { value: item.value } : undefined)
+  // A transform branch reads values that are not options (a stored value since removed), so it offers none.
+  const values = schema.list.filter(item => item.type !== 'transform').map(item => item.type === 'const' && scalar(item.value) ? { value: item.value } : undefined)
   return values.every(item => item !== undefined) ? values.map(item => item!.value) : undefined
 }
 
@@ -49,8 +56,8 @@ function candidates(schema: Schema): readonly (string | number | boolean | null)
  * readable and selectable instead of surfacing its raw `JSON.stringify` id and
  * failing save validation for a selection the user cannot see.
  */
-function optionEntries(options: readonly (string | number | boolean | null)[], stored: readonly unknown[]): readonly { readonly id: string, readonly label: string }[] {
-  const entries: { id: string, label: string }[] = options.map(value => ({ id: JSON.stringify(value), label: String(value) }))
+function optionEntries(options: readonly (string | number | boolean | null)[], stored: readonly unknown[], label: (value: string | number | boolean | null) => string = String): readonly { readonly id: string, readonly label: string }[] {
+  const entries: { id: string, label: string }[] = options.map(value => ({ id: JSON.stringify(value), label: label(value) }))
   const seen = new Set(entries.map(entry => entry.id))
   for (const value of stored) {
     if (!scalar(value)) continue
@@ -90,11 +97,13 @@ export function settingsProjection(descriptor: SettingsDescriptor, writable: boo
     const dynamicKind = descriptor.ns === 'permission' && key === 'defaultPreset' ? 'permission' : descriptor.ns === 'agent-preset-registry' && (key === 'default' || key === 'selectedDefault') ? 'agentPresets' : undefined
     const dynamic = dynamicKind === undefined ? undefined : choices[dynamicKind] ?? []
     const options = dynamic ?? candidates(schema)
+    const labelOf = OPTION_LABELS[`${descriptor.ns}.${key}`]
+    const optionLabel = (value: string | number | boolean | null): string => labelOf === undefined ? String(value) : labelOf(String(value), t)
     if (schema.meta.role === 'secret') {
       if (schema.type === 'string') field = { kind: 'secret', id, label, disabled, value: '', resetValue: '', placeholder: t(descriptor.secrets?.some(secret => secret.set && JSON.stringify(secret.path) === id) ? 'Configured; leave unchanged' : 'Not configured') }
     } else if (options !== undefined) {
       encoded = true
-      field = { ...base, disabled: disabled || dynamicKind !== undefined && choices[dynamicKind] === undefined, kind: 'select', value: value === undefined || !scalar(value) ? null : JSON.stringify(value), options: optionEntries(options, value === undefined ? [] : [value]), ...resettable ? { resetValue: fallback === undefined ? null : JSON.stringify(fallback) } : {} }
+      field = { ...base, disabled: disabled || dynamicKind !== undefined && choices[dynamicKind] === undefined, kind: 'select', value: value === undefined || !scalar(value) ? null : JSON.stringify(value), options: optionEntries(options, value === undefined ? [] : [value], optionLabel), ...resettable ? { resetValue: fallback === undefined ? null : JSON.stringify(fallback) } : {} }
     } else if (schema.type === 'array' && schema.inner !== undefined && candidates(schema.inner) !== undefined) {
       encoded = true
       field = { ...base, kind: 'multiselect', value: Array.isArray(value) ? value.filter(scalar).map(value => JSON.stringify(value)) : [], options: optionEntries(candidates(schema.inner)!, Array.isArray(value) ? value : []), ...resettable ? { resetValue: (fallback as unknown[]).filter(scalar).map(value => JSON.stringify(value)) } : {}, ...schema.meta.min === undefined ? {} : { minSelected: schema.meta.min }, ...schema.meta.max === undefined ? {} : { maxSelected: schema.meta.max } }

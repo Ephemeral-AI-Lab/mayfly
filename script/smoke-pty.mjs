@@ -72,9 +72,9 @@ try {
   // Theme replacement unloads the command's old renderer before its result
   // notification can be painted. Query the replacement's actual state.
   await sleep(500)
-  // Bare /theme opens the choose-list picker; the live row carries the badge.
+  // Bare /theme opens the choose-list picker; the live row shows the palette's name with the check.
   term.write('/theme\r')
-  if (!(await waitFor(() => clean().includes('light [current]'), 'the theme picker live row'))) throw new Error('theme')
+  if (!(await waitFor(() => clean().includes('Mayfly Light ✓'), 'the theme picker live row'))) throw new Error('theme')
   term.write('\x1b')
   await sleep(300)
   // /mode is the palette entry for the Shift+Tab plan cycle: it toggles the
