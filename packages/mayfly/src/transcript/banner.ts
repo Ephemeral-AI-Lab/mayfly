@@ -14,6 +14,11 @@
  * (a resumed or forked session) shows the mark at rest, and reduced motion
  * never plays it.
  *
+ * While no session exists and the `startup` setting asks for it, the same slot
+ * paints the launch screen instead (`./splash.ts`): the plugin tracks that
+ * state and the recent sessions of the directory, and the banner returns when a
+ * session is selected.
+ *
  * The plugin holds the facts and the fly-in and injects no theme, so a
  * `/theme` swap, a presentation reload, or an auto scheme change restarts only
  * its painter (an inner plugin on `mayflyTheme` and `mayflyComponents`) and a
@@ -40,13 +45,25 @@ import type {} from '@deepseek-ai/dsh-session-projection'
 // Empty type import carries the app-owned session reader service.
 import type {} from '../app/index.ts'
 import { MARK_BEAT, MARK_ROWS } from './banner-art.ts'
+import { composeSplashLines, SPLASH_RECENT_MAX, type SplashContent, type SplashSession } from './splash.ts'
+import { basename } from 'node:path'
+import { interactionTranslator } from '../interaction/locale.ts'
+import { formatAgo } from '../interaction/session-list-model.ts'
+import { cachedSessionTitle, createSessionListCache, refreshSessionList, readSessionListTitle, sessionListHeaders, sessionListRows, type SessionListRow } from '../interaction/session-list-reads.ts'
 import { MAYFLY_VERSION } from './banner-content.ts'
+
+declare module '@deepseek-ai/cordis' {
+  interface Events {
+    /** Stored sessions were added or changed outside this process's own sessions (the launch screen lists them again). */
+    'mayfly/session-catalog-changed'(): void
+  }
+}
 
 /** Stable Cordis plugin name. */
 export const name = 'mayfly-banner'
 
 /** Services required before the banner can mount; the painter adds the theme and the components. */
-export const inject = ['mayflyScreen', 'mayflyCurrentAgent', 'sessionProjections', 'agentDefaultModel']
+export const inject = ['mayflyScreen', 'mayflyCurrentAgent', 'mayflySessionStart', 'sessionProjections', 'agentDefaultModel', 'agents', 'sessions']
 
 /** Banner configuration; the display override never changes Mayfly's release version. */
 export interface Config {
@@ -167,6 +184,8 @@ interface BannerState {
   flyInStart: number | undefined
   /** The painter's hook for a fly-in that starts while it is mounted. */
   onFlyIn: (() => void) | undefined
+  /** The launch screen's facts while it replaces the banner: no session yet and the setting asks for it. `undefined` shows the banner. */
+  splash: () => SplashContent | 'pending' | undefined
 }
 
 /**
@@ -181,13 +200,26 @@ class BannerComponent implements MayflyComponent {
    * @param state - the plugin's facts and fly-in.
    * @param deps - the theme and measuring primitives.
    */
-  constructor(private readonly state: BannerState, private readonly deps: BannerDeps, private readonly reducedMotion: boolean) {}
+  constructor(
+    private readonly state: BannerState,
+    private readonly deps: BannerDeps,
+    private readonly reducedMotion: boolean,
+    /** The rows between the top of the screen and the editor, for the launch screen's vertical centering. */
+    private readonly rows: () => number,
+  ) {}
 
   /**
    * @param width - the content width in columns.
    * @returns the banner lines between the blank rows that open and close them.
    */
   render(width: number): string[] {
+    const splash = this.state.splash()
+    if (splash === 'pending') return []
+    if (splash !== undefined) {
+      const start = this.state.flyInStart
+      const at = !this.state.greeted && !this.reducedMotion ? 0 : start === undefined ? undefined : performance.now() - start
+      return composeSplashLines(this.deps, splash, width, this.rows(), at !== undefined && at < FLY_IN_TOTAL_MS ? at : undefined)
+    }
     // Before the first conversation is known: the fly-in's first frame, the four lines held and the mark still off screen.
     if (!this.state.greeted && !this.reducedMotion) return closed(composeBannerLines(this.deps, this.state.content, width, 0))
     const start = this.state.flyInStart
@@ -226,7 +258,7 @@ function mountPainter(ctx: Context, state: BannerState): void {
     truncate: (text, target) => components.truncateToWidth(text, target, '…'),
     visibleWidth: text => components.visibleWidth(text),
     ascii: components.presentation?.glyphs === 'ascii',
-  }, components.presentation?.reducedMotion === true)
+  }, components.presentation?.reducedMotion === true, () => Math.max(1, ctx.mayflyScreen.rows - ctx.mayflyScreen.editorRowsFromBottom))
   let timer: ReturnType<typeof setInterval> | undefined
   const stop = (): void => {
     if (timer !== undefined) clearInterval(timer)
@@ -279,6 +311,7 @@ export function apply(ctx: Context, config: Config = {}): void {
     greeted: false,
     flyInStart: undefined,
     onFlyIn: undefined,
+    splash: () => undefined,
   }
   const rederive = (agent: Agent | null): void => {
     const fallback = ctx.agentDefaultModel.currentSelection()
@@ -298,26 +331,134 @@ export function apply(ctx: Context, config: Config = {}): void {
   }
   // The primary conversations the banner has shown: each plays the fly-in at most once, and only while it is fresh.
   const seen = new Set<string>()
+  // The start surface (no session yet) plays it once per appearance; a session taking its place does not play it again.
+  let startShown = false
+  let booted = false
   const greet = (): void => {
     const agent = ctx.mayflyCurrentAgent.primary()
-    if (agent === null || seen.has(agent.session.id)) return
+    if (agent === null) {
+      if (!booted || startShown) return
+      startShown = true
+      state.greeted = true
+      if (readPresentation(ctx).reducedMotion) {
+        ctx.mayflyScreen.requestRender()
+        return
+      }
+      state.flyInStart = performance.now()
+      state.onFlyIn?.()
+      return
+    }
+    // A session that takes the start surface's place (the first message, from the launch screen or the empty
+    // conversation) has been greeted already: the mark does not fly in a second time, and one still flying stops.
+    const fromStart = startShown
+    startShown = false
+    if (seen.has(agent.session.id)) return
     seen.add(agent.session.id)
     state.greeted = true
-    if (readPresentation(ctx).reducedMotion || agent.session.snapshotEvents().some(event => event.type === 'turn/start')) {
+    if (fromStart) state.flyInStart = undefined
+    if (fromStart || readPresentation(ctx).reducedMotion || agent.session.snapshotEvents().some(event => event.type === 'turn/start')) {
       ctx.mayflyScreen.requestRender()
       return
     }
     state.flyInStart = performance.now()
     state.onFlyIn?.()
   }
+  // The launch screen: shown while no session exists and the `startup` setting asks for it.
+  const t = interactionTranslator(ctx)
+  // The settings owner loads after this plugin may: the source answers the default until it is ready.
+  const readStartup = (): 'conversation' | 'splash' => ctx.get('mayflyInteractionState')?.settingsSource().startup ?? 'conversation'
+  let startup = readStartup()
+  let recent: SplashSession[] | undefined
+  let loading = false
+  const listCache = createSessionListCache(ctx)
+  const lifetime = new AbortController()
+  ctx.effect(() => () => lifetime.abort())
+  /** Read this directory's newest sessions, once at a time; the list is left out until the first read lands. */
+  const loadRecent = (): void => {
+    if (loading || !booted || startup !== 'splash' || ctx.mayflyCurrentAgent.primary() !== null) return
+    loading = true
+    void refreshSessionList(ctx, listCache, lifetime.signal).then(() => {
+      const now = Date.now()
+      const cwd = process.cwd()
+      const usable = (rows: readonly SessionListRow[]): SessionListRow[] => rows.filter(row => !row.summary.blank && row.summary.parentSessionId === undefined)
+      // This directory's sessions come first; other projects fill the rest (headers only, then just the newest few are read).
+      const here = usable(sessionListRows(ctx, listCache, { cwd }))
+      const others = here.length >= SPLASH_RECENT_MAX ? [] : usable(sessionListRows(ctx, listCache, {
+        ids: new Set(sessionListHeaders(ctx, listCache)
+          .filter(item => item.header.cwd !== cwd && item.header.parentSession === undefined)
+          .sort((left, right) => right.header.createdAt - left.header.createdAt)
+          .slice(0, SPLASH_RECENT_MAX * 3)
+          .map(item => item.header.id)),
+      }))
+      const shown = [...here, ...others].slice(0, SPLASH_RECENT_MAX)
+      const titleOf = (row: SessionListRow): string | undefined => (row.summary.projections?.values.title ?? cachedSessionTitle(listCache, row)) || undefined
+      const item = (row: SessionListRow, title: string | undefined): SplashSession => ({
+        title: title ?? t('Untitled'),
+        project: basename(row.header.cwd ?? ''),
+        age: row.summary.running ? t('running') : formatAgo(now - row.summary.updatedAt, t),
+        live: row.summary.running,
+      })
+      recent = shown.map(row => item(row, titleOf(row)))
+      // A stored session the projection cache has no title for is read once, after the list is on screen.
+      shown.forEach((row, index) => {
+        if (titleOf(row) !== undefined) return
+        void readSessionListTitle(ctx, listCache, row, lifetime.signal).then((title) => {
+          if (title === undefined || title === null || recent === undefined || lifetime.signal.aborted) return
+          recent = recent.map((entry, at) => at === index ? item(row, title) : entry)
+          ctx.mayflyScreen.requestRender()
+        }, () => {})
+      })
+    }).catch((error: unknown) => {
+      if (lifetime.signal.aborted) return
+      ctx.logger.warn(`splash: recent sessions unavailable: ${String(error)}`)
+      recent = []
+    }).finally(() => {
+      loading = false
+      if (!lifetime.signal.aborted) ctx.mayflyScreen.requestRender()
+    })
+  }
+  state.splash = () => {
+    if (startup !== 'splash' || ctx.mayflyCurrentAgent.primary() !== null) return undefined
+    if (!booted) return 'pending'
+    return {
+      version: displayVersion,
+      labels: {
+        slogan: SLOGAN,
+        recent: t('Recent sessions'),
+        more: t('/sessions for all'),
+        empty: t('No sessions here yet'),
+        emptyHint: t('Describe a task below to start one.'),
+      },
+      recent,
+    }
+  }
+  const followStartup = (): void => {
+    const next = readStartup()
+    if (next === startup) return
+    startup = next
+    loadRecent()
+    ctx.mayflyScreen.requestRender()
+  }
+  ctx.effect(() => ctx.on('settings/document-updated', (ns) => { if (String(ns) === 'mayfly') followStartup() }))
+  ctx.effect(() => ctx.on('mayfly/settings-source-ready', followStartup))
+  ctx.effect(() => ctx.on('mayfly/session-catalog-changed', loadRecent))
   const offAgent = ctx.mayflyCurrentAgent.subscribe(agent => {
     rederive(agent)
     greet()
+    if (agent === null) loadRecent()
+  })
+  // A launch with no session greets only once startup settled: a resume or a task selects its session first.
+  const offBooted = ctx.mayflySessionStart.onBooted(() => {
+    booted = true
+    greet()
+    loadRecent()
+    ctx.mayflyScreen.requestRender()
   })
   const offProjection = ctx.sessionProjections.onChanged((session, key) => {
     if (key === 'modelSelection' && session === ctx.mayflyCurrentAgent.current()?.session) rederive(ctx.mayflyCurrentAgent.current())
   })
   ctx.effect(() => () => offAgent())
+  ctx.effect(() => offBooted)
   ctx.effect(() => () => offProjection())
   greet()
   // A host that never shows a conversation still gets its banner, at rest.

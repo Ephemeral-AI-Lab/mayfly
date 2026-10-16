@@ -420,4 +420,24 @@ const brandThemes = {
   ],
 }
 
-export const REPLAYS = { mergeDock, mergeConversations, mergePanels, mergeHeights, mergeEsc, viewItems, newMessages, brandThemes }
+/**
+ * The start round: a start with no session. Four stored conversations (two here, two in sibling projects) stand in for the
+ * recent list of the launch screen; nothing else is played, because the session does not exist until the script sends the
+ * first message. The product answers that message itself, from the stub endpoint.
+ */
+const startSplash = {
+  summary: 'a start with no session: the launch screen over stored sessions, /settings, /theme and a refused /model before any message, the first message creating the session, and /clear returning to the launch screen',
+  items: [
+    seed([
+      { id: 'seed-splash', at: -3 * HOUR, title: 'Redesign the launch screen', items: earlier('Sketch the launch screen.', 'Mark, wordmark, slogan, recent sessions.', { inputTokens: 12_000, outputTokens: 800, cacheReadTokens: 9_000 }) },
+      { id: 'seed-archive', at: -DAY, title: 'Archive sessions without a rescan', items: earlier('Archive without a rescan.', 'The archive reads headers only.', { inputTokens: 5_000, outputTokens: 300, cacheReadTokens: 2_000 }) },
+      { id: 'seed-harness', at: -2 * DAY, cwd: 'harness', title: 'Fix the flaky scheduler test', items: earlier('The scheduler test is flaky.', 'A timer raced the clock; it now awaits the tick.', { inputTokens: 8_000, outputTokens: 600, cacheReadTokens: 6_000 }) },
+      { id: 'seed-dock', at: -3 * DAY, cwd: 'mayfly-dock', title: 'Port the dock overlay to panes', items: earlier('Port the dock overlay.', 'The overlay is a pane now.', { inputTokens: 20_000, outputTokens: 1_100, cacheReadTokens: 15_000 }) },
+    ]),
+    mark('splash'),
+    pause(DWELL),
+    mark('end'),
+  ],
+}
+
+export const REPLAYS = { mergeDock, mergeConversations, mergePanels, mergeHeights, mergeEsc, viewItems, newMessages, brandThemes, startSplash }

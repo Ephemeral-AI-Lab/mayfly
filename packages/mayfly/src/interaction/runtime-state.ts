@@ -11,6 +11,7 @@ import { Service, type Context } from '@deepseek-ai/cordis'
 import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import { CommandAliasRegistry } from './command-meta.ts'
 import { DraftStash } from './draft-stash.ts'
+import { SessionlessCommandRegistry } from './sessionless-commands.ts'
 import type { FdProbeRuntimeState } from './file-mention.ts'
 import type { ModelsDevIndex } from './models-dev.ts'
 import type { PromptWaits } from './prompt-wait.ts'
@@ -32,6 +33,8 @@ interface PasteImageRuntimeState {
 export class InteractionStateService extends Service {
   private live = true
   readonly aliases = new CommandAliasRegistry()
+  /** The Mayfly-owned commands that run while no session is selected. */
+  readonly sessionless = new SessionlessCommandRegistry()
   readonly draft = new DraftStash()
   settingsSource: () => MayflySettings
   lastAppliedTheme: MayflySettings['theme'] = 'dark'
@@ -60,6 +63,7 @@ export class InteractionStateService extends Service {
   dispose(): void {
     this.live = false
     this.aliases.clear()
+    this.sessionless.clear()
     this.draft.clearAll()
     this.modelsDevCache = undefined
     this.fdProbe.result = undefined

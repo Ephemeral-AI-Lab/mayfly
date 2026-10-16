@@ -2453,7 +2453,10 @@ interactive scene is driven by the kit's key engine, so what you press is what a
 
 Four more scripts sketch the brand mark, the welcome banner, and the launch screen. They stand apart from the kit and
 draw their own colors. The banner (option B with the fly-in) ships as `transcript/banner.ts` on `core/quad-mark.ts`,
-painting the mark with each palette's `logoInks`; the launch screen is not built yet.
+painting the mark with each palette's `logoInks`; the launch screen ships in the same slot (`transcript/splash.ts`) while no
+session exists and the `startup` setting asks for it. It is one centered column with tiers by width: the mark at double
+size from a 100-column terminal, a project column from 56 list columns, title and age only below, and the wordmark alone
+below 42 columns or in ASCII glyphs. The editor and status row are the real ones, docked below.
 
 | File | What it is |
 | --- | --- |

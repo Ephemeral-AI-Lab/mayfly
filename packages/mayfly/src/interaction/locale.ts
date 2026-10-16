@@ -876,6 +876,17 @@ const zh: Readonly<Record<string, string>> = {
   'copied the stats summary': '已复制统计摘要',
   'could not copy: {error}': '无法复制：{error}',
   'View history': '视图历史',
+  'On start': '启动时',
+  'On start: {startup}': '启动时：{startup}',
+  'Recent sessions': '最近的会话',
+  '/sessions for all': '/sessions 查看全部',
+  'No sessions here yet': '这里还没有会话',
+  'Describe a task below to start one.': '在下方描述一个任务即可开始。',
+  'Choose what to show on start': '请选择启动时显示的内容',
+  'Splash': '启动页',
+  'Conversation': '对话',
+  'Send a message first: /{command} needs a session': '请先发送一条消息：/{command} 需要一个会话',
+  'could not start a session: {error}': '无法开始会话：{error}',
 }
 
 const en = Object.freeze(Object.fromEntries(Object.keys(zh).map(key => [key, key])))

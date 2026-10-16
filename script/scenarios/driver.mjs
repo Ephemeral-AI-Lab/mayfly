@@ -22,7 +22,7 @@ import { setTimeout as sleep } from 'node:timers/promises'
 import { pathToFileURL } from 'node:url'
 
 export const name = 'mayfly-replay-driver'
-export const inject = ['mayflyCurrentAgent', 'sessions']
+export const inject = ['mayflyCurrentAgent', 'mayflySessionStart', 'sessions']
 
 /**
  * The session's current surface: the seqs of its appended surface events, with each replaced span collapsed into the
@@ -146,11 +146,17 @@ export function apply(ctx) {
       })()
     })
     if (control !== undefined) abort.signal.addEventListener('abort', () => control.close(), { once: true })
-    const agent = await currentAgent()
-    if (agent === undefined) return
-    const main = agent.session
+    // A sessionless scenario plays before any message: the product has no session yet, so there is no Agent to wait for.
+    // It only seeds stored sessions, and the run is ready once the product finished starting.
+    const sessionless = process.env.MAYFLY_REPLAY_SESSIONLESS === '1'
+    await new Promise(resolve => { ctx.mayflySessionStart.onBooted(resolve) })
+    // Any other replay plays into a session, which the product now creates on the first message: create it as a first message would.
+    if (!sessionless) await ctx.mayflySessionStart.ensure()
+    const agent = sessionless ? undefined : await currentAgent()
+    if (!sessionless && agent === undefined) return
+    const main = agent?.session
     // A restart resumes the session with its history: play only into a session that has not started a turn.
-    if (main.snapshotEvents().some(event => event.type === 'turn/start')) { log('session already has turns; replay skipped'); control?.send({ type: 'finished', skipped: true }); return }
+    if (main?.snapshotEvents().some(event => event.type === 'turn/start')) { log('session already has turns; replay skipped'); control?.send({ type: 'finished', skipped: true }); return }
     clock?.freeze()
     // Under a runner, playback waits for `play` and pauses at the mark it names (or plays to the end), as fast as the
     // session takes it or, `timed`, at the replay's own pace.
@@ -476,7 +482,8 @@ export function apply(ctx) {
             if (persistence === undefined || cache === undefined) { log('no session persistence or projection cache to seed'); break }
             const ids = new Map()
             for (const spec of action.sessions) {
-              const cwd = spec.cwd === undefined ? main.header.cwd : join(dirname(main.header.cwd), spec.cwd)
+              const workspace = main?.header.cwd ?? process.cwd()
+              const cwd = spec.cwd === undefined ? workspace : join(dirname(workspace), spec.cwd)
               const parentSession = spec.parent === undefined ? undefined : ids.get(spec.parent)
               clock?.at(spec.createdAt)
               const session = ctx.sessions.prepare(spec.id, { meta: { cwd, createdAt: Date.now(), ...(parentSession === undefined ? {} : { parentSession }) } })
@@ -494,6 +501,8 @@ export function apply(ctx) {
               ids.set(spec.id, session.id)
               log(`seeded ${spec.id} (${String(events.length)} events)`)
             }
+            // A sessionless start listed the catalog at boot, before these existed.
+            ctx.emit('mayfly/session-catalog-changed')
             clock?.at(action.at + (action.skew ?? 0))
             break
           }

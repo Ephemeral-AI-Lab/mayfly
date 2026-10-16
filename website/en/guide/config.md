@@ -171,11 +171,14 @@ mayfly:
   glyphs: auto             # auto (from the locale's charset) | unicode | ascii (one-cell fallback glyphs)
   monochrome: false        # weight only, no color (NO_COLOR also turns it on)
   reducedMotion: false     # freeze every animation on its first frame
+  startup: conversation    # what a start without a session shows: conversation (the banner above an empty conversation) | splash (the launch screen: the mark and recent sessions)
 ```
 
 `transcriptView` keeps the Harness Chat work-details mode names (see [Streaming transcript](/en/features/streaming#work-details)). Live status belongs to the activity row; the transcript shows only what has happened. Compact shows the conversation alone while a turn runs. Standard adds file-change diff cards and past-tense group titles, and its activity row names the running command, path, query, or reasoning. Detailed shows every card while the turn runs. Compact, Standard, and Detailed fold a completed turn behind its `Took 38s` header, keeping the final answer (and, from Standard up, the file changes) visible; Verbose keeps every card open. Ctrl+O expands the most recent `expandTurns` turns. The old per-family `transcript` settings and `recentStepsRetention` are no longer interpreted.
 
 The panel is two-level: level one starts with `locale` and groups rows by namespace (host sections like `shell:`, `agent-loop:`, and `web-search-deepseek:` included), Enter steps into level two's per-key rows, and `Enter`/`Space` there steps the preset value with every change landing on disk; language and `mayfly.theme` changes both apply live (`/theme` stays the session-level switch — see [Theming](/en/guide/theme)), and `transcriptView` and number changes apply to the running session just as immediately (an active Ctrl-O expansion still dominates). Level one's last row opens the whole settings.yaml in `$EDITOR`.
+
+`startup` only decides the screen a start shows: Mayfly creates no session at launch and creates one when the first message is sent, so neither value leaves an empty session in the store. `--resume <id>` and a `[task]` argument still start a session at once, and `/new` and `/clear` return to the start screen. While no session exists only `/theme`, `/settings`, `/sessions`, `/help`, `/quit`, `/new`, and `/clear` run; any other command asks for a message first. The first-run guide's Preferences step offers the choice; change it later under `mayfly` in `/settings`.
 
 ### Verifying your edits
 

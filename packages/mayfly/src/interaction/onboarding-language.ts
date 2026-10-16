@@ -17,23 +17,32 @@ export const LANGUAGES = [{ id: 'en', label: 'English' }, { id: 'zh', label: 'ç®
 /** Persistable default themes, in the order `/theme` lists them: the built-in palettes, then `auto`. */
 export const THEMES = [...PALETTE_KEYS, 'auto'] as const
 
+/** What a start without a session shows; the first-run guide offers both. */
+export const STARTUPS = ['conversation', 'splash'] as const
+
 export type Language = typeof LANGUAGES[number]['id']
+export type Startup = typeof STARTUPS[number]
 export type ThemeKey = typeof THEMES[number]
 
 /** The language and theme the guide starts on: the live ones (a stored choice included), else English and dark. */
-export function initialChoice(ctx: Context): { readonly language: Language, readonly theme: ThemeKey } {
+export function initialChoice(ctx: Context): { readonly language: Language, readonly theme: ThemeKey, readonly startup: Startup } {
   /* the stored default theme: the live one may not be applied yet when the guide opens */
   const stored = currentMayflySettings(ctx).theme
   const current = ctx.get('mayflyInteractionState')?.currentThemeKey
-  return { language: ctx.get('mayflyLocale')?.locale === 'zh' ? 'zh' : 'en', theme: THEMES.find(key => key === stored && stored !== 'dark') ?? THEMES.find(key => key === current) ?? 'dark' }
+  return { language: ctx.get('mayflyLocale')?.locale === 'zh' ? 'zh' : 'en', theme: THEMES.find(key => key === stored && stored !== 'dark') ?? THEMES.find(key => key === current) ?? 'dark', startup: currentMayflySettings(ctx).startup }
 }
 
 /** Persist one namespace write; a failed or read-only store leaves the live choice in place. */
-async function persist(ctx: Context, ns: string, operation: SettingsPathOp): Promise<void> {
+export async function persist(ctx: Context, ns: string, operation: SettingsPathOp): Promise<void> {
   const settings = ctx.get('settings')
   const entry = settings?.describe().find(item => String(item.ns) === ns)
   if (settings === undefined || !settings.writable || entry === undefined) return
   try { await settings.mutate(ns, [operation], entry.revision) } catch (error) { ctx.logger.warn(`could not persist ${ns} setting: ${String(error)}`) }
+}
+
+/** Persist what the start shows; it is read at the next start and needs no live apply. */
+export async function commitStartup(ctx: Context, startup: Startup): Promise<void> {
+  await persist(ctx, 'mayfly', { op: 'set', path: ['startup'], value: startup })
 }
 
 /**

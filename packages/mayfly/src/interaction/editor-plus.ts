@@ -47,6 +47,7 @@ import { detectFdPath, extractAtPrefix, createMentionScanCache, fsMentionSuggest
 import { requiresFilesystemMention } from '../internal/mention.ts'
 import { ACTION_BACKSPACE, ACTION_CANCEL } from './keys.ts'
 import { extractSkillPrefix, refresh, userInvocableSkills } from './skills-catalog.ts'
+import { commandHint, listCommands } from './sessionless-commands.ts'
 import { sanitizeShellOutput } from './shell-sanitize.ts'
 import { filterSlashCommands, slashCommandLabel } from './slash-filter.ts'
 import { beginPromptWait } from './prompt-wait.ts'
@@ -265,8 +266,6 @@ function createAutocompleteProvider(
       }
       const slash = /^\/(\S*)$/.exec(line.slice(0, cursorCol))
       if (slash === null || mode() === 'bash') return null
-      const agent = ctx.mayflyCurrentAgent.current()
-      if (agent === null) return null
       /* a successful exec always defines the capture group */
       const query = slash[1] ?? ''
       // The kimi match rule: the canonical name scores first, aliases count
@@ -274,7 +273,7 @@ function createAutocompleteProvider(
       // with its alias list (`/quit (q, exit)`) so the user sees why it
       // surfaced; the value always completes to the canonical name.
       const items = filterSlashCommands(
-        ctx.mayflyInteractionState.aliases.withCommandAliases(ctx.commands.list(agent).map(command => ({
+        ctx.mayflyInteractionState.aliases.withCommandAliases(listCommands(ctx, ctx.mayflyCurrentAgent.current()).map(command => ({
           name: command.name,
           description: command.description,
           ...(command.input?.hint === undefined ? {} : { inputHint: command.input.hint }),
@@ -519,14 +518,12 @@ function attach(ctx: Context, shared: SharedEditor, isUnloaded: () => boolean): 
     if (mode === 'bash') return undefined
     const match = /^\/(\S+)( ?)$/.exec(text)
     if (match === null) return undefined
-    const agent = ctx.mayflyCurrentAgent.current()
-    if (agent === null) return undefined
     /* a successful exec always defines the capture group */
     const name = match[1] ?? ''
     // An alias token (`/q `) resolves to its canonical command for the hint,
     // mirroring the dispatch rewrite — aliases are not registered commands.
     const canonical = aliases.canonicalOf(name) ?? name
-    const hint = ctx.commands.find(agent, canonical)?.input?.hint
+    const hint = commandHint(ctx, ctx.mayflyCurrentAgent.current(), canonical)
     if (hint === undefined || hint.length === 0) return undefined
     return match[2] === ' ' ? hint : ` ${hint}`
   }

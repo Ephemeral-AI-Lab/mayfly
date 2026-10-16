@@ -15,7 +15,7 @@ const LABELS: Readonly<Record<string, string>> = {
   'mayfly.windowTurns': 'Transcript window (turns)',
   'mayfly.expandTurns': 'Ctrl+O range (turns)', 'mayfly.userFoldLines': 'User fold lines', 'mayfly.userFoldChars': 'User fold chars',
   'mayfly.editorCommand': 'External editor', 'mayfly.pasteImageBackend': 'Paste backend', 'mayfly.marketIndexUrl': 'Plugin market index',
-  'mayfly.glyphs': 'Glyphs', 'mayfly.monochrome': 'Monochrome', 'mayfly.reducedMotion': 'Reduced motion', 'mayfly.quietHints': 'Quiet hints', 'mayfly.viewHistory': 'View history',
+  'mayfly.glyphs': 'Glyphs', 'mayfly.monochrome': 'Monochrome', 'mayfly.reducedMotion': 'Reduced motion', 'mayfly.quietHints': 'Quiet hints', 'mayfly.viewHistory': 'View history', 'mayfly.startup': 'On start',
   'shell.timeoutMs': 'Shell timeout (ms)', 'shell.maxTimeoutMs': 'Shell max timeout (ms)', 'shell.maxOutputBytes': 'Shell max output (bytes)',
   'shell.maxSpillBytes': 'Shell spill budget (bytes)', 'shell.graceMs': 'Shell grace (ms)',
   'agent-loop.maxParallelToolCalls': 'Max parallel tool calls', 'agent-default-model.reasoningEffort': 'Default reasoning effort',
@@ -29,6 +29,7 @@ const LABELS: Readonly<Record<string, string>> = {
 /** Display labels of select options by setting path; other options show their value. */
 const OPTION_LABELS: Readonly<Record<string, (value: string, t: MayflyTranslate) => string>> = {
   'mayfly.theme': themeLabel,
+  'mayfly.startup': (value, t) => t(value === 'splash' ? 'Splash' : 'Conversation'),
 }
 
 interface SettingBinding { readonly path: readonly string[], readonly field: MayflyFormField, readonly encoded: boolean }

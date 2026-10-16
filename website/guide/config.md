@@ -171,11 +171,14 @@ mayfly:
   glyphs: auto             # auto（按 locale 字符集）| unicode | ascii（单格回退字形）
   monochrome: false        # 只保留字重、不着色（设置 NO_COLOR 时也会开启）
   reducedMotion: false     # 所有动画停在第一帧
+  startup: conversation    # 无会话启动时显示什么：conversation（横幅加空对话）| splash（启动页：标志与最近会话）
 ```
 
 `transcriptView` 沿用 Harness Chat 的四种工作详情模式名（见[流式会话](/features/streaming#工作详情)）。实时状态由 activity 行负责，会话记录只显示已经发生的事。回合运行中，Compact 只显示对话；Standard 另外显示文件修改的 diff 卡片与过去时分组标题，其 activity 行还会显示正在运行的命令、路径、查询或思考内容；Detailed 实时显示所有卡片。Compact、Standard 与 Detailed 把已完成回合折叠到 `用时 38s` 标题下，最终回答（从 Standard 起还有文件修改）保持可见；Verbose 逐卡展开。Ctrl+O 展开最近 `expandTurns` 个回合。原有按类型配置的 `transcript` 设置与 `recentStepsRetention` 不再生效。
 
 面板分两级：第一级从 `locale` 开始，并按命名空间分组（`mayfly`、`shell`、`agent-loop`、`web-search-deepseek:` 等宿主段在内），Enter 进入第二级逐行调整，`Enter`/`Space` 步进预设值、每次改动即落盘；语言切换与 `mayfly.theme` 都实时生效（`/theme` 仍是会话级切换，见[主题](/guide/theme)），`transcriptView`与数值项的改动同样立即作用于当前会话（Ctrl-O 的全局展开状态优先）。第一级末行可在 `$EDITOR` 里打开整份 settings.yaml。
+
+`startup` 只决定启动时的画面：Mayfly 启动时不创建会话，发出第一条消息时才创建，所以两种取值都不会在会话目录里留下空会话。`--resume <id>` 与 `[task]` 参数仍立即启动会话；`/new` 与 `/clear` 回到启动画面。尚无会话时，只有 `/theme`、`/settings`、`/sessions`、`/help`、`/quit`、`/new`、`/clear` 可用，其余命令提示先发一条消息。首次引导的「偏好」一步可选择此项，之后在 `/settings` 的 `mayfly` 中修改。
 
 ### 改完怎么验证
 

@@ -49,6 +49,8 @@ interface PermissionPresetSpec {
 export interface PermissionPresetsService {
   /** Switchable preset names in table order; `custom` is never listed. */
   readonly names: readonly string[]
+  /** The preset a session created now takes. */
+  readonly defaultPreset: string
   /** Domain projection used by the app boundary, retained in the structural service shape. */
   current(session: unknown): string
   /** The sandbox + approval bundle of a table preset; throws when unknown. */

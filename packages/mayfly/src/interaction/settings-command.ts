@@ -9,11 +9,12 @@ import type {} from '@deepseek-ai/dsh-permission-presets'
 import { ui, type MayflyOverlayHandle, type MayflyUiActionReply, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import { interactionTranslator, mountInteractionLocale, observeInteractionLocale } from './locale.ts'
 import { openUiOverlay } from './ui-overlay.ts'
+import { registerOwnedCommand } from './sessionless-commands.ts'
 import { resolveExternalEditorCommand, runExternalEditor } from './external-editor.ts'
 import { settingsOperations, settingsProjection, type SettingsChoices, type SettingsProjection } from './settings-model.ts'
 
 export const name = 'mayfly-settings-command'
-export const inject = ['commands', 'settings', 'mayflyOverlays']
+export const inject = ['commands', 'settings', 'mayflyOverlays', 'mayflyInteractionState']
 const ROOT_ID = 'mayfly.settings'
 const namespaceId = (ns: string) => `${ROOT_ID}.${Buffer.from(ns).toString('hex')}`
 const source = (descriptor: SettingsDescriptor, projection: SettingsProjection) => [{ resourceId: `settings/${descriptor.ns}`, revision: descriptor.revision }, { resourceId: `settings/${descriptor.ns}/fields`, revision: projection.revision }]
@@ -138,7 +139,7 @@ export function apply(ctx: Context): void {
   const lifetime = new AbortController()
   ctx.effect(() => () => lifetime.abort())
   const t = interactionTranslator(ctx)
-  ctx.commands.register({
+  registerOwnedCommand(ctx, {
     name: 'settings', description: 'Edit user settings by namespace',
     handler: () => {
       const view = () => ui.surface({ child: ui.stack.column([
