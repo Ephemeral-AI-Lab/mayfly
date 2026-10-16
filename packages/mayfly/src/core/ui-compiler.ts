@@ -672,8 +672,8 @@ class SemanticScrollView extends WindowScrollView {
   override updateLayout(contentHeight: number, viewportHeight: number, requestRender: () => void): void {
     super.updateLayout(contentHeight, viewportHeight, requestRender)
     const state = this.model.document(this.address)
-    if (state?.anchor?.follow === 'end') super.scrollToEnd()
-    else if (state !== undefined) super.scrollTo(documentAnchorRow(state, this.width, this.resolve), { disableFollow: true })
+    if (state?.anchor?.follow === 'end') this.quietly(() => { super.scrollToEnd() })
+    else if (state !== undefined) this.quietly(() => { super.scrollTo(documentAnchorRow(state, this.width, this.resolve), { disableFollow: true }) })
     this.prepareWindow()
   }
 
@@ -1821,6 +1821,7 @@ function compileUnit(node: CompilableNode, state: FocusState, options: RuntimeCo
           pill: node.pill === true,
           follow: node.follow === 'end',
           scrollbar: node.scrollbar !== false,
+          repaint: options.listRuntime.repaint,
           expanded: () => state.expandedKey === key,
           colors: options.colors,
           components: options.components,
@@ -1839,7 +1840,7 @@ function compileUnit(node: CompilableNode, state: FocusState, options: RuntimeCo
         state.bindScroll(key, region)
         return region
       }
-      const scrollOptions = { follow: node.follow === 'end' ? 'end' as const : 'none' as const, primary: false, overscroll: 'contain' as const, scrollbar: node.scrollbar === true, colors: () => options.colors }
+      const scrollOptions = { follow: node.follow === 'end' ? 'end' as const : 'none' as const, primary: false, overscroll: 'contain' as const, scrollbar: node.scrollbar === true, colors: () => options.colors, focusGated: true, repaint: options.listRuntime.repaint }
       const address = node.id === undefined ? undefined : { pagePath, controlId: node.id }
       const model = options.listRuntime.interaction
       const scroll = address === undefined || model === undefined || model.document(address) === undefined

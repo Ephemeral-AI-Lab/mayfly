@@ -1,6 +1,6 @@
 /**
  * A scroll region with a declared viewport: `height` rows (`expandedHeight` while expanded with `Ctrl+E`), a scrollbar
- * column drawn beside the content (`█` thumb, `░` track), `fit` to shrink around short content, and the `↓ N new · End`
+ * column drawn beside the content (`█` thumb, `░` track) while the focused region scrolls, `fit` to shrink around short content, and the `↓ N new · End`
  * pill while the view is scrolled away from a followed tail, and `more` for the `↓ N more` count of the rows below. It paints its own rows, so the surface around it keeps its
  * natural height instead of stretching to the viewport the way a layout-driven scroll does.
  *
@@ -30,6 +30,52 @@ type BarColors = Pick<MayflySemanticColors, 'primary' | 'muted'>
 
 const thumbCell = (colors: BarColors | undefined): string => colors === undefined ? '█' : colors.primary('█')
 const trackCell = (colors: BarColors | undefined): string => colors === undefined ? '░' : colors.muted('░')
+
+/** How long the bar stays after the last scroll. */
+const BAR_LINGER_MS = 1000
+
+/**
+ * When a scroll shows its bar: only while it moves, and for {@link BAR_LINGER_MS} after, so two scrolls on one screen
+ * (a panel over the conversation) never show two bars. A focus-gated scroll (a panel's) shows it only while it holds
+ * focus, and losing focus takes it away at once. The bar's columns stay kept while it is hidden, so nothing rewraps.
+ */
+export class BarVisibility {
+  private shown = false
+  private focused = false
+  private timer: ReturnType<typeof setTimeout> | undefined
+
+  /**
+   * @param focusGated - show only while focused (a panel's scroll); the conversation stream moves only when the reader
+   *   scrolls it, so it is not gated.
+   * @param repaint - paints the scroll again when the bar goes.
+   */
+  constructor(private readonly focusGated: boolean, private readonly repaint: () => void) {}
+
+  get visible(): boolean { return this.shown }
+
+  focus(active: boolean): void {
+    this.focused = active
+    if (!active) this.hide()
+  }
+
+  /** The reader moved the scroll. */
+  moved(): void {
+    if (this.focusGated && !this.focused) return
+    this.shown = true
+    if (this.timer !== undefined) clearTimeout(this.timer)
+    this.timer = setTimeout(() => {
+      this.timer = undefined
+      this.shown = false
+      this.repaint()
+    }, BAR_LINGER_MS)
+    this.timer.unref?.()
+  }
+
+  private hide(): void {
+    if (this.timer !== undefined) { clearTimeout(this.timer); this.timer = undefined }
+    this.shown = false
+  }
+}
 
 /** The document anchors a scroll keeps its place with when its content changes (`ui-interaction-document.ts`). */
 interface ScrollRegionAnchors {
@@ -63,6 +109,8 @@ interface ScrollRegionOptions {
   /** Keep the tail in view while following. */
   readonly follow: boolean
   readonly scrollbar: boolean
+  /** Paints the surface again when the bar goes. */
+  readonly repaint: () => void
   /** Whether `Ctrl+E` expanded this region. */
   readonly expanded: () => boolean
   readonly colors: Pick<MayflySemanticColors, 'primary' | 'muted'>
@@ -83,8 +131,10 @@ export class ScrollRegion implements Component, UiScrollControl {
   private rows = 0
   private viewport: number
   private width = 1
+  private readonly bar: BarVisibility
 
   constructor(private readonly options: ScrollRegionOptions) {
+    this.bar = new BarVisibility(true, options.repaint)
     this.memory = options.memory
     this.memory.following ??= options.follow
     this.viewport = options.height
@@ -111,31 +161,39 @@ export class ScrollRegion implements Component, UiScrollControl {
     if (anchor !== undefined) anchors.move(anchor)
   }
 
+  /** Show the bar when a move changed the window. */
+  private moved(before: number): void { if (this.offset !== before) this.bar.moved() }
+
   scrollBy(amount: number): void {
+    const before = this.offset
     const wasFollowing = this.following
     const start = this.following ? this.max : this.offset
     this.offset = Math.max(0, Math.min(this.max, start + Math.trunc(amount)))
     this.following = this.options.follow && this.offset === this.max
     if (wasFollowing && !this.following) this.away = this.rows
     this.sync()
+    this.moved(before)
   }
 
   scrollToStart(): void {
+    const before = this.offset
     const wasFollowing = this.following
     this.offset = 0
     this.following = this.options.follow && this.rows <= this.viewport
     if (wasFollowing && !this.following) this.away = this.rows
     this.sync()
+    this.moved(before)
   }
 
   scrollToEnd(): void {
+    const before = this.offset
     this.offset = this.max
     this.following = this.options.follow
     this.sync()
+    this.moved(before)
   }
 
-  /** The region's bar is always drawn while there is a bar; focus does not change it. */
-  setScrollbarActive(): void {}
+  setScrollbarActive(active: boolean): void { this.bar.focus(active) }
 
   render(width: number): string[] {
     const { components, colors, child, fit } = this.options
@@ -187,6 +245,7 @@ export class ScrollRegion implements Component, UiScrollControl {
       const clipped = components.truncateToWidth(row, last ? Math.max(0, room - 1) : room, '')
       const text = `${clipped}${' '.repeat(Math.max(0, room - components.visibleWidth(clipped)))}${last ? pill : ''}`
       if (!barred) return text
+      if (!this.bar.visible) return `${text}${' '.repeat(BAR_COLUMNS)}`
       const onThumb = lines.length > this.viewport && index >= thumbAt && index < thumbAt + thumb
       return `${text} ${onThumb ? thumbCell(colors) : trackCell(colors)}`
     })
@@ -200,23 +259,30 @@ export interface BarredScrollViewOptions extends Omit<ScrollViewOptions, 'scroll
   readonly scrollbar: boolean
   /** The palette of the bar, read at paint; `undefined` paints the glyphs plain. */
   readonly colors: () => BarColors | undefined
+  /** Show the bar only while the view holds focus (see {@link BarVisibility}). */
+  readonly focusGated: boolean
+  /** Paints the view again when the bar goes. */
+  readonly repaint: () => void
 }
 
 /**
  * A layout-driven scroll view (its viewport is the rows the layout gives it) with the bar of {@link ScrollRegion}: two
- * columns kept beside the content, the `░` track while the content overflows the viewport, and pi-tui's thumb painted
- * as the `█` thumb over it, so a panel's scroll and the conversation stream show one scrollbar. The columns are kept
+ * columns kept beside the content, and while the content overflows and the reader scrolls ({@link BarVisibility}) the
+ * `░` track with pi-tui's thumb painted as the `█` thumb over it, so a panel's scroll and the conversation stream show one scrollbar. The columns are kept
  * whether or not the content overflows, so the content never rewraps when it starts to.
  *
  * The layout renders the content before it knows the viewport, so the track is not decided at render: the rows are a
- * facade whose revision moves when the overflow does, and the layout that sets it reads the rows it paints after.
+ * facade whose revision moves when the overflow or the bar's visibility does, and the paint reads them after the layout.
+ * Moves the view makes on its own during a layout (following the tail, keeping an anchor) go through {@link quietly}
+ * and show no bar.
  */
 export class BarredScrollView extends ScrollView {
-  private readonly bar: { overflowing: boolean }
+  private readonly bar: { overflowing: boolean, readonly visibility: BarVisibility }
   private readonly barred: boolean
+  private quiet = false
 
   constructor(component: Component, options: BarredScrollViewOptions) {
-    const bar = { overflowing: false }
+    const bar = { overflowing: false, visibility: new BarVisibility(options.focusGated, options.repaint) }
     let memo: { source: readonly string[], width: number, colors: BarColors | undefined, rows: string[] } | undefined
     const barred: Component = {
       render: (width: number): string[] => {
@@ -228,17 +294,18 @@ export class BarredScrollView extends ScrollView {
         const gap = ' '.repeat(BAR_COLUMNS)
         const track = ` ${trackCell(colors)}`
         let revision = 0
-        let seen = { inner: rowSourceOf(source)?.revision, overflowing: bar.overflowing }
+        const drawn = (): boolean => bar.overflowing && bar.visibility.visible
+        let seen = { inner: rowSourceOf(source)?.revision, drawn: drawn() }
         const rows = virtualRows({
           get length() { return source.length },
           get revision() {
-            const now = { inner: rowSourceOf(source)?.revision, overflowing: bar.overflowing }
-            if (now.inner !== seen.inner || now.overflowing !== seen.overflowing) { seen = now; revision += 1 }
+            const now = { inner: rowSourceOf(source)?.revision, drawn: drawn() }
+            if (now.inner !== seen.inner || now.drawn !== seen.drawn) { seen = now; revision += 1 }
             return revision
           },
           row: (index) => {
             const row = source[index] ?? ''
-            return isImageLine(row) ? row : `${row}${' '.repeat(Math.max(0, inner - visibleWidth(row)))}${bar.overflowing ? track : gap}`
+            return isImageLine(row) ? row : `${row}${' '.repeat(Math.max(0, inner - visibleWidth(row)))}${drawn() ? track : gap}`
           },
         })
         memo = { source, width, colors, rows }
@@ -255,8 +322,44 @@ export class BarredScrollView extends ScrollView {
     this.barred = options.scrollbar
   }
 
-  /** The thumb shows while the content overflows; the track is part of the content rows. */
-  override get isScrollbarVisible(): boolean { return this.barred && this.bar.overflowing }
+  /** The thumb shows while the content overflows and the reader scrolls; the track is part of the content rows. */
+  override get isScrollbarVisible(): boolean { return this.barred && this.bar.overflowing && this.bar.visibility.visible }
+
+  override setScrollbarActive(active: boolean): void { this.bar.visibility.focus(active) }
+
+  /** Run a move the view makes on its own (a layout keeping the tail or an anchor): it shows no bar. */
+  protected quietly<Result>(move: () => Result): Result {
+    const was = this.quiet
+    this.quiet = true
+    try { return move() } finally { this.quiet = was }
+  }
+
+  private moved(before: number): void { if (!this.quiet && this.scrollTop !== before) this.bar.visibility.moved() }
+
+  override scrollTo(scrollTop: number, options?: Parameters<ScrollView['scrollTo']>[1]): void {
+    const before = this.scrollTop
+    super.scrollTo(scrollTop, options)
+    this.moved(before)
+  }
+
+  override scrollBy(lines: number): number {
+    const before = this.scrollTop
+    const remaining = super.scrollBy(lines)
+    this.moved(before)
+    return remaining
+  }
+
+  override scrollToStart(): void {
+    const before = this.scrollTop
+    super.scrollToStart()
+    this.moved(before)
+  }
+
+  override scrollToEnd(): void {
+    const before = this.scrollTop
+    super.scrollToEnd()
+    this.moved(before)
+  }
 
   /** The bar's columns are inside the rows the content wrapper paints, so the content takes the whole width. */
   override getContentWidth(width: number): number { return width }

@@ -650,9 +650,10 @@ class TailScrollView extends BarredScrollView {
     if (away && this.isFollowingEnd) {
       // The clamp followed the end for a reader who was away: put them back, or as near as the content allows.
       this.heldTop = top
-      super.scrollTo(top, { disableFollow: true })
+      this.quietly(() => { super.scrollTo(top, { disableFollow: true }) })
     } else if (this.heldTop !== undefined) {
-      super.scrollTo(this.heldTop, { disableFollow: true })
+      const held = this.heldTop
+      this.quietly(() => { super.scrollTo(held, { disableFollow: true }) })
       if (this.heldTop <= Math.max(0, contentHeight - viewportHeight)) this.heldTop = undefined
     }
     if (this.isFollowingEnd || contentHeight <= viewportHeight) this.tailHeight = contentHeight
@@ -854,6 +855,9 @@ export function startMayflyTerminal(
     overscroll: 'chain',
     scrollbar: true,
     colors: () => scrollbarColors(),
+    // The stream moves only when the reader scrolls it (or follows its tail, which shows nothing), so focus does not gate it.
+    focusGated: false,
+    repaint: () => { current.requestRender() },
   })
   let rebuildSurfaceLayout: () => void
   let surfacePreFocus: Component | null = null
