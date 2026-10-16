@@ -251,7 +251,7 @@ const MERGE_QUESTIONS = [
 const MERGE_QUESTION = [{ id: 'runtime', question: 'Which runtime should the project target?', options: [{ label: 'Node 22 (Recommended)', description: 'Current LTS line' }, { label: 'Node 24', description: 'Latest release' }, { label: 'Bun', description: 'Alternative runtime' }] }]
 
 /** A watcher that keeps running for the whole scenario. */
-const watcher = () => job('npm run watch', { lines: [[300, 'watching for changes…'], [20_000, 'rebuilt src/hero.css in 41 ms']], progress: [[500, 'watching'], [20_000, 'rebuilt 1']], endMs: 3_600_000, status: 'completed', detail: 'exit code: 0' })
+const watcher = (endMs = 3_600_000) => job('npm run watch', { lines: [[300, 'watching for changes…'], [20_000, 'rebuilt src/hero.css in 41 ms']], progress: [[500, 'watching'], [20_000, 'rebuilt 1']], endMs, status: 'completed', detail: 'exit code: 0' })
 
 /**
  * The live work every view shows: a goal, a reviewer in the background, six todos, and a watcher, then a year of stored
@@ -345,4 +345,38 @@ const newMessages = {
   ],
 }
 
-export const REPLAYS = { mergeDock, mergeConversations, mergePanels, mergeHeights, mergeEsc, newMessages }
+/**
+ * The view items after the owner's polish: no time in the status row, the hint row at the bottom of every panel, the job
+ * time at the right edge, and the subagent row `name(bg) activity` with its facts at the right.
+ */
+const viewItems = {
+  summary: 'the view items: the status row without times, then Alt+↓ through Agents (name(bg|fg), what each is doing, tokens in and out, rate, and time at the right edge), Jobs (the time at the right edge), Goal, and Todo, each with its hint row at the bottom of the panel; a narrow width; and the jobs\' closing line without a time',
+  items: [
+    turn('Refresh the landing page hero.', [
+      goalItem('create', { objective: 'Refresh the landing page hero and keep every test green', maxGoalRounds: 8 }),
+      step({
+        text: 'A reviewer works in the background, a survey finished, the todo list is set, and two jobs run.',
+        usage: { inputTokens: 5200, outputTokens: 140, cacheReadTokens: 3000 },
+        tools: [
+          reviewer(),
+          agent('survey', 'Survey the shot embeds', 'Survey every website page that embeds component shots', { items: [step({ stream: false, tools: [tool('read', { file_path: 'website/features/index.md' }, { result: 'three pages reference the gallery', runMs: 600 })] }), step({ stream: false, text: 'Found three pages embedding shots.', usage: { inputTokens: 5500, outputTokens: 120 } })] }, { runMs: 800 }),
+          todos([['completed', 'Read the brand notes'], ['completed', 'Collect the screenshots'], ['in_progress', 'Rewrite the hero'], ['pending', 'Retake the screenshots'], ['pending', 'Run the tests']]),
+        ],
+      }),
+      job('pnpm run build', { lines: [[300, 'building…']], progress: [[500, 'building'], [15_000, 'bundling']], endMs: 40_000, status: 'completed', detail: 'exit code: 0' }),
+      watcher(140_000),
+      step({ text: 'Press Alt+↓ to enter the views: Agents first, then ←/→ through Jobs, Goal, and Todo. The status row shows no times; the panels keep theirs.', usage: { inputTokens: 5600, outputTokens: 160, cacheReadTokens: 5000 } }),
+    ]),
+    mark('ready'),
+    pause(DWELL_VIEWS),
+    // The watcher is the last job to end; its closing line is held five seconds without a time, then the item leaves.
+    pause(113_000),
+    pause(2000),
+    mark('closing'),
+    pause(8000),
+    mark('gone'),
+    pause(DWELL),
+  ],
+}
+
+export const REPLAYS = { mergeDock, mergeConversations, mergePanels, mergeHeights, mergeEsc, viewItems, newMessages }

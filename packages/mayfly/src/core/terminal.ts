@@ -39,7 +39,8 @@ import {
 } from './surface-manager.ts'
 import { buildTitleOsc0, copySelectionText } from './terminal-escape.ts'
 import { concatRows, isVirtualRows, mapRows } from './ui-rows.ts'
-import type { MayflyComponent, MayflyDockOptions, MayflyOverlayHandle, MayflyOverlayOptions } from './types.ts'
+import type { MayflyComponent, MayflyDockOptions, MayflyOverlayHandle, MayflyOverlayOptions, MayflySemanticColors } from './types.ts'
+import { BarredScrollView } from './ui-scroll-region.ts'
 
 /** The runtime's own overlay options: a width cap, and an absolute cell the renderer places the overlay at. */
 interface MayflyRuntimeOverlayOptions extends MayflyOverlayOptions { readonly maxWidth?: number, readonly row?: number, readonly col?: number }
@@ -570,6 +571,11 @@ export interface MayflyTerminalRuntime {
    * @returns a disposer.
    */
   watchContentTail(listener: () => void): () => void
+  /**
+   * Give the content scroll's bar its palette, read at each paint; until then the bar paints plain glyphs.
+   * @param colors - reads the current theme's colors.
+   */
+  setContentScrollbarColors(colors: () => Pick<MayflySemanticColors, 'primary' | 'muted'> | undefined): void
   followContent(): void
   /**
    * Scroll the content so `row` stands at the top of the view, on the alternate screen; a row too low for a full view
@@ -651,7 +657,7 @@ export interface MayflyContentTail {
  * switches follow back on, and a stream that rewrites its rows (a live draft settling into its message) shrinks for a
  * frame. The position the reader had is held until the content is tall enough again or they move.
  */
-class TailScrollView extends ScrollView {
+class TailScrollView extends BarredScrollView {
   /** The content height at the last layout that showed the tail. */
   tailHeight = 0
   measuredHeight = 0
@@ -668,9 +674,10 @@ class TailScrollView extends ScrollView {
     if (away && this.isFollowingEnd) {
       // The clamp followed the end for a reader who was away: put them back, or as near as the content allows.
       this.heldTop = top
-      super.scrollTo(top, { disableFollow: true })
+      this.quietly(() => { super.scrollTo(top, { disableFollow: true }) })
     } else if (this.heldTop !== undefined) {
-      super.scrollTo(this.heldTop, { disableFollow: true })
+      const held = this.heldTop
+      this.quietly(() => { super.scrollTo(held, { disableFollow: true }) })
       if (this.heldTop <= Math.max(0, contentHeight - viewportHeight)) this.heldTop = undefined
     }
     if (this.isFollowingEnd || contentHeight <= viewportHeight) this.tailHeight = contentHeight
@@ -865,11 +872,16 @@ export function startMayflyTerminal(
     const bottomRows = Math.min(surfaceBudget, surfaceBottomRows())
     return terminal.rows - headerRows - bottomRows
   }, rows => { lastDockRows = rows }) : undefined
+  let scrollbarColors: () => Pick<MayflySemanticColors, 'primary' | 'muted'> | undefined = () => undefined
   const scrollView = contentContainer === undefined ? undefined : new TailScrollView(contentContainer, {
     follow: 'end',
     primary: true,
     overscroll: 'chain',
-    scrollbar: 'auto',
+    scrollbar: true,
+    colors: () => scrollbarColors(),
+    // The stream moves only when the reader scrolls it (or follows its tail, which shows nothing), so focus does not gate it.
+    focusGated: false,
+    repaint: () => { current.requestRender() },
   })
   let rebuildSurfaceLayout: () => void
   let surfacePreFocus: Component | null = null
@@ -1197,7 +1209,7 @@ export function startMayflyTerminal(
         viewport: scrollView.viewportHeight,
         row: lastSurfaceHeaderRows + Math.max(1, scrollView.viewportHeight) - 1,
         col: left,
-        width: Math.max(1, terminal.columns - left - right),
+        width: Math.max(1, terminal.columns - left - right - scrollView.barColumns),
       }
     },
     scrollContentTo(row) {
@@ -1205,6 +1217,10 @@ export function startMayflyTerminal(
     },
     contentStart(component) {
       return contentContainer?.startOf(component)
+    },
+    setContentScrollbarColors(colors) {
+      scrollbarColors = colors
+      current.requestRender()
     },
     followContent() {
       if (current instanceof TuiAltScreen) {

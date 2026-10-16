@@ -98,7 +98,7 @@ import { choiceError, choicePinned, choiceRow, focusableListItem, choiceSegment,
 import { SearchInput } from './search-input.ts'
 import { UiLoaderAnimation, type UiAnimationClock } from './ui-loader-animation.ts'
 import { AdmissionRow } from './ui-admission.ts'
-import { ScrollRegion, SCROLL_DEFAULT_EXPANDED_HEIGHT, SCROLL_DEFAULT_HEIGHT, type ScrollMemory } from './ui-scroll-region.ts'
+import { BarredScrollView, ScrollRegion, SCROLL_DEFAULT_EXPANDED_HEIGHT, SCROLL_DEFAULT_HEIGHT, type BarredScrollViewOptions, type ScrollMemory } from './ui-scroll-region.ts'
 import { hasMotion, paintMotionSpans } from './ui-motion-text.ts'
 import { UiProgressTransitions } from './ui-progress-transition.ts'
 import { untranslated, type UiTranslateValues } from './ui-interaction-locale.ts'
@@ -614,18 +614,17 @@ function contentLeafComponent(node: WindowedContentNode, options: RuntimeCompile
 }
 
 /**
- * A ScrollView whose scrollbar column keeps laziness: the base `render` maps every child row to widen it one column,
- * which would paint a whole windowed child. The mapped rows stay a facade, so a passive render reads only the rows
- * someone asks for; the layout-driven frame never calls `render` at all.
+ * A ScrollView whose scrollbar columns keep laziness: the bar's track is mapped onto the child's rows as a facade, so
+ * a passive render reads only the rows someone asks for; the layout-driven frame never calls `render` at all.
  *
  * The child is wrapped so the outside-window elision a leaf applied is lifted (`unclampedRows`): the scroll's own
  * window is what bounds the paint. The captured rows are `prepare`d on every layout, so the segments under the
  * settled window paint before the frame reads them and the reported `contentHeight` is exact where it is seen.
  */
-class WindowScrollView extends ScrollView {
+class WindowScrollView extends BarredScrollView {
   private readonly held: { rows?: string[] | undefined }
 
-  constructor(component: Component, options: ConstructorParameters<typeof ScrollView>[1]) {
+  constructor(component: Component, options: BarredScrollViewOptions) {
     const held: { rows?: string[] } = {}
     super({
       render: (width: number): string[] => {
@@ -648,9 +647,7 @@ class WindowScrollView extends ScrollView {
   }
 
   override render(width: number): string[] {
-    const contentWidth = this.getContentWidth(width)
-    const lines = this.children[0]!.render(contentWidth)
-    return contentWidth === width ? lines : mapRows(lines, line => `${line} `)
+    return this.children[0]!.render(width)
   }
 }
 
@@ -659,7 +656,7 @@ class SemanticScrollView extends WindowScrollView {
 
   constructor(
     component: Component,
-    options: ConstructorParameters<typeof ScrollView>[1],
+    options: BarredScrollViewOptions,
     private readonly model: UiSurfaceModel,
     private readonly address: UiControlAddress,
     private readonly resolve: DocumentResolver,
@@ -667,15 +664,16 @@ class SemanticScrollView extends WindowScrollView {
 
   /** Both a render and pi-tui's native layout ask for the content width first, so the anchors learn it here. */
   override getContentWidth(width: number): number {
-    this.width = super.getContentWidth(width)
-    return this.width
+    const contentWidth = super.getContentWidth(width)
+    this.width = this.innerWidth(contentWidth)
+    return contentWidth
   }
 
   override updateLayout(contentHeight: number, viewportHeight: number, requestRender: () => void): void {
     super.updateLayout(contentHeight, viewportHeight, requestRender)
     const state = this.model.document(this.address)
-    if (state?.anchor?.follow === 'end') super.scrollToEnd()
-    else if (state !== undefined) super.scrollTo(documentAnchorRow(state, this.width, this.resolve), { disableFollow: true })
+    if (state?.anchor?.follow === 'end') this.quietly(() => { super.scrollToEnd() })
+    else if (state !== undefined) this.quietly(() => { super.scrollTo(documentAnchorRow(state, this.width, this.resolve), { disableFollow: true }) })
     this.prepareWindow()
   }
 
@@ -1823,6 +1821,7 @@ function compileUnit(node: CompilableNode, state: FocusState, options: RuntimeCo
           pill: node.pill === true,
           follow: node.follow === 'end',
           scrollbar: node.scrollbar !== false,
+          repaint: options.listRuntime.repaint,
           expanded: () => state.expandedKey === key,
           colors: options.colors,
           components: options.components,
@@ -1841,7 +1840,7 @@ function compileUnit(node: CompilableNode, state: FocusState, options: RuntimeCo
         state.bindScroll(key, region)
         return region
       }
-      const scrollOptions = { follow: node.follow === 'end' ? 'end' as const : 'none' as const, primary: false, overscroll: 'contain' as const, scrollbar: node.scrollbar === true ? 'auto' as const : 'hidden' as const }
+      const scrollOptions = { follow: node.follow === 'end' ? 'end' as const : 'none' as const, primary: false, overscroll: 'contain' as const, scrollbar: node.scrollbar === true, colors: () => options.colors, focusGated: true, repaint: options.listRuntime.repaint }
       const address = node.id === undefined ? undefined : { pagePath, controlId: node.id }
       const model = options.listRuntime.interaction
       const scroll = address === undefined || model === undefined || model.document(address) === undefined

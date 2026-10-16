@@ -96,8 +96,6 @@ const TRANSCRIPT_MESSAGES = identityCatalog({
   'Already in the background': '已在后台运行',
   'Already finished': '已完成',
   'This subagent has not started yet': '此子智能体尚未启动',
-  '{count} tool': '{count} 个工具',
-  '{count} tools': '{count} 个工具',
   '(no output)': '（无输出）',
   'Compacting context': '正在压缩上下文',
   'summarizing': '生成摘要中',

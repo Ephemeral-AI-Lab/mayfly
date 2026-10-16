@@ -1,10 +1,10 @@
 /**
  * The Jobs item of the status row: a views pane over the background jobs the attached Agent owns. The row carries
- * `● jobs 2 41s` (how many are live, and how long the longest-running one has run). When the last live job settles
- * the item holds `✓ jobs 3/3 41s` (`✕` when one failed on its own) for five seconds and leaves. The panel, shown under
+ * `● jobs 2` (how many are live). When the last live job settles
+ * the item holds `✓ jobs 3/3` (`✕` when one failed on its own) for five seconds and leaves. The panel, shown under
  * the row while the view is entered (`Alt+↓`), is a list with a cursor, live jobs first (oldest first), one line each:
- * the mark, the label, then its time and the producer's progress line (`41s · rebuilt 2`); with the `viewHistory`
- * setting on, settled jobs follow, newest first, with their terminal detail (`1s · exit code: 1`). `↑/↓` choose a row,
+ * the mark, the label, and the producer's progress line (`rebuilt 2`), with the time at the right edge; with the
+ * `viewHistory` setting on, settled jobs follow, newest first, with their terminal detail (`exit code: 1`). `↑/↓` choose a row,
  * `Enter` opens the job's output in the reader `/jobs` uses (an interim target until Phase 6f), and `x` stops a running
  * job behind the shared Yes/No after rechecking `jobs.get`. Subagent jobs belong to the Agents item and are not listed.
  * The registration is the Fiber's.
@@ -50,14 +50,14 @@ export interface JobsState {
   readonly now: number
   /** Whether settled jobs are listed beside the live ones (the `viewHistory` setting). */
   readonly history: boolean
-  /** The jobs that were live together and have all settled: how many, how long the longest ran, and whether one failed. */
-  readonly done?: { readonly total: number, readonly elapsedMs: number, readonly failed: boolean }
+  /** The jobs that were live together and have all settled: how many, and whether one failed. */
+  readonly done?: { readonly total: number, readonly failed: boolean }
   /** The jobs the user stopped from the panel. */
   readonly stoppedByUser?: ReadonlySet<string>
 }
 
 /**
- * The summary in the row: `● jobs 2 41s` while any job is live, `✓ jobs 3/3 41s` (`✕` when one failed) while the last
+ * The summary in the row: `● jobs 2` while any job is live, `✓ jobs 3/3` (`✕` when one failed) while the last
  * group's closing line is held.
  * @param state - the jobs.
  * @param t - translator for the label.
@@ -66,13 +66,12 @@ export interface JobsState {
 export function jobsSummary(state: JobsState, t: MayflyTranslate): MayflyPaneSummary | null {
   const live = state.jobs.filter(isLiveJob)
   if (live.length > 0) {
-    const elapsed = state.now - Math.min(...live.map(job => job.startedAt))
-    return { node: countSummary({ text: '●', tone: 'accent' }, t('jobs'), live.length, elapsed) }
+    return { node: countSummary({ text: '●', tone: 'accent' }, t('jobs'), live.length) }
   }
   if (state.done === undefined) return null
-  const { total, elapsedMs, failed } = state.done
+  const { total, failed } = state.done
   const mark: MayflyInlineSpan = failed ? { text: '✕', tone: 'danger' } : { text: '✓', tone: 'success' }
-  return { node: itemSummary(mark, t('jobs'), total, total, elapsedMs) }
+  return { node: itemSummary(mark, t('jobs'), total, total) }
 }
 
 function markOf(job: JobView, stopped: boolean): MayflyInlineSpan {
@@ -82,14 +81,14 @@ function markOf(job: JobView, stopped: boolean): MayflyInlineSpan {
   return job.status === 'failed' ? { text: '✕', tone: 'danger' } : { text: '✓', tone: 'success' }
 }
 
-/** One row: `● npm run watch        41s · rebuilt 2`. */
+/** One row: `● npm run watch   rebuilt 2                                 41s`. */
 function jobItem(job: JobView, state: JobsState, t: MayflyTranslate, unavailable: Readonly<Record<string, string>>): MayflyListItem {
   const stopped = job.status === 'killed' || state.stoppedByUser?.has(String(job.id)) === true
   const elapsed = compactElapsedMs(Math.max(0, (job.finishedAt ?? state.now) - job.startedAt))
   const trailing = isLiveJob(job) ? job.progress : stopped ? undefined : job.detail
   const status = job.status === 'stopping' ? t('stopping') : stopped ? t('stopped') : ''
   const muted = (text: string | undefined): readonly MayflyInlineSpan[] => text === undefined || text === '' ? [] : [{ text, tone: 'muted' }]
-  // The columns line up down the list: the label, the producer's line, the state word, and the time last.
+  // The columns line up down the list: the label, the producer's line, and the state word; the time is at the right edge.
   return {
     id: String(job.id),
     label: job.label,
@@ -98,8 +97,8 @@ function jobItem(job: JobView, state: JobsState, t: MayflyTranslate, unavailable
       { spans: [{ text: job.label, tone: isLiveJob(job) ? 'default' : 'muted' }], max: 40 },
       { spans: muted(trailing), max: 30, shed: 2 },
       { spans: muted(status) },
-      { spans: muted(elapsed), align: 'right' },
     ],
+    right: muted(elapsed),
     unavailableActions: unavailable,
   }
 }
@@ -148,7 +147,7 @@ export function apply(ctx: Context): void {
   /** The jobs seen live since nothing was live, which the closing line counts. */
   const batch = new Set<string>()
   let batchLive = false
-  let done: { readonly total: number, readonly elapsedMs: number, readonly failed: boolean, readonly at: number } | undefined
+  let done: { readonly total: number, readonly failed: boolean, readonly at: number } | undefined
   /** The jobs the user stopped from the panel. */
   const stoppedByUser = new Set<string>()
 
@@ -213,14 +212,13 @@ export function apply(ctx: Context): void {
     if (ran.length === 0) return
     done = {
       total: ran.length,
-      elapsedMs: Math.max(...ran.map(job => (job.finishedAt ?? now) - job.startedAt)),
       failed: ran.some(job => job.status === 'failed'),
       at: now,
     }
   }
   const publish = (): void => {
     syncTick()
-    const state: JobsState = { jobs, now, history: view.history(), stoppedByUser, ...done === undefined ? {} : { done: { total: done.total, elapsedMs: done.elapsedMs, failed: done.failed } } }
+    const state: JobsState = { jobs, now, history: view.history(), stoppedByUser, ...done === undefined ? {} : { done: { total: done.total, failed: done.failed } } }
     const summary = jobsSummary(state, t)
     const panel = jobsPanel(state, t, unavailable)
     const key = JSON.stringify([summary, panel])
