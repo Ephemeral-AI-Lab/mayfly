@@ -1069,7 +1069,7 @@ heavy `━` line under that item is its second line, and the panel opens under i
 ╭────────────────────────────────────────── Update the landing page hero ╮
 │ > ▌Ask anything · / commands · @ files · # skills · ! shell            │
 ╰────────────────────────────────────────────────────────────────────────╯
-deepseek-flash High  plan yolo  ~/workspace  ● jobs 2 41s  ● goal 2/8  ● todo 2/12      cache ▰▰▱▱▱ 34%  ctx ▰▰▱▱▱▱▱▱▱▱ 18%
+deepseek-flash High  plan yolo  ~/workspace  ● jobs 2  ● goal 2/8  ● todo 2/12      cache ▰▰▱▱▱ 34%  ctx ▰▰▱▱▱▱▱▱▱▱ 18%
 ```
 
 **The row.** Entries sit in the left band (the facts and the items, in priority order) or the right band (the context meter).
@@ -1082,10 +1082,10 @@ deepseek-flash High  plan yolo  ~/workspace  ● jobs 2 41s  ● goal 2/8  ● t
 | context (two bars, `cache ▰▰▱▱▱ 34%  ctx ▰▰▱▱▱▱▱▱▱▱ 18%`, right; the context bar warns from 70% and turns danger from 90%, the cache bar warns under 60% and turns danger under 30%) | 6 | the cache bar (50), the context bar down to `ctx 18%` (55), the readout (60) |
 | directory (`~/work/mayfly`) | 7 | its depth, down to the last segment (40) |
 | git (`main ±3`) | 10 | the whole entry (30) |
-| agents (`● agents 1/3 41s`) | 11 | the time (5) |
-| jobs (`● jobs 2 41s`) | 12 | the time (5) |
-| goal (`● goal 2/8 1m 59s`) | 13 | the time (5) |
-| todo (`● todo 2/12 4m 12s`) | 14 | the time (5) |
+| agents (`● agents 1/3`) | 11 | |
+| jobs (`● jobs 2`) | 12 | |
+| goal (`● goal 2/8`) | 13 | |
+| todo (`● todo 2/12`) | 14 | |
 
 The facts come first and the items last: from the left, the model, the chips, the directory, git, and then the items in a
 fixed order (agents, jobs, goal, todo); the context meter sits at the right edge.
@@ -1102,10 +1102,10 @@ pane too (§3.3).
 
 | View | Summary | Panel |
 | --- | --- | --- |
-| Agents | `● agents 1/3 41s` (`✓` when all settled, `✕` when one failed; stays for the conversation) | a list with a cursor, one line per subagent of the conversation, completed ones included; `Enter` opens that agent's conversation, `x` stops it (§5.5) |
-| Jobs | `● jobs 2 41s` (`✓ jobs 3/3 41s` for five seconds when the last one settles, `✕` when one failed; then it leaves) | a list with a cursor, live jobs first; `Enter` opens the job's output, `x` stops a running job (§5.5) |
-| Goal | `● goal 2/8 1m 59s` (`○` disarmed, `⏸` paused, `✕` blocked) | the goal's objective and its keys (§5.4) |
-| Todo | `● todo 2/12 4m 12s` | the todo list (§5.4) |
+| Agents | `● agents 1/3` (`✓` when all settled, `✕` when one failed; stays for the conversation) | a list with a cursor, one line per subagent of the conversation, completed ones included; `Enter` opens that agent's conversation, `x` stops it (§5.5) |
+| Jobs | `● jobs 2` (`✓ jobs 3/3` for five seconds when the last one settles, `✕` when one failed; then it leaves) | a list with a cursor, live jobs first; `Enter` opens the job's output, `x` stops a running job (§5.5) |
+| Goal | `● goal 2/8` (`○` disarmed, `⏸` paused, `✕` blocked) | the goal's objective and its keys (§5.4) |
+| Todo | `● todo 2/12` | the todo list (§5.4) |
 
 **Entering the views.** `Alt+↓` from the prompt (or `F6`) focuses the first view: the row stays exactly as it is, a heavy
 `━` line under that item's words marks it (never a background), and its panel opens under the line. `←`/`→` move the mark
@@ -1115,23 +1115,22 @@ todo list does not appear in the conversation stream. Goal changes and goal roun
 
 **Item rules** (the owner's, for every item: jobs, agents, goal, todo). They are the style later items follow.
 
-1. **Compact.** An item is `<mark> <name> <progress n/m> <timer>`: a small mark that says its state (a dot while
+1. **Compact.** An item is `<mark> <name> <progress n/m>`: a small mark that says its state (a dot while
    unfinished, `⏸` paused, `✕` blocked, `✓` done, `⏵` for a job), the muted lower-case name, how far it is over how many,
-   and its time (`● todo 2/12 4m 12s`); the time is the first thing the row sheds. Nothing else is in it: the words of the
+   (`● todo 2/12`); the row carries no time (a panel row that has one shows it). Nothing else is in it: the words of the
    item (the current todo, the goal's objective) are the panel's. The items sit in the status row in a fixed relative order
    (priority). An item with nothing to show is absent.
 2. **Entering.** The row does not change when a view is entered: a heavy `━` line in the theme's primary color is drawn under the words of the active
    item (a small bottom line, not a background shade) and the panel opens under it, so there is no second look for the
    same row (no tab strip).
-3. **Expanded.** The panel is the item's content only: no heading, no count, no time (the cell has them). It has one
-   fixed length (`VIEW_PANEL_ROWS`) and scrolls vertically past it, so `↑/↓` move through a long list, and while rows
+3. **Expanded.** The panel is the item's content only: no heading, no count, no time. It has one
+   fixed length (`VIEW_PANEL_ROWS`, a shorter list is padded with blank rows so the hint row is always the panel's last) and scrolls vertically past it, so `↑/↓` move through a long list, and while rows
    remain below the window its last row counts them (`↓ 6 more`, following the scroll, content again at the end). It adds
    no chord of its own: the lane's `↑/↓`, `←/→`, and `Esc` (no `Ctrl+E`, no `Ctrl+T`); an item's own commands are single
    letters (`r` resume, `e` edit), named in the hint row, never buttons.
 4. **History.** Finished items (completed todos, settled jobs; not agents, §5.5) are not listed unless the `viewHistory`
    setting is on; the default shows only what is live.
-5. **Timer.** The time is in the item and runs while it works (an armed goal, an unfinished list); when it finishes, it
-   holds `✓ todo 6/6 4m 12s` for five seconds and the item leaves.
+5. **Closing.** When an item finishes, it holds `✓ todo 6/6` for five seconds and leaves. No item shows a time in the row.
 6. **Where.** `transcript/view-items.ts` holds the shared parts (`itemSummary`, `viewPanel`, `followViewHistory`); an item
    uses them instead of building its own.
 
@@ -1349,14 +1348,14 @@ Goal and todo are items of the status row (§5.1) that follow its item rules. Ea
 fixed-length panel that opens under the `━` line of the entered item.
 
 ```
-● todo 2/12 4m 12s                    ← compact: a dot while unfinished, done over total, the time it has run (shed first)
-✓ todo 12/12 12s                      ← held five seconds when the list settles, then the item leaves
+● todo 2/12                           ← compact: a dot while unfinished, done over total
+✓ todo 12/12                          ← held five seconds when the list settles, then the item leaves
 
-● goal 2/8 1m 59s                     ← active, armed (accent), rounds over their cap, the time it has worked
-○ goal 2/8 1m 59s                     ← active, disarmed (after resume or fork: needs /goal resume)
-⏸ goal 4/8 49s                        ← paused (one cell wide, like `⏸ plan mode on`)
-✕ goal 8/8 1m 16s                     ← blocked (danger)
-✓ goal 8/8 1m 59s                     ← completed, held five seconds
+● goal 2/8                            ← active, armed (accent), rounds over their cap
+○ goal 2/8                            ← active, disarmed (after resume or fork: needs /goal resume)
+⏸ goal 4/8                            ← paused (one cell wide, like `⏸ plan mode on`)
+✕ goal 8/8                            ← blocked (danger)
+✓ goal 8/8                            ← completed, held five seconds
 
 panel of todo (no heading):           panel of goal (no heading):
   ● Run the tests                       Ship the hero refresh and keep all 214 tests green
@@ -1383,31 +1382,32 @@ Agents and jobs are items of the status row (§5.1). **Agents is the one item th
 completed subagent is part of the conversation, not history, so the item and its panel keep every subagent of the
 conversation until a new conversation starts (rules 4 and 5 of §5.1 do not apply to it; `viewHistory` has no effect on
 it). Its members are the parent's spawn calls, so a subagent shows from the moment its call starts, however short it
-lives. The item reads `● agents 1/3 41s` while any works (settled over all, and how long the oldest working one has run),
-and `✓ agents 3/3 41s` (the longest that ran; `✕` when one failed) when all have settled. `Alt+↓` opens its panel under
+lives. The item reads `● agents 1/3` while any works (settled over all),
+and `✓ agents 3/3` (`✕` when one failed) when all have settled. `Alt+↓` opens its panel under
 the row, a list of every subagent with a cursor (the one panel that is not a plain scroll, because a row has to be chosen):
 
 ```
-  ● review   Audit facts projection   bg  6 tools  54k   ↑48k   ↓6.4k   47 tok/s   41s
-  ● explore  Map transcript files     fg  8 tools  62k   ↑61k   ↓1.2k              12s
-  ✓ plan     Draft migration plan     bg  2 tools  13k   ↑11k   ↓2.0k              12s
-  ✕ lint     Sweep oxlint findings    fg  3 tools  17k   ↑17k                        9s
+  ● review(bg)   Using bash                         ↑48k  ↓6.4k  47 tok/s · 41s
+  ● explore(fg)  Thinking…                                   ↑61k  ↓1.2k · 12s
+  ✓ plan(bg)     Draft migration plan                        ↑11k  ↓2.0k · 12s
+  ✕ lint(fg)     Sweep oxlint findings                              ↑17k · 9s
+
   ↑/↓ select · Enter open · x stop · b background · Esc back
 ```
 
 - **Foreground and background.** A **foreground** subagent is a spawn call still without its result: it blocks the turn
   that spawned it. A **background** one carries its `started subagent` acknowledgement (or `run_in_background`) and does
-  not. Each row says which (`fg`, `bg`). `b` would move the chosen foreground one to the background; dsh has no call that
+  not. Each row says which (`(fg)`, `(bg)` after the name). `b` would move the chosen foreground one to the background; dsh has no call that
   ends a running foreground call early, so `b` is listed and says why it is unavailable until dsh offers one.
 - **Failed and stopped.** A subagent that failed on its own reads `✕ … failed` (and turns the item `✕`); one the user stopped (an interrupt, an abort, or `x` in the panel) reads `⊘ … stopped` and is no failure. The stream's spawn line says the same (`✕ … failed`, `⊘ … stopped`).
 - **Own subagents only.** The item lists the subagents the displayed conversation spawned itself. A `/btw` side conversation or a subagent conversation inherits its parent's log, but not its subagents: it has no Agents item unless it spawns its own, and never shows the main conversation's.
-- **Rows.** The mark, then columns that line up down the list, left to right: the agent's name, its task, `fg`/`bg`, tool
-  count, the total tokens (`54k`, no symbol), then in (`↑48k`: input with its cache, settled steps) and out (`↓6.4k`: settled steps plus
-  the streaming attempt's estimate), and the output rate while it streams (`47 tok/s`), and the time last
-  (right-aligned in its column). The token and rate columns keep their room when a figure is not there yet (no input counted, nothing streaming), so the live
-  figures do not move the columns after them; they update as the child streams (about four times a second), and the input
-  as each step settles. The mark alone says how it ended (`✓`, `✕ failed`, `⊘ stopped`); there is no status
-  word. A narrow row shortens the name and task first, then gives up the rate, the in and out, the tool count, and `fg`/`bg`. Live
+- **Rows.** The mark, the agent's name with `(fg)` or `(bg)`, and what it does now (its streamed activity while it
+  works: `Thinking…`, `Writing…`, `Using bash`; its task once it settled), in columns that line up down the list. At the right edge,
+  two spaces apart, then the time behind a small dot as the Activity row has it (`· 41s`): in (`↑48k`: input with its cache, settled steps) and out (`↓6.4k`: settled steps plus
+  the streaming attempt's estimate), the output rate while it streams (`47 tok/s`), and the time last. A figure that is
+  not there yet (no input counted, nothing streaming) is left out; the figures update as the child streams (about four
+  times a second), and the input as each step settles. The mark alone says how it ended (`✓`, `✕ failed`, `⊘ stopped`); there is no status
+  word, no tool count, and no total. A narrow row shortens the activity first, and keeps the figures at the right. Live
   subagents first, then the finished ones, each in spawn order. There is no `waiting` state: a fresh child reads running.
 - **Keys.** `↑`/`↓` choose, `Enter` opens that child's conversation exactly as `/agents` does (the access, interactive,
   resumable, or read-only, comes from the child; `F7` returns to the parent, and `F8` closes the child and returns to this view), `x` is the common `delete` meaning (§3.5): it **stops**
@@ -1419,19 +1419,20 @@ the row, a list of every subagent with a cursor (the one panel that is not a pla
   conversations exist, and the conversation chip in the status row names the displayed one (§3.3).
 - **Motion.** The item has no clock of its own beyond the shared one-second tick that runs the times.
 
-**Jobs** follow the item rules in full (unlike Agents): a settled job is history. The item reads `● jobs 2 41s` (how many
-jobs are live, and how long the longest has run; the time sheds first). When the last live job settles it holds
-`✓ jobs 3/3 41s` for five seconds (`✕` when one failed on its own; one the user stopped is no failure) and leaves; the
+**Jobs** follow the item rules in full (unlike Agents): a settled job is history. The item reads `● jobs 2` (how many
+jobs are live). When the last live job settles it holds
+`✓ jobs 3/3` for five seconds (`✕` when one failed on its own; one the user stopped is no failure) and leaves; the
 three is every job that ran together since nothing was live. Jobs of kind `subagent` belong to the Agents item and are not
 counted or listed. The panel is a list with a cursor, live jobs first (oldest first), then, only with `viewHistory`, the
 settled ones (newest first):
 
 ```
-  ● npm run watch  rebuilt 2            41s
-  ● npm run dev    ready on :3000        2m
-  ✓ npm run build  exit code: 0           1s     (viewHistory on)
-  ✕ npm test       exit code: 1           1s     (viewHistory on)
-  ⊘ sleep 600                   stopped   8s     (viewHistory on)
+  ● npm run watch  rebuilt 2                                    41s
+  ● npm run dev    ready on :3000                                2m
+  ✓ npm run build  exit code: 0                                   1s     (viewHistory on)
+  ✕ npm test       exit code: 1                                   1s     (viewHistory on)
+  ⊘ sleep 600      stopped                                        8s     (viewHistory on)
+
   ↑/↓ select · Enter open · x stop · Esc back
 ```
 
@@ -2296,7 +2297,7 @@ baseline verified against `main` when this was written; *new* means nothing like
 | Activity row | one truncated detail line; tips only while a turn runs; the interrupt key is not advertised | up to three `⎿` lines; `Esc interrupt · Ctrl+O expand` in the gap; tips only in the `Deep diving` row (§5.3) |
 | Tool rows | an edit has a two-column sign gutter; no line numbers | one plain numbered gutter (old numbers on removed lines, new numbers on the rest) and a red or green background behind the changed code, `A`/`M`/`D` for multi-file; write is one line, and highlighted code with line numbers when expanded (§5.3) |
 | Compaction | a braille spinner and elapsed time; settles to `✓ compacted N items · ~Tk tokens` | a real occupancy bar with two stages, a drain on settle, and the before/after percentage (§5.6) |
-| Todo and goal | a flat `─` rule and a `Todo` title above the editor; the goal as a status chip | items of the status row (`● todo 2/12 4m 12s`, `● goal 2/8 1m 59s`) with a content-only panel; goal paused and blocked states; nothing about the todo in the stream (§5.4) |
+| Todo and goal | a flat `─` rule and a `Todo` title above the editor; the goal as a status chip | items of the status row (`● todo 2/12`, `● goal 2/8`) with a content-only panel; goal paused and blocked states; nothing about the todo in the stream (§5.4) |
 | Subagents and jobs | a pane above the editor; jobs only as a footer count; neither selectable | items of the status row, keyboard-selectable, `x` stops behind a confirm (§5.5) |
 | Conversation stream | scroll only; `Ctrl+O` opens the last three turns; a prompt is one bold row with nothing above it, so turns run together | a blank row and a timed rule before every prompt; every row selectable (`Alt+↑`), expand, copy, open in `$EDITOR`, and the whole stream searchable with `/` and `?` (§5.6) |
 | Key cues | no persistent prompt; `Ctrl+O` cue only on the last 3 turns, three spellings of a key; `ctrl+t to expand`-style lowercase | cues live with their owner, the activity gap, and the placeholder; one `Ctrl+O` notation (§3.3) |

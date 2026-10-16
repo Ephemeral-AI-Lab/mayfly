@@ -35,6 +35,9 @@ const COVERS = {
   mergePanels: [...PANELS, `${TRANSCRIPT}status-*.ts`, 'packages/mayfly/src/core/views-lane.ts', `${INTERACTION}questions-plugin.ts`],
   mergeHeights: [...PANELS, 'packages/mayfly/src/core/views-lane.ts', `${TRANSCRIPT}view-items.ts`, `${TRANSCRIPT}status-*.ts`, `${TRANSCRIPT}pane-todo.ts`, `${INTERACTION}questions-plugin.ts`],
   mergeEsc: ['packages/mayfly/src/app/agent-interrupt.ts', 'packages/mayfly/src/app/index.ts', `${INTERACTION}input-plugin.ts`, `${TRANSCRIPT}status-agents.ts`, `${TRANSCRIPT}status-jobs.ts`, ...NOTIFICATION],
+  viewItems: [
+    `${TRANSCRIPT}view-items.ts`, `${TRANSCRIPT}status-*.ts`, `${TRANSCRIPT}pane-todo.ts`, 'packages/mayfly/src/core/views-lane.ts', 'packages/mayfly/src/core/ui-list-paint.ts',
+  ],
   mergeDock: [
     ...NOTIFICATION, `${TRANSCRIPT}status-rows.ts`, `${TRANSCRIPT}view-items.ts`, `${TRANSCRIPT}status-agents.ts`, `${TRANSCRIPT}status-jobs.ts`, 'packages/mayfly/src/core/views-lane.ts', 'packages/mayfly/src/core/screen.ts',
     'packages/mayfly/src/components/editor.ts', `${INTERACTION}input-plugin.ts`, `${INTERACTION}placeholder.ts`, 'packages/mayfly/src/core/completion-drawer.ts', 'packages/mayfly/src/core/editor-tokens.ts',
@@ -108,6 +111,27 @@ const REVIEW = {
       { look: 'A foreground subagent stops with the turn', how: 'checkpoints `foreground`, `foreground-stopped`' },
     ],
     differs: ['The turns and the subagents are the stub model\'s: `child-hold:` holds the child\'s turn, and every later prompt of the session holds too, since the stub reads the whole conversation.'],
+    pending: [],
+  },
+  viewItems: {
+    scene: 13,
+    reference: 'the owner\'s review of the view items (2026-10-15) · component-library §5.1 item rules and §5.5',
+    implemented: [
+      'No item of the status row shows a time: `● agents 1/2`, `● jobs 2`, `● goal 2/8`, `● todo 2/5`; the closing lines (`✓ jobs 2/2`) are held five seconds without one.',
+      'The hint row of the Agents and Jobs panels is at the very bottom, where Goal and Todo have it, however few rows the list holds.',
+      'A job\'s time is at the right edge of its row, after the label and the producer\'s line.',
+      'A subagent row is `● name(bg|fg)  what it does now`, with its tokens in and out, its rate, and its time at the right edge, one space apart. What it does now is its streamed activity (`Thinking…`, `Writing…`, `Using bash`) while it works, and its task once it settled. The tool count and the total tokens are gone.',
+    ],
+    focus: [
+      { look: 'The status row: four items, none with a time', how: 'checkpoint `items`' },
+      { look: 'Agents: the live reviewer(bg) with its activity, tokens, rate, and time at the right; the finished survey(fg) with its task', how: 'checkpoint `agents`' },
+      { look: 'Jobs: the time flush right; the hint row at the bottom', how: 'checkpoint `jobs`' },
+      { look: 'Goal and Todo: the reference look for the hint row', how: 'checkpoints `goal`, `todo`' },
+      { look: 'A narrow terminal: the activity shortens before the facts at the right do', how: 'checkpoints `agents-60`, `jobs-60`' },
+      { look: 'The jobs\' closing line without a time, then the item leaves', how: 'checkpoints `closing`, `gone`' },
+      { look: 'A foreground subagent: `name(fg)` beside the background ones (type `spawn-fg:Checker child-hold:240000 check the links`)', how: 'checkpoint `agents-fg`' },
+    ],
+    differs: [],
     pending: [],
   },
   mergeDock: {
@@ -258,6 +282,22 @@ const SCRIPTS = {
     play('closing'), checkpoint('closing', { tick: true }),
     play('gone'), checkpoint('gone', { tick: true }),
   ],
+  // The view items: the row without times, each view's panel with its hint row at the bottom, a narrow width, and the closing line.
+  viewItems: [
+    play('ready'), checkpoint('items'),
+    // A view is entered where it was left, so each pass ends back on Agents.
+    wait(300), key('alt+down'), checkpoint('agents'),
+    key('right'), checkpoint('jobs'),
+    key('right'), checkpoint('goal'),
+    key('right'), checkpoint('todo'), key('left'), key('left'), key('left'), key('esc'), wait(150),
+    resize(60, 30), wait(300), key('alt+down'), checkpoint('agents-60'),
+    key('right'), checkpoint('jobs-60'), key('left'), key('esc'), wait(150),
+    resize(100, 30),
+    play('closing'), checkpoint('closing', { tick: true }),
+    play('gone'), checkpoint('gone', { tick: true }),
+    // A real foreground subagent (the stub model holds its turn), which the replay's own subagents cannot be.
+    type('spawn-fg:Foreground checker child-hold:240000 check the links'), key('enter'), wait(3000), key('alt+down'), checkpoint('agents-fg'), key('esc'),
+  ],
   // The conversations after the merge: the keys of queued and steering rows as parts that shed, a notice beside them, d and u, 60 and 40
   // columns, the rows read, then a /btw side question (chip, frame corner, placeholder, `F7`/`F8` with the history counter) and a subagent
   // opened from the Agents view (`F8 detach` returns to the view).
@@ -288,6 +328,7 @@ const SIZES = {
   mergePanels: [[100, 30]],
   mergeHeights: [[100, 30]],
   mergeEsc: [[100, 30]],
+  viewItems: [[100, 30]],
   mergeDock: [[100, 30]],
   mergeConversations: [[100, 30]],
 }
