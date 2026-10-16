@@ -2449,6 +2449,30 @@ interactive scene is driven by the kit's key engine, so what you press is what a
   states to palette tokens and owns its clocks. `NO_COLOR` and reduced motion are properties of the design (§2.3) and
   are not toggled in the scenes.
 
+### Brand sketches
+
+Four more scripts sketch the brand mark, the welcome banner, and the launch screen. They stand apart from the kit and
+draw their own colors; the shipped banner keeps the braille mark until an implementation round replaces it.
+
+| File | What it is |
+| --- | --- |
+| [`prototypes/logo-preview.mjs`](./prototypes/logo-preview.mjs) | the mark candidates in quadrant-block pixel art, at header size and doubled, each with a wing-beat frame; the chosen mark is `s10`: a squat body with slit eyes, two antennae, and speed-line wings |
+| [`prototypes/banner-preview.mjs`](./prototypes/banner-preview.mjs) | the welcome banner in the chosen compact layout (option B: the mark beside brand and version, slogan, model, directory); `--compare` sets it beside the shipped banner and options A and C |
+| [`prototypes/splash-preview.mjs`](./prototypes/splash-preview.mjs) | the launch screen: the mark, wordmark and slogan, recent sessions, the input box, and the status line |
+| [`prototypes/fly-in.mjs`](./prototypes/fly-in.mjs) | the fly-in both screens play on first appearance: the mark enters from outside its block beating its wings, eases into its slot behind a fading pixel trail, beats twice and rests |
+
+```
+node docs/design/prototypes/logo-preview.mjs [id | --all | --animate [id] | --check]
+node docs/design/prototypes/banner-preview.mjs [--compare | --frame <ms>]
+node docs/design/prototypes/splash-preview.mjs [--static | --frame <ms> | --focus | --empty | --width <n>]
+```
+
+On a terminal the banner and splash scripts play the fly-in (`r` replays, `q` quits); `--frame <ms>` prints one moment
+of it. The splash's mark swoops in from the left edge and lands at 1.2 s, the wordmark fading in under it; its session
+list and input box are there from the first frame, so nothing waits on the motion. The banner's mark crosses the status
+column from the right edge and lands at 1.1 s, the four lines appearing in its wake. The fly-in plays once per
+appearance and is skipped under reduced motion (§2.3).
+
 ### Theme sketches
 
 Two scripts propose the theme palettes. They stand apart from the kit and draw their own colors; the shipped themes
