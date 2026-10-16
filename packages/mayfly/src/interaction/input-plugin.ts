@@ -970,8 +970,42 @@ export function apply(ctx: Context): void {
    * @param data - the input sequence as read from the terminal.
    * @returns whether the sequence was consumed.
    */
+  /**
+   * `↑` on an empty prompt walks the launch screen's recent list while no session exists: it takes the first row, `↑`/`↓`
+   * move, `Enter` resumes the row, `Esc` or `↓` past the last row gives the keyboard back, and any other key goes to the
+   * prompt, so typing starts a message at once.
+   * @returns whether the list took the key.
+   */
+  function browseRecent(data: string): boolean {
+    const keymap = ctx.mayflyKeymap
+    const browse = ctx.mayflyInteractionState.splash
+    if (browse.ids.length === 0 || ctx.mayflyCurrentAgent.primary() !== null) return false
+    if (browse.focus === undefined) {
+      if (!keymap.matches(data, ACTION_MOVE_UP) || editor.getText().length > 0 || editor.isShowingAutocomplete()) return false
+      browse.focus = 0
+      screen.requestRender()
+      return true
+    }
+    if (keymap.matches(data, ACTION_MOVE_UP)) browse.focus = Math.max(0, browse.focus - 1)
+    else if (keymap.matches(data, ACTION_MOVE_DOWN)) browse.focus = browse.focus + 1 >= browse.ids.length ? undefined : browse.focus + 1
+    else if (keymap.matches(data, ACTION_SUBMIT)) {
+      const id = browse.ids[browse.focus]
+      browse.focus = undefined
+      if (id !== undefined) ctx.emit('mayfly/request-resume', id)
+    } else if (keymap.matches(data, ACTION_CANCEL)) browse.focus = undefined
+    else {
+      // The prompt gets the key; the list lets go.
+      browse.focus = undefined
+      screen.requestRender()
+      return false
+    }
+    screen.requestRender()
+    return true
+  }
+
   function handleEditorKey(data: string): boolean {
     const keymap = ctx.mayflyKeymap
+    if (browseRecent(data)) return true
     // Backspace at a token: on a highlighted token it removes it; right after one it selects it first. The editor says
     // which token is active, and the hint under the prompt follows it. A completion list that reopened behind the caret
     // (the mention's own) does not keep the key.

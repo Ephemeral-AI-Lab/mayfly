@@ -73,7 +73,7 @@ const REVIEW = {
       '`/new` and `/clear` return to the start screen instead of creating an empty session; the next message creates the session (a preset named with `/new <preset>` is kept for it).',
       'Before a session exists, `/theme`, `/settings`, `/sessions`, `/help`, `/quit`, `/new` and `/clear` run. Every other command answers `Send a message first: /model needs a session`. The slash list and `/help` show only the commands that run.',
       'A new setting, `On start` (`mayfly.startup`: Conversation or Splash), in the first-run guide\'s Preferences step and in `/settings`. Conversation (the default) keeps today\'s screen, the banner above an empty conversation; Splash shows the launch screen.',
-      'The launch screen: the s10 mark, the wordmark with the version, the slogan, and up to four recent sessions (this directory\'s first, other projects after), with the real editor and status row below. The mark flies in from the left edge once per appearance; the session created by the first message does not play the banner\'s fly-in again.',
+      'The launch screen: the s10 mark, the wordmark with the version, the slogan, and up to four recent sessions (this directory\'s first, other projects after), with the real editor and status row below. `↑` on the empty prompt walks the list (`↑`/`↓`, `Enter` resumes, `Esc` returns). The mark flies in from the left edge once per appearance; the session created by the first message does not play the banner\'s fly-in again.',
       'It adapts to the size: from 100 columns and 22 rows the mark is drawn at double size; from 56 list columns each session shows its project; from 40 columns title and age only; below 40 columns, or in ASCII glyphs, the wordmark and slogan alone. A short screen drops the list, then the slogan, then the mark.',
       'The first-run guide\'s Preferences step has the new `On start` field, and its Ready page lists the choice. Its permission choice is stored as the default for sessions created later, since none exists yet.',
     ],
@@ -84,11 +84,11 @@ const REVIEW = {
       { look: 'The new `On start` setting in `/settings`', how: 'checkpoint `settings`' },
       { look: 'The launch screen at 60 and 40 columns, at 30 (wordmark only), and on a short terminal', how: 'checkpoints `narrow-60`, `narrow-40`, `tiny-30`, `short`; wide: `pnpm run scenario startSplash --width 140 --height 40`' },
       { look: 'A command that needs a session is refused with a clear notice; `/theme` still works', how: 'checkpoints `refused`, `tide`' },
+      { look: '`↑` on the empty prompt walks the recent list: the cursor row, the hint `↵ resume · esc back`, `↓` past the last row or `Esc` back to the prompt, any other key types; `Enter` resumes the row', how: 'checkpoints `browse`, `browse-2`, `resumed`' },
       { look: 'The first message creates the session; `/clear` returns to the launch screen', how: 'checkpoints `first-message`, `cleared`' },
       { look: 'No session on disk until the first message', how: 'live: `dsh --profile mayfly-splash`, quit at once, then `ls ~/.dsh/sessions/*/`' },
     ],
     differs: [
-      'The recent list is display-only: `/sessions` opens the picker. The prototype\'s `↑` browse on the list is not built.',
       'The launch screen has no input box of its own: the real editor and status row stay docked at the bottom.',
       'The fly-in uses the banner\'s timing (1.55 s) and the same trail; the prototype\'s arc and 1.7 s are not reproduced.',
     ],
@@ -303,6 +303,8 @@ const SCRIPTS = {
     key('enter'), wait(500), key('down'), key('enter'), wait(500), type('replay-key'), key('enter'), wait(1500), checkpoint('guide-ready'),
     key('enter'), wait(1000), checkpoint('after-guide'),
     play('splash'), wait(500), checkpoint('splash'),
+    // `↑` on the empty prompt walks the recent list; `Esc` gives the keyboard back.
+    key('up'), checkpoint('browse'), key('down'), checkpoint('browse-2'), key('esc'), wait(200),
     ...open('/settings', 'Settings'), type('/mayfly'), key('enter'), until('Update check'), key('down', { repeat: 40 }), until('On start'), checkpoint('settings'),
     // Esc leaves the namespace, then the search, then the panel.
     key('esc'), wait(300), key('esc'), wait(300), key('esc'), wait(300),
@@ -315,6 +317,8 @@ const SCRIPTS = {
     ...theme('tide'), checkpoint('tide'), ...theme('dark'),
     type('Plan the launch of the new splash.'), key('enter'), wait(1500), checkpoint('first-message'),
     wait(300), type('/clear'), key('enter'), wait(1000), checkpoint('cleared'),
+    // `Enter` on a browsed row resumes that session.
+    key('up'), key('down'), key('enter'), wait(1500), checkpoint('resumed'),
   ],
   // The theme round: the banner at rest (the runner has reduced motion), the picker, every palette on the answer, a fresh
   // conversation after `/clear`, and its banner at 60 and 40 columns.

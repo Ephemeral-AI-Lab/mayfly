@@ -373,6 +373,20 @@ export function apply(ctx: Context, config: Config = {}): void {
   const listCache = createSessionListCache(ctx)
   const lifetime = new AbortController()
   ctx.effect(() => () => lifetime.abort())
+  /** Hand the editor the ids on show, so `↑` can browse them; a focused row that no longer exists is let go. */
+  const publishBrowse = (): void => {
+    const browse = ctx.get('mayflyInteractionState')?.splash
+    if (browse === undefined) return
+    browse.ids = recent?.map(entry => entry.id) ?? []
+    if (browse.focus !== undefined && browse.focus >= browse.ids.length) browse.focus = undefined
+  }
+  /** The list is not on screen (a session took its place, or the setting is off): nothing to browse. */
+  const clearBrowse = (): void => {
+    const browse = ctx.get('mayflyInteractionState')?.splash
+    if (browse === undefined) return
+    browse.ids = []
+    browse.focus = undefined
+  }
   /** Read this directory's newest sessions, once at a time; the list is left out until the first read lands. */
   const loadRecent = (): void => {
     if (loading || !booted || startup !== 'splash' || ctx.mayflyCurrentAgent.primary() !== null) return
@@ -393,12 +407,14 @@ export function apply(ctx: Context, config: Config = {}): void {
       const shown = [...here, ...others].slice(0, SPLASH_RECENT_MAX)
       const titleOf = (row: SessionListRow): string | undefined => (row.summary.projections?.values.title ?? cachedSessionTitle(listCache, row)) || undefined
       const item = (row: SessionListRow, title: string | undefined): SplashSession => ({
+        id: row.header.id,
         title: title ?? t('Untitled'),
         project: basename(row.header.cwd ?? ''),
         age: row.summary.running ? t('running') : formatAgo(now - row.summary.updatedAt, t),
         live: row.summary.running,
       })
       recent = shown.map(row => item(row, titleOf(row)))
+      publishBrowse()
       // A stored session the projection cache has no title for is read once, after the list is on screen.
       shown.forEach((row, index) => {
         if (titleOf(row) !== undefined) return
@@ -425,18 +441,21 @@ export function apply(ctx: Context, config: Config = {}): void {
       labels: {
         slogan: SLOGAN,
         recent: t('Recent sessions'),
-        more: t('/sessions for all'),
+        more: t('↑ browse · /sessions for all'),
+        moreFocused: t('↵ resume · esc back'),
         empty: t('No sessions here yet'),
         emptyHint: t('Describe a task below to start one.'),
       },
       recent,
+      focus: ctx.get('mayflyInteractionState')?.splash.focus,
     }
   }
   const followStartup = (): void => {
     const next = readStartup()
     if (next === startup) return
     startup = next
-    loadRecent()
+    if (next === 'splash') loadRecent()
+    else clearBrowse()
     ctx.mayflyScreen.requestRender()
   }
   ctx.effect(() => ctx.on('settings/document-updated', (ns) => { if (String(ns) === 'mayfly') followStartup() }))
@@ -446,6 +465,7 @@ export function apply(ctx: Context, config: Config = {}): void {
     rederive(agent)
     greet()
     if (agent === null) loadRecent()
+    else clearBrowse()
   })
   // A launch with no session greets only once startup settled: a resume or a task selects its session first.
   const offBooted = ctx.mayflySessionStart.onBooted(() => {
