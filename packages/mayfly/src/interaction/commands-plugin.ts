@@ -5,6 +5,7 @@
 
 import { registerPluginCommand } from './plugin-commands.ts'
 import { listCommands, registerOwnedCommand } from './sessionless-commands.ts'
+import { registerSessionlessPermission } from './permission-panel.ts'
 import { openSessions } from './native-sessions.ts'
 import { createSessionListCache } from './session-list-reads.ts'
 import type { Context } from '@deepseek-ai/cordis'
@@ -255,6 +256,7 @@ export function apply(ctx: Context): void {
       },
     })
     const theme = registerThemeCommand(ctx)
+    const permission = registerSessionlessPermission(ctx)
     // The model-family commands (`/model`, `/effort`, later `/provider`)
     // live in their own module with the same lazy-service discipline.
     const models = registerModelCommands(ctx)
@@ -282,6 +284,7 @@ export function apply(ctx: Context): void {
       help()
       mode()
       theme()
+      permission()
       models()
       sessionExport()
       init()

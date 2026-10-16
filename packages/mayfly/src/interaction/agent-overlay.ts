@@ -19,10 +19,13 @@ interface AgentOverlayOpenOptions {
   readonly reopen: 'focus' | 'replace'
 }
 
-/** Own one interactive Agent view under a child Fiber with exact native authority. */
+/**
+ * Own one interactive Agent view under a child Fiber with exact native authority. A `null` Agent is the start
+ * surface (no session yet): the overlay is app-scoped and closes when a session is selected.
+ */
 export async function openAgentOverlay(
   ctx: Context,
-  agent: Agent,
+  agent: Agent | null,
   definition: Omit<MayflyOverlayDefinition, 'scope' | 'onEvent'>,
   node: MayflyUiNode,
   handler: (ctx: Context) => MayflyUiActionHandler,
@@ -41,7 +44,7 @@ export async function openAgentOverlay(
       if (closed || scope.mayflyCurrentAgent.current() !== agent || signal?.aborted) { closed = true; return }
       const onEvent = handler(scope)
       handle = scope.mayflyOverlays.open({
-        ...definition, scope: { kind: 'session', sessionId: agent.id },
+        ...definition, scope: agent === null ? { kind: 'app', targetId: definition.id } : { kind: 'session', sessionId: agent.id },
         onEvent: { action: (event, context) => {
           if (scope.mayflyCurrentAgent.current() !== agent || context.signal.aborted) return { kind: 'cancelled', dismiss: true }
           return onEvent(event, context)

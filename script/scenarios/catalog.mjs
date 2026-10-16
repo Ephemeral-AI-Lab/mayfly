@@ -71,7 +71,7 @@ const REVIEW = {
     implemented: [
       'Mayfly starts with no session. One is created only when the first message is sent, so quitting from the start screen leaves nothing in `sessions`. `--resume` and a `[task]` argument still start a session at once.',
       '`/new` and `/clear` return to the start screen instead of creating an empty session; the next message creates the session (a preset named with `/new <preset>` is kept for it).',
-      'Before a session exists, `/theme`, `/settings`, `/sessions`, `/help`, `/quit`, `/new` and `/clear` run. Every other command answers `Send a message first: /model needs a session`. The slash list and `/help` show only the commands that run.',
+      'Before a session exists, `/theme`, `/settings`, `/sessions`, `/help`, `/quit`, `/new`, `/clear`, `/provider`, `/plugin` and `/update` run, and so do `/model`, `/effort` and `/permission`: they set the default model, thinking effort, and permission preset that the first session takes (the status row shows the default model). Every command that acts on a session (`/fork`, `/rewind`, `/rename`, `/export`, `/stats`, `/mcp`, ...) answers `Send a message first: /fork needs a session`. The slash list and `/help` show only the commands that run.',
       'A new setting, `On start` (`mayfly.startup`: Conversation or Splash), in the first-run guide\'s Preferences step and in `/settings`. Conversation (the default) keeps today\'s screen, the banner above an empty conversation; Splash shows the launch screen.',
       'The launch screen: the s10 mark, the wordmark with the version, the slogan, and up to four recent sessions (this directory\'s first, other projects after), with the real editor and status row below. `↑` on the empty prompt walks the list (`↑`/`↓`, `Enter` resumes, `Esc` returns). The mark flies in from the left edge once per appearance; the session created by the first message does not play the banner\'s fly-in again.',
       'It adapts to the size: from 100 columns and 22 rows the mark is drawn at double size; from 56 list columns each session shows its project; from 40 columns title and age only; below 40 columns, or in ASCII glyphs, the wordmark and slogan alone. A short screen drops the list, then the slogan, then the mark.',
@@ -83,7 +83,7 @@ const REVIEW = {
       { look: 'The first-run guide with the new `On start` field, over the launch screen', how: 'checkpoints `guide`, `guide-ready` (the scenario is a first start; the stub accepts any key)' },
       { look: 'The new `On start` setting in `/settings`', how: 'checkpoint `settings`' },
       { look: 'The launch screen at 60 and 40 columns, at 30 (wordmark only), and on a short terminal', how: 'checkpoints `narrow-60`, `narrow-40`, `tiny-30`, `short`; wide: `pnpm run scenario startSplash --width 140 --height 40`' },
-      { look: 'A command that needs a session is refused with a clear notice; `/theme` still works', how: 'checkpoints `refused`, `tide`' },
+      { look: '`/model` and `/permission` work before a session and set the default; a command on a session is refused with a clear notice; `/theme` still works', how: 'checkpoints `model`, `model-set` (status row), `permission`, `refused`, `tide`' },
       { look: '`↑` on the empty prompt walks the recent list: the cursor row, the hint `↵ resume · esc back`, `↓` past the last row or `Esc` back to the prompt, any other key types; `Enter` resumes the row', how: 'checkpoints `browse`, `browse-2`, `resumed`' },
       { look: 'The first message creates the session; `/clear` returns to the launch screen', how: 'checkpoints `first-message`, `cleared`' },
       { look: 'No session on disk until the first message', how: 'live: `dsh --profile mayfly-splash`, quit at once, then `ls ~/.dsh/sessions/*/`' },
@@ -300,7 +300,7 @@ const SCRIPTS = {
   startSplash: [
     // A first start: the guide opens over the launch screen, with the new `On start` field in its Preferences step; the stub accepts any key.
     until('Preferences'), checkpoint('guide'),
-    key('enter'), wait(500), key('down'), key('enter'), wait(500), type('replay-key'), key('enter'), wait(1500), checkpoint('guide-ready'),
+    key('enter'), wait(500), key('down'), key('enter'), wait(500), type('replay-key'), key('enter'), until('Select a model'), checkpoint('guide-model'), key('esc'), until('Welcome to Mayfly'), checkpoint('guide-ready'),
     key('enter'), wait(1000), checkpoint('after-guide'),
     play('splash'), wait(500), checkpoint('splash'),
     // `↑` on the empty prompt walks the recent list; `Esc` gives the keyboard back.
@@ -313,7 +313,10 @@ const SCRIPTS = {
     resize(30, 30), checkpoint('tiny-30'),
     resize(100, 14), checkpoint('short'),
     resize(100, 30),
-    wait(300), type('/model'), key('enter'), wait(500), checkpoint('refused'),
+    // Settings that a session would take run before it exists: they set the default. A command on a session is refused.
+    ...open('/model', 'Select a model'), checkpoint('model'), key('down'), key('enter'), wait(800), checkpoint('model-set'),
+    ...open('/permission', 'Permissions'), checkpoint('permission'), key('esc'), wait(300),
+    wait(300), type('/fork'), key('enter'), wait(500), checkpoint('refused'),
     ...theme('tide'), checkpoint('tide'), ...theme('dark'),
     type('Plan the launch of the new splash.'), key('enter'), wait(1500), checkpoint('first-message'),
     wait(300), type('/clear'), key('enter'), wait(1000), checkpoint('cleared'),

@@ -11,6 +11,7 @@ import { openAccountPanel } from './provider-account.ts'
 import { openModelPicker } from './model-commands.ts'
 import { deriveKeyRef, providerProfile } from './provider-profile.ts'
 import { scheduleProviderMigration } from './provider-store.ts'
+import { registerOwnedCommand } from './sessionless-commands.ts'
 import { interactionTranslator } from './locale.ts'
 import { openProviderSetup } from './provider-add.ts'
 import { openUiOverlay } from './ui-overlay.ts'
@@ -18,7 +19,7 @@ import { openUiOverlay } from './ui-overlay.ts'
 const NAMESPACE = 'llm-pi-ai'
 
 export const name = 'mayfly-provider-commands'
-export const inject = ['commands', 'settings', 'credentials', 'mayflyOverlays']
+export const inject = ['commands', 'settings', 'credentials', 'mayflyOverlays', 'mayflyInteractionState']
 
 export function apply(ctx: Context): void {
   const lifetime = new AbortController()
@@ -30,7 +31,7 @@ export function apply(ctx: Context): void {
     openProviderSetup(ctx, route => { void openModelPicker(ctx, lifetime.signal, route) }, lifetime.signal)
     return { kind: 'success' }
   }
-  ctx.commands.register({
+  registerOwnedCommand(ctx, {
     name: 'provider', description: 'Configure providers or choose their models', input: { hint: '[list | edit <provider> | switch <provider> | add]' },
     handler: async invocation => {
       const signal = AbortSignal.any([invocation.signal, lifetime.signal])

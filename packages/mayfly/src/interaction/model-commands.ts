@@ -29,9 +29,17 @@ import type { MayflyOverlayHandle, MayflyUiActionReply, MayflyUiNode } from '@ep
 import { EffortPicker, formatContextWindow, ModelPicker, type ModelPickerRow } from '../components/model-picker.ts'
 import type { ModelPickerItem } from './model-picker-model.ts'
 import { openAgentOverlay } from './agent-overlay.ts'
+import { registerOwnedCommand } from './sessionless-commands.ts'
 import { interactionTranslator } from './locale.ts'
 import type { InteractionFeedbackReporter } from './notifications.ts'
 import { getSharedEditor } from './editor-instance.ts'
+
+declare module '@deepseek-ai/cordis' {
+  interface Events {
+    /** The default model (what a session created now takes) was saved while no session was selected. */
+    'mayfly/default-model-changed'(): void
+  }
+}
 
 /** Render one failure reason for an error result. */
 function describe(error: unknown): string {
@@ -39,7 +47,7 @@ function describe(error: unknown): string {
 }
 
 /**
- * Read the live session's immutable model selection.
+ * Read the model selection in force: the live session's, or the default a new session takes while none exists.
  * @param ctx - plugin context.
  * @returns the selection, or the guard's error text.
  */
@@ -47,14 +55,16 @@ function readSelection(
   ctx: Context,
 ): { read: MayflySessionModelSelection } | { error: string } {
   const selection = currentModelSelection(ctx)
-  return selection === undefined ? { error: 'no session is live yet' } : { read: selection }
+  return selection === undefined ? { error: 'the model selection is unavailable' } : { read: selection }
 }
 
 /** Read the official next model selection for Mayfly's current Agent. */
 function currentModelSelection(ctx: Context): MayflySessionModelSelection | undefined {
   const agent = ctx.get('mayflyCurrentAgent')?.current()
   const projections = ctx.get('sessionProjections')
-  if (agent == null || projections === undefined) return undefined
+  /* no session yet: the saved default is what the first session takes */
+  if (agent == null) return ctx.get('agentDefaultModel')?.currentSelection()
+  if (projections === undefined) return undefined
   const projected = projections.snapshot(agent.session, ['modelSelection']).values.modelSelection
   return projected?.next ?? projected?.lastUsed ?? ctx.get('agentDefaultModel')?.currentSelection()
 }
@@ -115,16 +125,23 @@ async function commitModelSelection(
   signal?: AbortSignal,
   expected?: unknown,
 ): Promise<ModelCommitResult> {
-  const agent = ctx.get('mayflyCurrentAgent')?.current()
+  const agent = ctx.get('mayflyCurrentAgent')?.current() ?? null
   const controller = ctx.get('sessionController')
-  if (agent == null || controller === undefined) return { text: 'no session is live yet', ok: false }
+  const defaults = ctx.get('agentDefaultModel')
+  if (agent === null ? defaults === undefined : controller === undefined) return { text: 'the model selection is unavailable', ok: false }
   /* A write computed for one Agent never lands on its replacement. */
   if (expected !== undefined && agent !== expected) return { text: 'agent changed before model selection completed', ok: false }
   const previous = readSelection(ctx)
   if ('error' in previous) return { text: previous.error, ok: false }
   let selected: MayflySessionModelSelection
   try {
-    selected = sameSelection(previous.read, next) ? previous.read : (await controller.selectModel({ sessionId: agent.id, ...next })).selected
+    if (sameSelection(previous.read, next)) selected = previous.read
+    else if (agent === null) {
+      /* No session exists yet: the pick is the default the first session takes. */
+      await defaults!.saveSelection({ provider: next.provider, model: next.model, ...next.reasoningEffort === undefined ? {} : { reasoningEffort: ReasoningEffortId(String(next.reasoningEffort)) } })
+      selected = next
+      ctx.emit('mayfly/default-model-changed')
+    } else selected = (await controller!.selectModel({ sessionId: agent.id, ...next })).selected
   } catch (error) {
     return { text: describe(error), ok: false }
   }
@@ -372,7 +389,7 @@ async function commitPickerRow(
  */
 function openModelOverlay(
   ctx: Context,
-  agent: Agent,
+  agent: Agent | null,
   node: MayflyUiNode,
   title: string,
   signal: AbortSignal,
@@ -397,7 +414,7 @@ function openModelOverlay(
  */
 function openEffortOverlay(
   ctx: Context,
-  agent: Agent,
+  agent: Agent | null,
   node: MayflyUiNode,
   title: string,
   signal: AbortSignal,
@@ -412,10 +429,10 @@ function openEffortOverlay(
 /** Open a native-Agent-scoped catalog using the shared collection and form controls. */
 export async function openModelPicker(ctx: Context, signal: AbortSignal, filterProvider?: string): Promise<CommandResult> {
   const t = interactionTranslator(ctx)
-  const agent = ctx.get('mayflyCurrentAgent')?.current()
+  const agent = ctx.get('mayflyCurrentAgent')?.current() ?? null
   const registry = ctx.get('mayflyOverlays')
   const selection = readSelection(ctx)
-  if (agent == null || 'error' in selection) return { kind: 'error', text: t('no session is live yet') }
+  if ('error' in selection) return { kind: 'error', text: t(selection.error) }
   if (registry === undefined) return { kind: 'error', text: t('model picker is unavailable') }
   if (registry.focus('mayfly.models')) return { kind: 'success' }
   const lifetime = new AbortController()
@@ -538,8 +555,7 @@ export function registerModelCommands(ctx: Context): () => void {
     }
     const argument = rawInput.trim()
     if (argument === '') {
-      const agent = ctx.get('mayflyCurrentAgent')?.current()
-      if (agent == null) return { kind: 'error', text: t('no session is live yet') }
+      const agent = ctx.get('mayflyCurrentAgent')?.current() ?? null
       const levels = efforts.map(effort => String(effort.id))
       const inherited = info.reasoning?.defaultEffort === undefined ? undefined : String(info.reasoning.defaultEffort)
       const model = `${providerDisplayName(llm, current.provider)}/${current.model}`
@@ -582,13 +598,13 @@ export function registerModelCommands(ctx: Context): () => void {
     return { kind: result.ok ? 'success' : 'error', text: result.text }
   }
 
-  const model = ctx.commands.register({
+  const model = registerOwnedCommand(ctx, {
     name: 'model',
-    description: 'Switch the session model (no argument opens the picker)',
+    description: 'Switch the model (no argument opens the picker)',
     input: { hint: '[name]' },
     handler: invocation => switchModel(invocation.rawInput, invocation.signal),
   })
-  const effort = ctx.commands.register({
+  const effort = registerOwnedCommand(ctx, {
     name: 'effort',
     description: 'Switch the thinking effort of the current model',
     input: { hint: '[level]' },

@@ -68,6 +68,10 @@ export function apply(ctx: Context): void {
   let provider = ''
   let model = ''
   let effort = ''
+  const defaultSelection = (): RowSelection | undefined => {
+    const saved = ctx.get('agentDefaultModel')?.currentSelection()
+    return saved === undefined ? undefined : { provider: saved.provider, model: saved.model, ...(saved.reasoningEffort === undefined ? {} : { effort: String(saved.reasoningEffort) }) }
+  }
   const derive = (): void => {
     /* The model/effort pair comes from one source only: a projected pick
        that leaves the effort undefined restores the provider default, it
@@ -83,6 +87,8 @@ export function apply(ctx: Context): void {
       ?? (agent?.options.model === undefined
         ? undefined
         : { ...agent.options.provider === undefined ? {} : { provider: agent.options.provider }, model: agent.options.model, ...(agent.options.reasoningEffort === undefined ? {} : { effort: String(agent.options.reasoningEffort) }) })
+      /* no session yet: the default the first session takes (`/model` and `/effort` set it) */
+      ?? (agent !== null ? undefined : defaultSelection())
     model = selection?.model ?? (selection === undefined ? facts.provider ?? (agent === null ? '' : 'no model') : '')
     provider = selection?.provider ?? ''
     effort = selection?.effort === undefined ? '' : capitalizeEffort(selection.effort)
@@ -119,4 +125,5 @@ export function apply(ctx: Context): void {
   ctx.effect(() => () => offFacts())
   ctx.effect(() => () => offAgent())
   ctx.effect(() => () => offProjection())
+  ctx.effect(() => ctx.on('mayfly/default-model-changed', refresh))
 }

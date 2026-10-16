@@ -25,6 +25,9 @@ import type {} from '../app/index.ts'
 import type {} from '@deepseek-ai/dsh-permission-presets'
 import type {} from '@deepseek-ai/dsh-commands'
 import { interactionTranslator } from './locale.ts'
+import { persist } from './onboarding-language.ts'
+import { registerSessionlessCommand } from './sessionless-commands.ts'
+import type { CommandResult } from '@deepseek-ai/dsh-commands'
 import { openUiOverlay } from './ui-overlay.ts'
 import { createInteractionNotificationOwner } from './notifications.ts'
 import { ui, type MayflyListItem } from '@ephemeral-ai/mayfly-ui'
@@ -68,7 +71,8 @@ function presetDescription(spec: PermissionPresetSpec): string {
 const CUSTOM_BLOCKED = 'custom is the derived state — pick a preset'
 
 /**
- * Open the preset picker for the live agent (D30 editor-slot mount).
+ * Open the preset picker for the live agent (D30 editor-slot mount). With no session
+ * it picks the default preset a new session takes.
  * Fire-and-forget: the caller (`mayfly-input`'s bare-`/permission`
  * interception) never awaits the panel.
  * @param ctx - plugin context (`commands` via the calling plugin).
@@ -86,8 +90,7 @@ export function openPermissionPanel(ctx: Context): void {
   const currentAgents = ctx.get('mayflyCurrentAgent')
   if (currentAgents === undefined) return
   const agent = currentAgents.current()
-  if (agent === null) return
-  const current = presets.current(agent.session)
+  const current = agent === null ? presets.defaultPreset : presets.current(agent.session)
   const rows: MayflyListItem[] = presets.names.map(name => {
     const spec = presets.resolve(name)
     const label = presets.optionOf(name).name
@@ -111,6 +114,12 @@ export function openPermissionPanel(ctx: Context): void {
   if (current === 'custom') rows.push({ id: 'custom', label: presets.optionOf('custom').name, disabled: true, disabledReason: t(CUSTOM_BLOCKED) })
 
   const dispatch = (name: string): void => {
+    if (agent === null) {
+      void setDefaultPreset(ctx, presets, name).then(result => {
+        notifications.report('dispatch', { message: result.text ?? '', severity: result.kind === 'error' ? 'error' : 'success' })
+      })
+      return
+    }
     void ctx.commands.execute(agent, `/permission ${name}`, [], new AbortController().signal).then(
       execution => {
         if (execution === undefined) {
@@ -143,4 +152,38 @@ export function openPermissionPanel(ctx: Context): void {
   } } }, ui.surface({ chrome: 'overlay', title: t('Permissions'), child: ui.list({ id: 'permissions', role: 'choose', numbered: true, selectedIds: current === 'custom' ? [] : [current], items: rows }) }), { reopen: 'replace', onClosed: () => offAgent?.() })
   /* The picker belongs to the Agent it was opened for; replacing that Agent retires it. */
   offAgent = currentAgents.subscribe(next => { if (next !== agent) picker.close() })
+}
+
+/**
+ * Set the default preset a session created later takes (no session exists to write to).
+ * @returns the outcome with the notice text.
+ */
+async function setDefaultPreset(ctx: Context, presets: PermissionPresetsService, name: string): Promise<CommandResult> {
+  const t = interactionTranslator(ctx)
+  if (!presets.names.includes(name)) return { kind: 'error', text: t('unknown permission preset: {preset}', { preset: name }) }
+  if (name !== presets.defaultPreset) await persist(ctx, 'permission', { op: 'set', path: ['defaultPreset'], value: name })
+  return { kind: 'success', text: t('Default permission preset: {preset}', { preset: presets.optionOf(name).name }) }
+}
+
+/**
+ * `/permission` before a session exists: no argument opens the picker, `<name>` sets the default preset a new session
+ * takes. While a session is live the dsh command of the same name writes that session instead.
+ * @returns the disposer.
+ */
+export function registerSessionlessPermission(ctx: Context): () => void {
+  return registerSessionlessCommand(ctx, {
+    name: 'permission',
+    description: 'Choose the default permission preset (a session takes it when it starts)',
+    input: { hint: '[<preset>]' },
+    handler: async (invocation): Promise<CommandResult> => {
+      const presets = ctx.get('permissionPresets') as PermissionPresetsService | undefined
+      if (presets === undefined) return { kind: 'error', text: interactionTranslator(ctx)('permission command is unavailable') }
+      const name = invocation.rawInput.trim()
+      if (name === '') {
+        openPermissionPanel(ctx)
+        return { kind: 'success' }
+      }
+      return setDefaultPreset(ctx, presets, name)
+    },
+  })
 }
