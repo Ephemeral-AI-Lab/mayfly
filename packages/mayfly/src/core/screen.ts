@@ -207,7 +207,10 @@ export class MayflyScreenService extends Service implements MayflyScreen {
     runtime.addBottomChild(footer, 'bottom')
     this.viewsPanel = new GutterComponent(new ViewsPanelHost(runtime.surfaces.views))
     runtime.addBottomChild(this.viewsPanel, 'bottom')
+    // The conversation stream's bar takes the palette the slots compile with, like a panel's scroll.
+    runtime.setContentScrollbarColors(() => this.nodeSlots.compiler?.colors)
     ctx.effect(() => () => {
+      runtime.setContentScrollbarColors(() => undefined)
       this.searchLine?.dispose()
       this.nodeSlots.dispose()
     })

@@ -922,7 +922,10 @@ conversation title) and `border` recolors the frame (the editor's shell mode); b
 with `fit` shrinks to short content and shows its scrollbar only when it overflows. A header badge on the right of the title rule carries a
 short state (`unsaved changes`, `step 2 of 4`, `1 of 3 waiting`). A scroll region keeps
 its tail in view while following, shows a scrollbar, and expands with `Ctrl+E` (`Esc`
-collapses). Narrow widths drop the subtitle and badges before the title.
+collapses). There is one scrollbar: two columns beside the content, the accent `█` thumb on a muted `░` track. A scroll
+that names a viewport, a scroll that fills a panel, and the conversation stream all draw it. A layout-filled scroll and
+the stream keep the two columns even when nothing overflows (the track shows only then), so the content never rewraps
+when the bar appears. Narrow widths drop the subtitle and badges before the title.
 
 ### 4.7 Layout, admission, and placement
 
