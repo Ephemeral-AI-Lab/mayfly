@@ -1383,10 +1383,10 @@ and `✓ agents 3/3` (`✕` when one failed) when all have settled. `Alt+↓` op
 the row, a list of every subagent with a cursor (the one panel that is not a plain scroll, because a row has to be chosen):
 
 ```
-  ● review(bg)   Using bash                            ↑48k ↓6.4k 47 tok/s 41s
-  ● explore(fg)  Thinking…                                      ↑61k ↓1.2k 12s
-  ✓ plan(bg)     Draft migration plan                           ↑11k ↓2.0k 12s
-  ✕ lint(fg)     Sweep oxlint findings                                ↑17k 9s
+  ● review(bg)   Using bash                         ↑48k  ↓6.4k  47 tok/s · 41s
+  ● explore(fg)  Thinking…                                   ↑61k  ↓1.2k · 12s
+  ✓ plan(bg)     Draft migration plan                        ↑11k  ↓2.0k · 12s
+  ✕ lint(fg)     Sweep oxlint findings                              ↑17k · 9s
 
   ↑/↓ select · Enter open · x stop · b background · Esc back
 ```
@@ -1399,7 +1399,7 @@ the row, a list of every subagent with a cursor (the one panel that is not a pla
 - **Own subagents only.** The item lists the subagents the displayed conversation spawned itself. A `/btw` side conversation or a subagent conversation inherits its parent's log, but not its subagents: it has no Agents item unless it spawns its own, and never shows the main conversation's.
 - **Rows.** The mark, the agent's name with `(fg)` or `(bg)`, and what it does now (its streamed activity while it
   works: `Thinking…`, `Writing…`, `Using bash`; its task once it settled), in columns that line up down the list. At the right edge,
-  one space apart: in (`↑48k`: input with its cache, settled steps) and out (`↓6.4k`: settled steps plus
+  two spaces apart, then the time behind a small dot as the Activity row has it (`· 41s`): in (`↑48k`: input with its cache, settled steps) and out (`↓6.4k`: settled steps plus
   the streaming attempt's estimate), the output rate while it streams (`47 tok/s`), and the time last. A figure that is
   not there yet (no input counted, nothing streaming) is left out; the figures update as the child streams (about four
   times a second), and the input as each step settles. The mark alone says how it ended (`✓`, `✕ failed`, `⊘ stopped`); there is no status

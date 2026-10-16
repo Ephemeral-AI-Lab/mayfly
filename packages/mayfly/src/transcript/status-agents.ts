@@ -107,7 +107,7 @@ function markOf(row: AgentRow): MayflyInlineSpan {
   return row.failed ? { text: '✕', tone: 'danger' } : { text: '✓', tone: 'success' }
 }
 
-/** One row: `● review(bg)  Using bash                         ↑5.2k ↓6.4k 38 tok/s 41s`. */
+/** One row: `● review(bg)  Using bash                       ↑5.2k  ↓6.4k  38 tok/s · 41s`. */
 function agentItem(row: AgentRow, now: number, t: MayflyTranslate, unavailable: Readonly<Record<string, string>>): MayflyListItem {
   const elapsed = compactElapsedMs(Math.max(0, (row.live ? now : row.endedAt ?? now) - row.startedAt))
   const up = row.inputTokens
@@ -115,9 +115,12 @@ function agentItem(row: AgentRow, now: number, t: MayflyTranslate, unavailable: 
   const count = (mark: string, tokens: number): string => tokens === 0 ? '' : `${mark}${formatTokens(tokens)}`
   const measured = row.live ? outputRate(row.outputProgress, now) : ''
   const rate = measured.startsWith('0 ') ? '' : measured
-  // What the facts hold, closest to the edge last (tokens in and out, the rate, the time), one space apart.
-  const facts = [count('↑', up), count('↓', down), rate, elapsed].filter(text => text !== '')
-  const right: MayflyInlineSpan[] = facts.flatMap((text, index) => index === 0 ? [{ text, tone: 'muted' as const }] : [{ text: ' ' }, { text, tone: 'muted' as const }])
+  // The figures (tokens in and out, the rate) two spaces apart, then the time behind a small dot, as the Activity row has it.
+  const figures = [count('↑', up), count('↓', down), rate].filter(text => text !== '')
+  const right: MayflyInlineSpan[] = [
+    ...figures.length === 0 ? [] : [{ text: `${figures.join('  ')} · `, tone: 'muted' as const }],
+    { text: elapsed, tone: 'muted' },
+  ]
   // The mark says how it ended; the brief is what it does now (its streamed activity) and its task once it settled.
   const doing = row.live && row.activity !== undefined
   const brief = doing ? row.activity : row.task
