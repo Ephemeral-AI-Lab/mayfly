@@ -27,7 +27,7 @@ import { startSignIn, type SignInEnd, type SignInFlow, type SignInSnapshot } fro
 import { openModelPicker } from './model-commands.ts'
 import { openUiOverlay } from './ui-overlay.ts'
 import { LANGUAGES, THEMES, commitLanguage, initialChoice } from './onboarding-language.ts'
-import { themeName } from './theme-switch.ts'
+import { themeLabel, themeName } from './theme-names.ts'
 import type { PermissionPresetsService } from './permission-panel.ts'
 import { interactionTranslator } from './locale.ts'
 
@@ -204,7 +204,7 @@ export function apply(ctx: Context): void {
       const facts: OnboardingFacts = {
         activeId: target,
         preferences: {
-          language: { value: choice.language, theme: choice.theme, languages: LANGUAGES, themes: THEMES.map(key => ({ id: key, label: themeName(key, t) })) },
+          language: { value: choice.language, theme: choice.theme, languages: LANGUAGES, themes: THEMES.map(key => ({ id: key, label: themeLabel(key, t) })) },
           ...rows === undefined ? {} : { permissions: rows },
         },
         connect: { canSignIn: signInRoute !== undefined, keyEntry: state.keyEntry, ...state.connection === 'account' ? { connected: 'account' as const } : {}, ...signIn === undefined ? {} : { signIn } },

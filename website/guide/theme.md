@@ -5,19 +5,21 @@ Mayfly 的视觉表面全部由一张**语义色表**驱动。`/theme` 命令在
 ## /theme 用法
 
 ```
-usage: /theme [dark|light|tide|dusk|linen|mist|graphite|heather|obsidian|porcelain|auto|custom <path> [dark|light|tide|dusk|linen|mist|graphite|heather|obsidian|porcelain]]
+usage: /theme [<theme>|auto|custom <path> [<base theme>]]
 ```
 
-- `/theme` —— 按名称列出全部内置调色板，每项附一句说明，当前项打勾（`✓`）
+- `/theme` —— 列出全部内置调色板，按**适合深色终端**与**适合浅色终端**分组，每项显示名称与一句说明，当前项打勾（`✓`）
 - `/theme <键>` —— 切到某个内置调色板，例如 `/theme tide`
 - `/theme auto` —— 跟随终端背景色（OSC 11 探测）在 Mayfly Dark 与 Mayfly Light 间选择
-- `/theme custom <path> [<base>]` —— 挂载文件调色板，`base` 为任一内置调色板（默认 `dark`）
+- `/theme custom <path> [<基础主题>]` —— 挂载文件调色板，叠在任一内置调色板之上（默认 `dark`）
 
 切换实现为 provider fiber 的整体替换：依赖主题的插件（transcript、输入层等）随之重载。挂载失败时会自动回退到 Mayfly Dark，界面永远不会没有主题。
 
 ## 内置调色板
 
 每个调色板遵循同一套配方：一种安静色相的四级中性墨色，`primary` 及其周边 token 共用一个品牌色相，状态色（绿、琥珀、红）与品牌色相保持距离。每个调色板都为一种终端背景（画布）设计；主题不绘制背景，把终端背景设为对应画布即可得到设计效果。
+
+Mayfly 自有的调色板（每个分组的前几行）：
 
 | 键 | 名称 | 风格 | 画布 |
 | --- | --- | --- | --- |
@@ -34,13 +36,31 @@ usage: /theme [dark|light|tide|dusk|linen|mist|graphite|heather|obsidian|porcela
 
 `auto` 不是独立调色板，而是按终端背景在 Mayfly Dark 与 Mayfly Light 间二选一；`custom` 见下文。
 
+### 现成配色的移植
+
+22 个移植调色板只使用原配色方案自身的颜色，分配到 Mayfly 的各个角色。在原背景上对比度低于 4.5:1 的色调只调整明度、保持色相；Gruvbox 的橙色与其警告黄过近，因此主色改用它的蓝色。来源与许可证见包内的 `THIRD-PARTY-NOTICES.md`。
+
+| 系列 | 适合深色终端 | 适合浅色终端 |
+| --- | --- | --- |
+| Catppuccin | `catppuccin-mocha`、`catppuccin-macchiato`、`catppuccin-frappe` | `catppuccin-latte` |
+| Rosé Pine | `rose-pine`、`rose-pine-moon` | `rose-pine-dawn` |
+| Dracula | `dracula` | |
+| Nord | `nord` | |
+| Tokyo Night | `tokyo-night`、`tokyo-night-storm` | `tokyo-night-day` |
+| Solarized | `solarized-dark` | `solarized-light` |
+| Gruvbox | `gruvbox-dark` | `gruvbox-light` |
+| One | `one-dark` | `one-light` |
+| Kanagawa | `kanagawa-wave` | `kanagawa-lotus` |
+| Everforest | `everforest-dark` | `everforest-light` |
+
+
 ## 持久默认主题
 
-`/theme` 切换的是**会话级**主题；持久默认写在 settings.yaml 的 `mayfly:` 段（或用 `/settings` 面板的 Theme 行按名称选择——实时生效、同时落盘）：
+`/theme` 切换的是**会话级**主题；持久默认写在 settings.yaml 的 `mayfly:` 段（或用 `/settings` 面板的 Theme 行按名称选择，名称后标注深色或浅色——实时生效、同时落盘）：
 
 ```yaml
 mayfly:
-  theme: tide   # dark | light | tide | dusk | linen | mist | graphite | heather | obsidian | porcelain | auto
+  theme: tide   # 上文任一调色板的键，或 auto
 ```
 
 启动时应用该默认；会话内的 `/theme` 选择覆盖它，且无关的设置写入不会把会话选择冲掉。若保存的值不再对应任何调色板（旧版本的 `ocean` 或 `paper`），启动时使用 Mayfly Dark，其余设置不受影响。custom 调色板（`/theme custom <path>`）保持会话级，不落盘。

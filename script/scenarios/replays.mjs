@@ -410,7 +410,7 @@ const brandThemes = {
         ],
       }),
       step({
-        text: 'Now walk the palettes. `/theme` opens the picker: each palette by name with a line about it, the live one checked; `Enter` switches. `/theme tide`, `/theme dusk`, `/theme graphite`, `/theme linen`, `/theme mist`, `/theme heather`, `/theme obsidian`, `/theme porcelain`, `/theme light`, and `/theme dark` switch at once; `/theme auto` follows the terminal. Narrow the terminal below 42 columns for the banner without its mark. `/clear` starts a fresh conversation: the mark flies in again. A `/theme` switch never replays it.',
+        text: 'Now walk the palettes. `/theme` opens the picker, grouped for dark and for light terminals: Mayfly\'s palettes, then the ports, each by name with a line about it, the live one checked; `Enter` switches. `/theme <key>` switches at once: `tide`, `dusk`, `graphite`, `obsidian`, `light`, `linen`, `mist`, `heather`, `porcelain`, and the ports `catppuccin-mocha`, `catppuccin-latte`, `rose-pine`, `rose-pine-dawn`, `dracula`, `nord`, `tokyo-night`, `tokyo-night-day`, `solarized-dark`, `solarized-light`, `gruvbox-dark`, `gruvbox-light`, `one-dark`, `one-light`, `kanagawa-wave`, `kanagawa-lotus`, `everforest-dark`, `everforest-light`; `/theme auto` follows the terminal. Narrow the terminal below 42 columns for the banner without its mark. `/clear` starts a fresh conversation: the mark flies in again. A `/theme` switch never replays it.',
         usage: { inputTokens: 3300, outputTokens: 160, cacheReadTokens: 3000 },
       }),
     ]),

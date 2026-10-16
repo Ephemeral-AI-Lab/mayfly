@@ -155,7 +155,8 @@
     "lib/*.js",
     "lib/types/**/*.d.ts",
     "cordis.patch.yml",
-    "presets/"
+    "presets/",
+    "THIRD-PARTY-NOTICES.md"
   ],
   "license": "MIT",
   "homepage": "https://may-fly.dev",

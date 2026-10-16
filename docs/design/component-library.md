@@ -2476,12 +2476,14 @@ appearance and is skipped under reduced motion (§2.3).
 
 ### Theme sketches
 
-Two scripts design the theme palettes. They stand apart from the kit and draw their own colors; `core/palettes.ts`
-copies their tables as they are.
+Three scripts design the theme palettes (with `prototypes/color.mjs`, their color math). They stand apart from the kit
+and draw their own colors; `core/palettes.ts` copies their tables as they are, in picker order: the palettes for dark
+terminals, then those for light ones.
 
 | File | What it is |
 | --- | --- |
 | [`prototypes/theme-palettes.mjs`](./prototypes/theme-palettes.mjs) | the ten named palettes with their picker lines, foregrounds, backgrounds, and mark inks: Mayfly Dark (the default) and Mayfly Light, Tide, Dusk, and Graphite (dark), Linen, Mist, and Heather (light), Obsidian and Porcelain (high contrast); the recipe measured from the default as rules (`--check`), and a palette file for `/theme custom` (`--json`) |
+| [`prototypes/theme-ports.mjs`](./prototypes/theme-ports.mjs) | 22 ports of ready-made palettes (Catppuccin, Rosé Pine, Dracula, Nord, Tokyo Night, Solarized, Gruvbox, One, Kanagawa, Everforest): each scheme's own colors by their upstream names, assigned to roles, a tone nudged in lightness only where it reads under 4.5:1 (every nudge recorded), with the sources and licenses (`FAMILIES`) |
 | [`prototypes/theme-preview.mjs`](./prototypes/theme-preview.mjs) | a specimen of each palette on its own canvas: the banner with the s10 mark, a prompt, a Markdown answer, an edit with its diff, a failed and a retried call, a command panel, the editor, and the status row |
 
 ```

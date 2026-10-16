@@ -16,7 +16,7 @@
  */
 
 import { LOGOS } from './logo-preview.mjs'
-import { SHIPPED, THEMES, mix, themeById } from './theme-palettes.mjs'
+import { ALL, SHIPPED, mix, themeById } from './theme-palettes.mjs'
 
 const argv = process.argv.slice(2)
 const opt = (name, fallback) => { const i = argv.indexOf(`--${name}`); return i >= 0 && argv[i + 1] ? argv[i + 1] : fallback }
@@ -165,7 +165,7 @@ let groups
 if (argv.includes('--shipped')) {
   groups = SHIPPED.map(old => [old, themeById(old.replacedBy)])
 } else {
-  const themes = ids.length > 0 ? ids.map(themeById).filter(Boolean) : THEMES
+  const themes = ids.length > 0 ? ids.map(themeById).filter(Boolean) : ALL
   groups = []
   for (let i = 0; i < themes.length; i += COLUMNS) groups.push(themes.slice(i, i + COLUMNS))
 }

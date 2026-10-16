@@ -185,7 +185,7 @@ class BannerComponent implements MayflyComponent {
 
   /**
    * @param width - the content width in columns.
-   * @returns the banner lines and the blank row that closes them.
+   * @returns the banner lines between the blank rows that open and close them.
    */
   render(width: number): string[] {
     // Before the first conversation is known: the fly-in's first frame, the four lines held and the mark still off screen.
@@ -206,9 +206,9 @@ class BannerComponent implements MayflyComponent {
   }
 }
 
-/** One blank row closes the banner, the gap every turn after it has. */
+/** One blank row opens the banner, under the top of the screen, and one closes it, the gap every turn after it has. */
 function closed(lines: string[]): string[] {
-  return lines.length === 0 ? lines : [...lines, '']
+  return lines.length === 0 ? lines : ['', ...lines, '']
 }
 
 /**

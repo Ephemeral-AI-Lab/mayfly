@@ -68,15 +68,18 @@ const REVIEW = {
       'The welcome banner is PR 22\'s option B: the s10 mark (13 columns × 4 rows of quadrant blocks) beside `mayfly v<version>`, the slogan, `model · provider`, and the working directory; no labels and no help line.',
       'On a fresh conversation (startup, `/new`, `/clear`) the mark flies in from the right edge, the four lines appear in its wake behind a fading trail, it lands, beats its wings twice, and rests (1.55 s). A resumed or forked session shows it at rest, reduced motion never plays it, and a `/theme` switch mid-flight carries on instead of replaying.',
       'Ten named palettes: Mayfly Dark (unchanged) and Mayfly Light, Tide, Dusk, Graphite, Linen, Mist, Heather, and the high-contrast Obsidian and Porcelain. ocean, paper, and the GitHub-style light are gone; a saved `ocean` or `paper` starts on Mayfly Dark and keeps every other setting.',
-      'The `/theme` picker lists every palette by name with a muted line about it, then Auto (Mayfly Dark or Light, as the terminal); the live row is checked. `/settings` and the first-run guide show the same names.',
+      '22 ports of ready-made palettes in their own colors: Catppuccin (Mocha, Macchiato, Frappé, Latte), Rosé Pine (main, Moon, Dawn), Dracula, Nord, Tokyo Night (Night, Storm, Day), Solarized, Gruvbox, One, Kanagawa (Wave, Lotus), and Everforest (dark and light). A tone under 4.5:1 is nudged in lightness only; Gruvbox takes its blue for primary. THIRD-PARTY-NOTICES.md credits each.',
+      'The `/theme` picker groups the palettes under `For dark terminals` and `For light terminals` (Mayfly\'s first, then the ports), each by name with a muted line about it, then Auto apart (Mayfly Dark or Light, as the terminal); the live row is checked. `/settings` and the first-run guide show `Tide (dark)`.',
+      'A blank row now opens the banner, above the mark.',
       'Below 42 columns, and in ASCII glyph mode, the banner shows its four lines without the mark, cut with `…`.',
       'Tokens no painter read are gone (`borderFocus`, `diffAddedStrong`, `diffRemovedStrong`, `diffGutter`); the mark paints with each palette\'s five `logoInks`; a highlighted diff fence paints with the diff tokens.',
     ],
     focus: [
       { look: 'The fly-in: the entry from the right edge, the text appearing in its wake, the trail, the landing and the two wing beats', how: 'live only: watch the first two seconds of `pnpm run scenario brandThemes`; `/clear` plays it again' },
       { look: 'The banner at rest beside its four lines', how: 'checkpoint `banner`' },
-      { look: 'The picker: the names, the muted line under each, the check on the live row, Auto last', how: 'checkpoint `picker`' },
-      { look: 'Each palette on the answer, the diff bands, the failed call, and the warning', how: 'checkpoints `light`, `tide`, `dusk`, `graphite`, `linen`, `mist`, `heather`, `obsidian`, `porcelain`, `auto`; set the terminal background to the palette\'s canvas (theme-preview.mjs) for the intended look' },
+      { look: 'The picker: the two groups, the names and the muted lines, the check on the live row, Auto apart at the end', how: 'checkpoints `picker` (dark group), `picker-light` (scrolled into the light group)' },
+      { look: 'Each palette on the answer, the diff bands, the failed call, and the warning', how: 'checkpoints `light` to `porcelain`, then one port of each family (`catppuccin-mocha` to `everforest-light`), and `auto`; set the terminal background to the palette\'s canvas (`node docs/design/prototypes/theme-palettes.mjs <key>` names it) for the intended look' },
+      { look: 'The ports keep their schemes\' character; the nudged tones (listed by `theme-palettes.mjs <key>`) do not stand out', how: 'live: `/theme dracula`, `/theme nord`, `/theme catppuccin-latte`, `/theme solarized-light`' },
       { look: 'The banner at 60 columns with its mark and at 40 without (after `/clear`, so it is on screen)', how: 'checkpoints `narrow-60`, `narrow-40`' },
       { look: 'A fresh conversation greets with the fly-in; a `/theme` switch never replays it', how: 'checkpoint `fresh`; live: `/theme tide` right after `/clear`' },
       { look: 'Monochrome and ASCII', how: '`pnpm run scenario brandThemes --no-color` (the mark in weight only) and `--ascii` (no mark)' },
@@ -247,8 +250,11 @@ const MERGE_PASTE = Array.from({ length: 12 }, (_, index) => `note ${String(inde
 /** Open a panel by its command and wait for its title; the wait first lets focus return to the prompt from a panel just closed. */
 const open = (command, title) => [wait(300), type(command), key('enter'), until(title)]
 
-/** The built-in palettes after the default, in picker order: the theme round's walk. */
-const PALETTE_WALK = ['tide', 'dusk', 'graphite', 'linen', 'mist', 'heather', 'obsidian', 'porcelain']
+/** Mayfly's palettes after the default, then a port from each family: the theme round's walk. */
+const PALETTE_WALK = [
+  'tide', 'dusk', 'graphite', 'linen', 'mist', 'heather', 'obsidian', 'porcelain',
+  'catppuccin-mocha', 'rose-pine-dawn', 'dracula', 'nord', 'tokyo-night', 'solarized-light', 'gruvbox-dark', 'one-light', 'kanagawa-wave', 'everforest-light',
+]
 
 /** Switch the theme by its key and wait for the switch to settle. */
 const theme = name => [wait(300), type(`/theme ${name}`), key('enter'), wait(600)]
@@ -261,7 +267,8 @@ const SCRIPTS = {
     play('banner'), checkpoint('banner'),
     play('ready'), checkpoint('dark'),
     ...open('/theme', 'Select a theme'), checkpoint('picker'),
-    key('down'), key('enter'), wait(600), checkpoint('light'),
+    key('down', { repeat: 19 }), checkpoint('picker-light'),
+    key('esc'), wait(300), ...theme('light'), checkpoint('light'),
     ...PALETTE_WALK.flatMap(name => [...theme(name), checkpoint(name)]),
     ...theme('auto'), checkpoint('auto'),
     ...theme('dark'),

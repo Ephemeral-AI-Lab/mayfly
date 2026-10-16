@@ -3,7 +3,9 @@
  * Mayfly's ten named palettes: Mayfly Dark (the default, as it ships), Mayfly Light (made from it), Tide, Dusk, and
  * Graphite (dark), Linen, Mist, and Heather (light), and the high-contrast Obsidian and Porcelain. Each has a key, a
  * name, a one-line idea for the `/theme` picker, and the token tables of `packages/mayfly/src/core/palettes.ts`, which
- * copies them as they are. The script imports nothing from Mayfly; `theme-preview.mjs` paints them on a specimen.
+ * copies them as they are, together with the 22 ports of `theme-ports.mjs` (`ALL`, in picker order: the palettes for
+ * dark terminals, then those for light ones). The script imports nothing from Mayfly; `theme-preview.mjs` paints them
+ * on a specimen.
  *
  * Every proposal follows one recipe, measured from the default dark palette in OKLCH (lightness L, chroma C, hue H):
  *
@@ -31,7 +33,7 @@
  * their own, which is why they read as noisy beside the default. Light also paints frames darker than its faintest
  * text, ocean tints its grays at twice the chroma, and paper puts its primary between its error and warning hues.
  *
- *   node docs/design/prototypes/theme-palettes.mjs                every token of every proposal, with swatches
+ *   node docs/design/prototypes/theme-palettes.mjs                every token of every palette, with swatches (a port also lists its nudges)
  *   node docs/design/prototypes/theme-palettes.mjs tide           one palette
  *   node docs/design/prototypes/theme-palettes.mjs --check        the recipe's rules per palette (--shipped adds the shipped ones)
  *   node docs/design/prototypes/theme-palettes.mjs --json tide    a palette file for `/theme custom <path>`
@@ -40,29 +42,12 @@
  */
 
 import { pathToFileURL } from 'node:url'
+import { contrast, hueGap, mix, oklch, rgbOf } from './color.mjs'
+import { FAMILIES, PORTS, aliased } from './theme-ports.mjs'
+
+export { contrast, mix, oklch }
 
 // ======================================================================= proposals
-/** The aliases of rule 5, filled in from the tokens they repeat. */
-function aliased(own) {
-  return {
-    ...own,
-    roleUser: own.primary,
-    shellMode: own.accent,
-    mdHeading: own.textStrong,
-    mdLinkUrl: own.textMuted,
-    mdCode: own.accent,
-    mdCodeBlock: own.text,
-    mdCodeBlockBorder: own.border,
-    mdQuote: own.muted,
-    mdQuoteBorder: own.textMuted,
-    mdHr: own.border,
-    mdListBullet: own.accent,
-    diffAdded: own.success,
-    diffRemoved: own.error,
-    diffMeta: own.muted,
-  }
-}
-
 /** The status colors every regular dark palette shares (rule 3). */
 const DARK_STATUS = { success: '#4EC87E', error: '#E85454', warning: '#E8A838' }
 
@@ -287,45 +272,14 @@ export const SHIPPED = [
   },
 ]
 
-/** A palette by id, proposals and shipped alike. */
-export const themeById = id => [...THEMES, ...SHIPPED].find(theme => theme.id === id)
+/**
+ * Every palette the product lists, in picker order: the palettes for dark terminals (Mayfly's, then the ports), then
+ * the ones for light terminals.
+ */
+export const ALL = [true, false].flatMap(dark => [...THEMES.filter(theme => theme.dark === dark), ...PORTS.filter(theme => theme.dark === dark)])
 
-// ======================================================================= color math
-const channel = hex => [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16))
-const linear = value => { const c = value / 255; return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4 }
-
-/** WCAG relative luminance. */
-function luminance(hex) {
-  const [r, g, b] = channel(hex).map(linear)
-  return 0.2126 * r + 0.7152 * g + 0.0722 * b
-}
-
-/** The WCAG contrast ratio of two colors. */
-export function contrast(a, b) {
-  const [light, dark] = [luminance(a), luminance(b)].sort((x, y) => y - x)
-  return (light + 0.05) / (dark + 0.05)
-}
-
-/** A color as OKLCH: lightness 0 to 1, chroma, hue in degrees. */
-export function oklch(hex) {
-  const [r, g, b] = channel(hex).map(linear)
-  const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b)
-  const m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b)
-  const s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b)
-  const L = 0.2104542553 * l + 0.7936177850 * m - 0.0040720468 * s
-  const A = 1.9779984951 * l - 2.4285922050 * m + 0.4505937099 * s
-  const B = 0.0259040371 * l + 0.7827717662 * m - 0.8086757660 * s
-  return { L, C: Math.hypot(A, B), H: (Math.atan2(B, A) * 180 / Math.PI + 360) % 360 }
-}
-
-/** The angle between two hues, 0 to 180. */
-const hueGap = (a, b) => { const d = Math.abs(a - b) % 360; return d > 180 ? 360 - d : d }
-
-/** Mix two colors in sRGB, `t` of the way from `a` to `b`. */
-export function mix(a, b, t) {
-  const [x, y] = [channel(a), channel(b)]
-  return `#${x.map((v, i) => Math.round(v + (y[i] - v) * t).toString(16).padStart(2, '0')).join('')}`
-}
+/** A palette by id, Mayfly's, ported, and shipped alike. */
+export const themeById = id => [...ALL, ...SHIPPED].find(theme => theme.id === id)
 
 // ======================================================================= the recipe as rules
 /** The palette token each public tone paints with (`paintPluginTone` in core/plugin-view.ts). */
@@ -346,6 +300,7 @@ const logoOf = theme => theme.logoInks ?? theme.logoGradient
  * @returns one entry per rule: its name and the findings that break it (none when it holds).
  */
 export function check(theme) {
+  if (theme.origin === 'port') return checkPort(theme)
   const fg = theme.foregrounds
   const canvas = theme.canvas
   const common = COMMON_CANVAS[theme.dark ? 'dark' : 'light']
@@ -387,8 +342,37 @@ export function check(theme) {
   return rules
 }
 
+/**
+ * Hold a port to the rules that keep it legible without changing its character: every tone at 4.5:1 on its own
+ * background, the neutral ladder in order, `primary` apart from the warning and error colors, and `text` on the bands.
+ * Its hues are the scheme's own, so the one-brand-hue and fixed-status rules do not apply.
+ */
+function checkPort(theme) {
+  const fg = theme.foregrounds
+  const ratio = token => contrast(fg[token], theme.canvas)
+  const fixed = n => n.toFixed(2)
+  const rules = []
+  const rule = (name, findings) => rules.push({ name, findings: findings.filter(Boolean) })
+  rule('every tone reads at 4.5:1 on its own background', [...new Set([...Object.values(TONE_TOKENS), 'mdLink', 'modelHighlight'])].map(token =>
+    ratio(token) < 4.5 && `${token} ${fixed(ratio(token))}`))
+  rule('the neutral ladder steps down: textStrong ≥ text > muted > textMuted > border', [
+    ratio('textStrong') < ratio('text') && 'textStrong is fainter than text',
+    !(ratio('text') > ratio('muted') && ratio('muted') > ratio('textMuted') && ratio('textMuted') > ratio('border'))
+      && `text ${fixed(ratio('text'))}, muted ${fixed(ratio('muted'))}, textMuted ${fixed(ratio('textMuted'))}, border ${fixed(ratio('border'))}`,
+    ratio('textMuted') < 3 && `textMuted ${fixed(ratio('textMuted'))} is under 3:1`,
+    ratio('border') < 1.5 && `border ${fixed(ratio('border'))} is under 1.5:1`,
+  ])
+  rule('primary is 30° or more from the warning and error colors', ['warning', 'error'].map(token => {
+    const gap = hueGap(oklch(fg.primary).H, oklch(fg[token]).H)
+    return gap < 30 && `${token} is ${gap.toFixed(0)}° from primary`
+  }))
+  rule('text reads at 4.5:1 on the diff bands', ['diffAddedBg', 'diffRemovedBg'].map(token =>
+    contrast(fg.text, theme.backgrounds[token]) < 4.5 && `text ${fixed(contrast(fg.text, theme.backgrounds[token]))} on ${token}`))
+  return rules
+}
+
 // ======================================================================= output
-const rgb = hex => channel(hex).join(';')
+const rgb = hex => rgbOf(hex).join(';')
 const fgPaint = (hex, s) => `\x1b[38;2;${rgb(hex)}m${s}\x1b[39m`
 const bgPaint = (hex, s) => `\x1b[48;2;${rgb(hex)}m${s}\x1b[49m`
 const bold = s => `\x1b[1m${s}\x1b[22m`
@@ -403,8 +387,10 @@ function table(theme) {
     return `  ${swatch(hex)} ${sample} ${token.padEnd(18)} ${hex}  ${dim(`L ${L.toFixed(2)}  C ${C.toFixed(3)}  H ${H.toFixed(0).padStart(3)}°`)}  ${contrast(hex, theme.canvas).toFixed(2).padStart(5)}:1`
   }
   return [
-    `${bold(theme.name)}  ${dim(`${theme.id} · ${theme.dark ? 'dark' : 'light'} · canvas ${theme.canvas}`)}`,
+    `${bold(theme.name)}  ${dim(`${theme.id} · ${theme.dark ? 'for dark terminals' : 'for light terminals'} · canvas ${theme.canvas}`)}`,
     ...(theme.idea ? [dim(theme.idea)] : []),
+    ...(theme.family ? [dim(`port of ${FAMILIES[theme.family].name} · ${FAMILIES[theme.family].license} · ${FAMILIES[theme.family].source}`)] : []),
+    ...(theme.nudges ?? []).map(n => dim(`  nudged ${n.role}: ${n.from} → ${n.to} (${n.ratio}:1)`)),
     '',
     ...Object.entries(theme.foregrounds).map(([token, hex]) => row(token, hex, false)),
     ...Object.entries(theme.backgrounds).map(([token, hex]) => row(token, hex, true)),
@@ -441,17 +427,17 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
   if (argv.includes('--json')) {
     const theme = themeById(ids[0] ?? '')
     if (theme === undefined) {
-      process.stderr.write(`usage: --json <${THEMES.map(t => t.id).join('|')}>\n`)
+      process.stderr.write(`usage: --json <${ALL.map(t => t.id).join('|')}>\n`)
       process.exit(2)
     }
     process.stdout.write(`${JSON.stringify(customThemeFile(theme), null, 2)}\n`)
   } else if (argv.includes('--check')) {
-    const themes = ids.length > 0 ? ids.map(themeById).filter(Boolean) : [...THEMES, ...(argv.includes('--shipped') ? SHIPPED : [])]
+    const themes = ids.length > 0 ? ids.map(themeById).filter(Boolean) : [...ALL, ...(argv.includes('--shipped') ? SHIPPED : [])]
     const { lines } = report(themes)
     process.stdout.write(`${lines.join('\n')}\n`)
     process.exitCode = themes.filter(t => !t.id.startsWith('shipped-')).some(t => check(t).some(r => r.findings.length > 0)) ? 1 : 0
   } else {
-    const themes = ids.length > 0 ? ids.map(themeById).filter(Boolean) : THEMES
+    const themes = ids.length > 0 ? ids.map(themeById).filter(Boolean) : ALL
     process.stdout.write(`${themes.flatMap(table).join('\n')}\n`)
   }
 }

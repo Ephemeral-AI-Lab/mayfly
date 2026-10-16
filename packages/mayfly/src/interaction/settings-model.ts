@@ -6,7 +6,7 @@ import { createHash } from 'node:crypto'
 import type { SettingsDescriptor, SettingsPathOp } from '@deepseek-ai/dsh-settings'
 import { ui, type MayflyFieldValue, type MayflyFormField, type MayflySubmittedForm, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import type { MayflyTranslate } from '../frontend/locale.ts'
-import { PALETTES } from '../core/palettes.ts'
+import { themeLabel } from './theme-names.ts'
 
 const LABELS: Readonly<Record<string, string>> = {
   'locale.preference': 'Language', 'mayfly.updateCheck': 'Update check', 'mayfly.updateChannel': 'Update channel',
@@ -26,9 +26,9 @@ const LABELS: Readonly<Record<string, string>> = {
   'mayfly.prices': 'Token prices', 'mayfly.usdCnyRate': 'CNY per USD', 'mayfly.lowBalanceCny': 'Low balance (CNY)', 'mayfly.lowBalanceUsd': 'Low balance (USD)',
 }
 
-/** Display labels of select options by setting path (translated like a field label); other options show their value. */
-const OPTION_LABELS: Readonly<Record<string, ReadonlyMap<string, string>>> = {
-  'mayfly.theme': new Map([...PALETTES.map(palette => [palette.key, palette.name] as const), ['auto', 'Auto']]),
+/** Display labels of select options by setting path; other options show their value. */
+const OPTION_LABELS: Readonly<Record<string, (value: string, t: MayflyTranslate) => string>> = {
+  'mayfly.theme': themeLabel,
 }
 
 interface SettingBinding { readonly path: readonly string[], readonly field: MayflyFormField, readonly encoded: boolean }
@@ -97,11 +97,8 @@ export function settingsProjection(descriptor: SettingsDescriptor, writable: boo
     const dynamicKind = descriptor.ns === 'permission' && key === 'defaultPreset' ? 'permission' : descriptor.ns === 'agent-preset-registry' && (key === 'default' || key === 'selectedDefault') ? 'agentPresets' : undefined
     const dynamic = dynamicKind === undefined ? undefined : choices[dynamicKind] ?? []
     const options = dynamic ?? candidates(schema)
-    const optionLabels = OPTION_LABELS[`${descriptor.ns}.${key}`]
-    const optionLabel = (value: string | number | boolean | null): string => {
-      const named = optionLabels?.get(String(value))
-      return named === undefined ? String(value) : t(named)
-    }
+    const labelOf = OPTION_LABELS[`${descriptor.ns}.${key}`]
+    const optionLabel = (value: string | number | boolean | null): string => labelOf === undefined ? String(value) : labelOf(String(value), t)
     if (schema.meta.role === 'secret') {
       if (schema.type === 'string') field = { kind: 'secret', id, label, disabled, value: '', resetValue: '', placeholder: t(descriptor.secrets?.some(secret => secret.set && JSON.stringify(secret.path) === id) ? 'Configured; leave unchanged' : 'Not configured') }
     } else if (options !== undefined) {

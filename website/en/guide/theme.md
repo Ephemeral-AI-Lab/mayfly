@@ -5,19 +5,21 @@ Every visual surface in Mayfly is driven by one **semantic color table**. The `/
 ## /theme usage
 
 ```
-usage: /theme [dark|light|tide|dusk|linen|mist|graphite|heather|obsidian|porcelain|auto|custom <path> [dark|light|tide|dusk|linen|mist|graphite|heather|obsidian|porcelain]]
+usage: /theme [<theme>|auto|custom <path> [<base theme>]]
 ```
 
-- `/theme` — a picker of every built-in palette by name, each with a one-line description, the live one checked (`✓`)
+- `/theme` — a picker of every built-in palette, grouped **for dark terminals** and **for light terminals**, each by name with a one-line description, the live one checked (`✓`)
 - `/theme <key>` — switch to a built-in palette, for example `/theme tide`
 - `/theme auto` — follow the terminal background (OSC 11 detection): Mayfly Dark or Mayfly Light
-- `/theme custom <path> [<base>]` — mount a file palette over a built-in `base` (default `dark`)
+- `/theme custom <path> [<base theme>]` — mount a file palette over a built-in palette (default `dark`)
 
 A switch replaces the provider's fiber wholesale; theme-dependent plugins (transcript, input) reload with it. A failed mount falls back to Mayfly Dark — the UI is never left without a theme.
 
 ## Built-in palettes
 
 Every palette follows one recipe: four neutral inks of one quiet hue, one brand hue for `primary` and the tokens around it, and the status colors (green, amber, red) kept apart from the brand. Each is designed for a terminal background (its canvas); themes paint no background, so set your terminal to it for the intended look.
+
+Mayfly's own palettes (the first rows of each picker group):
 
 | key | name | style | canvas |
 | --- | --- | --- | --- |
@@ -34,13 +36,31 @@ Every palette follows one recipe: four neutral inks of one quiet hue, one brand 
 
 `auto` is not a palette of its own — it picks between Mayfly Dark and Mayfly Light from the terminal background; `custom` is covered below.
 
+### Ports of ready-made palettes
+
+22 ports keep their schemes' own colors, assigned to Mayfly's roles. A tone that would read under 4.5:1 on the scheme's background is lightened or darkened just enough, keeping its hue; Gruvbox takes its blue as the primary color because its orange sits on its warning yellow. The sources and licenses are in `THIRD-PARTY-NOTICES.md` of the package.
+
+| family | for dark terminals | for light terminals |
+| --- | --- | --- |
+| Catppuccin | `catppuccin-mocha`, `catppuccin-macchiato`, `catppuccin-frappe` | `catppuccin-latte` |
+| Rosé Pine | `rose-pine`, `rose-pine-moon` | `rose-pine-dawn` |
+| Dracula | `dracula` | |
+| Nord | `nord` | |
+| Tokyo Night | `tokyo-night`, `tokyo-night-storm` | `tokyo-night-day` |
+| Solarized | `solarized-dark` | `solarized-light` |
+| Gruvbox | `gruvbox-dark` | `gruvbox-light` |
+| One | `one-dark` | `one-light` |
+| Kanagawa | `kanagawa-wave` | `kanagawa-lotus` |
+| Everforest | `everforest-dark` | `everforest-light` |
+
+
 ## The persisted default theme
 
-`/theme` switches the theme **for the session**; the persisted default lives in the `mayfly:` section of settings.yaml (or the `/settings` panel's Theme row — it lists the palettes by name, applies live, and writes through):
+`/theme` switches the theme **for the session**; the persisted default lives in the `mayfly:` section of settings.yaml (or the `/settings` panel's Theme row — it lists the palettes by name with their dark or light tag, applies live, and writes through):
 
 ```yaml
 mayfly:
-  theme: tide   # dark | light | tide | dusk | linen | mist | graphite | heather | obsidian | porcelain | auto
+  theme: tide   # any palette key above, or auto
 ```
 
 The default applies at startup; an in-session `/theme` pick overrides it, and unrelated settings writes never stomp that pick. A saved value that names no palette (`ocean` or `paper` from an earlier version) starts on Mayfly Dark and leaves every other setting as it is. Custom palettes (`/theme custom <path>`) stay session-only — they never persist.
