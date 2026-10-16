@@ -2448,3 +2448,23 @@ interactive scene is driven by the kit's key engine, so what you press is what a
 - **Colors and timing.** Truecolor drawn by the script, frames from one 100 ms interval; the renderer maps the same
   states to palette tokens and owns its clocks. `NO_COLOR` and reduced motion are properties of the design (§2.3) and
   are not toggled in the scenes.
+
+### Theme sketches
+
+Two scripts propose the theme palettes. They stand apart from the kit and draw their own colors; the shipped themes
+keep their palettes until an implementation round copies these tables into `core/theme-*.ts`.
+
+| File | What it is |
+| --- | --- |
+| [`prototypes/theme-palettes.mjs`](./prototypes/theme-palettes.mjs) | the palettes, in the shape of `*_FOREGROUNDS`, `*_BACKGROUNDS`, and `*_LOGO_GRADIENT`: Mayfly Dark (the default, unchanged), Mayfly Light (made from it), Tide and Dusk (dark), Linen and Mist (light); the recipe measured from the default as rules (`--check`), and a palette file for `/theme custom` (`--json`) |
+| [`prototypes/theme-preview.mjs`](./prototypes/theme-preview.mjs) | a specimen of each palette on its own canvas: the banner, a prompt, a Markdown answer, an edit with its diff, a failed and a retried call, a command panel, the editor, and the status row |
+
+```
+node docs/design/prototypes/theme-palettes.mjs [id | --check [--shipped] | --json <id>]
+node docs/design/prototypes/theme-preview.mjs [id... | --shipped | --width <n> | --columns <n>]
+```
+
+The recipe: four neutral inks of one quiet hue; one brand hue for `primary` and every token around it (`accent` its
+quieter tint, `border` its deep shade); the status hues fixed and 45° or more from `primary`; `selectedBg` a neutral
+step off the canvas. `--check --shipped` shows where the shipped light, ocean, and paper palettes leave it, and
+`--shipped` sets each beside the palette that replaces it.
