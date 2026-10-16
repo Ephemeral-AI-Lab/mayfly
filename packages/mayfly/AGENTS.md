@@ -19,6 +19,14 @@ slots, never arbitrary root components.
   exact Agent only while an interactive conversation is displayed; readonly
   and resumable views yield null, never the primary. Cold continuable
   children use addressed native history and explicit reply-to-resume.
+  Startup selects no Agent: the session behind the first message is created
+  on demand through `mayflySessionStart` (serialized on the app's chain,
+  `/new` and `/clear` deselect instead of creating), so an empty session
+  never reaches the store. `mayflyCurrentAgent.current()` is therefore null
+  until then; the post-boot signal is `mayflySessionStart.onBooted`, not
+  the first Agent. A command that runs with no Agent registers through
+  `registerOwnedCommand` (`interaction/sessionless-commands.ts`) and must
+  not read `invocation.agent`.
   Interrupt descendants through native ancestor authority without draining
   retained Activations/inbox.
 - `frontend/index.ts` owns `mayflyUiInteraction` and independent consumer Fibers.

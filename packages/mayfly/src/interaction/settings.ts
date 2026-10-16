@@ -9,13 +9,12 @@
  * the tree-scoped {@link currentMayflySettings} source, which reads those
  * cells instead of caching a snapshot.
  *
- * The plugin also owns the persisted default theme: the initial apply is
- * gated on Agent attach — when `mayflyCurrentAgent.current()` is non-null the
- * swap runs at apply (the app publishes that snapshot only after `boot()`
- * returns, so disposing the baseline theme fiber can never race the loader's
- * activation assertion), otherwise the first attach notification arms it;
- * session-less headless hosts never swap — there is no UI to paint. After the
- * attach the plugin re-reads on every `settings/document-updated` commit of
+ * The plugin also owns the persisted default theme: the initial apply waits
+ * for the end of startup (`mayflySessionStart.onBooted`: the app marks it only
+ * after `boot()` returns, so disposing the baseline theme fiber can never race
+ * the loader's activation assertion). The screen is live from then on whether or
+ * not a session exists, so the theme and language apply to the start surface.
+ * After that the plugin re-reads on every `settings/document-updated` commit of
  * the `mayfly` namespace.
  * The swap goes through `./theme-switch.ts`'s `applyTheme` — the same
  * provider exchange `/theme` drives — so the command's live-provider
@@ -97,6 +96,8 @@ export interface MayflySettings {
   readonly quietHints: 'full' | 'off'
   /** Whether the views of the status row list their finished items (completed todos, settled jobs) beside the live ones. */
   readonly viewHistory: boolean
+  /** What a start without a session shows: the splash (mark, recent sessions) or the conversation screen. No session exists until the first message either way. */
+  readonly startup: 'conversation' | 'splash'
 }
 
 /** One saved key override: the keys that replace an action's defaults, and its label for when it is not loaded. */
@@ -160,6 +161,7 @@ export const Config = z.object({
   reducedMotion: z.boolean().default(false).volatile(),
   quietHints: z.union([z.const('full'), z.const('off')]).default('full').volatile(),
   viewHistory: z.boolean().default(false).volatile(),
+  startup: z.union([z.const('conversation'), z.const('splash')]).default('conversation').volatile(),
 })
 
 /** The resolved defaults, used until a settings service layers overrides. */
@@ -188,12 +190,13 @@ export const DEFAULT_SETTINGS: MayflySettings = {
   reducedMotion: false,
   quietHints: 'full',
   viewHistory: false,
+  startup: 'conversation',
 }
 
 /** Stable Cordis plugin name. */
 export const name = 'mayfly-settings'
 /** Runtime state and session boundary required by the settings owner. */
-export const inject = ['mayflyInteractionState', 'mayflyCurrentAgent']
+export const inject = ['mayflyInteractionState', 'mayflySessionStart']
 
 /**
  * Read the current `mayfly` settings: the row's volatile Config cells, which
@@ -308,27 +311,21 @@ export function apply(ctx: Context): void {
     /* the defensive catch; syncTheme never rejects */
     swap = swap.then(() => syncTheme(ctx, () => unloaded)).then(() => syncPresentation(ctx, () => unloaded)).catch(() => {})
   }
-  // `settings/document-updated` commits landing before the first attach need
-  // no follow: the attach-time sync reads the current value.
-  let attached = ctx.mayflyCurrentAgent.current() !== null
+  // `settings/document-updated` commits landing before startup finishes need
+  // no follow: the boot-time sync reads the current value.
+  let attached = false
   ctx.on('settings/document-updated', (ns) => {
     if (!attached) return
     if (String(ns) === 'locale' || String(ns) === 'mayfly') syncLocale(ctx)
     if (String(ns) === 'mayfly') sync()
   })
-  // Session attach is the post-boot signal (the terminal-title precedent):
-  // the app publishes the first non-null reader snapshot only after boot()
-  // returns, so the swap can never race the loader's entry-activation
-  // assertion. An already-attached session skips the wait.
-  const registration = ctx.mayflyCurrentAgent.subscribe((agent) => {
-    if (attached || agent === null) return
+  // The end of startup is the post-boot signal (the terminal-title precedent):
+  // the app marks it only after boot() returns, so the swap can never race the
+  // loader's entry-activation assertion. The screen is live from then on, with
+  // or without a session, so the saved theme and language apply to it.
+  ctx.effect(() => ctx.mayflySessionStart.onBooted(() => {
     attached = true
     syncLocale(ctx)
     sync()
-  })
-  ctx.effect(() => registration)
-  if (attached) {
-    syncLocale(ctx)
-    sync()
-  }
+  }))
 }

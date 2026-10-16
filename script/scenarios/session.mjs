@@ -45,7 +45,7 @@ function initRepository(cwd, { branch, added, deleted }) {
 /**
  * Start a session.
  * @param {object} options
- * @param {{ source: { replay?: string, idle?: boolean, gallery?: boolean }, workspace?: Record<string, string>, extensions?: boolean, clipboard?: { image: number, delayMs?: number }, editor?: { append: string } }} options.scenario - a catalog scenario;
+ * @param {{ source: { replay?: string, idle?: boolean, gallery?: boolean, sessionless?: boolean }, workspace?: Record<string, string>, extensions?: boolean, clipboard?: { image: number, delayMs?: number }, editor?: { append: string } }} options.scenario - a catalog scenario;
  *   `workspace` seeds files, `extensions` loads the editor extensions of `extensions.mjs`, `clipboard.image` puts a PNG of that many KB on the clipboard, `editor.append` is an external editor.
  * @param {string} options.dir - where the overlay, the compiled replay, and the driver log go (created fresh).
  * @param {number} [options.speed] - timed playback speed when no runner controls the driver.
@@ -118,6 +118,7 @@ export async function prepareSession({ scenario, dir, speed = 1, control, config
       DEEPSEEK_BASE_URL: `${stub.baseURL}/v1`, ...(scenario.firstRun === true ? {} : { DEEPSEEK_API_KEY: 'replay-key' }),
       ...(scenario.extensions === true ? { MAYFLY_SCENARIO_EXTENSIONS: '1' } : {}),
       MAYFLY_REPLAY_FILE: file, MAYFLY_REPLAY_SPEED: String(speed), MAYFLY_REPLAY_LOG: log,
+      ...(scenario.source.sessionless === true ? { MAYFLY_REPLAY_SESSIONLESS: '1' } : {}),
       ...(control === undefined ? {} : { MAYFLY_REPLAY_CONTROL: control }),
       ...(scenario.account?.signed === undefined ? {} : { MAYFLY_FAKE_ACCOUNT: scenario.account.signed }),
       ...(isolate ? { HOME: tmp } : {}),

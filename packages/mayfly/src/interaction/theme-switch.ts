@@ -24,6 +24,7 @@ import * as themeBuiltin from '../core/theme-builtin.ts'
 import * as themeCustom from '../core/theme-custom.ts'
 import * as themeDark from '../core/theme-dark.ts'
 import { interactionTranslator } from './locale.ts'
+import { registerOwnedCommand } from './sessionless-commands.ts'
 import { themeGroup, themeIdea, themeName } from './theme-names.ts'
 import { openUiOverlay } from './ui-overlay.ts'
 
@@ -159,7 +160,7 @@ export async function applyTheme(ctx: Context, key: string): Promise<CommandResu
  */
 export function registerThemeCommand(ctx: Context): () => void {
   const t = interactionTranslator(ctx)
-  return ctx.commands.register({
+  return registerOwnedCommand(ctx, {
     name: 'theme',
     description: 'Switch the color theme',
     input: { hint: '[<theme>|auto|custom <path> [<base theme>]]' },

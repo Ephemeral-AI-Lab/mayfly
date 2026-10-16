@@ -7,7 +7,7 @@
 | 命令 | 别名 | 参数 | 描述 | 来源 |
 | --- | --- | --- | --- | --- |
 | `/quit` | `/q` `/exit` | — | 退出 Mayfly | `mayfly-commands` |
-| `/new` | `/clear` | `[preset]` | 开始新会话（可选指定 agent 预设） | `mayfly-commands` |
+| `/new` | `/clear` | `[preset]` | 回到启动画面；下一条消息才创建新会话（可选指定 agent 预设） | `mayfly-commands` |
 | `/fork` | — | — | 把当前会话 fork 成新会话 | `mayfly-commands` |
 | `/rewind` | — | — | 从当前会话较早的用户回合创建安全分支 | `mayfly-commands` |
 | `/sessions` | `/resume` | `[<session-id>]` | 按工作区（cwd）浏览会话，再打开对话；带 id 直接恢复 | `mayfly-commands` |

@@ -4,6 +4,7 @@
  */
 
 import { registerPluginCommand } from './plugin-commands.ts'
+import { listCommands, registerOwnedCommand } from './sessionless-commands.ts'
 import { openSessions } from './native-sessions.ts'
 import { createSessionListCache } from './session-list-reads.ts'
 import type { Context } from '@deepseek-ai/cordis'
@@ -113,10 +114,7 @@ export function apply(ctx: Context): void {
       {
         heading: 'Commands',
         labelTone: 'accent',
-        rows: (() => {
-          const agent = ctx.mayflyCurrentAgent.current()
-          return agent === null ? [] : ctx.commands.list(agent).map(command => ({ name: command.name, description: t(command.description) }))
-        })().map(command => {
+        rows: listCommands(ctx, ctx.mayflyCurrentAgent.current()).map(command => ({ name: command.name, description: t(command.description) })).map(command => {
           // The kimi help-panel label: aliases join the canonical label in
           // slashed parentheses (`/quit (/q, /exit)`), visible on every
           // listing — unlike the dropdown, which shows them only when the
@@ -155,7 +153,7 @@ export function apply(ctx: Context): void {
   ctx.effect(() => ctx.on('mayfly/request-help', () => { showHelp() }))
 
   ctx.effect(() => {
-    const quit = ctx.commands.register({
+    const quit = registerOwnedCommand(ctx, {
       name: 'quit',
       description: 'Exit Mayfly',
       handler: () => {
@@ -175,7 +173,7 @@ export function apply(ctx: Context): void {
     // rewrites an alias line to `/quit` before `ctx.commands.execute`, so
     // the session log records the canonical command.
     const quitAliases = aliasRegistry.register('quit', ['q', 'exit'])
-    const fresh = ctx.commands.register({
+    const fresh = registerOwnedCommand(ctx, {
       name: 'new',
       description: 'Start a new session',
       input: { hint: '[preset]' },
@@ -221,7 +219,7 @@ export function apply(ctx: Context): void {
       description: 'Create a branch from an earlier user turn',
       handler: () => rewindSession(),
     })
-    const sessions = ctx.commands.register({
+    const sessions = registerOwnedCommand(ctx, {
       name: 'sessions',
       description: 'List persisted sessions and switch to one (an id resumes directly)',
       input: { hint: '[<session-id>]' },
@@ -241,7 +239,7 @@ export function apply(ctx: Context): void {
     const sessionsAliases = aliasRegistry.register('sessions', ['resume'])
     // `/rename` writes a user-owned title through the native controller.
     const rename = registerRenameCommand(ctx)
-    const help = ctx.commands.register({
+    const help = registerOwnedCommand(ctx, {
       name: 'help',
       description: 'Show available commands and key bindings',
       handler: () => showHelp(),

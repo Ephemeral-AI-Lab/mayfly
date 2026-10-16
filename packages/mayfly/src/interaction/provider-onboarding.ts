@@ -17,7 +17,7 @@ import type {} from '@deepseek-ai/dsh-permission-presets'
 import type {} from '../app/index.ts'
 import { ui, type MayflyPagePath, type MayflySourceStamp, type MayflyUiActionReply, type MayflySubmission, type MayflyUiObservationEvent } from '@ephemeral-ai/mayfly-ui'
 import {
-  ONBOARDING_CONNECT, ONBOARDING_CONNECT_LIST, ONBOARDING_KEY_FIELD, ONBOARDING_KEY_FORM, ONBOARDING_PERMISSION_FIELD,
+  ONBOARDING_CONNECT, ONBOARDING_CONNECT_LIST, ONBOARDING_KEY_FIELD, ONBOARDING_KEY_FORM, ONBOARDING_PERMISSION_FIELD, ONBOARDING_STARTUP_FIELD,
   ONBOARDING_PREFERENCES, ONBOARDING_PREFERENCES_FORM, ONBOARDING_READY, ONBOARDING_SIGN_IN, ONBOARDING_WIZARD, onboardingWizard,
   type OnboardingConnectChoice, type OnboardingFacts, type OnboardingLabels, type OnboardingPresetRow, type OnboardingStepId,
 } from '../components/onboarding-wizard.ts'
@@ -26,7 +26,7 @@ import { ACCOUNT_SETTINGS_NS } from './provider-account.ts'
 import { startSignIn, type SignInEnd, type SignInFlow, type SignInSnapshot } from './account-sign-in.ts'
 import { openModelPicker } from './model-commands.ts'
 import { openUiOverlay } from './ui-overlay.ts'
-import { LANGUAGES, THEMES, commitLanguage, initialChoice } from './onboarding-language.ts'
+import { LANGUAGES, STARTUPS, THEMES, commitLanguage, commitStartup, initialChoice, persist } from './onboarding-language.ts'
 import { themeLabel, themeName } from './theme-names.ts'
 import type { PermissionPresetsService } from './permission-panel.ts'
 import { interactionTranslator } from './locale.ts'
@@ -94,6 +94,7 @@ export function apply(ctx: Context): void {
     /* what the guide has done so far; it outlives each republished node */
     const state = {
       languageChosen: undefined as string | undefined,
+      startupChosen: undefined as string | undefined,
       keyEntry: false,
       observedConfigured: false,
       connection: 'pending' as 'pending' | 'account' | 'key' | 'skipped',
@@ -126,6 +127,7 @@ export function apply(ctx: Context): void {
       language: t('Language'),
       permissions: t('Permissions'),
       theme: t('Theme'),
+      startup: t('On start'),
       connectIntro: t('Mayfly needs a DeepSeek connection to start.'),
       signIn: {
         starting: t('Getting your sign-in link…'),
@@ -167,14 +169,16 @@ export function apply(ctx: Context): void {
     })
 
     const presetRows = (): readonly OnboardingPresetRow[] | undefined => {
+      if (presets === undefined) return undefined
+      /* no session exists yet at a first start: the choice is the default the first session takes */
       const agent = currentAgent()
-      if (presets === undefined || agent === null) return undefined
-      const current = presets.current(agent.session)
+      const current = agent === null ? presets.defaultPreset : presets.current(agent.session)
       return presets.names.map(preset => ({ id: preset, label: presets.optionOf(preset).name, current: preset === current }))
     }
 
     const summary = (): OnboardingFacts['summary'] => [
       ...state.languageChosen === undefined ? [] : [{ text: t('Language: {language} · Theme: {theme}', { language: state.languageChosen, theme: themeName(current.theme, t) }), done: true }],
+      ...state.startupChosen === undefined ? [] : [{ text: t('On start: {startup}', { startup: state.startupChosen }), done: true }],
       state.connection === 'account' ? { text: t('Connected with a DeepSeek account'), done: true }
         : state.connection === 'key' ? { text: t('Connected with an API key'), done: true }
         : { text: t('DeepSeek not connected · /provider to connect'), done: false },
@@ -205,6 +209,7 @@ export function apply(ctx: Context): void {
         activeId: target,
         preferences: {
           language: { value: choice.language, theme: choice.theme, languages: LANGUAGES, themes: THEMES.map(key => ({ id: key, label: themeLabel(key, t) })) },
+          startup: { value: choice.startup, options: STARTUPS.map(id => ({ id, label: t(id === 'splash' ? 'Splash' : 'Conversation') })) },
           ...rows === undefined ? {} : { permissions: rows },
         },
         connect: { canSignIn: signInRoute !== undefined, keyEntry: state.keyEntry, ...state.connection === 'account' ? { connected: 'account' as const } : {}, ...signIn === undefined ? {} : { signIn } },
@@ -311,12 +316,19 @@ export function apply(ctx: Context): void {
       /* the submission acknowledges the form: its values are the baseline from here on */
       baseline.language = current.language
       baseline.theme = current.theme
+      const chosenStartup = STARTUPS.find(id => id === fieldValue(submission, ONBOARDING_PREFERENCES_FORM, ONBOARDING_STARTUP_FIELD))
+      if (chosenStartup === undefined) return { kind: 'failed', message: t('Choose what to show on start') }
+      current.startup = chosenStartup
+      state.startupChosen = t(chosenStartup === 'splash' ? 'Splash' : 'Conversation')
+      baseline.startup = chosenStartup
+      await commitStartup(ctx, chosenStartup)
       const chosen = fieldValue(submission, ONBOARDING_PREFERENCES_FORM, ONBOARDING_PERMISSION_FIELD)
       if (presets !== undefined && commands !== undefined && typeof chosen === 'string') {
         const agent = currentAgent()
         if (!presets.names.includes(chosen)) return { kind: 'failed', message: t('permission command is unavailable') }
-        if (agent === null) return { kind: 'failed', message: t('permission target changed; action cancelled') }
-        if (chosen !== presets.current(agent.session)) {
+        /* the default every later session takes; a session already open is switched below */
+        if (chosen !== presets.defaultPreset) await persist(ctx, 'permission', { op: 'set', path: ['defaultPreset'], value: chosen })
+        if (agent !== null && chosen !== presets.current(agent.session)) {
           try {
             const execution = await commands.execute(agent, `/permission ${chosen}`, [], signal)
             if (signal.aborted) return { kind: 'cancelled' }
@@ -449,10 +461,9 @@ export function apply(ctx: Context): void {
     open()
   }
   ctx.plugin({
-    name: 'mayfly-onboarding-readiness', inject: ['mayflyCurrentAgent'],
+    name: 'mayfly-onboarding-readiness', inject: ['mayflySessionStart'],
     apply(reader: Context) {
-      const off = reader.mayflyCurrentAgent.subscribe(agent => {
-        if (agent === null) return
+      const off = reader.mayflySessionStart.onBooted(() => {
         void check().catch((error: unknown) => {
           ctx.logger.warn(`provider onboarding could not open: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}`)
           if (lifetime.signal.aborted || ctx.mayflyOverlays.focus('mayfly.provider.onboarding')) return

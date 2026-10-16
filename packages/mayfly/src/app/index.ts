@@ -17,6 +17,7 @@ import type {} from '@deepseek-ai/cordis-plugin-loader'
 import type {} from '@deepseek-ai/dsh-cmdline'
 import { MayflyConversationsService } from './conversation-views.ts'
 import { MayflyCurrentAgentService } from './current-agent.ts'
+import { MayflySessionStartService } from './session-start.ts'
 import { interruptAgent, isAgentRunning } from './agent-interrupt.ts'
 import { armExitEpitaph, epitaphFor } from './exit-epitaph.ts'
 import { profileNameFromArgv } from '../internal/profile.ts'
@@ -24,6 +25,7 @@ import { createMayflyRequestController } from './request-lifecycle.ts'
 import { installRetractionService } from './retraction.ts'
 
 export { MayflyCurrentAgentService } from './current-agent.ts'
+export { MayflySessionStartService } from './session-start.ts'
 export {
   conversationId,
   MAX_SIDE_CONVERSATIONS,
@@ -172,17 +174,49 @@ export function apply(ctx: Context, config: Config): void {
     return resolvedAgent(await controller.resolveAgent(SessionId(sessionId)))
   }
 
-  const create = async (agentPreset?: string): Promise<Agent> => {
+  /** The agent preset `/new <preset>` asked for; the next session created takes it. */
+  let pendingPreset: string | undefined
+
+  const create = async (): Promise<Agent> => {
+    const agentPreset = pendingPreset
     const created = await controller.create({
       cwd: process.cwd(),
       ...agentPreset === undefined ? {} : { agentPreset },
     })
+    pendingPreset = undefined
     return resolve(String(created.sessionId))
   }
+
+  // Starts that wait on the chain; an unload rejects them so no caller hangs.
+  const waiting = new Set<(error: Error) => void>()
+  ctx.effect(() => () => {
+    for (const reject of waiting) reject(new Error('mayfly-app unloaded before the session started'))
+    waiting.clear()
+  })
+
+  /** The primary Agent, created and selected on the chain when none is selected. */
+  const start = (): Promise<Agent> => new Promise<Agent>((resolveStart, reject) => {
+    waiting.add(reject)
+    enqueue(async () => {
+      try {
+        const agent = current.primary() ?? await create()
+        if (current.primary() !== agent) select(agent)
+        resolveStart(agent)
+      } catch (error) {
+        reject(error instanceof Error ? error : new Error(describe(error)))
+      } finally {
+        waiting.delete(reject)
+      }
+    })
+  })
+  const starter = new MayflySessionStartService(ctx, start)
 
   enqueue(async () => {
     await ctx.get('loader')?.await()
     try {
+      // A resumed session or a task starts at once; otherwise no session
+      // exists until the first message, so the store never fills with empty ones.
+      if (config.resume === undefined && config.task === undefined) return
       const agent = config.resume === undefined ? await create() : await resolve(config.resume)
       select(agent)
       /* the no-task startup path is covered explicitly; V8 retains a synthetic empty else arm. */
@@ -199,6 +233,10 @@ export function apply(ctx: Context, config: Config): void {
       if (!live) return
       io.stderr.write(`dsh: ${describe(error)}\n`)
       io.exit(1)
+    } finally {
+      // The launch values are applied (or absent): the post-boot signal the
+      // settings sync, the first-run guide, and the greeting wait for.
+      if (live) starter.markBooted()
     }
   })
 
@@ -210,11 +248,13 @@ export function apply(ctx: Context, config: Config): void {
     })
   })
 
+  // `/new` and `/clear` leave the session for the start surface; the next
+  // message creates the fresh one (with the preset asked for here).
   ctx.on('mayfly/request-new', (agentPreset) => {
     enqueue(async () => {
       conversations.closeSides()
-      try { select(await create(agentPreset)) }
-      catch (error) { io.stderr.write(`dsh: could not start a new session: ${describe(error)}\n`) }
+      pendingPreset = agentPreset
+      conversations.selectPrimary(null)
     })
   })
 

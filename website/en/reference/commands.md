@@ -7,7 +7,7 @@ Typing `/` triggers fuzzy autocomplete and discovery hints (see [Input editor](/
 | Command | Aliases | Arguments | Description | Source |
 | --- | --- | --- | --- | --- |
 | `/quit` | `/q` `/exit` | — | Exit Mayfly | `mayfly-commands` |
-| `/new` | `/clear` | `[preset]` | Start a new session (optionally under a chosen agent preset) | `mayfly-commands` |
+| `/new` | `/clear` | `[preset]` | Return to the start screen; the next message creates the new session (optionally under a chosen agent preset) | `mayfly-commands` |
 | `/fork` | — | — | Fork the current session into a new one | `mayfly-commands` |
 | `/rewind` | — | — | Create a safe branch from an earlier user turn | `mayfly-commands` |
 | `/sessions` | `/resume` | `[<session-id>]` | Browse sessions by workspace (cwd), then open a conversation; an id resumes directly | `mayfly-commands` |

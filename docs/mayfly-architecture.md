@@ -95,7 +95,10 @@ plugin bridge, and no app session facade.
   displayed selection. It does not reimplement the Harness
   command/tool/projection APIs, and it does not depend on the terminal
   screen, so a core/theme reload creates no new session and resets no
-  selection. At most 32 side conversations stay open; the least recent
+  selection. Startup selects no Agent: the session behind the first message
+  is created on demand (`mayflySessionStart`), `/new` and `/clear` deselect
+  the primary, and the commands that need no Agent run from the
+  sessionless table. At most 32 side conversations stay open; the least recent
   hidden one drops first.
 - A BTW Agent still carries the complete seed as model context, but its
   conversation records a `historyFloorSeq`, and the transcript only presents

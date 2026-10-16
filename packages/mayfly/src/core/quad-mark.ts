@@ -257,3 +257,77 @@ export function flyInRows(scene: MarkScene, t: number): string[] {
   // The text shows only where the mark has passed: right of its trailing edge.
   return composeRows(scene, canvas, under, Math.floor((at.x + markWidth) / 2))
 }
+
+// ------------------------------------------------------------------------------------------------ centered stage
+/**
+ * Enlarge pixel rows: every pixel becomes a `factor` × `factor` block. The row count stays even when `factor` is even
+ * or the rows already were.
+ * @param rows - the mark's pixels.
+ * @param factor - whole-number scale, at least 1.
+ * @returns the scaled rows.
+ */
+export function scaleRows(rows: readonly string[], factor: number): string[] {
+  if (factor <= 1) return [...rows]
+  return rows.flatMap(row => {
+    const wide = [...row].map(key => key.repeat(factor)).join('')
+    return Array.from({ length: factor }, () => wide)
+  })
+}
+
+/** A mark on its own centered stage, as the launch screen draws it. */
+export interface MarkStage {
+  /** The mark's pixels at rest. */
+  readonly rows: readonly string[]
+  /** The mark's pixels with the wings up. */
+  readonly beat: readonly string[]
+  /** The inks, by the order of the pixel keys: body, wings, trail near, trail mid, trail far. */
+  readonly inks: readonly MayflyColorFn[]
+  /** The viewport width in columns. */
+  readonly width: number
+  /** The column of the mark's left edge once it has landed. */
+  readonly left: number
+}
+
+/** The trail behind a mark that enters from the left: pixels dropped to its left, fading as they age. */
+function trailBehind(t: number, stage: MarkStage, markHeight: number): Canvas {
+  const STEP = 45
+  const now = Math.floor(t / STEP)
+  const under: Canvas = new Map()
+  for (let k = 1; k <= 4; k += 1) {
+    const ts = (now - k) * STEP
+    if (ts < 0 || ts >= FLY_IN_FLIGHT_MS * 0.65) continue
+    const key = k === 1 ? 'a' : k === 2 ? 'b' : 'c'
+    const n = now - k
+    const q = stageFlight(ts, stage)
+    under.set(`${q - 2 - Math.round(jitter(n) * 2)},${Math.round(markHeight / 2) + Math.round(jitter(n + 3) * 3) - 1}`, key)
+    under.set(`${q - 4 - Math.round(jitter(n + 7) * 3)},${2 + Math.round(jitter(n + 11) * (markHeight - 3))}`, key)
+  }
+  return under
+}
+
+/** The mark's left pixel at `t`: an ease-out from beyond the left edge into its slot. */
+function stageFlight(t: number, stage: MarkStage): number {
+  const markWidth = stage.rows[0]?.length ?? 0
+  const slot = stage.left * 2
+  const u = Math.min(1, Math.max(0, t / FLY_IN_FLIGHT_MS))
+  return Math.round(-markWidth + (slot + markWidth) * easeOut(u))
+}
+
+/**
+ * The cell rows of a mark alone on a stage of `stage.width` columns: at rest in its slot, or `t` milliseconds into the
+ * flight from the left edge (the launch screen's fly-in, the banner's mirrored). From {@link FLY_IN_TOTAL_MS} on it
+ * rests.
+ * @param stage - the mark, its inks, and the slot.
+ * @param t - the time since the fly-in started, or undefined for the mark at rest.
+ * @returns one row per cell row of the mark, none wider than the stage.
+ */
+export function stageRows(stage: MarkStage, t?: number): string[] {
+  const scene: MarkScene = { rows: stage.rows, beat: stage.beat, inks: stage.inks, gap: 0, lines: [], width: stage.width }
+  const canvas: Canvas = new Map()
+  if (t === undefined || t >= FLY_IN_TOTAL_MS) {
+    stamp(canvas, stage.rows, stage.left * 2, 0)
+    return composeRows(scene, canvas, new Map(), 0)
+  }
+  stamp(canvas, wingsUp(t) ? stage.beat : stage.rows, stageFlight(t, stage), 0)
+  return composeRows(scene, canvas, trailBehind(t, stage, stage.rows.length), 0)
+}

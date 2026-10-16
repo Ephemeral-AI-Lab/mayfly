@@ -60,7 +60,7 @@ import { Editor } from '../components/editor.ts'
 import { CompletionDrawer } from '../core/completion-drawer.ts'
 import { normalizeWheelInput } from '../core/terminal.ts'
 import { CURSOR_RIGHT_SEQUENCE } from '../core/key-actions.ts'
-import { parseCommand } from '@deepseek-ai/dsh-commands'
+import { parseCommand, type CommandResult } from '@deepseek-ai/dsh-commands'
 import type { PromptContentPart, StoredImageAttachment } from '@deepseek-ai/dsh-attachment'
 import { createUserMessage, type ContentBlock } from '@deepseek-ai/dsh-llm'
 import type { SubagentPromptRequestId } from '@deepseek-ai/dsh-subagent'
@@ -111,6 +111,7 @@ import { cycleMode } from './mode-commands.ts'
 import { openPermissionPanel } from './permission-panel.ts'
 import { rewriteSkillTokens } from './skills-catalog.ts'
 import { filterSlashCommands } from './slash-filter.ts'
+import { listCommands } from './sessionless-commands.ts'
 
 /** Window for the double Ctrl-C exit: presses farther apart re-arm the hint. */
 const INTERRUPT_DOUBLE_PRESS_MS = 1000
@@ -169,19 +170,11 @@ async function subagentPromptParts(attachments: AttachmentReader | undefined, bl
   return parts
 }
 
-/** Command descriptors projected through the app-owned session boundary. */
-function availableCommands(ctx: Context, agent: Agent) {
-  return ctx.commands.list(agent).map(command => ({
-    name: command.name,
-    description: command.description,
-    ...(command.input?.hint === undefined ? {} : { input: { hint: command.input.hint } }),
-  }))
-}
 
 /** Stable Cordis plugin name. */
 export const name = 'mayfly-input'
 /** Services required before the editor can mount. */
-export const inject = ['mayflyScreen', 'mayflyTheme', 'mayflyComponents', 'mayflyKeymap', 'mayflyPromptEditor', 'mayflyPromptSubmissions', 'mayflyUiInteraction', 'mayflyOverlays', 'commands', 'sessionProjections', 'agents', 'subagents', 'mayflyConversations', 'mayflyCurrentAgent', 'mayflyRequests', 'mayflyRetractions', 'mayflySkillsCatalog', 'mayflyInteractionState', 'mayflyEditorExtensions']
+export const inject = ['mayflyScreen', 'mayflyTheme', 'mayflyComponents', 'mayflyKeymap', 'mayflyPromptEditor', 'mayflyPromptSubmissions', 'mayflyUiInteraction', 'mayflyOverlays', 'commands', 'sessionProjections', 'agents', 'subagents', 'mayflyConversations', 'mayflyCurrentAgent', 'mayflySessionStart', 'mayflyRequests', 'mayflyRetractions', 'mayflySkillsCatalog', 'mayflyInteractionState', 'mayflyEditorExtensions']
 
 /**
  * Mount the input editor with the hint line pinned below it and focus the
@@ -282,13 +275,11 @@ export function apply(ctx: Context): void {
     const parsed = parseCommand(currentText)
     // A bare slash cannot parse (parseCommand requires a leading letter).
     if (parsed === undefined && currentText !== '/') return undefined
-    const agent = ctx.mayflyCurrentAgent.current()
-    if (agent === null) return undefined
     // The same S14 fuzzy filter the dropdown uses, so the feedback agrees
     // with what the dropdown just failed to list. The dropdown closes
     // itself on an empty match, so this notice is the only signal.
     const matches = filterSlashCommands(
-      aliases.withCommandAliases(availableCommands(ctx, agent)),
+      aliases.withCommandAliases(listCommands(ctx, ctx.mayflyCurrentAgent.current())),
       parsed?.name ?? '',
       ctx.mayflyComponents,
     )
@@ -560,6 +551,102 @@ export function apply(ctx: Context): void {
   }
 
   /**
+   * Send one transformed message to the Agent's inbox and arm its retraction
+   * and queued-draft restore data.
+   * @returns false when the Agent refused the message (the transform is rolled back and the error shown).
+   */
+  function deliverMessage(
+    agent: Agent,
+    value: string,
+    line: string,
+    submitted: MayflySubmittedDraft | undefined,
+    transformed: ReturnType<typeof applyReversibleSubmitTransformers>,
+  ): boolean {
+    try {
+      const message = createUserMessage({ content: transformed.blocks, source: { kind: 'user' } })
+      agent.followup(message)
+      // Keep restore data only while the message still waits in the
+      // inbox — an idle agent claims it inside this call, and only a
+      // pending entry is withdrawable.
+      if (messagePending(agent, String(message.id))) {
+        queuedDrafts.set(String(message.id), {
+          ...(submitted === undefined ? {} : { buffer: submitted }),
+          historyText: line,
+          ...(transformed.rollback === undefined ? {} : { rollback: transformed.rollback }),
+        })
+      }
+      retractionCandidate = {
+        messageId: String(message.id),
+        editorText: value,
+        historyText: line,
+        ...(submitted === undefined ? {} : { submitted }),
+        ...(transformed.rollback === undefined ? {} : { rollback: transformed.rollback }),
+      }
+      return true
+    } catch (error) {
+      transformed.rollback?.()
+      showFeedback('prompt-submit', error instanceof Error ? error.message : String(error), 'error')
+      return false
+    }
+  }
+
+  /**
+   * A line submitted while no session is selected. A Mayfly-owned command
+   * runs without an Agent; any other command asks for a message first; a
+   * message starts the session, and only then is delivered.
+   */
+  function submitWithoutSession(
+    value: string,
+    line: string,
+    parsed: ReturnType<typeof parseCommand>,
+    submitted: MayflySubmittedDraft | undefined,
+  ): void {
+    if (parsed !== undefined) {
+      const commandName = aliases.canonicalOf(parsed.name) ?? parsed.name
+      const command = ctx.mayflyInteractionState.sessionless.find(commandName)
+      if (command === undefined) {
+        showFeedback('prompt-submit', t('Send a message first: /{command} needs a session', { command: commandName }), 'warning')
+        return
+      }
+      reportCommand(commandName, line, Promise.resolve().then(() => command.handler({ rawInput: parsed.rawInput, signal: new AbortController().signal })).then(result => ({ result })))
+      return
+    }
+    void ctx.mayflySessionStart.ensure().then(
+      (agent) => {
+        if (unloaded) return
+        // Selecting the new session reset the queued-draft state; the first message arms it afresh.
+        if (deliverMessage(agent, value, line, submitted, transformSubmission(value, line))) ctx.mayflyRequests.begin('main')
+      },
+      (error: unknown) => {
+        if (unloaded) return
+        // Nothing reached a session: the text goes back to the editor unless a newer draft already fills it.
+        if (editor.getText() === '') restoreSubmission(value, line, submitted)
+        showFeedback('prompt-submit', t('could not start a session: {error}', { error: error instanceof Error ? error.message : String(error) }), 'error')
+        screen.requestRender()
+      },
+    )
+  }
+
+  /** Show one command's settled outcome, unless the fiber went with it (`/theme` unloads it mid-execution). */
+  function reportCommand(commandName: string, line: string, settled: Promise<{ readonly result: CommandResult } | undefined>): void {
+    void settled.then(
+      (execution) => {
+        // The fiber may be gone — `/theme` unloads it mid-execution — and
+        // the reloaded fiber repaints, so a late notice is moot.
+        if (unloaded) return
+        if (execution === undefined) showFeedback('command', t('unknown command: {command}', { command: line }), 'error')
+        else if (execution.result.kind === 'error') showFeedback('command', execution.result.text, 'error')
+        else if (execution.result.text !== undefined && !QUIET_COMMANDS.has(commandName)) showFeedback('command', execution.result.text, 'info')
+      },
+      (error: unknown) => {
+        if (unloaded) return
+        /* execute() normalizes handler rejections to Error before this rejection handler runs */
+        showFeedback('command', error instanceof Error ? error.message : String(error), 'error')
+      },
+    )
+  }
+
+  /**
    * Route one submitted line to the command registry or the agent, record
    * it in the editor history, and clear the buffer.
    * @param value - the expanded editor content.
@@ -592,7 +679,7 @@ export function apply(ctx: Context): void {
     if (agent === null) {
       const displayed = conversations.displayed()
       if (displayed === null) {
-        showFeedback('prompt-submit', t('no active session'), 'error')
+        submitWithoutSession(value, line, parsed, submitted)
         return
       }
       // A stored continuable child is sent to like a live one: the prompt wakes it.
@@ -612,31 +699,7 @@ export function apply(ctx: Context): void {
         deliverSubagentPrompt(value, line, transformed, submitted, 'queue')
         return
       }
-      try {
-        const message = createUserMessage({ content: transformed.blocks, source: { kind: 'user' } })
-        agent.followup(message)
-        // Keep restore data only while the message still waits in the
-        // inbox — an idle agent claims it inside this call, and only a
-        // pending entry is withdrawable.
-        if (messagePending(agent, String(message.id))) {
-          queuedDrafts.set(String(message.id), {
-            ...(submitted === undefined ? {} : { buffer: submitted }),
-            historyText: line,
-            ...(transformed.rollback === undefined ? {} : { rollback: transformed.rollback }),
-          })
-        }
-        retractionCandidate = {
-          messageId: String(message.id),
-          editorText: value,
-          historyText: line,
-          ...(submitted === undefined ? {} : { submitted }),
-          ...(transformed.rollback === undefined ? {} : { rollback: transformed.rollback }),
-        }
-      } catch (error) {
-        transformed.rollback?.()
-        showFeedback('prompt-submit', error instanceof Error ? error.message : String(error), 'error')
-        return
-      }
+      if (!deliverMessage(agent, value, line, submitted, transformed)) return
       ctx.mayflyRequests.begin(displayed?.kind === 'btw' ? 'btw' : 'main')
       // The S29 skill pipeline rewrites only model-facing text; the editor
       // candidate and history retain exactly what the user submitted.
@@ -653,26 +716,12 @@ export function apply(ctx: Context): void {
     // input after the name travels untouched.
     const canonical = aliases.canonicalOf(parsed.name)
     const commandName = canonical ?? parsed.name
-    void ctx.commands.execute(
+    reportCommand(commandName, line, ctx.commands.execute(
       agent,
       canonical === undefined ? line : `/${commandName}${parsed.rawInput}`,
       [],
       new AbortController().signal,
-    ).then(
-      (execution) => {
-        // The fiber may be gone — `/theme` unloads it mid-execution — and
-        // the reloaded fiber repaints, so a late notice is moot.
-        if (unloaded) return
-        if (execution === undefined) showFeedback('command', t('unknown command: {command}', { command: line }), 'error')
-        else if (execution.result.kind === 'error') showFeedback('command', execution.result.text, 'error')
-        else if (execution.result.text !== undefined && !QUIET_COMMANDS.has(commandName)) showFeedback('command', execution.result.text, 'info')
-      },
-      (error: unknown) => {
-        if (unloaded) return
-        /* execute() normalizes handler rejections to Error before this rejection handler runs */
-        showFeedback('command', error instanceof Error ? error.message : String(error), 'error')
-      },
-    )
+    ))
   }
 
   /**

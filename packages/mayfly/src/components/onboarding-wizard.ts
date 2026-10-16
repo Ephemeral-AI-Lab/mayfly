@@ -15,6 +15,7 @@ export const ONBOARDING_CONNECT = 'connect'
 export const ONBOARDING_READY = 'ready'
 export const ONBOARDING_PREFERENCES_FORM = 'preferences-form'
 export const ONBOARDING_PERMISSION_FIELD = 'permission'
+export const ONBOARDING_STARTUP_FIELD = 'startup'
 export const ONBOARDING_CONNECT_LIST = 'connect-options'
 export const ONBOARDING_KEY_FORM = 'key-form'
 export const ONBOARDING_KEY_FIELD = 'key'
@@ -50,6 +51,11 @@ export interface OnboardingFacts {
       readonly languages: readonly { readonly id: string, readonly label: string }[]
       readonly themes: readonly { readonly id: string, readonly label: string }[]
     }
+    /** What a start without a session shows, preselected with what is set now. */
+    readonly startup: {
+      readonly value: string
+      readonly options: readonly { readonly id: string, readonly label: string }[]
+    }
     /** Present when the composition has permission presets: the rows, the current one preselected. */
     readonly permissions?: readonly OnboardingPresetRow[]
   }
@@ -75,6 +81,7 @@ export interface OnboardingLabels {
   readonly language: string
   readonly permissions: string
   readonly theme: string
+  readonly startup: string
   readonly connectIntro: string
   readonly signIn: SignInLabels
   readonly account: string
@@ -96,7 +103,7 @@ export interface OnboardingLabels {
 const next = (stepId: OnboardingStepId): string => patterns.wizardNext(ONBOARDING_WIZARD, stepId)
 
 function preferencesBody(facts: OnboardingFacts['preferences'], labels: OnboardingLabels): MayflyUiNode {
-  const { language, permissions } = facts
+  const { language, startup, permissions } = facts
   const current = permissions?.find(row => row.current)
   return ui.stack.column([
     ui.text(labels.preferencesIntro),
@@ -105,6 +112,7 @@ function preferencesBody(facts: OnboardingFacts['preferences'], labels: Onboardi
       fields: [
         { kind: 'select' as const, id: 'language', label: labels.language, value: language.value, options: language.languages.map(item => ({ id: item.id, label: item.label })) },
         { kind: 'select' as const, id: 'theme', label: labels.theme, value: language.theme, options: language.themes.map(item => ({ id: item.id, label: item.label })) },
+        { kind: 'select' as const, id: ONBOARDING_STARTUP_FIELD, label: labels.startup, value: startup.value, options: startup.options.map(item => ({ id: item.id, label: item.label })) },
         ...permissions === undefined ? [] : [
           { kind: 'select' as const, id: ONBOARDING_PERMISSION_FIELD, label: labels.permissions, value: current?.id ?? null, options: permissions.map(row => ({ id: row.id, label: row.label })) },
         ],
