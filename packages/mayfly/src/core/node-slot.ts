@@ -54,6 +54,11 @@ export interface MayflyNodeSlot {
    * rows; the screen compares the number over time for its `N new turns` tally.
    */
   setTurns(latest: number): void
+  /**
+   * Whether the content holds a marker for messages the reader has not seen. The screen words its way back to the tail by it:
+   * the key goes to the marker first.
+   */
+  setMarked(marked: boolean): void
   /** Give the slot keyboard focus. */
   focus(): void
   /** Hand keyboard focus back to the prompt. */
@@ -70,6 +75,16 @@ export interface MayflyNodeSlot {
    * a list's `focusItem` moves is only the list's own, and the key that follows (`Enter`, `c`) acts on the focused row.
    */
   focusRow(controlId: string, itemId: string): void
+  /**
+   * Follow one item of a list the slot shows: while the slot is drawn as the scroll's content, each paint notes the line
+   * its first row stands on, for {@link MayflyNodeSlot.trackedRow}. `undefined` stops following.
+   */
+  track(controlId: string, itemId: string | undefined): void
+  /**
+   * The line the followed item's first row stands on among the scroll content's rows, as of the last paint.
+   * @returns the line, or `undefined` while no item is followed, it is not painted, or the slot is drawn focused (windowed).
+   */
+  trackedRow(): number | undefined
   /**
    * The row the cursor of a list control stands on.
    * @param controlId - the list's id.
@@ -151,9 +166,11 @@ class SlotAttachment {
     invalidate: () => void,
     private readonly flowRegion: boolean,
     private readonly hints: boolean,
+    tracking: { readonly controlId: string, readonly itemId: string | undefined },
   ) {
     this.runtime = new MayflyUiSurfaceRuntime(model, () => { invalidate(); compiler.requestRender() }, compiler.clock, compiler.images, () => { compiler.requestRender() }, compiler.content)
     this.runtime.flow = flowRegion
+    this.follow(tracking.controlId, tracking.itemId)
     this.off = model.subscribe(() => { compiler.requestRender() })
   }
 
@@ -161,6 +178,16 @@ class SlotAttachment {
   focus(focused: boolean): void {
     this.runtime.flow = this.flowRegion && !focused
   }
+
+  /** Follow one list item from the next paint (see {@link MayflyNodeSlot.track}). */
+  follow(controlId: string, itemId: string | undefined): void {
+    this.runtime.probe.controlId = controlId
+    this.runtime.probe.itemId = itemId
+    this.runtime.probe.line = undefined
+  }
+
+  /** The followed item's line in the slot's own rows, or `undefined` when the slot is not the scroll's flow content. */
+  get trackedLine(): number | undefined { return this.runtime.flow ? this.runtime.probe.line : undefined }
 
   /** Ask for a paint, so a pending focus is applied. */
   invalidateSoon(): void { this.compiler.requestRender() }
@@ -269,9 +296,13 @@ class NodeSlotLease implements MayflyNodeSlot {
   private published = false
   /** The newest turn the owner reported in this slot's content. */
   turns = 0
+  /** The owner reported a marker for unseen messages in this slot's content. */
+  marked = false
   private revision = 0
   /** The interaction owner that held this slot's model last; it outlives a renderer gap. */
   private interaction: UiInteractionService | undefined
+  /** The list item the owner follows; a new attachment starts from it, so a renderer gap keeps it. */
+  private tracking: { readonly controlId: string, readonly itemId: string | undefined } = { controlId: '', itemId: undefined }
 
   constructor(
     readonly id: string,
@@ -309,6 +340,12 @@ class NodeSlotLease implements MayflyNodeSlot {
     if (this.region === 'content') this.host.contentTurnsChanged()
   }
 
+  setMarked(marked: boolean): void {
+    if (!this.live || marked === this.marked) return
+    this.marked = marked
+    if (this.region === 'content') this.host.contentTurnsChanged()
+  }
+
   /** Whether the lease shows content, so there is something to focus. */
   get filled(): boolean { return this.live && this.node !== null }
 
@@ -323,6 +360,18 @@ class NodeSlotLease implements MayflyNodeSlot {
   spotlight(on: boolean): void { if (this.live) this.surface.spotlight = on }
 
   setKeys(keys: Readonly<Record<string, string>>): void { if (this.live) this.surface.keys = keys }
+
+  track(controlId: string, itemId: string | undefined): void {
+    if (!this.live) return
+    this.tracking = { controlId, itemId }
+    this.surface.attachment?.follow(controlId, itemId)
+  }
+
+  trackedRow(): number | undefined {
+    const line = this.surface.attachment?.trackedLine
+    const start = this.live && line !== undefined ? this.host.contentStart(this.id) : undefined
+    return start === undefined || line === undefined ? undefined : start + line
+  }
 
   focusRow(controlId: string, itemId: string): void {
     const attachment = this.surface.attachment
@@ -366,7 +415,7 @@ class NodeSlotLease implements MayflyNodeSlot {
       })
     }
     // The route is one object per id for as long as the owner keeps the id, so the owner hands every lease of it the one model.
-    this.surface.attachment ??= new SlotAttachment(model, compiler, this.viewport, () => { this.surface.invalidate() }, this.region === 'content', this.options.hints !== false)
+    this.surface.attachment ??= new SlotAttachment(model, compiler, this.viewport, () => { this.surface.invalidate() }, this.region === 'content', this.options.hints !== false, this.tracking)
   }
 
   /** A renderer gap: the compile state goes, the model stays. */
@@ -404,7 +453,11 @@ export class NodeSlotHost {
     private readonly mountScreenSlot: (id: string, region: MayflyNodeSlotRegion, component: MayflyComponent) => MayflyScreenSlot,
     private readonly viewport: (region: MayflyNodeSlotRegion) => MayflyUiViewport,
     private readonly focusPromptHost: () => void,
+    private readonly contentStartOf: (id: string) => number | undefined,
   ) {}
+
+  /** The line the slot's first row stands on among the scroll content's rows, or `undefined` when it is not in the scroll. */
+  contentStart(id: string): number | undefined { return this.contentStartOf(id) }
 
   /** Hand keyboard focus back to the prompt. */
   focusPrompt(): void { this.focusPromptHost() }
@@ -442,6 +495,12 @@ export class NodeSlotHost {
     let latest = 0
     for (const lease of this.leases.values()) if (lease.region === 'content') latest = Math.max(latest, lease.turns)
     return latest
+  }
+
+  /** Whether the owner of a scroll region's slot reported a marker for messages the reader has not seen. */
+  contentMarked(): boolean {
+    for (const lease of this.leases.values()) if (lease.region === 'content' && lease.marked) return true
+    return false
   }
 
   /** Claims the region's host for `id`; it throws, leaving nothing behind, when the host is unknown or taken. */

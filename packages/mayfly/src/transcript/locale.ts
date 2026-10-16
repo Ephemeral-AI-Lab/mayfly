@@ -129,6 +129,7 @@ const TRANSCRIPT_MESSAGES = identityCatalog({
   'conversation unavailable': '对话不可用',
   'goal': '目标',
   'goal round {round}': '目标第 {round} 轮',
+  'New messages': '新消息',
   'Goal set': '目标已设定',
   'Goal edited': '目标已修改',
   'Goal paused': '目标已暂停',

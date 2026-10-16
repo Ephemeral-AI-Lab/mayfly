@@ -32,6 +32,10 @@ const PANELS = [
 
 /** What each replay shows, as the sources whose change it can reveal. */
 const COVERS = {
+  newMessages: [
+    `${TRANSCRIPT}new-messages.ts`, `${TRANSCRIPT}transcript-model.ts`, ...STREAM, `${INTERACTION}input-plugin.ts`,
+    'packages/mayfly/src/core/terminal.ts', 'packages/mayfly/src/core/node-slot.ts', 'packages/mayfly/src/core/ui-list-paint.ts', 'packages/mayfly/src/core/surface-renderer.ts',
+  ],
   mergePanels: [...PANELS, `${TRANSCRIPT}status-*.ts`, 'packages/mayfly/src/core/views-lane.ts', `${INTERACTION}questions-plugin.ts`],
   mergeHeights: [...PANELS, 'packages/mayfly/src/core/views-lane.ts', `${TRANSCRIPT}view-items.ts`, `${TRANSCRIPT}status-*.ts`, `${TRANSCRIPT}pane-todo.ts`, `${INTERACTION}questions-plugin.ts`],
   mergeEsc: ['packages/mayfly/src/app/agent-interrupt.ts', 'packages/mayfly/src/app/index.ts', `${INTERACTION}input-plugin.ts`, `${TRANSCRIPT}status-agents.ts`, `${TRANSCRIPT}status-jobs.ts`, ...NOTIFICATION],
@@ -90,6 +94,25 @@ const REVIEW = {
     ],
     differs: [],
     pending: ['The split view of /plugin keeps its own viewport bands for the detail beside the list (the detail follows the cursor, not a tab); it is not a page switch.'],
+  },
+  newMessages: {
+    reference: 'the goal round rule (component-library §5.2) · Ctrl+↓ in docs/interaction-model.md',
+    implemented: [
+      'While the view is scrolled away from the tail (mouse wheel), a rule `New messages` stands before the first block that arrives; blocks that were already there are not marked.',
+      'Ctrl+↓ with the rule pending brings it to the top of the view with three rows of history above it; a second press (or none pending) follows the tail as before. End goes straight down.',
+      'The rule leaves once the view has gone past it, or it has stood on screen for 5 s (counted over the time it is in view; scrolled out of view, the count waits).',
+      'The tail chip reads `New messages · Ctrl+↓` while the rule is pending.',
+    ],
+    focus: [
+      { look: 'The rule before the first block that arrived while you were away; the chip with the key', how: 'checkpoints `away`, `arrived` (the wheel scrolls up first)' },
+      { look: 'Ctrl+↓: the rule at the top, three rows of history above it, the new blocks below', how: 'checkpoint `jumped`' },
+      { look: 'The rule gone after 5 s on screen', how: 'checkpoint `expired`' },
+      { look: 'A second Ctrl+↓ follows the tail', how: 'checkpoint `tail`' },
+      { look: 'Scrolling down past the rule removes it with no jump of what you read', how: 'checkpoints `second`, `passed`' },
+      { look: 'The rule at 60 columns', how: 'checkpoint `narrow-60`' },
+    ],
+    differs: [],
+    pending: ['The rule is the muted tone of the goal round rule; the owner may choose another tone.'],
   },
   mergeEsc: {
     scene: 15,
@@ -218,6 +241,21 @@ const SCRIPTS = {
     key('right'), checkpoint('wizard-notes'),
     key('right'), checkpoint('wizard-review'),
   ],
+  // The new-messages rule: scroll away with the wheel, a block arrives (the rule and the chip), Ctrl+↓ brings the rule to the top, it
+  // leaves after 5 s on screen; the next arrival is left unread and scrolled past, and a second Ctrl+↓ follows the tail; 60 columns.
+  newMessages: [
+    play('history'), checkpoint('history'),
+    wheel('up', { count: 12 }), checkpoint('away'),
+    play('first'), checkpoint('arrived'),
+    key('ctrl+down'), checkpoint('jumped'),
+    wait(6000), checkpoint('expired'),
+    play('second'), checkpoint('second'),
+    wheel('down', { count: 30 }), checkpoint('passed'),
+    wheel('up', { count: 12 }), play('third'), checkpoint('third'),
+    key('ctrl+down'), key('ctrl+down'), checkpoint('tail'),
+    resize(60, 30), checkpoint('narrow-60'),
+    resize(100, 30),
+  ],
   // Esc stops your turn only: a real background subagent, the watcher, and a queued message stay; Esc on a panel closes it;
   // a foreground subagent stops with the turn.
   mergeEsc: [
@@ -288,6 +326,7 @@ const SIZES = {
   mergePanels: [[100, 30]],
   mergeHeights: [[100, 30]],
   mergeEsc: [[100, 30]],
+  newMessages: [[100, 30]],
   mergeDock: [[100, 30]],
   mergeConversations: [[100, 30]],
 }

@@ -95,6 +95,8 @@ class FrameClampedContainer extends Container {
     readonly parts: readonly string[][]
     readonly rows: string[]
   } | undefined
+  /** The row each child's first line stood on in the last frame. */
+  private readonly starts = new Map<Component, number>()
 
   constructor(private readonly overflow: OverflowSink) {
     super()
@@ -105,7 +107,9 @@ class FrameClampedContainer extends Container {
     const cached = this.cached
     let reusable = cached !== undefined && cached.width === width && cached.children.length === children.length
     let offset = 0
+    this.starts.clear()
     const parts = children.map((child, index) => {
+      this.starts.set(child, offset)
       const part = this.clampChild(child, width, offset)
       offset += part.length
       if (reusable && (cached!.children[index] !== child || cached!.parts[index] !== part)) reusable = false
@@ -115,6 +119,11 @@ class FrameClampedContainer extends Container {
     const rows = parts.length === 1 ? parts[0]! : concatRows(...parts)
     this.cached = { width, children, parts, rows }
     return rows
+  }
+
+  /** The row `child`'s first line stood on in the last frame, or `undefined` when it was not a child of it. */
+  startOf(child: Component): number | undefined {
+    return this.starts.get(child)
   }
 
   /**
@@ -562,6 +571,18 @@ export interface MayflyTerminalRuntime {
    */
   watchContentTail(listener: () => void): () => void
   followContent(): void
+  /**
+   * Scroll the content so `row` stands at the top of the view, on the alternate screen; a row too low for a full view
+   * lands on the tail, which follows it again.
+   * @param row - the content row to bring to the top.
+   */
+  scrollContentTo(row: number): void
+  /**
+   * The row a root component's first line stands on among the scroll content's rows, as of the last frame.
+   * @param component - a component mounted with `addChild`.
+   * @returns the row, or `undefined` on the main screen or when the component is not in the content.
+   */
+  contentStart(component: MayflyComponent): number | undefined
   setContentScrollHandler(handler: ((data: string) => boolean) | undefined): () => void
   /**
    * Show an overlay on the live renderer.
@@ -615,6 +636,9 @@ export interface MayflyContentTail {
   readonly away: boolean
   /** Rows that arrived below the view since it left the tail. */
   readonly unseen: number
+  /** The content row the view's top stands on, and how many rows the view shows. */
+  readonly top: number
+  readonly viewport: number
   /** The viewport's last row and the columns the content region spans, in screen cells. */
   readonly row: number
   readonly col: number
@@ -1169,10 +1193,18 @@ export function startMayflyTerminal(
       return {
         away,
         unseen: away ? Math.max(0, scrollView.measuredHeight - scrollView.tailHeight) : 0,
+        top: scrollView.scrollTop,
+        viewport: scrollView.viewportHeight,
         row: lastSurfaceHeaderRows + Math.max(1, scrollView.viewportHeight) - 1,
         col: left,
         width: Math.max(1, terminal.columns - left - right),
       }
+    },
+    scrollContentTo(row) {
+      scrollView?.scrollTo(Math.max(0, Math.floor(row)))
+    },
+    contentStart(component) {
+      return contentContainer?.startOf(component)
     },
     followContent() {
       if (current instanceof TuiAltScreen) {

@@ -63,6 +63,8 @@ export interface ListPaintOptions {
   readonly translate?: ((key: string, values?: Readonly<Record<string, string | number>>) => string) | undefined
   /** The list lies in flow content that an outer scroll windows: its node bodies paint in full, not to the viewport. */
   readonly flow?: boolean
+  /** Asks where one item's first line stands among the list's rows; `found` hears it, or `undefined` when the item is not painted whole. */
+  readonly locate?: { readonly id: string, readonly found: (line: number | undefined) => void } | undefined
   readonly memo?: ListRowMemo | undefined
 }
 
@@ -585,6 +587,11 @@ export function paintList(node: ListNodeView, width: number, height: number, col
   const starts: number[] = []
   let lineCount = 0
   for (const entry of shown) { starts.push(lineCount); lineCount += entry.lines.length }
+  if (options.locate !== undefined) {
+    // Only flow content is painted whole: a windowed list's lines are relative to its window.
+    const at = options.flow === true && shown === laid ? shown.findIndex(entry => entry.kind === 'item' && entry.id === options.locate!.id) : -1
+    options.locate.found(at < 0 ? undefined : starts[at])
+  }
   const room = Math.max(1, (Number.isFinite(height) ? Math.floor(height) : 1) - footer)
   // A window cut by height hides rows too: the overflow row is reserved before the rows are cut.
   const windowed = lineCount > room - (baseHidden > 0 ? 1 : 0)

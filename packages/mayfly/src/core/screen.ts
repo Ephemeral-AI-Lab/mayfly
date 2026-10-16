@@ -10,7 +10,7 @@ import { GutterComponent } from './gutter.ts'
 import { NodeSlotHost, type MayflyNodeSlot, type MayflyNodeSlotCompiler, type MayflyNodeSlotOptions } from './node-slot.ts'
 import { SearchLine, type MayflySearchLine, type MayflySearchLineOptions } from './search-line.ts'
 import { concatRows } from './ui-rows.ts'
-import type { MayflyTerminalRuntime } from './terminal.ts'
+import type { MayflyContentTail, MayflyTerminalRuntime } from './terminal.ts'
 import type { MayflyViewsSource } from './views-lane.ts'
 import type { MayflyComponent, MayflyFocusable, MayflyOverlayHandle, MayflyOverlayOptions, MayflyScreen, MayflyScreenSlot } from './types.ts'
 
@@ -183,6 +183,7 @@ export class MayflyScreenService extends Service implements MayflyScreen {
     (id, region, component) => region === 'content' ? this.mountContentSlot(id, component) : this.mountDockSlot(id, component, region === 'footer' ? 'bottom' : undefined),
     region => region === 'dock' ? this.editorViewport : region === 'footer' ? { columns: this.runtime.columns, rows: this.runtime.rows } : this.contentViewport,
     () => { this.fixed.get('editor.prompt')?.focus() },
+    id => { const host = this.fixed.get(id); return host === undefined ? undefined : this.runtime.contentStart(host) },
   )
 
   /**
@@ -374,6 +375,11 @@ export class MayflyScreenService extends Service implements MayflyScreen {
     return this.nodeSlots.contentTurns()
   }
 
+  /** Whether the conversation holds a marker for messages the reader has not seen, for the tail chip's words. */
+  contentMarked(): boolean {
+    return this.nodeSlots.contentMarked()
+  }
+
   /** Listen to the newest conversation turn changing, for the tail chip's count. */
   onContentTurns(listener: () => void): () => void {
     return this.nodeSlots.onContentTurns(listener)
@@ -423,6 +429,21 @@ export class MayflyScreenService extends Service implements MayflyScreen {
   /* exercised by End in the real input path */
   followContent = (): void => {
     this.runtime.followContent()
+  }
+
+  /** Scroll the content so `row` stands at the top of the view; a row past the last full view lands on the tail. */
+  scrollContentTo = (row: number): void => {
+    this.runtime.scrollContentTo(row)
+  }
+
+  /** Where the content's scroll stands against its tail and the rows it shows, as the tail chip reads it. */
+  contentTail = (): MayflyContentTail | undefined => {
+    return this.runtime.contentTail()
+  }
+
+  /** Listen to the content's layout, which moves the tail's standing. */
+  watchContentTail = (listener: () => void): (() => void) => {
+    return this.runtime.watchContentTail(listener)
   }
 
   /* exercised through the real terminal input boundary */

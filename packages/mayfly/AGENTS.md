@@ -99,7 +99,11 @@ through a new root component. Plugins still use only the four public services.
 The `content` region is the content of the outer scroll: while the slot holds no
 focus its lists and rows are not bounded by the viewport (`MayflyUiSurfaceRuntime.flowing`),
 and the scroll view windows what they paint, so wheel, page keys, and follow-tail
-work as for any content. A focused slot keeps the list's cursor window. The
+work as for any content. A focused slot keeps the list's cursor window. An owner
+can follow one list item with `MayflyNodeSlot.track(controlId, itemId)`: each paint
+of a flowing list notes the item's line, and `trackedRow()` returns it among the
+scroll content's rows (the new-messages rule uses it to find itself against the
+view). Follow-tail is `Ctrl+↓`'s second press: the first goes to that rule. The
 conversation stream (`TranscriptView`, published by `transcript/transcript-model.ts`
 from `transcript/stream-facts.ts`) is the first consumer.
 

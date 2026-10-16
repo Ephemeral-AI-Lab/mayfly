@@ -1366,7 +1366,7 @@ The goal's activation is process-local (a goal is disarmed after any session res
 panel runs the `/goal` subcommands from single letters, none drawn as a button, and the hint row names the ones that apply: `r` resume (a goal that waits, while rounds remain), `p` pause (an armed one), `e` edit (it puts `/goal edit <objective>` in the prompt for the person to change and send), and `c` clear (behind the shared Yes/No). An action built for an older revision is refused. The goal lives in the stream
 as facts: each durable `goal/change` is one row (`● Goal set · …`, `⏸ Goal paused`, `● Goal resumed`,
 `✓ Goal complete · 2 rounds · 1m 59s`, `✕ Goal blocked · round-limit: …`, `Goal cleared`), each autonomous round starts at a
-`── goal round 3 ──` rule across the stream (label centered, two columns of margin each side, drawn in the muted light gray, not the quiet border purple and not pure white) (the `user/message` the round driver writes), and a blocked goal also holds a warning in the
+`── goal round 3 ──` rule across the stream (label centered, two columns of margin each side, drawn in the muted light gray, not the quiet border purple and not pure white) (the `user/message` the round driver writes); the new-messages rule (see the live turn, section 5.6) is drawn the same way, and a blocked goal also holds a warning in the
 notification pane while it waits for the person.
 
 The queue is not a view: queued messages are rows of the conversation stream (§5.2, §5.6).
@@ -1638,7 +1638,12 @@ Verbose level) opens the summary's first lines under it. Every compaction, manua
   its rows) and keeps a reverse-video chip on the stream's last visible row at its right edge: `Back to bottom · Ctrl+↓`,
   or `N new turns · Ctrl+↓` once N turns of the agent loop began below the view (turns, never rows, tool calls, or message
   blocks). `Ctrl+↓` (the action `mayfly.interaction.follow-tail`, rebindable; `End` too with an empty draft) follows the
-  tail. The chip is painted by the renderer over the screen's scroll; a `ui.scroll` with `pill` keeps the sketch's
+  tail. **New messages.** Blocks that arrive while the view is scrolled away are the ones the reader has not seen: a rule
+  `── New messages ──` (the goal round rule's look: label centered, two columns of margin each side, muted) stands before the
+  first of them, and the chip reads `New messages · Ctrl+↓` while it is pending. `Ctrl+↓` then brings the rule to the top of
+  the view with three rows of history above it (a rule too near the tail for that lands the view on the tail); a second press,
+  or `End`, follows the tail. The rule leaves once the view has gone past it, or after 5 s on screen (counted over the time
+  it is in view; out of view the count waits). A new arrival after that starts a new rule. The chip is painted by the renderer over the screen's scroll; a `ui.scroll` with `pill` keeps the sketch's
   `↓ N new · End` for inner regions.
 
 *Considered and not chosen* (the Prompt styles scene still draws them, with `1`-`7`): a hanging indent for everything
@@ -1688,7 +1693,7 @@ ends it: the levels come back, the highlight is cleared, and conversation mode k
 header when the row folded away); a second `Esc` returns to the prompt.
 
 The scroll position follows the same rules as any scroll region: the stream keeps the tail in view while following, a
-`N new turns · Ctrl+↓` chip stays on the last row while it is scrolled away (N counts the turns of the agent loop that began below the view, never rows, tool calls, or message blocks; with none it reads `Back to bottom · Ctrl+↓`, the way back), and `Ctrl+↓` (or `End` with an empty draft) jumps to the latest. The follow key is its own action, `mayfly.interaction.follow-tail`, because thin laptops have no End key.
+`N new turns · Ctrl+↓` chip stays on the last row while it is scrolled away (N counts the turns of the agent loop that began below the view, never rows, tool calls, or message blocks; with none it reads `Back to bottom · Ctrl+↓`, the way back; while a new-messages rule is pending it reads `New messages · Ctrl+↓`), and `Ctrl+↓` jumps to that rule first (it stands at the top of the view with three rows above it) and then to the latest; `End` with an empty draft jumps to the latest at once. The follow key is its own action, `mayfly.interaction.follow-tail`, because thin laptops have no End key.
 
 ### 5.7 Decision cards: approval, plan review
 

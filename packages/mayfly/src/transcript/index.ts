@@ -238,6 +238,7 @@ export function apply(ctx: Context): void {
     transcript.republish()
   }
   for (const off of [ctx.on('agent/inbox/inserted', onInbox), ctx.on('agent/inbox/claimed', onInbox), ctx.on('agent/inbox/discarded', onInbox)]) ctx.effect(() => () => off())
+  ctx.effect(() => ctx.on('mayfly/request-new-messages', () => { transcript.jumpNew() }))
   transcript.attach(screen)
   // The footer is the two status rows on the footer node slot; the slot pins to the dock's lowest row (S12), so the
   // status stays on the terminal's last rows beneath the editor, and the status row is only there while it has an entry.
