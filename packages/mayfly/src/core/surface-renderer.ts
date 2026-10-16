@@ -686,6 +686,8 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
       const latest = ctx.mayflyScreen.contentTurns()
       if (tail === undefined || !tail.away) { seen = latest; return undefined }
       const turns = Math.max(0, latest - seen)
+      // A marker for the messages that arrived while the view was away takes the key first: it is where Ctrl+↓ goes.
+      if (ctx.mayflyScreen.contentMarked()) return translate('New messages · {key}', { key: key() })
       return turns === 0 ? translate('Back to bottom · {key}', { key: key() }) : translate(turns === 1 ? '{count} new turn · {key}' : '{count} new turns · {key}', { count: turns, key: key() })
     }
     const announce = (): void => {

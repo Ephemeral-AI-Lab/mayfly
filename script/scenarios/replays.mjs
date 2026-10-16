@@ -311,6 +311,40 @@ const mergeEsc = {
   ],
 }
 
+/** A checklist long enough that the first turn alone fills more than a screen. */
+const CHECKLIST = lines(30, n => `- Release step ${String(n)}: confirm the package ${String(n)} builds, passes its specs, and has its changelog entry`)
+
+/** A turn that arrives while the reader is away: a prompt, a call, and an answer taller than a screen, so Ctrl+↓ can stand the rule at the top. */
+const arrival = (prompt, file, answer) => turn(prompt, [
+  step({ text: `Looking at ${file} first.`, tools: [tool('read', { file_path: file }, { result: `# ${file}\n\nNothing out of date.`, runMs: 400 })] }),
+  step({ text: `${answer}\n\n${lines(24, n => `- ${file}, finding ${String(n)}: nothing to change before the release`)}`, usage: { inputTokens: 4000, outputTokens: 60, cacheReadTokens: 3000 } }),
+])
+
+/**
+ * The new-messages marker: a long first turn to scroll away from, then turns that arrive while the reader is scrolled up,
+ * far apart so the rule's 5 s on screen, Ctrl+↓, and scrolling past it can each be tried before the next arrival.
+ */
+const newMessages = {
+  summary: 'a long turn to scroll up from (mouse wheel), then three short turns that arrive while the view is away: the rule before the first unseen block, Ctrl+↓ bringing it to the top, the rule leaving after 5 s on screen or once scrolled past, and the chip naming the key',
+  items: [
+    turn('Walk me through the release checklist.', [
+      step({ reasoning: 'Collect the steps in order, then summarise what is left.', text: `Here is the checklist, one line per package:\n\n${CHECKLIST}`, usage: { inputTokens: 3000, outputTokens: 900, cacheReadTokens: 1000 } }),
+    ]),
+    mark('history'),
+    // The reader scrolls up with the wheel during this pause (the frame script does it with `wheel('up')`).
+    pause(DWELL),
+    arrival('Check the docs for the release notes.', 'docs/release-notes.md', 'The release notes are current: they name every package in the checklist.'),
+    mark('first'),
+    pause(DWELL),
+    arrival('Check the changelog as well.', 'CHANGELOG.md', 'The changelog has an entry for each package, newest first.'),
+    mark('second'),
+    pause(DWELL),
+    arrival('And the migration guide.', 'docs/migration.md', 'The migration guide covers the one incompatible change and nothing else.'),
+    mark('third'),
+    pause(DWELL),
+  ],
+}
+
 /**
  * The view items after the owner's polish: no time in the status row, the hint row at the bottom of every panel, the job
  * time at the right edge, and the subagent row `name(bg) activity` with its facts at the right.
@@ -345,4 +379,4 @@ const viewItems = {
   ],
 }
 
-export const REPLAYS = { mergeDock, mergeConversations, mergePanels, mergeHeights, mergeEsc, viewItems }
+export const REPLAYS = { mergeDock, mergeConversations, mergePanels, mergeHeights, mergeEsc, viewItems, newMessages }

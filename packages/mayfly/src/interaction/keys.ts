@@ -86,7 +86,7 @@ export const INTERACTION_KEY_ACTIONS: readonly MayflyKeyAction[] = [
   { id: ACTION_CYCLE_MODEL, keys: 'alt+m', scope: 'editor', description: 'Cycle the session model within the current provider (contextual)' },
   { id: ACTION_TOGGLE_AGENT_VIEW, keys: 'f7', scope: 'global', description: 'Return to the previous conversation' },
   { id: ACTION_CLOSE_AGENT_VIEW, keys: 'f8', scope: 'global', description: 'Close the displayed side conversation' },
-  { id: ACTION_FOLLOW_TAIL, keys: 'ctrl+down', scope: 'global', description: 'Jump to the newest conversation content and follow it' },
+  { id: ACTION_FOLLOW_TAIL, keys: 'ctrl+down', scope: 'global', description: 'Jump to the new-messages marker, then to the newest conversation content and follow it' },
 ]
 
 /** Whether a binding change reached the settings document or holds for this session only. */

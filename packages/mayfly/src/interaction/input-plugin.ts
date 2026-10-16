@@ -1269,9 +1269,10 @@ export function apply(ctx: Context): void {
         const amount = Math.max(1, ctx.mayflyScreen.rows - 4)
         return ctx.mayflyScreen.scrollContent(direction, amount)
       }
-      // Ctrl+↓ means nothing in a draft, so it follows the tail whatever the editor holds; End is the editor's own with text.
+      // Ctrl+↓ means nothing in a draft, so it goes on toward the newest content whatever the editor holds: to the marker of the
+      // messages that arrived while the view was away, then to the tail. End is the editor's own with text, and goes straight down.
       if (ctx.mayflyKeymap.matches(data, ACTION_FOLLOW_TAIL)) {
-        ctx.mayflyScreen.followContent()
+        ctx.emit('mayfly/request-new-messages')
         return true
       }
       if (editor.getText().length > 0) return false

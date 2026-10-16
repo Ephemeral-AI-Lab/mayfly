@@ -89,7 +89,8 @@ The UI events below are declared in `core/types.ts` and are unfiltered. Each has
 | --- | --- | --- | --- |
 | `mayfly/decision-requests-changed` | `interaction/approval-plugin.ts` (`'approval'`), `interaction/questions-plugin.ts` (`'plan'`) | `(source, requests)`: the source's queue in the order asked, empty when it settles; each request has `type`, `toolName`, optional `callId` and `reason` | `transcript/index.ts`: the stream's request block and the `1 of N waiting` count |
 | `mayfly/decision-wait-changed` | the same two plugins | `{ kind: 'approval' \| 'answer' }` while a request waits on the user, `undefined` when none does | `transcript/pane-activity.ts`: the activity row's waiting label |
-| `mayfly/content-tail-changed` | `core/surface-renderer.ts`, on the alternate screen only | `label`: the chip's words while the stream is scrolled away (`Back to bottom · Ctrl+↓`, `2 new turns · Ctrl+↓`), `undefined` at the tail | `transcript/pane-notification.ts`: the chip on the notification row |
+| `mayfly/content-tail-changed` | `core/surface-renderer.ts`, on the alternate screen only | `label`: the chip's words while the stream is scrolled away (`Back to bottom · Ctrl+↓`, `2 new turns · Ctrl+↓`, `New messages · Ctrl+↓` while the stream holds a new-messages rule), `undefined` at the tail | `transcript/pane-notification.ts`: the chip on the notification row |
+| `mayfly/request-new-messages` | `interaction/input-plugin.ts`: `Ctrl+↓` (the action `mayfly.interaction.follow-tail`) | none | `transcript/index.ts` → `TranscriptController.jumpNew()`: the view goes to the new-messages rule first, and follows the tail when there is none to go to or it is already there |
 
 The notification lane is the frontend's internal record of notices, not a public service. A producer takes an owner
 from `createInteractionNotificationOwner(ctx, label)` (`interaction/notifications.ts`) and reports or clears its

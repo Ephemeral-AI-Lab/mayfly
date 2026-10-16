@@ -19,6 +19,7 @@ import { freezeModel, materializeTranscriptEntries, type TranscriptEntryModel, t
 import { NO_DISCLOSURE, toggleCall, toggleGroup, toggleRows, toggleTurn, type Disclosure } from './disclosure.ts'
 import type { CopyMode } from './row-text.ts'
 import { findHits, readPattern, type SearchPattern, type SearchResult } from './search.ts'
+import { messageRowIds, NewMessages, type NewMessagesHost } from './new-messages.ts'
 import { StreamFacts } from './stream-facts.ts'
 import type { TickSource } from './tick.ts'
 import type { SpawnedChildren } from './tool-calls.ts'
@@ -31,7 +32,7 @@ import {
 type Source = TranscriptModel | (() => TranscriptModel | null)
 
 /** The screen as the transcript uses it: the L1 contract and the conversation node slot. */
-export type TranscriptScreen = MayflyScreen & Pick<MayflyScreenService, 'mountNodeSlot' | 'mountSearchLine'>
+export type TranscriptScreen = MayflyScreen & Pick<MayflyScreenService, 'mountNodeSlot' | 'mountSearchLine' | 'contentTail' | 'watchContentTail' | 'scrollContentTo'>
 
 /** What the controller reads besides the models: the policy, the translator, and the messages queued behind the stream. */
 export interface TranscriptControllerOptions {
@@ -53,6 +54,12 @@ export interface TranscriptControllerOptions {
   readonly focusMode?: (mode: MayflyFocusMode) => void
   /** Called when the stream's cursor moves onto or off a queued message, for the keys the notification row teaches. */
   readonly focusRow?: (row: MayflyFocusRow) => void
+  /** The clock and timers the new-messages marker counts its time on screen by; absent, the platform's. */
+  readonly clock?: {
+    readonly now: () => number
+    readonly setTimeout: (callback: () => void, ms: number) => unknown
+    readonly clearTimeout: (handle: unknown) => void
+  }
 }
 
 /** What a row under the cursor can be sent to: the clipboard, or the editor. */
@@ -129,6 +136,8 @@ interface ControllerView {
   readonly source: Source
   readonly options: TranscriptViewOptions
   readonly facts: StreamFacts
+  /** The marker for the messages that arrived while the reader was scrolled away. */
+  readonly fresh: NewMessages
 }
 
 /**
@@ -158,6 +167,23 @@ export class TranscriptController {
   /** What the cursor stands on that has keys of its own, last told to `focusRow`. */
   private row: MayflyFocusRow
 
+  /** What the displayed view's new-messages marker asks of the screen and the stream. */
+  private readonly freshHost: NewMessagesHost = {
+    tail: () => this.screen?.contentTail(),
+    row: () => this.slot?.trackedRow(),
+    scrollTo: (row) => { this.screen?.scrollContentTo(row) },
+    scrollUp: (rows) => { this.screen?.scrollContent('up', rows) },
+    follow: () => { this.screen?.followContent() },
+    republish: () => {
+      this.publish()
+      this.screen?.requestRender()
+    },
+    now: () => this.options.clock?.now() ?? Date.now(),
+    setTimeout: (callback, ms) => this.options.clock?.setTimeout(callback, ms) ?? setTimeout(callback, ms),
+    clearTimeout: (handle) => { if (this.options.clock === undefined) clearTimeout(handle as ReturnType<typeof setTimeout>); else this.options.clock.clearTimeout(handle) },
+  }
+  private offLayout: (() => void) | undefined
+
   constructor(private readonly options: TranscriptControllerOptions) {}
 
   attach(screen: TranscriptScreen): void {
@@ -173,7 +199,8 @@ export class TranscriptController {
    * @param options - how this view differs from the default.
    */
   setView(key: string, source: Source, options: TranscriptViewOptions = {}): void {
-    this.views.set(key, { source, options, facts: new StreamFacts() })
+    this.views.get(key)?.fresh.reset()
+    this.views.set(key, { source, options, facts: new StreamFacts(), fresh: new NewMessages(this.freshHost) })
     if (key === this.active) this.publish()
   }
 
@@ -182,7 +209,10 @@ export class TranscriptController {
     if (key === this.active) return
     const switched = this.active !== undefined && key !== undefined
     this.closeSearch()
+    // A marker belongs to the conversation it was made in, and the reader comes back to a view at its newest content.
+    if (this.active !== undefined) this.views.get(this.active)?.fresh.reset()
     this.active = key
+    if (key !== undefined) this.views.get(key)?.fresh.reset()
     this.publish()
     // A different conversation opens at its newest content.
     if (switched) this.screen?.followContent()
@@ -190,6 +220,7 @@ export class TranscriptController {
 
   /** Dispose one retained view. */
   dropView(key: string): void {
+    this.views.get(key)?.fresh.reset()
     if (this.views.delete(key) && key === this.active) {
       this.active = undefined
       this.publish()
@@ -409,6 +440,16 @@ export class TranscriptController {
     return this.options.presentation?.snapshot() ?? DEFAULT_TRANSCRIPT_PRESENTATION
   }
 
+  /**
+   * Ctrl+↓: bring the marker of the messages the reader has not seen to the top of the view, or follow the tail when
+   * there is none to go to.
+   */
+  jumpNew(): void {
+    const view = this.active === undefined ? undefined : this.views.get(this.active)
+    if (view === undefined) this.screen?.followContent()
+    else view.fresh.jump()
+  }
+
   dispose(): void {
     this.offTick?.()
     this.offTick = undefined
@@ -420,7 +461,10 @@ export class TranscriptController {
 
   /** Texts and policy changed under the same ids: forget the kept rows and publish. */
   private rewrite(): void {
-    for (const view of this.views.values()) view.facts.reset()
+    for (const view of this.views.values()) {
+      view.facts.reset()
+      view.fresh.reset()
+    }
     this.publish()
     this.screen?.requestRender(true)
   }
@@ -433,10 +477,12 @@ export class TranscriptController {
     this.syncSearch(model)
     if (view === undefined || model === null) {
       slot.set(null)
+      slot.track(STREAM.list, undefined)
+      slot.setMarked(false)
       slot.setTurns(0)
       return
     }
-    const facts = view.facts.build(model, {
+    const built = view.facts.build(model, {
       policy: this.presentationPolicy(),
       disclosure: this.disclosure,
       liveTurnHeader: view.options.liveTurnHeader === true,
@@ -447,6 +493,11 @@ export class TranscriptController {
       ...this.compactionInputs(),
       ...(this.options.imageRefs === undefined ? {} : { imageRefs: this.options.imageRefs }),
     })
+    // Rows that arrive while the view is scrolled away from the tail are the ones the reader has not seen: a rule marks the first.
+    const boundary = view.fresh.observe(messageRowIds(built), this.screen?.contentTail()?.away === true)
+    const facts = boundary === undefined ? built : view.fresh.insert(built, boundary, this.options.t('New messages'))
+    slot.track(STREAM.list, view.fresh.rowId)
+    slot.setMarked(view.fresh.pending)
     slot.setTurns(latestTurnOf(facts))
     const ids = this.cursorIds ?? []
     const node = TranscriptStream(facts, this.cursorRev === 0 ? undefined : { rev: this.cursorRev, ...ids.length === 0 ? {} : { ids } }, this.search === undefined || this.search.read.kind !== 'ok' ? undefined : { pattern: this.search.pattern, caseSensitive: this.search.read.caseSensitive, ...this.search.phase === 'select' && this.search.index >= 0 ? { current: this.search.result.hits[this.search.index]!.nth } : {} })
@@ -518,6 +569,8 @@ export class TranscriptController {
       cursor: { control: STREAM.list, onMove: (itemId) => { if (this.focused) this.cursorRow(itemId) } },
       // Focus moves up into the stream at its newest row; `Esc` and `Alt+↓` give it back to the prompt.
       onFocus: () => {
+        // A focused stream is windowed around its cursor, which the marker's line cannot be read from.
+        if (this.active !== undefined) this.views.get(this.active)?.fresh.reset()
         // A search handing the keys back keeps the cursor where it stands.
         if (this.resume) {
           this.resume = false
@@ -539,6 +592,8 @@ export class TranscriptController {
       // `Esc` or `Alt+↓` while a search holds the cursor ends the search and stays in the conversation.
       onLeave: () => { if (this.search === undefined) this.slot?.release(); else this.endSearch() },
     })
+    // After each layout of the content the marker reads where it stands against the view.
+    this.offLayout = screen.watchContentTail(() => { if (this.active !== undefined) this.views.get(this.active)?.fresh.layout() })
     this.publish()
     screen.requestRender()
   }
@@ -634,6 +689,9 @@ export class TranscriptController {
   }
 
   private unmount(): void {
+    this.offLayout?.()
+    this.offLayout = undefined
+    for (const view of this.views.values()) view.fresh.reset()
     this.closeSearch()
     this.slot?.dispose()
     this.slot = undefined

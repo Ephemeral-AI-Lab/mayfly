@@ -1898,6 +1898,13 @@ function compileUnit(node: CompilableNode, state: FocusState, options: RuntimeCo
         const position = choice === undefined ? 0 : choiceVisiblePosition(choice)
         const counter = node.maxRows === undefined && visibleCount > entries.length ? `  (${String(position + 1)}/${String(visibleCount)})` : undefined
         const translate = (key: string, values?: UiTranslateValues): string => coreText(options, key, values)
+        // A list the owner follows reports its tracked item's line from each paint, past the rows ahead of the list's own.
+        const probe = options.listRuntime.probe
+        const following = probe.controlId === node.id
+        if (following) probe.line = undefined
+        const locate = following && probe.itemId !== undefined
+          ? { id: probe.itemId, found: (line: number | undefined) => { probe.line = line === undefined ? undefined : line + queryRows.length + (counter === undefined ? 0 : 1) } }
+          : undefined
         const body = entries.length === 0 ? query.length > 0 ? [sliceByColumn(options.colors.textMuted(coreText(options, 'No matches')), 0, width, true)] : empty?.render(width) ?? [] : renderList(
           { ...unfiltered, items: entries.map(entry => entry.item), selectedIds: choice?.selectedIds ?? listSelectedIds(node) },
           width,
@@ -1915,6 +1922,7 @@ function compileUnit(node: CompilableNode, state: FocusState, options: RuntimeCo
             inputs: choice?.inputs,
             translate,
             flow: options.listRuntime.flow,
+            locate,
             body: paintBody,
             segmentLabel: coreText(options, 'Options'),
             segment: item => {
@@ -2284,6 +2292,11 @@ export class MayflyUiSurfaceRuntime {
    * surface's focus before the surface compiles, so a focused one keeps its cursor window through every recompile.
    */
   flow = false
+  /**
+   * The item whose line the surface's owner follows: a flow list paints its first line into `line`, relative to the top of
+   * the list node's own rows. The owner sets `controlId` and `itemId`; a list of another control never touches it.
+   */
+  readonly probe: { controlId: string, itemId: string | undefined, line: number | undefined } = { controlId: '', itemId: undefined, line: undefined }
   /** Asks the host for another frame and nothing else (what a clock tick does). */
   readonly nudge: () => void
 

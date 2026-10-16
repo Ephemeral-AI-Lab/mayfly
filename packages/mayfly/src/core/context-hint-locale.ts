@@ -42,6 +42,7 @@ const zh = Object.freeze({
   '{count} new turn · {key}': '{count} 个新轮次 · {key}',
   '{count} new turns · {key}': '{count} 个新轮次 · {key}',
   'Back to bottom · {key}': '回到底部 · {key}',
+  'New messages · {key}': '新消息 · {key}',
   reset: '重置',
   'ready in a moment': '稍候即可操作',
   // The prompt: the recall position in its corner (`↑ history 2/4`) and the words of its hint row.

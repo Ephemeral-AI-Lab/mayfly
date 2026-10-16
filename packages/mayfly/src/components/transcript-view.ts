@@ -71,6 +71,8 @@ export type StreamRow =
   | { readonly kind: 'goal-change', readonly id: string, readonly mark: string, readonly tone: 'accent' | 'muted' | 'success' | 'danger', readonly text: string }
   /** An autonomous goal round starting, drawn as a rule across the stream with its label in the middle. */
   | { readonly kind: 'goal-round', readonly id: string, readonly text: string }
+  /** Where the messages the reader has not seen begin: a rule across the stream, like a round's, with the label in the middle. */
+  | { readonly kind: 'new-messages', readonly id: string, readonly text: string }
   /** Any other text the stream shows. */
   | { readonly kind: 'note', readonly id: string, readonly text: string }
 
@@ -250,10 +252,14 @@ function rowParts(row: StreamRow): readonly MayflyListItem[] {
     case 'interrupted': return [line(row.id, [span(row.text, 'warning')], { disabled: true })]
     case 'goal-change': return [line(row.id, [span(row.mark === '' ? '  ' : `${row.mark} `, row.tone), span(row.text, row.tone === 'muted' ? 'muted' : 'default')], { wrap: true, hang: 2 })]
     // The rule spans the stream between the margins (two columns each side), with the label in its middle.
-    case 'goal-round': return [{ id: row.id, label: row.text, body: ui.divider({ label: row.text, align: 'center', inset: GUTTER_COLUMNS, tone: 'muted' }), bodyAlways: true, bodyLead: [span('')], disabled: true }]
+    case 'goal-round':
+    case 'new-messages': return [{ id: row.id, label: row.text, body: ui.divider({ label: row.text, align: 'center', inset: GUTTER_COLUMNS, tone: 'muted' }), bodyAlways: true, bodyLead: [span('')], disabled: true }]
     case 'note': return [line(row.id, [span(row.text, 'muted')])]
   }
 }
+
+/** The rows the new-messages rule adds to the stream: its own line and the blank row that separates it from the block below. */
+export const NEW_MESSAGES_ROWS = 2
 
 /** A row's frozen items, kept while the row's facts keep their identity. */
 const rowCache = new WeakMap<StreamRow, readonly MayflyListItem[]>()
