@@ -33,6 +33,11 @@ interface PasteImageRuntimeState {
 export class InteractionStateService extends Service {
   private live = true
   readonly aliases = new CommandAliasRegistry()
+  /**
+   * The launch screen's recent list as the editor browses it: the session ids on show, and the row `↑` has focused
+   * (`undefined` while the prompt holds the keyboard). The banner writes the ids and paints the focus; the editor moves it.
+   */
+  readonly splash: { ids: readonly string[], focus: number | undefined } = { ids: [], focus: undefined }
   /** The Mayfly-owned commands that run while no session is selected. */
   readonly sessionless = new SessionlessCommandRegistry()
   readonly draft = new DraftStash()
@@ -64,6 +69,8 @@ export class InteractionStateService extends Service {
     this.live = false
     this.aliases.clear()
     this.sessionless.clear()
+    this.splash.ids = []
+    this.splash.focus = undefined
     this.draft.clearAll()
     this.modelsDevCache = undefined
     this.fdProbe.result = undefined

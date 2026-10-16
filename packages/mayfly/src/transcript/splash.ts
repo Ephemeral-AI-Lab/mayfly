@@ -47,6 +47,8 @@ const PROJECT_WIDTH = 14
 
 /** One recent session, already worded for the reader. */
 export interface SplashSession {
+  /** The stored session's id, which `Enter` resumes. */
+  readonly id: string
   readonly title: string
   /** The project name (the directory's last segment). */
   readonly project: string
@@ -62,6 +64,8 @@ export interface SplashLabels {
   readonly recent: string
   /** The hint on the heading's right: how to reach the rest. */
   readonly more: string
+  /** The same place while the list holds the keyboard: what its keys do. */
+  readonly moreFocused: string
   readonly empty: string
   readonly emptyHint: string
 }
@@ -72,6 +76,8 @@ export interface SplashContent {
   readonly labels: SplashLabels
   /** `undefined` until the catalog has been read: the list is left out rather than flashing "No sessions". */
   readonly recent: readonly SplashSession[] | undefined
+  /** The row the list's cursor is on while `↑` browses it; `undefined` while the prompt holds the keyboard. */
+  readonly focus?: number | undefined
 }
 
 /** The theme and measuring primitives the layout needs. */
@@ -101,16 +107,19 @@ function split(deps: SplashDeps, left: string, right: string, width: number): st
 }
 
 /** One session row: pointer column, status dot, title, project when it fits, age. */
-function sessionRow(deps: SplashDeps, session: SplashSession, width: number): string {
+function sessionRow(deps: SplashDeps, session: SplashSession, width: number, selected: boolean): string {
   const { colors } = deps
   const withProject = width >= SPLASH_ROW_PROJECT_WIDTH
   const projectWidth = withProject ? PROJECT_WIDTH : 0
   const dot = deps.ascii === true ? (session.live ? '*' : '-') : (session.live ? '●' : '○')
   const titleWidth = Math.max(1, width - 4 - projectWidth - AGE_WIDTH)
-  const title = pad(deps, colors.text(deps.truncate(session.title, titleWidth)), titleWidth)
+  const text = deps.truncate(session.title, titleWidth)
+  const title = pad(deps, selected ? deps.strong(colors.textStrong(text)) : colors.text(text), titleWidth)
   const project = withProject ? pad(deps, colors.textMuted(deps.truncate(session.project, projectWidth - 1)), projectWidth) : ''
   const age = ' '.repeat(Math.max(0, AGE_WIDTH - deps.visibleWidth(session.age))) + (session.live ? colors.success : colors.textMuted)(session.age)
-  return `  ${(session.live ? colors.success : colors.textMuted)(dot)} ${title}${project}${age}`
+  const marker = selected ? colors.accent(deps.ascii === true ? '>' : '›') : ' '
+  const row = `${marker} ${(session.live ? colors.success : colors.textMuted)(dot)} ${title}${project}${age}`
+  return selected ? colors.selectedBg(pad(deps, row, width)) : row
 }
 
 /** The list block: heading, rows (or the empty notice), and a blank row after it. */
@@ -122,10 +131,11 @@ function listBlock(deps: SplashDeps, content: SplashContent, width: number, rows
     const lines = [colors.muted(deps.truncate(content.labels.empty, width)), colors.textMuted(deps.truncate(content.labels.emptyHint, width))]
     return lines.slice(0, Math.max(0, rowsAvailable))
   }
-  const heading = split(deps, colors.muted(content.labels.recent), colors.textMuted(content.labels.more), width)
+  const focused = content.focus !== undefined
+  const heading = split(deps, colors.muted(content.labels.recent), colors.textMuted(focused ? content.labels.moreFocused : content.labels.more), width)
   const room = Math.min(recent.length, SPLASH_RECENT_MAX, rowsAvailable - 1)
   if (room <= 0) return []
-  return [heading, ...recent.slice(0, room).map(session => sessionRow(deps, session, width))]
+  return [heading, ...recent.slice(0, room).map((session, index) => sessionRow(deps, session, width, content.focus === index))]
 }
 
 /**

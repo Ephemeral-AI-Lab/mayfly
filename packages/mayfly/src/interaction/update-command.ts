@@ -20,6 +20,7 @@ import type { CommandResult } from '@deepseek-ai/dsh-commands'
 import type { MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import { ui } from '@ephemeral-ai/mayfly-ui'
 import { interpolateLocaleMessage, type MayflyTranslate } from '../frontend/locale.ts'
+import { registerOwnedCommand } from './sessionless-commands.ts'
 import { interactionTranslator } from './locale.ts'
 import { MAYFLY_VERSION } from '../transcript/banner-content.ts'
 import { join } from 'node:path'
@@ -251,7 +252,7 @@ function publishAgeDetail(published: number | undefined, now: number): string {
  */
 export function registerUpdateCommand(ctx: Context): () => void {
   const notifications = createInteractionNotificationOwner(ctx, 'mayfly.update-command', 'update')
-  const dispose = ctx.commands.register({
+  const dispose = registerOwnedCommand(ctx, {
     name: 'update',
     description: 'Safely update Mayfly (preflight, snapshot, smoke, auto-rollback)',
     input: { hint: '[<version>]' },

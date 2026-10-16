@@ -16,6 +16,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import { openUiOverlay } from './ui-overlay.ts'
 import { ui, type MayflyOverlayHandle, type MayflyStatusRegistration, type MayflyUiActionEvent, type MayflyUiActionReply, type MayflyUiEventContext, type MayflyUiNode, type MayflyUiObservationEvent } from '@ephemeral-ai/mayfly-ui'
+import { registerOwnedCommand } from './sessionless-commands.ts'
 import { interactionTranslator, observeInteractionLocale } from './locale.ts'
 import { currentMayflySettings } from './settings.ts'
 import { DEFAULT_MARKET_INDEX_URL, loadMarketCatalog, type CatalogResult } from './plugin-market/catalog.ts'
@@ -468,7 +469,7 @@ export function registerPluginCommand(ctx: Context): () => void {
     return { kind: 'success' }
   }
 
-  const command = ctx.commands.register({
+  const command = registerOwnedCommand(ctx, {
     name: 'plugin',
     description: 'Browse, install, and remove plugins',
     input: { hint: '[install <id> [--source npm|github>] | uninstall <id> | info <id> | list | updates | refresh]' },
