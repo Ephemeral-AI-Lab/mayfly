@@ -1,9 +1,10 @@
 /**
- * Unit tests for the `/permission` preset picker: row construction from
- * the preset service, the current badge and derived `custom` row, the
- * danger-full-access Yes/No confirmation, dispatch through the real command
- * runtime, and the degraded guards. The panel mounts through the fake
- * D30 editor-slot swap (the FakeScreen overlay registry).
+ * Unit tests for the Mayfly-only `/permissions` panel: catalog row
+ * construction, the projection-derived current mark and `custom` row, the
+ * danger-full-access Yes/No confirmation, native `set()` writes (never the
+ * native `/permission` command), the `/permissions` registration name, and
+ * the degraded guards. The panel mounts through the fake editor-slot swap
+ * (the FakeScreen overlay registry).
  */
 
 import { describe, expect, it, vi } from 'vitest'
@@ -12,7 +13,7 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import SessionStore from '@deepseek-ai/dsh-session'
 import CommandRuntime from '@deepseek-ai/dsh-commands'
-import { openPermissionPanel, type PermissionPresetsService } from '../../src/interaction/permission-panel.ts'
+import { openPermissionPanel, registerSessionlessPermission, type PermissionPresetsService } from '../../src/interaction/permission-panel.ts'
 import { fakeMayflyContext } from './fakes.ts'
 import { KEY } from './fakes.ts'
 import { mountUiRegistryObservers, UiInteractionService } from '../../src/core/ui-interaction-state.ts'
@@ -20,50 +21,62 @@ import type { UiSurfaceModel } from '../../src/core/ui-interaction-surface.ts'
 import { renderRequest } from './request-fixture.ts'
 import * as uiProvider from '../../../ui/src/provider.ts'
 
-/** The dsh-base three-preset table, with the display names bare keys get. */
+/** The dsh-base preset table, with the display names bare keys get. */
 const TABLE = [
   { name: 'read-only', sandbox: 'read-only', approval: 'ask' },
   { name: 'workspace-write', sandbox: 'workspace-write', approval: 'ask' },
   { name: 'danger-full-access', sandbox: 'danger-full-access', approval: 'never' },
-]
+] as const
+
+interface FakePresets extends PermissionPresetsService {
+  readonly sets: { readonly session: unknown, readonly name: string }[]
+  currentValue: string
+}
 
 /**
- * The fake preset service: a fixed table, a switchable current value, and
- * the same derived-`custom` option shape the real service hardcodes.
+ * The fake preset service: the native catalog/projection surface without the
+ * native write internals. `set` records the exact Session the panel names.
  */
-function fakePresets(behavior: { current?: string } = {}): PermissionPresetsService {
-  const current = behavior.current ?? 'workspace-write'
-  return {
-    names: TABLE.map(entry => entry.name),
-    current: () => current,
-    resolve: name => {
+function fakePresets(behavior: { current?: string, throwOnSet?: boolean } = {}): FakePresets {
+  const sets: { session: unknown, name: string }[] = []
+  const presets: FakePresets = {
+    currentValue: behavior.current ?? 'workspace-write',
+    sets,
+    get names() { return TABLE.map(entry => entry.name) },
+    get defaultPreset() { return 'workspace-write' },
+    catalog() {
+      return {
+        options: TABLE.map(entry => ({ value: entry.name, name: entry.name })),
+        defaultOptions: TABLE.map(entry => ({ value: entry.name, name: entry.name })),
+        defaultPreset: 'workspace-write',
+      }
+    },
+    current() { return presets.currentValue },
+    resolve(name) {
       const entry = TABLE.find(row => row.name === name)
       if (entry === undefined) throw new Error(`unknown preset: ${name}`)
       return entry
     },
-    optionOf: name => name === 'custom'
-      ? { value: 'custom', name: 'Custom', description: 'derived state' }
-      : { value: name, name },
+    optionOf(name) {
+      return name === 'custom'
+        ? { value: 'custom', name: 'Custom', description: 'derived state' }
+        : { value: name, name }
+    },
+    set(session, name) {
+      if (behavior.throwOnSet === true) throw new Error('write refused')
+      sets.push({ session, name })
+      presets.currentValue = name
+    },
   }
+  return presets
 }
 
-interface MountOptions {
-  presets?: PermissionPresetsService
-  /** What the spy /permission command returns for every dispatch. */
-  outcome?: { kind: 'success', text: string } | { kind: 'error', text: string }
-  /** Register the spy command (default); false leaves /permission absent. */
-  registerCommand?: boolean
-  /** Make the spy succeed with no result text. */
-  textless?: boolean
-  /** Make the spy handler throw (Error or bare string). */
-  reject?: Error | string
-}
-
-async function mount(options: MountOptions = {}): Promise<{
+async function mount(presets: FakePresets = fakePresets()): Promise<{
   ctx: Context
   agent: Agent
+  presets: FakePresets
   notices: string[]
-  runs: string[]
+  nativeRuns: string[]
   overlays: { component: { render(width: number): string[], handleInput(data: string): void }, hidden: boolean }[]
 }> {
   const { ctx } = fakeMayflyContext()
@@ -75,24 +88,15 @@ async function mount(options: MountOptions = {}): Promise<{
   const session = ctx.sessions.create(SessionId('perm-spec'))
   const agent = { id: session.id, session, status: 'idle' } as unknown as Agent
   ctx.provide('testSession', { current: agent, modelRef: undefined })
-  ctx.provide('permissionPresets', options.presets ?? fakePresets())
-  const runs: string[] = []
-  if (options.registerCommand !== false) {
-    ctx.commands.register({
-      name: 'permission',
-      description: 'spy standing in for the upstream command',
-      input: { hint: '<preset>' },
-      handler: invocation => {
-        runs.push(invocation.rawInput)
-        // Mirror the upstream command: rawInput arrives with the leading
-        // space; the result text names the trimmed preset.
-        const name = invocation.rawInput.trim()
-        if (options.textless === true) return { kind: 'success' as const }
-        if (options.reject !== undefined) throw options.reject
-        return options.outcome ?? { kind: 'success' as const, text: `preset ${name}` }
-      },
-    })
-  }
+  ctx.provide('permissionPresets', presets)
+  /* The native command stays registered; the panel must never dispatch it. */
+  const nativeRuns: string[] = []
+  ctx.commands.register({
+    name: 'permission',
+    description: 'native permission command',
+    input: { hint: '<preset>' },
+    handler: invocation => { nativeRuns.push(String(invocation.rawInput)); return { kind: 'success' as const } },
+  })
   const notices: string[] = []
   interaction.subscribe(() => { notices.splice(0, notices.length, ...interaction.notificationSnapshot().map(item => item.message)) })
   const drivers = new WeakMap<UiSurfaceModel, { component: { render(width: number): string[], handleInput(data: string): void }, hidden: boolean }>()
@@ -114,7 +118,7 @@ async function mount(options: MountOptions = {}): Promise<{
     drivers.set(model, driver)
     return driver
   })
-  return { ctx, agent, notices, runs, get overlays() { return overlays() } }
+  return { ctx, agent, presets, notices, nativeRuns, get overlays() { return overlays() } }
 }
 
 /** The topmost non-hidden overlay's panel. */
@@ -125,7 +129,7 @@ function top(mounted: { overlays: { component: { render(width: number): string[]
 }
 
 describe('openPermissionPanel', () => {
-  it('renders the table with derived knob descriptions and the current badge', async () => {
+  it('renders the native catalog with derived knob descriptions and the current mark', async () => {
     const mounted = await mount()
     openPermissionPanel(mounted.ctx)
     const lines = top(mounted).component.render(80)
@@ -134,110 +138,81 @@ describe('openPermissionPanel', () => {
     expect(lines.join('\n')).toContain('sandbox read-only · approval ask')
     expect(lines.join('\n')).toContain('sandbox danger-full-access · approval never')
     const currentRow = lines.find(line => line.includes('workspace-write')) ?? ''
-    expect(currentRow).toContain('[current]')
+    expect(currentRow).toContain('✓')
   })
 
-  it('dispatches the selected preset through the command runtime', async () => {
+  it('writes the selected preset through permissionPresets.set, not the native command', async () => {
     const mounted = await mount()
     openPermissionPanel(mounted.ctx)
-    // The cursor seeds on the current preset: Enter switches straight off it.
+    // The cursor seeds on the current preset: Up reaches read-only.
+    top(mounted).component.handleInput(KEY.up)
     top(mounted).component.handleInput(KEY.enter)
-    // The runtime hands the handler the raw input after the command name
-    // (leading space included); the upstream command trims it itself.
-    await vi.waitFor(() => { expect(mounted.runs).toEqual([' workspace-write']) })
-    await vi.waitFor(() => { expect(mounted.notices).toContain('preset workspace-write') })
+    await vi.waitFor(() => { expect(mounted.presets.sets).toEqual([{ session: mounted.agent.session, name: 'read-only' }]) })
+    await vi.waitFor(() => { expect(mounted.notices).toContain('Permission preset: read-only') })
+    expect(mounted.nativeRuns).toEqual([])
     expect(mounted.overlays).toEqual([])
   })
 
-  it('paints an error result notice in error red', async () => {
-    const mounted = await mount({ outcome: { kind: 'error', text: 'unknown preset "nope"' } })
+  it('paints a native write refusal as an error notice and stays on the panel', async () => {
+    const mounted = await mount(fakePresets({ throwOnSet: true }))
     openPermissionPanel(mounted.ctx)
+    top(mounted).component.handleInput(KEY.up)
     top(mounted).component.handleInput(KEY.enter)
-    await vi.waitFor(() => { expect(mounted.notices).toContain('unknown preset "nope"') })
+    await vi.waitFor(() => { expect(mounted.notices).toContain('permission dispatch failed: write refused') })
+    expect(mounted.presets.sets).toEqual([])
+    expect(mounted.overlays).toHaveLength(1)
   })
 
   it('shows but skips the disabled derived custom row', async () => {
-    const mounted = await mount({ presets: fakePresets({ current: 'custom' }) })
+    const mounted = await mount(fakePresets({ current: 'custom' }))
     openPermissionPanel(mounted.ctx)
     const frame = top(mounted).component.render(80).join('\n')
     expect(frame).toContain('Custom')
-    // The disabled custom row is visible but not part of roving focus.
-    top(mounted).component.handleInput(KEY.up)
     top(mounted).component.handleInput(KEY.enter)
-    await vi.waitFor(() => { expect(mounted.runs).toEqual([' read-only']) })
-    expect(mounted.notices).not.toContain('?custom is the derived state — pick a preset?')
+    await vi.waitFor(() => { expect(mounted.presets.sets).toEqual([{ session: mounted.agent.session, name: 'read-only' }]) })
     expect(mounted.overlays).toEqual([])
   })
 
   it('rejects a forged selection event for the disabled derived row', async () => {
-    const mounted = await mount({ presets: fakePresets({ current: 'custom' }) })
+    const mounted = await mount(fakePresets({ current: 'custom' }))
     openPermissionPanel(mounted.ctx)
     mounted.ctx.mayflyUiInteraction.get('overlay', 'mayfly.permission')!.emit({ kind: 'selection-accept', pagePath: [], controlId: 'permissions', selectedIds: ['custom'] })
-    expect(mounted.notices).toEqual([])
-    expect(mounted.runs).toEqual([])
+    expect(mounted.presets.sets).toEqual([])
     top(mounted).component.handleInput(KEY.escape)
   })
 
-  it('gates danger-full-access behind the shared decision and returns to the list on Esc', async () => {
+  it('asks the shared No-first decision before a full-access write', async () => {
     const mounted = await mount()
     openPermissionPanel(mounted.ctx)
-    // Seed is workspace-write (row 2); one Down reaches the danger row.
-    top(mounted).component.handleInput(KEY.down)
-    top(mounted).component.handleInput(KEY.enter)
-    const gate = top(mounted).component.render(120).join('\n')
-    expect(mounted.overlays).toHaveLength(1)
-    expect(gate).toContain('Enable danger-full-access?')
-    expect(gate).toContain('rejected without prompting')
-    expect(gate.indexOf('No')).toBeLessThan(gate.indexOf('Enable ', gate.indexOf('No')))
+    const node = JSON.stringify(mounted.ctx.mayflyOverlays.list().find(entry => entry.id === 'mayfly.permission')!.node)
+    expect(node).toContain('"id":"danger-full-access"')
+    expect(node).toContain('"title":"Enable danger-full-access?"')
+    expect(node).toContain('rejected without prompting')
     top(mounted).component.handleInput(KEY.escape)
-    expect(top(mounted).component.render(80).join('\n')).toContain('sandbox read-only')
-    expect(mounted.runs).toEqual([])
+    expect(mounted.presets.sets).toEqual([])
   })
 
-  it('defaults to No and dispatches only after choosing the confirm button', async () => {
+  it('writes a confirmed full-access selection through the native service', async () => {
     const mounted = await mount()
     openPermissionPanel(mounted.ctx)
-    top(mounted).component.handleInput(KEY.down)
-    top(mounted).component.handleInput(KEY.enter)
-    top(mounted).component.handleInput('y')
-    expect(mounted.runs).toEqual([])
-    top(mounted).component.handleInput(KEY.enter)
-    expect(mounted.runs).toEqual([])
-    expect(top(mounted).component.render(80).join('\n')).toContain('sandbox danger-full-access')
-    top(mounted).component.handleInput(KEY.enter)
-    top(mounted).component.handleInput(KEY.right)
-    top(mounted).component.handleInput(KEY.enter)
-    await vi.waitFor(() => { expect(mounted.runs).toEqual([' danger-full-access']) })
-    await vi.waitFor(() => { expect(mounted.notices).toContain('preset danger-full-access') })
-    expect(mounted.overlays).toEqual([])
+    const picker = mounted.ctx.mayflyOverlays.list().find(entry => entry.id === 'mayfly.permission')!
+    const context = { surfaceId: picker.id, operationId: 'confirmed', source: picker.source, revision: picker.revision, signal: new AbortController().signal, report: vi.fn() }
+    expect(await picker.definition.onEvent!.action!(
+      { kind: 'selection-accept', pagePath: [], controlId: 'permissions', selectedIds: ['danger-full-access'] },
+      context,
+    )).toMatchObject({ kind: 'completed', dismiss: true })
+    expect(mounted.presets.sets).toEqual([{ session: mounted.agent.session, name: 'danger-full-access' }])
   })
 
-  it('cancels a full-access dispatch after the selected Agent is replaced', async () => {
+  it('cancels a write after the selected Agent is replaced', async () => {
     const mounted = await mount()
     openPermissionPanel(mounted.ctx)
-    top(mounted).component.handleInput(KEY.down)
-    top(mounted).component.handleInput(KEY.enter)
     const replacement = { id: mounted.agent.id, session: mounted.agent.session, status: 'idle' } as unknown as Agent
     ;(mounted.ctx.get('testSession') as { current: Agent | null }).current = replacement
-    top(mounted).component.handleInput(KEY.right)
-    top(mounted).component.handleInput(KEY.enter)
+    mounted.ctx.mayflyUiInteraction.get('overlay', 'mayfly.permission')!.emit({ kind: 'selection-accept', pagePath: [], controlId: 'permissions', selectedIds: ['read-only'] })
     await vi.waitFor(() => expect(mounted.overlays).toEqual([]))
-    expect(mounted.runs).toEqual([])
+    expect(mounted.presets.sets).toEqual([])
     await vi.waitFor(() => expect(mounted.notices).toContain('permission target changed; action cancelled'))
-  })
-
-  it('describes a custom full-access preset that still asks for approval', async () => {
-    const presets = fakePresets()
-    const mounted = await mount({ presets: {
-      ...presets,
-      resolve: name => ({ ...presets.resolve(name), approval: 'ask' }),
-    } })
-    openPermissionPanel(mounted.ctx)
-    top(mounted).component.handleInput(KEY.down)
-    top(mounted).component.handleInput(KEY.enter)
-    expect(top(mounted).component.render(120).join('\n')).toContain('will still prompt')
-    top(mounted).component.handleInput(KEY.escape)
-    expect(mounted.runs).toEqual([])
   })
 
   it('cancels back to the editor without dispatching', async () => {
@@ -245,38 +220,8 @@ describe('openPermissionPanel', () => {
     openPermissionPanel(mounted.ctx)
     top(mounted).component.handleInput(KEY.escape)
     await vi.waitFor(() => expect(mounted.overlays).toEqual([]))
-    expect(mounted.runs).toEqual([])
+    expect(mounted.presets.sets).toEqual([])
     expect(mounted.notices).toEqual([])
-  })
-
-  it('reports a dispatch against an unregistered command', async () => {
-    const mounted = await mount({ registerCommand: false })
-    openPermissionPanel(mounted.ctx)
-    top(mounted).component.handleInput(KEY.enter)
-    await vi.waitFor(() => { expect(mounted.overlays).toEqual([]) })
-    expect(mounted.notices).toEqual(['permission command is unavailable'])
-  })
-
-  it('stays silent for a success result without text', async () => {
-    const mounted = await mount({ textless: true })
-    openPermissionPanel(mounted.ctx)
-    top(mounted).component.handleInput(KEY.enter)
-    await vi.waitFor(() => { expect(mounted.runs).toEqual([' workspace-write']) })
-    await vi.waitFor(() => { expect(mounted.notices).toEqual([]) })
-  })
-
-  it('reports an Error dispatch rejection', async () => {
-    const mounted = await mount({ reject: new Error('route exploded') })
-    openPermissionPanel(mounted.ctx)
-    top(mounted).component.handleInput(KEY.enter)
-    await vi.waitFor(() => { expect(mounted.notices).toEqual(['permission dispatch failed: route exploded']) })
-  })
-
-  it('renders a non-Error dispatch rejection through String()', async () => {
-    const mounted = await mount({ reject: 'bare boom' })
-    openPermissionPanel(mounted.ctx)
-    top(mounted).component.handleInput(KEY.enter)
-    await vi.waitFor(() => { expect(mounted.notices).toEqual(['permission dispatch failed: bare boom']) })
   })
 
   it('reports and does nothing when the Mayfly UI registry is not mounted', async () => {
@@ -291,8 +236,6 @@ describe('openPermissionPanel', () => {
   })
 
   it('is a silent no-op without the preset service', async () => {
-    // The input-layer interception probes the service first; the panel
-    // function's own guard keeps it inert if reached anyway.
     const { ctx } = fakeMayflyContext()
     await ctx.plugin(SessionStore)
     ctx.sessions.create(SessionId('perm-noservice'))
@@ -317,17 +260,39 @@ describe('openPermissionPanel', () => {
   })
 
   it('explains the derived custom row, ignores direct custom selection, and closes for a replaced Agent', async () => {
-    const mounted = await mount({ presets: fakePresets({ current: 'custom' }) })
+    const mounted = await mount(fakePresets({ current: 'custom' }))
     openPermissionPanel(mounted.ctx)
     expect(top(mounted).component.render(120).join('\n')).toContain('custom is the derived state — pick a preset')
     const picker = mounted.ctx.mayflyOverlays.list().find(entry => entry.id === 'mayfly.permission')!
     const context = { surfaceId: picker.id, operationId: 'direct', source: picker.source, revision: picker.revision, signal: new AbortController().signal, report: vi.fn() }
     expect(await picker.definition.onEvent!.action!({ kind: 'selection-accept', pagePath: [], controlId: 'permissions', selectedIds: ['custom'] }, context)).toEqual({ kind: 'completed' })
     expect(await picker.definition.onEvent!.action!({ kind: 'activate', pagePath: [], controlId: 'x', actionId: 'x' }, context)).toEqual({ kind: 'completed' })
-    expect(mounted.runs).toEqual([])
+    expect(mounted.presets.sets).toEqual([])
     const replacement = { id: mounted.agent.id, session: mounted.agent.session, status: 'idle' } as unknown as Agent
     ;(mounted.ctx.get('testSession') as { current: Agent | null }).current = replacement
     mounted.ctx.emit('test/session-changed', replacement)
     await vi.waitFor(() => expect(mounted.overlays).toEqual([]))
+  })
+})
+
+describe('registerSessionlessPermission', () => {
+  it('registers the Mayfly-owned /permissions name and leaves the native /permission command alone', async () => {
+    const { ctx } = fakeMayflyContext()
+    await ctx.plugin(CommandRuntime)
+    await ctx.plugin(SessionStore)
+    const session = ctx.sessions.create(SessionId('perm-register'))
+    ctx.provide('testSession', { current: { id: session.id, session, status: 'idle' } as unknown as Agent, modelRef: undefined })
+    ctx.provide('permissionPresets', fakePresets())
+    const register = vi.spyOn(ctx.mayflyInteractionState.sessionless, 'register')
+    const native = ctx.commands.register({ name: 'permission', description: 'native', handler: () => ({ kind: 'success' as const }) })
+    const off = registerSessionlessPermission(ctx)
+    expect(register).toHaveBeenCalledWith(expect.objectContaining({ name: 'permissions' }))
+    const agent = (ctx.get('testSession') as { current: Agent }).current
+    expect(ctx.commands.find(agent, 'permission')?.description).toBe('native')
+    expect(ctx.commands.find(agent, 'permissions')?.description).toBe('Choose the permission preset')
+    await ctx.commands.execute(agent, '/permissions', [], new AbortController().signal)
+    expect(ctx.mayflyOverlays.list().some(entry => entry.id === 'mayfly.permission')).toBe(true)
+    off()
+    native()
   })
 })

@@ -3,20 +3,19 @@
  */
 import type { Context } from '@deepseek-ai/cordis'
 import { isDeepStrictEqual } from 'node:util'
-import { credentialRef } from '@deepseek-ai/dsh-credentials'
+import { credentialRef, credentialKeyId } from '@deepseek-ai/dsh-credentials'
 import { SettingsConflictError } from '@deepseek-ai/dsh-settings'
 import type { LlmDiscoveredModel } from '@deepseek-ai/dsh-llm'
 import { ui, type MayflyFormAddress, type MayflyOverlayHandle, type MayflySubmission, type MayflyUiActionReply, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import { loadModelsDevIndex } from './models-dev.ts'
-import { persistProviders } from './provider-store.ts'
-import { deriveKeyRef, normalizeBaseURL, providerProfile } from './provider-profile.ts'
+import { persistProviders, providerAddress, providerContainer, providerDescriptor, providerDirectory, providerProfileAt, sameProviderPath } from './provider-store.ts'
+import { deriveKeyRef, normalizeBaseURL } from './provider-profile.ts'
 import { openUiOverlay } from './ui-overlay.ts'
 import { openAuthorization } from './authorization-ui.ts'
 import { interactionTranslator } from './locale.ts'
 
 const ENDPOINT_PROTOCOLS = ['anthropic-messages', 'openai-completions', 'openai-responses'] as const
 const THINKING_LEVELS = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'] as const
-const NAMESPACE = 'llm-pi-ai'
 const ROUTE_ID = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/u
 const address = (formId: string): MayflyFormAddress => ({ pagePath: [{ controlId: 'provider-tabs', itemId: formId }], formId })
 
@@ -42,6 +41,17 @@ function openEndpoint(ctx: Context, known: string | undefined, onCreated: (route
   const credentials = ctx.get('credentials')!
   const llm = ctx.get('llm')!
   const t = interactionTranslator(ctx)
+  /* The native directory owns the settings address: a known route names its
+   * own profile path, while a new route joins the dict a catalog adapter
+   * declares. A composition with no such adapter has nowhere to write. */
+  const declared = known === undefined ? undefined : providerAddress(ctx, known)
+  const container = known === undefined ? providerContainer(ctx) : declared?.container === undefined ? undefined : { ns: declared.ns, container: declared.container }
+  if (known === undefined ? container === undefined : declared === undefined || declared.container === undefined) {
+    throw new Error('Provider configuration is unavailable: no configurable provider route dict is declared')
+  }
+  const ns = known === undefined ? container!.ns : declared!.ns
+  const containerPath = known === undefined ? container!.container : declared!.container!
+  const profilePath = (route: string): readonly string[] => known === undefined ? [...containerPath, route] : declared!.path
   const id = known === undefined ? 'mayfly.provider.add.custom' : `mayfly.provider.add.${Buffer.from(known).toString('hex')}`
   if (ctx.mayflyOverlays.focus(id)) throw new Error('Provider setup is already open')
   let advertised: readonly LlmDiscoveredModel[] = []
@@ -57,8 +67,12 @@ function openEndpoint(ctx: Context, known: string | undefined, onCreated: (route
   let discoveryGeneration = 0
   let discoveryAbort: AbortController | undefined
   let handle: MayflyOverlayHandle
-  const descriptor = () => settings.describe().find(item => String(item.ns) === NAMESPACE)!
-  const source = () => [{ resourceId: NAMESPACE, revision: descriptor().revision }]
+  const descriptor = () => {
+    const found = providerDescriptor(settings, ns)
+    if (found === undefined) throw new Error(`Provider settings are unavailable: "${ns}" is not described`)
+    return found
+  }
+  const source = () => [{ resourceId: ns, revision: descriptor().revision }]
   const modelsPagePath = [{ controlId: 'provider-tabs', itemId: 'models' }]
   const customModelAddress: MayflyFormAddress = { pagePath: modelsPagePath, formId: 'custom-model' }
   const modelRows = () => [...advertised.map(model => ({ id: model.id, label: model.id, ...(model.contextWindow === undefined ? {} : { detail: `${model.contextWindow} tokens` }) })),
@@ -118,7 +132,7 @@ function openEndpoint(ctx: Context, known: string | undefined, onCreated: (route
     for (const api of new Set([input.protocol === 'anthropic-messages' ? 'openai-completions' : input.protocol, 'openai-completions'])) {
       for (const base of discoveryBases(input.baseURL)) {
         try {
-          const models = await llm.discoverModels(NAMESPACE, { api, baseURL: base, apiKey: input.key }, combined)
+          const models = await llm.discoverModels(ns, { api, baseURL: base, apiKey: input.key }, combined)
           if (models.length > 0) { found = models; listingBase = base; break }
         } catch (error) { if (combined.aborted) return; failure ??= error }
       }
@@ -170,7 +184,7 @@ function openEndpoint(ctx: Context, known: string | undefined, onCreated: (route
     const baseURL = String(connection.baseURL ?? '')
     if (!ROUTE_ID.test(route)) return { kind: 'invalid', errors: [{ ...address('connection'), fieldId: 'route', message: t('Provider names use lowercase letters, digits, and hyphens') }] }
     const current = descriptor()
-    if (created === undefined && providerProfile(current.value, route) !== undefined) return { kind: 'invalid', errors: [{ ...address('connection'), fieldId: 'route', message: t('This provider already exists') }] }
+    if (created === undefined && providerProfileAt(current.value, profilePath(route)) !== undefined) return { kind: 'invalid', errors: [{ ...address('connection'), fieldId: 'route', message: t('This provider already exists') }] }
     if (known === undefined) {
       try { const url = new URL(baseURL); if (!['http:', 'https:'].includes(url.protocol)) throw new Error('protocol') }
       catch { return { kind: 'invalid', errors: [{ ...address('connection'), fieldId: 'baseURL', message: t('Enter an HTTP or HTTPS URL') }] } }
@@ -186,10 +200,10 @@ function openEndpoint(ctx: Context, known: string | undefined, onCreated: (route
       handle.set(view(), { source: source() })
       return { kind: 'completed', navigate: modelsPagePath }
     }
-    const expected = submission.source.find(stamp => stamp.resourceId === NAMESPACE)?.revision
+    const expected = submission.source.find(stamp => stamp.resourceId === ns)?.revision
     if (typeof expected !== 'number' || expected !== current.revision) return { kind: 'conflict', node: view(), source: source(), message: t('Provider settings changed elsewhere') }
     if (created !== undefined) {
-      const stored = providerProfile(current.user, created.route)
+      const stored = providerProfileAt(current.user, profilePath(created.route))
       if (created.route !== route || !isDeepStrictEqual(stored, created.profile)) return { kind: 'conflict', node: view(), source: source(), message: t('The created provider changed; reopen its configuration') }
     }
     const modelDefaults = values(submission, 'models')
@@ -205,7 +219,7 @@ function openEndpoint(ctx: Context, known: string | undefined, onCreated: (route
     } : { apiKeyEnv: deriveKeyRef(route) }
     try {
       if (created === undefined) {
-        await persistProviders(settings, [{ op: 'set', path: ['providers', route], value: profile }], expected)
+        await persistProviders(settings, ns, [{ op: 'set', path: profilePath(route), value: profile }], expected)
         created = { route, profile }
       }
       if (cancellation.aborted) return { kind: 'cancelled' }
@@ -250,6 +264,11 @@ export function openProviderSetup(ctx: Context, onCreated: (route: string) => vo
   const llm = ctx.get('llm')
   if (overlays === undefined || settings === undefined || llm === undefined || ctx.get('credentials') === undefined) throw new Error('Provider setup requires settings, credentials, llm, and overlays')
   if (overlays.focus('mayfly.provider.add')) return
+  const container = providerContainer(ctx)
+  if (container === undefined) throw new Error('Provider setup is unavailable: no configurable provider route dict is declared')
+  const directory = providerDirectory(ctx)
+  const ownedBy = (entry: { readonly settingsNs: string, readonly settingsPath: readonly string[] }): boolean =>
+    entry.settingsNs === container.ns && sameProviderPath(entry.settingsPath.slice(0, -1), container.container)
   const t = interactionTranslator(ctx)
   openUiOverlay(ctx, {
     id: 'mayfly.provider.add', title: t('Add provider'), presentation: 'editor', capturing: true, scope: { kind: 'app', targetId: 'provider-creation' },
@@ -259,8 +278,18 @@ export function openProviderSetup(ctx: Context, onCreated: (route: string) => vo
       if (kind === 'custom') { openEndpoint(ctx, undefined, onCreated, signal); return { kind: 'completed' } }
       const active = new Set(llm.listProviders().map(provider => provider.id))
       const rows = kind === 'oauth'
-        ? (ctx.get('authorization')?.list() ?? []).filter(entry => String(entry.key).startsWith('llm-pi-ai/') && entry.methods.some(method => method.id === 'oauth')).map(entry => ({ id: String(entry.key).slice('llm-pi-ai/'.length), label: entry.label })).filter(entry => !active.has(entry.id))
-        : llm.listConfigurableProviders().filter(provider => provider.settingsNs === NAMESPACE && !active.has(provider.provider)).map(provider => ({ id: provider.provider, label: provider.displayName }))
+        /* A flow's key id is the adapter's route. Offer only routes the native
+           directory says can authenticate from a stored sign-in; the key
+           namespace itself is never guessed. */
+        ? (() => {
+            const oauth = new Map(directory.filter(ownedBy).filter(entry => entry.nativeAuth?.oauth === true).map(entry => [entry.provider, entry]))
+            return (ctx.get('authorization')?.list() ?? []).flatMap(flow => {
+              const route = oauth.get(credentialKeyId(flow.key))
+              return route === undefined || !flow.methods.some(method => method.id === 'oauth') || active.has(route.provider)
+                ? [] : [{ id: route.provider, label: route.displayName }]
+            })
+          })()
+        : directory.filter(entry => ownedBy(entry) && !active.has(entry.provider)).map(entry => ({ id: entry.provider, label: entry.displayName }))
       const pickerId = `mayfly.provider.add.${kind}`
       if (overlays.focus(pickerId)) return { kind: 'completed' }
       openUiOverlay(ctx, {
@@ -269,8 +298,11 @@ export function openProviderSetup(ctx: Context, onCreated: (route: string) => vo
           if (selected.kind !== 'selection-accept') return { kind: 'completed' }
           const route = selected.selectedIds[0]!
           if (kind === 'oauth') openAuthorization(ctx, route, async () => {
-            const descriptor = settings.describe().find(item => String(item.ns) === NAMESPACE)!
-            if (providerProfile(descriptor.value, route) === undefined) await persistProviders(settings, [{ op: 'set', path: ['providers', route], value: {} }], descriptor.revision)
+            const descriptor = providerDescriptor(settings, container.ns)
+            if (descriptor === undefined) throw new Error(`Provider settings are unavailable: "${container.ns}" is not described`)
+            if (providerProfileAt(descriptor.value, [...container.container, route]) === undefined) {
+              await persistProviders(settings, container.ns, [{ op: 'set', path: [...container.container, route], value: {} }], descriptor.revision)
+            }
             onCreated(route)
           }, signal)
           else openEndpoint(ctx, route, onCreated, signal)

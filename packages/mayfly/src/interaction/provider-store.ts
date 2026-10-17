@@ -1,239 +1,150 @@
 /**
- * User-level provider routes: the `llm-pi-ai` row of the harness home's
- * user patch layer (`$DSH_HOME/cordis.patch.yml`).
+ * Provider-route addressing over the native configurable-provider directory.
  *
- * Provider configuration belongs to the user, not to one dsh profile: the
- * npm-installed `mayfly` profile and every `mayfly-dev` / `mayfly-<tag>`
- * development profile must see the same routes. A native settings write
- * targets the active profile's `cordis.patch.yml`, which is per profile, so
- * this module keeps the canonical copy in the home layer dsh applies after
- * every profile patch and mirrors the same value into the active profile's
- * patch through the native path-op write, so the running tree reloads live.
+ * A route's settings namespace and profile path are declared by the adapter
+ * that owns it (`LlmConfigurableProvider.settingsNs` / `settingsPath`); no
+ * Mayfly-side plugin id, package name, row id, or config key is assumed. The
+ * only write path is `ctx.settings.mutate`, addressed with those native facts.
+ * A route whose adapter declares no path cannot be edited through this module,
+ * and callers report that instead of writing a profile document by hand.
  *
  * @module @ephemeral-ai/mayfly/interaction/provider-store
  */
 import type { Context } from '@deepseek-ai/cordis'
-import type {} from '@deepseek-ai/cordis-plugin-loader'
+import type { LlmConfigurableProvider } from '@deepseek-ai/dsh-llm'
 import type { SettingsDescriptor, SettingsForms, SettingsPathOp } from '@deepseek-ai/dsh-settings'
-import { isDeepStrictEqual } from 'node:util'
-import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
-import { isMap, isSeq, parseDocument, type YAMLMap, type YAMLSeq } from 'yaml'
-import { dshHome } from './updater/profile.ts'
+import type { ProviderProfile } from './provider-profile.ts'
 
-/** The configurable-provider settings namespace Mayfly owns. */
-const PROVIDER_NAMESPACE = 'llm-pi-ai'
-/** The home-patch row id; the dsh-base bundle owns this entry. */
-const ROW_ID = 'llm-pi-ai'
-/** The entry's package name, restored on a fresh home patch row. */
-const ROW_NAME = '@deepseek-ai/dsh-llm-pi-ai'
-/** The entry's only config key. */
-const PROVIDERS_KEY = 'providers'
-
-/** Process seams for the home patch (specs replace fields and restore them). */
-export const providerStoreInternals = {
-  /** The harness home's user patch layer. */
-  homePatchPath: (): string => join(dshHome(), 'cordis.patch.yml'),
-  /** Read a text file, `undefined` when missing (never throws). */
-  readTextFile: (path: string): string | undefined => {
-    try { return readFileSync(path, 'utf8') } catch { return undefined }
-  },
-  /** Atomically replace a text file, creating parent directories. */
-  writeTextFile: (path: string, text: string): void => {
-    mkdirSync(dirname(path), { recursive: true })
-    const staging = `${path}.mayfly-tmp`
-    writeFileSync(staging, text, { mode: 0o600 })
-    renameSync(staging, path)
-  },
-  /** Remove a file; absent is a no-op. */
-  removeFile: (path: string): void => {
-    rmSync(path, { force: true })
-  },
+/** One configurable route's native settings address. */
+export interface ProviderAddress {
+  /** Namespace of the profile entry whose config carries this route. */
+  readonly ns: string
+  /** Path from the namespace's section root to this route's profile object. */
+  readonly path: readonly string[]
+  /** Path from the namespace's section root to the dict of route profiles, when the adapter names one. */
+  readonly container: readonly string[] | undefined
+  /** The adapter's own statement that configuration alone declared this route. */
+  readonly declared: boolean | undefined
+  /** Human-readable route name the adapter published. */
+  readonly displayName: string
 }
 
-/** The `providers` dict of one config-shaped value, or an empty dict. */
-function providersOf(value: unknown): Record<string, unknown> {
-  const plain = value !== null && typeof value === 'object' && typeof (value as { toJSON?: unknown }).toJSON === 'function'
-    ? (value as { toJSON(): unknown }).toJSON()
-    : value
-  if (plain === null || typeof plain !== 'object') return {}
-  const providers = (plain as { readonly providers?: unknown }).providers
-  return providers !== null && typeof providers === 'object' && !Array.isArray(providers)
-    ? providers as Record<string, unknown>
-    : {}
+/** The native settings namespace and route-dict path a new route can join. */
+export interface ProviderContainer {
+  /** Namespace of the profile entry whose config carries provider routes. */
+  readonly ns: string
+  /** Path from the namespace's section root to the dict of route profiles. */
+  readonly container: readonly string[]
 }
 
-/** Set one leaf path, materializing missing object segments. */
-function setPath(target: Record<string, unknown>, path: readonly string[], value: unknown): void {
-  let node = target
-  for (const segment of path.slice(0, -1)) {
-    const child = node[segment]
-    if (child === null || typeof child !== 'object' || Array.isArray(child)) {
-      const created: Record<string, unknown> = {}
-      node[segment] = created
-      node = created
-    } else node = child as Record<string, unknown>
-  }
-  node[path.at(-1)!] = value
+/** The routes the native LLM registry currently declares configurable. */
+export function providerDirectory(ctx: Context): readonly LlmConfigurableProvider[] {
+  return ctx.get('llm')?.listConfigurableProviders() ?? []
 }
 
-/** Delete one leaf path; a missing parent is a no-op. */
-function unsetPath(target: Record<string, unknown>, path: readonly string[]): void {
-  let node = target
-  for (const segment of path.slice(0, -1)) {
-    const child = node[segment]
-    if (child === null || typeof child !== 'object' || Array.isArray(child)) return
-    node = child as Record<string, unknown>
-  }
-  delete node[path.at(-1)!]
+/** Whether two native settings paths name the same location. */
+export function sameProviderPath(left: readonly string[], right: readonly string[]): boolean {
+  return left.length === right.length && left.every((segment, index) => segment === right[index])
 }
 
 /**
- * Apply provider path ops to the effective `providers` dict — the exact
- * value the home row stores and the native write restates.
- * @param value - the effective `llm-pi-ai` config value.
- * @param ops - the ordered form edits.
- * @returns the next providers dict, detached from `value`.
+ * Resolve one route's native settings address.
+ * @param ctx - context carrying the native LLM registry.
+ * @param route - provider route key.
+ * @returns the declared address, or undefined when no adapter declares the route.
  */
-export function providerOpsTarget(value: unknown, ops: readonly SettingsPathOp[]): Record<string, unknown> {
-  const providers = structuredClone(providersOf(value))
-  for (const op of ops) {
-    if (op.path[0] !== PROVIDERS_KEY || op.path.length < 2) continue
-    const rest = op.path.slice(1)
-    if (op.op === 'set') setPath(providers, rest, structuredClone(op.value))
-    else unsetPath(providers, rest)
+export function providerAddress(ctx: Context, route: string): ProviderAddress | undefined {
+  const entry = providerDirectory(ctx).find(candidate => candidate.provider === route)
+  if (entry === undefined) return undefined
+  const path = entry.settingsPath ?? []
+  return {
+    ns: entry.settingsNs,
+    path,
+    container: path.length === 0 ? undefined : path.slice(0, -1),
+    declared: entry.declared,
+    displayName: entry.displayName,
   }
-  return providers
-}
-
-/** The last top-level `llm-pi-ai` replace row, if the patch has one. */
-function providerRow(items: readonly unknown[]): YAMLMap | undefined {
-  for (let index = items.length - 1; index >= 0; index -= 1) {
-    const item = items[index]
-    if (isMap(item) && item.get('id') === ROW_ID && !item.has('insert')) return item
-  }
-  return undefined
-}
-
-/** Parse a home patch into its document and top-level sequence. */
-function parsePatch(text: string | undefined): { readonly document: ReturnType<typeof parseDocument>, readonly contents: YAMLSeq } {
-  const document = parseDocument(text === undefined || text.trim() === '' ? '[]\n' : text)
-  const contents = document.contents
-  if (document.errors.length > 0 || !isSeq(contents)) {
-    throw new Error(`home patch must be a YAML sequence: ${document.errors[0]?.message ?? 'found another document shape'}`)
-  }
-  return { document, contents }
 }
 
 /**
- * Read the `providers` dict the home patch carries.
- * @param path - the home patch path.
- * @returns the stored providers, or an empty dict.
+ * Resolve the native settings location a newly added route can join. Adapters
+ * that own a dict of routes declare a non-empty per-route path; entries are
+ * grouped by namespace and dict path, and the largest group wins (a catalog
+ * of installed routes is the stable container). Ties resolve lexically so a
+ * composition with several candidate adapters still answers deterministically.
+ * @param ctx - context carrying the native LLM registry.
+ * @returns the container, or undefined when no adapter declares a route dict.
  */
-export function readHomeProviders(path: string): Record<string, unknown> {
-  const { contents } = parsePatch(providerStoreInternals.readTextFile(path))
-  const row = providerRow(contents.items)
-  return row === undefined ? {} : providersOf(row.get('config'))
-}
-
-/**
- * Upsert the `llm-pi-ai` row of the home patch with `providers`, preserving
- * every other row and comment.
- * @param path - the home patch path.
- * @param providers - the providers dict to store.
- * @returns the previous file text, `undefined` when the file did not exist.
- */
-export function writeHomeProviders(path: string, providers: Readonly<Record<string, unknown>>): string | undefined {
-  const before = providerStoreInternals.readTextFile(path)
-  const { document, contents } = parsePatch(before)
-  const row = providerRow(contents.items)
-  if (row === undefined) {
-    contents.flow = false
-    document.add({ id: ROW_ID, name: ROW_NAME, config: { [PROVIDERS_KEY]: structuredClone(providers) } })
-  } else {
-    const config = isMap(row.get('config')) ? row.get('config') as YAMLMap : document.createNode({}) as YAMLMap
-    config.set(PROVIDERS_KEY, document.createNode(structuredClone(providers)))
-    row.set('config', config)
+export function providerContainer(ctx: Context): ProviderContainer | undefined {
+  const groups = new Map<string, { readonly ns: string, readonly container: readonly string[], count: number }>()
+  for (const entry of providerDirectory(ctx)) {
+    const path = entry.settingsPath ?? []
+    if (path.length < 2) continue
+    const container = path.slice(0, -1)
+    const key = JSON.stringify([entry.settingsNs, container])
+    const group = groups.get(key)
+    if (group === undefined) groups.set(key, { ns: entry.settingsNs, container, count: 1 })
+    else group.count += 1
   }
-  providerStoreInternals.writeTextFile(path, String(document))
-  return before
+  return [...groups.values()]
+    .toSorted((left, right) => right.count - left.count
+      || left.ns.localeCompare(right.ns)
+      || JSON.stringify(left.container).localeCompare(JSON.stringify(right.container)))
+    .map(({ ns, container }) => ({ ns, container }))[0]
 }
 
 /**
- * Restore the home patch to a previous state.
- * @param path - the home patch path.
- * @param previous - the text `writeHomeProviders` returned; `undefined` removes the file.
+ * Read one native settings path.
+ * @param value - a namespace's resolved or stored section.
+ * @param path - segments below that section.
+ * @returns the value at the path, or undefined when a segment is missing.
  */
-export function restoreHome(path: string, previous: string | undefined): void {
-  if (previous === undefined) providerStoreInternals.removeFile(path)
-  else providerStoreInternals.writeTextFile(path, previous)
-}
-
-/** The live `llm-pi-ai` descriptor, or `undefined` when the entry is absent. */
-function descriptorOf(settings: SettingsForms): SettingsDescriptor | undefined {
-  return settings.describe().find(item => String(item.ns) === PROVIDER_NAMESPACE)
+export function providerValueAt(value: unknown, path: readonly string[]): unknown {
+  let node = value
+  for (const segment of path) {
+    if (node === null || typeof node !== 'object' || Array.isArray(node)) return undefined
+    if (!Object.hasOwn(node, segment)) return undefined
+    node = (node as Record<string, unknown>)[segment]
+  }
+  return node
 }
 
 /**
- * Persist provider edits to the user-level home patch and mirror them into
- * the active profile through one native path-op write, so a running tree
- * reloads while every other profile boots with the same routes.
+ * Read one route's profile object from a native settings value.
+ * @param value - a namespace's resolved or stored section.
+ * @param path - the route's native settings path.
+ * @returns the profile object, or undefined when no profile object is stored there.
+ */
+export function providerProfileAt(value: unknown, path: readonly string[]): ProviderProfile | undefined {
+  const profile = providerValueAt(value, path)
+  return profile !== null && typeof profile === 'object' && !Array.isArray(profile)
+    ? profile as ProviderProfile
+    : undefined
+}
+
+/** The live descriptor of one native settings namespace. */
+export function providerDescriptor(settings: SettingsForms, ns: string): SettingsDescriptor | undefined {
+  return settings.describe().find(item => String(item.ns) === ns)
+}
+
+/**
+ * Persist ordered path edits through the native settings service. This is the
+ * module's only write path; a missing namespace is an explicit refusal.
  * @param settings - the native settings service.
- * @param ops - the ordered form edits.
- * @param expected - the descriptor revision the edit was read at.
+ * @param ns - the profile entry namespace the paths address.
+ * @param ops - ordered, namespace-rooted edits.
+ * @param expected - descriptor revision the edit was read at.
+ * @throws when the namespace is not described, or the native write refuses.
  */
-export async function persistProviders(settings: SettingsForms, ops: readonly SettingsPathOp[], expected?: number): Promise<void> {
+export async function persistProviders(
+  settings: SettingsForms,
+  ns: string,
+  ops: readonly SettingsPathOp[],
+  expected?: number,
+): Promise<void> {
   if (ops.length === 0) return
-  const descriptor = descriptorOf(settings)
-  if (descriptor === undefined) throw new Error(`no configurable plugin entry "${PROVIDER_NAMESPACE}"`)
-  const target = providerOpsTarget(descriptor.value, ops)
-  const path = providerStoreInternals.homePatchPath()
-  const before = writeHomeProviders(path, target)
-  try {
-    await settings.mutate(PROVIDER_NAMESPACE, [{ op: 'set', path: [PROVIDERS_KEY], value: target }], expected)
-  } catch (error) {
-    restoreHome(path, before)
-    throw error
+  if (providerDescriptor(settings, ns) === undefined) {
+    throw new Error(`no configurable plugin entry "${ns}"`)
   }
-}
-
-/**
- * Merge the active profile's providers into the home patch once, so routes
- * configured before the user-level store existed reach every profile. The
- * home value wins a route-name conflict.
- * @param settings - the native settings service.
- * @param path - the home patch path.
- * @returns whether the home patch changed.
- */
-export function migrateProvidersToHome(settings: SettingsForms, path: string): boolean {
-  const descriptor = descriptorOf(settings)
-  if (descriptor === undefined) return false
-  const profile = providersOf(descriptor.value)
-  if (Object.keys(profile).length === 0) return false
-  const home = readHomeProviders(path)
-  const merged = { ...profile, ...home }
-  if (isDeepStrictEqual(merged, home)) return false
-  writeHomeProviders(path, merged)
-  return true
-}
-
-/**
- * Schedule the one-time merge after the Loader settles every entry, fenced
- * by the owning fiber's lifetime.
- * @param ctx - the provider commands' context.
- */
-export function scheduleProviderMigration(ctx: Context): void {
-  const lifetime = new AbortController()
-  ctx.effect(() => () => lifetime.abort())
-  void (async () => {
-    try {
-      await ctx.get('loader')?.await()
-      if (lifetime.signal.aborted) return
-      const settings = ctx.get('settings')
-      if (settings === undefined) return
-      migrateProvidersToHome(settings, providerStoreInternals.homePatchPath())
-    } catch (error) {
-      ctx.logger.warn(`provider store: ${String(error)}`)
-    }
-  })()
+  await settings.mutate(ns, ops, expected)
 }

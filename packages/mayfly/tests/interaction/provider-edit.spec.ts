@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import * as uiProvider from '../../../ui/src/provider.ts'
 import type { MayflyOverlayEntry } from '../../../ui/src/contracts.ts'
 import type { MayflyFieldValue, MayflySubmission } from '../../../ui/src/interaction.ts'
-import { providerFixture, testHomeText } from './provider-fixture.ts'
+import { providerFixture } from './provider-fixture.ts'
 import { buildIndex, setModelsDevLoader } from '../../src/interaction/models-dev.ts'
 import { openProviderEditor } from '../../src/interaction/provider-edit.ts'
 import { flush } from '../helpers.ts'
@@ -16,11 +16,27 @@ afterEach(async () => { setModelsDevLoader(undefined); for (const ctx of context
 const address = (itemId: string) => ({ pagePath: [{ controlId: 'provider-pages', itemId }], formId: 'provider' })
 const profile = { displayName: 'Original', api: 'openai-completions', baseURL: 'https://old.example/v1', apiKeyEnv: 'CUSTOM_KEY', models: [{ id: 'one', contextWindow: 4000 }], headers: { untouched: 'value' } }
 
+/** One native configurable-provider directory entry for a route. */
+const directoryEntry = (route: string, declared = true) => ({ settingsNs: 'llm-pi-ai', provider: route, displayName: route, settingsPath: ['providers', route], declared })
+
+/** Give a fake llm the route's native settings address unless the test declares its own. */
+function withDirectory(route: string, llm?: unknown): unknown {
+  const current = llm as { readonly listConfigurableProviders?: () => readonly { readonly provider: string }[] } | undefined
+  const entries = current?.listConfigurableProviders?.() ?? []
+  if (entries.some(entry => entry.provider === route)) return llm
+  return {
+    listProviders: () => [],
+    discoverModels: async () => [],
+    ...current,
+    listConfigurableProviders: () => [...entries, directoryEntry(route)],
+  }
+}
+
 async function setup() {
   const ctx = new Context()
   contexts.push(ctx)
-  const bench = await providerFixture(ctx, { custom: profile })
-  await bench.commands.entries.get('provider')!.handler({ rawInput: 'edit custom', signal: new AbortController().signal } as never)
+  const bench = await providerFixture(ctx, { custom: profile }, withDirectory('custom'))
+  expect(await openProviderEditor(ctx, 'custom')).toBe(true)
   const entry = ctx.mayflyOverlays.list()[0]!
   const model = ctx.mayflyUiInteraction.get('overlay', entry.id)!
   expect(entry.definition.presentation).toBe('editor')
@@ -60,7 +76,7 @@ async function directSetup(options: {
 } = {}) {
   const ctx = new Context()
   contexts.push(ctx)
-  const bench = await providerFixture(ctx, options.profiles ?? { custom: profile }, options.llm)
+  const bench = await providerFixture(ctx, options.profiles ?? { custom: profile }, withDirectory(options.route ?? 'custom', options.llm))
   const route = options.route ?? 'custom'
   const opened = await openProviderEditor(ctx, route, options.signal)
   const entry = ctx.mayflyOverlays.list().find(item => item.id === `mayfly.provider.${Buffer.from(route).toString('hex')}`)
@@ -362,7 +378,7 @@ describe('provider editor', () => {
   it('reports a clear-key request on a non-writable credential without claiming removal', async () => {
     const ctx = new Context()
     contexts.push(ctx)
-    const bench = await providerFixture(ctx, { custom: profile })
+    const bench = await providerFixture(ctx, { custom: profile }, withDirectory('custom'))
     vi.spyOn(bench.credentials, 'describe').mockResolvedValue({ configured: true, writable: false, source: 'environment' })
     expect(await openProviderEditor(ctx, 'custom')).toBe(true)
     const entry = ctx.mayflyOverlays.list()[0]!
@@ -401,13 +417,13 @@ describe('provider editor', () => {
   it('fails loudly when the namespace disappears or keeps changing while loading', async () => {
     const missing = new Context()
     contexts.push(missing)
-    const missingBench = await providerFixture(missing, { custom: profile })
+    const missingBench = await providerFixture(missing, { custom: profile }, withDirectory('custom'))
     await missingBench.namespace!.dispose()
     await expect(openProviderEditor(missing, 'custom')).rejects.toThrow('Provider settings are unavailable')
 
     const changing = new Context()
     contexts.push(changing)
-    const changingBench = await providerFixture(changing, { custom: profile })
+    const changingBench = await providerFixture(changing, { custom: profile }, withDirectory('custom'))
     const describe = changingBench.settings.describe.bind(changingBench.settings)
     let revision = 0
     vi.spyOn(changingBench.settings, 'describe').mockImplementation(() => describe().map(item => ({ ...item, revision: revision++ })))
@@ -421,13 +437,13 @@ describe('provider editor', () => {
     expect(JSON.stringify(fallback.entry!.node)).toContain('"id":"baseURL"')
 
     const known = await directSetup({
-      llm: { listConfigurableProviders: () => [{ settingsNs: 'llm-pi-ai', provider: 'custom' }] },
+      llm: { listConfigurableProviders: () => [{ settingsNs: 'llm-pi-ai', provider: 'custom', displayName: 'Custom', settingsPath: ['providers', 'custom'], declared: false }] },
     })
     expect(JSON.stringify(known.entry!.node)).not.toContain('"id":"baseURL"')
 
     const readonly = new Context()
     contexts.push(readonly)
-    const readonlyBench = await providerFixture(readonly, { custom: profile })
+    const readonlyBench = await providerFixture(readonly, { custom: profile }, withDirectory('custom'))
     Object.defineProperty(readonlyBench.settings, 'writable', { value: false })
     vi.spyOn(readonlyBench.credentials, 'describe').mockResolvedValue({ configured: false, writable: false, source: 'environment' })
     expect(await openProviderEditor(readonly, 'custom')).toBe(true)
@@ -439,7 +455,7 @@ describe('provider editor', () => {
   it('focuses a concurrently opened editor after its initial read', async () => {
     const ctx = new Context()
     contexts.push(ctx)
-    const bench = await providerFixture(ctx, { custom: profile })
+    const bench = await providerFixture(ctx, { custom: profile }, withDirectory('custom'))
     const original = bench.credentials.describe.bind(bench.credentials)
     const firstRead = Promise.withResolvers<Awaited<ReturnType<typeof original>>>()
     vi.spyOn(bench.credentials, 'describe').mockReturnValueOnce(firstRead.promise).mockImplementation(original)
@@ -574,7 +590,6 @@ describe('provider editor', () => {
       requestContext(entry),
     )).toMatchObject({ kind: 'accepted', feedback: { severity: 'warning' } })
     expect(bench.settings.get('llm-pi-ai')).toMatchObject({ providers: {} })
-    expect(testHomeText()).not.toContain('custom')
     expect(bench.credentials.values.has('CUSTOM_KEY')).toBe(true)
   })
 
@@ -659,7 +674,7 @@ describe('provider editor', () => {
     )).toMatchObject({ kind: 'accepted' })
     expect(valid.settings.get('llm-pi-ai')).toMatchObject({ providers: { custom: { displayName: 'custom', baseURL: 'http://new.example/v1' } } })
 
-    const known = await directSetup({ llm: { listConfigurableProviders: () => [{ settingsNs: 'llm-pi-ai', provider: 'custom' }] } })
+    const known = await directSetup({ llm: { listConfigurableProviders: () => [{ settingsNs: 'llm-pi-ai', provider: 'custom', displayName: 'Custom', settingsPath: ['providers', 'custom'], declared: false }] } })
     expect(await known.entry!.definition.onEvent!.action!(
       { kind: 'submit', pagePath: [], controlId: 'submit', submission: saveSubmission(known.entry!, { baseURL: 'https://ignored.example', key: 42 }) },
       requestContext(known.entry!),

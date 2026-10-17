@@ -9,14 +9,12 @@ import { ui, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import { openProviderEditor } from './provider-edit.ts'
 import { openAccountPanel } from './provider-account.ts'
 import { openModelPicker } from './model-commands.ts'
-import { deriveKeyRef, providerProfile } from './provider-profile.ts'
-import { scheduleProviderMigration } from './provider-store.ts'
+import { deriveKeyRef } from './provider-profile.ts'
+import { providerAddress, providerDescriptor, providerProfileAt } from './provider-store.ts'
 import { registerOwnedCommand } from './sessionless-commands.ts'
 import { interactionTranslator } from './locale.ts'
 import { openProviderSetup } from './provider-add.ts'
 import { openUiOverlay } from './ui-overlay.ts'
-
-const NAMESPACE = 'llm-pi-ai'
 
 export const name = 'mayfly-provider-commands'
 export const inject = ['commands', 'settings', 'credentials', 'mayflyOverlays', 'mayflyInteractionState']
@@ -24,7 +22,6 @@ export const inject = ['commands', 'settings', 'credentials', 'mayflyOverlays', 
 export function apply(ctx: Context): void {
   const lifetime = new AbortController()
   ctx.effect(() => () => lifetime.abort())
-  scheduleProviderMigration(ctx)
   const t = interactionTranslator(ctx)
   const add = async (signal: AbortSignal): Promise<CommandResult> => {
     if (signal.aborted || lifetime.signal.aborted) return { kind: 'success' }
@@ -49,10 +46,12 @@ export function apply(ctx: Context): void {
       }
       if (argument !== '' && argument !== 'list') return { kind: 'error', text: 'usage: /provider [list | edit <provider> | switch <provider> | add]' }
       const build = async (): Promise<MayflyUiNode> => {
-        const descriptor = ctx.get('settings')?.describe().find(item => String(item.ns) === NAMESPACE)
+        const settings = ctx.get('settings')
         const credentials = ctx.get('credentials')
         const items = await Promise.all((ctx.get('llm')?.listProviders() ?? []).map(async provider => {
-          const profile = descriptor === undefined ? undefined : providerProfile(descriptor.value, provider.id)
+          const address = providerAddress(ctx, provider.id)
+          const descriptor = settings === undefined || address === undefined ? undefined : providerDescriptor(settings, address.ns)
+          const profile = descriptor === undefined || address === undefined ? undefined : providerProfileAt(descriptor.value, address.path)
           const credential = await credentials?.describe(credentialRef(profile?.apiKeyEnv ?? deriveKeyRef(provider.id))).catch(() => undefined)
           const parts = [
             profile?.models === undefined ? undefined : profile.models.length === 0 ? t('no models') : t('{count} models', { count: profile.models.length }),
