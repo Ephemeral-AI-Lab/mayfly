@@ -456,3 +456,52 @@ describe('StreamFacts: the compact title, the live call, and the plain entries',
     expect(rowsOf(facts.turns[0]).find(row => row.kind === 'compaction')).not.toHaveProperty('more')
   })
 })
+
+describe('StreamFacts: the turn index over a long session', () => {
+  const lifetime = (turn: number) => ({ turn, startedAt: NOON + turn, endedAt: NOON + turn + 1, outcome: 'completed' as const })
+  const long = (count: number): TranscriptEntryModel[] => Array.from({ length: count }, (_, index) => index + 1)
+    .flatMap(turn => [user(turn, `q${String(turn)}`), thinking(turn, `thinking ${String(turn)}`), assistant(turn, `a${String(turn)}`)])
+
+  it('builds a 2,000-turn model with the facts of the same tail alone', () => {
+    const turns = Array.from({ length: 2_000 }, (_, index) => lifetime(index + 1))
+    const entries = long(2_000)
+    const facts = new StreamFacts().build(model(entries, turns), inputs())
+    // The default window is the newest 15 turns, in order.
+    expect(facts.turns.map(turn => turn.id)).toEqual(Array.from({ length: 15 }, (_, index) => `turn:${String(1_986 + index)}`))
+    // A model that holds only those entries maps to the same facts: the cached index did not change the mapping.
+    const tail = new StreamFacts().build(model(entries.slice(-45), turns), inputs())
+    expect(facts.turns).toEqual(tail.turns)
+  })
+
+  it('keeps an old forced turn mounted beside the window', () => {
+    const policy = new TranscriptPresentationPolicy()
+    policy.apply({ windowTurns: 2 })
+    const turns = Array.from({ length: 2_000 }, (_, index) => lifetime(index + 1))
+    const facts = new StreamFacts().build(model(long(2_000), turns), inputs({ policy: policy.snapshot(), disclosure: { ...NO_DISCLOSURE, forced: new Set([1]) } }))
+    expect(facts.turns.map(turn => turn.id)).toEqual(['turn:1', 'turn:1999', 'turn:2000'])
+    expect(rowsOf(facts.turns[0]).map(row => row.kind)).toEqual(['prompt', 'header', 'reasoning', 'answer'])
+  })
+
+  it('draws a live step once, from its live entries', () => {
+    const durableThought = thinking(1, 'durable reasoning')
+    const durableAnswer = assistant(1, 'durable answer')
+    const liveThought = { ...thinking(1, 'live reasoning'), id: 'thinking:live', streaming: true }
+    const liveAnswer = { ...assistant(1, 'live answer'), id: 'assistant:live', streaming: true }
+    const base = model([user(1, 'go'), durableThought, durableAnswer, tool(1, 'bash', 'ls')], [{ turn: 1, startedAt: NOON }], true)
+    const live = { ...base, live: { turn: 1, step: 1, entries: [liveThought, liveAnswer] } } as TranscriptModel
+    const rows = rowsOf(new StreamFacts().build(live, inputs()).turns[0])
+    expect(rows.filter(row => row.kind === 'reasoning')).toHaveLength(1)
+    expect(rows.filter(row => row.kind === 'answer')).toHaveLength(1)
+    expect(rows.find(row => row.kind === 'reasoning')).toMatchObject({ rows: ['live reasoning'] })
+    expect(rows.find(row => row.kind === 'answer')).toMatchObject({ text: 'live answer' })
+  })
+
+  it('keeps a canonical node in its original place between visible turns', () => {
+    const before: MayflyUiNode = { kind: 'text', content: 'before the second turn' }
+    const after: MayflyUiNode = { kind: 'text', content: 'inside the second turn' }
+    const entries = [user(1, 'one'), assistant(1, 'first'), before, user(2, 'two'), after, assistant(2, 'second')]
+    const facts = new StreamFacts().build(model(entries as TranscriptEntryModel[], [lifetime(1), lifetime(2)]), inputs())
+    expect(facts.turns.flatMap(turn => turn.rows.map(row => row.kind))).toEqual(['prompt', 'answer', 'note', 'prompt', 'note', 'answer'])
+    expect(facts.turns.flatMap(turn => turn.rows).filter(row => row.kind === 'note').map(row => row.kind === 'note' ? row.text : '')).toEqual(['before the second turn', 'inside the second turn'])
+  })
+})

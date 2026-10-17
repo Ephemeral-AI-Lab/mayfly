@@ -8,7 +8,7 @@ import { describe, expect, it, vi } from 'vitest'
 import type { MayflyListNode, MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import type { MayflyNodeSlot } from '../../src/core/node-slot.ts'
 import type { TranscriptEntryModel } from '../../src/frontend/models.ts'
-import { createTranscriptModel, TranscriptController, type TranscriptScreen } from '../../src/transcript/transcript-model.ts'
+import { createTranscriptModel, PUBLISH_INTERVAL_MS, TranscriptController, type TranscriptScreen } from '../../src/transcript/transcript-model.ts'
 
 const user = (turn: number, text: string): TranscriptEntryModel => ({ id: `user:${String(turn)}`, kind: 'transcript-user', seq: turn, updatedSeq: turn, turn, text, images: [] })
 
@@ -17,7 +17,7 @@ function fakeScreen() {
   const slot = { published: [] as (MayflyUiNode | null)[], disposed: false, turns: 0 }
   const lease: MayflyNodeSlot = {
     id: 'transcript.conversation', get disposed() { return slot.disposed },
-    set: (node) => { slot.published.push(node) }, setTurns: (latest) => { slot.turns = latest },
+    set: (node) => { slot.published.push(node) }, setTurns: (latest) => { slot.turns = latest }, track: () => {}, setMarked: () => {},
     focus: () => {}, release: () => {}, setKeys: () => {}, spotlight: () => {}, focusRow: () => {}, cursor: () => undefined,
     dispose: () => { slot.disposed = true },
   }
@@ -26,6 +26,9 @@ function fakeScreen() {
     mountNodeSlot: (id: string, options: { region: string }) => { mounted.push({ id, region: options.region }); return lease },
     followContent: vi.fn(),
     requestRender: vi.fn(),
+    watchContentTail: () => () => {},
+    contentTail: () => undefined,
+    scrollContentTo: vi.fn(),
   } as unknown as TranscriptScreen
   // The slot holds the stream and its key actions: the list is the first child of the column.
   const latest = (): MayflyListNode | null => {
@@ -35,6 +38,25 @@ function fakeScreen() {
     return list as MayflyListNode
   }
   return { screen, slot, mounted, latest }
+}
+
+/** A clock the test moves: the publish window schedules on it, and expiry runs the trailing publish. */
+function fakeClock() {
+  let now = 1_000
+  const timers = new Map<number, { at: number, callback: () => void }>()
+  let next = 0
+  return {
+    clock: {
+      now: () => now,
+      setTimeout: (callback: () => void, ms: number) => { timers.set(++next, { at: now + ms, callback }); return next },
+      clearTimeout: (handle: unknown) => { timers.delete(handle as number) },
+    },
+    advance: (ms: number): void => {
+      now += ms
+      for (const [handle, timer] of [...timers]) if (timer.at <= now) { timers.delete(handle); timer.callback() }
+    },
+    timers,
+  }
 }
 
 const options = { t: (key: string) => key, queued: () => [] as { id: string, text: string, lane: 'turn' | 'step' }[] }
@@ -58,13 +80,15 @@ describe('TranscriptController', () => {
 
   it('reads a function source on every publish and drops a view', () => {
     const { screen, latest } = fakeScreen()
-    const controller = new TranscriptController(options)
+    const { clock, advance } = fakeClock()
+    const controller = new TranscriptController({ ...options, clock })
     let model = createTranscriptModel('a', [user(1, 'one')])
     controller.setView('main', () => model)
     controller.show('main')
     controller.attach(screen)
     model = createTranscriptModel('a', [user(1, 'one'), user(2, 'two')])
     controller.refresh()
+    advance(PUBLISH_INTERVAL_MS)
     expect(latest()!.items.filter(item => item.gap === true)).toHaveLength(1)
     controller.dropView('main')
     expect(latest()).toBeNull()
@@ -73,7 +97,8 @@ describe('TranscriptController', () => {
   it('opens the prompts the Ctrl-O reach covers, republishes the queue, and unmounts on dispose', () => {
     const { screen, slot, latest } = fakeScreen()
     const queued: { id: string, text: string, lane: 'turn' | 'step' }[] = []
-    const controller = new TranscriptController({ ...options, queued: () => queued })
+    const { clock, advance, timers } = fakeClock()
+    const controller = new TranscriptController({ ...options, queued: () => queued, clock })
     controller.setView('main', createTranscriptModel('a', [user(1, 'a\nb\nc\nd\ne\nf')], true, 0, [{ turn: 1, startedAt: 0 }]))
     controller.show('main')
     controller.attach(screen)
@@ -83,9 +108,17 @@ describe('TranscriptController', () => {
     expect(latest()!.items[0]!.wrapMax).toBeUndefined()
     controller.toggleRecent()
     expect(latest()!.items[0]!.wrapMax).toBe(4)
+    // A data-driven republish waits for the publish window; the newest queue arrives with the trailing publish.
     queued.push({ id: 'q', text: 'later', lane: 'turn' })
     controller.republish()
+    expect(timers.size).toBe(1)
+    expect(latest()!.items.at(-1)!.label).not.toContain('later')
+    advance(PUBLISH_INTERVAL_MS)
     expect(latest()!.items.at(-1)!.label).toContain('later')
+    // A key-driven disclosure change publishes at once instead of waiting.
+    controller.toggleRecent()
+    expect(timers.size).toBe(0)
+    controller.republish()
     controller.dispose()
     expect(slot.disposed).toBe(true)
   })
