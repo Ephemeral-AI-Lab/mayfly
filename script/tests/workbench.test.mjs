@@ -192,6 +192,10 @@ function fakeContext({ forkable = true } = {}) {
   const answer = kind => async request => { log.asked.push({ kind, request }); return 'ok' }
   const ctx = {
     mayflyCurrentAgent: { current: () => agent },
+    mayflySessionStart: {
+      onBooted: listener => { listener(); return () => {} },
+      ensure: async () => {},
+    },
     sessions: {
       create: (id, options) => { log.children.push({ id, options }); return session(id) },
       prepare: (id, options) => ({ ...session(id), header: { id, ...options.meta } }),
