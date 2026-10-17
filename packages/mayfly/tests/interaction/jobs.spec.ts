@@ -516,7 +516,7 @@ describe('shared jobs browsing', () => {
     await flushRequests()
     const detail = bench.model('mayfly.jobs.detail')
     action(detail, 'stop')
-    expect(detail.decisionNode).toMatchObject({ child: { items: [{ label: 'No', defaultFocus: true }, { label: 'Yes' }] } })
+    expect(detail.decisionNode).toMatchObject({ child: { items: [{ label: 'Yes' }, { label: 'No' }] } })
     detail.answerDecision(false)
     expect(source.cancel).not.toHaveBeenCalled()
     action(detail, 'stop')

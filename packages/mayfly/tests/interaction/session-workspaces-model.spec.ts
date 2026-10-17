@@ -35,7 +35,7 @@ it('keeps full paths distinct and only abbreviates the home directory', () => {
 
 it('shows counts and the current directory badge while filtering by the full cwd', () => {
   const groups = sessionWorkspaces([record('/home/dev/a', 1), record('/home/dev/b', 2), record('/home/dev/b', 3), record(undefined, 0)], '/home/dev/a')
-  expect(sessionWorkspaceItem(groups[0]!, '/home/dev/a', '/home/dev', t)).toMatchObject({ label: '~/a', detail: '1 session', badge: 'current', searchText: '/home/dev/a' })
+  expect(sessionWorkspaceItem(groups[0]!, '/home/dev/a', '/home/dev', t)).toMatchObject({ label: '~/a', detail: '1 session', current: true, searchText: '/home/dev/a' })
   expect(sessionWorkspaceItem(groups[1]!, '/home/dev/a', '/home/dev', t)).toMatchObject({ label: '~/b', detail: '2 sessions' })
   expect(sessionWorkspaceItem(groups[2]!, '/home/dev/a', '/home/dev', t).searchText).toBe('No working directory')
 })
