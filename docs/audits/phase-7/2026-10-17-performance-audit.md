@@ -300,6 +300,65 @@ Stored checkpoints from stateVersion <=12 are discarded and refolded from seq 0 
 - `pnpm run check -- --plan` confirms the new files are claimed; the full `--tier pr` run is not green because of the
   pre-existing failures above, not because of a Phase 7 regression.
 
+## Follow-up: multi-subagent / BTW switching and the tall-body truncation
+
+The user's later review found the pure 200-turn stream acceptable and pointed at the multi-subagent case: invoking several
+subagents, viewing `/btw` or a child conversation, and switching back to main. The second report was that markdown-rendered
+LLM messages are truncated, not only the plan-mode plan.
+
+### The swarm scenario
+
+`perf-swarm` (catalog; source `perfSwarm`) strings six live background children with nested live surveys, a running
+preview job, a `/btw`, and a main stream into one 30-turn conversation. Its script enters the agents view, opens a child,
+returns with `F7`, advances through the `/btw` open, toggles to the BTW, back to main, then types and scrolls. The
+`btw-open` span is separate from the `btw` F7 span so the side conversation's first conversion is not charged to the key.
+
+`pnpm run perf -- --assert perf-swarm` now passes its initial record ceilings:
+
+| span | CPU | key p50 | CPU per key |
+| --- | ---: | ---: | ---: |
+| load | 130.8% | | |
+| swarm | 21.3% | | |
+| agents | 30.4% | 4.43 ms | 14.29 ms |
+| open (Enter on a child) | 10.2% | 4.21 ms | 60 ms |
+| back (F7) | 8.5% | 26.28 ms | 30 ms |
+| btw-open | 8.2% | | |
+| btw (F7) | 21.5% | 46.35 ms | 80 ms |
+| main (F7) | 13.1% | 32.14 ms | 50 ms |
+| type | 11.4% | 2.73 ms | 3.22 ms |
+| scroll | 19.9% | 4.47 ms | 6.67 ms |
+| settle | 1.8% | | |
+
+The first pass measured `open` 90 ms CPU/key, `back` 61.28 ms p50 / 130 ms CPU/key, `btw` 56.38 ms / 1200 ms (the span
+then still included opening the BTW), and `main` 41.44 ms / 80 ms. The fixes below brought the steady-state switches to
+the table: the side-conversation open itself is 8.2% CPU, and the F7 to its view is 46 ms p50 rather than a 1.2 s bill.
+
+### Fixes in this follow-up
+
+1. **A flowing list is marker-free.** `FlowListPainter` now declares `markerFree`, so pi-tui's layout marker scan does not
+   walk every virtual row (`seekPart` was 321 ms in the first profile). Unfocused flowing lists carry no cursor marker.
+2. **The stream node survives a switch.** `StreamFacts.build` reuses its facts object when the turns and queued rows are
+   the same by identity, and `TranscriptView`/`TranscriptStream` cache the list and its stack by facts, cursor, and
+   highlight. An F7 that only changes the displayed conversation therefore reuses the compiled node instead of admitting
+   and compiling the same list again.
+3. **A hidden agents panel refreshes at 1 Hz.** `status-agents` still publishes its summary at the child cadence, but a
+   hidden panel is rebuilt at most once a second; structural row changes and an entered view keep the old immediate
+   update. This cut the `back` F7 from 50 to 30 ms CPU/key.
+4. **Tall list bodies are no longer viewport-bounded.** `paintBody` unwrapped the leaf's alternate-screen viewport bound
+   only for flow content or a current search match. A focused list (the normal state when reading/scrolling a message)
+   took the bounded facade, so a markdown body taller than the viewport measured about one screen and its lower rows
+   were unreachable. Every list body now returns `unclampedRows(rows)`; the list's window or the outer scroll still
+   decides which rows paint. The regression test renders 160 paragraphs in a focused content slot, asserts more than 160
+   total rows in both flowing and focused state, and scrolls back to row 0. The W4/W29/W33/W34 work budgets still pass.
+
+### Remaining
+
+The switch keys are still 30-80 ms p50, above the 30 ms aspiration, so the record ceilings are not final gates. The next
+measured candidates are the deferred hidden-pane lazy compile, status-agents' summary cadence, and the remaining
+virtual-row reads (`get`/`read`/`produce` in the first profile). `load` at 131% is the 30-turn fixture's boot plus history,
+not a switch. No full `check --tier pr` was run for this follow-up; the targeted specs, `p3-flow-list`, W4/W29/W33/W34,
+and `perf-swarm` were used instead.
+
 ## Hand-over
 
 Open the combined scene with `pnpm run scenario perf-long`. It plays 200 settled turns, two compactions, the two live
@@ -311,10 +370,12 @@ curves above are the measurement.
 
 ## Next
 
-P1, P2, P3, P5, P6, and P7 are merged on `perf/phase-7`. P4's animation-patch work is the only fix round not landed: the
-visible pending row now paints one row per tick and the off-screen row already stops the animation clock, so its target is
-largely met by P3, but a dedicated moving-cell patch remains a later round. The remaining measured candidates are R5
-(plan-bottom-lane and row-width memo), R7 (hidden-lane compositing, tall-overlay double layout, concat revision sums), and
-the hidden-pane lazy compile that P6 deferred. The owner should review the flowing-list scroll/follow-tail feel in
-`perf-long` before this stack merges; the final gate remains `pnpm run check -- --tier pr` once the pre-existing main
-failures (W16/W18, terminal.spec, pack size, stale Phase 6 specs) are accepted or repaired.
+P1, P2, P3, P5, P6, and P7 and the multi-subagent/BTW follow-up are merged on `perf/phase-7`. P4's animation-patch work is
+the only fix round not landed: the visible pending row now paints one row per tick and the off-screen row already stops
+the animation clock, so its target is largely met by P3, but a dedicated moving-cell patch remains a later round. The
+remaining measured candidates are R5 (plan-bottom-lane and row-width memo), R7 (hidden-lane compositing, tall-overlay
+double layout, concat revision sums), the hidden-pane lazy compile that P6 deferred, and the 30-80 ms switch keys in
+`perf-swarm`. The owner should review the flowing-list scroll/follow-tail feel in `perf-long`, the child/BTW switching in
+`perf-swarm`, and a tall focused markdown message before this stack merges; the final gate remains
+`pnpm run check -- --tier pr` once the pre-existing main failures (W16/W18, terminal.spec, pack size, stale Phase 6 specs)
+are accepted or repaired.
