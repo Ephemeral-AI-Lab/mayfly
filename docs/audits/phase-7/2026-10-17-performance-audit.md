@@ -381,25 +381,23 @@ test-only, is on `perf/phase-7`:
 - The workbench driver test now provides the `mayflySessionStart` service the app requires, and `startSplash` no longer
   asserts an arbitrary minimum action count.
 
-Lint, build, typecheck, lib exports, examples, pack, CLI registry smoke, workflow tests, the 35 cleaned spec files
-(853/853), the work-budget suite (47/47), the terminal spec (87/87), e2e/app/vt (38/38), and the perf A/B step pass. The
+Lint, build, typecheck, lib exports, examples, pack, CLI registry smoke, workflow tests, and the perf A/B step pass. The
 e2e/app/vt harness was moved onto the lazy-start model (`mayflySessionStart.ensure()` on the first action, one
-creation/selection per start, throttled publish waits). A full suite run now reports 49 failing files / 305 tests (down from 52 / 596) after restoring the missing
-`mayflySessionStart` and screen/slot fakes in the shared test harness. The remainder is stale fixture data and snapshots
-in older interaction/design/UI suites, also failing on `main`; the input-plugin suite is now 144/150. It also cannot
-compare scenarios because this checkout has no `script/scenarios/golden/` directory, so every checkpoint is reported
-`new`. Those are baseline/test-fixture gaps, not the Phase 7 regression.
+creation/selection per start, throttled publish waits). The stale interaction/design/UI suites were repaired through the
+shared fakes (session start, screen/slot APIs, runtime scrollbar colors), current control ids, borderless frames, and
+fresh snapshots. The full suite is now **312 passed / 1 skipped**, **5,699 tests passed / 1 skipped**. Two current bugs
+found by the cleanup were fixed: a views pane that first compiles to no panel now keeps compiling hidden updates until a
+panel arrives, and the surface head now drops its badges before truncating the title. The only pr step that cannot pass
+in this checkout is the scenario comparison: `script/scenarios/golden/` is absent, so every checkpoint is reported `new`.
 
 ### Remaining
 
-The switch keys are now 6-34 ms p50; `btw` is the one above the 30 ms aspiration, so the record ceilings are not final gates. The next
-measured candidates are the deferred hidden-pane lazy compile, status-agents' summary cadence, and the remaining
-virtual-row reads (`get`/`read`/`produce` in the first profile). `load` at 126% is the 30-turn fixture's boot plus history,
-not a switch. R5 is now landed (bottom-lane plan reuse and a row-width memo); R7 (hidden-lane compositing, tall-overlay
-double layout, concat revision sums) and P4's dedicated moving-cell patch remain, as does the chunked-entries round if
-the O(E) copy is ever measured to dominate. P5's optimizer is implemented but still default-off; its owner review and
-the upstream pi-tui output-diff PR remain. The owner should review `perf-long`, `perf-swarm`, and a tall focused markdown
-message before merge.
+The switch keys are now 6-34 ms p50; `btw` is the one above the 30 ms aspiration, so the record ceilings are not final gates. The
+hidden views pane is lazy; R5 is landed; R7 (hidden-lane compositing, tall-overlay double layout, concat revision sums)
+and P4's dedicated moving-cell patch remain low-impact follow-ups, as does the chunked-entries round if the O(E) copy is
+ever measured to dominate. P5's optimizer is implemented but still default-off; its owner review and the upstream pi-tui
+output-diff PR remain. `load` at 126% is the 30-turn fixture's boot plus history, not a switch. The owner should review
+`perf-long`, `perf-swarm`, and a tall focused markdown message before merge.
 
 ### P4/P5/R7/chunked decisions
 
