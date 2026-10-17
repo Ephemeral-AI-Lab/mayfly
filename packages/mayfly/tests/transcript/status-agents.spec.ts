@@ -151,7 +151,7 @@ describe('agentsPanel', () => {
       for (const child of Object.values(value)) walk(child)
     }
     walk(node)
-    return found
+    return found.filter(item => item.gap !== true)
   }
   const cells = (item: MayflyListItem): string[] => (item.cells ?? []).map(cell => cell.spans.map(span => span.text).join(''))
   const right = (item: MayflyListItem): string => (item.right ?? []).map(span => span.text).join('')
@@ -302,8 +302,8 @@ async function bootAgents(options: { readonly modes?: Record<string, string>, re
   const open = (id: string) => act({ kind: 'selection-accept', controlId: 'agents-list', selectedIds: [id] })
   const key = (actionId: string, id: string) => act({ kind: 'activate', controlId: actionId, actionId, inputs: { selections: [{ pagePath: [], controlId: 'agents-list', selectedIds: [id] }] } })
   const summaryText = (): string => {
-    const summary = entry().summary as { readonly node: { readonly node: { readonly spans: { readonly text: string }[] } } } | null | undefined
-    return summary === null || summary === undefined ? '' : summary.node.node.spans.map(span => span.text).join('')
+    const summary = entry().summary as { readonly node: { readonly spans: { readonly text: string }[] } } | null | undefined
+    return summary === null || summary === undefined ? '' : summary.node.spans.map(span => span.text).join('')
   }
   return { ...harness, base, selected, facts, conversations, tick, screen, listChildren, entry, act, open, key, summaryText, resident }
 }

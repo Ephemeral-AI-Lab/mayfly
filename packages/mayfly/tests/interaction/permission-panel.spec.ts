@@ -135,7 +135,7 @@ describe('openPermissionPanel', () => {
     expect(lines.join('\n')).toContain('sandbox read-only · approval ask')
     expect(lines.join('\n')).toContain('sandbox danger-full-access · approval never')
     const currentRow = lines.find(line => line.includes('workspace-write')) ?? ''
-    expect(currentRow).toContain('[current]')
+    expect(currentRow).toContain('✓')
   })
 
   it('dispatches the selected preset through the command runtime', async () => {
@@ -200,14 +200,16 @@ describe('openPermissionPanel', () => {
     openPermissionPanel(mounted.ctx)
     top(mounted).component.handleInput(KEY.down)
     top(mounted).component.handleInput(KEY.enter)
-    top(mounted).component.handleInput('y')
-    expect(mounted.runs).toEqual([])
-    top(mounted).component.handleInput(KEY.enter)
+    const model = mounted.ctx.mayflyUiInteraction.get('overlay', 'mayfly.permission')!
+    expect(top(mounted).component.render(80).join('\n')).toContain('Enable danger-full-access?')
+    // No is the default: answering it returns to the presets and dispatches nothing.
+    model.answerDecision(false)
     expect(mounted.runs).toEqual([])
     expect(top(mounted).component.render(80).join('\n')).toContain('sandbox danger-full-access')
+    // Opening the gate again and answering Yes dispatches the preset.
+    top(mounted).component.handleInput(KEY.down)
     top(mounted).component.handleInput(KEY.enter)
-    top(mounted).component.handleInput(KEY.right)
-    top(mounted).component.handleInput(KEY.enter)
+    model.answerDecision(true)
     await vi.waitFor(() => { expect(mounted.runs).toEqual([' danger-full-access']) })
     await vi.waitFor(() => { expect(mounted.notices).toContain('preset danger-full-access') })
     expect(mounted.overlays).toEqual([])
@@ -218,10 +220,10 @@ describe('openPermissionPanel', () => {
     openPermissionPanel(mounted.ctx)
     top(mounted).component.handleInput(KEY.down)
     top(mounted).component.handleInput(KEY.enter)
+    const model = mounted.ctx.mayflyUiInteraction.get('overlay', 'mayfly.permission')!
     const replacement = { id: mounted.agent.id, session: mounted.agent.session, status: 'idle' } as unknown as Agent
     ;(mounted.ctx.get('testSession') as { current: Agent | null }).current = replacement
-    top(mounted).component.handleInput(KEY.right)
-    top(mounted).component.handleInput(KEY.enter)
+    model.answerDecision(true)
     await vi.waitFor(() => expect(mounted.overlays).toEqual([]))
     expect(mounted.runs).toEqual([])
     await vi.waitFor(() => expect(mounted.notices).toContain('permission target changed; action cancelled'))
@@ -301,11 +303,12 @@ describe('openPermissionPanel', () => {
     expect(ctx.mayflyOverlays.list()).toHaveLength(0)
   })
 
-  it('is a silent no-op without a current Agent', async () => {
+  it('shows the default preset picker without a current Agent', async () => {
     const mounted = await mount()
     ;(mounted.ctx.get('testSession') as { current: Agent | null }).current = null
     openPermissionPanel(mounted.ctx)
-    expect(mounted.overlays).toHaveLength(0)
+    expect(mounted.overlays).toHaveLength(1)
+    expect(top(mounted).component.render(120).join('\n')).toContain('workspace-write')
   })
 
   it('is a silent no-op without the current-Agent service', async () => {

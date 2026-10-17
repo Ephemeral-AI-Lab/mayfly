@@ -988,6 +988,8 @@ export function fakeMayflyContext(options: { readonly display?: boolean; readonl
     const agent = active()
     for (const listener of listeners) listener(agent, revision)
   }
+  // The test session's current-Agent change is the fake tree's own broadcast.
+  ctx.on('test/session-changed', () => { publishAgent() })
   ctx.provide('mayflyCurrentAgent', {
     current: active,
     primary: active,

@@ -33,7 +33,7 @@ function spansOf(node: unknown): { readonly text: string, readonly tone?: string
   return [...record.kind === 'rich-text' ? record.spans as never[] : [], ...Object.entries(record).filter(([key]) => key !== 'spans').flatMap(([, value]) => spansOf(value))]
 }
 /** A summary's words at its full form. */
-const fullText = (summary: { readonly node: unknown } | null | undefined): string => spansOf((summary!.node as { readonly node: unknown }).node).map(span => span.text).join('')
+const fullText = (summary: { readonly node: unknown } | null | undefined): string => spansOf(summary?.node).map(span => span.text).join('')
 
 describe('todoSummary', () => {
   const t = transcriptTranslatorFake
@@ -123,17 +123,17 @@ describe('mayfly-pane-todo', () => {
     await harness.dispose()
   })
 
-  it('shows done over total and the panel from the latest whole-list snapshot, and runs the clock only while a list is tracked', async () => {
+  it('shows done over total and the panel from the latest whole-list snapshot', async () => {
     resetSeq()
     const harness = await bootTodo()
     harness.write([item('a', 'completed'), item('b', 'in_progress'), item('c', 'pending')])
     expect(fullText(harness.entry().summary)).toMatch(/^● todo 1\/3/u)
-    expect(harness.tick.subscribers).toBe(1)
+    // An unfinished list carries no elapsed time, so the shared tick is idle.
+    expect(harness.tick.subscribers).toBe(0)
     expect(spansOf(harness.entry().node).map(span => span.text)).toEqual(['  ● ', 'b', '  ○ ', 'c'])
     // The last write wins: a whole list replaces the one before it.
     harness.write([item('a', 'completed'), item('b', 'completed'), item('c', 'in_progress')])
     expect(fullText(harness.entry().summary)).toMatch(/^● todo 2\/3/u)
-    // The shared tick still runs while the list is unfinished, for the closing line's stay.
     harness.tick.fire(Date.now() + 252_000)
     expect(fullText(harness.entry().summary)).toBe('● todo 2/3')
     await harness.dispose()
@@ -220,9 +220,11 @@ describe('mayfly-pane-todo', () => {
     await harness.dispose()
   })
 
-  it('removes its view and its clock with its Fiber', async () => {
+  it('removes its view and its closing clock with its Fiber', async () => {
     resetSeq()
     const harness = await bootTodo([todoWrite([item('a', 'in_progress')])])
+    expect(harness.tick.subscribers).toBe(0)
+    harness.write([item('a', 'completed')])
     expect(harness.tick.subscribers).toBe(1)
     await harness.dispose()
     expect(harness.ctx.mayflyPanes.list().some(candidate => candidate.id === todo.TODO_VIEW_ID)).toBe(false)

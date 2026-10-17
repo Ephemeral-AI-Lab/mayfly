@@ -51,7 +51,7 @@ function mount(initial: MayflyUiNode, options: MountOptions = {}) {
     const result = compileMayflyUiSurfaceNode(model?.node ?? plain, {
       components: components(options.presentation), colors, getViewport: () => ({ columns: width, rows: options.rows ?? 30 }), screenMode: 'alternate',
       emit: event => events.push(event), contextHints: { enabled: true, focusWithoutControls: true }, surfaceRuntime: runtime,
-      ...(options.escape === undefined ? {} : { onUnhandledEscape: options.escape }),
+      ...(options.escape === undefined ? {} : { onUnhandledEscape: options.escape, escapeHint: 'close' as const }),
       ...(options.completionsOpen === undefined ? {} : { completionsOpen: options.completionsOpen }),
       ...(options.counters === undefined ? {} : { counters: options.counters }),
     })
@@ -76,7 +76,7 @@ describe('surface fields', () => {
     for (const [label, word] of [['close', 'close'], ['back', 'back'], ['cancel', 'cancel'], ['reject', 'reject'], ['leave', 'leave']] as const) {
       const escape = vi.fn()
       const surface = mount(ui.surface({ title: 'Card', chrome: 'overlay', escapeLabel: label, child: ui.text('body') }), { escape })
-      expect(surface.render().at(-2)).toContain(`Esc ${word}`)
+      expect(surface.render().join('\n')).toContain(`Esc ${word}`)
       surface.press(KEYS.esc)
       expect(escape).toHaveBeenCalledOnce()
     }
@@ -84,7 +84,7 @@ describe('surface fields', () => {
 
   it('keeps the host label when the surface names none, and draws no hint at all with hint none', () => {
     const plain = mount(ui.surface({ title: 'Card', chrome: 'overlay', child: ui.text('body') }), { escape: () => {} })
-    expect(plain.render().at(-2)).toContain('Esc close')
+    expect(plain.render().join('\n')).toContain('Esc close')
     const quiet = mount(ui.surface({ title: 'Card', chrome: 'overlay', hint: 'none', child: ui.text('body') }), { escape: () => {} })
     expect(quiet.render().join('\n')).not.toContain('Esc')
   })
@@ -127,12 +127,14 @@ describe('the scroll region', () => {
   const region = (count: number, options: Partial<Extract<MayflyUiNode, { readonly kind: 'scroll' }>> = {}): MayflyUiNode => ui.scroll(lines(count), { follow: 'end', height: 4, ...options })
   const body = (rows: readonly string[]): string[] => rows.slice(0, 4).map(row => row.slice(0, -2).trimEnd())
 
-  it('shows its viewport rows with a scrollbar, follows the tail, and scrolls with the keys', () => {
+  it('shows its viewport rows and scrolls with the keys, showing the bar while it moves', () => {
     const surface = mount(region(10))
     expect(body(surface.render())).toEqual(['log line 7', 'log line 8', 'log line 9', 'log line 10'])
-    expect(surface.render()[3]!.endsWith('█')).toBe(true)
+    // The bar is quiet while the view follows the tail; it shows while the reader scrolls.
+    expect(surface.render().some(row => /[░█]$/u.test(row))).toBe(false)
     surface.press(KEYS.up)
     expect(body(surface.render())).toEqual(['log line 6', 'log line 7', 'log line 8', 'log line 9'])
+    expect(surface.render().some(row => /[░█]$/u.test(row))).toBe(true)
     surface.press(KEYS.pageUp)
     expect(body(surface.render())[0]).toBe('log line 2')
     surface.press(KEYS.down)
@@ -178,7 +180,11 @@ describe('the scroll region', () => {
     const surface = mount(region(2, { fit: true, height: 5, follow: 'none' }))
     expect(surface.render().filter(row => row.startsWith('log line')).map(row => row.trimEnd())).toEqual(['log line 1', 'log line 2'])
     surface.publish(region(9, { fit: true, height: 5, follow: 'none' }))
-    expect(surface.render()[0]).toMatch(/░|█/u)
+    // The republished surface binds its control on the first paint.
+    surface.render()
+    // Once the content overflows, moving the view shows the bar again.
+    surface.press(KEYS.down)
+    expect(surface.render().some(row => /[░█]$/u.test(row))).toBe(true)
     expect(surface.render().filter(row => /[░█]$/u.test(row))).toHaveLength(5)
   })
 

@@ -36,8 +36,8 @@ function spansOf(node: unknown): { readonly text: string, readonly tone?: string
   return [...record.kind === 'rich-text' ? record.spans as never[] : [], ...Object.entries(record).filter(([key]) => key !== 'spans').flatMap(([, value]) => spansOf(value))]
 }
 const textOf = (node: unknown): string => spansOf(node).map(span => span.text).join('')
-/** The words of a summary at its full form (a shed node also holds its narrower forms). */
-const fullText = (node: unknown): string => textOf((node as { readonly node: unknown }).node)
+/** The words of a summary at its full form. */
+const fullText = (node: unknown): string => textOf(node)
 
 /** The summary's full form and its narrower forms. */
 function forms(node: unknown): { readonly full: unknown, readonly narrower: readonly { readonly rank: number, readonly node: unknown }[] } {
@@ -201,12 +201,12 @@ describe('mayfly-status-goal', () => {
     expect(harness.ctx.mayflyPanes.list().some(candidate => candidate.id === 'mayfly.view.goal')).toBe(false)
   })
 
-  it('runs the clock only while an armed goal moves or the closing item is up, and holds the closing item five seconds', async () => {
+  it('holds the closing item five seconds, and runs the clock only for it', async () => {
     const agent = fakeAgent([]) as unknown as Agent
     const views = new Map<Agent, GoalView>([[agent, goal('active')]])
     const harness = await bootGoal(agent, { mayflyCurrentAgent: currentAgentService(agent).service, goals: { get: (query: Agent) => views.get(query) } })
-    expect(harness.tick.subscribers).toBe(1)
-    harness.tick.fire(61_000)
+    // The armed summary carries no elapsed time, so nothing needs the shared tick.
+    expect(harness.tick.subscribers).toBe(0)
     expect(fullText(harness.entry().summary!.node)).toBe('● goal 2/8')
     views.set(agent, goal('paused'))
     harness.ctx.emit('goal/changed', { agent } as never)

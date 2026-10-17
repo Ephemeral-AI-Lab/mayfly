@@ -64,6 +64,10 @@ export function renderRequest(
     emit: event => model.emit(event), onUnhandledEscape: () => model.requestClose(),
   })
   if (!result.ok) throw new Error(result.message)
-  if (result.value.focusTarget !== null) result.value.focusTarget.focused = true
-  return { runtime, ...result.value, input: (data: string) => { result.value.focusTarget?.handleInput?.(data) } }
+  // A surface without controls (a decision card's hidden actions) has no
+  // focus target; its component still holds the keys, as the renderer routes
+  // them while the overlay is focused.
+  const inputTarget = (result.value.focusTarget ?? result.value.component) as { handleInput?(data: string): void, focused?: boolean }
+  if ('focused' in inputTarget) inputTarget.focused = true
+  return { runtime, ...result.value, input: (data: string) => { inputTarget.handleInput?.(data) } }
 }

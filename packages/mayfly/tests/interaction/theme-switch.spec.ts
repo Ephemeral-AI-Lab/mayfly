@@ -11,7 +11,7 @@
 
 import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { CommandResult } from '@deepseek-ai/dsh-commands'
@@ -35,7 +35,12 @@ const LIGHT_COLORS = paletteColors('light')
 registerTempDirCleanup()
 const dir = mkdtempTracked('mayfly-theme-spec-')
 const roots: Context[] = []
-afterEach(async () => { for (const ctx of roots.splice(0).reverse()) await ctx.fiber.dispose() })
+// The swap assertions compare truecolor tables; do not inherit a host NO_COLOR.
+beforeEach(() => { vi.stubEnv('NO_COLOR', '') })
+afterEach(async () => {
+  vi.unstubAllEnvs()
+  for (const ctx of roots.splice(0).reverse()) await ctx.fiber.dispose()
+})
 
 async function mount(): Promise<{
   ctx: Context
@@ -75,7 +80,7 @@ async function execute(ctx: Context, agent: Agent, line: string): Promise<Comman
 }
 
 /** Read the rows of the open `/theme` picker overlay. */
-function pickerRows(ctx: Context): readonly { readonly id: string, readonly badge?: string }[] {
+function pickerRows(ctx: Context): readonly { readonly id: string, readonly badge?: string, readonly current?: boolean }[] {
   const entry = ctx.mayflyOverlays.list().find(candidate => candidate.id === 'mayfly.theme')
   if (entry?.node.kind !== 'surface' || entry.node.child.kind !== 'list') throw new Error('the theme picker is not open')
   return entry.node.child.items
@@ -88,8 +93,8 @@ describe('/theme command', () => {
     expect(result).toEqual({ kind: 'success' })
     const rows = pickerRows(ctx)
     expect(rows.map(row => row.id)).toEqual([...PALETTE_KEYS, 'auto'])
-    expect(rows.find(row => row.id === 'dark')?.badge).toBe('current')
-    expect(rows.filter(row => row.badge === 'current')).toHaveLength(1)
+    expect(rows.find(row => row.id === 'dark')?.current).toBe(true)
+    expect(rows.filter(row => row.current === true)).toHaveLength(1)
   })
 
   it('settles picker selections: current, custom hint, unknown, swap, and mount failure', async () => {
@@ -106,7 +111,7 @@ describe('/theme command', () => {
     expect(await accept(['dark'])).toEqual({ kind: 'completed', dismiss: true })
     expect(await accept(['custom'])).toEqual({ kind: 'failed', message: 'unknown theme "custom"' })
     expect(await accept(['bogus'])).toEqual({ kind: 'failed', message: 'unknown theme "bogus"' })
-    expect(await accept(['light'])).toEqual({ kind: 'completed', dismiss: true, feedback: { severity: 'success', message: 'switched to theme "light"' } })
+    expect(await accept(['light'])).toEqual({ kind: 'completed', dismiss: true, feedback: { severity: 'success', message: 'switched to theme "Mayfly Light"' } })
     expect(ctx.get('mayflyTheme')?.colors).toBe(LIGHT_COLORS)
 
     // A failed swap on the commands fiber's own context: the provider mount
@@ -127,10 +132,10 @@ describe('/theme command', () => {
     await ctx.plugin(themeDark)
     expect(ctx.get('mayflyTheme')?.colors).toBe(themeDark.DARK_COLORS)
     const toLight = await execute(ctx, agent, '/theme light')
-    expect(toLight).toEqual({ kind: 'success', text: 'switched to theme "light"' })
+    expect(toLight).toEqual({ kind: 'success', text: 'switched to theme "Mayfly Light"' })
     expect(ctx.get('mayflyTheme')?.colors).toBe(LIGHT_COLORS)
     const back = await execute(ctx, agent, '/theme dark')
-    expect(back).toEqual({ kind: 'success', text: 'switched to theme "dark"' })
+    expect(back).toEqual({ kind: 'success', text: 'switched to theme "Mayfly Dark"' })
     expect(ctx.get('mayflyTheme')?.colors).toBe(themeDark.DARK_COLORS)
   })
 
@@ -138,7 +143,7 @@ describe('/theme command', () => {
     const { ctx, agent } = await mount()
     await ctx.plugin(MayflyTerminalInfoService, { background: 'light', kittyKeyboard: false })
     const toAuto = await execute(ctx, agent, '/theme auto')
-    expect(toAuto).toEqual({ kind: 'success', text: 'switched to theme "auto"' })
+    expect(toAuto).toEqual({ kind: 'success', text: 'switched to theme "Auto"' })
     expect(ctx.get('mayflyTheme')?.colors).toBe(LIGHT_COLORS)
     // Back to the baseline: later cases start from dark.
     await execute(ctx, agent, '/theme dark')
@@ -154,16 +159,16 @@ describe('/theme command', () => {
     const colors = ctx.get('mayflyTheme')?.colors
     expect(colors?.accent('x')).toBe('\x1b[38;2;255;0;0mx\x1b[39m')
     expect(colors?.text).toBe(themeDark.DARK_COLORS.text)
-    expect(await execute(ctx, agent, '/theme')).toEqual({ kind: 'success' })
-    expect(pickerRows(ctx).find(row => row.id === 'custom')?.badge).toBe('current')
-    expect(await execute(ctx, agent, '/theme dark')).toEqual({ kind: 'success', text: 'switched to theme "dark"' })
+    // A custom palette needs a path, so the bare picker does not list it.
+    expect((await execute(ctx, agent, '/theme'))?.kind).toBe('success')
+    expect(await execute(ctx, agent, '/theme dark')).toEqual({ kind: 'success', text: 'switched to theme "Mayfly Dark"' })
   })
 
   it('falls back to dark when the remembered key is unknown', async () => {
     const { ctx, agent } = await mount()
     await ctx.plugin(themeDark)
     ctx.mayflyInteractionState.currentThemeKey = 'retired-theme'
-    expect(await execute(ctx, agent, '/theme light')).toEqual({ kind: 'success', text: 'switched to theme "light"' })
+    expect(await execute(ctx, agent, '/theme light')).toEqual({ kind: 'success', text: 'switched to theme "Mayfly Light"' })
     expect(ctx.get('mayflyTheme')?.colors).toBe(LIGHT_COLORS)
     await execute(ctx, agent, '/theme dark')
   })
@@ -187,7 +192,7 @@ describe('/theme command', () => {
     expect(await execute(ctx, agent, `/theme custom ${join(dir, 'x.json')} light extra`))
       .toEqual({ kind: 'error', text: USAGE })
     expect(await execute(ctx, agent, '/theme')).toEqual({ kind: 'success' })
-    expect(pickerRows(ctx).find(row => row.id === 'dark')?.badge).toBe('current')
+    expect(pickerRows(ctx).find(row => row.id === 'dark')?.current).toBe(true)
   })
 
   it('restores the dark palette when the custom mount fails validation', async () => {
@@ -199,7 +204,7 @@ describe('/theme command', () => {
     if (result?.kind === 'error') expect(result.text).toContain('failed to apply theme "custom"')
     expect(ctx.get('mayflyTheme')?.colors).toBe(themeDark.DARK_COLORS)
     expect(await execute(ctx, agent, '/theme')).toEqual({ kind: 'success' })
-    expect(pickerRows(ctx).find(row => row.id === 'dark')?.badge).toBe('current')
+    expect(pickerRows(ctx).find(row => row.id === 'dark')?.current).toBe(true)
   })
 
   it('unregisters the command when the fiber disposes', async () => {

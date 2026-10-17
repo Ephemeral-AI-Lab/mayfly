@@ -11,7 +11,7 @@
  * match the modules theme-switch statically imports.
  */
 
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { MayflyLocaleService } from '../../src/frontend/locale.ts'
@@ -30,10 +30,16 @@ import * as settingsPlugin from '../../src/interaction/settings.ts'
 import { applyTheme, reloadTheme } from '../../src/interaction/theme-switch.ts'
 import { monochromeColors, readPresentation } from '../../src/core/presentation.ts'
 import { InteractionStateService } from '../../src/interaction/runtime-state.ts'
+import { MayflySessionStartService } from '../../src/app/session-start.ts'
 import { MemorySettings } from '../../../../examples/overlay/tests/settings.ts'
 
 const TIDE_COLORS = paletteColors('tide')
 const LINEN_COLORS = paletteColors('linen')
+
+// Theme identity assertions compare the truecolor tables, not their
+// monochrome forms; the presentation tests below set NO_COLOR themselves.
+beforeEach(() => { vi.stubEnv('NO_COLOR', '') })
+afterEach(() => { vi.unstubAllEnvs() })
 
 declare module '@deepseek-ai/cordis' {
   interface Events {
@@ -80,6 +86,11 @@ function createContext(): Context {
   return ctx
 }
 
+/** The startup signal the settings plugin waits for; `markBooted` releases it. */
+function createSessionStart(ctx: Context): MayflySessionStartService {
+  return new MayflySessionStartService(ctx, async () => ({ id: 'settings-spec' } as unknown as Agent))
+}
+
 /** Provide the exact current-Agent service over a mutable test ref. */
 function provideSessionReader(ctx: Context, session: { current: Agent | null }): void {
   const listeners = new Set<(agent: Agent | null, revision: number) => void>()
@@ -105,6 +116,7 @@ async function mount(doc: Record<string, unknown> = {}): Promise<{
   ready: unknown[]
 }> {
   const ctx = createContext()
+  const start = createSessionStart(ctx)
   const ready: unknown[] = []
   ctx.on('mayfly/settings-source-ready', value => ready.push(value))
   await ctx.plugin(MemorySettings, doc)
@@ -124,6 +136,7 @@ async function mount(doc: Record<string, unknown> = {}): Promise<{
       const agent = { id: 'settings-spec' } as unknown as Agent
       session.current = agent
       ctx.emit('test/session-changed', agent)
+      start.markBooted()
     },
   }
 }
@@ -141,6 +154,7 @@ describe('mayfly-settings schema and registration', () => {
     expect(settingsPlugin.DEFAULT_SETTINGS).toEqual({
       updateCheck: true,
       updateChannel: 'latest',
+      language: 'system',
       theme: 'dark',
       transcriptView: 'standard',
       windowTurns: 15,
@@ -153,20 +167,22 @@ describe('mayfly-settings schema and registration', () => {
       marketIndexUrl: '',
       keybindings: {},
       preferPlainKeys: false,
+      prices: {},
+      usdCnyRate: 7.2,
+      lowBalanceCny: 10,
+      lowBalanceUsd: 1.5,
       glyphs: 'auto',
       monochrome: false,
       reducedMotion: false,
       quietHints: 'full',
+      startup: 'conversation',
     })
     expect(resolveConfig({ transcriptView: 'verbose' }).transcriptView).toBe('verbose')
     expect(resolveConfig({ keybindings: { 'ui.delete': { keys: ['d'], label: 'delete' } } }).keybindings).toEqual({ 'ui.delete': { keys: ['d'], label: 'delete' } })
   })
 
-  it('reads only declared fields out of a partially populated plugin config', async () => {
-    const ctx = createContext()
-    const session = { current: null as Agent | null }
-    provideSessionReader(ctx, session)
-    await ctx.plugin(settingsPlugin, { theme: 'tide' })
+  it('reads only declared fields out of a partially populated settings document', async () => {
+    const { ctx } = await mount({ mayfly: { theme: 'tide', unknownField: 'ignored' } })
     expect(settingsPlugin.currentMayflySettings(ctx)).toEqual({ ...settingsPlugin.DEFAULT_SETTINGS, theme: 'tide' })
     await ctx.fiber.dispose()
   })
@@ -185,6 +201,7 @@ describe('mayfly-settings schema and registration', () => {
     expect(settingsPlugin.currentMayflySettings(ctx)).toEqual({
       updateCheck: false,
       updateChannel: 'beta',
+      language: 'system',
       theme: 'dark',
       transcriptView: 'standard',
       windowTurns: 15,
@@ -197,10 +214,15 @@ describe('mayfly-settings schema and registration', () => {
       marketIndexUrl: '',
       keybindings: {},
       preferPlainKeys: false,
+      prices: {},
+      usdCnyRate: 7.2,
+      lowBalanceCny: 10,
+      lowBalanceUsd: 1.5,
       glyphs: 'auto',
       monochrome: false,
       reducedMotion: false,
       quietHints: 'full',
+      startup: 'conversation',
     })
     expect(ready.at(-1)).toMatchObject({ editorCommand: 'my-editor --wait' })
 
@@ -286,15 +308,17 @@ describe('mayfly-settings theme applier', () => {
     })
   })
 
-  it('syncs immediately when a session is already attached at load', async () => {
+  it('syncs immediately when startup completes at load', async () => {
     themeMock.calls.length = 0
     const ctx = createContext()
+    const start = createSessionStart(ctx)
     await ctx.plugin(MemorySettings, { mayfly: { theme: 'tide' } })
     registerMayfly(ctx.settings as unknown as MemorySettings)
     const session = { current: { id: 'settings-spec' } as unknown as Agent }
     ctx.provide('testSession', session)
     provideSessionReader(ctx, session)
     await ctx.plugin(settingsPlugin)
+    start.markBooted()
     await vi.waitFor(() => {
       expect(ctx.get('mayflyTheme')?.colors).toBe(TIDE_COLORS)
     })
@@ -310,6 +334,7 @@ describe('mayfly-settings theme applier', () => {
     themeMock.forceFailure = true
     try {
       const ctx = createContext()
+      const start = createSessionStart(ctx)
       const warn = vi.spyOn(ctx.logger, 'warn')
       await ctx.plugin(MemorySettings, { mayfly: { theme: 'tide' } })
       registerMayfly(ctx.settings as unknown as MemorySettings)
@@ -317,14 +342,11 @@ describe('mayfly-settings theme applier', () => {
       ctx.provide('testSession', session)
       provideSessionReader(ctx, session)
       await ctx.plugin(settingsPlugin)
-      // Let the plugin settle before the attach: the prime reads the
-      // resolved source.
+      // Let the plugin settle before startup: the sync reads the resolved source.
       await settle()
-      const agent = { id: 'settings-spec' } as unknown as Agent
-      session.current = agent
-      ctx.emit('test/session-changed', agent)
+      start.markBooted()
       await vi.waitFor(() => {
-        expect(warn).toHaveBeenCalledWith('forced failure for ocean')
+        expect(warn).toHaveBeenCalledWith('forced failure for tide')
       })
       // No swap happened: nothing mounted, and lastAppliedTheme never moved.
       expect(ctx.get('mayflyTheme')).toBeUndefined()
@@ -374,8 +396,9 @@ describe('mayfly-settings theme applier', () => {
     expect(settingsPlugin.currentMayflySettings(ctx)).toEqual({ ...settingsPlugin.DEFAULT_SETTINGS, updateCheck: false })
   })
 
-  it('never attaches once the fiber unloaded before the first session', async () => {
+  it('never boots once the fiber unloaded before startup completes', async () => {
     const ctx = createContext()
+    const start = createSessionStart(ctx)
     await ctx.plugin(MemorySettings, { mayfly: { theme: 'tide' } })
     registerMayfly(ctx.settings as unknown as MemorySettings)
     const session = { current: null as Agent | null }
@@ -383,10 +406,8 @@ describe('mayfly-settings theme applier', () => {
     provideSessionReader(ctx, session)
     const fiber = await ctx.plugin(settingsPlugin)
     await fiber.dispose()
-    // The attach listener left with the fiber: the emission swaps nothing.
-    const agent = { id: 'settings-spec' } as unknown as Agent
-    session.current = agent
-    ctx.emit('test/session-changed', agent)
+    // The boot listener left with the fiber: the signal swaps nothing.
+    start.markBooted()
     await settle()
     expect(ctx.get('mayflyTheme')).toBeUndefined()
   })
@@ -466,8 +487,9 @@ describe('applyTheme', () => {
 })
 
 describe('mayfly-settings locale follow', () => {
-  it('follows the shared locale preference at attach and on commits, and falls back to the process locale', async () => {
+  it('follows the shared locale preference at startup and on commits, and falls back to the process locale', async () => {
     const ctx = createContext()
+    const start = createSessionStart(ctx)
     new MayflyLocaleService(ctx, { systemLocale: 'en' })
     await ctx.plugin(MemorySettings, { locale: { preference: 'zh' } })
     const store = ctx.settings as unknown as MemorySettings
@@ -479,9 +501,7 @@ describe('mayfly-settings locale follow', () => {
     await ctx.plugin(settingsPlugin)
     await settle()
     expect(ctx.mayflyLocale.locale).toBe('en')
-    const agent = { id: 'settings-spec' } as unknown as Agent
-    session.current = agent
-    ctx.emit('test/session-changed', agent)
+    start.markBooted()
     await settle()
     expect(ctx.mayflyLocale.locale).toBe('zh')
     await store.mutate('locale', [{ op: 'set', path: ['preference'], value: 'en' }])
@@ -492,8 +512,9 @@ describe('mayfly-settings locale follow', () => {
     expect(ctx.mayflyLocale.preference).toBeUndefined()
   })
 
-  it('applies the stored language immediately when a session is already attached', async () => {
+  it('applies the stored language when startup completes', async () => {
     const ctx = createContext()
+    const start = createSessionStart(ctx)
     new MayflyLocaleService(ctx, { systemLocale: 'en' })
     await ctx.plugin(MemorySettings, { locale: { preference: 'zh' } })
     const store = ctx.settings as unknown as MemorySettings
@@ -503,6 +524,7 @@ describe('mayfly-settings locale follow', () => {
     ctx.provide('testSession', session)
     provideSessionReader(ctx, session)
     await ctx.plugin(settingsPlugin)
+    start.markBooted()
     await settle()
     expect(ctx.mayflyLocale.locale).toBe('zh')
   })

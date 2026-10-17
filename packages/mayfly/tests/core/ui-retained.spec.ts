@@ -206,14 +206,17 @@ describe('moving cells', () => {
     const scroll = view.layout().primaryScrollView!
     scroll.scrollToEnd()
     view.layout()
-    expect(vi.getTimerCount()).toBe(1)
+    // A scroll move also arms the region's bar-linger timer even with the bar
+    // disabled, so wait it out before counting the loader clock.
+    expect(vi.getTimerCount()).toBe(2)
     vi.advanceTimersByTime(LOADER_FRAME_MS)
     expect(view.requestFrame).toHaveBeenCalledTimes(2)
+    vi.advanceTimersByTime(1_000)
     view.layout()
     expect(vi.getTimerCount()).toBe(1)
     // Scrolled away again, the next frame lets the clock stop.
     scroll.scrollToStart()
-    vi.advanceTimersByTime(LOADER_FRAME_MS)
+    vi.advanceTimersByTime(1_000)
     view.layout()
     expect(vi.getTimerCount()).toBe(0)
   })
