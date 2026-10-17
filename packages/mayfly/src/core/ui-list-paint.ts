@@ -771,6 +771,9 @@ export class FlowListPainter implements RowSource {
 
   get declaredWidth(): number { return this.declared }
 
+  /** A flowing list is unfocused by construction: its rows carry no cursor marker, so a layout marker scan skips it whole. */
+  readonly markerFree = true
+
   private facade: string[] | undefined
 
   /** The list's rows as a lazy facade: the same array every paint, its rows read on demand. */

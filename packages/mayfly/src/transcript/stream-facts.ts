@@ -37,6 +37,14 @@ const REASONING_LINE_MAX_CHARS = 400
 
 type Entry = TranscriptModel['entries'][number]
 
+/** Whether two readonly arrays hold the same elements by identity. */
+function sameIdentities<Value>(left: readonly Value[], right: readonly Value[]): boolean {
+  if (left === right) return true
+  if (left.length !== right.length) return false
+  for (let index = 0; index < left.length; index += 1) if (left[index] !== right[index]) return false
+  return true
+}
+
 /** A run of adjacent semantic entries of one turn, as a range of the bounded entries. */
 interface TurnSegment {
   readonly turn: number
@@ -178,6 +186,8 @@ export class StreamFacts {
   private queued = new Map<string, StreamQueued>()
   /** The last durable entry array mapped to its turn index; one entry, because the displayed view publishes one model at a time. */
   private index: TurnIndex | undefined
+  /** The last facts object, reused when an unchanged pass produced the same turns and queued rows by identity. */
+  private lastFacts: { readonly turns: readonly StreamTurn[], readonly queued: readonly StreamQueued[], readonly facts: TranscriptViewFacts } | undefined
 
   /** @param counters - optional work sink; production constructs without one. */
   constructor(private readonly counters?: MayflyWorkCounters) {}
@@ -201,7 +211,13 @@ export class StreamFacts {
     const turns = new Map<string, StreamTurn>()
     const queued = new Map<string, StreamQueued>()
     const owners = new Map<string, RowOwner>()
-    const facts: TranscriptViewFacts = { turns: model === null ? [] : this.turnsOf(model, inputs, rows, turns, owners), queued: this.queuedOf(inputs, queued) }
+    const nextTurns = model === null ? [] : this.turnsOf(model, inputs, rows, turns, owners)
+    const nextQueued = this.queuedOf(inputs, queued)
+    const previous = this.lastFacts
+    const facts: TranscriptViewFacts = previous !== undefined && sameIdentities(previous.turns, nextTurns) && sameIdentities(previous.queued, nextQueued)
+      ? previous.facts
+      : { turns: nextTurns, queued: nextQueued }
+    if (facts !== previous?.facts) this.lastFacts = { turns: nextTurns, queued: nextQueued, facts }
     this.owners = owners
     this.model = model
     this.rows = rows

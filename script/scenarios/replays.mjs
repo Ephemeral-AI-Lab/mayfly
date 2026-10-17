@@ -307,7 +307,43 @@ const perfLong = {
   ],
 }
 
-export const SCENES = { markdown, content, appConversation, appAgents, appSessions, perfSubagent, perfLong }
+/**
+ * The swarm scene: six live background children (each with a nested live survey), a running job, a /btw side
+ * conversation, and a main stream, so the agents view, child view, BTW view, and main view can be switched between
+ * while every child is still streaming. The script enters the agents view, opens a child, returns, toggles the BTW,
+ * and types/scrolls on main.
+ */
+const perfSwarm = {
+  summary: 'six live background subagents with nested surveys, a running job, a /btw, and a main stream; enters the agents view, opens a child, switches back, toggles the BTW, then types and scrolls on main',
+  items: [
+    ...Array.from({ length: 30 }, (_, index) => historyTurn(index + 1)),
+    mark('load'),
+    turn('Coordinate six live renderer audits and keep the preview running.', [
+      step({
+        text: 'Six renderer audits start in the background, each with a nested survey.',
+        prepareMs: 300,
+        tools: Array.from({ length: 6 }, (_, index) => rendererChild(
+          `Audit renderer pass ${String(index + 1)}`,
+          `Audit renderer pass ${String(index + 1)} and report the expensive paints`,
+          rendererSurvey(`Nested survey ${String(index + 1)}`, `Survey renderer pass ${String(index + 1)}`, `Pass ${String(index + 1)} finds the same rows hot: the markdown fences, the diff bands, and the wrapped list rows each walk the width ladder again. `.repeat(4)),
+          150 + index * 90,
+        )),
+      }),
+      step({ text: 'All six audits and their nested surveys are running in the background.', textMs: 1200 }),
+      mark('swarm'),
+      job('pnpm run preview', { lines: [[400, 'preview ready'], [10_000, 'hmr update src/renderer.ts']], progress: [[600, 'serving'], [10_000, 'hmr 1']] }),
+      step({ text: 'The agents view lists all six, live first; the preview keeps serving.', textMs: 900, marks: [{ name: 'agents', block: 'text', at: 0.2 }] }),
+    ]),
+    mark('btw'),
+    btw('Which audit found the widest redundant paint?', [
+      step({ reasoning: 'The pass with the most wrapped rows.', text: 'Pass four: its wrapped list rows repaint the width ladder twice, and the diff bands rebuild every hunk.', textMs: 1200 }),
+    ], { label: 'audit notes' }),
+    mark('switch'),
+    mark('settle'),
+  ],
+}
+
+export const SCENES = { markdown, content, appConversation, appAgents, appSessions, perfSubagent, perfLong, perfSwarm }
 
 /** A replay or a scene by name. */
 export const timelineNamed = name => Object.hasOwn(REPLAYS, name) ? REPLAYS[name] : Object.hasOwn(SCENES, name) ? SCENES[name] : undefined

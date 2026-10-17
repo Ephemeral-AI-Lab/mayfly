@@ -650,6 +650,37 @@ const PERF = {
       measure('settle', [play(undefined, { timed: true })]),
     ],
   },
+  'perf-swarm': {
+    summary: 'six live background subagents with nested surveys, a running job, a /btw, and a main stream: enter the agents view, open a child, switch back, toggle the BTW, then type and scroll on main',
+    source: { replay: 'perfSwarm' },
+    covers: [
+      `${TRANSCRIPT}conversation-slots.ts`, `${TRANSCRIPT}transcript-model.ts`, `${TRANSCRIPT}official-model.ts`, `${TRANSCRIPT}session-facts.ts`,
+      `${TRANSCRIPT}status-agents.ts`, 'packages/mayfly/src/app/conversation-views.ts', 'packages/mayfly/src/core/views-lane.ts', ...FRAME_PATH,
+    ],
+    sizes: [DEFAULT_SIZE],
+    perf: {
+      ceilings: {
+        load: { cpuPct: 150 }, swarm: { cpuPct: 60 },
+        agents: { keyP50Ms: 30, cpuPerKeyMs: 30 }, open: { keyP50Ms: 100, cpuPerKeyMs: 120 },
+        back: { keyP50Ms: 100, cpuPerKeyMs: 150 }, 'btw-open': { cpuPct: 60 }, btw: { keyP50Ms: 100, cpuPerKeyMs: 150 },
+        main: { keyP50Ms: 100, cpuPerKeyMs: 150 },
+        type: { keyP50Ms: 20, cpuPerKeyMs: 15 }, scroll: { keyP50Ms: 20, cpuPerKeyMs: 25 }, settle: { cpuPct: 90 },
+      },
+    },
+    script: [
+      measure('load', [play('load')]),
+      measure('swarm', [play('btw', { timed: true })]),
+      measure('agents', [key('alt+down'), key('down', { repeat: 6 })]),
+      measure('open', [key('enter'), wait(500)]),
+      measure('back', [key('f7'), wait(300)]),
+      measure('btw-open', [play('switch', { timed: true })]),
+      measure('btw', [key('f7'), wait(300)]),
+      measure('main', [key('f7'), wait(300)]),
+      measure('type', [type(SENTENCE)]),
+      measure('scroll', [key('pageup', { repeat: 6 }), key('pagedown', { repeat: 6 })]),
+      measure('settle', [play(undefined, { timed: true })]),
+    ],
+  },
   'perf-content': {
     summary: 'page keys, End, and a resize inside the trace detail of a megabyte write',
     source: { replay: 'content' },
