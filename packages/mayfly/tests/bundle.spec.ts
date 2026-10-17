@@ -113,7 +113,7 @@ describe('mayfly bundle', () => {
   })
 
   it('composes the tool panels as ordinary native-service siblings', () => {
-    expect(statusGoal.inject).toEqual(['mayflyPanes', 'mayflyCurrentAgent', 'mayflyScreen', 'mayflySessionFacts', 'mayflyTick', 'goals'])
+    expect(statusGoal.inject).toEqual(['mayflyPanes', 'mayflyCurrentAgent', 'mayflyScreen', 'mayflyTick', 'goals', 'sessionProjections'])
     expect(statusJobs.inject).toEqual(['mayflyPanes', 'mayflyCurrentAgent', 'mayflyScreen', 'mayflyTick', 'mayflyOverlays', 'jobs'])
     expect(statusAgents.inject).toEqual(['mayflyPanes', 'mayflyCurrentAgent', 'mayflyScreen', 'mayflySessionFacts', 'mayflyTick', 'mayflyConversations', 'subagents', 'agents'])
     expect(paneWorkflow.inject).toEqual(['mayflyPanes', 'mayflyCurrentAgent', 'mayflySessionFacts', 'sessions'])
