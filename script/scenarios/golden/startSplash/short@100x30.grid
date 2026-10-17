@@ -1,0 +1,28 @@
+grid 100x14 cursor none
+|                                          ▄▄▖█▛███▜█▗▄▄
+|                                           ▄▖█▙███▟█▗▄
+|                                             ▝▜▀▀▀▛▘
+|
+|                                         mayfly scenario
+|                                 ephemeral agents, enduring works
+|
+|                 Recent sessions                     ↑ browse · /sessions for all
+|                   ○ Redesign the launch screen           workspace        2h ago
+|                                                                  Alt+↑ conversation · Alt+↓ view
+|╭──────────────────────────────────────────────────────────────────────────────────────────────────╮
+|│ >  Ask anything · / commands · @ files · # skills · ! shell                                      │
+|╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
+| deepseek-official/deepseek-v4-pro  ~/workspace
+styles
+0: 42-44 fg:#cfc6f5; 45-51 fg:#9a86e6; 52-54 fg:#cfc6f5
+1: 43-44 fg:#cfc6f5; 45-51 fg:#9a86e6; 52-53 fg:#cfc6f5
+2: 45-51 fg:#9a86e6
+4: 41-46 fg:#9a86e6 b; 48-55 fg:#5c6476
+5: 33-64 fg:#c9c0f0
+7: 17-31 fg:#9aa3b8; 53-80 fg:#5c6476
+8: 19 fg:#5c6476; 21-46 fg:#ededf2; 58-66 fg:#5c6476; 75-80 fg:#5c6476
+9: 66-96 fg:#9aa3b8
+10: 0-99 fg:#45406b
+11: 0 fg:#45406b; 2-3 fg:#ededf2; 4 r; 5-60 fg:#5c6476; 99 fg:#45406b
+12: 0-99 fg:#45406b
+13: 1-33 fg:#ededf2; 36-46 fg:#9aa3b8

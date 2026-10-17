@@ -565,6 +565,7 @@ const brandThemes = {
         usage: { inputTokens: 3300, outputTokens: 160, cacheReadTokens: 3000 },
       }),
     ]),
+    mark('dark'),
     notify('warning', 'Rate limited · retrying in 4 s', { holdMs: 600_000 }),
     pause(100),
     mark('ready'),

@@ -1,0 +1,51 @@
+grid 100x30 cursor none
+|  ● Goal set · Refresh the landing page hero and keep every test green
+|
+|  ● A reviewer runs in the background, the todo list is set, and a watcher rebuilds the styles.
+|
+|  ✓ Subagent(Audit the hero copy) · 0.6s
+|
+|  ✓ TodoWrite · 0.2s
+|
+|  ● Every panel now has the /stats look: a rule and a title, the keys on one hint row, no buttons.
+|    Try /model, /effort, /stats, /plugin, /agents, /jobs, /mcp, /help, /settings; Alt+↓ enters the
+|    views, where x asks y/n.
+|
+|  ✻ Worked for 4s · done 09:00
+|━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+|  Plugin marketplace
+|  index updated 26h ago · 14 entries
+|
+|  Installed 7   Updates 4 !   Browse 8
+|                              ━━━━━━━━
+|
+|  Integration · 2                                                   │  ACP Server
+|  → ACP Server                                 official   ·   ·     │  Integration
+|     … +11 more                                                     │  automation-only ACP server
+|                                                                    │  owns stdio; install it in a
+|                                                                    │  dedicated non-Mayfly
+|                                                                    │  profile
+|                                                                    │  An automation-only Agent
+|
+|
+|  g group: category · / filter · ←/→ tabs · Esc close
+styles
+0: 2-99 fg:#c9c0f0
+2: 2-3 fg:#ededf2
+4: 2-3 fg:#4ec87e; 4-11 fg:#ededf2 b; 12 fg:#9aa3b8; 13-31 fg:#c9c0f0; 32-39 fg:#9aa3b8
+6: 2-3 fg:#4ec87e; 4-12 fg:#ededf2 b; 13-19 fg:#9aa3b8
+8: 2-3 fg:#ededf2
+12: 2-29 fg:#9aa3b8
+13: 0-99 fg:#9a86e6
+14: 2-19 fg:#9a86e6 b
+15: 2-35 fg:#9aa3b8
+17: 2-10 fg:#9aa3b8; 12 fg:#9aa3b8; 16-24 fg:#9aa3b8; 26 fg:#e8a838 b; 30-35 fg:#9a86e6; 37 fg:#9a86e6
+18: 30-37 fg:#9aa3b8
+20: 2-16 fg:#9aa3b8; 68 fg:#9aa3b8; 71-80 fg:#ededf2 b
+21: 2 fg:#9a86e6 b; 4-13 fg:#ededf2; 47-55 fg:#9aa3b8; 56-57 fg:#ededf2; 58-60 fg:#9aa3b8; 61 fg:#ededf2; 62-64 fg:#9aa3b8; 65 fg:#ededf2; 68 fg:#9aa3b8; 71-81 fg:#ededf2
+22: 5-14 fg:#9aa3b8; 68 fg:#9aa3b8; 71-96 fg:#e8a838
+23: 68 fg:#9aa3b8; 71-97 fg:#e8a838
+24: 68 fg:#9aa3b8; 71-90 fg:#e8a838
+25: 68 fg:#9aa3b8; 71-77 fg:#e8a838
+26: 68 fg:#9aa3b8; 71-94 fg:#9aa3b8
+29: 2 fg:#ededf2; 4-21 fg:#5c6476; 22 fg:#ededf2; 24-32 fg:#5c6476; 33-35 fg:#ededf2; 37-43 fg:#5c6476; 44-46 fg:#ededf2; 48-52 fg:#5c6476

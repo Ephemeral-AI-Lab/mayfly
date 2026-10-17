@@ -1,0 +1,52 @@
+grid 100x30 cursor none
+|
+|
+|
+|
+|                                            █        █
+|                                           █          █
+|                                          ██████████████
+|                                    █████ ███ ██████ ███ █████
+|                                          ███ ██████ ███
+|                                      ███ ██████████████ ███
+|                                           ████████████
+|                                             █      █
+|
+|                                         mayfly scenario
+|                                 ephemeral agents, enduring works
+|
+|                 Recent sessions                     ↑ browse · /sessions for all
+|                   ○ Redesign the launch screen           workspace        2h ago
+|                   ○ Archive sessions without a rescan    workspace       23h ago
+|                   ○ Fix the flaky scheduler test         harness          1d ago
+|                   ○ Port the dock overlay to panes       mayfly-dock      2d ago
+|
+|
+|
+|
+|                                                                  Alt+↑ conversation · Alt+↓ view
+|╭──────────────────────────────────────────────────────────────────────────────────────────────────╮
+|│ >  Ask anything · / commands · @ files · # skills · ! shell                                      │
+|╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
+| deepseek-official/deepseek-v4-pro  ~/workspace
+styles
+4: 44 fg:#9a86e6; 53 fg:#9a86e6
+5: 43 fg:#9a86e6; 54 fg:#9a86e6
+6: 42-55 fg:#9a86e6
+7: 36-40 fg:#cfc6f5; 42-44 fg:#9a86e6; 46-51 fg:#9a86e6; 53-55 fg:#9a86e6; 57-61 fg:#cfc6f5
+8: 42-44 fg:#9a86e6; 46-51 fg:#9a86e6; 53-55 fg:#9a86e6
+9: 38-40 fg:#cfc6f5; 42-55 fg:#9a86e6; 57-59 fg:#cfc6f5
+10: 43-54 fg:#9a86e6
+11: 45 fg:#9a86e6; 52 fg:#9a86e6
+13: 41-46 fg:#9a86e6 b; 48-55 fg:#5c6476
+14: 33-64 fg:#c9c0f0
+16: 17-31 fg:#9aa3b8; 53-80 fg:#5c6476
+17: 19 fg:#5c6476; 21-46 fg:#ededf2; 58-66 fg:#5c6476; 75-80 fg:#5c6476
+18: 19 fg:#5c6476; 21-53 fg:#ededf2; 58-66 fg:#5c6476; 74-80 fg:#5c6476
+19: 19 fg:#5c6476; 21-48 fg:#ededf2; 58-64 fg:#5c6476; 75-80 fg:#5c6476
+20: 19 fg:#5c6476; 21-50 fg:#ededf2; 58-68 fg:#5c6476; 75-80 fg:#5c6476
+25: 66-96 fg:#9aa3b8
+26: 0-99 fg:#45406b
+27: 0 fg:#45406b; 2-3 fg:#ededf2; 4 r; 5-60 fg:#5c6476; 99 fg:#45406b
+28: 0-99 fg:#45406b
+29: 1-33 fg:#ededf2; 36-46 fg:#9aa3b8

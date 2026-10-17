@@ -1,0 +1,62 @@
+grid 100x30 cursor none
+|    • docs/migration.md, finding 2: nothing to change before the release                           ░
+|    • docs/migration.md, finding 3: nothing to change before the release                           ░
+|    • docs/migration.md, finding 4: nothing to change before the release                           ░
+|    • docs/migration.md, finding 5: nothing to change before the release                           ░
+|    • docs/migration.md, finding 6: nothing to change before the release                           ░
+|    • docs/migration.md, finding 7: nothing to change before the release                           ░
+|    • docs/migration.md, finding 8: nothing to change before the release                           ░
+|    • docs/migration.md, finding 9: nothing to change before the release                           ░
+|    • docs/migration.md, finding 10: nothing to change before the release                          ░
+|    • docs/migration.md, finding 11: nothing to change before the release                          ░
+|    • docs/migration.md, finding 12: nothing to change before the release                          ░
+|    • docs/migration.md, finding 13: nothing to change before the release                          ░
+|    • docs/migration.md, finding 14: nothing to change before the release                          ░
+|    • docs/migration.md, finding 15: nothing to change before the release                          ░
+|    • docs/migration.md, finding 16: nothing to change before the release                          ░
+|    • docs/migration.md, finding 17: nothing to change before the release                          ░
+|    • docs/migration.md, finding 18: nothing to change before the release                          ░
+|    • docs/migration.md, finding 19: nothing to change before the release                          ░
+|    • docs/migration.md, finding 20: nothing to change before the release                          ░
+|    • docs/migration.md, finding 21: nothing to change before the release                          ░
+|    • docs/migration.md, finding 22: nothing to change before the release                          ░
+|    • docs/migration.md, finding 23: nothing to change before the release                          ░
+|    • docs/migration.md, finding 24: nothing to change before the release                          █
+|                                                                                                   █
+|  ✻ Worked for 8s · done 09:01                                                                     █
+|                                       New messages · Ctrl+↓      Alt+↑ conversation · Alt+↓ view
+|╭───────────────────────────────────────────────────────────────────── Walk me through the release ╮
+|│ >  Ask anything · / commands · @ files · # skills · ! shell                                      │
+|╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
+| deepseek-official/deepseek-flash High  ~/workspace              cache ▰▰▱▱▱ 42%  ctx ▰▱▱▱▱▱▱▱▱▱ 6%
+styles
+0: 4-5 fg:#c9c0f0; 99 fg:#9aa3b8
+1: 4-5 fg:#c9c0f0; 99 fg:#9aa3b8
+2: 4-5 fg:#c9c0f0; 99 fg:#9aa3b8
+3: 4-5 fg:#c9c0f0; 99 fg:#9aa3b8
+4: 4-5 fg:#c9c0f0; 99 fg:#9aa3b8
+5: 4-5 fg:#c9c0f0; 99 fg:#9aa3b8
+6: 4-5 fg:#c9c0f0; 99 fg:#9aa3b8
+7: 4-5 fg:#c9c0f0; 99 fg:#9aa3b8
+8: 4-5 fg:#c9c0f0; 99 fg:#9aa3b8
+9: 4-5 fg:#c9c0f0; 99 fg:#9aa3b8
+10: 4-5 fg:#c9c0f0; 99 fg:#9aa3b8
+11: 4-5 fg:#c9c0f0; 99 fg:#9aa3b8
+12: 4-5 fg:#c9c0f0; 99 fg:#9aa3b8
+13: 4-5 fg:#c9c0f0; 99 fg:#9aa3b8
+14: 4-5 fg:#c9c0f0; 99 fg:#9aa3b8
+15: 4-5 fg:#c9c0f0; 99 fg:#9aa3b8
+16: 4-5 fg:#c9c0f0; 99 fg:#9aa3b8
+17: 4-5 fg:#c9c0f0; 99 fg:#9aa3b8
+18: 4-5 fg:#c9c0f0; 99 fg:#9aa3b8
+19: 4-5 fg:#c9c0f0; 99 fg:#9aa3b8
+20: 4-5 fg:#c9c0f0; 99 fg:#9aa3b8
+21: 4-5 fg:#c9c0f0; 99 fg:#9aa3b8
+22: 4-5 fg:#c9c0f0; 99 fg:#9a86e6
+23: 99 fg:#9a86e6
+24: 2-29 fg:#9aa3b8; 99 fg:#9a86e6
+25: 38-60 fg:#ededf2 r; 66-96 fg:#9aa3b8
+26: 0-70 fg:#45406b; 71-97 fg:#f5f5f7 b; 98-99 fg:#45406b
+27: 0 fg:#45406b; 2-3 fg:#ededf2; 4 r; 5-60 fg:#5c6476; 99 fg:#45406b
+28: 0-99 fg:#45406b
+29: 1-37 fg:#ededf2; 40-50 fg:#9aa3b8; 65-70 fg:#ededf2; 71-72 fg:#e8a838; 73-75 fg:#9aa3b8; 76-79 fg:#ededf2; 82-85 fg:#ededf2; 86 fg:#9a86e6; 87-95 fg:#9aa3b8; 96-98 fg:#ededf2

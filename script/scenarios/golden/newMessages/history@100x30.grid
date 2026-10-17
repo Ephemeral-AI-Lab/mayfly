@@ -1,0 +1,49 @@
+grid 100x30 cursor none
+|      entry
+|    • Release step 20: confirm the package 20 builds, passes its specs, and has its changelog
+|      entry
+|    • Release step 21: confirm the package 21 builds, passes its specs, and has its changelog
+|      entry
+|    • Release step 22: confirm the package 22 builds, passes its specs, and has its changelog
+|      entry
+|    • Release step 23: confirm the package 23 builds, passes its specs, and has its changelog
+|      entry
+|    • Release step 24: confirm the package 24 builds, passes its specs, and has its changelog
+|      entry
+|    • Release step 25: confirm the package 25 builds, passes its specs, and has its changelog
+|      entry
+|    • Release step 26: confirm the package 26 builds, passes its specs, and has its changelog
+|      entry
+|    • Release step 27: confirm the package 27 builds, passes its specs, and has its changelog
+|      entry
+|    • Release step 28: confirm the package 28 builds, passes its specs, and has its changelog
+|      entry
+|    • Release step 29: confirm the package 29 builds, passes its specs, and has its changelog
+|      entry
+|    • Release step 30: confirm the package 30 builds, passes its specs, and has its changelog
+|      entry
+|
+|  ✻ Worked for 7s · done 09:00
+|                                                                  Alt+↑ conversation · Alt+↓ view
+|╭───────────────────────────────────────────────────────────────────── Walk me through the release ╮
+|│ >  Ask anything · / commands · @ files · # skills · ! shell                                      │
+|╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
+| deepseek-official/deepseek-flash High  ~/workspace              cache ▰▱▱▱▱ 25%  ctx ▱▱▱▱▱▱▱▱▱▱ 4%
+styles
+1: 4-5 fg:#c9c0f0
+3: 4-5 fg:#c9c0f0
+5: 4-5 fg:#c9c0f0
+7: 4-5 fg:#c9c0f0
+9: 4-5 fg:#c9c0f0
+11: 4-5 fg:#c9c0f0
+13: 4-5 fg:#c9c0f0
+15: 4-5 fg:#c9c0f0
+17: 4-5 fg:#c9c0f0
+19: 4-5 fg:#c9c0f0
+21: 4-5 fg:#c9c0f0
+24: 2-29 fg:#9aa3b8
+25: 66-96 fg:#9aa3b8
+26: 0-70 fg:#45406b; 71-97 fg:#f5f5f7 b; 98-99 fg:#45406b
+27: 0 fg:#45406b; 2-3 fg:#ededf2; 4 r; 5-60 fg:#5c6476; 99 fg:#45406b
+28: 0-99 fg:#45406b
+29: 1-37 fg:#ededf2; 40-50 fg:#9aa3b8; 65-70 fg:#ededf2; 71 fg:#e85454; 72-75 fg:#9aa3b8; 76-79 fg:#ededf2; 82-85 fg:#ededf2; 86-95 fg:#9aa3b8; 96-98 fg:#ededf2

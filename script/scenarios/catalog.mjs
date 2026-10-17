@@ -326,7 +326,8 @@ const SCRIPTS = {
   // conversation after `/clear`, and its banner at 60 and 40 columns.
   brandThemes: [
     play('banner'), checkpoint('banner'),
-    play('ready'), wait(300), checkpoint('dark'),
+    play('dark'), checkpoint('dark'),
+    play('ready'), wait(300), checkpoint('warning'),
     ...open('/theme', 'Select a theme'), checkpoint('picker'),
     key('down', { repeat: 19 }), checkpoint('picker-light'),
     key('esc'), wait(300), ...theme('light'), checkpoint('light'),
@@ -346,8 +347,8 @@ const SCRIPTS = {
     ...open('/effort', 'Effort'), checkpoint('effort'), key('esc'),
     ...open('/stats', 'Stats'), checkpoint('stats-session'),
     key('right'), checkpoint('stats-account'),
-    key('right'), until('Less'), checkpoint('stats-history'),
-    key('right'), checkpoint('stats-models'), key('esc'),
+    key('right'), wait(1000), until('Less'), wait(1000), checkpoint('stats-history'),
+    key('right'), wait(1000), checkpoint('stats-models'), key('esc'),
     ...open('/plugin', 'Plugin marketplace'), until('Browse'), checkpoint('plugin'),
     key('alt+left'), checkpoint('plugin-updates'), key('esc'),
     ...open('/agents', 'Subagents'), checkpoint('agents'), key('esc'),
@@ -368,8 +369,8 @@ const SCRIPTS = {
     play('ready'),
     ...open('/stats', 'Stats'), checkpoint('stats-session'),
     key('right'), checkpoint('stats-account'),
-    key('right'), until('Less'), checkpoint('stats-history'),
-    key('right'), checkpoint('stats-models'), key('esc'),
+    key('right'), wait(1000), until('Less'), wait(1000), checkpoint('stats-history'),
+    key('right'), wait(1000), checkpoint('stats-models'), key('esc'),
     ...open('/plugin', 'Plugin marketplace'), until('Browse'), checkpoint('plugin-browse'),
     key('alt+left'), checkpoint('plugin-updates'),
     key('alt+left'), checkpoint('plugin-installed'),
@@ -385,7 +386,7 @@ const SCRIPTS = {
     play(), until('Auth'), checkpoint('wizard-auth'),
     key('right'), checkpoint('wizard-scopes'),
     key('right'), checkpoint('wizard-notes'),
-    key('right'), checkpoint('wizard-review'),
+    key('right'), wait(500), checkpoint('wizard-review'),
   ],
   // The new-messages rule: scroll away with the wheel, a block arrives (the rule and the chip), Ctrl+↓ brings the rule to the top, it
   // leaves after 5 s on screen; the next arrival is left unread and scrolled past, and a second Ctrl+↓ follows the tail; 60 columns.

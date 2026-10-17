@@ -1,0 +1,55 @@
+grid 100x30 cursor none
+|  ✓ Subagent(Audit the hero copy) · 0.6s
+|
+|  ✓ TodoWrite · 0.2s
+|
+|  ● Every panel now has the /stats look: a rule and a title, the keys on one hint row, no buttons.
+|    Try /model, /effort, /stats, /plugin, /agents, /jobs, /mcp, /help, /settings; Alt+↓ enters the
+|    views, where x asks y/n.
+|
+|  ✻ Worked for 4s · done 09:00
+|━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+|  Help
+|
+|  Commands
+|  /agents  Browse this session's subagents, view one, or stop a continuable child
+|  /btw  Ask a side question in a temporary Agent session
+|  /changelog  Show the release changelog (what's new)
+|  /compact  Compact older conversation history
+|  /context  Show token usage and the context window
+|  /copy  Copy the last assistant message to the clipboard
+|  /effort (/thinking)  Switch the thinking effort of the current model
+|  /export  Export the current session as a Markdown file
+|  /feedback  Record feedback about this session
+|  /files  Browse files delivered by the agent
+|  /fork  Fork the current session into a new one
+|  /goal  Set or view the goal for a long-running task
+|  /help  Show available commands and key bindings
+|  /init  Analyze the codebase and write AGENTS.md
+|  /jobs  Browse background jobs
+|
+|  ↑/↓ scroll · Ctrl+E expand · Esc close
+styles
+0: 2-3 fg:#4ec87e; 4-11 fg:#ededf2 b; 12 fg:#9aa3b8; 13-31 fg:#c9c0f0; 32-39 fg:#9aa3b8
+2: 2-3 fg:#4ec87e; 4-12 fg:#ededf2 b; 13-19 fg:#9aa3b8
+4: 2-3 fg:#ededf2
+8: 2-29 fg:#9aa3b8
+9: 0-99 fg:#9a86e6
+10: 2-5 fg:#9a86e6 b
+12: 2-97 fg:#c9c0f0 b
+13: 2-8 fg:#c9c0f0 b; 9-80 fg:#9aa3b8; 81-97 fg:#c9c0f0 b
+14: 2-5 fg:#c9c0f0 b; 6-55 fg:#9aa3b8; 56-97 fg:#c9c0f0 b
+15: 2-11 fg:#c9c0f0 b; 12-52 fg:#9aa3b8; 53-97 fg:#c9c0f0 b
+16: 2-9 fg:#c9c0f0 b; 10-45 fg:#9aa3b8; 46-97 fg:#c9c0f0 b
+17: 2-9 fg:#c9c0f0 b; 10-50 fg:#9aa3b8; 51-97 fg:#c9c0f0 b
+18: 2-6 fg:#c9c0f0 b; 7-56 fg:#9aa3b8; 57-97 fg:#c9c0f0 b
+19: 2-20 fg:#c9c0f0 b; 21-69 fg:#9aa3b8; 70-97 fg:#c9c0f0 b
+20: 2-8 fg:#c9c0f0 b; 9-55 fg:#9aa3b8; 56-97 fg:#c9c0f0 b
+21: 2-10 fg:#c9c0f0 b; 11-46 fg:#9aa3b8; 47-97 fg:#c9c0f0 b
+22: 2-7 fg:#c9c0f0 b; 8-44 fg:#9aa3b8; 45-97 fg:#c9c0f0 b
+23: 2-6 fg:#c9c0f0 b; 7-47 fg:#9aa3b8; 48-97 fg:#c9c0f0 b
+24: 2-6 fg:#c9c0f0 b; 7-52 fg:#9aa3b8; 53-97 fg:#c9c0f0 b
+25: 2-6 fg:#c9c0f0 b; 7-48 fg:#9aa3b8; 49-97 fg:#c9c0f0 b
+26: 2-6 fg:#c9c0f0 b; 7-48 fg:#9aa3b8; 49-97 fg:#c9c0f0 b
+27: 2-6 fg:#c9c0f0 b; 7-30 fg:#9aa3b8; 31-97 fg:#c9c0f0 b
+29: 2-4 fg:#ededf2; 6-14 fg:#5c6476; 15-20 fg:#ededf2; 22-30 fg:#5c6476; 31-33 fg:#ededf2; 35-39 fg:#5c6476

@@ -1,0 +1,39 @@
+grid 30x30 cursor none
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|      mayfly scenario
+| ephemeral agents, endurin…
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|   Alt+↑ conversation · Al…
+|╭────────────────────────────╮
+|│ >  Ask anything            │
+|╰────────────────────────────╯
+| deepseek-v4-pro  ~/workspace
+styles
+12: 6-11 fg:#9a86e6 b; 13-20 fg:#5c6476
+13: 1-25 fg:#c9c0f0
+25: 3-25 fg:#9aa3b8
+26: 0-29 fg:#45406b
+27: 0 fg:#45406b; 2-3 fg:#ededf2; 4 r; 5-16 fg:#5c6476; 29 fg:#45406b
+28: 0-29 fg:#45406b
+29: 1-15 fg:#ededf2; 18-28 fg:#9aa3b8

@@ -1,0 +1,48 @@
+grid 100x30 cursor none
+|    ▝▜▀▀▀▛▘     ~/workspace
+|
+|  » Refresh the landing page hero.
+|
+|  ▾ 1 tool call · 1 subagent · Ctrl+O to expand
+|
+|  ● Goal set · Refresh the landing page hero and keep every test green
+|
+|  ● A reviewer runs in the background, the todo list is set, and a watcher rebuilds the styles.
+|
+|  ✓ Subagent(Audit the hero copy) · 0.6s
+|
+|  ✓ TodoWrite · 0.2s
+|
+|  ● Every panel now has the /stats look: a rule and a title, the keys on one hint row, no buttons.
+|    Try /model, /effort, /stats, /plugin, /agents, /jobs, /mcp, /help, /settings; Alt+↓ enters the
+|    views, where x asks y/n.
+|
+|  ✻ Worked for 4s · done 09:00
+|━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+|  Effort
+|  DeepSeek/deepseek-flash · provider default: high
+|
+|
+|                         Faster                                     Smarter
+|                         ────────────────────────────▲─────────────────────
+|                         off            low        high (default)       max
+|
+|
+|  ←/→ adjust · Enter confirm · Esc cancel
+styles
+0: 4-10 fg:#9a86e6; 16-26 fg:#9aa3b8
+2: 2-3 fg:#9a86e6; 4-99 fg:#9a86e6 b
+4: 2-46 fg:#9aa3b8
+6: 2-99 fg:#c9c0f0
+8: 2-3 fg:#ededf2
+10: 2-3 fg:#4ec87e; 4-11 fg:#ededf2 b; 12 fg:#9aa3b8; 13-31 fg:#c9c0f0; 32-39 fg:#9aa3b8
+12: 2-3 fg:#4ec87e; 4-12 fg:#ededf2 b; 13-19 fg:#9aa3b8
+14: 2-3 fg:#ededf2
+18: 2-29 fg:#9aa3b8
+19: 0-99 fg:#9a86e6
+20: 2-7 fg:#9a86e6 b
+21: 2-49 fg:#9aa3b8
+24: 25-30 fg:#9aa3b8; 68-74 fg:#9aa3b8
+25: 25-52 fg:#9aa3b8; 53 fg:#9a86e6 b; 54-74 fg:#9aa3b8
+26: 25-27 fg:#ededf2; 40-42 fg:#ededf2; 51-54 fg:#9a86e6 b; 55-64 fg:#9aa3b8; 72-74 fg:#ededf2
+29: 2-4 fg:#ededf2; 6-14 fg:#5c6476; 15-19 fg:#ededf2; 21-30 fg:#5c6476; 31-33 fg:#ededf2; 35-40 fg:#5c6476

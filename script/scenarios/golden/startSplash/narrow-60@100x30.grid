@@ -1,0 +1,48 @@
+grid 60x30 cursor none
+|
+|
+|
+|
+|
+|
+|                         ▗▘   ▝▖
+|                      ▄▄▖█▛███▜█▗▄▄
+|                       ▄▖█▙███▟█▗▄
+|                         ▝▜▀▀▀▛▘
+|
+|                     mayfly scenario
+|             ephemeral agents, enduring works
+|
+|   Recent sessions         ↑ browse · /sessions for all
+|     ○ Redesign the launch screen                2h ago
+|     ○ Archive sessions without a rescan        23h ago
+|     ○ Fix the flaky scheduler test              1d ago
+|     ○ Port the dock overlay to panes            2d ago
+|
+|
+|
+|
+|
+|
+|                          Alt+↑ conversation · Alt+↓ view
+|╭──────────────────────────────────────────────────────────╮
+|│ >  Ask anything · / commands · @ files · # skills        │
+|╰──────────────────────────────────────────────────────────╯
+| deepseek-official/deepseek-v4-pro  ~/workspace
+styles
+6: 25-26 fg:#9a86e6; 30-31 fg:#9a86e6
+7: 22-24 fg:#cfc6f5; 25-31 fg:#9a86e6; 32-34 fg:#cfc6f5
+8: 23-24 fg:#cfc6f5; 25-31 fg:#9a86e6; 32-33 fg:#cfc6f5
+9: 25-31 fg:#9a86e6
+11: 21-26 fg:#9a86e6 b; 28-35 fg:#5c6476
+12: 13-44 fg:#c9c0f0
+14: 3-17 fg:#9aa3b8; 27-54 fg:#5c6476
+15: 5 fg:#5c6476; 7-32 fg:#ededf2; 49-54 fg:#5c6476
+16: 5 fg:#5c6476; 7-39 fg:#ededf2; 48-54 fg:#5c6476
+17: 5 fg:#5c6476; 7-34 fg:#ededf2; 49-54 fg:#5c6476
+18: 5 fg:#5c6476; 7-36 fg:#ededf2; 49-54 fg:#5c6476
+25: 26-56 fg:#9aa3b8
+26: 0-59 fg:#45406b
+27: 0 fg:#45406b; 2-3 fg:#ededf2; 4 r; 5-50 fg:#5c6476; 59 fg:#45406b
+28: 0-59 fg:#45406b
+29: 1-33 fg:#ededf2; 36-46 fg:#9aa3b8

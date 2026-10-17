@@ -1,0 +1,53 @@
+grid 40x30 cursor none
+|  ✓ Subagent(Audit the hero copy) · 0…
+|
+|  ✓ TodoWrite · 0.2s
+|
+|  ● The status row now carries the
+|    agents, jobs, goal, and todo items
+|    under the editor. Try the bottom
+|    of the screen: / opens the palette
+|    over the stream; a long paste
+|    becomes a token (← onto it names
+|    its keys); send hold:240000 keep
+|    going for a turn that keeps
+|    running (the hint above the editor
+|    rotates every 15 s; ↑ walks the
+|    history; Alt+↓ enters a view); Esc
+|     interrupts that turn while the
+|    reviewer and the watcher go on.
+|
+|  » hold:240000 keep refreshing the
+|    hero
+|  → /agents     [stop <id>] — Browse t…
+|    /btw        <question> — Ask a sid…
+|    /changelog  Show the release chang…
+|    /compact    Compact older conversa…
+|    /context    Show token usage and t…
+|    /copy       Copy the last assistan…
+|╭────── Refresh the landing page hero. ╮
+|│ > /                                  │
+|╰──────────────────────────────────────╯
+| workspace  ● agents 0/1  ● jobs 1
+styles
+0: 2-3 fg:#4ec87e; 4-11 fg:#ededf2 b; 12 fg:#9aa3b8; 13-31 fg:#c9c0f0; 32-37 fg:#9aa3b8
+2: 2-3 fg:#4ec87e; 4-12 fg:#ededf2 b; 13-19 fg:#9aa3b8
+4: 2-3 fg:#ededf2
+7: 19 fg:#c9c0f0
+9: 21 fg:#c9c0f0
+10: 20-39 fg:#c9c0f0
+11: 4-8 fg:#c9c0f0
+13: 24 fg:#c9c0f0
+14: 13-17 fg:#c9c0f0; 35-39 fg:#c9c0f0
+18: 2-3 fg:#9a86e6; 4-39 fg:#9a86e6 b
+19: 4-39 fg:#9a86e6 b
+20: 2 fg:#9a86e6; 4-10 fg:#9a86e6 b; 16-37 fg:#ededf2
+21: 4 fg:#ededf2 b; 5-7 fg:#ededf2; 16-37 fg:#9aa3b8
+22: 4 fg:#ededf2 b; 5-13 fg:#ededf2; 16-37 fg:#9aa3b8
+23: 4 fg:#ededf2 b; 5-11 fg:#ededf2; 16-37 fg:#9aa3b8
+24: 4 fg:#ededf2 b; 5-11 fg:#ededf2; 16-37 fg:#9aa3b8
+25: 4 fg:#ededf2 b; 5-8 fg:#ededf2; 16-37 fg:#9aa3b8
+26: 0-7 fg:#45406b; 8-37 fg:#f5f5f7 b; 38-39 fg:#45406b
+27: 0 fg:#45406b; 2-3 fg:#ededf2; 4 fg:#9a86e6 b; 5 r; 39 fg:#45406b
+28: 0-39 fg:#45406b
+29: 1-9 fg:#9aa3b8; 12 fg:#c9c0f0; 13 fg:#ededf2; 14-20 fg:#9aa3b8; 21-23 fg:#ededf2; 26 fg:#c9c0f0; 27 fg:#ededf2; 28-32 fg:#9aa3b8; 33 fg:#ededf2

@@ -1,0 +1,51 @@
+grid 100x30 cursor none
+|
+|
+|
+|                                             ▗▘   ▝▖
+|                                          ▄▄▖█▛███▜█▗▄▄
+|                                           ▄▖█▙███▟█▗▄
+|                                             ▝▜▀▀▀▛▘
+|
+|                                         mayfly scenario
+|                                 ephemeral agents, enduring works
+|
+|                 Recent sessions                     ↑ browse · /sessions for all
+|                   ○ Redesign the launch screen           workspace        2h ago
+|                   ○ Archive sessions without a rescan    workspace       23h ago
+|                   ○ Fix the flaky scheduler test         harness          1d ago
+|                   ○ Port the dock overlay to panes       mayfly-dock      2d ago
+|
+|
+|
+|━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+|  Select a model
+|  Your pick becomes the default for new sessions.
+|
+|  DeepSeek
+|    1. DeepSeek/DeepSeek-V41-Flash  977k context
+|  → 2. DeepSeek/DeepSeek-V4-Pro ✓   977k context
+|
+|    ○ Thinking: high (default)
+|
+|  ←/→ thinking · Enter choose · Type filter · Esc close
+styles
+3: 45-46 fg:#9a86e6; 50-51 fg:#9a86e6
+4: 42-44 fg:#cfc6f5; 45-51 fg:#9a86e6; 52-54 fg:#cfc6f5
+5: 43-44 fg:#cfc6f5; 45-51 fg:#9a86e6; 52-53 fg:#cfc6f5
+6: 45-51 fg:#9a86e6
+8: 41-46 fg:#9a86e6 b; 48-55 fg:#5c6476
+9: 33-64 fg:#c9c0f0
+11: 17-31 fg:#9aa3b8; 53-80 fg:#5c6476
+12: 19 fg:#5c6476; 21-46 fg:#ededf2; 58-66 fg:#5c6476; 75-80 fg:#5c6476
+13: 19 fg:#5c6476; 21-53 fg:#ededf2; 58-66 fg:#5c6476; 74-80 fg:#5c6476
+14: 19 fg:#5c6476; 21-48 fg:#ededf2; 58-64 fg:#5c6476; 75-80 fg:#5c6476
+15: 19 fg:#5c6476; 21-50 fg:#ededf2; 58-68 fg:#5c6476; 75-80 fg:#5c6476
+19: 0-99 fg:#9a86e6
+20: 2-15 fg:#9a86e6 b
+21: 2-48 fg:#9aa3b8
+23: 2-9 fg:#9aa3b8
+24: 4-5 fg:#9aa3b8; 7-33 fg:#ededf2; 36-47 fg:#9aa3b8
+25: 2 fg:#9a86e6 b; 4-5 fg:#9aa3b8; 7-30 fg:#9a86e6 b; 32 fg:#9a86e6; 36-47 fg:#9aa3b8
+27: 4 fg:#9aa3b8; 6-14 fg:#9aa3b8; 16-29 fg:#ededf2
+29: 2-4 fg:#ededf2; 6-16 fg:#5c6476; 17-21 fg:#ededf2; 23-31 fg:#5c6476; 32-35 fg:#ededf2; 37-45 fg:#5c6476; 46-48 fg:#ededf2; 50-54 fg:#5c6476

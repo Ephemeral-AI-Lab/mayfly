@@ -1,0 +1,53 @@
+grid 100x30 cursor none
+|
+|
+|                                            █        █
+|                                           █          █
+|                                          ██████████████
+|                                    █████ ███ ██████ ███ █████
+|                                          ███ ██████ ███
+|                                      ███ ██████████████ ███
+|                                           ████████████
+|                                             █      █
+|
+|                                         mayfly scenario
+|                                 ephemeral agents, enduring works
+|
+|                 Recent sessions                     ↑ browse · /sessions for all
+|                   ○ Redesign the launch screen           workspace        2h ago
+|                   ○ Archive sessions without a rescan    workspace       23h ago
+|                   ○ Fix the flaky scheduler test         harness          1d ago
+|                   ○ Port the dock overlay to panes       mayfly-dock      2d ago
+|
+|
+|
+|━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+|  Permissions
+|
+|    1. read-only           sandbox read-only · approval ask
+|  → 2. workspace-write ✓   sandbox workspace-write · approval ask
+|    3. danger-full-access  sandbox danger-full-access · approval never
+|
+|  ↑/↓ options · 1-3 choose · Enter choose · Esc close
+styles
+2: 44 fg:#9a86e6; 53 fg:#9a86e6
+3: 43 fg:#9a86e6; 54 fg:#9a86e6
+4: 42-55 fg:#9a86e6
+5: 36-40 fg:#cfc6f5; 42-44 fg:#9a86e6; 46-51 fg:#9a86e6; 53-55 fg:#9a86e6; 57-61 fg:#cfc6f5
+6: 42-44 fg:#9a86e6; 46-51 fg:#9a86e6; 53-55 fg:#9a86e6
+7: 38-40 fg:#cfc6f5; 42-55 fg:#9a86e6; 57-59 fg:#cfc6f5
+8: 43-54 fg:#9a86e6
+9: 45 fg:#9a86e6; 52 fg:#9a86e6
+11: 41-46 fg:#9a86e6 b; 48-55 fg:#5c6476
+12: 33-64 fg:#c9c0f0
+14: 17-31 fg:#9aa3b8; 53-80 fg:#5c6476
+15: 19 fg:#5c6476; 21-46 fg:#ededf2; 58-66 fg:#5c6476; 75-80 fg:#5c6476
+16: 19 fg:#5c6476; 21-53 fg:#ededf2; 58-66 fg:#5c6476; 74-80 fg:#5c6476
+17: 19 fg:#5c6476; 21-48 fg:#ededf2; 58-64 fg:#5c6476; 75-80 fg:#5c6476
+18: 19 fg:#5c6476; 21-50 fg:#ededf2; 58-68 fg:#5c6476; 75-80 fg:#5c6476
+22: 0-99 fg:#9a86e6
+23: 2-12 fg:#9a86e6 b
+25: 4-5 fg:#9aa3b8; 7-15 fg:#ededf2; 27-58 fg:#9aa3b8
+26: 2 fg:#9a86e6 b; 4-5 fg:#9aa3b8; 7-21 fg:#9a86e6 b; 23 fg:#9a86e6; 27-64 fg:#9aa3b8
+27: 4-5 fg:#9aa3b8; 7-24 fg:#ededf2; 27-69 fg:#9aa3b8
+29: 2-4 fg:#ededf2; 6-15 fg:#5c6476; 16-18 fg:#ededf2; 20-28 fg:#5c6476; 29-33 fg:#ededf2; 35-43 fg:#5c6476; 44-46 fg:#ededf2; 48-52 fg:#5c6476

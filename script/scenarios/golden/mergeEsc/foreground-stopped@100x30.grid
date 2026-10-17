@@ -1,0 +1,49 @@
+grid 100x30 cursor none
+|    while it runs (it queues), then press Esc.
+|
+|  » spawn:Background reviewer child-hold:240000 review the README
+|
+|  ● Subagent(Background reviewer) · running in background
+|
+|  ■ interrupted
+|
+|  ✻ Worked for 0s · done 09:00
+|
+|  » Then bump the version
+|
+|  ■ interrupted
+|
+|  ✻ Stopped after 0s · done 09:00
+|
+|  » spawn-fg:Foreground checker child-hold:240000 check the links
+|
+|  ▾ Stopped · 1 subagent · Ctrl+O to expand
+|
+|  ✗ Subagent(Foreground checker) · Error: subagent run was cancelled
+|
+|  ■ interrupted
+|
+|  ✻ Stopped after 0s · done 09:00
+|                                                                              interrupt requested
+|╭─────────────────────────────────────────────────────────────────────── Watch the styles while we ╮
+|│ >  Ask anything · / commands · @ files · # skills · ! shell                                      │
+|╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
+| deepseek-official/deepseek-flash High  ~/workspace  ● agents 0/2  ● jobs 1
+styles
+2: 2-3 fg:#9a86e6; 4-99 fg:#9a86e6 b
+4: 2 fg:#5c6476; 3 fg:#ededf2; 4-11 fg:#ededf2 b; 12 fg:#9aa3b8; 13-31 fg:#c9c0f0; 32-56 fg:#9aa3b8
+6: 2-14 fg:#e8a838
+8: 2-29 fg:#9aa3b8
+10: 2-3 fg:#9a86e6; 4-99 fg:#9a86e6 b
+12: 2-14 fg:#e8a838
+14: 2-32 fg:#9aa3b8
+16: 2-3 fg:#9a86e6; 4-99 fg:#9a86e6 b
+18: 2-3 fg:#9aa3b8; 4-10 fg:#e8a838; 11-42 fg:#9aa3b8
+20: 2-3 fg:#e85454; 4-11 fg:#ededf2 b; 12 fg:#9aa3b8; 13-30 fg:#c9c0f0; 31-67 fg:#9aa3b8
+22: 2-14 fg:#e8a838
+24: 2-32 fg:#9aa3b8
+25: 78-96 fg:#ededf2
+26: 0-72 fg:#45406b; 73-97 fg:#f5f5f7 b; 98-99 fg:#45406b
+27: 0 fg:#45406b; 2-3 fg:#ededf2; 4 r; 5-60 fg:#5c6476; 99 fg:#45406b
+28: 0-99 fg:#45406b
+29: 1-37 fg:#ededf2; 40-50 fg:#9aa3b8; 53 fg:#c9c0f0; 54 fg:#ededf2; 55-61 fg:#9aa3b8; 62-64 fg:#ededf2; 67 fg:#c9c0f0; 68 fg:#ededf2; 69-73 fg:#9aa3b8; 74 fg:#ededf2
