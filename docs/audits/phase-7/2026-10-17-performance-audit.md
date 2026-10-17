@@ -385,10 +385,12 @@ Lint, build, typecheck, lib exports, examples, pack, CLI registry smoke, workflo
 e2e/app/vt harness was moved onto the lazy-start model (`mayflySessionStart.ensure()` on the first action, one
 creation/selection per start, throttled publish waits). The stale interaction/design/UI suites were repaired through the
 shared fakes (session start, screen/slot APIs, runtime scrollbar colors), current control ids, borderless frames, and
-fresh snapshots. The full suite is now **312 passed / 1 skipped**, **5,699 tests passed / 1 skipped**. Two current bugs
-found by the cleanup were fixed: a views pane that first compiles to no panel now keeps compiling hidden updates until a
+fresh snapshots. The full suite is now **312 passed / 1 skipped**, **5,699 tests passed / 1 skipped**; the pr tier's
+selected 241 spec files are **4,932/4,932**. Two current bugs found by the cleanup were fixed: a views pane that first compiles to no panel now keeps compiling hidden updates until a
 panel arrives, and the surface head now drops its badges before truncating the title. The only pr step that cannot pass
 in this checkout is the scenario comparison: `script/scenarios/golden/` is absent, so every checkpoint is reported `new`.
+This is the documented exception: the branch is otherwise ready for submission, with the scenario goldens to be generated
+and accepted by the owner in a checkout that carries them.
 
 ### Remaining
 
