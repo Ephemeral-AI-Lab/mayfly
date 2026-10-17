@@ -318,6 +318,8 @@ export function apply(ctx: Context): void {
   let rows: readonly AgentRow[] = []
   let now = Date.now()
   let published = ''
+  /** The panel actually handed to the lane; a skipped hidden update leaves this short of `published`. */
+  let panelPublished = ''
   /** The last second the hidden panel was rebuilt; the summary still updates at the child cadence. */
   let panelSecond = -1
   /** The row shape that changes the panel beyond its elapsed/rate figures. */
@@ -359,19 +361,23 @@ export function apply(ctx: Context): void {
     const summary = agentsSummary(state, t)
     const panel = agentsPanel(state, t, unavailable)
     const key = JSON.stringify([summary, panel])
-    if (key === published) return
+    if (key === published && key === panelPublished) return
     published = key
     pane.setSummary(summary)
     // A hidden panel costs a compile per update and nobody sees its elapsed seconds. Refresh it at most once a
     // second; while the view is entered, keep the 4 Hz child cadence. A test or a host without a views lane has no
     // hidden state to protect, so it keeps the old immediate panel.
     const views = screen?.views
-    const structure = JSON.stringify(rows.map(row => [row.id, row.childId, row.label, row.task, row.foreground, row.live, row.failed, row.stopped, row.activity]))
+    const structure = JSON.stringify([
+      rows.map(row => [row.id, row.childId, row.label, row.task, row.foreground, row.live, row.failed, row.stopped, row.activity]),
+      rows.map(row => row.childId === undefined ? '' : `${row.childId}:${modes.get(row.childId) ?? ''}`),
+    ])
     const entered = views?.isEntered === true && views.active === 'mayfly.view.agents'
     const second = Math.floor(now / 1000)
     if (views === undefined || entered || second !== panelSecond || structure !== panelStructure) {
       panelSecond = second
       panelStructure = structure
+      panelPublished = key
       pane.set(panel)
     }
   }
@@ -423,7 +429,16 @@ export function apply(ctx: Context): void {
     const agent = owner
     setImmediate(() => { if (!unloaded && currentAgent.current() === agent) screen.enterViews() })
   })
-  const offLocale = observeTranscriptLocale(ctx, () => { published = ''; publish() })
+  const offLocale = observeTranscriptLocale(ctx, () => { published = ''; panelPublished = ''; refresh() })
+  // Entering the lane is not a facts update: force the first paint after a hidden skip, then let the tick cadence run.
+  const views = screen?.views
+  let wasEntered = false
+  const offViews = views?.subscribe(() => {
+    const enteredNow = views.isEntered && views.active === 'mayfly.view.agents'
+    if (enteredNow && !wasEntered) { panelSecond = -1; panelPublished = '' }
+    wasEntered = enteredNow
+    publish()
+  })
   // A continuable child's Agent coming or going changes whether it works.
   ctx.effect(() => ctx.on('agent/created', () => { refresh() }))
   ctx.effect(() => ctx.on('agent/disposed', () => { refresh() }))
@@ -434,6 +449,7 @@ export function apply(ctx: Context): void {
     offChildren()
     offConversations()
     offLocale()
+    offViews?.()
     offTick?.()
     pane.dispose()
   })
