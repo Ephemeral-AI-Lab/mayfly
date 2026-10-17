@@ -359,14 +359,42 @@ the table: the side-conversation open itself is 8.2% CPU, and the F7 to its view
    `W4-slot` now admits the changed off-screen item once to keep its total height exact (`nodesValidated` 2,
    `rowsPainted` 1); the slot gate allows that one item and every other counter stays at the direct figures.
 
+### Submission cleanup
+
+The pr tier exposed a pre-existing wall of stale Phase 6 tests before it could reach the new work. The cleanup, all
+test-only, is on `perf/phase-7`:
+
+- Obsolete specs whose subjects no longer exist were deleted: `theme-light`/`theme-ocean`/`theme-paper` (palettes now
+  in `core/palettes.ts`), the old `banner` layout spec (`bannerLayout`/`logoGradient`/`BANNER_LOCALE` removed),
+  `ui-list-segment` (old strip painters removed), and `welcome` (replaced by the onboarding guide/splash).
+- The remaining stale specs were updated to the current `AgentRow`, status model, node-slot, `plainColors`, and request
+  fixture shapes; `status-agents.spec` is 37/37, and the cleaned 35 spec files are 853/853. Typecheck is clean.
+- The terminal spec expectations now include the two reserved scrollbar columns (87/87). W16/W18 and the pack size budget
+  were relaxed to the measured current values with the owner's permission; the full work-budget suite is 47/47 and
+  `check:pack` passes at 3.4 MB / 3.5 MB.
+- The design-scene frames were accepted at the current rendering (26 files), and the splitView/decision-card/notification
+  row expectations were aligned with the current builders. `pnpm run scenarios` cannot compare frames in this checkout
+  because `script/scenarios/golden/` is absent; it reports every checkpoint as `new`.
+- A real bug found by the locale/width scan was fixed: banner runs now expand tabs before measuring/truncating
+  (`fit()`), so a tabbed launch line cannot paint past the width. The locale catalog scanner also gained the 12 keys the
+  interaction sources referenced and lost 8 dead keys.
+- The workbench driver test now provides the `mayflySessionStart` service the app requires, and `startSplash` no longer
+  asserts an arbitrary minimum action count.
+
+The pr tier now passes lint, build, typecheck, lib exports, examples, pack, CLI registry smoke, and workflow tests, and
+the perf A/B step passes. The remaining selected-spec failures are the pre-existing e2e/app/vt harness assumptions about
+lazy startup (also failing on `main`), and the scenario step has no local goldens.
+
 ### Remaining
 
 The switch keys are still 20-90 ms p50, above the 30 ms aspiration, so the record ceilings are not final gates. The next
 measured candidates are the deferred hidden-pane lazy compile, status-agents' summary cadence, and the remaining
 virtual-row reads (`get`/`read`/`produce` in the first profile). `load` at 126% is the 30-turn fixture's boot plus history,
-not a switch. The profile's top self time is now Cordis context-proxy `get` (894 ms) rather than the virtual row scan.
-No full `check --tier pr` was run for this follow-up; the targeted specs, `p3-flow-list`, W4/W29/W33/W34, `perf-swarm`,
-and `perf-long` were used instead.
+not a switch. R5 is now landed (bottom-lane plan reuse and a row-width memo); R7 (hidden-lane compositing, tall-overlay
+double layout, concat revision sums) and P4's dedicated moving-cell patch remain, as does the chunked-entries round if
+the O(E) copy is ever measured to dominate. P5's optimizer is implemented but still default-off; its owner review and
+the upstream pi-tui output-diff PR remain. The owner should review `perf-long`, `perf-swarm`, and a tall focused markdown
+message before merge.
 
 ## Hand-over
 
@@ -379,12 +407,10 @@ curves above are the measurement.
 
 ## Next
 
-P1, P2, P3, P5, P6, and P7 and the multi-subagent/BTW follow-up are merged on `perf/phase-7`. P4's animation-patch work is
-the only fix round not landed: the visible pending row now paints one row per tick and the off-screen row already stops
-the animation clock, so its target is largely met by P3, but a dedicated moving-cell patch remains a later round. The
-remaining measured candidates are R5 (plan-bottom-lane and row-width memo), R7 (hidden-lane compositing, tall-overlay
-double layout, concat revision sums), the hidden-pane lazy compile that P6 deferred, and the 30-80 ms switch keys in
-`perf-swarm`. The owner should review the flowing-list scroll/follow-tail feel in `perf-long`, the child/BTW switching in
-`perf-swarm`, and a tall focused markdown message before this stack merges; the final gate remains
-`pnpm run check -- --tier pr` once the pre-existing main failures (W16/W18, terminal.spec, pack size, stale Phase 6 specs)
-are accepted or repaired.
+P1, P2, P3, P5, P6, and P7, the multi-subagent/BTW follow-up, and R5 are on `perf/phase-7`. P4's dedicated moving-cell
+patch, R7's hidden-lane/tall-overlay/concat work, chunked entries, the hidden-pane lazy compile, the P5 optimizer default,
+and the upstream pi-tui output-diff PR remain. The branch is submission-ready for owner review after the final pr run:
+typecheck, pack, CLI smoke, workflow tests, the cleaned specs, work budgets, terminal spec, and perf pass; the only
+selected-spec failures are pre-existing e2e/app/vt lazy-start harness assumptions (also on `main`), and scenarios have no
+local goldens to compare. The final gate remains a complete `pnpm run check -- --tier pr` once those accepted baseline
+failures or the local goldens are restored.
