@@ -9,6 +9,7 @@
 
 import { describe, expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
+import type { ContextPressureProjection } from '@deepseek-ai/dsh-token-meter'
 import type { GoalProjection } from '@deepseek-ai/dsh-goal'
 import { initialConversationFacts } from '../../src/conversation/facts.ts'
 import type { ConversationFacts } from '../../src/conversation/types.ts'
@@ -19,10 +20,37 @@ import { transcriptTranslatorFake } from './notices-fakes.ts'
 
 const NOW = 1_700_000_000_000
 
+/** The native `contextPressure` projection face. */
+class HandPressures {
+  private readonly values = new Map<object, ContextPressureProjection>()
+  private readonly listeners = new Set<(session: unknown, key: string, value: unknown, seq: number) => void>()
+
+  set(session: object, value: ContextPressureProjection): void {
+    this.values.set(session, value)
+    for (const listener of this.listeners) listener(session, 'contextPressure', value, 0)
+  }
+
+  snapshot(session: object): { readonly asOfSeq: number, readonly values: Record<string, unknown> } {
+    return { asOfSeq: 0, values: { contextPressure: this.values.get(session) } }
+  }
+
+  onChanged(listener: (session: unknown, key: string, value: unknown, seq: number) => void): () => void {
+    this.listeners.add(listener)
+    return () => { this.listeners.delete(listener) }
+  }
+}
+
+/** The Agent identity the notices read, with its exact Session object for native projection reads. */
+interface HandAgent {
+  readonly id: string
+  readonly status: string
+  readonly session: object
+}
+
 /** A facts source the test drives: the value, its listeners, and the Agent switch listeners. */
 class HandFacts {
   current: ConversationFacts = initialConversationFacts()
-  currentAgent: { readonly id: string, readonly status: string } | undefined = { id: 'agent-1', status: 'idle' }
+  currentAgent: HandAgent | undefined = { id: 'agent-1', status: 'idle', session: {} }
   currentGoal: GoalProjection | null = null
   private readonly goalListeners = new Set<(goal: GoalProjection | null) => void>()
   private readonly listeners = new Set<(facts: ConversationFacts) => void>()
@@ -34,7 +62,7 @@ class HandFacts {
   }
 
   switchTo(agent: { readonly id: string, readonly status: string }, facts: Partial<ConversationFacts>): void {
-    this.currentAgent = agent
+    this.currentAgent = { ...agent, session: {} }
     this.current = { ...initialConversationFacts(), ...facts }
     for (const listener of this.agentListeners) listener(agent)
     for (const listener of this.listeners) listener(this.current)
@@ -80,6 +108,8 @@ interface Harness {
   readonly tick: HandTick
   readonly lane: UiInteractionService
   clock: { now: number }
+  /** Publish the current Agent's native context pressure. */
+  setPressure(value: ContextPressureProjection): void
   /** The texts of the notices the lane holds, by their producer id. */
   notices(): Record<string, string>
   /** The tails the lane records carry (the end of the message that a narrow row keeps whole), by producer id. */
@@ -93,8 +123,10 @@ async function boot(facts = new HandFacts(), provided: { readonly facts?: boolea
   const lane = new UiInteractionService(ctx)
   const tick = new HandTick()
   const clock = { now: NOW }
+  const pressures = new HandPressures()
   if (provided.facts !== false) ctx.reflect.provide('mayflySessionFacts', facts)
   if (provided.tick !== false) ctx.reflect.provide('mayflyTick', tick)
+  ctx.reflect.provide('sessionProjections', pressures)
   const fiber = await ctx.plugin({
     name: 'notices-under-test',
     apply(owner: Context) {
@@ -103,6 +135,10 @@ async function boot(facts = new HandFacts(), provided: { readonly facts?: boolea
   })
   return {
     ctx, facts, tick, lane, clock,
+    setPressure: (value) => {
+      const session = facts.currentAgent?.session
+      if (session !== undefined) pressures.set(session, value)
+    },
     notices: () => Object.fromEntries(lane.notificationSnapshot().map(record => [record.id.replace(/^mayfly\.notices\/\d+\//u, ''), record.message])),
     tails: () => Object.fromEntries(lane.notificationSnapshot().map(record => [record.id.replace(/^mayfly\.notices\/\d+\//u, ''), record.tail])),
     dispose: () => fiber.dispose(),
@@ -192,18 +228,25 @@ describe('notices from the session facts', () => {
   it('warns from 92% context occupancy, says how full it is, and clears below the threshold', async () => {
     expect(CONTEXT_WARN_PERCENT).toBe(92)
     const harness = await boot()
-    harness.facts.set({ contextWindow: 64_000, contextTokens: 50_000 })
+    harness.setPressure({ pressureTokens: 50_000, contextWindow: 64_000 })
     expect(harness.notices()).toEqual({})
-    harness.facts.set({ contextTokens: 59_000 })
+    harness.setPressure({ pressureTokens: 59_000, contextWindow: 64_000 })
     expect(harness.notices()).toEqual({ 'notice/context': 'Context 93% full · /compact now' })
-    harness.facts.set({ contextTokens: 40_000 })
+    harness.setPressure({ pressureTokens: 40_000, contextWindow: 64_000 })
     expect(harness.notices()).toEqual({})
+    await harness.dispose()
+  })
+
+  it('prefers projectedTokens for the occupancy', async () => {
+    const harness = await boot()
+    harness.setPressure({ pressureTokens: 60_000, projectedTokens: 59_000, contextWindow: 64_000 })
+    expect(harness.notices()).toEqual({ 'notice/context': 'Context 93% full · /compact now' })
     await harness.dispose()
   })
 
   it('stays silent about the context when the session has no window', async () => {
     const harness = await boot()
-    harness.facts.set({ contextWindow: undefined, contextTokens: 900_000 })
+    harness.setPressure({ pressureTokens: 900_000 })
     expect(harness.notices()).toEqual({})
     await harness.dispose()
   })
@@ -247,7 +290,8 @@ describe('notices from the session facts', () => {
 
   it('retires its records when its Fiber unloads, and stops the countdown with them', async () => {
     const harness = await boot()
-    harness.facts.set({ retrying: retry(429), contextWindow: 64_000, contextTokens: 60_000 })
+    harness.facts.set({ retrying: retry(429) })
+    harness.setPressure({ pressureTokens: 60_000, contextWindow: 64_000 })
     expect(Object.keys(harness.notices()).sort()).toEqual(['notice/context', 'notice/retry'])
     await harness.dispose()
     expect(harness.lane.notificationSnapshot()).toEqual([])

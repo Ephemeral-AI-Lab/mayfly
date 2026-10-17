@@ -35,9 +35,10 @@ async function mount(options: MountOptions = {}) {
   const agent = { id: session.id, session, status: 'idle' } as unknown as Agent
   ctx.provide('testSession', { current: options.attached === false ? null : agent })
   const plan = options.plan === false ? undefined : { active: options.plan?.active === true, pending: options.plan?.pending === true }
+  let currentPreset = options.currentPreset ?? 'workspace-write'
   vi.spyOn(ctx.sessionProjections, 'snapshot').mockImplementation(() => ({
     asOfSeq: (session.seq - 1) as SessionSeqCursor,
-    values: plan === undefined ? {} : { plan: { ...plan } },
+    values: { ...plan === undefined ? {} : { plan: { ...plan } }, permissions: { currentValue: currentPreset } },
   }))
 
   const presetRows = options.presets === false
@@ -46,7 +47,6 @@ async function mount(options: MountOptions = {}) {
       { name: 'workspace-write', sandbox: 'workspace-write', approval: 'ask' },
       { name: 'danger-full-access', sandbox: 'danger-full-access', approval: 'never' },
     ]
-  let currentPreset = options.currentPreset ?? 'workspace-write'
   if (presetRows !== undefined) {
     ctx.provide('permissionPresets', {
       names: presetRows.map(row => row.name),

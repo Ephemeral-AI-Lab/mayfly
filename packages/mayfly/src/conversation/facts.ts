@@ -10,7 +10,7 @@
 
 import type { ProjectionDefinition } from '@deepseek-ai/dsh-session-projection'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
-import type { AssistantStreamRecord, ContentBlock, TokenUsage } from '@deepseek-ai/dsh-llm'
+import type { AssistantStreamRecord, ContentBlock } from '@deepseek-ai/dsh-llm'
 // Empty type import activates the compaction-lifecycle event declarations
 // the meter cases below consume.
 import type {} from '@deepseek-ai/dsh-compaction/types'
@@ -88,17 +88,6 @@ function latestPromptTokens(state: ConversationFactsState): number | undefined {
   const total = state.usageByStep?.[key]
   if (total === undefined) return undefined
   return Math.max(0, total - (outputByStep[key] ?? 0))
-}
-
-/**
- * The context occupancy of one step: the disjoint input-side token counts
- * (`inputTokens + cacheReadTokens + cacheWriteTokens`). The single owner for
- * both the facts projection and the footer status readout.
- * @param usage - the step's token accounting.
- * @returns occupied context tokens.
- */
-export function contextTokens(usage: TokenUsage): number {
-  return usage.inputTokens + (usage.cacheReadTokens ?? 0) + (usage.cacheWriteTokens ?? 0)
 }
 
 /**

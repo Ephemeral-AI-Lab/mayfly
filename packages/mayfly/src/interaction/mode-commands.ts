@@ -7,6 +7,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-plan-mode'
+import type {} from '@deepseek-ai/dsh-permission-presets'
 import type {} from '@deepseek-ai/dsh-session-projection'
 import type { PermissionPresetsService } from './permission-panel.ts'
 import type { InteractionFeedbackReporter } from './notifications.ts'
@@ -23,16 +24,21 @@ function describe(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
 
-/** Resolve Mayfly's labels from dsh's plan projection and permission bundles. */
+/** Resolve Mayfly's labels from the native plan and permission projections. */
 export function sessionModeSnapshot(ctx: Context, agent: Agent): MayflySessionModeSnapshot {
-  const plan = ctx.sessionProjections.snapshot(agent.session, ['plan']).values.plan
+  const { values } = ctx.sessionProjections.snapshot(agent.session, ['plan', 'permissions'])
+  const plan = values.plan
+  const currentPreset = values.permissions?.currentValue
   const presets = ctx.get('permissionPresets') as PermissionPresetsService | undefined
-  const currentPreset = presets?.current(agent.session)
-  const yolo = presets?.names.some(name => {
-    if (name !== currentPreset) return false
-    const spec = presets.resolve(name)
-    return spec.sandbox === 'danger-full-access' && spec.approval === 'never'
-  }) ?? false
+  let yolo = false
+  if (currentPreset !== undefined && presets !== undefined) {
+    try {
+      const spec = presets.resolve(currentPreset)
+      yolo = spec.sandbox === 'danger-full-access' && spec.approval === 'never'
+    } catch {
+      /* A withdrawn or derived preset is not a yolo bundle. */
+    }
+  }
   return { plan, yolo }
 }
 

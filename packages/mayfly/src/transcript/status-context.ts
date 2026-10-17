@@ -1,27 +1,31 @@
 /**
  * `mayfly-status-context` plugin: enhancement footer entry showing the context
- * occupancy of the latest model step at the right edge of the one status row
- * (priority 6). Occupancy is the `assistant/message` usage's disjoint input side
- * — `inputTokens + cacheReadTokens + cacheWriteTokens` (output and reasoning
- * tokens are new generation, not occupied context). When the session-facts
- * projection advertises a context window — its durable `contextWindow` value —
- * the entry draws two cell bars, `cache ▰▰▱▱▱ 40%  ctx ▰▰▱▱▱▱▱▱▱▱ 18%`: the
- * context bar's share is rounded up (a non-zero share is at least 1, clamped to
- * 100) and its tone warns from 70% and turns to danger from 90%; the cache bar
- * is the cache-read share of the occupancy, rounded down so a partial hit never
+ * occupancy of the selected Session at the right edge of the one status row
+ * (priority 6). Occupancy is the native `contextPressure` projection's
+ * provider-reported prompt size (`projectedTokens`, else `pressureTokens`);
+ * output and reasoning tokens are new generation, not occupied context. When
+ * the projection also carries a `contextWindow`, the entry draws two cell
+ * bars, `cache ▰▰▱▱▱ 40%  ctx ▰▰▱▱▱▱▱▱▱▱ 18%`: the context bar's share is rounded
+ * up (a non-zero share is at least 1, clamped to 100) and its tone warns from
+ * 70% and turns to danger from 90%; the cache bar is the session's cache-read
+ * share of its prompt-side `tokenUsage`, rounded down so a partial hit never
  * reads as 100%, in a tone that warns under 60% and turns to danger under 30%
- * (a low hit rate is a costlier prompt), and is omitted when the provider reports no cache reads. A crowded row gives
- * up the cache bar, then turns the context bar into `ctx 18%`, then hides the
- * entry. Without a window the entry is the plain count `ctx 5.5k`; a session
- * with no usage data yet renders nothing. Attach follows the session-facts
- * projection's replay/live whole-value feed; this producer never scans an Agent
- * or Session event log.
+ * (a low hit rate is a costlier prompt), and is omitted before any prompt-side
+ * usage is recorded. A crowded row gives up the cache bar, then turns the
+ * context bar into `ctx 18%`, then hides the entry. Without a window the entry
+ * is the plain count `ctx 5.5k`; a session with no occupancy data yet renders
+ * nothing. The snapshot takes `tokenUsage`, `contextPressure`, and
+ * `contextBreakdown` at one cursor; this producer never scans an Agent or
+ * Session event log.
  *
  * @module @ephemeral-ai/mayfly/transcript/status-context
  */
 
 import type { Context } from '@deepseek-ai/cordis'
-import type { ConversationFacts } from '../conversation/types.ts'
+import type { ContextBreakdownProjection, ContextPressureProjection, TokenUsageProjection } from '@deepseek-ai/dsh-token-meter'
+import type {} from '@deepseek-ai/dsh-session-projection'
+import type { Session } from '@deepseek-ai/dsh-session'
+import type { TokenUsage } from '@deepseek-ai/dsh-llm'
 import type { SessionFactsService } from './session-facts.ts'
 import type { MayflyStatusNode } from '@ephemeral-ai/mayfly-ui'
 import { SHED, shedNode } from './status-shed.ts'
@@ -30,14 +34,36 @@ import { SHED, shedNode } from './status-shed.ts'
 export const name = 'mayfly-status-context'
 
 /** Services required before the context entry can register. */
-export const inject = ['mayflyStatus', 'mayflySessionFacts']
+export const inject = ['mayflyStatus', 'mayflySessionFacts', 'sessionProjections']
+
+/** One native snapshot cut for the context entry. */
+const CONTEXT_KEYS = ['tokenUsage', 'contextPressure', 'contextBreakdown'] as const
+const CONTEXT_KEY_SET: ReadonlySet<string> = new Set(CONTEXT_KEYS)
+
+/** The native projections the compact row reads; composition is kept for one cursor cut. */
+interface ContextValues {
+  readonly usage?: TokenUsageProjection | undefined
+  readonly pressure?: ContextPressureProjection | undefined
+  /** Heuristic system/tools/message composition from the same cut; not the occupancy total. */
+  readonly breakdown?: ContextBreakdownProjection | undefined
+}
 
 /**
  * The context occupancy of one step: the disjoint input-side token counts.
- * Re-exported so the `./status-context` subpath keeps its public surface; the
- * implementation lives with the facts projection that also consumes it.
+ * Re-exported so the `./status-context` subpath keeps its public surface.
+ * @param usage - the step's token accounting.
+ * @returns occupied context tokens.
  */
-export { contextTokens } from '../conversation/facts.ts'
+export function contextTokens(usage: TokenUsage): number {
+  return usage.inputTokens + (usage.cacheReadTokens ?? 0) + (usage.cacheWriteTokens ?? 0)
+}
+
+/** Read the native context projections for one exact Session at one cursor. */
+function readContext(ctx: Context, session: Session): ContextValues {
+  const { values } = ctx.sessionProjections.snapshot(session, CONTEXT_KEYS)
+  return { usage: values.tokenUsage, pressure: values.contextPressure, breakdown: values.contextBreakdown }
+}
+
 
 /**
  * One decimal, trailing `.0` trimmed: 1 → `1`, 1.5 → `1.5`, 2.04 → `2`.
@@ -132,32 +158,35 @@ function normalizeWindow(contextWindow: number | undefined): number | undefined 
 }
 
 /**
- * The latest step's occupancy in an event snapshot.
- * @param events - the session events, in ascending seq order.
- * @returns the newest usage's context tokens, or 0 when none exists.
- */
-/**
+ * Register the context entry over the exact selected Agent's native projections.
  * @param ctx - plugin context.
  */
 export function apply(ctx: Context): void {
   const factsService = ctx.get('mayflySessionFacts') as SessionFactsService | undefined
-  /* mayflySessionFacts is an injected service; the fallback
-     only supports direct structural construction outside Cordis activation. */
-  let facts: ConversationFacts = factsService?.current ?? {
-    phase: 'idle', active: false, turn: 0, flowDownChars: 0, todos: [], contextTokens: 0, agentCalls: [],
+  let values: ContextValues = {}
+  const read = (): ContextValues => {
+    const session = factsService?.currentAgent?.session
+    return session === undefined ? {} : readContext(ctx, session)
   }
   const node = (): MayflyStatusNode | null => {
-    if (facts.contextTokens <= 0) return null
-    const max = normalizeWindow(facts.contextWindow)
+    const pressure = values.pressure
+    const used = pressure?.projectedTokens ?? pressure?.pressureTokens
+    if (used === undefined || used <= 0) return null
+    const max = normalizeWindow(pressure?.contextWindow)
     // Without an advertised window there is no share to draw: the plain count, shed whole when the row is crowded.
-    if (max === undefined) return shedNode({ kind: 'text', content: `ctx ${formatTokens(facts.contextTokens)}` }, [{ rank: SHED.context, node: null }])
-    const percent = contextPercent(facts.contextTokens, max)
+    if (max === undefined) return shedNode({ kind: 'text', content: `ctx ${formatTokens(used)}` }, [{ rank: SHED.context, node: null }])
+    const percent = contextPercent(used, max)
     const context: MayflyStatusNode = {
       kind: 'progress', label: 'ctx', value: percent, max: 100, style: 'cells', width: CONTEXT_CELLS, tone: contextTone(percent), showCount: false, showPercent: true,
     }
-    if (facts.contextCacheReadTokens === undefined) return shedNode(context, [{ rank: SHED.bar, node: { kind: 'text', content: `ctx ${String(percent)}%` } }, { rank: SHED.context, node: null }])
+    const usage = values.usage
+    const promptTokens = usage === undefined ? 0 : usage.uncachedInputTokens + usage.cacheReadTokens + usage.cacheWriteTokens
+    if (usage === undefined || promptTokens <= 0) {
+      return shedNode(context, [{ rank: SHED.bar, node: { kind: 'text', content: `ctx ${String(percent)}%` } }, { rank: SHED.context, node: null }])
+    }
+    const cacheRead = usage.cacheReadTokens
     const cache: MayflyStatusNode = {
-      kind: 'progress', label: 'cache', value: cachePercent(facts.contextCacheReadTokens, facts.contextTokens), max: 100, style: 'cells', width: CACHE_CELLS, tone: cacheTone(cachePercent(facts.contextCacheReadTokens, facts.contextTokens)), showCount: false, showPercent: true,
+      kind: 'progress', label: 'cache', value: cachePercent(cacheRead, promptTokens), max: 100, style: 'cells', width: CACHE_CELLS, tone: cacheTone(cachePercent(cacheRead, promptTokens)), showCount: false, showPercent: true,
     }
     // The cache bar goes first when the row is crowded, then the context bar becomes its percentage, then the readout.
     return shedNode({ kind: 'stack', direction: 'row', gap: 2, children: [{ node: cache }, { node: context }] }, [
@@ -166,13 +195,28 @@ export function apply(ctx: Context): void {
       { rank: SHED.context, node: null },
     ])
   }
-  const status = ctx.mayflyStatus.register({ id: 'mayfly.status.context', priority: 6, band: 'right', overflow: 'hide' }, node())
-  const offFacts = factsService?.subscribe(next => {
-    const changed = next.contextTokens !== facts.contextTokens
-      || next.contextCacheReadTokens !== facts.contextCacheReadTokens
-      || next.contextWindow !== facts.contextWindow
-    facts = next
-    if (changed) status.set(node())
+  values = read()
+  const initial = node()
+  const status = ctx.mayflyStatus.register({ id: 'mayfly.status.context', priority: 6, band: 'right', overflow: 'hide' }, initial)
+  let published = JSON.stringify(initial)
+  const refresh = (): void => {
+    values = read()
+    const next = node()
+    const signature = JSON.stringify(next)
+    if (signature === published) return
+    published = signature
+    status.set(next)
+  }
+  const offAgent = factsService?.subscribeAgent(() => refresh())
+  // Only the exact selected Session's context keys re-read the projections;
+  // the change feed replaces per-event order assumptions.
+  const offProjection = ctx.sessionProjections.onChanged((session, key) => {
+    if (session !== factsService?.currentAgent?.session) return
+    if (!CONTEXT_KEY_SET.has(key)) return
+    refresh()
   })
-  ctx.effect(() => () => offFacts?.())
+  ctx.effect(() => () => {
+    offAgent?.()
+    offProjection()
+  })
 }
