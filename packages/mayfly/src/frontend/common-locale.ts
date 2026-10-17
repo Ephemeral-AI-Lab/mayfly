@@ -18,7 +18,6 @@ const zh: Readonly<Record<string, string>> = {
   'actions': '操作',
   'options': '选项',
   'fields': '字段',
-  'groups': '分组',
   'choose': '选择',
   'toggle': '切换',
   'run': '执行',
