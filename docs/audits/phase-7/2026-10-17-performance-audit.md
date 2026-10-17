@@ -229,6 +229,22 @@ attributes, cursor) against a naive alt-screen xterm, and a grammar pin captures
 follow-tail terminal case passes; 6 `terminal.spec` cases fail identically on `main` before P5 (stale scrollbar-width
 expectations), so they are baseline, not this round.
 
+## P6 result (implemented)
+
+P6 landed on `perf/p6-fanout` (`88387796`) and was merged into `perf/phase-7`. It adds structural status-node equality
+(`ui/status-equality.ts`) so a fresh but equal views summary bumps no serial and repaints nothing; compares every
+`ChildSessionFacts` field so an unchanged child update does not publish and only streamed output uses the volatile
+cadence; stores the exact child Agent and uses `liveStream.get(record.agent)` instead of `agents.get` per child, bounds
+settled children to 32, and parses spawn arguments once per call. `pane-todo` memos by identity, `status-basic-model`
+caches the model-selection snapshot by session, `pane-activity` compares shape fields instead of stringifying, and the
+context notice reports once per 92/95/98 band crossing. `pane-workflow` moved to the shared tick, and `workflowLabels`
+is an LRU capped at 256.
+
+W32 fell from `unitsCompiled 1 / controlWalks 1 / reconciles 2` to all zero (the equal summary produces no frame); W33a
+and W33b are unchanged, and W33a is now warmed before its measured tick so its counters are stable. R5/R7 (lane planning,
+width memo, hidden-lane compositing, tall-overlay double layout, concat revision sums) and the hidden-pane lazy compile
+were deliberately left for the next round; the measured impact of the landed J3-J9 items is the gate.
+
 ## P7 result (implemented)
 
 P7 landed on `perf/p7-fold` (`5cffe892`) and was merged into `perf/phase-7`. `finalizedSteps` keeps only the current and
