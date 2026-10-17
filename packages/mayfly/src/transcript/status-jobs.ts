@@ -6,18 +6,19 @@
  * the mark, the label, and the producer's progress line (`rebuilt 2`), with the time at the right edge; with the
  * `viewHistory` setting on, settled jobs follow, newest first, with their terminal detail (`exit code: 1`). `↑/↓` choose a row,
  * `Enter` opens the job's output in the reader `/jobs` uses (an interim target until Phase 6f), and `x` stops a running
- * job behind the shared Yes/No after rechecking `jobs.get`. Subagent jobs belong to the Agents item and are not listed.
+ * job behind the shared Yes/No after rechecking `jobs.get`. Every kind is listed; the durable
+ * `job/registered` / `job/settled` records supply settled history when the live registry no longer holds it.
  * The registration is the Fiber's.
  *
  * @module @ephemeral-ai/mayfly/transcript/status-jobs
  */
 
 import type { Context } from '@deepseek-ai/cordis'
-import { JobId, type JobView } from '@deepseek-ai/dsh-jobs'
+import type { JobView } from '@deepseek-ai/dsh-jobs'
 import { ui, type MayflyInlineSpan, type MayflyListItem, type MayflyPaneSummary, type MayflyUiActionEvent, type MayflyUiActionReply, type MayflyUiEventContext, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import type { MayflyTranslate } from '../frontend/locale.ts'
 import { interactionTranslator } from '../interaction/locale.ts'
-import { isLiveJob, openJobOutput, sortJobs } from '../interaction/jobs.ts'
+import { isLiveJob, jobHistory, openJobOutput, sortJobs } from '../interaction/jobs.ts'
 import { compactElapsedMs } from './agent-presentation.ts'
 import { observeTranscriptLocale, transcriptTranslator } from './locale.ts'
 import { DONE_LINGER_MS } from './pane-todo.ts'
@@ -39,12 +40,9 @@ const STOP_ID = 'jobs-stop'
 /** The reason handed to `jobs.kill` for a stop from the panel. */
 const STOP_REASON = 'stopped from the Mayfly jobs view'
 
-/** The jobs this item owns: every job except the subagents the Agents item shows. */
-const isOwnJob = (job: JobView): boolean => job.kind !== 'subagent'
-
 /** What the item renders from. */
 export interface JobsState {
-  /** The Agent's jobs (subagents left out), in the registry's order. */
+  /** The Agent's jobs, live registry first and durable settled history behind it. */
   readonly jobs: readonly JobView[]
   /** The time the elapsed figures are measured against. */
   readonly now: number
@@ -162,10 +160,11 @@ export function apply(ctx: Context): void {
     const chosen = event.kind === 'selection-accept' ? event.selectedIds[0]
       : event.kind === 'activate' ? event.inputs?.selections?.find(selection => selection.controlId === LIST_ID)?.selectedIds[0]
         : undefined
-    if (chosen === undefined || !jobs.some(job => String(job.id) === chosen)) return { kind: 'failed', message: t('Select a job first') }
+    const selected = chosen === undefined ? undefined : jobs.find(job => String(job.id) === chosen)
+    if (selected === undefined) return { kind: 'failed', message: t('Select a job first') }
     try {
       // The registry is the authority: the row may be a refresh behind.
-      const id = JobId(chosen)
+      const id = selected.id
       const job = ctx.jobs.get(id, agent.id)
       if (event.kind === 'selection-accept') {
         ctx.mayflyScreen.leaveViews()
@@ -179,7 +178,7 @@ export function apply(ctx: Context): void {
       if (context.signal.aborted || unloaded) return { kind: 'cancelled' }
       if (job.status !== 'running') return { kind: 'failed', message: job.status === 'stopping' ? t('Already stopping') : t('Already finished') }
       ctx.jobs.kill(id, agent.id, STOP_REASON)
-      stoppedByUser.add(chosen)
+      stoppedByUser.add(String(selected.id))
       refresh()
       return { kind: 'completed', feedback: { severity: 'success', message: t('Stopping {job}', { job: job.label }) } }
     } catch (error) {
@@ -231,11 +230,18 @@ export function apply(ctx: Context): void {
     if (unloaded) return
     now = Date.now()
     const agent = ctx.mayflyCurrentAgent.current()
-    try {
-      jobs = agent === null ? [] : ctx.jobs.list(agent.id).filter(isOwnJob)
-    } catch (error) {
-      ctx.logger.warn(`could not list background jobs for status: ${error instanceof Error ? error.message : String(error)}`)
+    if (agent === null) {
       jobs = []
+    } else {
+      let live: readonly JobView[] = []
+      try {
+        live = ctx.jobs.list(agent.id)
+      } catch (error) {
+        ctx.logger.warn(`could not list background jobs for status: ${error instanceof Error ? error.message : String(error)}`)
+      }
+      const merged = new Map(jobHistory(agent.session).map(job => [String(job.id), job]))
+      for (const job of live) merged.set(String(job.id), job)
+      jobs = [...merged.values()]
     }
     track()
     publish()

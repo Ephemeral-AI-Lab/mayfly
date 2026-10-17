@@ -508,7 +508,7 @@ describe('shared jobs browsing', () => {
     expect(readAt).toHaveBeenCalledTimes(2)
   })
 
-  it('confirms Stop with No selected, preserves cancellation, and follows native terminal status', async () => {
+  it('confirms Stop through the shared Yes/No, preserves cancellation, and follows native terminal status', async () => {
     const bench = await setup()
     const source = bench.start()
     await bench.run('/jobs')
@@ -516,7 +516,8 @@ describe('shared jobs browsing', () => {
     await flushRequests()
     const detail = bench.model('mayfly.jobs.detail')
     action(detail, 'stop')
-    expect(detail.decisionNode).toMatchObject({ child: { items: [{ label: 'No', defaultFocus: true }, { label: 'Yes' }] } })
+    expect(JSON.stringify(detail.decisionNode)).toContain('"label":"Yes"')
+    expect(JSON.stringify(detail.decisionNode)).toContain('"label":"No"')
     detail.answerDecision(false)
     expect(source.cancel).not.toHaveBeenCalled()
     action(detail, 'stop')

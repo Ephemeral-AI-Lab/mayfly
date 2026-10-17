@@ -18,6 +18,7 @@ import { isCancelled, type CommandCallModel, type ProcessActivity, type ReadCall
 import type { StreamRow } from '../components/transcript-view.ts'
 import type { ToolBodyRow, ToolDiffHunk, ToolLineState, ToolStat } from '../components/tool-line.ts'
 import { compactElapsedMs } from './agent-presentation.ts'
+import { parseActivationResult } from './child-agent-model.ts'
 import { trimContext, WRITE_HEAD_LINES } from './official-model.ts'
 import { elapsedText } from './process-activity.ts'
 import { partialStrings } from './partial-json.ts'
@@ -103,8 +104,8 @@ export interface Call {
   readonly file?: { readonly stat: ToolStat, readonly statInLine: boolean, readonly content: () => ChangeBody }
   /** A plan that was under review, once the user has decided it: its Markdown, which Ctrl+O opens again. */
   readonly plan?: string
-  /** A subagent spawn: how its child is found among the children (the id its acknowledgement names, the prompt it was given). */
-  readonly spawn?: { readonly childId?: string, readonly prompt?: string }
+  /** A subagent spawn: the child the native activation result names exactly. */
+  readonly spawn?: { readonly childId?: string }
   /** A call that waits on the user's decision: what the request shows under its line (the command, the asker's reason, a warning), or the plan under review. */
   readonly waiting?: { readonly rows: readonly ToolBodyRow[], readonly markdown?: string }
 }
@@ -112,10 +113,15 @@ export interface Call {
 /** How a subagent the stream spawned stands: still working, or settled (`endedAt` and whether it failed). */
 export type SpawnedChild = { readonly state: 'running' } | { readonly state: 'settled', readonly failed: boolean, readonly stopped?: boolean, readonly endedAt?: number }
 
-/** The children of the displayed conversation, by their session id and by the prompt they were given (a spawn finds its child by either). */
+/**
+ * The children of the displayed conversation, by their session id. A spawn
+ * finds its child through the native activation result's id only; prompt text
+ * is presentation, never correlation.
+ */
 export interface SpawnedChildren {
   readonly byId: ReadonlyMap<string, SpawnedChild>
-  readonly byPrompt: ReadonlyMap<string, SpawnedChild>
+  /** The stream producer may retain a prompt index; presentation never reads it. */
+  readonly byPrompt?: ReadonlyMap<string, SpawnedChild>
 }
 
 /** What the stream knows about calls beyond the model: what the user was asked and how each approval ended, by call id, and the children spawned. */
@@ -535,26 +541,26 @@ function loneCall(entry: ToolEntry, t: MayflyTranslate): Call {
   }
 }
 
-/** What finds a spawn's child: the id its acknowledgement names, and the prompt it was given. */
+/** What finds a spawn's child: the exact id carried by the native activation result. */
 function spawnOf(entry: ToolEntry): NonNullable<Call['spawn']> {
-  const childId = /started subagent ([\w-]+)/u.exec(entry.result?.text ?? '')?.[1]
-  const prompt = partialStrings(entry.arguments).fields['prompt']
-  return { ...(childId === undefined ? {} : { childId }), ...(prompt === undefined ? {} : { prompt }) }
+  const childId = parseActivationResult(entry.result?.text)?.subagentId
+  return childId === undefined ? {} : { childId }
 }
 
 /**
- * A spawn whose child is known reads as the child does: a child still working keeps the call pending (`running in
- * background`, with the time so far), a child that settled gives the call its own time and, when it failed, its failure.
- * The acknowledgement of a background spawn lands within milliseconds, so the call alone would read finished at once.
+ * A spawn whose child is known reads as the child does: a child still working
+ * keeps the call pending (with the time so far), a child that settled gives the
+ * call its own time and, when it failed, its failure. The activation
+ * acknowledgement lands within milliseconds, so the call alone would read
+ * finished at once.
  */
 function whileSpawned(call: Call, children: SpawnedChildren | undefined, t: MayflyTranslate, now: number): Call {
-  if (call.spawn === undefined || children === undefined || call.state !== 'ok' && call.state !== 'pending') return call
-  const child = (call.spawn.childId === undefined ? undefined : children.byId.get(call.spawn.childId))
-    ?? (call.spawn.prompt === undefined ? undefined : children.byPrompt.get(call.spawn.prompt))
+  if (call.spawn?.childId === undefined || children === undefined || call.state !== 'ok' && call.state !== 'pending') return call
+  const child = children.byId.get(call.spawn.childId)
   if (child === undefined) return call
   const { endedAt: _ended, ...open } = call
   if (child.state === 'running') {
-    return { ...open, state: 'pending', phase: 'running', outcome: [t('running in background'), pendingElapsed(Math.max(0, now - call.startedAt))] }
+    return { ...open, state: 'pending', phase: 'running', outcome: [t('running'), pendingElapsed(Math.max(0, now - call.startedAt))] }
   }
   const endedAt = child.endedAt ?? call.endedAt
   return {

@@ -33,8 +33,10 @@ export function isAgentRunning(agent: Agent): boolean {
 }
 
 /**
- * Interrupt the selected Agent's current turn. A displayed continuable child is interrupted through its parent's
- * authority; every other Agent is cancelled with `keepInbox`, so nothing the user queued or steered is discarded.
+ * Interrupt the selected Agent's current turn. A displayed continuable child
+ * is interrupted through its parent's durable human authority; an external
+ * child has no local conversation or Agent, and every other Agent is cancelled
+ * with `keepInbox`, so nothing the user queued or steered is discarded.
  * @param ctx - the app context, for the subagent service.
  * @param agent - the selected Agent.
  * @param displayed - the displayed conversation, to tell a continuable child from the main Agent.
@@ -50,10 +52,9 @@ export function interruptAgent(
     if (displayed?.kind === 'subagent'
       && displayed.mode === 'continuable'
       && displayed.sessionId === String(agent.id)) {
-      ctx.subagents.interruptByParent(
+      ctx.subagents.interrupt(
         SessionId(displayed.sessionId),
-        SessionId(displayed.parentSessionId),
-        'continuable',
+        { kind: 'user', parentSessionId: SessionId(displayed.parentSessionId) },
       )
     } else {
       agent.cancel({ kind: 'user' }, { keepInbox: true })

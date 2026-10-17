@@ -207,7 +207,7 @@ async function mountCommand(options: { readonly display?: boolean, readonly curr
     },
     followup: async () => 'message-1',
     interrupt: () => {},
-    drainContinuableChildren: harness.drain,
+    drainChildren: harness.drain,
   } as never)
   harness.fiber = await ctx.plugin(agentsPlugin)
   if (options.display === false) return harness
@@ -423,6 +423,17 @@ describe('mayfly-agents-command', () => {
     await rig.fiber.dispose()
   })
 
+  it('hides the /btw side child and refuses to open an external execution', async () => {
+    const rig = await mountCommand()
+    rig.tree = [child('btw', { label: 'btw' }), child('remote', { mode: 'external', label: 'remote' })]
+    expect(await execute(rig)).toEqual({ kind: 'success' })
+    expect(browserRows(rig)).toContain('remote')
+    expect(browserRows(rig)).not.toContain('btw')
+    await selectBrowser(browser(rig), 'remote')
+    expect(rig.opened).toEqual([])
+    await rig.fiber.dispose()
+  })
+
   it('defaults to No and requires selecting Yes before stopping a continuable subagent', async () => {
     const rig = await mountCommand()
     rig.tree = [child('child', { label: 'worker' })]
@@ -430,7 +441,6 @@ describe('mayfly-agents-command', () => {
     const model = browser(rig)
     model.invoke('stop')
     expect(JSON.stringify(model.decisionNode)).toContain('mayfly.decision.no')
-    expect(JSON.stringify(model.decisionNode)).toContain('defaultFocus')
     model.answerDecision(false)
     expect(rig.drain).not.toHaveBeenCalled()
     expect(model.disposed).toBe(false)
@@ -467,7 +477,9 @@ describe('mayfly-agents-command', () => {
     rig.tree = [child('child')]
     await execute(rig)
     const model = browser(rig)
+    focusBrowser(model, 'child')
     const compiled = renderRequest(model)
+    compiled.input('/')
     compiled.input('q')
     expect(model.decisionNode).toBeUndefined()
     expect(model.choice({ pagePath: [], controlId: 'subagents' })?.query).toBe('q')

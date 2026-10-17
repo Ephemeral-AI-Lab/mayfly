@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 import {
   childIdOfResult,
   childLiveSnapshot,
+  parseActivationResult,
   trackChildAgentModels,
 } from '../../src/transcript/child-agent-model.ts'
 import type { ChildSessionFacts } from '../../src/transcript/session-facts.ts'
@@ -15,19 +16,25 @@ const child: ChildSessionFacts = {
   tokens: 125, inputTokens: 80, outputTokens: 45, toolCount: 2, liveChars: 2_048, activity: 'Using read', model: 'deepseek-v4', effort: 'high',
 }
 
+const activation = JSON.stringify({ kind: 'activation', subagentId: child.id })
+
 function member(overrides: Overrides<TranscriptToolItem> = {}): TranscriptToolItem {
   return withOverrides<TranscriptToolItem>({
     kind: 'tool', seq: 1, turn: 1, step: 1, callId: 'c1', name: 'subagent',
-    arguments: '{"prompt":"survey"}', parsedArguments: { prompt: 'survey' }, startedAt: 1,
-    result: { text: 'started subagent 9f5c4086a0674b55b621c3eaf8b88c0e', isError: false, endedAt: 2 },
+    arguments: '{"description":"survey","prompt":"survey"}', parsedArguments: { description: 'survey', prompt: 'survey' }, startedAt: 1,
+    result: { text: activation, isError: false, endedAt: 2 },
   }, overrides)
 }
 
 describe('child agent model', () => {
-  it('correlates exact acknowledgement ids before prompt fallback', () => {
+  it('reads the child id from the canonical activation result JSON only', () => {
+    expect(parseActivationResult(activation)).toEqual({ kind: 'activation', subagentId: child.id })
     expect(childIdOfResult(member())).toBe(child.id)
     expect(childIdOfResult(member({ result: undefined }))).toBeUndefined()
-    expect(childIdOfResult(member({ result: { text: 'started background subagent job subagent-1', isError: false, endedAt: 2 } }))).toBeUndefined()
+    // Model-facing stream prose is presentation, never correlation.
+    expect(childIdOfResult(member({ result: { text: `started subagent ${child.id}`, isError: false, endedAt: 2 } }))).toBeUndefined()
+    expect(childIdOfResult(member({ result: { text: '{"kind":"job","subagentId":"x"}', isError: false, endedAt: 2 } }))).toBeUndefined()
+    expect(childIdOfResult(member({ result: { text: 'not json', isError: false, endedAt: 2 } }))).toBeUndefined()
   })
 
   it('maps every projected field into the agent-card snapshot', () => {
@@ -38,7 +45,7 @@ describe('child agent model', () => {
       .toEqual({ phase: 'completed', toolCount: 2, model: 'deepseek-v4', effort: 'high', endedAt: 10 })
   })
 
-  it('tracks immutable child snapshots and releases the subscription', () => {
+  it('tracks immutable child snapshots by the activation id and releases the subscription', () => {
     let publish: ((children: readonly ChildSessionFacts[]) => void) | undefined
     let disposed = false
     const facts = {
@@ -55,9 +62,10 @@ describe('child agent model', () => {
     expect(tracker.snapshot(member())).toMatchObject({ phase: 'running', tokens: 125 })
     const pinned = member()
     expect(tracker.snapshot(pinned)).toBe(tracker.snapshot(pinned))
+    // A result with no activation id is never matched by the prompt it carried.
     const unpinned = member({ result: undefined })
-    expect(tracker.snapshot(unpinned)).toBe(tracker.snapshot(unpinned))
-    expect(tracker.snapshot(member({ result: undefined, parsedArguments: null }))).toBeUndefined()
+    expect(tracker.snapshot(unpinned)).toBeUndefined()
+    expect(tracker.snapshot(member({ result: { text: 'started subagent 9f5c4086a0674b55b621c3eaf8b88c0e', isError: false, endedAt: 2 } }))).toBeUndefined()
     publish?.([child, child])
     expect(tracker.snapshot(pinned)).toMatchObject({ phase: 'running' })
     publish?.([{ ...child, promptText: undefined }])

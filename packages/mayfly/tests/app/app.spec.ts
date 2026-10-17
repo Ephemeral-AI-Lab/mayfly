@@ -383,7 +383,7 @@ describe('mayfly app driver', () => {
     })
     test.ctx.mayflyRequests.begin('subagent')
     expect(test.ctx.mayflyRetractions.tryRetract('child-message')).toBe(true)
-    expect(test.ctx.subagents.interruptByParent).toHaveBeenCalledWith(child.id, parent.id, 'continuable')
+    expect(test.ctx.subagents.interrupt).toHaveBeenCalledWith(child.id, { kind: 'user', parentSessionId: parent.id })
     expect(child.cancel).not.toHaveBeenCalled()
   })
 })
