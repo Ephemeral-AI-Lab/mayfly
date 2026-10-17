@@ -352,6 +352,9 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
     // A views pane is a view of the status row: the lane sizes its panel and owns Esc, and its events stay its own.
     const placement = entry.definition.placement
     const lane = placement === 'views' ? runtime.surfaces.views : undefined
+    // A views panel is only painted while its view is entered. A hidden update keeps the last compiled panel; the
+    // views subscription below compiles the current node on entry, so a busy hidden pane does no compile work.
+    if (lane !== undefined && record.renderedRevision !== -1 && !(lane.isEntered && lane.active === entry.id)) return
     const compiled = compile(node, 'pane', {
       components,
       colors: ctx.mayflyTheme.colors,
@@ -719,6 +722,12 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
     ...counted,
   }))
   // The views lane paints and focuses through this renderer's colors, keymap, and terminal.
+  const views = runtime.surfaces.views
+  ctx.effect(() => views.subscribe(() => {
+    if (!views.isEntered || views.active === undefined) return
+    const record = panes.get(views.active)
+    if (record !== undefined) schedulePane(record)
+  }))
   ctx.effect(() => runtime.surfaces.views.bind({
     colors: ctx.mayflyTheme.colors,
     keymap: ctx.mayflyKeymap,
