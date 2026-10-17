@@ -24,6 +24,7 @@ import {
 import { LAYOUT_NODE, type LayoutNode } from '@earendil-works/pi-tui/dist/layout-node.js'
 import { clampFrame, clampFrameFrom, clampRow, createFileOverflowSink, defaultOverflowDirectory, type OverflowSink } from './frame-clamp.ts'
 import { createOutputRecovery, type AmbientOutput } from './output-recovery.ts'
+import { createOutputOptimizer } from './output-optimizer.ts'
 import {
   SURFACE_HEADER_MAX_ROWS,
   SurfaceManager,
@@ -767,6 +768,13 @@ export interface MayflyTerminalOptions {
    */
   readonly screenMode?: MayflyScreenMode
   /**
+   * Filter alternate-screen frame output through the shadow-grid optimizer:
+   * unchanged rows are dropped and a dominant vertical shift becomes one
+   * scrolling-region update. Ignored on the main screen, whose scrollback the
+   * terminal owns. Off by default.
+   */
+  readonly outputOptimizer?: boolean
+  /**
    * stdout/stderr streams that host plugins may write around the renderer.
    * Production passes process streams; source-plane VT tests inject
    * recording streams.
@@ -806,7 +814,9 @@ export function startMayflyTerminal(
   const outputRecovery = alternate && options.ambientOutput !== undefined
     ? createOutputRecovery(options.ambientOutput, () => current.requestRender(true))
     : undefined
-  const terminal = outputRecovery?.renderer(hostTerminal) ?? hostTerminal
+  const terminal = alternate && options.outputOptimizer === true
+    ? createOutputOptimizer(outputRecovery?.renderer(hostTerminal) ?? hostTerminal)
+    : outputRecovery?.renderer(hostTerminal) ?? hostTerminal
   // The renderer reads input through the joiner, so a modified key split in two arrives as one sequence.
   const input = withJoinedModifiers(terminal)
   const current: TUI = alternate
