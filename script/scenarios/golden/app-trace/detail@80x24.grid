@@ -1,0 +1,44 @@
+grid 80x24 cursor none
+|  ✓ Read(website/index.md)
+|
+|  ✓ Bash(pnpm run test) · 3.4s
+|
+|  ● Done — the hero now reads “Ship agent UI in a keystroke”, and all 214
+|    tests pass.
+|
+|  ✻ Worked for 8s · done 09:00
+|━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+|  Trace detail #16
+|
+|  Type:    tool/result
+|  Surface: current
+|  json
+|  [
+|    {
+|      "type": "tool/result",
+|      "seq": 16,
+|      "time": 1767258007772,
+|      "data": {
+|        "turn": 1,
+|        "step": 2,
+|
+|  Ctrl+E expand · c copy · Esc close
+styles
+0: 2-3 fg:#4ec87e; 4-7 fg:#ededf2 b; 8 fg:#9aa3b8; 9-24 fg:#c9c0f0; 25 fg:#9aa3b8
+2: 2-3 fg:#4ec87e; 4-7 fg:#ededf2 b; 8 fg:#9aa3b8; 9-21 fg:#c9c0f0; 22-29 fg:#9aa3b8
+4: 2-3 fg:#ededf2
+7: 2-29 fg:#9aa3b8
+8: 0-79 fg:#9a86e6
+9: 2-17 fg:#9a86e6 b
+11: 2-9 fg:#9aa3b8; 11-21 fg:#ededf2
+12: 2-9 fg:#9aa3b8; 11-17 fg:#ededf2
+13: 2-5 fg:#9aa3b8
+14: 2 fg:#ededf2
+15: 2-4 fg:#ededf2
+16: 2-5 fg:#ededf2; 6-11 fg:#c9c0f0; 12-13 fg:#ededf2; 14-26 fg:#4ec87e; 27 fg:#ededf2
+17: 2-5 fg:#ededf2; 6-10 fg:#c9c0f0; 11-12 fg:#ededf2; 13-14 fg:#e8a838; 15 fg:#ededf2
+18: 2-5 fg:#ededf2; 6-11 fg:#c9c0f0; 12-13 fg:#ededf2; 14-26 fg:#e8a838; 27 fg:#ededf2
+19: 2-5 fg:#ededf2; 6-11 fg:#c9c0f0; 12-14 fg:#ededf2
+20: 2-7 fg:#ededf2; 8-13 fg:#c9c0f0; 14-15 fg:#ededf2; 16 fg:#e8a838; 17 fg:#ededf2
+21: 2-7 fg:#ededf2; 8-13 fg:#c9c0f0; 14-15 fg:#ededf2; 16 fg:#e8a838; 17 fg:#ededf2
+23: 2-7 fg:#ededf2; 9-17 fg:#5c6476; 18 fg:#ededf2; 20-26 fg:#5c6476; 27-29 fg:#ededf2; 31-35 fg:#5c6476

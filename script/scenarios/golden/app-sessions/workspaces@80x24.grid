@@ -1,0 +1,39 @@
+grid 80x24 cursor none
+|
+|    ▗▘   ▝▖     mayfly scenario
+| ▄▄▖█▛███▜█▗▄▄  ephemeral agents, enduring works
+|  ▄▖█▙███▟█▗▄   deepseek-flash · deepseek-official
+|    ▝▜▀▀▀▛▘     ~/workspace
+|
+|  » Paint the app screenshots from the scenario goldens.
+|
+|  ● The Website app shots now come from the accepted goldens.
+|
+|  ✻ Worked for 1s · done 09:00
+|
+|
+|
+|
+|
+|━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+|  Sessions · Workspaces
+|
+|  → ~/workspace ✓  6 sessions
+|    ~/docs         1 session
+|    ~/api          1 session
+|
+|  Enter open · / filter · Esc close
+styles
+1: 4-5 fg:#9a86e6; 9-10 fg:#9a86e6; 16-21 fg:#9a86e6 b; 22-30 fg:#5c6476
+2: 1-3 fg:#cfc6f5; 4-10 fg:#9a86e6; 11-13 fg:#cfc6f5; 16-47 fg:#c9c0f0
+3: 2-3 fg:#cfc6f5; 4-10 fg:#9a86e6; 11-12 fg:#cfc6f5; 16-49 fg:#e9e6f4
+4: 4-10 fg:#9a86e6; 16-26 fg:#9aa3b8
+6: 2-3 fg:#9a86e6; 4-79 fg:#9a86e6 b
+8: 2-3 fg:#ededf2
+10: 2-29 fg:#9aa3b8
+16: 0-79 fg:#9a86e6
+17: 2-22 fg:#9a86e6 b
+19: 2 fg:#9a86e6 b; 4-14 fg:#9a86e6 b; 16 fg:#9a86e6; 19-28 fg:#9aa3b8
+20: 4-9 fg:#ededf2; 19-27 fg:#9aa3b8
+21: 4-8 fg:#ededf2; 19-27 fg:#9aa3b8
+23: 2-6 fg:#ededf2; 8-14 fg:#5c6476; 15 fg:#ededf2; 17-25 fg:#5c6476; 26-28 fg:#ededf2; 30-34 fg:#5c6476

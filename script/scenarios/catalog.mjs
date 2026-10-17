@@ -86,7 +86,6 @@ const REVIEW = {
       { look: '`/model` and `/permission` work before a session and set the default; a command on a session is refused with a clear notice; `/theme` still works', how: 'checkpoints `model`, `model-set` (status row), `permission`, `refused`, `tide`' },
       { look: '`↑` on the empty prompt walks the recent list: the cursor row, the hint `↵ resume · esc back`, `↓` past the last row or `Esc` back to the prompt, any other key types; `Enter` resumes the row', how: 'checkpoints `browse`, `browse-2`, `resumed`' },
       { look: 'The first message creates the session; `/clear` returns to the launch screen', how: 'checkpoints `first-message`, `cleared`' },
-      { look: 'No session on disk until the first message', how: 'live: `dsh --profile mayfly-splash`, quit at once, then `ls ~/.dsh/sessions/*/`' },
     ],
     differs: [
       'The launch screen has no input box of its own: the real editor and status row stay docked at the bottom.',

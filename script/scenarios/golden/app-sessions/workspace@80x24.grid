@@ -1,0 +1,41 @@
+grid 80x24 cursor none
+|
+|    ▗▘   ▝▖     mayfly scenario
+| ▄▄▖█▛███▜█▗▄▄  ephemeral agents, enduring works
+|  ▄▖█▙███▟█▗▄   deepseek-flash · deepseek-official
+|    ▝▜▀▀▀▛▘     ~/workspace
+|
+|  » Paint the app screenshots from the scenario goldens.
+|
+|  ● The Website app shots now come from the accepted goldens.
+|
+|  ✻ Worked for 1s · done 09:00
+|
+|
+|
+|━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+|  Workspace sessions
+|
+|  ~/workspace
+|  → Search this workspace’s conversations:
+|    Paint the app screenshots from [current]  2s · 5.6k tok · just now
+|    ▸ Mayfly branding exploration               2s · 60.4k tok · 3d ago
+|    ▸ Hotfix release notes                      2s · 4.2k tok · 4d ago
+|
+|  ↑/↓ fields · Enter submit · Esc close
+styles
+1: 4-5 fg:#9a86e6; 9-10 fg:#9a86e6; 16-21 fg:#9a86e6 b; 22-30 fg:#5c6476
+2: 1-3 fg:#cfc6f5; 4-10 fg:#9a86e6; 11-13 fg:#cfc6f5; 16-47 fg:#c9c0f0
+3: 2-3 fg:#cfc6f5; 4-10 fg:#9a86e6; 11-12 fg:#cfc6f5; 16-49 fg:#e9e6f4
+4: 4-10 fg:#9a86e6; 16-26 fg:#9aa3b8
+6: 2-3 fg:#9a86e6; 4-79 fg:#9a86e6 b
+8: 2-3 fg:#ededf2
+10: 2-29 fg:#9aa3b8
+14: 0-79 fg:#9a86e6
+15: 2-19 fg:#9a86e6 b
+17: 2-12 fg:#9aa3b8
+18: 2 fg:#9a86e6; 4-42 fg:#f5f5f7 b
+19: 4-33 fg:#f5f5f7 b; 35-43 fg:#9aa3b8; 46-47 fg:#ededf2; 48-50 fg:#9aa3b8; 51-58 fg:#ededf2; 59-69 fg:#9aa3b8
+20: 4 fg:#9aa3b8; 6-32 fg:#ededf2; 48-49 fg:#ededf2; 50-52 fg:#9aa3b8; 53-61 fg:#ededf2; 62-70 fg:#9aa3b8
+21: 4 fg:#9aa3b8; 6-25 fg:#ededf2; 48-49 fg:#ededf2; 50-52 fg:#9aa3b8; 53-60 fg:#ededf2; 61-69 fg:#9aa3b8
+23: 2-4 fg:#ededf2; 6-14 fg:#5c6476; 15-19 fg:#ededf2; 21-29 fg:#5c6476; 30-32 fg:#ededf2; 34-38 fg:#5c6476

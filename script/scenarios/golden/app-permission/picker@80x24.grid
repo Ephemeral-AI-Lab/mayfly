@@ -1,0 +1,40 @@
+grid 80x24 cursor none
+|
+|  ▾ 2 tool calls · Ctrl+O to expand
+|
+|  ✻ Thinking · 1s
+|    The hero lives in website/index.md; read it first, then edit, then run th…
+|
+|  ● I will update the hero copy first, then run the tests.
+|
+|  ✓ Read(website/index.md)
+|
+|  ✓ Bash(pnpm run test) · 3.4s
+|
+|  ● Done — the hero now reads “Ship agent UI in a keystroke”, and all 214
+|    tests pass.
+|
+|  ✻ Worked for 8s · done 09:00
+|━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+|  Permissions
+|
+|    1. read-only           sandbox read-only · approval ask
+|  → 2. workspace-write ✓   sandbox workspace-write · approval ask
+|    3. danger-full-access  sandbox danger-full-access · approval never
+|
+|  ↑/↓ options · Enter choose · Esc close
+styles
+1: 2-34 fg:#9aa3b8
+3: 2-16 fg:#9aa3b8
+4: 2-3 fg:#ededf2; 4-77 fg:#9aa3b8
+6: 2-3 fg:#ededf2
+8: 2-3 fg:#4ec87e; 4-7 fg:#ededf2 b; 8 fg:#9aa3b8; 9-24 fg:#c9c0f0; 25 fg:#9aa3b8
+10: 2-3 fg:#4ec87e; 4-7 fg:#ededf2 b; 8 fg:#9aa3b8; 9-21 fg:#c9c0f0; 22-29 fg:#9aa3b8
+12: 2-3 fg:#ededf2
+15: 2-29 fg:#9aa3b8
+16: 0-79 fg:#9a86e6
+17: 2-12 fg:#9a86e6 b
+19: 4-5 fg:#9aa3b8; 7-15 fg:#ededf2; 27-58 fg:#9aa3b8
+20: 2 fg:#9a86e6 b; 4-5 fg:#9aa3b8; 7-21 fg:#9a86e6 b; 23 fg:#9a86e6; 27-64 fg:#9aa3b8
+21: 4-5 fg:#9aa3b8; 7-24 fg:#ededf2; 27-69 fg:#9aa3b8
+23: 2-4 fg:#ededf2; 6-15 fg:#5c6476; 16-20 fg:#ededf2; 22-30 fg:#5c6476; 31-33 fg:#ededf2; 35-39 fg:#5c6476
