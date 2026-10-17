@@ -566,6 +566,7 @@ const brandThemes = {
       }),
     ]),
     notify('warning', 'Rate limited · retrying in 4 s', { holdMs: 600_000 }),
+    pause(100),
     mark('ready'),
     pause(DWELL_VIEWS * 8),
   ],

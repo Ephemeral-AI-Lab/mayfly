@@ -327,7 +327,7 @@ const SCRIPTS = {
   // conversation after `/clear`, and its banner at 60 and 40 columns.
   brandThemes: [
     play('banner'), checkpoint('banner'),
-    play('ready'), checkpoint('dark'),
+    play('ready'), wait(300), checkpoint('dark'),
     ...open('/theme', 'Select a theme'), checkpoint('picker'),
     key('down', { repeat: 19 }), checkpoint('picker-light'),
     key('esc'), wait(300), ...theme('light'), checkpoint('light'),
