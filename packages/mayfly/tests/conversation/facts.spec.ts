@@ -43,8 +43,36 @@ function toolResult(callId: string, content: unknown[] | null, isError = false):
 }
 
 describe('mayflyConversationFacts projection', () => {
-  it('invalidates checkpoints after the turn-start anchor, activity detail, compaction metering, the stopped outcome, and the child token split are added', () => {
-    expect(conversationFactsProjectionDefinition.stateVersion).toBe(12)
+  it('shares the conversation projection checkpoint version, so a shape change invalidates older facts rows with it', () => {
+    expect(conversationFactsProjectionDefinition.stateVersion).toBe(13)
+  })
+
+  it('memoizes the view per state and keeps a repeated spawn result identical', () => {
+    seq = 0
+    let state = foldConversationFacts(initialConversationFacts(), event('tool/call', {
+      turn: 1, step: 0, callId: 'agent-memo', name: 'subagent', arguments: '{}',
+    }))
+    const result = event('tool/result', {
+      turn: 1, step: 0,
+      message: { toolCallId: 'agent-memo', content: [{ type: 'text', text: 'done' }] },
+    }, 7_000)
+    state = foldConversationFacts(state, result)
+    const calls = state.agentCalls
+    const view = conversationFactsProjectionDefinition.wire.view(state)
+    expect(conversationFactsProjectionDefinition.wire.view(state)).toBe(view)
+    // The same committed result carries no new fact: the state and its derived
+    // agentCalls array stay identical for the registry's Object.is.
+    expect(foldConversationFacts(state, result)).toBe(state)
+    expect(state.agentCalls).toBe(calls)
+    // A different result is a real change and derives a new array.
+    const changed = foldConversationFacts(state, event('tool/result', {
+      turn: 1, step: 0,
+      message: { toolCallId: 'agent-memo', content: [{ type: 'text', text: 'changed' }] },
+    }, 7_001))
+    expect(changed).not.toBe(state)
+    expect(changed.agentCalls).not.toBe(calls)
+    expect(changed.agentCalls[0]?.result).toEqual({ text: 'changed', isError: false, endedAt: 7_001 })
+    expect(conversationFactsProjectionDefinition.wire.view(changed)).not.toBe(view)
   })
 
   it('records the turn start and the running action detail for the activity row', () => {
