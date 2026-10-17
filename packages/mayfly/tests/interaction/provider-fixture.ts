@@ -75,6 +75,7 @@ export async function providerFixture(ctx: Context, profiles: Record<string, unk
   if (Object.keys(profiles).length > 0) await ctx.settings.mutate('llm-pi-ai', [{ op: 'set', path: ['providers'], value: profiles }])
   if (llm !== undefined) ctx.provide('llm', llm as never)
   await ctx.plugin(uiProvider)
+  ctx.provide('mayflySessionStart', { onBooted: (listener: () => void) => { listener(); return () => {} }, ensure: async () => null } as never)
   const front = await ctx.plugin(frontend)
   return { ctx, front, namespace, settings: ctx.settings as unknown as MemorySettings, credentials: ctx.credentials as MemoryCredentials, commands: ctx.commands as unknown as ProviderCommands }
 }
