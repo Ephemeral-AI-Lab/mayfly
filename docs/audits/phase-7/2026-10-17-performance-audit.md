@@ -381,11 +381,13 @@ test-only, is on `perf/phase-7`:
 - The workbench driver test now provides the `mayflySessionStart` service the app requires, and `startSplash` no longer
   asserts an arbitrary minimum action count.
 
-The pr tier now passes lint, build, typecheck, lib exports, examples, pack, CLI registry smoke, workflow tests, and the
-selected specs; the perf A/B step passes as well. The e2e/app/vt harness was moved onto the lazy-start model
-(`mayflySessionStart.ensure()` on the first action, one creation/selection per start, throttled publish waits), and those
-three suites are 38/38. The only pr step that cannot pass in this checkout is the scenario comparison: the repository has
-no `script/scenarios/golden/` directory here, so every checkpoint is reported `new` rather than compared.
+Lint, build, typecheck, lib exports, examples, pack, CLI registry smoke, workflow tests, the 35 cleaned spec files
+(853/853), the work-budget suite (47/47), the terminal spec (87/87), e2e/app/vt (38/38), and the perf A/B step pass. The
+e2e/app/vt harness was moved onto the lazy-start model (`mayflySessionStart.ensure()` on the first action, one
+creation/selection per start, throttled publish waits). A complete pr run still reports 52 of its 240 selected spec files
+failing (596 tests), all in suites that fail on `main` too (design/component frames, questionnaire teardown, older
+interaction/UI suites); it also cannot compare scenarios because this checkout has no `script/scenarios/golden/`
+directory, so every checkpoint is reported `new`. Those are baseline/test-fixture gaps, not the Phase 7 regression.
 
 ### Remaining
 
