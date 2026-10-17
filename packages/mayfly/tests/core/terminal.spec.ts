@@ -1346,6 +1346,37 @@ describe('alternate-screen runtime', () => {
     terminal.dispose()
   })
 
+  it('writes fewer row bytes for a follow-tail append with the output optimizer and keeps the grid', async () => {
+    const run = async (outputOptimizer: boolean) => {
+      const terminal = new AltScreenTerminal(40, 12)
+      const runtime = startMayflyTerminal(terminal, { screenMode: 'alternate', outputOptimizer })
+      let rows = Array.from({ length: 30 }, (_, index) => `content-${String(index).padStart(2, '0')}`)
+      runtime.addChild({ render: () => [...rows], invalidate: () => {} })
+      runtime.addBottomChild(textComponent('editor-top'))
+      runtime.addBottomChild(textComponent('editor-draft'))
+      runtime.addBottomChild(textComponent('status-row'), 'bottom')
+      runtime.requestRender(true)
+      await waitForRender()
+      const mark = terminal.written.length
+      rows = [...rows, 'content-30']
+      runtime.requestRender()
+      await waitForRender()
+      const output = terminal.written.slice(mark).join('')
+      const countedRows = [...output.matchAll(/\x1b\[\d+;1H\x1b\[2K/g)].length
+      const screen = await terminal.screen()
+      await runtime.stop()
+      terminal.dispose()
+      return { countedRows, bytes: Buffer.byteLength(output), screen }
+    }
+
+    const naive = await run(false)
+    const optimized = await run(true)
+    expect(optimized.countedRows).toBeLessThan(naive.countedRows)
+    expect(optimized.bytes).toBeLessThan(naive.bytes)
+    // The optimized shift paints the same cells the naive row writes do.
+    expect(optimized.screen).toEqual(naive.screen)
+  })
+
   it('reuses the clamped content frame while child row arrays stay stable', async () => {
     const terminal = new AltScreenTerminal(40, 10)
     const overflows: FrameOverflowEntry[] = []
