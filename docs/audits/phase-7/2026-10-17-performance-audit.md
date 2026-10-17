@@ -177,6 +177,27 @@ The proposed direction, in order of measured impact:
 
 Each fix round lands with the scale gate it makes pass; the wall-clock curves are reported, not gated. The gates that are already deterministic live in `budgets.json` and `baseline.json`.
 
+## P1 result (implemented)
+
+P1 landed on `perf/p1-incremental` (`2e33447f`) and was merged into `perf/phase-7`. It replaces the JSON-keyed resolved-tool
+map with entry-keyed WeakMaps, caches non-tool entry models by identity, reuses tool and group models by their resolved
+members, and makes `tools/change` a microtask that marks retained views stale and converts only the displayed one at its
+next snapshot.
+
+| Counter | Before | After |
+| --- | ---: | ---: |
+| W28 `entriesMapped` | 12,100 | 1 |
+| W28 `toolModelsBuilt` | 6,100 | 1 |
+| W28 `diffsComputed` | 4,000 | 0 |
+| W31 `entriesMapped` | 36,300 | 6,100 |
+| W31 `toolModelsBuilt` | 18,300 | 6,100 |
+| W31 `diffsComputed` | 12,000 | 4,000 |
+
+W31's remaining 6,100 is exactly the displayed view's tool entries; the two hidden views did no work. W28's step fell from
+~525 ms to ~23-30 ms in the one-off harness. The W28 and W31 budgets were lowered to the measured values; W29/W30 are
+unchanged. The focused official-model, conversation-slots, and live-overlay specs pass (76 cases, including new identity
+and lazy-invalidation cases).
+
 ## Verification state
 
 - `pnpm run build` passes; W28-W31 pass their Round 0 budgets.
