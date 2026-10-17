@@ -182,6 +182,7 @@ class SurfaceLaneContainer implements Component {
   private measured: {
     readonly width: number
     readonly layout: SurfaceLayout
+    readonly maxRows: number
     readonly rows: number
     readonly plan?: BottomLanePlan
   } | undefined
@@ -197,15 +198,21 @@ class SurfaceLaneContainer implements Component {
     const layout = this.getLayout()
     const lane = layout[this.placement]
     if (this.placement === 'bottom' && lane !== undefined) {
-      const plan = planBottomLane(lane, width, this.maxRows())
-      this.measured = { width, layout, rows: plan.rows, plan }
+      const maxRows = this.maxRows()
+      const measured = this.measured
+      // pi-tui measures the lane and then lays it out in the same frame; the plan renders every passive pane. Reuse
+      // it while the layout, width, and budget are unchanged instead of planning the same rows twice.
+      const plan = measured?.layout === layout && measured.width === width && measured.maxRows === maxRows && measured.plan !== undefined
+        ? measured.plan
+        : planBottomLane(lane, width, maxRows)
+      this.measured = { width, layout, maxRows, rows: plan.rows, plan }
       return bottomLaneRows(plan)
     }
     // The row that holds a side lane gives it its height, so pi-tui's measure of one is never used: its pane is not
     // rendered for it, and prepares itself when the native layout reaches it.
     if (this.placement === 'left' || this.placement === 'right') return NO_ROWS
     const rows = renderSurfaceLane(lane, width, this.maxRows())
-    this.measured = { width, layout, rows: rows.length }
+    this.measured = { width, layout, maxRows: this.maxRows(), rows: rows.length }
     return rows
   }
 

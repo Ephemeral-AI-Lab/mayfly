@@ -879,6 +879,7 @@ export interface MayflyComponentsDeps {
  * semantics. Unregistered automatically when the fiber unloads.
  */
 export class MayflyComponentsService extends Service implements MayflyComponents {
+  private readonly widths = new Map<string, number>()
   private readonly theme: MayflyTheme
   private readonly tui: TUI
   readonly presentation: MayflyPresentation
@@ -1021,7 +1022,13 @@ export class MayflyComponentsService extends Service implements MayflyComponents
    * @returns the width in columns.
    */
   visibleWidth(text: string): number {
-    return visibleWidth(text)
+    // pi-tui's own FIFO is 512 entries and one tall frame overflows it; keep the same row strings across frames.
+    const cached = this.widths.get(text)
+    if (cached !== undefined) return cached
+    const width = visibleWidth(text)
+    if (this.widths.size >= 4096) this.widths.clear()
+    this.widths.set(text, width)
+    return width
   }
 
   /**
