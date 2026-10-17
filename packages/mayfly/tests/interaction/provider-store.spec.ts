@@ -1,240 +1,140 @@
-/** User-level provider store: home patch I/O, native mirror, and migration.
+/** Native provider-route addressing over the configurable-provider directory.
  * @module @ephemeral-ai/mayfly/tests/interaction/provider-store
  */
 import { Context } from '@deepseek-ai/cordis'
 import type { SettingsForms } from '@deepseek-ai/dsh-settings'
-import { afterEach, describe, expect, it, vi } from 'vitest'
-import { join } from 'node:path'
-import { mkdtempTracked, registerTempDirCleanup } from '../core/temp-dir.ts'
-import { updaterInternals } from '../../src/interaction/updater/io.ts'
+import { describe, expect, it, vi } from 'vitest'
 import {
-  migrateProvidersToHome,
   persistProviders,
-  providerOpsTarget,
-  providerStoreInternals,
-  readHomeProviders,
-  restoreHome,
-  scheduleProviderMigration,
-  writeHomeProviders,
+  providerAddress,
+  providerContainer,
+  providerDescriptor,
+  providerDirectory,
+  providerProfileAt,
+  providerValueAt,
 } from '../../src/interaction/provider-store.ts'
-import { flush } from '../helpers.ts'
 
-registerTempDirCleanup()
-
-const REAL_STORE = { ...providerStoreInternals }
-const REAL_ENV = updaterInternals.env
-const REAL_HOMEDIR = updaterInternals.homedir
-afterEach(() => {
-  Object.assign(providerStoreInternals, REAL_STORE)
-  updaterInternals.env = REAL_ENV
-  updaterInternals.homedir = REAL_HOMEDIR
-})
-
-const tempFile = (): string => join(mkdtempTracked('mayfly-provider-store-'), 'cordis.patch.yml')
-
-function descriptor(value: unknown, revision = 0) {
-  return { ns: 'llm-pi-ai', autoGenerate: true, schema: {}, value, revision, applies: 'live' as const }
+/** A context whose native LLM registry declares the supplied directory entries. */
+function directoryContext(entries: readonly unknown[]): Context {
+  const ctx = new Context()
+  ctx.provide('llm', { listConfigurableProviders: () => entries } as never)
+  return ctx
 }
 
-function fakeSettings(value: unknown, mutate: (ns: string, ops: unknown, expected?: number) => Promise<void> = async () => {}): SettingsForms {
-  return { describe: () => [descriptor(value)], mutate } as unknown as SettingsForms
+const entry = (over: Record<string, unknown>): Record<string, unknown> => ({
+  provider: 'route',
+  displayName: 'Route',
+  settingsNs: 'llm-routes',
+  settingsPath: ['providers', 'route'],
+  ...over,
+})
+
+const descriptor = (ns: string, value: unknown, revision = 0) => ({
+  ns, autoGenerate: true, schema: {}, value, revision, applies: 'live' as const,
+})
+
+function fakeSettings(entries: readonly unknown[], mutate: (ns: string, ops: unknown, expected?: number) => Promise<void> = async () => {}): SettingsForms {
+  return { describe: () => entries, mutate } as unknown as SettingsForms
 }
 
-describe('provider store internals', () => {
-  it('resolves the configured and default harness homes', () => {
-    const home = mkdtempTracked('mayfly-provider-home-')
-    updaterInternals.env = { DSH_HOME: home }
-    expect(providerStoreInternals.homePatchPath()).toBe(join(home, 'cordis.patch.yml'))
-    updaterInternals.env = {}
-    updaterInternals.homedir = () => home
-    expect(providerStoreInternals.homePatchPath()).toBe(join(home, '.dsh', 'cordis.patch.yml'))
+describe('provider addressing', () => {
+  it('reads the native configurable-provider directory, or nothing without it', () => {
+    const ctx = directoryContext([entry({})])
+    expect(providerDirectory(ctx).map(item => item.provider)).toEqual(['route'])
+    expect(providerDirectory(new Context())).toEqual([])
   })
 
-  it('reads, writes, and removes files through the real seams', () => {
-    const path = tempFile()
-    expect(providerStoreInternals.readTextFile(path)).toBeUndefined()
-    providerStoreInternals.writeTextFile(path, 'hello')
-    expect(providerStoreInternals.readTextFile(path)).toBe('hello')
-    providerStoreInternals.removeFile(path)
-    expect(providerStoreInternals.readTextFile(path)).toBeUndefined()
-    providerStoreInternals.removeFile(path)
+  it('returns the adapter-declared namespace, path, container, and declaration fact', () => {
+    const ctx = directoryContext([
+      entry({ provider: 'anthropic', displayName: 'Anthropic', declared: false, settingsPath: ['providers', 'anthropic'] }),
+      entry({ provider: 'gateway', declared: true, settingsPath: ['providers', 'gateway'] }),
+      entry({ provider: 'whole', settingsNs: 'llm-whole', settingsPath: [] }),
+    ])
+    expect(providerAddress(ctx, 'anthropic')).toMatchObject({
+      ns: 'llm-routes', path: ['providers', 'anthropic'], container: ['providers'], declared: false, displayName: 'Anthropic',
+    })
+    expect(providerAddress(ctx, 'gateway')).toMatchObject({ declared: true, path: ['providers', 'gateway'] })
+    expect(providerAddress(ctx, 'whole')).toMatchObject({ ns: 'llm-whole', path: [], container: undefined })
+    expect(providerAddress(ctx, 'missing')).toBeUndefined()
+    expect(providerAddress(directoryContext([entry({ settingsPath: undefined })]), 'route')).toMatchObject({ path: [], container: undefined })
   })
-})
 
-describe('provider ops', () => {
-  it('applies set and unset edits to the effective providers dict', () => {
-    expect(providerOpsTarget(null, [])).toEqual({})
-    expect(providerOpsTarget({ providers: null }, [])).toEqual({})
-    expect(providerOpsTarget({ providers: [] }, [])).toEqual({})
-    expect(providerOpsTarget({ providers: 'invalid' }, [])).toEqual({})
-    expect(providerOpsTarget({ providers: { scalar: 'x' } }, [
-      { op: 'unset', path: ['providers', 'scalar', 'missing'] },
-    ])).toEqual({ scalar: 'x' })
-    expect(providerOpsTarget({ providers: { arr: [] } }, [
-      { op: 'set', path: ['providers', 'arr', 'x'], value: 1 },
-    ])).toEqual({ arr: { x: 1 } })
-    expect(providerOpsTarget({ providers: { arr: [] } }, [
-      { op: 'unset', path: ['providers', 'arr', 'x'] },
-    ])).toEqual({ arr: [] })
-    const value = { providers: { a: { displayName: 'A' }, scalar: 'x' } }
-    expect(providerOpsTarget(value, [
-      { op: 'set', path: ['providers', 'b'], value: { baseURL: 'https://b.example' } },
-      { op: 'set', path: ['providers', 'a', 'reasoning'], value: 'high' },
-      { op: 'set', path: ['providers', 'a', 'nested', 'deep'], value: 1 },
-      { op: 'set', path: ['providers', 'scalar', 'replaced'], value: true },
-      { op: 'unset', path: ['providers', 'a', 'displayName'] },
-      { op: 'unset', path: ['providers', 'scalar', 'missing'] },
-      { op: 'unset', path: ['providers', 'b'] },
-      { op: 'set', path: ['other', 'x'], value: 1 },
-      { op: 'unset', path: ['providers'] },
-    ])).toEqual({ a: { reasoning: 'high', nested: { deep: 1 } }, scalar: { replaced: true } })
+  it('chooses the largest native route-dict group and ignores whole-section profiles', () => {
+    const ctx = directoryContext([
+      entry({ provider: 'a', settingsPath: ['providers', 'a'] }),
+      entry({ provider: 'b', settingsPath: ['providers', 'b'] }),
+      entry({ provider: 'single', settingsPath: ['only'] }),
+      entry({ provider: 'whole', settingsPath: [] }),
+      entry({ provider: 'other', settingsNs: 'other-ns', settingsPath: ['routes', 'other'] }),
+    ])
+    expect(providerContainer(ctx)).toEqual({ ns: 'llm-routes', container: ['providers'] })
+    expect(providerContainer(new Context())).toBeUndefined()
+    expect(providerContainer(directoryContext([entry({ settingsPath: [] })]))).toBeUndefined()
+  })
+
+  it('breaks equal-size groups deterministically by namespace then container', () => {
+    const ctx = directoryContext([
+      entry({ provider: 'z', settingsNs: 'z-ns', settingsPath: ['routes', 'z'] }),
+      entry({ provider: 'a', settingsNs: 'a-ns', settingsPath: ['providers', 'a'] }),
+    ])
+    expect(providerContainer(ctx)).toEqual({ ns: 'a-ns', container: ['providers'] })
   })
 })
 
-describe('home patch rows', () => {
-  it('creates, updates, and restores the llm-pi-ai row', () => {
-    const path = tempFile()
-    expect(readHomeProviders(path)).toEqual({})
-    const first = writeHomeProviders(path, { a: { baseURL: 'https://a.example' } })
-    expect(first).toBeUndefined()
-    expect(providerStoreInternals.readTextFile(path)).toContain('id: llm-pi-ai')
-    expect(readHomeProviders(path)).toEqual({ a: { baseURL: 'https://a.example' } })
-
-    const second = writeHomeProviders(path, { b: {} })
-    expect(second).toContain('a:')
-    expect(readHomeProviders(path)).toEqual({ b: {} })
-
-    restoreHome(path, second)
-    expect(readHomeProviders(path)).toEqual({ a: { baseURL: 'https://a.example' } })
-    restoreHome(path, undefined)
-    expect(providerStoreInternals.readTextFile(path)).toBeUndefined()
+describe('provider values', () => {
+  it('reads namespace-rooted paths without mutating the section', () => {
+    const value = { providers: { custom: { displayName: 'Custom', models: [{ id: 'one' }] } }, untouched: true }
+    expect(providerValueAt(value, [])).toBe(value)
+    expect(providerValueAt(value, ['providers', 'custom', 'displayName'])).toBe('Custom')
+    expect(providerValueAt(value, ['providers', 'missing'])).toBeUndefined()
+    expect(providerValueAt(value, ['providers', 'custom', 'models', '0'])).toBeUndefined()
+    expect(providerValueAt(null, ['providers'])).toBeUndefined()
+    expect(providerValueAt({ providers: null }, ['providers', 'x'])).toBeUndefined()
+    expect(providerProfileAt(value, ['providers', 'custom'])).toEqual({ displayName: 'Custom', models: [{ id: 'one' }] })
+    expect(providerProfileAt(value, ['providers', 'custom', 'models'])).toBeUndefined()
+    expect(providerProfileAt({ providers: { scalar: 'x' } }, ['providers', 'scalar'])).toBeUndefined()
+    expect(providerProfileAt(null, ['providers'])).toBeUndefined()
   })
 
-  it('preserves other rows and comments while replacing a non-map config', () => {
-    const path = tempFile()
-    providerStoreInternals.writeTextFile(path, '# keep\n- id: other\n  disabled: true\n- id: llm-pi-ai\n  config: scalar\n')
-    writeHomeProviders(path, { a: {} })
-    const text = providerStoreInternals.readTextFile(path)!
-    expect(text).toContain('# keep')
-    expect(text).toContain('id: other')
-    expect(text).toContain('id: llm-pi-ai')
-    expect(readHomeProviders(path)).toEqual({ a: {} })
-  })
-
-  it('refuses malformed or non-sequence home patches', () => {
-    const path = tempFile()
-    providerStoreInternals.writeTextFile(path, 'not: [a sequence')
-    expect(() => readHomeProviders(path)).toThrow(/home patch must be a YAML sequence/)
-    expect(() => writeHomeProviders(path, {})).toThrow(/home patch must be a YAML sequence/)
-    providerStoreInternals.writeTextFile(path, 'id: llm-pi-ai\n')
-    expect(() => readHomeProviders(path)).toThrow(/home patch must be a YAML sequence/)
-    expect(() => writeHomeProviders(path, {})).toThrow(/home patch must be a YAML sequence/)
+  it('finds the live descriptor by namespace only', () => {
+    const settings = fakeSettings([descriptor('llm-routes', {}), descriptor('other', {})])
+    expect(providerDescriptor(settings, 'llm-routes')?.ns).toBe('llm-routes')
+    expect(providerDescriptor(settings, 'missing')).toBeUndefined()
   })
 })
 
 describe('native persistence', () => {
-  it('stores the home row and mirrors one whole-dict path op', async () => {
-    const path = tempFile()
-    providerStoreInternals.homePatchPath = () => path
+  it('writes namespace-rooted path ops through settings.mutate at the read revision', async () => {
     const mutate = vi.fn(async () => {})
-    await persistProviders(fakeSettings({ providers: { a: { displayName: 'A' } } }, mutate), [
-      { op: 'set', path: ['providers', 'b'], value: {} },
+    const settings = fakeSettings([descriptor('llm-routes', { providers: {} })], mutate)
+    await persistProviders(settings, 'llm-routes', [
+      { op: 'set', path: ['providers', 'custom'], value: { apiKeyEnv: 'CUSTOM_KEY' } },
+      { op: 'set', path: ['providers', 'custom', 'displayName'], value: 'Custom' },
+      { op: 'unset', path: ['providers', 'gone'] },
     ], 3)
-    expect(readHomeProviders(path)).toEqual({ a: { displayName: 'A' }, b: {} })
-    expect(mutate).toHaveBeenCalledWith('llm-pi-ai', [
-      { op: 'set', path: ['providers'], value: { a: { displayName: 'A' }, b: {} } },
+    expect(mutate).toHaveBeenCalledOnce()
+    expect(mutate).toHaveBeenCalledWith('llm-routes', [
+      { op: 'set', path: ['providers', 'custom'], value: { apiKeyEnv: 'CUSTOM_KEY' } },
+      { op: 'set', path: ['providers', 'custom', 'displayName'], value: 'Custom' },
+      { op: 'unset', path: ['providers', 'gone'] },
     ], 3)
   })
 
-  it('skips an empty edit and refuses a missing entry', async () => {
-    await persistProviders(fakeSettings({ providers: {} }), [])
-    await expect(persistProviders({ describe: () => [] } as unknown as SettingsForms, [
-      { op: 'set', path: ['providers', 'a'], value: {} },
-    ])).rejects.toThrow(/no configurable plugin entry "llm-pi-ai"/)
+  it('skips an empty edit and refuses a namespace the native service never describes', async () => {
+    const mutate = vi.fn(async () => {})
+    const settings = fakeSettings([descriptor('llm-routes', {})], mutate)
+    await persistProviders(settings, 'llm-routes', [])
+    expect(mutate).not.toHaveBeenCalled()
+    await expect(persistProviders(settings, 'missing', [
+      { op: 'set', path: ['providers', 'custom'], value: {} },
+    ])).rejects.toThrow(/no configurable plugin entry "missing"/)
+    expect(mutate).not.toHaveBeenCalled()
   })
 
-  it('restores a prior home file when the native write refuses', async () => {
-    const path = tempFile()
-    providerStoreInternals.homePatchPath = () => path
-    providerStoreInternals.writeTextFile(path, '- id: other\n')
-    await expect(persistProviders(fakeSettings({ providers: { a: {} } }, async () => { throw new Error('boom') }), [
-      { op: 'set', path: ['providers', 'b'], value: {} },
+  it('lets a native refusal escape unchanged', async () => {
+    const settings = fakeSettings([descriptor('llm-routes', {})], async () => { throw new Error('boom') })
+    await expect(persistProviders(settings, 'llm-routes', [
+      { op: 'set', path: ['providers', 'custom'], value: {} },
     ])).rejects.toThrow('boom')
-    expect(providerStoreInternals.readTextFile(path)).toBe('- id: other\n')
-  })
-
-  it('removes a first home file when the native write refuses', async () => {
-    const path = tempFile()
-    providerStoreInternals.homePatchPath = () => path
-    await expect(persistProviders(fakeSettings({ providers: {} }, async () => { throw new Error('nope') }), [
-      { op: 'set', path: ['providers', 'a'], value: {} },
-    ])).rejects.toThrow('nope')
-    expect(providerStoreInternals.readTextFile(path)).toBeUndefined()
-  })
-})
-
-describe('migration', () => {
-  it('seeds and merges the home patch with the home row winning', () => {
-    const path = tempFile()
-    expect(migrateProvidersToHome({ describe: () => [] } as unknown as SettingsForms, path)).toBe(false)
-    expect(migrateProvidersToHome(fakeSettings({ providers: {} }), path)).toBe(false)
-    expect(migrateProvidersToHome(fakeSettings({ providers: { a: {}, b: {} } }), path)).toBe(true)
-    expect(readHomeProviders(path)).toEqual({ a: {}, b: {} })
-    expect(migrateProvidersToHome(fakeSettings({ providers: { a: {} } }), path)).toBe(false)
-    expect(migrateProvidersToHome(fakeSettings({ providers: { a: { x: 1 }, c: {} } }), path)).toBe(true)
-    expect(readHomeProviders(path)).toEqual({ a: {}, b: {}, c: {} })
-  })
-
-  it('runs after the loader settles and tolerates a missing loader or settings', async () => {
-    const path = tempFile()
-    providerStoreInternals.homePatchPath = () => path
-    const withLoader = new Context()
-    withLoader.provide('loader', { await: async () => {} } as never)
-    withLoader.provide('settings', fakeSettings({ providers: { a: {} } }) as never)
-    scheduleProviderMigration(withLoader)
-    await flush()
-    expect(readHomeProviders(path)).toEqual({ a: {} })
-    await withLoader.fiber.dispose()
-
-    const withoutLoader = new Context()
-    withoutLoader.provide('settings', fakeSettings({ providers: { b: {} } }) as never)
-    scheduleProviderMigration(withoutLoader)
-    await flush()
-    expect(readHomeProviders(path)).toEqual({ a: {}, b: {} })
-    await withoutLoader.fiber.dispose()
-
-    const bare = new Context()
-    bare.provide('loader', { await: async () => {} } as never)
-    scheduleProviderMigration(bare)
-    await flush()
-    await bare.fiber.dispose()
-  })
-
-  it('skips migration once the fiber unloads before the loader settles', async () => {
-    const path = tempFile()
-    providerStoreInternals.homePatchPath = () => path
-    const ctx = new Context()
-    let settle: (() => void) | undefined
-    ctx.provide('loader', { await: () => new Promise<void>(resolve => { settle = resolve }) } as never)
-    ctx.provide('settings', fakeSettings({ providers: { a: {} } }) as never)
-    scheduleProviderMigration(ctx)
-    await ctx.fiber.dispose()
-    settle?.()
-    await flush()
-    expect(readHomeProviders(path)).toEqual({})
-  })
-
-  it('logs a failed migration without escaping the fiber', async () => {
-    const path = tempFile()
-    providerStoreInternals.homePatchPath = () => path
-    providerStoreInternals.writeTextFile(path, 'not: [a sequence')
-    const ctx = new Context()
-    ctx.provide('loader', { await: async () => {} } as never)
-    ctx.provide('settings', fakeSettings({ providers: { a: {} } }) as never)
-    const warn = vi.spyOn(ctx.logger, 'warn').mockImplementation(() => {})
-    scheduleProviderMigration(ctx)
-    await flush()
-    expect(warn).toHaveBeenCalled()
-    await ctx.fiber.dispose()
   })
 })

@@ -4,6 +4,7 @@
 import { Context } from '@deepseek-ai/cordis'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { providerFixture } from './provider-fixture.ts'
+import { apply as applyProviderCommands } from '../../src/interaction/provider-commands.ts'
 import { flush } from '../helpers.ts'
 
 const contexts: Context[] = []
@@ -18,7 +19,9 @@ function llm() {
       { id: 'ghost', name: 'Ghost' },
     ],
     listConfigurableProviders: () => [
-      { settingsNs: 'llm-pi-ai', provider: 'anthropic', displayName: 'Anthropic' },
+      { settingsNs: 'llm-pi-ai', provider: 'anthropic', displayName: 'Anthropic', settingsPath: ['providers', 'anthropic'], declared: false },
+      { settingsNs: 'llm-pi-ai', provider: 'custom', displayName: 'Custom API', settingsPath: ['providers', 'custom'], declared: true },
+      { settingsNs: 'llm-pi-ai', provider: 'fallback', displayName: 'Fallback', settingsPath: ['providers', 'fallback'], declared: true },
     ],
     discoverModels: async () => [],
   }
@@ -27,10 +30,13 @@ function llm() {
 async function setup() {
   const ctx = new Context()
   contexts.push(ctx)
-  return providerFixture(ctx, {
+  const bench = await providerFixture(ctx, {
     custom: { displayName: 'Custom API', api: 'openai-completions', baseURL: 'https://custom.example/v1', apiKeyEnv: 'CUSTOM_KEY', models: [{ id: 'one' }, { id: 'two' }] },
     fallback: { api: 'openai-completions', baseURL: 'https://fallback.example/v1', apiKeyEnv: 'FALLBACK_KEY', models: [] },
   }, llm())
+  ctx.provide('mayflyInteractionState', { sessionless: { register: () => () => {} } } as never)
+  applyProviderCommands(ctx)
+  return bench
 }
 
 async function invoke(bench: Awaited<ReturnType<typeof setup>>, rawInput: string, invocationSignal = signal()) {
@@ -43,8 +49,8 @@ describe('provider commands', () => {
     expect(await invoke(bench, 'edit missing')).toEqual({ kind: 'error', text: 'The provider has no editable configuration' })
     expect(await invoke(bench, 'edit custom')).toEqual({ kind: 'success' })
     expect(await invoke(bench, 'switch missing')).toEqual({ kind: 'error', text: 'Unknown provider' })
-    expect(await invoke(bench, 'switch CUSTOM API')).toEqual({ kind: 'error', text: 'no session is live yet' })
-    expect(await invoke(bench, 'switch custom')).toEqual({ kind: 'error', text: 'no session is live yet' })
+    expect(await invoke(bench, 'switch CUSTOM API')).toEqual({ kind: 'error', text: 'the model selection is unavailable' })
+    expect(await invoke(bench, 'switch custom')).toEqual({ kind: 'error', text: 'the model selection is unavailable' })
     expect(await invoke(bench, 'unknown')).toEqual({ kind: 'error', text: 'usage: /provider [list | edit <provider> | switch <provider> | add]' })
   })
 
@@ -95,6 +101,8 @@ describe('provider commands', () => {
     const ctx = new Context()
     contexts.push(ctx)
     const bench = await providerFixture(ctx, {}, llm(), { registerNamespace: false })
+    ctx.provide('mayflyInteractionState', { sessionless: { register: () => () => {} } } as never)
+    applyProviderCommands(ctx)
     expect(await bench.commands.entries.get('provider')!.handler({ rawInput: '', signal: signal() } as never)).toEqual({ kind: 'success' })
     const node = JSON.stringify(ctx.mayflyOverlays.list().find(entry => entry.id === 'mayfly.providers')!.node)
     expect(node).toContain('Custom API')
@@ -150,6 +158,8 @@ describe('provider commands', () => {
     const ctx = new Context()
     contexts.push(ctx)
     const bench = await providerFixture(ctx)
+    ctx.provide('mayflyInteractionState', { sessionless: { register: () => () => {} } } as never)
+    applyProviderCommands(ctx)
     expect(await bench.commands.entries.get('provider')!.handler({ rawInput: '', signal: signal() } as never)).toEqual({ kind: 'success' })
     expect(JSON.stringify(ctx.mayflyOverlays.list()[0]!.node)).toContain('No configured providers')
   })

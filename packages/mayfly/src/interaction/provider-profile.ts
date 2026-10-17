@@ -20,11 +20,3 @@ export interface ProviderProfile {
   readonly models?: readonly { readonly id?: unknown, readonly [key: string]: unknown }[]
   readonly reasoning?: string
 }
-
-export function providerProfile(value: unknown, route: string): ProviderProfile | undefined {
-  if (value === null || typeof value !== 'object') return undefined
-  const providers = (value as { readonly providers?: unknown }).providers
-  if (providers === null || typeof providers !== 'object' || !Object.hasOwn(providers, route)) return undefined
-  const profile = (providers as Record<string, unknown>)[route]
-  return profile !== null && typeof profile === 'object' ? profile as ProviderProfile : undefined
-}

@@ -2,7 +2,6 @@
  * @module @ephemeral-ai/mayfly/tests/interaction/catalog-fixture
  */
 import type { Context } from '@deepseek-ai/cordis'
-import type { Entry } from '@deepseek-ai/cordis-plugin-loader'
 import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
 import CommandRuntime from '@deepseek-ai/dsh-commands'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
@@ -11,11 +10,6 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import { createScope } from '@deepseek-ai/dsh-scope'
 import { vi, type Mock } from 'vitest'
 import { requestFixture } from './request-fixture.ts'
-import { MCP_CLIENT_MODULE, FIBER_ACTIVE } from '../../src/interaction/mcp-servers.ts'
-
-export function mcpEntry(id: string, config: Record<string, unknown>, state = FIBER_ACTIVE): Entry {
-  return { id, options: { name: MCP_CLIENT_MODULE, config }, fiber: { config, state }, disabled: false } as unknown as Entry
-}
 
 export async function catalogFixture(ctx: Context) {
   const bench = await requestFixture(ctx)
@@ -23,8 +17,6 @@ export async function catalogFixture(ctx: Context) {
   await ctx.plugin(CommandRuntime)
   ctx.provide('systemPrompt', { tools: () => () => {} } as never)
   const toolsOwner = await ctx.plugin(ToolRuntime)
-  const entries: Entry[] = []
-  const loaderOwner = await ctx.plugin({ name: 'catalog-loader', apply(owner: Context) { owner.provide('loader', { entries: function* () { yield* entries } } as never) } })
   let agentScope!: ReturnType<typeof createScope>
   await ctx.plugin({ name: 'catalog-agents', inject: ['tools'], apply(owner: Context) {
     agentScope = createScope(owner, bench.agent)
@@ -43,5 +35,5 @@ export async function catalogFixture(ctx: Context) {
     if (scope !== undefined) owner.effect(() => () => scope.dispose())
   } })
   const run = (line: string) => ctx.commands.execute(bench.agent, line, [], new AbortController().signal)
-  return { ...bench, entries, toolsOwner, loaderOwner, register, execute, run, restrict: (deny: readonly string[]) => agentScope.ctx.tools.restrict({ deny }) }
+  return { ...bench, toolsOwner, register, execute, run, restrict: (deny: readonly string[]) => agentScope.ctx.tools.restrict({ deny }) }
 }

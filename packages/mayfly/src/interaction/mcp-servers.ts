@@ -1,76 +1,39 @@
 /**
- * Read-only MCP facts from native loader entries and tool schemas. Validated
- * Fiber config wins over raw entry config; environment/header values never
- * enter the projection. Registered counts join global names (including ones
- * restricted for this Agent) with this Agent's scoped registrations. Visible
- * schemas use the exact requested Agent, or the global view for a null scope.
+ * Read-only MCP facts from the native tool registry.
  *
- * Connection state remains approximate: an active client with no tools can
- * be connecting, contain a startup failure, or have exhausted reconnects.
- * Neither a connection-state API nor a restart action is invented here.
+ * There is no native connection-status or configured-server catalog: an MCP
+ * client's identity is only observable through the `mcp__<server>__<tool>`
+ * names it registers. This module therefore shows one row per server that has
+ * registered tools (global view: everything the registry holds, including
+ * tools restricted away from the session; exact-Agent view: what that session
+ * may call) and counts `mcp__`-prefixed names that do not fit that public
+ * naming contract as unknown. It never reads loader entries, Fiber state, or
+ * client configuration, so transport/policy rows stay explicitly unavailable
+ * rather than guessed.
  *
  * @module @ephemeral-ai/mayfly/interaction/mcp-servers
  */
 
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
-import type { Entry } from '@deepseek-ai/cordis-plugin-loader'
 import type { ToolSchema } from '@deepseek-ai/dsh-llm'
 import type {} from '../app/index.ts'
-
-/** The loader module specifier an MCP server entry declares. */
-export const MCP_CLIENT_MODULE = '@deepseek-ai/dsh-mcp-client'
-
-/**
- * Cordis `FiberState` numeric values. The declaration is a `const enum`, so
- * the compiled cordis package exports no runtime object — the values are
- * inlined here against the `fiber.d.ts` contract (a reorder upstream would
- * surface as an unknown state, never a crash).
- */
-export const FIBER_PENDING = 0
-export const FIBER_LOADING = 1
-export const FIBER_ACTIVE = 2
-export const FIBER_FAILED = 3
-export const FIBER_DISPOSED = 4
-export const FIBER_UNLOADING = 5
 
 /** The public prefix of MCP-served tool names (`mcp__<server>__<raw>`). */
 const MCP_PREFIX = 'mcp__'
 
+/** The public naming contract: server segment plus raw tool name. */
+const MCP_TOOL_NAME = /^mcp__([A-Za-z0-9_-]{1,32})__(.+)$/u
+
 /** The derived display status of one MCP server row. */
-export type McpStatus = 'synced' | 'restricted' | 'no-tools' | 'starting' | 'failed' | 'reloading' | 'disabled'
+export type McpStatus = 'synced' | 'restricted' | 'no-tools'
 
-/** The resolved reconnect policy fields the panel shows. */
-interface McpReconnectView {
-  readonly enabled: boolean
-  readonly initialDelayMs: number
-  readonly maxDelayMs: number
-  readonly maxAttempts: number
-}
-
-/** One MCP server's joined read: declared config, registry truth, status. */
+/** One MCP server's tool-registry read. */
 export interface McpServerView {
-  /** Loader entry id (stable inside the entry tree). */
+  /** Stable row identity: the server namespace (no loader entry id is read). */
   readonly entryId: string
-  /** The declared namespace (`mcp__<serverName>__<raw>`); the entry id when the config never validated far enough to carry one. */
+  /** The declared namespace of the public tool names. */
   readonly serverName: string
-  /** `stdio` | `streamable-http`, or the raw value when unrecognized. */
-  readonly transport: string
-  /** Human endpoint: `command args…` joined, or the URL. */
-  readonly endpoint: string
-  /** Working directory (stdio only). */
-  readonly cwd: string | undefined
-  /** stdio env keys, sorted — the values may carry secrets and never leave the config. */
-  readonly envKeys: readonly string[]
-  /** HTTP header keys, sorted — same redaction rule as {@link envKeys}. */
-  readonly headerKeys: readonly string[]
-  readonly toolCallTimeoutMs: number | undefined
-  readonly failOnStartupError: boolean | undefined
-  readonly reconnect: McpReconnectView | undefined
-  /** True when the entry or any owning parent entry is disabled. */
-  readonly disabled: boolean
-  /** Raw fiber state number, for the panel's status derivation. */
-  readonly fiberState: number | undefined
   /** The derived status. */
   readonly status: McpStatus
   /** Distinct tool names in the global and selected-Agent views, including restricted globals. */
@@ -82,196 +45,84 @@ export interface McpServerView {
 /** The whole `/mcp` read: servers plus the join's honest leftovers. */
 export interface McpCatalog {
   readonly servers: readonly McpServerView[]
-  /** `mcp__`-prefixed tools whose server matches no loader entry (a spec-side or foreign registration). */
+  /** `mcp__`-prefixed tools whose name does not fit the public server/tool contract. */
   readonly orphanCount: number
   /** False when no agent session is live — counts then read the global registry view only. */
   readonly sessionLive: boolean
 }
 
-/** Read one config field as a string. */
-function readString(value: unknown): string | undefined {
-  return typeof value === 'string' ? value : undefined
-}
-
-/** Read one config field as a finite number. */
-function readNumber(value: unknown): number | undefined {
-  return typeof value === 'number' && Number.isFinite(value) ? value : undefined
-}
-
-/** Read one config field as a boolean. */
-function readBoolean(value: unknown): boolean | undefined {
-  return typeof value === 'boolean' ? value : undefined
+/** One registered MCP tool name split into its public server and raw tool segments. */
+export function parseMcpToolName(name: string): { readonly serverName: string, readonly toolName: string } | undefined {
+  if (!name.startsWith(MCP_PREFIX)) return undefined
+  const match = MCP_TOOL_NAME.exec(name)
+  return match === null ? undefined : { serverName: match[1]!, toolName: match[2]! }
 }
 
 /**
- * Read a secret-bearing record as its sorted key list — the wire-facing
- * redaction kimi's config view applies too: env and header values may carry
- * tokens, and a read-only panel has no business echoing them.
- * @param value - the raw `env` / `headers` config value.
- * @returns the sorted keys, or an empty list for any non-record shape.
- */
-export function readSecretKeys(value: unknown): readonly string[] {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) return []
-  return Object.keys(value).sort()
-}
-
-/** Read the normalized reconnect policy. */
-function readReconnect(value: unknown): McpReconnectView | undefined {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) return undefined
-  const record = value as Record<string, unknown>
-  const enabled = readBoolean(record.enabled)
-  const initialDelayMs = readNumber(record.initialDelayMs)
-  const maxDelayMs = readNumber(record.maxDelayMs)
-  const maxAttempts = readNumber(record.maxAttempts)
-  // Post-normalization all four fields are present; a partial object means
-  // the config never validated, and the panel omits the row rather than
-  // showing a made-up policy.
-  if (enabled === undefined || initialDelayMs === undefined || maxDelayMs === undefined || maxAttempts === undefined) {
-    return undefined
-  }
-  return { enabled, initialDelayMs, maxDelayMs, maxAttempts }
-}
-
-/** Build the endpoint line: `command args…` for stdio, the URL for HTTP. */
-function readEndpoint(config: Record<string, unknown>): string {
-  const transport = readString(config.transport)
-  if (transport === 'streamable-http') {
-    return readString(config.url) ?? '(no url)'
-  }
-  const command = readString(config.command)
-  if (command === undefined) return '(no command)'
-  const args = Array.isArray(config.args)
-    ? config.args.filter((arg): arg is string => typeof arg === 'string')
-    : []
-  return args.length === 0 ? command : `${command} ${args.join(' ')}`
-}
-
-/**
- * Derive one server's display status. Registered tools are the primary
- * signal and the fiber state the qualifier — an ACTIVE fiber with no
- * registered tools is one of three indistinguishable causes, and an ACTIVE
- * fiber with tools registered globally but none visible to the session is a
- * working server behind a restriction, not a dead one.
- * @param input - the joined facts of one row.
+ * Derive one server's display status from tool-registry facts only. A server
+ * with registered tools but none visible to the exact Agent is restricted;
+ * registered and visible is synced; no registered tools is the no-tools row.
+ * Connection/config facts have no native source and are never invented.
+ * @param input - the row's registered and visible counts.
  * @returns the status.
  */
-export function deriveMcpStatus(input: {
-  readonly disabled: boolean
-  readonly fiberState: number | undefined
-  readonly registeredCount: number
-  readonly visibleCount: number
-}): McpStatus {
-  if (input.disabled) return 'disabled'
-  const state = input.fiberState
-  if (state === FIBER_FAILED) return 'failed'
-  if (state === FIBER_UNLOADING || state === FIBER_DISPOSED) return 'reloading'
-  if (state === FIBER_ACTIVE) {
-    if (input.registeredCount === 0) return 'no-tools'
-    return input.visibleCount === 0 ? 'restricted' : 'synced'
-  }
-  // PENDING, LOADING, a missing fiber (the entry has not started yet), and
-  // any state a newer cordis adds: the server is mid-transition.
-  return 'starting'
-}
-
-/** The `mcp__<serverName>__` prefix one server's tools carry. */
-function serverPrefix(serverName: string): string {
-  return `${MCP_PREFIX}${serverName}__`
+export function deriveMcpStatus(input: { readonly registeredCount: number, readonly visibleCount: number }): McpStatus {
+  if (input.registeredCount === 0) return 'no-tools'
+  return input.visibleCount === 0 ? 'restricted' : 'synced'
 }
 
 /**
- * Collect the MCP server catalog. Reads the loader entry tree once, the
- * global registry view once, and — when a session is live — the agent's
- * visible view once more.
- * @param ctx - native loader/tools consumer context.
+ * Collect the MCP server catalog from the native tool registry.
+ * @param ctx - native tools consumer context.
  * @param agent - exact native Agent whose visible tools are read; null uses globals.
  * @returns the joined catalog.
- * @throws when a dependency is absent or native schema projection fails.
+ * @throws when the tools service is absent or native schema projection fails.
  */
 export async function collectMcpServers(ctx: Context, agent: Agent | null = ctx.mayflyCurrentAgent.current()): Promise<McpCatalog> {
-  const loader = ctx.get('loader') as
-    | { entries(): Generator<Entry, void, void> }
-    | undefined
-  if (loader === undefined) throw new Error('the host composes no loader service')
   const tools = ctx.get('tools')
   if (tools === undefined) throw new Error('the host composes no tools service')
 
-  // The declared servers, in entry-tree order; the normalized fiber config
-  // is preferred, the raw options config covers never-started entries.
-  const configs: { readonly entry: Entry, readonly config: Record<string, unknown> }[] = []
-  for (const entry of loader.entries()) {
-    if (entry.options.name !== MCP_CLIENT_MODULE) continue
-    const raw = entry.options.config
-    const config = (entry.fiber?.config ?? raw) as unknown
-    const record = config !== null && typeof config === 'object' && !Array.isArray(config)
-      ? config as Record<string, unknown>
-      : {}
-    configs.push({ entry, config: record })
-  }
-
-  // The global view retains restricted tools; the Agent view adds local registrations.
+  /* The global view retains restricted tools; the exact-Agent view is what
+     that session may call. */
   const globalSchemas = tools.schemas()
   const sessionLive = agent !== null
   const visibleSchemas = agent === null ? globalSchemas : tools.schemas(agent)
+
+  /* The registry truth includes restricted globals and this Agent's local
+     registrations: count distinct public names across both views. */
   const registered = new Map<string, number>()
   let orphanCount = 0
-  const prefixes = configs
-    .map(({ config }) => readString(config.serverName))
-    .filter((name): name is string => name !== undefined)
-    .map(serverPrefix)
-    .toSorted((left, right) => right.length - left.length)
   for (const name of new Set([...globalSchemas, ...visibleSchemas].map(schema => schema.name))) {
     if (!name.startsWith(MCP_PREFIX)) continue
-    const owner = prefixes.find(prefix => name.startsWith(prefix))
-    if (owner === undefined) {
+    const parsed = parseMcpToolName(name)
+    if (parsed === undefined) {
       orphanCount += 1
       continue
     }
-    registered.set(owner, (registered.get(owner) ?? 0) + 1)
+    registered.set(parsed.serverName, (registered.get(parsed.serverName) ?? 0) + 1)
   }
 
-  // The session-visible view: the agent's preset scope when a session is
-  // live, the global view otherwise (the process-level truth /mcp degrades
-  // to — the panel notes the missing session).
   const visible = new Map<string, ToolSchema[]>()
-    for (const schema of visibleSchemas) {
-      if (!schema.name.startsWith(MCP_PREFIX)) continue
-      const owner = prefixes.find(prefix => schema.name.startsWith(prefix))
-      if (owner === undefined) continue
-      const list = visible.get(owner) ?? []
-      list.push(schema)
-      visible.set(owner, list)
-    }
+  for (const schema of visibleSchemas) {
+    const parsed = parseMcpToolName(schema.name)
+    if (parsed === undefined) continue
+    const list = visible.get(parsed.serverName) ?? []
+    list.push(schema)
+    visible.set(parsed.serverName, list)
+  }
 
-  const servers = configs.map(({ entry, config }) => {
-      const serverName = readString(config.serverName) ?? entry.id
-      const prefix = serverPrefix(serverName)
-      const registeredCount = registered.get(prefix) ?? 0
-      const toolsVisible = visible.get(prefix) ?? []
-      const disabled = entry.disabled
-      const fiberState = entry.fiber?.state
+  const servers = [...new Set([...registered.keys(), ...visible.keys()])]
+    .toSorted((left, right) => left.localeCompare(right))
+    .map((serverName): McpServerView => {
+      const registeredCount = registered.get(serverName) ?? 0
+      const toolsVisible = visible.get(serverName) ?? []
       return {
-        entryId: entry.id,
+        entryId: serverName,
         serverName,
-        transport: readString(config.transport) ?? 'unknown',
-        endpoint: readEndpoint(config),
-        cwd: readString(config.cwd) === '' ? undefined : readString(config.cwd),
-        envKeys: readSecretKeys(config.env),
-        headerKeys: readSecretKeys(config.headers),
-        toolCallTimeoutMs: readNumber(config.toolCallTimeoutMs),
-        failOnStartupError: readBoolean(config.failOnStartupError),
-        reconnect: readReconnect(config.reconnect),
-        disabled,
-        fiberState,
-        status: deriveMcpStatus({
-          disabled,
-          fiberState,
-          registeredCount,
-          visibleCount: toolsVisible.length,
-        }),
+        status: deriveMcpStatus({ registeredCount, visibleCount: toolsVisible.length }),
         registeredCount,
         toolsVisible,
-      } satisfies McpServerView
-  })
+      }
+    })
   return { servers, orphanCount, sessionLive }
 }

@@ -9,9 +9,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import * as uiProvider from '../../../ui/src/provider.ts'
 import type { MayflyFieldValue, MayflySubmission, MayflySubmittedField } from '../../../ui/src/interaction.ts'
 import { openProviderSetup } from '../../src/interaction/provider-add.ts'
-import { deriveKeyRef, normalizeBaseURL, providerProfile } from '../../src/interaction/provider-profile.ts'
+import { deriveKeyRef, normalizeBaseURL } from '../../src/interaction/provider-profile.ts'
 import { buildIndex, setModelsDevLoader } from '../../src/interaction/models-dev.ts'
-import { providerFixture, testHomeText } from './provider-fixture.ts'
+import { providerFixture } from './provider-fixture.ts'
 import { flush } from '../helpers.ts'
 
 const contexts: Context[] = []
@@ -28,7 +28,14 @@ async function setup(
   setModelsDevLoader(async () => undefined)
   const llm = {
     listProviders,
-    listConfigurableProviders: () => [{ settingsNs: 'llm-deepseek', provider: 'deepseek-official', displayName: 'DeepSeek' }, { settingsNs: 'llm-pi-ai', provider: 'anthropic', displayName: 'Anthropic' }],
+    listConfigurableProviders: () => [
+      { settingsNs: 'llm-deepseek', provider: 'deepseek-official', displayName: 'DeepSeek', settingsPath: [] },
+      { settingsNs: 'llm-pi-ai', provider: 'anthropic', displayName: 'Anthropic', settingsPath: ['providers', 'anthropic'], declared: false, nativeAuth: { env: [], oauth: true } },
+      { settingsNs: 'llm-pi-ai', provider: 'oauth-provider', displayName: 'OAuth Provider', settingsPath: ['providers', 'oauth-provider'], declared: false, nativeAuth: { env: [], oauth: true } },
+      { settingsNs: 'llm-pi-ai', provider: 'active', displayName: 'Active', settingsPath: ['providers', 'active'], declared: false, nativeAuth: { env: [], oauth: true } },
+      { settingsNs: 'llm-pi-ai', provider: 'api-key-only', displayName: 'API Key Only', settingsPath: ['providers', 'api-key-only'], declared: false, nativeAuth: { env: [], oauth: true } },
+      { settingsNs: 'other', provider: 'foreign', displayName: 'Foreign', settingsPath: ['providers', 'foreign'], declared: false, nativeAuth: { env: [], oauth: true } },
+    ],
     discoverModels: discover,
   }
   const bench = await providerFixture(ctx, {}, llm)
@@ -91,17 +98,13 @@ describe('provider creation', () => {
     expect(normalizeBaseURL('anthropic-messages', 'https://api.example/v1/')).toBe('https://api.example')
     expect(normalizeBaseURL('openai-responses', 'https://api.example', 'https://api.example/v1')).toBe('https://api.example/v1')
     expect(normalizeBaseURL('openai-completions', 'https://api.example/')).toBe('https://api.example')
-    for (const value of [null, 'invalid', {}, { providers: null }, { providers: 'invalid' }, { providers: {} }, { providers: { route: null } }, { providers: { route: 'invalid' } }]) {
-      expect(providerProfile(value, 'route')).toBeUndefined()
-    }
-    expect(providerProfile({ providers: { route: { displayName: 'Route' } } }, 'route')).toEqual({ displayName: 'Route' })
   })
 
   it('uses the native pi-ai provider directory for known-vendor setup', async () => {
     const bench = await setup()
     await bench.choose('known')
     const picker = bench.ctx.mayflyUiInteraction.get('overlay', 'mayfly.provider.add.known')!
-    expect(picker.choice({ pagePath: [], controlId: 'providers' })!.definition.items.map(item => item.id)).toEqual(['anthropic'])
+    expect(picker.choice({ pagePath: [], controlId: 'providers' })!.definition.items.map(item => item.id)).toEqual(['anthropic', 'oauth-provider', 'active', 'api-key-only'])
     picker.emit({ kind: 'selection-accept', pagePath: [], controlId: 'providers', selectedIds: ['anthropic'] })
     await flush()
     const model = bench.ctx.mayflyUiInteraction.get('overlay', `mayfly.provider.add.${Buffer.from('anthropic').toString('hex')}`)!
@@ -594,16 +597,16 @@ describe('provider creation', () => {
     expect(JSON.stringify(bench.ctx.mayflyUiInteraction.get('overlay', 'mayfly.provider.add.oauth')!.node)).toContain('No providers available')
   })
 
-  it('persists a new route to the user-level home patch', async () => {
+  it('persists a new route through native settings only', async () => {
     const bench = await setup()
+    const before = bench.settings.writes
     const entry = await customEntry(bench)
     const saved = await entry.events.prepare(
       { kind: 'submit', pagePath: [], controlId: 'connection', submission: submission(entry, { route: 'home-route' }) },
       context(entry),
     )
     expect(saved.reply).toMatchObject({ kind: 'accepted' })
-    const home = testHomeText()!
-    expect(home).toContain('id: llm-pi-ai')
-    expect(home).toContain('home-route')
+    expect(bench.settings.writes).toBe(before + 1)
+    expect(bench.settings.get('llm-pi-ai')).toMatchObject({ providers: { 'home-route': expect.any(Object) } })
   })
 })
