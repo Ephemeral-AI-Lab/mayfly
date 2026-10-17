@@ -85,6 +85,7 @@ import { MayflyCompileCache, type PaintOptions } from './ui-compile-cache.ts'
 import { MayflyContentCache } from './ui-content-cache.ts'
 import { actionHintLabel, actionScopeActive, effectiveItemKeys } from './ui-actions.ts'
 import { UiRowCache } from './ui-row-cache.ts'
+import { FlowListPainter, flowListCanVirtualize, type FlowListModel, type ListPaintOptions, type ListRowSpec } from './ui-list-paint.ts'
 import { canStepLeft, railGroupFor, type TabsTraits } from './ui-focus-levels.ts'
 import { isRail, tabsShape } from './ui-tabs-paint.ts'
 import { UiImagePainter } from './ui-image.ts'
@@ -94,7 +95,7 @@ import { paintSlider } from './ui-slider-paint.ts'
 import { promptCompletionsOpen, promptRecallActive } from './ui-interaction-prompt.ts'
 import type { MayflyUiImageSource } from './ui-images.ts'
 import { countWork, type MayflyWorkCounters } from './ui-work-counters.ts'
-import { choiceError, choicePinned, choiceRow, focusableListItem, choiceSegment, choiceVisibleCount, choiceVisibleIndex, choiceVisiblePosition } from './ui-interaction-choice.ts'
+import { choiceError, choicePinned, choiceRow, focusableListItem, choiceSegment, choiceVisibleCount, choiceVisibleIndex, choiceVisiblePosition, type UiChoiceState } from './ui-interaction-choice.ts'
 import { SearchInput } from './search-input.ts'
 import { UiLoaderAnimation, type UiAnimationClock } from './ui-loader-animation.ts'
 import { AdmissionRow } from './ui-admission.ts'
@@ -1121,6 +1122,26 @@ function coreText(options: Pick<MayflyUiCompilerOptions, 'contextHints'> | undef
   try { return options?.contextHints?.translate?.(key, values) ?? untranslated(key, values) } catch { return untranslated(key, values) }
 }
 
+/** One row of a flow list: the tree and search are what keeps a list off the row source, so depth and last are flat. */
+function flowListSpec(choice: UiChoiceState | undefined, node: MayflyListNode, index: number): ListRowSpec {
+  if (choice !== undefined) {
+    const row = choiceRow(choice, index)
+    return { item: row.item, depth: row.depth, last: row.last, expandable: row.expandable, open: row.open, position: index }
+  }
+  const item = admittedListItem(node.items, index)!
+  const always = item.bodyAlways === true && item.body !== undefined
+  return { item, depth: 0, last: false, expandable: !always && item.body !== undefined, open: always || (item.body !== undefined && item.expanded === true), position: index }
+}
+
+/** The choice state a flow row paints from, besides the item: an open body, the cursor, and an input's text. */
+function flowListSignature(choice: UiChoiceState | undefined, node: MayflyListNode): string {
+  if (choice === undefined) return ''
+  return [
+    choice.query, choice.searching ? 1 : 0, choice.expandedIds.join('\x01'), choice.focusedId ?? '',
+    JSON.stringify(choice.segments ?? {}), JSON.stringify(choice.inputs ?? {}), node.expandFocused === true ? 1 : 0,
+  ].join('\x1e')
+}
+
 /** The filter row of a list: `/ query`, with the number of matches right-aligned; a long query wraps under it. */
 function listQueryRow(node: MayflyListNode, query: string, searching: boolean, count: number, width: number, focused: boolean, options: RuntimeCompilerOptions): string {
   const slash = options.colors.muted('/')
@@ -1896,11 +1917,20 @@ function compileUnit(node: CompilableNode, state: FocusState, options: RuntimeCo
         const visibleCount = choice === undefined ? node.items.length : choiceVisibleCount(choice)
         const listFocused = patternFocus(state, scopedControlGroup('list', node.id))
         const focus = listFocused
+        // Flow content with no height window, filter, tree, or current match answers from a row source: the outer scroll
+        // windows the rows, and a repaint reconciles items instead of painting every one.
+        const flowVirtual = options.listRuntime.flow && flowListCanVirtualize(node, choice) && !focus.focused
         const searching = choice?.searching === true
         const queryRows = searching || query.length > 0 ? [listQueryRow(node, query, searching, visibleCount, width, focus.focused && state.activeGroup === scopedControlGroup('list', node.id), options)] : []
         const position = choice === undefined ? 0 : choiceVisiblePosition(choice)
-        const counter = node.maxRows === undefined && visibleCount > entries.length ? `  (${String(position + 1)}/${String(visibleCount)})` : undefined
+        const counter = !flowVirtual && node.maxRows === undefined && visibleCount > entries.length ? `  (${String(position + 1)}/${String(visibleCount)})` : undefined
         const translate = (key: string, values?: UiTranslateValues): string => coreText(options, key, values)
+        const segment = (item: MayflyListItem) => {
+          if (item.segment === undefined) return undefined
+          return choice === undefined
+            ? { segment: item.segment, pinned: item.segment.selectedId ?? null, active: item.segment.selectedId ?? item.segment.inheritedId }
+            : { segment: item.segment, pinned: choicePinned(choice, item.id), active: choiceSegment(choice, item.id) }
+        }
         // A list the owner follows reports its tracked item's line from each paint, past the rows ahead of the list's own.
         const probe = options.listRuntime.probe
         const following = probe.controlId === node.id
@@ -1908,34 +1938,57 @@ function compileUnit(node: CompilableNode, state: FocusState, options: RuntimeCo
         const locate = following && probe.itemId !== undefined
           ? { id: probe.itemId, found: (line: number | undefined) => { probe.line = line === undefined ? undefined : line + queryRows.length + (counter === undefined ? 0 : 1) } }
           : undefined
-        const body = entries.length === 0 ? query.length > 0 ? [sliceByColumn(options.colors.textMuted(coreText(options, 'No matches')), 0, width, true)] : empty?.render(width) ?? [] : renderList(
-          { ...unfiltered, items: entries.map(entry => entry.item), selectedIds: choice?.selectedIds ?? listSelectedIds(node) },
-          width,
-          Math.max(1, listRowLimit(options) - (counter === undefined ? 0 : 1) - queryRows.length),
-          focus,
-          options.colors,
-          entries[0]!.position,
-          { cache: options.listRuntime.rows, counters: options.counters },
-          {
-            rows: entries,
+        let body: string[]
+        if (entries.length === 0) body = query.length > 0 ? [sliceByColumn(options.colors.textMuted(coreText(options, 'No matches')), 0, width, true)] : empty?.render(width) ?? []
+        else if (flowVirtual) {
+          const painter = options.listRuntime.flowList(node, width, {
+            items: node.items,
+            specAt: index => flowListSpec(choice, node, index),
+            signature: flowListSignature(choice, node),
+          }, {
+            rows: [],
             cursorId: choice?.focusedId,
-            before: entries[0]!.position,
-            after: visibleCount - entries.at(-1)!.position - 1,
-            total: visibleCount,
+            focused: false,
+            marker: focus.marker,
+            selectedIds: choice?.selectedIds ?? listSelectedIds(node),
             inputs: choice?.inputs,
-            translate,
-            flow: options.listRuntime.flow,
-            locate,
-            body: paintBody,
+            segment,
             segmentLabel: coreText(options, 'Options'),
-            segment: item => {
-              if (item.segment === undefined) return undefined
-              return choice === undefined
-                ? { segment: item.segment, pinned: item.segment.selectedId ?? null, active: item.segment.selectedId ?? item.segment.inheritedId }
-                : { segment: item.segment, pinned: choicePinned(choice, item.id), active: choiceSegment(choice, item.id) }
+            body: paintBody,
+            translate,
+            flow: true,
+            memo: { cache: options.listRuntime.rows, counters: options.counters },
+          })
+          if (following && probe.itemId !== undefined) {
+            const line = painter.locate(probe.itemId)
+            probe.line = line === undefined ? undefined : line + queryRows.length + (counter === undefined ? 0 : 1)
+          }
+          body = painter.rows()
+        } else {
+          body = renderList(
+            { ...unfiltered, items: entries.map(entry => entry.item), selectedIds: choice?.selectedIds ?? listSelectedIds(node) },
+            width,
+            Math.max(1, listRowLimit(options) - (counter === undefined ? 0 : 1) - queryRows.length),
+            focus,
+            options.colors,
+            entries[0]!.position,
+            { cache: options.listRuntime.rows, counters: options.counters },
+            {
+              rows: entries,
+              cursorId: choice?.focusedId,
+              before: entries[0]!.position,
+              after: visibleCount - entries.at(-1)!.position - 1,
+              total: visibleCount,
+              inputs: choice?.inputs,
+              translate,
+              flow: options.listRuntime.flow,
+              locate,
+              body: paintBody,
+              segmentLabel: coreText(options, 'Options'),
+              segment,
             },
-          },
-        )
+          )
+        }
         // The row cache counts the rows it paints; the list counts its render.
         countWork(options.counters, 'componentRenders')
         return concatRows(queryRows, counter === undefined ? [] : [sliceByColumn(options.colors.textMuted(counter), 0, width, true)], body)
@@ -2248,6 +2301,8 @@ export class MayflyUiSurfaceRuntime {
   readonly reuse = new MayflyCompileCache()
   /** The item rows this surface's lists have painted, kept by item and state. */
   readonly rows = new UiRowCache()
+  /** The flow lists this surface has painted, by control key: a repaint reconciles items instead of painting them all. */
+  private readonly flowLists = new Map<string, FlowListPainter>()
   /** The painted content segments this surface's leaves produced; the renderer's one shared cache by default. */
   readonly content: MayflyContentCache
   /** Where this surface's scroll regions are scrolled, by control key, the least recently compiled first. */
@@ -2570,10 +2625,26 @@ export class MayflyUiSurfaceRuntime {
     return search
   }
 
+  /** The row source of a flow list at `width`: reconciled with the list it painted last time, painted on demand. */
+  flowList(node: MayflyListNode, width: number, model: FlowListModel, options: ListPaintOptions): FlowListPainter {
+    const key = controlGroup('list', node.id, this.pagePath(node))
+    let painter = this.flowLists.get(key)
+    if (painter === undefined) {
+      painter = new FlowListPainter()
+      this.flowLists.set(key, painter)
+    }
+    painter.sync({ node, model, width, colors: this.options!.colors, options })
+    return painter
+  }
+
   listWindow(node: MayflyListNode, rowLimit: number): readonly VirtualListEntry[] {
     const state = this.interaction?.choice({ pagePath: this.pagePath(node), controlId: node.id })
     const count = state === undefined ? node.items.length : choiceVisibleCount(state)
-    const size = Math.min(count, Math.max(1, Math.floor(rowLimit)) + 4)
+    // Flow content is windowed by the outer scroll, not by a list height: keep the cursor window for the walk and paint.
+    const limit = this.flow && flowListCanVirtualize(node, state) && this.options !== undefined
+      ? safeViewport(this.options.getViewport).rows
+      : rowLimit
+    const size = Math.min(count, Math.max(1, Math.floor(limit)) + 4)
     const cursor = state === undefined ? 0 : choiceVisiblePosition(state)
     const start = Math.max(0, Math.min(count - size, cursor - Math.floor(size / 2)))
     const window = Array.from({ length: size }, (_, offset) => {
@@ -2736,6 +2807,7 @@ export class MayflyUiSurfaceRuntime {
     if (!this.live) return
     this.deactivate()
     this.live = false
+    this.flowLists.clear()
     for (const lease of this.textEditors.values()) releaseTextEditor(lease)
     this.textEditors.clear()
     this.promptEditors.clear()
