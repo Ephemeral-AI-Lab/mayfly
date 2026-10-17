@@ -299,7 +299,7 @@ describe('republishing', () => {
   it('repaints the completion list the host offers and drops it when the host takes it back', () => {
     const prompt = host({ value: '/' })
     const body = () => prompt.rows().slice(1, -1).map(row => row.replace(/^│ | *│$/gu, '').trimEnd())
-    expect(body()).toEqual(['> /', '  Enter send · Alt+Enter newline · Esc close'])
+    expect(body()).toEqual(['> /', 'Enter send · Alt+Enter newline · Esc close'])
     prompt.publish({ completions: { items: ITEMS } })
     expect(body().slice(0, 4)).toEqual(['> /', '→ /model — switch model', '  /sessions', '  /trace'])
     expect(body()).toHaveLength(5)

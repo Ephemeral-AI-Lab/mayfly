@@ -29,7 +29,12 @@ async function setup(profiles: Record<string, unknown> = {}, configured = false,
   if (configured) bench.credentials.values.set(DEEPSEEK_KEY, 'configured')
   const agent = { id: 'root', session: {} } as Agent
   ctx.provide('agents', { get: (id: string) => id === agent.id ? agent : undefined } as never)
-  const mount = () => ctx.plugin({ name: 'onboarding-app', inject: ['agents'], apply(owner: Context) { new MayflyCurrentAgentService(owner, new MayflyConversationsService(owner)) } })
+  const mount = () => ctx.plugin({ name: 'onboarding-app', inject: ['agents'], apply(owner: Context) {
+    const conversations = new MayflyConversationsService(owner)
+    new MayflyCurrentAgentService(owner, conversations)
+    // The fixture's boot signal: a primary selection is the app going ready.
+    conversations.subscribe(() => { if (conversations.primary() !== null) (ctx.mayflySessionStart as unknown as { markBooted(): void }).markBooted() })
+  } })
   const app = await mount()
   return { ...bench, agent, app, mount, model: () => ctx.mayflyUiInteraction.get('overlay', 'mayfly.provider.onboarding') }
 }
@@ -272,7 +277,11 @@ describe('provider onboarding', () => {
       const bench = await providerFixture(ctx, {}, undefined, { onboarding: true })
       const agent = { id: `root-${outcome}`, session: {} } as Agent
       ctx.provide('agents', { get: () => agent } as never)
-      await ctx.plugin({ name: `onboarding-app-${outcome}`, inject: ['agents'], apply(owner: Context) { new MayflyCurrentAgentService(owner, new MayflyConversationsService(owner)) } })
+      await ctx.plugin({ name: `onboarding-app-${outcome}`, inject: ['agents'], apply(owner: Context) {
+        const conversations = new MayflyConversationsService(owner)
+        new MayflyCurrentAgentService(owner, conversations)
+        conversations.subscribe(() => { if (conversations.primary() !== null) (ctx.mayflySessionStart as unknown as { markBooted(): void }).markBooted() })
+      } })
       ctx.mayflyConversations.selectPrimary(agent)
       await flush()
       await bench.front.dispose()

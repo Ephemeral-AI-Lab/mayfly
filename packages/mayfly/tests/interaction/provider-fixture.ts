@@ -85,7 +85,25 @@ export async function providerFixture(ctx: Context, profiles: Record<string, unk
   // onboarding spec opts in to the unconfigured shape.
   if (options?.onboarding !== true) (ctx.credentials as MemoryCredentials).values.set('DEEPSEEK_API_KEY', 'configured')
   await ctx.plugin(uiProvider)
-  ctx.provide('mayflySessionStart', { onBooted: (listener: () => void) => { listener(); return () => {} }, ensure: async () => null } as never)
+  // Boot is explicit here: the onboarding specs select a primary Agent as the
+  // app-ready signal, after they have provided the services the guide reads.
+  let booted = false
+  const listeners = new Set<() => void>()
+  const markBooted = (): void => {
+    if (booted) return
+    booted = true
+    for (const listener of [...listeners]) listener()
+    listeners.clear()
+  }
+  ctx.provide('mayflySessionStart', {
+    onBooted: (listener: () => void) => {
+      if (booted) { listener(); return () => {} }
+      listeners.add(listener)
+      return () => { listeners.delete(listener) }
+    },
+    ensure: async () => null,
+    markBooted,
+  } as never)
   const front = await ctx.plugin(frontend)
   return { ctx, front, namespace, settings: ctx.settings as unknown as MemorySettings, credentials: ctx.credentials as MemoryCredentials, commands: ctx.commands as unknown as ProviderCommands }
 }

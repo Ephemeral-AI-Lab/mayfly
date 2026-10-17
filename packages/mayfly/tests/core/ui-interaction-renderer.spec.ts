@@ -38,7 +38,7 @@ async function setup(node: MayflyUiNode, onEvent?: MayflyUiEventHandlers, screen
   const viewport = { columns: 80, rows: 20 }
   const compile = () => {
     const runtime = new MayflyUiSurfaceRuntime(model)
-    const result = compileMayflyUiSurfaceNode(model.decisionNode ?? model.node, { surfaceRuntime: runtime, components, colors, getViewport: () => viewport, screenMode, ...(keymap === undefined ? {} : { keymap }), ...(contextHints === undefined ? {} : { contextHints }), emit: event => model.emit(event), onUnhandledEscape: () => model.emit({ kind: 'dismiss', pagePath: [] }) })
+    const result = compileMayflyUiSurfaceNode(model.decisionNode ?? model.node, { surfaceRuntime: runtime, components, colors, getViewport: () => viewport, screenMode, ...(keymap === undefined ? {} : { keymap }), ...(contextHints === undefined ? {} : { contextHints }), ...(model.decisionNode === undefined ? {} : { contextHints: { enabled: true, focusWithoutControls: true } }), emit: event => model.emit(event), onUnhandledEscape: () => model.emit({ kind: 'dismiss', pagePath: [] }) })
     if (!result.ok) throw new Error(result.message)
     const compiled = result.value
     compiled.focusTarget!.focused = true
@@ -59,8 +59,8 @@ describe('shared interaction compiler', () => {
     const frame = () => renderLayoutFrame(renderer.compiled.component, viewport.columns, viewport.rows, () => {}).lines
     expect(frame().join('\n')).toContain('Plan step 0')
     expect(frame().join('\n')).toContain('Reject')
-    renderer.input('\x1b[Z')
-    renderer.input('\x1b[Z')
+    renderer.input('\x1b[1;3A')
+    renderer.input('\x1b[1;3A')
     renderer.input('\x1b[6~')
     expect(frame().join('\n')).not.toContain('Plan step 0')
     renderer.input('\x1b[A')
@@ -95,13 +95,13 @@ describe('shared interaction compiler', () => {
     renderer.input('\x1b[B')
     renderer.input('\x1b[B')
     frame()
-    expect(model.document({ pagePath: [], controlId: 'document' })!.anchor).toMatchObject({ blockId: JSON.stringify(['body']), offset: 10, follow: 'none' })
+    expect(model.document({ pagePath: [], controlId: 'document' })!.anchor).toMatchObject({ blockId: JSON.stringify(['body']), offset: 6, follow: 'none' })
 
     handle.set(view(true), { reason: 'data' })
     renderer.runtime.dispose()
     viewport.columns = 10
     renderer = compile()
-    expect(frame().join('\n')).toContain('abcdefghi')
+    expect(frame().join('\n')).toContain('89abcdef')
     expect(frame().join('\n')).not.toContain('prepended')
     renderer.runtime.dispose()
   })
@@ -172,7 +172,7 @@ describe('shared interaction compiler', () => {
     ]))
     const renderer = compile()
     renderLayoutFrame(renderer.compiled.component, viewport.columns, viewport.rows, () => {})
-    renderer.input('\t')
+    renderer.input('\x1b[1;3B')
     expect(renderer.compiled.focusTarget!.captureFocusIdentity?.()).toMatchObject({ controlId: 'run' })
     renderer.runtime.dispose()
   })
@@ -250,9 +250,9 @@ describe('shared interaction compiler', () => {
       ]), { tab: { controlId: 'outer', itemId: 'one' } }),
     ]))
     const renderer = compile()
-    renderer.input('\t')
+    renderer.input('\x1b[1;3B')
     expect(renderer.compiled.focusTarget!.captureFocusIdentity?.()).toMatchObject({ controlId: 'inner' })
-    renderer.input('\t')
+    renderer.input('\x1b[1;3B')
     expect(renderer.compiled.focusTarget!.captureFocusIdentity?.()).toMatchObject({ controlId: 'run' })
     // Escape returns to the home control in one hop, whatever the depth, and the next Escape closes.
     expect(renderer.compiled.component.render(120).at(-1)).toContain('Esc back')
@@ -345,7 +345,7 @@ describe('shared interaction compiler', () => {
       ui.child(ui.form({ id: 'form', fields: [{ kind: 'input', id: 'name', label: 'Second tab', value: '' }] }), { tab: { controlId: 'tabs', itemId: 'two' } }),
     ]))
     let renderer = compile()
-    renderer.input('\t')
+    renderer.input('\x1b[1;3B')
     renderer.compiled.component.render(80)
     renderer.input('first')
     const first = { pagePath: [{ controlId: 'tabs', itemId: 'one' }], formId: 'form' }
@@ -356,9 +356,10 @@ describe('shared interaction compiler', () => {
     renderer.compiled.component.render(80)
     renderer.input(' continued')
     expect(model.form(first)!.fields.name!.value).toBe('first continued')
-    renderer.input('\x1b[Z')
+    renderer.input('\x1b')
+    renderer.input('\x1b[1;3A')
     renderer.input('\x1b[C')
-    renderer.input('\t')
+    renderer.input('\x1b[1;3B')
     renderer.compiled.component.render(80)
     renderer.input('second')
     expect(model.form({ pagePath: [{ controlId: 'tabs', itemId: 'two' }], formId: 'form' })!.fields.name!.value).toBe('second')
@@ -398,8 +399,10 @@ describe('shared interaction compiler', () => {
     expect(model.decisionNode).toBeDefined()
     renderer.runtime.dispose()
     renderer = compile()
-    expect(renderer.compiled.focusTarget!.captureFocusIdentity?.()).toMatchObject({ controlId: 'mayfly.decision.no' })
-    renderer.input('\r')
+    // The decision names its keys, not a focus target: No is `n` (and Escape), never a second Enter.
+    const decision = renderer.compiled.component.render(80).join('\n')
+    expect(decision).toContain('y yes · n no · Esc close')
+    renderer.input('n')
     expect(model.decisionNode).toBeUndefined()
     expect(action).not.toHaveBeenCalled()
     renderer.runtime.dispose()
@@ -418,7 +421,7 @@ describe('shared interaction compiler', () => {
     expect(renderer.compiled.component.render(80).join('\n')).toContain('Beta')
     renderer.input('\r')
     expect(model.form({ pagePath: [], formId: 'form' })!.fields.one!.value).toBe('b')
-    renderer.input('\t')
+    renderer.input('\x1b[B')
     renderer.input('\r')
     expect(renderer.compiled.component.render(80).join('\n')).toContain('Select at least')
     renderer.input(' ')
@@ -498,11 +501,11 @@ describe('shared interaction compiler', () => {
     renderer.input('\x1b[B')
     expect(renderer.compiled.focusTarget!.captureFocusIdentity?.()).toMatchObject({ controlId: 'mode' })
     renderer.input('\x1b[C')
-    renderer.input('\t')
+    renderer.input('\x1b[B')
     expect(model.form({ pagePath: [], formId: 'form' })!.fields.mode!.value).toBe('b')
     expect(renderer.compiled.focusTarget!.captureFocusIdentity?.()).toMatchObject({ controlId: 'tail' })
-    renderer.input('\x1b[Z')
-    renderer.input('\x1b[Z')
+    renderer.input('\x1b[A')
+    renderer.input('\x1b[A')
     renderer.input('\r')
     expect(renderer.compiled.focusTarget!.captureFocusIdentity?.()).toMatchObject({ controlId: 'name', editing: true })
     renderer.input('\x1b\r')
@@ -584,7 +587,7 @@ describe('shared interaction compiler', () => {
       { id: 'approve', label: 'Approve' }, { id: 'reject', label: 'Reject' },
     ] }), { action: event => { if (event.kind === 'selection-accept') accepted.push(event.selectedIds[0]!); return { kind: 'completed' } } })
     const renderer = compile()
-    expect(plainBlock(renderer.compiled.component.render(80))).toContain('1  Approve')
+    expect(plainBlock(renderer.compiled.component.render(80))).toContain('1. Approve')
     expect(renderer.compiled.component.render(80).at(-1)).toContain('1-2 focus')
     renderer.input('1')
     await flush()
@@ -664,14 +667,14 @@ describe('shared interaction compiler', () => {
     const renderer = compile()
     const rows = renderer.compiled.component.render(100).join('\n')
     expect(rows).toContain('Stop — Only continuable subagents can stop')
-    expect(rows).toContain('Broken — Diagnostics only')
-    renderer.input('\t')
+    expect(rows).toContain('Broken    — Diagnostics only')
+    renderer.input('\x1b[1;3B')
     expect(renderer.compiled.focusTarget!.captureFocusIdentity?.()).toMatchObject({ controlId: 'close' })
-    renderer.input('\x1b[Z')
+    renderer.input('\x1b[1;3A')
     renderer.input('\x1b[B')
     expect(renderer.compiled.focusTarget!.captureFocusIdentity?.()).toMatchObject({ itemId: 'live' })
     expect(renderer.compiled.component.render(100).join('\n')).not.toContain('Stop —')
-    renderer.input('\t')
+    renderer.input('\x1b[1;3B')
     renderer.input('\x1b[D')
     expect(renderer.compiled.focusTarget!.captureFocusIdentity?.()).toMatchObject({ controlId: 'stop' })
     renderer.runtime.dispose()
@@ -733,7 +736,7 @@ describe('shared interaction compiler', () => {
     const renderer = compile()
     renderer.input('\x1b[F')
     const rows = plainBlock(renderer.compiled.component.render(40))
-    expect(rows).toContain('9  Level 9')
+    expect(rows).toContain('9. Level 9')
     expect(rows).not.toContain('1  Level 9')
     expect(renderer.compiled.component.render(80).at(-1)).toContain('1-9 choose')
     renderer.runtime.dispose()
@@ -908,7 +911,8 @@ describe('shared interaction compiler', () => {
     viewport.rows = 4
     const renderer = compile()
     renderer.input('draft')
-    for (let index = 0; index < 8; index += 1) renderer.input('\t')
+    renderer.input('\x1b')
+    for (let index = 0; index < 8; index += 1) renderer.input('\x1b[B')
     expect(renderer.compiled.component.render(80).join('\n')).toContain('Save')
     renderer.input('\r')
     await flush()
@@ -919,7 +923,7 @@ describe('shared interaction compiler', () => {
     renderer.runtime.dispose()
   })
 
-  it('keeps a framed long form intact while its focus window moves down and back up', async () => {
+  it('keeps a long form intact while its focus window moves down and back up', async () => {
     const { compile, viewport } = await setup(ui.surface({ title: 'Long form', chrome: 'overlay', child: ui.form({
       id: 'form', fields: Array.from({ length: 8 }, (_, index) => ({ kind: 'input' as const, id: `field-${index}`, label: `Field ${index}`, value: '' })),
     }) }))
@@ -932,9 +936,9 @@ describe('shared interaction compiler', () => {
     expect(renderer.compiled.component.render(80).join('\n')).toContain('Field 7')
     for (let index = 0; index < 7; index += 1) renderer.input('\x1b[A')
     const rows = renderer.compiled.component.render(80)
-    expect(plainText(rows[0]!)).toMatch(/^╭ Long form/u)
+    expect(plainText(rows[0]!).trim()).toBe('━'.repeat(80))
     expect(rows.join('\n')).toContain('Field 0')
-    expect(rows.at(-1)).toMatch(/^╰/u)
+    expect(plainText(rows.at(-1)!)).toContain('Esc close')
     renderer.runtime.dispose()
   })
 
