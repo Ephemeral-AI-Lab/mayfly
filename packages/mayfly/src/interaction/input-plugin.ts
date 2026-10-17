@@ -69,9 +69,6 @@ import { SessionId, type UserMessage } from '@deepseek-ai/dsh-session'
 // Carries the app-owned retraction service and event/service declaration merges.
 import type {} from '../app/index.ts'
 import { interruptAgent, isAgentRunning } from '../app/agent-interrupt.ts'
-// Empty type import carries the `permissionPresets` Context merge the
-// bare-/permission interception probes (the service rides dsh-base).
-import type {} from '@deepseek-ai/dsh-permission-presets'
 import type {} from '../transcript/index.ts'
 import {
   clearSharedEditor,
@@ -108,27 +105,12 @@ import { interactionTranslator } from './locale.ts'
 import { placeholderLadder, placeholderState } from './placeholder.ts'
 import { createModelListCache, cycleSessionModel } from './model-commands.ts'
 import { cycleMode } from './mode-commands.ts'
-import { openPermissionPanel } from './permission-panel.ts'
 import { rewriteSkillTokens } from './skills-catalog.ts'
 import { filterSlashCommands } from './slash-filter.ts'
 import { listCommands } from './sessionless-commands.ts'
 
 /** Window for the double Ctrl-C exit: presses farther apart re-arm the hint. */
 const INTERRUPT_DOUBLE_PRESS_MS = 1000
-
-/**
- * Bare-command UI routes: a no-argument line may open a surface instead of
- * dispatching to the registered handler (the S24b/D33 `/permission` preset
- * picker). A route returning `false` falls through to `ctx.commands.execute`
- * untouched, keeping the upstream argument path.
- */
-const BARE_COMMAND_ROUTES: Readonly<Record<string, (ctx: Context) => boolean>> = {
-  permission: ctx => {
-    if (ctx.get('permissionPresets') === undefined) return false
-    openPermissionPanel(ctx)
-    return true
-  },
-}
 
 /** Commands whose result text never flashes the footer — the command's own UX already carries it. */
 const QUIET_COMMANDS: ReadonlySet<string> = new Set(['goal'])
@@ -705,11 +687,6 @@ export function apply(ctx: Context): void {
       // candidate and history retain exactly what the user submitted.
       return
     }
-    // A bare command line may route to a surface instead of its handler —
-    // see BARE_COMMAND_ROUTES (`/permission` opens the preset picker; a
-    // `/permission <name>` argument passes through to the upstream write
-    // path the picker itself dispatches).
-    if (parsed.rawInput.trim().length === 0 && BARE_COMMAND_ROUTES[parsed.name]?.(ctx) === true) return
     // An alias line (`/q`) is rewritten to its canonical command before
     // dispatch — the kimi resolution: aliases are not registered commands,
     // the canonical name owns the handler and the session log. The raw

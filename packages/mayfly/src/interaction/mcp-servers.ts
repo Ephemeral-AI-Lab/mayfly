@@ -26,15 +26,7 @@ const MCP_PREFIX = 'mcp__'
 const MCP_TOOL_NAME = /^mcp__([A-Za-z0-9_-]{1,32})__(.+)$/u
 
 /** The derived display status of one MCP server row. */
-export type McpStatus = 'synced' | 'restricted' | 'no-tools' | 'starting' | 'failed' | 'reloading' | 'disabled'
-
-/** The resolved reconnect policy fields the panel shows. */
-interface McpReconnectView {
-  readonly enabled: boolean
-  readonly initialDelayMs: number
-  readonly maxDelayMs: number
-  readonly maxAttempts: number
-}
+export type McpStatus = 'synced' | 'restricted' | 'no-tools'
 
 /** One MCP server's tool-registry read. */
 export interface McpServerView {
@@ -42,21 +34,6 @@ export interface McpServerView {
   readonly entryId: string
   /** The declared namespace of the public tool names. */
   readonly serverName: string
-  /** Not exposed by the native tool registry. */
-  readonly transport: string
-  /** Not exposed by the native tool registry. */
-  readonly endpoint: string
-  /** Not exposed by the native tool registry. */
-  readonly cwd: string | undefined
-  /** Not exposed by the native tool registry. */
-  readonly envKeys: readonly string[]
-  /** Not exposed by the native tool registry. */
-  readonly headerKeys: readonly string[]
-  readonly toolCallTimeoutMs: number | undefined
-  readonly failOnStartupError: boolean | undefined
-  readonly reconnect: McpReconnectView | undefined
-  /** No disabled-entry fact is available without loader internals; always false. */
-  readonly disabled: boolean
   /** The derived status. */
   readonly status: McpStatus
   /** Distinct tool names in the global and selected-Agent views, including restricted globals. */
@@ -84,8 +61,8 @@ export function parseMcpToolName(name: string): { readonly serverName: string, r
 /**
  * Derive one server's display status from tool-registry facts only. A server
  * with registered tools but none visible to the exact Agent is restricted;
- * registered and visible is synced. The remaining states belong to facts no
- * native service exposes and are never invented here.
+ * registered and visible is synced; no registered tools is the no-tools row.
+ * Connection/config facts have no native source and are never invented.
  * @param input - the row's registered and visible counts.
  * @returns the status.
  */
@@ -111,9 +88,11 @@ export async function collectMcpServers(ctx: Context, agent: Agent | null = ctx.
   const sessionLive = agent !== null
   const visibleSchemas = agent === null ? globalSchemas : tools.schemas(agent)
 
+  /* The registry truth includes restricted globals and this Agent's local
+     registrations: count distinct public names across both views. */
   const registered = new Map<string, number>()
   let orphanCount = 0
-  for (const name of new Set(globalSchemas.map(schema => schema.name))) {
+  for (const name of new Set([...globalSchemas, ...visibleSchemas].map(schema => schema.name))) {
     if (!name.startsWith(MCP_PREFIX)) continue
     const parsed = parseMcpToolName(name)
     if (parsed === undefined) {
@@ -140,16 +119,6 @@ export async function collectMcpServers(ctx: Context, agent: Agent | null = ctx.
       return {
         entryId: serverName,
         serverName,
-        /* No native API exposes connection configuration or health. */
-        transport: 'unknown',
-        endpoint: '(not exposed by the native registry)',
-        cwd: undefined,
-        envKeys: [],
-        headerKeys: [],
-        toolCallTimeoutMs: undefined,
-        failOnStartupError: undefined,
-        reconnect: undefined,
-        disabled: false,
         status: deriveMcpStatus({ registeredCount, visibleCount: toolsVisible.length }),
         registeredCount,
         toolsVisible,

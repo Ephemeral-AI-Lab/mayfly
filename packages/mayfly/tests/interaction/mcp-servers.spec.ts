@@ -69,15 +69,6 @@ describe('collectMcpServers', () => {
     expect(catalog.servers[0]).toMatchObject({
       entryId: 'github',
       serverName: 'github',
-      transport: 'unknown',
-      endpoint: '(not exposed by the native registry)',
-      envKeys: [],
-      headerKeys: [],
-      cwd: undefined,
-      toolCallTimeoutMs: undefined,
-      failOnStartupError: undefined,
-      reconnect: undefined,
-      disabled: false,
       status: 'synced',
       registeredCount: 2,
     })
@@ -110,7 +101,7 @@ describe('collectMcpServers', () => {
     ctx.provide('mayflyCurrentAgent', { current: () => ({ ctx: new Context() }), revision: () => 0, subscribe: () => () => {} } as never)
     scoped = [tool('mcp__demo__global'), tool('mcp__demo__local')]
     const catalog = await collectMcpServers(ctx)
-    expect(catalog.servers[0]).toMatchObject({ status: 'synced', registeredCount: 1, toolsVisible: expect.any(Array) })
+    expect(catalog.servers[0]).toMatchObject({ status: 'synced', registeredCount: 2, toolsVisible: expect.any(Array) })
     expect(catalog.servers[0]!.toolsVisible).toHaveLength(2)
   })
 

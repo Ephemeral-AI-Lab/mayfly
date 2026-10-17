@@ -156,7 +156,7 @@ export function openPermissionPanel(ctx: Context): void {
  * `/permission` command keeps its name and its argument form.
  * @returns the disposer removing both the runtime and sessionless entries.
  */
-export function registerSessionlessPermission(ctx: Context): () => void {
+export function registerPermissionsCommand(ctx: Context): () => void {
   return registerOwnedCommand(ctx, {
     name: 'permissions',
     description: 'Choose the permission preset',

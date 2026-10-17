@@ -13,7 +13,7 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import SessionStore from '@deepseek-ai/dsh-session'
 import CommandRuntime from '@deepseek-ai/dsh-commands'
-import { openPermissionPanel, registerSessionlessPermission, type PermissionPresetsService } from '../../src/interaction/permission-panel.ts'
+import { openPermissionPanel, registerPermissionsCommand, type PermissionPresetsService } from '../../src/interaction/permission-panel.ts'
 import { fakeMayflyContext } from './fakes.ts'
 import { KEY } from './fakes.ts'
 import { mountUiRegistryObservers, UiInteractionService } from '../../src/core/ui-interaction-state.ts'
@@ -275,7 +275,7 @@ describe('openPermissionPanel', () => {
   })
 })
 
-describe('registerSessionlessPermission', () => {
+describe('registerPermissionsCommand', () => {
   it('registers the Mayfly-owned /permissions name and leaves the native /permission command alone', async () => {
     const { ctx } = fakeMayflyContext()
     await ctx.plugin(CommandRuntime)
@@ -285,7 +285,7 @@ describe('registerSessionlessPermission', () => {
     ctx.provide('permissionPresets', fakePresets())
     const register = vi.spyOn(ctx.mayflyInteractionState.sessionless, 'register')
     const native = ctx.commands.register({ name: 'permission', description: 'native', handler: () => ({ kind: 'success' as const }) })
-    const off = registerSessionlessPermission(ctx)
+    const off = registerPermissionsCommand(ctx)
     expect(register).toHaveBeenCalledWith(expect.objectContaining({ name: 'permissions' }))
     const agent = (ctx.get('testSession') as { current: Agent }).current
     expect(ctx.commands.find(agent, 'permission')?.description).toBe('native')

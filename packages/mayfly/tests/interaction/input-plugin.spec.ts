@@ -27,7 +27,6 @@ import { registerSubmitTransformer } from '../../src/interaction/prompt-submit-p
 import { setExternalEditorLauncher } from '../../src/interaction/external-editor.ts'
 import { fakeMayflyContext, FakeMayflyEditor, KEY, type FakeMayflyComponents, type FakeScreen } from './fakes.ts'
 import { mountUiRegistryObservers, UiInteractionService } from '../../src/core/ui-interaction-state.ts'
-import { renderRequest } from './request-fixture.ts'
 
 /** One settled-skill double for the catalog seam. */
 function skillOf(name: string): SkillSummary {
@@ -927,55 +926,33 @@ describe('mayfly-input plugin', () => {
     hint.invalidate()
   })
 
-  it('opens the bare /permission picker with a sibling service and dispatches only a selection', async () => {
+  it('passes bare /permission to the native command without opening a Mayfly panel', async () => {
     const { ctx, editor, hint } = await mount()
-    const handler = vi.fn(() => ({ kind: 'success' as const, text: 'should not run' }))
-    ctx.commands.register({ name: 'permission', description: 'spy standing in for the upstream command', handler })
-    await ctx.plugin({
-      name: 'test-permission-presets',
-      apply(provider) {
-        provider.provide('permissionPresets', {
-          names: ['read-only', 'workspace-write'],
-          current: () => 'workspace-write',
-          resolve: (name: string) => ({ sandbox: `${name}-sandbox`, approval: 'ask' }),
-          optionOf: (name: string) => ({ value: name, name }),
-        })
-      },
-    })
+    const handler = vi.fn(() => ({ kind: 'success' as const, text: 'current preset workspace-write' }))
+    ctx.commands.register({ name: 'permission', description: 'native permission command', handler })
     type(editor, '/permission')
     editor.handleInput(KEY.enter)
-    await vi.waitFor(() => { expect(ctx.mayflyUiInteraction.get('overlay', 'mayfly.permission')).toBeDefined() })
-    const panel = ctx.mayflyUiInteraction.get('overlay', 'mayfly.permission')!
-    const rendered = renderRequest(panel)
-    const frame = rendered.component.render(80).join('\n')
-    expect(frame).toContain('Permissions')
-    expect(frame).toContain('[current]')
-    expect(handler).not.toHaveBeenCalled()
-    expect(hint.render(80)).toEqual([])
-    panel.requestClose()
-    await vi.waitFor(() => expect(panel.disposed).toBe(true))
-    expect(handler).not.toHaveBeenCalled()
-    rendered.runtime.dispose()
+    await vi.waitFor(() => { expect(noticesOf(hint)).toEqual(['^ℹ ^current preset workspace-write']) })
+    expect(handler).toHaveBeenCalledOnce()
+    expect(handler).toHaveBeenCalledWith(expect.objectContaining({ rawInput: '' }))
+    expect(ctx.mayflyUiInteraction.get('overlay', 'mayfly.permission')).toBeUndefined()
+  })
 
-    type(editor, '/permission')
+  it('passes a bare /permissions line to its Mayfly panel command', async () => {
+    const { ctx, editor } = await mount()
+    const handler = vi.fn(() => ({ kind: 'success' as const }))
+    ctx.commands.register({ name: 'permissions', description: 'Mayfly permission panel', handler })
+    type(editor, '/permissions')
     editor.handleInput(KEY.enter)
-    await vi.waitFor(() => expect(ctx.mayflyUiInteraction.get('overlay', 'mayfly.permission')).toBeDefined())
-    ctx.mayflyUiInteraction.get('overlay', 'mayfly.permission')!.emit({ kind: 'selection-accept', pagePath: [], controlId: 'permissions', selectedIds: ['workspace-write'] })
-    await vi.waitFor(() => expect(handler).toHaveBeenCalledOnce())
-    expect(handler).toHaveBeenCalledWith(expect.objectContaining({ rawInput: ' workspace-write' }))
-    await vi.waitFor(() => expect(ctx.mayflyUiInteraction.get('overlay', 'mayfly.permission')).toBeUndefined())
+    await vi.waitFor(() => { expect(handler).toHaveBeenCalledOnce() })
+    expect(handler).toHaveBeenCalledWith(expect.objectContaining({ rawInput: '' }))
+    expect(ctx.mayflyUiInteraction.get('overlay', 'mayfly.permission')).toBeUndefined()
   })
 
   it('passes a with-argument /permission line through to the command', async () => {
     const { ctx, editor, hint, screen } = await mount()
     const handler = vi.fn(() => ({ kind: 'success' as const, text: 'preset read-only' }))
     ctx.commands.register({ name: 'permission', description: 'spy standing in for the upstream command', handler })
-    ctx.provide('permissionPresets', {
-      names: ['read-only'],
-      current: () => 'read-only',
-      resolve: (name: string) => ({ sandbox: name, approval: 'ask' }),
-      optionOf: (name: string) => ({ value: name, name }),
-    })
     type(editor, '/permission read-only')
     editor.handleInput(KEY.enter)
     await vi.waitFor(() => { expect(noticesOf(hint)).toEqual(['^ℹ ^preset read-only']) })
