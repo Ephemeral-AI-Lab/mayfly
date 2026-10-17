@@ -8,6 +8,7 @@
 
 import { Service, type Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
+import type { ModelSelectionProjection } from '@deepseek-ai/dsh-api-session-controller'
 import type { GoalProjection } from '@deepseek-ai/dsh-goal'
 import { isSpawnToolName } from '../conversation/projection.ts'
 import { SessionId, type Session } from '@deepseek-ai/dsh-session'
@@ -50,9 +51,10 @@ declare module '@deepseek-ai/cordis' {
  */
 export const CHILD_VOLATILE_MS = 250
 
-/** One admitted child: its facts, its current draft, and their projection. */
+/** One admitted child: its presentation facts, native selection, draft, and their projection. */
 interface ChildRecord {
   readonly facts: ConversationFacts
+  readonly selection: ModelSelectionProjection | undefined
   readonly draft: LiveAssistantDraft | undefined
   readonly projected: ChildSessionFacts
 }
@@ -123,8 +125,11 @@ export class SessionFactsService extends Service {
         if (key === 'goal' && isGoalProjection(value)) this.publishGoal(value)
         return
       }
-      if (key === 'mayflyConversationFacts' && this.isDirectChild(session) && isFacts(value)) {
+      if (!this.isDirectChild(session)) return
+      if (key === 'mayflyConversationFacts' && isFacts(value)) {
         this.publishChild(String(session.id), value)
+      } else if (key === 'modelSelection' && isModelSelectionProjection(value)) {
+        this.publishChildSelection(String(session.id), value)
       }
     })
     this.offAgent = ctx.mayflyCurrentAgent.subscribe(next => { this.attach(next) })
@@ -150,8 +155,8 @@ export class SessionFactsService extends Service {
         for (const [id, record] of this.children) {
           const next = this.childDraft(id, agents)
           if (next === record.draft) continue
-          const projected = projectChildSessionFacts(id, record.facts, next)
-          this.children.set(id, { facts: record.facts, draft: next, projected })
+          const projected = projectChildSessionFacts(id, record.facts, next, record.selection)
+          this.children.set(id, { facts: record.facts, selection: record.selection, draft: next, projected })
           this.childList = undefined
           if (onlyLiveCharsChanged(record.projected, projected)) volatile = true
           else structural = true
@@ -235,8 +240,10 @@ export class SessionFactsService extends Service {
     const goal = snapshot?.values.goal
     this.publishGoal(isGoalProjection(goal) ? goal : null)
     for (const child of this.directChildren()) {
-      const childFacts = this.ctx.sessionProjections.snapshot(child, ['mayflyConversationFacts']).values.mayflyConversationFacts
-      if (isFacts(childFacts)) this.setChild(String(child.id), childFacts)
+      const snapshot = this.ctx.sessionProjections.snapshot(child, ['mayflyConversationFacts', 'modelSelection'])
+      const childFacts = snapshot.values.mayflyConversationFacts
+      if (!isFacts(childFacts)) continue
+      this.setChild(String(child.id), childFacts, isModelSelectionProjection(snapshot.values.modelSelection) ? snapshot.values.modelSelection : undefined)
     }
     this.publishChildren()
   }
@@ -303,13 +310,22 @@ export class SessionFactsService extends Service {
   }
 
   private publishChild(id: string, facts: ConversationFacts): void {
-    this.setChild(id, facts)
+    this.setChild(id, facts, this.children.get(id)?.selection)
     this.publishChildren()
   }
 
-  private setChild(id: string, facts: ConversationFacts): void {
+  private publishChildSelection(id: string, selection: ModelSelectionProjection): void {
+    const record = this.children.get(id)
+    if (record === undefined) return
+    const projected = projectChildSessionFacts(id, record.facts, record.draft, selection)
+    this.children.set(id, { facts: record.facts, selection, draft: record.draft, projected })
+    this.childList = undefined
+    this.publishChildren()
+  }
+
+  private setChild(id: string, facts: ConversationFacts, selection: ModelSelectionProjection | undefined): void {
     const draft = this.childDraft(id, this.ctx.get('agents'))
-    this.children.set(id, { facts, draft, projected: projectChildSessionFacts(id, facts, draft) })
+    this.children.set(id, { facts, selection, draft, projected: projectChildSessionFacts(id, facts, draft, selection) })
     this.childList = undefined
   }
 
@@ -361,8 +377,8 @@ export class SessionFactsService extends Service {
   }
 }
 
-/** Convert one child session's official facts to renderer-neutral card facts. */
-export function projectChildSessionFacts(id: string, facts: ConversationFacts, draft?: LiveAssistantDraft): ChildSessionFacts {
+/** Convert one child session's presentation facts and native selection to renderer-neutral card facts. */
+export function projectChildSessionFacts(id: string, facts: ConversationFacts, draft?: LiveAssistantDraft, selection?: ModelSelectionProjection | null): ChildSessionFacts {
   const liveDraft = draft !== undefined && draft.sessionId === id
     && !(draft.turn < facts.turn || (draft.turn === facts.turn
       && (facts.runOutcome !== undefined
@@ -381,6 +397,7 @@ export function projectChildSessionFacts(id: string, facts: ConversationFacts, d
       : marker?.kind === 'reasoning'
         ? 'Thinking…'
         : marker?.kind === 'text' ? 'Writing…' : facts.active ? 'Starting…' : undefined
+  const used = selection?.lastUsed ?? selection?.next ?? undefined
   return {
     id, phase, tokens: facts.epochTokens ?? 0, toolCount: facts.epochToolCount ?? 0,
     inputTokens: Math.max(0, (facts.epochTokens ?? 0) - (facts.epochOutputTokens ?? 0)), outputTokens: facts.epochOutputTokens ?? 0,
@@ -388,8 +405,8 @@ export function projectChildSessionFacts(id: string, facts: ConversationFacts, d
     ...(liveDraft?.outputProgress === undefined ? {} : { outputProgress: liveDraft.outputProgress }),
     ...(facts.promptText === undefined ? {} : { promptText: facts.promptText }),
     ...(activity === undefined ? {} : { activity }),
-    ...(facts.model === undefined ? {} : { model: facts.model }),
-    ...(facts.reasoningEffort === undefined ? {} : { effort: facts.reasoningEffort }),
+    ...(used === undefined ? {} : { model: used.model }),
+    ...(used?.reasoningEffort === undefined ? {} : { effort: String(used.reasoningEffort) }),
     ...(facts.endedAt === undefined ? {} : { endedAt: facts.endedAt }),
     ...(facts.runStopped === true ? { stopped: true } : {}),
   }
@@ -397,14 +414,26 @@ export function projectChildSessionFacts(id: string, facts: ConversationFacts, d
 
 function isFacts(value: unknown): value is ConversationFacts {
   if (value === null || typeof value !== 'object') return false
-  const row = value as { phase?: unknown, active?: unknown, turn?: unknown, flowDownChars?: unknown, todos?: unknown, contextTokens?: unknown, agentCalls?: unknown }
+  const row = value as { phase?: unknown, active?: unknown, turn?: unknown, flowDownChars?: unknown, agentCalls?: unknown }
   return (row.phase === 'idle' || row.phase === 'waiting' || row.phase === 'thinking' || row.phase === 'composing' || row.phase === 'tool')
     && typeof row.active === 'boolean'
     && typeof row.turn === 'number'
     && typeof row.flowDownChars === 'number'
-    && Array.isArray(row.todos)
-    && typeof row.contextTokens === 'number'
     && Array.isArray(row.agentCalls)
+}
+
+function isModelSelectionProjection(value: unknown): value is ModelSelectionProjection {
+  if (value === null || typeof value !== 'object') return false
+  const row = value as { lastUsed?: unknown, next?: unknown }
+  return isSelection(row.lastUsed) && isSelection(row.next)
+}
+
+function isSelection(value: unknown): value is { readonly provider: string, readonly model: string, readonly reasoningEffort?: string } | null {
+  if (value === null) return true
+  if (typeof value !== 'object') return false
+  const row = value as { provider?: unknown, model?: unknown, reasoningEffort?: unknown }
+  return typeof row.provider === 'string' && typeof row.model === 'string'
+    && (row.reasoningEffort === undefined || typeof row.reasoningEffort === 'string')
 }
 
 function isTitle(value: unknown): value is string | null {

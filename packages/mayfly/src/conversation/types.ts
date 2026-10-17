@@ -7,7 +7,6 @@
 
 import type {} from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-session-projection/types'
-import type { TodoItem } from '@deepseek-ai/dsh-tool-todo'
 
 /** Load-order signal published only after `mayflyConversation` is registered. */
 export interface MayflyConversationReady {
@@ -209,10 +208,11 @@ export interface ConversationProjectionState {
 }
 
 /**
- * Renderer-independent facts shared by status and dock consumers. The
- * projection owns event reduction; consumers never need the Session object or
- * a second event fold. Every field is a whole current value so replay and live
- * drives converge identically.
+ * Renderer-independent presentation facts shared by status and dock consumers.
+ * The projection owns only terminal presentation state; domain values such as
+ * todos, the selected model, and context occupancy come from their native
+ * projections. Every field is a whole current value so replay and live drives
+ * converge identically.
  */
 export interface ConversationFacts {
   readonly phase: 'idle' | 'waiting' | 'thinking' | 'composing' | 'tool'
@@ -220,20 +220,13 @@ export interface ConversationFacts {
   readonly turn: number
   /** Envelope time of the latest `turn/start`; the activity row's elapsed anchor. */
   readonly turnStartedAt?: number | undefined
-  readonly flowUp?: number | undefined
   readonly currentStep?: number | undefined
   readonly lastCompletedStep?: number | undefined
   readonly flowDownChars: number
   /** Current reasoning or answer phase only; cleared at stream boundaries. */
   readonly outputProgress?: OutputProgress | undefined
-  readonly todos: readonly TodoItem[]
-  readonly contextTokens: number
-  /** Cache-read share of the latest step's `contextTokens`; absent when the provider did not report it. */
+  /** Cache-read share of the latest step's prompt-side usage; absent when the provider did not report it. */
   readonly contextCacheReadTokens?: number | undefined
-  readonly contextWindow?: number | undefined
-  readonly model?: string | undefined
-  readonly provider?: string | undefined
-  readonly reasoningEffort?: string | undefined
   /** Latest human prompt in the current run, used for fork-child correlation. */
   readonly promptText?: string | undefined
   /** Per-run dispatched tool count, reset by `turn/start`. */
@@ -281,7 +274,12 @@ export interface ApprovalMark {
   readonly outcome?: 'allowed-once' | 'rejected' | 'cancelled' | 'unavailable' | undefined
 }
 
-/** The context tokens a compaction began with and ended with, and the window they were measured against. */
+/**
+ * The prompt-side tokens a compaction began with and ended with, derived from
+ * the presentation step-usage record so the settled row keeps its numbers. The
+ * live context and its window are native projection values and are not copied
+ * here.
+ */
 export interface CompactionMark {
   readonly id: string
   readonly before: number
