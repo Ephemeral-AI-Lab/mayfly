@@ -317,21 +317,21 @@ returns with `F7`, advances through the `/btw` open, toggles to the BTW, back to
 
 | span | CPU | key p50 | CPU per key |
 | --- | ---: | ---: | ---: |
-| load | 130.8% | | |
-| swarm | 21.3% | | |
-| agents | 30.4% | 4.43 ms | 14.29 ms |
-| open (Enter on a child) | 16.4% | 4.70 ms | 90 ms |
-| back (F7) | 13.2% | 28.10 ms | 50 ms |
-| btw-open | 8.4% | | |
-| btw (F7) | 16.3% | 40.72 ms | 60 ms |
-| main (F7) | 8.7% | 19.58 ms | 30 ms |
-| type | 11.4% | 2.73 ms | 3.22 ms |
-| scroll | 19.9% | 4.47 ms | 6.67 ms |
-| settle | 1.8% | | |
+| load | 125.3% | | |
+| swarm | 18.8% | | |
+| agents | 15.3% | 1.82 ms | 4.29 ms |
+| open (Enter on a child) | 5.6% | 6.04 ms | 30 ms |
+| back (F7) | 3.0% | 5.59 ms | 10 ms |
+| btw-open | 7.9% | | |
+| btw (F7) | 13.1% | 34.11 ms | 50 ms |
+| main (F7) | 5.9% | 16.25 ms | 20 ms |
+| type | 9.1% | 2.32 ms | 2.52 ms |
+| scroll | 20.4% | 3.95 ms | 6.67 ms |
+| settle | 2.1% | | |
 
 The first pass measured `open` 90 ms CPU/key, `back` 61.28 ms p50 / 130 ms CPU/key, `btw` 56.38 ms / 1200 ms (the span
 then still included opening the BTW), and `main` 41.44 ms / 80 ms. The fixes below brought the steady-state switches to
-the table: the side-conversation open itself is 8.2% CPU, and the F7 to its view is 46 ms p50 rather than a 1.2 s bill.
+the table: the side-conversation open itself is 7.9% CPU, and the F7 to its view is 34 ms p50 rather than a 1.2 s bill.
 
 ### Fixes in this follow-up
 
@@ -391,7 +391,7 @@ directory, so every checkpoint is reported `new`. Those are baseline/test-fixtur
 
 ### Remaining
 
-The switch keys are still 20-90 ms p50, above the 30 ms aspiration, so the record ceilings are not final gates. The next
+The switch keys are now 6-34 ms p50; `btw` is the one above the 30 ms aspiration, so the record ceilings are not final gates. The next
 measured candidates are the deferred hidden-pane lazy compile, status-agents' summary cadence, and the remaining
 virtual-row reads (`get`/`read`/`produce` in the first profile). `load` at 126% is the 30-turn fixture's boot plus history,
 not a switch. R5 is now landed (bottom-lane plan reuse and a row-width memo); R7 (hidden-lane compositing, tall-overlay
@@ -399,6 +399,20 @@ double layout, concat revision sums) and P4's dedicated moving-cell patch remain
 the O(E) copy is ever measured to dominate. P5's optimizer is implemented but still default-off; its owner review and
 the upstream pi-tui output-diff PR remain. The owner should review `perf-long`, `perf-swarm`, and a tall focused markdown
 message before merge.
+
+### P4/P5/R7/chunked decisions
+
+- **P4** is considered met by P3's lazy row painting: W33a paints one moving row per tick, and an off-screen pending
+  row never paints, so it never arms the clock. A dedicated moving-cell patch remains a possible later optimization, but
+  the current gate (`rowsPainted` 1) and the off-screen behavior are the target.
+- **P5** stays opt-in. The optimizer passes its grid property and grammar specs, but W35 still shifts every row because
+  the scrollbar column differs, so enabling it by default would not make the common wheel case cheaper. The owner review
+  and the upstream pi-tui output-diff PR remain outside this branch.
+- **R7** is reduced to the low-impact remainder (concat revision sums, tall-overlay double layout). Hidden views panes
+  now compile only on entry (`surface-renderer` defers a hidden views-pane update and the views subscription compiles the
+  active one), which also cut `perf-swarm` `agents` to 4.29 ms CPU/key and `back` to 10 ms.
+- **Chunked entries** remain deferred: P7's measured tail fold is still about 0.19 ms at E=20k, so the O(E) array copy
+  is not the dominant cost; a chunked representation would be a larger model change without a current gate.
 
 ## Hand-over
 
