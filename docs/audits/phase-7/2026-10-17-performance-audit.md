@@ -198,6 +198,20 @@ W31's remaining 6,100 is exactly the displayed view's tool entries; the two hidd
 unchanged. The focused official-model, conversation-slots, and live-overlay specs pass (76 cases, including new identity
 and lazy-invalidation cases).
 
+## P2 result (implemented)
+
+P2 landed on `perf/p2-stream-facts` (`0dd7e9f5`) and was merged into `perf/phase-7`. `StreamFacts` caches a turn index
+per durable-entry identity (and per live turn/step), so a live-only publish reuses the index and a durable publish builds
+it once; the window and forced turns select entry ranges instead of filtering the whole array three times.
+`republish()` and the 1 Hz tick use the same 30-200 ms publish window as `refresh()`; key-driven toggles stay immediate.
+`syncSearch` reuses `findHits` while the durable and live entry arrays and the pattern are unchanged, and `land()` no
+longer publishes twice when the first hit already has a row.
+
+`StreamFacts.build` on the 2,000-turn model fell from 9.4 ms median to 4.4 ms median (p95 13.2 ms) in the same one-off
+harness. The targeted stream-facts, publish-window, stream-search, and transcript-controller specs pass (78 cases). The
+perf fixtures now drain the controller's trailing publish explicitly (`FixedPublishClock.flush()`), so W28/W29/W31 still
+measure their real publish; W28-W31 and W33-W35 pass their budgets.
+
 ## Verification state
 
 - `pnpm run build` passes; W28-W31 pass their Round 0 budgets.
