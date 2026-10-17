@@ -599,7 +599,7 @@ export function registerExportCommands(ctx: Context): () => void {
 
   const saveCommand = ctx.commands.register({
     name: 'save',
-    description: 'Export the current session as a Markdown file',
+    description: 'Save the current session as a Markdown file',
     input: { hint: '[full] [<path>]' },
     handler: (invocation) => saveSession(invocation.rawInput, invocation.signal),
   })
