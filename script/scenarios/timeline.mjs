@@ -57,8 +57,14 @@ export const editHunks = (path, hunks, options = {}) => tool('edit', { file_path
 export const write = (path, content, options = {}) => tool('write', { file_path: path, content }, { result: `Wrote ${path}`, runMs: 500, meta: { operation: 'create', diffs: [] }, ...options })
 /** A todo-list update, as the `todo_write` tool makes it. */
 export const todos = (list, options = {}) => tool('todo_write', { todos: list.map(([status, content]) => ({ status, content })) }, { result: 'Todos updated', runMs: 200, todos: list, ...options })
-/** A subagent spawned by a tool call: the child session plays `child` (`prompt`, `items`, `outcome`, `startMs`). */
-export const subagent = (description, prompt, child, options = {}) => tool('subagent', { description, prompt }, { runMs: 400, child: { prompt, ...child }, ...options })
+/**
+ * A subagent spawned by a tool call: the child session plays `child` (`prompt`, `items`, `outcome`, `startMs`).
+ * `options.toolArgs` adds tool arguments, such as `run_in_background: true`, to the call.
+ */
+export const subagent = (description, prompt, child, options = {}) => {
+  const { toolArgs, ...rest } = options
+  return tool('subagent', { description, prompt, ...toolArgs }, { runMs: 400, child: { prompt, ...child }, ...rest })
+}
 /**
  * A compaction between steps (inside a turn): running for `ms`, then settled with `summary`. `manual: true` makes it the
  * result of a `/compact` command (the command row opens first and closes after).

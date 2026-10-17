@@ -620,6 +620,36 @@ const PERF = {
       measure('settle', [play(undefined, { timed: true })]),
     ],
   },
+  'perf-long': {
+    summary: '200 settled turns with two compactions, 2 live background subagents with nested live surveys, 2 running jobs, a goal and todos, 3 high-context streamed steps, and a /btw, with typing, scrolling, the wheel, views, and search over them',
+    source: { replay: 'perfLong' },
+    covers: [
+      `${TRANSCRIPT}official-model.ts`, `${TRANSCRIPT}stream-facts.ts`, `${TRANSCRIPT}transcript-model.ts`, `${TRANSCRIPT}session-facts.ts`,
+      `${TRANSCRIPT}status-agents.ts`, `${TRANSCRIPT}status-jobs.ts`, `${TRANSCRIPT}pane-todo.ts`, `${TRANSCRIPT}pane-activity.ts`,
+      'packages/mayfly/src/core/views-lane.ts', ...FRAME_PATH,
+    ],
+    sizes: [DEFAULT_SIZE],
+    perf: {
+      ceilings: {
+        load: { cpuPct: 60 }, combined: { cpuPct: 40 },
+        type: { keyP50Ms: 20, cpuPerKeyMs: 15 }, scroll: { keyP50Ms: 20, cpuPerKeyMs: 20 }, wheel: { keyP50Ms: 20, cpuPerKeyMs: 20 },
+        views: { keyP50Ms: 20, cpuPerKeyMs: 20 }, search: { keyP50Ms: 20, cpuPerKeyMs: 20 }, settle: { cpuPct: 90 },
+      },
+    },
+    script: [
+      measure('load', [play('load')]),
+      measure('combined', [play('combined', { timed: true })]),
+      measure('type', [type(SENTENCE)]),
+      measure('scroll', [key('pageup', { repeat: 10 }), key('pagedown', { repeat: 10 })]),
+      measure('wheel', [wheel('up', { count: 10 }), wheel('down', { count: 10 })]),
+      // The draft is still in the editor here; Ctrl+C empties it while the turn runs, so Alt+Down reaches the views.
+      key('ctrl+c'),
+      measure('views', [key('alt+down'), key('down', { repeat: 10 })]),
+      // Leave the view, take the stream's focus, and open its search line: `/` is the stream's own key.
+      measure('search', [key('esc'), key('alt+up'), key('/'), type('renderer'), key('enter')]),
+      measure('settle', [play(undefined, { timed: true })]),
+    ],
+  },
   'perf-content': {
     summary: 'page keys, End, and a resize inside the trace detail of a megabyte write',
     source: { replay: 'content' },
