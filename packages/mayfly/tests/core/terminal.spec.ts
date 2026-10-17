@@ -79,18 +79,20 @@ describe('startMayflyTerminal', () => {
       runtime.requestRender()
       await new Promise<void>(resolve => process.nextTick(resolve))
       component.render.mockClear()
+      // Alternate mode reserves the two scrollbar columns before the content child renders.
+      const contentWidth = (columns: number): number => mode === 'alternate' ? columns - 2 : columns
       terminal.resize(100, 30)
       await new Promise<void>(resolve => process.nextTick(resolve))
-      expect(component.render).toHaveBeenCalledWith(100)
-      expect(terminal.output).toContain('width 100')
+      expect(component.render).toHaveBeenCalledWith(contentWidth(100))
+      expect(terminal.output).toContain(`width ${String(contentWidth(100))}`)
       component.render.mockClear()
       terminal.resize(100, 12)
       await new Promise<void>(resolve => process.nextTick(resolve))
-      expect(component.render).toHaveBeenCalledWith(100)
+      expect(component.render).toHaveBeenCalledWith(contentWidth(100))
       component.render.mockClear()
       terminal.resize(25, 12)
       await new Promise<void>(resolve => process.nextTick(resolve))
-      expect(component.render).toHaveBeenCalledWith(25)
+      expect(component.render).toHaveBeenCalledWith(contentWidth(25))
     } finally {
       await runtime.stop()
       vi.useRealTimers()
@@ -441,7 +443,7 @@ describe('alternate-screen runtime', () => {
 
     runtime.requestRender(true)
     await waitForRender()
-    expect(await terminal.screen()).toEqual([
+    expect((await terminal.screen()).map(row => row.trimEnd())).toEqual([
       'transcript-row',
       'high-0',
       'high-1',
@@ -457,7 +459,7 @@ describe('alternate-screen runtime', () => {
 
     terminal.resize(40, 14)
     await waitForRender()
-    expect(await terminal.screen()).toEqual([
+    expect((await terminal.screen()).map(row => row.trimEnd())).toEqual([
       'transcript-row',
       'low-2',
       'low-3',
@@ -1074,7 +1076,7 @@ describe('alternate-screen runtime', () => {
     runtime.surfaces.register({ id: 'bottom', placement: 'bottom', component: rows('bottom', 2) })
     runtime.requestRender(true)
     await waitForRender()
-    expect(await terminal.screen()).toEqual([
+    expect((await terminal.screen()).map(row => row.trimEnd())).toEqual([
       'header-0',
       'header-1',
       'transcript',
@@ -1087,11 +1089,11 @@ describe('alternate-screen runtime', () => {
 
     terminal.resize(80, 6)
     await waitForRender()
-    expect(await terminal.screen()).toEqual(['transcript', 'editor-0', 'editor-1', 'editor-2', 'status-0', 'status-1'])
+    expect((await terminal.screen()).map(row => row.trimEnd())).toEqual(['transcript', 'editor-0', 'editor-1', 'editor-2', 'status-0', 'status-1'])
 
     terminal.resize(80, 12)
     await waitForRender()
-    expect(await terminal.screen()).toEqual([
+    expect((await terminal.screen()).map(row => row.trimEnd())).toEqual([
       'header-0',
       'header-1',
       'header-2',
@@ -1428,22 +1430,22 @@ describe('alternate-screen runtime', () => {
     expect(volatileRenders).toBeGreaterThan(framesBefore)
     expect(indexes().filter(index => index === 1)).toHaveLength(1)
     expect(indexes().filter(index => index === 3)).toHaveLength(1)
-    expect(stripWriterWrappers(terminal.output)).toContain('y'.repeat(40))
-    expect(stripWriterWrappers(terminal.output)).toContain('z'.repeat(40))
+    expect(stripWriterWrappers(terminal.output)).toContain('y'.repeat(38))
+    expect(stripWriterWrappers(terminal.output)).toContain('z'.repeat(38))
 
     // A changed row is measured again, at its frame-relative index.
     volatileTail = 'w'.repeat(50)
     runtime.requestRender()
     await waitForRender()
     expect(indexes().filter(index => index === 3)).toHaveLength(2)
-    expect(stripWriterWrappers(terminal.output)).toContain('w'.repeat(40))
+    expect(stripWriterWrappers(terminal.output)).toContain('w'.repeat(38))
 
     // A replaced row array is the change signal: the stable child rescans its changed row.
     stable = ['stable', 'x'.repeat(45)]
     runtime.requestRender()
     await waitForRender()
     expect(indexes().filter(index => index === 1)).toHaveLength(2)
-    expect(stripWriterWrappers(terminal.output)).toContain('x'.repeat(40))
+    expect(stripWriterWrappers(terminal.output)).toContain('x'.repeat(38))
     await runtime.stop()
     terminal.dispose()
   })
@@ -1472,7 +1474,7 @@ describe('alternate-screen runtime', () => {
       expect(frames.slice(0, before.length).map(frame => frame.reads)).toEqual(before)
     }
     expect(overflows.length).toBeGreaterThan(0)
-    expect(stripWriterWrappers(terminal.output)).toContain('w'.repeat(40))
+    expect(stripWriterWrappers(terminal.output)).toContain('w'.repeat(38))
     await runtime.stop()
     terminal.dispose()
   })
@@ -1650,7 +1652,7 @@ describe('alternate-screen runtime', () => {
     runtime.addChild(textComponent('x'.repeat(30)))
     runtime.requestRender(true)
     await waitForRender()
-    expect(entries).toEqual([{ index: 0, columns: 20, width: 30, line: 'x'.repeat(30) }])
+    expect(entries).toEqual([{ index: 0, columns: 18, width: 30, line: 'x'.repeat(30) }])
     await runtime.stop()
   })
 })
