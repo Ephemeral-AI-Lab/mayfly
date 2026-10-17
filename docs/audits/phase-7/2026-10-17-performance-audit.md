@@ -283,10 +283,22 @@ Stored checkpoints from stateVersion <=12 are discarded and refolded from seq 0 
 
 ## Verification state
 
-- `pnpm run build` passes; W28-W31 pass their Round 0 budgets.
-- `pnpm run frame perf-long` completes (3,296 frames, ~128 s) with no driver failure.
-- `pnpm run perf -- --assert perf-long` passes its initial ceilings after the record-only adjustment.
-- Known baseline: `pnpm run typecheck`'s `tsconfig.tests.json` project fails on pre-existing Phase 6 specs that import deleted symbols; `tsc -b` and the changed files are clean.
+- `pnpm run build` passes; `tsc -b` passes. The `tsconfig.tests.json` project still fails on the pre-existing Phase 6
+  specs that import deleted symbols (`width-scan`, `banner`, stale `pane-todo`/`status-*`/`terminal` expectations); none of
+  the errors are in the files changed here.
+- Work budgets: W28-W35 pass their (lowered) budgets, and the determinism/id-set/never-above-baseline checks pass. The only
+  failures are W16 (`stringsMeasured` 10 > 8) and W18-overlay (`rowsPainted` 3 > 2), both reproduced identically on
+  `main` at `b38fe28` before any Phase 7 change.
+- `pnpm run frame perf-long` completes: 3,307 frames, ~112.7 s, no driver failure; the replay's stored session still loads.
+- `pnpm run perf -- --assert perf-long` passes: load 112.3% CPU, combined 52.4%, type 10.6% / 2.57 ms key p50 / 3.04 ms
+  CPU per key, scroll 14.4% / 4.02 ms, wheel 8.1% / 3.65 ms, views 25.3% / 3.3 ms, search 47.7% / 13.81 ms, settle 25.4%.
+- `pnpm run check:lib` (50 lib claims), `pnpm run check:agent-docs` (12 instruction files), and the packed external UI kit
+  pass. `pnpm run check:pack` fails on the **pre-existing** library size budget: main is 3,154,816 bytes and this branch
+  3,232,812, against the 2,950,000 budget; the +78 KB is the Phase 7 modules, and the budget was already exceeded on main.
+- A `--prof` profile pass was started but killed when the `/tmp` tmpfs ran out of inodes; the scale curves and the
+  `perf --assert` spans stand in for it in this record. No Website build/preview was run.
+- `pnpm run check -- --plan` confirms the new files are claimed; the full `--tier pr` run is not green because of the
+  pre-existing failures above, not because of a Phase 7 regression.
 
 ## Hand-over
 
@@ -299,7 +311,10 @@ curves above are the measurement.
 
 ## Next
 
-P1, P2, and P7 are merged; P5 (output optimizer), P6 (fan-out and fixed frame cost), and the P3/P4 flow-list work are in
-their own branches. Each round commits its own counter gate and reports the measured delta; the final gate is
-`pnpm run check -- --tier pr`. P3/P4 remain the largest renderer change and the one most likely to need an owner review
-of the felt scrolling/follow-tail behavior before it merges.
+P1, P2, P3, P5, P6, and P7 are merged on `perf/phase-7`. P4's animation-patch work is the only fix round not landed: the
+visible pending row now paints one row per tick and the off-screen row already stops the animation clock, so its target is
+largely met by P3, but a dedicated moving-cell patch remains a later round. The remaining measured candidates are R5
+(plan-bottom-lane and row-width memo), R7 (hidden-lane compositing, tall-overlay double layout, concat revision sums), and
+the hidden-pane lazy compile that P6 deferred. The owner should review the flowing-list scroll/follow-tail feel in
+`perf-long` before this stack merges; the final gate remains `pnpm run check -- --tier pr` once the pre-existing main
+failures (W16/W18, terminal.spec, pack size, stale Phase 6 specs) are accepted or repaired.
