@@ -2,10 +2,11 @@ import { describe, expect, it, vi } from 'vitest'
 import type { Session } from '@deepseek-ai/dsh-session'
 import type { ToolRuntime } from '@deepseek-ai/dsh-tools'
 import type { ConversationJson, ConversationProjection, ConversationToolEntry } from '../../src/conversation/types.ts'
-import { conversationTranscriptModel, OfficialConversationModelSource, trimContext, WRITE_HEAD_LINES } from '../../src/transcript/official-model.ts'
+import { conversationTranscriptModel, createTranscriptModelCaches, OfficialConversationModelSource, trimContext, WRITE_HEAD_LINES } from '../../src/transcript/official-model.ts'
 import type { ConversationProjectionSource } from '../../src/transcript/conversation-feed.ts'
 import type { ToolPresentationSource } from '../../src/transcript/present.ts'
 import { materializeTranscriptEntries } from '../../src/frontend/models.ts'
+import { createWorkCounters } from '../../src/core/ui-work-counters.ts'
 
 function projection(entries: ConversationProjection['entries'] = [], streaming = false): ConversationProjection {
   return { entries: entries.map(entry => ({ ...entry, updatedSeq: entry.updatedSeq ?? entry.seq })), streaming, settledSteps: [], turns: [] }
@@ -671,7 +672,8 @@ describe('OfficialConversationModelSource', () => {
     const entries = projection(Array.from({ length: 300 }, (_, index) => transcriptTool({
       id: String(index), callId: String(index), seq: index, updatedSeq: index,
     }))).entries
-    const fixture = sourceFixture(projection(entries), 299)
+    const initial: ConversationProjection = { entries, streaming: false, settledSteps: [], turns: [] }
+    const fixture = sourceFixture(initial, 299)
     const get = vi.fn(() => undefined)
     const publish = vi.fn()
     const source = new OfficialConversationModelSource(fixture.source, { get }, publish)
@@ -849,21 +851,28 @@ describe('OfficialConversationModelSource', () => {
   it('re-resolves only changed tool entries across pending values', () => {
     const presentCall = vi.fn(() => undefined)
     const tools = { get: () => ({ presentCall }) } as unknown as ToolPresentationSource
-    const fixture = sourceFixture(projection([transcriptTool()]))
+    const initial = projection([transcriptTool()])
+    // The durable entry object is what the cache is keyed by; an unchanged
+    // whole value retains it, a changed tool entry replaces it.
+    const tool = initial.entries[0]!
+    const fixture = sourceFixture(initial)
     const source = new OfficialConversationModelSource(fixture.source, tools, () => undefined)
     source.attach(fixture.session)
     source.snapshot()
     expect(presentCall).toHaveBeenCalledTimes(1)
-    fixture.emit('mayflyConversation', projection([
-      transcriptTool(),
-      { kind: 'assistant' as const, id: 'a-2', seq: 5, updatedSeq: 5, turn: 1, step: 0, text: 'follow-up', streaming: false },
-    ]), 2)
+    fixture.emit('mayflyConversation', {
+      ...initial,
+      entries: [tool, { kind: 'assistant' as const, id: 'a-2', seq: 5, updatedSeq: 5, turn: 1, step: 0, text: 'follow-up', streaming: false }],
+    }, 2)
     source.snapshot()
     expect(presentCall).toHaveBeenCalledTimes(1)
-    fixture.emit('mayflyConversation', projection([transcriptTool({ updatedSeq: 9 })]), 3)
+    fixture.emit('mayflyConversation', { ...initial, entries: [{ ...tool, updatedSeq: 9 }] }, 3)
     source.snapshot()
     expect(presentCall).toHaveBeenCalledTimes(2)
+    // A tools/change is a mark: presenters re-resolve on the next snapshot.
     source.invalidateTools()
+    expect(presentCall).toHaveBeenCalledTimes(2)
+    source.snapshot()
     expect(presentCall).toHaveBeenCalledTimes(3)
     source.dispose()
   })
@@ -1149,7 +1158,7 @@ describe('OfficialConversationModelSource edges', () => {
     source.dispose()
   })
 
-  it('republishes nothing for a tools change after it was disposed', () => {
+  it('marks a tools change stale without publishing, and ignores it after dispose', () => {
     const f = sourceFixture(projection([transcriptTool()]), 4)
     const publish = vi.fn()
     const source = new OfficialConversationModelSource(f.source, toolSource(), publish)
@@ -1157,9 +1166,113 @@ describe('OfficialConversationModelSource edges', () => {
     source.snapshot()
     const before = publish.mock.calls.length
     source.invalidateTools()
-    expect(publish).toHaveBeenCalledTimes(before + 1)
+    expect(publish).toHaveBeenCalledTimes(before)
     source.dispose()
     source.invalidateTools()
-    expect(publish).toHaveBeenCalledTimes(before + 1)
+    expect(publish).toHaveBeenCalledTimes(before)
+  })
+})
+
+/** A projection over the exact entry objects given: identity survives, as it does in the registry's wire view. */
+function identityProjection(entries: ConversationProjection['entries']): ConversationProjection {
+  return { entries, streaming: false, settledSteps: [], turns: [] }
+}
+
+describe('incremental conversion', () => {
+  const userEntry: ConversationProjection['entries'][number] = {
+    kind: 'user', id: 'user-1', seq: 1, updatedSeq: 1, turn: 1, text: 'hello', images: [],
+  }
+
+  it('returns the same non-tool entry objects across conversions of unchanged entries', () => {
+    const caches = createTranscriptModelCaches()
+    const entries = [
+      userEntry,
+      transcriptTool({ id: 'tool-1', seq: 2, callId: 'call-1' }),
+      { kind: 'assistant' as const, id: 'assistant-1', seq: 3, updatedSeq: 3, turn: 1, step: 0, text: 'first', streaming: false },
+    ]
+    const first = conversationTranscriptModel(identityProjection(entries), toolSource(), 0, undefined, caches)
+    const second = conversationTranscriptModel(identityProjection(entries), toolSource(), 0, undefined, caches)
+    expect(second.entries).toHaveLength(first.entries.length)
+    for (let index = 0; index < first.entries.length; index += 1) expect(second.entries[index]).toBe(first.entries[index])
+
+    const changedEntries = entries.map(entry => entry.id === 'assistant-1' ? { ...entry, text: 'second' } : entry)
+    const third = conversationTranscriptModel(identityProjection(changedEntries), toolSource(), 0, undefined, caches)
+    expect(third.entries[0]).toBe(first.entries[0])
+    expect(third.entries[1]).toBe(first.entries[1])
+    expect(third.entries[2]).not.toBe(first.entries[2])
+    expect(third.entries[2]).toMatchObject({ text: 'second' })
+  })
+
+  it('reuses a group model for an unchanged run and rebuilds it when a member changes', () => {
+    const caches = createTranscriptModelCaches()
+    const counters = createWorkCounters()
+    const reads = [
+      transcriptTool({ id: 'read-1', seq: 2, callId: 'call-1', name: 'read', arguments: '{"path":"a.txt"}' }),
+      transcriptTool({ id: 'read-2', seq: 3, callId: 'call-2', name: 'read', arguments: '{"path":"b.txt"}' }),
+    ]
+    const first = conversationTranscriptModel(identityProjection([userEntry, ...reads]), readSource(), 0, undefined, caches, counters)
+    expect(counters.entriesMapped).toBe(3)
+    expect(counters.toolModelsBuilt).toBe(1)
+    const group = first.entries[1]!
+
+    Object.assign(counters, createWorkCounters())
+    const second = conversationTranscriptModel(identityProjection([userEntry, ...reads]), readSource(), 0, undefined, caches, counters)
+    expect(second.entries[0]).toBe(first.entries[0])
+    expect(second.entries[1]).toBe(group)
+    expect(counters.entriesMapped).toBe(0)
+    expect(counters.toolModelsBuilt).toBe(0)
+
+    Object.assign(counters, createWorkCounters())
+    const changed = { ...reads[1]!, updatedSeq: 9 }
+    const third = conversationTranscriptModel(identityProjection([userEntry, reads[0]!, changed]), readSource(), 0, undefined, caches, counters)
+    expect(third.entries[0]).toBe(first.entries[0])
+    expect(third.entries[1]).not.toBe(group)
+    expect(counters.entriesMapped).toBe(1)
+    expect(counters.toolModelsBuilt).toBe(1)
+  })
+
+  it('rebuilds only a changed tool model', () => {
+    const caches = createTranscriptModelCaches()
+    const counters = createWorkCounters()
+    const presentCall = vi.fn(() => undefined)
+    const tools = { get: () => ({ presentCall }) } as unknown as ToolPresentationSource
+    const firstTool = transcriptTool({ id: 'tool-1', seq: 2, callId: 'call-1', name: 'read', arguments: '{"path":"a.txt"}' })
+    const secondTool = transcriptTool({ id: 'tool-2', seq: 3, callId: 'call-2', name: 'bash', arguments: '{"command":"ls"}' })
+    const first = conversationTranscriptModel(identityProjection([userEntry, firstTool, secondTool]), tools, 0, undefined, caches, counters)
+    expect(counters.entriesMapped).toBe(3)
+    expect(counters.toolModelsBuilt).toBe(2)
+
+    Object.assign(counters, createWorkCounters())
+    const changedSecond = { ...secondTool, arguments: '{"command":"pwd"}' }
+    const second = conversationTranscriptModel(identityProjection([userEntry, firstTool, changedSecond]), tools, 0, undefined, caches, counters)
+    expect(second.entries[0]).toBe(first.entries[0])
+    expect(second.entries[1]).toBe(first.entries[1])
+    expect(second.entries[2]).not.toBe(first.entries[2])
+    expect(counters.entriesMapped).toBe(1)
+    expect(counters.toolModelsBuilt).toBe(1)
+    expect(presentCall).toHaveBeenCalledTimes(3)
+  })
+
+  it('marks tools stale without converting until the next snapshot', () => {
+    const presentCall = vi.fn(() => undefined)
+    const tools = { get: () => ({ presentCall }) } as unknown as ToolPresentationSource
+    const fixture = sourceFixture(projection([transcriptTool()]), 1)
+    const publish = vi.fn()
+    const source = new OfficialConversationModelSource(fixture.source, tools, publish)
+    source.attach(fixture.session)
+    const first = source.snapshot()
+    expect(presentCall).toHaveBeenCalledTimes(1)
+    expect(publish).toHaveBeenCalledOnce()
+
+    source.invalidateTools()
+    expect(presentCall).toHaveBeenCalledTimes(1)
+    expect(publish).toHaveBeenCalledOnce()
+    expect(materializeTranscriptEntries(source.snapshot())[0]).toMatchObject({ id: 'tool-1' })
+    expect(presentCall).toHaveBeenCalledTimes(2)
+    const rebuilt = source.snapshot()
+    expect(rebuilt).not.toBe(first)
+    expect(source.snapshot()).toBe(rebuilt)
+    expect(presentCall).toHaveBeenCalledTimes(2)
+    source.dispose()
   })
 })
