@@ -514,6 +514,7 @@ export function paintList(node: ListNodeView, width: number, height: number, col
   const parents = new Map<string, string>()
   for (const spec of options.rows) if (spec.item.under !== undefined) parents.set(spec.item.id, spec.item.under)
   for (const spec of options.rows) {
+    countWork(options.memo?.counters, 'itemsWalked')
     const item = spec.item
     if (item.group !== undefined && item.group !== group) {
       entries.push({ kind: 'group', lines: [...group !== undefined && node.groupGap === true ? [''] : [], clipRow(colors.muted(item.group), available)] })

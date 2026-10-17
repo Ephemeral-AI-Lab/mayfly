@@ -1503,6 +1503,7 @@ function walkControls(node: CompilableNode, options: RuntimeCompilerOptions, pat
         const choice = options.listRuntime.interaction?.choice({ pagePath, controlId: current.id })
         const selected = choice?.selectedIds ?? listSelectedIds(current)
         for (const { item, index } of window) if (focusableListItem(item)) {
+          countWork(options.counters, 'itemsWalked')
           const selectedIds = current.mode === 'multiple'
             ? selected.includes(item.id) ? selected.filter(id => id !== item.id) : [...selected, item.id]
             : [item.id]
@@ -2575,7 +2576,7 @@ export class MayflyUiSurfaceRuntime {
     const size = Math.min(count, Math.max(1, Math.floor(rowLimit)) + 4)
     const cursor = state === undefined ? 0 : choiceVisiblePosition(state)
     const start = Math.max(0, Math.min(count - size, cursor - Math.floor(size / 2)))
-    return Array.from({ length: size }, (_, offset) => {
+    const window = Array.from({ length: size }, (_, offset) => {
       const index = state === undefined ? start + offset : choiceVisibleIndex(state, start + offset)!
       if (state !== undefined) return { index, position: start + offset, ...choiceRow(state, index) }
       // Without a frontend model the list is a plain roving list: rows open only as they were declared.
@@ -2583,6 +2584,8 @@ export class MayflyUiSurfaceRuntime {
       const always = item.bodyAlways === true && item.body !== undefined
       return { index, position: start + offset, item, depth: 0, last: false, expandable: !always && item.body !== undefined, open: always || (item.body !== undefined && item.expanded === true) }
     })
+    countWork(this.options?.counters, 'itemsWalked', window.length)
+    return window
   }
 
   moveList(node: MayflyListNode, movement: ListMovement, pageSize: number): VirtualListEntry | undefined {

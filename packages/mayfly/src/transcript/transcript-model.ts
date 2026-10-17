@@ -13,6 +13,7 @@ import type { MayflyNodeSlot } from '../core/node-slot.ts'
 import type { MayflySearchLine } from '../core/search-line.ts'
 import type { MayflyScreenService } from '../core/screen.ts'
 import type { MayflyDecisionRequest, MayflyFocusMode, MayflyFocusRow, MayflyQueuedAction, MayflyScreen } from '../core/types.ts'
+import type { MayflyWorkCounters } from '../core/ui-work-counters.ts'
 import type { ApprovalMark, CompactionMark } from '../conversation/types.ts'
 import type { MayflyTranslate } from '../frontend/locale.ts'
 import { freezeModel, materializeTranscriptEntries, type TranscriptEntryModel, type TranscriptModel, type TranscriptTurnModel } from '../frontend/models.ts'
@@ -60,6 +61,8 @@ export interface TranscriptControllerOptions {
     readonly setTimeout: (callback: () => void, ms: number) => unknown
     readonly clearTimeout: (handle: unknown) => void
   }
+  /** Optional work sink for stream mapping and row construction; production passes none. */
+  readonly counters?: MayflyWorkCounters
 }
 
 /**
@@ -217,7 +220,7 @@ export class TranscriptController {
    */
   setView(key: string, source: Source, options: TranscriptViewOptions = {}): void {
     this.views.get(key)?.fresh.reset()
-    this.views.set(key, { source, options, facts: new StreamFacts(), fresh: new NewMessages(this.freshHost) })
+    this.views.set(key, { source, options, facts: new StreamFacts(this.options.counters), fresh: new NewMessages(this.freshHost) })
     if (key === this.active) this.publish()
   }
 

@@ -201,7 +201,7 @@ export function apply(ctx: Context): void {
   // Every displayed or retained conversation reads its own native path; the
   // registry decides which views exist, the controller which one is mounted.
   const slots = new ConversationSlots(ctx, transcript, {
-    source: (agent, publish) => new OfficialConversationModelSource(
+    source: (agent, publish, counters) => new OfficialConversationModelSource(
       ctx.sessionProjections,
       { get: toolName => {
         const definition = ctx.tools.get(toolName, agent)
@@ -214,6 +214,7 @@ export function apply(ctx: Context): void {
       publish,
       liveDrafts,
       t,
+      counters,
     ),
     headed: { liveTurnHeader: true },
     history: () => ctx.get('sessionController'),
