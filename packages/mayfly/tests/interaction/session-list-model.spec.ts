@@ -1,8 +1,7 @@
-/** `/sessions` pure projections: facts, rows, and the detail sheet.
+/** `/sessions` pure projections over native summaries: facts, rows, and the detail sheet.
  * @module @ephemeral-ai/mayfly/tests/interaction/session-list-model
  */
 import type { SessionSummary } from '@deepseek-ai/dsh-api-session-controller'
-import type { SessionHeader } from '@deepseek-ai/dsh-session'
 import { describe, expect, it } from 'vitest'
 import type { MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import type { MayflyTranslate } from '../../src/frontend/locale.ts'
@@ -13,7 +12,6 @@ import {
   sessionLabel,
   sessionListFacts,
   sessionListItem,
-  sessionSpan,
   type SessionListFacts,
 } from '../../src/interaction/session-list-model.ts'
 import { withOverrides, type Overrides } from '../fixture-fields.ts'
@@ -22,11 +20,8 @@ const t: MayflyTranslate = (key, values) => key.replace(/\{(\w+)\}/g, (_match, n
 const text = (node: MayflyUiNode | ReturnType<typeof sessionListItem>): string => JSON.stringify(node)
 
 const NOW = 1_800_000_000_000
+const STATS = { turns: 2, steps: 4, llmMs: 1_000, toolMs: 500, ttftMs: 100, ttftSteps: 1, decodeMs: 900, decodeTokens: 50 }
 
-/**
- * A listing summary. Its cached projection values are partial, as a projection cache may hold them, and its ids are
- * plain strings.
- */
 type SummaryFixture = Omit<Partial<SessionSummary>, 'projections' | 'parentSessionId'> & {
   readonly projections?: { readonly kind?: 'cached' | 'sequenced', readonly asOfSeq?: number, readonly values: Readonly<Record<string, unknown>> }
   readonly parentSessionId?: string
@@ -35,74 +30,89 @@ const summary = (over: SummaryFixture = {}): SessionSummary => ({
   sessionId: 'session-id-abcdef',
   updatedAt: NOW - 60_000,
   running: false,
+  blank: false,
   ...over,
 } as unknown as SessionSummary)
-
-const header = (over: Overrides<SessionHeader> = {}): SessionHeader => withOverrides({
-  id: 'session-id-abcdef',
-  createdAt: NOW - 3_600_000,
-  cwd: '/header/cwd',
-} as SessionHeader, over)
 
 const context = (over = {}) => ({ archived: false, current: false, now: NOW, ...over })
 
 describe('sessionListFacts', () => {
-  it('projects the title, projections, and header join', () => {
+  it('projects the title, hints, status, and preset', () => {
     const facts = sessionListFacts(summary({
-      cwd: '/summary/cwd',
+      cwd: '/repo',
       running: true,
       projections: { values: {
         title: 'My session',
+        agentPreset: 'standard',
+        sessionListMetadata: { blank: false, lastPromptAt: NOW - 30_000 },
         tokenUsage: { uncachedInputTokens: 100, outputTokens: 50, cacheReadTokens: 10, cacheWriteTokens: 5 },
-        sessionStats: { turns: 2, steps: 4, llmMs: 1_000, toolMs: 500, ttftMs: 100, ttftSteps: 1, decodeMs: 900, decodeTokens: 50 },
+        sessionStats: STATS,
         modelSelection: { lastUsed: { provider: 'deepseek', model: 'deepseek-chat', reasoningEffort: 'high' } },
-        mayflyConversationFacts: { endedAt: NOW - 30_000 },
       } },
-    }), { ...context({ current: true, archived: true }), header: header({ agentPreset: 'standard' }), reminders: new Set(['session-id-abcdef']) })
+    }), { ...context({ current: true, archived: true }), reminders: new Set(['session-id-abcdef']) })
     expect(facts).toMatchObject({
       id: 'session-id-abcdef',
       title: 'My session',
-      cwd: '/summary/cwd',
-      createdAt: NOW - 3_600_000,
+      cwd: '/repo',
       preset: 'standard',
       lastActiveAt: NOW,
       running: true,
       archived: true,
       current: true,
       reminders: true,
+      migrationRequired: false,
       tokens: { input: 100, cacheRead: 10, cacheWrite: 5, output: 50 },
       stats: { turns: 2, steps: 4 },
       model: { provider: 'deepseek', model: 'deepseek-chat', reasoningEffort: 'high' },
     })
   })
 
-  it('falls back through the header and drops absent values', () => {
-    const facts = sessionListFacts(summary({ parentSessionId: 'parent-id', origin: 'subagent', updatedAt: NOW - 120_000 }), {
-      ...context(), header: header({ agentPreset: undefined }),
-    })
+  it('drops absent values and distinguishes a cache miss from real activity', () => {
+    const facts = sessionListFacts(summary({ updatedAt: NOW - 120_000 }), context())
     expect(facts.title).toBeUndefined()
-    expect(facts.cwd).toBe('/header/cwd')
+    expect(facts.cwd).toBeUndefined()
     expect(facts.preset).toBeUndefined()
-    expect(facts.lastActiveAt).toBe(NOW - 120_000)
-    expect(facts.parentId).toBe('parent-id')
-    expect(facts.origin).toBe('subagent')
+    expect(facts.lastActiveAt).toBeUndefined()
     expect(facts.tokens).toBeUndefined()
     expect(facts.stats).toBeUndefined()
     expect(facts.model).toBeUndefined()
     expect(facts.reminders).toBe(false)
   })
 
-  it('uses the next model when none was used and ignores empty titles', () => {
+  it('uses the last prompt, then updatedAt for a session with turns, and now while running', () => {
+    expect(sessionListFacts(summary({ projections: { values: { sessionListMetadata: { blank: false, lastPromptAt: NOW - 5_000 } } } }), context()).lastActiveAt).toBe(NOW - 5_000)
+    expect(sessionListFacts(summary({ updatedAt: NOW - 7_000, projections: { values: { sessionStats: STATS } } }), context()).lastActiveAt).toBe(NOW - 7_000)
+    expect(sessionListFacts(summary({ running: true, updatedAt: NOW - 7_000 }), context()).lastActiveAt).toBe(NOW)
+  })
+
+  it('never derives activity from Mayfly conversation facts', () => {
     const facts = sessionListFacts(summary({
-      projections: { values: {
-        title: '',
-        modelSelection: { next: { provider: 'deepseek', model: 'deepseek-reasoner' } },
+      projections: { values: { mayflyConversationFacts: { endedAt: NOW - 1_000 } } },
+    }), context())
+    expect(facts.lastActiveAt).toBeUndefined()
+  })
+
+  it('shows the migration format status and keeps cached title/model hints', () => {
+    const facts = sessionListFacts(summary({
+      formatStatus: 'migration-required',
+      projections: { kind: 'cached', asOfSeq: 4, values: {
+        title: 'Old format', modelSelection: { lastUsed: null, next: { provider: 'deepseek', model: 'deepseek-reasoner' } },
       } },
     }), context())
-    expect(facts.title).toBeUndefined()
+    expect(facts.migrationRequired).toBe(true)
+    expect(facts.title).toBe('Old format')
     expect(facts.model).toEqual({ provider: 'deepseek', model: 'deepseek-reasoner' })
-    expect(facts.cwd).toBeUndefined()
-    expect(facts.createdAt).toBeUndefined()
+  })
+
+  it('ignores empty titles and lets exact detail values replace the listing hints', () => {
+    const blank = sessionListFacts(summary({ projections: { values: { title: '   ' } } }), context())
+    expect(blank.title).toBeUndefined()
+    const exact = sessionListFacts(summary({ projections: { values: { title: 'Stale' } } }), {
+      ...context(),
+      values: { title: 'Exact', sessionListMetadata: { blank: false, lastPromptAt: NOW - 60_000 } },
+    })
+    expect(exact.title).toBe('Exact')
+    expect(exact.lastActiveAt).toBe(NOW - 60_000)
   })
 })
 
@@ -127,55 +137,53 @@ describe('formatAgo', () => {
   })
 })
 
-describe('sessionSpan and sessionLabel', () => {
+describe('sessionLabel', () => {
   const facts = (over: Partial<SessionListFacts> = {}): SessionListFacts => ({
-    id: 'session-id-abcdef', lastActiveAt: NOW - 60_000, running: false, archived: false, current: false, reminders: false, ...over,
-  })
-  it('computes the wall span and clamps a reversed pair', () => {
-    expect(sessionSpan(facts({ createdAt: NOW - 3_600_000 }))).toBe(3_540_000)
-    expect(sessionSpan(facts({ createdAt: NOW }))).toBe(0)
-    expect(sessionSpan(facts())).toBeUndefined()
-  })
-  it('labels titled sessions and falls back to a short id', () => {
+    id: 'session-id-abcdef', lastActiveAt: NOW - 60_000, running: false,
+    archived: false, current: false, reminders: false, migrationRequired: false, ...over,
+  } as SessionListFacts)
+  it('labels titled sessions and falls back to Untitled plus a short id', () => {
     expect(sessionLabel(facts({ title: 'Named' }), t)).toBe('Named')
     expect(sessionLabel(facts(), t)).toBe('Untitled · id-abcde')
+    expect(sessionLabel({ ...facts(), id: 'custom-id' }, t)).toBe('Untitled · custom-i')
   })
 })
 
 describe('sessionListItem', () => {
   const facts = (over: Overrides<SessionListFacts> = {}): SessionListFacts => withOverrides<SessionListFacts>({
-    id: 'session-id-abcdef', title: 'Named', cwd: '/home/dev/repo', createdAt: NOW - 3_600_000,
-    lastActiveAt: NOW - 3_000_000, running: false, archived: false, current: false, reminders: false,
+    id: 'session-id-abcdef', title: 'Named', cwd: '/home/dev/repo',
+    lastActiveAt: NOW - 3_000_000, running: false, archived: false, current: false,
+    reminders: false, migrationRequired: false,
     tokens: { input: 1_500, cacheRead: 0, cacheWrite: 0, output: 500 },
-  }, over)
-  it('leads the detail with the span and tokens, then age and path', () => {
+  }, over) as SessionListFacts
+  it('leads the detail with tokens, then age and path', () => {
     const item = sessionListItem(facts(), NOW, '/home/dev', t)
     expect(item.label).toBe('Named')
-    expect(item.detailSpans?.map(span => span.text).join('')).toBe('10m · 2k tok · 50m ago · ~/repo')
+    expect(item.detailSpans?.map(span => span.text).join('')).toBe('2k tok · 50m ago · ~/repo')
     expect(item.searchText).toContain('session-id-abcdef')
     expect(item.searchText).toContain('/home/dev/repo')
     expect(item.badge).toBeUndefined()
   })
-  it('joins status badges and keeps the parent id', () => {
-    const item = sessionListItem(facts({ current: true, running: true, archived: true, reminders: true, parentId: 'parent' }), NOW, '/home/dev', t)
-    expect(item.badge).toBe('current · running · archived · reminders')
+  it('joins status badges, including migration, and keeps the parent id', () => {
+    const item = sessionListItem(facts({ current: true, running: true, archived: true, reminders: true, migrationRequired: true, parentId: 'parent' }), NOW, '/home/dev', t)
+    expect(item.badge).toBe('current · running · migration required · archived · reminders')
     expect(item.parentId).toBe('parent')
   })
-  it('omits missing span, zero tokens, and an absent path', () => {
-    const item = sessionListItem(facts({ createdAt: undefined, tokens: { input: 0, cacheRead: 0, cacheWrite: 0, output: 0 }, cwd: undefined, title: undefined }), NOW, '/home/dev', t)
+  it('omits missing tokens, activity, and an absent path', () => {
+    const item = sessionListItem(facts({ lastActiveAt: undefined, tokens: { input: 0, cacheRead: 0, cacheWrite: 0, output: 0 }, cwd: undefined, title: undefined }), NOW, '/home/dev', t)
     expect(item.label).toBe('Untitled · id-abcde')
-    expect(item.detailSpans?.map(span => span.text).join('')).toBe('50m ago')
+    expect(item.detailSpans).toEqual([])
   })
 })
 
 describe('sessionDetailNode', () => {
   it('renders every field when the facts are complete', () => {
     const detail = text(sessionDetailNode({
-      id: 'session-id-abcdef', title: 'Named', cwd: '/repo', createdAt: NOW - 3_600_000,
-      lastActiveAt: NOW - 60_000, running: true, archived: true, current: true, reminders: false,
-      preset: 'standard', parentId: 'parent-id', origin: 'subagent',
+      id: 'session-id-abcdef', title: 'Named', cwd: '/repo',
+      lastActiveAt: NOW - 60_000, running: true, archived: true, current: true,
+      reminders: false, migrationRequired: false, preset: 'standard', parentId: 'parent-id', origin: 'subagent',
       tokens: { input: 1_500, cacheRead: 100, cacheWrite: 50, output: 500 },
-      stats: { turns: 2, steps: 4, llmMs: 61_000, toolMs: 2_000, ttftMs: 100, ttftSteps: 1, decodeMs: 900, decodeTokens: 50 },
+      stats: { ...STATS, llmMs: 61_000, toolMs: 2_000 },
       model: { provider: 'deepseek', model: 'deepseek-reasoner', reasoningEffort: 'high' },
     }, NOW, t))
     expect(detail).toContain('Named')
@@ -185,57 +193,21 @@ describe('sessionDetailNode', () => {
     expect(detail).toContain('standard')
     expect(detail).toContain('Parent session')
     expect(detail).toContain('parent-id')
-    expect(detail).toContain('59m')
     expect(detail).toContain('model 1m · tools 2s')
     expect(detail).toContain('2 turns · 4 steps')
     expect(detail).toContain('cache read 100')
     expect(detail).toContain('deepseek-reasoner (deepseek) · high')
   })
-  it('renders placeholders and omits lineage fields when facts are sparse', () => {
+  it('shows migration in the status and renders placeholders for sparse facts', () => {
     const detail = text(sessionDetailNode({
-      id: 'bare', lastActiveAt: NOW, running: false, archived: false, current: false, reminders: false,
-      parentId: 'fork-parent',
+      id: 'bare', lastActiveAt: NOW, running: false, archived: false, current: false,
+      reminders: false, migrationRequired: true, parentId: 'fork-parent',
     }, NOW, t))
+    expect(detail).toContain('inactive · migration required')
     expect(detail).toContain('Untitled')
-    expect(detail).toContain('inactive')
     expect(detail).toContain('Forked from')
     expect(detail).not.toContain('Parent session')
-    expect(detail.match(/—/g)?.length).toBe(7)
+    expect(detail.match(/—/g)?.length).toBe(5)
     expect(detail).not.toContain('Preset')
   })
-})
-
-it('keeps cache misses distinct from zero activity and reads exact detail baselines', () => {
-  const cold = sessionListFacts(summary({ updatedAt: NOW - 3_600_000 }), {
-    ...context(), header: header(), title: 'Recovered title',
-  })
-  expect(cold.title).toBe('Recovered title')
-  expect(cold.lastActiveAt).toBeUndefined()
-  expect(sessionSpan(cold)).toBeUndefined()
-  expect(text(sessionListItem(cold, NOW, '/home/dev', t))).toContain('Created 1h ago')
-  expect(text(sessionListItem(cold, NOW, '/home/dev', t))).not.toContain('0s')
-  const exact = sessionListFacts(summary(), { ...context(), header: header(), projections: {
-    asOfSeq: 10, values: { title: 'Fresh title', sessionListMetadata: { blank: false, lastPromptAt: NOW - 60_000 } },
-  } })
-  expect(exact.title).toBe('Fresh title')
-  expect(sessionSpan(exact)).toBe(3_540_000)
-  expect(text(sessionDetailNode(cold, NOW, t))).toContain('—')
-})
-
-it('distinguishes generated session IDs and preserves unprefixed IDs', () => {
-  const base = { running: false, archived: false, current: false, reminders: false }
-  expect(sessionLabel({ ...base, id: 'session-a1b2c3d4-0000-1111' }, t)).toBe('Untitled · a1b2c3d4')
-  expect(sessionLabel({ ...base, id: 'session-e5f6a7b8-0000-1111' }, t)).toBe('Untitled · e5f6a7b8')
-  expect(sessionLabel({ ...base, id: 'custom-id' }, t)).toBe('Untitled · custom-i')
-  expect(sessionListItem({ ...base, id: 'bare' }, NOW, '/home/dev', t).detailSpans).toEqual([])
-})
-
-
-it('prefers a recovered title over stale listing hints while keeping an exact detail baseline authoritative', () => {
-  const cached = summary({ projections: { kind: 'cached', asOfSeq: 4, values: { title: null } } })
-  expect(sessionListFacts(cached, { ...context(), title: '你好，我能帮你做什么' }).title).toBe('你好，我能帮你做什么')
-  const staleName = summary({ projections: { kind: 'cached', asOfSeq: 4, values: { title: 'Old name' } } })
-  expect(sessionListFacts(staleName, { ...context(), title: 'Renamed conversation' }).title).toBe('Renamed conversation')
-  expect(sessionListFacts(cached, { ...context(), title: 'Older read', projections: { asOfSeq: 10, values: { title: 'Latest title' } } }).title).toBe('Latest title')
-  expect(sessionListFacts(cached, { ...context(), title: 'Older read', projections: { asOfSeq: 10, values: { title: null } } }).title).toBeUndefined()
 })

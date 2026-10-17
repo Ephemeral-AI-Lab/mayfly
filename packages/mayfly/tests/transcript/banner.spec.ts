@@ -276,6 +276,7 @@ function bannerState(initial: Agent | null = null) {
   return {
     currentAgent: {
       current: () => current,
+      primary: () => current,
       revision: () => 0,
       subscribe(listener: (agent: Agent | null, revision: number) => void) {
         agentListeners.add(listener)
@@ -329,6 +330,9 @@ async function bootBanner(config: banner.Config = {}, localeId?: 'en' | 'zh'): P
   ctx.reflect.provide('mayflyCurrentAgent', state.currentAgent)
   ctx.reflect.provide('sessionProjections', state.projections)
   ctx.reflect.provide('agentDefaultModel', { currentSelection: () => ({ provider: 'p', model: 'm' }) })
+  ctx.reflect.provide('mayflySessionStart', { onBooted: (listener: () => void) => { listener(); return () => {} } })
+  ctx.reflect.provide('mayflyInteractionState', { settingsSource: () => ({ reducedMotion: true }) })
+  ctx.reflect.provide('sessionController', { list: async () => ({ items: [] }) })
   const fiber = await ctx.plugin(banner, config)
   return { screen, locale, dispose: () => fiber.dispose() }
 }
@@ -336,7 +340,7 @@ async function bootBanner(config: banner.Config = {}, localeId?: 'en' | 'zh'): P
 describe('mayfly-banner plugin', () => {
   it('declares its name and injects', () => {
     expect(name).toBe('mayfly-banner')
-    expect(inject).toEqual(['mayflyScreen', 'mayflyTheme', 'mayflyComponents', 'mayflyCurrentAgent', 'sessionProjections', 'agentDefaultModel'])
+    expect(inject).toEqual(['mayflyScreen', 'mayflyCurrentAgent', 'mayflySessionStart', 'sessionProjections', 'agentDefaultModel', 'sessionController'])
   })
 
   it('mounts one scroll child with the snapshotted facts and requests a render', async () => {
@@ -403,6 +407,9 @@ describe('mayfly-banner plugin', () => {
     const state = bannerState()
     ctx.reflect.provide('mayflyCurrentAgent', state.currentAgent)
     ctx.reflect.provide('sessionProjections', state.projections)
+    ctx.reflect.provide('mayflySessionStart', { onBooted: (listener: () => void) => { listener(); return () => {} } })
+    ctx.reflect.provide('mayflyInteractionState', { settingsSource: () => ({ reducedMotion: true }) })
+    ctx.reflect.provide('sessionController', { list: async () => ({ items: [] }) })
     await ctx.plugin(banner)
     expect(screen.children[0]?.render(100).join('\n')).toContain('m · p')
     // A committed pick shows through the live ref.

@@ -16,7 +16,7 @@ import { describe, expect, it } from 'vitest'
 import { COMMON_LOCALE } from '../src/frontend/common-locale.ts'
 import { INTERACTION_LOCALE } from '../src/interaction/locale.ts'
 import { CORE_CONTEXT_HINT_LOCALE } from '../src/core/context-hint-locale.ts'
-import { ACTIVITY_LOCALE, BANNER_LOCALE, TRANSCRIPT_LOCALE } from '../src/transcript/locale.ts'
+import { ACTIVITY_LOCALE, TRANSCRIPT_LOCALE } from '../src/transcript/locale.ts'
 import { analyzeSource } from './locale-scan.ts'
 
 const SRC = resolve(dirname(fileURLToPath(import.meta.url)), '../src')
@@ -27,7 +27,6 @@ const CATALOGS: Readonly<Record<string, { readonly en: Readonly<Record<string, s
   interaction: INTERACTION_LOCALE,
   'core-context-hints': CORE_CONTEXT_HINT_LOCALE,
   transcript: TRANSCRIPT_LOCALE,
-  'transcript.banner': BANNER_LOCALE,
   'transcript.activity': ACTIVITY_LOCALE,
 }
 
