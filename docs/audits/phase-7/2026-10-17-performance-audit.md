@@ -387,15 +387,14 @@ creation/selection per start, throttled publish waits). The stale interaction/de
 shared fakes (session start, screen/slot APIs, runtime scrollbar colors), current control ids, borderless frames, and
 fresh snapshots. The full suite is now **312 passed / 1 skipped**, **5,699 tests passed / 1 skipped**; the pr tier's
 selected 241 spec files are **4,932/4,932**. Two current bugs found by the cleanup were fixed: a views pane that first compiles to no panel now keeps compiling hidden updates until a
-panel arrives, and the surface head now drops its badges before truncating the title. A full `pnpm run check -- --tier pr` (219 changed files) passes lint, build, typecheck, lib exports, examples, pack, CLI
-registry smoke, all 241 selected spec files (4,932 tests), and the 7-scenario perf A/B. The only failing steps are the
-scenario comparison and the two workflow tests that assert app-shot goldens: `script/scenarios/golden/` is absent in this
-checkout, so every checkpoint is reported `new` and the app-shot version assertion cannot find its stored frame. This is
-the documented exception. I generated the 159 scenario goldens locally to test closing it. The brand scene's warning race was fixed with a
-scenario wait, but immediate replays still showed `mergeHeights stats-models` and `mergePanels stats-history` differing
-(chart scale/transition frames are not deterministic enough to accept mechanically), and the app-shot version workflow
-test needs the Website SVG rewrite, which this branch is not allowed to touch. The generated goldens were reverted; the
-owner should accept them in a Website-capable release checkout. Everything else in the pr tier is green.
+panel arrives, and the surface head now drops its badges before truncating the title. A full `pnpm run check -- --tier pr` (381 changed files) passes lint, build, typecheck, lib exports, examples, pack, CLI
+registry smoke, all 84 workflow tests, all 241 selected spec files (4,932 tests), and the 7-scenario perf A/B. The scenario
+grid comparison also passes all 14 runs and all 160 accepted goldens; app-shot goldens are committed while the generated
+`website/public/shots` SVGs were reverted, so the Website stays untouched. The only local failure is the `--png` picture
+pass, which reports `no Chrome, so no pictures` because this checkout has no Chrome/Chromium binary. That is an
+environment prerequisite, not a frame difference: the same run's grid comparison is green. This is the documented
+submission exception; a CI/release checkout with Chrome runs the picture step.
+
 
 ### Remaining
 
