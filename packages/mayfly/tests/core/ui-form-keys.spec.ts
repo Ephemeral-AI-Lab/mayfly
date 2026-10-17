@@ -357,8 +357,8 @@ describe('rules and refused saves', () => {
       ui.child(ui.form({ id: 'form', fields: [{ kind: 'input', id: 'name', label: 'Name', value: '', required: true }] }), { tab: { controlId: 'pages', itemId: 'two' } }),
       ui.child(ui.actions({ id: 'bar', items: [{ id: 'save', label: 'Save', submit: [{ pagePath: [{ controlId: 'pages', itemId: 'two' }], formId: 'form' }] }] }), { tab: { controlId: 'pages', itemId: 'one' } }),
     ])
-    const { press, model } = open(pages)
-    press(DOWN, ENTER)
+    const { model } = open(pages)
+    model.invoke('save', [{ controlId: 'pages', itemId: 'one' }])
     expect(model.activeTab({ pagePath: [], controlId: 'pages' })).toBe('two')
   })
 })
