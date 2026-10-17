@@ -69,6 +69,14 @@ export const compaction = (options = {}) => ({ kind: 'compaction', ...options })
  * appended where it stands in the timeline. `surface: true` marks a message-producing event as part of the surface.
  */
 export const raw = (type, data, options = {}) => ({ kind: 'raw', type, data, ...options })
+/** A committed native working-directory change; the driver resolves a relative path against the Session's original project. */
+export const cwdChange = path => ({ kind: 'cwd-change', path })
+/** Create one native Host reminder for the current Session. */
+export const reminder = (title, prompt, { afterSeconds = 3600 } = {}) => ({ kind: 'schedule', title, prompt, afterSeconds })
+/** Follow the product's current Agent after a `/new`/`/clear` boundary. */
+export const follow = () => ({ kind: 'follow' })
+/** Reload the live core row through the loader, as an in-place code reload does. */
+export const reload = () => ({ kind: 'reload' })
 /**
  * A change to the session goal through the real goal service (`create`, `pause`, `resume`, `block`, `complete`,
  * `clear`), which writes the `goal/change` events itself. The goal is disarmed afterwards, so nothing continues it.
@@ -217,6 +225,10 @@ export function compile(items, { provider = 'deepseek-official', model = 'deepse
     for (const item of list) {
       if (item.kind === 'pause') { t += item.ms; continue }
       if (item.kind === 'raw') { event(t, item.type, item.data, item.surface === true); t += 100; continue }
+      if (item.kind === 'cwd-change') { push(t, { op: 'cwd-change', path: item.path }); t += 100; continue }
+      if (item.kind === 'schedule') { push(t, { op: 'schedule', title: item.title, prompt: item.prompt, afterSeconds: item.afterSeconds }); t += 100; continue }
+      if (item.kind === 'follow') { push(t, { op: 'follow' }); t += 100; continue }
+      if (item.kind === 'reload') { push(t, { op: 'reload-core' }); t += 100; continue }
       if (item.kind === 'goal') { push(t, { op: 'goal', ...item }); t += 200; continue }
       if (item.kind === 'goal-round') { push(t, { op: 'goal-round', round: item.round }); t += 200; continue }
       if (item.kind === 'mark') { push(t, { op: 'mark', name: item.name }); continue }
@@ -277,6 +289,10 @@ export function compile(items, { provider = 'deepseek-official', model = 'deepse
     for (const item of spec.items) {
       if (item.kind === 'pause') { t += item.ms; continue }
       if (item.kind === 'raw') { event(t, item.type, item.data, item.surface === true); t += 100; continue }
+      if (item.kind === 'cwd-change') { push(t, { op: 'cwd-change', path: item.path }); t += 100; continue }
+      if (item.kind === 'schedule') { push(t, { op: 'schedule', title: item.title, prompt: item.prompt, afterSeconds: item.afterSeconds }); t += 100; continue }
+      if (item.kind === 'follow') { push(t, { op: 'follow' }); t += 100; continue }
+      if (item.kind === 'reload') { push(t, { op: 'reload-core' }); t += 100; continue }
       if (item.kind === 'goal') { push(t, { op: 'goal', ...item }); t += 200; continue }
       if (item.kind === 'goal-round') { push(t, { op: 'goal-round', round: item.round }); t += 200; continue }
       if (item.kind === 'mark') { push(t, { op: 'mark', name: item.name }); continue }
@@ -381,7 +397,12 @@ export function compile(items, { provider = 'deepseek-official', model = 'deepse
         const child = call.child
         if (child.live === true) live.add(childId)
         push(callAt + 50, { op: 'child', id: childId, parent: session, label: call.args?.description, mode: child.mode ?? 'one-shot', live: child.live === true })
-        conversation([turn(child.prompt, child.items ?? [], { outcome: child.outcome })], callAt + 100 + (child.startMs ?? 300), childId)
+        const childEnd = conversation([turn(child.prompt, child.items ?? [], { outcome: child.outcome })], callAt + 100 + (child.startMs ?? 300), childId)
+        if (child.activation === true) {
+          const stopReason = child.outcome === undefined || child.outcome === 'completed' ? 'completed' : child.outcome === 'failed' ? 'error' : 'aborted'
+          push(callAt + 90, { op: 'activation-start', id: childId })
+          push(childEnd, { op: 'activation-end', id: childId, stopReason })
+        }
         call.result ??= `started subagent ${childId}`
       }
       const resultData = (text, isError, meta) => ({
@@ -409,7 +430,7 @@ export function compile(items, { provider = 'deepseek-official', model = 'deepse
   }
 
   /** A seeded session's events, at their own times: its turns compiled as a conversation of their own, then its title. */
-  function seeded({ id: sessionId, at, items: turns, title, cwd, parent, provider: sessionProvider = provider, model: sessionModel = model }) {
+  function seeded({ id: sessionId, at, items: turns, title, cwd, parent, migration, provider: sessionProvider = provider, model: sessionModel = model }) {
     const events = compile(turns.map(item => item.kind === 'turn' ? { ...item, items: item.items.map(entry => entry.kind === 'step' ? { ...entry, stream: false } : entry) } : item), { provider: sessionProvider, model: sessionModel, contextWindow })
       .map((action) => {
         if (action.op !== 'append') throw new Error(`a seeded session holds turns only, not ${action.op}`)
@@ -417,7 +438,7 @@ export function compile(items, { provider = 'deepseek-official', model = 'deepse
       })
     const end = events.at(-1)?.at ?? at
     if (title !== undefined) events.push({ at: end + 100, type: 'session/title', data: { title, messageSeqs: [], source: { kind: 'user' } } })
-    return { id: sessionId, createdAt: at, events, ...(cwd === undefined ? {} : { cwd }), ...(parent === undefined ? {} : { parent }) }
+    return { id: sessionId, createdAt: at, events, ...(cwd === undefined ? {} : { cwd }), ...(parent === undefined ? {} : { parent }), ...(migration === undefined ? {} : { migration }) }
   }
 
   conversation(items, 0, null)

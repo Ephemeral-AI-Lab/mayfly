@@ -61,15 +61,15 @@ slots, never arbitrary root components.
 - `interaction/` keeps editor/autocomplete state and prompt-submit transforms in
   separate Fiber services. Editor presentations are ordinary overlays projected
   into the fixed editor host; preserve and restore the prompt lease.
-- `/sessions` retains only native catalog headers and revision-keyed title
-  read results in the command Fiber across panel opens. Group the picker by
-  exact cwd using headers only; materialize projections and names only for the
-  opened workspace or explicit global search results. Show loading/progress
-  until pending reads settle. Enumerate persistence once per refresh and bound
-  cold reads. A cold title comes from `readColdSessionLog` rather than a retained
-  `sessionQuery` observation, with `sessionProjectionCache` consulted first.
-  Storage replacement and unload retire retained results; browsing must
-  never activate Agents, retain logs, or create a second session domain store.
+- `/sessions` retains only the native Session Controller catalog rows one
+  listing returned and fences refreshes by controller instance and generation.
+  Group the picker by native `workspaceRegistry` identity; a summary carries
+  its title, model, usage, and `formatStatus` hints without reading a log.
+  Opening a Session reads `sessionController.projections`: a `sequenced` result
+  is current, while `migration-required` shows the cached values and a notice
+  and never starts migration. Do not enumerate `sessionPersistence`, consult
+  `sessionProjectionCache`, call `readColdSessionLog`, or keep a second session
+  domain store. Browsing never activates Agents or retains logs.
 - `transcript/` has one conversation controller with one view per displayed
   or retained conversation (listed ones hold nothing), generation-keyed
   reuse, and lazy conversion of the latest unread value from a feed: a live
@@ -264,8 +264,13 @@ the same change; nothing is kept for a later cleanup.
 
 ## Native writes and sensitive data
 
-- `/plugin` keeps the marketplace catalog and CLI-backed installer. Installation,
-  update, and removal apply after restart; HMR stays disabled in the default bundle.
+- `/plugin` keeps the marketplace browser over the read-only index. Installed
+  state comes from `ctx.pluginManager.listBundles()`, and install, update,
+  remove, and enable/disable go through `installBundle`, `removeBundle`, and
+  `setBundleEnabled`; render the manager's `ChangeResult` and restart boundary.
+  Do not spawn a package manager, write a profile file, or keep a CLI-backed
+  installer. Installation, update, and removal apply after restart; HMR stays
+  disabled in the default bundle.
 - Optional collaboration plugins own their preset, tools, and UI contributions.
   The default bundle and shipped presets do not mount Agent Team. Keep upstream
   ordinary delegation available. Generic child navigation and the shared

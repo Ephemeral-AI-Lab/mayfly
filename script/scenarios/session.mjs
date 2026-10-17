@@ -85,6 +85,8 @@ export async function prepareSession({ scenario, dir, speed = 1, control, config
   for (const [id, settings] of Object.entries(scenario.config ?? {})) pinned[id] = { ...pinned[id], ...settings }
   for (const [id, settings] of Object.entries(pinned)) rows.push(`- id: ${id}\n  config:\n${Object.entries(settings).map(([key, value]) => `    ${key}: ${JSON.stringify(value)}\n`).join('')}`)
   for (const id of new Set([...disabled, ...(scenario.disabled ?? [])])) rows.push(`- id: ${id}\n  disabled: true\n`)
+  // A scenario may turn a shipped-disabled row back on for the state it shows (the Host Schedule service).
+  for (const id of scenario.enable ?? []) rows.push(`- id: ${id}\n  disabled: false\n`)
   if (isolate) {
     rows.push(`- id: session-persistence-jsonl\n  config:\n    root: ${JSON.stringify(join(dir, 'store/sessions'))}\n`)
     rows.push(`- id: storage-json\n  config:\n    root: ${JSON.stringify(join(dir, 'store/storages'))}\n`)
@@ -121,7 +123,7 @@ export async function prepareSession({ scenario, dir, speed = 1, control, config
       ...(scenario.source.sessionless === true ? { MAYFLY_REPLAY_SESSIONLESS: '1' } : {}),
       ...(control === undefined ? {} : { MAYFLY_REPLAY_CONTROL: control }),
       ...(scenario.account?.signed === undefined ? {} : { MAYFLY_FAKE_ACCOUNT: scenario.account.signed }),
-      ...(isolate ? { HOME: tmp } : {}),
+      ...(isolate ? { HOME: tmp, MAYFLY_SCENARIO_SESSION_STORE: join(dir, 'store/sessions') } : {}),
       ...browserEnv,
       ...market?.env,
       ...fixtures,

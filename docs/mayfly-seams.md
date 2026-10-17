@@ -22,6 +22,22 @@ still inject that native service directly; a root-level Mayfly plugin does not
 pierce an Agent-private realm but instead uses the projection and command that
 Harness provides for this purpose.
 
+Current state is read from the native projections listed in
+[native-capability-map.md](./native-capability-map.md), through
+`ctx.sessionProjections.snapshot`, `stateOf`, and `onChanged`. A session
+summary from `ctx.sessionController.list()` may carry the same values as hints;
+for a cold or remote Session, `ctx.sessionController.projections({ sessionId })`
+returns a `sequenced` read or `migration-required` cached hints and never starts
+migration. Mayfly's own projection keys are `mayflyConversation`,
+`mayflyConversationFacts`, and `mayflyDeliverables`.
+
+Schedule is a Host-wide service (`ctx.schedule`), not a session projection; the
+model-facing `schedule_*` tools are the preset-owned `tool-schedule` row.
+`standard`, `ptc`, `cordis`, and `mayfly-cordis` mount it; `minimal` does not.
+Subagents are managed activations: readers use `subagentCatalog`,
+`subagentTiming`, and the `subagent/start`/`subagent/end` lifecycle, and stops
+go through `ctx.subagents.drainChildren`.
+
 ## Mayfly UI services
 
 | Service | Registration shape | Renderer |

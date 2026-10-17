@@ -4,7 +4,7 @@
  * scenes are the timelines of the perf and app scenarios. See `timeline.mjs` for the builders. @module script/scenarios/replays
  */
 
-import { btw, dequeue, edit, goal as goalItem, job, mark, notify, pause, queue, question, seed, step, subagent, todos, tool, turn } from './timeline.mjs'
+import { btw, cwdChange, dequeue, edit, follow, goal as goalItem, job, mark, notify, pause, queue, question, reload, reminder, seed, step, subagent, todos, tool, turn } from './timeline.mjs'
 /** A reply shaped like a real answer: prose, lists, a table, and fenced code in two languages. */
 function reply() {
   const parts = []
@@ -472,4 +472,71 @@ const startSplash = {
   ],
 }
 
-export const REPLAYS = { mergeDock, mergeConversations, mergePanels, mergeHeights, mergeEsc, viewItems, newMessages, brandThemes, startSplash }
+
+/**
+ * The native-capability alignment round: one long session walks the merged
+ * native readers and controllers. It changes the working directory and shows
+ * the resulting native todo/context/model values, runs a managed subagent
+ * activation to completion beside a bash job, enables the Host Schedule
+ * service and shows the preset-owned reminder tools, opens a native file
+ * mention, `/permissions`, `/save`, a migrated stored Session, and `/btw`;
+ * then it switches to `minimal` (no schedule tools), narrows the terminal, and
+ * reloads the live core row through the loader.
+ */
+const harnessAlignment = {
+  summary: 'native capability alignment: a working-directory change with native todo/context/model values, a managed subagent activation and completion, a bash job, Schedule in standard (reminder tools and /schedule) versus minimal (no tools), a migration-required stored session, a native @file mention, /permissions, /save, /btw, 60 and 40 columns, and a core reload',
+  workspace: {
+    'src/hero.ts': "export const hero = 'Ship agent UI in a keystroke'\n",
+    'README.md': '# Harness alignment\n\nThe hero lives in src/hero.ts.\n',
+  },
+  items: [
+    seed([
+      { id: 'seed-legacy-hero', at: -DAY, migration: true, title: 'Legacy hero notes', items: earlier('Draft the old hero copy.', 'The old hero was three sentences long.', { inputTokens: 2_400, outputTokens: 180, cacheReadTokens: 1_000 }) },
+    ]),
+    turn('Refresh the hero and keep every test green.', [
+      cwdChange('src'),
+      step({
+        text: 'I will update src/hero.ts and run the suite from the new working directory.',
+        usage: { inputTokens: 4_200, outputTokens: 130, cacheReadTokens: 2_000 },
+        tools: [
+          todos([['completed', 'Read the brand notes'], ['in_progress', 'Tighten the hero'], ['pending', 'Run the tests']]),
+          tool('read', { file_path: 'hero.ts' }, { result: "export const hero = 'Ship agent UI in a keystroke'\n", runMs: 500 }),
+        ],
+      }),
+      job('pnpm run test', { lines: [[300, 'running the suite…'], [9_000, '214 tests passed']], progress: [[500, 'running'], [9_000, 'passed']], endMs: 14_000, status: 'completed', detail: 'exit code: 0' }),
+      mark('job-live'),
+      step({ text: 'The suite is still running; the status row keeps the job live.', usage: { inputTokens: 4_600, outputTokens: 90, cacheReadTokens: 4_000 } }),
+    ]),
+    mark('aligned'),
+    pause(1500),
+    turn('Hand the hero audit to a subagent while the suite finishes.', [
+      step({
+        tools: [subagent('hero audit', 'Audit the hero copy against the brand notes and report what to change', {
+          mode: 'continuable', live: true, activation: true, outcome: 'completed',
+          items: [step({ text: 'The hero is clear; shorten the subhead and keep the install line above the fold.', usage: { inputTokens: 3_200, outputTokens: 120, cacheReadTokens: 2_400 } })],
+        }, { runMs: 6_000 })],
+        marks: [{ name: 'activation-live', block: 'tool', at: 0.3 }],
+        usage: { inputTokens: 5_000, outputTokens: 80, cacheReadTokens: 4_000 },
+      }),
+      pause(7000),
+      mark('activated'),
+    ]),
+    pause(5000),
+    mark('job-done'),
+    pause(1000),
+    mark('ready'),
+    reminder('Hero audit reminder', 'Check the hero copy again before the release.'),
+    mark('scheduled'),
+    pause(1000),
+    mark('before-minimal'),
+    follow(),
+    mark('minimal'),
+    pause(2000),
+    mark('reload-ready'),
+    reload(),
+    pause(1500),
+    mark('reloaded'),
+  ],
+}
+
+export const REPLAYS = { mergeDock, mergeConversations, mergePanels, mergeHeights, mergeEsc, viewItems, newMessages, brandThemes, startSplash, harnessAlignment }

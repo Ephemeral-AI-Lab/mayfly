@@ -58,6 +58,12 @@ const COVERS = {
     ...QUEUE_COVERS, ...NOTIFICATION, `${INTERACTION}btw-command.ts`, `${INTERACTION}conversation-view-status.ts`, `${INTERACTION}placeholder.ts`, `${TRANSCRIPT}status-agents.ts`,
     'packages/mayfly/src/app/conversation-views.ts', 'packages/mayfly/src/components/editor.ts', 'packages/mayfly/src/core/views-lane.ts',
   ],
+  harnessAlignment: [
+    `${INTERACTION}native-sessions.ts`, `${INTERACTION}session-*.ts`, `${INTERACTION}permission-panel.ts`, `${INTERACTION}btw-command.ts`, `${INTERACTION}session-export.ts`,
+    `${INTERACTION}editor-plus.ts`, `${INTERACTION}schedule-command.ts`, `${TRANSCRIPT}status-cwd.ts`, `${TRANSCRIPT}status-context.ts`, `${TRANSCRIPT}status-basic-model.ts`,
+    `${TRANSCRIPT}pane-todo.ts`, `${TRANSCRIPT}status-agents.ts`, `${TRANSCRIPT}status-jobs.ts`, 'packages/mayfly/src/conversation/', 'packages/mayfly/src/internal/session-directory.ts',
+    'packages/mayfly/src/core/', 'packages/mayfly/src/frontend/',
+  ],
 }
 
 /**
@@ -482,6 +488,33 @@ const SCRIPTS = {
     key('enter'), checkpoint('subagent'),
     key('f8'), checkpoint('detached'), key('esc'),
   ],
+  // Native capability alignment: the working directory, native todo/context/model, a managed activation, a bash job,
+  // Schedule in standard and minimal, a migration-required session, a native file mention, /permissions, /save, /btw,
+  // narrow widths, and a live core reload.
+  harnessAlignment: [
+    play('aligned'), checkpoint('aligned'),
+    play('activation-live'), checkpoint('activation-live'),
+    key('alt+down'), checkpoint('agents-live'), key('esc'), wait(150),
+    play('activated'), checkpoint('activated'),
+    play('job-done'), checkpoint('job-done'),
+    play('scheduled'), checkpoint('scheduled'),
+    type('/schedule'), key('enter'), wait(300), checkpoint('standard-schedule'), key('esc'),
+    type('/tools'), key('enter'), wait(300), type('/'), type('schedule'), wait(300), checkpoint('standard-tools'), key('esc'), key('esc'),
+    type('@hero'), checkpoint('mention'), key('enter'), type(' tighten the hero copy'), key('enter'), wait(1500), checkpoint('mention-sent'),
+    type('/permissions'), key('enter'), wait(300), checkpoint('permissions'), key('esc'),
+    type('/save'), key('enter'), wait(500), checkpoint('save'),
+    type('/sessions'), key('enter'), wait(500), key('enter'), until('Legacy hero notes'), checkpoint('migration'), key('esc'), key('esc'),
+    type('/btw Does the hero need a dark variant?'), key('enter'), wait(2000), checkpoint('btw'), key('f7'), wait(300), checkpoint('main'),
+    play('before-minimal'),
+    type('/new minimal'), key('enter'), wait(500),
+    type('Check the minimal tool surface.'), key('enter'), play('minimal'), checkpoint('minimal'),
+    type('/tools'), key('enter'), wait(300), type('/'), type('schedule'), wait(300), checkpoint('minimal-tools'), key('esc'), key('esc'),
+    type('/schedule'), key('enter'), wait(300), checkpoint('minimal-schedule'), key('esc'),
+    resize(60, 30), checkpoint('narrow-60'),
+    resize(40, 30), checkpoint('narrow-40'),
+    resize(100, 30),
+    play('reload-ready'), play('reloaded'), checkpoint('reloaded'),
+  ],
 }
 
 /** Replays that run at a size of their own. */
@@ -495,6 +528,7 @@ const SIZES = {
   viewItems: [[100, 30]],
   mergeDock: [[100, 30]],
   mergeConversations: [[100, 30]],
+  harnessAlignment: [[100, 30]],
 }
 
 /** What a replay's session needs beyond the replay: the /plugin catalog of the bench profile, a DeepSeek balance. */
@@ -503,6 +537,14 @@ const OPTIONS = {
   startSplash: { sessionless: true, firstRun: true, config: { mayfly: { startup: 'splash' } } },
   mergePanels: { market: { installed: 'full' }, account: { balance: 'ok' } },
   mergeHeights: { market: { installed: 'full' }, account: { balance: 'ok' } },
+  // The Host Schedule service is inserted disabled; this scenario turns it on to compare standard and minimal.
+  harnessAlignment: {
+    workspace: {
+      'src/hero.ts': "export const hero = 'Ship agent UI in a keystroke'\n",
+      'README.md': '# Harness alignment\n\nThe hero lives in src/hero.ts.\n',
+    },
+    enable: ['schedule'],
+  },
 }
 
 /** A replay as a scenario: its script, covers, sizes, options, and brief from the tables above. */

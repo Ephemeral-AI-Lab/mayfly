@@ -106,12 +106,13 @@
       name: '@deepseek-ai/dsh-api-session-controller'
 
     # Durable Host-wide reminders. The Schedule service owns the task store and
-    # delivers each due occurrence as a follow-up in its original Session; it
-    # attaches schedule_* tools to every root Agent. Shipped disabled — enable
-    # it in profile files to turn on reminder management. (Harness 0.2.0 moved
-    # upstream's own Web rows into the optional dsh-experimental-schedule-bundle;
-    # Mayfly inserts its row directly, so the capability does not depend on
-    # that experimental bundle.)
+    # delivers each due occurrence as a follow-up in its original Session. The
+    # model-facing schedule_* tools are the preset-owned tool-schedule row
+    # (mounted by standard, ptc, cordis, and mayfly-cordis; omitted by
+    # minimal). Shipped disabled — enable the service in profile files to turn
+    # on reminder management. (Harness 0.2.0 moved upstream's own Web rows into
+    # the optional dsh-experimental-schedule-bundle; Mayfly inserts its row
+    # directly, so the capability does not depend on that experimental bundle.)
     - id: schedule
       name: '@deepseek-ai/dsh-schedule'
       disabled: true
