@@ -226,7 +226,7 @@ class SurfaceLaneContainer implements Component {
     const layout = this.getLayout()
     if (layout[this.placement] === undefined) return 0
     const measured = this.measured
-    return measured?.width === width && measured.layout === layout ? measured.rows : this.render(width).length
+    return measured?.width === width && measured.layout === layout && measured.maxRows === this.maxRows() ? measured.rows : this.render(width).length
   }
 
   invalidate(): void {
@@ -243,7 +243,10 @@ class SurfaceLaneContainer implements Component {
       // a layout that changed since then re-plans at the measured width.
       const measured = this.measured
       /* a bottom measurement always carries a plan and precedes any layout */
-      const plan = measured?.layout === layout && measured.plan !== undefined ? measured.plan : planBottomLane(lane, measured?.width ?? 1, this.maxRows())
+      const maxRows = this.maxRows()
+      const plan = measured?.layout === layout && measured.maxRows === maxRows && measured.plan !== undefined
+        ? measured.plan
+        : planBottomLane(lane, measured?.width ?? 1, maxRows)
       const fixed = (size: number) => ({ basis: size, grow: 0, shrink: 1, minSize: 0, maxSize: size })
       if (plan.rule !== undefined) stack.addChild(rowsLeaf([plan.rule]), fixed(1))
       if (plan.tabs !== undefined) stack.addChild(rowsLeaf([plan.tabs]), fixed(1))
