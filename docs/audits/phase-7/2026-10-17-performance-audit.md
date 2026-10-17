@@ -320,11 +320,11 @@ returns with `F7`, advances through the `/btw` open, toggles to the BTW, back to
 | load | 130.8% | | |
 | swarm | 21.3% | | |
 | agents | 30.4% | 4.43 ms | 14.29 ms |
-| open (Enter on a child) | 10.2% | 4.21 ms | 60 ms |
-| back (F7) | 8.5% | 26.28 ms | 30 ms |
-| btw-open | 8.2% | | |
-| btw (F7) | 21.5% | 46.35 ms | 80 ms |
-| main (F7) | 13.1% | 32.14 ms | 50 ms |
+| open (Enter on a child) | 16.4% | 4.70 ms | 90 ms |
+| back (F7) | 13.2% | 28.10 ms | 50 ms |
+| btw-open | 8.4% | | |
+| btw (F7) | 16.3% | 40.72 ms | 60 ms |
+| main (F7) | 8.7% | 19.58 ms | 30 ms |
 | type | 11.4% | 2.73 ms | 3.22 ms |
 | scroll | 19.9% | 4.47 ms | 6.67 ms |
 | settle | 1.8% | | |
@@ -341,23 +341,32 @@ the table: the side-conversation open itself is 8.2% CPU, and the F7 to its view
    the same by identity, and `TranscriptView`/`TranscriptStream` cache the list and its stack by facts, cursor, and
    highlight. An F7 that only changes the displayed conversation therefore reuses the compiled node instead of admitting
    and compiling the same list again.
-3. **A hidden agents panel refreshes at 1 Hz.** `status-agents` still publishes its summary at the child cadence, but a
-   hidden panel is rebuilt at most once a second; structural row changes and an entered view keep the old immediate
-   update. This cut the `back` F7 from 50 to 30 ms CPU/key.
-4. **Tall list bodies are no longer viewport-bounded.** `paintBody` unwrapped the leaf's alternate-screen viewport bound
-   only for flow content or a current search match. A focused list (the normal state when reading/scrolling a message)
-   took the bounded facade, so a markdown body taller than the viewport measured about one screen and its lower rows
-   were unreachable. Every list body now returns `unclampedRows(rows)`; the list's window or the outer scroll still
-   decides which rows paint. The regression test renders 160 paragraphs in a focused content slot, asserts more than 160
-   total rows in both flowing and focused state, and scrolls back to row 0. The W4/W29/W33/W34 work budgets still pass.
+3. **A hidden agents panel refreshes at 1 Hz, without dropping the skipped update.** `status-agents` still publishes its
+   summary at the child cadence, but a hidden panel is rebuilt at most once a second; structural row changes (including
+   the catalog's action modes) and an entered view keep the old immediate update. A skipped panel is not marked
+   published, and a view-lane subscription forces one paint on entry, so a settled row cannot leave a stale panel behind.
+   This cut the `back` F7 from 50 to 30 ms CPU/key in the first pass; the final run is 50 ms CPU/key with 28 ms p50.
+4. **Tall list bodies are no longer viewport-bounded, and focus no longer re-windows the content list.** `paintBody`
+   already unwrapped the leaf's alternate-screen bound only for flow content or a current search match; making it always
+   return `unclampedRows(rows)` was necessary but not sufficient. A focused content slot also set `runtime.flow = false`
+   (`node-slot.ts`), so `listRowLimit` became the viewport and the focused stream painted only ~39 rows; the tail of a
+   tall answer was unreachable even though `paintBody` had measured 319 rows. The fix keeps flow true for a content
+   region whether or not it holds focus, and lets `FlowListPainter` paint the focused list: it now carries the focused
+   cursor/marker, reports `markerFree` only while unfocused, and answers a marker seek from the cursor block instead of
+   walking every row. A focused list that cannot virtualize (filter, tree, current match) keeps the viewport fallback.
+   The regression test renders 160 paragraphs, focuses the slot, calls `followContent()` (the old test only held a stale
+   scroll top and passed before the fix), asserts the tail is past the first screen, and scrolls back to row 0.
+   `W4-slot` now admits the changed off-screen item once to keep its total height exact (`nodesValidated` 2,
+   `rowsPainted` 1); the slot gate allows that one item and every other counter stays at the direct figures.
 
 ### Remaining
 
-The switch keys are still 30-80 ms p50, above the 30 ms aspiration, so the record ceilings are not final gates. The next
+The switch keys are still 20-90 ms p50, above the 30 ms aspiration, so the record ceilings are not final gates. The next
 measured candidates are the deferred hidden-pane lazy compile, status-agents' summary cadence, and the remaining
-virtual-row reads (`get`/`read`/`produce` in the first profile). `load` at 131% is the 30-turn fixture's boot plus history,
-not a switch. No full `check --tier pr` was run for this follow-up; the targeted specs, `p3-flow-list`, W4/W29/W33/W34,
-and `perf-swarm` were used instead.
+virtual-row reads (`get`/`read`/`produce` in the first profile). `load` at 126% is the 30-turn fixture's boot plus history,
+not a switch. The profile's top self time is now Cordis context-proxy `get` (894 ms) rather than the virtual row scan.
+No full `check --tier pr` was run for this follow-up; the targeted specs, `p3-flow-list`, W4/W29/W33/W34, `perf-swarm`,
+and `perf-long` were used instead.
 
 ## Hand-over
 
