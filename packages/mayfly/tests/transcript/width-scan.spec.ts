@@ -71,11 +71,20 @@ describe('transcript width-scan', () => {
 
     it(`agents item survives ${name}`, () => {
       const t = transcriptTranslatorFake
-      const rows = agentsStatus.agentRows([
-        { seq: 1, turn: 1, step: 1, callId: 'fg', name: 'subagent', arguments: JSON.stringify({ name: text, description: text, prompt: text }), startedAt: 1_000 },
-        { seq: 2, turn: 1, step: 1, callId: 'bg', name: 'subagent', arguments: JSON.stringify({ name: text, description: text }), startedAt: 1_000, result: { text: 'started subagent c1', isError: false, endedAt: 2_000 } },
-        { seq: 3, turn: 1, step: 1, callId: 'bad', name: 'subagent', arguments: JSON.stringify({ name: text }), startedAt: 1_000, result: { text, isError: true, endedAt: 9_000 } },
-      ], [{ id: 'c1', phase: 'running', tokens: 99_999, inputTokens: 90_000, outputTokens: 9_999, toolCount: 12_345, liveChars: 40_000, activity: text }], { turn: 1, active: true })
+      const activation = JSON.stringify({ kind: 'activation', subagentId: 'c1' })
+      const rows = agentsStatus.agentRows({
+        calls: [
+          { seq: 1, turn: 1, step: 1, callId: 'fg', name: 'subagent', arguments: JSON.stringify({ name: text, description: text, prompt: text }), startedAt: 1_000 },
+          { seq: 2, turn: 1, step: 1, callId: 'bg', name: 'subagent', arguments: JSON.stringify({ name: text, description: text }), startedAt: 1_000, result: { text: activation, isError: false, endedAt: 2_000 } },
+          { seq: 3, turn: 1, step: 1, callId: 'bad', name: 'subagent', arguments: JSON.stringify({ name: text }), startedAt: 1_000, result: { text, isError: true, endedAt: 9_000 } },
+        ],
+        children: [{ id: 'c1', phase: 'running', tokens: 99_999, inputTokens: 90_000, outputTokens: 9_999, toolCount: 12_345, liveChars: 40_000, activity: text }],
+        catalog: [],
+        timing: new Map(),
+        identity: new Map(),
+        runs: new Map(),
+        turn: { turn: 1, active: true },
+      })
       const state = { rows, now: 3_000 }
       const panel = agentsStatus.agentsPanel(state, t, () => ({ 'agents-stop': text, 'agents-background': text }))
       if (panel === null) throw new Error('agents width fixture did not render')
