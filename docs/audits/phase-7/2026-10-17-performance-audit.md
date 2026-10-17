@@ -212,6 +212,23 @@ harness. The targeted stream-facts, publish-window, stream-search, and transcrip
 perf fixtures now drain the controller's trailing publish explicitly (`FixedPublishClock.flush()`), so W28/W29/W31 still
 measure their real publish; W28-W31 and W33-W35 pass their budgets.
 
+## P5 result (implemented)
+
+P5 landed on `perf/p5-output` (`c90ce560`) and was merged into `perf/phase-7`. `core/output-optimizer.ts` wraps the
+alternate-screen terminal facade, parses pi-tui's frame grammar into a shadow grid, drops unchanged rows, and turns a
+dominant vertical shift inside the content band into DECSTBM + SU/SD + only the unexplained rows. Anything it does not
+recognize (titles, images, selection, other private modes) passes through byte-for-byte and invalidates the shadow until
+a full repaint. It is off by default; the frame workloads enable it, and it is ready for the owner's live review before
+production enables it. Upstream pi-tui is still the follow-up.
+
+W34 (follow-tail append) fell from **39 rows / 6,188 bytes** to **1 row / 177 bytes**. W35 (wheel notch) is unchanged at
+39 / 6,666: scrolling away makes Mayfly's two-column scrollbar visible on every row, so every row is genuinely different
+and the row-equality shift explains none; a cell-patch grammar was deliberately not added. The property spec compares
+200 deterministic random frame sequences (ASCII + CJK + SGR, shifts, appends, no-ops) cell-for-cell (chars, colors,
+attributes, cursor) against a naive alt-screen xterm, and a grammar pin captures a real `TuiAltScreen` frame. The focused
+follow-tail terminal case passes; 6 `terminal.spec` cases fail identically on `main` before P5 (stale scrollbar-width
+expectations), so they are baseline, not this round.
+
 ## P7 result (implemented)
 
 P7 landed on `perf/p7-fold` (`5cffe892`) and was merged into `perf/phase-7`. `finalizedSteps` keeps only the current and
