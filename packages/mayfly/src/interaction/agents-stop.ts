@@ -68,6 +68,7 @@ export function stopBlockedReason(
   entries: readonly SubagentDescendantListEntry[],
   entry: Extract<SubagentDescendantListEntry, { readonly kind: 'child' }>,
 ): string | undefined {
+  if (entry.mode === 'external') return t('Only continuable subagents can be stopped')
   if (entry.mode !== 'continuable') return t('Only continuable subagents can be stopped')
   if (ctx.agents.get(entry.id) === undefined) return t('Not live; there is nothing to stop')
   return liveAgentDescendantCount(entries, String(entry.id), candidate => ctx.agents.get(candidate.id) !== undefined) > 0
@@ -104,6 +105,9 @@ export async function stopSubagent(
   }
   const current = latest.find(candidate => candidate.kind === 'child' && String(candidate.id) === entryId)
   if (current?.kind !== 'child') return { kind: 'error', text: `unknown subagent: ${entryId}` }
+  if (current.mode === 'external') {
+    return { kind: 'error', text: `subagent ${String(current.id)} is external; it has no local Agent to stop` }
+  }
   if (current.mode !== 'continuable') {
     return { kind: 'error', text: `subagent ${String(current.id)} is not continuable` }
   }

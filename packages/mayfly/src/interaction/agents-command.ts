@@ -48,6 +48,14 @@ export type MayflySubagentTreeEntry = SubagentDescendantListEntry & {
   readonly streamPhase?: 'thinking' | 'composing' | undefined
 }
 
+/** The reserved label of the `/btw` side conversation's native fork child. */
+const BTW_LABEL = 'btw'
+
+/** Keep the side question out of the delegation browser: it is its own conversation. */
+function listedDescendants(entries: readonly SubagentDescendantListEntry[]): readonly SubagentDescendantListEntry[] {
+  return entries.filter(entry => entry.kind !== 'child' || entry.label !== BTW_LABEL)
+}
+
 /** Elapsed format used by agent browser rows. */
 export function formatAgentElapsed(ms: number): string {
   return compactElapsedMs(ms)
@@ -161,7 +169,7 @@ export function apply(ctx: Context): void {
     ctx.mayflyConversations.display(conversationId(String(parent.id)))
     let listed: readonly SubagentDescendantListEntry[]
     try {
-      listed = await ctx.subagents.listDescendants(parent.id, signal)
+      listed = listedDescendants(await ctx.subagents.listDescendants(parent.id, signal))
     } catch (error) {
       return { kind: 'error', text: describe(error) }
     }
@@ -209,7 +217,7 @@ export function apply(ctx: Context): void {
     }
     const relist = async (): Promise<void> => {
       let next: readonly SubagentDescendantListEntry[]
-      try { next = await ctx.subagents.listDescendants(parent.id, lifetime.signal) } catch { return }
+      try { next = listedDescendants(await ctx.subagents.listDescendants(parent.id, lifetime.signal)) } catch { return }
       if (closed || unloaded || ctx.mayflyCurrentAgent.primary() !== parent) return
       listed = next
       publish(false)

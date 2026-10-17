@@ -643,19 +643,19 @@ describe('mayfly-transcript queued messages, facts, images, and row actions', ()
     expect(screen.renderRequests.length).toBeGreaterThan(steady)
   })
 
-  it('makes a spawn line follow its child: running in background while it works, then settled with its end', async () => {
+  it('makes a spawn line follow its child: running while it works, then settled with its end', async () => {
     resetSeq()
     const agent = fakeParent([
       userEvent('audit it'),
       subagentCallEvent(1, 1, 'spawn-1', 'subagent', 'Audit the facts', 'audit it', { time: 1_700_000_000_100 }),
-      toolResultEvent(1, 1, 'spawn-1', 'started subagent child-1', { time: 1_700_000_000_200 }),
+      toolResultEvent(1, 1, 'spawn-1', JSON.stringify({ kind: 'activation', subagentId: 'child-1' }), { time: 1_700_000_000_200 }),
     ])
     const children: { emit: ((list: readonly ChildSessionFacts[]) => void) | undefined } = { emit: undefined }
     const { screen } = await bootTranscript(agent, { children })
     const child = (extra: Partial<ChildSessionFacts>): ChildSessionFacts => ({ id: 'child-1', phase: 'running', tokens: 0, inputTokens: 0, outputTokens: 0, toolCount: 0, ...extra })
-    expect(contentLines(screen).join('\n')).not.toContain('running in background')
+    expect(contentLines(screen).join('\n')).not.toContain('running')
     children.emit!([child({})])
-    expect(contentLines(screen).join('\n')).toContain('running in background')
+    expect(contentLines(screen).join('\n')).toContain('running')
     // Streamed counters of the running child are the Agents item's, not the stream's: the same state republishes nothing.
     const before = screen.renderRequests.length
     children.emit!([child({ liveChars: 4_000, toolCount: 2 })])
@@ -666,7 +666,7 @@ describe('mayfly-transcript queued messages, facts, images, and row actions', ()
     children.emit!([child({ phase: 'failed', stopped: true, endedAt: 1_700_000_005_000 })])
     expect(contentLines(screen).join('\n')).toContain('stopped')
     children.emit!([child({ phase: 'completed', promptText: 'audit it' }), child({ id: 'child-2', phase: 'running', promptText: 'audit it' })])
-    expect(contentLines(screen).join('\n')).not.toContain('running in background')
+    expect(contentLines(screen).join('\n')).not.toContain('running')
   })
 
   it('keeps the transcript working when the host publishes no session facts', async () => {

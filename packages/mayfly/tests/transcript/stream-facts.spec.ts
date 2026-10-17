@@ -163,25 +163,25 @@ describe('StreamFacts', () => {
   describe('a spawn call that follows its child', () => {
     const spawn = (): TranscriptEntryModel => ({
       ...base(1), id: `tool:${String(seq + 1)}`, kind: 'transcript-tool', step: 1, callId: 'spawn-1', name: 'subagent', family: 'other', activity: 'subagents', detail: 'Audit', arguments: JSON.stringify({ prompt: 'audit it' }),
-      startedAt: NOON - 3_000, result: { text: 'started subagent child-1', isError: false, endedAt: NOON - 2_900 },
+      startedAt: NOON - 3_000, result: { text: JSON.stringify({ kind: 'activation', subagentId: 'child-1' }), isError: false, endedAt: NOON - 2_900 },
     })
     const turns = [{ turn: 1, startedAt: NOON - 4_000 }]
     const lineOf = (more: Partial<StreamInputs>): string => JSON.stringify(new StreamFacts().build(model([user(1, 'go'), spawn()], turns), inputs(more)).turns[0]!.rows)
 
-    it('reads running in background while its child works, and settled with its child\'s end once it ends', () => {
+    it('reads running while its child works, and settled with its child\'s end once it ends', () => {
       const running = { byId: new Map([['child-1', { state: 'running' as const }]]), byPrompt: new Map() }
-      expect(lineOf({ children: running })).toContain('running in background')
+      expect(lineOf({ children: running })).toContain('running')
       const settled = { byId: new Map([['child-1', { state: 'settled' as const, failed: true, endedAt: NOON - 500 }]]), byPrompt: new Map() }
       expect(lineOf({ children: settled })).toContain('failed')
-      expect(lineOf({})).not.toContain('running in background')
+      expect(lineOf({})).not.toContain('running')
     })
 
     it('keeps following its child while a request waits on another call, and when the first request names no call', () => {
       const running = { byId: new Map([['child-1', { state: 'running' as const }]]), byPrompt: new Map() }
-      expect(lineOf({ children: running, requests: [{ type: 'approval', callId: 'other-call', reason: 'removes files' } as never] })).toContain('running in background')
-      expect(lineOf({ children: running, requests: [{ type: 'approval', toolName: 'bash', reason: 'asks first' } as never] })).toContain('running in background')
+      expect(lineOf({ children: running, requests: [{ type: 'approval', callId: 'other-call', reason: 'removes files' } as never] })).toContain('running')
+      expect(lineOf({ children: running, requests: [{ type: 'approval', toolName: 'bash', reason: 'asks first' } as never] })).toContain('running')
       // A request with no reason asks the same, and a child-less stream is unchanged.
-      expect(lineOf({ requests: [{ type: 'plan', callId: 'other-call' } as never] })).not.toContain('running in background')
+      expect(lineOf({ requests: [{ type: 'plan', callId: 'other-call' } as never] })).not.toContain('running')
     })
   })
 })

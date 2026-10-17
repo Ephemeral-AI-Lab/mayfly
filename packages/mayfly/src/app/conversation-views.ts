@@ -32,7 +32,11 @@ export type MayflyConversationAccess = 'interactive' | 'resumable' | 'readonly'
 /** How much renderer state a conversation may hold. */
 export type MayflyConversationResidency = 'displayed' | 'retained' | 'listed'
 
-/** Identity and presentation facts of one local side conversation to open. */
+/**
+ * Identity and presentation facts of one local side conversation to open.
+ * External executions have no local conversation, so they are not part of the
+ * subagent arm: the browser and the status item refuse them before `open`.
+ */
 export type MayflyConversationOpen = Readonly<{
   readonly kind: 'btw'
   readonly sessionId: string
@@ -135,12 +139,15 @@ export class MayflyConversationsService extends Service {
     return this.primaryAgent
   }
 
-  /** Exact live Agent the displayed conversation drives, or null when it is not interactive. */
+  /**
+   * Exact live Agent the displayed conversation drives, or null when it is
+   * readonly: a one-shot, unknown, or external child has no interactive Agent.
+   */
   displayedAgent(): Agent | null {
     const primary = this.primary()
     const side = this.displayedId === null ? undefined : this.sides.get(this.displayedId)
     if (side === undefined) return primary
-    return side.kind === 'subagent' && side.mode === 'one-shot' ? null : this.liveAgent(side.sessionId)
+    return side.kind === 'subagent' && side.mode !== 'continuable' ? null : this.liveAgent(side.sessionId)
   }
 
   /** Monotonic registry revision. */

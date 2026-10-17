@@ -12,9 +12,9 @@ function primaryView(agent: Agent): MayflyConversationView {
   return { kind: 'primary', id: `session:${String(agent.id)}`, sessionId: String(agent.id), access: 'interactive', residency: 'displayed' }
 }
 
-function harness(interrupt = vi.fn(), interruptByParent = vi.fn()): Context {
+function harness(interrupt = vi.fn()): Context {
   const ctx = new Context()
-  ctx.provide('subagents', { interrupt, interruptByParent } as never)
+  ctx.provide('subagents', { interrupt } as never)
   return ctx
 }
 
@@ -39,20 +39,18 @@ describe('interruptAgent', () => {
     expect(interrupt).not.toHaveBeenCalled()
   })
 
-  it('uses the direct parent address for a displayed continuable child, and only for it', () => {
+  it('uses the durable human parent address for a displayed continuable child', () => {
     const child = fakeAgent('child', { status: 'running' })
     const interrupt = vi.fn()
-    const interruptByParent = vi.fn()
-    const ctx = harness(interrupt, interruptByParent)
+    const ctx = harness(interrupt)
     const view: MayflyConversationView = {
       kind: 'subagent', id: 'session:child', sessionId: 'child', parentSessionId: 'parent', label: 'worker',
       mode: 'continuable', access: 'interactive', residency: 'displayed',
     }
 
     expect(interruptAgent(ctx, child, view)).toEqual({ requested: true, failures: [] })
-    expect(interruptByParent).toHaveBeenCalledWith(child.id, SessionId('parent'), 'continuable')
+    expect(interrupt).toHaveBeenCalledWith(child.id, { kind: 'user', parentSessionId: SessionId('parent') })
     expect(child.cancel).not.toHaveBeenCalled()
-    expect(interrupt).not.toHaveBeenCalled()
   })
 
   it('reports a refusal instead of throwing', () => {
