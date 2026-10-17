@@ -143,6 +143,25 @@ describe('the flow list row source', () => {
     expect(followed.top + followed.viewport).toBe(2000)
     await host.dispose()
   }, 30_000)
+
+  it('does not truncate a tall markdown body when the content slot is focused', async () => {
+    const counters = createWorkCounters()
+    const host = await FrameHost.boot(counters, environment)
+    const slot = host.root.mayflyScreen.mountNodeSlot('transcript.conversation', { region: 'content' })
+    const text = Array.from({ length: 160 }, (_, index) => `Paragraph ${String(index)}: a long answer that must remain reachable below the fold.`).join('\n\n')
+    slot.set(ui.list({ id: 'stream', role: 'browse', selectedIds: [], items: [{ id: 'answer', label: '', body: ui.markdown(text), bodyAlways: true }] }))
+    await host.frames()
+    const flow = host.root.mayflyScreen.contentTail()!
+    slot.focus()
+    await host.frames()
+    const focused = host.root.mayflyScreen.contentTail()!
+    expect(flow.top + flow.viewport).toBeGreaterThan(160)
+    expect(focused.top + focused.viewport).toBeGreaterThan(160)
+    host.root.mayflyScreen.scrollContent('up', 10000)
+    await host.frames()
+    expect(host.root.mayflyScreen.contentTail()!.top).toBe(0)
+    await host.dispose()
+  }, 30_000)
 })
 
 describe('the W33 flow-tick counter', () => {
