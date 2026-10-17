@@ -116,7 +116,7 @@ describe('SessionFactsService', () => {
     const unrelated = session('other-child', { origin: 'subagent', parentSession: 'other' })
     const current = agent(parentSession)
     const projections = new ProjectionFake()
-    const parentFacts = { ...initialConversationFacts(), model: 'm' }
+    const parentFacts = { ...initialConversationFacts(), promptText: 'first prompt' }
     const activeGoal = goalProjection('active')
     const blockedGoal = goalProjection('blocked', 'tests are red')
     const childFacts = { ...initialConversationFacts(), promptText: 'delegate', active: true, phase: 'tool' as const }
@@ -138,12 +138,12 @@ describe('SessionFactsService', () => {
     })
 
     const service = new SessionFactsService(ctx)
-    const models: Array<string | undefined> = []
+    const prompts: Array<string | undefined> = []
     const titles: Array<string | undefined> = []
     const goals: Array<GoalProjection | null> = []
     const agents: Array<Agent | null> = []
     const children: string[][] = []
-    const offFacts = service.subscribe(facts => models.push(facts.model))
+    const offFacts = service.subscribe(facts => prompts.push(facts.promptText))
     const offTitle = service.subscribeTitle(title => titles.push(title))
     const offGoal = service.subscribeGoal(goal => goals.push(goal))
     const offAgent = service.subscribeAgent(value => agents.push(value))
@@ -156,18 +156,18 @@ describe('SessionFactsService', () => {
     expect(children.at(-1)).toEqual(['child'])
     for (const listener of agentListeners) listener(current, 0)
 
-    projections.emit(unrelated, 'mayflyConversationFacts', { ...parentFacts, model: 'ignored' })
+    projections.emit(unrelated, 'mayflyConversationFacts', { ...parentFacts, promptText: 'ignored' })
     projections.emit(parentSession, 'other', parentFacts)
     projections.emit(parentSession, 'mayflyConversationFacts', { phase: 'bad' })
-    projections.emit(parentSession, 'mayflyConversationFacts', { ...parentFacts, model: 'next' })
+    projections.emit(parentSession, 'mayflyConversationFacts', { ...parentFacts, promptText: 'next' })
     projections.emit(parentSession, 'title', 'second')
     projections.emit(parentSession, 'title', null)
     projections.emit(parentSession, 'goal', { phase: 'bad' })
     projections.emit(parentSession, 'goal', blockedGoal)
     projections.emit(parentSession, 'goal', blockedGoal)
     projections.emit(parentSession, 'goal', null)
-    projections.emit(childSession, 'mayflyConversationFacts', { ...childFacts, model: 'child-model' })
-    expect(models).toEqual(['m', 'next'])
+    projections.emit(childSession, 'mayflyConversationFacts', { ...childFacts, promptText: 'child prompt' })
+    expect(prompts).toEqual(['first prompt', 'next'])
     expect(titles).toEqual(['first', 'second', undefined])
     expect(goals).toEqual([activeGoal, blockedGoal, null])
     expect(children.at(-1)).toEqual(['child'])
@@ -245,9 +245,16 @@ describe('SessionFactsService', () => {
 
   it('projects every child activity and optional metadata shape', () => {
     const base = initialConversationFacts()
+    const selection = {
+      lastUsed: { provider: 'p', model: 'chosen', reasoningEffort: 'high' },
+      next: { provider: 'p', model: 'pending' },
+    }
     expect(projectChildSessionFacts('tool', {
-      ...base, active: true, phase: 'tool', activity: { kind: 'tool' }, reasoningEffort: 'high',
-    })).toMatchObject({ id: 'tool', phase: 'running', activity: 'Using tool', effort: 'high' })
+      ...base, active: true, phase: 'tool', activity: { kind: 'tool' },
+    }, undefined, selection)).toMatchObject({ id: 'tool', phase: 'running', activity: 'Using tool', model: 'chosen', effort: 'high' })
+    expect(projectChildSessionFacts('pending', {
+      ...base, active: true, phase: 'waiting',
+    }, undefined, { lastUsed: null, next: { provider: 'p', model: 'pending', reasoningEffort: 'low' } })).toMatchObject({ model: 'pending', effort: 'low' })
     expect(projectChildSessionFacts('reasoning', {
       ...base, active: true, phase: 'thinking', activity: { kind: 'reasoning' },
     })).toMatchObject({ phase: 'running', activity: 'Thinking…' })

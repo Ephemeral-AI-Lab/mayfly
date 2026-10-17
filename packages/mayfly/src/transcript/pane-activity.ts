@@ -32,7 +32,6 @@ import { toolActivity } from './process-activity.ts'
 import { flightLabel } from './tool-kinds.ts'
 import type { SessionFactsService } from './session-facts.ts'
 import type { TickSource } from './tick.ts'
-import { formatTokens } from './status-context.ts'
 import { buildTipRotation } from './status-tips.ts'
 import { STATUS_TIPS } from './tips-content.ts'
 import {
@@ -155,15 +154,6 @@ interface ActivityState {
   quietHints: QuietHints
 }
 
-/** The tail of counts after the label: `↑30.2k ↓4.1k`, parts omitted at zero. */
-function flowCounter(up: number | undefined, downChars: number): string {
-  const down = outputCounter(downChars)
-  const parts: string[] = []
-  if (up !== undefined) parts.push(`↑${formatTokens(up)}`)
-  if (down !== '') parts.push(down)
-  return parts.join(' ')
-}
-
 /** The phase of one mode, for the modes that draw a header. */
 function phaseOf(mode: ActivityMode): ActivityPhase | undefined {
   return mode === 'hidden' || mode === 'idle' ? undefined : mode
@@ -233,7 +223,7 @@ export function apply(ctx: Context): void {
      keeps direct thin-host construction renderer-neutral but cannot occur in
      a Cordis activation that satisfies this plugin's contract. */
   let facts: ConversationFacts = factsService?.current ?? {
-    phase: 'idle', active: false, turn: 0, flowDownChars: 0, todos: [], contextTokens: 0, agentCalls: [],
+    phase: 'idle', active: false, turn: 0, flowDownChars: 0, agentCalls: [],
   }
   let statusActive = factsService?.currentAgent?.status === 'running'
   // Best-effort initial read: the latch lives on the app-owned request
@@ -289,7 +279,7 @@ export function apply(ctx: Context): void {
     // The time of the phase the row names: how long the model has thought, how long the wait lasts, else the turn's.
     const since = phase === 'waiting' ? state.waitingSince : phase === 'thinking' ? facts.outputProgress?.startedAt : state.turnStartedAt
     const elapsed = since === undefined ? '' : compactElapsedMs(Math.max(0, now - since))
-    const counters = phase === 'waiting' ? '' : flowCounter(facts.flowUp, facts.outputProgress?.chars ?? facts.flowDownChars)
+    const counters = phase === 'waiting' ? '' : outputCounter(facts.outputProgress?.chars ?? facts.flowDownChars)
     const rate = phase === 'waiting' ? '' : outputRate(facts.outputProgress, now)
     return ActivityRow({ ...facing, tail: [elapsed, counters, rate].filter(text => text !== '') })
   }
@@ -333,7 +323,7 @@ export function apply(ctx: Context): void {
     const nextStart = facts.active ? facts.turnStartedAt : undefined
     // The stage is part of the shape, so a stage change publishes at once, whatever moment the facts arrive at.
     const stage = mode === 'thinking' ? thinkingStage(thinkingElapsed(tickNow)).label : ''
-    const next = JSON.stringify([mode, flight.key, flight.values?.count, stage, state.tip, state.quietHints, facts.flowUp, nextStart, state.waitingSince, facts.outputProgress?.startedAt, facts.inFlight?.map(call => call.callId)])
+    const next = JSON.stringify([mode, flight.key, flight.values?.count, stage, state.tip, state.quietHints, nextStart, state.waitingSince, facts.outputProgress?.startedAt, facts.inFlight?.map(call => call.callId)])
     state.mode = mode
     state.label = flight.key
     state.labelValues = flight.values

@@ -885,8 +885,14 @@ export function fakeConversations(displayed: string[] = []): object {
   }
 }
 
+/** The projection read face a mode-status spec can drive by hand. */
+export interface FakeSessionProjections {
+  snapshot(session: unknown, keys?: readonly string[]): { readonly asOfSeq: number, readonly values: Record<string, unknown> }
+  onChanged(listener: (session: unknown, key: string, value: unknown, seq: number) => void): () => void
+}
+
 /** A context with the renderer services and native dsh session seams provided. */
-export function fakeMayflyContext(options: { readonly display?: boolean; readonly dock?: boolean; readonly agents?: boolean } = {}): {
+export function fakeMayflyContext(options: { readonly display?: boolean; readonly dock?: boolean; readonly agents?: boolean; readonly projections?: FakeSessionProjections } = {}): {
   ctx: Context
   screen: FakeScreen
   theme: FakeTheme
@@ -978,7 +984,7 @@ export function fakeMayflyContext(options: { readonly display?: boolean; readonl
   new MayflyOverlayService(ctx)
   new MayflyEditorExtensionService(ctx)
   const projectionListeners = new Set<(session: unknown, key: string, value: unknown, seq: number) => void>()
-  ctx.provide('sessionProjections', {
+  ctx.provide('sessionProjections', options.projections ?? {
     snapshot: (_session: unknown, keys?: readonly string[]) => {
       const selection = testSession()?.modelRef?.current
       const values = selection === undefined || (keys !== undefined && !keys.includes('modelSelection'))

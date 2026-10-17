@@ -269,10 +269,10 @@ describe('mayfly-pane-activity', () => {
   })
 
   it('keeps the header whole while it fits, sheds its counters and then its time as the row narrows, and never draws past the width', async () => {
-    const harness = await bootFacts({ phase: 'composing', turnStartedAt: NOW - 21_000, flowUp: 30 * 1024, flowDownChars: 16 * 1024 })
-    expect(rows(harness.screen, 200)).toEqual([`  ${fill()} Writing · 21s · ↑30k ↓4k`, `    ⎿ Tip: ${FIRST_TIP}`])
+    const harness = await bootFacts({ phase: 'composing', turnStartedAt: NOW - 21_000, flowDownChars: 16 * 1024 })
+    expect(rows(harness.screen, 200)).toEqual([`  ${fill()} Writing · 21s · ↓4k`, `    ⎿ Tip: ${FIRST_TIP}`])
     // The counters go first, then the time; the label stays.
-    expect(rows(harness.screen, 30)[0]).toBe(`  ${fill()} Writing · 21s · ↑30k ↓4k`)
+    expect(rows(harness.screen, 30)[0]).toBe(`  ${fill()} Writing · 21s · ↓4k`)
     expect(rows(harness.screen, 22)[0]).toBe(`  ${fill()} Writing`)
     for (const width of [30, 22, 16, 12, 4]) {
       expect(rows(harness.screen, width).every(line => visibleWidth(line) <= width)).toBe(true)

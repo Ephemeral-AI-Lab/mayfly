@@ -1,33 +1,63 @@
 /**
- * `mayfly-status-context` plugin: the context-occupancy footer entry. Covers
- * the snapshot-then-subscribe attach, the disjoint input-side token sum, the
- * 1024-base `k`/`M` formatting boundaries and the percent math, the
- * advertised-window percentage and its `ctx N` degradation (snapshot,
- * `request/context` live updates, model-switch window drops), live
- * `session/event` increments, the `cache N%` prefix and its live updates,
- * session-change rebinding, and the text tier.
+ * `mayfly-status-context` plugin: the context-occupancy footer entry over the
+ * native token-meter projections. Covers the snapshot-then-subscribe attach,
+ * the prompt-size occupancy (`projectedTokens`, else `pressureTokens`), the
+ * 1024-base `k`/`M` formatting boundaries and the percent math, the advertised
+ * window and its `ctx N` degradation, live `contextPressure`/`tokenUsage`
+ * changes, the cumulative cache-read share, session-change rebinding, and the
+ * text tier.
  */
 
 import { describe, expect, it } from 'vitest'
-import type { TokenUsage } from '@deepseek-ai/dsh-llm'
-import type { Session, SessionEvent } from '@deepseek-ai/dsh-session'
+import type { ContextBreakdownProjection, ContextPressureProjection, TokenUsageProjection } from '@deepseek-ai/dsh-token-meter'
 import * as context from '../../src/transcript/status-context.ts'
 import { SHED } from '../../src/transcript/status-shed.ts'
-import { assistantEvent, reasoningDelta, resetSeq, userEvent } from './helpers.ts'
-import { asAgent, bootStatusPlugin, COLORS, fakeAgent } from './status-fakes.ts'
+import { resetSeq, userEvent } from './helpers.ts'
+import { asAgent, bootStatusPlugin, COLORS, fakeAgent, type FakeAgent } from './status-fakes.ts'
 
-/** An `assistant/message` event carrying token accounting. */
-function usageEvent(turn: number, step: number, usage: TokenUsage): SessionEvent<'assistant/message'> {
-  const base = assistantEvent(turn, step, [{ type: 'text', text: 'answer' }])
-  return { ...base, data: { ...base.data, usage } }
+/** The native token-meter projection face: one value set per Session and its change feed. */
+class ContextProjectionFake {
+  private readonly values = new Map<object, { readonly tokenUsage?: TokenUsageProjection, readonly contextPressure?: ContextPressureProjection, readonly contextBreakdown?: ContextBreakdownProjection }>()
+  private readonly listeners = new Set<(session: unknown, key: string, value: unknown, seq: number) => void>()
+  reads = 0
+
+  set(session: object, value: { readonly tokenUsage?: TokenUsageProjection, readonly contextPressure?: ContextPressureProjection, readonly contextBreakdown?: ContextBreakdownProjection }): void {
+    this.values.set(session, value)
+  }
+
+  snapshot(session: object, keys?: readonly string[]): { readonly asOfSeq: number, readonly values: Record<string, unknown> } {
+    this.reads += 1
+    const source = this.values.get(session) ?? {}
+    return {
+      asOfSeq: 0,
+      values: Object.fromEntries(Object.entries(source).filter(([key]) => keys === undefined || keys.includes(key))),
+    }
+  }
+
+  onChanged(listener: (session: unknown, key: string, value: unknown, seq: number) => void): () => void {
+    this.listeners.add(listener)
+    return () => { this.listeners.delete(listener) }
+  }
+
+  emit(session: object, key: 'tokenUsage' | 'contextPressure' | 'contextBreakdown', value: TokenUsageProjection | ContextPressureProjection | ContextBreakdownProjection): void {
+    this.values.set(session, { ...this.values.get(session), [key]: value })
+    for (const listener of this.listeners) listener(session, key, value, 0)
+  }
 }
 
-/** A `request/context` event advertising a context window. */
-function windowEvent(contextWindow?: number): SessionEvent<'request/context'> {
-  return {
-    type: 'request/context',
-    data: { provider: 'deepseek', model: 'deepseek-chat', contextWindow },
-  } as SessionEvent<'request/context'>
+interface ContextBootOptions {
+  readonly colors?: Record<string, string>
+  readonly projection?: { readonly tokenUsage?: TokenUsageProjection, readonly contextPressure?: ContextPressureProjection, readonly contextBreakdown?: ContextBreakdownProjection }
+}
+
+async function bootContext(agent: FakeAgent | null, options: ContextBootOptions = {}) {
+  const projections = new ContextProjectionFake()
+  if (agent !== null && options.projection !== undefined) projections.set(agent.session, options.projection)
+  const harness = await bootStatusPlugin(context, agent, {
+    ...options.colors === undefined ? {} : { colors: options.colors },
+    services: { sessionProjections: projections },
+  })
+  return { ...harness, projections }
 }
 
 describe('contextTokens, formatTokens, contextPercent', () => {
@@ -91,105 +121,105 @@ describe('contextTokens, formatTokens, contextPercent', () => {
 const ANSI = /\x1b(?:\][^\x07]*(?:\x07|\x1b\\)|\[[0-?]*[ -/]*[@-~]|.)/gu
 const flat = (row: string): string => row.replace(ANSI, '').trimEnd()
 
+/** Prompt-side cumulative usage: the cache bar's denominator. */
+function totals(prompt: number, cacheRead: number): TokenUsageProjection {
+  return { uncachedInputTokens: Math.max(0, prompt - cacheRead), outputTokens: 1, cacheReadTokens: cacheRead, cacheWriteTokens: 0 }
+}
+
 describe('mayfly-status-context', () => {
-  it('renders nothing without a session or without usage data', async () => {
+  it('renders nothing without a session or without native occupancy', async () => {
     const noSession = await bootStatusPlugin(context)
     expect(noSession.entry.render(80)).toBe('')
     expect(noSession.models.list()).toHaveLength(1)
     await noSession.dispose()
 
     resetSeq()
-    const noUsage = await bootStatusPlugin(context, fakeAgent([userEvent('hi')]))
+    const noUsage = await bootContext(fakeAgent([userEvent('hi')]))
     expect(noUsage.entry.render(80)).toBe('')
     await noUsage.dispose()
   })
 
-  it('reads the latest step occupancy from the snapshot', async () => {
+  it('reads the native prompt pressure from the snapshot', async () => {
     resetSeq()
-    const agent = fakeAgent([
-      userEvent('hi'),
-      usageEvent(1, 1, { inputTokens: 1000, outputTokens: 10 }),
-      usageEvent(1, 2, { inputTokens: 11000, outputTokens: 10, cacheReadTokens: 1300 }),
-      reasoningDelta(1, 3, 'thinking'),
-    ])
-    const harness = await bootStatusPlugin(context, agent)
+    const harness = await bootContext(fakeAgent([userEvent('hi')]), { projection: { contextPressure: { pressureTokens: 12_300 } } })
     expect(harness.entry.id).toBe('mayfly.status.context')
     expect(harness.entry.priority).toBe(6)
     expect(harness.entry.align).toBe('right')
-    // The entry shares the status row's one line, at its right edge. With no window there is no share to draw: the plain count.
+    // With no window there is no share to draw: the plain prompt count.
     expect(harness.entry.render(80)).toBe('ctx 12k')
     await harness.dispose()
   })
 
-  it('prefixes the cache-read share before the windowed readout', async () => {
+  it('prefers projectedTokens for the occupancy and prefixes the cumulative cache share', async () => {
     resetSeq()
-    const agent = fakeAgent(
-      [usageEvent(1, 1, { inputTokens: 10_600, outputTokens: 10, cacheReadTokens: 48_378, cacheWriteTokens: 0 })],
-      { contextWindow: 131_072 },
-    )
-    const harness = await bootStatusPlugin(context, agent)
-    // 48378/58978 = 82.03% → 82 (four of five cells); 58978 of 131072 is 45% rounded up (five of ten cells). No token counts in the row.
+    const harness = await bootContext(fakeAgent([userEvent('hi')]), { projection: {
+      contextPressure: { pressureTokens: 60_000, projectedTokens: 58_978, contextWindow: 131_072 },
+      tokenUsage: totals(58_978, 48_378),
+    } })
+    // 48378/58978 = 82.03% → 82 (four of five cells); 58978 of 131072 is 45% rounded up (five of ten cells).
     expect(flat(harness.entry.render(80))).toBe('cache ▰▰▰▰▱ 82%  ctx ▰▰▰▰▰▱▱▱▱▱ 45%')
     await harness.dispose()
   })
 
-  it('updates the cache share live and drops it when a step stops reporting reads', async () => {
+  it('updates pressure and the cache share live, and drops the cache bar without prompt usage', async () => {
     resetSeq()
-    const agent = fakeAgent([usageEvent(1, 1, { inputTokens: 1000, outputTokens: 1 })], { contextWindow: 4096 })
-    const { ctx, screen, entry, dispose } = await bootStatusPlugin(context, agent)
-    expect(flat(entry.render(80))).toBe('ctx ▰▰▰▱▱▱▱▱▱▱ 25%')
+    const agent = fakeAgent([userEvent('hi')])
+    const { screen, entry, dispose, projections } = await bootContext(agent, { projection: {
+      contextPressure: { pressureTokens: 1_000, contextWindow: 4_096 },
+      tokenUsage: totals(1_000, 0),
+    } })
+    expect(flat(entry.render(80))).toBe('cache ▱▱▱▱▱ 0%  ctx ▰▰▰▱▱▱▱▱▱▱ 25%')
     const baseline = screen.renderRequests.length
 
-    ctx.emit('session/event', agent.session as unknown as Session, usageEvent(1, 2, { inputTokens: 0, outputTokens: 1, cacheReadTokens: 1000 }))
+    projections.emit(agent.session, 'tokenUsage', totals(1_000, 1_000))
     expect(flat(entry.render(80))).toBe('cache ▰▰▰▰▰ 100%  ctx ▰▰▰▱▱▱▱▱▱▱ 25%')
     expect(screen.renderRequests.length).toBe(baseline + 1)
 
-    // Same occupancy, new cache share: a redraw is still requested.
-    ctx.emit('session/event', agent.session as unknown as Session, usageEvent(1, 3, { inputTokens: 1000, outputTokens: 1, cacheReadTokens: 0 }))
-    expect(flat(entry.render(80))).toBe('cache ▱▱▱▱▱ 0%  ctx ▰▰▰▱▱▱▱▱▱▱ 25%')
+    projections.emit(agent.session, 'contextPressure', { pressureTokens: 2_000, contextWindow: 4_096 })
+    expect(flat(entry.render(80))).toBe('cache ▰▰▰▰▰ 100%  ctx ▰▰▰▰▰▱▱▱▱▱ 49%')
     expect(screen.renderRequests.length).toBe(baseline + 2)
 
-    ctx.emit('session/event', agent.session as unknown as Session, usageEvent(1, 4, { inputTokens: 1000, outputTokens: 1 }))
-    expect(flat(entry.render(80))).toBe('ctx ▰▰▰▱▱▱▱▱▱▱ 25%')
+    // A tokenUsage without any prompt-side bucket leaves only the context bar.
+    projections.emit(agent.session, 'tokenUsage', { uncachedInputTokens: 0, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 })
+    expect(flat(entry.render(80))).toBe('ctx ▰▰▰▰▰▱▱▱▱▱ 49%')
     expect(screen.renderRequests.length).toBe(baseline + 3)
     await dispose()
   })
 
   it('renders the occupancy percentage when the snapshot advertises a window', async () => {
     resetSeq()
-    const agent = fakeAgent(
-      [usageEvent(1, 1, { inputTokens: 4200, outputTokens: 10 })],
-      { contextWindow: 8192 },
-    )
     const text = (body: string): string => `[T]${body}[/T]`
-    const harness = await bootStatusPlugin(context, agent, { colors: { ...COLORS, text } })
+    const harness = await bootContext(fakeAgent([userEvent('hi')]), {
+      colors: { ...COLORS, text },
+      projection: { contextPressure: { pressureTokens: 4_200, contextWindow: 8_192 } },
+    })
     // 4200/8192 = 51.3% rounded up: the label and the percentage take the text tier, the bar its own tone.
     expect(harness.entry.render(80)).toBe('[T]ctx [/T]▰▰▰▰▰▱▱▱▱▱[T] 52%[/T]')
     await harness.dispose()
   })
 
-  it('picks the window up live from request/context and drops it on a switch', async () => {
+  it('picks the window up live from contextPressure and drops it on a switch', async () => {
     resetSeq()
-    const agent = fakeAgent([usageEvent(1, 1, { inputTokens: 999, outputTokens: 1 })])
-    const { ctx, screen, entry, dispose } = await bootStatusPlugin(context, agent)
+    const agent = fakeAgent([userEvent('hi')])
+    const { screen, entry, dispose, projections } = await bootContext(agent, { projection: { contextPressure: { pressureTokens: 999 } } })
     expect(entry.render(80)).toBe('ctx 999')
     const baseline = screen.renderRequests.length
 
-    ctx.emit('session/event', agent.session as unknown as Session, windowEvent(2048))
+    projections.emit(agent.session, 'contextPressure', { pressureTokens: 999, contextWindow: 2_048 })
     expect(flat(entry.render(80))).toBe('ctx ▰▰▰▰▰▱▱▱▱▱ 49%')
     expect(screen.renderRequests.length).toBe(baseline + 1)
 
-    // A restated window requests no redraw.
-    ctx.emit('session/event', agent.session as unknown as Session, windowEvent(2048))
+    // A restated value requests no redraw.
+    projections.emit(agent.session, 'contextPressure', { pressureTokens: 999, contextWindow: 2_048 })
     expect(screen.renderRequests.length).toBe(baseline + 1)
 
     // A foreign session's window does not touch the entry.
     const other = fakeAgent([])
-    ctx.emit('session/event', other.session as unknown as Session, windowEvent(4096))
+    projections.emit(other.session, 'contextPressure', { pressureTokens: 4_096, contextWindow: 4_096 })
     expect(flat(entry.render(80))).toBe('ctx ▰▰▰▰▰▱▱▱▱▱ 49%')
 
     // A model switch withdrawing the advertised window degrades the entry.
-    ctx.emit('session/event', agent.session as unknown as Session, windowEvent(undefined))
+    projections.emit(agent.session, 'contextPressure', { pressureTokens: 999 })
     expect(entry.render(80)).toBe('ctx 999')
     expect(screen.renderRequests.length).toBe(baseline + 2)
     await dispose()
@@ -197,44 +227,38 @@ describe('mayfly-status-context', () => {
 
   it('ignores a dishonest advertised window and keeps the degraded form', async () => {
     resetSeq()
-    const agent = fakeAgent(
-      [usageEvent(1, 1, { inputTokens: 500, outputTokens: 1 })],
-      { contextWindow: 0 },
-    )
-    const harness = await bootStatusPlugin(context, agent)
+    const harness = await bootContext(fakeAgent([userEvent('hi')]), { projection: { contextPressure: { pressureTokens: 500, contextWindow: 0 } } })
     expect(harness.entry.render(80)).toBe('ctx 500')
     await harness.dispose()
   })
 
   it('tracks live increments on the attached session only', async () => {
     resetSeq()
-    const agent = fakeAgent([usageEvent(1, 1, { inputTokens: 999, outputTokens: 1 })])
-    const { ctx, screen, entry, dispose } = await bootStatusPlugin(context, agent)
+    const agent = fakeAgent([userEvent('hi')])
+    const { screen, entry, dispose, projections } = await bootContext(agent, { projection: { contextPressure: { pressureTokens: 999 } } })
     expect(entry.render(80)).toBe('ctx 999')
     const baseline = screen.renderRequests.length
 
-    // Events from another session and usage-less finalizes are ignored.
+    // A foreign session's pressure is ignored.
     const other = fakeAgent([])
-    ctx.emit('session/event', other.session as unknown as Session, usageEvent(2, 1, { inputTokens: 5, outputTokens: 1 }))
-    ctx.emit('session/event', agent.session as unknown as Session, userEvent('no accounting here'))
-    ctx.emit('session/event', agent.session as unknown as Session, assistantEvent(1, 2, [{ type: 'text', text: 'no usage' }]))
+    projections.emit(other.session, 'contextPressure', { pressureTokens: 5 })
     expect(entry.render(80)).toBe('ctx 999')
     expect(screen.renderRequests.length).toBe(baseline)
 
-    ctx.emit('session/event', agent.session as unknown as Session, usageEvent(1, 3, { inputTokens: 1500, outputTokens: 1 }))
+    projections.emit(agent.session, 'contextPressure', { pressureTokens: 1_500 })
     expect(entry.render(80)).toBe('ctx 1.5k')
     expect(screen.renderRequests.length).toBe(baseline + 1)
 
     // A restated occupancy requests no redraw.
-    ctx.emit('session/event', agent.session as unknown as Session, usageEvent(1, 4, { inputTokens: 1500, outputTokens: 1 }))
+    projections.emit(agent.session, 'contextPressure', { pressureTokens: 1_500 })
     expect(screen.renderRequests.length).toBe(baseline + 1)
     await dispose()
   })
 
-  it('rebinds on test/session-changed and goes quiet on a usage-less session', async () => {
+  it('rebinds on test/session-changed and goes quiet on a session with no occupancy', async () => {
     resetSeq()
-    const first = fakeAgent([usageEvent(1, 1, { inputTokens: 500, outputTokens: 1 })])
-    const { ctx, screen, entry, dispose } = await bootStatusPlugin(context, first)
+    const first = fakeAgent([userEvent('hi')])
+    const { ctx, screen, entry, dispose, projections } = await bootContext(first, { projection: { contextPressure: { pressureTokens: 500 } } })
     expect(entry.render(80)).toBe('ctx 500')
 
     resetSeq()
@@ -245,25 +269,23 @@ describe('mayfly-status-context', () => {
     expect(screen.renderRequests.length).toBe(baseline + 1)
 
     // The stale subscription to the first session stays inert.
-    ctx.emit('session/event', first.session as unknown as Session, usageEvent(2, 1, { inputTokens: 9000, outputTokens: 1 }))
+    projections.emit(first.session, 'contextPressure', { pressureTokens: 9_000 })
     expect(entry.render(80)).toBe('')
 
-    ctx.emit('session/event', second.session as unknown as Session, usageEvent(1, 1, { inputTokens: 42, outputTokens: 1 }))
+    projections.emit(second.session, 'contextPressure', { pressureTokens: 42 })
     expect(entry.render(80)).toBe('ctx 42')
     await dispose()
   })
 
   it('re-reads the window off the new session on test/session-changed', async () => {
     resetSeq()
-    const first = fakeAgent([usageEvent(1, 1, { inputTokens: 500, outputTokens: 1 })])
-    const { ctx, entry, dispose } = await bootStatusPlugin(context, first)
+    const first = fakeAgent([userEvent('hi')])
+    const { ctx, entry, dispose, projections } = await bootContext(first, { projection: { contextPressure: { pressureTokens: 500 } } })
     expect(entry.render(80)).toBe('ctx 500')
 
     resetSeq()
-    const second = fakeAgent(
-      [usageEvent(1, 1, { inputTokens: 2048, outputTokens: 1 })],
-      { contextWindow: 4096 },
-    )
+    const second = fakeAgent([userEvent('hi')])
+    projections.set(second.session, { contextPressure: { pressureTokens: 2_048, contextWindow: 4_096 } })
     ctx.emit('test/session-changed', asAgent(second))
     expect(flat(entry.render(80))).toBe('ctx ▰▰▰▰▰▱▱▱▱▱ 50%')
     await dispose()
@@ -271,17 +293,16 @@ describe('mayfly-status-context', () => {
 
   it('honors the width budget: the plain count fits or goes whole, and the bars give way in rank order', async () => {
     resetSeq()
-    const agent = fakeAgent([usageEvent(1, 1, { inputTokens: 999, outputTokens: 1 })])
-    const harness = await bootStatusPlugin(context, agent)
-    expect(harness.entry.render(7)).toBe('ctx 999')
-    expect(harness.entry.render(6)).toBe('')
-    await harness.dispose()
+    const plain = await bootContext(fakeAgent([userEvent('hi')]), { projection: { contextPressure: { pressureTokens: 999 } } })
+    expect(plain.entry.render(7)).toBe('ctx 999')
+    expect(plain.entry.render(6)).toBe('')
+    await plain.dispose()
 
     resetSeq()
-    const cached = await bootStatusPlugin(context, fakeAgent(
-      [usageEvent(1, 1, { inputTokens: 10_600, outputTokens: 1, cacheReadTokens: 48_378 })],
-      { contextWindow: 131_072 },
-    ))
+    const cached = await bootContext(fakeAgent([userEvent('hi')]), { projection: {
+      contextPressure: { pressureTokens: 58_978, contextWindow: 131_072 },
+      tokenUsage: totals(58_978, 48_378),
+    } })
     const full = 'cache ▰▰▰▰▱ 82%  ctx ▰▰▰▰▰▱▱▱▱▱ 45%'
     expect(flat(cached.entry.render(full.length))).toBe(full)
     // A narrower cell clips the full form; the ladder the entry sheds down is the row's (`SHED.cache`, `bar`, `context`).
@@ -297,10 +318,10 @@ describe('mayfly-status-context', () => {
   it('tones the bars: context warns from 70% and fails from 90%, the cache the other way round', async () => {
     const toneOf = async (used: number, cacheRead: number | undefined): Promise<{ readonly context: string, readonly cache?: string }> => {
       resetSeq()
-      const harness = await bootStatusPlugin(context, fakeAgent(
-        [usageEvent(1, 1, { inputTokens: used, outputTokens: 1, ...cacheRead === undefined ? {} : { cacheReadTokens: cacheRead } })],
-        { contextWindow: 1000 },
-      ))
+      const harness = await bootContext(fakeAgent([userEvent('hi')]), { projection: {
+        contextPressure: { pressureTokens: used, contextWindow: 1000 },
+        ...cacheRead === undefined ? {} : { tokenUsage: totals(used, cacheRead) },
+      } })
       const node = harness.models.list()[0]!.node as unknown as { readonly node: { readonly kind: string, readonly tone?: string, readonly children?: readonly { readonly node: { readonly label: string, readonly tone: string } }[] } }
       await harness.dispose()
       const bars = node.node.kind === 'progress' ? [node.node as unknown as { label: string, tone: string }] : node.node.children!.map(child => child.node)
@@ -311,14 +332,14 @@ describe('mayfly-status-context', () => {
     expect((await toneOf(890, undefined)).context).toBe('warning')
     expect((await toneOf(900, undefined)).context).toBe('danger')
     // 20 of 100 cached → danger; 59 → warning; 60 → success.
-    expect((await toneOf(80, 20)).cache).toBe('danger')
-    expect((await toneOf(41, 59)).cache).toBe('warning')
-    expect((await toneOf(40, 60)).cache).toBe('success')
+    expect((await toneOf(100, 20)).cache).toBe('danger')
+    expect((await toneOf(100, 59)).cache).toBe('warning')
+    expect((await toneOf(100, 60)).cache).toBe('success')
   })
 
   it('unregisters the entry when the fiber unloads', async () => {
     resetSeq()
-    const harness = await bootStatusPlugin(context, fakeAgent([usageEvent(1, 1, { inputTokens: 1, outputTokens: 1 })]))
+    const harness = await bootContext(fakeAgent([userEvent('hi')]), { projection: { contextPressure: { pressureTokens: 1 } } })
     expect(harness.models.list()).toHaveLength(1)
     await harness.dispose()
     expect(harness.models.list()).toHaveLength(0)
