@@ -18,7 +18,7 @@ import {
 // the same implementations the renderer runs.
 import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/width.ts'
 import { topRule } from '../../src/core/chrome.ts'
-import type { MayflyAutocompleteItem, MayflyAutocompleteProvider, MayflyCompletionView, MayflyComponent, MayflyComponents, MayflyEditor, MayflyEditorOptions, MayflyEditorToken, MayflyEditorSubmitAttempt, MayflyFocusable, MayflyKeyAction, MayflyKeymap, MayflyMarkdown, MayflyMarkdownOptions, MayflyOverlayHandle, MayflyOverlayOptions, MayflyScreen, MayflySelectItem, MayflySelectList, MayflySelectListOptions, MayflySemanticColors, MayflySubmittedDraft, MayflyTheme } from '../../src/core/types.ts'
+import type { MayflyAutocompleteProvider, MayflyCompletionView, MayflyComponent, MayflyComponents, MayflyEditor, MayflyEditorOptions, MayflyEditorToken, MayflyEditorSubmitAttempt, MayflyFocusable, MayflyKeyAction, MayflyKeymap, MayflyMarkdown, MayflyMarkdownOptions, MayflyOverlayHandle, MayflyOverlayOptions, MayflyScreen, MayflySelectItem, MayflySelectList, MayflySelectListOptions, MayflySemanticColors, MayflySubmittedDraft, MayflyTheme } from '../../src/core/types.ts'
 import type { MayflyComponentsService } from '../../src/core/components.ts'
 import type { MayflyKeymapService } from '../../src/core/keymap.ts'
 import type { MayflyScreenService } from '../../src/core/screen.ts'
@@ -542,52 +542,6 @@ export class FakeMayflyMarkdown implements MayflyMarkdown {
 }
 
 /**
- * Fake `@`-mention completion source: records its construction facts and
- * reads its behavior through the owning factory instance, so re-programming
- * `mentionGetSuggestions`/`mentionApplyCompletion` reaches providers created
- * earlier and later alike (the real source is rebuilt when the fd probe
- * settles). The real fd pipeline is pinned by the core spec; interaction
- * tests assert only the composition around it.
- */
-export class FakeFileMentionProvider implements MayflyAutocompleteProvider {
-  triggerCharacters?: string[]
-
-  /**
-   * @param basePath - the project root the factory was called with.
-   * @param fdPath - the fd binary the factory was called with.
-   * @param behavior - the owning factory's programmable behavior fields.
-   */
-  constructor(
-    readonly basePath: string,
-    readonly fdPath: string | null,
-    private readonly behavior: FakeMayflyComponents,
-  ) {}
-
-  getSuggestions(
-    lines: string[],
-    cursorLine: number,
-    cursorCol: number,
-    options: { signal: AbortSignal, force?: boolean },
-  ): ReturnType<MayflyAutocompleteProvider['getSuggestions']> {
-    return this.behavior.mentionGetSuggestions(lines, cursorLine, cursorCol, options)
-  }
-
-  applyCompletion(
-    lines: string[],
-    cursorLine: number,
-    cursorCol: number,
-    item: MayflyAutocompleteItem,
-    prefix: string,
-  ): { lines: string[], cursorLine: number, cursorCol: number } {
-    return this.behavior.mentionApplyCompletion(lines, cursorLine, cursorCol, item, prefix)
-  }
-
-  shouldTriggerFileCompletion(): boolean {
-    return true
-  }
-}
-
-/**
  * Fake component factory: deterministic width helpers and recordable
  * editor/select-list creation for test inspection.
  */
@@ -603,21 +557,6 @@ export class FakeMayflyComponents implements MayflyComponents {
   readonly markdowns: FakeMayflyMarkdown[] = []
   /** Every select list created through this factory, in creation order. */
   readonly selectLists: FakeMayflySelectList[] = []
-  /**
-   * Programmable mention-source behavior, shared by every provider this
-   * factory creates: suggestions default to none, application to identity.
-   */
-  mentionGetSuggestions: MayflyAutocompleteProvider['getSuggestions'] = async () => null
-  mentionApplyCompletion: MayflyAutocompleteProvider['applyCompletion'] =
-    (lines, cursorLine, cursorCol) => ({ lines: [...lines], cursorLine, cursorCol })
-  /** Every mention source created through this factory, in creation order. */
-  readonly mentionProviders: FakeFileMentionProvider[] = []
-
-  createFileMentionProvider(basePath: string, fdPath: string | null): MayflyAutocompleteProvider {
-    const provider = new FakeFileMentionProvider(basePath, fdPath, this)
-    this.mentionProviders.push(provider)
-    return provider
-  }
 
   createEditor(options?: MayflyEditorOptions): FakeMayflyEditor {
     this.editorOptions.push(options)

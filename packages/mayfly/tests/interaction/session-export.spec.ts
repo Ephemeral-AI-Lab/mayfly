@@ -1,11 +1,11 @@
 /**
- * Tests for the S26 session-export command family: the `/export` and
+ * Tests for the S26 session-export command family: the `/save` and
  * `/copy` handlers over the shared raw-artifact read path (fake
  * persistence), the pure `buildExportMarkdown`/`lastAssistantText`
  * helpers, and the registration/dispose lifecycle.
  */
 
-import { readFileSync, readdirSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Context } from '@deepseek-ai/cordis'
@@ -570,14 +570,26 @@ describe('registerExportCommands', () => {
     return execution?.result
   }
 
-  it('registers /export and /copy on the runtime and unregisters on dispose', async () => {
+  /** Publish a native `workingDirectory` value beside whatever projection the mount installed. */
+  function useWorkingDirectory(ctx: Context, directory: string): void {
+    const projections = ctx.get('sessionProjections') as unknown as {
+      snapshot: (session: unknown, keys?: readonly string[]) => { values: Record<string, unknown> }
+    }
+    const snapshot = projections.snapshot.bind(projections)
+    projections.snapshot = (session, keys) => {
+      const result = snapshot(session, keys)
+      return { ...result, values: { ...result.values, workingDirectory: directory } }
+    }
+  }
+
+  it('registers /save and /copy on the runtime and unregisters on dispose', async () => {
     const { ctx, agent, fiber } = await mount({ persistence: { content: singleTurnLog('hi', 'hello') } })
     const names = ctx.commands.list(agent).map(command => command.name)
-    expect(names).toContain('export')
+    expect(names).toContain('save')
     expect(names).toContain('copy')
     await fiber.dispose()
     const after = ctx.commands.list(agent).map(command => command.name)
-    expect(after).not.toContain('export')
+    expect(after).not.toContain('save')
     expect(after).not.toContain('copy')
   })
 
@@ -585,7 +597,7 @@ describe('registerExportCommands', () => {
     const root = mkdtempTracked('mayfly-export-explicit-')
     const target = join(root, 'out.md')
     const { ctx, agent, fiber } = await mount({ persistence: { content: singleTurnLog('hi', 'hello') } })
-    const result = await run(ctx, agent, `/export ${target}`)
+    const result = await run(ctx, agent, `/save ${target}`)
     expect(result).toEqual({ kind: 'success' })
     expect(readFileSync(target, 'utf8')).toContain('# Mayfly Session Export')
     expect(readFileSync(target, 'utf8')).toContain('hello')
@@ -622,7 +634,7 @@ describe('registerExportCommands', () => {
       } }),
     }
     const { ctx, agent, fiber } = await mount({ persistence: { content: singleTurnLog('raw', 'raw answer') }, projection })
-    expect(await run(ctx, agent, `/export ${target}`)).toEqual({ kind: 'success' })
+    expect(await run(ctx, agent, `/save ${target}`)).toEqual({ kind: 'success' })
     const markdown = readFileSync(target, 'utf8')
     expect(markdown).toContain('question')
     expect(markdown).toContain('reasoning')
@@ -641,7 +653,7 @@ describe('registerExportCommands', () => {
       persistence: { content: singleTurnLog('raw', 'raw answer') },
       projection: { snapshot: () => ({ values: { mayflyConversation: null } }) },
     })
-    expect(await run(ctx, agent, `/export ${target}`)).toEqual({ kind: 'error', text: 'nothing to export yet' })
+    expect(await run(ctx, agent, `/save ${target}`)).toEqual({ kind: 'error', text: 'nothing to export yet' })
     await fiber.dispose()
   })
 
@@ -649,7 +661,7 @@ describe('registerExportCommands', () => {
     const root = mkdtempTracked('mayfly-export-full-')
     const target = join(root, 'full.md')
     const { ctx, agent, fiber } = await mount({ persistence: { content: singleTurnLog('hi', 'hello') } })
-    const result = await run(ctx, agent, `/export full ${target}`)
+    const result = await run(ctx, agent, `/save full ${target}`)
     expect(result).toEqual({ kind: 'success' })
     const markdown = readFileSync(target, 'utf8')
     expect(markdown).toContain('# Mayfly Session Export (full)')
@@ -664,7 +676,7 @@ describe('registerExportCommands', () => {
     const root = mkdtempTracked('mayfly-export-fullpath-')
     const target = join(root, 'full.md')
     const { ctx, agent, fiber } = await mount({ persistence: { content: singleTurnLog('hi', 'hello') } })
-    const result = await run(ctx, agent, `/export ${target}`)
+    const result = await run(ctx, agent, `/save ${target}`)
     expect(result).toEqual({ kind: 'success' })
     // The readable export — no "(full)" suffix, item-counted.
     expect(readFileSync(target, 'utf8')).toContain('# Mayfly Session Export\n')
@@ -673,10 +685,10 @@ describe('registerExportCommands', () => {
     await fiber.dispose()
   })
 
-  it('exports to the session cwd under the default mayfly-export name', async () => {
+  it('exports to the native current working directory under the default mayfly-export name', async () => {
     const root = mkdtempTracked('mayfly-export-default-')
     const { ctx, agent, fiber } = await mount({ persistence: { content: singleTurnLog('hi', 'hello') }, cwd: root })
-    const result = await run(ctx, agent, '/export')
+    const result = await run(ctx, agent, '/save')
     expect(result).toEqual({ kind: 'success' })
     const matches = readdirSync(root).filter(name => name.startsWith('mayfly-export-') && name.endsWith('.md'))
     expect(matches).toHaveLength(1)
@@ -684,12 +696,36 @@ describe('registerExportCommands', () => {
     await fiber.dispose()
   })
 
-  it('falls back to the process cwd when the session header recorded none', async () => {
+  it('writes to the native workingDirectory, not the original project header', async () => {
+    const original = mkdtempTracked('mayfly-export-original-')
+    const moved = mkdtempTracked('mayfly-export-moved-')
+    const { ctx, agent, fiber } = await mount({ persistence: { content: singleTurnLog('hi', 'hello') }, cwd: original })
+    useWorkingDirectory(ctx, moved)
+    expect(await run(ctx, agent, '/save')).toEqual({ kind: 'success' })
+    const matches = readdirSync(moved).filter(name => name.startsWith('mayfly-export-') && name.endsWith('.md'))
+    expect(matches).toHaveLength(1)
+    expect(readdirSync(original)).toHaveLength(0)
+    expect(readFileSync(join(moved, matches[0]!), 'utf8')).toContain(`work_dir: ${moved}`)
+    await fiber.dispose()
+  })
+
+  it('resolves a relative /save path from the native workingDirectory', async () => {
+    const original = mkdtempTracked('mayfly-export-relative-original-')
+    const moved = mkdtempTracked('mayfly-export-relative-moved-')
+    const { ctx, agent, fiber } = await mount({ persistence: { content: singleTurnLog('hi', 'hello') }, cwd: original })
+    useWorkingDirectory(ctx, moved)
+    expect(await run(ctx, agent, '/save relative.md')).toEqual({ kind: 'success' })
+    expect(readFileSync(join(moved, 'relative.md'), 'utf8')).toContain('session_id:')
+    expect(existsSync(join(original, 'relative.md'))).toBe(false)
+    await fiber.dispose()
+  })
+
+  it('falls back to the process cwd when no directory is recorded', async () => {
     const root = mkdtempTracked('mayfly-export-nocwd-')
     const cwdSpy = vi.spyOn(process, 'cwd').mockReturnValue(root)
     try {
       const { ctx, agent, fiber } = await mount({ persistence: { content: singleTurnLog('hi', 'hello') } })
-      const result = await run(ctx, agent, '/export')
+      const result = await run(ctx, agent, '/save')
       expect(result).toEqual({ kind: 'success' })
       const matches = readdirSync(root).filter(name => name.startsWith('mayfly-export-') && name.endsWith('.md'))
       expect(matches).toHaveLength(1)
@@ -716,7 +752,7 @@ describe('registerExportCommands', () => {
     const root = mkdtempTracked('mayfly-export-chunks-')
     const target = join(root, 'out.md')
     const { ctx, agent, fiber } = await mount({ persistence: { content: log } })
-    const result = await run(ctx, agent, `/export ${target}`)
+    const result = await run(ctx, agent, `/save ${target}`)
     expect(result).toEqual({ kind: 'success' })
     expect(readFileSync(target, 'utf8')).toContain('streamed answer')
     await fiber.dispose()
@@ -725,43 +761,43 @@ describe('registerExportCommands', () => {
   it('guards every stop of the read path', async () => {
     // No live session (unprovided and explicitly-null slots).
     const noSession = await mount({ attach: false })
-    expect(await run(noSession.ctx, noSession.agent, '/export')).toEqual({ kind: 'error', text: 'no session is live yet' })
+    expect(await run(noSession.ctx, noSession.agent, '/save')).toEqual({ kind: 'error', text: 'no session is live yet' })
     expect(await run(noSession.ctx, noSession.agent, '/copy')).toEqual({ kind: 'error', text: 'no session is live yet' })
     await noSession.fiber.dispose()
     const nullSession = await mount({ attach: 'null' })
-    expect(await run(nullSession.ctx, nullSession.agent, '/export')).toEqual({ kind: 'error', text: 'no session is live yet' })
+    expect(await run(nullSession.ctx, nullSession.agent, '/save')).toEqual({ kind: 'error', text: 'no session is live yet' })
     await nullSession.fiber.dispose()
     // A read failure thrown as a non-Error renders through String() on
     // both commands.
     const stringThrow = await mount({ persistence: { content: singleTurnLog('hi', 'hello'), throwRaw: 'backend exploded' } })
-    expect(await run(stringThrow.ctx, stringThrow.agent, '/export'))
+    expect(await run(stringThrow.ctx, stringThrow.agent, '/save'))
       .toEqual({ kind: 'error', text: 'backend exploded' })
     expect(await run(stringThrow.ctx, stringThrow.agent, '/copy'))
       .toEqual({ kind: 'error', text: 'backend exploded' })
     await stringThrow.fiber.dispose()
     // No persistence service.
     const noPersistence = await mount()
-    expect(await run(noPersistence.ctx, noPersistence.agent, '/export'))
+    expect(await run(noPersistence.ctx, noPersistence.agent, '/save'))
       .toEqual({ kind: 'error', text: 'session persistence is unavailable' })
     await noPersistence.fiber.dispose()
     const flushFailure = await mount({ persistence: { content: singleTurnLog('hi', 'hello') } })
     vi.spyOn(flushFailure.ctx.sessions, 'flush').mockRejectedValueOnce(new Error('flush failed'))
-    expect(await run(flushFailure.ctx, flushFailure.agent, '/export'))
+    expect(await run(flushFailure.ctx, flushFailure.agent, '/save'))
       .toEqual({ kind: 'error', text: 'flush failed' })
     await flushFailure.fiber.dispose()
     // No stored artifact: the backend rejects the open with its own stop.
     const noArtifact = await mount({ persistence: { content: '', missingArtifact: true } })
-    expect(await run(noArtifact.ctx, noArtifact.agent, '/export'))
+    expect(await run(noArtifact.ctx, noArtifact.agent, '/save'))
       .toEqual({ kind: 'error', text: 'the session has no stored artifact yet' })
     await noArtifact.fiber.dispose()
     // An empty artifact folds to nothing.
     const emptyLog = await mount({ persistence: { content: '' } })
-    expect(await run(emptyLog.ctx, emptyLog.agent, '/export'))
+    expect(await run(emptyLog.ctx, emptyLog.agent, '/save'))
       .toEqual({ kind: 'error', text: 'nothing to export yet' })
     await emptyLog.fiber.dispose()
     // A corrupt line refuses the export instead of silently dropping it.
     const corrupt = await mount({ persistence: { content: 'not-json\n' } })
-    expect(await run(corrupt.ctx, corrupt.agent, '/export'))
+    expect(await run(corrupt.ctx, corrupt.agent, '/save'))
       .toEqual({ kind: 'error', text: 'corrupt session log: invalid JSONL line' })
     await corrupt.fiber.dispose()
   })
@@ -771,7 +807,7 @@ describe('registerExportCommands', () => {
     const blocker = join(root, 'blocker')
     writeFileSync(blocker, 'file in the way')
     const { ctx, agent, fiber } = await mount({ persistence: { content: singleTurnLog('hi', 'hello') } })
-    const result = await run(ctx, agent, `/export ${join(blocker, 'out.md')}`)
+    const result = await run(ctx, agent, `/save ${join(blocker, 'out.md')}`)
     expect(result?.kind).toBe('error')
     expect(result?.text).toContain('could not write export:')
     await fiber.dispose()

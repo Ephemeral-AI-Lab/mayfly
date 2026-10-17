@@ -8,7 +8,8 @@
  * boundary verbatim so every rewritten token is one the upstream pre-step
  * recognizes), and the `/skills` listing panel (`./skills-command.ts`).
  *
- * Discovery reads native skills with the exact selected Agent and its cwd.
+ * Discovery reads native skills with the exact selected Agent and its current
+ * working directory.
  * Incomplete observations retain the last complete catalog for that Agent;
  * changing the Agent clears it immediately. Native invalidation, replacement,
  * and unload abort old discovery, with an epoch check fencing late results.
@@ -21,6 +22,7 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { SkillSummary } from '@deepseek-ai/dsh-skill'
 import { freezeWire } from '@ephemeral-ai/mayfly-ui'
 import type {} from '../app/index.ts'
+import { agentDirectory } from '../internal/session-directory.ts'
 
 declare module '@deepseek-ai/cordis' {
   interface Context { mayflySkillsCatalog: SkillsCatalogService }
@@ -145,7 +147,7 @@ export class SkillsCatalogService extends Service {
     }
     let result: Awaited<ReturnType<typeof this.ownerCtx.skills.snapshot>>
     try {
-      result = await this.ownerCtx.skills.snapshot({ cwd: agent.session.header.cwd, scope: agent, signal })
+      result = await this.ownerCtx.skills.snapshot({ cwd: agentDirectory(this.ownerCtx, agent), scope: agent, signal })
       if (this.disposed || ticket !== this.epoch || signal.aborted) return
       if (this.ownerCtx.mayflyCurrentAgent.current() !== agent) return
       if (result.complete) this.settled = freezeWire(result.skills)

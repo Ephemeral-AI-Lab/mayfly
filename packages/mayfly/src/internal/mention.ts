@@ -12,10 +12,3 @@ export function mentionPath(token: string): string {
   if (quote !== '"' && quote !== "'") return path
   return path.endsWith(quote) && path.length > 1 ? path.slice(1, -1) : path.slice(1)
 }
-
-/** pi-tui's fd query resolver does not preserve these native path forms. */
-export function requiresFilesystemMention(token: string, platform: NodeJS.Platform = process.platform): boolean {
-  if (token.startsWith("@'") || token.endsWith('"')) return true
-  const path = mentionPath(token)
-  return platform === 'win32' ? /^[a-z]:[\\/]/iu.test(path) : path.includes('\\')
-}
