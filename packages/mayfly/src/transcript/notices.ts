@@ -19,6 +19,8 @@ import type { TickSource } from './tick.ts'
 
 /** The occupancy from which the context notice shows (the Harness has no threshold of its own to follow). */
 export const CONTEXT_WARN_PERCENT = 92
+/** The higher occupancies that report once more when the context crosses them. */
+export const CONTEXT_THRESHOLDS: readonly number[] = [CONTEXT_WARN_PERCENT, 95, 98]
 
 const RETRY = 'notice/retry'
 const CONTEXT = 'notice/context'
@@ -64,6 +66,8 @@ export function mountNotices(ctx: Context, t: MayflyTranslate, clock: () => numb
   /** The main sessions this has already looked at: a session is announced as resumed once, not each time the person switches back to it. */
   const seen = new WeakSet<object>()
   let facts: ConversationFacts = factsService.current
+  /** The highest context threshold already reported for the attached session; 0 below the warning. */
+  let reportedContext = 0
   let offTick: (() => void) | undefined
   /** Set when the Agent changed and the facts of the new session have not been read yet. */
   let fresh = false
@@ -86,6 +90,7 @@ export function mountNotices(ctx: Context, t: MayflyTranslate, clock: () => numb
   const sync = (): void => {
     if (fresh) {
       fresh = false
+      reportedContext = 0
       owner.clearAll()
       reportGoal()
       // Only the main session is announced, and only when it is first attached: a switch between conversations (F7) is not a resume.
@@ -111,8 +116,16 @@ export function mountNotices(ctx: Context, t: MayflyTranslate, clock: () => numb
     }
     const window = facts.contextWindow
     const percent = window === undefined ? 0 : contextPercent(facts.contextTokens, window)
-    if (percent >= CONTEXT_WARN_PERCENT) owner.report(CONTEXT, { severity: 'warning', message: t('Context {percent}% full · /compact now', { percent }) })
-    else owner.clear(CONTEXT)
+    // Report once when the context enters a threshold band: 92, then 95, then 98. A delta inside the band, or a drop
+    // back into it, says nothing; dropping below the warning clears the notice and arms the crossings again.
+    const threshold = window === undefined ? undefined : CONTEXT_THRESHOLDS.findLast(each => percent >= each)
+    if (threshold === undefined) {
+      reportedContext = 0
+      owner.clear(CONTEXT)
+    } else if (threshold > reportedContext) {
+      reportedContext = threshold
+      owner.report(CONTEXT, { severity: 'warning', message: t('Context {percent}% full · /compact now', { percent }) })
+    }
   }
 
   const offGoal = factsService.subscribeGoal(reportGoal)

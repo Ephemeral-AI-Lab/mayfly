@@ -165,16 +165,45 @@ export function agentsPanel(state: AgentsState, t: MayflyTranslate, unavailable:
   return viewList(LIST_ID, rows.map(row => agentItem(row, state.now, t, unavailable(row))), actions)
 }
 
-/** What a spawn call says of its child: where it is found, and whether it runs in the background. */
-function spawnOf(call: ConversationAgentCall): { readonly ackId?: string, readonly prompt?: string, readonly background: boolean } {
+/** What a spawn call says of its child: where it is found, whether it runs in the background, and its parsed arguments. */
+interface SpawnFacts {
+  readonly ackId?: string
+  readonly prompt?: string
+  readonly background: boolean
+  readonly args: unknown
+}
+
+/**
+ * Parsed spawn arguments by call object, so one publish parses a call once for its row and its label. A republished
+ * conversation may hand a fresh call object with equal identity and arguments; that falls back to a bounded map keyed
+ * by the call's identity, never by the parsed text.
+ */
+const spawnByCall = new WeakMap<ConversationAgentCall, SpawnFacts>()
+const spawnByKey = new Map<string, SpawnFacts>()
+const SPAWN_CACHE_LIMIT = 512
+
+function spawnOf(call: ConversationAgentCall): SpawnFacts {
+  const known = spawnByCall.get(call)
+  if (known !== undefined) return known
+  const key = `${call.callId}\u0000${String(call.seq)}\u0000${String(call.turn)}\u0000${String(call.step)}\u0000${call.result?.text ?? ''}\u0000${call.arguments}`
+  const cached = spawnByKey.get(key)
+  if (cached !== undefined) {
+    spawnByCall.set(call, cached)
+    return cached
+  }
   const parsed = parseToolArguments(call.arguments)
   const args = typeof parsed === 'object' && parsed !== null ? parsed as Record<string, unknown> : {}
   const ackId = /started subagent ([\w-]+)/u.exec(call.result?.text ?? '')?.[1]
-  return {
+  const spawn: SpawnFacts = {
     ...ackId === undefined ? {} : { ackId },
     ...typeof args['prompt'] === 'string' ? { prompt: args['prompt'] } : {},
     background: ackId !== undefined || args['run_in_background'] === true,
+    args: parsed,
   }
+  spawnByCall.set(call, spawn)
+  if (spawnByKey.size >= SPAWN_CACHE_LIMIT) spawnByKey.delete(spawnByKey.keys().next().value!)
+  spawnByKey.set(key, spawn)
+  return spawn
 }
 
 /**
@@ -203,7 +232,7 @@ export function agentRows(calls: readonly ConversationAgentCall[], children: rea
     // Stopped by the user: its run was interrupted or aborted, or its Agent was shut down while its facts still said it worked.
     const stopped = !live && (child?.stopped === true || (childId !== undefined && stoppedByUser.has(childId)) || (child !== undefined && (child.phase === 'running' || child.phase === 'waiting') && gone(child.id)))
     const failed = !live && !stopped && (child?.phase === 'failed' || (call.result?.isError === true && !spawn.background) || call.result === undefined)
-    const { label, detail } = agentCallLabel(call.name, parseToolArguments(call.arguments), call.arguments)
+    const { label, detail } = agentCallLabel(call.name, spawn.args, call.arguments)
     const endedAt = live ? undefined : child?.endedAt ?? call.result?.endedAt
     return {
       id: call.callId,

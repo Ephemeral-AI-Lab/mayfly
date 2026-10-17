@@ -109,6 +109,15 @@ export function apply(ctx: Context): void {
   let done: { readonly total: number, readonly at: number } | undefined
   let now = Date.now()
   let published = ''
+  /** The built summary and panel for the inputs that produce them; a same-identity list reuses both. */
+  let built: {
+    readonly todos: readonly TodoItem[]
+    readonly interrupted: boolean
+    readonly history: boolean
+    readonly doneTotal: number | undefined
+    readonly summary: MayflyPaneSummary | null
+    readonly panel: MayflyUiNode | null
+  } | undefined
   const t = transcriptTranslator(ctx, 'transcript')
   const tick = ctx.get('mayflyTick') as TickSource | undefined
   const pane = ctx.mayflyPanes.register({ id: TODO_VIEW_ID, title: t('Todo'), placement: 'views', priority: VIEW_PRIORITY }, null)
@@ -125,19 +134,28 @@ export function apply(ctx: Context): void {
   }
   const publish = (): void => {
     syncTick()
-    const state: TodoState = {
-      todos, interrupted, history: view.history(),
-      ...done === undefined ? {} : { done: { total: done.total } },
+    const history = view.history()
+    if (built === undefined
+      || built.todos !== todos
+      || built.interrupted !== interrupted
+      || built.history !== history
+      || built.doneTotal !== done?.total) {
+      const state: TodoState = {
+        todos, interrupted, history,
+        ...done === undefined ? {} : { done: { total: done.total } },
+      }
+      built = { todos, interrupted, history, doneTotal: done?.total, summary: todoSummary(state, t), panel: todoPanel(state, t) }
     }
-    const summary = todoSummary(state, t)
-    const panel = todoPanel(state, t)
+    const { summary, panel } = built
     const key = JSON.stringify([summary, panel])
     if (key === published) return
     published = key
     pane.set(panel)
     pane.setSummary(summary)
   }
-  const update = (next: readonly TodoItem[], stopped = interrupted): void => {
+  const update = (next: readonly TodoItem[], stopped = interrupted, force = false): void => {
+    // An unrelated facts delta carries the same projection: nothing to rebuild or publish.
+    if (!force && next === todos && stopped === interrupted) return
     now = Date.now()
     const settled = next.length > 0 && next.every(todo => todo.status === 'completed')
     interrupted = stopped
@@ -163,7 +181,7 @@ export function apply(ctx: Context): void {
     if (agent?.id === sessionId) return
     sessionId = agent?.id
     done = undefined
-    update([], false)
+    update([], false, true)
   })
   const offFacts = facts?.subscribe((next: ConversationFacts) => {
     update(next.todos, !next.active && next.runOutcome === 'failed')

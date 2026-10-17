@@ -13,31 +13,19 @@ import type {
 } from '@deepseek-ai/dsh-workflow'
 import { afterEach, describe, expect, it } from 'vitest'
 import * as workflow from '../../src/transcript/pane-workflow.ts'
-import { formatWorkflowElapsed, setWorkflowPaneTimers, workflowNode } from '../../src/transcript/pane-workflow.ts'
+import { formatWorkflowElapsed, setWorkflowPaneClock, workflowNode } from '../../src/transcript/pane-workflow.ts'
 import { resetSeq, turnStart } from './helpers.ts'
 import { plainText } from '../helpers.ts'
-import { bootPanePlugin, type PanePluginHarness } from './pane-fakes.ts'
+import { bootPanePlugin, HandTick, type PanePluginHarness } from './pane-fakes.ts'
 import { fakeAgent, type FakeAgent } from './status-fakes.ts'
 
 const T0 = 1_700_000_000_000
 let clock = T0
-let ticks: Array<() => void> = []
-let cleared = 0
-
-afterEach(() => { setWorkflowPaneTimers(undefined) })
+afterEach(() => { setWorkflowPaneClock(undefined) })
 
 function freezeClock(): void {
   clock = T0
-  ticks = []
-  cleared = 0
-  setWorkflowPaneTimers({
-    setInterval(callback) {
-      ticks.push(callback)
-      return { unref() {} } as unknown as ReturnType<typeof setInterval>
-    },
-    clearInterval() { cleared += 1 },
-    now: () => clock,
-  })
+  setWorkflowPaneClock(() => clock)
 }
 
 function runInfo(id = 'run-1', name = 'publish-check'): WorkflowRunInfo {
@@ -67,6 +55,7 @@ function agentEnd(seq: number, outcome: WorkflowAgentEndInfo['outcome'], childId
 interface Rig extends PanePluginHarness {
   readonly agent: FakeAgent
   readonly childIds: string[]
+  readonly tick: HandTick
 }
 
 async function boot(): Promise<Rig> {
@@ -83,8 +72,9 @@ async function boot(): Promise<Rig> {
       } as unknown as Session)),
     ],
   }
-  const harness = await bootPanePlugin(workflow, agent, { sessions })
-  return { ...harness, agent, childIds }
+  const tick = new HandTick()
+  const harness = await bootPanePlugin(workflow, agent, { sessions, mayflyTick: tick })
+  return { ...harness, agent, childIds, tick }
 }
 
 function plain(rig: Rig, width = 80): string[] {
@@ -176,7 +166,7 @@ describe('mayfly-pane-workflow', () => {
     rig.ctx.emit('workflow/agent-end', info, agentEnd(2, 'failed', 'child-2', 'second'))
     rig.ctx.emit('workflow/agent-end', info, agentEnd(99, 'completed'))
     clock = T0 + 10_000
-    ticks[0]!()
+    rig.tick.fire(clock)
     let rows = plain(rig)
     expect(rows[1]).toContain('Workflow publish-check')
     expect(rows[1]).toContain('● 1 running')
@@ -258,22 +248,22 @@ describe('mayfly-pane-workflow', () => {
     const first = runInfo()
     startRun(rig.ctx, first, 'child-1')
     startRun(rig.ctx, runInfo('run-2', 'beta'), 'child-1')
-    expect(ticks).toHaveLength(1)
+    expect(rig.tick.subscribers).toBe(1)
     const before = rig.screen.renderRequests.length
     clock = T0 + 65_000
-    ticks[0]!()
+    rig.tick.fire(clock)
     expect(rig.screen.renderRequests.length).toBeGreaterThan(before)
     expect(plain(rig)[1]).toContain('1m 5s')
     // An unchanged clock republishes nothing.
     const settledRequests = rig.screen.renderRequests.length
-    ticks[0]!()
+    rig.tick.fire(clock)
     expect(rig.screen.renderRequests.length).toBe(settledRequests)
     rig.ctx.emit('workflow/end', first, { stopReason: 'error', agentsStarted: 1 })
     rig.ctx.emit('workflow/end', runInfo('run-2', 'beta'), { stopReason: 'cancelled', agentsStarted: 1 })
     expect(plain(rig).join('\n')).toContain('✗ Workflow publish-check')
     expect(plain(rig).join('\n')).toContain('⊘ Workflow beta')
-    ticks[0]!()
-    expect(cleared).toBeGreaterThan(0)
+    expect(rig.tick.subscribers).toBe(0)
+    rig.tick.fire(clock)
     await rig.dispose()
     rig.ctx.emit('workflow/start', runInfo('late'))
     rig.ctx.emit('workflow/agent-start', runInfo('late'), agentStart(1, 'late', 'child-1'))

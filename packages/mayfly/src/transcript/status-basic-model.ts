@@ -42,16 +42,25 @@ interface RowSelection {
 
 /**
  * Read the session's projected next selection, if the projection carries one.
+ * @param value - the projected `modelSelection` view value.
+ * @returns the projected selection, or `undefined` before any selection.
+ */
+function projectedSelection(value: unknown): RowSelection | undefined {
+  const projected = value as ProjectedModelSelection | undefined
+  const next = projected?.next
+  if (next === undefined || next === null) return undefined
+  return { provider: next.provider, model: next.model, ...next.reasoningEffort === undefined ? {} : { effort: next.reasoningEffort } }
+}
+
+/**
+ * Read the session's projected next selection, if the projection carries one.
  * @param ctx - plugin context.
  * @param session - the current Agent's session, if any.
  * @returns the projected selection, or `undefined` before any selection.
  */
 function projectedNext(ctx: Context, session: Session | undefined): RowSelection | undefined {
   if (session === undefined) return undefined
-  const projected = ctx.sessionProjections.snapshot(session, ['modelSelection']).values.modelSelection as ProjectedModelSelection | undefined
-  const next = projected?.next
-  if (next === undefined || next === null) return undefined
-  return { provider: next.provider, model: next.model, ...next.reasoningEffort === undefined ? {} : { effort: next.reasoningEffort } }
+  return projectedSelection(ctx.sessionProjections.snapshot(session, ['modelSelection']).values.modelSelection)
 }
 
 /** Capitalize the effort id's head: `max` → `Max`, `x-high` → `X-high`. */
@@ -64,6 +73,9 @@ export function apply(ctx: Context): void {
   const factsService = ctx.get('mayflySessionFacts') as SessionFactsService
   let facts: ConversationFacts = factsService.current
   let agent = factsService.currentAgent
+  /** The session whose projected selection is cached, and that selection; refreshed on attach and change only. */
+  let projectedFor: Session | undefined
+  let projected: RowSelection | undefined
   let text = ''
   let provider = ''
   let model = ''
@@ -77,7 +89,14 @@ export function apply(ctx: Context): void {
        that leaves the effort undefined restores the provider default, it
        never inherits the stale facts or header level. */
     const header = agent?.session.requestHeader()?.config
-    const selection: RowSelection | undefined = projectedNext(ctx, agent?.session)
+    const session = agent?.session
+    // The snapshot validates through the projection's zod view. Read it once per attached session (and on the change
+    // feed below), not on every facts delta.
+    if (session !== projectedFor) {
+      projectedFor = session
+      projected = projectedNext(ctx, session)
+    }
+    const selection: RowSelection | undefined = projected
       ?? (facts.model === undefined
         ? undefined
         : { ...facts.provider === undefined ? {} : { provider: facts.provider }, model: facts.model, ...(facts.reasoningEffort === undefined ? {} : { effort: facts.reasoningEffort }) })
@@ -119,8 +138,12 @@ export function apply(ctx: Context): void {
   }
   const offFacts = factsService.subscribe(next => { facts = next; refresh() })
   const offAgent = factsService.subscribeAgent(next => { agent = next; refresh() })
-  const offProjection = ctx.sessionProjections.onChanged((session, key) => {
-    if (key === 'modelSelection' && session === agent?.session) refresh()
+  const offProjection = ctx.sessionProjections.onChanged((session, key, value) => {
+    if (key !== 'modelSelection' || session !== agent?.session) return
+    // The change feed already carries the parsed view: cache it and refresh without another snapshot.
+    projectedFor = session
+    projected = projectedSelection(value)
+    refresh()
   })
   ctx.effect(() => () => offFacts())
   ctx.effect(() => () => offAgent())
