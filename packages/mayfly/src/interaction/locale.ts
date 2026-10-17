@@ -9,7 +9,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import { OPERATION_ZH } from './operation-locale.ts'
 import { mountCommonLocale } from '../frontend/common-locale.ts'
-import { interpolateLocaleMessage, type MayflyLocaleCatalog, type MayflyLocaleSnapshot, type MayflyTranslate } from '../frontend/locale.ts'
+import { memoizedLocaleTranslator, type MayflyLocaleCatalog, type MayflyLocaleSnapshot, type MayflyTranslate } from '../frontend/locale.ts'
 
 const zh: Readonly<Record<string, string>> = {
   'The external credential cannot be cleared here': '无法在此清除外部凭据',
@@ -915,8 +915,7 @@ export function mountInteractionLocale(ctx: Context): void {
  * @returns dynamic interaction translator.
  */
 export function interactionTranslator(ctx: Context): MayflyTranslate {
-  return (key, values) => ctx.get('mayflyLocale')?.translate('interaction', key, values)
-    ?? interpolateLocaleMessage(key, values)
+  return memoizedLocaleTranslator(ctx, 'interaction').translate
 }
 
 /**

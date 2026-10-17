@@ -192,7 +192,39 @@ const appSessions = {
   ],
 }
 
-export const SCENES = { markdown, content, appConversation, appAgents, appSessions }
+/** One settled turn of the long history: a read, an edit, a bash call, and a long answer, so the window holds many rows and lazy Markdown. */
+const historyTurn = (n) => turn(`Round ${String(n)}: tighten the width ladder of section ${String(n)}.`, [
+  step({ stream: false, reasoning: `Section ${String(n)} wraps twice; read it, change the ladder, and run the suite.`, text: `Reading section ${String(n)} first.`, tools: [tool('read', { file_path: `src/section${String(n)}.ts` }, { result: lines(30, row => `export const row${String(row)} = ${String(row)}`), runMs: 300 })] }),
+  step({ stream: false, tools: [edit(`src/section${String(n)}.ts`, 'const gap = 2', 'const gap = 1'), tool('bash', { command: 'pnpm run test' }, { result: lines(12, row => `✓ suite ${String(row)} passed`), runMs: 1200 })] }),
+  step({ stream: false, text: reply() }),
+])
+
+const perfSubagent = {
+  summary: 'a long history (16 settled turns with tool rows and long answers), then a foreground subagent running for a minute while its child streams steps, then a long closing answer',
+  items: [
+    ...Array.from({ length: 16 }, (_, index) => historyTurn(index + 1)),
+    mark('history'),
+    turn('Audit the whole renderer with a subagent.', [
+      step({
+        text: 'I will hand the audit to a subagent and wait for it.',
+        // The call runs for a minute: the scenario types and scrolls while it ticks.
+        marks: [{ name: 'child-running', block: 'tool', at: 0.1 }],
+        tools: [subagent('Audit the renderer', 'Audit the renderer for wasted work and report what to cut', {
+          mode: 'continuable', live: true, startMs: 400,
+          items: Array.from({ length: 12 }, (_, index) => step({
+            reasoning: `Checking pass ${String(index + 1)} of the renderer.`, reasoningMs: 800,
+            text: `Pass ${String(index + 1)}: the list painter walks every item on each publish; the cache hits, but the walk itself is the cost. `.repeat(6), textMs: 3000, chunk: 8,
+            tools: [tool('read', { file_path: `src/pass${String(index + 1)}.ts` }, { result: lines(20, row => `export const pass${String(row)} = ${String(row)}`), runMs: 800 })],
+          })),
+        }, { runMs: 60_000 })],
+      }),
+      mark('child-done'),
+      step({ text: reply(), textMs: 6000, chunk: 24 }),
+    ]),
+  ],
+}
+
+export const SCENES = { markdown, content, appConversation, appAgents, appSessions, perfSubagent }
 
 /** A replay or a scene by name. */
 export const timelineNamed = name => Object.hasOwn(REPLAYS, name) ? REPLAYS[name] : Object.hasOwn(SCENES, name) ? SCENES[name] : undefined

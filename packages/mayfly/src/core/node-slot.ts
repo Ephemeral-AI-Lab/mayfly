@@ -156,6 +156,8 @@ class SlotAttachment {
   /** A row to stand focus on as soon as the compiled node has it (applied after the next compile). */
   pendingFocus: { readonly controlId: string, readonly itemId: string } | undefined
   private renderedRevision = -1
+  /** Whether the compiled surface was last given focus. */
+  private focusApplied = false
   private readonly off: () => void
   get keymap(): MayflyKeymap { return this.compiler.keymap }
 
@@ -189,6 +191,12 @@ class SlotAttachment {
   /** The followed item's line in the slot's own rows, or `undefined` when the slot is not the scroll's flow content. */
   get trackedLine(): number | undefined { return this.runtime.flow ? this.runtime.probe.line : undefined }
 
+  /** Give the compiled surface (or take from it) the keyboard focus. */
+  applyFocus(focused: boolean): void {
+    setCompiledFocus(this.compiled, focused)
+    this.focusApplied = focused
+  }
+
   /** Ask for a paint, so a pending focus is applied. */
   invalidateSoon(): void { this.compiler.requestRender() }
 
@@ -206,7 +214,8 @@ class SlotAttachment {
       this.applyPendingFocus()
       return this.compiled
     }
-    setCompiledFocus(this.compiled, false)
+    // Focus is applied through a reconcile of every control, so only a surface that holds it is toggled.
+    if (this.focusApplied) setCompiledFocus(this.compiled, false)
     const node = this.model.decisionNode ?? this.model.node
     const compiler = this.compiler
     if (node === null) {
@@ -228,7 +237,8 @@ class SlotAttachment {
       this.compiled = result.ok ? result.value : { node, component: result.errorComponent, focusTarget: null }
     }
     this.renderedRevision = this.model.revision
-    setCompiledFocus(this.compiled, focused)
+    if (focused) setCompiledFocus(this.compiled, true)
+    this.focusApplied = focused
     this.applyPendingFocus()
     return this.compiled
   }
@@ -255,7 +265,7 @@ class NodeSlotSurface implements MayflyFocusable {
     this.focusedValue = value
     if (before !== value) this.changed?.(value)
     this.attachment?.focus(this.shown)
-    if (this.attachment !== undefined) setCompiledFocus(this.attachment.compiled, this.shown)
+    this.attachment?.applyFocus(this.shown)
   }
 
   /** Whether the slot is drawn as focused: it holds focus, or a search is stepping through it. */
@@ -265,7 +275,7 @@ class NodeSlotSurface implements MayflyFocusable {
     if (this.spotlit === on) return
     this.spotlit = on
     this.attachment?.focus(this.shown)
-    if (this.attachment !== undefined) setCompiledFocus(this.attachment.compiled, this.shown)
+    this.attachment?.applyFocus(this.shown)
     this.attachment?.invalidateSoon()
   }
 

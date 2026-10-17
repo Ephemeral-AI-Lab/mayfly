@@ -603,6 +603,23 @@ const PERF = {
     perf: { ceilings: { stream: { cpuPct: 45 }, scroll: { keyP50Ms: 12, cpuPerKeyMs: 8 }, wheel: { keyP50Ms: 12, cpuPerKeyMs: 8 } } },
     script: [measure('stream', [play(undefined, { timed: true })]), measure('scroll', [key('pageup', { repeat: 10 }), key('pagedown', { repeat: 10 })]), measure('wheel', [wheel('up', { count: 10 }), wheel('down', { count: 10 })])],
   },
+  'perf-subagent': {
+    summary: 'a long history, a foreground subagent running for a minute, then a long answer ending: CPU and frames while the pending call ticks, scrolling, and the settle',
+    source: { replay: 'perfSubagent' },
+    covers: [`${TRANSCRIPT}conversation-feed.ts`, `${TRANSCRIPT}transcript-model.ts`, `${TRANSCRIPT}session-facts.ts`, `${TRANSCRIPT}status-agents.ts`, `${TRANSCRIPT}official-model.ts`, ...STREAM, 'packages/mayfly/src/core/components.ts', ...FRAME_PATH],
+    sizes: [DEFAULT_SIZE],
+    // Measured on the dev machine: subagent spans 5-8% CPU, typing 10%, scroll keys 4.5 ms and 7 ms CPU, settle 40-45%; the ceilings keep the headroom of the other scenarios.
+    perf: { ceilings: { 'subagent *': { cpuPct: 25 }, type: { keyP50Ms: 15, cpuPerKeyMs: 10 }, scroll: { keyP50Ms: 15, cpuPerKeyMs: 20 }, wheel: { keyP50Ms: 15, cpuPerKeyMs: 12 }, settle: { cpuPct: 75 } } },
+    script: [
+      play('history'),
+      measure('subagent start', [play('child-running', { timed: true })]),
+      measure('type', [type(SENTENCE)]),
+      measure('scroll', [key('pageup', { repeat: 10 }), key('pagedown', { repeat: 10 })]),
+      measure('wheel', [wheel('up', { count: 10 }), wheel('down', { count: 10 })]),
+      measure('subagent rest', [play('child-done', { timed: true })]),
+      measure('settle', [play(undefined, { timed: true })]),
+    ],
+  },
   'perf-content': {
     summary: 'page keys, End, and a resize inside the trace detail of a megabyte write',
     source: { replay: 'content' },

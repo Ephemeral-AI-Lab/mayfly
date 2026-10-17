@@ -172,6 +172,8 @@ class SegmentedContent implements RowSource {
       this.tree.add(segment, rows.length - this.counts[segment]!)
       this.counts[segment] = rows.length
       this.changes += 1
+      // A scroll that measured the estimate needs another frame to place its window against the painted count.
+      if (this.lazy) this.env.changed?.()
     }
     return rows
   }

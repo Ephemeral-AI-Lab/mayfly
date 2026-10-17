@@ -216,6 +216,74 @@ export class MayflyLocaleService extends Service {
   }
 }
 
+/** How many translated strings a memoized translator remembers for one locale revision. */
+export const LOCALE_MEMO_ENTRIES = 512
+
+/** A namespace translator that remembers its strings, and the bound provider's revision. */
+export interface MayflyMemoTranslator {
+  readonly translate: MayflyTranslate
+  /** The bound locale provider's revision, or 0 while none is mounted. */
+  readonly revision: () => number
+}
+
+/**
+ * Translate through the current locale provider, resolving each string once per provider lifetime and revision.
+ * Reaching the service through the context costs a proxy lookup per call, and a stream or a frame translates the same few
+ * strings on every row, so a catalog is read only after the provider or its revision moved. Without a provider nothing
+ * is remembered and the English key answers.
+ * @param ctx - frontend-tree context; the provider observer is a Fiber of it.
+ * @param namespace - package-owned dictionary namespace.
+ * @returns the memoized translator and the provider's revision.
+ */
+export function memoizedLocaleTranslator(ctx: Context, namespace: string): MayflyMemoTranslator {
+  // Some callers translate inside an event handler: one observer Fiber per context and namespace, not one per call.
+  let byNamespace = memoTranslators.get(ctx)
+  if (byNamespace === undefined) {
+    byNamespace = new Map()
+    memoTranslators.set(ctx, byNamespace)
+  }
+  const known = byNamespace.get(namespace)
+  if (known !== undefined) return known
+  const created = createMemoTranslator(ctx, namespace)
+  byNamespace.set(namespace, created)
+  return created
+}
+
+const memoTranslators = new WeakMap<Context, Map<string, MayflyMemoTranslator>>()
+
+function createMemoTranslator(ctx: Context, namespace: string): MayflyMemoTranslator {
+  let messages: Map<string, string> | undefined
+  let revision = 0
+  ctx.inject(['mayflyLocale'], (localeCtx) => {
+    const unsubscribe = localeCtx.mayflyLocale.subscribe((snapshot) => {
+      messages = new Map()
+      revision = snapshot.revision
+    })
+    localeCtx.effect(() => () => {
+      unsubscribe()
+      messages = undefined
+      revision = 0
+    })
+  })
+  const lookup: MayflyTranslate = (key, values) => ctx.get('mayflyLocale')?.translate(namespace, key, values)
+    ?? interpolateLocaleMessage(key, values)
+  return {
+    translate: (key, values) => {
+      if (messages === undefined) return lookup(key, values)
+      const id = values === undefined ? key : `${key}\0${JSON.stringify(values)}`
+      let message = messages.get(id)
+      if (message === undefined) {
+        message = lookup(key, values)
+        // Interpolated counts are unbounded; a full memo starts over rather than grow.
+        if (messages.size >= LOCALE_MEMO_ENTRIES) messages.clear()
+        messages.set(id, message)
+      }
+      return message
+    },
+    revision: () => revision,
+  }
+}
+
 /**
  * Interpolate catalog placeholders without exposing a locale service.
  * @param message - source message.

@@ -1,10 +1,9 @@
 /** Core-private contextual hint locale lifecycle. */
 import { Context } from '@deepseek-ai/cordis'
-import { MayflyLocaleService } from '../../src/frontend/locale.ts'
+import { LOCALE_MEMO_ENTRIES, MayflyLocaleService } from '../../src/frontend/locale.ts'
 import { describe, expect, it, vi } from 'vitest'
 import {
   contextHintTranslator,
-  HINT_MEMO_ENTRIES,
   mountContextHintLocale,
 } from '../../src/core/context-hint-locale.ts'
 import { untranslated } from '../../src/core/ui-interaction-locale.ts'
@@ -77,7 +76,7 @@ describe('context hint locale lifecycle', () => {
       expect(t('run')).toBe('run')
       expect(translate).toHaveBeenCalledTimes(4)
       // A full memo starts over: the next string is resolved again and remembered.
-      for (let count = 0; count < HINT_MEMO_ENTRIES; count += 1) t('run {count}', { count })
+      for (let count = 0; count < LOCALE_MEMO_ENTRIES; count += 1) t('run {count}', { count })
       const filled = translate.mock.calls.length
       expect(t('run')).toBe('run')
       expect(translate).toHaveBeenCalledTimes(filled + 1)

@@ -63,6 +63,18 @@ export interface StreamInputs {
   readonly imageRefs?: Map<string, { readonly attachmentId: string, readonly mediaType: string }>
 }
 
+/** The sanitized text of an entry, kept by the entry's identity: a settled answer is sanitized once, not on every publish. */
+const sanitizedText = new WeakMap<object, string>()
+
+function sanitizedOf(entry: { readonly text: string }): string {
+  let text = sanitizedText.get(entry)
+  if (text === undefined) {
+    text = sanitizePluginText(entry.text)
+    sanitizedText.set(entry, text)
+  }
+  return text
+}
+
 function isSemantic(entry: Entry): entry is TranscriptEntryModel {
   return entry.kind.startsWith('transcript-')
 }
@@ -550,7 +562,7 @@ function entryRow(item: EntryItem, entry: TranscriptEntryModel, inputs: StreamIn
       return {
         kind: 'prompt',
         id: entry.id,
-        text: sanitizePluginText(entry.text),
+        text: sanitizedOf(entry),
         images: entry.images.map((image, index) => {
           inputs.imageRefs?.set(image.attachmentId, { attachmentId: image.attachmentId, mediaType: image.mediaType })
           return {
@@ -563,7 +575,7 @@ function entryRow(item: EntryItem, entry: TranscriptEntryModel, inputs: StreamIn
     case 'transcript-assistant': {
       if (entry.text.trim() === '') return undefined
       // The Markdown body paints the unit an append reached, so a long live answer costs what its tail does.
-      return { kind: 'answer', id: entry.id, text: sanitizePluginText(entry.text) }
+      return { kind: 'answer', id: entry.id, text: sanitizedOf(entry) }
     }
     case 'transcript-thinking': {
       if (entry.text.trim() === '') return undefined

@@ -7,7 +7,7 @@
  */
 
 import type { Context } from '@deepseek-ai/cordis'
-import { interpolateLocaleMessage, type MayflyLocaleCatalog, type MayflyLocaleSnapshot, type MayflyTranslate } from '../frontend/locale.ts'
+import { memoizedLocaleTranslator, type MayflyLocaleCatalog, type MayflyLocaleSnapshot, type MayflyTranslate } from '../frontend/locale.ts'
 import { PROCESS_ACTIVE_ZH, PROCESS_DONE_ZH } from './process-activity.ts'
 
 const identityCatalog = (zh: Readonly<Record<string, string>>): MayflyLocaleCatalog => Object.freeze({
@@ -236,8 +236,7 @@ export function mountTranscriptLocale(ctx: Context, namespace: string, catalog: 
  * @returns dynamic translator with interpolated English fallback.
  */
 export function transcriptTranslator(ctx: Context, namespace: string): MayflyTranslate {
-  return (key, values) => ctx.get('mayflyLocale')?.translate(namespace, key, values)
-    ?? interpolateLocaleMessage(key, values)
+  return memoizedLocaleTranslator(ctx, namespace).translate
 }
 
 /**

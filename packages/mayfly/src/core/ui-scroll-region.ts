@@ -277,18 +277,19 @@ export interface BarredScrollViewOptions extends Omit<ScrollViewOptions, 'scroll
  * and show no bar.
  */
 export class BarredScrollView extends ScrollView {
-  private readonly bar: { overflowing: boolean, readonly visibility: BarVisibility }
+  private readonly bar: { overflowing: boolean, readonly visibility: BarVisibility, source?: readonly string[] }
   private readonly barred: boolean
   private quiet = false
 
   constructor(component: Component, options: BarredScrollViewOptions) {
-    const bar = { overflowing: false, visibility: new BarVisibility(options.focusGated, options.repaint) }
+    const bar: { overflowing: boolean, readonly visibility: BarVisibility, source?: readonly string[] } = { overflowing: false, visibility: new BarVisibility(options.focusGated, options.repaint) }
     let memo: { source: readonly string[], width: number, colors: BarColors | undefined, rows: string[] } | undefined
     const barred: Component = {
       render: (width: number): string[] => {
         if (width <= BAR_COLUMNS) return component.render(width)
         const inner = width - BAR_COLUMNS
         const source = component.render(inner)
+        bar.source = source
         const colors = options.colors()
         if (memo !== undefined && memo.source === source && memo.width === width && memo.colors === colors) return memo.rows
         const gap = ' '.repeat(BAR_COLUMNS)
@@ -363,6 +364,9 @@ export class BarredScrollView extends ScrollView {
 
   /** The bar's columns are inside the rows the content wrapper paints, so the content takes the whole width. */
   override getContentWidth(width: number): number { return width }
+
+  /** The rows the content painted at the last render (before the bar's columns), when the view draws a bar. */
+  protected get contentRows(): readonly string[] | undefined { return this.bar.source }
 
   /** The columns the bar keeps at the right of the view. */
   get barColumns(): number { return this.barred ? BAR_COLUMNS : 0 }

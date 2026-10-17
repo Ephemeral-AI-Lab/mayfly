@@ -62,6 +62,18 @@ export interface TranscriptControllerOptions {
   }
 }
 
+/**
+ * The least time between two publishes of a model that keeps changing (live text, a burst of events). The first change of a
+ * quiet period publishes at once; the ones inside this window become one trailing publish with the newest model.
+ */
+export const PUBLISH_INTERVAL_MS = 30
+
+/** The window grows with what a publish costs (this many times its duration), so a long history leaves the loop time to idle. */
+const PUBLISH_COST_FACTOR = 3
+
+/** The longest the window grows to. */
+const PUBLISH_INTERVAL_MAX_MS = 200
+
 /** What a row under the cursor can be sent to: the clipboard, or the editor. */
 export interface StreamRowActions {
   /** Copy the row's content; `raw` is the model's JSON. */
@@ -183,6 +195,11 @@ export class TranscriptController {
     clearTimeout: (handle) => { if (this.options.clock === undefined) clearTimeout(handle as ReturnType<typeof setTimeout>); else this.options.clock.clearTimeout(handle) },
   }
   private offLayout: (() => void) | undefined
+  /** When the stream was last published, and the trailing publish a burst of changes waits for. */
+  private lastPublishAt = Number.NEGATIVE_INFINITY
+  /** How long the last publish took: the window after it grows with it. */
+  private publishCostMs = 0
+  private trailing: unknown
 
   constructor(private readonly options: TranscriptControllerOptions) {}
 
@@ -229,11 +246,33 @@ export class TranscriptController {
 
   /** The displayed model changed: publish it. The screen follows the tail, or counts what arrived below a view scrolled away. */
   refresh(): void {
-    if (this.active === undefined) return
-    const screen = this.screen
-    if (screen === undefined) return
+    if (this.active === undefined || this.screen === undefined) return
+    if (this.trailing !== undefined) return
+    const window = Math.min(PUBLISH_INTERVAL_MAX_MS, Math.max(PUBLISH_INTERVAL_MS, this.publishCostMs * PUBLISH_COST_FACTOR))
+    const wait = this.lastPublishAt + window - this.nowMs()
+    if (wait <= 0) {
+      this.publishNow()
+      return
+    }
+    // Inside the window of the last publish: one publish at its end reads whatever the model is by then.
+    const clock = this.options.clock
+    this.trailing = clock?.setTimeout(() => { this.trailing = undefined; this.publishNow() }, wait) ?? setTimeout(() => { this.trailing = undefined; this.publishNow() }, wait)
+    if (this.trailing !== undefined && typeof (this.trailing as { unref?: unknown }).unref === 'function') (this.trailing as { unref(): void }).unref()
+  }
+
+  private publishNow(): void {
+    if (this.active === undefined || this.screen === undefined) return
     this.publish()
-    screen.requestRender()
+    this.screen.requestRender()
+  }
+
+  private nowMs(): number { return this.options.clock?.now() ?? Date.now() }
+
+  private cancelTrailing(): void {
+    if (this.trailing === undefined) return
+    if (this.options.clock === undefined) clearTimeout(this.trailing as ReturnType<typeof setTimeout>)
+    else this.options.clock.clearTimeout(this.trailing)
+    this.trailing = undefined
   }
 
   /** Something other than the model moved (the queued messages): publish again without announcing new content. */
@@ -451,6 +490,7 @@ export class TranscriptController {
   }
 
   dispose(): void {
+    this.cancelTrailing()
     this.offTick?.()
     this.offTick = undefined
     this.unmount()
@@ -470,6 +510,17 @@ export class TranscriptController {
   }
 
   private publish(now = Date.now()): void {
+    this.cancelTrailing()
+    const started = performance.now()
+    try {
+      this.publishFacts(now)
+    } finally {
+      this.publishCostMs = performance.now() - started
+      this.lastPublishAt = this.nowMs()
+    }
+  }
+
+  private publishFacts(now: number): void {
     const slot = this.slot
     if (slot === undefined) return
     const view = this.active === undefined ? undefined : this.views.get(this.active)
@@ -689,6 +740,7 @@ export class TranscriptController {
   }
 
   private unmount(): void {
+    this.cancelTrailing()
     this.offLayout?.()
     this.offLayout = undefined
     for (const view of this.views.values()) view.fresh.reset()

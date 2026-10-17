@@ -6,7 +6,7 @@
  */
 
 import type { Context } from '@deepseek-ai/cordis'
-import { interpolateLocaleMessage, type MayflyLocaleCatalog, type MayflyTranslate } from '../frontend/locale.ts'
+import { memoizedLocaleTranslator, type MayflyLocaleCatalog, type MayflyTranslate } from '../frontend/locale.ts'
 import { mountCommonLocale } from '../frontend/common-locale.ts'
 
 const zh = Object.freeze({
@@ -98,9 +98,6 @@ const en = Object.freeze(Object.fromEntries(Object.keys(zh).map(key => [key, key
 /** Core-owned catalog for interaction strings: hint labels, shared decisions, placeholders, and validation. */
 export const CORE_CONTEXT_HINT_LOCALE: MayflyLocaleCatalog = Object.freeze({ en, zh })
 
-/** How many translated strings a translator remembers for one locale revision. */
-export const HINT_MEMO_ENTRIES = 512
-
 /**
  * The translator and its revision travel together: a surface paints `translate`, and a moved `revision` is the
  * compiler frame input that repaints the surface without a publish.
@@ -117,34 +114,7 @@ export interface MayflyContextHints {
  * @returns dynamic translator with an English-key fallback, paired with the provider's revision.
  */
 export function contextHintTranslator(ctx: Context): MayflyContextHints {
-  const lookup: MayflyTranslate = (key, values) => ctx.get('mayflyLocale')?.translate('core-context-hints', key, values)
-    ?? interpolateLocaleMessage(key, values)
-  // Painters translate the same few strings on every row, and a catalog changes only with the locale provider or its
-  // revision. While a provider is mounted each string is resolved once; every revision and every provider lifetime
-  // starts a fresh memo, and without a provider nothing is remembered.
-  let messages: Map<string, string> | undefined
-  ctx.inject(['mayflyLocale'], (localeCtx) => {
-    const unsubscribe = localeCtx.mayflyLocale.subscribe(() => { messages = new Map() })
-    localeCtx.effect(() => () => {
-      unsubscribe()
-      messages = undefined
-    })
-  })
-  return {
-    translate: (key, values) => {
-      if (messages === undefined) return lookup(key, values)
-      const id = values === undefined ? key : `${key}\0${JSON.stringify(values)}`
-      let message = messages.get(id)
-      if (message === undefined) {
-        message = lookup(key, values)
-        // Interpolated counts are unbounded; a full memo starts over rather than grow.
-        if (messages.size >= HINT_MEMO_ENTRIES) messages.clear()
-        messages.set(id, message)
-      }
-      return message
-    },
-    revision: () => ctx.get('mayflyLocale')?.snapshot.revision ?? 0,
-  }
+  return memoizedLocaleTranslator(ctx, 'core-context-hints')
 }
 
 /**

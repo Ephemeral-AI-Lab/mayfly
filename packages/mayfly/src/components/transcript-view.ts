@@ -423,15 +423,15 @@ export function streamTarget(node: MayflyUiNode): string | undefined {
  * @returns the node the conversation slot shows.
  */
 export function TranscriptStream(facts: TranscriptViewFacts, cursor?: StreamCursor, highlight?: MayflyListHighlight): MayflyUiNode {
-  return ui.stack.column([
-    TranscriptView(facts, cursor, highlight),
-    ui.actions({
-      id: STREAM.keys,
-      scope: STREAM.list,
-      items: [
-        { id: STREAM.copy, semantic: 'copy', label: 'Copy', hintLabel: 'copy · Ctrl+C JSON', hidden: true },
-        { id: STREAM.open, semantic: 'external', label: 'Open in editor', hintLabel: 'open in editor', hidden: true },
-      ],
-    }),
-  ])
+  return ui.stack.column([TranscriptView(facts, cursor, highlight), STREAM_KEYS])
 }
+
+/** The hidden actions of the stream: one frozen node, since nothing in it depends on the facts. */
+const STREAM_KEYS: MayflyUiNode = ui.actions({
+  id: STREAM.keys,
+  scope: STREAM.list,
+  items: [
+    { id: STREAM.copy, semantic: 'copy', label: 'Copy', hintLabel: 'copy · Ctrl+C JSON', hidden: true },
+    { id: STREAM.open, semantic: 'external', label: 'Open in editor', hintLabel: 'open in editor', hidden: true },
+  ],
+})

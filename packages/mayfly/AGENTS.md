@@ -43,7 +43,10 @@ slots, never arbitrary root components.
   Locale namespaces are refcounted shared catalogs: any surface plugin may
   register the same namespace when its catalog is equivalent, and the catalog
   lives until the last owner unloads; a conflicting catalog is a programming
-  error. Vocabulary shared across namespaces belongs to `common`. English
+  error. Namespace translators come from `memoizedLocaleTranslator`
+  (`frontend/locale.ts`): one observer Fiber per context and namespace, each string
+  resolved once per locale revision; never reach `ctx.get('mayflyLocale')` per string
+  on a hot path. Vocabulary shared across namespaces belongs to `common`. English
   strings are the stable keys, so changing one means updating its emitting
   call site; `tests/locale-catalog.spec.ts` enforces used-key completeness,
   dead-key liveness, placeholder parity, and zh terminology in both directions.
@@ -75,6 +78,9 @@ slots, never arbitrary root components.
   renderer. Preserve complete floor-eligible history; a history floor (BTW's
   seed) hides entries only in presentation. Do not rely on entry identity
   across native parsing or render a conversation outside the transcript pane.
+  The controller publishes a changing model at most once per window
+  (`PUBLISH_INTERVAL_MS`, longer while a publish is costly): the first change of a
+  quiet period publishes at once, the rest of a burst become one trailing publish.
   Durable sequence numbers and transient presentation revisions are separate.
   Live overlays share stable history; completion comes from explicit settled
   steps, never a reasoning block's animation flag. Verify through the actual
@@ -111,7 +117,10 @@ work as for any content. A focused slot keeps the list's cursor window. An owner
 can follow one list item with `MayflyNodeSlot.track(controlId, itemId)`: each paint
 of a flowing list notes the item's line, and `trackedRow()` returns it among the
 scroll content's rows (the new-messages rule uses it to find itself against the
-view). Follow-tail is `Ctrl+↓`'s second press: the first goes to that rule. The
+view). The content scroll (`TailScrollView`) paints the rows of its window before it
+settles on a height, lays out again when painted rows moved the length it measured, and
+a scroll it cannot take asks for a frame, so a lazy document's estimate never leaves the
+last rows out of reach. Follow-tail is `Ctrl+↓`'s second press: the first goes to that rule. The
 conversation stream (`TranscriptView`, published by `transcript/transcript-model.ts`
 from `transcript/stream-facts.ts`) is the first consumer.
 

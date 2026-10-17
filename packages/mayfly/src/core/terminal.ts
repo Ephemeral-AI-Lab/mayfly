@@ -38,7 +38,7 @@ import {
   type SurfacePlacement,
 } from './surface-manager.ts'
 import { buildTitleOsc0, copySelectionText } from './terminal-escape.ts'
-import { concatRows, isVirtualRows, mapRows } from './ui-rows.ts'
+import { concatRows, isVirtualRows, mapRows, prepareRows } from './ui-rows.ts'
 import type { MayflyComponent, MayflyDockOptions, MayflyOverlayHandle, MayflyOverlayOptions, MayflySemanticColors } from './types.ts'
 import { BarredScrollView } from './ui-scroll-region.ts'
 
@@ -663,14 +663,21 @@ class TailScrollView extends BarredScrollView {
   measuredHeight = 0
   /** Where a reader scrolled away stood when the content shrank under them. */
   private heldTop: number | undefined
+  /** Asks the layout for another frame (the callback of the last layout). */
+  private relayout: (() => void) | undefined
+  /** Frames in a row that ended with the rows at another length than the layout measured. */
+  private unsettled = 0
   /** Called after each layout. */
   readonly watchers = new Set<() => void>()
 
   override updateLayout(contentHeight: number, viewportHeight: number, requestRender: () => void): void {
     const away = !this.isFollowingEnd
     const top = this.heldTop ?? this.scrollTop
-    this.measuredHeight = contentHeight
-    super.updateLayout(contentHeight, viewportHeight, requestRender)
+    this.relayout = requestRender
+    // A lazy document reports an estimate until its units paint, and the layout read the length before any row was read:
+    // paint the window, and lay out again against the length it settles on, so follow-end lands on painted rows.
+    const height = this.settledHeight(contentHeight, viewportHeight, requestRender)
+    this.measuredHeight = height
     if (away && this.isFollowingEnd) {
       // The clamp followed the end for a reader who was away: put them back, or as near as the content allows.
       this.heldTop = top
@@ -678,20 +685,46 @@ class TailScrollView extends BarredScrollView {
     } else if (this.heldTop !== undefined) {
       const held = this.heldTop
       this.quietly(() => { super.scrollTo(held, { disableFollow: true }) })
-      if (this.heldTop <= Math.max(0, contentHeight - viewportHeight)) this.heldTop = undefined
+      if (this.heldTop <= Math.max(0, height - viewportHeight)) this.heldTop = undefined
     }
-    if (this.isFollowingEnd || contentHeight <= viewportHeight) this.tailHeight = contentHeight
+    if (this.isFollowingEnd || height <= viewportHeight) this.tailHeight = height
+    // The rows are read when the frame paints, after this layout: a count that moves then is found in the next
+    // microtask and gets its own frame, whichever source painted it and whether or not that source says so.
+    const rows = this.contentRows
+    if (rows !== undefined) {
+      queueMicrotask(() => {
+        if (rows.length === this.measuredHeight) this.unsettled = 0
+        else if ((this.unsettled += 1) <= SETTLE_FRAMES) this.relayout?.()
+      })
+    }
     for (const watcher of [...this.watchers]) watcher()
+  }
+
+  /** Lay out at `contentHeight`, then at the length the window's rows settle on (a few passes at most); the height laid out. */
+  private settledHeight(contentHeight: number, viewportHeight: number, requestRender: () => void): number {
+    super.updateLayout(contentHeight, viewportHeight, requestRender)
+    const rows = this.contentRows
+    let height = contentHeight
+    for (let pass = 0; rows !== undefined && pass < SETTLE_PASSES; pass += 1) {
+      prepareRows(rows, this.scrollTop, this.scrollTop + viewportHeight)
+      if (rows.length === height) break
+      height = rows.length
+      super.updateLayout(height, viewportHeight, requestRender)
+    }
+    return height
+  }
+
+  /** A move the content cannot take is a stale height: lay out again, so the next press finds the real bottom. */
+  override scrollBy(lines: number): number {
+    this.heldTop = undefined
+    const remaining = super.scrollBy(lines)
+    if (remaining !== 0) this.relayout?.()
+    return remaining
   }
 
   override scrollTo(scrollTop: number, options?: Parameters<ScrollView['scrollTo']>[1]): void {
     this.heldTop = undefined
     super.scrollTo(scrollTop, options)
-  }
-
-  override scrollBy(lines: number): number {
-    this.heldTop = undefined
-    return super.scrollBy(lines)
   }
 
   override scrollToEnd(): void {
@@ -704,6 +737,12 @@ class TailScrollView extends BarredScrollView {
     super.scrollToStart()
   }
 }
+
+/** Layouts a view repeats at most, once its rows have painted and moved the length it measured. */
+const SETTLE_PASSES = 6
+
+/** Frames in a row a view asks for because its painted length moved; past it the content is not settling and waits for the next change. */
+const SETTLE_FRAMES = 8
 
 /** Constructor options for {@link startMayflyTerminal}. */
 export interface MayflyTerminalOptions {

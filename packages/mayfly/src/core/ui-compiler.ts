@@ -1499,8 +1499,10 @@ function walkControls(node: CompilableNode, options: RuntimeCompilerOptions, pat
       case 'list': {
         const window = options.listRuntime.listWindow(current, listRowLimit(options))
         if (window.length === 0) controls.push({ kind: 'list', node: current, key: scopedControlKey('empty-list', current.id), renderKey: current.id, identity: scopedFocusIdentity(current.id), preferred: true, group: scopedControlGroup('list', current.id), navigation: 'none' })
+        // The list's choice state is read once: it does not change between its rows.
+        const choice = options.listRuntime.interaction?.choice({ pagePath, controlId: current.id })
+        const selected = choice?.selectedIds ?? listSelectedIds(current)
         for (const { item, index } of window) if (focusableListItem(item)) {
-          const selected = options.listRuntime.interaction?.choice({ pagePath, controlId: current.id })?.selectedIds ?? listSelectedIds(current)
           const selectedIds = current.mode === 'multiple'
             ? selected.includes(item.id) ? selected.filter(id => id !== item.id) : [...selected, item.id]
             : [item.id]
@@ -1511,7 +1513,7 @@ function walkControls(node: CompilableNode, options: RuntimeCompilerOptions, pat
             key: scopedControlKey('list', current.id, item.id),
             renderKey: item.id,
             identity: scopedFocusIdentity(current.id, item.id),
-            preferred: options.listRuntime.interaction?.choice({ pagePath, controlId: current.id })?.focusedId === item.id,
+            preferred: choice?.focusedId === item.id,
             group: scopedControlGroup('list', current.id),
             navigation: 'vertical',
             event: { kind: current.mode === 'multiple' ? 'selection-toggle' : 'selection-accept', pagePath, controlId: current.id, selectedIds },
