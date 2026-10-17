@@ -1,16 +1,18 @@
 /**
- * Marketplace facts with their texts: turns the model's rows into the final, translated facts the marketplace component
- * draws (rows with their group headings, the tab strip, the detail of one plugin, the availability of each key).
+ * Marketplace facts with their texts: turns the model's read-only rows into the final, translated facts the marketplace
+ * component draws (rows with their group headings, the tab strip, the detail of one plugin, the availability of each
+ * key). The catalog supplies display metadata; the native plugin manager supplies installation, update, and removal
+ * state.
  *
  * @module @ephemeral-ai/mayfly/interaction/plugin-market/facts
  */
 
 import type { MayflyInlineSpan, MayflyTone, MayflyTranslate } from '@ephemeral-ai/mayfly-ui'
 import type { MarketplaceRow, MarketplaceTab, PluginDetailFacts } from '../../components/marketplace.ts'
-import { currentProfileInstallBlock, defaultInstallSource, entrySupportsSource, marketEntryInstallBlock, rowSpec, type InstallSource } from './installer.ts'
 import {
-  engineChecks, groupKey, groupRows, rowName, rowSearchText, tabRows, usefulInTui, usefulOnWeb, UNLISTED_GROUP,
-  type GroupMode, type MarketRow, type MarketTab, type RuntimeVersions,
+  currentProfileInstallBlock, declaredEngines, defaultInstallSource, entrySupportsSource, groupKey, groupRows,
+  marketEntryInstallBlock, rowName, rowSearchText, tabRows, usefulInTui, usefulOnWeb, UNLISTED_GROUP,
+  type GroupMode, type InstallSource, type MarketRow, type MarketTab,
 } from './model.ts'
 import type { MarketEntry } from './types.ts'
 
@@ -18,7 +20,6 @@ import type { MarketEntry } from './types.ts'
 export interface FactsEnv {
   readonly t: MayflyTranslate
   readonly locale: 'zh' | 'en'
-  readonly versions: RuntimeVersions
 }
 
 const CATEGORY_LABELS: Readonly<Record<string, (t: MayflyTranslate) => string>> = {
@@ -63,14 +64,22 @@ export function describeEntry(entry: MarketEntry, locale: 'zh' | 'en'): string {
   return locale === 'zh' && entry.descriptionZh !== undefined ? entry.descriptionZh : entry.description
 }
 
+/** Why the native manager will not remove the row's bundle (the manager's own decision, in its own words). */
+function nativeRemovalReason(row: MarketRow): string {
+  return row.bundle?.readOnlyReason === 'management-required'
+    ? 'the plugin manager protects this bundle'
+    : 'the plugin manager does not allow removing this bundle'
+}
+
 /** Why a key cannot run on a row (absent keys can). The reasons feed the row's `unavailableActions`. */
 export function unavailableKeys(t: MayflyTranslate, row: MarketRow): Readonly<Record<string, string>> {
   const entry = row.entry
   const blocked = entry === undefined ? undefined : marketEntryInstallBlock(entry)
   const reasons: Record<string, string> = {}
-  if (row.installed) reasons.install = t('Already installed in this profile')
+  if (entry === undefined || row.state === 'installed') reasons.install = t('Already installed in this profile')
   else if (blocked !== undefined) reasons.install = t(blocked)
   if (!row.installed) reasons.remove = t('Not installed in this profile')
+  else if (row.removable === false) reasons.remove = nativeRemovalReason(row)
   if (row.state !== 'update' && row.state !== 'repair') reasons.update = row.installed ? t('Nothing to update') : t('Not installed in this profile')
   else if (blocked !== undefined) reasons.update = t(blocked)
   if (row.installed || entry === undefined || !(entrySupportsSource(entry, 'npm') && entrySupportsSource(entry, 'github'))) reasons.source = t('Only one install source')
@@ -124,7 +133,7 @@ export function rowFacts(env: FactsEnv, row: MarketRow, group: string | undefine
 
 /**
  * One tab: its rows ordered and headed by the grouping, its count, and its empty state.
- * @param env - translator, locale, and running versions.
+ * @param env - translator and locale.
  * @param all - every row.
  * @param tab - the tab.
  * @param mode - the grouping.
@@ -156,8 +165,9 @@ const span = (text: string, tone?: MayflyTone): MayflyInlineSpan => tone === und
 
 /**
  * The detail of one row: what the row does not already say. The surfaces are the row's `T W`, so the detail speaks of
- * them only when they cost something (web-only, automation-only).
- * @param env - translator, locale, and running versions.
+ * them only when they cost something (web-only, automation-only). Engine ranges are catalog metadata; compatibility is
+ * the native manager's decision and appears in its `ChangeResult`, not here.
+ * @param env - translator and locale.
  * @param row - the row.
  * @param source - the install source that `i` would use.
  * @returns the detail facts.
@@ -166,11 +176,12 @@ export function detailFacts(env: FactsEnv, row: MarketRow, source: InstallSource
   const { t } = env
   const entry = row.entry
   if (entry === undefined) {
-    const plugin = row.plugin!
+    const bundle = row.bundle!
+    const packageSpec = bundle.source ?? bundle.installTarget?.spec ?? bundle.name
     return {
-      title: plugin.name, tagline: [span(`${GLYPHS.unlisted[0]} ${stateWords(t, row)}`, GLYPHS.unlisted[1])], notes: [],
+      title: rowName(row), tagline: [span(`${GLYPHS.unlisted[0]} ${stateWords(t, row)}`, GLYPHS.unlisted[1])], notes: [],
       description: t('Installed in this profile but not listed in the marketplace index.'),
-      rows: [{ label: t('Package'), value: [span(plugin.spec, 'accent')] }],
+      rows: [{ label: t('Package'), value: [span(packageSpec, 'accent')] }],
     }
   }
   const block = currentProfileInstallBlock(entry)
@@ -180,12 +191,10 @@ export function detailFacts(env: FactsEnv, row: MarketRow, source: InstallSource
   else if (!usefulInTui(entry)) notes.push({ text: t('web-only plugin: it contributes nothing in this terminal frontend'), tone: 'warning' })
   const tools = entry.provides?.tools ?? []
   const commands = entry.provides?.commands ?? []
-  const checks = engineChecks(entry, env.versions)
+  const engines = declaredEngines(entry)
   const needs = entry.capabilities ?? []
   const supports = [entrySupportsSource(entry, 'npm') ? 'npm' : undefined, entrySupportsSource(entry, 'github') ? 'github' : undefined].filter((value): value is InstallSource => value !== undefined)
   const via = source ?? defaultInstallSource(entry)
-  const installCommand = via === undefined || block !== undefined || entry.status === 'removed' ? undefined
-    : `dsh plugin --profile <name> add ${entry.install.rows.map(item => rowSpec(item, via)!).join(' ')}`
   return {
     title: entry.displayName,
     tagline: [...stateWords(t, row) === '' ? [] : [span(`${GLYPHS[row.state][0]} ${stateWords(t, row)}`, GLYPHS[row.state][1]), span(' · ')], span(categoryLabel(t, entry.category.toLowerCase()))],
@@ -195,15 +204,13 @@ export function detailFacts(env: FactsEnv, row: MarketRow, source: InstallSource
       ...tools.length === 0 ? [] : [{ label: t('Tools'), value: [span(tools.join(' · '))] }],
       ...commands.length === 0 ? [] : [{ label: t('Commands'), value: [span(commands.join(' · '))] }],
       ...needs.length === 0 ? [] : [{ label: t('Needs'), value: [span(needs.join(' · '))] }],
-      ...checks.length === 0 ? [] : [{ label: t('Engines'), value: checks.flatMap((check, index): MayflyInlineSpan[] => [
+      ...engines.length === 0 ? [] : [{ label: t('Engines'), value: engines.flatMap((declared, index): MayflyInlineSpan[] => [
         ...index === 0 ? [] : [span(' · ')],
-        span(t('{engine} {range}', { engine: check.engine, range: check.range })),
-        ...check.fits === undefined ? [] : [check.fits ? span(' ✓', 'success') : span(` ✗ ${t('running {version}', { version: check.engine === 'node' ? env.versions.node : env.versions.mayfly })}`, 'warning')],
+        span(t('{engine} {range}', { engine: declared.engine, range: declared.range })),
       ]) }],
       ...supports.length < 2 || row.installed || via === undefined ? [] : [{ label: t('Install via'), value: [span(via, 'accent'), span(` · ${t('press s for {other}', { other: supports.find(item => item !== via)! })}`, 'muted')] }],
       { label: t('Author'), value: [span(entry.license === undefined ? entry.author.name : `${entry.author.name} · ${entry.license}`)] },
       ...entry.links?.repo === undefined ? [] : [{ label: t('Links'), value: [span(entry.links.repo, 'accent')] }],
-      ...installCommand === undefined ? [] : [{ label: t('Install command'), value: [span(installCommand, 'accent')] }],
     ],
   }
 }

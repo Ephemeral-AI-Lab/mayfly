@@ -1,9 +1,11 @@
 /**
  * The marketplace index document types (`dist/index.json` from the
- * Ephemeral-AI-Lab/dsh-plugins repository) and its parse guard. The index is
- * discovery- and install-time metadata only: it never participates in
- * runtime loading, capability negotiation, or admission — the runtime
- * contract of every plugin remains its package plus `cordis.patch.yml`.
+ * Ephemeral-AI-Lab/dsh-plugins repository) and its parse guard. The index is a
+ * read-only discovery and display source until a native index migration: it
+ * never participates in runtime loading, capability negotiation, or admission,
+ * and installation is performed by `ctx.pluginManager` from the package spec
+ * a row names — the runtime contract of every plugin remains its package plus
+ * `cordis.patch.yml`.
  *
  * @module @ephemeral-ai/mayfly/interaction/plugin-market/types
  */
@@ -16,9 +18,13 @@ export interface MarketInstallRow {
   readonly id?: string
   /** Runtime package name — the reconcile key against the profile manifest. */
   readonly name: string
-  /** How the package becomes part of the profile. */
+  /**
+   * How the catalog's previous CLI installer activated the package. Presentation metadata only now: the native
+   * `pluginManager` installs bundle packages and owns the profile composition, so Mayfly neither appends a patch row
+   * nor applies this config.
+   */
   readonly activation?: 'bundle' | 'profile-patch'
-  /** Default config for a `profile-patch` row. */
+  /** Default config for a `profile-patch` row; retained as catalog data, never written by Mayfly. */
   readonly config?: Readonly<Record<string, unknown>>
   /** npm install spec, e.g. `dsh-loop` or `@scope/pkg@1.2.3`. */
   readonly npm?: { readonly spec: string }
@@ -56,6 +62,10 @@ export interface MarketEntry {
   readonly statusNote?: string
   readonly surfaces: MarketSurfaces
   readonly provides?: { readonly tools?: readonly string[], readonly commands?: readonly string[] }
+  /**
+   * The rows the catalog installs. `allowBuilds` is catalog data only: build-script approval belongs to the native
+   * manager's `pendingBuilds`/`approvedBuilds` flow, never to a Mayfly profile write.
+   */
   readonly install: { readonly rows: readonly MarketInstallRow[], readonly allowBuilds?: readonly string[] }
   readonly engines?: { readonly dsh?: string, readonly mayfly?: string, readonly node?: string }
   readonly capabilities?: readonly string[]
