@@ -22,7 +22,7 @@ The previous round profiled a 16-turn replay and found "no single O(N) hotspot".
 | W30 | same session; one 1 Hz tick with a pending call | 0 | 0 | 0 | 106 | 1,310 | - | - |
 | W31 | one `tools/change` over 3 retained views | 36,300 | 18,300 | 12,000 | 106 | 1,310 | - | - |
 | W32 | a views summary set again with equal text | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| W33a | one tick; pending tool row in view | 0 | 0 | 0 | 105 | 1,899 | 0 | 0 |
+| W33a | one tick; pending tool row in view | 0 | 0 | 0 | 105 | 1,301 | 0 | 0 |
 | W33b | one tick; pending row scrolled out | 0 | 0 | 0 | 105 | 1,301 | 0 | 0 |
 | W34 | follow-tail; one row appended | 0 | 0 | 0 | 99 | 1,223 | 39 | 6,188 |
 | W35 | one wheel notch | 0 | 0 | 0 | 0 | 0 | 39 | 6,666 |
@@ -30,6 +30,27 @@ The previous round profiled a 16-turn replay and found "no single O(N) hotspot".
 The 2,000-turn fixture shares 12,099 of 12,100 input entry objects between the pending and settled projections, yet the durable mapper reuses 0 of 12,100 transcript entries. That is the L1 measurement: the cost is not parsing the wire value, it is rebuilding every entry and every tool model. W29's live overlay already reuses all 12,100 durable entries (identity assertion passes), so the draft path is not the problem; the durable publish is.
 
 W31 is exactly three times the W28 cost, including the two hidden views. That is J1.
+
+### Scale curves (report-only, medians)
+
+The audit script runs the same operations at T = 100 / 500 / 2,000 turns and E = 1,000 / 5,000 / 20,000 entries; the
+fix rounds turn the relevant ratios into deterministic counter gates.
+
+| Operation | T=100 | T=500 | T=2,000 | Growth |
+| --- | ---: | ---: | ---: | --- |
+| durable conversion (ms) | 47.4 | 134.7 | 544.3 | ~11.5x for 20x turns |
+| `StreamFacts.build` (ms) | 2.0 | 3.4 | 9.4 | ~4.6x |
+| W28 publish+paint (ms) | 41.9 | 136.9 | 523.7 | ~12.5x |
+| draft publish (ms) | 31.9 | 70.0 | 226.7 | ~7.1x |
+| tick publish (ms) | 7.7 | 11.1 | 12.5 | ~1.6x |
+| tools/change, 3 views (ms) | 95.7 | 426.9 | 1,369.5 | ~14.3x |
+| search refresh (`findHits`, ms) | 3.3 | 11.1 | 40.2 | ~12x |
+| projection fold / event (ms) | E=1k 0.017 | E=5k 0.037 | E=20k 0.210 | ~12x |
+
+W28's counters scale with turns (605 / 3,025 / 12,100 entries mapped; 305 / 1,525 / 6,100 tool models; 200 / 1,000 / 4,000
+diffs), while `StreamFacts.build` stays at 106 rows because the window is fixed. W31 is 1,815 / 9,075 / 36,300 entries
+mapped: three views, all converted. The draft and tick paths stay proportional to the window, not the session; the
+durable and tools/change paths are the ones that need P1.
 
 ### `perf-long` spans (head only, initial ceilings)
 
@@ -105,10 +126,10 @@ The 1 s tick, 100 ms clock, 250 ms child cadence, 30-200 ms publish window, `pan
 ### R. Renderer
 
 **R1. A flowing list costs O(W) per render.**
-An unfocused content slot has an unlimited row limit, so the list does per-item work on every render: `listWindow` builds an entry and a `choiceRow` per item; the control walk builds a descriptor with three `JSON.stringify` keys per item; `walkKeys` joins them; `paintList` builds a join key, parents map, prefix sums, and a concat per item. W33a walks 1,899 items for one tick; W33b walks 1,301 with the pending row scrolled out.
+An unfocused content slot has an unlimited row limit, so the list does per-item work on every render: `listWindow` builds an entry and a `choiceRow` per item; the control walk builds a descriptor with three `JSON.stringify` keys per item; `walkKeys` joins them; `paintList` builds a join key, parents map, prefix sums, and a concat per item. W33a walks 1,301 items for one tick; W33b walks the same 1,301 with the pending row scrolled out, so the work is the flowing-list paint, not the pending row.
 
 **R2. The whole flowing list is repainted at about 10 Hz while any pending tool or thinking row is drawn, even off screen.**
-Motion rows skip the row cache and the animated flag keys the list and frame cache on `animationFrame`. W33a is 5 leaf renders / 3 painted rows; W33b is 3 leaf renders / 2 rows even though the pending row is off screen (the tick still misses the row cache).
+Motion rows skip the row cache and the animated flag keys the list and frame cache on `animationFrame`. W33a is 3 leaf renders / 2 painted rows; W33b is also 3 leaf renders / 2 rows even though the pending row is off screen (the tick still misses the row cache), and W33b's `clockTicks` stays at 1 because the pending row's animation did not arm the global clock while scrolled out.
 
 **R3. Any content viewport change re-renders the whole flowing list, because the viewport is part of the epoch.**
 The editor gaining a row, the search line, a notice, and the lane all trigger it.
