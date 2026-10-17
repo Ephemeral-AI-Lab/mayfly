@@ -3,11 +3,11 @@ grid 40x5 cursor none
 |  row 1
 |  row 2
 |  row 3
-|  row 4
-|   ↑ 0 more · ↓ 5 more
+|↓ row 4
+|   … +5 more
 styles
-0: 2-6 fg:text b
+0: 2-6 fg:textStrong b
 1: 2-6 fg:text
 2: 2-6 fg:text
-3: 2-6 fg:text
-4: 3-21 fg:muted
+3: 0 fg:muted; 2-6 fg:text
+4: 3-11 fg:muted

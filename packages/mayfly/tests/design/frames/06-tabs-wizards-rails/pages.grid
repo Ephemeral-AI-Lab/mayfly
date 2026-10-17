@@ -1,70 +1,77 @@
 ## start
-grid 78x7 cursor 2,20
-|╭ Status ────────────────────────────────────────────────────────────────────╮
-|│ Overview   Usage 3   Connections !   Skills 12   About                     │
-|│            ━━━━━━━                                                         │
-|│                                                                            │
-|│ Usage page content                                                         │
-|│   ←/→ tabs · Enter open · Esc close                                        │
-|╰────────────────────────────────────────────────────────────────────────────╯
+grid 78x9 cursor 4,20
+|━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+|  Status
+|
+|  Overview   Usage 3   Connections !   Skills 12   About
+|             ━━━━━━━
+|
+|  Usage page content
+|
+|  ←/→ tabs · Enter open · Esc close
 styles
-0: 0-1 fg:borderFocus; 2-7 fg:textStrong b; 8-77 fg:borderFocus
-1: 0 fg:borderFocus; 2-9 fg:muted; 13-17 fg:primary b; 19 fg:primary; 23-33 fg:muted; 35 fg:warning b; 39-44 fg:muted; 46-47 fg:muted; 51-55 fg:muted; 77 fg:borderFocus
-2: 0 fg:borderFocus; 13-19 fg:primary b; 77 fg:borderFocus
-3: 0 fg:borderFocus; 77 fg:borderFocus
-4: 0 fg:borderFocus; 2-19 fg:muted; 77 fg:borderFocus
-5: 0 fg:borderFocus; 2-3 fg:textMuted; 4-6 fg:text; 8-14 fg:textMuted; 15-19 fg:text; 21-27 fg:textMuted; 28-30 fg:text; 32-36 fg:textMuted; 77 fg:borderFocus
-6: 0-77 fg:borderFocus
+0: 0-77 fg:primary
+1: 2-7 fg:primary b
+3: 2-9 fg:muted; 13-17 fg:primary b; 19 fg:primary; 23-33 fg:muted; 35 fg:warning b; 39-44 fg:muted; 46-47 fg:muted; 51-55 fg:muted
+4: 13-19 fg:primary b
+6: 2-19 fg:muted
+8: 2-4 fg:text; 6-12 fg:textMuted; 13-17 fg:text; 19-25 fg:textMuted; 26-28 fg:text; 30-34 fg:textMuted
 ## ctrl+n
-grid 78x7 cursor 2,8
-|╭ Add provider ───────────────────────────────────────────────── step 1 of 4 ╮
-|│ ● Kind  ›  ○ Connection  ›  ○ Models  ›  ○ Review                          │
-|│ ━━━━━━                                                                     │
-|│                                                                            │
-|│ Kind: nothing to validate on this step                                     │
-|│   ←/→ tabs · Enter open · Esc back                                         │
-|╰────────────────────────────────────────────────────────────────────────────╯
+grid 78x10 cursor 4,8
+|━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+|  Add provider  step 1 of 4
+|
+|  ● Kind  ›  ○ Connection  ›  ○ Models  ›  ○ Review                      1/4
+|  ━━━━━━
+|
+|  Kind: nothing to validate on this step
+|
+|
+|  ←/→ tabs · Enter open · Esc back
 styles
-0: 0-1 fg:borderFocus; 2-13 fg:textStrong b; 14-64 fg:borderFocus; 65-75 fg:muted; 76-77 fg:borderFocus
-1: 0 fg:borderFocus; 2 fg:primary; 4-7 fg:primary b; 8-50 fg:muted; 77 fg:borderFocus
-2: 0 fg:borderFocus; 2-7 fg:primary; 77 fg:borderFocus
-3: 0 fg:borderFocus; 77 fg:borderFocus
-4: 0 fg:borderFocus; 2-39 fg:muted; 77 fg:borderFocus
-5: 0 fg:borderFocus; 2-3 fg:textMuted; 4-6 fg:text; 8-14 fg:textMuted; 15-19 fg:text; 21-27 fg:textMuted; 28-30 fg:text; 32-35 fg:textMuted; 77 fg:borderFocus
-6: 0-77 fg:borderFocus
+0: 0-77 fg:primary
+1: 2-13 fg:primary b; 16-26 fg:muted
+3: 2 fg:primary; 4-7 fg:primary b; 8-50 fg:muted; 73-75 fg:muted
+4: 2-7 fg:primary
+6: 2-39 fg:muted
+9: 2-4 fg:text; 6-12 fg:textMuted; 13-17 fg:text; 19-25 fg:textMuted; 26-28 fg:text; 30-33 fg:textMuted
 ## ctrl+n
-grid 78x10 cursor 3,25
-|╭ Settings ──────────────────────────────────────────────────────────────────╮
-|│  SESSION                  Model                                            │
-|│   General                                                                  │
-|│ → Model                     Model:  deepseek-chat  (inherited)             │
-|│   Permissions          2    Effort: medium  (inherited)                    │
-|│  INTEGRATIONS                                                              │
-|│   Providers            !                                                   │
-|│   MCP                  4                                                   │
-|│   ↑/↓ labels · → open · Esc close                                          │
-|╰────────────────────────────────────────────────────────────────────────────╯
+grid 78x12 cursor 5,25
+|━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+|  Settings
+|
+|   SESSION                  Model
+|    General
+|  → Model                     Model:  deepseek-chat  (inherited)
+|    Permissions          2    Effort: medium  (inherited)
+|   INTEGRATIONS
+|    Providers            !
+|    MCP                  4
+|
+|  ↑/↓ labels · → open · Esc close
 styles
-0: 0-1 fg:borderFocus; 2-9 fg:textStrong b; 10-77 fg:borderFocus
-1: 0 fg:borderFocus; 2-9 fg:muted; 28-32 fg:primary b; 77 fg:borderFocus
-2: 0 fg:borderFocus; 4-10 fg:text; 77 fg:borderFocus
-3: 0 fg:borderFocus; 2 fg:primary b; 4-8 fg:primary b; 30-50 fg:text; 51-63 fg:muted; 77 fg:borderFocus
-4: 0 fg:borderFocus; 4-14 fg:text; 25 fg:muted; 30-43 fg:text; 44-56 fg:muted; 77 fg:borderFocus
-5: 0 fg:borderFocus; 2-14 fg:muted; 77 fg:borderFocus
-6: 0 fg:borderFocus; 4-12 fg:text; 25 fg:warning b; 77 fg:borderFocus
-7: 0 fg:borderFocus; 4-6 fg:text; 25 fg:muted; 77 fg:borderFocus
-8: 0 fg:borderFocus; 2-3 fg:textMuted; 4-6 fg:text; 8-16 fg:textMuted; 17 fg:text; 19-25 fg:textMuted; 26-28 fg:text; 30-34 fg:textMuted; 77 fg:borderFocus
-9: 0-77 fg:borderFocus
+0: 0-77 fg:primary
+1: 2-9 fg:primary b
+3: 2-9 fg:muted; 28-32 fg:primary b
+4: 4-10 fg:text
+5: 2 fg:primary b; 4-8 fg:primary b; 30-50 fg:text; 51-63 fg:muted
+6: 4-14 fg:text; 25 fg:muted; 30-43 fg:text; 44-56 fg:muted
+7: 2-14 fg:muted
+8: 4-12 fg:text; 25 fg:warning b
+9: 4-6 fg:text; 25 fg:muted
+11: 2-4 fg:text; 6-14 fg:textMuted; 15 fg:text; 17-23 fg:textMuted; 24-26 fg:text; 28-32 fg:textMuted
 ## ctrl+n
-grid 76x5 cursor 2,20
-|╭ Narrow strip ────────────────────────────────────────────────────────────╮
-|│ Overview   Usage 3   Connections !   Skills 12   About                   │
-|│            ━━━━━━━                                                       │
-|│   ←/→ tabs · Enter open · Esc close                                      │
-|╰──────────────────────────────────────────────────────────────────────────╯
+grid 76x7 cursor 4,20
+|━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+|  Narrow strip
+|
+|  Overview   Usage 3   Connections !   Skills 12   About
+|             ━━━━━━━
+|
+|  ←/→ tabs · Enter open · Esc close
 styles
-0: 0-1 fg:borderFocus; 2-13 fg:textStrong b; 14-75 fg:borderFocus
-1: 0 fg:borderFocus; 2-9 fg:muted; 13-17 fg:primary b; 19 fg:primary; 23-33 fg:muted; 35 fg:warning b; 39-44 fg:muted; 46-47 fg:muted; 51-55 fg:muted; 75 fg:borderFocus
-2: 0 fg:borderFocus; 13-19 fg:primary b; 75 fg:borderFocus
-3: 0 fg:borderFocus; 2-3 fg:textMuted; 4-6 fg:text; 8-14 fg:textMuted; 15-19 fg:text; 21-27 fg:textMuted; 28-30 fg:text; 32-36 fg:textMuted; 75 fg:borderFocus
-4: 0-75 fg:borderFocus
+0: 0-75 fg:primary
+1: 2-13 fg:primary b
+3: 2-9 fg:muted; 13-17 fg:primary b; 19 fg:primary; 23-33 fg:muted; 35 fg:warning b; 39-44 fg:muted; 46-47 fg:muted; 51-55 fg:muted
+4: 13-19 fg:primary b
+6: 2-4 fg:text; 6-12 fg:textMuted; 13-17 fg:text; 19-25 fg:textMuted; 26-28 fg:text; 30-34 fg:textMuted

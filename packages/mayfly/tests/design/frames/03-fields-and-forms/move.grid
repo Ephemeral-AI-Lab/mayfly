@@ -1,249 +1,263 @@
 ## start
-grid 76x16 cursor 2,3
-|╭ Edit provider ───────────────────────────────────────────────────────────╮
-|│ ── Connection ──────────────────────────────                             │
-|│ → Name:      production                                                  │
-|│   Endpoint:  https://api.example.com/v1                                  │
-|│   API key:   •••••••••• (saved)                                          │
-|│ ── Behaviour ───────────────────────────────                             │
-|│   Model:     deepseek-chat  (inherited)                                  │
-|│   Timeout:   30 s  (inherited)                                           │
-|│   Streaming: [on]                                                        │
-|│   Channels:  mentions, errors                                            │
-|│   Directory: ~/work/may                                                  │
-|│   Notes:     Prefer small diffs. …                                       │
-|│ ── Finish ────────────────────────────────────────────────────────────── │
-|│  [ Save ]                                                                │
-|│   ↑/↓ fields · Enter edit · Esc close                                    │
-|╰──────────────────────────────────────────────────────────────────────────╯
+grid 76x18 cursor 4,3
+|━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+|  Edit provider
+|
+|  ── Connection ──────────────────────────────
+|  → Name:      production
+|    Endpoint:  https://api.example.com/v1
+|    API key:   •••••••••• (saved)
+|  ── Behaviour ───────────────────────────────
+|    Model:     deepseek-chat  (inherited)
+|    Timeout:   30 s  (inherited)
+|    Streaming: [on]
+|    Channels:  mentions, errors
+|    Directory: ~/work/may
+|    Notes:     Prefer small diffs. …
+|  ── Finish ──────────────────────────────────────────────────────────────
+|   [ Save ]
+|
+|  ↑/↓ fields · Enter edit · Esc close
 styles
-0: 0-1 fg:borderFocus; 2-14 fg:textStrong b; 15-75 fg:borderFocus
-1: 0 fg:borderFocus; 2-45 fg:muted; 75 fg:borderFocus
-2: 0 fg:borderFocus; 2 fg:primary; 4-14 fg:text b; 15-24 fg:text; 75 fg:borderFocus
-3: 0 fg:borderFocus; 4-40 fg:text; 75 fg:borderFocus
-4: 0 fg:borderFocus; 4-24 fg:text; 25-32 fg:muted; 75 fg:borderFocus
-5: 0 fg:borderFocus; 2-45 fg:muted; 75 fg:borderFocus
-6: 0 fg:borderFocus; 4-27 fg:text; 28-40 fg:muted; 75 fg:borderFocus
-7: 0 fg:borderFocus; 4-18 fg:text; 19-31 fg:muted; 75 fg:borderFocus
-8: 0 fg:borderFocus; 4-14 fg:text; 15-18 fg:primary; 75 fg:borderFocus
-9: 0 fg:borderFocus; 4-30 fg:text; 75 fg:borderFocus
-10: 0 fg:borderFocus; 4-24 fg:text; 75 fg:borderFocus
-11: 0 fg:borderFocus; 4-33 fg:text; 34-35 fg:muted; 75 fg:borderFocus
-12: 0 fg:borderFocus; 2-73 fg:border; 75 fg:borderFocus
-13: 0 fg:borderFocus; 3-10 fg:primary; 75 fg:borderFocus
-14: 0 fg:borderFocus; 2-3 fg:textMuted; 4-6 fg:text; 8-16 fg:textMuted; 17-21 fg:text; 23-29 fg:textMuted; 30-32 fg:text; 34-38 fg:textMuted; 75 fg:borderFocus
-15: 0-75 fg:borderFocus
+0: 0-75 fg:primary
+1: 2-14 fg:primary b
+3: 2-45 fg:muted
+4: 2 fg:primary; 4-14 fg:textStrong b; 15-24 fg:text
+5: 4-40 fg:text
+6: 4-24 fg:text; 25-32 fg:muted
+7: 2-45 fg:muted
+8: 4-27 fg:text; 28-40 fg:muted
+9: 4-18 fg:text; 19-31 fg:muted
+10: 4-14 fg:text; 15-18 fg:primary
+11: 4-30 fg:text
+12: 4-24 fg:text
+13: 4-33 fg:text; 34-35 fg:muted
+14: 2-73 fg:border
+15: 3-10 fg:primary
+17: 2-4 fg:text; 6-14 fg:textMuted; 15-19 fg:text; 21-27 fg:textMuted; 28-30 fg:text; 32-36 fg:textMuted
 ## down
-grid 76x17 cursor 3,3
-|╭ Edit provider ───────────────────────────────────────────────────────────╮
-|│ ── Connection ──────────────────────────────                             │
-|│   Name:      production                                                  │
-|│ → Endpoint:  https://api.example.com/v1                                  │
-|│     Base URL, including the version path                                 │
-|│   API key:   •••••••••• (saved)                                          │
-|│ ── Behaviour ───────────────────────────────                             │
-|│   Model:     deepseek-chat  (inherited)                                  │
-|│   Timeout:   30 s  (inherited)                                           │
-|│   Streaming: [on]                                                        │
-|│   Channels:  mentions, errors                                            │
-|│   Directory: ~/work/may                                                  │
-|│   Notes:     Prefer small diffs. …                                       │
-|│ ── Finish ────────────────────────────────────────────────────────────── │
-|│  [ Save ]                                                                │
-|│   ↑/↓ fields · Enter edit · Esc close                                    │
-|╰──────────────────────────────────────────────────────────────────────────╯
+grid 76x19 cursor 5,3
+|━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+|  Edit provider
+|
+|  ── Connection ──────────────────────────────
+|    Name:      production
+|  → Endpoint:  https://api.example.com/v1
+|      Base URL, including the version path
+|    API key:   •••••••••• (saved)
+|  ── Behaviour ───────────────────────────────
+|    Model:     deepseek-chat  (inherited)
+|    Timeout:   30 s  (inherited)
+|    Streaming: [on]
+|    Channels:  mentions, errors
+|    Directory: ~/work/may
+|    Notes:     Prefer small diffs. …
+|  ── Finish ──────────────────────────────────────────────────────────────
+|   [ Save ]
+|
+|  ↑/↓ fields · Enter edit · Esc close
 styles
-0: 0-1 fg:borderFocus; 2-14 fg:textStrong b; 15-75 fg:borderFocus
-1: 0 fg:borderFocus; 2-45 fg:muted; 75 fg:borderFocus
-2: 0 fg:borderFocus; 4-24 fg:text; 75 fg:borderFocus
-3: 0 fg:borderFocus; 2 fg:primary; 4-14 fg:text b; 15-40 fg:text; 75 fg:borderFocus
-4: 0 fg:borderFocus; 6-41 fg:muted; 75 fg:borderFocus
-5: 0 fg:borderFocus; 4-24 fg:text; 25-32 fg:muted; 75 fg:borderFocus
-6: 0 fg:borderFocus; 2-45 fg:muted; 75 fg:borderFocus
-7: 0 fg:borderFocus; 4-27 fg:text; 28-40 fg:muted; 75 fg:borderFocus
-8: 0 fg:borderFocus; 4-18 fg:text; 19-31 fg:muted; 75 fg:borderFocus
-9: 0 fg:borderFocus; 4-14 fg:text; 15-18 fg:primary; 75 fg:borderFocus
-10: 0 fg:borderFocus; 4-30 fg:text; 75 fg:borderFocus
-11: 0 fg:borderFocus; 4-24 fg:text; 75 fg:borderFocus
-12: 0 fg:borderFocus; 4-33 fg:text; 34-35 fg:muted; 75 fg:borderFocus
-13: 0 fg:borderFocus; 2-73 fg:border; 75 fg:borderFocus
-14: 0 fg:borderFocus; 3-10 fg:primary; 75 fg:borderFocus
-15: 0 fg:borderFocus; 2-3 fg:textMuted; 4-6 fg:text; 8-16 fg:textMuted; 17-21 fg:text; 23-29 fg:textMuted; 30-32 fg:text; 34-38 fg:textMuted; 75 fg:borderFocus
-16: 0-75 fg:borderFocus
+0: 0-75 fg:primary
+1: 2-14 fg:primary b
+3: 2-45 fg:muted
+4: 4-24 fg:text
+5: 2 fg:primary; 4-14 fg:textStrong b; 15-40 fg:text
+6: 6-41 fg:muted
+7: 4-24 fg:text; 25-32 fg:muted
+8: 2-45 fg:muted
+9: 4-27 fg:text; 28-40 fg:muted
+10: 4-18 fg:text; 19-31 fg:muted
+11: 4-14 fg:text; 15-18 fg:primary
+12: 4-30 fg:text
+13: 4-24 fg:text
+14: 4-33 fg:text; 34-35 fg:muted
+15: 2-73 fg:border
+16: 3-10 fg:primary
+18: 2-4 fg:text; 6-14 fg:textMuted; 15-19 fg:text; 21-27 fg:textMuted; 28-30 fg:text; 32-36 fg:textMuted
 ## down
-grid 76x17 cursor 4,3
-|╭ Edit provider ───────────────────────────────────────────────────────────╮
-|│ ── Connection ──────────────────────────────                             │
-|│   Name:      production                                                  │
-|│   Endpoint:  https://api.example.com/v1                                  │
-|│ → API key:   •••••••••• (saved)                                          │
-|│     Never shown again after saving                                       │
-|│ ── Behaviour ───────────────────────────────                             │
-|│   Model:     deepseek-chat  (inherited)                                  │
-|│   Timeout:   30 s  (inherited)                                           │
-|│   Streaming: [on]                                                        │
-|│   Channels:  mentions, errors                                            │
-|│   Directory: ~/work/may                                                  │
-|│   Notes:     Prefer small diffs. …                                       │
-|│ ── Finish ────────────────────────────────────────────────────────────── │
-|│  [ Save ]                                                                │
-|│   ↑/↓ fields · Enter edit · Esc close                                    │
-|╰──────────────────────────────────────────────────────────────────────────╯
+grid 76x19 cursor 6,3
+|━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+|  Edit provider
+|
+|  ── Connection ──────────────────────────────
+|    Name:      production
+|    Endpoint:  https://api.example.com/v1
+|  → API key:   •••••••••• (saved)
+|      Never shown again after saving
+|  ── Behaviour ───────────────────────────────
+|    Model:     deepseek-chat  (inherited)
+|    Timeout:   30 s  (inherited)
+|    Streaming: [on]
+|    Channels:  mentions, errors
+|    Directory: ~/work/may
+|    Notes:     Prefer small diffs. …
+|  ── Finish ──────────────────────────────────────────────────────────────
+|   [ Save ]
+|
+|  ↑/↓ fields · Enter edit · Esc close
 styles
-0: 0-1 fg:borderFocus; 2-14 fg:textStrong b; 15-75 fg:borderFocus
-1: 0 fg:borderFocus; 2-45 fg:muted; 75 fg:borderFocus
-2: 0 fg:borderFocus; 4-24 fg:text; 75 fg:borderFocus
-3: 0 fg:borderFocus; 4-40 fg:text; 75 fg:borderFocus
-4: 0 fg:borderFocus; 2 fg:primary; 4-14 fg:text b; 15-24 fg:text; 25-32 fg:muted; 75 fg:borderFocus
-5: 0 fg:borderFocus; 6-35 fg:muted; 75 fg:borderFocus
-6: 0 fg:borderFocus; 2-45 fg:muted; 75 fg:borderFocus
-7: 0 fg:borderFocus; 4-27 fg:text; 28-40 fg:muted; 75 fg:borderFocus
-8: 0 fg:borderFocus; 4-18 fg:text; 19-31 fg:muted; 75 fg:borderFocus
-9: 0 fg:borderFocus; 4-14 fg:text; 15-18 fg:primary; 75 fg:borderFocus
-10: 0 fg:borderFocus; 4-30 fg:text; 75 fg:borderFocus
-11: 0 fg:borderFocus; 4-24 fg:text; 75 fg:borderFocus
-12: 0 fg:borderFocus; 4-33 fg:text; 34-35 fg:muted; 75 fg:borderFocus
-13: 0 fg:borderFocus; 2-73 fg:border; 75 fg:borderFocus
-14: 0 fg:borderFocus; 3-10 fg:primary; 75 fg:borderFocus
-15: 0 fg:borderFocus; 2-3 fg:textMuted; 4-6 fg:text; 8-16 fg:textMuted; 17-21 fg:text; 23-29 fg:textMuted; 30-32 fg:text; 34-38 fg:textMuted; 75 fg:borderFocus
-16: 0-75 fg:borderFocus
+0: 0-75 fg:primary
+1: 2-14 fg:primary b
+3: 2-45 fg:muted
+4: 4-24 fg:text
+5: 4-40 fg:text
+6: 2 fg:primary; 4-14 fg:textStrong b; 15-24 fg:text; 25-32 fg:muted
+7: 6-35 fg:muted
+8: 2-45 fg:muted
+9: 4-27 fg:text; 28-40 fg:muted
+10: 4-18 fg:text; 19-31 fg:muted
+11: 4-14 fg:text; 15-18 fg:primary
+12: 4-30 fg:text
+13: 4-24 fg:text
+14: 4-33 fg:text; 34-35 fg:muted
+15: 2-73 fg:border
+16: 3-10 fg:primary
+18: 2-4 fg:text; 6-14 fg:textMuted; 15-19 fg:text; 21-27 fg:textMuted; 28-30 fg:text; 32-36 fg:textMuted
 ## down
-grid 76x16 cursor 6,3
-|╭ Edit provider ───────────────────────────────────────────────────────────╮
-|│ ── Connection ──────────────────────────────                             │
-|│   Name:      production                                                  │
-|│   Endpoint:  https://api.example.com/v1                                  │
-|│   API key:   •••••••••• (saved)                                          │
-|│ ── Behaviour ───────────────────────────────                             │
-|│ → Model:     ‹ deepseek-chat ›  (inherited)                              │
-|│   Timeout:   30 s  (inherited)                                           │
-|│   Streaming: [on]                                                        │
-|│   Channels:  mentions, errors                                            │
-|│   Directory: ~/work/may                                                  │
-|│   Notes:     Prefer small diffs. …                                       │
-|│ ── Finish ────────────────────────────────────────────────────────────── │
-|│  [ Save ]                                                                │
-|│   ←/→ adjust · Enter pick · Esc close                                    │
-|╰──────────────────────────────────────────────────────────────────────────╯
+grid 76x18 cursor 8,3
+|━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+|  Edit provider
+|
+|  ── Connection ──────────────────────────────
+|    Name:      production
+|    Endpoint:  https://api.example.com/v1
+|    API key:   •••••••••• (saved)
+|  ── Behaviour ───────────────────────────────
+|  → Model:     ‹ deepseek-chat ›  (inherited)
+|    Timeout:   30 s  (inherited)
+|    Streaming: [on]
+|    Channels:  mentions, errors
+|    Directory: ~/work/may
+|    Notes:     Prefer small diffs. …
+|  ── Finish ──────────────────────────────────────────────────────────────
+|   [ Save ]
+|
+|  ←/→ adjust · Enter pick · Esc close
 styles
-0: 0-1 fg:borderFocus; 2-14 fg:textStrong b; 15-75 fg:borderFocus
-1: 0 fg:borderFocus; 2-45 fg:muted; 75 fg:borderFocus
-2: 0 fg:borderFocus; 4-24 fg:text; 75 fg:borderFocus
-3: 0 fg:borderFocus; 4-40 fg:text; 75 fg:borderFocus
-4: 0 fg:borderFocus; 4-24 fg:text; 25-32 fg:muted; 75 fg:borderFocus
-5: 0 fg:borderFocus; 2-45 fg:muted; 75 fg:borderFocus
-6: 0 fg:borderFocus; 2 fg:primary; 4-14 fg:text b; 15-31 fg:primary; 32-44 fg:muted; 75 fg:borderFocus
-7: 0 fg:borderFocus; 4-18 fg:text; 19-31 fg:muted; 75 fg:borderFocus
-8: 0 fg:borderFocus; 4-14 fg:text; 15-18 fg:primary; 75 fg:borderFocus
-9: 0 fg:borderFocus; 4-30 fg:text; 75 fg:borderFocus
-10: 0 fg:borderFocus; 4-24 fg:text; 75 fg:borderFocus
-11: 0 fg:borderFocus; 4-33 fg:text; 34-35 fg:muted; 75 fg:borderFocus
-12: 0 fg:borderFocus; 2-73 fg:border; 75 fg:borderFocus
-13: 0 fg:borderFocus; 3-10 fg:primary; 75 fg:borderFocus
-14: 0 fg:borderFocus; 2-3 fg:textMuted; 4-6 fg:text; 8-16 fg:textMuted; 17-21 fg:text; 23-29 fg:textMuted; 30-32 fg:text; 34-38 fg:textMuted; 75 fg:borderFocus
-15: 0-75 fg:borderFocus
+0: 0-75 fg:primary
+1: 2-14 fg:primary b
+3: 2-45 fg:muted
+4: 4-24 fg:text
+5: 4-40 fg:text
+6: 4-24 fg:text; 25-32 fg:muted
+7: 2-45 fg:muted
+8: 2 fg:primary; 4-14 fg:textStrong b; 15-31 fg:primary; 32-44 fg:muted
+9: 4-18 fg:text; 19-31 fg:muted
+10: 4-14 fg:text; 15-18 fg:primary
+11: 4-30 fg:text
+12: 4-24 fg:text
+13: 4-33 fg:text; 34-35 fg:muted
+14: 2-73 fg:border
+15: 3-10 fg:primary
+17: 2-4 fg:text; 6-14 fg:textMuted; 15-19 fg:text; 21-27 fg:textMuted; 28-30 fg:text; 32-36 fg:textMuted
 ## down
-grid 76x16 cursor 7,3
-|╭ Edit provider ───────────────────────────────────────────────────────────╮
-|│ ── Connection ──────────────────────────────                             │
-|│   Name:      production                                                  │
-|│   Endpoint:  https://api.example.com/v1                                  │
-|│   API key:   •••••••••• (saved)                                          │
-|│ ── Behaviour ───────────────────────────────                             │
-|│   Model:     deepseek-chat  (inherited)                                  │
-|│ → Timeout:   ‹ 30 › s  5–120  (inherited)                                │
-|│   Streaming: [on]                                                        │
-|│   Channels:  mentions, errors                                            │
-|│   Directory: ~/work/may                                                  │
-|│   Notes:     Prefer small diffs. …                                       │
-|│ ── Finish ────────────────────────────────────────────────────────────── │
-|│  [ Save ]                                                                │
-|│   ←/→ step · Enter edit · Esc close                                      │
-|╰──────────────────────────────────────────────────────────────────────────╯
+grid 76x18 cursor 9,3
+|━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+|  Edit provider
+|
+|  ── Connection ──────────────────────────────
+|    Name:      production
+|    Endpoint:  https://api.example.com/v1
+|    API key:   •••••••••• (saved)
+|  ── Behaviour ───────────────────────────────
+|    Model:     deepseek-chat  (inherited)
+|  → Timeout:   ‹ 30 › s  5–120  (inherited)
+|    Streaming: [on]
+|    Channels:  mentions, errors
+|    Directory: ~/work/may
+|    Notes:     Prefer small diffs. …
+|  ── Finish ──────────────────────────────────────────────────────────────
+|   [ Save ]
+|
+|  ←/→ step · Enter edit · Esc close
 styles
-0: 0-1 fg:borderFocus; 2-14 fg:textStrong b; 15-75 fg:borderFocus
-1: 0 fg:borderFocus; 2-45 fg:muted; 75 fg:borderFocus
-2: 0 fg:borderFocus; 4-24 fg:text; 75 fg:borderFocus
-3: 0 fg:borderFocus; 4-40 fg:text; 75 fg:borderFocus
-4: 0 fg:borderFocus; 4-24 fg:text; 25-32 fg:muted; 75 fg:borderFocus
-5: 0 fg:borderFocus; 2-45 fg:muted; 75 fg:borderFocus
-6: 0 fg:borderFocus; 4-27 fg:text; 28-40 fg:muted; 75 fg:borderFocus
-7: 0 fg:borderFocus; 2 fg:primary; 4-14 fg:text b; 15-20 fg:primary; 21-22 fg:text; 23-42 fg:muted; 75 fg:borderFocus
-8: 0 fg:borderFocus; 4-14 fg:text; 15-18 fg:primary; 75 fg:borderFocus
-9: 0 fg:borderFocus; 4-30 fg:text; 75 fg:borderFocus
-10: 0 fg:borderFocus; 4-24 fg:text; 75 fg:borderFocus
-11: 0 fg:borderFocus; 4-33 fg:text; 34-35 fg:muted; 75 fg:borderFocus
-12: 0 fg:borderFocus; 2-73 fg:border; 75 fg:borderFocus
-13: 0 fg:borderFocus; 3-10 fg:primary; 75 fg:borderFocus
-14: 0 fg:borderFocus; 2-3 fg:textMuted; 4-6 fg:text; 8-14 fg:textMuted; 15-19 fg:text; 21-27 fg:textMuted; 28-30 fg:text; 32-36 fg:textMuted; 75 fg:borderFocus
-15: 0-75 fg:borderFocus
+0: 0-75 fg:primary
+1: 2-14 fg:primary b
+3: 2-45 fg:muted
+4: 4-24 fg:text
+5: 4-40 fg:text
+6: 4-24 fg:text; 25-32 fg:muted
+7: 2-45 fg:muted
+8: 4-27 fg:text; 28-40 fg:muted
+9: 2 fg:primary; 4-14 fg:textStrong b; 15-20 fg:primary; 21-22 fg:text; 23-42 fg:muted
+10: 4-14 fg:text; 15-18 fg:primary
+11: 4-30 fg:text
+12: 4-24 fg:text
+13: 4-33 fg:text; 34-35 fg:muted
+14: 2-73 fg:border
+15: 3-10 fg:primary
+17: 2-4 fg:text; 6-12 fg:textMuted; 13-17 fg:text; 19-25 fg:textMuted; 26-28 fg:text; 30-34 fg:textMuted
 ## down
-grid 76x16 cursor 8,3
-|╭ Edit provider ───────────────────────────────────────────────────────────╮
-|│ ── Connection ──────────────────────────────                             │
-|│   Name:      production                                                  │
-|│   Endpoint:  https://api.example.com/v1                                  │
-|│   API key:   •••••••••• (saved)                                          │
-|│ ── Behaviour ───────────────────────────────                             │
-|│   Model:     deepseek-chat  (inherited)                                  │
-|│   Timeout:   30 s  (inherited)                                           │
-|│ → Streaming: [on]                                                        │
-|│   Channels:  mentions, errors                                            │
-|│   Directory: ~/work/may                                                  │
-|│   Notes:     Prefer small diffs. …                                       │
-|│ ── Finish ────────────────────────────────────────────────────────────── │
-|│  [ Save ]                                                                │
-|│   ↑/↓ fields · Enter toggle · Esc close                                  │
-|╰──────────────────────────────────────────────────────────────────────────╯
+grid 76x18 cursor 10,3
+|━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+|  Edit provider
+|
+|  ── Connection ──────────────────────────────
+|    Name:      production
+|    Endpoint:  https://api.example.com/v1
+|    API key:   •••••••••• (saved)
+|  ── Behaviour ───────────────────────────────
+|    Model:     deepseek-chat  (inherited)
+|    Timeout:   30 s  (inherited)
+|  → Streaming: [on]
+|    Channels:  mentions, errors
+|    Directory: ~/work/may
+|    Notes:     Prefer small diffs. …
+|  ── Finish ──────────────────────────────────────────────────────────────
+|   [ Save ]
+|
+|  ↑/↓ fields · Enter toggle · Esc close
 styles
-0: 0-1 fg:borderFocus; 2-14 fg:textStrong b; 15-75 fg:borderFocus
-1: 0 fg:borderFocus; 2-45 fg:muted; 75 fg:borderFocus
-2: 0 fg:borderFocus; 4-24 fg:text; 75 fg:borderFocus
-3: 0 fg:borderFocus; 4-40 fg:text; 75 fg:borderFocus
-4: 0 fg:borderFocus; 4-24 fg:text; 25-32 fg:muted; 75 fg:borderFocus
-5: 0 fg:borderFocus; 2-45 fg:muted; 75 fg:borderFocus
-6: 0 fg:borderFocus; 4-27 fg:text; 28-40 fg:muted; 75 fg:borderFocus
-7: 0 fg:borderFocus; 4-18 fg:text; 19-31 fg:muted; 75 fg:borderFocus
-8: 0 fg:borderFocus; 2 fg:primary; 4-14 fg:text b; 15-18 fg:primary; 75 fg:borderFocus
-9: 0 fg:borderFocus; 4-30 fg:text; 75 fg:borderFocus
-10: 0 fg:borderFocus; 4-24 fg:text; 75 fg:borderFocus
-11: 0 fg:borderFocus; 4-33 fg:text; 34-35 fg:muted; 75 fg:borderFocus
-12: 0 fg:borderFocus; 2-73 fg:border; 75 fg:borderFocus
-13: 0 fg:borderFocus; 3-10 fg:primary; 75 fg:borderFocus
-14: 0 fg:borderFocus; 2-3 fg:textMuted; 4-6 fg:text; 8-16 fg:textMuted; 17-21 fg:text; 23-31 fg:textMuted; 32-34 fg:text; 36-40 fg:textMuted; 75 fg:borderFocus
-15: 0-75 fg:borderFocus
+0: 0-75 fg:primary
+1: 2-14 fg:primary b
+3: 2-45 fg:muted
+4: 4-24 fg:text
+5: 4-40 fg:text
+6: 4-24 fg:text; 25-32 fg:muted
+7: 2-45 fg:muted
+8: 4-27 fg:text; 28-40 fg:muted
+9: 4-18 fg:text; 19-31 fg:muted
+10: 2 fg:primary; 4-14 fg:textStrong b; 15-18 fg:primary
+11: 4-30 fg:text
+12: 4-24 fg:text
+13: 4-33 fg:text; 34-35 fg:muted
+14: 2-73 fg:border
+15: 3-10 fg:primary
+17: 2-4 fg:text; 6-14 fg:textMuted; 15-19 fg:text; 21-29 fg:textMuted; 30-32 fg:text; 34-38 fg:textMuted
 ## down
-grid 76x16 cursor 9,3
-|╭ Edit provider ───────────────────────────────────────────────────────────╮
-|│ ── Connection ──────────────────────────────                             │
-|│   Name:      production                                                  │
-|│   Endpoint:  https://api.example.com/v1                                  │
-|│   API key:   •••••••••• (saved)                                          │
-|│ ── Behaviour ───────────────────────────────                             │
-|│   Model:     deepseek-chat  (inherited)                                  │
-|│   Timeout:   30 s  (inherited)                                           │
-|│   Streaming: [on]                                                        │
-|│ → Channels:  mentions, errors                                            │
-|│   Directory: ~/work/may                                                  │
-|│   Notes:     Prefer small diffs. …                                       │
-|│ ── Finish ────────────────────────────────────────────────────────────── │
-|│  [ Save ]                                                                │
-|│   ↑/↓ fields · Enter pick · Esc close                                    │
-|╰──────────────────────────────────────────────────────────────────────────╯
+grid 76x18 cursor 11,3
+|━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+|  Edit provider
+|
+|  ── Connection ──────────────────────────────
+|    Name:      production
+|    Endpoint:  https://api.example.com/v1
+|    API key:   •••••••••• (saved)
+|  ── Behaviour ───────────────────────────────
+|    Model:     deepseek-chat  (inherited)
+|    Timeout:   30 s  (inherited)
+|    Streaming: [on]
+|  → Channels:  mentions, errors
+|    Directory: ~/work/may
+|    Notes:     Prefer small diffs. …
+|  ── Finish ──────────────────────────────────────────────────────────────
+|   [ Save ]
+|
+|  ↑/↓ fields · Enter pick · Esc close
 styles
-0: 0-1 fg:borderFocus; 2-14 fg:textStrong b; 15-75 fg:borderFocus
-1: 0 fg:borderFocus; 2-45 fg:muted; 75 fg:borderFocus
-2: 0 fg:borderFocus; 4-24 fg:text; 75 fg:borderFocus
-3: 0 fg:borderFocus; 4-40 fg:text; 75 fg:borderFocus
-4: 0 fg:borderFocus; 4-24 fg:text; 25-32 fg:muted; 75 fg:borderFocus
-5: 0 fg:borderFocus; 2-45 fg:muted; 75 fg:borderFocus
-6: 0 fg:borderFocus; 4-27 fg:text; 28-40 fg:muted; 75 fg:borderFocus
-7: 0 fg:borderFocus; 4-18 fg:text; 19-31 fg:muted; 75 fg:borderFocus
-8: 0 fg:borderFocus; 4-14 fg:text; 15-18 fg:primary; 75 fg:borderFocus
-9: 0 fg:borderFocus; 2 fg:primary; 4-14 fg:text b; 15-30 fg:text; 75 fg:borderFocus
-10: 0 fg:borderFocus; 4-24 fg:text; 75 fg:borderFocus
-11: 0 fg:borderFocus; 4-33 fg:text; 34-35 fg:muted; 75 fg:borderFocus
-12: 0 fg:borderFocus; 2-73 fg:border; 75 fg:borderFocus
-13: 0 fg:borderFocus; 3-10 fg:primary; 75 fg:borderFocus
-14: 0 fg:borderFocus; 2-3 fg:textMuted; 4-6 fg:text; 8-16 fg:textMuted; 17-21 fg:text; 23-29 fg:textMuted; 30-32 fg:text; 34-38 fg:textMuted; 75 fg:borderFocus
-15: 0-75 fg:borderFocus
+0: 0-75 fg:primary
+1: 2-14 fg:primary b
+3: 2-45 fg:muted
+4: 4-24 fg:text
+5: 4-40 fg:text
+6: 4-24 fg:text; 25-32 fg:muted
+7: 2-45 fg:muted
+8: 4-27 fg:text; 28-40 fg:muted
+9: 4-18 fg:text; 19-31 fg:muted
+10: 4-14 fg:text; 15-18 fg:primary
+11: 2 fg:primary; 4-14 fg:textStrong b; 15-30 fg:text
+12: 4-24 fg:text
+13: 4-33 fg:text; 34-35 fg:muted
+14: 2-73 fg:border
+15: 3-10 fg:primary
+17: 2-4 fg:text; 6-14 fg:textMuted; 15-19 fg:text; 21-27 fg:textMuted; 28-30 fg:text; 32-36 fg:textMuted
