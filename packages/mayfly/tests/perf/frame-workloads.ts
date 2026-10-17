@@ -116,7 +116,7 @@ export function sidePane(loader?: 'top' | 'bottom', parts: readonly (readonly Ma
 }
 
 /** The product's screen over a fake terminal: the alternate layout, an editor in the dock, and the surface renderer. */
-class FrameHost {
+export class FrameHost {
   private typed = ''
   private constructor(
     readonly root: Context,
