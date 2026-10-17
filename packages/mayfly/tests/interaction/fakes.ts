@@ -1104,6 +1104,10 @@ export function fakeMayflyContext(options: { readonly display?: boolean; readonl
     clearStop: () => { stopRequested = false },
   } as never)
   ctx.provide('mayflyRetractions', { tryRetract: () => false })
+  ctx.provide('mayflySessionStart', {
+    onBooted: (listener: () => void) => { listener(); return () => {} },
+    ensure: async () => null,
+  } as never)
   ctx.on('test/session-changed', publishAgent)
   ctx.on('agent/status', publishAgent)
   new SkillsCatalogService(ctx)
