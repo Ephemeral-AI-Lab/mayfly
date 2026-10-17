@@ -41,7 +41,7 @@
     "website:preview": "pnpm --filter @ephemeral-ai/mayfly-website run preview"
   },
   "devDependencies": {
-    "@deepseek-ai/dsh-llm-mock-server": "0.2.1-rc.1",
+    "@deepseek-ai/dsh-llm-mock-server": "0.2.1-rc.2",
     "@types/node": "^22.20.0",
     "@vitest/coverage-v8": "^4.1.8",
     "@xterm/addon-webgl": "0.19.0",

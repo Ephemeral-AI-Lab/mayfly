@@ -1,6 +1,6 @@
 # Native Harness capability map
 
-This map is the contract between Mayfly and DeepSeek Harness `0.2.1-rc.1`.
+This map is the contract between Mayfly and DeepSeek Harness `0.2.1-rc.2`.
 Mayfly is a terminal presentation over native host capabilities: it reads
 current state from native projections and services, writes through native
 services and commands, and folds session events only for its terminal

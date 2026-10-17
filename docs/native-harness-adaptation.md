@@ -1,6 +1,6 @@
 # Native-first Harness adaptation
 
-Mayfly targets Harness `0.2.1-rc.1` and follows its native contracts rather
+Mayfly targets Harness `0.2.1-rc.2` and follows its native contracts rather
 than carrying a compatibility layer. Native services own session lifecycle,
 working directories, scheduling, subagent activations, tool execution, and
 plugin management. Mayfly supplies terminal presentation, current-Agent

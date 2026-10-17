@@ -12,7 +12,7 @@ import { dshHome } from './calibrate.ts'
 import { cliInternals } from './internals.ts'
 
 /** The Harness line carried inside the runtime archives. */
-export const HARNESS_LINE = '0.2.1-rc.1'
+export const HARNESS_LINE = '0.2.1-rc.2'
 
 /** A validated runtime ready to execute. */
 export interface BundledDsh {
