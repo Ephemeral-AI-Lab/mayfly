@@ -59,6 +59,9 @@ function harness(options: Partial<TranscriptControllerOptions> = {}, attach = tr
     focusRow: (_control: string, item: string) => { slot.focusRows.push(item) },
     setKeys: () => {},
     spotlight: () => {},
+    track: () => {},
+    trackedRow: () => undefined,
+    setMarked: () => {},
   } as unknown as MayflyNodeSlot
   const lines: { options: MayflySearchLineOptions, disposed: boolean, status: string[] }[] = []
   const screen = {
@@ -77,6 +80,8 @@ function harness(options: Partial<TranscriptControllerOptions> = {}, attach = tr
       return { get disposed() { return record.disposed }, set: (status: string) => { record.status.push(status) }, edit: () => {}, freeze: () => {}, dispose: () => { record.disposed = true } }
     },
     followContent: vi.fn(),
+    watchContentTail: () => () => {},
+    contentTail: () => undefined,
     requestRender: vi.fn(),
   } as unknown as TranscriptScreen
   const modes: string[] = []

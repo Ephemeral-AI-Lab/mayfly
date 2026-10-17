@@ -831,6 +831,9 @@ export class FakeScreen implements MayflyScreen {
 
   private contentScrollHandler: ((data: string) => boolean) | undefined
 
+  watchContentTail(_listener: () => void): () => void { return () => {} }
+  contentMarked(): boolean { return false }
+  onContentTurns(_listener: () => void): () => void { return () => {} }
   setContentScrollHandler(handler: ((data: string) => boolean) | undefined): () => void {
     this.contentScrollHandler = handler
     return () => {
