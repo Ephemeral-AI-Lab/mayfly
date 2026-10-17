@@ -384,7 +384,7 @@ test-only, is on `perf/phase-7`:
 Lint, build, typecheck, lib exports, examples, pack, CLI registry smoke, workflow tests, the 35 cleaned spec files
 (853/853), the work-budget suite (47/47), the terminal spec (87/87), e2e/app/vt (38/38), and the perf A/B step pass. The
 e2e/app/vt harness was moved onto the lazy-start model (`mayflySessionStart.ensure()` on the first action, one
-creation/selection per start, throttled publish waits). A full suite run now reports 49 failing files / 320 tests (down from 52 / 596) after restoring the missing
+creation/selection per start, throttled publish waits). A full suite run now reports 49 failing files / 305 tests (down from 52 / 596) after restoring the missing
 `mayflySessionStart` and screen/slot fakes in the shared test harness. The remainder is stale fixture data and snapshots
 in older interaction/design/UI suites, also failing on `main`; the input-plugin suite is now 144/150. It also cannot
 compare scenarios because this checkout has no `script/scenarios/golden/` directory, so every checkpoint is reported
