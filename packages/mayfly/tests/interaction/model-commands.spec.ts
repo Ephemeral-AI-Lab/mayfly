@@ -385,7 +385,7 @@ describe('model-family commands', () => {
   })
 
   it('/model picker commits on Enter with the segment draft and persists the default', async () => {
-    const { ctx, screen, agent, writes, saveSelection } = await mount()
+    const { ctx, agent, writes, saveSelection } = await mount()
     await ctx.commands.execute(agent, '/model', [], signal())
     const picker = ctx.mayflyUiInteraction.get('overlay', 'mayfly.models')!
     const mock = JSON.stringify(['mock', 'mock'])

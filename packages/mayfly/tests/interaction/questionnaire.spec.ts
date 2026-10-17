@@ -13,7 +13,6 @@ const path = (id: string) => [{ controlId: 'questions', itemId: id }]
 const reviewPath = [{ controlId: 'questions', itemId: 'questions.review' }]
 // A single-question prompt mounts its one page at the surface root, so those
 // tests address it through [] rather than the wizard tab path.
-const field = (id: string, fieldId: string, pagePath = path(id)) => ({ pagePath, formId: 'answer', fieldId })
 const options = (id: string, pagePath = path(id)) => ({ pagePath, controlId: 'options' })
 const accept = (id: string, ids: readonly string[], pagePath = path(id)) =>
   ({ kind: 'selection-accept' as const, pagePath, controlId: 'options', selectedIds: ids })

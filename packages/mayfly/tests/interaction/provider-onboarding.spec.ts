@@ -395,7 +395,7 @@ describe('provider onboarding', () => {
     await flush()
     const model = bench.model()!
     expect(JSON.stringify(model.node)).toContain('Preferences')
-    model.emit({ kind: 'value-change', pagePath: stepPath('preferences'), formId: 'preferences-form', controlId: 'language', value: 'zh' })
+    model.emit({ kind: 'value-change', pagePath: stepPath('preferences'), formId: 'preferences-form', controlId: 'language', value: 'zh', draftRevision: 1 })
     await flush(); await flush()
     expect(bench.ctx.mayflyLocale.preference).toBe('zh')
     expect(JSON.stringify(bench.model()!.node)).toContain('偏好设置')

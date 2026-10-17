@@ -383,7 +383,7 @@ describe('mayfly-transcript through the real Loader', () => {
   it('boots against direct Cordis services and renders a pre-existing Agent', async () => {
     resetSeq()
     const agent = fakeParent([userEvent('remember me'), assistantEvent(1, 1, [{ type: 'text', text: 'answer' }])])
-    const { ctx, screen, keymap } = await bootTranscript(agent)
+    const { ctx, screen } = await bootTranscript(agent)
     expect(ctx.mayflyCurrentAgent.current()).toBe(agent)
     expect(contentLines(screen).join('\n')).toContain('remember me')
     expect(contentLines(screen).join('\n')).toContain('answer')

@@ -25,7 +25,7 @@ import { registerPluginCommand } from '../../src/interaction/plugin-commands.ts'
 import { currentProfileInstallBlock, defaultInstallSource, entryInstallStates, readInstalledPlugins, rowSpec, installEntry, uninstallEntry, entrySupportsSource, MAYFLY_PACKAGE } from '../../src/interaction/plugin-market/installer.ts'
 import * as settingsPlugin from '../../src/interaction/settings.ts'
 import { InteractionStateService } from '../../src/interaction/runtime-state.ts'
-import { fakeMayflyContext, KEY, type FakeScreen } from './fakes.ts'
+import { fakeMayflyContext, type FakeScreen } from './fakes.ts'
 import { MayflyLocaleService } from '../../src/frontend/locale.ts'
 import type { MarketEntry } from '../../src/interaction/plugin-market/types.ts'
 import { mountUiRegistryObservers, UiInteractionService } from '../../src/core/ui-interaction-state.ts'
@@ -935,7 +935,6 @@ describe('/plugin argument paths', () => {
     })
     await world.run('/plugin list')
     const model = await marketReady(world)
-    const panel = world.overlay() as BrowserPanel
     const installed = model.choice({ pagePath: marketPage(model), controlId: 'plugins-installed' })!
     expect(installed.definition.items.map(item => item.id)).toEqual(expect.arrayContaining(['gone', 'loop', 'fresh']))
     focusBrowserRow(model, 'fresh')
@@ -1117,7 +1116,7 @@ describe('/plugin surface actions', () => {
       return ok()
     })
     await world.run('/plugin list')
-    const model = await marketReady(world)
+    await marketReady(world)
     await world.run('/plugin info loop')
     expect(JSON.stringify(world.surface('mayfly.plugin-detail')!.node)).toContain('Update available')
     await world.run('/plugin list')
@@ -1530,7 +1529,6 @@ describe('/plugin lifecycle and locale', () => {
       return calls === 1 ? first : indexJson([entry({ id: 'newer', displayName: 'Newer' })])
     })
     await world.run('/plugin')
-    const model = world.surface()!
     const refresh = world.run('/plugin refresh')
     await vi.waitFor(() => expect(calls).toBe(2))
     releaseFirst?.(indexJson([entry({ id: 'older', displayName: 'Older' })]))
