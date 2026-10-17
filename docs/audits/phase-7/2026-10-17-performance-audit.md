@@ -205,6 +205,15 @@ and lazy-invalidation cases).
 - `pnpm run perf -- --assert perf-long` passes its initial ceilings after the record-only adjustment.
 - Known baseline: `pnpm run typecheck`'s `tsconfig.tests.json` project fails on pre-existing Phase 6 specs that import deleted symbols; `tsc -b` and the changed files are clean.
 
+## Hand-over
+
+Open the combined scene with `pnpm run scenario perf-long`. It plays 200 settled turns, two compactions, the two live
+background children with nested surveys, two jobs, the goal and todos, three high-context streamed answers, and the
+`/btw`, then the script types, scrolls, wheels, enters the agents view, and searches over the stream. Watch for the lag
+while the children and jobs run (especially when a spawn or dispose would reconvert the hidden views), and try typing
+and scrolling inside the 200-turn stream. The audit record (this file) is the other hand-over; the profiles and scale
+curves above are the measurement.
+
 ## Next
 
 P1 is the first fix: the identity caches and the lazy `tools/change`. Then P2 (tail facts and publish window), P3/P4 (flow list and animation patches), P5 (output optimizer), P6 (fan-out and fixed frame cost), P7 (fold). Each round commits its own counter gate and reports the measured delta; the final gate is `pnpm run check -- --tier pr`.
