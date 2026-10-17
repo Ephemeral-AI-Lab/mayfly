@@ -49,7 +49,7 @@ import { composeSplashLines, SPLASH_RECENT_MAX, type SplashContent, type SplashS
 import { basename } from 'node:path'
 import { interactionTranslator } from '../interaction/locale.ts'
 import { formatAgo } from '../interaction/session-list-model.ts'
-import { cachedSessionTitle, createSessionListCache, refreshSessionList, readSessionListTitle, sessionListHeaders, sessionListRows, type SessionListRow } from '../interaction/session-list-reads.ts'
+import { createSessionListCache, refreshSessionList, sessionListRows, sessionListTitle, type SessionListRow } from '../interaction/session-list-reads.ts'
 import { MAYFLY_VERSION } from './banner-content.ts'
 
 declare module '@deepseek-ai/cordis' {
@@ -63,7 +63,7 @@ declare module '@deepseek-ai/cordis' {
 export const name = 'mayfly-banner'
 
 /** Services required before the banner can mount; the painter adds the theme and the components. */
-export const inject = ['mayflyScreen', 'mayflyCurrentAgent', 'mayflySessionStart', 'sessionProjections', 'agentDefaultModel', 'agents', 'sessions']
+export const inject = ['mayflyScreen', 'mayflyCurrentAgent', 'mayflySessionStart', 'sessionProjections', 'agentDefaultModel', 'sessionController']
 
 /** Banner configuration; the display override never changes Mayfly's release version. */
 export interface Config {
@@ -387,43 +387,28 @@ export function apply(ctx: Context, config: Config = {}): void {
     browse.ids = []
     browse.focus = undefined
   }
-  /** Read this directory's newest sessions, once at a time; the list is left out until the first read lands. */
+  /** Read this directory's newest sessions from one controller listing, once at a time. */
   const loadRecent = (): void => {
     if (loading || !booted || startup !== 'splash' || ctx.mayflyCurrentAgent.primary() !== null) return
     loading = true
     void refreshSessionList(ctx, listCache, lifetime.signal).then(() => {
       const now = Date.now()
       const cwd = process.cwd()
-      const usable = (rows: readonly SessionListRow[]): SessionListRow[] => rows.filter(row => !row.summary.blank && row.summary.parentSessionId === undefined)
-      // This directory's sessions come first; other projects fill the rest (headers only, then just the newest few are read).
-      const here = usable(sessionListRows(ctx, listCache, { cwd }))
-      const others = here.length >= SPLASH_RECENT_MAX ? [] : usable(sessionListRows(ctx, listCache, {
-        ids: new Set(sessionListHeaders(ctx, listCache)
-          .filter(item => item.header.cwd !== cwd && item.header.parentSession === undefined)
-          .sort((left, right) => right.header.createdAt - left.header.createdAt)
-          .slice(0, SPLASH_RECENT_MAX * 3)
-          .map(item => item.header.id)),
-      }))
+      const usable = sessionListRows(ctx, listCache)
+        .filter(row => !row.blank && row.parentSessionId === undefined)
+      // This directory's sessions come first; other projects fill the rest in native activity order.
+      const here = usable.filter(row => row.cwd === cwd)
+      const others = here.length >= SPLASH_RECENT_MAX ? [] : usable.filter(row => row.cwd !== cwd)
       const shown = [...here, ...others].slice(0, SPLASH_RECENT_MAX)
-      const titleOf = (row: SessionListRow): string | undefined => (row.summary.projections?.values.title ?? cachedSessionTitle(listCache, row)) || undefined
-      const item = (row: SessionListRow, title: string | undefined): SplashSession => ({
-        id: row.header.id,
-        title: title ?? t('Untitled'),
-        project: basename(row.header.cwd ?? ''),
-        age: row.summary.running ? t('running') : formatAgo(now - row.summary.updatedAt, t),
-        live: row.summary.running,
+      const item = (row: SessionListRow): SplashSession => ({
+        id: String(row.sessionId),
+        title: sessionListTitle(row) ?? t('Untitled'),
+        project: basename(row.cwd ?? ''),
+        age: row.running ? t('running') : formatAgo(now - row.updatedAt, t),
+        live: row.running,
       })
-      recent = shown.map(row => item(row, titleOf(row)))
+      recent = shown.map(item)
       publishBrowse()
-      // A stored session the projection cache has no title for is read once, after the list is on screen.
-      shown.forEach((row, index) => {
-        if (titleOf(row) !== undefined) return
-        void readSessionListTitle(ctx, listCache, row, lifetime.signal).then((title) => {
-          if (title === undefined || title === null || recent === undefined || lifetime.signal.aborted) return
-          recent = recent.map((entry, at) => at === index ? item(row, title) : entry)
-          ctx.mayflyScreen.requestRender()
-        }, () => {})
-      })
     }).catch((error: unknown) => {
       if (lifetime.signal.aborted) return
       ctx.logger.warn(`splash: recent sessions unavailable: ${String(error)}`)
