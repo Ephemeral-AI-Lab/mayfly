@@ -296,7 +296,7 @@ export class TranscriptController {
 
   private publishNow(now?: number): void {
     if (this.active === undefined || this.screen === undefined) return
-    this.publish(now)
+    this.publish(now ?? this.nowMs())
     this.screen.requestRender()
   }
 

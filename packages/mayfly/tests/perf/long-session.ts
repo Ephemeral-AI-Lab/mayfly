@@ -366,6 +366,13 @@ class FixedPublishClock {
   clearTimeout(handle: unknown): void {
     if (typeof handle === 'number') this.timers.delete(handle)
   }
+
+  /** Run the trailing publish the controller scheduled, so a measured step includes it. */
+  flush(): void {
+    const pending = [...this.timers.values()]
+    this.timers.clear()
+    for (const callback of pending) callback()
+  }
 }
 
 /**
@@ -430,11 +437,15 @@ export class LongSessionHarness {
   publish(key = 'main'): TranscriptModel {
     const model = this.view(key).source.snapshot()
     this.controller.republish()
+    this.clock.flush()
     return model
   }
 
   /** Republish the controller without converting another feed value. */
-  republish(): void { this.controller.republish() }
+  republish(): void {
+    this.controller.republish()
+    this.clock.flush()
+  }
 
   /** Paint the conversation host at the workload width. */
   render(): string[] { return this.screen.contentHost().render(this.width) }

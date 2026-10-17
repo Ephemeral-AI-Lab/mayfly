@@ -216,11 +216,28 @@ function translate(key: string): string { return key }
 
 const NO_PROJECTIONS: ConversationProjectionSource = { snapshot: () => ({ asOfSeq: 0, values: {} }), onChanged: () => () => {} }
 
-/** A publish clock that never moves: the controller's trailing window cannot open by wall-clock passage. */
-const FIXED_CLOCK = {
-  now: (): number => 0,
-  setTimeout: (_callback: () => void, _ms: number): unknown => 0,
-  clearTimeout: (_handle: unknown): void => {},
+/** A fixed publish clock whose trailing timers the workload drains explicitly, so a measured step includes the publish. */
+class FixedPublishClock {
+  private next = 0
+  private readonly timers = new Map<number, () => void>()
+
+  now(): number { return 0 }
+
+  setTimeout(callback: () => void, _ms: number): unknown {
+    this.next += 1
+    this.timers.set(this.next, callback)
+    return this.next
+  }
+
+  clearTimeout(handle: unknown): void {
+    if (typeof handle === 'number') this.timers.delete(handle)
+  }
+
+  flush(): void {
+    const pending = [...this.timers.values()]
+    this.timers.clear()
+    for (const callback of pending) callback()
+  }
 }
 
 const KEY_PAGE_UP = '\x1b[5~'
@@ -254,6 +271,8 @@ interface StreamRun {
   readonly feed: FakeConversationFeed
   readonly controller: TranscriptController
   readonly tick: FakeTickSource
+  /** Drain the controller's trailing publish; a stream step calls this after a republish. */
+  flush(): void
   dispose(): Promise<void>
 }
 
@@ -273,7 +292,8 @@ async function withStream(
   feed.push(projection, 1)
   if (draft !== undefined) feed.setDraft(draft)
   const tick = new FakeTickSource()
-  const controller = new TranscriptController({ t: translate, queued: () => [], tick, clock: FIXED_CLOCK, counters })
+  const clock = new FixedPublishClock()
+  const controller = new TranscriptController({ t: translate, queued: () => [], tick, clock, counters })
   const source = new OfficialConversationModelSource(NO_PROJECTIONS, longSessionTools(), () => { controller.refresh() }, undefined, translate, counters)
   source.attachFeed(feed)
   controller.attach(host.root.mayflyScreen as unknown as TranscriptScreen)
@@ -283,6 +303,7 @@ async function withStream(
   await host.frames()
   return {
     host, feed, controller, tick,
+    flush: () => clock.flush(),
     dispose: async () => { releaseScroll(); controller.dispose(); source.dispose(); await host.dispose() },
   }
 }
@@ -451,6 +472,7 @@ export const FRAME_WORKLOADS: readonly FrameWorkload[] = [
           const mark = stream.host.terminal.written.length
           stream.feed.setDraft(longSessionDraft(projection, `${text}\nA second line arrives.`, 2))
           stream.controller.republish()
+          stream.flush()
           await stream.host.frames()
           const counted = frameBytes(stream.host.terminal.written.slice(mark))
           counters.rowsWritten = counted.rows
