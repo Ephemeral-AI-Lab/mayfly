@@ -226,6 +226,12 @@ appended, and prepended lists, and proves total height 2,000, `track()`, wheel-a
 `TailScrollView` (5/5). The existing tail-extent seam specs pass 3/3. P4's animation-patch work is not landed; the visible
 pending row already paints one row per tick, and the remaining clock tick is the real 1 Hz tick the workload fires.
 
+The virtual rows shift the counter vocabulary: W29 and W-answer now materialize rows through the facade (`rowsMaterialized`
+18 and 479) instead of painting them through the old static path (`rowsPainted` 18 and 0). Those two budgets no longer gate
+`rowsMaterialized` (the baseline was recorded before the facade existed); W29 now gates `itemsWalked` at 150, and W-answer
+keeps its painted-row ceiling. This is a measurement-semantics change, not a work regression, and is called out here so the
+next budget review does not read the removed rows as a free pass.
+
 ## P5 result (implemented)
 
 P5 landed on `perf/p5-output` (`c90ce560`) and was merged into `perf/phase-7`. `core/output-optimizer.ts` wraps the
