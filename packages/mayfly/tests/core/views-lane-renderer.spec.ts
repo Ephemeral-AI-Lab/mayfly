@@ -327,7 +327,7 @@ describe('views lane through the direct pane renderer', () => {
       expect(f.root.mayflyScreen.enterViews()).toBe(false)
       pane.set(ui.text('arrived'))
       // The lane learns a panel by compiling it; a paint is what compiles it.
-      f.root.mayflyScreen.views.panel(40)
+      lanePanel(f.root.mayflyScreen.views, 40)
       await flush(8)
       expect(f.root.mayflyScreen.enterViews()).toBe(true)
       const rows = plain(lanePanel(f.root.mayflyScreen.views, 40))
