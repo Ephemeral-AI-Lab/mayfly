@@ -39,6 +39,6 @@
   "W32": { "unitsCompiled": 1, "componentRenders": 0, "controlWalks": 1, "reconciles": 2, "layoutPasses": 0 },
   "W33a": { "nodesValidated": 9, "unitsCompiled": 4, "rowsPainted": 2, "stringsMeasured": 41, "componentRenders": 3, "controlWalks": 1, "reconciles": 2, "layoutPasses": 1, "clockTicks": 2, "itemsWalked": 1301, "streamRowsBuilt": 105 },
   "W33b": { "nodesValidated": 9, "unitsCompiled": 4, "rowsPainted": 2, "stringsMeasured": 41, "componentRenders": 3, "controlWalks": 1, "reconciles": 2, "layoutPasses": 1, "clockTicks": 1, "itemsWalked": 1301, "streamRowsBuilt": 105 },
-  "W34": { "nodesValidated": 6, "unitsCompiled": 4, "rowsPainted": 2, "rowsMaterialized": 2, "segmentsPainted": 1, "linesEstimated": 2, "stringsMeasured": 40, "componentRenders": 3, "controlWalks": 1, "reconciles": 2, "layoutPasses": 1, "itemsWalked": 1223, "streamRowsBuilt": 99, "rowsWritten": 39, "bytesWritten": 6188 },
+  "W34": { "nodesValidated": 6, "unitsCompiled": 4, "rowsPainted": 2, "rowsMaterialized": 2, "segmentsPainted": 1, "linesEstimated": 2, "stringsMeasured": 40, "componentRenders": 3, "controlWalks": 1, "reconciles": 2, "layoutPasses": 1, "itemsWalked": 1223, "streamRowsBuilt": 99, "rowsWritten": 1, "bytesWritten": 177 },
   "W35": { "stringsMeasured": 3, "rowsWritten": 39, "bytesWritten": 6666 }
 }
