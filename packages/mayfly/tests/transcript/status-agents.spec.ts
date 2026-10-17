@@ -82,6 +82,23 @@ describe('agentRows', () => {
     expect(rowsOf([call('plain', { name: 'subagent', arguments: '' })])[0]).toMatchObject({ label: 'subagent' })
   })
 
+  it('parses a spawn call once, even when a republish hands over a fresh call object', () => {
+    const spawn = call('cached')
+    const parse = vi.spyOn(JSON, 'parse')
+    try {
+      rowsOf([spawn])
+      const first = parse.mock.calls.length
+      expect(first).toBeGreaterThan(0)
+      rowsOf([spawn])
+      expect(parse.mock.calls.length).toBe(first)
+      // A fresh object with the same identity and arguments is served by the identity fallback.
+      rowsOf([{ ...spawn }])
+      expect(parse.mock.calls.length).toBe(first)
+    } finally {
+      parse.mockRestore()
+    }
+  })
+
   it('carries the live characters and the output progress only while a child works', () => {
     const progress = { startedAt: 1, updatedAt: 2_000, chars: 400, initialChars: 0 } as never
     const ack = call('audit', { result: done('started subagent child-1') })

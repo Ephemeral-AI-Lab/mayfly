@@ -112,6 +112,20 @@ describe('mayfly-pane-todo', () => {
     await harness.dispose()
   })
 
+  it('reuses its rows when an unrelated delta carries the same todo projection', async () => {
+    resetSeq()
+    let reads = 0
+    const tracked = [{ get content(): string { reads += 1; return 'a' }, get status(): TodoItem['status'] { reads += 1; return 'in_progress' } }]
+    const harness = await bootTodo()
+    harness.write(tracked)
+    const revision = harness.entry().revision
+    reads = 0
+    harness.ctx.emit('session/event', harness.agent.session as unknown as Session, turnStart(2))
+    expect(reads).toBe(0)
+    expect(harness.entry().revision).toBe(revision)
+    await harness.dispose()
+  })
+
   it('shows done over total and the panel from the latest whole-list snapshot, and runs the clock only while a list is tracked', async () => {
     resetSeq()
     const harness = await bootTodo()

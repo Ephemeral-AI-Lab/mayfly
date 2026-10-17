@@ -7,12 +7,13 @@
  * @module transcript-notices
  */
 
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import type { GoalProjection } from '@deepseek-ai/dsh-goal'
 import { initialConversationFacts } from '../../src/conversation/facts.ts'
 import type { ConversationFacts } from '../../src/conversation/types.ts'
 import { UiInteractionService } from '../../src/core/ui-interaction-state.ts'
+import { UiNotificationStore } from '../../src/core/ui-interaction-notifications.ts'
 import { CONTEXT_WARN_PERCENT, mountNotices } from '../../src/transcript/notices.ts'
 import type { TickSource } from '../../src/transcript/tick.ts'
 import { transcriptTranslatorFake } from './notices-fakes.ts'
@@ -199,6 +200,34 @@ describe('notices from the session facts', () => {
     harness.facts.set({ contextTokens: 40_000 })
     expect(harness.notices()).toEqual({})
     await harness.dispose()
+  })
+
+  it('reports the context once per threshold crossing, not on every delta', async () => {
+    const report = vi.spyOn(UiNotificationStore.prototype, 'report')
+    try {
+      const harness = await boot()
+      const contextReports = (): number => report.mock.calls.filter(call => String(call[0]).endsWith('/notice/context')).length
+      harness.facts.set({ contextWindow: 64_000, contextTokens: 59_000 })
+      expect(contextReports()).toBe(1)
+      // A delta inside the same band says nothing more.
+      harness.facts.set({ contextTokens: 60_000 })
+      expect(contextReports()).toBe(1)
+      // 95% is a new crossing, and so is 98%.
+      harness.facts.set({ contextTokens: 61_000 })
+      expect(contextReports()).toBe(2)
+      harness.facts.set({ contextTokens: 63_500 })
+      expect(contextReports()).toBe(3)
+      // Dropping back into a reported band does not report again.
+      harness.facts.set({ contextTokens: 60_000 })
+      expect(contextReports()).toBe(3)
+      harness.facts.set({ contextTokens: 40_000 })
+      expect(harness.notices()).toEqual({})
+      harness.facts.set({ contextTokens: 59_000 })
+      expect(contextReports()).toBe(4)
+      await harness.dispose()
+    } finally {
+      report.mockRestore()
+    }
   })
 
   it('stays silent about the context when the session has no window', async () => {

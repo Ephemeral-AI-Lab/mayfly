@@ -16,15 +16,15 @@ import { interpolateLocaleMessage, type MayflyTranslate } from '../frontend/loca
 import type { SessionFactsService } from './session-facts.ts'
 import { agentPhasePresentation, agentTreeBranch, compactElapsedSeconds, hiddenMembersText, selectVisibleMembers } from './agent-presentation.ts'
 import { transcriptTranslator } from './locale.ts'
+import type { TickSource } from './tick.ts'
 
 /** Stable Cordis plugin name. */
 export const name = 'mayfly-pane-workflow'
 
 /** Native and Mayfly services required by the pane. */
-export const inject = ['mayflyPanes', 'mayflyCurrentAgent', 'mayflySessionFacts', 'sessions']
+export const inject = ['mayflyPanes', 'mayflyCurrentAgent', 'mayflySessionFacts', 'sessions', 'mayflyTick']
 
 const WORKFLOW_PRIORITY = 60
-const WORKFLOW_TICK_MS = 1000
 
 /** One workflow child call and its eventual outcome. */
 interface WorkflowAgentRow {
@@ -50,19 +50,17 @@ export interface WorkflowRunState {
   attributed: boolean
 }
 
-/** Injectable timer primitives for deterministic lifecycle tests. */
-interface WorkflowPaneTimers {
-  setInterval: (callback: () => void, ms: number) => ReturnType<typeof setInterval>
-  clearInterval: (handle: ReturnType<typeof setInterval>) => void
+/** Injectable clock for deterministic lifecycle tests; the shared one-second tick drives the refresh. */
+interface WorkflowPaneClock {
   now: () => number
 }
 
-const defaultTimers: WorkflowPaneTimers = { setInterval, clearInterval, now: Date.now }
-let workflowPaneTimers = defaultTimers
+const defaultClock: WorkflowPaneClock = { now: Date.now }
+let workflowPaneClock = defaultClock
 
-/** Replace or restore workflow pane timers. */
-export function setWorkflowPaneTimers(timers: WorkflowPaneTimers | undefined): void {
-  workflowPaneTimers = timers ?? defaultTimers
+/** Replace or restore the workflow pane clock. */
+export function setWorkflowPaneClock(now: (() => number) | undefined): void {
+  workflowPaneClock = now === undefined ? defaultClock : { now }
 }
 
 /** Compact workflow elapsed time. */
@@ -167,7 +165,9 @@ export function workflowNode(runs: readonly WorkflowRunState[], now: number, t: 
 export function apply(ctx: Context): void {
   const t = transcriptTranslator(ctx, 'transcript')
   const runs = new Map<string, WorkflowRunState>()
-  let tickHandle: ReturnType<typeof setInterval> | undefined
+  const tick = ctx.get('mayflyTick') as TickSource | undefined
+  let offTick: (() => void) | undefined
+  let now = workflowPaneClock.now()
   let pane: ReturnType<typeof ctx.mayflyPanes.register>
 
   const currentChildIds = (): Set<string> => {
@@ -186,32 +186,31 @@ export function apply(ctx: Context): void {
     return run.attributed
   }
   const attributedRuns = (): readonly WorkflowRunState[] => [...runs.values()].filter(run => run.attributed)
-  // The one-second tick republishes (and recompiles) only a changed pane.
+  // The shared one-second tick republishes (and recompiles) only a changed pane.
   let published: string | undefined
-  const refresh = (): void => {
-    const node = workflowNode(attributedRuns(), workflowPaneTimers.now(), t)
+  const refresh = (at = workflowPaneClock.now()): void => {
+    now = at
+    const node = workflowNode(attributedRuns(), now, t)
     const signature = JSON.stringify(node)
     if (signature === published) return
     published = signature
     pane?.set(node)
   }
   const standDownTick = (): void => {
-    if (tickHandle === undefined) return
-    workflowPaneTimers.clearInterval(tickHandle)
-    tickHandle = undefined
+    offTick?.()
+    offTick = undefined
   }
   const ensureTick = (): void => {
     const live = attributedRuns().some(run => run.stopReason === undefined)
-    if (!live) {
+    if (!live || tick === undefined) {
       standDownTick()
       return
     }
-    if (tickHandle !== undefined) return
-    tickHandle = workflowPaneTimers.setInterval(() => {
+    if (offTick !== undefined) return
+    offTick = tick.subscribe((at) => {
       if (!attributedRuns().some(run => run.stopReason === undefined)) standDownTick()
-      else refresh()
-    }, WORKFLOW_TICK_MS)
-    tickHandle.unref?.()
+      else refresh(at)
+    })
   }
 
   ctx.on('workflow/start', (info) => {
@@ -222,7 +221,7 @@ export function apply(ctx: Context): void {
       phasesSeen: [],
       currentPhase: undefined,
       agents: [],
-      startedAt: workflowPaneTimers.now(),
+      startedAt: workflowPaneClock.now(),
       stopReason: undefined,
       endedAt: undefined,
       agentsStarted: undefined,
@@ -267,7 +266,7 @@ export function apply(ctx: Context): void {
       return
     }
     run.stopReason = result.stopReason
-    run.endedAt = workflowPaneTimers.now()
+    run.endedAt = workflowPaneClock.now()
     run.agentsStarted = result.agentsStarted
     refresh()
     ensureTick()
@@ -297,7 +296,7 @@ export function apply(ctx: Context): void {
     ensureTick()
   })
 
-  const initial = workflowNode(attributedRuns(), workflowPaneTimers.now(), t)
+  const initial = workflowNode(attributedRuns(), workflowPaneClock.now(), t)
   published = JSON.stringify(initial)
   pane = ctx.mayflyPanes.register({
     id: 'mayfly.pane.workflow',

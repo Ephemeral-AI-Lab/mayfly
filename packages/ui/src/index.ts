@@ -5,6 +5,7 @@
  */
 
 export type * from './contracts.ts'
+export { equalPaneSummary, equalStatusNode } from './status-equality.ts'
 export {
   deepFreeze,
   freezeWire,

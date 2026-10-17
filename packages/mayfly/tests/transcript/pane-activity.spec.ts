@@ -185,6 +185,14 @@ describe('mayfly-pane-activity', () => {
     await harness.dispose()
   })
 
+  it('does not republish when a facts delta leaves the row shape unchanged', async () => {
+    const harness = await bootFacts({ phase: 'waiting', turnStartedAt: NOW })
+    const revision = harness.ctx.mayflyPanes.list().find(entry => entry.id === 'mayfly.pane.activity')!.revision
+    harness.push({ flowDownChars: 120, contextTokens: 3_000 })
+    expect(harness.ctx.mayflyPanes.list().find(entry => entry.id === 'mayfly.pane.activity')!.revision).toBe(revision)
+    await harness.dispose()
+  })
+
   it('names the running category by its present-tense label, and puts the calls\' arguments on the line under it', async () => {
     const harness = await bootFacts({ phase: 'tool', inFlight: [{ callId: 'c1', name: 'bash', detail: 'pnpm test' }] })
     expect(rows(harness.screen)).toEqual(['  ● Running commands', '    ⎿ pnpm test'])
