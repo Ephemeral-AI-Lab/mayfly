@@ -25,7 +25,7 @@ async function setup(profiles: Record<string, unknown> = {}, configured = false,
   const ctx = new Context()
   contexts.push(ctx)
   new InteractionStateService(ctx, DEFAULT_SETTINGS)
-  const bench = await providerFixture(ctx, profiles, llm)
+  const bench = await providerFixture(ctx, profiles, llm, { onboarding: true })
   if (configured) bench.credentials.values.set(DEEPSEEK_KEY, 'configured')
   const agent = { id: 'root', session: {} } as Agent
   ctx.provide('agents', { get: (id: string) => id === agent.id ? agent : undefined } as never)
@@ -269,7 +269,7 @@ describe('provider onboarding', () => {
       contexts.push(ctx)
       const loading = Promise.withResolvers<void>()
       ctx.provide('loader', { await: () => loading.promise } as never)
-      const bench = await providerFixture(ctx)
+      const bench = await providerFixture(ctx, {}, undefined, { onboarding: true })
       const agent = { id: `root-${outcome}`, session: {} } as Agent
       ctx.provide('agents', { get: () => agent } as never)
       await ctx.plugin({ name: `onboarding-app-${outcome}`, inject: ['agents'], apply(owner: Context) { new MayflyCurrentAgentService(owner, new MayflyConversationsService(owner)) } })

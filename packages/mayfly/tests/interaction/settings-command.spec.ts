@@ -448,7 +448,7 @@ describe('native settings UI', () => {
     vi.stubEnv('EDITOR', '')
     expect(await openFile()).toMatchObject({ kind: 'failed', message: 'no editor configured ($VISUAL/$EDITOR)' })
     // The mayfly.editorCommand setting resolves through the shared tree source.
-    bench.ctx.provide('mayflyInteractionState', { settingsSource: () => ({ editorCommand: 'test-editor' }) } as never)
+    vi.spyOn(bench.ctx.mayflyInteractionState, 'settingsSource').mockReturnValue({ editorCommand: 'test-editor' } as never)
     vi.spyOn(bench.settings, 'prepareDocument').mockResolvedValue(undefined as never)
     expect(await openFile()).toMatchObject({ kind: 'failed', message: 'settings file unavailable' })
 
