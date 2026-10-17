@@ -120,6 +120,7 @@ function createRuntime(mode: 'main' | 'alternate' = 'alternate', initialColumns 
     },
     showOverlay() { throw new Error('pane test opened an overlay') },
     contentTail: () => undefined,
+    setContentScrollbarColors() {},
     addChild() {},
     addBottomChild() {},
     requestRender() {},
@@ -325,6 +326,8 @@ describe('views lane through the direct pane renderer', () => {
       expect(lane.statusEntries()).toHaveLength(1)
       expect(f.root.mayflyScreen.enterViews()).toBe(false)
       pane.set(ui.text('arrived'))
+      // The lane learns a panel by compiling it; a paint is what compiles it.
+      f.root.mayflyScreen.views.panel(40)
       await flush(8)
       expect(f.root.mayflyScreen.enterViews()).toBe(true)
       const rows = plain(lanePanel(f.root.mayflyScreen.views, 40))
