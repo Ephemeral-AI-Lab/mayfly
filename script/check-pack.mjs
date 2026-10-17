@@ -249,8 +249,10 @@ verifyExternalUiKit(tarballs.get('@ephemeral-ai/mayfly-ui'))
 // catching accidental entry/chunk growth.
 if (libraryFiles > 260) fail(`library lib output has ${libraryFiles} files; budget is 260`)
 // Phase 4 (the editor frame, tokens, the completion palette, placeholders, and the subagent send) added about 50 KB on top
-// of the Phase 5 budget; the size of the two together is measured at the merge's test session.
-if (libraryBytes > 2_950_000) fail(`library lib output has ${libraryBytes} bytes; budget is 2950000`)
+// of the Phase 5 budget; the size of the two together is measured at the merge's test session. The Harness 0.2.1 native
+// readers then landed with the base tree already at 3,168,489 bytes (above the old 2.95 MB cap); the merged branch is
+// 3,153,702 bytes. Keep a small headroom rather than disabling the check.
+if (libraryBytes > 3_200_000) fail(`library lib output has ${libraryBytes} bytes; budget is 3200000`)
 
 if (problems.length > 0) {
   console.error(`pack contract failed with ${problems.length} problem(s)`)
