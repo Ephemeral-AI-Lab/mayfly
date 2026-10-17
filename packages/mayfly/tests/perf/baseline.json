@@ -182,14 +182,14 @@
   "W18-overlay": {
     "nodesValidated": 0,
     "unitsCompiled": 0,
-    "rowsPainted": 2,
-    "rowsMaterialized": 12,
+    "rowsPainted": 3,
+    "rowsMaterialized": 14,
     "segmentsPainted": 0,
     "linesEstimated": 0,
     "stringsMeasured": 13,
     "componentRenders": 3,
     "controlWalks": 0,
-    "reconciles": 4,
+    "reconciles": 5,
     "layoutPasses": 2,
     "clockTicks": 0,
     "keymapSnapshots": 0
