@@ -484,7 +484,7 @@ const startSplash = {
  * reloads the live core row through the loader.
  */
 const harnessAlignment = {
-  summary: 'native capability alignment: a working-directory change with native todo/context/model values, a managed subagent activation and completion, a bash job, Schedule in standard (reminder tools and /schedule) versus minimal (no tools), a migration-required stored session, a native @file mention, /permissions, /save, /btw, 60 and 40 columns, and a core reload',
+  summary: 'native capability alignment: a working-directory change with native todo/context/model values, a managed subagent activation and completion, a bash job, a Host reminder created under standard, a migration-required stored session, a native @file mention, /save, /btw, the minimal preset, 60 and 40 columns, and the /permissions panel',
   workspace: {
     'src/hero.ts': "export const hero = 'Ship agent UI in a keystroke'\n",
     'README.md': '# Harness alignment\n\nThe hero lives in src/hero.ts.\n',

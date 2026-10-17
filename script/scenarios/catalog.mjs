@@ -489,8 +489,8 @@ const SCRIPTS = {
     key('f8'), checkpoint('detached'), key('esc'),
   ],
   // Native capability alignment: the working directory, native todo/context/model, a managed activation, a bash job,
-  // Schedule in standard and minimal, a migration-required session, a native file mention, /permissions, /save, /btw,
-  // narrow widths, and a live core reload.
+  // a Host reminder under standard, a migration-required session, a native file mention, /save, /btw, the minimal
+  // preset, narrow widths, and the /permissions panel.
   harnessAlignment: [
     play('aligned'), checkpoint('aligned'),
     play('activation-live'), checkpoint('activation-live'),
@@ -498,22 +498,17 @@ const SCRIPTS = {
     play('activated'), checkpoint('activated'),
     play('job-done'), checkpoint('job-done'),
     play('scheduled'), checkpoint('scheduled'),
-    type('/schedule'), key('enter'), wait(300), checkpoint('standard-schedule'), key('esc'),
-    type('/tools'), key('enter'), wait(300), type('/'), type('schedule'), wait(300), checkpoint('standard-tools'), key('esc'), key('esc'),
     type('@hero'), checkpoint('mention'), key('enter'), type(' tighten the hero copy'), key('enter'), wait(1500), checkpoint('mention-sent'),
-    type('/permissions'), key('enter'), wait(300), checkpoint('permissions'), key('esc'),
-    type('/save'), key('enter'), wait(500), checkpoint('save'),
-    type('/sessions'), key('enter'), wait(500), key('enter'), until('Legacy hero notes'), checkpoint('migration'), key('esc'), key('esc'),
+    type('/save'), key('enter'), wait(1000), checkpoint('save'),
+    type('/sessions seed-legacy-hero'), key('enter'), wait(1000), until('Legacy hero notes'), checkpoint('migration'), key('esc'), key('esc'),
     type('/btw Does the hero need a dark variant?'), key('enter'), wait(2000), checkpoint('btw'), key('f7'), wait(300), checkpoint('main'),
     play('before-minimal'),
     type('/new minimal'), key('enter'), wait(500),
     type('Check the minimal tool surface.'), key('enter'), play('minimal'), checkpoint('minimal'),
-    type('/tools'), key('enter'), wait(300), type('/'), type('schedule'), wait(300), checkpoint('minimal-tools'), key('esc'), key('esc'),
-    type('/schedule'), key('enter'), wait(300), checkpoint('minimal-schedule'), key('esc'),
     resize(60, 30), checkpoint('narrow-60'),
     resize(40, 30), checkpoint('narrow-40'),
     resize(100, 30),
-    play('reload-ready'), play('reloaded'), checkpoint('reloaded'),
+    type('/permissions'), key('enter'), wait(1000), checkpoint('permissions'),
   ],
 }
 
