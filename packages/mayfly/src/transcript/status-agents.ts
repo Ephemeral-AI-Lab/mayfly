@@ -254,7 +254,7 @@ export function apply(ctx: Context): void {
     try {
       if (event.kind === 'selection-accept') {
         const entry = (await ctx.subagents.listChildren(agent.id, context.signal)).find(candidate => String(candidate.id) === row.childId)
-        if (entry === undefined || entry.mode === 'unknown') return { kind: 'failed', message: t('This subagent cannot be opened') }
+        if (entry === undefined || entry.mode === 'unknown' || entry.mode === 'external') return { kind: 'failed', message: t('This subagent cannot be opened') }
         ctx.mayflyScreen.leaveViews()
         opened = ctx.mayflyConversations.open({ kind: 'subagent', sessionId: row.childId, parentSessionId: String(agent.id), label: entry.label ?? row.label, mode: entry.mode })
         return { kind: 'completed' }

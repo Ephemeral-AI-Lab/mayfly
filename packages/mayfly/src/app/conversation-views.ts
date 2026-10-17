@@ -45,7 +45,7 @@ export type MayflyConversationOpen = Readonly<{
   readonly sessionId: string
   readonly parentSessionId: string
   readonly label: string
-  readonly mode: 'one-shot' | 'continuable'
+  readonly mode: 'one-shot' | 'continuable' | 'unknown'
 }>
 
 /** Identity of one subagent conversation. */
@@ -268,7 +268,7 @@ export class MayflyConversationsService extends Service {
   }
 
   private access(side: MayflyConversationOpen): MayflyConversationAccess {
-    if (side.kind === 'subagent' && side.mode === 'one-shot') return 'readonly'
+    if (side.kind === 'subagent' && side.mode !== 'continuable') return 'readonly'
     if (this.liveAgent(side.sessionId) !== null) return 'interactive'
     return side.kind === 'subagent' ? 'resumable' : 'readonly'
   }

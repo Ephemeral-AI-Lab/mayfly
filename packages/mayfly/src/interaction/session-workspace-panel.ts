@@ -233,6 +233,7 @@ export function openSessionWorkspace(ctx: Context, signal: AbortSignal, t: Mayfl
           const baseline = await ctx.sessionController.projections({ sessionId: session.sessionId }, operation)
           if (operation.aborted) return { kind: 'cancelled' }
           if (baseline === null) return { kind: 'failed', message: 'Session is no longer available; refresh the catalog.' }
+          if (baseline.kind === 'migration-required') return { kind: 'failed', message: 'This session requires format migration before its details can be read.' }
           baselines.set(session.sessionId, baseline)
           now = Date.now()
           dirty = true
@@ -265,6 +266,7 @@ export function openSessionWorkspace(ctx: Context, signal: AbortSignal, t: Mayfl
               if (ctx.mayflyCurrentAgent.primary() !== primary) return { kind: 'failed', message: 'The lead session changed; reopen this conversation.' }
               const child = children.find(child => child.kind === 'child' && child.id === session.sessionId)
               if (child?.kind !== 'child') return { kind: 'failed', message: 'Open this child’s lead session first' }
+              if (child.mode === 'external') return { kind: 'failed', message: 'External subagents have no local conversation' }
               ctx.mayflyConversations.open({ kind: 'subagent', sessionId: child.id, parentSessionId: child.parentId, mode: child.mode, label: child.label ?? child.id })
             } else ctx.emit('mayfly/request-resume', session.sessionId)
             options.closeAll()

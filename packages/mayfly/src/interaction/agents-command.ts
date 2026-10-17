@@ -219,6 +219,7 @@ export function apply(ctx: Context): void {
         const selectedId = event.selectedIds[0]
         const entry = selectedId === undefined ? undefined : byId.get(selectedId)
         if (entry?.kind !== 'child') return { kind: 'completed' }
+        if (entry.mode === 'external') return { kind: 'failed', message: t('External subagents have no local conversation') }
         close()
         ctx.mayflyConversations.open({ kind: 'subagent', sessionId: String(entry.id), parentSessionId: String(entry.parentId), label: entry.label ?? String(entry.id), mode: entry.mode })
         return { kind: 'completed' }

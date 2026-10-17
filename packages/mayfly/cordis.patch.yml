@@ -6,7 +6,6 @@
 - id: system-prompt
   config:
     personaPrefix: You are a coding agent.
-    personaSuffix: Your working directory is {{cwd}}.
 
 - id: hmr
   disabled: true
@@ -53,8 +52,6 @@
 - id: workflow-ptc
   disabled: true
 - id: tool-workflow
-  disabled: true
-- id: tool-ralph
   disabled: true
 - id: agent-instructions
   disabled: true
@@ -124,6 +121,18 @@
     # stay on the base `session-title` service and its first-prompt provider.
     - id: session-stats
       name: '@deepseek-ai/dsh-session-stats'
+
+    # Host-side file discovery, turn outline, and per-turn changed-file
+    # summaries. The upstream Web composition mounts these rows; Mayfly needs
+    # the same services for @-mentions, turn navigation, and /files.
+    - id: file-reference-local
+      name: '@deepseek-ai/dsh-file-reference-local'
+
+    - id: session-turn-outline
+      name: '@deepseek-ai/dsh-session-turn-outline'
+
+    - id: workspace-changes
+      name: '@deepseek-ai/dsh-workspace-changes'
 
     # Direct Mayfly UI services. Plugin lifetime is ordinary Cordis Fiber lifetime.
     - id: mayfly-ui-provider

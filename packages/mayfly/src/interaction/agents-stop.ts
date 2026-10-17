@@ -122,7 +122,7 @@ export async function stopSubagent(
   }
   ctx.mayflyConversations.close(conversationId(String(current.id)))
   try {
-    await ctx.subagents.drainContinuableChildren(directParent, [current.id])
+    await ctx.subagents.drainChildren(directParent, [current.id])
     return { kind: 'success', text: `stopped subagent ${String(current.id)}` }
   } catch (error) {
     return { kind: 'error', text: `could not stop subagent ${String(current.id)}: ${describe(error)}` }
