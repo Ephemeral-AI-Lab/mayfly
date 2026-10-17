@@ -391,10 +391,11 @@ panel arrives, and the surface head now drops its badges before truncating the t
 registry smoke, all 241 selected spec files (4,932 tests), and the 7-scenario perf A/B. The only failing steps are the
 scenario comparison and the two workflow tests that assert app-shot goldens: `script/scenarios/golden/` is absent in this
 checkout, so every checkpoint is reported `new` and the app-shot version assertion cannot find its stored frame. This is
-the documented exception. I generated the 159 scenario goldens locally to test closing it: an immediate replay still
-reported `brandThemes dark` differing (the theme scene is not stable enough to accept mechanically), and the app-shot
-version workflow test needs the Website SVG rewrite, which this branch is not allowed to touch. The generated goldens
-were reverted; the owner should accept them in a Website-capable release checkout. Everything else in the pr tier is green.
+the documented exception. I generated the 159 scenario goldens locally to test closing it. The brand scene's warning race was fixed with a
+scenario wait, but immediate replays still showed `mergeHeights stats-models` and `mergePanels stats-history` differing
+(chart scale/transition frames are not deterministic enough to accept mechanically), and the app-shot version workflow
+test needs the Website SVG rewrite, which this branch is not allowed to touch. The generated goldens were reverted; the
+owner should accept them in a Website-capable release checkout. Everything else in the pr tier is green.
 
 ### Remaining
 
