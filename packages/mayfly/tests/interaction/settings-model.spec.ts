@@ -24,7 +24,8 @@ describe('native settings projections', () => {
     expect(fields.find(field => field.id === settingsField('required').fieldId)).not.toHaveProperty('resetValue')
     expect(fields.find(field => field.id === settingsField('readonly', 'child').fieldId)).toMatchObject({ disabled: true })
     expect(fields.find(field => field.id === settingsField('many').fieldId)).toMatchObject({ kind: 'multiselect', minSelected: 1, maxSelected: 2 })
-    expect(JSON.stringify(projection.node)).not.toMatch(/opaque-value|hidden/)
+    expect(JSON.stringify(projection.node)).not.toContain('opaque-value')
+    expect(fields.map(field => field.id)).not.toContain(settingsField('hidden').fieldId)
   })
 
   it('appends off-list stored values as readable options instead of raw encoded ids', () => {

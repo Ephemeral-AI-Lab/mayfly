@@ -1109,7 +1109,7 @@ export function fakeMayflyContext(options: { readonly display?: boolean; readonl
   ctx.provide('mayflyRetractions', { tryRetract: () => false })
   ctx.provide('mayflySessionStart', {
     onBooted: (listener: () => void) => { listener(); return () => {} },
-    ensure: async () => null,
+    ensure: async () => { throw new Error('no active session') },
   } as never)
   ctx.on('test/session-changed', publishAgent)
   ctx.on('agent/status', publishAgent)

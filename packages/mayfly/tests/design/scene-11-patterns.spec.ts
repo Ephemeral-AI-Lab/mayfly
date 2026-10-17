@@ -38,7 +38,7 @@ describe('scene 11, Patterns', () => {
 })
 
 describe('scene 11, Patterns, page 1: the decision card\'s keys', () => {
-  const hintRow = (surface: RealSurface): string => plainText(surface.render().at(-2)!).replace(/[│╭╮╰╯]/gu, '').trim()
+  const hintRow = (surface: RealSurface): string => plainText(surface.render().at(-1)!).replace(/[│╭╮╰╯]/gu, '').trim()
 
   it('Δ31: a card framed at 80 columns hints three fragments, and Esc rejects', () => {
     const surface = open(0)

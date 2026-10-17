@@ -43,8 +43,8 @@ describe('provider commands', () => {
     expect(await invoke(bench, 'edit missing')).toEqual({ kind: 'error', text: 'The provider has no editable configuration' })
     expect(await invoke(bench, 'edit custom')).toEqual({ kind: 'success' })
     expect(await invoke(bench, 'switch missing')).toEqual({ kind: 'error', text: 'Unknown provider' })
-    expect(await invoke(bench, 'switch CUSTOM API')).toEqual({ kind: 'error', text: 'no session is live yet' })
-    expect(await invoke(bench, 'switch custom')).toEqual({ kind: 'error', text: 'no session is live yet' })
+    expect(await invoke(bench, 'switch CUSTOM API')).toEqual({ kind: 'error', text: 'the model selection is unavailable' })
+    expect(await invoke(bench, 'switch custom')).toEqual({ kind: 'error', text: 'the model selection is unavailable' })
     expect(await invoke(bench, 'unknown')).toEqual({ kind: 'error', text: 'usage: /provider [list | edit <provider> | switch <provider> | add]' })
   })
 

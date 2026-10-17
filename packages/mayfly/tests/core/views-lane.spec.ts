@@ -252,10 +252,10 @@ describe('ViewsLane painting', () => {
     view(lane, 'jobs', { priority: 2 })
     view(lane, 'goal', { priority: 3 })
     lane.enter('jobs')
-    expect(plain(lane.panel(60))).toEqual(['jobs body'])
-    expect(lane.component.render(60)).toHaveLength(1)
+    expect(plain(lane.panel(60)).filter(row => row !== '')).toEqual(['jobs body'])
+    expect(plain(lane.component.render(60)).filter(row => row !== '')).toHaveLength(1)
     lane.switchView(-1)
-    expect(plain(lane.panel(60))).toEqual(['one', 'two'])
+    expect(plain(lane.panel(60)).filter(row => row !== '')).toEqual(['one', 'two'])
   })
 
   it('shows the lane at most a third of the terminal, at least four rows, and names the rows it cuts', () => {

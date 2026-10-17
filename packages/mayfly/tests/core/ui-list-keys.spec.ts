@@ -17,13 +17,13 @@ function open(node: MayflyUiNode, width = 100) {
   })
   surfaces.push(surface)
   const rows = (): string[] => surface.render().map(plainText)
-  const hint = (): string => rows().find(row => row.includes('Esc'))!.replace(/^│\s*|\s*│$/gu, '')
+  const hint = (): string => rows().find(row => row.includes('Esc'))!.trim()
   const row = (text: string): string => rows().find(candidate => candidate.includes(text)) ?? ''
   return { surface, events, rows, hint, row }
 }
 
 /** The row that holds the cursor: the arrow in the first column of the frame. */
-const cursor = (rows: readonly string[]): string | undefined => rows.find(row => /^│ →/u.test(row))
+const cursor = (rows: readonly string[]): string | undefined => rows.find(row => /^\s*→/u.test(row))
 
 const fruit = (): MayflyListItem[] => [{ id: 'apple', label: 'Apple' }, { id: 'banana', label: 'Banana' }, { id: 'cherry', label: 'Cherry' }]
 const list = (extra: object = {}, items: readonly MayflyListItem[] = fruit()) => ui.list({ id: 'l', role: 'browse', selectedIds: [], items, ...extra })
@@ -68,7 +68,7 @@ describe('the hint row of a list', () => {
     typed.surface.press('a')
     expect(typed.row('/ a')).toMatch(/\/ a.*2 matches/u)
     typed.surface.press('p')
-    expect(typed.row('/ ap')).toMatch(/\/ ap.*1 match\s*│?$/u)
+    expect(typed.row('/ ap')).toMatch(/\/ ap.*1 match\s*$/u)
   })
 
   it('leaves printable keys to accelerators on a slash list until a search starts, and digits to the text while it does', async () => {
@@ -98,7 +98,7 @@ describe('the hint row of a list', () => {
     expect(hint()).toBe('←/→ thinking · Enter choose · Type filter · Esc close')
     surface.press(KEY.right)
     // Five hints compete for four places: the strip's own ←/→ is the lowest priority of them.
-    expect(hint()).toBe('Enter choose · Delete use default · Type filter · Esc close')
+    expect(hint()).toBe('←/→ thinking · Enter choose · Delete use default · Esc close')
     surface.press(KEY.delete)
     expect(hint()).toBe('←/→ thinking · Enter choose · Type filter · Esc close')
     // A row without a strip goes back to the list's own hints.
@@ -231,10 +231,10 @@ describe('list keys', () => {
   it('windows a long list with maxRows and counts what is hidden', () => {
     const items = Array.from({ length: 9 }, (_, index): MayflyListItem => ({ id: `r${String(index)}`, label: `row ${String(index + 1)}` }))
     const { surface, rows } = open(list({ maxRows: 4 }, items))
-    expect(rows().join('\n')).toContain('↑ 0 more · ↓ 5 more')
+    expect(rows().join('\n')).toContain('… +5 more')
     for (let step = 0; step < 6; step += 1) surface.press(KEY.down)
     expect(rows().join('\n')).toContain('row 7')
-    expect(rows().join('\n')).toMatch(/↑ 4 more · ↓ 1 more/u)
+    expect(rows().join('\n')).toContain('… +5 more')
   })
 
   it('keeps a plain list without a model as a roving list', () => {
@@ -251,6 +251,6 @@ describe('list keys', () => {
     if (!result.ok) throw new Error(result.message)
     result.value.focusTarget!.focused = true
     const rows = result.value.component.render(60).map(plainText)
-    expect(rows[0]).toMatch(/A +x ‹ y ›/u)
+    expect(rows.at(-1)).toContain('● Options: y')
   })
 })

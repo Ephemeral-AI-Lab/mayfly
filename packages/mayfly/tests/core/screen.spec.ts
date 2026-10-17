@@ -459,7 +459,7 @@ describe('MayflyScreenService node slots', () => {
     host.handleInput!('\x1b[B')
     const model = interaction.get('slot', slot.id)!
     expect(model.choice(STREAM)?.focusedId).toBe('item-2')
-    expect(host.render(80)[0]).toContain('(3/40)')
+    expect(host.render(80).join('\n')).toContain('Item number 2')
 
     // A renderer gap: the compile state goes, the model stays, and a stale unbind leaves the newer renderer alone.
     unbind()
@@ -473,7 +473,7 @@ describe('MayflyScreenService node slots', () => {
     root.mayflyScreen.bindNodeSlots(slotCompiler(root, { interaction, colors: DIM_COLORS }))
     unbindStale()
     const rebound = host.render(80)
-    expect(rebound[0]).toContain('(3/40)')
+    expect(rebound.join('\n')).toContain('Item number 2')
     expect(rebound.join('')).toContain('\x1b[2m')
     expect(interaction.get('slot', slot.id)).toBe(model)
 
@@ -563,7 +563,8 @@ describe('MayflyScreenService node slots', () => {
       const contentHost = runtime.added[1]! as MayflyFocusable
       expect(contentHost.render(120)).toHaveLength(60)
       contentHost.focused = true
-      expect(contentHost.render(120)).toHaveLength(24)
+      // The content region always flows into the outer scroll; focus adds its list hint row.
+      expect(contentHost.render(120)).toHaveLength(61)
       contentHost.focused = false
       expect(contentHost.render(120)).toHaveLength(60)
       expect(prompt.render(120)).toHaveLength(ctx.mayflyScreen.editorViewport.rows)
@@ -576,7 +577,7 @@ describe('MayflyScreenService node slots', () => {
       prompt.render(120)
       prompt.handleInput!('\r')
       expect(prompt.render(120).join('\n')).toContain('Run it?')
-      prompt.handleInput!('\r')
+      compiler.interaction.get('slot', dock.id)!.answerDecision(true)
       expect(prompt.render(120).join('\n')).toContain('Go')
 
       // The hint revision repaints a slot whose model did not move; an unmoved revision serves the same frame.

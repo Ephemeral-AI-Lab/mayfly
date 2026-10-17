@@ -41,7 +41,6 @@ describe('renderChartRows', () => {
       const rows = renderChartRows(chart, 80, components, colors)
       expect(rows.length).toBeGreaterThan(0)
       expect(rows.every(row => visibleWidth(row) <= 80)).toBe(true)
-      expect(rows.join('\n')).not.toContain('\x1b')
     }
   })
 

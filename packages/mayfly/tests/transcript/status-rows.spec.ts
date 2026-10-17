@@ -67,7 +67,7 @@ describe('shedNode', () => {
   })
 
   it('ranks what the row gives up in the order the owner chose', () => {
-    expect(SHED).toEqual({ time: 5, provider: 10, effort: 20, git: 30, cwd: 40, cache: 50, bar: 55, context: 60, model: 70 })
+    expect(SHED).toEqual({ provider: 10, effort: 20, git: 30, cwd: 40, cache: 50, bar: 55, context: 60, model: 70 })
     const ranks = Object.values(SHED)
     expect([...ranks].sort((a, b) => a - b)).toEqual(ranks)
   })

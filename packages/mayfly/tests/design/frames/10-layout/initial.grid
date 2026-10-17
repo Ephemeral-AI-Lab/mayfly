@@ -22,8 +22,8 @@ grid 96x24 cursor none
 |  row 1
 |  row 2
 |  row 3
-|  row 4
-|   ↑ 0 more · ↓ 5 more
+|↓ row 4
+|   … +5 more
 styles
 0: 0-31 fg:muted
 2: 0-29 fg:muted
@@ -40,8 +40,8 @@ styles
 15: 0-1 fg:muted
 16: 0-17 fg:text; 20-23 fg:primary b; 26-33 fg:text; 36-64 fg:muted
 18: 0-49 fg:muted
-19: 2-6 fg:text b
+19: 2-6 fg:textStrong b
 20: 2-6 fg:text
 21: 2-6 fg:text
-22: 2-6 fg:text
-23: 3-21 fg:muted
+22: 0 fg:muted; 2-6 fg:text
+23: 3-11 fg:muted

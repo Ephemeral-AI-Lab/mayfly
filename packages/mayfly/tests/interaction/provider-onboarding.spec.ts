@@ -9,6 +9,7 @@ import { MayflyCurrentAgentService } from '../../src/app/current-agent.ts'
 import { MayflyConversationsService } from '../../src/app/conversation-views.ts'
 import { DEFAULT_SETTINGS } from '../../src/interaction/settings.ts'
 import { InteractionStateService } from '../../src/interaction/runtime-state.ts'
+import type { UiSurfaceModel } from '../../src/core/ui-interaction-surface.ts'
 import { DEEPSEEK_KEY } from '../../src/interaction/provider-onboarding.ts'
 import { providerFixture } from './provider-fixture.ts'
 import type { MayflyFieldValue, MayflyUiActionEvent } from '../../../ui/src/interaction.ts'
@@ -25,13 +26,54 @@ async function setup(profiles: Record<string, unknown> = {}, configured = false,
   const ctx = new Context()
   contexts.push(ctx)
   new InteractionStateService(ctx, DEFAULT_SETTINGS)
-  const bench = await providerFixture(ctx, profiles, llm)
+  const bench = await providerFixture(ctx, profiles, llm, { onboarding: true })
   if (configured) bench.credentials.values.set(DEEPSEEK_KEY, 'configured')
   const agent = { id: 'root', session: {} } as Agent
   ctx.provide('agents', { get: (id: string) => id === agent.id ? agent : undefined } as never)
-  const mount = () => ctx.plugin({ name: 'onboarding-app', inject: ['agents'], apply(owner: Context) { new MayflyCurrentAgentService(owner, new MayflyConversationsService(owner)) } })
+  const mount = () => ctx.plugin({ name: 'onboarding-app', inject: ['agents'], apply(owner: Context) {
+    const conversations = new MayflyConversationsService(owner)
+    new MayflyCurrentAgentService(owner, conversations)
+    // The fixture's boot signal: a primary selection is the app going ready.
+    conversations.subscribe(() => { if (conversations.primary() !== null) (ctx.mayflySessionStart as unknown as { markBooted(): void }).markBooted() })
+  } })
   const app = await mount()
   return { ...bench, agent, app, mount, model: () => ctx.mayflyUiInteraction.get('overlay', 'mayfly.provider.onboarding') }
+}
+
+const stepPath = (id: string) => [{ controlId: 'onboarding', itemId: id }]
+const connectPath = stepPath('connect')
+const keyFormAddress = { pagePath: connectPath, formId: 'key-form' }
+
+/** Leave Preferences and choose one connection path on the Connect step. */
+async function chooseConnection(model: UiSurfaceModel, choice: 'key' | 'skip' | 'account'): Promise<void> {
+  // A wizard step settles through a submit event carrying its form draft.
+  const form = model.form({ pagePath: stepPath('preferences'), formId: 'preferences-form' })!
+  const fields = Object.entries(form.fields).map(([id, field]) => ({ id, value: field.value, change: 'unchanged' as const }))
+  model.emit({
+    kind: 'submit', pagePath: stepPath('preferences'), controlId: 'onboarding',
+    submission: { actionId: 'onboarding.next.preferences', draftRevision: 1, source: [], forms: [{ pagePath: stepPath('preferences'), formId: 'preferences-form', draftRevision: 1, fields }] },
+  })
+  await flush()
+  model.updateChoice({ pagePath: connectPath, controlId: 'connect-options' }, { kind: 'select', ids: [choice] })
+  model.emit({ kind: 'selection-accept', pagePath: connectPath, controlId: 'connect-options', selectedIds: [choice] })
+  await flush()
+}
+
+/** Enter the key page, whose form is the only control. */
+async function enterKey(model: UiSurfaceModel): Promise<void> {
+  await chooseConnection(model, 'key')
+}
+
+/** Submit the key form's current draft. */
+function submitKey(model: UiSurfaceModel): void {
+  model.invoke('onboarding.next.connect', connectPath)
+}
+
+/** Take the Ready step's start row, which dismisses the guide. */
+function finishGuide(model: UiSurfaceModel): void {
+  const readyPath = stepPath('ready')
+  model.activateTab({ pagePath: [], controlId: 'onboarding' }, 'ready')
+  model.invoke('onboarding.next.ready', readyPath)
 }
 
 
@@ -43,8 +85,15 @@ const accountLlm = {
 
 /** Minimal account double: only the state the guide reads. */
 function fakeAccount(status: 'signed-out' | 'credential-stored') {
+  const links = { usageUrl: 'https://example/u', topUpUrl: 'https://example/t' }
+  let attempt: { id: string, phase: string, authorizeUrl: string, expiresAt: number } | null = null
   return {
-    async getState() { return { status, links: { usageUrl: 'https://example/u', topUpUrl: 'https://example/t' }, attempt: null } },
+    async getState() { return { status, links, attempt } },
+    async startSignIn() {
+      attempt = { id: 'a', phase: 'waiting', authorizeUrl: 'https://example/auth', expiresAt: Date.now() + 60_000 }
+      return { status, links, attempt }
+    },
+    async cancelSignIn() { attempt = null; return this.getState() },
     async signOut() { return this.getState() },
     watch(signal: AbortSignal): AsyncIterable<unknown> {
       void signal
@@ -62,12 +111,14 @@ describe('provider onboarding', () => {
     await flush()
     const model = bench.model()!
     expect(model.scope).toEqual({ kind: 'app', targetId: DEEPSEEK_KEY })
-    model.invoke('use-key')
+    await enterKey(model)
     await flush()
-    model.edit({ pagePath: [], formId: 'onboarding', fieldId: 'key' }, 'new-key')
+    model.edit({ ...keyFormAddress, fieldId: 'key' }, 'new-key')
     expect(bench.credentials.writes).toBe(0)
-    model.invoke('save')
-    model.invoke('save')
+    submitKey(model)
+    submitKey(model)
+    await flush()
+    finishGuide(model)
     await flush()
     expect(bench.credentials.values.get(DEEPSEEK_KEY)).toBe('new-key')
     expect(bench.credentials.writes).toBe(1)
@@ -89,13 +140,15 @@ describe('provider onboarding', () => {
     bench.ctx.mayflyConversations.selectPrimary(bench.agent)
     await flush()
     const model = bench.model()!
-    model.invoke('use-key')
+    await enterKey(model)
     await flush()
-    model.edit({ pagePath: [], formId: 'onboarding', fieldId: 'key' }, 'retained-key')
+    model.edit({ ...keyFormAddress, fieldId: 'key' }, 'retained-key')
     await bench.app.dispose()
     expect(model.disposed).toBe(false)
-    expect(model.form({ pagePath: [], formId: 'onboarding' })!.fields.key!.value).toBe('retained-key')
-    model.invoke('save')
+    expect(model.form(keyFormAddress)!.fields.key!.value).toBe('retained-key')
+    submitKey(model)
+    await flush()
+    finishGuide(model)
     await flush()
     expect(bench.credentials.values.get(DEEPSEEK_KEY)).toBe('retained-key')
     await bench.mount()
@@ -109,16 +162,18 @@ describe('provider onboarding', () => {
     bench.ctx.mayflyConversations.selectPrimary(bench.agent)
     await flush()
     const model = bench.model()!
-    model.invoke('use-key')
+    await enterKey(model)
     await flush()
     bench.credentials.failWrite = true
-    model.edit({ pagePath: [], formId: 'onboarding', fieldId: 'key' }, 'retry-key')
-    model.invoke('save')
+    model.edit({ ...keyFormAddress, fieldId: 'key' }, 'retry-key')
+    submitKey(model)
     await flush()
-    expect(model.form({ pagePath: [], formId: 'onboarding' })!.fields.key!.value).toBe('retry-key')
+    expect(model.form(keyFormAddress)!.fields.key!.value).toBe('retry-key')
     expect(model.feedbackSnapshot().at(-1)?.severity).toBe('error')
     bench.credentials.failWrite = false
-    model.invoke('save')
+    submitKey(model)
+    await flush()
+    finishGuide(model)
     await flush()
     expect(bench.credentials.writes).toBe(1)
     expect(model.disposed).toBe(true)
@@ -128,7 +183,8 @@ describe('provider onboarding', () => {
     const bench = await setup()
     bench.ctx.mayflyConversations.selectPrimary(bench.agent)
     await flush()
-    bench.model()!.invoke('close')
+    chooseConnection(bench.model()!, 'skip')
+    bench.model()!.requestClose()
     await flush()
     await bench.app.dispose()
     await bench.mount()
@@ -182,12 +238,15 @@ describe('provider onboarding', () => {
     const bench = await setup()
     bench.ctx.mayflyConversations.selectPrimary(bench.agent)
     await flush()
+    const model = bench.model()!
+    await enterKey(model)
+    await flush()
     const entry = bench.ctx.mayflyOverlays.list().find(item => item.id === 'mayfly.provider.onboarding')!
     const event = (value: unknown): MayflyUiActionEvent => ({
       kind: 'submit',
-      pagePath: [],
+      pagePath: connectPath,
       controlId: 'onboarding',
-      submission: { actionId: 'save', draftRevision: 1, source: [], forms: [{ pagePath: [], formId: 'onboarding', draftRevision: 1, fields: [{ id: 'key', value: value as MayflyFieldValue, change: 'set' }] }] },
+      submission: { actionId: 'onboarding.next.connect', draftRevision: 1, source: [], forms: [{ pagePath: connectPath, formId: 'key-form', draftRevision: 1, fields: [{ id: 'key', value: value as MayflyFieldValue, change: 'set' }] }] },
     })
     const context = (actionSignal = new AbortController().signal) => ({ surfaceId: entry.id, operationId: 'test', source: [], revision: entry.revision, signal: actionSignal, report: vi.fn() })
     expect((await entry.events.prepare(event(undefined), context())).reply).toMatchObject({ kind: 'invalid' })
@@ -202,14 +261,14 @@ describe('provider onboarding', () => {
     await flush()
     const model = bench.model()!
     bench.credentials.values.set(DEEPSEEK_KEY, 'external')
-    model.invoke('use-key')
+    await enterKey(model)
     await flush()
-    model.edit({ pagePath: [], formId: 'onboarding', fieldId: 'key' }, 'replacement')
-    model.invoke('save')
+    model.edit({ ...keyFormAddress, fieldId: 'key' }, 'replacement')
+    submitKey(model)
     await flush()
     expect(model.feedbackSnapshot().at(-1)?.message).toContain('configured elsewhere')
     expect(bench.credentials.values.get(DEEPSEEK_KEY)).toBe('external')
-    model.invoke('save')
+    submitKey(model)
     await flush()
     expect(bench.credentials.values.get(DEEPSEEK_KEY)).toBe('replacement')
   })
@@ -218,12 +277,15 @@ describe('provider onboarding', () => {
     const bench = await setup()
     bench.ctx.mayflyConversations.selectPrimary(bench.agent)
     await flush()
+    const model = bench.model()!
+    await enterKey(model)
+    await flush()
     const entry = bench.ctx.mayflyOverlays.list().find(item => item.id === 'mayfly.provider.onboarding')!
     const event: MayflyUiActionEvent = {
       kind: 'submit',
-      pagePath: [],
+      pagePath: connectPath,
       controlId: 'onboarding',
-      submission: { actionId: 'save', draftRevision: 1, source: [], forms: [{ pagePath: [], formId: 'onboarding', draftRevision: 1, fields: [{ id: 'key', value: 'key', change: 'set' }] }] },
+      submission: { actionId: 'onboarding.next.connect', draftRevision: 1, source: [], forms: [{ pagePath: connectPath, formId: 'key-form', draftRevision: 1, fields: [{ id: 'key', value: 'key', change: 'set' }] }] },
     }
     const request = async (actionSignal: AbortSignal, operationId: string) => await entry.definition.onEvent!.action!(event, { surfaceId: entry.id, operationId, source: [], revision: entry.revision, signal: actionSignal, report: vi.fn() })
     const reading = Promise.withResolvers<{ configured: boolean, writable: boolean, source: string }>()
@@ -269,10 +331,14 @@ describe('provider onboarding', () => {
       contexts.push(ctx)
       const loading = Promise.withResolvers<void>()
       ctx.provide('loader', { await: () => loading.promise } as never)
-      const bench = await providerFixture(ctx)
+      const bench = await providerFixture(ctx, {}, undefined, { onboarding: true })
       const agent = { id: `root-${outcome}`, session: {} } as Agent
       ctx.provide('agents', { get: () => agent } as never)
-      await ctx.plugin({ name: `onboarding-app-${outcome}`, inject: ['agents'], apply(owner: Context) { new MayflyCurrentAgentService(owner, new MayflyConversationsService(owner)) } })
+      await ctx.plugin({ name: `onboarding-app-${outcome}`, inject: ['agents'], apply(owner: Context) {
+        const conversations = new MayflyConversationsService(owner)
+        new MayflyCurrentAgentService(owner, conversations)
+        conversations.subscribe(() => { if (conversations.primary() !== null) (ctx.mayflySessionStart as unknown as { markBooted(): void }).markBooted() })
+      } })
       ctx.mayflyConversations.selectPrimary(agent)
       await flush()
       await bench.front.dispose()
@@ -291,7 +357,7 @@ describe('provider onboarding', () => {
     expect(bench.model()).toBeUndefined()
   })
 
-  it('offers account sign-in, opens the account panel from the guide, and does not return to it', async () => {
+  it('offers account sign-in and shows the waiting sign-in page in the guide', async () => {
     const bench = await setup({}, false, accountLlm)
     bench.ctx.provide('deepseekAccount', fakeAccount('signed-out') as never)
     bench.ctx.provide('webServer', { port: 45678 } as never)
@@ -299,16 +365,13 @@ describe('provider onboarding', () => {
     await flush()
     const model = bench.model()!
     expect(JSON.stringify(model.node)).toContain('Sign in with a DeepSeek account')
-    model.invoke('use-key')
+    await chooseConnection(model, 'account')
     await flush()
-    expect(JSON.stringify(model.node)).toContain('DEEPSEEK_API_KEY')
-    model.invoke('back')
-    await flush()
-    expect(JSON.stringify(model.node)).not.toContain('DEEPSEEK_API_KEY')
-    model.invoke('sign-in')
-    await flush()
-    expect(bench.ctx.mayflyOverlays.list().map(entry => entry.id)).toContain('mayfly.provider-account.deepseek-account')
-    expect(bench.model()).toBeUndefined()
+    const page = JSON.stringify(bench.model()!.node)
+    // No browser is available under the test: the guide offers the link and the paste-back field.
+    expect(page).toContain('Copy the link below')
+    expect(page).toContain('https://example/auth')
+    expect(bench.ctx.mayflyOverlays.list().map(entry => entry.id)).toEqual(['mayfly.provider.onboarding'])
   })
 
   it('returns to the choice when the account step is closed before connecting', async () => {
@@ -317,42 +380,37 @@ describe('provider onboarding', () => {
     bench.ctx.provide('webServer', { port: 45678 } as never)
     bench.ctx.mayflyConversations.selectPrimary(bench.agent)
     await flush()
-    bench.model()!.invoke('sign-in')
+    await chooseConnection(bench.model()!, 'account')
     await flush()
-    expect(bench.model()).toBeUndefined()
-    bench.ctx.mayflyUiInteraction.get('overlay', 'mayfly.provider-account.deepseek-account')!.invoke('close')
+    bench.model()!.emit({ kind: 'dismiss', pagePath: [] })
     await flush()
     expect(JSON.stringify(bench.model()!.node)).toContain('Sign in with a DeepSeek account')
   })
 
-  it('opens the welcome first on a first run and then the guide in the chosen language', async () => {
+  it('opens on Preferences and applies the language chosen in the guide', async () => {
     const bench = await setup({}, false, accountLlm)
     bench.settings.register('locale', z.object({ preference: z.string().volatile() }))
     bench.settings.register('mayfly', z.object({ theme: z.string().default('dark').volatile() }))
     bench.ctx.mayflyConversations.selectPrimary(bench.agent)
     await flush()
-    await flush()
-    const welcome = bench.ctx.mayflyUiInteraction.get('overlay', 'mayfly.welcome')!
-    expect(welcome).toBeDefined()
-    expect(bench.model()).toBeUndefined()
-    welcome.edit({ pagePath: [], formId: 'welcome', fieldId: 'language' }, 'zh')
-    welcome.invoke('continue')
-    await flush(); await flush(); await flush()
+    const model = bench.model()!
+    expect(JSON.stringify(model.node)).toContain('Preferences')
+    model.emit({ kind: 'value-change', pagePath: stepPath('preferences'), formId: 'preferences-form', controlId: 'language', value: 'zh', draftRevision: 1 })
+    await flush(); await flush()
     expect(bench.ctx.mayflyLocale.preference).toBe('zh')
-    expect(bench.model()).toBeDefined()
-    expect(JSON.stringify(bench.model()!.node)).toContain('第 1 步')
+    expect(JSON.stringify(bench.model()!.node)).toContain('偏好设置')
   })
 
-  it('does not open the guide when the frontend unloads during the welcome', async () => {
+  it('does not reopen the guide when the frontend unloads on the Preferences step', async () => {
     const bench = await setup({}, false, accountLlm)
     bench.settings.register('locale', z.object({ preference: z.string().volatile() }))
     bench.ctx.mayflyConversations.selectPrimary(bench.agent)
     await flush()
-    await flush()
-    expect(bench.ctx.mayflyUiInteraction.get('overlay', 'mayfly.welcome')).toBeDefined()
+    expect(bench.model()).toBeDefined()
     // The frontend's services go with it; the unload must not reopen the guide or throw.
     await expect(bench.front.dispose()).resolves.toBeUndefined()
     await flush()
+    expect(bench.ctx.mayflyOverlays.list()).toEqual([])
   })
 
   it('continues to the account provider\'s model list once the guide sign-in completes', async () => {
@@ -363,6 +421,8 @@ describe('provider onboarding', () => {
       const done = { status: 'credential-stored', links, attempt: { id: 'a', phase: 'succeeded' } }
       bench.ctx.provide('deepseekAccount', {
         async getState() { return { status: 'signed-out', links, attempt: null } },
+        async startSignIn() { return { status: 'signed-out', links, attempt: { id: 'a', phase: 'waiting', authorizeUrl: 'https://example/auth', expiresAt: Date.now() + 60_000 } } },
+        async cancelSignIn() {},
         watch(): AsyncIterable<unknown> {
           return { async *[Symbol.asyncIterator]() { yield { status: 'signed-out', links, attempt: null }; await new Promise<void>(resolve => setTimeout(resolve, 10)); yield done } }
         },
@@ -370,8 +430,7 @@ describe('provider onboarding', () => {
       bench.ctx.provide('webServer', { port: 45678 } as never)
       bench.ctx.mayflyConversations.selectPrimary(bench.agent)
       await vi.advanceTimersByTimeAsync(50)
-      bench.model()!.invoke('sign-in')
-      await vi.advanceTimersByTimeAsync(50)
+      await chooseConnection(bench.model()!, 'account')
       expect(pickerCalls).toEqual([])
       await vi.advanceTimersByTimeAsync(2000)
       expect(pickerCalls).toEqual(['deepseek-account'])
@@ -386,7 +445,7 @@ describe('provider onboarding', () => {
     const json = JSON.stringify(model.node)
     expect(json).not.toContain('Sign in with a DeepSeek account')
     expect(json).toContain('Enter a DeepSeek API key')
-    model.invoke('use-key')
+    await enterKey(model)
     await flush()
     expect(JSON.stringify(model.node)).toContain('DEEPSEEK_API_KEY')
   })

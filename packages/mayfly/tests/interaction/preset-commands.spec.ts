@@ -84,7 +84,7 @@ describe('native preset selection UI', () => {
   it('projects stable ordered choices, native labels, and disabled failures', () => {
     const rows = presetItems([preset('z'), preset('broken', { broken: 'Bad composition', order: 1 }), preset('first', { name: 'First', order: 0, description: 'Description' })], 'first')
     expect(rows.map(row => row.id)).toEqual(['first', 'broken', 'z'])
-    expect(rows[0]).toMatchObject({ label: 'First', detail: 'Description', badge: 'current' })
+    expect(rows[0]).toMatchObject({ label: 'First', detail: 'Description', current: true })
     expect(rows[1]).toMatchObject({ disabled: true, disabledReason: 'Bad composition' })
   })
 
@@ -161,7 +161,7 @@ describe('native preset selection UI', () => {
     await bench.run()
     const model = bench.model('mayfly.presets')
     const renderer = renderRequest(model)
-    renderer.input('mini')
+    model.updateChoice({ pagePath: [], controlId: 'presets' }, { kind: 'query', query: 'mini' })
     expect(model.choice({ pagePath: [], controlId: 'presets' })!.query).toBe('mini')
     renderer.runtime.dispose()
     await bench.run()
@@ -174,7 +174,7 @@ describe('native preset selection UI', () => {
     await flushRequests()
     expect(model.choice({ pagePath: [], controlId: 'presets' })!.query).toBe('mini')
     const next = renderRequest(model)
-    next.input('\x15')
+    model.updateChoice({ pagePath: [], controlId: 'presets' }, { kind: 'clear-search' })
     expect(next.component.render(60).join('\n')).toContain('No presets composed')
     next.runtime.dispose()
   })

@@ -226,12 +226,12 @@ describe('flat choice reducer', () => {
 
 describe('row segment drafts', () => {
   const segmented = ui.list({ id: 'models', role: 'browse', selectedIds: [], items: [
-    { id: 'a', label: 'A', segment: { label: 'Thinking', selectedId: 'low', options: [
+    { id: 'a', label: 'A', segment: { label: 'Thinking', inheritedId: 'low', options: [
       { id: 'default', label: 'Default' },
       { id: 'low', label: 'Low' },
       { id: 'high', label: 'High' },
     ] } },
-    { id: 'b', label: 'B', segment: { options: [
+    { id: 'b', label: 'B', segment: { inheritedId: 'off', options: [
       { id: 'off', label: 'Off' },
       { id: 'on', label: 'On', disabled: true },
     ] } },
@@ -280,13 +280,13 @@ describe('row segment drafts', () => {
     expect(reconcileChoice(state, state.definition)).toBe(state)
   })
 
-  it('falls back to the first enabled option when the seed is absent or unknown', () => {
+  it('keeps the inherited option and steps from an unknown draft', () => {
     const unseeded = ui.list({ id: 'models', role: 'browse', selectedIds: [], items: [
-      { id: 'a', label: 'A', segment: { options: [
+      { id: 'a', label: 'A', segment: { inheritedId: 'on', options: [
         { id: 'off', label: 'Off', disabled: true },
         { id: 'on', label: 'On' },
       ] } },
-      { id: 'b', label: 'B', segment: { selectedId: 'gone', options: [
+      { id: 'b', label: 'B', segment: { inheritedId: 'off', options: [
         { id: 'off', label: 'Off' },
         { id: 'on', label: 'On' },
       ] } },

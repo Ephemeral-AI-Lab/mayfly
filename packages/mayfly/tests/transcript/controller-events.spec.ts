@@ -22,12 +22,17 @@ const answer = (turn: number, text: string): TranscriptEntryModel => ({ id: `ass
 const thought = (turn: number, text: string): TranscriptEntryModel => ({ id: `thinking:${String(turn)}`, kind: 'transcript-thinking', seq: turn, updatedSeq: turn, turn, step: 1, text, streaming: false, durationMs: 3_000 })
 const bash = (id: string, turn: number, done = true): TranscriptEntryModel => ({
   id, kind: 'transcript-tool', seq: turn, updatedSeq: turn, turn, step: 1, callId: id, name: 'bash', family: 'command', activity: 'commands',
-  detail: 'ls', arguments: '{}', startedAt: 0, terminal: { command: 'ls', exitCode: 0, output: 'listing' },
-  ...(done ? { result: { text: 'listing', isError: false, endedAt: 1_000 } } : {}),
+  detail: 'ls', arguments: '{}', startedAt: 0,
+  ...(done
+    ? { terminal: { command: 'ls', exitCode: 0, output: 'listing' }, result: { text: 'listing', isError: false, endedAt: 1_000 } }
+    : {}),
 } as unknown as TranscriptEntryModel)
 
 const TURNS = [1, 2].map(turn => ({ turn, startedAt: 0, endedAt: 9_000, outcome: 'completed' })) as never
 const modelOf = (entries: TranscriptEntryModel[], streaming = false): TranscriptModel => createTranscriptModel('s', entries, streaming, 0, TURNS)
+const modelWithLaterTurns = (entries: TranscriptEntryModel[]): TranscriptModel => createTranscriptModel('s', entries, false, 0, [
+  ...TURNS, { turn: 0, startedAt: 0, endedAt: 9_000, outcome: 'completed' }, { turn: 3, startedAt: 0, endedAt: 9_000, outcome: 'completed' },
+] as never)
 
 interface Handlers {
   onEvent: (event: unknown) => void
@@ -329,7 +334,7 @@ describe('the inputs a published stream reads', () => {
     expect(none.ids()).toContain('user:1')
   })
 
-  it('republishes at each tick while a call runs, and stops once it settles or the controller is disposed', () => {
+  it('republishes at each tick while a call runs, and stops once it settles or the controller is disposed', async () => {
     let tick: ((now: number) => void) | undefined
     const off = vi.fn()
     const source: TickSource = { subscribe: (listener) => { tick = listener; return off } }
@@ -340,13 +345,13 @@ describe('the inputs a published stream reads', () => {
     expect(tick).toBeDefined()
     const published = slot.published.length
     tick!(5_000)
-    expect(slot.published).toHaveLength(published + 1)
+    await vi.waitFor(() => { expect(slot.published).toHaveLength(published + 1) })
     // A second publish while one runs does not subscribe again.
     controller.republish()
     expect(off).not.toHaveBeenCalled()
     model = modelOf([user(1, 'go'), bash('b1', 1, true)])
     controller.refresh()
-    expect(off).toHaveBeenCalledTimes(1)
+    await vi.waitFor(() => { expect(off).toHaveBeenCalledTimes(1) })
     controller.dispose()
   })
 
@@ -486,7 +491,7 @@ describe('a search over a view that changes', () => {
     expect(modes.at(-1)).toBe('conversation')
   })
 
-  it('finds the hits again for a conversation that moved on, keeping the match it stood on by part and occurrence', () => {
+  it('finds the hits again for a conversation that moved on, keeping the match it stood on by part and occurrence', async () => {
     const { controller, lines, slot } = harness()
     let model = modelOf(needles())
     controller.setView('main', () => model)
@@ -494,20 +499,20 @@ describe('a search over a view that changes', () => {
     controller.beginSearch(true)
     lines[0]!.options.onChange('needle')
     // While typed, a new model keeps the line counting and leaves no match chosen.
-    model = modelOf([...needles(), answer(3, 'needle three')])
+    model = modelWithLaterTurns([...needles(), user(3, 'needle three')])
     controller.refresh()
-    expect(lines[0]!.status.at(-1)).toBe('4 matches · Enter to select · Esc to cancel')
+    await vi.waitFor(() => { expect(lines[0]!.status.at(-1)).toBe('4 matches · Enter to select · Esc to cancel') })
     slot.cursor = 'user:2'
     lines[0]!.options.onAccept()
     expect(lines[0]!.status.at(-1)).toBe('2/4 matches')
     // Once selected, the match stays the same one when matches are added before it.
-    model = modelOf([user(0, 'needle zero'), ...needles(), answer(3, 'needle three')])
+    model = modelWithLaterTurns([user(0, 'needle zero'), ...needles(), user(3, 'needle three')])
     controller.refresh()
-    expect(lines[0]!.status.at(-1)).toBe('3/5 matches')
+    await vi.waitFor(() => { expect(lines[0]!.status.at(-1)).toBe('3/5 matches') })
     // And when the match is gone the walk stays within the matches that are left.
     model = modelOf([user(1, 'go'), answer(1, 'a needle')])
     controller.refresh()
-    expect(lines[0]!.status.at(-1)).toBe('1/1 match')
+    await vi.waitFor(() => { expect(lines[0]!.status.at(-1)).toBe('1/1 match') })
   })
 
   it('ends a selection whose matches are all gone without moving the cursor to a turn', () => {

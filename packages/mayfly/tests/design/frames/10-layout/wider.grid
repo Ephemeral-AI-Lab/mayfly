@@ -22,8 +22,8 @@ grid 96x24 cursor none
 |  row 1
 |  row 2
 |  row 3
-|  row 4
-|   ↑ 0 more · ↓ 5 more
+|↓ row 4
+|   … +5 more
 styles
 0: 0-31 fg:muted
 2: 0-29 fg:muted
@@ -40,11 +40,11 @@ styles
 15: 0-1 fg:muted
 16: 0-17 fg:text; 20-23 fg:primary b; 26-33 fg:text; 36-64 fg:muted
 18: 0-49 fg:muted
-19: 2-6 fg:text b
+19: 2-6 fg:textStrong b
 20: 2-6 fg:text
 21: 2-6 fg:text
-22: 2-6 fg:text
-23: 3-21 fg:muted
+22: 0 fg:muted; 2-6 fg:text
+23: 3-11 fg:muted
 ## right
 grid 96x24 cursor none
 |width 80 (←/→) · height ≥ 20 (h)
@@ -69,8 +69,8 @@ grid 96x24 cursor none
 |  row 1
 |  row 2
 |  row 3
-|  row 4
-|   ↑ 0 more · ↓ 5 more
+|↓ row 4
+|   … +5 more
 styles
 0: 0-31 fg:muted
 2: 0-29 fg:muted
@@ -87,11 +87,11 @@ styles
 15: 0-1 fg:muted
 16: 0-17 fg:text; 20-23 fg:primary b; 26-33 fg:text; 44-79 fg:muted
 18: 0-49 fg:muted
-19: 2-6 fg:text b
+19: 2-6 fg:textStrong b
 20: 2-6 fg:text
 21: 2-6 fg:text
-22: 2-6 fg:text
-23: 3-21 fg:muted
+22: 0 fg:muted; 2-6 fg:text
+23: 3-11 fg:muted
 ## right
 grid 96x24 cursor none
 |width 90 (←/→) · height ≥ 20 (h)
@@ -116,8 +116,8 @@ grid 96x24 cursor none
 |  row 1
 |  row 2
 |  row 3
-|  row 4
-|   ↑ 0 more · ↓ 5 more
+|↓ row 4
+|   … +5 more
 styles
 0: 0-31 fg:muted
 2: 0-29 fg:muted
@@ -134,11 +134,11 @@ styles
 15: 0-1 fg:muted
 16: 0-17 fg:text; 20-23 fg:primary b; 26-33 fg:text; 36-51 fg:muted; 54-89 fg:muted
 18: 0-49 fg:muted
-19: 2-6 fg:text b
+19: 2-6 fg:textStrong b
 20: 2-6 fg:text
 21: 2-6 fg:text
-22: 2-6 fg:text
-23: 3-21 fg:muted
+22: 0 fg:muted; 2-6 fg:text
+23: 3-11 fg:muted
 ## right
 grid 100x23 cursor none
 |width 100 (←/→) · height ≥ 20 (h)
@@ -162,8 +162,8 @@ grid 100x23 cursor none
 |  row 1
 |  row 2
 |  row 3
-|  row 4
-|   ↑ 0 more · ↓ 5 more
+|↓ row 4
+|   … +5 more
 styles
 0: 0-32 fg:muted
 2: 0-29 fg:muted
@@ -179,11 +179,11 @@ styles
 14: 0-1 fg:muted
 15: 0-17 fg:text; 20-23 fg:primary b; 26-33 fg:text; 36-61 fg:muted; 64-99 fg:muted
 17: 0-49 fg:muted
-18: 2-6 fg:text b
+18: 2-6 fg:textStrong b
 19: 2-6 fg:text
 20: 2-6 fg:text
-21: 2-6 fg:text
-22: 3-21 fg:muted
+21: 0 fg:muted; 2-6 fg:text
+22: 3-11 fg:muted
 ## right
 grid 110x23 cursor none
 |width 110 (←/→) · height ≥ 20 (h)
@@ -207,8 +207,8 @@ grid 110x23 cursor none
 |  row 1
 |  row 2
 |  row 3
-|  row 4
-|   ↑ 0 more · ↓ 5 more
+|↓ row 4
+|   … +5 more
 styles
 0: 0-32 fg:muted
 2: 0-29 fg:muted
@@ -224,8 +224,8 @@ styles
 14: 0-1 fg:muted
 15: 0-17 fg:text; 20-23 fg:primary b; 26-33 fg:text; 36-64 fg:muted; 74-109 fg:muted
 17: 0-49 fg:muted
-18: 2-6 fg:text b
+18: 2-6 fg:textStrong b
 19: 2-6 fg:text
 20: 2-6 fg:text
-21: 2-6 fg:text
-22: 3-21 fg:muted
+21: 0 fg:muted; 2-6 fg:text
+22: 3-11 fg:muted
