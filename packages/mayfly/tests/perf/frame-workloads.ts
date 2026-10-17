@@ -19,15 +19,28 @@ import { contextHintTranslator, mountContextHintLocale } from '../../src/core/co
 import { MayflyKeymapService } from '../../src/core/keymap.ts'
 import { MayflyScreenService } from '../../src/core/screen.ts'
 import { mountMayflySurfaceRenderer } from '../../src/core/surface-renderer.ts'
-import { startMayflyTerminal, type MayflyTerminalRuntime } from '../../src/core/terminal.ts'
+import { startMayflyTerminal, wheelReport, type MayflyTerminalRuntime } from '../../src/core/terminal.ts'
 import * as themeDark from '../../src/core/theme-dark.ts'
 import type { MayflyFocusable } from '../../src/core/types.ts'
 import { createWorkCounters, type MayflyWorkCounters } from '../../src/core/ui-work-counters.ts'
+import type { LiveAssistantDraft } from '../../src/conversation/live-stream.ts'
+import type { ConversationProjection } from '../../src/conversation/types.ts'
 import * as frontend from '../../src/frontend/index.ts'
 import { EditorExtensionRuntime } from '../../src/interaction/editor-extension-runtime.ts'
 import { INTERACTION_KEY_ACTIONS } from '../../src/interaction/keys.ts'
+import type { ConversationProjectionSource } from '../../src/transcript/conversation-feed.ts'
+import { OfficialConversationModelSource } from '../../src/transcript/official-model.ts'
+import { TranscriptController, type TranscriptScreen } from '../../src/transcript/transcript-model.ts'
 import { FakeTerminal } from '../core/fake-terminal.ts'
 import { FakeMayflyComponents, FakeMayflyEditor, FakeScreen, FakeTheme, fakeMayflyContext } from '../interaction/fakes.ts'
+import {
+  FakeConversationFeed,
+  FakeTickSource,
+  longSessionDraft,
+  longSessionProjection,
+  longSessionTools,
+  pendingLastTool,
+} from './long-session.ts'
 import { codeDocument, type WorkloadEnvironment } from './workloads.ts'
 
 export interface FrameRun {
@@ -198,6 +211,104 @@ async function withSidePane(counters: MayflyWorkCounters, environment: WorkloadE
   return { host, pane }
 }
 
+/** A translator that keeps the key, so a row's text never depends on a locale bundle. */
+function translate(key: string): string { return key }
+
+const NO_PROJECTIONS: ConversationProjectionSource = { snapshot: () => ({ asOfSeq: 0, values: {} }), onChanged: () => () => {} }
+
+/** A publish clock that never moves: the controller's trailing window cannot open by wall-clock passage. */
+const FIXED_CLOCK = {
+  now: (): number => 0,
+  setTimeout: (_callback: () => void, _ms: number): unknown => 0,
+  clearTimeout: (_handle: unknown): void => {},
+}
+
+const KEY_PAGE_UP = '\x1b[5~'
+const KEY_PAGE_DOWN = '\x1b[6~'
+/** What one wheel notch scrolls: three rows, as the input plugin's wheel route does. */
+const WHEEL_LINES = 3
+/** Counts the stream workloads, so a measured append streams text no earlier run has indexed. */
+let streamRuns = 0
+
+/**
+ * The content-scroll route the app's input plugin installs on the screen. The frame host boots the renderer and the
+ * interaction services without that plugin, so a stream workload lends the screen the same wheel and page-key behavior:
+ * a wheel report scrolls three rows, a page key one viewport minus four.
+ */
+function mountContentScroll(host: FrameHost): () => void {
+  return host.root.mayflyScreen.setContentScrollHandler(data => {
+    const report = wheelReport(data)
+    if (report !== undefined) {
+      const direction = report.button & 3
+      if (direction !== 0 && direction !== 1) return false
+      return host.root.mayflyScreen.scrollContent(direction === 0 ? 'up' : 'down', WHEEL_LINES)
+    }
+    if (data !== KEY_PAGE_UP && data !== KEY_PAGE_DOWN) return false
+    return host.root.mayflyScreen.scrollContent(data === KEY_PAGE_UP ? 'up' : 'down', Math.max(1, host.root.mayflyScreen.rows - 4))
+  })
+}
+
+/** What one mounted stream workload keeps: the frame host, the feed the next value goes into, and the controller. */
+interface StreamRun {
+  readonly host: FrameHost
+  readonly feed: FakeConversationFeed
+  readonly controller: TranscriptController
+  readonly tick: FakeTickSource
+  dispose(): Promise<void>
+}
+
+/**
+ * Mount a real transcript controller over the frame host: a projection in a fake feed, the real official model source,
+ * the long-session tool presenters, and a fake tick the workload fires by hand. Publishing stays explicit, so a measured
+ * step never waits for a timer.
+ */
+async function withStream(
+  counters: MayflyWorkCounters,
+  environment: WorkloadEnvironment,
+  projection: ConversationProjection,
+  draft?: LiveAssistantDraft,
+): Promise<StreamRun> {
+  const host = await FrameHost.boot(counters, environment)
+  const feed = new FakeConversationFeed()
+  feed.push(projection, 1)
+  if (draft !== undefined) feed.setDraft(draft)
+  const tick = new FakeTickSource()
+  const controller = new TranscriptController({ t: translate, queued: () => [], tick, clock: FIXED_CLOCK, counters })
+  const source = new OfficialConversationModelSource(NO_PROJECTIONS, longSessionTools(), () => { controller.refresh() }, undefined, translate, counters)
+  source.attachFeed(feed)
+  controller.attach(host.root.mayflyScreen as unknown as TranscriptScreen)
+  controller.setView('main', () => source.snapshot())
+  controller.show('main')
+  const releaseScroll = mountContentScroll(host)
+  await host.frames()
+  return {
+    host, feed, controller, tick,
+    dispose: async () => { releaseScroll(); controller.dispose(); source.dispose(); await host.dispose() },
+  }
+}
+
+/**
+ * Parse the terminal writes of one measured step. `rows` counts pi-tui's row writes (`CSI <row>;1H` followed by
+ * `CSI 2K`), the unit W34 and W35 gate; `bytes` is the UTF-8 byte length of every write of the step, including the
+ * synchronization sequences (BSU/ESU) pi-tui wraps a frame in. Both are counted from the same slice of writes.
+ * @param writes - the fake terminal's writes during the step, in order.
+ * @returns the row writes and the byte length they and the other step writes add up to.
+ */
+export function frameBytes(writes: readonly string[]): { readonly rows: number, readonly bytes: number } {
+  const text = writes.join('')
+  const rows = [...text.matchAll(/\x1b\[(\d+);1H\x1b\[2K/g)].length
+  return { rows, bytes: Buffer.byteLength(text) }
+}
+
+/** Check the parser on a tiny sample; a workload's setup runs it so a regression fails the measured run itself. */
+function assertFrameBytes(): void {
+  const sample = ['\x1b[3;1H\x1b[2Kone', '\x1b[4;1H\x1b[2Ktwo', 'tail']
+  const counted = frameBytes(sample)
+  if (counted.rows !== 2 || counted.bytes !== Buffer.byteLength(sample.join(''))) {
+    throw new Error(`frameBytes: expected 2 rows and ${String(Buffer.byteLength(sample.join('')))} bytes, got ${String(counted.rows)} and ${String(counted.bytes)}`)
+  }
+}
+
 export const FRAME_WORKLOADS: readonly FrameWorkload[] = [
   {
     id: 'W13', title: 'keystroke beside a pane: a key in the editor while a side pane of eight sections does not change',
@@ -278,6 +389,94 @@ export const FRAME_WORKLOADS: readonly FrameWorkload[] = [
       await host.frames()
       reset(counters)
       return { step: async () => { overlay.set(node); await host.frames() }, dispose: () => host.dispose() }
+    },
+  },
+  {
+    id: 'W32', title: 'views summary: a views pane publishes a fresh summary node of equal text, the status row repaints (componentRenders, layoutPasses, controlWalks, reconciles)',
+    async setup(counters, environment) {
+      const host = await FrameHost.boot(counters, environment)
+      const pane = host.root.mayflyPanes.register({
+        id: 'perf.views', title: 'Agents', placement: 'views',
+        summary: { node: ui.text('Agents · 2') },
+      }, ui.stack.column([ui.text('Agents view'), ui.text('No agent is running.')]))
+      await host.frames()
+      reset(counters)
+      return {
+        step: async () => { pane.setSummary({ node: ui.text('Agents · 2') }); await host.frames() },
+        dispose: () => host.dispose(),
+      }
+    },
+  },
+  {
+    id: 'W33a', title: 'live tick with the pending tool in view: one 1 Hz tick beside a 15-turn transcript at its tail (componentRenders, itemsWalked, rowsPainted)',
+    async setup(counters, environment) {
+      const stream = await withStream(counters, environment, pendingLastTool(longSessionProjection(15)))
+      const fire = stream.tick.capture()
+      if (fire === undefined) throw new Error('W33a: the pending tool did not subscribe to the tick')
+      if (stream.host.root.mayflyScreen.contentTail()?.away === true) throw new Error('W33a: the tail left the view')
+      reset(counters)
+      return {
+        step: async () => { fire(1_700_000_001_000); counters.clockTicks += 1; await stream.host.frames() },
+        dispose: () => stream.dispose(),
+      }
+    },
+  },
+  {
+    id: 'W33b', title: 'live tick with the pending tool scrolled out: one 1 Hz tick beside a 15-turn transcript paged away from its tail (componentRenders, itemsWalked, rowsPainted)',
+    async setup(counters, environment) {
+      const stream = await withStream(counters, environment, pendingLastTool(longSessionProjection(15)))
+      const fire = stream.tick.capture()
+      if (fire === undefined) throw new Error('W33b: the pending tool did not subscribe to the tick')
+      await stream.host.press(KEY_PAGE_UP)
+      if (stream.host.root.mayflyScreen.contentTail()?.away !== true) throw new Error('W33b: the pending row was not scrolled out of view')
+      reset(counters)
+      return {
+        step: async () => { fire(1_700_000_001_000); counters.clockTicks += 1; await stream.host.frames() },
+        dispose: () => stream.dispose(),
+      }
+    },
+  },
+  {
+    id: 'W34', title: 'follow-tail append: one line arrives in the streaming answer of a 15-turn transcript at its tail (rowsWritten, bytesWritten)',
+    async setup(counters, environment) {
+      assertFrameBytes()
+      const projection = longSessionProjection(15)
+      // A text no earlier run streamed: the content cache cannot hand this run a line table another run estimated.
+      streamRuns += 1
+      const text = `The answer streams at the tail ${String(streamRuns)}.`
+      const stream = await withStream(counters, environment, projection, longSessionDraft(projection, text, 1))
+      reset(counters)
+      return {
+        step: async () => {
+          const mark = stream.host.terminal.written.length
+          stream.feed.setDraft(longSessionDraft(projection, `${text}\nA second line arrives.`, 2))
+          stream.controller.republish()
+          await stream.host.frames()
+          const counted = frameBytes(stream.host.terminal.written.slice(mark))
+          counters.rowsWritten = counted.rows
+          counters.bytesWritten = counted.bytes
+        },
+        dispose: () => stream.dispose(),
+      }
+    },
+  },
+  {
+    id: 'W35', title: 'wheel notch: one wheel-up notch scrolls a 15-turn transcript away from its tail (rowsWritten, bytesWritten)',
+    async setup(counters, environment) {
+      const stream = await withStream(counters, environment, longSessionProjection(15))
+      reset(counters)
+      return {
+        step: async () => {
+          const mark = stream.host.terminal.written.length
+          stream.host.terminal.sendInput('\x1b[<64;10;10M')
+          await stream.host.frames()
+          if (stream.host.root.mayflyScreen.contentTail()?.away !== true) throw new Error('W35: the wheel notch did not scroll the transcript')
+          const counted = frameBytes(stream.host.terminal.written.slice(mark))
+          counters.rowsWritten = counted.rows
+          counters.bytesWritten = counted.bytes
+        },
+        dispose: () => stream.dispose(),
+      }
     },
   },
   {
