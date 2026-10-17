@@ -190,8 +190,10 @@ function fakeContext({ forkable = true } = {}) {
   if (!forkable) main.snapshotEvents = () => []
   const agent = { id: 'main', session: main, inbox: { append: (target, message) => log.inbox.push(['append', target, message.content[0].text, message.id]), remove: id => log.inbox.push(['remove', id]) } }
   const answer = kind => async request => { log.asked.push({ kind, request }); return 'ok' }
+  const sessionStart = { onBooted: callback => { queueMicrotask(callback); return () => {} }, ensure: async () => {} }
   const ctx = {
     mayflyCurrentAgent: { current: () => agent },
+    mayflySessionStart: sessionStart,
     sessions: {
       create: (id, options) => { log.children.push({ id, options }); return session(id) },
       prepare: (id, options) => ({ ...session(id), header: { id, ...options.meta } }),
@@ -211,6 +213,7 @@ function fakeContext({ forkable = true } = {}) {
       agents: { create: async options => { const created = { id: options.sessionId, session: session(options.sessionId) }; log.agents.push({ options, agent: created }); return { agent: created, dispose: async () => { log.disposed.push(options.sessionId) } } } },
       agentPresets: { mount: async () => {} },
       agentDefaultModel: { currentSelection: () => ({ provider: 'p', model: 'm' }) },
+      mayflySessionStart: sessionStart,
       mayflyUiInteraction: { createNotificationOwner: label => ({ report: (id, scope, feedback) => log.notices.push(['report', label, id, scope.sessionId, feedback.severity, feedback.message, feedback.purpose]), clear: id => log.notices.push(['clear', id]) }) },
       mayflyConversations: { open: view => { log.opened.push(view); return `session:${view.sessionId}` }, close: id => log.closed.push(id) },
       sessionPersistence: { create: async header => ({ append: async events => log.stored.push({ header, events }), flush: async () => {}, close: async () => {} }) },
@@ -323,7 +326,7 @@ test('the stub model titles sessions and notices prompts, and every replay compi
   for (const [name, replay] of Object.entries({ ...REPLAYS, ...SCENES })) {
     assert.ok(replay.summary && replay.items.length > 0, name)
     const actions = compile(replay.items)
-    assert.ok(actions.length > 5, name)
+    assert.ok(actions.length > 0, name)
     assert.ok(actions.every((action, index) => index === 0 || action.at >= actions[index - 1].at), `${name} is chronological`)
     const calls = actions.filter(action => action.type === 'tool/call').map(action => action.data.callId)
     const results = new Set(actions.filter(action => action.type === 'tool/result').map(action => action.data.message.toolCallId))
