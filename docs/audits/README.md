@@ -4,6 +4,16 @@ Each file is a dated record of one investigation or acceptance round. A record s
 define current behavior; the code and the [architecture docs](../README.md) do. Read a record's closeout or status note
 first, when it has one.
 
+## Phase 7 performance audit (2026-10-17)
+
+Folder: [phase-7/](phase-7/). Round 0 measured the 2,000-turn session, the flowing stream, the tools/change
+burst, and the combined `perf-long` scene; it changed no product behavior. The fix rounds P1-P7 are listed in the
+record and are being implemented on `perf/phase-7`.
+
+| Record | What it is | Read it for |
+| --- | --- | --- |
+| [Performance audit](phase-7/2026-10-17-performance-audit.md) | The L/J/R findings, work budgets W28-W35, `perf-long` spans, and the proposed renderer algorithm | The measurements, the fix order, and the target counter of each round |
+
 ## Phase 3 closeout audit (2026-10-13)
 
 Folder: [phase-3/](phase-3/). Closed with PR #15; fixed items are in the PR, the rest are carried to Phases 5, 7 and 8 (see the Resolution section).
