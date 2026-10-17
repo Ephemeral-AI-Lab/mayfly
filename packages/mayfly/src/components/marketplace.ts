@@ -270,6 +270,21 @@ export function PluginMarketplaceLoading(title: string, message: string): Mayfly
 }
 
 /**
+ * The marketplace when the native plugin manager is not mounted: nothing can be installed, removed, or enabled.
+ * @param title - the panel title.
+ * @param message - why the native service is unavailable.
+ * @returns the overlay surface.
+ */
+export function PluginMarketplaceUnavailable(title: string, message: string): MayflySurfaceNode {
+  return ui.surface({
+    chrome: 'overlay', title,
+    child: ui.stack.column([
+      ui.child(ui.text(message, { tone: 'danger', overflow: 'wrap' })),
+    ]),
+  })
+}
+
+/**
  * The marketplace when the catalog is unreachable and nothing is cached.
  * @param title - the panel title.
  * @param message - why it is offline.
