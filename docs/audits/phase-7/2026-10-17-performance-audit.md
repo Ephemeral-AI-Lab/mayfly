@@ -212,6 +212,20 @@ harness. The targeted stream-facts, publish-window, stream-search, and transcrip
 perf fixtures now drain the controller's trailing publish explicitly (`FixedPublishClock.flush()`), so W28/W29/W31 still
 measure their real publish; W28-W31 and W33-W35 pass their budgets.
 
+## P3 result (implemented)
+
+P3 landed on `perf/p3-flow-list` (`b6a26f3d`) and was merged into `perf/phase-7`. A `FlowListPainter`/row source reconciles the
+flowing list's items by two-ended identity, keeps per-item heights and a prefix sum, paints rows on demand, and exposes the
+exact total height to `TailScrollView`. `listWindow` returns only the viewport + cursor window (+4 overscan) for a
+virtualizable flow list; `walkControls` enumerates that window. Focused lists, `maxRows`, filters, trees, and an active
+search current match keep the old whole-paint path, so W4/W4-slot are byte-identical.
+
+W33a `itemsWalked` fell from **1,899 to 146** and W33b from **1,301 to 165**; W33a's `rowsPainted` fell from 3 to 1. The new
+`p3-flow-list.spec` checks every virtual row against a whole `paintList` for unchanged, tail-changed, middle-changed,
+appended, and prepended lists, and proves total height 2,000, `track()`, wheel-away, and follow-tail through the real
+`TailScrollView` (5/5). The existing tail-extent seam specs pass 3/3. P4's animation-patch work is not landed; the visible
+pending row already paints one row per tick, and the remaining clock tick is the real 1 Hz tick the workload fires.
+
 ## P5 result (implemented)
 
 P5 landed on `perf/p5-output` (`c90ce560`) and was merged into `perf/phase-7`. `core/output-optimizer.ts` wraps the
