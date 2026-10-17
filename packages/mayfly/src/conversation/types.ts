@@ -192,6 +192,16 @@ export interface ConversationProjection {
   readonly turns: readonly ConversationTurn[]
 }
 
+/** One running compaction row and the ids its pending lifecycle events pair by. */
+export interface OpenCompaction {
+  /** The entry id of the running row. */
+  readonly entryId: string
+  /** The transaction id, once the `/compact` row adopts a `compaction/start`. */
+  readonly compactionId?: string | undefined
+  /** The initiating command id of a manual row, for `command/done`. */
+  readonly commandId?: string | undefined
+}
+
 /** Plain-JSON internal fold state checkpointed by the registry. */
 export interface ConversationProjectionState {
   readonly entries: readonly ConversationEntry[]
@@ -202,6 +212,8 @@ export interface ConversationProjectionState {
   readonly streamingThinkingId: string | null
   readonly pendingReasoning: string
   readonly finalizedSteps: readonly string[]
+  /** Running compaction rows, so lifecycle events pair by id instead of scanning the history. */
+  readonly openCompactions: readonly OpenCompaction[]
   readonly interruptedTurns: readonly number[]
   /** Turns durably erased by Mayfly's safe-retraction surface marker. */
   readonly retractedTurns: readonly number[]

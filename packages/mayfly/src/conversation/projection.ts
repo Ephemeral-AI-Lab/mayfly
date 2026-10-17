@@ -136,6 +136,11 @@ export const conversationProjectionStateSchema = z.object({
   streamingThinkingId: z.string().nullable(),
   pendingReasoning: z.string(),
   finalizedSteps: z.array(z.string()),
+  openCompactions: z.array(z.object({
+    entryId: z.string(),
+    compactionId: z.string().optional(),
+    commandId: z.string().optional(),
+  })),
   interruptedTurns: z.array(z.number().int().nonnegative()),
   retractedTurns: z.array(z.number().int().nonnegative()),
   turns: turnsSchema,
@@ -152,6 +157,7 @@ export function initialConversationState(): ConversationProjectionState {
     streamingThinkingId: null,
     pendingReasoning: '',
     finalizedSteps: [],
+    openCompactions: [],
     interruptedTurns: [],
     retractedTurns: [],
     turns: [],
@@ -195,8 +201,34 @@ function imagesOf(content: readonly ContentBlock[]): ConversationImage[] {
     }))
 }
 
-function stepKey(turn: number, step: number): string {
+/** The wire key of one step: `<turn>:<step>` (the transcript's `settledSteps` vocabulary). */
+export function settleKey(turn: number, step: number): string {
   return `${String(turn)}:${String(step)}`
+}
+
+/**
+ * How many turns of settled step keys the fold retains: the current turn and one
+ * previous. A durable `assistant/attempt` can land after its turn's settlement
+ * while the next turn is already open (an abandoned attempt retiring late), so
+ * the previous turn must stay fenced. Events for a turn two starts back are
+ * never appended after the fold has opened the following turn: the Harness
+ * commits an attempt before it moves on, and a close only re-reads the turn it
+ * closes. Once a key leaves this window, no durable event can consult it again;
+ * the entry rows it guarded also stay out of reach of that turn's late reopen.
+ */
+const SETTLED_TURN_WINDOW = 2
+
+/** The turn encoded in a settled step key, `-1` when the key is foreign. */
+function settledTurn(key: string): number {
+  const colon = key.indexOf(':')
+  return colon < 0 ? -1 : Number(key.slice(0, colon))
+}
+
+/** Keep only the settled keys of the current and previous turn. */
+function boundedSettledSteps(steps: readonly string[], turn: number): readonly string[] {
+  const floor = turn - (SETTLED_TURN_WINDOW - 1)
+  const retained = steps.filter(key => settledTurn(key) >= floor)
+  return retained.length === steps.length ? steps : retained
 }
 
 /** The id of the entry a tool call opens and its result completes. */
@@ -281,6 +313,64 @@ function appendEntry(state: ConversationProjectionState, entry: ConversationEntr
   return { ...state, entries: [...state.entries, entry] }
 }
 
+/** One open compaction row, its position in the open list, and its entry. */
+interface OpenCompactionMatch {
+  readonly index: number
+  readonly open: ConversationProjectionState['openCompactions'][number]
+  readonly entry: ConversationCompactionEntry
+}
+
+/**
+ * The last running compaction row whose open record matches: the same pairing
+ * the lifecycle lookups used to find with `entries.findLast`, kept to the open
+ * rows the state already tracks so no history scan runs per event.
+ */
+function findOpenCompaction(
+  state: ConversationProjectionState,
+  match: (open: ConversationProjectionState['openCompactions'][number]) => boolean,
+): OpenCompactionMatch | undefined {
+  for (let index = state.openCompactions.length - 1; index >= 0; index -= 1) {
+    const open = state.openCompactions[index]!
+    if (!match(open)) continue
+    const entry = state.entries[entryIndex(state.entries, open.entryId)]
+    if (entry === undefined || entry.kind !== 'compaction' || entry.state !== 'running') continue
+    return { index, open, entry }
+  }
+  return undefined
+}
+
+/** The state with an open compaction record replaced, or removed when `open` is null. */
+function withOpenCompaction(
+  state: ConversationProjectionState,
+  index: number,
+  open: ConversationProjectionState['openCompactions'][number] | null,
+): ConversationProjectionState {
+  const openCompactions = [...state.openCompactions]
+  if (open === null) openCompactions.splice(index, 1)
+  else openCompactions[index] = open
+  return { ...state, openCompactions }
+}
+
+/** Settle one open compaction row and drop its record in the same state. */
+function settleCompaction(
+  state: ConversationProjectionState,
+  match: OpenCompactionMatch,
+  updatedSeq: number,
+  replace: (entry: ConversationCompactionEntry) => ConversationCompactionEntry,
+): ConversationProjectionState {
+  const next = replaceEntry(state, match.open.entryId, updatedSeq, entry => entry.kind === 'compaction' ? replace(match.entry) : entry)
+  return next === state ? state : withOpenCompaction(next, match.index, null)
+}
+
+/** Append a running compaction row, recording its open ids for the lifecycle lookups. */
+function appendCompaction(
+  state: ConversationProjectionState,
+  entry: ConversationCompactionEntry,
+  open: ConversationProjectionState['openCompactions'][number],
+): ConversationProjectionState {
+  return appendEntry({ ...state, openCompactions: [...state.openCompactions, open] }, entry)
+}
+
 /** Whether an empty plugin-attributed developer replacement is Mayfly's durable
  * retraction marker. Harness forbids source citations on assistant
  * messages (they embed their own stream), so the empty replacement marker
@@ -307,28 +397,50 @@ function retractTurn(state: ConversationProjectionState, turn: number): Conversa
     entries,
     ...(state.currentTurn === turn ? { active: false } : {}),
     streamingStep: state.streamingStep?.startsWith(prefix) === true ? null : state.streamingStep,
-    streamingAssistantId: entries.some(entry => entry.id === state.streamingAssistantId)
+    streamingAssistantId: entryIndex(entries, state.streamingAssistantId) >= 0
       ? state.streamingAssistantId
       : null,
-    streamingThinkingId: entries.some(entry => entry.id === state.streamingThinkingId)
+    streamingThinkingId: entryIndex(entries, state.streamingThinkingId) >= 0
       ? state.streamingThinkingId
       : null,
     pendingReasoning: ownsStreaming ? '' : state.pendingReasoning,
     finalizedSteps: state.finalizedSteps.filter(key => !key.startsWith(prefix)),
+    openCompactions: state.openCompactions.filter(open => entryIndex(entries, open.entryId) >= 0),
     interruptedTurns: state.interruptedTurns.filter(value => value !== turn),
     retractedTurns: [...state.retractedTurns, turn],
     turns: state.turns.filter(entry => entry.turn !== turn),
   }
 }
 
+/**
+ * Drop the draft rows a retried step already owns. An attempt's reasoning and
+ * answer rows sit at the tail of that step's block until the step is settled,
+ * so the scan stops at the first row of another step or turn instead of
+ * filtering the whole history; tool rows of the same step stay in order.
+ */
+function removeStepDrafts(
+  entries: readonly ConversationEntry[],
+  turn: number,
+  step: number,
+): readonly ConversationEntry[] {
+  let next: ConversationEntry[] | undefined
+  for (let index = entries.length - 1; index >= 0; index -= 1) {
+    const entry = entries[index]!
+    if (!('step' in entry) || entry.turn !== turn || entry.step !== step) break
+    if (entry.kind !== 'assistant' && entry.kind !== 'thinking') continue
+    next ??= [...entries]
+    next.splice(index, 1)
+  }
+  return next ?? entries
+}
+
 function openStreamingStep(state: ConversationProjectionState, turn: number, step: number, updatedSeq: number): ConversationProjectionState {
-  const key = stepKey(turn, step)
+  const key = settleKey(turn, step)
   // Each durable assistant/attempt is one complete (possibly failed) model
   // attempt. Reopening the same step replaces a prior failed attempt instead
   // of appending its text and accidentally concatenating retries.
   const settled = settleStreaming(state, updatedSeq)
-  const entries = settled.entries.filter(entry => !((entry.kind === 'assistant' || entry.kind === 'thinking')
-    && entry.turn === turn && entry.step === step))
+  const entries = removeStepDrafts(settled.entries, turn, step)
   return {
     ...settled,
     entries,
@@ -354,7 +466,7 @@ function finalizeAssistant(
   event: SessionEvent<'assistant/message'>,
 ): ConversationProjectionState {
   const { turn, step, message } = event.data
-  const key = stepKey(turn, step)
+  const key = settleKey(turn, step)
   if (state.finalizedSteps.includes(key) || state.interruptedTurns.includes(turn)) return state
   let next = state.streamingStep === key ? state : settleStreaming(state, event.seq)
   const durationMs = reasoningDuration(foldAssistantStreamRecords(initialAssistantStream(), event.data.stream))
@@ -394,7 +506,7 @@ function finalizeAssistant(
     streamingAssistantId: null,
     streamingThinkingId: null,
     pendingReasoning: '',
-    finalizedSteps: [...next.finalizedSteps, key],
+    finalizedSteps: boundedSettledSteps([...next.finalizedSteps, key], turn),
   }
 }
 
@@ -517,7 +629,7 @@ export function foldConversationProjection(
       // `assistant/message`, whose content finalizes the entries directly.
       const { turn, step, stream } = event.data
       if (state.retractedTurns.includes(turn)) return state
-      const key = stepKey(turn, step)
+      const key = settleKey(turn, step)
       if (state.interruptedTurns.includes(turn) || state.finalizedSteps.includes(key)) return state
       // A restored checkpoint may contain crossed stream ids. Keep it intact
       // rather than allowing a new attempt to rewrite unrelated entries.
@@ -593,36 +705,40 @@ export function foldConversationProjection(
       if (event.data.name !== 'compact') return state
       const commandId = String(event.data.commandId)
       const id = `compaction:cmd:${commandId}`
-      if (state.entries.some(entry => entry.id === id)) return state
-      return appendEntry(state, {
+      // The row opens at the tail, so a duplicate dispatch is found near it.
+      if (entryIndex(state.entries, id) >= 0) return state
+      return appendCompaction(state, {
         kind: 'compaction', id, seq: event.seq, updatedSeq: event.seq, turn: state.currentTurn,
         commandId, state: 'running', trigger: 'manual', startedAt: event.time,
-      })
+      }, { entryId: id, commandId })
     }
     case 'compaction/start': {
       const compactionId = String(event.data.compactionId)
       const sourceCommandId = event.data.sourceCommandId === undefined ? undefined : String(event.data.sourceCommandId)
-      const existing = state.entries.findLast((entry): entry is ConversationCompactionEntry =>
-        entry.kind === 'compaction' && entry.state === 'running'
-        && (entry.compactionId === compactionId
-          || (sourceCommandId !== undefined && entry.commandId === sourceCommandId)))
+      const existing = findOpenCompaction(state, open => open.compactionId === compactionId
+        || (sourceCommandId !== undefined && open.commandId === sourceCommandId))
       if (existing !== undefined) {
-        return replaceEntry(state, existing.id, event.seq, () => ({ ...existing, compactionId }))
+        const next = replaceEntry(state, existing.open.entryId, event.seq, () => ({ ...existing.entry, compactionId }))
+        // An idempotent touch only moves the row's update sequence; adoption
+        // also teaches the open record the transaction id.
+        return existing.open.compactionId === compactionId
+          ? next
+          : withOpenCompaction(next, existing.index, { ...existing.open, compactionId })
       }
-      return appendEntry(state, {
-        kind: 'compaction', id: `compaction:${compactionId}`, seq: event.seq, updatedSeq: event.seq,
+      const id = `compaction:${compactionId}`
+      return appendCompaction(state, {
+        kind: 'compaction', id, seq: event.seq, updatedSeq: event.seq,
         turn: event.data.turn ?? state.currentTurn, compactionId,
         state: 'running', trigger: sourceCommandId === undefined ? 'auto' : 'manual', startedAt: event.time,
-      })
+      }, { entryId: id, compactionId })
     }
     case 'compaction/summary': {
       const compactionId = String(event.data.compactionId)
-      const entry = state.entries.findLast((candidate): candidate is ConversationCompactionEntry =>
-        candidate.kind === 'compaction' && candidate.compactionId === compactionId && candidate.state === 'running')
-      if (entry === undefined) return state
+      const existing = findOpenCompaction(state, open => open.compactionId === compactionId)
+      if (existing === undefined) return state
       const summary = visibleText(event.data.summary)
-      return replaceEntry(state, entry.id, event.seq, () => ({
-        ...entry,
+      return replaceEntry(state, existing.open.entryId, event.seq, () => ({
+        ...existing.entry,
         summaryAt: event.time,
         shadowedCount: event.data.shadowedSeqs.length,
         shadowedTokens: event.data.shadowedTokenCount,
@@ -633,11 +749,10 @@ export function foldConversationProjection(
     }
     case 'compaction/end': {
       const compactionId = String(event.data.compactionId)
-      const entry = state.entries.findLast((candidate): candidate is ConversationCompactionEntry =>
-        candidate.kind === 'compaction' && candidate.compactionId === compactionId && candidate.state === 'running')
-      if (entry === undefined) return state
+      const existing = findOpenCompaction(state, open => open.compactionId === compactionId)
+      if (existing === undefined) return state
       const error = event.data.error
-      return replaceEntry(state, entry.id, event.seq, () => ({
+      return settleCompaction(state, existing, event.seq, entry => ({
         ...entry,
         state: error === undefined ? 'ok' : 'error',
         endedAt: event.time,
@@ -646,10 +761,9 @@ export function foldConversationProjection(
     }
     case 'command/done': {
       const commandId = String(event.data.commandId)
-      const entry = state.entries.findLast((candidate): candidate is ConversationCompactionEntry =>
-        candidate.kind === 'compaction' && candidate.commandId === commandId && candidate.state === 'running')
-      if (entry === undefined) return state
-      return replaceEntry(state, entry.id, event.seq, () => event.data.kind === 'error'
+      const existing = findOpenCompaction(state, open => open.commandId === commandId)
+      if (existing === undefined) return state
+      return settleCompaction(state, existing, event.seq, entry => event.data.kind === 'error'
         ? { ...entry, state: 'error' as const, endedAt: event.time, error: event.data.text ?? 'compaction failed' }
         : { ...entry, state: 'ok' as const, endedAt: event.time, ...(event.data.text === undefined ? {} : { detail: event.data.text }) })
     }
@@ -657,14 +771,16 @@ export function foldConversationProjection(
     // across it died with the previous session instance, so its row settles
     // instead of replaying as a spinner forever.
     case 'session/end-seed': {
+      if (state.openCompactions.length === 0) return state
       let next = state
-      for (const entry of state.entries) {
-        if (entry.kind !== 'compaction' || entry.state !== 'running') continue
-        next = replaceEntry(next, entry.id, event.seq, () => ({
+      for (const open of state.openCompactions) {
+        const entry = next.entries[entryIndex(next.entries, open.entryId)]
+        if (entry === undefined || entry.kind !== 'compaction' || entry.state !== 'running') continue
+        next = replaceEntry(next, open.entryId, event.seq, () => ({
           ...entry, state: 'error' as const, endedAt: event.time, error: 'compaction interrupted by restart',
         }))
       }
-      return next
+      return { ...next, openCompactions: [] }
     }
     default:
       return state
@@ -713,11 +829,12 @@ export const conversationProjectionDefinition: ConversationProjectionDefinition 
     view: state => {
       let view = conversationViewCache.get(state)
       if (view === undefined) {
+        // `openCompactions` is fold bookkeeping, not part of the client-visible value.
         view = { entries: state.entries, streaming: state.active, settledSteps: state.finalizedSteps, turns: state.turns }
         conversationViewCache.set(state, view)
       }
       return view
     },
   },
-  stateVersion: 12,
+  stateVersion: 13,
 }
