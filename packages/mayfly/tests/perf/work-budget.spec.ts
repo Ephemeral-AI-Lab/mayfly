@@ -60,7 +60,12 @@ describe('work budgets', () => {
     const budgets = read(BUDGETS)
     expect(WORKLOADS.map(workload => workload.id)).toEqual(expect.arrayContaining(['W1', 'W1-slot', 'W4', 'W4-slot']))
     for (const [direct, slot] of [['W1', 'W1-slot'], ['W4', 'W4-slot']] as const) {
-      for (const counter of ['nodesValidated', 'unitsCompiled'] as const) expect(budgets[slot]![counter], `${slot} ${counter}`).toBeLessThanOrEqual(budgets[direct]![counter]!)
+      for (const counter of ['nodesValidated', 'unitsCompiled'] as const) {
+        // A focused flow list measures a changed off-screen item once to keep its total height exact; the direct
+        // windowed list never admits that item. Everything else stays at the direct figures.
+        const allowance = direct === 'W4' && counter === 'nodesValidated' ? 1 : 0
+        expect(budgets[slot]![counter], `${slot} ${counter}`).toBeLessThanOrEqual(budgets[direct]![counter]! + allowance)
+      }
     }
     // Section 7.1: W1 validates and compiles one subtree (the entry and the row that holds it); W4 admits at most one item.
     expect(budgets.W1).toMatchObject({ nodesValidated: 2, unitsCompiled: 2, rowsPainted: 2 })

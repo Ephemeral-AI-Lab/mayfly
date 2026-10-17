@@ -1920,7 +1920,7 @@ function compileUnit(node: CompilableNode, state: FocusState, options: RuntimeCo
         const focus = listFocused
         // Flow content with no height window, filter, tree, or current match answers from a row source: the outer scroll
         // windows the rows, and a repaint reconciles items instead of painting every one.
-        const flowVirtual = options.listRuntime.flow && flowListCanVirtualize(node, choice) && !focus.focused
+        const flowVirtual = options.listRuntime.flow && flowListCanVirtualize(node, choice)
         const searching = choice?.searching === true
         const queryRows = searching || query.length > 0 ? [listQueryRow(node, query, searching, visibleCount, width, focus.focused && state.activeGroup === scopedControlGroup('list', node.id), options)] : []
         const position = choice === undefined ? 0 : choiceVisiblePosition(choice)
@@ -1949,7 +1949,7 @@ function compileUnit(node: CompilableNode, state: FocusState, options: RuntimeCo
           }, {
             rows: [],
             cursorId: choice?.focusedId,
-            focused: false,
+            focused: focus.focused,
             marker: focus.marker,
             selectedIds: choice?.selectedIds ?? listSelectedIds(node),
             inputs: choice?.inputs,
@@ -1966,10 +1966,13 @@ function compileUnit(node: CompilableNode, state: FocusState, options: RuntimeCo
           }
           body = painter.rows()
         } else {
+          // A focused flow list that cannot virtualize (filter, tree, or current match) keeps its viewport window; a
+          // focused virtual list paints from the outer row source below.
+          const fallbackLimit = options.listRuntime.flow && focus.focused ? safeViewport(options.getViewport).rows : listRowLimit(options)
           body = renderList(
             { ...unfiltered, items: entries.map(entry => entry.item), selectedIds: choice?.selectedIds ?? listSelectedIds(node) },
             width,
-            Math.max(1, listRowLimit(options) - (counter === undefined ? 0 : 1) - queryRows.length),
+            Math.max(1, fallbackLimit - (counter === undefined ? 0 : 1) - queryRows.length),
             focus,
             options.colors,
             entries[0]!.position,

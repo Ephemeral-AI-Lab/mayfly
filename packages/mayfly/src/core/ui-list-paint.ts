@@ -764,6 +764,8 @@ export class FlowListPainter implements RowSource {
   private itemTotal = 0
   private declared = 0
   private changes = 0
+  private focused = false
+  private cursorId: string | undefined
 
   get length(): number { return this.itemTotal + this.tail.length }
 
@@ -771,8 +773,8 @@ export class FlowListPainter implements RowSource {
 
   get declaredWidth(): number { return this.declared }
 
-  /** A flowing list is unfocused by construction: its rows carry no cursor marker, so a layout marker scan skips it whole. */
-  readonly markerFree = true
+  /** Unfocused rows carry no cursor marker; a focused painter answers a marker seek from the cursor's block instead. */
+  get markerFree(): boolean { return !this.focused || this.cursorId === undefined }
 
   private facade: string[] | undefined
 
@@ -788,11 +790,13 @@ export class FlowListPainter implements RowSource {
     const items = model.items
     const available = Math.max(1, Math.floor(width))
     this.declared = available
+    this.focused = options.focused
+    this.cursorId = options.cursorId
     const state = [
       available, node.mode ?? '', node.marks === true ? 1 : 0, node.marker ?? '', node.groupGap === true ? 1 : 0,
       node.tree === true ? 1 : 0, node.numbered === undefined || node.numbered === false ? 0 : String(node.numbered),
       node.highlight === undefined ? '' : JSON.stringify(node.highlight), model.signature, items.length,
-      options.cursorId ?? '', options.marker, options.selectedIds.join('\x01'), recordKey(options.inputs),
+      options.cursorId ?? '', options.marker, options.selectedIds.join('\x01'), recordKey(options.inputs), options.focused ? 1 : 0,
     ].join('\x1e')
     const rebuilt = state !== this.signature || colors !== this.colors || options.memo?.cache !== this.cache
     const previous = this.blocks
@@ -915,6 +919,13 @@ export class FlowListPainter implements RowSource {
       offset -= entry.lines.length
     }
     return ''
+  }
+
+  /** A focused painter's only marker is the cursor row: answer a layout seek without walking every row. */
+  seekMarker(_marker: string, from: number): number {
+    if (!this.focused || this.cursorId === undefined) return -1
+    const line = this.locate(this.cursorId)
+    return line === undefined || line < from ? -1 : line
   }
 
   /** The line the first row of item `id` stands on among the list's rows; `undefined` when the list does not paint it. */

@@ -157,6 +157,13 @@ describe('the flow list row source', () => {
     const focused = host.root.mayflyScreen.contentTail()!
     expect(flow.top + flow.viewport).toBeGreaterThan(160)
     expect(focused.top + focused.viewport).toBeGreaterThan(160)
+    // Focus used to window the list to the viewport and hold the old scroll top, so this passed even while the tail
+    // was unreachable. Following the content must land past the first screen, then Home must reach row 0.
+    host.root.mayflyScreen.followContent()
+    await host.frames()
+    const followed = host.root.mayflyScreen.contentTail()!
+    expect(followed.top).toBeGreaterThan(0)
+    expect(followed.top + followed.viewport).toBeGreaterThan(160)
     host.root.mayflyScreen.scrollContent('up', 10000)
     await host.frames()
     expect(host.root.mayflyScreen.contentTail()!.top).toBe(0)
