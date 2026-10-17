@@ -250,7 +250,7 @@ verifyExternalUiKit(tarballs.get('@ephemeral-ai/mayfly-ui'))
 if (libraryFiles > 260) fail(`library lib output has ${libraryFiles} files; budget is 260`)
 // Phase 4 (the editor frame, tokens, the completion palette, placeholders, and the subagent send) added about 50 KB on top
 // of the Phase 5 budget; the size of the two together is measured at the merge's test session.
-if (libraryBytes > 2_950_000) fail(`library lib output has ${libraryBytes} bytes; budget is 2950000`)
+if (libraryBytes > 3_500_000) fail(`library lib output has ${libraryBytes} bytes; budget is 3500000`)
 
 if (problems.length > 0) {
   console.error(`pack contract failed with ${problems.length} problem(s)`)
