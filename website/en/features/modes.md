@@ -26,7 +26,7 @@ Plan mode gives the agent guidance to plan before acting without changing tool p
 
 ## yolo — full access
 
-Enter YOLO with `/permission danger-full-access` and restore default permissions with `/permission workspace-write`. Bare `/permission` opens the permission picker. Mayfly does not register extra `/yolo` or `/yes` commands.
+Enter YOLO with `/permission danger-full-access` and restore default permissions with `/permission workspace-write`. `/permissions` opens Mayfly's permission picker. Mayfly does not register extra `/yolo` or `/yes` commands.
 
 YOLO disables the filesystem sandbox and applies the `never` approval policy: actions that require approval are rejected without displaying an approval panel, while actions that do not require approval can run directly. **User questions and plan reviews still appear**, because the permission policy does not answer questions or approve plans for you.
 

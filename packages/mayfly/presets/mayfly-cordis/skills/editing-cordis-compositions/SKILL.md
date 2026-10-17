@@ -132,42 +132,25 @@ After a clean mount-validation, ask the user to start a session on the new prese
 
 `cordis_mount` evaluates JavaScript against the live runtime and disappears on restart. It is for probing, not for shipping a capability: a capability belongs in a composition file.
 
-## Native product subagents
+## Native subagents
 
-Codex and Claude Code providers are independent optional Profile Bundles. Install only the products a Profile needs, then restart the Profile so its Host registers those providers:
+A preset grants delegation by mounting `@deepseek-ai/dsh-tool-subagent` with a
+provider the Host already registered. Providers are optional Host bundles;
+a preset cannot provide one. Copy a disabled `tool-subagent` row from a shipped
+preset and enable it only for the provider the user asked for, keeping
+`provider`, `toolName`, and `maxDepth` explicit and unique.
 
-```sh
-dsh plugin --profile <name> add @deepseek-ai/dsh-subagent-codex
-dsh plugin --profile <name> add @deepseek-ai/dsh-subagent-claude-code
-dsh plugin --profile <name> remove @deepseek-ai/dsh-subagent-codex
-dsh plugin --profile <name> remove @deepseek-ai/dsh-subagent-claude-code
-```
+Every delegation is one managed activation: the tool returns a child id
+immediately, the parent's native `subagentCatalog` lists its direct children,
+and the runtime delivers the final answer as a completion notice. There is no
+foreground/background form and no `run_in_background` argument. `/agents`, the
+Agents view, and cold addressed history read the native catalog and the
+child's `subagent`/`subagentTiming` projections. Stop a continuable child
+through `ctx.subagents.drainChildren` after the native checks; do not cancel an
+activation by dropping its turn or by keeping a second run list.
 
-Each Bundle owns its Host availability; the preset separately grants one Agent its ordinary delegation tool. Never move a product provider into the preset and never add a product-specific settings field. Removing one package withdraws only that provider on the next Profile start.
-
-Copy these disabled templates from a shipped full preset and remove `disabled` only for the products the user requested:
-
-```yaml
-- id: tool-subagent-codex
-  name: '@deepseek-ai/dsh-tool-subagent'
-  disabled: true
-  config:
-    provider: codex
-    toolName: subagent_codex
-    maxDepth: provider-managed
-
-- id: tool-subagent-claude-code
-  name: '@deepseek-ai/dsh-tool-subagent'
-  disabled: true
-  config:
-    provider: claude-code
-    toolName: subagent_claude_code
-    maxDepth: provider-managed
-```
-
-For additional named Codex or Claude Code instances, mount a separate host-plane provider row for each instance with a unique `providerName`, then add a separate preset tool row whose `provider` exactly matches that name and whose `toolName` is also unique. Keep the shipped rows for the default `codex` and `claude-code` names; do not reuse one tool row for several providers or derive either name from permission or environment settings.
-
-The two rows are independent. Leaving both disabled preserves the copied preset, enabling one exposes only that product tool, and enabling both exposes both. Production `dsh` does not install either optional provider: before enabling a row, install the matching `@deepseek-ai/dsh-subagent-codex` or `@deepseek-ai/dsh-subagent-claude-code` Bundle in the Profile and restart it. Each Bundle registers its dormant default provider and exclusively uses its pinned package-local platform CLI; additional named instances use extra host-plane rows from the same installed package. A preset cannot provide that host dependency. Every delegation is a managed activation: the tool returns a child id immediately, the runtime delivers the final answer as a parent completion notice, and there is no `run_in_background` argument or foreground/background mode. Full presets carry `tool-jobs` for bash jobs; the base host carries the job registry. `interrupt_agent`, `send_message`, and the child catalog replace per-run job collection for subagents. Installing a Bundle or composing a preset row does not start a product, authenticate an account, select a model, probe credentials, or manage native product settings.
+A preset row or an installed Bundle does not start a product, authenticate an
+account, select a model, probe credentials, or manage native product settings.
 
 ## What not to move into a preset
 

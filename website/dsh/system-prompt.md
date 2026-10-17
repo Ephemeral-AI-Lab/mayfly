@@ -24,14 +24,14 @@
 
 ## 配置与定制
 
-`systemPrompt` 配置块（dsh-base 的 system-prompt 插件）用 `persona` 定义部署身份，文本可引用 `{{model}}`、`{{cwd}}` 等变量。**Mayfly 的 `cordis.patch.yml` 首行就是按 id 替换这个条目的配置、覆写 persona**——"上层永远改写下层"的活例子：
+`systemPrompt` 配置块（dsh-base 的 system-prompt 插件）用 `persona` 定义部署身份，文本可引用 `{{model}}` 等变量。**Mayfly 的 `cordis.patch.yml` 首行就是按 id 替换这个条目的配置、覆写 persona**——"上层永远改写下层"的活例子。有效工作目录不是 persona 变量：它来自原生 `workingDirectory` 投影与 working-directory 上下文。
 
 ```yaml
 # Mayfly bundle 的 patch（片段）
 - id: system-prompt
   config:
     persona: >-
-      You are a coding agent. Your working directory is {{cwd}}.
+      You are a coding agent.
 ```
 
 - 工具在提示词中的顺序经 `systemPrompt.toolOrder` 配置（完整键名与默认值见官方 [config catalog](https://deepseek-harness.github.io/deepseek-harness/reference/config-catalog)）；
