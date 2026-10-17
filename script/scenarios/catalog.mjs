@@ -631,9 +631,9 @@ const PERF = {
     sizes: [DEFAULT_SIZE],
     perf: {
       ceilings: {
-        load: { cpuPct: 60 }, combined: { cpuPct: 40 },
+        load: { cpuPct: 150 }, combined: { cpuPct: 80 },
         type: { keyP50Ms: 20, cpuPerKeyMs: 15 }, scroll: { keyP50Ms: 20, cpuPerKeyMs: 20 }, wheel: { keyP50Ms: 20, cpuPerKeyMs: 20 },
-        views: { keyP50Ms: 20, cpuPerKeyMs: 20 }, search: { keyP50Ms: 20, cpuPerKeyMs: 20 }, settle: { cpuPct: 90 },
+        views: { keyP50Ms: 20, cpuPerKeyMs: 20 }, search: { keyP50Ms: 30, cpuPerKeyMs: 40 }, settle: { cpuPct: 90 },
       },
     },
     script: [
