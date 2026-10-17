@@ -137,11 +137,11 @@ describe('surface chrome', () => {
   })
 
   it('paints the border in the named tone on the head and the tail', () => {
-    const node = ui.surface({ title: 'T', chrome: 'overlay', border: 'warning', child: ui.text('x') })
+    const node = ui.surface({ title: 'T', chrome: 'surface', border: 'warning', child: ui.text('x') })
     expect(renderSurfaceHead(node, 10, tag)[0]).toContain('<warning>╭</warning>')
     expect(renderSurfaceTail(node, 10, tag)[0]).toBe('<warning>╰────────╯</warning>')
-    expect(surfaceBorderPaint('overlay', tag)('x')).toBe('<borderFocus>x</borderFocus>')
-    expect(surfaceBorderPaint('surface', tag)('x')).toBe('<border>x</border>')
+    expect(surfaceBorderPaint(tag)('x')).toBe('<border>x</border>')
+    expect(surfaceBorderPaint(tag, 'warning')('x')).toBe('<warning>x</warning>')
   })
 })
 

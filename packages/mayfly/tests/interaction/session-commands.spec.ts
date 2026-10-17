@@ -6,7 +6,7 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import { createAssistantMessage } from '@deepseek-ai/dsh-llm'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { sessionInfoFacts } from '../../src/interaction/session-commands.ts'
-import { changelogNode, contextNode, formatCreated, statusNode, usageNode, versionNode, type SessionInfoFacts } from '../../src/interaction/session-info-model.ts'
+import { changelogNode, formatCreated, usageNode, versionNode, type SessionInfoFacts } from '../../src/interaction/session-info-model.ts'
 import { MAYFLY_VERSION } from '../../src/transcript/banner-content.ts'
 import { informationFixture } from './information-fixture.ts'
 import { flushRequests, renderRequest } from './request-fixture.ts'
@@ -130,20 +130,9 @@ describe('native session information', () => {
     expect(value).toContain('"Cache hit rate"')
     expect(value).toContain('33%')
     expect(value).not.toMatch(/[█▓▒░]{2,}/u)
-    expect(JSON.stringify(statusNode(facts, { mayfly: 'test', harness: 'native' }, key => key))).toContain('high')
     expect(formatCreated(NaN)).toBe('unknown UTC')
     expect(JSON.stringify(versionNode({ mayfly: 'custom', harness: 'native' }))).toContain('vcustom')
-    expect(JSON.stringify(contextNode({ window: 1000 }, key => key))).toContain('no request')
-    expect(JSON.stringify(contextNode({}, key => key))).toContain('not advertised')
     expect(JSON.stringify(changelogNode([{ version: MAYFLY_VERSION, summary: 'summary', highlights: ['long '.repeat(100)], knownIssues: ['known'] }], key => key))).toContain('known')
-    expect(JSON.stringify(contextNode({ used: 750, window: 1000 }, key => key))).toContain('warning')
-    expect(JSON.stringify(contextNode({ used: 1500, window: 1000 }, key => key))).toContain('1.5k / 1000 (100%)')
-    const normalized = contextNode({ used: 12.25, window: 100.5 }, key => key)
-    expect(normalized.kind).toBe('stack')
-    if (normalized.kind !== 'stack') throw new Error('context node is not a stack')
-    expect(normalized.children[0]!.node).toMatchObject({ kind: 'progress', value: 13, max: 101 })
-    expect(JSON.stringify(contextNode({ used: Number.NaN, window: 1000 }, key => key))).toContain('no request')
-    expect(JSON.stringify(contextNode({ used: 10, window: Number.POSITIVE_INFINITY }, key => key))).toContain('not advertised')
     expect(JSON.stringify(usageNode({ ...facts, usage: { ...facts.usage, context: {} } }, key => key))).not.toMatch(/\(\d+(?:\.\d+)?%\)/u)
     expect(JSON.stringify(usageNode({ ...facts, usage: { ...facts.usage, context: {} } }, key => key))).toContain('not advertised for the current model')
     expect(JSON.stringify(usageNode({ ...facts, usage: { ...facts.usage, context: { window: 1000 } } }, key => key))).toContain('no request has reported usage yet')
@@ -240,10 +229,10 @@ describe('native session information', () => {
     expect(bench.model('mayfly.status')).toBeDefined()
   })
 
-  it.each(ADVERSARIAL)('contains status, context, and changelog data: $name', async ({ name, text }) => {
+  it.each(ADVERSARIAL)('contains usage, version, and changelog data: $name', async ({ name, text }) => {
     const bench = await setup()
     const facts: SessionInfoFacts = { id: text, cwd: text, createdAt: 0, status: 'running', turns: 1, steps: 2, model: { provider: text, model: text }, usage: { buckets: { input: 100, cacheRead: 0, cacheWrite: 0, output: 10 }, context: { used: 110, window: 1000 } }, composition: { system: 100, tools: 200, messages: 300 } }
-    for (const node of [statusNode(facts, { mayfly: text, harness: 'native' }, key => key), usageNode(facts, key => key), changelogNode([{ version: 'test', summary: text, highlights: [text], knownIssues: [text] }], key => key)]) {
+    for (const node of [versionNode({ mayfly: text, harness: 'native' }), usageNode(facts, key => key), changelogNode([{ version: 'test', summary: text, highlights: [text], knownIssues: [text] }], key => key)]) {
       const handle = bench.ctx.mayflyOverlays.open({ id: 'width-info', capturing: true }, ui.scroll(node, { scrollbar: true }))
       const model = bench.ctx.mayflyUiInteraction.get('overlay', 'width-info')!
       const viewport = { columns: 80, rows: 20 }

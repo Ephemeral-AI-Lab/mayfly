@@ -58,16 +58,15 @@ export const colorTag = (letter: string) => (text: string): string => `[${letter
 export function plainColors(): MayflySemanticColors {
   return {
     text: identity, textStrong: identity, muted: identity, textMuted: identity,
-    accent: identity, primary: identity, border: identity, borderFocus: identity,
+    accent: identity, primary: identity, border: identity,
     success: identity, error: identity, warning: identity, selectedBg: identity,
     roleUser: identity, shellMode: identity,
     mdHeading: identity, mdLink: identity, mdLinkUrl: identity, mdCode: identity,
     mdCodeBlock: identity, mdCodeBlockBorder: identity, mdQuote: identity,
     mdQuoteBorder: identity, mdHr: identity, mdListBullet: identity,
-    diffAdded: identity, diffRemoved: identity, diffAddedStrong: identity,
-    diffRemovedStrong: identity, diffGutter: identity, diffMeta: identity,
+    diffAdded: identity, diffRemoved: identity, diffMeta: identity,
     diffAddedBg: identity, diffRemovedBg: identity,
-    modelHighlight: identity, logoGradient: [identity],
+    modelHighlight: identity, logoInks: [identity, identity, identity, identity, identity],
   }
 }
 

@@ -13,13 +13,15 @@ import { charWrap, contentNodeSource, documentRowsSource, type ContentRowsEnv, t
 import { virtualRows } from '../../src/core/ui-rows.ts'
 import { alignDiffLines, diffModel, paintDiffRows } from '../../src/core/diff-align.ts'
 import { DARK_COLORS } from '../../src/core/theme-dark.ts'
-import { LIGHT_COLORS } from '../../src/core/theme-light.ts'
+import { paletteColors } from '../../src/core/palettes.ts'
 import { MAYFLY_CONTENT_CACHE_BYTES, MayflyContentCache } from '../../src/core/ui-content-cache.ts'
 import { declaredWidthOf, findMarkerRow, isVirtualRows, materializedRows, prepareRows, rowSourceOf, unclampedRows } from '../../src/core/ui-rows.ts'
 import { createWorkCounters, type MayflyWorkCounters } from '../../src/core/ui-work-counters.ts'
 import type { MayflyComponents, MayflySemanticColors } from '../../src/core/types.ts'
 import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/width.ts'
 import { plainText } from '../helpers.ts'
+
+const LIGHT_COLORS = paletteColors('light')
 
 /** The leaf's rows materialized through its production row source. */
 const contentNodeRows = (node: WindowedContentNode, width: number, env: ContentRowsEnv): string[] =>

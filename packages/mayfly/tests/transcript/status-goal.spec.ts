@@ -9,7 +9,6 @@ import type { GoalPhase, GoalView } from '@deepseek-ai/dsh-goal'
 import type { MayflyActionItem, MayflyUiActionEvent, MayflyUiEventContext } from '@ephemeral-ai/mayfly-ui'
 import { describe, expect, it, vi } from 'vitest'
 import * as goalStatus from '../../src/transcript/status-goal.ts'
-import { SHED } from '../../src/transcript/status-shed.ts'
 import { transcriptTranslatorFake } from './notices-fakes.ts'
 import { bootPanePlugin, HandTick } from './pane-fakes.ts'
 import { fakeAgent, type FakeFactsService } from './status-fakes.ts'
@@ -42,20 +41,19 @@ const fullText = (node: unknown): string => textOf((node as { readonly node: unk
 
 /** The summary's full form and its narrower forms. */
 function forms(node: unknown): { readonly full: unknown, readonly narrower: readonly { readonly rank: number, readonly node: unknown }[] } {
+  if ((node as { readonly kind?: string }).kind !== 'shed') return { full: node, narrower: [] }
   const shed = node as { readonly kind: string, readonly node: unknown, readonly narrower: readonly { readonly rank: number, readonly node: unknown }[] }
-  expect(shed.kind).toBe('shed')
   return { full: shed.node, narrower: shed.narrower }
 }
 
 describe('goalSummary', () => {
   const t = transcriptTranslatorFake
-  const summary = (value: GoalView | undefined, now = 61_000, done?: goalStatus.GoalItemState['done']) => goalStatus.goalSummary({ goal: value, now, ...done === undefined ? {} : { done } }, t)
+  const summary = (value: GoalView | undefined, done?: goalStatus.GoalItemState['done']) => goalStatus.goalSummary({ goal: value, ...done === undefined ? {} : { done } }, t)
 
-  it('says the mark, the rounds over their cap, and the time, with the time as the form the row gives up first', () => {
+  it('says the mark and the rounds over their cap', () => {
     const { full, narrower } = forms(summary(goal('active'))!.node)
-    // An armed goal's time runs: now minus its creation.
-    expect(textOf(full)).toBe('● goal 2/8 1m 0s')
-    expect(narrower.map(form => [form.rank, textOf(form.node)])).toEqual([[SHED.time, '● goal 2/8']])
+    expect(textOf(full)).toBe('● goal 2/8')
+    expect(narrower).toEqual([])
   })
 
   it('marks the phase: armed, disarmed, paused, blocked, with their tones', () => {
@@ -66,24 +64,18 @@ describe('goalSummary', () => {
     expect(marks(goal('blocked'))).toEqual({ text: '✕', tone: 'danger' })
   })
 
-  it('holds the time it had at its last change unless the goal is armed', () => {
-    expect(fullText(summary(goal('paused', { updatedAt: 31_000 }), 999_000)!.node)).toBe('⏸ goal 2/8 30s')
-    expect(fullText(summary(goal('active', { activation: 'disarmed', updatedAt: 31_000 }), 999_000)!.node)).toBe('○ goal 2/8 30s')
-    expect(fullText(summary(goal('active'), 999_000)!.node)).toContain('16m')
-  })
-
   it('shows nothing for no goal or a completed one, and a closing item with the mark of success once it finishes', () => {
     expect(summary(undefined)).toBeNull()
     expect(summary(goal('complete'))).toBeNull()
-    const closing = summary(goal('complete'), 5_000, { rounds: 8, total: 8, elapsedMs: 119_000 })!.node
-    expect(fullText(closing)).toBe('✓ goal 8/8 1m 59s')
+    const closing = summary(goal('complete'), { rounds: 8, total: 8 })!.node
+    expect(fullText(closing)).toBe('✓ goal 8/8')
     expect(spansOf(closing)[0]).toEqual({ text: '✓', tone: 'success' })
   })
 })
 
 describe('goalPanel', () => {
   const t = transcriptTranslatorFake
-  const panel = (value: GoalView | undefined) => goalStatus.goalPanel({ goal: value, now: 0 }, t)
+  const panel = (value: GoalView | undefined) => goalStatus.goalPanel({ goal: value }, t)
   /** The keys the panel carries: id, key, and hint label of each, in order. */
   const keysOf = (node: unknown): { readonly verb: string, readonly key: string | undefined, readonly confirm: boolean }[] => {
     const found: MayflyActionItem[] = []
@@ -215,7 +207,7 @@ describe('mayfly-status-goal', () => {
     const harness = await bootGoal(agent, { mayflyCurrentAgent: currentAgentService(agent).service, goals: { get: (query: Agent) => views.get(query) } })
     expect(harness.tick.subscribers).toBe(1)
     harness.tick.fire(61_000)
-    expect(fullText(harness.entry().summary!.node)).toBe('● goal 2/8 1m 0s')
+    expect(fullText(harness.entry().summary!.node)).toBe('● goal 2/8')
     views.set(agent, goal('paused'))
     harness.ctx.emit('goal/changed', { agent } as never)
     expect(harness.tick.subscribers).toBe(0)
@@ -226,7 +218,7 @@ describe('mayfly-status-goal', () => {
     views.set(agent, goal('complete', { rounds: 8, max: 8, updatedAt: 120_000 }))
     const before = Date.now()
     harness.ctx.emit('goal/changed', { agent } as never)
-    expect(fullText(harness.entry().summary!.node)).toBe('✓ goal 8/8 1m 59s')
+    expect(fullText(harness.entry().summary!.node)).toBe('✓ goal 8/8')
     expect(harness.entry().node).toBeNull()
     expect(harness.tick.subscribers).toBe(1)
     const after = Date.now()

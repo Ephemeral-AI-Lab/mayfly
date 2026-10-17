@@ -68,6 +68,7 @@ async function mount(initial: PlanState = { active: false }, withPlan = true, or
   }
   ctx.provide('permissionPresets', {
     names: ['workspace-write', 'danger-full-access'],
+    defaultPreset: 'workspace-write',
     current: target => ordered ? derived() : permissions.get(agents.get(target as typeof session)!) ?? 'workspace-write',
     resolve: name => name === 'danger-full-access'
       ? { sandbox: 'danger-full-access', approval: 'never' }

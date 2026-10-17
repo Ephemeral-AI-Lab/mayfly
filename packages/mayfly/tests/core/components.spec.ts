@@ -56,7 +56,7 @@ const GIF_1X1 = new Uint8Array([
   0, 0, 44, 0, 0, 0, 0, 1, 0, 1, 0, 0, 2, 2, 68, 1, 0, 59,
 ])
 
-const ROLES: (keyof MayflySemanticColors)[] = [
+const ROLES: (Exclude<keyof MayflySemanticColors, 'logoInks'>)[] = [
   'text',
   'textStrong',
   'muted',
@@ -64,7 +64,6 @@ const ROLES: (keyof MayflySemanticColors)[] = [
   'accent',
   'primary',
   'border',
-  'borderFocus',
   'success',
   'error',
   'warning',
@@ -83,19 +82,18 @@ const ROLES: (keyof MayflySemanticColors)[] = [
   'mdListBullet',
   'diffAdded',
   'diffRemoved',
-  'diffAddedStrong',
-  'diffRemovedStrong',
-  'diffGutter',
   'diffMeta',
   'diffAddedBg',
   'diffRemovedBg',
+  'modelHighlight',
 ]
 
 /** A palette whose every token tags its text, so mappings show in output. */
 function taggedTheme(): MayflyTheme {
-  const colors = Object.fromEntries(
-    ROLES.map(role => [role, (text: string) => `«${role}:${text}»`]),
-  ) as unknown as MayflySemanticColors
+  const colors = {
+    ...Object.fromEntries(ROLES.map(role => [role, (text: string) => `«${role}:${text}»`])),
+    logoInks: [identity],
+  } as unknown as MayflySemanticColors
   return { colors }
 }
 
@@ -123,14 +121,15 @@ const SGR = { border: '\x1b[38;5;240m', shellMode: '\x1b[38;5;99m', textMuted: '
 const RESET = '\x1b[0m'
 
 function sgrTheme(): MayflyTheme {
-  const colors = Object.fromEntries(
-    ROLES.map(role => [
+  const colors = {
+    ...Object.fromEntries(ROLES.map(role => [
       role,
       role === 'border' || role === 'shellMode' || role === 'textMuted'
         ? (text: string) => SGR[role] + text + RESET
         : identity,
-    ]),
-  ) as unknown as MayflySemanticColors
+    ])),
+    logoInks: [identity],
+  } as unknown as MayflySemanticColors
   return { colors }
 }
 

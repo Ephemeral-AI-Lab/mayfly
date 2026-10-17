@@ -483,6 +483,7 @@ function bareHost(interaction?: UiInteractionService, extra: Partial<MayflyNodeS
     },
     () => ({ columns: 80, rows: 24 }),
     () => { prompts.push(prompts.length) },
+    () => undefined,
   )
   return {
     host, compiler, service, prompts, slots,

@@ -26,7 +26,7 @@ describe('InteractionStateService', () => {
     service.draft.stashDraft({ raw: 'draft', pastes: new Map() })
     service.draft.stashInputMode('bash')
     service.draft.stashHistory(['one'])
-    service.modelsDevCache = { at: 1, index: { lookup: vi.fn() } }
+    service.modelsDevCache = { at: 1, index: { lookup: vi.fn(), lookupCost: vi.fn() } }
     service.fdProbe.result = Promise.resolve('fd')
     service.updateInFlight = true
     service.pasteImage.backendCooldowns.set('x11', 1)

@@ -1,8 +1,7 @@
 /** Presentation resolution: settings and environment, the monochrome palette, and the theme provider that applies it. */
 import { Context } from '@deepseek-ai/cordis'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { DARK_COLORS } from '../../src/core/theme-dark.ts'
-import { LIGHT_COLORS, MayflyThemeService as LightTheme } from '../../src/core/theme-light.ts'
+import { DARK_COLORS, MayflyThemeService } from '../../src/core/theme-dark.ts'
 import { monochromeColors, noColor, presentedColors, readPresentation, resolvePresentation, samePresentation } from '../../src/core/presentation.ts'
 
 afterEach(() => { vi.unstubAllEnvs() })
@@ -59,7 +58,7 @@ describe('monochrome palette', () => {
     expect(mono.text('t')).toBe('t')
     expect(mono.success('s')).toBe('s')
     expect(mono.diffAddedBg('g')).toBe('g')
-    expect(mono.logoGradient.map(paint => paint('x'))).toEqual(DARK_COLORS.logoGradient.map(() => 'x'))
+    expect(mono.logoInks.map(paint => paint('x'))).toEqual(['x', 'x', '\x1b[2mx\x1b[22m', '\x1b[2mx\x1b[22m', '\x1b[2mx\x1b[22m'])
   })
 
   it('applies only under a monochrome presentation', () => {
@@ -70,7 +69,7 @@ describe('monochrome palette', () => {
   it('is what a theme provider exposes under NO_COLOR', async () => {
     vi.stubEnv('NO_COLOR', '1')
     const ctx = new Context()
-    await ctx.plugin(LightTheme)
-    expect(ctx.mayflyTheme.colors).toBe(monochromeColors(LIGHT_COLORS))
+    await ctx.plugin(MayflyThemeService)
+    expect(ctx.mayflyTheme.colors).toBe(monochromeColors(DARK_COLORS))
   })
 })

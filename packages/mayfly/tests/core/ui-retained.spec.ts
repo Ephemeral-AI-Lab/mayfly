@@ -162,7 +162,7 @@ describe('retained rows', () => {
   it('reports a failed paint on every frame instead of remembering it', () => {
     let paints = 0
     const fail = (): string => { paints += 1; throw new Error('palette failed') }
-    const failing = Object.fromEntries(Object.keys(PROBE_PALETTE).map(token => [token, token === 'logoGradient' ? PROBE_PALETTE.logoGradient : fail])) as unknown as MayflySemanticColors
+    const failing = Object.fromEntries(Object.keys(PROBE_PALETTE).map(token => [token, token === 'logoInks' ? PROBE_PALETTE.logoInks : fail])) as unknown as MayflySemanticColors
     const view = open(ui.loader({ message: 'Working' }), { colors: failing })
     view.layout()
     const first = paints
@@ -194,7 +194,7 @@ describe('moving cells', () => {
   })
 
   it('leaves the clock alone while the only moving cell is below the fold, and joins it when the cell scrolls in', () => {
-    const view = open(ui.scroll(ui.stack.column([...Array.from({ length: 30 }, (_, index) => ui.child(ui.text(`row ${String(index)}`))), ui.child(ui.loader({ message: 'Working' }))]), { scrollbar: true }))
+    const view = open(ui.scroll(ui.stack.column([...Array.from({ length: 30 }, (_, index) => ui.child(ui.text(`row ${String(index)}`))), ui.child(ui.loader({ message: 'Working' }))]), { scrollbar: false }))
     // The first frame cannot know where the cell is and arms the clock; the frame its tick asks for knows.
     view.layout()
     vi.advanceTimersByTime(LOADER_FRAME_MS)

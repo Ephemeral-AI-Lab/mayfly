@@ -50,6 +50,7 @@ async function mount(options: MountOptions = {}) {
   if (presetRows !== undefined) {
     ctx.provide('permissionPresets', {
       names: presetRows.map(row => row.name),
+      defaultPreset: currentPreset,
       current: () => currentPreset,
       resolve: name => {
         const row = presetRows.find(entry => entry.name === name)

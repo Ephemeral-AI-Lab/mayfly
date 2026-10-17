@@ -14,15 +14,10 @@ import {
   type PatternFocus,
 } from '../../src/core/ui-patterns.ts'
 import { paintFormField } from '../../src/core/ui-form-paint.ts'
-import { segmentFooter } from '../../src/core/ui-list-segment.ts'
-import type { MayflyFormField, MayflyListSegment } from '@ephemeral-ai/mayfly-ui'
+import type { MayflyFormField } from '@ephemeral-ai/mayfly-ui'
 import type { MayflySemanticColors } from '../../src/core/types.ts'
 import { visibleWidth } from '../../src/core/width.ts'
 import { identity, plain, plainColors, plainText } from '../helpers.ts'
-
-/** The segment strip's footer line through the production painter. */
-const renderListSegment = (segment: MayflyListSegment, selectedId: string | undefined, width: number, colors: MayflySemanticColors): string =>
-  segmentFooter({ segment, pinned: selectedId ?? null, active: selectedId }, Math.max(1, width), colors, segment.label ?? 'Options')
 
 /** One field's rows through the production painter. */
 const renderFormField = (field: MayflyFormField, width: number, focus: PatternFocus, colors: MayflySemanticColors): string[] =>
@@ -178,50 +173,6 @@ describe('private UI pattern painters', () => {
     expect(focusedRow).toContain('\x1b[1m<accent> [High]</accent>\x1b[22m')
     expect(renderList(node, 40, 2, idle, tracked)[0]).not.toContain('High')
     expect(renderList(ui.list({ id: 'empty-detail', role: 'choose', selectedIds: [], items: [{ id: 'x', label: 'X', detailSpans: [] }] }), 80, 2, idle, tracked)[0]).toBe('  X')
-  })
-
-  it('paints a list-row segment around the selected option and degrades at narrow widths', () => {
-    const primary = vi.fn((value: string) => `\x1b[35m${value}\x1b[39m`)
-    const textStrong = vi.fn((value: string) => `\x1b[1m${value}\x1b[22m`)
-    const tracked = new Proxy(colors, { get: (target, key, receiver) => {
-      if (key === 'primary') return primary
-      if (key === 'textStrong') return textStrong
-      return Reflect.get(target, key, receiver)
-    } })
-    const segment = { label: 'Thinking', options: [
-      { id: 'default', label: 'Default' },
-      { id: 'low', label: 'Low' },
-      { id: 'high', label: 'High' },
-      { id: 'max', label: 'Max', disabled: true },
-    ] }
-    const wide = renderListSegment(segment, 'high', 80, tracked)
-    expect(wide).toContain('‹ High ›')
-    expect(wide).toContain('Default')
-    expect(wide).toContain('Thinking:')
-    expect(primary).toHaveBeenCalledWith('‹ High ›')
-    for (const width of [60, 40, 30, 24, 16, 8]) {
-      const row = renderListSegment(segment, 'high', width, tracked)
-      expect(visibleWidth(row)).toBeLessThanOrEqual(Math.max(1, width))
-      expect(row).toContain('High')
-    }
-    for (const width of [4, 2, 1]) expect(visibleWidth(renderListSegment(segment, 'high', width, tracked))).toBeLessThanOrEqual(Math.max(1, width))
-    expect(renderListSegment(segment, 'high', 24, tracked)).toContain('+')
-    expect(renderListSegment(segment, 'high', 16, tracked)).toContain('+3')
-    const unselected = renderListSegment(segment, undefined, 80, tracked)
-    expect(unselected).not.toContain('‹')
-    const unlabeled = renderListSegment({ options: segment.options }, 'low', 80, tracked)
-    expect(unlabeled).not.toContain('Thinking')
-    expect(unlabeled).toContain('‹ Low ›')
-    const labelOnly = renderListSegment({ label: 'Thinking', options: [
-      { id: 'a', label: 'A' },
-      { id: 'b', label: 'B' },
-      { id: 'c', label: 'C' },
-    ] }, 'c', 20, colors)
-    // The label is the first thing the footer drops, then the strip keeps its single-space gaps.
-    expect(labelOnly).toBe('  A B \x1b[1m‹ C ›\x1b[22m')
-    const disabledActive = renderListSegment(segment, 'max', 80, tracked)
-    expect(disabledActive).toContain('‹ Max ›')
-    expect(primary).not.toHaveBeenCalledWith('‹ Max ›')
   })
 
   it('renders every form field state with validation on its own row', () => {

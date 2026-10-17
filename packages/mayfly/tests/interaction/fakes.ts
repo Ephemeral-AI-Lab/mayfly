@@ -174,7 +174,6 @@ function fakeColors(): MayflySemanticColors {
     accent: text => `*${text}*`,
     primary: text => `^${text}^`,
     border: identity,
-    borderFocus: text => `%${text}%`,
     success: identity,
     error: text => `!${text}!`,
     warning: text => `?${text}?`,
@@ -196,14 +195,11 @@ function fakeColors(): MayflySemanticColors {
     mdListBullet: identity,
     diffAdded: text => `+${text}+`,
     diffRemoved: text => `-${text}-`,
-    diffAddedStrong: text => `=${text}=`,
-    diffRemovedStrong: text => `/${text}/`,
-    diffGutter: text => `:${text}:`,
     diffMeta: text => `;${text};`,
     diffAddedBg: text => `[+${text}+]`,
     diffRemovedBg: text => `[-${text}-]`,
     modelHighlight: identity,
-    logoGradient: [identity],
+    logoInks: [identity, identity, identity, identity, identity],
   }
 }
 

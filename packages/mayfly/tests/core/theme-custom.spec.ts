@@ -6,20 +6,24 @@
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import { ThemeModelService } from '../../src/frontend/theme.ts'
 import { DARK_COLORS } from '../../src/core/theme-dark.ts'
-import { LIGHT_COLORS } from '../../src/core/theme-light.ts'
+import { paletteColors } from '../../src/core/palettes.ts'
 import { apply, Config, name } from '../../src/core/theme-custom.ts'
+
+const LIGHT_COLORS = paletteColors('light')
 
 let dir: string
 
 beforeEach(async () => {
+  vi.stubEnv('NO_COLOR', '')
   dir = await mkdtemp(join(tmpdir(), 'mayfly-theme-custom-'))
 })
 
 afterEach(async () => {
+  vi.unstubAllEnvs()
   await rm(dir, { recursive: true, force: true })
 })
 
@@ -75,14 +79,14 @@ describe('mayfly-theme-custom plugin', () => {
     expect(colors.muted).toBe(LIGHT_COLORS.muted)
   })
 
-  it('accepts a valid logo gradient and freezes its color functions', async () => {
+  it('accepts valid logo inks and freezes their color functions', async () => {
     const ctx = new Context()
-    await mount(ctx, JSON.stringify({ logoGradient: ['#112233', '#aabbcc'] }))
-    const gradient = ctx.mayflyTheme.colors.logoGradient
-    expect(gradient).toHaveLength(2)
-    expect(Object.isFrozen(gradient)).toBe(true)
-    expect(gradient[0]!('hi')).toBe('\x1b[38;2;17;34;51mhi\x1b[39m')
-    expect(gradient[1]!('hi')).toBe('\x1b[38;2;170;187;204mhi\x1b[39m')
+    await mount(ctx, JSON.stringify({ logoInks: ['#112233', '#445566', '#778899', '#aabbcc', '#ddeeff'] }))
+    const inks = ctx.mayflyTheme.colors.logoInks
+    expect(inks).toHaveLength(5)
+    expect(Object.isFrozen(inks)).toBe(true)
+    expect(inks[0]!('hi')).toBe('\x1b[38;2;17;34;51mhi\x1b[39m')
+    expect(inks[4]!('hi')).toBe('\x1b[38;2;221;238;255mhi\x1b[39m')
   })
 
   it('publishes custom semantic tokens to the frontend registry', async () => {
@@ -105,13 +109,13 @@ describe('mayfly-theme-custom plugin', () => {
     expect(colors.diffRemovedBg('hi')).toBe('\x1b[48;2;68;85;102mhi\x1b[49m')
     expect(colors.diffAdded).toBe(LIGHT_COLORS.diffAdded)
     expect(ctx.mayflyThemeModels.current?.colors.diffAddedBg).toBe('#112233')
-    expect(ctx.mayflyThemeModels.current?.colors.selectedBg).toBe('#d0d7de')
+    expect(ctx.mayflyThemeModels.current?.colors.selectedBg).toBe('#E7E7F0')
   })
 
   it('drops invalid entries and falls back to the base palette entry', async () => {
     const ctx = new Context()
     const warns = recordWarnings(ctx)
-    await mount(ctx, JSON.stringify({ text: 'red', accent: 123, roleUser: '#0a7ea4', logoGradient: ['#112233', 'nope'] }))
+    await mount(ctx, JSON.stringify({ text: 'red', accent: 123, roleUser: '#0a7ea4', logoInks: ['#112233', 'nope'] }))
     const { colors } = ctx.mayflyTheme
     expect(colors.text).toBe(DARK_COLORS.text)
     expect(colors.accent).toBe(DARK_COLORS.accent)
@@ -120,13 +124,14 @@ describe('mayfly-theme-custom plugin', () => {
   })
 
   it.each([
-    ['not an array', '"logoGradient":"#112233"'],
-    ['empty', '"logoGradient":[]'],
-  ])('ignores an invalid %s logo gradient', async (_label, json) => {
+    ['not an array', '"logoInks":"#112233"'],
+    ['empty', '"logoInks":[]'],
+    ['short', '"logoInks":["#112233","#445566"]'],
+  ])('ignores an invalid %s logo ink list', async (_label, json) => {
     const ctx = new Context()
     const warns = recordWarnings(ctx)
     await mount(ctx, `{${json}}`)
-    expect(ctx.mayflyTheme.colors.logoGradient).toBe(DARK_COLORS.logoGradient)
+    expect(ctx.mayflyTheme.colors.logoInks).toBe(DARK_COLORS.logoInks)
     expect(warns).toHaveLength(1)
   })
 

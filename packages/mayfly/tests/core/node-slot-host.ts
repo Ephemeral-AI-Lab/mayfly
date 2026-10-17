@@ -25,7 +25,7 @@ import { plainColors } from '../helpers.ts'
 /** A palette that paints nothing, and one that dims every token, so a theme change is visible in the rows. */
 export const PLAIN_COLORS = plainColors()
 const dim = (value: string): string => `\x1b[2m${value}\x1b[22m`
-export const DIM_COLORS = new Proxy({ logoGradient: [dim] }, { get: (target, key) => key === 'logoGradient' ? target.logoGradient : dim }) as unknown as MayflySemanticColors
+export const DIM_COLORS = new Proxy({ logoInks: [dim] }, { get: (target, key) => key === 'logoInks' ? target.logoInks : dim }) as unknown as MayflySemanticColors
 
 export const COMPONENTS = { visibleWidth, wrapText: wrapTextWithAnsi, truncateToWidth, sliceByColumn, createEditor: createFakeEditor } as unknown as MayflyComponents
 
@@ -90,8 +90,19 @@ export function nodeSlotRuntime(initialColumns = 100, initialRows = 40): NodeSlo
     },
     addChild(component: MayflyComponent) { added.push(component) },
     addBottomChild(component: MayflyComponent) { bottomAdded.push(component) },
+    addDockChild() {},
     requestRender() { renders += 1 },
     contentTail: () => undefined,
+    contentStart: () => 1,
+    watchContentTail: () => () => {},
+    followContent() {},
+    scrollContent() { return false },
+    scrollContentTo() {},
+    setContentScrollbarColors() {},
+    setContentScrollHandler() { return () => {} },
+    setTitle() {},
+    suspend<T>(fn: () => Promise<T>): Promise<T> { return fn() },
+    showOverlay() { throw new Error('the node-slot host does not open overlays') },
   } as unknown as MayflyTerminalRuntime
   return {
     runtime,

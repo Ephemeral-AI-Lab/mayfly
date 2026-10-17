@@ -395,10 +395,10 @@ describe('smaller seams', () => {
     const invalidate = vi.fn()
     const region = new ScrollRegion({
       child: { render: () => ['x'], invalidate }, memory: { offset: 0, following: undefined, away: 0 }, height: 2, expandedHeight: 4, fit: false, pill: false, follow: false,
-      scrollbar: true, more: false, expanded: () => false, colors, components: probeComponents(), pillText: String, moreText: String,
+      scrollbar: true, more: false, expanded: () => false, colors, components: probeComponents(), pillText: String, moreText: String, repaint: () => {},
     })
     region.invalidate()
-    region.setScrollbarActive()
+    region.setScrollbarActive(true)
     expect(invalidate).toHaveBeenCalledOnce()
     expect(region.render(10)).toHaveLength(2)
   })

@@ -109,7 +109,7 @@ describe('the stream publish window', () => {
   })
 
   it('coalesces a tick into the pending window and publishes once', () => {
-    const { controller, published, screen, advance, timers, fire } = bench([user(1, 'go'), pending('c1')])
+    const { published, screen, advance, timers, fire } = bench([user(1, 'go'), pending('c1')])
     fire(1_010)
     fire(1_020)
     expect(timers.size).toBe(1)

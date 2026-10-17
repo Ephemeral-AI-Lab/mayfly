@@ -15,7 +15,6 @@ import { initialConversationFacts } from '../../src/conversation/facts.ts'
 import type { ConversationAgentCall, ConversationFacts } from '../../src/conversation/types.ts'
 import * as agentsItem from '../../src/transcript/status-agents.ts'
 import type { ChildSessionFacts } from '../../src/transcript/session-facts.ts'
-import { SHED } from '../../src/transcript/status-shed.ts'
 import { transcriptTranslatorFake } from './notices-fakes.ts'
 import { bootPanePlugin, HandTick } from './pane-fakes.ts'
 import { fakeAgent } from './status-fakes.ts'
@@ -43,7 +42,7 @@ describe('agentRows', () => {
     const ack = call('audit', { result: done('started subagent child-1') })
     expect(rowsOf([ack], [child('child-1')])[0]).toMatchObject({ foreground: false, live: true, childId: 'child-1' })
     expect(rowsOf([ack], [child('child-1', { phase: 'waiting' })])[0]).toMatchObject({ live: true })
-    expect(rowsOf([ack], [child('child-1', { phase: 'completed', endedAt: T0 + 9_000, toolCount: 3, inputTokens: 800, outputTokens: 200 })])[0]).toMatchObject({ live: false, failed: false, stopped: false, endedAt: T0 + 9_000, toolCount: 3, inputTokens: 800, outputTokens: 200 })
+    expect(rowsOf([ack], [child('child-1', { phase: 'completed', endedAt: T0 + 9_000, toolCount: 3, inputTokens: 800, outputTokens: 200 })])[0]).toMatchObject({ live: false, failed: false, stopped: false, endedAt: T0 + 9_000, inputTokens: 800, outputTokens: 200 })
     expect(rowsOf([ack], [child('child-1', { phase: 'failed' })])[0]).toMatchObject({ live: false, failed: true })
     // No facts for the child yet: it works while the turn that spawned it does.
     expect(rowsOf([ack], [], { turn: 1, active: true })[0]).toMatchObject({ live: true, childId: 'child-1' })
@@ -111,29 +110,25 @@ describe('agentRows', () => {
 
 describe('agentsSummary', () => {
   const t = transcriptTranslatorFake
-  const row = (id: string, extra: Partial<agentsItem.AgentRow> = {}): agentsItem.AgentRow => ({ id, label: id, foreground: false, live: false, failed: false, stopped: false, toolCount: 0, inputTokens: 0, outputTokens: 0, liveChars: 0, startedAt: T0, ...extra })
+  const row = (id: string, extra: Partial<agentsItem.AgentRow> = {}): agentsItem.AgentRow => ({ id, label: id, foreground: false, live: false, failed: false, stopped: false, inputTokens: 0, outputTokens: 0, liveChars: 0, startedAt: T0, ...extra })
   const words = (state: agentsItem.AgentsState) => {
-    const node = agentsItem.agentsSummary(state, t)!.node as unknown as { readonly node: { readonly spans: { readonly text: string, readonly tone?: string }[] }, readonly narrower: readonly { readonly rank: number }[] }
-    return { text: node.node.spans.map(span => span.text).join(''), mark: node.node.spans[0], ranks: node.narrower.map(form => form.rank) }
+    const node = agentsItem.agentsSummary(state, t)!.node as unknown as { readonly kind: string, readonly spans: { readonly text: string, readonly tone?: string }[] }
+    return { text: node.spans.map(span => span.text).join(''), mark: node.spans[0] }
   }
 
   it('has no item for a conversation without a subagent', () => {
     expect(agentsItem.agentsSummary({ rows: [], now: T0 }, t)).toBeNull()
   })
 
-  it('counts the settled over all, with the time of the oldest working one', () => {
+  it('counts the settled over all', () => {
     const state = { rows: [row('a', { live: true, startedAt: T0 }), row('b', { live: true, startedAt: T0 + 10_000 }), row('c', { endedAt: T0 + 5_000 })], now: T0 + 41_000 }
-    expect(words(state)).toEqual({ text: '● agents 1/3 41s', mark: { text: '●', tone: 'accent' }, ranks: [SHED.time] })
+    expect(words(state)).toEqual({ text: '● agents 1/3', mark: { text: '●', tone: 'accent' } })
   })
 
-  it('measures a settled subagent that has no end yet against now', () => {
-    expect(words({ rows: [row('a', { startedAt: T0 })], now: T0 + 7_000 })).toMatchObject({ text: '✓ agents 1/1 7s' })
-  })
-
-  it('stays after the last one settles: the longest time that ran, `✓`, or `✕` when one failed on its own', () => {
+  it('stays after the last one settles: `✓`, or `✕` when one failed on its own', () => {
     const settled = [row('a', { endedAt: T0 + 9_000 }), row('b', { endedAt: T0 + 41_000 })]
-    expect(words({ rows: settled, now: T0 + 999_000 })).toMatchObject({ text: '✓ agents 2/2 41s', mark: { text: '✓', tone: 'success' } })
-    expect(words({ rows: [...settled, row('c', { failed: true, endedAt: T0 + 2_000 })], now: T0 + 999_000 })).toMatchObject({ text: '✕ agents 3/3 41s', mark: { text: '✕', tone: 'danger' } })
+    expect(words({ rows: settled, now: T0 + 999_000 })).toMatchObject({ text: '✓ agents 2/2', mark: { text: '✓', tone: 'success' } })
+    expect(words({ rows: [...settled, row('c', { failed: true, endedAt: T0 + 2_000 })], now: T0 + 999_000 })).toMatchObject({ text: '✕ agents 3/3', mark: { text: '✕', tone: 'danger' } })
     // One the user stopped is no failure.
     expect(words({ rows: [...settled, row('d', { stopped: true, endedAt: T0 + 2_000 })], now: T0 + 999_000 })).toMatchObject({ mark: { text: '✓' } })
   })
@@ -141,7 +136,7 @@ describe('agentsSummary', () => {
 
 describe('agentsPanel', () => {
   const t = transcriptTranslatorFake
-  const row = (id: string, extra: Partial<agentsItem.AgentRow> = {}): agentsItem.AgentRow => ({ id, label: id, task: `task of ${id}`, foreground: false, live: false, failed: false, stopped: false, toolCount: 6, inputTokens: 2_048, outputTokens: 4_096, liveChars: 0, startedAt: T0, endedAt: T0 + 41_000, ...extra })
+  const row = (id: string, extra: Partial<agentsItem.AgentRow> = {}): agentsItem.AgentRow => ({ id, label: id, task: `task of ${id}`, foreground: false, live: false, failed: false, stopped: false, inputTokens: 2_048, outputTokens: 4_096, liveChars: 0, startedAt: T0, endedAt: T0 + 41_000, ...extra })
   /** A working row: it has no end yet. */
   const working = (id: string, extra: Partial<agentsItem.AgentRow> = {}): agentsItem.AgentRow => {
     const { endedAt: _endedAt, ...rest } = row(id)
@@ -159,6 +154,7 @@ describe('agentsPanel', () => {
     return found
   }
   const cells = (item: MayflyListItem): string[] => (item.cells ?? []).map(cell => cell.spans.map(span => span.text).join(''))
+  const right = (item: MayflyListItem): string => (item.right ?? []).map(span => span.text).join('')
 
   it('has no panel without a subagent', () => {
     expect(agentsItem.agentsPanel({ rows: [], now: T0 }, t, () => ({}))).toBeNull()
@@ -169,41 +165,40 @@ describe('agentsPanel', () => {
     expect(items(agentsItem.agentsPanel(state, t, () => ({}))).map(item => item.id)).toEqual(['live-1', 'live-2', 'done-1', 'done-2'])
   })
 
-  it('draws the mark, then aligned columns with the time last', () => {
+  it('draws the mark, the aligned columns, and the time last', () => {
     const state = { rows: [working('review', { foreground: true }), row('audit', { failed: true }), row('lint', { stopped: true }), row('docs')], now: T0 + 41_000 }
     const rows = items(agentsItem.agentsPanel(state, t, () => ({})))
     expect(rows.map(item => item.labelSpans![0])).toEqual([{ text: '●', tone: 'accent' }, { text: '✕', tone: 'danger' }, { text: '⊘', tone: 'muted' }, { text: '✓', tone: 'success' }].map(mark => mark))
-    // name, task, fg/bg, tools, tokens total, up, down, rate, time.
-    expect(cells(rows[0]!)).toEqual(['review', 'task of review', 'fg', '6 tools', '6k', '↑2k', '↓4k', '', '41s'])
-    expect(cells(rows[1]!)).toEqual(['audit', 'task of audit', 'bg', '6 tools', '6k', '↑2k', '↓4k', '', '41s'])
-    const columns = rows[0]!.cells!
-    expect(columns.at(-1)).toMatchObject({ align: 'right' })
-    expect(columns[1]).toMatchObject({ min: 34, max: 52 })
-    // The narrow row gives up the rate, then the up count, the down count, the foreground tag, and the tools, in that order.
-    expect(columns.map(cell => cell.shed)).toEqual([undefined, undefined, 3, 4, 2, 6, 5, 7, undefined])
+    // name with its fg/bg tag, then the task; the figures and the time are the right side.
+    expect(cells(rows[0]!)).toEqual(['review(fg)', 'task of review'])
+    expect(cells(rows[1]!)).toEqual(['audit(bg)', 'task of audit'])
+    expect(right(rows[0]!)).toBe('↑2k  ↓4k · 41s')
+    expect(rows[0]!.cells![1]).toMatchObject({ max: 52, shed: 1 })
+    expect(rows[0]!.right!.at(-1)).toMatchObject({ tone: 'muted', text: '41s' })
   })
 
   it('counts the streamed characters of a working child as output, and says the rate while it streams', () => {
     const progress = { startedAt: T0, updatedAt: T0 + 4_000, chars: 4_000, initialChars: 0 } as never
     const state = { rows: [working('stream', { outputTokens: 0, inputTokens: 0, liveChars: 4_000, outputProgress: progress })], now: T0 + 4_500 }
     const [item] = items(agentsItem.agentsPanel(state, t, () => ({})))
-    expect(cells(item!)).toEqual(['stream', 'task of stream', 'bg', '6 tools', '1000', '', '↓1000', '250 tok/s', '4s'].map(text => text === '1000' ? '1000' : text))
+    expect(cells(item!)).toEqual(['stream(bg)', 'task of stream'])
+    expect(right(item!)).toBe('↓1000  250 tok/s · 4s')
   })
 
   it('says no rate for a trickle that rounds to zero', () => {
     const progress = { startedAt: T0, updatedAt: T0 + 10_000, chars: 1, initialChars: 0 } as never
     const [item] = items(agentsItem.agentsPanel({ rows: [working('slow', { outputProgress: progress })], now: T0 + 10_500 }, t, () => ({})))
-    expect(cells(item!)[7]).toBe('')
+    expect(right(item!)).not.toContain('tok/s')
+    expect(right(item!)).toContain('10s')
   })
 
-  it('says one tool in the singular, a settled row without an end against now, and no rate when the child streams nothing yet', () => {
+  it('measures a settled row without an end against now, and says no rate when the child streams nothing yet', () => {
     const progress = { startedAt: T0, updatedAt: T0 + 100, chars: 8, initialChars: 0 } as never
-    const state = { rows: [working('one', { toolCount: 1, outputProgress: progress }), row('open', { toolCount: 0, endedAt: undefined as never })], now: T0 + 130 }
+    const state = { rows: [working('one', { outputProgress: progress }), row('open', { endedAt: undefined as never })], now: T0 + 130 }
     const [live, settled] = items(agentsItem.agentsPanel(state, t, () => ({})))
-    expect(cells(live!)[3]).toBe('1 tool')
-    expect(cells(live!)[7]).toBe('')
-    expect(cells(settled!)[3]).toBe('0 tools')
-    expect(cells(settled!).at(-1)).toBe('0s')
+    expect(right(live!)).not.toContain('tok/s')
+    expect(right(live!)).toContain('0s')
+    expect(right(settled!)).toContain('0s')
   })
 
   it('carries the stop and background keys hidden, and says why a row cannot take one', () => {
@@ -342,8 +337,8 @@ describe('mayfly-status-agents', () => {
     const harness = await bootAgents()
     const ack = call('audit', { startedAt: Date.now(), result: done('started subagent child-1') })
     harness.facts.setFacts({ turn: 1, active: true, agentCalls: [ack] })
-    harness.facts.setChildren([child('child-1', { toolCount: 4 })])
-    expect(JSON.stringify(harness.entry().node)).toContain('4 tools')
+    harness.facts.setChildren([child('child-1', { toolCount: 4, inputTokens: 4_096 })])
+    expect(JSON.stringify(harness.entry().node)).toContain('↑4k')
     harness.facts.setChildren([child('child-1', { phase: 'failed', toolCount: 4, endedAt: Date.now() })])
     expect(harness.summaryText()).toMatch(/^✕ agents 1\/1/u)
     harness.facts.switchTo(fakeAgent([]) as unknown as Agent)
@@ -440,13 +435,14 @@ describe('mayfly-status-agents', () => {
     })
   })
 
-  it('counts a working subagent\'s time on the shared tick, and refreshes when a resident Agent comes or goes', async () => {
+  it('refreshes the panel\'s elapsed time on the shared tick, and when a resident Agent comes or goes', async () => {
     const harness = await bootAgents({ modes: { 'child-1': 'continuable' }, live: ['child-1'] })
     const startedAt = Date.now()
     harness.facts.setFacts({ turn: 1, active: true, agentCalls: [call('fg', { startedAt })] })
-    expect(harness.summaryText()).toMatch(/^● agents 0\/1 /u)
+    expect(harness.summaryText()).toBe('● agents 0/1')
     harness.tick.fire(startedAt + 41_000)
-    expect(harness.summaryText()).toBe('● agents 0/1 41s')
+    expect(harness.summaryText()).toBe('● agents 0/1')
+    expect(JSON.stringify(harness.entry().node)).toContain('"text":"41s"')
     harness.facts.setChildren([child('child-1')])
     harness.facts.setFacts({ turn: 1, active: true, agentCalls: [call('fg', { startedAt, result: done('started subagent child-1') })] })
     // The resident Agent of a continuable child goes: nothing works, though its last facts say so.

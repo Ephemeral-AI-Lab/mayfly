@@ -11,7 +11,6 @@ import type { MayflyListItem, MayflyUiActionEvent, MayflyUiEventContext } from '
 import { describe, expect, it, vi } from 'vitest'
 import { DONE_LINGER_MS } from '../../src/transcript/pane-todo.ts'
 import * as jobsItem from '../../src/transcript/status-jobs.ts'
-import { SHED } from '../../src/transcript/status-shed.ts'
 import { transcriptTranslatorFake } from './notices-fakes.ts'
 import { bootPanePlugin, HandTick } from './pane-fakes.ts'
 import { fakeAgent } from './status-fakes.ts'
@@ -39,20 +38,19 @@ describe('jobsSummary', () => {
   const t = transcriptTranslatorFake
   const summary = (jobs: JobView[], extra: Partial<jobsItem.JobsState> = {}) => jobsItem.jobsSummary({ jobs, now: NOW, history: false, ...extra }, t)
 
-  it('counts the live jobs and the time of the longest one, and gives the time up first', () => {
-    const node = summary([job('a', 'running', { startedAt: NOW - 41_000 }), job('b', 'stopping', { startedAt: NOW - 5_000 }), job('c', 'completed')])!.node as unknown as { readonly kind: string, readonly narrower: readonly { readonly rank: number, readonly node: unknown }[] }
-    expect(fullText(node)).toBe('● jobs 2 41s')
-    expect(node.narrower.map(form => [form.rank, spansOf(form.node).map(span => span.text).join('')])).toEqual([[SHED.time, '● jobs 2']])
+  it('counts the live jobs', () => {
+    const node = summary([job('a', 'running', { startedAt: NOW - 41_000 }), job('b', 'stopping', { startedAt: NOW - 5_000 }), job('c', 'completed')])!.node
+    expect(fullText(node)).toBe('● jobs 2')
   })
 
   it('holds a closing line once the last live job settles: `✓` or, when one failed, `✕`', () => {
-    expect(summary([], { done: { total: 3, elapsedMs: 41_000, failed: false } })!.node).toBeDefined()
-    expect(fullText(summary([], { done: { total: 3, elapsedMs: 41_000, failed: false } })!.node)).toBe('✓ jobs 3/3 41s')
-    const failed = summary([], { done: { total: 5, elapsedMs: 52_000, failed: true } })!.node
-    expect(fullText(failed)).toBe('✕ jobs 5/5 52s')
+    expect(summary([], { done: { total: 3, failed: false } })!.node).toBeDefined()
+    expect(fullText(summary([], { done: { total: 3, failed: false } })!.node)).toBe('✓ jobs 3/3')
+    const failed = summary([], { done: { total: 5, failed: true } })!.node
+    expect(fullText(failed)).toBe('✕ jobs 5/5')
     expect(spansOf((failed as { node: unknown }).node)[0]).toEqual({ text: '✕', tone: 'danger' })
     // A live job outranks a held closing line.
-    expect(fullText(summary([job('a', 'running', { startedAt: NOW - 1_000 })], { done: { total: 3, elapsedMs: 1, failed: false } })!.node)).toBe('● jobs 1 1s')
+    expect(fullText(summary([job('a', 'running', { startedAt: NOW - 1_000 })], { done: { total: 3, failed: false } })!.node)).toBe('● jobs 1')
   })
 
   it('shows nothing with no live job and no closing line', () => {
@@ -247,7 +245,7 @@ describe('mayfly-status-jobs', () => {
     expect(harness.tick.subscribers).toBe(1)
     const before = Date.now()
     registry.publish([job('build', 'completed', { startedAt: start - 3_000, finishedAt: start }), job('test', 'failed', { startedAt: start - 2_000, finishedAt: start, detail: 'exit code: 1' })])
-    expect(fullText(harness.entry().summary!.node)).toBe('✕ jobs 2/2 3s')
+    expect(fullText(harness.entry().summary!.node)).toBe('✕ jobs 2/2')
     harness.tick.fire(before + DONE_LINGER_MS - 1)
     expect(harness.entry().summary).not.toBeNull()
     harness.tick.fire(Date.now() + DONE_LINGER_MS + 1_000)

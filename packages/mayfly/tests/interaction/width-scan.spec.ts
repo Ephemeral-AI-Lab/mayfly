@@ -18,8 +18,6 @@ import type { JobView } from '@deepseek-ai/dsh-jobs'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import { scheduleNode } from '../../src/interaction/schedule-command.ts'
 import { accountPanelNode } from '../../src/interaction/provider-account.ts'
-import { welcomeNode } from '../../src/interaction/welcome.ts'
-import { onboardingChoiceNode, onboardingKeyNode } from '../../src/interaction/provider-onboarding.ts'
 import { INTERACTION_LOCALE } from '../../src/interaction/locale.ts'
 import { interpolateLocaleMessage, type MayflyLocaleId } from '../../src/frontend/locale.ts'
 import { helpNode, type HelpSection } from '../../src/interaction/help.ts'
@@ -300,14 +298,6 @@ for (const { name, text } of ADVERSARIAL) it(`native feature catalogs fit ${name
           accountPanelNode({ status: 'signed-out', links, attempt: { id: 'attempt' as never, phase: 'waiting-browser', authorizeUrl: text, expiresAt: Date.now() + 600_000 } }, t, true, 41321),
           accountPanelNode({ status: 'signed-out', links, attempt: { id: 'attempt' as never, phase: 'waiting-browser', authorizeUrl: text, expiresAt: 1 } }, t, true),
           accountPanelNode({ status: 'signed-out', links, attempt: null }, t, false),
-          accountPanelNode({ status: 'signed-out', links, attempt: { id: 'attempt' as never, phase: 'waiting-browser', authorizeUrl: text, expiresAt: Date.now() + 600_000 } }, t, true, 41321, { guide: true }),
-          accountPanelNode({ status: 'signed-out', links, attempt: { id: 'attempt' as never, phase: 'failed', errorCode: 'network' } }, t, true, undefined, { guide: true }),
-          accountPanelNode({ status: 'credential-stored', links, attempt: { id: 'attempt' as never, phase: 'succeeded' } }, t, true, undefined, { guide: true }),
-          onboardingChoiceNode(t, true),
-          onboardingChoiceNode(t, false),
-          onboardingKeyNode(t),
-          welcomeNode(t, 'en', 'dark'),
-          welcomeNode(t, 'zh', 'ocean'),
           scheduleNode(reminders, Date.now(), t, locale),
           scheduleNode([], Date.now(), t, locale),
           scheduleNode(undefined, Date.now(), t, locale),

@@ -3,10 +3,10 @@
  */
 import { Context } from '@deepseek-ai/cordis'
 import type { AccountClientMetadata, AccountView, SignInAttemptId, SignInAttemptView } from '@deepseek-ai/dsh-deepseek-account'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import { MAYFLY_VERSION } from '../../src/transcript/banner-content.ts'
 import { setClipboardTextWriter } from '../../src/interaction/clipboard-write.ts'
-import { GUIDE_CLOSE_DELAY_MS, accountInternals, accountPanelNode, callbackOrigin, clientMetadata, openAccountPanel, openUrlInBrowser, openerFor, parseCallbackLocation } from '../../src/interaction/provider-account.ts'
+import { accountInternals, accountPanelNode, callbackOrigin, clientMetadata, openAccountPanel, openUrlInBrowser, openerFor, parseCallbackLocation } from '../../src/interaction/provider-account.ts'
 import { providerFixture } from './provider-fixture.ts'
 import { flush } from '../helpers.ts'
 
@@ -209,45 +209,6 @@ describe('DeepSeek account panel', () => {
     }
   })
 
-  it('shows the guide step and closes itself shortly after a successful sign-in', async () => {
-    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
-    const original = accountInternals.spawnOpener
-    accountInternals.spawnOpener = async () => true
-    try {
-      const { ctx, account } = await bench(signedOut, { port: 45678 })
-      const connected: string[] = []
-      await openAccountPanel(ctx, 'deepseek-account', undefined, { onBack: () => {}, onConnected: () => { connected.push('model') } })
-      const model = ctx.mayflyUiInteraction.get('overlay', panelId)!
-      expect(JSON.stringify(model.node)).toContain('Step 2 of 2 · Finish in your browser')
-      model.invoke('sign-in')
-      await vi.advanceTimersByTimeAsync(0)
-      account.complete()
-      await vi.advanceTimersByTimeAsync(0)
-      expect(JSON.stringify(model.node)).not.toContain('Step 2 of 2')
-      expect(ctx.mayflyOverlays.list().map(entry => entry.id)).toContain(panelId)
-      account.complete()
-      expect(connected).toEqual([])
-      await vi.advanceTimersByTimeAsync(GUIDE_CLOSE_DELAY_MS)
-      expect(ctx.mayflyOverlays.list().map(entry => entry.id)).not.toContain(panelId)
-      expect(connected).toEqual(['model'])
-    } finally {
-      vi.useRealTimers()
-      accountInternals.spawnOpener = original
-    }
-  })
-
-  it('cancels the pending close when the panel unloads first', async () => {
-    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
-    try {
-      const { ctx, account } = await bench(signedOut, { port: 45678 })
-      await openAccountPanel(ctx, 'deepseek-account', undefined, { onBack: () => {}, onConnected: () => {} })
-      account.complete()
-      await vi.advanceTimersByTimeAsync(0)
-      await ctx.fiber.dispose()
-      await vi.advanceTimersByTimeAsync(GUIDE_CLOSE_DELAY_MS)
-    } finally { vi.useRealTimers() }
-  })
-
   it('delivers a pasted callback to the loopback server and reports rejection', async () => {
     const delivered: string[] = []
     const originalFetch = accountInternals.fetchCallback
@@ -427,40 +388,8 @@ describe('DeepSeek account panel', () => {
     expect(plainJson).toContain('Connected — account models need no API key.')
     expect(plainJson).not.toContain('Signing in…')
     expect(plainJson).toContain('"Close"')
-    const inGuide = await bench(done, { port: 45678 })
-    await openAccountPanel(inGuide.ctx, 'deepseek-account', undefined, { onBack: () => {}, onConnected: () => {} })
-    expect(JSON.stringify(inGuide.ctx.mayflyUiInteraction.get('overlay', panelId)!.node)).toContain('"Start chatting"')
   })
 
-  it('returns to the guide when the account step closes before connecting, and only then', async () => {
-    const exits: string[] = []
-    const guide = { onBack: () => { exits.push('back') }, onConnected: () => { exits.push('connected') } }
-    const idle = await bench(signedOut, { port: 45678 })
-    await openAccountPanel(idle.ctx, 'deepseek-account', undefined, guide)
-    idle.ctx.mayflyUiInteraction.get('overlay', panelId)!.invoke('close')
-    await flush(4)
-    expect(exits).toEqual(['back'])
-
-    const done = await bench(signedOut, { port: 45678 })
-    await openAccountPanel(done.ctx, 'deepseek-account', undefined, guide)
-    await flush(4)
-    done.account.complete()
-    await flush(4)
-    done.ctx.mayflyUiInteraction.get('overlay', panelId)!.invoke('close')
-    await flush(4)
-    expect(exits).toEqual(['back'])
-
-    const unloading = await bench(signedOut, { port: 45678 })
-    await openAccountPanel(unloading.ctx, 'deepseek-account', undefined, guide)
-    await unloading.ctx.fiber.dispose()
-    expect(exits).toEqual(['back'])
-
-    const standalone = await bench(signedOut, { port: 45678 })
-    await openAccountPanel(standalone.ctx, 'deepseek-account')
-    standalone.ctx.mayflyUiInteraction.get('overlay', panelId)!.invoke('close')
-    await flush(4)
-    expect(exits).toEqual(['back'])
-  })
   it('answers a stale copy against the live attempt state, not the waiting panel', async () => {
     const copied: string[] = []
     setClipboardTextWriter(async text => { copied.push(text) })

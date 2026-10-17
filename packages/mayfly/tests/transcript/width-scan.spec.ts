@@ -23,7 +23,7 @@ import * as goalStatus from '../../src/transcript/status-goal.ts'
 import * as agentsStatus from '../../src/transcript/status-agents.ts'
 import * as jobsStatus from '../../src/transcript/status-jobs.ts'
 import { footerRows } from './footer-fakes.ts'
-import { bannerLayout, composeBannerLines, shortenHome } from '../../src/transcript/banner.ts'
+import { composeBannerLines, shortenHome } from '../../src/transcript/banner.ts'
 import { fakeMayflyComponents } from './helpers.ts'
 import { bootPanePlugin } from './pane-fakes.ts'
 import { COLORS, fakeAgent } from './status-fakes.ts'
@@ -173,7 +173,7 @@ describe('transcript width-scan', () => {
         id: 'width-goal', revision: 1, objective: text, phase: 'blocked', blockedReason: { code: 'width', message: text },
         maxGoalRounds: 8, roundsStarted: 2, createdAt: 1, updatedAt: 2, activation: 'armed',
       } as never
-      const state = { goal: view, now: 1_000_000 }
+      const state = { goal: view }
       const panel = goalStatus.goalPanel(state, t)
       if (panel === null) throw new Error('goal width fixture did not render')
       for (const width of SCAN_WIDTHS) {
@@ -196,10 +196,7 @@ describe('transcript width-scan', () => {
         truncate: (t: string, target: number) => components.truncateToWidth(t, target),
         visibleWidth: (t: string) => components.visibleWidth(t),
       }
-      for (const width of SCAN_WIDTHS) {
-        if (bannerLayout(width) === null) continue
-        expectLinesFit(`Banner/${name}`, composeBannerLines(deps, content, width), width)
-      }
+      for (const width of SCAN_WIDTHS) expectLinesFit(`Banner/${name}`, composeBannerLines(deps, content, width), width)
     })
   }
 
@@ -213,7 +210,6 @@ describe('transcript width-scan', () => {
       status.register({ id: 'scan-center', priority: 0, band: 'center', overflow: 'truncate' }, { kind: 'rich-text', spans: [{ text: 'MAIN', tone: 'accent' }, { text: ` · ${text}`, tone: 'muted' }] })
       status.register({ id: 'scan-goal', priority: 2, overflow: 'hide' }, goalStatus.goalSummary({
         goal: { id: 'goal-width' as never, revision: 1, objective: text, phase: 'active', maxGoalRounds: 256, roundsStarted: 128, createdAt: 1, updatedAt: 2, activation: 'armed' } as never,
-        now: 1_000_000,
       }, transcriptTranslatorFake)!.node)
       // The footer paints what was registered: a scan of empty rows would pass for any width.
       expect(footerRows(status.list(), 120, components, colors).join('')).toContain('MAIN')

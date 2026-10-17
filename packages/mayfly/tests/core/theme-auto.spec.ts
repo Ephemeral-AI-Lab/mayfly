@@ -4,12 +4,19 @@
  * `mayflyTerminalInfo` is faked with the real `MayflyTerminalInfoService`.
  */
 
-import { describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import { MayflyTerminalInfoService } from '../../src/core/terminal-info.ts'
 import { DARK_COLORS } from '../../src/core/theme-dark.ts'
-import { LIGHT_COLORS } from '../../src/core/theme-light.ts'
+import { paletteColors } from '../../src/core/palettes.ts'
 import { apply, inject, name } from '../../src/core/theme-auto.ts'
+
+const LIGHT_COLORS = paletteColors('light')
+
+// The swap assertions compare the color tables; a host NO_COLOR would give
+// back the monochrome forms instead.
+beforeEach(() => { vi.stubEnv('NO_COLOR', '') })
+afterEach(() => { vi.unstubAllEnvs() })
 
 /** Mount the fake terminal facts, then the auto theme plugin. */
 async function mount(ctx: Context, background: 'dark' | 'light' | undefined) {

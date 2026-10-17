@@ -35,6 +35,7 @@ function fakePresets(behavior: { current?: string } = {}): PermissionPresetsServ
   const current = behavior.current ?? 'workspace-write'
   return {
     names: TABLE.map(entry => entry.name),
+    defaultPreset: 'workspace-write',
     current: () => current,
     resolve: name => {
       const entry = TABLE.find(row => row.name === name)
