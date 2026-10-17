@@ -381,9 +381,11 @@ test-only, is on `perf/phase-7`:
 - The workbench driver test now provides the `mayflySessionStart` service the app requires, and `startSplash` no longer
   asserts an arbitrary minimum action count.
 
-The pr tier now passes lint, build, typecheck, lib exports, examples, pack, CLI registry smoke, and workflow tests, and
-the perf A/B step passes. The remaining selected-spec failures are the pre-existing e2e/app/vt harness assumptions about
-lazy startup (also failing on `main`), and the scenario step has no local goldens.
+The pr tier now passes lint, build, typecheck, lib exports, examples, pack, CLI registry smoke, workflow tests, and the
+selected specs; the perf A/B step passes as well. The e2e/app/vt harness was moved onto the lazy-start model
+(`mayflySessionStart.ensure()` on the first action, one creation/selection per start, throttled publish waits), and those
+three suites are 38/38. The only pr step that cannot pass in this checkout is the scenario comparison: the repository has
+no `script/scenarios/golden/` directory here, so every checkpoint is reported `new` rather than compared.
 
 ### Remaining
 
