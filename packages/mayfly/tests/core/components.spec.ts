@@ -5,13 +5,10 @@
  * polish on the editor — the wrapping slash dropdown (vs. the stock list on
  * other prefixes), Enter accepting-and-submitting a slash completion, the
  * bold leading slash token, the argument-hint ghost, and the fuzzy
- * re-exports. The S22 mention additions: the `createFileMentionProvider`
- * factory (stateless apply math, fd delegation) and the editor adapter's
- * mention drill-down reopen hook.
+ * re-exports. The S22 mention additions: the editor adapter's mention
+ * drill-down reopen hook.
  */
 
-import { chmodSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import {
@@ -37,11 +34,7 @@ import type {
   MayflyTheme,
 } from '../../src/core/types.ts'
 import { FakeTerminal, waitForRender } from './fake-terminal.ts'
-import { mkdtempTracked, registerTempDirCleanup } from './temp-dir.ts'
 import { identity } from '../helpers.ts'
-
-
-registerTempDirCleanup()
 
 /** A 1x1 PNG. */
 const PNG_1X1 = new Uint8Array([
@@ -1019,57 +1012,6 @@ describe('width helpers', () => {
     expect(components.truncateToWidth(styled, 8)).toBe(piTruncateToWidth(styled, 8))
     expect(components.truncateToWidth(styled, 8, '…')).toBe(piTruncateToWidth(styled, 8, '…'))
     expect(components.topRule(12, { title: ' t ', hint: ' h ' })).toBe('╭ t ─  h ──╮')
-    stop()
-  })
-})
-
-describe('createFileMentionProvider', () => {
-  it('returns null suggestions without an fd backend and applies completions statelessly', async () => {
-    const { tui, stop } = bootTui()
-    const components = createService(tui)
-    const provider = components.createFileMentionProvider(process.cwd(), null)
-    await expect(provider.getSuggestions(['@any'], 0, 4, { signal: new AbortController().signal })).resolves.toBeNull()
-    // The apply math is fd-independent: directories keep the cursor for
-    // drill-down (no trailing space), files append one.
-    const directory = provider.applyCompletion(['see @sr'], 0, 7, { value: '@src/', label: 'src/' }, '@sr')
-    expect(directory).toEqual({ lines: ['see @src/'], cursorLine: 0, cursorCol: 9 })
-    const file = provider.applyCompletion(['see @sr'], 0, 7, { value: '@src/a.ts', label: 'a.ts' }, '@sr')
-    expect(file).toEqual({ lines: ['see @src/a.ts '], cursorLine: 0, cursorCol: 14 })
-    stop()
-  })
-
-  it('keeps the cursor inside the closing quote of a quoted directory', () => {
-    const { tui, stop } = bootTui()
-    const components = createService(tui)
-    const provider = components.createFileMentionProvider(process.cwd(), null)
-    const applied = provider.applyCompletion(
-      ['see @"a'],
-      0,
-      7,
-      { value: '@"a b/"', label: 'a b/' },
-      '@"a',
-    )
-    expect(applied).toEqual({ lines: ['see @"a b/"'], cursorLine: 0, cursorCol: 10 })
-    stop()
-  })
-
-  it('delegates to a spawned fd through the renderer pipeline', async () => {
-    const { tui, stop } = bootTui()
-    const components = createService(tui)
-    const root = mkdtempTracked('mayfly-core-mention-')
-    const bin = mkdtempTracked('mayfly-core-mention-bin-')
-    const fd = join(bin, 'fd')
-    // The fake ignores fd's arguments and prints one directory line; the
-    // pipeline's own handling (trailing-slash kind detection, the
-    // @-carrying value, the basename label) is the contract pinned here.
-    writeFileSync(fd, '#!/bin/sh\nprintf "src/\\n"\n')
-    chmodSync(fd, 0o755)
-    const provider = components.createFileMentionProvider(root, fd)
-    const suggestions = await provider.getSuggestions(['@sr'], 0, 3, { signal: new AbortController().signal })
-    expect(suggestions).toEqual({
-      items: [{ value: '@src/', label: 'src/', description: 'src' }],
-      prefix: '@sr',
-    })
     stop()
   })
 })

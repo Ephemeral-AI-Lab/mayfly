@@ -64,9 +64,6 @@ export function fakeMayflyComponents(): MayflyComponents {
     topRule,
     imageProtocol: () => false,
     imageDimensions: () => undefined,
-    createFileMentionProvider(): never {
-      throw new Error('fake createFileMentionProvider is out of scope for transcript tests')
-    },
     fuzzyMatch(): never {
       throw new Error('fake fuzzyMatch is out of scope for transcript tests')
     },

@@ -399,6 +399,54 @@ describe('mayfly-status-git', () => {
     await dispose()
   })
 
+  it('rebuilds the cache for the native workingDirectory projection and ignores other keys', async () => {
+    const dumps: Record<string, string | null> = {
+      'branch --show-current': 'alpha',
+      'status --porcelain -b': '## alpha\n',
+    }
+    const cwds: string[] = []
+    git.setGitCommandRunner((args, cwd) => {
+      cwds.push(cwd)
+      const key = args.join(' ')
+      return key in dumps ? dumps[key]! : null
+    })
+    git.setGitClock(() => T0)
+    const agent = fakeAgent([], { cwd: '/repo-a' })
+    let directory: string | null = null
+    const listeners = new Set<(session: unknown, key: string, value: unknown, seq: number) => void>()
+    const harness = await bootStatusPlugin(git, agent, {
+      services: {
+        sessionProjections: {
+          snapshot: (_session: unknown, keys?: readonly string[]) => ({
+            asOfSeq: 0,
+            values: keys === undefined || keys.includes('workingDirectory') ? { workingDirectory: directory } : {},
+          }),
+          onChanged(listener: (session: unknown, key: string, value: unknown, seq: number) => void): () => void {
+            listeners.add(listener)
+            return () => { listeners.delete(listener) }
+          },
+        },
+      },
+    })
+    expect(harness.entry.render(80)).toBe('alpha')
+    expect(cwds.at(-1)).toBe('/repo-a')
+
+    // The native directory moves: the cache and its probes follow it.
+    dumps['branch --show-current'] = 'beta'
+    directory = '/repo-b'
+    for (const listener of listeners) listener(agent.session, 'workingDirectory', directory, 1)
+    await settleProbe()
+    expect(harness.entry.render(80)).toBe('beta')
+    expect(cwds.at(-1)).toBe('/repo-b')
+
+    // An unrelated key on the same session starts no new probe.
+    const calls = cwds.length
+    for (const listener of listeners) listener(agent.session, 'modelSelection', undefined, 2)
+    await settleProbe()
+    expect(cwds).toHaveLength(calls)
+    await harness.dispose()
+  })
+
   it('drops a late probe from the previous session generation', async () => {
     const oldBranch = Promise.withResolvers<string | null>()
     git.setGitCommandRunner((args, cwd) => {

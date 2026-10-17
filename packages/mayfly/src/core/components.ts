@@ -11,7 +11,6 @@
 import { Context, Service } from '@deepseek-ai/cordis'
 import {
   CURSOR_MARKER,
-  CombinedAutocompleteProvider,
   Editor,
   Image,
   Markdown,
@@ -986,20 +985,6 @@ export class MayflyComponentsService extends Service implements MayflyComponents
       if (dimensions !== null) return { width: dimensions.widthPx, height: dimensions.heightPx }
     }
     return undefined
-  }
-
-  /**
-   * Create the `@`-mention completion source: the renderer's combined
-   * provider constructed with no commands, so only its `@` branch ever runs.
-   * `MayflyAutocompleteProvider` is structurally identical to the renderer's
-   * provider type, so the instance passes through unwrapped — the renderer
-   * type never crosses the Mayfly signature.
-   * @param basePath - the project root relative paths are reported from.
-   * @param fdPath - the `fd` binary to spawn, or `null` when unavailable.
-   * @returns the mention completion source.
-   */
-  createFileMentionProvider(basePath: string, fdPath: string | null): MayflyAutocompleteProvider {
-    return new CombinedAutocompleteProvider([], basePath, fdPath)
   }
 
   /**

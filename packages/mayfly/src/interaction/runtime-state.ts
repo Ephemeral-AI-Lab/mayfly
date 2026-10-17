@@ -12,7 +12,6 @@ import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import { CommandAliasRegistry } from './command-meta.ts'
 import { DraftStash } from './draft-stash.ts'
 import { SessionlessCommandRegistry } from './sessionless-commands.ts'
-import type { FdProbeRuntimeState } from './file-mention.ts'
 import type { ModelsDevIndex } from './models-dev.ts'
 import type { PromptWaits } from './prompt-wait.ts'
 import type { MayflySettings } from './settings.ts'
@@ -45,7 +44,6 @@ export class InteractionStateService extends Service {
   lastAppliedTheme: MayflySettings['theme'] = 'dark'
   currentThemeKey = 'dark'
   modelsDevCache: { at: number, index: ModelsDevIndex } | undefined
-  readonly fdProbe: FdProbeRuntimeState = { result: undefined }
   updateInFlight = false
   /** The `@` mentions the user accepted from the completion list; the editor shows each as a token while its text stands. */
   readonly mentions = new Set<string>()
@@ -73,7 +71,6 @@ export class InteractionStateService extends Service {
     this.splash.focus = undefined
     this.draft.clearAll()
     this.modelsDevCache = undefined
-    this.fdProbe.result = undefined
     this.pasteImage.backendCooldowns.clear()
     this.pasteImage.pastedImages.clear()
     this.mentions.clear()

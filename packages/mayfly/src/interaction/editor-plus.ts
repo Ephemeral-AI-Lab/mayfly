@@ -7,10 +7,11 @@
  * matching over the command names (`./slash-filter.ts`), slash
  * values that carry their leading slash so a single Enter accepts the
  * selection and submits, and the argument-hint ghost driven from each
- * command's `input.hint`. `@` mentions run the S22 kimi composition
- * (`./file-mention.ts`): the L0 fd pipeline — scoped queries, substring
- * scoring, top-20, quoted values — with the filesystem fallback while fd
- * is unavailable. The S29 `#` branch completes the settled
+ * command's `input.hint`. `@` mentions read the native file-reference
+ * service (`ctx.fileReferences.list`) through the official
+ * `@deepseek-ai/dsh-file-reference` token grammar and mention formatter —
+ * quoted paths, directories kept open for drill-down, and no filesystem walk
+ * of Mayfly's own. The S29 `#` branch completes the settled
  * user-invocable skills (`./skills-catalog.ts`) through the same fuzzy
  * filter as the slash dropdown — values and prefix carry their `#`, a
  * `user-only` prefix marks skills the model cannot invoke, Enter accepts
@@ -34,6 +35,7 @@
 import { exec } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import type { Context } from '@deepseek-ai/cordis'
+import { activeAtToken, formatFileMention, type FileReferenceCandidate } from '@deepseek-ai/dsh-file-reference'
 import { GutterComponent, STREAM_GUTTER } from '../core/gutter.ts'
 import type { MayflyAutocompleteItem, MayflyAutocompleteProvider, MayflyAutocompleteSuggestions, MayflyComponent, MayflyComponents, MayflySemanticColors } from '../core/types.ts'
 import type { MayflyTranslate } from '../frontend/locale.ts'
@@ -43,8 +45,7 @@ import {
   registerEditorAutocompleteSource,
   type SharedEditor,
 } from './editor-instance.ts'
-import { detectFdPath, extractAtPrefix, createMentionScanCache, fsMentionSuggestions, listDirectoryMentions, withPathLabels } from './file-mention.ts'
-import { requiresFilesystemMention } from '../internal/mention.ts'
+import { agentDirectory } from '../internal/session-directory.ts'
 import { ACTION_BACKSPACE, ACTION_CANCEL } from './keys.ts'
 import { extractSkillPrefix, refresh, userInvocableSkills } from './skills-catalog.ts'
 import { commandHint, listCommands } from './sessionless-commands.ts'
@@ -116,22 +117,87 @@ function slashItemDescription(command: {
   return command.inputHint === undefined ? description : `${command.inputHint} — ${description}`
 }
 
-/** The directory `@` completion and `!` commands run in: the displayed Agent's session directory, else the launch directory. */
+/** The directory `@` completion and `!` commands run in: the displayed Agent's current working directory, else the launch directory. */
 export function sessionCwd(ctx: Context): string {
-  return ctx.mayflyCurrentAgent.current()?.session.header.cwd ?? process.cwd()
+  const agent = ctx.mayflyCurrentAgent.current()
+  return agent === null ? process.cwd() : agentDirectory(ctx, agent)
 }
 
 /**
  * Record the mention an `@` completion just finished, so the editor shows it as a token. A file's completion ends with a
- * space after the path; a directory's stays open for drill-down and is no mention yet.
+ * space after the path; a directory's stays open for drill-down and is no mention yet. The token is the native
+ * formatter's spelling (`@path` or `@"a quoted path"`), which a closed quoted mention cannot re-derive from the grammar
+ * (it parses open tokens for completion).
  * @param ctx - plugin context carrying the interaction state.
  * @param applied - the completion's result: the new lines and the cursor.
+ * @param mention - the accepted mention value.
  */
-function rememberMention(ctx: Context, applied: { readonly lines: readonly string[], readonly cursorLine: number, readonly cursorCol: number }): void {
+function rememberMention(
+  ctx: Context,
+  applied: { readonly lines: readonly string[], readonly cursorLine: number, readonly cursorCol: number },
+  mention: string,
+): void {
   const before = (applied.lines[applied.cursorLine] ?? '').slice(0, applied.cursorCol)
   if (!before.endsWith(' ')) return
-  const mention = extractAtPrefix(before.slice(0, -1))
-  if (mention !== null && mention.length > 1) ctx.mayflyInteractionState.mentions.add(mention)
+  if (mention.length > 1 && mention.startsWith('@')) ctx.mayflyInteractionState.mentions.add(mention)
+}
+
+/**
+ * Shape one native file-reference candidate as a mention item. The value
+ * carries the official formatter's spelling: `@path` for an ordinary file,
+ * `@"path with spaces"` for a quoted one, and a directory always ends in
+ * `/` so accepting it stays open for drill-down. A quoted directory chip
+ * closes its quote on acceptance (the formatter's open quote exists for
+ * further typing); the completion cursor then lands inside that close so a
+ * drill-down continues in the quoted token.
+ * @param candidate - the native candidate.
+ * @param preserveQuote - whether the typed token had an explicit open quote.
+ * @returns the dropdown item, or `undefined` when the grammar cannot represent the path.
+ */
+function mentionItem(candidate: FileReferenceCandidate, preserveQuote: boolean): MayflyAutocompleteItem | undefined {
+  const formatted = formatFileMention(candidate, preserveQuote)
+  if (formatted === undefined) return undefined
+  const value = candidate.kind === 'directory' && formatted.startsWith('@"') && !formatted.endsWith('"')
+    ? `${formatted}"`
+    : formatted
+  return { value, label: candidate.kind === 'directory' ? `${candidate.path}/` : candidate.path }
+}
+
+/**
+ * Apply one accepted mention with pi-tui's non-slash completion semantics:
+ * files take a trailing space, directories stay open (no space) and the
+ * cursor parks inside the closing quote of a quoted directory.
+ * @param lines - the editor content.
+ * @param cursorLine - the cursor's line index.
+ * @param cursorCol - the cursor's column.
+ * @param item - the accepted item.
+ * @param prefix - the active `@` token replaced by the item.
+ * @returns the new content and cursor.
+ */
+function applyMentionCompletion(
+  lines: string[],
+  cursorLine: number,
+  cursorCol: number,
+  item: MayflyAutocompleteItem,
+  prefix: string,
+): { lines: string[], cursorLine: number, cursorCol: number } {
+  const line = lines[cursorLine] ?? ''
+  const beforePrefix = line.slice(0, cursorCol - prefix.length)
+  const afterCursor = line.slice(cursorCol)
+  const quotedPrefix = prefix.startsWith('@"')
+  const hasTrailingQuote = item.value.endsWith('"')
+  const adjustedAfterCursor = quotedPrefix && hasTrailingQuote && afterCursor.startsWith('"')
+    ? afterCursor.slice(1)
+    : afterCursor
+  const isDirectory = item.label.endsWith('/')
+  const suffix = isDirectory ? '' : ' '
+  const newLine = `${beforePrefix + item.value}${suffix}${adjustedAfterCursor}`
+  const cursorOffset = isDirectory && hasTrailingQuote ? item.value.length - 1 : item.value.length
+  return {
+    lines: withLine(lines, cursorLine, newLine),
+    cursorLine,
+    cursorCol: beforePrefix.length + cursorOffset + suffix.length,
+  }
 }
 
 /**
@@ -140,16 +206,13 @@ function rememberMention(ctx: Context, applied: { readonly lines: readonly strin
  * over the command names, the prefix carried with its slash so Enter
  * accepts-and-submits through pi-tui's slash-list semantics, and the
  * argument hint joined into the description), an `@` token completes
- * project paths as mentions (the S22 kimi composition: the L0 fd pipeline
- * with scoped queries, substring scoring, top-20, and quoted values, the
- * filesystem fallback while fd is unavailable, values carrying their `@`,
- * and `applyCompletion` delegated so directories stay open for drill-down;
- * an empty result — the empty-session-cwd corner among them — flashes a
- * hint-line notice instead of failing silently, the S22 dogfood fix).
- * `@` takes priority over the slash guards so mentions work inside command
- * arguments. In bash mode a leading `/` is a path separator, not a command
- * — the slash branch declines so Enter runs what was typed instead of
- * applying a command.
+ * project paths as mentions from the native file-reference service — the
+ * official token grammar and mention formatter, directories kept open for
+ * drill-down, and a hint-line notice instead of silence when nothing
+ * matches. `@` takes priority over the slash guards so mentions work inside
+ * command arguments. In bash mode a leading `/` is a path separator, not a
+ * command — the slash branch declines so Enter runs what was typed instead
+ * of applying a command.
  * @param ctx - plugin context carrying the command registry.
  * @param mode - reports the live input mode.
  * @param notice - flashes the empty-result notice into the hint line.
@@ -161,68 +224,39 @@ function createAutocompleteProvider(
   report: (message: string) => void,
 ): MayflyAutocompleteProvider {
   const t = interactionTranslator(ctx)
-  // Captured before any unload: the fd probe settles asynchronously and a
-  // theme-swap reload may dispose this fiber first — the service object
-  // reference stays callable where the context proxy would not.
-  const components = ctx.mayflyComponents
-  // Rebuilt only when the fd probe settles or the session cwd moves: the
-  // combined provider reads its fdPath at suggestion time, so a late
-  // detection needs a fresh instance and nothing else does. Until the probe
-  // settles fdPath is null and the @ branch runs the filesystem fallback.
-  let fdPath: string | null = null
-  let builtCwd = sessionCwd(ctx)
-  let builtFdPath: string | null = null
-  let inner = components.createFileMentionProvider(builtCwd, null)
-  void detectFdPath(ctx.mayflyInteractionState.fdProbe).then(resolved => {
-    fdPath = resolved
-  })
-  // The fallback-walk memo (UX-33): consecutive keystrokes reuse one
-  // bounded scan per resolved base instead of rewalking the tree. It dies
-  // with this provider's registration — the walks are read-only and
-  // LRU-bounded, and pi-tui's request-currency checks fence late results.
-  const mentionCache = createMentionScanCache()
   return {
     triggerCharacters: ['/', '@', '#'],
     async getSuggestions(lines, cursorLine, cursorCol, options): Promise<MayflyAutocompleteSuggestions | null> {
       const line = lines[cursorLine] ?? ''
-      const atPrefix = extractAtPrefix(line.slice(0, cursorCol))
-      if (atPrefix !== null) {
-        // The search can take a moment in a big tree: the unified loader shows it, never for a quick answer.
+      const atToken = activeAtToken(line, cursorCol)
+      if (atToken !== undefined) {
+        // The native provider can take a moment in a big tree: the unified loader shows it, never for a quick answer.
         const endWait = beginPromptWait(ctx, t('Searching files…'))
         try {
-          const cwd = sessionCwd(ctx)
-          if (cwd !== builtCwd || fdPath !== builtFdPath) {
-            builtCwd = cwd
-            builtFdPath = fdPath
-            inner = components.createFileMentionProvider(cwd, fdPath)
+          const agent = ctx.mayflyCurrentAgent.current()
+          const references = ctx.get('fileReferences') as Context['fileReferences'] | undefined
+          // No service, no candidates: Mayfly never walks the filesystem itself.
+          if (agent === null || references === undefined) return null
+          let candidates: readonly FileReferenceCandidate[]
+          try {
+            candidates = await references.list(agent, atToken.query, options.signal)
+          } catch {
+            // A disposed provider or a failed cancellation is an empty round, not a UI crash.
+            return null
           }
-          let suggestions: MayflyAutocompleteSuggestions | null = null
-          // Empty-tail tokens (a bare `@` or a directory drill-down) take the
-          // one-level listing: deterministic, shallow, exactly the entries of
-          // the resolved directory. Everything else — query-bearing tokens —
-          // runs the fd pipeline (fd's genuine no-match stays null). Known
-          // unsupported path forms, or a missing/throwing fd, use the scanner.
-          suggestions = await listDirectoryMentions(cwd, atPrefix, options.signal)
-          const filesystemOnly = requiresFilesystemMention(atPrefix)
-          let fellBack = suggestions === null && (fdPath === null || filesystemOnly)
-          if (suggestions === null && fdPath !== null && !filesystemOnly) {
-            try {
-              suggestions = withPathLabels(await inner.getSuggestions(lines, cursorLine, cursorCol, options))
-            } catch {
-              // fd failing to spawn mid-session falls back to the scanner.
-              fellBack = true
-            }
-          }
-          if (suggestions === null && fellBack) {
-            suggestions = await fsMentionSuggestions(cwd, atPrefix, options.signal, undefined, mentionCache)
-          }
+          if (options.signal.aborted) return null
+          const items = candidates.flatMap((candidate): MayflyAutocompleteItem[] => {
+            const item = mentionItem(candidate, atToken.quoted)
+            return item === undefined ? [] : [item]
+          })
           // An empty mention result would close the dropdown without a
-          // trace — the empty-session-cwd corner read as "@ is dead". Flash
+          // trace — the empty-directory corner read as "@ is dead". Flash
           // the hint line instead; a superseded (aborted) round stays quiet.
-          if (suggestions === null && !options.signal.aborted) {
+          if (items.length === 0) {
             report(t('no matching files under the session cwd'))
+            return null
           }
-          return suggestions
+          return { items, prefix: atToken.prefix }
         } finally {
           endWait()
         }
@@ -292,12 +326,12 @@ function createAutocompleteProvider(
     },
     applyCompletion(lines, cursorLine, cursorCol, item, prefix) {
       const line = lines[cursorLine] ?? ''
-      if (extractAtPrefix(line.slice(0, cursorCol)) !== null && prefix.startsWith('@')) {
-        // Delegated whole: the combined provider's @ branch keeps the '@',
-        // appends the trailing space only for files, and parks the cursor
-        // inside a closing quote for quoted directories.
-        const applied = inner.applyCompletion(lines, cursorLine, cursorCol, item, prefix)
-        rememberMention(ctx, applied)
+      if (prefix.startsWith('@') && activeAtToken(line, cursorCol) !== undefined) {
+        // The mention keeps the '@', takes its trailing space only for
+        // files, and parks the cursor inside the closing quote of a quoted
+        // directory for drill-down.
+        const applied = applyMentionCompletion(lines, cursorLine, cursorCol, item, prefix)
+        rememberMention(ctx, applied, item.value)
         return applied
       }
       if (prefix.startsWith('#') && extractSkillPrefix(line.slice(0, cursorCol)) !== null) {
@@ -325,7 +359,7 @@ function createAutocompleteProvider(
     },
     shouldTriggerFileCompletion(lines, cursorLine, cursorCol) {
       const line = lines[cursorLine] ?? ''
-      return extractAtPrefix(line.slice(0, cursorCol)) !== null
+      return activeAtToken(line, cursorCol) !== undefined
     },
   }
 }
