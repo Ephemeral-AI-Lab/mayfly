@@ -435,6 +435,9 @@ export const FRAME_WORKLOADS: readonly FrameWorkload[] = [
       const fire = stream.tick.capture()
       if (fire === undefined) throw new Error('W33a: the pending tool did not subscribe to the tick')
       if (stream.host.root.mayflyScreen.contentTail()?.away === true) throw new Error('W33a: the tail left the view')
+      // Warm the pending row's animation and width cache once, so the measured tick does not include the first cold frame.
+      fire(1_700_000_001_000)
+      await stream.host.frames()
       reset(counters)
       return {
         step: async () => { fire(1_700_000_001_000); counters.clockTicks += 1; await stream.host.frames() },
