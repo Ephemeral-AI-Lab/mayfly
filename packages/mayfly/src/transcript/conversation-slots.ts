@@ -78,9 +78,10 @@ export class ConversationSlots {
     this.transcript.show(this.displayed)
   }
 
-  /** Re-resolve tool presenters in every retained view. */
+  /** Mark tool presenters stale in every retained view; only the displayed one converts now. */
   invalidateTools(): void {
-    for (const slot of this.slots.values()) slot.source.invalidateTools()
+    for (const slot of this.slots.values()) slot.source.markToolsStale()
+    if (this.displayed !== undefined) this.transcript.refresh()
   }
 
   dispose(): void {

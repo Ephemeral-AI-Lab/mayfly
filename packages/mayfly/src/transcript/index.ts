@@ -220,7 +220,22 @@ export function apply(ctx: Context): void {
     history: () => ctx.get('sessionController'),
   })
   ctx.effect(() => () => slots.dispose())
-  ctx.on('tools/change', () => slots.invalidateTools())
+  // A spawn/dispose burst emits once per changed tool; one microtask marks
+  // every retained view stale, and the controller republishes the displayed one.
+  let toolsChangePending = false
+  let disposed = false
+  ctx.effect(() => () => {
+    disposed = true
+    toolsChangePending = false
+  })
+  ctx.on('tools/change', () => {
+    if (disposed || toolsChangePending) return
+    toolsChangePending = true
+    queueMicrotask(() => {
+      toolsChangePending = false
+      if (!disposed) slots.invalidateTools()
+    })
+  })
   const sync = (): void => { slots.sync(ctx.mayflyConversations.snapshot()) }
   // A same-id Agent replacement changes the exact Agent without a registry change.
   const offView = ctx.mayflyConversations.subscribe(sync)
