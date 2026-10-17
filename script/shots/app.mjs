@@ -32,10 +32,13 @@ const write = (terminal, data) => new Promise(resolve => { terminal.write(data, 
 export function withVersion(grid, version) {
   const pinned = RUNNER_CONFIG['mayfly-banner'].displayVersion
   const placeholder = `mayfly ${pinned}`
-  const row = grid.lines.findIndex(line => line.trimEnd().endsWith(placeholder))
+  const versionPlaceholder = `Version:   ${pinned}`
+  const row = grid.lines.findIndex(line => line.trimEnd().endsWith(placeholder) || line.trimEnd().endsWith(versionPlaceholder))
   if (row < 0) return grid
-  const shown = `v${version}`
-  const start = grid.lines[row].lastIndexOf(placeholder) + placeholder.length - pinned.length
+  const line = grid.lines[row]
+  const titleRow = line.trimEnd().endsWith(versionPlaceholder)
+  const shown = titleRow ? version : `v${version}`
+  const start = titleRow ? line.lastIndexOf(pinned) : line.lastIndexOf(placeholder) + placeholder.length - pinned.length
   const end = start + pinned.length - 1
   const delta = shown.length - (end - start + 1)
   const lines = grid.lines.with(row, `${grid.lines[row].slice(0, start)}${shown}${grid.lines[row].slice(end + 1)}`)
