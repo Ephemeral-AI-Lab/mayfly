@@ -212,6 +212,22 @@ harness. The targeted stream-facts, publish-window, stream-search, and transcrip
 perf fixtures now drain the controller's trailing publish explicitly (`FixedPublishClock.flush()`), so W28/W29/W31 still
 measure their real publish; W28-W31 and W33-W35 pass their budgets.
 
+## P7 result (implemented)
+
+P7 landed on `perf/p7-fold` (`5cffe892`) and was merged into `perf/phase-7`. `finalizedSteps` keeps only the current and
+previous turn (`SETTLED_TURN_WINDOW = 2`, `settleKey`); older keys cannot be consulted by a late durable attempt. The
+projection state keeps `openCompactions` (`entryId`, optional `compactionId`/`commandId`), so compaction start/summary/
+end/`command/done`/`session/end-seed` pair without a history-wide `findLast`; `stateVersion` is 13 in both projection
+tables. `openStreamingStep` splices a retried step's rows from its tail block instead of filtering every entry. The facts
+view is memoized per immutable state, `agentCalls` has a callId index per array revision, and a repeated identical tool
+result returns the identical state/array.
+
+The facts tool/result path fell from 0.050/0.208/0.443 ms to 0.027/0.038/0.141 ms at E=1k/5k/20k, and the facts view from
+~0.016 ms to ~0.002 ms per call. The projection tail fold is unchanged at 0.19 ms for E=20k because the audit event is a
+`user/message` append dominated by the remaining O(E) entries copy; chunked entries are the later round that removes it.
+The conversation projection/facts specs (37 cases) and the broader projection consumer/resume/rewind set (313 cases) pass.
+Stored checkpoints from stateVersion <=12 are discarded and refolded from seq 0 on resume (one-time cost, no data loss).
+
 ## Verification state
 
 - `pnpm run build` passes; W28-W31 pass their Round 0 budgets.
@@ -230,4 +246,7 @@ curves above are the measurement.
 
 ## Next
 
-P1 is the first fix: the identity caches and the lazy `tools/change`. Then P2 (tail facts and publish window), P3/P4 (flow list and animation patches), P5 (output optimizer), P6 (fan-out and fixed frame cost), P7 (fold). Each round commits its own counter gate and reports the measured delta; the final gate is `pnpm run check -- --tier pr`.
+P1, P2, and P7 are merged; P5 (output optimizer), P6 (fan-out and fixed frame cost), and the P3/P4 flow-list work are in
+their own branches. Each round commits its own counter gate and reports the measured delta; the final gate is
+`pnpm run check -- --tier pr`. P3/P4 remain the largest renderer change and the one most likely to need an owner review
+of the felt scrolling/follow-tail behavior before it merges.
