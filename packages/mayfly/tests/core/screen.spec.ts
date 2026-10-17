@@ -73,6 +73,9 @@ function recordingRuntime(laneRows = 0): MayflyTerminalRuntime & Recorded {
       recorded.scrolls.push({ direction, amount })
       return true
     },
+    setContentScrollbarColors() {},
+    contentTail: () => undefined,
+    watchContentTail: () => () => {},
     setContentScrollHandler(handler) {
       recorded.scrollHandlers.push(handler)
       return () => { recorded.scrollHandlers.push(undefined) }
