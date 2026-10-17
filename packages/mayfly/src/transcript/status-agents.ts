@@ -17,6 +17,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { ui, type MayflyInlineSpan, type MayflyListItem, type MayflyPaneSummary, type MayflyUiActionEvent, type MayflyUiActionReply, type MayflyUiEventContext, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
+import type { MayflyConversationsService, MayflyConversationsSnapshot } from '../app/conversation-views.ts'
 import type { ConversationAgentCall, OutputProgress } from '../conversation/types.ts'
 import type { MayflyTranslate } from '../frontend/locale.ts'
 import { interactionTranslator } from '../interaction/locale.ts'
@@ -260,6 +261,11 @@ export function apply(ctx: Context): void {
   const ti = interactionTranslator(ctx)
   const tick = ctx.get('mayflyTick') as TickSource | undefined
   const facts = ctx.get('mayflySessionFacts') as SessionFactsService
+  const agents = ctx.agents
+  const subagents = ctx.subagents
+  const currentAgent = ctx.mayflyCurrentAgent
+  const conversations: MayflyConversationsService = ctx.mayflyConversations
+  const screen = ctx.mayflyScreen
   let unloaded = false
   /** The children the user stopped from the panel: their last facts may still read working. */
   const stoppedByUser = new Set<string>()
@@ -269,7 +275,7 @@ export function apply(ctx: Context): void {
   let displayed: string | null = null
 
   const act = async (event: MayflyUiActionEvent, context: MayflyUiEventContext): Promise<MayflyUiActionReply> => {
-    const agent = ctx.mayflyCurrentAgent.current()
+    const agent = currentAgent.current()
     if (agent === null || agent !== owner) return { kind: 'failed', message: t('The agent changed; open it again') }
     const activated = event.kind === 'activate' && (event.actionId === STOP_ID || event.actionId === BACKGROUND_ID)
     if (event.kind !== 'selection-accept' && !activated) return { kind: 'completed' }
@@ -282,10 +288,10 @@ export function apply(ctx: Context): void {
     if (row.childId === undefined) return { kind: 'failed', message: t('This subagent has not started yet') }
     try {
       if (event.kind === 'selection-accept') {
-        const entry = (await ctx.subagents.listChildren(agent.id, context.signal)).find(candidate => String(candidate.id) === row.childId)
+        const entry = (await subagents.listChildren(agent.id, context.signal)).find(candidate => String(candidate.id) === row.childId)
         if (entry === undefined || entry.mode === 'unknown') return { kind: 'failed', message: t('This subagent cannot be opened') }
-        ctx.mayflyScreen.leaveViews()
-        opened = ctx.mayflyConversations.open({ kind: 'subagent', sessionId: row.childId, parentSessionId: String(agent.id), label: entry.label ?? row.label, mode: entry.mode })
+        screen.leaveViews()
+        opened = conversations.open({ kind: 'subagent', sessionId: row.childId, parentSessionId: String(agent.id), label: entry.label ?? row.label, mode: entry.mode })
         return { kind: 'completed' }
       }
       const result = await stopSubagent(ctx, row.childId, context.signal, ti, () => unloaded)
@@ -300,7 +306,7 @@ export function apply(ctx: Context): void {
   const pane = ctx.mayflyPanes.register({ id: 'mayfly.view.agents', placement: 'views', priority: VIEW_PRIORITY, onEvent: { action: act } }, null)
 
   /** The Agent the rows belong to: an action built for another is refused. */
-  let owner = ctx.mayflyCurrentAgent.current()
+  let owner = currentAgent.current()
   let children: readonly ChildSessionFacts[] = []
   let calls: readonly ConversationAgentCall[] = []
   /** The projection's calls before the own ones are picked out of them. */
@@ -325,7 +331,7 @@ export function apply(ctx: Context): void {
   /** Why `x` and `b` cannot act on a row, from what is known without descending the catalog; the native check answers the rest. */
   const unavailable = (row: AgentRow): Readonly<Record<string, string>> => {
     const mode = row.childId === undefined ? undefined : modes.get(row.childId)
-    const stop = !row.live || row.childId === undefined || ctx.agents.get(row.childId as Agent['id']) === undefined ? ti('Not live; there is nothing to stop')
+    const stop = !row.live || row.childId === undefined || agents.get(row.childId as Agent['id']) === undefined ? ti('Not live; there is nothing to stop')
       : mode !== undefined && mode !== 'continuable' ? ti('Only continuable subagents can be stopped')
         : undefined
     // `b` is offered on a working foreground row (and answers why it cannot act); every other row names why it has no `b`.
@@ -333,12 +339,12 @@ export function apply(ctx: Context): void {
     return { ...stop === undefined ? {} : { [STOP_ID]: stop }, ...background === undefined ? {} : { [BACKGROUND_ID]: background } }
   }
   const readCatalog = (): void => {
-    const agent = ctx.mayflyCurrentAgent.current()
+    const agent = currentAgent.current()
     const key = `${agent === null ? '' : String(agent.id)}:${rows.map(row => row.childId ?? '').join(',')}`
     if (agent === null || key === catalogFor) return
     catalogFor = key
-    void ctx.subagents.listChildren(agent.id).then((entries) => {
-      if (unloaded || ctx.mayflyCurrentAgent.current() !== agent) return
+    void subagents.listChildren(agent.id).then((entries) => {
+      if (unloaded || currentAgent.current() !== agent) return
       modes.clear()
       for (const entry of entries) modes.set(String(entry.id), entry.mode)
       published = ''
@@ -347,7 +353,7 @@ export function apply(ctx: Context): void {
   }
 
   const publish = (): void => {
-    rows = agentRows(calls, children, turn, id => modes.get(id) === 'continuable' && ctx.agents.get(id as Agent['id']) === undefined, stoppedByUser)
+    rows = agentRows(calls, children, turn, id => modes.get(id) === 'continuable' && agents.get(id as Agent['id']) === undefined, stoppedByUser)
     syncTick()
     const state: AgentsState = { rows, now }
     const summary = agentsSummary(state, t)
@@ -359,7 +365,7 @@ export function apply(ctx: Context): void {
     // A hidden panel costs a compile per update and nobody sees its elapsed seconds. Refresh it at most once a
     // second; while the view is entered, keep the 4 Hz child cadence. A test or a host without a views lane has no
     // hidden state to protect, so it keeps the old immediate panel.
-    const views = ctx.mayflyScreen?.views
+    const views = screen?.views
     const structure = JSON.stringify(rows.map(row => [row.id, row.childId, row.label, row.task, row.foreground, row.live, row.failed, row.stopped, row.activity]))
     const entered = views?.isEntered === true && views.active === 'mayfly.view.agents'
     const second = Math.floor(now / 1000)
@@ -391,7 +397,7 @@ export function apply(ctx: Context): void {
     if (next.agentCalls === inherited && next.turn === turn.turn && next.active === turn.active) return
     inherited = next.agentCalls
     // A side conversation or a subagent inherits its parent's log: only the calls it made itself are its own subagents.
-    const session = ctx.mayflyCurrentAgent.current()?.session
+    const session = currentAgent.current()?.session
     calls = session === undefined ? next.agentCalls : next.agentCalls.filter(call => session.isOwnSeq(call.seq as never))
     turn = { turn: next.turn, active: next.active }
     refresh()
@@ -400,11 +406,11 @@ export function apply(ctx: Context): void {
     children = next
     refresh()
   })
-  const offConversations = ctx.mayflyConversations.subscribe((snapshot) => {
+  const offConversations = conversations.subscribe((snapshot: MayflyConversationsSnapshot) => {
     const wasDisplayed = displayed
     displayed = snapshot.displayedId
     if (opened === undefined) return
-    if (snapshot.views.some(view => view.id === opened)) {
+    if (snapshot.views.some((view: { readonly id: string }) => view.id === opened)) {
       // Left for another conversation (`F7`): a later display of it is no longer this view's doing (`/agents` may reopen it).
       if (wasDisplayed === opened && snapshot.displayedId !== opened) opened = undefined
       return
@@ -415,7 +421,7 @@ export function apply(ctx: Context): void {
     // Focus goes back to the prompt as the conversation changes, so the view is entered after that.
     if (wasDisplayed !== closed || snapshot.displayedId !== snapshot.primaryId) return
     const agent = owner
-    setImmediate(() => { if (!unloaded && ctx.mayflyCurrentAgent.current() === agent) ctx.mayflyScreen.enterViews() })
+    setImmediate(() => { if (!unloaded && currentAgent.current() === agent) screen.enterViews() })
   })
   const offLocale = observeTranscriptLocale(ctx, () => { published = ''; publish() })
   // A continuable child's Agent coming or going changes whether it works.
