@@ -312,6 +312,10 @@ export function apply(ctx: Context): void {
   let rows: readonly AgentRow[] = []
   let now = Date.now()
   let published = ''
+  /** The last second the hidden panel was rebuilt; the summary still updates at the child cadence. */
+  let panelSecond = -1
+  /** The row shape that changes the panel beyond its elapsed/rate figures. */
+  let panelStructure = ''
   let offTick: (() => void) | undefined
 
   const syncTick = (): void => {
@@ -351,8 +355,19 @@ export function apply(ctx: Context): void {
     const key = JSON.stringify([summary, panel])
     if (key === published) return
     published = key
-    pane.set(panel)
     pane.setSummary(summary)
+    // A hidden panel costs a compile per update and nobody sees its elapsed seconds. Refresh it at most once a
+    // second; while the view is entered, keep the 4 Hz child cadence. A test or a host without a views lane has no
+    // hidden state to protect, so it keeps the old immediate panel.
+    const views = ctx.mayflyScreen?.views
+    const structure = JSON.stringify(rows.map(row => [row.id, row.childId, row.label, row.task, row.foreground, row.live, row.failed, row.stopped, row.activity]))
+    const entered = views?.isEntered === true && views.active === 'mayfly.view.agents'
+    const second = Math.floor(now / 1000)
+    if (views === undefined || entered || second !== panelSecond || structure !== panelStructure) {
+      panelSecond = second
+      panelStructure = structure
+      pane.set(panel)
+    }
   }
   const refresh = (): void => {
     now = Date.now()
