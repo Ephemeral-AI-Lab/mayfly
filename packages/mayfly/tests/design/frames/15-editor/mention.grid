@@ -14,7 +14,7 @@ grid 96x7 cursor none
 |│ → @pane-activity.ts — packages/mayfly/src/transcript/                                        │
 |│   @pane-agents.ts — packages/mayfly/src/transcript/                                          │
 |│   @notes.md — docs/                                                                          │
-|│   ↑/↓ options · Tab complete · Enter insert · Esc close                                      │
+|│ ↑/↓ options · Tab complete · Enter insert · Esc close                                        │
 |╰──────────────────────────────────────────────────────────────────────────────────────────────╯
 styles
 0: 0-65 fg:border; 66-93 fg:textStrong b; 94-95 fg:border
@@ -22,5 +22,5 @@ styles
 2: 0 fg:border; 2 fg:primary b; 4-20 fg:text b; 21-54 fg:muted; 95 fg:border
 3: 0 fg:border; 4-18 fg:text; 19-52 fg:muted; 95 fg:border
 4: 0 fg:border; 4-12 fg:text; 13-20 fg:muted; 95 fg:border
-5: 0 fg:border; 2-3 fg:textMuted; 4-6 fg:text; 8-17 fg:textMuted; 18-20 fg:text; 22-32 fg:textMuted; 33-37 fg:text; 39-47 fg:textMuted; 48-50 fg:text; 52-56 fg:textMuted; 95 fg:border
+5: 0 fg:border; 2-4 fg:text; 6-15 fg:textMuted; 16-18 fg:text; 20-30 fg:textMuted; 31-35 fg:text; 37-45 fg:textMuted; 46-48 fg:text; 50-54 fg:textMuted; 95 fg:border
 6: 0-95 fg:border

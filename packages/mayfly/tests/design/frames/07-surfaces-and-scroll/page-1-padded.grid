@@ -1,13 +1,14 @@
 ## page 1
-grid 96x18 cursor none
+grid 96x19 cursor none
 |chrome kinds: overlay, surface, lane, none · page 1/3
 |
 |overlay: rounded, focus border color
-|╭ Approve bash? ─────────────────────────────────────────── 1 of 3 waiting ╮
-|│ optional subtitle (muted)                                                │
-|│ Runs: pnpm build                                                         │
-|│ optional custom footer                                                   │
-|╰──────────────────────────────────────────────────────────────────────────╯
+|━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+|  Approve bash?  1 of 3 waiting
+|  optional subtitle (muted)
+|
+|  Runs: pnpm build
+|  optional custom footer
 |surface: rounded, quiet border color
 |╭ Select a model ──────────────────────────────────────────────────────────╮
 |│ → DeepSeek/DeepSeek-V4-Pro                                               │
@@ -21,18 +22,18 @@ grid 96x18 cursor none
 styles
 0: 0-52 fg:muted
 2: 0-35 fg:muted
-3: 0-1 fg:borderFocus; 2-14 fg:textStrong b; 15-59 fg:borderFocus; 60-73 fg:muted; 74-75 fg:borderFocus
-4: 0 fg:borderFocus; 2-26 fg:muted; 75 fg:borderFocus
-5: 0 fg:borderFocus; 2-17 fg:text; 75 fg:borderFocus
-6: 0 fg:borderFocus; 2-23 fg:muted; 75 fg:borderFocus
-7: 0-75 fg:borderFocus
-8: 0-35 fg:muted
-9: 0-1 fg:border; 2-15 fg:textStrong b; 16-75 fg:border
-10: 0 fg:border; 2-27 fg:text; 75 fg:border
-11: 0-75 fg:border
-12: 0-37 fg:muted
-13: 0-75 fg:muted
-14: 0-29 fg:text
-15: 0-38 fg:muted
-16: 0-3 fg:textStrong b
-17: 0-18 fg:text
+3: 0-75 fg:primary
+4: 2-14 fg:primary b; 17-30 fg:muted
+5: 2-26 fg:muted
+7: 2-17 fg:text
+8: 2-23 fg:muted
+9: 0-35 fg:muted
+10: 0-1 fg:border; 2-15 fg:textStrong b; 16-75 fg:border
+11: 0 fg:border; 2-27 fg:text; 75 fg:border
+12: 0-75 fg:border
+13: 0-37 fg:muted
+14: 0-75 fg:muted
+15: 0-29 fg:text
+16: 0-38 fg:muted
+17: 0-3 fg:textStrong b
+18: 0-18 fg:text

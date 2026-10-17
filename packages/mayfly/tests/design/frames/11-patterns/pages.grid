@@ -1,68 +1,73 @@
 ## start
-grid 80x9 cursor 3,3
-|╭ Delete branch? ────────────────────────────────────────────── 1 of 2 waiting ╮
-|│ feature/old-hero · 3 unmerged commits                                        │
-|│ ⚠ the commits are not on any other branch                                    │
-|│ → 1  Keep the branch                                                         │
-|│   2  Delete it — cannot be undone                                            │
-|│   3  Archive it as a tag                                                     │
-|│   Note: optional                                                             │
-|│   Enter choose · c copy name · Esc reject                                    │
-|╰──────────────────────────────────────────────────────────────────────────────╯
+grid 80x11 cursor 5,3
+|━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+|  Delete branch?  1 of 2 waiting
+|
+|  feature/old-hero · 3 unmerged commits
+|  ⚠ the commits are not on any other branch
+|  → 1. Keep the branch
+|    2. Delete it            cannot be undone
+|    3. Archive it as a tag
+|    Note: optional
+|
+|  Enter choose · c copy name · Esc reject
 styles
-0: 0-1 fg:borderFocus; 2-15 fg:textStrong b; 16-63 fg:borderFocus; 64-77 fg:muted; 78-79 fg:borderFocus
-1: 0 fg:borderFocus; 2-38 fg:muted; 79 fg:borderFocus
-2: 0 fg:borderFocus; 2-42 fg:warning; 79 fg:borderFocus
-3: 0 fg:borderFocus; 2 fg:primary b; 4 fg:muted; 7-21 fg:text b; 79 fg:borderFocus
-4: 0 fg:borderFocus; 4 fg:muted; 7-15 fg:text; 17-34 fg:muted; 79 fg:borderFocus
-5: 0 fg:borderFocus; 4 fg:muted; 7-25 fg:text; 79 fg:borderFocus
-6: 0 fg:borderFocus; 4-9 fg:text; 10-17 fg:muted; 79 fg:borderFocus
-7: 0 fg:borderFocus; 2-3 fg:textMuted; 4-8 fg:text; 10-18 fg:textMuted; 19 fg:text; 21-32 fg:textMuted; 33-35 fg:text; 37-42 fg:textMuted; 79 fg:borderFocus
-8: 0-79 fg:borderFocus
+0: 0-79 fg:primary
+1: 2-15 fg:primary b; 18-31 fg:muted
+3: 2-38 fg:muted
+4: 2-42 fg:warning
+5: 2 fg:primary b; 4-5 fg:muted; 7-21 fg:textStrong b
+6: 4-5 fg:muted; 7-15 fg:text; 28-43 fg:muted
+7: 4-5 fg:muted; 7-25 fg:text
+8: 4-9 fg:text; 10-17 fg:muted
+10: 2-6 fg:text; 8-16 fg:textMuted; 17 fg:text; 19-30 fg:textMuted; 31-33 fg:text; 35-40 fg:textMuted
 ## ctrl+n
-grid 80x6 cursor 1,26
-|╭ Workspaces ──────────────────────────────────────────────────────────────────╮
-|│ → work/mayfly            8  → Fix login redirect                          2h │
-|│   website                5    Docs sync                                   1d │
-|│   notes                  2                                                   │
-|│   ↑/↓ labels · → open · Esc close                                            │
-|╰──────────────────────────────────────────────────────────────────────────────╯
+grid 80x8 cursor 3,26
+|━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+|  Workspaces
+|
+|  → work/mayfly            8  → Fix login redirect                          2h
+|    website                5    Docs sync                                   1d
+|    notes                  2
+|
+|  ↑/↓ labels · → open · Esc close
 styles
-0: 0-1 fg:borderFocus; 2-11 fg:textStrong b; 12-79 fg:borderFocus
-1: 0 fg:borderFocus; 2 fg:primary b; 4-14 fg:primary b; 27 fg:muted; 30 fg:muted b; 32-49 fg:text b; 76-77 fg:muted; 79 fg:borderFocus
-2: 0 fg:borderFocus; 4-10 fg:text; 27 fg:muted; 32-40 fg:text; 76-77 fg:muted; 79 fg:borderFocus
-3: 0 fg:borderFocus; 4-8 fg:text; 27 fg:muted; 79 fg:borderFocus
-4: 0 fg:borderFocus; 2-3 fg:textMuted; 4-6 fg:text; 8-16 fg:textMuted; 17 fg:text; 19-25 fg:textMuted; 26-28 fg:text; 30-34 fg:textMuted; 79 fg:borderFocus
-5: 0-79 fg:borderFocus
+0: 0-79 fg:primary
+1: 2-11 fg:primary b
+3: 2 fg:primary b; 4-14 fg:primary b; 27 fg:muted; 30 fg:muted b; 32-49 fg:textStrong b; 76-77 fg:muted
+4: 4-10 fg:text; 27 fg:muted; 32-40 fg:text; 76-77 fg:muted
+5: 4-8 fg:text; 27 fg:muted
+7: 2-4 fg:text; 6-14 fg:textMuted; 15 fg:text; 17-23 fg:textMuted; 24-26 fg:text; 28-32 fg:textMuted
 ## ctrl+n
 grid 100x4 cursor 0,1
-|→ Loop — official                                    1.4.0  Name:   Loop
-|  Git Helper — community                      update 1.3.0  Source: official
+|→ Loop        official                               1.4.0  Name:   Loop
+|  Git Helper  community                       update 1.3.0  Source: official
 |                                                            Status: ✓ installed 1.4.0
 |  ↑/↓ options · Enter open · Esc close
 styles
-0: 0 fg:primary b; 2-5 fg:text b; 7-16 fg:muted; 53-57 fg:muted; 60-66 fg:muted; 68-71 fg:text
-1: 2-11 fg:text; 13-23 fg:muted; 46-57 fg:muted; 60-66 fg:muted; 68-75 fg:text
+0: 0 fg:primary b; 2-5 fg:textStrong b; 14-21 fg:muted; 53-57 fg:muted; 60-66 fg:muted; 68-71 fg:text
+1: 2-11 fg:text; 14-22 fg:muted; 46-57 fg:muted; 60-66 fg:muted; 68-75 fg:text
 2: 60-66 fg:muted; 68-84 fg:success
 3: 0-1 fg:textMuted; 2-4 fg:text; 6-15 fg:textMuted; 16-20 fg:text; 22-28 fg:textMuted; 29-31 fg:text; 33-37 fg:textMuted
 ## ctrl+n
-grid 80x9 cursor 2,10
-|╭ Status ──────────────────────────────────────────────────────────────────────╮
-|│ Overview   Usage   Account !                                                 │
-|│ ━━━━━━━━                                                                     │
-|│                                                                              │
-|│ Provider: DeepSeek                                                           │
-|│ Balance:  ⚠ ¥ 6.20 low balance                                               │
-|│ Checked:  2 min ago · r refresh                                              │
-|│   ←/→ tabs · Enter open · Esc close                                          │
-|╰──────────────────────────────────────────────────────────────────────────────╯
+grid 80x11 cursor 4,10
+|━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+|  Status
+|
+|  Overview   Usage   Account !
+|  ━━━━━━━━
+|
+|  Provider: DeepSeek
+|  Balance:  ⚠ ¥ 6.20 low balance
+|  Checked:  2 min ago · r refresh
+|
+|  ←/→ tabs · Enter open · Esc close
 styles
-0: 0-1 fg:borderFocus; 2-7 fg:textStrong b; 8-79 fg:borderFocus
-1: 0 fg:borderFocus; 2-9 fg:primary b; 13-17 fg:muted; 21-27 fg:muted; 29 fg:warning b; 79 fg:borderFocus
-2: 0 fg:borderFocus; 2-9 fg:primary b; 79 fg:borderFocus
-3: 0 fg:borderFocus; 79 fg:borderFocus
-4: 0 fg:borderFocus; 2-10 fg:muted; 12-19 fg:text; 79 fg:borderFocus
-5: 0 fg:borderFocus; 2-10 fg:muted; 12-19 fg:warning; 20-31 fg:muted; 79 fg:borderFocus
-6: 0 fg:borderFocus; 2-10 fg:muted; 12-32 fg:muted; 79 fg:borderFocus
-7: 0 fg:borderFocus; 2-3 fg:textMuted; 4-6 fg:text; 8-14 fg:textMuted; 15-19 fg:text; 21-27 fg:textMuted; 28-30 fg:text; 32-36 fg:textMuted; 79 fg:borderFocus
-8: 0-79 fg:borderFocus
+0: 0-79 fg:primary
+1: 2-7 fg:primary b
+3: 2-9 fg:primary b; 13-17 fg:muted; 21-27 fg:muted; 29 fg:warning b
+4: 2-9 fg:primary b
+6: 2-10 fg:muted; 12-19 fg:text
+7: 2-10 fg:muted; 12-19 fg:warning; 20-31 fg:muted
+8: 2-10 fg:muted; 12-32 fg:muted
+10: 2-4 fg:text; 6-12 fg:textMuted; 13-17 fg:text; 19-25 fg:textMuted; 26-28 fg:text; 30-34 fg:textMuted

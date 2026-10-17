@@ -4,18 +4,20 @@ grid 100x1 cursor none
 styles
 0: 1-16 fg:text; 19-30 fg:text; 33-49 fg:text; 52-68 fg:text
 ## alt+down
-grid 100x3 cursor none
+grid 100x4 cursor none
 | ● agents 1/5 41s  ● jobs 3 12s  ● goal 2/8 1m 59s  ● todo 4/6 4m 12s
 | ━━━━━━━━━━━━━━━━
 |  agents panel
+|
 styles
 0: 1-16 fg:text; 19-30 fg:text; 33-49 fg:text; 52-68 fg:text
 1: 1-16 fg:primary
 ## x
-grid 100x3 cursor none
+grid 100x4 cursor none
 | ● agents 1/5 41s  ● jobs 3 12s  ● goal 2/8 1m 59s  ● todo 4/6 4m 12s
 | ━━━━━━━━━━━━━━━━
 |  agents panel
+|
 styles
 0: 1-16 fg:text; 19-30 fg:text; 33-49 fg:text; 52-68 fg:text
 1: 1-16 fg:primary

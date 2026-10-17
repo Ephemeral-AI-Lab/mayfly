@@ -1,26 +1,28 @@
 ## page 2
-grid 96x12 cursor none
+grid 96x14 cursor none
 |a scroll region: follow end (a line arrives every 1.5 s), a scrollbar, Ctrl+E expands, Esc
 |collapses · page 2/3
 |
-|╭ Output ─────────────────────────────────────────────────────── following ╮
-|│ log line 7                                                             ░ │
-|│ log line 8                                                             ░ │
-|│ log line 9                                                             ░ │
-|│ log line 10                                                            █ │
-|│ log line 11                                                            █ │
-|│ log line 12                                                            █ │
-|│   ↑/↓ scroll · Ctrl+E expand · Esc close                                 │
-|╰──────────────────────────────────────────────────────────────────────────╯
+|━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+|  Output  following
+|
+|  log line 7
+|  log line 8
+|  log line 9
+|  log line 10
+|  log line 11
+|  log line 12
+|
+|  ↑/↓ scroll · Ctrl+E expand · Esc close
 styles
 0: 0-89 fg:muted
 1: 0-19 fg:muted
-3: 0-1 fg:borderFocus; 2-7 fg:textStrong b; 8-64 fg:borderFocus; 65-73 fg:muted; 74-75 fg:borderFocus
-4: 0 fg:borderFocus; 2-11 fg:text; 73 fg:muted; 75 fg:borderFocus
-5: 0 fg:borderFocus; 2-11 fg:text; 73 fg:muted; 75 fg:borderFocus
-6: 0 fg:borderFocus; 2-11 fg:text; 73 fg:muted; 75 fg:borderFocus
-7: 0 fg:borderFocus; 2-12 fg:text; 73 fg:primary; 75 fg:borderFocus
-8: 0 fg:borderFocus; 2-12 fg:text; 73 fg:primary; 75 fg:borderFocus
-9: 0 fg:borderFocus; 2-12 fg:text; 73 fg:primary; 75 fg:borderFocus
-10: 0 fg:borderFocus; 2-3 fg:textMuted; 4-6 fg:text; 8-16 fg:textMuted; 17-22 fg:text; 24-32 fg:textMuted; 33-35 fg:text; 37-41 fg:textMuted; 75 fg:borderFocus
-11: 0-75 fg:borderFocus
+3: 0-75 fg:primary
+4: 2-7 fg:primary b; 10-18 fg:muted
+6: 2-11 fg:text
+7: 2-11 fg:text
+8: 2-11 fg:text
+9: 2-12 fg:text
+10: 2-12 fg:text
+11: 2-12 fg:text
+13: 2-4 fg:text; 6-14 fg:textMuted; 15-20 fg:text; 22-30 fg:textMuted; 31-33 fg:text; 35-39 fg:textMuted

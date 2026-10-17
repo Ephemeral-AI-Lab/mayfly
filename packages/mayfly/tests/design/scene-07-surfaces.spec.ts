@@ -112,12 +112,12 @@ describe('scene 7 Surfaces and scroll', () => {
 
   it('the expand walk: Ctrl+E grows the viewport to fourteen rows and names the collapse keys', async () => {
     const shown = await play('expand')
-    expect(plainText(shown.at(-1)!.at(-2)!)).toContain('Ctrl+E collapse · Esc collapse')
+    expect(plainText(shown.at(-1)!.at(-1)!)).toContain('Ctrl+E collapse · Esc collapse')
   })
 
   it('the scroll walk: up from the tail scrolls one row per press (Δ24)', async () => {
     const shown = await play('scroll')
-    const body = (rows: readonly string[]): string[] => rows.slice(4, 10).map(row => plainText(row).slice(2, 14).trimEnd())
+    const body = (rows: readonly string[]): string[] => rows.slice(6, 12).map(row => plainText(row).slice(2, 14).trimEnd())
     expect(body(shown.at(-3)!)).toEqual(['log line 12', 'log line 13', 'log line 14', 'log line 15', 'log line 16', 'log line 17'])
     expect(body(shown.at(-1)!)).toEqual(['log line 10', 'log line 11', 'log line 12', 'log line 13', 'log line 14', 'log line 15'])
   })
