@@ -1970,4 +1970,3 @@ describe('reader position under a shrinking content tail', () => {
     await runtime.stop()
   })
 })
-

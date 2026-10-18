@@ -3845,5 +3845,3 @@ export function compileMayflyEditorShellNode(value: unknown, options: MayflyEdit
     return { ok: false, code: 'MAYFLY_INVALID_CONTRIBUTION', message, errorComponent: new ErrorComponent(message, options.colors) }
   }
 }
-
-
