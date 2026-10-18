@@ -24,10 +24,6 @@ function sortedSchemas(schemas: readonly ToolSchema[]): readonly ToolSchema[] {
   return schemas.toSorted((left, right) => left.name.localeCompare(right.name))
 }
 
-export function toolItems(schemas: readonly ToolSchema[]): readonly MayflyListItem[] {
-  return sortedSchemas(schemas).map(schema => ({ id: schema.name, label: schema.name, detail: firstSentence(schema.description) }))
-}
-
 /** The schema body without a surface, shared by the browser and the standalone detail view. */
 export function toolDetailBody(schema: ToolSchema, t: MayflyTranslate): MayflyUiNode {
   return ui.stack.column([ui.child(ui.scroll(ui.stack.column([
