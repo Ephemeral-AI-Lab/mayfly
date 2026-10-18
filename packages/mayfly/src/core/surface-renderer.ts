@@ -27,7 +27,6 @@ import type { MayflyComponents, MayflyFocusable, MayflyFocusIdentity, MayflyKeym
 import type { UiSurfaceModel } from './ui-interaction-surface.ts'
 import type { UiInteractionService } from './ui-interaction-state.ts'
 import type { MayflyUiImageSource } from './ui-images.ts'
-import type { MayflyWorkCounters } from './ui-work-counters.ts'
 const OVERLAY_DEFAULT_WIDTH = '70%'
 const OVERLAY_DEFAULT_MAX_HEIGHT = '33.333333333333336%'
 /** Editor-slot pickers default to half the terminal, never fewer than ten rows when the slot allows it. */
@@ -69,7 +68,6 @@ function compile(
     readonly title?: string
     /** A view's panel: it always takes focus (it owns Esc and the lane keys) and adds the lane's hints to its key row. */
     readonly viewHints?: () => readonly ViewHint[]
-    readonly counters?: MayflyWorkCounters
   },
 ): MayflyCompiledUi | null {
   /* Failure nodes are plain text; the surface compiler owns the
@@ -106,7 +104,6 @@ function compile(
       ...(options.extraHints === undefined && options.viewHints === undefined ? {} : { extra: () => [...options.extraHints?.() ?? [], ...options.viewHints?.() ?? []] }),
     },
     ...(options.onEscape === undefined ? {} : { onUnhandledEscape: options.onEscape }),
-    ...(options.counters === undefined ? {} : { counters: options.counters }),
   }
   const result = compileMayflyUiSurfaceNode(node, {
     ...compilerOptions,
@@ -304,15 +301,13 @@ function focusTarget(entry: SurfaceLaneEntry): MayflyFocusable | null {
 }
 
 /** Mount the direct registry renderer after theme/components become available. */
-export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTerminalRuntime, contextHints?: MayflyContextHints, images?: MayflyUiImageSource, counters?: MayflyWorkCounters): void {
+export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTerminalRuntime, contextHints?: MayflyContextHints, images?: MayflyUiImageSource): void {
   const panes = new Map<string, PaneRecord>()
   const overlays = new Map<string, OverlayRecord>()
   /** One timer for every animated pane and overlay of this renderer. */
-  const clock = new UiAnimationClock(counters)
+  const clock = new UiAnimationClock()
   /** One painted-segment cache for every surface this renderer mounts (roadmap D33). */
   const content = new MayflyContentCache()
-  /** A measuring caller's sink reaches every surface this renderer compiles; production passes none. */
-  const counted = counters === undefined ? {} : { counters }
   /**
    * The components every surface of this renderer paints with, read once. Cordis hands out a new wrapper at every read of
    * a service, and the compile cache reuses a leaf only for the identical components object, so a read per publish
@@ -366,7 +361,6 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
       ...(contextHints === undefined ? {} : { contextHints }),
       interactive: true,
       runtime: record.runtime,
-      ...counted,
       // A view's panel carries no frame of its own: its item in the status row is its title.
       ...(lane === undefined ? surfaceTitle(entry, record.interaction) : { viewHints: () => lane.hints() }),
     })
@@ -451,7 +445,6 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
       ...(arm === undefined ? {} : { extraHints: () => arm.hints() }),
       interactive: entry.definition.capturing === true,
       runtime: surfaceRuntime,
-      ...counted,
       ...surfaceTitle(entry, interaction),
     })!
     /* Document-in-flow surfaces keep the page flowing: scroll keys the surface
@@ -493,7 +486,6 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
       ...(record.arm === undefined ? {} : { extraHints: () => record.arm!.hints() }),
       interactive: entry.definition.capturing === true,
       runtime: record.runtime,
-      ...counted,
       ...surfaceTitle(entry, record.interaction),
     })!
     record.renderedRevision = record.interaction.revision
@@ -716,7 +708,6 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
   ctx.effect(() => ctx.mayflyScreen.bindNodeSlots({
     interaction: ctx.mayflyUiInteraction, components, colors: ctx.mayflyTheme.colors, keymap: ctx.mayflyKeymap,
     bounded: true, requestRender: () => { runtime.requestRender() }, clock, content, ...(contextHints === undefined ? {} : { contextHints }), ...(images === undefined ? {} : { images }),
-    ...counted,
   }))
   // The views lane paints and focuses through this renderer's colors, keymap, and terminal.
   const views = runtime.surfaces.views

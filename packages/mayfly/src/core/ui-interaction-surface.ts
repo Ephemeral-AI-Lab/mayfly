@@ -13,7 +13,6 @@ import { createSliderModel, reconcileSlider, reduceSlider, type UiSliderIntent, 
 import { acknowledgeChoice, choiceError, choiceReportedSegment, createChoiceState, reconcileChoice, reduceChoice, type UiChoiceIntent, type UiChoiceState } from './ui-interaction-choice.ts'
 import { prepareUiForms, uiControlKey, uiDeclarations, visitUiControls, type UiControlAddress } from './ui-interaction-tree.ts'
 import { admittedListIndex, admittedListItem, createAdmissionCache, validateMayflyUiNode } from './ui-validator.ts'
-import type { MayflyWorkCounters } from './ui-work-counters.ts'
 import { moveDocument, reconcileDocument, type UiDocumentAnchor, type UiDocumentState } from './ui-interaction-document.ts'
 import { admitNotificationMessage, UiNotificationStore } from './ui-interaction-notifications.ts'
 import { interpolateLocaleMessage } from '../frontend/locale.ts'
@@ -87,8 +86,6 @@ export interface UiSurfaceBindings {
   readonly onObserverError?: (error: unknown) => void
   /** Locale lookup for core-owned strings; English interpolation when absent. */
   readonly translate?: UiTranslate
-  /** Measurement sink for admission work; production passes none. */
-  readonly counters?: MayflyWorkCounters
 }
 
 const DISPOSED_EVENTS: MayflyUiEventEndpoint<MayflyUiNode | null> = Object.freeze({
@@ -275,7 +272,7 @@ export class UiSurfaceModel {
       return
     }
     const admitted = this.publication?.source === snapshot.node ? { ok: true as const, value: this.publication.admitted }
-      : snapshot.node === this.rawNode && this.sourceNode !== null ? { ok: true as const, value: this.sourceNode } : validateMayflyUiNode(snapshot.node, this.bindings.counters, this.admission)
+      : snapshot.node === this.rawNode && this.sourceNode !== null ? { ok: true as const, value: this.sourceNode } : validateMayflyUiNode(snapshot.node, this.admission)
     if (!admitted.ok) {
       // The technical JSON-pointer path stays in the report/log; the surface
       // shows a user-facing sentence instead.
@@ -861,7 +858,7 @@ export class UiSurfaceModel {
       nativeAccepted = reply.kind === 'accepted' || reply.kind === 'completed'
       let publication: typeof this.publication
       if ('node' in reply && reply.node !== undefined && reply.node !== null) {
-        const admitted = validateMayflyUiNode(reply.node, this.bindings.counters, this.admission)
+        const admitted = validateMayflyUiNode(reply.node, this.admission)
         if (!admitted.ok) throw new Error(admitted.message)
         if (task.submission !== undefined && (reply.kind === 'accepted' || (reply.kind === 'failed' && reply.acceptedFields !== undefined))) prepareUiForms(admitted.value, task.submission.forms)
         publication = { source: reply.node, admitted: admitted.value }

@@ -15,7 +15,6 @@ import { ACTION_CANCEL, ACTION_FOCUS_NEXT } from './key-actions.ts'
 import type { UiAnimationClock } from './ui-loader-animation.ts'
 import type { UiInteractionService } from './ui-interaction-state.ts'
 import type { UiSurfaceModel, UiSurfaceSnapshot } from './ui-interaction-surface.ts'
-import type { MayflyWorkCounters } from './ui-work-counters.ts'
 import type { MayflyComponent, MayflyComponents, MayflyFocusable, MayflyKeymap, MayflyScreenSlot, MayflySemanticColors } from './types.ts'
 
 /** Where a node slot sits: the scroll region, the dock above the footer (the prompt's host), or the footer. */
@@ -119,8 +118,6 @@ export interface MayflyNodeSlotCompiler {
   }
   /** The host tree's byte source behind `image` nodes, as a pane's runtime receives it. */
   readonly images?: MayflyUiImageSource
-  /** Measurement sink for admission, compilation, and painting; production passes none. */
-  readonly counters?: MayflyWorkCounters
 }
 
 const NO_ROWS = Object.freeze([]) as unknown as string[]
@@ -232,7 +229,6 @@ class SlotAttachment {
         emit: this.model.emit.bind(this.model),
         contextHints: { ...compiler.contextHints, ...this.hints ? {} : { rows: false } },
         surfaceRuntime: this.runtime,
-        ...(compiler.counters === undefined ? {} : { counters: compiler.counters }),
       })
       /* the model's own admitted node skips validation, and the surface compiler contains its failures. */
       this.compiled = result.ok ? result.value : { node, component: result.errorComponent, focusTarget: null }
@@ -412,7 +408,7 @@ class NodeSlotLease implements MayflyNodeSlot {
       events: route,
       definition: {},
     }
-    const model = compiler.interaction.upsert('slot', snapshot, compiler.counters === undefined ? {} : { counters: compiler.counters })
+    const model = compiler.interaction.upsert('slot', snapshot)
     model.setVisible(this.node !== null)
     this.interaction = compiler.interaction
     const watched = this.options.cursor

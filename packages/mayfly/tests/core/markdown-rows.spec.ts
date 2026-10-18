@@ -8,7 +8,7 @@
  * @module @ephemeral-ai/mayfly/core/tests/markdown-rows
  */
 
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { Markdown, type MarkdownTheme } from '@earendil-works/pi-tui'
 import { contentNodeSource, type ContentRowsEnv, type WindowedContentNode } from '../../src/core/content-rows.ts'
 import { virtualRows } from '../../src/core/ui-rows.ts'
@@ -18,7 +18,6 @@ import { CONTENT_SEGMENT_UNITS } from '../../src/core/content-segments.ts'
 import { DARK_COLORS } from '../../src/core/theme-dark.ts'
 import { MayflyContentCache } from '../../src/core/ui-content-cache.ts'
 import { isVirtualRows, prepareRows, rowSourceOf, unclampedRows } from '../../src/core/ui-rows.ts'
-import { createWorkCounters, type MayflyWorkCounters } from '../../src/core/ui-work-counters.ts'
 import type { MayflyComponents, MayflySemanticColors } from '../../src/core/types.ts'
 import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/width.ts'
 
@@ -34,20 +33,16 @@ const components = {
 
 interface Env {
   readonly env: ContentRowsEnv
-  readonly counters: MayflyWorkCounters
   readonly cache: MayflyContentCache
 }
 
 function makeEnv(bound?: number, colors: MayflySemanticColors = DARK_COLORS): Env {
-  const counters = createWorkCounters()
   const cache = new MayflyContentCache()
   return {
-    counters,
     cache,
     env: {
       components,
       colors,
-      counters,
       cache,
       bounded: bound !== undefined,
       viewportRows: () => bound ?? 0,
@@ -325,15 +320,15 @@ describe('lazy units', () => {
     const text = Array.from({ length: 40 }, (_, index) => `para ${String(index).padStart(2, '0')} ${'x'.repeat(120)}`).join('\n\n')
     expect(text.length).toBeGreaterThan(CONTENT_SEGMENT_UNITS)
     const env = makeEnv()
+    const put = vi.spyOn(env.cache, 'put')
     const rows = lazyRows(text, 40, env)
-    expect(env.counters.segmentsPainted).toBe(0)
+    expect(put).not.toHaveBeenCalled()
     expect(rows[0]).toContain('para 00')
-    expect(env.counters.segmentsPainted).toBe(1)
+    expect(put).toHaveBeenCalledTimes(1)
     // The estimate may leave the para's second row inside the same unit or the next; read a window and compare.
     const tail = rows.length - 4
     rows.slice(tail)
-    const painted = env.counters.segmentsPainted
-    expect(painted).toBeLessThanOrEqual(4)
+    expect(put.mock.calls.length).toBeLessThanOrEqual(4)
     rows.slice()
     expect(rows.slice()).toEqual(eagerRows(text, 40))
   })
@@ -353,13 +348,14 @@ describe('lazy units', () => {
     const node = { kind: 'markdown' as const, source: Array.from({ length: 50 }, (_, index) => `memo ${String(index)} ${'x'.repeat(80)}`).join('\n\n') }
     expect(node.source.length).toBeGreaterThan(CONTENT_SEGMENT_UNITS)
     const env = makeEnv()
+    const put = vi.spyOn(env.cache, 'put')
     const wide = contentNodeRows(node, 80, env.env)
     const narrow = contentNodeRows(node, 40, env.env)
     expect(rowSourceOf(wide)).not.toBe(rowSourceOf(narrow))
     wide.slice(0, 6)
-    const painted = env.counters.segmentsPainted
+    const painted = put.mock.calls.length
     narrow.slice(0, 6)
-    expect(env.counters.segmentsPainted).toBeGreaterThan(painted)
+    expect(put.mock.calls.length).toBeGreaterThan(painted)
   })
 
   it('degrades an oversized block to raw-line segments and still answers every row', () => {

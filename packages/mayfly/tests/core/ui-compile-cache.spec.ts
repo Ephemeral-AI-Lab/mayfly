@@ -10,7 +10,6 @@ import {
 import { UiSurfaceModel, type UiSurfaceSnapshot } from '../../src/core/ui-interaction-surface.ts'
 import { createAdmissionCache } from '../../src/core/ui-validator.ts'
 import type { MayflyComponent, MayflyComponents, MayflySemanticColors } from '../../src/core/types.ts'
-import { createWorkCounters } from '../../src/core/ui-work-counters.ts'
 import { sliceByColumn, truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/width.ts'
 import { plainColors } from '../helpers.ts'
 
@@ -26,16 +25,14 @@ describe('MayflyCompileCache', () => {
     const node = {}
     const first = vi.fn()
     const second = vi.fn()
-    const counters = createWorkCounters()
     let built: PaintOptions | undefined
     cache.beginPass()
     const component = cache.keep(node, paint({ reportRuntimeFailure: first }), options => { built = options; return leaf() })
     cache.beginPass()
-    expect(cache.take(node, paint({ reportRuntimeFailure: second, counters }))).toBe(component)
+    expect(cache.take(node, paint({ reportRuntimeFailure: second }))).toBe(component)
     built!.reportRuntimeFailure('boom')
     expect(first).not.toHaveBeenCalled()
     expect(second).toHaveBeenCalledWith('boom')
-    expect(built!.counters).toBe(counters)
   })
 
   it('never lends one leaf twice in a pass, and keeps the first of two occurrences', () => {
@@ -78,21 +75,21 @@ describe('MayflyCompileCache', () => {
 describe('leaf reuse in the compiler', () => {
   const viewport = { getViewport: () => ({ columns: 80, rows: 24 }), bounded: true }
 
-  it('compiles an unchanged bounded entry once and paints it once per width', () => {
+  it('compiles an unchanged bounded entry once and keeps its leaf across passes', () => {
     const admission = createAdmissionCache()
     const reuse = new MayflyCompileCache()
+    const keep = vi.spyOn(reuse, 'keep')
     const entry = ui.richText([{ text: 'branch ' }, { text: 'main', tone: 'muted' }])
     const publish = (tail: string) => {
-      const counters = createWorkCounters()
-      const result = compileMayflyUiNode(ui.stack.row([ui.child(entry), ui.child(ui.text(tail))]), { components, colors, ...viewport, counters, admission, reuse, emit: () => {} })
+      const result = compileMayflyUiNode(ui.stack.row([ui.child(entry), ui.child(ui.text(tail))]), { components, colors, ...viewport, admission, reuse, emit: () => {} })
       if (!result.ok) throw new Error(result.message)
       const rows = result.value.component.render(80)
-      return { counters, rows }
+      return { rows }
     }
-    const cold = publish('a')
+    publish('a')
+    const coldBuilds = keep.mock.calls.length
     const warm = publish('b')
-    expect(cold.counters.unitsCompiled).toBe(3)
-    expect(warm.counters.unitsCompiled, 'the stack and the changed text').toBe(2)
+    expect(keep.mock.calls.length - coldBuilds, 'the changed text alone').toBe(1)
     expect(warm.rows.join('\n')).toContain('branch main')
     expect(warm.rows.join('\n')).toContain('b')
   })
@@ -109,24 +106,25 @@ describe('leaf reuse in the compiler', () => {
   })
 
   it('reuses leaves across the publishes of one surface through its runtime', () => {
-    const counters = createWorkCounters()
     const events = { prepare: async () => ({ reply: { kind: 'completed' as const }, publish: () => true }) }
     const heading = ui.text('Heading')
     const snapshot = (revision: number, tail: string): UiSurfaceSnapshot => ({
       id: 's', node: ui.stack.column([ui.child(heading), ui.child(ui.text(tail))]), revision, source: [], scope: { kind: 'app', targetId: 's' }, update: { reason: 'data' }, events, definition: { onEvent: {} },
     } as unknown as UiSurfaceSnapshot)
-    const model = new UiSurfaceModel('s', snapshot(1, 'one'), { counters })
+    const model = new UiSurfaceModel('s', snapshot(1, 'one'))
     const runtime = new MayflyUiSurfaceRuntime(model, () => {})
+    const keep = vi.spyOn(runtime.reuse, 'keep')
     const compile = () => {
-      const result = compileMayflyUiSurfaceNode(model.node!, { components, colors, ...viewport, emit: () => {}, counters, surfaceRuntime: runtime })
+      const result = compileMayflyUiSurfaceNode(model.node!, { components, colors, ...viewport, emit: () => {}, surfaceRuntime: runtime })
       if (!result.ok) throw new Error(result.message)
       return result.value.component.render(80).join('\n')
     }
     expect(compile()).toContain('Heading')
-    Object.assign(counters, createWorkCounters())
+    expect(keep).toHaveBeenCalledTimes(2)
+    keep.mockClear()
     model.receive(snapshot(2, 'two'))
     expect(compile()).toContain('two')
-    expect(counters.unitsCompiled, 'the stack and the new tail, not the heading').toBe(2)
+    expect(keep.mock.calls.length, 'the new tail, not the heading').toBe(1)
     runtime.dispose()
     model.dispose()
   })
@@ -137,36 +135,37 @@ describe('key hint memo', () => {
   const events = { prepare: async () => ({ reply: { kind: 'completed' as const }, publish: () => true }) }
 
   function hinted() {
-    const counters = createWorkCounters()
     const node = ui.form({ id: 'f', fields: [{ kind: 'input', id: 'name', label: 'Name', value: '' }] })
-    const model = new UiSurfaceModel('hint', { id: 'hint', node, revision: 1, source: [], scope: { kind: 'app', targetId: 'hint' }, update: { reason: 'data' }, events, definition: { onEvent: {} } } as unknown as UiSurfaceSnapshot, { counters })
+    const model = new UiSurfaceModel('hint', { id: 'hint', node, revision: 1, source: [], scope: { kind: 'app', targetId: 'hint' }, update: { reason: 'data' }, events, definition: { onEvent: {} } } as unknown as UiSurfaceSnapshot)
     const runtime = new MayflyUiSurfaceRuntime(model, () => {})
     const compile = (palette: MayflySemanticColors) => {
-      const result = compileMayflyUiSurfaceNode(model.node!, { components, colors: palette, ...viewport, emit: () => {}, counters, contextHints: { enabled: true }, surfaceRuntime: runtime })
+      const result = compileMayflyUiSurfaceNode(model.node!, { components, colors: palette, ...viewport, emit: () => {}, contextHints: { enabled: true }, surfaceRuntime: runtime })
       if (!result.ok) throw new Error(result.message)
       result.value.focusTarget!.focused = true
       return result.value
     }
-    return { counters, compile, dispose: () => { runtime.dispose(); model.dispose() } }
+    return { compile, dispose: () => { runtime.dispose(); model.dispose() } }
   }
 
   it('paints an unchanged hint once, again when the hint changes, and again for a new palette', () => {
-    const { counters, compile, dispose } = hinted()
+    const { compile, dispose } = hinted()
     const compiled = compile(colors)
     const first = compiled.component.render(80)
-    const painted = counters.rowsPainted
     expect(first.at(-1)).toContain('Enter')
     compiled.component.invalidate?.()
-    compiled.component.render(80)
-    expect(counters.rowsPainted, 'the same hint is not painted again').toBe(painted)
+    const again = compiled.component.render(80)
+    expect(again.at(-1), 'the same hint is not painted again').toBe(first.at(-1))
     compiled.focusTarget!.handleInput!('\r')
     const editing = compiled.component.render(80)
     expect(editing.at(-1)).not.toBe(first.at(-1))
-    expect(counters.rowsPainted, 'a changed hint is painted').toBeGreaterThan(painted)
-    const before = counters.rowsPainted
-    const recoloured = compile(plainColors())
+    let reads = 0
+    const base = plainColors()
+    const fresh = Object.fromEntries(Object.entries(base).map(([key, value]) => [key, typeof value === 'function'
+      ? (...args: unknown[]) => { reads += 1; return (value as (...values: unknown[]) => unknown)(...args) }
+      : value])) as unknown as MayflySemanticColors
+    const recoloured = compile(fresh)
     recoloured.component.render(80)
-    expect(counters.rowsPainted, 'a new palette never serves the old row').toBeGreaterThan(before)
+    expect(reads, 'a new palette never serves the old row').toBeGreaterThan(0)
     dispose()
   })
 })

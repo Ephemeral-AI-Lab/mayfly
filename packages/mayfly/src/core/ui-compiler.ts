@@ -93,7 +93,6 @@ import { sliderGrammar } from './ui-interaction-slider.ts'
 import { paintSlider } from './ui-slider-paint.ts'
 import { promptCompletionsOpen, promptRecallActive } from './ui-interaction-prompt.ts'
 import type { MayflyUiImageSource } from './ui-images.ts'
-import { countWork, type MayflyWorkCounters } from './ui-work-counters.ts'
 import { choiceError, choicePinned, choiceRow, focusableListItem, choiceSegment, choiceVisibleCount, choiceVisibleIndex, choiceVisiblePosition, type UiChoiceState } from './ui-interaction-choice.ts'
 import { SearchInput } from './search-input.ts'
 import { UiLoaderAnimation, type UiAnimationClock } from './ui-loader-animation.ts'
@@ -176,8 +175,6 @@ export interface MayflyUiCompilerOptions {
   readonly onUnhandledEscape?: () => void
   /** Whether the editor's completion list is open; a surface with `hint: 'completions'` draws its key-hint row only then. */
   readonly completionsOpen?: () => boolean
-  /** Measurement sink for validation, compilation, and painting; production passes none. */
-  readonly counters?: MayflyWorkCounters
   /** The caller's admission memo; a publish that shares subtrees with the previous one validates only what changed. */
   readonly admission?: MayflyAdmissionCache
   /** The caller's compile memo; static leaves of an unchanged subtree keep their components. A surface runtime brings its own. */
@@ -386,8 +383,6 @@ interface FocusState {
   finishSelectEditing(field: SelectField, key: string, cancel: boolean): MayflyFieldValue
   setEditing(key: string | undefined): void
   blurInactiveEditors(controls: readonly ControlDescriptor[]): void
-  /** Adds to a work counter of the surface's sink, when a caller measures it. */
-  count(counter: keyof MayflyWorkCounters): void
   setLayoutViewport(viewport: MayflyUiViewport): void
   bindControls(keys: readonly string[], binding: ControlBinding): void
   bindScroll(key: string, scroll: ScrollControl): void
@@ -471,20 +466,14 @@ function renderFailure(error: unknown, fallback = 'unknown render failure'): str
  * one cell, so the conversion runs after the painter laid the row out. Editors are not static components, so the text
  * being typed is never converted.
  */
-function staticComponent(render: (width: number) => string[], options: Pick<PaintOptions, 'colors' | 'counters' | 'reportRuntimeFailure'> & { readonly components?: Pick<MayflyComponents, 'presentation'> }, counted = true): MayflyComponent {
+function staticComponent(render: (width: number) => string[], options: Pick<PaintOptions, 'colors' | 'reportRuntimeFailure'> & { readonly components?: Pick<MayflyComponents, 'presentation'> }): MayflyComponent {
   // The presentation is fixed for the life of the components service this leaf was compiled with, so it is read once,
   // not through the service on every paint.
   const glyphs = options.components?.presentation?.glyphs
   return {
     render: width => {
       try {
-        const rows = glyphRows(render(width), glyphs)
-        if (counted) {
-          // A virtual array has painted no rows yet; its source counts what reads through the facade materialize.
-          countWork(options.counters, 'rowsPainted', isVirtualRows(rows) ? 0 : rows.length)
-          countWork(options.counters, 'componentRenders')
-        }
-        return rows
+        return glyphRows(render(width), glyphs)
       } catch (error) {
         const message = renderFailure(error)
         options.reportRuntimeFailure(message)
@@ -500,19 +489,17 @@ function staticComponent(render: (width: number) => string[], options: Pick<Pain
  * Layout frames re-render every row on each paint (spinner ticks, scroll
  * steps); these rows answer from a per-width memo until invalidated.
  */
-function pureStaticComponent(render: (width: number) => string[], options: Pick<PaintOptions, 'colors' | 'components' | 'counters' | 'reportRuntimeFailure'>): MayflyComponent {
+function pureStaticComponent(render: (width: number) => string[], options: Pick<PaintOptions, 'colors' | 'components' | 'reportRuntimeFailure'>): MayflyComponent {
   // A row layout measures a leaf at several widths before it paints, so one remembered width would thrash.
   const memo = new Map<number, string[]>()
   const component = staticComponent(width => {
     const known = memo.get(width)
     if (known !== undefined) return known
     const rows = render(width)
-    countWork(options.counters, 'rowsPainted', isVirtualRows(rows) ? 0 : rows.length)
-    countWork(options.counters, 'componentRenders')
     if (memo.size >= PURE_STATIC_WIDTHS) memo.delete(memo.keys().next().value!)
     memo.set(width, rows)
     return rows
-  }, options, false)
+  }, options)
   // The rows are a pure function of the node, the width, and the palette this leaf was compiled with, and a new palette
   // recompiles the leaf, so an invalidation (a loader tick, a scroll step) leaves them in place.
   return { render: component.render, invalidate: () => {} }
@@ -525,11 +512,10 @@ const PURE_STATIC_WIDTHS = 4
  * The content-source environment of one surface: the leaves' paint (re-pointed by the compile cache) plus the
  * surface's viewport, content cache, and bounds. Document resolvers pass `options` as the paint.
  */
-function contentEnv(options: RuntimeCompilerOptions, paint: Pick<PaintOptions, 'components' | 'colors' | 'counters' | 'reportRuntimeFailure'>): ContentRowsEnv {
+function contentEnv(options: RuntimeCompilerOptions, paint: Pick<PaintOptions, 'components' | 'colors' | 'reportRuntimeFailure'>): ContentRowsEnv {
   return {
     get components() { return paint.components },
     get colors() { return paint.colors },
-    get counters() { return paint.counters },
     cache: options.listRuntime.content,
     bounded: options.bounded || options.listRuntime.interaction !== undefined,
     viewportRows: () => safeViewport(options.getViewport).rows,
@@ -560,8 +546,6 @@ function contentLeafComponent(node: WindowedContentNode, options: RuntimeCompile
           rows = glyphRows(virtualRows(contentNodeSource(node, safeWidth, env)), glyphs)
           if (memo.size >= PURE_STATIC_WIDTHS) memo.delete(memo.keys().next().value!)
           memo.set(key, rows)
-          // Building the facade is the render; what reads through it materializes is counted by the source.
-          countWork(paint.counters, 'componentRenders')
         }
         return rows
       } catch (error) {
@@ -707,8 +691,6 @@ function promptComponent(node: MayflyPromptNode, state: FocusState, options: Run
         editor.sync(draft.text)
         const focused = state.focused && state.activeKey === key
         const rows = paint(Math.max(1, width), draft, rowWidth => editor.render(rowWidth, focused), focused)
-        countWork(options.counters, 'rowsPainted', rows.length)
-        countWork(options.counters, 'componentRenders')
         return rows
       } catch (error) {
         const message = renderFailure(error, 'unknown prompt failure')
@@ -748,8 +730,6 @@ function hostedPromptComponent(node: MayflyPromptNode, state: FocusState, option
         editor.focused = state.focused && state.activeKey === key
         editor.setPlaceholder(placeholderLadder(node.placeholder))
         const rows = paintHostedPrompt({ node, width: Math.max(1, width), colors: options.colors, components: options.components, buffer: room => editor.render(room) })
-        countWork(options.counters, 'rowsPainted', rows.length)
-        countWork(options.counters, 'componentRenders')
         return rows
       } catch (error) {
         const message = renderFailure(error, 'unknown editor failure')
@@ -883,7 +863,7 @@ const BLANK_ROW: string[] = ['']
 function pad(component: Component, amount: number, options: RuntimeCompilerOptions): Component {
   if (amount === 0) return component
   const padded = new RowStack()
-  const spacer = (): MayflyComponent => staticComponent(() => BLANK_ROW, options, false)
+  const spacer = (): MayflyComponent => staticComponent(() => BLANK_ROW, options)
   padded.addChild(spacer(), { basis: amount, grow: 0, shrink: 1 })
   padded.addChild(component, { basis: 0, grow: 1, shrink: 1, minSize: 1 })
   padded.addChild(spacer(), { basis: amount, grow: 0, shrink: 1 })
@@ -918,15 +898,15 @@ function framedSurfaceComponent(node: Extract<CompilableNode, { readonly kind: '
     return bars.lines
   }
   const middle = new HStack()
-  middle.addChild(staticComponent(borderRows, options, false), { basis: 1, grow: 0, shrink: 1, visible: captureLayoutRows })
+  middle.addChild(staticComponent(borderRows, options), { basis: 1, grow: 0, shrink: 1, visible: captureLayoutRows })
   for (let index = 0; index < gutter; index += 1) {
-    middle.addChild(staticComponent(() => BLANK_ROW, options, false), { basis: 1, grow: 0, shrink: 100, visible: paddingVisible(index) })
+    middle.addChild(staticComponent(() => BLANK_ROW, options), { basis: 1, grow: 0, shrink: 100, visible: paddingVisible(index) })
   }
   middle.addChild(body, { basis: 1, grow: 1, shrink: 1, minSize: 0 })
   for (let index = 0; index < gutter; index += 1) {
-    middle.addChild(staticComponent(() => BLANK_ROW, options, false), { basis: 1, grow: 0, shrink: 100, visible: paddingVisible(index) })
+    middle.addChild(staticComponent(() => BLANK_ROW, options), { basis: 1, grow: 0, shrink: 100, visible: paddingVisible(index) })
   }
-  middle.addChild(staticComponent(borderRows, options, false), { basis: 1, grow: 0, shrink: 1, visible: captureLayoutRows })
+  middle.addChild(staticComponent(borderRows, options), { basis: 1, grow: 0, shrink: 1, visible: captureLayoutRows })
 
   const layout = new ColumnStack()
   layout.addChild(retain(staticComponent(width => renderSurfaceHead(withDirtyBadge(node, options), width, options.colors).slice(0, 1), options), 'surface head', options), { basis: 1, grow: 0, shrink: 0, visible: frameVisible })
@@ -937,7 +917,7 @@ function framedSurfaceComponent(node: Extract<CompilableNode, { readonly kind: '
     [LAYOUT_NODE](): LayoutNode { return layout[LAYOUT_NODE]() },
     render(width: number): string[] {
       const available = Math.max(1, Math.floor(width))
-      if (available < 3) return mapRows(body.render(available), row => { countWork(options.counters, 'stringsMeasured'); return truncateToWidth(row, available, '') })
+      if (available < 3) return mapRows(body.render(available), row => truncateToWidth(row, available, ''))
       const horizontalPadding = Math.min(gutter, Math.max(0, Math.floor((available - 3) / 2)))
       const contentWidth = Math.max(1, available - 2 - horizontalPadding * 2)
       // The frame's own rows convert to the glyph mode here; the body's painters converted theirs.
@@ -948,10 +928,8 @@ function framedSurfaceComponent(node: Extract<CompilableNode, { readonly kind: '
       const inset = ' '.repeat(horizontalPadding)
       const rows = mapRows(bodyRows, row => {
         // A row that fits is measured once; only a row that overflows is clipped and measured again.
-        countWork(options.counters, 'stringsMeasured')
         const rowWidth = visibleWidth(row)
         if (rowWidth <= contentWidth) return `${border}${inset}${row}${' '.repeat(contentWidth - rowWidth)}${inset}${border}`
-        countWork(options.counters, 'stringsMeasured')
         const clipped = truncateToWidth(row, contentWidth, '')
         return `${border}${inset}${clipped}${' '.repeat(Math.max(0, contentWidth - visibleWidth(clipped)))}${inset}${border}`
       }, { declaredWidth: available })
@@ -979,7 +957,7 @@ function surfaceComponent(node: Extract<CompilableNode, { readonly kind: 'surfac
   body.addChild(child, options.listRuntime.interaction === undefined ? {} : { grow: 1, minSize: 1 })
   if (footer !== undefined) body.addChild(footer)
   // A panel sets its hint row off from the content by a blank row.
-  if (panel && contextHint !== undefined) body.addChild(staticComponent(() => BLANK_ROW, options, false))
+  if (panel && contextHint !== undefined) body.addChild(staticComponent(() => BLANK_ROW, options))
   if (contextHint !== undefined) body.addChild(contextHint)
   if (panel) component.addChild(pad(body, PANEL_GUTTER + Math.max(0, (node.padding ?? 0) - 1), options), options.listRuntime.interaction === undefined ? {} : { grow: 1, minSize: 1 })
   return panel ? component : pad(component, node.padding ?? 0, options)
@@ -1364,17 +1342,14 @@ function contextKeyHintRows(state: FocusState, options: RuntimeCompilerOptions, 
   let rows: string[] = []
   for (const candidate of candidates) {
     const row = renderHintRow(candidate, options.colors, indent)
-    countWork(options.counters, 'stringsMeasured')
     if (visibleWidth(row) <= safeWidth) { rows = [row]; break }
   }
-  countWork(options.counters, 'rowsPainted', rows.length)
-  countWork(options.counters, 'componentRenders')
   options.listRuntime.hintMemo = { colors: options.colors, key, rows }
   return rows
 }
 
 function contextKeyHintComponent(state: FocusState, options: RuntimeCompilerOptions, mode: CompilerMode, escapeLabel: EscapeLabel | undefined, open?: () => boolean, indent = 2): Component {
-  return staticComponent(width => open?.() === false ? [] : contextKeyHintRows(state, options, width, mode, escapeLabel, indent), options, false)
+  return staticComponent(width => open?.() === false ? [] : contextKeyHintRows(state, options, width, mode, escapeLabel, indent), options)
 }
 
 /** Printable text or the opening of a bracketed paste. */
@@ -1482,7 +1457,6 @@ function walkControls(node: CompilableNode, options: RuntimeCompilerOptions, pat
         const choice = options.listRuntime.interaction?.choice({ pagePath, controlId: current.id })
         const selected = choice?.selectedIds ?? listSelectedIds(current)
         for (const { item, index } of window) if (focusableListItem(item)) {
-          countWork(options.counters, 'itemsWalked')
           const selectedIds = current.mode === 'multiple'
             ? selected.includes(item.id) ? selected.filter(id => id !== item.id) : [...selected, item.id]
             : [item.id]
@@ -1696,7 +1670,6 @@ function compileUnit(node: CompilableNode, state: FocusState, options: RuntimeCo
     const reused = options.reuse.take(node, options)
     if (reused !== undefined) return reused
   }
-  countWork(options.counters, 'unitsCompiled')
   switch (node.kind) {
     case 'text':
     case 'fields':
@@ -1706,7 +1679,6 @@ function compileUnit(node: CompilableNode, state: FocusState, options: RuntimeCo
     case 'markdown': return leaf(node, options, paint => contentLeafComponent(node, options, paint))
     case 'rich-text': return hasMotion(node.spans) ? staticComponent(width => {
       // An animated row is the one row a clock tick repaints: it is not memoized, and it joins the clock while painted.
-      countWork(options.counters, 'stringsMeasured')
       const presentation = options.components.presentation
       const line = paintMotionSpans(node.spans, options.colors, motionFrame(options), { glyphs: presentation?.glyphs, reducedMotion: presentation?.reducedMotion })
       return node.overflow === 'truncate' ? [truncatedRow(line, width, options.components)] : options.components.wrapText(line, Math.max(1, width))
@@ -1724,7 +1696,6 @@ function compileUnit(node: CompilableNode, state: FocusState, options: RuntimeCo
         return new AdmissionRow({
           components: options.components,
           colors: options.colors,
-          counters: options.counters,
           ...(node.gap === undefined ? {} : { gap: node.gap }),
           children: () => node.children.flatMap((child, index) => conditionMatches(child.when, safeViewport(options.getViewport)) && tabVisible(child, pagePath, options)
             ? [{ forms: compiled[index]!, band: child.band ?? 'left', ...(child.priority === undefined ? {} : { priority: child.priority }), ...(child.overflow === undefined ? {} : { overflow: child.overflow }), ...(child.mark === undefined ? {} : { mark: child.mark }) }]
@@ -1810,7 +1781,6 @@ function compileUnit(node: CompilableNode, state: FocusState, options: RuntimeCo
           expanded: () => state.expandedKey === key,
           colors: options.colors,
           components: options.components,
-          counters: options.counters,
           pillText: count => coreText(options, '↓ {count} new · End', { count }),
           more: node.more === true,
           moreText: count => coreText(options, '↓ {count} more', { count }),
@@ -1842,12 +1812,9 @@ function compileUnit(node: CompilableNode, state: FocusState, options: RuntimeCo
       const component = staticComponent(width => {
         const completed = options.listRuntime.interaction?.completedSteps({ pagePath, controlId: node.id }) ?? []
         const shaped = tabsShape({ ...node, activeId: options.listRuntime.activeTab({ pagePath, controlId: node.id }) ?? node.activeId }, safeViewport(options.getViewport).columns)
-        const rows = renderTabs(shaped, width, patternFocus(state, scopedControlGroup('tabs', node.id)), options.colors, completed, { cache: options.listRuntime.rows, counters: options.counters })
-        // A rail counts the rows its cache painted; a strip is two rows and keeps no cache.
-        if (shaped.orientation !== 'vertical') countWork(options.counters, 'rowsPainted', rows.length)
-        countWork(options.counters, 'componentRenders')
+        const rows = renderTabs(shaped, width, patternFocus(state, scopedControlGroup('tabs', node.id)), options.colors, completed, { cache: options.listRuntime.rows })
         return rows
-      }, options, false)
+      }, options)
       state.bindControls(node.items.filter(item => item.disabled !== true).map(item => scopedControlKey('tabs', node.id, item.id)), { component, axis: node.orientation === 'vertical' ? 'vertical' : 'horizontal' })
       return component
     }
@@ -1919,7 +1886,7 @@ function compileUnit(node: CompilableNode, state: FocusState, options: RuntimeCo
             body: paintBody,
             translate,
             flow: true,
-            memo: { cache: options.listRuntime.rows, counters: options.counters },
+            memo: { cache: options.listRuntime.rows },
           })
           if (following && probe.itemId !== undefined) {
             const line = painter.locate(probe.itemId)
@@ -1937,7 +1904,7 @@ function compileUnit(node: CompilableNode, state: FocusState, options: RuntimeCo
             focus,
             options.colors,
             entries[0]!.position,
-            { cache: options.listRuntime.rows, counters: options.counters },
+            { cache: options.listRuntime.rows },
             {
               rows: entries,
               cursorId: choice?.focusedId,
@@ -1954,10 +1921,9 @@ function compileUnit(node: CompilableNode, state: FocusState, options: RuntimeCo
             },
           )
         }
-        // The row cache counts the rows it paints; the list counts its render.
-        countWork(options.counters, 'componentRenders')
+        // The row cache paints the rows it has not seen; the list joins them with its own query rows.
         return concatRows(queryRows, counter === undefined ? [] : [sliceByColumn(options.colors.textMuted(counter), 0, width, true)], body)
-      }, options, false)
+      }, options)
       const initial = options.listRuntime.listWindow(node, listRowLimit(options))
       if (initial.length === 0) state.bindControls([scopedControlKey('empty-list', node.id)], { component, axis: 'none' })
       state.bindControls(initial.filter(entry => focusableListItem(entry.item)).map(entry => scopedControlKey('list', node.id, entry.item.id)), { component, axis: 'vertical' })
@@ -2086,7 +2052,6 @@ function walkKeys(walk: ControlWalk): string {
 }
 
 function reconcile(state: FocusState): readonly ControlDescriptor[] {
-  state.count('reconciles')
   const controls = reconcileFocus(state)
   state.reconciled = { controls: walkKeys(state.walk()), activeKey: state.activeKey, desiredKey: state.desiredKey, editingKey: state.editingKey, focused: state.focused, lastIndex: state.lastIndex }
   return controls
@@ -2424,7 +2389,6 @@ export class MayflyUiSurfaceRuntime {
           : []))
         for (const [stateKey, lease] of this.textEditors) if (!visible.has(stateKey)) lease.editor.focused = false
       },
-      count: counter => { countWork(this.options?.counters, counter) },
       setLayoutViewport: viewport => { this.layoutViewport?.(viewport) },
       bindControls: (keys, binding) => { this.controls.bind(keys, binding) },
       bindScroll: (key, scroll) => { this.controls.bindScroll(key, scroll) },
@@ -2625,7 +2589,6 @@ export class MayflyUiSurfaceRuntime {
       const always = item.bodyAlways === true && item.body !== undefined
       return { index, position: start + offset, item, depth: 0, last: false, expandable: !always && item.body !== undefined, open: always || (item.body !== undefined && item.expanded === true) }
     })
-    countWork(this.options?.counters, 'itemsWalked', window.length)
     return window
   }
 
@@ -2753,7 +2716,6 @@ export class MayflyUiSurfaceRuntime {
     const key = `${String(viewport.columns)}x${String(viewport.rows)}/${String(this.listRowBudget ?? '')}`
     const known = memo.walks.get(key)
     if (known !== undefined) return known
-    countWork(options.counters, 'controlWalks')
     const walk = walkControls(node, options)
     if (memo.walks.size >= CONTROL_WALK_VIEWPORTS) memo.walks.delete(memo.walks.keys().next().value!)
     memo.walks.set(key, walk)
@@ -3054,7 +3016,6 @@ class CompiledSurface implements MayflyEditorShellComponent {
     this.prepareNativeLayout()
     this.viewport = safeViewport(this.options.getViewport)
     this.surfaceRuntime.beginAnimationFrame()
-    countWork(this.runtimeOptions.counters, 'layoutPasses')
     reconcile(this.state)
     beginLayoutPass(this.state)
     return getLayoutNode(this.root) ?? {
@@ -3070,7 +3031,6 @@ class CompiledSurface implements MayflyEditorShellComponent {
     if (!this.surfaceRuntime.current(this.generation)) return { rows: [], overflowed: false }
     this.runtimeFailure = undefined
     this.surfaceRuntime.beginAnimationFrame()
-    countWork(this.runtimeOptions.counters, 'layoutPasses')
     try {
       this.state.layoutPass = false
       this.viewport = maxRows === undefined
@@ -3091,7 +3051,6 @@ class CompiledSurface implements MayflyEditorShellComponent {
           /* Semantic scrolls learn the content width from render(); refresh it
              so anchors written while expanded match the expanded width. */
           expandedComponent.render(safeWidth)
-          countWork(this.runtimeOptions.counters, 'layoutPasses')
           const frame = renderLayoutFrame(expandedComponent, safeWidth, Math.max(1, viewport.rows - hint.length), () => {})
           const lines = [...frame.lines, ...hint]
           return { rows: lines.map(row => visibleWidth(row) <= safeWidth ? row : /* layout frames and hint rows are already produced at the safe width */ sliceByColumn(row, 0, safeWidth, true)), overflowed: false }
@@ -3101,7 +3060,6 @@ class CompiledSurface implements MayflyEditorShellComponent {
       const constrainedLayout = (): string[] => {
         const viewport = this.viewport
         beginLayoutPass(this.state)
-        countWork(this.runtimeOptions.counters, 'layoutPasses')
         try { return renderLayoutFrame(this.root, safeWidth, viewport.rows, () => {}).lines }
         finally { this.state.layoutPass = false; this.viewport = viewport }
       }
@@ -3151,7 +3109,6 @@ class CompiledSurface implements MayflyEditorShellComponent {
       }
       let overflowed = rowLimit !== undefined && rows.length > rowLimit
       const clampRow = (row: string): string => {
-        countWork(this.runtimeOptions.counters, 'stringsMeasured')
         if (visibleWidth(row) <= safeWidth) return row
         overflowed = true
         return sliceByColumn(row, 0, safeWidth, true)
@@ -3326,7 +3283,6 @@ class CompiledSurface implements MayflyEditorShellComponent {
       : Math.max(1, this.root.render(width).length)
     const previousLayoutPass = this.state.layoutPass
     beginLayoutPass(this.state)
-    countWork(this.runtimeOptions.counters, 'layoutPasses')
     try {
       /* pi-tui does not request repaint during synchronous measurement. */
       const frame = renderLayoutFrame(this.root, width, height, () => {})
@@ -3827,7 +3783,7 @@ function admittedSurface(node: CompilableNode, options: MayflyUiCompilerOptions,
 
 /** Validate first, then compile one canonical UI tree without a bypass path. */
 export function compileMayflyUiNode(value: unknown, options: MayflyUiCompilerOptions): MayflyUiCompileResult {
-  const admitted = validateMayflyUiNode(value, options.counters, options.admission)
+  const admitted = validateMayflyUiNode(value, options.admission)
   if (!admitted.ok) {
     return { ok: false, code: admitted.code, message: admitted.message, errorComponent: new ErrorComponent(admitted.message, options.colors) }
   }
@@ -3847,7 +3803,7 @@ export function compileMayflyUiNode(value: unknown, options: MayflyUiCompilerOpt
 /** Compile one validated projection into a bridge-owned persistent runtime. */
 export function compileMayflyUiSurfaceNode(value: unknown, options: MayflyUiSurfaceCompilerOptions): MayflyUiCompileResult {
   const admitted = value !== null && value === options.surfaceRuntime.interaction?.node
-    ? { ok: true as const, value: value as MayflyUiNode } : validateMayflyUiNode(value, options.counters, options.admission)
+    ? { ok: true as const, value: value as MayflyUiNode } : validateMayflyUiNode(value, options.admission)
   if (!admitted.ok) {
     return { ok: false, code: admitted.code, message: admitted.message, errorComponent: new ErrorComponent(admitted.message, options.colors) }
   }
@@ -3856,11 +3812,11 @@ export function compileMayflyUiSurfaceNode(value: unknown, options: MayflyUiSurf
     let node = admitted.value
     if (options.title !== undefined) {
       if (node.kind === 'surface' && node.title === undefined) {
-        const frame = validateMayflyUiNode({ kind: 'surface', chrome: 'overlay', title: options.title, padding: 1, child: { kind: 'spacer' } }, options.counters)
+        const frame = validateMayflyUiNode({ kind: 'surface', chrome: 'overlay', title: options.title, padding: 1, child: { kind: 'spacer' } })
         if (!frame.ok || frame.value.kind !== 'surface') throw new Error('invalid surface title')
         node = { ...node, title: frame.value.title! }
       } else if (node.kind !== 'surface') {
-        const frame = validateMayflyUiNode({ kind: 'surface', chrome: 'overlay', title: options.title, padding: 1, child: { kind: 'spacer' } }, options.counters)
+        const frame = validateMayflyUiNode({ kind: 'surface', chrome: 'overlay', title: options.title, padding: 1, child: { kind: 'spacer' } })
         if (!frame.ok || frame.value.kind !== 'surface') throw new Error('invalid surface title')
         node = { ...frame.value, child: node }
       }
@@ -3877,7 +3833,7 @@ export function compileMayflyUiSurfaceNode(value: unknown, options: MayflyUiSurf
 
 /** Validate an editor shell, then compile it around the exact injected engine. */
 export function compileMayflyEditorShellNode(value: unknown, options: MayflyEditorShellCompilerOptions): MayflyEditorShellCompileResult {
-  const admitted = validateMayflyEditorShellNode(value, options.counters, options.admission)
+  const admitted = validateMayflyEditorShellNode(value, options.admission)
   if (!admitted.ok) {
     return { ok: false, code: admitted.code, message: admitted.message, errorComponent: new ErrorComponent(admitted.message, options.colors) }
   }

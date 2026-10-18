@@ -14,7 +14,6 @@ import { scanContentLines, type ContentLineScan } from './content-segments.ts'
 import { paintSpan, paintTone } from './ui-paint.ts'
 import { segmentLine, type SegmentView } from './ui-list-segment.ts'
 import type { UiRowCache } from './ui-row-cache.ts'
-import { countWork, type MayflyWorkCounters } from './ui-work-counters.ts'
 import { concatRows, mapRows, sliceRows, virtualRows, type RowSource } from './ui-rows.ts'
 import { countMatches, highlightLine, highlightPattern } from './ui-find.ts'
 import { sliceByColumn, visibleWidth, wrapTextWithAnsi } from './width.ts'
@@ -30,10 +29,9 @@ export interface ListRowSpec {
   readonly position: number
 }
 
-/** Where `paintList` keeps the rows it has painted, and the sink that counts the ones it had to paint. */
+/** Where `paintList` keeps the rows it has painted. */
 export interface ListRowMemo {
   readonly cache: UiRowCache
-  readonly counters?: MayflyWorkCounters | undefined
 }
 
 export interface ListPaintOptions {
@@ -398,25 +396,24 @@ function headLines(state: RowState, colors: MayflySemanticColors, translate: Lis
  */
 const bodyScans = new WeakMap<MayflyListItem, ContentLineScan>()
 
-function bodyScan(item: MayflyListItem, body: string, counters: MayflyWorkCounters | undefined): ContentLineScan {
+function bodyScan(item: MayflyListItem, body: string): ContentLineScan {
   let scan = bodyScans.get(item)
   if (scan === undefined) {
     scan = scanContentLines(body)
-    countWork(counters, 'linesEstimated', scan.starts.length)
     bodyScans.set(item, scan)
   }
   return scan
 }
 
 /** The lines of an open body: guides for text, content for a node. */
-function bodyLines(spec: ListRowSpec, width: number, colors: MayflySemanticColors, paintBody: ListPaintOptions['body'], counters: MayflyWorkCounters | undefined): readonly string[] {
+function bodyLines(spec: ListRowSpec, width: number, colors: MayflySemanticColors, paintBody: ListPaintOptions['body']): readonly string[] {
   // Only an open row with a body asks for its body lines.
   const item = spec.item
   const body = item.body!
   const indent = ' '.repeat(item.indent ?? 0)
   const always = item.bodyAlways === true
   if (typeof body === 'string') {
-    const scan = bodyScan(item, body, counters)
+    const scan = bodyScan(item, body)
     // `split('\n')` parity: an empty body is one empty line under the guide.
     const count = Math.max(1, scan.starts.length)
     const last = count - 1
@@ -427,7 +424,6 @@ function bodyLines(spec: ListRowSpec, width: number, colors: MayflySemanticColor
       markerFree: true,
       row(index) {
         // The facade clamps reads to `index < count`; past `starts.length` only the empty body's single row exists.
-        countWork(counters, 'rowsMaterialized')
         const line = index < scan.starts.length ? body.slice(scan.starts[index]!, scan.ends[index]!) : ''
         return always
           ? clipRow(`${indent}       ${colors.muted(line)}`, width)
@@ -548,17 +544,16 @@ function paintItemEntries(context: ListPaintContext, spec: ListRowSpec, group: s
   const paintHead = (): readonly string[] => leaded ? leadedLines(state, colors, options.body) : headLines(state, colors, options.translate)
   // A row whose body carries a motion span is painted again at every clock frame: its remembered lines would freeze it.
   const moves = typeof item.body === 'object' && item.body.kind === 'rich-text' && hasMotion(item.body.spans)
-  const painted = options.memo === undefined || moves ? paintHead() : options.memo.cache.readLines(colors, item, key, paintHead, options.memo.counters)
+  const painted = options.memo === undefined || moves ? paintHead() : options.memo.cache.readLines(colors, item, key, paintHead)
   // A `band` list marks its cursor row, the rows under it, and their bodies with the selected background, in place of an
   // arrow. The band keeps a column free at each edge of the list.
   const banded = node.marker === 'band' && options.focused && options.cursorId !== undefined && (on || within(item, options.cursorId, parents))
   const block = options.cursorId !== undefined && (on || within(item, options.cursorId, parents))
   entries.push({ kind: 'item', id: item.id, lines: painted, banded, block })
   if (!leaded && spec.open && item.body !== undefined) {
-    const counters = options.memo?.counters
     const body = options.memo === undefined || moves
-      ? bodyLines(spec, available, colors, options.body, counters)
-      : options.memo.cache.readLines(colors, item, `body\x01${String(available)}\x01${options.flow === true ? 1 : 0}\x01${node.highlight?.current === undefined ? 0 : 1}`, () => bodyLines(spec, available, colors, options.body, counters), counters)
+      ? bodyLines(spec, available, colors, options.body)
+      : options.memo.cache.readLines(colors, item, `body\x01${String(available)}\x01${options.flow === true ? 1 : 0}\x01${node.highlight?.current === undefined ? 0 : 1}`, () => bodyLines(spec, available, colors, options.body))
     if (body.length > 0) entries.push({ kind: 'body', lines: body, banded, block })
   }
   return { entries, group, focusedWithout, footerFor }
@@ -590,7 +585,6 @@ export function paintList(node: ListNodeView, width: number, height: number, col
   for (const spec of options.rows) if (spec.item.under !== undefined) parents.set(spec.item.id, spec.item.under)
   const context: ListPaintContext = { node, width: available, colors, options, numbered, digits, column, plan, parents }
   for (const spec of options.rows) {
-    countWork(options.memo?.counters, 'itemsWalked')
     const painted = paintItemEntries(context, spec, group)
     entries.push(...painted.entries)
     group = painted.group
@@ -812,7 +806,6 @@ export class FlowListPainter implements RowSource {
     const touched = new Set<number>()
     const build = (index: number, group: string | undefined): FlowBlock => {
       touched.add(index)
-      countWork(options.memo?.counters, 'itemsWalked')
       const spec = model.specAt(index)
       const painted = paintItemEntries(context, spec, group)
       const find = highlightPattern(node.highlight)
