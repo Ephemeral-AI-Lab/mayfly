@@ -253,14 +253,13 @@ live theme provider (`reloadTheme`), so every consumer and cached row rebuilds.
 
 Build surfaces from the shared components (actions row, text/choice fields,
 lists, tabs, decision panels, questionnaire, loader/progress/empty). The
-[UI design](../../docs/design/component-library.md) and its prototype are the
-starting sketch; the owner's acceptance in the running terminal decides, and a
-finalized section describes accepted behavior. Its
-[implementation reference](../../docs/design/component-library-reference.md) holds
-the wire mechanics. Never hand-roll pi-tui panels outside `core/`; the editor's
-completion list is state only (`core/completion-list.ts`) and the palette that
-paints it is `core/completion-drawer.ts`. A component that replaces a surface deletes the old code in
-the same change; nothing is kept for a later cleanup.
+[UI design](../../docs/design/component-library.md) is the starting sketch; the
+owner's acceptance in the running terminal decides, and a finalized section
+describes accepted behavior. Never hand-roll pi-tui panels outside `core/`; the
+editor's completion list is state only (`core/completion-list.ts`) and the
+palette that paints it is `core/completion-drawer.ts`. A component that replaces
+a surface deletes the old code in the same change; nothing is kept for a later
+cleanup.
 
 ## Native writes and sensitive data
 
@@ -320,8 +319,8 @@ purpose. The budgets are
 the work-budget gate of the foundation: `budgets.json` may not exceed
 `baseline.json` (the work of the slice 1.0 pipeline), W1 and W4 gate again through
 the node slot (`W1-slot`, `W4-slot`), a slice that adds a painter adds its row,
-and wall-clock time from `script/audit-performance.mjs` is reported with a change
-and gates nothing. W13 to W17 (`tests/perf/frame-workloads.ts`) count a whole frame
+and a change to the frame path is reported with wall-clock time from
+`pnpm run perf`. W13 to W17 (`tests/perf/frame-workloads.ts`) count a whole frame
 through the alternate layout, the lanes, and the surface renderer (leaf renders,
 control walks, reconciliations, layout passes, clock ticks, keymap snapshots): a
 budget row gates the counters it names, and a change to the frame path
@@ -336,7 +335,7 @@ review replaces them. The prototype is a sketch and gates nothing. The owner's l
 acceptance decides a component's look, and its accepted frames become its goldens.
 
 Patch, preset, skill, dependency, or composition edits require bundle/preset
-tests, `pnpm run check:agent-docs`, `pnpm run check -- --tier full`,
+tests, `pnpm run check:agent-docs`, `pnpm run check`,
 `pnpm run check:pack`, dedicated-profile install, PTY smoke, and human acceptance.
 Keep `HARNESS_LINE` in `interaction/session-commands.ts`, where drift/build
 scripts read it. The public side-question entry is `./btw-command`; do not restore

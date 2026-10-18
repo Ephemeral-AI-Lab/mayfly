@@ -16,9 +16,11 @@ to that release and run:
 
 ```sh
 VERSION=0.1.3-rc.2
-pnpm run check -- --tier full --plan
+pnpm run check
+pnpm run check:lib
+pnpm run check:examples
 pnpm release:preflight "$VERSION"
-pnpm run check -- --tier full
+pnpm run check:pack
 pnpm release:preflight --artifact "$VERSION"
 ```
 

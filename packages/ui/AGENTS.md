@@ -29,9 +29,8 @@ objects, or mutable product state.
   builder keeps an unchanged sub-node identical (`freezeWire` of a snapshot
   returns it) and never rebuilds it to "refresh" it.
 - The [UI design](../../docs/design/component-library.md) is the starting sketch for the
-  Mayfly components; a section the owner has finalized describes accepted behavior. Its
-  [implementation reference](../../docs/design/component-library-reference.md) holds the
-  builder and event tables. A genuinely new node kind lands as contract + builder + core
+  Mayfly components; a section the owner has finalized describes accepted behavior.
+  A genuinely new node kind lands as contract + builder + core
   validator/painter/grammar + width-scan coverage, never as an ad-hoc renderer.
 
 ## Provider lifecycle

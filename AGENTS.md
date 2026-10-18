@@ -101,51 +101,29 @@ product, and a change updates its text without checking it.
 
 ## Verification
 
-The tiers below run at step 7 of a round, never during steps 1 to 6. Verify with `pnpm run check -- --tier round|pr|full` (default `pr`). `round`
-is for every edit (the incremental build, lint, the specs and workflow tests
-the change reaches, and its scenarios at their first size), `pr` for finalizing
-a change (round plus the checks it claims: agent docs, diagrams, lib exports,
-examples, pack; scenarios at every size),
-and `full` for broad, release, architecture, composition, or workflow changes
-and the end of a phase. The change set is `origin/main...HEAD` plus staged,
-unstaged, and untracked files (not generated `.artifacts/`); use `--base <ref>`
-when needed. `--plan` prints the plan and steps without running them, and
-`--why` adds the chain from a changed file to each selected test. Each step
-prints one line and logs to `.artifacts/verify/steps/`; read
-`.artifacts/verify/summary.md` after a run: the verdict, the first failure of
-each failing spec with why it ran, owed manual acceptance, and how to rerun.
-Fix and run the tier again until it passes. Selection
-follows the static import graph (`script/verify/graph.mjs`: imports, literal
-data reads, built entries mapped to their sources, patch rows); what it cannot
-see is declared in `script/verify/inputs.mjs`, and `script/verify/select.mjs`
-plans the checks. A new file must be claimed: parsed by the graph, read through
-a literal path, or named in the inputs (`script/tests/claimed-files.test.mjs`).
-A global input runs the full tier whatever tier was asked.
+`pnpm run check` is the whole gate: build -> typecheck -> lint -> vitest. Run it
+for every merge to the integration branch and before a release. A fresh
+worktree needs one full build baseline; ordinary edits may use the incremental
+build while developing. The old change-aware tiers, `script/verify`, and the
+coverage floor are gone.
 
-CI runs the pr tier on a pull request (with advice on changed source lines no
-selected spec ran) and the full tier on `main` and nightly. The full tier
-includes one vitest run (the suites with the stale-row
-check on, the work budgets, and the coverage floor), the happy smoke and the
-perf scenarios against their ceilings (`perf --assert`) on the tier's own build,
-and every scenario against its goldens; it never builds or checks the Website
-or its screenshots. Do not precede it with redundant plain tests. `pnpm run scenarios
-[-- <name>...]` compares the catalog scenarios' checkpoints with
-`script/scenarios/golden/` (selected by their `covers` globs, their goldens,
-the scenario machinery, and a smoke set for other product code); after
-reviewing a difference with `pnpm run frame <name>`, `pnpm run scenarios --
---update <name>` accepts it, and the summary names both. Distribution changes selected by the planner also run
-`check:pack`; a plain full tier does not pack. Release
-publication additionally requires `pnpm release:preflight <version>`, verified
-tarballs, and the human acceptance described below. Instruction and
-shipped-skill changes run `check:agent-docs`.
+`pnpm run scenarios` compares the catalog scenarios' checkpoints with
+`script/scenarios/golden/` at every size. Run it serially: the throwaway bench
+profile shares its settings (including the model the `/model` scenes change),
+so parallel boots can reorder the default and produce false diffs. Review a
+difference with `pnpm run frame <name>`; accept it only after the owner agrees
+and only for the rows the change owns. The design grids stay in vitest until
+the final oracle pass.
 
-UI component work follows the tiers of the
-[roadmap](docs/design/implementation-roadmap.md) §7. Review rounds with the
-owner run no tier (`pnpm run dev --check`, which runs the round tier after each
-rebuild, is for the end of a round, not for every edit); finalizing a component
-runs the pr tier with its decision tests (accepted frames, keys and writes,
-lifecycle, width, budgets); a phase ends with the full tier; CI runs the full tier on `main`. Tests record
-decisions; do not add tests only to reach a line.
+CI runs `pnpm run check` on every pull request and main push; the platform job
+runs the native launcher, command, clipboard, and search regressions. It never
+builds or checks the Website or its screenshots. Distribution and public-surface
+changes also run `check:lib`, `check:examples`, `check:pack`, and
+`check:agent-docs`; a release additionally requires
+`pnpm release:preflight <version>`, verified tarballs, and the human acceptance
+described below.
+
+Tests record decisions; do not add tests only to reach a line.
 
 - Vitest uses fork workers and two projects: `suite` runs every spec with
   `MAYFLY_UI_VERIFY_MEMO=1` (each retained-row hit paints again and a
@@ -184,10 +162,8 @@ decisions; do not add tests only to reach a line.
 
 ## Review loop
 
-Component work (Phases 3 to 6) follows
-[docs/design/component-development-spec.md](docs/design/component-development-spec.md): parts that each end in a
-scenario demo with a brief (implemented effects, effects to focus on), the original prototype `.mjs` read first,
-and terminal-only demos and questions to the owner.
+Component work follows a scenario demo with terminal-only demos and questions
+to the owner; the live result, not a prototype, decides.
 
 Review rounds use the workbench instead of a gate run (Round workflow, steps 3 to 6). `pnpm run dev --profile
 mayfly-<tag>` watches `packages/*/src` and `examples/*/src`, runs the
