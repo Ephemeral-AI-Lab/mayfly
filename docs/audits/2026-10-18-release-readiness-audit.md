@@ -33,7 +33,29 @@ red build:
    a matching changelog entry, and the release preflight.
 
 The test fixes in the "Already fixed" section make the complete suite pass;
-they do not close the coverage, scenario, performance, or screenshot gates.
+they do not close the 99% coverage, scenario, performance, or screenshot gates.
+
+## Owner decision and RC scope (2026-10-18)
+
+The owner chose to ship **`0.1.4-rc.1` as an RC-only preview** without adding
+the missing decision tests or waiting for the scenario/perf rounds to finish.
+This record therefore separates the **stable/latest** verdict from the **RC**
+decision:
+
+- The coverage floor is lowered to 95% on this release branch (owner decision);
+  the repository's 99% target is a follow-up, not a claim that coverage is
+  complete.
+- RC promotion writes the `rc` dist-tag only. `latest` stays on
+  `0.1.3-rc.2`; RC users must ask for `@rc` or the exact version.
+- The scenario goldens and the `/settings` performance regression remain known
+  RC debt. The release workflow's candidate gate does not run the scenario
+  harness or the real-terminal perf ceilings, so it can publish the preview;
+  the full-tier CI remains red until that debt is closed.
+- The changelog carries the RC caveat and the Windows sign-in fallback.
+
+This is a **preview release**, not a stable/latest approval. The stable
+release still requires the 99% floor, the owner-accepted scenario frames, and
+the perf fix.
 
 ## What held up
 
@@ -54,6 +76,10 @@ they do not close the coverage, scenario, performance, or screenshot gates.
 ## Release blockers
 
 ### B1. Coverage below the 99% floor
+
+**RC mitigation:** the release branch lowers the floor to 95% (owner decision,
+2026-10-18); the full suite then passes. The 99% target remains a follow-up.
+The numbers below are the baseline evidence.
 
 Evidence: `pnpm exec vitest run --coverage` at the release branch after the
 test fixes. Results: 6,369 passed, 1 skipped; exit 1 only because of the
@@ -123,24 +149,24 @@ must not be raised to make the gate pass; the work budgets only ratchet down.
 
 ### B4. Stale component shots
 
-`pnpm run shots:check` fails 24 component shots (`code`, `diff`, `tabs`,
-`tabs-active`, `list*`, `form*`, `actions-*`, `richText-motion`,
-`diff-options`, `scroll-region`, `loader-variants`, `views-summary`,
-`prompt-completions`, `patterns-*`). The release workflow runs the same check.
+`pnpm run shots:check` failed 24 component shots at the baseline. **Resolved on
+the release branch:** `pnpm run shots:sync` regenerated them, and
+`pnpm run shots:check` now reports all 60 component and 6 app shots current.
 
 ### B5. Version and changelog
 
-All three release manifests and the Website still advertise `0.1.3-rc.2`;
-`npm view` shows that version published on 2026-09-29. A release needs
-`0.1.4-rc.1`, a first changelog entry describing it, and
-`pnpm release:preflight 0.1.4-rc.1`. The current preflight passes only for the
-already-published version.
+All three release manifests and the Website still advertised `0.1.3-rc.2` at
+the baseline; `npm view` shows that version published on 2026-09-29.
+**Resolved on the release branch:** the manifests and markers are
+`0.1.4-rc.1`, the changelog has a first entry, and
+`pnpm release:preflight 0.1.4-rc.1` passes.
 
 ### B6. The release commit must have a green CI run
 
-The first GitHub sync pushed the baseline `4701538f`. Its `ci` run is expected
-to fail for these blockers. The release tag must wait for a green CI run on the
-release commit; a red baseline is evidence, not a release gate.
+The first GitHub sync pushed the baseline `4701538f`. Its `ci` full tier is red
+for B2/B3. The release workflow's candidate gate is narrower (it does not run
+the scenario harness or the PTY perf ceilings), so the RC preview can publish
+after its own gates pass; the full-tier CI stays red as recorded debt.
 
 ## Non-blocking findings
 
@@ -196,13 +222,15 @@ choice.
 
 | Check | Result |
 | --- | --- |
-| `pnpm exec vitest run --coverage` | tests pass; coverage fails the 99% thresholds (B1) |
+| `pnpm exec vitest run --coverage` (95% floor) | PASS: 6,369 tests, 1 skipped; 97.03/95.95/97.24/97.66 |
 | `pnpm run check -- --tier full` at baseline | FAIL: suites, scenarios, perf |
 | `pnpm run perf -- --assert perf-focus perf-swarm` | FAIL: `perf-focus /settings`; swarm passes |
-| `pnpm run shots:check` | FAIL: 24 stale component shots |
+| `pnpm run shots:sync` / `shots:check` | PASS: 60 component + 6 app shots current |
+| `pnpm run check:pack` | PASS: 3 tarballs, publint, attw, external UI kit |
+| `pnpm release:preflight 0.1.4-rc.1` / `--artifact` | PASS |
 | `pnpm run website:build` | PASS |
-| `pnpm run check:pack` | not rerun after these edits |
-| `pnpm release:preflight 0.1.3-rc.2` | PASS (already-published version only) |
+| packed CLI `mayfly -V` / `plugin --help` | PASS (`0.1.4-rc.1`, harness 0.2.1-rc.2) |
+| `pnpm run typecheck`, `lint`, `check:lib`, `check:agent-docs`, `check:examples` | PASS |
 
 ## Not audited
 
@@ -214,7 +242,11 @@ choice.
 
 ## Release decision
 
-NO-GO for `0.1.4-rc.1` until B1-B4 are closed and the owner accepts the
-scenario/Website frames. If the coverage work and visual rounds are deferred,
-the correct action is to keep `0.1.3-rc.2` as the published version and treat
-this branch as an audit record, not a release candidate.
+**RC-only preview approved** (`0.1.4-rc.1`, `rc` tag, `latest` untouched) on
+the owner's decision of 2026-10-18. The release workflow's candidate gate is
+the release gate; the full-tier CI is expected to stay red for the scenario
+and perf debt recorded above.
+
+A **stable/latest** release remains NO-GO until the 99% coverage floor, the
+owner-accepted scenario frames, and the `perf-focus /settings` regression are
+closed.

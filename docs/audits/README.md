@@ -8,8 +8,10 @@ first, when it has one.
 
 Record: [2026-10-18-release-readiness-audit.md](2026-10-18-release-readiness-audit.md). Baseline `4701538f`, target
 `0.1.4-rc.1`. NO-GO at the baseline: coverage below the 99% floor, 18 scenario runs with stale or missing goldens, a
-`perf-focus /settings` regression, and 24 stale component shots. The record also carries the fixed test-isolation
-changes, the upstream advisory triage, and the Windows browser-opener finding.
+`perf-focus /settings` regression, and 24 stale component shots. The owner approved an **RC-only preview** on
+2026-10-18 with a temporary 95% coverage floor and `rc`-only promotion; `latest` stays on `0.1.3-rc.2`, and the
+scenario/perf debt remains. The record also carries the fixed test-isolation changes, the upstream advisory triage,
+and the Windows browser-opener finding.
 
 ## Phase 7 performance audit (2026-10-17)
 
