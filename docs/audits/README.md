@@ -4,6 +4,13 @@ Each file is a dated record of one investigation or acceptance round. A record s
 define current behavior; the code and the [architecture docs](../README.md) do. Read a record's closeout or status note
 first, when it has one.
 
+## Release readiness audit (2026-10-18)
+
+Record: [2026-10-18-release-readiness-audit.md](2026-10-18-release-readiness-audit.md). Baseline `4701538f`, target
+`0.1.4-rc.1`. NO-GO at the baseline: coverage below the 99% floor, 18 scenario runs with stale or missing goldens, a
+`perf-focus /settings` regression, and 24 stale component shots. The record also carries the fixed test-isolation
+changes, the upstream advisory triage, and the Windows browser-opener finding.
+
 ## Phase 7 performance audit (2026-10-17)
 
 Folder: [phase-7/](phase-7/). Round 0 measured the 2,000-turn session, the flowing stream, the tools/change
