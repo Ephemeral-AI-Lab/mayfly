@@ -395,6 +395,8 @@ export async function bootStatusPlugin(
     render: width => {
       const model = currentModel()
       if (model === undefined || width <= 0) return ''
+      const full = model.node?.kind === 'shed' ? model.node.node : model.node
+      if (model.definition.overflow === 'hide' && full?.kind === 'text' && typeof full.content === 'string' && components.visibleWidth(full.content) > width) return ''
       const result = compileMayflyUiNode(model.node!, {
         components,
         colors,
