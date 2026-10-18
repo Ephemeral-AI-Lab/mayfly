@@ -4,7 +4,7 @@ import { ui } from '@ephemeral-ai/mayfly-ui'
 import { MayflyCompileCache, type PaintOptions } from '../../src/core/ui-compile-cache.ts'
 import {
   MayflyUiSurfaceRuntime,
-  compileMayflyStatusNode,
+  compileMayflyUiNode,
   compileMayflyUiSurfaceNode,
 } from '../../src/core/ui-compiler.ts'
 import { UiSurfaceModel, type UiSurfaceSnapshot } from '../../src/core/ui-interaction-surface.ts'
@@ -78,13 +78,13 @@ describe('MayflyCompileCache', () => {
 describe('leaf reuse in the compiler', () => {
   const viewport = { getViewport: () => ({ columns: 80, rows: 24 }), bounded: true }
 
-  it('compiles an unchanged status entry once and paints it once per width', () => {
+  it('compiles an unchanged bounded entry once and paints it once per width', () => {
     const admission = createAdmissionCache()
     const reuse = new MayflyCompileCache()
     const entry = ui.richText([{ text: 'branch ' }, { text: 'main', tone: 'muted' }])
     const publish = (tail: string) => {
       const counters = createWorkCounters()
-      const result = compileMayflyStatusNode(ui.stack.row([ui.child(entry), ui.child(ui.text(tail))]), { components, colors, ...viewport, counters, admission, reuse })
+      const result = compileMayflyUiNode(ui.stack.row([ui.child(entry), ui.child(ui.text(tail))]), { components, colors, ...viewport, counters, admission, reuse, emit: () => {} })
       if (!result.ok) throw new Error(result.message)
       const rows = result.value.component.render(80)
       return { counters, rows }
@@ -100,7 +100,7 @@ describe('leaf reuse in the compiler', () => {
   it('does not share a leaf between two surfaces, and a repeated node paints in both places', () => {
     const shared = ui.text('same')
     const compile = (node: ReturnType<typeof ui.stack.column>) => {
-      const result = compileMayflyStatusNode(node, { components, colors, ...viewport, maxRows: 2 })
+      const result = compileMayflyUiNode(node, { components, colors, ...viewport, emit: () => {} })
       if (!result.ok) throw new Error(result.message)
       return result.value.component.render(80).join('\n')
     }

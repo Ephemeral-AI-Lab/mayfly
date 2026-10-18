@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest'
 import { ui } from '../../../ui/src/index.ts'
 import { ADMISSION_MIN_TRUNCATED, AdmissionRow, admitWidths, layoutBands } from '../../src/core/ui-admission.ts'
-import { compileMayflyStatusNode, compileMayflyUiNode } from '../../src/core/ui-compiler.ts'
+import { compileMayflyUiNode } from '../../src/core/ui-compiler.ts'
 import { createWorkCounters } from '../../src/core/ui-work-counters.ts'
 import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/width.ts'
 import { ADVERSARIAL } from './width-scan.ts'
@@ -101,7 +101,7 @@ describe('AdmissionRow', () => {
 
   it('counts the one row it paints, and a status stack admits the same way', () => {
     const counters = createWorkCounters()
-    const result = compileMayflyStatusNode(ui.stack.row([ui.child(ui.richText([{ text: 'a' }]), { priority: 0 }), ui.child(ui.richText([{ text: 'b' }]), { priority: 1, band: 'right' })]), { components, colors, getViewport: () => ({ columns: 10, rows: 3 }), bounded: false, counters })
+    const result = compileMayflyUiNode(ui.stack.row([ui.child(ui.richText([{ text: 'a' }]), { priority: 0 }), ui.child(ui.richText([{ text: 'b' }]), { priority: 1, band: 'right' })]), { components, colors, getViewport: () => ({ columns: 10, rows: 3 }), bounded: true, counters, emit: () => {} })
     if (!result.ok) throw new Error(result.message)
     expect(result.value.component.render(10).map(painted => painted.replaceAll('\x1b[0m', ''))).toEqual(['a        b'])
     expect(counters.rowsPainted).toBeGreaterThanOrEqual(1)

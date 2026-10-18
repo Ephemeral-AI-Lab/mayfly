@@ -7,11 +7,9 @@ import { ui } from '../../../ui/src/index.ts'
 import {
   MayflyUiSurfaceRuntime,
   compileMayflyEditorShellNode,
-  compileMayflyStatusNode,
   compileMayflyUiSurfaceNode,
   compileMayflyUiNode,
   type MayflyEditorShellCompilerOptions,
-  type MayflyStatusCompilerOptions,
   type MayflyUiCompilerOptions,
 } from '../../src/core/ui-compiler.ts'
 import type { MayflyComponents, MayflyEditor, MayflySemanticColors } from '../../src/core/types.ts'
@@ -160,23 +158,6 @@ function compiledSurface(value: unknown, options: MayflyUiCompilerOptions, surfa
   expect(result.ok).toBe(true)
   if (!result.ok) throw new Error(result.message)
   return { ...result.value, surfaceRuntime }
-}
-
-function statusOptions(overrides: Partial<MayflyStatusCompilerOptions> = {}): MayflyStatusCompilerOptions {
-  return {
-    components,
-    colors,
-    getViewport: () => ({ columns: 80, rows: 20 }),
-    bounded: true,
-    ...overrides,
-  }
-}
-
-function compiledStatus(value: unknown, options: MayflyStatusCompilerOptions = statusOptions()) {
-  const result = compileMayflyStatusNode(value, options)
-  expect(result.ok).toBe(true)
-  if (!result.ok) throw new Error(result.message)
-  return result.value
 }
 
 function compiledEditorShell(value: unknown, editor: MayflyEditor, overrides: Partial<MayflyEditorShellCompilerOptions> = {}) {
@@ -1662,8 +1643,6 @@ describe('compileMayflyUiSurfaceNode contextual hints', () => {
     shell.focusTarget.focused = true
     expect(shell.component.render(80).join('\n')).not.toContain('Enter finish')
 
-    expect(compiledStatus(ui.text('status')).component.render(80)).toEqual(['status'])
-
     const replacement = compileMayflyUiSurfaceNode(ui.text('replacement'), {
       ...f.options,
       surfaceRuntime: persistent.surfaceRuntime,
@@ -2339,97 +2318,6 @@ describe('compileMayflyEditorShellNode', () => {
   })
 })
 
-describe('compileMayflyStatusNode', () => {
-  it('uses the narrowed validator and exposes no focus, input, or event surface', () => {
-    const invalid = compileMayflyStatusNode(ui.actions({ id: 'bad', items: [] }), statusOptions({ maxRows: 2 }))
-    expect(invalid).toMatchObject({ ok: false, code: 'MAYFLY_INVALID_CONTRIBUTION' })
-    if (invalid.ok) throw new Error('expected failure')
-    expect(invalid.errorComponent.renderStatus(8).rows.length).toBeLessThanOrEqual(2)
-    expect(invalid.errorComponent.render(8).length).toBeLessThanOrEqual(2)
-
-    const status = compiledStatus(ui.text('ready'))
-    expect(status.node).toEqual({ kind: 'text', content: 'ready' })
-    expect(status.component.render(20)).toEqual(['ready'])
-    expect('focused' in status.component).toBe(false)
-    expect('handleInput' in status.component).toBe(false)
-    status.component.invalidate()
-  })
-
-  it('keeps compact row stacks spatial in main mode', () => {
-    const status = compiledStatus(ui.stack.row([
-      ui.child(ui.text('left'), { basis: 4, grow: 0, shrink: 0 }),
-      ui.child(ui.text('right'), { basis: 5, grow: 0, shrink: 0 }),
-    ], { gap: 1 }), statusOptions({ bounded: false }))
-    const rows = status.component.render(20)
-    expect(rows).toHaveLength(1)
-    expect(rows[0]).toContain('left')
-    expect(rows[0]).toContain('right')
-  })
-
-  it('bounds status height and reports row and column overflow', () => {
-    const status = compiledStatus(ui.stack.column([
-      ui.text('first'),
-      ui.text('second'),
-      ui.text('third'),
-    ]), statusOptions({ maxRows: 2 }))
-    expect(status.component.renderStatus(20)).toEqual({ rows: ['first', 'second'], overflowed: true })
-    expect(status.component.render(20)).toEqual(['first', 'second'])
-
-    const narrow = compiledStatus(ui.richText([{ text: 'abcdefghij' }]), statusOptions({ maxRows: 1 }))
-    const rendered = narrow.component.renderStatus(4)
-    expect(rendered.rows).toHaveLength(1)
-    expect(rendered.overflowed).toBe(true)
-    expectLinesFit('status overflow', rendered.rows, 4)
-
-    const clamped = compiledStatus(ui.stack.column([ui.text('one'), ui.text('two')]), statusOptions({ maxRows: 99 as never }))
-    expect(clamped.component.renderStatus(20)).toEqual({ rows: ['one'], overflowed: true })
-  })
-
-  it('evaluates status breakpoints against the allocated surface dimensions', () => {
-    const status = compiledStatus({
-      kind: 'stack',
-      direction: 'column',
-      children: [
-        { node: { kind: 'text', content: 'wide' }, when: { minWidth: 20 } },
-        { node: { kind: 'text', content: 'tall' }, when: { minHeight: 4 } },
-        { node: { kind: 'text', content: 'compact' }, when: { maxWidth: 19, maxHeight: 3 } },
-      ],
-    }, statusOptions({ getViewport: () => ({ columns: 80, rows: 24 }), maxRows: 3 }))
-    expect(status.component.renderStatus(18)).toEqual({ rows: ['compact'], overflowed: false })
-    expect(status.component.renderStatus(20)).toEqual({ rows: ['wide'], overflowed: false })
-  })
-
-  it('contains validation, setup, and render failures in the status budget', () => {
-    const invalid = compileMayflyStatusNode({ kind: 'unknown' }, statusOptions({ maxRows: 1 }))
-    if (invalid.ok) throw new Error('expected failure')
-    const rejected = invalid.errorComponent.renderStatus(3)
-    expect(rejected.rows.length).toBeLessThanOrEqual(1)
-    expectLinesFit('status validation failure', rejected.rows, 3)
-    invalid.errorComponent.invalidate()
-
-    const throwingComponents = { ...components, wrapText: () => { throw new Error('status exploded') } } as MayflyComponents
-    const rendered = compiledStatus(ui.richText([{ text: 'safe' }]), statusOptions({ components: throwingComponents, maxRows: 2 })).component.renderStatus(12)
-    expect(rendered.rows.join('')).toContain('Mayfly UI rejected')
-    expect(rendered.rows.length).toBeLessThanOrEqual(2)
-    expect(rendered.runtimeFailure).toBe('status exploded')
-
-    const broken = compiledStatus(ui.text('safe'), statusOptions({ maxRows: 2 })).component as unknown as {
-      surface: { root: { render(width: number): string[] } }
-      renderStatus(width: number): { rows: string[], overflowed: boolean, runtimeFailure?: string }
-    }
-    broken.surface.root.render = () => { throw new Error('status root exploded') }
-    const failed = broken.renderStatus(12)
-    expect(failed.rows.join('')).toContain('Mayfly UI rejected')
-    expect(failed.runtimeFailure).toBe('status root exploded')
-
-    const base = statusOptions()
-    const options = new Proxy(base, { get: (target, key, receiver) => {
-      if (key === 'getViewport') throw new Error('setup')
-      return Reflect.get(target, key, receiver)
-    } })
-    expect(compileMayflyStatusNode(ui.text('x'), options)).toMatchObject({ ok: false, code: 'MAYFLY_INVALID_CONTRIBUTION', message: 'Mayfly status compilation failed safely' })
-  })
-})
 
 it('animates shared loader frames through the compiler memo without rebuilding the model', () => {
   vi.useFakeTimers()

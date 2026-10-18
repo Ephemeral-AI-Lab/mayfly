@@ -17,7 +17,6 @@ import type {
   MayflyInlineSpan,
   MayflyListItem,
   MayflyListNode,
-  MayflyStatusNode,
   MayflyTone,
   MayflyUiEvent,
   MayflyUiNode,
@@ -68,7 +67,6 @@ import {
   materializedDeferredUiNode,
   type MayflyAdmissionCache,
   validateMayflyEditorShellNode,
-  validateMayflyStatusNode,
   validateMayflyUiNode,
 } from './ui-validator.ts'
 import type { MayflyEditorShellNode, MayflyUiErrorCode } from './ui-contracts.ts'
@@ -120,7 +118,6 @@ const LAYOUT_VALUE_MAX = 1_000_000
 const INACTIVE_FIELD_CACHE_LIMIT = 64
 /** Scroll places a surface remembers: more than a tree can hold regions (`MAYFLY_UI_MAX_NODES`), so the live ones are never the oldest. */
 const SCROLL_MEMORY_LIMIT = 512
-const PASSIVE_EVENT_SINK = Function.prototype as (event: MayflyUiEvent) => void
 
 /** Apply one semantic scroll movement to a scroll view. */
 function scrollBy(scroll: ScrollControl, movement: ListMovement): void {
@@ -204,22 +201,6 @@ interface MayflyUiSurfaceCompilerOptions extends MayflyUiCompilerOptions {
   readonly escapeHint?: 'close' | 'leave'
 }
 
-/** Passive dependencies and bounded height for one compact status tree. */
-export interface MayflyStatusCompilerOptions {
-  readonly components: MayflyComponents
-  readonly colors: MayflySemanticColors
-  readonly getViewport: () => MayflyUiViewport
-  readonly bounded: boolean
-  /** Status output is always bounded to one through three rows; defaults to one. */
-  readonly maxRows?: 1 | 2 | 3
-  /** Measurement sink for validation, compilation, and painting; production passes none. */
-  readonly counters?: MayflyWorkCounters
-  /** The caller's admission memo; a publish that shares subtrees with the previous one validates only what changed. */
-  readonly admission?: MayflyAdmissionCache
-  /** The caller's compile memo; static leaves of an unchanged subtree keep their components. */
-  readonly reuse?: MayflyCompileCache
-}
-
 /** Successful canonical compilation result. */
 export interface MayflyCompiledUi {
   readonly node: MayflyUiNode
@@ -268,22 +249,6 @@ export interface MayflyStatusRenderResult {
   readonly runtimeFailure?: string
 }
 
-/** Passive status component with explicit overflow metadata for footer policy. */
-export interface MayflyStatusComponent extends MayflyComponent {
-  /**
-   * Render within the compiler's one-to-three-row budget.
-   * @param width - assigned status width in terminal columns.
-   * @returns bounded rows plus whether row or column content overflowed.
-   */
-  renderStatus(width: number): MayflyStatusRenderResult
-}
-
-/** Successful canonical status compilation result. */
-export interface MayflyCompiledStatus {
-  readonly node: MayflyStatusNode
-  readonly component: MayflyStatusComponent
-}
-
 /** Compile failure with a safe renderer-owned error surface. */
 export interface MayflyUiCompileFailure {
   readonly ok: false
@@ -298,18 +263,7 @@ export type MayflyUiCompileResult = { readonly ok: true, readonly value: MayflyC
 /** Result returned by the no-bypass editor-shell compiler. */
 export type MayflyEditorShellCompileResult = { readonly ok: true, readonly value: MayflyCompiledEditorShell } | MayflyUiCompileFailure
 
-/** Status compile failure with a passive, height-bounded error component. */
-export interface MayflyStatusCompileFailure {
-  readonly ok: false
-  readonly code: MayflyUiErrorCode
-  readonly message: string
-  readonly errorComponent: MayflyStatusComponent
-}
-
-/** Result returned by the no-bypass status compiler. */
-export type MayflyStatusCompileResult = { readonly ok: true, readonly value: MayflyCompiledStatus } | MayflyStatusCompileFailure
-
-type CompilerMode = 'ui' | 'status' | 'editor'
+type CompilerMode = 'ui' | 'editor'
 
 type CompilableNode = MayflyUiNode | MayflyEditorShellNode
 
@@ -1781,7 +1735,7 @@ function compileUnit(node: CompilableNode, state: FocusState, options: RuntimeCo
         ...(node.gap === undefined ? {} : { gap: node.gap }),
         ...(node.align === undefined ? {} : { align: node.align }),
       }
-      const spatial = mode === 'status' || options.bounded || options.listRuntime.interaction !== undefined
+      const spatial = options.bounded || options.listRuntime.interaction !== undefined
       const stack = !spatial || node.direction === 'column'
         ? new ColumnStack([], stackOptions)
         : new RowStack([], stackOptions)
@@ -3865,36 +3819,10 @@ class CompiledSurface implements MayflyEditorShellComponent {
   }
 }
 
-/** Passive facade that deliberately does not expose focus or input methods. */
-class CompiledStatusComponent implements MayflyStatusComponent {
-  constructor(private readonly surface: CompiledSurface, private readonly maxRows: number) {}
-  render(width: number): string[] { return this.renderStatus(width).rows }
-  renderStatus(width: number): MayflyStatusRenderResult { return this.surface.renderStatus(width, this.maxRows) }
-  invalidate(): void { this.surface.invalidate() }
-}
-
-/** Passive bounded facade for status validation and setup failures. */
-class StatusErrorComponent implements MayflyStatusComponent {
-  private readonly error: ErrorComponent
-  constructor(message: string, colors: MayflySemanticColors, private readonly maxRows: number) {
-    this.error = new ErrorComponent(message, colors)
-  }
-  render(width: number): string[] { return this.renderStatus(width).rows }
-  renderStatus(width: number): MayflyStatusRenderResult {
-    const rows = this.error.render(width)
-    return { rows: rows.slice(0, this.maxRows), overflowed: rows.length > this.maxRows }
-  }
-  invalidate(): void { this.error.invalidate() }
-}
-
 function admittedSurface(node: CompilableNode, options: MayflyUiCompilerOptions, mode: CompilerMode, editor?: MayflyEditor, surfaceRuntime?: MayflyUiSurfaceRuntime, contextKeyHints = false, contextEscapeHint?: EscapeLabel): CompiledSurface {
   const rollback = surfaceRuntime?.checkpoint()
   try { return new CompiledSurface(node, options, mode, editor, surfaceRuntime, contextKeyHints && !(node.kind === 'surface' && node.hint === 'none'), surfaceEscape(node, contextEscapeHint)) }
   catch (error) { rollback?.(); throw error }
-}
-
-function statusRowLimit(value: MayflyStatusCompilerOptions['maxRows']): number {
-  return value === 2 || value === 3 ? value : 1
 }
 
 /** Validate first, then compile one canonical UI tree without a bypass path. */
@@ -3962,27 +3890,4 @@ export function compileMayflyEditorShellNode(value: unknown, options: MayflyEdit
   }
 }
 
-/** Validate the non-interactive status subset, then compile it through the canonical painter. */
-export function compileMayflyStatusNode(value: unknown, options: MayflyStatusCompilerOptions): MayflyStatusCompileResult {
-  const maxRows = statusRowLimit(options.maxRows)
-  const admitted = validateMayflyStatusNode(value, options.counters, options.admission)
-  if (!admitted.ok) {
-    return { ok: false, code: admitted.code, message: admitted.message, errorComponent: new StatusErrorComponent(admitted.message, options.colors, maxRows) }
-  }
-  try {
-    const runtimeOptions: MayflyUiCompilerOptions = {
-      components: options.components,
-      colors: options.colors,
-      getViewport: options.getViewport,
-      bounded: options.bounded,
-      emit: PASSIVE_EVENT_SINK,
-      ...(options.counters === undefined ? {} : { counters: options.counters }),
-      ...(options.reuse === undefined ? {} : { reuse: options.reuse }),
-    }
-    const surface = admittedSurface(admitted.value, runtimeOptions, 'status')
-    return { ok: true, value: { node: admitted.value, component: new CompiledStatusComponent(surface, maxRows) } }
-  } catch {
-    const message = 'Mayfly status compilation failed safely'
-    return { ok: false, code: 'MAYFLY_INVALID_CONTRIBUTION', message, errorComponent: new StatusErrorComponent(message, options.colors, maxRows) }
-  }
-}
+

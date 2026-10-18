@@ -9,7 +9,7 @@ import type { PlanProjection } from '@deepseek-ai/dsh-plan-mode'
 import type { PermissionSelection } from '@deepseek-ai/dsh-permission-presets'
 import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
 import * as modeStatus from '../../src/interaction/mode-status.ts'
-import { compileMayflyStatusNode } from '../../src/core/ui-compiler.ts'
+import { compileMayflyUiNode } from '../../src/core/ui-compiler.ts'
 import { SCAN_WIDTHS, expectLinesFit } from '../core/width-scan.ts'
 import { visibleWidth, wrapTextWithAnsi, truncateToWidth } from '../../src/core/width.ts'
 import type { PermissionPresetsService } from '../../src/interaction/permission-panel.ts'
@@ -136,11 +136,12 @@ describe('mayfly-status-mode', () => {
       { node: { kind: 'text', content: pending ? 'plan…' : 'plan', tone: 'accent' } },
       { node: { kind: 'text', content: 'yolo', tone: 'warning' } },
     ] })
-    const compiled = compileMayflyStatusNode(node, {
+    const compiled = compileMayflyUiNode(node, {
       components: { visibleWidth, wrapText: wrapTextWithAnsi, truncateToWidth } as never,
       colors: plainColors() as never,
       getViewport: () => ({ columns: 80, rows: 1 }),
-      bounded: false, maxRows: 1,
+      bounded: true,
+      emit: () => {},
     })
     expect(compiled.ok).toBe(true)
     if (!compiled.ok) throw new Error('mode status compilation failed')

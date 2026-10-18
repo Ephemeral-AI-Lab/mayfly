@@ -13,7 +13,7 @@ import { alignDiffLines, diffModel, paintDiffSegment } from '../../src/core/diff
 import { DARK_COLORS } from '../../src/core/theme-dark.ts'
 import { GutterComponent } from '../../src/core/gutter.ts'
 import { renderMermaidRows } from '../../src/core/rich-document.ts'
-import { MayflyUiSurfaceRuntime, compileMayflyEditorShellNode, compileMayflyStatusNode, compileMayflyUiNode, compileMayflyUiSurfaceNode } from '../../src/core/ui-compiler.ts'
+import { MayflyUiSurfaceRuntime, compileMayflyEditorShellNode, compileMayflyUiNode, compileMayflyUiSurfaceNode } from '../../src/core/ui-compiler.ts'
 import type { MayflyUiImageSource } from '../../src/core/ui-images.ts'
 import { UiSurfaceModel } from '../../src/core/ui-interaction-surface.ts'
 import { ui } from '../../../ui/src/index.ts'
@@ -159,8 +159,8 @@ describe('core width-scan', () => {
       }
     })
 
-    it(`canonical status compiler survives ${name}`, () => {
-      const result = compileMayflyStatusNode({
+    it(`status row survives ${name}`, () => {
+      const result = compileMayflyUiNode({
         kind: 'stack',
         direction: 'row',
         gap: 1,
@@ -172,15 +172,13 @@ describe('core width-scan', () => {
         components: { visibleWidth, wrapText: wrapTextWithAnsi, truncateToWidth } as never,
         colors: statusColors as never,
         getViewport: () => ({ columns: 80, rows: 3 }),
-        bounded: false,
-        maxRows: 3,
+        bounded: true,
+        emit: () => {},
       })
       expect(result.ok).toBe(true)
       if (!result.ok) return
       for (const width of SCAN_WIDTHS) {
-        const rendered = result.value.component.renderStatus(width)
-        expect(rendered.rows.length).toBeLessThanOrEqual(3)
-        expectLinesFit(`status/${name}`, rendered.rows, width)
+        expectLinesFit(`status/${name}`, result.value.component.render(width), width)
       }
     })
 
