@@ -28,7 +28,7 @@ grid 100x30 cursor none
 |╭─────────────────────────────────────────────────────────────────────── Refresh the hero and keep ╮
 |│ >  Ask anything · / commands · @ files · # skills · ! shell                                      │
 |╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
-| deepseek-v4-pro  Reminders 1  src  ✓ agents 1/1  ✓ jobs 1/1  ● todo 1/3          ctx ▱▱▱▱▱▱▱▱▱▱ 1%
+| deepseek-v4-pro  Reminders 1  src  ✓ agents 1/1  ● todo 1/3     cache ▰▰▱▱▱ 42%  ctx ▱▱▱▱▱▱▱▱▱▱ 1%
 styles
 0: 1-3 fg:#cfc6f5; 4-10 fg:#9a86e6; 11-13 fg:#cfc6f5; 16-47 fg:#c9c0f0
 1: 2-3 fg:#cfc6f5; 4-10 fg:#9a86e6; 11-12 fg:#cfc6f5; 16-50 fg:#e9e6f4
@@ -48,4 +48,4 @@ styles
 26: 0-72 fg:#45406b; 73-97 fg:#f5f5f7 b; 98-99 fg:#45406b
 27: 0 fg:#45406b; 2-3 fg:#ededf2; 4 r; 5-60 fg:#5c6476; 99 fg:#45406b
 28: 0-99 fg:#45406b
-29: 1-15 fg:#ededf2; 18-28 fg:#ededf2; 31-33 fg:#9aa3b8; 36 fg:#4ec87e; 37 fg:#ededf2; 38-44 fg:#9aa3b8; 45-47 fg:#ededf2; 50 fg:#4ec87e; 51 fg:#ededf2; 52-56 fg:#9aa3b8; 57-59 fg:#ededf2; 62 fg:#c9c0f0; 63 fg:#ededf2; 64-68 fg:#9aa3b8; 69-71 fg:#ededf2; 82-85 fg:#ededf2; 86-95 fg:#9aa3b8; 96-98 fg:#ededf2
+29: 1-15 fg:#ededf2; 18-28 fg:#ededf2; 31-33 fg:#9aa3b8; 36 fg:#4ec87e; 37 fg:#ededf2; 38-44 fg:#9aa3b8; 45-47 fg:#ededf2; 50 fg:#c9c0f0; 51 fg:#ededf2; 52-56 fg:#9aa3b8; 57-59 fg:#ededf2; 65-70 fg:#ededf2; 71-72 fg:#e8a838; 73-75 fg:#9aa3b8; 76-79 fg:#ededf2; 82-85 fg:#ededf2; 86-95 fg:#9aa3b8; 96-98 fg:#ededf2

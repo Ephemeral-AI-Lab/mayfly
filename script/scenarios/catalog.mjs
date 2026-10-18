@@ -489,11 +489,12 @@ const SCRIPTS = {
   // preset, narrow widths, and the /permissions panel.
   harnessAlignment: [
     play('aligned'), checkpoint('aligned'),
-    play('activation-live'), checkpoint('activation-live'),
+    // The live elapsed time on this frame is wall-clock; the Agents view below checks the activation rows.
+    play('activation-live'),
     key('alt+down'), checkpoint('agents-live'), key('esc'), wait(150),
     play('activated'), checkpoint('activated'),
     play('job-done'), checkpoint('job-done'),
-    play('scheduled'), checkpoint('scheduled'),
+    play('scheduled'), wait(1000), checkpoint('scheduled'),
     type('@hero'), checkpoint('mention'), key('enter'), type(' tighten the hero copy'), key('enter'), wait(1500), checkpoint('mention-sent'),
     type('/save'), key('enter'), wait(1000), checkpoint('save'),
     type('/sessions seed-legacy-hero'), key('enter'), wait(1000), until('Legacy hero notes'), checkpoint('migration'), key('esc'), key('esc'),
