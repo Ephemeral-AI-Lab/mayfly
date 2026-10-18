@@ -27,7 +27,6 @@ import { TranscriptController, type StreamRowActions } from './transcript-model.
 import { OfficialConversationModelSource } from './official-model.ts'
 import type { LiveDraftSource } from './conversation-feed.ts'
 import { ConversationSlots } from './conversation-slots.ts'
-import type { SessionFactsService } from './session-facts.ts'
 import type { SpawnedChild, SpawnedChildren } from './tool-calls.ts'
 import {
   DEFAULT_EXPAND_TURNS,
@@ -41,40 +40,11 @@ import {
   transcriptTranslator,
 } from './locale.ts'
 
-export { READ_PREVIEW_LINE_LIMIT, SEARCH_PREVIEW_MATCH_LIMIT, SEARCH_PATH_LIMIT, COMMAND_PREVIEW_LINE_LIMIT } from './official-model.ts'
-export { conversationTranscriptModel } from './official-model.ts'
-export type { ToolPresentationSource } from './present.ts'
-export { parseXmlEnvelope, summarizeToolText, type EnvelopePair } from './envelope.ts'
-export { ellipsize, parseToolArguments, summarizeToolCall, TOOL_ARG_PAIR_LIMIT, TOOL_ARG_VALUE_MAX_CHARS } from './present.ts'
-export { SessionFactsService } from './session-facts.ts'
-export { createToolPresentationModel, toolCallNode, toolResultNode } from './tool-model.ts'
-export type { ToolPresentationFacts } from './tool-model.ts'
-export { appendTranscriptNode, createTranscriptModel, TranscriptController } from './transcript-model.ts'
-export type { TranscriptControllerOptions, TranscriptViewOptions } from './transcript-model.ts'
-export type {
-  TranscriptAssistantItem,
-  TranscriptItem,
-  TranscriptThinkingItem,
-  TranscriptToolItem,
-  TranscriptToolResult,
-  TranscriptUserItem,
-} from './types.ts'
-export {
-  DEFAULT_EXPAND_TURNS,
-  DEFAULT_TRANSCRIPT_PRESENTATION,
-  DEFAULT_USER_FOLD_CHARS,
-  DEFAULT_USER_FOLD_LINES,
-  DEFAULT_WINDOW_TURNS,
-  PROCESS_POLICIES,
-  TranscriptPresentationPolicy,
-} from './presentation-policy.ts'
-export type { ProcessPolicy, TranscriptPresentationSnapshot, TranscriptViewMode } from './presentation-policy.ts'
-
 /** Stable Cordis plugin name. */
 export const name = 'mayfly-transcript'
 
 /** Services the plugin requires before it can mount. */
-export const inject = ['mayflyConversationReady', 'mayflyLiveAssistantStream', 'mayflyScreen', 'mayflyTheme', 'mayflyComponents', 'mayflyKeymap', 'mayflyStatus', 'mayflyTick', 'mayflyConversations', 'mayflyCurrentAgent', 'agents', 'sessionProjections', 'sessions', 'tools']
+export const inject = ['mayflyConversationReady', 'mayflyLiveAssistantStream', 'mayflyScreen', 'mayflyTheme', 'mayflyComponents', 'mayflyKeymap', 'mayflyStatus', 'mayflyTick', 'mayflySessionFacts', 'mayflyConversations', 'mayflyCurrentAgent', 'agents', 'sessionProjections', 'sessions', 'tools']
 
 /** The global action toggling tool-output expansion (Ctrl-O). */
 export const ACTION_TOGGLE_COLLAPSE = 'mayfly.transcript.toggle-collapse'
@@ -155,7 +125,7 @@ export function apply(ctx: Context): void {
     queued: (action, id) => { ctx.emit('mayfly/queued-action', action, id) },
   }
   // The compaction rows read the selected Agent's occupancy marks; the stream is published again when a mark lands.
-  const sessionFacts = ctx.get('mayflySessionFacts') as SessionFactsService | undefined
+  const sessionFacts = ctx.mayflySessionFacts
   // The selected Session's native pressure supplies the compaction bar's window
   // and its unmarked occupancy; the presentation facts own only the marks.
   const readPressure = (): ContextPressureProjection | undefined => {
@@ -169,16 +139,16 @@ export function apply(ctx: Context): void {
   let requests: readonly MayflyDecisionRequest[] = []
   // The children the displayed conversation spawned: a spawn's line follows its child (running, settled, failed).
   let children: SpawnedChildren = { byId: new Map(), byPrompt: new Map() }
-  const transcript: TranscriptController = new TranscriptController({ presentation, t, queued: () => queued, requests: () => requests, imageRefs, rows, focusMode: mode => ctx.emit('mayfly/focus-mode-changed', mode), focusRow: row => ctx.emit('mayfly/focus-row-changed', row), tick: ctx.mayflyTick, context: () => sessionFacts === undefined ? undefined : { marks: sessionFacts.current.compactions, ...pressure?.contextWindow === undefined ? {} : { window: pressure.contextWindow }, ...pressure === undefined ? {} : { tokens: pressure.projectedTokens ?? pressure.pressureTokens }, approvals: sessionFacts.current.approvals, children } })
-  let marks = sessionFacts?.current.compactions
-  let approvals = sessionFacts?.current.approvals
-  const offMarks = sessionFacts?.subscribe((facts) => {
+  const transcript: TranscriptController = new TranscriptController({ presentation, t, queued: () => queued, requests: () => requests, imageRefs, rows, focusMode: mode => ctx.emit('mayfly/focus-mode-changed', mode), focusRow: row => ctx.emit('mayfly/focus-row-changed', row), tick: ctx.mayflyTick, context: () => ({ marks: sessionFacts.current.compactions, ...pressure?.contextWindow === undefined ? {} : { window: pressure.contextWindow }, ...pressure === undefined ? {} : { tokens: pressure.projectedTokens ?? pressure.pressureTokens }, approvals: sessionFacts.current.approvals, children }) })
+  let marks = sessionFacts.current.compactions
+  let approvals = sessionFacts.current.approvals
+  const offMarks = sessionFacts.subscribe((facts) => {
     if (facts.compactions === marks && facts.approvals === approvals) return
     marks = facts.compactions
     approvals = facts.approvals
     transcript.republish()
   })
-  ctx.effect(() => () => offMarks?.())
+  ctx.effect(() => () => offMarks())
   // Only the exact selected Session's pressure re-reads: a compaction reprices
   // the next request, a new request reports new usage, and a switch rebinds.
   const offPressure = ctx.sessionProjections.onChanged((session, key) => {
@@ -188,7 +158,7 @@ export function apply(ctx: Context): void {
   })
   ctx.effect(() => () => offPressure())
   let childrenKey = ''
-  const offChildren = sessionFacts?.subscribeChildren((list) => {
+  const offChildren = sessionFacts.subscribeChildren((list) => {
     const byId = new Map<string, SpawnedChild>()
     const byPrompt = new Map<string, SpawnedChild>()
     for (const child of list) {
@@ -205,7 +175,7 @@ export function apply(ctx: Context): void {
     children = { byId, byPrompt }
     transcript.republish()
   })
-  ctx.effect(() => () => offChildren?.())
+  ctx.effect(() => () => offChildren())
   ctx.effect(() => ctx.on('mayfly/decision-requests-changed', (source, next) => {
     queues[source] = next
     requests = [...queues.approval, ...queues.plan]

@@ -22,7 +22,6 @@ import type { ModelSelectionProjection } from '@deepseek-ai/dsh-api-session-cont
 import type {} from '../app/index.ts'
 import type { MayflyStatusNode } from '@ephemeral-ai/mayfly-ui'
 import type { Session } from '@deepseek-ai/dsh-session'
-import type { SessionFactsService } from './session-facts.ts'
 import { SHED, shedNode } from './status-shed.ts'
 
 /** Stable Cordis plugin name. */
@@ -68,7 +67,7 @@ function capitalizeEffort(id: string): string {
 
 /** Register the baseline model row. */
 export function apply(ctx: Context): void {
-  const factsService = ctx.get('mayflySessionFacts') as SessionFactsService
+  const factsService = ctx.mayflySessionFacts
   let agent = factsService.currentAgent
   /** The session whose projected selection is cached, and that selection; refreshed on attach and change only. */
   let projectedFor: Session | undefined

@@ -38,8 +38,7 @@ import { observeTranscriptLocale, transcriptTranslator } from './locale.ts'
 import { outputRate } from './output-rate.ts'
 import { formatTokens } from './status-context.ts'
 import { parseToolArguments } from './present.ts'
-import type { ChildSessionFacts, SessionFactsService } from './session-facts.ts'
-import type { TickSource } from './tick.ts'
+import type { ChildSessionFacts } from './session-facts.ts'
 import { itemSummary, viewList } from './view-items.ts'
 
 /** Stable Cordis plugin name. */
@@ -369,8 +368,8 @@ function childNative(ctx: Context, childId: string): { readonly timing?: Subagen
 export function apply(ctx: Context): void {
   const t = transcriptTranslator(ctx, 'transcript')
   const ti = interactionTranslator(ctx)
-  const tick = ctx.get('mayflyTick') as TickSource | undefined
-  const facts = ctx.get('mayflySessionFacts') as SessionFactsService
+  const tick = ctx.mayflyTick
+  const facts = ctx.mayflySessionFacts
   const lifetime = new AbortController()
   const agents = ctx.agents
   const subagents = ctx.subagents

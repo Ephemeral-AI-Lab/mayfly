@@ -16,7 +16,7 @@ import type { MayflyDecisionRequest, MayflyFocusMode, MayflyFocusRow, MayflyQueu
 import type { MayflyWorkCounters } from '../core/ui-work-counters.ts'
 import type { ApprovalMark, CompactionMark } from '../conversation/types.ts'
 import type { MayflyTranslate } from '../frontend/locale.ts'
-import { freezeModel, materializeTranscriptEntries, type TranscriptEntryModel, type TranscriptModel, type TranscriptTurnModel } from '../frontend/models.ts'
+import { freezeModel, type TranscriptEntryModel, type TranscriptModel, type TranscriptTurnModel } from '../frontend/models.ts'
 import { NO_DISCLOSURE, toggleCall, toggleGroup, toggleRows, toggleTurn, type Disclosure } from './disclosure.ts'
 import type { CopyMode } from './row-text.ts'
 import { findHits, readPattern, type SearchPattern, type SearchResult } from './search.ts'
@@ -109,15 +109,6 @@ export function createTranscriptModel(
     ...(streaming === undefined ? {} : { streaming }),
     ...(turns === undefined ? {} : { turns: [...turns] }),
   })
-}
-
-/** Append one projected canonical node or semantic entry without folding events. */
-export function appendTranscriptNode(
-  model: TranscriptModel,
-  entry: MayflyUiNode | TranscriptEntryModel,
-  streaming = model.streaming,
-): TranscriptModel {
-  return createTranscriptModel(model.id, [...materializeTranscriptEntries(model), entry], streaming, model.generation, model.turns)
 }
 
 const EMPTY_RESULT: SearchResult = { hits: [], turnStart: new Map(), orders: new Map() }

@@ -172,8 +172,6 @@ async function bootTranscript(
     readonly tools?: { get(name: string, agent?: Agent): unknown }
     /** Provide the real image byte source, so the stream's image rows can be loaded through it. */
     readonly images?: boolean
-    /** Boot without the session facts bridge, as a host that publishes none. */
-    readonly withoutSessionFacts?: boolean
     /** Provide the interaction notification owner, so the transcript's reports are observable. */
     readonly interaction?: boolean
     /** Replace the children feed of the session facts with one the spec drives: `emit` publishes the facts of the displayed Agent's children. */
@@ -326,18 +324,16 @@ async function bootTranscript(
   for (const [name, value] of Object.entries(services)) ctx.reflect.provide(name, value)
   ctx.on('session/event', (session, event) => projections.emit(session, event))
   const liveStream = new LiveAssistantStreamService(ctx)
-  if (options.withoutSessionFacts !== true) {
-    const facts = new SessionFactsService(ctx, liveStream)
-    const feed = options.children
-    if (feed !== undefined) {
-      facts.subscribeChildren = (listener) => {
-        feed.emit = listener
-        listener([])
-        return () => { feed.emit = undefined }
-      }
+  const facts = new SessionFactsService(ctx, liveStream)
+  const feed = options.children
+  if (feed !== undefined) {
+    facts.subscribeChildren = (listener) => {
+      feed.emit = listener
+      listener([])
+      return () => { feed.emit = undefined }
     }
-    ctx.effect(() => () => facts.dispose())
   }
+  ctx.effect(() => () => facts.dispose())
   ctx.effect(() => () => liveStream.dispose())
 
   await ctx.plugin(Loader)
@@ -689,18 +685,6 @@ describe('mayfly-transcript queued messages, facts, images, and row actions', ()
     await vi.waitFor(() => { expect(contentLines(screen).join('\n')).toContain('stopped') })
     children.emit!([child({ phase: 'completed', promptText: 'audit it' }), child({ id: 'child-2', phase: 'running', promptText: 'audit it' })])
     await vi.waitFor(() => { expect(contentLines(screen).join('\n')).not.toContain('running') })
-  })
-
-  it('keeps the transcript working when the host publishes no session facts', async () => {
-    resetSeq()
-    const agent = fakeParent([userEvent('still here'), assistantEvent(1, 1, [{ type: 'text', text: 'answered' }])])
-    const { ctx, screen, projections } = await bootTranscript(agent, { withoutSessionFacts: true })
-    const rendered = contentLines(screen).join('\n')
-    expect(rendered).toContain('still here')
-    expect(rendered).toContain('answered')
-    projections.emitFacts(agent.session, { ...initialConversationFacts(), compactions: [] })
-    ctx.emit('tools/change')
-    expect(contentLines(screen).join('\n')).toContain('answered')
   })
 
   it('loads an attached image through the attachment store for a reference the stream holds, and answers missing otherwise', async () => {

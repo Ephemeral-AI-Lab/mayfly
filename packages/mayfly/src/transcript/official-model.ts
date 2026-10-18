@@ -25,7 +25,6 @@ import {
 import { freezeModel, type CommandCallModel, type ReadCallModel, type SearchCallModel, type TranscriptCommandGroupModel, type TranscriptEntryModel, type TranscriptFileChangeModel, type TranscriptModel, type TranscriptReadGroupModel, type TranscriptSearchGroupModel, type ToolInterruption, type TranscriptTerminalModel, type TranscriptToolFamily, type TranscriptTurnModel, type TranscriptWebModel } from '../frontend/models.ts'
 import { diffChangeCounts } from '../core/diff-align.ts'
 import { countWork, type MayflyWorkCounters } from '../core/ui-work-counters.ts'
-import { createToolPresentationModel } from './tool-model.ts'
 import { createTranscriptModel } from './transcript-model.ts'
 import { ellipsize, parseToolArguments, resolveCallView, resolveResultView, type ToolPresentationSource } from './present.ts'
 import { toolDetail } from '../conversation/activity-detail.ts'
@@ -520,19 +519,10 @@ function toolModel(resolved: ResolvedTool, family: TranscriptToolFamily, counter
   const cached = caches?.models.get(resolved)
   if (cached !== undefined && cached.renderRevision === revision) return cached
   countWork(counters, 'toolModelsBuilt')
-  const { entry, outcome, call, result } = resolved
+  const { entry, call } = resolved
   const terminal = terminalModel(resolved)
   const web = webModel(resolved)
   const change = family === 'edit' || resolved.entry.name === 'write' ? fileChangeModel(resolved, counters) : undefined
-  const presentation = call === undefined && result === undefined
-    ? undefined
-    : createToolPresentationModel({
-        id: entry.id,
-        name: entry.name,
-        ...(call === undefined ? {} : { call }),
-        ...(result === undefined ? {} : { result }),
-        ...(outcome === undefined ? {} : { outcome }),
-      })
   const model: TranscriptEntryModel = {
     kind: 'transcript-tool',
     id: entry.id,
@@ -560,7 +550,6 @@ function toolModel(resolved: ResolvedTool, family: TranscriptToolFamily, counter
         ...interruptionFacts(entry),
       },
     }),
-    ...(presentation === undefined ? {} : { presentation }),
   }
   caches?.models.set(resolved, model)
   return model
