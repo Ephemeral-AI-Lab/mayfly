@@ -55,7 +55,6 @@ export async function apply(ctx: Context): Promise<void> {
     onSchemeChange: (scheme) => {
       ctx.emit('mayfly/terminal-theme-changed', scheme)
     },
-    screenMode: 'alternate',
     ambientOutput: { stdout: process.stdout, stderr: process.stderr },
   })
   mountContextHintLocale(ctx, runtime.requestRender)

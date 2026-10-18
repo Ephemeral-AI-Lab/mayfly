@@ -14,7 +14,6 @@ import {
   ProcessTerminal,
   ScrollView,
   TuiAltScreen,
-  TuiMainScreen,
   VStack,
   type Component,
   type Terminal,
@@ -68,9 +67,6 @@ const NORMALIZED_NAVIGATION_INPUT = new Map<string, string>([
   ['insert', KEY_INSERT],
   ['delete', KEY_DELETE],
 ])
-
-/** Renderer choice kept inside core's L0 boundary. */
-type MayflyScreenMode = 'main' | 'alternate'
 
 /** One child's latest clamped rows, keyed on the row array the child returned. */
 interface ClampedChildRows {
@@ -382,9 +378,8 @@ export function measuredLaneRows(rows: number, headerRows: number, bottomRows: n
 
 /**
  * Normalize terminal wheel reports to the direction-key sequences consumed by
- * Mayfly's focused components. Main-screen mode leaves mouse reporting disabled
- * so the terminal retains native selection and scrollback. This boundary still
- * accepts reports when a multiplexer or an embedding host enabled them.
+ * Mayfly's focused components. This boundary still accepts reports when a
+ * multiplexer or an embedding host enabled them.
  * @param data - one decoded terminal input sequence.
  * @returns an up/down key sequence for wheel input, or `undefined` when the
  *   input is not a supported wheel report.
@@ -514,8 +509,6 @@ export function withJoinedModifiers(terminal: Terminal): Terminal {
  * this; pi-tui types stay inside this module.
  */
 export interface MayflyTerminalRuntime {
-  /** Renderer mode used by the canonical public UI compiler. */
-  readonly mode: MayflyScreenMode
   /** Current terminal width in columns. */
   readonly columns: number
   /** Current terminal height in rows. */
@@ -573,8 +566,7 @@ export interface MayflyTerminalRuntime {
   setFocus(component: MayflyComponent | null): void
   scrollContent(direction: 'up' | 'down', amount?: number): boolean
   /**
-   * Where the content scroll stands against its tail, on the alternate screen: `undefined` on the main screen, whose
-   * scrollback the terminal owns.
+   * Where the content scroll stands against its tail.
    */
   contentTail(): MayflyContentTail | undefined
   /**
@@ -590,15 +582,15 @@ export interface MayflyTerminalRuntime {
   setContentScrollbarColors(colors: () => Pick<MayflySemanticColors, 'primary' | 'muted'> | undefined): void
   followContent(): void
   /**
-   * Scroll the content so `row` stands at the top of the view, on the alternate screen; a row too low for a full view
-   * lands on the tail, which follows it again.
+   * Scroll the content so `row` stands at the top of the view; a row too low for a full view lands on the tail, which
+   * follows it again.
    * @param row - the content row to bring to the top.
    */
   scrollContentTo(row: number): void
   /**
    * The row a root component's first line stands on among the scroll content's rows, as of the last frame.
    * @param component - a component mounted with `addChild`.
-   * @returns the row, or `undefined` on the main screen or when the component is not in the content.
+   * @returns the row, or `undefined` when the component is not in the content.
    */
   contentStart(component: MayflyComponent): number | undefined
   setContentScrollHandler(handler: ((data: string) => boolean) | undefined): () => void
@@ -774,11 +766,6 @@ export interface MayflyTerminalOptions {
    */
   readonly overflow?: OverflowSink
   /**
-   * Renderer buffer mode. The Mayfly plugin selects `'alternate'`;
-   * `'main'` remains available for compatibility fixtures.
-   */
-  readonly screenMode?: MayflyScreenMode
-  /**
    * stdout/stderr streams that host plugins may write around the renderer.
    * Production passes process streams; source-plane VT tests inject
    * recording streams.
@@ -787,12 +774,11 @@ export interface MayflyTerminalOptions {
 }
 
 /**
- * Start the Mayfly terminal stack: a pi-tui renderer over a `ProcessTerminal`.
- * The renderer starts and subscribes to terminal color-scheme (mode 2031)
- * notifications, forwarded through `onSchemeChange`.
- * Production uses the alternate screen; main-screen mode remains an explicit
- * compatibility option. The returned runtime holds the renderer itself, so
- * the concrete pi-tui class never leaks past core.
+ * Start the Mayfly terminal stack: a pi-tui alternate-screen renderer over a
+ * `ProcessTerminal`. The renderer starts and subscribes to terminal
+ * color-scheme (mode 2031) notifications, forwarded through `onSchemeChange`.
+ * The terminal is always the alternate screen. The returned runtime holds the
+ * renderer itself, so the concrete pi-tui class never leaks past core.
  *
  * The function is synchronous by contract: its caller owns the asynchronous
  * background probe and registers the runtime's owner (a Fiber effect) before
@@ -806,27 +792,25 @@ export function startMayflyTerminal(
   hostTerminal: Terminal = new ProcessTerminal(),
   options: MayflyTerminalOptions = {},
 ): MayflyTerminalRuntime {
-  const alternate = (options.screenMode ?? 'main') === 'alternate'
   const onSchemeChange = options.onSchemeChange
   const overflow = options.overflow ?? createFileOverflowSink({ directory: defaultOverflowDirectory() })
   // Dynamic Host plugins intentionally log straight to process stdout/stderr.
-  // In alternate-screen mode that bypasses the renderer at its hardware
-  // cursor (normally inside the editor), so the text can overwrite both the
-  // draft and footer until another input happens to redraw them. Preserve the
-  // host write, then force a full frame on the next tick. Every renderer
-  // write goes through the facade; output that did not is ambient.
-  const outputRecovery = alternate && options.ambientOutput !== undefined
-    ? createOutputRecovery(options.ambientOutput, () => current.requestRender(true))
-    : undefined
+  // On the alternate screen that bypasses the renderer at its hardware cursor
+  // (normally inside the editor), so the text can overwrite both the draft and
+  // footer until another input happens to redraw them. Preserve the host
+  // write, then force a full frame on the next tick. Every renderer write goes
+  // through the facade; output that did not is ambient.
+  const outputRecovery = options.ambientOutput === undefined
+    ? undefined
+    : createOutputRecovery(options.ambientOutput, () => current.requestRender(true))
   const terminal = outputRecovery?.renderer(hostTerminal) ?? hostTerminal
   // The renderer reads input through the joiner, so a modified key split in two arrives as one sequence.
   const input = withJoinedModifiers(terminal)
-  const current: TUI = alternate
-    ? new TuiAltScreen(input, undefined, undefined, {
-        wheelScrollLines: 3,
-        copySelection: text => copySelectionText(text, terminal),
-      })
-    : new TuiMainScreen(input)
+  const altScreen = new TuiAltScreen(input, undefined, undefined, {
+    wheelScrollLines: 3,
+    copySelection: text => copySelectionText(text, terminal),
+  })
+  const current: TUI = altScreen
   const requestRender = current.requestRender.bind(current)
   let renderColumns = terminal.columns
   let renderRows = terminal.rows
@@ -843,9 +827,7 @@ export function startMayflyTerminal(
   // editor then owns transcript scrolling, while a focused replacement panel
   // still receives wheel-as-arrow and page/navigation keys. The structural
   // read is deliberately confined to L0 and pinned by the terminal specs.
-  const viewportInput = current instanceof TuiAltScreen
-    ? [...(current as unknown as { inputListeners: Set<TuiInputListener> }).inputListeners][0]
-    : undefined
+  const viewportInput = [...(current as unknown as { inputListeners: Set<TuiInputListener> }).inputListeners][0]
   if (viewportInput !== undefined) current.removeInputListener(viewportInput)
   // Herdr forwards Kitty functional-key codepoints while tmux commonly emits
   // legacy CSI forms. Canonicalize both before any Mayfly or viewport listener
@@ -876,8 +858,7 @@ export function startMayflyTerminal(
     const direction = report.button & 3
     if (direction !== 0 && direction !== 1) return undefined
     const normalized = direction === 0 ? KEY_UP : KEY_DOWN
-    if (!(current instanceof TuiAltScreen)) return { data: normalized }
-    const focused = current.getFocusedComponent()
+    const focused = altScreen.getFocusedComponent()
     if (focused === null) return undefined
     if (!bottomChildren.has(focused as MayflyComponent)) {
       return surfaces.focusedId !== undefined ? { data: normalized } : undefined
@@ -909,22 +890,22 @@ export function startMayflyTerminal(
   // the editor, the kimi layout (its dialogs pull up from the editor's
   // slot while the statusline remains visible below).
   const contentChildren = new Set<MayflyComponent>()
-  const contentContainer = alternate ? new FrameClampedContainer(overflow) : undefined
+  const contentContainer = new FrameClampedContainer(overflow)
   let surfaceHeaderRows: () => number
   let surfaceBottomRows: () => number
   let lastSurfaceHeaderRows = 0
   let lastSurfaceBottomRows = 0
   let lastDockRows = 0
-  const dockContainer = alternate ? new DockLayoutContainer(overflow, fixedRows => {
+  const dockContainer = new DockLayoutContainer(overflow, fixedRows => {
     const fixedBudget = Math.min(Math.max(0, terminal.rows - 1), fixedRows)
     let surfaceBudget = Math.max(0, terminal.rows - 1 - fixedBudget)
     const headerRows = Math.min(surfaceBudget, surfaceHeaderRows())
     surfaceBudget -= headerRows
     const bottomRows = Math.min(surfaceBudget, surfaceBottomRows())
     return terminal.rows - headerRows - bottomRows
-  }, rows => { lastDockRows = rows }) : undefined
+  }, rows => { lastDockRows = rows })
   let scrollbarColors: () => Pick<MayflySemanticColors, 'primary' | 'muted'> | undefined = () => undefined
-  const scrollView = contentContainer === undefined ? undefined : new TailScrollView(contentContainer, {
+  const scrollView = new TailScrollView(contentContainer, {
     follow: 'end',
     primary: true,
     overscroll: 'chain',
@@ -957,29 +938,11 @@ export function startMayflyTerminal(
   // Bottom panes share a third of the terminal; the lane plan allots it per
   // pane each frame, and each pane renders against the whole lane budget.
   const bottomLaneBudget = (): number => Math.floor(terminal.rows / 3)
-  const linearLaneComponent = (placement: SurfacePlacement): Component => ({
-    render: width => {
-      const layout = surfaces.linearLayout(terminal.columns, terminal.rows)
-      const maxRows = placement === 'header'
-        ? SURFACE_HEADER_MAX_ROWS
-        : placement === 'bottom'
-          ? bottomLaneBudget()
-          : Number.MAX_SAFE_INTEGER
-      return renderSurfaceLane(layout[placement], width, maxRows)
-    },
-    invalidate: () => surfaces.invalidate(),
-  })
   const alternateLanes: Record<SurfacePlacement, SurfaceLaneContainer> = {
     header: new SurfaceLaneContainer(surfaces, 'header', () => surfaces.layout(terminal.columns, terminal.rows), () => SURFACE_HEADER_MAX_ROWS),
     left: new SurfaceLaneContainer(surfaces, 'left', () => surfaces.layout(terminal.columns, terminal.rows), () => Number.MAX_SAFE_INTEGER),
     right: new SurfaceLaneContainer(surfaces, 'right', () => surfaces.layout(terminal.columns, terminal.rows), () => Number.MAX_SAFE_INTEGER),
     bottom: new SurfaceLaneContainer(surfaces, 'bottom', () => surfaces.layout(terminal.columns, terminal.rows), bottomLaneBudget),
-  }
-  const linearLanes: Record<SurfacePlacement, Component> = {
-    header: linearLaneComponent('header'),
-    left: linearLaneComponent('left'),
-    right: linearLaneComponent('right'),
-    bottom: linearLaneComponent('bottom'),
   }
   surfaceHeaderRows = () => {
     lastSurfaceHeaderRows = alternateLanes.header.measureRows(terminal.columns)
@@ -1000,7 +963,7 @@ export function startMayflyTerminal(
       root.addChild(alternateLanes.header, { basis: 'auto', grow: 0, shrink: 1, maxSize: SURFACE_HEADER_MAX_ROWS })
     }
     if (semantic.left === undefined && semantic.right === undefined) {
-      root.addChild(scrollView!, { basis: 0, grow: 1, shrink: 1, minSize: 1 })
+      root.addChild(scrollView, { basis: 0, grow: 1, shrink: 1, minSize: 1 })
     } else {
       const body = new HStack([], { gap: 1 })
       if (semantic.left !== undefined) {
@@ -1014,7 +977,7 @@ export function startMayflyTerminal(
           visible: viewport => surfaces.layout(viewport.width, viewport.height).left !== undefined,
         })
       }
-      body.addChild(scrollView!, { basis: 0, grow: 1, shrink: 1, minSize: 1 })
+      body.addChild(scrollView, { basis: 0, grow: 1, shrink: 1, minSize: 1 })
       if (semantic.right !== undefined) {
         const width = semantic.right.width!
         body.addChild(alternateLanes.right, {
@@ -1036,77 +999,12 @@ export function startMayflyTerminal(
         minSize: 0,
       })
     }
-    root.addChild(dockContainer!, { basis: 'auto', grow: 0, shrink: 0, minSize: 1 })
-    ;(current as TuiAltScreen).setLayoutRoot(root)
+    root.addChild(dockContainer, { basis: 'auto', grow: 0, shrink: 0, minSize: 1 })
+    altScreen.setLayoutRoot(root)
   }
 
-  function rebuildMainLayout(): void {
-    const semantic = surfaces.linearLayout(terminal.columns, terminal.rows)
-    current.children.splice(0, current.children.length,
-      ...(semantic.header === undefined ? [] : [linearLanes.header]),
-      ...contentChildren,
-      ...(semantic.left === undefined ? [] : [linearLanes.left]),
-      ...(semantic.right === undefined ? [] : [linearLanes.right]),
-      ...(semantic.bottom === undefined ? [] : [linearLanes.bottom]),
-      ...orderedDock(),
-    )
-    current.requestRender()
-  }
-
-  rebuildSurfaceLayout = alternate ? rebuildAlternateLayout : rebuildMainLayout
+  rebuildSurfaceLayout = rebuildAlternateLayout
   rebuildSurfaceLayout()
-  let contentScrollOffset = 0
-  // The dock must also sit on the terminal's last rows even when the mounted
-  // content is shorter than the viewport (boot with no session yet, a fresh
-  // /new) — pi-tui stacks root children top-down, so an unpadded tree leaves
-  // the editor floating right under the content. Wrapping the renderer's own
-  // line collection is the one seam where the flat output can be split back
-  // into content and dock: the dock block is measured again (its components
-  // are a few cheap rows) and blank filler is inserted between the blocks
-  // until the frame spans the viewport. Full viewports render untouched, and
-  // an empty or dock-less tree pads nothing (no blank flood at boot).
-  //
-  // The same wrapper is the exit backstop (D48): every frame line, on both
-  // return paths, is clamped to `width` before pi-tui's differential writer
-  // can crash on it — an over-wide component row degrades to a truncated
-  // row plus one deduplicated mayfly-overflow.log entry instead of a dead
-  // session. `width` is the very value pi-tui's guard compares against.
-  const collectLines = current.render.bind(current)
-  if (!alternate) current.render = (width: number): string[] => {
-    const lines = collectLines(width)
-    if (lines.length === 0 || bottomChildren.size === 0) {
-      return clampFrame(lines, width, overflow)
-    }
-    let dockRows = 0
-    for (const child of orderedDock()) dockRows += child.render(width).length
-    const boundary = lines.length - dockRows
-    /* covered by the real-terminal and VT layout tiers */
-    if (lines.length >= terminal.rows) {
-      // Keep the newest transcript rows visible while reserving the terminal
-      // tail for the editor/status dock. Returning the full over-height frame
-      // lets long streams push the input out of view and makes the apparent
-      // scroll position jump back toward the beginning on each repaint.
-      const contentRows = Math.max(0, terminal.rows - dockRows)
-      const end = Math.max(contentRows, boundary - contentScrollOffset)
-      return clampFrame([
-        ...lines.slice(Math.max(0, end - contentRows), end),
-        ...lines.slice(boundary),
-      ], width, overflow)
-    }
-    const filler = terminal.rows - lines.length
-    return clampFrame([
-      ...lines.slice(0, boundary),
-      ...Array.from({ length: filler }, () => ''),
-      ...lines.slice(boundary),
-    ], width, overflow)
-  }
-  /** Dock children in render order: the regular block, then the pinned tail. */
-  function orderedDock(): MayflyComponent[] {
-    return [
-      ...[...bottomChildren].filter(child => !bottomPinned.has(child)),
-      ...bottomPinned,
-    ]
-  }
   const background = options.background
   current.start()
   outputRecovery?.activate()
@@ -1116,7 +1014,6 @@ export function startMayflyTerminal(
   let suspended = false
   let stopping: Promise<void> | undefined
   const runtime: MayflyTerminalRuntime = {
-    mode: alternate ? 'alternate' : 'main',
     get columns() {
       return current.terminal.columns
     },
@@ -1130,13 +1027,10 @@ export function startMayflyTerminal(
     tui: current,
     surfaces,
     surfaceViewport(id) {
-      const layout = !alternate
-        ? surfaces.linearLayout(terminal.columns, terminal.rows)
-        : surfaces.layout(terminal.columns, terminal.rows)
+      const layout = surfaces.layout(terminal.columns, terminal.rows)
       const lane = ([layout.header, layout.left, layout.right, layout.bottom] as const)
         .find(candidate => candidate?.entries.some(entry => entry.id === id))
       const columns = lane?.placement === 'left' || lane?.placement === 'right' ? lane.width ?? terminal.columns : terminal.columns
-      if (!alternate) return { columns: Math.max(1, terminal.columns), rows: Math.max(1, terminal.rows) }
       const tabs = lane === undefined ? 0 : surfaceLaneTabRows(lane)
       const dockRows = lastDockRows
       const rows = lane?.placement === 'header'
@@ -1150,10 +1044,7 @@ export function startMayflyTerminal(
       return measuredLaneRows(terminal.rows, surfaceHeaderRows(), surfaceBottomRows())
     },
     dockRows() {
-      if (alternate) return lastDockRows
-      let rows = 0
-      for (const child of orderedDock()) rows += child.render(current.terminal.columns).length
-      return rows
+      return lastDockRows
     },
     releaseSurfaceFocus(id) {
       if (surfaces.focusedId !== id) return
@@ -1168,11 +1059,7 @@ export function startMayflyTerminal(
     },
     addChild(component) {
       contentChildren.add(component)
-      if (contentContainer !== undefined) {
-        contentContainer.addChild(component)
-        return
-      }
-      rebuildMainLayout()
+      contentContainer.addChild(component)
     },
     addBottomChild(component, position) {
       bottomChildren.add(component)
@@ -1181,37 +1068,26 @@ export function startMayflyTerminal(
         // on the renderer so the array order — and therefore the painted
         // row order — keeps them after every regular dock child.
         bottomPinned.add(component)
-        if (dockContainer !== undefined) {
-          dockContainer.addDockChild(component, { priority: Number.MAX_SAFE_INTEGER }, true, true)
-        } else {
-          rebuildMainLayout()
-        }
+        dockContainer.addDockChild(component, { priority: Number.MAX_SAFE_INTEGER }, true, true)
       } else {
         bottomPinned.delete(component)
         // Regular dock children insert before the first pinned member (or
         // append when none is pinned), preserving mount order among
         // themselves while the pinned tail stays last.
-        if (dockContainer !== undefined) dockContainer.addDockChild(component, {}, true)
-        else rebuildMainLayout()
+        dockContainer.addDockChild(component, {}, true)
       }
     },
     addDockChild(component, options) {
       bottomChildren.add(component)
       bottomPinned.delete(component)
-      if (dockContainer !== undefined) {
-        dockContainer.addDockChild(component, options)
-        return
-      }
-      rebuildMainLayout()
+      dockContainer.addDockChild(component, options)
     },
     removeChild(component) {
       contentChildren.delete(component)
       bottomChildren.delete(component)
       bottomPinned.delete(component)
-      if (contentContainer !== undefined && dockContainer !== undefined) {
-        contentContainer.removeChild(component)
-        dockContainer.removeChild(component)
-      } else rebuildMainLayout()
+      contentContainer.removeChild(component)
+      dockContainer.removeChild(component)
     },
     setFocus(component) {
       const previous = (current as unknown as { getFocusedComponent(): Component | null }).getFocusedComponent()
@@ -1222,33 +1098,15 @@ export function startMayflyTerminal(
     },
     /* exercised through the real PTY interaction path */
     scrollContent(direction, amount = 1) {
-      if (current instanceof TuiAltScreen) {
-        const before = current.viewportTop
-        current.scrollBy(direction === 'up' ? -Math.max(1, Math.floor(amount)) : Math.max(1, Math.floor(amount)))
-        const moved = current.viewportTop !== before
-        return moved
-      }
-      const lines = collectLines(current.terminal.columns)
-      let dockRows = 0
-      for (const child of orderedDock()) dockRows += child.render(current.terminal.columns).length
-      const contentRows = Math.max(1, terminal.rows - dockRows)
-      const max = Math.max(0, lines.length - dockRows - contentRows)
-      if (max === 0) return false
-      const step = Math.max(1, Math.floor(amount))
-      const next = direction === 'up'
-        ? Math.min(max, contentScrollOffset + step)
-        : Math.max(0, contentScrollOffset - step)
-      if (next === contentScrollOffset) return false
-      contentScrollOffset = next
-      current.requestRender(true)
-      return true
+      const before = altScreen.viewportTop
+      altScreen.scrollBy(direction === 'up' ? -Math.max(1, Math.floor(amount)) : Math.max(1, Math.floor(amount)))
+      return altScreen.viewportTop !== before
     },
     watchContentTail(listener) {
-      scrollView?.watchers.add(listener)
-      return () => { scrollView?.watchers.delete(listener) }
+      scrollView.watchers.add(listener)
+      return () => { scrollView.watchers.delete(listener) }
     },
     contentTail() {
-      if (scrollView === undefined) return undefined
       const layout = surfaces.layout(terminal.columns, terminal.rows)
       const left = layout.left === undefined ? 0 : (layout.left.width ?? 0) + 1
       const right = layout.right === undefined ? 0 : (layout.right.width ?? 0) + 1
@@ -1264,22 +1122,17 @@ export function startMayflyTerminal(
       }
     },
     scrollContentTo(row) {
-      scrollView?.scrollTo(Math.max(0, Math.floor(row)))
+      scrollView.scrollTo(Math.max(0, Math.floor(row)))
     },
     contentStart(component) {
-      return contentContainer?.startOf(component)
+      return contentContainer.startOf(component)
     },
     setContentScrollbarColors(colors) {
       scrollbarColors = colors
       current.requestRender()
     },
     followContent() {
-      if (current instanceof TuiAltScreen) {
-        current.scrollToBottom()
-        return
-      }
-      contentScrollOffset = 0
-      current.requestRender(true)
+      altScreen.scrollToBottom()
     },
     setContentScrollHandler(handler) {
       contentScrollHandler = handler
@@ -1320,11 +1173,10 @@ export function startMayflyTerminal(
       if (stopped) throw new Error('mayfly terminal is stopped; suspend refused')
       suspended = true
       outputRecovery?.deactivate()
-      // Main-screen mode: the child appends below the content in the
-      // scrollback tail, so stop() takes no preserveScreen option — the
-      // cursor drops below the rendered content and the external editor
-      // opens in place (kimi's main-screen ordering).
-      current.stop(alternate ? { preserveScreen: true } : undefined)
+      // The child appends below the content in the scrollback tail: stop()
+      // preserves the screen so the cursor drops below the rendered content
+      // and the external editor opens in place.
+      current.stop({ preserveScreen: true })
       // One setImmediate beat lets the stop escape sequences flush before
       // the child takes over the tty.
       await new Promise<void>(resolve => setImmediate(resolve))

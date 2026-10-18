@@ -22,13 +22,13 @@ import { COLORS } from '../transcript/status-fakes.ts'
 
 const ANSI = /\x1b(?:\][^\x07]*(?:\x07|\x1b\\)|\[[0-?]*[ -/]*[@-~]|.)/gu
 
-/** The row as a screen paints it at a width, in the given screen mode, escape sequences removed. */
-function render(facts: NotificationRowFacts | undefined, width: number, mode: 'main' | 'alternate' = 'alternate'): string[] {
+/** The row as a screen paints it at a width, in the given bounded mode, escape sequences removed. */
+function render(facts: NotificationRowFacts | undefined, width: number, bounded = true): string[] {
   const compiled = compileMayflyUiNode(NotificationLine(facts), {
     components: fakeMayflyComponents(),
     colors: COLORS as MayflySemanticColors,
     getViewport: () => ({ columns: width, rows: 40 }),
-    screenMode: mode,
+    bounded,
     emit: () => {},
   })
   return (compiled.ok ? compiled.value.component : compiled.errorComponent).render(width).map(line => line.replace(ANSI, ''))
@@ -69,8 +69,8 @@ describe('NotificationLine', () => {
     const room = 120 - 2 - 3
     const exact = 'x'.repeat(room - 2)
     expect(render({ notice: notice('info', exact) }, 120)[0]).toBe(`    ${exact}   `)
-    // The notice reads the same in the main screen mode: the text is there, whatever the row count.
-    expect(render({ notice: notice('warning', 'Rate limited') }, 120, 'main').join('\n')).toContain('⚠ Rate limited')
+    // The notice reads the same when unbounded: the text is there, whatever the row count.
+    expect(render({ notice: notice('warning', 'Rate limited') }, 120, false).join('\n')).toContain('⚠ Rate limited')
   })
 
   it('lets a lone notice use the whole row, and cuts a longer one at its front with an ellipsis', () => {

@@ -38,7 +38,7 @@ async function bench(keys: string[] = [], hints = true, withGetKeys = true) {
   await root.plugin({ name: 'test-mayfly-ui-provider', apply: applyApi })
   await root.plugin(frontend)
   const terminal = new AltScreenTerminal(40, 10)
-  const runtime = startMayflyTerminal(terminal, { screenMode: 'alternate' })
+  const runtime = startMayflyTerminal(terminal)
   await root.plugin(MayflyScreenService, runtime)
   const owner = new Scope()
   Object.assign(owner, {
@@ -158,7 +158,7 @@ describe('the tail chip', () => {
 
   it('keeps a reader away through a frame in which the content shrinks, and restores their place', async () => {
     const terminal = new AltScreenTerminal(40, 10)
-    const runtime = startMayflyTerminal(terminal, { screenMode: 'alternate' })
+    const runtime = startMayflyTerminal(terminal)
     let length = 40
     runtime.addChild({ render: () => Array.from({ length }, (_, index) => `row-${String(index)}`), invalidate: () => {} })
     runtime.requestRender(true)

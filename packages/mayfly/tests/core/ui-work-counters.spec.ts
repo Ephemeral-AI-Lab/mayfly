@@ -11,7 +11,7 @@ import { createFakeEditor } from './fake-editor.ts'
 import { plainColors } from '../helpers.ts'
 
 const colors = plainColors()
-const base = { components: probeComponents(), colors, getViewport: () => ({ columns: 60, rows: 20 }), screenMode: 'alternate' as const }
+const base = { components: probeComponents(), colors, getViewport: () => ({ columns: 60, rows: 20 }), bounded: true }
 
 describe('countWork', () => {
   it('adds to the named counter and ignores a missing sink', () => {

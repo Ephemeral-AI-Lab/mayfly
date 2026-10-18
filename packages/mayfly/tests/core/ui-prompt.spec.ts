@@ -248,13 +248,13 @@ describe('a prompt without an interaction model', () => {
         components: { ...components, presentation: { glyphs, monochrome: false, reducedMotion: false } } as never,
         colors,
         getViewport: () => ({ columns: 40, rows: 10 }),
-        screenMode: 'alternate',
+        bounded: true,
       })
       if (!result.ok) throw new Error(result.message)
       return plain(result.value.component.render(40))
     }
     expect(compile('unicode')).toEqual(['> [x ×] draft'])
-    const placeholder = compileMayflyUiNode(ui.prompt({ id: 'p', placeholder: 'Ask anything' }), { emit: () => {}, components, colors, getViewport: () => ({ columns: 40, rows: 10 }), screenMode: 'alternate' })
+    const placeholder = compileMayflyUiNode(ui.prompt({ id: 'p', placeholder: 'Ask anything' }), { emit: () => {}, components, colors, getViewport: () => ({ columns: 40, rows: 10 }), bounded: true })
     expect(placeholder.ok && plain(placeholder.value.component.render(40))).toEqual(['> Ask anything'])
   })
 })

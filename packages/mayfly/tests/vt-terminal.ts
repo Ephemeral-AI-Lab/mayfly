@@ -48,15 +48,15 @@ export class VtTerminal extends FakeTerminal {
   }
 
   /**
-   * The whole screen as text: every buffer line (scrollback included,
-   * trimmed right) joined by newlines. Refuses the alternate buffer — Mayfly
-   * is main-screen-only by design, and entering alt would mean a renderer
-   * regression worth failing on.
+   * The whole screen as text: every buffer line (scrollback included on the
+   * normal buffer, trimmed right) joined by newlines. Refuses the normal
+   * buffer — Mayfly renders on the alternate screen, and staying there would
+   * mean a renderer regression worth failing on.
    */
   async frame(normalize?: (row: string) => string): Promise<string> {
     await this.flush()
     const buffer = this.vt.buffer.active
-    if (buffer.type !== 'normal') throw new Error('VT entered the alternate buffer — Mayfly renders on the main screen')
+    if (buffer.type !== 'alternate') throw new Error('VT left the alternate buffer — Mayfly renders on the alternate screen')
     const rows: string[] = []
     for (let y = 0; y < buffer.baseY + this.vt.rows; y += 1) {
       rows.push(buffer.getLine(y)?.translateToString(true) ?? '')

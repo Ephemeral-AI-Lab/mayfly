@@ -171,7 +171,7 @@ describe('createEditor', () => {
       components,
       colors: theme.colors,
       getViewport: () => ({ columns: 40, rows: 3 }),
-      screenMode: 'alternate',
+      bounded: true,
       emit: () => {},
     })
     if (!result.ok) throw new Error(result.message)

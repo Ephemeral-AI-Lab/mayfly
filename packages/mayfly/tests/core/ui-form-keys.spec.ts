@@ -39,7 +39,7 @@ function open(node: MayflyUiNode, options: { readonly columns?: number, readonly
   } as never, options.close === undefined ? {} : { close: options.close })
   models.push(model)
   const viewport = { columns: options.columns ?? 80, rows: 40 }
-  const compileOptions: Parameters<typeof compileMayflyUiSurfaceNode>[1] = { components, colors, getViewport: () => viewport, screenMode: 'alternate', emit: event => model.emit(event), contextHints: { enabled: true }, surfaceRuntime: new MayflyUiSurfaceRuntime(model), ...options.onEscape === null ? {} : { onUnhandledEscape: options.onEscape ?? (() => {}) } }
+  const compileOptions: Parameters<typeof compileMayflyUiSurfaceNode>[1] = { components, colors, getViewport: () => viewport, bounded: true, emit: event => model.emit(event), contextHints: { enabled: true }, surfaceRuntime: new MayflyUiSurfaceRuntime(model), ...options.onEscape === null ? {} : { onUnhandledEscape: options.onEscape ?? (() => {}) } }
   const result = compileMayflyUiSurfaceNode(model.node!, compileOptions)
   if (!result.ok) throw new Error(result.message)
   const focus = result.value.focusTarget!

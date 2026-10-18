@@ -21,6 +21,6 @@ import { buildStatusFooter, type StatusFooterState } from '../../src/transcript/
 export function footerRows(entries: readonly MayflyStatusEntry[], width: number, components: MayflyComponents, colors: MayflySemanticColors, state: StatusFooterState = {}): string[] {
   const node = buildStatusFooter(entries, state)
   if (node === null) return []
-  const compiled = compileMayflyUiNode(node, { components, colors, getViewport: () => ({ columns: width, rows: 24 }), screenMode: 'alternate', emit: () => {} })
+  const compiled = compileMayflyUiNode(node, { components, colors, getViewport: () => ({ columns: width, rows: 24 }), bounded: true, emit: () => {} })
   return (compiled.ok ? compiled.value.component : compiled.errorComponent).render(width)
 }

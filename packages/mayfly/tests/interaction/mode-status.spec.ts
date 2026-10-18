@@ -140,7 +140,7 @@ describe('mayfly-status-mode', () => {
       components: { visibleWidth, wrapText: wrapTextWithAnsi, truncateToWidth } as never,
       colors: plainColors() as never,
       getViewport: () => ({ columns: 80, rows: 1 }),
-      screenMode: 'main', maxRows: 1,
+      bounded: false, maxRows: 1,
     })
     expect(compiled.ok).toBe(true)
     if (!compiled.ok) throw new Error('mode status compilation failed')

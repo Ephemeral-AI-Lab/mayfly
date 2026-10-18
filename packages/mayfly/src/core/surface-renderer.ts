@@ -59,7 +59,6 @@ function compile(
     readonly colors: MayflySemanticColors
     readonly keymap: MayflyKeymap
     readonly viewport: () => MayflyUiViewport
-    readonly mode: 'main' | 'alternate'
     readonly emit: (event: MayflyUiEvent) => void
     readonly onEscape?: () => void
     readonly escapeHint?: 'close' | 'leave'
@@ -87,7 +86,7 @@ function compile(
       components: options.components,
       colors: options.colors,
       getViewport: options.viewport,
-      screenMode: options.mode,
+      bounded: true,
       emit: options.emit,
       ...(options.onEscape === undefined ? {} : { onUnhandledEscape: options.onEscape }),
     })
@@ -99,7 +98,7 @@ function compile(
     colors: options.colors,
     keymap: options.keymap,
     getViewport: options.viewport,
-    screenMode: options.mode,
+    bounded: true,
     emit: options.emit,
     contextHints: {
       focusWithoutControls: options.viewHints !== undefined || (kind === 'overlay' && options.interactive && options.onEscape !== undefined),
@@ -326,9 +325,7 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
   let appliedRevision = -1
   let navigationId: string | undefined
 
-  const currentLayout = () => runtime.mode === 'main'
-    ? runtime.surfaces.linearLayout(runtime.columns, runtime.rows)
-    : runtime.surfaces.layout(runtime.columns, runtime.rows)
+  const currentLayout = () => runtime.surfaces.layout(runtime.columns, runtime.rows)
 
   const paneViewport = (id: string): MayflyUiViewport => runtime.surfaceViewport(id)
   const overlayViewport = (entry: MayflyOverlayEntry): MayflyUiViewport => {
@@ -362,7 +359,6 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
       colors: ctx.mayflyTheme.colors,
       keymap: ctx.mayflyKeymap,
       viewport: () => lane === undefined ? paneViewport(entry.id) : lane.viewport(),
-      mode: runtime.mode,
       emit: record.interaction.emit.bind(record.interaction),
       // A pending decision answers No first; only a bare Esc leaves the pane or the views.
       onEscape: () => record.interaction.decisionNode !== undefined ? record.interaction.answerDecision(false) : lane === undefined ? runtime.releaseSurfaceFocus(entry.id) : lane.leave(),
@@ -449,7 +445,6 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
       colors: ctx.mayflyTheme.colors,
       keymap: ctx.mayflyKeymap,
       viewport: () => overlayViewport(entry),
-      mode: runtime.mode,
       emit: interaction.emit.bind(interaction),
       ...(entry.definition.capturing && entry.definition.dismissible !== false ? { onEscape: () => interaction.emit({ kind: 'dismiss', pagePath: [] }), escapeHint: 'close' as const } : {}),
       ...(contextHints === undefined ? {} : { contextHints }),
@@ -492,7 +487,6 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
       colors: ctx.mayflyTheme.colors,
       keymap: ctx.mayflyKeymap,
       viewport: () => overlayViewport(entry),
-      mode: runtime.mode,
       emit: record.interaction.emit.bind(record.interaction),
       ...(entry.definition.capturing && entry.definition.dismissible !== false ? { onEscape: () => record.interaction.emit({ kind: 'dismiss', pagePath: [] }), escapeHint: 'close' as const } : {}),
       ...(contextHints === undefined ? {} : { contextHints }),
@@ -721,7 +715,7 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
   // Node slots compile through this renderer's dependencies and its one clock; a rebound key or a new locale repaints them.
   ctx.effect(() => ctx.mayflyScreen.bindNodeSlots({
     interaction: ctx.mayflyUiInteraction, components, colors: ctx.mayflyTheme.colors, keymap: ctx.mayflyKeymap,
-    mode: runtime.mode, requestRender: () => { runtime.requestRender() }, clock, content, ...(contextHints === undefined ? {} : { contextHints }), ...(images === undefined ? {} : { images }),
+    bounded: true, requestRender: () => { runtime.requestRender() }, clock, content, ...(contextHints === undefined ? {} : { contextHints }), ...(images === undefined ? {} : { images }),
     ...counted,
   }))
   // The views lane paints and focuses through this renderer's colors, keymap, and terminal.

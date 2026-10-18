@@ -49,7 +49,7 @@ function mount(initial: MayflyUiNode, options: MountOptions = {}) {
   disposers.push(() => { runtime.dispose(); model?.dispose(); clock.dispose() })
   const compile = () => {
     const result = compileMayflyUiSurfaceNode(model?.node ?? plain, {
-      components: components(options.presentation), colors, getViewport: () => ({ columns: width, rows: options.rows ?? 30 }), screenMode: 'alternate',
+      components: components(options.presentation), colors, getViewport: () => ({ columns: width, rows: options.rows ?? 30 }), bounded: true,
       emit: event => events.push(event), contextHints: { enabled: true, focusWithoutControls: true }, surfaceRuntime: runtime,
       ...(options.escape === undefined ? {} : { onUnhandledEscape: options.escape, escapeHint: 'close' as const }),
       ...(options.completionsOpen === undefined ? {} : { completionsOpen: options.completionsOpen }),
@@ -316,7 +316,7 @@ describe('a bar with a transition', () => {
 
 describe('content nodes in a plain compile', () => {
   const paint = (node: MayflyUiNode, width = 40): string[] => {
-    const result = compileMayflyUiNode(node, { emit: () => {}, components: components(), colors, getViewport: () => ({ columns: width, rows: 20 }), screenMode: 'alternate' })
+    const result = compileMayflyUiNode(node, { emit: () => {}, components: components(), colors, getViewport: () => ({ columns: width, rows: 20 }), bounded: true })
     if (!result.ok) throw new Error(result.message)
     return result.value.component.render(width)
   }
@@ -331,7 +331,7 @@ describe('content nodes in a plain compile', () => {
     const result = compileMayflyUiSurfaceNode(ui.stack.column([
       ui.text(Array.from({ length: 100 }, (_, index) => `line ${String(index)}`).join('\n')),
       ui.actions({ id: 'act', items: [{ id: 'ok', label: 'OK' }] }),
-    ]), { components: components(), colors, getViewport: () => viewport, screenMode: 'alternate', emit: () => {}, surfaceRuntime: runtime })
+    ]), { components: components(), colors, getViewport: () => viewport, bounded: true, emit: () => {}, surfaceRuntime: runtime })
     if (!result.ok) throw new Error(result.message)
     result.value.focusTarget!.focused = true
     const frame = (rows: number): string[] => { viewport.rows = rows; return [...result.value.component.render(40)].map(row => row.trim()) }
@@ -345,7 +345,7 @@ describe('content nodes in a plain compile', () => {
   })
 
   it('draws the main-screen scroll as its child, and a declared viewport in the alternate screen', () => {
-    const main = compileMayflyUiNode(ui.scroll(lines(3), { height: 2 }), { emit: () => {}, components: components(), colors, getViewport: () => ({ columns: 20, rows: 20 }), screenMode: 'main' })
+    const main = compileMayflyUiNode(ui.scroll(lines(3), { height: 2 }), { emit: () => {}, components: components(), colors, getViewport: () => ({ columns: 20, rows: 20 }), bounded: false })
     if (!main.ok) throw new Error(main.message)
     expect([...main.value.component.render(20)]).toEqual(['log line 1', 'log line 2', 'log line 3'])
     expect(paint(ui.scroll(lines(3), { height: 2, scrollbar: false }), 20).map(row => row.trimEnd())).toEqual(['log line 1', 'log line 2'])
@@ -354,7 +354,7 @@ describe('content nodes in a plain compile', () => {
   it('leaves a main-mode render a facade, painting only the rows a consumer reads', () => {
     const counters = createWorkCounters()
     const compile = (node: MayflyUiNode) => {
-      const result = compileMayflyUiNode(node, { emit: () => {}, components: components(), colors, getViewport: () => ({ columns: 80, rows: 20 }), screenMode: 'main', counters })
+      const result = compileMayflyUiNode(node, { emit: () => {}, components: components(), colors, getViewport: () => ({ columns: 80, rows: 20 }), bounded: false, counters })
       if (!result.ok) throw new Error(result.message)
       return result.value.component
     }

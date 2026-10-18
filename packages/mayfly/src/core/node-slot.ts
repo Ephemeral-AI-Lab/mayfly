@@ -101,7 +101,8 @@ export interface MayflyNodeSlotCompiler {
   readonly components: MayflyComponents
   readonly colors: MayflySemanticColors
   readonly keymap: MayflyKeymap
-  readonly mode: 'main' | 'alternate'
+  /** Whether the screen bounds the slot to its viewport rows (as a pane receives it). */
+  readonly bounded: boolean
   readonly requestRender: () => void
   /** The renderer's one animation clock. */
   readonly clock?: UiAnimationClock
@@ -227,7 +228,7 @@ class SlotAttachment {
         colors: compiler.colors,
         keymap: compiler.keymap,
         getViewport: this.viewport,
-        screenMode: compiler.mode,
+        bounded: compiler.bounded,
         emit: this.model.emit.bind(this.model),
         contextHints: { ...compiler.contextHints, ...this.hints ? {} : { rows: false } },
         surfaceRuntime: this.runtime,

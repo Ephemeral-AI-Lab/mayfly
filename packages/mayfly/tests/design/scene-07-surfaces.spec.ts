@@ -44,7 +44,7 @@ function overlay(initial: MayflyUiNode, width = WIDTH) {
   runtimes.push(runtime)
   const compile = () => {
     const result = compileMayflyUiSurfaceNode(model.node!, {
-      components: probeComponents(), colors: PROBE_PALETTE, getViewport: () => ({ columns: width, rows: 40 }), screenMode: 'alternate',
+      components: probeComponents(), colors: PROBE_PALETTE, getViewport: () => ({ columns: width, rows: 40 }), bounded: true,
       emit: () => {}, contextHints: { enabled: true, focusWithoutControls: true }, onUnhandledEscape: () => {}, surfaceRuntime: runtime,
     })
     if (!result.ok) throw new Error(result.message)

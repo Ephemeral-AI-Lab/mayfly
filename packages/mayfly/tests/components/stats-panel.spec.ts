@@ -78,7 +78,7 @@ function facts(overrides: Partial<StatsFacts> = {}): StatsFacts {
 
 function compile(value: StatsFacts, width: number, rows = 40) {
   const result = compileMayflyUiNode(StatsPanel(value), {
-    components, colors, getViewport: () => ({ columns: width, rows }), screenMode: 'alternate', emit: () => {},
+    components, colors, getViewport: () => ({ columns: width, rows }), bounded: true, emit: () => {},
   })
   if (!result.ok) throw new Error(result.message)
   return {

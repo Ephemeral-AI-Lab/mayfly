@@ -49,7 +49,7 @@ function rig(): Rig {
   const rows = (): string[] => {
     const entries: readonly MayflyStatusEntry[] = lane.statusEntries()
     const node = buildStatusFooter(entries, { active: lane.isEntered && lane.active !== undefined ? `views/${lane.active}` : undefined })
-    const compiled = node === null ? undefined : compileMayflyUiNode(node, { components: probeComponents(), colors: PROBE_PALETTE, getViewport: () => ({ columns: WIDTH, rows: 30 }), screenMode: 'alternate', emit: () => {} })
+    const compiled = node === null ? undefined : compileMayflyUiNode(node, { components: probeComponents(), colors: PROBE_PALETTE, getViewport: () => ({ columns: WIDTH, rows: 30 }), bounded: true, emit: () => {} })
     const footer = compiled === undefined ? [] : (compiled.ok ? compiled.value.component : compiled.errorComponent).render(WIDTH)
     return [...footer, ...lane.panel(WIDTH) ?? []]
   }

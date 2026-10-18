@@ -22,7 +22,7 @@ const components = new MayflyComponentsService(new Context(), { theme: { colors:
 function uiRows(name: string, node: MayflyUiNode): void {
   const viewport = { columns: 120, rows: 20 }
   const result = compileMayflyUiNode(node, {
-    components, colors: DARK_COLORS, getViewport: () => viewport, screenMode: 'alternate', emit: () => {},
+    components, colors: DARK_COLORS, getViewport: () => viewport, bounded: true, emit: () => {},
   })
   expect(result.ok).toBe(true)
   if (!result.ok) throw new Error(result.message)

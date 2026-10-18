@@ -36,7 +36,7 @@ function surface(node: unknown, overrides: Partial<MayflyUiCompilerOptions> = {}
     components: probeComponents(),
     colors,
     getViewport: () => ({ columns: 100, rows: 30 }),
-    screenMode: 'alternate',
+    bounded: true,
     emit: event => events.push(event),
     contextHints: { enabled: true },
     ...overrides,

@@ -66,7 +66,7 @@ describe('scene 9 Feedback and progress', () => {
     const clock = new UiAnimationClock()
     const runtime = new MayflyUiSurfaceRuntime(undefined, () => {}, clock)
     runtimes.push(runtime)
-    const result = compileMayflyUiSurfaceNode(loaders(), { components: probeComponents(), colors: PROBE_PALETTE, getViewport: () => ({ columns: WIDTH, rows: 40 }), screenMode: 'alternate', emit: () => {}, surfaceRuntime: runtime })
+    const result = compileMayflyUiSurfaceNode(loaders(), { components: probeComponents(), colors: PROBE_PALETTE, getViewport: () => ({ columns: WIDTH, rows: 40 }), bounded: true, emit: () => {}, surfaceRuntime: runtime })
     if (!result.ok) throw new Error(result.message)
     // The fake clock stops while the headless terminal parses (it waits on timers), so every frame is painted first.
     const painted = walk!.steps.map(step => {

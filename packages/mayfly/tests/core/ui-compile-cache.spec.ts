@@ -76,7 +76,7 @@ describe('MayflyCompileCache', () => {
 })
 
 describe('leaf reuse in the compiler', () => {
-  const viewport = { getViewport: () => ({ columns: 80, rows: 24 }), screenMode: 'alternate' as const }
+  const viewport = { getViewport: () => ({ columns: 80, rows: 24 }), bounded: true }
 
   it('compiles an unchanged status entry once and paints it once per width', () => {
     const admission = createAdmissionCache()
@@ -133,7 +133,7 @@ describe('leaf reuse in the compiler', () => {
 })
 
 describe('key hint memo', () => {
-  const viewport = { getViewport: () => ({ columns: 80, rows: 24 }), screenMode: 'alternate' as const }
+  const viewport = { getViewport: () => ({ columns: 80, rows: 24 }), bounded: true }
   const events = { prepare: async () => ({ reply: { kind: 'completed' as const }, publish: () => true }) }
 
   function hinted() {

@@ -491,7 +491,7 @@ export class EditorExtensionRuntime implements MayflyFocusable {
       components: this.options.ctx.mayflyComponents,
       colors: this.options.ctx.mayflyTheme.colors,
       getViewport: () => this.options.ctx.mayflyScreen.editorViewport,
-      screenMode: 'main',
+      bounded: false,
       keymap: this.options.ctx.mayflyKeymap,
       emit: event => { this.dispatchShellEvent(shell, event) },
     })

@@ -112,7 +112,7 @@ export class PaneFakeScreen implements MayflyScreen {
               components: this.components,
               colors: this.colors,
               getViewport: () => ({ columns: width, rows: this.rows }),
-              screenMode: 'main',
+              bounded: false,
               emit: () => {},
             })
             const rows = compiled.ok ? compiled.value.component.render(width) : compiled.errorComponent.render(width)

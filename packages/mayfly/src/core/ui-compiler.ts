@@ -146,7 +146,12 @@ export interface MayflyUiCompilerOptions {
   readonly components: MayflyComponents
   readonly colors: MayflySemanticColors
   readonly getViewport: () => MayflyUiViewport
-  readonly screenMode: 'main' | 'alternate'
+  /**
+   * Whether the surrounding screen bounds the surface to its viewport rows: an
+   * alternate-screen surface does, and a surface with interaction state always
+   * does; a passive inline surface (the editor shell) does not.
+   */
+  readonly bounded: boolean
   /** Live semantic key bindings; omitted only by isolated compiler fixtures. */
   readonly keymap?: MayflyKeymap
   /** Interaction-private observation of renderer focus; public UI events stay confirmation-only. */
@@ -204,7 +209,7 @@ export interface MayflyStatusCompilerOptions {
   readonly components: MayflyComponents
   readonly colors: MayflySemanticColors
   readonly getViewport: () => MayflyUiViewport
-  readonly screenMode: 'main' | 'alternate'
+  readonly bounded: boolean
   /** Status output is always bounded to one through three rows; defaults to one. */
   readonly maxRows?: 1 | 2 | 3
   /** Measurement sink for validation, compilation, and painting; production passes none. */
@@ -572,7 +577,7 @@ function contentEnv(options: RuntimeCompilerOptions, paint: Pick<PaintOptions, '
     get colors() { return paint.colors },
     get counters() { return paint.counters },
     cache: options.listRuntime.content,
-    bounded: options.screenMode === 'alternate' || options.listRuntime.interaction !== undefined,
+    bounded: options.bounded || options.listRuntime.interaction !== undefined,
     viewportRows: () => safeViewport(options.getViewport).rows,
     elide: hidden => paint.colors.muted(renderOverflowRow(hidden, (key, values) => coreText(options, key, values))),
     errorRows: (message, width) => errorRows(message, width, paint.colors),
@@ -1503,7 +1508,7 @@ function walkControls(node: CompilableNode, options: RuntimeCompilerOptions, pat
       case 'scroll': {
         const before = controls.length
         visit(current.child, `${currentPath}.scroll`, isHidden)
-        if (controls.length === before && (options.screenMode === 'alternate' || options.listRuntime.interaction !== undefined)) {
+        if (controls.length === before && (options.bounded || options.listRuntime.interaction !== undefined)) {
           const key = scopedControlKey('scroll', currentPath)
           controls.push({ kind: 'scroll', key, renderKey: currentPath, identity: scopedFocusIdentity(key), preferred: true, group: scopedControlGroup('scroll', currentPath), navigation: 'none', ...(current.expandable === false ? { fixed: true as const } : {}), ...(current.id === undefined ? {} : { scopeId: current.id }) })
         }
@@ -1776,7 +1781,7 @@ function compileUnit(node: CompilableNode, state: FocusState, options: RuntimeCo
         ...(node.gap === undefined ? {} : { gap: node.gap }),
         ...(node.align === undefined ? {} : { align: node.align }),
       }
-      const spatial = mode === 'status' || options.screenMode === 'alternate' || options.listRuntime.interaction !== undefined
+      const spatial = mode === 'status' || options.bounded || options.listRuntime.interaction !== undefined
       const stack = !spatial || node.direction === 'column'
         ? new ColumnStack([], stackOptions)
         : new RowStack([], stackOptions)
@@ -1828,7 +1833,7 @@ function compileUnit(node: CompilableNode, state: FocusState, options: RuntimeCo
     case 'surface': return surfaceComponent(node, compileNode(node.child, state, options, `${path}.child`, mode), node.footer === undefined ? undefined : compileNode(node.footer, state, options, `${path}.footer`, mode), contextHint, options)
     case 'scroll': {
       const childPath = `${path}.scroll`
-      if (options.screenMode === 'main' && options.listRuntime.interaction === undefined) {
+      if (!options.bounded && options.listRuntime.interaction === undefined) {
         return compileNode(node.child, state, options, childPath, mode)
       }
       const child = compileNode(node.child, state, options, childPath, mode)
@@ -2035,7 +2040,7 @@ function compileUnit(node: CompilableNode, state: FocusState, options: RuntimeCo
       return stack
     }
     case 'actions': {
-      const vertical = options.screenMode === 'main'
+      const vertical = !options.bounded
       /* An action with a handled invoke in flight renders as busy until the
          reply lands, matching the disabled-side effect at control level. */
       /* Busy and row-unavailable states follow the live model, so they are read per frame. */
@@ -3162,7 +3167,7 @@ class CompiledSurface implements MayflyEditorShellComponent {
           }
         }
       }
-      const rowLimit = maxRows ?? (this.surfaceRuntime.flow ? undefined : this.options.screenMode === 'alternate' || this.surfaceRuntime.interaction !== undefined ? this.viewport.rows : undefined)
+      const rowLimit = maxRows ?? (this.surfaceRuntime.flow ? undefined : this.options.bounded || this.surfaceRuntime.interaction !== undefined ? this.viewport.rows : undefined)
       const severity = { info: 0, success: 1, warning: 2, error: 3 }
       const notice = this.surfaceRuntime.interaction?.feedbackSnapshot().toSorted((left, right) => severity[left.severity] - severity[right.severity]).at(-1)
       const feedbackRows = notice === undefined || rowLimit === 1 ? [] : glyphRows([sliceByColumn(
@@ -3360,9 +3365,9 @@ class CompiledSurface implements MayflyEditorShellComponent {
     /* input returns before geometry lookup when no control exists. */
     if (controls.length === 0) return rectangles
     const width = Math.max(1, this.viewport.columns)
-    // Alternate and interaction surfaces size geometry from the viewport;
+    // Bounded and interaction surfaces size geometry from the viewport;
     // only the passive inline case needs a measurement render (UX-34).
-    const height = this.options.screenMode === 'alternate' || this.surfaceRuntime.interaction !== undefined
+    const height = this.options.bounded || this.surfaceRuntime.interaction !== undefined
       ? Math.max(1, this.viewport.rows)
       : Math.max(1, this.root.render(width).length)
     const previousLayoutPass = this.state.layoutPass
@@ -3969,7 +3974,7 @@ export function compileMayflyStatusNode(value: unknown, options: MayflyStatusCom
       components: options.components,
       colors: options.colors,
       getViewport: options.getViewport,
-      screenMode: options.screenMode,
+      bounded: options.bounded,
       emit: PASSIVE_EVENT_SINK,
       ...(options.counters === undefined ? {} : { counters: options.counters }),
       ...(options.reuse === undefined ? {} : { reuse: options.reuse }),

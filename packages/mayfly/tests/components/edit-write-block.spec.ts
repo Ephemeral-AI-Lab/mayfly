@@ -61,7 +61,7 @@ const blockOf = (value: TranscriptViewFacts): ToolBlockFacts & { readonly id: st
 /** The stream drawn at a width, as plain rows. */
 function drawn(value: TranscriptViewFacts, width: number): string[] {
   const compiled = compileMayflyUiNode(TranscriptView(value), {
-    components: fakeMayflyComponents(), colors: plainColors(), getViewport: () => ({ columns: width, rows: 1000 }), screenMode: 'main', emit: () => {},
+    components: fakeMayflyComponents(), colors: plainColors(), getViewport: () => ({ columns: width, rows: 1000 }), bounded: false, emit: () => {},
   })
   return (compiled.ok ? compiled.value.component : compiled.errorComponent).render(width).map(row => plainText(row))
 }

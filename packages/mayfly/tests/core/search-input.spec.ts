@@ -32,7 +32,7 @@ async function surface(node: MayflyUiNode, kind: 'pane' | 'overlay' = 'overlay',
   const model = ctx.mayflyUiInteraction.get(kind, 'test')!
   const runtime = new MayflyUiSurfaceRuntime(model)
   const viewport = { columns: width, rows: 10 }
-  const compiled = compileMayflyUiSurfaceNode(model.node, { surfaceRuntime: runtime, components, colors: theme.colors, getViewport: () => viewport, screenMode: 'alternate', emit: event => model.emit(event), onUnhandledEscape: () => model.requestClose() })
+  const compiled = compileMayflyUiSurfaceNode(model.node, { surfaceRuntime: runtime, components, colors: theme.colors, getViewport: () => viewport, bounded: true, emit: event => model.emit(event), onUnhandledEscape: () => model.requestClose() })
   if (!compiled.ok) throw new Error(compiled.message)
   compiled.value.focusTarget!.focused = true
   return { model, runtime, viewport, onEvent, panel: compiled.value.component, input: (data: string) => compiled.value.focusTarget!.handleInput!(data) }

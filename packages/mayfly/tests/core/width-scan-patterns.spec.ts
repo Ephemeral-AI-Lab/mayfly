@@ -11,7 +11,7 @@ const colors = plainColors()
 const components = { visibleWidth, wrapText: wrapTextWithAnsi, truncateToWidth } as unknown as MayflyComponents
 
 function paint(node: MayflyUiNode, width: number, focused: boolean): string[] {
-  const result = compileMayflyUiNode(node, { emit: () => {}, components, colors, getViewport: () => ({ columns: width, rows: 30 }), screenMode: 'alternate' })
+  const result = compileMayflyUiNode(node, { emit: () => {}, components, colors, getViewport: () => ({ columns: width, rows: 30 }), bounded: true })
   if (!result.ok) throw new Error(result.message)
   if (result.value.focusTarget !== null) result.value.focusTarget.focused = focused
   return result.value.component.render(width)
