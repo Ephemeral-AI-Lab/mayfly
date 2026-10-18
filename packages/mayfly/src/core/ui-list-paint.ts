@@ -15,7 +15,7 @@ import { paintSpan, paintTone } from './ui-paint.ts'
 import { segmentLine, type SegmentView } from './ui-list-segment.ts'
 import type { UiRowCache } from './ui-row-cache.ts'
 import { countWork, type MayflyWorkCounters } from './ui-work-counters.ts'
-import { concatRows, mapRows, sliceRows, virtualRows, type RowSource } from './ui-rows.ts'
+import { concatRows, mapRows, prepareRows, rowSourceOf, sliceRows, virtualRows, type RowSource } from './ui-rows.ts'
 import { countMatches, highlightLine, highlightPattern } from './ui-find.ts'
 import { sliceByColumn, visibleWidth, wrapTextWithAnsi } from './width.ts'
 
@@ -732,7 +732,12 @@ export interface FlowListPaintInput {
 interface FlowBlock {
   readonly item: MayflyListItem
   readonly entries: readonly Entry[]
+  /** The rows the entries reported when the block was built. */
   readonly height: number
+  /** The entries' row sources whose length can still move: a lazy body reports an estimate until its units paint. */
+  readonly sources: readonly RowSource[]
+  /** {@link stampOf} the sources when `height` was read. */
+  readonly stamp: number
   /** Rows of the group heading ahead of the item's own first row. */
   readonly lead: number
   readonly groupBefore: string | undefined
@@ -745,15 +750,28 @@ const recordKey = (values: Readonly<Record<string, string>> | undefined): string
   ? ''
   : Object.keys(values).sort().map(key => `${key}\0${values[key]!}`).join('\x01')
 
+/** The summed revisions of `sources`: revisions only grow, so any change to any of them moves the sum. */
+function stampOf(sources: readonly RowSource[]): number {
+  let total = 0
+  for (const source of sources) total += source.revision ?? 0
+  return total
+}
+
 /**
  * The row source of a list painted whole in flow content: `length` is the total painted rows of every item (plus the
  * segment footer), `row` reads a row of the block under it, and `locate` names the line of a followed item. Items are
  * reconciled by identity at both ends, so a stream that changes its tail rebuilds that item alone and a repaint reads
- * the rows the frame shows. A changed row map moves {@link revision}, so a facade drops the rows it held.
+ * the rows the frame shows. A block whose rows can still move (a long Markdown answer reports an estimate until its
+ * units paint) is measured again whenever its sources' revisions move, before any read. A changed row map moves
+ * {@link revision}, so a facade drops the rows it held.
  */
 export class FlowListPainter implements RowSource {
   private blocks: readonly FlowBlock[] = []
+  /** The height the row map holds for each block, and the stamp of its sources when that height was read. */
   private counts: number[] = []
+  private stamps: number[] = []
+  /** The blocks whose height can still move with their sources. */
+  private live: number[] = []
   private tree = new RowFenwick(0)
   private byId = new Map<string, number>()
   private items: readonly MayflyListItem[] = []
@@ -767,9 +785,15 @@ export class FlowListPainter implements RowSource {
   private focused = false
   private cursorId: string | undefined
 
-  get length(): number { return this.itemTotal + this.tail.length }
+  get length(): number {
+    this.settle()
+    return this.itemTotal + this.tail.length
+  }
 
-  get revision(): number { return this.changes }
+  get revision(): number {
+    this.settle()
+    return this.changes
+  }
 
   get declaredWidth(): number { return this.declared }
 
@@ -822,10 +846,15 @@ export class FlowListPainter implements RowSource {
           ? entry
           : { ...entry, lines: mapRows(entry.lines, line => highlightLine(line, find, undefined)) })
       let height = 0
-      for (const entry of entries) height += entry.lines.length
+      const sources: RowSource[] = []
+      for (const entry of entries) {
+        height += entry.lines.length
+        const source = rowSourceOf(entry.lines)
+        if (source?.revision !== undefined) sources.push(source)
+      }
       const item = spec.item
       return {
-        item, entries, height,
+        item, entries, height, sources, stamp: stampOf(sources),
         lead: entries[0]?.kind === 'group' ? entries[0].lines.length : 0,
         groupBefore: group,
         groupAfter: painted.group,
@@ -884,9 +913,7 @@ export class FlowListPainter implements RowSource {
           const before = old[index]!
           const after = next[index]!
           if (before === after) continue
-          const delta = after.height - before.height
-          if (delta !== 0) this.tree.add(index, delta)
-          this.counts[index] = after.height
+          this.measure(index, after)
           this.byId.set(after.item.id, index)
           if (before.item.id !== after.item.id) this.byId.delete(before.item.id)
         }
@@ -898,13 +925,49 @@ export class FlowListPainter implements RowSource {
       const block = this.blocks[index]!
       if (!block.motion || touched.has(index)) continue
       const rebuiltBlock = build(index, block.groupBefore)
-      if (rebuiltBlock.height !== block.height) this.tree.add(index, rebuiltBlock.height - block.height)
-      this.counts[index] = rebuiltBlock.height
+      this.measure(index, rebuiltBlock)
       this.blocks = [...this.blocks.slice(0, index), rebuiltBlock, ...this.blocks.slice(index + 1)]
       changed = true
       this.itemTotal = this.tree.sum(this.blocks.length - 1)
     }
-    if (changed) this.changes += 1
+    if (changed) {
+      this.changes += 1
+      this.live = []
+      for (let index = 0; index < this.blocks.length; index += 1) if (this.blocks[index]!.sources.length > 0) this.live.push(index)
+    }
+  }
+
+  /** Hold `block`'s built height and source stamp for row `index` of the map. */
+  private measure(index: number, block: FlowBlock): void {
+    const delta = block.height - this.counts[index]!
+    if (delta !== 0) this.tree.add(index, delta)
+    this.counts[index] = block.height
+    this.stamps[index] = block.stamp
+  }
+
+  /**
+   * Measure again the blocks whose sources moved since their height was read: a lazy body grows from its estimate as
+   * its units paint, and a height held from before would cut its last rows and start the next item early.
+   */
+  private settle(): void {
+    let moved = false
+    let resized = false
+    for (const index of this.live) {
+      const block = this.blocks[index]!
+      const stamp = stampOf(block.sources)
+      if (stamp === this.stamps[index]) continue
+      this.stamps[index] = stamp
+      moved = true
+      let height = 0
+      for (const entry of block.entries) height += entry.lines.length
+      const delta = height - this.counts[index]!
+      if (delta === 0) continue
+      this.tree.add(index, delta)
+      this.counts[index] = height
+      resized = true
+    }
+    if (resized) this.itemTotal = this.tree.sum(this.blocks.length - 1)
+    if (moved) this.changes += 1
   }
 
   row(index: number): string {
@@ -921,6 +984,28 @@ export class FlowListPainter implements RowSource {
     return ''
   }
 
+  /**
+   * Paint the entries under rows `[from, to)` before a frame reads them, walking on from the live heights: a lazy body
+   * settles its count here, so a scroll that prepares its window lays out against the rows the window will show.
+   */
+  prepare(from: number, to: number): void {
+    this.settle()
+    if (from >= this.itemTotal) return
+    let at = this.tree.locate(Math.max(0, from))
+    let start = this.tree.sum(at - 1)
+    while (at < this.blocks.length && start < to) {
+      let offset = start
+      for (const entry of this.blocks[at]!.entries) {
+        if (offset >= to) break
+        if (offset + entry.lines.length > from) prepareRows(entry.lines, Math.max(0, from - offset), to - offset)
+        offset += entry.lines.length
+      }
+      this.settle()
+      start = this.tree.sum(at)
+      at += 1
+    }
+  }
+
   /** A focused painter's only marker is the cursor row: answer a layout seek without walking every row. */
   seekMarker(_marker: string, from: number): number {
     if (!this.focused || this.cursorId === undefined) return -1
@@ -932,11 +1017,14 @@ export class FlowListPainter implements RowSource {
   locate(itemId: string): number | undefined {
     const index = this.byId.get(itemId)
     if (index === undefined) return undefined
+    this.settle()
     return this.tree.sum(index - 1) + this.blocks[index]!.lead
   }
 
   private reindex(): void {
+    // Built heights and stamps: a kept block whose sources moved since it was built is measured again by `settle`.
     this.counts = this.blocks.map(block => block.height)
+    this.stamps = this.blocks.map(block => block.stamp)
     this.tree = new RowFenwick(this.counts.length)
     this.byId = new Map()
     let total = 0

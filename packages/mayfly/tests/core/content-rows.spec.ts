@@ -188,7 +188,8 @@ describe('contentNodeSource', () => {
         const reference = documentRowsSource(node as never, width, makeEnv().env)!
         reference.prepare?.(0, Number.MAX_SAFE_INTEGER)
         const settled = reference.length
-        const jumped = documentRowsSource(node as never, width, makeEnv().env)!
+        // A paint of its own: a source under the reference's paint would start from the counts the reference painted.
+        const jumped = documentRowsSource(node as never, width, makeEnv(undefined, { ...DARK_COLORS }).env)!
         expect(jumped.length, `${node.kind} at ${String(width)}: the estimate is past the painted rows`).toBeGreaterThan(settled)
         // Every row below the painted total exists, and the map is never shorter than that until it has converged.
         const reads: string[] = []
@@ -672,6 +673,28 @@ describe('contentNodeSource', () => {
     void rows[rows.length - 1]
     expect(changes).toBeGreaterThan(0)
     expect(rows.length).toBeGreaterThan(before)
+  })
+
+  it('starts a source over units an earlier source painted from their painted counts', () => {
+    // Tables and wrapping prose paint more rows than their source lines estimate.
+    const section = (index: number): string => `${'carry '.repeat(120)}${String(index)}\n\n| k | v |\n| - | - |\n| a | ${String(index)} |\n| b | ${String(index)} |`
+    const text = Array.from({ length: 10 }, (_, index) => section(index)).join('\n\n')
+    const env = makeEnv()
+    const first = contentNodeRows({ kind: 'markdown', source: text }, 40, env.env)
+    const estimate = first.length
+    void [...first]
+    const painted = first.length
+    expect(painted).toBeGreaterThan(estimate)
+    const segments = env.counters.segmentsPainted
+    // The same text as another node (a streamed answer settling into its message) is exact before a row is read.
+    const settled = contentNodeRows({ kind: 'markdown', source: text }, 40, env.env)
+    expect(settled.length).toBe(painted)
+    expect(env.counters.segmentsPainted).toBe(segments)
+    // Another width paints other rows, so nothing carries over to it.
+    const narrow = contentNodeRows({ kind: 'markdown', source: text }, 30, env.env)
+    const narrowEstimate = narrow.length
+    void [...narrow]
+    expect(narrow.length).toBeGreaterThan(narrowEstimate)
   })
 
   it('reports a markdown paint failure once per unit', () => {

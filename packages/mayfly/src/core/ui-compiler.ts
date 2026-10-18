@@ -3169,7 +3169,9 @@ class CompiledSurface implements MayflyEditorShellComponent {
         joinSpans({ spans: feedbackSpans(notice.severity, sanitizePluginText(notice.message).replace(/[\r\n]+/gu, ' ')) }, this.options.colors),
         0, safeWidth, true,
       )], this.options.components.presentation?.glyphs)
-      const contentLimit = rowLimit === undefined ? rows.length : Math.max(1, rowLimit - feedbackRows.length)
+      // Without a row limit the frame is the whole tree at its live length: a lazy document reports an estimate until its
+      // units paint, and a window ending at today's length would cut its last rows.
+      const contentLimit = rowLimit === undefined ? Number.POSITIVE_INFINITY : Math.max(1, rowLimit - feedbackRows.length)
       const caretRow = findMarkerRow(rows, CURSOR_MARKER)
       const focusRow = caretRow < 0 ? findMarkerRow(rows, FOCUS_SENTINEL) : caretRow
       const pinFrame = rowLimit !== undefined && rows.length > contentLimit && this.node.kind === 'surface'
@@ -3188,7 +3190,7 @@ class CompiledSurface implements MayflyEditorShellComponent {
         else if (focusRow >= this.viewportOffset + contentLimit) this.viewportOffset = focusRow - contentLimit + 1
         this.viewportOffset = Math.max(0, Math.min(this.viewportOffset, rows.length - contentLimit))
         // A windowed tree keeps its window: the slice stays a facade, so the paint below touches only the rows read.
-        limited = concatRows(sliceRows(rows, this.viewportOffset, this.viewportOffset + contentLimit), feedbackRows)
+        limited = concatRows(sliceRows(rows, this.viewportOffset, rowLimit === undefined ? undefined : this.viewportOffset + contentLimit), feedbackRows)
       }
       let overflowed = rowLimit !== undefined && rows.length > rowLimit
       const clampRow = (row: string): string => {
