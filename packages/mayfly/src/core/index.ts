@@ -55,6 +55,9 @@ export async function apply(ctx: Context): Promise<void> {
     onSchemeChange: (scheme) => {
       ctx.emit('mayfly/terminal-theme-changed', scheme)
     },
+    // A streaming tail rewrites the whole viewport through the index-aligned diff; the shadow grid turns one appended
+    // row into a scroll plus only the rows it cannot explain, and unrecognized writes pass through and rebuild.
+    outputOptimizer: true,
     ambientOutput: { stdout: process.stdout, stderr: process.stderr },
   })
   mountContextHintLocale(ctx, runtime.requestRender)

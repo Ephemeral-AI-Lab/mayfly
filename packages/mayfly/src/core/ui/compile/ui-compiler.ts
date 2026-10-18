@@ -2290,6 +2290,11 @@ export class MayflyUiSurfaceRuntime {
    * the list node's own rows. The owner sets `controlId` and `itemId`; a list of another control never touches it.
    */
   readonly probe: { controlId: string, itemId: string | undefined, line: number | undefined } = { controlId: '', itemId: undefined, line: undefined }
+  /**
+   * The focused flow list's cursor line among the surface's own rows, as of the last render: its owner reveals the row in
+   * the outer scroll. `undefined` while the surface is not flow content or no cursor is painted.
+   */
+  focusedLine: number | undefined
   /** Asks the host for another frame and nothing else (what a clock tick does). */
   readonly nudge: () => void
 
@@ -3086,9 +3091,13 @@ class CompiledSurface implements MayflyEditorShellComponent {
         joinSpans({ spans: feedbackSpans(notice.severity, sanitizePluginText(notice.message).replace(/[\r\n]+/gu, ' ')) }, this.options.colors),
         0, safeWidth, true,
       )], this.options.components.presentation?.glyphs)
-      const contentLimit = rowLimit === undefined ? rows.length : Math.max(1, rowLimit - feedbackRows.length)
+      // Without a row limit the frame is the whole tree at its live length: a lazy document reports an estimate until its
+      // units paint, and a window ending at today's length would cut its last rows.
+      const contentLimit = rowLimit === undefined ? Number.POSITIVE_INFINITY : Math.max(1, rowLimit - feedbackRows.length)
       const caretRow = findMarkerRow(rows, CURSOR_MARKER)
       const focusRow = caretRow < 0 ? findMarkerRow(rows, FOCUS_SENTINEL) : caretRow
+      // A focused flow list's cursor marker seeks its own row without walking the list; its owner reveals it in the scroll.
+      this.surfaceRuntime.focusedLine = this.surfaceRuntime.flow && focusRow >= 0 ? focusRow : undefined
       const pinFrame = rowLimit !== undefined && rows.length > contentLimit && this.node.kind === 'surface'
         && (this.node.chrome === 'overlay' || this.node.chrome === 'surface')
       let limited: string[]
@@ -3105,7 +3114,7 @@ class CompiledSurface implements MayflyEditorShellComponent {
         else if (focusRow >= this.viewportOffset + contentLimit) this.viewportOffset = focusRow - contentLimit + 1
         this.viewportOffset = Math.max(0, Math.min(this.viewportOffset, rows.length - contentLimit))
         // A windowed tree keeps its window: the slice stays a facade, so the paint below touches only the rows read.
-        limited = concatRows(sliceRows(rows, this.viewportOffset, this.viewportOffset + contentLimit), feedbackRows)
+        limited = concatRows(sliceRows(rows, this.viewportOffset, rowLimit === undefined ? undefined : this.viewportOffset + contentLimit), feedbackRows)
       }
       let overflowed = rowLimit !== undefined && rows.length > rowLimit
       const clampRow = (row: string): string => {

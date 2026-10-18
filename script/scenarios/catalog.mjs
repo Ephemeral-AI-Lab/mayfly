@@ -141,16 +141,31 @@ const SCRIPTS = {
     resize(60, 30), checkpoint('narrow-60'),
     resize(100, 30),
   ],
+  // Prompts typed into the live session: a quick first turn, then turns the stub holds 4 s (it takes the first `hold:` of
+  // the conversation for every later turn too), so each prompt can be looked at while its turn runs; a prompt sent
+  // meanwhile is queued and becomes the next turn's prompt; 60 columns.
+  livePrompts: [
+    wait(1000), checkpoint('empty'),
+    type('Summarise the release plan.'), key('enter'), wait(3000), checkpoint('history'),
+    type('hold:4000 Check the changelog next.'), key('enter'), wait(1200), checkpoint('first-running'),
+    wait(5000), checkpoint('first-done'),
+    type('Then the migration guide.'), key('enter'), wait(1200), checkpoint('second-running'),
+    type('And the README badges.'), key('enter'), wait(800), checkpoint('queued'),
+    wait(3000), checkpoint('third-running'),
+    wait(5000), checkpoint('settled'),
+    resize(60, 40), checkpoint('narrow-60'),
+    resize(100, 40),
+  ],
   // Esc stops your turn only: a real background subagent, the watcher, and a queued message stay; Esc on a panel closes it;
   // a foreground subagent stops with the turn.
   mergeEsc: [
     play('ready'), checkpoint('ready'),
     type('spawn:Background reviewer child-hold:240000 review the README'), key('enter'), wait(3000), checkpoint('running'),
     type('Then bump the version'), key('enter'), wait(400), checkpoint('queued'),
-    key('esc'), wait(1000), checkpoint('interrupted'),
-    wait(300), key('alt+down'), checkpoint('agents-live'), key('esc'), wait(150),
-    // The kept message, sent now from its row, is a turn that runs (the stub holds every prompt of this conversation).
-    key('alt+up'), checkpoint('kept'), key('s'), wait(1000), key('esc'), wait(150), checkpoint('sent'),
+    // Esc parks the turn's queue for the nudge: it starts the next turn on its own, without a row command.
+    key('esc'), wait(200), checkpoint('interrupted'),
+    wait(1800), checkpoint('queue-sent'),
+    key('alt+down'), checkpoint('agents-live'), key('esc'), wait(150),
     ...open('/help', 'Help'), checkpoint('panel'), key('esc'), wait(400), checkpoint('panel-closed'),
     key('esc'), wait(1000), checkpoint('interrupted-again'),
     type('spawn-fg:Foreground checker child-hold:240000 check the links'), key('enter'), wait(3000), checkpoint('foreground'),
@@ -242,6 +257,28 @@ const SCRIPTS = {
     resize(100, 30),
     type('/permissions'), key('enter'), wait(1000), checkpoint('permissions'),
   ],
+  // The fix round: the live answer pauses mid-text, the settled turn, the Alt+↑ band over the answer and its tool block,
+  // the content following the focused cursor out of view and back after a manual scroll, a real turn held open with a
+  // message queued behind it, Esc, and the queued message starting the next turn.
+  liveQueue: [
+    play('live'), checkpoint('live'),
+    play('settled'), wait(600), checkpoint('settled'),
+    key('alt+up'), wait(300), checkpoint('band'),
+    key('up'), wait(300), checkpoint('band-moved'),
+    // Walk the cursor to the first block: the content follows the least that shows the focused block.
+    key('up', { repeat: 8 }), wait(600), checkpoint('reveal'),
+    // Scroll the view away by hand; the cursor stays where it is, out of view, until the next cursor key.
+    key('down', { repeat: 2 }), wait(300),
+    wheel('up', { count: 30 }), wait(500), checkpoint('scrolled-away'),
+    key('down'), wait(500), checkpoint('reveal-again'),
+    key('esc'), wait(200),
+    type('hold:4000 keep the parser open'), key('enter'), wait(900), checkpoint('running'),
+    type('queued follow-up: run the suite'), key('enter'), wait(500), checkpoint('queued'),
+    // The stub's hold has to drain before the aborted turn settles; the nudge then starts the queued message's turn.
+    key('esc'), wait(6000), checkpoint('queue-sent'),
+    key('alt+down'), wait(300), key('right'), checkpoint('views'),
+    resize(60, 30), checkpoint('narrow-60'),
+  ],
 }
 
 /** Replays that run at a size of their own. */
@@ -256,12 +293,15 @@ const SIZES = {
   mergeDock: [[100, 30]],
   mergeConversations: [[100, 30]],
   harnessAlignment: [[100, 30]],
+  liveQueue: [[120, 40], [60, 30]],
 }
 
 /** What a replay's session needs beyond the replay: the /plugin catalog of the bench profile, a DeepSeek balance. */
 const OPTIONS = {
   // No session exists until the script sends a message; the setting pinned here asks for the launch screen.
   startSplash: { sessionless: true, firstRun: true, config: { mayfly: { startup: 'splash' } } },
+  // Esc's frames mark the interrupt states; the rotating teaching tip and hint would make a later frame depend on wall time.
+  mergeEsc: { config: { mayfly: { quietHints: 'off' } } },
   mergePanels: { market: { installed: 'full' }, account: { balance: 'ok' } },
   mergeHeights: { market: { installed: 'full' }, account: { balance: 'ok' } },
   // The Host Schedule service is inserted disabled; this scenario turns it on to compare standard and minimal.
@@ -482,9 +522,20 @@ const PERF = {
   },
 }
 
-/** The catalog, by scenario name: the replays, the Website's app shots, and the perf scenarios. */
+/** Scenarios of the live session with no replay: what you type goes through the real agent loop and the stub model. */
+const LIVE = {
+  livePrompts: {
+    summary: 'prompts typed into a live session: each one shows in the stream as soon as it is sent and stays there while its turn runs, a prompt sent meanwhile waits as a queued row, and the later turns keep their prompts',
+    source: { idle: true },
+    sizes: [[100, 40]],
+    script: SCRIPTS.livePrompts,
+  },
+}
+
+/** The catalog, by scenario name: the replays, the live-session scenarios, the Website's app shots, and the perf scenarios. */
 export const CATALOG = Object.freeze({
   ...Object.fromEntries(Object.entries(REPLAYS).map(([name, replay]) => [name, replayScenario(name, replay)])),
+  ...LIVE,
   ...APP,
   ...DEMO,
   ...PERF,

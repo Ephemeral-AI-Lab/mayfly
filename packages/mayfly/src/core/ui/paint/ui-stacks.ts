@@ -74,7 +74,12 @@ export class ColumnStack extends VStack {
         if (index > 0) parts.push(blankRows(this.gap))
         placeChild(entry.component, this, top)
         const size = sizes[index]!
-        const childLines = sliceRows(rendered[index]!, 0, size)
+        // A child sized by its own rows keeps their live length: a lazy document reports an estimate until its units
+        // paint, and a slice ending at today's length would cut its last rows. A size the stack set keeps its bound.
+        // Either way the child stays behind a slice, so the concat reads through the child's rows instead of
+        // flattening its parts.
+        const sizedByRows = (entry.basis === undefined || entry.basis === 'auto') && entry.maxSize === undefined && size === rendered[index]!.length
+        const childLines = sliceRows(rendered[index]!, 0, sizedByRows ? undefined : size)
         parts.push(childLines)
         const padding = size - Math.min(size, rendered[index]!.length)
         if (padding > 0) parts.push(blankRows(padding))
