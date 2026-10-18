@@ -182,7 +182,7 @@ const REVIEW = {
       'The tail chip reads `New messages · Ctrl+↓` while the rule is pending.',
     ],
     focus: [
-      { look: 'The rule before the first block that arrived while you were away; the chip with the key', how: 'checkpoints `away`, `arrived` (the wheel scrolls up first)' },
+      { look: 'The rule before the first block that arrived while you were away; the chip with the key', how: 'checkpoint `jumped` (the wheel scrolls up first)' },
       { look: 'Ctrl+↓: the rule at the top, three rows of history above it, the new blocks below', how: 'checkpoint `jumped`' },
       { look: 'The rule gone after 5 s on screen', how: 'checkpoint `expired`' },
       { look: 'A second Ctrl+↓ follows the tail', how: 'checkpoint `tail`' },
