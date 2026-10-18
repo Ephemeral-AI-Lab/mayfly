@@ -26,12 +26,7 @@ export { MayflyComponentsService, type MayflyComponentsDeps } from './components
 export { GutterComponent } from './gutter.ts'
 export { MayflyKeymapError, MayflyKeymapService, type MayflyKeymapErrorCode } from './keymap.ts'
 export { MayflyScreenService } from './screen.ts'
-export {
-  PLUGIN_VIEW_MAX_DEPTH,
-  paintPluginTone,
-  sanitizePluginText,
-  summarizePluginView,
-} from './plugin-view.ts'
+export { PLUGIN_VIEW_MAX_DEPTH, paintPluginTone, sanitizePluginText } from './plugin-view.ts'
 export {
   MayflyTerminalInfoService,
   PROBE_TIMEOUT_MS,

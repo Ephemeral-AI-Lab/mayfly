@@ -358,24 +358,3 @@ export function paintDiffSegment(
     case 'rows': return segment.rows.map(row => paintDiffRow(row, digits, columns, helpers, colors, style, clip, paint))
   }
 }
-
-/**
- * Paint aligned ops as terminal rows no wider than `width` (spec §4.1): one line-number gutter that numbers the
- * rows (muted, ending in `│`; a removed line shows its number before the change, any other line its number after it), then `−` or `+` and the code. A removed or added line keeps its band behind the code only, never the
- * gutter, in the removed or added tone, stopping a few columns short of the right edge; an unchanged line is plain. Only {@link DiffPaintOptions.context} unchanged
- * lines stay around each change, a run of skipped lines is one muted `⋯`, a long line ends in `…`, and tabs expand to
- * three columns so a band has no tab-stop gaps.
- * @param ops - the alignment to paint.
- * @param width - the assigned column width.
- * @param helpers - the width truth used to clip and pad.
- * @param colors - the diff palette; omitted yields uncolored rows.
- * @param options - numbering, context, header, and row budget.
- * @returns the visual rows.
- */
-export function paintDiffRows(ops: readonly DiffOp[], width: number, helpers: DiffWidthHelpers, colors?: DiffPaintColors, options: DiffPaintOptions = {}): string[] {
-  const columns = Math.max(1, width)
-  const model = diffModel(ops, options)
-  const out: string[] = []
-  for (const segment of model.segments) for (const row of paintDiffSegment(segment, model.digits, columns, helpers, colors, { numbered: options.numbered !== false, start: options.start ?? 1, beforeStart: options.beforeStart ?? options.start ?? 1 })) out.push(row)
-  return out
-}

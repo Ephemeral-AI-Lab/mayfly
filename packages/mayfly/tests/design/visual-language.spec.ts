@@ -1,8 +1,7 @@
 /** The scenes of slice 1.2 (the visual language) as grid goldens: scene 1 pages 1-6, 7 p1, 8 p3-p4, and 9 p3. */
 import { describe, it } from 'vitest'
 import { patterns, ui } from '../../../ui/src/index.ts'
-import { PROBE_PALETTE, caption, createRealSurface, expectFrames, paint, probeComponents } from './probe.ts'
-import { alignDiffLines, paintDiffRows } from '../../src/core/diff-align.ts'
+import { caption, createRealSurface, expectFrames, paint, probeComponents } from './probe.ts'
 
 const S = (text: string, tone?: 'muted' | 'primary' | 'accent' | 'user' | 'success' | 'warning' | 'danger', styles?: readonly ('strong' | 'italic' | 'strike')[]) => ({ text, ...(tone === undefined ? {} : { tone }), ...(styles === undefined ? {} : { styles }) })
 
@@ -58,7 +57,7 @@ describe('scene 8 Content', () => {
   })
 
   it('page 4: a numbered diff with −/+, bands behind the code only, and ⋯ between hunks', async () => {
-    const diff = (numbered: boolean): string[] => paintDiffRows(alignDiffLines(EDIT_BEFORE, EDIT_AFTER), 100, probeComponents(), PROBE_PALETTE, { start: 41, numbered, hunkHeader: true, context: 1 })
+    const diff = (numbered: boolean): string[] => paint(ui.diff(EDIT_BEFORE, EDIT_AFTER, { start: 41, numbered, hunkHeader: true, context: 1 }), 100)
     const page = (numbered: boolean): string[] => [
       ...paint(caption('page 4/7 (Ctrl+N): diff: two strings in, aligned rows out — numbered gutters, −/+ and color, ⋯ between hunks'), 100),
       '',

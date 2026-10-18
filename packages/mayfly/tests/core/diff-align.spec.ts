@@ -11,8 +11,11 @@ import {
   diffChangeCounts,
   DIFF_ALIGN_MAX_EDITS,
   diffModel,
-  paintDiffRows,
   paintDiffSegment,
+  type DiffOp,
+  type DiffPaintColors,
+  type DiffPaintOptions,
+  type DiffWidthHelpers,
 } from '../../src/core/diff-align.ts'
 import { truncateToWidth, visibleWidth } from '../../src/core/width.ts'
 import { plainText } from '../helpers.ts'
@@ -114,8 +117,14 @@ describe('alignDiffLines', () => {
   })
 })
 
-describe('paintDiffRows', () => {
+describe('diff painting', () => {
   const helpers = { truncateToWidth, visibleWidth }
+  /** Paint through the production model and segment painter, the shape the old eager helper had. */
+  const paintRows = (ops: readonly DiffOp[], width: number, widthHelpers: DiffWidthHelpers = helpers, colors?: DiffPaintColors, options: DiffPaintOptions = {}): string[] => {
+    const model = diffModel(ops, options)
+    const columns = Math.max(1, width)
+    return model.segments.flatMap(segment => paintDiffSegment(segment, model.digits, columns, widthHelpers, colors, { numbered: options.numbered !== false, start: options.start ?? 1, beforeStart: options.beforeStart ?? options.start ?? 1 }))
+  }
   const palette = {
     text: (text: string): string => `<T>${text}</T>`,
     muted: (text: string): string => `<G>${text}</G>`,
@@ -129,14 +138,14 @@ describe('paintDiffRows', () => {
 
   it('numbers every row (a removed line before the change, any other after it), signs changes with −/+, and keeps the band behind the code only', () => {
     const aligned = alignDiffLines('a\nb', 'a\nc')
-    expect(paintDiffRows(aligned, 20, helpers)).toEqual(['  1 │   a', '  2 │ − b', '  2 │ + c'])
+    expect(paintRows(aligned, 20, helpers)).toEqual(['  1 │   a', '  2 │ − b', '  2 │ + c'])
     // The tag palette counts its tags as cells, so these rows are wide enough not to clip.
-    expect(paintDiffRows(aligned, 40, helpers, palette)).toEqual([
+    expect(paintRows(aligned, 40, helpers, palette)).toEqual([
       '  <G>1 │</G>   <T>a</T>',
       '  <G>2 │</G> [R<R>−</R> <R>b</R>      R]',
       '  <G>2 │</G> [A<A>+</A> <A>c</A>      A]',
     ])
-    expect(paintDiffRows(aligned, 30, helpers, palette, { numbered: false })).toEqual([
+    expect(paintRows(aligned, 30, helpers, palette, { numbered: false })).toEqual([
       '    <T>a</T>',
       '  [R<R>−</R> <R>b</R>       R]',
       '  [A<A>+</A> <A>c</A>       A]',
@@ -146,20 +155,20 @@ describe('paintDiffRows', () => {
   it('keeps the context around each change, marks skipped runs with ⋯, and starts at a line number', () => {
     const before = Array.from({ length: 12 }, (_, index) => `l${String(index)}`)
     const after = before.map((line, index) => index === 2 || index === 9 ? `${line}!` : line)
-    const rows = plain(paintDiffRows(alignDiffLines(before.join('\n'), after.join('\n')), 80, helpers, palette, { start: 100 }))
+    const rows = plain(paintRows(alignDiffLines(before.join('\n'), after.join('\n')), 80, helpers, palette, { start: 100 }))
     expect(rows[0]).toBe('@@ -100,12 +100,12 @@')
     expect(rows).toContain('  ⋯')
     expect(rows.filter(row => row === '  ⋯')).toHaveLength(3)
     expect(rows).toContain('  101 │   l1')
     expect(rows).not.toContain('  100 │   l0')
-    expect(paintDiffRows(alignDiffLines(before.join('\n'), after.join('\n')), 40, helpers, undefined, { hunkHeader: false, context: 0 })).toHaveLength(7)
+    expect(paintRows(alignDiffLines(before.join('\n'), after.join('\n')), 40, helpers, undefined, { hunkHeader: false, context: 0 })).toHaveLength(7)
     // One hunk has no header unless asked.
-    expect(paintDiffRows(alignDiffLines('a\nb', 'a\nc'), 40, helpers)[0]).not.toContain('@@')
-    expect(plain(paintDiffRows(alignDiffLines('a\nb', 'a\nc'), 80, helpers, palette, { hunkHeader: true }))[0]).toBe('@@ -1,2 +1,2 @@')
+    expect(paintRows(alignDiffLines('a\nb', 'a\nc'), 40, helpers)[0]).not.toContain('@@')
+    expect(plain(paintRows(alignDiffLines('a\nb', 'a\nc'), 80, helpers, palette, { hunkHeader: true }))[0]).toBe('@@ -1,2 +1,2 @@')
   })
 
   it('stops after maxRows with the remaining count and the Ctrl+O key', () => {
-    const rows = plain(paintDiffRows(alignDiffLines('', 'a\nb\nc\nd'), 80, helpers, palette, { maxRows: 2 }))
+    const rows = plain(paintRows(alignDiffLines('', 'a\nb\nc\nd'), 80, helpers, palette, { maxRows: 2 }))
     expect(rows.map(row => row.trimEnd())).toEqual(['  1 │ + a', '  2 │ + b', '  … +2 rows · Ctrl+O'])
   })
 
@@ -168,16 +177,16 @@ describe('paintDiffRows', () => {
     const after = before.map((line, index) => index % 10 === 5 ? `${line}!` : line)
     const aligned = alignDiffLines(before.join('\n'), after.join('\n'))
     // The first hunk is l4 l5 l5! l6: the budget ends inside it, so the later hunks never show.
-    expect(plain(paintDiffRows(aligned, 80, helpers, palette, { maxRows: 2 })).map(row => row.trimEnd())).toEqual(['@@ -1,30 +1,30 @@', '  ⋯', '   5 │   l4', '   6 │ − l5', '  … +10 rows · Ctrl+O'])
+    expect(plain(paintRows(aligned, 80, helpers, palette, { maxRows: 2 })).map(row => row.trimEnd())).toEqual(['@@ -1,30 +1,30 @@', '  ⋯', '   5 │   l4', '   6 │ − l5', '  … +10 rows · Ctrl+O'])
     // A budget that fills the first hunk exactly ends at the start of the second: only the gap and the remaining count show.
-    expect(plain(paintDiffRows(aligned, 80, helpers, palette, { maxRows: 4 })).map(row => row.trimEnd())).toEqual(['@@ -1,30 +1,30 @@', '  ⋯', '   5 │   l4', '   6 │ − l5', '   6 │ + l5!', '   7 │   l6', '  ⋯', '  … +8 rows · Ctrl+O'])
+    expect(plain(paintRows(aligned, 80, helpers, palette, { maxRows: 4 })).map(row => row.trimEnd())).toEqual(['@@ -1,30 +1,30 @@', '  ⋯', '   5 │   l4', '   6 │ − l5', '   6 │ + l5!', '   7 │   l6', '  ⋯', '  … +8 rows · Ctrl+O'])
   })
 
   it('ends a long line in … and pads real SGR bands to exactly the width', () => {
     const red = (text: string): string => `\x1b[38;2;1;2;3m${text}\x1b[39m`
     const band = (text: string): string => `\x1b[48;2;4;5;6m${text}\x1b[49m`
     const real = { text: red, muted: red, diffAdded: red, diffRemoved: red, diffAddedBg: band, diffRemovedBg: band, diffMeta: red }
-    const rows = paintDiffRows(alignDiffLines('', 'x\n\ty\nlong line that does not fit\n'), 24, helpers, real)
+    const rows = paintRows(alignDiffLines('', 'x\n\ty\nlong line that does not fit\n'), 24, helpers, real)
     // A tint stops DIFF_INSET_COLUMNS short of the edge, so a changed row is that much narrower than the width.
     expect(rows.map(row => visibleWidth(row))).toEqual([20, 20, 20])
     expect(rows[1]).not.toContain('\t')
@@ -185,15 +194,15 @@ describe('paintDiffRows', () => {
     expect(plainText(rows[2]!)).toBe('  3 │ + long line t…')
     // The band stays open through the ellipsis and the fill.
     expect(rows[2]!.slice(rows[2]!.indexOf('\x1b[48;2;4;5;6m'), -'\x1b[49m'.length)).not.toContain('\x1b[0m')
-    expect(paintDiffRows(alignDiffLines('a long context line', 'a long context line\nb'), 16, helpers)[0]).toBe('  1 │   a long …')
+    expect(paintRows(alignDiffLines('a long context line', 'a long context line\nb'), 16, helpers)[0]).toBe('  1 │   a long …')
   })
 
   it('never paints past a degenerate width', () => {
     const aligned = alignDiffLines('ab', 'cd')
     for (const width of [0, 1, 2, 3, 6, 12, 13]) {
-      for (const row of paintDiffRows(aligned, width, helpers)) expect(visibleWidth(row)).toBeLessThanOrEqual(Math.max(1, width))
+      for (const row of paintRows(aligned, width, helpers)) expect(visibleWidth(row)).toBeLessThanOrEqual(Math.max(1, width))
     }
-    expect(paintDiffRows(aligned, 12, helpers)).toEqual(['  1 │ − ab', '  1 │ + cd'])
+    expect(paintRows(aligned, 12, helpers)).toEqual(['  1 │ − ab', '  1 │ + cd'])
   })
 
   it('paints every row of a segment to nothing when no column is left', () => {
@@ -205,12 +214,12 @@ describe('paintDiffRows', () => {
   it('counts removed lines in the file before the change and the others in the file after it, from each side\'s own start', () => {
     // Two lines out, one in: the lines after the change are one number lower than before it.
     const aligned = alignDiffLines('k\nx\ny\nz', 'k\nw\nz')
-    expect(plain(paintDiffRows(aligned, 40, helpers, palette)).map(row => row.trimEnd())).toEqual(['  1 │   k', '  2 │ − x', '  3 │ − y', '  2 │ + w', '  3 │   z'])
-    expect(plain(paintDiffRows(aligned, 40, helpers, palette, { start: 10, beforeStart: 20 })).map(row => row.trimEnd())).toEqual([
+    expect(plain(paintRows(aligned, 40, helpers, palette)).map(row => row.trimEnd())).toEqual(['  1 │   k', '  2 │ − x', '  3 │ − y', '  2 │ + w', '  3 │   z'])
+    expect(plain(paintRows(aligned, 40, helpers, palette, { start: 10, beforeStart: 20 })).map(row => row.trimEnd())).toEqual([
       '  10 │   k', '  21 │ − x', '  22 │ − y', '  11 │ + w', '  12 │   z',
     ])
     // The gutter follows the largest number on either side, and never narrows below `numberWidth`.
-    expect(plain(paintDiffRows(alignDiffLines('a', 'b'), 40, helpers, palette, { start: 8, beforeStart: 98 })).map(row => row.trimEnd())).toEqual(['  98 │ − a', '   8 │ + b'])
-    expect(plain(paintDiffRows(alignDiffLines('a', 'b'), 40, helpers, palette, { numberWidth: 3 })).map(row => row.trimEnd())).toEqual(['    1 │ − a', '    1 │ + b'])
+    expect(plain(paintRows(alignDiffLines('a', 'b'), 40, helpers, palette, { start: 8, beforeStart: 98 })).map(row => row.trimEnd())).toEqual(['  98 │ − a', '   8 │ + b'])
+    expect(plain(paintRows(alignDiffLines('a', 'b'), 40, helpers, palette, { numberWidth: 3 })).map(row => row.trimEnd())).toEqual(['    1 │ − a', '    1 │ + b'])
   })
 })

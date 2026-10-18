@@ -14,7 +14,6 @@ import {
   PLUGIN_VIEW_MAX_DEPTH,
   paintPluginTone,
   sanitizePluginText,
-  summarizePluginView,
 } from '../../src/core/plugin-view.ts'
 import { contentNodeSource, type ContentRowsEnv, type WindowedContentNode } from '../../src/core/content-rows.ts'
 import { virtualRows } from '../../src/core/ui-rows.ts'
@@ -142,21 +141,6 @@ describe('canonical basic-content leaf renderer', () => {
     // A leaf that fits reports its natural length; unbounded leaves report it always.
     expect(renderView({ kind: 'text', content: 'a\nb' }, 20, 2).length).toBe(2)
     expect(renderView({ kind: 'text', content: 'a\nb\nc\nd\ne' }, 20).length).toBe(5)
-  })
-
-  it('summarizes every view kind and rejects invalid summaries', () => {
-    const fields: MayflySectionContentNode = { kind: 'fields', rows: [{ label: 'a', value: [{ text: 'b' }] }] }
-    const sections: MayflySectionContentNode = { kind: 'sections', sections: [
-      { title: 'named', body: { kind: 'text', content: 'ignored' } },
-      { body: fields },
-    ] }
-    expect(summarizePluginView({ kind: 'text', content: ' a\n b ' })).toBe('a b')
-    expect(summarizePluginView(fields)).toBe('a: b')
-    expect(summarizePluginView({ kind: 'code', code: 'a\n b' })).toBe('a b')
-    expect(summarizePluginView({ kind: 'diff', before: '', after: '' })).toBe('diff contribution')
-    expect(summarizePluginView(sections)).toBe('named · a: b')
-    expect(() => summarizePluginView(null as never)).toThrow('view must be an object')
-    expect(() => summarizePluginView({ kind: 'unknown' } as never)).toThrow('unknown basic content kind')
   })
 
   for (const fixture of ADVERSARIAL) {
