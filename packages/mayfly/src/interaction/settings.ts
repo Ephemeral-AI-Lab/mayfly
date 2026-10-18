@@ -85,7 +85,7 @@ export interface MayflySettings {
   /** A provider balance below this in every currency it holds is low (the `/stats` Account tab warns). */
   readonly lowBalanceCny: number
   readonly lowBalanceUsd: number
-  // Presentation (slice 1.2): read by core through `core/presentation.ts`; a change reloads the live theme provider.
+  // Presentation (slice 1.2): read by core through `core/theme/presentation.ts`; a change reloads the live theme provider.
   /** Glyph vocabulary: `auto` follows the locale's charset; `ascii` is the one-cell fallback table. */
   readonly glyphs: 'auto' | 'unicode' | 'ascii'
   /** Weight only, no color; `NO_COLOR` turns it on whatever this says. */

@@ -371,7 +371,7 @@ const DEMO = {
 const SENTENCE = 'the quick brown fox jumps over the lazy dog and keeps typing until the prompt wraps onto a second row of the editor'
 /** Open a panel by its command, measure its cursor keys, and close it. */
 const nav = command => [type(command), key('enter'), measure(`nav ${command}`, [key('down', { repeat: 20 }), key('up', { repeat: 20 })]), key('esc'), key('esc'), key('ctrl+c')]
-const FRAME_PATH = ['packages/mayfly/src/core/terminal.ts', 'packages/mayfly/src/core/surface-*.ts', 'packages/mayfly/src/core/keymap.ts', 'packages/mayfly/src/core/key-actions.ts', 'packages/mayfly/src/core/ui-compiler.ts', `${INTERACTION}editor-extension-runtime.ts`, `${INTERACTION}input-plugin.ts`]
+const FRAME_PATH = ['packages/mayfly/src/core/terminal/terminal.ts', 'packages/mayfly/src/core/hosts/surface-*.ts', 'packages/mayfly/src/core/keys/keymap.ts', 'packages/mayfly/src/core/keys/key-actions.ts', 'packages/mayfly/src/core/ui/compile/ui-compiler.ts', `${INTERACTION}editor-extension-runtime.ts`, `${INTERACTION}input-plugin.ts`]
 
 /**
  * The perf scenarios: what `pnpm run perf` measures A/B against the merge base, and the absolute ceilings the full

@@ -8,7 +8,7 @@
  * nothing wraps.
  *
  * When a fresh conversation first shows (startup, `/new`, its alias `/clear`)
- * the mark flies in once (`core/quad-mark.ts`): it enters from the right edge,
+ * the mark flies in once (`core/text/quad-mark.ts`): it enters from the right edge,
  * crosses the status column with the text appearing in its wake, lands, beats
  * its wings twice and rests, in 1.55 s. A conversation that already has turns
  * (a resumed or forked session) shows the mark at rest, and reduced motion

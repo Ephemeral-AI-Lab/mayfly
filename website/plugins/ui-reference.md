@@ -138,8 +138,8 @@ ui.text(`${label} · ${activity}`, { tone: 'muted', overflow: 'truncate' })
 
 ```ts
 ui.stack.column([
-  ui.text('~/work/mayfly/packages/mayfly/src/core/ui-compiler.ts', { overflow: 'middle' }),
-  ui.text('~/work/mayfly/packages/mayfly/src/core/ui-compiler.ts', { overflow: 'start', styles: ['strong'] }),
+  ui.text('~/work/mayfly/packages/mayfly/src/core/ui/compile/ui-compiler.ts', { overflow: 'middle' }),
+  ui.text('~/work/mayfly/packages/mayfly/src/core/ui/compile/ui-compiler.ts', { overflow: 'start', styles: ['strong'] }),
 ])
 ```
 

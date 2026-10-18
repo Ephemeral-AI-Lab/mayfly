@@ -1,7 +1,7 @@
 /**
  * The welcome banner's mark — the Mayfly s10 mark from PR 22
  * (`docs/design/prototypes/logo-preview.mjs`): a squat body with slit eyes,
- * two antennae, and speed-line wings, as pixel rows that `core/quad-mark.ts`
+ * two antennae, and speed-line wings, as pixel rows that `core/text/quad-mark.ts`
  * draws in quadrant blocks, two pixels per cell across and down. 26 × 8 pixels
  * make 13 columns × 4 rows. This module stays the mark's single home; every
  * consumer imports the rows from here and never hardcodes a copy.

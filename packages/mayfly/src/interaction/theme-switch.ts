@@ -1,6 +1,6 @@
 /**
  * The `/theme` command and the provider swap behind it. The command knows
- * the ten built-in palettes of `core/palettes.ts` (the default through
+ * the ten built-in palettes of `core/theme/palettes.ts` (the default through
  * `mayfly-theme-dark`, the rest through `mayfly-theme-builtin` with the palette
  * in its config), `auto`, and `custom`, and switches by disposing the live
  * provider's fibers — `ctx.registry.delete` keys

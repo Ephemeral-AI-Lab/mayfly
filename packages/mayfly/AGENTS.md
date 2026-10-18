@@ -54,7 +54,7 @@ theme beside them.
 core-private lease whose wire node compiles through the surface path into a fixed
 host. Its `slot` model lives in `mayflyUiInteraction`, so a screen teardown
 revokes the lease and keeps the model. A `views` pane is a status-row view kept
-by `core/views-lane.ts`; entry keys are `ui.focus-next`, `ui.left`/`ui.right`,
+by `core/ui/state/views-lane.ts`; entry keys are `ui.focus-next`, `ui.left`/`ui.right`,
 and `ui.cancel`.
 
 ## Components area
