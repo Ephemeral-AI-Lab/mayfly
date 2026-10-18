@@ -29,7 +29,7 @@ function lazyDocument(estimate: number, painted: number, options: { readonly pre
 
 async function bench(rows: () => string[]) {
   const terminal = new AltScreenTerminal(40, 10)
-  const runtime = startMayflyTerminal(terminal, { screenMode: 'alternate' })
+  const runtime = startMayflyTerminal(terminal)
   runtime.addChild({ render: rows, invalidate: () => {} })
   runtime.requestRender(true)
   await waitForRender()
