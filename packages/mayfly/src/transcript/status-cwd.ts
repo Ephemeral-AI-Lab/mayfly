@@ -17,7 +17,6 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { MayflyStatusNode } from '@ephemeral-ai/mayfly-ui'
 import type {} from '@deepseek-ai/dsh-session-projection'
 import type {} from '@deepseek-ai/dsh-working-directory'
-import type { SessionFactsService } from './session-facts.ts'
 import { SHED, shedNode } from './status-shed.ts'
 import { sessionDirectory } from '../internal/session-directory.ts'
 import { displayPath, homeRelative } from '../internal/paths.ts'
@@ -56,8 +55,8 @@ export function shortenCwd(path: string, home: string, platform: NodeJS.Platform
  * @param ctx - plugin context.
  */
 export function apply(ctx: Context): void {
-  const facts = ctx.get('mayflySessionFacts') as SessionFactsService | undefined
-  let agent: Agent | null = facts?.currentAgent ?? null
+  const facts = ctx.mayflySessionFacts
+  let agent: Agent | null = facts.currentAgent ?? null
   const directory = (): string => agent === null ? process.cwd() : sessionDirectory(ctx, agent.session)
   let text = shortenCwd(directory(), homedir())
   /** The directory gives up its depth when the row is crowded: only its last segment stays. */

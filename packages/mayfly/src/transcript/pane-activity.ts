@@ -30,8 +30,6 @@ import { compactElapsedMs } from './agent-presentation.ts'
 import { outputCounter, outputRate } from './output-rate.ts'
 import { toolActivity } from './process-activity.ts'
 import { flightLabel } from './tool-kinds.ts'
-import type { SessionFactsService } from './session-facts.ts'
-import type { TickSource } from './tick.ts'
 import { buildTipRotation } from './status-tips.ts'
 import { STATUS_TIPS } from './tips-content.ts'
 import {
@@ -229,15 +227,10 @@ export function apply(ctx: Context): void {
   const state: ActivityState = {
     mode: 'idle', tip: '', label: WAITING_LABEL, turn: 0, dialog: false, ...readPreferences(ctx),
   }
-  const tick = ctx.get('mayflyTick') as TickSource | undefined
-  const factsService = ctx.get('mayflySessionFacts') as SessionFactsService | undefined
-  /* mayflySessionFacts is an injected service; the fallback
-     keeps direct thin-host construction renderer-neutral but cannot occur in
-     a Cordis activation that satisfies this plugin's contract. */
-  let facts: ConversationFacts = factsService?.current ?? {
-    phase: 'idle', active: false, turn: 0, flowDownChars: 0, agentCalls: [],
-  }
-  let statusActive = factsService?.currentAgent?.status === 'running'
+  const tick = ctx.mayflyTick
+  const factsService = ctx.mayflySessionFacts
+  let facts: ConversationFacts = factsService.current
+  let statusActive = factsService.currentAgent?.status === 'running'
   // Best-effort initial read: the latch lives on the app-owned request
   // controller, which may not be provided in a thin-host construction.
   let stopPending = ctx.get('mayflyRequests')?.stopPending() ?? false

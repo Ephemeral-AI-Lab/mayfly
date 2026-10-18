@@ -6,7 +6,7 @@ import { SessionId } from '@deepseek-ai/dsh-session'
 import type { Workspace, WorkspaceId } from '@deepseek-ai/dsh-workspace'
 import { expect, it, vi } from 'vitest'
 import {
-  sessionWorkspaceItem, sessionWorkspaceLabel, sessionWorkspacePlacements, sessionWorkspaces, type WorkspaceResolver,
+  sessionWorkspaceLabel, sessionWorkspacePlacements, sessionWorkspaces, sessionWorkspaceTab, type WorkspaceResolver,
 } from '../../src/interaction/session-workspaces-model.ts'
 
 const t = (key: string, values?: Readonly<Record<string, string | number>>) => key.replace(/\{(\w+)\}/g, (_, name: string) => String(values?.[name]))
@@ -77,23 +77,22 @@ it('keeps full paths distinct and only abbreviates the home directory', () => {
   expect(sessionWorkspaceLabel('D:\\repo', 'C:\\Users\\dev', t, 'win32')).toBe('D:/repo')
 })
 
-it('shows the native title and count, filters by the full path, and marks the current workspace', () => {
+it('shows the native title and count and marks the current workspace in the rail', () => {
   const alpha = workspace('alpha', '/home/dev/a', [], 'Alpha')
   const beta = workspace('beta', '/home/dev/b', [], 'Beta')
   const groups = sessionWorkspaces([alpha, beta], [
     summary('one', '/home/dev/a'), summary('two', '/home/dev/b'), summary('three', '/home/dev/b'),
   ], new Map<string, WorkspaceId>([['one', 'alpha' as WorkspaceId], ['two', 'beta' as WorkspaceId], ['three', 'beta' as WorkspaceId]]), 'alpha' as WorkspaceId)
-  expect(sessionWorkspaceItem(groups[0]!, '/home/dev/a', '/home/dev', t)).toMatchObject({
-    label: 'Alpha', detail: '1 session', current: true, searchText: '/home/dev/a',
+  expect(sessionWorkspaceTab(groups[0]!, '/home/dev/a', '/home/dev', t)).toMatchObject({
+    id: 'workspace:alpha', label: 'Alpha · current', count: 1,
   })
-  expect(sessionWorkspaceItem(groups[1]!, '/home/dev/a', '/home/dev', t)).toMatchObject({ label: 'Beta', detail: '2 sessions' })
-  expect(sessionWorkspaceItem(groups[1]!, '/home/dev/a', '/home/dev', t).current).toBeUndefined()
+  expect(sessionWorkspaceTab(groups[1]!, '/home/dev/a', '/home/dev', t)).toMatchObject({ label: 'Beta', count: 2 })
 })
 
 it('localizes the fallback row and falls back to the shortened path without a native title', () => {
   const groups = sessionWorkspaces([], [summary('free', '/home/dev/x')], new Map())
-  const item = sessionWorkspaceItem(groups[0]!, '/home/dev/x', '/home/dev', (key, values) => key === 'Other sessions' ? '其他会话' : t(key, values))
-  expect(item).toMatchObject({ id: 'workspace:unregistered', label: '其他会话', detail: '1 session' })
+  const tab = sessionWorkspaceTab(groups[0]!, '/home/dev/x', '/home/dev', (key, values) => key === 'Other sessions' ? '其他会话' : t(key, values))
+  expect(tab).toMatchObject({ id: 'workspace:unregistered', label: '其他会话', count: 1 })
   const untitled = { id: 'workspace:x', cwd: '/home/dev/x', count: 2, createdAt: 1 }
-  expect(sessionWorkspaceItem(untitled, undefined, '/home/dev', t)).toMatchObject({ label: '~/x', detail: '2 sessions' })
+  expect(sessionWorkspaceTab(untitled, undefined, '/home/dev', t)).toMatchObject({ label: '~/x', count: 2 })
 })

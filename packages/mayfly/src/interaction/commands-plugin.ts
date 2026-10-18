@@ -6,7 +6,7 @@
 import { registerPluginCommand } from './plugin-commands.ts'
 import { listCommands, registerOwnedCommand } from './sessionless-commands.ts'
 import { registerPermissionsCommand } from './permission-panel.ts'
-import { openSessions } from './native-sessions.ts'
+import { openSessions } from './session-workspace-panel.ts'
 import { createSessionListCache } from './session-list-reads.ts'
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-agent-preset-registry'

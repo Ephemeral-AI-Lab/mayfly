@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { catalogFixture } from './catalog-fixture.ts'
 import { flushRequests, renderRequest } from './request-fixture.ts'
 import { collectMcpServers } from '../../src/interaction/mcp-servers.ts'
-import { mcpServerNode, serverConfigNode, serverItems } from '../../src/interaction/mcp-commands.ts'
+import { serverConfigNode, serverItems } from '../../src/interaction/mcp-commands.ts'
 import { ui, type MayflyUiActionEvent } from '../../../ui/src/index.ts'
 import { ADVERSARIAL, SCAN_WIDTHS, expectLinesFit } from '../core/width-scan.ts'
 
@@ -157,7 +157,11 @@ describe('shared MCP browser', () => {
     expect(config).toContain('(not resolved)')
     expect(config).toContain('Transport')
     expect(config).not.toContain('Policy')
-    expect(JSON.stringify(mcpServerNode(catalog.servers[0]!, key => key))).toContain('Configuration')
+    await bench.run('/mcp')
+    const browser = bench.model('mayfly.mcp')
+    browser.emit(selectServer('a'))
+    await flushRequests()
+    expect(JSON.stringify(browser.node)).toContain('Configuration')
   })
 
   it('contains cancelled, wrong-Agent, raced focus, and failed command reads', async () => {
@@ -285,17 +289,12 @@ describe('shared MCP browser', () => {
   })
 })
 
-it('draws the no-tools row and the no-tools empty title', async () => {
-  const bench = await setup()
+it('draws the no-tools configuration row', () => {
   const server = { entryId: 'empty', serverName: 'empty', status: 'no-tools' as const, registeredCount: 0, toolsVisible: [] }
   const t = (key: string, values?: Record<string, unknown>) => values === undefined ? key : `${key} ${JSON.stringify(values)}`
   const config = JSON.stringify(serverConfigNode(server, t))
   expect(config).toContain('No tools registered; connection state is unavailable')
   expect(config).not.toContain('Tools are registered but restricted')
-  const node = JSON.stringify(mcpServerNode(server, t))
-  expect(node).toContain('No tools registered')
-  expect(node).not.toContain('No tools visible to this session')
-  expect(bench).toBeDefined()
 })
 
 it('returns quietly when the Agent changes while the MCP catalog is being read', async () => {

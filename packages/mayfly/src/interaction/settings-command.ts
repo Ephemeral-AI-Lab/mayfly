@@ -38,8 +38,8 @@ async function choices(ctx: Context): Promise<SettingsChoices> {
   return { ...permission === undefined ? {} : { permission }, ...agentPresets === undefined ? {} : { agentPresets } }
 }
 
-/** Open the one settings rail, focused on `initialNs` when one is named. */
-async function openSettings(ctx: Context, callerSignal?: AbortSignal, initialNs?: string): Promise<boolean> {
+/** Open the one settings rail. */
+async function openSettings(ctx: Context, callerSignal?: AbortSignal): Promise<boolean> {
   if (callerSignal?.aborted) return false
   const registry = ctx.mayflyOverlays
   const lifetime = new AbortController()
@@ -50,14 +50,12 @@ async function openSettings(ctx: Context, callerSignal?: AbortSignal, initialNs?
   let dynamic = await choices(ctx)
   if (signal.aborted) { releaseLifetime(); return false }
   const describe = (): readonly SettingsDescriptor[] => settings.describe({ redactSecrets: true })
-  if (initialNs !== undefined && !describe().some(item => String(item.ns) === initialNs)) { releaseLifetime(); return false }
-  /* A namespace open focuses the live rail instead of stacking a second overlay. */
+  /* An open focuses the live rail instead of stacking a second overlay. */
   if (registry.focus(ROOT_ID)) {
     releaseLifetime()
-    if (initialNs !== undefined) ctx.mayflyUiInteraction.get('overlay', ROOT_ID)?.emit({ kind: 'tab-change', pagePath: [], controlId: RAIL_ID, tabId: initialNs })
     return true
   }
-  let active = initialNs ?? String(describe()[0]?.ns ?? '')
+  let active = String(describe()[0]?.ns ?? '')
   let handle!: MayflyOverlayHandle
   let refreshSequence = 0
   const snapshot = (): SettingsSnapshot => {
@@ -153,13 +151,6 @@ async function openSettings(ctx: Context, callerSignal?: AbortSignal, initialNs?
   const dynamicFibers = ['permissionPresets', 'agentPresets'].map(name => ctx.inject([name], owner => { schedule(); owner.effect(() => () => schedule()) }))
   teardown = () => { offDocument(); offLocale(); for (const fiber of dynamicFibers) void fiber.dispose(); releaseLifetime() }
   return true
-}
-
-/** Open the settings rail on one namespace; the rail replaces a namespace overlay, so a live panel is focused and switched. */
-export async function openSettingsNamespace(ctx: Context, ns: string, callerSignal?: AbortSignal): Promise<boolean> {
-  if (callerSignal?.aborted) return false
-  if (!ctx.settings.describe({ redactSecrets: true }).some(item => String(item.ns) === ns)) return false
-  return await openSettings(ctx, callerSignal, ns)
 }
 
 async function editDocument(ctx: Context, signal: AbortSignal): Promise<MayflyUiActionReply> {

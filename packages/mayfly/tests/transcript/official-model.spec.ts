@@ -218,7 +218,6 @@ describe('official conversation model mapping', () => {
       {
         kind: 'transcript-tool',
         result: { text: 'raw', fullText: 'raw', isError: false, endedAt: 180 },
-        presentation: { kind: 'tool', call: { kind: 'text', content: expect.stringContaining('a.txt') }, result: { kind: 'text', content: 'presented' } },
         activity: 'read', detail: 'a.txt', title: 'Reading',
       },
       { kind: 'transcript-tool', id: 'todo-1', activity: 'plan', detail: 'todo_write' },
@@ -236,8 +235,8 @@ describe('official conversation model mapping', () => {
     ]), toolSource({ throws: true }))
     expect(pending.entries[0]).toMatchObject({
       kind: 'transcript-tool',
+      name: 'missing',
     })
-    expect((pending.entries[0] as { presentation?: unknown }).presentation).toBeUndefined()
 
     const failed = conversationTranscriptModel(projection([
       transcriptTool({
@@ -245,20 +244,9 @@ describe('official conversation model mapping', () => {
       }),
     ]), toolSource())
     expect(failed.entries[0]).toMatchObject({
-      presentation: { result: { kind: 'text', content: 'failure', tone: 'danger' } },
+      kind: 'transcript-tool',
+      result: { text: 'failure', isError: true, endedAt: 200 },
     })
-
-    const resultOnly = conversationTranscriptModel(projection([
-      transcriptTool({
-        result: { content: [{ type: 'text', text: 'done' }], text: 'done', isError: false, endedAt: 210 },
-      }),
-    ]), {
-      get: () => ({
-        presentResult: () => ({ card: 'generic', title: 'Result only' }),
-      } as never),
-    } as ToolPresentationSource)
-    expect(resultOnly.entries[0]).toMatchObject({ presentation: { result: { kind: 'text', content: 'done' } } })
-    expect((resultOnly.entries[0] as { presentation: { call?: unknown } }).presentation.call).toBeUndefined()
   })
 
   it('groups consecutive reads and closes the run at a later step\'s reasoning', () => {

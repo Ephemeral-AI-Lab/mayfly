@@ -27,7 +27,6 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import { setTimeout as delay } from 'node:timers/promises'
 import type { MayflyOverlayHandle, MayflyUiActionReply, MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import { EffortPicker, formatContextWindow, ModelPicker, type ModelPickerRow } from '../components/model-picker.ts'
-import type { ModelPickerItem } from './model-picker-model.ts'
 import { openAgentOverlay } from './agent-overlay.ts'
 import { registerOwnedCommand } from './sessionless-commands.ts'
 import { interactionTranslator } from './locale.ts'
@@ -39,6 +38,17 @@ declare module '@deepseek-ai/cordis' {
     /** The default model (what a session created now takes) was saved while no session was selected. */
     'mayfly/default-model-changed'(): void
   }
+}
+
+/** Native model catalog facts consumed by the shared UI selection controls. */
+interface ModelPickerItem {
+  readonly provider: string
+  readonly providerLabel: string
+  readonly id: string
+  readonly name: string
+  readonly contextWindow?: number | undefined
+  readonly efforts?: readonly string[] | undefined
+  readonly defaultEffort?: string | undefined
 }
 
 /** Render one failure reason for an error result. */

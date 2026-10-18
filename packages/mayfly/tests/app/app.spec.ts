@@ -8,7 +8,7 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import { apply, Config, internals } from '../../src/app/index.ts'
 import { MayflyCurrentAgentService } from '../../src/app/current-agent.ts'
 import { conversationId, MAX_SIDE_CONVERSATIONS, MayflyConversationsService } from '../../src/app/conversation-views.ts'
-import { armExitEpitaph, armedEpitaph } from '../../src/app/exit-epitaph.ts'
+import { armExitEpitaph, setExitEpitaphWriter, writeArmedEpitaph } from '../../src/app/exit-epitaph.ts'
 import { fakeAgent, type FakeAgent } from '../helpers.ts'
 
 const originalStderr = internals.stderr
@@ -16,6 +16,7 @@ const originalStderr = internals.stderr
 afterEach(() => {
   internals.stderr = originalStderr
   armExitEpitaph(undefined)
+  setExitEpitaphWriter(undefined)
   vi.restoreAllMocks()
 })
 
@@ -354,16 +355,20 @@ describe('mayfly app driver', () => {
   })
 
   it('arms the latest selected non-empty session on disposal', async () => {
+    const written: string[] = []
+    setExitEpitaphWriter(text => { written.push(text) })
     const test = bench()
     const agent = await ensureAgent(test)
     agent.session.events.push({ type: 'user/message' })
     await test.ctx.fiber.dispose()
-    expect(armedEpitaph()).toContain(`--resume ${String(agent.id)}`)
+    writeArmedEpitaph()
+    expect(written.at(-1)).toContain(`--resume ${String(agent.id)}`)
 
     const empty = bench()
     await ensureAgent(empty)
     await empty.ctx.fiber.dispose()
-    expect(armedEpitaph()).toBeUndefined()
+    writeArmedEpitaph()
+    expect(written).toHaveLength(1)
   })
 
   it('retires the stop latch only for an idle selected Agent and keeps it for a running or absent one', async () => {

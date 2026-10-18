@@ -22,7 +22,6 @@ import { isLiveJob, jobHistory, openJobOutput, sortJobs } from '../interaction/j
 import { compactElapsedMs } from './agent-presentation.ts'
 import { observeTranscriptLocale, transcriptTranslator } from './locale.ts'
 import { DONE_LINGER_MS } from './pane-todo.ts'
-import type { TickSource } from './tick.ts'
 import { countSummary, followViewHistory, itemSummary, viewList } from './view-items.ts'
 
 /** Stable Cordis plugin name. */
@@ -132,7 +131,7 @@ export function jobsPanel(state: JobsState, t: MayflyTranslate, unavailable: (jo
 export function apply(ctx: Context): void {
   const t = transcriptTranslator(ctx, 'transcript')
   const ti = interactionTranslator(ctx)
-  const tick = ctx.get('mayflyTick') as TickSource | undefined
+  const tick = ctx.mayflyTick
   const lifetime = new AbortController()
   let unloaded = false
 

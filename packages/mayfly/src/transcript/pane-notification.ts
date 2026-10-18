@@ -25,8 +25,6 @@ import { NotificationLine, type NotificationFacts, type NotificationKeyPart, typ
 import type { MayflyFocusMode, MayflyFocusRow } from '../core/types.ts'
 import type { MayflyTranslate } from '../frontend/locale.ts'
 import { observeTranscriptLocale } from './locale.ts'
-import type { SessionFactsService } from './session-facts.ts'
-import type { TickSource } from './tick.ts'
 
 /** Ticks one group of the running-turn hint stays up before the next replaces it. */
 const HINT_TICKS = 15
@@ -98,7 +96,7 @@ function searchKeys(t: MayflyTranslate): readonly NotificationKeyPart[] {
  */
 export function mountNotificationPane(ctx: Context, t: MayflyTranslate): void {
   const interaction = ctx.get('mayflyUiInteraction')
-  const factsService = ctx.get('mayflySessionFacts') as SessionFactsService | undefined
+  const factsService = ctx.mayflySessionFacts
   /** The words of the chip back to the tail of the stream while the view is scrolled away, else `undefined`. */
   let chip: string | undefined
   /** What the prompt awaits (the clipboard, the file search), else `undefined`. */
@@ -163,10 +161,10 @@ export function mountNotificationPane(ctx: Context, t: MayflyTranslate): void {
     pane.set(panelOpen ? null : NotificationLine(next))
   }
   /** The rotation runs on the host tick while a turn runs, and starts again from the first group with each turn. */
-  const tick = ctx.get('mayflyTick') as TickSource | undefined
+  const tick = ctx.mayflyTick
   let offTick: (() => void) | undefined
   const syncRunning = (): void => {
-    const next = factsService?.currentAgent?.status === 'running'
+    const next = factsService.currentAgent?.status === 'running'
     if (next === running) return
     running = next
     group = 0

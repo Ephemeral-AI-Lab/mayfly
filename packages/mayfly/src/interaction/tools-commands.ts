@@ -3,8 +3,6 @@
  * @module @ephemeral-ai/mayfly/interaction/tools-commands
  */
 import type { Context } from '@deepseek-ai/cordis'
-import { isDeepStrictEqual } from 'node:util'
-import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { ToolSchema } from '@deepseek-ai/dsh-llm'
 import type {} from '@deepseek-ai/dsh-commands'
 import { browser, panel, ui, type MayflyActionItem, type MayflyListItem, type MayflyOverlayHandle, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
@@ -39,51 +37,6 @@ export function toolDetailBody(schema: ToolSchema, t: MayflyTranslate): MayflyUi
     ui.divider({ label: t('Parameters') }),
     schema.parameters === undefined ? ui.text(t('(no parameters)'), { tone: 'muted' }) : ui.code(JSON.stringify(schema.parameters, null, 2), { language: 'json' }),
   ]), { scrollbar: true }), { basis: 0, grow: 1, minSize: 1 })])
-}
-
-const detailActions = (t: MayflyTranslate) => ui.actions({ id: 'tool-actions', items: [{ id: 'refresh', label: t('Refresh'), hintLabel: t('refresh'), semantic: 'refresh', hidden: true }] })
-
-/** Preserve the full description and JSON Schema; core alone wraps their text. */
-export function toolDetailNode(schema: ToolSchema, t: MayflyTranslate): MayflyUiNode {
-  return ui.surface({ title: schema.name, chrome: 'overlay', padding: 1, child: ui.stack.column([toolDetailBody(schema, t), detailActions(t)]) })
-}
-
-/** The parent consumer Fiber owns this read-only exact-Agent child view. */
-export async function openToolDetail(ctx: Context, agent: Agent, options: { readonly id: string, readonly name: string, readonly signal: AbortSignal }): Promise<boolean> {
-  const tools = ctx.get('tools')
-  const registry = ctx.get('mayflyOverlays')
-  if (tools === undefined || registry === undefined || options.signal.aborted) return false
-  const t = interactionTranslator(ctx)
-  const read = () => tools.schemas(agent).find(schema => schema.name === options.name)
-  const initial = read()
-  if (initial === undefined) return false
-  let handle: MayflyOverlayHandle | undefined
-  let node = toolDetailNode(initial, t)
-  const refresh = () => {
-    if (handle?.closed !== false) return
-    let next: MayflyUiNode
-    try {
-      const schema = read()
-      if (schema === undefined) { handle.close(); return }
-      next = toolDetailNode(schema, t)
-    } catch {
-      next = ui.surface({ title: options.name, chrome: 'overlay', child: ui.stack.column([ui.text(t('Tool catalog unavailable'), { tone: 'danger' }), detailActions(t)]) })
-    }
-    if (!isDeepStrictEqual(node, next)) { node = next; handle.set(node) }
-  }
-  let scheduled = false
-  const schedule = () => {
-    if (scheduled) return
-    scheduled = true
-    queueMicrotask(() => { scheduled = false; refresh() })
-  }
-  handle = await openAgentOverlay(ctx, agent, { id: options.id, presentation: 'editor', capturing: true }, node, owner => {
-    owner.on('tools/change', schedule)
-    owner.effect(() => observeInteractionLocale(owner, refresh))
-    return event => { if (event.kind === 'activate' && event.actionId === 'refresh') refresh(); return { kind: 'completed' } }
-  }, { signal: options.signal, reopen: 'replace' })
-  refresh()
-  return handle?.closed === false
 }
 
 /** One list page for the tool browser. */

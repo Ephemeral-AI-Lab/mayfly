@@ -5,7 +5,7 @@
 import { describe, expect, it } from 'vitest'
 import type { ModelsDevCost } from '../../src/interaction/models-dev.ts'
 import {
-  DEEPSEEK_PRICES_AS_OF, formatMoney, isDeepseekPeak, isPeakRequest, moneyOf, priceFor,
+  formatMoney, isDeepseekPeak, isPeakRequest, moneyOf, priceFor,
   type ModelTokens, type PriceSources, type UserPrice,
 } from '../../src/interaction/pricing.ts'
 import type { TokenBuckets } from '../../src/interaction/usage.ts'
@@ -84,7 +84,6 @@ describe('priceFor', () => {
     expect(priceFor('acme', 'one', false, 'USD', sources())).toBeUndefined()
     expect(priceFor('deepseek-official', 'unknown-model', false, 'USD', sources())).toBeUndefined()
     expect(priceFor('deepseek-official', 'unknown-model', false, 'USD', sources({ modelsDev: { lookupCost: () => undefined } }))).toBeUndefined()
-    expect(DEEPSEEK_PRICES_AS_OF).toBe('2026-10-14')
   })
 })
 

@@ -26,7 +26,6 @@ import type { ContextBreakdownProjection, ContextPressureProjection, TokenUsageP
 import type {} from '@deepseek-ai/dsh-session-projection'
 import type { Session } from '@deepseek-ai/dsh-session'
 import type { TokenUsage } from '@deepseek-ai/dsh-llm'
-import type { SessionFactsService } from './session-facts.ts'
 import type { MayflyStatusNode } from '@ephemeral-ai/mayfly-ui'
 import { SHED, shedNode } from './status-shed.ts'
 
@@ -162,10 +161,10 @@ function normalizeWindow(contextWindow: number | undefined): number | undefined 
  * @param ctx - plugin context.
  */
 export function apply(ctx: Context): void {
-  const factsService = ctx.get('mayflySessionFacts') as SessionFactsService | undefined
+  const factsService = ctx.mayflySessionFacts
   let values: ContextValues = {}
   const read = (): ContextValues => {
-    const session = factsService?.currentAgent?.session
+    const session = factsService.currentAgent?.session
     return session === undefined ? {} : readContext(ctx, session)
   }
   const node = (): MayflyStatusNode | null => {

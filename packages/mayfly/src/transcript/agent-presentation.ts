@@ -4,7 +4,7 @@
  */
 
 import type { MayflyTone } from '@ephemeral-ai/mayfly-ui'
-import type { TranscriptToolItem } from './types.ts'
+import type { ConversationToolEntry } from '../conversation/types.ts'
 
 /** Canonical visual semantics of one Agent lifecycle phase. */
 interface AgentPhasePresentation {
@@ -37,7 +37,7 @@ export interface AgentMemberLive {
 }
 
 /** Resolves a member's live overlay; absent on replay and unit tests. */
-export type AgentLiveLookup = (member: TranscriptToolItem) => AgentMemberLive | undefined
+export type AgentLiveLookup = (member: ConversationToolEntry) => AgentMemberLive | undefined
 
 /** Compact non-negative duration from elapsed seconds. */
 export function compactElapsedSeconds(seconds: number): string {
