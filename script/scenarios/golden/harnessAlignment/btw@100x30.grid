@@ -1,0 +1,44 @@
+grid 100x30 cursor none
+|
+|    ▗▘   ▝▖     mayfly scenario
+| ▄▄▖█▛███▜█▗▄▄  ephemeral agents, enduring works
+|  ▄▖█▙███▟█▗▄   deepseek-flash · deepseek-official
+|    ▝▜▀▀▀▛▘     ~/workspace
+|
+|  » Draft the old hero copy.
+|
+|  ● The old hero was three sentences long.
+|
+|  ✻ Worked for 1s · done 09:00
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|                                                                  Alt+↑ conversation · Alt+↓ view
+|╭─────────────────────────────────────────────────────────────────────────────── Legacy hero notes ╮
+|│ >  Ask anything · / commands · @ files · # skills · ! shell                                      │
+|╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
+| deepseek-official/deepseek-flash High  ~/workspace              cache ▰▱▱▱▱ 29%  ctx ▱▱▱▱▱▱▱▱▱▱ 3%
+styles
+1: 4-5 fg:#9a86e6; 9-10 fg:#9a86e6; 16-21 fg:#9a86e6 b; 22-30 fg:#5c6476
+2: 1-3 fg:#cfc6f5; 4-10 fg:#9a86e6; 11-13 fg:#cfc6f5; 16-47 fg:#c9c0f0
+3: 2-3 fg:#cfc6f5; 4-10 fg:#9a86e6; 11-12 fg:#cfc6f5; 16-49 fg:#e9e6f4
+4: 4-10 fg:#9a86e6; 16-26 fg:#9aa3b8
+6: 2-3 fg:#9a86e6; 4-99 fg:#9a86e6 b
+8: 2-3 fg:#ededf2
+10: 2-29 fg:#9aa3b8
+25: 66-96 fg:#9aa3b8
+26: 0-80 fg:#45406b; 81-97 fg:#f5f5f7 b; 98-99 fg:#45406b
+27: 0 fg:#45406b; 2-3 fg:#ededf2; 4 r; 5-60 fg:#5c6476; 99 fg:#45406b
+28: 0-99 fg:#45406b
+29: 1-37 fg:#ededf2; 40-50 fg:#9aa3b8; 65-70 fg:#ededf2; 71 fg:#e85454; 72-75 fg:#9aa3b8; 76-79 fg:#ededf2; 82-85 fg:#ededf2; 86-95 fg:#9aa3b8; 96-98 fg:#ededf2

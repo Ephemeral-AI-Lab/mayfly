@@ -11,7 +11,6 @@ import { clampRowsToWidth } from '../../src/core/chrome.ts'
 import { renderChartRows } from '../../src/core/chart-renderer.ts'
 import { alignDiffLines, paintDiffRows } from '../../src/core/diff-align.ts'
 import { DARK_COLORS } from '../../src/core/theme-dark.ts'
-import { segmentFooter } from '../../src/core/ui-list-segment.ts'
 import { GutterComponent } from '../../src/core/gutter.ts'
 import { renderMermaidRows } from '../../src/core/rich-document.ts'
 import { MayflyUiSurfaceRuntime, compileMayflyEditorShellNode, compileMayflyStatusNode, compileMayflyUiNode, compileMayflyUiSurfaceNode } from '../../src/core/ui-compiler.ts'
@@ -282,22 +281,6 @@ describe('core width-scan', () => {
       for (const width of SCAN_WIDTHS) {
         expectLinesFit(`interaction-surface/${name}`, surface.value.component.render(width), width)
         expectLinesFit(`decision/${name}`, decision.value.component.render(width), width)
-      }
-    })
-
-    it(`list-row segment strip survives ${name}`, () => {
-      const segment = {
-        label: text.slice(0, 80),
-        selectedId: 'b',
-        options: [
-          { id: 'a', label: text.slice(0, 60) },
-          { id: 'b', label: `selected ${text.slice(0, 40)}` },
-          { id: 'c', label: 'tail option' },
-        ],
-      }
-      for (const width of SCAN_WIDTHS) {
-        expectLinesFit(`ListSegment/${name}`, [segmentFooter({ segment, pinned: 'b', active: 'b' }, width, statusColors as unknown as MayflySemanticColors, segment.label ?? 'Options')], width)
-        expectLinesFit(`ListSegment-none/${name}`, [segmentFooter({ segment, pinned: null, active: undefined }, width, statusColors as unknown as MayflySemanticColors, segment.label ?? 'Options')], width)
       }
     })
 

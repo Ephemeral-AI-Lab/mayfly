@@ -11,7 +11,6 @@
 import { Context, Service } from '@deepseek-ai/cordis'
 import {
   CURSOR_MARKER,
-  CombinedAutocompleteProvider,
   Editor,
   Image,
   Markdown,
@@ -879,6 +878,7 @@ export interface MayflyComponentsDeps {
  * semantics. Unregistered automatically when the fiber unloads.
  */
 export class MayflyComponentsService extends Service implements MayflyComponents {
+  private readonly widths = new Map<string, number>()
   private readonly theme: MayflyTheme
   private readonly tui: TUI
   readonly presentation: MayflyPresentation
@@ -989,20 +989,6 @@ export class MayflyComponentsService extends Service implements MayflyComponents
   }
 
   /**
-   * Create the `@`-mention completion source: the renderer's combined
-   * provider constructed with no commands, so only its `@` branch ever runs.
-   * `MayflyAutocompleteProvider` is structurally identical to the renderer's
-   * provider type, so the instance passes through unwrapped — the renderer
-   * type never crosses the Mayfly signature.
-   * @param basePath - the project root relative paths are reported from.
-   * @param fdPath - the `fd` binary to spawn, or `null` when unavailable.
-   * @returns the mention completion source.
-   */
-  createFileMentionProvider(basePath: string, fdPath: string | null): MayflyAutocompleteProvider {
-    return new CombinedAutocompleteProvider([], basePath, fdPath)
-  }
-
-  /**
    * Create a palette-themed single-selection list.
    * @param options - items and selection callbacks.
    * @returns the list component.
@@ -1021,7 +1007,13 @@ export class MayflyComponentsService extends Service implements MayflyComponents
    * @returns the width in columns.
    */
   visibleWidth(text: string): number {
-    return visibleWidth(text)
+    // pi-tui's own FIFO is 512 entries and one tall frame overflows it; keep the same row strings across frames.
+    const cached = this.widths.get(text)
+    if (cached !== undefined) return cached
+    const width = visibleWidth(text)
+    if (this.widths.size >= 4096) this.widths.clear()
+    this.widths.set(text, width)
+    return width
   }
 
   /**

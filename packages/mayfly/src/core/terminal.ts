@@ -24,6 +24,7 @@ import {
 import { LAYOUT_NODE, type LayoutNode } from '@earendil-works/pi-tui/dist/layout-node.js'
 import { clampFrame, clampFrameFrom, clampRow, createFileOverflowSink, defaultOverflowDirectory, type OverflowSink } from './frame-clamp.ts'
 import { createOutputRecovery, type AmbientOutput } from './output-recovery.ts'
+import { createOutputOptimizer } from './output-optimizer.ts'
 import {
   SURFACE_HEADER_MAX_ROWS,
   SurfaceManager,
@@ -181,6 +182,8 @@ class SurfaceLaneContainer implements Component {
   private measured: {
     readonly width: number
     readonly layout: SurfaceLayout
+    readonly maxRows: number
+    readonly contentRevision: number
     readonly rows: number
     readonly plan?: BottomLanePlan
   } | undefined
@@ -196,15 +199,22 @@ class SurfaceLaneContainer implements Component {
     const layout = this.getLayout()
     const lane = layout[this.placement]
     if (this.placement === 'bottom' && lane !== undefined) {
-      const plan = planBottomLane(lane, width, this.maxRows())
-      this.measured = { width, layout, rows: plan.rows, plan }
+      const maxRows = this.maxRows()
+      const measured = this.measured
+      const contentRevision = this.manager.contentRevision
+      // pi-tui measures the lane and then lays it out in the same frame; the plan renders every passive pane. Reuse
+      // it while the layout, width, budget, and pane content are unchanged instead of planning the same rows twice.
+      const plan = measured?.layout === layout && measured.width === width && measured.maxRows === maxRows && measured.contentRevision === contentRevision && measured.plan !== undefined
+        ? measured.plan
+        : planBottomLane(lane, width, maxRows)
+      this.measured = { width, layout, maxRows, contentRevision, rows: plan.rows, plan }
       return bottomLaneRows(plan)
     }
     // The row that holds a side lane gives it its height, so pi-tui's measure of one is never used: its pane is not
     // rendered for it, and prepares itself when the native layout reaches it.
     if (this.placement === 'left' || this.placement === 'right') return NO_ROWS
     const rows = renderSurfaceLane(lane, width, this.maxRows())
-    this.measured = { width, layout, rows: rows.length }
+    this.measured = { width, layout, maxRows: this.maxRows(), contentRevision: this.manager.contentRevision, rows: rows.length }
     return rows
   }
 
@@ -218,7 +228,7 @@ class SurfaceLaneContainer implements Component {
     const layout = this.getLayout()
     if (layout[this.placement] === undefined) return 0
     const measured = this.measured
-    return measured?.width === width && measured.layout === layout ? measured.rows : this.render(width).length
+    return measured?.width === width && measured.layout === layout && measured.maxRows === this.maxRows() && measured.contentRevision === this.manager.contentRevision ? measured.rows : this.render(width).length
   }
 
   invalidate(): void {
@@ -235,7 +245,10 @@ class SurfaceLaneContainer implements Component {
       // a layout that changed since then re-plans at the measured width.
       const measured = this.measured
       /* a bottom measurement always carries a plan and precedes any layout */
-      const plan = measured?.layout === layout && measured.plan !== undefined ? measured.plan : planBottomLane(lane, measured?.width ?? 1, this.maxRows())
+      const maxRows = this.maxRows()
+      const plan = measured?.layout === layout && measured.maxRows === maxRows && measured.contentRevision === this.manager.contentRevision && measured.plan !== undefined
+        ? measured.plan
+        : planBottomLane(lane, measured?.width ?? 1, maxRows)
       const fixed = (size: number) => ({ basis: size, grow: 0, shrink: 1, minSize: 0, maxSize: size })
       if (plan.rule !== undefined) stack.addChild(rowsLeaf([plan.rule]), fixed(1))
       if (plan.tabs !== undefined) stack.addChild(rowsLeaf([plan.tabs]), fixed(1))
@@ -767,6 +780,13 @@ export interface MayflyTerminalOptions {
    */
   readonly screenMode?: MayflyScreenMode
   /**
+   * Filter alternate-screen frame output through the shadow-grid optimizer:
+   * unchanged rows are dropped and a dominant vertical shift becomes one
+   * scrolling-region update. Ignored on the main screen, whose scrollback the
+   * terminal owns. Off by default.
+   */
+  readonly outputOptimizer?: boolean
+  /**
    * stdout/stderr streams that host plugins may write around the renderer.
    * Production passes process streams; source-plane VT tests inject
    * recording streams.
@@ -806,7 +826,9 @@ export function startMayflyTerminal(
   const outputRecovery = alternate && options.ambientOutput !== undefined
     ? createOutputRecovery(options.ambientOutput, () => current.requestRender(true))
     : undefined
-  const terminal = outputRecovery?.renderer(hostTerminal) ?? hostTerminal
+  const terminal = alternate && options.outputOptimizer === true
+    ? createOutputOptimizer(outputRecovery?.renderer(hostTerminal) ?? hostTerminal)
+    : outputRecovery?.renderer(hostTerminal) ?? hostTerminal
   // The renderer reads input through the joiner, so a modified key split in two arrives as one sequence.
   const input = withJoinedModifiers(terminal)
   const current: TUI = alternate

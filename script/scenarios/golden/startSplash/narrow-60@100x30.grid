@@ -1,0 +1,45 @@
+grid 60x30 cursor none
+|
+|
+|
+|
+|
+|
+|
+|
+|                         ▗▘   ▝▖
+|                      ▄▄▖█▛███▜█▗▄▄
+|                       ▄▖█▙███▟█▗▄
+|                         ▝▜▀▀▀▛▘
+|
+|                     mayfly scenario
+|             ephemeral agents, enduring works
+|
+|   No sessions here yet
+|   Describe a task below to start one.
+|
+|
+|
+|
+|
+|
+|
+|                          Alt+↑ conversation · Alt+↓ view
+|╭──────────────────────────────────────────────────────────╮
+|│ >  Ask anything · / commands · @ files · # skills        │
+|╰──────────────────────────────────────────────────────────╯
+| deepseek-official/deepseek-v4-pro  ~/workspace
+styles
+8: 25-26 fg:#9a86e6; 30-31 fg:#9a86e6
+9: 22-24 fg:#cfc6f5; 25-31 fg:#9a86e6; 32-34 fg:#cfc6f5
+10: 23-24 fg:#cfc6f5; 25-31 fg:#9a86e6; 32-33 fg:#cfc6f5
+11: 25-31 fg:#9a86e6
+13: 21-26 fg:#9a86e6 b; 28-35 fg:#5c6476
+14: 13-44 fg:#c9c0f0
+16: 3-22 fg:#9aa3b8
+17: 3-37 fg:#5c6476
+25: 26-56 fg:#9aa3b8
+26: 0-59 fg:#45406b
+27: 0 fg:#45406b; 2-3 fg:#ededf2; 4 r; 5-50 fg:#5c6476; 59 fg:#45406b
+28: 0-59 fg:#45406b
+29: 1-33 fg:#ededf2; 36-46 fg:#9aa3b8

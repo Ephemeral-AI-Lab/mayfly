@@ -25,7 +25,7 @@ plan 模式向 agent 提供先规划、后执行的协作指引，不改变工�
 
 ## yolo —— 完全访问
 
-通过 `/permission danger-full-access` 进入 YOLO，通过 `/permission workspace-write` 恢复默认权限；裸 `/permission` 打开权限选择器。Mayfly 不注册额外的 `/yolo` 或 `/yes` 命令。
+通过 `/permission danger-full-access` 进入 YOLO，通过 `/permission workspace-write` 恢复默认权限；`/permissions` 打开权限选择器。Mayfly 不注册额外的 `/yolo` 或 `/yes` 命令。
 
 YOLO 关闭文件沙箱并使用 `never` 审批策略：需要审批的请求直接拒绝，不弹审批面板；不需要审批的操作可以直接执行。**用户提问与计划评审仍然弹出**，因为权限策略不会替你回答问题或批准计划。
 

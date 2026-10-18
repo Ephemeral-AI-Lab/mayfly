@@ -163,25 +163,25 @@ describe('StreamFacts', () => {
   describe('a spawn call that follows its child', () => {
     const spawn = (): TranscriptEntryModel => ({
       ...base(1), id: `tool:${String(seq + 1)}`, kind: 'transcript-tool', step: 1, callId: 'spawn-1', name: 'subagent', family: 'other', activity: 'subagents', detail: 'Audit', arguments: JSON.stringify({ prompt: 'audit it' }),
-      startedAt: NOON - 3_000, result: { text: 'started subagent child-1', isError: false, endedAt: NOON - 2_900 },
+      startedAt: NOON - 3_000, result: { text: JSON.stringify({ kind: 'activation', subagentId: 'child-1' }), isError: false, endedAt: NOON - 2_900 },
     })
     const turns = [{ turn: 1, startedAt: NOON - 4_000 }]
     const lineOf = (more: Partial<StreamInputs>): string => JSON.stringify(new StreamFacts().build(model([user(1, 'go'), spawn()], turns), inputs(more)).turns[0]!.rows)
 
-    it('reads running in background while its child works, and settled with its child\'s end once it ends', () => {
+    it('reads running while its child works, and settled with its child\'s end once it ends', () => {
       const running = { byId: new Map([['child-1', { state: 'running' as const }]]), byPrompt: new Map() }
-      expect(lineOf({ children: running })).toContain('running in background')
+      expect(lineOf({ children: running })).toContain('running')
       const settled = { byId: new Map([['child-1', { state: 'settled' as const, failed: true, endedAt: NOON - 500 }]]), byPrompt: new Map() }
       expect(lineOf({ children: settled })).toContain('failed')
-      expect(lineOf({})).not.toContain('running in background')
+      expect(lineOf({})).not.toContain('running')
     })
 
     it('keeps following its child while a request waits on another call, and when the first request names no call', () => {
       const running = { byId: new Map([['child-1', { state: 'running' as const }]]), byPrompt: new Map() }
-      expect(lineOf({ children: running, requests: [{ type: 'approval', callId: 'other-call', reason: 'removes files' } as never] })).toContain('running in background')
-      expect(lineOf({ children: running, requests: [{ type: 'approval', toolName: 'bash', reason: 'asks first' } as never] })).toContain('running in background')
+      expect(lineOf({ children: running, requests: [{ type: 'approval', callId: 'other-call', reason: 'removes files' } as never] })).toContain('running')
+      expect(lineOf({ children: running, requests: [{ type: 'approval', toolName: 'bash', reason: 'asks first' } as never] })).toContain('running')
       // A request with no reason asks the same, and a child-less stream is unchanged.
-      expect(lineOf({ requests: [{ type: 'plan', callId: 'other-call' } as never] })).not.toContain('running in background')
+      expect(lineOf({ requests: [{ type: 'plan', callId: 'other-call' } as never] })).not.toContain('running')
     })
   })
 })
@@ -454,5 +454,104 @@ describe('StreamFacts: the compact title, the live call, and the plain entries',
     const facts = new StreamFacts().build(model([user(1, 'q'), entry], [{ turn: 1, startedAt: NOON }], true), inputs({ disclosure: { ...NO_DISCLOSURE, recent: true }, now: NOON + 60_000 }))
     expect(rowsOf(facts.turns[0]).find(row => row.kind === 'compaction')).toMatchObject({ summary: ['kept', 'the plan'] })
     expect(rowsOf(facts.turns[0]).find(row => row.kind === 'compaction')).not.toHaveProperty('more')
+  })
+})
+
+describe('StreamFacts: the turn index over a long session', () => {
+  const lifetime = (turn: number) => ({ turn, startedAt: NOON + turn, endedAt: NOON + turn + 1, outcome: 'completed' as const })
+  const long = (count: number): TranscriptEntryModel[] => Array.from({ length: count }, (_, index) => index + 1)
+    .flatMap(turn => [user(turn, `q${String(turn)}`), thinking(turn, `thinking ${String(turn)}`), assistant(turn, `a${String(turn)}`)])
+
+  it('builds a 2,000-turn model with the facts of the same tail alone', () => {
+    const turns = Array.from({ length: 2_000 }, (_, index) => lifetime(index + 1))
+    const entries = long(2_000)
+    const facts = new StreamFacts().build(model(entries, turns), inputs())
+    // The default window is the newest 15 turns, in order.
+    expect(facts.turns.map(turn => turn.id)).toEqual(Array.from({ length: 15 }, (_, index) => `turn:${String(1_986 + index)}`))
+    // A model that holds only those entries maps to the same facts: the cached index did not change the mapping.
+    const tail = new StreamFacts().build(model(entries.slice(-45), turns), inputs())
+    expect(facts.turns).toEqual(tail.turns)
+  })
+
+  it('keeps an old forced turn mounted beside the window', () => {
+    const policy = new TranscriptPresentationPolicy()
+    policy.apply({ windowTurns: 2 })
+    const turns = Array.from({ length: 2_000 }, (_, index) => lifetime(index + 1))
+    const facts = new StreamFacts().build(model(long(2_000), turns), inputs({ policy: policy.snapshot(), disclosure: { ...NO_DISCLOSURE, forced: new Set([1]) } }))
+    expect(facts.turns.map(turn => turn.id)).toEqual(['turn:1', 'turn:1999', 'turn:2000'])
+    expect(rowsOf(facts.turns[0]).map(row => row.kind)).toEqual(['prompt', 'header', 'reasoning', 'answer'])
+  })
+
+  it('draws a live step once, from its live entries', () => {
+    const durableThought = thinking(1, 'durable reasoning')
+    const durableAnswer = assistant(1, 'durable answer')
+    const liveThought = { ...thinking(1, 'live reasoning'), id: 'thinking:live', streaming: true }
+    const liveAnswer = { ...assistant(1, 'live answer'), id: 'assistant:live', streaming: true }
+    const base = model([user(1, 'go'), durableThought, durableAnswer, tool(1, 'bash', 'ls')], [{ turn: 1, startedAt: NOON }], true)
+    const live = { ...base, live: { turn: 1, step: 1, entries: [liveThought, liveAnswer] } } as TranscriptModel
+    const rows = rowsOf(new StreamFacts().build(live, inputs()).turns[0])
+    expect(rows.filter(row => row.kind === 'reasoning')).toHaveLength(1)
+    expect(rows.filter(row => row.kind === 'answer')).toHaveLength(1)
+    expect(rows.find(row => row.kind === 'reasoning')).toMatchObject({ rows: ['live reasoning'] })
+    expect(rows.find(row => row.kind === 'answer')).toMatchObject({ text: 'live answer' })
+  })
+
+  it('keeps a canonical node in its original place between visible turns', () => {
+    const before: MayflyUiNode = { kind: 'text', content: 'before the second turn' }
+    const after: MayflyUiNode = { kind: 'text', content: 'inside the second turn' }
+    const entries = [user(1, 'one'), assistant(1, 'first'), before, user(2, 'two'), after, assistant(2, 'second')]
+    const facts = new StreamFacts().build(model(entries as TranscriptEntryModel[], [lifetime(1), lifetime(2)]), inputs())
+    expect(facts.turns.flatMap(turn => turn.rows.map(row => row.kind))).toEqual(['prompt', 'answer', 'note', 'prompt', 'note', 'answer'])
+    expect(facts.turns.flatMap(turn => turn.rows).filter(row => row.kind === 'note').map(row => row.kind === 'note' ? row.text : '')).toEqual(['before the second turn', 'inside the second turn'])
+  })
+})
+
+describe('StreamFacts: canonical notes, plural counts, and compact call tiers', () => {
+  const compact = { ...DEFAULT_TRANSCRIPT_PRESENTATION, mode: 'compact', process: PROCESS_POLICIES.compact } as const
+
+  it('keeps a canonical note with the turn before it and with the turn after it', () => {
+    const between: MayflyUiNode = { kind: 'text', content: 'between' }
+    const entries = [user(1, 'q'), assistant(1, 'a'), between, user(2, 'again'), assistant(2, 'sure')]
+    const facts = new StreamFacts().build(model(entries as TranscriptEntryModel[], [{ turn: 1, startedAt: NOON, endedAt: NOON + 1, outcome: 'completed' }, { turn: 2, startedAt: NOON + 2 }]), inputs())
+    expect(facts.turns[0]!.rows.map(row => row.kind)).toEqual(['prompt', 'answer', 'note'])
+    expect(facts.turns[1]!.rows.map(row => row.kind)).toEqual(['prompt', 'answer'])
+
+    // The last turn follows the note, and no turn follows the note at the tail.
+    const trailing: MayflyUiNode = { kind: 'text', content: 'tail note' }
+    const tail = new StreamFacts().build(model([user(1, 'q'), trailing] as TranscriptEntryModel[], [{ turn: 1, startedAt: NOON }]), inputs())
+    expect(rowsOf(tail.turns[0]).at(-1)).toMatchObject({ kind: 'note', text: 'tail note' })
+  })
+
+  it('counts more than one subagent on a completed header and a compact title', () => {
+    const agents = [0, 1].map(index => ({ ...tool(1, 'task', 'explore'), id: `tool:agent-${String(index)}`, activity: 'subagents' } as TranscriptEntryModel))
+    const turns = [{ turn: 1, startedAt: NOON, endedAt: NOON + 2, outcome: 'completed' as const }]
+    const standard = new StreamFacts().build(model([user(1, 'q'), ...agents], turns), inputs())
+    expect(rowsOf(standard.turns[0]).find(row => row.kind === 'header')).toMatchObject({ label: '2 subagents · Ctrl+O to expand' })
+    const compactFacts = new StreamFacts().build(model([user(1, 'q'), ...agents], turns), inputs({ policy: compact }))
+    expect(rowsOf(compactFacts.turns[0]).find(row => row.kind === 'title')).toMatchObject({ text: '2 subagents' })
+  })
+
+  it('titles an edit that removed no lines as +N -0', () => {
+    const edit = { ...tool(1, 'edit', 'a.ts'), id: 'tool:edit-add', callId: 'c-add', change: { kind: 'edit', added: 3 } } as unknown as TranscriptEntryModel
+    const facts = new StreamFacts().build(model([user(1, 'q'), edit], [{ turn: 1, startedAt: NOON, endedAt: NOON + 1, outcome: 'completed' }]), inputs({ policy: compact }))
+    expect(rowsOf(facts.turns[0]).find(row => row.kind === 'title')).toMatchObject({ text: '1 tool call · +3 −0' })
+  })
+
+  it('draws a waiting compact call alone, and opens it through a disclosure row', () => {
+    const waiting = { ...tool(1, 'bash', 'sleep 9', false), id: 'tool:waiting', callId: 'wait-9' } as TranscriptEntryModel
+    const requests = [{ type: 'approval' as const, callId: 'wait-9', toolName: 'bash', reason: 'stop the server' }]
+    const turns = [{ turn: 1, startedAt: NOON }]
+    const closed = new StreamFacts().build(model([user(1, 'q'), waiting], turns, true), inputs({ policy: compact, requests }))
+    expect(rowsOf(closed.turns[0]).filter(row => row.kind === 'tool')).toHaveLength(1)
+    const opened = new StreamFacts().build(model([user(1, 'q'), waiting], turns, true), inputs({
+      policy: compact, requests, disclosure: { ...NO_DISCLOSURE, rows: new Set(['tool:waiting']) },
+    }))
+    expect(JSON.stringify(rowsOf(opened.turns[0]))).toContain('stop the server')
+  })
+
+  it('draws a flat model with no tier at the verbose default', () => {
+    const entry = { ...tool(1, 'bash', 'ls'), id: 'tool:flat', callId: 'c-flat' } as TranscriptEntryModel
+    const facts = new StreamFacts().build(createTranscriptModel('spec', [user(1, 'q'), entry]), inputs())
+    expect(rowsOf(facts.turns[0]).find(row => row.kind === 'tool')).toBeDefined()
   })
 })

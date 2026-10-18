@@ -1,27 +1,39 @@
 /**
- * The Agents item of the status row: a views pane over the subagents the attached Agent has spawned in this
- * conversation. Its members are the parent's spawn calls, so a subagent shows from the moment its call starts, however
- * short it lives: a call without its result is a foreground subagent (it blocks the turn), a call whose acknowledgement
- * (`started subagent <id>`) landed is a background one; the child's own facts add its tools, time, and output. The row
- * carries `● agents 1/3` (settled over all) and stays, `✓ agents 3/3`, until a new conversation. The panel, shown under
- * the row while the view is entered (`Alt+↓`), is a list of every subagent of the conversation, live first, one line
- * each: the mark, the name with `(fg)` or `(bg)`, and what it is doing (its streamed activity while it works, its task
- * once it settled), then at the right edge its tokens in and out, its rate, and its time. `↑/↓` choose a row, `Enter` opens its conversation (the
- * same view `/agents` opens; `F7` returns), `x` stops a continuable child behind the shared Yes/No, and `b` would move a
- * foreground one to the background (dsh offers no such call yet, so it is listed as unavailable). The registration is
- * the Fiber's.
+ * The Agents item of the status row: a views pane over the managed subagent
+ * activations the attached Agent started. Membership is the parent's own
+ * durable spawn calls plus its native `subagentCatalog`; each row's mode,
+ * label, active turn, and duration come from the child's `subagent`,
+ * `subagentTiming`, and presentation facts. There is no foreground or
+ * background form: every delegation is one managed activation, so a row is
+ * live while that activation is, and settles through the native
+ * `subagent/start` / `subagent/end` pair or the child's own settled facts.
+ * The row carries `● agents 1/3` (settled over all) and stays, `✓ agents 3/3`,
+ * until a new conversation. The panel, shown under the row while the view is
+ * entered (`Alt+↓`), is a list of every subagent of the conversation, live
+ * first, one line each: the mark, the name (external executions are marked
+ * `(ext)`), and what it is doing, then at the right edge its tokens in and
+ * out, its rate, and its time. `↑/↓` choose a row, `Enter` opens a local
+ * child's conversation (the same view `/agents` opens; `F7` returns), and `x`
+ * stops a continuable child through `drainChildren` behind the shared Yes/No.
+ * An external child has no local conversation and no local Agent to stop. The
+ * registration is the Fiber's.
  *
  * @module @ephemeral-ai/mayfly/transcript/status-agents
  */
 
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
+import type {} from '@deepseek-ai/dsh-subagent'
+import type { SubagentCatalogEntry, SubagentIdentityProjection, SubagentRunEndInfo, SubagentTimingProjection } from '@deepseek-ai/dsh-subagent'
+import { SessionId } from '@deepseek-ai/dsh-session'
 import { ui, type MayflyInlineSpan, type MayflyListItem, type MayflyPaneSummary, type MayflyUiActionEvent, type MayflyUiActionReply, type MayflyUiEventContext, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
+import type { MayflyConversationsService, MayflyConversationsSnapshot } from '../app/conversation-views.ts'
 import type { ConversationAgentCall, OutputProgress } from '../conversation/types.ts'
 import type { MayflyTranslate } from '../frontend/locale.ts'
 import { interactionTranslator } from '../interaction/locale.ts'
 import { stopSubagent } from '../interaction/agents-stop.ts'
 import { agentCallLabel, compactElapsedMs } from './agent-presentation.ts'
+import { parseActivationResult, type ActivationResult } from './child-agent-model.ts'
 import { observeTranscriptLocale, transcriptTranslator } from './locale.ts'
 import { outputRate } from './output-rate.ts'
 import { formatTokens } from './status-context.ts'
@@ -34,7 +46,7 @@ import { itemSummary, viewList } from './view-items.ts'
 export const name = 'mayfly-status-agents'
 
 /** Native and Mayfly services required by the view. */
-export const inject = ['mayflyPanes', 'mayflyCurrentAgent', 'mayflyScreen', 'mayflySessionFacts', 'mayflyTick', 'mayflyConversations', 'subagents', 'agents']
+export const inject = ['mayflyPanes', 'mayflyCurrentAgent', 'mayflyScreen', 'mayflySessionFacts', 'mayflyTick', 'mayflyConversations', 'subagents', 'agents', 'sessionProjections']
 
 /** The Agents view's place in the status row: after git (10), before jobs (12), goal (13), and todo (14). */
 const VIEW_PRIORITY = 11
@@ -42,28 +54,38 @@ const VIEW_PRIORITY = 11
 /** The list's id; the keys read the chosen row from it. */
 const LIST_ID = 'agents-list'
 const STOP_ID = 'agents-stop'
-const BACKGROUND_ID = 'agents-background'
-
-/** Why `b` is not offered yet: moving a running foreground subagent to the background needs a call dsh does not have. */
-const BACKGROUND_UNAVAILABLE = 'dsh cannot move a running subagent to the background yet'
 
 /** Characters of a row's task kept before the row's own truncation. */
 const TASK_MAX_CHARS = 80
+
+/** The native mode of one subscription: a local continuation or an external execution. */
+export type AgentMode = 'one-shot' | 'continuable' | 'external' | 'unknown'
+
+/** The native activation state of one child, as the lifecycle events report it. */
+export interface AgentRunState {
+  readonly live: boolean
+  /** The native terminal stop reason, once the activation ended. */
+  readonly stopReason?: string | undefined
+  /** Envelope time the end event reached this view. */
+  readonly endedAt?: number | undefined
+}
 
 /** One subagent as the item shows it. */
 export interface AgentRow {
   /** The spawn call's id. */
   readonly id: string
-  /** The child's session id, once it is known. */
+  /** The child's durable session id, once the activation named it. */
   readonly childId?: string
   readonly label: string
   readonly task?: string
-  /** A foreground subagent blocks the turn that spawned it; a background one does not. */
-  readonly foreground: boolean
+  /** The child's native mode; `external` children have no local conversation. */
+  readonly mode: AgentMode
+  /** True for an external execution: no local conversation, no local Agent. */
+  readonly external: boolean
   readonly live: boolean
-  /** The subagent failed on its own (an error, or its call failed). */
+  /** The subagent failed on its own (a non-aborted stop reason, or a failed call). */
   readonly failed: boolean
-  /** The subagent was stopped by the user (interrupted, aborted, or stopped from the panel), which is no failure. */
+  /** The subagent was stopped by the user (aborted, or stopped from the panel), which is no failure. */
   readonly stopped: boolean
   /** What the child is doing now (`Thinking…`, `Using bash`), while its facts say so. */
   readonly activity?: string
@@ -86,9 +108,37 @@ export interface AgentsState {
   readonly now: number
 }
 
+/** Native per-child facts the view reads beside the parent's spawn calls. */
+export interface AgentNativeFacts {
+  /** The parent's durable direct-child catalog. */
+  readonly catalog: readonly SubagentCatalogEntry[]
+  /** The live children's presentation facts. */
+  readonly children: readonly ChildSessionFacts[]
+  /** Each reachable child's native timing projection, by session id. */
+  readonly timing: ReadonlyMap<string, SubagentTimingProjection>
+  /** Each reachable child's native identity projection, by session id. */
+  readonly identity: ReadonlyMap<string, SubagentIdentityProjection | null>
+  /** The native activation state of each child observed this session. */
+  readonly runs: ReadonlyMap<string, AgentRunState>
+}
+
+/** What the rows are derived from. */
+export interface AgentRowsInput extends AgentNativeFacts {
+  /** The parent's own spawn calls, in order. */
+  readonly calls: readonly ConversationAgentCall[]
+  /** The parent's current turn and whether it is active. */
+  readonly turn: Readonly<{ readonly turn: number, readonly active: boolean }>
+  /** Whether a local child's resident Agent is gone, which ends its work. */
+  readonly gone?: ((childId: string) => boolean) | undefined
+  /** The children the user stopped from the panel. */
+  readonly stoppedByUser?: ReadonlySet<string> | undefined
+}
+
 /**
- * The summary in the row: the mark, `agents`, and how many have settled over how many there are: `● agents 1/3`, then
- * `✓ agents 3/3` (`✕` when one failed on its own; one the user stopped is no failure). It stays for the conversation.
+ * The summary in the row: the mark, `agents`, and how many have settled over
+ * how many there are: `● agents 1/3`, then `✓ agents 3/3` (`✕` when one failed
+ * on its own; one the user stopped is no failure). It stays for the
+ * conversation.
  * @param state - the rows.
  * @param t - translator for the label.
  * @returns the summary, or `null` when the conversation has no subagent.
@@ -107,8 +157,8 @@ function markOf(row: AgentRow): MayflyInlineSpan {
   return row.failed ? { text: '✕', tone: 'danger' } : { text: '✓', tone: 'success' }
 }
 
-/** One row: `● review(bg)  Using bash                       ↑5.2k  ↓6.4k  38 tok/s · 41s`. */
-function agentItem(row: AgentRow, now: number, t: MayflyTranslate, unavailable: Readonly<Record<string, string>>): MayflyListItem {
+/** One row: `● review  Using bash                       ↑5.2k  ↓6.4k  38 tok/s · 41s`. */
+function agentItem(row: AgentRow, now: number, unavailable: Readonly<Record<string, string>>): MayflyListItem {
   const elapsed = compactElapsedMs(Math.max(0, (row.live ? now : row.endedAt ?? now) - row.startedAt))
   const up = row.inputTokens
   const down = row.outputTokens + Math.floor(row.liveChars / 4)
@@ -126,10 +176,10 @@ function agentItem(row: AgentRow, now: number, t: MayflyTranslate, unavailable: 
   const brief = doing ? row.activity : row.task
   return {
     id: row.id,
-    label: `${row.label}${row.task === undefined ? '' : `  ${row.task}`}`,
+    label: `${row.label}${row.external ? ' (ext)' : ''}${row.task === undefined ? '' : `  ${row.task}`}`,
     labelSpans: [markOf(row), { text: ' ' }],
     cells: [
-      { spans: [{ text: row.label, tone: 'accent' }, { text: `(${t(row.foreground ? 'fg' : 'bg')})`, tone: 'muted' }], max: 28 },
+      { spans: [{ text: row.label, tone: 'accent' }, ...row.external ? [{ text: ' (ext)', tone: 'muted' as const }] : []], max: 28 },
       { spans: brief === undefined ? [] : [{ text: brief, tone: doing ? 'default' : 'muted' }], max: 52, shed: 1 },
     ],
     right,
@@ -138,8 +188,9 @@ function agentItem(row: AgentRow, now: number, t: MayflyTranslate, unavailable: 
 }
 
 /**
- * The panel: every subagent of the conversation in the list every item with chosen rows shares, live first, with the
- * keys beside it: `x` stops and `b` backgrounds (both name why they are unavailable on a row that cannot take them).
+ * The panel: every subagent of the conversation in the list every item with
+ * chosen rows shares, live first, with `x` beside it (it names why it cannot
+ * act on a row that cannot take it).
  * @param state - the rows.
  * @param t - translator for the words.
  * @param unavailable - why a key cannot act on a row, by row id.
@@ -159,58 +210,136 @@ export function agentsPanel(state: AgentsState, t: MayflyTranslate, unavailable:
         id: STOP_ID, label: t('stop'), hidden: true, semantic: 'delete', hintLabel: t('stop'), selections,
         confirm: { title: t('Stop this subagent?'), detail: t('Its live Agent shuts down; the stored conversation stays browsable.'), confirmLabel: t('Stop'), tone: 'danger' },
       },
-      { id: BACKGROUND_ID, label: t('background'), hidden: true, key: 'b', hintLabel: t('background'), selections },
     ],
   })
-  return viewList(LIST_ID, rows.map(row => agentItem(row, state.now, t, unavailable(row))), actions)
+  return viewList(LIST_ID, rows.map(row => agentItem(row, state.now, unavailable(row))), actions)
 }
 
-/** What a spawn call says of its child: where it is found, and whether it runs in the background. */
-function spawnOf(call: ConversationAgentCall): { readonly ackId?: string, readonly prompt?: string, readonly background: boolean } {
-  const parsed = parseToolArguments(call.arguments)
-  const args = typeof parsed === 'object' && parsed !== null ? parsed as Record<string, unknown> : {}
-  const ackId = /started subagent ([\w-]+)/u.exec(call.result?.text ?? '')?.[1]
-  return {
-    ...ackId === undefined ? {} : { ackId },
-    ...typeof args['prompt'] === 'string' ? { prompt: args['prompt'] } : {},
-    background: ackId !== undefined || args['run_in_background'] === true,
-  }
+/** What a spawn call says of its child: its parsed arguments, activation result, and native label. */
+interface SpawnFacts {
+  readonly args: unknown
+  readonly activation: ActivationResult | undefined
+  readonly label?: string
 }
 
 /**
- * The rows of a conversation: one per spawn call. A call without its result is a subagent that blocks the turn (and
- * works, unless its turn was cut); one with an acknowledgement works while its child's facts say so, and a child whose facts
- * never came is taken to work only while the turn that spawned it does. The child's facts add its tools, time, and output.
- * @param calls - the parent's spawn calls.
- * @param children - the facts of the parent's direct children.
- * @param turn - the parent's current turn and whether it is active.
- * @param gone - whether a child's resident Agent is gone, which ends its work.
- * @param stoppedByUser - the children the user stopped from the panel.
+ * Parsed spawn facts by call object, so one publish parses a call once for its child correlation and its row label.
+ * A republished conversation may hand a fresh call object with equal identity and arguments; that falls back to a
+ * bounded map keyed by the call's identity, never by the parsed text.
+ */
+const spawnByCall = new WeakMap<ConversationAgentCall, SpawnFacts>()
+const spawnByKey = new Map<string, SpawnFacts>()
+const SPAWN_CACHE_LIMIT = 512
+
+function spawnOf(call: ConversationAgentCall): SpawnFacts {
+  const known = spawnByCall.get(call)
+  if (known !== undefined) return known
+  const key = `${call.callId}\u0000${String(call.seq)}\u0000${String(call.turn)}\u0000${String(call.step)}\u0000${call.result?.text ?? ''}\u0000${call.arguments}`
+  const cached = spawnByKey.get(key)
+  if (cached !== undefined) {
+    spawnByCall.set(call, cached)
+    return cached
+  }
+  const parsed = parseToolArguments(call.arguments)
+  const args = typeof parsed === 'object' && parsed !== null ? parsed as Record<string, unknown> : {}
+  const description = args['description']
+  const spawn: SpawnFacts = {
+    args: parsed,
+    activation: parseActivationResult(call.result?.text),
+    ...typeof description === 'string' && description.trim() !== '' ? { label: description } : {},
+  }
+  spawnByCall.set(call, spawn)
+  if (spawnByKey.size >= SPAWN_CACHE_LIMIT) spawnByKey.delete(spawnByKey.keys().next().value!)
+  spawnByKey.set(key, spawn)
+  return spawn
+}
+
+/** The activation label a spawn call passed to the native service, when it reads. */
+function spawnLabel(call: ConversationAgentCall): string | undefined {
+  return spawnOf(call).label
+}
+
+/**
+ * Correlate the parent's spawn calls with its catalog. The activation result
+ * names the child exactly; a result that is not the canonical
+ * `{ kind: 'activation', subagentId }` JSON is not interpreted, so the same
+ * call's native activation label (the `description` the tool passed) finds
+ * the catalog row instead. Prompt text is never matched.
+ */
+function childIdsOf(calls: readonly ConversationAgentCall[], catalog: readonly SubagentCatalogEntry[]): readonly (string | undefined)[] {
+  const claimed = new Set<string>()
+  return calls.map((call) => {
+    const exact = spawnOf(call).activation?.subagentId
+    if (exact !== undefined) {
+      claimed.add(exact)
+      return exact
+    }
+    const label = spawnLabel(call)
+    if (label === undefined) return undefined
+    const found = catalog.find(entry => entry.label === label && !claimed.has(String(entry.id)))
+    if (found === undefined) return undefined
+    claimed.add(String(found.id))
+    return String(found.id)
+  })
+}
+
+/**
+ * The rows of a conversation: one per parent spawn call, enriched with the
+ * native catalog, the child's native identity/timing, its presentation facts,
+ * and the activation lifecycle this view observed. A call with no result is
+ * still starting and counts as working until its turn is cut; an activation
+ * that ended reports its native stop reason, so an aborted child is stopped
+ * and a failed one failed.
+ * @param input - the calls, native facts, turn, and user-stop memory.
  * @returns the rows, in spawn order.
  */
-export function agentRows(calls: readonly ConversationAgentCall[], children: readonly ChildSessionFacts[], turn: { readonly turn: number, readonly active: boolean }, gone: (childId: string) => boolean = () => false, stoppedByUser: ReadonlySet<string> = new Set()): readonly AgentRow[] {
-  const byId = new Map(children.map(child => [child.id, child]))
-  const byPrompt = new Map<string, ChildSessionFacts>()
-  for (const child of children) if (child.promptText !== undefined && !byPrompt.has(child.promptText)) byPrompt.set(child.promptText, child)
-  return calls.map((call): AgentRow => {
-    const spawn = spawnOf(call)
-    const child = (spawn.ackId === undefined ? undefined : byId.get(spawn.ackId)) ?? (spawn.prompt === undefined ? undefined : byPrompt.get(spawn.prompt))
-    const cut = call.turn < turn.turn || (call.turn === turn.turn && !turn.active)
-    // A continuable child whose Agent is gone (stopped) is not working, whatever its last facts say.
-    const working = (child?.phase === 'running' || child?.phase === 'waiting') && !gone(child.id)
-    const live = call.result === undefined ? working || !cut : spawn.background ? (child === undefined ? !cut : working) : false
-    const childId = child?.id ?? spawn.ackId
-    // Stopped by the user: its run was interrupted or aborted, or its Agent was shut down while its facts still said it worked.
-    const stopped = !live && (child?.stopped === true || (childId !== undefined && stoppedByUser.has(childId)) || (child !== undefined && (child.phase === 'running' || child.phase === 'waiting') && gone(child.id)))
-    const failed = !live && !stopped && (child?.phase === 'failed' || (call.result?.isError === true && !spawn.background) || call.result === undefined)
-    const { label, detail } = agentCallLabel(call.name, parseToolArguments(call.arguments), call.arguments)
-    const endedAt = live ? undefined : child?.endedAt ?? call.result?.endedAt
+export function agentRows(input: AgentRowsInput): readonly AgentRow[] {
+  const children = new Map(input.children.map(child => [child.id, child]))
+  const catalog = new Map(input.catalog.map(entry => [String(entry.id), entry]))
+  const childIds = childIdsOf(input.calls, input.catalog)
+  return input.calls.map((call, index): AgentRow => {
+    const childId = childIds[index]
+    const child = childId === undefined ? undefined : children.get(childId)
+    const entry = childId === undefined ? undefined : catalog.get(childId)
+    const identity = childId === undefined ? undefined : input.identity.get(childId)
+    const timing = childId === undefined ? undefined : input.timing.get(childId)
+    const run = childId === undefined ? undefined : input.runs.get(childId)
+    const mode: AgentMode = entry?.mode === 'external' ? 'external' : identity?.mode ?? entry?.mode ?? 'unknown'
+    const external = mode === 'external'
+    const cut = call.turn < input.turn.turn || (call.turn === input.turn.turn && !input.turn.active)
+    const gone = childId !== undefined && (input.gone?.(childId) ?? false)
+    // The resident Agent is the activation's own publication: after mount it
+    // is the direct native liveness signal when no start event was seen.
+    const resident = childId !== undefined && !external && input.gone !== undefined && !gone
+    const working = (child?.phase === 'running' || child?.phase === 'waiting')
+      || timing?.active !== undefined
+      || (resident && child === undefined)
+      || (childId !== undefined && input.gone === undefined && !external && !cut && call.result === undefined)
+    // A native end event is authoritative; without one the native child facts
+    // and the activation's own start state decide.
+    const live = run === undefined
+      ? external ? false : (call.result === undefined ? !cut && !gone : working && !gone)
+      : run.live
+    const stopReason = run?.stopReason
+    const stopped = !live && (stopReason === 'aborted'
+      || child?.stopped === true
+      || (childId !== undefined && (input.stoppedByUser?.has(childId) ?? false))
+      || (gone && (child?.phase === 'running' || child?.phase === 'waiting')))
+    const failed = !live && !stopped && (stopReason !== undefined
+      ? stopReason !== 'completed'
+      : child?.phase === 'failed'
+        || call.result?.isError === true
+        || call.result === undefined)
+    const { label: callLabel, detail } = agentCallLabel(call.name, spawnOf(call).args, call.arguments)
+    const label = identity?.label ?? entry?.label ?? callLabel
+    const endedAt = run?.endedAt ?? child?.endedAt ?? call.result?.endedAt
     return {
       id: call.callId,
       ...childId === undefined ? {} : { childId },
       label,
       ...detail === undefined ? {} : { task: detail.length > TASK_MAX_CHARS ? `${detail.slice(0, TASK_MAX_CHARS - 1)}…` : detail },
-      foreground: !spawn.background,
+      mode,
+      external,
       live,
       failed,
       stopped,
@@ -225,38 +354,57 @@ export function agentRows(calls: readonly ConversationAgentCall[], children: rea
   })
 }
 
+/** Read one child's native projections from its exact resident Agent. */
+function childNative(ctx: Context, childId: string): { readonly timing?: SubagentTimingProjection, readonly identity: SubagentIdentityProjection | null } | undefined {
+  const child = ctx.agents.get(SessionId(childId))
+  if (child === undefined) return undefined
+  const values = ctx.sessionProjections.snapshot(child.session, ['subagentTiming', 'subagent']).values
+  return {
+    ...values.subagentTiming === undefined ? {} : { timing: values.subagentTiming },
+    identity: values.subagent ?? null,
+  }
+}
+
 /** Register the Agents item under the calling Fiber. */
 export function apply(ctx: Context): void {
   const t = transcriptTranslator(ctx, 'transcript')
   const ti = interactionTranslator(ctx)
   const tick = ctx.get('mayflyTick') as TickSource | undefined
   const facts = ctx.get('mayflySessionFacts') as SessionFactsService
+  const lifetime = new AbortController()
+  const agents = ctx.agents
+  const subagents = ctx.subagents
+  const currentAgent = ctx.mayflyCurrentAgent
+  const conversations: MayflyConversationsService = ctx.mayflyConversations
+  const screen = ctx.mayflyScreen
   let unloaded = false
   /** The children the user stopped from the panel: their last facts may still read working. */
   const stoppedByUser = new Set<string>()
+  /** The native activation state of every child this view observed. */
+  const runs = new Map<string, AgentRunState>()
 
   /** The conversation this view opened, until it closes: closing it (`F8`) returns to this view instead of the prompt. */
   let opened: string | undefined
   let displayed: string | null = null
 
   const act = async (event: MayflyUiActionEvent, context: MayflyUiEventContext): Promise<MayflyUiActionReply> => {
-    const agent = ctx.mayflyCurrentAgent.current()
+    const agent = currentAgent.current()
     if (agent === null || agent !== owner) return { kind: 'failed', message: t('The agent changed; open it again') }
-    const activated = event.kind === 'activate' && (event.actionId === STOP_ID || event.actionId === BACKGROUND_ID)
-    if (event.kind !== 'selection-accept' && !activated) return { kind: 'completed' }
+    const stopping = event.kind === 'activate' && event.actionId === STOP_ID
+    if (event.kind !== 'selection-accept' && !stopping) return { kind: 'completed' }
     const chosen = event.kind === 'selection-accept' ? event.selectedIds[0]
       : event.kind === 'activate' ? event.inputs?.selections?.find(selection => selection.controlId === LIST_ID)?.selectedIds[0]
         : undefined
     const row = rows.find(candidate => candidate.id === chosen)
     if (row === undefined) return { kind: 'failed', message: t('Select a subagent first') }
-    if (event.kind === 'activate' && event.actionId === BACKGROUND_ID) return { kind: 'failed', message: t(BACKGROUND_UNAVAILABLE) }
+    if (row.external) return { kind: 'failed', message: stopping ? ti('Only continuable subagents can be stopped') : t('This subagent cannot be opened') }
     if (row.childId === undefined) return { kind: 'failed', message: t('This subagent has not started yet') }
     try {
       if (event.kind === 'selection-accept') {
-        const entry = (await ctx.subagents.listChildren(agent.id, context.signal)).find(candidate => String(candidate.id) === row.childId)
-        if (entry === undefined || entry.mode === 'unknown') return { kind: 'failed', message: t('This subagent cannot be opened') }
-        ctx.mayflyScreen.leaveViews()
-        opened = ctx.mayflyConversations.open({ kind: 'subagent', sessionId: row.childId, parentSessionId: String(agent.id), label: entry.label ?? row.label, mode: entry.mode })
+        const entry = (await subagents.listChildren(agent.id, context.signal)).find(candidate => String(candidate.id) === row.childId)
+        if (entry === undefined || entry.mode === 'external') return { kind: 'failed', message: t('This subagent cannot be opened') }
+        screen.leaveViews()
+        opened = conversations.open({ kind: 'subagent', sessionId: row.childId, parentSessionId: String(agent.id), label: entry.label ?? row.label, mode: entry.mode })
         return { kind: 'completed' }
       }
       const result = await stopSubagent(ctx, row.childId, context.signal, ti, () => unloaded)
@@ -271,64 +419,92 @@ export function apply(ctx: Context): void {
   const pane = ctx.mayflyPanes.register({ id: 'mayfly.view.agents', placement: 'views', priority: VIEW_PRIORITY, onEvent: { action: act } }, null)
 
   /** The Agent the rows belong to: an action built for another is refused. */
-  let owner = ctx.mayflyCurrentAgent.current()
+  let owner = currentAgent.current()
   let children: readonly ChildSessionFacts[] = []
   let calls: readonly ConversationAgentCall[] = []
   /** The projection's calls before the own ones are picked out of them. */
   let inherited: readonly ConversationAgentCall[] = []
   let turn = { turn: 0, active: false }
-  /** The catalog's mode of each child, read when the set of children changes (the hint on a one-shot row). */
-  const modes = new Map<string, string>()
-  let catalogFor = ''
+  let catalog: readonly SubagentCatalogEntry[] = []
+  let timing: ReadonlyMap<string, SubagentTimingProjection> = new Map()
+  let identity: ReadonlyMap<string, SubagentIdentityProjection | null> = new Map()
   let rows: readonly AgentRow[] = []
   let now = Date.now()
   let published = ''
+  /** The panel actually handed to the lane; a skipped hidden update leaves this short of `published`. */
+  let panelPublished = ''
+  /** The last second the hidden panel was rebuilt; the summary still updates at the child cadence. */
+  let panelSecond = -1
+  /** The row shape that changes the panel beyond its elapsed/rate figures. */
+  let panelStructure = ''
   let offTick: (() => void) | undefined
 
   const syncTick = (): void => {
     if (!rows.some(row => row.live)) { offTick?.(); offTick = undefined; return }
     offTick ??= tick?.subscribe((at) => { now = at; publish() })
   }
-  /** Why `x` and `b` cannot act on a row, from what is known without descending the catalog; the native check answers the rest. */
+  /** Why `x` cannot act on a row, from the native mode and liveness the rows already hold. */
   const unavailable = (row: AgentRow): Readonly<Record<string, string>> => {
-    const mode = row.childId === undefined ? undefined : modes.get(row.childId)
-    const stop = !row.live || row.childId === undefined || ctx.agents.get(row.childId as Agent['id']) === undefined ? ti('Not live; there is nothing to stop')
-      : mode !== undefined && mode !== 'continuable' ? ti('Only continuable subagents can be stopped')
-        : undefined
-    // `b` is offered on a working foreground row (and answers why it cannot act); every other row names why it has no `b`.
-    const background = row.live && row.foreground ? undefined : row.live ? t('Already in the background') : t('Already finished')
-    return { ...stop === undefined ? {} : { [STOP_ID]: stop }, ...background === undefined ? {} : { [BACKGROUND_ID]: background } }
+    const stop = row.external ? ti('Only continuable subagents can be stopped')
+      : !row.live || row.childId === undefined ? ti('Not live; there is nothing to stop')
+        : row.mode !== 'continuable' ? ti('Only continuable subagents can be stopped')
+          : undefined
+    return stop === undefined ? {} : { [STOP_ID]: stop }
   }
-  const readCatalog = (): void => {
-    const agent = ctx.mayflyCurrentAgent.current()
-    const key = `${agent === null ? '' : String(agent.id)}:${rows.map(row => row.childId ?? '').join(',')}`
-    if (agent === null || key === catalogFor) return
-    catalogFor = key
-    void ctx.subagents.listChildren(agent.id).then((entries) => {
-      if (unloaded || ctx.mayflyCurrentAgent.current() !== agent) return
-      modes.clear()
-      for (const entry of entries) modes.set(String(entry.id), entry.mode)
-      published = ''
-      publish()
-    }, () => { /* the hint is optional: the native check answers at the key */ })
+  /** The parent catalog and each reachable child's native identity/timing at this cut. */
+  const readNative = (agent: Agent | null): Pick<AgentNativeFacts, 'catalog' | 'timing' | 'identity'> => {
+    if (agent === null) return { catalog: [], timing: new Map(), identity: new Map() }
+    const parent = ctx.sessionProjections.snapshot(agent.session, ['subagentCatalog']).values.subagentCatalog
+    const current = Array.isArray(parent) ? parent : []
+    const nextTiming = new Map<string, SubagentTimingProjection>()
+    const nextIdentity = new Map<string, SubagentIdentityProjection | null>()
+    for (const child of current) {
+      const native = childNative(ctx, String(child.id))
+      if (native?.timing !== undefined) nextTiming.set(String(child.id), native.timing)
+      if (native !== undefined) nextIdentity.set(String(child.id), native.identity)
+    }
+    return { catalog: current, timing: nextTiming, identity: nextIdentity }
   }
 
   const publish = (): void => {
-    rows = agentRows(calls, children, turn, id => modes.get(id) === 'continuable' && ctx.agents.get(id as Agent['id']) === undefined, stoppedByUser)
+    rows = agentRows({
+      calls, children, catalog, timing, identity, runs, turn,
+      gone: id => agents.get(SessionId(id)) === undefined,
+      stoppedByUser,
+    })
     syncTick()
     const state: AgentsState = { rows, now }
     const summary = agentsSummary(state, t)
     const panel = agentsPanel(state, t, unavailable)
     const key = JSON.stringify([summary, panel])
-    if (key === published) return
+    if (key === published && key === panelPublished) return
     published = key
-    pane.set(panel)
     pane.setSummary(summary)
+    // A hidden panel costs a compile per update and nobody sees its elapsed seconds. Refresh it at most once a
+    // second; while the view is entered, keep the 4 Hz child cadence. A test or a host without a views lane has no
+    // hidden state to protect, so it keeps the old immediate panel.
+    const views = screen?.views
+    const structure = JSON.stringify(rows.map(row => [
+      row.id, row.childId, row.label, row.task, row.mode, row.external, row.live, row.failed, row.stopped, row.activity,
+    ]))
+    const entered = views?.isEntered === true && views.active === 'mayfly.view.agents'
+    const second = Math.floor(now / 1000)
+    if (views === undefined || entered || second !== panelSecond || structure !== panelStructure) {
+      panelSecond = second
+      panelStructure = structure
+      panelPublished = key
+      pane.set(panel)
+    }
   }
   const refresh = (): void => {
+    if (unloaded) return
     now = Date.now()
+    const agent = currentAgent.current()
+    const native = readNative(agent)
+    catalog = native.catalog
+    timing = native.timing
+    identity = native.identity
     publish()
-    readCatalog()
   }
 
   const offAgent = facts.subscribeAgent((agent) => {
@@ -338,16 +514,15 @@ export function apply(ctx: Context): void {
     calls = []
     inherited = []
     turn = { turn: 0, active: false }
-    modes.clear()
     stoppedByUser.clear()
-    catalogFor = ''
+    runs.clear()
     refresh()
   })
   const offFacts = facts.subscribe((next) => {
     if (next.agentCalls === inherited && next.turn === turn.turn && next.active === turn.active) return
     inherited = next.agentCalls
     // A side conversation or a subagent inherits its parent's log: only the calls it made itself are its own subagents.
-    const session = ctx.mayflyCurrentAgent.current()?.session
+    const session = currentAgent.current()?.session
     calls = session === undefined ? next.agentCalls : next.agentCalls.filter(call => session.isOwnSeq(call.seq as never))
     turn = { turn: next.turn, active: next.active }
     refresh()
@@ -356,11 +531,24 @@ export function apply(ctx: Context): void {
     children = next
     refresh()
   })
-  const offConversations = ctx.mayflyConversations.subscribe((snapshot) => {
+  const offProjections = ctx.sessionProjections.onChanged((session, key) => {
+    if (unloaded) return
+    if (key === 'subagentCatalog') refresh()
+    else if ((key === 'subagentTiming' || key === 'subagent') && rows.some(row => row.childId === String(session.id))) refresh()
+  })
+  const offStart = ctx.on('subagent/start', (info) => {
+    runs.set(String(info.id), { live: true })
+    refresh()
+  })
+  const offEnd = ctx.on('subagent/end', (info: SubagentRunEndInfo) => {
+    runs.set(String(info.id), { live: false, stopReason: info.stopReason, endedAt: Date.now() })
+    refresh()
+  })
+  const offConversations = conversations.subscribe((snapshot: MayflyConversationsSnapshot) => {
     const wasDisplayed = displayed
     displayed = snapshot.displayedId
     if (opened === undefined) return
-    if (snapshot.views.some(view => view.id === opened)) {
+    if (snapshot.views.some((view: { readonly id: string }) => view.id === opened)) {
       // Left for another conversation (`F7`): a later display of it is no longer this view's doing (`/agents` may reopen it).
       if (wasDisplayed === opened && snapshot.displayedId !== opened) opened = undefined
       return
@@ -371,19 +559,33 @@ export function apply(ctx: Context): void {
     // Focus goes back to the prompt as the conversation changes, so the view is entered after that.
     if (wasDisplayed !== closed || snapshot.displayedId !== snapshot.primaryId) return
     const agent = owner
-    setImmediate(() => { if (!unloaded && ctx.mayflyCurrentAgent.current() === agent) ctx.mayflyScreen.enterViews() })
+    setImmediate(() => { if (!unloaded && currentAgent.current() === agent) screen.enterViews() })
   })
-  const offLocale = observeTranscriptLocale(ctx, () => { published = ''; publish() })
-  // A continuable child's Agent coming or going changes whether it works.
+  const offLocale = observeTranscriptLocale(ctx, () => { published = ''; panelPublished = ''; refresh() })
+  // Entering the lane is not a facts update: force the first paint after a hidden skip, then let the tick cadence run.
+  const views = screen?.views
+  let wasEntered = false
+  const offViews = views?.subscribe(() => {
+    const enteredNow = views.isEntered && views.active === 'mayfly.view.agents'
+    if (enteredNow && !wasEntered) { panelSecond = -1; panelPublished = '' }
+    wasEntered = enteredNow
+    publish()
+  })
+  // A child's Agent coming or going changes whether its activation is resident.
   ctx.effect(() => ctx.on('agent/created', () => { refresh() }))
   ctx.effect(() => ctx.on('agent/disposed', () => { refresh() }))
   ctx.effect(() => () => {
     unloaded = true
+    lifetime.abort()
     offAgent()
     offFacts()
     offChildren()
+    offProjections()
+    offStart()
+    offEnd()
     offConversations()
     offLocale()
+    offViews?.()
     offTick?.()
     pane.dispose()
   })

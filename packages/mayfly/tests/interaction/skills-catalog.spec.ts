@@ -65,19 +65,30 @@ function hangingSkills(names: readonly string[]) {
 }
 
 /**
- * Mount the catalog against a real session store, a fake agent, and an
- * optional fake `skills` service.
+ * Mount the catalog against a real session store, a fake agent, an optional
+ * fake `skills` service, and an optional native current-directory value.
  */
 async function mount(options: {
   withAgent?: boolean
   skills?: ReturnType<typeof fakeSkills>['service']
+  directory?: string
 } = {}): Promise<{ ctx: Context }> {
   const { ctx } = fakeMayflyContext()
   await ctx.plugin(SessionStore)
-  const session = ctx.sessions.create(SessionId('skills-catalog-spec'))
+  const session = ctx.sessions.create(SessionId('skills-catalog-spec'), options.directory === undefined ? {} : { meta: { cwd: '/repo/original' } })
   const agent = { id: session.id, session, status: 'idle' } as never
   ctx.provide('testSession', { current: options.withAgent === false ? null : agent, modelRef: undefined })
   if (options.skills !== undefined) ctx.provide('skills', options.skills)
+  if (options.directory !== undefined) {
+    const projections = ctx.get('sessionProjections') as unknown as {
+      snapshot: (session: unknown, keys?: readonly string[]) => { values: Record<string, unknown> }
+    }
+    const snapshot = projections.snapshot.bind(projections)
+    projections.snapshot = (target, keys) => {
+      const result = snapshot(target, keys)
+      return { ...result, values: { ...result.values, workingDirectory: options.directory } }
+    }
+  }
   ctx.emit('test/session-changed', agent)
   return { ctx }
 }
@@ -85,14 +96,15 @@ async function mount(options: {
 describe('skills catalog settle', () => {
   it('refresh caches a complete snapshot as the settled catalog', async () => {
     const fake = fakeSkills({ result: () => Promise.resolve({ skills: [skill('deploy-check')], complete: true }) })
-    const { ctx } = await mount({ skills: fake.service })
+    const { ctx } = await mount({ skills: fake.service, directory: '/repo/current' })
     await refresh(ctx)
     expect(userInvocableSkills(ctx).map(entry => entry.name)).toEqual(['deploy-check'])
-    // The read went through snapshot with the agent's own scope and cwd.
+    // The read went through snapshot with the agent's own scope and its native current directory.
     expect(fake.snapshots).toHaveBeenCalled()
     const call = (fake.snapshots.mock.calls[0] as unknown[] | undefined)?.[0] as unknown as { scope: unknown, cwd: unknown }
     expect(call.scope).toBe((ctx.get('testSession') as { current: unknown }).current)
-    expect(call.cwd).toBe((call.scope as { session: { header: { cwd?: string } } }).session.header.cwd)
+    expect((call.scope as { session: { header: { cwd?: string } } }).session.header.cwd).toBe('/repo/original')
+    expect(call.cwd).toBe('/repo/current')
   })
 
   it('an incomplete snapshot is not cached and keeps the last good settle', async () => {

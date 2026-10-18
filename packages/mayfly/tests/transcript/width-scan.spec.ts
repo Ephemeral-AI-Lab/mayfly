@@ -23,7 +23,7 @@ import * as goalStatus from '../../src/transcript/status-goal.ts'
 import * as agentsStatus from '../../src/transcript/status-agents.ts'
 import * as jobsStatus from '../../src/transcript/status-jobs.ts'
 import { footerRows } from './footer-fakes.ts'
-import { bannerLayout, composeBannerLines, shortenHome } from '../../src/transcript/banner.ts'
+import { composeBannerLines, shortenHome } from '../../src/transcript/banner.ts'
 import { fakeMayflyComponents } from './helpers.ts'
 import { bootPanePlugin } from './pane-fakes.ts'
 import { COLORS, fakeAgent } from './status-fakes.ts'
@@ -71,13 +71,22 @@ describe('transcript width-scan', () => {
 
     it(`agents item survives ${name}`, () => {
       const t = transcriptTranslatorFake
-      const rows = agentsStatus.agentRows([
-        { seq: 1, turn: 1, step: 1, callId: 'fg', name: 'subagent', arguments: JSON.stringify({ name: text, description: text, prompt: text }), startedAt: 1_000 },
-        { seq: 2, turn: 1, step: 1, callId: 'bg', name: 'subagent', arguments: JSON.stringify({ name: text, description: text }), startedAt: 1_000, result: { text: 'started subagent c1', isError: false, endedAt: 2_000 } },
-        { seq: 3, turn: 1, step: 1, callId: 'bad', name: 'subagent', arguments: JSON.stringify({ name: text }), startedAt: 1_000, result: { text, isError: true, endedAt: 9_000 } },
-      ], [{ id: 'c1', phase: 'running', tokens: 99_999, inputTokens: 90_000, outputTokens: 9_999, toolCount: 12_345, liveChars: 40_000, activity: text }], { turn: 1, active: true })
+      const activation = JSON.stringify({ kind: 'activation', subagentId: 'c1' })
+      const rows = agentsStatus.agentRows({
+        calls: [
+          { seq: 1, turn: 1, step: 1, callId: 'fg', name: 'subagent', arguments: JSON.stringify({ name: text, description: text, prompt: text }), startedAt: 1_000 },
+          { seq: 2, turn: 1, step: 1, callId: 'bg', name: 'subagent', arguments: JSON.stringify({ name: text, description: text }), startedAt: 1_000, result: { text: activation, isError: false, endedAt: 2_000 } },
+          { seq: 3, turn: 1, step: 1, callId: 'bad', name: 'subagent', arguments: JSON.stringify({ name: text }), startedAt: 1_000, result: { text, isError: true, endedAt: 9_000 } },
+        ],
+        children: [{ id: 'c1', phase: 'running', tokens: 99_999, inputTokens: 90_000, outputTokens: 9_999, toolCount: 12_345, liveChars: 40_000, activity: text }],
+        catalog: [],
+        timing: new Map(),
+        identity: new Map(),
+        runs: new Map(),
+        turn: { turn: 1, active: true },
+      })
       const state = { rows, now: 3_000 }
-      const panel = agentsStatus.agentsPanel(state, t, () => ({ 'agents-stop': text, 'agents-background': text }))
+      const panel = agentsStatus.agentsPanel(state, t, () => ({ 'agents-stop': text }))
       if (panel === null) throw new Error('agents width fixture did not render')
       for (const width of SCAN_WIDTHS) {
         expectLinesFit(`AgentsPanel/${name}`, renderNode(panel, width), width)
@@ -173,7 +182,7 @@ describe('transcript width-scan', () => {
         id: 'width-goal', revision: 1, objective: text, phase: 'blocked', blockedReason: { code: 'width', message: text },
         maxGoalRounds: 8, roundsStarted: 2, createdAt: 1, updatedAt: 2, activation: 'armed',
       } as never
-      const state = { goal: view, now: 1_000_000 }
+      const state = { goal: view }
       const panel = goalStatus.goalPanel(state, t)
       if (panel === null) throw new Error('goal width fixture did not render')
       for (const width of SCAN_WIDTHS) {
@@ -196,10 +205,7 @@ describe('transcript width-scan', () => {
         truncate: (t: string, target: number) => components.truncateToWidth(t, target),
         visibleWidth: (t: string) => components.visibleWidth(t),
       }
-      for (const width of SCAN_WIDTHS) {
-        if (bannerLayout(width) === null) continue
-        expectLinesFit(`Banner/${name}`, composeBannerLines(deps, content, width), width)
-      }
+      for (const width of SCAN_WIDTHS) expectLinesFit(`Banner/${name}`, composeBannerLines(deps, content, width), width)
     })
   }
 
@@ -213,7 +219,6 @@ describe('transcript width-scan', () => {
       status.register({ id: 'scan-center', priority: 0, band: 'center', overflow: 'truncate' }, { kind: 'rich-text', spans: [{ text: 'MAIN', tone: 'accent' }, { text: ` · ${text}`, tone: 'muted' }] })
       status.register({ id: 'scan-goal', priority: 2, overflow: 'hide' }, goalStatus.goalSummary({
         goal: { id: 'goal-width' as never, revision: 1, objective: text, phase: 'active', maxGoalRounds: 256, roundsStarted: 128, createdAt: 1, updatedAt: 2, activation: 'armed' } as never,
-        now: 1_000_000,
       }, transcriptTranslatorFake)!.node)
       // The footer paints what was registered: a scan of empty rows would pass for any width.
       expect(footerRows(status.list(), 120, components, colors).join('')).toContain('MAIN')

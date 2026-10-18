@@ -8,7 +8,7 @@
  *
  * @module @ephemeral-ai/mayfly/core/views-lane
  */
-import type { MayflyStatusEntry, MayflyStatusNode } from '@ephemeral-ai/mayfly-ui'
+import { equalPaneSummary, type MayflyStatusEntry, type MayflyStatusNode } from '@ephemeral-ai/mayfly-ui'
 import { interpolateLocaleMessage, type MayflyTranslate } from '../frontend/locale.ts'
 import { displayKey, keyActionKeys, matchesKeyAction, ACTION_SEGMENT_LEFT, ACTION_SEGMENT_RIGHT } from './key-actions.ts'
 import type { MayflyGlyphMode } from './glyphs.ts'
@@ -214,7 +214,8 @@ export class ViewsLane implements MayflyViewsSource {
     return {
       get disposed() { return disposed },
       setSummary: summary => {
-        if (disposed || state.summary === summary) return
+        // Equal content in a fresh object is no change: no serial bump, no lane settle, no footer repaint.
+        if (disposed || equalPaneSummary(state.summary, summary)) return
         state.summary = summary
         state.summarySerial = ++this.serial
         this.settle()

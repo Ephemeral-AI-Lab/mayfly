@@ -94,6 +94,15 @@ if (!(await waitFor(() => clean().includes(PATHOLOGICAL.slice(0, 24)), 'the stre
   await server.close()
   process.exit(1)
 }
+// The reply can paint before the Agent has settled (rc.2 drains a little
+// longer). Ctrl-C only arms the exit while idle, so wait for the settled
+// turn marker instead of guessing from the reply text.
+if (!(await waitFor(() => /done \d\d:\d\d/.test(clean()), 'the settled turn'))) {
+  console.error(clean().slice(-2500))
+  dsh.kill()
+  await server.close()
+  process.exit(1)
+}
 
 // The turn settled: quit through the app's own double-Ctrl-C path, then
 // EOF, then force.

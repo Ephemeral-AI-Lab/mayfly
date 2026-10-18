@@ -1,16 +1,15 @@
 /**
  * Tests for the `mayfly-editor-plus` plugin: prompt/bash mode switching, shell
  * execution and echo (fake and default executors), the dispatching
- * autocomplete provider (slash commands and `@` mentions — delegation to the
- * L0 fd pipeline with the fs fallback behind it), and the shared-reference
+ * autocomplete provider (slash commands and `@` mentions through the native
+ * file-reference service and its official grammar), and the shared-reference
  * attach/detach lifecycle.
  */
 
-import { mkdirSync, writeFileSync, chmodSync } from 'node:fs'
-import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
+import type { FileReferenceCandidate } from '@deepseek-ai/dsh-file-reference'
 import type { SkillSummary } from '@deepseek-ai/dsh-skill'
 import type { MayflyAutocompleteProvider, MayflyComponent } from '../../src/core/types.ts'
 import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
@@ -19,8 +18,6 @@ import { STREAM_GUTTER } from '../../src/core/gutter.ts'
 import { MayflyLocaleService } from '../../src/frontend/locale.ts'
 import * as inputPlugin from '../../src/interaction/input-plugin.ts'
 import * as editorPlus from '../../src/interaction/editor-plus.ts'
-import * as fileMention from '../../src/interaction/file-mention.ts'
-import * as mentionPaths from '../../src/internal/mention.ts'
 import { __setCatalogForTest } from '../../src/interaction/skills-catalog.ts'
 import { INTERACTION_LOCALE } from '../../src/interaction/locale.ts'
 import { COMMON_LOCALE } from '../../src/frontend/common-locale.ts'
@@ -35,7 +32,6 @@ const signal = (): AbortSignal => new AbortController().signal
 
 afterEach(() => {
   editorPlus.setShellExecutor(undefined)
-  fileMention.setFdProbe(undefined)
   vi.restoreAllMocks()
 })
 
@@ -45,7 +41,12 @@ function inDirectory(ctx: Context, agent: Agent, cwd: string): void {
   testSession.current = { ...agent, id: agent.id, session: { ...agent.session, header: { cwd } } } as unknown as Agent
 }
 
-async function mount(options: { withAgent?: boolean, plusFirst?: boolean, locale?: 'en' | 'zh', } = {}): Promise<{
+/** The native file-reference service shape the provider reads. */
+interface FileReferenceListing {
+  list(agent: Agent, query: string, signal: AbortSignal): Promise<readonly FileReferenceCandidate[]>
+}
+
+async function mount(options: { withAgent?: boolean, plusFirst?: boolean, locale?: 'en' | 'zh', references?: FileReferenceListing } = {}): Promise<{
   ctx: Context
   screen: FakeScreen
   components: FakeMayflyComponents
@@ -69,6 +70,7 @@ async function mount(options: { withAgent?: boolean, plusFirst?: boolean, locale
   const followup = vi.fn()
   const agent = { id: session.id, session, status: 'idle', followup } as unknown as Agent
   ctx.provide('testSession', { current: options.withAgent === false ? null : agent, modelRef: undefined })
+  if (options.references !== undefined) ctx.provide('fileReferences', options.references)
   const inputFiber = await ctx.plugin(inputPlugin)
   const editor = components.editors.at(-1)!
   const editorRoot = screen.children.at(-1)!
@@ -822,253 +824,197 @@ describe('mayfly-editor-plus argument-hint ghost', () => {
   })
 })
 
+/** A recording native file-reference service: static or query-driven candidates. */
+function references(candidates: readonly FileReferenceCandidate[] | ((query: string) => readonly FileReferenceCandidate[])) {
+  const calls: Array<{ readonly agent: Agent, readonly query: string, readonly signal: AbortSignal }> = []
+  const list = vi.fn(async (agent: Agent, query: string, aborted: AbortSignal) => {
+    calls.push({ agent, query, signal: aborted })
+    return typeof candidates === 'function' ? candidates(query) : candidates
+  })
+  return { list, calls }
+}
+
+const file = (path: string): FileReferenceCandidate => ({ path, kind: 'file' })
+const directory = (path: string): FileReferenceCandidate => ({ path, kind: 'directory' })
+
 describe('mayfly-editor-plus @ mentions', () => {
-  it.each(['win32', 'linux'] as const)('routes unsupported %s path forms to the filesystem even with fd installed', async platform => {
-    fileMention.setFdProbe(async () => 'fd')
-    const { ctx, editor, components } = await mount()
-    await fileMention.detectFdPath(ctx.mayflyInteractionState.fdProbe)
-    const classify = mentionPaths.requiresFilesystemMention
-    vi.spyOn(mentionPaths, 'requiresFilesystemMention').mockImplementation(token => classify(token, platform))
-    vi.spyOn(fileMention, 'listDirectoryMentions').mockResolvedValue(null)
-    const fallback = vi.spyOn(fileMention, 'fsMentionSuggestions').mockResolvedValue({ prefix: '@', items: [{ value: '@found', label: 'found' }] })
-    const delegated = vi.fn(async () => null)
-    components.mentionGetSuggestions = delegated
+  it('lists native candidates through the official @ grammar', async () => {
+    const refs = references([file('src/a.ts'), directory('src')])
+    const { editor, agent } = await mount({ references: refs })
     const provider = editor.autocompleteProvider as MayflyAutocompleteProvider
-    const tokens = platform === 'win32' ? ['@C:\\Users\\de', '@C:/Users/de', "@'a b"] : ['@literal\\name', "@'a b"]
-    for (const token of tokens) {
-      const controller = new AbortController()
-      expect(await provider.getSuggestions([token], 0, token.length, { signal: controller.signal })).toMatchObject({ items: [{ value: '@found' }] })
-      expect(fallback).toHaveBeenLastCalledWith(process.cwd(), token, expect.any(AbortSignal), undefined, expect.anything())
-      const forwarded = fallback.mock.lastCall![2]
-      controller.abort()
-      expect(forwarded.aborted).toBe(true)
-    }
-    expect(delegated).not.toHaveBeenCalled()
-    fallback.mockClear()
-    const ordinary = platform === 'win32' ? '@\\\\server\\share\\fi' : '@src/co'
-    expect(await provider.getSuggestions([ordinary], 0, ordinary.length, { signal: signal() })).toBeNull()
-    expect(delegated).toHaveBeenCalledOnce()
-    expect(fallback).not.toHaveBeenCalled()
-  })
-  const savedPath = process.env.PATH
-  const savedCwd = process.cwd()
-
-  afterEach(() => {
-    process.env.PATH = savedPath
-    process.chdir(savedCwd)
-  })
-
-  /** Re-attach so the autocomplete provider picks up the current cwd. */
-  function reattach(ctx: Context): void {
-    ctx.emit('mayfly/input-editor-changed')
-  }
-
-  /**
-   * A project fixture: a source tree, a hidden tree, a spaced filename, and
-   * node_modules (the one tree the fallback never yields).
-   */
-  function fixture(): string {
-    const dir = mkdtempTracked('mayfly-plus-files-')
-    mkdirSync(join(dir, 'src'))
-    writeFileSync(join(dir, 'src', 'a.ts'), 'a')
-    writeFileSync(join(dir, 'src', 'b.ts'), 'b')
-    writeFileSync(join(dir, 'top.md'), 'top')
-    writeFileSync(join(dir, 'a b.txt'), 'spaced')
-    mkdirSync(join(dir, '.hidden'))
-    writeFileSync(join(dir, '.hidden', 'secret.ts'), 'x')
-    mkdirSync(join(dir, 'node_modules', 'pkg'), { recursive: true })
-    writeFileSync(join(dir, 'node_modules', 'pkg', 'i.js'), 'x')
-    return dir
-  }
-
-  it('delegates @ suggestions to the L0 mention source while fd is available', async () => {
-    fileMention.setFdProbe(async () => 'fd')
-    const { ctx, editor, components } = await mount()
-    await fileMention.detectFdPath(ctx.mayflyInteractionState.fdProbe)
-    const delegated = vi.fn<MayflyAutocompleteProvider['getSuggestions']>(async () => ({
-      items: [{ value: '@src/a.ts', label: 'src/a.ts' }],
-      prefix: '@sr',
-    }))
-    components.mentionGetSuggestions = delegated
-    const provider = editor.autocompleteProvider as MayflyAutocompleteProvider
-    const options = { signal: signal() }
-    const suggestions = await provider.getSuggestions(['see @sr'], 0, 7, options)
+    const suggestions = await provider.getSuggestions(['see @sr'], 0, 7, { signal: signal() })
     expect(suggestions).toEqual({
-      items: [{ value: '@src/a.ts', label: 'src/a.ts' }],
+      items: [
+        { value: '@src/a.ts', label: 'src/a.ts' },
+        { value: '@src/', label: 'src/' },
+      ],
       prefix: '@sr',
     })
-    expect(delegated).toHaveBeenCalledOnce()
-    const delegatedCall = delegated.mock.calls[0]!
-    expect(delegatedCall.slice(0, 3)).toEqual([['see @sr'], 0, 7])
-    expect(delegatedCall[3]).toMatchObject({ signal: expect.any(AbortSignal) })
-    expect(delegatedCall[3].signal.aborted).toBe(false)
+    expect(refs.list).toHaveBeenCalledWith(agent, 'sr', expect.any(AbortSignal))
   })
 
-  it('applies an @ completion through the delegated source', async () => {
-    const { editor, components } = await mount()
-    components.mentionGetSuggestions = async () => ({
-      items: [{ value: '@src/a.ts', label: 'a.ts' }],
-      prefix: '@sr',
-    })
-    components.mentionApplyCompletion = (_lines, cursorLine, cursorCol) => ({
-      lines: ['applied'],
-      cursorLine,
-      cursorCol,
-    })
+  it('passes the exact displayed Agent and follows a replacement with the same session', async () => {
+    const refs = references([file('a.ts')])
+    const { ctx, editor, agent } = await mount({ references: refs })
     const provider = editor.autocompleteProvider as MayflyAutocompleteProvider
-    const item = (await provider.getSuggestions(['see @sr'], 0, 7, { signal: signal() }))!.items[0]!
-    const applied = provider.applyCompletion(['see @sr'], 0, 7, item, '@sr')
-    expect(applied).toEqual({ lines: ['applied'], cursorLine: 0, cursorCol: 7 })
+    await provider.getSuggestions(['@a'], 0, 2, { signal: signal() })
+    expect(refs.calls[0]?.agent).toBe(agent)
+    inDirectory(ctx, agent, '/repo/elsewhere')
+    const replacement = (ctx.get('testSession') as { current: Agent }).current
+    await provider.getSuggestions(['@a'], 0, 2, { signal: signal() })
+    expect(refs.calls[1]?.agent).toBe(replacement)
+    expect(refs.calls[1]?.agent).not.toBe(agent)
   })
 
-  it('gates explicit file completion on an @ token', async () => {
+  it('quotes spaced candidates, keeps an opened quote, and closes a directory chip', async () => {
+    const refs = references([file('a b.txt'), directory('a dir')])
+    const { editor } = await mount({ references: refs })
+    const provider = editor.autocompleteProvider as MayflyAutocompleteProvider
+    const suggestions = await provider.getSuggestions(['see @"a'], 0, 7, { signal: signal() })
+    expect(suggestions).toEqual({
+      items: [
+        { value: '@"a b.txt"', label: 'a b.txt' },
+        { value: '@"a dir/"', label: 'a dir/' },
+      ],
+      prefix: '@"a',
+    })
+    // A file takes the trailing space after its closing quote.
+    expect(provider.applyCompletion(['see @"a'], 0, 7, suggestions!.items[0]!, '@"a'))
+      .toEqual({ lines: ['see @"a b.txt" '], cursorLine: 0, cursorCol: 15 })
+    // A directory stays open: no space, cursor inside the closing quote.
+    expect(provider.applyCompletion(['see @"a'], 0, 7, suggestions!.items[1]!, '@"a'))
+      .toEqual({ lines: ['see @"a dir/"'], cursorLine: 0, cursorCol: 12 })
+  })
+
+  it('quotes a spaced file from an unquoted token and reuses an existing close quote', async () => {
+    const refs = references([file('a b.txt')])
+    const { editor } = await mount({ references: refs })
+    const provider = editor.autocompleteProvider as MayflyAutocompleteProvider
+    const item = (await provider.getSuggestions(['see @a'], 0, 6, { signal: signal() }))!.items[0]!
+    expect(item.value).toBe('@"a b.txt"')
+    expect(provider.applyCompletion(['see @a'], 0, 6, item, '@a'))
+      .toEqual({ lines: ['see @"a b.txt" '], cursorLine: 0, cursorCol: 15 })
+    // An open quoted token whose typed closing quote already follows the
+    // cursor: accepting replaces it instead of doubling it.
+    const quotedItem = (await provider.getSuggestions(['see @"a b"'], 0, 9, { signal: signal() }))!.items[0]!
+    expect(provider.applyCompletion(['see @"a b"'], 0, 9, quotedItem, '@"a b'))
+      .toEqual({ lines: ['see @"a b.txt" '], cursorLine: 0, cursorCol: 15 })
+  })
+
+  it('filters paths the official formatter cannot represent', async () => {
+    const refs = references([file('a"b'), file('a\tb')])
+    const { ctx, editor } = await mount({ references: refs })
+    const provider = editor.autocompleteProvider as MayflyAutocompleteProvider
+    expect(await provider.getSuggestions(['@a'], 0, 2, { signal: signal() })).toBeNull()
+    expect(ctx.mayflyUiInteraction.notificationSnapshot().at(-1)?.message).toBe('no matching files under the session cwd')
+  })
+
+  it('ignores an @ inside another token and gates explicit completion on the grammar', async () => {
     const { editor } = await mount()
     const provider = editor.autocompleteProvider as MayflyAutocompleteProvider
     expect(provider.shouldTriggerFileCompletion?.(['@x'], 0, 2)).toBe(true)
     expect(provider.shouldTriggerFileCompletion?.(['see @x'], 0, 6)).toBe(true)
+    expect(provider.shouldTriggerFileCompletion?.(['see @"a b'], 0, 9)).toBe(true)
+    expect(provider.shouldTriggerFileCompletion?.(['email@example.com'], 0, 17)).toBe(false)
+    expect(provider.shouldTriggerFileCompletion?.(['x=@foo'], 0, 6)).toBe(false)
     expect(provider.shouldTriggerFileCompletion?.(['hello'], 0, 5)).toBe(false)
     expect(provider.shouldTriggerFileCompletion?.(['/cmd'], 0, 4)).toBe(false)
     expect(provider.shouldTriggerFileCompletion?.([], 0, 0)).toBe(false)
+    // An email address's @ is not a token, so no service is consulted.
+    expect(await provider.getSuggestions(['email@example.com'], 0, 17, { signal: signal() })).toBeNull()
   })
 
-  it('lists one level for a bare @ without consulting fd, and drills on request', async () => {
-    fileMention.setFdProbe(async () => 'fd')
-    const { ctx, editor, components } = await mount()
-    await fileMention.detectFdPath(ctx.mayflyInteractionState.fdProbe)
-    const delegated = vi.fn(async () => ({ items: [{ value: '@zz.ts', label: 'zz.ts' }], prefix: '@' }))
-    components.mentionGetSuggestions = delegated
-    const root = fixture()
-    process.chdir(root)
-    reattach(ctx)
-    await fileMention.detectFdPath(ctx.mayflyInteractionState.fdProbe)
+  it('returns no candidates without the native service and never shells out', async () => {
+    const { editor } = await mount()
     const provider = editor.autocompleteProvider as MayflyAutocompleteProvider
-    // The empty-tail token takes the deterministic one-level listing —
-    // fd is never asked.
-    const bare = await provider.getSuggestions(['@'], 0, 1, { signal: signal() })
-    expect(bare?.items.map(item => item.value)).toEqual(['@.hidden/', '@src/', '@"a b.txt"', '@top.md'])
-    const drill = await provider.getSuggestions(['@src/'], 0, 5, { signal: signal() })
-    expect(drill?.items.map(item => item.value)).toEqual(['@src/a.ts', '@src/b.ts'])
-    expect(delegated).not.toHaveBeenCalled()
+    expect(await provider.getSuggestions(['@src'], 0, 4, { signal: signal() })).toBeNull()
   })
 
-  it('completes @ in the displayed session directory and follows it when the session moves', async () => {
-    fileMention.setFdProbe(async () => null)
-    const { ctx, editor, agent } = await mount()
-    const launch = fixture()
-    process.chdir(launch)
-    const other = mkdtempTracked('mayfly-plus-other-')
-    writeFileSync(join(other, 'only-here.md'), 'x')
-    inDirectory(ctx, agent, other)
-    reattach(ctx)
+  it('reports no matches, stays quiet when aborted, and survives a failing service', async () => {
+    const refs = references([])
+    const { ctx, editor } = await mount({ references: refs })
     const provider = editor.autocompleteProvider as MayflyAutocompleteProvider
-    const bare = await provider.getSuggestions(['@'], 0, 1, { signal: signal() })
-    expect(bare?.items.map(item => item.value)).toEqual(['@only-here.md'])
-    inDirectory(ctx, agent, launch)
-    const moved = await provider.getSuggestions(['@'], 0, 1, { signal: signal() })
-    expect(moved?.items.map(item => item.value)).toContain('@top.md')
-  })
-
-  it('falls back to the fs scanner for fd-less query-bearing tokens', async () => {
-    fileMention.setFdProbe(async () => null)
-    const { ctx, editor } = await mount()
-    const root = fixture()
-    process.chdir(root)
-    reattach(ctx)
-    const provider = editor.autocompleteProvider as MayflyAutocompleteProvider
-    const scoped = await provider.getSuggestions(['@src/a'], 0, 6, { signal: signal() })
-    expect(scoped?.items).toEqual([{ value: '@src/a.ts', label: 'src/a.ts' }])
-  })
-
-  it('returns null when the fallback finds no match in an unreadable tree', async () => {
-    fileMention.setFdProbe(async () => null)
-    const { ctx, editor } = await mount()
-    const root = fixture()
-    mkdirSync(join(root, 'locked'))
-    chmodSync(join(root, 'locked'), 0o000)
-    process.chdir(root)
-    reattach(ctx)
-    const provider = editor.autocompleteProvider as MayflyAutocompleteProvider
-    const suggestions = await provider.getSuggestions(['@zzz'], 0, 4, { signal: signal() })
-    expect(suggestions).toBeNull()
-  })
-
-  it('caps the fs fallback at the suggestion limit', async () => {
-    fileMention.setFdProbe(async () => null)
-    const { ctx, editor } = await mount()
-    const root = mkdtempTracked('mayfly-plus-many-')
-    for (let index = 0; index < 205; index += 1) writeFileSync(join(root, `f${String(index).padStart(3, '0')}.txt`), 'x')
-    process.chdir(root)
-    reattach(ctx)
-    const provider = editor.autocompleteProvider as MayflyAutocompleteProvider
-    const suggestions = await provider.getSuggestions(['@'], 0, 1, { signal: signal() })
-    expect(suggestions?.items).toHaveLength(fileMention.MAX_FALLBACK_SUGGESTIONS)
-  })
-
-  it('falls back to the fs scanner when the fd source throws mid-session', async () => {
-    fileMention.setFdProbe(async () => 'fd')
-    const { ctx, editor, components } = await mount()
-    await fileMention.detectFdPath(ctx.mayflyInteractionState.fdProbe)
-    components.mentionGetSuggestions = async () => {
-      throw new Error('fd spawn failed')
-    }
-    const root = fixture()
-    process.chdir(root)
-    reattach(ctx)
-    await fileMention.detectFdPath(ctx.mayflyInteractionState.fdProbe)
-    const provider = editor.autocompleteProvider as MayflyAutocompleteProvider
-    const suggestions = await provider.getSuggestions(['@top'], 0, 4, { signal: signal() })
-    expect(suggestions?.items).toEqual([{ value: '@top.md', label: 'top.md' }])
-  })
-
-  it('notices in the notification lane when the mention matches nothing', async () => {
-    fileMention.setFdProbe(async () => null)
-    const { ctx, editor } = await mount()
-    const root = fixture()
-    process.chdir(root)
-    reattach(ctx)
-    const provider = editor.autocompleteProvider as MayflyAutocompleteProvider
-    // The empty-session-cwd corner: a directory with nothing to list (and
-    // equally a prefix with no match) closes the dropdown without items —
-    // the notification lane carries the feedback instead of silence.
-    const suggestions = await provider.getSuggestions(['@zzz'], 0, 4, { signal: signal() })
-    expect(suggestions).toBeNull()
+    expect(await provider.getSuggestions(['@zzz'], 0, 4, { signal: signal() })).toBeNull()
     expect(ctx.mayflyUiInteraction.notificationSnapshot().at(-1)?.message).toBe('no matching files under the session cwd')
-  })
-
-  it('stays quiet when an aborted mention round returns nothing', async () => {
-    fileMention.setFdProbe(async () => null)
-    const { ctx, editor } = await mount()
-    const root = fixture()
-    process.chdir(root)
-    reattach(ctx)
-    const provider = editor.autocompleteProvider as MayflyAutocompleteProvider
+    const before = ctx.mayflyUiInteraction.notificationSnapshot().length
     const controller = new AbortController()
     controller.abort()
-    const suggestions = await provider.getSuggestions(['@zzz'], 0, 4, { signal: controller.signal })
-    expect(suggestions).toBeNull()
-    expect(ctx.mayflyUiInteraction.notificationSnapshot().map(item => item.message)).not.toContain('no matching files under the session cwd')
+    expect(await provider.getSuggestions(['@zzz'], 0, 4, { signal: controller.signal })).toBeNull()
+    expect(ctx.mayflyUiInteraction.notificationSnapshot()).toHaveLength(before)
+    refs.list.mockRejectedValueOnce(new Error('provider disposed'))
+    expect(await provider.getSuggestions(['@zzz'], 0, 4, { signal: signal() })).toBeNull()
+    expect(ctx.mayflyUiInteraction.notificationSnapshot()).toHaveLength(before)
   })
 })
 
 describe('mayfly-editor-plus: the mention an @ completion leaves behind', () => {
   it('remembers a finished file mention as a token, and nothing else the completion leaves', async () => {
-    const { editor, components, ctx } = await mount()
-    const applied = { lines: ['see @src/a.ts '], cursorLine: 0, cursorCol: 14 }
-    components.mentionGetSuggestions = async () => ({ items: [{ value: '@src/a.ts', label: 'a.ts' }], prefix: '@sr' })
-    components.mentionApplyCompletion = () => applied
+    const refs = references([file('src/a.ts')])
+    const { ctx, editor } = await mount({ references: refs })
     const provider = editor.autocompleteProvider as MayflyAutocompleteProvider
     const item = (await provider.getSuggestions(['see @sr'], 0, 7, { signal: signal() }))!.items[0]!
-    provider.applyCompletion(['see @sr'], 0, 7, item, '@sr')
-    expect([...ctx.mayflyInteractionState.mentions]).toEqual(['@src/a.ts'])
-    // A completion that does not end in a space is still open for drill-down: no mention yet.
-    components.mentionApplyCompletion = () => ({ lines: ['see @src/'], cursorLine: 0, cursorCol: 9 })
-    provider.applyCompletion(['see @sr'], 0, 7, item, '@sr')
+    const applied = provider.applyCompletion(['see @sr'], 0, 7, item, '@sr')
+    expect(applied.lines).toEqual(['see @src/a.ts '])
     expect([...ctx.mayflyInteractionState.mentions]).toEqual(['@src/a.ts'])
     // A bare @ with a space is no mention, and neither is a space after plain words.
-    components.mentionApplyCompletion = () => ({ lines: ['see @ '], cursorLine: 0, cursorCol: 5 })
-    provider.applyCompletion(['see @'], 0, 5, item, '@')
-    components.mentionApplyCompletion = () => ({ lines: ['hello '], cursorLine: 0, cursorCol: 6 })
-    provider.applyCompletion(['hello'], 0, 5, item, 'hello')
+    provider.applyCompletion(['see @'], 0, 5, { value: '@', label: '' }, '@')
+    provider.applyCompletion(['hello'], 0, 5, { value: 'hello', label: 'hello' }, 'hello')
     expect([...ctx.mayflyInteractionState.mentions]).toEqual(['@src/a.ts'])
+  })
+
+  it('keeps a directory open for drill-down without remembering a mention', async () => {
+    const refs = references([directory('src')])
+    const { ctx, editor } = await mount({ references: refs })
+    const provider = editor.autocompleteProvider as MayflyAutocompleteProvider
+    const item = (await provider.getSuggestions(['see @sr'], 0, 7, { signal: signal() }))!.items[0]!
+    const applied = provider.applyCompletion(['see @sr'], 0, 7, item, '@sr')
+    expect(applied).toEqual({ lines: ['see @src/'], cursorLine: 0, cursorCol: 9 })
+    expect([...ctx.mayflyInteractionState.mentions]).toEqual([])
+  })
+
+  it('remembers a quoted file mention as the full quoted token', async () => {
+    const refs = references([file('a b.txt')])
+    const { ctx, editor } = await mount({ references: refs })
+    const provider = editor.autocompleteProvider as MayflyAutocompleteProvider
+    const item = (await provider.getSuggestions(['see @"a'], 0, 7, { signal: signal() }))!.items[0]!
+    const applied = provider.applyCompletion(['see @"a'], 0, 7, item, '@"a')
+    expect(applied).toEqual({ lines: ['see @"a b.txt" '], cursorLine: 0, cursorCol: 15 })
+    expect([...ctx.mayflyInteractionState.mentions]).toEqual(['@"a b.txt"'])
+  })
+
+
+})
+
+describe('mayfly-editor-plus additional paths', () => {
+  it('resolves the session cwd from the displayed Agent and the launch directory without one', async () => {
+    const mounted = await mount()
+    inDirectory(mounted.ctx, mounted.agent, '/tmp/workspace')
+    expect(editorPlus.sessionCwd(mounted.ctx)).toBe('/tmp/workspace')
+    mounted.ctx.get('testSession') as unknown as { current: unknown }
+    ;(mounted.ctx.get('testSession') as { current: unknown }).current = null
+    expect(editorPlus.sessionCwd(mounted.ctx)).toBe(process.cwd())
+  })
+
+  it('does not remember a mention value that is not an @ token', async () => {
+    const refs = references([file('src/a.ts')])
+    const mounted = await mount({ references: refs })
+    const provider = mounted.editor.autocompleteProvider as MayflyAutocompleteProvider
+    const before = [...mounted.ctx.mayflyInteractionState.mentions]
+    const applied = provider.applyCompletion(['see @a'], 0, 7, { value: 'plain', label: 'plain' }, '@a')
+    expect(applied.lines[0]).toContain('plain')
+    expect([...mounted.ctx.mayflyInteractionState.mentions]).toEqual(before)
+  })
+
+  it('drops a file listing that resolves after its request was aborted', async () => {
+    const gate = Promise.withResolvers<readonly FileReferenceCandidate[]>()
+    const mounted = await mount({ references: { list: vi.fn(() => gate.promise) } })
+    const provider = mounted.editor.autocompleteProvider as MayflyAutocompleteProvider
+    const before = mounted.ctx.mayflyUiInteraction.notificationSnapshot().length
+    const controller = new AbortController()
+    const pending = provider.getSuggestions(['@slow'], 0, 5, { signal: controller.signal })
+    controller.abort()
+    gate.resolve([file('src/a.ts')])
+    await expect(pending).resolves.toBeNull()
+    expect(mounted.ctx.mayflyUiInteraction.notificationSnapshot()).toHaveLength(before)
   })
 })

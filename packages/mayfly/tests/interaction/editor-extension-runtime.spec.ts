@@ -1490,3 +1490,16 @@ describe('editor extension completion items: problems, details, and inert rows',
     runtime.dispose()
   })
 })
+
+describe('editor extension definition edges', () => {
+  it('reactivates the same shell without dropping its focus', () => {
+    const { runtime } = runtimeFixture()
+    runtime.focused = true
+    const internals = runtime as unknown as { shell: unknown, activateShell(shell: unknown): void, focusTarget: { focused: boolean } }
+    expect(internals.focusTarget.focused).toBe(true)
+    internals.activateShell(internals.shell)
+    // The same shell keeps the focus it already had.
+    expect(internals.focusTarget.focused).toBe(true)
+    runtime.dispose()
+  })
+})

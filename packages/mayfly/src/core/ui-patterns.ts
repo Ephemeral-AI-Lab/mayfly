@@ -127,12 +127,15 @@ export function renderSurfaceHead(node: SurfaceChromeNode, width: number, colors
     const room = Math.max(1, available - indent.length)
     rows.push(paint('━'.repeat(available)))
     if (title.length > 0 || badges.length > 0) {
+      const titleWidth = visibleWidth(title)
       const badgeRoom = badges.length === 0 ? 0 : visibleWidth(badges) + 2
-      const titleRoom = Math.max(1, room - badgeRoom)
+      // The title outranks the badges: keep the badge only when the whole title still fits beside it.
+      const showBadges = badgeRoom > 0 && titleWidth + badgeRoom <= room
+      const titleRoom = Math.max(1, room - (showBadges ? badgeRoom : 0))
       // A right-aligned title keeps its distinguishing end (a path), so a long one loses its start.
-      const fitted = visibleWidth(title) <= titleRoom ? title : node.titleAlign === 'right' ? truncateMiddle(title, titleRoom, 'start') : `${sliceByColumn(title, 0, Math.max(0, titleRoom - ELLIPSIS_WIDTH), true)}${ELLIPSIS}`
+      const fitted = titleWidth <= titleRoom ? title : node.titleAlign === 'right' ? truncateMiddle(title, titleRoom, 'start') : `${sliceByColumn(title, 0, Math.max(0, titleRoom - ELLIPSIS_WIDTH), true)}${ELLIPSIS}`
       const heading = title.length === 0 ? '' : `\x1b[1m${paint(fitted)}\x1b[22m`
-      rows.push(fit(`${indent}${[heading, badgeRoom > 0 && titleRoom >= visibleWidth(fitted) ? badges : ''].filter(part => part.length > 0).join('  ')}`, available))
+      rows.push(fit(`${indent}${[heading, showBadges && visibleWidth(fitted) === titleWidth ? badges : ''].filter(part => part.length > 0).join('  ')}`, available))
     }
     if (node.subtitle !== undefined) rows.push(fit(`${indent}${colors.muted(sanitizePluginText(node.subtitle).replace(/[\r\n]+/gu, ' '))}`, available))
     rows.push('')

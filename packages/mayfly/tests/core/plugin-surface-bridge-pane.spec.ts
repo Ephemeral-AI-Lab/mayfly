@@ -124,6 +124,7 @@ function createRuntime(mode: 'main' | 'alternate' = 'alternate', initialColumns 
     },
     showOverlay() { throw new Error('pane test opened an overlay') },
     contentTail: () => undefined,
+    setContentScrollbarColors() {},
     addChild() {},
     addBottomChild() {},
     requestRender() {},
@@ -812,9 +813,9 @@ describe('direct pane surface renderer', () => {
       calls[1]!.result.resolve()
       await flush(8)
       const replacementRows = entry(f.runtime.surfaces, 'replace').component.render(30)
-      expect(plainText(replacementRows[0]!)).toContain('╭ Replacement')
-      expect(replacementRows[1]).toContain('new pane')
-      expect(replacementRows.at(-1)).toContain('╰')
+      const replacementText = replacementRows.map(plainText).join('\n')
+      expect(replacementText).toContain('Replacement')
+      expect(replacementText).toContain('new pane')
       expect((oldComponent as MayflyFocusable).focused).toBe(false)
       expect(oldComponent.render(30)).toEqual([])
       expect(getLayoutNode(oldComponent)).toMatchObject({ type: 'vstack', entries: [] })
@@ -1147,4 +1148,27 @@ it('requests independent frames for pane loaders and releases their clock on rem
     vi.advanceTimersByTime(800)
     expect(repaint).not.toHaveBeenCalled()
   } finally { await bench.dispose(); vi.useRealTimers() }
+})
+
+describe('direct pane surface renderer: disposed records', () => {
+  it('ignores replacement and a second dispose after the pane was disposed', async () => {
+    const f = await fixture()
+    try {
+      const handle = f.register({ id: 'dead-pane', render: () => ui.text('pane text') })
+      await flush(8)
+      const component = entry(f.runtime.surfaces, 'dead-pane').component as unknown as {
+        replace(compiled: null): void
+        dispose(): void
+        render(width: number): string[]
+      }
+      handle.dispose()
+      await flush(8)
+      // A record that already left the lane cannot be replaced or disposed twice.
+      component.replace(null)
+      component.dispose()
+      expect(component.render(40)).toEqual([])
+    } finally {
+      await f.dispose()
+    }
+  })
 })

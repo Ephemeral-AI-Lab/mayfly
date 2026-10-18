@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Check the catalog scenarios against their goldens: each scenario runs against the real product at its sizes (four at
- * a time), and every checkpoint is compared with `script/scenarios/golden/`. `--update` accepts what the product paints
+ * a time by default; `--parallel N` boots more, and every checkpoint is compared with `script/scenarios/golden/`. `--update` accepts what the product paints
  * now (and removes goldens no checkpoint writes when every scenario runs at every size), and repaints the Website app
  * shots painted from an accepted golden (`script/shots/app.mjs`). The results, with the rows of
  * each difference, go to `.artifacts/verify/scenarios.json` for `pnpm run check`. `--png` renders each checkpoint that
@@ -34,7 +34,7 @@ export const RESULTS = '.artifacts/verify/scenarios.json'
  * @returns {{ options: { names: string[], sizes: 'all' | 'first', update: boolean, parallel: number } } | { error: string }}
  */
 export function parseScenariosArgs(argv) {
-  const options = { names: [], sizes: 'all', update: false, parallel: 4, png: false }
+  const options = { names: [], sizes: 'all', update: false, parallel: Number(process.env.MAYFLY_SCENARIO_PARALLEL ?? 1), png: false }
   for (let index = 0; index < argv.length; index += 1) {
     const value = argv[index]
     if (value === '--') continue

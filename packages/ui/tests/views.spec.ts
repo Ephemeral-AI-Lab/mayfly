@@ -90,6 +90,23 @@ describe('setSummary', () => {
     expect(deltas).toHaveBeenCalledTimes(2)
   })
 
+  it('treats a fresh summary of equal content as no publish', async () => {
+    const ctx = await api()
+    const deltas = vi.fn()
+    const pane = ctx.mayflyPanes.register(view('test.agents', { summary: { node: summaryNode } }), ui.text('panel'))
+    ctx.mayflyPanes.subscribe(deltas)
+    deltas.mockClear()
+    const before = ctx.mayflyPanes.list()[0]!
+    // A producer rebuilds the same small tree every tick: a new object with equal content.
+    pane.setSummary({ node: ui.richText([{ text: 'Agents 5', tone: 'muted' }]) })
+    expect(deltas).not.toHaveBeenCalled()
+    expect(ctx.mayflyPanes.list()[0]).toBe(before)
+    // A genuinely changed node still publishes.
+    pane.setSummary({ node: ui.richText([{ text: 'Agents 6', tone: 'muted' }]) })
+    expect(deltas).toHaveBeenCalledTimes(1)
+    expect(ctx.mayflyPanes.list()[0]).not.toBe(before)
+  })
+
   it('keeps the summary across a panel publish and does not disturb an in-flight refresh', async () => {
     const ctx = await api()
     let release!: () => void

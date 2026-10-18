@@ -12,10 +12,11 @@
  * unknown, the kimi cadences) refreshed asynchronously by the controller
  * timer. Rendering
  * only reads the latest immutable status snapshot and never starts a process.
- * The working directory comes from the app-owned current-session snapshot,
- * falling back to `process.cwd()`, and a session switch rebuilds the cache
- * for the new cwd. Outside a git repository (or on a failed branch probe)
- * the entry renders '' and occupies nothing. The git
+ * The working directory comes from the native `workingDirectory` projection,
+ * with the Session header's original project as the fallback before a change
+ * is committed; a session switch or a `workingDirectory` change rebuilds the
+ * cache for the new directory. Outside a git repository (or on a failed
+ * branch probe) the entry renders '' and occupies nothing. The git
  * invocation and the clock are module-level replaceable so tests inject
  * fakes (the `editor-plus` runner precedent).
  *
@@ -24,15 +25,19 @@
 
 import { execFile } from 'node:child_process'
 import type { Context } from '@deepseek-ai/cordis'
+import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { MayflyStatusNode } from '@ephemeral-ai/mayfly-ui'
+import type {} from '@deepseek-ai/dsh-session-projection'
+import type {} from '@deepseek-ai/dsh-working-directory'
 import type { SessionFactsService } from './session-facts.ts'
 import { SHED, shedNode } from './status-shed.ts'
+import { sessionDirectory } from '../internal/session-directory.ts'
 
 /** Stable Cordis plugin name. */
 export const name = 'mayfly-status-git'
 
 /** Services required before the git entry can register. */
-export const inject = ['mayflyStatus', 'mayflySessionFacts']
+export const inject = ['mayflyStatus', 'mayflySessionFacts', 'sessionProjections']
 
 /** Branch probe cadence in milliseconds. */
 export const BRANCH_TTL_MS = 5_000
@@ -276,14 +281,17 @@ export function formatGitBadge(status: GitBadgeStatus | GitUnknownBadgeStatus): 
 }
 
 /**
- * Register the git entry. Builds the cache for the current session's cwd on
- * load and rebuilds it on session snapshot changes. A generation fence drops
- * probes that settle after the selected working directory changed.
+ * Register the git entry. Builds the cache for the current session's
+ * directory on load and rebuilds it on Agent and native `workingDirectory`
+ * changes. A generation fence drops probes that settle after the selected
+ * working directory changed.
  * @param ctx - plugin context.
  */
 export function apply(ctx: Context): void {
   const facts = ctx.get('mayflySessionFacts') as SessionFactsService
-  let cwd = facts.currentAgent?.session.header.cwd ?? process.cwd()
+  let agent: Agent | null = facts.currentAgent
+  const directory = (): string => agent === null ? process.cwd() : sessionDirectory(ctx, agent.session)
+  let cwd = directory()
   let cache = createGitBadgeCache(cwd)
   let text = ''
   let probeGeneration = 0
@@ -307,16 +315,25 @@ export function apply(ctx: Context): void {
   }
   void publish(true)
 
-  const offAgent = facts.subscribeAgent((agent) => {
-    const next = agent?.session.header.cwd ?? process.cwd()
+  const rebuild = (next: string): void => {
     if (next === cwd) return
     cwd = next
     cache = createGitBadgeCache(cwd)
     probeGeneration += 1
     inFlight = undefined
     void publish(true)
+  }
+  const offAgent = facts.subscribeAgent((next) => {
+    agent = next
+    rebuild(directory())
   })
-  ctx.effect(() => () => offAgent())
+  const offProjection = ctx.sessionProjections.onChanged((session, key) => {
+    if (key === 'workingDirectory' && session === agent?.session) rebuild(directory())
+  })
+  ctx.effect(() => () => {
+    offAgent()
+    offProjection()
+  })
 
   const timer = gitStatusTimers.setInterval(() => { void publish() }, BRANCH_TTL_MS)
   timer.unref()

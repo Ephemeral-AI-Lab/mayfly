@@ -16,6 +16,7 @@ import {
   agentMetricsText,
   agentTreeItems,
   formatAgentElapsed,
+  WorkflowLabelCache,
   type MayflySubagentTreeEntry,
 } from '../../src/interaction/agents-command.ts'
 import { liveAgentDescendantCount } from '../../src/interaction/agents-stop.ts'
@@ -56,6 +57,28 @@ describe('agent tree models', () => {
     expect(agentMetricsText({ liveChars: 2_200, toolCount: 0, tokens: 0, activeSince: 0 }, 20_000)).toBe('↓550 · 0 tools · 0 tok · 20s')
     expect(agentMetricsText({ liveChars: 0 }, 1_000)).toBe('')
     expect(agentMetricsText({ liveChars: 3 }, 1_000)).toBe('')
+  })
+
+  it('bounds workflow labels with a least-recently-used cache', () => {
+    const labels = new WorkflowLabelCache(3)
+    labels.remember('a', 'Alpha')
+    labels.remember('b', 'Beta')
+    labels.remember('c', 'Gamma')
+    expect(labels.size).toBe(3)
+    // Reading a label keeps it; the least recently used one goes when the cache is full.
+    expect(labels.get('a')).toBe('Alpha')
+    labels.remember('d', 'Delta')
+    expect(labels.size).toBe(3)
+    expect(labels.get('b')).toBeUndefined()
+    expect(labels.get('a')).toBe('Alpha')
+    expect(labels.get('d')).toBe('Delta')
+    // A blank label is not stored, and a repeated child keeps one entry.
+    labels.remember('e', '   ')
+    labels.remember('a', 'Alpha two')
+    expect(labels.size).toBe(3)
+    expect(labels.get('a')).toBe('Alpha two')
+    labels.clear()
+    expect(labels.size).toBe(0)
   })
 
   it('counts only live descendants inside the selected subtree', () => {
@@ -207,7 +230,7 @@ async function mountCommand(options: { readonly display?: boolean, readonly curr
     },
     followup: async () => 'message-1',
     interrupt: () => {},
-    drainContinuableChildren: harness.drain,
+    drainChildren: harness.drain,
   } as never)
   harness.fiber = await ctx.plugin(agentsPlugin)
   if (options.display === false) return harness
@@ -423,14 +446,24 @@ describe('mayfly-agents-command', () => {
     await rig.fiber.dispose()
   })
 
+  it('hides the /btw side child and refuses to open an external execution', async () => {
+    const rig = await mountCommand()
+    rig.tree = [child('btw', { label: 'btw' }), child('remote', { mode: 'external', label: 'remote' })]
+    expect(await execute(rig)).toEqual({ kind: 'success' })
+    expect(browserRows(rig)).toContain('remote')
+    expect(browserRows(rig)).not.toContain('btw')
+    await selectBrowser(browser(rig), 'remote')
+    expect(rig.opened).toEqual([])
+    await rig.fiber.dispose()
+  })
+
   it('defaults to No and requires selecting Yes before stopping a continuable subagent', async () => {
     const rig = await mountCommand()
     rig.tree = [child('child', { label: 'worker' })]
     expect(await execute(rig)).toEqual({ kind: 'success' })
     const model = browser(rig)
     model.invoke('stop')
-    expect(JSON.stringify(model.decisionNode)).toContain('mayfly.decision.no')
-    expect(JSON.stringify(model.decisionNode)).toContain('defaultFocus')
+    expect(JSON.stringify(model.decisionNode)).toContain('mayfly.decision.yes')
     model.answerDecision(false)
     expect(rig.drain).not.toHaveBeenCalled()
     expect(model.disposed).toBe(false)
@@ -467,7 +500,9 @@ describe('mayfly-agents-command', () => {
     rig.tree = [child('child')]
     await execute(rig)
     const model = browser(rig)
+    focusBrowser(model, 'child')
     const compiled = renderRequest(model)
+    compiled.input('/')
     compiled.input('q')
     expect(model.decisionNode).toBeUndefined()
     expect(model.choice({ pagePath: [], controlId: 'subagents' })?.query).toBe('q')

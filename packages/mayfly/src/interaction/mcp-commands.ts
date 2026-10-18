@@ -13,13 +13,13 @@ import { openAgentOverlay } from './agent-overlay.ts'
 import { interactionTranslator, mountInteractionLocale, observeInteractionLocale } from './locale.ts'
 
 export const name = 'mayfly-mcp-command'
-export const inject = ['commands', 'loader', 'tools', 'mayflyCurrentAgent', 'mayflyOverlays']
-const STATUS_ORDER: readonly McpStatus[] = ['failed', 'no-tools', 'restricted', 'starting', 'reloading', 'synced', 'disabled']
-const STATUS_TONE: Readonly<Record<McpStatus, MayflyTone>> = { synced: 'success', restricted: 'warning', 'no-tools': 'warning', starting: 'muted', failed: 'danger', reloading: 'muted', disabled: 'muted' }
+export const inject = ['commands', 'tools', 'mayflyCurrentAgent', 'mayflyOverlays']
+const STATUS_ORDER: readonly McpStatus[] = ['no-tools', 'restricted', 'synced']
+const STATUS_TONE: Readonly<Record<McpStatus, MayflyTone>> = { synced: 'success', restricted: 'warning', 'no-tools': 'warning' }
 
 export function serverItems(catalog: McpCatalog, t: MayflyTranslate): readonly MayflyListItem[] {
   return catalog.servers.toSorted((left, right) => STATUS_ORDER.indexOf(left.status) - STATUS_ORDER.indexOf(right.status) || left.serverName.localeCompare(right.serverName)).map(server => ({
-    id: server.entryId, label: server.serverName, detail: `${server.transport} · ${t(server.status)} · ${t('{visible}/{registered} tools', { visible: server.toolsVisible.length, registered: server.registeredCount })}`,
+    id: server.entryId, label: server.serverName, detail: `${t(server.status)} · ${t('{visible}/{registered} tools', { visible: server.toolsVisible.length, registered: server.registeredCount })}`,
   }))
 }
 
@@ -35,19 +35,13 @@ export function serverConfigNode(server: McpServerView, t: MayflyTranslate): May
     ]),
     ...server.status === 'no-tools' ? [ui.text(t('No tools registered; connection state is unavailable'), { tone: 'muted' })] : [],
     ...server.status === 'restricted' ? [ui.text(t('Tools are registered but restricted for this Agent'), { tone: 'muted' })] : [],
+    /* No native service reports an MCP client's transport, endpoint, or
+       health. Label the fields unresolved instead of showing a fabricated
+       connection or reading a loader entry. */
     ui.divider({ label: t('Connection') }),
     ui.fields([
-      field(t('Transport'), server.transport), field(t('Endpoint'), server.endpoint),
-      ...server.cwd === undefined ? [] : [field(t('Working directory'), server.cwd)],
-      field(t('Environment keys'), server.envKeys.join(', ') || t('(none)')),
-      field(t('Header keys'), server.headerKeys.join(', ') || t('(none)')),
-    ]),
-    ui.divider({ label: t('Policy') }),
-    ui.fields([
-      ...server.toolCallTimeoutMs === undefined ? [] : [field(t('Tool timeout'), `${server.toolCallTimeoutMs} ms`)],
-      ...server.failOnStartupError === undefined ? [] : [field(t('Fail on startup error'), String(server.failOnStartupError))],
-      field(t('Reconnect'), server.reconnect === undefined ? t('(not resolved)') : t(server.reconnect.enabled ? 'enabled' : 'disabled')),
-      ...server.reconnect === undefined ? [] : [field(t('Backoff'), `${server.reconnect.initialDelayMs} - ${server.reconnect.maxDelayMs} ms`), field(t('Maximum attempts'), String(server.reconnect.maxAttempts))],
+      field(t('Transport'), t('(not resolved)')),
+      field(t('Endpoint'), t('(not resolved)')),
     ]),
   ])
 }

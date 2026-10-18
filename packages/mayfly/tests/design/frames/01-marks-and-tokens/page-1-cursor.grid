@@ -6,11 +6,11 @@ grid 100x7 cursor 4,1
 |→ a cursor in a choose list (the row Enter acts on)
 |→ Default [current]
 |  Accept edits
-|  Full access — managed by policy
+|  Full access        — managed by policy
 styles
 0: 0-98 fg:muted
 1: 0-30 fg:muted
 3: 0-50 fg:muted
-4: 0 fg:primary b; 2-8 fg:text b; 10-18 fg:muted
+4: 0 fg:primary b; 2-8 fg:textStrong b; 10-18 fg:muted
 5: 2-13 fg:text
-6: 2-12 fg:muted; 14-32 fg:muted
+6: 2-12 fg:muted; 21-39 fg:muted

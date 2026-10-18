@@ -14,14 +14,8 @@ import { sessionModeSnapshot } from './mode-commands.ts'
 export const name = 'mayfly-status-mode'
 export const inject = ['mayflyStatus', 'mayflyCurrentAgent', 'sessionProjections']
 
-const MODE_EVENTS: ReadonlySet<string> = new Set([
-  'plan/mode',
-  'permission/preset',
-  'sandbox/mode',
-  'approval/policy',
-  'command/run',
-  'command/done',
-])
+/** The native projections whose change can move either badge. */
+const MODE_KEYS: ReadonlySet<string> = new Set(['plan', 'permissions'])
 
 /** Register the current Agent's independent plan and yolo badges. */
 export function apply(ctx: Context): void {
@@ -42,7 +36,7 @@ export function apply(ctx: Context): void {
   const initial = node()
   let signature = JSON.stringify(initial)
   const registration = ctx.mayflyStatus.register({ id: 'mayfly.status.mode', priority: 2 }, initial)
-  // Every current-session event re-reads the modes; only a changed badge
+  // A native projection change re-reads both modes; only a changed badge
   // republishes (and recompiles the footer).
   const refresh = (): void => {
     const next = node()
@@ -52,19 +46,16 @@ export function apply(ctx: Context): void {
     registration.set(next)
   }
   const offAgent = ctx.mayflyCurrentAgent.subscribe(refresh)
-  const offSession = ctx.on('session/event', (session, event) => {
+  const offProjection = ctx.sessionProjections.onChanged((session, key) => {
     if (session !== ctx.mayflyCurrentAgent.current()?.session) return
-    // Only plan and permission facts can change the badges; stream deltas
-    // and the rest of the session log cannot, so they never re-read the
-    // projections. A preset switch appends `permission/preset` before its
-    // sandbox and approval knobs, so the preset only reads as effective after
-    // the last knob fact; a queued plan is derived from command lifecycle.
-    if (!MODE_EVENTS.has(event.type)) return
+    // Only the plan and permission projections can change the badges; the
+    // change feed already reports the effective post-write value.
+    if (!MODE_KEYS.has(key)) return
     refresh()
   })
   ctx.effect(() => () => {
     offAgent()
-    offSession()
+    offProjection()
     registration.dispose()
   })
 }

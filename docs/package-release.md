@@ -3,7 +3,7 @@
 Mayfly publishes three packages as one `0.1.3-rc.2` lockstep release:
 `@ephemeral-ai/mayfly-ui`, `@ephemeral-ai/mayfly`, and
 `@ephemeral-ai/mayfly-cli`. The exact release order lives in
-`script/package-contract.mjs`. The supported Harness line is `0.2.0-rc.2`.
+`script/package-contract.mjs`. The supported Harness line is `0.2.1-rc.2`.
 
 Package manifests are the build source of truth. Concrete JavaScript exports
 and bins become tsdown entries; TypeScript project references emit declarations.

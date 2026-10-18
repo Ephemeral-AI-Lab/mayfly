@@ -1,0 +1,52 @@
+grid 100x30 cursor none
+|  ● Goal set · Refresh the landing page hero and keep every test green
+|
+|  ● A reviewer runs in the background, the todo list is set, and a watcher rebuilds the styles.
+|
+|  ✓ Subagent(Audit the hero copy) · 0.6s
+|
+|  ✓ TodoWrite · 0.2s
+|
+|  ● Switch pages and watch the rows under each panel: /stats (←/→), /plugin (Alt+←/→), the views
+|    (Alt+↓ then ←/→). None of them moves.
+|
+|  ✻ Worked for 4s · done 09:00
+|━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+|  Stats
+|
+|  Session   Account   History   Models
+|                      ━━━━━━━
+|
+|       Jan Feb Mar  Apr May Jun  Jul Aug  Sep Oct Nov  Dec
+|       ····················································
+|  Mon  ····················································
+|       ····················································
+|  Wed  ····················································
+|       ···················································█
+|  Fri  ···················································
+|       ···················································
+|       Less · ░ ▒ ▓ █ More
+|  All time · Last 7 days · Last 30 days   all workspaces
+|
+|  Enter open · r dates · w workspace · Esc close
+styles
+0: 2-99 fg:#c9c0f0
+2: 2-3 fg:#ededf2
+4: 2-3 fg:#4ec87e; 4-11 fg:#ededf2 b; 12 fg:#9aa3b8; 13-31 fg:#c9c0f0; 32-39 fg:#9aa3b8
+6: 2-3 fg:#4ec87e; 4-12 fg:#ededf2 b; 13-19 fg:#9aa3b8
+8: 2-3 fg:#ededf2
+11: 2-29 fg:#9aa3b8
+12: 0-99 fg:#9a86e6
+13: 2-6 fg:#9a86e6 b
+15: 2-8 fg:#9aa3b8; 12-18 fg:#9aa3b8; 22-28 fg:#9a86e6 b; 32-37 fg:#9aa3b8
+16: 22-28 fg:#9a86e6 b
+19: 7-58 fg:#9aa3b8
+20: 7-58 fg:#9aa3b8
+21: 7-58 fg:#9aa3b8
+22: 7-58 fg:#9aa3b8
+23: 7-57 fg:#9aa3b8; 58 fg:#9a86e6
+24: 7-57 fg:#9aa3b8
+25: 7-57 fg:#9aa3b8
+26: 7-10 fg:#9aa3b8; 12 fg:#9aa3b8; 14 fg:#9a86e6; 16 fg:#9a86e6; 18 fg:#9a86e6; 20 fg:#9a86e6; 22-25 fg:#9aa3b8
+27: 2-9 fg:#9a86e6 b; 10-55 fg:#9aa3b8
+29: 2-6 fg:#ededf2; 8-14 fg:#5c6476; 15 fg:#ededf2; 17-24 fg:#5c6476; 25 fg:#ededf2; 27-38 fg:#5c6476; 39-41 fg:#ededf2; 43-47 fg:#5c6476

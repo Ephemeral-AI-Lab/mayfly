@@ -280,16 +280,15 @@ it('coalesces root overlay chrome and bounds editor presentations by half the te
     })
     await flush(8)
     const rows = slot.component.render(80).map(stripTerminalSequences)
-    expect(rows).toHaveLength(12)
-    expect(rows.filter(row => row.startsWith('╭'))).toHaveLength(1)
-    expect(rows[0]).toMatch(/^╭ Command panel/u)
+    // An editor presentation takes 70% of the terminal, never less than ten rows.
+    expect(rows).toHaveLength(16)
+    expect(rows[0]).toMatch(/^━+$/u)
+    expect(rows.join('\n')).toContain('Command panel')
     expect(rows.join('\n')).toContain('Items')
-    expect(rows.join('\n')).toContain('Close')
-    expect(rows.at(-1)).toMatch(/^╰/u)
     bench.terminal.resize(80, 30)
-    expect(slot.component.render(80)).toHaveLength(15)
+    expect(slot.component.render(80)).toHaveLength(21)
     bench.terminal.resize(80, 16)
-    expect(slot.component.render(80)).toHaveLength(10)
+    expect(slot.component.render(80)).toHaveLength(11)
     handle.close()
     await flush(8)
     const declared = bench.open({
@@ -319,13 +318,13 @@ it('keeps short editor presentations at their natural content height', async () 
     })
     await flush(8)
     const rows = slot.component.render(80).map(stripTerminalSequences)
-    expect(rows.length).toBeLessThan(Math.floor(24 / 3))
-    expect(rows[0]).toMatch(/^╭ Version/u)
+    expect(rows.length).toBe(9)
+    expect(rows[0]).toMatch(/^━+$/u)
+    expect(rows.join('\n')).toContain('Version')
     expect(rows.join('\n')).toContain('Mayfly')
     expect(rows.join('\n')).toContain('Harness')
     expect(rows.join('\n')).toContain('Refresh')
     expect(rows.join('\n')).toContain('Close')
-    expect(rows.at(-1)).toMatch(/^╰/u)
     bench.terminal.resize(80, 30)
     expect(slot.component.render(80)).toHaveLength(rows.length)
     handle.close()
@@ -342,8 +341,8 @@ it('coalesces a passive root overlay surface with its registration frame', async
     })
     await flush(8)
     const rows = bench.stack()[0]!.component.render(60).map(stripTerminalSequences)
-    expect(rows.filter(row => row.startsWith('╭'))).toHaveLength(1)
-    expect(rows[0]).toMatch(/^╭ Passive panel/u)
+    expect(rows[0]).toMatch(/^━+$/u)
+    expect(rows.join('\n')).toContain('Passive panel')
     handle.close()
   } finally { await bench.dispose() }
 })
@@ -506,7 +505,7 @@ describe('direct overlay surface renderer', () => {
       await flush(8)
       const component = f.stack()[0]!.component
       await settleInput(component, '\r')
-      expect(component.render(80).join('\n')).toContain('Enter confirm')
+      expect(component.render(80).join('\n')).toContain('y yes · n no · Esc close')
       await settleInput(component, '\x1b')
       expect(confirmed.closed).toBe(false)
       await settleInput(component, '\x1b')
@@ -514,7 +513,7 @@ describe('direct overlay surface renderer', () => {
 
       const fixed = f.open({ id: 'fixed', capturing: true, dismissible: false, render: () => actionNode() })
       await flush(8)
-      expect(f.stack()[0]!.component.render(80).at(-1)).toBe('  Enter run')
+      expect(f.stack()[0]!.component.render(80).at(-1)).toContain('Enter run')
       await settleInput(f.stack()[0]!.component, '\x1b')
       expect(fixed.closed).toBe(false)
       fixed.close()
@@ -590,16 +589,16 @@ describe('direct overlay surface renderer', () => {
       overlay.refresh()
       await flush()
       const english = f.stack()[0]!.component.render(60)
-      expect(english.at(-2)).toContain('run')
+      expect(english.at(-1)).toContain('run')
       expect(english.join('\n')).not.toContain('[zh]')
       revision += 1
-      expect(f.stack()[0]!.component.render(60).at(-2)).toContain('[zh] run')
+      expect(f.stack()[0]!.component.render(60).at(-1)).toContain('[zh] run')
     } finally {
       await f.dispose()
     }
   })
 
-  it('renders translated hints and bounded titled failure frames', async () => {
+  it('renders translated hints and contains failure frames', async () => {
     const f = await fixture(80, 10, components, { translate: key => `translated:${key}`, revision: () => 0 })
     try {
       const translated = f.open({ id: 'translated', capturing: true, title: 'Actions', maxHeight: 6, render: () => actionNode() })
@@ -607,15 +606,16 @@ describe('direct overlay surface renderer', () => {
       translated.refresh()
       await flush(8)
       const translatedRows = f.stack()[0]!.component.render(60)
-      expect(plainText(translatedRows[0]!)).toMatch(/^╭ Actions/u)
-      expect(translatedRows.at(-2)).toContain('translated:run')
+      expect(plainText(translatedRows[0]!)).toMatch(/^━+$/u)
+      expect(plainText(translatedRows.join('\n'))).toContain('Actions')
+      expect(translatedRows.at(-1)).toContain('translated:run')
       translated.close()
       await flush(8)
 
       f.open({ id: 'failed', title: 'Failed result', render: () => ({ kind: 'unknown' }) as never })
       await flush(8)
       const failedRows = f.stack()[0]!.component.render(30)
-      expect(plainText(failedRows[0]!)).toMatch(/^╭ Failed result/u)
+      expect(plainText(failedRows[0]!)).toMatch(/^━+$/u)
       expect(failedRows.join(' ')).toContain('Mayfly UI')
       expect(failedRows.every(row => visibleWidth(row) <= 30)).toBe(true)
       f.root.mayflyOverlays.close('failed')
@@ -624,15 +624,15 @@ describe('direct overlay surface renderer', () => {
       f.open({
         id: 'bounded',
         title: 'Bounded',
+        capturing: true,
         maxHeight: 5,
         render: () => ui.scroll(ui.stack.column(Array.from({ length: 10 }, (_, index) => ui.text(`line-${String(index)}`))), { scrollbar: true }),
       })
       await flush(8)
       const rows = f.stack()[0]!.component.render(20)
       expect(rows).toHaveLength(5)
-      expect(stripTerminalSequences(rows[0]!)).toMatch(/^╭ Bounded/u)
-      expect(rows.at(-1)).toBe('╰──────────────────╯')
-      expect(rows.slice(1, -1).map(stripTerminalSequences).every(row => /^│.*│$/u.test(row))).toBe(true)
+      expect(plainText(rows.join('\n'))).toContain('line-0')
+      expect(rows.every(row => visibleWidth(row) <= 20)).toBe(true)
     } finally {
       await f.dispose()
     }
@@ -1157,4 +1157,44 @@ it('animates editor loaders independently and pauses hidden, covered, completed,
     replacement.dispose()
     slot.dispose()
   } finally { await bench.dispose(); vi.useRealTimers() }
+})
+
+it('fences replacement and a second dispose after an overlay component was disposed', async () => {
+  const bench = await fixture()
+  try {
+    const handle = bench.open({ id: 'dead-overlay', render: () => ui.text('overlay text') })
+    await flush(8)
+    expect(bench.stack()).toHaveLength(1)
+    const component = bench.stack()[0]!.component as unknown as {
+      replace(compiled: null): void
+      dispose(): void
+      render(width: number): string[]
+    }
+    handle.close()
+    await flush(8)
+    expect(bench.stack()).toHaveLength(0)
+    component.replace(null)
+    component.dispose()
+    expect(component.render(40)).toEqual([])
+  } finally {
+    await bench.dispose()
+  }
+})
+
+it('frames a titled non-capturing fallback with the overlay title', async () => {
+  const bench = await fixture()
+  try {
+    const handle = bench.open({
+      id: 'titled-fallback', title: 'Titled fallback', capturing: false,
+      render: () => ui.actions({ id: 'titled-actions', items: [{ id: 'go', label: 'Go' }] }),
+    })
+    await flush(8)
+    expect(bench.stack()).toHaveLength(1)
+    const rows = stripTerminalSequences(bench.stack()[0]!.component.render(70).join('\n')).replace(/\s+/gu, ' ')
+    expect(rows).toContain('Titled fallback')
+    expect(rows).toContain('non-capturing overlays cannot contain interactive controls')
+    handle.close()
+  } finally {
+    await bench.dispose()
+  }
 })

@@ -64,7 +64,7 @@ function overlay(keymap?: MayflyKeymap, reply?: string) {
     press: (key: string) => { focus.handleInput?.(key) },
     activated: () => events.flatMap(event => event.kind === 'activate' ? [event.actionId] : []),
     // The plain text of the hint row: keys in text color and labels muted are separate runs.
-    hint: (width: number) => plainText(result.value.component.render(width).at(-2) ?? ''),
+    hint: (width: number) => plainText(result.value.component.render(width).at(-1) ?? ''),
   }
 }
 

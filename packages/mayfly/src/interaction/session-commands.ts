@@ -21,7 +21,7 @@ export interface Config { readonly displayVersion?: string }
 /** The projections one session-information read takes in a single snapshot. */
 export const SESSION_INFO_KEYS = ['sessionStats', 'tokenUsage', 'contextPressure', 'contextBreakdown', 'modelSelection'] as const
 const KEYS = SESSION_INFO_KEYS
-export const HARNESS_LINE = '0.2.0-rc.2'
+export const HARNESS_LINE = '0.2.1-rc.2'
 
 /** One native snapshot gives every displayed projection the same session cursor. */
 export function sessionInfoFacts(ctx: Context, agent: Agent): SessionInfoFacts {

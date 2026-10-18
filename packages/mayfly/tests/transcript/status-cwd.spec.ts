@@ -108,6 +108,40 @@ describe('mayfly-status-cwd', () => {
     await dispose()
   })
 
+  it('follows the native workingDirectory projection and ignores other keys and sessions', async () => {
+    const agent = fakeAgent([], { cwd: '/repo/original' })
+    let directory: string | null = '/one/two'
+    const listeners = new Set<(session: unknown, key: string, value: unknown, seq: number) => void>()
+    const harness = await bootStatusPlugin(cwd, agent, {
+      services: {
+        sessionProjections: {
+          snapshot: (_session: unknown, keys?: readonly string[]) => ({
+            asOfSeq: 0,
+            values: keys === undefined || keys.includes('workingDirectory') ? { workingDirectory: directory } : {},
+          }),
+          onChanged(listener: (session: unknown, key: string, value: unknown, seq: number) => void): () => void {
+            listeners.add(listener)
+            return () => { listeners.delete(listener) }
+          },
+        },
+      },
+    })
+    expect(harness.entry.render(80)).toBe('/one/two')
+
+    directory = '/a/b/c/d'
+    for (const listener of listeners) listener(agent.session, 'workingDirectory', directory, 1)
+    expect(harness.entry.render(80)).toBe('…/b/c/d')
+
+    // An unrelated key, and another session's directory, leave the row alone.
+    const other = fakeAgent([], { cwd: '/other/session' })
+    for (const listener of listeners) {
+      listener(agent.session, 'modelSelection', undefined, 2)
+      listener(other.session, 'workingDirectory', '/somewhere/else', 3)
+    }
+    expect(harness.entry.render(80)).toBe('…/b/c/d')
+    await harness.dispose()
+  })
+
   it('truncates to the offered width budget', async () => {
     const harness = await bootStatusPlugin(cwd, fakeAgent([], { cwd: '/abcdefghij/kl' }))
     expect(harness.entry.render(10)).toBe('/abcdefghi')

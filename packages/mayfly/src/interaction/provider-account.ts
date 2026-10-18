@@ -1,7 +1,7 @@
 /** DeepSeek account sign-in inside the terminal.
  *
- * The account adapter (`llm-deepseek-account`) is not a pi-ai profile, so the
- * provider editor refuses it. This panel drives the native account service
+ * The account adapter is not a pi-ai route-dict profile, so the provider
+ * editor refuses it. This panel drives the native account service
  * instead: with the bundle's loopback webserver present, Sign in starts the
  * PKCE attempt (`startSignIn`), opens the authorize URL in the system
  * browser, and follows the attempt phases to completion; without a webserver
@@ -20,8 +20,13 @@ import { copyTextToClipboard } from './clipboard-write.ts'
 import { openUiOverlay } from './ui-overlay.ts'
 import { signInBody, type SignInFacts, type SignInIds } from '../components/account-sign-in.ts'
 
-/** The settings namespace the account adapter owns; routes in it are not pi-ai profiles. */
-export const ACCOUNT_SETTINGS_NS = 'llm-deepseek-account'
+/** The stable provider route the native DeepSeek account adapter owns. */
+export const ACCOUNT_PROVIDER = 'deepseek-account'
+
+/** The account adapter's route, when the native provider directory declares it. */
+export function accountRoute(ctx: Context): string | undefined {
+  return ctx.get('llm')?.listConfigurableProviders().find(item => item.provider === ACCOUNT_PROVIDER)?.provider
+}
 
 /** Process seams for specs: the best-effort system browser opener and callback delivery. */
 export const accountInternals = {
@@ -106,7 +111,7 @@ export function parseCallbackLocation(raw: string, port: number): URL | undefine
 function outcomeText(attempt: SignInAttemptView, t: (key: string) => string): string {
   if (attempt.phase === 'cancelled') return t('Sign-in cancelled')
   if (attempt.phase === 'expired' || attempt.errorCode === 'expired') return t('The sign-in link expired — try again')
-  if (attempt.errorCode === 'network') return t('Could not reach DeepSeek — check the connection and try again')
+  if (attempt.errorCode === 'network' || attempt.errorCode === 'no-response') return t('Could not reach DeepSeek — check the connection and try again')
   if (attempt.errorCode === 'storage') return t('The login could not be saved on this machine — try again')
   return t('Sign-in failed — try again')
 }
@@ -221,8 +226,7 @@ export async function openAccountPanel(ctx: Context, route: string, signal?: Abo
   const service = ctx.get('deepseekAccount')
   const overlays = ctx.get('mayflyOverlays')
   if (service === undefined || overlays === undefined) return false
-  const declared = ctx.get('llm')?.listConfigurableProviders().find(item => item.provider === route)
-  if (declared === undefined || declared.settingsNs !== ACCOUNT_SETTINGS_NS) return false
+  if (accountRoute(ctx) !== route) return false
   const t = interactionTranslator(ctx)
   const id = `mayfly.provider-account.${route}`
   const lifetime = new AbortController()

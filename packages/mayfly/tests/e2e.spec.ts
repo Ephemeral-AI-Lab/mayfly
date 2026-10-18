@@ -3,7 +3,7 @@
  */
 
 import { readFileSync } from 'node:fs'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { AssistantStreamFrame } from '@deepseek-ai/dsh-agent'
 import { symbols, type Context } from '@deepseek-ai/cordis'
 import type { ApprovalOutcome } from '@deepseek-ai/dsh-user-approval'
@@ -27,6 +27,20 @@ async function waitForSelections(count: number, tree: Awaited<ReturnType<typeof 
     await Promise.resolve()
   }
   throw new Error(`expected ${String(count)} Agent selections`)
+}
+
+/** Wait until `/new` has returned to the lazy start surface: no Agent is selected until the next message. */
+async function waitForStartSurface(tree: Awaited<ReturnType<typeof bootDirectMayfly>>): Promise<void> {
+  for (let turn = 0; turn < 100; turn += 1) {
+    if (tree.ctx.mayflyCurrentAgent.current() === null) return
+    await Promise.resolve()
+  }
+  throw new Error('expected the start surface with no selected Agent')
+}
+
+/** Wait for the transcript's throttled publish to paint `text` into the cumulative output. */
+async function waitForOutput(tree: Awaited<ReturnType<typeof bootDirectMayfly>>, text: string): Promise<void> {
+  await vi.waitFor(() => { expect(tree.terminal.output).toContain(text) }, { timeout: 2000, interval: 10 })
 }
 
 /** The panel rows of the lane behind the screen's read-only window (the footer reads only its items). */
@@ -142,8 +156,7 @@ describe('Mayfly direct-service whole tree', () => {
     const emit = (frame: AssistantStreamFrame) => tree.ctx.emit('agent/assistant-stream', { agent, frame })
     emit({ type: 'start', attemptId: 'reload' as never, revision: 1, turn: 1, step: 0 })
     emit({ type: 'chunk', attemptId: 'reload' as never, revision: 2, index: 0, time: 1, chunk: { type: 'text-delta', index: 0, text: 'before ' } })
-    await waitForRender()
-    expect(tree.terminal.output).toContain('before')
+    await waitForOutput(tree, 'before')
 
     const entry = [...tree.ctx.loader.entries()].find(candidate => candidate.options.id === row)!
     await tree.ctx.loader.update(entry.id, { disabled: true })
@@ -152,7 +165,7 @@ describe('Mayfly direct-service whole tree', () => {
     await tree.ctx.loader.update(entry.id, { disabled: false })
     await tree.ctx.loader.await()
     emit({ type: 'chunk', attemptId: 'reload' as never, revision: 4, index: 2, time: 3, chunk: { type: 'text-delta', index: 0, text: 'after' } })
-    await waitForRender()
+    await waitForOutput(tree, 'before during after')
     expect(Reflect.get(tree.ctx.mayflyCurrentAgent, symbols.original) === Reflect.get(selection, symbols.original)).toBe(true)
     expect(selection.current()).toBe(agent)
     expect(Reflect.get(tree.ctx.mayflyConversations, symbols.original) === Reflect.get(conversations, symbols.original)).toBe(true)
@@ -164,7 +177,6 @@ describe('Mayfly direct-service whole tree', () => {
     expect(Reflect.get(tree.ctx.mayflyLiveAssistantStream, symbols.original) === Reflect.get(stream, symbols.original)).toBe(true)
     expect(Reflect.get(tree.ctx.mayflySessionFacts, symbols.original) === Reflect.get(facts, symbols.original)).toBe(true)
     expect(stream.get(agent)?.text).toBe('before during after')
-    expect(tree.terminal.output).toContain('before during after')
 
     tree.projections.publish(agent.session, {
       entries: [{ kind: 'assistant', id: 'assistant:1:0', seq: 1, updatedSeq: 1, turn: 1, step: 0, text: 'authoritative final', streaming: false }],
@@ -174,9 +186,8 @@ describe('Mayfly direct-service whole tree', () => {
     }, 1)
     emit({ type: 'end', attemptId: 'reload' as never, revision: 5, index: 3, outcome: { kind: 'committed', eventType: 'assistant/message', seq: 1 as never } })
     tree.terminal.resize(40, 24)
-    await waitForRender()
+    await waitForOutput(tree, 'authoritative final')
     expect(stream.get(agent)).toBeUndefined()
-    expect(tree.terminal.output).toContain('authoritative final')
   })
 
   it('shows a plugin view in status row 2, enters it with F6, and cleans it up with its Fiber', async () => {
@@ -241,9 +252,12 @@ describe('Mayfly direct-service whole tree', () => {
     const tree = await bootDirectMayfly()
     const initial = await currentAgent(tree)
     tree.ctx.emit('mayfly/request-new')
+    await waitForStartSurface(tree)
+    // `/new` returns to the start surface; the next first action creates the fresh session.
+    const fresh = await currentAgent(tree)
     await waitForSelections(2, tree)
-    const fresh = tree.observations.selectedAgents.at(-1)!
     expect(fresh).not.toBe(initial)
+    expect(tree.observations.selectedAgents).toEqual([initial, fresh])
     expect(tree.tools.scopes.at(-1)).toBe(fresh)
     expect(tree.projections.calls.at(-1)?.session).toBe(fresh.session)
 
@@ -266,8 +280,10 @@ describe('Mayfly direct-service whole tree', () => {
     tree.ctx.on('mayfly/decision-requests-changed', (source, requests) => { if (source === 'approval') published.push(requests) })
     const fallback = (): Promise<ApprovalOutcome> => Promise.resolve('unavailable')
     tree.ctx.emit('mayfly/request-new')
+    await waitForStartSurface(tree)
+    // `/new` leaves the start surface; the next first action selects the fresh session once.
+    const fresh = await currentAgent(tree)
     await waitForSelections(2, tree)
-    const fresh = tree.observations.selectedAgents.at(-1)!
     expect(fresh).not.toBe(initial)
 
     /* A request for an Agent that is not the displayed one is left to the next listener, and publishes nothing. */

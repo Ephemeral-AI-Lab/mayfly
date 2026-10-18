@@ -1,9 +1,9 @@
 /**
- * The plugin-market catalog loader: cache-first over the profile storage,
- * with a raw.githubusercontent → jsDelivr fallback chain when the configured
- * index URL is the default one (mainland reachability), and cached data
- * served stale when every fetch fails. All process seams go through
- * `updaterInternals`, so specs script the network and the clock.
+ * The plugin-market catalog loader: a Mayfly-owned, read-only discovery source until the native market index format is
+ * migrated. It is cache-first over the profile storage, with a raw.githubusercontent → jsDelivr fallback chain when the
+ * configured index URL is the default one (mainland reachability), and cached data served stale when every fetch fails.
+ * It never writes the profile; installation state and every change come from `ctx.pluginManager`. All process seams go
+ * through `updaterInternals`, so specs script the network and the clock.
  *
  * @module @ephemeral-ai/mayfly/interaction/plugin-market/catalog
  */

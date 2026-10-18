@@ -24,14 +24,14 @@ One special flag: a section marked **`complete`** makes assembly restore to "tha
 
 ## Configuration & customization
 
-The `systemPrompt` config block (the dsh-base system-prompt plugin) defines the deployment identity through `persona`, whose text can reference variables like `{{model}}`, `{{cwd}}`. **The first row of Mayfly's `cordis.patch.yml` replaces this entry's config and overrides the persona** — a live example of "upper layers always overwrite lower ones":
+The `systemPrompt` config block (the dsh-base system-prompt plugin) defines the deployment identity through `persona`, whose text can reference variables like `{{model}}`. **The first row of Mayfly's `cordis.patch.yml` replaces this entry's config and overrides the persona** — a live example of "upper layers always overwrite lower ones". The effective working directory is not a persona variable: it comes from the native `workingDirectory` projection and working-directory context.
 
 ```yaml
 # Mayfly bundle patch (excerpt)
 - id: system-prompt
   config:
     persona: >-
-      You are a coding agent. Your working directory is {{cwd}}.
+      You are a coding agent.
 ```
 
 - Tool ordering in the prompt is configured via `systemPrompt.toolOrder` (full keys and defaults live in the official [config catalog](https://deepseek-harness.github.io/deepseek-harness/reference/config-catalog));

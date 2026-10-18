@@ -3,13 +3,14 @@ import { describe, expect, it, vi } from 'vitest'
 import type { MayflyListNode, MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import type { MayflyNodeSlot } from '../../src/core/node-slot.ts'
 import type { MayflySearchLine, MayflySearchLineOptions } from '../../src/core/search-line.ts'
-import type { TranscriptEntryModel } from '../../src/frontend/models.ts'
+import type { TranscriptEntryModel, TranscriptModel } from '../../src/frontend/models.ts'
 import { STREAM } from '../../src/components/transcript-view.ts'
 import { interpolateLocaleMessage } from '../../src/frontend/locale.ts'
 import { createTranscriptModel, TranscriptController, type TranscriptScreen } from '../../src/transcript/transcript-model.ts'
 
 const user = (turn: number, text: string): TranscriptEntryModel => ({ id: `user:${String(turn)}`, kind: 'transcript-user', seq: turn, updatedSeq: turn, turn, text, images: [] })
 const answer = (turn: number, text: string): TranscriptEntryModel => ({ id: `assistant:${String(turn)}`, kind: 'transcript-assistant', seq: turn, updatedSeq: turn, turn, step: 2, text, streaming: false })
+const thought = (id: string, turn: number, text: string, streaming = false): TranscriptEntryModel => ({ id, kind: 'transcript-thinking', seq: turn, updatedSeq: turn, turn, step: 1, text, streaming, durationMs: 3_000 })
 
 /** The lifecycle of three completed turns: a turn with a run draws its header only when its lifecycle is known. */
 const TURNS = [1, 2, 3].map(turn => ({ turn, startedAt: 0, endedAt: 9_000, outcome: 'completed' })) as never
@@ -44,7 +45,7 @@ function fakeScreen(options: { queued?: { id: string, text: string, lane: 'turn'
   const lease: MayflyNodeSlot = {
     id: 'transcript.conversation', disposed: false,
     set: (node: MayflyUiNode | null) => { slot.published.push(node) },
-    setTurns: () => {},
+    setTurns: () => {}, track: () => {}, setMarked: () => {},
     focus: () => { slot.focused += 1 },
     dispose: () => {},
     release: () => { slot.released += 1 },
@@ -74,6 +75,9 @@ function fakeScreen(options: { queued?: { id: string, text: string, lane: 'turn'
     },
     followContent: vi.fn(),
     requestRender: vi.fn(),
+    watchContentTail: () => () => {},
+    contentTail: () => undefined,
+    scrollContentTo: vi.fn(),
   } as unknown as TranscriptScreen
   const focusMode: string[] = []
   const controller = new TranscriptController({ t: interpolateLocaleMessage, queued: () => options.queued ?? [], focusMode: mode => { focusMode.push(mode) }, rows: options.rows as never, focusRow: options.focusRow as never })
@@ -257,6 +261,34 @@ describe('walking the matches', () => {
     s.press(STREAM.matchNext)
     s.press(STREAM.matchAgain)
     expect(s.lines[0]!.status.at(-1)).toBe('3 matches · Enter to select · Esc to cancel')
+  })
+
+  it('lands on a drawn hit with one extra publish', () => {
+    const s = fakeScreen()
+    s.slot.cursor = 'user:1'
+    s.press(STREAM.findDown)
+    s.type('needle')
+    const before = s.slot.published.length
+    s.accept()
+    // The row was already drawn: one publish mounts the visit and sends the cursor, with no duplicate at the end.
+    expect(s.slot.published.length - before).toBe(1)
+    expect(s.last()).toBe('assistant:1')
+  })
+
+  it('walks past a match no row draws and ends on the same drawn hit', () => {
+    // The durable copy of the live step is searched but not drawn: one match is skipped on the way to the live row.
+    const model = { ...modelOf([user(1, 'go'), thought('thinking:durable', 1, 'durable needle')]), live: { turn: 1, step: 1, entries: [thought('thinking:live', 1, 'live needle', true)] } } as TranscriptModel
+    const s = fakeScreen()
+    s.controller.setView('main', model)
+    s.slot.cursor = 'user:1'
+    s.press(STREAM.findDown)
+    s.type('needle')
+    const before = s.slot.published.length
+    s.accept()
+    expect(s.last()).toBe('thinking:live')
+    expect(s.lines[0]!.status.at(-1)).toBe('2/2 matches')
+    // One publish to mount the skipped turn, one to send the cursor: no empty publish closes the walk.
+    expect(s.slot.published.length - before).toBe(2)
   })
 })
 

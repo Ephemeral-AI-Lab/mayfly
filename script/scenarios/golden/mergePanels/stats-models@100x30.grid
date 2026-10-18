@@ -1,0 +1,51 @@
+grid 100x30 cursor none
+|
+|  ● A reviewer runs in the background, the todo list is set, and a watcher rebuilds the styles.
+|
+|  ✓ Subagent(Audit the hero copy) · 0.6s
+|
+|  ✓ TodoWrite · 0.2s
+|
+|  ● Every panel now has the /stats look: a rule and a title, the keys on one hint row, no buttons.
+|    Try /model, /effort, /stats, /plugin, /agents, /jobs, /mcp, /help, /settings; Alt+↓ enters the
+|    views, where x asks y/n.
+|
+|  ✻ Worked for 4s · done 09:00
+|━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+|  Stats
+|
+|  Session   Account   History   Models
+|                                ━━━━━━
+|
+|  Tokens per day                                  Cost per day (USD)
+|  20k┤                                    ▅        0.005┤
+|     │                                    █             │                                  ▁
+|     │                                    █             │                                  █
+|  10k┤                                    █       0.0025┤                                  █
+|     │                                    █             │                                  █
+|     │                                    █             │                                  █
+|    0┤                                    █            0┤                                  █
+|     └─────────────────────────────────────             └───────────────────────────────────
+|      Nov 26 Dec 3  Dec 10 Dec 17 Dec 24 De              Nov 28 Dec 5  Dec 12 Dec 19 Dec 26
+|
+|  Enter open · r dates · w workspace · Esc close
+styles
+1: 2-3 fg:#ededf2
+3: 2-3 fg:#4ec87e; 4-11 fg:#ededf2 b; 12 fg:#9aa3b8; 13-31 fg:#c9c0f0; 32-39 fg:#9aa3b8
+5: 2-3 fg:#4ec87e; 4-12 fg:#ededf2 b; 13-19 fg:#9aa3b8
+7: 2-3 fg:#ededf2
+11: 2-29 fg:#9aa3b8
+12: 0-99 fg:#9a86e6
+13: 2-6 fg:#9a86e6 b
+15: 2-8 fg:#9aa3b8; 12-18 fg:#9aa3b8; 22-28 fg:#9aa3b8; 32-37 fg:#9a86e6 b
+16: 32-37 fg:#9a86e6 b
+18: 2-15 fg:#ededf2 b; 50-67 fg:#ededf2 b
+19: 42 fg:#c9c0f0
+20: 42 fg:#c9c0f0; 91 fg:#c9c0f0
+21: 42 fg:#c9c0f0; 91 fg:#c9c0f0
+22: 42 fg:#c9c0f0; 91 fg:#c9c0f0
+23: 42 fg:#c9c0f0; 91 fg:#c9c0f0
+24: 42 fg:#c9c0f0; 91 fg:#c9c0f0
+25: 42 fg:#c9c0f0; 91 fg:#c9c0f0
+27: 6-42 fg:#9aa3b8; 57-90 fg:#9aa3b8
+29: 2-6 fg:#ededf2; 8-14 fg:#5c6476; 15 fg:#ededf2; 17-24 fg:#5c6476; 25 fg:#ededf2; 27-38 fg:#5c6476; 39-41 fg:#ededf2; 43-47 fg:#5c6476

@@ -8,6 +8,7 @@
 
 import { Service, type Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
+import type { ModelSelectionProjection } from '@deepseek-ai/dsh-api-session-controller'
 import type { GoalProjection } from '@deepseek-ai/dsh-goal'
 import { isSpawnToolName } from '../conversation/projection.ts'
 import { SessionId, type Session } from '@deepseek-ai/dsh-session'
@@ -50,24 +51,72 @@ declare module '@deepseek-ai/cordis' {
  */
 export const CHILD_VOLATILE_MS = 250
 
-/** One admitted child: its facts, its current draft, and their projection. */
+/** One admitted child: its presentation facts, native selection, resident Agent, current draft, and their projection. */
 interface ChildRecord {
   readonly facts: ConversationFacts
+  readonly selection: ModelSelectionProjection | undefined
+  /** The exact Agent the child session is resident in, kept across live notifications. */
+  readonly agent: Agent | undefined
   readonly draft: LiveAssistantDraft | undefined
   readonly projected: ChildSessionFacts
 }
 
-/** Whether two projections of one child differ only in `liveChars`. */
-function onlyLiveCharsChanged(previous: ChildSessionFacts, next: ChildSessionFacts): boolean {
-  return previous.liveChars !== next.liveChars
+/** How many settled children stay in the list: the Agents panel shows one line per child, and 32 covers a tall terminal. */
+export const MAX_SETTLED_CHILDREN = 32
+
+/** Whether one output-progress value carries the same figures. */
+function sameOutputProgress(previous: ChildSessionFacts['outputProgress'], next: ChildSessionFacts['outputProgress']): boolean {
+  return previous === next || (previous !== undefined && next !== undefined
+    && previous.chars === next.chars
+    && previous.initialChars === next.initialChars
+    && previous.startedAt === next.startedAt
+    && previous.updatedAt === next.updatedAt)
+}
+
+/** Whether two projections of one child carry the same values in every field. */
+function equalChildSessionFacts(previous: ChildSessionFacts, next: ChildSessionFacts): boolean {
+  return previous === next || (previous.id === next.id
+    && previous.promptText === next.promptText
     && previous.phase === next.phase
-    && previous.activity === next.activity
     && previous.tokens === next.tokens
+    && previous.inputTokens === next.inputTokens
+    && previous.outputTokens === next.outputTokens
     && previous.toolCount === next.toolCount
+    && previous.liveChars === next.liveChars
+    && sameOutputProgress(previous.outputProgress, next.outputProgress)
+    && previous.activity === next.activity
     && previous.model === next.model
     && previous.effort === next.effort
     && previous.endedAt === next.endedAt
+    && previous.stopped === next.stopped)
+}
+
+/** Whether a child's projection changed only in the live attempt's streamed output (its chars and progress). */
+function onlyLiveOutputChanged(previous: ChildSessionFacts, next: ChildSessionFacts): boolean {
+  return (previous.liveChars !== next.liveChars || !sameOutputProgress(previous.outputProgress, next.outputProgress))
+    && previous.id === next.id
     && previous.promptText === next.promptText
+    && previous.phase === next.phase
+    && previous.tokens === next.tokens
+    && previous.inputTokens === next.inputTokens
+    && previous.outputTokens === next.outputTokens
+    && previous.toolCount === next.toolCount
+    && previous.activity === next.activity
+    && previous.model === next.model
+    && previous.effort === next.effort
+    && previous.endedAt === next.endedAt
+    && previous.stopped === next.stopped
+}
+
+/** What a fresh projection means for the publish cadence. */
+function childChange(previous: ChildSessionFacts, next: ChildSessionFacts): 'same' | 'volatile' | 'structural' {
+  if (equalChildSessionFacts(previous, next)) return 'same'
+  return onlyLiveOutputChanged(previous, next) ? 'volatile' : 'structural'
+}
+
+/** Whether a child's run is still live, which keeps it however many settled children the list holds. */
+function isLiveChild(facts: ChildSessionFacts): boolean {
+  return facts.phase === 'waiting' || facts.phase === 'running'
 }
 
 /**
@@ -113,6 +162,8 @@ export class SessionFactsService extends Service {
   private readonly offProjection: () => void
   private readonly offAgent: () => void
   private readonly offLive: () => void
+  private readonly offAgentCreated: () => void
+  private readonly offAgentDisposed: () => void
 
   constructor(ctx: Context, private readonly liveStream?: LiveAssistantStreamService) {
     super(ctx, 'mayflySessionFacts')
@@ -123,8 +174,11 @@ export class SessionFactsService extends Service {
         if (key === 'goal' && isGoalProjection(value)) this.publishGoal(value)
         return
       }
-      if (key === 'mayflyConversationFacts' && this.isDirectChild(session) && isFacts(value)) {
+      if (!this.isDirectChild(session)) return
+      if (key === 'mayflyConversationFacts' && isFacts(value)) {
         this.publishChild(String(session.id), value)
+      } else if (key === 'modelSelection' && isModelSelectionProjection(value)) {
+        this.publishChildSelection(String(session.id), value)
       }
     })
     this.offAgent = ctx.mayflyCurrentAgent.subscribe(next => { this.attach(next) })
@@ -142,23 +196,33 @@ export class SessionFactsService extends Service {
           this.facts = this.merged()
           for (const listener of this.listeners) listener(this.facts)
         }
-        // Only children whose draft identity changed are re-projected; a
-        // streamed-character-only change waits for the volatile cadence.
-        const agents = this.ctx.get('agents')
+        // Only children whose draft identity changed re-project. An unchanged projection is no change; streamed output
+        // alone waits for the volatile cadence; anything else publishes at once.
         let structural = false
         let volatile = false
         for (const [id, record] of this.children) {
-          const next = this.childDraft(id, agents)
+          const next = this.draftOf(record)
           if (next === record.draft) continue
-          const projected = projectChildSessionFacts(id, record.facts, next)
-          this.children.set(id, { facts: record.facts, draft: next, projected })
+          const projected = projectChildSessionFacts(id, record.facts, next, record.selection)
+          const change = childChange(record.projected, projected)
+          if (change === 'same') {
+            this.children.set(id, { ...record, draft: next })
+            continue
+          }
+          this.children.set(id, { ...record, draft: next, projected })
           this.childList = undefined
-          if (onlyLiveCharsChanged(record.projected, projected)) volatile = true
+          if (change === 'volatile') volatile = true
           else structural = true
         }
-        if (structural) this.publishChildren()
-        else if (volatile) this.scheduleChildren()
+        if (structural) {
+          this.pruneChildren()
+          this.publishChildren()
+        } else if (volatile) this.scheduleChildren()
       })
+    // A child's Agent may come or go without its session facts changing: an appeared Agent brings its draft, a disposed
+    // one takes it away; a replaced Agent is followed. The live path above never reads the registry again.
+    this.offAgentCreated = ctx.on('agent/created', ({ agent }) => { this.refreshChildAgent(agent) })
+    this.offAgentDisposed = ctx.on('agent/disposed', ({ agent }) => { this.forgetChildAgent(agent) })
   }
 
   /** Current facts; the returned object is projection-owned readonly data. */
@@ -235,9 +299,12 @@ export class SessionFactsService extends Service {
     const goal = snapshot?.values.goal
     this.publishGoal(isGoalProjection(goal) ? goal : null)
     for (const child of this.directChildren()) {
-      const childFacts = this.ctx.sessionProjections.snapshot(child, ['mayflyConversationFacts']).values.mayflyConversationFacts
-      if (isFacts(childFacts)) this.setChild(String(child.id), childFacts)
+      const snapshot = this.ctx.sessionProjections.snapshot(child, ['mayflyConversationFacts', 'modelSelection'])
+      const childFacts = snapshot.values.mayflyConversationFacts
+      if (!isFacts(childFacts)) continue
+      this.setChild(String(child.id), childFacts, isModelSelectionProjection(snapshot.values.modelSelection) ? snapshot.values.modelSelection : undefined)
     }
+    this.pruneChildren()
     this.publishChildren()
   }
 
@@ -245,6 +312,8 @@ export class SessionFactsService extends Service {
     this.offProjection()
     this.offAgent()
     this.offLive()
+    this.offAgentCreated()
+    this.offAgentDisposed()
     this.listeners.clear()
     this.titleListeners.clear()
     this.goalListeners.clear()
@@ -303,13 +372,97 @@ export class SessionFactsService extends Service {
   }
 
   private publishChild(id: string, facts: ConversationFacts): void {
-    this.setChild(id, facts)
+    const previous = this.children.get(id)
+    const selection = previous?.selection
+    const agent = previous?.agent ?? this.agentFor(id)
+    const draft = this.draftFor(agent)
+    const projected = projectChildSessionFacts(id, facts, draft, selection)
+    if (previous !== undefined) {
+      const change = childChange(previous.projected, projected)
+      if (change === 'same') {
+        this.children.set(id, { ...previous, facts, agent, draft, projected: previous.projected })
+        return
+      }
+      this.children.set(id, { ...previous, facts, agent, draft, projected })
+      this.childList = undefined
+      if (change === 'volatile') {
+        this.scheduleChildren()
+        return
+      }
+    } else {
+      this.children.set(id, { facts, selection, agent, draft, projected })
+      this.childList = undefined
+    }
+    this.pruneChildren()
     this.publishChildren()
   }
 
-  private setChild(id: string, facts: ConversationFacts): void {
-    const draft = this.childDraft(id, this.ctx.get('agents'))
-    this.children.set(id, { facts, draft, projected: projectChildSessionFacts(id, facts, draft) })
+  private publishChildSelection(id: string, selection: ModelSelectionProjection): void {
+    const record = this.children.get(id)
+    if (record === undefined) return
+    const projected = projectChildSessionFacts(id, record.facts, record.draft, selection)
+    const change = childChange(record.projected, projected)
+    if (change === 'same') {
+      this.children.set(id, { ...record, selection, projected: record.projected })
+      return
+    }
+    this.children.set(id, { ...record, selection, projected })
+    this.childList = undefined
+    if (change === 'volatile') {
+      this.scheduleChildren()
+      return
+    }
+    this.pruneChildren()
+    this.publishChildren()
+  }
+
+  private setChild(id: string, facts: ConversationFacts, selection: ModelSelectionProjection | undefined): void {
+    const agent = this.agentFor(id)
+    const draft = this.draftFor(agent)
+    this.children.set(id, { facts, selection, agent, draft, projected: projectChildSessionFacts(id, facts, draft, selection) })
+    this.childList = undefined
+  }
+
+  /** Follow an Agent that appeared for one of the children: its draft joins the projection. */
+  private refreshChildAgent(agent: Agent): void {
+    const id = String(agent.id)
+    const record = this.children.get(id)
+    if (record === undefined) return
+    this.updateChildAgent(id, record, agent)
+  }
+
+  /** Drop the draft of a child whose exact resident Agent was disposed; a replaced Agent's disposal is not its own. */
+  private forgetChildAgent(agent: Agent): void {
+    const id = String(agent.id)
+    const record = this.children.get(id)
+    if (record === undefined || record.agent !== agent) return
+    this.updateChildAgent(id, record, undefined)
+  }
+
+  private updateChildAgent(id: string, record: ChildRecord, agent: Agent | undefined): void {
+    const draft = this.draftFor(agent)
+    const projected = projectChildSessionFacts(id, record.facts, draft, record.selection)
+    const change = childChange(record.projected, projected)
+    if (change === 'same') {
+      this.children.set(id, { ...record, agent, draft })
+      return
+    }
+    this.children.set(id, { ...record, agent, draft, projected })
+    this.childList = undefined
+    if (change === 'volatile') {
+      this.scheduleChildren()
+      return
+    }
+    this.pruneChildren()
+    this.publishChildren()
+  }
+
+  /** Keep every live child plus the most recently settled ones; an old settled child is dropped first. */
+  private pruneChildren(): void {
+    const settled = [...this.children].filter(([, record]) => !isLiveChild(record.projected))
+    if (settled.length <= MAX_SETTLED_CHILDREN) return
+    settled.sort((left, right) => (left[1].projected.endedAt ?? 0) - (right[1].projected.endedAt ?? 0))
+    for (const [id] of settled.slice(0, settled.length - MAX_SETTLED_CHILDREN)) this.children.delete(id)
     this.childList = undefined
   }
 
@@ -341,10 +494,18 @@ export class SessionFactsService extends Service {
     return this.childList
   }
 
-  /** Latest transient stream draft for a child session's resident Agent. */
-  private childDraft(id: string, agents: Context['agents'] | undefined): LiveAssistantDraft | undefined {
-    const agent = agents?.get(SessionId(id))
+  /** Latest transient stream draft for a child's stored resident Agent. */
+  private draftOf(record: ChildRecord): LiveAssistantDraft | undefined {
+    return this.draftFor(record.agent)
+  }
+
+  private draftFor(agent: Agent | undefined): LiveAssistantDraft | undefined {
     return agent === undefined ? undefined : this.liveStream?.get(agent)
+  }
+
+  /** The child session's resident Agent, read once when the record is set or its lifecycle changes. */
+  private agentFor(id: string): Agent | undefined {
+    return this.ctx.get('agents')?.get(SessionId(id))
   }
 
   private directChildren(): readonly Session[] {
@@ -361,8 +522,8 @@ export class SessionFactsService extends Service {
   }
 }
 
-/** Convert one child session's official facts to renderer-neutral card facts. */
-export function projectChildSessionFacts(id: string, facts: ConversationFacts, draft?: LiveAssistantDraft): ChildSessionFacts {
+/** Convert one child session's presentation facts and native selection to renderer-neutral card facts. */
+export function projectChildSessionFacts(id: string, facts: ConversationFacts, draft?: LiveAssistantDraft, selection?: ModelSelectionProjection | null): ChildSessionFacts {
   const liveDraft = draft !== undefined && draft.sessionId === id
     && !(draft.turn < facts.turn || (draft.turn === facts.turn
       && (facts.runOutcome !== undefined
@@ -381,6 +542,7 @@ export function projectChildSessionFacts(id: string, facts: ConversationFacts, d
       : marker?.kind === 'reasoning'
         ? 'Thinking…'
         : marker?.kind === 'text' ? 'Writing…' : facts.active ? 'Starting…' : undefined
+  const used = selection?.lastUsed ?? selection?.next ?? undefined
   return {
     id, phase, tokens: facts.epochTokens ?? 0, toolCount: facts.epochToolCount ?? 0,
     inputTokens: Math.max(0, (facts.epochTokens ?? 0) - (facts.epochOutputTokens ?? 0)), outputTokens: facts.epochOutputTokens ?? 0,
@@ -388,8 +550,8 @@ export function projectChildSessionFacts(id: string, facts: ConversationFacts, d
     ...(liveDraft?.outputProgress === undefined ? {} : { outputProgress: liveDraft.outputProgress }),
     ...(facts.promptText === undefined ? {} : { promptText: facts.promptText }),
     ...(activity === undefined ? {} : { activity }),
-    ...(facts.model === undefined ? {} : { model: facts.model }),
-    ...(facts.reasoningEffort === undefined ? {} : { effort: facts.reasoningEffort }),
+    ...(used === undefined ? {} : { model: used.model }),
+    ...(used?.reasoningEffort === undefined ? {} : { effort: String(used.reasoningEffort) }),
     ...(facts.endedAt === undefined ? {} : { endedAt: facts.endedAt }),
     ...(facts.runStopped === true ? { stopped: true } : {}),
   }
@@ -397,14 +559,26 @@ export function projectChildSessionFacts(id: string, facts: ConversationFacts, d
 
 function isFacts(value: unknown): value is ConversationFacts {
   if (value === null || typeof value !== 'object') return false
-  const row = value as { phase?: unknown, active?: unknown, turn?: unknown, flowDownChars?: unknown, todos?: unknown, contextTokens?: unknown, agentCalls?: unknown }
+  const row = value as { phase?: unknown, active?: unknown, turn?: unknown, flowDownChars?: unknown, agentCalls?: unknown }
   return (row.phase === 'idle' || row.phase === 'waiting' || row.phase === 'thinking' || row.phase === 'composing' || row.phase === 'tool')
     && typeof row.active === 'boolean'
     && typeof row.turn === 'number'
     && typeof row.flowDownChars === 'number'
-    && Array.isArray(row.todos)
-    && typeof row.contextTokens === 'number'
     && Array.isArray(row.agentCalls)
+}
+
+function isModelSelectionProjection(value: unknown): value is ModelSelectionProjection {
+  if (value === null || typeof value !== 'object') return false
+  const row = value as { lastUsed?: unknown, next?: unknown }
+  return isSelection(row.lastUsed) && isSelection(row.next)
+}
+
+function isSelection(value: unknown): value is { readonly provider: string, readonly model: string, readonly reasoningEffort?: string } | null {
+  if (value === null) return true
+  if (typeof value !== 'object') return false
+  const row = value as { provider?: unknown, model?: unknown, reasoningEffort?: unknown }
+  return typeof row.provider === 'string' && typeof row.model === 'string'
+    && (row.reasoningEffort === undefined || typeof row.reasoningEffort === 'string')
 }
 
 function isTitle(value: unknown): value is string | null {

@@ -1,0 +1,49 @@
+grid 100x30 cursor none
+|  ✓ TodoWrite · 0.2s
+|
+|  ● Switch pages and watch the rows under each panel: /stats (←/→), /plugin (Alt+←/→), the views
+|    (Alt+↓ then ←/→). None of them moves.
+|
+|  ✻ Worked for 4s · done 09:00
+|
+|  » Set up the service; ask me what you need.
+|
+|  ● A few questions before I start.
+|
+|  ● AskUserQuestion(Which auth method should the CLI use?) · 1s
+|
+|  ● Waiting for your answer · 1s
+|    ⎿ Tip: Ctrl+O to expand tool details
+|━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+|  Questions
+|
+|  – Auth  ›  – Scopes  ›  – Notes  ›  ● Review
+|                                      ━━━━━━━━
+|
+|  → 1. Auth    — skipped
+|    2. Scopes  — skipped
+|    3. Notes   — skipped
+|    4. Submit answers
+|
+|
+|
+|
+|  ↑/↓ options · Enter choose · ←/→ question · Esc back
+styles
+0: 2-3 fg:#4ec87e; 4-12 fg:#ededf2 b; 13-19 fg:#9aa3b8
+2: 2-3 fg:#ededf2
+5: 2-29 fg:#9aa3b8
+7: 2-3 fg:#9a86e6; 4-99 fg:#9a86e6 b
+9: 2-3 fg:#ededf2
+11: 2 fg:#5c6476; 3 fg:#ededf2; 4-18 fg:#ededf2 b; 19 fg:#9aa3b8; 20-56 fg:#c9c0f0; 57-62 fg:#9aa3b8
+13: 0-1 fg:#ededf2; 2 fg:#5c6476; 3-26 fg:#ededf2; 28-31 fg:#9aa3b8
+14: 0-39 fg:#9aa3b8
+15: 0-99 fg:#9a86e6
+16: 2-10 fg:#9a86e6 b
+18: 2-37 fg:#9aa3b8; 38 fg:#9a86e6; 40-45 fg:#9a86e6 b
+19: 38-45 fg:#9aa3b8
+21: 2 fg:#9a86e6 b; 4-5 fg:#9aa3b8; 7-14 fg:#ededf2; 15-23 fg:#e8a838
+22: 4-5 fg:#9aa3b8; 7-14 fg:#ededf2; 15-23 fg:#e8a838
+23: 4-5 fg:#9aa3b8; 7-14 fg:#ededf2; 15-23 fg:#e8a838
+24: 4-5 fg:#9aa3b8; 7-20 fg:#ededf2 b
+29: 2-4 fg:#ededf2; 6-15 fg:#5c6476; 16-20 fg:#ededf2; 22-30 fg:#5c6476; 31-33 fg:#ededf2; 35-45 fg:#5c6476; 46-48 fg:#ededf2; 50-53 fg:#5c6476

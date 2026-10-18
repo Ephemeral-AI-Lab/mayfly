@@ -11,7 +11,6 @@ import type { MayflyListItem, MayflyUiActionEvent, MayflyUiEventContext } from '
 import { describe, expect, it, vi } from 'vitest'
 import { DONE_LINGER_MS } from '../../src/transcript/pane-todo.ts'
 import * as jobsItem from '../../src/transcript/status-jobs.ts'
-import { SHED } from '../../src/transcript/status-shed.ts'
 import { transcriptTranslatorFake } from './notices-fakes.ts'
 import { bootPanePlugin, HandTick } from './pane-fakes.ts'
 import { fakeAgent } from './status-fakes.ts'
@@ -32,27 +31,26 @@ function spansOf(node: unknown): { readonly text: string, readonly tone?: string
   const record = node as Record<string, unknown>
   return [...record.kind === 'rich-text' ? record.spans as never[] : [], ...Object.entries(record).filter(([key]) => key !== 'spans').flatMap(([, value]) => spansOf(value))]
 }
-/** A summary's words at its full form (a shed node also holds its narrower forms). */
-const fullText = (node: unknown): string => spansOf((node as { readonly node: unknown }).node).map(span => span.text).join('')
+/** A summary's words at its full form. */
+const fullText = (node: unknown): string => spansOf(node).map(span => span.text).join('')
 
 describe('jobsSummary', () => {
   const t = transcriptTranslatorFake
   const summary = (jobs: JobView[], extra: Partial<jobsItem.JobsState> = {}) => jobsItem.jobsSummary({ jobs, now: NOW, history: false, ...extra }, t)
 
-  it('counts the live jobs and the time of the longest one, and gives the time up first', () => {
-    const node = summary([job('a', 'running', { startedAt: NOW - 41_000 }), job('b', 'stopping', { startedAt: NOW - 5_000 }), job('c', 'completed')])!.node as unknown as { readonly kind: string, readonly narrower: readonly { readonly rank: number, readonly node: unknown }[] }
-    expect(fullText(node)).toBe('● jobs 2 41s')
-    expect(node.narrower.map(form => [form.rank, spansOf(form.node).map(span => span.text).join('')])).toEqual([[SHED.time, '● jobs 2']])
+  it('counts the live jobs', () => {
+    const node = summary([job('a', 'running', { startedAt: NOW - 41_000 }), job('b', 'stopping', { startedAt: NOW - 5_000 }), job('c', 'completed')])!.node
+    expect(fullText(node)).toBe('● jobs 2')
   })
 
   it('holds a closing line once the last live job settles: `✓` or, when one failed, `✕`', () => {
-    expect(summary([], { done: { total: 3, elapsedMs: 41_000, failed: false } })!.node).toBeDefined()
-    expect(fullText(summary([], { done: { total: 3, elapsedMs: 41_000, failed: false } })!.node)).toBe('✓ jobs 3/3 41s')
-    const failed = summary([], { done: { total: 5, elapsedMs: 52_000, failed: true } })!.node
-    expect(fullText(failed)).toBe('✕ jobs 5/5 52s')
-    expect(spansOf((failed as { node: unknown }).node)[0]).toEqual({ text: '✕', tone: 'danger' })
+    expect(summary([], { done: { total: 3, failed: false } })!.node).toBeDefined()
+    expect(fullText(summary([], { done: { total: 3, failed: false } })!.node)).toBe('✓ jobs 3/3')
+    const failed = summary([], { done: { total: 5, failed: true } })!.node
+    expect(fullText(failed)).toBe('✕ jobs 5/5')
+    expect(spansOf(failed)[0]).toEqual({ text: '✕', tone: 'danger' })
     // A live job outranks a held closing line.
-    expect(fullText(summary([job('a', 'running', { startedAt: NOW - 1_000 })], { done: { total: 3, elapsedMs: 1, failed: false } })!.node)).toBe('● jobs 1 1s')
+    expect(fullText(summary([job('a', 'running', { startedAt: NOW - 1_000 })], { done: { total: 3, failed: false } })!.node)).toBe('● jobs 1')
   })
 
   it('shows nothing with no live job and no closing line', () => {
@@ -89,7 +87,7 @@ describe('listedJobs and jobsPanel', () => {
       for (const child of Object.values(value)) walk(child)
     }
     walk(panel)
-    return found
+    return found.filter(item => item.gap !== true)
   }
 
   it('draws one aligned row per job: the mark, the label, the producer line, the state word, and the time last', () => {
@@ -97,15 +95,21 @@ describe('listedJobs and jobsPanel', () => {
     const rows = rowsOf(jobsItem.jobsPanel(state, t, () => ({})))
     expect(rows.map(row => row.id)).toEqual(['live-early', 'live-late', 'failed-new', 'done-old'])
     const cells = (row: MayflyListItem): string[] => (row.cells ?? []).map(cell => cell.spans.map(span => span.text).join(''))
-    expect(cells(rows[0]!)).toEqual(['live-early', '', '', '1m 20s'])
-    expect(cells(rows[1]!)).toEqual(['live-late', 'rebuilt 2', 'stopped', '1m 10s'])
-    expect(cells(rows[2]!)).toEqual(['failed-new', 'exit code: 1', '', '49s'])
-    // The marks say how each ended; the time is the last, right-aligned column; the producer column is the one that sheds.
+    const right = (row: MayflyListItem): string => (row.right ?? []).map(span => span.text).join('')
+    expect(cells(rows[0]!)).toEqual(['live-early', '', ''])
+    expect(cells(rows[1]!)).toEqual(['live-late', 'rebuilt 2', 'stopped'])
+    expect(cells(rows[2]!)).toEqual(['failed-new', 'exit code: 1', ''])
+    expect(cells(rows[3]!)).toEqual(['done-old', 'exit code: 0', ''])
+    expect(right(rows[0]!)).toBe('1m 20s')
+    expect(right(rows[1]!)).toBe('1m 10s')
+    expect(right(rows[2]!)).toBe('49s')
+    // The marks say how each ended; the time is the right-aligned trailing span; the producer column is the one that sheds.
     expect(rows.map(row => row.labelSpans![0])).toEqual([{ text: '●', tone: 'accent' }, { text: '●', tone: 'accent' }, { text: '✕', tone: 'danger' }, { text: '✓', tone: 'success' }])
+    expect(rows[0]!.right).toEqual([{ text: '1m 20s', tone: 'muted' }])
     // A job the user stopped reads `stopped` at once and is marked `⊘` once the registry says it ended.
     const ended = rowsOf(jobsItem.jobsPanel({ jobs: [job('x', 'killed', { startedAt: 1, finishedAt: 2 })], now: NOW, history: true }, t, () => ({})))
     expect(ended[0]!.labelSpans![0]).toEqual({ text: '⊘', tone: 'muted' })
-    expect(rows[0]!.cells!.at(-1)).toMatchObject({ align: 'right' })
+    expect(rows[0]!.right![0]).toMatchObject({ tone: 'muted' })
     expect(rows[0]!.cells![1]).toMatchObject({ shed: 2 })
     // A job that is not running says why `x` cannot act on it.
     const withReasons = rowsOf(jobsItem.jobsPanel(state, t, entry => entry.status === 'running' ? {} : { 'jobs-stop': 'Already finished' }))
@@ -216,12 +220,12 @@ describe('mayfly-status-jobs', () => {
     expect(harness.ctx.mayflyPanes.list().some(candidate => candidate.id === 'mayfly.view.jobs')).toBe(false)
   })
 
-  it('leaves subagent jobs to the Agents item', async () => {
+  it('lists every job kind, including a producer that names itself a subagent', async () => {
     const current = fakeAgent([]) as unknown as Agent
     const registry = fakeJobs([job('watch', 'running', { startedAt: Date.now() }), job('reviewer', 'running', { kind: 'subagent', startedAt: Date.now() })])
     const harness = await bootJobs(current, registry)
-    expect(fullText(harness.entry().summary!.node)).toMatch(/^● jobs 1/u)
-    expect(JSON.stringify(harness.entry().node)).not.toContain('reviewer')
+    expect(fullText(harness.entry().summary!.node)).toMatch(/^● jobs 2/u)
+    expect(JSON.stringify(harness.entry().node)).toContain('reviewer')
     await harness.dispose()
   })
 
@@ -247,7 +251,7 @@ describe('mayfly-status-jobs', () => {
     expect(harness.tick.subscribers).toBe(1)
     const before = Date.now()
     registry.publish([job('build', 'completed', { startedAt: start - 3_000, finishedAt: start }), job('test', 'failed', { startedAt: start - 2_000, finishedAt: start, detail: 'exit code: 1' })])
-    expect(fullText(harness.entry().summary!.node)).toBe('✕ jobs 2/2 3s')
+    expect(fullText(harness.entry().summary!.node)).toBe('✕ jobs 2/2')
     harness.tick.fire(before + DONE_LINGER_MS - 1)
     expect(harness.entry().summary).not.toBeNull()
     harness.tick.fire(Date.now() + DONE_LINGER_MS + 1_000)
@@ -267,6 +271,34 @@ describe('mayfly-status-jobs', () => {
     settings.value = { viewHistory: true }
     harness.ctx.emit('settings/document-updated', 'mayfly' as never, 1)
     expect(JSON.stringify(harness.entry().node)).toContain('"id":"done"')
+    await harness.dispose()
+  })
+
+  it('keeps settled jobs from the durable job records when the registry no longer lists them', async () => {
+    const current = fakeAgent([]) as unknown as Agent
+    const owner = current.id
+    const id = JobId('bash-0123456789abcdef')
+    const registered = {
+      jobId: id, owner, kind: 'bash', label: 'old build', startedAt: 1_000,
+    }
+    const events = [
+      { type: 'job/registered', seq: 1, time: 1_000, data: registered },
+      { type: 'job/settled', seq: 2, time: 2_000, data: { ...registered, finishedAt: 2_000, status: 'completed', cause: 'producer', producerReported: true, detail: 'exit code: 0' } },
+      // A registration without a settlement stays incomplete: never a made-up finish.
+      { type: 'job/registered', seq: 3, time: 3_000, data: { ...registered, jobId: JobId('bash-fedcba9876543210'), label: 'incomplete', startedAt: 3_000 } },
+    ]
+    ;(current.session as unknown as { events: unknown[] }).events.push(...events)
+    const registry = fakeJobs()
+    const settings = { value: { viewHistory: true } as Record<string, unknown> }
+    const harness = await bootJobs(current, registry, undefined, { mayflyInteractionState: { settingsSource: () => settings.value } })
+    const panel = JSON.stringify(harness.entry().node)
+    expect(panel).toContain('old build')
+    expect(panel).toContain('exit code: 0')
+    expect(panel).not.toContain('incomplete')
+    // A live registry record wins over the same durable settlement, once.
+    registry.publish([job('bash-0123456789abcdef', 'completed', { startedAt: 1_000, finishedAt: 2_000, detail: 'exit code: 0' })])
+    const rows = JSON.stringify(harness.entry().node).match(/"id":"bash-0123456789abcdef"/gu) ?? []
+    expect(rows).toHaveLength(1)
     await harness.dispose()
   })
 
@@ -297,15 +329,15 @@ describe('mayfly-status-jobs', () => {
     expect(() => registry.publish([])).not.toThrow()
   })
 
-  it('shows the group a refresh found already settled as its closing line: the longest time that ran, from the registry\'s own end', async () => {
+  it('shows the group a refresh found already settled as its closing line', async () => {
     const current = fakeAgent([]) as unknown as Agent
     const registry = fakeJobs()
     const harness = await bootJobs(current, registry)
     const start = Date.now()
     registry.publish([job('a', 'running', { startedAt: start - 9_000 })])
-    // One job ends with no end time reported: its time runs to now.
+    // One job ends with no end time reported: the group still closes.
     registry.publish([{ ...job('a', 'completed', { startedAt: start - 9_000 }) }])
-    expect(fullText(harness.entry().summary!.node)).toMatch(/^✓ jobs 1\/1 9s$/u)
+    expect(fullText(harness.entry().summary!.node)).toBe('✓ jobs 1/1')
     await harness.dispose()
   })
 

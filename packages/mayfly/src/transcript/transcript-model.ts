@@ -13,6 +13,7 @@ import type { MayflyNodeSlot } from '../core/node-slot.ts'
 import type { MayflySearchLine } from '../core/search-line.ts'
 import type { MayflyScreenService } from '../core/screen.ts'
 import type { MayflyDecisionRequest, MayflyFocusMode, MayflyFocusRow, MayflyQueuedAction, MayflyScreen } from '../core/types.ts'
+import type { MayflyWorkCounters } from '../core/ui-work-counters.ts'
 import type { ApprovalMark, CompactionMark } from '../conversation/types.ts'
 import type { MayflyTranslate } from '../frontend/locale.ts'
 import { freezeModel, materializeTranscriptEntries, type TranscriptEntryModel, type TranscriptModel, type TranscriptTurnModel } from '../frontend/models.ts'
@@ -60,6 +61,8 @@ export interface TranscriptControllerOptions {
     readonly setTimeout: (callback: () => void, ms: number) => unknown
     readonly clearTimeout: (handle: unknown) => void
   }
+  /** Optional work sink for stream mapping and row construction; production passes none. */
+  readonly counters?: MayflyWorkCounters
 }
 
 /**
@@ -125,6 +128,14 @@ const BASE_KEYS = { 'ctrl+c': STREAM.copyRaw, '/': STREAM.findDown, '?': STREAM.
 /** Once a search is accepted the arrows walk its matches, and `n`/`N` go on and back in the direction it was made. */
 const SELECT_KEYS = { ...BASE_KEYS, up: STREAM.matchPrev, down: STREAM.matchNext, n: STREAM.matchAgain, 'shift+n': STREAM.matchBack } as const
 
+/** The corpus a search's hits were found in: the durable and live entry arrays, and the pattern. */
+interface SearchCorpus {
+  readonly entries: TranscriptModel['entries']
+  readonly liveEntries: readonly (MayflyUiNode | TranscriptEntryModel)[] | undefined
+  readonly pattern: SearchPattern
+  readonly result: SearchResult
+}
+
 /** A search of the displayed conversation: its line above the editor, the pattern, what it found, and which hit the stream stands on. */
 interface StreamSearchState {
   readonly line: MayflySearchLine
@@ -137,6 +148,8 @@ interface StreamSearchState {
   /** The model the hits were found in: a new model means the hits are found again. */
   model: TranscriptModel | null
   result: SearchResult
+  /** The corpus `result` was found in: a model whose two entry arrays are unchanged reuses the hits, a draft does not. */
+  corpus?: SearchCorpus
   /** The hit the cursor stands on, in `result.hits`; `-1` while none is chosen. */
   index: number
   /** The turns the search has stood in: they stay mounted and open until the search ends, so the hits already seen stay in view. */
@@ -200,6 +213,8 @@ export class TranscriptController {
   /** How long the last publish took: the window after it grows with it. */
   private publishCostMs = 0
   private trailing: unknown
+  /** The tick time a trailing publish carries, when the request came from the clock; a refresh publishes at its own fire time. */
+  private trailingNow: number | undefined
 
   constructor(private readonly options: TranscriptControllerOptions) {}
 
@@ -217,7 +232,7 @@ export class TranscriptController {
    */
   setView(key: string, source: Source, options: TranscriptViewOptions = {}): void {
     this.views.get(key)?.fresh.reset()
-    this.views.set(key, { source, options, facts: new StreamFacts(), fresh: new NewMessages(this.freshHost) })
+    this.views.set(key, { source, options, facts: new StreamFacts(this.options.counters), fresh: new NewMessages(this.freshHost) })
     if (key === this.active) this.publish()
   }
 
@@ -246,23 +261,42 @@ export class TranscriptController {
 
   /** The displayed model changed: publish it. The screen follows the tail, or counts what arrived below a view scrolled away. */
   refresh(): void {
+    this.requestPublish()
+  }
+
+  /**
+   * Publish a change at the end of the window after the last publish, or at once outside one. The first change of a
+   * quiet period is immediate; the ones inside a burst become one trailing publish with the newest model. A tick's
+   * `now` rides along so the trailing publish reads the time the tick named.
+   */
+  private requestPublish(now?: number): void {
     if (this.active === undefined || this.screen === undefined) return
-    if (this.trailing !== undefined) return
+    if (this.trailing !== undefined) {
+      if (now !== undefined) this.trailingNow = now
+      return
+    }
     const window = Math.min(PUBLISH_INTERVAL_MAX_MS, Math.max(PUBLISH_INTERVAL_MS, this.publishCostMs * PUBLISH_COST_FACTOR))
-    const wait = this.lastPublishAt + window - this.nowMs()
+    const wait = this.lastPublishAt + window - (now ?? this.nowMs())
     if (wait <= 0) {
-      this.publishNow()
+      this.publishNow(now)
       return
     }
     // Inside the window of the last publish: one publish at its end reads whatever the model is by then.
+    this.trailingNow = now
     const clock = this.options.clock
-    this.trailing = clock?.setTimeout(() => { this.trailing = undefined; this.publishNow() }, wait) ?? setTimeout(() => { this.trailing = undefined; this.publishNow() }, wait)
+    const publishLater = (): void => {
+      const at = this.trailingNow
+      this.trailing = undefined
+      this.trailingNow = undefined
+      this.publishNow(at)
+    }
+    this.trailing = clock?.setTimeout(publishLater, wait) ?? setTimeout(publishLater, wait)
     if (this.trailing !== undefined && typeof (this.trailing as { unref?: unknown }).unref === 'function') (this.trailing as { unref(): void }).unref()
   }
 
-  private publishNow(): void {
+  private publishNow(now?: number): void {
     if (this.active === undefined || this.screen === undefined) return
-    this.publish()
+    this.publish(now ?? this.nowMs())
     this.screen.requestRender()
   }
 
@@ -273,11 +307,12 @@ export class TranscriptController {
     if (this.options.clock === undefined) clearTimeout(this.trailing as ReturnType<typeof setTimeout>)
     else this.options.clock.clearTimeout(this.trailing)
     this.trailing = undefined
+    this.trailingNow = undefined
   }
 
   /** Something other than the model moved (the queued messages): publish again without announcing new content. */
   republish(): void {
-    this.publish()
+    this.requestPublish()
   }
 
   /** Ctrl-O: open or close the Verbose tier of the newest turns. @returns whether they are open now. */
@@ -320,7 +355,8 @@ export class TranscriptController {
       onAbandon: () => { this.endSearch() },
     })
     const model = this.model()
-    this.search = { line, forward, pattern: '', read: { kind: 'empty' }, phase: 'input', model, result: model === null ? EMPTY_RESULT : findHits(model, { kind: 'empty' }), index: -1, visited: new Set() }
+    this.search = { line, forward, pattern: '', read: { kind: 'empty' }, phase: 'input', model, result: EMPTY_RESULT, index: -1, visited: new Set() }
+    this.search.result = this.searchHits(this.search, model)
     this.disclosure = { ...this.disclosure, forced: new Set() }
     // The stream keeps the window it had around its cursor while the line holds the keys.
     this.slot.spotlight(true)
@@ -374,7 +410,7 @@ export class TranscriptController {
     search.pattern = pattern
     search.read = readPattern(pattern)
     search.model = this.model()
-    search.result = search.model === null ? EMPTY_RESULT : findHits(search.model, search.read)
+    search.result = this.searchHits(search, search.model)
     search.index = -1
     this.publish()
   }
@@ -431,21 +467,35 @@ export class TranscriptController {
     if (search === undefined) return
     const facts = this.active === undefined ? undefined : this.views.get(this.active)?.facts
     const hits = search.result.hits
+    let landed = false
     for (let tries = 0; tries < Math.max(1, hits.length); tries += 1) {
       const hit = hits[search.index]
       if (hit === undefined || facts === undefined) break
       search.visited.add(hit.turn)
       this.disclosure = { ...this.disclosure, forced: new Set(search.visited) }
+      // A row the stream already draws can take the cursor in the one publish that also mounts the visited turn.
+      const drawn = facts.rowOf(hit.part)
+      if (drawn !== undefined) {
+        this.cursorIds = [drawn]
+        this.cursorRev += 1
+        this.publish()
+        landed = true
+        break
+      }
+      // The turn was not mounted: build it to see whether it draws the hit at all.
       this.publish()
       const row = facts.rowOf(hit.part)
       if (row !== undefined) {
         this.cursorIds = [row]
         this.cursorRev += 1
+        this.publish()
+        landed = true
         break
       }
       search.index = (search.index + step + hits.length) % hits.length
     }
-    this.publish()
+    // A search that found no row still publishes its visited turns once, after the walk.
+    if (!landed) this.publish()
   }
 
   private searchStatus(search: StreamSearchState): string {
@@ -571,11 +621,25 @@ export class TranscriptController {
     if (model !== search.model) {
       const current = search.result.hits[search.index]
       search.model = model
-      search.result = model === null ? EMPTY_RESULT : findHits(model, search.read)
+      search.result = this.searchHits(search, model)
       const kept = current === undefined ? -1 : search.result.hits.findIndex(hit => hit.part === current.part && hit.nth === current.nth)
       search.index = search.phase === 'input' ? -1 : kept >= 0 ? kept : Math.min(search.index, search.result.hits.length - 1)
     }
     search.line.set(this.searchStatus(search))
+  }
+
+  /**
+   * Find the hits of the search's pattern, reusing the last result while the model's durable and live entry arrays and
+   * the pattern are the same objects. A durable publish replaces the durable array; a draft replaces only the live one.
+   */
+  private searchHits(search: StreamSearchState, model: TranscriptModel | null): SearchResult {
+    if (model === null) return EMPTY_RESULT
+    const liveEntries = model.live?.entries
+    const corpus = search.corpus
+    if (corpus !== undefined && corpus.entries === model.entries && corpus.liveEntries === liveEntries && corpus.pattern === search.read) return corpus.result
+    const result = findHits(model, search.read)
+    search.corpus = { entries: model.entries, liveEntries, pattern: search.read, result }
+    return result
   }
 
   private compactionInputs(): { readonly compactions?: readonly CompactionMark[], readonly contextWindow?: number, readonly contextTokens?: number, readonly approvals?: readonly ApprovalMark[], readonly children?: SpawnedChildren } {
@@ -601,8 +665,7 @@ export class TranscriptController {
     }
     if (this.offTick !== undefined || this.options.tick === undefined) return
     this.offTick = this.options.tick.subscribe((now) => {
-      this.publish(now)
-      this.screen?.requestRender()
+      this.requestPublish(now)
     })
   }
 

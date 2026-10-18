@@ -1,118 +1,132 @@
-# Native Harness features in Mayfly
+# Native-first Harness adaptation
 
-Mayfly targets Harness 0.2.0-rc.2. Native services own session lifecycle,
-scheduling, Team coordination, and tool execution. Mayfly provides terminal
-presentation and current-Agent selection.
+Mayfly targets Harness `0.2.1-rc.2` and follows its native contracts rather
+than carrying a compatibility layer. Native services own session lifecycle,
+working directories, scheduling, subagent activations, tool execution, and
+plugin management. Mayfly supplies terminal presentation, current-Agent
+selection, and its one transcript history fold. Read
+[native-capability-map.md](./native-capability-map.md) for the exact
+projections, services, keys, and command owners.
 
-## Commands and breaking changes
+## Personas and context
 
-- `/plugin` retains the marketplace browser, cache, install/remove commands,
-  `marketIndexUrl`, and CLI-backed installer. Package changes take effect after
-  restarting Mayfly and starting a new session. HMR remains disabled.
-- `/sessions` lists native session summaries — title, wall-clock span, token
-  totals, status, and path joined with the stored header — filters names,
-  searches contents when native full-text search is configured, and
-  archives/restores sessions. Enter opens a detail sheet with the preset,
-  timings, turn/step counts, and the token split. Active work requires an
-  explicit Stop activity and archive decision. Archive does not delete the
-  session log. `/rename` writes a user-pinned title through the native session
-  controller.
-- `/schedule` displays the current Agent's Session reminders, overdue first,
-  with local and relative times. Creation/cancellation stays in the
-  conversation. Schedule is a durable Host-wide service (`ctx.schedule`):
-  Mayfly's bundle inserts the `@deepseek-ai/dsh-schedule` row disabled, and
-  enabling it — `disabled: false` on the `schedule` row in a profile
-  `cordis.patch.yml` — attaches `schedule_*` tools to every root Agent
-  regardless of preset. (Harness 0.1.7 made Schedule Host-wide; 0.2.0 moved
-  its own Web composition's rows into the optional
-  `dsh-experimental-schedule-bundle`, which every install ships off —
-  Mayfly's row is unaffected.) `/schedule`
-  reads the selected Agent's Session list through the native service,
-  observes `schedule/changed`, and reports the capability as unavailable
-  while the row stays disabled. `/sessions` reminder badges come from the
-  Host catalog. Delivery is durable: a due reminder resolves its original
-  Session through the session controller and wakes it even when no Agent is
-  running. Reminder framing changed in 0.2.0 to "This is a scheduled message
-  from the user". The `standard` preset still mounts
-  `@deepseek-ai/dsh-time-context` with a five-minute durable-injection
-  throttle; terminal sessions carry no browser timezone metadata, so
-  timestamps fall back to the process zone.
-- `/files` displays native `present` deliveries. Preview reads at most 256 KiB;
-  binary and rich documents use an explicit external Open action where available.
-- `/mcp` server details expose Resources and Templates. Listing reads metadata;
-  Read fetches a chosen URI through the exact Agent's native tool pipeline.
-- `ask_user_question` gained a Harness 0.2.0 timed mode (`mode: timed` with
-  `timeout`): the question releases the agent at the deadline without aborting
-  the Turn, and a late answer is persisted as a user message whose source kind
-  is `user-question-reply`. Mayfly renders that reply in the transcript like
-  any user message, while the prompt echo, queue/steer, rewind, and retraction
-  keep quoting only direct prompts.
-- Web search through a signed-in DeepSeek account: on the `deepseek-account`
-  provider route, `web_search` authenticates with the account token and needs
-  no separate API key; a 401 surfaces sign-in guidance. Selecting "DeepSeek
-  Account" in `/provider` opens an account panel (native `deepseekAccount`
-  service) that signs in from the terminal: the bundle mounts a loopback
-  webserver (OS-assigned port) that hosts the OAuth callback, Sign in starts
-  the PKCE attempt and opens the authorize link in the system browser (the
-  link stays visible as the fallback), the panel follows the attempt phases
-  to completion, and Sign out removes the stored grant. Hosts whose
-  composition has no webserver show the Desktop/Web sign-in hint instead —
-  the stored grant is shared across hosts of one machine. While the attempt
-  waits, the panel shows the attempt expiry and accepts the callback URL
-  pasted from the local browser's address bar: when the browsing machine
-  cannot reach the loopback callback (a headless SSH host, say), the address
-  bar still holds the full redirect URL with its code, and Deliver callback
-  replays it against the local callback server — no port forward needed.
-  The paste accepts only the live loopback endpoint. The first-run guide
-  (no configured credential and no stored grant) offers both paths: account
-  sign-in, which opens the account panel, or pasting a DeepSeek API key.
-- `mayfly.transcriptView` replaces `mayfly.transcript.*`. Values are `compact`,
-  `standard` (default), `detailed`, and `verbose`, keeping the Harness Chat
-  work-details mode names. Unlike Harness Chat, whose running turn header and
-  open group title are its live signals, Mayfly keeps the vitals of the turn in the
-  activity block (calls in flight are pending lines in the transcript) and renders
-  the rest in the past tense: each kind of settled work is one block or group, with
-  its own state, and Verbose keeps every card open. Compact folds a turn's settled
-  tool calls into one `▸ N tool calls` line. Standard does not fold turns. Ctrl+O
-  expands the recent `expandTurns` turns. Old per-family settings and
-  `recentStepsRetention` are no longer interpreted.
+Mayfly composes no `{{cwd}}` variable and does not interpolate the working
+directory into a persona. A persona may use `{{model}}`; the effective
+directory is the native `workingDirectory` projection, delivered to the model
+through the native working-directory context. A Session header keeps the
+original project directory for workspace identity only. Terminal Sessions
+carry no browser timezone metadata, so time context falls back to the process
+zone.
 
-These changes do not automatically rewrite user configuration or delete user data.
-Remove obsolete keys from settings files when updating.
+## Schedule is Host-wide, its tools are preset-scoped
+
+The Schedule capability is the durable Host-wide `ctx.schedule` service.
+Mayfly inserts its row disabled; a profile enables it with `disabled: false`.
+The model-facing `schedule_create`, `schedule_list`, `schedule_update`, and
+`schedule_delete` tools come from the preset-owned `tool-schedule` row:
+`standard`, `ptc`, `cordis`, and `mayfly-cordis` mount it, `minimal` omits it.
+There is no Host attachment that adds these tools to every root Agent.
+
+`/schedule` reads the selected Agent's Session list through the native service,
+observes `schedule/changed`, and checks the exact Agent's tool schemas for
+`schedule_create`. The panel therefore reports the capability as unavailable
+when the service is off or the Agent's preset does not mount the tools.
+Delivery is durable: a due reminder resolves its original Session through the
+Session Controller and wakes it even when no Agent is running. Creation and
+cancellation stay in the conversation.
+
+## Plugins are installed by the native manager
+
+`/plugin` renders the marketplace index but never installs by spawning a CLI or
+a package manager. Installed state comes from `ctx.pluginManager.listBundles()`;
+install, update, remove, and enable/disable go through `installBundle`,
+`removeBundle`, and `setBundleEnabled`. The manager owns exact versions,
+compatibility checks, profile locks, pending builds, restart semantics, and the
+profile composition. Mayfly only presents its `ChangeResult` and the pending
+restart marker. The marketplace index remains a read-only discovery source
+until a native index migration exists.
+
+The Harness `dsh plugin` command still exists for non-Mayfly profiles and local
+package development; Mayfly's own `/plugin` command does not call it, and no
+Mayfly code writes `$DSH_HOME/cordis.patch.yml`.
+
+## Subagents are managed activations
+
+Every delegation is one managed activation. A start returns a child id
+immediately; the child runs independently and the parent receives the native
+completion notice. There is no foreground/background mode, no
+`run_in_background` argument, and no `started subagent` acknowledgement to
+parse.
+
+Mayfly reads the parent's durable `subagentCatalog`, the child's `subagent`
+and `subagentTiming` projections, and the native `subagent/start` /
+`subagent/end` lifecycle. `/agents` and the Agents view list the exact direct
+children; `Enter` opens a local child's conversation, and `x` stops a
+continuable child through `ctx.subagents.drainChildren`. `/btw` is a native
+`fork` activation with its own Agent and history floor; `F7` returns to the
+previous conversation and `F8` closes the displayed one. Browsing a cold child
+reads native addressed history and never activates it; sending a reply is an
+explicit addressed prompt.
+
+## Sessions are read from the native controller
+
+`/sessions` browses the Session Controller catalog, groups it by the native
+Workspace registry, and reads a Session's values through
+`sessionController.projections`. A `sequenced` value is current state; a
+`migration-required` value carries cached hints and a notice, and Mayfly never
+starts migration on its own. Opening the Session is the explicit migration.
+
+The listing retains only the summary rows one controller read returned, fenced
+by controller instance and read generation. It does not enumerate
+`sessionPersistence`, consult `sessionProjectionCache`, read a cold title log,
+or keep a second session domain store. The one durable-log read is `/save`,
+which flushes the exact Session and opens the persistence handle explicitly to
+write a Markdown export.
+
+## Commands and surfaces
+
+- `/save [full] [path]` writes the projected transcript, or the full event
+  stream, as Markdown. The old `/export` name is not Mayfly's; it belongs to
+  the Web download command.
+- `/permissions` is Mayfly's preset panel; the native `/permission` command
+  keeps its name and argument form.
+- `/rename` writes a user-pinned title through the Session Controller.
+- `/model`, `/effort`, `/provider`, `/context`, `/stats`, `/trace`, `/skills`,
+  `/tools`, `/mcp`, `/files`, `/jobs`, `/agents`, `/btw`, `/schedule`,
+  `/settings`, and `/plugin` read native services and render terminal panels.
+- `ask_user_question` may use the native timed mode; a late answer is a
+  persisted user message with source kind `user-question-reply`, and Mayfly
+  renders it like any other user message.
+- Web search and sign-in follow the native `deepseek-account` route; the
+  account panel uses the native `deepseekAccount` service and its loopback
+  callback, never a stored browser session.
+- `mayfly.transcriptView` keeps the native work-details vocabulary:
+  `compact`, `standard` (default), `detailed`, and `verbose`.
 
 ## Optional Agent Team
 
 Agent Team is provided by the `agent-team` marketplace entry from
 `Ephemeral-AI-Lab/dsh-plugins` (`plugins/mayfly-agent-team`). Install it through
 `/plugin install agent-team`, restart, create a new session, and select the
-`team` preset with `/preset team`. The preset starts from `standard` capabilities;
-installation does not change the default or existing presets.
-
-Only Team-preset roots and their native teammates receive the Team tools,
-policy, `/team`, and Team UI contributions. Ordinary presets retain upstream
-subagent delegation. The plugin consumes native Team projections and owns the
-readonly roster/task panel, overlap notices, and conversation actions.
+`team` preset with `/preset team`. Installation does not change the default or
+existing presets. Only Team-preset roots and their native teammates receive the
+Team tools, policy, `/team`, and Team UI contributions; ordinary presets retain
+upstream delegation.
 
 Ask the Lead explicitly to use Agent Team. `/team` opens members and tasks;
 wide layouts show both columns, while narrow layouts use tabs with retained
-selection and search. Task details can open the owner's conversation.
-
-Generic Mayfly navigation owns the conversation registry, exact-Agent
-selection, F7 returning to the previous conversation, and F8 closure. The public `mayfly/request-subagent-reply` event opens the
-continuable child and seeds the editor with the given text; nothing is sent until the user sends it. `Enter` queues the message for the
-child's next turn; `Ctrl+Enter` steers, delivered at the next step boundary. Browsing cold history and
-editing drafts do not resume a child; only a send uses the native addressed prompt.
-Closing a view does not stop a teammate.
-
-Team write scopes are advisory. Members share a checkout and the upstream
-Team runtime remains experimental. Missing Team plugins on historical-session
-resume must be resolved by reinstalling the matching plugin, not by replacing
-the saved preset or deleting its log.
+selection and search. Task details can open the owner's conversation. Closing a
+view does not stop a teammate, and Team write scopes are advisory. Missing Team
+plugins on a historical-session resume must be resolved by reinstalling the
+matching plugin, not by replacing the saved preset or deleting its log.
 
 ## Development acceptance
 
-Use dedicated `mayfly-<tag>` profiles, never production `mayfly`. Exercise the
-existing marketplace install/remove flow and its restart boundary; optional Team
-roster/task updates and live/cold navigation; narrow terminal layouts; reminder
-visibility; explicit resource/file reads; and archive refusal followed by explicit
-stop-and-archive. Verify configuration and user data survive each workflow.
+Use dedicated `mayfly-<tag>` profiles, never production `mayfly`; never link a
+checkout into production. Exercise `/plugin` install/update/remove and the
+restart boundary, `/sessions` browsing including a migration-required session,
+working-directory changes with native file mentions and skills, managed
+subagent activation/completion and `drainChildren`, bash jobs, Schedule in both
+`standard` and `minimal`, `/permissions` and `/save`, `/btw`, narrow widths,
+and a core reload. Verify that configuration and user data survive each
+workflow.

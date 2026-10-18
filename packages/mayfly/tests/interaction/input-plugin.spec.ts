@@ -24,10 +24,9 @@ import {
   getSharedEditor,
 } from '../../src/interaction/editor-instance.ts'
 import { registerSubmitTransformer } from '../../src/interaction/prompt-submit-pipeline.ts'
-import { setExternalEditorLauncher } from '../../src/interaction/external-editor.ts'
+import { setExternalEditorLauncher, setExternalFileOpener } from '../../src/interaction/external-editor.ts'
 import { fakeMayflyContext, FakeMayflyEditor, KEY, type FakeMayflyComponents, type FakeScreen } from './fakes.ts'
 import { mountUiRegistryObservers, UiInteractionService } from '../../src/core/ui-interaction-state.ts'
-import { renderRequest } from './request-fixture.ts'
 
 /** One settled-skill double for the catalog seam. */
 function skillOf(name: string): SkillSummary {
@@ -124,7 +123,7 @@ async function mount(options: {
   modelRef?: unknown
   retract?: (messageId: string) => boolean
   view?: DisplayedFixture
-  subagents?: { prompt: ReturnType<typeof vi.fn>, interruptByParent: ReturnType<typeof vi.fn> }
+  subagents?: { prompt: ReturnType<typeof vi.fn>, interruptByParent: ReturnType<typeof vi.fn>, interrupt?: ReturnType<typeof vi.fn> }
   uiImages?: unknown
 } = {}): Promise<{
   ctx: Context
@@ -254,9 +253,11 @@ describe('mayfly-input plugin', () => {
   })
 
   it('pages the transcript from the editor and resumes the tail on End', async () => {
-    const { screen, editor, editorRoot, hint, fiber } = await mount()
+    const { ctx, screen, editor, editorRoot, hint, fiber } = await mount()
     screen.contentScrollResult = true
     screen.contentPaused = true
+    let jumps = 0
+    ctx.on('mayfly/request-new-messages', () => { jumps += 1 })
 
     type(editor, 'draft')
     expect(screen.sendContentInput('\x1b[5~')).toBe(true)
@@ -268,12 +269,13 @@ describe('mayfly-input plugin', () => {
       { direction: 'down', amount: 20 },
     ])
     expect(screen.sendContentInput('\x1b[F')).toBe(false)
-    // Ctrl+↓ follows the tail even with a draft, for keyboards that have no End key.
+    // Ctrl+↓ asks for the messages that arrived while away even with a draft, for keyboards without End.
     expect(screen.sendContentInput('\x1b[1;5B')).toBe(true)
-    expect(screen.followCount).toBe(1)
+    expect(jumps).toBe(1)
+    expect(screen.followCount).toBe(0)
     editor.setText('')
     expect(screen.sendContentInput('\x1b[F')).toBe(true)
-    expect(screen.followCount).toBe(2)
+    expect(screen.followCount).toBe(1)
     expect(screen.contentPaused).toBe(false)
     expect(hint.render(80)).toEqual([])
 
@@ -617,8 +619,8 @@ describe('mayfly-input plugin', () => {
         mode: 'continuable' as const,
         access: 'interactive' as const,
       }, 50)
-    const interruptByParent = vi.fn()
-    const rig = await mount({ running: true, view, subagents: { prompt, interruptByParent } })
+    const interrupt = vi.fn()
+    const rig = await mount({ running: true, view, subagents: { prompt, interruptByParent: vi.fn(), interrupt } })
     type(rig.editor, 'late receipt')
     rig.editor.handleInput(KEY.enter)
     await vi.waitFor(() => expect(prompt).toHaveBeenCalledOnce())
@@ -627,7 +629,7 @@ describe('mayfly-input plugin', () => {
     await Promise.resolve()
     await Promise.resolve()
     expect(rig.editor.onKey?.(KEY.escape)).toBe(true)
-    expect(interruptByParent).toHaveBeenCalledOnce()
+    expect(interrupt).toHaveBeenCalledWith(SessionId('input-spec'), { kind: 'user', parentSessionId: SessionId('parent') })
 
     const abortGate = Promise.withResolvers<{ messageId: string }>()
     const abortPrompt = vi.fn(() => abortGate.promise)
@@ -646,7 +648,7 @@ describe('mayfly-input plugin', () => {
 
   it('interrupts an interactive subagent through its parent address', async () => {
     const prompt = vi.fn()
-    const interruptByParent = vi.fn()
+    const interrupt = vi.fn()
     const view = sideView({
         kind: 'subagent' as const,
         sessionId: 'input-spec',
@@ -655,9 +657,9 @@ describe('mayfly-input plugin', () => {
         mode: 'continuable' as const,
         access: 'interactive' as const,
       }, 3)
-    const { editor, cancel } = await mount({ running: true, view, subagents: { prompt, interruptByParent } })
+    const { editor, cancel } = await mount({ running: true, view, subagents: { prompt, interruptByParent: vi.fn(), interrupt } })
     editor.handleInput(KEY.escape)
-    expect(interruptByParent).toHaveBeenCalledWith('input-spec', 'parent', 'continuable')
+    expect(interrupt).toHaveBeenCalledWith(SessionId('input-spec'), { kind: 'user', parentSessionId: SessionId('parent') })
     expect(cancel).not.toHaveBeenCalled()
   })
 
@@ -794,7 +796,7 @@ describe('mayfly-input plugin', () => {
     const { screen, editor, hint } = await mount({ withAgent: false })
     type(editor, 'hello')
     editor.handleInput(KEY.enter)
-    expect(noticesOf(hint)).toEqual(['!✗ !!no active session!'])
+    await vi.waitFor(() => { expect(noticesOf(hint)).toEqual(['!✗ !!could not start a session: no active session!']) })
     expect(screen.renderRequests).toBeGreaterThan(0)
   })
 
@@ -927,55 +929,33 @@ describe('mayfly-input plugin', () => {
     hint.invalidate()
   })
 
-  it('opens the bare /permission picker with a sibling service and dispatches only a selection', async () => {
+  it('passes bare /permission to the native command without opening a Mayfly panel', async () => {
     const { ctx, editor, hint } = await mount()
-    const handler = vi.fn(() => ({ kind: 'success' as const, text: 'should not run' }))
-    ctx.commands.register({ name: 'permission', description: 'spy standing in for the upstream command', handler })
-    await ctx.plugin({
-      name: 'test-permission-presets',
-      apply(provider) {
-        provider.provide('permissionPresets', {
-          names: ['read-only', 'workspace-write'],
-          current: () => 'workspace-write',
-          resolve: (name: string) => ({ sandbox: `${name}-sandbox`, approval: 'ask' }),
-          optionOf: (name: string) => ({ value: name, name }),
-        })
-      },
-    })
+    const handler = vi.fn(() => ({ kind: 'success' as const, text: 'current preset workspace-write' }))
+    ctx.commands.register({ name: 'permission', description: 'native permission command', handler })
     type(editor, '/permission')
     editor.handleInput(KEY.enter)
-    await vi.waitFor(() => { expect(ctx.mayflyUiInteraction.get('overlay', 'mayfly.permission')).toBeDefined() })
-    const panel = ctx.mayflyUiInteraction.get('overlay', 'mayfly.permission')!
-    const rendered = renderRequest(panel)
-    const frame = rendered.component.render(80).join('\n')
-    expect(frame).toContain('Permissions')
-    expect(frame).toContain('[current]')
-    expect(handler).not.toHaveBeenCalled()
-    expect(hint.render(80)).toEqual([])
-    panel.requestClose()
-    await vi.waitFor(() => expect(panel.disposed).toBe(true))
-    expect(handler).not.toHaveBeenCalled()
-    rendered.runtime.dispose()
+    await vi.waitFor(() => { expect(noticesOf(hint)).toEqual(['^ℹ ^current preset workspace-write']) })
+    expect(handler).toHaveBeenCalledOnce()
+    expect(handler).toHaveBeenCalledWith(expect.objectContaining({ rawInput: '' }))
+    expect(ctx.mayflyUiInteraction.get('overlay', 'mayfly.permission')).toBeUndefined()
+  })
 
-    type(editor, '/permission')
+  it('passes a bare /permissions line to its Mayfly panel command', async () => {
+    const { ctx, editor } = await mount()
+    const handler = vi.fn(() => ({ kind: 'success' as const }))
+    ctx.commands.register({ name: 'permissions', description: 'Mayfly permission panel', handler })
+    type(editor, '/permissions')
     editor.handleInput(KEY.enter)
-    await vi.waitFor(() => expect(ctx.mayflyUiInteraction.get('overlay', 'mayfly.permission')).toBeDefined())
-    ctx.mayflyUiInteraction.get('overlay', 'mayfly.permission')!.emit({ kind: 'selection-accept', pagePath: [], controlId: 'permissions', selectedIds: ['workspace-write'] })
-    await vi.waitFor(() => expect(handler).toHaveBeenCalledOnce())
-    expect(handler).toHaveBeenCalledWith(expect.objectContaining({ rawInput: ' workspace-write' }))
-    await vi.waitFor(() => expect(ctx.mayflyUiInteraction.get('overlay', 'mayfly.permission')).toBeUndefined())
+    await vi.waitFor(() => { expect(handler).toHaveBeenCalledOnce() })
+    expect(handler).toHaveBeenCalledWith(expect.objectContaining({ rawInput: '' }))
+    expect(ctx.mayflyUiInteraction.get('overlay', 'mayfly.permission')).toBeUndefined()
   })
 
   it('passes a with-argument /permission line through to the command', async () => {
     const { ctx, editor, hint, screen } = await mount()
     const handler = vi.fn(() => ({ kind: 'success' as const, text: 'preset read-only' }))
     ctx.commands.register({ name: 'permission', description: 'spy standing in for the upstream command', handler })
-    ctx.provide('permissionPresets', {
-      names: ['read-only'],
-      current: () => 'read-only',
-      resolve: (name: string) => ({ sandbox: name, approval: 'ask' }),
-      optionOf: (name: string) => ({ value: name, name }),
-    })
     type(editor, '/permission read-only')
     editor.handleInput(KEY.enter)
     await vi.waitFor(() => { expect(noticesOf(hint)).toEqual(['^ℹ ^preset read-only']) })
@@ -1124,11 +1104,10 @@ describe('mayfly-input plugin', () => {
     expect(hint.render(80)).toEqual([])
   })
 
-  it('renders no hint row without an attached session', async () => {
+  it('reports an empty slash match without an attached session', async () => {
     const { editor, hint } = await mount({ withAgent: false })
     type(editor, '/res')
-    // No agent means no slash feedback, and nothing else owns the row.
-    expect(hint.render(80)).toEqual([])
+    expect(hint.render(80)).toEqual(['~no matching command: /res~'])
   })
 
   it('renders no hint row when the slash line is not a command', async () => {
@@ -1139,11 +1118,12 @@ describe('mayfly-input plugin', () => {
 
   it('keeps an over-wide rejection whole in the lane; the notification pane truncates it at its cap', async () => {
     const { editor, hint } = await mount({ withAgent: false })
-    type(editor, 'hello')
+    type(editor, 'x'.repeat(300))
     editor.handleInput(KEY.enter)
+    await vi.waitFor(() => { expect(noticesOf(hint)).toHaveLength(1) })
     const [notice] = noticesOf(hint)
     expect(notice).toMatch(/^!✗ !/u)
-    expect(notice).toContain('session')
+    expect(notice).toContain('could not start a session')
   })
 
   it('renders no hint row when a command succeeds without text', async () => {
@@ -1239,6 +1219,17 @@ describe('mayfly-input plugin', () => {
       expect(ctx.mayflyRequests.stopPending()).toBe(false)
       expect(editor.onKey?.(KEY.escape)).toBe(true)
       expect(ctx.mayflyRequests.stopPending()).toBe(true)
+    })
+
+    it('reports the failures of an interrupt request', async () => {
+      const { editor, hint, agent } = await mount({ running: true })
+      vi.mocked(agent.cancel).mockImplementation(() => {
+        throw new Error('refused')
+      })
+      editor.handleInput(KEY.escape)
+      await vi.waitFor(() => {
+        expect(noticesOf(hint).join('\n')).toContain('interrupt requested with failures: current Agent: refused')
+      })
     })
 
     it('clears the buffer on Escape when text is present and the agent is idle, keeping it one Up away', async () => {
@@ -1610,6 +1601,28 @@ describe('mayfly-input plugin', () => {
       expect(screen.suspends).toBe(1)
     })
 
+    it('edits without the paste-capture seam and drops a late suspend failure after unload', async () => {
+      const { editor } = await mount()
+      fakeLauncher(() => Promise.resolve('edited'))
+      ;(editor as { captureDraft?: unknown }).captureDraft = undefined
+      type(editor, 'draft here')
+      editor.handleInput(KEY.ctrlG)
+      await vi.waitFor(() => {
+        expect(editor.getText()).toBe('edited')
+      })
+
+      const rig = await mount()
+      const suspendGate = Promise.withResolvers<void>()
+      rig.screen.suspend = (() => suspendGate.promise) as typeof rig.screen.suspend
+      type(rig.editor, 'draft survives')
+      rig.editor.handleInput(KEY.ctrlG)
+      await rig.fiber.dispose()
+      suspendGate.reject(new Error('late suspend failure'))
+      await settle()
+      expect(rig.hint.render(80)).toEqual([])
+      expect(rig.editor.getText()).toBe('draft survives')
+    })
+
     it('drops the failure notice when the fiber unloads before the launcher rejects', async () => {
       const { editor, hint, fiber } = await mount()
       const gate = Promise.withResolvers<string | undefined>()
@@ -1738,7 +1751,7 @@ describe('the Alt+M model cycle key', () => {
     type(editor, 'draft')
     editor.handleInput(KEY.altM)
     expect(editor.getText()).toBe('draft')
-    await vi.waitFor(() => { expect(ctx.mayflyUiInteraction.notificationSnapshot().map(item => item.message)).toEqual(['no session is live yet']) })
+    await vi.waitFor(() => { expect(ctx.mayflyUiInteraction.notificationSnapshot().map(item => item.message)).toEqual(['the model selection is unavailable']) })
   })
 })
 
@@ -1891,6 +1904,37 @@ describe('editor token actions', () => {
     editor.completionView = { ...editor.completionView, index: 1 }
     expect(editor.onKey?.(KEY.enter)).toBe(true)
     expect(editor.inserted).toContain(' ')
+  })
+})
+
+describe('editor token actions: external editor failures', () => {
+  const savedVisual = process.env.VISUAL
+  beforeEach(() => {
+    process.env.VISUAL = 'mayfly-spec-editor'
+  })
+  afterEach(() => {
+    process.env.VISUAL = savedVisual
+    setExternalEditorLauncher(undefined)
+  })
+
+  it('reports a non-Error token-editor failure and drops one after unload', async () => {
+    const { editor, hint } = await mount()
+    setExternalEditorLauncher(() => Promise.reject('plain editor failure'))
+    editor.token = { kind: 'paste', text: '[paste #1 +1 lines]', selected: false, content: 'x' }
+    expect(editor.onKey?.(KEY.ctrlG)).toBe(true)
+    await vi.waitFor(() => {
+      expect(noticesOf(hint).join('\n')).toContain('plain editor failure')
+    })
+
+    const rig = await mount()
+    const suspendGate = Promise.withResolvers<void>()
+    rig.screen.suspend = (() => suspendGate.promise) as typeof rig.screen.suspend
+    rig.editor.token = { kind: 'paste', text: '[paste #1 +1 lines]', selected: false, content: 'x' }
+    expect(rig.editor.onKey?.(KEY.ctrlG)).toBe(true)
+    await rig.fiber.dispose()
+    suspendGate.reject(new Error('late token editor failure'))
+    await new Promise(resolve => setImmediate(resolve))
+    expect(rig.hint.render(80)).toEqual([])
   })
 })
 
@@ -2398,5 +2442,330 @@ describe('input plugin decision branches', () => {
     } finally {
       setExternalEditorLauncher(undefined)
     }
+  })
+})
+
+describe('launch-screen browsing, sessionless commands, and first-message starts', () => {
+  it('browses the recent sessions on the empty prompt and hands every key over correctly', async () => {
+    const { ctx, editor, screen } = await mount({ withAgent: false })
+    expect(editor.onKey?.(KEY.up)).toBe(false)
+
+    ctx.mayflyInteractionState.splash.ids = ['one', 'two']
+    type(editor, 'draft')
+    expect(editor.onKey?.(KEY.up)).toBe(false)
+    editor.setText('')
+    editor.showingAutocomplete = true
+    expect(editor.onKey?.(KEY.up)).toBe(false)
+    editor.showingAutocomplete = false
+
+    const renders = screen.renderRequests
+    expect(editor.onKey?.(KEY.up)).toBe(true)
+    expect(ctx.mayflyInteractionState.splash.focus).toBe(0)
+    expect(screen.renderRequests).toBeGreaterThan(renders)
+    expect(editor.onKey?.(KEY.up)).toBe(true)
+    expect(ctx.mayflyInteractionState.splash.focus).toBe(0)
+    expect(editor.onKey?.(KEY.down)).toBe(true)
+    expect(ctx.mayflyInteractionState.splash.focus).toBe(1)
+    expect(editor.onKey?.(KEY.down)).toBe(true)
+    expect(ctx.mayflyInteractionState.splash.focus).toBeUndefined()
+
+    const resumed: string[] = []
+    ctx.on('mayfly/request-resume', id => resumed.push(String(id)))
+    expect(editor.onKey?.(KEY.up)).toBe(true)
+    expect(editor.onKey?.(KEY.enter)).toBe(true)
+    expect(resumed).toEqual(['one'])
+    expect(ctx.mayflyInteractionState.splash.focus).toBeUndefined()
+
+    expect(editor.onKey?.(KEY.up)).toBe(true)
+    expect(editor.onKey?.(KEY.escape)).toBe(true)
+    expect(ctx.mayflyInteractionState.splash.focus).toBeUndefined()
+
+    expect(editor.onKey?.(KEY.up)).toBe(true)
+    expect(editor.onKey?.('x')).toBe(false)
+    expect(ctx.mayflyInteractionState.splash.focus).toBeUndefined()
+    expect(editor.getText()).toBe('')
+
+    ;(ctx.get('testSession') as { current: unknown }).current = { id: 'primary' }
+    expect(editor.onKey?.(KEY.up)).toBe(false)
+    ;(ctx.get('testSession') as { current: unknown }).current = null
+  })
+
+  it('submits no resume when the recent-list focus is out of range', async () => {
+    const { ctx, editor } = await mount({ withAgent: false })
+    ctx.mayflyInteractionState.splash.ids = ['one']
+    ctx.mayflyInteractionState.splash.focus = 5
+    const resumed: string[] = []
+    ctx.on('mayfly/request-resume', id => resumed.push(String(id)))
+    expect(editor.onKey?.(KEY.enter)).toBe(true)
+    expect(resumed).toEqual([])
+  })
+
+  it('reports a rejected first-message delivery without beginning a request', async () => {
+    const { ctx, editor, hint } = await mount({ withAgent: false })
+    const fresh = {
+      id: 'fresh', session: {}, steer: vi.fn(), inbox: fakeInbox(),
+      followup: vi.fn(() => { throw new Error('inbox full') }),
+    } as unknown as Agent
+    ctx.set('mayflySessionStart', { onBooted: () => () => {}, ensure: async () => fresh } as never)
+    type(editor, 'first words')
+    editor.handleInput(KEY.enter)
+    await vi.waitFor(() => {
+      expect(noticesOf(hint).join('\n')).toContain('inbox full')
+    })
+    expect(ctx.mayflyRequests.active()).toBeUndefined()
+  })
+
+  it('drops a first message when the session start settles after unload', async () => {
+    const { ctx, editor, fiber } = await mount({ withAgent: false })
+    const gate = Promise.withResolvers<Agent>()
+    const started = Promise.withResolvers<void>()
+    ctx.set('mayflySessionStart', {
+      onBooted: () => () => {},
+      ensure: () => {
+        started.resolve()
+        return gate.promise
+      },
+    } as never)
+    type(editor, 'late words')
+    editor.handleInput(KEY.enter)
+    await started.promise
+    await fiber.dispose()
+    gate.resolve({ id: 'fresh', session: {}, followup: vi.fn(), inbox: fakeInbox() } as unknown as Agent)
+    await new Promise(resolve => setImmediate(resolve))
+  })
+
+  it('drops a failed session start when it settles after unload', async () => {
+    const { ctx, editor, fiber } = await mount({ withAgent: false })
+    const gate = Promise.withResolvers<Agent>()
+    const started = Promise.withResolvers<void>()
+    ctx.set('mayflySessionStart', {
+      onBooted: () => () => {},
+      ensure: () => {
+        started.resolve()
+        return gate.promise
+      },
+    } as never)
+    type(editor, 'late failure')
+    editor.handleInput(KEY.enter)
+    await started.promise
+    await fiber.dispose()
+    gate.reject(new Error('too late'))
+    await new Promise(resolve => setImmediate(resolve))
+  })
+
+  it('keeps a newer draft when the session start rejects with a non-Error', async () => {
+    const { ctx, editor, hint } = await mount({ withAgent: false })
+    const gate = Promise.withResolvers<Agent>()
+    const started = Promise.withResolvers<void>()
+    ctx.set('mayflySessionStart', {
+      onBooted: () => () => {},
+      ensure: () => {
+        started.resolve()
+        return gate.promise
+      },
+    } as never)
+    type(editor, 'first words')
+    editor.handleInput(KEY.enter)
+    await started.promise
+    type(editor, ' newer')
+    gate.reject('no active session')
+    await vi.waitFor(() => {
+      expect(noticesOf(hint).join('\n')).toContain('could not start a session: no active session')
+    })
+    expect(editor.getText()).toContain('newer')
+  })
+
+  it('passes a steer through when the displayed view changed and no agent is selected', async () => {
+    const { ctx, editor, steer } = await mount({ withAgent: false })
+    const resumable = {
+      kind: 'subagent', id: 'session:once', sessionId: 'once', parentSessionId: 'parent',
+      label: 'once', mode: 'continuable', access: 'resumable', residency: 'displayed',
+    }
+    type(editor, 'go')
+    // Install the view sequence after typing: the editor's change handler
+    // reads the displayed conversation for its placeholder.
+    const current = vi.spyOn(ctx.mayflyCurrentAgent, 'current').mockReturnValue(null)
+    const displayed = vi.spyOn(ctx.mayflyConversations, 'displayed')
+      .mockReturnValueOnce(resumable as never)
+      .mockReturnValueOnce(null as never)
+    expect(editor.onKey?.(KEY.ctrlEnter)).toBe(false)
+    expect(steer).not.toHaveBeenCalled()
+    expect(editor.getText()).toBe('go')
+    displayed.mockRestore()
+    current.mockRestore()
+  })
+
+  it('runs a Mayfly-owned command without a session and asks for one otherwise', async () => {
+    const { ctx, editor, hint } = await mount({ withAgent: false })
+    const handler = vi.fn(() => ({ kind: 'success' as const, text: 'done' }))
+    const off = ctx.mayflyInteractionState.sessionless.register({ name: 'sess', description: 'Sessionless', handler })
+    try {
+      type(editor, '/sess now')
+      editor.handleInput(KEY.enter)
+      await vi.waitFor(() => { expect(handler).toHaveBeenCalledOnce() })
+      expect(handler).toHaveBeenCalledWith(expect.objectContaining({ rawInput: ' now' }))
+      type(editor, '/other')
+      editor.handleInput(KEY.enter)
+      await vi.waitFor(() => { expect(noticesOf(hint).join('\n')).toContain('Send a message first: /other needs a session') })
+    } finally {
+      off()
+    }
+  })
+
+  it('starts a session for the first message and begins the main request', async () => {
+    const { ctx, editor } = await mount({ withAgent: false })
+    const followup = vi.fn()
+    const inbox = fakeInbox()
+    const fresh = { id: 'fresh', session: {}, followup, steer: vi.fn(), inbox } as unknown as Agent
+    ctx.set('mayflySessionStart', { onBooted: () => () => {}, ensure: async () => fresh } as never)
+    type(editor, 'first words')
+    editor.handleInput(KEY.enter)
+    await vi.waitFor(() => { expect(followup).toHaveBeenCalledOnce() })
+    expect(followup.mock.calls[0]?.[0]).toMatchObject({ content: [{ type: 'text', text: 'first words' }] })
+    expect(ctx.mayflyRequests.active()?.scope).toBe('main')
+    expect(editor.getText()).toBe('')
+  })
+
+  it('drops a first message when the fiber unloads before the session starts', async () => {
+    const { ctx, editor, fiber } = await mount({ withAgent: false })
+    const followup = vi.fn()
+    const gate = Promise.withResolvers<Agent>()
+    ctx.set('mayflySessionStart', { onBooted: () => () => {}, ensure: () => gate.promise } as never)
+    type(editor, 'too late')
+    editor.handleInput(KEY.enter)
+    await fiber.dispose()
+    gate.resolve({ id: 'fresh', session: {}, followup, inbox: fakeInbox() } as unknown as Agent)
+    await new Promise(resolve => setImmediate(resolve))
+    expect(followup).not.toHaveBeenCalled()
+  })
+
+  it('restores a first message from expanded text when the editor has no capture seams', async () => {
+    const { ctx, editor } = await mount({ withAgent: false })
+    ;(editor as { restoreSubmittedDraft?: unknown }).restoreSubmittedDraft = undefined
+    ;(editor as { consumeSubmittedDraft?: unknown }).consumeSubmittedDraft = undefined
+    ctx.set('mayflySessionStart', { onBooted: () => () => {}, ensure: async () => { throw new Error('no session') } } as never)
+    type(editor, 'fallback words')
+    editor.handleInput(KEY.enter)
+    await vi.waitFor(() => { expect(editor.getText()).toBe('fallback words') })
+  })
+})
+
+describe('queued messages without a captured buffer', () => {
+  it('rebuilds only the text blocks of a foreign queued message', async () => {
+    const message = createUserMessage({ content: [{ type: 'theorem', text: 'ignored' } as never, { type: 'text', text: 'visible' }], source: { kind: 'user' } })
+    const inbox = fakeInbox({ nextTurn: [message] })
+    const { ctx, editor } = await mount({ inbox })
+    ctx.emit('mayfly/queued-action', 'edit', String(message.id))
+    expect(editor.getText()).toBe('visible')
+  })
+
+  it('restores a delivered message from its raw capture when the editor grew no restore seam', async () => {
+    const inbox = fakeInbox()
+    const rig = await mount({ running: true, inbox })
+    rig.followup.mockImplementation((message: UserMessage) => { inbox.nextTurn.push(message) })
+    const rollback = vi.fn()
+    registerSubmitTransformer(rig.ctx, text => ({ blocks: [{ type: 'text', text: text.toUpperCase() }], rollback }))
+    ;(rig.editor as { consumeSubmittedDraft?: unknown }).consumeSubmittedDraft = undefined
+    ;(rig.editor as { restoreSubmittedDraft?: unknown }).restoreSubmittedDraft = undefined
+    type(rig.editor, 'queued text')
+    rig.editor.handleInput(KEY.enter)
+    await vi.waitFor(() => { expect(inbox.nextTurn).toHaveLength(1) })
+    rig.ctx.emit('mayfly/queued-action', 'edit', String(inbox.nextTurn[0]!.id))
+    expect(rollback).toHaveBeenCalledOnce()
+    expect(rig.editor.getText()).toBe('QUEUED TEXT')
+  })
+
+  it('ignores another agent\'s discard event', async () => {
+    const inbox = fakeInbox()
+    const rig = await mount({ running: true, inbox })
+    const message = queued('queued')
+    inbox.nextTurn.push(message)
+    rig.ctx.emit('agent/inbox/discarded', { agent: { id: 'other' } as never, message } as never)
+    expect(() => { rig.ctx.emit('mayfly/queued-action', 'edit', String(message.id)) }).not.toThrow()
+    expect(rig.editor.getText()).toBe('queued')
+  })
+})
+
+describe('completion drawer wiring', () => {
+  it('renders the open drawer with its wait line, width, offset, and visibility', async () => {
+    const { ctx, screen, editor } = await mount()
+    const overlay = screen.overlays.find(item => item.options?.anchor === 'bottom-left')
+    expect(overlay).toBeDefined()
+    const drawer = overlay!.component as unknown as { render(width: number): string[]; open: number; width: number }
+    ctx.emit('mayfly/prompt-wait-changed', 'Waiting for wiki…')
+    expect(screen.renderRequests).toBeGreaterThan(0)
+    editor.showingAutocomplete = true
+    editor.completionView = { kind: 'commands', prefix: '/', index: 0, items: [{ label: 'model', value: '/model', detail: 'Choose a model' }] }
+    expect(drawer.render(40).join('\n')).toContain('Waiting for wiki')
+    expect(overlay!.options!.width).toBeGreaterThan(0)
+    expect(typeof overlay!.options!.offsetY).toBe('number')
+    expect(overlay!.options!.visible?.(screen.columns, screen.rows)).toBe(true)
+    expect(drawer.width).toBe(screen.columns)
+  })
+
+  it('leaves Enter to the editor when an open completion list is not a file list', async () => {
+    const { editor } = await mount()
+    editor.showingAutocomplete = true
+    editor.completionView = { kind: 'commands', prefix: '/', index: 0, items: [{ label: 'model', value: '/model' }] }
+    expect(editor.onKey?.(KEY.enter)).toBe(false)
+  })
+})
+
+describe('focused file launch failures', () => {
+  const savedVisual = process.env.VISUAL
+  afterEach(() => {
+    process.env.VISUAL = savedVisual
+    setExternalEditorLauncher(undefined)
+    setExternalFileOpener(undefined)
+  })
+
+  it('reports a non-Error focused-file failure and drops one after unload', async () => {
+    const { editor, hint } = await mount()
+    setExternalFileOpener(() => Promise.reject('focused file failure'))
+    try {
+      editor.showingAutocomplete = true
+      editor.completionView = {
+        kind: 'files', prefix: '@', index: 0,
+        items: [{ label: 'src/a.ts', value: `@${process.cwd()}/package.json` }],
+      }
+      expect(editor.onKey?.(KEY.ctrlG)).toBe(true)
+      await vi.waitFor(() => { expect(noticesOf(hint).join('\n')).toContain('focused file failure') })
+    } finally {
+      setExternalFileOpener(undefined)
+    }
+
+    const rig = await mount()
+    const suspendGate = Promise.withResolvers<void>()
+    rig.screen.suspend = (() => suspendGate.promise) as typeof rig.screen.suspend
+    setExternalFileOpener(() => Promise.resolve())
+    try {
+      rig.editor.showingAutocomplete = true
+      rig.editor.completionView = {
+        kind: 'files', prefix: '@', index: 0,
+        items: [{ label: 'src/a.ts', value: `@${process.cwd()}/package.json` }],
+      }
+      expect(rig.editor.onKey?.(KEY.ctrlG)).toBe(true)
+      await rig.fiber.dispose()
+      suspendGate.reject(new Error('late focused failure'))
+      await new Promise(resolve => setImmediate(resolve))
+      expect(rig.hint.render(80)).toEqual([])
+    } finally {
+      setExternalFileOpener(undefined)
+    }
+  })
+
+  it('reports a launcher failure for the focused file of the @ list', async () => {
+    process.env.VISUAL = 'mayfly-spec-editor'
+    const { editor, hint } = await mount()
+    setExternalFileOpener(() => Promise.reject(new Error('focused editor crashed')))
+    editor.showingAutocomplete = true
+    editor.completionView = {
+      kind: 'files',
+      prefix: '@',
+      index: 0,
+      items: [{ label: 'src/a.ts', value: `@${process.cwd()}/package.json` }],
+    }
+    expect(editor.onKey?.(KEY.ctrlG)).toBe(true)
+    await vi.waitFor(() => { expect(noticesOf(hint).join('\n')).toContain('focused editor crashed') })
   })
 })

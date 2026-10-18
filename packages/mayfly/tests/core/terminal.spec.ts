@@ -79,18 +79,20 @@ describe('startMayflyTerminal', () => {
       runtime.requestRender()
       await new Promise<void>(resolve => process.nextTick(resolve))
       component.render.mockClear()
+      // Alternate mode reserves the two scrollbar columns before the content child renders.
+      const contentWidth = (columns: number): number => mode === 'alternate' ? columns - 2 : columns
       terminal.resize(100, 30)
       await new Promise<void>(resolve => process.nextTick(resolve))
-      expect(component.render).toHaveBeenCalledWith(100)
-      expect(terminal.output).toContain('width 100')
+      expect(component.render).toHaveBeenCalledWith(contentWidth(100))
+      expect(terminal.output).toContain(`width ${String(contentWidth(100))}`)
       component.render.mockClear()
       terminal.resize(100, 12)
       await new Promise<void>(resolve => process.nextTick(resolve))
-      expect(component.render).toHaveBeenCalledWith(100)
+      expect(component.render).toHaveBeenCalledWith(contentWidth(100))
       component.render.mockClear()
       terminal.resize(25, 12)
       await new Promise<void>(resolve => process.nextTick(resolve))
-      expect(component.render).toHaveBeenCalledWith(25)
+      expect(component.render).toHaveBeenCalledWith(contentWidth(25))
     } finally {
       await runtime.stop()
       vi.useRealTimers()
@@ -441,7 +443,7 @@ describe('alternate-screen runtime', () => {
 
     runtime.requestRender(true)
     await waitForRender()
-    expect(await terminal.screen()).toEqual([
+    expect((await terminal.screen()).map(row => row.trimEnd())).toEqual([
       'transcript-row',
       'high-0',
       'high-1',
@@ -457,7 +459,7 @@ describe('alternate-screen runtime', () => {
 
     terminal.resize(40, 14)
     await waitForRender()
-    expect(await terminal.screen()).toEqual([
+    expect((await terminal.screen()).map(row => row.trimEnd())).toEqual([
       'transcript-row',
       'low-2',
       'low-3',
@@ -788,6 +790,26 @@ describe('alternate-screen runtime', () => {
     terminal.dispose()
   })
 
+  it('repaints a bottom pane when its own rows change through replace', async () => {
+    const terminal = new AltScreenTerminal(40, 12)
+    const runtime = startMayflyTerminal(terminal, { screenMode: 'alternate' })
+    runtime.addChild(textComponent('transcript'))
+    let rows = ['spin 0s']
+    const live = { render: () => rows, invalidate: () => {} } as MayflyComponent
+    const registration = runtime.surfaces.register({ id: 'activity', placement: 'bottom', priority: 10, size: { max: 1 }, component: live })
+    runtime.requestRender(true)
+    await waitForRender()
+    expect((await terminal.screen()).join('\n')).toContain('spin 0s')
+    rows = ['spin 1s']
+    // The pane keeps its component identity; its node, not the component, changed.
+    registration.replace(live, undefined, true)
+    runtime.requestRender(true)
+    await waitForRender()
+    expect((await terminal.screen()).join('\n')).toContain('spin 1s')
+    await runtime.stop()
+    terminal.dispose()
+  })
+
   it('reports measured lane viewports without recursive surface rendering', async () => {
     const terminal = new AltScreenTerminal(120, 12)
     const runtime = startMayflyTerminal(terminal, { screenMode: 'alternate' })
@@ -1074,7 +1096,7 @@ describe('alternate-screen runtime', () => {
     runtime.surfaces.register({ id: 'bottom', placement: 'bottom', component: rows('bottom', 2) })
     runtime.requestRender(true)
     await waitForRender()
-    expect(await terminal.screen()).toEqual([
+    expect((await terminal.screen()).map(row => row.trimEnd())).toEqual([
       'header-0',
       'header-1',
       'transcript',
@@ -1087,11 +1109,11 @@ describe('alternate-screen runtime', () => {
 
     terminal.resize(80, 6)
     await waitForRender()
-    expect(await terminal.screen()).toEqual(['transcript', 'editor-0', 'editor-1', 'editor-2', 'status-0', 'status-1'])
+    expect((await terminal.screen()).map(row => row.trimEnd())).toEqual(['transcript', 'editor-0', 'editor-1', 'editor-2', 'status-0', 'status-1'])
 
     terminal.resize(80, 12)
     await waitForRender()
-    expect(await terminal.screen()).toEqual([
+    expect((await terminal.screen()).map(row => row.trimEnd())).toEqual([
       'header-0',
       'header-1',
       'header-2',
@@ -1346,6 +1368,37 @@ describe('alternate-screen runtime', () => {
     terminal.dispose()
   })
 
+  it('writes fewer row bytes for a follow-tail append with the output optimizer and keeps the grid', async () => {
+    const run = async (outputOptimizer: boolean) => {
+      const terminal = new AltScreenTerminal(40, 12)
+      const runtime = startMayflyTerminal(terminal, { screenMode: 'alternate', outputOptimizer })
+      let rows = Array.from({ length: 30 }, (_, index) => `content-${String(index).padStart(2, '0')}`)
+      runtime.addChild({ render: () => [...rows], invalidate: () => {} })
+      runtime.addBottomChild(textComponent('editor-top'))
+      runtime.addBottomChild(textComponent('editor-draft'))
+      runtime.addBottomChild(textComponent('status-row'), 'bottom')
+      runtime.requestRender(true)
+      await waitForRender()
+      const mark = terminal.written.length
+      rows = [...rows, 'content-30']
+      runtime.requestRender()
+      await waitForRender()
+      const output = terminal.written.slice(mark).join('')
+      const countedRows = [...output.matchAll(/\x1b\[\d+;1H\x1b\[2K/g)].length
+      const screen = await terminal.screen()
+      await runtime.stop()
+      terminal.dispose()
+      return { countedRows, bytes: Buffer.byteLength(output), screen }
+    }
+
+    const naive = await run(false)
+    const optimized = await run(true)
+    expect(optimized.countedRows).toBeLessThan(naive.countedRows)
+    expect(optimized.bytes).toBeLessThan(naive.bytes)
+    // The optimized shift paints the same cells the naive row writes do.
+    expect(optimized.screen).toEqual(naive.screen)
+  })
+
   it('reuses the clamped content frame while child row arrays stay stable', async () => {
     const terminal = new AltScreenTerminal(40, 10)
     const overflows: FrameOverflowEntry[] = []
@@ -1397,22 +1450,22 @@ describe('alternate-screen runtime', () => {
     expect(volatileRenders).toBeGreaterThan(framesBefore)
     expect(indexes().filter(index => index === 1)).toHaveLength(1)
     expect(indexes().filter(index => index === 3)).toHaveLength(1)
-    expect(stripWriterWrappers(terminal.output)).toContain('y'.repeat(40))
-    expect(stripWriterWrappers(terminal.output)).toContain('z'.repeat(40))
+    expect(stripWriterWrappers(terminal.output)).toContain('y'.repeat(38))
+    expect(stripWriterWrappers(terminal.output)).toContain('z'.repeat(38))
 
     // A changed row is measured again, at its frame-relative index.
     volatileTail = 'w'.repeat(50)
     runtime.requestRender()
     await waitForRender()
     expect(indexes().filter(index => index === 3)).toHaveLength(2)
-    expect(stripWriterWrappers(terminal.output)).toContain('w'.repeat(40))
+    expect(stripWriterWrappers(terminal.output)).toContain('w'.repeat(38))
 
     // A replaced row array is the change signal: the stable child rescans its changed row.
     stable = ['stable', 'x'.repeat(45)]
     runtime.requestRender()
     await waitForRender()
     expect(indexes().filter(index => index === 1)).toHaveLength(2)
-    expect(stripWriterWrappers(terminal.output)).toContain('x'.repeat(40))
+    expect(stripWriterWrappers(terminal.output)).toContain('x'.repeat(38))
     await runtime.stop()
     terminal.dispose()
   })
@@ -1441,7 +1494,7 @@ describe('alternate-screen runtime', () => {
       expect(frames.slice(0, before.length).map(frame => frame.reads)).toEqual(before)
     }
     expect(overflows.length).toBeGreaterThan(0)
-    expect(stripWriterWrappers(terminal.output)).toContain('w'.repeat(40))
+    expect(stripWriterWrappers(terminal.output)).toContain('w'.repeat(38))
     await runtime.stop()
     terminal.dispose()
   })
@@ -1619,7 +1672,7 @@ describe('alternate-screen runtime', () => {
     runtime.addChild(textComponent('x'.repeat(30)))
     runtime.requestRender(true)
     await waitForRender()
-    expect(entries).toEqual([{ index: 0, columns: 20, width: 30, line: 'x'.repeat(30) }])
+    expect(entries).toEqual([{ index: 0, columns: 18, width: 30, line: 'x'.repeat(30) }])
     await runtime.stop()
   })
 })
@@ -2131,5 +2184,22 @@ describe('reader position under a shrinking content tail', () => {
     await waitForRender()
     expect(handler).not.toHaveBeenCalled()
     await runtime.stop()
+  })
+})
+
+describe('mayfly terminal main-screen delegation edges', () => {
+  it('has no content tail, follows nothing, and counts dock rows from the mounted children', async () => {
+    const terminal = new FakeTerminal(40, 12)
+    const runtime = startMayflyTerminal(terminal)
+    try {
+      expect(runtime.contentTail()).toBeUndefined()
+      expect(() => runtime.followContent()).not.toThrow()
+      expect(runtime.dockRows()).toBe(0)
+      runtime.addDockChild(textComponent('dock-row'))
+      await waitForRender()
+      expect(runtime.dockRows()).toBe(1)
+    } finally {
+      await runtime.stop()
+    }
   })
 })

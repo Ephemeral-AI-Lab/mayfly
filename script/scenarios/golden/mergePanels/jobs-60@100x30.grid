@@ -1,0 +1,46 @@
+grid 60x30 cursor none
+|
+|  ✓ Subagent(Audit the hero copy) · 0.6s
+|
+|  ✓ TodoWrite · 0.2s
+|
+|  ● Every panel now has the /stats look: a rule and a
+|    title, the keys on one hint row, no buttons. Try
+|    /model, /effort, /stats, /plugin, /agents, /jobs,
+|    /mcp, /help, /settings; Alt+↓ enters the views, where
+|    x asks y/n.
+|
+|  ✻ Worked for 0s · done 09:00
+|
+|  » Set up the service; ask me what you need.
+|
+|  ▾ 1 tool call · Ctrl+O to expand
+|
+|  ● One question before I start.
+|
+|  ✓ Answered 1 question · 0.5s
+|
+|  ● Thanks. I will use those answers.
+|
+|  ✻ Worked for 2s · done 09:00
+|━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+|  Jobs
+|
+|  → npm run watch [completed]  bash-xxxxxxxxxxxxxxxx · 1h…
+|
+|  Enter open · / filter · Esc close
+styles
+1: 2-3 fg:#4ec87e; 4-11 fg:#ededf2 b; 12 fg:#9aa3b8; 13-31 fg:#c9c0f0; 32-39 fg:#9aa3b8
+3: 2-3 fg:#4ec87e; 4-12 fg:#ededf2 b; 13-19 fg:#9aa3b8
+5: 2-3 fg:#ededf2
+11: 2-29 fg:#9aa3b8
+13: 2-3 fg:#9a86e6; 4-59 fg:#9a86e6 b
+15: 2-33 fg:#9aa3b8
+17: 2-3 fg:#ededf2
+19: 2-3 fg:#4ec87e; 4-22 fg:#ededf2 b; 23-29 fg:#9aa3b8
+21: 2-3 fg:#ededf2
+23: 2-29 fg:#9aa3b8
+24: 0-59 fg:#9a86e6
+25: 2-5 fg:#9a86e6 b
+27: 2 fg:#9a86e6 b; 4-16 fg:#f5f5f7 b; 18-28 fg:#9aa3b8; 31-57 fg:#9aa3b8
+29: 2-6 fg:#ededf2; 8-14 fg:#5c6476; 15 fg:#ededf2; 17-25 fg:#5c6476; 26-28 fg:#ededf2; 30-34 fg:#5c6476

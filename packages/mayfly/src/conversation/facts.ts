@@ -1,16 +1,16 @@
 /**
  * State-versioned session facts projection shared by renderer-neutral status
- * and dock consumers. It is deliberately separate from the human transcript:
- * log-only UI facts such as todo snapshots and request usage do not belong in
- * the append-origin conversation rows.
+ * and dock consumers. It is deliberately separate from the human transcript
+ * and carries presentation state only: todos, model selection, and context
+ * occupancy come from their native Harness projections, while this unit keeps
+ * the terminal phase, output measurements, retries, marks, and run outcome.
  *
  * @module @ephemeral-ai/mayfly/conversation/facts
  */
 
 import type { ProjectionDefinition } from '@deepseek-ai/dsh-session-projection'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
-import type { AssistantStreamRecord, ContentBlock, TokenUsage } from '@deepseek-ai/dsh-llm'
-import type {} from '@deepseek-ai/dsh-tool-todo'
+import type { AssistantStreamRecord, ContentBlock } from '@deepseek-ai/dsh-llm'
 // Empty type import activates the compaction-lifecycle event declarations
 // the meter cases below consume.
 import type {} from '@deepseek-ai/dsh-compaction/types'
@@ -19,34 +19,22 @@ import type {} from '@deepseek-ai/dsh-user-approval'
 import { z } from 'zod'
 import { everyAdmitted, identityAdmission } from './admission.ts'
 import { outputProgressSchema } from './output-progress.ts'
-import type { ApprovalMark, CompactionMark, ConversationFactsState } from './types.ts'
+import type { ApprovalMark, CompactionMark, ConversationAgentCall, ConversationFactsState } from './types.ts'
 import { foldAssistantStreamRecords, initialAssistantStream } from './stream-accumulator.ts'
 import { argumentDetail } from './activity-detail.ts'
 import { isSpawnToolName } from './projection.ts'
 
-const todoSchema = z.object({
-  content: z.string(),
-  status: z.enum(['pending', 'in_progress', 'completed']),
-})
-
-/** Runtime schema for the persisted facts state. */
+/** Runtime schema for the persisted presentation facts state. */
 export const conversationFactsSchema = z.object({
   phase: z.enum(['idle', 'waiting', 'thinking', 'composing', 'tool']),
   active: z.boolean(),
   turn: z.number().int().nonnegative(),
   turnStartedAt: z.number().optional(),
-  flowUp: z.number().nonnegative().optional(),
   flowDownChars: z.number().int().nonnegative(),
   outputProgress: outputProgressSchema.optional(),
   currentStep: z.number().int().nonnegative().optional(),
   lastCompletedStep: z.number().int().nonnegative().optional(),
-  todos: z.array(todoSchema),
-  contextTokens: z.number().nonnegative(),
   contextCacheReadTokens: z.number().nonnegative().optional(),
-  contextWindow: z.number().positive().optional(),
-  model: z.string().optional(),
-  provider: z.string().optional(),
-  reasoningEffort: z.string().optional(),
   promptText: z.string().optional(),
   epochToolCount: z.number().int().nonnegative().optional(),
   epochTokens: z.number().nonnegative().optional(),
@@ -80,21 +68,26 @@ export function initialConversationFacts(): ConversationFactsState {
     active: false,
     turn: 0,
     flowDownChars: 0,
-    todos: [],
-    contextTokens: 0,
     agentCalls: [],
   }
 }
 
 /**
- * The context occupancy of one step: the disjoint input-side token counts
- * (`inputTokens + cacheReadTokens + cacheWriteTokens`). The single owner for
- * both the facts projection and the footer status readout.
- * @param usage - the step's token accounting.
- * @returns occupied context tokens.
+ * The prompt-side occupancy of the newest measured step, from the retained
+ * per-step usage record. It anchors a compaction mark to the presentation
+ * measurements already in the state; current occupancy itself is native.
+ * @param state - the presentation facts.
+ * @returns the newest step's input-side token total, or undefined before usage.
  */
-export function contextTokens(usage: TokenUsage): number {
-  return usage.inputTokens + (usage.cacheReadTokens ?? 0) + (usage.cacheWriteTokens ?? 0)
+function latestPromptTokens(state: ConversationFactsState): number | undefined {
+  const outputByStep = state.outputByStep
+  if (outputByStep === undefined) return undefined
+  const keys = Object.keys(outputByStep)
+  const key = keys.at(-1)
+  if (key === undefined) return undefined
+  const total = state.usageByStep?.[key]
+  if (total === undefined) return undefined
+  return Math.max(0, total - (outputByStep[key] ?? 0))
 }
 
 /**
@@ -190,6 +183,27 @@ function retryStatus(failure: unknown): number | undefined {
   return typeof status === 'number' && Number.isFinite(status) ? status : undefined
 }
 
+/* A tool result pairs with the spawn call of its derived `agentCalls` revision,
+   so one map per retained array turns the per-result search into a lookup.
+   The map is keyed by the array object the fold already retains by identity:
+   it never crosses Agents or sessions. */
+const agentCallIndexes = new WeakMap<readonly ConversationAgentCall[], ReadonlyMap<string, number>>()
+
+/** The callId-to-first-index map of one `agentCalls` revision. */
+function agentCallIndex(calls: readonly ConversationAgentCall[]): ReadonlyMap<string, number> {
+  let index = agentCallIndexes.get(calls)
+  if (index === undefined) {
+    const built = new Map<string, number>()
+    for (let position = 0; position < calls.length; position += 1) {
+      const call = calls[position]!
+      if (!built.has(call.callId)) built.set(call.callId, position)
+    }
+    index = built
+    agentCallIndexes.set(calls, index)
+  }
+  return index
+}
+
 function foldFacts(
   state: ConversationFactsState,
   event: SessionEvent,
@@ -207,7 +221,7 @@ function foldFacts(
   switch (event.type) {
     case 'turn/start':
       return {
-        ...state, phase: 'waiting', active: true, turn: event.data.turn, turnStartedAt: event.time, flowUp: undefined,
+        ...state, phase: 'waiting', active: true, turn: event.data.turn, turnStartedAt: event.time,
         flowDownChars: 0, outputProgress: undefined, epochToolCount: 0, epochTokens: 0, usageByStep: {}, epochOutputTokens: 0, outputByStep: {},
         activity: undefined, inFlight: undefined, retrying: undefined, runOutcome: undefined, runStopped: undefined, endedAt: undefined, currentStep: undefined, lastCompletedStep: undefined,
       }
@@ -220,7 +234,7 @@ function foldFacts(
       return text === '' || text === state.promptText ? state : { ...state, promptText: text }
     }
     case 'step/start':
-      return { ...state, phase: 'waiting', active: true, turn: event.data.turn, currentStep: event.data.step, flowUp: undefined, flowDownChars: 0, outputProgress: undefined }
+      return { ...state, phase: 'waiting', active: true, turn: event.data.turn, currentStep: event.data.step, flowDownChars: 0, outputProgress: undefined }
     case 'assistant/attempt': {
       const { turn, step, stream } = event.data
       if (turn < state.turn || (turn === state.turn && (state.runOutcome !== undefined
@@ -243,14 +257,13 @@ function foldFacts(
         : folded
       const usage = event.data.usage
       if (usage === undefined) return streamed
-      const used = contextTokens(usage)
       const total = usage.inputTokens + (usage.cacheReadTokens ?? 0) + (usage.cacheWriteTokens ?? 0) + usage.outputTokens
       const key = `${event.data.turn}/${event.data.step}`
       const usageByStep = { ...streamed.usageByStep, [key]: total }
       const epochTokens = Object.values(usageByStep).reduce((sum, value) => sum + value, 0)
       const outputByStep = { ...streamed.outputByStep, [key]: usage.outputTokens }
       const epochOutputTokens = Object.values(outputByStep).reduce((sum, value) => sum + value, 0)
-      return { ...streamed, contextTokens: used, contextCacheReadTokens: usage.cacheReadTokens, flowUp: used, usageByStep, epochTokens, outputByStep, epochOutputTokens }
+      return { ...streamed, contextCacheReadTokens: usage.cacheReadTokens, usageByStep, epochTokens, outputByStep, epochOutputTokens }
     }
     case 'tool/call':
       if (isSpawnToolName(event.data.name)) {
@@ -282,7 +295,7 @@ function foldFacts(
       const message = event.data.message
       if (message === undefined || typeof message !== 'object' || typeof message.toolCallId !== 'string') return state
       const callId = String(message.toolCallId)
-      const index = state.agentCalls.findIndex(call => call.callId === callId)
+      const index = agentCallIndex(state.agentCalls).get(callId) ?? -1
       if (index < 0) {
         // A call that settled leaves the list of calls in flight.
         const remaining = (state.inFlight ?? []).filter(call => call.callId !== callId)
@@ -294,6 +307,10 @@ function foldFacts(
         .map(item => item.text)
         .join('\n')
       const result = { text, isError: message.isError === true || event.data.error !== undefined, endedAt: event.time }
+      // A repeated result event carries the same facts: keep the state (and
+      // its retained agentCalls array) identical for the registry's Object.is.
+      const previous = state.agentCalls[index]!.result
+      if (previous !== undefined && previous.text === result.text && previous.isError === result.isError && previous.endedAt === result.endedAt) return state
       const agentCalls = [...state.agentCalls]
       agentCalls[index] = { ...agentCalls[index]!, result }
       return { ...state, phase: 'tool', active: true, agentCalls }
@@ -308,49 +325,35 @@ function foldFacts(
         runOutcome: event.data.reason.kind === 'completed' ? 'completed' : 'failed', endedAt: event.time,
         ...(event.data.reason.kind === 'aborted' || event.data.reason.kind === 'interrupted' ? { runStopped: true } : { runStopped: undefined }),
       }
-    case 'todo/write':
-      return { ...state, todos: event.data.todos.map(todo => ({ ...todo })) }
-    case 'request/context':
-      return event.data.contextWindow === state.contextWindow ? state : { ...state, contextWindow: event.data.contextWindow }
     // `compaction/summary` and `compaction/prune` are the metering events
-    // paired with a surface `replace`: a consumer subtracts the shadow price
-    // without retaining per-node prices. The summarize call's output tokens
-    // stand in for the framed checkpoint; the post-replacement cache share
-    // is unknown, so the stale segment clears until the next model step.
+    // paired with a surface `replace`. The summarize call's output tokens stand
+    // in for the framed checkpoint; the post-replacement cache share is unknown,
+    // so the stale segment clears until the next model step. The mark's
+    // prompt-side numbers come from the presentation step-usage record; the
+    // current occupancy itself is the native context-pressure projection.
     case 'compaction/start':
-      return { ...state, compactions: markCompaction(state.compactions, { id: String(event.data.compactionId), before: state.contextTokens, ...state.contextWindow === undefined ? {} : { window: state.contextWindow } }) }
+      return { ...state, compactions: markCompaction(state.compactions, { id: String(event.data.compactionId), before: latestPromptTokens(state) ?? 0 }) }
     case 'compaction/summary': {
-      const contextAfter = Math.max(0, state.contextTokens - event.data.shadowedTokenCount + (event.data.usage?.outputTokens ?? 0))
       const id = String(event.data.compactionId)
       const started = state.compactions?.find(mark => mark.id === id)
+      const before = started?.before ?? latestPromptTokens(state) ?? 0
+      const contextAfter = Math.max(0, before - event.data.shadowedTokenCount + (event.data.usage?.outputTokens ?? 0))
       return {
         ...state,
-        contextTokens: contextAfter,
         contextCacheReadTokens: undefined,
-        compactions: markCompaction(state.compactions, { ...started ?? { id, before: state.contextTokens, ...state.contextWindow === undefined ? {} : { window: state.contextWindow } }, after: contextAfter }),
+        compactions: markCompaction(state.compactions, { ...started ?? { id, before }, after: contextAfter }),
       }
     }
     case 'compaction/prune':
-      return {
-        ...state,
-        contextTokens: Math.max(0, state.contextTokens - event.data.shadowedTokenCount),
-        contextCacheReadTokens: undefined,
-      }
+      return state.contextCacheReadTokens === undefined
+        ? state
+        : { ...state, contextCacheReadTokens: undefined }
     case 'approval/asked':
       return { ...state, approvals: markApproval(state.approvals, { id: String(event.data.id), ...event.data.callId === undefined ? {} : { callId: String(event.data.callId) } }) }
     case 'approval/decided': {
       const id = String(event.data.id)
       const asked = state.approvals?.find(mark => mark.id === id)
       return asked === undefined ? state : { ...state, approvals: markApproval(state.approvals, { ...asked, outcome: event.data.outcome }) }
-    }
-    case 'request/header': {
-      const config = event.data.header.config
-      return {
-        ...state,
-        model: config.model,
-        provider: config.provider,
-        ...(config.reasoningEffort === undefined ? { reasoningEffort: undefined } : { reasoningEffort: config.reasoningEffort }),
-      }
     }
     default:
       return state
@@ -391,10 +394,9 @@ export const conversationFactsProjectionDefinition: ConversationFactsProjectionD
   apply: foldConversationFacts,
   wire: {
     viewSchema: conversationFactsViewSchema,
-    view: state => ({
-      ...state,
-      todos: state.todos.map(todo => ({ ...todo })),
-    }),
+    // The fold states are immutable and retained by identity, so the state is
+    // already the stable wire view the registry compares with `Object.is`.
+    view: state => state,
   },
-  stateVersion: 12,
+  stateVersion: 13,
 }

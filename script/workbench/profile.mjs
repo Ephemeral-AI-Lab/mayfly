@@ -12,9 +12,12 @@ import { join, resolve } from 'node:path'
  * @returns `{ dshHome, profileDir, work, env }`, the isolated environment a `dsh --profile bench` boot needs.
  */
 export function ensureThrowawayProfile({ repo: given, galleryRepo: givenGallery = given, gallery = false, dshBin, artifacts }) {
-  // One profile per checkout, however its path is spelled (a trailing slash included).
+  // One profile per checkout and dsh line, however the path is spelled (a trailing slash included).
+  // A Harness re-pin must not reuse a profile installed for the previous line: its plugin closures
+  // are version-locked and dsh refuses incompatible rows at boot.
   const [repo, galleryRepo] = [resolve(given), resolve(givenGallery)]
-  const key = createHash('sha256').update([repo, gallery ? galleryRepo : ''].join('\n')).digest('hex').slice(0, 12)
+  const dshVersion = spawnSync(dshBin, ['--version'], { encoding: 'utf8' }).stdout?.trim() ?? ''
+  const key = createHash('sha256').update([repo, gallery ? galleryRepo : '', dshVersion].join('\n')).digest('hex').slice(0, 12)
   const dshHome = join(artifacts, 'homes', key, '.dsh')
   const profileDir = join(dshHome, 'profiles', 'bench')
   const work = join(artifacts, 'work', key)

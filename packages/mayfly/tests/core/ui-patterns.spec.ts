@@ -14,15 +14,10 @@ import {
   type PatternFocus,
 } from '../../src/core/ui-patterns.ts'
 import { paintFormField } from '../../src/core/ui-form-paint.ts'
-import { segmentFooter } from '../../src/core/ui-list-segment.ts'
-import type { MayflyFormField, MayflyListSegment } from '@ephemeral-ai/mayfly-ui'
+import type { MayflyFormField } from '@ephemeral-ai/mayfly-ui'
 import type { MayflySemanticColors } from '../../src/core/types.ts'
 import { visibleWidth } from '../../src/core/width.ts'
 import { identity, plain, plainColors, plainText } from '../helpers.ts'
-
-/** The segment strip's footer line through the production painter. */
-const renderListSegment = (segment: MayflyListSegment, selectedId: string | undefined, width: number, colors: MayflySemanticColors): string =>
-  segmentFooter({ segment, pinned: selectedId ?? null, active: selectedId }, Math.max(1, width), colors, segment.label ?? 'Options')
 
 /** One field's rows through the production painter. */
 const renderFormField = (field: MayflyFormField, width: number, focus: PatternFocus, colors: MayflySemanticColors): string[] =>
@@ -59,13 +54,15 @@ describe('private UI pattern painters', () => {
     expect(renderSurfaceHead(surface, 1, colors)).toEqual(['╭'])
     expect(renderSurfaceTail(surface, 1, colors)).toEqual(['╰'])
     expect(renderSurfaceHead(surface, 6, colors)).toEqual(['╭────╮'])
-    expect(plain(renderSurfaceHead(overlay, 24, colors))).toEqual(['╭ Overlay ───── 1 of 3 ╮'])
-    expect(plain(renderSurfaceHead(overlay, 16, colors))).toEqual(['╭ Overlay ─────╮'])
-    expect(renderSurfaceTail(overlay, 6, colors)).toEqual(['╰────╯'])
-    expect(plain(renderSurfaceHead(overlay, 8, colors))).toEqual(['╭ Ov… ─╮'])
-    expect(renderSurfaceHead(overlay, 2, colors)).toEqual(['╭╮'])
-    expect(renderSurfaceHead(overlay, 1, colors)).toEqual(['╭'])
-    for (const width of [1, 2, 5, 8, 16, 24, 40]) expect(visibleWidth(renderSurfaceHead(overlay, width, colors)[0]!)).toBe(width)
+    // A panel is borderless: a full-width heavy rule, then the title with its badges in the gutter.
+    const wide = plain(renderSurfaceHead(overlay, 24, colors))
+    expect(wide[0]).toBe('━'.repeat(24))
+    expect(wide[1]).toBe('  Overlay  1 of 3')
+    expect(wide[2]).toBe('')
+    expect(renderSurfaceTail(overlay, 6, colors)).toEqual([])
+    for (const width of [1, 2, 5, 8, 16, 24, 40]) {
+      for (const row of renderSurfaceHead(overlay, width, colors)) expect(visibleWidth(row)).toBeLessThanOrEqual(width)
+    }
   })
 
   it('draws the active tab with an underline, folds a strip that does not fit, and marks wizard steps', () => {
@@ -93,8 +90,10 @@ describe('private UI pattern painters', () => {
     expect(plain(renderTabs(ui.tabs({ id: 'pair', activeId: 'x', items: [{ id: 'x', label: 'Extended' }, { id: 'y', label: 'Yonder' }] }), 12, idle, colors))).toEqual(['‹ Extended  ›'.slice(0, 12)])
     expect(plain(renderTabs({ ...node, items: [] }, 20, idle, colors))).toEqual(['', ''])
     const wizard = ui.tabs({ id: 'steps', mode: 'wizard', activeId: 'two', items: [{ id: 'one', label: 'One' }, { id: 'two', label: 'Two' }, { id: 'three', label: 'Three' }] })
-    expect(plain(renderTabs(wizard, 80, idle, colors, ['one', 'two']))).toEqual(['✓ One  ›  ● Two  ›  ○ Three', '          ━━━━━'])
-    expect(plain(renderTabs(wizard, 80, idle, colors))[0]).toBe('○ One  ›  ● Two  ›  ○ Three')
+    const wizardRows = plain(renderTabs(wizard, 80, idle, colors, ['one', 'two']))
+    expect(wizardRows[0]).toMatch(/^✓ One  ›  ● Two  ›  ○ Three\s+2\/3$/u)
+    expect(wizardRows[1]).toBe('          ━━━━━')
+    expect(plain(renderTabs(wizard, 80, idle, colors))[0]).toMatch(/^– One  ›  ● Two  ›  ○ Three\s+2\/3$/u)
   })
 
   it('renders list marks, the focused cursor, groups, filtering, detail degradation, and windows', () => {
@@ -112,11 +111,11 @@ describe('private UI pattern painters', () => {
       ],
     })
     const idleRows = plain(renderList(node, 80, 20, idle, tracked))
-    expect(idleRows).toEqual(['/ term', 'One', '  ● Alpha [hot] — detail-a', '  ○ Beta — detail-b', 'Two', '  ○ Gamma', '  ● Delta', '  ○ Epsilon'])
+    expect(idleRows).toEqual(['/ term', 'One', '  ● Alpha [hot]  detail-a', '  ○ Beta         detail-b', 'Two', '  ○ Gamma', '  ● Delta', '  ○ Epsilon'])
     expect(selectedBg).not.toHaveBeenCalled()
 
     const focusedRows = plain(renderList(node, 40, 3, { key: 'd', focused: true, marker: '|' }, tracked))
-    expect(focusedRows).toEqual(['  ○ Gamma', '→|● Delta', '  ○ Epsilon'])
+    expect(focusedRows).toEqual(['↑ ○ Gamma', '→|● Delta', '   … +6 more'])
     expect(primary).toHaveBeenCalledWith('→')
     // A cursor row of an unfocused list keeps its bold label and has no arrow.
     const unfocused = renderList(node, 80, 20, { key: 'c', focused: false, marker: '|' }, tracked).join('\n')
@@ -124,9 +123,9 @@ describe('private UI pattern painters', () => {
     expect(unfocused).not.toContain('→')
     expect(selectedBg).not.toHaveBeenCalled()
     expect(renderList(node, 20, 2, { key: 'missing', focused: true, marker: '|' }, colors)[0]).toContain('/ term')
-    expect(renderList(node, 20, Number.NaN, { key: 'e', focused: true, marker: '|' }, colors)).toHaveLength(1)
+    expect(renderList(node, 20, Number.NaN, { key: 'e', focused: true, marker: '|' }, colors)).toHaveLength(2)
     expect(renderList(ui.list({ id: 'single', role: 'choose', selectedIds: ['x'], items: [{ id: 'x', label: 'X' }] }), 20, 3, idle, colors)).toEqual(['  X'])
-    expect(plain(renderList(ui.list({ id: 'numbered', role: 'choose', numbered: true, selectedIds: [], items: [{ id: 'x', label: 'X' }, { id: 'y', label: 'Y', disabled: true }] }), 20, 3, idle, colors))).toEqual(['  1  X', '  2  Y'])
+    expect(plain(renderList(ui.list({ id: 'numbered', role: 'choose', numbered: true, selectedIds: [], items: [{ id: 'x', label: 'X' }, { id: 'y', label: 'Y', disabled: true }] }), 20, 3, idle, colors))).toEqual(['  1. X', '  2. Y'])
     expect(renderList(node, 80, 2, { key: 'a', focused: true, marker: '|' }, colors).join('\n')).toContain('detail-a')
     expect(renderList(node, 40, 2, { key: 'a', focused: true, marker: '|' }, colors).join('\n')).not.toContain('detail-a')
 
@@ -165,7 +164,7 @@ describe('private UI pattern painters', () => {
     })
 
     const idleRow = renderList(node, 120, 2, idle, tracked)[0]!
-    expect(idleRow).toContain('<muted>—</muted> ctx 64k')
+    expect(idleRow).toContain('ctx 64k')
     expect(idleRow).not.toContain('legacy detail')
     expect(idleRow).toContain('<muted> [Low]</muted>')
     expect(idleRow).toContain('\x1b[1m<accent> [High]</accent>\x1b[22m')
@@ -178,50 +177,6 @@ describe('private UI pattern painters', () => {
     expect(focusedRow).toContain('\x1b[1m<accent> [High]</accent>\x1b[22m')
     expect(renderList(node, 40, 2, idle, tracked)[0]).not.toContain('High')
     expect(renderList(ui.list({ id: 'empty-detail', role: 'choose', selectedIds: [], items: [{ id: 'x', label: 'X', detailSpans: [] }] }), 80, 2, idle, tracked)[0]).toBe('  X')
-  })
-
-  it('paints a list-row segment around the selected option and degrades at narrow widths', () => {
-    const primary = vi.fn((value: string) => `\x1b[35m${value}\x1b[39m`)
-    const textStrong = vi.fn((value: string) => `\x1b[1m${value}\x1b[22m`)
-    const tracked = new Proxy(colors, { get: (target, key, receiver) => {
-      if (key === 'primary') return primary
-      if (key === 'textStrong') return textStrong
-      return Reflect.get(target, key, receiver)
-    } })
-    const segment = { label: 'Thinking', options: [
-      { id: 'default', label: 'Default' },
-      { id: 'low', label: 'Low' },
-      { id: 'high', label: 'High' },
-      { id: 'max', label: 'Max', disabled: true },
-    ] }
-    const wide = renderListSegment(segment, 'high', 80, tracked)
-    expect(wide).toContain('‹ High ›')
-    expect(wide).toContain('Default')
-    expect(wide).toContain('Thinking:')
-    expect(primary).toHaveBeenCalledWith('‹ High ›')
-    for (const width of [60, 40, 30, 24, 16, 8]) {
-      const row = renderListSegment(segment, 'high', width, tracked)
-      expect(visibleWidth(row)).toBeLessThanOrEqual(Math.max(1, width))
-      expect(row).toContain('High')
-    }
-    for (const width of [4, 2, 1]) expect(visibleWidth(renderListSegment(segment, 'high', width, tracked))).toBeLessThanOrEqual(Math.max(1, width))
-    expect(renderListSegment(segment, 'high', 24, tracked)).toContain('+')
-    expect(renderListSegment(segment, 'high', 16, tracked)).toContain('+3')
-    const unselected = renderListSegment(segment, undefined, 80, tracked)
-    expect(unselected).not.toContain('‹')
-    const unlabeled = renderListSegment({ options: segment.options }, 'low', 80, tracked)
-    expect(unlabeled).not.toContain('Thinking')
-    expect(unlabeled).toContain('‹ Low ›')
-    const labelOnly = renderListSegment({ label: 'Thinking', options: [
-      { id: 'a', label: 'A' },
-      { id: 'b', label: 'B' },
-      { id: 'c', label: 'C' },
-    ] }, 'c', 20, colors)
-    // The label is the first thing the footer drops, then the strip keeps its single-space gaps.
-    expect(labelOnly).toBe('  A B \x1b[1m‹ C ›\x1b[22m')
-    const disabledActive = renderListSegment(segment, 'max', 80, tracked)
-    expect(disabledActive).toContain('‹ Max ›')
-    expect(primary).not.toHaveBeenCalledWith('‹ Max ›')
   })
 
   it('renders every form field state with validation on its own row', () => {

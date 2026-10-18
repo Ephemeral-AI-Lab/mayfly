@@ -24,6 +24,7 @@ interface FakeSource {
   readonly attach: ReturnType<typeof vi.fn>
   readonly attachFeed: ReturnType<typeof vi.fn>
   readonly snapshot: ReturnType<typeof vi.fn>
+  readonly markToolsStale: ReturnType<typeof vi.fn>
   readonly invalidateTools: ReturnType<typeof vi.fn>
   readonly dispose: ReturnType<typeof vi.fn>
 }
@@ -47,7 +48,7 @@ function bench() {
     source: (sourceAgent, publish) => {
       const source: FakeSource = {
         agent: sourceAgent, publish,
-        attach: vi.fn(), attachFeed: vi.fn(), snapshot: vi.fn(() => 'model'), invalidateTools: vi.fn(), dispose: vi.fn(),
+        attach: vi.fn(), attachFeed: vi.fn(), snapshot: vi.fn(() => 'model'), markToolsStale: vi.fn(), invalidateTools: vi.fn(), dispose: vi.fn(),
       }
       sources.push(source)
       return source as unknown as OfficialConversationModelSource
@@ -106,8 +107,11 @@ describe('ConversationSlots', () => {
     expect(test.sources).toHaveLength(2)
     expect(test.transcript.show).toHaveBeenLastCalledWith('session:main')
     test.slots.invalidateTools()
-    expect(mainSource!.invalidateTools).toHaveBeenCalledOnce()
-    expect(onceSource!.invalidateTools).toHaveBeenCalledOnce()
+    expect(mainSource!.markToolsStale).toHaveBeenCalledOnce()
+    expect(onceSource!.markToolsStale).toHaveBeenCalledOnce()
+    // Only the displayed view converts; the controller refreshes it.
+    expect(test.transcript.refresh).toHaveBeenCalledTimes(2)
+    expect(mainSource!.invalidateTools).not.toHaveBeenCalled()
 
     // Demoted to listed: the view and its lease go away.
     test.slots.sync(snapshot([primaryView(), child('once', { residency: 'listed' })]))

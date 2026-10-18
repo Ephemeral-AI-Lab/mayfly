@@ -6,13 +6,12 @@ import { credentialRef, type CredentialInfo } from '@deepseek-ai/dsh-credentials
 import { SettingsConflictError, type SettingsPathOp } from '@deepseek-ai/dsh-settings'
 import type { LlmDiscoveredModel } from '@deepseek-ai/dsh-llm'
 import { ui, type MayflyFormAddress, type MayflyOverlayHandle, type MayflySourceStamp, type MayflyUiActionReply, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
-import { deriveKeyRef, normalizeBaseURL, providerProfile, type ProviderProfile } from './provider-profile.ts'
-import { persistProviders } from './provider-store.ts'
+import { deriveKeyRef, normalizeBaseURL, type ProviderProfile } from './provider-profile.ts'
+import { persistProviders, providerAddress, providerDescriptor, providerProfileAt } from './provider-store.ts'
 import { loadModelsDevIndex } from './models-dev.ts'
 import { interactionTranslator, observeInteractionLocale } from './locale.ts'
 import { openUiOverlay } from './ui-overlay.ts'
 
-const NAMESPACE = 'llm-pi-ai'
 const address = (itemId: string): MayflyFormAddress => ({ pagePath: [{ controlId: 'provider-pages', itemId }], formId: 'provider' })
 const modelSelection = { pagePath: [{ controlId: 'provider-pages', itemId: 'models' }], controlId: 'advertised-models' }
 const THINKING_LEVELS = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'] as const
@@ -45,11 +44,15 @@ export async function openProviderEditor(ctx: Context, route: string, signal?: A
   const credentials = ctx.get('credentials')
   const overlays = ctx.get('mayflyOverlays')
   if (settings === undefined || credentials === undefined || overlays === undefined) return false
-  // Routes another settings namespace owns (e.g. the DeepSeek account
-  // adapter under `llm-deepseek-account`) are not pi-ai profiles: writing
-  // one would shadow the adapter's route, so the editor refuses them.
-  const declared = ctx.get('llm')?.listConfigurableProviders().find(item => item.provider === route)
-  if (declared !== undefined && declared.settingsNs !== NAMESPACE) return false
+  // The native configurable-provider directory owns the settings address of a
+  // route. A route it never declares, or one whose profile is the whole
+  // settings section rather than a route dict member (for example the account
+  // adapter's `settingsPath: []`), is not a pi-ai profile this editor can
+  // write; refuse it rather than guessing a namespace or path.
+  const provider = providerAddress(ctx, route)
+  if (provider === undefined || provider.path.length === 0) return false
+  const ns = provider.ns
+  const known = provider.declared !== true
   const id = `mayfly.provider.${Buffer.from(route).toString('hex')}`
   const existing = overlays.list().find(entry => entry.id === id)
   if (existing !== undefined) {
@@ -104,19 +107,18 @@ export async function openProviderEditor(ctx: Context, route: string, signal?: A
   const read = async (): Promise<ProviderView> => {
     for (let attempt = 0; attempt < 3; attempt += 1) {
       cancellation.throwIfAborted()
-      const descriptor = settings.describe().find(item => String(item.ns) === NAMESPACE)
+      const descriptor = providerDescriptor(settings, ns)
       if (descriptor === undefined) throw new Error('Provider settings are unavailable')
-      const profile = providerProfile(descriptor.value, route)
+      const profile = providerProfileAt(descriptor.value, provider.path)
       const ref = profile?.apiKeyEnv ?? openedRef ?? deriveKeyRef(route)
       const credential = await credentials.describe(credentialRef(ref))
       cancellation.throwIfAborted()
-      const current = settings.describe().find(item => String(item.ns) === NAMESPACE)
+      const current = providerDescriptor(settings, ns)
       if (current?.revision === descriptor.revision) return { profile, revision: descriptor.revision, ref, credential }
     }
     throw new Error('Provider changed while loading')
   }
-  const source = (view: ProviderView): readonly MayflySourceStamp[] => [{ resourceId: NAMESPACE, revision: view.revision }, { resourceId: 'credential-observation', revision: credentialRevision }]
-  const known = ctx.get('llm')?.listConfigurableProviders().some(item => item.settingsNs === NAMESPACE && item.provider === route) === true
+  const source = (view: ProviderView): readonly MayflySourceStamp[] => [{ resourceId: ns, revision: view.revision }, { resourceId: 'credential-observation', revision: credentialRevision }]
   /** Models-tab discovery visibility: idle while unprobed, then running/failed/done. */
   let discoveryState: 'idle' | 'running' | 'failed' | 'done' = 'idle'
   const node = (view: ProviderView): MayflyUiNode => {
@@ -208,7 +210,7 @@ export async function openProviderEditor(ctx: Context, route: string, signal?: A
       for (const base of bases.length === 0 ? [undefined] : bases) {
         if (cancellation.aborted) return
         try {
-          const found = await llm.discoverModels(NAMESPACE, {
+          const found = await llm.discoverModels(ns, {
             provider: route,
             api: 'openai-completions',
             ...(base === undefined ? {} : { baseURL: base }),
@@ -223,7 +225,7 @@ export async function openProviderEditor(ctx: Context, route: string, signal?: A
     const initial = await read()
     if (initial.profile === undefined) { releaseLifetime(); return false }
     openedRef = initial.ref
-    const offSettings = ctx.on('settings/document-updated', ns => { if (String(ns) === NAMESPACE) void refresh() })
+    const offSettings = ctx.on('settings/document-updated', updated => { if (String(updated) === ns) void refresh() })
     const offCredential = ctx.on('credentials/reference-updated', ref => {
       if (String(ref) === openedRef) { credentialRevision += 1; void refresh() }
     })
@@ -231,7 +233,7 @@ export async function openProviderEditor(ctx: Context, route: string, signal?: A
     cleanup = ctx.effect(() => () => { offSettings(); offCredential(); offLocale(); releaseLifetime() })
     handle = openUiOverlay(ctx, {
       id, title: t('Configure {route}', { route }), presentation: 'editor', capturing: true,
-      scope: { kind: 'app', targetId: `${NAMESPACE}/${route}` }, source: source(initial),
+      scope: { kind: 'app', targetId: `${ns}/${route}` }, source: source(initial),
       onEvent: { action: async (event, context): Promise<MayflyUiActionReply> => {
         if (event.kind !== 'submit' && event.kind !== 'activate') return { kind: 'completed' }
         /* a cancellation racing the awaited native read is a lifetime path */
@@ -244,7 +246,7 @@ export async function openProviderEditor(ctx: Context, route: string, signal?: A
         if (context.signal.aborted || cancellation.aborted) return { kind: 'cancelled' }
         if (view.profile === undefined || view.ref !== openedRef) return { kind: 'conflict', ...reply(view), message: t('Provider configuration changed; reopen the provider') }
         const stamps = event.kind === 'submit' ? event.submission.source : context.source
-        const expected = stamps.find(stamp => stamp.resourceId === NAMESPACE)?.revision
+        const expected = stamps.find(stamp => stamp.resourceId === ns)?.revision
         const expectedCredential = stamps.find(stamp => stamp.resourceId === 'credential-observation')?.revision
         if (typeof expected !== 'number' || expected !== view.revision) return { kind: 'conflict', ...reply(view), message: t('Provider settings changed elsewhere') }
         if (event.kind === 'activate') {
@@ -252,7 +254,7 @@ export async function openProviderEditor(ctx: Context, route: string, signal?: A
           if (expectedCredential !== credentialRevision) return { kind: 'conflict', ...reply(view), message: t('The credential changed elsewhere; review before continuing') }
           try {
             if (event.actionId === 'delete') {
-              await persistProviders(settings, [{ op: 'unset', path: ['providers', route] }], expected)
+              await persistProviders(settings, ns, [{ op: 'unset', path: [...provider.path] }], expected)
               settingsRemoved = true
             }
             /* a cancellation racing the awaited native read is a lifetime path */
@@ -276,29 +278,29 @@ export async function openProviderEditor(ctx: Context, route: string, signal?: A
           if (field.change === 'unchanged') continue
           const page = form.pagePath[0]?.itemId
           if (page === 'credentials' && field.id === 'key' && typeof field.value === 'string') key = field.value
-          else if (page === 'connection' && field.id === 'name' && typeof field.value === 'string') ops.push({ op: 'set', path: ['providers', route, 'displayName'], value: field.value.trim() || route })
+          else if (page === 'connection' && field.id === 'name' && typeof field.value === 'string') ops.push({ op: 'set', path: [...provider.path, 'displayName'], value: field.value.trim() || route })
           else if (page === 'connection' && field.id === 'baseURL' && typeof field.value === 'string' && !known) {
             try {
               const url = new URL(field.value)
               if (url.protocol !== 'http:' && url.protocol !== 'https:') throw new Error('protocol')
             } catch { return { kind: 'invalid', errors: [{ ...address('connection'), fieldId: 'baseURL', message: t('Enter an HTTP or HTTPS URL') }] } }
-            ops.push({ op: 'set', path: ['providers', route, 'baseURL'], value: normalizeBaseURL(view.profile.api ?? 'openai-completions', field.value) })
+            ops.push({ op: 'set', path: [...provider.path, 'baseURL'], value: normalizeBaseURL(view.profile.api ?? 'openai-completions', field.value) })
           } else if (page === 'models' && field.id === 'reasoning' && typeof field.value === 'string') {
             ops.push(field.value === PROVIDER_DEFAULT_EFFORT
-              ? { op: 'unset', path: ['providers', route, 'reasoning'] }
-              : { op: 'set', path: ['providers', route, 'reasoning'], value: field.value })
+              ? { op: 'unset', path: [...provider.path, 'reasoning'] }
+              : { op: 'set', path: [...provider.path, 'reasoning'], value: field.value })
           }
         }
         const selected = event.submission.selections?.find(item => item.controlId === 'advertised-models')?.selectedIds
         if (selected !== undefined) {
           const configured = configuredIds(view.profile)
           const unchanged = customModels.size === 0 && selected.length === configured.length && selected.every(modelId => configured.includes(modelId))
-          if (!unchanged) ops.push({ op: 'set', path: ['providers', route, 'models'], value: selected.map(modelId => modelEntry(modelId, view.profile)) })
+          if (!unchanged) ops.push({ op: 'set', path: [...provider.path, 'models'], value: selected.map(modelId => modelEntry(modelId, view.profile)) })
         }
         if (key !== undefined && (!view.credential.writable || expectedCredential !== credentialRevision)) return { kind: 'conflict', ...reply(view), message: t('The credential changed elsewhere; review before saving') }
         let settingsWritten = false
         try {
-          if (ops.length > 0) { await persistProviders(settings, ops, expected); settingsWritten = true }
+          if (ops.length > 0) { await persistProviders(settings, ns, ops, expected); settingsWritten = true }
           /* a cancellation racing the awaited native read is a lifetime path */
           if (context.signal.aborted || cancellation.aborted) return { kind: 'cancelled' }
           if (key !== undefined && key.length > 0) await credentials.set(credentialRef(openedRef!), key)

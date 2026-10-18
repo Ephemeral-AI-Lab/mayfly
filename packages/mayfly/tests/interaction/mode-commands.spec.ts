@@ -8,6 +8,7 @@ import SessionStore, { SessionId, type SessionSeqCursor } from '@deepseek-ai/dsh
 import CommandRuntime, { type CommandResult } from '@deepseek-ai/dsh-commands'
 import { cycleMode, sessionModeSnapshot } from '../../src/interaction/mode-commands.ts'
 import { setSharedEditor } from '../../src/interaction/editor-instance.ts'
+import type { PresetSpec } from '@deepseek-ai/dsh-permission-presets'
 import type { PermissionPresetsService } from '../../src/interaction/permission-panel.ts'
 import { fakeMayflyContext } from './fakes.ts'
 
@@ -16,10 +17,13 @@ let notices: string[] = []
 afterEach(() => { notices = [] })
 
 interface PlanState { active: boolean, pending: boolean }
+/** A preset row the fake service resolves, named for the test table. */
+interface PresetRow extends PresetSpec { readonly name: string }
+
 interface MountOptions {
   readonly attached?: boolean
   readonly plan?: false | Partial<PlanState>
-  readonly presets?: false | readonly { readonly name: string, readonly sandbox: string, readonly approval: string }[]
+  readonly presets?: false | readonly PresetRow[]
   readonly currentPreset?: string
   readonly registerPlan?: boolean
   readonly registerPermission?: boolean
@@ -35,9 +39,10 @@ async function mount(options: MountOptions = {}) {
   const agent = { id: session.id, session, status: 'idle' } as unknown as Agent
   ctx.provide('testSession', { current: options.attached === false ? null : agent })
   const plan = options.plan === false ? undefined : { active: options.plan?.active === true, pending: options.plan?.pending === true }
+  let currentPreset = options.currentPreset ?? 'workspace-write'
   vi.spyOn(ctx.sessionProjections, 'snapshot').mockImplementation(() => ({
     asOfSeq: (session.seq - 1) as SessionSeqCursor,
-    values: plan === undefined ? {} : { plan: { ...plan } },
+    values: { ...plan === undefined ? {} : { plan: { ...plan } }, permissions: { currentValue: currentPreset } },
   }))
 
   const presetRows = options.presets === false
@@ -46,10 +51,15 @@ async function mount(options: MountOptions = {}) {
       { name: 'workspace-write', sandbox: 'workspace-write', approval: 'ask' },
       { name: 'danger-full-access', sandbox: 'danger-full-access', approval: 'never' },
     ]
-  let currentPreset = options.currentPreset ?? 'workspace-write'
   if (presetRows !== undefined) {
     ctx.provide('permissionPresets', {
       names: presetRows.map(row => row.name),
+      defaultPreset: currentPreset,
+      catalog: () => ({
+        options: presetRows.map(row => ({ value: row.name, name: row.name })),
+        defaultOptions: presetRows.map(row => ({ value: row.name, name: row.name })),
+        defaultPreset: currentPreset,
+      }),
       current: () => currentPreset,
       resolve: name => {
         const row = presetRows.find(entry => entry.name === name)
@@ -57,6 +67,7 @@ async function mount(options: MountOptions = {}) {
         return row
       },
       optionOf: name => ({ value: name, name }),
+      set: (_session, name) => { currentPreset = name },
     } satisfies PermissionPresetsService as never)
   }
 

@@ -1,0 +1,49 @@
+grid 100x30 cursor none
+|    ▝▜▀▀▀▛▘     ~/workspace
+|
+|  » Refresh the landing page hero.
+|
+|  ▾ 1 tool call · 1 subagent · Ctrl+O to expand
+|
+|  ● Goal set · Refresh the landing page hero and keep every test green
+|
+|  ● A reviewer runs in the background, the todo list is set, and a watcher rebuilds the styles.
+|
+|  ✓ Subagent(Audit the hero copy) · 0.6s
+|
+|  ✓ TodoWrite · 0.2s
+|
+|  ● Every panel now has the /stats look: a rule and a title, the keys on one hint row, no buttons.
+|    Try /model, /effort, /stats, /plugin, /agents, /jobs, /mcp, /help, /settings; Alt+↓ enters the
+|    views, where x asks y/n.
+|
+|  ✻ Worked for 4s · done 09:00
+|━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+|  Select a model
+|  Your pick becomes the default for new sessions.
+|
+|  DeepSeek
+|  → 1. DeepSeek/DeepSeek-V4.1-Flash ✓  977k context
+|    2. DeepSeek/DeepSeek-V4-Pro        977k context
+|
+|    ● Thinking: high
+|
+|  ←/→ thinking · Enter choose · Delete use default · Esc close
+styles
+0: 4-10 fg:#9a86e6; 16-26 fg:#9aa3b8
+2: 2-3 fg:#9a86e6; 4-99 fg:#9a86e6 b
+4: 2-46 fg:#9aa3b8
+6: 2-99 fg:#c9c0f0
+8: 2-3 fg:#ededf2
+10: 2-3 fg:#4ec87e; 4-11 fg:#ededf2 b; 12 fg:#9aa3b8; 13-31 fg:#c9c0f0; 32-39 fg:#9aa3b8
+12: 2-3 fg:#4ec87e; 4-12 fg:#ededf2 b; 13-19 fg:#9aa3b8
+14: 2-3 fg:#ededf2
+18: 2-29 fg:#9aa3b8
+19: 0-99 fg:#9a86e6
+20: 2-15 fg:#9a86e6 b
+21: 2-48 fg:#9aa3b8
+23: 2-9 fg:#9aa3b8
+24: 2 fg:#9a86e6 b; 4-5 fg:#9aa3b8; 7-34 fg:#9a86e6 b; 36 fg:#9a86e6; 39-50 fg:#9aa3b8
+25: 4-5 fg:#9aa3b8; 7-30 fg:#ededf2; 39-50 fg:#9aa3b8
+27: 4 fg:#9a86e6 b; 6-14 fg:#9aa3b8; 16-19 fg:#ededf2 b
+29: 2-4 fg:#ededf2; 6-16 fg:#5c6476; 17-21 fg:#ededf2; 23-31 fg:#5c6476; 32-37 fg:#ededf2; 39-52 fg:#5c6476; 53-55 fg:#ededf2; 57-61 fg:#5c6476

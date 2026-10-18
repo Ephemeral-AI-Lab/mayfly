@@ -5,13 +5,10 @@
  * polish on the editor — the wrapping slash dropdown (vs. the stock list on
  * other prefixes), Enter accepting-and-submitting a slash completion, the
  * bold leading slash token, the argument-hint ghost, and the fuzzy
- * re-exports. The S22 mention additions: the `createFileMentionProvider`
- * factory (stateless apply math, fd delegation) and the editor adapter's
- * mention drill-down reopen hook.
+ * re-exports. The S22 mention additions: the editor adapter's mention
+ * drill-down reopen hook.
  */
 
-import { chmodSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import {
@@ -37,11 +34,7 @@ import type {
   MayflyTheme,
 } from '../../src/core/types.ts'
 import { FakeTerminal, waitForRender } from './fake-terminal.ts'
-import { mkdtempTracked, registerTempDirCleanup } from './temp-dir.ts'
 import { identity } from '../helpers.ts'
-
-
-registerTempDirCleanup()
 
 /** A 1x1 PNG. */
 const PNG_1X1 = new Uint8Array([
@@ -56,7 +49,7 @@ const GIF_1X1 = new Uint8Array([
   0, 0, 44, 0, 0, 0, 0, 1, 0, 1, 0, 0, 2, 2, 68, 1, 0, 59,
 ])
 
-const ROLES: (keyof MayflySemanticColors)[] = [
+const ROLES: (Exclude<keyof MayflySemanticColors, 'logoInks'>)[] = [
   'text',
   'textStrong',
   'muted',
@@ -64,7 +57,6 @@ const ROLES: (keyof MayflySemanticColors)[] = [
   'accent',
   'primary',
   'border',
-  'borderFocus',
   'success',
   'error',
   'warning',
@@ -83,19 +75,18 @@ const ROLES: (keyof MayflySemanticColors)[] = [
   'mdListBullet',
   'diffAdded',
   'diffRemoved',
-  'diffAddedStrong',
-  'diffRemovedStrong',
-  'diffGutter',
   'diffMeta',
   'diffAddedBg',
   'diffRemovedBg',
+  'modelHighlight',
 ]
 
 /** A palette whose every token tags its text, so mappings show in output. */
 function taggedTheme(): MayflyTheme {
-  const colors = Object.fromEntries(
-    ROLES.map(role => [role, (text: string) => `«${role}:${text}»`]),
-  ) as unknown as MayflySemanticColors
+  const colors = {
+    ...Object.fromEntries(ROLES.map(role => [role, (text: string) => `«${role}:${text}»`])),
+    logoInks: [identity],
+  } as unknown as MayflySemanticColors
   return { colors }
 }
 
@@ -123,14 +114,15 @@ const SGR = { border: '\x1b[38;5;240m', shellMode: '\x1b[38;5;99m', textMuted: '
 const RESET = '\x1b[0m'
 
 function sgrTheme(): MayflyTheme {
-  const colors = Object.fromEntries(
-    ROLES.map(role => [
+  const colors = {
+    ...Object.fromEntries(ROLES.map(role => [
       role,
       role === 'border' || role === 'shellMode' || role === 'textMuted'
         ? (text: string) => SGR[role] + text + RESET
         : identity,
-    ]),
-  ) as unknown as MayflySemanticColors
+    ])),
+    logoInks: [identity],
+  } as unknown as MayflySemanticColors
   return { colors }
 }
 
@@ -1023,57 +1015,6 @@ describe('width helpers', () => {
   })
 })
 
-describe('createFileMentionProvider', () => {
-  it('returns null suggestions without an fd backend and applies completions statelessly', async () => {
-    const { tui, stop } = bootTui()
-    const components = createService(tui)
-    const provider = components.createFileMentionProvider(process.cwd(), null)
-    await expect(provider.getSuggestions(['@any'], 0, 4, { signal: new AbortController().signal })).resolves.toBeNull()
-    // The apply math is fd-independent: directories keep the cursor for
-    // drill-down (no trailing space), files append one.
-    const directory = provider.applyCompletion(['see @sr'], 0, 7, { value: '@src/', label: 'src/' }, '@sr')
-    expect(directory).toEqual({ lines: ['see @src/'], cursorLine: 0, cursorCol: 9 })
-    const file = provider.applyCompletion(['see @sr'], 0, 7, { value: '@src/a.ts', label: 'a.ts' }, '@sr')
-    expect(file).toEqual({ lines: ['see @src/a.ts '], cursorLine: 0, cursorCol: 14 })
-    stop()
-  })
-
-  it('keeps the cursor inside the closing quote of a quoted directory', () => {
-    const { tui, stop } = bootTui()
-    const components = createService(tui)
-    const provider = components.createFileMentionProvider(process.cwd(), null)
-    const applied = provider.applyCompletion(
-      ['see @"a'],
-      0,
-      7,
-      { value: '@"a b/"', label: 'a b/' },
-      '@"a',
-    )
-    expect(applied).toEqual({ lines: ['see @"a b/"'], cursorLine: 0, cursorCol: 10 })
-    stop()
-  })
-
-  it('delegates to a spawned fd through the renderer pipeline', async () => {
-    const { tui, stop } = bootTui()
-    const components = createService(tui)
-    const root = mkdtempTracked('mayfly-core-mention-')
-    const bin = mkdtempTracked('mayfly-core-mention-bin-')
-    const fd = join(bin, 'fd')
-    // The fake ignores fd's arguments and prints one directory line; the
-    // pipeline's own handling (trailing-slash kind detection, the
-    // @-carrying value, the basename label) is the contract pinned here.
-    writeFileSync(fd, '#!/bin/sh\nprintf "src/\\n"\n')
-    chmodSync(fd, 0o755)
-    const provider = components.createFileMentionProvider(root, fd)
-    const suggestions = await provider.getSuggestions(['@sr'], 0, 3, { signal: new AbortController().signal })
-    expect(suggestions).toEqual({
-      items: [{ value: '@src/', label: 'src/', description: 'src' }],
-      prefix: '@sr',
-    })
-    stop()
-  })
-})
-
 describe('EditorAdapter mention drill-down reopen', () => {
   /** A stub provider whose every round returns one directory item. */
   function stubProvider(onApply: (context: {
@@ -1305,5 +1246,132 @@ describe('createEditor: a recalled message by its expansion, and the completion 
     } finally {
       stop()
     }
+  })
+})
+
+/** The private editor surfaces these guard tests reach through the pinned structural cast. */
+interface EditorGuards {
+  editor: {
+    state: { lines: string[], cursorLine: number, cursorCol: number }
+    render(width: number): string[]
+  }
+  tokenBackspace(): boolean
+  stepOverToken(data: string): boolean
+  cursorAtInputEnd(): boolean
+  reopenAutocompleteAfterInput(): void
+}
+
+const guardsOf = (editor: ReturnType<MayflyComponentsService['createEditor']>): EditorGuards => editor as unknown as EditorGuards
+
+describe('createEditor defensive guards', () => {
+  it('falls back when the cursor or buffer outruns the editor lines', () => {
+    const { tui, stop } = bootTui()
+    const editor = createService(tui).createEditor()
+    editor.setText('hello')
+    const guards = guardsOf(editor)
+    guards.editor.state.cursorLine = 4
+    expect(editor.tokenBackspace()).toBe(false)
+    expect(guards.stepOverToken('\x1b[C')).toBe(false)
+    // An empty line list still answers the end-of-input question.
+    guards.editor.state.lines = []
+    guards.editor.state.cursorLine = 0
+    guards.editor.state.cursorCol = 0
+    expect(guards.cursorAtInputEnd()).toBe(true)
+    // And the autocomplete reopen path reads the missing line as empty.
+    guards.reopenAutocompleteAfterInput()
+    stop()
+  })
+
+  it('invalidates a token selection once its text moves under it', () => {
+    const { tui, stop } = bootTui()
+    const editor = createService(tui).createEditor()
+    editor.setText('hello')
+    editor.setTokenSource(() => [{ start: 0, end: 5, kind: 'mention' as const }])
+    const guards = guardsOf(editor)
+    guards.editor.state.cursorLine = 0
+    guards.editor.state.cursorCol = 5
+    // Backspace right after the token selects it rather than removing it.
+    expect(editor.tokenBackspace()).toBe(true)
+    expect(editor.activeToken()).toMatchObject({ text: 'hello', selected: true })
+    // The same place now holds other text: the old selection no longer names it.
+    guards.editor.state.lines[0] = 'world'
+    expect(editor.activeToken()).toBeUndefined()
+    stop()
+  })
+
+  it('keeps a token selection the onKey hook consumed, and closes its autocomplete', async () => {
+    const { tui, stop } = bootTui()
+    const editor = createService(tui).createEditor()
+    let suggestions = 0
+    editor.setAutocompleteProvider({
+      triggerCharacters: ['/'],
+      getSuggestions: () => {
+        suggestions += 1
+        return Promise.resolve({ items: [{ value: 'quit', label: '/quit' }], prefix: '/' })
+      },
+      applyCompletion: lines => ({ lines, cursorLine: 0, cursorCol: 1 }),
+    })
+    editor.handleInput!('/')
+    await waitForRender()
+    expect(suggestions).toBe(1)
+    expect(editor.isShowingAutocomplete()).toBe(true)
+    // The open list has a view, which the host does not paint in the frame.
+    expect(editor.completion()).toBeDefined()
+
+    // Selecting the slash token closes the list instead of covering the hint.
+    editor.setTokenSource(() => [{ start: 0, end: 1, kind: 'mention' as const }])
+    const guards = guardsOf(editor)
+    guards.editor.state.cursorLine = 0
+    guards.editor.state.cursorCol = 1
+    expect(editor.tokenBackspace()).toBe(true)
+    expect(editor.isShowingAutocomplete()).toBe(false)
+
+    // A hook that consumes its own Backspace has already cleared the flag's
+    // partner: handleInput must not drop the selection the hook just made.
+    editor.setText('hello')
+    editor.setTokenSource(() => [{ start: 0, end: 5, kind: 'mention' as const }])
+    guards.editor.state.cursorCol = 5
+    editor.onKey = () => {
+      editor.tokenBackspace()
+      return true
+    }
+    editor.handleInput!('\x7f')
+    expect(editor.activeToken()).toMatchObject({ text: 'hello', selected: true })
+    stop()
+  })
+
+  it('renders a too-narrow placeholder, masks an unfocused buffer, and survives an empty editor render', () => {
+    const { tui, stop } = bootTui()
+    const editor = createService(tui).createEditor()
+    editor.setPlaceholder(['a placeholder longer than the room'])
+    expect(editor.render(1).join('')).not.toContain('placeholder longer')
+    // A room too narrow for the ladder truncates its last variant instead
+    // of dropping the placeholder.
+    expect(editor.render(4).join('')).toContain('…')
+
+    editor.setText('secret value')
+    editor.focused = false
+    const masked = editor.renderContent(40, true)
+    expect(masked.join('')).not.toContain('secret')
+    expect(masked.join('')).not.toContain(CURSOR_MARKER)
+
+    // A renderer that yields no rows at all still leaves one content row.
+    const guards = guardsOf(editor) as EditorGuards & { editor: { render(width: number): string[] } }
+    const original = guards.editor.render
+    guards.editor.render = () => []
+    expect(editor.render(80)).toEqual([''])
+    guards.editor.render = original
+    stop()
+  })
+
+  it('clears the visible-width cache at its cap', () => {
+    const { tui, stop } = bootTui()
+    const components = createService(tui)
+    for (let index = 0; index < 4096; index += 1) components.visibleWidth(`width-${String(index)}`)
+    expect(components.visibleWidth('width-0')).toBe(7)
+    // The next distinct string overflows the cap and clears the cache first.
+    expect(components.visibleWidth('overflowing-width')).toBe(17)
+    expect(components.visibleWidth('width-0')).toBe(7)
+    stop()
   })
 })

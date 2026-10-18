@@ -1,0 +1,48 @@
+grid 100x30 cursor none
+|
+|  ▾ 1 subagent · Ctrl+O to expand
+|
+|  ● The watcher runs in the background. Send spawn:Background reviewer child-hold:240000 review
+|    the README for a turn that starts a real background subagent and keeps running; type a message
+|    while it runs (it queues), then press Esc.
+|
+|  » spawn:Background reviewer child-hold:240000 review the README
+|
+|  ✓ Subagent(Background reviewer)
+|
+|  ■ interrupted
+|
+|  ✻ Worked for 0s · done 09:00
+|
+|  » Then bump the version  ⏎ queued
+|                                                                              interrupt requested
+|╭─────────────────────────────────────────────────────────────────────── Watch the styles while we ╮
+|│ >  Ask anything · / commands · @ files · # skills · ! shell                                      │
+|╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
+| deepseek-official/deepseek-v4-pro   view   ~/workspace  ● agents 0/1  ● jobs 1   ctx ▱▱▱▱▱▱▱▱▱▱ 1%
+|                                                         ━━━━━━━━━━━━
+| → ● Background reviewer  Starting…                                                              0s
+|
+|
+|
+|
+|
+|
+|   ↑/↓ options · Enter open · x stop · Esc close
+styles
+1: 2-32 fg:#9aa3b8
+3: 2-3 fg:#ededf2; 45-99 fg:#c9c0f0
+4: 4-13 fg:#c9c0f0
+7: 2-3 fg:#9a86e6; 4-99 fg:#9a86e6 b
+9: 2-3 fg:#4ec87e; 4-11 fg:#ededf2 b; 12 fg:#9aa3b8; 13-31 fg:#c9c0f0; 32 fg:#9aa3b8
+11: 2-14 fg:#e8a838
+13: 2-29 fg:#9aa3b8
+15: 2-3 fg:#9a86e6; 4-24 fg:#9a86e6 b; 25-99 fg:#9aa3b8
+16: 78-96 fg:#ededf2
+17: 0-72 fg:#9aa3b8; 73-97 fg:#f5f5f7 b; 98-99 fg:#9aa3b8
+18: 0 fg:#9aa3b8; 2-3 fg:#ededf2; 4 r; 5-60 fg:#5c6476; 99 fg:#9aa3b8
+19: 0-99 fg:#9aa3b8
+20: 1-33 fg:#ededf2; 36-41 fg:#9a86e6 b r; 44-54 fg:#9aa3b8; 57 fg:#c9c0f0; 58 fg:#ededf2; 59-65 fg:#9aa3b8; 66-68 fg:#ededf2; 71 fg:#c9c0f0; 72 fg:#ededf2; 73-77 fg:#9aa3b8; 78 fg:#ededf2; 82-85 fg:#ededf2; 86-95 fg:#9aa3b8; 96-98 fg:#ededf2
+21: 1-68 fg:#9a86e6
+22: 1 fg:#9a86e6 b; 3 fg:#c9c0f0; 4 fg:#ededf2; 5-23 fg:#c9c0f0; 26-34 fg:#ededf2; 97-98 fg:#9aa3b8
+29: 1-2 fg:#5c6476; 3-5 fg:#ededf2; 7-16 fg:#5c6476; 17-21 fg:#ededf2; 23-29 fg:#5c6476; 30 fg:#ededf2; 32-38 fg:#5c6476; 39-41 fg:#ededf2; 43-47 fg:#5c6476

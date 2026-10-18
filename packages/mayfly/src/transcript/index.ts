@@ -13,6 +13,7 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
+import type { ContextPressureProjection } from '@deepseek-ai/dsh-token-meter'
 import type { MayflyDecisionRequest } from '../core/types.ts'
 // Empty type import carries the app-owned session reader/projection services.
 import type {} from '../app/index.ts'
@@ -155,24 +156,37 @@ export function apply(ctx: Context): void {
   }
   // The compaction rows read the selected Agent's occupancy marks; the stream is published again when a mark lands.
   const sessionFacts = ctx.get('mayflySessionFacts') as SessionFactsService | undefined
+  // The selected Session's native pressure supplies the compaction bar's window
+  // and its unmarked occupancy; the presentation facts own only the marks.
+  const readPressure = (): ContextPressureProjection | undefined => {
+    const session = ctx.mayflyCurrentAgent.current()?.session
+    return session === undefined ? undefined : ctx.sessionProjections.snapshot(session, ['contextPressure']).values.contextPressure
+  }
+  let pressure = readPressure()
   // The requests waiting on the user, in the order they were asked: the plugins that put them to the user publish their
   // queues, and the stream turns the first one's call into the request block.
   const queues: Record<'approval' | 'plan', readonly MayflyDecisionRequest[]> = { approval: [], plan: [] }
   let requests: readonly MayflyDecisionRequest[] = []
   // The children the displayed conversation spawned: a spawn's line follows its child (running, settled, failed).
   let children: SpawnedChildren = { byId: new Map(), byPrompt: new Map() }
-  const transcript: TranscriptController = new TranscriptController({ presentation, t, queued: () => queued, requests: () => requests, imageRefs, rows, focusMode: mode => ctx.emit('mayfly/focus-mode-changed', mode), focusRow: row => ctx.emit('mayfly/focus-row-changed', row), tick: ctx.mayflyTick, context: () => sessionFacts === undefined ? undefined : { marks: sessionFacts.current.compactions, window: sessionFacts.current.contextWindow, tokens: sessionFacts.current.contextTokens, approvals: sessionFacts.current.approvals, children } })
+  const transcript: TranscriptController = new TranscriptController({ presentation, t, queued: () => queued, requests: () => requests, imageRefs, rows, focusMode: mode => ctx.emit('mayfly/focus-mode-changed', mode), focusRow: row => ctx.emit('mayfly/focus-row-changed', row), tick: ctx.mayflyTick, context: () => sessionFacts === undefined ? undefined : { marks: sessionFacts.current.compactions, ...pressure?.contextWindow === undefined ? {} : { window: pressure.contextWindow }, ...pressure === undefined ? {} : { tokens: pressure.projectedTokens ?? pressure.pressureTokens }, approvals: sessionFacts.current.approvals, children } })
   let marks = sessionFacts?.current.compactions
-  let window = sessionFacts?.current.contextWindow
   let approvals = sessionFacts?.current.approvals
   const offMarks = sessionFacts?.subscribe((facts) => {
-    if (facts.compactions === marks && facts.contextWindow === window && facts.approvals === approvals) return
+    if (facts.compactions === marks && facts.approvals === approvals) return
     marks = facts.compactions
-    window = facts.contextWindow
     approvals = facts.approvals
     transcript.republish()
   })
   ctx.effect(() => () => offMarks?.())
+  // Only the exact selected Session's pressure re-reads: a compaction reprices
+  // the next request, a new request reports new usage, and a switch rebinds.
+  const offPressure = ctx.sessionProjections.onChanged((session, key) => {
+    if (key !== 'contextPressure' || session !== ctx.mayflyCurrentAgent.current()?.session) return
+    pressure = readPressure()
+    transcript.republish()
+  })
+  ctx.effect(() => () => offPressure())
   let childrenKey = ''
   const offChildren = sessionFacts?.subscribeChildren((list) => {
     const byId = new Map<string, SpawnedChild>()
@@ -201,7 +215,7 @@ export function apply(ctx: Context): void {
   // Every displayed or retained conversation reads its own native path; the
   // registry decides which views exist, the controller which one is mounted.
   const slots = new ConversationSlots(ctx, transcript, {
-    source: (agent, publish) => new OfficialConversationModelSource(
+    source: (agent, publish, counters) => new OfficialConversationModelSource(
       ctx.sessionProjections,
       { get: toolName => {
         const definition = ctx.tools.get(toolName, agent)
@@ -214,18 +228,35 @@ export function apply(ctx: Context): void {
       publish,
       liveDrafts,
       t,
+      counters,
     ),
     headed: { liveTurnHeader: true },
     history: () => ctx.get('sessionController'),
   })
   ctx.effect(() => () => slots.dispose())
-  ctx.on('tools/change', () => slots.invalidateTools())
+  // A spawn/dispose burst emits once per changed tool; one microtask marks
+  // every retained view stale, and the controller republishes the displayed one.
+  let toolsChangePending = false
+  let disposed = false
+  ctx.effect(() => () => {
+    disposed = true
+    toolsChangePending = false
+  })
+  ctx.on('tools/change', () => {
+    if (disposed || toolsChangePending) return
+    toolsChangePending = true
+    queueMicrotask(() => {
+      toolsChangePending = false
+      if (!disposed) slots.invalidateTools()
+    })
+  })
   const sync = (): void => { slots.sync(ctx.mayflyConversations.snapshot()) }
   // A same-id Agent replacement changes the exact Agent without a registry change.
   const offView = ctx.mayflyConversations.subscribe(sync)
   const offAgent = ctx.mayflyCurrentAgent.subscribe((agent) => {
     selected = agent
     readQueued()
+    pressure = readPressure()
     sync()
     transcript.republish()
   })

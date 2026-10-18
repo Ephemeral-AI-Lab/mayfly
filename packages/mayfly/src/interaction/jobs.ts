@@ -4,7 +4,8 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-commands'
-import { JobId, type JobOutputRead, type JobView } from '@deepseek-ai/dsh-jobs'
+import { JobId, type JobRegisteredData, type JobOutputRead, type JobSettledData, type JobView } from '@deepseek-ai/dsh-jobs'
+import type { Session } from '@deepseek-ai/dsh-session'
 import { isDeepStrictEqual } from 'node:util'
 import { ui, type MayflyContentChunk, type MayflyListItem, type MayflyOverlayHandle, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import type { MayflyTranslate } from '../frontend/locale.ts'
@@ -16,6 +17,44 @@ export const inject = ['commands', 'jobs', 'mayflyCurrentAgent', 'mayflyOverlays
 const jobSource = (job: JobView) => [{ resourceId: `job/${job.id}`, revision: JSON.stringify([job.status, job.finishedAt ?? null]) }]
 
 export function isLiveJob(job: JobView): boolean { return job.status === 'running' || job.status === 'stopping' }
+
+/**
+ * The settled jobs one owning session's durable `job/registered` and
+ * `job/settled` records describe. The live registry is the authority while a
+ * record is resident; a later registry lifetime, or a record the registry no
+ * longer lists, still shows its durable registration and settlement. A
+ * registered record with no settlement stays incomplete and is not invented
+ * here. The branded `JobId` is retained as the registration recorded it.
+ * @param session - the exact owning session's log.
+ * @returns settled job projections in registration order.
+ */
+export function jobHistory(session: Session): readonly JobView[] {
+  const records = new Map<string, { readonly registered: JobRegisteredData, settled?: JobSettledData }>()
+  for (const event of session.snapshotEvents()) {
+    if (event.type === 'job/registered') {
+      records.set(String(event.data.jobId), { registered: event.data })
+    } else if (event.type === 'job/settled') {
+      const previous = records.get(String(event.data.jobId))
+      records.set(String(event.data.jobId), { registered: previous?.registered ?? event.data, settled: event.data })
+    }
+  }
+  const jobs: JobView[] = []
+  for (const { registered, settled } of records.values()) {
+    if (settled === undefined) continue
+    jobs.push({
+      id: registered.jobId,
+      kind: registered.kind,
+      label: registered.label,
+      owner: registered.owner,
+      status: settled.status,
+      startedAt: registered.startedAt,
+      finishedAt: settled.finishedAt,
+      ...(settled.detail === undefined ? {} : { detail: settled.detail }),
+      output: { total: 0, earliest: 0 },
+    })
+  }
+  return jobs
+}
 
 export function sortJobs(jobs: readonly JobView[]): readonly JobView[] {
   return [...jobs.filter(isLiveJob).toSorted((a, b) => a.startedAt - b.startedAt), ...jobs.filter(job => !isLiveJob(job)).toSorted((a, b) => (b.finishedAt ?? b.startedAt) - (a.finishedAt ?? a.startedAt))]

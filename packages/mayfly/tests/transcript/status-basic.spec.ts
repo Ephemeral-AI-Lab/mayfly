@@ -1,18 +1,17 @@
 /**
  * `mayfly-status-basic-model` plugin: the baseline model-name entry. Covers the
- * model-source preference order (projected next selection → request header →
- * options.model → options.provider → 'no model'), the immediate refresh on a
- * committed `/model` pick and the foreign-session guard, the no-session empty
- * render, the `text` color tier, session-change rebinding, and the
- * `session/event` re-derivation that picks up the first request header.
+ * model-source preference order (native `modelSelection.next` →
+ * `lastUsed` → request header → options.model → 'no model'), the immediate
+ * refresh on a committed `/model` pick and the foreign-session guard, the
+ * no-session empty render, the `text` color tier, session-change rebinding, and
+ * the shedding/truncation widths.
  */
 
 import { describe, expect, it } from 'vitest'
-import { ReasoningEffortId } from '@deepseek-ai/dsh-llm'
 import type { Session } from '@deepseek-ai/dsh-session'
 import * as basic from '../../src/transcript/status-basic-model.ts'
 import { SHED } from '../../src/transcript/status-shed.ts'
-import { event, userEvent } from './helpers.ts'
+import { userEvent } from './helpers.ts'
 import { asAgent, bootStatusPlugin, COLORS, fakeAgent } from './status-fakes.ts'
 
 describe('mayfly-status-basic-model', () => {
@@ -35,13 +34,15 @@ describe('mayfly-status-basic-model', () => {
     await harness.dispose()
   })
 
-  it('falls back to options.model, then provider, then the placeholder', async () => {
+  it('falls back to options.model, then the placeholder', async () => {
     const fromModel = await bootStatusPlugin(basic, fakeAgent([], { model: 'deepseek-chat' }))
     expect(fromModel.entry.render(80)).toBe('deepseek-chat')
     await fromModel.dispose()
 
+    // A provider without a selected model names no model; the native
+    // selection projection is the domain source now.
     const fromProvider = await bootStatusPlugin(basic, fakeAgent([], { provider: 'deepseek' }))
-    expect(fromProvider.entry.render(80)).toBe('deepseek')
+    expect(fromProvider.entry.render(80)).toBe('no model')
     await fromProvider.dispose()
 
     const placeholder = await bootStatusPlugin(basic, fakeAgent([]))
@@ -49,7 +50,7 @@ describe('mayfly-status-basic-model', () => {
     await placeholder.dispose()
   })
 
-  it('renders in the full text tier, the footer’s brightest anchor', async () => {
+  it('renders in the full text tier, the footer\'s brightest anchor', async () => {
     const text = (body: string): string => `[T]${body}[/T]`
     const harness = await bootStatusPlugin(
       basic,
@@ -69,48 +70,69 @@ describe('mayfly-status-basic-model', () => {
     ctx.emit('test/session-changed', asAgent(second))
     expect(entry.render(80)).toBe('second-model')
 
-    first.status = 'running'
     ctx.emit('session/event', first.session as unknown as Session, userEvent('old'))
     expect(entry.render(80)).toBe('second-model')
     await dispose()
   })
 
-  it('re-derives the model when the first request header lands', async () => {
-    const agent = fakeAgent([], { model: 'boot-model' })
-    const { ctx, entry, dispose } = await bootStatusPlugin(basic, agent)
-    expect(entry.render(80)).toBe('boot-model')
-
-    // An event on another session does not touch the entry.
-    const other = fakeAgent([])
-    ctx.emit('session/event', other.session as unknown as Session, userEvent('foreign'))
-    expect(entry.render(80)).toBe('boot-model')
-
-    // The loop logs the first request/header snapshot inside its step; the
-    // next session event re-derives the model from it.
-    agent.session.requestHeader = () => ({ config: { model: 'header-model' } })
-    ctx.emit('session/event', agent.session as unknown as Session, userEvent('hi'))
-    expect(entry.render(80)).toBe('header-model')
-    await dispose()
-  })
-
-  it('flips immediately when a model selection commits, before any request fires', async () => {
+  it('flips immediately on a committed selection, before any request fires', async () => {
     const agent = fakeAgent([], { model: 'boot-model', headerModel: 'header-model' })
     const harness = await bootStatusPlugin(basic, agent)
     expect(harness.entry.render(80)).toBe('header-model')
     // A committed `/model` pick updates the projection's `next` view without
     // any request/header event; the row must follow at once.
-    harness.setModelSelection(agent.session, { next: { provider: 'deepseek', model: 'switched-model' } })
+    harness.setModelSelection(agent.session, { next: { provider: 'deepseek', model: 'switched-model' }, lastUsed: { provider: 'deepseek', model: 'old-model' } })
     expect(harness.entry.render(80)).toBe('deepseek/switched-model')
+    await harness.dispose()
+  })
+
+  it('falls back to lastUsed when no next selection is pending', async () => {
+    const agent = fakeAgent([], { model: 'boot-model' })
+    const harness = await bootStatusPlugin(basic, agent)
+    expect(harness.entry.render(80)).toBe('boot-model')
+    harness.setModelSelection(agent.session, { next: null, lastUsed: { provider: 'deepseek', model: 'used-model', reasoningEffort: 'high' } })
+    expect(harness.entry.render(80)).toBe('deepseek/used-model High')
+    await harness.dispose()
+  })
+
+  it('reads the model-selection snapshot only when the session or its selection changes', async () => {
+    const agent = fakeAgent([], { model: 'boot-model' })
+    let snapshots = 0
+    let notify: ((session: unknown, key: string, value: unknown, seq: number) => void) | undefined
+    const harness = await bootStatusPlugin(basic, agent, {
+      services: {
+        sessionProjections: {
+          snapshot: () => {
+            snapshots += 1
+            return { asOfSeq: 0, values: { modelSelection: { next: { provider: 'deepseek', model: 'snap-model' } } } }
+          },
+          onChanged(listener: (session: unknown, key: string, value: unknown, seq: number) => void) {
+            notify = listener
+            return () => { notify = undefined }
+          },
+        },
+      },
+    })
+    expect(harness.entry.render(80)).toBe('deepseek/snap-model')
+    expect(snapshots).toBe(1)
+    // Every facts delta asks for the row again; the projection snapshot is not re-read.
+    harness.ctx.emit('session/event', agent.session as unknown as Session, userEvent('hi'))
+    expect(harness.entry.render(80)).toBe('deepseek/snap-model')
+    expect(snapshots).toBe(1)
+    // The change feed carries the parsed value itself.
+    notify!(agent.session, 'modelSelection', { next: { provider: 'deepseek', model: 'changed-model' } }, 2)
+    expect(harness.entry.render(80)).toBe('deepseek/changed-model')
+    expect(snapshots).toBe(1)
     await harness.dispose()
   })
 
   it('appends the capitalized effort of a committed selection', async () => {
     const agent = fakeAgent([], { model: 'boot-model', headerModel: 'header-model' })
     const harness = await bootStatusPlugin(basic, agent)
-    harness.setModelSelection(agent.session, { next: { provider: 'deepseek', model: 'step-5-preview', reasoningEffort: 'max' } })
+    harness.setModelSelection(agent.session, { next: { provider: 'deepseek', model: 'step-5-preview', reasoningEffort: 'max' }, lastUsed: null })
     expect(harness.entry.render(80)).toBe('deepseek/step-5-preview Max')
     // An explicit 'off' is a selection too, not the provider default.
-    harness.setModelSelection(agent.session, { next: { provider: 'deepseek', model: 'step-5-preview', reasoningEffort: 'off' } })
+    harness.setModelSelection(agent.session, { next: { provider: 'deepseek', model: 'step-5-preview', reasoningEffort: 'off' }, lastUsed: null })
     expect(harness.entry.render(80)).toBe('deepseek/step-5-preview Off')
     await harness.dispose()
   })
@@ -121,7 +143,7 @@ describe('mayfly-status-basic-model', () => {
     expect(harness.entry.render(80)).toBe('header-model High')
     // `/model <id>` commits without an effort; the stale header level must
     // not bleed into the new model's row.
-    harness.setModelSelection(agent.session, { next: { provider: 'deepseek', model: 'fresh-model' } })
+    harness.setModelSelection(agent.session, { next: { provider: 'deepseek', model: 'fresh-model' }, lastUsed: null })
     expect(harness.entry.render(80)).toBe('deepseek/fresh-model')
     await harness.dispose()
   })
@@ -138,34 +160,20 @@ describe('mayfly-status-basic-model', () => {
     await harness.dispose()
   })
 
-  it('reads the effort folded from a request/header event', async () => {
-    const agent = fakeAgent([])
-    const { ctx, entry, dispose } = await bootStatusPlugin(basic, agent)
-    expect(entry.render(80)).toBe('no model')
-    ctx.emit('session/event', agent.session as unknown as Session, event('request/header', {
-      header: { config: { provider: 'deepseek', model: 'event-model', reasoningEffort: ReasoningEffortId('high') } },
-      reason: 'change',
-    }))
-    expect(entry.render(80)).toBe('deepseek/event-model High')
-    await dispose()
-  })
-
-  it('ignores model-selection commits from other sessions and a null next', async () => {
+  it('ignores model-selection commits from other sessions and a null next/lastUsed', async () => {
     const agent = fakeAgent([], { model: 'boot-model' })
     const harness = await bootStatusPlugin(basic, agent)
     const other = fakeAgent([])
-    harness.setModelSelection(other.session, { next: { provider: 'deepseek', model: 'other-model' } })
+    harness.setModelSelection(other.session, { next: { provider: 'deepseek', model: 'other-model' }, lastUsed: null })
     expect(harness.entry.render(80)).toBe('boot-model')
-    // A selection with no `next` (nothing pending or used) falls through the
-    // projection source to the ordinary chain.
-    harness.setModelSelection(agent.session, { next: null })
+    // No selection at all falls through the projection source to the header/options chain.
+    harness.setModelSelection(agent.session, { next: null, lastUsed: null })
     expect(harness.entry.render(80)).toBe('boot-model')
     await harness.dispose()
   })
 
   it('truncates to the offered width budget', async () => {
-    const agent = fakeAgent([], { model: 'a-very-long-model-name' })
-    const harness = await bootStatusPlugin(basic, agent)
+    const harness = await bootStatusPlugin(basic, fakeAgent([], { model: 'a-very-long-model-name' }))
     expect(harness.entry.render(10)).toBe('a-very-lon')
     await harness.dispose()
   })
@@ -176,10 +184,11 @@ describe('mayfly-status-basic-model', () => {
     await harness.dispose()
     expect(harness.models.list()).toHaveLength(0)
   })
+
   it('sheds the provider, then the thinking level, then the model itself, as the row narrows', async () => {
     const agent = fakeAgent([])
     const harness = await bootStatusPlugin(basic, agent)
-    harness.setModelSelection(agent.session, { next: { provider: 'deepseek', model: 'deepseek-v4', reasoningEffort: 'high' } })
+    harness.setModelSelection(agent.session, { next: { provider: 'deepseek', model: 'deepseek-v4', reasoningEffort: 'high' }, lastUsed: null })
     const node = harness.models.list().find(model => model.id === 'mayfly.status.basic')!.node
     expect(node).toMatchObject({ kind: 'shed' })
     const forms = (node as unknown as { readonly narrower: readonly { readonly rank: number, readonly node: { readonly content: string } | null }[] }).narrower
@@ -188,5 +197,21 @@ describe('mayfly-status-basic-model', () => {
     // The model is the row's anchor: it overflows by truncation and is the last thing given up.
     expect(harness.models.list().find(model => model.id === 'mayfly.status.basic')!.definition).toMatchObject({ priority: 0, overflow: 'truncate' })
     await harness.dispose()
+  })
+})
+
+describe('default model before a session', () => {
+  it('reads the saved default model and its effort when no Agent is attached', async () => {
+    const withEffort = await bootStatusPlugin(basic, null, { services: { agentDefaultModel: { currentSelection: () => ({ provider: 'deepseek', model: 'saved-model', reasoningEffort: 'max' }) } } })
+    expect(withEffort.entry.render(80)).toBe('deepseek/saved-model Max')
+    await withEffort.dispose()
+
+    const bare = await bootStatusPlugin(basic, null, { services: { agentDefaultModel: { currentSelection: () => ({ provider: 'deepseek', model: 'saved-model' }) } } })
+    expect(bare.entry.render(80)).toBe('deepseek/saved-model')
+    await bare.dispose()
+
+    const absent = await bootStatusPlugin(basic, null, { services: { agentDefaultModel: { currentSelection: () => undefined } } })
+    expect(absent.entry.render(80)).toBe('')
+    await absent.dispose()
   })
 })

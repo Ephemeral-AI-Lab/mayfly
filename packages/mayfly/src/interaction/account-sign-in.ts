@@ -46,7 +46,9 @@ export interface SignInUnavailable { readonly error: 'unavailable' | 'no-server'
 function endOf(attempt: SignInAttemptView): SignInEnd {
   if (attempt.phase === 'cancelled') return 'cancelled'
   if (attempt.phase === 'expired' || attempt.errorCode === 'expired') return 'expired'
-  if (attempt.errorCode === 'network') return 'network'
+  /* `no-response` means fetch produced no Response at all — the same
+     reachability story as a failed network exchange. */
+  if (attempt.errorCode === 'network' || attempt.errorCode === 'no-response') return 'network'
   if (attempt.errorCode === 'storage') return 'storage'
   return 'failed'
 }

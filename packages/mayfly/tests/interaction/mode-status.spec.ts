@@ -1,10 +1,12 @@
-/** Native plan and permission-backed mode status tests.
+/** Native plan and permission projection-backed mode status tests.
  * @module @ephemeral-ai/mayfly/interaction/tests/mode-status
  */
 
 import { stripVTControlCharacters } from 'node:util'
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import type { Agent } from '@deepseek-ai/dsh-agent'
+import type { PlanProjection } from '@deepseek-ai/dsh-plan-mode'
+import type { PermissionSelection } from '@deepseek-ai/dsh-permission-presets'
 import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
 import * as modeStatus from '../../src/interaction/mode-status.ts'
 import { compileMayflyStatusNode } from '../../src/core/ui-compiler.ts'
@@ -12,72 +14,103 @@ import { SCAN_WIDTHS, expectLinesFit } from '../core/width-scan.ts'
 import { visibleWidth, wrapTextWithAnsi, truncateToWidth } from '../../src/core/width.ts'
 import type { PermissionPresetsService } from '../../src/interaction/permission-panel.ts'
 import { fakeMayflyContext } from './fakes.ts'
-import { CommandId } from '@deepseek-ai/dsh-commands'
 import { plainColors } from '../helpers.ts'
 
-/** The sandbox knob event, declared by dsh-sandbox-policy, which Mayfly does not depend on. */
-const SANDBOX_MODE = 'sandbox/mode'
-const appendSandboxMode = (session: { append(type: never, data: never): unknown }, mode: string): void => {
-  session.append(SANDBOX_MODE as never, { mode } as never)
+/** The native plan/permission projection face: values per Session and one change feed. */
+class ModeProjectionFake {
+  private readonly plans = new Map<object, PlanProjection>()
+  private readonly permissions = new Map<object, PermissionSelection>()
+  private readonly listeners = new Set<(session: unknown, key: string, value: unknown, seq: number) => void>()
+  reads = 0
+
+  setPlan(session: object, plan: PlanProjection): void {
+    this.plans.set(session, plan)
+    this.publish(session, 'plan', plan)
+  }
+
+  setPermission(session: object, currentValue: string): void {
+    const value = { currentValue }
+    this.permissions.set(session, value)
+    this.publish(session, 'permissions', value)
+  }
+
+  setPermissionQuietly(session: object, currentValue: string): void {
+    this.permissions.set(session, { currentValue })
+  }
+
+  snapshot(session: object, keys?: readonly string[]): { readonly asOfSeq: number, readonly values: Record<string, unknown> } {
+    this.reads += 1
+    const plan = this.plans.get(session)
+    const permission = this.permissions.get(session)
+    return {
+      asOfSeq: 0,
+      values: {
+        ...plan === undefined || (keys !== undefined && !keys.includes('plan')) ? {} : { plan },
+        ...permission === undefined || (keys !== undefined && !keys.includes('permissions')) ? {} : { permissions: permission },
+      },
+    }
+  }
+
+  onChanged(listener: (session: unknown, key: string, value: unknown, seq: number) => void): () => void {
+    this.listeners.add(listener)
+    return () => { this.listeners.delete(listener) }
+  }
+
+  /** Publish a change for another key, which the badges must ignore. */
+  publishOther(session: object, key: string, value: unknown): void {
+    this.publish(session, key, value)
+  }
+
+  private publish(session: object, key: string, value: unknown): void {
+    for (const listener of this.listeners) listener(session, key, value, 0)
+  }
 }
 
-type PlanState = { active: boolean, pending?: boolean }
-
-async function mount(initial: PlanState = { active: false }, withPlan = true, ordered = false) {
-  const { ctx } = fakeMayflyContext()
+async function mount(initial: PlanProjection = { active: false, pending: false }, withPlan = true) {
+  const projections = new ModeProjectionFake()
+  const { ctx } = fakeMayflyContext({ projections })
   await ctx.plugin(SessionStore)
   const session = ctx.sessions.create(SessionId('mode-status-spec'))
-  const states = new Map<Agent, PlanState>()
-  const permissions = new Map<Agent, string>()
-  const agents = new Map<typeof session, Agent>()
+  if (withPlan) projections.setPlan(session, initial)
   const agentFor = (target: typeof session): Agent => {
     const agent = { id: target.id, session: target, status: 'idle' } as unknown as Agent
-    agents.set(target, agent)
-    permissions.set(agent, 'workspace-write')
+    projections.setPermissionQuietly(target, 'workspace-write')
     return agent
   }
   const agent = agentFor(session)
-  states.set(agent, initial)
-  vi.spyOn(ctx.sessionProjections, 'snapshot').mockImplementation(target => {
-    const selected = agents.get(target as typeof session)
-    const state = selected === undefined ? undefined : states.get(selected)
-    return {
-      asOfSeq: target.seq - 1,
-      values: !withPlan || state === undefined
-        ? {}
-        : { plan: { active: state.active, pending: state.pending === true } },
-    } as ReturnType<typeof ctx.sessionProjections.snapshot>
-  })
-  // Mirrors dsh `derive()`: a recorded preset is effective only once the
-  // sandbox and approval knobs folded so far match its spec.
-  const knobs = { preset: null as string | null, sandbox: 'workspace-write', approval: 'ask' }
-  ctx.on('session/event', (_target, event) => {
-    const data = event.data as Record<string, string>
-    if (event.type === 'permission/preset') knobs.preset = data['preset']!
-    if ((event.type as string) === SANDBOX_MODE) knobs.sandbox = data['mode']!
-    if (event.type === 'approval/policy') knobs.approval = data['policy']!
-  })
-  const derived = (): string => {
-    if (knobs.preset !== null) {
-      const spec = knobs.preset === 'danger-full-access'
-        ? { sandbox: 'danger-full-access', approval: 'never' }
-        : { sandbox: 'workspace-write', approval: 'ask' }
-      if (spec.sandbox === knobs.sandbox && spec.approval === knobs.approval) return knobs.preset
-    }
-    return knobs.sandbox === 'danger-full-access' && knobs.approval === 'never' ? 'danger-full-access' : 'workspace-write'
-  }
   ctx.provide('permissionPresets', {
     names: ['workspace-write', 'danger-full-access'],
-    current: target => ordered ? derived() : permissions.get(agents.get(target as typeof session)!) ?? 'workspace-write',
-    resolve: name => name === 'danger-full-access'
-      ? { sandbox: 'danger-full-access', approval: 'never' }
-      : { sandbox: 'workspace-write', approval: 'ask' },
+    defaultPreset: 'workspace-write',
+    catalog: () => ({
+      options: [
+        { value: 'workspace-write', name: 'workspace-write' },
+        { value: 'danger-full-access', name: 'danger-full-access' },
+      ],
+      defaultOptions: [
+        { value: 'workspace-write', name: 'workspace-write' },
+        { value: 'danger-full-access', name: 'danger-full-access' },
+      ],
+      defaultPreset: 'workspace-write',
+    }),
+    current: () => 'workspace-write',
+    resolve: name => {
+      if (name === 'danger-full-access') return { sandbox: 'danger-full-access', approval: 'never' }
+      if (name === 'ask-full') return { sandbox: 'danger-full-access', approval: 'ask' }
+      if (name === 'alias') return { sandbox: 'danger-full-access', approval: 'never' }
+      if (name === 'workspace-write') return { sandbox: 'workspace-write', approval: 'ask' }
+      throw new Error(`unknown preset ${name}`)
+    },
     optionOf: name => ({ value: name, name }),
+    set: () => {},
   } satisfies PermissionPresetsService as never)
   ctx.provide('testSession', { current: agent })
   const fiber = await ctx.plugin(modeStatus)
   const entry = () => ctx.mayflyStatus.list().find(value => value.id === 'mayfly.status.mode')
-  return { ctx, agent, agentFor, states, permissions, fiber, entry }
+  const switchTo = (next: Agent | null): void => {
+    ;(ctx.get('testSession') as { current: Agent | null }).current = next
+    ctx.emit('test/session-changed', next)
+  }
+  return { ctx, agent, agentFor, projections, fiber, entry, switchTo }
 }
 
 describe('mayfly-status-mode', () => {
@@ -85,21 +118,19 @@ describe('mayfly-status-mode', () => {
     const normal = await mount()
     expect(normal.entry()).toMatchObject({ definition: { priority: 2 }, node: null })
 
-    const active = await mount({ active: true })
+    const active = await mount({ active: true, pending: false })
     expect(active.entry()).toMatchObject({ node: { kind: 'text', content: 'plan', tone: 'accent' } })
 
     const pending = await mount({ active: true, pending: true })
     expect(pending.entry()?.node).toMatchObject({ content: 'plan…' })
 
-    normal.permissions.set(normal.agent, 'danger-full-access')
-    normal.agent.session.append('permission/preset', { preset: 'danger-full-access' })
+    normal.projections.setPermission(normal.agent.session, 'danger-full-access')
     expect(normal.entry()).toMatchObject({ node: { content: 'yolo', tone: 'warning' } })
   })
 
   it.each([false, true])('renders both badges with pending=%s and preserves yolo when planning ends', async pending => {
     const world = await mount({ active: true, pending })
-    world.permissions.set(world.agent, 'danger-full-access')
-    world.agent.session.append('permission/preset', { preset: 'danger-full-access' })
+    world.projections.setPermission(world.agent.session, 'danger-full-access')
     const node = world.entry()!.node!
     expect(node).toEqual({ kind: 'stack', direction: 'row', gap: 1, children: [
       { node: { kind: 'text', content: pending ? 'plan…' : 'plan', tone: 'accent' } },
@@ -116,111 +147,62 @@ describe('mayfly-status-mode', () => {
     expect(stripVTControlCharacters(compiled.value.component.render(20).join('')).trim()).toBe(pending ? 'plan… yolo' : 'plan yolo')
     for (const width of SCAN_WIDTHS) expectLinesFit('plan-yolo-status', compiled.value.component.render(width), width)
 
-    world.states.set(world.agent, { active: false, pending: true })
-    world.agent.session.append('plan/mode', { active: false })
+    world.projections.setPlan(world.agent.session, { active: false, pending: true })
     expect(world.entry()?.node).toMatchObject({ children: [{ node: { content: 'plan…' } }, { node: { content: 'yolo' } }] })
-    world.states.set(world.agent, { active: false })
-    world.agent.session.append('plan/mode', { active: false })
+    world.projections.setPlan(world.agent.session, { active: false, pending: false })
     expect(world.entry()?.node).toEqual({ kind: 'text', content: 'yolo', tone: 'warning' })
   })
 
-  it('refreshes from the current Session event stream', async () => {
-    const world = await mount()
-    const revision = world.entry()?.node
+  it('refreshes from the exact Session\'s plan and permission projection changes only', async () => {
+    const world = await mount({ active: true, pending: false })
     const other = world.ctx.sessions.create(SessionId('mode-status-other'))
-    other.append('plan/mode', { active: true })
-    expect(world.entry()?.node).toEqual(revision)
-    world.states.set(world.agent, { active: true })
-    world.agent.session.append('plan/mode', { active: true })
+    world.agentFor(other)
+    const baseline = world.projections.reads
+    // A change on another Session is not this badge's.
+    world.projections.setPlan(other, { active: true, pending: false })
+    expect(world.projections.reads).toBe(baseline)
     expect(world.entry()?.node).toMatchObject({ content: 'plan' })
+    // A non-mode key on the current Session does not re-read either.
+    world.projections.publishOther(world.agent.session, 'turnOutline', [])
+    expect(world.projections.reads).toBe(baseline)
+    // The mode keys do.
+    world.projections.setPlan(world.agent.session, { active: false, pending: false })
+    expect(world.projections.reads).toBe(baseline + 1)
+    expect(world.entry()?.node).toBeNull()
+    world.projections.setPermission(world.agent.session, 'danger-full-access')
+    expect(world.projections.reads).toBe(baseline + 2)
+    expect(world.entry()?.node).toMatchObject({ content: 'yolo' })
   })
 
-  it('skips non-mode session facts: stream deltas never re-read the projections', async () => {
-    const world = await mount({ active: true })
-    const snapshots = world.ctx.sessionProjections.snapshot as unknown as { mock: { calls: unknown[] } }
-    const reads = () => snapshots.mock.calls.length
-    const baseline = reads()
-    // A turn fact (or any non-plan, non-permission event, stream deltas
-    // included) cannot change the badges, so it never reaches refresh().
-    world.agent.session.append('turn/start', { turn: 1 })
-    expect(reads()).toBe(baseline)
-    expect(world.entry()?.node).toMatchObject({ content: 'plan' })
-    // A permission fact still refreshes immediately.
-    world.permissions.set(world.agent, 'danger-full-access')
-    world.agent.session.append('permission/preset', { preset: 'danger-full-access' })
-    expect(reads()).toBe(baseline + 1)
-    expect(world.entry()?.node).toMatchObject({ children: [{ node: { content: 'plan' } }, { node: { content: 'yolo' } }] })
-  })
-
-  describe('preset switches fold their knob facts after the preset fact', () => {
-    const yolo = { kind: 'text', content: 'yolo', tone: 'warning' }
-
-    it('shows yolo only once the final knob fact lands, and clears on leaving', async () => {
-      const world = await mount({ active: false }, true, true)
-      const session = world.agent.session
-      session.append('permission/preset', { preset: 'danger-full-access' })
-      expect(world.entry()?.node).toBeNull()
-      appendSandboxMode(session, 'danger-full-access')
-      expect(world.entry()?.node).toBeNull()
-      session.append('approval/policy', { policy: 'never' })
-      expect(world.entry()?.node).toEqual(yolo)
-
-      session.append('permission/preset', { preset: 'workspace-write' })
-      expect(world.entry()?.node).toEqual(yolo)
-      appendSandboxMode(session, 'workspace-write')
-      session.append('approval/policy', { policy: 'ask' })
-      expect(world.entry()?.node).toBeNull()
-    })
-
-    it('shows yolo when the last changed knob is the sandbox', async () => {
-      const world = await mount({ active: false }, true, true)
-      const session = world.agent.session
-      session.append('approval/policy', { policy: 'never' })
-      session.append('permission/preset', { preset: 'danger-full-access' })
-      expect(world.entry()?.node).toBeNull()
-      appendSandboxMode(session, 'danger-full-access')
-      expect(world.entry()?.node).toEqual(yolo)
-    })
-
-    it('follows a queued plan through its command lifecycle', async () => {
-      const world = await mount({ active: false }, true, true)
-      const session = world.agent.session
-      world.states.set(world.agent, { active: false, pending: true })
-      session.append('command/run', { commandId: CommandId('c1'), name: 'plan', source: { kind: 'user' } })
-      expect(world.entry()?.node).toMatchObject({ content: 'plan…' })
-      world.states.set(world.agent, { active: false })
-      session.append('command/done', { commandId: CommandId('c1'), kind: 'success' })
-      expect(world.entry()?.node).toBeNull()
-    })
+  it('derives yolo from the selected preset bundle, not its name', async () => {
+    const world = await mount()
+    world.projections.setPermission(world.agent.session, 'alias')
+    expect(world.entry()?.node).toMatchObject({ content: 'yolo' })
+    world.projections.setPermission(world.agent.session, 'ask-full')
+    expect(world.entry()?.node).toBeNull()
+    world.projections.setPermission(world.agent.session, 'custom')
+    expect(world.entry()?.node).toBeNull()
   })
 
   it('follows exact current-Agent changes', async () => {
-    const world = await mount({ active: true })
+    const world = await mount({ active: true, pending: false })
     const nextSession = world.ctx.sessions.create(SessionId('mode-status-next'))
     const next = world.agentFor(nextSession)
-    ;(world.ctx.get('testSession') as { current: Agent | null }).current = next
-    world.ctx.emit('test/session-changed', next)
+    world.switchTo(next)
     expect(world.entry()).toMatchObject({ node: null })
 
-    world.states.set(next, { active: true })
-    next.session.append('plan/mode', { active: true })
+    world.projections.setPlan(nextSession, { active: true, pending: false })
     expect(world.entry()?.node).toMatchObject({ content: 'plan' })
-  })
-
-  it('hides with no current Agent and unregisters on unload', async () => {
-    const world = await mount({ active: true })
-    ;(world.ctx.get('testSession') as { current: Agent | null }).current = null
-    world.ctx.emit('test/session-changed', null)
+    world.switchTo(null)
     expect(world.entry()?.node).toBeNull()
     await world.fiber.dispose()
     expect(world.entry()).toBeUndefined()
   })
 
   it('hides when the plan projection is absent and permissions are normal', async () => {
-    const world = await mount({ active: true }, false)
+    const world = await mount({ active: true, pending: false }, false)
     expect(world.entry()).toMatchObject({ node: null })
-    world.permissions.set(world.agent, 'danger-full-access')
-    world.agent.session.append('permission/preset', { preset: 'danger-full-access' })
+    world.projections.setPermission(world.agent.session, 'danger-full-access')
     expect(world.entry()?.node).toEqual({ kind: 'text', content: 'yolo', tone: 'warning' })
   })
 })

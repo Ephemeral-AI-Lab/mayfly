@@ -1,28 +1,22 @@
 /**
  * The Todo item of the status row (`pane-todo`): its summary and panel as pure functions of the list, and the view that
- * follows the attached session's `todo/write` snapshots. Covers the unfinished summary (`● todo 2/12 4m 12s`) and the
- * time it gives up first, the closing item (`✓ todo 6/6 12s`) held five seconds, the fixed-length scrolling panel with no
- * heading or count, the `viewHistory` setting that lists finished rows, the interrupted line, a list that settled before
- * the session loaded, session changes, and the Fiber's cleanup.
+ * follows the exact selected Session's native `todos` projection. Covers the unfinished summary (`● todo 2/12`), the
+ * closing item (`✓ todo 12/12`) held five seconds, the fixed-length scrolling panel with no heading or count, the
+ * `viewHistory` setting that lists finished rows, the interrupted line, a list that settled before the session loaded,
+ * session changes, projection changes, and the Fiber's cleanup.
  */
 
 import { Context } from '@deepseek-ai/cordis'
 import { describe, expect, it } from 'vitest'
 import { MayflyLocaleService } from '../../src/frontend/locale.ts'
-import type { Session, SessionEvent } from '@deepseek-ai/dsh-session'
+import type { SessionEvent } from '@deepseek-ai/dsh-session'
 import type { TodoItem } from '@deepseek-ai/dsh-tool-todo'
 import * as todo from '../../src/transcript/pane-todo.ts'
-import { SHED } from '../../src/transcript/status-shed.ts'
 import { VIEW_PANEL_ROWS } from '../../src/transcript/view-items.ts'
-import { event, resetSeq, turnEnd, turnStart } from './helpers.ts'
+import { resetSeq, turnEnd, turnStart } from './helpers.ts'
 import { transcriptTranslatorFake } from './notices-fakes.ts'
 import { bootPanePlugin, HandTick } from './pane-fakes.ts'
 import { fakeAgent } from './status-fakes.ts'
-
-/** A `todo/write` whole-list snapshot event. */
-function todoWrite(todos: TodoItem[]): SessionEvent<'todo/write'> {
-  return event('todo/write', { todos })
-}
 
 const item = (content: string, status: TodoItem['status']): TodoItem => ({ content, status })
 
@@ -34,29 +28,27 @@ function spansOf(node: unknown): { readonly text: string, readonly tone?: string
   return [...record.kind === 'rich-text' ? record.spans as never[] : [], ...Object.entries(record).filter(([key]) => key !== 'spans').flatMap(([, value]) => spansOf(value))]
 }
 /** A summary's words at its full form. */
-const fullText = (summary: { readonly node: unknown } | null | undefined): string => spansOf((summary!.node as { readonly node: unknown }).node).map(span => span.text).join('')
+const fullText = (summary: { readonly node: unknown } | null | undefined): string => spansOf(summary!.node).map(span => span.text).join('')
 
 describe('todoSummary', () => {
   const t = transcriptTranslatorFake
-  const state = (todos: TodoItem[], extra: Partial<todo.TodoState> = {}): todo.TodoState => ({ todos, interrupted: false, history: false, elapsedMs: 252_000, ...extra })
+  const state = (todos: TodoItem[], extra: Partial<todo.TodoState> = {}): todo.TodoState => ({ todos, interrupted: false, history: false, ...extra })
 
   it('has no summary for no list', () => {
     expect(todo.todoSummary(state([]), t)).toBeNull()
   })
 
-  it('says the mark, done over total, and the time, with the time as the form the row gives up first', () => {
+  it('says the mark and done over total', () => {
     const list = [...Array.from({ length: 2 }, (_, index) => item(`d${index}`, 'completed')), item('now', 'in_progress'), ...Array.from({ length: 9 }, (_, index) => item(`p${index}`, 'pending'))]
     const summary = todo.todoSummary(state(list), t)!
-    expect(fullText(summary)).toBe('● todo 2/12 4m 12s')
-    const shed = summary.node as unknown as { readonly kind: string, readonly narrower: readonly { readonly rank: number, readonly node: unknown }[] }
-    expect(shed.kind).toBe('shed')
-    expect(shed.narrower.map(form => [form.rank, spansOf(form.node).map(span => span.text).join('')])).toEqual([[SHED.time, '● todo 2/12']])
+    expect(fullText(summary)).toBe('● todo 2/12')
+    expect(summary.node).toMatchObject({ kind: 'rich-text' })
     expect(spansOf(summary.node)[0]).toEqual({ text: '●', tone: 'accent' })
   })
 
   it('closes with the success mark and the whole list once it settles', () => {
-    const closing = todo.todoSummary(state([], { done: { total: 12, elapsedMs: 12_000 } }), t)!
-    expect(fullText(closing)).toBe('✓ todo 12/12 12s')
+    const closing = todo.todoSummary(state([], { done: { total: 12 } }), t)!
+    expect(fullText(closing)).toBe('✓ todo 12/12')
     expect(spansOf(closing.node)[0]).toEqual({ text: '✓', tone: 'success' })
   })
 })
@@ -64,7 +56,7 @@ describe('todoSummary', () => {
 describe('todoPanel', () => {
   const t = transcriptTranslatorFake
   const list = [item('first', 'completed'), item('now', 'in_progress'), item('next', 'pending')]
-  const panel = (todos: TodoItem[], extra: Partial<todo.TodoState> = {}) => todo.todoPanel({ todos, interrupted: false, history: false, elapsedMs: 0, ...extra }, t)
+  const panel = (todos: TodoItem[], extra: Partial<todo.TodoState> = {}) => todo.todoPanel({ todos, interrupted: false, history: false, ...extra }, t)
 
   it('has no panel for no list or a settled one', () => {
     expect(panel([])).toBeNull()
@@ -92,17 +84,49 @@ describe('todoPanel', () => {
   })
 })
 
-async function bootTodo(initial: SessionEvent[] = [], services: Record<string, unknown> = {}) {
-  const agent = fakeAgent(initial)
+/** The native `todos` projection face: a snapshot per Session and the change feed. */
+class TodoProjectionFake {
+  private readonly values = new Map<object, readonly TodoItem[] | null>()
+  private readonly listeners = new Set<(session: unknown, key: string, value: unknown, seq: number) => void>()
+
+  set(session: object, todos: readonly TodoItem[] | null): void {
+    this.values.set(session, todos)
+  }
+
+  snapshot(session: object): { readonly asOfSeq: number, readonly values: Record<string, unknown> } {
+    return { asOfSeq: 0, values: { todos: this.values.get(session) ?? null } }
+  }
+
+  onChanged(listener: (session: unknown, key: string, value: unknown, seq: number) => void): () => void {
+    this.listeners.add(listener)
+    return () => { this.listeners.delete(listener) }
+  }
+
+  emit(session: object, todos: readonly TodoItem[] | null, seq = 0): void {
+    this.values.set(session, todos)
+    for (const listener of this.listeners) listener(session, 'todos', todos, seq)
+  }
+}
+
+interface TodoBootOptions {
+  readonly todos?: readonly TodoItem[] | null
+  readonly events?: SessionEvent[]
+  readonly services?: Record<string, unknown>
+}
+
+async function bootTodo(options: TodoBootOptions = {}) {
+  const agent = fakeAgent(options.events ?? [])
+  const projections = new TodoProjectionFake()
+  projections.set(agent.session, options.todos ?? null)
   const tick = new HandTick()
-  const harness = await bootPanePlugin(todo, agent, { mayflyTick: tick, ...services })
+  const harness = await bootPanePlugin(todo, agent, { mayflyTick: tick, sessionProjections: projections, ...options.services })
   const entry = () => harness.ctx.mayflyPanes.list().find(candidate => candidate.id === todo.TODO_VIEW_ID)!
-  const write = (todos: TodoItem[]): void => { harness.ctx.emit('session/event', agent.session as unknown as Session, todoWrite(todos)) }
-  return { ...harness, agent, tick, entry, write }
+  const write = (todos: readonly TodoItem[] | null): void => { projections.emit(agent.session, todos) }
+  return { ...harness, agent, projections, tick, entry, write }
 }
 
 describe('mayfly-pane-todo', () => {
-  it('registers a views pane at priority 14 that has no item until the first todo/write', async () => {
+  it('registers a views pane at priority 14 that has no item until the native projection has a list', async () => {
     resetSeq()
     const harness = await bootTodo()
     expect(harness.entry().definition).toMatchObject({ placement: 'views', priority: 14, title: 'Todo' })
@@ -112,30 +136,42 @@ describe('mayfly-pane-todo', () => {
     await harness.dispose()
   })
 
-  it('shows done over total and the panel from the latest whole-list snapshot, and runs the clock only while a list is tracked', async () => {
+  it('reuses its rows when an unrelated delta carries the same todo projection', async () => {
     resetSeq()
+    let reads = 0
+    const tracked = [{ get content(): string { reads += 1; return 'a' }, get status(): TodoItem['status'] { reads += 1; return 'in_progress' } }]
     const harness = await bootTodo()
-    harness.write([item('a', 'completed'), item('b', 'in_progress'), item('c', 'pending')])
-    expect(fullText(harness.entry().summary)).toMatch(/^● todo 1\/3/u)
-    expect(harness.tick.subscribers).toBe(1)
-    expect(spansOf(harness.entry().node).map(span => span.text)).toEqual(['  ● ', 'b', '  ○ ', 'c'])
-    // The last write wins: a whole list replaces the one before it.
-    harness.write([item('a', 'completed'), item('b', 'completed'), item('c', 'in_progress')])
-    expect(fullText(harness.entry().summary)).toMatch(/^● todo 2\/3/u)
-    // The time is measured from the first write of the list, by the shared tick.
-    harness.tick.fire(Date.now() + 252_000)
-    expect(fullText(harness.entry().summary)).toMatch(/^● todo 2\/3 4m 1[0-9]s$/u)
+    harness.write(tracked)
+    const revision = harness.entry().revision
+    reads = 0
+    harness.ctx.emit('session/event', harness.agent.session as never, turnStart(2))
+    expect(reads).toBe(0)
+    expect(harness.entry().revision).toBe(revision)
     await harness.dispose()
   })
 
-  it('holds the closing item five seconds when a tracked list settles, then leaves with its clock', async () => {
+  it('shows done over total and the panel from the latest native whole-list value', async () => {
+    resetSeq()
+    const harness = await bootTodo()
+    harness.write([item('a', 'completed'), item('b', 'in_progress'), item('c', 'pending')])
+    expect(fullText(harness.entry().summary)).toBe('● todo 1/3')
+    // No clock runs while the list is unfinished.
+    expect(harness.tick.subscribers).toBe(0)
+    expect(spansOf(harness.entry().node).map(span => span.text)).toEqual(['  ● ', 'b', '  ○ ', 'c'])
+    // The last write wins: a whole list replaces the one before it.
+    harness.write([item('a', 'completed'), item('b', 'completed'), item('c', 'in_progress')])
+    expect(fullText(harness.entry().summary)).toBe('● todo 2/3')
+    await harness.dispose()
+  })
+
+  it('holds the closing item five seconds when a tracked list settles, then leaves', async () => {
     resetSeq()
     const harness = await bootTodo()
     harness.write([item('a', 'in_progress'), item('b', 'pending')])
     const before = Date.now()
     harness.write([item('a', 'completed'), item('b', 'completed')])
     const after = Date.now()
-    expect(fullText(harness.entry().summary)).toMatch(/^✓ todo 2\/2 /u)
+    expect(fullText(harness.entry().summary)).toBe('✓ todo 2/2')
     expect(harness.entry().node).toBeNull()
     expect(harness.tick.subscribers).toBe(1)
     harness.tick.fire(before + todo.DONE_LINGER_MS - 1)
@@ -145,13 +181,13 @@ describe('mayfly-pane-todo', () => {
     expect(harness.tick.subscribers).toBe(0)
     // The next list starts fresh.
     harness.write([item('c', 'pending')])
-    expect(fullText(harness.entry().summary)).toMatch(/^● todo 0\/1/u)
+    expect(fullText(harness.entry().summary)).toBe('● todo 0/1')
     await harness.dispose()
   })
 
-  it('shows nothing for a snapshot that already settled when the session loaded', async () => {
+  it('shows nothing for a projection that already settled when the session loaded', async () => {
     resetSeq()
-    const harness = await bootTodo([todoWrite([item('a', 'completed'), item('b', 'completed')])])
+    const harness = await bootTodo({ todos: [item('a', 'completed'), item('b', 'completed')] })
     expect(harness.entry().summary).toBeNull()
     expect(harness.entry().node).toBeNull()
     expect(harness.tick.subscribers).toBe(0)
@@ -160,9 +196,9 @@ describe('mayfly-pane-todo', () => {
 
   it('marks the panel interrupted when the run failed or was stopped with the list unfinished', async () => {
     resetSeq()
-    const harness = await bootTodo([turnStart(1), todoWrite([item('a', 'in_progress')])])
+    const harness = await bootTodo({ events: [turnStart(1)], todos: [item('a', 'in_progress')] })
     expect(JSON.stringify(harness.entry().node)).not.toContain('interrupted')
-    harness.ctx.emit('session/event', harness.agent.session as unknown as Session, turnEnd(1, { kind: 'failed' } as never))
+    harness.ctx.emit('session/event', harness.agent.session as never, turnEnd(1, { kind: 'failed' } as never))
     expect(JSON.stringify(harness.entry().node)).toContain('"content":"  interrupted"')
     await harness.dispose()
   })
@@ -170,7 +206,7 @@ describe('mayfly-pane-todo', () => {
   it('lists finished rows only when the viewHistory setting is on, and follows the setting live', async () => {
     resetSeq()
     const settings = { value: { viewHistory: false } as Record<string, unknown> }
-    const harness = await bootTodo([], { mayflyInteractionState: { settingsSource: () => settings.value } })
+    const harness = await bootTodo({ services: { mayflyInteractionState: { settingsSource: () => settings.value } } })
     harness.write([item('done', 'completed'), item('now', 'in_progress')])
     expect(spansOf(harness.entry().node).map(span => span.text)).toEqual(['  ● ', 'now'])
     settings.value = { viewHistory: true }
@@ -182,15 +218,17 @@ describe('mayfly-pane-todo', () => {
     await harness.dispose()
   })
 
-  it('clears the list when the session changes, and answers only its own session\'s writes', async () => {
+  it('rebinds to the exact selected Session and ignores a foreign Session\'s projection changes', async () => {
     resetSeq()
-    const harness = await bootTodo([todoWrite([item('a', 'in_progress')])])
-    expect(harness.entry().summary).not.toBeNull()
+    const harness = await bootTodo({ todos: [item('a', 'in_progress')] })
+    expect(fullText(harness.entry().summary)).toBe('● todo 0/1')
     // A write on another session is not this view's.
     const other = fakeAgent([])
-    harness.ctx.emit('session/event', other.session as unknown as Session, todoWrite([item('x', 'in_progress'), item('y', 'pending')]))
-    expect(fullText(harness.entry().summary)).toMatch(/^● todo 0\/1/u)
+    harness.projections.emit(other.session, [item('x', 'in_progress'), item('y', 'pending')])
+    expect(fullText(harness.entry().summary)).toBe('● todo 0/1')
     harness.ctx.emit('test/session-changed', other as never)
+    expect(fullText(harness.entry().summary)).toBe('● todo 0/2')
+    harness.projections.emit(other.session, null)
     expect(harness.entry().summary).toBeNull()
     expect(harness.tick.subscribers).toBe(0)
     await harness.dispose()
@@ -199,7 +237,7 @@ describe('mayfly-pane-todo', () => {
   it('republishes when the language changes, and when the viewHistory setting is repeated unchanged it says nothing', async () => {
     resetSeq()
     const settings = { value: { viewHistory: false } as Record<string, unknown> }
-    const harness = await bootTodo([todoWrite([item('a', 'in_progress')])], { mayflyInteractionState: { settingsSource: () => settings.value } })
+    const harness = await bootTodo({ todos: [item('a', 'in_progress')], services: { mayflyInteractionState: { settingsSource: () => settings.value } } })
     await harness.ctx.plugin({ name: 'item-locale', apply(owner: Context) { const service = new MayflyLocaleService(owner, { systemLocale: 'en' }); owner.effect(() => () => service.dispose()) } })
     harness.ctx.mayflyLocale.setPreference('zh')
     expect(harness.entry().summary).not.toBeNull()
@@ -209,9 +247,11 @@ describe('mayfly-pane-todo', () => {
     await harness.dispose()
   })
 
-  it('removes its view and its clock with its Fiber', async () => {
+  it('removes its view and its closing clock with its Fiber', async () => {
     resetSeq()
-    const harness = await bootTodo([todoWrite([item('a', 'in_progress')])])
+    const harness = await bootTodo({ todos: [item('a', 'in_progress')] })
+    expect(harness.tick.subscribers).toBe(0)
+    harness.write([item('a', 'completed')])
     expect(harness.tick.subscribers).toBe(1)
     await harness.dispose()
     expect(harness.ctx.mayflyPanes.list().some(candidate => candidate.id === todo.TODO_VIEW_ID)).toBe(false)

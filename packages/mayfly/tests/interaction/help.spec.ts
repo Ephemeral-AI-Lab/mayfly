@@ -10,13 +10,12 @@ const sections: HelpSection[] = [
 ]
 
 describe('helpNode', () => {
-  it('builds one frozen scroll document with semantic labels and a close action', () => {
+  it('builds one frozen scroll document with semantic labels', () => {
     const node = helpNode(sections)
     expect(node).toMatchObject({
       kind: 'surface', title: 'Help', chrome: 'overlay',
       child: { kind: 'stack', children: [
         { node: { kind: 'scroll', id: 'help-document', scrollbar: true, child: { kind: 'rich-text' } } },
-        { node: { kind: 'actions', id: 'help-actions', items: [{ id: 'close', dismiss: true }] } },
       ] },
     })
     expect(JSON.stringify(node)).toContain('/help')
@@ -24,10 +23,10 @@ describe('helpNode', () => {
     expect(Object.isFrozen(node)).toBe(true)
   })
 
-  it('translates headings, descriptions, title, and close label while preserving live key labels', () => {
+  it('translates headings, descriptions, and title while preserving live key labels', () => {
     const node = helpNode(sections, (message) => ({ Help: '帮助', Commands: '命令', Keys: '按键', 'Show help': '显示帮助', 'Submit input': '提交输入', Close: '关闭' })[message] ?? message)
     const text = JSON.stringify(node)
-    for (const expected of ['帮助', '命令', '按键', '显示帮助', '提交输入', '关闭', 'enter']) expect(text).toContain(expected)
+    for (const expected of ['帮助', '命令', '按键', '显示帮助', '提交输入', 'enter']) expect(text).toContain(expected)
   })
 
   it('keeps empty sections in the complete document', () => {

@@ -2,17 +2,18 @@
  * The Goal item of the status row: a views pane whose summary (`● goal 2/8`: the mark, the rounds over their cap) sits in the row and whose panel (the whole objective, a blocked goal's code and reason, and the keys of the
  * `/goal` subcommands: `r` resume, `p` pause, `e` edit, `c` clear) opens under the row while the view is entered. The mark is the phase (`●` active and armed, `○` active but disarmed,
  * `⏸` paused, `✕` blocked, `✓` complete); a goal that finishes keeps its item for a few seconds and then leaves.
- * Activation is process-local, so the item follows `goal/activation-changed` as well as the durable goal. The
- * registration is the Fiber's.
+ * The durable goal comes from the native `goal` projection; the process-local activation is read from `ctx.goals`,
+ * which also owns every write. The registration is the Fiber's.
  *
  * @module @ephemeral-ai/mayfly/transcript/status-goal
  */
 
 import type { Context } from '@deepseek-ai/cordis'
-import type { GoalView } from '@deepseek-ai/dsh-goal'
+import type { GoalProjection, GoalView } from '@deepseek-ai/dsh-goal'
+import type {} from '@deepseek-ai/dsh-session-projection'
+import type { Agent } from '@deepseek-ai/dsh-agent'
 import { ui, type MayflyInlineSpan, type MayflyPaneSummary, type MayflyTone, type MayflyActionItem, type MayflyUiActionEvent, type MayflyUiActionReply, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import type { MayflyTranslate } from '../frontend/locale.ts'
-import type { SessionFactsService } from './session-facts.ts'
 import type { TickSource } from './tick.ts'
 import { observeTranscriptLocale, transcriptTranslator } from './locale.ts'
 import { itemSummary, viewPanel } from './view-items.ts'
@@ -21,7 +22,7 @@ import { itemSummary, viewPanel } from './view-items.ts'
 export const name = 'mayfly-status-goal'
 
 /** Native and Mayfly services required by the view. */
-export const inject = ['mayflyPanes', 'mayflyCurrentAgent', 'mayflyScreen', 'mayflySessionFacts', 'mayflyTick', 'goals']
+export const inject = ['mayflyPanes', 'mayflyCurrentAgent', 'mayflyScreen', 'mayflyTick', 'goals', 'sessionProjections']
 
 /** The goal view's place in the status row: after the model, the chips, the directory, git, agents, and jobs; before todo. */
 const VIEW_PRIORITY = 13
@@ -47,6 +48,33 @@ function shown(goal: GoalView | undefined): Shown | undefined {
 function markOf(goal: Shown): MayflyInlineSpan {
   const mark = MARK[goal.phase === 'active' ? goal.activation === 'armed' ? 'armed' : 'disarmed' : goal.phase]
   return { text: mark.text, tone: mark.tone }
+}
+
+/**
+ * Read one exact Agent's current goal: the durable value from the native
+ * `goal` projection, and the process-local activation from the goal service
+ * that owns writes. A service read failure leaves the durable view disarmed
+ * rather than hiding a goal the log still holds.
+ * @param ctx - plugin context.
+ * @param agent - the exact selected Agent.
+ * @returns the merged view, or undefined without a current goal.
+ */
+function readGoal(ctx: Context, agent: Agent): GoalView | undefined {
+  const projected = ctx.sessionProjections.snapshot(agent.session, ['goal']).values.goal as GoalProjection | null | undefined
+  if (projected === undefined || projected === null) return undefined
+  let activation: GoalView['activation'] = 'disarmed'
+  try {
+    activation = ctx.goals.get(agent)?.activation ?? 'disarmed'
+  } catch (error) {
+    ctx.logger.warn(`could not read current goal activation: ${error instanceof Error ? error.message : String(error)}`)
+  }
+  return {
+    ...projected.goal,
+    roundsStarted: projected.roundsStarted,
+    createdAt: projected.createdAt,
+    updatedAt: projected.updatedAt,
+    activation,
+  }
 }
 
 /** What the item renders from. */
@@ -183,7 +211,7 @@ export function apply(ctx: Context): void {
     const agent = ctx.mayflyCurrentAgent.current()
     let next: GoalView | undefined
     try {
-      next = agent === null ? undefined : ctx.goals.get(agent)
+      next = agent === null ? undefined : readGoal(ctx, agent)
     } catch (error) {
       ctx.logger.warn(`could not read current goal for the goal view: ${error instanceof Error ? error.message : String(error)}`)
     }
@@ -197,22 +225,26 @@ export function apply(ctx: Context): void {
     goal = next
     publish()
   }
-  const facts = ctx.get('mayflySessionFacts') as SessionFactsService
-  const offGoal = facts.subscribeGoal(() => derive())
   const offAgent = ctx.mayflyCurrentAgent.subscribe(() => derive())
-  const offLocale = observeTranscriptLocale(ctx, () => { published = ''; derive() })
-  ctx.on('goal/changed', ({ agent }) => {
-    if (agent === ctx.mayflyCurrentAgent.current()) derive()
+  // The projection feed is the durable goal's only source; activation is a
+  // process-local edge with no durable projection value.
+  const offProjection = ctx.sessionProjections.onChanged((session, key) => {
+    if (key !== 'goal' || session !== ctx.mayflyCurrentAgent.current()?.session) return
+    derive()
   })
-  // Activation is process-local and not in the projection: the driver or a cancel disarms without a durable change.
-  ctx.on('goal/activation-changed', () => { derive() })
+  const offLocale = observeTranscriptLocale(ctx, () => { published = ''; derive() })
+  const offActivation = ctx.on('goal/activation-changed', ({ sessionId }) => {
+    if (String(sessionId) !== String(ctx.mayflyCurrentAgent.current()?.session.id)) return
+    derive()
+  })
   ctx.on('agent/created', ({ agent }) => {
     if (agent === ctx.mayflyCurrentAgent.current()) derive()
   })
   derive()
   ctx.effect(() => () => {
-    offGoal()
     offAgent()
+    offProjection()
+    offActivation()
     offLocale()
     offTick?.()
     pane.dispose()

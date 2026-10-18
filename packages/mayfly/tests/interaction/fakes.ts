@@ -18,7 +18,7 @@ import {
 // the same implementations the renderer runs.
 import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/width.ts'
 import { topRule } from '../../src/core/chrome.ts'
-import type { MayflyAutocompleteItem, MayflyAutocompleteProvider, MayflyCompletionView, MayflyComponent, MayflyComponents, MayflyEditor, MayflyEditorOptions, MayflyEditorToken, MayflyEditorSubmitAttempt, MayflyFocusable, MayflyKeyAction, MayflyKeymap, MayflyMarkdown, MayflyMarkdownOptions, MayflyOverlayHandle, MayflyOverlayOptions, MayflyScreen, MayflySelectItem, MayflySelectList, MayflySelectListOptions, MayflySemanticColors, MayflySubmittedDraft, MayflyTheme } from '../../src/core/types.ts'
+import type { MayflyAutocompleteProvider, MayflyCompletionView, MayflyComponent, MayflyComponents, MayflyEditor, MayflyEditorOptions, MayflyEditorToken, MayflyEditorSubmitAttempt, MayflyFocusable, MayflyKeyAction, MayflyKeymap, MayflyMarkdown, MayflyMarkdownOptions, MayflyOverlayHandle, MayflyOverlayOptions, MayflyScreen, MayflySelectItem, MayflySelectList, MayflySelectListOptions, MayflySemanticColors, MayflySubmittedDraft, MayflyTheme } from '../../src/core/types.ts'
 import type { MayflyComponentsService } from '../../src/core/components.ts'
 import type { MayflyKeymapService } from '../../src/core/keymap.ts'
 import type { MayflyScreenService } from '../../src/core/screen.ts'
@@ -174,7 +174,6 @@ function fakeColors(): MayflySemanticColors {
     accent: text => `*${text}*`,
     primary: text => `^${text}^`,
     border: identity,
-    borderFocus: text => `%${text}%`,
     success: identity,
     error: text => `!${text}!`,
     warning: text => `?${text}?`,
@@ -196,14 +195,11 @@ function fakeColors(): MayflySemanticColors {
     mdListBullet: identity,
     diffAdded: text => `+${text}+`,
     diffRemoved: text => `-${text}-`,
-    diffAddedStrong: text => `=${text}=`,
-    diffRemovedStrong: text => `/${text}/`,
-    diffGutter: text => `:${text}:`,
     diffMeta: text => `;${text};`,
     diffAddedBg: text => `[+${text}+]`,
     diffRemovedBg: text => `[-${text}-]`,
     modelHighlight: identity,
-    logoGradient: [identity],
+    logoInks: [identity, identity, identity, identity, identity],
   }
 }
 
@@ -542,52 +538,6 @@ export class FakeMayflyMarkdown implements MayflyMarkdown {
 }
 
 /**
- * Fake `@`-mention completion source: records its construction facts and
- * reads its behavior through the owning factory instance, so re-programming
- * `mentionGetSuggestions`/`mentionApplyCompletion` reaches providers created
- * earlier and later alike (the real source is rebuilt when the fd probe
- * settles). The real fd pipeline is pinned by the core spec; interaction
- * tests assert only the composition around it.
- */
-export class FakeFileMentionProvider implements MayflyAutocompleteProvider {
-  triggerCharacters?: string[]
-
-  /**
-   * @param basePath - the project root the factory was called with.
-   * @param fdPath - the fd binary the factory was called with.
-   * @param behavior - the owning factory's programmable behavior fields.
-   */
-  constructor(
-    readonly basePath: string,
-    readonly fdPath: string | null,
-    private readonly behavior: FakeMayflyComponents,
-  ) {}
-
-  getSuggestions(
-    lines: string[],
-    cursorLine: number,
-    cursorCol: number,
-    options: { signal: AbortSignal, force?: boolean },
-  ): ReturnType<MayflyAutocompleteProvider['getSuggestions']> {
-    return this.behavior.mentionGetSuggestions(lines, cursorLine, cursorCol, options)
-  }
-
-  applyCompletion(
-    lines: string[],
-    cursorLine: number,
-    cursorCol: number,
-    item: MayflyAutocompleteItem,
-    prefix: string,
-  ): { lines: string[], cursorLine: number, cursorCol: number } {
-    return this.behavior.mentionApplyCompletion(lines, cursorLine, cursorCol, item, prefix)
-  }
-
-  shouldTriggerFileCompletion(): boolean {
-    return true
-  }
-}
-
-/**
  * Fake component factory: deterministic width helpers and recordable
  * editor/select-list creation for test inspection.
  */
@@ -603,21 +553,6 @@ export class FakeMayflyComponents implements MayflyComponents {
   readonly markdowns: FakeMayflyMarkdown[] = []
   /** Every select list created through this factory, in creation order. */
   readonly selectLists: FakeMayflySelectList[] = []
-  /**
-   * Programmable mention-source behavior, shared by every provider this
-   * factory creates: suggestions default to none, application to identity.
-   */
-  mentionGetSuggestions: MayflyAutocompleteProvider['getSuggestions'] = async () => null
-  mentionApplyCompletion: MayflyAutocompleteProvider['applyCompletion'] =
-    (lines, cursorLine, cursorCol) => ({ lines: [...lines], cursorLine, cursorCol })
-  /** Every mention source created through this factory, in creation order. */
-  readonly mentionProviders: FakeFileMentionProvider[] = []
-
-  createFileMentionProvider(basePath: string, fdPath: string | null): MayflyAutocompleteProvider {
-    const provider = new FakeFileMentionProvider(basePath, fdPath, this)
-    this.mentionProviders.push(provider)
-    return provider
-  }
 
   createEditor(options?: MayflyEditorOptions): FakeMayflyEditor {
     this.editorOptions.push(options)
@@ -835,6 +770,9 @@ export class FakeScreen implements MayflyScreen {
 
   private contentScrollHandler: ((data: string) => boolean) | undefined
 
+  watchContentTail(_listener: () => void): () => void { return () => {} }
+  contentMarked(): boolean { return false }
+  onContentTurns(_listener: () => void): () => void { return () => {} }
   setContentScrollHandler(handler: ((data: string) => boolean) | undefined): () => void {
     this.contentScrollHandler = handler
     return () => {
@@ -946,8 +884,14 @@ export function fakeConversations(displayed: string[] = []): object {
   }
 }
 
+/** The projection read face a mode-status spec can drive by hand. */
+export interface FakeSessionProjections {
+  snapshot(session: unknown, keys?: readonly string[]): { readonly asOfSeq: number, readonly values: Record<string, unknown> }
+  onChanged(listener: (session: unknown, key: string, value: unknown, seq: number) => void): () => void
+}
+
 /** A context with the renderer services and native dsh session seams provided. */
-export function fakeMayflyContext(options: { readonly display?: boolean; readonly dock?: boolean; readonly agents?: boolean } = {}): {
+export function fakeMayflyContext(options: { readonly display?: boolean; readonly dock?: boolean; readonly agents?: boolean; readonly projections?: FakeSessionProjections } = {}): {
   ctx: Context
   screen: FakeScreen
   theme: FakeTheme
@@ -992,6 +936,8 @@ export function fakeMayflyContext(options: { readonly display?: boolean; readonl
     const agent = active()
     for (const listener of listeners) listener(agent, revision)
   }
+  // The test session's current-Agent change is the fake tree's own broadcast.
+  ctx.on('test/session-changed', () => { publishAgent() })
   ctx.provide('mayflyCurrentAgent', {
     current: active,
     primary: active,
@@ -1039,7 +985,7 @@ export function fakeMayflyContext(options: { readonly display?: boolean; readonl
   new MayflyOverlayService(ctx)
   new MayflyEditorExtensionService(ctx)
   const projectionListeners = new Set<(session: unknown, key: string, value: unknown, seq: number) => void>()
-  ctx.provide('sessionProjections', {
+  ctx.provide('sessionProjections', options.projections ?? {
     snapshot: (_session: unknown, keys?: readonly string[]) => {
       const selection = testSession()?.modelRef?.current
       const values = selection === undefined || (keys !== undefined && !keys.includes('modelSelection'))
@@ -1106,6 +1052,10 @@ export function fakeMayflyContext(options: { readonly display?: boolean; readonl
     clearStop: () => { stopRequested = false },
   } as never)
   ctx.provide('mayflyRetractions', { tryRetract: () => false })
+  ctx.provide('mayflySessionStart', {
+    onBooted: (listener: () => void) => { listener(); return () => {} },
+    ensure: async () => { throw new Error('no active session') },
+  } as never)
   ctx.on('test/session-changed', publishAgent)
   ctx.on('agent/status', publishAgent)
   new SkillsCatalogService(ctx)

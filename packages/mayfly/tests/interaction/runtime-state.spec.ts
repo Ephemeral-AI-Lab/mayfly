@@ -26,8 +26,7 @@ describe('InteractionStateService', () => {
     service.draft.stashDraft({ raw: 'draft', pastes: new Map() })
     service.draft.stashInputMode('bash')
     service.draft.stashHistory(['one'])
-    service.modelsDevCache = { at: 1, index: { lookup: vi.fn() } }
-    service.fdProbe.result = Promise.resolve('fd')
+    service.modelsDevCache = { at: 1, index: { lookup: vi.fn(), lookupCost: vi.fn() } }
     service.updateInFlight = true
     service.pasteImage.backendCooldowns.set('x11', 1)
     service.pasteImage.pastedImages.set('marker', {
@@ -46,7 +45,6 @@ describe('InteractionStateService', () => {
     expect(service.draft.getStashedInputMode()).toBe('prompt')
     expect(service.draft.getStashedHistory()).toEqual([])
     expect(service.modelsDevCache).toBeUndefined()
-    expect(service.fdProbe.result).toBeUndefined()
     expect(service.updateInFlight).toBe(false)
     expect(service.pasteImage.backendCooldowns.size).toBe(0)
     expect(service.pasteImage.pastedImages.size).toBe(0)

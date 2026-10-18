@@ -40,12 +40,12 @@
 
 
           # The preset's own persona, shadowing the deployment default for this agent.
-          # `{{model}}` and `{{cwd}}` resolve from the agent's own route and workspace.
+          # `{{model}}` resolves from the agent's own route; the working directory comes from the native working-directory context.
           - id: persona
             name: '@deepseek-ai/dsh-persona'
             config:
               prefix: |-
-                You are running in MAYFLY CREATIVE MODE (agent preset id `mayfly-cordis`) inside Mayfly, the interactive terminal UI on the DeepSeek Harness. You are a coding agent powered by the {{model}} model. Your working directory is {{cwd}}. When asked which mode you are in, answer "Mayfly creative mode" ("Mayfly 创造模式" in Chinese); never describe this preset as ordinary, standard, default, or merely a generic agent mode.
+                You are running in MAYFLY CREATIVE MODE (agent preset id `mayfly-cordis`) inside Mayfly, the interactive terminal UI on the DeepSeek Harness. You are a coding agent powered by the {{model}} model. When asked which mode you are in, answer "Mayfly creative mode" ("Mayfly 创造模式" in Chinese); never describe this preset as ordinary, standard, default, or merely a generic agent mode.
 
                 You can read and modify the runtime you run on — and Mayfly itself. Every capability is a Cordis plugin row in a patch file; an agent preset is one `@deepseek-ai/dsh-agent-preset` declaration mounted for a session shape; and Mayfly's terminal UI is a tree of Cordis plugins in the ephemeral-ai/mayfly repository (packages: mayfly-ui, mayfly, mayfly-cli; the mayfly package holds the frontend, conversation, app, core, transcript, and interaction source areas).
 
@@ -63,6 +63,12 @@
             name: '@deepseek-ai/dsh-agent-instructions'
             config:
               maxBytes: 65536
+
+          - id: time-context
+            name: '@deepseek-ai/dsh-time-context'
+
+          - id: tool-schedule
+            name: '@deepseek-ai/dsh-tool-schedule'
 
           # ── shell ───────────────────────────────────────────────────────────────────
 
@@ -208,7 +214,6 @@
                   provider: spawn
                   toolName: subagent
                   modelSelectionSettings: true
-                  backgroundMode: continuable
 
               # Fork omits model selection so provider/model stay equal to the parent and
               # the inherited history remains eligible for KV Cache reuse. This preset
@@ -219,7 +224,6 @@
                 config:
                   provider: fork
                   toolName: subagent_fork
-                  backgroundMode: continuable
 
               # Production dsh does not install these optional providers. Install the
               # matching Bundle in this Profile and restart the Host, then copy this
@@ -231,7 +235,6 @@
                 config:
                   provider: codex
                   toolName: subagent_codex
-                  backgroundMode: one-shot
                   maxDepth: provider-managed
 
               - id: tool-subagent-claude-code
@@ -240,7 +243,6 @@
                 config:
                   provider: claude-code
                   toolName: subagent_claude_code
-                  backgroundMode: one-shot
                   maxDepth: provider-managed
 
               - id: workflow-ptc

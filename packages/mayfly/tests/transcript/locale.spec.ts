@@ -2,7 +2,7 @@ import { Context } from '@deepseek-ai/cordis'
 import { MayflyLocaleService } from '../../src/frontend/locale.ts'
 import { describe, expect, it } from 'vitest'
 import {
-  BANNER_LOCALE,
+  ACTIVITY_LOCALE,
   mountTranscriptLocale,
   observeTranscriptLocale,
   transcriptTranslator,
@@ -23,8 +23,8 @@ function localePlugin(systemLocale: 'en' | 'zh') {
 describe('transcript locale lifecycle', () => {
   it('falls back to interpolated English without a locale provider', () => {
     const ctx = new Context()
-    mountTranscriptLocale(ctx, 'transcript.banner.test', BANNER_LOCALE)
-    const t = transcriptTranslator(ctx, 'transcript.banner.test')
+    mountTranscriptLocale(ctx, 'transcript.activity.test', ACTIVITY_LOCALE)
+    const t = transcriptTranslator(ctx, 'transcript.activity.test')
     expect(t('value {count}', { count: 2 })).toBe('value 2')
     expect(t('plain')).toBe('plain')
   })
@@ -58,8 +58,8 @@ describe('transcript locale lifecycle', () => {
 
   it('registers package copy and follows provider unload and reload', async () => {
     const ctx = new Context()
-    mountTranscriptLocale(ctx, 'transcript.banner.test', BANNER_LOCALE)
-    const t = transcriptTranslator(ctx, 'transcript.banner.test')
+    mountTranscriptLocale(ctx, 'transcript.activity.test', ACTIVITY_LOCALE)
+    const t = transcriptTranslator(ctx, 'transcript.activity.test')
     const seen: string[] = []
     const off = observeTranscriptLocale(ctx, snapshot => seen.push(
       snapshot === undefined ? 'absent' : `${snapshot.locale}:${snapshot.revision}`,
@@ -67,15 +67,15 @@ describe('transcript locale lifecycle', () => {
 
     const first = await ctx.plugin(localePlugin('zh'))
     await settle()
-    expect(t('Send /help for help information.')).toBe('输入 /help 查看帮助信息。')
+    expect(t('↑/↓ select')).toBe('↑/↓ 选择')
     expect(seen.at(-1)?.startsWith('zh:')).toBe(true)
     await first.dispose()
-    expect(t('Send /help for help information.')).toBe('Send /help for help information.')
+    expect(t('↑/↓ select')).toBe('↑/↓ select')
     expect(seen.at(-1)).toBe('absent')
 
     const second = await ctx.plugin(localePlugin('en'))
     await settle()
-    expect(t('Send /help for help information.')).toBe('Send /help for help information.')
+    expect(t('↑/↓ select')).toBe('↑/↓ select')
     const before = seen.length
     off()
     ctx.mayflyLocale.setPreference('zh')

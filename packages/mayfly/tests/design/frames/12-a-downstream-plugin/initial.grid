@@ -1,27 +1,29 @@
 ## start
-grid 90x12 cursor 1,3
-|╭ Loop · schedule a prompt ───────────────────────────────────────────────────── running ╮
-|│ → Prompt:                                                                              │
-|│     ┌──────────────────────────────────────────┐                                       │
-|│     │ Check CI and summarize failures          │                                       │
-|│     │                                          │                                       │
-|│     │                                          │                                       │
-|│     └──────────────────────────────────────────┘                                       │
-|│   Every:   15m                                                                         │
-|│   Enabled: [on]                                                                        │
-|│  [ Save ]   ! Stop the loop                                                            │
-|│   ↑/↓ fields · Enter edit · Tab/Shift+Tab groups · Esc close                           │
-|╰────────────────────────────────────────────────────────────────────────────────────────╯
+grid 90x14 cursor 3,3
+|━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+|  Loop · schedule a prompt  running
+|
+|  → Prompt:
+|      ┌──────────────────────────────────────────┐
+|      │ Check CI and summarize failures          │
+|      │                                          │
+|      │                                          │
+|      └──────────────────────────────────────────┘
+|    Every:   15m
+|    Enabled: [on]
+|   [ Save ]   ! Stop the loop
+|
+|  ↑/↓ fields · Enter edit · Esc close
 styles
-0: 0-1 fg:borderFocus; 2-25 fg:textStrong b; 26-80 fg:borderFocus; 81-87 fg:success; 88-89 fg:borderFocus
-1: 0 fg:borderFocus; 2 fg:primary; 4-12 fg:text b; 89 fg:borderFocus
-2: 0 fg:borderFocus; 6-49 fg:muted; 89 fg:borderFocus
-3: 0 fg:borderFocus; 6 fg:muted; 49 fg:muted; 89 fg:borderFocus
-4: 0 fg:borderFocus; 6 fg:muted; 49 fg:muted; 89 fg:borderFocus
-5: 0 fg:borderFocus; 6 fg:muted; 49 fg:muted; 89 fg:borderFocus
-6: 0 fg:borderFocus; 6-49 fg:muted; 89 fg:borderFocus
-7: 0 fg:borderFocus; 4-15 fg:text; 89 fg:borderFocus
-8: 0 fg:borderFocus; 4-12 fg:text; 13-16 fg:primary; 89 fg:borderFocus
-9: 0 fg:borderFocus; 3-10 fg:primary; 14-28 fg:error; 89 fg:borderFocus
-10: 0 fg:borderFocus; 2-3 fg:textMuted; 4-6 fg:text; 8-16 fg:textMuted; 17-21 fg:text; 23-29 fg:textMuted; 30-42 fg:text; 44-52 fg:textMuted; 53-55 fg:text; 57-61 fg:textMuted; 89 fg:borderFocus
-11: 0-89 fg:borderFocus
+0: 0-89 fg:primary
+1: 2-25 fg:primary b; 28-34 fg:success
+3: 2 fg:primary; 4-12 fg:textStrong b
+4: 6-49 fg:muted
+5: 6 fg:muted; 49 fg:muted
+6: 6 fg:muted; 49 fg:muted
+7: 6 fg:muted; 49 fg:muted
+8: 6-49 fg:muted
+9: 4-15 fg:text
+10: 4-12 fg:text; 13-16 fg:primary
+11: 3-10 fg:primary; 14-28 fg:error
+13: 2-4 fg:text; 6-14 fg:textMuted; 15-19 fg:text; 21-27 fg:textMuted; 28-30 fg:text; 32-36 fg:textMuted

@@ -34,11 +34,30 @@ export interface MayflyWorkCounters {
   clockTicks: number
   /** Snapshots of the whole keymap (`list()`); a workload counts them through its own keymap. */
   keymapSnapshots: number
+  /** List items a surface walk, a list window, or the list painter examined. */
+  itemsWalked: number
+  /** Projection entries converted into transcript entries; a cached entry will not count once mapping skips it. */
+  entriesMapped: number
+  /** Tool and tool-group models built; a cached resolved tool does not count. */
+  toolModelsBuilt: number
+  /** Diff alignments computed for file-change facts. */
+  diffsComputed: number
+  /** Stream rows constructed before interning; a row reused by identity does not build one. */
+  streamRowsBuilt: number
+  /** Rows a measured frame workload wrote; the workload parses them from the fake terminal's bytes. */
+  rowsWritten: number
+  /** Bytes a measured frame workload wrote; the workload parses them from the fake terminal's bytes. */
+  bytesWritten: number
 }
 
 /** A fresh sink with every counter at zero. */
 export function createWorkCounters(): MayflyWorkCounters {
-  return { nodesValidated: 0, unitsCompiled: 0, rowsPainted: 0, rowsMaterialized: 0, segmentsPainted: 0, linesEstimated: 0, stringsMeasured: 0, componentRenders: 0, controlWalks: 0, reconciles: 0, layoutPasses: 0, clockTicks: 0, keymapSnapshots: 0 }
+  return {
+    nodesValidated: 0, unitsCompiled: 0, rowsPainted: 0, rowsMaterialized: 0, segmentsPainted: 0, linesEstimated: 0,
+    stringsMeasured: 0, componentRenders: 0, controlWalks: 0, reconciles: 0, layoutPasses: 0, clockTicks: 0,
+    keymapSnapshots: 0, itemsWalked: 0, entriesMapped: 0, toolModelsBuilt: 0, diffsComputed: 0, streamRowsBuilt: 0,
+    rowsWritten: 0, bytesWritten: 0,
+  }
 }
 
 /** Adds to one counter; a missing sink (production) does nothing. */

@@ -1,31 +1,28 @@
 /**
- * Tests for `/plugin` over the real command runtime: the catalog browse
- * panel (groups, badges, detail panel), the installed view (updates and
- * removed-from-market rows), the argument paths (install with npm and
- * GitHub sources, in-place update, uninstall, info, list, refresh, usage
- * errors), the dsh-CLI seam (allowBuilds preflight, profile-patch row
- * insertion and removal, update rollback and repair, failure reporting),
- * and the offline catalog state — all over
- * scripted `updaterInternals` seams like the update-command specs.
+ * Tests for `/plugin` over the real command runtime and a fake native
+ * `ctx.pluginManager`: the read-only catalog stays the discovery source, while
+ * install, update, remove, and enable go through the native service and render
+ * its `ChangeResult` (applied, restart-required, failed, pendingBuilds,
+ * incompatible-version). No CLI process runs and no profile file is read or
+ * written by the command.
  */
 
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import CommandRuntime from '@deepseek-ai/dsh-commands'
 import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
 import type { Agent } from '@deepseek-ai/dsh-agent'
-import { parse as parseYaml } from 'yaml'
+import type { BundleInfo, ChangeResult, InstallBundleOptions } from '@deepseek-ai/dsh-plugin-manager'
 import { mkdtempTracked, registerTempDirCleanup } from '../core/temp-dir.ts'
 
 registerTempDirCleanup()
-import { updaterInternals, type SpawnOutcome } from '../../src/interaction/updater/io.ts'
+import { updaterInternals } from '../../src/interaction/updater/io.ts'
 import { registerPluginCommand } from '../../src/interaction/plugin-commands.ts'
-import { currentProfileInstallBlock, defaultInstallSource, entryInstallStates, readInstalledPlugins, rowSpec, installEntry, uninstallEntry, entrySupportsSource, MAYFLY_PACKAGE } from '../../src/interaction/plugin-market/installer.ts'
 import * as settingsPlugin from '../../src/interaction/settings.ts'
 import { InteractionStateService } from '../../src/interaction/runtime-state.ts'
-import { fakeMayflyContext, KEY, type FakeScreen } from './fakes.ts'
+import { fakeMayflyContext, type FakeScreen } from './fakes.ts'
 import { MayflyLocaleService } from '../../src/frontend/locale.ts'
 import type { MarketEntry } from '../../src/interaction/plugin-market/types.ts'
 import { mountUiRegistryObservers, UiInteractionService } from '../../src/core/ui-interaction-state.ts'
@@ -41,20 +38,7 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-/** A spawn success. */
-function ok(stdout = ''): SpawnOutcome {
-  return { code: 0, signal: null, stdout, stderr: '', timedOut: false }
-}
-
-/** Write the profile dependency facts consumed by uninstallEntry. */
-function writeInstalledDependencies(root: string, names: readonly string[]): void {
-  writeFileSync(join(root, 'package.json'), JSON.stringify({
-    dependencies: Object.fromEntries(names.map(name => [name, '1.0.0'])),
-  }))
-}
-
 /** A marketplace entry fixture with every optional field populated. */
-/** One marketplace entry; an override of `undefined` leaves the field out, as a sparse index row does. */
 function entry(overrides: Overrides<MarketEntry> = {}): MarketEntry {
   return withOverrides<MarketEntry>({
     id: 'loop',
@@ -86,74 +70,130 @@ function entry(overrides: Overrides<MarketEntry> = {}): MarketEntry {
   }, overrides)
 }
 
+/** A native bundle fixture. */
+function bundle(overrides: Partial<BundleInfo> & { name: string }): BundleInfo {
+  const { name, ...rest } = overrides
+  return {
+    official: false,
+    availability: 'profile',
+    version: '1.0.0',
+    enabled: true,
+    installed: true,
+    optional: false,
+    removable: true,
+    rows: [],
+    overrides: [],
+    ...rest,
+    name,
+  }
+}
+
+/** A change the native manager applies only at the next start. */
+function restartResult(overrides: Partial<ChangeResult> = {}): ChangeResult {
+  return { changed: true, application: 'restart-required', restartReason: 'no-hmr', stage: 'install', target: 'change', ...overrides }
+}
+
 /** The index document for the scripted network. */
-function indexJson(entries: readonly MarketEntry[]): string {
-  return JSON.stringify({ schemaVersion: 1, generatedAt: '2026-09-04T00:00:00.000Z', entries })
+function indexJson(entries: readonly MarketEntry[], generatedAt = '2026-09-04T00:00:00.000Z'): string {
+  return JSON.stringify({ schemaVersion: 1, generatedAt, entries })
 }
 
-/** What the dsh CLI spawn scripts do. */
-interface SpawnScript {
-  /** Behavior for `dsh plugin ...`; defaults to a success that records. */
-  plugin?: (args: readonly string[]) => SpawnOutcome
-  /** `command -v dsh` result; default resolves `/usr/bin/dsh`. */
-  dshOnPath?: boolean
+/** The package name a spec installs, for the default native fake. */
+function specName(spec: string, map: Readonly<Record<string, string>> = {}): string {
+  const mapped = map[spec]
+  if (mapped !== undefined) return mapped
+  if (spec.startsWith('github:')) {
+    const repo = spec.slice('github:'.length).split('#')[0] ?? ''
+    return repo.split('/').pop() ?? repo
+  }
+  if (spec.startsWith('@')) {
+    const at = spec.indexOf('@', 1)
+    return at === -1 ? spec : spec.slice(0, at)
+  }
+  const at = spec.indexOf('@')
+  return at === -1 ? spec : spec.slice(0, at)
 }
 
-/** One command world: temp profile, scripted network and spawns, command mounted. */
-async function mountWorld(options: {
+interface WorldOptions {
   index?: readonly MarketEntry[]
   offline?: boolean
-  profileDependencies?: Readonly<Record<string, string>>
-  installedVersions?: Readonly<Record<string, string>>
-  spawn?: SpawnScript
+  bundles?: readonly BundleInfo[]
+  /** Override the list read; throwing simulates an unreadable native profile. */
+  listBundles?: () => Promise<readonly BundleInfo[]>
+  installResult?: (spec: string) => ChangeResult | Promise<ChangeResult>
+  removeResult?: (name: string) => ChangeResult | Promise<ChangeResult>
+  enableResult?: (name: string, enabled: boolean) => ChangeResult | Promise<ChangeResult>
+  /** Map an installed spec to the package name the default fake adds. */
+  bundleNames?: Readonly<Record<string, string>>
+  withManager?: boolean
   withScreen?: boolean
   withLocale?: boolean
-} = {}) {
-  const home = mkdtempTracked('mayfly-plugin-cmd-')
-  const root = join(home, '.dsh', 'profiles', 'mayfly')
-  mkdirSync(root, { recursive: true })
-  writeFileSync(join(root, 'package.json'), JSON.stringify({
-    name: 'dsh-profile-mayfly',
-    private: true,
-    dependencies: {
-      '@ephemeral-ai/mayfly': '0.1.0-alpha.1',
-      ...options.profileDependencies,
-    },
-    dsh: { profile: { bundles: ['@ephemeral-ai/mayfly'] } },
-  }))
-  writeFileSync(join(root, 'pnpm-workspace.yaml'), 'packages:\n  - .\nnodeLinker: hoisted\nautoInstallPeers: false\n')
-  writeFileSync(join(root, 'cordis.patch.yml'), '# empty profile layer\n[]\n')
-  for (const [name, version] of Object.entries(options.installedVersions ?? {})) {
-    const dir = join(root, 'node_modules', name)
-    mkdirSync(dir, { recursive: true })
-    writeFileSync(join(dir, 'package.json'), JSON.stringify({ name, version }))
-  }
+  generatedAt?: string
+}
 
-  const spawns: Array<{ cmd: string, args: readonly string[] }> = []
-  const writes: string[] = []
-  updaterInternals.env = { DSH_HOME: join(home, '.dsh'), DSH_BIN: '/usr/bin/dsh' }
+/** One command world: temp catalog home, a fake native manager, and the command mounted. */
+async function mountWorld(options: WorldOptions = {}) {
+  const home = mkdtempTracked('mayfly-plugin-cmd-')
+  mkdirSync(join(home, '.dsh'), { recursive: true })
+  let offline = options.offline === true
+  updaterInternals.env = { DSH_HOME: join(home, '.dsh') }
   updaterInternals.homedir = () => home
   updaterInternals.now = () => 1_000_000
-  updaterInternals.fetchText = vi.fn(async (url: string, _timeoutMs: number) => {
-    if (options.offline === true) throw new Error(`registry responded 503 for ${url}`)
+  updaterInternals.fetchText = vi.fn(async (url: string) => {
+    if (offline) throw new Error(`registry responded 503 for ${url}`)
     if (url.includes('jsdelivr') || url.includes('raw.githubusercontent')) {
       if (options.index === undefined) throw new Error('no index scripted')
-      return indexJson(options.index)
+      return indexJson(options.index, options.generatedAt)
     }
     throw new Error(`no route for ${url}`)
   })
-  const realWrite = updaterInternals.writeTextFile
-  updaterInternals.writeTextFile = vi.fn((path: string, data: string) => {
-    writes.push(`${path.replace(root, '<root>')}: ${data.replaceAll('\n', ' ⏎ ')}`)
-    realWrite(path, data)
-  })
+  const spawns: Array<{ cmd: string, args: readonly string[] }> = []
   updaterInternals.spawnOnce = vi.fn(async (cmd: string, args: readonly string[]) => {
     spawns.push({ cmd, args: [...args] })
-    if (cmd === '/usr/bin/dsh' && args[0] === 'plugin') {
-      return options.spawn?.plugin?.(args) ?? ok()
-    }
-    return ok('/usr/bin/dsh')
+    return { code: 0, signal: null, stdout: '', stderr: '', timedOut: false }
   })
+
+  let currentBundles: BundleInfo[] = [...options.bundles ?? []]
+  const calls = {
+    install: [] as Array<{ spec: string, options?: InstallBundleOptions }>,
+    remove: [] as string[],
+    enable: [] as Array<{ name: string, enabled: boolean }>,
+  }
+  const replaceBundle = (next: BundleInfo): void => {
+    currentBundles = [...currentBundles.filter(bundle => bundle.name !== next.name), next]
+  }
+  const manager = {
+    listBundles: vi.fn(async () => options.listBundles === undefined ? currentBundles : options.listBundles()),
+    installBundle: vi.fn(async (spec: string, installOptions?: InstallBundleOptions) => {
+      calls.install.push({ spec, ...installOptions === undefined ? {} : { options: installOptions } })
+      const result = await (options.installResult?.(spec) ?? restartResult({
+        target: spec, bundle: specName(spec, options.bundleNames), version: '1.0.0',
+      }))
+      if (result.application !== 'failed' && result.application !== 'cancelled') {
+        const name = result.bundle ?? specName(spec, options.bundleNames)
+        replaceBundle(bundle({ name, version: result.version ?? '1.0.0', enabled: true }))
+      }
+      return result
+    }),
+    removeBundle: vi.fn(async (name: string) => {
+      calls.remove.push(name)
+      const result = await (options.removeResult?.(name) ?? restartResult({ stage: 'remove', target: name }))
+      if (result.application !== 'failed' && result.application !== 'cancelled') {
+        currentBundles = currentBundles.filter(bundle => bundle.name !== name)
+      }
+      return result
+    }),
+    setBundleEnabled: vi.fn(async (name: string, enabled: boolean) => {
+      calls.enable.push({ name, enabled })
+      const result = await (options.enableResult?.(name, enabled) ?? restartResult({ stage: 'enable', target: name, enabled }))
+      if (result.application !== 'failed' && result.application !== 'cancelled') {
+        currentBundles = currentBundles.map(bundle => bundle.name === name ? { ...bundle, enabled } : bundle)
+      }
+      return result
+    }),
+    listVersionExemptions: vi.fn(() => ({ exemptions: {}, warnings: [] })),
+    registries: vi.fn(async () => ({ registry: null, fallbackRegistries: [], resolved: null })),
+  }
 
   const mayfly = options.withScreen === false ? undefined : fakeMayflyContext()
   const ctx = mayfly?.ctx ?? new Context()
@@ -169,27 +209,24 @@ async function mountWorld(options: {
     mountUiRegistryObservers(ctx)
     await Promise.resolve()
   }
+  if (options.withManager !== false) ctx.provide('pluginManager', manager as never)
   await ctx.plugin(SessionStore)
   await ctx.plugin(CommandRuntime)
   const session = ctx.sessions.create(SessionId('plugin-spec'))
   const agent = { id: session.id, session, status: 'idle' } as unknown as Agent
-  // Mount inside a dedicated plugin fiber so specs can dispose it and stage
-  // the unload gates (the agents-command spec's discipline).
-  const fiber = await ctx.plugin({ name: 'plugin-market-spec', inject: ['commands'], apply: c => { registerPluginCommand(c) } })
-  const dispose = (): void => { void fiber.dispose() }
+  const fiber = await ctx.plugin({ name: 'plugin-market-spec', inject: ['commands'], apply: c => registerPluginCommand(c) })
   const drivers = new WeakMap<UiSurfaceModel, BrowserPanel>()
-  const surface = (prefix = 'mayfly.plugin-market'): UiSurfaceModel | undefined => {
-    const entry = mayfly === undefined ? undefined : ctx.mayflyOverlays.list().findLast(entry => entry.id.startsWith(prefix))
-    return entry === undefined ? undefined : ctx.mayflyUiInteraction.get('overlay', entry.id)
+  const surface = (): UiSurfaceModel | undefined => {
+    const overlay = mayfly === undefined ? undefined : ctx.mayflyOverlays.list().findLast(item => item.id === 'mayfly.plugin-market')
+    return overlay === undefined ? undefined : ctx.mayflyUiInteraction.get('overlay', overlay.id)
   }
   const panel = (): BrowserPanel | undefined => {
-    const entry = mayfly === undefined ? undefined : ctx.mayflyOverlays.list().at(-1)
-    if (entry === undefined) return undefined
-    const model = ctx.mayflyUiInteraction.get('overlay', entry.id)
+    const overlay = mayfly === undefined ? undefined : ctx.mayflyOverlays.list().at(-1)
+    if (overlay === undefined) return undefined
+    const model = ctx.mayflyUiInteraction.get('overlay', overlay.id)
     if (model === undefined) return undefined
     const existing = drivers.get(model)
     if (existing !== undefined) return existing
-    // The surface renderer recompiles on every model revision; mirror that here.
     let compiled: ReturnType<typeof renderRequest> | undefined
     let compiledRevision = -1
     const sync = (width = 80) => {
@@ -211,19 +248,27 @@ async function mountWorld(options: {
     ctx,
     screen: mayfly?.screen as FakeScreen,
     agent,
-    root,
+    root: join(home, '.dsh'),
     spawns,
-    writes,
     notices,
-    dispose,
+    calls,
+    manager,
+    bundles: () => currentBundles,
+    setBundles: (next: readonly BundleInfo[]) => { currentBundles = [...next] },
+    setOffline: (next: boolean) => { offline = next },
+    locale: ctx.get('mayflyLocale') as unknown as MayflyLocaleService | undefined,
+    addBundle: (next: BundleInfo) => replaceBundle(next),
+    dispose: (): void => { void fiber.dispose() },
     surface,
+    overlay: (): unknown => panel(),
     run: async (line: string) => {
       const execution = await ctx.commands.execute(agent, line, [], new AbortController().signal)
       return execution?.result
     },
-    overlay: (): unknown => panel(),
   }
 }
+
+type World = Awaited<ReturnType<typeof mountWorld>>
 
 interface BrowserPanel {
   handleInput(data: string): void
@@ -233,29 +278,35 @@ interface BrowserPanel {
 
 /** Address the controls inside the active marketplace tab. */
 function marketPage(model: UiSurfaceModel) {
-  return [{ controlId: 'plugin-market-tabs', itemId: model.activeTab({ pagePath: [], controlId: 'plugin-market-tabs' }) ?? 'not-installed' }]
+  const tab = model.activeTab({ pagePath: [], controlId: 'plugin-tabs' }) ?? 'browse'
+  return [{ controlId: 'plugin-tabs', itemId: tab }]
+}
+
+/** Compile and paint the panel once so its responsive list and detail are addressable. */
+function renderMarket(world: World): void {
+  ;(world.overlay() as BrowserPanel | undefined)?.render(80)
 }
 
 /** Select one browser tab through shared tab state. */
-function selectBrowserTab(model: UiSurfaceModel, tabId: 'installed' | 'not-installed'): void {
-  model.activateTab({ pagePath: [], controlId: 'plugin-market-tabs' }, tabId)
+function selectBrowserTab(world: World, tabId: 'installed' | 'updates' | 'browse'): void {
+  world.surface()!.activateTab({ pagePath: [], controlId: 'plugin-tabs' }, tabId)
+  renderMarket(world)
 }
 
 /** Move the shared browse focus without turning it into mutable domain selection. */
-function focusBrowserRow(model: UiSurfaceModel, id: string): void {
+function focusBrowserRow(world: World, id: string): void {
+  renderMarket(world)
+  const model = world.surface()!
   const pagePath = marketPage(model)
   model.updateChoice({ pagePath, controlId: `plugins-${pagePath[0]!.itemId}` }, { kind: 'focus', id })
-}
-
-/** Dispatch the same semantic event produced by Enter on a browse row. */
-function activateBrowserRow(model: UiSurfaceModel, id: string): void {
-  const pagePath = marketPage(model)
-  model.emit({ kind: 'selection-accept', pagePath, controlId: `plugins-${pagePath[0]!.itemId}`, selectedIds: [id] })
+  renderMarket(world)
 }
 
 /** Invoke one declared action in the active marketplace tab. */
-function invokeMarketAction(model: UiSurfaceModel, actionId: 'details' | 'install' | 'remove' | 'refresh'): void {
-  model.invoke(actionId, actionId === 'refresh' ? [] : marketPage(model))
+function invokeMarketAction(world: World, actionId: 'install' | 'update' | 'remove' | 'refresh' | 'update-all'): void {
+  renderMarket(world)
+  const model = world.surface()!
+  model.invoke(actionId, marketPage(model))
 }
 
 /** Current structured feedback text for assertions. */
@@ -263,546 +314,37 @@ function marketFeedback(model: UiSurfaceModel): string {
   return model.feedbackSnapshot().map(item => item.message).join('\n')
 }
 
-/** Read the canonical tabs node from a plugin browser. */
-function browserTabs(panel: BrowserPanel): unknown {
-  const node = panel.currentNode() as { child: { children: Array<{ node: { kind?: string } }> } }
-  return node.child.children.find(child => child.node.kind === 'tabs')?.node
+/** Open `/plugin` and wait until the panel left its loading document. */
+async function openMarket(world: World): Promise<UiSurfaceModel> {
+  expect(await world.run('/plugin')).toEqual({ kind: 'success' })
+  await vi.waitFor(() => {
+    const model = world.surface()
+    expect(model).toBeDefined()
+    expect(JSON.stringify(model!.node)).not.toContain('loading catalog...')
+  })
+  renderMarket(world)
+  return world.surface()!
 }
 
-describe('installer unit seams', () => {
-  it('composes npm and github specs, including monorepo subdirectories', () => {
-    const row = entry().install.rows[0]!
-    expect(rowSpec(row, 'npm')).toBe('dsh-loop')
-    expect(rowSpec(row, 'github')).toBe('github:Ephemeral-AI-Lab/dsh-plugins#main&path:plugins/loop')
-    expect(rowSpec({ name: 'x' }, 'npm')).toBeUndefined()
-    expect(rowSpec({ name: 'x', github: { repo: 'a/b', ref: 'abc123' } }, 'github')).toBe('github:a/b#abc123')
-  })
-
-  it('reports which sources an entry supports', () => {
-    expect(entrySupportsSource(entry(), 'npm')).toBe(true)
-    expect(entrySupportsSource({ ...entry(), install: { rows: [{ name: 'x', github: { repo: 'a/b', ref: 'r' } }] } }, 'npm')).toBe(false)
-  })
-
-  it('chooses a source only when it covers every install row', () => {
-    const githubOnly = entry({ install: { rows: [{ name: 'a', github: { repo: 'a/b', ref: 'r' } }] } })
-    const mixed = entry({ install: { rows: [
-      { name: 'a', npm: { spec: 'a' } },
-      { name: 'b', github: { repo: 'a/b', ref: 'r' } },
-    ] } })
-    expect(defaultInstallSource(entry())).toBe('npm')
-    expect(defaultInstallSource(githubOnly)).toBe('github')
-    expect(defaultInstallSource(mixed)).toBeUndefined()
-    expect(entrySupportsSource(mixed, 'npm')).toBe(false)
-  })
-
-  it('blocks automation-only stdio servers from the current TUI profile', async () => {
-    const acp = entry({ install: { rows: [{ id: 'acp', name: '@deepseek-ai/dsh-acp', activation: 'profile-patch', npm: { spec: '@deepseek-ai/dsh-acp' } }] } })
-    updaterInternals.spawnOnce = vi.fn(async () => ok())
-    expect(currentProfileInstallBlock(entry())).toBeUndefined()
-    expect(currentProfileInstallBlock(acp)).toContain('owns stdio')
-    expect(await installEntry({ dshCommand: { command: 'dsh', args: [] }, profile: 'p', root: mkdtempTracked('mayfly-install-'), entry: acp, source: 'npm' }))
-      .toMatchObject({ kind: 'error', text: expect.stringContaining('dedicated non-Mayfly profile') })
-    expect(updaterInternals.spawnOnce).not.toHaveBeenCalled()
-  })
-
-  it('blocks removed marketplace entries before spawning an install', async () => {
-    const removed = entry({ status: 'removed', statusNote: 'security incident' })
-    updaterInternals.spawnOnce = vi.fn(async () => ok())
-    expect(await installEntry({ dshCommand: { command: 'dsh', args: [] }, profile: 'p', root: mkdtempTracked('mayfly-install-'), entry: removed, source: 'npm' }))
-      .toMatchObject({ kind: 'error', text: expect.stringContaining('security incident') })
-    expect(await installEntry({ dshCommand: { command: 'dsh', args: [] }, profile: 'p', root: mkdtempTracked('mayfly-install-'), entry: entry({ status: 'removed', statusNote: undefined }), source: 'npm' }))
-      .toEqual({ kind: 'error', text: '"Loop" was removed from the marketplace' })
-    expect(updaterInternals.spawnOnce).not.toHaveBeenCalled()
-  })
-
-  it('updates an entry whose rows are already present instead of refusing it', async () => {
-    updaterInternals.spawnOnce = vi.fn(async () => ok())
-    const root = mkdtempTracked('mayfly-install-')
-    writeFileSync(join(root, 'package.json'), JSON.stringify({ dependencies: { 'dsh-loop': '0.1.3' } }))
-    mkdirSync(join(root, 'node_modules', 'dsh-loop'), { recursive: true })
-    writeFileSync(join(root, 'node_modules', 'dsh-loop', 'package.json'), JSON.stringify({ name: 'dsh-loop', version: '0.1.3' }))
-    expect(await installEntry({ dshCommand: { command: 'dsh', args: [] }, profile: 'p', root, entry: entry(), source: 'npm' })).toEqual({ kind: 'success' })
-    expect(updaterInternals.spawnOnce).toHaveBeenCalledWith('dsh', ['plugin', '--profile', 'p', 'add', 'dsh-loop'], expect.any(Object))
-    expect(updaterInternals.spawnOnce).not.toHaveBeenCalledWith('dsh', expect.arrayContaining(['remove']), expect.any(Object))
-  })
-
-  it('rolls an update back to the pre-operation rows pinned at their versions', async () => {
-    const root = mkdtempTracked('mayfly-install-')
-    const manifest = JSON.stringify({ dependencies: { 'dsh-loop': '^0.1.0' } })
-    writeFileSync(join(root, 'package.json'), manifest)
-    mkdirSync(join(root, 'node_modules', 'dsh-loop'), { recursive: true })
-    writeFileSync(join(root, 'node_modules', 'dsh-loop', 'package.json'), JSON.stringify({ name: 'dsh-loop', version: '0.1.3' }))
-    let imports = 0
-    updaterInternals.spawnOnce = vi.fn(async (cmd: string) => {
-      if (cmd !== process.execPath) return ok()
-      imports += 1
-      return imports === 1 ? { code: 1, signal: null, stdout: '', stderr: 'bad import', timedOut: false } : ok()
-    })
-    const outcome = await installEntry({ dshCommand: { command: 'dsh', args: [] }, profile: 'p', root, entry: entry(), source: 'npm' })
-    expect(outcome).toMatchObject({ kind: 'error', text: expect.stringContaining('changes rolled back') })
-    // Nothing is removed — the only row was installed before — and the
-    // reinstall pins the pre-operation version instead of trusting the range.
-    expect(updaterInternals.spawnOnce).not.toHaveBeenCalledWith('dsh', expect.arrayContaining(['remove']), expect.any(Object))
-    expect(updaterInternals.spawnOnce).toHaveBeenCalledWith('dsh', ['plugin', '--profile', 'p', 'add', 'dsh-loop@0.1.3'], expect.any(Object))
-    expect(updaterInternals.readTextFile(join(root, 'package.json'))).toBe(manifest)
-    // The verify import runs once before and once after the rollback.
-    expect(imports).toBe(2)
-  })
-
-  it('repair rollback removes introduced rows and re-pins previously installed ones', async () => {
-    const partial = entry({ install: { rows: [{ name: 'dsh-loop', npm: { spec: 'dsh-loop' } }, { name: 'dsh-loop-extra', npm: { spec: 'dsh-loop-extra' } }] } })
-    const root = mkdtempTracked('mayfly-install-')
-    writeFileSync(join(root, 'package.json'), JSON.stringify({ dependencies: { 'dsh-loop': '0.1.3' } }))
-    mkdirSync(join(root, 'node_modules', 'dsh-loop'), { recursive: true })
-    writeFileSync(join(root, 'node_modules', 'dsh-loop', 'package.json'), JSON.stringify({ name: 'dsh-loop', version: '0.1.3' }))
-    let imports = 0
-    updaterInternals.spawnOnce = vi.fn(async (cmd: string) => {
-      if (cmd !== process.execPath) return ok()
-      imports += 1
-      return imports === 1 ? { code: 1, signal: null, stdout: '', stderr: 'bad import', timedOut: false } : ok()
-    })
-    const outcome = await installEntry({ dshCommand: { command: 'dsh', args: [] }, profile: 'p', root, entry: partial, source: 'npm' })
-    expect(outcome).toMatchObject({ kind: 'error', text: expect.stringContaining('changes rolled back') })
-    expect(updaterInternals.spawnOnce).toHaveBeenCalledWith('dsh', ['plugin', '--profile', 'p', 'remove', 'dsh-loop-extra'], expect.any(Object))
-    expect(updaterInternals.spawnOnce).toHaveBeenCalledWith('dsh', ['plugin', '--profile', 'p', 'add', 'dsh-loop@0.1.3'], expect.any(Object))
-  })
-
-  it('reinstalls registry-external and versionless rows by their declared specs on rollback', async () => {
-    const root = mkdtempTracked('mayfly-install-')
-    writeFileSync(join(root, 'package.json'), JSON.stringify({ dependencies: { 'gh-row': 'github:a/b#r', 'range-row': '^1.0.0' } }))
-    const both = entry({ install: { rows: [
-      { name: 'gh-row', npm: { spec: 'gh-row' }, github: { repo: 'a/b', ref: 'r' } },
-      { name: 'range-row', npm: { spec: 'range-row' }, github: { repo: 'a/b', ref: 'r2' } },
-    ] } })
-    let imports = 0
-    updaterInternals.spawnOnce = vi.fn(async (cmd: string) => {
-      if (cmd !== process.execPath) return ok()
-      imports += 1
-      return imports === 1 ? { code: 1, signal: null, stdout: '', stderr: 'bad import', timedOut: false } : ok()
-    })
-    const outcome = await installEntry({ dshCommand: { command: 'dsh', args: [] }, profile: 'p', root, entry: both, source: 'npm' })
-    expect(outcome).toMatchObject({ kind: 'error', text: expect.stringContaining('changes rolled back') })
-    // A scheme-prefixed spec reinstalls verbatim; a range without a readable
-    // node_modules version falls back to the declared spec.
-    expect(updaterInternals.spawnOnce).toHaveBeenCalledWith('dsh', ['plugin', '--profile', 'p', 'add', 'github:a/b#r', 'range-row@^1.0.0'], expect.any(Object))
-  })
-
-  it('reports an incomplete update rollback when the reinstall or the restored rows fail', async () => {
-    const root = mkdtempTracked('mayfly-install-')
-    writeFileSync(join(root, 'package.json'), JSON.stringify({ dependencies: { 'dsh-loop': '0.1.3' } }))
-    mkdirSync(join(root, 'node_modules', 'dsh-loop'), { recursive: true })
-    writeFileSync(join(root, 'node_modules', 'dsh-loop', 'package.json'), JSON.stringify({ name: 'dsh-loop', version: '0.1.3' }))
-    updaterInternals.spawnOnce = vi.fn(async (cmd: string, args: readonly string[]) => {
-      if (cmd === process.execPath) return { code: 1, signal: null, stdout: '', stderr: 'bad import', timedOut: false }
-      if (args.includes('add') && args.includes('dsh-loop@0.1.3')) return { code: 1, signal: null, stdout: '', stderr: 'registry down', timedOut: false }
-      return ok()
-    })
-    const failed = await installEntry({ dshCommand: { command: 'dsh', args: [] }, profile: 'p', root, entry: entry(), source: 'npm' })
-    expect(failed).toMatchObject({ kind: 'error', text: expect.stringContaining('rollback incomplete') })
-    expect(failed.kind === 'error' ? failed.text : '').toContain('automatic rollback reinstall')
-
-    // The reinstall succeeds but the restored rows no longer import.
-    updaterInternals.spawnOnce = vi.fn(async (cmd: string) => cmd === process.execPath
-      ? { code: 1, signal: null, stdout: '', stderr: 'bad import', timedOut: false }
-      : ok())
-    const broken = await installEntry({ dshCommand: { command: 'dsh', args: [] }, profile: 'p', root, entry: entry(), source: 'npm' })
-    expect(broken).toMatchObject({ kind: 'error', text: expect.stringContaining('rollback incomplete') })
-    expect(broken.kind === 'error' ? broken.text : '').toContain('post-rollback import check')
-  })
-
-  it('reads installed plugins, skipping Mayfly itself', () => {
-    const root = mkdtempTracked('mayfly-installed-')
-    writeFileSync(join(root, 'package.json'), JSON.stringify({
-      dependencies: { [MAYFLY_PACKAGE]: '1.0.0', 'dsh-loop': 'github:x', broken: 5 },
-    }))
-    mkdirSync(join(root, 'node_modules', 'dsh-loop'), { recursive: true })
-    writeFileSync(join(root, 'node_modules', 'dsh-loop', 'package.json'), JSON.stringify({ name: 'dsh-loop', version: '0.1.3' }))
-    expect(readInstalledPlugins(root)).toEqual([{ name: 'dsh-loop', spec: 'github:x', version: '0.1.3' }])
-  })
-
-  it('reads an absent or broken profile as no plugins', () => {
-    const root = mkdtempTracked('mayfly-installed-')
-    expect(readInstalledPlugins(root)).toEqual([])
-    writeFileSync(join(root, 'package.json'), 'not json')
-    expect(readInstalledPlugins(root)).toEqual([])
-    writeFileSync(join(root, 'package.json'), 'null')
-    expect(readInstalledPlugins(root)).toEqual([])
-  })
-
-  it('derives install states including partial installs and updates', () => {
-    const twoRows = entry({
-      id: 'sidechat',
-      install: { rows: [{ name: 'dsh-workbench-ui' }, { name: 'dsh-sidechat' }] },
-    })
-    const states = entryInstallStates([twoRows, entry()], [
-      { name: 'dsh-workbench-ui', spec: 'x', version: '0.1.0' },
-      { name: 'dsh-loop', spec: 'y', version: '0.1.3' },
-    ])
-    expect(states.sidechat).toEqual({ installed: false, version: undefined, updateAvailable: false, updateVersion: undefined })
-    expect(states.loop).toEqual({ installed: true, version: '0.1.3', updateAvailable: true, updateVersion: '0.1.4' })
-    expect(entryInstallStates([entry()], [{ name: 'dsh-loop', spec: 'y', version: '0.1.5' }]).loop)
-      .toEqual({ installed: true, version: '0.1.5', updateAvailable: false, updateVersion: undefined })
-    const multi = entry({
-      id: 'multi-update',
-      install: { rows: [{ name: 'stable-row' }, { name: 'outdated-row' }] },
-      npm: { 'stable-row': { latestVersion: '5.0.0' }, 'outdated-row': { latestVersion: '2.0.0' } },
-    })
-    expect(entryInstallStates([multi], [
-      { name: 'stable-row', spec: 'x', version: '5.0.0' },
-      { name: 'outdated-row', spec: 'y', version: '1.0.0' },
-    ])['multi-update']).toEqual({ installed: true, version: '5.0.0', updateAvailable: true, updateVersion: '2.0.0' })
-  })
-
-  it('installs: allowBuilds first, one add carrying every spec, then profile-patch rows', async () => {
-    const profilePatch = entry({
-      install: {
-        allowBuilds: ['node-pty'],
-        rows: [{ id: 'terminal-bash', name: '@deepseek-ai/dsh-terminal-bash', activation: 'profile-patch', npm: { spec: '@deepseek-ai/dsh-terminal-bash' } }],
-      },
-    })
-    updaterInternals.spawnOnce = vi.fn(async () => ok())
-    const root = mkdtempTracked('mayfly-install-')
-    writeFileSync(join(root, 'pnpm-workspace.yaml'), 'packages:\n  - .\nallowBuilds:\n  node-pty: false\noverrides:\n  keep: true\n')
-    writeFileSync(join(root, 'cordis.patch.yml'), '# User patch layer\n[]\n')
-    const outcome = await installEntry({ dshCommand: { command: 'dsh', args: [] }, profile: 'p', root, entry: profilePatch, source: 'npm' })
-    expect(outcome.kind).toBe('success')
-    const workspace = parseYaml(updaterInternals.readTextFile(join(root, 'pnpm-workspace.yaml')) ?? '') as Record<string, unknown>
-    expect(workspace).toMatchObject({ allowBuilds: { 'node-pty': true }, overrides: { keep: true } })
-    const patch = parseYaml(updaterInternals.readTextFile(join(root, 'cordis.patch.yml')) ?? '') as readonly Record<string, unknown>[]
-    expect(patch).toContainEqual({ insert: [{ id: 'terminal-bash', name: '@deepseek-ai/dsh-terminal-bash' }] })
-  })
-
-  it('appending to a non-empty patch layer keeps existing rows, and config renders', async () => {
-    const withConfig = entry({
-      install: { rows: [{ id: 'code-runtime', name: '@deepseek-ai/dsh-code-runtime-worker-thread', activation: 'profile-patch', config: { computeMs: 60000 }, npm: { spec: 'x' } }] },
-    })
-    updaterInternals.spawnOnce = vi.fn(async () => ok())
-    const root = mkdtempTracked('mayfly-install-')
-    writeFileSync(join(root, 'cordis.patch.yml'), '- id: keep\n  name: \'keep-me\'\n')
-    const outcome = await installEntry({ dshCommand: { command: 'dsh', args: [] }, profile: 'p', root, entry: withConfig, source: 'npm' })
-    expect(outcome.kind).toBe('success')
-    const patch = updaterInternals.readTextFile(join(root, 'cordis.patch.yml')) ?? ''
-    expect(patch).toContain('- id: keep')
-    expect(parseYaml(patch)).toContainEqual({
-      insert: [{ id: 'code-runtime', name: '@deepseek-ai/dsh-code-runtime-worker-thread', config: { computeMs: 60000 } }],
-    })
-  })
-
-  it('uninstalling removes exactly the entry\'s patch blocks', async () => {
-    const two = entry({
-      install: { rows: [{ id: 'a', name: 'pkg-a', activation: 'profile-patch', npm: { spec: 'a' } }, { id: 'b', name: 'pkg-b' }] },
-    })
-    updaterInternals.spawnOnce = vi.fn(async () => ok())
-    const root = mkdtempTracked('mayfly-uninstall-')
-    writeInstalledDependencies(root, ['pkg-a', 'pkg-b'])
-    writeFileSync(join(root, 'cordis.patch.yml'), [
-      '- id: keep',
-      "  name: 'keep-me'",
-      '- insert:',
-      '    - id: a',
-      "      name: 'pkg-a'",
-      '      config:',
-      '        x: 1',
-      '    - id: user-a',
-      "      name: 'pkg-a'",
-      '      config:',
-      '        keep: true',
-      '    - id: after',
-      "      name: 'pkg-after'",
-    ].join('\n') + '\n')
-    const outcome = await uninstallEntry({ dshCommand: { command: 'dsh', args: [] }, profile: 'p', root, entry: two, source: 'npm' })
-    expect(outcome.kind).toBe('success')
-    const patch = updaterInternals.readTextFile(join(root, 'cordis.patch.yml')) ?? ''
-    expect(patch).toContain('keep-me')
-    expect(patch).toContain('pkg-after')
-    expect(patch).toContain('user-a')
-    expect(patch).toContain("'pkg-a'")
-    expect(patch).toContain('keep: true')
-    expect(patch).not.toContain('x: 1')
-  })
-
-  it('refuses an installer-level uninstall when no entry rows are present', async () => {
-    updaterInternals.spawnOnce = vi.fn(async () => ok())
-    const outcome = await uninstallEntry({
-      dshCommand: { command: 'dsh', args: [] }, profile: 'p', root: mkdtempTracked('mayfly-uninstall-'), entry: entry(), source: 'npm',
-    })
-    expect(outcome).toEqual({ kind: 'error', text: '"Loop" is not installed in this profile' })
-    expect(updaterInternals.spawnOnce).not.toHaveBeenCalled()
-  })
-
-  it('reports install failures with the allowBuilds follow-up when pnpm raised it', async () => {
-    const failing = entry()
-    const root = mkdtempTracked('mayfly-install-')
-    const realSpawn = updaterInternals.spawnOnce
-    updaterInternals.spawnOnce = async () => ({ code: 1, signal: null, stdout: '', stderr: 'ERR_PNPM_IGNORED_BUILDS add the package to "allowBuilds"', timedOut: false })
-    const outcome = await installEntry({ dshCommand: { command: 'dsh', args: [] }, profile: 'p', root, entry: failing, source: 'npm' })
-    updaterInternals.spawnOnce = realSpawn
-    expect(outcome).toMatchObject({ kind: 'error', text: expect.stringContaining('allowBuilds in the profile pnpm-workspace.yaml') })
-  })
-
-  it('reports spawn errors and timeouts distinctly', async () => {
-    const root = mkdtempTracked('mayfly-install-')
-    const realSpawn = updaterInternals.spawnOnce
-    updaterInternals.spawnOnce = async () => ({ code: null, signal: null, stdout: '', stderr: '', timedOut: true, spawnError: 'ENOENT' })
-    const outcome = await installEntry({ dshCommand: { command: 'dsh', args: [] }, profile: 'p', root, entry: entry(), source: 'npm' })
-    updaterInternals.spawnOnce = realSpawn
-    expect(outcome).toMatchObject({ kind: 'error', text: expect.stringContaining('failed to start') })
-    updaterInternals.spawnOnce = async () => ({ code: null, signal: null, stdout: '', stderr: '', timedOut: true })
-    writeInstalledDependencies(root, ['dsh-loop'])
-    const timedOut = await uninstallEntry({ dshCommand: { command: 'dsh', args: [] }, profile: 'p', root, entry: entry(), source: 'npm' })
-    updaterInternals.spawnOnce = realSpawn
-    expect(timedOut).toMatchObject({ kind: 'error', text: expect.stringContaining('timed out') })
-  })
-
-  it('refuses a source the entry does not declare', async () => {
-    const githubOnly = { ...entry(), install: { rows: [{ name: 'dsh-loop', github: { repo: 'a/b', ref: 'r' } }] } }
-    const outcome = await installEntry({ dshCommand: { command: 'dsh', args: [] }, profile: 'p', root: mkdtempTracked('mayfly-install-'), entry: githubOnly, source: 'npm' })
-    expect(outcome).toMatchObject({ kind: 'error', text: expect.stringContaining('no npm install source') })
-  })
-
-  it('skips allowBuilds entirely for entries without them', async () => {
-    updaterInternals.spawnOnce = vi.fn(async () => ok())
-    const root = mkdtempTracked('mayfly-install-')
-    writeFileSync(join(root, 'pnpm-workspace.yaml'), 'packages:\n  - .\n')
-    await installEntry({ dshCommand: { command: 'dsh', args: [] }, profile: 'p', root, entry: entry(), source: 'npm' })
-    expect(updaterInternals.readTextFile(join(root, 'pnpm-workspace.yaml'))).toBe('packages:\n  - .\n')
-  })
-
-  it('refuses malformed workspace mappings before spawning', async () => {
-    const withBuild = entry({ install: { allowBuilds: ['node-pty'], rows: entry().install.rows } })
-    updaterInternals.spawnOnce = vi.fn(async () => ok())
-    for (const source of ['[]\n', '[\n', 'allowBuilds: []\n']) {
-      const root = mkdtempTracked('mayfly-install-')
-      writeFileSync(join(root, 'pnpm-workspace.yaml'), source)
-      const outcome = await installEntry({ dshCommand: { command: 'dsh', args: [] }, profile: 'p', root, entry: withBuild, source: 'npm' })
-      expect(outcome).toMatchObject({ kind: 'error', text: expect.stringContaining('pnpm-workspace.yaml') })
-    }
-    expect(updaterInternals.spawnOnce).not.toHaveBeenCalled()
-  })
-
-  it('reports invalid or conflicting patch documents without overwriting them', async () => {
-    updaterInternals.spawnOnce = vi.fn(async () => ok())
-    const withPatch = entry({ install: { rows: [{ id: 'wanted', name: 'pkg-wanted', activation: 'profile-patch', npm: { spec: 'pkg-wanted' } }] } })
-    for (const source of ['{}\n', '[\n', '- insert: {}\n', '- insert:\n    - scalar\n', '- insert:\n    - id: wanted\n      name: another-package\n']) {
-      const root = mkdtempTracked('mayfly-install-')
-      writeFileSync(join(root, 'cordis.patch.yml'), source)
-      const outcome = await installEntry({ dshCommand: { command: 'dsh', args: [] }, profile: 'p', root, entry: withPatch, source: 'npm' })
-      expect(outcome).toMatchObject({ kind: 'error', text: expect.stringContaining('cordis.patch.yml') })
-      expect(updaterInternals.readTextFile(join(root, 'cordis.patch.yml'))).toBe(source)
-    }
-  })
-
-  it('preserves tagged user config and uses the package name when a patch id is absent', async () => {
-    updaterInternals.spawnOnce = vi.fn(async () => ok())
-    const root = mkdtempTracked('mayfly-install-')
-    writeFileSync(join(root, 'cordis.patch.yml'), '- id: keep\n  name: keep\n  config:\n    value: !!js return 1\n')
-    const noId = entry({ install: { rows: [{ name: 'pkg-no-id', activation: 'profile-patch', npm: { spec: 'pkg-no-id' } }] } })
-    expect((await installEntry({ dshCommand: { command: 'dsh', args: [] }, profile: 'p', root, entry: noId, source: 'npm' })).kind).toBe('success')
-    expect(updaterInternals.readTextFile(join(root, 'cordis.patch.yml'))).toContain('!!js return 1')
-    writeInstalledDependencies(root, ['pkg-no-id'])
-    expect((await uninstallEntry({ dshCommand: { command: 'dsh', args: [] }, profile: 'p', root, entry: noId, source: 'npm' })).kind).toBe('success')
-    expect(updaterInternals.readTextFile(join(root, 'cordis.patch.yml'))).not.toContain('pkg-no-id')
-  })
-
-  it('reports invalid patch cleanup and leaves unrelated sequence items intact', async () => {
-    updaterInternals.spawnOnce = vi.fn(async () => ok())
-    const target = entry({ install: { rows: [{ id: 'target', name: 'pkg-target', activation: 'profile-patch', npm: { spec: 'pkg-target' } }] } })
-    for (const source of ['{}\n', '[\n']) {
-      const root = mkdtempTracked('mayfly-uninstall-')
-      writeInstalledDependencies(root, ['pkg-target'])
-      writeFileSync(join(root, 'cordis.patch.yml'), source)
-      const outcome = await uninstallEntry({ dshCommand: { command: 'dsh', args: [] }, profile: 'p', root, entry: target, source: 'npm' })
-      expect(outcome).toMatchObject({ kind: 'error', text: expect.stringContaining('cordis.patch.yml') })
-    }
-    const root = mkdtempTracked('mayfly-uninstall-')
-    writeInstalledDependencies(root, ['pkg-target'])
-    writeFileSync(join(root, 'cordis.patch.yml'), '- scalar\n- name: top-level\n- insert:\n    - name: no-id\n    - id: orphan\n    - id: target\n      name: pkg-target\n')
-    expect((await uninstallEntry({ dshCommand: { command: 'dsh', args: [] }, profile: 'p', root, entry: target, source: 'npm' })).kind).toBe('success')
-    expect(parseYaml(updaterInternals.readTextFile(join(root, 'cordis.patch.yml')) ?? '')).toEqual([
-      'scalar',
-      { name: 'top-level' },
-      { insert: [{ name: 'no-id' }, { id: 'orphan' }] },
-    ])
-  })
-
-  it('names a patch-file failure that is not an Error by its text', async () => {
-    updaterInternals.spawnOnce = vi.fn(async () => ok())
-    const root = mkdtempTracked('mayfly-uninstall-')
-    writeInstalledDependencies(root, ['pkg-target'])
-    updaterInternals.readTextFile = (path: string) => {
-      if (path.endsWith('cordis.patch.yml')) throw 'patch file locked'
-      return REAL.readTextFile(path)
-    }
-    const target = entry({ install: { rows: [{ id: 'target', name: 'pkg-target', activation: 'profile-patch', npm: { spec: 'pkg-target' } }] } })
-    const outcome = await uninstallEntry({ dshCommand: { command: 'dsh', args: [] }, profile: 'p', root, entry: target, source: 'npm' })
-    expect(outcome).toEqual({ kind: 'error', text: 'preparing removal of "Loop" failed: patch file locked' })
-  })
-
-  it('reports patch write failures after successful package operations', async () => {
-    updaterInternals.spawnOnce = vi.fn(async () => ok())
-    const withPatch = entry({ install: { rows: [{ id: 'write', name: 'pkg-write', activation: 'profile-patch', npm: { spec: 'pkg-write' } }] } })
-    const installRoot = mkdtempTracked('mayfly-install-')
-    writeFileSync(join(installRoot, 'cordis.patch.yml'), '[]\n')
-    updaterInternals.writeTextFile = () => { throw new Error('disk full') }
-    expect(await installEntry({ dshCommand: { command: 'dsh', args: [] }, profile: 'p', root: installRoot, entry: withPatch, source: 'npm' }))
-      .toMatchObject({ kind: 'error', text: expect.stringContaining('activating') })
-
-    const uninstallRoot = mkdtempTracked('mayfly-uninstall-')
-    writeInstalledDependencies(uninstallRoot, ['pkg-write'])
-    writeFileSync(join(uninstallRoot, 'cordis.patch.yml'), '- insert:\n    - id: write\n      name: pkg-write\n')
-    expect(await uninstallEntry({ dshCommand: { command: 'dsh', args: [] }, profile: 'p', root: uninstallRoot, entry: withPatch, source: 'npm' }))
-      .toMatchObject({ kind: 'error', text: expect.stringContaining('cleaning up') })
-  })
-
-  it('uses the pinned JavaScript host for install and compatibility rollback', async () => {
-    const root = mkdtempTracked('mayfly-install-')
-    const files = {
-      'package.json': JSON.stringify({ dependencies: { '@ephemeral-ai/mayfly': '1.0.0' }, dsh: { profile: { bundles: ['@ephemeral-ai/mayfly'] } } }),
-      'pnpm-lock.yaml': 'lockfileVersion: 9\n',
-      'pnpm-workspace.yaml': 'packages:\n  - .\nallowBuilds:\n  node-pty: false\n',
-      'cordis.patch.yml': '# user layer\n[]\n',
-    }
-    for (const [file, text] of Object.entries(files)) writeFileSync(join(root, file), text)
-    const phases: string[] = []
-    updaterInternals.spawnOnce = vi.fn(async (cmd: string, args: readonly string[]) => {
-      if (cmd === process.execPath && args[0] === '--input-type=module') return { code: 1, signal: null, stdout: '', stderr: 'does not provide an export named CallId', timedOut: false }
-      if (args.includes('add')) {
-        writeFileSync(join(root, 'package.json'), JSON.stringify({ dependencies: { '@ephemeral-ai/mayfly': '1.0.0', 'dsh-loop': 'github:x' } }))
-      }
-      return ok()
-    })
-    const outcome = await installEntry({
-      dshCommand: { command: process.execPath, args: ['/bundled host/入口.js'] }, profile: 'p', root,
-      entry: entry({ install: { allowBuilds: ['node-pty'], rows: entry().install.rows } }),
-      source: 'npm', onProgress: phase => phases.push(phase),
-    })
-    expect(outcome).toMatchObject({ kind: 'error', text: expect.stringContaining('changes rolled back') })
-    expect(outcome.kind === 'error' ? outcome.text : '').toContain('CallId')
-    expect(phases).toEqual(['verify', 'rollback'])
-    for (const [file, text] of Object.entries(files)) expect(updaterInternals.readTextFile(join(root, file))).toBe(text)
-    expect(updaterInternals.spawnOnce).toHaveBeenCalledWith(process.execPath, expect.arrayContaining(['--input-type=module']), expect.objectContaining({ cwd: root }))
-    expect(updaterInternals.spawnOnce).toHaveBeenCalledWith(process.execPath, ['/bundled host/入口.js', 'plugin', '--profile', 'p', 'remove', 'dsh-loop'], expect.any(Object))
-    expect(updaterInternals.spawnOnce).toHaveBeenCalledWith(process.execPath, ['/bundled host/入口.js', 'plugin', '--profile', 'p', 'add', 'dsh-loop'], expect.any(Object))
-  })
-
-  it('reports an incomplete rollback while still restoring captured files', async () => {
-    const root = mkdtempTracked('mayfly-install-')
-    writeFileSync(join(root, 'package.json'), JSON.stringify({ dependencies: { '@ephemeral-ai/mayfly': '1.0.0' } }))
-    updaterInternals.spawnOnce = vi.fn(async (cmd: string, args: readonly string[]) => {
-      if (cmd === process.execPath) return { code: 1, signal: null, stdout: '', stderr: 'bad import', timedOut: false }
-      if (args.includes('remove')) return { code: 1, signal: null, stdout: '', stderr: 'remove failed', timedOut: false }
-      return ok()
-    })
-    const outcome = await installEntry({ dshCommand: { command: 'dsh', args: [] }, profile: 'p', root, entry: entry(), source: 'npm' })
-    expect(outcome).toMatchObject({ kind: 'error', text: expect.stringContaining('rollback incomplete') })
-    expect(updaterInternals.readTextFile(join(root, 'package.json'))).toBe(JSON.stringify({ dependencies: { '@ephemeral-ai/mayfly': '1.0.0' } }))
-  })
-})
-
-describe('/plugin browse panel', () => {
-  it('uses shared tab/list selection state for the first install action', async () => {
+describe('/plugin install through the native manager', () => {
+  it('installs the catalog row through pluginManager and never spawns a CLI', async () => {
     const world = await mountWorld({ index: [entry()] })
-    expect(await world.run('/plugin')).toEqual({ kind: 'success' })
-    const model = world.ctx.mayflyUiInteraction.get('overlay', 'mayfly.plugin-market')!
-    const pagePath = [{ controlId: 'plugin-market-tabs', itemId: 'not-installed' }]
-    const list = model.choice({ pagePath, controlId: 'plugins-not-installed' })
-    expect(list?.focusedId).toBe('loop')
-    expect(model.availableActions()).toEqual(expect.arrayContaining([
-      expect.objectContaining({ actionId: 'install', pagePath, verb: 'activate', enabled: true }),
-    ]))
-    model.invoke('install', pagePath)
-    await vi.waitFor(() => expect(world.spawns.some(spawn => spawn.args.includes('add'))).toBe(true))
-    expect(model.feedbackSnapshot()).toEqual(expect.arrayContaining([
-      expect.objectContaining({ severity: 'success', message: expect.stringContaining('installed') }),
-    ]))
-    world.dispose()
-  })
-
-  it('loads the catalog and opens the grouped browse panel', async () => {
-    const world = await mountWorld({ index: [entry()] })
-    const result = await world.run('/plugin')
-    expect(result).toEqual({ kind: 'success' })
-    const panel = world.overlay()
-    expect(panel).toBeDefined()
-    const controller = panel as BrowserPanel
-    const node = controller.currentNode()
-    expect(JSON.stringify(node)).toContain('Loop')
-    expect(JSON.stringify(node)).toContain('official · Web+Server')
-    expect(browserTabs(controller)).toMatchObject({ kind: 'tabs', activeId: 'not-installed', items: [
-      { id: 'installed', count: 0 },
-      { id: 'not-installed', count: 1 },
-    ] })
-    expect(JSON.stringify(node)).toContain('Install')
-    // A disabled action is a muted token with its reason, not a framed one.
-    expect(controller.render(80).join('\n')).toMatch(/Details.{0,12}\[ Install \]   Remove — Not installed in this profile/u)
-    expect(controller.render(36).join('\n')).toContain('Details')
-    world.dispose()
-  })
-
-  it('shows the offline document when nothing can be fetched', async () => {
-    const world = await mountWorld({ offline: true })
-    await world.run('/plugin')
-    await vi.waitFor(() => expect(JSON.stringify(world.surface()?.node)).toContain('offline'))
-    world.dispose()
-  })
-
-  it('hides removed entries from the catalog', async () => {
-    const world = await mountWorld({ index: [entry(), entry({ id: 'gone', displayName: 'Gone', status: 'removed', statusNote: 'security' })] })
-    await world.run('/plugin')
-    const node = (world.overlay() as { currentNode(): unknown }).currentNode()
-    expect(JSON.stringify(node)).not.toContain('Gone')
-    world.dispose()
-  })
-
-  it('errors without the Mayfly screen', async () => {
-    const world = await mountWorld({ index: [entry()], withScreen: false })
-    const result = await world.run('/plugin')
-    expect(result).toMatchObject({ kind: 'error', text: expect.stringContaining('not mounted') })
-    world.dispose()
-  })
-})
-
-describe('/plugin argument paths', () => {
-  it('shows but does not install the dedicated-profile ACP server', async () => {
-    const acp = entry({
-      id: 'acp',
-      displayName: 'ACP Server',
-      install: { rows: [{ id: 'acp', name: '@deepseek-ai/dsh-acp', activation: 'profile-patch', npm: { spec: '@deepseek-ai/dsh-acp' } }] },
-    })
-    const world = await mountWorld({ index: [acp] })
-    expect(await world.run('/plugin install acp')).toMatchObject({ kind: 'error', text: expect.stringContaining('owns stdio') })
-    expect(world.spawns.filter(spawn => spawn.cmd === '/usr/bin/dsh')).toHaveLength(0)
-    await world.run('/plugin info acp')
-    const detail = JSON.stringify((world.overlay() as { currentNode(): unknown }).currentNode())
-    expect(detail).toContain('dedicated non-Mayfly profile')
-    expect(detail).toContain('dsh plugin --profile <automation-name> add @deepseek-ai/dsh-acp')
-    await world.run('/plugin')
-    const model = world.surface()!
-    expect(JSON.stringify(model.node)).toContain('Automation')
-    invokeMarketAction(model, 'install')
-    await vi.waitFor(() => expect(marketFeedback(model)).toContain('automation-only ACP server owns stdio; install it in a dedicated non-Mayfly profile'))
-    world.dispose()
-  })
-
-  it('installs via npm by default and reminds about the restart', async () => {
-    const world = await mountWorld({ index: [entry()] })
-    const result = await world.run('/plugin install loop')
-    expect(result).toEqual({ kind: 'success' })
-    const dsh = world.spawns.find(spawn => spawn.cmd === '/usr/bin/dsh')
-    expect(dsh?.args).toEqual(['plugin', '--profile', 'mayfly', 'add', 'dsh-loop'])
+    expect(await world.run('/plugin install loop')).toEqual({ kind: 'success' })
+    expect(world.calls.install).toEqual([{ spec: 'dsh-loop', options: { enabled: true } }])
+    expect(world.spawns).toHaveLength(0)
     expect(world.notices.at(-1)).toBe('installed; restart Mayfly and start a new session to apply')
     world.dispose()
   })
 
-  it('installs via github with --source github', async () => {
+  it('installs the github spec with --source github', async () => {
     const world = await mountWorld({ index: [entry()] })
     await world.run('/plugin install loop --source github')
-    const dsh = world.spawns.find(spawn => spawn.cmd === '/usr/bin/dsh')
-    expect(dsh?.args).toEqual(['plugin', '--profile', 'mayfly', 'add', 'github:Ephemeral-AI-Lab/dsh-plugins#main&path:plugins/loop'])
+    expect(world.calls.install[0]?.spec).toBe('github:Ephemeral-AI-Lab/dsh-plugins#main&path:plugins/loop')
+    expect(world.spawns).toHaveLength(0)
     world.dispose()
   })
 
-  it('installs multi-row entries with every spec in one add', async () => {
+  it('installs every row of a multi-row entry through native calls', async () => {
     const sidechat = entry({
       id: 'sidechat',
       displayName: 'Sidechat',
@@ -810,136 +352,391 @@ describe('/plugin argument paths', () => {
     })
     const world = await mountWorld({ index: [sidechat] })
     await world.run('/plugin install sidechat')
-    const dsh = world.spawns.find(spawn => spawn.cmd === '/usr/bin/dsh')
-    expect(dsh?.args).toEqual(['plugin', '--profile', 'mayfly', 'add', 'dsh-workbench-ui', 'dsh-sidechat'])
+    expect(world.calls.install.map(call => call.spec)).toEqual(['dsh-workbench-ui', 'dsh-sidechat'])
+    expect(world.spawns).toHaveLength(0)
     world.dispose()
   })
 
-  it('warns before installing a web-only entry and still installs', async () => {
+  it('prefers the native exact on-demand target over the catalog spec', async () => {
+    const world = await mountWorld({
+      index: [entry()],
+      bundles: [bundle({ name: 'dsh-loop', availability: 'missing', installed: false, enabled: false, installTarget: { spec: 'dsh-loop@0.1.4', version: '0.1.4' } })],
+    })
+    await world.run('/plugin install loop')
+    expect(world.calls.install[0]).toEqual({ spec: 'dsh-loop@0.1.4', options: { enabled: true, saveExact: true } })
+    world.dispose()
+  })
+
+  it('warns about a web-only entry and still installs it natively', async () => {
     const webOnly = entry({ id: 'panel', displayName: 'Panel', surfaces: { web: { clientModule: true } } })
     const world = await mountWorld({ index: [webOnly] })
     await world.run('/plugin install panel')
     expect(world.notices).toContain('web-only plugin: it contributes nothing in this terminal frontend')
-    expect(world.spawns.some(spawn => spawn.cmd === '/usr/bin/dsh')).toBe(true)
+    expect(world.calls.install).toHaveLength(1)
     world.dispose()
   })
 
-  it('refuses to install a removed entry through the command path', async () => {
+  it('refuses the dedicated-profile ACP server before any native call', async () => {
+    const acp = entry({
+      id: 'acp', displayName: 'ACP Server',
+      install: { rows: [{ id: 'acp', name: '@deepseek-ai/dsh-acp', activation: 'profile-patch', npm: { spec: '@deepseek-ai/dsh-acp' } }] },
+    })
+    const world = await mountWorld({ index: [acp] })
+    expect(await world.run('/plugin install acp')).toMatchObject({ kind: 'error', text: expect.stringContaining('owns stdio') })
+    expect(world.calls.install).toHaveLength(0)
+    world.dispose()
+  })
+
+  it('refuses a removed catalog entry before any native call', async () => {
     const removed = entry({ id: 'gone', displayName: 'Gone', status: 'removed', statusNote: 'compromised release' })
     const world = await mountWorld({ index: [removed] })
-    expect(await world.run('/plugin install gone')).toMatchObject({
-      kind: 'error', text: expect.stringContaining('compromised release'),
-    })
-    expect(world.spawns.some(spawn => spawn.cmd === '/usr/bin/dsh')).toBe(false)
+    expect(await world.run('/plugin install gone')).toMatchObject({ kind: 'error', text: expect.stringContaining('compromised release') })
+    expect(world.calls.install).toHaveLength(0)
     world.dispose()
   })
 
-  it('reports install failures from the CLI seam', async () => {
-    const world = await mountWorld({ index: [entry()], spawn: { plugin: () => ({ code: 1, signal: null, stdout: '', stderr: 'pnpm: network down', timedOut: false }) } })
-    await world.run('/plugin install loop')
-    expect(world.notices.at(-1)).toBe('install failed: installing "Loop" failed: pnpm: network down')
-    world.dispose()
-  })
-
-  it('uninstalls installed entries and refuses the rest', async () => {
-    const notInstalled = entry({ id: 'fresh-thing', displayName: 'Fresh Thing', install: { rows: [{ name: 'fresh-thing-pkg', npm: { spec: 'fresh-thing-pkg' } }] } })
-    const world = await mountWorld({
-      index: [entry(), notInstalled],
-      profileDependencies: { 'dsh-loop': '0.1.4' },
-      installedVersions: { 'dsh-loop': '0.1.4' },
-    })
-    const refusal = await world.run('/plugin uninstall fresh-thing')
-    expect(refusal).toMatchObject({ kind: 'error', text: expect.stringContaining('not installed') })
-    const result = await world.run('/plugin uninstall loop')
-    expect(result).toEqual({ kind: 'success' })
-    const dsh = world.spawns.find(spawn => spawn.cmd === '/usr/bin/dsh')
-    expect(dsh?.args).toEqual(['plugin', '--profile', 'mayfly', 'remove', 'dsh-loop'])
-    expect(world.notices.at(-1)).toBe('removed; restart Mayfly and start a new session to apply')
-    world.dispose()
-  })
-
-  it('info opens the detail panel with the entry facts', async () => {
-    const world = await mountWorld({ index: [entry()] })
-    const result = await world.run('/plugin info loop')
-    expect(result).toEqual({ kind: 'success' })
-    const node = (world.overlay() as { currentNode(): unknown }).currentNode()
-    const json = JSON.stringify(node)
-    expect(json).toContain('Loop')
-    expect(json).toContain('loop_create')
-    expect(json).toContain('/loop')
-    expect(json).toContain('dsh plugin --profile <name> add dsh-loop')
-    expect(json).toContain('2026-09-04')
-    world.dispose()
-  })
-
-  it('info covers the sparse shapes: no provides, no extras, zh description', async () => {
-    const sparse = entry({
-      id: 'bare',
-      displayName: 'Bare',
-      descriptionZh: undefined,
-      provides: {},
-      engines: undefined,
-      capabilities: [],
-      verified: undefined,
-      links: {},
-      npm: {},
-      status: 'deprecated',
-      statusNote: 'superseded',
-    })
-    const world = await mountWorld({ index: [sparse] })
-    await world.run('/plugin info bare')
-    const json = JSON.stringify((world.overlay() as { currentNode(): unknown }).currentNode())
-    expect(json).toContain('none declared')
-    expect(json).toContain('superseded')
-    expect(json).toContain('unknown')
-    world.dispose()
-  })
-
-  it('quotes GitHub specs in the copyable install command', async () => {
-    const githubOnly = entry({ install: { rows: [{ name: 'dsh-loop', github: { repo: 'a/b', ref: 'release-candidate', subdir: 'plugins/loop' } }] } })
+  it('refuses a source the entry does not declare', async () => {
+    const githubOnly = entry({ id: 'gh', displayName: 'GH', install: { rows: [{ name: 'gh-pkg', github: { repo: 'a/b', ref: 'r' } }] } })
     const world = await mountWorld({ index: [githubOnly] })
-    await world.run('/plugin info loop')
-    const json = JSON.stringify((world.overlay() as { currentNode(): unknown }).currentNode())
-    expect(json).toContain("'github:a/b#release-candidate&path:plugins/loop'")
+    await world.run('/plugin install gh --source npm')
+    expect(world.notices.at(-1)).toBe('"GH" has no npm install source')
+    expect(world.calls.install).toHaveLength(0)
     world.dispose()
   })
 
-  it('list groups installed rows by state, including removed-from-market', async () => {
-    const gone = entry({ id: 'gone', displayName: 'Gone', status: 'removed', statusNote: 'yanked', install: { rows: [{ name: 'gone-pkg', npm: { spec: 'gone-pkg' } }] } })
-    const updated = entry({ id: 'loop', npm: { 'dsh-loop': { latestVersion: '0.1.5' } } })
-    const fresh = entry({ id: 'fresh', displayName: 'Fresh', install: { rows: [{ name: 'dsh-fresh-pkg', npm: { spec: 'dsh-fresh-pkg' } }] } })
+  it('serializes overlapping operations through the in-flight guard', async () => {
+    let release: (() => void) | undefined
+    const gate = new Promise<void>(resolve => { release = resolve })
     const world = await mountWorld({
-      index: [gone, updated, fresh],
-      profileDependencies: { 'gone-pkg': '1.0.0', 'dsh-loop': '0.1.4', 'dsh-fresh-pkg': '0.1.0' },
-      installedVersions: { 'dsh-loop': '0.1.4', 'dsh-fresh-pkg': '0.1.0' },
+      index: [entry()],
+      installResult: async () => { await gate; return restartResult({ bundle: 'dsh-loop', target: 'dsh-loop' }) },
     })
-    await world.run('/plugin list')
-    const json = JSON.stringify((world.overlay() as { currentNode(): unknown }).currentNode())
-    expect(json).toContain('yanked')
-    expect(json).toContain('update 0.1.5')
-    expect(json).toContain('Fresh')
+    const first = world.run('/plugin install loop')
+    await vi.waitFor(() => expect(world.manager.installBundle).toHaveBeenCalledTimes(1))
+    expect(await world.run('/plugin install loop')).toEqual({ kind: 'success' })
+    await vi.waitFor(() => expect(world.notices).toContain('a plugin operation is already running'))
+    release?.()
+    await first
+    expect(world.manager.installBundle).toHaveBeenCalledTimes(1)
     world.dispose()
   })
+})
 
-  it('shows a removed entry without a reinstall command', async () => {
-    const gone = entry({ id: 'gone', displayName: 'Gone', status: 'removed', statusNote: 'yanked', install: { rows: [{ name: 'gone-pkg', npm: { spec: 'gone-pkg' } }] } })
-    const world = await mountWorld({ index: [gone] })
-    expect(await world.run('/plugin info gone')).toEqual({ kind: 'success' })
-    const json = JSON.stringify((world.overlay() as { currentNode(): unknown }).currentNode())
-    expect(json).toContain('yanked')
-    expect(json).not.toContain('Install command')
-    world.dispose()
-  })
-
-  it('list shows the empty state when nothing is installed', async () => {
+describe('/plugin native ChangeResult rendering', () => {
+  it('shows restart-required as the pending restart banner', async () => {
     const world = await mountWorld({ index: [entry()] })
-    await world.run('/plugin list')
-    const json = JSON.stringify((world.overlay() as { currentNode(): unknown }).currentNode())
-    expect(json).toContain('no plugins installed')
+    const model = await openMarket(world)
+    focusBrowserRow(world, 'loop')
+    invokeMarketAction(world, 'install')
+    await vi.waitFor(() => expect(marketFeedback(model)).toContain('installed; restart Mayfly and start a new session to apply'))
+    expect(JSON.stringify(model.node)).toContain('1 change applies after you restart Mayfly')
+    expect(world.calls.install).toHaveLength(1)
     world.dispose()
   })
 
-  it('refresh reports the entry count, or the failure when offline', async () => {
+  it('shows an applied change without asking for a restart', async () => {
+    const world = await mountWorld({
+      index: [entry()],
+      installResult: spec => ({ changed: true, application: 'applied', stage: 'enable', target: spec, bundle: 'dsh-loop' }),
+    })
+    await world.run('/plugin install loop')
+    expect(world.notices.at(-1)).toBe('installed')
+    const model = await openMarket(world)
+    expect(JSON.stringify(model.node)).not.toContain('change applies after you restart')
+    world.dispose()
+  })
+
+  it('renders a failed native operation with its diagnostic', async () => {
+    const world = await mountWorld({
+      index: [entry()],
+      installResult: spec => ({ changed: false, application: 'failed', stage: 'install', target: spec, error: { code: 'operation-error', diagnostic: 'pnpm: network down' } }),
+    })
+    await world.run('/plugin install loop')
+    expect(world.notices.at(-1)).toBe('install failed: pnpm: network down')
+    world.dispose()
+  })
+
+  it('lists the pending builds a failed installation left behind', async () => {
+    const world = await mountWorld({
+      index: [entry()],
+      installResult: spec => ({
+        changed: false, application: 'failed', stage: 'install', target: spec,
+        error: { code: 'operation-error' },
+        packageResult: { exitCode: 1, output: 'ERR_PNPM_BLOCKED', truncated: false, logPath: '/tmp/install.log' },
+        pendingBuilds: ['node-pty', 'esbuild'],
+      }),
+    })
+    await world.run('/plugin install loop')
+    expect(world.notices.at(-1)).toBe('install failed: ERR_PNPM_BLOCKED — pending builds: node-pty, esbuild')
+    world.dispose()
+  })
+
+  it('renders the native incompatible-version refusal with the offending packages', async () => {
+    const world = await mountWorld({
+      index: [entry()],
+      installResult: spec => ({
+        changed: false, application: 'failed', stage: 'install', target: spec,
+        error: {
+          code: 'incompatible-version',
+          incompatible: [{ name: 'dsh-loop', version: '0.2.0', runtimeVersion: '0.2.1', requirements: { 'engines.dsh': '>=0.3' } }],
+        },
+      }),
+    })
+    await world.run('/plugin install loop')
+    expect(world.notices.at(-1)).toBe('install failed: incompatible with this DSH: dsh-loop@0.2.0')
+    world.dispose()
+  })
+
+  it('reports a rejected native service call instead of letting it escape the key', async () => {
+    const world = await mountWorld({
+      index: [entry()],
+      installResult: () => { throw new Error('profile is locked') },
+    })
+    await world.run('/plugin install loop')
+    expect(world.notices.at(-1)).toBe('install failed: profile is locked')
+    world.dispose()
+  })
+
+  it('renders a cancelled installation as a warning, not a failure', async () => {
+    const world = await mountWorld({
+      index: [entry()],
+      installResult: spec => ({ changed: false, application: 'cancelled', stage: 'install', target: spec }),
+    })
+    await world.run('/plugin install loop')
+    expect(world.notices.at(-1)).toBe('installation cancelled')
+    world.dispose()
+  })
+})
+
+describe('/plugin installed, update, and removal rows', () => {
+  it('derives the Installed and Updates tabs from native bundles', async () => {
+    const world = await mountWorld({
+      index: [entry()],
+      bundles: [bundle({ name: 'dsh-loop', version: '0.1.3' })],
+    })
+    const model = await openMarket(world)
+    const json = JSON.stringify(model.node)
+    expect(json).toContain('"id":"installed","label":"Installed","count":1')
+    expect(json).toContain('"id":"updates","label":"Updates 1","attention":true')
+    selectBrowserTab(world, 'updates')
+    const pagePath = marketPage(model)
+    const list = model.choice({ pagePath, controlId: `plugins-${pagePath[0]!.itemId}` })
+    expect(JSON.stringify(list?.definition.items)).toContain('0.1.3→0.1.4')
+    world.dispose()
+  })
+
+  it('updates an installed entry through installBundle', async () => {
+    const world = await mountWorld({
+      index: [entry()],
+      bundles: [bundle({ name: 'dsh-loop', version: '0.1.3' })],
+      installResult: spec => restartResult({ target: spec, bundle: 'dsh-loop', version: '0.1.4' }),
+    })
+    const model = await openMarket(world)
+    selectBrowserTab(world, 'updates')
+    focusBrowserRow(world, 'loop')
+    invokeMarketAction(world, 'install')
+    await vi.waitFor(() => expect(marketFeedback(model)).toContain('updated; restart Mayfly and start a new session to apply'))
+    expect(world.calls.install[0]?.spec).toBe('dsh-loop')
+    renderMarket(world)
+    const pagePath = marketPage(model)
+    const list = model.choice({ pagePath, controlId: `plugins-${pagePath[0]!.itemId}` })
+    expect(JSON.stringify(list?.definition.items)).not.toContain('0.1.3→0.1.4')
+    world.dispose()
+  })
+
+  it('reports an already up-to-date entry instead of reinstalling it', async () => {
+    const world = await mountWorld({
+      index: [entry()],
+      bundles: [bundle({ name: 'dsh-loop', version: '0.1.4' })],
+    })
+    const model = await openMarket(world)
+    selectBrowserTab(world, 'installed')
+    expect(model.availableActions()).toEqual(expect.arrayContaining([
+      expect.objectContaining({ actionId: 'install', pagePath: marketPage(model), enabled: false, disabledReason: 'Already installed in this profile' }),
+    ]))
+    await world.run('/plugin install loop')
+    expect(world.notices.at(-1)).toBe('"Loop" is already installed and up to date')
+    expect(world.calls.install).toHaveLength(0)
+    world.dispose()
+  })
+
+  it('removes an installed entry through removeBundle', async () => {
+    const world = await mountWorld({
+      index: [entry()],
+      bundles: [bundle({ name: 'dsh-loop', version: '0.1.4' })],
+    })
+    const model = await openMarket(world)
+    selectBrowserTab(world, 'installed')
+    focusBrowserRow(world, 'loop')
+    invokeMarketAction(world, 'remove')
+    expect(JSON.stringify(model.decisionNode)).toContain('Remove the selected plugin?')
+    model.answerDecision(true)
+    await vi.waitFor(() => expect(marketFeedback(model)).toContain('removed; restart Mayfly and start a new session to apply'))
+    expect(world.calls.remove).toEqual(['dsh-loop'])
+    world.dispose()
+  })
+
+  it('removes every installed row of a multi-row entry', async () => {
+    const multi = entry({
+      id: 'multi', displayName: 'Multi Row',
+      install: { rows: [{ name: 'multi-a', npm: { spec: 'multi-a' } }, { name: 'multi-b', npm: { spec: 'multi-b' } }] },
+    })
+    const world = await mountWorld({
+      index: [multi],
+      bundles: [bundle({ name: 'multi-a' }), bundle({ name: 'multi-b' })],
+    })
+    expect(await world.run('/plugin uninstall multi')).toEqual({ kind: 'success' })
+    expect(world.calls.remove).toEqual(['multi-a', 'multi-b'])
+    world.dispose()
+  })
+
+  it('removes only the installed rows of a partially installed entry', async () => {
+    const multi = entry({
+      id: 'multi', displayName: 'Multi Row',
+      install: { rows: [{ name: 'multi-a', npm: { spec: 'multi-a' } }, { name: 'multi-b', npm: { spec: 'multi-b' } }] },
+    })
+    const world = await mountWorld({ index: [multi], bundles: [bundle({ name: 'multi-a' })] })
+    const model = await openMarket(world)
+    selectBrowserTab(world, 'installed')
+    focusBrowserRow(world, 'multi')
+    invokeMarketAction(world, 'remove')
+    model.answerDecision(true)
+    await vi.waitFor(() => expect(world.calls.remove).toEqual(['multi-a']))
+    world.dispose()
+  })
+
+  it('refuses to remove an entry that is not installed', async () => {
+    const world = await mountWorld({ index: [entry()] })
+    expect(await world.run('/plugin uninstall loop')).toMatchObject({ kind: 'error', text: expect.stringContaining('not installed') })
+    expect(world.calls.remove).toHaveLength(0)
+    world.dispose()
+  })
+
+  it('shows a native non-removable bundle as unavailable with its reason', async () => {
+    const protectedBundle = bundle({ name: 'dsh-loop', removable: false, readOnlyReason: 'management-required' })
+    const world = await mountWorld({ index: [entry()], bundles: [protectedBundle] })
+    const model = await openMarket(world)
+    selectBrowserTab(world, 'installed')
+    expect(model.availableActions()).toEqual(expect.arrayContaining([
+      expect.objectContaining({ actionId: 'remove', pagePath: marketPage(model), enabled: false, disabledReason: 'the plugin manager protects this bundle' }),
+    ]))
+    await world.run('/plugin uninstall loop')
+    expect(world.notices.at(-1)).toBe('the plugin manager does not allow removing this bundle')
+    expect(world.calls.remove).toHaveLength(0)
+    world.dispose()
+  })
+
+  it('enables a deselected installed bundle with setBundleEnabled without reinstalling', async () => {
+    const world = await mountWorld({
+      index: [entry()],
+      bundles: [bundle({ name: 'dsh-loop', version: '0.1.4', enabled: false })],
+    })
+    await openMarket(world)
+    selectBrowserTab(world, 'updates')
+    focusBrowserRow(world, 'loop')
+    invokeMarketAction(world, 'install')
+    await vi.waitFor(() => expect(world.calls.enable).toEqual([{ name: 'dsh-loop', enabled: true }]))
+    expect(world.calls.install).toHaveLength(0)
+    world.dispose()
+  })
+
+  it('lists an installed bundle the index does not know and removes it natively', async () => {
+    const world = await mountWorld({ index: [], bundles: [bundle({ name: 'custom-plugin', version: '2.0.0' })] })
+    const model = await openMarket(world)
+    selectBrowserTab(world, 'installed')
+    const pagePath = marketPage(model)
+    const list = model.choice({ pagePath, controlId: `plugins-${pagePath[0]!.itemId}` })
+    expect(JSON.stringify(list?.definition.items)).toContain('custom-plugin')
+    focusBrowserRow(world, 'unlisted:custom-plugin')
+    invokeMarketAction(world, 'remove')
+    model.answerDecision(true)
+    await vi.waitFor(() => expect(world.calls.remove).toEqual(['custom-plugin']))
+    world.dispose()
+  })
+
+  it('updates every updatable row through native calls', async () => {
+    const first = entry()
+    const second = entry({
+      id: 'other', displayName: 'Other',
+      install: { rows: [{ name: 'dsh-other', npm: { spec: 'dsh-other' } }] },
+      npm: { 'dsh-other': { latestVersion: '2.0.0' } },
+      verified: { at: '2026-09-04', packages: [{ name: 'dsh-other', version: '2.0.0' }] },
+    })
+    const world = await mountWorld({
+      index: [first, second],
+      bundles: [bundle({ name: 'dsh-loop', version: '0.1.3' }), bundle({ name: 'dsh-other', version: '1.0.0' })],
+    })
+    const model = await openMarket(world)
+    selectBrowserTab(world, 'updates')
+    invokeMarketAction(world, 'update-all')
+    model.answerDecision(true)
+    await vi.waitFor(() => expect(world.calls.install).toHaveLength(2))
+    await vi.waitFor(() => expect(marketFeedback(model)).toContain('updated 2 plugins; restart Mayfly and start a new session to apply'))
+    world.dispose()
+  })
+})
+
+describe('/plugin native service availability', () => {
+  it('shows an unavailable panel and refuses operations without pluginManager', async () => {
+    const world = await mountWorld({ index: [entry()], withManager: false })
+    const model = await openMarket(world)
+    expect(JSON.stringify(model.node)).toContain('plugin manager is unavailable: the native plugin service is not mounted')
+    expect(await world.run('/plugin install loop')).toMatchObject({ kind: 'error', text: expect.stringContaining('plugin manager is unavailable') })
+    expect(world.spawns).toHaveLength(0)
+    expect(world.calls.install).toHaveLength(0)
+    world.dispose()
+  })
+
+  it('shows an unavailable panel when the native bundle list cannot be read', async () => {
+    const world = await mountWorld({
+      index: [entry()],
+      listBundles: async () => { throw new Error('profile is locked') },
+    })
+    const model = await openMarket(world)
+    expect(JSON.stringify(model.node)).toContain('could not read installed plugins: profile is locked')
+    world.dispose()
+  })
+})
+
+describe('/plugin catalog and refresh', () => {
+  it('loads the catalog and opens the grouped browse panel', async () => {
+    const world = await mountWorld({ index: [entry()] })
+    const model = await openMarket(world)
+    const json = JSON.stringify(model.node)
+    expect(json).toContain('"id":"browse","label":"Browse","count":1')
+    const pagePath = marketPage(model)
+    const list = model.choice({ pagePath, controlId: `plugins-${pagePath[0]!.itemId}` })
+    expect(JSON.stringify(list?.definition.items)).toContain('Loop')
+    expect(JSON.stringify(list?.definition.items)).toContain('official')
+    world.dispose()
+  })
+
+  it('shows the offline panel when nothing can be fetched', async () => {
+    const world = await mountWorld({ offline: true })
+    const model = await openMarket(world)
+    expect(JSON.stringify(model.node)).toContain('marketplace is offline')
+    world.dispose()
+  })
+
+  it('hides removed entries unless the profile still carries them', async () => {
+    const world = await mountWorld({ index: [entry(), entry({ id: 'gone', displayName: 'Gone', status: 'removed', statusNote: 'security' })] })
+    const model = await openMarket(world)
+    expect(JSON.stringify(model.node)).not.toContain('Gone')
+    world.dispose()
+  })
+
+  it('refreshes both the catalog and the native bundle list', async () => {
+    const world = await mountWorld({ index: [entry()] })
+    const model = await openMarket(world)
+    const reads = world.manager.listBundles.mock.calls.length
+    invokeMarketAction(world, 'refresh')
+    await vi.waitFor(() => expect(marketFeedback(model)).toContain('refreshed 1 entries'))
+    expect(world.manager.listBundles.mock.calls.length).toBeGreaterThan(reads)
+    expect(updaterInternals.fetchText).toHaveBeenCalled()
+    world.dispose()
+  })
+
+  it('reports refresh failures in the argument path', async () => {
     const world = await mountWorld({ index: [entry()] })
     expect(await world.run('/plugin refresh')).toEqual({ kind: 'success', text: 'refreshed 1 entries' })
     const offline = await mountWorld({ offline: true })
@@ -948,978 +745,814 @@ describe('/plugin argument paths', () => {
     offline.dispose()
   })
 
-  it('rejects unknown ids and malformed verbs', async () => {
+  it('finds entries by package name and rejects unknown ids and malformed verbs', async () => {
     const world = await mountWorld({ index: [entry()] })
+    expect(await world.run('/plugin info dsh-loop')).toEqual({ kind: 'success' })
     expect(await world.run('/plugin install nope')).toMatchObject({ kind: 'error', text: 'unknown plugin: nope' })
     expect(await world.run('/plugin install')).toMatchObject({ kind: 'error', text: expect.stringContaining('usage') })
     expect(await world.run('/plugin install loop --source')).toMatchObject({ kind: 'error', text: expect.stringContaining('usage') })
-    expect(await world.run('/plugin install loop --source archive')).toMatchObject({ kind: 'error', text: expect.stringContaining('usage') })
     expect(await world.run('/plugin info')).toMatchObject({ kind: 'error', text: expect.stringContaining('usage') })
     expect(await world.run('/plugin dance')).toMatchObject({ kind: 'error', text: expect.stringContaining('usage') })
     world.dispose()
   })
-
-  it('finds entries by package name too', async () => {
-    const world = await mountWorld({ index: [entry()] })
-    expect(await world.run('/plugin info dsh-loop')).toEqual({ kind: 'success' })
-    world.dispose()
-  })
 })
 
-describe('/plugin surface actions', () => {
-  it('shows compatibility rollback progress and failure in the panel', async () => {
-    let releaseRollback: (() => void) | undefined
-    const rollbackGate = new Promise<void>(resolve => { releaseRollback = resolve })
+describe('/plugin detail panel', () => {
+  it('opens the detail with catalog display metadata and no CLI install command', async () => {
     const world = await mountWorld({ index: [entry()] })
-    updaterInternals.spawnOnce = vi.fn(async (cmd: string, args: readonly string[]) => {
-      if (cmd === 'dsh') return ok('/usr/bin/dsh\n')
-      if (cmd === process.execPath) return { code: 1, signal: null, stdout: '', stderr: 'missing export', timedOut: false }
-      if (args.includes('remove')) await rollbackGate
-      return ok()
-    })
-    await world.run('/plugin')
-    const model = world.surface()!
-    invokeMarketAction(model, 'install')
-    await vi.waitFor(() => expect(marketFeedback(model)).toContain('rolling back "Loop"...'))
-    releaseRollback?.()
-    await vi.waitFor(() => expect(marketFeedback(model)).toContain('changes rolled back'))
-    expect(browserTabs(world.overlay() as BrowserPanel)).toMatchObject({ activeId: 'not-installed', items: [
-      { id: 'installed', count: 0 }, { id: 'not-installed', count: 1 },
-    ] })
-    world.dispose()
-  })
-
-  it('shows progress and moves a plugin between tabs after visible actions complete', async () => {
-    let releaseInstall: (() => void) | undefined
-    const installGate = new Promise<void>(resolve => { releaseInstall = resolve })
-    let releaseVerify: (() => void) | undefined
-    const verifyGate = new Promise<void>(resolve => { releaseVerify = resolve })
-    const world = await mountWorld({ index: [entry()] })
-    updaterInternals.spawnOnce = vi.fn(async (cmd: string, args: readonly string[]) => {
-      if (cmd === 'dsh') return ok('/usr/bin/dsh\n')
-      if (cmd === process.execPath) {
-        await verifyGate
-        return ok()
-      }
-      const manifestPath = join(world.root, 'package.json')
-      const manifest = JSON.parse(updaterInternals.readTextFile(manifestPath) ?? '{}') as { dependencies: Record<string, string> }
-      if (args.includes('add')) {
-        await installGate
-        manifest.dependencies['dsh-loop'] = '0.1.4'
-        mkdirSync(join(world.root, 'node_modules', 'dsh-loop'), { recursive: true })
-        writeFileSync(join(world.root, 'node_modules', 'dsh-loop', 'package.json'), JSON.stringify({ version: '0.1.4' }))
-      } else if (args.includes('remove')) {
-        delete manifest.dependencies['dsh-loop']
-      }
-      writeFileSync(manifestPath, JSON.stringify(manifest))
-      return ok()
-    })
-    await world.run('/plugin')
-    const model = world.surface()!
-    expect(JSON.stringify(model.node)).toContain('Install')
-    invokeMarketAction(model, 'install')
-    await vi.waitFor(() => expect(marketFeedback(model)).toContain('installing "Loop"...'))
-    releaseInstall?.()
-    await vi.waitFor(() => expect(marketFeedback(model)).toContain('checking "Loop" compatibility...'))
-    releaseVerify?.()
-    await vi.waitFor(() => expect(marketFeedback(model)).toContain('installed; restart Mayfly'))
-    const panel = world.overlay() as BrowserPanel
-    expect(browserTabs(panel)).toMatchObject({ items: [{ id: 'installed', count: 1 }, { id: 'not-installed', count: 0 }] })
-    selectBrowserTab(model, 'installed')
-    expect(model.activeTab({ pagePath: [], controlId: 'plugin-market-tabs' })).toBe('installed')
-    invokeMarketAction(model, 'remove')
-    expect(JSON.stringify(model.decisionNode)).toContain('Remove the selected plugin?')
-    model.answerDecision(true)
-    await vi.waitFor(() => expect(marketFeedback(model)).toContain('removed; restart Mayfly'))
-    expect(browserTabs(panel)).toMatchObject({ items: [{ id: 'installed', count: 0 }, { id: 'not-installed', count: 1 }] })
-    world.dispose()
-  })
-
-  it('removes the focused installed row through its declared action', async () => {
-    const world = await mountWorld({
-      index: [entry()],
-      profileDependencies: { 'dsh-loop': '0.1.4' },
-      installedVersions: { 'dsh-loop': '0.1.4' },
-    })
-    await world.run('/plugin list')
-    const model = world.surface()!
-    invokeMarketAction(model, 'remove')
-    model.answerDecision(true)
-    await vi.waitFor(() => expect(world.spawns.some(spawn => spawn.args.includes('remove'))).toBe(true))
-    world.dispose()
-  })
-
-  it('disables removal for the not-installed group with a reason', async () => {
-    const world = await mountWorld({ index: [entry()] })
-    await world.run('/plugin')
-    const model = world.surface()!
-    expect(model.availableActions()).toEqual(expect.arrayContaining([
-      expect.objectContaining({ actionId: 'remove', pagePath: marketPage(model), enabled: false, disabledReason: 'Not installed in this profile' }),
-    ]))
-    invokeMarketAction(model, 'remove')
-    expect(world.spawns.filter(spawn => spawn.cmd === '/usr/bin/dsh')).toHaveLength(0)
-    world.dispose()
-  })
-
-  it('reports an already up-to-date installed entry instead of reinstalling it', async () => {
-    const world = await mountWorld({
-      index: [entry()],
-      profileDependencies: { 'dsh-loop': '0.1.4' },
-      installedVersions: { 'dsh-loop': '0.1.4' },
-    })
-    await world.run('/plugin')
-    const root = world.ctx.mayflyOverlays.list().find(item => item.id === 'mayfly.plugin-market')!
-    const context = { surfaceId: root.id, operationId: 'up-to-date', source: root.source, revision: root.revision, signal: new AbortController().signal, report: vi.fn() }
-    const operation = { kind: 'activate' as const, pagePath: [], controlId: 'actions', actionId: 'install', inputs: { actionId: 'install', draftRevision: 1, forms: [], source: [], selections: [{ pagePath: [], controlId: 'plugins', selectedIds: ['loop'] }] } }
-    expect(await root.definition.onEvent!.action!(operation, context)).toMatchObject({ kind: 'accepted', feedback: { message: '"Loop" is already installed and up to date' } })
-    expect(world.spawns.filter(spawn => spawn.cmd === '/usr/bin/dsh')).toHaveLength(0)
-    world.dispose()
-  })
-
-  it('runs Update / repair as a real upgrade from the installed tab', async () => {
-    const world = await mountWorld({
-      index: [entry()],
-      profileDependencies: { 'dsh-loop': '0.1.3' },
-      installedVersions: { 'dsh-loop': '0.1.3' },
-    })
-    updaterInternals.spawnOnce = vi.fn(async (cmd: string, args: readonly string[]) => {
-      world.spawns.push({ cmd, args: [...args] })
-      if (cmd === 'dsh') return ok('/usr/bin/dsh\n')
-      if (cmd === process.execPath) return ok()
-      if (args.includes('add') && args.includes('dsh-loop')) {
-        writeFileSync(join(world.root, 'package.json'), JSON.stringify({ dependencies: { '@ephemeral-ai/mayfly': '0.1.0-alpha.1', 'dsh-loop': '0.1.4' } }))
-        writeFileSync(join(world.root, 'node_modules', 'dsh-loop', 'package.json'), JSON.stringify({ name: 'dsh-loop', version: '0.1.4' }))
-      }
-      return ok()
-    })
-    await world.run('/plugin list')
-    const model = world.surface()!
-    expect(JSON.stringify(model.node)).toContain('update 0.1.4')
-    expect(model.availableActions()).toEqual(expect.arrayContaining([
-      expect.objectContaining({ actionId: 'install', pagePath: marketPage(model), enabled: true }),
-    ]))
-    invokeMarketAction(model, 'install')
-    await vi.waitFor(() => expect(marketFeedback(model)).toContain('updated; restart Mayfly and start a new session to apply'))
-    expect(world.spawns).toContainEqual({ cmd: '/usr/bin/dsh', args: ['plugin', '--profile', 'mayfly', 'add', 'dsh-loop'] })
-    // The refreshed list no longer advertises an update.
-    expect(JSON.stringify(model.node)).not.toContain('update 0.1.4')
-    world.dispose()
-  })
-
-  it('reports update failures with update wording', async () => {
-    const world = await mountWorld({
-      index: [entry()],
-      profileDependencies: { 'dsh-loop': '0.1.3' },
-      installedVersions: { 'dsh-loop': '0.1.3' },
-      spawn: { plugin: () => ({ code: 1, signal: null, stdout: '', stderr: 'boom', timedOut: false }) },
-    })
-    expect(await world.run('/plugin install loop')).toEqual({ kind: 'success' })
-    expect(world.notices.at(-1)).toBe('update failed: installing "Loop" failed: boom')
-    world.dispose()
-  })
-
-  it('runs Install and Remove from the /plugin info panel like the browser detail does', async () => {
-    const world = await mountWorld({ index: [entry()] })
-    updaterInternals.spawnOnce = vi.fn(async (cmd: string, args: readonly string[]) => {
-      world.spawns.push({ cmd, args: [...args] })
-      if (cmd === 'dsh') return ok('/usr/bin/dsh\n')
-      if (cmd === process.execPath) return ok()
-      const manifestPath = join(world.root, 'package.json')
-      const manifest = JSON.parse(updaterInternals.readTextFile(manifestPath) ?? '{}') as { dependencies: Record<string, string> }
-      if (args.includes('add') && args.includes('dsh-loop')) {
-        manifest.dependencies['dsh-loop'] = '0.1.4'
-        mkdirSync(join(world.root, 'node_modules', 'dsh-loop'), { recursive: true })
-        writeFileSync(join(world.root, 'node_modules', 'dsh-loop', 'package.json'), JSON.stringify({ version: '0.1.4' }))
-      } else if (args.includes('remove') && args.includes('dsh-loop')) delete manifest.dependencies['dsh-loop']
-      writeFileSync(manifestPath, JSON.stringify(manifest))
-      return ok()
-    })
     expect(await world.run('/plugin info loop')).toEqual({ kind: 'success' })
-    const info = world.surface('mayfly.plugin-detail.loop')!
-    expect(info.availableActions()).toEqual(expect.arrayContaining([expect.objectContaining({ actionId: 'install', enabled: true })]))
-    info.invoke('install')
-    await vi.waitFor(() => expect(marketFeedback(info)).toContain('installed; restart Mayfly'))
-    expect(world.spawns).toContainEqual({ cmd: '/usr/bin/dsh', args: ['plugin', '--profile', 'mayfly', 'add', 'dsh-loop'] })
-    // The refreshed panel drops Install and offers Remove instead.
-    expect(info.availableActions().some(action => action.actionId === 'install')).toBe(false)
-    expect(info.availableActions()).toEqual(expect.arrayContaining([expect.objectContaining({ actionId: 'remove', enabled: true })]))
-    info.invoke('remove')
-    expect(JSON.stringify(info.decisionNode)).toContain('Remove the selected plugin?')
-    info.answerDecision(true)
-    await vi.waitFor(() => expect(marketFeedback(info)).toContain('removed; restart Mayfly'))
-    expect(world.spawns).toContainEqual({ cmd: '/usr/bin/dsh', args: ['plugin', '--profile', 'mayfly', 'remove', 'dsh-loop'] })
-    // Close still works through the shared handler's completed fallthrough.
-    info.invoke('close')
-    await vi.waitFor(() => expect(world.ctx.mayflyOverlays.list().find(item => item.id === 'mayfly.plugin-detail.loop')).toBeUndefined())
+    const json = JSON.stringify((world.overlay() as { currentNode(): unknown }).currentNode())
+    expect(json).toContain('Loop')
+    expect(json).toContain('loop_create')
+    expect(json).toContain('/loop')
+    expect(json).toContain('dsh >=0.1.0-rc.5')
+    expect(json).not.toContain('Install command')
+    expect(json).not.toContain('dsh plugin --profile')
+    expect(json).not.toContain('running')
     world.dispose()
   })
 
-  it('defends forged unavailable operations and repeated detail actions', async () => {
-    const mixed = entry({
-      id: 'mixed', displayName: 'Mixed',
-      install: { rows: [{ name: 'mixed-a', npm: { spec: 'mixed-a' } }, { name: 'mixed-b', github: { repo: 'a/b', ref: 'r' } }] },
+  it('shows the ACP automation note without suggesting an install command', async () => {
+    const acp = entry({
+      id: 'acp', displayName: 'ACP Server',
+      install: { rows: [{ name: '@deepseek-ai/dsh-acp', npm: { spec: '@deepseek-ai/dsh-acp' } }] },
     })
-    const web = entry({ id: 'web', displayName: 'Web', surfaces: { web: { clientModule: true } } })
-    const world = await mountWorld({ index: [entry(), mixed, web] })
-    await world.run('/plugin')
-    const root = world.ctx.mayflyOverlays.list().find(item => item.id === 'mayfly.plugin-market')!
-    const reports: string[] = []
-    const context = { surfaceId: root.id, operationId: 'direct', source: root.source, revision: root.revision, signal: new AbortController().signal, report: (feedback: { message: string }) => reports.push(feedback.message) }
-    const operation = (actionId: 'install' | 'remove', id: string) => ({ kind: 'activate' as const, pagePath: [], controlId: 'actions', actionId, inputs: { actionId, draftRevision: 1, forms: [], source: [], selections: [{ pagePath: [], controlId: 'plugins', selectedIds: [id] }] } })
-    expect(await root.definition.onEvent!.action!(operation('remove', 'loop'), context)).toMatchObject({ kind: 'failed', message: expect.stringContaining('not installed') })
-    expect(await root.definition.onEvent!.action!(operation('install', 'mixed'), context)).toMatchObject({ kind: 'failed', message: expect.stringContaining('no common install source') })
-    expect(await root.definition.onEvent!.action!(operation('install', 'web'), context)).toMatchObject({ kind: 'accepted' })
-    expect(reports).toContain('web-only plugin: it contributes nothing in this terminal frontend')
-
-    const details = { kind: 'activate' as const, pagePath: [], controlId: 'actions', actionId: 'details', inputs: { actionId: 'details', draftRevision: 1, forms: [], source: [], selections: [{ pagePath: [], controlId: 'plugins', selectedIds: ['loop'] }] } }
-    await root.definition.onEvent!.action!(details, context)
-    const detail = world.ctx.mayflyOverlays.list().find(item => item.id === 'mayfly.plugin-detail.loop')!
-    await root.definition.onEvent!.action!(details, context)
-    expect(world.ctx.mayflyOverlays.list().find(item => item.id === detail.id)!.focusRevision).toBeGreaterThan(detail.focusRevision)
-    expect(await root.definition.onEvent!.action!({ kind: 'activate', pagePath: [], controlId: 'actions', actionId: 'details', inputs: { actionId: 'details', draftRevision: 1, forms: [], source: [], selections: [] } }, context)).toEqual({ kind: 'completed' })
-    world.dispose()
-  })
-
-  it('installs and removes from the detail panel and re-renders the browse tabs', async () => {
-    const web = entry({ id: 'web', displayName: 'Web', surfaces: { web: { clientModule: true } }, install: { rows: [{ name: 'dsh-web', npm: { spec: 'dsh-web' } }] } })
-    const world = await mountWorld({ index: [entry(), web] })
-    updaterInternals.spawnOnce = vi.fn(async (cmd: string, args: readonly string[]) => {
-      if (cmd === 'dsh') return ok('/usr/bin/dsh\n')
-      if (cmd === process.execPath) return ok()
-      const manifestPath = join(world.root, 'package.json')
-      const manifest = JSON.parse(updaterInternals.readTextFile(manifestPath) ?? '{}') as { dependencies: Record<string, string> }
-      const added = ['dsh-loop', 'dsh-web'].find(name => args.includes('add') && args.includes(name))
-      const removed = ['dsh-loop', 'dsh-web'].find(name => args.includes('remove') && args.includes(name))
-      if (added !== undefined) {
-        manifest.dependencies[added] = '0.1.4'
-        mkdirSync(join(world.root, 'node_modules', added), { recursive: true })
-        writeFileSync(join(world.root, 'node_modules', added, 'package.json'), JSON.stringify({ version: '0.1.4' }))
-      } else if (removed !== undefined) delete manifest.dependencies[removed]
-      writeFileSync(manifestPath, JSON.stringify(manifest))
-      return ok()
-    })
-    await world.run('/plugin')
-    const browse = world.surface()!
-    const marketTabs = () => browserTabs({ currentNode: () => world.surface('mayfly.plugin-market')!.node } as BrowserPanel)
-
-    focusBrowserRow(browse, 'loop')
-    invokeMarketAction(browse, 'details')
-    await vi.waitFor(() => expect(world.surface('mayfly.plugin-detail.loop')).toBeDefined())
-    const detail = world.surface('mayfly.plugin-detail.loop')!
-    expect(detail.availableActions()).toEqual(expect.arrayContaining([expect.objectContaining({ actionId: 'install', enabled: true })]))
-    detail.invoke('install')
-    await vi.waitFor(() => expect(marketFeedback(detail)).toContain('installed; restart Mayfly'))
-    expect(marketTabs()).toMatchObject({ items: [{ id: 'installed', count: 1 }, { id: 'not-installed', count: 1 }] })
-
-    expect(detail.availableActions()).toEqual(expect.arrayContaining([expect.objectContaining({ actionId: 'remove', enabled: true })]))
-    detail.invoke('remove')
-    expect(JSON.stringify(detail.decisionNode)).toContain('Remove the selected plugin?')
-    detail.answerDecision(true)
-    await vi.waitFor(() => expect(marketFeedback(detail)).toContain('removed; restart Mayfly'))
-    expect(marketTabs()).toMatchObject({ items: [{ id: 'installed', count: 0 }, { id: 'not-installed', count: 2 }] })
-
-    const overlay = world.ctx.mayflyOverlays.list().find(item => item.id === 'mayfly.plugin-detail.loop')!
-    const reports: string[] = []
-    const context = { surfaceId: overlay.id, operationId: 'detail-spec', source: overlay.source, revision: overlay.revision, signal: new AbortController().signal, report: (feedback: { message: string }) => reports.push(feedback.message) }
-    const activate = (actionId: string) => ({ kind: 'activate' as const, pagePath: [], controlId: 'plugin-detail-actions', actionId, inputs: { actionId, draftRevision: 1, forms: [], source: [], selections: [] } })
-    expect(await overlay.definition.onEvent!.action!(activate('remove'), context)).toMatchObject({ kind: 'failed', message: expect.stringContaining('not installed') })
-    expect(await overlay.definition.onEvent!.action!({ kind: 'selection-accept', pagePath: [], controlId: 'plugin-detail-actions', selectedIds: ['loop'] }, context)).toEqual({ kind: 'completed' })
-    expect(await overlay.definition.onEvent!.action!(activate('close'), context)).toEqual({ kind: 'completed' })
-
-    focusBrowserRow(browse, 'web')
-    invokeMarketAction(browse, 'details')
-    await vi.waitFor(() => expect(world.surface('mayfly.plugin-detail.web')).toBeDefined())
-    const webOverlay = world.ctx.mayflyOverlays.list().find(item => item.id === 'mayfly.plugin-detail.web')!
-    const webReports: string[] = []
-    const webContext = { ...context, surfaceId: webOverlay.id, report: (feedback: { message: string }) => webReports.push(feedback.message) }
-    expect(await webOverlay.definition.onEvent!.action!(activate('install'), webContext)).toMatchObject({ kind: 'accepted' })
-    expect(webReports).toContain('web-only plugin: it contributes nothing in this terminal frontend')
+    const world = await mountWorld({ index: [acp] })
+    await world.run('/plugin info acp')
+    const json = JSON.stringify((world.overlay() as { currentNode(): unknown }).currentNode())
+    expect(json).toContain('dedicated non-Mayfly profile')
+    expect(json).not.toContain('Install command')
     world.dispose()
   })
 
   it('contains detail creation after the browse parent closes', async () => {
     const world = await mountWorld({ index: [entry()] })
-    await world.run('/plugin')
+    await openMarket(world)
     const root = world.ctx.mayflyOverlays.list().find(item => item.id === 'mayfly.plugin-market')!
     const context = { surfaceId: root.id, operationId: 'detail', source: root.source, revision: root.revision, signal: new AbortController().signal, report: vi.fn() }
-    const pending = root.definition.onEvent!.action!({ kind: 'selection-accept', pagePath: [], controlId: 'plugins-not-installed', selectedIds: ['loop'] }, context)
+    const pending = root.definition.onEvent!.action!({ kind: 'selection-accept', pagePath: [], controlId: 'plugins-browse', selectedIds: ['loop'] }, context)
     world.ctx.mayflyOverlays.close(root.id)
     await pending
     await new Promise(resolve => setImmediate(resolve))
     expect(world.ctx.mayflyOverlays.list()).toEqual([])
     world.dispose()
   })
-
-  it('contains a detail closed by an initial-publication listener', async () => {
-    const world = await mountWorld({ index: [entry()] })
-    await world.run('/plugin')
-    world.ctx.mayflyOverlays.subscribe(delta => { if (delta.kind === 'upsert' && delta.entry.id === 'mayfly.plugin-detail.loop') world.ctx.mayflyOverlays.close(delta.entry.id) })
-    const root = world.ctx.mayflyOverlays.list().find(item => item.id === 'mayfly.plugin-market')!
-    const context = { surfaceId: root.id, operationId: 'detail', source: root.source, revision: root.revision, signal: new AbortController().signal, report: vi.fn() }
-    await root.definition.onEvent!.action!({ kind: 'selection-accept', pagePath: [], controlId: 'plugins-not-installed', selectedIds: ['loop'] }, context)
-    expect(world.ctx.mayflyOverlays.list().map(item => item.id)).toEqual(['mayfly.plugin-market'])
-    world.dispose()
-  })
-
-  it('handles a mixed-source entry without dropping any package rows', async () => {
-    const mixed = entry({
-      id: 'mixed',
-      displayName: 'Mixed',
-      install: { rows: [
-        { name: 'mixed-a', npm: { spec: 'mixed-a' } },
-        { name: 'mixed-b', github: { repo: 'a/b', ref: 'r' } },
-      ] },
-    })
-    const world = await mountWorld({
-      index: [mixed],
-      profileDependencies: { 'mixed-a': '1.0.0', 'mixed-b': 'github:a/b#r' },
-      installedVersions: { 'mixed-a': '1.0.0', 'mixed-b': '1.0.0' },
-    })
-    expect(await world.run('/plugin install mixed')).toMatchObject({ kind: 'error', text: expect.stringContaining('no common install source') })
-    await world.run('/plugin info mixed')
-    expect(JSON.stringify((world.overlay() as { currentNode(): unknown }).currentNode())).toContain('add <mixed>')
-    await world.run('/plugin list')
-    const model = world.surface()!
-    expect(model.availableActions()).toEqual(expect.arrayContaining([
-      expect.objectContaining({ actionId: 'install', pagePath: marketPage(model), enabled: false, disabledReason: 'Already installed in this profile' }),
-    ]))
-    invokeMarketAction(model, 'remove')
-    model.answerDecision(true)
-    await vi.waitFor(() => expect(world.spawns.some(spawn => spawn.args.includes('remove'))).toBe(true))
-    expect(world.spawns.some(spawn => spawn.args.includes('remove'))).toBe(true)
-    expect(await world.run('/plugin uninstall mixed')).toEqual({ kind: 'success' })
-    world.dispose()
-  })
-
-  it('lists a partially installed multi-row entry as removable and removes only present rows', async () => {
-    const multi = entry({
-      id: 'multi',
-      displayName: 'Multi Row',
-      install: { rows: [
-        { name: 'multi-a', npm: { spec: 'multi-a' } },
-        { name: 'multi-b', npm: { spec: 'multi-b' } },
-      ] },
-    })
-    const world = await mountWorld({ index: [multi], profileDependencies: { 'multi-a': '1.0.0' } })
-    await world.run('/plugin list')
-    const panel = world.overlay() as BrowserPanel
-    const json = JSON.stringify(panel.currentNode())
-    expect(json).toContain('partial')
-    const model = world.surface()!
-    expect(model.choice({ pagePath: marketPage(model), controlId: 'plugins-installed' })?.definition.items).toHaveLength(1)
-    expect(json).toContain('Remove')
-    expect(browserTabs(panel)).toMatchObject({ activeId: 'installed', items: [
-      { id: 'installed', count: 1 }, { id: 'not-installed', count: 0 },
-    ] })
-    invokeMarketAction(model, 'remove')
-    model.answerDecision(true)
-    await vi.waitFor(() => expect(world.spawns.some(spawn => spawn.args.includes('remove'))).toBe(true))
-    expect(world.spawns.find(spawn => spawn.args.includes('remove'))?.args)
-      .toEqual(['plugin', '--profile', 'mayfly', 'remove', 'multi-a'])
-    world.dispose()
-  })
 })
 
-describe('/plugin coverage corners', () => {
-  it('mounts the loading document first, then swaps in the catalog', async () => {
-    let release: ((value: string) => void) | undefined
-    const gate = new Promise<string>(resolve => {
-      release = resolve
-    })
-    const world = await mountWorld({})
-    const realFetch = updaterInternals.fetchText
-    updaterInternals.fetchText = vi.fn(async (url: string, timeoutMs: number) => (url.includes('jsdelivr') || url.includes('raw.githubusercontent') ? gate : realFetch(url, timeoutMs)))
-    await world.run('/plugin')
-    let json = JSON.stringify((world.overlay() as { currentNode(): unknown }).currentNode())
-    expect(json).toContain('loading catalog...')
-    release?.(indexJson([entry()]))
-    await new Promise(resolve => setTimeout(resolve, 10))
-    json = JSON.stringify((world.overlay() as { currentNode(): unknown }).currentNode())
-    expect(json).toContain('Loop')
-    world.dispose()
-  })
+describe('/plugin native management diagnostics', () => {
+  const cases: ReadonlyArray<readonly [string, Record<string, unknown>, string]> = [
+    ['management-required', { code: 'management-required' }, 'the plugin manager protects this bundle'],
+    ['unaddressable', { code: 'unaddressable' }, 'the plugin manager cannot address this bundle'],
+    ['not-removable', { code: 'not-removable' }, 'this bundle is not removable'],
+    ['not-bundle', { code: 'not-bundle' }, 'this package declares no bundle patch'],
+    ['already-installed', { code: 'already-installed' }, 'this package is already installed'],
+    ['stop-profile', { code: 'stop-profile' }, 'restart Mayfly before removing this running bundle'],
+    ['bundle-in-use', { code: 'bundle-in-use' }, 'this bundle is still in use'],
+    ['stale-approval', { code: 'stale-approval' }, 'a saved build approval is out of date'],
+    ['invalid-spec', { code: 'invalid-spec' }, 'the package spec is invalid'],
+    ['ambiguous-install', { code: 'ambiguous-install' }, 'the installation added more than one package'],
+    ['unknown-plugin', { code: 'unknown-plugin' }, 'the plugin is no longer installed'],
+    ['operation-error without diagnostic', { code: 'operation-error' }, 'the package operation failed'],
+  ]
 
-  it('serializes overlapping operations through the in-flight guard', async () => {
-    let release: (() => void) | undefined
-    const gate = new Promise<void>(resolve => {
-      release = resolve
-    })
-    const world = await mountWorld({ index: [entry()] })
-    const realSpawn = updaterInternals.spawnOnce
-    let enteredOperation = false
-    updaterInternals.spawnOnce = vi.fn(async (cmd: string, args: readonly string[]) => {
-      if (cmd === 'dsh') return { code: 0, signal: null, stdout: '/usr/bin/dsh\n', stderr: '', timedOut: false }
-      if (args[0] === 'plugin') { enteredOperation = true; await gate }
-      return realSpawn(cmd, args)
-    })
-    const first = world.run('/plugin install loop')
-    await vi.waitFor(() => expect(enteredOperation).toBe(true))
-    const second = world.run('/plugin install loop')
-    await vi.waitFor(() => expect(world.notices).toContain('a plugin operation is already running'))
-    release?.()
-    await Promise.all([first, second])
-    expect(world.spawns.filter(spawn => spawn.args.includes('add'))).toHaveLength(1)
-    world.dispose()
-  })
-
-  it('requires the dsh CLI for operations', async () => {
-    const world = await mountWorld({ index: [entry()] })
-    updaterInternals.env = { DSH_HOME: updaterInternals.env.DSH_HOME }
-    const realSpawn = updaterInternals.spawnOnce
-    updaterInternals.spawnOnce = vi.fn(async (cmd: string) => (cmd === 'dsh' ? { code: 1, signal: null, stdout: '', stderr: '', timedOut: false } : realSpawn(cmd, [])))
-    await world.run('/plugin install loop')
-    expect(world.notices.at(-1)).toBe('plugin operations need the dsh CLI on PATH (or $DSH_BIN)')
-    world.dispose()
-  })
-
-  it('refuses a source the entry does not declare, from the argument path', async () => {
-    const githubOnly = entry({ id: 'gh', displayName: 'GH', install: { rows: [{ name: 'gh-pkg', github: { repo: 'a/b', ref: 'r' } }] } })
-    const world = await mountWorld({ index: [githubOnly] })
-    await world.run('/plugin install gh')
-    expect(world.spawns.some(spawn => spawn.args.includes('github:a/b#r'))).toBe(true)
-    await world.run('/plugin install gh --source npm')
-    expect(world.notices.at(-1)).toBe('"GH" has no npm install source')
-    world.dispose()
-  })
-
-  it('Enter opens the detail overlay above the browse panel; Escape pops it', async () => {
-    const world = await mountWorld({ index: [entry()] })
-    await world.run('/plugin')
-    const model = world.surface()!
-    expect(world.ctx.mayflyOverlays.list().map(entry => entry.id)).toEqual(['mayfly.plugin-market'])
-    expect(JSON.stringify(model.node)).toContain('Loop')
-    // The canonical list emits the same selection action Enter dispatches.
-    activateBrowserRow(model, 'loop')
-    await vi.waitFor(() => expect(world.ctx.mayflyOverlays.list().map(entry => entry.id)).toEqual(['mayfly.plugin-market', 'mayfly.plugin-detail.loop']))
-    expect(world.ctx.mayflyOverlays.close('mayfly.plugin-detail.loop')).toBe(true)
-    expect(world.ctx.mayflyOverlays.list().map(entry => entry.id)).toEqual(['mayfly.plugin-market'])
-    invokeMarketAction(model, 'details')
-    await vi.waitFor(() => expect(world.ctx.mayflyOverlays.list()).toHaveLength(2))
-    expect(world.ctx.mayflyOverlays.close('mayfly.plugin-market')).toBe(true)
-    await vi.waitFor(() => expect(world.ctx.mayflyOverlays.list()).toEqual([]))
-    world.dispose()
-  })
-
-  it('filters on printable keys and refreshes through ctrl+r', async () => {
-    const world = await mountWorld({ index: [entry()] })
-    await world.run('/plugin')
-    const model = world.surface()!
-    const panel = world.overlay() as BrowserPanel
-    panel.handleInput(KEY.tab)
-    panel.handleInput('\x12')
-    await vi.waitFor(() => expect(marketFeedback(model)).toContain('refreshed 1 entries'))
-    expect(updaterInternals.fetchText).toHaveBeenCalled()
-    // Printable letters always reach the list filter: no install/remove/refresh
-    // accelerators compete with type-to-filter on this surface.
-    panel.handleInput('i')
-    expect(model.choice({ pagePath: marketPage(model), controlId: 'plugins-not-installed' })?.query).toBe('i')
-    expect(world.spawns.some(spawn => spawn.args.includes('add'))).toBe(false)
-    panel.handleInput('u')
-    expect(model.choice({ pagePath: marketPage(model), controlId: 'plugins-not-installed' })?.query).toBe('iu')
-    world.dispose()
-  })
-
-  it('does not run an action when the active browse group has no focused row', async () => {
-    const world = await mountWorld({ index: [] })
-    await world.run('/plugin')
-    invokeMarketAction(world.surface()!, 'install')
-    await new Promise(resolve => setTimeout(resolve, 5))
-    expect(world.spawns.filter(spawn => spawn.cmd === '/usr/bin/dsh' && spawn.args[0] === 'plugin')).toHaveLength(0)
-    world.dispose()
-  })
-
-  it('reports the web-only warning and installs through the declared action', async () => {
-    const webOnly = entry({ id: 'panel', displayName: 'Panel', surfaces: { web: { clientModule: true } } })
-    const world = await mountWorld({ index: [webOnly] })
-    await world.run('/plugin')
-    const model = world.surface()!
-    const observed: string[] = []
-    const off = model.subscribe(() => { observed.push(marketFeedback(model)) })
-    invokeMarketAction(model, 'install')
-    await vi.waitFor(() => expect(marketFeedback(model)).toContain('installed; restart Mayfly and start a new session to apply'))
-    expect(observed.some(text => text.includes('web-only plugin: it contributes nothing in this terminal frontend'))).toBe(true)
-    expect(world.spawns.some(spawn => spawn.args.includes('add'))).toBe(true)
-    off()
-    world.dispose()
-  })
-
-  it('derives states for not-installed and version-less installed entries', () => {
-    const ghOnly = entry({ id: 'gh', install: { rows: [{ name: 'gh-pkg', github: { repo: 'a/b', ref: 'r' } }] } })
-    const states = entryInstallStates([ghOnly, entry({ id: 'unrelated', install: { rows: [{ name: 'zz-pkg', npm: { spec: 'z' } }] } })], [
-      { name: 'gh-pkg', spec: 'github:a/b#r', version: undefined },
-    ])
-    expect(states.gh).toEqual({ installed: true, version: undefined, updateAvailable: false, updateVersion: undefined })
-    expect(states.unrelated).toEqual({ installed: false, version: undefined, updateAvailable: false, updateVersion: undefined })
-  })
-
-  it('rowSpec returns undefined when the requested source is absent', () => {
-    expect(rowSpec({ name: 'x', npm: { spec: 's' } }, 'github')).toBeUndefined()
-  })
-
-  it('reads a profile whose dependencies block is null', () => {
-    const root = mkdtempTracked('mayfly-installed-')
-    writeFileSync(join(root, 'package.json'), JSON.stringify({ dependencies: null }))
-    expect(readInstalledPlugins(root)).toEqual([])
-  })
-
-  it('allowBuilds merge is idempotent across installs', async () => {
-    const profilePatch = entry({ install: { allowBuilds: ['node-pty'], rows: [{ id: 't', name: 'pkg-t', activation: 'profile-patch', npm: { spec: 'pkg-t' } }] } })
-    const root = mkdtempTracked('mayfly-install-')
-    updaterInternals.spawnOnce = vi.fn(async () => ok())
-    writeFileSync(join(root, 'pnpm-workspace.yaml'), 'packages:\n  - .\nallowBuilds:\n  "node-pty": true\n')
-    await installEntry({ dshCommand: { command: 'dsh', args: [] }, profile: 'p', root, entry: profilePatch, source: 'npm' })
-    await installEntry({ dshCommand: { command: 'dsh', args: [] }, profile: 'p', root, entry: profilePatch, source: 'npm' })
-    expect(updaterInternals.readTextFile(join(root, 'pnpm-workspace.yaml'))).toBe('packages:\n  - .\nallowBuilds:\n  "node-pty": true\n')
-    expect(parseYaml(updaterInternals.readTextFile(join(root, 'cordis.patch.yml')) ?? '')).toEqual([{ insert: [{ id: 't', name: 'pkg-t' }] }])
-  })
-
-  it('uninstall tolerates a missing patch file and unquoted names', async () => {
-    const unquoted = entry({ install: { rows: [{ id: 'u', name: 'bare-pkg', activation: 'profile-patch', npm: { spec: 'u' } }] } })
-    const root = mkdtempTracked('mayfly-uninstall-')
-    updaterInternals.spawnOnce = vi.fn(async () => ok())
-    writeInstalledDependencies(root, ['bare-pkg'])
-    const withoutFile = await uninstallEntry({ dshCommand: { command: 'dsh', args: [] }, profile: 'p', root, entry: unquoted, source: 'npm' })
-    expect(withoutFile.kind).toBe('success')
-    const unrelated = '- insert:\n    - id: other\n      name: other-package\n'
-    writeFileSync(join(root, 'cordis.patch.yml'), unrelated)
-    expect((await uninstallEntry({ dshCommand: { command: 'dsh', args: [] }, profile: 'p', root, entry: unquoted, source: 'npm' })).kind).toBe('success')
-    expect(updaterInternals.readTextFile(join(root, 'cordis.patch.yml'))).toBe(unrelated)
-    writeFileSync(join(root, 'cordis.patch.yml'), '- insert:\n    - id: u\n      name: bare-pkg\n')
-    const outcome = await uninstallEntry({ dshCommand: { command: 'dsh', args: [] }, profile: 'p', root, entry: unquoted, source: 'npm' })
-    expect(outcome.kind).toBe('success')
-    expect(parseYaml(updaterInternals.readTextFile(join(root, 'cordis.patch.yml')) ?? '')).toEqual([])
-  })
-})
-
-describe('/plugin lifecycle and locale', () => {
-  it('does not let a slower earlier load replace a newer refresh', async () => {
-    const world = await mountWorld()
-    let releaseFirst: ((value: string) => void) | undefined
-    const first = new Promise<string>(resolve => {
-      releaseFirst = resolve
-    })
-    let calls = 0
-    updaterInternals.fetchText = vi.fn(async () => {
-      calls += 1
-      return calls === 1 ? first : indexJson([entry({ id: 'newer', displayName: 'Newer' })])
-    })
-    await world.run('/plugin')
-    const model = world.surface()!
-    const refresh = world.run('/plugin refresh')
-    await vi.waitFor(() => expect(calls).toBe(2))
-    releaseFirst?.(indexJson([entry({ id: 'older', displayName: 'Older' })]))
-    await refresh
-    await vi.waitFor(() => expect(JSON.stringify(model.node)).toContain('Newer'))
-    const json = JSON.stringify(model.node)
-    expect(json).toContain('Newer')
-    expect(json).not.toContain('Older')
-    world.dispose()
-  })
-
-  it('stops touching the context after the fiber unloads mid-load', async () => {
-    let release: ((value: string) => void) | undefined
-    const gate = new Promise<string>(resolve => {
-      release = resolve
-    })
-    const world = await mountWorld({})
-    const realFetch = updaterInternals.fetchText
-    updaterInternals.fetchText = vi.fn(async (url: string, timeoutMs: number) => (url.includes('jsdelivr') || url.includes('raw.githubusercontent') ? gate : realFetch(url, timeoutMs)))
-    await world.run('/plugin')
-    const model = world.surface()!
-    expect(JSON.stringify(model.node)).toContain('loading catalog...')
-    await world.dispose()
-    release?.(indexJson([entry()]))
-    await new Promise(resolve => setTimeout(resolve, 10))
-    expect(model.disposed).toBe(true)
-    expect(world.ctx.mayflyOverlays.list()).toEqual([])
-    world.dispose()
-  })
-
-  it('aborts an install that spans a fiber unload, at each await', async () => {
-    // Gate the CLI spawn: the operate continuation after installEntry must
-    // gate on the unload flag (and the runOperation invalidate after it).
-    for (const verb of ['/plugin install loop', '/plugin uninstall loop'] as const) {
-      const world = await mountWorld({
-        index: [entry()],
-        profileDependencies: verb.includes('uninstall') ? { 'dsh-loop': '0.1.4' } : {},
-        installedVersions: verb.includes('uninstall') ? { 'dsh-loop': '0.1.4' } : {},
-      })
-      let release: (() => void) | undefined
-      const gate = new Promise<void>(resolve => {
-        release = resolve
-      })
-      const realSpawn = updaterInternals.spawnOnce
-      updaterInternals.spawnOnce = vi.fn(async (cmd: string, args: readonly string[]) => {
-        if (cmd === 'dsh') return { code: 0, signal: null, stdout: '/usr/bin/dsh\n', stderr: '', timedOut: false }
-        if (args[0] === 'plugin') await gate
-        return realSpawn(cmd, args)
-      })
-      // Kick without awaiting: the handler parks on the gated spawn, the
-      // dispose lands mid-flight, then the release lets it settle quietly.
-      const execution = world.run(verb)
-      await new Promise(resolve => setTimeout(resolve, 5))
-      await world.dispose()
-      release?.()
-      await execution
-      world.dispose()
-    }
-  })
-
-  it('aborts an argument-path load and refresh that span a fiber unload', async () => {
-    for (const line of ['/plugin install loop', '/plugin refresh'] as const) {
-      let release: ((value: string) => void) | undefined
-      const gate = new Promise<string>(resolve => {
-        release = resolve
-      })
-      const world = await mountWorld({})
-      const realFetch = updaterInternals.fetchText
-      updaterInternals.fetchText = vi.fn(async (url: string, timeoutMs: number) => (url.includes('jsdelivr') || url.includes('raw.githubusercontent') ? gate : realFetch(url, timeoutMs)))
-      const execution = world.run(line)
-      await new Promise(resolve => setTimeout(resolve, 5))
-      await world.dispose()
-      release?.(indexJson([entry()]))
-      await execution
-      world.dispose()
-    }
-  })
-
-  it('re-renders browse, detail, and info panels when the locale switches', async () => {
-    const tui = entry({
-      id: 'tui-pane',
-      displayName: 'Tui Pane',
-      status: 'unstable',
-      surfaces: { server: {}, tui: { contributions: ['panes'] } },
-    })
-    const world = await mountWorld({ index: [entry(), tui] })
-    await world.run('/plugin')
-    const browse = world.surface()!
-    let json = JSON.stringify(browse.node)
-    expect(json).toContain('Tui Pane')
-    expect(json).toContain('TUI+Server')
-    expect(json).toContain('unstable')
-    // Enter → detail above the browse panel; both observers re-render on a
-    // preference switch, and the zh description takes over.
-    focusBrowserRow(browse, 'loop')
-    invokeMarketAction(browse, 'details')
-    await vi.waitFor(() => expect(world.ctx.mayflyOverlays.list().map(entry => entry.id)).toContain('mayfly.plugin-detail.loop'))
-    world.ctx.mayflyLocale.setPreference('zh')
-    await new Promise(resolve => setTimeout(resolve, 5))
-    expect(JSON.stringify(world.surface('mayfly.plugin-detail.loop')?.node)).toContain('循环提示与闹钟。')
-    world.ctx.mayflyOverlays.close('mayfly.plugin-detail.loop')
-    // The bare info path mounts its own locale observer.
-    await world.run('/plugin info loop')
-    const info = world.surface('mayfly.plugin-detail.loop')!
-    expect(JSON.stringify(info.node)).toContain('循环提示与闹钟。')
-    world.ctx.mayflyLocale.setPreference('en')
-    await new Promise(resolve => setTimeout(resolve, 5))
-    expect(JSON.stringify(info.node)).toContain('Recurring prompts and alarms.')
-    world.ctx.mayflyOverlays.close('mayfly.plugin-detail.loop')
-    world.ctx.mayflyOverlays.close('mayfly.plugin-market')
-    expect(world.ctx.mayflyOverlays.list()).toEqual([])
-    world.dispose()
-  })
-
-  it('covers info errors and excludes unindexed profile dependencies from market tabs', async () => {
+  it.each(cases)('renders the %s refusal in words', async (_name, error, message) => {
     const world = await mountWorld({
       index: [entry()],
-      profileDependencies: { 'stray-pkg': '1.0.0' },
+      installResult: spec => ({ changed: false, application: 'failed', stage: 'install', target: spec, error: error as never }),
     })
-    expect(await world.run('/plugin info nope')).toMatchObject({ kind: 'error', text: 'unknown plugin: nope' })
+    await world.run('/plugin install loop')
+    expect(world.notices.at(-1)).toBe(`install failed: ${message}`)
+    world.dispose()
+  })
+
+  it('falls back to the generic refusal without an error object and shortens a long diagnostic', async () => {
+    const generic = await mountWorld({
+      index: [entry()],
+      installResult: spec => ({ changed: false, application: 'failed', stage: 'install', target: spec }),
+    })
+    await generic.run('/plugin install loop')
+    expect(generic.notices.at(-1)).toBe('install failed: the native plugin manager refused the change')
+    generic.dispose()
+
+    const long = await mountWorld({
+      index: [entry()],
+      installResult: spec => ({
+        changed: false, application: 'failed', stage: 'install', target: spec,
+        error: { code: 'operation-error', diagnostic: `${'x'.repeat(200)} tail` },
+      }),
+    })
+    await long.run('/plugin install loop')
+    expect(long.notices.at(-1)).toContain('…')
+    long.dispose()
+  })
+
+  it('reports an overridden native change as saved but not composed', async () => {
+    const world = await mountWorld({
+      index: [entry()],
+      installResult: spec => ({ changed: true, application: 'overridden', stage: 'install', target: spec }),
+    })
+    await world.run('/plugin install loop')
+    expect(world.notices.at(-1)).toBe('change saved but overridden by the composition')
+    world.dispose()
+  })
+})
+
+describe('/plugin native enable and removal diagnostics', () => {
+  it('enables an on-demand installation without installing it again', async () => {
+    const world = await mountWorld({
+      index: [entry()],
+      bundles: [bundle({ name: 'dsh-loop', availability: 'installation', installed: false, enabled: false })],
+    })
+    await world.run('/plugin install loop')
+    expect(world.calls.enable).toEqual([{ name: 'dsh-loop', enabled: true }])
+    expect(world.calls.install).toHaveLength(0)
+    world.dispose()
+  })
+
+  it('renders a failed and a cancelled native removal', async () => {
+    const failed = await mountWorld({
+      index: [entry()], bundles: [bundle({ name: 'dsh-loop' })],
+      removeResult: name => ({ changed: false, application: 'failed', stage: 'remove', target: name, error: { code: 'bundle-in-use' } }),
+    })
+    await failed.run('/plugin uninstall loop')
+    expect(failed.notices.at(-1)).toBe('uninstall failed: this bundle is still in use')
+    failed.dispose()
+
+    const cancelled = await mountWorld({
+      index: [entry()], bundles: [bundle({ name: 'dsh-loop' })],
+      removeResult: name => ({ changed: false, application: 'cancelled', stage: 'remove', target: name }),
+    })
+    await cancelled.run('/plugin uninstall loop')
+    expect(cancelled.notices.at(-1)).toBe('removal cancelled')
+    cancelled.dispose()
+  })
+
+  it('reports a not-removable bundle without a manager reason', async () => {
+    const world = await mountWorld({ index: [entry()], bundles: [bundle({ name: 'dsh-loop', removable: false })] })
+    await world.run('/plugin uninstall loop')
+    expect(world.notices.at(-1)).toBe('the plugin manager does not allow removing this bundle')
+    expect(world.calls.remove).toHaveLength(0)
+    world.dispose()
+  })
+
+  it('fails the removal when the native list changed after the row was built', async () => {
+    const world = await mountWorld({ index: [entry()], bundles: [bundle({ name: 'dsh-loop' })] })
+    const installed = world.bundles()
+    world.manager.listBundles
+      .mockResolvedValueOnce(installed)
+      .mockResolvedValueOnce([bundle({ name: 'dsh-loop', removable: false, readOnlyReason: 'management-required' })])
+    await world.run('/plugin uninstall loop')
+    expect(world.notices.at(-1)).toContain('the plugin manager protects this bundle')
+    expect(world.calls.remove).toHaveLength(0)
+    world.dispose()
+  })
+
+  it('reports a removal when the native list no longer carries the package', async () => {
+    const world = await mountWorld({ index: [entry()], bundles: [bundle({ name: 'dsh-loop' })] })
+    world.manager.listBundles
+      .mockResolvedValueOnce(world.bundles())
+      .mockResolvedValueOnce([])
+    await world.run('/plugin uninstall loop')
+    expect(world.notices.at(-1)).toBe('"Loop" is not installed in this profile')
+    expect(world.calls.remove).toHaveLength(0)
+    world.dispose()
+  })
+
+  it('catches a rejected removal service call', async () => {
+    const world = await mountWorld({ index: [entry()], bundles: [bundle({ name: 'dsh-loop' })] })
+    world.manager.removeBundle.mockRejectedValueOnce(new Error('profile locked'))
+    await world.run('/plugin uninstall loop')
+    expect(world.notices.at(-1)).toBe('uninstall failed: profile locked')
+    world.dispose()
+  })
+})
+
+describe('/plugin argument verbs and detail actions', () => {
+  it('opens the Installed and Updates tabs from the argument verbs', async () => {
+    const world = await mountWorld({ index: [entry()], bundles: [bundle({ name: 'dsh-loop', version: '0.1.3' })] })
+    expect(await world.run('/plugin list')).toEqual({ kind: 'success' })
+    await vi.waitFor(() => { expect(world.surface()).toBeDefined() })
+    expect(world.surface()!.activeTab({ pagePath: [], controlId: 'plugin-tabs' })).toBe('installed')
+    world.dispose()
+
+    const updates = await mountWorld({ index: [entry()], bundles: [bundle({ name: 'dsh-loop', version: '0.1.3' })] })
+    expect(await updates.run('/plugin updates')).toEqual({ kind: 'success' })
+    await vi.waitFor(() => { expect(updates.surface()).toBeDefined() })
+    expect(updates.surface()!.activeTab({ pagePath: [], controlId: 'plugin-tabs' })).toBe('updates')
+    updates.dispose()
+  })
+
+  it('refuses the browser, info, and refresh without their native services', async () => {
     const bare = await mountWorld({ index: [entry()], withScreen: false })
-    expect(await bare.run('/plugin info loop')).toMatchObject({ kind: 'error', text: expect.stringContaining('not mounted') })
+    expect(await bare.run('/plugin')).toMatchObject({ kind: 'error', text: expect.stringContaining('UI registry is not mounted') })
+    expect(await bare.run('/plugin list')).toMatchObject({ kind: 'error', text: expect.stringContaining('UI registry is not mounted') })
+    expect(await bare.run('/plugin info loop')).toMatchObject({ kind: 'error', text: expect.stringContaining('UI registry is not mounted') })
     bare.dispose()
-    await world.run('/plugin list')
-    const model = world.surface()!
-    const json = JSON.stringify(model.node)
-    expect(json).not.toContain('stray-pkg')
-    expect(json).toContain('no plugins installed')
-    invokeMarketAction(model, 'install')
-    expect(world.spawns.filter(spawn => spawn.args[0] === 'plugin')).toHaveLength(0)
+
+    const noManager = await mountWorld({ index: [entry()], withManager: false })
+    expect(await noManager.run('/plugin refresh')).toMatchObject({ kind: 'error', text: expect.stringContaining('plugin manager is unavailable') })
+    expect(await noManager.run('/plugin info loop')).toMatchObject({ kind: 'error', text: expect.stringContaining('plugin manager is unavailable') })
+    noManager.dispose()
+  })
+
+  it('loads the catalog on demand for info and install, and refuses removed or unknown ids', async () => {
+    const world = await mountWorld({ index: [entry(), entry({ id: 'gone', displayName: 'Gone', status: 'removed', statusNote: 'compromised' })] })
+    expect(await world.run('/plugin info loop')).toEqual({ kind: 'success' })
+    expect(await world.run('/plugin info gone')).toEqual({ kind: 'success' })
+    expect(await world.run('/plugin info nope')).toMatchObject({ kind: 'error', text: 'unknown plugin: nope' })
+    expect(await world.run('/plugin uninstall gone')).toMatchObject({ kind: 'error', text: expect.stringContaining('not installed') })
+    expect(await world.run('/plugin uninstall nope')).toMatchObject({ kind: 'error', text: 'unknown plugin: nope' })
     world.dispose()
   })
 
-  it('reads installed versions defensively', () => {
-    const root = mkdtempTracked('mayfly-installed-')
-    mkdirSync(join(root, 'node_modules', 'weird-a'), { recursive: true })
-    writeFileSync(join(root, 'node_modules', 'weird-a', 'package.json'), 'null')
-    mkdirSync(join(root, 'node_modules', 'weird-c'), { recursive: true })
-    writeFileSync(join(root, 'node_modules', 'weird-c', 'package.json'), 'not json')
-    mkdirSync(join(root, 'node_modules', 'weird-b'), { recursive: true })
-    writeFileSync(join(root, 'node_modules', 'weird-b', 'package.json'), JSON.stringify({ version: 5 }))
-    writeFileSync(join(root, 'package.json'), JSON.stringify({ dependencies: { 'weird-a': '1', 'weird-b': '1', 'weird-c': '1' } }))
-    const plugins = readInstalledPlugins(root)
-    expect(plugins.map(plugin => [plugin.name, plugin.version])).toEqual([['weird-a', undefined], ['weird-b', undefined], ['weird-c', undefined]])
-  })
-})
-
-describe('/plugin final coverage corners', () => {
-  it('covers the remaining unload gates: info load, findDshCommand, and surface action settlement', async () => {
-    // info argument path parking on the catalog load.
-    let releaseFetch: ((value: string) => void) | undefined
-    const fetchGate = new Promise<string>(resolve => {
-      releaseFetch = resolve
-    })
-    const infoWorld = await mountWorld({})
-    const realFetch = updaterInternals.fetchText
-    updaterInternals.fetchText = vi.fn(async (url: string, timeoutMs: number) => (url.includes('jsdelivr') || url.includes('raw.githubusercontent') ? fetchGate : realFetch(url, timeoutMs)))
-    const infoExecution = infoWorld.run('/plugin info loop')
-    await new Promise(resolve => setTimeout(resolve, 5))
-    await infoWorld.dispose()
-    releaseFetch?.(indexJson([entry()]))
-    await infoExecution
-
-    // operate parking on findDshCommand (the sh spawn itself gated).
-    const shWorld = await mountWorld({ index: [entry()] })
-    let releaseSh: (() => void) | undefined
-    const shGate = new Promise<void>(resolve => {
-      releaseSh = resolve
-    })
-    const realSpawn = updaterInternals.spawnOnce
-    updaterInternals.spawnOnce = vi.fn(async (cmd: string) => {
-      if (cmd === 'dsh') await shGate
-      return realSpawn(cmd, [])
-    })
-    const shExecution = shWorld.run('/plugin install loop')
-    await new Promise(resolve => setTimeout(resolve, 5))
-    await shWorld.dispose()
-    releaseSh?.()
-    await shExecution
-
-    // The surface action's post-operate settlement also gates on the unload.
-    const actionWorld = await mountWorld({ index: [entry()] })
-    let releaseOp: (() => void) | undefined
-    const opGate = new Promise<void>(resolve => {
-      releaseOp = resolve
-    })
-    updaterInternals.spawnOnce = vi.fn(async (cmd: string, args: readonly string[]) => {
-      if (cmd === 'dsh') return { code: 0, signal: null, stdout: '/usr/bin/dsh\n', stderr: '', timedOut: false }
-      if (args[0] === 'plugin') await opGate
-      return realSpawn(cmd, args)
-    })
-    await actionWorld.run('/plugin')
-    invokeMarketAction(actionWorld.surface()!, 'install')
-    await new Promise(resolve => setTimeout(resolve, 5))
-    await actionWorld.dispose()
-    releaseOp?.()
-    await new Promise(resolve => setTimeout(resolve, 10))
-  })
-
-  it('reports refresh failure from the offline surface action', async () => {
-    const world = await mountWorld({ index: [entry()], offline: true })
-    await world.run('/plugin refresh').catch(() => undefined)
-    // Load a cached catalog so the panel opens, then go offline for the key.
-    updaterInternals.writeTextFile(join(world.root, '..', '..', 'storages', 'mayfly-plugin-market', 'cache.json'), JSON.stringify({ fetchedAt: 1_000_000, text: indexJson([entry()]) }))
-    await world.run('/plugin')
-    const model = world.surface()!
-    updaterInternals.fetchText = vi.fn(async () => {
-      throw new Error('offline now')
-    })
-    invokeMarketAction(model, 'refresh')
-    await vi.waitFor(() => expect(marketFeedback(model)).toContain('refresh failed:'))
+  it('refreshes from the argument path with a missing manager after the panel opened', async () => {
+    const world = await mountWorld({ index: [entry()] })
+    await openMarket(world)
+    world.ctx.set('pluginManager', undefined as never)
+    expect(await world.run('/plugin refresh')).toMatchObject({ kind: 'error', text: expect.stringContaining('plugin manager is unavailable') })
     world.dispose()
   })
 
-  it('returns a working disposer from registerPluginCommand', async () => {
-    const ctx = new Context()
-    new InteractionStateService(ctx, settingsPlugin.DEFAULT_SETTINGS)
-    await ctx.plugin(SessionStore)
-    await ctx.plugin(CommandRuntime)
-    const dispose = registerPluginCommand(ctx)
-    const agent = await currentAgent(ctx)
-    expect(ctx.commands.find(agent, 'plugin')).toBeDefined()
-    dispose()
-    expect(ctx.commands.find(agent, 'plugin')).toBeUndefined()
+  it('installs, updates, and removes from the detail panel', async () => {
+    const world = await mountWorld({ index: [entry()], bundles: [bundle({ name: 'dsh-loop', version: '0.1.3' })] })
+    expect(await world.run('/plugin info loop')).toEqual({ kind: 'success' })
+    const detail = world.ctx.mayflyUiInteraction.get('overlay', 'mayfly.plugin-detail')!
+    detail.invoke('install')
+    await vi.waitFor(() => { expect(world.calls.install).toHaveLength(1) })
+    await vi.waitFor(() => { expect(detail.feedbackSnapshot().at(-1)?.message).toContain('restart Mayfly') })
+    detail.invoke('remove')
+    expect(JSON.stringify(detail.decisionNode)).toContain('Remove the selected plugin?')
+    detail.answerDecision(true)
+    await vi.waitFor(() => { expect(world.calls.remove).toEqual(['dsh-loop']) })
+    world.dispose()
+  })
+
+  it('shows a failed detail operation with its message and keeps the panel open', async () => {
+    const world = await mountWorld({
+      index: [entry()], bundles: [bundle({ name: 'dsh-loop', version: '0.1.3' })],
+      installResult: () => { throw new Error('network down') },
+    })
+    await world.run('/plugin info loop')
+    const detail = world.ctx.mayflyUiInteraction.get('overlay', 'mayfly.plugin-detail')!
+    detail.invoke('install')
+    await vi.waitFor(() => { expect(detail.feedbackSnapshot().at(-1)?.message).toContain('network down') })
+    expect(world.ctx.mayflyUiInteraction.get('overlay', 'mayfly.plugin-detail')).toBeDefined()
+    detail.requestClose()
+    await new Promise(resolve => setImmediate(resolve))
+    expect(world.ctx.mayflyUiInteraction.get('overlay', 'mayfly.plugin-detail')).toBeUndefined()
+    world.dispose()
+  })
+
+  it('republishes the detail panel when the locale changes', async () => {
+    const world = await mountWorld({ index: [entry()] })
+    await world.run('/plugin info loop')
+    const detail = world.ctx.mayflyUiInteraction.get('overlay', 'mayfly.plugin-detail')!
+    const before = detail.revision
+    world.locale!.setPreference('zh')
+    await vi.waitFor(() => { expect(detail.revision).toBeGreaterThan(before) })
+    world.dispose()
   })
 })
 
-
-async function currentAgent(ctx: Context): Promise<never> {
-  const session = ctx.sessions.create(SessionId('disposer-spec'))
-  return { id: session.id, session, status: 'idle' } as never
+/** The live marketplace registration, for events a test addresses directly. */
+function marketEntry(world: World) {
+  return world.ctx.mayflyOverlays.list().find(item => item.id === 'mayfly.plugin-market')!
 }
 
-describe('badge and patch-shape arms', () => {
-  it('shows the installed badge without an update in catalog mode', async () => {
+async function prepareMarket(world: World, event: unknown, signal = new AbortController().signal) {
+  const entry = marketEntry(world)
+  return await entry.events.prepare(event as never, { surfaceId: entry.id, operationId: 'spec', source: [], revision: entry.revision, signal, report: vi.fn() })
+}
+
+const rowSelection = (id: string) => ({ kind: 'activate', pagePath: [], controlId: 'plugins-browse', actionId: 'install', inputs: { selections: [{ controlId: 'plugins-browse', pagePath: [], selectedIds: [id] }] } })
+
+describe('/plugin market edge operations', () => {
+  it('uses English when the frontend ships no locale service', async () => {
+    const world = await mountWorld({ index: [entry()], withLocale: false })
+    const model = await openMarket(world)
+    expect(JSON.stringify(model.node)).toContain('Plugin marketplace')
+    expect(JSON.stringify(model.node)).toContain('1 entries')
+    world.dispose()
+  })
+
+  it('reports an offline catalog as an unknown plugin before any native call', async () => {
+    const world = await mountWorld({ offline: true })
+    expect(await world.run('/plugin install loop')).toMatchObject({ kind: 'error', text: 'unknown plugin: loop' })
+    expect(world.calls.install).toHaveLength(0)
+    world.dispose()
+  })
+
+  it('keeps the newest catalog load when two refreshes settle out of order', async () => {
+    const world = await mountWorld({ index: [entry()], withScreen: false })
+    const first = Promise.withResolvers<string>()
+    const second = Promise.withResolvers<string>()
+    updaterInternals.fetchText = vi.fn()
+      .mockReturnValueOnce(first.promise)
+      .mockReturnValueOnce(second.promise)
+    const reading = world.run('/plugin refresh')
+    const writing = world.run('/plugin refresh')
+    second.resolve(indexJson([entry({ id: 'second', displayName: 'Second' })]))
+    await writing
+    first.resolve(indexJson([entry()]))
+    await reading
+    world.dispose()
+  })
+
+  it('drops a refreshed native list when the fiber unloaded during the read', async () => {
+    const world = await mountWorld({ index: [entry()], withManager: false })
+    await world.run('/plugin info loop')
+    world.dispose()
+  })
+
+  it('warns without a status footer when a restart-only change lands', async () => {
+    const world = await mountWorld({ index: [entry()], withScreen: false })
+    await world.run('/plugin install loop')
+    expect(world.calls.install).toHaveLength(1)
+    world.dispose()
+  })
+
+  it('records the restart chip once and updates its count', async () => {
+    const world = await mountWorld({ index: [entry()] })
+    await openMarket(world)
+    focusBrowserRow(world, 'loop')
+    invokeMarketAction(world, 'install')
+    await vi.waitFor(() => { expect(world.calls.install).toHaveLength(1) })
+    await vi.waitFor(() => { expect(JSON.stringify(world.surface()!.node)).toContain('1 change applies') })
+    const entries = world.ctx.mayflyOverlays.list()
+    expect(entries.some(item => item.id === 'mayfly.plugin-market')).toBe(true)
+    world.dispose()
+  })
+
+  it('loads only a mixed-source multi-row entry it can address', async () => {
+    const mixed = entry({
+      id: 'mixed', displayName: 'Mixed',
+      install: { rows: [{ name: 'npm-row', npm: { spec: 'npm-row' } }, { name: 'github-row', github: { repo: 'a/b', ref: 'main' } }] },
+    })
+    const world = await mountWorld({ index: [mixed] })
+    await world.run('/plugin install mixed')
+    expect(world.calls.install).toHaveLength(0)
+    expect(world.notices.at(-1)).toBe('"Mixed" has no common install source for every package')
+    world.dispose()
+  })
+
+  it('reports a multi-row update failure with the failing package name', async () => {
+    const multi = entry({
+      id: 'multi', displayName: 'Multi',
+      install: { rows: [{ name: 'multi-a', npm: { spec: 'multi-a' } }, { name: 'multi-b', npm: { spec: 'multi-b' } }] },
+      npm: { 'multi-a': { latestVersion: '1.0.0' }, 'multi-b': { latestVersion: '1.0.0' } },
+    })
+    const world = await mountWorld({
+      index: [multi],
+      bundles: [bundle({ name: 'multi-a', version: '0.0.1' }), bundle({ name: 'multi-b', version: '0.0.1' })],
+      installResult: spec => ({ changed: false, application: 'failed', stage: 'install', target: spec, error: { code: 'not-bundle' } }),
+    })
+    await world.run('/plugin install multi')
+    expect(world.notices.at(-1)).toContain('multi-a: this package declares no bundle patch')
+    world.dispose()
+  })
+
+  it('refuses install on an unlisted installed bundle and on an entry with no source', async () => {
+    const unlisted = await mountWorld({ index: [], bundles: [bundle({ name: 'custom-plugin' })] })
+    expect(await unlisted.run('/plugin install custom-plugin')).toMatchObject({ kind: 'error', text: 'this bundle is not listed in the marketplace index' })
+    unlisted.dispose()
+
+    const sourceless = entry({ id: 'bare', displayName: 'Bare', install: { rows: [{ name: 'bare-pkg' }] } })
+    const noSource = await mountWorld({ index: [sourceless] })
+    await noSource.run('/plugin install bare')
+    noSource.dispose()
+  })
+
+  it('reports missing and non-removable rows through the market actions', async () => {
+    const world = await mountWorld({ index: [entry()] })
+    await openMarket(world)
+    expect((await prepareMarket(world, rowSelection('missing'))).reply).toMatchObject({ kind: 'failed', message: 'plugin operation failed' })
+    expect((await prepareMarket(world, { kind: 'activate', pagePath: [], controlId: 'plugins-browse', actionId: 'remove', inputs: { selections: [{ controlId: 'plugins-browse', pagePath: [], selectedIds: ['loop'] }] } })).reply).toMatchObject({ kind: 'failed' })
+    expect((await prepareMarket(world, { kind: 'activate', pagePath: [], controlId: 'plugins-browse', actionId: 'install', inputs: { selections: [{ controlId: 'plugins-browse', pagePath: [], selectedIds: ['acp'] }] } })).reply).toBeDefined()
+    world.dispose()
+  })
+
+  it('does nothing for actions without an id or with an unknown action id', async () => {
+    const world = await mountWorld({ index: [entry()] })
+    await openMarket(world)
+    expect((await prepareMarket(world, { kind: 'activate', pagePath: [], controlId: 'plugin-actions', actionId: 'install' })).reply).toMatchObject({ kind: 'completed' })
+    expect((await prepareMarket(world, { kind: 'activate', pagePath: [], controlId: 'plugin-actions', actionId: 'bogus' })).reply).toMatchObject({ kind: 'completed' })
+    expect((await prepareMarket(world, { kind: 'selection-accept', pagePath: [], controlId: 'plugins-browse', selectedIds: [] })).reply).toMatchObject({ kind: 'completed' })
+    expect((await prepareMarket(world, { kind: 'selection-accept', pagePath: [], controlId: 'plugins-browse', selectedIds: ['gone'] })).reply).toMatchObject({ kind: 'completed' })
+    world.dispose()
+  })
+
+  it('switches the install source and the group mode from the panel', async () => {
+    const world = await mountWorld({ index: [entry()] })
+    await openMarket(world)
+    focusBrowserRow(world, 'loop')
+    const switched = await prepareMarket(world, { kind: 'activate', pagePath: [], controlId: 'plugin-actions', actionId: 'source', inputs: { selections: [{ controlId: 'plugins-browse', pagePath: [], selectedIds: ['loop'] }] } })
+    expect(switched.reply).toMatchObject({ kind: 'accepted', feedback: { message: 'install source: github' } })
+    const grouped = await prepareMarket(world, { kind: 'activate', pagePath: [], controlId: 'plugin-actions', actionId: 'group', inputs: { selections: [{ controlId: 'plugins-browse', pagePath: [], selectedIds: ['loop'] }] } })
+    expect(grouped.reply).toMatchObject({ kind: 'accepted' })
+    world.dispose()
+  })
+
+  it('ignores an unknown source row and tracks tab and focus observations', async () => {
+    const world = await mountWorld({ index: [entry()], bundles: [bundle({ name: 'custom-plugin' })] })
+    await openMarket(world)
+    selectBrowserTab(world, 'installed')
+    focusBrowserRow(world, 'unlisted:custom-plugin')
+    expect((await prepareMarket(world, { kind: 'activate', pagePath: [], controlId: 'plugin-actions', actionId: 'source', inputs: { selections: [{ controlId: 'plugins-installed', pagePath: [], selectedIds: ['unlisted:custom-plugin'] }] } })).reply).toMatchObject({ kind: 'completed' })
+    await prepareMarket(world, { kind: 'tab-change', tabId: 'updates' })
+    await prepareMarket(world, { kind: 'tab-change', tabId: 'updates' })
+    await prepareMarket(world, { kind: 'tab-change', tabId: 'bogus' })
+    await prepareMarket(world, { kind: 'focus-change', controlId: 'plugins-updates', itemId: 'custom-plugin' })
+    await prepareMarket(world, { kind: 'focus-change', controlId: 'plugins-browse' })
+    await prepareMarket(world, { kind: 'focus-change', controlId: 'unknown-list', itemId: 'x' })
+    await prepareMarket(world, { kind: 'dismiss', pagePath: [] })
+    world.dispose()
+  })
+
+  it('says there is nothing to update and stops a failing update-all run', async () => {
+    const empty = await mountWorld({ index: [entry()] })
+    await openMarket(empty)
+    const emptyReply = await prepareMarket(empty, { kind: 'activate', pagePath: [], controlId: 'plugin-actions', actionId: 'update-all' })
+    expect(emptyReply.reply).toMatchObject({ kind: 'accepted', feedback: { message: 'no plugin updates to apply' } })
+    empty.dispose()
+
+    const failing = await mountWorld({
+      index: [entry()],
+      bundles: [bundle({ name: 'dsh-loop', version: '0.1.3' })],
+      installResult: spec => ({ changed: false, application: 'failed', stage: 'install', target: spec, error: { code: 'not-bundle' } }),
+    })
+    await openMarket(failing)
+    const failingReply = await prepareMarket(failing, { kind: 'activate', pagePath: [], controlId: 'plugin-actions', actionId: 'update-all' })
+    expect(failingReply.reply).toMatchObject({ kind: 'failed', message: expect.stringContaining('update all stopped at "Loop"') })
+    failing.dispose()
+  })
+
+  it('reports manager loss, installed-list failures, and unloads during a panel refresh', async () => {
+    const missing = await mountWorld({ index: [entry()], withManager: false })
+    await openMarket(missing)
+    const missingReply = await prepareMarket(missing, { kind: 'activate', pagePath: [], controlId: 'plugin-actions', actionId: 'refresh' })
+    expect(missingReply.reply).toMatchObject({ kind: 'failed', message: 'plugin manager is unavailable: the native plugin service is not mounted' })
+    missing.dispose()
+
+    const failing = await mountWorld({ index: [entry()] })
+    await openMarket(failing)
+    failing.manager.listBundles.mockRejectedValueOnce(new Error('profile locked'))
+    const failingReply = await prepareMarket(failing, { kind: 'activate', pagePath: [], controlId: 'plugin-actions', actionId: 'refresh' })
+    expect(failingReply.reply).toMatchObject({ kind: 'failed', message: expect.stringContaining('refresh failed: profile locked') })
+    failing.dispose()
+
+    const unloaded = await mountWorld({ index: [entry()] })
+    await openMarket(unloaded)
+    const gate = Promise.withResolvers<string>()
+    updaterInternals.fetchText = vi.fn(() => gate.promise)
+    const refreshing = prepareMarket(unloaded, { kind: 'activate', pagePath: [], controlId: 'plugin-actions', actionId: 'refresh' })
+    await vi.waitFor(() => { expect(updaterInternals.fetchText).toHaveBeenCalled() })
+    unloaded.dispose()
+    gate.resolve(indexJson([entry()]))
+    expect(await refreshing).toMatchObject({ reply: undefined })
+  })
+
+  it('renders the stale and aged marketplace subtitles', async () => {
+    const twoHoursAgo = new Date(Date.now() - 2 * 3_600_000).toISOString()
+    const aged = await mountWorld({ index: [entry()], generatedAt: twoHoursAgo })
+    const agedModel = await openMarket(aged)
+    expect(JSON.stringify(agedModel.node)).toContain('index updated 2h ago')
+    aged.setOffline(true)
+    invokeMarketAction(aged, 'refresh')
+    await vi.waitFor(() => { expect(JSON.stringify(aged.surface()!.node)).toContain('⚠ offline · showing cached data from 2h ago') })
+    aged.dispose()
+
+    const days = await mountWorld({ index: [entry()], generatedAt: new Date(Date.now() - 3 * 86_400_000).toISOString() })
+    const daysModel = await openMarket(days)
+    expect(JSON.stringify(daysModel.node)).toContain('index updated 3d ago')
+    days.dispose()
+
+    const unknown = await mountWorld({ index: [entry()], generatedAt: 'not-a-date' })
+    const unknownModel = await openMarket(unknown)
+    expect(JSON.stringify(unknownModel.node)).toContain('1 entries')
+    unknown.dispose()
+  })
+
+  it('renders a future-dated index as under an hour old', async () => {
+    const world = await mountWorld({ index: [entry()], generatedAt: new Date(Date.now() + 3_600_000).toISOString() })
+    const model = await openMarket(world)
+    expect(JSON.stringify(model.node)).toContain('index updated under an hour ago')
+    world.dispose()
+  })
+
+  it('drops a stale native bundle read that rejects after a newer read settled', async () => {
+    const world = await mountWorld({ index: [entry()], withScreen: false })
+    const stale = Promise.withResolvers<readonly BundleInfo[]>()
+    world.manager.listBundles
+      .mockReturnValueOnce(stale.promise)
+      .mockResolvedValueOnce([])
+    const first = world.run('/plugin refresh')
+    await vi.waitFor(() => { expect(world.manager.listBundles).toHaveBeenCalledTimes(1) })
+    const second = world.run('/plugin refresh')
+    await second
+    stale.reject(new Error('too late'))
+    await first
+    world.dispose()
+  })
+})
+
+describe('/plugin operation lifetimes', () => {
+  it('abandons an install whose native bundle read lands after unload', async () => {
+    const world = await mountWorld({ index: [entry()] })
+    const gate = Promise.withResolvers<readonly BundleInfo[]>()
+    const current = world.bundles()
+    world.manager.listBundles
+      .mockResolvedValueOnce(current)
+      .mockReturnValueOnce(gate.promise)
+    const running = world.run('/plugin install loop')
+    await vi.waitFor(() => { expect(world.manager.listBundles).toHaveBeenCalledTimes(2) })
+    world.dispose()
+    gate.resolve(current)
+    await running
+    expect(world.calls.install).toHaveLength(0)
+  })
+
+  it('abandons an install whose native result lands after unload', async () => {
+    const world = await mountWorld({ index: [entry()] })
+    const gate = Promise.withResolvers<ChangeResult>()
+    world.manager.installBundle.mockReturnValueOnce(gate.promise)
+    const running = world.run('/plugin install loop')
+    await vi.waitFor(() => { expect(world.manager.installBundle).toHaveBeenCalledOnce() })
+    world.dispose()
+    gate.resolve(restartResult({ target: 'dsh-loop', bundle: 'dsh-loop' }))
+    await running
+  })
+
+  it('abandons a removal whose native list or result lands after unload', async () => {
+    const listed = await mountWorld({ index: [entry()], bundles: [bundle({ name: 'dsh-loop' })] })
+    const listGate = Promise.withResolvers<readonly BundleInfo[]>()
+    const current = listed.bundles()
+    listed.manager.listBundles
+      .mockReturnValueOnce(Promise.resolve(current))
+      .mockReturnValueOnce(listGate.promise)
+    const listing = listed.run('/plugin uninstall loop')
+    await vi.waitFor(() => { expect(listed.manager.listBundles).toHaveBeenCalledTimes(2) })
+    listed.dispose()
+    listGate.resolve(current)
+    await listing
+    expect(listed.calls.remove).toHaveLength(0)
+
+    const removed = await mountWorld({ index: [entry()], bundles: [bundle({ name: 'dsh-loop' })] })
+    const removeGate = Promise.withResolvers<ChangeResult>()
+    removed.manager.removeBundle.mockReturnValueOnce(removeGate.promise)
+    const removing = removed.run('/plugin uninstall loop')
+    await vi.waitFor(() => { expect(removed.manager.removeBundle).toHaveBeenCalledOnce() })
+    removed.dispose()
+    removeGate.resolve(restartResult({ stage: 'remove', target: 'dsh-loop' }))
+    await removing
+  })
+
+  it('abandons the argument refresh, info, and install when unload lands in the awaits', async () => {
+    const refresh = await mountWorld({ index: [entry()], withScreen: false })
+    const refreshGate = Promise.withResolvers<string>()
+    updaterInternals.fetchText = vi.fn(() => refreshGate.promise)
+    const refreshing = refresh.run('/plugin refresh')
+    await vi.waitFor(() => { expect(updaterInternals.fetchText).toHaveBeenCalled() })
+    refresh.dispose()
+    refreshGate.resolve(indexJson([entry()]))
+    await refreshing
+
+    const info = await mountWorld({ index: [entry()] })
+    const infoGate = Promise.withResolvers<string>()
+    updaterInternals.fetchText = vi.fn(() => infoGate.promise)
+    const reading = info.run('/plugin info loop')
+    await vi.waitFor(() => { expect(updaterInternals.fetchText).toHaveBeenCalled() })
+    info.dispose()
+    infoGate.resolve(indexJson([entry()]))
+    await reading
+
+    const install = await mountWorld({ index: [entry()] })
+    const installGate = Promise.withResolvers<string>()
+    updaterInternals.fetchText = vi.fn(() => installGate.promise)
+    const installing = install.run('/plugin install loop')
+    await vi.waitFor(() => { expect(updaterInternals.fetchText).toHaveBeenCalled() })
+    install.dispose()
+    installGate.resolve(indexJson([entry()]))
+    await installing
+  })
+
+  it('reports a lost manager and the unlisted, blocked, and sourceless market rows', async () => {
+    const lost = await mountWorld({ index: [entry()] })
+    await openMarket(lost)
+    lost.ctx.set('pluginManager', undefined as never)
+    const lostReply = await prepareMarket(lost, {
+      kind: 'activate', pagePath: [], controlId: 'plugins-browse', actionId: 'install',
+      inputs: { selections: [{ controlId: 'plugins-browse', pagePath: [], selectedIds: ['loop'] }] },
+    })
+    expect(lostReply.reply).toMatchObject({ kind: 'failed', message: 'plugin manager is unavailable: the native plugin service is not mounted' })
+    lost.dispose()
+
+    const unlisted = await mountWorld({ index: [], bundles: [bundle({ name: 'custom-plugin' })] })
+    await openMarket(unlisted)
+    const unlistedReply = await prepareMarket(unlisted, {
+      kind: 'activate', pagePath: [], controlId: 'plugins-installed', actionId: 'install',
+      inputs: { selections: [{ controlId: 'plugins-installed', pagePath: [], selectedIds: ['unlisted:custom-plugin'] }] },
+    })
+    expect(unlistedReply.reply).toMatchObject({ kind: 'failed', message: 'this bundle is not listed in the marketplace index' })
+    unlisted.dispose()
+
+    const blocked = await mountWorld({ index: [entry({
+      id: 'acp', displayName: 'ACP Server',
+      install: { rows: [{ name: '@deepseek-ai/dsh-acp', npm: { spec: '@deepseek-ai/dsh-acp' } }] },
+    })] })
+    await openMarket(blocked)
+    const blockedReply = await prepareMarket(blocked, {
+      kind: 'activate', pagePath: [], controlId: 'plugins-browse', actionId: 'install',
+      inputs: { selections: [{ controlId: 'plugins-browse', pagePath: [], selectedIds: ['acp'] }] },
+    })
+    expect(blockedReply.reply).toMatchObject({ kind: 'failed', message: expect.stringContaining('owns stdio') })
+    blocked.dispose()
+  })
+
+  it('keeps and reuses the focused row when the grouping changes', async () => {
+    const world = await mountWorld({ index: [entry()] })
+    await openMarket(world)
+    await prepareMarket(world, { kind: 'focus-change', controlId: 'plugins-browse', itemId: 'loop' })
+    const reply = await prepareMarket(world, { kind: 'activate', pagePath: [], controlId: 'plugin-actions', actionId: 'group' })
+    expect(reply.reply).toMatchObject({ kind: 'accepted' })
+    world.dispose()
+  })
+
+  it('abandons update-all when unload lands during the native result', async () => {
+    const world = await mountWorld({ index: [entry()], bundles: [bundle({ name: 'dsh-loop', version: '0.1.3' })] })
+    await openMarket(world)
+    const gate = Promise.withResolvers<ChangeResult>()
+    world.manager.installBundle.mockReturnValueOnce(gate.promise)
+    const running = prepareMarket(world, { kind: 'activate', pagePath: [], controlId: 'plugin-actions', actionId: 'update-all' })
+    await vi.waitFor(() => { expect(world.manager.installBundle).toHaveBeenCalledOnce() })
+    world.dispose()
+    gate.resolve(restartResult({ target: 'dsh-loop', bundle: 'dsh-loop' }))
+    expect(await running).toMatchObject({ reply: undefined })
+  })
+})
+
+describe('/plugin branch edges', () => {
+  it('names an incompatible-version refusal that carries no package list', async () => {
     const world = await mountWorld({
       index: [entry()],
-      profileDependencies: { 'dsh-loop': '0.1.4' },
-      installedVersions: { 'dsh-loop': '0.1.4' },
+      installResult: spec => ({ changed: false, application: 'failed', stage: 'install', target: spec, error: { code: 'incompatible-version' } as never }),
     })
-    await world.run('/plugin')
-    const json = JSON.stringify((world.overlay() as { currentNode(): unknown }).currentNode())
-    expect(json).toContain('installed')
+    await world.run('/plugin install loop')
+    expect(world.notices.at(-1)).toBe('install failed: incompatible with this DSH:')
     world.dispose()
   })
 
-  it('appends patch rows to a file without a trailing newline', async () => {
-    const withPatch = entry({ install: { rows: [{ id: 'nl', name: 'pkg-nl', activation: 'profile-patch', npm: { spec: 'pkg-nl' } }] } })
-    const root = mkdtempTracked('mayfly-install-')
-    updaterInternals.spawnOnce = vi.fn(async () => ok())
-    writeFileSync(join(root, 'cordis.patch.yml'), "- id: keep\n  name: 'keep-me'")
-    const outcome = await installEntry({ dshCommand: { command: 'dsh', args: [] }, profile: 'p', root, entry: withPatch, source: 'npm' })
-    expect(outcome.kind).toBe('success')
-    const patch = updaterInternals.readTextFile(join(root, 'cordis.patch.yml')) ?? ''
-    expect(patch).toContain('keep-me')
-    expect(parseYaml(patch)).toContainEqual({ insert: [{ id: 'nl', name: 'pkg-nl' }] })
-    // allowBuilds block lands after content lacking a trailing newline too.
-    const allowEntry = entry({ install: { allowBuilds: ['node-pty'], rows: [{ id: 't', name: 'pkg-t', activation: 'profile-patch', npm: { spec: 'x' } }] } })
-    writeFileSync(join(root, 'pnpm-workspace.yaml'), 'packages:\n  - .')
-    await installEntry({ dshCommand: { command: 'dsh', args: [] }, profile: 'p', root, entry: allowEntry, source: 'npm' })
-    expect(parseYaml(updaterInternals.readTextFile(join(root, 'pnpm-workspace.yaml')) ?? '')).toMatchObject({ allowBuilds: { 'node-pty': true } })
-  })
-})
-
-describe('panel arms without a locale service', () => {
-  it('renders English descriptions when no locale service is mounted', async () => {
-    const world = await mountWorld({ index: [entry()], withLocale: false })
-    await world.run('/plugin')
-    const json = JSON.stringify((world.overlay() as { currentNode(): unknown }).currentNode())
-    expect(json).toContain('Recurring prompts and alarms.')
-    world.dispose()
-  })
-})
-
-describe('detail-shape arms', () => {
-  it('renders installed details, update rows, tools-only and commands-only provides', async () => {
-    const toolsOnly = entry({ id: 'tools-only', displayName: 'Tools Only', provides: { tools: ['a_tool'] } })
-    const commandsOnly = entry({ id: 'commands-only', displayName: 'Commands Only', provides: { commands: ['/cmd'] } })
-    const tuiOnly = entry({ id: 'tui-only', displayName: 'Tui Only', surfaces: { tui: { contributions: ['status'] } }, provides: {} })
-    const webOnly = entry({ id: 'web-only2', displayName: 'Web Only 2', surfaces: { web: { clientModule: true } }, provides: {} })
-    const world = await mountWorld({
-      index: [entry(), toolsOnly, commandsOnly, tuiOnly, webOnly],
-      profileDependencies: { 'dsh-loop': '0.1.3' },
-      installedVersions: { 'dsh-loop': '0.1.3' },
-    })
-    // Installed with an update available: the Version row shows the update.
-    await world.run('/plugin info loop')
-    expect(JSON.stringify((world.overlay() as { currentNode(): unknown }).currentNode())).toContain('update available: 0.1.4')
-    for (const id of ['tools-only', 'commands-only', 'tui-only', 'web-only2']) {
-      await world.run(`/plugin info ${id}`)
-      expect(world.overlay()).toBeDefined()
-    }
-    world.dispose()
-  })
-
-  it('covers bare-context installs, missing workspace files, and the refresh unload gate', async () => {
+  it('stringifies a non-Error bundle read for the argument refresh', async () => {
     const world = await mountWorld({ index: [entry()], withScreen: false })
-    expect(await world.run('/plugin install loop')).toEqual({ kind: 'success' })
-    world.dispose()
-
-    // allowBuilds merge into a profile whose workspace file does not exist yet.
-    const allowEntry = entry({ install: { allowBuilds: ['node-pty'], rows: [{ id: 't', name: 'pkg-t', activation: 'profile-patch', npm: { spec: 'x' } }] } })
-    const root = mkdtempTracked('mayfly-install-')
-    updaterInternals.spawnOnce = vi.fn(async () => ok())
-    const outcome = await installEntry({ dshCommand: { command: 'dsh', args: [] }, profile: 'p', root, entry: allowEntry, source: 'npm' })
-    expect(outcome.kind).toBe('success')
-    expect(parseYaml(updaterInternals.readTextFile(join(root, 'pnpm-workspace.yaml')) ?? '')).toMatchObject({ allowBuilds: { 'node-pty': true } })
-
-    // The refresh continuation gates on the fiber unload.
-    const rWorld = await mountWorld({})
-    let release: ((value: string) => void) | undefined
-    const gate = new Promise<string>(resolve => {
-      release = resolve
-    })
-    const realFetch = updaterInternals.fetchText
-    updaterInternals.fetchText = vi.fn(async (url: string, timeoutMs: number) => (url.includes('jsdelivr') || url.includes('raw.githubusercontent') ? gate : realFetch(url, timeoutMs)))
-    await rWorld.run('/plugin')
-    const refresh = rWorld.run('/plugin refresh')
-    await new Promise(resolve => setTimeout(resolve, 5))
-    await rWorld.dispose()
-    release?.(indexJson([entry()]))
-    await refresh
-  })
-})
-
-describe('/plugin offline catalog, stale rows, and unload gates', () => {
-  it('knows no plugin while the catalog is offline, on the argument paths', async () => {
-    const world = await mountWorld({ offline: true })
-    expect(await world.run('/plugin info loop')).toMatchObject({ kind: 'error', text: 'unknown plugin: loop' })
-    expect(await world.run('/plugin install loop')).toMatchObject({ kind: 'error', text: 'unknown plugin: loop' })
-    expect(world.spawns.filter(spawn => spawn.args[0] === 'plugin')).toEqual([])
+    world.manager.listBundles.mockRejectedValueOnce('profile locked' as never)
+    expect(await world.run('/plugin refresh')).toMatchObject({ kind: 'error', text: expect.stringContaining('profile locked') })
     world.dispose()
   })
 
-  it('ignores browse actions that name a row the catalog no longer holds', async () => {
-    const world = await mountWorld({ index: [entry()] })
-    await world.run('/plugin')
-    const root = world.ctx.mayflyOverlays.list().find(item => item.id === 'mayfly.plugin-market')!
-    const context = { surfaceId: root.id, operationId: 'stale-row', source: root.source, revision: root.revision, signal: new AbortController().signal, report: vi.fn() }
-    const selections = [{ pagePath: [], controlId: 'plugins', selectedIds: ['ghost'] }]
-    const action = root.definition.onEvent!.action!
-    // Enter on the vanished row opens no detail panel.
-    expect(await action({ kind: 'selection-accept', pagePath: [], controlId: 'plugins', selectedIds: ['ghost'] }, context)).toEqual({ kind: 'completed' })
-    expect(world.ctx.mayflyOverlays.list().map(item => item.id)).toEqual(['mayfly.plugin-market'])
-    // Install and Remove on it fail without touching the profile.
-    for (const actionId of ['install', 'remove']) {
-      const inputs = { actionId, draftRevision: 1, forms: [], source: [], selections }
-      expect(await action({ kind: 'activate', pagePath: [], controlId: 'actions', actionId, inputs }, context)).toMatchObject({ kind: 'failed', message: 'plugin operation failed' })
-    }
-    expect(world.spawns.filter(spawn => spawn.args[0] === 'plugin')).toEqual([])
-    world.dispose()
-  })
-
-  it('stops an install that spans a fiber unload while it looks for the dsh CLI on PATH', async () => {
-    const world = await mountWorld({ index: [entry()] })
-    updaterInternals.env = { DSH_HOME: updaterInternals.env.DSH_HOME }
-    const gate = Promise.withResolvers<void>()
-    updaterInternals.spawnOnce = vi.fn(async (cmd: string, args: readonly string[]) => {
-      world.spawns.push({ cmd, args: [...args] })
-      if (cmd === 'dsh') await gate.promise
-      return ok('dsh 1.0.0')
-    })
-    const execution = world.run('/plugin install loop')
-    await vi.waitFor(() => expect(world.spawns).toContainEqual({ cmd: 'dsh', args: ['--version'] }))
-    await world.dispose()
-    gate.resolve()
-    expect(await execution).toEqual({ kind: 'success' })
-    expect(world.spawns.filter(spawn => spawn.args[0] === 'plugin')).toEqual([])
-    expect(world.notices).toEqual([])
-  })
-
-  it('stops a catalog refresh from the browse panel that spans a fiber unload', async () => {
-    const world = await mountWorld({ index: [entry()] })
-    await world.run('/plugin')
-    const model = world.surface()!
-    const gate = Promise.withResolvers<string>()
-    const realFetch = updaterInternals.fetchText
-    updaterInternals.fetchText = vi.fn(async (url: string, timeoutMs: number) => (url.includes('jsdelivr') || url.includes('raw.githubusercontent') ? gate.promise : realFetch(url, timeoutMs)))
-    invokeMarketAction(model, 'refresh')
-    await vi.waitFor(() => expect(marketFeedback(model)).toContain('refreshing plugin catalog...'))
-    await world.dispose()
-    gate.resolve(indexJson([entry()]))
-    await new Promise(resolve => setTimeout(resolve, 10))
-    expect(marketFeedback(model)).not.toContain('refreshed')
-    expect(world.ctx.mayflyOverlays.list()).toEqual([])
-  })
-})
-
-describe('final arms', () => {
-  it('reports uninstall failures and info for github-only and versionless rows', async () => {
-    const githubOnly = entry({ id: 'gh2', displayName: 'GH2', install: { rows: [{ name: 'gh2-pkg', github: { repo: 'a/b', ref: 'r' } }] } })
+  it('reports an immediately applied install without asking for a restart', async () => {
     const world = await mountWorld({
-      index: [entry(), githubOnly],
-      profileDependencies: { 'dsh-loop': '0.1.4', 'gh2-pkg': 'github:a/b#r' },
-      spawn: { plugin: () => ({ code: 1, signal: null, stdout: '', stderr: 'boom', timedOut: false }) },
+      index: [entry()],
+      installResult: spec => ({ changed: true, application: 'applied', stage: 'install', target: spec }),
+    })
+    await world.run('/plugin install loop')
+    expect(world.notices.at(-1)).toBe('installed')
+    world.dispose()
+  })
+
+  it('reports the generic protection reason for a blocked bundle', async () => {
+    const world = await mountWorld({ index: [entry()], bundles: [bundle({ name: 'dsh-loop' })] })
+    world.manager.listBundles
+      .mockResolvedValueOnce(world.bundles())
+      .mockResolvedValueOnce([bundle({ name: 'dsh-loop', removable: false })])
+    await world.run('/plugin uninstall loop')
+    expect(world.notices.at(-1)).toContain('this bundle is not removable')
+    expect(world.calls.remove).toHaveLength(0)
+    world.dispose()
+  })
+
+  it('reports an immediately applied removal as removed', async () => {
+    const world = await mountWorld({
+      index: [entry()],
+      bundles: [bundle({ name: 'dsh-loop' })],
+      removeResult: name => ({ changed: true, application: 'applied', stage: 'remove', target: name }),
     })
     await world.run('/plugin uninstall loop')
-    expect(world.notices.at(-1)).toBe('uninstall failed: removing "Loop" failed: boom')
-    // No node_modules version: the Version row falls back to installed.
-    await world.run('/plugin info loop')
-    expect(JSON.stringify((world.overlay() as { currentNode(): unknown }).currentNode())).toContain('installed')
-    // GitHub-only rows render their github install command.
-    await world.run('/plugin info gh2')
-    expect(JSON.stringify((world.overlay() as { currentNode(): unknown }).currentNode())).toContain('github:a/b#r')
+    expect(world.notices.at(-1)).toBe('removed')
+    expect(world.calls.remove).toEqual(['dsh-loop'])
     world.dispose()
   })
 
-  it('falls back to the generic removed note without a statusNote', async () => {
+  it('derives rows while the first native bundle read is still pending', async () => {
+    const world = await mountWorld({ index: [entry()] })
+    const gate = Promise.withResolvers<readonly BundleInfo[]>()
+    world.manager.listBundles.mockReturnValueOnce(gate.promise)
+    expect(await world.run('/plugin')).toEqual({ kind: 'success' })
+    const running = prepareMarket(world, rowSelection('loop'))
+    gate.resolve([])
+    expect(await running).toMatchObject({ reply: { kind: 'accepted' } })
+    expect(world.calls.install).toHaveLength(1)
+    world.dispose()
+  })
+
+  it('finds a removed entry the profile does not carry for the detail panel', async () => {
     const world = await mountWorld({
-      index: [entry({ id: 'silent-gone', displayName: 'Silent Gone', status: 'removed', install: { rows: [{ name: 'silent-pkg', npm: { spec: 'silent-pkg' } }] } })],
-      profileDependencies: { 'silent-pkg': '1.0.0' },
+      index: [entry(), entry({ id: 'gone', displayName: 'Gone', status: 'removed', statusNote: 'compromised' })],
     })
-    await world.run('/plugin list')
-    expect(JSON.stringify((world.overlay() as { currentNode(): unknown }).currentNode())).toContain('removed from the market')
+    expect(await world.run('/plugin info gone')).toEqual({ kind: 'success' })
+    expect(JSON.stringify(world.ctx.mayflyUiInteraction.get('overlay', 'mayfly.plugin-detail')!.node)).toContain('Gone')
     world.dispose()
   })
 
+  it('names an update failure from the market action and catches a string rejection', async () => {
+    const world = await mountWorld({ index: [entry()], bundles: [bundle({ name: 'dsh-loop', version: '0.1.3' })] })
+    await openMarket(world)
+    selectBrowserTab(world, 'updates')
+    focusBrowserRow(world, 'loop')
+    world.manager.installBundle.mockRejectedValueOnce('npm offline')
+    invokeMarketAction(world, 'update')
+    await vi.waitFor(() => { expect(marketFeedback(world.surface()!)).toContain('update failed: npm offline') })
+    world.dispose()
+  })
+
+  it('substitutes npm for a github row and ignores a source action without a row', async () => {
+    const githubOnly = entry({ id: 'gh', displayName: 'GH', install: { rows: [{ name: 'gh-pkg', github: { repo: 'a/b', ref: 'main' } }] } })
+    const world = await mountWorld({ index: [githubOnly] })
+    await openMarket(world)
+    // A focus change on a tab that is not active does not repaint.
+    await prepareMarket(world, { kind: 'focus-change', controlId: 'plugins-updates', itemId: 'gh' })
+    focusBrowserRow(world, 'gh')
+    const switched = await prepareMarket(world, {
+      kind: 'activate', pagePath: [], controlId: 'plugin-actions', actionId: 'source',
+      inputs: { selections: [{ controlId: 'plugins-browse', pagePath: [], selectedIds: ['gh'] }] },
+    })
+    expect(switched.reply).toMatchObject({ kind: 'accepted', feedback: { message: 'install source: npm' } })
+    const missingId = await prepareMarket(world, { kind: 'activate', pagePath: [], controlId: 'plugin-actions', actionId: 'source' })
+    expect(missingId.reply).toMatchObject({ kind: 'completed' })
+    world.dispose()
+  })
+
+  it('subtitles a stale catalog without generatedAt and reports an offline market refresh', async () => {
+    const world = await mountWorld({ index: [entry()] })
+    updaterInternals.fetchText = vi.fn(async () => JSON.stringify({ schemaVersion: 1, entries: [entry()] }))
+    const model = await openMarket(world)
+    expect(JSON.stringify(model.node)).toContain('1 entries')
+    updaterInternals.fetchText = vi.fn(async () => { throw new Error('registry down') })
+    invokeMarketAction(world, 'refresh')
+    await vi.waitFor(() => { expect(JSON.stringify(world.surface()!.node)).toContain('⚠ offline · showing cached data') })
+    expect(JSON.stringify(world.surface()!.node)).not.toContain('showing cached data from')
+    // A stale cache still counts as a refresh that served entries.
+    expect(marketFeedback(world.surface()!)).toContain('refreshed 1 entries')
+
+    const offline = await mountWorld({ offline: true })
+    expect(await offline.run('/plugin')).toEqual({ kind: 'success' })
+    await vi.waitFor(() => { expect(offline.surface()).toBeDefined() })
+    const reply = await prepareMarket(offline, { kind: 'activate', pagePath: [], controlId: 'plugin-keys-offline', actionId: 'refresh' })
+    expect(reply.reply).toMatchObject({ kind: 'failed', message: expect.stringContaining('refresh failed:') })
+    offline.dispose()
+    world.dispose()
+  })
+
+  it('does not publish into a marketplace panel closed before its first load', async () => {
+    const world = await mountWorld({ index: [entry()] })
+    const gate = Promise.withResolvers<string>()
+    updaterInternals.fetchText = vi.fn(() => gate.promise)
+    expect(await world.run('/plugin')).toEqual({ kind: 'success' })
+    world.ctx.mayflyOverlays.close('mayfly.plugin-market')
+    gate.resolve(indexJson([entry()]))
+    await new Promise(resolve => setImmediate(resolve))
+    expect(world.ctx.mayflyOverlays.list().map(item => item.id)).not.toContain('mayfly.plugin-market')
+    world.dispose()
+  })
+
+  it('reports an update applied immediately as updated', async () => {
+    const world = await mountWorld({
+      index: [entry()],
+      bundles: [bundle({ name: 'dsh-loop', version: '0.1.3' })],
+      installResult: spec => ({ changed: true, application: 'applied', stage: 'install', target: spec }),
+    })
+    await world.run('/plugin install loop')
+    expect(world.notices.at(-1)).toBe('updated')
+    world.dispose()
+  })
+
+  it('reports the web-only warning through the open surface', async () => {
+    const webOnly = entry({ id: 'panel', displayName: 'Panel', surfaces: { web: { clientModule: true } } })
+    const world = await mountWorld({ index: [webOnly] })
+    await openMarket(world)
+    focusBrowserRow(world, 'panel')
+    const reply = await prepareMarket(world, rowSelection('panel'))
+    expect(reply.reply).toMatchObject({ kind: 'accepted', feedback: { severity: 'success' } })
+    expect(world.calls.install).toHaveLength(1)
+    world.dispose()
+  })
+
+  it('dismisses an unlisted detail after its successful removal', async () => {
+    const world = await mountWorld({ index: [], bundles: [bundle({ name: 'custom-plugin' })] })
+    expect(await world.run('/plugin info custom-plugin')).toEqual({ kind: 'success' })
+    const detail = world.ctx.mayflyUiInteraction.get('overlay', 'mayfly.plugin-detail')!
+    detail.invoke('remove')
+    detail.answerDecision(true)
+    await vi.waitFor(() => { expect(world.calls.remove).toEqual(['custom-plugin']) })
+    await vi.waitFor(() => { expect(world.ctx.mayflyUiInteraction.get('overlay', 'mayfly.plugin-detail')).toBeUndefined() })
+    world.dispose()
+  })
 })

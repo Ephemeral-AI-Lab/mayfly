@@ -11,8 +11,9 @@ import type { Context } from '@deepseek-ai/cordis'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
 import type {} from '@deepseek-ai/dsh-deepseek-account'
 import type {} from '@deepseek-ai/dsh-llm'
-import { ACCOUNT_SETTINGS_NS, clientMetadata } from './provider-account.ts'
-import { deriveKeyRef, providerProfile } from './provider-profile.ts'
+import { accountRoute, clientMetadata } from './provider-account.ts'
+import { deriveKeyRef } from './provider-profile.ts'
+import { providerAddress, providerDescriptor, providerProfileAt, providerValueAt } from './provider-store.ts'
 
 export type WalletCurrency = 'CNY' | 'USD'
 
@@ -105,10 +106,12 @@ export function isLowBalance(balance: BalanceResult | undefined, thresholds: Rea
   return balance.wallets.length > 0 && balance.wallets.every(wallet => Number(wallet.total) < thresholds[wallet.currency])
 }
 
-/** The endpoint of the official route: its settings, then `$DEEPSEEK_BASE_URL`, then the public API. */
+/** The endpoint of the official route: its native profile, then `$DEEPSEEK_BASE_URL`, then the public API. */
 function officialEndpoint(ctx: Context): string {
-  const section = ctx.get('settings')?.describe().find(item => String(item.ns) === 'llm-deepseek')?.value
-  const configured = section !== null && typeof section === 'object' ? (section as { readonly baseURL?: unknown }).baseURL : undefined
+  const address = providerAddress(ctx, DEEPSEEK_ROUTE)
+  const settings = ctx.get('settings')
+  const descriptor = address === undefined || settings === undefined ? undefined : providerDescriptor(settings, address.ns)
+  const configured = descriptor === undefined || address === undefined ? undefined : providerValueAt(descriptor.value, [...address.path, 'baseURL'])
   if (typeof configured === 'string' && configured !== '') return configured
   const environment = process.env.DEEPSEEK_BASE_URL
   return environment !== undefined && environment !== '' ? environment : DEFAULT_ENDPOINT
@@ -152,11 +155,11 @@ async function platformBalance(ctx: Context): Promise<{ readonly balance: Balanc
 export async function readAccountSnapshot(ctx: Context, route: string, signal: AbortSignal): Promise<AccountSnapshot> {
   const llm = ctx.get('llm')
   const name = llm?.listProviders().find(provider => provider.id === route)?.name || route
-  const accountRoute = llm?.listConfigurableProviders().find(item => item.settingsNs === ACCOUNT_SETTINGS_NS)?.provider
+  const account = accountRoute(ctx)
   const service = ctx.get('deepseekAccount')
   const state = service === undefined ? undefined : await service.getState().catch(() => undefined)
   const links = state === undefined ? DEFAULT_LINKS : { topUp: state.links.topUpUrl, usage: state.links.usageUrl }
-  if (route === accountRoute && service !== undefined) {
+  if (route === account && service !== undefined) {
     const signedIn = state?.status === 'credential-stored'
     if (!signedIn) return { route, name, kind: 'account', signedIn, links, balance: { status: 'unavailable', reason: 'signed-out' }, at: Date.now() }
     const { balance, profile } = await platformBalance(ctx)
@@ -167,8 +170,10 @@ export async function readAccountSnapshot(ctx: Context, route: string, signal: A
     const key = { ref: DEEPSEEK_KEY, configured: info?.configured === true }
     return { route, name, kind: 'api-key', key, links, balance: key.configured ? await apiKeyBalance(ctx, signal) : { status: 'unavailable', reason: 'no-key' }, at: Date.now() }
   }
-  const section = ctx.get('settings')?.describe().find(item => String(item.ns) === 'llm-pi-ai')?.value
-  const profile = providerProfile(section, route)
+  const address = providerAddress(ctx, route)
+  const settings = ctx.get('settings')
+  const descriptor = address === undefined || settings === undefined ? undefined : providerDescriptor(settings, address.ns)
+  const profile = descriptor === undefined || address === undefined ? undefined : providerProfileAt(descriptor.value, address.path)
   const ref = profile?.apiKeyEnv ?? deriveKeyRef(route)
   const info = await ctx.get('credentials')?.describe(credentialRef(ref)).catch(() => undefined)
   return {

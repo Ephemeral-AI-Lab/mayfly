@@ -143,9 +143,9 @@ test('the coverage advice reports changed lines whose statements never ran', () 
 test('a golden runs its scenario, a covered source the scenarios that cover it, other product code the smoke set, the machinery all', () => {
   const scenarios = file => classifyChanges([file]).tests.scenarios
   assert.deepEqual(scenarios('script/scenarios/golden/mergeDock/items@100x30.grid'), ['mergeDock'])
-  assert.deepEqual(scenarios('packages/mayfly/src/interaction/btw-command.ts'), ['mergeConversations'])
+  assert.deepEqual(scenarios('packages/mayfly/src/interaction/btw-command.ts'), ['harnessAlignment', 'mergeConversations', 'mergeHeights', 'mergePanels'])
   // A product source no golden scenario covers runs the smoke set.
-  assert.deepEqual(scenarios('packages/mayfly/src/transcript/pane-todo.ts'), ['mergeConversations', 'mergeDock'])
+  assert.deepEqual(scenarios('packages/mayfly/src/transcript/pane-todo.ts'), ['harnessAlignment', 'mergeHeights', 'viewItems'])
   // The gallery has only its perf scenario, which the perf step measures.
   assert.deepEqual(scenarios('examples/ui-gallery/src/index.ts'), [])
   assert.deepEqual(scenarios('docs/README.md'), [])

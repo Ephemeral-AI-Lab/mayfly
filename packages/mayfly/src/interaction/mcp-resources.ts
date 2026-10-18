@@ -10,16 +10,13 @@ import { openAgentOverlay } from './agent-overlay.ts'
 
 /** Browse metadata first; only an explicit Read dispatches a resource body. */
 export async function openMcpResources(ctx: Context, agent: Agent, server: string, templates: boolean, signal: AbortSignal): Promise<void> {
+  /* The resource tools are the native `mcpResources` contribution to the exact
+     Agent's tool pipeline; call them by their public names and let the
+     registry resolve the caller's scope. No client or fallback path exists. */
   const invoke = async (name: string, args: Record<string, string>, signal: AbortSignal) => {
-    const native = ctx.tools.schemas(agent).some(tool => tool.name === name)
-    const outcome = await ctx.tools.execute({ callId: randomUUID() as ToolCallId, agent, signal,
-      name: native ? name : 'run_code',
-      arguments: native ? args : { code: `return await tools.${name}(${JSON.stringify(args)})`, description: `Read MCP resource metadata from ${server}` },
-    })
+    const outcome = await ctx.tools.execute({ callId: randomUUID() as ToolCallId, agent, signal, name, arguments: args })
     if (outcome.isError) throw new Error(outcome.content.filter(block => block.type === 'text').map(block => block.text).join('\n'))
-    if (native) return outcome.value
-    const value = outcome.value
-    return typeof value === 'object' && value !== null && !Array.isArray(value) ? value.result : undefined
+    return outcome.value
   }
   let items: Record<string, unknown>[] = []
   let cursor: string | undefined

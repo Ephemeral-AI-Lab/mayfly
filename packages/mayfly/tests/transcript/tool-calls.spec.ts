@@ -661,22 +661,21 @@ describe('a run of calls as a standard block', () => {
 })
 
 describe('a spawn line that follows its child', () => {
-  /** A subagent spawn call: the model's call, with its acknowledgement and the prompt it gave. */
+  /** A subagent spawn call: the model's call and the native activation result naming its child. */
   const spawn = (overrides: Record<string, unknown> = {}): TranscriptEntryModel => tool({
-    name: 'subagent', family: 'agent', activity: 'subagents', detail: 'Audit the facts', arguments: JSON.stringify({ name: 'review', prompt: 'audit it' }),
-    startedAt: NOW - 3_000, result: { text: 'started subagent child-1', isError: false, endedAt: NOW - 2_900 }, ...overrides,
+    name: 'subagent', family: 'agent', activity: 'subagents', detail: 'Audit the facts', arguments: JSON.stringify({ description: 'Audit the facts', prompt: 'audit it' }),
+    startedAt: NOW - 3_000, result: { text: JSON.stringify({ kind: 'activation', subagentId: 'child-1' }), isError: false, endedAt: NOW - 2_900 }, ...overrides,
   })
   const child = (state: 'running' | 'ok' | 'failed' | 'stopped', endedAt?: number) => ({
     byId: new Map([['child-1', state === 'running' ? { state: 'running' as const } : { state: 'settled' as const, failed: state === 'failed', ...state === 'stopped' ? { stopped: true } : {}, ...endedAt === undefined ? {} : { endedAt } }]]),
-    byPrompt: new Map(),
   })
   const facts = (children: ReturnType<typeof child>) => ({ asked: new Map(), decided: new Map(), children })
   const call = (entry: TranscriptEntryModel, children?: ReturnType<typeof child>) => callsOf(entry, t, NOW, children === undefined ? undefined : facts(children))[0]!
 
-  it('stays pending, running in background, while its child works, though its acknowledgement landed at once', () => {
+  it('stays pending while its child works, though its activation acknowledgement landed at once', () => {
     expect(call(spawn())).toMatchObject({ state: 'ok' })
     const running = call(spawn(), child('running'))
-    expect(running).toMatchObject({ state: 'pending', phase: 'running', outcome: ['running in background', '3s'] })
+    expect(running).toMatchObject({ state: 'pending', phase: 'running', outcome: ['running', '3s'] })
     expect(running).not.toHaveProperty('endedAt')
   })
 
@@ -688,19 +687,114 @@ describe('a spawn line that follows its child', () => {
     expect(call(spawn(), child('ok'))).toMatchObject({ phase: 'settled', endedAt: NOW - 2_900 })
   })
 
-  it('settles a call that is still open with a child that has no end to report: no time to read, no end to carry', () => {
-    const open = call(spawn({ result: undefined }), { byId: new Map(), byPrompt: new Map([['audit it', { state: 'settled' as const, failed: false }]]) })
-    expect(open).toMatchObject({ state: 'ok', phase: 'settled', outcome: [undefined, undefined] })
-    expect(open).not.toHaveProperty('endedAt')
-    // With no prompt in its arguments and no acknowledgement, there is no child to find.
-    expect(call(spawn({ result: undefined, arguments: '{}' }), { byId: new Map(), byPrompt: new Map([['audit it', { state: 'running' as const }]]) })).toMatchObject({ phase: 'running' })
-  })
-
-  it('finds a child by its prompt when the acknowledgement names none, and leaves a call with no child alone', () => {
-    const byPrompt = { byId: new Map(), byPrompt: new Map([['audit it', { state: 'running' as const }]]) }
-    expect(call(spawn({ result: undefined }), byPrompt)).toMatchObject({ state: 'pending', phase: 'running', outcome: ['running in background', '3s'] })
-    expect(call(spawn(), { byId: new Map(), byPrompt: new Map() })).toMatchObject({ state: 'ok' })
+  it('leaves a call with no activation id alone, however its prompt reads', () => {
+    const promptOnly = { byId: new Map(), byPrompt: new Map([['audit it', { state: 'running' as const }]]) }
+    expect(call(spawn({ result: undefined }), promptOnly)).toMatchObject({ state: 'pending', phase: 'running' })
+    expect(call(spawn(), promptOnly)).toMatchObject({ state: 'ok' })
+    // Model-facing stream prose is not an activation result either.
+    expect(call(spawn({ result: { text: 'started subagent child-1', isError: false, endedAt: NOW - 2_900 } }), child('running'))).toMatchObject({ state: 'ok' })
     // Only a call that is running or done reads as its child; a failed call keeps its own failure.
     expect(call(spawn({ result: { text: 'boom', isError: true, endedAt: NOW - 2_900 } }), child('running'))).toMatchObject({ state: 'error' })
+  })
+})
+
+describe('question calls the user answered', () => {
+  const questions = (answers: unknown, extra: Record<string, unknown> = {}): TranscriptEntryModel => tool({
+    name: 'ask_user_question', family: 'other', activity: 'questions', detail: '',
+    arguments: JSON.stringify({ questions: [{ id: 'q1', header: 'Which database?' }, { id: 'q2', header: 'Region' }, { id: 'q3' }] }),
+    result: { text: JSON.stringify({ answers }), isError: false, endedAt: 4_200 }, ...extra,
+  })
+
+  it('reads a batch of answers as what happened, aligning every answer behind its question name', () => {
+    const call = callOf(questions([
+      { id: 'q1', selected: ['postgres', 'sqlite'] },
+      { id: 'q2', custom: 'eu-west' },
+      { id: 'q3', selected: [], custom: '' },
+    ]))
+    expect(call).toMatchObject({ state: 'ok', name: 'Answered 3 questions', label: 'Answered 3 questions', outcome: ['4.2s'] })
+    expect(call.body()).toEqual({
+      rows: [
+        { lead: 'Which database?', text: 'postgres · sqlite' },
+        { lead: 'Region         ', text: 'eu-west' },
+        { lead: 'q3             ', text: '— skipped', tone: 'warning' },
+      ],
+      total: 3,
+    })
+  })
+
+  it('says one question in the singular and skips a row with nothing typed or chosen', () => {
+    const call = callOf(questions([{ id: 'q1', selected: [3, null, 'kept'], custom: 7 }]))
+    expect(call).toMatchObject({ name: 'Answered 1 question', label: 'Answered 1 question' })
+    expect(call.body()).toEqual({ rows: [{ lead: 'Which database?', text: 'kept' }], total: 1 })
+    expect(callOf(questions([{ id: 'q1', selected: 'not-a-list' }])).body()).toEqual({ rows: [{ lead: 'Which database?', text: '— skipped', tone: 'warning' }], total: 1 })
+  })
+
+  it('falls back to the answer id for a question the arguments do not name, and to an empty name without one', () => {
+    const idOnly = callOf(tool({ name: 'ask_user_question', family: 'other', activity: 'questions', arguments: JSON.stringify({ questions: 'nope' }), result: { text: JSON.stringify({ answers: [{ id: 'unknown', selected: ['x'] }] }), isError: false, endedAt: 1 } }))
+    expect(idOnly.body()).toEqual({ rows: [{ lead: 'unknown', text: 'x' }], total: 1 })
+    const nameless = callOf(questions([{ selected: ['x'] }]))
+    expect(nameless.body()).toEqual({ rows: [{ lead: '', text: 'x' }], total: 1 })
+  })
+
+  it('leaves a batch that is not the Harness answer shape a plain call', () => {
+    // No answers key, a non-array, an empty batch, and unparseable result JSON all read as the tool's own answer.
+    for (const result of ['{}', '{"answers":{}}', '{"answers":[]}', 'not json']) {
+      const call = callOf(tool({ name: 'ask_user_question', family: 'other', activity: 'questions', detail: '', result: { text: result, isError: false, endedAt: 1 } }))
+      expect(call.name).toBe('AskUserQuestion')
+      expect(call.state).toBe('ok')
+    }
+    const badArguments = callOf(tool({
+      name: 'ask_user_question', family: 'other', activity: 'questions', arguments: '{"questions":',
+      result: { text: JSON.stringify({ answers: [{ id: 'raw', selected: ['yes'] }] }), isError: false, endedAt: 1 },
+    }))
+    expect(badArguments).toMatchObject({ name: 'Answered 1 question' })
+    expect(badArguments.body()).toEqual({ rows: [{ lead: 'raw', text: 'yes' }], total: 1 })
+  })
+
+  it('does not read answers from a call that failed or was stopped', () => {
+    const failed = callOf(questions([{ id: 'q1', selected: ['x'] }], { result: { text: JSON.stringify({ answers: [{ id: 'q1', selected: ['x'] }] }), isError: true, endedAt: 1 } }))
+    expect(failed.name).toBe('AskUserQuestion')
+    expect(failed.state).toBe('error')
+    const stopped = callOf(questions([{ id: 'q1', selected: ['x'] }], { result: { text: JSON.stringify({ answers: [{ id: 'q1', selected: ['x'] }] }), isError: true, interruption: 'aborted', endedAt: 1 } }))
+    expect(stopped).toMatchObject({ state: 'cancelled', interruption: 'aborted' })
+    expect(stopped.name).toBe('AskUserQuestion')
+  })
+})
+
+describe('remaining tool-call fact shapes', () => {
+  it('highlights a settled write or edit of a file whose language it knows', () => {
+    const write = callOf(tool({ name: 'write', family: 'edit', activity: 'write', detail: 'a.ts', change: { path: 'a.ts', added: 1, removed: 0, hunks: [], hiddenLines: 0, write: { bytes: 10, lines: 1, head: ['a'] } } }))
+    expect(write.file!.content()).toEqual({ kind: 'code', head: ['a'], total: 1, language: 'typescript' })
+    const edit = callOf(tool({ name: 'edit', family: 'edit', activity: 'edit', detail: 'a.ts', change: { path: 'a.ts', added: 1, removed: 1, hunks: [{ before: 'a', after: 'b' }], hiddenLines: 0 } }))
+    expect(edit.file!.content()).toMatchObject({ kind: 'diff', language: 'typescript', hunks: [{ before: 'a', after: 'b' }] })
+  })
+
+  it('gives a question call an empty input, and a plan a rejection when its result carries no text', () => {
+    const answered = callOf(tool({
+      name: 'ask_user_question', family: 'other', activity: 'questions', arguments: JSON.stringify({ questions: [] }),
+      result: { text: JSON.stringify({ answers: [{ id: 'q', selected: ['yes'] }] }), isError: false, endedAt: 1 },
+    }))
+    expect(answered.input()).toEqual({ rows: [], total: 0 })
+    // A result with no text is not a question batch, and no feedback text in a failed plan is no revision.
+    const bare = callOf(tool({ name: 'ask_user_question', family: 'other', activity: 'questions', result: { isError: false, endedAt: 1 } }))
+    expect(bare.name).toBe('AskUserQuestion')
+    const plan = callOf(tool({ name: 'exit_plan_mode', activity: 'plan', family: 'other', detail: '', terminal: undefined, arguments: JSON.stringify({ plan: '1. a' }), result: { isError: true, endedAt: 1 } }))
+    expect(plan).toMatchObject({ state: 'error', name: 'Plan rejected', outcome: ['1 step', undefined] })
+  })
+
+  it('settles a spawn on a child that reports no end without an end time of its own', () => {
+    const entry = tool({
+      name: 'subagent', family: 'agent', activity: 'subagents', detail: 'Audit', arguments: '{}', startedAt: NOW - 3_000,
+      result: { text: JSON.stringify({ kind: 'activation', subagentId: 'child-1' }), isError: false },
+    })
+    const call = callsOf(entry, t, NOW, { asked: new Map(), decided: new Map(), children: { byId: new Map([['child-1', { state: 'settled', failed: false }]]) } })[0]!
+    expect(call).toMatchObject({ state: 'ok', phase: 'settled', outcome: [undefined, undefined] })
+    expect(call).not.toHaveProperty('endedAt')
+  })
+
+  it('draws a short streaming edit without a row that says what is above it', () => {
+    const row = blockAt(callOf(liveFile('edit', '{"file_path":"notes","old_string":"a","new_string":"b"')), 'standard')
+    expect(row.diff).toBeDefined()
+    expect(row).not.toHaveProperty('moreBefore')
   })
 })

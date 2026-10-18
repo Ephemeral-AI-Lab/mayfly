@@ -84,6 +84,24 @@ describe('ViewsLane registration and the status-row entries', () => {
     expect(lane.panel(40)).toBeUndefined()
   })
 
+  it('treats a fresh summary of equal content as no change at all', () => {
+    const { lane, calls } = harness()
+    const a = view(lane, 'a')
+    const before = lane.statusEntries()[0]!
+    const revision = lane.revision
+    calls.length = 0
+    // A view that rebuilds its summary every tick hands the lane a fresh, equal tree.
+    a.registration.setSummary(summary('a'))
+    expect(lane.revision).toBe(revision)
+    expect(lane.statusEntries()[0]!.revision).toBe(before.revision)
+    expect(calls).toEqual([])
+    // A truly changed node is still a change.
+    a.registration.setSummary(summary('changed'))
+    expect(lane.revision).toBeGreaterThan(revision)
+    expect(lane.statusEntries()[0]!.revision).toBeGreaterThan(before.revision)
+    expect(calls).toContain('render')
+  })
+
   it('breaks priority ties by id whichever registered first, and counts its changes', () => {
     const { lane } = harness()
     const before = lane.revision
@@ -234,10 +252,10 @@ describe('ViewsLane painting', () => {
     view(lane, 'jobs', { priority: 2 })
     view(lane, 'goal', { priority: 3 })
     lane.enter('jobs')
-    expect(plain(lane.panel(60))).toEqual(['jobs body'])
-    expect(lane.component.render(60)).toHaveLength(1)
+    expect(plain(lane.panel(60)).filter(row => row !== '')).toEqual(['jobs body'])
+    expect(plain(lane.component.render(60)).filter(row => row !== '')).toHaveLength(1)
     lane.switchView(-1)
-    expect(plain(lane.panel(60))).toEqual(['one', 'two'])
+    expect(plain(lane.panel(60)).filter(row => row !== '')).toEqual(['one', 'two'])
   })
 
   it('shows the lane at most a third of the terminal, at least four rows, and names the rows it cuts', () => {

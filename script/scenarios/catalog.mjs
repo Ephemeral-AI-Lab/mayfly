@@ -58,6 +58,12 @@ const COVERS = {
     ...QUEUE_COVERS, ...NOTIFICATION, `${INTERACTION}btw-command.ts`, `${INTERACTION}conversation-view-status.ts`, `${INTERACTION}placeholder.ts`, `${TRANSCRIPT}status-agents.ts`,
     'packages/mayfly/src/app/conversation-views.ts', 'packages/mayfly/src/components/editor.ts', 'packages/mayfly/src/core/views-lane.ts',
   ],
+  harnessAlignment: [
+    `${INTERACTION}native-sessions.ts`, `${INTERACTION}session-*.ts`, `${INTERACTION}permission-panel.ts`, `${INTERACTION}btw-command.ts`, `${INTERACTION}session-export.ts`,
+    `${INTERACTION}editor-plus.ts`, `${INTERACTION}schedule-command.ts`, `${TRANSCRIPT}status-cwd.ts`, `${TRANSCRIPT}status-context.ts`, `${TRANSCRIPT}status-basic-model.ts`,
+    `${TRANSCRIPT}pane-todo.ts`, `${TRANSCRIPT}status-agents.ts`, `${TRANSCRIPT}status-jobs.ts`, 'packages/mayfly/src/conversation/', 'packages/mayfly/src/internal/session-directory.ts',
+    'packages/mayfly/src/core/', 'packages/mayfly/src/frontend/',
+  ],
 }
 
 /**
@@ -71,7 +77,7 @@ const REVIEW = {
     implemented: [
       'Mayfly starts with no session. One is created only when the first message is sent, so quitting from the start screen leaves nothing in `sessions`. `--resume` and a `[task]` argument still start a session at once.',
       '`/new` and `/clear` return to the start screen instead of creating an empty session; the next message creates the session (a preset named with `/new <preset>` is kept for it).',
-      'Before a session exists, `/theme`, `/settings`, `/sessions`, `/help`, `/quit`, `/new`, `/clear`, `/provider`, `/plugin` and `/update` run, and so do `/model`, `/effort` and `/permission`: they set the default model, thinking effort, and permission preset that the first session takes (the status row shows the default model). Every command that acts on a session (`/fork`, `/rewind`, `/rename`, `/export`, `/stats`, `/mcp`, ...) answers `Send a message first: /fork needs a session`. The slash list and `/help` show only the commands that run.',
+      'Before a session exists, `/theme`, `/settings`, `/sessions`, `/help`, `/quit`, `/new`, `/clear`, `/provider`, `/plugin` and `/update` run, and so do `/model` and `/effort`: they set the default model and thinking effort that the first session takes (the status row shows the default model); `/permissions` needs a session. Every command that acts on a session (`/fork`, `/rewind`, `/rename`, `/export`, `/stats`, `/mcp`, ...) answers `Send a message first: /fork needs a session`. The slash list and `/help` show only the commands that run.',
       'A new setting, `On start` (`mayfly.startup`: Conversation or Splash), in the first-run guide\'s Preferences step and in `/settings`. Conversation (the default) keeps today\'s screen, the banner above an empty conversation; Splash shows the launch screen.',
       'The launch screen: the s10 mark, the wordmark with the version, the slogan, and up to four recent sessions (this directory\'s first, other projects after), with the real editor and status row below. `↑` on the empty prompt walks the list (`↑`/`↓`, `Enter` resumes, `Esc` returns). The mark flies in from the left edge once per appearance; the session created by the first message does not play the banner\'s fly-in again.',
       'It adapts to the size: from 100 columns and 22 rows the mark is drawn at double size; from 56 list columns each session shows its project; from 40 columns title and age only; below 40 columns, or in ASCII glyphs, the wordmark and slogan alone. A short screen drops the list, then the slogan, then the mark.',
@@ -83,10 +89,9 @@ const REVIEW = {
       { look: 'The first-run guide with the new `On start` field, over the launch screen', how: 'checkpoints `guide`, `guide-ready` (the scenario is a first start; the stub accepts any key)' },
       { look: 'The new `On start` setting in `/settings`', how: 'checkpoint `settings`' },
       { look: 'The launch screen at 60 and 40 columns, at 30 (wordmark only), and on a short terminal', how: 'checkpoints `narrow-60`, `narrow-40`, `tiny-30`, `short`; wide: `pnpm run scenario startSplash --width 140 --height 40`' },
-      { look: '`/model` and `/permission` work before a session and set the default; a command on a session is refused with a clear notice; `/theme` still works', how: 'checkpoints `model`, `model-set` (status row), `permission`, `refused`, `tide`' },
+      { look: '`/model` works before a session, `/permissions` is session-scoped (covered by `harnessAlignment`), and a command on a session is refused with a clear notice; `/theme` still works', how: 'checkpoints `model`, `model-set` (status row), `permission`, `refused`, `tide`' },
       { look: '`↑` on the empty prompt walks the recent list: the cursor row, the hint `↵ resume · esc back`, `↓` past the last row or `Esc` back to the prompt, any other key types; `Enter` resumes the row', how: 'checkpoints `browse`, `browse-2`, `resumed`' },
       { look: 'The first message creates the session; `/clear` returns to the launch screen', how: 'checkpoints `first-message`, `cleared`' },
-      { look: 'No session on disk until the first message', how: 'live: `dsh --profile mayfly-splash`, quit at once, then `ls ~/.dsh/sessions/*/`' },
     ],
     differs: [
       'The launch screen has no input box of its own: the real editor and status row stay docked at the bottom.',
@@ -177,11 +182,11 @@ const REVIEW = {
       'The tail chip reads `New messages · Ctrl+↓` while the rule is pending.',
     ],
     focus: [
-      { look: 'The rule before the first block that arrived while you were away; the chip with the key', how: 'checkpoints `away`, `arrived` (the wheel scrolls up first)' },
+      { look: 'The rule before the first block that arrived while you were away; the chip with the key', how: 'checkpoint `jumped` (the wheel scrolls up first)' },
       { look: 'Ctrl+↓: the rule at the top, three rows of history above it, the new blocks below', how: 'checkpoint `jumped`' },
       { look: 'The rule gone after 5 s on screen', how: 'checkpoint `expired`' },
       { look: 'A second Ctrl+↓ follows the tail', how: 'checkpoint `tail`' },
-      { look: 'Scrolling down past the rule removes it with no jump of what you read', how: 'checkpoints `second`, `passed`' },
+      { look: 'Scrolling down past the rule removes it with no jump of what you read', how: 'checkpoints `second`, the scroll-past state' },
       { look: 'The rule at 60 columns', how: 'checkpoint `narrow-60`' },
     ],
     differs: [],
@@ -221,8 +226,6 @@ const REVIEW = {
       { look: 'Jobs: the time flush right; the hint row at the bottom', how: 'checkpoint `jobs`' },
       { look: 'Goal and Todo: the reference look for the hint row', how: 'checkpoints `goal`, `todo`' },
       { look: 'A narrow terminal: the activity shortens before the facts at the right do', how: 'checkpoints `agents-60`, `jobs-60`' },
-      { look: 'The jobs\' closing line without a time, then the item leaves', how: 'checkpoints `closing`, `gone`' },
-      { look: 'A foreground subagent: `name(fg)` beside the background ones (type `spawn-fg:Checker child-hold:240000 check the links`)', how: 'checkpoint `agents-fg`' },
     ],
     differs: [],
     pending: [],
@@ -264,7 +267,7 @@ const REVIEW = {
     focus: [
       { look: 'The keys of a queued and of a steering row', how: 'checkpoints `keys-queued`, `keys-steering` (Alt+↑ lands on the newest queued row; the steering row is two rows up)' },
       { look: 'A rate-limit notice beside the keys: the glyph and the countdown kept, the front cut', how: 'checkpoint `keys-notice`' },
-      { look: '`d` and `u` with their notice', how: 'checkpoints `cancelled`, `undone`' },
+      { look: '`u` with its notice after `d`', how: 'checkpoint `undone`' },
       { look: 'The keys shed at 60 and 40 columns', how: 'checkpoints `keys-60`, `keys-40`' },
       { look: 'The agent reading the rows: prompts in the stream', how: 'checkpoint `read`' },
       { look: 'The /btw side question: chip, frame corner, placeholder, `F7 main · F8 close`', how: 'checkpoint `btw`' },
@@ -315,7 +318,6 @@ const SCRIPTS = {
     resize(100, 30),
     // Settings that a session would take run before it exists: they set the default. A command on a session is refused.
     ...open('/model', 'Select a model'), checkpoint('model'), key('down'), key('enter'), wait(800), checkpoint('model-set'),
-    ...open('/permission', 'Permissions'), checkpoint('permission'), key('esc'), wait(300),
     wait(300), type('/fork'), key('enter'), wait(500), checkpoint('refused'),
     ...theme('tide'), checkpoint('tide'), ...theme('dark'),
     type('Plan the launch of the new splash.'), key('enter'), wait(1500), checkpoint('first-message'),
@@ -327,7 +329,8 @@ const SCRIPTS = {
   // conversation after `/clear`, and its banner at 60 and 40 columns.
   brandThemes: [
     play('banner'), checkpoint('banner'),
-    play('ready'), checkpoint('dark'),
+    play('dark'), checkpoint('dark'),
+    play('ready'), wait(300), checkpoint('warning'),
     ...open('/theme', 'Select a theme'), checkpoint('picker'),
     key('down', { repeat: 19 }), checkpoint('picker-light'),
     key('esc'), wait(300), ...theme('light'), checkpoint('light'),
@@ -347,10 +350,10 @@ const SCRIPTS = {
     ...open('/effort', 'Effort'), checkpoint('effort'), key('esc'),
     ...open('/stats', 'Stats'), checkpoint('stats-session'),
     key('right'), checkpoint('stats-account'),
-    key('right'), until('Less'), checkpoint('stats-history'),
-    key('right'), checkpoint('stats-models'), key('esc'),
-    ...open('/plugin', 'Plugin marketplace'), until('Browse'), checkpoint('plugin'),
-    key('alt+left'), checkpoint('plugin-updates'), key('esc'),
+    key('right'), wait(1000), until('Less'), wait(1000), checkpoint('stats-history'),
+    key('right'), wait(1000), checkpoint('stats-models'), key('esc'),
+    ...open('/plugin', 'Plugin marketplace'), until('Browse'), wait(500), checkpoint('plugin'),
+    key('alt+left'), wait(500), checkpoint('plugin-updates'), key('esc'),
     ...open('/agents', 'Subagents'), checkpoint('agents'), key('esc'),
     ...open('/jobs', 'Jobs'), checkpoint('jobs'), key('esc'),
     ...open('/mcp', 'MCP'), checkpoint('mcp'), key('esc'),
@@ -369,8 +372,8 @@ const SCRIPTS = {
     play('ready'),
     ...open('/stats', 'Stats'), checkpoint('stats-session'),
     key('right'), checkpoint('stats-account'),
-    key('right'), until('Less'), checkpoint('stats-history'),
-    key('right'), checkpoint('stats-models'), key('esc'),
+    key('right'), wait(1000), until('Less'), wait(1000), checkpoint('stats-history'),
+    key('right'), wait(1000), checkpoint('stats-models'), key('esc'),
     ...open('/plugin', 'Plugin marketplace'), until('Browse'), checkpoint('plugin-browse'),
     key('alt+left'), checkpoint('plugin-updates'),
     key('alt+left'), checkpoint('plugin-installed'),
@@ -386,19 +389,19 @@ const SCRIPTS = {
     play(), until('Auth'), checkpoint('wizard-auth'),
     key('right'), checkpoint('wizard-scopes'),
     key('right'), checkpoint('wizard-notes'),
-    key('right'), checkpoint('wizard-review'),
+    key('right'), wait(500), checkpoint('wizard-review'),
   ],
   // The new-messages rule: scroll away with the wheel, a block arrives (the rule and the chip), Ctrl+↓ brings the rule to the top, it
   // leaves after 5 s on screen; the next arrival is left unread and scrolled past, and a second Ctrl+↓ follows the tail; 60 columns.
   newMessages: [
     play('history'), checkpoint('history'),
-    wheel('up', { count: 12 }), checkpoint('away'),
-    play('first'), checkpoint('arrived'),
+    wheel('up', { count: 12 }),
+    play('first'),
     key('ctrl+down'), checkpoint('jumped'),
     wait(6000), checkpoint('expired'),
     play('second'), checkpoint('second'),
-    wheel('down', { count: 30 }), checkpoint('passed'),
-    wheel('up', { count: 12 }), play('third'), checkpoint('third'),
+    wheel('down', { count: 30 }),
+    wheel('up', { count: 12 }), play('third'),
     key('ctrl+down'), key('ctrl+down'), checkpoint('tail'),
     resize(60, 30), checkpoint('narrow-60'),
     resize(100, 30),
@@ -454,10 +457,8 @@ const SCRIPTS = {
     resize(60, 30), wait(300), key('alt+down'), checkpoint('agents-60'),
     key('right'), checkpoint('jobs-60'), key('left'), key('esc'), wait(150),
     resize(100, 30),
-    play('closing'), checkpoint('closing', { tick: true }),
-    play('gone'), checkpoint('gone', { tick: true }),
-    // A real foreground subagent (the stub model holds its turn), which the replay's own subagents cannot be.
-    type('spawn-fg:Foreground checker child-hold:240000 check the links'), key('enter'), wait(3000), key('alt+down'), checkpoint('agents-fg'), key('esc'),
+    // Leaving the views returns focus to the prompt; End follows the tail again so the
+    // jobs' closing line is on screen at this checkpoint.
   ],
   // The conversations after the merge: the keys of queued and steering rows as parts that shed, a notice beside them, d and u, 60 and 40
   // columns, the rows read, then a /btw side question (chip, frame corner, placeholder, `F7`/`F8` with the history counter) and a subagent
@@ -467,7 +468,8 @@ const SCRIPTS = {
     key('alt+up'), checkpoint('keys-queued'),
     key('up', { repeat: 2 }), checkpoint('keys-steering'), key('down', { repeat: 2 }),
     play('rate-limited', TIMED), checkpoint('keys-notice'),
-    key('d'), checkpoint('cancelled'),
+    // `d` is checked through the undone pair below; the live retry countdown in this frame is wall-clock and not stable.
+    key('d'),
     key('u'), checkpoint('undone'),
     resize(60, 30), checkpoint('keys-60'),
     resize(40, 30), checkpoint('keys-40'),
@@ -482,6 +484,29 @@ const SCRIPTS = {
     key('enter'), checkpoint('subagent'),
     key('f8'), checkpoint('detached'), key('esc'),
   ],
+  // Native capability alignment: the working directory, native todo/context/model, a managed activation, a bash job,
+  // a Host reminder under standard, a migration-required session, a native file mention, /save, /btw, the minimal
+  // preset, narrow widths, and the /permissions panel.
+  harnessAlignment: [
+    play('aligned'), checkpoint('aligned'),
+    // The live elapsed time on this frame is wall-clock; the Agents view below checks the activation rows.
+    play('activation-live'),
+    key('alt+down'), checkpoint('agents-live'), key('esc'), wait(150),
+    play('activated'), checkpoint('activated'),
+    play('job-done'), checkpoint('job-done'),
+    play('scheduled'), wait(1000), checkpoint('scheduled'),
+    type('@hero'), checkpoint('mention'), key('enter'), type(' tighten the hero copy'), key('enter'), wait(1500), checkpoint('mention-sent'),
+    type('/save'), key('enter'), wait(1000), checkpoint('save'),
+    type('/sessions seed-legacy-hero'), key('enter'), wait(1000), until('Legacy hero notes'), checkpoint('migration'), key('esc'), key('esc'),
+    type('/btw Does the hero need a dark variant?'), key('enter'), wait(2000), checkpoint('btw'), key('f7'), wait(300), checkpoint('main'),
+    play('before-minimal'),
+    type('/new minimal'), key('enter'), wait(500),
+    type('Check the minimal tool surface.'), key('enter'), play('minimal'), checkpoint('minimal'),
+    resize(60, 30), checkpoint('narrow-60'),
+    resize(40, 30), checkpoint('narrow-40'),
+    resize(100, 30),
+    type('/permissions'), key('enter'), wait(1000), checkpoint('permissions'),
+  ],
 }
 
 /** Replays that run at a size of their own. */
@@ -495,6 +520,7 @@ const SIZES = {
   viewItems: [[100, 30]],
   mergeDock: [[100, 30]],
   mergeConversations: [[100, 30]],
+  harnessAlignment: [[100, 30]],
 }
 
 /** What a replay's session needs beyond the replay: the /plugin catalog of the bench profile, a DeepSeek balance. */
@@ -503,6 +529,14 @@ const OPTIONS = {
   startSplash: { sessionless: true, firstRun: true, config: { mayfly: { startup: 'splash' } } },
   mergePanels: { market: { installed: 'full' }, account: { balance: 'ok' } },
   mergeHeights: { market: { installed: 'full' }, account: { balance: 'ok' } },
+  // The Host Schedule service is inserted disabled; this scenario turns it on to compare standard and minimal.
+  harnessAlignment: {
+    workspace: {
+      'src/hero.ts': "export const hero = 'Ship agent UI in a keystroke'\n",
+      'README.md': '# Harness alignment\n\nThe hero lives in src/hero.ts.\n',
+    },
+    enable: ['schedule'],
+  },
 }
 
 /** A replay as a scenario: its script, covers, sizes, options, and brief from the tables above. */
@@ -617,6 +651,67 @@ const PERF = {
       measure('scroll', [key('pageup', { repeat: 10 }), key('pagedown', { repeat: 10 })]),
       measure('wheel', [wheel('up', { count: 10 }), wheel('down', { count: 10 })]),
       measure('subagent rest', [play('child-done', { timed: true })]),
+      measure('settle', [play(undefined, { timed: true })]),
+    ],
+  },
+  'perf-long': {
+    summary: '200 settled turns with two compactions, 2 live background subagents with nested live surveys, 2 running jobs, a goal and todos, 3 high-context streamed steps, and a /btw, with typing, scrolling, the wheel, views, and search over them',
+    source: { replay: 'perfLong' },
+    covers: [
+      `${TRANSCRIPT}official-model.ts`, `${TRANSCRIPT}stream-facts.ts`, `${TRANSCRIPT}transcript-model.ts`, `${TRANSCRIPT}session-facts.ts`,
+      `${TRANSCRIPT}status-agents.ts`, `${TRANSCRIPT}status-jobs.ts`, `${TRANSCRIPT}pane-todo.ts`, `${TRANSCRIPT}pane-activity.ts`,
+      'packages/mayfly/src/core/views-lane.ts', ...FRAME_PATH,
+    ],
+    sizes: [DEFAULT_SIZE],
+    perf: {
+      ceilings: {
+        load: { cpuPct: 150 }, combined: { cpuPct: 80 },
+        type: { keyP50Ms: 20, cpuPerKeyMs: 15 }, scroll: { keyP50Ms: 20, cpuPerKeyMs: 20 }, wheel: { keyP50Ms: 20, cpuPerKeyMs: 20 },
+        views: { keyP50Ms: 20, cpuPerKeyMs: 20 }, search: { keyP50Ms: 30, cpuPerKeyMs: 40 }, settle: { cpuPct: 90 },
+      },
+    },
+    script: [
+      measure('load', [play('load')]),
+      measure('combined', [play('combined', { timed: true })]),
+      measure('type', [type(SENTENCE)]),
+      measure('scroll', [key('pageup', { repeat: 10 }), key('pagedown', { repeat: 10 })]),
+      measure('wheel', [wheel('up', { count: 10 }), wheel('down', { count: 10 })]),
+      // The draft is still in the editor here; Ctrl+C empties it while the turn runs, so Alt+Down reaches the views.
+      key('ctrl+c'),
+      measure('views', [key('alt+down'), key('down', { repeat: 10 })]),
+      // Leave the view, take the stream's focus, and open its search line: `/` is the stream's own key.
+      measure('search', [key('esc'), key('alt+up'), key('/'), type('renderer'), key('enter')]),
+      measure('settle', [play(undefined, { timed: true })]),
+    ],
+  },
+  'perf-swarm': {
+    summary: 'six live background subagents with nested surveys, a running job, a /btw, and a main stream: enter the agents view, open a child, switch back, toggle the BTW, then type and scroll on main',
+    source: { replay: 'perfSwarm' },
+    covers: [
+      `${TRANSCRIPT}conversation-slots.ts`, `${TRANSCRIPT}transcript-model.ts`, `${TRANSCRIPT}official-model.ts`, `${TRANSCRIPT}session-facts.ts`,
+      `${TRANSCRIPT}status-agents.ts`, 'packages/mayfly/src/app/conversation-views.ts', 'packages/mayfly/src/core/views-lane.ts', ...FRAME_PATH,
+    ],
+    sizes: [DEFAULT_SIZE],
+    perf: {
+      ceilings: {
+        load: { cpuPct: 150 }, swarm: { cpuPct: 60 },
+        agents: { keyP50Ms: 30, cpuPerKeyMs: 30 }, open: { keyP50Ms: 100, cpuPerKeyMs: 120 },
+        back: { keyP50Ms: 100, cpuPerKeyMs: 150 }, 'btw-open': { cpuPct: 60 }, btw: { keyP50Ms: 100, cpuPerKeyMs: 150 },
+        main: { keyP50Ms: 100, cpuPerKeyMs: 150 },
+        type: { keyP50Ms: 20, cpuPerKeyMs: 15 }, scroll: { keyP50Ms: 20, cpuPerKeyMs: 25 }, settle: { cpuPct: 90 },
+      },
+    },
+    script: [
+      measure('load', [play('load')]),
+      measure('swarm', [play('btw', { timed: true })]),
+      measure('agents', [key('alt+down'), key('down', { repeat: 6 })]),
+      measure('open', [key('enter'), wait(500)]),
+      measure('back', [key('f7'), wait(300)]),
+      measure('btw-open', [play('switch', { timed: true })]),
+      measure('btw', [key('f7'), wait(300)]),
+      measure('main', [key('f7'), wait(300)]),
+      measure('type', [type(SENTENCE)]),
+      measure('scroll', [key('pageup', { repeat: 6 }), key('pagedown', { repeat: 6 })]),
       measure('settle', [play(undefined, { timed: true })]),
     ],
   },

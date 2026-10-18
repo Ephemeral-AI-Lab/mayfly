@@ -22,7 +22,8 @@ import {
   type OnboardingConnectChoice, type OnboardingFacts, type OnboardingLabels, type OnboardingPresetRow, type OnboardingStepId,
 } from '../components/onboarding-wizard.ts'
 import { deriveKeyRef } from './provider-profile.ts'
-import { ACCOUNT_SETTINGS_NS } from './provider-account.ts'
+import { accountRoute } from './provider-account.ts'
+import { providerDescriptor, providerDirectory, providerProfileAt } from './provider-store.ts'
 import { startSignIn, type SignInEnd, type SignInFlow, type SignInSnapshot } from './account-sign-in.ts'
 import { openModelPicker } from './model-commands.ts'
 import { openUiOverlay } from './ui-overlay.ts'
@@ -40,18 +41,15 @@ export const inject = ['credentials', 'mayflyOverlays', 'mayflyInteractionState'
 function credentialRefs(ctx: Context): string[] {
   const refs = new Set([DEEPSEEK_KEY])
   for (const provider of ctx.get('llm')?.listProviders() ?? []) refs.add(deriveKeyRef(provider.id))
-  const section = ctx.get('settings')?.describe().find(item => String(item.ns) === 'llm-pi-ai')?.value
-  const providers = section !== null && typeof section === 'object' ? (section as { readonly providers?: unknown }).providers : undefined
-  if (providers !== null && typeof providers === 'object') for (const profile of Object.values(providers)) {
-    const ref = profile !== null && typeof profile === 'object' ? (profile as { readonly apiKeyEnv?: unknown }).apiKeyEnv : undefined
-    if (typeof ref === 'string' && ref.length > 0) refs.add(ref)
+  const settings = ctx.get('settings')
+  if (settings !== undefined) {
+    for (const entry of providerDirectory(ctx)) {
+      const descriptor = providerDescriptor(settings, entry.settingsNs)
+      const profile = descriptor === undefined ? undefined : providerProfileAt(descriptor.value, entry.settingsPath)
+      if (typeof profile?.apiKeyEnv === 'string' && profile.apiKeyEnv.length > 0) refs.add(profile.apiKeyEnv)
+    }
   }
   return [...refs]
-}
-
-/** The account adapter's provider route, when the composition carries it. */
-function accountRoute(ctx: Context): string | undefined {
-  return ctx.get('llm')?.listConfigurableProviders().find(item => item.settingsNs === ACCOUNT_SETTINGS_NS)?.provider
 }
 
 /** Whether a stored account grant already connects the user. */
@@ -87,9 +85,7 @@ export function apply(ctx: Context): void {
     const signInRoute = discoveredRoute !== undefined && ctx.get('deepseekAccount') !== undefined ? discoveredRoute : undefined
     /** Stable snapshot stamp: the guide's republishes confirm the same snapshot. */
     const stamp: readonly MayflySourceStamp[] = [{ resourceId: 'provider-onboarding', revision: 0 }]
-    const commands = ctx.get('commands')
-    /* the permission field needs both the preset table and the command runtime; without them the first step has the language and theme only */
-    const presets = commands === undefined ? undefined : ctx.get('permissionPresets') as PermissionPresetsService | undefined
+    const presets = ctx.get('permissionPresets') as PermissionPresetsService | undefined
 
     /* what the guide has done so far; it outlives each republished node */
     const state = {
@@ -172,8 +168,9 @@ export function apply(ctx: Context): void {
       if (presets === undefined) return undefined
       /* no session exists yet at a first start: the choice is the default the first session takes */
       const agent = currentAgent()
-      const current = agent === null ? presets.defaultPreset : presets.current(agent.session)
-      return presets.names.map(preset => ({ id: preset, label: presets.optionOf(preset).name, current: preset === current }))
+      const catalog = presets.catalog()
+      const current = agent === null ? catalog.defaultPreset : presets.current(agent.session)
+      return catalog.defaultOptions.map(option => ({ id: option.value, label: option.name, current: option.value === current }))
     }
 
     const summary = (): OnboardingFacts['summary'] => [
@@ -304,7 +301,7 @@ export function apply(ctx: Context): void {
     }
 
     /** Enter on the first step: the language and theme (already applied as they were switched) are confirmed, and the preset is written. */
-    const settlePreferences = async (submission: MayflySubmission, signal: AbortSignal): Promise<MayflyUiActionReply> => {
+    const settlePreferences = async (submission: MayflySubmission): Promise<MayflyUiActionReply> => {
       const chosenLanguage = LANGUAGES.find(item => item.id === fieldValue(submission, ONBOARDING_PREFERENCES_FORM, 'language'))
       const chosenTheme = THEMES.find(key => key === fieldValue(submission, ONBOARDING_PREFERENCES_FORM, 'theme'))
       /* the selects reject unknown options; this guards a forged submission */
@@ -323,17 +320,15 @@ export function apply(ctx: Context): void {
       baseline.startup = chosenStartup
       await commitStartup(ctx, chosenStartup)
       const chosen = fieldValue(submission, ONBOARDING_PREFERENCES_FORM, ONBOARDING_PERMISSION_FIELD)
-      if (presets !== undefined && commands !== undefined && typeof chosen === 'string') {
+      if (presets !== undefined && typeof chosen === 'string') {
+        const catalog = presets.catalog()
         const agent = currentAgent()
-        if (!presets.names.includes(chosen)) return { kind: 'failed', message: t('permission command is unavailable') }
+        if (!catalog.defaultOptions.some(option => option.value === chosen)) return { kind: 'failed', message: t('permission command is unavailable') }
         /* the default every later session takes; a session already open is switched below */
-        if (chosen !== presets.defaultPreset) await persist(ctx, 'permission', { op: 'set', path: ['defaultPreset'], value: chosen })
+        if (chosen !== catalog.defaultPreset) await persist(ctx, 'permission', { op: 'set', path: ['defaultPreset'], value: chosen })
         if (agent !== null && chosen !== presets.current(agent.session)) {
           try {
-            const execution = await commands.execute(agent, `/permission ${chosen}`, [], signal)
-            if (signal.aborted) return { kind: 'cancelled' }
-            if (execution === undefined) return { kind: 'failed', message: t('permission command is unavailable') }
-            if (execution.result.kind === 'error') return { kind: 'failed', message: execution.result.text ?? t('permission command is unavailable') }
+            presets.set(agent.session, chosen)
           } catch (error) {
             return { kind: 'failed', message: t('permission dispatch failed: {error}', { error: error instanceof Error ? error.message : String(error) }) }
           }
@@ -450,7 +445,7 @@ export function apply(ctx: Context): void {
           }
           if (event.kind !== 'submit') return { kind: 'completed' }
           switch (event.pagePath[0]?.itemId) {
-            case ONBOARDING_PREFERENCES: return settlePreferences(event.submission, context.signal)
+            case ONBOARDING_PREFERENCES: return settlePreferences(event.submission)
             case ONBOARDING_CONNECT: return settleConnect(event.submission, context.signal)
             /* Ready: the last step's Enter submits, and the guide is done */
             default: return { ...stay(), dismiss: true }

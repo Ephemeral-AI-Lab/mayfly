@@ -1,14 +1,16 @@
-/** Pure `/sessions` rows and detail sheets over native session summaries:
- * the session name, wall-clock span, token total, and path come from the
- * listing's projection hints plus the stored session header.
+/** Pure `/sessions` rows and detail sheets over native Session Controller
+ * summaries: the name, activity, tokens, and model come from the listing's
+ * projection hints, and the detail sheet may replace them with one exact
+ * projection read. Harness owns the session header, log, and projections.
  * @module @ephemeral-ai/mayfly/interaction/session-list-model
  */
-import type { SessionProjectionBaseline, SessionSummary } from '@deepseek-ai/dsh-api-session-controller'
-import type { SessionHeader } from '@deepseek-ai/dsh-session'
+import type { SessionProjectionValues, SessionSummary } from '@deepseek-ai/dsh-api-session-controller'
 import type { SessionStatsProjection } from '@deepseek-ai/dsh-session-stats'
+// Empty type imports carry the projection declarations read below.
+import type {} from '@deepseek-ai/dsh-agent-preset-registry'
+import type {} from '@deepseek-ai/dsh-session-title'
 import type {} from '@deepseek-ai/dsh-token-meter'
 import { ui, type MayflyField, type MayflyInlineSpan, type MayflyListItem, type MayflyTone, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
-import type {} from '../conversation/types.ts'
 import type { MayflyTranslate } from '../frontend/locale.ts'
 import { shortenCwd } from '../transcript/status-cwd.ts'
 import { formatCreated } from './session-info-model.ts'
@@ -24,16 +26,17 @@ export interface SessionListFacts {
   /** Native session title; absent before the title service names the session. */
   readonly title?: string
   readonly cwd?: string
-  /** Header creation time; absent when the header listing is unavailable. */
-  readonly createdAt?: number
-  /** Latest human prompt, settled turn, or — while running — the listing time. */
+  /** Latest human prompt from the listing metadata, or the running time. */
   readonly lastActiveAt?: number
   readonly running: boolean
   readonly archived: boolean
   readonly current: boolean
   readonly reminders: boolean
+  /** The stored log predates the current Session format; absent reads as false. */
+  readonly migrationRequired?: boolean
   readonly parentId?: string
   readonly origin?: 'subagent'
+  /** Preset projection, when the deployment composes presets. */
   readonly preset?: string
   /** Cumulative provider usage; absent when the listing carries no cached value. */
   readonly tokens?: TokenBuckets
@@ -44,9 +47,11 @@ export interface SessionListFacts {
 
 /** Listing-time context the summary itself does not carry. */
 interface SessionListContext {
-  readonly header?: SessionHeader | undefined
-  readonly title?: string | null | undefined
-  readonly projections?: SessionProjectionBaseline | undefined
+  /**
+   * Exact projections from one detail read, or undefined to use the summary's
+   * listing hints. A migration-required read carries cached values only.
+   */
+  readonly values?: SessionProjectionValues | undefined
   readonly archived: boolean
   readonly current: boolean
   /** Sessions with at least one active Host reminder; absent without Schedule. */
@@ -58,39 +63,36 @@ interface SessionListContext {
 /**
  * Project one native session summary into display facts.
  * @param summary - the session-controller list row.
- * @param context - header, archive, current-session, and time context.
+ * @param context - exact projections, archive, current-session, and time context.
  * @returns the display facts.
  */
 export function sessionListFacts(summary: SessionSummary, context: SessionListContext): SessionListFacts {
-  const values = context.projections?.values ?? summary.projections?.values
-  const title = (context.projections?.values.title !== undefined
-    ? context.projections.values.title
-    : context.title === undefined ? values?.title : context.title)?.trim()
-  // Native updatedAt falls back to creation on a cache miss. Only a later
-  // value establishes activity independently of the optional metadata cell.
-  const promptedAt = values?.sessionListMetadata?.lastPromptAt
-    ?? (context.header !== undefined && summary.updatedAt > context.header.createdAt ? summary.updatedAt : 0)
-  const usage = values?.tokenUsage
-  const model = values?.modelSelection?.lastUsed ?? values?.modelSelection?.next ?? undefined
-  const settledAt = values?.mayflyConversationFacts?.endedAt ?? 0
-  const cwd = summary.cwd ?? context.header?.cwd
+  const values: SessionProjectionValues = { ...summary.projections?.values, ...context.values }
+  const title = values.title?.trim()
+  const metadata = values.sessionListMetadata
+  const stats = values.sessionStats
+  const promptedAt = metadata?.lastPromptAt
+    ?? (stats !== undefined && stats.turns > 0 ? summary.updatedAt : undefined)
+  const usage = values.tokenUsage
+  const model = values.modelSelection?.lastUsed ?? values.modelSelection?.next ?? undefined
+  const preset = values.agentPreset ?? undefined
+  const cwd = summary.cwd
+  const lastActiveAt = summary.running ? context.now : promptedAt
   return {
     id: String(summary.sessionId),
     ...(title === undefined || title === '' ? {} : { title }),
     ...(cwd === undefined ? {} : { cwd }),
-    ...(context.header === undefined ? {} : { createdAt: context.header.createdAt }),
-    ...(context.header?.agentPreset === undefined ? {} : { preset: context.header.agentPreset }),
-    ...(!summary.running && promptedAt === 0 && settledAt === 0 ? {} : {
-      lastActiveAt: Math.max(promptedAt, settledAt, summary.running ? context.now : 0),
-    }),
+    ...(lastActiveAt === undefined ? {} : { lastActiveAt }),
     running: summary.running,
     archived: context.archived,
     current: context.current,
     reminders: context.reminders?.has(String(summary.sessionId)) ?? false,
+    migrationRequired: summary.formatStatus === 'migration-required',
     ...(summary.parentSessionId === undefined ? {} : { parentId: String(summary.parentSessionId) }),
     ...(summary.origin === undefined ? {} : { origin: summary.origin }),
+    ...(preset === undefined ? {} : { preset }),
     ...(usage === undefined ? {} : { tokens: { input: usage.uncachedInputTokens, cacheRead: usage.cacheReadTokens, cacheWrite: usage.cacheWriteTokens, output: usage.outputTokens } }),
-    ...(values?.sessionStats === undefined ? {} : { stats: values.sessionStats }),
+    ...(stats === undefined ? {} : { stats }),
     ...(model === undefined ? {} : { model }),
   }
 }
@@ -125,15 +127,6 @@ export function formatAgo(ms: number, t: MayflyTranslate): string {
 }
 
 /**
- * Wall-clock span from creation to the last activity.
- * @param facts - the session display facts.
- * @returns the span in milliseconds, or `undefined` without a creation time.
- */
-export function sessionSpan(facts: SessionListFacts): number | undefined {
-  return facts.createdAt === undefined || facts.lastActiveAt === undefined ? undefined : Math.max(0, facts.lastActiveAt - facts.createdAt)
-}
-
-/**
  * The row label: the session name, or `Untitled · <short id>`.
  * @param facts - the session display facts.
  * @param t - interaction translator.
@@ -144,27 +137,26 @@ export function sessionLabel(facts: SessionListFacts, t: MayflyTranslate): strin
 }
 
 /**
- * One `/sessions` list row. The detail spans lead with the span and token
- * total, then the relative age and the home-shortened path, so a narrow row
- * cuts the path first; filtering also matches the id and the full path.
+ * One `/sessions` list row. The detail spans lead with the token total, then
+ * the relative age and the home-shortened path, so a narrow row cuts the path
+ * first; filtering also matches the id and the full path.
  * @param facts - the session display facts.
  * @param now - the listing time.
  * @param home - the home directory for path shortening.
  * @param t - interaction translator.
+ * @param showCwd - include the path span (off inside one workspace).
  * @returns the list item.
  */
 export function sessionListItem(facts: SessionListFacts, now: number, home: string, t: MayflyTranslate, showCwd = true): MayflyListItem {
   const segments: MayflyInlineSpan[] = []
-  const span = sessionSpan(facts)
   const tokens = facts.tokens === undefined ? 0 : totalTokens(facts.tokens)
-  if (span !== undefined) segments.push({ text: formatDuration(span) })
   if (tokens > 0) segments.push({ text: `${formatTokens(tokens)} tok` })
   if (facts.lastActiveAt !== undefined) segments.push({ text: formatAgo(now - facts.lastActiveAt, t), tone: 'muted' })
-  else if (facts.createdAt !== undefined) segments.push({ text: `${t('Created')} ${formatAgo(now - facts.createdAt, t)}`, tone: 'muted' })
   if (showCwd && facts.cwd !== undefined) segments.push({ text: shortenCwd(facts.cwd, home), tone: 'muted' })
   const badges = [
     ...(facts.current ? [t('current')] : []),
     ...(facts.running ? [t('running')] : []),
+    ...(facts.migrationRequired ? [t('migration required')] : []),
     ...(facts.archived ? [t('archived')] : []),
     ...(facts.reminders ? [t('reminders')] : []),
   ]
@@ -193,9 +185,9 @@ function field(label: string, value: string, tone: MayflyTone = 'default'): Mayf
  */
 export function sessionDetailNode(facts: SessionListFacts, now: number, t: MayflyTranslate): MayflyUiNode {
   const unknown = '—'
-  const span = sessionSpan(facts)
   const status = [
     t(facts.running ? 'running' : 'inactive'),
+    ...(facts.migrationRequired ? [t('migration required')] : []),
     ...(facts.archived ? [t('archived')] : []),
     ...(facts.current ? [t('current')] : []),
   ].join(' · ')
@@ -207,9 +199,7 @@ export function sessionDetailNode(facts: SessionListFacts, now: number, t: Mayfl
     field(t('Status'), status, facts.running ? 'success' : 'default'),
     ...(facts.preset === undefined ? [] : [field(t('Preset'), facts.preset)]),
     ...(facts.parentId === undefined ? [] : [field(t(facts.origin === 'subagent' ? 'Parent session' : 'Forked from'), facts.parentId)]),
-    field(t('Created'), facts.createdAt === undefined ? unknown : formatCreated(facts.createdAt)),
     field(t('Last active'), facts.lastActiveAt === undefined ? unknown : `${formatCreated(facts.lastActiveAt)} (${formatAgo(now - facts.lastActiveAt, t)})`),
-    field(t('Duration'), span === undefined ? unknown : formatDuration(span)),
     field(t('Agent time'), facts.stats === undefined
       ? unknown
       : t('model {model} · tools {tools}', { model: formatDuration(facts.stats.llmMs), tools: formatDuration(facts.stats.toolMs) })),

@@ -1,15 +1,16 @@
 ## start
-grid 78x6 cursor 3,2
-|╭ Edit provider ─────────────────────────────────────────────────────────────╮
-|│ Name: production · Endpoint: https://api.example.com/v1                    │
-|│                                                                            │
-|│   [ Save ]    Copy (c)   ! Delete provider   Archive — archive it first    │
-|│   Enter run · c copy · Esc close                                           │
-|╰────────────────────────────────────────────────────────────────────────────╯
+grid 78x8 cursor 5,2
+|━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+|  Edit provider
+|
+|  Name: production · Endpoint: https://api.example.com/v1
+|
+|    [ Save ]    Copy (c)   ! Delete provider   Archive — archive it first
+|
+|  Enter run · c copy · Esc close
 styles
-0: 0-1 fg:borderFocus; 2-14 fg:textStrong b; 15-77 fg:borderFocus
-1: 0 fg:borderFocus; 2-56 fg:muted; 77 fg:borderFocus
-2: 0 fg:borderFocus; 77 fg:borderFocus
-3: 0 fg:borderFocus; 3-12 r; 16-23 fg:text; 27-43 fg:error; 47-72 fg:muted; 77 fg:borderFocus
-4: 0 fg:borderFocus; 2-3 fg:textMuted; 4-8 fg:text; 10-15 fg:textMuted; 16 fg:text; 18-24 fg:textMuted; 25-27 fg:text; 29-33 fg:textMuted; 77 fg:borderFocus
-5: 0-77 fg:borderFocus
+0: 0-77 fg:primary
+1: 2-14 fg:primary b
+3: 2-56 fg:muted
+5: 3-12 r; 16-23 fg:text; 27-43 fg:error; 47-72 fg:muted
+7: 2-6 fg:text; 8-13 fg:textMuted; 14 fg:text; 16-22 fg:textMuted; 23-25 fg:text; 27-31 fg:textMuted

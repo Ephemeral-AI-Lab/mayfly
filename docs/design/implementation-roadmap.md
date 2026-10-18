@@ -2298,6 +2298,11 @@ core drives pi-tui.
   boxes on every frame (about 5 ms per frame beside the gallery after slice 1.12c), a picker that lays out once per
   arrow at its edge, re-measuring a framed list on every key, the stream with item bodies (W4b's 12 ms worst sample),
   and anything the earlier phases recorded for this phase.
+**Round 0 (2026-10-17).** Measured at `b38fe28`: W28-W35 (2,000-turn session, flowing stream, one tick, three retained
+views, views summary, follow-tail, wheel) and the combined `perf-long` scene. The dated record, the L/J/R findings, and
+the fix rounds P1-P7 are in [the Phase 7 audit](../audits/phase-7/2026-10-17-performance-audit.md); the work budgets are
+in `packages/mayfly/tests/perf/`. Round 0 changed no product behavior. Fixes are being implemented on `perf/phase-7`.
+
 **Carried from Phase 3:**
 
 - `perf-stream` draws 3 more scroll frames and 2 more wheel frames than the merge base. The narrowest candidate is the tail chip republish through a microtask after `mayfly/content-tail-changed`: publish the chip in the same pass, or accept the cost in the perf notes (P1).

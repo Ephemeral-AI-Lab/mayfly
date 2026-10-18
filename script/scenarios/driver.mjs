@@ -14,10 +14,10 @@
  */
 
 import { randomBytes } from 'node:crypto'
-import { appendFileSync, readFileSync } from 'node:fs'
+import { appendFileSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { createConnection } from 'node:net'
-import { dirname, join } from 'node:path'
+import { dirname, isAbsolute, join } from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { pathToFileURL } from 'node:url'
 
@@ -40,6 +40,37 @@ function surfaceNodes(session) {
     }
   }
   return nodes
+}
+
+/** Find one stored Session's current v4 log under the scenario's isolated store. */
+function findSessionLog(root, id) {
+  for (const entry of readdirSync(root, { withFileTypes: true })) {
+    const path = join(root, entry.name)
+    if (entry.isDirectory()) {
+      const found = findSessionLog(path, id)
+      if (found !== undefined) return found
+      continue
+    }
+    if (!entry.name.endsWith('session.v4.jsonl')) continue
+    const first = readFileSync(path, 'utf8').split('\n', 1)[0]
+    try {
+      if (String(JSON.parse(first).id) === String(id)) return path
+    } catch { /* a partial or foreign file is not this session */ }
+  }
+  return undefined
+}
+
+/** Rewrite a stored Session header to v3 so the native catalog reports migration-required. */
+function makeMigrationRequired(root, id) {
+  const path = findSessionLog(root, id)
+  if (path === undefined) return false
+  const text = readFileSync(path, 'utf8')
+  const end = text.indexOf('\n')
+  const header = JSON.parse(text.slice(0, end))
+  header.version = 3
+  writeFileSync(path.replace(/session\.v4\.jsonl$/u, 'session.v3.jsonl'), `${JSON.stringify(header)}${text.slice(end)}`)
+  unlinkSync(path)
+  return true
 }
 
 /** Start a job in the real registry with nothing behind it; its output and outcome arrive as later actions. */
@@ -152,9 +183,9 @@ export function apply(ctx) {
     await new Promise(resolve => { ctx.mayflySessionStart.onBooted(resolve) })
     // Any other replay plays into a session, which the product now creates on the first message: create it as a first message would.
     if (!sessionless) await ctx.mayflySessionStart.ensure()
-    const agent = sessionless ? undefined : await currentAgent()
+    let agent = sessionless ? undefined : await currentAgent()
     if (!sessionless && agent === undefined) return
-    const main = agent?.session
+    let main = agent?.session
     // A restart resumes the session with its history: play only into a session that has not started a turn.
     if (main?.snapshotEvents().some(event => event.type === 'turn/start')) { log('session already has turns; replay skipped'); control?.send({ type: 'finished', skipped: true }); return }
     clock?.freeze()
@@ -498,6 +529,11 @@ export function apply(ctx) {
               await handle.flush()
               await handle.close()
               cache.coldSnapshot(session.header, 0, events)
+              if (spec.migration === true) {
+                const root = process.env.MAYFLY_SCENARIO_SESSION_STORE
+                if (root === undefined || root === '' || !makeMigrationRequired(root, session.id)) log(`could not mark ${spec.id} migration-required`)
+                else log(`seeded ${spec.id} as migration-required`)
+              }
               ids.set(spec.id, session.id)
               log(`seeded ${spec.id} (${String(events.length)} events)`)
             }
@@ -526,6 +562,59 @@ export function apply(ctx) {
               if (first !== undefined) answers.set(action.callId, { key: questionKey(first, answer), feedback: answer.answers.find(entry => entry.id === first.id)?.custom, batch: answer })
             }
             log('ask answered')
+            break
+          }
+          case 'cwd-change': {
+            if (main === undefined) { log('no session for a cwd change'); break }
+            const cwd = isAbsolute(action.path) ? action.path : join(main.header.cwd ?? process.cwd(), action.path)
+            main.append('working-directory/change', { cwd })
+            log(`cwd ${cwd}`)
+            break
+          }
+          case 'schedule': {
+            const schedule = ctx.get('schedule')
+            if (schedule === undefined || agent === undefined) { log('no schedule service for a reminder'); break }
+            const record = await schedule.create(agent.session.id, { prompt: action.prompt, title: action.title, after_seconds: action.afterSeconds })
+            log(`schedule ${record.id}`)
+            break
+          }
+          case 'follow': {
+            const previous = agent
+            let next
+            while (!abort.signal.aborted) {
+              try {
+                const current = ctx.mayflyCurrentAgent.current()
+                if (current !== null && current !== previous) { next = current; break }
+              } catch { return }
+              await sleep(100).catch(() => {})
+            }
+            if (next === undefined) { log('no new current Agent to follow'); break }
+            agent = next
+            main = next.session
+            log(`following ${String(agent.id)}`)
+            break
+          }
+          case 'activation-start': {
+            ctx.emit('subagent/start', { runId: `replay-run-${action.id}`, provider: 'spawn', id: action.id, local: true })
+            log(`activation ${action.id} started`)
+            break
+          }
+          case 'activation-end': {
+            ctx.emit('subagent/end', { runId: `replay-run-${action.id}`, provider: 'spawn', id: action.id, local: true, stopReason: action.stopReason ?? 'completed' })
+            log(`activation ${action.id} ended`)
+            break
+          }
+          case 'reload-core': {
+            const loader = ctx.get('loader')
+            if (loader === undefined) { log('no loader to reload core'); break }
+            const entry = [...loader.entries()].find(candidate => candidate.options.id === 'mayfly-core')
+            if (entry === undefined) { log('no mayfly-core row to reload'); break }
+            await loader.update(entry.id, { disabled: true })
+            await loader.await()
+            await sleep(150).catch(() => {})
+            await loader.update(entry.id, { disabled: false })
+            await loader.await()
+            log('core reloaded')
             break
           }
           default:

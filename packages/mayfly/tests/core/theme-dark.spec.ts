@@ -1,13 +1,18 @@
 /**
  * `mayfly-theme-dark` plugin entry: registration and disposal on the fiber,
- * and the built-in dark semantic color table (34 tokens).
+ * and the built-in dark semantic color table (30 tokens).
  */
 
-import { describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import { ThemeModelService } from '../../src/frontend/theme.ts'
 import { apply, MayflyThemeService, name } from '../../src/core/theme-dark.ts'
 import type { MayflySemanticColors } from '../../src/core/types.ts'
+
+// The provider paints truecolor unless the host asks for no color; pin the
+// presentation the color table assertions were written for.
+beforeEach(() => { vi.stubEnv('NO_COLOR', '') })
+afterEach(() => { vi.unstubAllEnvs() })
 
 const EXPECTED_ROLES: (keyof MayflySemanticColors)[] = [
   'text',
@@ -17,7 +22,6 @@ const EXPECTED_ROLES: (keyof MayflySemanticColors)[] = [
   'accent',
   'primary',
   'border',
-  'borderFocus',
   'success',
   'error',
   'warning',
@@ -36,14 +40,11 @@ const EXPECTED_ROLES: (keyof MayflySemanticColors)[] = [
   'mdListBullet',
   'diffAdded',
   'diffRemoved',
-  'diffAddedStrong',
-  'diffRemovedStrong',
-  'diffGutter',
   'diffMeta',
   'diffAddedBg',
   'diffRemovedBg',
   'modelHighlight',
-  'logoGradient',
+  'logoInks',
 ]
 
 describe('mayfly-theme-dark plugin', () => {
@@ -64,7 +65,7 @@ describe('mayfly-theme-dark plugin', () => {
     expect(Object.isFrozen(colors)).toBe(true)
     expect(Object.keys(colors).sort()).toEqual([...EXPECTED_ROLES].sort())
     for (const role of EXPECTED_ROLES) {
-      if (role === 'logoGradient') expect(colors.logoGradient.every(entry => typeof entry === 'function')).toBe(true)
+      if (role === 'logoInks') expect(colors.logoInks.every(entry => typeof entry === 'function')).toBe(true)
       else expect(typeof colors[role]).toBe('function')
     }
   })

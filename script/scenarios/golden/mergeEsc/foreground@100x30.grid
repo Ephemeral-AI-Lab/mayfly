@@ -1,0 +1,50 @@
+grid 100x30 cursor none
+|
+|  ● The watcher runs in the background. Send spawn:Background reviewer child-hold:240000 review
+|    the README for a turn that starts a real background subagent and keeps running; type a message
+|    while it runs (it queues), then press Esc.
+|
+|  » spawn:Background reviewer child-hold:240000 review the README
+|
+|  ✓ Subagent(Background reviewer)
+|
+|  ■ interrupted
+|
+|  ✻ Worked for 0s · done 09:00
+|
+|  » Then bump the version
+|
+|  ■ interrupted
+|
+|  ✻ Stopped after 0s · done 09:00
+|
+|  » spawn-fg:Foreground checker child-hold:240000 check the links
+|
+|  ✓ Subagent(Foreground checker)
+|
+|  ⡀ Deep diving · 0s
+|    ⎿ Tip: @: mention files
+|                                                                  Alt+↑ conversation · Alt+↓ view
+|╭─────────────────────────────────────────────────────────────────────── Watch the styles while we ╮
+|│ >  Type a follow-up to queue it · @ files · # skills                                             │
+|╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
+| deepseek-official/deepseek-v4-pro  ~/workspace  ● agents 0/2  ● jobs 1           ctx ▱▱▱▱▱▱▱▱▱▱ 1%
+styles
+1: 2-3 fg:#ededf2; 45-99 fg:#c9c0f0
+2: 4-13 fg:#c9c0f0
+5: 2-3 fg:#9a86e6; 4-99 fg:#9a86e6 b
+7: 2-3 fg:#4ec87e; 4-11 fg:#ededf2 b; 12 fg:#9aa3b8; 13-31 fg:#c9c0f0; 32 fg:#9aa3b8
+9: 2-14 fg:#e8a838
+11: 2-29 fg:#9aa3b8
+13: 2-3 fg:#9a86e6; 4-99 fg:#9a86e6 b
+15: 2-14 fg:#e8a838
+17: 2-32 fg:#9aa3b8
+19: 2-3 fg:#9a86e6; 4-99 fg:#9a86e6 b
+21: 2-3 fg:#4ec87e; 4-11 fg:#ededf2 b; 12 fg:#9aa3b8; 13-30 fg:#c9c0f0; 31 fg:#9aa3b8
+23: 0-1 fg:#ededf2; 2 fg:#9a86e6; 3-14 fg:#ededf2; 16-19 fg:#9aa3b8
+24: 0-26 fg:#9aa3b8
+25: 66-96 fg:#9aa3b8
+26: 0-72 fg:#45406b; 73-97 fg:#f5f5f7 b; 98-99 fg:#45406b
+27: 0 fg:#45406b; 2-3 fg:#ededf2; 4 r; 5-53 fg:#5c6476; 99 fg:#45406b
+28: 0-99 fg:#45406b
+29: 1-33 fg:#ededf2; 36-46 fg:#9aa3b8; 49 fg:#c9c0f0; 50 fg:#ededf2; 51-57 fg:#9aa3b8; 58-60 fg:#ededf2; 63 fg:#c9c0f0; 64 fg:#ededf2; 65-69 fg:#9aa3b8; 70 fg:#ededf2; 82-85 fg:#ededf2; 86-95 fg:#9aa3b8; 96-98 fg:#ededf2

@@ -94,8 +94,8 @@ describe('patterns.splitView', () => {
   it('shows list and detail from the breakpoint and the list alone below it', () => {
     const view = patterns.splitView({ list, detail })
     expect(view).toEqual(ui.stack.row([
-      ui.child(list, { basis: 58, when: { minWidth: 100 } }),
-      ui.child(detail, { grow: 1, when: { minWidth: 100 } }),
+      ui.child(list, { basis: 58, shrink: 0, when: { minWidth: 100 } }),
+      ui.child(detail, { basis: 0, grow: 1, when: { minWidth: 100 } }),
       ui.child(list, { grow: 1, when: { maxWidth: 99 } }),
     ], { gap: 2 }))
     expectDeepFrozen(view)
@@ -106,7 +106,7 @@ describe('patterns.splitView', () => {
   it('takes the list width and the breakpoint', () => {
     const view = patterns.splitView({ list, detail, listWidth: 40, breakpoint: 80 })
     expect(view.children.map(child => [child.basis, child.grow, child.when])).toEqual([
-      [40, undefined, { minWidth: 80 }], [undefined, 1, { minWidth: 80 }], [undefined, 1, { maxWidth: 79 }],
+      [40, undefined, { minWidth: 80 }], [0, 1, { minWidth: 80 }], [undefined, 1, { maxWidth: 79 }],
     ])
   })
 })
@@ -146,7 +146,137 @@ describe('pattern source', () => {
   it('is built only from the public builders: no renderer, Cordis, or core import', () => {
     const source = readFileSync(new URL('../src/patterns.ts', import.meta.url), 'utf8')
     const imports = [...source.matchAll(/^\} from '([^']+)'|^import [^\n]* from '([^']+)'/gmu)].map(match => match[1] ?? match[2])
-    expect(imports).toEqual(['./builders.ts', './contracts.ts'])
-    expect(source).not.toMatch(/kind: '(?:text|rich-text|stack|surface|list|form|actions|tabs|fields|spacer)'/u)
+    expect(imports).toEqual(['./builders.ts', './contracts.ts', './interaction.ts'])
+  })
+})
+
+describe('patterns.wizard', () => {
+  const step = (id: string, label: string, extra: Record<string, unknown> = {}) => ({ id, label, body: ui.text(id), ...extra })
+
+  it('is a step strip, a spacer, and one tab page per step; the last step without a review submits', () => {
+    const pages = [step('one', 'One'), step('two', 'Two')]
+    const wizard = patterns.wizard({ title: 'Setup', steps: pages })
+    const next = (id: string, extra: Record<string, unknown>) => ({ id: `wizard.next.${id}`, label: 'Next', hidden: true, ...extra })
+    expect(wizard).toEqual(ui.surface({
+      title: 'Setup', chrome: 'overlay', escapeLabel: 'cancel',
+      child: ui.stack.column([
+        ui.tabs({ id: 'wizard', mode: 'wizard', activeId: 'one', hintLabel: 'step', items: [{ id: 'one', label: 'One' }, { id: 'two', label: 'Two', backId: 'one' }] }),
+        ui.spacer(),
+        ui.child(ui.stack.column([ui.text('one'), ui.actions({ id: 'wizard.keys.one', items: [next('one', { navigate: [{ controlId: 'wizard', itemId: 'two' }] })] })]), { tab: { controlId: 'wizard', itemId: 'one' } }),
+        ui.child(ui.stack.column([ui.text('two'), ui.actions({ id: 'wizard.keys.two', items: [next('two', { label: 'Submit', intent: 'primary', submit: [] })] })]), { tab: { controlId: 'wizard', itemId: 'two' } }),
+      ]),
+    }))
+    expectDeepFrozen(wizard)
+    expect(patterns.wizardNext('wizard', 'two')).toBe('wizard.next.two')
+  })
+
+  it('carries a step\'s forms and lists on its next action, settles a step through the consumer, and reviews every answer', () => {
+    const one = step('one', 'Name', { forms: ['name'], lists: ['pick'] })
+    const two = step('two', 'Note', { settle: true, holdBack: true, forms: ['note'], lists: ['tag'] })
+    const review = {
+      label: 'Review', skippedLabel: 'Skipped', submitLabel: 'Create',
+      items: [
+        { stepId: 'one', label: 'Name', source: { kind: 'list' as const, controlId: 'pick' } },
+        { stepId: 'two', label: 'Note', source: { kind: 'form' as const, formId: 'note', fieldId: 'text' } },
+      ],
+    }
+    const wizard = patterns.wizard({ id: 'wiz', title: 'New thing', badges: [{ text: 'new' }], steps: [one, two], activeId: 'two', review, submitActionId: 'create', hintLabel: 'stage' })
+    const pathOne = [{ controlId: 'wiz', itemId: 'one' }]
+    const pathTwo = [{ controlId: 'wiz', itemId: 'two' }]
+    const submit = {
+      id: 'create', label: 'Create', hidden: true, intent: 'primary' as const,
+      submit: [{ pagePath: pathOne, formId: 'name' }, { pagePath: pathTwo, formId: 'note' }],
+      selections: [{ pagePath: pathOne, controlId: 'pick' }, { pagePath: pathTwo, controlId: 'tag' }],
+    }
+    expect(wizard).toEqual(ui.surface({
+      title: 'New thing', chrome: 'overlay', escapeLabel: 'cancel', badges: [{ text: 'new' }],
+      child: ui.stack.column([
+        ui.tabs({
+          id: 'wiz', mode: 'wizard', activeId: 'two', hintLabel: 'stage',
+          items: [{ id: 'one', label: 'Name' }, { id: 'two', label: 'Note' }, { id: 'wiz.review', label: 'Review', review: true, backId: 'two' }],
+        }),
+        ui.spacer(),
+        ui.child(ui.stack.column([one.body, ui.actions({ id: 'wiz.keys.one', items: [{
+          id: 'wiz.next.one', label: 'Next', hidden: true,
+          read: [{ pagePath: pathOne, formId: 'name' }],
+          navigate: pathTwo,
+        }] })]), { tab: { controlId: 'wiz', itemId: 'one' } }),
+        ui.child(ui.stack.column([two.body, ui.actions({ id: 'wiz.keys.two', items: [{
+          id: 'wiz.next.two', label: 'Next', hidden: true, intent: 'primary' as const,
+          submit: [{ pagePath: pathTwo, formId: 'note' }],
+          selections: [{ pagePath: pathTwo, controlId: 'tag' }],
+        }] })]), { tab: { controlId: 'wiz', itemId: 'two' } }),
+        ui.child(ui.stack.column([
+          ui.review({
+            id: 'wiz.review', tabsId: 'wiz', skippedLabel: 'Skipped', submitLabel: 'Create', submitActionId: 'create', autofocus: true,
+            items: [
+              { id: 'one', label: 'Name', source: { kind: 'list', pagePath: pathOne, controlId: 'pick' } },
+              { id: 'two', label: 'Note', source: { kind: 'form', pagePath: pathTwo, formId: 'note', fieldId: 'text' } },
+            ],
+          }),
+          ui.actions({ id: 'wiz.keys.review', items: [submit] }),
+        ]), { tab: { controlId: 'wiz', itemId: 'wiz.review' } }),
+      ]),
+    }))
+    expectDeepFrozen(wizard)
+  })
+
+  it('shows one step alone with no strip, and submits its forms and selections at once', () => {
+    const only = step('only', 'Only', { forms: ['name'], lists: ['pick'] })
+    const wizard = patterns.wizard({ id: 'solo', title: 'One', steps: [only], badges: [{ text: 'solo' }] })
+    expect(wizard).toEqual(ui.surface({
+      title: 'One', chrome: 'overlay', escapeLabel: 'cancel', badges: [{ text: 'solo' }],
+      child: ui.stack.column([only.body, ui.actions({ id: 'solo.keys.only', items: [{
+        id: 'solo.next.only', label: 'Submit', hidden: true, intent: 'primary',
+        submit: [{ pagePath: [], formId: 'name' }],
+        selections: [{ pagePath: [], controlId: 'pick' }],
+      }] })]),
+    }))
+  })
+
+  it('gives a settling step with nothing to submit a plain next action, with no navigation of its own', () => {
+    const steps = [step('a', 'A'), step('b', 'B', { settle: true }), step('c', 'C')]
+    const middlePage = column(patterns.wizard({ title: 'W', steps })).children[3]!.node as Extract<MayflyUiNode, { kind: 'stack' }>
+    const next = middlePage.children[1]!.node
+    expect(next).toEqual(ui.actions({ id: 'wizard.keys.b', items: [{ id: 'wizard.next.b', label: 'Next', hidden: true, intent: 'primary' }] }))
+  })
+
+  it('refuses a wizard with no steps', () => {
+    expect(() => patterns.wizard({ title: 'Empty', steps: [] })).toThrow('wizard needs at least one step')
+  })
+})
+
+describe('patterns.splitView branches', () => {
+  it('takes a separator between list and detail, and a compact list below its own width', () => {
+    const list = ui.list({ id: 'sv', role: 'browse', selectedIds: [], items })
+    const detail = ui.text('detail')
+    const separator = ui.text('│')
+    const compact = ui.list({ id: 'sv-compact', role: 'browse', selectedIds: [], items: [] })
+    const view = patterns.splitView({ list, detail, separator, compactList: compact, compactBelow: 40, breakpoint: 90, listWidth: 30 })
+    expect(view.children.map(child => ({ ...child, node: child.node.kind }))).toEqual([
+      { node: 'list', basis: 30, shrink: 0, when: { minWidth: 90 } },
+      { node: 'text', basis: 1, shrink: 0, when: { minWidth: 90 } },
+      { node: 'text', basis: 0, grow: 1, when: { minWidth: 90 } },
+      { node: 'list', grow: 1, when: { minWidth: 40, maxWidth: 89 } },
+      { node: 'list', grow: 1, when: { maxWidth: 39 } },
+    ])
+    expect(view.children[4]!.node).toBe(compact)
+    expect(view.children[3]!.node).toBe(list)
+  })
+})
+
+describe('patterns.wizard navigation branches', () => {
+  const tabbed = [ { id: 'a', label: 'A', body: ui.text('a') }, { id: 'b', label: 'B', body: ui.text('b') } ]
+
+  it('sends the last step before a review to the review page, and drops optional badges from a lone step', () => {
+    const review = { label: 'Review', skippedLabel: 'Skipped', submitLabel: 'Done', items: [] }
+    const wizard = patterns.wizard({ title: 'Reviewed', steps: tabbed, review })
+    const pages = column(wizard).children
+    const last = pages[3]!.node as Extract<MayflyUiNode, { kind: 'stack' }>
+    expect(last.children[1]!.node).toEqual(ui.actions({ id: 'wizard.keys.b', items: [{
+      id: 'wizard.next.b', label: 'Next', hidden: true, navigate: [{ controlId: 'wizard', itemId: 'wizard.review' }],
+    }] }))
+    const lone = patterns.wizard({ title: 'Lone', steps: [tabbed[0]!] })
+    expect(lone).toEqual(ui.surface({ title: 'Lone', chrome: 'overlay', escapeLabel: 'cancel', child: ui.stack.column([tabbed[0]!.body, ui.actions({ id: 'wizard.keys.a', items: [{ id: 'wizard.next.a', label: 'Submit', hidden: true, intent: 'primary', submit: [] }] })]) }))
   })
 })

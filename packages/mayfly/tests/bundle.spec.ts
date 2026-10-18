@@ -11,9 +11,7 @@ import { describe, expect, it } from 'vitest'
 import { parse as parseYaml } from 'yaml'
 
 import { Context } from '@deepseek-ai/cordis'
-import InvariantRegistry from '@deepseek-ai/dsh-invariants'
 import * as bundle from '../src/index.ts'
-import * as BundleInvariant from '../src/invariant.ts'
 import * as agentsCommand from '../src/interaction/agents-command.ts'
 import * as jobsCommand from '../src/interaction/jobs.ts'
 import * as statusGoal from '../src/transcript/status-goal.ts'
@@ -62,13 +60,6 @@ describe('mayfly bundle', () => {
   it('mounts and disposes cleanly, registering nothing of its own', async () => {
     const ctx = new Context()
     await ctx.plugin(bundle)
-    await ctx.fiber.dispose()
-  })
-
-  it('registers its invariant companion', async () => {
-    const ctx = new Context()
-    await ctx.plugin(InvariantRegistry)
-    await ctx.plugin(BundleInvariant)
     await ctx.fiber.dispose()
   })
 
@@ -122,10 +113,10 @@ describe('mayfly bundle', () => {
   })
 
   it('composes the tool panels as ordinary native-service siblings', () => {
-    expect(statusGoal.inject).toEqual(['mayflyPanes', 'mayflyCurrentAgent', 'mayflyScreen', 'mayflySessionFacts', 'mayflyTick', 'goals'])
+    expect(statusGoal.inject).toEqual(['mayflyPanes', 'mayflyCurrentAgent', 'mayflyScreen', 'mayflyTick', 'goals', 'sessionProjections'])
     expect(statusJobs.inject).toEqual(['mayflyPanes', 'mayflyCurrentAgent', 'mayflyScreen', 'mayflyTick', 'mayflyOverlays', 'jobs'])
-    expect(statusAgents.inject).toEqual(['mayflyPanes', 'mayflyCurrentAgent', 'mayflyScreen', 'mayflySessionFacts', 'mayflyTick', 'mayflyConversations', 'subagents', 'agents'])
-    expect(paneWorkflow.inject).toEqual(['mayflyPanes', 'mayflyCurrentAgent', 'mayflySessionFacts', 'sessions'])
+    expect(statusAgents.inject).toEqual(['mayflyPanes', 'mayflyCurrentAgent', 'mayflyScreen', 'mayflySessionFacts', 'mayflyTick', 'mayflyConversations', 'subagents', 'agents', 'sessionProjections'])
+    expect(paneWorkflow.inject).toEqual(['mayflyPanes', 'mayflyCurrentAgent', 'mayflySessionFacts', 'sessions', 'mayflyTick'])
     expect(jobsCommand.inject).toEqual(['commands', 'jobs', 'mayflyCurrentAgent', 'mayflyOverlays'])
     expect(agentsCommand.inject).toEqual([
       'commands',
@@ -159,7 +150,7 @@ describe('mayfly bundle', () => {
   it('names sessions through the base title service and mounts session statistics like the web-app', () => {
     // Titles come from the base `session-title` service and its first-prompt
     // provider; Mayfly neither swaps the provider nor schedules refreshes.
-    expect(basePatch).toContain('- id: session-title-llm')
+    expect(basePatch).toContain("name: '@deepseek-ai/dsh-session-title-first-prompt-llm'")
     expect(disabledIds(patch)).not.toContain('session-title-llm')
     expect(patch).not.toContain('session-title-all-prompts-llm')
     const manifest = JSON.parse(readFileSync(join(patchDir, '..', 'package.json'), 'utf8')) as {
@@ -196,9 +187,9 @@ describe('mayfly bundle', () => {
     const manifest = JSON.parse(readFileSync(join(patchDir, '..', 'package.json'), 'utf8')) as {
       dependencies?: Record<string, string>
     }
-    expect(manifest.dependencies?.['@deepseek-ai/dsh-tool-subagent']).toBe('0.2.0-rc.2')
-    expect(manifest.dependencies?.['@deepseek-ai/dsh-agent-preset']).toBe('0.2.0-rc.2')
-    expect(manifest.dependencies?.['@deepseek-ai/dsh-agent-preset-registry']).toBe('0.2.0-rc.2')
+    expect(manifest.dependencies?.['@deepseek-ai/dsh-tool-subagent']).toBe('0.2.1-rc.2')
+    expect(manifest.dependencies?.['@deepseek-ai/dsh-agent-preset']).toBe('0.2.1-rc.2')
+    expect(manifest.dependencies?.['@deepseek-ai/dsh-agent-preset-registry']).toBe('0.2.1-rc.2')
     expect(manifest.dependencies?.['@deepseek-ai/dsh-agent-presets']).toBeUndefined()
   })
 
@@ -206,7 +197,7 @@ describe('mayfly bundle', () => {
     const prefix = /^- id: system-prompt\n {2}config:\n {4}personaPrefix: ([^\n]+)$/m.exec(patch)?.[1]
     const suffix = /^ {4}personaSuffix: ([^\n]+)$/m.exec(patch)?.[1]
     expect(prefix).toBe('You are a coding agent.')
-    expect(suffix).toBe('Your working directory is {{cwd}}.')
+    expect(suffix).toBeUndefined()
     expect(prefix).not.toContain('{{model}}')
   })
 
@@ -236,14 +227,14 @@ describe('mayfly bundle', () => {
     const manifest = JSON.parse(readFileSync(join(patchDir, '..', 'package.json'), 'utf8')) as {
       dependencies?: Record<string, string>
     }
-    expect(manifest.dependencies?.['@deepseek-ai/dsh-workspace']).toBe('0.2.0-rc.2')
+    expect(manifest.dependencies?.['@deepseek-ai/dsh-workspace']).toBe('0.2.1-rc.2')
   })
 
   it('keeps the host fallback persona valid for agents without preset model variables', () => {
     const prefix = /^- id: system-prompt\n {2}config:\n {4}personaPrefix: ([^\n]+)$/m.exec(patch)?.[1]
     const suffix = /^ {4}personaSuffix: ([^\n]+)$/m.exec(patch)?.[1]
     expect(prefix).toBe('You are a coding agent.')
-    expect(suffix).toBe('Your working directory is {{cwd}}.')
+    expect(suffix).toBeUndefined()
     expect(prefix).not.toContain('{{model}}')
   })
 

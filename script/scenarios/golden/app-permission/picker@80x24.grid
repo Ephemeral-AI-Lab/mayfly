@@ -1,0 +1,41 @@
+grid 80x24 cursor none
+|    ▝▜▀▀▀▛▘     ~/workspace
+|
+|  » Update the landing page hero copy and run the tests.
+|
+|  ▾ 2 tool calls · Ctrl+O to expand
+|
+|  ✻ Thinking · 1s
+|    The hero lives in website/index.md; read it first, then edit, then run th…
+|
+|  ● I will update the hero copy first, then run the tests.
+|
+|  ✓ Read(website/index.md)
+|
+|  ✓ Bash(pnpm run test) · 3.4s
+|
+|  ● Done — the hero now reads “Ship agent UI in a keystroke”, and all 214
+|    tests pass.
+|
+|  ✻ Worked for 8s · done 09:00
+|   current preset workspace-write (available: read-only, workspace-write, da…
+|╭──────────────────────────────────────────────── Update the landing page hero ╮
+|│ >  Ask anything · / commands · @ files · # skills · ! shell                  │
+|╰──────────────────────────────────────────────────────────────────────────────╯
+| deepseek-v4-pro  ~/workspace               cache ▰▰▱▱▱ 37%  ctx ▰▰▱▱▱▱▱▱▱▱ 18%
+styles
+0: 4-10 fg:#9a86e6; 16-26 fg:#9aa3b8
+2: 2-3 fg:#9a86e6; 4-79 fg:#9a86e6 b
+4: 2-34 fg:#9aa3b8
+6: 2-16 fg:#9aa3b8
+7: 2-3 fg:#ededf2; 4-77 fg:#9aa3b8
+9: 2-3 fg:#ededf2
+11: 2-3 fg:#4ec87e; 4-7 fg:#ededf2 b; 8 fg:#9aa3b8; 9-24 fg:#c9c0f0; 25 fg:#9aa3b8
+13: 2-3 fg:#4ec87e; 4-7 fg:#ededf2 b; 8 fg:#9aa3b8; 9-21 fg:#c9c0f0; 22-29 fg:#9aa3b8
+15: 2-3 fg:#ededf2
+18: 2-29 fg:#9aa3b8
+19: 3-75 fg:#ededf2
+20: 0-49 fg:#45406b; 50-77 fg:#f5f5f7 b; 78-79 fg:#45406b
+21: 0 fg:#45406b; 2-3 fg:#ededf2; 4 r; 5-60 fg:#5c6476; 79 fg:#45406b
+22: 0-79 fg:#45406b
+23: 1-15 fg:#ededf2; 18-28 fg:#9aa3b8; 44-49 fg:#ededf2; 50-51 fg:#e8a838; 52-54 fg:#9aa3b8; 55-58 fg:#ededf2; 61-64 fg:#ededf2; 65-66 fg:#9a86e6; 67-74 fg:#9aa3b8; 75-78 fg:#ededf2

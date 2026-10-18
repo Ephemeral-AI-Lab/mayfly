@@ -73,6 +73,9 @@ function recordingRuntime(laneRows = 0): MayflyTerminalRuntime & Recorded {
       recorded.scrolls.push({ direction, amount })
       return true
     },
+    setContentScrollbarColors() {},
+    contentTail: () => undefined,
+    watchContentTail: () => () => {},
     setContentScrollHandler(handler) {
       recorded.scrollHandlers.push(handler)
       return () => { recorded.scrollHandlers.push(undefined) }
@@ -456,7 +459,7 @@ describe('MayflyScreenService node slots', () => {
     host.handleInput!('\x1b[B')
     const model = interaction.get('slot', slot.id)!
     expect(model.choice(STREAM)?.focusedId).toBe('item-2')
-    expect(host.render(80)[0]).toContain('(3/40)')
+    expect(host.render(80).join('\n')).toContain('Item number 2')
 
     // A renderer gap: the compile state goes, the model stays, and a stale unbind leaves the newer renderer alone.
     unbind()
@@ -470,7 +473,7 @@ describe('MayflyScreenService node slots', () => {
     root.mayflyScreen.bindNodeSlots(slotCompiler(root, { interaction, colors: DIM_COLORS }))
     unbindStale()
     const rebound = host.render(80)
-    expect(rebound[0]).toContain('(3/40)')
+    expect(rebound.join('\n')).toContain('Item number 2')
     expect(rebound.join('')).toContain('\x1b[2m')
     expect(interaction.get('slot', slot.id)).toBe(model)
 
@@ -560,7 +563,8 @@ describe('MayflyScreenService node slots', () => {
       const contentHost = runtime.added[1]! as MayflyFocusable
       expect(contentHost.render(120)).toHaveLength(60)
       contentHost.focused = true
-      expect(contentHost.render(120)).toHaveLength(24)
+      // The content region always flows into the outer scroll; focus adds its list hint row.
+      expect(contentHost.render(120)).toHaveLength(61)
       contentHost.focused = false
       expect(contentHost.render(120)).toHaveLength(60)
       expect(prompt.render(120)).toHaveLength(ctx.mayflyScreen.editorViewport.rows)
@@ -573,7 +577,7 @@ describe('MayflyScreenService node slots', () => {
       prompt.render(120)
       prompt.handleInput!('\r')
       expect(prompt.render(120).join('\n')).toContain('Run it?')
-      prompt.handleInput!('\r')
+      compiler.interaction.get('slot', dock.id)!.answerDecision(true)
       expect(prompt.render(120).join('\n')).toContain('Go')
 
       // The hint revision repaints a slot whose model did not move; an unmoved revision serves the same frame.
@@ -721,5 +725,77 @@ describe('MayflyScreenService search line', () => {
     await ctx.fiber.dispose()
     expect(second.disposed).toBe(true)
     expect(runtime.removed).toEqual([runtime.dockAdded[0]!.component, runtime.dockAdded[1]!.component])
+  })
+})
+
+describe('MayflyScreenService hidden status footer', () => {
+  it('repaints only when the hidden state changes', async () => {
+    const runtime = recordingRuntime()
+    const ctx = new Context()
+    await ctx.plugin(MayflyScreenService, runtime)
+    const screen = ctx.mayflyScreen
+    screen.mountDockSlot('status.footer', { render: () => ['footer'], invalidate() {} }, 'bottom')
+    const raised = runtime.renders.length
+    // Hidden is already false: the unchanged write returns before a repaint.
+    screen.setStatusHidden(false)
+    expect(runtime.renders.length).toBe(raised)
+    screen.setStatusHidden(true)
+    expect(runtime.renders.length).toBe(raised + 1)
+    screen.setStatusHidden(true)
+    expect(runtime.renders.length).toBe(raised + 1)
+    // Showing it again takes the other path of the same setter.
+    screen.setStatusHidden(false)
+    expect(runtime.renders.length).toBe(raised + 2)
+    await ctx.fiber.dispose()
+  })
+})
+
+describe('MayflyScreenService editor replacement edges', () => {
+  it('replaces an absent prompt and restores it, painting no rows for an empty host', async () => {
+    const runtime = recordingRuntime()
+    const ctx = new Context()
+    await ctx.plugin(MayflyScreenService, runtime)
+    const screen = ctx.mayflyScreen
+    const slot = screen.mountDockSlot('editor.prompt', null)
+    const panel = { focused: false, render: () => ['panel'], invalidate: vi.fn() }
+    // No previous target to blur; the new one takes the host's (unfocused) state.
+    screen.setEditorReplacement(panel)
+    expect(panel.focused).toBe(false)
+    expect(slot.component.render(80)).toEqual(['panel'])
+    // Restoring the absent prompt blurs the panel and leaves nothing to render.
+    screen.setEditorReplacement(null)
+    expect(panel.focused).toBe(false)
+    expect(slot.component.render(80)).toEqual([])
+    await ctx.fiber.dispose()
+  })
+
+  it('leaves the focus to a capturing overlay when the replacement lands', async () => {
+    const runtime = recordingRuntime()
+    ;(runtime as unknown as { hasCapturingOverlay: () => boolean }).hasCapturingOverlay = () => true
+    const ctx = new Context()
+    await ctx.plugin(MayflyScreenService, runtime)
+    const prompt = { focused: false, render: () => ['prompt'], invalidate: () => {} }
+    ctx.mayflyScreen.mountDockSlot('editor.prompt', prompt)
+    runtime.focused.length = 0
+    ctx.mayflyScreen.setEditorReplacement({ focused: false, render: () => ['panel'], invalidate: () => {} })
+    // The overlay owns the keyboard, so the prompt host is not focused.
+    expect(runtime.focused).toEqual([])
+    await ctx.fiber.dispose()
+  })
+
+  it('paints no rows while hidden and none for an empty slot', async () => {
+    const runtime = recordingRuntime()
+    const ctx = new Context()
+    await ctx.plugin(MayflyScreenService, runtime)
+    const screen = ctx.mayflyScreen
+    const footer = screen.mountDockSlot('status.footer', { render: () => ['footer'], invalidate() {} }, 'bottom')
+    expect(footer.component.render(80)).toEqual(['footer'])
+    screen.setStatusHidden(true)
+    expect(footer.component.render(80)).toEqual([])
+    screen.setStatusHidden(false)
+    expect(footer.component.render(80)).toEqual(['footer'])
+    const empty = screen.mountDockSlot('editor.prompt', null)
+    expect(empty.component.render(80)).toEqual([])
+    await ctx.fiber.dispose()
   })
 })

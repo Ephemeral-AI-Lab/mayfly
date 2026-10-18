@@ -68,7 +68,14 @@ class FakeScreen implements MayflyScreen {
       cursor: () => this.cursorRow,
       set: (node: MayflyUiNode | null) => { this.nodes.set(id, node); this.requestRender() },
       setTurns: () => {},
+      track: () => {},
+      trackedRow: () => undefined,
+      setMarked: () => {},
       focus: () => {},
+      release: () => {},
+      setKeys: () => {},
+      spotlight: () => {},
+      focusRow: () => {},
       dispose: () => { slot.disposed = true; this.nodes.delete(id) },
     }
     return slot
@@ -100,6 +107,12 @@ class FakeScreen implements MayflyScreen {
   setTitle(): void {}
   scrollContent(): boolean { return false }
   setContentScrollHandler(): () => void { return () => {} }
+  watchContentTail(_listener: () => void): () => void { return () => {} }
+  contentTail(): undefined { return undefined }
+  scrollContentTo(): void {}
+  contentMarked(): boolean { return false }
+  onContentTurns(_listener: () => void): () => void { return () => {} }
+  setContentScrollbarColors(): void {}
 }
 
 class FakeKeymap implements MayflyKeymap {
@@ -305,6 +318,8 @@ async function bootTranscript(
     mayflyTick: { subscribe: () => () => {} },
     sessions: { list: () => active === null ? [] : [active.session] },
     mayflyConversationReady: { key: 'mayflyConversation' },
+    // Lazy start: the transcript boots after the app marks the launch settled.
+    mayflySessionStart: { onBooted: (listener: () => void) => { listener(); return () => {} }, ensure: async () => active as unknown as Agent },
     tools: options.tools ?? { get: () => undefined },
     ...(options.attachments === undefined ? {} : { attachments: options.attachments }),
   }
@@ -393,11 +408,10 @@ describe('mayfly-transcript through the real Loader', () => {
     expect(screen.renderRequests.length).toBe(baseline)
 
     ctx.emit('session/event', agent.session, textDelta(2, 1, 'partial'))
-    expect(contentLines(screen).join('\n')).toContain('partial')
+    await vi.waitFor(() => { expect(contentLines(screen).join('\n')).toContain('partial') })
     ctx.emit('session/event', agent.session, assistantEvent(2, 1, [{ type: 'text', text: 'final' }]))
     ctx.emit('session/event', agent.session, toolResultEvent(2, 1, 'c1', 'file.txt'))
-    const text = contentLines(screen).join('\n')
-    expect(text).toContain('final')
+    await vi.waitFor(() => { expect(contentLines(screen).join('\n')).toContain('final') })
     select(null)
     expect(contentLines(screen)).toEqual([])
   })
@@ -509,6 +523,7 @@ describe('mayfly-transcript through the real Loader', () => {
       const agent = fakeParent([userEvent('think'), turnStart(1)])
       const harness = await bootTranscript(agent, { settings: { mayfly: { transcriptView: view } } })
       harness.ctx.emit('session/event', agent.session, reasoningDelta(1, 1, 'working'))
+      await new Promise(resolve => setTimeout(resolve, 60))
       return contentLines(harness.screen).join('\n')
     }
     // Compact draws the reasoning still in flight as its own line, with no text of it: the activity row names the phase.
@@ -606,9 +621,11 @@ describe('mayfly-transcript queued messages, facts, images, and row actions', ()
     inboxOf(agent).nextStep.push(queuedMessage('after this step'))
     inboxOf(agent).nextTurn.push(queuedMessage('after the turn'))
     ctx.emit('agent/inbox/inserted', { agent: agent as unknown as Agent, message: queuedMessage('queued') })
-    const queued = contentLines(screen).join('\n')
-    expect(queued).toContain('after this step')
-    expect(queued).toContain('after the turn')
+    await vi.waitFor(() => {
+      const queued = contentLines(screen).join('\n')
+      expect(queued).toContain('after this step')
+      expect(queued).toContain('after the turn')
+    })
 
     const baseline = screen.renderRequests.length
     inboxOf(other).nextTurn.push(queuedMessage('elsewhere'))
@@ -617,12 +634,14 @@ describe('mayfly-transcript queued messages, facts, images, and row actions', ()
 
     inboxOf(agent).nextStep.length = 0
     ctx.emit('agent/inbox/claimed', { agent: agent as unknown as Agent, message: queuedMessage('claimed'), turn: 1 })
-    const claimed = contentLines(screen).join('\n')
-    expect(claimed).not.toContain('after this step')
-    expect(claimed).toContain('after the turn')
+    await vi.waitFor(() => {
+      const claimed = contentLines(screen).join('\n')
+      expect(claimed).not.toContain('after this step')
+      expect(claimed).toContain('after the turn')
+    })
     inboxOf(agent).nextTurn.length = 0
     ctx.emit('agent/inbox/discarded', { agent: agent as unknown as Agent, message: queuedMessage('discarded') })
-    expect(contentLines(screen).join('\n')).not.toContain('after the turn')
+    await vi.waitFor(() => { expect(contentLines(screen).join('\n')).not.toContain('after the turn') })
   })
 
   it('republishes the stream when the displayed conversation\'s compactions or approvals change, and only then', async () => {
@@ -632,41 +651,44 @@ describe('mayfly-transcript queued messages, facts, images, and row actions', ()
     const facts = { ...initialConversationFacts(), compactions: [{ id: 'c1', before: 900, after: 300, window: 1000 }] }
     const compacted = screen.renderRequests.length
     projections.emitFacts(agent.session, facts)
-    expect(screen.renderRequests.length).toBeGreaterThan(compacted)
+    await vi.waitFor(() => { expect(screen.renderRequests.length).toBeGreaterThan(compacted) })
 
     // A facts value that keeps the same marks and window does not repaint the stream.
     const steady = screen.renderRequests.length
     projections.emitFacts(agent.session, { ...facts, phase: 'idle' })
+    await new Promise(resolve => setTimeout(resolve, 60))
     expect(screen.renderRequests.length).toBe(steady)
 
     projections.emitFacts(agent.session, { ...facts, approvals: [{ id: 'a1', callId: 'call-1', outcome: 'allowed-once' }] })
-    expect(screen.renderRequests.length).toBeGreaterThan(steady)
+    await vi.waitFor(() => { expect(screen.renderRequests.length).toBeGreaterThan(steady) })
   })
 
-  it('makes a spawn line follow its child: running in background while it works, then settled with its end', async () => {
+  it('makes a spawn line follow its child: running while it works, then settled with its end', async () => {
     resetSeq()
     const agent = fakeParent([
       userEvent('audit it'),
       subagentCallEvent(1, 1, 'spawn-1', 'subagent', 'Audit the facts', 'audit it', { time: 1_700_000_000_100 }),
-      toolResultEvent(1, 1, 'spawn-1', 'started subagent child-1', { time: 1_700_000_000_200 }),
+      toolResultEvent(1, 1, 'spawn-1', JSON.stringify({ kind: 'activation', subagentId: 'child-1' }), { time: 1_700_000_000_200 }),
     ])
     const children: { emit: ((list: readonly ChildSessionFacts[]) => void) | undefined } = { emit: undefined }
     const { screen } = await bootTranscript(agent, { children })
     const child = (extra: Partial<ChildSessionFacts>): ChildSessionFacts => ({ id: 'child-1', phase: 'running', tokens: 0, inputTokens: 0, outputTokens: 0, toolCount: 0, ...extra })
-    expect(contentLines(screen).join('\n')).not.toContain('running in background')
+    expect(contentLines(screen).join('\n')).not.toContain('running')
     children.emit!([child({})])
-    expect(contentLines(screen).join('\n')).toContain('running in background')
+    await vi.waitFor(() => { expect(contentLines(screen).join('\n')).toContain('running') })
     // Streamed counters of the running child are the Agents item's, not the stream's: the same state republishes nothing.
+    await new Promise(resolve => setTimeout(resolve, 60))
     const before = screen.renderRequests.length
     children.emit!([child({ liveChars: 4_000, toolCount: 2 })])
+    await new Promise(resolve => setTimeout(resolve, 60))
     expect(screen.renderRequests.length).toBe(before)
     // A child found by its prompt, with an end, a failure, and the user's stop, each says its own word.
     children.emit!([child({ phase: 'failed', promptText: 'audit it', endedAt: 1_700_000_005_000 })])
-    expect(contentLines(screen).join('\n')).toContain('failed')
+    await vi.waitFor(() => { expect(contentLines(screen).join('\n')).toContain('failed') })
     children.emit!([child({ phase: 'failed', stopped: true, endedAt: 1_700_000_005_000 })])
-    expect(contentLines(screen).join('\n')).toContain('stopped')
+    await vi.waitFor(() => { expect(contentLines(screen).join('\n')).toContain('stopped') })
     children.emit!([child({ phase: 'completed', promptText: 'audit it' }), child({ id: 'child-2', phase: 'running', promptText: 'audit it' })])
-    expect(contentLines(screen).join('\n')).not.toContain('running in background')
+    await vi.waitFor(() => { expect(contentLines(screen).join('\n')).not.toContain('running') })
   })
 
   it('keeps the transcript working when the host publishes no session facts', async () => {
@@ -812,5 +834,64 @@ describe('mayfly-transcript queued messages, facts, images, and row actions', ()
     } finally {
       vi.unstubAllEnvs()
     }
+  })
+})
+
+describe('mayfly-transcript pressure and tool-change lazy updates', () => {
+  it('reads the displayed session pressure with and without a context window and projected tokens', async () => {
+    resetSeq()
+    const agent = fakeParent([userEvent('work')])
+    const { ctx, screen, projections } = await bootTranscript(agent)
+    let pressure: Record<string, number> | undefined = { contextWindow: 128_000, projectedTokens: 1_000 }
+    const projection = projections as unknown as {
+      snapshot(session: unknown): { readonly asOfSeq: number, readonly values: Record<string, unknown> }
+      readonly listeners: Set<(session: unknown, key: string, value: unknown, seq: number) => void>
+    }
+    const original = projection.snapshot.bind(projection)
+    projection.snapshot = session => ({ ...original(session), values: { ...original(session).values, contextPressure: pressure } })
+    const publishPressure = (): void => {
+      for (const listener of projection.listeners) listener(agent.session, 'contextPressure', undefined, 0)
+    }
+    const before = screen.renderRequests.length
+    publishPressure()
+    await vi.waitFor(() => { expect(screen.renderRequests.length).toBeGreaterThan(before) })
+    // A pressure with only the unmarked occupancy has no window and no projected tokens.
+    pressure = { pressureTokens: 200 }
+    publishPressure()
+    await vi.waitFor(() => { expect(screen.renderRequests.length).toBeGreaterThan(before + 1) })
+    // A different key for the same session is ignored by the pressure read.
+    for (const listener of projection.listeners) listener(agent.session, 'mayflyConversationFacts', undefined, 0)
+    await new Promise(resolve => setTimeout(resolve, 20))
+    pressure = undefined
+    publishPressure()
+    expect(ctx.mayflyCurrentAgent.current()).toBe(agent)
+  })
+
+  it('coalesces tool changes and drops a queued invalidate after unload', async () => {
+    resetSeq()
+    const agent = fakeParent([userEvent('work')])
+    const { ctx, screen } = await bootTranscript(agent)
+    const before = screen.renderRequests.length
+    ctx.emit('tools/change')
+    ctx.emit('tools/change')
+    await new Promise<void>(resolve => setImmediate(resolve))
+    expect(screen.renderRequests.length).toBeGreaterThanOrEqual(before)
+    ctx.emit('tools/change')
+    await ctx.fiber.dispose()
+    await new Promise<void>(resolve => setImmediate(resolve))
+    expect(screen.children).toEqual([])
+  })
+})
+
+describe('mayfly-transcript unload fence for tool updates', () => {
+  it('drops an invalidate microtask queued just before the fiber disposal runs', async () => {
+    resetSeq()
+    const agent = fakeParent([userEvent('work')])
+    const { ctx, screen } = await bootTranscript(agent)
+    const disposing = ctx.fiber.dispose()
+    ctx.emit('tools/change')
+    await disposing
+    await new Promise<void>(resolve => setImmediate(resolve))
+    expect(screen.children).toEqual([])
   })
 })

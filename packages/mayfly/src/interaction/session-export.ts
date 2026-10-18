@@ -1,5 +1,5 @@
 /**
- * The session-export command family (S26): `/export` writes the current
+ * The session-export command family (S26): `/save` writes the current
  * session's folded transcript as a self-contained Markdown file (kimi's
  * export-md shape: front-matter, overview, per-turn sections) through the
  * persistence backend's raw artifact (`supportsRawArtifacts` + `readRaw`,
@@ -8,8 +8,10 @@
  * pipeline. Both commands share one read path — raw artifact → decoded
  * events plus the current official `mayflyConversation` projection. Readable
  * output mirrors the projected transcript; `full` deliberately preserves the
- * decoded append-only audit. This module injects nothing and resolves every
- * service through `ctx.get` (the `/theme` fiber-dispose trap).
+ * decoded append-only audit. Current operations (the default output path and
+ * a relative argument) resolve from the native current working directory.
+ * This module injects nothing and resolves every service through `ctx.get`
+ * (the `/theme` fiber-dispose trap).
  *
  * @module @ephemeral-ai/mayfly/interaction/session-export
  */
@@ -29,6 +31,7 @@ import type {} from '@deepseek-ai/dsh-commands'
 import type {} from '../app/index.ts'
 import type {} from '@deepseek-ai/dsh-session-persistence'
 import type {} from '@deepseek-ai/dsh-session-projection'
+import { agentDirectory } from '../internal/session-directory.ts'
 import { copyTextToClipboard } from './clipboard-write.ts'
 import { attemptStreamText } from './trace-format.ts'
 import { createInteractionNotificationOwner } from './notifications.ts'
@@ -111,7 +114,7 @@ export function lastAssistantText(items: readonly TranscriptItem[]): string {
 interface ExportInput {
   /** The persisted session id. */
   readonly sessionId: string
-  /** The session's durable cwd, when the header recorded one. */
+  /** The session's current working directory, when one is known. */
   readonly workDir: string | undefined
   /** The folded transcript, in session order. */
   readonly items: readonly TranscriptItem[]
@@ -428,7 +431,7 @@ function isConversationProjection(value: unknown): value is ConversationProjecti
 interface FullExportInput {
   /** The persisted session id. */
   readonly sessionId: string
-  /** The session's durable cwd, when the header recorded one. */
+  /** The session's current working directory, when one is known. */
   readonly workDir: string | undefined
   /** The decoded event stream, in seq order. */
   readonly events: readonly SessionEvent[]
@@ -465,7 +468,7 @@ export function buildFullExportMarkdown(input: FullExportInput): string {
 }
 
 /**
- * Register the `/export` and `/copy` commands.
+ * Register the `/save` and `/copy` commands.
  * @param ctx - plugin context.
  * @returns a disposer unregistering both commands.
  */
@@ -476,8 +479,8 @@ export function registerExportCommands(ctx: Context): () => void {
   interface SessionExportSource {
     /** The persisted session id. */
     readonly id: string
-    /** The session's durable cwd, when the header recorded one. */
-    readonly cwd: string | undefined
+    /** The session's current working directory. */
+    readonly directory: string
     /** The decoded event stream, in seq order (the full export's view). */
     readonly events: readonly SessionEvent[]
     /** The projected transcript, in session order (the readable export's view). */
@@ -512,18 +515,18 @@ export function registerExportCommands(ctx: Context): () => void {
     }
     const projection = ctx.sessionProjections.snapshot(agent.session, ['mayflyConversation']).values.mayflyConversation
     const items = isConversationProjection(projection) ? projectionItems(projection) : []
-    return { id: String(agent.id), cwd: agent.session.header.cwd, events, items }
+    return { id: String(agent.id), directory: agentDirectory(ctx, agent), events, items }
   }
 
   /**
-   * The `/export` handler: write the projected transcript (`/export [path]`)
-   * or the full event stream (`/export full [path]`) as Markdown and flash
+   * The `/save` handler: write the projected transcript (`/save [path]`)
+   * or the full event stream (`/save full [path]`) as Markdown and flash
    * the path in the hint line.
    * @param rawInput - the command's raw argument string (`[full] [<path>]`).
    * @param signal - the dispatching UI request's cancellation signal.
    * @returns the command outcome.
    */
-  async function exportSession(rawInput: string, signal: AbortSignal): Promise<CommandResult> {
+  async function saveSession(rawInput: string, signal: AbortSignal): Promise<CommandResult> {
     let source: SessionExportSource | undefined
     try {
       source = await readSessionSource(signal)
@@ -538,18 +541,18 @@ export function registerExportCommands(ctx: Context): () => void {
     const count = full ? source.events.length : source.items.length
     if (count === 0) return { kind: 'error', text: 'nothing to export yet' }
     const outputPath = pathArg.length > 0
-      ? resolve(pathArg)
-      : join(resolve(source.cwd ?? process.cwd()), defaultExportName(source.id, new Date()))
+      ? resolve(source.directory, pathArg)
+      : join(source.directory, defaultExportName(source.id, new Date()))
     const markdown = full
       ? buildFullExportMarkdown({
           sessionId: source.id,
-          workDir: source.cwd,
+          workDir: source.directory,
           events: source.events,
           exportedAt: new Date(),
         })
       : buildExportMarkdown({
           sessionId: source.id,
-          workDir: source.cwd,
+          workDir: source.directory,
           items: source.items,
           exportedAt: new Date(),
         })
@@ -594,11 +597,11 @@ export function registerExportCommands(ctx: Context): () => void {
     return { kind: 'success' }
   }
 
-  const exportCommand = ctx.commands.register({
-    name: 'export',
-    description: 'Export the current session as a Markdown file',
+  const saveCommand = ctx.commands.register({
+    name: 'save',
+    description: 'Save the current session as a Markdown file',
     input: { hint: '[full] [<path>]' },
-    handler: (invocation) => exportSession(invocation.rawInput, invocation.signal),
+    handler: (invocation) => saveSession(invocation.rawInput, invocation.signal),
   })
   const copyCommand = ctx.commands.register({
     name: 'copy',
@@ -606,7 +609,7 @@ export function registerExportCommands(ctx: Context): () => void {
     handler: (invocation) => copyAssistantMessage(invocation.signal),
   })
   return () => {
-    exportCommand()
+    saveCommand()
     copyCommand()
   }
 }

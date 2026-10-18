@@ -1,0 +1,52 @@
+grid 100x30 cursor none
+|  ✓ TodoWrite · 0.2s
+|
+|  ● Switch pages and watch the rows under each panel: /stats (←/→), /plugin (Alt+←/→), the views
+|    (Alt+↓ then ←/→). None of them moves.
+|
+|  ✻ Worked for 4s · done 09:00
+|
+|  » Set up the service; ask me what you need.
+|
+|  ● A few questions before I start.
+|
+|  ● AskUserQuestion(Which auth method should the CLI use?)
+|
+|  ● Waiting for your answer · 0s
+|    ⎿ Tip: Ctrl+O to expand tool details
+|━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+|  Questions
+|
+|  – Auth  ›  ● Scopes  ›  ○ Notes  ›  ○ Review                                                 2/3
+|             ━━━━━━━━
+|
+|  Which scopes should the token carry?
+|  select all that apply · Space toggles
+|  → 1. ○ read   list and fetch resources
+|    2. ○ write  create and update resources
+|    3. ○ admin  manage members and billing
+|    4. ○ audit  read the audit log
+|    5. ○ Other  type your own answer
+|
+|  Space toggle · Enter choose · ←/→ question · Esc back
+styles
+0: 2-3 fg:#4ec87e; 4-12 fg:#ededf2 b; 13-19 fg:#9aa3b8
+2: 2-3 fg:#ededf2
+5: 2-29 fg:#9aa3b8
+7: 2-3 fg:#9a86e6; 4-99 fg:#9a86e6 b
+9: 2-3 fg:#ededf2
+11: 2 fg:#5c6476; 3 fg:#ededf2; 4-18 fg:#ededf2 b; 19 fg:#9aa3b8; 20-56 fg:#c9c0f0; 57 fg:#9aa3b8
+13: 0-1 fg:#ededf2; 2 fg:#5c6476; 3-26 fg:#ededf2; 28-31 fg:#9aa3b8
+14: 0-39 fg:#9aa3b8
+15: 0-99 fg:#9a86e6
+16: 2-10 fg:#9a86e6 b
+18: 2-12 fg:#9aa3b8; 13 fg:#9a86e6; 15-20 fg:#9a86e6 b; 21-45 fg:#9aa3b8; 95-97 fg:#9aa3b8
+19: 13-20 fg:#9aa3b8
+21: 2-37 fg:#ededf2 b
+22: 2-38 fg:#9aa3b8
+23: 2 fg:#9a86e6 b; 4-5 fg:#9aa3b8; 7 fg:#9aa3b8; 9-12 fg:#f5f5f7 b; 16-39 fg:#9aa3b8
+24: 4-5 fg:#9aa3b8; 7 fg:#9aa3b8; 9-13 fg:#ededf2; 16-42 fg:#9aa3b8
+25: 4-5 fg:#9aa3b8; 7 fg:#9aa3b8; 9-13 fg:#ededf2; 16-41 fg:#9aa3b8
+26: 4-5 fg:#9aa3b8; 7 fg:#9aa3b8; 9-13 fg:#ededf2; 16-33 fg:#9aa3b8
+27: 4-5 fg:#9aa3b8; 7 fg:#9aa3b8; 9-13 fg:#ededf2; 16-35 fg:#9aa3b8
+29: 2-6 fg:#ededf2; 8-16 fg:#5c6476; 17-21 fg:#ededf2; 23-31 fg:#5c6476; 32-34 fg:#ededf2; 36-46 fg:#5c6476; 47-49 fg:#ededf2; 51-54 fg:#5c6476

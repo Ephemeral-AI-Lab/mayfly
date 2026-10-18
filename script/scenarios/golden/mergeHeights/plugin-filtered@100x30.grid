@@ -1,0 +1,51 @@
+grid 100x30 cursor none
+|
+|  ● Goal set · Refresh the landing page hero and keep every test green
+|
+|  ● A reviewer runs in the background, the todo list is set, and a watcher rebuilds the styles.
+|
+|  ✓ Subagent(Audit the hero copy) · 0.6s
+|
+|  ✓ TodoWrite · 0.2s
+|
+|  ● Switch pages and watch the rows under each panel: /stats (←/→), /plugin (Alt+←/→), the views
+|    (Alt+↓ then ←/→). None of them moves.
+|
+|  ✻ Worked for 4s · done 09:00
+|━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+|  Plugin marketplace
+|  index updated 26h ago · 14 entries
+|
+|  Installed 0   Updates 0   Browse 13
+|  ━━━━━━━━━━━
+|
+|  Mayfly UI rejected: $.child.children[2].node.children[0].node.ch  │  No plugin selected
+|  ildren[4].node.children[0].node.maxRows must be a finite integer  │
+|   within the safe range and >= 1                                   │
+|                                                                    │
+|                                                                    │
+|                                                                    │
+|                                                                    │
+|
+|
+|  ←/→ tabs · Enter open · r refresh · Esc close
+styles
+1: 2-99 fg:#c9c0f0
+3: 2-3 fg:#ededf2
+5: 2-3 fg:#4ec87e; 4-11 fg:#ededf2 b; 12 fg:#9aa3b8; 13-31 fg:#c9c0f0; 32-39 fg:#9aa3b8
+7: 2-3 fg:#4ec87e; 4-12 fg:#ededf2 b; 13-19 fg:#9aa3b8
+9: 2-3 fg:#ededf2
+12: 2-29 fg:#9aa3b8
+13: 0-99 fg:#9a86e6
+14: 2-19 fg:#9a86e6 b
+15: 2-35 fg:#9aa3b8
+17: 2-10 fg:#9a86e6 b; 12 fg:#9a86e6; 16-22 fg:#9aa3b8; 24 fg:#9aa3b8; 28-33 fg:#9aa3b8; 35-36 fg:#9aa3b8
+18: 2-12 fg:#9a86e6 b
+20: 2-65 fg:#e85454; 68 fg:#9aa3b8; 71-88 fg:#9aa3b8
+21: 2-65 fg:#e85454; 68 fg:#9aa3b8
+22: 2-32 fg:#e85454; 68 fg:#9aa3b8
+23: 68 fg:#9aa3b8
+24: 68 fg:#9aa3b8
+25: 68 fg:#9aa3b8
+26: 68 fg:#9aa3b8
+29: 2-4 fg:#ededf2; 6-12 fg:#5c6476; 13-17 fg:#ededf2; 19-25 fg:#5c6476; 26 fg:#ededf2; 28-37 fg:#5c6476; 38-40 fg:#ededf2; 42-46 fg:#5c6476

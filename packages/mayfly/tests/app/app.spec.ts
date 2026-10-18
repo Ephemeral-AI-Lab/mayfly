@@ -114,6 +114,18 @@ async function waitForAgent(test: Bench, id?: string): Promise<FakeAgent> {
   return test.ctx.mayflyCurrentAgent.current() as unknown as FakeAgent
 }
 
+/** Await the startup pass: the launch values are applied (or absent) and the lazy start is ready. */
+async function booted(test: Bench): Promise<void> {
+  await new Promise<void>((resolve) => { test.ctx.mayflySessionStart.onBooted(() => { resolve() }) })
+}
+
+/** The first interactive action: a lazy launch creates and selects the primary Agent once. */
+async function ensureAgent(test: Bench, id?: string): Promise<FakeAgent> {
+  const agent = await test.ctx.mayflySessionStart.ensure() as unknown as FakeAgent
+  await waitForAgent(test, id)
+  return agent
+}
+
 describe('mayfly app driver', () => {
   it('keeps launch config optional and rejects a missing appExit hook', () => {
     expect(Config({})).toEqual({})
@@ -137,9 +149,15 @@ describe('mayfly app driver', () => {
     expect(test.ctx.mayflyRequests.active()).toMatchObject({ scope: 'main', sessionEpoch: 1 })
   })
 
-  it('leaves followup idle when startup has no task', async () => {
+  it('leaves the session lazy and followup idle when startup has no task', async () => {
     const test = bench()
-    const agent = await waitForAgent(test)
+    await booted(test)
+    expect(test.controller.create).not.toHaveBeenCalled()
+    expect(test.ctx.mayflyCurrentAgent.current()).toBeNull()
+
+    const agent = await ensureAgent(test)
+    expect(test.controller.create).toHaveBeenCalledOnce()
+    expect(test.ctx.mayflyCurrentAgent.current()).toBe(agent)
     expect(agent.followup).not.toHaveBeenCalled()
   })
 
@@ -154,7 +172,7 @@ describe('mayfly app driver', () => {
     await vi.waitFor(() => { expect(failed.exits).toEqual([1]) })
     expect(failed.errors()).toContain('dsh: store offline')
 
-    const createFailed = bench()
+    const createFailed = bench({ task: 'start me' })
     createFailed.failCreate('bare create failure')
     await vi.waitFor(() => { expect(createFailed.exits).toEqual([1]) })
     expect(createFailed.errors()).toContain('dsh: bare create failure')
@@ -162,7 +180,7 @@ describe('mayfly app driver', () => {
 
   it('maps current-session turn endings onto the active request lifecycle', async () => {
     const test = bench()
-    const agent = await waitForAgent(test)
+    const agent = await ensureAgent(test)
     const states: string[] = []
     test.ctx.on('mayfly/request-state-changed', lifecycle => { states.push(lifecycle.state) })
     for (const reason of ['completed', 'error', 'aborted', 'interrupted'] as const) {
@@ -190,7 +208,7 @@ describe('mayfly app driver', () => {
 
   it('retires the stop latch when the current session ends or its tree settles', async () => {
     const test = bench()
-    const agent = await waitForAgent(test)
+    const agent = await ensureAgent(test)
     const stops: boolean[] = []
     test.ctx.on('mayfly/request-stop-changed', pending => { stops.push(pending) })
 
@@ -209,7 +227,7 @@ describe('mayfly app driver', () => {
   it('serializes resume and new navigation while keeping failures non-fatal', async () => {
     const target = fakeAgent('target')
     const test = bench({}, { resumeAgent: target })
-    const initial = await waitForAgent(test)
+    const initial = await ensureAgent(test)
     test.ctx.emit('mayfly/request-resume', 'target')
     expect(await waitForAgent(test, 'target')).toBe(target)
 
@@ -218,28 +236,42 @@ describe('mayfly app driver', () => {
     await vi.waitFor(() => { expect(test.errors()).toContain('could not resume session broken: raw resume failure') })
     expect(test.ctx.mayflyCurrentAgent.current()).toBe(target)
 
+    // `/new` returns to the start surface; the next first action creates the fresh session.
     test.ctx.emit('mayfly/request-new')
-    await vi.waitFor(() => { expect(test.ctx.mayflyCurrentAgent.current()).not.toBe(target) })
-    const fresh = test.ctx.mayflyCurrentAgent.current() as unknown as FakeAgent
+    await vi.waitFor(() => { expect(test.ctx.mayflyCurrentAgent.current()).toBeNull() })
+    expect(test.created).toHaveLength(1)
+    const fresh = await ensureAgent(test)
     expect(fresh).not.toBe(initial)
-    test.failCreate(new Error('create unavailable'))
+    expect(test.created).toHaveLength(2)
+
+    // A failed lazy start rejects to the first action and leaves nothing selected; the next message retries.
     test.ctx.emit('mayfly/request-new')
-    await vi.waitFor(() => { expect(test.errors()).toContain('could not start a new session: create unavailable') })
-    expect(test.ctx.mayflyCurrentAgent.current()).toBe(fresh)
+    await vi.waitFor(() => { expect(test.ctx.mayflyCurrentAgent.current()).toBeNull() })
+    test.failCreate(new Error('create unavailable'))
+    await expect(test.ctx.mayflySessionStart.ensure()).rejects.toThrow('create unavailable')
+    expect(test.ctx.mayflyCurrentAgent.current()).toBeNull()
+    test.failCreate(undefined)
+    const recovered = await ensureAgent(test)
+    expect(recovered).not.toBe(fresh)
+    expect(test.created).toHaveLength(3)
   })
 
-  it('carries a requested agent preset into session.create', async () => {
+  it('carries a requested agent preset into the next session.create', async () => {
     const test = bench()
-    await waitForAgent(test)
+    const first = await ensureAgent(test)
     expect(test.created).toEqual([{ cwd: process.cwd() }])
+
     test.ctx.emit('mayfly/request-new', 'minimal')
-    await vi.waitFor(() => { expect(test.created.length).toBe(2) })
-    expect(test.created[1]).toEqual({ cwd: process.cwd(), agentPreset: 'minimal' })
+    await vi.waitFor(() => { expect(test.ctx.mayflyCurrentAgent.current()).toBeNull() })
+    expect(test.created).toHaveLength(1)
+    const second = await ensureAgent(test)
+    expect(second).not.toBe(first)
+    expect(test.created).toEqual([{ cwd: process.cwd() }, { cwd: process.cwd(), agentPreset: 'minimal' }])
   })
 
   it('forks and rewinds through the native controller and reports every guard', async () => {
     const test = bench()
-    const parent = await waitForAgent(test)
+    const parent = await ensureAgent(test)
     test.ctx.emit('mayfly/request-fork')
     await vi.waitFor(() => { expect(test.ctx.mayflyCurrentAgent.current()).not.toBe(parent) })
     const child = test.ctx.mayflyCurrentAgent.current() as unknown as FakeAgent
@@ -269,13 +301,16 @@ describe('mayfly app driver', () => {
 
   it('contains an unexpected queued failure and continues later operations', async () => {
     const test = bench()
-    await waitForAgent(test)
+    await ensureAgent(test)
     const get = test.ctx.agents.get
     vi.spyOn(test.ctx.agents, 'get').mockImplementationOnce(() => { throw new Error('registry exploded') }).mockImplementation(get)
     test.ctx.emit('mayfly/request-fork')
     await vi.waitFor(() => { expect(test.errors()).toContain('dsh: registry exploded') })
     test.ctx.emit('mayfly/request-new')
-    await vi.waitFor(() => { expect(test.created.length).toBeGreaterThan(1) })
+    await vi.waitFor(() => { expect(test.ctx.mayflyCurrentAgent.current()).toBeNull() })
+    const next = await ensureAgent(test)
+    expect(test.ctx.mayflyCurrentAgent.current()).toBe(next)
+    expect(test.created).toHaveLength(2)
   })
 
   it('drops a queued operation that resolves after the fiber unloaded: no stderr line, no exit', async () => {
@@ -292,16 +327,17 @@ describe('mayfly app driver', () => {
     expect(test.exits).toEqual([])
   })
 
-  it('never starts a request queued behind an operation once the fiber has unloaded', async () => {
+  it('never starts a session queued behind an operation once the fiber has unloaded', async () => {
     const gate = Promise.withResolvers<void>()
     const test = bench({}, { loader: gate.promise })
     await new Promise(resolve => setTimeout(resolve))
-    test.ctx.emit('mayfly/request-new')
+    const pending = test.ctx.mayflySessionStart.ensure()
     await test.ctx.fiber.dispose()
     gate.resolve()
+    await expect(pending).rejects.toThrow('mayfly-app unloaded before the session started')
     await new Promise(resolve => setTimeout(resolve))
-    // Only the startup creation ran: the queued new-session request met the unloaded fiber and was dropped.
-    expect(test.created).toHaveLength(1)
+    // The queued start met the unloaded fiber and was dropped; the lazy launch never created a session.
+    expect(test.created).toEqual([])
     expect(test.errors()).toBe('')
   })
 
@@ -319,20 +355,71 @@ describe('mayfly app driver', () => {
 
   it('arms the latest selected non-empty session on disposal', async () => {
     const test = bench()
-    const agent = await waitForAgent(test)
+    const agent = await ensureAgent(test)
     agent.session.events.push({ type: 'user/message' })
     await test.ctx.fiber.dispose()
     expect(armedEpitaph()).toContain(`--resume ${String(agent.id)}`)
 
     const empty = bench()
-    await waitForAgent(empty)
+    await ensureAgent(empty)
     await empty.ctx.fiber.dispose()
     expect(armedEpitaph()).toBeUndefined()
   })
 
+  it('retires the stop latch only for an idle selected Agent and keeps it for a running or absent one', async () => {
+    const test = bench()
+    const agent = await ensureAgent(test)
+    test.ctx.mayflyRequests.requestStop()
+    expect(test.ctx.mayflyRequests.stopPending()).toBe(true)
+    Object.assign(agent, { status: 'running' })
+    test.ctx.emit('agent/status', { agent, status: 'running' })
+    expect(test.ctx.mayflyRequests.stopPending()).toBe(true)
+    Object.assign(agent, { status: 'idle' })
+    test.ctx.emit('agent/status', { agent, status: 'idle' })
+    expect(test.ctx.mayflyRequests.stopPending()).toBe(false)
+
+    // A latched stop with no selected Agent stays latched.
+    test.ctx.mayflyConversations.selectPrimary(null)
+    test.ctx.mayflyRequests.requestStop()
+    test.ctx.emit('agent/status', { agent: null, status: 'idle' } as never)
+    expect(test.ctx.mayflyRequests.stopPending()).toBe(true)
+    await test.ctx.fiber.dispose()
+  })
+
+  it('reuses an already selected primary on a lazy start and wraps a non-Error create failure', async () => {
+    const test = bench()
+    const preselected = fakeAgent('preselected')
+    test.live.set(String(preselected.id), preselected)
+    test.ctx.mayflyConversations.selectPrimary(preselected)
+    expect(await test.ctx.mayflySessionStart.ensure() as unknown as FakeAgent).toBe(preselected)
+    expect(test.controller.create).not.toHaveBeenCalled()
+    test.ctx.mayflyConversations.selectPrimary(null)
+    const agent = await ensureAgent(test)
+    test.ctx.mayflyConversations.selectPrimary(agent)
+    const again = await test.ctx.mayflySessionStart.ensure() as unknown as FakeAgent
+    expect(again).toBe(agent)
+    expect(test.controller.create).toHaveBeenCalledOnce()
+
+    test.ctx.emit('mayfly/request-new', 'preset')
+    await vi.waitFor(() => { expect(test.ctx.mayflyCurrentAgent.current()).toBeNull() })
+    test.failCreate('raw lazy failure')
+    await expect(test.ctx.mayflySessionStart.ensure()).rejects.toThrow('raw lazy failure')
+    expect(test.ctx.mayflyCurrentAgent.current()).toBeNull()
+    await test.ctx.fiber.dispose()
+  })
+
+  it('resumes without starting a task and leaves the followup alone', async () => {
+    const resumed = fakeAgent('resume-no-task')
+    const test = bench({ resume: 'resume-no-task' }, { resumeAgent: resumed })
+    expect(await waitForAgent(test, 'resume-no-task')).toBe(resumed)
+    expect(resumed.followup).not.toHaveBeenCalled()
+    expect(test.ctx.mayflyRequests.active()).toBeUndefined()
+    await test.ctx.fiber.dispose()
+  })
+
   it('routes retraction persistence diagnostics through the app error sink', async () => {
     const test = bench()
-    const agent = await waitForAgent(test)
+    const agent = await ensureAgent(test)
     Object.assign(agent, { status: 'running' })
     const events = agent.session.events as Array<Record<string, unknown>>
     events.push(
@@ -352,7 +439,7 @@ describe('mayfly app driver', () => {
 
   it('routes retraction interrupt failures through the app error sink', async () => {
     const test = bench()
-    const agent = await waitForAgent(test)
+    const agent = await ensureAgent(test)
     Object.assign(agent, { status: 'running' })
     agent.session.events.push(
       { type: 'turn/start', seq: 0, data: { turn: 1 } },
@@ -366,7 +453,7 @@ describe('mayfly app driver', () => {
 
   it('interrupts a retracted continuable subagent through its parent address', async () => {
     const test = bench()
-    const parent = await waitForAgent(test)
+    const parent = await ensureAgent(test)
     const child = fakeAgent('child', { events: [
       { type: 'turn/start', seq: 0, data: { turn: 1 } },
       { type: 'user/message', seq: 1, data: { id: 'child-message', source: { kind: 'user' } } },
@@ -383,7 +470,7 @@ describe('mayfly app driver', () => {
     })
     test.ctx.mayflyRequests.begin('subagent')
     expect(test.ctx.mayflyRetractions.tryRetract('child-message')).toBe(true)
-    expect(test.ctx.subagents.interruptByParent).toHaveBeenCalledWith(child.id, parent.id, 'continuable')
+    expect(test.ctx.subagents.interrupt).toHaveBeenCalledWith(child.id, { kind: 'user', parentSessionId: parent.id })
     expect(child.cancel).not.toHaveBeenCalled()
   })
 })

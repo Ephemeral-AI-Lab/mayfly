@@ -4,7 +4,7 @@
  * scenes are the timelines of the perf and app scenarios. See `timeline.mjs` for the builders. @module script/scenarios/replays
  */
 
-import { btw, dequeue, edit, goal as goalItem, job, mark, notify, pause, queue, question, seed, step, subagent, todos, tool, turn } from './timeline.mjs'
+import { btw, compaction, cwdChange, dequeue, edit, follow, goal as goalItem, job, mark, notify, pause, queue, question, reload, reminder, seed, step, subagent, todos, tool, turn } from './timeline.mjs'
 /** A reply shaped like a real answer: prose, lists, a table, and fenced code in two languages. */
 function reply() {
   const parts = []
@@ -224,7 +224,126 @@ const perfSubagent = {
   ],
 }
 
-export const SCENES = { markdown, content, appConversation, appAgents, appSessions, perfSubagent }
+/** The advertised window and one step's usage: 170k input + 120k cache read is 290k, 92% of 315k. */
+const CONTEXT_WINDOW = 315_000
+const CONTEXT_USAGE = Object.freeze({ inputTokens: 170_000, outputTokens: 800, cacheReadTokens: 120_000 })
+
+/** A nested live subagent of a renderer audit: its own Agent streams rows while its parent waits. */
+const rendererSurvey = (description, prompt, text) => subagent(description, prompt, {
+  mode: 'continuable', live: true, startMs: 250,
+  items: [step({
+    reasoning: `Walk the renderer rows for ${description.toLowerCase()}.`,
+    text,
+    textMs: 42_000,
+    chunk: 8,
+  })],
+}, { runMs: 45_000 })
+
+/** A live continuable background child: one prepareMs step hands a nested live survey its own Agent. */
+const rendererChild = (description, prompt, survey, startMs) => subagent(description, prompt, {
+  mode: 'continuable', live: true, startMs,
+  items: [step({
+    reasoning: `Split ${description.toLowerCase()} into a nested survey and a pass over the paint path.`,
+    prepareMs: 1800,
+    text: `I am handing ${description.toLowerCase()} to a nested survey and walking the paint path in the same pass. `,
+    textMs: 4500,
+    tools: [survey],
+  })],
+}, { runMs: 600, toolArgs: { run_in_background: true } })
+
+/** One long streamed answer at 92% of the advertised window; `marks` can stop playback inside it. */
+const longContextStep = (pass, marks) => step({
+  reasoning: `Pass ${String(pass)}: read the renderer rows, find the paints that repeat, and cut the walk.`,
+  text: reply(),
+  textMs: 6500,
+  chunk: 24,
+  usage: CONTEXT_USAGE,
+  ...(marks === undefined ? {} : { marks }),
+})
+
+/**
+ * The combined long scene: 200 settled turns with two compactions, a turn that leaves two live background children (each
+ * with a nested live survey) and two running jobs while three high-context answers stream, then a /btw. The script types,
+ * scrolls, wheels, enters the views, and searches over them before it settles the rest.
+ */
+const perfLong = {
+  summary: '200 settled turns with two compactions, 2 live background subagents with nested live surveys, 2 running jobs, a goal and todos, 3 high-context streamed steps, and a /btw, with typing, scrolling, the wheel, views, and search over them',
+  options: { contextWindow: CONTEXT_WINDOW },
+  items: [
+    ...Array.from({ length: 200 }, (_, index) => {
+      const settled = historyTurn(index + 1)
+      return index === 59 || index === 139
+        ? [settled, compaction({ ms: 1800, summary: `The first ${String(index + 1)} sections are settled; the width ladders hold and the suite is green. Keep the pipeline notes and the remaining sections in view.`, shadowedTokens: 42_000, summaryTokens: 700 })]
+        : [settled]
+    }).flat(),
+    mark('load'),
+    turn('Audit the renderer while the preview and tests keep running.', [
+      goalItem('create', { objective: 'Audit the renderer and keep the preview and tests green', maxGoalRounds: 8 }),
+      step({
+        text: 'Two renderer audits run in the background, and the todo list is set.',
+        prepareMs: 600,
+        tools: [
+          rendererChild('Audit the renderer rows', 'Audit the renderer rows and report the expensive paints', rendererSurvey('Nested row survey', 'Survey the renderer rows and report which paints can be avoided', 'The row survey repaints every visible row: the markdown fences, the diff bands, and the wrapped list rows each walk the width ladder again. '.repeat(9)), 250),
+          rendererChild('Profile the renderer', 'Profile the renderer while the preview reloads', rendererSurvey('Nested profile pass', 'Profile the renderer pass and report the hot rows', 'The profile pass finds the same rows hot: the diff bands rebuild their width ladders and the wrapped list rows repaint twice per publish. '.repeat(9)), 700),
+          todos([['completed', 'Read the renderer'], ['in_progress', 'Profile the paint path'], ['pending', 'Trim the row work'], ['pending', 'Re-run the preview']]),
+        ],
+      }),
+      job('pnpm run watch', { lines: [[300, 'watching for changes…'], [18_000, 'rebuilt src/renderer.ts in 38 ms']], progress: [[500, 'watching'], [18_000, 'rebuilt 1']] }),
+      job('pnpm run preview', { lines: [[400, 'preview ready at http://localhost:4173'], [11_000, 'hmr update src/renderer.ts']], progress: [[600, 'serving'], [11_000, 'hmr 1']] }),
+      longContextStep(1, [{ name: 'combined', block: 'text', at: 0.5 }]),
+      mark('type'),
+      longContextStep(2),
+      mark('scroll'),
+      longContextStep(3),
+      mark('wheel'),
+      step({ text: 'The renderer audit is in: the diff bands and the wrapped list rows walk the width ladder twice. The preview, the watcher, and both nested surveys are still running.', usage: CONTEXT_USAGE }),
+      mark('views'),
+    ]),
+    btw('Does the renderer cache survive a theme switch?', [
+      step({ reasoning: 'A short answer: the cache is keyed by the palette, so a switch starts a new one.', text: 'Yes, but it starts cold: the cache is keyed by the active palette, so the first frame after a switch rebuilds the rows once and then settles.', textMs: 1600, usage: CONTEXT_USAGE }),
+    ], { label: 'renderer cache' }),
+    mark('search'),
+    mark('settle'),
+  ],
+}
+
+/**
+ * The swarm scene: six live background children (each with a nested live survey), a running job, a /btw side
+ * conversation, and a main stream, so the agents view, child view, BTW view, and main view can be switched between
+ * while every child is still streaming. The script enters the agents view, opens a child, returns, toggles the BTW,
+ * and types/scrolls on main.
+ */
+const perfSwarm = {
+  summary: 'six live background subagents with nested surveys, a running job, a /btw, and a main stream; enters the agents view, opens a child, switches back, toggles the BTW, then types and scrolls on main',
+  items: [
+    ...Array.from({ length: 30 }, (_, index) => historyTurn(index + 1)),
+    mark('load'),
+    turn('Coordinate six live renderer audits and keep the preview running.', [
+      step({
+        text: 'Six renderer audits start in the background, each with a nested survey.',
+        prepareMs: 300,
+        tools: Array.from({ length: 6 }, (_, index) => rendererChild(
+          `Audit renderer pass ${String(index + 1)}`,
+          `Audit renderer pass ${String(index + 1)} and report the expensive paints`,
+          rendererSurvey(`Nested survey ${String(index + 1)}`, `Survey renderer pass ${String(index + 1)}`, `Pass ${String(index + 1)} finds the same rows hot: the markdown fences, the diff bands, and the wrapped list rows each walk the width ladder again. `.repeat(4)),
+          150 + index * 90,
+        )),
+      }),
+      step({ text: 'All six audits and their nested surveys are running in the background.', textMs: 1200 }),
+      mark('swarm'),
+      job('pnpm run preview', { lines: [[400, 'preview ready'], [10_000, 'hmr update src/renderer.ts']], progress: [[600, 'serving'], [10_000, 'hmr 1']] }),
+      step({ text: 'The agents view lists all six, live first; the preview keeps serving.', textMs: 900, marks: [{ name: 'agents', block: 'text', at: 0.2 }] }),
+    ]),
+    mark('btw'),
+    btw('Which audit found the widest redundant paint?', [
+      step({ reasoning: 'The pass with the most wrapped rows.', text: 'Pass four: its wrapped list rows repaint the width ladder twice, and the diff bands rebuild every hunk.', textMs: 1200 }),
+    ], { label: 'audit notes' }),
+    mark('switch'),
+    mark('settle'),
+  ],
+}
+
+export const SCENES = { markdown, content, appConversation, appAgents, appSessions, perfSubagent, perfLong, perfSwarm }
 
 /** A replay or a scene by name. */
 export const timelineNamed = name => Object.hasOwn(REPLAYS, name) ? REPLAYS[name] : Object.hasOwn(SCENES, name) ? SCENES[name] : undefined
@@ -446,7 +565,9 @@ const brandThemes = {
         usage: { inputTokens: 3300, outputTokens: 160, cacheReadTokens: 3000 },
       }),
     ]),
+    mark('dark'),
     notify('warning', 'Rate limited · retrying in 4 s', { holdMs: 600_000 }),
+    pause(100),
     mark('ready'),
     pause(DWELL_VIEWS * 8),
   ],
@@ -472,4 +593,71 @@ const startSplash = {
   ],
 }
 
-export const REPLAYS = { mergeDock, mergeConversations, mergePanels, mergeHeights, mergeEsc, viewItems, newMessages, brandThemes, startSplash }
+
+/**
+ * The native-capability alignment round: one long session walks the merged
+ * native readers and controllers. It changes the working directory and shows
+ * the resulting native todo/context/model values, runs a managed subagent
+ * activation to completion beside a bash job, enables the Host Schedule
+ * service and shows the preset-owned reminder tools, opens a native file
+ * mention, `/permissions`, `/save`, a migrated stored Session, and `/btw`;
+ * then it switches to `minimal` (no schedule tools), narrows the terminal, and
+ * reloads the live core row through the loader.
+ */
+const harnessAlignment = {
+  summary: 'native capability alignment: a working-directory change with native todo/context/model values, a managed subagent activation and completion, a bash job, a Host reminder created under standard, a migration-required stored session, a native @file mention, /save, /btw, the minimal preset, 60 and 40 columns, and the /permissions panel',
+  workspace: {
+    'src/hero.ts': "export const hero = 'Ship agent UI in a keystroke'\n",
+    'README.md': '# Harness alignment\n\nThe hero lives in src/hero.ts.\n',
+  },
+  items: [
+    seed([
+      { id: 'seed-legacy-hero', at: -DAY, migration: true, title: 'Legacy hero notes', items: earlier('Draft the old hero copy.', 'The old hero was three sentences long.', { inputTokens: 2_400, outputTokens: 180, cacheReadTokens: 1_000 }) },
+    ]),
+    turn('Refresh the hero and keep every test green.', [
+      cwdChange('src'),
+      step({
+        text: 'I will update src/hero.ts and run the suite from the new working directory.',
+        usage: { inputTokens: 4_200, outputTokens: 130, cacheReadTokens: 2_000 },
+        tools: [
+          todos([['completed', 'Read the brand notes'], ['in_progress', 'Tighten the hero'], ['pending', 'Run the tests']]),
+          tool('read', { file_path: 'hero.ts' }, { result: "export const hero = 'Ship agent UI in a keystroke'\n", runMs: 500 }),
+        ],
+      }),
+      job('pnpm run test', { lines: [[300, 'running the suite…'], [9_000, '214 tests passed']], progress: [[500, 'running'], [9_000, 'passed']], endMs: 14_000, status: 'completed', detail: 'exit code: 0' }),
+      mark('job-live'),
+      step({ text: 'The suite is still running; the status row keeps the job live.', usage: { inputTokens: 4_600, outputTokens: 90, cacheReadTokens: 4_000 } }),
+    ]),
+    mark('aligned'),
+    pause(1500),
+    turn('Hand the hero audit to a subagent while the suite finishes.', [
+      step({
+        tools: [subagent('hero audit', 'Audit the hero copy against the brand notes and report what to change', {
+          mode: 'continuable', live: true, activation: true, outcome: 'completed',
+          items: [step({ text: 'The hero is clear; shorten the subhead and keep the install line above the fold.', usage: { inputTokens: 3_200, outputTokens: 120, cacheReadTokens: 2_400 } })],
+        }, { runMs: 6_000 })],
+        marks: [{ name: 'activation-live', block: 'tool', at: 0.3 }],
+        usage: { inputTokens: 5_000, outputTokens: 80, cacheReadTokens: 4_000 },
+      }),
+      pause(7000),
+      mark('activated'),
+    ]),
+    pause(5000),
+    mark('job-done'),
+    pause(1000),
+    mark('ready'),
+    reminder('Hero audit reminder', 'Check the hero copy again before the release.'),
+    mark('scheduled'),
+    pause(1000),
+    mark('before-minimal'),
+    follow(),
+    mark('minimal'),
+    pause(2000),
+    mark('reload-ready'),
+    reload(),
+    pause(1500),
+    mark('reloaded'),
+  ],
+}
+
+export const REPLAYS = { mergeDock, mergeConversations, mergePanels, mergeHeights, mergeEsc, viewItems, newMessages, brandThemes, startSplash, harnessAlignment }

@@ -38,15 +38,6 @@ function preset(source: string): unknown {
   return parse(source, { customTags: [{ tag: 'tag:yaml.org,2002:js', resolve: (value: string) => value }] })
 }
 
-const mayflyOnlyRowIds = new Set(['time-context'])
-
-/** Exclude Mayfly's additive preset rows so the remaining composition tracks upstream exactly. */
-function withoutMayflyAdditions(value: unknown): unknown {
-  if (Array.isArray(value)) return value.filter(entry => !(entry !== null && typeof entry === 'object' && mayflyOnlyRowIds.has(entry.id))).map(withoutMayflyAdditions)
-  if (value !== null && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([key, entry]) => [key, withoutMayflyAdditions(entry)]))
-  return value
-}
-
 describe('Mayfly preset roster', () => {
   it('declares the upstream roster plus one bundle-local preset named mayfly-cordis', () => {
     const mayflyRoot = new URL('../presets/', import.meta.url)
@@ -82,7 +73,7 @@ describe('Mayfly preset roster', () => {
     for (const id of ['standard', 'ptc', 'minimal', 'cordis']) {
       const upstream = readFileSync(join(upstreamRoot, `${id}.patch.yml`), 'utf8')
       const mayfly = readFileSync(new URL(`${id}.patch.yml`, mayflyRoot), 'utf8')
-      expect(withoutMayflyAdditions(preset(mayfly)), `presets/${id}.patch.yml adds only Mayfly rows`).toEqual(preset(upstream))
+      expect(preset(mayfly), `presets/${id}.patch.yml matches upstream`).toEqual(preset(upstream))
       expect(mayfly).toContain(`id: ${id}\n`)
     }
 
@@ -119,15 +110,22 @@ describe('Mayfly preset roster', () => {
     const rows = standard.flatMap(entry => entry.insert ?? []).find(row => row.id === 'preset-standard')?.config?.plugins ?? []
     const timeContext = rows.find(row => row.id === 'time-context')
     expect(timeContext?.name).toBe('@deepseek-ai/dsh-time-context')
-    expect(timeContext?.config).toEqual({ refreshIntervalMs: 300000 })
+    expect(timeContext?.config).toBeUndefined()
+    const scheduleTool = rows.find(row => row.id === 'tool-schedule')
+    expect(scheduleTool?.name).toBe('@deepseek-ai/dsh-tool-schedule')
     // No preset may publish the service: host rows are the only legal mount.
     for (const id of ['standard', 'minimal', 'ptc', 'cordis', 'mayfly-cordis']) {
       const source = readFileSync(new URL(`${id}.patch.yml`, mayflyRoot), 'utf8')
       expect(source).not.toContain('dsh-schedule')
     }
-    for (const id of ['minimal', 'ptc', 'cordis', 'mayfly-cordis']) {
+    for (const id of ['minimal']) {
       const source = readFileSync(new URL(`${id}.patch.yml`, mayflyRoot), 'utf8')
       expect(source).not.toContain('dsh-time-context')
+    }
+    for (const id of ['ptc', 'cordis', 'mayfly-cordis']) {
+      const source = readFileSync(new URL(`${id}.patch.yml`, mayflyRoot), 'utf8')
+      expect(source).toContain('dsh-time-context')
+      expect(source).toContain('dsh-tool-schedule')
     }
   })
 

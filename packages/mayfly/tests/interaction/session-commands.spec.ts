@@ -6,7 +6,7 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import { createAssistantMessage } from '@deepseek-ai/dsh-llm'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { sessionInfoFacts } from '../../src/interaction/session-commands.ts'
-import { changelogNode, contextNode, formatCreated, statusNode, usageNode, versionNode, type SessionInfoFacts } from '../../src/interaction/session-info-model.ts'
+import { changelogNode, formatCreated, usageNode, versionNode, type SessionInfoFacts } from '../../src/interaction/session-info-model.ts'
 import { MAYFLY_VERSION } from '../../src/transcript/banner-content.ts'
 import { informationFixture } from './information-fixture.ts'
 import { flushRequests, renderRequest } from './request-fixture.ts'
@@ -39,34 +39,26 @@ describe('native session information', () => {
     expect(sessionInfoFacts(bench.ctx, bench.other)).toMatchObject({ id: 'other', turns: 0, steps: 0, usage: { buckets: { input: 0, output: 0 } } })
   })
 
-  it('updates live status for its exact session and retains the same instance across repaint', async () => {
+  it('refreshes the live context view in place and retains the same instance across repaint', async () => {
     const bench = await setup()
-    await bench.run('/status')
-    const model = bench.model('mayfly.status')
-    const initial = model.registration.revision
-    bench.otherSession.append('turn/start', { turn: 1 })
+    await bench.run('/context')
+    const model = bench.model('mayfly.context')
+    model.invoke('refresh')
     await flushRequests()
-    expect(model.registration.revision).toBe(initial)
-    bench.session.append('turn/start', { turn: 1 })
-    bench.session.append('step/end', { turn: 1, step: 0 })
-    await flushRequests()
-    expect(model.registration.revision).toBeGreaterThan(initial)
-    expect(JSON.stringify(model.node)).toContain('1970-01-01 00:00 UTC')
-    await bench.run('/status')
+    expect(bench.model('mayfly.context')).toBe(model)
+    expect(JSON.stringify(model.node)).toContain('Context')
+    await bench.run('/context')
     expect(bench.ctx.mayflyOverlays.list()).toHaveLength(1)
-    expect(bench.model('mayfly.status')).toBe(model)
+    expect(bench.model('mayfly.context')).toBe(model)
   })
 
   it('keeps application metadata usable across current-Agent and projection provider gaps', async () => {
     const bench = await setup('acceptance-build')
-    await bench.run('/status')
-    const status = bench.model('mayfly.status')
     await bench.run('/version')
     const version = bench.model('mayfly.version')
     expect(JSON.stringify(version.node)).toContain('vacceptance-build')
     await bench.projections.dispose()
     await flushRequests()
-    expect(status.disposed).toBe(true)
     expect(version.disposed).toBe(false)
     await bench.app.dispose()
     await bench.run('/changelog')
@@ -89,8 +81,8 @@ describe('native session information', () => {
 
   it('contains projection read failures and recovers on an explicit refresh', async () => {
     const bench = await setup()
-    await bench.run('/status')
-    const model = bench.model('mayfly.status')
+    await bench.run('/context')
+    const model = bench.model('mayfly.context')
     const read = vi.spyOn(bench.ctx.sessionProjections, 'snapshot').mockImplementation(() => { throw new Error('unavailable') })
     model.invoke('refresh')
     await flushRequests()
@@ -99,20 +91,21 @@ describe('native session information', () => {
     read.mockRestore()
     model.invoke('refresh')
     await flushRequests()
-    expect(JSON.stringify(model.node)).toContain('/repo/current')
+    expect(JSON.stringify(model.node)).toContain('Context')
     expect(model.feedbackSnapshot()).toEqual([])
   })
 
-  it('updates Agent status and localized presentation from the corresponding facts', async () => {
+  it('refreshes the localized context view on Agent status changes', async () => {
     const bench = await setup()
-    await bench.run('/status')
-    const model = bench.model('mayfly.status')
+    await bench.run('/context')
+    const model = bench.model('mayfly.context')
+    const revision = model.registration.revision
     Object.assign(bench.agent, { status: 'running' })
     bench.ctx.emit('agent/status', { agent: bench.agent, status: 'running' })
     bench.ctx.mayflyLocale.setPreference('zh')
     await flushRequests()
-    expect(JSON.stringify(model.node)).toContain('创建时间')
-    expect(JSON.stringify(model.node)).toContain('运行中')
+    expect(model.registration.revision).toBeGreaterThan(revision)
+    expect(JSON.stringify(model.node)).toContain('模型')
   })
 
   it('projects field values and chart data without preformatted character grids', () => {
@@ -130,20 +123,9 @@ describe('native session information', () => {
     expect(value).toContain('"Cache hit rate"')
     expect(value).toContain('33%')
     expect(value).not.toMatch(/[█▓▒░]{2,}/u)
-    expect(JSON.stringify(statusNode(facts, { mayfly: 'test', harness: 'native' }, key => key))).toContain('high')
     expect(formatCreated(NaN)).toBe('unknown UTC')
     expect(JSON.stringify(versionNode({ mayfly: 'custom', harness: 'native' }))).toContain('vcustom')
-    expect(JSON.stringify(contextNode({ window: 1000 }, key => key))).toContain('no request')
-    expect(JSON.stringify(contextNode({}, key => key))).toContain('not advertised')
     expect(JSON.stringify(changelogNode([{ version: MAYFLY_VERSION, summary: 'summary', highlights: ['long '.repeat(100)], knownIssues: ['known'] }], key => key))).toContain('known')
-    expect(JSON.stringify(contextNode({ used: 750, window: 1000 }, key => key))).toContain('warning')
-    expect(JSON.stringify(contextNode({ used: 1500, window: 1000 }, key => key))).toContain('1.5k / 1000 (100%)')
-    const normalized = contextNode({ used: 12.25, window: 100.5 }, key => key)
-    expect(normalized.kind).toBe('stack')
-    if (normalized.kind !== 'stack') throw new Error('context node is not a stack')
-    expect(normalized.children[0]!.node).toMatchObject({ kind: 'progress', value: 13, max: 101 })
-    expect(JSON.stringify(contextNode({ used: Number.NaN, window: 1000 }, key => key))).toContain('no request')
-    expect(JSON.stringify(contextNode({ used: 10, window: Number.POSITIVE_INFINITY }, key => key))).toContain('not advertised')
     expect(JSON.stringify(usageNode({ ...facts, usage: { ...facts.usage, context: {} } }, key => key))).not.toMatch(/\(\d+(?:\.\d+)?%\)/u)
     expect(JSON.stringify(usageNode({ ...facts, usage: { ...facts.usage, context: {} } }, key => key))).toContain('not advertised for the current model')
     expect(JSON.stringify(usageNode({ ...facts, usage: { ...facts.usage, context: { window: 1000 } } }, key => key))).toContain('no request has reported usage yet')
@@ -217,33 +199,33 @@ describe('native session information', () => {
 
   it('contains cancelled, wrong-Agent, and opening-aborted live commands', async () => {
     const bench = await setup()
-    const command = bench.ctx.commands.find(bench.agent, 'status')!
+    const command = bench.ctx.commands.find(bench.agent, 'context')!
     const aborted = new AbortController()
     aborted.abort()
     expect(await command.handler({ agent: bench.agent, signal: aborted.signal } as never)).toEqual({ kind: 'success' })
     expect(await command.handler({ agent: bench.other, signal: new AbortController().signal } as never)).toEqual({ kind: 'error', text: 'no session is live yet' })
 
     const opening = new AbortController()
-    bench.ctx.mayflyOverlays.subscribe(delta => { if (delta.kind === 'upsert' && delta.entry.id === 'mayfly.status') opening.abort() })
+    bench.ctx.mayflyOverlays.subscribe(delta => { if (delta.kind === 'upsert' && delta.entry.id === 'mayfly.context') opening.abort() })
     expect(await command.handler({ agent: bench.agent, signal: opening.signal } as never)).toEqual({ kind: 'success' })
-    expect(bench.ctx.mayflyOverlays.list().some(item => item.id === 'mayfly.status')).toBe(false)
+    expect(bench.ctx.mayflyOverlays.list().some(item => item.id === 'mayfly.context')).toBe(false)
   })
 
   it('ignores unrelated projection notifications', async () => {
     const bench = await setup()
     let listener!: (session: typeof bench.session, key: string) => void
     vi.spyOn(bench.ctx.sessionProjections, 'onChanged').mockImplementation(callback => { listener = callback as typeof listener; return () => {} })
-    await bench.run('/status')
+    await bench.run('/context')
     listener(bench.otherSession as typeof bench.session, 'tokenUsage')
     listener(bench.session, 'unrelated')
     await flushRequests()
-    expect(bench.model('mayfly.status')).toBeDefined()
+    expect(bench.model('mayfly.context')).toBeDefined()
   })
 
-  it.each(ADVERSARIAL)('contains status, context, and changelog data: $name', async ({ name, text }) => {
+  it.each(ADVERSARIAL)('contains usage, version, and changelog data: $name', async ({ name, text }) => {
     const bench = await setup()
     const facts: SessionInfoFacts = { id: text, cwd: text, createdAt: 0, status: 'running', turns: 1, steps: 2, model: { provider: text, model: text }, usage: { buckets: { input: 100, cacheRead: 0, cacheWrite: 0, output: 10 }, context: { used: 110, window: 1000 } }, composition: { system: 100, tools: 200, messages: 300 } }
-    for (const node of [statusNode(facts, { mayfly: text, harness: 'native' }, key => key), usageNode(facts, key => key), changelogNode([{ version: 'test', summary: text, highlights: [text], knownIssues: [text] }], key => key)]) {
+    for (const node of [versionNode({ mayfly: text, harness: 'native' }), usageNode(facts, key => key), changelogNode([{ version: 'test', summary: text, highlights: [text], knownIssues: [text] }], key => key)]) {
       const handle = bench.ctx.mayflyOverlays.open({ id: 'width-info', capturing: true }, ui.scroll(node, { scrollbar: true }))
       const model = bench.ctx.mayflyUiInteraction.get('overlay', 'width-info')!
       const viewport = { columns: 80, rows: 20 }

@@ -417,12 +417,12 @@ describe.each(['pane', 'overlay'] as const)('%s frontend interaction', kind => {
     expect(ctx.mayflyUiInteraction.get(kind, 'same')!.form(address())!.fields.name!.value).toBe('reopened')
   })
 
-  it('returns from default-No confirmation without losing drafts and invokes Yes only once', async () => {
+  it('returns from the confirmation without losing drafts and invokes Yes only once', async () => {
     const remove = vi.fn()
     const { model } = await setup(kind, { action: event => { if (event.kind === 'activate') remove(); return { kind: 'completed' } } })
     model.edit({ ...address(), fieldId: 'name' }, 'B')
     model.invoke('delete')
-    expect(model.decisionNode).toMatchObject({ child: { items: [{ id: 'mayfly.decision.no', defaultFocus: true }, { id: 'mayfly.decision.yes' }] } })
+    expect(model.decisionNode).toMatchObject({ child: { items: [{ id: 'mayfly.decision.yes' }, { id: 'mayfly.decision.no' }] } })
     expect(remove).not.toHaveBeenCalled()
     model.answerDecision(false)
     expect(model.form(address())!.fields.name!.value).toBe('B')
@@ -1064,7 +1064,7 @@ it('cancels an acknowledgement when a hidden submitted form reveals a newer sche
 describe('structured decisions, availability, and validation boundaries', () => {
   const completed = async (_event: MayflyUiEvent) => ({ reply: { kind: 'completed' as const }, publish: () => true })
 
-  it('renders confirmation details, labels, and danger tone with No focused first', async () => {
+  it('renders confirmation details, labels, and danger tone', async () => {
     const prepare = vi.fn(completed)
     const { model } = directSurface(ui.actions({ id: 'actions', items: [
       { id: 'stop', label: 'Stop', confirm: { title: 'Stop build?', detail: 'Output stops streaming.', confirmLabel: 'Stop', cancelLabel: 'Keep running', tone: 'danger' } },
@@ -1073,11 +1073,11 @@ describe('structured decisions, availability, and validation boundaries', () => 
     model.invoke('stop')
     expect(model.decisionNode).toMatchObject({ title: 'Stop build?', child: { kind: 'stack', children: [
       { node: { kind: 'text', content: 'Output stops streaming.', tone: 'warning' } },
-      { node: { kind: 'actions', items: [{ label: 'Keep running', defaultFocus: true }, { label: 'Stop', intent: 'danger' }] } },
+      { node: { kind: 'actions', items: [{ label: 'Stop', intent: 'danger' }, { label: 'Keep running' }] } },
     ] } })
     model.answerDecision(false)
     model.invoke('plain')
-    expect(model.decisionNode).toMatchObject({ title: 'Plain?', child: { kind: 'actions', items: [{ label: 'zh:No' }, { label: 'zh:Yes' }] } })
+    expect(model.decisionNode).toMatchObject({ title: 'Plain?', child: { kind: 'actions', items: [{ label: 'zh:Yes' }, { label: 'zh:No' }] } })
     model.answerDecision(true)
     await flush()
     expect(prepare).toHaveBeenCalledOnce()

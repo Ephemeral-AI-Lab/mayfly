@@ -33,7 +33,7 @@ describe('native questions provider', () => {
     await expect(first).rejects.toMatchObject({ code: 'ASK_CANCELLED' })
     const second = bench.ctx.userQuestions.ask({ questions })
     const model = bench.model()
-    model.edit({ pagePath: [], formId: 'answer', fieldId: 'custom' }, 'draft')
+    model.updateChoice({ pagePath: [], controlId: 'options' }, { kind: 'input', id: 'other', text: 'draft' })
     model.requestClose()
     expect(model.decisionNode).toBeDefined()
     model.answerDecision(false)
@@ -57,7 +57,7 @@ describe('native questions provider', () => {
     expect(fallback).toHaveBeenCalledOnce()
     const own = bench.ctx.userQuestions.ask({ questions, agent: bench.agent })
     expect(bench.model().scope).toEqual({ kind: 'session', sessionId: bench.agent.id })
-    bench.model().invoke('submit-answers')
+    bench.model().invoke('questions.next.q')
     await expect(own).resolves.toEqual({ answers: [{ id: 'q', selected: [] }] })
     expect(fallback).toHaveBeenCalledOnce()
   })
@@ -73,7 +73,7 @@ describe('native questions provider', () => {
     abort.abort()
     await expect(first).rejects.toMatchObject({ code: 'ASK_ABORTED' })
     expect(current.disposed).toBe(false)
-    current.invoke('submit-answers')
+    current.invoke('questions.next.q')
     await expect(second).resolves.toEqual({ answers: [{ id: 'q', selected: [] }] })
   })
 
@@ -85,7 +85,7 @@ describe('native questions provider', () => {
     if (mode === 'agent-change') bench.ctx.mayflyConversations.selectPrimary(bench.other)
     else await (mode === 'frontend-unload' ? bench.front : bench.app).dispose()
     await result
-    model.invoke('submit-answers')
+    model.invoke('questions.next.q')
     expect(model.disposed).toBe(true)
   })
 
@@ -93,7 +93,7 @@ describe('native questions provider', () => {
     const bench = await setup()
     const abort = new AbortController()
     const pending = bench.ctx.userQuestions.ask({ questions, signal: abort.signal })
-    bench.model().invoke('submit-answers')
+    bench.model().invoke('questions.next.q')
     abort.abort()
     await expect(pending).rejects.toMatchObject({ code: 'ASK_ABORTED' })
   })
@@ -130,7 +130,8 @@ describe('native questions provider', () => {
     const pending = bench.ctx.userQuestions.ask({ questions: [plan, { id: 'r', question: 'How?' }] })
     expect(seen).toEqual([])
     expect(bench.ctx.mayflyOverlays.list().findLast(candidate => candidate.id.startsWith('mayfly.questions.'))!.definition.dismissal).toBeUndefined()
-    bench.model().invoke('submit-answers')
+    bench.model().activateTab({ pagePath: [], controlId: 'questions' }, 'questions.review')
+    bench.model().invoke('questions.submit', [{ controlId: 'questions', itemId: 'questions.review' }])
     await expect(pending).resolves.toEqual({ answers: [{ id: 'plan', selected: [] }, { id: 'r', selected: [] }] })
   })
 
@@ -158,3 +159,36 @@ describe('native questions provider', () => {
     await expect(pending).resolves.toEqual({ answers: [{ id: 'plan', selected: ['Keep planning'] }] })
   })
 })
+
+it('routes a non-open plan action through the review action handler', async () => {
+  const bench = await setup()
+  const pending = bench.ctx.userQuestions.ask({ questions: [plan] })
+  // Copy is not the editor key: the card's own action handler keeps the review open.
+  bench.model().emit({ kind: 'activate', actionId: 'copy', controlId: 'actions', pagePath: [] })
+  await flushRequests()
+  expect(bench.ctx.mayflyOverlays.list().some(entry => entry.id.startsWith('mayfly.questions.'))).toBe(true)
+  bench.model().requestClose()
+  await expect(pending).resolves.toEqual({ answers: [{ id: 'plan', selected: ['Keep planning'] }] })
+})
+
+it('publishes a call-id plan without a header and runs its auxiliary actions', async () => {
+  const bench = await setup()
+  const seen = plans(bench.ctx)
+  const { header: _header, ...headerless } = plan
+  const withCall: AskUserQuestionItem = {
+    ...headerless,
+    intent: { kind: 'plan-review', approve: 'Start implementation', callId: 'call-9' as never },
+  }
+  const pending = bench.ctx.userQuestions.ask({ questions: [withCall] })
+  await flushRequests()
+  expect(seen.at(-1)).toEqual([{ type: 'plan', toolName: 'plan', callId: 'call-9' }])
+  const entry = bench.ctx.mayflyOverlays.list().find(candidate => candidate.id.startsWith('mayfly.questions.'))!
+  const reply = await entry.definition.onEvent!.action!(
+    { kind: 'activate', actionId: 'copy', controlId: 'actions', pagePath: [] },
+    { signal: new AbortController().signal } as never,
+  )
+  expect(reply).toMatchObject({ kind: 'completed' })
+  bench.model().requestClose()
+  await expect(pending).resolves.toEqual({ answers: [{ id: 'plan', selected: ['Keep planning'] }] })
+})
+

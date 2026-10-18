@@ -43,8 +43,36 @@ function toolResult(callId: string, content: unknown[] | null, isError = false):
 }
 
 describe('mayflyConversationFacts projection', () => {
-  it('invalidates checkpoints after the turn-start anchor, activity detail, compaction metering, the stopped outcome, and the child token split are added', () => {
-    expect(conversationFactsProjectionDefinition.stateVersion).toBe(12)
+  it('invalidates checkpoints after the facts became presentation-only', () => {
+    expect(conversationFactsProjectionDefinition.stateVersion).toBe(13)
+  })
+
+  it('memoizes the view per state and keeps a repeated spawn result identical', () => {
+    seq = 0
+    let state = foldConversationFacts(initialConversationFacts(), event('tool/call', {
+      turn: 1, step: 0, callId: 'agent-memo', name: 'subagent', arguments: '{}',
+    }))
+    const result = event('tool/result', {
+      turn: 1, step: 0,
+      message: { toolCallId: 'agent-memo', content: [{ type: 'text', text: 'done' }] },
+    }, 7_000)
+    state = foldConversationFacts(state, result)
+    const calls = state.agentCalls
+    const view = conversationFactsProjectionDefinition.wire.view(state)
+    expect(conversationFactsProjectionDefinition.wire.view(state)).toBe(view)
+    // The same committed result carries no new fact: the state and its derived
+    // agentCalls array stay identical for the registry's Object.is.
+    expect(foldConversationFacts(state, result)).toBe(state)
+    expect(state.agentCalls).toBe(calls)
+    // A different result is a real change and derives a new array.
+    const changed = foldConversationFacts(state, event('tool/result', {
+      turn: 1, step: 0,
+      message: { toolCallId: 'agent-memo', content: [{ type: 'text', text: 'changed' }] },
+    }, 7_001))
+    expect(changed).not.toBe(state)
+    expect(changed.agentCalls).not.toBe(calls)
+    expect(changed.agentCalls[0]?.result).toEqual({ text: 'changed', isError: false, endedAt: 7_001 })
+    expect(conversationFactsProjectionDefinition.wire.view(changed)).not.toBe(view)
   })
 
   it('records the turn start and the running action detail for the activity row', () => {
@@ -70,7 +98,7 @@ describe('mayflyConversationFacts projection', () => {
     expect(conversationFactsSchema.safeParse(state).success).toBe(true)
   })
 
-  it('folds lifecycle, streaming, usage, todos, request metadata, and agents', () => {
+  it('folds lifecycle, streaming, usage, and agents while leaving domain state to native projections', () => {
     seq = 0
     let state = initialConversationFacts()
     const unchanged = foldConversationFacts(state, event('user/message', {}))
@@ -108,18 +136,19 @@ describe('mayflyConversationFacts projection', () => {
     const settled = foldConversationFacts(state, event('assistant/message', { turn: 1, step: 0, stream: [], usage: undefined }))
     expect(settled).toMatchObject({ phase: 'waiting' })
     expect(settled).not.toHaveProperty('outputProgress')
-    state = foldConversationFacts(state, event('assistant/message', { turn: 1, step: 0, stream: [], usage: { inputTokens: 10, cacheReadTokens: 2, cacheWriteTokens: 3 } }))
-    expect(state).toMatchObject({ contextTokens: 15, contextCacheReadTokens: 2 })
-    state = foldConversationFacts(state, event('assistant/message', { turn: 1, step: 0, stream: [], usage: { inputTokens: 4 } }))
-    expect(state.contextTokens).toBe(4)
+    state = foldConversationFacts(state, event('assistant/message', { turn: 1, step: 0, stream: [], usage: { inputTokens: 10, outputTokens: 0, cacheReadTokens: 2, cacheWriteTokens: 3 } }))
+    expect(state).toMatchObject({ contextCacheReadTokens: 2, epochTokens: 15, epochOutputTokens: 0 })
+    state = foldConversationFacts(state, event('assistant/message', { turn: 1, step: 0, stream: [], usage: { inputTokens: 4, outputTokens: 0 } }))
     expect(state.contextCacheReadTokens).toBeUndefined()
-    state = foldConversationFacts(state, event('request/context', { contextWindow: 32 }))
-    expect(foldConversationFacts(state, event('request/context', { contextWindow: 32 }))).toBe(state)
-    state = foldConversationFacts(state, event('request/header', { header: { config: { model: 'm', provider: 'p', reasoningEffort: 'high' } } }))
-    state = foldConversationFacts(state, event('request/header', { header: { config: { model: 'm2', provider: 'p2' } } }))
-    state = foldConversationFacts(state, event('todo/write', { todos: [{ content: 'ship', status: 'pending' }] }))
-    expect(state).toMatchObject({ contextWindow: 32, model: 'm2', provider: 'p2', todos: [{ content: 'ship' }] })
-    expect(state).not.toHaveProperty('reasoningEffort')
+    // Domain facts are native projections now: these events are not folded.
+    for (const domain of [
+      event('request/context', { contextWindow: 32 }),
+      event('request/header', { header: { config: { model: 'm', provider: 'p', reasoningEffort: 'high' } } }),
+      event('todo/write', { todos: [{ content: 'ship', status: 'pending' }] }),
+    ]) expect(foldConversationFacts(state, domain)).toBe(state)
+    expect('model' in state).toBe(false)
+    expect('contextTokens' in state).toBe(false)
+    expect('contextWindow' in state).toBe(false)
     state = foldConversationFacts(state, event('tool/call', { turn: 1, step: 0, callId: 'agent-1', name: 'subagent', arguments: '{}', }, 88))
     state = foldConversationFacts(state, event('tool/call', { turn: 1, step: 0, callId: 'agent-2', name: 'subagent_fork', arguments: '{}' }, 89))
     // Any configured `subagent_*` provider is spawn-class too.
@@ -158,7 +187,6 @@ describe('mayflyConversationFacts projection', () => {
       event('step/start', { turn: 1, step: 1 }),
       attempt(1, 1, 'reasoning', 'think'),
       event('assistant/message', { turn: 1, step: 1, stream: [], usage: { inputTokens: 4, outputTokens: 1 } }),
-      event('request/header', { header: { config: { model: 'm', provider: 'p' } } }),
       event('tool/call', { turn: 1, step: 1, callId: 'c1', name: 'read', arguments: '{}' }),
       event('step/end', { turn: 1, step: 1 }),
       event('turn/end', { turn: 1, reason: { kind: 'completed' } }),
@@ -170,13 +198,16 @@ describe('mayflyConversationFacts projection', () => {
     expect('runOutcome' in state).toBe(false)
   })
 
-  it('subtracts compaction shadow prices from the context meter', () => {
+  it('marks each compaction with the presentation prompt-side occupancy it measured', () => {
     let state = foldConversationFacts(initialConversationFacts(), event('turn/start', { turn: 1 }))
     state = foldConversationFacts(state, event('assistant/message', {
       turn: 1, step: 0, stream: [],
       usage: { inputTokens: 1_000, outputTokens: 50, cacheReadTokens: 400 },
     }))
-    expect(state).toMatchObject({ contextTokens: 1_400, contextCacheReadTokens: 400 })
+    expect(state).toMatchObject({ contextCacheReadTokens: 400, epochTokens: 1_450 })
+    // The opening mark carries the prompt-side occupancy of the newest step.
+    state = foldConversationFacts(state, event('compaction/start', { compactionId: 'cmp-1' }))
+    expect(state.compactions).toEqual([{ id: 'cmp-1', before: 1_400 }])
     // The summary metering event subtracts the shadowed price and adds the
     // summarize call's own output back as the checkpoint's stand-in size.
     state = foldConversationFacts(state, event('compaction/summary', {
@@ -184,26 +215,31 @@ describe('mayflyConversationFacts projection', () => {
       shadowedRange: { start: 1, end: 5 }, shadowedSeqs: [1, 2, 3, 4, 5], shadowedTokenCount: 800,
       provider: 'mock', model: 'mock', usage: { inputTokens: 900, outputTokens: 100 },
     }))
-    expect(state).toMatchObject({ contextTokens: 700 })
+    expect(state.compactions).toEqual([{ id: 'cmp-1', before: 1_400, after: 700 }])
     // The post-replacement cache share is unknown; the segment clears.
     expect(state.contextCacheReadTokens).toBeUndefined()
-    // A summary without usage adds nothing back.
+    // A summary that never saw its start still records the occupancy it replaced.
     state = foldConversationFacts(state, event('compaction/summary', {
       compactionId: 'cmp-2', summary: [],
       shadowedRange: { start: 6, end: 6 }, shadowedSeqs: [6], shadowedTokenCount: 100,
       provider: 'mock', model: 'mock',
     }))
-    expect(state.contextTokens).toBe(600)
-    // The tool-result pruner uses the same shadow-price protocol.
+    expect(state.compactions?.at(-1)).toEqual({ id: 'cmp-2', before: 1_400, after: 1_300 })
+    expect(conversationFactsSchema.safeParse(state).success).toBe(true)
+    // The tool-result pruner clears the stale cache share without inventing marks.
+    state = foldConversationFacts(state, event('assistant/message', {
+      turn: 1, step: 1, stream: [], usage: { inputTokens: 500, outputTokens: 10, cacheReadTokens: 100 },
+    }))
+    expect(state.contextCacheReadTokens).toBe(100)
     state = foldConversationFacts(state, event('compaction/prune', {
       shadowedRange: { start: 7, end: 8 }, shadowedSeqs: [7, 8], shadowedTokenCount: 300,
     }))
-    expect(state.contextTokens).toBe(300)
-    // The meter never dips below zero.
-    state = foldConversationFacts(state, event('compaction/prune', {
+    expect(state.contextCacheReadTokens).toBeUndefined()
+    expect(state.compactions).toHaveLength(2)
+    // Nothing left to clear: the pruner is no change.
+    expect(foldConversationFacts(state, event('compaction/prune', {
       shadowedRange: { start: 9, end: 9 }, shadowedSeqs: [9], shadowedTokenCount: 10_000,
-    }))
-    expect(state.contextTokens).toBe(0)
+    }))).toBe(state)
   })
 
   it('folds foreign or malformed embedded streams as empty', () => {
@@ -249,7 +285,8 @@ describe('mayflyConversationFacts projection', () => {
     expect(foldConversationFacts(state, event('session/end-seed', {}))).toBe(state)
     expect(conversationFactsSchema.safeParse(state).success).toBe(true)
     expect(conversationFactsSchema.safeParse({ ...state, phase: 'bad' }).success).toBe(false)
-    expect(conversationFactsProjectionDefinition.wire.view({ ...state, todos: [{ content: 'x', status: 'pending' }] })).toEqual({ ...state, todos: [{ content: 'x', status: 'pending' }] })
+    expect(conversationFactsProjectionDefinition.wire.view(state)).toBe(state)
+    expect(conversationFactsProjectionDefinition.wire.viewSchema.safeParse({ ...state, active: 'yes' }).success).toBe(false)
   })
 
   it('records a retry with a short reason and status, and clears it once the retried attempt starts or lands', () => {
@@ -302,34 +339,35 @@ describe('mayflyConversationFacts projection', () => {
     expect(state.approvals?.at(-1)).toEqual({ id: 'n39' })
   })
 
-  it('marks a compaction with the context before and after, and the window when it is known', () => {
+  it('marks a compaction with the presentation occupancy before and after, and ignores a native window event', () => {
     seq = 0
     let state = foldConversationFacts(initialConversationFacts(), event('assistant/message', {
       turn: 1, step: 0, stream: [], usage: { inputTokens: 900, outputTokens: 100 },
     }))
-    // Without a known window the mark carries none.
-    const noWindow = foldConversationFacts(state, event('compaction/start', { compactionId: 'k0' }))
-    expect(noWindow.compactions).toEqual([{ id: 'k0', before: 900 }])
-    // A summary that never saw its start still records the context it replaced.
-    const orphan = foldConversationFacts(noWindow, event('compaction/summary', {
+    // The mark carries no native window: the live window belongs to contextPressure.
+    const opened = foldConversationFacts(state, event('compaction/start', { compactionId: 'k0' }))
+    expect(opened.compactions).toEqual([{ id: 'k0', before: 900 }])
+    // A summary that never saw its start still records the occupancy it replaced.
+    const orphan = foldConversationFacts(opened, event('compaction/summary', {
       compactionId: 'k9', summary: [], shadowedRange: { start: 1, end: 1 }, shadowedSeqs: [1], shadowedTokenCount: 400,
       provider: 'mock', model: 'mock', usage: { inputTokens: 10, outputTokens: 50 },
     }))
     expect(orphan.compactions).toEqual([{ id: 'k0', before: 900 }, { id: 'k9', before: 900, after: 550 }])
 
-    state = foldConversationFacts(state, event('request/context', { contextWindow: 8_000 }))
+    // `request/context` is native context-pressure state, not a facts field.
+    expect(foldConversationFacts(state, event('request/context', { contextWindow: 8_000 }))).toBe(state)
     state = foldConversationFacts(state, event('compaction/start', { compactionId: 'k1' }))
-    expect(state.compactions).toEqual([{ id: 'k1', before: 900, window: 8_000 }])
+    expect(state.compactions).toEqual([{ id: 'k1', before: 900 }])
     const summarized = foldConversationFacts(state, event('compaction/summary', {
       compactionId: 'k1', summary: [], shadowedRange: { start: 1, end: 1 }, shadowedSeqs: [1], shadowedTokenCount: 600,
       provider: 'mock', model: 'mock', usage: { inputTokens: 10, outputTokens: 100 },
     }))
-    expect(summarized.compactions).toEqual([{ id: 'k1', before: 900, window: 8_000, after: 400 }])
+    expect(summarized.compactions).toEqual([{ id: 'k1', before: 900, after: 400 }])
     const lateOrphan = foldConversationFacts(state, event('compaction/summary', {
       compactionId: 'k2', summary: [], shadowedRange: { start: 1, end: 1 }, shadowedSeqs: [1], shadowedTokenCount: 200,
       provider: 'mock', model: 'mock',
     }))
-    expect(lateOrphan.compactions?.at(-1)).toEqual({ id: 'k2', before: 900, window: 8_000, after: 700 })
+    expect(lateOrphan.compactions?.at(-1)).toEqual({ id: 'k2', before: 900, after: 700 })
     expect(conversationFactsSchema.safeParse(summarized).success).toBe(true)
   })
 
@@ -356,18 +394,49 @@ describe('mayflyConversationFacts projection', () => {
     await ctx.plugin(SessionProjectionRegistry)
     const session = ctx.sessions.create(SessionId('facts-spec'))
     session.append('turn/start', { turn: 2 })
-    session.append('request/header', { header: { config: { model: 'replay', provider: 'mock' } }, reason: 'initial' })
     const fiber = await ctx.plugin(conversation)
-    expect(ctx.sessionProjections.snapshot(session).values.mayflyConversationFacts).toMatchObject({ model: 'replay', provider: 'mock', turn: 2 })
+    expect(ctx.sessionProjections.snapshot(session).values.mayflyConversationFacts).toMatchObject({ turn: 2 })
     const changed: number[] = []
     const off = ctx.sessionProjections.onChanged((target, key, _value, nextSeq) => {
       if (target === session && key === 'mayflyConversationFacts') changed.push(nextSeq)
     })
     session.append('assistant/attempt', { turn: 2, step: 0, stream: [{ type: 'text-chunks', time0: 1, index: 0, dt: [], texts: ['live'] }] })
-    expect(changed).toEqual([2])
+    expect(changed).toEqual([1])
     off()
     await fiber.dispose()
     expect(ctx.sessionProjections.snapshot(session).values.mayflyConversationFacts).toBeUndefined()
     await ctx.fiber.dispose()
+  })
+})
+
+describe('compaction marks without measurements', () => {
+  it('uses zero when no prompt-side usage has been measured yet', () => {
+    let state = foldConversationFacts(initialConversationFacts(), event('compaction/start', { compactionId: 'fresh' }))
+    expect(state.compactions).toEqual([{ id: 'fresh', before: 0 }])
+    // An orphan summary with no start and no usage measures the same zero.
+    state = foldConversationFacts(state, event('compaction/summary', {
+      compactionId: 'orphan', summary: [], shadowedRange: { start: 1, end: 1 }, shadowedSeqs: [1], shadowedTokenCount: 5,
+      provider: 'p', model: 'm',
+    }))
+    expect(state.compactions?.at(-1)).toEqual({ id: 'orphan', before: 0, after: 0 })
+  })
+
+  it('reads a streamed step whose usage record is absent as unmeasured', () => {
+    let state = foldConversationFacts(initialConversationFacts(), attempt(1, 1, 'text', 'streamed'))
+    state = foldConversationFacts(state, event('compaction/start', { compactionId: 'stream-only' }))
+    expect(state.compactions).toEqual([{ id: 'stream-only', before: 0 }])
+    // A retained output map without the matching prompt-side usage record is unmeasured too.
+    const streamedOnly = { ...initialConversationFacts(), outputByStep: { '1:0': 5 } }
+    expect(foldConversationFacts(streamedOnly, event('compaction/start', { compactionId: 'no-usage' })).compactions)
+      .toEqual([{ id: 'no-usage', before: 0 }])
+  })
+})
+
+describe('repeated spawn calls', () => {
+  it('pairs a result with the first spawn call for one call id', () => {
+    let state = foldConversationFacts(initialConversationFacts(), event('tool/call', { turn: 1, step: 0, callId: 'dup', name: 'subagent', arguments: '{}' }))
+    state = foldConversationFacts(state, event('tool/call', { turn: 1, step: 0, callId: 'dup', name: 'subagent', arguments: '{}' }))
+    state = foldConversationFacts(state, event('tool/result', toolResult('dup', [{ type: 'text', text: 'once' }]), 5_000))
+    expect(state.agentCalls[0]?.result).toEqual({ text: 'once', isError: false, endedAt: 5_000 })
   })
 })

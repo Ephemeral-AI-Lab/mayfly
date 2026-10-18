@@ -52,6 +52,8 @@ const releases = new Map(index.packages.map((record) => {
 
 const version = releases.get('@ephemeral-ai/mayfly')?.manifest.version
 if (typeof version !== 'string') throw new Error('packed Mayfly version is missing')
+const harnessLine = /export const HARNESS_LINE = '([^']+)'/.exec(readFileSync(join(ROOT, 'packages/cli/src/runtime.ts'), 'utf8'))?.[1]
+if (harnessLine === undefined) throw new Error('packed CLI harness line is missing')
 
 const fixtureParent = join(ROOT, '.artifacts', 'tmp')
 mkdirSync(fixtureParent, { recursive: true })
@@ -213,7 +215,7 @@ try {
     throw new Error(`profile spec is not the exact Mayfly version ${version}`)
   }
   // The runtime cache is one platform-scoped directory per version-line.
-  const cache = join(dshHome, 'cache', 'mayfly-cli-runtime', `${version}-0.2.0-rc.2-${process.platform}-${process.arch}`)
+  const cache = join(dshHome, 'cache', 'mayfly-cli-runtime', `${version}-${harnessLine}-${process.platform}-${process.arch}`)
   if (!existsSync(cache) || readdirSync(cache).length === 0) throw new Error('packed CLI did not materialize its runtime cache')
 
   console.log(`CLI_LOCAL_REGISTRY_SMOKE_PASS mayfly=${version} profile=mayfly packages=2`)

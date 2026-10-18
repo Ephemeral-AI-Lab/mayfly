@@ -3,15 +3,21 @@
  */
 import { Context } from '@deepseek-ai/cordis'
 import type { AccountClientMetadata, AccountView, SignInAttemptId, SignInAttemptView } from '@deepseek-ai/dsh-deepseek-account'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { MAYFLY_VERSION } from '../../src/transcript/banner-content.ts'
 import { setClipboardTextWriter } from '../../src/interaction/clipboard-write.ts'
-import { GUIDE_CLOSE_DELAY_MS, accountInternals, accountPanelNode, callbackOrigin, clientMetadata, openAccountPanel, openUrlInBrowser, openerFor, parseCallbackLocation } from '../../src/interaction/provider-account.ts'
+import { accountInternals, accountPanelNode, callbackOrigin, clientMetadata, openAccountPanel, openUrlInBrowser, openerFor, parseCallbackLocation } from '../../src/interaction/provider-account.ts'
 import { providerFixture } from './provider-fixture.ts'
 import { flush } from '../helpers.ts'
 
 const contexts: Context[] = []
-afterEach(async () => { for (const ctx of contexts.splice(0)) await ctx.fiber.dispose() })
+// A Linux test host without a display skips the browser opener entirely; the
+// opener seams below are what these tests exercise.
+beforeEach(() => { vi.stubEnv('DISPLAY', ':1') })
+afterEach(async () => {
+  vi.unstubAllEnvs()
+  for (const ctx of contexts.splice(0)) await ctx.fiber.dispose()
+})
 
 const LINKS = { usageUrl: 'https://example/usage', topUpUrl: 'https://example/topup' }
 const signedOut: AccountView = { status: 'signed-out', links: LINKS, attempt: null }
@@ -110,7 +116,6 @@ describe('DeepSeek account panel', () => {
     expect(await openAccountPanel(ctx, 'deepseek-account')).toBe(true)
     const model = ctx.mayflyUiInteraction.get('overlay', panelId)!
     const json = JSON.stringify(model.node)
-    expect(json).toContain('Not signed in')
     expect(json).toContain('Desktop or Web host')
     expect(json).not.toContain('"Sign in"')
 
@@ -118,7 +123,7 @@ describe('DeepSeek account panel', () => {
     expect(await openAccountPanel(withServer.ctx, 'deepseek-account')).toBe(true)
     const serverModel = withServer.ctx.mayflyUiInteraction.get('overlay', panelId)!
     const serverJson = JSON.stringify(serverModel.node)
-    expect(serverJson).toContain('Not signed in')
+    expect(serverJson).toContain('Sign in with your DeepSeek account')
     expect(serverJson).not.toContain('Desktop or Web host')
     expect(serverJson).toContain('"Sign in"')
   })
@@ -139,21 +144,15 @@ describe('DeepSeek account panel', () => {
       expect(spawned).toHaveLength(1)
       expect(spawned[0]!.args.at(-1)).toBe('https://auth.example/authorize?origin=http://localhost:45678&n=1')
       const json = JSON.stringify(model.node)
-      expect(json).toContain('Sign-in link')
-      expect(json).toContain('http://localhost:45678')
-      expect(json).toContain('Ctrl+Y copy link · Ctrl+R new link')
-      expect(json).toContain('Expires')
-      // Same-machine browsers finish through the loopback callback on their own;
-      // the optional paste box stays visible for browsers on another machine.
-      expect(json).toContain('sign-in finishes by itself')
-      expect(json).toContain('Browser on another machine?')
-      expect(json).toContain('Callback link')
-      expect(json).toContain('http://localhost:45678/oauth/callback')
-      // Waiting-state controls are shortcuts only: hidden actions with accelerators, Enter delivers the paste.
-      expect(json).toContain('"enterSubmits":"deliver-callback"')
+      // A browser opened: the page waits, shows the countdown, and keeps the
+      // link actions as hidden accelerators. The paste-back form stays in the
+      // tree but out of sight.
+      expect(json).toContain('Waiting for you to sign in in your browser')
+      expect(json).toContain('expires in ')
       expect(json).toContain('"id":"copy-link","label":"Copy link","key":"ctrl+y","hidden":true')
       expect(json).toContain('"id":"restart-sign-in","label":"New link","key":"ctrl+r","hidden":true')
-      expect(json).toContain('"id":"deliver-callback","label":"Deliver callback","hidden":true')
+      expect(json).toContain('"id":"show-paste","label":"Other machine","key":"p","hidden":true')
+      expect(json).not.toContain('Sign-in link')
       expect(json).not.toContain('"Cancel sign-in"')
       expect(account.cancels).toEqual([])
     } finally {
@@ -170,12 +169,13 @@ describe('DeepSeek account panel', () => {
       const model = ctx.mayflyUiInteraction.get('overlay', panelId)!
       model.invoke('sign-in')
       await flush(4)
-      expect(JSON.stringify(model.node)).toContain('callback-paste')
+      expect(JSON.stringify(model.node)).toContain('Waiting for you to sign in in your browser')
       // The loopback server completes the attempt; only the watch stream reports it.
       account.complete()
       await flush(4)
       const json = JSON.stringify(model.node)
-      expect(json).toContain('Connected — account models need no API key.')
+      expect(json).toContain('Signed in')
+      expect(json).toContain('Account models need no API key.')
       expect(json).not.toContain('callback-paste')
     } finally {
       accountInternals.spawnOpener = original
@@ -207,45 +207,6 @@ describe('DeepSeek account panel', () => {
       setClipboardTextWriter(undefined)
       accountInternals.spawnOpener = original
     }
-  })
-
-  it('shows the guide step and closes itself shortly after a successful sign-in', async () => {
-    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
-    const original = accountInternals.spawnOpener
-    accountInternals.spawnOpener = async () => true
-    try {
-      const { ctx, account } = await bench(signedOut, { port: 45678 })
-      const connected: string[] = []
-      await openAccountPanel(ctx, 'deepseek-account', undefined, { onBack: () => {}, onConnected: () => { connected.push('model') } })
-      const model = ctx.mayflyUiInteraction.get('overlay', panelId)!
-      expect(JSON.stringify(model.node)).toContain('Step 2 of 2 · Finish in your browser')
-      model.invoke('sign-in')
-      await vi.advanceTimersByTimeAsync(0)
-      account.complete()
-      await vi.advanceTimersByTimeAsync(0)
-      expect(JSON.stringify(model.node)).not.toContain('Step 2 of 2')
-      expect(ctx.mayflyOverlays.list().map(entry => entry.id)).toContain(panelId)
-      account.complete()
-      expect(connected).toEqual([])
-      await vi.advanceTimersByTimeAsync(GUIDE_CLOSE_DELAY_MS)
-      expect(ctx.mayflyOverlays.list().map(entry => entry.id)).not.toContain(panelId)
-      expect(connected).toEqual(['model'])
-    } finally {
-      vi.useRealTimers()
-      accountInternals.spawnOpener = original
-    }
-  })
-
-  it('cancels the pending close when the panel unloads first', async () => {
-    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
-    try {
-      const { ctx, account } = await bench(signedOut, { port: 45678 })
-      await openAccountPanel(ctx, 'deepseek-account', undefined, { onBack: () => {}, onConnected: () => {} })
-      account.complete()
-      await vi.advanceTimersByTimeAsync(0)
-      await ctx.fiber.dispose()
-      await vi.advanceTimersByTimeAsync(GUIDE_CLOSE_DELAY_MS)
-    } finally { vi.useRealTimers() }
   })
 
   it('delivers a pasted callback to the loopback server and reports rejection', async () => {
@@ -310,7 +271,10 @@ describe('DeepSeek account panel', () => {
       const model = ctx.mayflyUiInteraction.get('overlay', panelId)!
       model.invoke('sign-in')
       await flush(4)
-      expect(model.feedbackSnapshot().at(-1)?.message).toContain('open the link below in a browser')
+      expect(model.feedbackSnapshot().at(-1)?.message).toBeUndefined()
+      const json = JSON.stringify(model.node)
+      expect(json).toContain('Couldn’t open a browser')
+      expect(json).toContain('https://auth.example/authorize?origin=http://localhost:45678&n=1')
     } finally {
       accountInternals.spawnOpener = original
     }
@@ -398,7 +362,7 @@ describe('DeepSeek account panel', () => {
     storedModel.invoke('sign-out', [], true)
     await flush(4)
     expect(signedIn.account.signOuts).toHaveLength(1)
-    expect(JSON.stringify(storedModel.node)).toContain('Not signed in')
+    expect(JSON.stringify(storedModel.node)).toContain('Sign in with your DeepSeek account')
   })
 
   it('offers sign-in again after a cancelled, expired or unsaved attempt and names the reason', async () => {
@@ -424,43 +388,12 @@ describe('DeepSeek account panel', () => {
     const plain = await bench(done, { port: 45678 })
     await openAccountPanel(plain.ctx, 'deepseek-account')
     const plainJson = JSON.stringify(plain.ctx.mayflyUiInteraction.get('overlay', panelId)!.node)
-    expect(plainJson).toContain('Connected — account models need no API key.')
+    expect(plainJson).toContain('Signed in')
+    expect(plainJson).toContain('Account models need no API key.')
     expect(plainJson).not.toContain('Signing in…')
-    expect(plainJson).toContain('"Close"')
-    const inGuide = await bench(done, { port: 45678 })
-    await openAccountPanel(inGuide.ctx, 'deepseek-account', undefined, { onBack: () => {}, onConnected: () => {} })
-    expect(JSON.stringify(inGuide.ctx.mayflyUiInteraction.get('overlay', panelId)!.node)).toContain('"Start chatting"')
+    expect(plainJson).toContain('"Sign out"')
   })
 
-  it('returns to the guide when the account step closes before connecting, and only then', async () => {
-    const exits: string[] = []
-    const guide = { onBack: () => { exits.push('back') }, onConnected: () => { exits.push('connected') } }
-    const idle = await bench(signedOut, { port: 45678 })
-    await openAccountPanel(idle.ctx, 'deepseek-account', undefined, guide)
-    idle.ctx.mayflyUiInteraction.get('overlay', panelId)!.invoke('close')
-    await flush(4)
-    expect(exits).toEqual(['back'])
-
-    const done = await bench(signedOut, { port: 45678 })
-    await openAccountPanel(done.ctx, 'deepseek-account', undefined, guide)
-    await flush(4)
-    done.account.complete()
-    await flush(4)
-    done.ctx.mayflyUiInteraction.get('overlay', panelId)!.invoke('close')
-    await flush(4)
-    expect(exits).toEqual(['back'])
-
-    const unloading = await bench(signedOut, { port: 45678 })
-    await openAccountPanel(unloading.ctx, 'deepseek-account', undefined, guide)
-    await unloading.ctx.fiber.dispose()
-    expect(exits).toEqual(['back'])
-
-    const standalone = await bench(signedOut, { port: 45678 })
-    await openAccountPanel(standalone.ctx, 'deepseek-account')
-    standalone.ctx.mayflyUiInteraction.get('overlay', panelId)!.invoke('close')
-    await flush(4)
-    expect(exits).toEqual(['back'])
-  })
   it('answers a stale copy against the live attempt state, not the waiting panel', async () => {
     const copied: string[] = []
     setClipboardTextWriter(async text => { copied.push(text) })
@@ -515,20 +448,25 @@ describe('DeepSeek account panel', () => {
     expect(json).toContain('Desktop or Web host')
   })
 
-  it('restarts into an attempt that has no link yet and says a fresh link is pending', async () => {
+  it('restarts into an attempt that has no link yet and reports the fresh restart after the wait', async () => {
     const original = accountInternals.spawnOpener
     accountInternals.spawnOpener = async () => true
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
     try {
       const { ctx, account } = await bench(signedOut, { port: 45678 })
       await openAccountPanel(ctx, 'deepseek-account')
       const model = ctx.mayflyUiInteraction.get('overlay', panelId)!
       model.invoke('sign-in')
+      await vi.advanceTimersByTimeAsync(0)
       await flush(4)
       account.failures.initializing = true
       model.invoke('restart-sign-in')
+      // The panel waits for the platform to issue the link before it replies.
+      await vi.advanceTimersByTimeAsync(15_000)
       await flush(4)
       expect(model.feedbackSnapshot().at(-1)?.message).toBe('Sign-in restarted with a fresh link')
     } finally {
+      vi.useRealTimers()
       accountInternals.spawnOpener = original
     }
   })
@@ -577,8 +515,9 @@ describe('DeepSeek account browser openers', () => {
   it('renders a waiting attempt without forwarding rows when no hint is available', () => {
     const waiting: AccountView = { status: 'signed-out', links: LINKS, attempt: { id: 'attempt' as never, phase: 'waiting-browser', authorizeUrl: 'https://auth.example/x', expiresAt: Date.now() + 60_000 } }
     const json = JSON.stringify(accountPanelNode(waiting, key => key, true))
-    expect(json).toContain('Sign-in link')
-    expect(json).toContain('Expires')
+    expect(json).toContain('Waiting for you to sign in in your browser')
+    expect(json).toContain('expires in')
+    expect(json).not.toContain('Sign-in link')
     expect(json).not.toContain('Port forward')
     expect(json).not.toContain('Browsing on your local machine')
   })
@@ -634,8 +573,11 @@ describe('DeepSeek account panel lifetime', () => {
       model.invoke('sign-in')
       await flush(4)
       const json = JSON.stringify(model.node)
-      expect(json).toContain('Signing in…')
-      expect(json).not.toContain('Sign-in link')
+      // Until the platform issues the link the page stays on the sign-in
+      // offer; the overlay remains open and usable.
+      expect(json).toContain('Sign in with your DeepSeek account')
+      expect(json).toContain('"Sign in"')
+      expect(json).not.toContain('Signing in…')
     } finally {
       accountInternals.spawnOpener = original
     }
@@ -648,5 +590,166 @@ describe('DeepSeek account panel lifetime', () => {
     expect(metadata.locale).toBe('en')
     expect(metadata.version).toBe(MAYFLY_VERSION)
     expect(typeof metadata.timezoneOffsetSeconds).toBe('number')
+  })
+})
+
+/** The raw action handler of the open account panel. */
+function panelAction(ctx: Context): (event: unknown, context: unknown) => Promise<unknown> {
+  const entry = ctx.mayflyOverlays.list().find(item => item.id === panelId)!
+  return entry.definition.onEvent!.action! as (event: unknown, context: unknown) => Promise<unknown>
+}
+
+/** The event context every raw panel action is handed. */
+function actionContext() {
+  return { surfaceId: panelId, operationId: 'spec', source: [], revision: 1, signal: new AbortController().signal, report: vi.fn() }
+}
+
+/** One callback-form submission event. */
+function callbackSubmit(value: unknown) {
+  return {
+    kind: 'submit', pagePath: [], actionId: 'deliver-callback',
+    submission: { actionId: 'deliver-callback', forms: [{ id: 'callback-paste', fields: [{ id: 'callback-url', value }] }] },
+  }
+}
+
+describe('DeepSeek account sign-in stage facts', () => {
+  it('paints the finishing stage, a pending launch, and a link-less start', () => {
+    const finishing: AccountView = {
+      status: 'signed-out', links: LINKS,
+      attempt: { id: 'a' as never, phase: 'exchanging', authorizeUrl: 'https://auth.example/x', expiresAt: Date.now() + 60_000 },
+    }
+    const finishingJson = JSON.stringify(accountPanelNode(finishing, key => key, true, 45678, { launching: true }))
+    expect(finishingJson).toContain('Signing you in…')
+
+    const waiting: AccountView = {
+      status: 'signed-out', links: LINKS,
+      attempt: { id: 'b' as never, phase: 'waiting-browser', authorizeUrl: 'https://auth.example/x', expiresAt: Date.now() + 60_000 },
+    }
+    expect(JSON.stringify(accountPanelNode(waiting, key => key, true, 45678, { launching: true }))).toContain('Opening your browser…')
+
+    const starting: AccountView = { status: 'signed-out', links: LINKS, attempt: { id: 'c' as never, phase: 'initializing' } }
+    const startingJson = JSON.stringify(accountPanelNode(starting, key => key, true))
+    expect(startingJson).toContain('Getting your sign-in link…')
+    expect(startingJson).not.toContain('expires in')
+  })
+})
+
+describe('DeepSeek account panel raw actions', () => {
+  it('answers non-activate events and unknown actions without changing the panel', async () => {
+    const { ctx } = await bench(signedOut, { port: 45678 })
+    expect(await openAccountPanel(ctx, 'deepseek-account')).toBe(true)
+    expect(await panelAction(ctx)({ kind: 'dismiss', pagePath: [] }, actionContext())).toEqual({ kind: 'completed' })
+    expect(await panelAction(ctx)({ kind: 'activate', pagePath: [], controlId: 'account-actions', actionId: 'close' }, actionContext())).toEqual({ kind: 'completed' })
+  })
+
+  it('opens the manual paste view on show-paste', async () => {
+    const waiting: AccountView = {
+      status: 'signed-out', links: LINKS,
+      attempt: { id: 'a' as never, phase: 'waiting-browser', authorizeUrl: 'https://auth.example/x', expiresAt: Date.now() + 60_000 },
+    }
+    const { ctx } = await bench(waiting, { port: 45678 })
+    expect(await openAccountPanel(ctx, 'deepseek-account')).toBe(true)
+    const reply = await panelAction(ctx)({ kind: 'activate', pagePath: [], controlId: 'account-actions', actionId: 'show-paste' }, actionContext())
+    expect(reply).toMatchObject({ kind: 'accepted' })
+    expect(JSON.stringify(ctx.mayflyUiInteraction.get('overlay', panelId)!.node)).toContain('another machine')
+  })
+
+  it('rejects a callback submit without a web server or a pasted string', async () => {
+    const bare = await bench(signedOut)
+    expect(await openAccountPanel(bare.ctx, 'deepseek-account')).toBe(true)
+    expect(await panelAction(bare.ctx)(callbackSubmit('http://localhost:1/oauth/callback'), actionContext())).toMatchObject({ kind: 'invalid' })
+
+    const served = await bench(signedOut, { port: 45678 })
+    expect(await openAccountPanel(served.ctx, 'deepseek-account')).toBe(true)
+    expect(await panelAction(served.ctx)(callbackSubmit(42), actionContext())).toMatchObject({ kind: 'invalid' })
+    expect(await panelAction(served.ctx)(callbackSubmit(undefined), actionContext())).toMatchObject({ kind: 'invalid' })
+  })
+
+  it('refuses sign-in when the local web server is gone', async () => {
+    const { ctx } = await bench(signedOut)
+    expect(await openAccountPanel(ctx, 'deepseek-account')).toBe(true)
+    expect(await panelAction(ctx)({ kind: 'activate', pagePath: [], controlId: 'account-actions', actionId: 'sign-in' }, actionContext()))
+      .toMatchObject({ kind: 'failed', message: expect.stringContaining('local web server') })
+  })
+
+  it('restarts into an ended attempt without a link and reports a fresh link', async () => {
+    const waiting: AccountView = {
+      status: 'signed-out', links: LINKS,
+      attempt: { id: 'a' as never, phase: 'waiting-browser', authorizeUrl: 'https://auth.example/x', expiresAt: Date.now() + 60_000 },
+    }
+    const { ctx, account } = await bench(waiting, { port: 45678 })
+    expect(await openAccountPanel(ctx, 'deepseek-account')).toBe(true)
+    account.api.startSignIn = async () => ({ status: 'signed-out', links: LINKS, attempt: { id: 'ended' as never, phase: 'failed' } })
+    const reply = await panelAction(ctx)({ kind: 'activate', pagePath: [], controlId: 'account-actions', actionId: 'restart-sign-in' }, actionContext())
+    expect(reply).toMatchObject({ kind: 'completed', feedback: { message: 'Sign-in restarted with a fresh link' } })
+  })
+
+  it('gives up waiting for a link that never arrives and keeps the panel open', async () => {
+    const original = accountInternals.spawnOpener
+    accountInternals.spawnOpener = async () => true
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    try {
+      const { ctx, account } = await bench(signedOut, { port: 45678 })
+      account.failures.initializing = true
+      expect(await openAccountPanel(ctx, 'deepseek-account')).toBe(true)
+      const model = ctx.mayflyUiInteraction.get('overlay', panelId)!
+      model.invoke('sign-in')
+      await vi.advanceTimersByTimeAsync(15_000)
+      await flush(4)
+      // No link arrived, so no browser opened and no success notice is due.
+      expect(model.feedbackSnapshot()).toEqual([])
+      expect(ctx.mayflyOverlays.list().map(entry => entry.id)).toContain(panelId)
+    } finally {
+      vi.useRealTimers()
+      accountInternals.spawnOpener = original
+    }
+  })
+
+  it('repaints the waiting countdown every second and stops after close', async () => {
+    const original = accountInternals.spawnOpener
+    accountInternals.spawnOpener = async () => true
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+    try {
+      const { ctx } = await bench(signedOut, { port: 45678 })
+      expect(await openAccountPanel(ctx, 'deepseek-account')).toBe(true)
+      const model = ctx.mayflyUiInteraction.get('overlay', panelId)!
+      model.invoke('sign-in')
+      await flush(4)
+      const before = model.revision
+      await vi.advanceTimersByTimeAsync(1000)
+      await flush(4)
+      expect(model.revision).toBeGreaterThan(before)
+      ctx.mayflyOverlays.close(panelId)
+      await flush(4)
+      expect(ctx.mayflyOverlays.list().map(entry => entry.id)).not.toContain(panelId)
+      await vi.advanceTimersByTimeAsync(3000)
+    } finally {
+      vi.useRealTimers()
+      accountInternals.spawnOpener = original
+    }
+  })
+})
+
+describe('DeepSeek account opener grace window', () => {
+  it('treats an opener that outlives the grace window as opened', async () => {
+    await expect(accountInternals.spawnOpener(process.execPath, ['-e', 'setTimeout(() => {}, 3000)'])).resolves.toBe(true)
+  }, 10_000)
+
+  it('skips the system opener on a Linux session with no display', async () => {
+    const original = accountInternals.spawnOpener
+    const spawn = vi.fn(async () => true)
+    accountInternals.spawnOpener = spawn
+    try {
+      vi.stubEnv('DISPLAY', '')
+      vi.stubEnv('WAYLAND_DISPLAY', '')
+      await expect(openUrlInBrowser('https://example/signin')).resolves.toBe(false)
+      expect(spawn).not.toHaveBeenCalled()
+      // A Wayland session with no X display still opens a browser.
+      vi.stubEnv('WAYLAND_DISPLAY', 'wayland-0')
+      await expect(openUrlInBrowser('https://example/signin')).resolves.toBe(true)
+      expect(spawn).toHaveBeenCalledTimes(1)
+    } finally {
+      accountInternals.spawnOpener = original
+    }
   })
 })
