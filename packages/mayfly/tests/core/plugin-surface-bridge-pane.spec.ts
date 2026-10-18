@@ -124,6 +124,7 @@ function createRuntime(mode: 'main' | 'alternate' = 'alternate', initialColumns 
     },
     showOverlay() { throw new Error('pane test opened an overlay') },
     contentTail: () => undefined,
+    setContentScrollbarColors() {},
     addChild() {},
     addBottomChild() {},
     requestRender() {},
@@ -812,9 +813,9 @@ describe('direct pane surface renderer', () => {
       calls[1]!.result.resolve()
       await flush(8)
       const replacementRows = entry(f.runtime.surfaces, 'replace').component.render(30)
-      expect(plainText(replacementRows[0]!)).toContain('╭ Replacement')
-      expect(replacementRows[1]).toContain('new pane')
-      expect(replacementRows.at(-1)).toContain('╰')
+      const replacementText = replacementRows.map(plainText).join('\n')
+      expect(replacementText).toContain('Replacement')
+      expect(replacementText).toContain('new pane')
       expect((oldComponent as MayflyFocusable).focused).toBe(false)
       expect(oldComponent.render(30)).toEqual([])
       expect(getLayoutNode(oldComponent)).toMatchObject({ type: 'vstack', entries: [] })

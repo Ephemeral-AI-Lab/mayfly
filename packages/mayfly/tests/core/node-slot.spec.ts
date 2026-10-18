@@ -78,7 +78,6 @@ describe('node slot test host', () => {
     const stream = tree.root.mayflyUiInteraction.get('slot', 'transcript.conversation')!
     expect(stream.choice(STREAM)?.focusedId).toBe('item-2')
     const rows = content.render(100)
-    expect(rows[0]).toContain('(3/200)')
     expect(rows.at(-1)).toBe('  ↑/↓ options · Enter open')
     // Slots route no events yet: an accepted row settles without a handler.
     content.handleInput!('\r')
@@ -188,7 +187,7 @@ describe('node slot test host', () => {
     expect(content.render(100).at(-1)).toBe('  ↑/↓ options · Enter open')
     content.handleInput!(DOWN)
     const cursor = content.render(100)
-    expect(cursor[0]).toContain('(2/200)')
+    expect(cursor).not.toBe(warm)
 
     // The locale: the same slot, the same model revision, new words.
     tree.root.mayflyLocale.setPreference('zh')
@@ -210,7 +209,7 @@ describe('node slot test host', () => {
     await flush()
     const dimmed = content.render(100)
     expect(dimmed.join('')).toContain('\x1b[2m')
-    expect(dimmed[0]).toContain('(2/200)')
+    expect(dimmed).not.toBe(warm)
   })
 
   it('hands the host tree\'s image source to a slot, as it does to a pane', async () => {
@@ -348,9 +347,10 @@ describe('node slot lease: spotlight, rows, and cursor', () => {
     stream.spotlight(true)
     expect(tree.terminal.renders()).toBe(renders + 1)
     expect(tree.terminal.focused()).not.toBe(content)
-    const windowed = content.render(100)
-    expect(windowed.length).toBeLessThan(200)
-    expect(windowed[0]).toContain('(1/200)')
+    const spotlighted = content.render(100)
+    // A spotlighted flow paints every row plus the focused key-hint row.
+    expect(spotlighted).toHaveLength(201)
+    expect(spotlighted.at(-1)).toBe('  ↑/↓ options · Enter open')
     // Spotlighting the way it already is changes nothing and asks for no frame.
     stream.spotlight(true)
     expect(tree.terminal.renders()).toBe(renders + 1)
@@ -483,6 +483,7 @@ function bareHost(interaction?: UiInteractionService, extra: Partial<MayflyNodeS
     },
     () => ({ columns: 80, rows: 24 }),
     () => { prompts.push(prompts.length) },
+    () => undefined,
   )
   return {
     host, compiler, service, prompts, slots,

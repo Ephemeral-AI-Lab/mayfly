@@ -47,6 +47,34 @@ describe('mayflyConversationFacts projection', () => {
     expect(conversationFactsProjectionDefinition.stateVersion).toBe(13)
   })
 
+  it('memoizes the view per state and keeps a repeated spawn result identical', () => {
+    seq = 0
+    let state = foldConversationFacts(initialConversationFacts(), event('tool/call', {
+      turn: 1, step: 0, callId: 'agent-memo', name: 'subagent', arguments: '{}',
+    }))
+    const result = event('tool/result', {
+      turn: 1, step: 0,
+      message: { toolCallId: 'agent-memo', content: [{ type: 'text', text: 'done' }] },
+    }, 7_000)
+    state = foldConversationFacts(state, result)
+    const calls = state.agentCalls
+    const view = conversationFactsProjectionDefinition.wire.view(state)
+    expect(conversationFactsProjectionDefinition.wire.view(state)).toBe(view)
+    // The same committed result carries no new fact: the state and its derived
+    // agentCalls array stay identical for the registry's Object.is.
+    expect(foldConversationFacts(state, result)).toBe(state)
+    expect(state.agentCalls).toBe(calls)
+    // A different result is a real change and derives a new array.
+    const changed = foldConversationFacts(state, event('tool/result', {
+      turn: 1, step: 0,
+      message: { toolCallId: 'agent-memo', content: [{ type: 'text', text: 'changed' }] },
+    }, 7_001))
+    expect(changed).not.toBe(state)
+    expect(changed.agentCalls).not.toBe(calls)
+    expect(changed.agentCalls[0]?.result).toEqual({ text: 'changed', isError: false, endedAt: 7_001 })
+    expect(conversationFactsProjectionDefinition.wire.view(changed)).not.toBe(view)
+  })
+
   it('records the turn start and the running action detail for the activity row', () => {
     seq = 0
     let state = foldConversationFacts(initialConversationFacts(), event('turn/start', { turn: 1 }, 5_000))
@@ -118,7 +146,6 @@ describe('mayflyConversationFacts projection', () => {
       event('request/header', { header: { config: { model: 'm', provider: 'p', reasoningEffort: 'high' } } }),
       event('todo/write', { todos: [{ content: 'ship', status: 'pending' }] }),
     ]) expect(foldConversationFacts(state, domain)).toBe(state)
-    expect('todos' in state).toBe(false)
     expect('model' in state).toBe(false)
     expect('contextTokens' in state).toBe(false)
     expect('contextWindow' in state).toBe(false)

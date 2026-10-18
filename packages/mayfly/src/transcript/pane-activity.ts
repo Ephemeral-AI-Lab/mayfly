@@ -154,6 +154,18 @@ interface ActivityState {
   quietHints: QuietHints
 }
 
+/** The fields that decide the row's shape, compared without building a string on every facts delta. */
+function sameActivityShape(previous: readonly unknown[] | undefined, next: readonly unknown[]): boolean {
+  if (previous === undefined || previous.length !== next.length) return false
+  for (let index = 0; index < next.length - 1; index += 1) if (!Object.is(previous[index], next[index])) return false
+  const left = previous.at(-1) as ConversationFacts['inFlight']
+  const right = next.at(-1) as ConversationFacts['inFlight']
+  if (left === right) return true
+  if (left === undefined || right === undefined || left.length !== right.length) return false
+  for (let index = 0; index < left.length; index += 1) if (left[index]!.callId !== right[index]!.callId) return false
+  return true
+}
+
 /** The phase of one mode, for the modes that draw a header. */
 function phaseOf(mode: ActivityMode): ActivityPhase | undefined {
   return mode === 'hidden' || mode === 'idle' ? undefined : mode
@@ -238,7 +250,7 @@ export function apply(ctx: Context): void {
   /** The time of the latest tick: every figure on the row is measured against it, as the stream's pending lines are. */
   let tickNow = activityNow()
   /** The facts that decide the row's shape; a change publishes at once, the counters wait for the tick. */
-  let shape = ''
+  let shape: readonly unknown[] | undefined
   const rotation = buildTipRotation(STATUS_TIPS)
   let tipIndex = 0
   /** The line under the header when no action runs: the tip, or nothing. */
@@ -323,12 +335,12 @@ export function apply(ctx: Context): void {
     const nextStart = facts.active ? facts.turnStartedAt : undefined
     // The stage is part of the shape, so a stage change publishes at once, whatever moment the facts arrive at.
     const stage = mode === 'thinking' ? thinkingStage(thinkingElapsed(tickNow)).label : ''
-    const next = JSON.stringify([mode, flight.key, flight.values?.count, stage, state.tip, state.quietHints, nextStart, state.waitingSince, facts.outputProgress?.startedAt, facts.inFlight?.map(call => call.callId)])
+    const next = [mode, flight.key, flight.values?.count, stage, state.tip, state.quietHints, nextStart, state.waitingSince, facts.outputProgress?.startedAt, facts.inFlight] as const
     state.mode = mode
     state.label = flight.key
     state.labelValues = flight.values
     state.turnStartedAt = nextStart
-    if (next === shape) return
+    if (sameActivityShape(shape, next)) return
     shape = next
     publish()
   }

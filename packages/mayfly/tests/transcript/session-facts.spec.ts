@@ -363,7 +363,8 @@ describe('SessionFactsService', () => {
       let listener: ((value: Agent | null) => void) | undefined
       ctx.reflect.provide('sessionProjections', projections)
       ctx.reflect.provide('sessions', { list: () => [parentSession, childSession] })
-      ctx.reflect.provide('agents', { get: (id: unknown) => String(id) === 'child' ? childAgent : undefined })
+      const agentGet = vi.fn((id: unknown) => String(id) === 'child' ? childAgent : undefined)
+      ctx.reflect.provide('agents', { get: agentGet })
       ctx.reflect.provide('mayflyCurrentAgent', { subscribe(next: (value: Agent | null) => void) { listener = next; next(current); return () => {} } })
       const live = new LiveAssistantStreamService(ctx)
       const service = new SessionFactsService(ctx, live)
@@ -375,8 +376,38 @@ describe('SessionFactsService', () => {
         live.accept(childAgent, { type: 'chunk', attemptId: 'run' as never, revision: revision + 1, index: revision - 1, time: revision, chunk: { type: kind, index: 0, text } })
       }
       live.accept(childAgent, { type: 'start', attemptId: 'run' as never, revision: 1, turn: 1, step: 0 })
-      return { ctx, live, service, published, chunk, switchAgent: (value: Agent | null) => listener?.(value) }
+      return { ctx, live, service, published, chunk, projections, childSession, childAgent, agentGet, switchAgent: (value: Agent | null) => listener?.(value) }
     }
+
+    it('skips a child update whose projection is unchanged', async () => {
+      vi.useFakeTimers()
+      const { ctx, live, service, published, projections, childSession } = childFixture()
+      const count = published.length
+      const list = published.at(-1)
+      const facts = projections.snapshot(childSession).values.mayflyConversationFacts as Record<string, unknown>
+      // A field the child projection does not carry changed; every carried value is equal.
+      projections.emit(childSession, 'mayflyConversationFacts', { ...facts, flowDownChars: Number(facts.flowDownChars) + 100 })
+      expect(published).toHaveLength(count)
+      service.subscribeChildren(value => { expect(value).toBe(list) })
+      service.dispose()
+      live.dispose()
+      await ctx.fiber.dispose()
+    })
+
+    it('publishes a tool-call delta immediately, not on the volatile cadence', async () => {
+      vi.useFakeTimers()
+      const { ctx, live, service, published, projections, childSession } = childFixture()
+      const count = published.length
+      const facts = projections.snapshot(childSession).values.mayflyConversationFacts as Record<string, unknown>
+      projections.emit(childSession, 'mayflyConversationFacts', { ...facts, epochToolCount: 1 })
+      expect(published).toHaveLength(count + 1)
+      expect(published.at(-1)?.[0]).toMatchObject({ toolCount: 1 })
+      vi.advanceTimersByTime(CHILD_VOLATILE_MS)
+      expect(published).toHaveLength(count + 1)
+      service.dispose()
+      live.dispose()
+      await ctx.fiber.dispose()
+    })
 
     it('defers streamed-character-only changes to one trailing publish', async () => {
       vi.useFakeTimers()
@@ -420,6 +451,43 @@ describe('SessionFactsService', () => {
       await ctx.fiber.dispose()
     })
 
+    it('keeps the child Agent instead of asking the registry on every live notification', async () => {
+      const { ctx, live, service, childAgent, agentGet } = childFixture()
+      agentGet.mockClear()
+      live.accept(childAgent, { type: 'chunk', attemptId: 'run' as never, revision: 9, index: 8, time: 9, chunk: { type: 'text-delta', index: 0, text: 'more' } })
+      await Promise.resolve()
+      expect(agentGet).not.toHaveBeenCalled()
+      service.dispose()
+      live.dispose()
+      await ctx.fiber.dispose()
+    })
+
+    it('follows a replaced child Agent and forgets one that is disposed', async () => {
+      vi.useFakeTimers()
+      const { ctx, live, service, published, childSession, childAgent } = childFixture()
+      const replacement = agent(childSession)
+      ctx.emit('agent/created', { agent: replacement } as never)
+      live.accept(replacement, { type: 'start', attemptId: 'replaced' as never, revision: 1, turn: 1, step: 0 })
+      live.accept(replacement, { type: 'chunk', attemptId: 'replaced' as never, revision: 2, index: 0, time: 1, chunk: { type: 'text-delta', index: 0, text: 'replaced' } })
+      await Promise.resolve()
+      expect(published.at(-1)?.[0]).toMatchObject({ liveChars: 8 })
+      // The old Agent's disposal does not clear the replacement.
+      ctx.emit('agent/disposed', { agent: childAgent } as never)
+      live.accept(replacement, { type: 'chunk', attemptId: 'replaced' as never, revision: 3, index: 1, time: 2, chunk: { type: 'text-delta', index: 0, text: '!' } })
+      await Promise.resolve()
+      vi.advanceTimersByTime(CHILD_VOLATILE_MS)
+      expect(published.at(-1)?.[0]).toMatchObject({ liveChars: 9 })
+      // Once the stored Agent is gone, its stream no longer projects.
+      ctx.emit('agent/disposed', { agent: replacement } as never)
+      live.accept(replacement, { type: 'chunk', attemptId: 'replaced' as never, revision: 4, index: 2, time: 3, chunk: { type: 'text-delta', index: 0, text: '?' } })
+      await Promise.resolve()
+      vi.advanceTimersByTime(CHILD_VOLATILE_MS)
+      expect(published.at(-1)?.[0]).not.toHaveProperty('liveChars')
+      service.dispose()
+      live.dispose()
+      await ctx.fiber.dispose()
+    })
+
     it('drops a pending volatile publish on agent switch and dispose', async () => {
       vi.useFakeTimers()
       const { ctx, live, service, published, chunk, switchAgent } = childFixture()
@@ -438,5 +506,33 @@ describe('SessionFactsService', () => {
       live.dispose()
       await ctx.fiber.dispose()
     })
+  })
+
+  it('keeps every live child and only the 32 most recently settled ones', async () => {
+    const ctx = new Context()
+    const parentSession = session('parent')
+    const childSessions = Array.from({ length: 34 }, (_, index) => session(`child-${String(index)}`, { origin: 'subagent', parentSession: 'parent' }))
+    const projections = new ProjectionFake()
+    projections.set(parentSession, { mayflyConversationFacts: initialConversationFacts() })
+    childSessions.forEach((child, index) => {
+      const facts = index === 0
+        ? { ...initialConversationFacts(), active: true, phase: 'waiting' as const, turn: 1, currentStep: 0, promptText: 'live' }
+        : { ...initialConversationFacts(), active: false, runOutcome: 'completed' as const, endedAt: index, promptText: `settled ${String(index)}` }
+      projections.set(child, { mayflyConversationFacts: facts })
+    })
+    const current = agent(parentSession)
+    ctx.reflect.provide('sessionProjections', projections)
+    ctx.reflect.provide('sessions', { list: () => [parentSession, ...childSessions] })
+    ctx.reflect.provide('mayflyCurrentAgent', { subscribe(listener: (value: Agent) => void) { listener(current); return () => {} } })
+    const service = new SessionFactsService(ctx)
+    const lists: Array<readonly ChildSessionFacts[]> = []
+    service.subscribeChildren(value => lists.push(value))
+    const ids = lists.at(-1)!.map(child => child.id)
+    // The live child stays however old; the oldest settled child (child-1) is the one dropped.
+    expect(ids).toContain('child-0')
+    expect(ids).not.toContain('child-1')
+    expect(ids).toHaveLength(33)
+    service.dispose()
+    await ctx.fiber.dispose()
   })
 })

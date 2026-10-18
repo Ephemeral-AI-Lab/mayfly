@@ -314,14 +314,16 @@ describe('compileMayflyUiNode', () => {
       child: ui.text('body'),
     }), fixture().options)
     expect(overlay.component.render(20).map(stripTerminalSequences)).toEqual([
-      '╭ Details ─────────╮',
-      '│ body             │',
-      '╰──────────────────╯',
+      '━━━━━━━━━━━━━━━━━━━━',
+      '  Details',
+      '',
+      '  body              ',
     ])
     expect(overlay.component.render(8).map(stripTerminalSequences)).toEqual([
-      '╭ De… ─╮',
-      '│ body │',
-      '╰──────╯',
+      '━━━━━━━━',
+      '  Detai…',
+      '',
+      '  body  ',
     ])
     // A frame without padding keeps one column of gutter, like padding 1.
     expect(compiled(ui.surface({ chrome: 'surface', title: 'Inline', child: ui.text('body') }), fixture().options).component.render(12).map(stripTerminalSequences)).toEqual([
@@ -331,10 +333,14 @@ describe('compileMayflyUiNode', () => {
     ])
     expect(() => overlay.component.invalidate()).not.toThrow()
 
+    // Degenerate widths keep the panel chrome fitted and never throw.
     const degenerate = compiled(ui.surface({ chrome: 'overlay', title: 'Details', padding: 2, child: ui.text('x') }), fixture().options)
-    expect(degenerate.component.render(2)).toEqual(['x'])
-    expect(degenerate.component.render(1)).toEqual(['x'])
-    expect(degenerate.component.render(Number.NaN)).toEqual(['x'])
+    for (const width of [2, 1, Number.NaN]) {
+      const rows = degenerate.component.render(width)
+      expect(rows.length).toBeGreaterThan(0)
+      expect(rows.map(stripTerminalSequences).join('\n')).toContain('x')
+      if (Number.isFinite(width)) for (const row of rows) expect(visibleWidth(stripTerminalSequences(row))).toBeLessThanOrEqual(width)
+    }
   })
 
   it('preserves nested layout and scroll semantics inside closed overlay chrome', () => {
@@ -347,11 +353,11 @@ describe('compileMayflyUiNode', () => {
     }), fixture({ getViewport: () => ({ columns: 20, rows: 5 }) }).options)
     const frame = layout(overlay.component as Component, 20, 5)
 
-    expect(stripTerminalSequences(frame.lines[0]!)).toMatch(/^╭ Scrollable ─+╮$/u)
-    expect(frame.lines.at(-1)).toBe('╰──────────────────╯')
-    expect(frame.lines.map(stripTerminalSequences).slice(1, -1).every(row => /^│.*│$/u.test(row))).toBe(true)
-    expect(scrollViews(frame.root)).toHaveLength(1)
+    // A panel is borderless: one heavy rule over the content, no side or bottom frame.
+    expect(stripTerminalSequences(frame.lines[0]!)).toBe('━━━━━━━━━━━━━━━━━━━━')
     expect(frame.lines).toHaveLength(5)
+    expect(frame.lines.map(stripTerminalSequences).join('\n')).toContain('line-0')
+    expect(scrollViews(frame.root)).toHaveLength(1)
     for (const width of [1, 2]) {
       const narrow = layout(overlay.component as Component, width, 5).lines
       expectLinesFit('closed overlay layout', narrow, width)
@@ -365,14 +371,14 @@ describe('compileMayflyUiNode', () => {
       const result = compiled(ui.scroll(content, { follow, scrollbar: true }), fixture().options)
       const frame = layout(result.component as Component, 20, 3)
       const [scroll] = scrollViews(frame.root)
-      expect(frame.lines).toEqual(['line-0', 'line-1', 'line-2'])
+      expect(frame.lines.map(line => line.trimEnd())).toEqual(['line-0', 'line-1', 'line-2'])
       expect(scroll).toMatchObject({ primary: false, overscroll: 'contain', scrollTop: 0, viewportHeight: 3 })
     }
 
     const end = compiled(ui.scroll(content, { follow: 'end', scrollbar: true }), fixture().options)
     const endFrame = layout(end.component as Component, 20, 3)
     const [endScroll] = scrollViews(endFrame.root)
-    expect(endFrame.lines).toEqual(['line-7', 'line-8', 'line-9'])
+    expect(endFrame.lines.map(line => line.trimEnd())).toEqual(['line-7', 'line-8', 'line-9'])
     expect(endScroll).toMatchObject({ primary: false, overscroll: 'contain', scrollTop: 7, viewportHeight: 3 })
 
     const mainFixture = fixture({ screenMode: 'main' })
@@ -586,9 +592,9 @@ describe('compileMayflyUiNode', () => {
     const focus = result.focusTarget!
     focus.focused = true
     const frame = focus.render(60).join('\n')
-    expect(stripTerminalSequences(frame)).toContain('1  One')
-    expect(frame).toContain('2  Two')
-    expect(frame).toContain('3  Three')
+    expect(stripTerminalSequences(frame)).toContain('1. One')
+    expect(frame).toContain('2. Two')
+    expect(frame).toContain('3. Three')
     focus.handleInput?.('2')
     expect(events).toEqual([{ kind: 'selection-accept', pagePath: [], controlId: 'pick', selectedIds: ['two'] }])
     focus.handleInput?.('9')
@@ -842,7 +848,7 @@ describe('compileMayflyUiNode', () => {
     const focus = result.value.focusTarget!
     focus.focused = true
     focus.render(80)
-    focus.handleInput?.('\t')
+    focus.handleInput?.('\x1b[1;3B')
     expect(focus.captureFocusIdentity?.()).toMatchObject({ controlId: 'first', itemId: 'a' })
     focus.handleInput?.('\x1b[1;3C')
     expect(model.activeTab({ pagePath: [], controlId: 'pages' })).toBe('two')
@@ -852,12 +858,12 @@ describe('compileMayflyUiNode', () => {
     focus.handleInput?.('\x1b[1;3D')
     expect(model.activeTab({ pagePath: [], controlId: 'pages' })).toBe('one')
     expect(focus.captureFocusIdentity?.()).toMatchObject({ controlId: 'first', itemId: 'a' })
-    focus.handleInput?.('\x1b[Z')
+    focus.handleInput?.('\x1b[1;3A')
     expect(focus.captureFocusIdentity?.()).toMatchObject({ controlId: 'pages', itemId: 'one' })
     focus.handleInput?.('\x1b[1;3C')
     expect(model.activeTab({ pagePath: [], controlId: 'pages' })).toBe('two')
     expect(focus.captureFocusIdentity?.()).toMatchObject({ controlId: 'pages', itemId: 'two' })
-    focus.handleInput?.('\t')
+    focus.handleInput?.('\x1b[1;3B')
     expect(focus.captureFocusIdentity?.()).toMatchObject({ controlId: 'second', itemId: 'b' })
     focus.handleInput?.('\x1b[1;3C')
     expect(model.activeTab({ pagePath: [], controlId: 'pages' })).toBe('three')
@@ -867,10 +873,10 @@ describe('compileMayflyUiNode', () => {
     focus.handleInput?.('\x1b[1;3D')
     expect(model.activeTab({ pagePath: [], controlId: 'pages' })).toBe('two')
     expect(focus.captureFocusIdentity?.()).toMatchObject({ controlId: 'second', itemId: 'b' })
-    focus.handleInput?.('\x1b[Z')
+    focus.handleInput?.('\x1b[1;3A')
     expect(focus.captureFocusIdentity?.()).toMatchObject({ controlId: 'pages', itemId: 'two' })
-    focus.handleInput?.('\t')
-    focus.handleInput?.('\t')
+    focus.handleInput?.('\x1b[1;3B')
+    focus.handleInput?.('\x1b[1;3B')
     expect(focus.captureFocusIdentity?.()).toMatchObject({ controlId: 'effort' })
     focus.handleInput?.('\r')
     expect(focus.captureFocusIdentity?.()).toMatchObject({ controlId: 'effort', editing: true })
@@ -878,12 +884,13 @@ describe('compileMayflyUiNode', () => {
     focus.handleInput?.('\x1b[1;3C')
     expect(model.activeTab({ pagePath: [], controlId: 'pages' })).toBe('two')
     focus.handleInput?.('\x1b')
-    focus.handleInput?.('\t')
+    focus.handleInput?.('\x1b[B')
     focus.handleInput?.('x')
     expect(focus.captureFocusIdentity?.()).toMatchObject({ controlId: 'text', editing: true })
     focus.handleInput?.('\x1b[1;3D')
     expect(model.activeTab({ pagePath: [], controlId: 'pages' })).toBe('two')
-    focus.handleInput?.('\r')
+    focus.handleInput?.('\x1b')
+    focus.handleInput?.('\x1b[1;3B')
     expect(focus.captureFocusIdentity?.()).toMatchObject({ controlId: 'go' })
     focus.handleInput?.('\x1b[1;3C')
     expect(model.activeTab({ pagePath: [], controlId: 'pages' })).toBe('three')
@@ -1701,16 +1708,16 @@ describe('compileMayflyUiSurfaceNode contextual hints', () => {
       ui.actions({ id: 'commands', items: [{ id: 'run', label: 'Run' }, { id: 'stop', label: 'Stop' }] }),
       ui.tabs({ id: 'tabs', activeId: 'a', items: [{ id: 'a', label: 'A' }] }),
     ])
-    expect(focusedHint(groups)).toBe('  ←/→ actions · Enter run · Alt+←/→ tabs · Tab/Shift+Tab groups')
+    expect(focusedHint(groups)).toBe('  ←/→ actions · Enter run · Alt+←/→ tabs')
 
     const scrollGroups = ui.stack.column([
       ui.scroll(ui.text('abcdefgh')),
       ui.actions({ id: 'commands', items: [{ id: 'run', label: 'Run' }] }),
     ])
     expect(focusedHint(scrollGroups, [], { onUnhandledEscape: () => {} }))
-      .toBe('  ↑/↓ scroll · Ctrl+E expand · Tab/Shift+Tab groups · Esc close')
+      .toBe('  ↑/↓ scroll · Ctrl+E expand · Esc close')
     expect(focusedHint(scrollGroups, []))
-      .toBe('  ↑/↓ scroll · Ctrl+E expand · Tab/Shift+Tab groups')
+      .toBe('  ↑/↓ scroll · Ctrl+E expand')
     expect(focusedHint(scrollGroups, ['\x05'], { onUnhandledEscape: () => {} }))
       .toBe('  ↑/↓ scroll · Ctrl+E collapse · Esc collapse')
   })
@@ -1758,7 +1765,7 @@ describe('compileMayflyUiSurfaceNode contextual hints', () => {
     expect(f.events).toEqual([])
 
     // Off the strip, `Esc` returns to it first, and that outranks the tab switch in a four-fragment row.
-    expect(focus.render(120).at(-1)).toBe('  ↑/↓ options · Space toggle · Enter choose · Esc back')
+    expect(focus.render(120).at(-1)).toBe('  ↑/↓ options · Space toggle · Enter choose · ←/→ tabs · Esc back')
     focus.handleInput?.('\r')
     expect(f.events).toEqual([{ kind: 'selection-accept', pagePath: [], controlId: 'list', selectedIds: [] }])
     focus.handleInput?.(' ')
@@ -1787,15 +1794,15 @@ describe('compileMayflyUiSurfaceNode contextual hints', () => {
     if (!result.ok) throw new Error(result.message)
     const focus = result.value.focusTarget!
     focus.focused = true
-    expect(focus.render(80).join('\n')).toContain('‹ Default ›')
+    expect(stripTerminalSequences(focus.render(80).join('\n'))).toContain('● Thinking: Default')
     focus.handleInput?.('\x1b[C')
     focus.handleInput?.('\x1b[C')
-    expect(focus.render(80).join('\n')).toContain('‹ High ›')
+    expect(stripTerminalSequences(focus.render(80).join('\n'))).toContain('● Thinking: High')
     focus.handleInput?.('\x1b[D')
     const choice = model.choice({ pagePath: [], controlId: 'models' })!
     expect(choiceSegment(choice, 'a')).toBe('low')
     focus.handleInput?.('\x1b[B')
-    expect(focus.render(80).join('\n')).not.toContain('‹')
+    expect(stripTerminalSequences(focus.render(80).join('\n'))).toContain('○ Thinking: no choice')
     focus.handleInput?.('\x1b[C')
     focus.handleInput?.('\x1b[D')
     focus.handleInput?.('\x1b[A')
@@ -1817,10 +1824,10 @@ describe('compileMayflyUiSurfaceNode contextual hints', () => {
     const f = fixture()
     const result = compiledSurface(list, f.options)
     result.focusTarget!.focused = true
-    expect(result.component.render(80).join('\n')).toContain('‹ Low ›')
+    expect(stripTerminalSequences(result.component.render(80).join('\n'))).toContain('● Options: Low')
     result.focusTarget!.handleInput?.('\x1b[C')
     result.focusTarget!.handleInput?.('\x1b[D')
-    expect(result.component.render(80).join('\n')).toContain('‹ Low ›')
+    expect(stripTerminalSequences(result.component.render(80).join('\n'))).toContain('● Options: Low')
     expect(focusedHint(list)).toContain('←/→ segment')
     result.surfaceRuntime.dispose()
   })
@@ -1926,7 +1933,7 @@ describe('compileMayflyUiSurfaceNode contextual hints', () => {
       ui.actions({ id: 'commands', items: [{ id: 'save', label: 'Save' }] }),
     ])
     expect(focusedHint(textareaGroups, ['\r']))
-      .toBe('  Enter next · Alt+Enter newline · Tab/Shift+Tab groups · Esc done')
+      .toBe('  Enter next · Alt+Enter newline · Esc done')
 
     const submittingTextarea = ui.form({ id: 'form', enterSubmits: 'send', fields: [{ kind: 'textarea', id: 'notes', label: 'Notes', value: '' }] })
     expect(focusedHint(submittingTextarea, ['a'])).toBe('  Enter submit · Alt+Enter newline · Esc done')
@@ -1952,7 +1959,7 @@ describe('compileMayflyUiSurfaceNode contextual hints', () => {
       ui.actions({ id: 'commands', items: [{ id: 'save', label: 'Save' }] }),
     ])
     expect(focusedHint(selectGroups, ['\r']))
-      .toBe('  ↑/↓ options · Enter apply · Tab/Shift+Tab groups · Esc cancel')
+      .toBe('  ↑/↓ options · Enter apply · Esc cancel')
 
     const confirm = ui.actions({ id: 'commands', items: [{ id: 'delete', label: 'Delete', confirm: 'Delete?' }] })
     expect(focusedHint(confirm, ['\r'])).toBe('  Enter run')
@@ -2048,7 +2055,7 @@ describe('compileMayflyUiSurfaceNode contextual hints', () => {
     result.focusTarget!.focused = true
     expect(result.component.render(80).at(-1)).toBe('  Enter run · Esc close')
     f.viewport.columns = 120
-    expect(result.component.render(120).at(-1)).toBe('  ←/→ actions · Enter run · Tab/Shift+Tab groups · Esc close')
+    expect(result.component.render(120).at(-1)).toBe('  ←/→ actions · Enter run · Esc close')
 
     const wideTree = ui.stack.column([
       ui.actions({ id: 'commands', items: [{ id: 'run', label: 'Run' }, { id: 'stop', label: 'Stop' }] }),
@@ -2153,13 +2160,12 @@ describe('compileMayflyUiSurfaceNode contextual hints', () => {
 
     const direct = overlay.component.render(20).map(stripTerminalSequences)
     expect(direct).toHaveLength(4)
-    expect(direct.at(-2)).toMatch(/^│\s+Enter · Esc\s+│$/u)
-    expect(direct.at(-1)).toBe('╰──────────────────╯')
+    expect(direct.at(-2)!.trimEnd()).toBe('    Run')
+    expect(direct.at(-1)!.trim()).toBe('Enter · Esc')
 
     const frame = layout(overlay.component as Component, 20, 4).lines.map(stripTerminalSequences)
     expect(frame).toHaveLength(4)
-    expect(frame.at(-2)).toMatch(/^│\s+Enter · Esc\s+│$/u)
-    expect(frame.at(-1)).toBe('╰──────────────────╯')
+    expect(frame.at(-1)!.trim()).toBe('Enter · Esc')
     for (const width of SCAN_WIDTHS) {
       expectLinesFit('context hints direct', overlay.component.render(width), width)
       expectLinesFit('context hints layout', layout(overlay.component as Component, width, 4).lines, width)

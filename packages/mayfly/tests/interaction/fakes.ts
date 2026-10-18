@@ -174,7 +174,6 @@ function fakeColors(): MayflySemanticColors {
     accent: text => `*${text}*`,
     primary: text => `^${text}^`,
     border: identity,
-    borderFocus: text => `%${text}%`,
     success: identity,
     error: text => `!${text}!`,
     warning: text => `?${text}?`,
@@ -196,14 +195,11 @@ function fakeColors(): MayflySemanticColors {
     mdListBullet: identity,
     diffAdded: text => `+${text}+`,
     diffRemoved: text => `-${text}-`,
-    diffAddedStrong: text => `=${text}=`,
-    diffRemovedStrong: text => `/${text}/`,
-    diffGutter: text => `:${text}:`,
     diffMeta: text => `;${text};`,
     diffAddedBg: text => `[+${text}+]`,
     diffRemovedBg: text => `[-${text}-]`,
     modelHighlight: identity,
-    logoGradient: [identity],
+    logoInks: [identity, identity, identity, identity, identity],
   }
 }
 
@@ -774,6 +770,9 @@ export class FakeScreen implements MayflyScreen {
 
   private contentScrollHandler: ((data: string) => boolean) | undefined
 
+  watchContentTail(_listener: () => void): () => void { return () => {} }
+  contentMarked(): boolean { return false }
+  onContentTurns(_listener: () => void): () => void { return () => {} }
   setContentScrollHandler(handler: ((data: string) => boolean) | undefined): () => void {
     this.contentScrollHandler = handler
     return () => {
@@ -937,6 +936,8 @@ export function fakeMayflyContext(options: { readonly display?: boolean; readonl
     const agent = active()
     for (const listener of listeners) listener(agent, revision)
   }
+  // The test session's current-Agent change is the fake tree's own broadcast.
+  ctx.on('test/session-changed', () => { publishAgent() })
   ctx.provide('mayflyCurrentAgent', {
     current: active,
     primary: active,
@@ -1051,6 +1052,10 @@ export function fakeMayflyContext(options: { readonly display?: boolean; readonl
     clearStop: () => { stopRequested = false },
   } as never)
   ctx.provide('mayflyRetractions', { tryRetract: () => false })
+  ctx.provide('mayflySessionStart', {
+    onBooted: (listener: () => void) => { listener(); return () => {} },
+    ensure: async () => { throw new Error('no active session') },
+  } as never)
   ctx.on('test/session-changed', publishAgent)
   ctx.on('agent/status', publishAgent)
   new SkillsCatalogService(ctx)

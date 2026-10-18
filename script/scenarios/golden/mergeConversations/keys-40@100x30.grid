@@ -1,0 +1,49 @@
+grid 40x30 cursor none
+|
+|  ● A reviewer audits the hero in the
+|    background while I read the
+|    parser.
+|
+|  ✓ Subagent(Audit the hero copy) · 0…
+|
+|  ✓ Read(src/parser.ts)
+|
+|  ● Your three messages wait at the
+|    end of the stream. Alt+↑ reaches
+|    them: e edits, s sends now, d
+|    cancels (u undoes).
+|
+|  » Keep the public API unchanged  ⏎
+|    steering
+|
+|  » Update the README once the parser
+|    is done  ⏎ queued
+|
+|  » Then bump the version and tag the
+|    release candidate  ⏎ queued
+|
+|  ⡀ Deep diving · 10s
+|    ⎿ Tip: Esc to interrupt the turn
+|  e edit · d cancel · Esc back      ⚠
+|╭───────── Refactor the parser, I will ╮
+|│ >  Ask anything · / commands         │
+|╰──────────────────────────────────────╯
+|  conversation   workspace
+styles
+1: 2-3 fg:#ededf2
+5: 2-3 fg:#4ec87e; 4-11 fg:#ededf2 b; 12 fg:#9aa3b8; 13-31 fg:#c9c0f0; 32-37 fg:#9aa3b8
+7: 2-3 fg:#4ec87e; 4-7 fg:#ededf2 b; 8 fg:#9aa3b8; 9-21 fg:#c9c0f0; 22 fg:#9aa3b8
+9: 2-3 fg:#ededf2
+14: 2-3 fg:#9a86e6; 4-32 fg:#9a86e6 b; 33-39 fg:#9aa3b8
+15: 4-39 fg:#9aa3b8
+17: 2-3 fg:#9a86e6; 4-39 fg:#9a86e6 b
+18: 4-10 fg:#9a86e6 b; 11-39 fg:#9aa3b8
+20: 2-3 fg:#9a86e6; 4-39 fg:#9a86e6 b
+21: 4-20 fg:#9a86e6 b; 21-39 fg:#9aa3b8
+23: 0-1 fg:#ededf2; 2 fg:#9a86e6; 3-14 fg:#ededf2; 16-20 fg:#9aa3b8
+24: 0-35 fg:#9aa3b8
+25: 2-7 fg:#9aa3b8; 9-18 fg:#9aa3b8; 20-29 fg:#9aa3b8; 36 fg:#e8a838
+26: 0-10 fg:#9aa3b8; 11-37 fg:#f5f5f7 b; 38-39 fg:#9aa3b8
+27: 0 fg:#9aa3b8; 2-3 fg:#ededf2; 4 r; 5-29 fg:#5c6476; 39 fg:#9aa3b8
+28: 0-39 fg:#9aa3b8
+29: 1-14 fg:#9a86e6 b r; 17-25 fg:#9aa3b8

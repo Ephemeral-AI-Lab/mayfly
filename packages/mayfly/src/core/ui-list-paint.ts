@@ -15,7 +15,7 @@ import { paintSpan, paintTone } from './ui-paint.ts'
 import { segmentLine, type SegmentView } from './ui-list-segment.ts'
 import type { UiRowCache } from './ui-row-cache.ts'
 import { countWork, type MayflyWorkCounters } from './ui-work-counters.ts'
-import { concatRows, mapRows, sliceRows, virtualRows } from './ui-rows.ts'
+import { concatRows, mapRows, sliceRows, virtualRows, type RowSource } from './ui-rows.ts'
 import { countMatches, highlightLine, highlightPattern } from './ui-find.ts'
 import { sliceByColumn, visibleWidth, wrapTextWithAnsi } from './width.ts'
 
@@ -114,7 +114,7 @@ function checkOf(node: ListNodeView, spec: ListRowSpec, selected: boolean, selec
   return selected ? '●' : '○'
 }
 
-type ListNodeView = Pick<MayflyListNode, 'items' | 'marker' | 'marks' | 'mode' | 'tree' | 'numbered' | 'maxRows' | 'highlight' | 'groupGap'>
+type ListNodeView = Pick<MayflyListNode, 'items' | 'marker' | 'marks' | 'mode' | 'tree' | 'numbered' | 'maxRows' | 'highlight' | 'groupGap' | 'filter'>
 
 /** A one-row meter: `▰` filled in the tone, `▱` empty and muted. */
 function meterText(meter: NonNullable<MayflyListItem['meter']>, colors: MayflySemanticColors): string {
@@ -489,6 +489,81 @@ function currentMatch(entries: readonly Entry[], find: RegExp, nth: number | und
   return undefined
 }
 
+/** The list-wide values one item's rows paint from: the same for every row of one list paint. */
+interface ListPaintContext {
+  readonly node: ListNodeView
+  readonly width: number
+  readonly colors: MayflySemanticColors
+  readonly options: ListPaintOptions
+  readonly numbered: boolean
+  readonly digits: number
+  readonly column: number
+  readonly plan: CellPlan | undefined
+  readonly parents: ReadonlyMap<string, string>
+}
+
+/** The entries one visible row paints, and the state a following row needs. */
+interface PaintedItemEntries {
+  readonly entries: readonly Entry[]
+  /** The open group after this row: an ungrouped row keeps the one before it. */
+  readonly group: string | undefined
+  readonly focusedWithout: boolean
+  readonly footerFor: SegmentView | undefined
+}
+
+/** The entries of one row: its group heading, head lines, and open body, painted from the memo when its state still matches. */
+function paintItemEntries(context: ListPaintContext, spec: ListRowSpec, group: string | undefined): PaintedItemEntries {
+  const { node, width: available, colors, options, numbered, digits, column, plan, parents } = context
+  const entries: Entry[] = []
+  let focusedWithout = false
+  let footerFor: SegmentView | undefined
+  const item = spec.item
+  if (item.group !== undefined && item.group !== group) {
+    entries.push({ kind: 'group', lines: [...group !== undefined && node.groupGap === true ? [''] : [], clipRow(colors.muted(item.group), available)] })
+    group = item.group
+  }
+  const on = options.cursorId === item.id && item.disabled !== true
+  const selected = options.selectedIds.includes(item.id)
+  const view = options.segment?.(item)
+  const state: RowState = {
+    node, plan, spec, on, focused: options.focused, width: available, marker: options.marker,
+    check: checkOf(node, spec, selected, options.selectedIds),
+    number: numbered ? String(spec.position + 1).padStart(digits) : '',
+    column,
+    view,
+    text: item.input === undefined ? '' : options.inputs?.[item.id] ?? '',
+  }
+  // The line under the rows names the focused row's level; a row without a segment leaves it blank.
+  if (on && options.focused) { if (view === undefined) focusedWithout = true; else footerFor = view }
+  if (item.gap === true || item.rule !== undefined) {
+    entries.push({ kind: item.gap === true ? 'gap' : 'rule', lines: headLines(state, colors, options.translate) })
+    return { entries, group, focusedWithout, footerFor }
+  }
+  const key = [
+    available, column, state.marker, on ? 1 : 0, options.focused ? 1 : 0, node.marker ?? '', state.check, state.number,
+    spec.depth, spec.last ? 1 : 0, spec.expandable ? 1 : 0, spec.open ? 1 : 0,
+    `${String(view?.active)}\0${String(view?.pinned)}`, options.flow === true ? 1 : 0, state.text, item.cells === undefined ? '' : plan?.signature ?? '',
+  ].join('\x01')
+  const leaded = item.bodyLead !== undefined && spec.open && item.body !== undefined
+  const paintHead = (): readonly string[] => leaded ? leadedLines(state, colors, options.body) : headLines(state, colors, options.translate)
+  // A row whose body carries a motion span is painted again at every clock frame: its remembered lines would freeze it.
+  const moves = typeof item.body === 'object' && item.body.kind === 'rich-text' && hasMotion(item.body.spans)
+  const painted = options.memo === undefined || moves ? paintHead() : options.memo.cache.readLines(colors, item, key, paintHead, options.memo.counters)
+  // A `band` list marks its cursor row, the rows under it, and their bodies with the selected background, in place of an
+  // arrow. The band keeps a column free at each edge of the list.
+  const banded = node.marker === 'band' && options.focused && options.cursorId !== undefined && (on || within(item, options.cursorId, parents))
+  const block = options.cursorId !== undefined && (on || within(item, options.cursorId, parents))
+  entries.push({ kind: 'item', id: item.id, lines: painted, banded, block })
+  if (!leaded && spec.open && item.body !== undefined) {
+    const counters = options.memo?.counters
+    const body = options.memo === undefined || moves
+      ? bodyLines(spec, available, colors, options.body, counters)
+      : options.memo.cache.readLines(colors, item, `body\x01${String(available)}\x01${options.flow === true ? 1 : 0}\x01${node.highlight?.current === undefined ? 0 : 1}`, () => bodyLines(spec, available, colors, options.body, counters), counters)
+    if (body.length > 0) entries.push({ kind: 'body', lines: body, banded, block })
+  }
+  return { entries, group, focusedWithout, footerFor }
+}
+
 /**
  * The lines of a list, windowed to `height`. `node` carries the list's presentation fields; `options.rows` are the
  * materialized visible rows in order. The painted rows come from the memo when an item's state bits are unchanged.
@@ -513,51 +588,14 @@ export function paintList(node: ListNodeView, width: number, height: number, col
   const find = highlightPattern(node.highlight)
   const parents = new Map<string, string>()
   for (const spec of options.rows) if (spec.item.under !== undefined) parents.set(spec.item.id, spec.item.under)
+  const context: ListPaintContext = { node, width: available, colors, options, numbered, digits, column, plan, parents }
   for (const spec of options.rows) {
-    const item = spec.item
-    if (item.group !== undefined && item.group !== group) {
-      entries.push({ kind: 'group', lines: [...group !== undefined && node.groupGap === true ? [''] : [], clipRow(colors.muted(item.group), available)] })
-      group = item.group
-    }
-    const on = options.cursorId === item.id && item.disabled !== true
-    const selected = options.selectedIds.includes(item.id)
-    const view = options.segment?.(item)
-    const state: RowState = {
-      node, plan, spec, on, focused: options.focused, width: available, marker: options.marker,
-      check: checkOf(node, spec, selected, options.selectedIds),
-      number: numbered ? String(spec.position + 1).padStart(digits) : '',
-      column,
-      view,
-      text: item.input === undefined ? '' : options.inputs?.[item.id] ?? '',
-    }
-    // The line under the rows names the focused row's level; a row without a segment leaves it blank.
-    if (on && options.focused) { if (view === undefined) focusedWithout = true; else footerFor = view }
-    if (item.gap === true || item.rule !== undefined) {
-      entries.push({ kind: item.gap === true ? 'gap' : 'rule', lines: headLines(state, colors, options.translate) })
-      continue
-    }
-    const key = [
-      available, column, state.marker, on ? 1 : 0, options.focused ? 1 : 0, node.marker ?? '', state.check, state.number,
-      spec.depth, spec.last ? 1 : 0, spec.expandable ? 1 : 0, spec.open ? 1 : 0,
-      `${String(view?.active)}\0${String(view?.pinned)}`, options.flow === true ? 1 : 0, state.text, item.cells === undefined ? '' : plan?.signature ?? '',
-    ].join('\x01')
-    const leaded = item.bodyLead !== undefined && spec.open && item.body !== undefined
-    const paintHead = (): readonly string[] => leaded ? leadedLines(state, colors, options.body) : headLines(state, colors, options.translate)
-    // A row whose body carries a motion span is painted again at every clock frame: its remembered lines would freeze it.
-    const moves = typeof item.body === 'object' && item.body.kind === 'rich-text' && hasMotion(item.body.spans)
-    const painted = options.memo === undefined || moves ? paintHead() : options.memo.cache.readLines(colors, item, key, paintHead, options.memo.counters)
-    // A `band` list marks its cursor row, the rows under it, and their bodies with the selected background, in place of an
-    // arrow. The band keeps a column free at each edge of the list.
-    const banded = node.marker === 'band' && options.focused && options.cursorId !== undefined && (on || within(item, options.cursorId, parents))
-    const block = options.cursorId !== undefined && (on || within(item, options.cursorId, parents))
-    entries.push({ kind: 'item', id: item.id, lines: painted, banded, block })
-    if (!leaded && spec.open && item.body !== undefined) {
-      const counters = options.memo?.counters
-      const body = options.memo === undefined || moves
-        ? bodyLines(spec, available, colors, options.body, counters)
-        : options.memo.cache.readLines(colors, item, `body\x01${String(available)}\x01${options.flow === true ? 1 : 0}\x01${node.highlight?.current === undefined ? 0 : 1}`, () => bodyLines(spec, available, colors, options.body, counters), counters)
-      if (body.length > 0) entries.push({ kind: 'body', lines: body, banded, block })
-    }
+    countWork(options.memo?.counters, 'itemsWalked')
+    const painted = paintItemEntries(context, spec, group)
+    entries.push(...painted.entries)
+    group = painted.group
+    if (painted.focusedWithout) focusedWithout = true
+    if (painted.footerFor !== undefined) footerFor = painted.footerFor
   }
 
   // The search marks go on last, with the current match (inside the cursor's block) drawn stronger; then the band.
@@ -639,4 +677,285 @@ export function paintList(node: ListNodeView, width: number, height: number, col
     tail.push('', footerFor !== undefined ? segmentLine(footerFor, available, colors, footerFor.segment.label ?? options.segmentLabel ?? 'Options') : focusedWithout ? clipRow(absent(), available) : '')
   }
   return tail.length === 0 ? lines : concatRows(lines, tail)
+}
+
+/** Prefix sums over per-row block heights: a row costs a binary search, and a height change a point update. */
+class RowFenwick {
+  private readonly tree: Float64Array
+  constructor(private readonly size: number) {
+    this.tree = new Float64Array(size + 1)
+  }
+  add(index: number, delta: number): void {
+    for (let at = index + 1; at <= this.size; at += at & -at) this.tree[at]! += delta
+  }
+  /** Rows in blocks `[0, index]`; a negative index sums nothing. */
+  sum(index: number): number {
+    let total = 0
+    for (let at = index + 1; at > 0; at -= at & -at) total += this.tree[at]!
+    return total
+  }
+  /** The block containing `row`: the last block whose first row is at or before it. */
+  locate(row: number): number {
+    let bit = 1
+    while (bit * 2 <= this.size) bit <<= 1
+    let block = 0
+    let covered = 0
+    for (; bit > 0; bit >>= 1) {
+      const next = block + bit
+      if (next <= this.size && covered + this.tree[next]! <= row) {
+        block = next
+        covered += this.tree[next]!
+      }
+    }
+    return Math.min(block, this.size - 1)
+  }
+}
+
+/** What the flow painter reads from the list's model: the rows in order and how each one opens. */
+export interface FlowListModel {
+  readonly items: readonly MayflyListItem[]
+  readonly specAt: (index: number) => ListRowSpec
+  /** Everything `specAt` reads besides the item itself (choice query, expansions, cursor, inputs): a move repaints the rows. */
+  readonly signature: string
+}
+
+/** One list paint: the node, its model, and the state the rows paint in. */
+export interface FlowListPaintInput {
+  readonly node: ListNodeView
+  readonly model: FlowListModel
+  readonly width: number
+  readonly colors: MayflySemanticColors
+  readonly options: ListPaintOptions
+}
+
+/** One item's materialized entries: its group heading, head lines, and open body. */
+interface FlowBlock {
+  readonly item: MayflyListItem
+  readonly entries: readonly Entry[]
+  readonly height: number
+  /** Rows of the group heading ahead of the item's own first row. */
+  readonly lead: number
+  readonly groupBefore: string | undefined
+  readonly groupAfter: string | undefined
+  /** A body with a motion span must paint on every clock frame, as in a whole paint. */
+  readonly motion: boolean
+}
+
+const recordKey = (values: Readonly<Record<string, string>> | undefined): string => values === undefined
+  ? ''
+  : Object.keys(values).sort().map(key => `${key}\0${values[key]!}`).join('\x01')
+
+/**
+ * The row source of a list painted whole in flow content: `length` is the total painted rows of every item (plus the
+ * segment footer), `row` reads a row of the block under it, and `locate` names the line of a followed item. Items are
+ * reconciled by identity at both ends, so a stream that changes its tail rebuilds that item alone and a repaint reads
+ * the rows the frame shows. A changed row map moves {@link revision}, so a facade drops the rows it held.
+ */
+export class FlowListPainter implements RowSource {
+  private blocks: readonly FlowBlock[] = []
+  private counts: number[] = []
+  private tree = new RowFenwick(0)
+  private byId = new Map<string, number>()
+  private items: readonly MayflyListItem[] = []
+  private signature: string | undefined
+  private colors: MayflySemanticColors | undefined
+  private cache: object | undefined
+  private tail: readonly string[] = []
+  private itemTotal = 0
+  private declared = 0
+  private changes = 0
+  private focused = false
+  private cursorId: string | undefined
+
+  get length(): number { return this.itemTotal + this.tail.length }
+
+  get revision(): number { return this.changes }
+
+  get declaredWidth(): number { return this.declared }
+
+  /** Unfocused rows carry no cursor marker; a focused painter answers a marker seek from the cursor's block instead. */
+  get markerFree(): boolean { return !this.focused || this.cursorId === undefined }
+
+  private facade: string[] | undefined
+
+  /** The list's rows as a lazy facade: the same array every paint, its rows read on demand. */
+  rows(): string[] {
+    this.facade ??= virtualRows(this)
+    return this.facade
+  }
+
+  /** Lay the list out at `input`'s width and state, rebuilding only the items that changed. */
+  sync(input: FlowListPaintInput): void {
+    const { node, model, width, colors, options } = input
+    const items = model.items
+    const available = Math.max(1, Math.floor(width))
+    this.declared = available
+    this.focused = options.focused
+    this.cursorId = options.cursorId
+    const state = [
+      available, node.mode ?? '', node.marks === true ? 1 : 0, node.marker ?? '', node.groupGap === true ? 1 : 0,
+      node.tree === true ? 1 : 0, node.numbered === undefined || node.numbered === false ? 0 : String(node.numbered),
+      node.highlight === undefined ? '' : JSON.stringify(node.highlight), model.signature, items.length,
+      options.cursorId ?? '', options.marker, options.selectedIds.join('\x01'), recordKey(options.inputs), options.focused ? 1 : 0,
+    ].join('\x1e')
+    const rebuilt = state !== this.signature || colors !== this.colors || options.memo?.cache !== this.cache
+    const previous = this.blocks
+    const numbered = node.numbered !== undefined && node.numbered !== false
+    const digits = String(items.length).length
+    const prefixGuess = 2 + (numbered ? digits + 2 : 0)
+    const context: ListPaintContext = {
+      node, width: available, colors, options, numbered, digits,
+      column: Math.min(labelColumn(node.items), Math.max(8, Math.floor((available - prefixGuess) * COLUMN_SHARE))),
+      plan: cellPlanOf(node, available, colors),
+      parents: new Map(),
+    }
+    const touched = new Set<number>()
+    const build = (index: number, group: string | undefined): FlowBlock => {
+      touched.add(index)
+      countWork(options.memo?.counters, 'itemsWalked')
+      const spec = model.specAt(index)
+      const painted = paintItemEntries(context, spec, group)
+      const find = highlightPattern(node.highlight)
+      const entries = find === undefined
+        ? painted.entries
+        : painted.entries.map((entry): Entry => entry.kind !== 'item' && entry.kind !== 'body'
+          ? entry
+          : { ...entry, lines: mapRows(entry.lines, line => highlightLine(line, find, undefined)) })
+      let height = 0
+      for (const entry of entries) height += entry.lines.length
+      const item = spec.item
+      return {
+        item, entries, height,
+        lead: entries[0]?.kind === 'group' ? entries[0].lines.length : 0,
+        groupBefore: group,
+        groupAfter: painted.group,
+        motion: spec.open && typeof item.body === 'object' && item.body.kind === 'rich-text' && hasMotion(item.body.spans),
+      }
+    }
+
+    this.signature = state
+    this.colors = colors
+    this.cache = options.memo?.cache
+    const tail = segmentOf(items) === null ? [] : ['', '']
+    let changed = rebuilt || tail.length !== this.tail.length
+    this.tail = tail
+    if (rebuilt) {
+      this.items = items
+      const next: FlowBlock[] = []
+      let group: string | undefined
+      for (let index = 0; index < items.length; index += 1) {
+        const block = build(index, group)
+        next.push(block)
+        group = block.groupAfter
+      }
+      this.blocks = next
+      this.reindex()
+    } else if (items !== this.items) {
+      const old = previous
+      const shared = Math.min(old.length, items.length)
+      let prefix = 0
+      while (prefix < shared && old[prefix]!.item === items[prefix]) prefix += 1
+      let suffix = 0
+      while (suffix < shared - prefix && old[old.length - 1 - suffix]!.item === items[items.length - 1 - suffix]) suffix += 1
+      this.items = items
+      const oldEnd = old.length - suffix
+      const next: FlowBlock[] = old.slice(0, prefix)
+      let group = prefix === 0 ? undefined : old[prefix - 1]!.groupAfter
+      for (let index = prefix; index < items.length - suffix; index += 1) {
+        const block = build(index, group)
+        next.push(block)
+        group = block.groupAfter
+      }
+      // Append the kept suffix as it was, then fix its first rows while their leading group no longer matches.
+      next.push(...old.slice(oldEnd))
+      for (let index = items.length - suffix; index < next.length; index += 1) {
+        const block = next[index]!
+        if (block.groupBefore === group) break
+        const rebuiltBlock = build(index, group)
+        next[index] = rebuiltBlock
+        group = rebuiltBlock.groupAfter
+        changed = true
+      }
+      this.blocks = next
+      changed = true
+      if (old.length !== next.length) this.reindex()
+      else {
+        for (let index = prefix; index < next.length; index += 1) {
+          const before = old[index]!
+          const after = next[index]!
+          if (before === after) continue
+          const delta = after.height - before.height
+          if (delta !== 0) this.tree.add(index, delta)
+          this.counts[index] = after.height
+          this.byId.set(after.item.id, index)
+          if (before.item.id !== after.item.id) this.byId.delete(before.item.id)
+        }
+        this.itemTotal = this.tree.sum(next.length - 1)
+      }
+    }
+    // A motion body is painted again at every clock frame: its remembered lines would freeze it.
+    for (let index = 0; index < this.blocks.length; index += 1) {
+      const block = this.blocks[index]!
+      if (!block.motion || touched.has(index)) continue
+      const rebuiltBlock = build(index, block.groupBefore)
+      if (rebuiltBlock.height !== block.height) this.tree.add(index, rebuiltBlock.height - block.height)
+      this.counts[index] = rebuiltBlock.height
+      this.blocks = [...this.blocks.slice(0, index), rebuiltBlock, ...this.blocks.slice(index + 1)]
+      changed = true
+      this.itemTotal = this.tree.sum(this.blocks.length - 1)
+    }
+    if (changed) this.changes += 1
+  }
+
+  row(index: number): string {
+    if (index < 0 || index >= this.length) return ''
+    if (index >= this.itemTotal) return this.tail[index - this.itemTotal] ?? ''
+    const at = this.tree.locate(index)
+    const block = this.blocks[at]
+    if (block === undefined) return ''
+    let offset = index - this.tree.sum(at - 1)
+    for (const entry of block.entries) {
+      if (offset < entry.lines.length) return entry.lines[offset] ?? ''
+      offset -= entry.lines.length
+    }
+    return ''
+  }
+
+  /** A focused painter's only marker is the cursor row: answer a layout seek without walking every row. */
+  seekMarker(_marker: string, from: number): number {
+    if (!this.focused || this.cursorId === undefined) return -1
+    const line = this.locate(this.cursorId)
+    return line === undefined || line < from ? -1 : line
+  }
+
+  /** The line the first row of item `id` stands on among the list's rows; `undefined` when the list does not paint it. */
+  locate(itemId: string): number | undefined {
+    const index = this.byId.get(itemId)
+    if (index === undefined) return undefined
+    return this.tree.sum(index - 1) + this.blocks[index]!.lead
+  }
+
+  private reindex(): void {
+    this.counts = this.blocks.map(block => block.height)
+    this.tree = new RowFenwick(this.counts.length)
+    this.byId = new Map()
+    let total = 0
+    for (let index = 0; index < this.blocks.length; index += 1) {
+      this.tree.add(index, this.counts[index]!)
+      this.byId.set(this.blocks[index]!.item.id, index)
+      total += this.counts[index]!
+    }
+    this.itemTotal = total
+  }
+}
+
+/**
+ * Whether a list painted in flow content can answer from a row source: it has no height window (`maxRows`), no current
+ * search match (which is found by walking the cursor's whole block), and no filter or tree (whose visible positions the
+ * source does not index). The focused, height-windowed, filtered, and searched list keeps the whole paint.
+ */
+export function flowListCanVirtualize(node: ListNodeView, choice: { readonly query: string, readonly searching: boolean, readonly definition: { readonly tree?: boolean }, readonly matches: readonly number[] | undefined } | undefined): boolean {
+  if (node.maxRows !== undefined || node.highlight?.current !== undefined) return false
+  if (choice === undefined) return node.filter === undefined || node.filter.length === 0
+  return choice.query.length === 0 && !choice.searching && choice.definition.tree !== true && choice.matches === undefined
 }

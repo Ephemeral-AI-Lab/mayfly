@@ -143,7 +143,7 @@ describe('marks and notes', () => {
     expect(plain(paint(input, 30, { decor: { edited: true }, focus: focus('i') }))).toEqual(['→|Name: a'])
     expect(plain(paint({ ...input, disabled: true }, 30, { decor: { edited: true } }))).toEqual(['  Name: a'])
     expect(paint({ ...input, disabled: true }, 400, { colors: tagged })[0]).toBe('  <muted>Name: </muted><muted>a</muted>')
-    expect(paint(input, 400, { focus: focus('i'), colors: tagged })[0]).toBe('<primary>→</primary>|\x1b[1m<text>Name: </text>\x1b[22m<text>a</text>')
+    expect(paint(input, 400, { focus: focus('i'), colors: tagged })[0]).toBe('<primary>→</primary>|\x1b[1m<textStrong>Name: </textStrong>\x1b[22m<text>a</text>')
   })
 
   it('writes (inherited) or (override) after the value of a field with an origin', () => {

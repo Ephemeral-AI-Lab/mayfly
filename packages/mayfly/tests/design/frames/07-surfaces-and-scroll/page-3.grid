@@ -1,16 +1,18 @@
 ## page 3
-grid 96x7 cursor none
+grid 96x9 cursor none
 |header badges · page 3/3
 |
-|╭ Edit provider ────────────────────────────────────────── unsaved changes ╮
-|│ A badge on the right of the title rule carries a short state.            │
-|│ Narrow widths drop the subtitle and badges before the title.             │
-|│   Esc close                                                              │
-|╰──────────────────────────────────────────────────────────────────────────╯
+|━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+|  Edit provider  unsaved changes
+|
+|  A badge on the right of the title rule carries a short state.
+|  Narrow widths drop the subtitle and badges before the title.
+|
+|  Esc close
 styles
 0: 0-23 fg:muted
-2: 0-1 fg:borderFocus; 2-14 fg:textStrong b; 15-58 fg:borderFocus; 59-73 fg:warning; 74-75 fg:borderFocus
-3: 0 fg:borderFocus; 2-62 fg:text; 75 fg:borderFocus
-4: 0 fg:borderFocus; 2-61 fg:muted; 75 fg:borderFocus
-5: 0 fg:borderFocus; 2-3 fg:textMuted; 4-6 fg:text; 8-12 fg:textMuted; 75 fg:borderFocus
-6: 0-75 fg:borderFocus
+2: 0-75 fg:primary
+3: 2-14 fg:primary b; 17-31 fg:warning
+5: 2-62 fg:text
+6: 2-61 fg:muted
+8: 2-4 fg:text; 6-10 fg:textMuted

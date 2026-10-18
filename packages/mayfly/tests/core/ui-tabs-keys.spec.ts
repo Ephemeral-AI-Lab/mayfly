@@ -26,7 +26,7 @@ function open(content: MayflyUiNode, width = 100, escape = true) {
     : options)
   surfaces.push(surface)
   const rows = (): string[] => surface.render().map(plainText)
-  const hint = (): string => rows().at(-2)!.replace(/^│\s*|\s*│$/gu, '')
+  const hint = (): string => rows().at(-1)!.trim()
   const tabs = (): string[] => events.filter(event => event.kind === 'tab-change').map(event => (event as { tabId: string }).tabId)
   return { surface, events, rows, hint, tabs, press: (...keys: string[]) => { for (const key of keys) surface.press(key) }, escapes: () => escapes }
 }
@@ -59,8 +59,8 @@ describe('the hint row of a tab strip, a wizard, and a rail', () => {
     const view = open(strip())
     expect(view.hint()).toBe('←/→ tabs · Enter open · Esc close')
     view.press(KEY.enter)
-    expect(view.hint()).toBe('↑/↓ options · Enter open · Alt+←/→ tabs · Esc back')
-    expect(open(strip({ hintLabel: 'views' })).surface.press(KEY.enter).map(plainText).some(row => row.includes('Alt+←/→ views'))).toBe(true)
+    expect(view.hint()).toBe('↑/↓ options · Enter open · ←/→ tabs · Esc back')
+    expect(open(strip({ hintLabel: 'views' })).surface.press(KEY.enter).map(plainText).some(row => row.includes('←/→ views'))).toBe(true)
   })
 
   it('words a wizard\'s Escape back, and names the vertical rail\'s own keys', () => {

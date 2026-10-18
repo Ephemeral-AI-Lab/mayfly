@@ -29,6 +29,14 @@ import type { MayflyComponent, MayflyComponents, MayflyFocusable, MayflyKeymap }
 import { sliceByColumn, truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/width.ts'
 import { createFakeEditor } from '../core/fake-editor.ts'
 import { plainColors } from '../helpers.ts'
+import {
+  LongSessionHarness,
+  assertUnchangedEntriesReused,
+  longSessionDraft,
+  longSessionProjection,
+  pendingLastTool,
+  settleLastTool,
+} from './long-session.ts'
 
 /** What a workload needs from its host: a clock it can advance (fake timers under vitest, mock timers in a script). */
 export interface WorkloadEnvironment {
@@ -128,7 +136,7 @@ class Surface {
  * A screen whose node slots are bound the way the surface renderer binds them, over a runtime that only holds the hosts
  * and moves focus: the mounting path of the footer, the editor, and the conversation (roadmap slice 1.10a).
  */
-class SlotScreen {
+export class SlotScreen {
   private readonly added: MayflyComponent[] = []
   private readonly bottom: MayflyComponent[] = []
   private readonly unbind: () => void
@@ -142,6 +150,19 @@ class SlotScreen {
       addChild: (component: MayflyComponent) => { this.added.push(component) },
       addBottomChild: (component: MayflyComponent) => { this.bottom.push(component) },
       setFocus: (component: MayflyComponent | null) => { if (component !== null) (component as MayflyFocusable).focused = true },
+      setContentScrollbarColors: () => {},
+      watchContentTail: () => () => {},
+      contentTail: () => undefined,
+      contentStart: () => undefined,
+      followContent: () => {},
+      scrollContent: () => {},
+      scrollContentTo: () => {},
+      setContentScrollHandler: () => {},
+      setTitle: () => {},
+      addDockChild: () => {},
+      removeChild: () => {},
+      showOverlay: () => {},
+      suspend: () => {},
       requestRender: () => {},
     } as unknown as MayflyTerminalRuntime
     this.screen = new MayflyScreenService(root, runtime)
@@ -150,11 +171,17 @@ class SlotScreen {
     })
   }
 
+  /** The screen the slots are mounted on, for a controller that mounts its own conversation slot. */
+  get service(): MayflyScreenService { return this.screen }
+
+  /** The fixed host that paints `transcript.conversation`, the component a controller mounts into. */
+  contentHost(): MayflyComponent { return this.added[1]! }
+
   /** Leases the footer or the conversation and returns the lease with the host that paints it. */
   mount(region: 'footer' | 'content'): { readonly slot: MayflyNodeSlot, readonly host: MayflyComponent } {
     const slot = region === 'footer' ? this.screen.mountNodeSlot('status.footer', { region }) : this.screen.mountNodeSlot('transcript.conversation', { region })
     this.slots.push(slot)
-    return { slot, host: region === 'footer' ? this.bottom[1]! : this.added[1]! }
+    return { slot, host: region === 'footer' ? this.bottom[1]! : this.contentHost() }
   }
 
   dispose(): void {
@@ -571,6 +598,99 @@ export const WORKLOADS: readonly Workload[] = [
       surface.render()
       reset(counters)
       return { step: () => { surface.press('x') }, dispose: () => surface.dispose() }
+    },
+  },
+  {
+    id: 'W28', title: 'long session: a 2,000-turn projection, one tool result settles and the tail repaints (entriesMapped, toolModelsBuilt, streamRowsBuilt, rowsPainted)',
+    setup(counters) {
+      // The two projections share every entry but the settled tool, so a future entry cache can see the unchanged ones.
+      const initial = pendingLastTool(longSessionProjection(2000))
+      const settled = settleLastTool(initial)
+      const screen = new SlotScreen(counters)
+      const harness = new LongSessionHarness(screen, counters, WIDTH)
+      const view = harness.addView('main', initial)
+      harness.show('main')
+      harness.render()
+      reset(counters)
+      return {
+        step: () => {
+          view.feed.push(settled, 2)
+          harness.publish()
+          harness.render()
+        },
+        dispose: () => { harness.dispose() },
+      }
+    },
+  },
+  {
+    id: 'W29', title: 'long session live draft: a 2,000-turn projection, the answer grows by 24 characters (entriesMapped, streamRowsBuilt, componentRenders, rowsPainted)',
+    setup(counters) {
+      const projection = longSessionProjection(2000)
+      const text = 'The answer starts here and keeps going. '.repeat(40)
+      const initialDraft = longSessionDraft(projection, text, 1)
+      const screen = new SlotScreen(counters)
+      const harness = new LongSessionHarness(screen, counters, WIDTH)
+      const view = harness.addView('main', projection, { draft: initialDraft })
+      harness.show('main')
+      // The durable entries this snapshot already painted must keep their identity when only the draft text changes.
+      const before = view.source.snapshot()
+      harness.render()
+      let revision = 1
+      reset(counters)
+      return {
+        step: () => {
+          revision += 1
+          view.feed.setDraft(longSessionDraft(projection, `${text} the tail keeps growing.`, revision))
+          const after = harness.publish()
+          assertUnchangedEntriesReused(before, after)
+          harness.render()
+        },
+        dispose: () => { harness.dispose() },
+      }
+    },
+  },
+  {
+    id: 'W30', title: 'long session tick: a 2,000-turn projection with a pending call, one 1 Hz tick (streamRowsBuilt, componentRenders, rowsPainted)',
+    setup(counters) {
+      const projection = pendingLastTool(longSessionProjection(2000))
+      const screen = new SlotScreen(counters)
+      const harness = new LongSessionHarness(screen, counters, WIDTH)
+      harness.addView('main', projection)
+      harness.show('main')
+      harness.render()
+      // The pending call made the controller subscribe to the fake clock during the warm publish.
+      const fire = harness.tick.capture()
+      if (fire === undefined) throw new Error('W30: the pending call did not subscribe to the tick')
+      const tickAt = 1_700_000_000_000
+      reset(counters)
+      return {
+        step: () => {
+          fire(tickAt + 1000)
+          harness.render()
+        },
+        dispose: () => { harness.dispose() },
+      }
+    },
+  },
+  {
+    id: 'W31', title: 'tools/change: three retained views over one 2,000-turn projection, one invalidation; P1 makes hidden views lazy (entriesMapped, toolModelsBuilt)',
+    setup(counters) {
+      const projection = longSessionProjection(2000)
+      const screen = new SlotScreen(counters)
+      const harness = new LongSessionHarness(screen, counters, WIDTH)
+      const views = [harness.addView('a', projection), harness.addView('b', projection), harness.addView('c', projection)]
+      harness.show('a')
+      harness.render()
+      reset(counters)
+      return {
+        step: () => {
+          // Today every retained view re-resolves its presenters, displayed or not.
+          for (const view of views) view.source.invalidateTools()
+          harness.republish()
+          harness.render()
+        },
+        dispose: () => { harness.dispose() },
+      }
     },
   },
 ]

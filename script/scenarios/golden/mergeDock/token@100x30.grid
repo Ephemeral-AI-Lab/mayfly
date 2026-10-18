@@ -1,0 +1,52 @@
+grid 100x30 cursor none
+|
+|    ▗▘   ▝▖     mayfly scenario
+| ▄▄▖█▛███▜█▗▄▄  ephemeral agents, enduring works
+|  ▄▖█▙███▟█▗▄   deepseek-v4-pro · deepseek-official
+|    ▝▜▀▀▀▛▘     ~/workspace
+|
+|  » Refresh the landing page hero.
+|
+|  ▾ 1 tool call · 1 subagent · Ctrl+O to expand
+|
+|  ● Goal set · Refresh the landing page hero and keep every test green
+|
+|  ● A reviewer runs in the background and the todo list is set.
+|
+|  ✓ Subagent(Audit the hero copy) · 0.6s
+|
+|  ✓ TodoWrite · 0.2s
+|
+|  ● The status row now carries the agents, jobs, goal, and todo items under the editor. Try the
+|    bottom of the screen: / opens the palette over the stream; a long paste becomes a token (←
+|    onto it names its keys); send hold:240000 keep going for a turn that keeps running (the hint
+|    above the editor rotates every 15 s; ↑ walks the history; Alt+↓ enters a view); Esc interrupts
+|    that turn while the reviewer and the watcher go on.
+|
+|  ✻ Worked for 6s · done 09:00
+|                                                                  Alt+↑ conversation · Alt+↓ view
+|╭────────────────────────────────────────────────────────────────── Refresh the landing page hero. ╮
+|│ > compare [paste #1 +12 lines]                                                                   │
+|╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
+| deepseek-v4-pro  workspace  ● agents 0/1  ● jobs 1  ○ goal 0/8  ● todo 1/4       ctx ▰▱▱▱▱▱▱▱▱▱ 9%
+styles
+1: 4-5 fg:#9a86e6; 9-10 fg:#9a86e6; 16-21 fg:#9a86e6 b; 22-30 fg:#5c6476
+2: 1-3 fg:#cfc6f5; 4-10 fg:#9a86e6; 11-13 fg:#cfc6f5; 16-47 fg:#c9c0f0
+3: 2-3 fg:#cfc6f5; 4-10 fg:#9a86e6; 11-12 fg:#cfc6f5; 16-50 fg:#e9e6f4
+4: 4-10 fg:#9a86e6; 16-26 fg:#9aa3b8
+6: 2-3 fg:#9a86e6; 4-99 fg:#9a86e6 b
+8: 2-46 fg:#9aa3b8
+10: 2-99 fg:#c9c0f0
+12: 2-3 fg:#ededf2
+14: 2-3 fg:#4ec87e; 4-11 fg:#ededf2 b; 12 fg:#9aa3b8; 13-31 fg:#c9c0f0; 32-39 fg:#9aa3b8
+16: 2-3 fg:#4ec87e; 4-12 fg:#ededf2 b; 13-19 fg:#9aa3b8
+18: 2-3 fg:#ededf2
+19: 26 fg:#c9c0f0; 93 fg:#c9c0f0
+20: 34-55 fg:#c9c0f0
+21: 41 fg:#c9c0f0; 62-66 fg:#c9c0f0; 84-86 fg:#c9c0f0
+24: 2-29 fg:#9aa3b8
+25: 66-96 fg:#9aa3b8
+26: 0-67 fg:#45406b; 68-97 fg:#f5f5f7 b; 98-99 fg:#45406b
+27: 0 fg:#45406b; 2-3 fg:#ededf2; 12-31 r; 99 fg:#45406b
+28: 0-99 fg:#45406b
+29: 1-15 fg:#ededf2; 18-26 fg:#9aa3b8; 29 fg:#c9c0f0; 30 fg:#ededf2; 31-37 fg:#9aa3b8; 38-40 fg:#ededf2; 43 fg:#c9c0f0; 44 fg:#ededf2; 45-49 fg:#9aa3b8; 50 fg:#ededf2; 53 fg:#9aa3b8; 54 fg:#ededf2; 55-59 fg:#9aa3b8; 60-62 fg:#ededf2; 65 fg:#c9c0f0; 66 fg:#ededf2; 67-71 fg:#9aa3b8; 72-74 fg:#ededf2; 82-85 fg:#ededf2; 86 fg:#9a86e6; 87-95 fg:#9aa3b8; 96-98 fg:#ededf2

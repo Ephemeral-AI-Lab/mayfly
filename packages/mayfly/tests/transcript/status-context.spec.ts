@@ -13,6 +13,7 @@ import type { ContextBreakdownProjection, ContextPressureProjection, TokenUsageP
 import * as context from '../../src/transcript/status-context.ts'
 import { SHED } from '../../src/transcript/status-shed.ts'
 import { resetSeq, userEvent } from './helpers.ts'
+import type { MayflySemanticColors } from '../../src/core/types.ts'
 import { asAgent, bootStatusPlugin, COLORS, fakeAgent, type FakeAgent } from './status-fakes.ts'
 
 /** The native token-meter projection face: one value set per Session and its change feed. */
@@ -46,7 +47,7 @@ class ContextProjectionFake {
 }
 
 interface ContextBootOptions {
-  readonly colors?: Record<string, string>
+  readonly colors?: Partial<MayflySemanticColors>
   readonly projection?: { readonly tokenUsage?: TokenUsageProjection, readonly contextPressure?: ContextPressureProjection, readonly contextBreakdown?: ContextBreakdownProjection }
 }
 

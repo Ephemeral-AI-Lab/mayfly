@@ -31,14 +31,14 @@ function spansOf(node: unknown): { readonly text: string, readonly tone?: string
   const record = node as Record<string, unknown>
   return [...record.kind === 'rich-text' ? record.spans as never[] : [], ...Object.entries(record).filter(([key]) => key !== 'spans').flatMap(([, value]) => spansOf(value))]
 }
-/** A summary's words at its full form (a shed node also holds its narrower forms). */
+/** A summary's words at its full form. */
 const fullText = (node: unknown): string => spansOf(node).map(span => span.text).join('')
 
 describe('jobsSummary', () => {
   const t = transcriptTranslatorFake
   const summary = (jobs: JobView[], extra: Partial<jobsItem.JobsState> = {}) => jobsItem.jobsSummary({ jobs, now: NOW, history: false, ...extra }, t)
 
-  it('counts the live jobs with no time', () => {
+  it('counts the live jobs', () => {
     const node = summary([job('a', 'running', { startedAt: NOW - 41_000 }), job('b', 'stopping', { startedAt: NOW - 5_000 }), job('c', 'completed')])!.node
     expect(fullText(node)).toBe('● jobs 2')
   })
@@ -87,7 +87,7 @@ describe('listedJobs and jobsPanel', () => {
       for (const child of Object.values(value)) walk(child)
     }
     walk(panel)
-    return found.filter(row => !row.id.startsWith('jobs-list-pad-'))
+    return found.filter(item => item.gap !== true)
   }
 
   it('draws one aligned row per job: the mark, the label, the producer line, the state word, and the time last', () => {
@@ -95,16 +95,21 @@ describe('listedJobs and jobsPanel', () => {
     const rows = rowsOf(jobsItem.jobsPanel(state, t, () => ({})))
     expect(rows.map(row => row.id)).toEqual(['live-early', 'live-late', 'failed-new', 'done-old'])
     const cells = (row: MayflyListItem): string[] => (row.cells ?? []).map(cell => cell.spans.map(span => span.text).join(''))
+    const right = (row: MayflyListItem): string => (row.right ?? []).map(span => span.text).join('')
     expect(cells(rows[0]!)).toEqual(['live-early', '', ''])
     expect(cells(rows[1]!)).toEqual(['live-late', 'rebuilt 2', 'stopped'])
     expect(cells(rows[2]!)).toEqual(['failed-new', 'exit code: 1', ''])
     expect(cells(rows[3]!)).toEqual(['done-old', 'exit code: 0', ''])
-    // The marks say how each ended; the time is the right edge; the producer column is the one that sheds.
+    expect(right(rows[0]!)).toBe('1m 20s')
+    expect(right(rows[1]!)).toBe('1m 10s')
+    expect(right(rows[2]!)).toBe('49s')
+    // The marks say how each ended; the time is the right-aligned trailing span; the producer column is the one that sheds.
     expect(rows.map(row => row.labelSpans![0])).toEqual([{ text: '●', tone: 'accent' }, { text: '●', tone: 'accent' }, { text: '✕', tone: 'danger' }, { text: '✓', tone: 'success' }])
     expect(rows[0]!.right).toEqual([{ text: '1m 20s', tone: 'muted' }])
     // A job the user stopped reads `stopped` at once and is marked `⊘` once the registry says it ended.
     const ended = rowsOf(jobsItem.jobsPanel({ jobs: [job('x', 'killed', { startedAt: 1, finishedAt: 2 })], now: NOW, history: true }, t, () => ({})))
     expect(ended[0]!.labelSpans![0]).toEqual({ text: '⊘', tone: 'muted' })
+    expect(rows[0]!.right![0]).toMatchObject({ tone: 'muted' })
     expect(rows[0]!.cells![1]).toMatchObject({ shed: 2 })
     // A job that is not running says why `x` cannot act on it.
     const withReasons = rowsOf(jobsItem.jobsPanel(state, t, entry => entry.status === 'running' ? {} : { 'jobs-stop': 'Already finished' }))
@@ -324,15 +329,15 @@ describe('mayfly-status-jobs', () => {
     expect(() => registry.publish([])).not.toThrow()
   })
 
-  it('shows the group a refresh found already settled as its closing line: the longest time that ran, from the registry\'s own end', async () => {
+  it('shows the group a refresh found already settled as its closing line', async () => {
     const current = fakeAgent([]) as unknown as Agent
     const registry = fakeJobs()
     const harness = await bootJobs(current, registry)
     const start = Date.now()
     registry.publish([job('a', 'running', { startedAt: start - 9_000 })])
-    // One job ends with no end time reported: its time runs to now.
+    // One job ends with no end time reported: the group still closes.
     registry.publish([{ ...job('a', 'completed', { startedAt: start - 9_000 }) }])
-    expect(fullText(harness.entry().summary!.node)).toMatch(/^✓ jobs 1\/1$/u)
+    expect(fullText(harness.entry().summary!.node)).toBe('✓ jobs 1/1')
     await harness.dispose()
   })
 

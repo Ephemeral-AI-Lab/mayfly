@@ -1,0 +1,62 @@
+grid 60x30 cursor none
+|      before the release                                   ░
+|    • docs/migration.md, finding 14: nothing to change     ░
+|      before the release                                   ░
+|    • docs/migration.md, finding 15: nothing to change     ░
+|      before the release                                   ░
+|    • docs/migration.md, finding 16: nothing to change     ░
+|      before the release                                   ░
+|    • docs/migration.md, finding 17: nothing to change     ░
+|      before the release                                   ░
+|    • docs/migration.md, finding 18: nothing to change     ░
+|      before the release                                   ░
+|    • docs/migration.md, finding 19: nothing to change     ░
+|      before the release                                   ░
+|    • docs/migration.md, finding 20: nothing to change     ░
+|      before the release                                   ░
+|    • docs/migration.md, finding 21: nothing to change     ░
+|      before the release                                   ░
+|    • docs/migration.md, finding 22: nothing to change     ░
+|      before the release                                   ░
+|    • docs/migration.md, finding 23: nothing to change     ░
+|      before the release                                   ░
+|    • docs/migration.md, finding 24: nothing to change     ░
+|      before the release                                   ░
+|                                                           █
+|  ✻ Worked for 8s · done 09:01                             █
+|                          Alt+↑ conversation · Alt+↓ view
+|╭───────────────────────────── Walk me through the release ╮
+|│ >  Ask anything · / commands · @ files · # skills        │
+|╰──────────────────────────────────────────────────────────╯
+| deepseek-v4-pro  workspace               ctx ▰▱▱▱▱▱▱▱▱▱ 6%
+styles
+0: 59 fg:#9aa3b8
+1: 4-5 fg:#c9c0f0; 59 fg:#9aa3b8
+2: 59 fg:#9aa3b8
+3: 4-5 fg:#c9c0f0; 59 fg:#9aa3b8
+4: 59 fg:#9aa3b8
+5: 4-5 fg:#c9c0f0; 59 fg:#9aa3b8
+6: 59 fg:#9aa3b8
+7: 4-5 fg:#c9c0f0; 59 fg:#9aa3b8
+8: 59 fg:#9aa3b8
+9: 4-5 fg:#c9c0f0; 59 fg:#9aa3b8
+10: 59 fg:#9aa3b8
+11: 4-5 fg:#c9c0f0; 59 fg:#9aa3b8
+12: 59 fg:#9aa3b8
+13: 4-5 fg:#c9c0f0; 59 fg:#9aa3b8
+14: 59 fg:#9aa3b8
+15: 4-5 fg:#c9c0f0; 59 fg:#9aa3b8
+16: 59 fg:#9aa3b8
+17: 4-5 fg:#c9c0f0; 59 fg:#9aa3b8
+18: 59 fg:#9aa3b8
+19: 4-5 fg:#c9c0f0; 59 fg:#9aa3b8
+20: 59 fg:#9aa3b8
+21: 4-5 fg:#c9c0f0; 59 fg:#9aa3b8
+22: 59 fg:#9aa3b8
+23: 59 fg:#9a86e6
+24: 2-29 fg:#9aa3b8; 59 fg:#9a86e6
+25: 26-56 fg:#9aa3b8
+26: 0-30 fg:#45406b; 31-57 fg:#f5f5f7 b; 58-59 fg:#45406b
+27: 0 fg:#45406b; 2-3 fg:#ededf2; 4 r; 5-50 fg:#5c6476; 59 fg:#45406b
+28: 0-59 fg:#45406b
+29: 1-15 fg:#ededf2; 18-26 fg:#9aa3b8; 42-45 fg:#ededf2; 46 fg:#9a86e6; 47-55 fg:#9aa3b8; 56-58 fg:#ededf2

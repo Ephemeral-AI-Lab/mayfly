@@ -68,7 +68,7 @@ describe('NotificationLine', () => {
     // A notice that exactly fills the row between the margins is not pushed past its end by a gap column.
     const room = 120 - 2 - 3
     const exact = 'x'.repeat(room - 2)
-    expect(render({ notice: notice('info', exact) }, 120)[0]).toBe(`  ℹ ${exact}   `)
+    expect(render({ notice: notice('info', exact) }, 120)[0]).toBe(`    ${exact}   `)
     // The notice reads the same in the main screen mode: the text is there, whatever the row count.
     expect(render({ notice: notice('warning', 'Rate limited') }, 120, 'main').join('\n')).toContain('⚠ Rate limited')
   })
@@ -101,8 +101,8 @@ describe('NotificationLine', () => {
     // The muted count of waiting notices stays too.
     expect(trailing(render({ notice: { ...retry, waiting: 2 } }, 44)[0]!)).toMatch(/… · retrying in 9s · 1\/5 · \+2$/u)
     // A tail that is not the end of the message, or is all of it, is ignored.
-    expect(trailing(render({ notice: { severity: 'info', message: 'Saved', tail: 'elsewhere' } }, 60)[0]!).trimStart()).toBe('ℹ Saved')
-    expect(trailing(render({ notice: { severity: 'info', message: 'Saved', tail: 'Saved' } }, 60)[0]!).trimStart()).toBe('ℹ Saved')
+    expect(trailing(render({ notice: { severity: 'info', message: 'Saved', tail: 'elsewhere' } }, 60)[0]!).trimStart()).toBe('Saved')
+    expect(trailing(render({ notice: { severity: 'info', message: 'Saved', tail: 'Saved' } }, 60)[0]!).trimStart()).toBe('Saved')
   })
 
   it('shows the chip centered, with the notice to its right and never over it', () => {

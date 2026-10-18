@@ -254,8 +254,10 @@ const memoTranslators = new WeakMap<Context, Map<string, MayflyMemoTranslator>>(
 function createMemoTranslator(ctx: Context, namespace: string): MayflyMemoTranslator {
   let messages: Map<string, string> | undefined
   let revision = 0
+  let service: MayflyLocaleService | undefined
   ctx.inject(['mayflyLocale'], (localeCtx) => {
-    const unsubscribe = localeCtx.mayflyLocale.subscribe((snapshot) => {
+    service = localeCtx.mayflyLocale
+    const unsubscribe = service.subscribe((snapshot) => {
       messages = new Map()
       revision = snapshot.revision
     })
@@ -263,9 +265,11 @@ function createMemoTranslator(ctx: Context, namespace: string): MayflyMemoTransl
       unsubscribe()
       messages = undefined
       revision = 0
+      service = undefined
     })
   })
-  const lookup: MayflyTranslate = (key, values) => ctx.get('mayflyLocale')?.translate(namespace, key, values)
+  // The injected service is held for the provider's lifetime; a context proxy lookup per unique row string was hot.
+  const lookup: MayflyTranslate = (key, values) => (service ?? ctx.get('mayflyLocale'))?.translate(namespace, key, values)
     ?? interpolateLocaleMessage(key, values)
   return {
     translate: (key, values) => {

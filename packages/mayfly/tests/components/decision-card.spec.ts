@@ -114,11 +114,11 @@ describe('decision card frames', () => {
     expect(rows[0]).toMatch(/^── Decide ─+$/u)
     expect(visibleWidth(rows[0]!)).toBe(120)
     expect(rows.slice(1)).toEqual([
-      '→ 1  Allow once',
-      '  2  Allow edit for this session',
-      '  3  Reject',
+      '→ 1. Allow once',
+      '  2. Allow edit for this session',
+      '  3. Reject',
       '  Feedback: type to explain…',
-      '  ↑/↓ options · Enter choose · Ctrl+G open diff · Esc reject',
+      '  ↑/↓ options · 1-3 choose · Enter choose · Ctrl+G open diff · Esc reject',
     ])
   })
 
@@ -130,9 +130,9 @@ describe('decision card frames', () => {
     open.open(facts)
     await flush(8)
     const frame = open.frame()
-    expect(frame).toContain(`  2  ${grant}`)
+    expect(frame).toContain(`  2. ${grant}`)
     expect(frame).toContain(hint)
-    expect(frame).toContain('3  Reject')
+    expect(frame).toContain('3. Reject')
     for (const line of frame.split('\n')) expect(visibleWidth(line)).toBeLessThanOrEqual(120)
   })
 
@@ -153,11 +153,11 @@ describe('decision card frames', () => {
     await flush(8)
     const wide = open.frame().split('\n')
     expect(wide.slice(1)).toEqual([
-      '→ 1  Approve and start',
-      '  2  Keep planning…',
-      '  3  Reject',
+      '→ 1. Approve and start',
+      '  2. Keep planning…',
+      '  3. Reject',
       '  Revise: type the revision in place',
-      '  Enter choose · c copy plan · Ctrl+G open plan · Esc reject',
+      '  ↑/↓ options · 1-3 choose · Enter choose · c copy plan · Ctrl+G open plan · Esc reject',
     ])
     await open.dispose()
     open = await bench(40)

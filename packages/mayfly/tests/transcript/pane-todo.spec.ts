@@ -42,6 +42,7 @@ describe('todoSummary', () => {
     const list = [...Array.from({ length: 2 }, (_, index) => item(`d${index}`, 'completed')), item('now', 'in_progress'), ...Array.from({ length: 9 }, (_, index) => item(`p${index}`, 'pending'))]
     const summary = todo.todoSummary(state(list), t)!
     expect(fullText(summary)).toBe('● todo 2/12')
+    expect(summary.node).toMatchObject({ kind: 'rich-text' })
     expect(spansOf(summary.node)[0]).toEqual({ text: '●', tone: 'accent' })
   })
 
@@ -132,6 +133,20 @@ describe('mayfly-pane-todo', () => {
     expect(harness.entry().summary).toBeNull()
     expect(harness.entry().node).toBeNull()
     expect(harness.tick.subscribers).toBe(0)
+    await harness.dispose()
+  })
+
+  it('reuses its rows when an unrelated delta carries the same todo projection', async () => {
+    resetSeq()
+    let reads = 0
+    const tracked = [{ get content(): string { reads += 1; return 'a' }, get status(): TodoItem['status'] { reads += 1; return 'in_progress' } }]
+    const harness = await bootTodo()
+    harness.write(tracked)
+    const revision = harness.entry().revision
+    reads = 0
+    harness.ctx.emit('session/event', harness.agent.session as never, turnStart(2))
+    expect(reads).toBe(0)
+    expect(harness.entry().revision).toBe(revision)
     await harness.dispose()
   })
 
@@ -232,9 +247,10 @@ describe('mayfly-pane-todo', () => {
     await harness.dispose()
   })
 
-  it('removes its view and its clock with its Fiber', async () => {
+  it('removes its view and its closing clock with its Fiber', async () => {
     resetSeq()
     const harness = await bootTodo({ todos: [item('a', 'in_progress')] })
+    expect(harness.tick.subscribers).toBe(0)
     harness.write([item('a', 'completed')])
     expect(harness.tick.subscribers).toBe(1)
     await harness.dispose()

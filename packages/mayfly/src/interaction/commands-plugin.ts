@@ -262,7 +262,7 @@ export function apply(ctx: Context): void {
     // live in their own module with the same lazy-service discipline.
     const models = registerModelCommands(ctx)
     // The session-info family (`/status` `/usage` `/version`).
-    // The session-export family (`/export` `/copy`).
+    // The session-save family (`/save` `/copy`).
     const sessionExport = registerExportCommands(ctx)
     // The canned-prompt command (`/init`).
     const init = registerInitCommand(ctx)

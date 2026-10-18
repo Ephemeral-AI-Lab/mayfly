@@ -8,10 +8,7 @@
 
 import { chmodSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { afterEach, describe, expect, it, vi } from 'vitest'
-import { Context } from '@deepseek-ai/cordis'
-import * as settingsPlugin from '../../src/interaction/settings.ts'
-import { InteractionStateService } from '../../src/interaction/runtime-state.ts'
+import { afterEach, describe, expect, it } from 'vitest'
 import {
   quoteShellArg,
   resolveExternalEditorCommand,
@@ -19,7 +16,6 @@ import {
   setExternalEditorLauncher,
 } from '../../src/interaction/external-editor.ts'
 import { mkdtempTracked, registerTempDirCleanup } from '../core/temp-dir.ts'
-import { MemorySettings } from '../../../../examples/overlay/tests/settings.ts'
 
 registerTempDirCleanup()
 
@@ -44,23 +40,8 @@ describe('resolveExternalEditorCommand', () => {
     expect(resolveExternalEditorCommand({ VISUAL: '  code --wait  ' })).toBe('code --wait')
   })
 
-  it('prefers a configured mayfly.editorCommand over $VISUAL/$EDITOR', async () => {
-    const ctx = new Context()
-    new InteractionStateService(ctx, settingsPlugin.DEFAULT_SETTINGS)
-    ctx.provide('mayflyCurrentAgent', {
-      current: () => null,
-      revision: () => 0,
-      subscribe: () => () => {},
-    } as never)
-    await ctx.plugin(MemorySettings, { mayfly: { editorCommand: '  my-editor --wait  ' } })
-    ;(ctx.settings as unknown as MemorySettings).register('mayfly', settingsPlugin.Config)
-    await ctx.plugin(settingsPlugin)
-    await vi.waitFor(() => {
-      expect(resolveExternalEditorCommand(
-        { VISUAL: 'vim', EDITOR: 'nano' },
-        settingsPlugin.currentMayflySettings(ctx).editorCommand,
-      )).toBe('my-editor --wait')
-    })
+  it('prefers a configured mayfly.editorCommand over $VISUAL/$EDITOR', () => {
+    expect(resolveExternalEditorCommand({ VISUAL: 'vim', EDITOR: 'nano' }, '  my-editor --wait  ')).toBe('my-editor --wait')
   })
 })
 

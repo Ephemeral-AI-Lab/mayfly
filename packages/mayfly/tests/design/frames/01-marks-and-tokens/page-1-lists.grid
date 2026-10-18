@@ -6,7 +6,7 @@ grid 100x29 cursor 24,1
 |→ a cursor in a choose list (the row Enter acts on)
 |→ Default [current]
 |  Accept edits
-|  Full access — managed by policy
+|  Full access        — managed by policy
 |  ↑/↓ options · Enter choose
 |
 |▌ the persistent selection in a rail; inverse only while the rail has focus
@@ -15,7 +15,7 @@ grid 100x29 cursor 24,1
 |  Permissions                                                                                      2
 |  General
 |→ Model
-|  ↑/↓ options · Enter open · Tab/Shift+Tab groups
+|  ↑/↓ options · Enter open
 |
 |▸ ▾ disclosure and ● ○ ◐ checks (single: ●/○, multiple: ●/○, a partly selected parent ◐)
 |  ▾ ◐ filesystem
@@ -33,24 +33,24 @@ styles
 0: 0-98 fg:muted
 1: 0-30 fg:muted
 3: 0-50 fg:muted
-4: 0 fg:primary b; 2-8 fg:text b; 10-18 fg:muted
+4: 0 fg:primary b; 2-8 fg:textStrong b; 10-18 fg:muted
 5: 2-13 fg:text
-6: 2-12 fg:muted; 14-32 fg:muted
+6: 2-12 fg:muted; 21-39 fg:muted
 7: 0-1 fg:textMuted; 2-4 fg:text; 6-15 fg:textMuted; 16-20 fg:text; 22-27 fg:textMuted
 9: 0-74 fg:muted
 10: 2-8 fg:text
-11: 0 fg:primary b; 2-6 fg:text b
+11: 0 fg:primary b; 2-6 fg:textStrong b
 12: 2-12 fg:text; 99 fg:muted
 13: 2-8 fg:text
-14: 0 fg:muted b; 2-6 fg:text b
-15: 0-1 fg:textMuted; 2-4 fg:text; 6-15 fg:textMuted; 16-20 fg:text; 22-28 fg:textMuted; 29-41 fg:text; 43-48 fg:textMuted
+14: 0 fg:muted b; 2-6 fg:textStrong b
+15: 0-1 fg:textMuted; 2-4 fg:text; 6-15 fg:textMuted; 16-20 fg:text; 22-25 fg:textMuted
 17: 0-87 fg:muted
-18: 2 fg:primary; 4 fg:primary; 6-15 fg:text b
+18: 2 fg:primary; 4 fg:primary; 6-15 fg:textStrong b
 19: 2-3 fg:muted; 4 fg:primary; 6-14 fg:text
 20: 2-4 fg:muted; 6-15 fg:text
 21: 2 fg:muted; 4-9 fg:text
 23: 0-71 fg:muted
-24: 0 fg:primary; 2-10 fg:text b; 11-27 fg:primary; 28-40 fg:muted
+24: 0 fg:primary; 2-10 fg:textStrong b; 11-27 fg:primary; 28-40 fg:muted
 25: 0 fg:primary; 2-14 fg:text
 26: 2-10 fg:text
 27: 4-13 fg:error

@@ -4,7 +4,6 @@
 import { Context } from '@deepseek-ai/cordis'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { providerFixture } from './provider-fixture.ts'
-import { apply as applyProviderCommands } from '../../src/interaction/provider-commands.ts'
 import { flush } from '../helpers.ts'
 
 const contexts: Context[] = []
@@ -34,8 +33,6 @@ async function setup() {
     custom: { displayName: 'Custom API', api: 'openai-completions', baseURL: 'https://custom.example/v1', apiKeyEnv: 'CUSTOM_KEY', models: [{ id: 'one' }, { id: 'two' }] },
     fallback: { api: 'openai-completions', baseURL: 'https://fallback.example/v1', apiKeyEnv: 'FALLBACK_KEY', models: [] },
   }, llm())
-  ctx.provide('mayflyInteractionState', { sessionless: { register: () => () => {} } } as never)
-  applyProviderCommands(ctx)
   return bench
 }
 
@@ -101,8 +98,6 @@ describe('provider commands', () => {
     const ctx = new Context()
     contexts.push(ctx)
     const bench = await providerFixture(ctx, {}, llm(), { registerNamespace: false })
-    ctx.provide('mayflyInteractionState', { sessionless: { register: () => () => {} } } as never)
-    applyProviderCommands(ctx)
     expect(await bench.commands.entries.get('provider')!.handler({ rawInput: '', signal: signal() } as never)).toEqual({ kind: 'success' })
     const node = JSON.stringify(ctx.mayflyOverlays.list().find(entry => entry.id === 'mayfly.providers')!.node)
     expect(node).toContain('Custom API')
@@ -158,8 +153,6 @@ describe('provider commands', () => {
     const ctx = new Context()
     contexts.push(ctx)
     const bench = await providerFixture(ctx)
-    ctx.provide('mayflyInteractionState', { sessionless: { register: () => () => {} } } as never)
-    applyProviderCommands(ctx)
     expect(await bench.commands.entries.get('provider')!.handler({ rawInput: '', signal: signal() } as never)).toEqual({ kind: 'success' })
     expect(JSON.stringify(ctx.mayflyOverlays.list()[0]!.node)).toContain('No configured providers')
   })

@@ -95,6 +95,37 @@ describe('mayfly-status-basic-model', () => {
     await harness.dispose()
   })
 
+  it('reads the model-selection snapshot only when the session or its selection changes', async () => {
+    const agent = fakeAgent([], { model: 'boot-model' })
+    let snapshots = 0
+    let notify: ((session: unknown, key: string, value: unknown, seq: number) => void) | undefined
+    const harness = await bootStatusPlugin(basic, agent, {
+      services: {
+        sessionProjections: {
+          snapshot: () => {
+            snapshots += 1
+            return { asOfSeq: 0, values: { modelSelection: { next: { provider: 'deepseek', model: 'snap-model' } } } }
+          },
+          onChanged(listener: (session: unknown, key: string, value: unknown, seq: number) => void) {
+            notify = listener
+            return () => { notify = undefined }
+          },
+        },
+      },
+    })
+    expect(harness.entry.render(80)).toBe('deepseek/snap-model')
+    expect(snapshots).toBe(1)
+    // Every facts delta asks for the row again; the projection snapshot is not re-read.
+    harness.ctx.emit('session/event', agent.session as unknown as Session, userEvent('hi'))
+    expect(harness.entry.render(80)).toBe('deepseek/snap-model')
+    expect(snapshots).toBe(1)
+    // The change feed carries the parsed value itself.
+    notify!(agent.session, 'modelSelection', { next: { provider: 'deepseek', model: 'changed-model' } }, 2)
+    expect(harness.entry.render(80)).toBe('deepseek/changed-model')
+    expect(snapshots).toBe(1)
+    await harness.dispose()
+  })
+
   it('appends the capitalized effort of a committed selection', async () => {
     const agent = fakeAgent([], { model: 'boot-model', headerModel: 'header-model' })
     const harness = await bootStatusPlugin(basic, agent)

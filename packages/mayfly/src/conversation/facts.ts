@@ -19,7 +19,7 @@ import type {} from '@deepseek-ai/dsh-user-approval'
 import { z } from 'zod'
 import { everyAdmitted, identityAdmission } from './admission.ts'
 import { outputProgressSchema } from './output-progress.ts'
-import type { ApprovalMark, CompactionMark, ConversationFactsState } from './types.ts'
+import type { ApprovalMark, CompactionMark, ConversationAgentCall, ConversationFactsState } from './types.ts'
 import { foldAssistantStreamRecords, initialAssistantStream } from './stream-accumulator.ts'
 import { argumentDetail } from './activity-detail.ts'
 import { isSpawnToolName } from './projection.ts'
@@ -183,6 +183,27 @@ function retryStatus(failure: unknown): number | undefined {
   return typeof status === 'number' && Number.isFinite(status) ? status : undefined
 }
 
+/* A tool result pairs with the spawn call of its derived `agentCalls` revision,
+   so one map per retained array turns the per-result search into a lookup.
+   The map is keyed by the array object the fold already retains by identity:
+   it never crosses Agents or sessions. */
+const agentCallIndexes = new WeakMap<readonly ConversationAgentCall[], ReadonlyMap<string, number>>()
+
+/** The callId-to-first-index map of one `agentCalls` revision. */
+function agentCallIndex(calls: readonly ConversationAgentCall[]): ReadonlyMap<string, number> {
+  let index = agentCallIndexes.get(calls)
+  if (index === undefined) {
+    const built = new Map<string, number>()
+    for (let position = 0; position < calls.length; position += 1) {
+      const call = calls[position]!
+      if (!built.has(call.callId)) built.set(call.callId, position)
+    }
+    index = built
+    agentCallIndexes.set(calls, index)
+  }
+  return index
+}
+
 function foldFacts(
   state: ConversationFactsState,
   event: SessionEvent,
@@ -274,7 +295,7 @@ function foldFacts(
       const message = event.data.message
       if (message === undefined || typeof message !== 'object' || typeof message.toolCallId !== 'string') return state
       const callId = String(message.toolCallId)
-      const index = state.agentCalls.findIndex(call => call.callId === callId)
+      const index = agentCallIndex(state.agentCalls).get(callId) ?? -1
       if (index < 0) {
         // A call that settled leaves the list of calls in flight.
         const remaining = (state.inFlight ?? []).filter(call => call.callId !== callId)
@@ -286,6 +307,10 @@ function foldFacts(
         .map(item => item.text)
         .join('\n')
       const result = { text, isError: message.isError === true || event.data.error !== undefined, endedAt: event.time }
+      // A repeated result event carries the same facts: keep the state (and
+      // its retained agentCalls array) identical for the registry's Object.is.
+      const previous = state.agentCalls[index]!.result
+      if (previous !== undefined && previous.text === result.text && previous.isError === result.isError && previous.endedAt === result.endedAt) return state
       const agentCalls = [...state.agentCalls]
       agentCalls[index] = { ...agentCalls[index]!, result }
       return { ...state, phase: 'tool', active: true, agentCalls }
@@ -369,6 +394,8 @@ export const conversationFactsProjectionDefinition: ConversationFactsProjectionD
   apply: foldConversationFacts,
   wire: {
     viewSchema: conversationFactsViewSchema,
+    // The fold states are immutable and retained by identity, so the state is
+    // already the stable wire view the registry compares with `Object.is`.
     view: state => state,
   },
   stateVersion: 13,

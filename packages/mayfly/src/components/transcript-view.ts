@@ -378,7 +378,29 @@ export interface StreamCursor {
   readonly ids?: readonly string[]
 }
 
+interface CachedTranscriptView {
+  readonly cursor: string
+  readonly highlight: string
+  readonly node: MayflyListNode
+  stream?: MayflyUiNode
+}
+
+/** The list a facts object last produced, by the cursor and highlight that can change its focus row. */
+const viewCache = new WeakMap<TranscriptViewFacts, CachedTranscriptView>()
+
+function cursorKey(cursor: StreamCursor | undefined): string {
+  return cursor === undefined ? '' : `${String(cursor.rev)}:${cursor.ids?.join('\0') ?? '*'}`
+}
+
+function highlightKey(highlight: MayflyListHighlight | undefined): string {
+  return highlight === undefined ? '' : `${highlight.pattern}\0${String(highlight.caseSensitive === true)}\0${String(highlight.current ?? -1)}`
+}
+
 export function TranscriptView(facts: TranscriptViewFacts, cursor?: StreamCursor, highlight?: MayflyListHighlight): MayflyListNode {
+  const cursorValue = cursorKey(cursor)
+  const highlightValue = highlightKey(highlight)
+  const cached = viewCache.get(facts)
+  if (cached !== undefined && cached.cursor === cursorValue && cached.highlight === highlightValue) return cached.node
   const items: MayflyListItem[] = []
   facts.turns.forEach((turn, index) => {
     if (index > 0) items.push(blankBetween(turn))
@@ -397,11 +419,13 @@ export function TranscriptView(facts: TranscriptViewFacts, cursor?: StreamCursor
   const drawn = new Set(unique.map(item => item.id))
   // Sent to the rows it names; a row that is no longer drawn leaves the cursor where it is, and only a bare entry lands on the newest.
   const target = cursor === undefined ? undefined : cursor.ids === undefined ? unique.findLast(item => item.disabled !== true)?.id : cursor.ids.find(id => drawn.has(id))
-  return ui.list({
+  const node = ui.list({
     id: STREAM.list, role: 'browse', marker: 'band', acceptVerb: 'expand', hintLabel: 'stream', items: unique,
     ...target === undefined ? {} : { focusItem: { id: target, rev: cursor!.rev } },
     ...highlight === undefined ? {} : { highlight },
   })
+  viewCache.set(facts, { cursor: cursorValue, highlight: highlightValue, node })
+  return node
 }
 
 /**
@@ -423,7 +447,15 @@ export function streamTarget(node: MayflyUiNode): string | undefined {
  * @returns the node the conversation slot shows.
  */
 export function TranscriptStream(facts: TranscriptViewFacts, cursor?: StreamCursor, highlight?: MayflyListHighlight): MayflyUiNode {
-  return ui.stack.column([TranscriptView(facts, cursor, highlight), STREAM_KEYS])
+  const cursorValue = cursorKey(cursor)
+  const highlightValue = highlightKey(highlight)
+  const cached = viewCache.get(facts)
+  if (cached !== undefined && cached.cursor === cursorValue && cached.highlight === highlightValue && cached.stream !== undefined) return cached.stream
+  const node = TranscriptView(facts, cursor, highlight)
+  const stream = ui.stack.column([node, STREAM_KEYS])
+  const entry = viewCache.get(facts)
+  if (entry !== undefined) entry.stream = stream
+  return stream
 }
 
 /** The hidden actions of the stream: one frozen node, since nothing in it depends on the facts. */

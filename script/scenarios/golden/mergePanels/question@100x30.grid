@@ -1,0 +1,50 @@
+grid 100x30 cursor none
+|  ● A reviewer runs in the background, the todo list is set, and a watcher rebuilds the styles.
+|
+|  ✓ Subagent(Audit the hero copy) · 0.6s
+|
+|  ✓ TodoWrite · 0.2s
+|
+|  ● Every panel now has the /stats look: a rule and a title, the keys on one hint row, no buttons.
+|    Try /model, /effort, /stats, /plugin, /agents, /jobs, /mcp, /help, /settings; Alt+↓ enters the
+|    views, where x asks y/n.
+|
+|  ✻ Worked for 4s · done 09:00
+|
+|  » Set up the service; ask me what you need.
+|
+|  ● One question before I start.
+|
+|  ● AskUserQuestion(Which runtime should the project target?)
+|
+|  ● Waiting for your answer · 0s
+|    ⎿ Tip: Ctrl+O to expand tool details
+|━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+|  Questions
+|
+|  Which runtime should the project target?
+|  → 1. ○ Node 22 (Recommended)  Current LTS line
+|    2. ○ Node 24                Latest release
+|    3. ○ Bun                    Alternative runtime
+|    4. ○ Other                  type your own answer
+|
+|  ↑/↓ options · 1-4 choose · Enter choose · Esc cancel
+styles
+0: 2-3 fg:#ededf2
+2: 2-3 fg:#4ec87e; 4-11 fg:#ededf2 b; 12 fg:#9aa3b8; 13-31 fg:#c9c0f0; 32-39 fg:#9aa3b8
+4: 2-3 fg:#4ec87e; 4-12 fg:#ededf2 b; 13-19 fg:#9aa3b8
+6: 2-3 fg:#ededf2
+10: 2-29 fg:#9aa3b8
+12: 2-3 fg:#9a86e6; 4-99 fg:#9a86e6 b
+14: 2-3 fg:#ededf2
+16: 2 fg:#5c6476; 3 fg:#ededf2; 4-18 fg:#ededf2 b; 19 fg:#9aa3b8; 20-59 fg:#c9c0f0; 60 fg:#9aa3b8
+18: 0-1 fg:#ededf2; 2 fg:#5c6476; 3-26 fg:#ededf2; 28-31 fg:#9aa3b8
+19: 0-39 fg:#9aa3b8
+20: 0-99 fg:#9a86e6
+21: 2-10 fg:#9a86e6 b
+23: 2-41 fg:#ededf2 b
+24: 2 fg:#9a86e6 b; 4-5 fg:#9aa3b8; 7 fg:#9aa3b8; 9-29 fg:#f5f5f7 b; 32-47 fg:#9aa3b8
+25: 4-5 fg:#9aa3b8; 7 fg:#9aa3b8; 9-15 fg:#ededf2; 32-45 fg:#9aa3b8
+26: 4-5 fg:#9aa3b8; 7 fg:#9aa3b8; 9-11 fg:#ededf2; 32-50 fg:#9aa3b8
+27: 4-5 fg:#9aa3b8; 7 fg:#9aa3b8; 9-13 fg:#ededf2; 32-51 fg:#9aa3b8
+29: 2-4 fg:#ededf2; 6-15 fg:#5c6476; 16-18 fg:#ededf2; 20-28 fg:#5c6476; 29-33 fg:#ededf2; 35-43 fg:#5c6476; 44-46 fg:#ededf2; 48-53 fg:#5c6476

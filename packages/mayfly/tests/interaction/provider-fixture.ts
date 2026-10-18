@@ -7,6 +7,8 @@ import { CredentialProvider, type CredentialRef, type CredentialKey, type Creden
 import * as uiProvider from '../../../ui/src/provider.ts'
 import * as frontend from '../../src/frontend/index.ts'
 import { MemorySettings } from '../../../../examples/overlay/tests/settings.ts'
+import { InteractionStateService } from '../../src/interaction/runtime-state.ts'
+import { DEFAULT_SETTINGS } from '../../src/interaction/settings.ts'
 
 export class MemoryCredentials extends CredentialProvider {
   readonly values = new Map<string, string>([['CUSTOM_KEY', 'stored-secret']])
@@ -42,7 +44,10 @@ export class ProviderCommands extends Service {
   }
 }
 
-export async function providerFixture(ctx: Context, profiles: Record<string, unknown> = {}, llm?: unknown, options?: { readonly registerNamespace?: boolean }) {
+export async function providerFixture(ctx: Context, profiles: Record<string, unknown> = {}, llm?: unknown, options?: { readonly registerNamespace?: boolean, readonly onboarding?: boolean }) {
+  // The frontend tree owns this parent service in production; a standalone
+  // fixture mounts it unless the spec already did (onboarding).
+  if (ctx.get('mayflyInteractionState') === undefined) new InteractionStateService(ctx, DEFAULT_SETTINGS)
   await ctx.plugin(MemorySettings)
   await ctx.plugin(MemoryCredentials)
   await ctx.plugin(ProviderCommands)
@@ -52,8 +57,32 @@ export async function providerFixture(ctx: Context, profiles: Record<string, unk
     ;(owner.settings as unknown as MemorySettings).register('llm-pi-ai', z.object({ providers: z.dict(z.any()).default({}).volatile() }), { owner })
   } })
   if (Object.keys(profiles).length > 0) await ctx.settings.mutate('llm-pi-ai', [{ op: 'set', path: ['providers'], value: profiles }])
-  if (llm !== undefined) ctx.provide('llm', llm as never)
+  // Every production LlmRuntime lists providers; the specs' narrow doubles
+  // only carry the methods under test, so the shared fixture fills the rest.
+  if (llm !== undefined) ctx.provide('llm', { listProviders: () => [], listConfigurableProviders: () => [], ...(llm as object) } as never)
+  // A first-run guide would open over every unrelated fixture; only the
+  // onboarding spec opts in to the unconfigured shape.
+  if (options?.onboarding !== true) (ctx.credentials as MemoryCredentials).values.set('DEEPSEEK_API_KEY', 'configured')
   await ctx.plugin(uiProvider)
+  // Boot is explicit here: the onboarding specs select a primary Agent as the
+  // app-ready signal, after they have provided the services the guide reads.
+  let booted = false
+  const listeners = new Set<() => void>()
+  const markBooted = (): void => {
+    if (booted) return
+    booted = true
+    for (const listener of [...listeners]) listener()
+    listeners.clear()
+  }
+  ctx.provide('mayflySessionStart', {
+    onBooted: (listener: () => void) => {
+      if (booted) { listener(); return () => {} }
+      listeners.add(listener)
+      return () => { listeners.delete(listener) }
+    },
+    ensure: async () => null,
+    markBooted,
+  } as never)
   const front = await ctx.plugin(frontend)
-  return { ctx, front, namespace, settings: ctx.settings as unknown as MemorySettings, credentials: ctx.credentials as MemoryCredentials, commands: ctx.commands as unknown as ProviderCommands }
+  return { ctx, front, namespace, settings: ctx.settings as unknown as MemorySettings, credentials: ctx.credentials as MemoryCredentials, commands: ctx.commands as unknown as ProviderCommands, markBooted }
 }

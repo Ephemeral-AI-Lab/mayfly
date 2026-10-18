@@ -215,7 +215,7 @@ export function apply(ctx: Context): void {
   // Every displayed or retained conversation reads its own native path; the
   // registry decides which views exist, the controller which one is mounted.
   const slots = new ConversationSlots(ctx, transcript, {
-    source: (agent, publish) => new OfficialConversationModelSource(
+    source: (agent, publish, counters) => new OfficialConversationModelSource(
       ctx.sessionProjections,
       { get: toolName => {
         const definition = ctx.tools.get(toolName, agent)
@@ -228,12 +228,28 @@ export function apply(ctx: Context): void {
       publish,
       liveDrafts,
       t,
+      counters,
     ),
     headed: { liveTurnHeader: true },
     history: () => ctx.get('sessionController'),
   })
   ctx.effect(() => () => slots.dispose())
-  ctx.on('tools/change', () => slots.invalidateTools())
+  // A spawn/dispose burst emits once per changed tool; one microtask marks
+  // every retained view stale, and the controller republishes the displayed one.
+  let toolsChangePending = false
+  let disposed = false
+  ctx.effect(() => () => {
+    disposed = true
+    toolsChangePending = false
+  })
+  ctx.on('tools/change', () => {
+    if (disposed || toolsChangePending) return
+    toolsChangePending = true
+    queueMicrotask(() => {
+      toolsChangePending = false
+      if (!disposed) slots.invalidateTools()
+    })
+  })
   const sync = (): void => { slots.sync(ctx.mayflyConversations.snapshot()) }
   // A same-id Agent replacement changes the exact Agent without a registry change.
   const offView = ctx.mayflyConversations.subscribe(sync)

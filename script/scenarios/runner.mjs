@@ -45,6 +45,8 @@ export function maskGrid(grid) {
     .replace(WORKSPACE, match => match.replace(/[0-9a-f]{8}$/u, 'xxxxxxxx'))
     .replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gu, 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx')
     .replace(/\bcmd-[0-9a-f]{8}-/gu, 'cmd-xxxxxxxx-')
+    // Native job ids mint a random hex suffix per run; the id is not part of the decision.
+    .replace(/\bbash-[0-9a-f]{16}\b/gu, 'bash-xxxxxxxxxxxxxxxx')
     // A session id the terminal cuts at the right edge keeps only its head.
     .replace(/session-[0-9a-f]{8}-[0-9a-f-]*/gu, 'session-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx')
 }

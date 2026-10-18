@@ -1,143 +1,158 @@
 ## start
-grid 84x12 cursor 2,3
-|╭ Numbered choose lists ───────────────────────────────────────────────────────────╮
-|│ numbered: true — a digit chooses at once (preferences, questions)                │
-|│ → 1  Preset endpoint — known provider                                            │
-|│   2  Custom endpoint — any compatible URL                                        │
-|│   3  OAuth provider — browser sign-in                                            │
-|│                                                                                  │
-|│ numbered: 'focus' — a digit only moves the cursor (anything that grants)         │
-|│   1  Reject                                                                      │
-|│   2  Allow once                                                                  │
-|│   3  Allow for this session                                                      │
-|│   ↑/↓ options · 1-3 choose · Enter choose · Esc close                            │
-|╰──────────────────────────────────────────────────────────────────────────────────╯
+grid 84x14 cursor 4,3
+|━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+|  Numbered choose lists
+|
+|  numbered: true — a digit chooses at once (preferences, questions)
+|  → 1. Preset endpoint  known provider
+|    2. Custom endpoint  any compatible URL
+|    3. OAuth provider   browser sign-in
+|
+|  numbered: 'focus' — a digit only moves the cursor (anything that grants)
+|    1. Reject
+|    2. Allow once
+|    3. Allow for this session
+|
+|  ↑/↓ options · 1-3 choose · Enter choose · Esc close
 styles
-0: 0-1 fg:borderFocus; 2-22 fg:textStrong b; 23-83 fg:borderFocus
-1: 0 fg:borderFocus; 2-66 fg:muted; 83 fg:borderFocus
-2: 0 fg:borderFocus; 2 fg:primary b; 4 fg:muted; 7-21 fg:text b; 23-38 fg:muted; 83 fg:borderFocus
-3: 0 fg:borderFocus; 4 fg:muted; 7-21 fg:text; 23-42 fg:muted; 83 fg:borderFocus
-4: 0 fg:borderFocus; 4 fg:muted; 7-20 fg:text; 22-38 fg:muted; 83 fg:borderFocus
-5: 0 fg:borderFocus; 83 fg:borderFocus
-6: 0 fg:borderFocus; 2-73 fg:muted; 83 fg:borderFocus
-7: 0 fg:borderFocus; 4 fg:muted; 7-12 fg:text b; 83 fg:borderFocus
-8: 0 fg:borderFocus; 4 fg:muted; 7-16 fg:text; 83 fg:borderFocus
-9: 0 fg:borderFocus; 4 fg:muted; 7-28 fg:text; 83 fg:borderFocus
-10: 0 fg:borderFocus; 2-3 fg:textMuted; 4-6 fg:text; 8-17 fg:textMuted; 18-20 fg:text; 22-30 fg:textMuted; 31-35 fg:text; 37-45 fg:textMuted; 46-48 fg:text; 50-54 fg:textMuted; 83 fg:borderFocus
-11: 0-83 fg:borderFocus
+0: 0-83 fg:primary
+1: 2-22 fg:primary b
+3: 2-66 fg:muted
+4: 2 fg:primary b; 4-5 fg:muted; 7-21 fg:textStrong b; 24-37 fg:muted
+5: 4-5 fg:muted; 7-21 fg:text; 24-41 fg:muted
+6: 4-5 fg:muted; 7-20 fg:text; 24-38 fg:muted
+8: 2-73 fg:muted
+9: 4-5 fg:muted; 7-12 fg:textStrong b
+10: 4-5 fg:muted; 7-16 fg:text
+11: 4-5 fg:muted; 7-28 fg:text
+13: 2-4 fg:text; 6-15 fg:textMuted; 16-18 fg:text; 20-28 fg:textMuted; 29-33 fg:text; 35-43 fg:textMuted; 44-46 fg:text; 48-52 fg:textMuted
 ## ctrl+n
-grid 84x10 cursor 2,3
-|╭ Skills ──────────────────────────────────────────────────────────────────────────╮
-|│ Project                                                                          │
-|│ → review-pr [enabled] — Review a pull request                                    │
-|│   release-notes — Draft release notes                                            │
-|│   pdf-export — PDF export — retired                                              │
-|│ Preset                                                                           │
-|│   plugin-author — Prototype a plugin in-process                                  │
-|│   preset-author — Compose your own presets                                       │
-|│   ↑/↓ options · Enter open · Type filter · Esc close                             │
-|╰──────────────────────────────────────────────────────────────────────────────────╯
+grid 84x12 cursor 4,3
+|━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+|  Skills
+|
+|  Project
+|  → review-pr [enabled]  Review a pull request
+|    release-notes        Draft release notes
+|    pdf-export           PDF export — retired
+|  Preset
+|    plugin-author        Prototype a plugin in-process
+|    preset-author        Compose your own presets
+|
+|  ↑/↓ options · Enter open · Type filter · Esc close
 styles
-0: 0-1 fg:borderFocus; 2-7 fg:textStrong b; 8-83 fg:borderFocus
-1: 0 fg:borderFocus; 2-8 fg:muted; 83 fg:borderFocus
-2: 0 fg:borderFocus; 2 fg:primary b; 4-12 fg:text b; 14-22 fg:muted; 24-46 fg:muted; 83 fg:borderFocus
-3: 0 fg:borderFocus; 4-16 fg:text; 18-38 fg:muted; 83 fg:borderFocus
-4: 0 fg:borderFocus; 4-13 fg:muted; 15-26 fg:muted; 28-36 fg:muted; 83 fg:borderFocus
-5: 0 fg:borderFocus; 2-7 fg:muted; 83 fg:borderFocus
-6: 0 fg:borderFocus; 4-16 fg:text; 18-48 fg:muted; 83 fg:borderFocus
-7: 0 fg:borderFocus; 4-16 fg:text; 18-43 fg:muted; 83 fg:borderFocus
-8: 0 fg:borderFocus; 2-3 fg:textMuted; 4-6 fg:text; 8-17 fg:textMuted; 18-22 fg:text; 24-30 fg:textMuted; 31-34 fg:text; 36-44 fg:textMuted; 45-47 fg:text; 49-53 fg:textMuted; 83 fg:borderFocus
-9: 0-83 fg:borderFocus
+0: 0-83 fg:primary
+1: 2-7 fg:primary b
+3: 2-8 fg:muted
+4: 2 fg:primary b; 4-12 fg:textStrong b; 14-22 fg:muted; 25-45 fg:muted
+5: 4-16 fg:text; 25-43 fg:muted
+6: 4-13 fg:muted; 25-34 fg:muted; 36-44 fg:muted
+7: 2-7 fg:muted
+8: 4-16 fg:text; 25-53 fg:muted
+9: 4-16 fg:text; 25-48 fg:muted
+11: 2-4 fg:text; 6-15 fg:textMuted; 16-20 fg:text; 22-28 fg:textMuted; 29-32 fg:text; 34-42 fg:textMuted; 43-45 fg:text; 47-51 fg:textMuted
 ## ctrl+n
-grid 84x6 cursor 1,3
-|╭ Channels ────────────────────────────────────────────────────────────────────────╮
-|│ → ● mentions                                                                     │
-|│   ○ errors                                                                       │
-|│   ○ digest — enterprise only                                                     │
-|│   ↑/↓ options · Space toggle · Enter choose · Esc close                          │
-|╰──────────────────────────────────────────────────────────────────────────────────╯
+grid 84x8 cursor 3,3
+|━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+|  Channels
+|
+|  → ● mentions
+|    ○ errors
+|    ○ digest    — enterprise only
+|
+|  ↑/↓ options · Space toggle · Enter choose · Esc close
 styles
-0: 0-1 fg:borderFocus; 2-9 fg:textStrong b; 10-83 fg:borderFocus
-1: 0 fg:borderFocus; 2 fg:primary b; 4 fg:primary; 6-13 fg:text b; 83 fg:borderFocus
-2: 0 fg:borderFocus; 4 fg:muted; 6-11 fg:text; 83 fg:borderFocus
-3: 0 fg:borderFocus; 4 fg:muted; 6-11 fg:muted; 13-29 fg:muted; 83 fg:borderFocus
-4: 0 fg:borderFocus; 2-3 fg:textMuted; 4-6 fg:text; 8-17 fg:textMuted; 18-22 fg:text; 24-32 fg:textMuted; 33-37 fg:text; 39-47 fg:textMuted; 48-50 fg:text; 52-56 fg:textMuted; 83 fg:borderFocus
-5: 0-83 fg:borderFocus
+0: 0-83 fg:primary
+1: 2-9 fg:primary b
+3: 2 fg:primary b; 4 fg:primary; 6-13 fg:textStrong b
+4: 4 fg:muted; 6-11 fg:text
+5: 4 fg:muted; 6-11 fg:muted; 16-32 fg:muted
+7: 2-4 fg:text; 6-15 fg:textMuted; 16-20 fg:text; 22-30 fg:textMuted; 31-35 fg:text; 37-45 fg:textMuted; 46-48 fg:text; 50-54 fg:textMuted
 ## ctrl+n
-grid 84x5 cursor 1,3
-|╭ Plugins ─────────────────────────────────────────────────────────────────────────╮
-|│ → Loop — official                                                          1.4.0 │
-|│   Git Helper — community                                            update 1.3.0 │
-|│   Enter open · i install · / filter · Esc close                                  │
-|╰──────────────────────────────────────────────────────────────────────────────────╯
+grid 84x7 cursor 3,3
+|━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+|  Plugins
+|
+|  → Loop        official                                                     1.4.0
+|    Git Helper  community                                             update 1.3.0
+|
+|  Enter open · i install · / filter · Esc close
 styles
-0: 0-1 fg:borderFocus; 2-8 fg:textStrong b; 9-83 fg:borderFocus
-1: 0 fg:borderFocus; 2 fg:primary b; 4-7 fg:text b; 9-18 fg:muted; 77-81 fg:muted; 83 fg:borderFocus
-2: 0 fg:borderFocus; 4-13 fg:text; 15-25 fg:muted; 70-81 fg:muted; 83 fg:borderFocus
-3: 0 fg:borderFocus; 2-3 fg:textMuted; 4-8 fg:text; 10-16 fg:textMuted; 17 fg:text; 19-28 fg:textMuted; 29 fg:text; 31-39 fg:textMuted; 40-42 fg:text; 44-48 fg:textMuted; 83 fg:borderFocus
-4: 0-83 fg:borderFocus
+0: 0-83 fg:primary
+1: 2-8 fg:primary b
+3: 2 fg:primary b; 4-7 fg:textStrong b; 16-23 fg:muted; 77-81 fg:muted
+4: 4-13 fg:text; 16-24 fg:muted; 70-81 fg:muted
+6: 2-6 fg:text; 8-14 fg:textMuted; 15 fg:text; 17-26 fg:textMuted; 27 fg:text; 29-37 fg:textMuted; 38-40 fg:text; 42-46 fg:textMuted
 ## ctrl+n
-grid 84x6 cursor 1,3
-|╭ Providers ───────────────────────────────────────────────────────────────────────╮
-|│ → DeepSeek — built-in                                                            │
-|│   Local — custom                                                                 │
-|│   Staging — asks before it is chosen                                             │
-|│   ↑/↓ options · Enter edit · Esc close                                           │
-|╰──────────────────────────────────────────────────────────────────────────────────╯
+grid 84x8 cursor 3,3
+|━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+|  Providers
+|
+|  → DeepSeek  built-in
+|    Local     custom
+|    Staging   asks before it is chosen
+|
+|  ↑/↓ options · Enter edit · Esc close
 styles
-0: 0-1 fg:borderFocus; 2-10 fg:textStrong b; 11-83 fg:borderFocus
-1: 0 fg:borderFocus; 2 fg:primary b; 4-11 fg:text b; 13-22 fg:muted; 83 fg:borderFocus
-2: 0 fg:borderFocus; 4-8 fg:text; 10-17 fg:muted; 83 fg:borderFocus
-3: 0 fg:borderFocus; 4-10 fg:text; 12-37 fg:muted; 83 fg:borderFocus
-4: 0 fg:borderFocus; 2-3 fg:textMuted; 4-6 fg:text; 8-17 fg:textMuted; 18-22 fg:text; 24-30 fg:textMuted; 31-33 fg:text; 35-39 fg:textMuted; 83 fg:borderFocus
-5: 0-83 fg:borderFocus
+0: 0-83 fg:primary
+1: 2-10 fg:primary b
+3: 2 fg:primary b; 4-11 fg:textStrong b; 14-21 fg:muted
+4: 4-8 fg:text; 14-19 fg:muted
+5: 4-10 fg:text; 14-37 fg:muted
+7: 2-4 fg:text; 6-15 fg:textMuted; 16-20 fg:text; 22-28 fg:textMuted; 29-31 fg:text; 33-37 fg:textMuted
 ## ctrl+n
-grid 84x10 cursor 2,3
-|╭ Select a model ──────────────────────────────────────────────────────────────────╮
-|│ opencode-go                                                                      │
-|│ → opencode-go/DeepSeek V4 Pro — 977k context          min ‹ high (default) › max │
-|│   opencode-go/space-bunny-alpha — 256k context                                   │
-|│ DeepSeek                                                                         │
-|│   DeepSeek/DeepSeek-V41-Flash [current · high] — 977k context                    │
-|│ custom                                                                           │
-|│   custom/some-model — 128k context                                               │
-|│   ←/→ thinking · Enter choose · Type filter · Esc close                          │
-|╰──────────────────────────────────────────────────────────────────────────────────╯
+grid 84x14 cursor 4,3
+|━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+|  Select a model
+|
+|  opencode-go
+|  → opencode-go/DeepSeek V4 Pro                   977k context
+|    opencode-go/space-bunny-alpha                 256k context
+|  DeepSeek
+|    DeepSeek/DeepSeek-V41-Flash [current · high]  977k context
+|  custom
+|    custom/some-model                             128k context
+|
+|    ○ Thinking: high (default)
+|
+|  ←/→ thinking · Enter choose · Type filter · Esc close
 styles
-0: 0-1 fg:borderFocus; 2-15 fg:textStrong b; 16-83 fg:borderFocus
-1: 0 fg:borderFocus; 2-12 fg:muted; 83 fg:borderFocus
-2: 0 fg:borderFocus; 2 fg:primary b; 4-30 fg:text b; 32-45 fg:muted; 56-58 fg:muted; 60-77 fg:primary b; 79-81 fg:muted; 83 fg:borderFocus
-3: 0 fg:borderFocus; 4-32 fg:text; 34-47 fg:muted; 83 fg:borderFocus
-4: 0 fg:borderFocus; 2-9 fg:muted; 83 fg:borderFocus
-5: 0 fg:borderFocus; 4-30 fg:text; 32-47 fg:muted; 49-62 fg:muted; 83 fg:borderFocus
-6: 0 fg:borderFocus; 2-7 fg:muted; 83 fg:borderFocus
-7: 0 fg:borderFocus; 4-20 fg:text; 22-35 fg:muted; 83 fg:borderFocus
-8: 0 fg:borderFocus; 2-3 fg:textMuted; 4-6 fg:text; 8-18 fg:textMuted; 19-23 fg:text; 25-33 fg:textMuted; 34-37 fg:text; 39-47 fg:textMuted; 48-50 fg:text; 52-56 fg:textMuted; 83 fg:borderFocus
-9: 0-83 fg:borderFocus
+0: 0-83 fg:primary
+1: 2-15 fg:primary b
+3: 2-12 fg:muted
+4: 2 fg:primary b; 4-30 fg:textStrong b; 50-61 fg:muted
+5: 4-32 fg:text; 50-61 fg:muted
+6: 2-9 fg:muted
+7: 4-30 fg:text; 32-47 fg:muted; 50-61 fg:muted
+8: 2-7 fg:muted
+9: 4-20 fg:text; 50-61 fg:muted
+11: 4 fg:muted; 6-14 fg:muted; 16-29 fg:text
+13: 2-4 fg:text; 6-16 fg:textMuted; 17-21 fg:text; 23-31 fg:textMuted; 32-35 fg:text; 37-45 fg:textMuted; 46-48 fg:text; 50-54 fg:textMuted
 ## ctrl+w
-grid 62x12 cursor 2,3
-|╭ Select a model ────────────────────────────────────────────╮
-|│ opencode-go                                                │
-|│ → opencode-go/DeepSeek V4 Pro — 977k context               │
-|│   opencode-go/space-bunny-alpha — 256k context             │
-|│ DeepSeek                                                   │
-|│   DeepSeek/DeepSeek-V41-Flash [current · high] — 977k con… │
-|│ custom                                                     │
-|│   custom/some-model — 128k context                         │
-|│                                                            │
-|│   Thinking: min ‹ high (default) › max                     │
-|│   Enter choose · Type filter · Esc close                   │
-|╰────────────────────────────────────────────────────────────╯
+grid 62x14 cursor 4,3
+|━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+|  Select a model
+|
+|  opencode-go
+|  → opencode-go/DeepSeek V4 Pro        977k context
+|    opencode-go/space-bunny-alpha      256k context
+|  DeepSeek
+|    DeepSeek/DeepSeek-V41-Flash [current · high]  977k cont…
+|  custom
+|    custom/some-model                  128k context
+|
+|    ○ Thinking: high (default)
+|
+|  ←/→ thinking · Enter choose · Esc close
 styles
-0: 0-1 fg:borderFocus; 2-15 fg:textStrong b; 16-61 fg:borderFocus
-1: 0 fg:borderFocus; 2-12 fg:muted; 61 fg:borderFocus
-2: 0 fg:borderFocus; 2 fg:primary b; 4-30 fg:text b; 32-45 fg:muted; 61 fg:borderFocus
-3: 0 fg:borderFocus; 4-32 fg:text; 34-47 fg:muted; 61 fg:borderFocus
-4: 0 fg:borderFocus; 2-9 fg:muted; 61 fg:borderFocus
-5: 0 fg:borderFocus; 4-30 fg:text; 32-47 fg:muted; 49-59 fg:muted; 61 fg:borderFocus
-6: 0 fg:borderFocus; 2-7 fg:muted; 61 fg:borderFocus
-7: 0 fg:borderFocus; 4-20 fg:text; 22-35 fg:muted; 61 fg:borderFocus
-8: 0 fg:borderFocus; 61 fg:borderFocus
-9: 0 fg:borderFocus; 4-12 fg:muted; 14-16 fg:muted; 18-35 fg:primary b; 37-39 fg:muted; 61 fg:borderFocus
-10: 0 fg:borderFocus; 2-3 fg:textMuted; 4-8 fg:text; 10-18 fg:textMuted; 19-22 fg:text; 24-32 fg:textMuted; 33-35 fg:text; 37-41 fg:textMuted; 61 fg:borderFocus
-11: 0-61 fg:borderFocus
+0: 0-61 fg:primary
+1: 2-15 fg:primary b
+3: 2-12 fg:muted
+4: 2 fg:primary b; 4-30 fg:textStrong b; 39-50 fg:muted
+5: 4-32 fg:text; 39-50 fg:muted
+6: 2-9 fg:muted
+7: 4-30 fg:text; 32-47 fg:muted; 50-59 fg:muted
+8: 2-7 fg:muted
+9: 4-20 fg:text; 39-50 fg:muted
+11: 4 fg:muted; 6-14 fg:muted; 16-29 fg:text
+13: 2-4 fg:text; 6-16 fg:textMuted; 17-21 fg:text; 23-31 fg:textMuted; 32-34 fg:text; 36-40 fg:textMuted

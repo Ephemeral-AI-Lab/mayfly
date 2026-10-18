@@ -24,6 +24,7 @@ import {
 } from './conversation-feed.ts'
 import { freezeModel, type CommandCallModel, type ReadCallModel, type SearchCallModel, type TranscriptCommandGroupModel, type TranscriptEntryModel, type TranscriptFileChangeModel, type TranscriptModel, type TranscriptReadGroupModel, type TranscriptSearchGroupModel, type ToolInterruption, type TranscriptTerminalModel, type TranscriptToolFamily, type TranscriptTurnModel, type TranscriptWebModel } from '../frontend/models.ts'
 import { diffChangeCounts } from '../core/diff-align.ts'
+import { countWork, type MayflyWorkCounters } from '../core/ui-work-counters.ts'
 import { createToolPresentationModel } from './tool-model.ts'
 import { createTranscriptModel } from './transcript-model.ts'
 import { ellipsize, parseToolArguments, resolveCallView, resolveResultView, type ToolPresentationSource } from './present.ts'
@@ -61,6 +62,41 @@ interface ResolvedTool {
   readonly outcome: ToolResult | undefined
   readonly call: ToolCallView | undefined
   readonly result: ToolResultView | undefined
+}
+
+/** One run of unchanged tools with the group model built from it. */
+interface CachedToolGroup {
+  readonly members: readonly ResolvedTool[]
+  readonly revision: string | undefined
+  readonly model: TranscriptEntryModel
+}
+
+/**
+ * Identity caches for one conversation source. Entries are keyed by their
+ * registry-owned wire objects, which the projection retains across whole
+ * values; presenters and models are keyed by the resolved tool they belong to.
+ * A source replaces the whole object on attach and the tool half on a
+ * tools/change, so a stale presenter is never served.
+ */
+export interface TranscriptModelCaches {
+  /** Non-tool entry models, by the durable entry object they were mapped from. */
+  readonly entries: WeakMap<object, TranscriptEntryModel>
+  /** Resolved presenters, by the durable tool entry object. */
+  readonly tools: WeakMap<object, ResolvedTool>
+  /** Lone tool models, by the resolved tool. */
+  readonly models: WeakMap<ResolvedTool, TranscriptEntryModel>
+  /** Read/search/command group models, by their first resolved member. */
+  readonly groups: WeakMap<ResolvedTool, CachedToolGroup>
+}
+
+/** Fresh, empty identity caches. */
+export function createTranscriptModelCaches(): TranscriptModelCaches {
+  return { entries: new WeakMap(), tools: new WeakMap(), models: new WeakMap(), groups: new WeakMap() }
+}
+
+/** The presentation revision one entry carries: the source revision and the entry's durable update. */
+function entryRevision(renderRevision: string | undefined, updatedSeq: number): string | undefined {
+  return renderRevision === undefined ? undefined : `${renderRevision}:${String(updatedSeq)}`
 }
 
 function toolResult(entry: ConversationToolEntry): ToolResult | undefined {
@@ -223,15 +259,18 @@ function readCallModel(resolved: ResolvedTool): ReadCallModel {
 }
 
 /** Fold a run of resolved read entries into one group model. */
-function readGroupModel(run: readonly ResolvedTool[]): TranscriptReadGroupModel {
+function readGroupModel(run: readonly ResolvedTool[], counters?: MayflyWorkCounters, renderRevision?: string): TranscriptReadGroupModel {
+  countWork(counters, 'toolModelsBuilt')
   const first = run[0]!
+  const updatedSeq = Math.max(...run.map(item => item.entry.updatedSeq))
   return {
     kind: 'transcript-read-group',
     id: `read-group:${String(first.entry.id)}`,
     seq: first.entry.seq,
-    updatedSeq: Math.max(...run.map(item => item.entry.updatedSeq)),
+    updatedSeq,
     turn: first.entry.turn,
     step: first.entry.step,
+    ...(renderRevision === undefined ? {} : { renderRevision: `${renderRevision}:${String(updatedSeq)}` }),
     reads: run.map(readCallModel),
   }
 }
@@ -270,15 +309,18 @@ function searchCallModel(resolved: ResolvedTool): SearchCallModel {
 }
 
 /** Fold a run of resolved search entries into one group model. */
-function searchGroupModel(run: readonly ResolvedTool[]): TranscriptSearchGroupModel {
+function searchGroupModel(run: readonly ResolvedTool[], counters?: MayflyWorkCounters, renderRevision?: string): TranscriptSearchGroupModel {
+  countWork(counters, 'toolModelsBuilt')
   const first = run[0]!
+  const updatedSeq = Math.max(...run.map(item => item.entry.updatedSeq))
   return {
     kind: 'transcript-search-group',
     id: `search-group:${String(first.entry.id)}`,
     seq: first.entry.seq,
-    updatedSeq: Math.max(...run.map(item => item.entry.updatedSeq)),
+    updatedSeq,
     turn: first.entry.turn,
     step: first.entry.step,
+    ...(renderRevision === undefined ? {} : { renderRevision: `${renderRevision}:${String(updatedSeq)}` }),
     searches: run.map(searchCallModel),
   }
 }
@@ -345,15 +387,18 @@ function commandCallModel(resolved: ResolvedTool): CommandCallModel {
 }
 
 /** Fold a run of resolved command entries into one group model. */
-function commandGroupModel(run: readonly ResolvedTool[]): TranscriptCommandGroupModel {
+function commandGroupModel(run: readonly ResolvedTool[], counters?: MayflyWorkCounters, renderRevision?: string): TranscriptCommandGroupModel {
+  countWork(counters, 'toolModelsBuilt')
   const first = run[0]!
+  const updatedSeq = Math.max(...run.map(item => item.entry.updatedSeq))
   return {
     kind: 'transcript-command-group',
     id: `command-group:${String(first.entry.id)}`,
     seq: first.entry.seq,
-    updatedSeq: Math.max(...run.map(item => item.entry.updatedSeq)),
+    updatedSeq,
     turn: first.entry.turn,
     step: first.entry.step,
+    ...(renderRevision === undefined ? {} : { renderRevision: `${renderRevision}:${String(updatedSeq)}` }),
     commands: run.map(commandCallModel),
   }
 }
@@ -425,7 +470,7 @@ function headLines(text: string, max: number): { readonly text: string, readonly
  * The change an edit or write made, from the result's diff view (the applied hunks) and, for a write, the call's content.
  * An edit that failed, or a call that still runs, has none: its line gives the reason and the activity row names it.
  */
-function fileChangeModel(resolved: ResolvedTool): TranscriptFileChangeModel | undefined {
+function fileChangeModel(resolved: ResolvedTool, counters?: MayflyWorkCounters): TranscriptFileChangeModel | undefined {
   const { entry, outcome, call, result } = resolved
   if (entry.result === undefined || entry.result.isError) return undefined
   const diffs = result?.card === 'diff' ? result.diffs : call?.card === 'diff' ? call.diffs : undefined
@@ -442,12 +487,14 @@ function fileChangeModel(resolved: ResolvedTool): TranscriptFileChangeModel | un
   if (!created) {
     for (const diff of diffs) {
       const trimmed = trimContext(diff.oldText ?? '', diff.newText)
+      countWork(counters, 'diffsComputed')
       const counts = diffChangeCounts(trimmed.before, trimmed.after)
       added += counts.added
       removed += counts.removed
       const cutBefore = headLines(trimmed.before, FILE_CHANGE_HUNK_LINES)
       const cutAfter = headLines(trimmed.after, FILE_CHANGE_HUNK_LINES)
       if (cutBefore.cut || cutAfter.cut) {
+        countWork(counters, 'diffsComputed')
         const kept = diffChangeCounts(cutBefore.text, cutAfter.text)
         hidden += counts.added + counts.removed - kept.added - kept.removed
       }
@@ -468,11 +515,15 @@ function fileChangeModel(resolved: ResolvedTool): TranscriptFileChangeModel | un
   }
 }
 
-function toolModel(resolved: ResolvedTool, family: TranscriptToolFamily): TranscriptEntryModel {
+function toolModel(resolved: ResolvedTool, family: TranscriptToolFamily, counters?: MayflyWorkCounters, renderRevision?: string, caches?: TranscriptModelCaches): TranscriptEntryModel {
+  const revision = entryRevision(renderRevision, resolved.entry.updatedSeq)
+  const cached = caches?.models.get(resolved)
+  if (cached !== undefined && cached.renderRevision === revision) return cached
+  countWork(counters, 'toolModelsBuilt')
   const { entry, outcome, call, result } = resolved
   const terminal = terminalModel(resolved)
   const web = webModel(resolved)
-  const change = family === 'edit' || resolved.entry.name === 'write' ? fileChangeModel(resolved) : undefined
+  const change = family === 'edit' || resolved.entry.name === 'write' ? fileChangeModel(resolved, counters) : undefined
   const presentation = call === undefined && result === undefined
     ? undefined
     : createToolPresentationModel({
@@ -482,7 +533,7 @@ function toolModel(resolved: ResolvedTool, family: TranscriptToolFamily): Transc
         ...(result === undefined ? {} : { result }),
         ...(outcome === undefined ? {} : { outcome }),
       })
-  return {
+  const model: TranscriptEntryModel = {
     kind: 'transcript-tool',
     id: entry.id,
     seq: entry.seq,
@@ -499,6 +550,7 @@ function toolModel(resolved: ResolvedTool, family: TranscriptToolFamily): Transc
     ...(change === undefined ? {} : { change }),
     arguments: entry.arguments,
     startedAt: entry.startedAt,
+    ...(revision === undefined ? {} : { renderRevision: revision }),
     ...(entry.result === undefined ? {} : {
       result: {
         text: entry.result.text,
@@ -510,6 +562,8 @@ function toolModel(resolved: ResolvedTool, family: TranscriptToolFamily): Transc
     }),
     ...(presentation === undefined ? {} : { presentation }),
   }
+  caches?.models.set(resolved, model)
+  return model
 }
 
 function entryModel(entry: Exclude<ConversationEntry, ConversationToolEntry>): TranscriptEntryModel {
@@ -580,20 +634,32 @@ export function conversationTranscriptModel(
   tools: ToolPresentationSource,
   generation = 0,
   renderRevision?: string,
-  resolvedTools?: Map<string, ResolvedTool>,
+  caches?: TranscriptModelCaches,
+  counters?: MayflyWorkCounters,
 ): TranscriptModel {
   const entries: TranscriptEntryModel[] = []
   let run: ResolvedTool[] = []
   let runFamily: ToolFamily | undefined
+  /** The group model of one unchanged run, or a freshly built one cached under its first member. */
+  const groupModel = (family: 'read' | 'search' | 'command'): TranscriptEntryModel => {
+    const first = run[0]!
+    const updatedSeq = Math.max(...run.map(item => item.entry.updatedSeq))
+    const revision = entryRevision(renderRevision, updatedSeq)
+    const cached = caches?.groups.get(first)
+    if (cached !== undefined && cached.revision === revision && cached.members.length === run.length
+      && cached.members.every((member, index) => member === run[index])) return cached.model
+    const model = family === 'search' ? searchGroupModel(run, counters, renderRevision)
+      : family === 'command' ? commandGroupModel(run, counters, renderRevision)
+        : readGroupModel(run, counters, renderRevision)
+    caches?.groups.set(first, { members: [...run], revision, model })
+    return model
+  }
   const flushRun = (): void => {
     if (run.length === 0) return
     /* A single command keeps its lone card — the output preview carries more
        than a one-member group header would. */
-    if (runFamily === 'command' && run.length === 1) entries.push(toolModel(run[0]!, 'command'))
-    else entries.push(
-      runFamily === 'search' ? searchGroupModel(run)
-        : runFamily === 'command' ? commandGroupModel(run)
-          : readGroupModel(run))
+    if (runFamily === 'command' && run.length === 1) entries.push(toolModel(run[0]!, 'command', counters, renderRevision, caches))
+    else entries.push(groupModel(runFamily === 'search' ? 'search' : runFamily === 'command' ? 'command' : 'read'))
     run = []
     runFamily = undefined
   }
@@ -603,16 +669,22 @@ export function conversationTranscriptModel(
       // a later step's reasoning closes the run first so it never renders
       // above the calls it followed.
       if (entry.kind !== 'thinking' || (run.length > 0 && run.at(-1)!.entry.step !== entry.step)) flushRun()
-      entries.push(entryModel(entry))
+      let model = caches?.entries.get(entry)
+      if (model === undefined) {
+        countWork(counters, 'entriesMapped')
+        model = entryModel(entry)
+        caches?.entries.set(entry, model)
+      }
+      entries.push(model)
       continue
     }
-    /* Presenters re-resolve on every pending value; keying on the durable
-       entry id + its last-update seq makes steady-state mapping O(changed). */
-    const key = JSON.stringify([entry.id, entry.updatedSeq])
-    let resolved = resolvedTools?.get(key)
+    /* The registry retains an unchanged entry object across whole values, so
+       an entry-keyed cache re-resolves only the calls that changed. */
+    let resolved = caches?.tools.get(entry)
     if (resolved === undefined) {
+      countWork(counters, 'entriesMapped')
       resolved = resolveTool(entry, tools)
-      resolvedTools?.set(key, resolved)
+      caches?.tools.set(entry, resolved)
     }
     const family = toolFamily(resolved)
     const continuesRun = runFamily !== undefined
@@ -624,17 +696,16 @@ export function conversationTranscriptModel(
       runFamily = family
       continue
     }
-    entries.push(toolModel(resolved, family))
+    entries.push(toolModel(resolved, family, counters, renderRevision, caches))
   }
   flushRun()
-  const renderedEntries = renderRevision === undefined ? entries : entries.map(entry => ({ ...entry, renderRevision: `${renderRevision}:${String(entry.updatedSeq)}` }))
   const turns: TranscriptTurnModel[] = (projection.turns ?? []).map(turn => ({
     turn: turn.turn,
     startedAt: turn.startedAt,
     ...(turn.endedAt === undefined ? {} : { endedAt: turn.endedAt }),
     ...(turn.outcome === undefined ? {} : { outcome: turn.outcome }),
   }))
-  return createTranscriptModel('official-conversation', renderedEntries, projection.streaming, generation, turns)
+  return createTranscriptModel('official-conversation', entries, projection.streaming, generation, turns)
 }
 
 /** Entry kinds the mapper dereferences; anything else is not our wire value. */
@@ -701,7 +772,9 @@ export class OfficialConversationModelSource {
   private lastDraft: LiveAssistantDraft | undefined
   private historyFloorSeq: number | undefined
   private stateModel: { readonly state: ConversationFeedState, readonly model: TranscriptModel } | undefined
-  private readonly resolvedTools = new Map<string, ResolvedTool>()
+  private caches = createTranscriptModelCaches()
+  /** A tools/change landed: only the tool half of the next conversion must rebuild. */
+  private toolsStale = false
   private disposed = false
 
   constructor(
@@ -710,9 +783,10 @@ export class OfficialConversationModelSource {
     private readonly publish: () => void,
     private readonly live?: LiveDraftSource,
     private readonly t: MayflyTranslate = interpolateLocaleMessage,
+    private readonly counters?: MayflyWorkCounters,
   ) {}
 
-  /** Convert the latest unread value once, then reuse its model. */
+  /** Convert the latest unread value once, then reuse its model; convert stashed tools lazily. */
   snapshot(): TranscriptModel {
     const feed = this.feed
     if (feed === undefined) return this.model
@@ -724,13 +798,19 @@ export class OfficialConversationModelSource {
         this.watermark = pending.seq
         feed.settle(pending.seq)
         this.lastVisible = visible
-        this.durableModel = conversationTranscriptModel(visible, this.tools, this.generation, undefined, this.resolvedTools)
+        this.durableModel = conversationTranscriptModel(visible, this.tools, this.generation, undefined, this.caches, this.counters)
+        this.toolsStale = false
         this.dispatchedCalls = new Set(visible.entries.flatMap(entry => entry.kind === 'tool' ? [entry.callId] : []))
         this.settledSteps = new Set(visible.settledSteps)
-        this.liveSeq = visible.entries.reduce((seq, entry) => Math.max(seq, entry.seq), pending.seq) + 1
+        this.liveSeq = Math.max(visible.entries.at(-1)?.seq ?? pending.seq, pending.seq) + 1
         this.lastDraft = draft
         this.model = withLiveDraft(this.durableModel, this.settledSteps, draft, this.liveSeq, this.watermark, this.dispatchedCalls)
       }
+    } else if (this.toolsStale && this.durableModel !== undefined && this.lastVisible !== undefined) {
+      // The displayed view converts its own tool layer on the next snapshot;
+      // hidden views keep the stale models stashed until they are shown.
+      this.toolsStale = false
+      this.rebuildTools()
     } else if (draft !== this.lastDraft && this.durableModel !== undefined) {
       this.lastDraft = draft
       this.model = withLiveDraft(this.durableModel, this.settledSteps, draft, this.liveSeq, this.watermark, this.dispatchedCalls)
@@ -738,18 +818,30 @@ export class OfficialConversationModelSource {
     return this.durableModel === undefined ? this.feedStateModel(feed.state()) : this.model
   }
 
-  /** Re-resolve durable tool presenters without changing session generation. */
-  invalidateTools(): void {
+  /**
+   * Mark the durable tool layer stale without converting it: the next
+   * {@link snapshot} re-resolves presenters for the stashed projection.
+   */
+  markToolsStale(): void {
     if (this.disposed) return
-    if (this.lastVisible !== undefined) {
-      this.toolsRevision += 1
-      this.resolvedTools.clear()
-      this.durableModel = conversationTranscriptModel(this.lastVisible, this.tools, this.generation, `tools:${String(this.toolsRevision)}`, this.resolvedTools)
-      const draft = this.feed?.draft()
-      this.lastDraft = draft
-      this.model = withLiveDraft(this.durableModel, this.settledSteps, draft, this.liveSeq, this.watermark, this.dispatchedCalls)
-    }
-    this.publish()
+    this.toolsRevision += 1
+    this.caches = { entries: this.caches.entries, tools: new WeakMap(), models: new WeakMap(), groups: new WeakMap() }
+    this.toolsStale = true
+  }
+
+  /** Re-resolve durable tool presenters on the next snapshot without changing session generation. */
+  invalidateTools(): void {
+    this.markToolsStale()
+  }
+
+  /** Rebuild only the tool layer of the stashed projection, keeping every non-tool entry model. */
+  private rebuildTools(): void {
+    const visible = this.lastVisible
+    if (visible === undefined) return
+    this.durableModel = conversationTranscriptModel(visible, this.tools, this.generation, `tools:${String(this.toolsRevision)}`, this.caches, this.counters)
+    const draft = this.feed?.draft()
+    this.lastDraft = draft
+    this.model = withLiveDraft(this.durableModel, this.settledSteps, draft, this.liveSeq, this.watermark, this.dispatchedCalls)
   }
 
   /** Follow one live Session, clearing stale content first. */
@@ -777,7 +869,8 @@ export class OfficialConversationModelSource {
     this.watermark = -1
     this.durableModel = undefined
     this.lastVisible = undefined
-    this.resolvedTools.clear()
+    this.caches = createTranscriptModelCaches()
+    this.toolsStale = false
     this.settledSteps.clear()
     this.lastDraft = undefined
     this.stateModel = undefined
@@ -793,7 +886,8 @@ export class OfficialConversationModelSource {
     this.feed = undefined
     this.durableModel = undefined
     this.lastVisible = undefined
-    this.resolvedTools.clear()
+    this.caches = createTranscriptModelCaches()
+    this.toolsStale = false
     this.settledSteps.clear()
     this.lastDraft = undefined
     this.historyFloorSeq = undefined

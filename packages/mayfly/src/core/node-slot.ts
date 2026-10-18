@@ -176,9 +176,9 @@ class SlotAttachment {
     this.off = model.subscribe(() => { compiler.requestRender() })
   }
 
-  /** The content region is the outer scroll's content while the slot holds no focus; a focused slot keeps its cursor window. */
-  focus(focused: boolean): void {
-    this.runtime.flow = this.flowRegion && !focused
+  /** The content region is the outer scroll's content whether or not the slot holds focus. */
+  focus(_focused: boolean): void {
+    this.runtime.flow = this.flowRegion
   }
 
   /** Follow one list item from the next paint (see {@link MayflyNodeSlot.track}). */

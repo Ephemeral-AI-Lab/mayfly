@@ -27,12 +27,13 @@ import type {} from '@deepseek-ai/dsh-subagent'
 import type { SubagentCatalogEntry, SubagentIdentityProjection, SubagentRunEndInfo, SubagentTimingProjection } from '@deepseek-ai/dsh-subagent'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import { ui, type MayflyInlineSpan, type MayflyListItem, type MayflyPaneSummary, type MayflyUiActionEvent, type MayflyUiActionReply, type MayflyUiEventContext, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
+import type { MayflyConversationsService, MayflyConversationsSnapshot } from '../app/conversation-views.ts'
 import type { ConversationAgentCall, OutputProgress } from '../conversation/types.ts'
 import type { MayflyTranslate } from '../frontend/locale.ts'
 import { interactionTranslator } from '../interaction/locale.ts'
 import { stopSubagent } from '../interaction/agents-stop.ts'
 import { agentCallLabel, compactElapsedMs } from './agent-presentation.ts'
-import { parseActivationResult } from './child-agent-model.ts'
+import { parseActivationResult, type ActivationResult } from './child-agent-model.ts'
 import { observeTranscriptLocale, transcriptTranslator } from './locale.ts'
 import { outputRate } from './output-rate.ts'
 import { formatTokens } from './status-context.ts'
@@ -214,12 +215,48 @@ export function agentsPanel(state: AgentsState, t: MayflyTranslate, unavailable:
   return viewList(LIST_ID, rows.map(row => agentItem(row, state.now, unavailable(row))), actions)
 }
 
-/** The activation label a spawn call passed to the native service, when it reads. */
-function spawnLabel(call: ConversationAgentCall): string | undefined {
+/** What a spawn call says of its child: its parsed arguments, activation result, and native label. */
+interface SpawnFacts {
+  readonly args: unknown
+  readonly activation: ActivationResult | undefined
+  readonly label?: string
+}
+
+/**
+ * Parsed spawn facts by call object, so one publish parses a call once for its child correlation and its row label.
+ * A republished conversation may hand a fresh call object with equal identity and arguments; that falls back to a
+ * bounded map keyed by the call's identity, never by the parsed text.
+ */
+const spawnByCall = new WeakMap<ConversationAgentCall, SpawnFacts>()
+const spawnByKey = new Map<string, SpawnFacts>()
+const SPAWN_CACHE_LIMIT = 512
+
+function spawnOf(call: ConversationAgentCall): SpawnFacts {
+  const known = spawnByCall.get(call)
+  if (known !== undefined) return known
+  const key = `${call.callId}\u0000${String(call.seq)}\u0000${String(call.turn)}\u0000${String(call.step)}\u0000${call.result?.text ?? ''}\u0000${call.arguments}`
+  const cached = spawnByKey.get(key)
+  if (cached !== undefined) {
+    spawnByCall.set(call, cached)
+    return cached
+  }
   const parsed = parseToolArguments(call.arguments)
   const args = typeof parsed === 'object' && parsed !== null ? parsed as Record<string, unknown> : {}
   const description = args['description']
-  return typeof description === 'string' && description.trim() !== '' ? description : undefined
+  const spawn: SpawnFacts = {
+    args: parsed,
+    activation: parseActivationResult(call.result?.text),
+    ...typeof description === 'string' && description.trim() !== '' ? { label: description } : {},
+  }
+  spawnByCall.set(call, spawn)
+  if (spawnByKey.size >= SPAWN_CACHE_LIMIT) spawnByKey.delete(spawnByKey.keys().next().value!)
+  spawnByKey.set(key, spawn)
+  return spawn
+}
+
+/** The activation label a spawn call passed to the native service, when it reads. */
+function spawnLabel(call: ConversationAgentCall): string | undefined {
+  return spawnOf(call).label
 }
 
 /**
@@ -232,7 +269,7 @@ function spawnLabel(call: ConversationAgentCall): string | undefined {
 function childIdsOf(calls: readonly ConversationAgentCall[], catalog: readonly SubagentCatalogEntry[]): readonly (string | undefined)[] {
   const claimed = new Set<string>()
   return calls.map((call) => {
-    const exact = parseActivationResult(call.result?.text)?.subagentId
+    const exact = spawnOf(call).activation?.subagentId
     if (exact !== undefined) {
       claimed.add(exact)
       return exact
@@ -293,7 +330,7 @@ export function agentRows(input: AgentRowsInput): readonly AgentRow[] {
       : child?.phase === 'failed'
         || call.result?.isError === true
         || call.result === undefined)
-    const { label: callLabel, detail } = agentCallLabel(call.name, parseToolArguments(call.arguments), call.arguments)
+    const { label: callLabel, detail } = agentCallLabel(call.name, spawnOf(call).args, call.arguments)
     const label = identity?.label ?? entry?.label ?? callLabel
     const endedAt = run?.endedAt ?? child?.endedAt ?? call.result?.endedAt
     return {
@@ -335,6 +372,11 @@ export function apply(ctx: Context): void {
   const tick = ctx.get('mayflyTick') as TickSource | undefined
   const facts = ctx.get('mayflySessionFacts') as SessionFactsService
   const lifetime = new AbortController()
+  const agents = ctx.agents
+  const subagents = ctx.subagents
+  const currentAgent = ctx.mayflyCurrentAgent
+  const conversations: MayflyConversationsService = ctx.mayflyConversations
+  const screen = ctx.mayflyScreen
   let unloaded = false
   /** The children the user stopped from the panel: their last facts may still read working. */
   const stoppedByUser = new Set<string>()
@@ -346,7 +388,7 @@ export function apply(ctx: Context): void {
   let displayed: string | null = null
 
   const act = async (event: MayflyUiActionEvent, context: MayflyUiEventContext): Promise<MayflyUiActionReply> => {
-    const agent = ctx.mayflyCurrentAgent.current()
+    const agent = currentAgent.current()
     if (agent === null || agent !== owner) return { kind: 'failed', message: t('The agent changed; open it again') }
     const stopping = event.kind === 'activate' && event.actionId === STOP_ID
     if (event.kind !== 'selection-accept' && !stopping) return { kind: 'completed' }
@@ -359,10 +401,10 @@ export function apply(ctx: Context): void {
     if (row.childId === undefined) return { kind: 'failed', message: t('This subagent has not started yet') }
     try {
       if (event.kind === 'selection-accept') {
-        const entry = (await ctx.subagents.listChildren(agent.id, context.signal)).find(candidate => String(candidate.id) === row.childId)
+        const entry = (await subagents.listChildren(agent.id, context.signal)).find(candidate => String(candidate.id) === row.childId)
         if (entry === undefined || entry.mode === 'external') return { kind: 'failed', message: t('This subagent cannot be opened') }
-        ctx.mayflyScreen.leaveViews()
-        opened = ctx.mayflyConversations.open({ kind: 'subagent', sessionId: row.childId, parentSessionId: String(agent.id), label: entry.label ?? row.label, mode: entry.mode })
+        screen.leaveViews()
+        opened = conversations.open({ kind: 'subagent', sessionId: row.childId, parentSessionId: String(agent.id), label: entry.label ?? row.label, mode: entry.mode })
         return { kind: 'completed' }
       }
       const result = await stopSubagent(ctx, row.childId, context.signal, ti, () => unloaded)
@@ -377,7 +419,7 @@ export function apply(ctx: Context): void {
   const pane = ctx.mayflyPanes.register({ id: 'mayfly.view.agents', placement: 'views', priority: VIEW_PRIORITY, onEvent: { action: act } }, null)
 
   /** The Agent the rows belong to: an action built for another is refused. */
-  let owner = ctx.mayflyCurrentAgent.current()
+  let owner = currentAgent.current()
   let children: readonly ChildSessionFacts[] = []
   let calls: readonly ConversationAgentCall[] = []
   /** The projection's calls before the own ones are picked out of them. */
@@ -389,6 +431,12 @@ export function apply(ctx: Context): void {
   let rows: readonly AgentRow[] = []
   let now = Date.now()
   let published = ''
+  /** The panel actually handed to the lane; a skipped hidden update leaves this short of `published`. */
+  let panelPublished = ''
+  /** The last second the hidden panel was rebuilt; the summary still updates at the child cadence. */
+  let panelSecond = -1
+  /** The row shape that changes the panel beyond its elapsed/rate figures. */
+  let panelStructure = ''
   let offTick: (() => void) | undefined
 
   const syncTick = (): void => {
@@ -421,7 +469,7 @@ export function apply(ctx: Context): void {
   const publish = (): void => {
     rows = agentRows({
       calls, children, catalog, timing, identity, runs, turn,
-      gone: id => ctx.agents.get(SessionId(id)) === undefined,
+      gone: id => agents.get(SessionId(id)) === undefined,
       stoppedByUser,
     })
     syncTick()
@@ -429,15 +477,29 @@ export function apply(ctx: Context): void {
     const summary = agentsSummary(state, t)
     const panel = agentsPanel(state, t, unavailable)
     const key = JSON.stringify([summary, panel])
-    if (key === published) return
+    if (key === published && key === panelPublished) return
     published = key
-    pane.set(panel)
     pane.setSummary(summary)
+    // A hidden panel costs a compile per update and nobody sees its elapsed seconds. Refresh it at most once a
+    // second; while the view is entered, keep the 4 Hz child cadence. A test or a host without a views lane has no
+    // hidden state to protect, so it keeps the old immediate panel.
+    const views = screen?.views
+    const structure = JSON.stringify(rows.map(row => [
+      row.id, row.childId, row.label, row.task, row.mode, row.external, row.live, row.failed, row.stopped, row.activity,
+    ]))
+    const entered = views?.isEntered === true && views.active === 'mayfly.view.agents'
+    const second = Math.floor(now / 1000)
+    if (views === undefined || entered || second !== panelSecond || structure !== panelStructure) {
+      panelSecond = second
+      panelStructure = structure
+      panelPublished = key
+      pane.set(panel)
+    }
   }
   const refresh = (): void => {
     if (unloaded) return
     now = Date.now()
-    const agent = ctx.mayflyCurrentAgent.current()
+    const agent = currentAgent.current()
     const native = readNative(agent)
     catalog = native.catalog
     timing = native.timing
@@ -460,7 +522,7 @@ export function apply(ctx: Context): void {
     if (next.agentCalls === inherited && next.turn === turn.turn && next.active === turn.active) return
     inherited = next.agentCalls
     // A side conversation or a subagent inherits its parent's log: only the calls it made itself are its own subagents.
-    const session = ctx.mayflyCurrentAgent.current()?.session
+    const session = currentAgent.current()?.session
     calls = session === undefined ? next.agentCalls : next.agentCalls.filter(call => session.isOwnSeq(call.seq as never))
     turn = { turn: next.turn, active: next.active }
     refresh()
@@ -482,11 +544,11 @@ export function apply(ctx: Context): void {
     runs.set(String(info.id), { live: false, stopReason: info.stopReason, endedAt: Date.now() })
     refresh()
   })
-  const offConversations = ctx.mayflyConversations.subscribe((snapshot) => {
+  const offConversations = conversations.subscribe((snapshot: MayflyConversationsSnapshot) => {
     const wasDisplayed = displayed
     displayed = snapshot.displayedId
     if (opened === undefined) return
-    if (snapshot.views.some(view => view.id === opened)) {
+    if (snapshot.views.some((view: { readonly id: string }) => view.id === opened)) {
       // Left for another conversation (`F7`): a later display of it is no longer this view's doing (`/agents` may reopen it).
       if (wasDisplayed === opened && snapshot.displayedId !== opened) opened = undefined
       return
@@ -497,9 +559,18 @@ export function apply(ctx: Context): void {
     // Focus goes back to the prompt as the conversation changes, so the view is entered after that.
     if (wasDisplayed !== closed || snapshot.displayedId !== snapshot.primaryId) return
     const agent = owner
-    setImmediate(() => { if (!unloaded && ctx.mayflyCurrentAgent.current() === agent) ctx.mayflyScreen.enterViews() })
+    setImmediate(() => { if (!unloaded && currentAgent.current() === agent) screen.enterViews() })
   })
-  const offLocale = observeTranscriptLocale(ctx, () => { published = ''; publish() })
+  const offLocale = observeTranscriptLocale(ctx, () => { published = ''; panelPublished = ''; refresh() })
+  // Entering the lane is not a facts update: force the first paint after a hidden skip, then let the tick cadence run.
+  const views = screen?.views
+  let wasEntered = false
+  const offViews = views?.subscribe(() => {
+    const enteredNow = views.isEntered && views.active === 'mayfly.view.agents'
+    if (enteredNow && !wasEntered) { panelSecond = -1; panelPublished = '' }
+    wasEntered = enteredNow
+    publish()
+  })
   // A child's Agent coming or going changes whether its activation is resident.
   ctx.effect(() => ctx.on('agent/created', () => { refresh() }))
   ctx.effect(() => ctx.on('agent/disposed', () => { refresh() }))
@@ -514,6 +585,7 @@ export function apply(ctx: Context): void {
     offEnd()
     offConversations()
     offLocale()
+    offViews?.()
     offTick?.()
     pane.dispose()
   })

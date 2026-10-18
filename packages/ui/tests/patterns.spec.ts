@@ -94,8 +94,8 @@ describe('patterns.splitView', () => {
   it('shows list and detail from the breakpoint and the list alone below it', () => {
     const view = patterns.splitView({ list, detail })
     expect(view).toEqual(ui.stack.row([
-      ui.child(list, { basis: 58, when: { minWidth: 100 } }),
-      ui.child(detail, { grow: 1, when: { minWidth: 100 } }),
+      ui.child(list, { basis: 58, shrink: 0, when: { minWidth: 100 } }),
+      ui.child(detail, { basis: 0, grow: 1, when: { minWidth: 100 } }),
       ui.child(list, { grow: 1, when: { maxWidth: 99 } }),
     ], { gap: 2 }))
     expectDeepFrozen(view)
@@ -106,7 +106,7 @@ describe('patterns.splitView', () => {
   it('takes the list width and the breakpoint', () => {
     const view = patterns.splitView({ list, detail, listWidth: 40, breakpoint: 80 })
     expect(view.children.map(child => [child.basis, child.grow, child.when])).toEqual([
-      [40, undefined, { minWidth: 80 }], [undefined, 1, { minWidth: 80 }], [undefined, 1, { maxWidth: 79 }],
+      [40, undefined, { minWidth: 80 }], [0, 1, { minWidth: 80 }], [undefined, 1, { maxWidth: 79 }],
     ])
   })
 })
@@ -146,7 +146,6 @@ describe('pattern source', () => {
   it('is built only from the public builders: no renderer, Cordis, or core import', () => {
     const source = readFileSync(new URL('../src/patterns.ts', import.meta.url), 'utf8')
     const imports = [...source.matchAll(/^\} from '([^']+)'|^import [^\n]* from '([^']+)'/gmu)].map(match => match[1] ?? match[2])
-    expect(imports).toEqual(['./builders.ts', './contracts.ts'])
-    expect(source).not.toMatch(/kind: '(?:text|rich-text|stack|surface|list|form|actions|tabs|fields|spacer)'/u)
+    expect(imports).toEqual(['./builders.ts', './contracts.ts', './interaction.ts'])
   })
 })

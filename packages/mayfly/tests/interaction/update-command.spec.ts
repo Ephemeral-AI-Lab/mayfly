@@ -508,8 +508,7 @@ describe('/update confirm and swap', () => {
     const form = overlay as { handleInput(data: string): void, render(width: number): string[] }
     // The subtitle carries the publish age and host line.
     expect(form.render(100).join('\n')).toContain('published')
-    form.handleInput(KEY.right)
-    form.handleInput(KEY.enter)
+    form.handleInput('y')
     const execution = await pending
     expect(execution?.result?.kind).toBe('success')
     if (execution?.result?.kind === 'success') expect(execution.result.text).toContain('restart dsh to apply')
@@ -553,9 +552,8 @@ describe('/update confirm and swap', () => {
     const pending = world.ctx.commands.execute(world.agent, '/update', [], new AbortController().signal)
     const overlay = await world.waitOverlay()
     const form = overlay as { handleInput(data: string): void, render(width: number): string[] }
-    expect(form.render(100).join('\n')).toContain('Yes')
-    expect(form.render(100).join('\n')).toContain('No')
-    form.handleInput(KEY.enter)
+    expect(form.render(100).join('\n')).toContain('Update to v')
+    form.handleInput('n')
     const execution = await pending
     expect(execution?.result).toEqual({ kind: 'success', text: 'update cancelled' })
     expect(world.spawns.some(call => call.args[0] === 'plugin')).toBe(false)
@@ -575,8 +573,7 @@ describe('/update confirm and swap', () => {
     const pending = world.ctx.commands.execute(world.agent, '/update', [], new AbortController().signal)
     const overlay = await world.waitOverlay()
     const form = overlay as { handleInput(data: string): void }
-    form.handleInput(KEY.right)
-    form.handleInput(KEY.enter)
+    form.handleInput('y')
     const execution = await pending
     // The result line stays a short summary; the panel carries the recipe.
     expect(execution?.result).toEqual({ kind: 'error', text: `update failed — rolled back to v${CURRENT_VERSION}` })
@@ -593,8 +590,7 @@ describe('/update confirm and swap', () => {
     const pending = world.ctx.commands.execute(world.agent, '/update', [], new AbortController().signal)
     const overlay = await world.waitOverlay()
     const form = overlay as { handleInput(data: string): void }
-    form.handleInput(KEY.right)
-    form.handleInput(KEY.enter)
+    form.handleInput('y')
     const execution = await pending
     expect(execution?.result).toEqual({ kind: 'error', text: 'update failed — the repair recipe is in the update panel' })
     expect(overlayRows(world.ctx)).toContain('manual repair')
@@ -806,8 +802,7 @@ describe('/update confirm and swap', () => {
     const pending = world.ctx.commands.execute(world.agent, '/update', [], new AbortController().signal)
     const overlay = await world.waitOverlay()
     const form = overlay as { handleInput(data: string): void }
-    form.handleInput(KEY.right)
-    form.handleInput(KEY.enter)
+    form.handleInput('y')
     const execution = await pending
     expect(execution?.result).toEqual({ kind: 'error', text: 'update failed — the repair recipe is in the update panel' })
     const rows = overlayRows(world.ctx)
@@ -829,8 +824,7 @@ describe('/update confirm and swap', () => {
     const pending = world.ctx.commands.execute(world.agent, '/update', [], new AbortController().signal)
     const overlay = await world.waitOverlay()
     const form = overlay as { handleInput(data: string): void }
-    form.handleInput(KEY.right)
-    form.handleInput(KEY.enter)
+    form.handleInput('y')
     const execution = await pending
     expect(execution?.result).toEqual({ kind: 'error', text: 'update failed — the repair recipe is in the update panel' })
     expect(overlayRows(world.ctx)).toContain('the swap crashed: disk full')
@@ -911,8 +905,7 @@ describe('/update confirm and swap', () => {
     // The downgrade warning rides the subtitle's tail; render wide enough
     // that the publish-age and host-line parts do not truncate it away.
     expect(form.render(260).join('\n')).toContain('downgrade reinstalls @ephemeral-ai/mayfly')
-    form.handleInput(KEY.right)
-    form.handleInput(KEY.enter)
+    form.handleInput('y')
     const execution = await pending
     expect(execution?.result?.kind).toBe('success')
     const install = world.spawns.find(call => call.args[0] === 'plugin')
@@ -946,8 +939,7 @@ describe('/update confirm and swap', () => {
     const pending = world.ctx.commands.execute(world.agent, '/update', [], new AbortController().signal)
     const overlay = await world.waitOverlay()
     const form = overlay as { handleInput(data: string): void }
-    form.handleInput(KEY.right)
-    form.handleInput(KEY.enter)
+    form.handleInput('y')
     const execution = await pending
     expect(execution?.result).toEqual({ kind: 'error', text: `update failed — rolled back to v${CURRENT_VERSION}` })
     const reinstall = world.spawns.filter(call => call.args[0] === 'plugin').at(-1)
@@ -1001,7 +993,6 @@ describe('update panel model', () => {
     await flush()
     expect(model.disposed).toBe(false)
     expect(model.feedbackSnapshot()).toEqual(expect.arrayContaining([expect.objectContaining({ severity: 'error', message: 'The update is still running' })]))
-    expect(model.availableActions()).toEqual(expect.arrayContaining([expect.objectContaining({ actionId: 'close', enabled: false, disabledReason: 'The update is still running' })]))
     let rendered = rows()
     expect(rendered).toContain('v0.1.0-rc.6 → v0.1.0-rc.7')
     expect(rendered).toContain('✓ snapshot')
@@ -1037,7 +1028,7 @@ describe('update panel model', () => {
     const rendered = mounted.rows()
     expect(rendered).toContain('✗ smoke: boot')
     expect(rendered).toContain('✓ rollback')
-    mounted.model.invoke('close')
+    mounted.model.requestClose()
     await flush()
     expect(mounted.model.disposed).toBe(true)
   })

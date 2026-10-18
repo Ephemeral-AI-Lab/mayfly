@@ -1,0 +1,48 @@
+grid 100x30 cursor none
+|
+|  ● A reviewer runs in the background, the todo list is set, and a watcher rebuilds the styles.
+|
+|  ✓ Subagent(Audit the hero copy) · 0.6s
+|
+|  ✓ TodoWrite · 0.2s
+|
+|  ● Every panel now has the /stats look: a rule and a title, the keys on one hint row, no buttons.
+|    Try /model, /effort, /stats, /plugin, /agents, /jobs, /mcp, /help, /settings; Alt+↓ enters the
+|    views, where x asks y/n.
+|
+|  ✻ Worked for 4s · done 09:00
+|━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+|  Stats
+|
+|  Session   Account   History   Models
+|            ━━━━━━━
+|
+|  Provider: DeepSeek (deepseek-official)
+|  Key:      configured (DEEPSEEK_API_KEY)
+|  Balance:  ¥ 110.00 · top-up ¥ 100.00 · granted ¥ 10.00
+|  Top up:   https://platform.deepseek.com/top_up
+|  Usage:    https://platform.deepseek.com/usage
+|  Checked:  just now
+|
+|
+|
+|
+|
+|  ←/→ tabs · Enter open · Esc close
+styles
+1: 2-3 fg:#ededf2
+3: 2-3 fg:#4ec87e; 4-11 fg:#ededf2 b; 12 fg:#9aa3b8; 13-31 fg:#c9c0f0; 32-39 fg:#9aa3b8
+5: 2-3 fg:#4ec87e; 4-12 fg:#ededf2 b; 13-19 fg:#9aa3b8
+7: 2-3 fg:#ededf2
+11: 2-29 fg:#9aa3b8
+12: 0-99 fg:#9a86e6
+13: 2-6 fg:#9a86e6 b
+15: 2-8 fg:#9aa3b8; 12-18 fg:#9a86e6 b; 22-28 fg:#9aa3b8; 32-37 fg:#9aa3b8
+16: 12-18 fg:#9a86e6 b
+18: 2-10 fg:#9aa3b8; 12-39 fg:#ededf2
+19: 2-10 fg:#9aa3b8; 12-40 fg:#ededf2
+20: 2-10 fg:#9aa3b8; 12-55 fg:#ededf2
+21: 2-10 fg:#9aa3b8; 12-47 fg:#ededf2
+22: 2-10 fg:#9aa3b8; 12-46 fg:#ededf2
+23: 2-10 fg:#9aa3b8; 12-19 fg:#9aa3b8
+29: 2-4 fg:#ededf2; 6-12 fg:#5c6476; 13-17 fg:#ededf2; 19-25 fg:#5c6476; 26-28 fg:#ededf2; 30-34 fg:#5c6476

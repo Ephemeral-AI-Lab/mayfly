@@ -12,6 +12,7 @@ import { mountAgentLoopTestDependencies } from '@deepseek-ai/dsh-agent-loop-test
 import { SessionId } from '@deepseek-ai/dsh-session'
 import * as JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
 import ScheduleService from '@deepseek-ai/dsh-schedule'
+import * as ScheduleTools from '@deepseek-ai/dsh-tool-schedule'
 import { mkdtempTracked, registerTempDirCleanup } from './core/temp-dir.ts'
 
 registerTempDirCleanup()
@@ -31,9 +32,10 @@ async function harness(): Promise<Context> {
 }
 
 describe('Host-wide Schedule mount', () => {
-  it('registers reminder tools for every root Agent and detaches them on disposal', async () => {
+  it('mounts reminder tools for every root Agent and detaches them when the host plugin unloads', async () => {
     const ctx = await harness()
     await ctx.plugin(ScheduleService, {})
+    const tools = await ctx.plugin(ScheduleTools)
 
     const first = await ctx.agents.create({ sessionId: SessionId('schedule-first') })
     const second = await ctx.agents.create({ sessionId: SessionId('schedule-second') })
@@ -43,15 +45,17 @@ describe('Host-wide Schedule mount', () => {
       expect(ctx.tools.get('schedule_delete', agent)?.name).toBe('schedule_delete')
       expect(ctx.tools.get('schedule_update', agent)?.name).toBe('schedule_update')
     }
-    // The tools stay scoped to Agents: no global registration leaks.
-    expect(ctx.tools.get('schedule_create')).toBeUndefined()
+    // The tools live in the host scope the plugin mounted; every root Agent in
+    // that scope resolves them, and disposing an Agent does not unregister them.
+    expect(ctx.tools.get('schedule_create')?.name).toBe('schedule_create')
     expect(await ctx.schedule.catalog()).toEqual([])
 
     await first.dispose()
-    expect(ctx.tools.get('schedule_create', first.agent)).toBeUndefined()
-    expect(ctx.tools.get('schedule_create', second.agent)?.name).toBe('schedule_create')
+    expect(ctx.tools.get('schedule_create')?.name).toBe('schedule_create')
 
     await second.dispose()
+    await tools.dispose()
+    expect(ctx.tools.get('schedule_create')).toBeUndefined()
     await ctx.fiber.dispose()
   })
 })

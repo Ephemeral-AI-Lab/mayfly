@@ -120,6 +120,23 @@ describe('agentRows', () => {
     expect(rowsOf({ calls: [call('plain', { arguments: '' })] })[0]).toMatchObject({ label: 'subagent' })
   })
 
+  it('parses a spawn call once, even when a republish hands over a fresh call object', () => {
+    const spawn = call('cached')
+    const parse = vi.spyOn(JSON, 'parse')
+    try {
+      rowsOf({ calls: [spawn] })
+      const first = parse.mock.calls.length
+      expect(first).toBeGreaterThan(0)
+      rowsOf({ calls: [spawn] })
+      expect(parse.mock.calls.length).toBe(first)
+      // A fresh object with the same identity and arguments is served by the identity fallback.
+      rowsOf({ calls: [{ ...spawn }] })
+      expect(parse.mock.calls.length).toBe(first)
+    } finally {
+      parse.mockRestore()
+    }
+  })
+
   it('carries the live characters and the output progress only while a child works', () => {
     const progress = { startedAt: 1, updatedAt: 2_000, chars: 400, initialChars: 0 }
     const calls = [call('audit', { result: done(activation('child-1')) })]
@@ -474,6 +491,29 @@ describe('mayfly-status-agents', () => {
     harness.ctx.emit('agent/disposed', {} as never)
     harness.ctx.emit('agent/created', {} as never)
     await new Promise<void>(resolve => { setImmediate(resolve) })
+    await harness.dispose()
+  })
+
+  it('refreshes the panel\'s elapsed time on the shared tick, and when a resident Agent comes or goes', async () => {
+    const harness = await bootAgents({ resident: ['child-1'] })
+    const startedAt = Date.now()
+    harness.catalog.push(entry('child-1', 'continuable', 'task of fg'))
+    harness.facts.setFacts({ turn: 1, active: true, agentCalls: [call('fg', { startedAt })] })
+    expect(harness.summaryText()).toBe('● agents 0/1')
+    harness.tick.fire(startedAt + 41_000)
+    expect(harness.summaryText()).toBe('● agents 0/1')
+    expect(JSON.stringify(harness.pane().node)).toContain('"text":"41s"')
+    harness.facts.setChildren([child('child-1')])
+    harness.facts.setFacts({ turn: 1, active: true, agentCalls: [call('fg', { startedAt, result: done(activation('child-1')) })] })
+    // The resident Agent of a continuable child goes: nothing works, though its last facts say so.
+    const resident = harness.resident.get('child-1')!
+    harness.resident.delete('child-1')
+    await new Promise<void>(resolve => { setImmediate(resolve) })
+    harness.ctx.emit('agent/disposed', {} as never)
+    expect(harness.summaryText()).toMatch(/^✓ agents 1\/1/u)
+    harness.resident.set('child-1', resident)
+    harness.ctx.emit('agent/created', {} as never)
+    expect(harness.summaryText()).toMatch(/^● agents 0\/1/u)
     await harness.dispose()
   })
 

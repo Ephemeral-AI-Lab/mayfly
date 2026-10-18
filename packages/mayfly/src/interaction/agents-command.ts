@@ -24,6 +24,39 @@ export const name = 'mayfly-agents-command'
 /** How often an open `/agents` browser repaints its live rows while a child runs. */
 export const AGENTS_TICK_MS = 1_000
 
+/** How many workflow labels to keep: a conversation's useful labels, bounded so a long process cannot grow the map. */
+export const WORKFLOW_LABEL_LIMIT = 256
+
+/**
+ * A bounded, least-recently-used map of workflow child labels. A label is read by the browser and rewritten when the
+ * workflow reports the child again; the oldest unused label is dropped past {@link WORKFLOW_LABEL_LIMIT}.
+ */
+export class WorkflowLabelCache {
+  private readonly labels = new Map<string, string>()
+
+  constructor(private readonly limit = WORKFLOW_LABEL_LIMIT) {}
+
+  get size(): number { return this.labels.size }
+
+  get(key: string): string | undefined {
+    const label = this.labels.get(key)
+    if (label === undefined) return undefined
+    this.labels.delete(key)
+    this.labels.set(key, label)
+    return label
+  }
+
+  remember(key: string, label: string): void {
+    const trimmed = label.trim()
+    if (trimmed === '') return
+    this.labels.delete(key)
+    this.labels.set(key, trimmed)
+    while (this.labels.size > this.limit) this.labels.delete(this.labels.keys().next().value!)
+  }
+
+  clear(): void { this.labels.clear() }
+}
+
 /** Native and Mayfly services required by the browser and attach view. */
 export const inject = [
   'commands',
@@ -109,7 +142,7 @@ export function agentTreeItems(entries: readonly MayflySubagentTreeEntry[], now 
 function withLiveMetrics(
   ctx: Context,
   entries: readonly SubagentDescendantListEntry[],
-  workflowLabels: ReadonlyMap<string, string>,
+  workflowLabels: { get(key: string): string | undefined },
 ): readonly MayflySubagentTreeEntry[] {
   const sessions = new Map([...ctx.sessions.list()].map(session => [String(session.id), session]))
   const liveStream = ctx.get('mayflyLiveAssistantStream')
@@ -149,12 +182,11 @@ function withLiveMetrics(
 /** Register `/agents`; every open browser and attach is fiber-owned. */
 export function apply(ctx: Context): void {
   const t = interactionTranslator(ctx)
-  const workflowLabels = new Map<string, string>()
+  const workflowLabels = new WorkflowLabelCache()
   let closeOpenBrowser: (() => void) | undefined
   let unloaded = false
   const rememberWorkflowLabel = (agent: WorkflowAgentInfo): void => {
-    const label = agent.label.trim()
-    if (label !== '') workflowLabels.set(String(agent.childId), label)
+    workflowLabels.remember(String(agent.childId), agent.label)
   }
   ctx.on('workflow/agent-start', (_info, agent) => { rememberWorkflowLabel(agent) })
   ctx.on('workflow/agent-end', (_info, agent) => { rememberWorkflowLabel(agent) })

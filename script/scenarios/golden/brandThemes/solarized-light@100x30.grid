@@ -1,0 +1,56 @@
+grid 100x30 cursor none
+|
+|    ```diff
+|      -theme: ocean
+|      +theme: tide
+|    ```
+|
+|  ✓ Edit(settings.yaml) · +1 −1 ▮▮▮▮▮▮▮▮
+|    1 │   mayfly:
+|    2 │ −   theme: ocean
+|    2 │ +   theme: tide
+|    3 │     reducedMotion: false
+|
+|  ✗ Bash(pnpm run check:themes) · paper: primary is 16° from error · 0.9s
+|
+|  ● Now walk the palettes. /theme opens the picker, grouped for dark and for light terminals:
+|    Mayfly's palettes, then the ports, each by name with a line about it, the live one checked;
+|    Enter switches. /theme <key> switches at once: tide, dusk, graphite, obsidian, light, linen,
+|    mist, heather, porcelain, and the ports catppuccin-mocha, catppuccin-latte, rose-pine,
+|    rose-pine-dawn, dracula, nord, tokyo-night, tokyo-night-day, solarized-dark, solarized-light,
+|    gruvbox-dark, gruvbox-light, one-dark, one-light, kanagawa-wave, kanagawa-lotus,
+|    everforest-dark, everforest-light; /theme auto follows the terminal. Narrow the terminal below
+|    42 columns for the banner without its mark. /clear starts a fresh conversation: the mark flies
+|    in again. A /theme switch never replays it.
+|
+|  ✻ Worked for 16s · done 09:00
+|                                                                  Alt+↑ conversation · Alt+↓ view
+|╭───────────────────────────────────────────────────────────────────────── Show me every color the ╮
+|│ >  Ask anything · / commands · @ files · # skills · ! shell                                      │
+|╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
+| deepseek-official/deepseek-v4-pro  ~/workspace                  cache ▰▰▱▱▱ 42%  ctx ▰▱▱▱▱▱▱▱▱▱ 5%
+styles
+1: 4-10 fg:#d1cbb9
+2: 6-18 fg:#d72d2b
+3: 6-17 fg:#687800
+4: 4-6 fg:#d1cbb9
+6: 2-3 fg:#687800; 4-7 fg:#5f747c b; 8 fg:#647476; 9-21 fg:#6469bb; 22-25 fg:#647476; 26-27 fg:#687800; 28 fg:#647476; 29-30 fg:#d72d2b; 31 fg:#647476; 32-35 fg:#687800; 36-39 fg:#d72d2b
+7: 4-6 fg:#647476; 10-16 fg:#6469bb
+8: 4-6 fg:#647476; 8 fg:#d72d2b bg:#fef3f2; 9 bg:#fef3f2; 10-11 fg:#5f747c bg:#fef3f2; 12-17 fg:#6469bb bg:#fef3f2; 18 fg:#5f747c bg:#fef3f2; 19-23 fg:#687800 bg:#fef3f2; 24-93 bg:#fef3f2
+9: 4-6 fg:#647476; 8 fg:#687800 bg:#f1fad4; 9 bg:#f1fad4; 10-11 fg:#5f747c bg:#f1fad4; 12-17 fg:#6469bb bg:#f1fad4; 18 fg:#5f747c bg:#f1fad4; 19-22 fg:#687800 bg:#f1fad4; 23-93 bg:#f1fad4
+10: 4-6 fg:#647476; 10-11 fg:#5f747c; 12-25 fg:#6469bb; 26 fg:#5f747c; 27-31 fg:#8f6c04
+12: 2-3 fg:#d72d2b; 4-7 fg:#5f747c b; 8 fg:#647476; 9-29 fg:#6469bb; 30-72 fg:#647476
+14: 2-3 fg:#5f747c; 27-32 fg:#6469bb
+16: 4-8 fg:#6469bb; 20-31 fg:#6469bb; 51-54 fg:#6469bb; 57-60 fg:#6469bb; 63-70 fg:#6469bb; 73-80 fg:#6469bb; 83-87 fg:#6469bb; 90-94 fg:#6469bb
+17: 4-7 fg:#6469bb; 10-16 fg:#6469bb; 19-27 fg:#6469bb; 44-59 fg:#6469bb; 62-77 fg:#6469bb; 80-88 fg:#6469bb
+18: 4-17 fg:#6469bb; 20-26 fg:#6469bb; 29-32 fg:#6469bb; 35-45 fg:#6469bb; 48-62 fg:#6469bb; 65-78 fg:#6469bb; 81-95 fg:#6469bb
+19: 4-15 fg:#6469bb; 18-30 fg:#6469bb; 33-40 fg:#6469bb; 43-51 fg:#6469bb; 54-66 fg:#6469bb; 69-82 fg:#6469bb
+20: 4-18 fg:#6469bb; 21-36 fg:#6469bb; 39-49 fg:#6469bb
+21: 48-53 fg:#6469bb
+22: 16-21 fg:#6469bb
+24: 2-30 fg:#647476
+25: 66-96 fg:#647476
+26: 0-74 fg:#d1cbb9; 75-97 fg:#586e75 b; 98-99 fg:#d1cbb9
+27: 0 fg:#d1cbb9; 2-3 fg:#5f747c; 4 r; 5-60 fg:#839191; 99 fg:#d1cbb9
+28: 0-99 fg:#d1cbb9
+29: 1-33 fg:#5f747c; 36-46 fg:#647476; 65-70 fg:#5f747c; 71-72 fg:#8f6c04; 73-75 fg:#647476; 76-79 fg:#5f747c; 82-85 fg:#5f747c; 86 fg:#0176bb; 87-95 fg:#647476; 96-98 fg:#5f747c

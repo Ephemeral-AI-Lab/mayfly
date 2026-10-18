@@ -70,11 +70,6 @@ async function mount(options: { withAgent?: boolean, plusFirst?: boolean, locale
   const followup = vi.fn()
   const agent = { id: session.id, session, status: 'idle', followup } as unknown as Agent
   ctx.provide('testSession', { current: options.withAgent === false ? null : agent, modelRef: undefined })
-  // The input plugin injects the app-owned session starter; this spec drives the editor directly.
-  ctx.provide('mayflySessionStart', {
-    ensure: async () => agent,
-    onBooted: () => () => {},
-  } as never)
   if (options.references !== undefined) ctx.provide('fileReferences', options.references)
   const inputFiber = await ctx.plugin(inputPlugin)
   const editor = components.editors.at(-1)!

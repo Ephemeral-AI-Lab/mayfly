@@ -11,6 +11,7 @@ import type { UserMessage } from '@deepseek-ai/dsh-session'
 import type { MayflyDecisionRequest } from '../core/types.ts'
 import { textOf, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import { sanitizePluginText } from '../core/plugin-view.ts'
+import { countWork, type MayflyWorkCounters } from '../core/ui-work-counters.ts'
 import type { MayflyTranslate } from '../frontend/locale.ts'
 import { materializeTranscriptEntries, type CommandCallModel, type ReadCallModel, type SearchCallModel, type TranscriptEntryModel, type TranscriptModel, type TranscriptTurnModel } from '../frontend/models.ts'
 import { queuedIdOf, type StreamMood, type StreamQueued, type StreamRow, type StreamTurn, type TranscriptViewFacts } from '../components/transcript-view.ts'
@@ -35,6 +36,49 @@ const PREVIEW_MAX_CHARS = 80
 const REASONING_LINE_MAX_CHARS = 400
 
 type Entry = TranscriptModel['entries'][number]
+
+/** Whether two readonly arrays hold the same elements by identity. */
+function sameIdentities<Value>(left: readonly Value[], right: readonly Value[]): boolean {
+  if (left === right) return true
+  if (left.length !== right.length) return false
+  for (let index = 0; index < left.length; index += 1) if (left[index] !== right[index]) return false
+  return true
+}
+
+/** A run of adjacent semantic entries of one turn, as a range of the bounded entries. */
+interface TurnSegment {
+  readonly turn: number
+  readonly start: number
+  readonly end: number
+}
+
+/** A canonical node, which always shows, and its position among the bounded entries. */
+interface TurnNote {
+  readonly index: number
+  readonly entry: Entry
+}
+
+/**
+ * The turn index of one durable entry array: the bounded entries without the live step's own thinking and answer, the
+ * turns in order, the runs of each turn, and the canonical nodes. Built once per `(entries identity, live turn, live
+ * step)`; a durable publish gets a new entries array and rebuilds it, while a live-only publish reuses it.
+ */
+interface TurnIndex {
+  /** The durable array the index was built from. */
+  readonly source: TranscriptModel['entries']
+  /** The live turn and step the bounded entries were taken for. */
+  readonly liveKey: string
+  /** The bounded entries: the durable entries without the live step's thinking and answer. */
+  readonly entries: readonly Entry[]
+  /** The semantic turns in first-appearance order, then the live turn when it is new (a Set's order). */
+  readonly turns: readonly number[]
+  /** Adjacent semantic entries of one turn, in order. */
+  readonly segments: readonly TurnSegment[]
+  /** Canonical nodes, in order. */
+  readonly notes: readonly TurnNote[]
+  /** The segments of each turn, so a window names its turns rather than scanning every entry. */
+  readonly byTurn: ReadonlyMap<number, readonly TurnSegment[]>
+}
 
 /** What one pass reads besides the model. */
 export interface StreamInputs {
@@ -140,12 +184,20 @@ export class StreamFacts {
   private rows = new Map<string, StreamRow>()
   private turns = new Map<string, StreamTurn>()
   private queued = new Map<string, StreamQueued>()
+  /** The last durable entry array mapped to its turn index; one entry, because the displayed view publishes one model at a time. */
+  private index: TurnIndex | undefined
+  /** The last facts object, reused when an unchanged pass produced the same turns and queued rows by identity. */
+  private lastFacts: { readonly turns: readonly StreamTurn[], readonly queued: readonly StreamQueued[], readonly facts: TranscriptViewFacts } | undefined
+
+  /** @param counters - optional work sink; production constructs without one. */
+  constructor(private readonly counters?: MayflyWorkCounters) {}
 
   /** Forget every kept row (a locale or policy change rewrites texts under the same ids). */
   reset(): void {
     this.rows = new Map()
     this.turns = new Map()
     this.queued = new Map()
+    this.index = undefined
   }
 
   /**
@@ -159,7 +211,13 @@ export class StreamFacts {
     const turns = new Map<string, StreamTurn>()
     const queued = new Map<string, StreamQueued>()
     const owners = new Map<string, RowOwner>()
-    const facts: TranscriptViewFacts = { turns: model === null ? [] : this.turnsOf(model, inputs, rows, turns, owners), queued: this.queuedOf(inputs, queued) }
+    const nextTurns = model === null ? [] : this.turnsOf(model, inputs, rows, turns, owners)
+    const nextQueued = this.queuedOf(inputs, queued)
+    const previous = this.lastFacts
+    const facts: TranscriptViewFacts = previous !== undefined && sameIdentities(previous.turns, nextTurns) && sameIdentities(previous.queued, nextQueued)
+      ? previous.facts
+      : { turns: nextTurns, queued: nextQueued }
+    if (facts !== previous?.facts) this.lastFacts = { turns: nextTurns, queued: nextQueued, facts }
     this.owners = owners
     this.model = model
     this.rows = rows
@@ -200,13 +258,13 @@ export class StreamFacts {
     const { policy } = inputs
     const live = model.live
     const liveEntries = live?.entries ?? []
-    const bounded = live === undefined ? model.entries : model.entries.filter(entry => !((entry.kind === 'transcript-thinking' || entry.kind === 'transcript-assistant')
-      && entry.turn === live.turn && entry.step === live.step))
-    const turnNumbers = [...new Set([...bounded.filter(isSemantic).map(entry => entry.turn), ...(live === undefined ? [] : [live.turn])])]
+    const index = this.indexOf(model)
+    const turnNumbers = index.turns
     const visible = new Set([...turnNumbers.slice(-policy.windowTurns), ...inputs.disclosure.forced])
-    const entries = bounded.filter(entry => !isSemantic(entry) || visible.has(entry.turn))
+    const entries = visibleEntries(index, visible)
     const reach = new Set(turnNumbers.slice(-policy.expandTurns))
-    const runnable = new Set(entries.flatMap(entry => isSemantic(entry) && isToolLike(entry) && !isUnmerged(entry) ? [entry.id] : []))
+    const runnable = new Set<string>()
+    for (const entry of entries) if (isSemantic(entry) && isToolLike(entry) && !isUnmerged(entry)) runnable.add(entry.id)
     const display = buildDisplay({
       entries: [...entries, ...liveEntries],
       policy: policy.process,
@@ -225,7 +283,9 @@ export class StreamFacts {
     const asked = requestOf(inputs.requests, inputs.approvals, inputs.children)
     runsOf(display, inputs.t, inputs.now, asked).forEach((item, position) => {
       const turn = turnOf(item)
-      const mapped = this.rowsOf(item, inputs, position, asked).map(row => this.intern(row, kept))
+      const built = this.rowsOf(item, inputs, position, asked)
+      countWork(this.counters, 'streamRowsBuilt', built.length)
+      const mapped = built.map(row => this.intern(row, kept))
       if (mapped.length === 0) return
       for (const row of mapped) {
         owners.set(row.id, ownerOf(item, turn, row))
@@ -253,6 +313,7 @@ export class StreamFacts {
     // A request that names no call (a hook asked) has no block to become: it is a block of its own at the end of the stream.
     const nameless = inputs.requests?.[0]
     if (nameless !== undefined && nameless.callId === undefined && buckets.length > 0) {
+      countWork(this.counters, 'streamRowsBuilt')
       buckets.at(-1)!.rows.push(this.intern(namelessRequestRow(nameless, inputs.requests!.filter(request => request.type === nameless.type).length, inputs.t), kept))
     }
     return buckets.map(({ turn, rows: all }) => {
@@ -267,6 +328,51 @@ export class StreamFacts {
       keptTurns.set(id, result)
       return result
     })
+  }
+
+  /**
+   * The turn index of the model's durable entries, built once per entries identity and live turn and step. A durable
+   * publish copies the array and rebuilds it; a live-only publish reuses it.
+   */
+  private indexOf(model: TranscriptModel): TurnIndex {
+    const live = model.live
+    const liveKey = live === undefined ? '' : `${String(live.turn)}:${String(live.step)}`
+    const cached = this.index
+    if (cached !== undefined && cached.source === model.entries && cached.liveKey === liveKey) return cached
+    const entries = live === undefined ? model.entries : model.entries.filter(entry => !((entry.kind === 'transcript-thinking' || entry.kind === 'transcript-assistant')
+      && entry.turn === live.turn && entry.step === live.step))
+    const turns: number[] = []
+    const segments: TurnSegment[] = []
+    const notes: TurnNote[] = []
+    const byTurn = new Map<number, TurnSegment[]>()
+    let open: { readonly turn: number, readonly start: number } | undefined
+    const close = (end: number): void => {
+      if (open === undefined) return
+      const segment: TurnSegment = { turn: open.turn, start: open.start, end }
+      segments.push(segment)
+      const list = byTurn.get(open.turn)
+      if (list === undefined) byTurn.set(open.turn, [segment])
+      else list.push(segment)
+      open = undefined
+    }
+    entries.forEach((entry, position) => {
+      if (!isSemantic(entry)) {
+        close(position)
+        notes.push({ index: position, entry })
+        return
+      }
+      if (open !== undefined && open.turn === entry.turn) return
+      close(position)
+      if (!byTurn.has(entry.turn)) turns.push(entry.turn)
+      open = { turn: entry.turn, start: position }
+    })
+    close(entries.length)
+    // The live turn is the newest in a chronological model, but a stale overlay can be behind a durable turn: add it only
+    // when a segment has not already placed it, which keeps the Set order the old turn list had.
+    if (live !== undefined && !byTurn.has(live.turn)) turns.push(live.turn)
+    const index: TurnIndex = { source: model.entries, liveKey, entries, turns, segments, notes, byTurn }
+    this.index = index
+    return index
   }
 
   /**
@@ -349,6 +455,27 @@ export class StreamFacts {
     if (!isSemantic(item.entry)) return [{ kind: 'note', id: `node:${String(position)}`, text: sanitizePluginText(canonicalText(item.entry)) }]
     return entryRows(item, item.entry, inputs, asked)
   }
+}
+
+/**
+ * The bounded entries the window and the forced turns show, in their original order: the visible runs of semantic
+ * entries, and every canonical node between them.
+ */
+function visibleEntries(index: TurnIndex, visible: ReadonlySet<number>): Entry[] {
+  const selected: TurnSegment[] = []
+  for (const turn of visible) {
+    const segments = index.byTurn.get(turn)
+    if (segments !== undefined) selected.push(...segments)
+  }
+  selected.sort((left, right) => left.start - right.start)
+  const entries: Entry[] = []
+  let note = 0
+  for (const segment of selected) {
+    while (note < index.notes.length && index.notes[note]!.index < segment.start) entries.push(index.notes[note++]!.entry)
+    for (let position = segment.start; position < segment.end; position += 1) entries.push(index.entries[position]!)
+  }
+  while (note < index.notes.length) entries.push(index.notes[note++]!.entry)
+  return entries
 }
 
 /** The block of a request that names no call: the tool and what the asker said, waiting on the user. */

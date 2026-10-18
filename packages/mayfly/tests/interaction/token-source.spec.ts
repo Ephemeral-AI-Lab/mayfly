@@ -20,6 +20,7 @@ afterEach(() => { rmSync(root, { recursive: true, force: true }) })
 
 function contextOf(images: string[], mentions: string[] = [], cwd = root) {
   return {
+    get: () => undefined,
     mayflyInteractionState: {
       pasteImage: { pastedImages: new Map(images.map(marker => [marker, {}])) },
       mentions: new Set(mentions),

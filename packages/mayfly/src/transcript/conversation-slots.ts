@@ -13,6 +13,7 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { SessionAddress } from '@deepseek-ai/dsh-api-session-controller'
 import { SessionId, type Session } from '@deepseek-ai/dsh-session'
 import type { MayflyConversationsSnapshot, MayflyConversationView } from '../app/conversation-views.ts'
+import type { MayflyWorkCounters } from '../core/ui-work-counters.ts'
 import { watchAssistantStream } from '../frontend/assistant-stream.ts'
 import { AddressConversationFeed, type ConversationHistorySource } from './conversation-feed.ts'
 import type { OfficialConversationModelSource } from './official-model.ts'
@@ -34,11 +35,13 @@ interface Slot {
 
 /** Collaborators the slots build sources and read native history with. */
 interface ConversationSlotsOptions {
-  /** Build one model source; `agent` scopes tool presenters, `publish` wakes the renderer. */
-  readonly source: (agent: Agent | undefined, publish: () => void) => OfficialConversationModelSource
+  /** Build one model source; `agent` scopes tool presenters, `publish` wakes the renderer, `counters` measures mapping. */
+  readonly source: (agent: Agent | undefined, publish: () => void, counters?: MayflyWorkCounters) => OfficialConversationModelSource
   /** View options for a view without its own activity row. */
   readonly headed: TranscriptViewOptions
   readonly history: () => ConversationHistorySource | undefined
+  /** Optional work sink for transcript mapping; production passes none. */
+  readonly counters?: MayflyWorkCounters
 }
 
 function sameBinding(left: Binding, right: Binding): boolean {
@@ -75,9 +78,10 @@ export class ConversationSlots {
     this.transcript.show(this.displayed)
   }
 
-  /** Re-resolve tool presenters in every retained view. */
+  /** Mark tool presenters stale in every retained view; only the displayed one converts now. */
   invalidateTools(): void {
-    for (const slot of this.slots.values()) slot.source.invalidateTools()
+    for (const slot of this.slots.values()) slot.source.markToolsStale()
+    if (this.displayed !== undefined) this.transcript.refresh()
   }
 
   dispose(): void {
@@ -101,7 +105,7 @@ export class ConversationSlots {
   private create(id: string, binding: Binding, floor: number | undefined, headed: boolean): void {
     const agent = binding.kind === 'session' ? binding.agent : undefined
     // A hidden view keeps its newest value stashed and wakes nothing.
-    const source = this.options.source(agent, () => { if (this.displayed === id) this.transcript.refresh() })
+    const source = this.options.source(agent, () => { if (this.displayed === id) this.transcript.refresh() }, this.options.counters)
     if (binding.kind === 'session') source.attach(binding.session, floor, agent)
     else if (binding.kind === 'address') {
       source.attachFeed(new AddressConversationFeed(this.options.history(), binding.address, () => {

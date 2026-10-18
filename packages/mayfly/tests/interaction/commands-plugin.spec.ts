@@ -397,7 +397,7 @@ describe('mayfly-commands plugin', () => {
     expect(rows.join('\n')).toContain('Help')
     expect(rows.join('\n')).toContain('Commands')
     expect(rows.join('\n')).toContain('/plugin')
-    expect(rows.join('\n')).toContain('/update')
+    expect(rows.join('\n')).toContain('/save')
     expect(rows.join('\n')).toContain('/effort (/thinking)')
     expect(rows.join('\n')).toContain('/mode')
     // The command roster grew past the first window; scroll down to the

@@ -131,13 +131,15 @@ function fit(deps: BannerDeps, runs: readonly MarkTextRun[], max: number): MarkT
   let room = max
   for (const run of runs) {
     if (room <= 0) break
-    const span = deps.visibleWidth(run.text)
+    // Tabs are one cell to visibleWidth but expand at the terminal; normalize before measuring and emitting.
+    const text = run.text.replace(/\t/gu, '   ')
+    const span = deps.visibleWidth(text)
     if (span <= room) {
-      out.push(run)
+      out.push(text === run.text ? run : { text, paint: run.paint })
       room -= span
       continue
     }
-    out.push({ text: deps.truncate(run.text, room), paint: run.paint })
+    out.push({ text: deps.truncate(text, room), paint: run.paint })
     room = 0
   }
   return out

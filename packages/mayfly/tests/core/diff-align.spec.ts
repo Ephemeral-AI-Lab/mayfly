@@ -118,12 +118,12 @@ describe('paintDiffRows', () => {
   const helpers = { truncateToWidth, visibleWidth }
   const palette = {
     text: (text: string): string => `<T>${text}</T>`,
+    muted: (text: string): string => `<G>${text}</G>`,
     diffAdded: (text: string): string => `<A>${text}</A>`,
     diffRemoved: (text: string): string => `<R>${text}</R>`,
     diffAddedBg: (text: string): string => `[A${text}A]`,
     diffRemovedBg: (text: string): string => `[R${text}R]`,
     diffMeta: (text: string): string => `<M>${text}</M>`,
-    diffGutter: (text: string): string => `<G>${text}</G>`,
   }
   const plain = (rows: readonly string[]): string[] => rows.map(row => row.replace(/<\/?[A-Z]>|\[[AR]|[AR]\]/gu, ''))
 
@@ -176,7 +176,7 @@ describe('paintDiffRows', () => {
   it('ends a long line in … and pads real SGR bands to exactly the width', () => {
     const red = (text: string): string => `\x1b[38;2;1;2;3m${text}\x1b[39m`
     const band = (text: string): string => `\x1b[48;2;4;5;6m${text}\x1b[49m`
-    const real = { text: red, diffAdded: red, diffRemoved: red, diffAddedBg: band, diffRemovedBg: band, diffMeta: red, diffGutter: red }
+    const real = { text: red, muted: red, diffAdded: red, diffRemoved: red, diffAddedBg: band, diffRemovedBg: band, diffMeta: red }
     const rows = paintDiffRows(alignDiffLines('', 'x\n\ty\nlong line that does not fit\n'), 24, helpers, real)
     // A tint stops DIFF_INSET_COLUMNS short of the edge, so a changed row is that much narrower than the width.
     expect(rows.map(row => visibleWidth(row))).toEqual([20, 20, 20])

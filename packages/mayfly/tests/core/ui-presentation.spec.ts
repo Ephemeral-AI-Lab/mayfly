@@ -91,9 +91,9 @@ describe('focus window', () => {
     const surface = result.value
     surface.focusTarget!.focused = true
     expect(surface.component.render(30).join('\n')).toContain('Top')
-    surface.focusTarget!.handleInput?.('\t')
+    surface.focusTarget!.handleInput?.('\x1b[1;3B')
     expect(surface.component.render(30).join('\n')).toContain('Bottom')
-    surface.focusTarget!.handleInput?.('\x1b[Z')
+    surface.focusTarget!.handleInput?.('\x1b[1;3A')
     expect(surface.component.render(30).join('\n')).toContain('Top')
     runtime.dispose()
     model.dispose()

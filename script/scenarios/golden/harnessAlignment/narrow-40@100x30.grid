@@ -1,0 +1,44 @@
+grid 40x30 cursor none
+|
+| mayfly scenario
+| ephemeral agents, enduring works
+| deepseek-v4-pro · deepseek-official
+| ~/workspace
+|
+|  » Check the minimal tool surface.
+|
+|  ● This is a replay session: the
+|    model is a stub. Type nothing; the
+|    conversation above is scripted.
+|
+|  ✻ Worked for 0s · done 09:00
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|      Alt+↑ conversation · Alt+↓ view
+|╭───── Check the minimal tool surface. ╮
+|│ >  Ask anything · / commands         │
+|╰──────────────────────────────────────╯
+| deepseek-v4-pro  workspace      ctx 1%
+styles
+1: 1-6 fg:#9a86e6 b; 7-15 fg:#5c6476
+2: 1-32 fg:#c9c0f0
+3: 1-35 fg:#e9e6f4
+4: 1-11 fg:#9aa3b8
+6: 2-3 fg:#9a86e6; 4-39 fg:#9a86e6 b
+8: 2-3 fg:#ededf2
+12: 2-29 fg:#9aa3b8
+25: 6-36 fg:#9aa3b8
+26: 0-6 fg:#45406b; 7-37 fg:#f5f5f7 b; 38-39 fg:#45406b
+27: 0 fg:#45406b; 2-3 fg:#ededf2; 4 r; 5-29 fg:#5c6476; 39 fg:#45406b
+28: 0-39 fg:#45406b
+29: 1-15 fg:#ededf2; 18-26 fg:#9aa3b8; 33-38 fg:#ededf2

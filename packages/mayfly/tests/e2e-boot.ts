@@ -200,7 +200,8 @@ export async function bootDirectMayfly(options: { readonly terminal?: FakeTermin
         id: 'e2e.direct-pane',
         title: 'Direct plugin',
         placement: 'bottom',
-        size: { min: 2, preferred: 3, max: 4 },
+        // The titled frame takes five rows (rule, title, padding, one content row, padding); a smaller cap elides the text.
+        size: { min: 2, preferred: 3, max: 6 },
       }, { kind: 'text', content: 'native dsh + Mayfly seam' })
       direct.mayflyStatus.register({
         id: 'e2e.direct-status',
@@ -338,12 +339,19 @@ export const apply = ctx => globalThis.__mayflyDirectE2E.transcriptApply(ctx)
   return { ctx, terminal, observations, commands, projections, tools, controller, exits }
 }
 
-/** Wait for app startup to select the exact live Agent. */
+/**
+ * The exact live Agent. A launch with no task and no `--resume` deliberately
+ * starts no session, so the helper performs the first interactive action: the
+ * editor asks `mayflySessionStart.ensure()` for the primary Agent, which
+ * creates and selects it once.
+ */
 export async function currentAgent(tree: DirectMayflyTree): Promise<Agent> {
-  let agent: Agent | null = null
+  const selection = (tree.ctx.get('mayflyCurrentAgent') as MayflyCurrentAgentService | undefined)
+  if (selection === undefined) throw new Error('Mayfly app did not mount current-Agent selection')
+  let agent = selection.current()
+  if (agent === null) agent = await tree.ctx.mayflySessionStart.ensure()
   for (let turn = 0; turn < 100; turn += 1) {
-    agent = (tree.ctx.get('mayflyCurrentAgent') as MayflyCurrentAgentService | undefined)?.current() ?? null
-    if (agent !== null) return agent
+    if (selection.current() === agent) return agent
     await Promise.resolve()
   }
   throw new Error('Mayfly app did not select an Agent')

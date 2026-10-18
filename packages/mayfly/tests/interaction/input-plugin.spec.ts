@@ -123,7 +123,7 @@ async function mount(options: {
   modelRef?: unknown
   retract?: (messageId: string) => boolean
   view?: DisplayedFixture
-  subagents?: { prompt: ReturnType<typeof vi.fn>, interruptByParent: ReturnType<typeof vi.fn> }
+  subagents?: { prompt: ReturnType<typeof vi.fn>, interruptByParent: ReturnType<typeof vi.fn>, interrupt?: ReturnType<typeof vi.fn> }
   uiImages?: unknown
 } = {}): Promise<{
   ctx: Context
@@ -253,9 +253,11 @@ describe('mayfly-input plugin', () => {
   })
 
   it('pages the transcript from the editor and resumes the tail on End', async () => {
-    const { screen, editor, editorRoot, hint, fiber } = await mount()
+    const { ctx, screen, editor, editorRoot, hint, fiber } = await mount()
     screen.contentScrollResult = true
     screen.contentPaused = true
+    let jumps = 0
+    ctx.on('mayfly/request-new-messages', () => { jumps += 1 })
 
     type(editor, 'draft')
     expect(screen.sendContentInput('\x1b[5~')).toBe(true)
@@ -267,12 +269,13 @@ describe('mayfly-input plugin', () => {
       { direction: 'down', amount: 20 },
     ])
     expect(screen.sendContentInput('\x1b[F')).toBe(false)
-    // Ctrl+↓ follows the tail even with a draft, for keyboards that have no End key.
+    // Ctrl+↓ asks for the messages that arrived while away even with a draft, for keyboards without End.
     expect(screen.sendContentInput('\x1b[1;5B')).toBe(true)
-    expect(screen.followCount).toBe(1)
+    expect(jumps).toBe(1)
+    expect(screen.followCount).toBe(0)
     editor.setText('')
     expect(screen.sendContentInput('\x1b[F')).toBe(true)
-    expect(screen.followCount).toBe(2)
+    expect(screen.followCount).toBe(1)
     expect(screen.contentPaused).toBe(false)
     expect(hint.render(80)).toEqual([])
 
@@ -616,8 +619,8 @@ describe('mayfly-input plugin', () => {
         mode: 'continuable' as const,
         access: 'interactive' as const,
       }, 50)
-    const interruptByParent = vi.fn()
-    const rig = await mount({ running: true, view, subagents: { prompt, interruptByParent } })
+    const interrupt = vi.fn()
+    const rig = await mount({ running: true, view, subagents: { prompt, interruptByParent: vi.fn(), interrupt } })
     type(rig.editor, 'late receipt')
     rig.editor.handleInput(KEY.enter)
     await vi.waitFor(() => expect(prompt).toHaveBeenCalledOnce())
@@ -626,7 +629,7 @@ describe('mayfly-input plugin', () => {
     await Promise.resolve()
     await Promise.resolve()
     expect(rig.editor.onKey?.(KEY.escape)).toBe(true)
-    expect(interruptByParent).toHaveBeenCalledOnce()
+    expect(interrupt).toHaveBeenCalledWith(SessionId('input-spec'), { kind: 'user', parentSessionId: SessionId('parent') })
 
     const abortGate = Promise.withResolvers<{ messageId: string }>()
     const abortPrompt = vi.fn(() => abortGate.promise)
@@ -645,7 +648,7 @@ describe('mayfly-input plugin', () => {
 
   it('interrupts an interactive subagent through its parent address', async () => {
     const prompt = vi.fn()
-    const interruptByParent = vi.fn()
+    const interrupt = vi.fn()
     const view = sideView({
         kind: 'subagent' as const,
         sessionId: 'input-spec',
@@ -654,9 +657,9 @@ describe('mayfly-input plugin', () => {
         mode: 'continuable' as const,
         access: 'interactive' as const,
       }, 3)
-    const { editor, cancel } = await mount({ running: true, view, subagents: { prompt, interruptByParent } })
+    const { editor, cancel } = await mount({ running: true, view, subagents: { prompt, interruptByParent: vi.fn(), interrupt } })
     editor.handleInput(KEY.escape)
-    expect(interruptByParent).toHaveBeenCalledWith('input-spec', 'parent', 'continuable')
+    expect(interrupt).toHaveBeenCalledWith(SessionId('input-spec'), { kind: 'user', parentSessionId: SessionId('parent') })
     expect(cancel).not.toHaveBeenCalled()
   })
 
@@ -793,7 +796,7 @@ describe('mayfly-input plugin', () => {
     const { screen, editor, hint } = await mount({ withAgent: false })
     type(editor, 'hello')
     editor.handleInput(KEY.enter)
-    expect(noticesOf(hint)).toEqual(['!✗ !!no active session!'])
+    await vi.waitFor(() => { expect(noticesOf(hint)).toEqual(['!✗ !!could not start a session: no active session!']) })
     expect(screen.renderRequests).toBeGreaterThan(0)
   })
 
@@ -1101,11 +1104,10 @@ describe('mayfly-input plugin', () => {
     expect(hint.render(80)).toEqual([])
   })
 
-  it('renders no hint row without an attached session', async () => {
+  it('reports an empty slash match without an attached session', async () => {
     const { editor, hint } = await mount({ withAgent: false })
     type(editor, '/res')
-    // No agent means no slash feedback, and nothing else owns the row.
-    expect(hint.render(80)).toEqual([])
+    expect(hint.render(80)).toEqual(['~no matching command: /res~'])
   })
 
   it('renders no hint row when the slash line is not a command', async () => {
@@ -1116,11 +1118,12 @@ describe('mayfly-input plugin', () => {
 
   it('keeps an over-wide rejection whole in the lane; the notification pane truncates it at its cap', async () => {
     const { editor, hint } = await mount({ withAgent: false })
-    type(editor, 'hello')
+    type(editor, 'x'.repeat(300))
     editor.handleInput(KEY.enter)
+    await vi.waitFor(() => { expect(noticesOf(hint)).toHaveLength(1) })
     const [notice] = noticesOf(hint)
     expect(notice).toMatch(/^!✗ !/u)
-    expect(notice).toContain('session')
+    expect(notice).toContain('could not start a session')
   })
 
   it('renders no hint row when a command succeeds without text', async () => {
@@ -1715,7 +1718,7 @@ describe('the Alt+M model cycle key', () => {
     type(editor, 'draft')
     editor.handleInput(KEY.altM)
     expect(editor.getText()).toBe('draft')
-    await vi.waitFor(() => { expect(ctx.mayflyUiInteraction.notificationSnapshot().map(item => item.message)).toEqual(['no session is live yet']) })
+    await vi.waitFor(() => { expect(ctx.mayflyUiInteraction.notificationSnapshot().map(item => item.message)).toEqual(['the model selection is unavailable']) })
   })
 })
 

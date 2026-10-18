@@ -5,6 +5,7 @@ import { Service, type Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/cordis-plugin-include'
 import type {} from '@deepseek-ai/cordis-plugin-loader'
 import { freezeWire } from './builders.ts'
+import { equalPaneSummary } from './status-equality.ts'
 import { admitSnapshotUpdate, UiEventEndpoint, validateScope, validateSource } from './snapshot-events.ts'
 import type {
   MayflyEditorDecoration,
@@ -278,6 +279,9 @@ export class MayflyPaneService extends ObservableRegistry<MayflyPaneEntry> imple
       if (handle.disposed) return
       if (!views) throw new TypeError('only a views pane has a summary')
       if (next !== null) validateSummary(next, 'pane summary')
+      // A producer that rebuilds its summary every tick hands over a fresh object with equal content: it bumps no
+      // revision and wakes no observer.
+      if (equalPaneSummary(summary, next)) return
       summary = freezeWire(next)
       const current = this.entries.get(id)!
       const entry = Object.freeze({ ...current, summary })

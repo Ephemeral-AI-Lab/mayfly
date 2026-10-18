@@ -116,7 +116,7 @@ describe('mayfly bundle', () => {
     expect(statusGoal.inject).toEqual(['mayflyPanes', 'mayflyCurrentAgent', 'mayflyScreen', 'mayflyTick', 'goals', 'sessionProjections'])
     expect(statusJobs.inject).toEqual(['mayflyPanes', 'mayflyCurrentAgent', 'mayflyScreen', 'mayflyTick', 'mayflyOverlays', 'jobs'])
     expect(statusAgents.inject).toEqual(['mayflyPanes', 'mayflyCurrentAgent', 'mayflyScreen', 'mayflySessionFacts', 'mayflyTick', 'mayflyConversations', 'subagents', 'agents', 'sessionProjections'])
-    expect(paneWorkflow.inject).toEqual(['mayflyPanes', 'mayflyCurrentAgent', 'mayflySessionFacts', 'sessions'])
+    expect(paneWorkflow.inject).toEqual(['mayflyPanes', 'mayflyCurrentAgent', 'mayflySessionFacts', 'sessions', 'mayflyTick'])
     expect(jobsCommand.inject).toEqual(['commands', 'jobs', 'mayflyCurrentAgent', 'mayflyOverlays'])
     expect(agentsCommand.inject).toEqual([
       'commands',

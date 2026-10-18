@@ -72,7 +72,7 @@ describe('the strip', () => {
 
   it('marks wizard steps and keeps its rule plain while focused', () => {
     const wizard = ui.tabs({ id: 'w', mode: 'wizard', activeId: 'two', items: [{ id: 'one', label: 'One' }, { id: 'two', label: 'Two' }, { id: 'three', label: 'Three' }] })
-    expect(plain(paintTabs(wizard, 80, idle, tagged, ['one']))).toEqual(['✓ One  ›  ● Two  ›  ○ Three', '          ━━━━━'])
+    expect(plain(paintTabs(wizard, 80, idle, tagged, ['one']))).toEqual(['✓ One  ›  ● Two  ›  ○ Three'.padEnd(77) + '2/3', '          ━━━━━'])
     const focused = paintTabs(wizard, 80, focus('two'), tagged, ['one'])
     expect(focused[1]).not.toContain('\x1b[1m')
     expect(focused[1]).toContain(`${tone('primary', '━━━━━')}`)

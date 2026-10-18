@@ -1,6 +1,6 @@
 /**
  * The version shown in the banner's Version row. Keep in sync with
- * `package.json` — `tests/banner.spec.ts` and `tests/version.spec.ts` fail
+ * `package.json` — `tests/transcript/version.spec.ts` fails
  * the suite on drift. This module is the public `./banner-content`
  * subpath: `/version` (interaction) imports the constant from here, so the
  * export's home does not move.
@@ -9,7 +9,7 @@
  */
 
 /**
- * The displayed Mayfly version; `tests/banner.spec.ts` fails the suite on
+ * The displayed Mayfly version; `tests/transcript/version.spec.ts` fails the suite on
  * drift from `package.json`.
  */
 export const MAYFLY_VERSION = '0.1.3-rc.2'

@@ -24,7 +24,6 @@ function fixture() {
     'packages/mayfly/src/transcript/banner-content.ts',
     'packages/cli/tests/main.spec.ts',
     'packages/cli/tests/runtime.spec.ts',
-    'packages/mayfly/tests/transcript/banner.spec.ts',
     'packages/mayfly/src/interaction/changelog-content.ts',
     ...advertisedVersionFiles,
   ]

@@ -80,6 +80,18 @@ async function mount(initial: PlanProjection = { active: false, pending: false }
   const agent = agentFor(session)
   ctx.provide('permissionPresets', {
     names: ['workspace-write', 'danger-full-access'],
+    defaultPreset: 'workspace-write',
+    catalog: () => ({
+      options: [
+        { value: 'workspace-write', name: 'workspace-write' },
+        { value: 'danger-full-access', name: 'danger-full-access' },
+      ],
+      defaultOptions: [
+        { value: 'workspace-write', name: 'workspace-write' },
+        { value: 'danger-full-access', name: 'danger-full-access' },
+      ],
+      defaultPreset: 'workspace-write',
+    }),
     current: () => 'workspace-write',
     resolve: name => {
       if (name === 'danger-full-access') return { sandbox: 'danger-full-access', approval: 'never' }
@@ -89,6 +101,7 @@ async function mount(initial: PlanProjection = { active: false, pending: false }
       throw new Error(`unknown preset ${name}`)
     },
     optionOf: name => ({ value: name, name }),
+    set: () => {},
   } satisfies PermissionPresetsService as never)
   ctx.provide('testSession', { current: agent })
   const fiber = await ctx.plugin(modeStatus)

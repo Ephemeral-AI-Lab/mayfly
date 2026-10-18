@@ -118,6 +118,7 @@ describe('ScrollRegion over a virtual leaf', () => {
     colors,
     components,
     pillText: count => `${String(count)} new`,
+    repaint: () => {},
   })
 
   it('reads only its viewport plus the bar row', () => {
@@ -136,7 +137,7 @@ describe('ScrollRegion over a virtual leaf', () => {
 describe('ScrollRegion that counts the rows below', () => {
   const counted = (child: Component, offset = 0): ScrollRegion => new ScrollRegion({
     child, memory: { offset, following: undefined, away: 0 }, height: 4, expandedHeight: 9, fit: false, pill: false, follow: false, scrollbar: false,
-    more: true, moreText: count => `↓ ${String(count)} more`, expanded: () => false, colors, components, pillText: String,
+    more: true, moreText: count => `↓ ${String(count)} more`, expanded: () => false, colors, components, pillText: String, repaint: () => {},
   })
   const leaf = (count: number): Component => ({ render: () => Array.from({ length: count }, (_, index) => `row ${String(index)}`), invalidate: () => {} })
 
@@ -158,7 +159,7 @@ describe('ScrollRegion that counts the rows below', () => {
   it('keeps a one-row viewport as content: there is no room for the count', () => {
     const one = new ScrollRegion({
       child: leaf(5), memory: { offset: 0, following: undefined, away: 0 }, height: 1, expandedHeight: 1, fit: false, pill: false, follow: false, scrollbar: false,
-      more: true, moreText: count => `↓ ${String(count)} more`, expanded: () => false, colors, components, pillText: String,
+      more: true, moreText: count => `↓ ${String(count)} more`, expanded: () => false, colors, components, pillText: String, repaint: () => {},
     })
     expect(one.render(20).map(row => row.trimEnd())).toEqual(['row 0'])
   })

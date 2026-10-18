@@ -36,8 +36,8 @@ describe('shared native tool catalogs', () => {
     await bench.run('/tools')
     const model = bench.model('mayfly.tools')
     const renderer = renderRequest(model)
-    renderer.input('alp')
-    renderer.input('\r')
+    model.updateChoice({ pagePath: [], controlId: 'tools' }, { kind: 'query', query: 'alp' })
+    model.emit({ kind: 'selection-accept', pagePath: [], controlId: 'tools', selectedIds: ['alpha'] })
     await flushRequests()
     const detail = bench.ctx.mayflyUiInteraction.get('overlay', 'mayfly.tools.detail')!
     expect(detail.scope).toEqual({ kind: 'session', sessionId: bench.agent.id })
