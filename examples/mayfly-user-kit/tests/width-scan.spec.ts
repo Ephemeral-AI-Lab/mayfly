@@ -66,7 +66,7 @@ describe('example width contracts', () => {
     }
   })
 
-  it('scans the approval card built on patterns.decisionPanel at every repository width', () => {
+  it('scans the approval card built on compose.decisionLane at every repository width', () => {
     for (const fixture of ADVERSARIAL) {
       uiRows(`approval-card:${fixture.name}`, approvalCard.render({ title: fixture.text.slice(0, 400), command: fixture.text.slice(0, 400), detail: fixture.text.slice(0, 400) }))
     }

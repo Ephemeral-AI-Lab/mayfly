@@ -1,9 +1,8 @@
 import {
+  compose,
   defineMayflyComponent,
-  patterns,
   textOf,
   ui,
-  type MayflyDecisionPanelProps,
   type MayflyEditorExtensionNode,
   type MayflyOverlayDefinition,
   type MayflyPaneDefinition,
@@ -12,9 +11,6 @@ import {
   type MayflyListItem,
   type MayflyPaneSummary,
   type MayflyStatusDefinition,
-  type MayflyRailPanelProps,
-  type MayflySplitViewProps,
-  type MayflyStatusPageProps,
   type MayflyTranslate,
   type MayflySurfaceNode,
   type MayflyUiActionHandler,
@@ -234,43 +230,35 @@ ui.form({ id: 'bad', fields: [{ kind: 'toggle', id: 't', label: 'T', value: true
 // @ts-expect-error help is a line of text
 ui.form({ id: 'bad', fields: [{ kind: 'input', id: 'i', label: 'I', value: '', help: 3 }] })
 
-// Patterns (slice 1.8b): pure calls that return ordinary nodes; the props are the real builders' shapes.
-export const decision: MayflySurfaceNode = patterns.decisionPanel({
-  title: 'Delete branch?', badges: [{ text: '1 of 2 waiting', tone: 'muted' }], preview: [ui.text('feature/old-hero')],
-  options: [{ id: 'keep', label: 'Keep' }, { id: 'delete', label: 'Delete', detail: 'cannot be undone' }],
-  input: { id: 'why', label: 'Note', placeholder: 'optional' }, instant: false,
-  accelerators: [{ id: 'copy', label: 'Copy name', key: 'c', hintLabel: 'copy name' }], escapeLabel: 'reject', chrome: 'overlay',
+// The compose namespace: pure calls that return ordinary nodes; the props are the real builders' shapes.
+export const decision: MayflySurfaceNode = compose.decisionLane({
+  title: 'Delete branch?', badges: [{ text: '1 of 2 waiting', tone: 'muted' }],
+  choices: [{ id: 'keep', label: 'Keep' }, { id: 'delete', label: 'Delete', detail: 'cannot be undone' }],
+  note: { id: 'why', label: 'Note', placeholder: 'optional' },
+  keys: [{ id: 'copy', label: 'Copy name', key: 'c', hintLabel: 'copy name' }], escapeLabel: 'reject',
 })
-export const decisionOverlay: MayflyOverlayDefinition = { id: 'decision', presentation: 'editor', capturing: true, armMs: patterns.decisionArmMs }
-export const railed: MayflyUiNode = patterns.railPanel({
-  title: 'Workspaces', rail: { id: 'rail', activeId: 'a', items: [{ id: 'a', label: 'A', count: 2 }] },
-  content: { a: ui.text('a') }, railWidth: 24,
+export const decisionOverlay: MayflyOverlayDefinition = { id: 'decision', presentation: 'editor', capturing: true, armMs: compose.decisionArmMs }
+export const railed: MayflyUiNode = compose.rail({
+  rail: { id: 'rail', activeId: 'a', items: [{ id: 'a', label: 'A', count: 2 }] },
+  pages: { a: ui.text('a') }, railWidth: 24,
 })
-export const railedLive: MayflyUiNode = patterns.railPanel({ title: 'Sessions', rail: { id: 'rail', activeId: 'a', items: [{ id: 'a', label: 'A' }], hintLabel: 'labels' }, content: ui.text('live') })
-export const split: MayflyUiNode = patterns.splitView({ list: ui.text('list'), detail: ui.text('detail'), listWidth: 50, breakpoint: 100 })
-export const status: MayflyUiNode = patterns.statusPage({
-  title: 'Status', tabs: { id: 'st', activeId: 'overview', items: [{ id: 'overview', label: 'Overview' }] },
+export const railedLive: MayflyUiNode = compose.rail({ rail: { id: 'rail', activeId: 'a', items: [{ id: 'a', label: 'A' }], hintLabel: 'labels' }, content: ui.text('live') })
+export const split: MayflyUiNode = compose.browser({ list: ui.text('list'), detail: ui.text('detail'), listWidth: 50, breakpoint: 100 })
+export const status: MayflyUiNode = compose.statusPage({
+  tabs: { id: 'st', activeId: 'overview', items: [{ id: 'overview', label: 'Overview' }] },
   rows: [{ label: 'Provider', value: [{ text: 'DeepSeek' }] }], footer: ui.text('r refresh'),
 })
-export const statusPaged: MayflyUiNode = patterns.statusPage({ title: 'Status', tabs: { id: 'st', activeId: 'a', items: [{ id: 'a', label: 'A' }] }, pages: { a: ui.text('a') } })
-export const decisionProps: MayflyDecisionPanelProps = { title: 'Ask', options: [] }
-export const railProps: MayflyRailPanelProps = { title: 'Rail', rail: { id: 'r', activeId: 'a', items: [] }, content: {} }
-export const splitProps: MayflySplitViewProps = { list: ui.text('l'), detail: ui.text('d') }
-export const statusProps: MayflyStatusPageProps = { title: 'S', tabs: { id: 's', activeId: 'a', items: [] }, body: ui.text('b') }
-// @ts-expect-error a decision panel needs its options
-patterns.decisionPanel({ title: 'Ask' })
-// @ts-expect-error accelerators are always hidden, so the pattern sets that itself
-patterns.decisionPanel({ title: 'Ask', options: [], accelerators: [{ id: 'x', label: 'X', hidden: false }] })
-// @ts-expect-error a decision panel's Esc word is one of the surface's
-patterns.decisionPanel({ title: 'Ask', options: [], escapeLabel: 'dismiss' })
-// @ts-expect-error a rail panel takes a rail and its content
-patterns.railPanel({ title: 'Rail' })
-// @ts-expect-error a split view takes a list and a detail node
-patterns.splitView({ list: ui.text('l') })
+export const statusPaged: MayflyUiNode = compose.statusPage({ tabs: { id: 'st', activeId: 'a', items: [{ id: 'a', label: 'A' }] }, pages: { a: ui.text('a') } })
+// @ts-expect-error a decision lane's Esc word is one of the surface's
+compose.decisionLane({ title: 'Ask', body: ui.text('b'), escapeLabel: 'dismiss' })
+// @ts-expect-error a rail composition takes a rail
+compose.rail({ title: 'Rail' })
+// @ts-expect-error a browser's narrow page is the list or the detail
+compose.browser({ list: ui.text('l'), narrow: 'both' })
 // @ts-expect-error a status page takes tabs
-patterns.statusPage({ title: 'S', rows: [] })
-// @ts-expect-error the patterns are a frozen namespace
-patterns.decisionArmMs = 0
+compose.statusPage({ rows: [] })
+// @ts-expect-error the compose namespace is frozen
+compose.decisionArmMs = 0
 
 // Freeze additions from the composition spike: selectedIds is optional, and components take a typed translator.
 export const bareChoices = ui.list({ id: 'models', role: 'choose', items: [{ id: 'a', label: 'A' }] })

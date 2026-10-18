@@ -72,7 +72,7 @@ const mu = (text: string): MayflyInlineSpan => ({ text, tone: 'muted' })
 
 const WORKSPACES: readonly MayflyTabItem[] = [{ id: 'work', label: 'work/mayfly', count: 8 }, { id: 'site', label: 'website', count: 5 }, { id: 'notes', label: 'notes', count: 2 }]
 
-/** The railPanel of the prototype's page 2: the rail at 26 columns, two columns of gap, the live list beside it. */
+/** The rail panel of the prototype's page 2: the rail at 26 columns, two columns of gap, the live list beside it. */
 export function railPanelNode(rail = 'work'): MayflyUiNode {
   return ui.surface({
     title: 'Workspaces', chrome: 'overlay',
