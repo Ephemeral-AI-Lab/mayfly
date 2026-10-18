@@ -493,8 +493,7 @@ export const CATALOG = Object.freeze({
 /** Each Website app shot, with the scenario checkpoint whose golden (at the scenario's first size) it is painted from. */
 export const APP_SHOTS = Object.freeze(Object.entries(CATALOG).flatMap(([name, scenario]) => Object.entries(scenario.shots ?? {}).map(([checkpointName, id]) => ({ id, scenario: name, checkpoint: checkpointName, cols: scenario.sizes[0][0], rows: scenario.sizes[0][1] }))))
 
-/** The scenarios checked against goldens, and the perf scenarios. */
-export const GOLDEN_SCENARIOS = Object.keys(CATALOG).filter(name => CATALOG[name].perf === undefined && CATALOG[name].demo !== true)
+/** The perf scenarios. */
 export const PERF_SCENARIOS = Object.keys(CATALOG).filter(name => CATALOG[name].perf !== undefined)
 
 /**

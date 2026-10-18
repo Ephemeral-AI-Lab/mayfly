@@ -6,11 +6,10 @@
  * 数据源（单一来源）；生成的 SVG 一律由本脚本写入，勿手改。改动场景或渲染器后
  * 运行 `pnpm shots:sync` 重新生成。
  *
- * After the component loop, the app shots are painted from the accepted goldens
- * of their catalog scenarios (`app.mjs`): the real product, captured by the
- * scenario runner. Changing one means accepting a new golden first
- * (`pnpm run scenarios -- --update <scenario>`). Locale and timezone are pinned
- * so bytes never drift with the host environment.
+ * After the component loop, the app shots are painted from the accepted app-shot
+ * goldens of their catalog scenarios (`app.mjs`): the real product at the
+ * release-pinned checkpoints. Locale and timezone are pinned so bytes never
+ * drift with the host environment.
  *
  * Usage:
  *   node script/shots/sync.mjs          # regenerate every shot
