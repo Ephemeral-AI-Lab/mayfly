@@ -410,6 +410,22 @@ function contentHash(text: string): string {
   return `${String(text.length)}.${(4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36)}`
 }
 
+/** The painted row count of a scanned unit by {@link MarkdownRowSource}'s count key, so a later source over the same unit starts exact. */
+const paintedCounts = new WeakMap<MarkdownUnit, Map<string, number>>()
+/** Count keys one unit remembers: a few widths and paints, like the shared sources. */
+const PAINTED_COUNT_VARIANTS = 4
+
+function rememberPaintedCount(unit: MarkdownUnit, key: string, rows: number): void {
+  let counts = paintedCounts.get(unit)
+  if (counts === undefined) {
+    counts = new Map()
+    paintedCounts.set(unit, counts)
+  }
+  if (counts.get(key) === rows) return
+  if (!counts.has(key) && counts.size >= PAINTED_COUNT_VARIANTS) counts.delete(counts.keys().next().value!)
+  counts.set(key, rows)
+}
+
 /**
  * The row source of one `markdown` node at one width: `length` is the unit row map (estimates replaced by painted
  * counts as units materialize), `row`/`prepare` paint the block or diagram under the asked rows through the content
@@ -428,6 +444,8 @@ class MarkdownRowSource implements RowSource {
   private readonly children = new Map<number, RowSource>()
   private readonly theme: MarkdownTheme
   private readonly defsKey: string
+  /** What a unit's painted row count depends on besides its text: the width, the paint, and the restored link definitions. */
+  private readonly countKey: string
   /** The cache key of each unit, hashed once: a row read asks for it every time. */
   private readonly keys: string[] = []
 
@@ -437,17 +455,21 @@ class MarkdownRowSource implements RowSource {
     private readonly env: ContentRowsEnv,
     private readonly key: string,
   ) {
+    this.defsKey = prepared.defs.length === 0 ? '' : contentHash(prepared.defs.map(def => def.raw).join(''))
+    this.countKey = `${String(width)}:${paintKey(env)}:${this.defsKey}`
     this.counts = new Array<number>(prepared.units.length)
     this.tree = new Fenwick(prepared.units.length)
     prepared.units.forEach((unit, index) => {
-      // The scan's per-token estimate is width-free; floor it by the unit's paintable characters at this width.
-      const estimate = unit.kind === 'mermaid' ? unit.estimate : Math.max(unit.estimate, Math.ceil(unit.flow / Math.max(1, width)))
+      // A unit an earlier source painted keeps that count: a streamed answer is a new node on every append, and its
+      // scan keeps the unit objects whose text did not change. Otherwise the scan's per-token estimate is width-free,
+      // floored by the unit's paintable characters at this width.
+      const estimate = paintedCounts.get(unit)?.get(this.countKey)
+        ?? (unit.kind === 'mermaid' ? unit.estimate : Math.max(unit.estimate, Math.ceil(unit.flow / Math.max(1, width))))
       this.counts[index] = estimate
       this.tree.add(index, estimate)
     })
     this.declaredWidth = width
     this.theme = markdownTheme(env.colors)
-    this.defsKey = prepared.defs.length === 0 ? '' : contentHash(prepared.defs.map(def => def.raw).join(''))
     // A document that fits a paint budget is painted eagerly: its row map is exact at once, like the texts.
     this.lazy = prepared.normalized.length > CONTENT_SEGMENT_UNITS
     if (!this.lazy) this.prepare(0, Number.MAX_SAFE_INTEGER)
@@ -568,6 +590,7 @@ class MarkdownRowSource implements RowSource {
       countWork(this.env.counters, 'rowsPainted', rows.length)
     }
     this.syncCount(at, rows.length)
+    if (!this.failures.has(at)) rememberPaintedCount(unit, this.countKey, rows.length)
     return rows
   }
 

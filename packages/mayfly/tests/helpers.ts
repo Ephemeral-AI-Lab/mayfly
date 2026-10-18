@@ -1,7 +1,7 @@
 /**
  * The small test doubles every area once copied by hand: the identity colour,
  * the event-loop flush, ANSI-stripping text views, the paint-nothing palette,
- * and a canonical fake Agent with its scripted session.
+ * a lazy row array, and a canonical fake Agent with its scripted session.
  * @module @ephemeral-ai/mayfly/tests/helpers
  */
 
@@ -9,6 +9,7 @@ import { vi } from 'vitest'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import type { MayflySemanticColors } from '../src/core/types.ts'
+import { virtualRows } from '../src/core/ui-rows.ts'
 
 /** A colour that returns its text: the paint-nothing palette's role. */
 export const identity = (text: string): string => text
@@ -50,6 +51,29 @@ export const plainBlock = (rows: readonly string[] | undefined): string => plain
 
 /** A colour that tags its text `[letter]text[/letter]`, for role assertions. */
 export const colorTag = (letter: string) => (text: string): string => `[${letter}]${text}[/${letter}]`
+
+/**
+ * A lazy row array, as a long Markdown answer is: it reports `estimate` rows until a row is read or prepared, then all
+ * of `rows`, moving its revision the way a painted count does.
+ */
+export function lazyRows(estimate: number, rows: readonly string[]): string[] {
+  let length = estimate
+  let revision = 0
+  const paint = (): void => {
+    if (length === rows.length) return
+    length = rows.length
+    revision += 1
+  }
+  return virtualRows({
+    get length() { return length },
+    get revision() { return revision },
+    prepare: () => { paint() },
+    row: (index) => {
+      paint()
+      return rows[index] ?? ''
+    },
+  })
+}
 
 /**
  * A palette that paints nothing: every role is `identity`. A real object, so

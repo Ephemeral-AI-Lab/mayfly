@@ -6,6 +6,7 @@ import { HStack, ScrollView, VStack, type Component } from '@earendil-works/pi-t
 import { renderLayoutFrame } from '@earendil-works/pi-tui/dist/layout.js'
 import { describe, expect, it } from 'vitest'
 import { ColumnStack, ROW_STACK_ENTRIES, RowStack, onScreen, placeChild } from '../../src/core/ui-stacks.ts'
+import { lazyRows } from '../helpers.ts'
 
 /** A leaf that counts its renders and answers each width with the same array, as a retained leaf does. */
 function leaf(rows: (width: number) => string[]): Component & { renders: number } {
@@ -48,6 +49,16 @@ describe('ColumnStack', () => {
       for (const width of [0, 1, 12, 40]) expect(mine.render(width), `gap ${String(gap)} width ${String(width)}`).toEqual(theirs.render(width))
     }
     expect(new ColumnStack().render(10)).toEqual([])
+  })
+
+  it('keeps a child sized by its own rows at their live length, so rows a lazy child paints after the render still show', () => {
+    const stack = new ColumnStack([], { gap: 1 })
+    stack.addChild(leaf(() => lazyRows(1, ['one', 'two', 'three'])))
+    stack.addChild(rows('end'))
+    const painted = stack.render(20)
+    expect(painted).toHaveLength(3)
+    expect([...painted]).toEqual(['one', 'two', 'three', '', 'end'])
+    expect(painted).toHaveLength(5)
   })
 
   it('remembers the row each child starts at', () => {

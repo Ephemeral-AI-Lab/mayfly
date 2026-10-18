@@ -127,7 +127,10 @@ scroll content's rows (the new-messages rule uses it to find itself against the
 view). The content scroll (`TailScrollView`) paints the rows of its window before it
 settles on a height, lays out again when painted rows moved the length it measured, and
 a scroll it cannot take asks for a frame, so a lazy document's estimate never leaves the
-last rows out of reach. Follow-tail is `Ctrl+↓`'s second press: the first goes to that rule. The
+last rows out of reach. That holds only while every layer between the document and the
+scroll (the flowing list's painter, a column stack, the surface frame) reports the live
+length and passes `prepare` on: none may slice at a length it read once or keep a height
+it measured before the rows painted. Follow-tail is `Ctrl+↓`'s second press: the first goes to that rule. The
 conversation stream (`TranscriptView`, published by `transcript/transcript-model.ts`
 from `transcript/stream-facts.ts`) is the first consumer.
 

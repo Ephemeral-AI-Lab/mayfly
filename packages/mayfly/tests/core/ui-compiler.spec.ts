@@ -2769,6 +2769,37 @@ describe('compiler flow lists and framed surfaces', () => {
     model.dispose()
   })
 
+  it('keeps every row of a long Markdown answer in a flowing column as its units paint, and the rows after it', () => {
+    // A long answer is a lazy document: it reports an estimate until its units paint, and tables and wrapping prose
+    // paint more rows than the estimate. The list, the column, and the frame must follow it to its last line.
+    const answer = `${Array.from({ length: 10 }, (_, index) => `${'answer '.repeat(150)}${String(index)}\n\n| k | v |\n| - | - |\n| a | ${String(index)} |`).join('\n\n')}\n\nLAST LINE`
+    const node = ui.stack.column([
+      ui.list({ id: 'stream', role: 'browse', selectedIds: [], items: [
+        { id: 'answer', label: '', body: ui.markdown(answer), bodyAlways: true, bodyLead: [{ text: '● ' }] },
+        { id: 'end', label: 'END' },
+      ] }),
+      ui.text('after'),
+    ])
+    const model = new UiSurfaceModel('stream', {
+      id: 'stream', revision: 0, source: [], scope: { kind: 'app', targetId: 'stream' }, update: { reason: 'replace' },
+      node, definition: {}, events: { prepare: async () => ({ reply: { kind: 'completed' as const }, publish: () => true }) },
+    })
+    const runtime = new MayflyUiSurfaceRuntime(model)
+    runtime.flow = true
+    const f = fixture({ getViewport: () => ({ columns: 40, rows: 10 }) })
+    const result = compileMayflyUiSurfaceNode(node, { ...f.options, surfaceRuntime: runtime })
+    if (!result.ok) throw new Error(result.message)
+    const rows = result.value.component.render(40)
+    const estimate = rows.length
+    const painted = [...rows].map(row => stripTerminalSequences(row).trim())
+    expect(painted.length).toBeGreaterThan(estimate)
+    const last = painted.indexOf('LAST LINE')
+    expect(last).toBeGreaterThan(0)
+    expect(painted.slice(last + 1).filter(row => row !== '')).toEqual(['END', 'after'])
+    runtime.dispose()
+    model.dispose()
+  })
+
   it('clips a framed surface row that overflows its content width', () => {
     const f = fixture({ getViewport: () => ({ columns: 12, rows: 8 }) })
     const surface = compiledSurface(ui.surface({ title: 'Frame', chrome: 'surface', child: ui.text('x'.repeat(80)) }), f.options)

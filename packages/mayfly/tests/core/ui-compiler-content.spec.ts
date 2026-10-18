@@ -371,6 +371,16 @@ describe('content nodes in a plain compile', () => {
     markdown.slice(0, 5)
     expect(counters.rowsPainted).toBeLessThan(400)
   })
+
+  it('follows a main-mode Markdown leaf from its estimate to the rows it paints, keeping its last line', () => {
+    const result = compileMayflyUiNode(ui.markdown(`${Array.from({ length: 10 }, (_, index) => `${'frame '.repeat(150)}${String(index)}\n\n| k | v |\n| - | - |\n| a | ${String(index)} |`).join('\n\n')}\n\nLAST LINE`), { emit: () => {}, components: components(), colors, getViewport: () => ({ columns: 40, rows: 20 }), screenMode: 'main' })
+    if (!result.ok) throw new Error(result.message)
+    const rows = result.value.component.render(40)
+    const estimate = rows.length
+    const painted = [...rows].map(row => plainText(row).trimEnd())
+    expect(painted.length).toBeGreaterThan(estimate)
+    expect(painted.at(-1)).toBe('LAST LINE')
+  })
 })
 
 describe('smaller seams', () => {

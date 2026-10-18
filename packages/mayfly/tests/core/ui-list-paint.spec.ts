@@ -8,7 +8,7 @@ import { isVirtualRows, virtualRows } from '../../src/core/ui-rows.ts'
 import type { MayflySemanticColors } from '../../src/core/types.ts'
 import { createWorkCounters } from '../../src/core/ui-work-counters.ts'
 import { visibleWidth } from '../../src/core/width.ts'
-import { identity, plain, plainColors } from '../helpers.ts'
+import { identity, lazyRows, plain, plainColors } from '../helpers.ts'
 
 const colors = plainColors()
 const tagged = new Proxy({ logoGradient: [identity] }, { get: (target, key) => key === 'logoGradient' ? target.logoGradient : (value: string) => `<${String(key)}>${value}</>` }) as unknown as MayflySemanticColors
@@ -684,6 +684,42 @@ describe('the flow list painter', () => {
     // The still row never repaints, and a highlight maps the rows without a current match.
     painter.sync(base([still], { highlight: { pattern: 'wave' } }))
     expect(painter.row(0)).toContain('still')
+  })
+
+  it('follows a lazy body as it paints: the block grows to the painted rows and the next item starts after them', () => {
+    const answer: MayflyListItem = { id: 'a', label: '', body: ui.text('answer'), bodyAlways: true, bodyLead: [{ text: '● ' }] }
+    const next: MayflyListItem = { id: 'b', label: 'next' }
+    const painted = ['one', 'two', 'three', 'four']
+    const lazy = lazyRows(2, painted)
+    const painter = new FlowListPainter()
+    painter.sync(inputOf([answer, next], { body: () => lazy, focused: false }, {}, new Set(['a'])))
+    // The body reports its estimate until a row is read.
+    expect(painter.length).toBe(3)
+    const before = painter.revision
+    // The test model marks an open body expandable, so the first row carries a disclosure before the lead.
+    expect(plain([...painter.rows()]).map(row => row.trim())).toEqual(['▾ ● one', 'two', 'three', 'four', 'next'])
+    expect(painter.length).toBe(5)
+    expect(painter.revision).toBeGreaterThan(before)
+    expect(painter.locate('b')).toBe(4)
+    // A sync that replaces another row keeps the height the body settled on.
+    const replaced: MayflyListItem = { id: 'b', label: 'then' }
+    painter.sync(inputOf([answer, replaced], { body: () => lazy, focused: false }, {}, new Set(['a'])))
+    expect(painter.length).toBe(5)
+    expect(plain([painter.row(4)])[0]!.trim()).toBe('then')
+  })
+
+  it('prepares the rows under a window, so a layout sees the length a lazy body settles on before a row is read', () => {
+    const answer: MayflyListItem = { id: 'a', label: '', body: ui.text('answer'), bodyAlways: true, bodyLead: [{ text: '● ' }] }
+    const items = [answer, { id: 'b', label: 'next' }]
+    const painter = new FlowListPainter()
+    painter.sync(inputOf(items, { body: () => lazyRows(1, ['one', 'two', 'three']), focused: false }, {}, new Set(['a'])))
+    expect(painter.length).toBe(2)
+    painter.prepare(0, 1)
+    expect(painter.length).toBe(4)
+    expect(painter.locate('b')).toBe(3)
+    // A window past the items prepares nothing.
+    painter.prepare(10, 20)
+    expect(painter.length).toBe(4)
   })
 
   it('reserves the segment footer and reads its rows past the items', () => {
