@@ -150,11 +150,6 @@ function resourceBodyPanel(server: McpServerView, state: ViewState, t: MayflyTra
   return panel({ title: state.bodyLabel ?? t('Resources'), subtitle: server.serverName, escapeLabel: 'back', body: ui.stack.column([ui.child(ui.scroll(ui.text(text === '' ? t('(no output)') : text, { overflow: 'wrap' }), { id: 'resource-body', scrollbar: true }), { basis: 0, grow: 1, minSize: 1 })]) })
 }
 
-/** The server page with its Tools, Configuration, and Resources tabs, as its own panel. */
-export function mcpServerNode(server: McpServerView, t: MayflyTranslate): MayflyUiNode {
-  return serverPage(server, 'tools', undefined, t)
-}
-
 export function apply(ctx: Context): void {
   mountInteractionLocale(ctx)
   const lifetime = new AbortController()

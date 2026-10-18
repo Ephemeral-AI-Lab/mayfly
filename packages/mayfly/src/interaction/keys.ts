@@ -19,7 +19,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 // Empty type import carries the `settings` Context merge and the
 // 'settings/document-updated' Events merge the live apply follows.
-import type { SettingsPathOp } from '@deepseek-ai/dsh-settings'
+import type {} from '@deepseek-ai/dsh-settings'
 import type { MayflyKeyAction, MayflyKeymap } from '../core/types.ts'
 import type {} from '../app/conversation-views.ts'
 import { createInteractionNotificationOwner } from './notifications.ts'
@@ -88,63 +88,6 @@ export const INTERACTION_KEY_ACTIONS: readonly MayflyKeyAction[] = [
   { id: ACTION_CLOSE_AGENT_VIEW, keys: 'f8', scope: 'global', description: 'Close the displayed side conversation' },
   { id: ACTION_FOLLOW_TAIL, keys: 'ctrl+down', scope: 'global', description: 'Jump to the new-messages marker, then to the newest conversation content and follow it' },
 ]
-
-/** Whether a binding change reached the settings document or holds for this session only. */
-type KeybindingWrite = 'saved' | 'session'
-
-/**
- * Write one key edit into the `mayfly` settings namespace through the
- * revision-checked `settings.mutate`. Without a writable settings service the
- * live change holds for the session only.
- */
-async function persistKeybindings(ctx: Context, operation: SettingsPathOp): Promise<KeybindingWrite> {
-  const settings = ctx.get('settings')
-  const entry = settings?.describe().find(item => String(item.ns) === 'mayfly')
-  if (settings === undefined || !settings.writable || entry === undefined) return 'session'
-  try {
-    await settings.mutate('mayfly', [operation], entry.revision)
-    return 'saved'
-  } catch (error) {
-    ctx.logger.warn(`could not save key bindings: ${String(error)}`)
-    return 'session'
-  }
-}
-
-/**
- * Rebind an action now and save the binding beside its label, so `/keys` can
- * list it even while the plugin that owns it is not loaded.
- * @param ctx - a context carrying `mayflyKeymap`.
- * @param action - the `<owner>.<action>` id.
- * @param keys - the new keys; a key the action gave up stops working.
- * @param label - the action's label as the keybinding list shows it.
- * @returns where the binding was written.
- * @throws MayflyKeymapError when the keymap refuses the binding; nothing is written then.
- */
-export async function saveKeybinding(ctx: Context, action: string, keys: readonly string[], label: string): Promise<KeybindingWrite> {
-  ctx.mayflyKeymap.bind(action, keys, label)
-  return persistKeybindings(ctx, { op: 'set', path: ['keybindings', action], value: { keys: [...keys], label } })
-}
-
-/**
- * Restore one action's default keys now and drop its saved override.
- * @param ctx - a context carrying `mayflyKeymap`.
- * @param action - the action id.
- * @returns where the reset was written.
- */
-export async function resetKeybinding(ctx: Context, action: string): Promise<KeybindingWrite> {
-  ctx.mayflyKeymap.reset(action)
-  return persistKeybindings(ctx, { op: 'unset', path: ['keybindings', action] })
-}
-
-/**
- * Restore every default key now and drop every saved override.
- * @param ctx - a context carrying `mayflyKeymap`.
- * @returns where the reset was written.
- */
-export async function resetAllKeybindings(ctx: Context): Promise<KeybindingWrite> {
-  ctx.mayflyKeymap.resetAll()
-  return persistKeybindings(ctx, { op: 'unset', path: ['keybindings'] })
-}
 
 /** Stable Cordis plugin name. */
 export const name = 'mayfly-interaction-keys'

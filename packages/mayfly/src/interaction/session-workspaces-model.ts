@@ -5,7 +5,7 @@
  */
 import type { SessionSummary } from '@deepseek-ai/dsh-api-session-controller'
 import type { Workspace, WorkspaceId } from '@deepseek-ai/dsh-workspace'
-import type { MayflyListItem, MayflyTabItem } from '@ephemeral-ai/mayfly-ui'
+import type { MayflyTabItem } from '@ephemeral-ai/mayfly-ui'
 import type { MayflyTranslate } from '../frontend/locale.ts'
 import { displayPath, homeRelative } from '../internal/paths.ts'
 
@@ -143,28 +143,6 @@ function newest(summaries: readonly SessionSummary[]): number {
   let latest = 0
   for (const summary of summaries) latest = Math.max(latest, summary.updatedAt)
   return latest
-}
-
-/**
- * One picker row: the native workspace title (or its shortened path), the
- * session count, and the current flag.
- * @param workspace - the row.
- * @param currentCwd - the displayed conversation's cwd, a display-only fallback for the current flag.
- * @param home - the home directory for path shortening.
- * @param t - interaction translator.
- * @returns the list item.
- */
-export function sessionWorkspaceItem(workspace: SessionWorkspace, currentCwd: string | undefined, home: string, t: MayflyTranslate): MayflyListItem {
-  const label = workspace.label === undefined
-    ? workspace.title ?? sessionWorkspaceLabel(workspace.cwd, home, t)
-    : t(workspace.label)
-  return {
-    id: workspace.id,
-    label,
-    detail: t(workspace.count === 1 ? '1 session' : '{count} sessions', { count: workspace.count }),
-    searchText: workspace.cwd ?? label,
-    ...(workspace.current ?? (workspace.cwd !== undefined && workspace.cwd === currentCwd) ? { current: true } : {}),
-  }
 }
 
 /**

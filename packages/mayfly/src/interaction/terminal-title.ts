@@ -18,7 +18,6 @@
  */
 
 import type { Context } from '@deepseek-ai/cordis'
-import type { SessionFactsService } from '../transcript/session-facts.ts'
 
 /** The title shown while nothing is attached or titled yet. */
 const PRODUCT_TITLE = 'mayfly'
@@ -46,7 +45,7 @@ function currentTitleText(title: string | undefined): string {
  * @param ctx - plugin context.
  */
 export function apply(ctx: Context): void {
-  const facts = ctx.get('mayflySessionFacts') as SessionFactsService
+  const facts = ctx.mayflySessionFacts
   let emitted: string | undefined
 
   const emit = (title: string | undefined): void => {

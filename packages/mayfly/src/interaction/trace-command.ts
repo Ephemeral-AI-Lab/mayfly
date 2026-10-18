@@ -64,11 +64,6 @@ export function tracePanelModel(sessionId: string, items: readonly TraceItem[], 
   })
 }
 
-/** The detail as its own panel; kept for direct publishing of one item. */
-export function traceDetailPanelModel(item: TraceItem, document: string, t: MayflyTranslate = interpolateLocaleMessage): MayflyUiNode {
-  return panel({ title: `${t('Trace detail')} ${sequence(item)}`, escapeLabel: 'back', body: traceDetailBody(item, document, t) })
-}
-
 /** The command consumer owns query work; each opened view has an exact-Agent child Fiber. */
 export function registerTraceCommand(ctx: Context): () => void {
   const lifetime = new AbortController()
