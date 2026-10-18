@@ -78,7 +78,7 @@ describe('AdmissionRow', () => {
     ui.child(ui.richText([{ text: 'cache 34%' }]), { priority: 2, band: 'right', overflow: 'hide' }),
     ui.child(ui.richText([{ text: '~/work/mayfly/packages/mayfly' }]), { priority: 1, overflow: 'truncate' }),
   ])) {
-    const result = compileMayflyUiNode(node, { emit: () => {}, components, colors, getViewport: () => ({ columns: width, rows: 20 }), screenMode: 'alternate' })
+    const result = compileMayflyUiNode(node, { emit: () => {}, components, colors, getViewport: () => ({ columns: width, rows: 20 }), bounded: true })
     if (!result.ok) throw new Error(result.message)
     return result.value.component.render(width).map(painted => painted.replaceAll('\x1b[0m', ''))
   }
@@ -101,7 +101,7 @@ describe('AdmissionRow', () => {
 
   it('counts the one row it paints, and a status stack admits the same way', () => {
     const counters = createWorkCounters()
-    const result = compileMayflyStatusNode(ui.stack.row([ui.child(ui.richText([{ text: 'a' }]), { priority: 0 }), ui.child(ui.richText([{ text: 'b' }]), { priority: 1, band: 'right' })]), { components, colors, getViewport: () => ({ columns: 10, rows: 3 }), screenMode: 'main', counters })
+    const result = compileMayflyStatusNode(ui.stack.row([ui.child(ui.richText([{ text: 'a' }]), { priority: 0 }), ui.child(ui.richText([{ text: 'b' }]), { priority: 1, band: 'right' })]), { components, colors, getViewport: () => ({ columns: 10, rows: 3 }), bounded: false, counters })
     if (!result.ok) throw new Error(result.message)
     expect(result.value.component.render(10).map(painted => painted.replaceAll('\x1b[0m', ''))).toEqual(['a        b'])
     expect(counters.rowsPainted).toBeGreaterThanOrEqual(1)

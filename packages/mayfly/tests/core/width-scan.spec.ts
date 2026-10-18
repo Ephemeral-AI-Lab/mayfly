@@ -84,7 +84,7 @@ describe('core width-scan', () => {
         components: { visibleWidth, wrapText: wrapTextWithAnsi, truncateToWidth } as never,
         colors: DARK_COLORS,
         getViewport: () => ({ columns: 80, rows: 20 }),
-        screenMode: 'alternate',
+        bounded: true,
         emit: () => {},
       })
       expect(result.ok).toBe(true)
@@ -107,7 +107,7 @@ describe('core width-scan', () => {
         } as never,
         colors: DARK_COLORS,
         getViewport: () => ({ columns: 80, rows: 20 }),
-        screenMode: 'alternate',
+        bounded: true,
         emit: () => {},
         surfaceRuntime: new MayflyUiSurfaceRuntime(undefined, undefined, undefined, images),
       })
@@ -172,7 +172,7 @@ describe('core width-scan', () => {
         components: { visibleWidth, wrapText: wrapTextWithAnsi, truncateToWidth } as never,
         colors: statusColors as never,
         getViewport: () => ({ columns: 80, rows: 3 }),
-        screenMode: 'main',
+        bounded: false,
         maxRows: 3,
       })
       expect(result.ok).toBe(true)
@@ -198,7 +198,7 @@ describe('core width-scan', () => {
         components: { visibleWidth, wrapText: wrapTextWithAnsi, truncateToWidth } as never,
         colors: statusColors as never,
         getViewport: () => ({ columns: 80, rows: 20 }),
-        screenMode: 'main',
+        bounded: false,
         emit: () => {},
       })
       expect(result.ok).toBe(true)
@@ -271,7 +271,7 @@ describe('core width-scan', () => {
       ])
       const model = new UiSurfaceModel('scan', { id: 'scan', revision: 0, node, source: [], scope: { kind: 'app', targetId: 'scan' }, update: { reason: 'replace' }, definition: {}, events: { prepare: async () => ({ reply: undefined, publish: () => false }) } })
       const scanComponents = { visibleWidth, wrapText: wrapTextWithAnsi, truncateToWidth, createEditor: () => scanEditor('') } as never
-      const options = { components: scanComponents, colors: statusColors as unknown as MayflySemanticColors, getViewport: () => ({ columns: 120, rows: 30 }), screenMode: 'alternate' as const, emit: () => {} }
+      const options = { components: scanComponents, colors: statusColors as unknown as MayflySemanticColors, getViewport: () => ({ columns: 120, rows: 30 }), bounded: true, emit: () => {} }
       const surface = compileMayflyUiNode(model.node, { ...options, interaction: model })
       if (!surface.ok) throw new Error(surface.message)
       model.updateChoice({ pagePath: [], controlId: 'rows' }, { kind: 'focus', id: 'n0' })
@@ -301,7 +301,7 @@ describe('core width-scan', () => {
       ]) })
       const scanComponents = { visibleWidth, wrapText: wrapTextWithAnsi, truncateToWidth, sliceByColumn, createEditor: () => scanEditor(long) } as never
       const model = new UiSurfaceModel('scan', { id: 'scan', revision: 0, node, source: [], scope: { kind: 'app', targetId: 'scan' }, update: { reason: 'replace' }, definition: {}, events: { prepare: async () => ({ reply: undefined, publish: () => false }) } })
-      const surface = compileMayflyUiSurfaceNode(model.node!, { components: scanComponents, colors: statusColors as unknown as MayflySemanticColors, getViewport: () => ({ columns: 120, rows: 60 }), screenMode: 'alternate', emit: () => {}, contextHints: { enabled: true }, surfaceRuntime: new MayflyUiSurfaceRuntime(model) })
+      const surface = compileMayflyUiSurfaceNode(model.node!, { components: scanComponents, colors: statusColors as unknown as MayflySemanticColors, getViewport: () => ({ columns: 120, rows: 60 }), bounded: true, emit: () => {}, contextHints: { enabled: true }, surfaceRuntime: new MayflyUiSurfaceRuntime(model) })
       if (!surface.ok) throw new Error(surface.message)
       const focus = surface.value.focusTarget!
       focus.focused = true
@@ -335,7 +335,7 @@ describe('core width-scan', () => {
         ui.list({ id: 'filtered', role: 'browse', filterable: true, filterMode: 'slash', filter: long, selectedIds: [], items: [{ id: 'x', label: long, wrap: true }] }),
       ])
       const scanComponents = { visibleWidth, wrapText: wrapTextWithAnsi, truncateToWidth, sliceByColumn, createEditor: () => scanEditor('') } as never
-      const options = { components: scanComponents, colors: statusColors as unknown as MayflySemanticColors, getViewport: () => ({ columns: 120, rows: 30 }), screenMode: 'alternate' as const, emit: () => {} }
+      const options = { components: scanComponents, colors: statusColors as unknown as MayflySemanticColors, getViewport: () => ({ columns: 120, rows: 30 }), bounded: true, emit: () => {} }
       const surface = compileMayflyUiNode(node, options)
       if (!surface.ok) throw new Error(surface.message)
       surface.value.focusTarget!.focused = true

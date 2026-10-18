@@ -95,7 +95,7 @@ class Surface {
 
   private options(): MayflyUiCompilerOptions & { surfaceRuntime: MayflyUiSurfaceRuntime } {
     return {
-      components, colors, getViewport: () => ({ columns: this.width, rows: ROWS }), screenMode: 'alternate',
+      components, colors, getViewport: () => ({ columns: this.width, rows: ROWS }), bounded: true,
       emit: (_event: MayflyUiEvent) => {}, contextHints: { enabled: true }, counters: this.counters, surfaceRuntime: this.runtime,
     }
   }
@@ -167,7 +167,7 @@ export class SlotScreen {
     } as unknown as MayflyTerminalRuntime
     this.screen = new MayflyScreenService(root, runtime)
     this.unbind = this.screen.bindNodeSlots({
-      interaction: new UiInteractionService(root), components, colors, keymap: {} as MayflyKeymap, mode: 'alternate', requestRender: () => {}, counters,
+      interaction: new UiInteractionService(root), components, colors, keymap: {} as MayflyKeymap, bounded: true, requestRender: () => {}, counters,
     })
   }
 
@@ -265,7 +265,7 @@ export const WORKLOADS: readonly Workload[] = [
       const publish = (): void => {
         revision += 1
         const children = entries.map((entry, index) => ui.child(index === 11 ? ui.richText([{ text: 'entry 11 ' }, { text: String(revision), tone: 'muted' }]) : entry))
-        const result = compileMayflyStatusNode(ui.stack.row(children), { components, colors, getViewport: () => ({ columns: WIDTH, rows: ROWS }), screenMode: 'alternate', counters, admission, reuse })
+        const result = compileMayflyStatusNode(ui.stack.row(children), { components, colors, getViewport: () => ({ columns: WIDTH, rows: ROWS }), bounded: true, counters, admission, reuse })
         if (!result.ok) throw new Error(result.message)
         result.value.component.render(WIDTH)
       }
@@ -486,7 +486,7 @@ export const WORKLOADS: readonly Workload[] = [
       const publish = (): void => {
         revision += 1
         const children = entries.map((entry, index) => ui.child(index === 11 ? ui.richText([{ text: 'entry 11 ' }, { text: String(revision), tone: 'muted' }]) : entry, { priority: index }))
-        const result = compileMayflyStatusNode(ui.stack.row(children), { components, colors, getViewport: () => ({ columns: WIDTH, rows: ROWS }), screenMode: 'alternate', counters, admission, reuse })
+        const result = compileMayflyStatusNode(ui.stack.row(children), { components, colors, getViewport: () => ({ columns: WIDTH, rows: ROWS }), bounded: true, counters, admission, reuse })
         if (!result.ok) throw new Error(result.message)
         result.value.component.render(WIDTH)
       }

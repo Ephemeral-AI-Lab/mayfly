@@ -399,7 +399,7 @@ export async function bootStatusPlugin(
         components,
         colors,
         getViewport: () => ({ columns: width, rows: 1 }),
-        screenMode: 'main',
+        bounded: false,
       })
       const rendered = result.ok ? result.value.component.renderStatus(width) : result.errorComponent.renderStatus(width)
       if (model.definition.overflow === 'hide' && rendered.overflowed) return ''

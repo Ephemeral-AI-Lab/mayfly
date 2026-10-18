@@ -353,13 +353,13 @@ function stripGutter(lines: string[]): string[] {
 }
 
 /** One node compiled the way a mounted slot paints it at 80 columns. */
-function paint(node: MayflyUiNode | null | undefined, screenMode: 'main' | 'alternate' = 'main'): string[] {
+function paint(node: MayflyUiNode | null | undefined, bounded = false): string[] {
   if (node === null || node === undefined) return []
   const compiled = compileMayflyUiNode(node, {
     components: fakeMayflyComponents(),
     colors: COLORS,
     getViewport: () => ({ columns: 80, rows: 1000 }),
-    screenMode,
+    bounded,
     emit: () => {},
   })
   return (compiled.ok ? compiled.value.component : compiled.errorComponent).render(80)
@@ -376,7 +376,7 @@ function contentLines(screen: FakeScreen): string[] {
 
 /** The footer: the status row the transcript publishes into the footer node slot, and the bottom children besides it. */
 function footerLines(screen: FakeScreen): string[] {
-  return [...paint(screen.nodes.get('status.footer'), 'alternate'), ...stripGutter(screen.bottomChildren.flatMap(component => component.render(80)))]
+  return [...paint(screen.nodes.get('status.footer'), true), ...stripGutter(screen.bottomChildren.flatMap(component => component.render(80)))]
 }
 
 describe('mayfly-transcript through the real Loader', () => {

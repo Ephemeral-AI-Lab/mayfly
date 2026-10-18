@@ -12,7 +12,7 @@ const components = { visibleWidth, wrapText: wrapTextWithAnsi, truncateToWidth }
 
 /** Paints a node at `width` in a viewport `columns` wide, with the surface focused or not. */
 function paint(node: MayflyUiNode, width: number, columns: number, focused: boolean): string[] {
-  const result = compileMayflyUiNode(node, { emit: () => {}, components, colors, getViewport: () => ({ columns, rows: 30 }), screenMode: 'alternate' })
+  const result = compileMayflyUiNode(node, { emit: () => {}, components, colors, getViewport: () => ({ columns, rows: 30 }), bounded: true })
   if (!result.ok) throw new Error(result.message)
   if (result.value.focusTarget !== null) result.value.focusTarget.focused = focused
   return result.value.component.render(width)

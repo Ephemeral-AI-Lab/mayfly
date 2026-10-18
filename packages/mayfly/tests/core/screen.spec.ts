@@ -354,7 +354,7 @@ function slotCompiler(ctx: Context, extra: Partial<MayflyNodeSlotCompiler> = {})
   let requests = 0
   const interaction = (ctx.get('mayflyUiInteraction') as UiInteractionService | undefined) ?? new UiInteractionService(ctx)
   return {
-    interaction, components: COMPONENTS, colors: PLAIN_COLORS, keymap: {} as MayflyKeymap, mode: 'alternate',
+    interaction, components: COMPONENTS, colors: PLAIN_COLORS, keymap: {} as MayflyKeymap, bounded: true,
     requestRender: () => { requests += 1 }, requests: () => requests, ...extra,
   }
 }

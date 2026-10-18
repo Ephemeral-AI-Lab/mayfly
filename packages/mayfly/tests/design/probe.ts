@@ -88,7 +88,7 @@ export function createRealSurface(node: unknown, width: number, options: RealSur
     components: options.components,
     colors: PROBE_PALETTE,
     getViewport: () => viewport,
-    screenMode: 'alternate',
+    bounded: true,
     emit: event => options.events?.(event),
     contextHints: { enabled: true },
     ...options.overrides,
@@ -113,7 +113,7 @@ export function paint(node: MayflyUiNode, width: number, components: MayflyCompo
     components,
     colors: PROBE_PALETTE,
     getViewport: () => ({ columns: width, rows: 200 }),
-    screenMode: 'alternate',
+    bounded: true,
     emit: () => {},
   })
   if (!result.ok) throw new Error(result.message)

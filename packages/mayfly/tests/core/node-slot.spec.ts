@@ -466,7 +466,7 @@ function bareHost(interaction?: UiInteractionService, extra: Partial<MayflyNodeS
   const service = interaction ?? new UiInteractionService(root)
   let requests = 0
   const compiler: MayflyNodeSlotCompiler & { readonly requests: () => number } = {
-    interaction: service, components: COMPONENTS, colors: PLAIN_COLORS, keymap: { matches: () => false } as unknown as MayflyKeymap, mode: 'alternate',
+    interaction: service, components: COMPONENTS, colors: PLAIN_COLORS, keymap: { matches: () => false } as unknown as MayflyKeymap, bounded: true,
     requestRender: () => { requests += 1 }, requests: () => requests, ...extra,
   }
   const prompts: number[] = []

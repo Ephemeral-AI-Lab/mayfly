@@ -33,7 +33,7 @@ function open(prompt: Omit<MayflyPromptNode, 'kind' | 'id'> = {}, width = 40) {
     node: ui.prompt({ id: 'p', autofocus: true, ...prompt }), events: endpoint, definition: { onEvent: {} },
   } as never)
   const runtime = new MayflyUiSurfaceRuntime(model)
-  const result = compileMayflyUiSurfaceNode(model.node!, { components, colors: PROBE_PALETTE, getViewport: () => ({ columns: width, rows: 20 }), screenMode: 'alternate', emit: () => {}, contextHints: { enabled: true }, surfaceRuntime: runtime })
+  const result = compileMayflyUiSurfaceNode(model.node!, { components, colors: PROBE_PALETTE, getViewport: () => ({ columns: width, rows: 20 }), bounded: true, emit: () => {}, contextHints: { enabled: true }, surfaceRuntime: runtime })
   if (!result.ok) throw new Error(result.message)
   result.value.focusTarget!.focused = true
   cleanups.push(() => { runtime.dispose(); model.dispose(); tui.stop() })

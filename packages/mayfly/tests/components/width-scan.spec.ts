@@ -38,7 +38,7 @@ function render(node: MayflyUiNode, width: number): string[] {
     components: fakeMayflyComponents(),
     colors,
     getViewport: () => ({ columns: width, rows: 1000 }),
-    screenMode: 'main',
+    bounded: false,
     emit: () => {},
   })
   if (!compiled.ok) throw new Error(`node refused at width ${width}: ${compiled.message}`)

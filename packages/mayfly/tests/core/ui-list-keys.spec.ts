@@ -247,7 +247,7 @@ describe('list keys', () => {
       { id: 'a', label: 'A', segment: segment({ selectedId: 'y' }) },
       { id: 'b', label: 'B', segment: segment({ inheritedId: 'x' }) },
       { id: 'c', label: 'C', segment: segment({}) },
-    ]), { components: probeComponents(), colors: PROBE_PALETTE, getViewport: () => ({ columns: 60, rows: 20 }), screenMode: 'alternate', emit: () => {} })
+    ]), { components: probeComponents(), colors: PROBE_PALETTE, getViewport: () => ({ columns: 60, rows: 20 }), bounded: true, emit: () => {} })
     if (!result.ok) throw new Error(result.message)
     result.value.focusTarget!.focused = true
     const rows = result.value.component.render(60).map(plainText)

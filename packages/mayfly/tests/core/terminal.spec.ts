@@ -537,7 +537,7 @@ describe('alternate-screen runtime', () => {
       components,
       colors,
       getViewport: () => ({ columns: runtime.columns, rows: runtime.rows }),
-      screenMode: 'alternate',
+      bounded: true,
       emit: () => {},
     })
     expect(pane.ok).toBe(true)

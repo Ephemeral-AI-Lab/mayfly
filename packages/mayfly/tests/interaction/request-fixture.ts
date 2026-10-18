@@ -60,7 +60,7 @@ export function renderRequest(
   runtime = new MayflyUiSurfaceRuntime(model),
 ) {
   const result = compileMayflyUiSurfaceNode(model.decisionNode ?? model.node, {
-    surfaceRuntime: runtime, components, colors, screenMode: 'alternate', getViewport: () => viewport,
+    surfaceRuntime: runtime, components, colors, bounded: true, getViewport: () => viewport,
     emit: event => model.emit(event), onUnhandledEscape: () => model.requestClose(),
   })
   if (!result.ok) throw new Error(result.message)

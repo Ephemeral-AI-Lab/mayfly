@@ -115,7 +115,7 @@ function fixture(overrides: Partial<MayflyUiCompilerOptions> = {}): { options: M
       components,
       colors,
       getViewport: () => viewport,
-      screenMode: 'alternate',
+      bounded: true,
       emit: event => events.push(event),
       ...overrides,
     },
@@ -175,7 +175,7 @@ function statusOptions(overrides: Partial<MayflyStatusCompilerOptions> = {}): Ma
     components,
     colors,
     getViewport: () => ({ columns: 80, rows: 20 }),
-    screenMode: 'alternate',
+    bounded: true,
     ...overrides,
   }
 }
@@ -257,7 +257,7 @@ describe('compileMayflyUiNode', () => {
   })
 
   it('keeps complete wrapped leaf content in main mode', () => {
-    const { options } = fixture({ screenMode: 'main' })
+    const { options } = fixture({ bounded: false })
     const result = compiled(ui.richText([{ text: 'abcdefghij' }]), options)
     const rows = result.component.render(2)
     expect(rows).toEqual(['ab', 'cd', 'ef', 'gh', 'ij'])
@@ -381,14 +381,14 @@ describe('compileMayflyUiNode', () => {
     expect(endFrame.lines.map(line => line.trimEnd())).toEqual(['line-7', 'line-8', 'line-9'])
     expect(endScroll).toMatchObject({ primary: false, overscroll: 'contain', scrollTop: 7, viewportHeight: 3 })
 
-    const mainFixture = fixture({ screenMode: 'main' })
+    const mainFixture = fixture({ bounded: false })
     const main = compiled(ui.scroll(content, { follow: 'end' }), mainFixture.options)
     expect((main.component as unknown as { root: unknown }).root).not.toBeInstanceOf(ScrollView)
     expect(main.component.render(20)).toHaveLength(10)
   })
 
   it('leaves passive main-mode scrolling to the outer transcript viewport', () => {
-    const result = compiled(ui.scroll(ui.text('abcdefgh')), fixture({ screenMode: 'main' }).options)
+    const result = compiled(ui.scroll(ui.text('abcdefgh')), fixture({ bounded: false }).options)
     expect(result.focusTarget).toBeNull()
     expect(result.component.render(2)).toEqual(['ab', 'cd', 'ef', 'gh'])
   })
@@ -544,13 +544,13 @@ describe('compileMayflyUiNode', () => {
   })
 
   it('degrades row stacks into MainScreen document order', () => {
-    const { options } = fixture({ screenMode: 'main' })
+    const { options } = fixture({ bounded: false })
     const result = compiled(ui.stack.row([ui.text('first'), ui.text('second'), ui.text('third')]), options)
     expect(result.component.render(20)).toEqual(['first', 'second', 'third'])
   })
 
   it('keeps the complete linear document in MainScreen mode', () => {
-    const { options } = fixture({ screenMode: 'main', getViewport: () => ({ columns: 20, rows: 2 }) })
+    const { options } = fixture({ bounded: false, getViewport: () => ({ columns: 20, rows: 2 }) })
     const result = compiled(ui.stack.column(Array.from({ length: 30 }, (_, index) => ui.text(`line-${String(index)}`))), options)
     expect(result.component.render(20)).toHaveLength(30)
     expect(result.component.render(20).at(-1)).toBe('line-29')
@@ -929,7 +929,7 @@ describe('compileMayflyUiNode', () => {
   })
 
   it('does not admit a responsive subtree until it becomes visible', () => {
-    const f = fixture({ screenMode: 'main' })
+    const f = fixture({ bounded: false })
     f.viewport.columns = 40
     const hidden = Object.defineProperty({ kind: 'text' }, 'content', {
       enumerable: true,
@@ -956,7 +956,7 @@ describe('compileMayflyUiNode', () => {
     const runtime = new MayflyUiSurfaceRuntime()
     const editors: MayflyEditor[] = []
     const f = fixture({
-      screenMode: 'main',
+      bounded: false,
       components: {
         ...components,
         createEditor: () => {
@@ -1224,7 +1224,7 @@ describe('compileMayflyUiNode', () => {
     const tabs = compiledSurface(ui.tabs({ id: 'tabs', activeId: 'a', items: [{ id: 'a', label: 'A' }] }), fixture().options, runtime)
     expect(tabs.component.render(40).join('\n')).toContain('A')
 
-    const f = fixture({ screenMode: 'main' })
+    const f = fixture({ bounded: false })
     f.viewport.columns = 120
     const deferred = compiledSurface(ui.stack.column([
       ui.tabs({ id: 'pages', activeId: 'one', items: [{ id: 'one', label: 'One' }] }),
@@ -1454,7 +1454,7 @@ describe('compileMayflyUiNode', () => {
     grid.handleInput?.('\x1b[A')
     expect(grid.captureFocusIdentity?.()).toMatchObject({ controlId: 'a' })
 
-    const main = compiled(ui.actions({ id: 'vertical', items: [{ id: 'first', label: 'First' }, { id: 'second', label: 'Second' }] }), fixture({ screenMode: 'main' }).options).focusTarget!
+    const main = compiled(ui.actions({ id: 'vertical', items: [{ id: 'first', label: 'First' }, { id: 'second', label: 'Second' }] }), fixture({ bounded: false }).options).focusTarget!
     main.handleInput?.('\x1b[B')
     main.handleInput?.('\r')
     expect(main.captureFocusIdentity?.()).toMatchObject({ controlId: 'second' })
@@ -1491,7 +1491,7 @@ describe('compileMayflyUiNode', () => {
     const alternate = compiled(tree, fixture().options)
     expect(alternate.component.render(80).join('\n')).toContain('Fallback')
 
-    const main = compiled(tree, fixture({ screenMode: 'main' }).options)
+    const main = compiled(tree, fixture({ bounded: false }).options)
     expect(main.component.render(80).join('\n')).toContain('done')
   })
 
@@ -1513,7 +1513,7 @@ describe('compileMayflyUiNode', () => {
       viewport.rows = 200
       const alternate = compiled(tree, options)
       alternate.focusTarget!.focused = true
-      const main = compiled(tree, fixture({ screenMode: 'main', getViewport: () => ({ columns: 120, rows: 20 }) }).options)
+      const main = compiled(tree, fixture({ bounded: false, getViewport: () => ({ columns: 120, rows: 20 }) }).options)
       main.focusTarget!.focused = true
       for (const width of SCAN_WIDTHS) {
         expectLinesFit(`${name} alternate patterns`, alternate.component.render(width), width)
@@ -1727,7 +1727,7 @@ describe('compileMayflyUiSurfaceNode contextual hints', () => {
     const panel = ui.scroll(ui.stack.column(Array.from({ length: 10 }, (_, index) => ui.text(`row-${String(index)}`))), { id: 'panel', height: 4, expandable: false, more: true })
     expect(focusedHint(panel, [], { onUnhandledEscape: () => {} })).toBe('  ↑/↓ scroll · Esc close')
     expect(focusedHint(panel, ['\x05'], { onUnhandledEscape: () => {} })).toBe('  ↑/↓ scroll · Esc close')
-    const result = compiled(panel, fixture({ screenMode: 'alternate', getViewport: () => ({ columns: 30, rows: 12 }) }).options)
+    const result = compiled(panel, fixture({ bounded: true, getViewport: () => ({ columns: 30, rows: 12 }) }).options)
     const rows = (result.component as Component).render(30).map(stripTerminalSequences).map(row => row.trimEnd())
     // The panel draws its scrollbar beside the rows once they pass its length.
     expect(rows.slice(0, 3).map(row => row.replace(/\s+\S$/u, ''))).toEqual(['row-0', 'row-1', 'row-2'])
@@ -2367,7 +2367,7 @@ describe('compileMayflyStatusNode', () => {
     const status = compiledStatus(ui.stack.row([
       ui.child(ui.text('left'), { basis: 4, grow: 0, shrink: 0 }),
       ui.child(ui.text('right'), { basis: 5, grow: 0, shrink: 0 }),
-    ], { gap: 1 }), statusOptions({ screenMode: 'main' }))
+    ], { gap: 1 }), statusOptions({ bounded: false }))
     const rows = status.component.render(20)
     expect(rows).toHaveLength(1)
     expect(rows[0]).toContain('left')

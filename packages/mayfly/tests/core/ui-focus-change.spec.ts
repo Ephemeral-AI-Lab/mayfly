@@ -25,7 +25,7 @@ function open(node: MayflyUiNode, observer = true, rows = 40) {
   } as never)
   const runtime = new MayflyUiSurfaceRuntime(model)
   const result = compileMayflyUiSurfaceNode(model.node!, {
-    components: probeComponents(), colors: PROBE_PALETTE, getViewport: () => ({ columns: 80, rows }), screenMode: 'alternate',
+    components: probeComponents(), colors: PROBE_PALETTE, getViewport: () => ({ columns: 80, rows }), bounded: true,
     emit: () => {}, contextHints: { enabled: true }, surfaceRuntime: runtime, counters,
   })
   if (!result.ok) throw new Error(result.message)

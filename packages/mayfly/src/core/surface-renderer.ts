@@ -86,7 +86,7 @@ function compile(
       components: options.components,
       colors: options.colors,
       getViewport: options.viewport,
-      screenMode: 'alternate' as const,
+      bounded: true,
       emit: options.emit,
       ...(options.onEscape === undefined ? {} : { onUnhandledEscape: options.onEscape }),
     })
@@ -98,7 +98,7 @@ function compile(
     colors: options.colors,
     keymap: options.keymap,
     getViewport: options.viewport,
-    screenMode: 'alternate' as const,
+    bounded: true,
     emit: options.emit,
     contextHints: {
       focusWithoutControls: options.viewHints !== undefined || (kind === 'overlay' && options.interactive && options.onEscape !== undefined),
@@ -715,7 +715,7 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
   // Node slots compile through this renderer's dependencies and its one clock; a rebound key or a new locale repaints them.
   ctx.effect(() => ctx.mayflyScreen.bindNodeSlots({
     interaction: ctx.mayflyUiInteraction, components, colors: ctx.mayflyTheme.colors, keymap: ctx.mayflyKeymap,
-    mode: 'alternate', requestRender: () => { runtime.requestRender() }, clock, content, ...(contextHints === undefined ? {} : { contextHints }), ...(images === undefined ? {} : { images }),
+    bounded: true, requestRender: () => { runtime.requestRender() }, clock, content, ...(contextHints === undefined ? {} : { contextHints }), ...(images === undefined ? {} : { images }),
     ...counted,
   }))
   // The views lane paints and focuses through this renderer's colors, keymap, and terminal.

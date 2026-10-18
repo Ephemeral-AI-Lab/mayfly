@@ -30,7 +30,7 @@ function render(facts: CompactionFacts, width: number): string[] {
     components: fakeMayflyComponents(),
     colors: COLORS as MayflySemanticColors,
     getViewport: () => ({ columns: width, rows: 40 }),
-    screenMode: 'main',
+    bounded: false,
     emit: () => {},
   })
   return (compiled.ok ? compiled.value.component : compiled.errorComponent).render(width).map(line => line.replace(ANSI, ''))

@@ -52,7 +52,7 @@ function open(node: MayflyUiNode, extra: Partial<MayflyUiCompilerOptions> = {}):
   const runtime = new MayflyUiSurfaceRuntime(model, requestRender, clock, undefined, requestFrame)
   const compile = (): Component => {
     const result = compileMayflyUiSurfaceNode(model.node!, {
-      components: probeComponents(), colors: PROBE_PALETTE, getViewport: () => viewport, screenMode: 'alternate',
+      components: probeComponents(), colors: PROBE_PALETTE, getViewport: () => viewport, bounded: true,
       // Paint counts are the subject here, so verification (which paints again on every hit) is on only where a case asks.
       emit: () => {}, contextHints: { enabled: true }, surfaceRuntime: runtime, counters, verifyRetained: false, ...extra,
     })

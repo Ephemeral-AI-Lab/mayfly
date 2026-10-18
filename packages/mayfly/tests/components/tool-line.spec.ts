@@ -60,7 +60,7 @@ function facts(entries: TranscriptEntryModel[], mode: TranscriptPresentationSnap
 function drawn(value: TranscriptViewFacts, width: number): string[] {
   const node = TranscriptView(value)
   const compiled = compileMayflyUiNode(node, {
-    components: fakeMayflyComponents(), colors: plainColors(), getViewport: () => ({ columns: width, rows: 1000 }), screenMode: 'main', emit: () => {},
+    components: fakeMayflyComponents(), colors: plainColors(), getViewport: () => ({ columns: width, rows: 1000 }), bounded: false, emit: () => {},
   })
   const component = compiled.ok ? compiled.value.component : compiled.errorComponent
   return component.render(width).map(row => plainText(row))

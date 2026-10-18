@@ -289,14 +289,14 @@ describe('compiled image nodes', () => {
     components: Object.assign(new FakeMayflyComponents(), { imageProtocolActive: true }),
     colors,
     getViewport: () => ({ columns: 80, rows: 24 }),
-    screenMode: 'alternate' as const,
+    bounded: true,
     emit: () => {},
     surfaceRuntime: runtime,
   })
 
   it('paints the alt in a standalone compile, which has no byte source', () => {
     const result = compileMayflyUiNode(ui.stack.column([ui.text('above'), ui.image({ attachmentId: 'a', alt: '[Image #1]' })]), {
-      components: new FakeMayflyComponents(), colors, getViewport: () => ({ columns: 80, rows: 24 }), screenMode: 'alternate', emit: () => {},
+      components: new FakeMayflyComponents(), colors, getViewport: () => ({ columns: 80, rows: 24 }), bounded: true, emit: () => {},
     })
     expect(result.ok && result.value.component.render(40)).toEqual(['«text:above»', '«textMuted:[Image #1]»'])
   })

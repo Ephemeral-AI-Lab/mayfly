@@ -95,7 +95,7 @@ export function editorHost(): EditorHost {
   const compile = () => {
     const width = widths[state.w]!
     const result = compileMayflyUiSurfaceNode(model.node!, {
-      components: { ...probeComponents(), createEditor: createCaretEditor }, colors: PROBE_PALETTE, getViewport: () => ({ columns: width, rows: 40 }), screenMode: 'alternate',
+      components: { ...probeComponents(), createEditor: createCaretEditor }, colors: PROBE_PALETTE, getViewport: () => ({ columns: width, rows: 40 }), bounded: true,
       emit: () => {}, contextHints: { enabled: true }, onUnhandledEscape: () => {}, surfaceRuntime: runtime,
     })
     if (!result.ok) throw new Error(result.message)

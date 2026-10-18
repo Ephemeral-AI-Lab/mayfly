@@ -48,7 +48,7 @@ function overlay(keymap?: MayflyKeymap, reply?: string) {
     components: probeComponents(),
     colors: PROBE_PALETTE,
     getViewport: () => ({ columns: 120, rows: 40 }),
-    screenMode: 'alternate',
+    bounded: true,
     emit: event => events.push(event),
     contextHints: { enabled: true },
     escapeHint: 'close',
