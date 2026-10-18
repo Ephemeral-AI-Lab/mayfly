@@ -34,7 +34,7 @@ export const RESULTS = '.artifacts/verify/scenarios.json'
  * @returns {{ options: { names: string[], sizes: 'all' | 'first', update: boolean, parallel: number } } | { error: string }}
  */
 export function parseScenariosArgs(argv) {
-  const options = { names: [], sizes: 'all', update: false, parallel: 4, png: false }
+  const options = { names: [], sizes: 'all', update: false, parallel: Number(process.env.MAYFLY_SCENARIO_PARALLEL ?? 4), png: false }
   for (let index = 0; index < argv.length; index += 1) {
     const value = argv[index]
     if (value === '--') continue
