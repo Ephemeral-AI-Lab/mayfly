@@ -4,7 +4,7 @@ import { interpolateLocaleMessage } from '../../src/frontend/locale.ts'
 import type { TranscriptEntryModel } from '../../src/frontend/models.ts'
 import { createTranscriptModel } from '../../src/transcript/transcript-model.ts'
 import { DEFAULT_TRANSCRIPT_PRESENTATION, PROCESS_POLICIES, type TranscriptViewMode } from '../../src/transcript/presentation-policy.ts'
-import { NO_DISCLOSURE, openTurns, toggleCall, toggleGroup, toggleRows, toggleTurn, type Disclosure } from '../../src/transcript/disclosure.ts'
+import { NO_DISCLOSURE, openTurns, toggleCall, toggleGroup, toggleRecent, toggleRows, toggleTurn, type Disclosure } from '../../src/transcript/disclosure.ts'
 import { StreamFacts, type StreamInputs } from '../../src/transcript/stream-facts.ts'
 
 const t = interpolateLocaleMessage
@@ -42,23 +42,67 @@ describe('openTurns', () => {
     expect([...openTurns({ ...NO_DISCLOSURE, recent: false }, reach)]).toEqual([])
   })
 
-  it('flips the turns Enter toggled against the reach: a reached turn closes, an unreached one opens', () => {
-    const flipped = { ...NO_DISCLOSURE, recent: true, turns: new Set([2, 9]) }
+  it('opens the turns Enter opened and folds the ones it folded, whatever the reach', () => {
+    const flipped = { ...NO_DISCLOSURE, recent: true, turns: new Map([[2, false], [9, true]]) }
     expect([...openTurns(flipped, reach)].sort()).toEqual([3, 9])
   })
 
-  it('keeps every turn a search holds open, whatever the reach and the flips say', () => {
-    expect([...openTurns({ ...NO_DISCLOSURE, recent: true, turns: new Set([5]), forced: new Set([5, 1]) }, reach)].sort()).toEqual([1, 2, 3, 5])
+  it('keeps every turn a search holds open, whatever the reach and the openings say', () => {
+    expect([...openTurns({ ...NO_DISCLOSURE, recent: true, turns: new Map([[5, true]]), forced: new Set([5, 1]) }, reach)].sort()).toEqual([1, 2, 3, 5])
   })
 })
 
-describe('the flips of the reader', () => {
-  it('toggleTurn flips one turn and leaves the value it was given unchanged', () => {
+describe('the openings of the reader', () => {
+  it('toggleTurn flips one turn from how it is drawn and leaves the value it was given unchanged', () => {
     const before = NO_DISCLOSURE
-    const on = toggleTurn(before, 4)
-    expect([...on.turns]).toEqual([4])
-    expect([...toggleTurn(on, 4).turns]).toEqual([])
+    const reach = new Set<number>()
+    const on = toggleTurn(before, 4, reach)
+    expect([...on.turns]).toEqual([[4, true]])
+    expect([...toggleTurn(on, 4, reach).turns]).toEqual([])
     expect(before.turns.size).toBe(0)
+  })
+
+  it('a turn put back to what Ctrl-O gives it follows Ctrl-O again', () => {
+    const reach = new Set([4])
+    const open = { ...NO_DISCLOSURE, recent: true }
+    const folded = toggleTurn(open, 4, reach)
+    expect([...folded.turns]).toEqual([[4, false]])
+    expect([...openTurns(folded, reach)]).toEqual([])
+    const back = toggleTurn(folded, 4, reach)
+    expect(back.turns.size).toBe(0)
+    expect([...openTurns(back, reach)].sort()).toEqual([4])
+  })
+
+  it('toggleRecent opens or closes the newest turns whole and forgets the turns Enter folded', () => {
+    const folded = { ...NO_DISCLOSURE, recent: true, turns: new Map<number, boolean>([[2, false], [5, true]]) }
+    const off = toggleRecent(folded)
+    expect(off.recent).toBe(false)
+    expect([...off.turns]).toEqual([[5, true]])
+    expect(toggleRecent(off).recent).toBe(true)
+  })
+
+  it('keeps a turn Enter folded folded when a newer turn moves the reach on', () => {
+    let disclosure: Disclosure = { ...NO_DISCLOSURE, recent: true }
+    disclosure = toggleTurn(disclosure, 2, new Set([2, 3]))
+    expect([...openTurns(disclosure, new Set([2, 3]))].sort()).toEqual([3])
+    expect([...openTurns(disclosure, new Set([3, 4]))].sort()).toEqual([3, 4])
+  })
+
+  it('closes the newest turns whole on Ctrl-O without reopening the turns Enter folded', () => {
+    let disclosure: Disclosure = { ...NO_DISCLOSURE, recent: true }
+    disclosure = toggleTurn(disclosure, 2, new Set([2, 3]))
+    disclosure = toggleRecent(disclosure)
+    expect(disclosure.recent).toBe(false)
+    expect([...openTurns(disclosure, new Set([2, 3]))]).toEqual([])
+  })
+
+  it('keeps a turn Enter opened open through Ctrl-O and back', () => {
+    let disclosure: Disclosure = toggleTurn(NO_DISCLOSURE, 4, new Set())
+    expect([...openTurns(disclosure, new Set())]).toEqual([4])
+    disclosure = toggleRecent(disclosure)
+    expect([...openTurns(disclosure, new Set())]).toContain(4)
+    disclosure = toggleRecent(disclosure)
+    expect([...openTurns(disclosure, new Set())]).toContain(4)
   })
 
   it('toggleRows opens the entries not yet open, and closes them again once all of them are open', () => {
@@ -116,9 +160,9 @@ describe('what each level draws by default and under Ctrl+O', () => {
     }
   })
 
-  it('reads Enter on a turn header as the flip of that turn against the level', () => {
-    expect(stream('standard', { ...NO_DISCLOSURE, turns: new Set([1]) }, twoBash)[0]!.rows.map(row => row.kind)).toEqual(['prompt', 'header', 'tool', 'tool', 'answer'])
-    expect(stream('standard', { ...NO_DISCLOSURE, recent: true, turns: new Set([1]) }, twoBash)[0]!.rows.map(row => row.kind)).toEqual(['prompt', 'header', 'tools', 'answer'])
+  it("reads Enter on a turn header as the turn's own state, whatever the level gives", () => {
+    expect(stream('standard', { ...NO_DISCLOSURE, turns: new Map([[1, true]]) }, twoBash)[0]!.rows.map(row => row.kind)).toEqual(['prompt', 'header', 'tool', 'tool', 'answer'])
+    expect(stream('standard', { ...NO_DISCLOSURE, recent: true, turns: new Map([[1, false]]) }, twoBash)[0]!.rows.map(row => row.kind)).toEqual(['prompt', 'header', 'tools', 'answer'])
   })
 
   it('mounts a turn a search holds open even when the window has left it out, and draws it Verbose', () => {
