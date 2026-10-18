@@ -38,7 +38,7 @@ function bench(initial: TranscriptEntryModel[] | TranscriptModel = [user(1, 'one
     id: 'transcript.conversation', disposed: false,
     set: (node: unknown) => { published.push(node) }, setTurns: () => {}, setMarked: () => {}, track: () => {},
     focus: () => {}, release: () => {}, setKeys: () => {}, spotlight: () => {}, focusRow: () => {}, cursor: () => undefined,
-    trackedRow: () => undefined, dispose: () => {},
+    trackedRow: () => undefined, cursorRow: () => undefined, dispose: () => {},
   } as unknown as MayflyNodeSlot
   const screen = {
     mountNodeSlot: () => lease, followContent: vi.fn(), requestRender: vi.fn(), watchContentTail: () => () => {},

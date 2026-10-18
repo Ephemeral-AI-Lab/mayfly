@@ -18,7 +18,7 @@ function fakeScreen() {
   const lease: MayflyNodeSlot = {
     id: 'transcript.conversation', get disposed() { return slot.disposed },
     set: (node) => { slot.published.push(node) }, setTurns: (latest) => { slot.turns = latest }, setMarked: () => {},
-    focus: () => {}, release: () => {}, setKeys: () => {}, spotlight: () => {}, focusRow: () => {}, track: () => {}, trackedRow: () => undefined, cursor: () => undefined,
+    focus: () => {}, release: () => {}, setKeys: () => {}, spotlight: () => {}, focusRow: () => {}, track: () => {}, trackedRow: () => undefined, cursorRow: () => undefined, cursor: () => undefined,
     dispose: () => { slot.disposed = true },
   }
   const mounted: { id: string, region: string }[] = []

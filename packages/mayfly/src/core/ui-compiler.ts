@@ -2359,6 +2359,11 @@ export class MayflyUiSurfaceRuntime {
    * the list node's own rows. The owner sets `controlId` and `itemId`; a list of another control never touches it.
    */
   readonly probe: { controlId: string, itemId: string | undefined, line: number | undefined } = { controlId: '', itemId: undefined, line: undefined }
+  /**
+   * The focused flow list's cursor line among the surface's own rows, as of the last render: its owner reveals the row in
+   * the outer scroll. `undefined` while the surface is not flow content or no cursor is painted.
+   */
+  focusedLine: number | undefined
   /** Asks the host for another frame and nothing else (what a clock tick does). */
   readonly nudge: () => void
 
@@ -3165,6 +3170,8 @@ class CompiledSurface implements MayflyEditorShellComponent {
       const contentLimit = rowLimit === undefined ? rows.length : Math.max(1, rowLimit - feedbackRows.length)
       const caretRow = findMarkerRow(rows, CURSOR_MARKER)
       const focusRow = caretRow < 0 ? findMarkerRow(rows, FOCUS_SENTINEL) : caretRow
+      // A focused flow list's cursor marker seeks its own row without walking the list; its owner reveals it in the scroll.
+      this.surfaceRuntime.focusedLine = this.surfaceRuntime.flow && focusRow >= 0 ? focusRow : undefined
       const pinFrame = rowLimit !== undefined && rows.length > contentLimit && this.node.kind === 'surface'
         && (this.node.chrome === 'overlay' || this.node.chrome === 'surface')
       let limited: string[]

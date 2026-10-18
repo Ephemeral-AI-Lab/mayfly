@@ -86,6 +86,12 @@ export interface MayflyNodeSlot {
    */
   trackedRow(): number | undefined
   /**
+   * The line the focused list's cursor stands on among the scroll content's rows, as of the last paint: its owner keeps
+   * the cursor in view while the list holds focus.
+   * @returns the line, or `undefined` while no list holds focus or its cursor is not painted.
+   */
+  cursorRow(): number | undefined
+  /**
    * The row the cursor of a list control stands on.
    * @param controlId - the list's id.
    * @returns the item id, or `undefined` when the slot shows no such list or it has no cursor yet.
@@ -190,6 +196,9 @@ class SlotAttachment {
 
   /** The followed item's line in the slot's own rows, or `undefined` when the slot is not the scroll's flow content. */
   get trackedLine(): number | undefined { return this.runtime.flow ? this.runtime.probe.line : undefined }
+
+  /** The focused flow list's cursor line in the slot's own rows, or `undefined` when no cursor was painted. */
+  get cursorLine(): number | undefined { return this.runtime.flow ? this.runtime.focusedLine : undefined }
 
   /** Give the compiled surface (or take from it) the keyboard focus. */
   applyFocus(focused: boolean): void {
@@ -379,6 +388,12 @@ class NodeSlotLease implements MayflyNodeSlot {
 
   trackedRow(): number | undefined {
     const line = this.surface.attachment?.trackedLine
+    const start = this.live && line !== undefined ? this.host.contentStart(this.id) : undefined
+    return start === undefined || line === undefined ? undefined : start + line
+  }
+
+  cursorRow(): number | undefined {
+    const line = this.surface.attachment?.cursorLine
     const start = this.live && line !== undefined ? this.host.contentStart(this.id) : undefined
     return start === undefined || line === undefined ? undefined : start + line
   }

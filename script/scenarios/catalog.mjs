@@ -64,11 +64,12 @@ const COVERS = {
     `${TRANSCRIPT}pane-todo.ts`, `${TRANSCRIPT}status-agents.ts`, `${TRANSCRIPT}status-jobs.ts`, 'packages/mayfly/src/conversation/', 'packages/mayfly/src/internal/session-directory.ts',
     'packages/mayfly/src/core/', 'packages/mayfly/src/frontend/',
   ],
-  // The fix round: the cursor band in the virtual flow list, the live publish budget/watchdog, the Activity clock, the
-  // queued-message wake after an interrupt, the production output optimizer, and the transport notice.
+  // The fix round: the cursor band in the virtual flow list and the content following the focused cursor, the live publish
+  // budget/watchdog, the Activity clock, the queued-message wake after an interrupt, the production output optimizer, and the transport notice.
   liveQueue: [
     'packages/mayfly/src/core/ui-list-paint.ts', 'packages/mayfly/src/core/ui-loader-animation.ts', 'packages/mayfly/src/core/output-optimizer.ts',
-    'packages/mayfly/src/core/index.ts', 'packages/mayfly/src/transcript/transcript-model.ts', 'packages/mayfly/src/transcript/conversation-feed.ts',
+    'packages/mayfly/src/core/index.ts', 'packages/mayfly/src/core/ui-compiler.ts', 'packages/mayfly/src/core/node-slot.ts',
+    'packages/mayfly/src/transcript/transcript-model.ts', 'packages/mayfly/src/transcript/conversation-feed.ts',
     'packages/mayfly/src/transcript/official-model.ts', 'packages/mayfly/src/transcript/conversation-slots.ts', 'packages/mayfly/src/transcript/pane-activity.ts',
     'packages/mayfly/src/transcript/notices.ts', 'packages/mayfly/src/app/inbox-wake.ts', 'packages/mayfly/src/app/index.ts',
     ...STREAM, 'packages/mayfly/src/core/views-lane.ts',
@@ -516,13 +517,20 @@ const SCRIPTS = {
     resize(100, 30),
     type('/permissions'), key('enter'), wait(1000), checkpoint('permissions'),
   ],
-  // The fix round: the live answer pauses mid-text, the settled turn, the Alt+↑ band over the answer and its tool
-  // block, a real turn held open with a message queued behind it, Esc, and the queued message starting the next turn.
+  // The fix round: the live answer pauses mid-text, the settled turn, the Alt+↑ band over the answer and its tool block,
+  // the content following the focused cursor out of view and back after a manual scroll, a real turn held open with a
+  // message queued behind it, Esc, and the queued message starting the next turn.
   liveQueue: [
     play('live'), checkpoint('live'),
     play('settled'), wait(600), checkpoint('settled'),
     key('alt+up'), wait(300), checkpoint('band'),
-    key('up'), checkpoint('band-moved'),
+    key('up'), wait(300), checkpoint('band-moved'),
+    // Walk the cursor to the first block: the content follows the least that shows the focused block.
+    key('up', { repeat: 8 }), wait(600), checkpoint('reveal'),
+    // Scroll the view away by hand; the cursor stays where it is, out of view, until the next cursor key.
+    key('down', { repeat: 2 }), wait(300),
+    wheel('up', { count: 30 }), wait(500), checkpoint('scrolled-away'),
+    key('down'), wait(500), checkpoint('reveal-again'),
     key('esc'), wait(200),
     type('hold:4000 keep the parser open'), key('enter'), wait(900), checkpoint('running'),
     type('queued follow-up: run the suite'), key('enter'), wait(500), checkpoint('queued'),

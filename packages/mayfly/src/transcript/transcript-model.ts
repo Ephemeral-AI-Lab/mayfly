@@ -203,6 +203,10 @@ export class TranscriptController {
   private focused = false
   /** What the cursor stands on that has keys of its own, last told to `focusRow`. */
   private row: MayflyFocusRow
+  /** The cursor row last seen while the stream held focus: only a real move asks the content to reveal it. */
+  private lastCursor: string | undefined
+  /** The focused cursor moved out of view: the next content layout scrolls the least that shows it. */
+  private pendingReveal = false
 
   /** What the displayed view's new-messages marker asks of the screen and the stream. */
   private readonly freshHost: NewMessagesHost = {
@@ -265,6 +269,8 @@ export class TranscriptController {
     if (this.active !== undefined) this.views.get(this.active)?.fresh.reset()
     this.active = key
     if (key !== undefined) this.views.get(key)?.fresh.reset()
+    this.pendingReveal = false
+    this.lastCursor = undefined
     this.publish()
     // A different conversation opens at its newest content.
     if (switched) this.screen?.followContent()
@@ -777,14 +783,21 @@ export class TranscriptController {
       },
       onFocusChange: (focused) => {
         this.focused = focused
-        if (!focused) this.cursorRow(undefined)
+        if (!focused) {
+          this.cursorRow(undefined)
+          this.pendingReveal = false
+          this.lastCursor = undefined
+        }
         if (!this.searching) this.options.focusMode?.(focused ? 'conversation' : 'prompt')
       },
       // `Esc` or `Alt+↓` while a search holds the cursor ends the search and stays in the conversation.
       onLeave: () => { if (this.search === undefined) this.slot?.release(); else this.endSearch() },
     })
     // After each layout of the content the marker reads where it stands against the view.
-    this.offLayout = screen.watchContentTail(() => { if (this.active !== undefined) this.views.get(this.active)?.fresh.layout() })
+    this.offLayout = screen.watchContentTail(() => {
+      if (this.active !== undefined) this.views.get(this.active)?.fresh.layout()
+      this.revealCursor()
+    })
     this.publish()
     screen.requestRender()
   }
@@ -831,8 +844,29 @@ export class TranscriptController {
     if (actionId === STREAM.queuedEdit) this.slot?.release()
   }
 
+  /**
+   * The focused stream's cursor moved out of view: scroll the content the least that shows the cursor's block. Runs after
+   * a layout, when the flow list has painted its cursor line; a move that is already in view costs nothing.
+   */
+  private revealCursor(): void {
+    if (!this.pendingReveal) return
+    if (!this.focused) { this.pendingReveal = false; return }
+    const row = this.slot?.cursorRow()
+    const tail = this.screen?.contentTail()
+    // No cursor painted yet (the frame has not rendered): ask again on the next layout.
+    if (row === undefined || tail === undefined) return
+    this.pendingReveal = false
+    if (row < tail.top) this.screen?.scrollContentTo(row)
+    else if (row >= tail.top + tail.viewport) this.screen?.scrollContentTo(row - tail.viewport + 1)
+  }
+
   /** The row type the cursor stands on, told to the notification row so it teaches the keys that row has. */
   private cursorRow(itemId: string | undefined): void {
+    // Only a move asks for a reveal: a manual scroll leaves the cursor out of view until the next key.
+    if (this.focused && itemId !== this.lastCursor) {
+      this.lastCursor = itemId
+      if (itemId !== undefined) this.pendingReveal = true
+    }
     const id = itemId === undefined ? undefined : queuedIdOf(itemId)
     const facts = this.active === undefined ? undefined : this.views.get(this.active)?.facts
     const lane = id === undefined ? undefined : facts?.queuedLane(id)
@@ -883,6 +917,8 @@ export class TranscriptController {
     this.cancelTrailing()
     this.stopWatchdog()
     this.streaming = false
+    this.pendingReveal = false
+    this.lastCursor = undefined
     this.offLayout?.()
     this.offLayout = undefined
     for (const view of this.views.values()) view.fresh.reset()
