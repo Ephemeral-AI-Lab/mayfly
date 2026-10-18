@@ -1,65 +1,73 @@
 grid 120x40 cursor none
-|    │ workload │ validated │ compiled │ rows │
-|    ├──────────┼───────────┼──────────┼──────┤
-|    │ W1       │ 2         │ 2        │ 2    │
-|    ├──────────┼───────────┼──────────┼──────┤
-|    │ W2       │ 0         │ 0        │ 1    │
-|    ├──────────┼───────────┼──────────┼──────┤
-|    │ W3       │ 0         │ 0        │ 2    │
-|    └──────────┴───────────┴──────────┴──────┘
 |
-|    ```python
-|      def wrap(lines, width):
-|          rows = []
-|          for line in lines:
-|              if not line:
-|                  rows.append('')
-|                  continue
-|              rows.extend(line[i:i + width] for i in range(0, len(line), width))
-|          return rows
+|    ▗▘   ▝▖     mayfly scenario
+| ▄▄▖█▛███▜█▗▄▄  ephemeral agents, enduring works
+|  ▄▖█▙███▟█▗▄   deepseek-v4-pro · deepseek-official
+|    ▝▜▀▀▀▛▘     ~/workspace
+|
+|  » Rewrite the parser entry point around the token stream.
+|
+|  ▾ 1 tool call · Ctrl+O to expand
+|
+|  ✻ Thinking · 1s
+|    Read the current entry point, then rewrite it around the token stream.
+|
+|  ● Section 1: rendering pipeline notes
+|
+|    The renderer walks the tree once per frame and only repaints rows whose content changed since the last frame. This
+|    paragraph is long enough to wrap at ordinary widths, with inline code, emphasis, and a link
+|    (https://example.com/1) to exercise the inline painter.
+|
+|    • first point about caches and identity
+|    • second point about width ladders
+|    • third point, with a nested list:
+|        • nested one
+|        • nested two
+|
+|    ```ts
+|      export function section1(input: readonly string[], width: number): string[] {
+|        const rows: string[] = []
+|        for (const line of input) {
+|          if (line.length === 0) { rows.push(''); continue }
+|          for (let at = 0; at < line.length; at += width) rows.push(line.slice(at, at + width))
+|        }
+|        return rows.map(row => row.padEnd(width, ' '))
+|      }
 |    ```
-|
-|  ✓ Read(src/parser.ts)
-|
-|  ● The parser now builds on the token stream and the suite is green.
-|
-|  » hold:4000 keep the parser open
-|
-|  ■ interrupted
-|
-|  ✻ Worked for 0s · done 09:00
-|
-|  » queued follow-up: run the suite
-|
-|  ● This is a replay session: the model is a stub. Type nothing; the conversation above is scripted.
-|
-|  ✻ Worked for 0s · done 09:00
-|                                                                                      Alt+↑ conversation · Alt+↓ view
+|                                                  New messages · Ctrl+↓               Alt+↑ conversation · Alt+↓ view
 |╭────────────────────────────────────────────────────────────────────────────────────── Rewrite the parser entry point ╮
 |│ >  Ask anything · / commands · @ files · # skills · ! shell                                                          │
 |╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
 | deepseek-official/deepseek-v4-pro  ~/workspace                                      cache ▰▰▱▱▱ 44%  ctx ▱▱▱▱▱▱▱▱▱▱ 1%
 styles
-0: 6-13 fg:#f5f5f7; 17-25 fg:#f5f5f7; 29-36 fg:#f5f5f7; 40-43 fg:#f5f5f7
-9: 4-12 fg:#45406b
-10: 6-8 fg:#9a86e6; 10-13 fg:#c9c0f0; 15-26 fg:#ededf2
-11: 6-18 fg:#ededf2
-12: 6-9 fg:#ededf2; 10-12 fg:#9a86e6; 13-18 fg:#ededf2; 19-20 fg:#9a86e6; 21-27 fg:#ededf2
-13: 6-13 fg:#ededf2; 14-15 fg:#9a86e6; 16 fg:#ededf2; 17-19 fg:#9a86e6; 20-25 fg:#ededf2
-14: 6-29 fg:#ededf2; 30-31 fg:#4ec87e; 32 fg:#ededf2
-15: 6-17 fg:#ededf2; 18-25 fg:#9a86e6
-16: 6-43 fg:#ededf2; 44-46 fg:#9a86e6; 47-49 fg:#ededf2; 50-51 fg:#9a86e6; 52 fg:#ededf2; 53-57 fg:#c9c0f0; 58 fg:#ededf2; 59 fg:#e8a838; 60-61 fg:#ededf2; 62-64 fg:#c9c0f0; 65-79 fg:#ededf2
-17: 6-9 fg:#ededf2; 10-15 fg:#9a86e6; 16-20 fg:#ededf2
-18: 4-6 fg:#45406b
-20: 2-3 fg:#4ec87e; 4-7 fg:#ededf2 b; 8 fg:#9aa3b8; 9-21 fg:#c9c0f0; 22 fg:#9aa3b8
-22: 2-3 fg:#ededf2
-24: 2-3 fg:#9a86e6; 4-119 fg:#9a86e6 b
-26: 2-14 fg:#e8a838
-28: 2-29 fg:#9aa3b8
-30: 2-3 fg:#9a86e6; 4-119 fg:#9a86e6 b
-32: 2-3 fg:#ededf2
-34: 2-29 fg:#9aa3b8
-35: 86-116 fg:#9aa3b8
+1: 4-5 fg:#9a86e6; 9-10 fg:#9a86e6; 16-21 fg:#9a86e6 b; 22-30 fg:#5c6476
+2: 1-3 fg:#cfc6f5; 4-10 fg:#9a86e6; 11-13 fg:#cfc6f5; 16-47 fg:#c9c0f0
+3: 2-3 fg:#cfc6f5; 4-10 fg:#9a86e6; 11-12 fg:#cfc6f5; 16-50 fg:#e9e6f4
+4: 4-10 fg:#9a86e6; 16-26 fg:#9aa3b8
+6: 2-3 fg:#9a86e6; 4-119 fg:#9a86e6 b
+8: 2-33 fg:#9aa3b8
+10: 2-16 fg:#9aa3b8
+11: 2-3 fg:#ededf2; 4-73 fg:#9aa3b8
+13: 2-3 fg:#ededf2; 4-38 fg:#f5f5f7 b
+15: 8-15 fg:#f5f5f7
+16: 62-72 fg:#c9c0f0; 75-82 fg:#ededf2; 91-94 fg:#ededf2; 95-119 fg:#5c6476
+17: 4-26 fg:#5c6476
+19: 4-5 fg:#c9c0f0
+20: 4-5 fg:#c9c0f0; 25-29 fg:#c9c0f0
+21: 4-5 fg:#c9c0f0
+22: 8-9 fg:#c9c0f0
+23: 8-9 fg:#c9c0f0
+25: 4-8 fg:#45406b
+26: 6-11 fg:#9a86e6; 12 fg:#ededf2; 13-20 fg:#9a86e6; 22-29 fg:#c9c0f0; 31-37 fg:#ededf2; 38-45 fg:#9a86e6; 47-52 fg:#c9c0f0; 64-69 fg:#c9c0f0; 73-78 fg:#c9c0f0; 82 fg:#ededf2
+27: 6-7 fg:#ededf2; 8-12 fg:#9a86e6; 13-19 fg:#ededf2; 20-25 fg:#c9c0f0; 26-32 fg:#ededf2
+28: 6-7 fg:#ededf2; 8-10 fg:#9a86e6; 11-12 fg:#ededf2; 13-17 fg:#9a86e6; 18-23 fg:#ededf2; 24-25 fg:#9a86e6; 26-34 fg:#ededf2
+29: 6-9 fg:#ededf2; 10-11 fg:#9a86e6; 12-29 fg:#ededf2; 30 fg:#e8a838; 31-44 fg:#ededf2; 45-46 fg:#4ec87e; 47-49 fg:#ededf2; 50-57 fg:#9a86e6; 58-59 fg:#ededf2
+30: 6-9 fg:#ededf2; 10-12 fg:#9a86e6; 13-14 fg:#ededf2; 15-17 fg:#9a86e6; 18-23 fg:#ededf2; 24 fg:#e8a838; 25-94 fg:#ededf2
+31: 6-8 fg:#ededf2
+32: 6-7 fg:#ededf2; 8-13 fg:#9a86e6; 14-26 fg:#ededf2; 30-48 fg:#ededf2; 49-51 fg:#4ec87e; 52-53 fg:#ededf2
+33: 6 fg:#ededf2
+34: 4-6 fg:#45406b
+35: 49-71 fg:#ededf2 r; 86-116 fg:#9aa3b8
 36: 0-87 fg:#45406b; 88-117 fg:#f5f5f7 b; 118-119 fg:#45406b
 37: 0 fg:#45406b; 2-3 fg:#ededf2; 4 r; 5-60 fg:#5c6476; 119 fg:#45406b
 38: 0-119 fg:#45406b
