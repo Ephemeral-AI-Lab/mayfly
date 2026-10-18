@@ -5,7 +5,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { CommandResult } from '@deepseek-ai/dsh-commands'
 import type {} from '@deepseek-ai/dsh-settings'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
-import { ui, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
+import { panel, ui, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import { openProviderEditor } from './provider-edit.ts'
 import { openAccountPanel } from './provider-account.ts'
 import { openModelPicker } from './model-commands.ts'
@@ -59,10 +59,14 @@ export function apply(ctx: Context): void {
           ].filter(part => part !== undefined)
           return { id: provider.id, label: provider.name || provider.id, ...(parts.length === 0 ? {} : { detail: parts.join(' · ') }) }
         }))
-        return ui.stack.column([
-          ui.list({ id: 'providers', role: 'browse', selectedIds: [], filterable: true, filterMode: 'slash', items, empty: ui.empty({ title: t('No configured providers') }) }),
-          ui.actions({ id: 'provider-list-actions', items: [{ id: 'add', label: t('Add provider'), hintLabel: t('add'), key: 'a', hidden: true }] }),
-        ])
+        return panel({
+          title: t('Providers'),
+          escapeLabel: 'close',
+          body: ui.stack.column([
+            ui.list({ id: 'providers', role: 'browse', selectedIds: [], filterable: true, filterMode: 'slash', items, empty: ui.empty({ title: t('No configured providers') }) }),
+            ui.actions({ id: 'provider-list-actions', items: [{ id: 'add', label: t('Add provider'), hintLabel: t('add'), key: 'ctrl+a', hidden: true }] }),
+          ]),
+        })
       }
       let offSettings: (() => void) | undefined
       const handle = openUiOverlay(ctx, {

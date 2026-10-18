@@ -1,8 +1,4 @@
 grid 100x30 cursor none
-|  ● Goal set · Refresh the landing page hero and keep every test green
-|
-|  ● A reviewer runs in the background, the todo list is set, and a watcher rebuilds the styles.
-|
 |  ✓ Subagent(Audit the hero copy) · 0.6s
 |
 |  ✓ TodoWrite · 0.2s
@@ -16,36 +12,31 @@ grid 100x30 cursor none
 |  Plugin marketplace
 |  index updated 26h ago · 14 entries
 |
-|  Installed 0   Updates 0   Browse 13
-|                ━━━━━━━━━
+|  Installed 0    Updates 0    Browse 13
 |
-|  Mayfly UI rejected: $.child.children[3].node.children[0].node.ch  │  No plugin selected
-|  ildren[4].node.children[0].node.maxRows must be a finite integer  │
-|   within the safe range and >= 1                                   │
-|                                                                    │
-|                                                                    │
-|                                                                    │
-|                                                                    │
+|  everything is up to date                                         │ No plugin selected
 |
 |
-|  ←/→ tabs · Enter open · r refresh · Esc close
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|  r refresh · / filter · Alt+←/→ tabs · Esc close
 styles
-0: 2-99 fg:#c9c0f0
-2: 2-3 fg:#ededf2
-4: 2-3 fg:#4ec87e; 4-11 fg:#ededf2 b; 12 fg:#9aa3b8; 13-31 fg:#c9c0f0; 32-39 fg:#9aa3b8
-6: 2-3 fg:#4ec87e; 4-12 fg:#ededf2 b; 13-19 fg:#9aa3b8
-8: 2-3 fg:#ededf2
-12: 2-29 fg:#9aa3b8
-13: 0-99 fg:#9a86e6
-14: 2-19 fg:#9a86e6 b
-15: 2-35 fg:#9aa3b8
-17: 2-10 fg:#9aa3b8; 12 fg:#9aa3b8; 16-22 fg:#9a86e6 b; 24 fg:#9a86e6; 28-33 fg:#9aa3b8; 35-36 fg:#9aa3b8
-18: 16-24 fg:#9a86e6 b
-20: 2-65 fg:#e85454; 68 fg:#9aa3b8; 71-88 fg:#9aa3b8
-21: 2-65 fg:#e85454; 68 fg:#9aa3b8
-22: 2-32 fg:#e85454; 68 fg:#9aa3b8
-23: 68 fg:#9aa3b8
-24: 68 fg:#9aa3b8
-25: 68 fg:#9aa3b8
-26: 68 fg:#9aa3b8
-29: 2-4 fg:#ededf2; 6-12 fg:#5c6476; 13-17 fg:#ededf2; 19-25 fg:#5c6476; 26 fg:#ededf2; 28-37 fg:#5c6476; 38-40 fg:#ededf2; 42-46 fg:#5c6476
+0: 2-3 fg:#4ec87e; 4-11 fg:#ededf2 b; 12 fg:#9aa3b8; 13-31 fg:#c9c0f0; 32-39 fg:#9aa3b8
+2: 2-3 fg:#4ec87e; 4-12 fg:#ededf2 b; 13-19 fg:#9aa3b8
+4: 2-3 fg:#ededf2
+8: 2-29 fg:#9aa3b8
+9: 0-99 fg:#9a86e6
+10: 2-19 fg:#9a86e6 b
+11: 2-35 fg:#9aa3b8
+13: 2-10 fg:#9aa3b8; 12 fg:#9aa3b8; 16-26 fg:#9a86e6 b r; 30-35 fg:#9aa3b8; 37-38 fg:#9aa3b8
+15: 2-25 fg:#9aa3b8; 67 fg:#45406b; 69-86 fg:#9aa3b8
+29: 2 fg:#ededf2; 4-13 fg:#5c6476; 14 fg:#ededf2; 16-24 fg:#5c6476; 25-31 fg:#ededf2; 33-39 fg:#5c6476; 40-42 fg:#ededf2; 44-48 fg:#5c6476

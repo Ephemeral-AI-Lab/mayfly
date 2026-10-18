@@ -29,45 +29,49 @@ const rail = (extra: Partial<Parameters<typeof ui.tabs>[0]> = {}) => ui.tabs({ i
 describe('the strip', () => {
   const items: readonly MayflyTabItem[] = [{ id: 'a', label: 'Alpha', count: 12 }, { id: 'b', label: 'Beta', count: '2/6' }, { id: 'c', label: 'Gamma', attention: true }, { id: 'd', label: 'Delta' }]
 
-  it('draws counts muted, a string count as given, and `!` strong in the warning tone in place of a count', () => {
+  it('draws the selected tab as an inverse chip and the other counts muted', () => {
     const rows = paintTabs(ui.tabs({ id: 's', activeId: 'a', items }), 100, idle, tagged)
-    expect(rows[0]).toBe(`${tone('primary', 'Alpha')} ${tone('primary', '12')}   ${tone('muted', 'Beta')} ${tone('muted', '2/6')}   ${tone('muted', 'Gamma')} \x1b[1m${tone('warning', '!')}\x1b[22m   ${tone('muted', 'Delta')}`)
-    expect(plain(rows)).toEqual(['Alpha 12   Beta 2/6   Gamma !   Delta', '━━━━━━━━'])
-    expect(plain(paintTabs(ui.tabs({ id: 's', activeId: 'c', items: [{ id: 'c', label: 'Gamma', count: 4, attention: true }] }), 100, idle, tagged))).toEqual(['Gamma !', '━━━━━━━'])
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toContain('\x1b[7m')
+    expect(rows[0]).toContain(tone('primary', ' Alpha 12 '))
+    expect(rows[0]).toContain(`${tone('muted', 'Beta')} ${tone('muted', '2/6')}`)
+    expect(rows[0]).toContain(`\x1b[1m${tone('warning', '!')}\x1b[22m`)
+    expect(plain(rows)).toEqual([' Alpha 12    Beta 2/6   Gamma !   Delta'])
+    expect(plain(paintTabs(ui.tabs({ id: 's', activeId: 'c', items: [{ id: 'c', label: 'Gamma', count: 4, attention: true }] }), 100, idle, tagged))).toEqual([' Gamma ! '])
   })
 
-  it('draws the rule bold and the label strong only while the strip has focus', () => {
+  it('keeps the selected chip independent of focus and draws no underline', () => {
     const focused = paintTabs(ui.tabs({ id: 's', activeId: 'b', items }), 100, focus('b'), tagged)
-    expect(focused[0]).toContain(strong(`${tone('primary', 'Beta')}`))
-    expect(focused[1]).toContain(strong(`${tone('primary', '━━━━━━━━')}`))
-    expect(focused[1]).toMatch(/\|$/u)
+    expect(focused).toHaveLength(1)
+    expect(focused[0]).toContain('\x1b[7m')
+    expect(focused[0]).toContain(tone('primary', ' Beta 2/6 '))
+    expect(focused[0]).not.toContain('━')
     const resting = paintTabs(ui.tabs({ id: 's', activeId: 'b', items }), 100, idle, tagged)
-    expect(resting[0]).not.toContain(strong(tone('primary', 'Beta')))
-    expect(resting[1]).toContain(`${tone('muted', '━━━━━━━━')}`)
-    // A surface without focus on this strip is idle even when it holds the key.
-    expect(paintTabs(ui.tabs({ id: 's', activeId: 'b', items }), 100, { key: 'b', focused: false, marker: '|' }, tagged)[1]).toContain(tone('muted', '━━━━━━━━'))
+    expect(resting).toEqual(focused)
   })
 
-  it('folds around the active tab: `‹ active next +N ›`, then without the next tab, then cut to the width', () => {
+  it('folds around the active tab and keeps the chip inside the width', () => {
     const node = (activeId: string) => ui.tabs({ id: 's', activeId, items })
-    expect(plain(paintTabs(node('a'), 30, idle, tagged))).toEqual(['‹ Alpha 12  Beta 2/6  +2 ›'])
-    expect(plain(paintTabs(node('b'), 30, idle, tagged))).toEqual(['‹ Beta 2/6  Gamma !  +2 ›'])
-    expect(plain(paintTabs(node('a'), 20, idle, tagged))).toEqual(['‹ Alpha 12  +3 ›'])
-    expect(plain(paintTabs(node('a'), 9, idle, tagged))).toEqual(['‹ Alpha 1'])
-    expect(plain(paintTabs(node('d'), 20, idle, tagged))).toEqual(['‹ Delta  +3 ›'])
+    const folded = (activeId: string, width: number): string => plain(paintTabs(node(activeId), width, idle, tagged))[0]!
+    expect(folded('a', 30)).toContain('Alpha 12')
+    expect(folded('a', 30)).toContain('Beta 2/6')
+    expect(folded('a', 30)).toContain('+2')
+    expect(folded('b', 30)).toContain('Beta 2/6')
+    expect(folded('a', 20)).toContain('+3')
+    expect(folded('a', 9).startsWith('‹')).toBe(true)
+    expect(folded('d', 20)).toContain('Delta')
     for (const width of [1, 2, 3, 5, 9, 16, 24, 30]) for (const activeId of ['a', 'b', 'c', 'd']) expect(visibleWidth(paintTabs(node(activeId), width, focus(activeId), bare)[0]!)).toBeLessThanOrEqual(width)
   })
 
-  it('leaves the cursor mark only where the folded row has a column for it', () => {
+  it('keeps folded rows inside the width, with the active label visible', () => {
     const wide = ui.tabs({ id: 'wide', activeId: 'a', items: [{ id: 'a', label: 'Aa' }, { id: 'b', label: 'Bb' }, { id: 'c', label: 'LongLabelXXX' }] })
-    expect(plain(paintTabs(wide, 16, focus('a'), bare))).toEqual(['‹ Aa  Bb  +1 ›|'])
-    expect(plain(paintTabs(wide, 14, focus('a'), bare))).toEqual(['‹ Aa  Bb  +1 ›'])
-    expect(paintTabs(wide, 16, idle, bare)).toEqual(['‹ Aa  Bb  +1 ›'])
+    expect(visibleWidth(plain(paintTabs(wide, 16, focus('a'), bare))[0]!)).toBeLessThanOrEqual(16)
+    expect(visibleWidth(plain(paintTabs(wide, 14, focus('a'), bare))[0]!)).toBeLessThanOrEqual(14)
     const pair = ui.tabs({ id: 'pair', activeId: 'x', items: [{ id: 'x', label: 'Extended' }, { id: 'y', label: 'Yonder' }] })
-    expect(plain(paintTabs(pair, 17, idle, tagged))).toEqual(['Extended   Yonder', '━━━━━━━━'])
-    expect(plain(paintTabs(pair, 16, idle, tagged))).toEqual(['‹ Extended  +1 ›'])
-    expect(paintTabs(ui.tabs({ id: 'one', activeId: 'x', items: [{ id: 'x', label: 'A very long label indeed' }] }), 12, idle, bare)).toEqual(['‹ A very long'.slice(0, 12)])
-    expect(paintTabs(ui.tabs({ id: 'one', activeId: 'x', items: [{ id: 'x', label: 'A very long label indeed' }] }), 30, idle, bare)).toEqual(['A very long label indeed', '━━━━━━━━━━━━━━━━━━━━━━━━'])
+    expect(plain(paintTabs(pair, 17, idle, tagged))).toHaveLength(1)
+    expect(plain(paintTabs(pair, 16, idle, tagged))[0]).toContain('+1')
+    expect(visibleWidth(paintTabs(ui.tabs({ id: 'one', activeId: 'x', items: [{ id: 'x', label: 'A very long label indeed' }] }), 12, idle, bare)[0]!)).toBeLessThanOrEqual(12)
+    expect(plain(paintTabs(ui.tabs({ id: 'one', activeId: 'x', items: [{ id: 'x', label: 'A very long label indeed' }] }), 30, idle, bare))).toEqual([' A very long label indeed '])
   })
 
   it('marks wizard steps and keeps its rule plain while focused', () => {

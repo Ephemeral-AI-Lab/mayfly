@@ -5,7 +5,7 @@
  * questions and the words it shows; the surface model holds every draft.
  * @module @ephemeral-ai/mayfly/components/question-wizard
  */
-import { patterns, ui, type MayflySurfaceNode, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
+import { decisionLane, ui, wizard, wizardNext, type MayflySurfaceNode, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 
 /** What the component reads of a question. */
 export interface QuestionFacts {
@@ -50,8 +50,8 @@ function body(question: QuestionFacts, stepId: string, labels: QuestionLabels): 
     ...question.detail === undefined ? [] : [ui.scroll(ui.markdown(question.detail), { scrollbar: true })],
     ui.list({
       id: QUESTION_LIST, role: 'choose', autofocus: true, selectedIds: [], items,
-      numbered: options.length > 0, marks: true, ...multiple ? { mode: 'multiple' as const } : {},
-      acceptActionId: patterns.wizardNext(QUESTION_WIZARD, stepId),
+      numbered: options.length > 0, ...multiple ? { mode: 'multiple' as const, marks: true } : {},
+      acceptActionId: wizardNext(QUESTION_WIZARD, stepId),
     }),
   ])
 }
@@ -59,18 +59,23 @@ function body(question: QuestionFacts, stepId: string, labels: QuestionLabels): 
 /** The panel for one request: the questions in order, then (for several) the review page. */
 export function questionWizard(questions: readonly QuestionFacts[], labels: QuestionLabels): MayflySurfaceNode {
   const several = questions.length > 1
-  return patterns.wizard({
+  return decisionLane({
     id: QUESTION_WIZARD,
     title: labels.title,
-    steps: questions.map((question, index) => ({
-      id: question.id, label: stepLabel(question, index), body: body(question, question.id, labels), lists: [QUESTION_LIST],
-    })),
-    ...several ? {
-      review: {
-        label: labels.review, skippedLabel: labels.skipped, submitLabel: labels.submit,
-        items: questions.map((question, index) => ({ stepId: question.id, label: stepLabel(question, index), source: { kind: 'list' as const, controlId: QUESTION_LIST } })),
-      },
-    } : {},
-    hintLabel: 'question',
+    escapeLabel: 'cancel',
+    coverStatus: true,
+    body: wizard({
+      id: QUESTION_WIZARD,
+      steps: questions.map((question, index) => ({
+        id: question.id, label: stepLabel(question, index), body: body(question, question.id, labels), lists: [QUESTION_LIST],
+      })),
+      ...several ? {
+        review: {
+          label: labels.review, skippedLabel: labels.skipped, submitLabel: labels.submit,
+          items: questions.map((question, index) => ({ stepId: question.id, label: stepLabel(question, index), source: { kind: 'list' as const, controlId: QUESTION_LIST } })),
+        },
+      } : {},
+      hintLabel: 'question',
+    }),
   })
 }

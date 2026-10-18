@@ -90,7 +90,11 @@ describe('tabs, rails, and the ← ladder in the grammar', () => {
     expect(grammarHints(keyGrammar(rail)).map(hint => [hint.id, hint.label, hint.actions])).toEqual([
       ['navigate', 'labels', [ACTION_MOVE_UP, ACTION_MOVE_DOWN]], ['activate', 'open', [ACTION_SEGMENT_RIGHT]],
     ])
-    expect(intents({ control: { kind: 'tab' }, siblings: 3 }, ACTION_SEGMENT_LEFT)).toEqual(['tab-move'])
+    // Plain arrows never switch a horizontal strip; Alt+←/→ does, and the strip's hint names it.
+    const strip = state({ tabs: true, control: { kind: 'tab' }, siblings: 3 })
+    expect(intents(strip, ACTION_SEGMENT_LEFT)).toEqual([])
+    expect(intents(strip, ACTION_SEGMENT_RIGHT)).toEqual([])
+    expect(grammarHints(keyGrammar(strip)).find(hint => hint.id === 'tabs')).toMatchObject({ compact: 'Alt+←→' })
   })
 
   it('words the tab switch with the strip\'s hint word, and binds the focus levels everywhere outside editing', () => {

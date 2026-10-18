@@ -1,18 +1,16 @@
 ## start
-grid 78x9 cursor 4,20
+grid 78x8 cursor none
 |━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 |  Status
 |
-|  Overview   Usage 3   Connections !   Skills 12   About
-|             ━━━━━━━
+|  Overview    Usage 3    Connections !   Skills 12   About
 |
 |  Usage page content
 |
-|  ←/→ tabs · Enter open · Esc close
+|  Enter open · Alt+←/→ tabs · Esc close
 styles
 0: 0-77 fg:primary
 1: 2-7 fg:primary b
-3: 2-9 fg:muted; 13-17 fg:primary b; 19 fg:primary; 23-33 fg:muted; 35 fg:warning b; 39-44 fg:muted; 46-47 fg:muted; 51-55 fg:muted
-4: 13-19 fg:primary b
-6: 2-19 fg:muted
-8: 2-4 fg:text; 6-12 fg:textMuted; 13-17 fg:text; 19-25 fg:textMuted; 26-28 fg:text; 30-34 fg:textMuted
+3: 2-9 fg:muted; 13-21 fg:primary b r; 25-35 fg:muted; 37 fg:warning b; 41-46 fg:muted; 48-49 fg:muted; 53-57 fg:muted
+5: 2-19 fg:muted
+7: 2-6 fg:text; 8-14 fg:textMuted; 15-21 fg:text; 23-29 fg:textMuted; 30-32 fg:text; 34-38 fg:textMuted

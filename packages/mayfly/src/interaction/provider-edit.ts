@@ -5,7 +5,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import { credentialRef, type CredentialInfo } from '@deepseek-ai/dsh-credentials'
 import { SettingsConflictError, type SettingsPathOp } from '@deepseek-ai/dsh-settings'
 import type { LlmDiscoveredModel } from '@deepseek-ai/dsh-llm'
-import { ui, type MayflyFormAddress, type MayflyOverlayHandle, type MayflySourceStamp, type MayflyUiActionReply, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
+import { panel, tabs, ui, type MayflyFormAddress, type MayflyOverlayHandle, type MayflySourceStamp, type MayflyUiActionReply, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import { deriveKeyRef, normalizeBaseURL, type ProviderProfile } from './provider-profile.ts'
 import { persistProviders, providerAddress, providerDescriptor, providerProfileAt } from './provider-store.ts'
 import { loadModelsDevIndex } from './models-dev.ts'
@@ -122,48 +122,62 @@ export async function openProviderEditor(ctx: Context, route: string, signal?: A
   /** Models-tab discovery visibility: idle while unprobed, then running/failed/done. */
   let discoveryState: 'idle' | 'running' | 'failed' | 'done' = 'idle'
   const node = (view: ProviderView): MayflyUiNode => {
-    if (view.profile === undefined || (openedRef !== undefined && view.ref !== openedRef)) return ui.stack.column([
-      ui.text(t(view.profile === undefined ? 'Provider configuration is no longer available' : 'Provider credential reference changed; reopen the provider')),
-    ])
-    const writable = settings.writable
-    const selectedModels = [...new Set([...configuredIds(view.profile), ...customModels.keys()])]
-    const readonly = writable ? {} : { disabled: true, disabledReason: t('Settings are read-only') }
-    return ui.stack.column([
-      ui.tabs({ id: 'provider-pages', activeId: 'models', items: [{ id: 'models', label: t('Models') }, { id: 'connection', label: t('Connection') }, { id: 'credentials', label: t('Credentials') }] }),
-      ui.child(ui.stack.column([
-        ui.list({
-          id: 'advertised-models', role: 'choose', mode: 'multiple', selectedIds: selectedModels,
-          items: advertisedIds(view.profile).map(modelId => {
-            const detail = modelDetail(modelId, view.profile)
-            return { id: modelId, label: modelId, ...(detail === undefined ? {} : { detail }) }
+    if (view.profile === undefined || (openedRef !== undefined && view.ref !== openedRef)) return panel({
+      title: t('Configure {route}', { route }),
+      escapeLabel: 'cancel',
+      body: ui.stack.column([
+          ui.text(t(view.profile === undefined ? 'Provider configuration is no longer available' : 'Provider credential reference changed; reopen the provider')),
+        ]),
+      })
+      const writable = settings.writable
+      const selectedModels = [...new Set([...configuredIds(view.profile), ...customModels.keys()])]
+      const readonly = writable ? {} : { disabled: true, disabledReason: t('Settings are read-only') }
+      return panel({
+        title: t('Configure {route}', { route }),
+        escapeLabel: 'cancel',
+        body: ui.stack.column([
+          tabs({
+            tabs: { id: 'provider-pages', activeId: 'models', items: [{ id: 'models', label: t('Models') }, { id: 'connection', label: t('Connection') }, { id: 'credentials', label: t('Credentials') }] },
+            pages: {
+              models: ui.stack.column([
+                ui.list({
+                  id: 'advertised-models', role: 'choose', mode: 'multiple', selectedIds: selectedModels,
+                  items: advertisedIds(view.profile).map(modelId => {
+                    const detail = modelDetail(modelId, view.profile)
+                    return { id: modelId, label: modelId, ...(detail === undefined ? {} : { detail }) }
+                  }),
+                  empty: ui.empty({ title: t('No models discovered') }),
+                }),
+                ...discoveryState === 'running' ? [ui.loader({ message: t('discovering models…') })]
+                  : discoveryState === 'failed' ? [ui.text(t('model discovery unavailable — add models by id below'), { tone: 'muted' })] : [],
+                ui.form({ id: 'provider', fields: [
+                  { kind: 'select', id: 'reasoning', label: t('Default thinking effort'), value: defaultEffort(view.profile), options: [{ id: PROVIDER_DEFAULT_EFFORT, label: t('Provider default') }, ...THINKING_LEVELS.map(level => ({ id: level, label: level }))], disabled: !writable },
+                ] }),
+                ui.form({ id: 'custom-model', fields: [
+                  { kind: 'input', id: 'model-id', label: t('+ model id'), value: '', placeholder: t('model id'), disabled: !writable },
+                ] }),
+                ui.actions({ id: 'model-actions', items: [
+                  { id: 'add-model', label: t('Add model'), hintLabel: t('Add model'), key: 'ctrl+a', hidden: true, submit: [{ pagePath: [{ controlId: 'provider-pages', itemId: 'models' }], formId: 'custom-model' }], ...readonly },
+                  { id: 'discover', label: t('Discover models'), hintLabel: t('Discover models'), key: 'ctrl+r', hidden: true, ...readonly },
+                ] }),
+              ], { gap: 1 }),
+              connection: ui.form({ id: 'provider', fields: [
+                { kind: 'input', id: 'name', label: t('Provider Name'), value: view.profile.displayName ?? route, required: true, disabled: !writable },
+                ...known ? [] : [{ kind: 'input' as const, id: 'baseURL', label: t('Base URL'), value: view.profile.baseURL ?? '', required: true, disabled: !writable }],
+              ] }),
+              credentials: ui.stack.column([
+                ui.fields([{ label: t('Credential'), value: [{ text: view.ref }] }, { label: t('Status'), value: [{ text: t(view.credential.configured ? 'Configured' : 'Not configured') }] }]),
+                ui.form({ id: 'provider', fields: [{ kind: 'secret', id: 'key', label: t('API key'), value: '', placeholder: t('Leave unchanged'), disabled: !view.credential.writable }] }),
+                ui.actions({ id: 'credential-actions', items: [{ id: 'clear-key', label: t('Clear stored API key'), hintLabel: t('delete'), key: 'ctrl+x', hidden: true, intent: 'danger', disabled: !view.credential.writable || !view.credential.configured, confirm: t('Clear the stored API key?') }] }),
+              ]),
+            },
           }),
-          empty: ui.empty({ title: t('No models discovered') }),
-        }),
-        ...discoveryState === 'running' ? [ui.loader({ message: t('discovering models…') })]
-          : discoveryState === 'failed' ? [ui.text(t('model discovery unavailable — add models by id below'), { tone: 'muted' })] : [],
-        ui.form({ id: 'provider', fields: [
-          { kind: 'select', id: 'reasoning', label: t('Default thinking effort'), value: defaultEffort(view.profile), options: [{ id: PROVIDER_DEFAULT_EFFORT, label: t('Provider default') }, ...THINKING_LEVELS.map(level => ({ id: level, label: level }))], disabled: !writable },
-        ] }),
-        ui.form({ id: 'custom-model', fields: [
-          { kind: 'input', id: 'model-id', label: t('+ model id'), value: '', placeholder: t('model id'), disabled: !writable },
-        ] }),
-        ui.actions({ id: 'model-actions', items: [{ id: 'add-model', label: t('Add model'), submit: [{ pagePath: [{ controlId: 'provider-pages', itemId: 'models' }], formId: 'custom-model' }], ...readonly }] }),
-      ], { gap: 1 }), { tab: { controlId: 'provider-pages', itemId: 'models' } }),
-      ui.child(ui.form({ id: 'provider', fields: [
-        { kind: 'input', id: 'name', label: t('Provider Name'), value: view.profile.displayName ?? route, required: true, disabled: !writable },
-        ...known ? [] : [{ kind: 'input' as const, id: 'baseURL', label: t('Base URL'), value: view.profile.baseURL ?? '', required: true, disabled: !writable }],
-      ] }), { tab: { controlId: 'provider-pages', itemId: 'connection' } }),
-      ui.child(ui.stack.column([
-        ui.fields([{ label: t('Credential'), value: [{ text: view.ref }] }, { label: t('Status'), value: [{ text: t(view.credential.configured ? 'Configured' : 'Not configured') }] }]),
-        ui.form({ id: 'provider', fields: [{ kind: 'secret', id: 'key', label: t('API key'), value: '', placeholder: t('Leave unchanged'), disabled: !view.credential.writable }] }),
-        ui.actions({ id: 'credential-actions', items: [{ id: 'clear-key', label: t('Clear stored API key'), intent: 'danger', disabled: !view.credential.writable || !view.credential.configured, confirm: t('Clear the stored API key?') }] }),
-      ]), { tab: { controlId: 'provider-pages', itemId: 'credentials' } }),
-      ui.actions({ id: 'provider-actions', items: [
-        { id: 'save', label: t('Save'), intent: 'primary', submit: [address('connection'), address('models'), address('credentials')], selections: [modelSelection], ...readonly },
-        { id: 'cancel', label: t('Cancel'), dismiss: true },
-        { id: 'delete', label: t('Delete provider'), intent: 'danger', ...readonly, confirm: { title: t('Delete provider "{route}"?', { route }), detail: t('Remove the provider configuration and its stored API key.'), confirmLabel: t('Delete provider'), tone: 'danger' } },
-      ] }),
-    ], { gap: 1 })
+          ui.actions({ id: 'provider-actions', items: [
+            { id: 'save', label: t('Save'), hintLabel: t('save'), semantic: 'save', hidden: true, intent: 'primary', submit: [address('connection'), address('models'), address('credentials')], selections: [modelSelection], ...readonly },
+            { id: 'delete', label: t('Delete provider'), hintLabel: t('delete'), key: 'ctrl+x', hidden: true, intent: 'danger', ...readonly, confirm: { title: t('Delete provider "{route}"?', { route }), detail: t('Remove the provider configuration and its stored API key.'), confirmLabel: t('Delete provider'), tone: 'danger' } },
+          ] }),
+        ], { gap: 1 }),
+      })
   }
   const reply = (view: ProviderView): { readonly node: MayflyUiNode, readonly source: readonly MayflySourceStamp[] } => ({ node: node(view), source: source(view) })
   const refresh = async (): Promise<void> => {
@@ -245,6 +259,10 @@ export async function openProviderEditor(ctx: Context, route: string, signal?: A
         /* a cancellation racing the awaited native read is a lifetime path */
         if (context.signal.aborted || cancellation.aborted) return { kind: 'cancelled' }
         if (view.profile === undefined || view.ref !== openedRef) return { kind: 'conflict', ...reply(view), message: t('Provider configuration changed; reopen the provider') }
+        if (event.kind === 'activate' && event.actionId === 'discover') {
+          discover(view.profile)
+          return { kind: 'completed' }
+        }
         const stamps = event.kind === 'submit' ? event.submission.source : context.source
         const expected = stamps.find(stamp => stamp.resourceId === ns)?.revision
         const expectedCredential = stamps.find(stamp => stamp.resourceId === 'credential-observation')?.revision

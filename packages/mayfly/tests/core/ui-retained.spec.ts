@@ -135,16 +135,17 @@ describe('retained rows', () => {
   })
 
   it('throws when verification finds rows that changed without moving the epoch', () => {
-    let saves = 0
-    const form = ui.form({ id: 'f', submitActionId: 'save', fields: [{ id: 'one', kind: 'toggle', label: 'One', value: false }, { id: 'two', kind: 'toggle', label: 'Two', value: true }] })
-    const stale = open(form, { verifyRetained: true, contextHints: { enabled: true, translate: key => key === 'Save' ? `Save ${String(saves++)}` : key } })
-    // One frame asks for the submit row twice, to measure it and to lay it out: the second answer is checked.
-    expect(() => stale.layout()).toThrow(/retained rows of a form submit went stale/u)
+    let cancels = 0
+    const content = ui.loader({ message: 'Working', cancelActionId: 'cancel' })
+    const translate = (key: string): string => key === 'Cancel' ? `Cancel ${String(cancels++)}` : key
+    const stale = open(content, { verifyRetained: true, contextHints: { enabled: true, translate } })
+    // One frame asks for the loader's cancel row twice, to measure it and to lay it out: the second answer is checked.
+    expect(() => stale.layout()).toThrow(/retained rows of a loader cancel went stale/u)
     // The same surface is quiet when what it reads is stable, and unverified it shows the remembered rows.
     const steady = open(panel(), { verifyRetained: true })
     steady.layout()
     expect(() => steady.layout()).not.toThrow()
-    const unverified = open(form, { verifyRetained: false, contextHints: { enabled: true, translate: key => key === 'Save' ? `Save ${String(saves++)}` : key } })
+    const unverified = open(content, { verifyRetained: false, contextHints: { enabled: true, translate } })
     const first = unverified.layout().lines
     expect(unverified.layout().lines).toEqual(first)
   })

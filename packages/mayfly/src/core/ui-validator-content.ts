@@ -106,7 +106,8 @@ export function admitSurfaceFields(h: AdmissionHelpers, object: Fields, path: st
     ...present('titleAlign', titleAlign === undefined ? undefined : h.enumeration(titleAlign, ['left', 'right'] as const, `${path}.titleAlign`)),
     ...present('titleCut', titleCut === undefined ? undefined : h.enumeration(titleCut, ['start', 'end'] as const, `${path}.titleCut`)),
     ...present('border', border === undefined ? undefined : h.enumeration<MayflyTone>(border, TONES, `${path}.border`)),
-    ...present('escapeLabel', escapeLabel === undefined ? undefined : h.enumeration(escapeLabel, ['close', 'back', 'cancel', 'reject', 'leave'] as const, `${path}.escapeLabel`)),
+    ...present('escapeLabel', escapeLabel === undefined ? undefined : h.enumeration(escapeLabel, ['close', 'back', 'cancel', 'reject', 'leave', 'no'] as const, `${path}.escapeLabel`)),
+    ...present('coverStatus', object.coverStatus === undefined ? undefined : h.boolean(object.coverStatus, `${path}.coverStatus`)),
     ...present('hint', hint === undefined ? undefined : h.enumeration(hint, ['auto', 'none', 'completions'] as const, `${path}.hint`)),
   }
 }

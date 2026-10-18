@@ -332,7 +332,7 @@ it('keeps short editor presentations at their natural content height', async () 
   } finally { await bench.dispose() }
 })
 
-it('coalesces a passive root overlay surface with its registration frame', async () => {
+it('keeps the root overlay node title over the registration frame', async () => {
   const bench = await fixture()
   try {
     const handle = bench.open({
@@ -342,7 +342,7 @@ it('coalesces a passive root overlay surface with its registration frame', async
     await flush(8)
     const rows = bench.stack()[0]!.component.render(60).map(stripTerminalSequences)
     expect(rows[0]).toMatch(/^━+$/u)
-    expect(rows.join('\n')).toContain('Passive panel')
+    expect(rows.join('\n')).toContain('Inner title')
     handle.close()
   } finally { await bench.dispose() }
 })
@@ -505,7 +505,7 @@ describe('direct overlay surface renderer', () => {
       await flush(8)
       const component = f.stack()[0]!.component
       await settleInput(component, '\r')
-      expect(component.render(80).join('\n')).toContain('y yes · n no · Esc close')
+      expect(component.render(80).join('\n')).toContain('y yes · n no · Esc no')
       await settleInput(component, '\x1b')
       expect(confirmed.closed).toBe(false)
       await settleInput(component, '\x1b')

@@ -9,26 +9,26 @@ grid 100x30 cursor none
 |
 |                 No sessions here yet
 |━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-|    Theme:                     Mayfly Dark (dark)  (inherited)
-|    Work details:              standard  (inherited)
-|    Transcript window (turns): 15  (inherited)
-|    Ctrl+O range (turns):      3  (inherited)
-|    User fold lines:           10  (inherited)
-|    User fold chars:           1000  (inherited)
-|    External editor:             (inherited)
-|    Paste backend:             auto  (inherited)
-|    Plugin market index:         (inherited)
-|    Prefer keys without Alt:   [off]  (inherited)
-|    CNY per USD:               7.2  (inherited)
-|    Low balance (CNY):         10  (inherited)
-|    Low balance (USD):         1.5  (inherited)
-|    Glyphs:                    auto  (inherited)
-|    Monochrome:                [off]  (inherited)
-|  • Reduced motion:            [on]  (override)
-|    Quiet hints:               full  (inherited)
-|    View history:              [off]  (inherited)
-|  → On start:                  ‹ Splash ›  (override)
-|  Enter pick · Ctrl+S save · r refresh · Esc close
+|    permission               │   Theme:                     Mayfly Dark (dark)  (inherited)
+|    subagent                 │   Work details:              standard  (inherited)
+|    web                      │   Transcript window (turns): 15  (inherited)
+|    web-search-deepseek      │   Ctrl+O range (turns):      3  (inherited)
+|    web-deepseek-api         │   User fold lines:           10  (inherited)
+|    agent-loop               │   User fold chars:           1000  (inherited)
+|    llm-deepseek             │   External editor:             (inherited)
+|    llm-deepseek-account     │   Paste backend:             auto  (inherited)
+|    subagent-model-selecti…  │   Plugin market index:         (inherited)
+|    agent-preset-registry    │   Prefer keys without Alt:   [off]  (inherited)
+|  → mayfly                   │   CNY per USD:               7.2  (inherited)
+|                             │   Low balance (CNY):         10  (inherited)
+|                             │   Low balance (USD):         1.5  (inherited)
+|                             │   Glyphs:                    auto  (inherited)
+|                             │   Monochrome:                [off]  (inherited)
+|                             │ • Reduced motion:            [on]  (override)
+|                             │   Quiet hints:               full  (inherited)
+|                             │   View history:              [off]  (inherited)
+|                             │ → On start:                  ‹ Splash ›  (override)
+|  Enter continue · Ctrl+S save · Ctrl+R refresh · Esc back
 styles
 0: 45-46 fg:#9a86e6; 50-51 fg:#9a86e6
 1: 42-44 fg:#cfc6f5; 45-51 fg:#9a86e6; 52-54 fg:#cfc6f5
@@ -38,23 +38,23 @@ styles
 6: 33-64 fg:#c9c0f0
 8: 17-36 fg:#9aa3b8
 9: 0-99 fg:#9a86e6
-10: 4-48 fg:#ededf2; 49-61 fg:#9aa3b8
-11: 4-38 fg:#ededf2; 39-51 fg:#9aa3b8
-12: 4-32 fg:#ededf2; 33-45 fg:#9aa3b8
-13: 4-31 fg:#ededf2; 32-44 fg:#9aa3b8
-14: 4-32 fg:#ededf2; 33-45 fg:#9aa3b8
-15: 4-34 fg:#ededf2; 35-47 fg:#9aa3b8
-16: 4-30 fg:#ededf2; 31-43 fg:#9aa3b8
-17: 4-34 fg:#ededf2; 35-47 fg:#9aa3b8
-18: 4-30 fg:#ededf2; 31-43 fg:#9aa3b8
-19: 4-30 fg:#ededf2; 31-48 fg:#9aa3b8
-20: 4-33 fg:#ededf2; 34-46 fg:#9aa3b8
-21: 4-32 fg:#ededf2; 33-45 fg:#9aa3b8
-22: 4-33 fg:#ededf2; 34-46 fg:#9aa3b8
-23: 4-34 fg:#ededf2; 35-47 fg:#9aa3b8
-24: 4-30 fg:#ededf2; 31-48 fg:#9aa3b8
-25: 2 fg:#9a86e6; 4-30 fg:#ededf2; 31-34 fg:#9a86e6; 35-46 fg:#9aa3b8
-26: 4-34 fg:#ededf2; 35-47 fg:#9aa3b8
-27: 4-30 fg:#ededf2; 31-48 fg:#9aa3b8
-28: 2 fg:#9a86e6; 4-30 fg:#f5f5f7 b; 31-40 fg:#9a86e6; 41-52 fg:#9aa3b8
-29: 2-6 fg:#ededf2; 8-14 fg:#5c6476; 15-20 fg:#ededf2; 22-28 fg:#5c6476; 29 fg:#ededf2; 31-40 fg:#5c6476; 41-43 fg:#ededf2; 45-49 fg:#5c6476
+10: 4-13 fg:#ededf2; 29 fg:#45406b; 33-77 fg:#ededf2; 78-90 fg:#9aa3b8
+11: 4-11 fg:#ededf2; 29 fg:#45406b; 33-67 fg:#ededf2; 68-80 fg:#9aa3b8
+12: 4-6 fg:#ededf2; 29 fg:#45406b; 33-61 fg:#ededf2; 62-74 fg:#9aa3b8
+13: 4-22 fg:#ededf2; 29 fg:#45406b; 33-60 fg:#ededf2; 61-73 fg:#9aa3b8
+14: 4-19 fg:#ededf2; 29 fg:#45406b; 33-61 fg:#ededf2; 62-74 fg:#9aa3b8
+15: 4-13 fg:#ededf2; 29 fg:#45406b; 33-63 fg:#ededf2; 64-76 fg:#9aa3b8
+16: 4-15 fg:#ededf2; 29 fg:#45406b; 33-59 fg:#ededf2; 60-72 fg:#9aa3b8
+17: 4-23 fg:#ededf2; 29 fg:#45406b; 33-63 fg:#ededf2; 64-76 fg:#9aa3b8
+18: 4-26 fg:#ededf2; 29 fg:#45406b; 33-59 fg:#ededf2; 60-72 fg:#9aa3b8
+19: 4-24 fg:#ededf2; 29 fg:#45406b; 33-59 fg:#ededf2; 60-77 fg:#9aa3b8
+20: 2 fg:#9aa3b8 b; 4-9 fg:#ededf2 b; 29 fg:#45406b; 33-62 fg:#ededf2; 63-75 fg:#9aa3b8
+21: 29 fg:#45406b; 33-61 fg:#ededf2; 62-74 fg:#9aa3b8
+22: 29 fg:#45406b; 33-62 fg:#ededf2; 63-75 fg:#9aa3b8
+23: 29 fg:#45406b; 33-63 fg:#ededf2; 64-76 fg:#9aa3b8
+24: 29 fg:#45406b; 33-59 fg:#ededf2; 60-77 fg:#9aa3b8
+25: 29 fg:#45406b; 31 fg:#9a86e6; 33-59 fg:#ededf2; 60-63 fg:#9a86e6; 64-75 fg:#9aa3b8
+26: 29 fg:#45406b; 33-63 fg:#ededf2; 64-76 fg:#9aa3b8
+27: 29 fg:#45406b; 33-59 fg:#ededf2; 60-77 fg:#9aa3b8
+28: 29 fg:#45406b; 31 fg:#9a86e6; 33-59 fg:#f5f5f7 b; 60-69 fg:#9a86e6; 70-81 fg:#9aa3b8
+29: 2-6 fg:#ededf2; 8-18 fg:#5c6476; 19-24 fg:#ededf2; 26-32 fg:#5c6476; 33-38 fg:#ededf2; 40-49 fg:#5c6476; 50-52 fg:#ededf2; 54-57 fg:#5c6476

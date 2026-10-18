@@ -28,7 +28,7 @@ grid 100x30 cursor none
 |╭────────────────────────────────────────────────────────────────── Refresh the landing page hero. ╮
 |│ >  Ask anything · / commands · @ files · # skills · ! shell                                      │
 |╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
-| deepseek-v4-pro  workspace  ✓ agents 1/1  ✓ jobs 1/1  ○ goal 0/8  ● todo 2/6     ctx ▱▱▱▱▱▱▱▱▱▱ 1%
+| deepseek-flash  workspace  ✓ agents 1/1  ✓ jobs 1/1  ○ goal 0/8  ● todo 2/6      ctx ▱▱▱▱▱▱▱▱▱▱ 1%
 styles
 0: 2-99 fg:#c9c0f0
 2: 2-3 fg:#ededf2
@@ -46,4 +46,4 @@ styles
 26: 0-67 fg:#45406b; 68-97 fg:#f5f5f7 b; 98-99 fg:#45406b
 27: 0 fg:#45406b; 2-3 fg:#ededf2; 4 r; 5-60 fg:#5c6476; 99 fg:#45406b
 28: 0-99 fg:#45406b
-29: 1-15 fg:#ededf2; 18-26 fg:#9aa3b8; 29 fg:#4ec87e; 30 fg:#ededf2; 31-37 fg:#9aa3b8; 38-40 fg:#ededf2; 43 fg:#4ec87e; 44 fg:#ededf2; 45-49 fg:#9aa3b8; 50-52 fg:#ededf2; 55 fg:#9aa3b8; 56 fg:#ededf2; 57-61 fg:#9aa3b8; 62-64 fg:#ededf2; 67 fg:#c9c0f0; 68 fg:#ededf2; 69-73 fg:#9aa3b8; 74-76 fg:#ededf2; 82-85 fg:#ededf2; 86-95 fg:#9aa3b8; 96-98 fg:#ededf2
+29: 1-14 fg:#ededf2; 17-25 fg:#9aa3b8; 28 fg:#4ec87e; 29 fg:#ededf2; 30-36 fg:#9aa3b8; 37-39 fg:#ededf2; 42 fg:#4ec87e; 43 fg:#ededf2; 44-48 fg:#9aa3b8; 49-51 fg:#ededf2; 54 fg:#9aa3b8; 55 fg:#ededf2; 56-60 fg:#9aa3b8; 61-63 fg:#ededf2; 66 fg:#c9c0f0; 67 fg:#ededf2; 68-72 fg:#9aa3b8; 73-75 fg:#ededf2; 82-85 fg:#ededf2; 86-95 fg:#9aa3b8; 96-98 fg:#ededf2

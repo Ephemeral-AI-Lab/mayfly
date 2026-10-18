@@ -2,15 +2,14 @@ grid 100x22 cursor none
 |
 |  ✓ TodoWrite · 0.2s
 |
-|  ● Switch pages and watch the rows under each panel: /stats (←/→), /plugin (Alt+←/→), the views
-|    (Alt+↓ then ←/→). None of them moves.
+|  ● Switch pages and watch the rows under each panel: /stats (Alt+←/→), /plugin (Alt+←/→), the
+|    views (Alt+↓ then ←/→). None of them moves.
 |
 |  ✻ Worked for 4s · done 09:00
 |━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 |  Stats
 |
-|  Session   Account   History   Models
-|  ━━━━━━━
+|   Session    Account   History   Models
 |
 |  Working directory: ~/workspace
 |  Agent:             idle
@@ -20,21 +19,22 @@ grid 100x22 cursor none
 |  Tokens:            10.5k in · 7.8k cache read (43% hit) · 0 cache write · 300 out
 |  Cost:              ≈ $ < 0.01
 |  Time:              model 2.1s · tools 0.8s
-|  ←/→ tabs · Enter open · r refresh · Esc close
+|  Created:           2026-01-01 09:00 UTC · session-
+|  Enter open · r refresh · Alt+←/→ tabs · Esc close
 styles
 1: 2-3 fg:#4ec87e; 4-12 fg:#ededf2 b; 13-19 fg:#9aa3b8
 3: 2-3 fg:#ededf2
 6: 2-29 fg:#9aa3b8
 7: 0-99 fg:#9a86e6
 8: 2-6 fg:#9a86e6 b
-10: 2-8 fg:#9a86e6 b; 12-18 fg:#9aa3b8; 22-28 fg:#9aa3b8; 32-37 fg:#9aa3b8
-11: 2-8 fg:#9a86e6 b
-13: 2-19 fg:#9aa3b8; 21-31 fg:#ededf2
-14: 2-19 fg:#9aa3b8; 21-24 fg:#ededf2
-15: 2-19 fg:#9aa3b8; 21-70 fg:#ededf2
-16: 2-19 fg:#9aa3b8; 21-37 fg:#4ec87e
-17: 2-19 fg:#9aa3b8; 21-37 fg:#ededf2
-18: 2-19 fg:#9aa3b8; 21-82 fg:#ededf2
-19: 2-19 fg:#9aa3b8; 21-30 fg:#ededf2
-20: 2-19 fg:#9aa3b8; 21-43 fg:#ededf2
-21: 2-4 fg:#ededf2; 6-12 fg:#5c6476; 13-17 fg:#ededf2; 19-25 fg:#5c6476; 26 fg:#ededf2; 28-37 fg:#5c6476; 38-40 fg:#ededf2; 42-46 fg:#5c6476
+10: 2-10 fg:#9a86e6 b r; 14-20 fg:#9aa3b8; 24-30 fg:#9aa3b8; 34-39 fg:#9aa3b8
+12: 2-19 fg:#9aa3b8; 21-31 fg:#ededf2
+13: 2-19 fg:#9aa3b8; 21-24 fg:#ededf2
+14: 2-19 fg:#9aa3b8; 21-70 fg:#ededf2
+15: 2-19 fg:#9aa3b8; 21-37 fg:#4ec87e
+16: 2-19 fg:#9aa3b8; 21-37 fg:#ededf2
+17: 2-19 fg:#9aa3b8; 21-82 fg:#ededf2
+18: 2-19 fg:#9aa3b8; 21-30 fg:#ededf2
+19: 2-19 fg:#9aa3b8; 21-43 fg:#ededf2
+20: 2-19 fg:#9aa3b8; 21-51 fg:#ededf2
+21: 2-6 fg:#ededf2; 8-14 fg:#5c6476; 15 fg:#ededf2; 17-26 fg:#5c6476; 27-33 fg:#ededf2; 35-41 fg:#5c6476; 42-44 fg:#ededf2; 46-50 fg:#5c6476

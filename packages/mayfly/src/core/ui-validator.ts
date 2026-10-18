@@ -1226,7 +1226,7 @@ function formField(value: unknown, path: string, state: ValidationState): Mayfly
     const reset = own(object, 'resetValue', path)
     const parseValue = (value: unknown, valuePath: string): MayflyFieldValue => {
       if (kind === 'number') return nullableNumber(value, valuePath)
-      if (kind === 'toggle') return boolean(value, valuePath)
+      if (kind === 'toggle') return value === null ? null : boolean(value, valuePath)
       if (kind === 'select' && value === null) return null
       if (kind === 'multiselect') {
         const values = collection(value, valuePath).map((item, index) => identifier(item, `${valuePath}[${index}]`, state))
@@ -1243,7 +1243,11 @@ function formField(value: unknown, path: string, state: ValidationState): Mayfly
       ...optional(reset === undefined ? undefined : parseValue(reset, `${path}.resetValue`), 'resetValue'),
       ...admitFieldPresentation(ADMISSION_HELPERS, object, path),
     }
-    if (kind === 'toggle') return { kind, ...common, value: boolean(required(object, 'value', path), `${path}.value`) }
+    if (kind === 'toggle') {
+      const value = required(object, 'value', path)
+      if (value !== null && typeof value !== 'boolean') invalid(`${path}.value must be a boolean or null`)
+      return { kind, ...common, value }
+    }
     if (kind === 'number') {
       const minValue = own(object, 'min', path)
       const maxValue = own(object, 'max', path)
@@ -1382,10 +1386,12 @@ function admitNode(value: unknown, path: string, state: ValidationState, depth: 
       case 'stack': {
         const gapValue = own(object, 'gap', path)
         const alignValue = own(object, 'align', path)
+        const ruleValue = own(object, 'rule', path)
         const stack = {
           kind,
           direction: enumeration(required(object, 'direction', path), ['row', 'column'], `${path}.direction`),
-          ...optional(gapValue === undefined ? undefined : enumeration(gapValue, [0, 1, 2] as const, `${path}.gap`), 'gap'),
+          ...optional(gapValue === undefined ? undefined : enumeration(gapValue, [0, 1, 2, 3] as const, `${path}.gap`), 'gap'),
+          ...optional(ruleValue === undefined ? undefined : enumeration(ruleValue, ['column'] as const, `${path}.rule`), 'rule'),
           ...optional(alignValue === undefined ? undefined : enumeration(alignValue, ['stretch', 'start', 'center', 'end'], `${path}.align`), 'align'),
         } as const
         const entries = collection(required(object, 'children', path), `${path}.children`)
@@ -1516,8 +1522,9 @@ function admitNode(value: unknown, path: string, state: ValidationState, depth: 
         }
         const enterSubmits = optionalId(object, 'enterSubmits', path)
         if (enterSubmits !== undefined && enterSubmits.trim().length === 0) invalid(`${path}.enterSubmits must not be empty`)
+        const submitOnLastField = own(object, 'submitOnLastField', path)
         const autofocus = own(object, 'autofocus', path)
-        return { kind, id, fields, ...optional(autofocus === undefined ? undefined : boolean(autofocus, `${path}.autofocus`), 'autofocus'), ...optional(submitActionId, 'submitActionId'), ...optional(optionalLabel(object, 'submitLabel', path), 'submitLabel'), ...optional(cancelActionId, 'cancelActionId'), ...optional(optionalLabel(object, 'cancelLabel', path), 'cancelLabel'), ...optional(enterSubmits, 'enterSubmits') }
+        return { kind, id, fields, ...optional(autofocus === undefined ? undefined : boolean(autofocus, `${path}.autofocus`), 'autofocus'), ...optional(submitActionId, 'submitActionId'), ...optional(optionalLabel(object, 'submitLabel', path), 'submitLabel'), ...optional(cancelActionId, 'cancelActionId'), ...optional(optionalLabel(object, 'cancelLabel', path), 'cancelLabel'), ...optional(enterSubmits, 'enterSubmits'), ...optional(submitOnLastField === undefined ? undefined : boolean(submitOnLastField, `${path}.submitOnLastField`), 'submitOnLastField') }
       }
       case 'actions': {
         const scope = actionScope(own(object, 'scope', path), `${path}.scope`, state)
@@ -1567,7 +1574,8 @@ function admitNode(value: unknown, path: string, state: ValidationState, depth: 
         const inset = insetValue === undefined ? undefined : finiteInteger(insetValue, `${path}.inset`, 0)
         if (inset !== undefined && inset > 8) invalid(`${path}.inset must be at most 8`)
         const toneValue = own(object, 'tone', path)
-        return { kind, ...optional(optionalLabel(object, 'label', path), 'label'), ...optional(alignValue === undefined ? undefined : enumeration(alignValue, ['start', 'center'] as const, `${path}.align`), 'align'), ...optional(inset, 'inset'), ...optional(toneValue === undefined ? undefined : enumeration(toneValue, ['default', 'muted', 'primary', 'accent', 'user', 'success', 'warning', 'danger'], `${path}.tone`), 'tone') }
+        const orientationValue = own(object, 'orientation', path)
+        return { kind, ...optional(orientationValue === undefined ? undefined : enumeration(orientationValue, ['horizontal', 'vertical'] as const, `${path}.orientation`), 'orientation'), ...optional(optionalLabel(object, 'label', path), 'label'), ...optional(alignValue === undefined ? undefined : enumeration(alignValue, ['start', 'center'] as const, `${path}.align`), 'align'), ...optional(inset, 'inset'), ...optional(toneValue === undefined ? undefined : enumeration(toneValue, ['default', 'muted', 'primary', 'accent', 'user', 'success', 'warning', 'danger'], `${path}.tone`), 'tone') }
       }
       case 'image': {
         const attachmentId = text(required(object, 'attachmentId', path), `${path}.attachmentId`)

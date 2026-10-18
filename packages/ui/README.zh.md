@@ -29,6 +29,28 @@ export const metric = defineMayflyComponent<{ label: string, value: number }>({
 })
 ```
 
+## Compose
+
+`compose` 是所有可见 UI 的统一分层外壳：
+
+```ts
+import { compose, ui } from '@ephemeral-ai/mayfly-ui'
+
+const surface = compose.panel({
+  title: 'Plugins',
+  escapeLabel: 'close',
+  body: compose.browser({
+    list: ui.list({ id: 'plugins', role: 'browse', selectedIds: [], items: [] }),
+    detail: ui.text('Select a plugin'),
+  }),
+})
+```
+
+`panel` 是命令 Panel（`overlay` 边框，占 editor 槽）。`decisionLane` 是所有 Agent 请求共用的一条 lane；
+`decisionStrip` 是用户触发的 Yes/No lane（`y`/`n`，`Esc no`）。`tabs`、`wizard`、`rail`、`browser`、`statusPage` 和
+`completionPalette` 只返回 body。`tabs` 是任意页面上的横向 tab；`rail` 是对应的纵向版本，带列间竖线。产品命令面板只用隐藏键：不绘制 Save/Cancel/Close 按钮；多字段表单用最后一个
+字段的 `Enter` 和 `Ctrl+S` 保存。
+
 `defineMayflyComponent` 记录带包 namespace 的 id，并深冻结每次
 render 的节点。它只是纯 package factory，不是 runtime registry。插件提交展开后的
 节点树时，kind、数值、深度、quota 与 renderer 安全仍由 core 验证。

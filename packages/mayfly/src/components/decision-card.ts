@@ -10,7 +10,7 @@
  * @module components/decision-card
  */
 
-import { ui, type MayflyActionItem, type MayflySurfaceNode } from '@ephemeral-ai/mayfly-ui'
+import { decisionLane, type MayflyActionItem, type MayflySurfaceNode } from '@ephemeral-ai/mayfly-ui'
 
 /** The ids the card's controls carry, which the plugin that settles the request reads back from the events. */
 export const DECISION = {
@@ -49,54 +49,23 @@ export interface DecisionCardFacts {
   readonly keys: readonly DecisionCardKey[]
 }
 
-const PAGE: readonly [] = []
-
-/** The hidden action that reads the choice and the note together. */
-function reading(id: string, withChoice: boolean): MayflyActionItem {
-  return {
-    id,
-    label: id,
-    hidden: true,
-    read: [{ pagePath: PAGE, formId: DECISION.note }],
-    ...(withChoice ? { selections: [{ pagePath: PAGE, controlId: DECISION.options }] } : {}),
-  }
-}
-
 /**
  * The card as a surface node.
  * @param facts - the title, the choices, the note, and the hidden keys.
  * @returns a lane surface for the editor slot.
  */
 export function DecisionCard(facts: DecisionCardFacts): MayflySurfaceNode {
-  return ui.surface({
+  return decisionLane({
+    id: 'decision',
     title: facts.title,
-    chrome: 'lane',
     escapeLabel: 'reject',
     ...(facts.queue === undefined ? {} : { badges: [{ text: facts.queue, tone: 'warning' }] }),
-    child: ui.stack.column([
-      ui.list({
-        id: DECISION.options,
-        role: 'choose',
-        autofocus: true,
-        numbered: true,
-        selectedIds: [],
-        acceptActionId: DECISION.choose,
-        acceptVerb: 'choose',
-        items: facts.options.map(option => ({ id: option.id, label: option.label })),
-      }),
-      ui.form({
-        id: DECISION.note,
-        enterSubmits: DECISION.send,
-        fields: [{ id: DECISION.field, kind: 'input', label: facts.note.label, value: '', placeholder: facts.note.placeholder }],
-      }),
-      ui.actions({
-        id: DECISION.keys,
-        items: [
-          reading(DECISION.choose, true),
-          reading(DECISION.send, false),
-          ...facts.keys.map((key): MayflyActionItem => ({ id: key.id, label: key.label, hidden: true, semantic: key.semantic, hintLabel: key.hintLabel })),
-        ],
-      }),
-    ]),
+    choices: facts.options.map(option => ({ id: option.id, label: option.label })),
+    note: { id: DECISION.field, label: facts.note.label, placeholder: facts.note.placeholder },
+    acceptActionId: DECISION.choose,
+    sendActionId: DECISION.send,
+    keys: [
+      ...facts.keys.map((key): MayflyActionItem => ({ id: key.id, label: key.label, hidden: true, semantic: key.semantic, hintLabel: key.hintLabel })),
+    ],
   })
 }

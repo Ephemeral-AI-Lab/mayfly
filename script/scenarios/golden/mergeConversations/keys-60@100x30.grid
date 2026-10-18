@@ -1,5 +1,5 @@
 grid 60x30 cursor none
-|  ▄▖█▙███▟█▗▄   deepseek-v4-pro · deepseek-official
+|  ▄▖█▙███▟█▗▄   deepseek-flash · deepseek-official
 |    ▝▜▀▀▀▛▘     ~/workspace
 |
 |  » Refactor the parser, I will add more while you work.
@@ -28,9 +28,9 @@ grid 60x30 cursor none
 |╭───────────────────────────── Refactor the parser, I will ╮
 |│ >  Ask anything · / commands · @ files · # skills        │
 |╰──────────────────────────────────────────────────────────╯
-| deepseek-v4-pro   conversation   workspace  ● agents 0/1
+| deepseek-flash   conversation   workspace  ● agents 0/1
 styles
-0: 2-3 fg:#cfc6f5; 4-10 fg:#9a86e6; 11-12 fg:#cfc6f5; 16-50 fg:#e9e6f4
+0: 2-3 fg:#cfc6f5; 4-10 fg:#9a86e6; 11-12 fg:#cfc6f5; 16-49 fg:#e9e6f4
 1: 4-10 fg:#9a86e6; 16-26 fg:#9aa3b8
 3: 2-3 fg:#9a86e6; 4-59 fg:#9a86e6 b
 5: 2-3 fg:#ededf2
@@ -47,4 +47,4 @@ styles
 26: 0-30 fg:#9aa3b8; 31-57 fg:#f5f5f7 b; 58-59 fg:#9aa3b8
 27: 0 fg:#9aa3b8; 2-3 fg:#ededf2; 4 r; 5-50 fg:#5c6476; 59 fg:#9aa3b8
 28: 0-59 fg:#9aa3b8
-29: 1-15 fg:#ededf2; 18-31 fg:#9a86e6 b r; 34-42 fg:#9aa3b8; 45 fg:#c9c0f0; 46 fg:#ededf2; 47-53 fg:#9aa3b8; 54-56 fg:#ededf2
+29: 1-14 fg:#ededf2; 17-30 fg:#9a86e6 b r; 33-41 fg:#9aa3b8; 44 fg:#c9c0f0; 45 fg:#ededf2; 46-52 fg:#9aa3b8; 53-55 fg:#ededf2

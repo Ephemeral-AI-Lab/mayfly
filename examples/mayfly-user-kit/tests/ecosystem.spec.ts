@@ -4,6 +4,7 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { Context, Service } from '@deepseek-ai/cordis'
+import type { MayflyListNode, MayflyStackNode, MayflySurfaceNode } from '@ephemeral-ai/mayfly-ui'
 import { describe, expect, it } from 'vitest'
 import { apply as applyApi } from '../../../packages/ui/src/provider.ts'
 import { apply as applyBundle } from '../../mayfly-ecosystem/src/index.ts'
@@ -58,11 +59,12 @@ describe('shared user kit', () => {
 })
 
 describe('shared user kit approval card', () => {
-  it('is patterns.decisionPanel with the kit\'s options, a frozen standard tree, and the pattern\'s arm delay', () => {
+  it('is the decision lane with the kit\'s options, a frozen standard tree, and the shared arm delay', () => {
     const node = approvalCard.render({ title: 'Run command?', command: 'pnpm build', detail: 'in ~/work/mayfly' })
-    expect(node).toMatchObject({ kind: 'surface', chrome: 'overlay', escapeLabel: 'reject', title: 'Run command?' })
-    const list = (node as unknown as { child: { children: { node: { kind: string, id?: string, items?: { id: string }[] } }[] } }).child.children.map(child => child.node).find(child => child.kind === 'list')!
-    expect(list).toMatchObject({ id: 'approval.options', items: [{ id: 'once' }, { id: 'session' }, { id: 'reject' }] })
+    expect(node).toMatchObject({ kind: 'surface', chrome: 'lane', escapeLabel: 'cancel', title: 'Run command?' })
+    const body = ((node as MayflySurfaceNode).child as MayflyStackNode).children[0]!.node as MayflyStackNode
+    const list = body.children.map(child => child.node).find((child): child is MayflyListNode => child.kind === 'list')!
+    expect(list).toMatchObject({ id: 'approval-options', items: [{ id: 'once' }, { id: 'session' }, { id: 'reject' }] })
     expect(Object.isFrozen(node)).toBe(true)
     expect(APPROVAL_ARM_MS).toBe(300)
   })

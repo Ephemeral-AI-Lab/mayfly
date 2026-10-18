@@ -7,7 +7,7 @@ import type {} from '@deepseek-ai/dsh-commands'
 import type {} from '@deepseek-ai/dsh-token-meter'
 import type {} from '@deepseek-ai/dsh-session-stats'
 import { isDeepStrictEqual } from 'node:util'
-import { ui, type MayflyOverlayHandle, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
+import { panel, ui, type MayflyOverlayHandle, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import { MAYFLY_VERSION } from '../transcript/banner-content.ts'
 import { CHANGELOG_ENTRIES } from './changelog-content.ts'
 import { interactionTranslator, mountInteractionLocale, observeInteractionLocale } from './locale.ts'
@@ -53,12 +53,14 @@ export function apply(ctx: Context, config: Config = {}): void {
   ctx.effect(() => () => lifetime.abort())
   const version = { mayfly: config.displayVersion ?? MAYFLY_VERSION, harness: HARNESS_LINE }
   const t = interactionTranslator(ctx)
-  const frame = (title: string, body: MayflyUiNode, scrollable = true, refreshable = true): MayflyUiNode => ui.surface({ title: t(title), chrome: 'overlay', padding: 1, child: ui.stack.column([
-    ...(scrollable ? [ui.child(ui.scroll(body, { scrollbar: true }), { basis: 0, grow: 1, minSize: 1 })] : [body]),
-    ui.actions({ id: 'information-actions', items: [
-      ...refreshable ? [{ id: 'refresh', label: t('Refresh'), hintLabel: t('refresh'), semantic: 'refresh' as const, hidden: true }] : [],
-    ] }),
-  ]) })
+  const frame = (title: string, body: MayflyUiNode, scrollable = true, refreshable = true): MayflyUiNode => panel({
+    title: t(title),
+    escapeLabel: 'back',
+    body: scrollable ? ui.stack.column([ui.child(ui.scroll(body, { scrollbar: true }), { basis: 0, grow: 1, minSize: 1 })]) : body,
+    ...refreshable ? { footer: ui.actions({ id: 'information-actions', items: [
+      { id: 'refresh', label: t('Refresh'), hintLabel: t('refresh'), semantic: 'refresh' as const, hidden: true },
+    ] }) } : {},
+  })
   for (const command of ['version', 'changelog'] as const) ctx.commands.register({
     name: command, description: t(command === 'version' ? 'Show the Mayfly and harness versions' : "Show the release changelog (what's new)"),
     handler: invocation => {

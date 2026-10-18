@@ -4,7 +4,7 @@
 import Schema from '@deepseek-ai/schemastery'
 import { createHash } from 'node:crypto'
 import type { SettingsDescriptor, SettingsPathOp } from '@deepseek-ai/dsh-settings'
-import { ui, type MayflyFieldValue, type MayflyFormField, type MayflySubmittedForm, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
+import { ui, type MayflyFieldValue, type MayflyFormField, type MayflyPagePath, type MayflySubmittedForm, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import type { MayflyTranslate } from '../frontend/locale.ts'
 import { themeLabel } from './theme-names.ts'
 
@@ -71,7 +71,7 @@ function optionEntries(options: readonly (string | number | boolean | null)[], s
 }
 
 /** Project only declared scalar fields; unsupported containers never expose raw values or secrets. */
-export function settingsProjection(descriptor: SettingsDescriptor, writable: boolean, choices: SettingsChoices, t: MayflyTranslate): SettingsProjection {
+export function settingsProjection(descriptor: SettingsDescriptor, writable: boolean, choices: SettingsChoices, t: MayflyTranslate, pagePath: MayflyPagePath = []): SettingsProjection {
   const root = new Schema(descriptor.schema as Partial<Schema>)
   const bindings = new Map<string, SettingBinding>()
   const readonly: MayflyUiNode[] = []
@@ -113,10 +113,8 @@ export function settingsProjection(descriptor: SettingsDescriptor, writable: boo
     } else if (schema.type === 'number') {
       field = { ...base, kind: 'number', value: typeof value === 'number' ? value : null, ...resettable ? { resetValue: typeof fallback === 'number' ? fallback : null } : {}, ...schema.meta.min === undefined ? {} : { min: schema.meta.min }, ...schema.meta.max === undefined ? {} : { max: schema.meta.max }, ...schema.meta.step === undefined ? {} : { step: schema.meta.step } }
     } else if (schema.type === 'boolean') {
-      if (schema.meta.required !== true && fallback === undefined) {
-        encoded = true
-        field = { ...base, kind: 'select', value: typeof value === 'boolean' ? JSON.stringify(value) : null, options: [{ id: 'true', label: t('On') }, { id: 'false', label: t('Off') }], resetValue: null }
-      } else field = { ...base, kind: 'toggle', value: value === true, ...resettable ? { resetValue: fallback === true } : {} }
+      /* A toggle carries the unset state itself: an absent value reads `[not set]` until it is switched. */
+      field = { ...base, kind: 'toggle', value: typeof value === 'boolean' ? value : schema.meta.required === true ? false : null, ...resettable ? { resetValue: typeof fallback === 'boolean' ? fallback : null } : {} }
     }
     if (field === undefined) {
       readonly.push(ui.fields([{ label: label || String(descriptor.ns), value: [{ text: t('Managed in settings file'), tone: 'muted' }] }]))
@@ -132,11 +130,11 @@ export function settingsProjection(descriptor: SettingsDescriptor, writable: boo
     field.kind === 'number' ? [field.min, field.max, field.step] : field.kind === 'multiselect' ? [field.minSelected, field.maxSelected] : 'minLength' in field || 'maxLength' in field ? [field.minLength, field.maxLength] : undefined,
   ]))).digest('hex')
   return { bindings, revision, node: ui.stack.column([
-    ui.form({ id: 'settings-form', fields: [...bindings.values()].map(binding => binding.field) }),
+    ui.form({ id: 'settings-form', fields: [...bindings.values()].map(binding => binding.field), enterSubmits: 'save', submitOnLastField: true }),
     ...readonly,
     ui.actions({ id: 'settings-actions', items: [
-      { id: 'save', label: t('Save'), hintLabel: t('save'), semantic: 'save', hidden: true, submit: [{ pagePath: [], formId: 'settings-form' }], disabled: !writable || bindings.size === 0 },
-      { id: 'refresh', label: t('Refresh'), hintLabel: t('refresh'), semantic: 'refresh', hidden: true },
+      { id: 'save', label: t('Save'), hintLabel: t('save'), semantic: 'save', hidden: true, intent: 'primary', submit: [{ pagePath, formId: 'settings-form' }], disabled: !writable || bindings.size === 0 },
+      { id: 'refresh', label: t('Refresh'), hintLabel: t('refresh'), key: 'ctrl+r', hidden: true },
     ] }),
   ]) }
 }

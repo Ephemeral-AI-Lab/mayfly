@@ -1,7 +1,7 @@
 /** Stable surface drafts and action execution, independent of a terminal renderer.
  * @module @ephemeral-ai/mayfly/core/ui-interaction-surface
  */
-import { freezeWire } from '@ephemeral-ai/mayfly-ui'
+import { DECISION_NO, DECISION_YES, decisionStrip, freezeWire } from '@ephemeral-ai/mayfly-ui'
 import type {
   MayflyActionItem, MayflyConfirmation, MayflyFeedback, MayflyFieldError, MayflyFeedbackRecord, MayflyFieldAddress, MayflyFieldValue, MayflyFormAddress,
   MayflyFormNode, MayflyListItem, MayflyListNode, MayflyPagePath, MayflyReviewNode, MayflySnapshotChange, MayflySourceStamp, MayflySubmission,
@@ -82,8 +82,6 @@ export interface UiSurfaceBindings {
   readonly counters?: MayflyWorkCounters
 }
 
-const DECISION_NO = 'mayfly.decision.no'
-const DECISION_YES = 'mayfly.decision.yes'
 const DISPOSED_EVENTS: MayflyUiEventEndpoint<MayflyUiNode | null> = Object.freeze({
   prepare: async () => Object.freeze({ reply: undefined, publish: () => false }),
 })
@@ -155,15 +153,13 @@ export class UiSurfaceModel {
     if (this.decision === undefined) return undefined
     const { title, detail, confirmLabel, cancelLabel, tone } = this.decision.confirmation
     // A panel draws no buttons: `y` answers yes and `n` no, both named on the hint row; Esc is No.
-    const yes = confirmLabel ?? this.t('Yes')
-    const no = cancelLabel ?? this.t('No')
-    const actions: MayflyUiNode = { kind: 'actions', id: 'mayfly.decision', items: [
-      { id: DECISION_YES, label: yes, hintLabel: yes.toLocaleLowerCase(), key: 'y', hidden: true, ...(tone === 'danger' ? { intent: 'danger' as const } : {}) },
-      { id: DECISION_NO, label: no, hintLabel: no.toLocaleLowerCase(), key: 'n', hidden: true },
-    ] }
-    return freezeWire({ kind: 'surface', chrome: 'overlay', title, child: detail === undefined ? actions : {
-      kind: 'stack', direction: 'column', gap: 1, children: [{ node: { kind: 'text', content: detail, tone: 'warning' } }, { node: actions }],
-    } })
+    return freezeWire(decisionStrip({
+      title,
+      ...detail === undefined ? {} : { detail },
+      yesLabel: confirmLabel ?? this.t('Yes'),
+      noLabel: cancelLabel ?? this.t('No'),
+      danger: tone === 'danger',
+    }))
   }
 
   private t(key: string, values?: Readonly<Record<string, string | number>>): string {

@@ -5,7 +5,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { AgentPreset } from '@deepseek-ai/dsh-agent-preset-registry'
 import type {} from '@deepseek-ai/dsh-commands'
-import { ui, type MayflyListItem, type MayflyOverlayHandle, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
+import { panel, ui, type MayflyListItem, type MayflyOverlayHandle, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import { openAgentOverlay } from './agent-overlay.ts'
 import { interactionTranslator, mountInteractionLocale, observeInteractionLocale } from './locale.ts'
 import { createInteractionNotificationOwner } from './notifications.ts'
@@ -56,10 +56,12 @@ export function apply(ctx: Context): void {
         if (ctx.mayflyOverlays.focus(ID)) return { kind: 'success' }
         const view = (): MayflyUiNode => {
           const composed = roster.composedPreset(agent.ctx)
-          return ui.surface({ title: t('Presets'), chrome: 'overlay', padding: 1, child: ui.stack.column([
-            ui.list({ id: 'presets', role: 'browse', filterable: true, filterMode: 'slash', selectedIds: composed === undefined ? [] : [composed], items: presetItems(catalog, composed), empty: ui.empty({ title: t('No presets composed') }) }),
-            ui.actions({ id: 'preset-actions', items: [{ id: 'refresh', label: t('Refresh'), hintLabel: t('refresh'), semantic: 'refresh', hidden: true }] }),
-          ]) })
+          return panel({
+            title: t('Presets'),
+            escapeLabel: 'close',
+            body: ui.list({ id: 'presets', role: 'browse', filterable: true, filterMode: 'slash', selectedIds: composed === undefined ? [] : [composed], items: presetItems(catalog, composed), empty: ui.empty({ title: t('No presets composed') }) }),
+            footer: ui.actions({ id: 'preset-actions', items: [{ id: 'refresh', label: t('Refresh'), hintLabel: t('refresh'), semantic: 'refresh', hidden: true }] }),
+          })
         }
         let handle: MayflyOverlayHandle | undefined
         handle = await openAgentOverlay(ctx, agent, { id: ID, presentation: 'editor', capturing: true }, view(), owner => {

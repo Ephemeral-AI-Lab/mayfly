@@ -6,7 +6,7 @@ import { isDeepStrictEqual } from 'node:util'
 import { credentialRef, credentialKeyId } from '@deepseek-ai/dsh-credentials'
 import { SettingsConflictError } from '@deepseek-ai/dsh-settings'
 import type { LlmDiscoveredModel } from '@deepseek-ai/dsh-llm'
-import { ui, type MayflyFormAddress, type MayflyOverlayHandle, type MayflySubmission, type MayflyUiActionReply, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
+import { panel, tabs, ui, type MayflyFormAddress, type MayflyOverlayHandle, type MayflySubmission, type MayflyUiActionReply, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import { loadModelsDevIndex } from './models-dev.ts'
 import { persistProviders, providerAddress, providerContainer, providerDescriptor, providerDirectory, providerProfileAt, sameProviderPath } from './provider-store.ts'
 import { deriveKeyRef, normalizeBaseURL } from './provider-profile.ts'
@@ -77,47 +77,54 @@ function openEndpoint(ctx: Context, known: string | undefined, onCreated: (route
   const customModelAddress: MayflyFormAddress = { pagePath: modelsPagePath, formId: 'custom-model' }
   const modelRows = () => [...advertised.map(model => ({ id: model.id, label: model.id, ...(model.contextWindow === undefined ? {} : { detail: `${model.contextWindow} tokens` }) })),
     ...[...customModels.entries()].map(([modelId, facts]) => ({ id: modelId, label: modelId, ...(facts.contextWindow === undefined ? {} : { detail: `${facts.contextWindow} tokens` }) }))]
-  const view = (): MayflyUiNode => ui.stack.column([
-    ui.tabs({ id: 'provider-tabs', activeId: 'connection', items: [
-      { id: 'connection', label: t('Connection') }, ...known === undefined ? [{ id: 'models', label: t('Models'), disabled: !unlocked }] : [],
-    ] }),
-    ui.child(ui.stack.column([
-      ui.form({ id: 'connection', fields: [
-        { kind: 'input', id: 'route', label: t('Provider Name'), value: known ?? created?.route ?? '', required: true, disabled: known !== undefined || created !== undefined },
-        ...known === undefined ? [
-          { kind: 'select' as const, id: 'protocol', label: t('Protocol'), value: String(created?.profile.api ?? 'openai-completions'), options: ENDPOINT_PROTOCOLS.map(protocol => ({ id: protocol, label: protocol })), disabled: created !== undefined },
-          { kind: 'input' as const, id: 'baseURL', label: t('Base URL'), value: String(created?.profile.baseURL ?? ''), required: true, disabled: created !== undefined },
-        ] : [],
-        { kind: 'secret' as const, id: 'key', label: t('API key'), value: '', required: true },
+  const view = (): MayflyUiNode => panel({
+    title: t(known === undefined ? 'Custom endpoint' : 'Configure {route}', { route: known ?? '' }),
+    escapeLabel: 'cancel',
+    body: ui.stack.column([
+      tabs({
+        tabs: { id: 'provider-tabs', activeId: 'connection', items: [
+          { id: 'connection', label: t('Connection') }, ...known === undefined ? [{ id: 'models', label: t('Models'), disabled: !unlocked }] : [],
+        ] },
+        pages: {
+          connection: ui.stack.column([
+            ui.form({ id: 'connection', fields: [
+              { kind: 'input', id: 'route', label: t('Provider Name'), value: known ?? created?.route ?? '', required: true, disabled: known !== undefined || created !== undefined },
+              ...known === undefined ? [
+                { kind: 'select' as const, id: 'protocol', label: t('Protocol'), value: String(created?.profile.api ?? 'openai-completions'), options: ENDPOINT_PROTOCOLS.map(protocol => ({ id: protocol, label: protocol })), disabled: created !== undefined },
+                { kind: 'input' as const, id: 'baseURL', label: t('Base URL'), value: String(created?.profile.baseURL ?? ''), required: true, disabled: created !== undefined },
+              ] : [],
+              { kind: 'secret' as const, id: 'key', label: t('API key'), value: '', required: true },
+            ] }),
+            ...known === undefined ? [ui.actions({ id: 'connection-actions', items: [
+              { id: 'next', label: t('Next step'), hintLabel: t('Next step'), key: 'ctrl+enter', hidden: true, intent: 'primary', read: [address('connection')], disabled: created !== undefined },
+            ] })] : [],
+          ], { gap: 1 }),
+          ...known === undefined ? { models: ui.stack.column([
+            ...discoveryState === 'running' ? [ui.loader({ message: t('discovering models…') })]
+              : discoveryState === 'failed' ? [ui.text(`${t('model discovery unavailable — add models by id below')} — ${discoveryError}`, { tone: 'muted' })]
+              : unlocked && discoveryState === 'idle' ? [ui.text(t('The connection changed — run discovery again'), { tone: 'muted' })] : [],
+            ui.list({ id: 'advertised-models', role: 'choose', mode: 'multiple', minSelected: 1, filterable: true,
+              selectedIds: created === undefined ? [...advertised.map(model => model.id), ...customModels.keys()] : (created.profile.models as { id: string }[]).map(model => model.id),
+              items: modelRows(), empty: ui.empty({ title: t('No models discovered') }) }),
+            ui.form({ id: 'models', fields: [
+              { kind: 'number', id: 'context', label: t('Default context window'), value: null, min: 1, step: 1, unit: 'tokens' },
+              { kind: 'multiselect', id: 'efforts', label: t('Thinking efforts'), value: [], options: THINKING_LEVELS.map(level => ({ id: level, label: level })) },
+            ] }),
+            ui.form({ id: 'custom-model', fields: [
+              { kind: 'input', id: 'model-id', label: t('+ model id'), value: '', placeholder: t('model id'), disabled: created !== undefined },
+            ] }),
+            ui.actions({ id: 'model-actions', items: [
+              { id: 'add-model', label: t('Add model'), hintLabel: t('Add model'), key: 'ctrl+a', hidden: true, submit: [customModelAddress], disabled: created !== undefined },
+              { id: 'discover', label: t('Discover models'), hintLabel: t('Discover models'), key: 'ctrl+r', hidden: true, read: [address('connection')], disabled: created !== undefined },
+            ] }),
+          ], { gap: 1 }) } : {},
+        },
+      }),
+      ui.actions({ id: 'provider-setup-actions', items: [
+        { id: 'save', label: t('Save'), hintLabel: t('save'), semantic: 'save', hidden: true, intent: 'primary', submit: [address('connection'), ...known === undefined ? [address('models')] : []], ...(known === undefined ? { selections: [{ pagePath: modelsPagePath, controlId: 'advertised-models' }] } : {}) },
       ] }),
-      ...known === undefined ? [ui.actions({ id: 'connection-actions', items: [
-        { id: 'next', label: t('Next step'), intent: 'primary', read: [address('connection')], disabled: created !== undefined },
-      ] })] : [],
-    ], { gap: 1 }), { tab: { controlId: 'provider-tabs', itemId: 'connection' } }),
-    ...known !== undefined ? [] : [ui.child(ui.stack.column([
-      ...discoveryState === 'running' ? [ui.loader({ message: t('discovering models…') })]
-        : discoveryState === 'failed' ? [ui.text(`${t('model discovery unavailable — add models by id below')} — ${discoveryError}`, { tone: 'muted' })]
-        : unlocked && discoveryState === 'idle' ? [ui.text(t('The connection changed — run discovery again'), { tone: 'muted' })] : [],
-      ui.list({ id: 'advertised-models', role: 'choose', mode: 'multiple', minSelected: 1, filterable: true,
-        selectedIds: created === undefined ? [...advertised.map(model => model.id), ...customModels.keys()] : (created.profile.models as { id: string }[]).map(model => model.id),
-        items: modelRows(), empty: ui.empty({ title: t('No models discovered') }) }),
-      ui.form({ id: 'models', fields: [
-        { kind: 'number', id: 'context', label: t('Default context window'), value: null, min: 1, step: 1, unit: 'tokens' },
-        { kind: 'multiselect', id: 'efforts', label: t('Thinking efforts'), value: [], options: THINKING_LEVELS.map(level => ({ id: level, label: level })) },
-      ] }),
-      ui.form({ id: 'custom-model', fields: [
-        { kind: 'input', id: 'model-id', label: t('+ model id'), value: '', placeholder: t('model id'), disabled: created !== undefined },
-      ] }),
-      ui.actions({ id: 'model-actions', items: [
-        { id: 'add-model', label: t('Add model'), submit: [customModelAddress], disabled: created !== undefined },
-        { id: 'discover', label: t('Discover models'), read: [address('connection')], disabled: created !== undefined },
-      ] }),
-    ]), { tab: { controlId: 'provider-tabs', itemId: 'models' } })],
-    ui.actions({ id: 'provider-setup-actions', items: [
-      { id: 'save', label: t('Save'), intent: 'primary', submit: [address('connection'), ...known === undefined ? [address('models')] : []], ...(known === undefined ? { selections: [{ pagePath: modelsPagePath, controlId: 'advertised-models' }] } : {}) },
-      { id: 'cancel', label: t('Cancel'), dismiss: true },
-    ] }),
-  ], { gap: 1 })
+    ], { gap: 1 }),
+  })
   /** Probe the endpoint outside the action task so the Models page shows live progress. */
   const runDiscovery = async (input: { readonly protocol: string, readonly baseURL: string, readonly key: string }): Promise<void> => {
     discoveryAbort?.abort()
@@ -271,8 +278,7 @@ export function openProviderSetup(ctx: Context, onCreated: (route: string) => vo
     entry.settingsNs === container.ns && sameProviderPath(entry.settingsPath.slice(0, -1), container.container)
   const t = interactionTranslator(ctx)
   openUiOverlay(ctx, {
-    id: 'mayfly.provider.add', title: t('Add provider'), presentation: 'editor', capturing: true, scope: { kind: 'app', targetId: 'provider-creation' },
-    onEvent: { action: event => {
+    id: 'mayfly.provider.add', title: t('Add provider'), presentation: 'editor', capturing: true, scope: { kind: 'app', targetId: 'provider-creation' },    onEvent: { action: event => {
       if (event.kind !== 'selection-accept') return { kind: 'completed' }
       const kind = event.selectedIds[0]
       if (kind === 'custom') { openEndpoint(ctx, undefined, onCreated, signal); return { kind: 'completed' } }
@@ -308,8 +314,16 @@ export function openProviderSetup(ctx: Context, onCreated: (route: string) => vo
           else openEndpoint(ctx, route, onCreated, signal)
           return { kind: 'completed' }
         } },
-      }, ui.list({ id: 'providers', role: 'browse', selectedIds: [], items: rows, filterable: true, empty: ui.empty({ title: t('No providers available') }) }), { signal, reopen: 'focus' })
+      }, panel({
+        title: t(kind === 'oauth' ? 'OAuth provider' : 'Known provider'),
+        escapeLabel: 'close',
+        body: ui.list({ id: 'providers', role: 'browse', selectedIds: [], items: rows, filterable: true, empty: ui.empty({ title: t('No providers available') }) }),
+      }), { signal, reopen: 'focus' })
       return { kind: 'completed' }
     } },
-  }, ui.list({ id: 'provider-source', role: 'browse', numbered: true, selectedIds: [], items: [{ id: 'known', label: t('Known provider') }, { id: 'custom', label: t('Custom endpoint') }, { id: 'oauth', label: t('OAuth provider') }] }), { signal, reopen: 'focus' })
+  }, panel({
+    title: t('Add provider'),
+    escapeLabel: 'close',
+    body: ui.list({ id: 'provider-source', role: 'browse', numbered: true, selectedIds: [], items: [{ id: 'known', label: t('Known provider') }, { id: 'custom', label: t('Custom endpoint') }, { id: 'oauth', label: t('OAuth provider') }] }),
+  }), { signal, reopen: 'focus' })
 }

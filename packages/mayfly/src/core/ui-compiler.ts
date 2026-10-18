@@ -36,6 +36,7 @@ import { renderChartRows } from './chart-renderer.ts'
 import { ownDataErrorMessage } from './error-message.ts'
 import { contentNodeSource, type ContentRowsEnv, type WindowedContentNode } from './content-rows.ts'
 import { paintPluginTone, sanitizePluginText, truncatedRow } from './plugin-view.ts'
+import { paintTone } from './ui-paint.ts'
 import type { MayflyComponent, MayflyComponents, MayflyEditor, MayflyFocusable, MayflyFocusIdentity, MayflyKeymap, MayflySemanticColors } from './types.ts'
 import {
   renderActions,
@@ -1105,11 +1106,11 @@ interface ContextKeyHint {
   readonly priority: number
 }
 
-type EscapeLabel = 'close' | 'leave' | 'reject' | 'surface-back' | 'surface-cancel'
+type EscapeLabel = 'close' | 'leave' | 'reject' | 'no' | 'surface-back' | 'surface-cancel'
 
 /** The escape step a surface's `escapeLabel` names; every one hands Escape to the host's `onUnhandledEscape`. */
 const SURFACE_ESCAPE: Readonly<Record<NonNullable<Extract<MayflyUiNode, { readonly kind: 'surface' }>['escapeLabel']>, EscapeLabel>> = {
-  close: 'close', leave: 'leave', reject: 'reject', back: 'surface-back', cancel: 'surface-cancel',
+  close: 'close', leave: 'leave', reject: 'reject', no: 'no', back: 'surface-back', cancel: 'surface-cancel',
 }
 
 /** The label of the outermost Escape: a surface's own `escapeLabel` replaces the host's, once the host handles Escape at all. */
@@ -1190,19 +1191,19 @@ function grammarStateFor(state: FocusState, options: RuntimeCompilerOptions, con
         const facts = slider === undefined ? undefined : sliderGrammar(slider)
         return { kind: 'slider', label: (active.node.hintLabel ?? 'adjust').toLowerCase(), adjustable: facts?.adjustable ?? false, ...(facts?.stuckLeft === true ? { stuckLeft: true as const } : {}), ...(facts?.unpin === true ? { unpin: true } : {}) }
       }
-      case 'toggle': return { kind: 'toggle', ...(formEnterAction(active.form) === undefined ? {} : { enterSubmits: true }) }
+      case 'toggle': return { kind: 'toggle', ...(formEnterAction(active.form, active.field) === undefined ? {} : { enterSubmits: true }) }
       case 'submit': return { kind: 'submit' }
       case 'field-action': return { kind: 'field-action' }
       case 'text': {
         const completes = editing && active.field.kind !== 'number' && matchingSuggestions(active.field.suggestions, String(state.fieldValue(active.field, active.key))).length > 0
-        return { kind: 'text', field: active.field.kind, editing, enterSubmits: formEnterAction(active.form) !== undefined, ...(completes ? { completes: true } : {}) }
+        return { kind: 'text', field: active.field.kind, editing, enterSubmits: formEnterAction(active.form, active.field) !== undefined, ...(completes ? { completes: true } : {}) }
       }
       case 'select': {
         const field = state.field(active.field, active.key) as SelectField
         const enabledIds = field.options.filter(option => option.disabled !== true).map(option => option.id)
         const adjustable = enabledIds.length > 1 || (enabledIds.length === 1 && field.value === null)
         const stuckLeft = field.kind === 'select' && adjustable && !canStepLeft(enabledIds, state.fieldValue(active.field, active.key) as string | null)
-        return { kind: 'select', multiple: field.kind === 'multiselect', picker: editing, adjustable, ...(stuckLeft ? { stuckLeft: true as const } : {}), ...(formEnterAction(active.form) === undefined ? {} : { enterSubmits: true }) }
+        return { kind: 'select', multiple: field.kind === 'multiselect', picker: editing, adjustable, ...(stuckLeft ? { stuckLeft: true as const } : {}), ...(formEnterAction(active.form, active.field) === undefined ? {} : { enterSubmits: true }) }
       }
       case 'event': {
         if (active.role === 'tab') return { kind: 'tab', ...(active.tabs?.rail === true ? { vertical: true } : {}) }
@@ -1286,13 +1287,11 @@ function grammarStateFor(state: FocusState, options: RuntimeCompilerOptions, con
 }
 
 /** The action `Enter` submits a form through: the one it names, or the submit action of a form with a single field (which draws no button). */
-function formEnterAction(form: FormNode): string | undefined {
-  return form.enterSubmits ?? (form.fields.length === 1 ? form.submitActionId : undefined)
-}
-
-/** A form draws its submit button when it has one: a single field submits with `Enter`, and `Ctrl+S` saves from any field. */
-function formDrawsSubmit(form: FormNode): boolean {
-  return form.submitActionId !== undefined && form.fields.length !== 1
+function formEnterAction(form: FormNode, field: MayflyFormField): string | undefined {
+  const action = form.enterSubmits ?? (form.fields.length === 1 || form.submitOnLastField === true ? form.submitActionId : undefined)
+  if (action === undefined) return undefined
+  if (form.fields.length === 1 || form.submitOnLastField !== true) return action
+  return form.fields.at(-1)?.id === field.id ? action : undefined
 }
 
 /** The action `ui.save` runs for a form: its own submit action, the action Enter submits through, or the action that submits it. */
@@ -1558,7 +1557,6 @@ function walkControls(node: CompilableNode, options: RuntimeCompilerOptions, pat
             renderKey: `${field.id}/${action.id}`, identity: scopedFocusIdentity(field.id, action.id), address, action,
           })
         }
-        if (current.submitActionId !== undefined && formDrawsSubmit(current)) controls.push({ kind: 'submit', key: scopedControlKey('form-submit', current.id), renderKey: 'submit', identity: scopedFocusIdentity(current.submitActionId), preferred: false, group: scopedControlGroup('form', current.id), navigation: 'vertical', form: current })
         break
       case 'prompt':
         // The prompt of an editor shell is the host editor's face: one editor control, keyed by the prompt's id.
@@ -1782,6 +1780,10 @@ function compileUnit(node: CompilableNode, state: FocusState, options: RuntimeCo
       const stack = !spatial || node.direction === 'column'
         ? new ColumnStack([], stackOptions)
         : new RowStack([], stackOptions)
+      if (stack instanceof RowStack && node.rule === 'column') {
+        const glyph = options.components?.presentation?.glyphs === 'ascii' ? '|' : '│'
+        stack.rule = options.colors.border(glyph)
+      }
       // The pages of one tab strip keep one height between them.
       const groups = new Map<string, PageGroup>()
       for (const [index, child] of node.children.entries()) {
@@ -2030,12 +2032,6 @@ function compileUnit(node: CompilableNode, state: FocusState, options: RuntimeCo
           state.bindControls(actions.map(action => scopedControlKey('field-action', node.id, `${field.id}/${action.id}`)), { component: tools, axis: 'horizontal' })
         }
       }
-      // One primary submit when the form has several fields; `cancelActionId` is never drawn, Escape runs it.
-      if (formDrawsSubmit(node)) {
-        const component = retain(staticComponent(width => renderActions({ kind: 'actions', id: node.id, items: [{ id: 'submit', label: node.submitLabel ?? coreText(options, 'Save'), intent: 'primary' }] }, width, patternFocus(state, scopedControlGroup('form', node.id)), options.colors, true), options), 'form submit', options)
-        stack.addChild(component)
-        state.bindControls([scopedControlKey('form-submit', node.id)], { component, axis: 'none' })
-      }
       return stack
     }
     case 'actions': {
@@ -2086,7 +2082,18 @@ function compileUnit(node: CompilableNode, state: FocusState, options: RuntimeCo
     // Outside an admission row there is nothing to shed to: a shed node is its full form.
     case 'shed': return compileNode(node.node, state, options, `${path}.node`, mode)
     case 'spacer': return staticComponent(() => Array.from({ length: node.size ?? 1 }, () => ''), options)
-    case 'divider': return leaf(node, options, paint => pureStaticComponent(width => renderDivider(node.label, width, paint.colors, node.align, node.inset, node.tone), paint))
+    case 'divider': {
+      if (node.orientation === 'vertical') return leaf(node, options, paint => {
+        const glyph = options.components?.presentation?.glyphs === 'ascii' ? '|' : '│'
+        const row = node.tone === undefined ? paint.colors.border(glyph) : paintTone(node.tone, glyph, paint.colors)
+        return {
+          render: () => [row],
+          renderHeight: (height: number) => Array.from({ length: height }, () => row),
+          invalidate: () => {},
+        }
+      })
+      return leaf(node, options, paint => pureStaticComponent(width => renderDivider(node.label, width, paint.colors, node.align, node.inset, node.tone), paint))
+    }
     case 'diagram': return leaf(node, options, paint => contentLeafComponent(diagramMarkdownNode(node), options, paint))
     case 'chart': return chartComponent(node, options)
     case 'image': return imageComponent(node, options)
@@ -3541,6 +3548,7 @@ class CompiledSurface implements MayflyEditorShellComponent {
       case 'close':
       case 'leave':
       case 'reject':
+      case 'no':
       case 'surface-back':
       case 'surface-cancel': this.closeSurface(); return
     }
@@ -3695,7 +3703,7 @@ class CompiledSurface implements MayflyEditorShellComponent {
         const text = active as Extract<ControlDescriptor, { readonly kind: 'text' }>
         const editor = this.state.textEditor(text.field, text.key)
         this.state.setValue(text.key, editor.getExpandedText())
-        const submits = formEnterAction(text.form)
+        const submits = formEnterAction(text.form, text.field)
         this.state.setEditing(undefined)
         if (submits === undefined) {
           // The field just left editing: the neighbor is looked for among rows painted after that, not before.
@@ -3754,7 +3762,7 @@ class CompiledSurface implements MayflyEditorShellComponent {
       }
       case 'enter-submits': {
         const field = active as Extract<ControlDescriptor, { readonly kind: 'text' | 'select' | 'toggle' }>
-        model?.invoke(formEnterAction(field.form)!, field.identity.pagePath!)
+        model?.invoke(formEnterAction(field.form, field.field)!, field.identity.pagePath!)
         return
       }
       case 'select-cycle': this.selectCycle(active as Extract<ControlDescriptor, { readonly kind: 'select' }>, intent.delta); return
@@ -3914,11 +3922,15 @@ export function compileMayflyUiSurfaceNode(value: unknown, options: MayflyUiSurf
     const contextEscapeHint = options.onUnhandledEscape === undefined ? undefined : options.escapeHint ?? 'close'
     let node = admitted.value
     if (options.title !== undefined) {
-      const frame = validateMayflyUiNode({ kind: 'surface', chrome: 'overlay', title: options.title, padding: 1, child: { kind: 'spacer' } }, options.counters)
-      if (!frame.ok || frame.value.kind !== 'surface') throw new Error('invalid surface title')
-      node = admitted.value.kind === 'surface' && admitted.value.chrome === 'overlay'
-        ? { ...admitted.value, title: frame.value.title! }
-        : { ...frame.value, child: node }
+      if (node.kind === 'surface' && node.title === undefined) {
+        const frame = validateMayflyUiNode({ kind: 'surface', chrome: 'overlay', title: options.title, padding: 1, child: { kind: 'spacer' } }, options.counters)
+        if (!frame.ok || frame.value.kind !== 'surface') throw new Error('invalid surface title')
+        node = { ...node, title: frame.value.title! }
+      } else if (node.kind !== 'surface') {
+        const frame = validateMayflyUiNode({ kind: 'surface', chrome: 'overlay', title: options.title, padding: 1, child: { kind: 'spacer' } }, options.counters)
+        if (!frame.ok || frame.value.kind !== 'surface') throw new Error('invalid surface title')
+        node = { ...frame.value, child: node }
+      }
     }
     const surface = admittedSurface(node, options, 'ui', undefined, options.surfaceRuntime, options.contextHints?.rows !== false, contextEscapeHint)
     const hasControls = surface.hasControls()

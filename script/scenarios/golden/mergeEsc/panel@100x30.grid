@@ -28,7 +28,7 @@ grid 100x30 cursor none
 |  /jobs  Browse background jobs
 |  /mcp  List the MCP servers the host connects to
 |
-|  ↑/↓ scroll · Ctrl+E expand · Esc close
+|  ↑/↓ scroll · Ctrl+E expand · Esc back
 styles
 2: 2-3 fg:#9a86e6; 4-99 fg:#9a86e6 b
 4: 2-3 fg:#4ec87e; 4-11 fg:#ededf2 b; 12 fg:#9aa3b8; 13-31 fg:#c9c0f0; 32 fg:#9aa3b8
@@ -52,4 +52,4 @@ styles
 25: 2-6 fg:#c9c0f0 b; 7-48 fg:#9aa3b8; 49-97 fg:#c9c0f0 b
 26: 2-6 fg:#c9c0f0 b; 7-30 fg:#9aa3b8; 31-97 fg:#c9c0f0 b
 27: 2-5 fg:#c9c0f0 b; 6-48 fg:#9aa3b8; 49-97 fg:#c9c0f0 b
-29: 2-4 fg:#ededf2; 6-14 fg:#5c6476; 15-20 fg:#ededf2; 22-30 fg:#5c6476; 31-33 fg:#ededf2; 35-39 fg:#5c6476
+29: 2-4 fg:#ededf2; 6-14 fg:#5c6476; 15-20 fg:#ededf2; 22-30 fg:#5c6476; 31-33 fg:#ededf2; 35-38 fg:#5c6476

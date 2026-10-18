@@ -24,7 +24,7 @@ grid 100x30 cursor none
 |
 |
 |
-|                                              ✓ Already using deepseek-v4-pro (deepseek-official)
+|                                ✓ Switched to deepseek-v4-pro (deepseek-official) · thinking high
 |╭──────────────────────────────────────────────────────────────────────────────────────────────────╮
 |│ >  Ask anything · / commands · @ files · # skills · ! shell                                      │
 |╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
@@ -42,7 +42,7 @@ styles
 16: 33-64 fg:#c9c0f0
 18: 17-36 fg:#9aa3b8
 19: 17-51 fg:#5c6476
-25: 46 fg:#4ec87e; 48-96 fg:#ededf2
+25: 32 fg:#4ec87e; 34-96 fg:#ededf2
 26: 0-99 fg:#45406b
 27: 0 fg:#45406b; 2-3 fg:#ededf2; 4 r; 5-60 fg:#5c6476; 99 fg:#45406b
 28: 0-99 fg:#45406b

@@ -32,6 +32,29 @@ export const metric = defineMayflyComponent<{ label: string, value: number }>({
 })
 ```
 
+## Compose
+
+`compose` is the one layered shell for visible UI:
+
+```ts
+import { compose, ui } from '@ephemeral-ai/mayfly-ui'
+
+const surface = compose.panel({
+  title: 'Plugins',
+  escapeLabel: 'close',
+  body: compose.browser({
+    list: ui.list({ id: 'plugins', role: 'browse', selectedIds: [], items: [] }),
+    detail: ui.text('Select a plugin'),
+  }),
+})
+```
+
+`panel` is a command Panel (`overlay` chrome, editor slot). `decisionLane` is the one lane for agent requests;
+`decisionStrip` is a user-triggered Yes/No lane (`y`/`n`, `Esc no`). `tabs`, `wizard`, `rail`, `browser`, `statusPage`, and
+`completionPalette` are body-only compositions. `tabs` is horizontal tabs over arbitrary pages; `rail` is the
+vertical equivalent with a column rule. Product command panels are keys-only: no visible Save/Cancel/Close
+buttons; multi-field forms save with the last field's `Enter` and `Ctrl+S`.
+
 `defineMayflyComponent` records a package-namespaced id, then deeply freezes
 each rendered node. It is a pure package-level factory, not a
 runtime registry. Core still validates node kinds, values, depth, quotas, and

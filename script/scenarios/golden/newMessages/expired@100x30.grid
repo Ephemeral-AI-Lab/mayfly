@@ -28,7 +28,7 @@ grid 100x30 cursor none
 |╭───────────────────────────────────────────────────────────────────── Walk me through the release ╮
 |│ >  Ask anything · / commands · @ files · # skills · ! shell                                      │
 |╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
-| deepseek-official/deepseek-v4-pro  ~/workspace                  cache ▰▰▱▱▱ 38%  ctx ▰▱▱▱▱▱▱▱▱▱ 6%
+| deepseek-official/deepseek-flash  ~/workspace                   cache ▰▰▱▱▱ 38%  ctx ▰▱▱▱▱▱▱▱▱▱ 6%
 styles
 1: 2-29 fg:#9aa3b8
 3: 2-3 fg:#9a86e6; 4-99 fg:#9a86e6 b
@@ -52,4 +52,4 @@ styles
 26: 0-70 fg:#45406b; 71-97 fg:#f5f5f7 b; 98-99 fg:#45406b
 27: 0 fg:#45406b; 2-3 fg:#ededf2; 4 r; 5-60 fg:#5c6476; 99 fg:#45406b
 28: 0-99 fg:#45406b
-29: 1-33 fg:#ededf2; 36-46 fg:#9aa3b8; 65-70 fg:#ededf2; 71-72 fg:#e8a838; 73-75 fg:#9aa3b8; 76-79 fg:#ededf2; 82-85 fg:#ededf2; 86 fg:#9a86e6; 87-95 fg:#9aa3b8; 96-98 fg:#ededf2
+29: 1-32 fg:#ededf2; 35-45 fg:#9aa3b8; 65-70 fg:#ededf2; 71-72 fg:#e8a838; 73-75 fg:#9aa3b8; 76-79 fg:#ededf2; 82-85 fg:#ededf2; 86 fg:#9a86e6; 87-95 fg:#9aa3b8; 96-98 fg:#ededf2

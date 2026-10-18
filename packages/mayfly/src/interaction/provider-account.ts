@@ -13,7 +13,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-deepseek-account'
 import type { AccountClientMetadata, AccountView, SignInAttemptView } from '@deepseek-ai/dsh-deepseek-account'
-import { ui, type MayflyUiActionReply, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
+import { panel, ui, type MayflyUiActionReply, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import { MAYFLY_VERSION } from '../transcript/banner-content.ts'
 import { interactionTranslator } from './locale.ts'
 import { copyTextToClipboard } from './clipboard-write.ts'
@@ -155,7 +155,7 @@ export function accountPanelNode(
   const linked = live && attempt.authorizeUrl !== undefined
   // A cancelled, expired or failed attempt is over: sign-in is offered again.
   const retry = attempt !== null && !live && attempt.phase !== 'succeeded'
-  const frame = (child: MayflyUiNode, escapeLabel: 'cancel' | 'close' = 'close'): MayflyUiNode => ui.surface({ title: t('DeepSeek Account'), chrome: 'overlay', escapeLabel, child })
+  const frame = (child: MayflyUiNode): MayflyUiNode => panel({ title: t('DeepSeek Account'), escapeLabel: 'back', body: child })
 
   if (live) {
     const left = attempt.expiresAt === undefined ? undefined : attempt.expiresAt - (options.now ?? Date.now())
@@ -184,7 +184,7 @@ export function accountPanelNode(
       newLink: t('New link'),
       otherMachineKey: t('Other machine'),
       deliver: t('Deliver callback'),
-    }, PANEL_SIGN_IN), 'cancel')
+    }, PANEL_SIGN_IN))
   }
 
   if (stored) {
@@ -204,9 +204,9 @@ export function accountPanelNode(
       ? t('Sign in with your DeepSeek account — models are billed to it and need no API key.')
       : t('Sign in from a DeepSeek Harness Desktop or Web host on this machine — the stored login is shared across hosts. Account models then need no API key.'), { tone: 'muted' }),
     ui.spacer(),
-    ui.actions({ id: 'account-actions', items: canSignIn
-      ? [{ id: 'sign-in', label: retry && attempt.phase !== 'cancelled' ? t('Try again') : t('Sign in'), intent: 'primary' as const }]
-      : [{ id: 'close', label: t('Close'), dismiss: true }] }),
+    ...canSignIn ? [ui.actions({ id: 'account-actions', items: [
+      { id: 'sign-in', label: retry && attempt.phase !== 'cancelled' ? t('Try again') : t('Sign in'), hintLabel: t('sign in'), key: 's', hidden: true, intent: 'primary' as const },
+    ] })] : [],
   ]))
 }
 

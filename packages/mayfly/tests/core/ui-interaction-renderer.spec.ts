@@ -311,10 +311,10 @@ describe('shared interaction compiler', () => {
     renderer.runtime.dispose()
   })
 
-  it('edits on focus, traverses fields without saving, and submits only from Save', async () => {
+  it('edits on focus, traverses fields without saving, and submits from the last field', async () => {
     const fields = (a: string, b: string) => ui.form({ id: 'form', fields: [
       { kind: 'input', id: 'a', label: 'First', value: a }, { kind: 'input', id: 'b', label: 'Second', value: b },
-    ], submitActionId: 'save', cancelActionId: 'cancel' })
+    ], submitActionId: 'save', submitOnLastField: true, cancelActionId: 'cancel' })
     const saved = vi.fn()
     const { model, compile } = await setup(fields('', ''), { action: event => {
       if (event.kind !== 'submit') return { kind: 'completed' }
@@ -326,10 +326,8 @@ describe('shared interaction compiler', () => {
     renderer.input('one')
     renderer.input('\t')
     renderer.input('two')
-    renderer.input('\t')
     expect(saved).not.toHaveBeenCalled()
     expect(model.form({ pagePath: [], formId: 'form' })!.fields.b!.value).toBe('two')
-    renderer.input('\r')
     renderer.input('\r')
     await flush()
     expect(saved).toHaveBeenCalledOnce()
@@ -358,7 +356,7 @@ describe('shared interaction compiler', () => {
     expect(model.form(first)!.fields.name!.value).toBe('first continued')
     renderer.input('\x1b')
     renderer.input('\x1b[1;3A')
-    renderer.input('\x1b[C')
+    renderer.input('\x1b[1;3C')
     renderer.input('\x1b[1;3B')
     renderer.compiled.component.render(80)
     renderer.input('second')
@@ -401,7 +399,7 @@ describe('shared interaction compiler', () => {
     renderer = compile()
     // The decision names its keys, not a focus target: No is `n` (and Escape), never a second Enter.
     const decision = renderer.compiled.component.render(80).join('\n')
-    expect(decision).toContain('y yes · n no · Esc close')
+    expect(decision).toContain('y yes · n no · Esc no')
     renderer.input('n')
     expect(model.decisionNode).toBeUndefined()
     expect(action).not.toHaveBeenCalled()
@@ -680,7 +678,7 @@ describe('shared interaction compiler', () => {
     renderer.runtime.dispose()
   })
 
-  it('renders number units, the default Save button, and translated core placeholders', async () => {
+  it('renders number units and translated core placeholders without drawing a Save button', async () => {
     const { compile } = await setup(ui.stack.column([
       ui.form({ id: 'form', fields: [
         { kind: 'number', id: 'context', label: 'Context', value: 128, unit: 'tokens' },
@@ -693,8 +691,8 @@ describe('shared interaction compiler', () => {
     const renderer = compile()
     const rows = renderer.compiled.component.render(100).join('\n')
     expect(rows).toContain('‹ 128 › tokens')
-    expect(rows).toContain('zh:Save')
-    // Escape cancels a form; it draws no Cancel button.
+    // Forms are keys-only: neither Save nor Cancel is drawn as a button.
+    expect(rows).not.toContain('zh:Save')
     expect(rows).not.toContain('zh:Cancel')
     expect(rows).toContain('zh:Choose…')
     expect(rows).toContain('zh:None selected')
@@ -703,9 +701,11 @@ describe('shared interaction compiler', () => {
   })
 
   it('falls back to English core strings when the host translator throws', async () => {
-    const { compile } = await setup(ui.form({ id: 'form', fields: [], submitActionId: 'save' }), undefined, 'alternate', undefined, { translate: () => { throw new Error('catalog unavailable') } })
+    const { compile } = await setup(ui.form({ id: 'form', fields: [
+      { kind: 'select', id: 'mode', label: 'Mode', value: null, options: [{ id: 'a', label: 'A' }] },
+    ], submitActionId: 'save' }), undefined, 'alternate', undefined, { translate: () => { throw new Error('catalog unavailable') } })
     const renderer = compile()
-    expect(renderer.compiled.component.render(80).join('\n')).toContain('Save')
+    expect(renderer.compiled.component.render(80).join('\n')).toContain('Choose…')
     renderer.runtime.dispose()
   })
 
@@ -906,14 +906,15 @@ describe('shared interaction compiler', () => {
     renderer.runtime.dispose()
   })
 
-  it('keeps Save reachable in a short viewport and renders failed-operation feedback while the form stays open', async () => {
-    const { compile, viewport, model } = await setup(ui.form({ id: 'form', fields: Array.from({ length: 8 }, (_, index) => ({ kind: 'input' as const, id: `field-${index}`, label: `Field ${index}`, value: '' })), submitActionId: 'save', submitLabel: 'Save', cancelActionId: 'cancel' }), { action: event => event.kind === 'submit' ? { kind: 'failed', message: 'Settings are unavailable' } : { kind: 'completed' } })
+  it('keeps the last field reachable in a short viewport and renders failed-operation feedback while the form stays open', async () => {
+    const { compile, viewport, model } = await setup(ui.form({ id: 'form', fields: Array.from({ length: 8 }, (_, index) => ({ kind: 'input' as const, id: `field-${index}`, label: `Field ${index}`, value: '' })), submitActionId: 'save', submitOnLastField: true, submitLabel: 'Save', cancelActionId: 'cancel' }), { action: event => event.kind === 'submit' ? { kind: 'failed', message: 'Settings are unavailable' } : { kind: 'completed' } })
     viewport.rows = 4
     const renderer = compile()
     renderer.input('draft')
     renderer.input('\x1b')
     for (let index = 0; index < 8; index += 1) renderer.input('\x1b[B')
-    expect(renderer.compiled.component.render(80).join('\n')).toContain('Save')
+    expect(renderer.compiled.component.render(80).join('\n')).toContain('Field 7')
+    renderer.input('\r')
     renderer.input('\r')
     await flush()
     const rows = renderer.compiled.component.render(80)

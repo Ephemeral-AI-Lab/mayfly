@@ -1,91 +1,211 @@
-/** MCP catalogs do not read bodies until the user requests them, and every
- * dispatch goes straight to the exact Agent's native resource tools.
+/** The MCP resource helpers read one native catalog page and one explicit body
+ * on demand, then map metadata to list rows; they open no surface themselves.
  * @module @ephemeral-ai/mayfly/tests/interaction/mcp-resources
  */
-import { nativeAction, activate, select as selection } from './native-action-fixture.ts'
 import { Context } from '@deepseek-ai/cordis'
-import { afterEach, expect, it, vi } from 'vitest'
-import { informationFixture } from './information-fixture.ts'
-import { flushRequests } from './request-fixture.ts'
-import { openMcpResources } from '../../src/interaction/mcp-resources.ts'
+import type { Agent } from '@deepseek-ai/dsh-agent'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { listMcpResources, readMcpResource, resourceItems } from '../../src/interaction/mcp-resources.ts'
+
+interface ExecuteCall {
+  readonly callId: string
+  readonly agent: Agent
+  readonly signal: AbortSignal
+  readonly name: string
+  readonly arguments: Record<string, string>
+}
+interface ToolContent {
+  readonly type: string
+  readonly text?: string
+}
+interface ToolOutcome {
+  readonly isError: boolean
+  readonly value?: unknown
+  readonly content: readonly ToolContent[]
+}
 
 const contexts: Context[] = []
 afterEach(async () => { for (const ctx of contexts.splice(0)) await ctx.fiber.dispose() })
-async function setup() {
-  const ctx = new Context(); contexts.push(ctx)
-  const bench = await informationFixture(ctx)
-  let value: unknown = { resources: [{ uri: 'test://first', name: 'First', description: 'Metadata' }], nextCursor: 'page2' }
-  const execute = vi.fn(async () => ({ isError: false, value, content: [] }))
-  ctx.provide('tools', { schemas: () => [{ name: 'list_mcp_resources' }, { name: 'list_mcp_resource_templates' }, { name: 'read_mcp_resource' }], execute } as never)
-  const model = (id = 'mayfly.mcp.resources') => ctx.mayflyUiInteraction.get('overlay', id)!
-  return { ...bench, execute, model, setValue: (next: unknown) => { value = next }, open: (templates = false) => openMcpResources(ctx, bench.agent, 'docs', templates, new AbortController().signal) }
+
+const success = (value: unknown): ToolOutcome => ({ isError: false, value, content: [] })
+const signal = () => new AbortController().signal
+
+function setup() {
+  const ctx = new Context()
+  contexts.push(ctx)
+  /* Same session, different Agents: the helper must hand the native tool the
+     exact Agent it was given, never resolve a scope from the session id. */
+  const session = { id: 'shared-session' }
+  const agent = { id: 'agent-a', session } as unknown as Agent
+  const other = { id: 'agent-b', session } as unknown as Agent
+  const execute = vi.fn(async (_call: ExecuteCall): Promise<ToolOutcome> => success({}))
+  const schemas = vi.fn(() => [])
+  ctx.provide('tools', { schemas, execute } as never)
+  return { ctx, agent, other, execute, schemas }
 }
-it('paginates metadata and reads one explicit URI without exposing binary contents', async () => {
-  const bench = await setup()
-  await bench.open()
-  expect(bench.execute).toHaveBeenCalledOnce()
-  bench.setValue({ resources: [{ uri: 'test://second' }] })
-  bench.model().invoke('more'); await flushRequests()
-  expect(bench.execute).toHaveBeenLastCalledWith(expect.objectContaining({ name: 'list_mcp_resources', arguments: { server: 'docs', cursor: 'page2' }, agent: bench.agent }))
-  bench.model().emit({ kind: 'selection-accept', pagePath: [], controlId: 'resources', selectedIds: ['0'] }); await flushRequests()
-  expect(bench.execute).toHaveBeenCalledTimes(2)
-  bench.setValue({ contents: [{ text: 'Document body' }, { uri: 'test://binary', mimeType: 'image/png', blob: 'SECRET_BINARY' }] })
-  bench.model('mayfly.mcp.resource').invoke('read'); await flushRequests()
-  const text = JSON.stringify(bench.model('mayfly.mcp.resource.body').node)
-  expect(text).toContain('Document body'); expect(text).toContain('Binary resource'); expect(text).not.toContain('SECRET_BINARY')
-  bench.ctx.mayflyConversations.selectPrimary(bench.other)
-  expect(bench.ctx.mayflyOverlays.list()).toHaveLength(0)
-})
-it('passes templates and an expanded URI to the native resource tool with no run_code fallback', async () => {
-  const bench = await setup()
-  bench.setValue({ resourceTemplates: [{ uriTemplate: 'test://{name}' }] })
-  await bench.open(true)
-  expect(bench.execute).toHaveBeenCalledWith(expect.objectContaining({ name: 'list_mcp_resource_templates', arguments: { server: 'docs' } }))
-  bench.model().emit({ kind: 'selection-accept', pagePath: [], controlId: 'resources', selectedIds: ['0'] }); await flushRequests()
-  bench.model('mayfly.mcp.resource').edit({ pagePath: [], formId: 'resource-uri', fieldId: 'uri' }, 'test://expanded')
-  bench.setValue({ contents: [{ text: 'Expanded resource' }] })
-  bench.model('mayfly.mcp.resource').invoke('read'); await flushRequests()
-  expect(bench.execute).toHaveBeenLastCalledWith(expect.objectContaining({ name: 'read_mcp_resource', arguments: { server: 'docs', uri: 'test://expanded' } }))
-  expect(JSON.stringify(bench.model('mayfly.mcp.resource.body').node)).toContain('Expanded resource')
-})
-it('reports malformed and failed catalogs without claiming an empty successful response', async () => {
-  const bench = await setup()
-  bench.setValue(null)
-  await expect(bench.open()).rejects.toThrow('no resource catalog')
-  bench.setValue({})
-  await expect(bench.open()).rejects.toThrow('invalid resource catalog')
-  bench.execute.mockResolvedValueOnce({ isError: true, content: [{ type: 'text', text: 'offline' }] } as never)
-  await expect(bench.open()).rejects.toThrow('offline')
+
+describe('listMcpResources', () => {
+  it('reads one page and passes its cursor to the next native call unchanged', async () => {
+    const { ctx, agent, other, execute } = setup()
+    const firstSignal = signal()
+    execute.mockResolvedValueOnce(success({
+      resources: [
+        { uri: 'test://first', name: 'First', description: 'Metadata' },
+        null,
+        { uri: 'test://second' },
+      ],
+      nextCursor: 'page2',
+    }))
+
+    await expect(listMcpResources(ctx, agent, 'docs', false, firstSignal)).resolves.toEqual({
+      items: [
+        { uri: 'test://first', name: 'First', description: 'Metadata' },
+        { uri: 'test://second' },
+      ],
+      cursor: 'page2',
+    })
+    const first = execute.mock.calls[0]![0]
+    expect(first.name).toBe('list_mcp_resources')
+    expect(first.arguments).toEqual({ server: 'docs' })
+    expect(first.agent).toBe(agent)
+    expect(first.signal).toBe(firstSignal)
+    expect(first.arguments).not.toHaveProperty('cursor')
+    expect(first.arguments).not.toHaveProperty('code')
+
+    const secondSignal = signal()
+    execute.mockResolvedValueOnce(success({ resources: [{ uri: 'test://third' }], nextCursor: 7 }))
+    await expect(listMcpResources(ctx, other, 'docs', false, secondSignal, 'page2')).resolves.toEqual({
+      items: [{ uri: 'test://third' }],
+      cursor: undefined,
+    })
+    const second = execute.mock.calls[1]![0]
+    expect(second.name).toBe('list_mcp_resources')
+    expect(second.arguments).toEqual({ server: 'docs', cursor: 'page2' })
+    expect(second.agent).toBe(other)
+    expect(second.agent).not.toBe(agent)
+    expect(second.signal).toBe(secondSignal)
+  })
+
+  it('reads templates through the template tool and ignores the resource key', async () => {
+    const { ctx, agent, execute } = setup()
+    execute.mockResolvedValueOnce(success({
+      resourceTemplates: [
+        { name: 'Template', uriTemplate: 'test://{name}', description: 'Parameterized' },
+      ],
+      nextCursor: 'templates-2',
+    }))
+
+    await expect(listMcpResources(ctx, agent, 'docs', true, signal())).resolves.toEqual({
+      items: [{ name: 'Template', uriTemplate: 'test://{name}', description: 'Parameterized' }],
+      cursor: 'templates-2',
+    })
+    const call = execute.mock.calls[0]![0]
+    expect(call.name).toBe('list_mcp_resource_templates')
+    expect(call.arguments).toEqual({ server: 'docs' })
+    expect(call.agent).toBe(agent)
+  })
+
+  it('rejects a catalog that is absent, not an object, or not the requested page', async () => {
+    const { ctx, agent, execute } = setup()
+    const cases = [
+      { templates: false, value: null, error: 'no resource catalog' },
+      { templates: false, value: 'offline', error: 'no resource catalog' },
+      { templates: false, value: undefined, error: 'no resource catalog' },
+      { templates: false, value: [], error: 'invalid resource catalog' },
+      { templates: false, value: {}, error: 'invalid resource catalog' },
+      { templates: false, value: { resources: null }, error: 'invalid resource catalog' },
+      { templates: false, value: { resourceTemplates: [] }, error: 'invalid resource catalog' },
+      { templates: true, value: { resources: [] }, error: 'invalid resource catalog' },
+    ] as const
+    for (const entry of cases) {
+      execute.mockResolvedValueOnce(success(entry.value))
+      await expect(listMcpResources(ctx, agent, 'docs', entry.templates, signal())).rejects.toThrow(entry.error)
+    }
+    expect(execute).toHaveBeenCalledTimes(cases.length)
+  })
+
+  it('surfaces every failed native text block and keeps non-text blocks out', async () => {
+    const { ctx, agent, execute } = setup()
+    execute.mockResolvedValueOnce({
+      isError: true,
+      content: [{ type: 'image' }, { type: 'text', text: 'offline' }, { type: 'text', text: 'check server' }],
+    })
+    await expect(listMcpResources(ctx, agent, 'docs', false, signal())).rejects.toThrow('offline\ncheck server')
+    expect(execute).toHaveBeenCalledOnce()
+  })
 })
 
-it('handles absent metadata, empty URIs, unexpected actions, and unknown selections', async () => {
-  const bench = await setup()
-  bench.setValue({ resources: [null, { description: 'Description without name' }, { uri: 'test://named' }] })
-  await bench.open()
-  const root = bench.model()
-  expect(await nativeAction(root, activate('unknown'))).toMatchObject({ kind: 'completed' })
-  expect(await nativeAction(root, selection('resources', '99'))).toMatchObject({ kind: 'cancelled' })
-  await nativeAction(root, selection('resources', '0'))
-  const detail = bench.model('mayfly.mcp.resource')
-  expect(await nativeAction(detail, selection('unrelated'))).toMatchObject({ kind: 'completed' })
-  expect(await nativeAction(detail, activate('read'))).toMatchObject({ kind: 'failed' })
-  detail.edit({ pagePath: [], formId: 'resource-uri', fieldId: 'uri' }, 'test://expanded')
-  bench.setValue({ contents: [{}] })
-  detail.invoke('read'); await flushRequests()
-  const body = bench.model('mayfly.mcp.resource.body')
-  expect(JSON.stringify(body.node)).toContain('unknown media type')
-  await nativeAction(body, activate('close'))
-  bench.ctx.mayflyOverlays.close('mayfly.mcp.resource.body')
-  bench.setValue(null)
-  detail.invoke('read'); await flushRequests()
-  expect(bench.model('mayfly.mcp.resource.body')).toBeDefined()
+describe('readMcpResource', () => {
+  it('calls the native read tool for the exact Agent and joins text contents', async () => {
+    const { ctx, agent, other, execute, schemas } = setup()
+    const readSignal = signal()
+    execute.mockResolvedValueOnce(success({ contents: [
+      { uri: 'test://document', mimeType: 'text/plain', text: 'Document body' },
+      { uri: 'test://notes', text: 'Second paragraph' },
+    ] }))
+
+    await expect(readMcpResource(ctx, agent, 'docs', 'test://document', readSignal))
+      .resolves.toBe('Document body\n\nSecond paragraph')
+    const call = execute.mock.calls[0]![0]
+    expect(call.name).toBe('read_mcp_resource')
+    expect(call.arguments).toEqual({ server: 'docs', uri: 'test://document' })
+    expect(call.agent).toBe(agent)
+    expect(call.agent).not.toBe(other)
+    expect(call.signal).toBe(readSignal)
+    expect(call.arguments).not.toHaveProperty('code')
+    expect(call.callId).toEqual(expect.any(String))
+    expect(schemas).not.toHaveBeenCalled()
+    expect(execute).toHaveBeenCalledOnce()
+  })
+
+  it('describes binary contents and never returns their payload', async () => {
+    const { ctx, agent, execute } = setup()
+    const secret = 'BASE64_SECRET'
+    execute.mockResolvedValueOnce(success({ contents: [
+      { uri: 'test://document', mimeType: 'text/plain', text: 'Document body' },
+      { uri: 'test://image', mimeType: 'image/png', blob: secret },
+    ] }))
+
+    const text = await readMcpResource(ctx, agent, 'docs', 'test://document', signal())
+    expect(text).toBe('Document body\n\nBinary resource: test://image (image/png)')
+    expect(text).not.toContain(secret)
+  })
+
+  it('falls back to the requested URI and an unknown media type for binary metadata', async () => {
+    const { ctx, agent, execute } = setup()
+    const secret = 'BASE64_SECRET'
+    execute.mockResolvedValueOnce(success({ contents: [{ blob: secret }] }))
+
+    const text = await readMcpResource(ctx, agent, 'docs', 'test://requested', signal())
+    expect(text).toBe('Binary resource: test://requested (unknown media type)')
+    expect(text).not.toContain(secret)
+  })
 })
-it('shows anonymous metadata entries and rejects a null resource response', async () => {
-  const bench = await setup()
-  bench.setValue({ resources: [{}] })
-  await bench.open()
-  expect(JSON.stringify(bench.model().node)).toContain('"label":"0"')
-  const missing = await setup()
-  missing.execute.mockResolvedValueOnce({ isError: false, value: null, content: [] } as never)
-  await expect(missing.open()).rejects.toThrow('no resource catalog')
+
+describe('resourceItems', () => {
+  it('labels rows by name, URI, template, or index and keeps the metadata searchable', () => {
+    const rows = resourceItems([
+      { name: 'Named', uri: 'test://named', description: 'Description' },
+      { uri: 'test://uri-only' },
+      { uriTemplate: 'test://{name}' },
+      { description: 'No URI' },
+      {},
+    ])
+    expect(rows).toEqual([
+      { id: '0', label: 'Named', detail: 'Description', searchText: 'Named test://named Description' },
+      { id: '1', label: 'test://uri-only', detail: 'test://uri-only', searchText: 'test://uri-only' },
+      { id: '2', label: 'test://{name}', detail: 'test://{name}', searchText: 'test://{name}' },
+      { id: '3', label: '3', detail: 'No URI', searchText: 'No URI' },
+      { id: '4', label: '4', detail: '', searchText: '' },
+    ])
+  })
+
+  it('keeps an explicit empty URI as an empty value instead of substituting one', () => {
+    const rows = resourceItems([{ uri: '' }, { name: '', uri: 'test://named' }])
+    expect(rows.map(row => ({ id: row.id, label: row.label, detail: row.detail }))).toEqual([
+      { id: '0', label: '', detail: '' },
+      { id: '1', label: '', detail: 'test://named' },
+    ])
+    expect(rows[1]!.searchText).toContain('test://named')
+  })
 })

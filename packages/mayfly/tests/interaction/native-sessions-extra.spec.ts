@@ -59,7 +59,11 @@ async function setup(options: { blankWorkspace?: boolean } = {}) {
     await vi.waitFor(() => { expect(rootText()).toContain('workspace:alpha') })
     return result
   }
-  return { ...bench, controller, registry, workspaces, summaries, cache, root, rootText, openRoot }
+  const chooseRail = async (rowId: string) => {
+    root().emit({ kind: 'tab-change', pagePath: [], controlId: 'session-rail', tabId: rowId })
+    await flushRequests()
+  }
+  return { ...bench, controller, registry, workspaces, summaries, cache, root, rootText, openRoot, chooseRail }
 }
 
 it('refreshes the catalog on demand and reports progress', async () => {
@@ -67,12 +71,12 @@ it('refreshes the catalog on demand and reports progress', async () => {
   await bench.openRoot()
   expect(bench.controller.list).toHaveBeenCalledOnce()
   const report = vi.fn()
-  const prepared = await bench.root().endpoint.prepare(activate('refresh', 'workspace-actions'), {
+  const prepared = await bench.root().endpoint.prepare(activate('refresh', 'session-actions'), {
     surfaceId: bench.root().id, source: bench.root().source, revision: bench.root().revision,
     operationId: 'refresh-test', signal: new AbortController().signal, report,
   })
-  expect(prepared.reply).toMatchObject({ kind: 'accepted' })
-  expect(report).toHaveBeenCalledWith({ message: 'Loading workspaces…', severity: 'info' })
+  expect(prepared.reply).toMatchObject({ kind: 'completed' })
+  expect(report).toHaveBeenCalledWith({ message: 'Loading workspace sessions…', severity: 'info' })
   expect(bench.controller.list).toHaveBeenCalledTimes(2)
   await vi.waitFor(() => { expect(bench.rootText()).toContain('workspace:beta') })
 })
@@ -91,16 +95,16 @@ it('uses the process cwd and empty display fallbacks when no conversation or wor
   vi.spyOn(bench.ctx.mayflyConversations, 'primary').mockReturnValue(null)
   await bench.openRoot()
   expect(bench.rootText()).toContain('No working directory')
-  await nativeAction(bench.root(), { kind: 'selection-accept', pagePath: [], controlId: 'workspaces', selectedIds: ['workspace:blank'] })
-  await flushRequests()
-  expect(bench.ctx.mayflyOverlays.list().map(entry => entry.id)).toContain('mayfly.sessions.workspace')
+  await bench.chooseRail('workspace:blank')
+  expect(bench.ctx.mayflyOverlays.list().map(entry => entry.id)).toEqual(['mayfly.sessions'])
+  expect(bench.rootText()).toContain('No sessions')
   expect(bench.controller.list).toHaveBeenCalledOnce()
 })
 
 it('ignores an action it does not own', async () => {
   const bench = await setup()
   await bench.openRoot()
-  expect(await nativeAction(bench.root(), activate('unknown', 'workspace-actions'))).toMatchObject({ kind: 'completed' })
+  expect(await nativeAction(bench.root(), activate('unknown', 'session-actions'))).toMatchObject({ kind: 'completed' })
   expect(bench.controller.list).toHaveBeenCalledOnce()
 })
 
@@ -119,7 +123,7 @@ it('discards a refresh whose overlay closed while the catalog read was pending',
   await bench.openRoot()
   const gate = Promise.withResolvers<SessionListValue>()
   bench.controller.list.mockReturnValueOnce(gate.promise)
-  const call = nativeAction(bench.root(), activate('refresh', 'workspace-actions'))
+  const call = nativeAction(bench.root(), activate('refresh', 'session-actions'))
   await vi.waitFor(() => { expect(bench.controller.list).toHaveBeenCalledTimes(2) })
   bench.ctx.mayflyOverlays.close('mayfly.sessions')
   gate.reject(new Error('cancelled read'))
@@ -164,7 +168,7 @@ it('cancels a refresh that is aborted after the last catalog read boundary', asy
     }
     return thenable as never
   })
-  const call = nativeAction(bench.root(), activate('refresh', 'workspace-actions'), signal.signal)
+  const call = nativeAction(bench.root(), activate('refresh', 'session-actions'), signal.signal)
   await call
   expect(signal.signal.aborted).toBe(true)
   expect(bench.controller.list).toHaveBeenCalledTimes(2)

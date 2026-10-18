@@ -5,7 +5,7 @@
  * choices); the last step welcomes the reader and lists what was set and what to try. The component is a pure function of the facts and the words it shows.
  * @module @ephemeral-ai/mayfly/components/onboarding-wizard
  */
-import { patterns, ui, type MayflySurfaceNode, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
+import { panel, ui, wizard, wizardNext, type MayflySurfaceNode, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import { signInBody, type SignInFacts, type SignInIds, type SignInLabels } from './account-sign-in.ts'
 
 /** The wizard's id and the ids of its steps, controls and fields: what a submission is read by. */
@@ -100,7 +100,7 @@ export interface OnboardingLabels {
   readonly start: string
 }
 
-const next = (stepId: OnboardingStepId): string => patterns.wizardNext(ONBOARDING_WIZARD, stepId)
+const next = (stepId: OnboardingStepId): string => wizardNext(ONBOARDING_WIZARD, stepId)
 
 function preferencesBody(facts: OnboardingFacts['preferences'], labels: OnboardingLabels): MayflyUiNode {
   const { language, startup, permissions } = facts
@@ -160,18 +160,21 @@ function readyBody(summary: OnboardingFacts['summary'], labels: OnboardingLabels
 
 /** The guide for one state of the first run: the steps in order, with no review page (Ready is the summary). */
 export function onboardingWizard(facts: OnboardingFacts, labels: OnboardingLabels): MayflySurfaceNode {
-  return patterns.wizard({
-    id: ONBOARDING_WIZARD,
+  return panel({
     title: labels.title,
-    ...facts.activeId === undefined ? {} : { activeId: facts.activeId },
-    steps: [
-      { id: ONBOARDING_PREFERENCES, label: labels.steps.preferences, body: preferencesBody(facts.preferences, labels), forms: [ONBOARDING_PREFERENCES_FORM], settle: true },
-      {
-        id: ONBOARDING_CONNECT, label: labels.steps.connect, body: connectBody(facts.connect, labels), settle: true,
-        ...facts.connect.signIn !== undefined ? { holdBack: true } : facts.connect.keyEntry ? { forms: [ONBOARDING_KEY_FORM], holdBack: true } : { lists: [ONBOARDING_CONNECT_LIST] },
-      },
-      { id: ONBOARDING_READY, label: labels.steps.ready, body: readyBody(facts.summary, labels), lists: [ONBOARDING_START_LIST] },
-    ],
-    hintLabel: 'step',
+    escapeLabel: 'cancel',
+    body: wizard({
+      id: ONBOARDING_WIZARD,
+      ...facts.activeId === undefined ? {} : { activeId: facts.activeId },
+      steps: [
+        { id: ONBOARDING_PREFERENCES, label: labels.steps.preferences, body: preferencesBody(facts.preferences, labels), forms: [ONBOARDING_PREFERENCES_FORM], settle: true },
+        {
+          id: ONBOARDING_CONNECT, label: labels.steps.connect, body: connectBody(facts.connect, labels), settle: true,
+          ...facts.connect.signIn !== undefined ? { holdBack: true } : facts.connect.keyEntry ? { forms: [ONBOARDING_KEY_FORM], holdBack: true } : { lists: [ONBOARDING_CONNECT_LIST] },
+        },
+        { id: ONBOARDING_READY, label: labels.steps.ready, body: readyBody(facts.summary, labels), lists: [ONBOARDING_START_LIST] },
+      ],
+      hintLabel: 'step',
+    }),
   })
 }

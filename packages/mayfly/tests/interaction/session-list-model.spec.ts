@@ -159,20 +159,21 @@ describe('sessionListItem', () => {
   it('leads the detail with tokens, then age and path', () => {
     const item = sessionListItem(facts(), NOW, '/home/dev', t)
     expect(item.label).toBe('Named')
-    expect(item.detailSpans?.map(span => span.text).join('')).toBe('2k tok · 50m ago · ~/repo')
+    expect(item.cells?.map(cell => cell.spans.map(span => span.text).join('')).filter(Boolean)).toEqual(['2k tok', '50m ago', '~/repo'])
     expect(item.searchText).toContain('session-id-abcdef')
     expect(item.searchText).toContain('/home/dev/repo')
     expect(item.badge).toBeUndefined()
   })
   it('joins status badges, including migration, and keeps the parent id', () => {
     const item = sessionListItem(facts({ current: true, running: true, archived: true, reminders: true, migrationRequired: true, parentId: 'parent' }), NOW, '/home/dev', t)
-    expect(item.badge).toBe('current · running · migration required · archived · reminders')
+    expect(item.badge).toBe('running · migration required · archived · reminders')
+    expect(item.current).toBe(true)
     expect(item.parentId).toBe('parent')
   })
   it('omits missing tokens, activity, and an absent path', () => {
     const item = sessionListItem(facts({ lastActiveAt: undefined, tokens: { input: 0, cacheRead: 0, cacheWrite: 0, output: 0 }, cwd: undefined, title: undefined }), NOW, '/home/dev', t)
     expect(item.label).toBe('Untitled · id-abcde')
-    expect(item.detailSpans).toEqual([])
+    expect(item.cells?.every(cell => cell.spans.length === 0)).toBe(true)
   })
 })
 

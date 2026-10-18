@@ -15,7 +15,7 @@ import type {} from '@deepseek-ai/dsh-llm'
 import type {} from '@deepseek-ai/dsh-commands'
 import type {} from '@deepseek-ai/dsh-permission-presets'
 import type {} from '../app/index.ts'
-import { ui, type MayflyPagePath, type MayflySourceStamp, type MayflyUiActionReply, type MayflySubmission, type MayflyUiObservationEvent } from '@ephemeral-ai/mayfly-ui'
+import { panel, ui, type MayflyPagePath, type MayflySourceStamp, type MayflyUiActionReply, type MayflySubmission, type MayflyUiObservationEvent } from '@ephemeral-ai/mayfly-ui'
 import {
   ONBOARDING_CONNECT, ONBOARDING_CONNECT_LIST, ONBOARDING_KEY_FIELD, ONBOARDING_KEY_FORM, ONBOARDING_PERMISSION_FIELD, ONBOARDING_STARTUP_FIELD,
   ONBOARDING_PREFERENCES, ONBOARDING_PREFERENCES_FORM, ONBOARDING_READY, ONBOARDING_SIGN_IN, ONBOARDING_WIZARD, onboardingWizard,
@@ -463,7 +463,7 @@ export function apply(ctx: Context): void {
           ctx.logger.warn(`provider onboarding could not open: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}`)
           if (lifetime.signal.aborted || ctx.mayflyOverlays.focus('mayfly.provider.onboarding')) return
           const t = interactionTranslator(ctx)
-          openUiOverlay(ctx, { id: 'mayfly.provider.onboarding', title: t('Provider setup'), presentation: 'editor', capturing: true, scope: { kind: 'app', targetId: DEEPSEEK_KEY } }, ui.empty({ title: t('Provider setup could not be checked') }), { signal: lifetime.signal, reopen: 'focus' })
+          openUiOverlay(ctx, { id: 'mayfly.provider.onboarding', title: t('Provider setup'), presentation: 'editor', capturing: true, scope: { kind: 'app', targetId: DEEPSEEK_KEY } }, panel({ title: t('Provider setup'), escapeLabel: 'close', body: ui.empty({ title: t('Provider setup could not be checked') }) }), { signal: lifetime.signal, reopen: 'focus' })
         })
       })
       reader.effect(() => off)

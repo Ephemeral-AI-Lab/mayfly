@@ -712,11 +712,12 @@ describe('compileMayflyUiNode', () => {
     const { options, events } = fixture()
     const focus = compiled(ui.tabs({ id: 'tabs', activeId: 'a', items: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }] }), options).focusTarget!
     focus.focused = true
-    focus.handleInput?.('\x1b[C')
+    // Alt+→ moves the roving index; plain → stays with the page.
+    focus.handleInput?.('\x1b[1;3C')
     focus.focused = false
-    expect(focus.render(20).join('')).not.toContain(CURSOR_MARKER)
+    expect(focus.render(20).join('')).toContain('\x1b[7m')
     focus.focused = true
-    expect(focus.render(20).join('')).toContain(CURSOR_MARKER)
+    expect(focus.render(20).join('')).toContain('\x1b[7m')
     focus.handleInput?.('\r')
     expect(events).toEqual([{ kind: 'tab-change', pagePath: [], controlId: 'tabs', tabId: 'b' }])
   })
@@ -743,11 +744,11 @@ describe('compileMayflyUiNode', () => {
     stale.focused = true
     first.value.component.render(80)
     stale.handleInput?.('\r')
-    stale.handleInput?.('\x1b[D')
+    stale.handleInput?.('\x1b[1;3D')
 
     const reordered = compileMayflyUiSurfaceNode(ui.stack.column([
       ui.surface({ child: ui.stack.column([
-        ui.tabs({ id: 'metric-view', activeId: 'cost', items: [
+        ui.tabs({ id: 'metric-view', activeId: 'tokens', items: [
           { id: 'cost', label: 'Cost' },
           { id: 'tokens', label: 'Tokens' },
         ] }),
@@ -763,9 +764,10 @@ describe('compileMayflyUiNode', () => {
     const target = reordered.value.focusTarget!
     target.focused = true
     const rows = reordered.value.component.render(80).join('')
-    expect(rows.match(new RegExp(CURSOR_MARKER, 'gu'))).toHaveLength(1)
+    // The active tab is an inverse chip, independent of focus; focus itself is restored by identity.
+    expect(rows).toContain('\x1b[7m')
     expect(target.captureFocusIdentity?.()).toMatchObject({ controlId: 'metric-view', itemId: 'tokens' })
-    target.handleInput?.('\x1b[D')
+    target.handleInput?.('\x1b[1;3D')
     expect(f.events).toEqual([
       { kind: 'tab-change', pagePath: [], controlId: 'metric-view', tabId: 'tokens' },
       { kind: 'tab-change', pagePath: [], controlId: 'metric-view', tabId: 'cost' },
@@ -778,7 +780,7 @@ describe('compileMayflyUiNode', () => {
     const runtime = new MayflyUiSurfaceRuntime()
     const f = fixture()
     const tree = (disabled = false) => ui.stack.column([
-      ui.child(ui.tabs({ id: 'modes', activeId: 'b', items: [
+      ui.child(ui.tabs({ id: 'modes', activeId: 'a', items: [
         { id: 'a', label: 'Alpha' },
         { id: 'b', label: 'Beta', disabled },
       ] }), { when: { minWidth: 60 } }),
@@ -789,8 +791,7 @@ describe('compileMayflyUiNode', () => {
     if (!first.ok) throw new Error(first.message)
     const firstFocus = first.value.focusTarget!
     firstFocus.focused = true
-    firstFocus.handleInput?.('\x1b[D')
-    firstFocus.handleInput?.('\x1b[C')
+    firstFocus.handleInput?.('\x1b[1;3C')
     expect(f.events.at(-1)).toEqual({ kind: 'tab-change', pagePath: [], controlId: 'modes', tabId: 'b' })
 
     f.viewport.columns = 40
@@ -1681,7 +1682,7 @@ describe('compileMayflyUiSurfaceNode contextual hints', () => {
 
   it('derives every navigation and activation hint from the active control state', () => {
     expect(focusedHint(ui.tabs({ id: 'tabs', activeId: 'a', items: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }] }), [], { onUnhandledEscape: () => {} }))
-      .toBe('  ←/→ tabs · Enter open · Esc close')
+      .toBe('  Enter open · Alt+←/→ tabs · Esc close')
     expect(focusedHint(ui.list({ id: 'list', role: 'browse', selectedIds: [], items: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }] })))
       .toBe('  ↑/↓ options · Enter open')
     expect(focusedHint(ui.list({ id: 'pick', role: 'choose', selectedIds: [], items: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }] })))
@@ -1699,7 +1700,7 @@ describe('compileMayflyUiSurfaceNode contextual hints', () => {
       .toBe('  ↑/↓ fields · ←/→ adjust · Enter pick')
     expect(focusedHint(ui.form({ id: 'form', fields: [{ kind: 'toggle', id: 'enabled', label: 'Enabled', value: false }] })))
       .toBe('  Enter toggle')
-    expect(focusedHint(ui.form({ id: 'form', fields: [], submitActionId: 'Save' })))
+    expect(focusedHint(ui.form({ id: 'form', fields: [{ kind: 'input', id: 'name', label: 'Name', value: '' }], submitActionId: 'Save' })))
       .toBe('  Enter submit')
     expect(focusedHint(ui.actions({ id: 'commands', items: [{ id: 'run', label: 'Run' }] })))
       .toBe('  Enter run')
@@ -1758,14 +1759,14 @@ describe('compileMayflyUiSurfaceNode contextual hints', () => {
     const focus = result.focusTarget!
     focus.focused = true
 
-    expect(focus.render(120).at(-1)).toBe('  ←/→ tabs · Enter open')
+    expect(focus.render(120).at(-1)).toBe('  Enter open · Alt+←/→ tabs')
     focus.handleInput?.(' ')
     expect(f.events).toEqual([])
     focus.handleInput?.('\r')
     expect(f.events).toEqual([])
 
     // Off the strip, `Esc` returns to it first, and that outranks the tab switch in a four-fragment row.
-    expect(focus.render(120).at(-1)).toBe('  ↑/↓ options · Space toggle · Enter choose · ←/→ tabs · Esc back')
+    expect(focus.render(120).at(-1)).toBe('  ↑/↓ options · Space toggle · Enter choose · Alt+←/→ tabs · Esc back')
     focus.handleInput?.('\r')
     expect(f.events).toEqual([{ kind: 'selection-accept', pagePath: [], controlId: 'list', selectedIds: [] }])
     focus.handleInput?.(' ')
@@ -2064,11 +2065,11 @@ describe('compileMayflyUiSurfaceNode contextual hints', () => {
     const widths = compiledSurface(wideTree, fixture({ onUnhandledEscape: () => {} }).options)
     widths.focusTarget!.focused = true
     expect(widths.component.render(80).at(-1)).toBe('  ←/→ actions · Enter run · Alt+←/→ tabs · Esc close')
-    expect(widths.component.render(40).at(-1)).toBe('  ←/→ actions · Enter run · Esc close')
+    expect(widths.component.render(40).at(-1)).toBe('  Enter run · Alt+←/→ tabs · Esc close')
     // Labels outrank completeness: the row sheds its least important part before any part loses its label, and the bare keys come last.
     expect(widths.component.render(30).at(-1)).toBe('  Enter run · Esc close')
     expect(widths.component.render(24).at(-1)).toBe('  Enter run · Esc close')
-    expect(widths.component.render(22).at(-1)).toBe('  ←/→ · Enter · Esc')
+    expect(widths.component.render(22).at(-1)).toBe('  Enter · Alt+←→ · Esc')
     expect(widths.component.render(18).at(-1)).toBe('  Enter · Esc')
     expect(widths.component.render(8).at(-1)).toBe('  Esc')
     expect(widths.component.render(6).join('\n')).not.toContain('Ent')

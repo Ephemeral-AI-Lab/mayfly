@@ -28,7 +28,7 @@ grid 100x30 cursor none
 |
 |
 |
-|  ↑/↓ fields · ←/→ adjust · Enter continue · Esc cancel
+|  ←/→ adjust · Enter continue · Alt+←/→ step · Esc cancel
 styles
 0: 45-46 fg:#9a86e6; 50-51 fg:#9a86e6
 1: 42-44 fg:#cfc6f5; 45-51 fg:#9a86e6; 52-54 fg:#cfc6f5
@@ -47,4 +47,4 @@ styles
 19: 4-34 fg:#ededf2
 20: 4-22 fg:#ededf2
 21: 4-31 fg:#ededf2
-29: 2-4 fg:#ededf2; 6-14 fg:#5c6476; 15-17 fg:#ededf2; 19-27 fg:#5c6476; 28-32 fg:#ededf2; 34-44 fg:#5c6476; 45-47 fg:#ededf2; 49-54 fg:#5c6476
+29: 2-4 fg:#ededf2; 6-14 fg:#5c6476; 15-19 fg:#ededf2; 21-31 fg:#5c6476; 32-38 fg:#ededf2; 40-46 fg:#5c6476; 47-49 fg:#ededf2; 51-56 fg:#5c6476

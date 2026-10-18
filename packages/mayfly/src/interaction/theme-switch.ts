@@ -17,7 +17,7 @@
 
 import type { Context, Plugin } from '@deepseek-ai/cordis'
 import type { CommandResult } from '@deepseek-ai/dsh-commands'
-import { ui } from '@ephemeral-ai/mayfly-ui'
+import { panel, ui } from '@ephemeral-ai/mayfly-ui'
 import { PALETTES, paletteOf } from '../core/palettes.ts'
 import * as themeAuto from '../core/theme-auto.ts'
 import * as themeBuiltin from '../core/theme-builtin.ts'
@@ -68,7 +68,7 @@ function openThemePicker(ctx: Context): CommandResult {
   const t = interactionTranslator(ctx)
   const current = ctx.mayflyInteractionState.currentThemeKey
   openUiOverlay(ctx, {
-    id: 'mayfly.theme', title: t('Select a theme'), presentation: 'editor', capturing: true, dismissal: 'discard',
+    id: 'mayfly.theme', presentation: 'editor', capturing: true, dismissal: 'discard',
     scope: { kind: 'app', targetId: 'theme' },
     onEvent: { action: async event => {
       if (event.kind !== 'selection-accept') return { kind: 'completed' }
@@ -81,7 +81,7 @@ function openThemePicker(ctx: Context): CommandResult {
       /* switchTheme success always carries the "switched to" text */
       return { kind: 'completed', dismiss: true, ...(result.text === undefined ? {} : { feedback: { severity: 'success' as const, message: result.text } }) }
     } },
-  }, ui.surface({ chrome: 'overlay', title: t('Select a theme'), child: ui.list({
+  }, panel({ title: t('Select a theme'), escapeLabel: 'close', body: ui.list({
     id: 'themes', role: 'choose', selectedIds: BUILTIN.has(current) ? [current] : [],
     // Grouped by the terminal a palette is drawn for; `auto` sits apart under a blank row. `custom` needs a file path,
     // so only `/theme custom <path>` reaches it.

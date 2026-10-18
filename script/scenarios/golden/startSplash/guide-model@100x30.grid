@@ -23,8 +23,8 @@ grid 100x30 cursor none
 |  Your pick becomes the default for new sessions.
 |
 |  DeepSeek
-|    1. DeepSeek/DeepSeek-V4.1-Flash  977k context
-|  → 2. DeepSeek/DeepSeek-V4-Pro ✓    977k context
+|  → 1. DeepSeek/DeepSeek-V4.1-Flash ✓  977k context
+|    2. DeepSeek/DeepSeek-V4-Pro        977k context
 |
 |    ○ Thinking: high (default)
 |
@@ -42,7 +42,7 @@ styles
 20: 2-15 fg:#9a86e6 b
 21: 2-48 fg:#9aa3b8
 23: 2-9 fg:#9aa3b8
-24: 4-5 fg:#9aa3b8; 7-34 fg:#ededf2; 37-48 fg:#9aa3b8
-25: 2 fg:#9a86e6 b; 4-5 fg:#9aa3b8; 7-30 fg:#9a86e6 b; 32 fg:#9a86e6; 37-48 fg:#9aa3b8
+24: 2 fg:#9a86e6 b; 4-5 fg:#9aa3b8; 7-34 fg:#9a86e6 b; 36 fg:#9a86e6; 39-50 fg:#9aa3b8
+25: 4-5 fg:#9aa3b8; 7-30 fg:#ededf2; 39-50 fg:#9aa3b8
 27: 4 fg:#9aa3b8; 6-14 fg:#9aa3b8; 16-29 fg:#ededf2
 29: 2-4 fg:#ededf2; 6-16 fg:#5c6476; 17-21 fg:#ededf2; 23-31 fg:#5c6476; 32-35 fg:#ededf2; 37-45 fg:#5c6476; 46-48 fg:#ededf2; 50-54 fg:#5c6476

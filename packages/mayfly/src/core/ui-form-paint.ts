@@ -103,7 +103,7 @@ function valueText(paint: FormFieldPaint, focused: boolean): string {
   // A disabled field is muted whole.
   const colors = field.disabled === true ? { text: paint.colors.muted, primary: paint.colors.muted, muted: paint.colors.muted } : paint.colors
   switch (field.kind) {
-    case 'toggle': return field.value ? colors.primary('[on]') : colors.muted('[off]')
+    case 'toggle': return field.value === null ? colors.muted('[not set]') : field.value ? colors.primary('[on]') : colors.muted('[off]')
     case 'select': {
       const label = field.value === null ? undefined : field.options.find(option => option.id === field.value)?.label ?? field.value
       const cycles = focused && field.options.filter(option => option.disabled !== true).length > (field.value === null ? 0 : 1)
