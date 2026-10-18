@@ -1,16 +1,16 @@
 /** The compile memo: a static leaf keeps its component across passes and follows the newest surface. */
 import { describe, expect, it, vi } from 'vitest'
 import { ui } from '@ephemeral-ai/mayfly-ui'
-import { MayflyCompileCache, type PaintOptions } from '../../src/core/ui-compile-cache.ts'
+import { MayflyCompileCache, type PaintOptions } from '../../src/core/ui/compile/ui-compile-cache.ts'
 import {
   MayflyUiSurfaceRuntime,
   compileMayflyUiNode,
   compileMayflyUiSurfaceNode,
-} from '../../src/core/ui-compiler.ts'
-import { UiSurfaceModel, type UiSurfaceSnapshot } from '../../src/core/ui-interaction-surface.ts'
-import { createAdmissionCache } from '../../src/core/ui-validator.ts'
+} from '../../src/core/ui/compile/ui-compiler.ts'
+import { UiSurfaceModel, type UiSurfaceSnapshot } from '../../src/core/ui/state/ui-interaction-surface.ts'
+import { createAdmissionCache } from '../../src/core/ui/admit/ui-validator.ts'
 import type { MayflyComponent, MayflyComponents, MayflySemanticColors } from '../../src/core/types.ts'
-import { sliceByColumn, truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/width.ts'
+import { sliceByColumn, truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/text/width.ts'
 import { plainColors } from '../helpers.ts'
 
 const colors = plainColors()

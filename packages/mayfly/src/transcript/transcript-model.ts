@@ -9,9 +9,9 @@
 
 import type { MayflyUiEvent, MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import { latestTurnOf, queuedIdOf, STREAM, streamTarget, TranscriptStream, type StreamRow, type TranscriptViewFacts } from '../components/transcript-view.ts'
-import type { MayflyNodeSlot } from '../core/node-slot.ts'
-import type { MayflySearchLine } from '../core/search-line.ts'
-import type { MayflyScreenService } from '../core/screen.ts'
+import type { MayflyNodeSlot } from '../core/hosts/node-slot.ts'
+import type { MayflySearchLine } from '../core/ui/state/search-line.ts'
+import type { MayflyScreenService } from '../core/hosts/screen.ts'
 import type { MayflyDecisionRequest, MayflyFocusMode, MayflyFocusRow, MayflyQueuedAction, MayflyScreen } from '../core/types.ts'
 import type { ApprovalMark, CompactionMark } from '../conversation/types.ts'
 import type { MayflyTranslate } from '../frontend/locale.ts'

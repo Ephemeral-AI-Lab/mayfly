@@ -8,7 +8,7 @@
 
 import { describe, expect, it } from 'vitest'
 import type { MayflySemanticColors } from '../../src/core/types.ts'
-import { compileMayflyUiNode } from '../../src/core/ui-compiler.ts'
+import { compileMayflyUiNode } from '../../src/core/ui/compile/ui-compiler.ts'
 import { ActivityRow, DETAIL_CONNECTOR_MIN_WIDTH, type ActivityFacts, type ActivityPhase } from '../../src/components/activity-row.ts'
 import { ADVERSARIAL, expectLinesFit } from '../core/width-scan.ts'
 import { fakeMayflyComponents } from '../transcript/helpers.ts'

@@ -1,18 +1,18 @@
 /** The painters of slice 1.3: ellipsis, text and field looks, progress, loaders, motion cells, sparkline, heatmap, chrome. */
 import { describe, expect, it } from 'vitest'
 import { ui } from '../../../ui/src/index.ts'
-import { renderChartRows } from '../../src/core/chart-renderer.ts'
-import { contentNodeSource, type ContentRowsEnv, type WindowedContentNode } from '../../src/core/content-rows.ts'
-import { virtualRows } from '../../src/core/ui-rows.ts'
+import { renderChartRows } from '../../src/core/content/chart-renderer.ts'
+import { contentNodeSource, type ContentRowsEnv, type WindowedContentNode } from '../../src/core/content/content-rows.ts'
+import { virtualRows } from '../../src/core/ui/paint/ui-rows.ts'
 import { MayflyContentCache } from '../../src/core/ui-content-cache.ts'
 import type { MayflyComponents, MayflySemanticColors } from '../../src/core/types.ts'
 import {
   breathLevel, breathPaint, loaderCell, loaderFrameGlyph, shimmerText, shimmerWindow,
-} from '../../src/core/ui-loader-animation.ts'
-import { hasMotion, paintMotionSpans } from '../../src/core/ui-motion-text.ts'
-import { renderDivider, renderEmpty, renderLoader, renderProgress, renderSurfaceHead, renderSurfaceTail, surfaceBorderPaint } from '../../src/core/ui-patterns.ts'
-import { UiProgressTransitions } from '../../src/core/ui-progress-transition.ts'
-import { truncateMiddle, truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/width.ts'
+} from '../../src/core/ui/paint/ui-loader-animation.ts'
+import { hasMotion, paintMotionSpans } from '../../src/core/ui/paint/ui-motion-text.ts'
+import { renderDivider, renderEmpty, renderLoader, renderProgress, renderSurfaceHead, renderSurfaceTail, surfaceBorderPaint } from '../../src/core/ui/state/ui-patterns.ts'
+import { UiProgressTransitions } from '../../src/core/ui/paint/ui-progress-transition.ts'
+import { truncateMiddle, truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/text/width.ts'
 import { ADVERSARIAL } from './width-scan.ts'
 import { identity, plainColors, plainText } from '../helpers.ts'
 

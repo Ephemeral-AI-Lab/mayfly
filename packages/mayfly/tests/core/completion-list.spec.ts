@@ -4,7 +4,7 @@
  * @module @ephemeral-ai/mayfly/tests/core/completion-list
  */
 import { describe, expect, it } from 'vitest'
-import { CompletionList } from '../../src/core/completion-list.ts'
+import { CompletionList } from '../../src/core/ui/compile/completion-list.ts'
 
 const theme = {
   selectedPrefix: (text: string) => text,

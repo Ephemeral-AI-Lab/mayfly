@@ -19,7 +19,7 @@ import type { MayflyPaneRegistry } from '../../../ui/src/contracts.ts'
 import { apply as uiProviderApply } from '../../../ui/src/provider.ts'
 import { apply as frontendApply } from '../../src/frontend/index.ts'
 import { apply } from '../../src/core/index.ts'
-import { apply as themeDarkApply } from '../../src/core/theme-dark.ts'
+import { apply as themeDarkApply } from '../../src/core/theme/theme-dark.ts'
 import { mkdtempTracked, registerTempDirCleanup } from './temp-dir.ts'
 
 

@@ -16,7 +16,7 @@ import { foldConversationFacts, initialConversationFacts } from '../../src/conve
 import type { ConversationFacts } from '../../src/conversation/types.ts'
 import { projectChildSessionFacts, type ChildSessionFacts } from '../../src/transcript/session-facts.ts'
 import type { LiveAssistantDraft } from '../../src/conversation/live-stream.ts'
-import { compileMayflyUiNode } from '../../src/core/ui-compiler.ts'
+import { compileMayflyUiNode } from '../../src/core/ui/compile/ui-compiler.ts'
 import { fakeMayflyComponents } from './helpers.ts'
 import { fakeAgent as sharedFakeAgent, plainColors } from '../helpers.ts'
 import { mountFakeScreenSlot } from '../core/fake-screen-slot.ts'

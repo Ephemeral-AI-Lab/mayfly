@@ -7,7 +7,7 @@ import {
   validateMayflyEditorShellNode,
   validateMayflyStatusNode,
   validateMayflyUiNode,
-} from '../../src/core/ui-validator.ts'
+} from '../../src/core/ui/admit/ui-validator.ts'
 
 function admitted<Value>(result: { readonly ok: boolean, readonly value?: Value, readonly message?: string }): Value {
   if (!result.ok) throw new Error(result.message)

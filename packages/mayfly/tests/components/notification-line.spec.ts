@@ -12,9 +12,9 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { visibleWidth } from '../../src/core/width.ts'
+import { visibleWidth } from '../../src/core/text/width.ts'
 import type { MayflySemanticColors } from '../../src/core/types.ts'
-import { compileMayflyUiNode } from '../../src/core/ui-compiler.ts'
+import { compileMayflyUiNode } from '../../src/core/ui/compile/ui-compiler.ts'
 import { NotificationLine, type NotificationFacts, type NotificationRowFacts } from '../../src/components/notification-line.ts'
 import { ADVERSARIAL, expectLinesFit } from '../core/width-scan.ts'
 import { fakeMayflyComponents } from '../transcript/helpers.ts'

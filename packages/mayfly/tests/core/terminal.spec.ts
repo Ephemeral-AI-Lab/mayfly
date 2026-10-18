@@ -10,7 +10,7 @@ import { CURSOR_MARKER, type TUI } from '@earendil-works/pi-tui'
 import type { LayoutBox, LayoutFrame } from '@earendil-works/pi-tui/dist/layout.js'
 import { LAYOUT_NODE, type LayoutNode } from '@earendil-works/pi-tui/dist/layout-node.js'
 import { ui } from '../../../ui/src/index.ts'
-import { compileMayflyUiNode } from '../../src/core/ui-compiler.ts'
+import { compileMayflyUiNode } from '../../src/core/ui/compile/ui-compiler.ts'
 import type { MayflyComponent, MayflyComponents, MayflyFocusable } from '../../src/core/types.ts'
 import {
   measuredLaneRows,
@@ -18,13 +18,13 @@ import {
   normalizeWheelInput,
   startMayflyTerminal,
   wheelReport,
-} from '../../src/core/terminal.ts'
-import type { FrameOverflowEntry } from '../../src/core/frame-clamp.ts'
-import type { AmbientOutputStream } from '../../src/core/output-recovery.ts'
-import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/width.ts'
+} from '../../src/core/terminal/terminal.ts'
+import type { FrameOverflowEntry } from '../../src/core/text/frame-clamp.ts'
+import type { AmbientOutputStream } from '../../src/core/text/output-recovery.ts'
+import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/text/width.ts'
 import { AltScreenTerminal } from './alt-screen-terminal.ts'
 import { FakeTerminal, waitForRender } from './fake-terminal.ts'
-import { virtualRows } from '../../src/core/ui-rows.ts'
+import { virtualRows } from '../../src/core/ui/paint/ui-rows.ts'
 import { plainColors } from '../helpers.ts'
 
 /**
@@ -1317,7 +1317,7 @@ describe('alternate-screen runtime', () => {
 
   it('keeps a stable transcript out of the per-frame clamp in the screen composition', async () => {
     const { Context } = await import('@deepseek-ai/cordis')
-    const { MayflyScreenService } = await import('../../src/core/screen.ts')
+    const { MayflyScreenService } = await import('../../src/core/hosts/screen.ts')
     const terminal = new AltScreenTerminal(40, 12)
     const overflows: FrameOverflowEntry[] = []
     const runtime = startMayflyTerminal(terminal, {

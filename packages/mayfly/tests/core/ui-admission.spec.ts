@@ -1,9 +1,9 @@
 /** Priority admission of a stack row: the ladder, the bands, and the widths of the rows it paints. */
 import { describe, expect, it } from 'vitest'
 import { ui } from '../../../ui/src/index.ts'
-import { ADMISSION_MIN_TRUNCATED, AdmissionRow, admitWidths, layoutBands } from '../../src/core/ui-admission.ts'
-import { compileMayflyUiNode } from '../../src/core/ui-compiler.ts'
-import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/width.ts'
+import { ADMISSION_MIN_TRUNCATED, AdmissionRow, admitWidths, layoutBands } from '../../src/core/ui/admit/ui-admission.ts'
+import { compileMayflyUiNode } from '../../src/core/ui/compile/ui-compiler.ts'
+import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/text/width.ts'
 import { ADVERSARIAL } from './width-scan.ts'
 import type { MayflyComponents } from '../../src/core/types.ts'
 import { plainColors } from '../helpers.ts'

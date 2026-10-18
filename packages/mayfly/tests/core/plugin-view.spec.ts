@@ -15,12 +15,12 @@ import {
   paintPluginTone,
   sanitizePluginText,
 } from '../../src/core/plugin-view.ts'
-import { contentNodeSource, type ContentRowsEnv, type WindowedContentNode } from '../../src/core/content-rows.ts'
-import { virtualRows } from '../../src/core/ui-rows.ts'
+import { contentNodeSource, type ContentRowsEnv, type WindowedContentNode } from '../../src/core/content/content-rows.ts'
+import { virtualRows } from '../../src/core/ui/paint/ui-rows.ts'
 import { MayflyContentCache } from '../../src/core/ui-content-cache.ts'
-import { DARK_COLORS } from '../../src/core/theme-dark.ts'
+import { DARK_COLORS } from '../../src/core/theme/theme-dark.ts'
 import type { MayflyComponents, MayflySemanticColors } from '../../src/core/types.ts'
-import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/width.ts'
+import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/text/width.ts'
 import { ADVERSARIAL, SCAN_WIDTHS, expectLinesFit } from './width-scan.ts'
 
 /** The leaf's rows materialized through its production row source. */

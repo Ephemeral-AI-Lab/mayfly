@@ -7,7 +7,7 @@
 
 import { visibleWidth } from '@earendil-works/pi-tui'
 import { describe, expect, it } from 'vitest'
-import { highlightLeadingSlashToken, injectGhostHint, padColumns } from '../../src/core/chrome.ts'
+import { highlightLeadingSlashToken, injectGhostHint, padColumns } from '../../src/core/text/chrome.ts'
 import { identity } from '../helpers.ts'
 
 describe('padColumns', () => {

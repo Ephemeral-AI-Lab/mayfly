@@ -21,8 +21,8 @@ import {
   validateMayflyEditorShellNode,
   validateMayflyStatusNode,
   validateMayflyUiNode,
-} from '../../src/core/ui-validator.ts'
-import type { MayflyAdmissionCache } from '../../src/core/ui-validator.ts'
+} from '../../src/core/ui/admit/ui-validator.ts'
+import type { MayflyAdmissionCache } from '../../src/core/ui/admit/ui-validator.ts'
 
 function accepted(value: unknown, cache?: MayflyAdmissionCache): unknown {
   const result = validateMayflyUiNode(value, cache)

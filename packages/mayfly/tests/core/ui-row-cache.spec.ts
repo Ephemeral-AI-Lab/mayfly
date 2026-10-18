@@ -1,8 +1,8 @@
 /** The list row memo: rows come back as painted, a state change repaints only what it touches, and a palette change repaints all. */
 import { describe, expect, it, vi } from 'vitest'
 import { ui } from '@ephemeral-ai/mayfly-ui'
-import { renderList, type PatternFocus } from '../../src/core/ui-patterns.ts'
-import { UiRowCache } from '../../src/core/ui-row-cache.ts'
+import { renderList, type PatternFocus } from '../../src/core/ui/state/ui-patterns.ts'
+import { UiRowCache } from '../../src/core/ui/paint/ui-row-cache.ts'
 import type { MayflySemanticColors } from '../../src/core/types.ts'
 
 const palette = (name: string): MayflySemanticColors => new Proxy({ logoGradient: [(value: string) => value] }, {

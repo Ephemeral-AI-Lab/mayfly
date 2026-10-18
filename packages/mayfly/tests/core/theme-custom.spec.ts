@@ -8,9 +8,9 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
-import { DARK_COLORS } from '../../src/core/theme-dark.ts'
-import { paletteColors } from '../../src/core/palettes.ts'
-import { apply, Config, name } from '../../src/core/theme-custom.ts'
+import { DARK_COLORS } from '../../src/core/theme/theme-dark.ts'
+import { paletteColors } from '../../src/core/theme/palettes.ts'
+import { apply, Config, name } from '../../src/core/theme/theme-custom.ts'
 
 const LIGHT_COLORS = paletteColors('light')
 

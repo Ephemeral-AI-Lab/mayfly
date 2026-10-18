@@ -1,9 +1,9 @@
 /** The width-scan contract for the four patterns of slice 1.8b over every adversarial fixture, focused or not. */
 import { describe, it } from 'vitest'
 import { patterns, ui, type MayflyUiNode } from '../../../ui/src/index.ts'
-import { compileMayflyUiNode } from '../../src/core/ui-compiler.ts'
+import { compileMayflyUiNode } from '../../src/core/ui/compile/ui-compiler.ts'
 import type { MayflyComponents } from '../../src/core/types.ts'
-import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/width.ts'
+import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/text/width.ts'
 import { ADVERSARIAL, SCAN_WIDTHS, expectLinesFit } from './width-scan.ts'
 import { plainColors } from '../helpers.ts'
 

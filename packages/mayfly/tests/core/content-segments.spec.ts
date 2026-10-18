@@ -7,8 +7,8 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { CONTENT_CUT_UNITS, CONTENT_SEGMENT_LINES, CONTENT_SEGMENT_UNITS, extendMergedLines, indexContent, indexMergedLines, scanContentLines, type ContentIndex } from '../../src/core/content-segments.ts'
-import { wrapTextWithAnsi } from '../../src/core/width.ts'
+import { CONTENT_CUT_UNITS, CONTENT_SEGMENT_LINES, CONTENT_SEGMENT_UNITS, extendMergedLines, indexContent, indexMergedLines, scanContentLines, type ContentIndex } from '../../src/core/content/content-segments.ts'
+import { wrapTextWithAnsi } from '../../src/core/text/width.ts'
 
 /** The segment plan as readable tuples: kind, first line, lines, first unit, units, estimated columns. */
 function plan(text: string): { kind: number, line0: number, line1: number, text0: number, text1: number }[] {

@@ -24,7 +24,7 @@ import {
 import { renderLayoutFrame } from '@earendil-works/pi-tui/dist/layout.js'
 import { ui } from '../../../ui/src/index.ts'
 import { MayflyComponentsService } from '../../src/core/components.ts'
-import { compileMayflyUiNode } from '../../src/core/ui-compiler.ts'
+import { compileMayflyUiNode } from '../../src/core/ui/compile/ui-compiler.ts'
 import type {
   MayflyAutocompleteItem,
   MayflyAutocompleteProvider,

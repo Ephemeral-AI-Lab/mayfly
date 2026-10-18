@@ -20,7 +20,7 @@ import { SessionSeq, type SessionEvent } from '@deepseek-ai/dsh-session'
 // would trip the real width guard stayed green in tests (the D39 lesson).
 // Tests now measure and truncate through the same implementations the
 // renderer runs.
-import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/width.ts'
+import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/text/width.ts'
 
 /**
  * Build a fake `MayflyComponents` for transcript tests. The editor and

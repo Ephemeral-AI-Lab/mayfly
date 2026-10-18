@@ -10,8 +10,8 @@ import type { SubagentDescendantListEntry } from '@deepseek-ai/dsh-subagent'
 import { describe, expect, it, vi } from 'vitest'
 import * as uiProvider from '../../../ui/src/provider.ts'
 import * as agentsPlugin from '../../src/interaction/agents-command.ts'
-import { mountUiRegistryObservers, UiInteractionService } from '../../src/core/ui-interaction-state.ts'
-import type { UiSurfaceModel } from '../../src/core/ui-interaction-surface.ts'
+import { mountUiRegistryObservers, UiInteractionService } from '../../src/core/ui/state/ui-interaction-state.ts'
+import type { UiSurfaceModel } from '../../src/core/ui/state/ui-interaction-surface.ts'
 import {
   agentMetricsText,
   agentTreeItems,

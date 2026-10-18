@@ -13,7 +13,7 @@
  * @module @ephemeral-ai/mayfly/interaction/clipboard-write
  */
 
-import { emitClipboardOsc52 } from '../core/terminal-escape.ts'
+import { emitClipboardOsc52 } from '../core/terminal/terminal-escape.ts'
 import { failureDetail, runTool } from './clipboard-probe.ts'
 import { formatError } from '../internal/format.ts'
 

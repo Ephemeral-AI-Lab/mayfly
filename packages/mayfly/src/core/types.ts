@@ -11,7 +11,7 @@
 // replaceable by the theme plugin family outside this package.
 import type {} from '@deepseek-ai/cordis'
 import type { MayflyPagePath } from '@ephemeral-ai/mayfly-ui'
-import type { MayflyPresentation } from './presentation.ts'
+import type { MayflyPresentation } from './theme/presentation.ts'
 
 /**
  * A renderable Mayfly component. Structurally compatible with pi-tui's

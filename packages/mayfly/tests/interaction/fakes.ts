@@ -16,11 +16,11 @@ import {
 // used to live here were exact only for ASCII, so CJK mis-budgets stayed
 // green in tests while tripping the real width guard. Fakes now delegate to
 // the same implementations the renderer runs.
-import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/width.ts'
+import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/text/width.ts'
 import type { MayflyAutocompleteProvider, MayflyCompletionView, MayflyComponent, MayflyComponents, MayflyEditor, MayflyEditorOptions, MayflyEditorToken, MayflyEditorSubmitAttempt, MayflyFocusable, MayflyKeyAction, MayflyKeymap, MayflyOverlayHandle, MayflyOverlayOptions, MayflyScreen, MayflySemanticColors, MayflySubmittedDraft, MayflyTheme } from '../../src/core/types.ts'
 import type { MayflyComponentsService } from '../../src/core/components.ts'
-import type { MayflyKeymapService } from '../../src/core/keymap.ts'
-import type { MayflyScreenService } from '../../src/core/screen.ts'
+import type { MayflyKeymapService } from '../../src/core/keys/keymap.ts'
+import type { MayflyScreenService } from '../../src/core/hosts/screen.ts'
 // MayflyImage/MayflyImageOptions are not root-exported by core yet; source-plane
 // tests import them straight from core's src types.
 import type { MayflyFuzzyMatch, MayflyImage, MayflyImageOptions } from '../../src/core/types.ts'

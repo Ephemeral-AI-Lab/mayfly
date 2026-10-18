@@ -28,13 +28,13 @@ import {
   type SelectListTheme,
   type TUI,
 } from '@earendil-works/pi-tui'
-import { readPresentation, type MayflyPresentation } from './presentation.ts'
+import { readPresentation, type MayflyPresentation } from './theme/presentation.ts'
 import { extractMentionToken, mentionPath } from '../internal/mention.ts'
 import { displayPath } from '../internal/paths.ts'
-import { highlightLeadingSlashToken, injectGhostHint, splitEditorRows } from './chrome.ts'
-import { CompletionList } from './completion-list.ts'
-import { pickPlaceholder } from './ui-prompt.ts'
-import { expandPastes, findTokenRanges, foldSegments, paintTokenRows, type EditorTokenPaints, type EditorTokenRange, type EditorTokenText } from './editor-tokens.ts'
+import { highlightLeadingSlashToken, injectGhostHint, splitEditorRows } from './text/chrome.ts'
+import { CompletionList } from './ui/compile/completion-list.ts'
+import { pickPlaceholder } from './ui/state/ui-prompt.ts'
+import { expandPastes, findTokenRanges, foldSegments, paintTokenRows, type EditorTokenPaints, type EditorTokenRange, type EditorTokenText } from './ui/compile/editor-tokens.ts'
 import type {
   MayflyAutocompleteProvider,
   MayflyComponents,

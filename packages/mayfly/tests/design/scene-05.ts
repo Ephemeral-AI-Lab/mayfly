@@ -1,6 +1,6 @@
 /** The seven pages of scene 5 (Lists), built with the real builders the way `ui-preview.mjs` builds them. */
 import { ui, type MayflyInlineSpan, type MayflyListItem, type MayflyUiNode } from '../../../ui/src/index.ts'
-import { feedbackSpans } from '../../src/core/ui-interaction-notifications.ts'
+import { feedbackSpans } from '../../src/core/ui/state/ui-interaction-notifications.ts'
 
 const S = (text: string, tone?: MayflyInlineSpan['tone'], styles?: MayflyInlineSpan['styles']): MayflyInlineSpan => ({ text, ...(tone === undefined ? {} : { tone }), ...(styles === undefined ? {} : { styles }) })
 const mu = (text: string): MayflyInlineSpan => S(text, 'muted')

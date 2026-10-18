@@ -6,8 +6,8 @@
 import { getLayoutNode } from '@earendil-works/pi-tui/dist/layout-node.js'
 import { afterEach, describe, expect, it } from 'vitest'
 import { ui, type MayflyUiEvent, type MayflyUiNode } from '../../../ui/src/index.ts'
-import { MayflyUiSurfaceRuntime, compileMayflyUiSurfaceNode } from '../../src/core/ui-compiler.ts'
-import { UiSurfaceModel } from '../../src/core/ui-interaction-surface.ts'
+import { MayflyUiSurfaceRuntime, compileMayflyUiSurfaceNode } from '../../src/core/ui/compile/ui-compiler.ts'
+import { UiSurfaceModel } from '../../src/core/ui/state/ui-interaction-surface.ts'
 import { PROBE_PALETTE, probeComponents } from '../design/probe.ts'
 
 const KEY = { up: '\x1b[A', down: '\x1b[B', right: '\x1b[C' } as const

@@ -8,11 +8,11 @@ import { ui, type MayflyUiEvent } from '@ephemeral-ai/mayfly-ui'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import * as frontend from '../../src/frontend/index.ts'
 import { INTERACTION_KEY_ACTIONS } from '../../src/interaction/keys.ts'
-import { visibleWidth } from '../../src/core/width.ts'
-import { NodeSlotHost, type MayflyNodeSlotCompiler, type MayflyNodeSlotOptions } from '../../src/core/node-slot.ts'
+import { visibleWidth } from '../../src/core/text/width.ts'
+import { NodeSlotHost, type MayflyNodeSlotCompiler, type MayflyNodeSlotOptions } from '../../src/core/hosts/node-slot.ts'
 import type { MayflyComponent, MayflyFocusable, MayflyKeymap, MayflyScreenSlot } from '../../src/core/types.ts'
-import { UiInteractionService } from '../../src/core/ui-interaction-state.ts'
-import type { MayflyUiImageSource } from '../../src/core/ui-images.ts'
+import { UiInteractionService } from '../../src/core/ui/state/ui-interaction-state.ts'
+import type { MayflyUiImageSource } from '../../src/core/ui/paint/ui-images.ts'
 import {
   COMPONENTS,
   DIM_COLORS,

@@ -6,12 +6,12 @@
  */
 
 import { writeFileSync } from 'node:fs'
-import { DEFAULT_ACTION_KEYS } from '../../packages/mayfly/src/core/key-actions.ts'
+import { DEFAULT_ACTION_KEYS } from '../../packages/mayfly/src/core/keys/key-actions.ts'
 import { INTERACTION_KEY_ACTIONS } from '../../packages/mayfly/src/interaction/keys.ts'
 import { SHARED_KEY_REFERENCE } from '../../packages/mayfly/src/core/ui-key-grammar.ts'
 import { COMMON_LOCALE } from '../../packages/mayfly/src/frontend/common-locale.ts'
 import { INTERACTION_LOCALE } from '../../packages/mayfly/src/interaction/locale.ts'
-import { CORE_CONTEXT_HINT_LOCALE } from '../../packages/mayfly/src/core/context-hint-locale.ts'
+import { CORE_CONTEXT_HINT_LOCALE } from '../../packages/mayfly/src/core/ui/compile/context-hint-locale.ts'
 import { TRANSCRIPT_LOCALE } from '../../packages/mayfly/src/transcript/locale.ts'
 
 /** Sort object keys recursively so the dump has no incidental order. */

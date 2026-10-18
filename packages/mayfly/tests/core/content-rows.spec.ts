@@ -8,16 +8,16 @@
  */
 
 import { describe, expect, it, vi } from 'vitest'
-import { CONTENT_SEGMENT_LINES } from '../../src/core/content-segments.ts'
-import { charWrap, contentNodeSource, documentRowsSource, type ContentRowsEnv, type WindowedContentNode } from '../../src/core/content-rows.ts'
-import { virtualRows } from '../../src/core/ui-rows.ts'
-import { alignDiffLines, diffModel, paintDiffSegment } from '../../src/core/diff-align.ts'
-import { DARK_COLORS } from '../../src/core/theme-dark.ts'
-import { paletteColors } from '../../src/core/palettes.ts'
+import { CONTENT_SEGMENT_LINES } from '../../src/core/content/content-segments.ts'
+import { charWrap, contentNodeSource, documentRowsSource, type ContentRowsEnv, type WindowedContentNode } from '../../src/core/content/content-rows.ts'
+import { virtualRows } from '../../src/core/ui/paint/ui-rows.ts'
+import { alignDiffLines, diffModel, paintDiffSegment } from '../../src/core/content/diff-align.ts'
+import { DARK_COLORS } from '../../src/core/theme/theme-dark.ts'
+import { paletteColors } from '../../src/core/theme/palettes.ts'
 import { MAYFLY_CONTENT_CACHE_BYTES, MayflyContentCache } from '../../src/core/ui-content-cache.ts'
-import { declaredWidthOf, findMarkerRow, isVirtualRows, materializedRows, prepareRows, rowSourceOf, unclampedRows } from '../../src/core/ui-rows.ts'
+import { declaredWidthOf, findMarkerRow, isVirtualRows, materializedRows, prepareRows, rowSourceOf, unclampedRows } from '../../src/core/ui/paint/ui-rows.ts'
 import type { MayflyComponents, MayflySemanticColors } from '../../src/core/types.ts'
-import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/width.ts'
+import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/text/width.ts'
 import { plainText } from '../helpers.ts'
 
 const LIGHT_COLORS = paletteColors('light')

@@ -2,8 +2,8 @@
  * @module @ephemeral-ai/mayfly/tests/core/ui-validator-slider
  */
 import { describe, expect, it } from 'vitest'
-import { validateMayflyUiNode } from '../../src/core/ui-validator.ts'
-import { MAYFLY_UI_MAX_SLIDER_LABEL, MAYFLY_UI_MAX_SLIDER_LEVELS } from '../../src/core/ui-validator-slider.ts'
+import { validateMayflyUiNode } from '../../src/core/ui/admit/ui-validator.ts'
+import { MAYFLY_UI_MAX_SLIDER_LABEL, MAYFLY_UI_MAX_SLIDER_LEVELS } from '../../src/core/ui/admit/ui-validator-slider.ts'
 
 function accepted(value: unknown) {
   const result = validateMayflyUiNode(value)

@@ -16,13 +16,13 @@ import {
   remapDocumentOffset,
   type DocumentResolver,
   type UiDocumentState,
-} from '../../src/core/ui-interaction-document.ts'
-import { materializeDeferredUiNode, validateMayflyUiNode } from '../../src/core/ui-validator.ts'
-import { DARK_COLORS } from '../../src/core/theme-dark.ts'
+} from '../../src/core/ui/state/ui-interaction-document.ts'
+import { materializeDeferredUiNode, validateMayflyUiNode } from '../../src/core/ui/admit/ui-validator.ts'
+import { DARK_COLORS } from '../../src/core/theme/theme-dark.ts'
 import { MayflyContentCache } from '../../src/core/ui-content-cache.ts'
-import type { ContentRowsEnv } from '../../src/core/content-rows.ts'
+import type { ContentRowsEnv } from '../../src/core/content/content-rows.ts'
 import type { MayflyComponents } from '../../src/core/types.ts'
-import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/width.ts'
+import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/text/width.ts'
 
 const env: ContentRowsEnv = {
   components: { visibleWidth, wrapText: wrapTextWithAnsi, truncateToWidth } as MayflyComponents,

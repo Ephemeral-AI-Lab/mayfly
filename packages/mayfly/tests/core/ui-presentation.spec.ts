@@ -1,11 +1,11 @@
 /** The compiled surface under a presentation: ASCII glyphs on painted rows, never on typed text, and reduced motion. */
 import { describe, expect, it, vi } from 'vitest'
 import { ui } from '../../../ui/src/index.ts'
-import { compileMayflyUiNode, MayflyUiSurfaceRuntime, compileMayflyUiSurfaceNode } from '../../src/core/ui-compiler.ts'
-import { UiSurfaceModel } from '../../src/core/ui-interaction-surface.ts'
-import { UiAnimationClock } from '../../src/core/ui-loader-animation.ts'
+import { compileMayflyUiNode, MayflyUiSurfaceRuntime, compileMayflyUiSurfaceNode } from '../../src/core/ui/compile/ui-compiler.ts'
+import { UiSurfaceModel } from '../../src/core/ui/state/ui-interaction-surface.ts'
+import { UiAnimationClock } from '../../src/core/ui/paint/ui-loader-animation.ts'
 import type { MayflyComponents } from '../../src/core/types.ts'
-import type { MayflyPresentation } from '../../src/core/presentation.ts'
+import type { MayflyPresentation } from '../../src/core/theme/presentation.ts'
 import { probeComponents } from '../design/probe.ts'
 import { plainColors } from '../helpers.ts'
 

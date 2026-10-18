@@ -11,7 +11,7 @@ import type { MayflyComponent, MayflyKeyAction, MayflyKeymap, MayflyOverlayHandl
 import type { CommandDefinition, CommandInvocation, CommandResult } from '@deepseek-ai/dsh-commands'
 import { fakeMayflyComponents } from './helpers.ts'
 import { asAgent, COLORS, FakeFactsService, type FakeAgent } from './status-fakes.ts'
-import { compileMayflyUiNode } from '../../src/core/ui-compiler.ts'
+import { compileMayflyUiNode } from '../../src/core/ui/compile/ui-compiler.ts'
 import { conversationProjectionDefinition, foldConversationProjection, initialConversationState } from '../../src/conversation/projection.ts'
 import type { ConversationProjection, ConversationProjectionState } from '../../src/conversation/types.ts'
 import { mountFakeScreenSlot } from '../core/fake-screen-slot.ts'

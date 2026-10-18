@@ -36,8 +36,8 @@ import z from '@deepseek-ai/schemastery'
 // Empty type import carries the app-owned current-Agent Context merge.
 import type {} from '../app/index.ts'
 import type { TranscriptViewMode } from '../transcript/presentation-policy.ts'
-import { PALETTE_KEYS, type MayflyPaletteKey } from '../core/palettes.ts'
-import { resolvePresentation, samePresentation } from '../core/presentation.ts'
+import { PALETTE_KEYS, type MayflyPaletteKey } from '../core/theme/palettes.ts'
+import { resolvePresentation, samePresentation } from '../core/theme/presentation.ts'
 import { applyTheme, reloadTheme } from './theme-switch.ts'
 
 declare module '@deepseek-ai/cordis' {

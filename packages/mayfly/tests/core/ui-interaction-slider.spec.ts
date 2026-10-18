@@ -10,7 +10,7 @@ import {
   sliderActive,
   sliderGrammar,
   type UiSliderModel,
-} from '../../src/core/ui-interaction-slider.ts'
+} from '../../src/core/ui/state/ui-interaction-slider.ts'
 
 const address = { pagePath: [], controlId: 'effort' } as const
 

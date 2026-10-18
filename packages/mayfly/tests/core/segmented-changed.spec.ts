@@ -4,12 +4,12 @@
  * @module @ephemeral-ai/mayfly/core/tests/segmented-changed
  */
 import { describe, expect, it } from 'vitest'
-import { contentNodeSource, type ContentRowsEnv } from '../../src/core/content-rows.ts'
-import { DARK_COLORS } from '../../src/core/theme-dark.ts'
+import { contentNodeSource, type ContentRowsEnv } from '../../src/core/content/content-rows.ts'
+import { DARK_COLORS } from '../../src/core/theme/theme-dark.ts'
 import { MayflyContentCache } from '../../src/core/ui-content-cache.ts'
-import { virtualRows } from '../../src/core/ui-rows.ts'
+import { virtualRows } from '../../src/core/ui/paint/ui-rows.ts'
 import type { MayflyComponents } from '../../src/core/types.ts'
-import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/width.ts'
+import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/text/width.ts'
 
 const components = { visibleWidth, wrapText: wrapTextWithAnsi, truncateToWidth } as MayflyComponents
 

@@ -20,7 +20,7 @@ import { setClipboardOsc52Emitter, setClipboardTextWriter } from '../../src/inte
 import * as commandsPlugin from '../../src/interaction/commands-plugin.ts'
 import { buildExportMarkdown, buildFullExportMarkdown, lastAssistantText } from '../../src/interaction/session-export.ts'
 import { fakeMayflyContext } from './fakes.ts'
-import { UiInteractionService } from '../../src/core/ui-interaction-state.ts'
+import { UiInteractionService } from '../../src/core/ui/state/ui-interaction-state.ts'
 import { mkdtempTracked, registerTempDirCleanup } from '../core/temp-dir.ts'
 
 registerTempDirCleanup()

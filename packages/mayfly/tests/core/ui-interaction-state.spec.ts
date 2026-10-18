@@ -7,7 +7,7 @@ import { ui } from '../../../ui/src/index.ts'
 import * as provider from '../../../ui/src/provider.ts'
 import type { MayflyFormAddress, MayflyUiActionReply, MayflyUiEvent, MayflyUiEventHandlers, MayflyUiObservationReply } from '../../../ui/src/contracts.ts'
 import * as frontend from '../../src/frontend/index.ts'
-import { UiSurfaceModel, type UiSurfaceSnapshot } from '../../src/core/ui-interaction-surface.ts'
+import { UiSurfaceModel, type UiSurfaceSnapshot } from '../../src/core/ui/state/ui-interaction-surface.ts'
 import { flush } from '../helpers.ts'
 
 const cleanups: (() => Promise<unknown>)[] = []

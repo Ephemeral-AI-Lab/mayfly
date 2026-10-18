@@ -28,7 +28,7 @@ import {
 } from '../../src/transcript/banner.ts'
 import { MAYFLY_VERSION } from '../../src/transcript/banner-content.ts'
 import { MARK_ROWS } from '../../src/transcript/banner-art.ts'
-import { FLY_IN_FRAME_MS, FLY_IN_TOTAL_MS, markColumns } from '../../src/core/quad-mark.ts'
+import { FLY_IN_FRAME_MS, FLY_IN_TOTAL_MS, markColumns } from '../../src/core/text/quad-mark.ts'
 import type { MayflyComponent, MayflyOverlayHandle, MayflyScreen, MayflyScreenSlot } from '../../src/core/types.ts'
 import { mountFakeScreenSlot } from '../core/fake-screen-slot.ts'
 import { fakeMayflyComponents } from './helpers.ts'

@@ -8,12 +8,12 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { apply as applyApi } from '../../../ui/src/provider.ts'
 import type { MayflyOverlayDefinition, MayflyOverlayHandle, MayflyUiEventContext, MayflyUiNode } from '../../../ui/src/contracts.ts'
 import { ui } from '../../../ui/src/index.ts'
-import { mountMayflySurfaceRenderer } from '../../src/core/surface-renderer.ts'
-import type { MayflyContextHints } from '../../src/core/context-hint-locale.ts'
-import type { MayflyUiImageSource } from '../../src/core/ui-images.ts'
-import { startMayflyTerminal, type MayflyTerminalRuntime } from '../../src/core/terminal.ts'
+import { mountMayflySurfaceRenderer } from '../../src/core/hosts/surface-renderer.ts'
+import type { MayflyContextHints } from '../../src/core/ui/compile/context-hint-locale.ts'
+import type { MayflyUiImageSource } from '../../src/core/ui/paint/ui-images.ts'
+import { startMayflyTerminal, type MayflyTerminalRuntime } from '../../src/core/terminal/terminal.ts'
 import type { MayflyComponents, MayflyFocusable, MayflyKeyAction, MayflySemanticColors } from '../../src/core/types.ts'
-import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/width.ts'
+import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/text/width.ts'
 import { createFakeEditor } from './fake-editor.ts'
 import { flush, plainText } from '../helpers.ts'
 
@@ -21,8 +21,8 @@ import { flush, plainText } from '../helpers.ts'
 const promptStandIn = (): MayflyFocusable => ({ focused: false, render: () => ['prompt'], invalidate() {} })
 import { FakeTerminal } from './fake-terminal.ts'
 import * as frontend from '../../src/frontend/index.ts'
-import { MayflyScreenService } from '../../src/core/screen.ts'
-import { untranslated } from '../../src/core/ui-interaction-surface.ts'
+import { MayflyScreenService } from '../../src/core/hosts/screen.ts'
+import { untranslated } from '../../src/core/ui/state/ui-interaction-surface.ts'
 
 class Scope {
   private readonly cleanups: Array<() => void> = []

@@ -6,7 +6,7 @@
 
 import { describe, expect, it, vi } from 'vitest'
 import { ui, type MayflyActionItem, type MayflySnapshotChange, type MayflyUiActionReply, type MayflyUiEvent, type MayflyUiEventContext, type MayflyUiNode } from '../../../ui/src/index.ts'
-import { UiSurfaceModel, type UiSurfaceSnapshot } from '../../src/core/ui-interaction-surface.ts'
+import { UiSurfaceModel, type UiSurfaceSnapshot } from '../../src/core/ui/state/ui-interaction-surface.ts'
 import { flush } from '../helpers.ts'
 
 type Prepare = (event: MayflyUiEvent, context: MayflyUiEventContext) => Promise<{ readonly reply: MayflyUiActionReply | undefined, readonly publish: () => boolean }>

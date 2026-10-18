@@ -11,12 +11,12 @@ import {
   compileMayflyUiNode,
   type MayflyEditorShellCompilerOptions,
   type MayflyUiCompilerOptions,
-} from '../../src/core/ui-compiler.ts'
+} from '../../src/core/ui/compile/ui-compiler.ts'
 import type { MayflyComponents, MayflyEditor, MayflySemanticColors } from '../../src/core/types.ts'
-import { createAdmissionCache } from '../../src/core/ui-validator.ts'
-import { sliceByColumn, truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/width.ts'
-import { UiSurfaceModel } from '../../src/core/ui-interaction-surface.ts'
-import { choiceSegment } from '../../src/core/ui-interaction-choice.ts'
+import { createAdmissionCache } from '../../src/core/ui/admit/ui-validator.ts'
+import { sliceByColumn, truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/text/width.ts'
+import { UiSurfaceModel } from '../../src/core/ui/state/ui-interaction-surface.ts'
+import { choiceSegment } from '../../src/core/ui/state/ui-interaction-choice.ts'
 import type { MayflyUiEvent } from '../../../ui/src/index.ts'
 import { ADVERSARIAL, expectLinesFit, SCAN_WIDTHS } from './width-scan.ts'
 import { identity, plainColors } from '../helpers.ts'

@@ -6,7 +6,7 @@
 
 import type { MayflyStatusEntry } from '@ephemeral-ai/mayfly-ui'
 import type { MayflyComponents, MayflySemanticColors } from '../../src/core/types.ts'
-import { compileMayflyUiNode } from '../../src/core/ui-compiler.ts'
+import { compileMayflyUiNode } from '../../src/core/ui/compile/ui-compiler.ts'
 import { buildStatusFooter, type StatusFooterState } from '../../src/transcript/status-rows.ts'
 
 /**

@@ -5,10 +5,10 @@
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ui, type MayflyUiEvent, type MayflyUiNode } from '../../../ui/src/index.ts'
-import { MayflyUiSurfaceRuntime, compileMayflyUiSurfaceNode } from '../../src/core/ui-compiler.ts'
+import { MayflyUiSurfaceRuntime, compileMayflyUiSurfaceNode } from '../../src/core/ui/compile/ui-compiler.ts'
 import type { MayflyComponents } from '../../src/core/types.ts'
-import { UiSurfaceModel } from '../../src/core/ui-interaction-surface.ts'
-import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/width.ts'
+import { UiSurfaceModel } from '../../src/core/ui/state/ui-interaction-surface.ts'
+import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/text/width.ts'
 import { createFakeEditor } from './fake-editor.ts'
 import { plainBlock, plainColors } from '../helpers.ts'
 

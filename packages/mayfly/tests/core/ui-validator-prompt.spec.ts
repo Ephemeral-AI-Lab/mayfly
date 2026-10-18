@@ -6,7 +6,7 @@ import {
   validateMayflyStatusNode,
   validateMayflyUiNode,
   createAdmissionCache,
-} from '../../src/core/ui-validator.ts'
+} from '../../src/core/ui/admit/ui-validator.ts'
 import {
   MAYFLY_UI_MAX_PROMPT_LABEL,
   MAYFLY_UI_MAX_PROMPT_PLACEHOLDERS,
@@ -15,7 +15,7 @@ import {
   MAYFLY_UI_MAX_PROMPT_TOKENS,
   MAYFLY_UI_MAX_PROMPT_TOKEN_TEXT,
   MAYFLY_UI_MAX_DRAFT_TEXT,
-} from '../../src/core/ui-validator-prompt.ts'
+} from '../../src/core/ui/admit/ui-validator-prompt.ts'
 
 const admitted = (value: unknown) => {
   const result = validateMayflyUiNode(value)

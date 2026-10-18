@@ -11,7 +11,7 @@ import {
   backgroundFromRgb,
   probeTerminalBackground,
   type MayflyProbeProcess,
-} from '../../src/core/terminal-info.ts'
+} from '../../src/core/terminal/terminal-info.ts'
 
 interface FakeProc {
   proc: MayflyProbeProcess

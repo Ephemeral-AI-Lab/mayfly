@@ -12,7 +12,7 @@
  * @module @ephemeral-ai/mayfly/transcript/banner-art
  */
 
-import { liftWings } from '../core/quad-mark.ts'
+import { liftWings } from '../core/text/quad-mark.ts'
 
 /** The mark at rest. */
 export const MARK_ROWS: readonly string[] = [

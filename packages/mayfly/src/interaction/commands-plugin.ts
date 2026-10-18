@@ -37,7 +37,7 @@ declare module '@deepseek-ai/cordis' {
 import { rewindCandidates } from './rewind.ts'
 import { openUiOverlay } from './ui-overlay.ts'
 import { createInteractionNotificationOwner } from './notifications.ts'
-import { displayKey } from '../core/key-actions.ts'
+import { displayKey } from '../core/keys/key-actions.ts'
 import { SHARED_KEY_REFERENCE } from '../core/ui-key-grammar.ts'
 import { formatError } from '../internal/format.ts'
 
