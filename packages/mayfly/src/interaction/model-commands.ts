@@ -32,6 +32,7 @@ import { registerOwnedCommand } from './sessionless-commands.ts'
 import { interactionTranslator } from './locale.ts'
 import type { InteractionFeedbackReporter } from './notifications.ts'
 import { getSharedEditor } from './editor-instance.ts'
+import { formatError } from '../internal/format.ts'
 
 declare module '@deepseek-ai/cordis' {
   interface Events {
@@ -49,11 +50,6 @@ interface ModelPickerItem {
   readonly contextWindow?: number | undefined
   readonly efforts?: readonly string[] | undefined
   readonly defaultEffort?: string | undefined
-}
-
-/** Render one failure reason for an error result. */
-function describe(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
 }
 
 /**
@@ -153,7 +149,7 @@ async function commitModelSelection(
       ctx.emit('mayfly/default-model-changed')
     } else selected = (await controller!.selectModel({ sessionId: agent.id, ...next })).selected
   } catch (error) {
-    return { text: describe(error), ok: false }
+    return { text: formatError(error), ok: false }
   }
   if (signal?.aborted || ctx.get('mayflyCurrentAgent')?.current() !== agent) return { text: 'agent changed before model selection completed', ok: false }
   const defaultEffort = await providerDefaultEffort(ctx, selected, signal)
@@ -224,7 +220,7 @@ async function providerModelIds(
     cache.value = { provider, ids, fetchedAt: Date.now() }
     return { ids }
   } catch (error) {
-    return { error: `could not list the provider's models: ${describe(error)}` }
+    return { error: `could not list the provider's models: ${formatError(error)}` }
   }
 }
 
@@ -268,7 +264,7 @@ export async function cycleSessionModel(ctx: Context, cache: ModelListCache, rep
   } catch (error) {
     /* the catch guards only the append-failure loud path
        (the cycleMode discipline); commitModelSelection itself never throws */
-    ctx.logger.warn(`model cycle commit failed: ${describe(error)}`)
+    ctx.logger.warn(`model cycle commit failed: ${formatError(error)}`)
   }
 }
 
@@ -476,7 +472,7 @@ export async function openModelPicker(ctx: Context, signal: AbortSignal, filterP
       commitPickerRow(scope, selectedId === undefined ? undefined : byId.get(selectedId), segmentId, eventSignal, t))
     return { kind: 'success' }
   } catch (error) {
-    return combined.aborted ? { kind: 'success' } : { kind: 'error', text: describe(error) }
+    return combined.aborted ? { kind: 'success' } : { kind: 'error', text: formatError(error) }
   } finally { cleanup() }
 }
 
@@ -552,7 +548,7 @@ export function registerModelCommands(ctx: Context): () => void {
     try {
       info = await llm.resolveModelInfo(current.provider, current.model, signal)
     } catch (error) {
-      return { kind: 'error', text: `could not resolve the current model: ${describe(error)}` }
+      return { kind: 'error', text: `could not resolve the current model: ${formatError(error)}` }
     }
     if (unloaded) return { kind: 'success' }
     const efforts = info.reasoning?.efforts ?? []

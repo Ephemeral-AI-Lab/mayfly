@@ -40,6 +40,7 @@ import { performSwap, type SwapOutcome, type SwapProgress, type SwapStep } from 
 import { isVersion } from './updater/version.ts'
 import type {} from '../app/index.ts'
 import { createInteractionNotificationOwner } from './notifications.ts'
+import { formatError } from '../internal/format.ts'
 
 /** The step rows the panel renders, in execution order. */
 const STEP_ROWS: readonly { step: SwapStep, label: string }[] = [
@@ -198,7 +199,7 @@ async function runSwapPanel(
       kind: 'failed-no-rollback',
       fromVersion: input.fromVersion,
       toVersion: input.toVersion,
-      message: t('the swap crashed: {error}\nthe profile may be in a mixed state — the snapshot is at {path}', { error: error instanceof Error ? error.message : String(error), path: backupDir(input.root) }),
+      message: t('the swap crashed: {error}\nthe profile may be in a mixed state — the snapshot is at {path}', { error: formatError(error), path: backupDir(input.root) }),
       logPath: join(backupDir(input.root), 'update.log'),
     }
   }

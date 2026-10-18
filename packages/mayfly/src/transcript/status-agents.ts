@@ -40,6 +40,7 @@ import { formatTokens } from './status-context.ts'
 import { parseToolArguments } from './present.ts'
 import type { ChildSessionFacts } from './session-facts.ts'
 import { itemSummary, viewList } from './view-items.ts'
+import { formatError } from '../internal/format.ts'
 
 /** Stable Cordis plugin name. */
 export const name = 'mayfly-status-agents'
@@ -412,7 +413,7 @@ export function apply(ctx: Context): void {
       refresh()
       return { kind: 'completed', feedback: { severity: 'success', message: result.text } }
     } catch (error) {
-      return { kind: 'failed', message: error instanceof Error ? error.message : String(error) }
+      return { kind: 'failed', message: formatError(error) }
     }
   }
   const pane = ctx.mayflyPanes.register({ id: 'mayfly.view.agents', placement: 'views', priority: VIEW_PRIORITY, onEvent: { action: act } }, null)

@@ -10,14 +10,10 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { SubagentDescendantListEntry } from '@deepseek-ai/dsh-subagent'
 import type { MayflyTranslate } from '../frontend/locale.ts'
 import { conversationId } from '../app/conversation-views.ts'
+import { formatError } from '../internal/format.ts'
 
 /** Outcome of a stop request. */
 export type AgentStopResult = Readonly<{ kind: 'success' | 'error', text: string }>
-
-/** Message of a thrown value. */
-export function describe(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
-}
 
 /** Count live Agent descendants whose teardown would follow the selected root. */
 export function liveAgentDescendantCount(
@@ -98,7 +94,7 @@ export async function stopSubagent(
   try {
     latest = await ctx.subagents.listDescendants(primary.id, signal)
   } catch (error) {
-    return { kind: 'error', text: describe(error) }
+    return { kind: 'error', text: formatError(error) }
   }
   if (unloaded() || ctx.mayflyCurrentAgent.primary() !== primary) {
     return { kind: 'error', text: `subagent ${entryId} stop request is stale` }
@@ -129,6 +125,6 @@ export async function stopSubagent(
     await ctx.subagents.drainChildren(directParent, [current.id])
     return { kind: 'success', text: `stopped subagent ${String(current.id)}` }
   } catch (error) {
-    return { kind: 'error', text: `could not stop subagent ${String(current.id)}: ${describe(error)}` }
+    return { kind: 'error', text: `could not stop subagent ${String(current.id)}: ${formatError(error)}` }
   }
 }

@@ -10,6 +10,7 @@ import type {} from '@deepseek-ai/dsh-session-title/types'
 import { panel, ui } from '@ephemeral-ai/mayfly-ui'
 import { interactionTranslator } from './locale.ts'
 import { openUiOverlay } from './ui-overlay.ts'
+import { formatError } from '../internal/format.ts'
 
 const RENAME_FORM = 'session-rename'
 
@@ -28,7 +29,7 @@ export function registerRenameCommand(ctx: Context): () => void {
       const accepted = await ctx.sessionController.rename({ sessionId: agent.id, title })
       return { kind: 'success', text: t('renamed session to {title}', { title: accepted.title }) }
     } catch (error) {
-      return { kind: 'error', text: error instanceof Error ? error.message : String(error) }
+      return { kind: 'error', text: formatError(error) }
     }
   }
   return ctx.commands.register({

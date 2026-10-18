@@ -16,6 +16,7 @@ import { ui, type MayflyInlineSpan, type MayflyPaneSummary, type MayflyTone, typ
 import type { MayflyTranslate } from '../frontend/locale.ts'
 import { observeTranscriptLocale, transcriptTranslator } from './locale.ts'
 import { itemSummary, viewPanel } from './view-items.ts'
+import { formatError } from '../internal/format.ts'
 
 /** Stable Cordis plugin name. */
 export const name = 'mayfly-status-goal'
@@ -65,7 +66,7 @@ function readGoal(ctx: Context, agent: Agent): GoalView | undefined {
   try {
     activation = ctx.goals.get(agent)?.activation ?? 'disarmed'
   } catch (error) {
-    ctx.logger.warn(`could not read current goal activation: ${error instanceof Error ? error.message : String(error)}`)
+    ctx.logger.warn(`could not read current goal activation: ${formatError(error)}`)
   }
   return {
     ...projected.goal,
@@ -175,7 +176,7 @@ export function apply(ctx: Context): void {
       } else return { kind: 'failed', message: t('Unknown goal action') }
       return { kind: 'completed' }
     } catch (error) {
-      return { kind: 'failed', message: error instanceof Error ? error.message : String(error) }
+      return { kind: 'failed', message: formatError(error) }
     }
   }
   const pane = ctx.mayflyPanes.register({ id: 'mayfly.view.goal', placement: 'views', priority: VIEW_PRIORITY, onEvent: { action: act } }, null)
@@ -212,7 +213,7 @@ export function apply(ctx: Context): void {
     try {
       next = agent === null ? undefined : readGoal(ctx, agent)
     } catch (error) {
-      ctx.logger.warn(`could not read current goal for the goal view: ${error instanceof Error ? error.message : String(error)}`)
+      ctx.logger.warn(`could not read current goal for the goal view: ${formatError(error)}`)
     }
     now = Date.now()
     if (next?.phase === 'complete') {

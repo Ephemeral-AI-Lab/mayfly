@@ -34,6 +34,7 @@ import { agentDirectory } from '../internal/session-directory.ts'
 import { copyTextToClipboard } from './clipboard-write.ts'
 import { attemptStreamText } from './trace-format.ts'
 import { createInteractionNotificationOwner } from './notifications.ts'
+import { formatError } from '../internal/format.ts'
 /** The key-arg whitelist for the tool-call hint, in priority order (the
  * present.ts list — the export keeps the same hint the card shows). */
 const KEY_ARG_KEYS = ['file_path', 'command', 'pattern'] as const
@@ -247,11 +248,6 @@ function defaultExportName(id: string, now: Date): string {
   const shortId = id.slice(0, ID_PREFIX_LENGTH)
   const timestamp = now.toISOString().replaceAll(/[-:]/g, '').replace('T', '-').slice(0, 15)
   return `${EXPORT_PREFIX}-${shortId}-${timestamp}.md`
-}
-
-/** Render one failure reason for an error result. */
-function describe(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
 }
 
 /** Join the text blocks of content, `\n`-separated (the fold's rule). */
@@ -492,7 +488,7 @@ export function registerExportCommands(ctx: Context): () => void {
     try {
       source = await readSessionSource(signal)
     } catch (error) {
-      return { kind: 'error', text: describe(error) }
+      return { kind: 'error', text: formatError(error) }
     }
     if (source === undefined) return { kind: 'error', text: 'no session is live yet' }
     // The mode keyword leads the argument; everything after it is the path.
@@ -521,7 +517,7 @@ export function registerExportCommands(ctx: Context): () => void {
       await mkdir(dirname(outputPath), { recursive: true })
       await writeFile(outputPath, markdown, 'utf-8')
     } catch (error) {
-      return { kind: 'error', text: `could not write export: ${describe(error)}` }
+      return { kind: 'error', text: `could not write export: ${formatError(error)}` }
     }
     notifications.report('export', { message: `exported ${String(count)} ${full ? 'events' : 'items'} to ${outputPath}`, severity: 'success' })
     return { kind: 'success' }
@@ -538,7 +534,7 @@ export function registerExportCommands(ctx: Context): () => void {
     try {
       source = await readSessionSource(signal)
     } catch (error) {
-      return { kind: 'error', text: describe(error) }
+      return { kind: 'error', text: formatError(error) }
     }
     if (source === undefined) return { kind: 'error', text: 'no session is live yet' }
     const text = lastAssistantText(source.entries)
@@ -547,7 +543,7 @@ export function registerExportCommands(ctx: Context): () => void {
     try {
       method = await copyTextToClipboard(text)
     } catch (error) {
-      return { kind: 'error', text: `could not copy to clipboard: ${describe(error)}` }
+      return { kind: 'error', text: `could not copy to clipboard: ${formatError(error)}` }
     }
     // The OSC 52 leg cannot be confirmed from this side — the terminal
     // honors it silently or ignores it silently — so it reports as

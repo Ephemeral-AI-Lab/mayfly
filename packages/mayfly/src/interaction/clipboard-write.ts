@@ -15,6 +15,7 @@
 
 import { emitClipboardOsc52 } from '../core/terminal-escape.ts'
 import { failureDetail, runTool } from './clipboard-probe.ts'
+import { formatError } from '../internal/format.ts'
 
 /** How the text was delivered: a verified local clipboard tool, or an
  *  unverified OSC 52 escape the terminal may have honored. */
@@ -67,7 +68,7 @@ function toolFailure(command: string, error: unknown): string {
   // exit-code classification alike); the String arm only satisfies the
   // unknown-type contract.
   /* no non-Error failure can reach this pipeline */
-  return error instanceof Error ? error.message : String(error)
+  return formatError(error)
 }
 
 /** The default writer: the first probed tool accepting the text wins. */

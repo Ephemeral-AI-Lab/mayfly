@@ -17,6 +17,7 @@ import type {} from '@deepseek-ai/dsh-subagent'
 import type { SubagentActivation } from '@deepseek-ai/dsh-subagent'
 import type { CommandResult } from '@deepseek-ai/dsh-commands'
 import type {} from '../app/index.ts'
+import { formatError } from '../internal/format.ts'
 
 /** Stable Cordis plugin name. */
 export const name = 'mayfly-btw-command'
@@ -62,7 +63,7 @@ export function apply(ctx: Context): void {
   const disposeOwned = (entry: OwnedBtw): Promise<void> => {
     if (owned === entry) owned = undefined
     entry.disposal ??= entry.activation.dispose().catch(error => {
-      logger.warn(`could not dispose BTW activation ${String(entry.activation.childId)}: ${error instanceof Error ? error.message : String(error)}`)
+      logger.warn(`could not dispose BTW activation ${String(entry.activation.childId)}: ${formatError(error)}`)
     })
     return entry.disposal
   }
@@ -127,7 +128,7 @@ export function apply(ctx: Context): void {
       }
       return {
         kind: 'error',
-        text: `could not start the side session: ${error instanceof Error ? error.message : String(error)}`,
+        text: `could not start the side session: ${formatError(error)}`,
       }
     }
     if (pending === controller) pending = undefined
@@ -135,7 +136,7 @@ export function apply(ctx: Context): void {
     // The captured result belongs to the side conversation; teardown failures
     // are reported by dispose(), not by an unhandled rejection here.
     void activation.result.catch(error => {
-      logger.warn(`BTW activation ${String(activation.childId)} failed: ${error instanceof Error ? error.message : String(error)}`)
+      logger.warn(`BTW activation ${String(activation.childId)} failed: ${formatError(error)}`)
     })
     if (unloaded || controller.signal.aborted || requestGeneration !== generation || currentAgent.primary() !== parent) {
       await disposeOwned(entry)
@@ -161,7 +162,7 @@ export function apply(ctx: Context): void {
       })
     } catch (error) {
       await disposeOwned(entry)
-      return { kind: 'error', text: `could not open the side session: ${error instanceof Error ? error.message : String(error)}` }
+      return { kind: 'error', text: `could not open the side session: ${formatError(error)}` }
     }
     const shown: OwnedBtw = { activation, viewId, disposal: undefined }
     owned = shown

@@ -27,6 +27,7 @@ import { interactionTranslator } from './locale.ts'
 import { registerOwnedCommand } from './sessionless-commands.ts'
 import { themeGroup, themeIdea, themeName } from './theme-names.ts'
 import { openUiOverlay } from './ui-overlay.ts'
+import { formatError } from '../internal/format.ts'
 
 /** Usage text returned for malformed `/theme` invocations; bare `/theme` lists every theme with its key. */
 const USAGE = 'usage: /theme [<theme>|auto|custom <path> [<base theme>]]'
@@ -122,7 +123,7 @@ async function switchTheme(ctx: Context, next: ThemeTarget): Promise<CommandResu
     return {
       kind: 'error',
       /* mount failures are Error instances (config validation or service conflicts) */
-      text: t('failed to apply theme "{key}": {error}', { key: next.key, error: error instanceof Error ? error.message : String(error) }),
+      text: t('failed to apply theme "{key}": {error}', { key: next.key, error: formatError(error) }),
     }
   }
   ctx.mayflyInteractionState.currentThemeKey = next.key

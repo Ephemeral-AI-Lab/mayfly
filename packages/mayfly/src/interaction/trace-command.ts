@@ -13,11 +13,11 @@ import { formatTraceAll, formatTraceItem, traceTime, type TraceItem } from './tr
 import { aggregateTraceItems } from './trace-aggregate.ts'
 import { interactionTranslator, observeInteractionLocale } from './locale.ts'
 import { interpolateLocaleMessage, type MayflyTranslate } from '../frontend/locale.ts'
+import { formatError } from '../internal/format.ts'
 
 const ROOT = 'mayfly.trace'
 /** The width from which the list and the JSON detail share the panel; below it they are pages. */
 export const TRACE_BREAKPOINT = 100
-const describe = (error: unknown) => error instanceof Error ? error.message : String(error)
 const sequence = (item: TraceItem) => item.lastSeq === item.seq ? `#${item.seq}` : `#${item.seq}-${item.lastSeq}`
 const copiedVia = (method: ClipboardCopyMethod, t: MayflyTranslate) => method === 'osc52' ? t(' via terminal escape sequence (unverified)') : ''
 
@@ -84,7 +84,7 @@ export function registerTraceCommand(ctx: Context): () => void {
     if (query === undefined) return { kind: 'error', text: t('could not read trace: {error}', { error: t('session query is unavailable') }) }
     let events: readonly SessionEvent[]
     try { events = (await query.readSession(agent.id)).events }
-    catch (error) { return current(agent, signal) ? { kind: 'error', text: t('could not read trace: {error}', { error: describe(error) }) } : { kind: 'success' } }
+    catch (error) { return current(agent, signal) ? { kind: 'error', text: t('could not read trace: {error}', { error: formatError(error) }) } : { kind: 'success' } }
     if (!current(agent, signal)) return { kind: 'success' }
     const items = aggregateTraceItems(buildSessionEventRecords(agent.id, events), events)
     const eventBySeq = new Map<number, SessionEvent>(events.map(event => [event.seq, event]))
@@ -98,7 +98,7 @@ export function registerTraceCommand(ctx: Context): () => void {
         if (!current(agent, taskSignal)) return { kind: 'success' }
         return { kind: 'success', text: (item === undefined ? t('copied {count} trace events', { count: items.length }) : t('copied trace item #{seq}', { seq: item.seq })) + copiedVia(method, t) }
       } catch (error) {
-        return current(agent, taskSignal) ? { kind: 'error', text: t('could not copy trace: {error}', { error: describe(error) }) } : { kind: 'success' }
+        return current(agent, taskSignal) ? { kind: 'error', text: t('could not copy trace: {error}', { error: formatError(error) }) } : { kind: 'success' }
       }
     }
     if (input === 'copy all') return copy(undefined, signal)

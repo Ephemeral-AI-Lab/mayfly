@@ -9,6 +9,7 @@ import { panel, ui, type MayflyListItem, type MayflyOverlayHandle, type MayflyUi
 import { openAgentOverlay } from './agent-overlay.ts'
 import { interactionTranslator, mountInteractionLocale, observeInteractionLocale } from './locale.ts'
 import { createInteractionNotificationOwner } from './notifications.ts'
+import { formatError } from '../internal/format.ts'
 
 export const name = 'mayfly-preset-command'
 export const inject = ['commands', 'agentPresets', 'mayflyCurrentAgent', 'mayflyOverlays']
@@ -21,8 +22,6 @@ export function presetItems(presets: readonly AgentPreset[], current: string | u
     ...preset.id === current ? { current: true } : {},
   }))
 }
-
-function message(error: unknown): string { return error instanceof Error ? error.message : String(error) }
 
 export function apply(ctx: Context): void {
   mountInteractionLocale(ctx)
@@ -76,8 +75,8 @@ export function apply(ctx: Context): void {
               notifications.report('select', { severity: 'success', message: t('Preset switched to {preset}', { preset: switched }) })
               return { kind: 'accepted', node: view(), source: [], dismiss: true }
             } catch (error) {
-              notifications.report('select', { severity: 'error', message: message(error) })
-              return { kind: 'failed', message: message(error) }
+              notifications.report('select', { severity: 'error', message: formatError(error) })
+              return { kind: 'failed', message: formatError(error) }
             }
           }
           if (event.kind === 'activate' && event.actionId === 'refresh') {
@@ -90,7 +89,7 @@ export function apply(ctx: Context): void {
         }
         }, { signal, reopen: 'focus' })
         return { kind: 'success' }
-      } catch (error) { return signal.aborted || !current(agent) ? { kind: 'success' } : { kind: 'error', text: message(error) } }
+      } catch (error) { return signal.aborted || !current(agent) ? { kind: 'success' } : { kind: 'error', text: formatError(error) } }
     },
   })
 }
