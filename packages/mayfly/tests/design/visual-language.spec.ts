@@ -1,6 +1,6 @@
 /** The scenes of slice 1.2 (the visual language) as grid goldens: scene 1 pages 1-6, 7 p1, 8 p3-p4, and 9 p3. */
 import { describe, it } from 'vitest'
-import { patterns, ui } from '../../../ui/src/index.ts'
+import { compose, ui } from '../../../ui/src/index.ts'
 import { caption, createRealSurface, expectFrames, paint, probeComponents } from './probe.ts'
 
 const S = (text: string, tone?: 'muted' | 'primary' | 'accent' | 'user' | 'success' | 'warning' | 'danger', styles?: readonly ('strong' | 'italic' | 'strike')[]) => ({ text, ...(tone === undefined ? {} : { tone }), ...(styles === undefined ? {} : { styles }) })
@@ -121,11 +121,12 @@ describe('scene 1 Marks and tokens, pages 2 to 5', () => {
 })
 
 describe('scene 1 Marks and tokens, page 6: breakpoints', () => {
-  it('draws patterns.splitView at 100 and 70 columns and the degraded list at 40', async () => {
-    const panel = patterns.splitView({
+  it('draws compose.browser at 100 and 70 columns and the degraded list at 40', async () => {
+    const panel = compose.browser({
       list: ui.list({ id: 'bp', role: 'browse', marker: 'selection', selectedIds: [], items: [{ id: 'a', label: 'Loop', detail: 'official · T W', right: [mu('1.4.0')] }, { id: 'b', label: 'Git Helper', detail: 'community · T W', right: [mu('update 1.3.0')] }] }),
       detail: ui.fields([{ label: 'Loop', value: [S('official · Automation')] }, { label: 'Status', value: [S('✓ installed 1.4.0', 'success')] }]),
       listWidth: 50,
+      separator: false,
     })
     const narrow = ui.list({ id: 'bp2', role: 'browse', marker: 'selection', selectedIds: [], items: [{ id: 'a', label: 'Loop', right: [S('✓', 'success')] }, { id: 'b', label: 'Git Helper', right: [S('↑', 'warning')] }] })
     const rows = [

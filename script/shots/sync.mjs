@@ -36,7 +36,7 @@ const uiLibUrl = new URL('../../packages/ui/lib/index.js', import.meta.url)
 if (!existsSync(fileURLToPath(uiLibUrl))) {
   throw new Error('packages/ui/lib is missing — run `pnpm build` before the shots pipeline')
 }
-const { ui, defineMayflyComponent, patterns } = await import(uiLibUrl.href)
+const { ui, defineMayflyComponent, compose } = await import(uiLibUrl.href)
 
 const check = process.argv.includes('--check')
 const outDir = new URL('../../website/public/shots/', import.meta.url)
@@ -63,7 +63,7 @@ function settle(id, svg, size) {
 }
 
 for (const scenario of SCENARIOS) {
-  const { term, cols, rows } = await renderScenario(scenario, ui, defineMayflyComponent, patterns)
+  const { term, cols, rows } = await renderScenario(scenario, ui, defineMayflyComponent, compose)
   settle(scenario.id, await paintTerminalSvg(term, { cols, rows }), `${cols}×${rows}`)
 }
 // App shots: the real product at its scenario checkpoints, painted from their goldens.

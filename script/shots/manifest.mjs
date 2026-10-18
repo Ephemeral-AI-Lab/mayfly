@@ -808,54 +808,61 @@ export const SCENARIOS = [
   },
   {
     id: 'patterns-decision',
-    // The "Patterns" section, decisionPanel example, verbatim.
-    title: 'patterns.decisionPanel — a decision with choices, a note, and a hidden key',
+    // The compose decision lane: choices, a note, and a hidden key.
+    title: 'compose.decisionLane — a decision with choices, a note, and a hidden key',
     width: 72,
-    build: (ui, _define, patterns) => patterns.decisionPanel({
+    build: (ui, _define, compose) => compose.decisionLane({
       title: 'Delete branch?',
       badges: [{ text: '1 of 2 waiting', tone: 'muted' }],
-      preview: [ui.text('feature/old-hero · 3 unmerged commits', { tone: 'muted' })],
-      options: [
+      choices: [
         { id: 'keep', label: 'Keep the branch' },
         { id: 'delete', label: 'Delete it', detail: 'cannot be undone' },
       ],
-      input: { id: 'why', label: 'Note', placeholder: 'optional' },
-      accelerators: [{ id: 'copy', label: 'Copy name', key: 'c', hintLabel: 'copy name' }],
+      note: { id: 'why', label: 'Note', placeholder: 'optional' },
+      keys: [{ id: 'copy', label: 'Copy name', key: 'c', hintLabel: 'copy name' }],
+      escapeLabel: 'reject',
     }),
   },
   {
     id: 'patterns-rail',
-    // The "Patterns" section, railPanel example, verbatim.
-    title: 'patterns.railPanel — labels on the left, live content on the right',
+    // The compose rail inside one panel: labels on the left, a page per label on the right.
+    title: 'compose.rail — labels on the left, live content on the right',
     width: 72,
-    build: (ui, _define, patterns) => patterns.railPanel({
+    build: (ui, _define, compose) => compose.panel({
       title: 'Workspaces',
-      rail: { id: 'rail', activeId: 'work', items: [
-        { id: 'work', label: 'work/mayfly', count: 8 },
-        { id: 'site', label: 'website', count: 5 },
-      ] },
-      content: {
-        work: ui.list({ id: 'ws.work', role: 'browse', marker: 'selection', selectedIds: [], items: [{ id: 'a', label: 'Fix login redirect', right: [{ text: '2h', tone: 'muted' }] }] }),
-        site: ui.list({ id: 'ws.site', role: 'browse', marker: 'selection', selectedIds: [], items: [{ id: 'b', label: 'Docs sync', right: [{ text: '1d', tone: 'muted' }] }] }),
-      },
+      escapeLabel: 'close',
+      body: compose.rail({
+        rail: { id: 'rail', activeId: 'work', items: [
+          { id: 'work', label: 'work/mayfly', count: 8 },
+          { id: 'site', label: 'website', count: 5 },
+        ] },
+        pages: {
+          work: ui.list({ id: 'ws.work', role: 'browse', marker: 'selection', selectedIds: [], items: [{ id: 'a', label: 'Fix login redirect', right: [{ text: '2h', tone: 'muted' }] }] }),
+          site: ui.list({ id: 'ws.site', role: 'browse', marker: 'selection', selectedIds: [], items: [{ id: 'b', label: 'Docs sync', right: [{ text: '1d', tone: 'muted' }] }] }),
+        },
+        separator: false,
+      }),
     }),
   },
   {
     id: 'patterns-status',
-    // The "Patterns" section, statusPage example, verbatim.
-    title: 'patterns.statusPage — a read-only page under tabs',
+    // The compose status page inside one panel: a read-only page under tabs.
+    title: 'compose.statusPage — a read-only page under tabs',
     width: 72,
-    build: (ui, _define, patterns) => patterns.statusPage({
+    build: (ui, _define, compose) => compose.panel({
       title: 'Status',
-      tabs: { id: 'st', activeId: 'overview', items: [
-        { id: 'overview', label: 'Overview' },
-        { id: 'usage', label: 'Usage' },
-        { id: 'account', label: 'Account', attention: true },
-      ] },
-      rows: [
-        { label: 'Provider', value: [{ text: 'DeepSeek' }] },
-        { label: 'Balance', value: [{ text: '⚠ ¥ 6.20', tone: 'warning' }, { text: ' low balance', tone: 'muted' }] },
-      ],
+      escapeLabel: 'close',
+      body: compose.statusPage({
+        tabs: { id: 'st', activeId: 'overview', items: [
+          { id: 'overview', label: 'Overview' },
+          { id: 'usage', label: 'Usage' },
+          { id: 'account', label: 'Account', attention: true },
+        ] },
+        rows: [
+          { label: 'Provider', value: [{ text: 'DeepSeek' }] },
+          { label: 'Balance', value: [{ text: '⚠ ¥ 6.20', tone: 'warning' }, { text: ' low balance', tone: 'muted' }] },
+        ],
+      }),
     }),
   },
   {

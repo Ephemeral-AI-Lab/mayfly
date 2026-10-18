@@ -1,6 +1,7 @@
 /**
- * Scene 11, Patterns (roadmap slices 1.5 and 1.8b): `patterns.decisionPanel`, `railPanel`, `splitView`, and `statusPage`
- * called with the scene's props, each page driven with the keys of every walk and compared with its grid golden.
+ * Scene 11, Patterns (roadmap slices 1.5 and 1.8b): `compose.panel`, `compose.rail`, `compose.browser`, and
+ * `compose.statusPage` called with the scene's props, each page driven with the keys of every walk and compared with its
+ * grid golden.
  */
 import { afterEach, describe, expect, it } from 'vitest'
 import { createRealSurface, expectFrames, probeComponents, type Frame, type RealSurface } from './probe.ts'

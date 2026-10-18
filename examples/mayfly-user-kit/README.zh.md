@@ -9,7 +9,7 @@ import { summaryMetric } from '@mayfly-example/user-kit'
 const node = summaryMetric.render({ label: 'Context', value: '42%', detail: '12k / 28k' })
 ```
 
-`approvalCard` 是 `patterns.decisionPanel` 在插件侧的验证：授权优先的审批卡，
+`approvalCard` 是 `compose.decisionLane` 在插件侧的验证：授权优先的审批卡，
 其 overlay 设置 `armMs: APPROVAL_ARM_MS`，误触的按键不会授权任何内容。
 
 ```ts

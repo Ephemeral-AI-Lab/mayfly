@@ -17,17 +17,6 @@ export {
   type MayflyComponentFactory,
 } from './builders.ts'
 export {
-  patterns,
-  type MayflyDecisionPanelProps,
-  type MayflyRailPanelProps,
-  type MayflySplitViewProps,
-  type MayflyStatusPageProps,
-  type MayflyWizardProps,
-  type MayflyWizardReviewItem,
-  type MayflyWizardStep,
-} from './patterns.ts'
-
-export {
   compose,
   tabs,
   browser,
