@@ -366,6 +366,57 @@ describe('mayfly app driver', () => {
     expect(armedEpitaph()).toBeUndefined()
   })
 
+  it('retires the stop latch only for an idle selected Agent and keeps it for a running or absent one', async () => {
+    const test = bench()
+    const agent = await ensureAgent(test)
+    test.ctx.mayflyRequests.requestStop()
+    expect(test.ctx.mayflyRequests.stopPending()).toBe(true)
+    Object.assign(agent, { status: 'running' })
+    test.ctx.emit('agent/status', { agent, status: 'running' })
+    expect(test.ctx.mayflyRequests.stopPending()).toBe(true)
+    Object.assign(agent, { status: 'idle' })
+    test.ctx.emit('agent/status', { agent, status: 'idle' })
+    expect(test.ctx.mayflyRequests.stopPending()).toBe(false)
+
+    // A latched stop with no selected Agent stays latched.
+    test.ctx.mayflyConversations.selectPrimary(null)
+    test.ctx.mayflyRequests.requestStop()
+    test.ctx.emit('agent/status', { agent: null, status: 'idle' } as never)
+    expect(test.ctx.mayflyRequests.stopPending()).toBe(true)
+    await test.ctx.fiber.dispose()
+  })
+
+  it('reuses an already selected primary on a lazy start and wraps a non-Error create failure', async () => {
+    const test = bench()
+    const preselected = fakeAgent('preselected')
+    test.live.set(String(preselected.id), preselected)
+    test.ctx.mayflyConversations.selectPrimary(preselected)
+    expect(await test.ctx.mayflySessionStart.ensure() as unknown as FakeAgent).toBe(preselected)
+    expect(test.controller.create).not.toHaveBeenCalled()
+    test.ctx.mayflyConversations.selectPrimary(null)
+    const agent = await ensureAgent(test)
+    test.ctx.mayflyConversations.selectPrimary(agent)
+    const again = await test.ctx.mayflySessionStart.ensure() as unknown as FakeAgent
+    expect(again).toBe(agent)
+    expect(test.controller.create).toHaveBeenCalledOnce()
+
+    test.ctx.emit('mayfly/request-new', 'preset')
+    await vi.waitFor(() => { expect(test.ctx.mayflyCurrentAgent.current()).toBeNull() })
+    test.failCreate('raw lazy failure')
+    await expect(test.ctx.mayflySessionStart.ensure()).rejects.toThrow('raw lazy failure')
+    expect(test.ctx.mayflyCurrentAgent.current()).toBeNull()
+    await test.ctx.fiber.dispose()
+  })
+
+  it('resumes without starting a task and leaves the followup alone', async () => {
+    const resumed = fakeAgent('resume-no-task')
+    const test = bench({ resume: 'resume-no-task' }, { resumeAgent: resumed })
+    expect(await waitForAgent(test, 'resume-no-task')).toBe(resumed)
+    expect(resumed.followup).not.toHaveBeenCalled()
+    expect(test.ctx.mayflyRequests.active()).toBeUndefined()
+    await test.ctx.fiber.dispose()
+  })
+
   it('routes retraction persistence diagnostics through the app error sink', async () => {
     const test = bench()
     const agent = await ensureAgent(test)

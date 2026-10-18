@@ -1149,3 +1149,26 @@ it('requests independent frames for pane loaders and releases their clock on rem
     expect(repaint).not.toHaveBeenCalled()
   } finally { await bench.dispose(); vi.useRealTimers() }
 })
+
+describe('direct pane surface renderer: disposed records', () => {
+  it('ignores replacement and a second dispose after the pane was disposed', async () => {
+    const f = await fixture()
+    try {
+      const handle = f.register({ id: 'dead-pane', render: () => ui.text('pane text') })
+      await flush(8)
+      const component = entry(f.runtime.surfaces, 'dead-pane').component as unknown as {
+        replace(compiled: null): void
+        dispose(): void
+        render(width: number): string[]
+      }
+      handle.dispose()
+      await flush(8)
+      // A record that already left the lane cannot be replaced or disposed twice.
+      component.replace(null)
+      component.dispose()
+      expect(component.render(40)).toEqual([])
+    } finally {
+      await f.dispose()
+    }
+  })
+})

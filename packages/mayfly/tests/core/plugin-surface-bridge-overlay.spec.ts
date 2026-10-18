@@ -1158,3 +1158,43 @@ it('animates editor loaders independently and pauses hidden, covered, completed,
     slot.dispose()
   } finally { await bench.dispose(); vi.useRealTimers() }
 })
+
+it('fences replacement and a second dispose after an overlay component was disposed', async () => {
+  const bench = await fixture()
+  try {
+    const handle = bench.open({ id: 'dead-overlay', render: () => ui.text('overlay text') })
+    await flush(8)
+    expect(bench.stack()).toHaveLength(1)
+    const component = bench.stack()[0]!.component as unknown as {
+      replace(compiled: null): void
+      dispose(): void
+      render(width: number): string[]
+    }
+    handle.close()
+    await flush(8)
+    expect(bench.stack()).toHaveLength(0)
+    component.replace(null)
+    component.dispose()
+    expect(component.render(40)).toEqual([])
+  } finally {
+    await bench.dispose()
+  }
+})
+
+it('frames a titled non-capturing fallback with the overlay title', async () => {
+  const bench = await fixture()
+  try {
+    const handle = bench.open({
+      id: 'titled-fallback', title: 'Titled fallback', capturing: false,
+      render: () => ui.actions({ id: 'titled-actions', items: [{ id: 'go', label: 'Go' }] }),
+    })
+    await flush(8)
+    expect(bench.stack()).toHaveLength(1)
+    const rows = stripTerminalSequences(bench.stack()[0]!.component.render(70).join('\n')).replace(/\s+/gu, ' ')
+    expect(rows).toContain('Titled fallback')
+    expect(rows).toContain('non-capturing overlays cannot contain interactive controls')
+    handle.close()
+  } finally {
+    await bench.dispose()
+  }
+})

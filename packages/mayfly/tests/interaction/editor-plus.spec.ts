@@ -981,4 +981,40 @@ describe('mayfly-editor-plus: the mention an @ completion leaves behind', () => 
     expect(applied).toEqual({ lines: ['see @"a b.txt" '], cursorLine: 0, cursorCol: 15 })
     expect([...ctx.mayflyInteractionState.mentions]).toEqual(['@"a b.txt"'])
   })
+
+
+})
+
+describe('mayfly-editor-plus additional paths', () => {
+  it('resolves the session cwd from the displayed Agent and the launch directory without one', async () => {
+    const mounted = await mount()
+    inDirectory(mounted.ctx, mounted.agent, '/tmp/workspace')
+    expect(editorPlus.sessionCwd(mounted.ctx)).toBe('/tmp/workspace')
+    mounted.ctx.get('testSession') as unknown as { current: unknown }
+    ;(mounted.ctx.get('testSession') as { current: unknown }).current = null
+    expect(editorPlus.sessionCwd(mounted.ctx)).toBe(process.cwd())
+  })
+
+  it('does not remember a mention value that is not an @ token', async () => {
+    const refs = references([file('src/a.ts')])
+    const mounted = await mount({ references: refs })
+    const provider = mounted.editor.autocompleteProvider as MayflyAutocompleteProvider
+    const before = [...mounted.ctx.mayflyInteractionState.mentions]
+    const applied = provider.applyCompletion(['see @a'], 0, 7, { value: 'plain', label: 'plain' }, '@a')
+    expect(applied.lines[0]).toContain('plain')
+    expect([...mounted.ctx.mayflyInteractionState.mentions]).toEqual(before)
+  })
+
+  it('drops a file listing that resolves after its request was aborted', async () => {
+    const gate = Promise.withResolvers<readonly FileReferenceCandidate[]>()
+    const mounted = await mount({ references: { list: vi.fn(() => gate.promise) } })
+    const provider = mounted.editor.autocompleteProvider as MayflyAutocompleteProvider
+    const before = mounted.ctx.mayflyUiInteraction.notificationSnapshot().length
+    const controller = new AbortController()
+    const pending = provider.getSuggestions(['@slow'], 0, 5, { signal: controller.signal })
+    controller.abort()
+    gate.resolve([file('src/a.ts')])
+    await expect(pending).resolves.toBeNull()
+    expect(mounted.ctx.mayflyUiInteraction.notificationSnapshot()).toHaveLength(before)
+  })
 })

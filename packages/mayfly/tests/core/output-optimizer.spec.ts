@@ -203,6 +203,125 @@ describe('createOutputOptimizer', () => {
     expect(rowWrites(output)).toBe(1)
     expect(output).toContain(row(1, 'row one changed'))
   })
+
+  it('passes a write through when the terminal reports no valid height', () => {
+    const host = new FakeTerminal(20, 4)
+    const optimizer = createOutputOptimizer(host)
+    host.resize(20, 0)
+    optimizer.write('anything')
+    expect(optimizer.diagnostics.passthroughFrames).toBe(1)
+    expect(host.written.at(-1)).toBe('anything')
+  })
+
+  it('delegates the terminal lifecycle and facade reads', async () => {
+    const host = new FakeTerminal(20, 4)
+    const optimizer = createOutputOptimizer(host)
+    optimizer.start(() => {}, () => {})
+    expect(host.startCount).toBe(1)
+    await optimizer.drainInput(10, 2)
+    expect(host.drainCount).toBe(1)
+    expect(optimizer.columns).toBe(20)
+    expect(optimizer.rows).toBe(4)
+    expect(optimizer.kittyProtocolActive).toBe(false)
+    optimizer.moveBy(2)
+    optimizer.hideCursor()
+    optimizer.showCursor()
+    optimizer.clearLine()
+    optimizer.clearFromCursor()
+    optimizer.clearScreen()
+    optimizer.setTitle('title')
+    optimizer.setProgress(true)
+    optimizer.stop()
+    expect(host.stopCount).toBe(1)
+  })
+
+  it('passes writes outside the frame grammar through and invalidates the shadow', () => {
+    const host = new FakeTerminal(20, 4)
+    const optimizer = createOutputOptimizer(host)
+    const writes = [
+      '',
+      `${BSU}${row(1, 'a')}`,
+      `${row(1, 'a')}${ESU}`,
+      frame(['plain']),
+      `${BSU}abc${ESU}`,
+      `${BSU}abc\x1b[99X${ESU}`,
+      `${BSU}\x1b[${ESU}`,
+      `${BSU}${HIDE}${row(1, 'a')}${ESU}`,
+      `${BSU}${row(0, 'a')}${ESU}`,
+      `${BSU}${row(5, 'a')}${ESU}`,
+      `${BSU}${row(1, 'a')}\x1b[2J${ESU}`,
+      `${BSU}${HIDE}\x1b[2J${ESU}`,
+      `${BSU}text\x1b[2J${ESU}`,
+    ]
+    for (const write of writes) optimizer.write(write)
+    expect(optimizer.diagnostics.passthroughFrames).toBe(writes.length)
+    expect(host.written.join('')).toBe(writes.join(''))
+    expect(optimizer.diagnostics.shadow).toEqual([])
+  })
+
+  it('rebuilds a lost shadow from a frame that writes every row, and passes a partial frame through', () => {
+    const host = new FakeTerminal(20, 4)
+    const optimizer = createOutputOptimizer(host)
+    const lines = ['one', 'two', 'three', 'four']
+    const complete = frame(lines.map((line, index) => row(index + 1, line)))
+    optimizer.write(complete)
+    expect(optimizer.diagnostics.fullRepaintFrames).toBe(1)
+    expect(optimizer.diagnostics.passthroughFrames).toBe(0)
+    expect(optimizer.diagnostics.shadow).toEqual(lines)
+    expect(host.written.at(-1)).toBe(complete)
+
+    // The terminal grew without a repaint: the shadow no longer matches and a
+    // partial frame cannot start a new one.
+    host.resize(20, 5)
+    const partial = frame([row(1, 'patched')])
+    optimizer.write(partial)
+    expect(optimizer.diagnostics.passthroughFrames).toBe(1)
+    expect(host.written.at(-1)).toBe(partial)
+    expect(optimizer.diagnostics.shadow).toEqual([])
+
+    const empty = `${BSU}${ESU}`
+    optimizer.write(empty)
+    expect(optimizer.diagnostics.passthroughFrames).toBe(2)
+    expect(optimizer.diagnostics.shadow).toEqual([])
+  })
+
+  it('shifts a band with no unexplained rows through a scroll region alone', () => {
+    const previous = ['a', 'b', 'c', '']
+    const { host, optimizer } = primed(20, previous)
+    const mark = host.written.length
+    optimizer.write(frame([row(1, 'b'), row(2, 'c'), row(3, '')], HIDE))
+    const output = host.written.slice(mark).join('')
+    expect(output).toContain('\x1b[1;3r\x1b[1S\x1b[r')
+    expect(rowWrites(output)).toBe(0)
+    expect(optimizer.diagnostics.shiftedFrames).toBe(1)
+    expect(optimizer.diagnostics.shadow).toEqual(['b', 'c', '', ''])
+  })
+
+  it('keeps a pending-wrap cursor on an unchanged wide row without replaying it', () => {
+    const wide = 'x'.repeat(10)
+    const { host, optimizer } = primed(10, [wide, 'b', 'c', 'd'])
+    const mark = host.written.length
+    optimizer.write(frame([row(1, wide)], HIDE))
+    const output = host.written.slice(mark).join('')
+    expect(rowWrites(output)).toBe(0)
+    expect(output).toBe(`${BSU}${HIDE}${ESU}`)
+    expect(optimizer.diagnostics.noopFrames).toBe(1)
+  })
+
+  it('accepts the OSC 8 close in both terminators and rejects malformed OSC sequences', () => {
+    const host = new FakeTerminal(20, 4)
+    const optimizer = createOutputOptimizer(host)
+    optimizer.write(fullFrame(['one', 'two', 'three', 'four']))
+    const stClose = `\x1b]8;;\x1b\\`
+    optimizer.write(frame([row(1, `linked${stClose}`)], HIDE))
+    expect(optimizer.diagnostics.shadow[0]).toBe(`linked${stClose}`)
+
+    for (const bad of [`${BSU}${row(1, 'x\x1b]8;;a\x1bZ')}${ESU}`, `${BSU}${row(1, 'x\x1b]8;;unterminated')}${ESU}`, `${BSU}\x1b]8;;\x07${ESU}`]) {
+      const before = optimizer.diagnostics.passthroughFrames
+      optimizer.write(bad)
+      expect(optimizer.diagnostics.passthroughFrames).toBe(before + 1)
+    }
+  })
 })
 
 const WIDTH = 120

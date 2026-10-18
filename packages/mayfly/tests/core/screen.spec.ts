@@ -727,3 +727,75 @@ describe('MayflyScreenService search line', () => {
     expect(runtime.removed).toEqual([runtime.dockAdded[0]!.component, runtime.dockAdded[1]!.component])
   })
 })
+
+describe('MayflyScreenService hidden status footer', () => {
+  it('repaints only when the hidden state changes', async () => {
+    const runtime = recordingRuntime()
+    const ctx = new Context()
+    await ctx.plugin(MayflyScreenService, runtime)
+    const screen = ctx.mayflyScreen
+    screen.mountDockSlot('status.footer', { render: () => ['footer'], invalidate() {} }, 'bottom')
+    const raised = runtime.renders.length
+    // Hidden is already false: the unchanged write returns before a repaint.
+    screen.setStatusHidden(false)
+    expect(runtime.renders.length).toBe(raised)
+    screen.setStatusHidden(true)
+    expect(runtime.renders.length).toBe(raised + 1)
+    screen.setStatusHidden(true)
+    expect(runtime.renders.length).toBe(raised + 1)
+    // Showing it again takes the other path of the same setter.
+    screen.setStatusHidden(false)
+    expect(runtime.renders.length).toBe(raised + 2)
+    await ctx.fiber.dispose()
+  })
+})
+
+describe('MayflyScreenService editor replacement edges', () => {
+  it('replaces an absent prompt and restores it, painting no rows for an empty host', async () => {
+    const runtime = recordingRuntime()
+    const ctx = new Context()
+    await ctx.plugin(MayflyScreenService, runtime)
+    const screen = ctx.mayflyScreen
+    const slot = screen.mountDockSlot('editor.prompt', null)
+    const panel = { focused: false, render: () => ['panel'], invalidate: vi.fn() }
+    // No previous target to blur; the new one takes the host's (unfocused) state.
+    screen.setEditorReplacement(panel)
+    expect(panel.focused).toBe(false)
+    expect(slot.component.render(80)).toEqual(['panel'])
+    // Restoring the absent prompt blurs the panel and leaves nothing to render.
+    screen.setEditorReplacement(null)
+    expect(panel.focused).toBe(false)
+    expect(slot.component.render(80)).toEqual([])
+    await ctx.fiber.dispose()
+  })
+
+  it('leaves the focus to a capturing overlay when the replacement lands', async () => {
+    const runtime = recordingRuntime()
+    ;(runtime as unknown as { hasCapturingOverlay: () => boolean }).hasCapturingOverlay = () => true
+    const ctx = new Context()
+    await ctx.plugin(MayflyScreenService, runtime)
+    const prompt = { focused: false, render: () => ['prompt'], invalidate: () => {} }
+    ctx.mayflyScreen.mountDockSlot('editor.prompt', prompt)
+    runtime.focused.length = 0
+    ctx.mayflyScreen.setEditorReplacement({ focused: false, render: () => ['panel'], invalidate: () => {} })
+    // The overlay owns the keyboard, so the prompt host is not focused.
+    expect(runtime.focused).toEqual([])
+    await ctx.fiber.dispose()
+  })
+
+  it('paints no rows while hidden and none for an empty slot', async () => {
+    const runtime = recordingRuntime()
+    const ctx = new Context()
+    await ctx.plugin(MayflyScreenService, runtime)
+    const screen = ctx.mayflyScreen
+    const footer = screen.mountDockSlot('status.footer', { render: () => ['footer'], invalidate() {} }, 'bottom')
+    expect(footer.component.render(80)).toEqual(['footer'])
+    screen.setStatusHidden(true)
+    expect(footer.component.render(80)).toEqual([])
+    screen.setStatusHidden(false)
+    expect(footer.component.render(80)).toEqual(['footer'])
+    const empty = screen.mountDockSlot('editor.prompt', null)
+    expect(empty.component.render(80)).toEqual([])
+    await ctx.fiber.dispose()
+  })
+})

@@ -257,6 +257,44 @@ describe('shared MCP browser', () => {
   })
 })
 
+it('draws the no-tools row and the no-tools empty title', async () => {
+  const bench = await setup()
+  const server = { entryId: 'empty', serverName: 'empty', status: 'no-tools' as const, registeredCount: 0, toolsVisible: [] }
+  const t = (key: string, values?: Record<string, unknown>) => values === undefined ? key : `${key} ${JSON.stringify(values)}`
+  const config = JSON.stringify(serverConfigNode(server, t))
+  expect(config).toContain('No tools registered; connection state is unavailable')
+  expect(config).not.toContain('Tools are registered but restricted')
+  const node = JSON.stringify(mcpServerNode(server, t))
+  expect(node).toContain('No tools registered')
+  expect(node).not.toContain('No tools visible to this session')
+  expect(bench).toBeDefined()
+})
+
+it('returns quietly when the Agent changes while the MCP catalog is being read', async () => {
+  const bench = await setup()
+  await bench.register({ name: 'mcp__demo__one', description: '' })
+  const command = bench.ctx.commands.find(bench.agent, 'mcp')!
+  const pending = command.handler({ agent: bench.agent, signal: new AbortController().signal } as never)
+  bench.ctx.mayflyConversations.selectPrimary(bench.other)
+  expect(await pending).toEqual({ kind: 'success' })
+})
+
+it('answers the server overlay events that name no tool and cancels an aborted tool selection', async () => {
+  const bench = await setup()
+  await bench.register({ name: 'mcp__demo__one', description: 'One' })
+  await bench.run('/mcp')
+  bench.model('mayfly.mcp').emit(selectServer())
+  await flushRequests()
+  const entry = bench.ctx.mayflyOverlays.list().find(item => item.id === 'mayfly.mcp.server')!
+  const context = (signal = new AbortController().signal) => ({ surfaceId: entry.id, operationId: 'mcp-server-direct', source: entry.source, revision: entry.revision, signal, report: vi.fn() })
+  expect(await entry.definition.onEvent!.action!({ kind: 'selection-accept', pagePath: [], controlId: 'servers', selectedIds: ['demo'] }, context())).toEqual({ kind: 'completed' })
+  const aborted = new AbortController()
+  const pendingAbort = entry.definition.onEvent!.action!({ kind: 'selection-accept', pagePath: [{ controlId: 'server-pages', itemId: 'tools' }], controlId: 'tools', selectedIds: ['mcp__demo__one'] }, context(aborted.signal))
+  aborted.abort()
+  expect(await pendingAbort).toMatchObject({ kind: 'cancelled' })
+  expect(await entry.definition.onEvent!.action!({ kind: 'selection-accept', pagePath: [{ controlId: 'server-pages', itemId: 'tools' }], controlId: 'tools', selectedIds: ['mcp__demo__missing'] }, context())).toMatchObject({ kind: 'failed' })
+})
+
 it('opens resource and template catalogs from the native server panel', async () => {
   const bench = await setup()
   await bench.register({ name: 'mcp__demo__one', description: 'One' })

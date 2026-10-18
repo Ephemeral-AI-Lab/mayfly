@@ -1248,3 +1248,130 @@ describe('createEditor: a recalled message by its expansion, and the completion 
     }
   })
 })
+
+/** The private editor surfaces these guard tests reach through the pinned structural cast. */
+interface EditorGuards {
+  editor: {
+    state: { lines: string[], cursorLine: number, cursorCol: number }
+    render(width: number): string[]
+  }
+  tokenBackspace(): boolean
+  stepOverToken(data: string): boolean
+  cursorAtInputEnd(): boolean
+  reopenAutocompleteAfterInput(): void
+}
+
+const guardsOf = (editor: ReturnType<MayflyComponentsService['createEditor']>): EditorGuards => editor as unknown as EditorGuards
+
+describe('createEditor defensive guards', () => {
+  it('falls back when the cursor or buffer outruns the editor lines', () => {
+    const { tui, stop } = bootTui()
+    const editor = createService(tui).createEditor()
+    editor.setText('hello')
+    const guards = guardsOf(editor)
+    guards.editor.state.cursorLine = 4
+    expect(editor.tokenBackspace()).toBe(false)
+    expect(guards.stepOverToken('\x1b[C')).toBe(false)
+    // An empty line list still answers the end-of-input question.
+    guards.editor.state.lines = []
+    guards.editor.state.cursorLine = 0
+    guards.editor.state.cursorCol = 0
+    expect(guards.cursorAtInputEnd()).toBe(true)
+    // And the autocomplete reopen path reads the missing line as empty.
+    guards.reopenAutocompleteAfterInput()
+    stop()
+  })
+
+  it('invalidates a token selection once its text moves under it', () => {
+    const { tui, stop } = bootTui()
+    const editor = createService(tui).createEditor()
+    editor.setText('hello')
+    editor.setTokenSource(() => [{ start: 0, end: 5, kind: 'mention' as const }])
+    const guards = guardsOf(editor)
+    guards.editor.state.cursorLine = 0
+    guards.editor.state.cursorCol = 5
+    // Backspace right after the token selects it rather than removing it.
+    expect(editor.tokenBackspace()).toBe(true)
+    expect(editor.activeToken()).toMatchObject({ text: 'hello', selected: true })
+    // The same place now holds other text: the old selection no longer names it.
+    guards.editor.state.lines[0] = 'world'
+    expect(editor.activeToken()).toBeUndefined()
+    stop()
+  })
+
+  it('keeps a token selection the onKey hook consumed, and closes its autocomplete', async () => {
+    const { tui, stop } = bootTui()
+    const editor = createService(tui).createEditor()
+    let suggestions = 0
+    editor.setAutocompleteProvider({
+      triggerCharacters: ['/'],
+      getSuggestions: () => {
+        suggestions += 1
+        return Promise.resolve({ items: [{ value: 'quit', label: '/quit' }], prefix: '/' })
+      },
+      applyCompletion: lines => ({ lines, cursorLine: 0, cursorCol: 1 }),
+    })
+    editor.handleInput!('/')
+    await waitForRender()
+    expect(suggestions).toBe(1)
+    expect(editor.isShowingAutocomplete()).toBe(true)
+    // The open list has a view, which the host does not paint in the frame.
+    expect(editor.completion()).toBeDefined()
+
+    // Selecting the slash token closes the list instead of covering the hint.
+    editor.setTokenSource(() => [{ start: 0, end: 1, kind: 'mention' as const }])
+    const guards = guardsOf(editor)
+    guards.editor.state.cursorLine = 0
+    guards.editor.state.cursorCol = 1
+    expect(editor.tokenBackspace()).toBe(true)
+    expect(editor.isShowingAutocomplete()).toBe(false)
+
+    // A hook that consumes its own Backspace has already cleared the flag's
+    // partner: handleInput must not drop the selection the hook just made.
+    editor.setText('hello')
+    editor.setTokenSource(() => [{ start: 0, end: 5, kind: 'mention' as const }])
+    guards.editor.state.cursorCol = 5
+    editor.onKey = () => {
+      editor.tokenBackspace()
+      return true
+    }
+    editor.handleInput!('\x7f')
+    expect(editor.activeToken()).toMatchObject({ text: 'hello', selected: true })
+    stop()
+  })
+
+  it('renders a too-narrow placeholder, masks an unfocused buffer, and survives an empty editor render', () => {
+    const { tui, stop } = bootTui()
+    const editor = createService(tui).createEditor()
+    editor.setPlaceholder(['a placeholder longer than the room'])
+    expect(editor.render(1).join('')).not.toContain('placeholder longer')
+    // A room too narrow for the ladder truncates its last variant instead
+    // of dropping the placeholder.
+    expect(editor.render(4).join('')).toContain('…')
+
+    editor.setText('secret value')
+    editor.focused = false
+    const masked = editor.renderContent(40, true)
+    expect(masked.join('')).not.toContain('secret')
+    expect(masked.join('')).not.toContain(CURSOR_MARKER)
+
+    // A renderer that yields no rows at all still leaves one content row.
+    const guards = guardsOf(editor) as EditorGuards & { editor: { render(width: number): string[] } }
+    const original = guards.editor.render
+    guards.editor.render = () => []
+    expect(editor.render(80)).toEqual([''])
+    guards.editor.render = original
+    stop()
+  })
+
+  it('clears the visible-width cache at its cap', () => {
+    const { tui, stop } = bootTui()
+    const components = createService(tui)
+    for (let index = 0; index < 4096; index += 1) components.visibleWidth(`width-${String(index)}`)
+    expect(components.visibleWidth('width-0')).toBe(7)
+    // The next distinct string overflows the cap and clears the cache first.
+    expect(components.visibleWidth('overflowing-width')).toBe(17)
+    expect(components.visibleWidth('width-0')).toBe(7)
+    stop()
+  })
+})

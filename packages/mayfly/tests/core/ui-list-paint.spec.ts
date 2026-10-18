@@ -2,7 +2,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { ui, type MayflyListItem, type MayflyListSegment } from '../../../ui/src/index.ts'
 import { renderList, type ListRenderExtras, type PatternFocus } from '../../src/core/ui-patterns.ts'
-import type { ListRowSpec } from '../../src/core/ui-list-paint.ts'
+import { FlowListPainter, flowListCanVirtualize, type ListRowSpec } from '../../src/core/ui-list-paint.ts'
 import { UiRowCache } from '../../src/core/ui-row-cache.ts'
 import { isVirtualRows, virtualRows } from '../../src/core/ui-rows.ts'
 import type { MayflySemanticColors } from '../../src/core/types.ts'
@@ -566,5 +566,222 @@ describe('list rows with aligned cells', () => {
       { id: 'c', label: 'c', labelSpans: [{ text: '● ' }] },
     ]
     expect(rows(items, 40).map(row => row.trimEnd())).toEqual(['  ● one  two', '  ● uno', '  ●'])
+  })
+})
+
+describe('the flow list painter', () => {
+  type FlowInput = Parameters<FlowListPainter['sync']>[0]
+  const nodeOf = (items: readonly MayflyListItem[], extra: Record<string, unknown> = {}) => ui.list({ id: 'flow', role: 'browse', selectedIds: [], items, ...extra })
+  const modelOf = (items: readonly MayflyListItem[], signature = 'sig', open = new Set<string>()) => ({
+    items,
+    specAt: (index: number) => ({ item: items[index]!, depth: 0, last: false, expandable: open.has(items[index]!.id), open: open.has(items[index]!.id), position: index }),
+    signature,
+  })
+  const inputOf = (items: readonly MayflyListItem[], extra: Partial<FlowInput['options']> = {}, nodeExtra: Record<string, unknown> = {}, open = new Set<string>(), signature = 'sig'): FlowInput => {
+    const node = nodeOf(items, nodeExtra)
+    return {
+      node, model: modelOf(items, signature, open), width: 30, colors,
+      options: { rows: specs(items), cursorId: 'b', focused: true, marker: '|', selectedIds: [], ...extra },
+    }
+  }
+
+  it('serves lazy rows, location, marker seeks, and its declared width', () => {
+    const items: MayflyListItem[] = [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }, { id: 'c', label: 'C' }]
+    const painter = new FlowListPainter()
+    expect(painter.length).toBe(0)
+    const input = inputOf(items)
+    painter.sync(input)
+    expect(painter.length).toBe(3)
+    expect(painter.declaredWidth).toBe(30)
+    expect(painter.revision).toBe(1)
+    expect(painter.markerFree).toBe(false)
+    const rows = painter.rows()
+    expect(rows).toHaveLength(3)
+    expect(plain([rows[0]!])[0]).toBe('  A')
+    expect(plain([rows[1]!])[0]).toBe('→|B')
+    expect(painter.row(-1)).toBe('')
+    expect(painter.row(3)).toBe('')
+    expect(painter.locate('a')).toBe(0)
+    expect(painter.locate('b')).toBe(1)
+    expect(painter.locate('missing')).toBeUndefined()
+    expect(painter.seekMarker('|', 0)).toBe(1)
+    expect(painter.seekMarker('|', 2)).toBe(-1)
+    // A same-state sync rebuilds nothing and keeps the revision and the facade.
+    painter.sync(input)
+    expect(painter.revision).toBe(1)
+    expect(painter.rows()).toBe(rows)
+    // Losing focus makes the painter marker-free, and a marker seek has nothing to answer.
+    painter.sync(inputOf(items, { focused: false }))
+    expect(painter.markerFree).toBe(true)
+    expect(painter.seekMarker('|', 0)).toBe(-1)
+    // A different width is another layout.
+    painter.sync({ ...input, width: 40 })
+    expect(painter.declaredWidth).toBe(40)
+    expect(painter.revision).toBe(3)
+  })
+
+  it('rebuilds only the rows whose items changed, fixing heights and ids in place', () => {
+    const a: MayflyListItem = { id: 'a', label: 'A' }
+    const b: MayflyListItem = { id: 'b', label: 'B' }
+    const c: MayflyListItem = { id: 'c', label: 'C' }
+    const painter = new FlowListPainter()
+    painter.sync(inputOf([a, b, c]))
+    expect(painter.revision).toBe(1)
+    // A same-length replacement keeps the old rows around it and updates one block.
+    const z: MayflyListItem = { id: 'z', label: 'Z' }
+    painter.sync(inputOf([a, z, c]))
+    expect(painter.revision).toBe(2)
+    expect(painter.length).toBe(3)
+    expect(painter.row(1)).toContain('Z')
+    expect(painter.locate('z')).toBe(1)
+    expect(painter.locate('b')).toBeUndefined()
+    // A taller replacement moves the rows below it without reindexing.
+    const tall = { id: 'a', label: 'A', body: 'one\ntwo' }
+    painter.sync(inputOf([tall, z, c], {}, {}, new Set(['a'])))
+    expect(painter.length).toBe(5)
+    expect(painter.locate('z')).toBe(3)
+    expect(plain([painter.row(4)])[0]).toContain('C')
+    // A same-index replacement of the tall row keeps every id where it was and edits one height.
+    const taller = { id: 'a', label: 'A', body: 'one\ntwo\nthree' }
+    painter.sync(inputOf([taller, z, c], {}, {}, new Set(['a'])))
+    expect(painter.locate('a')).toBe(0)
+    expect(painter.locate('z')).toBe(4)
+    expect(painter.row(5)).toContain('C')
+  })
+
+  it('fixes the leading group of a kept suffix when a changed row changes groups', () => {
+    const a: MayflyListItem = { id: 'a', label: 'A', group: 'A' }
+    const b: MayflyListItem = { id: 'b', label: 'B', group: 'B' }
+    const c: MayflyListItem = { id: 'c', label: 'C', group: 'B' }
+    const painter = new FlowListPainter()
+    painter.sync(inputOf([a, b, c], {}, { groupGap: true }))
+    const headings = plain(painter.rows() as unknown as string[]).filter(row => row === 'A' || row === 'B')
+    expect(headings).toEqual(['A', 'B'])
+    const moved: MayflyListItem = { id: 'b', label: 'B', group: 'C' }
+    painter.sync(inputOf([a, moved, c], {}, { groupGap: true }))
+    const next = plain(painter.rows() as unknown as string[])
+    expect(next[0]).toBe('A')
+    expect(next).toContain('C')
+    expect(next.filter(row => row === 'C')).toHaveLength(1)
+    expect(next.at(-1)).toContain('C')
+  })
+
+  it('repaints a motion body at every sync and highlights a plain pattern', () => {
+    const still: MayflyListItem = { id: 's', label: 'still', body: { kind: 'rich-text', spans: [{ text: 'calm' }] }, bodyAlways: true }
+    const moving: MayflyListItem = { id: 'm', label: 'moving', body: { kind: 'rich-text', spans: [{ text: 'wave', motion: 'shimmer' }] }, bodyAlways: true }
+    const painter = new FlowListPainter()
+    let height = 1
+    const body = vi.fn(() => Array.from({ length: height }, (_, index) => `motion ${String(index)}`))
+    const base = (items: readonly MayflyListItem[], nodeExtra: Record<string, unknown> = {}): FlowInput => {
+      const input = inputOf(items, { body }, nodeExtra, new Set(['s', 'm']))
+      return input
+    }
+    painter.sync(base([still, moving]))
+    expect(painter.locate('m')).toBe(2)
+    // A motion row paints again on a same-state sync, and the new height moves the rows after it.
+    height = 2
+    painter.sync(base([still, moving]))
+    expect(body).toHaveBeenCalledTimes(3)
+    expect(painter.revision).toBeGreaterThan(1)
+    // The still row never repaints, and a highlight maps the rows without a current match.
+    painter.sync(base([still], { highlight: { pattern: 'wave' } }))
+    expect(painter.row(0)).toContain('still')
+  })
+
+  it('reserves the segment footer and reads its rows past the items', () => {
+    const items: MayflyListItem[] = [{ id: 'a', label: 'A', segment: { label: 'Thinking', options: [{ id: 'x', label: 'x' }] } }]
+    const painter = new FlowListPainter()
+    painter.sync(inputOf(items, { segment: () => ({ segment: items[0]!.segment!, pinned: null, active: 'x' }) }))
+    expect(painter.length).toBe(3)
+    expect(painter.row(1)).toBe('')
+    expect(painter.row(2)).toBe('')
+    expect(painter.row(3)).toBe('')
+    expect(painter.rows()).toHaveLength(3)
+    expect(painter.locate('a')).toBe(0)
+  })
+
+  it('sorts row inputs into its state key without caring about their insertion order', () => {
+    const items: MayflyListItem[] = [{ id: 'a', label: 'A', input: { placeholder: 'type' } }, { id: 'b', label: 'B' }]
+    const painter = new FlowListPainter()
+    painter.sync(inputOf(items, { inputs: { b: 'two', a: 'one' } }))
+    const rows = painter.rows().slice()
+    painter.sync(inputOf(items, { inputs: { a: 'one', b: 'two' } }))
+    expect(painter.rows()).toEqual(rows)
+  })
+
+  it('decides when a flow list can virtualize', () => {
+    const plainNode = nodeOf([{ id: 'a', label: 'A' }])
+    expect(flowListCanVirtualize(plainNode, undefined)).toBe(true)
+    expect(flowListCanVirtualize(nodeOf([], { filter: 'a' }), undefined)).toBe(false)
+    expect(flowListCanVirtualize(nodeOf([], { filter: '' }), undefined)).toBe(true)
+    expect(flowListCanVirtualize(nodeOf([], { maxRows: 2 }), undefined)).toBe(false)
+    expect(flowListCanVirtualize(nodeOf([], { highlight: { pattern: 'x', current: 0 } }), undefined)).toBe(false)
+    expect(flowListCanVirtualize(plainNode, { query: '', searching: false, definition: {}, matches: undefined })).toBe(true)
+    expect(flowListCanVirtualize(plainNode, { query: 'q', searching: false, definition: {}, matches: undefined })).toBe(false)
+    expect(flowListCanVirtualize(plainNode, { query: '', searching: true, definition: {}, matches: undefined })).toBe(false)
+    expect(flowListCanVirtualize(plainNode, { query: '', searching: false, definition: { tree: true }, matches: undefined })).toBe(false)
+    expect(flowListCanVirtualize(plainNode, { query: '', searching: false, definition: {}, matches: [0] })).toBe(false)
+  })
+})
+
+describe('list input rows and location', () => {
+  it('paints the typed text, the caret, and the placeholder of an input row', () => {
+    const items: MayflyListItem[] = [
+      { id: 'a', label: 'Name', input: { placeholder: 'type a name' } },
+      { id: 'b', label: 'Note', input: {} },
+    ]
+    const node = ui.list({ id: 'input', role: 'browse', selectedIds: [], items })
+    const focused = plain(renderList(node, 40, 10, on('a'), colors, 0, undefined, { rows: specs(items), cursorId: 'a', inputs: { a: 'Ada' } }))
+    expect(focused[0]).toContain('Name: Ada')
+    const caret = renderList(node, 40, 10, on('a'), colors, 0, undefined, { rows: specs(items), cursorId: 'a', inputs: { a: '' }, translate: key => key })
+    expect(caret[0]).toContain('\x1b[7m \x1b[27m')
+    expect(plain(caret)[0]).toContain('Name:')
+    const placeholder = plain(renderList(node, 60, 10, idle, colors, 0, undefined, { rows: specs(items), cursorId: 'none', inputs: { a: '' } }))
+    expect(placeholder[0]).toBe('  Name  type a name')
+    const filled = plain(renderList(node, 40, 10, idle, colors, 0, undefined, { rows: specs(items), inputs: { b: 'kept' } }))
+    expect(filled[1]).toBe('  Note: kept')
+  })
+
+  it('reports the line of a located item in flow content only, and nothing when the item is not painted', () => {
+    const items: MayflyListItem[] = [{ id: 'a', label: 'A' }, { id: 'b', label: 'B', body: 'body' }, { id: 'c', label: 'C' }]
+    const node = ui.list({ id: 'locate', role: 'browse', selectedIds: [], items })
+    const rows = specs(items).map(row => ({ ...row, expandable: row.item.id === 'b', open: row.item.id === 'b' }))
+    const found: (number | undefined)[] = []
+    plain(renderList(node, 30, 20, idle, colors, 0, undefined, { rows, flow: true, locate: { id: 'c', found: line => found.push(line) } }))
+    expect(found).toEqual([3])
+    const hidden: (number | undefined)[] = []
+    plain(renderList(node, 30, 20, idle, colors, 0, undefined, { rows, flow: false, locate: { id: 'c', found: line => hidden.push(line) } }))
+    expect(hidden).toEqual([undefined])
+    const missing: (number | undefined)[] = []
+    plain(renderList(node, 30, 20, idle, colors, 0, undefined, { rows, flow: true, locate: { id: 'z', found: line => missing.push(line) } }))
+    expect(missing).toEqual([undefined])
+  })
+
+  it('narrows a capped column before it gives the column up', () => {
+    const items: MayflyListItem[] = [{ id: 'a', label: '', labelSpans: [{ text: '● ' }], cells: [{ spans: [{ text: 'x'.repeat(60) }], max: 60 }] }]
+    const node = ui.list({ id: 'caps', role: 'browse', selectedIds: [], items })
+    const painted = plain(renderList(node, 30, 10, idle, colors, 0, undefined, { rows: specs(items) }))
+    expect(painted[0]).toHaveLength(30)
+    expect(painted[0]!.trimEnd().endsWith('…')).toBe(true)
+  })
+})
+
+describe('the segment footer of a focused row without a strip', () => {
+  it('says why the focused row has no options, naming the list\'s caption or the caller\'s label', () => {
+    const items: MayflyListItem[] = [
+      { id: 'a', label: 'A' },
+      { id: 'b', label: 'B', segment: { label: 'Level', options: [{ id: 'x', label: 'x' }] } },
+    ]
+    const node = ui.list({ id: 'absent', role: 'browse', selectedIds: [], items })
+    const focused = (row: MayflyListItem) => row.id === 'b' ? { segment: row.segment!, pinned: null, active: undefined } : undefined
+    expect(plain(renderList(node, 40, 10, on('a'), colors, 0, undefined, { rows: specs(items), cursorId: 'a', segment: focused })).at(-1)).toBe('  ○ Level: no choice')
+    const unlabeled: MayflyListItem[] = [
+      { id: 'a', label: 'A' },
+      { id: 'b', label: 'B', segment: { options: [{ id: 'x', label: 'x' }] } },
+    ]
+    const bare = (row: MayflyListItem) => row.id === 'b' ? { segment: row.segment!, pinned: null, active: undefined } : undefined
+    expect(plain(renderList(ui.list({ id: 'u', role: 'browse', selectedIds: [], items: unlabeled }), 40, 10, on('a'), colors, 0, undefined, { rows: specs(unlabeled), cursorId: 'a', segment: bare, segmentLabel: 'Effort' })).at(-1)).toBe('  ○ Effort: no choice')
+    const translate = (key: string) => key === 'no choice' ? 'nothing to pick' : key
+    expect(plain(renderList(ui.list({ id: 't', role: 'browse', selectedIds: [], items: unlabeled }), 40, 10, on('a'), colors, 0, undefined, { rows: specs(unlabeled), cursorId: 'a', segment: bare, segmentLabel: 'Effort', translate })).at(-1)).toBe('  ○ Effort: nothing to pick')
   })
 })

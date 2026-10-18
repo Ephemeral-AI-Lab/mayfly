@@ -610,3 +610,42 @@ describe('provider creation', () => {
     expect(bench.settings.get('llm-pi-ai')).toMatchObject({ providers: { 'home-route': expect.any(Object) } })
   })
 })
+
+describe('provider setup descriptors that disappear', () => {
+  it('refuses provider creation when no route dict is declared', async () => {
+    const ctx = new Context()
+    contexts.push(ctx)
+    await providerFixture(ctx, {}, { listProviders: () => [], listConfigurableProviders: () => [{ settingsNs: 'llm-solo', provider: 'solo', displayName: 'Solo', settingsPath: [] }] })
+    expect(() => openProviderSetup(ctx, () => {})).toThrow('no configurable provider route dict is declared')
+  })
+
+  it('reports a descriptor that vanished before an endpoint submission', async () => {
+    const bench = await setup()
+    const entry = await customEntry(bench)
+    await bench.namespace!.dispose()
+    await expect(entry.definition.onEvent!.action!(
+      { kind: 'submit', pagePath: [], controlId: 'connection', submission: submission(entry) },
+      context(entry),
+    )).rejects.toThrow('is not described')
+  })
+
+  it('reports a failed OAuth completion when the namespace is gone', async () => {
+    const bench = await setup()
+    await bench.ctx.plugin(AuthorizationService)
+    const key = credentialKey('llm-pi-ai', 'oauth-provider')
+    bench.ctx.authorization.registerFlow({
+      key, label: 'oauth-provider', methods: [{ id: 'oauth', label: 'OAuth' }],
+      run: async () => { await bench.credentials.modifyRecord(key, async () => ({ kind: 'api-key', key: 'oauth-token' })) },
+    })
+    await bench.choose('oauth')
+    const picker = bench.ctx.mayflyUiInteraction.get('overlay', 'mayfly.provider.add.oauth')!
+    picker.emit({ kind: 'selection-accept', pagePath: [], controlId: 'providers', selectedIds: ['oauth-provider'] })
+    await flush()
+    const authorization = bench.ctx.mayflyUiInteraction.list('overlay').find(model => model.id.startsWith('mayfly.authorization.'))!
+    await bench.namespace!.dispose()
+    authorization.invoke('start')
+    await flush()
+    expect(authorization.feedbackSnapshot().map(item => item.message).join('\n')).toContain('could not be completed')
+    expect(bench.created).not.toHaveBeenCalled()
+  })
+})

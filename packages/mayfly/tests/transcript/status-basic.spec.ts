@@ -199,3 +199,19 @@ describe('mayfly-status-basic-model', () => {
     await harness.dispose()
   })
 })
+
+describe('default model before a session', () => {
+  it('reads the saved default model and its effort when no Agent is attached', async () => {
+    const withEffort = await bootStatusPlugin(basic, null, { services: { agentDefaultModel: { currentSelection: () => ({ provider: 'deepseek', model: 'saved-model', reasoningEffort: 'max' }) } } })
+    expect(withEffort.entry.render(80)).toBe('deepseek/saved-model Max')
+    await withEffort.dispose()
+
+    const bare = await bootStatusPlugin(basic, null, { services: { agentDefaultModel: { currentSelection: () => ({ provider: 'deepseek', model: 'saved-model' }) } } })
+    expect(bare.entry.render(80)).toBe('deepseek/saved-model')
+    await bare.dispose()
+
+    const absent = await bootStatusPlugin(basic, null, { services: { agentDefaultModel: { currentSelection: () => undefined } } })
+    expect(absent.entry.render(80)).toBe('')
+    await absent.dispose()
+  })
+})

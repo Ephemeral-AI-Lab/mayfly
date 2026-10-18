@@ -2595,3 +2595,353 @@ describe('compiler scroll, diagram, and failure edges', () => {
     expect(result.focusTarget!.captureFocusIdentity?.()).toBeUndefined()
   })
 })
+
+describe('interactive prompt, slider, and list inputs', () => {
+  function interactive(node: import('../../../ui/src/index.ts').MayflyUiNode, onEvent: { prepare: (event: MayflyUiEvent) => Promise<{ readonly reply?: unknown, readonly publish: () => boolean }> } = { prepare: async () => ({ reply: { kind: 'completed' as const }, publish: () => true }) }) {
+    const model = new UiSurfaceModel('interactive', {
+      id: 'interactive', revision: 0, source: [], scope: { kind: 'app', targetId: 'interactive' },
+      update: { reason: 'replace' }, node, definition: {}, events: onEvent as never,
+    })
+    const f = fixture()
+    const runtime = new MayflyUiSurfaceRuntime(model)
+    const result = compileMayflyUiSurfaceNode(node, { ...f.options, surfaceRuntime: runtime })
+    expect(result.ok).toBe(true)
+    if (!result.ok) throw new Error(result.message)
+    return { model, runtime, value: result.value, f }
+  }
+
+  it('compiles a slider over the model and applies step, edge, unpin, and accept keys', async () => {
+    const events: MayflyUiEvent[] = []
+    const node = ui.slider({
+      id: 'level', selectedId: 'b', inheritedId: 'b', autofocus: true,
+      levels: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }, { id: 'c', label: 'C' }],
+    })
+    const { model, runtime, value, f } = interactive(node, { prepare: async event => { events.push(event); return { reply: { kind: 'completed' as const }, publish: () => true } } })
+    const address = { pagePath: [], controlId: 'level' }
+    const focus = value.focusTarget!
+    focus.focused = true
+    expect(focus.render(40).join('\n')).toContain('B')
+    focus.handleInput?.('\x1b[C')
+    expect(model.slider(address)?.pinned).toBe('c')
+    // Stepping back onto the inherited level unpins instead of pinning it.
+    focus.handleInput?.('\x1b[D')
+    expect(model.slider(address)?.pinned).toBeNull()
+    focus.handleInput?.('\x1b[H')
+    expect(model.slider(address)?.pinned).toBe('a')
+    focus.handleInput?.('\x1b[F')
+    expect(model.slider(address)?.pinned).toBe('c')
+    focus.handleInput?.('\x1b[3~')
+    expect(model.slider(address)?.pinned).toBeNull()
+    focus.handleInput?.('\r')
+    await vi.waitFor(() => expect(events.some(event => event.kind === 'slider-accept')).toBe(true))
+    expect(events.find(event => event.kind === 'slider-accept')).toMatchObject({ controlId: 'level', value: null })
+    expect(f.events).toEqual([])
+    runtime.dispose()
+    model.dispose()
+  })
+
+  it('compiles a prompt with its submit and recall words, takes its text, and submits', async () => {
+    const events: MayflyUiEvent[] = []
+    const node = ui.prompt({ id: 'ask', value: '', submitLabel: 'send it', recallLabel: 'earlier', autofocus: true, recall: [{ text: 'older' }] })
+    const { model, runtime, value } = interactive(node, { prepare: async event => { events.push(event); return { reply: { kind: 'completed' as const }, publish: () => true } } })
+    const focus = value.focusTarget!
+    focus.focused = true
+    focus.render(60)
+    focus.handleInput?.('\x1b[A')
+    expect(model.prompt({ pagePath: [], controlId: 'ask' })?.text).toBe('older')
+    focus.handleInput?.('!')
+    expect(model.prompt({ pagePath: [], controlId: 'ask' })?.text).toBe('older!')
+    focus.handleInput?.('\r')
+    await vi.waitFor(() => expect(events.some(event => event.kind === 'submit')).toBe(true))
+    expect(events.find(event => event.kind === 'submit')).toMatchObject({ controlId: 'ask' })
+    runtime.dispose()
+    model.dispose()
+  })
+
+  it('types into a list row input, backspaces, and clears it with Ctrl+U', () => {
+    const node = ui.list({
+      id: 'answers', role: 'choose', selectedIds: [],
+      items: [{ id: 'q', label: 'Why?', input: { placeholder: 'answer' } }],
+    })
+    const { model, runtime, value } = interactive(node)
+    const focus = value.focusTarget!
+    focus.focused = true
+    focus.render(60)
+    focus.handleInput?.('y')
+    focus.handleInput?.('e')
+    expect(model.choice({ pagePath: [], controlId: 'answers' })?.inputs?.['q']).toBe('ye')
+    focus.handleInput?.('\x7f')
+    expect(model.choice({ pagePath: [], controlId: 'answers' })?.inputs?.['q']).toBe('y')
+    focus.handleInput?.('\x15')
+    // An empty row input is dropped from the drafts.
+    expect(model.choice({ pagePath: [], controlId: 'answers' })?.inputs?.['q']).toBeUndefined()
+    runtime.dispose()
+    model.dispose()
+  })
+
+  it('starts a slash search, types into it, and clears it with Ctrl+U', () => {
+    const node = ui.list({ id: 'filtered', role: 'browse', filterable: true, selectedIds: [], items: [{ id: 'a', label: 'Alpha' }, { id: 'b', label: 'Beta' }] })
+    const { model, runtime, value } = interactive(node)
+    const focus = value.focusTarget!
+    focus.focused = true
+    focus.render(60)
+    focus.handleInput?.('/')
+    expect(model.choice({ pagePath: [], controlId: 'filtered' })?.searching).toBe(true)
+    focus.handleInput?.('Al')
+    expect(model.choice({ pagePath: [], controlId: 'filtered' })?.query).toBe('Al')
+    focus.handleInput?.('\x15')
+    expect(model.choice({ pagePath: [], controlId: 'filtered' })?.query).toBe('')
+    expect(model.choice({ pagePath: [], controlId: 'filtered' })?.searching).toBe(false)
+    runtime.dispose()
+    model.dispose()
+  })
+
+  it('names a surface Escape from its own label and survives a throwing translator', () => {
+    for (const escapeLabel of ['close', 'leave', 'reject', 'back', 'cancel'] as const) {
+      const f = fixture({ onUnhandledEscape: () => {}, contextHints: { enabled: true } })
+      const surface = compiledSurface(ui.surface({ title: 'Escape', escapeLabel, child: ui.text('body') }), f.options)
+      expect(surface.component.render(40).length).toBeGreaterThan(0)
+    }
+    const fallback = fixture({ onUnhandledEscape: () => {}, contextHints: { enabled: true, translate: () => { throw new Error('no catalog') } } })
+    const throwing = compiledSurface(ui.surface({ title: 'Translate', child: ui.list({ id: 'empty', role: 'browse', filterable: true, selectedIds: [], items: [{ id: 'a', label: 'A' }] }) }), fallback.options)
+    expect(() => throwing.component.render(40)).not.toThrow()
+  })
+
+  it('keeps one flow painter per list and bounds its page-peak cache', () => {
+    const node = ui.list({ id: 'flow', role: 'browse', selectedIds: [], items: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }] })
+    const { model, runtime } = interactive(node)
+    runtime.flow = true
+    const flowModel = {
+      items: node.items,
+      specAt: (index: number) => ({ item: node.items[index]!, depth: 0, last: false, expandable: false, open: false, position: index }),
+      signature: '',
+    }
+    const options = { rows: [], cursorId: undefined, focused: false, marker: '|', selectedIds: [] }
+    const first = runtime.flowList(node, 30, flowModel, options)
+    expect(runtime.flowList(node, 30, flowModel, options)).toBe(first)
+    expect(first.row(0)).toContain('A')
+    for (let index = 0; index < 33; index += 1) runtime.pagePeaks(`peak-${String(index)}`)
+    expect(runtime.pagePeaks('peak-33')).toBeInstanceOf(Map)
+    runtime.dispose()
+    model.dispose()
+  })
+
+  it('moves home and contains a throwing focus observer', () => {
+    const f = fixture()
+    const surface = compiledSurface(ui.actions({ id: 'a', items: [{ id: 'one', label: 'One' }, { id: 'two', label: 'Two' }] }), { ...f.options, onFocusChange: () => { throw new Error('observer') } })
+    const focus = surface.focusTarget!
+    focus.focused = true
+    focus.render(40)
+    focus.handleInput?.('\t')
+    focus.handleInput?.('\x1b[H')
+    expect(() => focus.handleInput?.('\t')).not.toThrow()
+    surface.surfaceRuntime.dispose()
+  })
+})
+
+describe('compiler flow lists and framed surfaces', () => {
+  it('paints a slider read-only without an interaction model', () => {
+    const node = ui.slider({ id: 'level', levels: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }], selectedId: 'a' })
+    const result = compiled(node, fixture().options)
+    expect(result.component.render(40).join('\n')).toContain('A')
+  })
+
+  it('paints a flow list from its painter and reports the followed item\'s line', () => {
+    const node = ui.list({ id: 'flow', role: 'browse', selectedIds: [], items: [{ id: 'a', label: 'Alpha' }, { id: 'b', label: 'Beta' }] })
+    const events: MayflyUiEvent[] = []
+    const model = new UiSurfaceModel('flow', {
+      id: 'flow', revision: 0, source: [], scope: { kind: 'app', targetId: 'flow' }, update: { reason: 'replace' },
+      node, definition: {}, events: { prepare: async event => { events.push(event); return { reply: { kind: 'completed' as const }, publish: () => true } } },
+    })
+    const runtime = new MayflyUiSurfaceRuntime(model)
+    runtime.flow = true
+    const f = fixture({ getViewport: () => ({ columns: 30, rows: 10 }) })
+    const result = compileMayflyUiSurfaceNode(node, { ...f.options, surfaceRuntime: runtime })
+    expect(result.ok).toBe(true)
+    if (!result.ok) throw new Error(result.message)
+    runtime.probe.controlId = 'flow'
+    runtime.probe.itemId = 'b'
+    const rows = result.value.component.render(30)
+    expect(rows.join('\n')).toContain('Beta')
+    expect(runtime.probe.line).toBe(1)
+    runtime.dispose()
+    model.dispose()
+  })
+
+  it('clips a framed surface row that overflows its content width', () => {
+    const f = fixture({ getViewport: () => ({ columns: 12, rows: 8 }) })
+    const surface = compiledSurface(ui.surface({ title: 'Frame', chrome: 'surface', child: ui.text('x'.repeat(80)) }), f.options)
+    const rows = surface.component.render(12)
+    expect(rows.length).toBeGreaterThan(0)
+    for (const row of rows) expect(visibleWidth(stripTerminalSequences(row))).toBeLessThanOrEqual(12)
+  })
+
+  it('grows the framed surface body when an interaction model is present', () => {
+    const node = ui.surface({ title: 'Frame', chrome: 'surface', child: ui.text('body') })
+    const model = new UiSurfaceModel('framed', {
+      id: 'framed', revision: 0, source: [], scope: { kind: 'app', targetId: 'framed' }, update: { reason: 'replace' },
+      node, definition: {}, events: { prepare: async () => ({ reply: { kind: 'completed' as const }, publish: () => true }) },
+    })
+    const runtime = new MayflyUiSurfaceRuntime(model)
+    const result = compileMayflyUiSurfaceNode(node, { ...fixture().options, surfaceRuntime: runtime })
+    expect(result.ok).toBe(true)
+    if (!result.ok) throw new Error(result.message)
+    expect(result.value.component.render(30).join('\n')).toContain('body')
+    runtime.dispose()
+    model.dispose()
+  })
+
+  it('contains a throwing focus observer while a list row moves', () => {
+    const node = ui.list({ id: 'rows', role: 'browse', selectedIds: [], items: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }] })
+    const model = new UiSurfaceModel('rows', {
+      id: 'rows', revision: 0, source: [], scope: { kind: 'app', targetId: 'rows' }, update: { reason: 'replace' },
+      node, definition: {}, events: { prepare: async () => ({ reply: { kind: 'completed' as const }, publish: () => true }) },
+    })
+    const runtime = new MayflyUiSurfaceRuntime(model)
+    const f = fixture({ onFocusChange: () => { throw new Error('observer') } })
+    const result = compileMayflyUiSurfaceNode(node, { ...f.options, surfaceRuntime: runtime })
+    expect(result.ok).toBe(true)
+    if (!result.ok) throw new Error(result.message)
+    const focus = result.value.focusTarget!
+    focus.focused = true
+    focus.render(30)
+    expect(() => { focus.handleInput?.('\x1b[B'); focus.handleInput?.('\x1b[B') }).not.toThrow()
+    runtime.dispose()
+    model.dispose()
+  })
+})
+
+describe('flow lists without a model and framed overflow', () => {
+  it('paints a flow list from its admitted items and reports a missing followed item', () => {
+    const node = ui.list({ id: 'flow', role: 'browse', selectedIds: [], items: [{ id: 'a', label: 'Alpha' }, { id: 'b', label: 'Beta' }] })
+    const runtime = new MayflyUiSurfaceRuntime()
+    runtime.flow = true
+    const f = fixture({ getViewport: () => ({ columns: 30, rows: 10 }) })
+    const result = compileMayflyUiSurfaceNode(node, { ...f.options, surfaceRuntime: runtime })
+    expect(result.ok).toBe(true)
+    if (!result.ok) throw new Error(result.message)
+    runtime.probe.controlId = 'flow'
+    runtime.probe.itemId = 'missing'
+    expect(result.value.component.render(30).join('\n')).toContain('Alpha')
+    expect(runtime.probe.line).toBeUndefined()
+    // Without the flow flag the focused list paints through the fallback and still reports the line it finds.
+    runtime.flow = false
+    runtime.probe.itemId = 'b'
+    result.value.component.invalidate()
+    expect(result.value.component.render(30).join('\n')).toContain('Beta')
+    expect(runtime.probe.line).toBeUndefined()
+    runtime.dispose()
+  })
+
+  it('clips a framed surface row a wide leaf paints past the content width', () => {
+    const f = fixture({ getViewport: () => ({ columns: 12, rows: 10 }) })
+    const children = [
+      ui.progress({ value: 1, max: 2, style: 'cells', width: 200 }),
+      ui.stack.row([ui.child(ui.text('x'.repeat(80)), { basis: 100, shrink: 0 })]),
+      ui.actions({ id: 'wide-actions', items: Array.from({ length: 20 }, (_, index) => ({ id: `action-${String(index)}`, label: 'A long action label' })) }),
+    ]
+    for (const child of children) {
+      const surface = compiledSurface(ui.surface({ title: 'Wide', chrome: 'surface', child }), f.options)
+      const rows = surface.component.render(12)
+      expect(rows.length).toBeGreaterThan(0)
+      for (const row of rows) expect(visibleWidth(stripTerminalSequences(row))).toBeLessThanOrEqual(12)
+      surface.surfaceRuntime.dispose()
+    }
+  })
+
+  it('gives the left arrow at the first rail level back to the rail', () => {
+    const f = fixture()
+    const surface = compiledSurface(ui.stack.row([
+      ui.child(ui.tabs({ id: 'rail', orientation: 'vertical', activeId: 'one', items: [{ id: 'one', label: 'One' }, { id: 'two', label: 'Two' }] }), { basis: 20, shrink: 0 }),
+      ui.child(ui.actions({ id: 'actions', items: [{ id: 'run', label: 'Run' }] }), { basis: 0, grow: 1 }),
+    ]), f.options)
+    const focus = surface.focusTarget!
+    focus.focused = true
+    focus.render(60)
+    for (let index = 0; index < 6; index += 1) {
+      expect(() => { focus.handleInput?.('\t'); focus.handleInput?.('\x1b[D') }).not.toThrow()
+    }
+    surface.surfaceRuntime.dispose()
+  })
+})
+
+describe('static leaves with a transition or a bare review', () => {
+  it('compiles a progress transition through the runtime clock', () => {
+    const f = fixture()
+    const surface = compiled(ui.progress({ value: 5, max: 10, transition: { from: 0, ms: 100, rev: 1 } }), f.options)
+    const rows = surface.component.render(20)
+    expect(rows.length).toBeGreaterThan(0)
+    expect(stripTerminalSequences(rows.join(''))).toContain('5/10')
+  })
+
+  it('paints no rows for a review compiled without the drafts that resolve it', () => {
+    const f = fixture()
+    const review = ui.review({
+      id: 'review', tabsId: 'steps', skippedLabel: 'Skipped', submitLabel: 'Submit', submitActionId: 'submit',
+      items: [{ id: 'one', label: 'One', source: { kind: 'list', pagePath: [], controlId: 'pick' } }],
+    })
+    expect(compiled(review, f.options).component.render(20)).toEqual([])
+  })
+})
+
+describe('compiler leaf variants and runtime checkpoints', () => {
+  it('compiles a shed node as its full form outside an admission row', () => {
+    const f = fixture()
+    const surface = compiled(ui.shed(ui.text('full form'), [{ rank: 5, node: ui.text('narrow') }]), f.options)
+    expect(surface.component.render(40)).toEqual(['full form'])
+  })
+
+  it('focuses the form that declares autofocus when it first appears', () => {
+    const f = fixture()
+    const surface = compiledSurface(ui.form({ id: 'auto', autofocus: true, fields: [{ kind: 'input', id: 'text', label: 'Text', value: '' }] }), f.options)
+    surface.component.render(40)
+    expect(surface.surfaceRuntime.state.activeKey).toContain('text')
+    surface.surfaceRuntime.dispose()
+  })
+
+  it('restores the focus state checkpointed before another compile', () => {
+    const f = fixture()
+    const runtime = new MayflyUiSurfaceRuntime()
+    const form = compiledSurface(ui.form({ id: 'form', fields: [{ kind: 'input', id: 'name', label: 'Name', value: '' }] }), f.options, runtime)
+    form.focusTarget!.focused = true
+    form.component.render(40)
+    form.focusTarget!.handleInput?.('\t')
+    const key = runtime.state.activeKey
+    const restore = runtime.checkpoint()
+    compiledSurface(ui.actions({ id: 'other', items: [{ id: 'other', label: 'Other' }] }), f.options, runtime)
+    restore()
+    expect(runtime.state.activeKey).toBe(key)
+    runtime.dispose()
+  })
+})
+
+describe('focus group traversal and autofocus claims', () => {
+  it('moves Tab between separate groups and back home', () => {
+    const f = fixture()
+    const surface = compiledSurface(ui.stack.row([
+      ui.child(ui.actions({ id: 'left', items: [{ id: 'left-one', label: 'Left one' }] }), { basis: 30, shrink: 0 }),
+      ui.child(ui.actions({ id: 'right', items: [{ id: 'right-one', label: 'Right one' }] }), { basis: 30, shrink: 0 }),
+    ]), f.options)
+    const focus = surface.focusTarget!
+    focus.focused = true
+    focus.render(70)
+    focus.handleInput?.('\t')
+    expect(() => focus.handleInput?.('\x1b[H')).not.toThrow()
+    surface.surfaceRuntime.dispose()
+  })
+
+  it('releases an autofocus claim when the form disappears, and collapses an expanded view first', () => {
+    const f = fixture({ getViewport: () => ({ columns: 40, rows: 8 }) })
+    const runtime = new MayflyUiSurfaceRuntime()
+    const auto = compiledSurface(ui.form({ id: 'auto', autofocus: true, fields: [{ kind: 'input', id: 'text', label: 'Text', value: '' }] }), f.options, runtime)
+    auto.component.render(40)
+    compiledSurface(ui.text('gone'), f.options, runtime).component.render(40)
+    const scroll = compiledSurface(ui.scroll(ui.stack.column(Array.from({ length: 10 }, (_, index) => ui.text(`line-${String(index)}`)))), f.options, runtime)
+    scroll.focusTarget!.focused = true
+    scroll.focusTarget!.handleInput?.('\x05')
+    expect(runtime.state.expandedKey).not.toBeUndefined()
+    scroll.focusTarget!.handleInput?.('\x1b')
+    expect(runtime.state.expandedKey).toBeUndefined()
+    runtime.dispose()
+  })
+})

@@ -803,3 +803,60 @@ describe('provider editor', () => {
     expect(bench.ctx.mayflyOverlays.list()).toEqual([])
   })
 })
+
+describe('provider editor aborted reads', () => {
+  it('completes model staging when the action signal aborts during the post-catalog re-read', async () => {
+    const bench = await directSetup()
+    const entry = bench.entry!
+    const controller = new AbortController()
+    const describe = bench.credentials.describe.bind(bench.credentials)
+    let armed = false
+    bench.credentials.describe = async ref => {
+      if (armed) controller.abort()
+      return describe(ref)
+    }
+    await flush(5)
+    armed = true
+    const reply = await entry.definition.onEvent!.action!({
+      kind: 'submit', pagePath: [], controlId: 'custom-model',
+      submission: {
+        actionId: 'add-model', draftRevision: 1, source: entry.source,
+        forms: [{
+          pagePath: address('models').pagePath, formId: 'custom-model', draftRevision: 1,
+          fields: [{ id: 'model-id', value: 'late-model', change: 'set' as const }],
+        }],
+        selections: [],
+      },
+    }, requestContext(entry, controller.signal))
+    expect(reply).toMatchObject({ kind: 'completed' })
+  })
+
+  it('cancels a save when the action signal aborts during its native read', async () => {
+    const bench = await directSetup()
+    const entry = bench.entry!
+    const controller = new AbortController()
+    const describe = bench.credentials.describe.bind(bench.credentials)
+    let armed = false
+    bench.credentials.describe = async ref => {
+      if (armed) controller.abort()
+      return describe(ref)
+    }
+    await flush(5)
+    armed = true
+    await expect(entry.definition.onEvent!.action!(
+      { kind: 'submit', pagePath: [], controlId: 'submit', submission: saveSubmission(entry) },
+      requestContext(entry, controller.signal),
+    )).resolves.toEqual({ kind: 'cancelled' })
+  })
+
+  it('skips endpoint discovery when no llm service is present after the editor opens', async () => {
+    const ctx = new Context()
+    contexts.push(ctx)
+    const bench = await providerFixture(ctx, { custom: profile }, withDirectory('custom'))
+    const opening = openProviderEditor(ctx, 'custom')
+    // The route was resolved before the first await; discovery runs with the service gone.
+    ctx.set('llm', undefined as never)
+    await expect(opening).resolves.toBe(true)
+    expect(bench.ctx.mayflyOverlays.list()).toHaveLength(1)
+  })
+})

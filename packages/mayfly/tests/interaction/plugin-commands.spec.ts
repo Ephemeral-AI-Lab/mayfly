@@ -94,8 +94,8 @@ function restartResult(overrides: Partial<ChangeResult> = {}): ChangeResult {
 }
 
 /** The index document for the scripted network. */
-function indexJson(entries: readonly MarketEntry[]): string {
-  return JSON.stringify({ schemaVersion: 1, generatedAt: '2026-09-04T00:00:00.000Z', entries })
+function indexJson(entries: readonly MarketEntry[], generatedAt = '2026-09-04T00:00:00.000Z'): string {
+  return JSON.stringify({ schemaVersion: 1, generatedAt, entries })
 }
 
 /** The package name a spec installs, for the default native fake. */
@@ -128,20 +128,22 @@ interface WorldOptions {
   withManager?: boolean
   withScreen?: boolean
   withLocale?: boolean
+  generatedAt?: string
 }
 
 /** One command world: temp catalog home, a fake native manager, and the command mounted. */
 async function mountWorld(options: WorldOptions = {}) {
   const home = mkdtempTracked('mayfly-plugin-cmd-')
   mkdirSync(join(home, '.dsh'), { recursive: true })
+  let offline = options.offline === true
   updaterInternals.env = { DSH_HOME: join(home, '.dsh') }
   updaterInternals.homedir = () => home
   updaterInternals.now = () => 1_000_000
   updaterInternals.fetchText = vi.fn(async (url: string) => {
-    if (options.offline === true) throw new Error(`registry responded 503 for ${url}`)
+    if (offline) throw new Error(`registry responded 503 for ${url}`)
     if (url.includes('jsdelivr') || url.includes('raw.githubusercontent')) {
       if (options.index === undefined) throw new Error('no index scripted')
-      return indexJson(options.index)
+      return indexJson(options.index, options.generatedAt)
     }
     throw new Error(`no route for ${url}`)
   })
@@ -212,7 +214,7 @@ async function mountWorld(options: WorldOptions = {}) {
   await ctx.plugin(CommandRuntime)
   const session = ctx.sessions.create(SessionId('plugin-spec'))
   const agent = { id: session.id, session, status: 'idle' } as unknown as Agent
-  const fiber = await ctx.plugin({ name: 'plugin-market-spec', inject: ['commands'], apply: c => { registerPluginCommand(c) } })
+  const fiber = await ctx.plugin({ name: 'plugin-market-spec', inject: ['commands'], apply: c => registerPluginCommand(c) })
   const drivers = new WeakMap<UiSurfaceModel, BrowserPanel>()
   const surface = (): UiSurfaceModel | undefined => {
     const overlay = mayfly === undefined ? undefined : ctx.mayflyOverlays.list().findLast(item => item.id === 'mayfly.plugin-market')
@@ -253,6 +255,8 @@ async function mountWorld(options: WorldOptions = {}) {
     manager,
     bundles: () => currentBundles,
     setBundles: (next: readonly BundleInfo[]) => { currentBundles = [...next] },
+    setOffline: (next: boolean) => { offline = next },
+    locale: ctx.get('mayflyLocale') as unknown as MayflyLocaleService | undefined,
     addBundle: (next: BundleInfo) => replaceBundle(next),
     dispose: (): void => { void fiber.dispose() },
     surface,
@@ -791,6 +795,764 @@ describe('/plugin detail panel', () => {
     await pending
     await new Promise(resolve => setImmediate(resolve))
     expect(world.ctx.mayflyOverlays.list()).toEqual([])
+    world.dispose()
+  })
+})
+
+describe('/plugin native management diagnostics', () => {
+  const cases: ReadonlyArray<readonly [string, Record<string, unknown>, string]> = [
+    ['management-required', { code: 'management-required' }, 'the plugin manager protects this bundle'],
+    ['unaddressable', { code: 'unaddressable' }, 'the plugin manager cannot address this bundle'],
+    ['not-removable', { code: 'not-removable' }, 'this bundle is not removable'],
+    ['not-bundle', { code: 'not-bundle' }, 'this package declares no bundle patch'],
+    ['already-installed', { code: 'already-installed' }, 'this package is already installed'],
+    ['stop-profile', { code: 'stop-profile' }, 'restart Mayfly before removing this running bundle'],
+    ['bundle-in-use', { code: 'bundle-in-use' }, 'this bundle is still in use'],
+    ['stale-approval', { code: 'stale-approval' }, 'a saved build approval is out of date'],
+    ['invalid-spec', { code: 'invalid-spec' }, 'the package spec is invalid'],
+    ['ambiguous-install', { code: 'ambiguous-install' }, 'the installation added more than one package'],
+    ['unknown-plugin', { code: 'unknown-plugin' }, 'the plugin is no longer installed'],
+    ['operation-error without diagnostic', { code: 'operation-error' }, 'the package operation failed'],
+  ]
+
+  it.each(cases)('renders the %s refusal in words', async (_name, error, message) => {
+    const world = await mountWorld({
+      index: [entry()],
+      installResult: spec => ({ changed: false, application: 'failed', stage: 'install', target: spec, error: error as never }),
+    })
+    await world.run('/plugin install loop')
+    expect(world.notices.at(-1)).toBe(`install failed: ${message}`)
+    world.dispose()
+  })
+
+  it('falls back to the generic refusal without an error object and shortens a long diagnostic', async () => {
+    const generic = await mountWorld({
+      index: [entry()],
+      installResult: spec => ({ changed: false, application: 'failed', stage: 'install', target: spec }),
+    })
+    await generic.run('/plugin install loop')
+    expect(generic.notices.at(-1)).toBe('install failed: the native plugin manager refused the change')
+    generic.dispose()
+
+    const long = await mountWorld({
+      index: [entry()],
+      installResult: spec => ({
+        changed: false, application: 'failed', stage: 'install', target: spec,
+        error: { code: 'operation-error', diagnostic: `${'x'.repeat(200)} tail` },
+      }),
+    })
+    await long.run('/plugin install loop')
+    expect(long.notices.at(-1)).toContain('…')
+    long.dispose()
+  })
+
+  it('reports an overridden native change as saved but not composed', async () => {
+    const world = await mountWorld({
+      index: [entry()],
+      installResult: spec => ({ changed: true, application: 'overridden', stage: 'install', target: spec }),
+    })
+    await world.run('/plugin install loop')
+    expect(world.notices.at(-1)).toBe('change saved but overridden by the composition')
+    world.dispose()
+  })
+})
+
+describe('/plugin native enable and removal diagnostics', () => {
+  it('enables an on-demand installation without installing it again', async () => {
+    const world = await mountWorld({
+      index: [entry()],
+      bundles: [bundle({ name: 'dsh-loop', availability: 'installation', installed: false, enabled: false })],
+    })
+    await world.run('/plugin install loop')
+    expect(world.calls.enable).toEqual([{ name: 'dsh-loop', enabled: true }])
+    expect(world.calls.install).toHaveLength(0)
+    world.dispose()
+  })
+
+  it('renders a failed and a cancelled native removal', async () => {
+    const failed = await mountWorld({
+      index: [entry()], bundles: [bundle({ name: 'dsh-loop' })],
+      removeResult: name => ({ changed: false, application: 'failed', stage: 'remove', target: name, error: { code: 'bundle-in-use' } }),
+    })
+    await failed.run('/plugin uninstall loop')
+    expect(failed.notices.at(-1)).toBe('uninstall failed: this bundle is still in use')
+    failed.dispose()
+
+    const cancelled = await mountWorld({
+      index: [entry()], bundles: [bundle({ name: 'dsh-loop' })],
+      removeResult: name => ({ changed: false, application: 'cancelled', stage: 'remove', target: name }),
+    })
+    await cancelled.run('/plugin uninstall loop')
+    expect(cancelled.notices.at(-1)).toBe('removal cancelled')
+    cancelled.dispose()
+  })
+
+  it('reports a not-removable bundle without a manager reason', async () => {
+    const world = await mountWorld({ index: [entry()], bundles: [bundle({ name: 'dsh-loop', removable: false })] })
+    await world.run('/plugin uninstall loop')
+    expect(world.notices.at(-1)).toBe('the plugin manager does not allow removing this bundle')
+    expect(world.calls.remove).toHaveLength(0)
+    world.dispose()
+  })
+
+  it('fails the removal when the native list changed after the row was built', async () => {
+    const world = await mountWorld({ index: [entry()], bundles: [bundle({ name: 'dsh-loop' })] })
+    const installed = world.bundles()
+    world.manager.listBundles
+      .mockResolvedValueOnce(installed)
+      .mockResolvedValueOnce([bundle({ name: 'dsh-loop', removable: false, readOnlyReason: 'management-required' })])
+    await world.run('/plugin uninstall loop')
+    expect(world.notices.at(-1)).toContain('the plugin manager protects this bundle')
+    expect(world.calls.remove).toHaveLength(0)
+    world.dispose()
+  })
+
+  it('reports a removal when the native list no longer carries the package', async () => {
+    const world = await mountWorld({ index: [entry()], bundles: [bundle({ name: 'dsh-loop' })] })
+    world.manager.listBundles
+      .mockResolvedValueOnce(world.bundles())
+      .mockResolvedValueOnce([])
+    await world.run('/plugin uninstall loop')
+    expect(world.notices.at(-1)).toBe('"Loop" is not installed in this profile')
+    expect(world.calls.remove).toHaveLength(0)
+    world.dispose()
+  })
+
+  it('catches a rejected removal service call', async () => {
+    const world = await mountWorld({ index: [entry()], bundles: [bundle({ name: 'dsh-loop' })] })
+    world.manager.removeBundle.mockRejectedValueOnce(new Error('profile locked'))
+    await world.run('/plugin uninstall loop')
+    expect(world.notices.at(-1)).toBe('uninstall failed: profile locked')
+    world.dispose()
+  })
+})
+
+describe('/plugin argument verbs and detail actions', () => {
+  it('opens the Installed and Updates tabs from the argument verbs', async () => {
+    const world = await mountWorld({ index: [entry()], bundles: [bundle({ name: 'dsh-loop', version: '0.1.3' })] })
+    expect(await world.run('/plugin list')).toEqual({ kind: 'success' })
+    await vi.waitFor(() => { expect(world.surface()).toBeDefined() })
+    expect(world.surface()!.activeTab({ pagePath: [], controlId: 'plugin-tabs' })).toBe('installed')
+    world.dispose()
+
+    const updates = await mountWorld({ index: [entry()], bundles: [bundle({ name: 'dsh-loop', version: '0.1.3' })] })
+    expect(await updates.run('/plugin updates')).toEqual({ kind: 'success' })
+    await vi.waitFor(() => { expect(updates.surface()).toBeDefined() })
+    expect(updates.surface()!.activeTab({ pagePath: [], controlId: 'plugin-tabs' })).toBe('updates')
+    updates.dispose()
+  })
+
+  it('refuses the browser, info, and refresh without their native services', async () => {
+    const bare = await mountWorld({ index: [entry()], withScreen: false })
+    expect(await bare.run('/plugin')).toMatchObject({ kind: 'error', text: expect.stringContaining('UI registry is not mounted') })
+    expect(await bare.run('/plugin list')).toMatchObject({ kind: 'error', text: expect.stringContaining('UI registry is not mounted') })
+    expect(await bare.run('/plugin info loop')).toMatchObject({ kind: 'error', text: expect.stringContaining('UI registry is not mounted') })
+    bare.dispose()
+
+    const noManager = await mountWorld({ index: [entry()], withManager: false })
+    expect(await noManager.run('/plugin refresh')).toMatchObject({ kind: 'error', text: expect.stringContaining('plugin manager is unavailable') })
+    expect(await noManager.run('/plugin info loop')).toMatchObject({ kind: 'error', text: expect.stringContaining('plugin manager is unavailable') })
+    noManager.dispose()
+  })
+
+  it('loads the catalog on demand for info and install, and refuses removed or unknown ids', async () => {
+    const world = await mountWorld({ index: [entry(), entry({ id: 'gone', displayName: 'Gone', status: 'removed', statusNote: 'compromised' })] })
+    expect(await world.run('/plugin info loop')).toEqual({ kind: 'success' })
+    expect(await world.run('/plugin info gone')).toEqual({ kind: 'success' })
+    expect(await world.run('/plugin info nope')).toMatchObject({ kind: 'error', text: 'unknown plugin: nope' })
+    expect(await world.run('/plugin uninstall gone')).toMatchObject({ kind: 'error', text: expect.stringContaining('not installed') })
+    expect(await world.run('/plugin uninstall nope')).toMatchObject({ kind: 'error', text: 'unknown plugin: nope' })
+    world.dispose()
+  })
+
+  it('refreshes from the argument path with a missing manager after the panel opened', async () => {
+    const world = await mountWorld({ index: [entry()] })
+    await openMarket(world)
+    world.ctx.set('pluginManager', undefined as never)
+    expect(await world.run('/plugin refresh')).toMatchObject({ kind: 'error', text: expect.stringContaining('plugin manager is unavailable') })
+    world.dispose()
+  })
+
+  it('installs, updates, and removes from the detail panel', async () => {
+    const world = await mountWorld({ index: [entry()], bundles: [bundle({ name: 'dsh-loop', version: '0.1.3' })] })
+    expect(await world.run('/plugin info loop')).toEqual({ kind: 'success' })
+    const detail = world.ctx.mayflyUiInteraction.get('overlay', 'mayfly.plugin-detail')!
+    detail.invoke('install')
+    await vi.waitFor(() => { expect(world.calls.install).toHaveLength(1) })
+    await vi.waitFor(() => { expect(detail.feedbackSnapshot().at(-1)?.message).toContain('restart Mayfly') })
+    detail.invoke('remove')
+    expect(JSON.stringify(detail.decisionNode)).toContain('Remove the selected plugin?')
+    detail.answerDecision(true)
+    await vi.waitFor(() => { expect(world.calls.remove).toEqual(['dsh-loop']) })
+    world.dispose()
+  })
+
+  it('shows a failed detail operation with its message and keeps the panel open', async () => {
+    const world = await mountWorld({
+      index: [entry()], bundles: [bundle({ name: 'dsh-loop', version: '0.1.3' })],
+      installResult: () => { throw new Error('network down') },
+    })
+    await world.run('/plugin info loop')
+    const detail = world.ctx.mayflyUiInteraction.get('overlay', 'mayfly.plugin-detail')!
+    detail.invoke('install')
+    await vi.waitFor(() => { expect(detail.feedbackSnapshot().at(-1)?.message).toContain('network down') })
+    expect(world.ctx.mayflyUiInteraction.get('overlay', 'mayfly.plugin-detail')).toBeDefined()
+    detail.requestClose()
+    await new Promise(resolve => setImmediate(resolve))
+    expect(world.ctx.mayflyUiInteraction.get('overlay', 'mayfly.plugin-detail')).toBeUndefined()
+    world.dispose()
+  })
+
+  it('republishes the detail panel when the locale changes', async () => {
+    const world = await mountWorld({ index: [entry()] })
+    await world.run('/plugin info loop')
+    const detail = world.ctx.mayflyUiInteraction.get('overlay', 'mayfly.plugin-detail')!
+    const before = detail.revision
+    world.locale!.setPreference('zh')
+    await vi.waitFor(() => { expect(detail.revision).toBeGreaterThan(before) })
+    world.dispose()
+  })
+})
+
+/** The live marketplace registration, for events a test addresses directly. */
+function marketEntry(world: World) {
+  return world.ctx.mayflyOverlays.list().find(item => item.id === 'mayfly.plugin-market')!
+}
+
+async function prepareMarket(world: World, event: unknown, signal = new AbortController().signal) {
+  const entry = marketEntry(world)
+  return await entry.events.prepare(event as never, { surfaceId: entry.id, operationId: 'spec', source: [], revision: entry.revision, signal, report: vi.fn() })
+}
+
+const rowSelection = (id: string) => ({ kind: 'activate', pagePath: [], controlId: 'plugins-browse', actionId: 'install', inputs: { selections: [{ controlId: 'plugins-browse', pagePath: [], selectedIds: [id] }] } })
+
+describe('/plugin market edge operations', () => {
+  it('uses English when the frontend ships no locale service', async () => {
+    const world = await mountWorld({ index: [entry()], withLocale: false })
+    const model = await openMarket(world)
+    expect(JSON.stringify(model.node)).toContain('Plugin marketplace')
+    expect(JSON.stringify(model.node)).toContain('1 entries')
+    world.dispose()
+  })
+
+  it('reports an offline catalog as an unknown plugin before any native call', async () => {
+    const world = await mountWorld({ offline: true })
+    expect(await world.run('/plugin install loop')).toMatchObject({ kind: 'error', text: 'unknown plugin: loop' })
+    expect(world.calls.install).toHaveLength(0)
+    world.dispose()
+  })
+
+  it('keeps the newest catalog load when two refreshes settle out of order', async () => {
+    const world = await mountWorld({ index: [entry()], withScreen: false })
+    const first = Promise.withResolvers<string>()
+    const second = Promise.withResolvers<string>()
+    updaterInternals.fetchText = vi.fn()
+      .mockReturnValueOnce(first.promise)
+      .mockReturnValueOnce(second.promise)
+    const reading = world.run('/plugin refresh')
+    const writing = world.run('/plugin refresh')
+    second.resolve(indexJson([entry({ id: 'second', displayName: 'Second' })]))
+    await writing
+    first.resolve(indexJson([entry()]))
+    await reading
+    world.dispose()
+  })
+
+  it('drops a refreshed native list when the fiber unloaded during the read', async () => {
+    const world = await mountWorld({ index: [entry()], withManager: false })
+    await world.run('/plugin info loop')
+    world.dispose()
+  })
+
+  it('warns without a status footer when a restart-only change lands', async () => {
+    const world = await mountWorld({ index: [entry()], withScreen: false })
+    await world.run('/plugin install loop')
+    expect(world.calls.install).toHaveLength(1)
+    world.dispose()
+  })
+
+  it('records the restart chip once and updates its count', async () => {
+    const world = await mountWorld({ index: [entry()] })
+    await openMarket(world)
+    focusBrowserRow(world, 'loop')
+    invokeMarketAction(world, 'install')
+    await vi.waitFor(() => { expect(world.calls.install).toHaveLength(1) })
+    await vi.waitFor(() => { expect(JSON.stringify(world.surface()!.node)).toContain('1 change applies') })
+    const entries = world.ctx.mayflyOverlays.list()
+    expect(entries.some(item => item.id === 'mayfly.plugin-market')).toBe(true)
+    world.dispose()
+  })
+
+  it('loads only a mixed-source multi-row entry it can address', async () => {
+    const mixed = entry({
+      id: 'mixed', displayName: 'Mixed',
+      install: { rows: [{ name: 'npm-row', npm: { spec: 'npm-row' } }, { name: 'github-row', github: { repo: 'a/b', ref: 'main' } }] },
+    })
+    const world = await mountWorld({ index: [mixed] })
+    await world.run('/plugin install mixed')
+    expect(world.calls.install).toHaveLength(0)
+    expect(world.notices.at(-1)).toBe('"Mixed" has no common install source for every package')
+    world.dispose()
+  })
+
+  it('reports a multi-row update failure with the failing package name', async () => {
+    const multi = entry({
+      id: 'multi', displayName: 'Multi',
+      install: { rows: [{ name: 'multi-a', npm: { spec: 'multi-a' } }, { name: 'multi-b', npm: { spec: 'multi-b' } }] },
+      npm: { 'multi-a': { latestVersion: '1.0.0' }, 'multi-b': { latestVersion: '1.0.0' } },
+    })
+    const world = await mountWorld({
+      index: [multi],
+      bundles: [bundle({ name: 'multi-a', version: '0.0.1' }), bundle({ name: 'multi-b', version: '0.0.1' })],
+      installResult: spec => ({ changed: false, application: 'failed', stage: 'install', target: spec, error: { code: 'not-bundle' } }),
+    })
+    await world.run('/plugin install multi')
+    expect(world.notices.at(-1)).toContain('multi-a: this package declares no bundle patch')
+    world.dispose()
+  })
+
+  it('refuses install on an unlisted installed bundle and on an entry with no source', async () => {
+    const unlisted = await mountWorld({ index: [], bundles: [bundle({ name: 'custom-plugin' })] })
+    expect(await unlisted.run('/plugin install custom-plugin')).toMatchObject({ kind: 'error', text: 'this bundle is not listed in the marketplace index' })
+    unlisted.dispose()
+
+    const sourceless = entry({ id: 'bare', displayName: 'Bare', install: { rows: [{ name: 'bare-pkg' }] } })
+    const noSource = await mountWorld({ index: [sourceless] })
+    await noSource.run('/plugin install bare')
+    noSource.dispose()
+  })
+
+  it('reports missing and non-removable rows through the market actions', async () => {
+    const world = await mountWorld({ index: [entry()] })
+    await openMarket(world)
+    expect((await prepareMarket(world, rowSelection('missing'))).reply).toMatchObject({ kind: 'failed', message: 'plugin operation failed' })
+    expect((await prepareMarket(world, { kind: 'activate', pagePath: [], controlId: 'plugins-browse', actionId: 'remove', inputs: { selections: [{ controlId: 'plugins-browse', pagePath: [], selectedIds: ['loop'] }] } })).reply).toMatchObject({ kind: 'failed' })
+    expect((await prepareMarket(world, { kind: 'activate', pagePath: [], controlId: 'plugins-browse', actionId: 'install', inputs: { selections: [{ controlId: 'plugins-browse', pagePath: [], selectedIds: ['acp'] }] } })).reply).toBeDefined()
+    world.dispose()
+  })
+
+  it('does nothing for actions without an id or with an unknown action id', async () => {
+    const world = await mountWorld({ index: [entry()] })
+    await openMarket(world)
+    expect((await prepareMarket(world, { kind: 'activate', pagePath: [], controlId: 'plugin-actions', actionId: 'install' })).reply).toMatchObject({ kind: 'completed' })
+    expect((await prepareMarket(world, { kind: 'activate', pagePath: [], controlId: 'plugin-actions', actionId: 'bogus' })).reply).toMatchObject({ kind: 'completed' })
+    expect((await prepareMarket(world, { kind: 'selection-accept', pagePath: [], controlId: 'plugins-browse', selectedIds: [] })).reply).toMatchObject({ kind: 'completed' })
+    expect((await prepareMarket(world, { kind: 'selection-accept', pagePath: [], controlId: 'plugins-browse', selectedIds: ['gone'] })).reply).toMatchObject({ kind: 'completed' })
+    world.dispose()
+  })
+
+  it('switches the install source and the group mode from the panel', async () => {
+    const world = await mountWorld({ index: [entry()] })
+    await openMarket(world)
+    focusBrowserRow(world, 'loop')
+    const switched = await prepareMarket(world, { kind: 'activate', pagePath: [], controlId: 'plugin-actions', actionId: 'source', inputs: { selections: [{ controlId: 'plugins-browse', pagePath: [], selectedIds: ['loop'] }] } })
+    expect(switched.reply).toMatchObject({ kind: 'accepted', feedback: { message: 'install source: github' } })
+    const grouped = await prepareMarket(world, { kind: 'activate', pagePath: [], controlId: 'plugin-actions', actionId: 'group', inputs: { selections: [{ controlId: 'plugins-browse', pagePath: [], selectedIds: ['loop'] }] } })
+    expect(grouped.reply).toMatchObject({ kind: 'accepted' })
+    world.dispose()
+  })
+
+  it('ignores an unknown source row and tracks tab and focus observations', async () => {
+    const world = await mountWorld({ index: [entry()], bundles: [bundle({ name: 'custom-plugin' })] })
+    await openMarket(world)
+    selectBrowserTab(world, 'installed')
+    focusBrowserRow(world, 'unlisted:custom-plugin')
+    expect((await prepareMarket(world, { kind: 'activate', pagePath: [], controlId: 'plugin-actions', actionId: 'source', inputs: { selections: [{ controlId: 'plugins-installed', pagePath: [], selectedIds: ['unlisted:custom-plugin'] }] } })).reply).toMatchObject({ kind: 'completed' })
+    await prepareMarket(world, { kind: 'tab-change', tabId: 'updates' })
+    await prepareMarket(world, { kind: 'tab-change', tabId: 'updates' })
+    await prepareMarket(world, { kind: 'tab-change', tabId: 'bogus' })
+    await prepareMarket(world, { kind: 'focus-change', controlId: 'plugins-updates', itemId: 'custom-plugin' })
+    await prepareMarket(world, { kind: 'focus-change', controlId: 'plugins-browse' })
+    await prepareMarket(world, { kind: 'focus-change', controlId: 'unknown-list', itemId: 'x' })
+    await prepareMarket(world, { kind: 'dismiss', pagePath: [] })
+    world.dispose()
+  })
+
+  it('says there is nothing to update and stops a failing update-all run', async () => {
+    const empty = await mountWorld({ index: [entry()] })
+    await openMarket(empty)
+    const emptyReply = await prepareMarket(empty, { kind: 'activate', pagePath: [], controlId: 'plugin-actions', actionId: 'update-all' })
+    expect(emptyReply.reply).toMatchObject({ kind: 'accepted', feedback: { message: 'no plugin updates to apply' } })
+    empty.dispose()
+
+    const failing = await mountWorld({
+      index: [entry()],
+      bundles: [bundle({ name: 'dsh-loop', version: '0.1.3' })],
+      installResult: spec => ({ changed: false, application: 'failed', stage: 'install', target: spec, error: { code: 'not-bundle' } }),
+    })
+    await openMarket(failing)
+    const failingReply = await prepareMarket(failing, { kind: 'activate', pagePath: [], controlId: 'plugin-actions', actionId: 'update-all' })
+    expect(failingReply.reply).toMatchObject({ kind: 'failed', message: expect.stringContaining('update all stopped at "Loop"') })
+    failing.dispose()
+  })
+
+  it('reports manager loss, installed-list failures, and unloads during a panel refresh', async () => {
+    const missing = await mountWorld({ index: [entry()], withManager: false })
+    await openMarket(missing)
+    const missingReply = await prepareMarket(missing, { kind: 'activate', pagePath: [], controlId: 'plugin-actions', actionId: 'refresh' })
+    expect(missingReply.reply).toMatchObject({ kind: 'failed', message: 'plugin manager is unavailable: the native plugin service is not mounted' })
+    missing.dispose()
+
+    const failing = await mountWorld({ index: [entry()] })
+    await openMarket(failing)
+    failing.manager.listBundles.mockRejectedValueOnce(new Error('profile locked'))
+    const failingReply = await prepareMarket(failing, { kind: 'activate', pagePath: [], controlId: 'plugin-actions', actionId: 'refresh' })
+    expect(failingReply.reply).toMatchObject({ kind: 'failed', message: expect.stringContaining('refresh failed: profile locked') })
+    failing.dispose()
+
+    const unloaded = await mountWorld({ index: [entry()] })
+    await openMarket(unloaded)
+    const gate = Promise.withResolvers<string>()
+    updaterInternals.fetchText = vi.fn(() => gate.promise)
+    const refreshing = prepareMarket(unloaded, { kind: 'activate', pagePath: [], controlId: 'plugin-actions', actionId: 'refresh' })
+    await vi.waitFor(() => { expect(updaterInternals.fetchText).toHaveBeenCalled() })
+    unloaded.dispose()
+    gate.resolve(indexJson([entry()]))
+    expect(await refreshing).toMatchObject({ reply: undefined })
+  })
+
+  it('renders the stale and aged marketplace subtitles', async () => {
+    const twoHoursAgo = new Date(Date.now() - 2 * 3_600_000).toISOString()
+    const aged = await mountWorld({ index: [entry()], generatedAt: twoHoursAgo })
+    const agedModel = await openMarket(aged)
+    expect(JSON.stringify(agedModel.node)).toContain('index updated 2h ago')
+    aged.setOffline(true)
+    invokeMarketAction(aged, 'refresh')
+    await vi.waitFor(() => { expect(JSON.stringify(aged.surface()!.node)).toContain('⚠ offline · showing cached data from 2h ago') })
+    aged.dispose()
+
+    const days = await mountWorld({ index: [entry()], generatedAt: new Date(Date.now() - 3 * 86_400_000).toISOString() })
+    const daysModel = await openMarket(days)
+    expect(JSON.stringify(daysModel.node)).toContain('index updated 3d ago')
+    days.dispose()
+
+    const unknown = await mountWorld({ index: [entry()], generatedAt: 'not-a-date' })
+    const unknownModel = await openMarket(unknown)
+    expect(JSON.stringify(unknownModel.node)).toContain('1 entries')
+    unknown.dispose()
+  })
+
+  it('renders a future-dated index as under an hour old', async () => {
+    const world = await mountWorld({ index: [entry()], generatedAt: new Date(Date.now() + 3_600_000).toISOString() })
+    const model = await openMarket(world)
+    expect(JSON.stringify(model.node)).toContain('index updated under an hour ago')
+    world.dispose()
+  })
+
+  it('drops a stale native bundle read that rejects after a newer read settled', async () => {
+    const world = await mountWorld({ index: [entry()], withScreen: false })
+    const stale = Promise.withResolvers<readonly BundleInfo[]>()
+    world.manager.listBundles
+      .mockReturnValueOnce(stale.promise)
+      .mockResolvedValueOnce([])
+    const first = world.run('/plugin refresh')
+    await vi.waitFor(() => { expect(world.manager.listBundles).toHaveBeenCalledTimes(1) })
+    const second = world.run('/plugin refresh')
+    await second
+    stale.reject(new Error('too late'))
+    await first
+    world.dispose()
+  })
+})
+
+describe('/plugin operation lifetimes', () => {
+  it('abandons an install whose native bundle read lands after unload', async () => {
+    const world = await mountWorld({ index: [entry()] })
+    const gate = Promise.withResolvers<readonly BundleInfo[]>()
+    const current = world.bundles()
+    world.manager.listBundles
+      .mockResolvedValueOnce(current)
+      .mockReturnValueOnce(gate.promise)
+    const running = world.run('/plugin install loop')
+    await vi.waitFor(() => { expect(world.manager.listBundles).toHaveBeenCalledTimes(2) })
+    world.dispose()
+    gate.resolve(current)
+    await running
+    expect(world.calls.install).toHaveLength(0)
+  })
+
+  it('abandons an install whose native result lands after unload', async () => {
+    const world = await mountWorld({ index: [entry()] })
+    const gate = Promise.withResolvers<ChangeResult>()
+    world.manager.installBundle.mockReturnValueOnce(gate.promise)
+    const running = world.run('/plugin install loop')
+    await vi.waitFor(() => { expect(world.manager.installBundle).toHaveBeenCalledOnce() })
+    world.dispose()
+    gate.resolve(restartResult({ target: 'dsh-loop', bundle: 'dsh-loop' }))
+    await running
+  })
+
+  it('abandons a removal whose native list or result lands after unload', async () => {
+    const listed = await mountWorld({ index: [entry()], bundles: [bundle({ name: 'dsh-loop' })] })
+    const listGate = Promise.withResolvers<readonly BundleInfo[]>()
+    const current = listed.bundles()
+    listed.manager.listBundles
+      .mockReturnValueOnce(Promise.resolve(current))
+      .mockReturnValueOnce(listGate.promise)
+    const listing = listed.run('/plugin uninstall loop')
+    await vi.waitFor(() => { expect(listed.manager.listBundles).toHaveBeenCalledTimes(2) })
+    listed.dispose()
+    listGate.resolve(current)
+    await listing
+    expect(listed.calls.remove).toHaveLength(0)
+
+    const removed = await mountWorld({ index: [entry()], bundles: [bundle({ name: 'dsh-loop' })] })
+    const removeGate = Promise.withResolvers<ChangeResult>()
+    removed.manager.removeBundle.mockReturnValueOnce(removeGate.promise)
+    const removing = removed.run('/plugin uninstall loop')
+    await vi.waitFor(() => { expect(removed.manager.removeBundle).toHaveBeenCalledOnce() })
+    removed.dispose()
+    removeGate.resolve(restartResult({ stage: 'remove', target: 'dsh-loop' }))
+    await removing
+  })
+
+  it('abandons the argument refresh, info, and install when unload lands in the awaits', async () => {
+    const refresh = await mountWorld({ index: [entry()], withScreen: false })
+    const refreshGate = Promise.withResolvers<string>()
+    updaterInternals.fetchText = vi.fn(() => refreshGate.promise)
+    const refreshing = refresh.run('/plugin refresh')
+    await vi.waitFor(() => { expect(updaterInternals.fetchText).toHaveBeenCalled() })
+    refresh.dispose()
+    refreshGate.resolve(indexJson([entry()]))
+    await refreshing
+
+    const info = await mountWorld({ index: [entry()] })
+    const infoGate = Promise.withResolvers<string>()
+    updaterInternals.fetchText = vi.fn(() => infoGate.promise)
+    const reading = info.run('/plugin info loop')
+    await vi.waitFor(() => { expect(updaterInternals.fetchText).toHaveBeenCalled() })
+    info.dispose()
+    infoGate.resolve(indexJson([entry()]))
+    await reading
+
+    const install = await mountWorld({ index: [entry()] })
+    const installGate = Promise.withResolvers<string>()
+    updaterInternals.fetchText = vi.fn(() => installGate.promise)
+    const installing = install.run('/plugin install loop')
+    await vi.waitFor(() => { expect(updaterInternals.fetchText).toHaveBeenCalled() })
+    install.dispose()
+    installGate.resolve(indexJson([entry()]))
+    await installing
+  })
+
+  it('reports a lost manager and the unlisted, blocked, and sourceless market rows', async () => {
+    const lost = await mountWorld({ index: [entry()] })
+    await openMarket(lost)
+    lost.ctx.set('pluginManager', undefined as never)
+    const lostReply = await prepareMarket(lost, {
+      kind: 'activate', pagePath: [], controlId: 'plugins-browse', actionId: 'install',
+      inputs: { selections: [{ controlId: 'plugins-browse', pagePath: [], selectedIds: ['loop'] }] },
+    })
+    expect(lostReply.reply).toMatchObject({ kind: 'failed', message: 'plugin manager is unavailable: the native plugin service is not mounted' })
+    lost.dispose()
+
+    const unlisted = await mountWorld({ index: [], bundles: [bundle({ name: 'custom-plugin' })] })
+    await openMarket(unlisted)
+    const unlistedReply = await prepareMarket(unlisted, {
+      kind: 'activate', pagePath: [], controlId: 'plugins-installed', actionId: 'install',
+      inputs: { selections: [{ controlId: 'plugins-installed', pagePath: [], selectedIds: ['unlisted:custom-plugin'] }] },
+    })
+    expect(unlistedReply.reply).toMatchObject({ kind: 'failed', message: 'this bundle is not listed in the marketplace index' })
+    unlisted.dispose()
+
+    const blocked = await mountWorld({ index: [entry({
+      id: 'acp', displayName: 'ACP Server',
+      install: { rows: [{ name: '@deepseek-ai/dsh-acp', npm: { spec: '@deepseek-ai/dsh-acp' } }] },
+    })] })
+    await openMarket(blocked)
+    const blockedReply = await prepareMarket(blocked, {
+      kind: 'activate', pagePath: [], controlId: 'plugins-browse', actionId: 'install',
+      inputs: { selections: [{ controlId: 'plugins-browse', pagePath: [], selectedIds: ['acp'] }] },
+    })
+    expect(blockedReply.reply).toMatchObject({ kind: 'failed', message: expect.stringContaining('owns stdio') })
+    blocked.dispose()
+  })
+
+  it('keeps and reuses the focused row when the grouping changes', async () => {
+    const world = await mountWorld({ index: [entry()] })
+    await openMarket(world)
+    await prepareMarket(world, { kind: 'focus-change', controlId: 'plugins-browse', itemId: 'loop' })
+    const reply = await prepareMarket(world, { kind: 'activate', pagePath: [], controlId: 'plugin-actions', actionId: 'group' })
+    expect(reply.reply).toMatchObject({ kind: 'accepted' })
+    world.dispose()
+  })
+
+  it('abandons update-all when unload lands during the native result', async () => {
+    const world = await mountWorld({ index: [entry()], bundles: [bundle({ name: 'dsh-loop', version: '0.1.3' })] })
+    await openMarket(world)
+    const gate = Promise.withResolvers<ChangeResult>()
+    world.manager.installBundle.mockReturnValueOnce(gate.promise)
+    const running = prepareMarket(world, { kind: 'activate', pagePath: [], controlId: 'plugin-actions', actionId: 'update-all' })
+    await vi.waitFor(() => { expect(world.manager.installBundle).toHaveBeenCalledOnce() })
+    world.dispose()
+    gate.resolve(restartResult({ target: 'dsh-loop', bundle: 'dsh-loop' }))
+    expect(await running).toMatchObject({ reply: undefined })
+  })
+})
+
+describe('/plugin branch edges', () => {
+  it('names an incompatible-version refusal that carries no package list', async () => {
+    const world = await mountWorld({
+      index: [entry()],
+      installResult: spec => ({ changed: false, application: 'failed', stage: 'install', target: spec, error: { code: 'incompatible-version' } as never }),
+    })
+    await world.run('/plugin install loop')
+    expect(world.notices.at(-1)).toBe('install failed: incompatible with this DSH:')
+    world.dispose()
+  })
+
+  it('stringifies a non-Error bundle read for the argument refresh', async () => {
+    const world = await mountWorld({ index: [entry()], withScreen: false })
+    world.manager.listBundles.mockRejectedValueOnce('profile locked' as never)
+    expect(await world.run('/plugin refresh')).toMatchObject({ kind: 'error', text: expect.stringContaining('profile locked') })
+    world.dispose()
+  })
+
+  it('reports an immediately applied install without asking for a restart', async () => {
+    const world = await mountWorld({
+      index: [entry()],
+      installResult: spec => ({ changed: true, application: 'applied', stage: 'install', target: spec }),
+    })
+    await world.run('/plugin install loop')
+    expect(world.notices.at(-1)).toBe('installed')
+    world.dispose()
+  })
+
+  it('reports the generic protection reason for a blocked bundle', async () => {
+    const world = await mountWorld({ index: [entry()], bundles: [bundle({ name: 'dsh-loop' })] })
+    world.manager.listBundles
+      .mockResolvedValueOnce(world.bundles())
+      .mockResolvedValueOnce([bundle({ name: 'dsh-loop', removable: false })])
+    await world.run('/plugin uninstall loop')
+    expect(world.notices.at(-1)).toContain('this bundle is not removable')
+    expect(world.calls.remove).toHaveLength(0)
+    world.dispose()
+  })
+
+  it('reports an immediately applied removal as removed', async () => {
+    const world = await mountWorld({
+      index: [entry()],
+      bundles: [bundle({ name: 'dsh-loop' })],
+      removeResult: name => ({ changed: true, application: 'applied', stage: 'remove', target: name }),
+    })
+    await world.run('/plugin uninstall loop')
+    expect(world.notices.at(-1)).toBe('removed')
+    expect(world.calls.remove).toEqual(['dsh-loop'])
+    world.dispose()
+  })
+
+  it('derives rows while the first native bundle read is still pending', async () => {
+    const world = await mountWorld({ index: [entry()] })
+    const gate = Promise.withResolvers<readonly BundleInfo[]>()
+    world.manager.listBundles.mockReturnValueOnce(gate.promise)
+    expect(await world.run('/plugin')).toEqual({ kind: 'success' })
+    const running = prepareMarket(world, rowSelection('loop'))
+    gate.resolve([])
+    expect(await running).toMatchObject({ reply: { kind: 'accepted' } })
+    expect(world.calls.install).toHaveLength(1)
+    world.dispose()
+  })
+
+  it('finds a removed entry the profile does not carry for the detail panel', async () => {
+    const world = await mountWorld({
+      index: [entry(), entry({ id: 'gone', displayName: 'Gone', status: 'removed', statusNote: 'compromised' })],
+    })
+    expect(await world.run('/plugin info gone')).toEqual({ kind: 'success' })
+    expect(JSON.stringify(world.ctx.mayflyUiInteraction.get('overlay', 'mayfly.plugin-detail')!.node)).toContain('Gone')
+    world.dispose()
+  })
+
+  it('names an update failure from the market action and catches a string rejection', async () => {
+    const world = await mountWorld({ index: [entry()], bundles: [bundle({ name: 'dsh-loop', version: '0.1.3' })] })
+    await openMarket(world)
+    selectBrowserTab(world, 'updates')
+    focusBrowserRow(world, 'loop')
+    world.manager.installBundle.mockRejectedValueOnce('npm offline')
+    invokeMarketAction(world, 'update')
+    await vi.waitFor(() => { expect(marketFeedback(world.surface()!)).toContain('update failed: npm offline') })
+    world.dispose()
+  })
+
+  it('substitutes npm for a github row and ignores a source action without a row', async () => {
+    const githubOnly = entry({ id: 'gh', displayName: 'GH', install: { rows: [{ name: 'gh-pkg', github: { repo: 'a/b', ref: 'main' } }] } })
+    const world = await mountWorld({ index: [githubOnly] })
+    await openMarket(world)
+    // A focus change on a tab that is not active does not repaint.
+    await prepareMarket(world, { kind: 'focus-change', controlId: 'plugins-updates', itemId: 'gh' })
+    focusBrowserRow(world, 'gh')
+    const switched = await prepareMarket(world, {
+      kind: 'activate', pagePath: [], controlId: 'plugin-actions', actionId: 'source',
+      inputs: { selections: [{ controlId: 'plugins-browse', pagePath: [], selectedIds: ['gh'] }] },
+    })
+    expect(switched.reply).toMatchObject({ kind: 'accepted', feedback: { message: 'install source: npm' } })
+    const missingId = await prepareMarket(world, { kind: 'activate', pagePath: [], controlId: 'plugin-actions', actionId: 'source' })
+    expect(missingId.reply).toMatchObject({ kind: 'completed' })
+    world.dispose()
+  })
+
+  it('subtitles a stale catalog without generatedAt and reports an offline market refresh', async () => {
+    const world = await mountWorld({ index: [entry()] })
+    updaterInternals.fetchText = vi.fn(async () => JSON.stringify({ schemaVersion: 1, entries: [entry()] }))
+    const model = await openMarket(world)
+    expect(JSON.stringify(model.node)).toContain('1 entries')
+    updaterInternals.fetchText = vi.fn(async () => { throw new Error('registry down') })
+    invokeMarketAction(world, 'refresh')
+    await vi.waitFor(() => { expect(JSON.stringify(world.surface()!.node)).toContain('⚠ offline · showing cached data') })
+    expect(JSON.stringify(world.surface()!.node)).not.toContain('showing cached data from')
+    // A stale cache still counts as a refresh that served entries.
+    expect(marketFeedback(world.surface()!)).toContain('refreshed 1 entries')
+
+    const offline = await mountWorld({ offline: true })
+    expect(await offline.run('/plugin')).toEqual({ kind: 'success' })
+    await vi.waitFor(() => { expect(offline.surface()).toBeDefined() })
+    const reply = await prepareMarket(offline, { kind: 'activate', pagePath: [], controlId: 'plugin-keys-offline', actionId: 'refresh' })
+    expect(reply.reply).toMatchObject({ kind: 'failed', message: expect.stringContaining('refresh failed:') })
+    offline.dispose()
+    world.dispose()
+  })
+
+  it('does not publish into a marketplace panel closed before its first load', async () => {
+    const world = await mountWorld({ index: [entry()] })
+    const gate = Promise.withResolvers<string>()
+    updaterInternals.fetchText = vi.fn(() => gate.promise)
+    expect(await world.run('/plugin')).toEqual({ kind: 'success' })
+    world.ctx.mayflyOverlays.close('mayfly.plugin-market')
+    gate.resolve(indexJson([entry()]))
+    await new Promise(resolve => setImmediate(resolve))
+    expect(world.ctx.mayflyOverlays.list().map(item => item.id)).not.toContain('mayfly.plugin-market')
+    world.dispose()
+  })
+
+  it('reports an update applied immediately as updated', async () => {
+    const world = await mountWorld({
+      index: [entry()],
+      bundles: [bundle({ name: 'dsh-loop', version: '0.1.3' })],
+      installResult: spec => ({ changed: true, application: 'applied', stage: 'install', target: spec }),
+    })
+    await world.run('/plugin install loop')
+    expect(world.notices.at(-1)).toBe('updated')
+    world.dispose()
+  })
+
+  it('reports the web-only warning through the open surface', async () => {
+    const webOnly = entry({ id: 'panel', displayName: 'Panel', surfaces: { web: { clientModule: true } } })
+    const world = await mountWorld({ index: [webOnly] })
+    await openMarket(world)
+    focusBrowserRow(world, 'panel')
+    const reply = await prepareMarket(world, rowSelection('panel'))
+    expect(reply.reply).toMatchObject({ kind: 'accepted', feedback: { severity: 'success' } })
+    expect(world.calls.install).toHaveLength(1)
+    world.dispose()
+  })
+
+  it('dismisses an unlisted detail after its successful removal', async () => {
+    const world = await mountWorld({ index: [], bundles: [bundle({ name: 'custom-plugin' })] })
+    expect(await world.run('/plugin info custom-plugin')).toEqual({ kind: 'success' })
+    const detail = world.ctx.mayflyUiInteraction.get('overlay', 'mayfly.plugin-detail')!
+    detail.invoke('remove')
+    detail.answerDecision(true)
+    await vi.waitFor(() => { expect(world.calls.remove).toEqual(['custom-plugin']) })
+    await vi.waitFor(() => { expect(world.ctx.mayflyUiInteraction.get('overlay', 'mayfly.plugin-detail')).toBeUndefined() })
     world.dispose()
   })
 })

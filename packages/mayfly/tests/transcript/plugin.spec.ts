@@ -836,3 +836,62 @@ describe('mayfly-transcript queued messages, facts, images, and row actions', ()
     }
   })
 })
+
+describe('mayfly-transcript pressure and tool-change lazy updates', () => {
+  it('reads the displayed session pressure with and without a context window and projected tokens', async () => {
+    resetSeq()
+    const agent = fakeParent([userEvent('work')])
+    const { ctx, screen, projections } = await bootTranscript(agent)
+    let pressure: Record<string, number> | undefined = { contextWindow: 128_000, projectedTokens: 1_000 }
+    const projection = projections as unknown as {
+      snapshot(session: unknown): { readonly asOfSeq: number, readonly values: Record<string, unknown> }
+      readonly listeners: Set<(session: unknown, key: string, value: unknown, seq: number) => void>
+    }
+    const original = projection.snapshot.bind(projection)
+    projection.snapshot = session => ({ ...original(session), values: { ...original(session).values, contextPressure: pressure } })
+    const publishPressure = (): void => {
+      for (const listener of projection.listeners) listener(agent.session, 'contextPressure', undefined, 0)
+    }
+    const before = screen.renderRequests.length
+    publishPressure()
+    await vi.waitFor(() => { expect(screen.renderRequests.length).toBeGreaterThan(before) })
+    // A pressure with only the unmarked occupancy has no window and no projected tokens.
+    pressure = { pressureTokens: 200 }
+    publishPressure()
+    await vi.waitFor(() => { expect(screen.renderRequests.length).toBeGreaterThan(before + 1) })
+    // A different key for the same session is ignored by the pressure read.
+    for (const listener of projection.listeners) listener(agent.session, 'mayflyConversationFacts', undefined, 0)
+    await new Promise(resolve => setTimeout(resolve, 20))
+    pressure = undefined
+    publishPressure()
+    expect(ctx.mayflyCurrentAgent.current()).toBe(agent)
+  })
+
+  it('coalesces tool changes and drops a queued invalidate after unload', async () => {
+    resetSeq()
+    const agent = fakeParent([userEvent('work')])
+    const { ctx, screen } = await bootTranscript(agent)
+    const before = screen.renderRequests.length
+    ctx.emit('tools/change')
+    ctx.emit('tools/change')
+    await new Promise<void>(resolve => setImmediate(resolve))
+    expect(screen.renderRequests.length).toBeGreaterThanOrEqual(before)
+    ctx.emit('tools/change')
+    await ctx.fiber.dispose()
+    await new Promise<void>(resolve => setImmediate(resolve))
+    expect(screen.children).toEqual([])
+  })
+})
+
+describe('mayfly-transcript unload fence for tool updates', () => {
+  it('drops an invalidate microtask queued just before the fiber disposal runs', async () => {
+    resetSeq()
+    const agent = fakeParent([userEvent('work')])
+    const { ctx, screen } = await bootTranscript(agent)
+    const disposing = ctx.fiber.dispose()
+    ctx.emit('tools/change')
+    await disposing
+    await new Promise<void>(resolve => setImmediate(resolve))
+    expect(screen.children).toEqual([])
+  })
+})

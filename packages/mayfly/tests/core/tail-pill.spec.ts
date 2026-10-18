@@ -33,7 +33,7 @@ class Scope {
 const WHEEL_UP = '\x1b[<64;1;1M'
 
 /** A terminal and a renderer over content whose height and newest turn the test moves. */
-async function bench(keys: string[] = [], hints = true) {
+async function bench(keys: string[] = [], hints = true, withGetKeys = true) {
   const root = new Context()
   await root.plugin({ name: 'test-mayfly-ui-provider', apply: applyApi })
   await root.plugin(frontend)
@@ -44,7 +44,7 @@ async function bench(keys: string[] = [], hints = true) {
   Object.assign(owner, {
     mayflyPanes: root.mayflyPanes, mayflyUiInteraction: root.mayflyUiInteraction, mayflyOverlays: root.mayflyOverlays, mayflyScreen: root.mayflyScreen,
     mayflyComponents: components, mayflyTheme: { colors }, emit: root.emit.bind(root),
-    mayflyKeymap: { register(_actions: MayflyKeyAction[]) { return () => {} }, matches: () => false, dispatch: () => false, getKeys: () => keys },
+    mayflyKeymap: { register(_actions: MayflyKeyAction[]) { return () => {} }, matches: () => false, dispatch: () => false, ...withGetKeys ? { getKeys: () => keys } : {} },
   })
   mountMayflySurfaceRenderer(owner as never, runtime, hints ? { translate: (key, values) => key.replace('{count}', String(values?.count)).replace('{key}', String(values?.key)), revision: () => 0 } : undefined)
   const slot = root.mayflyScreen.mountNodeSlot('transcript.conversation', { region: 'content' })
@@ -130,6 +130,29 @@ describe('the tail chip', () => {
     state.length += 4
     await paint()
     expect(chip()).toBe('Back to bottom · Ctrl+↓/End')
+    await dispose()
+  })
+
+  it('falls back to the default follow key when the keymap cannot name its bindings', async () => {
+    const { chip, scrollUp, dispose } = await bench([], true, false)
+    await scrollUp()
+    expect(chip()).toBe('Back to bottom · Ctrl+↓')
+    await dispose()
+  })
+
+  it('gives a marked view the New messages chip before counting turns', async () => {
+    const { state, slot, chip, paint, scrollUp, dispose } = await bench()
+    slot.setTurns(3)
+    slot.setMarked(true)
+    await scrollUp()
+    state.length += 4
+    slot.setTurns(4)
+    await paint()
+    expect(chip()).toBe('New messages · Ctrl+↓')
+    // Clearing the marker returns to the turn count.
+    slot.setMarked(false)
+    await paint()
+    expect(chip()).toBe('1 new turn · Ctrl+↓')
     await dispose()
   })
 

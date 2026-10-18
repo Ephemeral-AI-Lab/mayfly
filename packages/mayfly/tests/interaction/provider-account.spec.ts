@@ -592,3 +592,164 @@ describe('DeepSeek account panel lifetime', () => {
     expect(typeof metadata.timezoneOffsetSeconds).toBe('number')
   })
 })
+
+/** The raw action handler of the open account panel. */
+function panelAction(ctx: Context): (event: unknown, context: unknown) => Promise<unknown> {
+  const entry = ctx.mayflyOverlays.list().find(item => item.id === panelId)!
+  return entry.definition.onEvent!.action! as (event: unknown, context: unknown) => Promise<unknown>
+}
+
+/** The event context every raw panel action is handed. */
+function actionContext() {
+  return { surfaceId: panelId, operationId: 'spec', source: [], revision: 1, signal: new AbortController().signal, report: vi.fn() }
+}
+
+/** One callback-form submission event. */
+function callbackSubmit(value: unknown) {
+  return {
+    kind: 'submit', pagePath: [], actionId: 'deliver-callback',
+    submission: { actionId: 'deliver-callback', forms: [{ id: 'callback-paste', fields: [{ id: 'callback-url', value }] }] },
+  }
+}
+
+describe('DeepSeek account sign-in stage facts', () => {
+  it('paints the finishing stage, a pending launch, and a link-less start', () => {
+    const finishing: AccountView = {
+      status: 'signed-out', links: LINKS,
+      attempt: { id: 'a' as never, phase: 'exchanging', authorizeUrl: 'https://auth.example/x', expiresAt: Date.now() + 60_000 },
+    }
+    const finishingJson = JSON.stringify(accountPanelNode(finishing, key => key, true, 45678, { launching: true }))
+    expect(finishingJson).toContain('Signing you in…')
+
+    const waiting: AccountView = {
+      status: 'signed-out', links: LINKS,
+      attempt: { id: 'b' as never, phase: 'waiting-browser', authorizeUrl: 'https://auth.example/x', expiresAt: Date.now() + 60_000 },
+    }
+    expect(JSON.stringify(accountPanelNode(waiting, key => key, true, 45678, { launching: true }))).toContain('Opening your browser…')
+
+    const starting: AccountView = { status: 'signed-out', links: LINKS, attempt: { id: 'c' as never, phase: 'initializing' } }
+    const startingJson = JSON.stringify(accountPanelNode(starting, key => key, true))
+    expect(startingJson).toContain('Getting your sign-in link…')
+    expect(startingJson).not.toContain('expires in')
+  })
+})
+
+describe('DeepSeek account panel raw actions', () => {
+  it('answers non-activate events and unknown actions without changing the panel', async () => {
+    const { ctx } = await bench(signedOut, { port: 45678 })
+    expect(await openAccountPanel(ctx, 'deepseek-account')).toBe(true)
+    expect(await panelAction(ctx)({ kind: 'dismiss', pagePath: [] }, actionContext())).toEqual({ kind: 'completed' })
+    expect(await panelAction(ctx)({ kind: 'activate', pagePath: [], controlId: 'account-actions', actionId: 'close' }, actionContext())).toEqual({ kind: 'completed' })
+  })
+
+  it('opens the manual paste view on show-paste', async () => {
+    const waiting: AccountView = {
+      status: 'signed-out', links: LINKS,
+      attempt: { id: 'a' as never, phase: 'waiting-browser', authorizeUrl: 'https://auth.example/x', expiresAt: Date.now() + 60_000 },
+    }
+    const { ctx } = await bench(waiting, { port: 45678 })
+    expect(await openAccountPanel(ctx, 'deepseek-account')).toBe(true)
+    const reply = await panelAction(ctx)({ kind: 'activate', pagePath: [], controlId: 'account-actions', actionId: 'show-paste' }, actionContext())
+    expect(reply).toMatchObject({ kind: 'accepted' })
+    expect(JSON.stringify(ctx.mayflyUiInteraction.get('overlay', panelId)!.node)).toContain('another machine')
+  })
+
+  it('rejects a callback submit without a web server or a pasted string', async () => {
+    const bare = await bench(signedOut)
+    expect(await openAccountPanel(bare.ctx, 'deepseek-account')).toBe(true)
+    expect(await panelAction(bare.ctx)(callbackSubmit('http://localhost:1/oauth/callback'), actionContext())).toMatchObject({ kind: 'invalid' })
+
+    const served = await bench(signedOut, { port: 45678 })
+    expect(await openAccountPanel(served.ctx, 'deepseek-account')).toBe(true)
+    expect(await panelAction(served.ctx)(callbackSubmit(42), actionContext())).toMatchObject({ kind: 'invalid' })
+    expect(await panelAction(served.ctx)(callbackSubmit(undefined), actionContext())).toMatchObject({ kind: 'invalid' })
+  })
+
+  it('refuses sign-in when the local web server is gone', async () => {
+    const { ctx } = await bench(signedOut)
+    expect(await openAccountPanel(ctx, 'deepseek-account')).toBe(true)
+    expect(await panelAction(ctx)({ kind: 'activate', pagePath: [], controlId: 'account-actions', actionId: 'sign-in' }, actionContext()))
+      .toMatchObject({ kind: 'failed', message: expect.stringContaining('local web server') })
+  })
+
+  it('restarts into an ended attempt without a link and reports a fresh link', async () => {
+    const waiting: AccountView = {
+      status: 'signed-out', links: LINKS,
+      attempt: { id: 'a' as never, phase: 'waiting-browser', authorizeUrl: 'https://auth.example/x', expiresAt: Date.now() + 60_000 },
+    }
+    const { ctx, account } = await bench(waiting, { port: 45678 })
+    expect(await openAccountPanel(ctx, 'deepseek-account')).toBe(true)
+    account.api.startSignIn = async () => ({ status: 'signed-out', links: LINKS, attempt: { id: 'ended' as never, phase: 'failed' } })
+    const reply = await panelAction(ctx)({ kind: 'activate', pagePath: [], controlId: 'account-actions', actionId: 'restart-sign-in' }, actionContext())
+    expect(reply).toMatchObject({ kind: 'completed', feedback: { message: 'Sign-in restarted with a fresh link' } })
+  })
+
+  it('gives up waiting for a link that never arrives and keeps the panel open', async () => {
+    const original = accountInternals.spawnOpener
+    accountInternals.spawnOpener = async () => true
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    try {
+      const { ctx, account } = await bench(signedOut, { port: 45678 })
+      account.failures.initializing = true
+      expect(await openAccountPanel(ctx, 'deepseek-account')).toBe(true)
+      const model = ctx.mayflyUiInteraction.get('overlay', panelId)!
+      model.invoke('sign-in')
+      await vi.advanceTimersByTimeAsync(15_000)
+      await flush(4)
+      // No link arrived, so no browser opened and no success notice is due.
+      expect(model.feedbackSnapshot()).toEqual([])
+      expect(ctx.mayflyOverlays.list().map(entry => entry.id)).toContain(panelId)
+    } finally {
+      vi.useRealTimers()
+      accountInternals.spawnOpener = original
+    }
+  })
+
+  it('repaints the waiting countdown every second and stops after close', async () => {
+    const original = accountInternals.spawnOpener
+    accountInternals.spawnOpener = async () => true
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+    try {
+      const { ctx } = await bench(signedOut, { port: 45678 })
+      expect(await openAccountPanel(ctx, 'deepseek-account')).toBe(true)
+      const model = ctx.mayflyUiInteraction.get('overlay', panelId)!
+      model.invoke('sign-in')
+      await flush(4)
+      const before = model.revision
+      await vi.advanceTimersByTimeAsync(1000)
+      await flush(4)
+      expect(model.revision).toBeGreaterThan(before)
+      ctx.mayflyOverlays.close(panelId)
+      await flush(4)
+      expect(ctx.mayflyOverlays.list().map(entry => entry.id)).not.toContain(panelId)
+      await vi.advanceTimersByTimeAsync(3000)
+    } finally {
+      vi.useRealTimers()
+      accountInternals.spawnOpener = original
+    }
+  })
+})
+
+describe('DeepSeek account opener grace window', () => {
+  it('treats an opener that outlives the grace window as opened', async () => {
+    await expect(accountInternals.spawnOpener(process.execPath, ['-e', 'setTimeout(() => {}, 3000)'])).resolves.toBe(true)
+  }, 10_000)
+
+  it('skips the system opener on a Linux session with no display', async () => {
+    const original = accountInternals.spawnOpener
+    const spawn = vi.fn(async () => true)
+    accountInternals.spawnOpener = spawn
+    try {
+      vi.stubEnv('DISPLAY', '')
+      vi.stubEnv('WAYLAND_DISPLAY', '')
+      await expect(openUrlInBrowser('https://example/signin')).resolves.toBe(false)
+      expect(spawn).not.toHaveBeenCalled()
+      // A Wayland session with no X display still opens a browser.
+      vi.stubEnv('WAYLAND_DISPLAY', 'wayland-0')
+      await expect(openUrlInBrowser('https://example/signin')).resolves.toBe(true)
+      expect(spawn).toHaveBeenCalledTimes(1)
+    } finally {
+      accountInternals.spawnOpener = original
+    }
+  })
+})

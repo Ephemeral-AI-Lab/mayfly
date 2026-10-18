@@ -25,6 +25,9 @@ async function boot(options: {
   readonly ignoreAbort?: boolean
   readonly reject?: unknown
   readonly providers?: readonly string[]
+  readonly firstLiveSeq?: number
+  readonly unregistered?: boolean
+  readonly resultReject?: unknown
 } = {}) {
   const ctx = new Context()
   const commands = new PaneFakeCommands()
@@ -44,13 +47,15 @@ async function boot(options: {
     if (options.reject !== undefined) return Promise.reject(options.reject)
     const child = fakeAgent(`child-${String(activations.length + 1)}`)
     const session = child.session as unknown as { firstLiveSeq: number }
-    session.firstLiveSeq = 3
-    live.set(String(child.id), child)
+    session.firstLiveSeq = options.firstLiveSeq ?? 3
+    if (options.unregistered !== true) live.set(String(child.id), child)
     children.push(child)
     let disposed = false
+    const rejected = options.resultReject === undefined ? undefined : Promise.reject(options.resultReject)
+    void rejected?.catch(() => {})
     const activation: ActivationFake = {
       childId: child.id,
-      result: new Promise<never>(() => {}),
+      result: (rejected ?? new Promise<never>(() => {})) as Promise<never>,
       dispose: vi.fn(async () => {
         if (disposed) return
         disposed = true
@@ -251,5 +256,96 @@ describe('mayfly-btw-command', () => {
     test.release()
     expect(await pending).toEqual({ kind: 'error', text: 'the side question was replaced before it opened' })
     expect(test.activations[0]!.dispose).toHaveBeenCalledOnce()
+  })
+
+  it('ignores a global close request when nothing is open and closes an open side question', async () => {
+    const idle = await boot()
+    idle.ctx.emit('mayfly/request-close-conversation')
+    expect(idle.current.current()).toBe(idle.parent)
+    await idle.dispose()
+
+    const test = await boot()
+    await test.commands.run('btw', 'question')
+    expect(btwView(test)).toBeDefined()
+    test.ctx.emit('mayfly/request-close-conversation')
+    await vi.waitFor(() => { expect(test.activations[0]!.dispose).toHaveBeenCalledOnce() })
+    expect(btwView(test)).toBeUndefined()
+    expect(test.current.current()).toBe(test.parent)
+    await test.dispose()
+  })
+
+  it('refuses a side question once the fork provider vanished before the command was removed', async () => {
+    const test = await boot()
+    test.setProviders([])
+    expect(await test.commands.run('btw', 'question')).toEqual({ kind: 'error', text: 'side questions need the native fork subagent provider' })
+    expect(test.startActivation).not.toHaveBeenCalled()
+    await test.dispose()
+  })
+
+  it('contains non-Error activation-result failures and disposal failures', async () => {
+    for (const failure of [new Error('result failed'), 'bare result failure']) {
+      const test = await boot({ resultReject: failure })
+      const warn = vi.spyOn(test.ctx.logger, 'warn')
+      expect(await test.commands.run('btw', 'question')).toMatchObject({ kind: 'success' })
+      await vi.waitFor(() => {
+        expect(warn).toHaveBeenCalledWith(`BTW activation ${String(test.children[0]!.id)} failed: ${failure instanceof Error ? failure.message : failure}`)
+      })
+      test.activations[0]!.dispose.mockRejectedValueOnce(failure)
+      expect(await test.commands.run('btw', '')).toMatchObject({ kind: 'success' })
+      await vi.waitFor(() => {
+        expect(warn).toHaveBeenCalledWith(`could not dispose BTW activation ${String(test.children[0]!.id)}: ${failure instanceof Error ? failure.message : failure}`)
+      })
+      await test.dispose()
+    }
+  })
+
+  it('disposes a start whose child never reached the Agent registry', async () => {
+    const test = await boot({ unregistered: true })
+    expect(await test.commands.run('btw', 'question')).toEqual({ kind: 'error', text: 'the side question was replaced before it opened' })
+    expect(test.activations[0]!.dispose).toHaveBeenCalledOnce()
+    expect(btwView(test)).toBeUndefined()
+    await test.dispose()
+  })
+
+  it('skips the history floor for a child with no inherited live events', async () => {
+    const test = await boot({ firstLiveSeq: 0 })
+    expect(await test.commands.run('btw', 'question')).toMatchObject({ kind: 'success' })
+    expect(btwView(test)).not.toHaveProperty('historyFloorSeq')
+    await test.dispose()
+  })
+
+  it('reports side-conversation open failures for Error and non-Error throws', async () => {
+    for (const failure of [new Error('open failed'), 'bare open failure']) {
+      const test = await boot()
+      const open = vi.spyOn(test.conversations, 'open').mockImplementationOnce(() => { throw failure })
+      expect(await test.commands.run('btw', 'question')).toEqual({
+        kind: 'error',
+        text: `could not open the side session: ${failure instanceof Error ? failure.message : failure}`,
+      })
+      expect(open).toHaveBeenCalledOnce()
+      expect(test.activations[0]!.dispose).toHaveBeenCalledOnce()
+      await test.dispose()
+    }
+  })
+
+  it('disposes the owned activation when another side conversation replaces the BTW view', async () => {
+    const test = await boot()
+    await test.commands.run('btw', 'question')
+    // A directly opened BTW view for another live session replaces the owned one in the registry.
+    test.live.set('other-session', fakeAgent('other-session'))
+    test.conversations.open({ kind: 'btw', sessionId: 'other-session', parentSessionId: String(test.parent.id), label: 'other' })
+    await vi.waitFor(() => { expect(test.activations[0]!.dispose).toHaveBeenCalledOnce() })
+    await test.dispose()
+  })
+
+  it('keeps the owned activation when the snapshot still names it beside another side view', async () => {
+    const test = await boot()
+    test.conversations.open({ kind: 'subagent', sessionId: 'child-x', parentSessionId: String(test.parent.id), label: 'child', mode: 'continuable' })
+    await test.commands.run('btw', 'question')
+    expect(test.activations[0]!.dispose).not.toHaveBeenCalled()
+    // Closing the BTW leaves the subagent view: the subscription evaluates a non-BTW view before disposing.
+    expect(await test.commands.run('btw', '')).toMatchObject({ kind: 'success' })
+    await vi.waitFor(() => { expect(test.activations[0]!.dispose).toHaveBeenCalledOnce() })
+    await test.dispose()
   })
 })

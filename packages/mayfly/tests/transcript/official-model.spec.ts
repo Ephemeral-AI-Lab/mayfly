@@ -1276,3 +1276,28 @@ describe('incremental conversion', () => {
     source.dispose()
   })
 })
+
+describe('group render revisions and absent turns', () => {
+  it('stamps read, search, and command groups with the source revision', () => {
+    const reads = conversationTranscriptModel(projection([
+      transcriptTool({ id: 'r1', callId: 'c1', seq: 1, updatedSeq: 1 }),
+      transcriptTool({ id: 'r2', callId: 'c2', seq: 2, updatedSeq: 3 }),
+    ]), readSource(), 0, 'tools:7')
+    expect(reads.entries[0]).toMatchObject({ kind: 'transcript-read-group', renderRevision: 'tools:7:3' })
+    const searches = conversationTranscriptModel(projection([
+      transcriptTool({ id: 's1', callId: 'cs1', seq: 1, updatedSeq: 1, name: 'grep', arguments: '{"pattern":"a"}' }),
+      transcriptTool({ id: 's2', callId: 'cs2', seq: 2, updatedSeq: 2, name: 'grep', arguments: '{"pattern":"b"}' }),
+    ]), combinedSource(), 0, 'tools:8')
+    expect(searches.entries[0]).toMatchObject({ kind: 'transcript-search-group', renderRevision: 'tools:8:2' })
+    const commands = conversationTranscriptModel(projection([
+      bash('b1', 'cb1', 1, 'one', commandResult('x', { exitCode: 0 })),
+      bash('b2', 'cb2', 2, 'two', commandResult('y', { exitCode: 0 })),
+    ]), commandSource(), 0, 'tools:9')
+    expect(commands.entries[0]).toMatchObject({ kind: 'transcript-command-group', renderRevision: 'tools:9:4' })
+  })
+
+  it('maps a projection without a turn list to an empty one', () => {
+    const bare = { entries: [], streaming: false, settledSteps: [] } as unknown as ConversationProjection
+    expect(conversationTranscriptModel(bare, readSource()).turns).toEqual([])
+  })
+})

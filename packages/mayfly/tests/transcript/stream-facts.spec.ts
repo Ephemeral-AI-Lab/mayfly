@@ -505,3 +505,53 @@ describe('StreamFacts: the turn index over a long session', () => {
     expect(facts.turns.flatMap(turn => turn.rows).filter(row => row.kind === 'note').map(row => row.kind === 'note' ? row.text : '')).toEqual(['before the second turn', 'inside the second turn'])
   })
 })
+
+describe('StreamFacts: canonical notes, plural counts, and compact call tiers', () => {
+  const compact = { ...DEFAULT_TRANSCRIPT_PRESENTATION, mode: 'compact', process: PROCESS_POLICIES.compact } as const
+
+  it('keeps a canonical note with the turn before it and with the turn after it', () => {
+    const between: MayflyUiNode = { kind: 'text', content: 'between' }
+    const entries = [user(1, 'q'), assistant(1, 'a'), between, user(2, 'again'), assistant(2, 'sure')]
+    const facts = new StreamFacts().build(model(entries as TranscriptEntryModel[], [{ turn: 1, startedAt: NOON, endedAt: NOON + 1, outcome: 'completed' }, { turn: 2, startedAt: NOON + 2 }]), inputs())
+    expect(facts.turns[0]!.rows.map(row => row.kind)).toEqual(['prompt', 'answer', 'note'])
+    expect(facts.turns[1]!.rows.map(row => row.kind)).toEqual(['prompt', 'answer'])
+
+    // The last turn follows the note, and no turn follows the note at the tail.
+    const trailing: MayflyUiNode = { kind: 'text', content: 'tail note' }
+    const tail = new StreamFacts().build(model([user(1, 'q'), trailing] as TranscriptEntryModel[], [{ turn: 1, startedAt: NOON }]), inputs())
+    expect(rowsOf(tail.turns[0]).at(-1)).toMatchObject({ kind: 'note', text: 'tail note' })
+  })
+
+  it('counts more than one subagent on a completed header and a compact title', () => {
+    const agents = [0, 1].map(index => ({ ...tool(1, 'task', 'explore'), id: `tool:agent-${String(index)}`, activity: 'subagents' } as TranscriptEntryModel))
+    const turns = [{ turn: 1, startedAt: NOON, endedAt: NOON + 2, outcome: 'completed' as const }]
+    const standard = new StreamFacts().build(model([user(1, 'q'), ...agents], turns), inputs())
+    expect(rowsOf(standard.turns[0]).find(row => row.kind === 'header')).toMatchObject({ label: '2 subagents · Ctrl+O to expand' })
+    const compactFacts = new StreamFacts().build(model([user(1, 'q'), ...agents], turns), inputs({ policy: compact }))
+    expect(rowsOf(compactFacts.turns[0]).find(row => row.kind === 'title')).toMatchObject({ text: '2 subagents' })
+  })
+
+  it('titles an edit that removed no lines as +N -0', () => {
+    const edit = { ...tool(1, 'edit', 'a.ts'), id: 'tool:edit-add', callId: 'c-add', change: { kind: 'edit', added: 3 } } as unknown as TranscriptEntryModel
+    const facts = new StreamFacts().build(model([user(1, 'q'), edit], [{ turn: 1, startedAt: NOON, endedAt: NOON + 1, outcome: 'completed' }]), inputs({ policy: compact }))
+    expect(rowsOf(facts.turns[0]).find(row => row.kind === 'title')).toMatchObject({ text: '1 tool call · +3 −0' })
+  })
+
+  it('draws a waiting compact call alone, and opens it through a disclosure row', () => {
+    const waiting = { ...tool(1, 'bash', 'sleep 9', false), id: 'tool:waiting', callId: 'wait-9' } as TranscriptEntryModel
+    const requests = [{ type: 'approval' as const, callId: 'wait-9', toolName: 'bash', reason: 'stop the server' }]
+    const turns = [{ turn: 1, startedAt: NOON }]
+    const closed = new StreamFacts().build(model([user(1, 'q'), waiting], turns, true), inputs({ policy: compact, requests }))
+    expect(rowsOf(closed.turns[0]).filter(row => row.kind === 'tool')).toHaveLength(1)
+    const opened = new StreamFacts().build(model([user(1, 'q'), waiting], turns, true), inputs({
+      policy: compact, requests, disclosure: { ...NO_DISCLOSURE, rows: new Set(['tool:waiting']) },
+    }))
+    expect(JSON.stringify(rowsOf(opened.turns[0]))).toContain('stop the server')
+  })
+
+  it('draws a flat model with no tier at the verbose default', () => {
+    const entry = { ...tool(1, 'bash', 'ls'), id: 'tool:flat', callId: 'c-flat' } as TranscriptEntryModel
+    const facts = new StreamFacts().build(createTranscriptModel('spec', [user(1, 'q'), entry]), inputs())
+    expect(rowsOf(facts.turns[0]).find(row => row.kind === 'tool')).toBeDefined()
+  })
+})

@@ -460,7 +460,7 @@ describe('node slot lease: turns and the conversation', () => {
 })
 
 /** A node slot host without a screen: its slots are bare components, and a compiler lends the dependencies a renderer would. */
-function bareHost(interaction?: UiInteractionService, extra: Partial<MayflyNodeSlotCompiler> = {}) {
+function bareHost(interaction?: UiInteractionService, extra: Partial<MayflyNodeSlotCompiler> = {}, contentStartOf: (id: string) => number | undefined = () => undefined) {
   const root = new Context()
   cleanups.push(() => root.fiber.dispose())
   const service = interaction ?? new UiInteractionService(root)
@@ -483,7 +483,7 @@ function bareHost(interaction?: UiInteractionService, extra: Partial<MayflyNodeS
     },
     () => ({ columns: 80, rows: 24 }),
     () => { prompts.push(prompts.length) },
-    () => undefined,
+    contentStartOf,
   )
   return {
     host, compiler, service, prompts, slots,
@@ -567,5 +567,90 @@ describe('node slot lease: routes and re-leases', () => {
     lease.set(streamList(streamItems(3)))
     bare.host.bind(bare.compiler)
     expect(component.render(80).join('')).toContain('Mayfly UI compilation failed safely')
+  })
+})
+
+describe('node slot lease: tracking, marking, and ended leases', () => {
+  const dismiss: MayflyUiEvent = { kind: 'dismiss', pagePath: [] }
+
+  it('follows a row into the scroll content and reads its line', () => {
+    const bare = bareHost(undefined, {}, () => 5)
+    const { lease, component } = bare.lease('transcript.conversation', { region: 'content' })
+    lease.set(streamList(streamItems(5)))
+    bare.host.bind(bare.compiler)
+    component.render(80)
+    lease.track('stream', 'item-2')
+    // A publish recompiles the list, which locates the followed row.
+    lease.set(streamList(streamItems(5)))
+    component.render(80)
+    expect(bare.host.contentStart('transcript.conversation')).toBe(5)
+    expect(lease.trackedRow()).toBe(7)
+
+    // A dock or footer lease is never the scroll's flow content, so it has
+    // no line to report even while it follows an item.
+    const dock = bare.lease('editor.prompt', { region: 'dock' })
+    dock.lease.set(streamList(streamItems(3)))
+    bare.host.bind(bare.compiler)
+    dock.component.render(80)
+    dock.lease.track('stream', 'item-1')
+    dock.lease.set(streamList(streamItems(3)))
+    dock.component.render(80)
+    expect(dock.lease.trackedRow()).toBeUndefined()
+  })
+
+  it('marks content turns and stops hearing, tracking, and marking once disposed', () => {
+    const heard: string[] = []
+    const bare = bareHost()
+    const dock = bare.lease('status.footer', { region: 'footer' })
+    const { lease, component } = bare.lease('transcript.conversation', { region: 'content', onEvent: event => { heard.push(event.kind) } })
+    lease.set(streamList(streamItems(3)))
+    bare.host.bind(bare.compiler)
+    component.render(80)
+
+    expect(bare.host.contentMarked()).toBe(false)
+    // A marked dock row is not a marker in the scroll region.
+    dock.lease.setMarked(true)
+    expect(bare.host.contentMarked()).toBe(false)
+    lease.setMarked(true)
+    // Marking it again is not a change and asks for no turn repaint.
+    lease.setMarked(true)
+    expect(bare.host.contentMarked()).toBe(true)
+    lease.setMarked(false)
+    expect(bare.host.contentMarked()).toBe(false)
+
+    lease.dispose()
+    // The ended lease keeps the methods callable but hears and does nothing.
+    ;(lease as unknown as { hear(event: MayflyUiEvent): void }).hear(dismiss)
+    lease.track('stream', 'item-2')
+    lease.setMarked(true)
+    expect(heard).toEqual([])
+  })
+})
+
+describe('node slot lease: the cursor watcher', () => {
+  it('reports each list cursor move once and stops when the lease ends', () => {
+    const moves: Array<string | undefined> = []
+    const bare = bareHost()
+    const { lease, component } = bare.lease('local.cursor', {
+      region: 'content',
+      cursor: { control: 'stream', onMove: itemId => { moves.push(itemId) } },
+    })
+    lease.set(streamList(streamItems(5)))
+    bare.host.bind(bare.compiler)
+    lease.focus()
+    component.render(80)
+    component.handleInput!('\x1b[B')
+    expect(moves).toEqual(['item-1'])
+    // A republish with the cursor where it was is not a move.
+    lease.set(streamList(streamItems(5)))
+    component.render(80)
+    expect(moves).toEqual(['item-1'])
+    component.handleInput!('\x1b[B')
+    component.handleInput!('\x1b[A')
+    expect(moves).toEqual(['item-1', 'item-2', 'item-1'])
+    lease.dispose()
+    // The ended lease no longer watches the model's cursor.
+    component.handleInput!('\x1b[B')
+    expect(moves).toEqual(['item-1', 'item-2', 'item-1'])
   })
 })

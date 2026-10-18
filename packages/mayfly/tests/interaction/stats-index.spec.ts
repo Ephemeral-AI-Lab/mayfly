@@ -119,3 +119,50 @@ it('is a no-op without a query service and drops digests for sessions that disap
   await refreshStatsIndex(bench.ctx, bench.index, undefined, signal(), () => {})
   expect(bench.index.digests.has('a')).toBe(false)
 })
+
+it('folds an unversioned observation and records a digest-less one', async () => {
+  const bench = setup([record('a'), record('b')])
+  bench.query.observeSession
+    .mockResolvedValueOnce(observation(record('a').header, undefined))
+    .mockResolvedValueOnce(observation(record('b').header, 'r1', []))
+  await refreshStatsIndex(bench.ctx, bench.index, undefined, signal(), () => {})
+  expect(bench.index.digests.get('a')?.revision).toBe('')
+  expect(bench.index.digests.get('a')?.digest?.id).toBe('a')
+  expect(bench.index.digests.get('b')).toEqual({ revision: 'r1', digest: null })
+})
+
+it('retires a refresh aborted while an observation is read', async () => {
+  const bench = setup([record('a')])
+  const controller = new AbortController()
+  bench.query.observeSession.mockImplementationOnce(async () => {
+    controller.abort()
+    return observation(record('a').header, 'r1')
+  })
+  const progress: unknown[] = []
+  await refreshStatsIndex(bench.ctx, bench.index, undefined, controller.signal, state => progress.push(state))
+  // The only progress is the initial zero; the aborted read leaves no digest.
+  expect(progress).toEqual([{ done: 0, total: 1, skipped: 0, failed: 0 }])
+  expect(bench.index.digests.size).toBe(0)
+})
+
+it('logs a non-Error failure as text', async () => {
+  const bench = setup([record('a')])
+  bench.query.observeSession.mockRejectedValueOnce('disk offline')
+  const warn = vi.spyOn(bench.ctx.logger, 'warn').mockImplementation(() => {})
+  await refreshStatsIndex(bench.ctx, bench.index, undefined, signal(), () => {})
+  expect(warn).toHaveBeenCalledWith(expect.stringContaining('disk offline'))
+})
+
+it('retires an aborted failed read without counting or logging it', async () => {
+  const bench = setup([record('a')])
+  const controller = new AbortController()
+  bench.query.observeSession.mockImplementationOnce(async () => {
+    controller.abort()
+    throw new Error('read stopped')
+  })
+  const warn = vi.spyOn(bench.ctx.logger, 'warn').mockImplementation(() => {})
+  const progress: unknown[] = []
+  await refreshStatsIndex(bench.ctx, bench.index, undefined, controller.signal, state => progress.push(state))
+  expect(warn).not.toHaveBeenCalled()
+  expect(progress).toEqual([{ done: 0, total: 1, skipped: 0, failed: 0 }])
+})

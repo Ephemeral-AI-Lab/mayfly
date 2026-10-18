@@ -1042,6 +1042,54 @@ describe('direct model picker boundaries', () => {
     await vi.waitFor(() => expect(picker.feedbackSnapshot()).toEqual(expect.arrayContaining([expect.objectContaining({ message: 'the model selection is unavailable' })])))
   })
 
+  it('reports a missing selection projection for model, effort, and the picker', async () => {
+    const bench = await mount()
+    bench.ctx.set('sessionProjections', undefined as never)
+    expect((await bench.ctx.commands.execute(bench.agent, '/model', [], signal()))?.result)
+      .toEqual({ kind: 'error', text: 'the model selection is unavailable' })
+    expect((await bench.ctx.commands.execute(bench.agent, '/effort', [], signal()))?.result)
+      .toEqual({ kind: 'error', text: 'the model selection is unavailable' })
+    expect(await openModelPicker(bench.ctx, signal())).toEqual({ kind: 'error', text: 'the model selection is unavailable' })
+  })
+
+  it('saves an effort-less default for a model picked before any session exists', async () => {
+    const bench = await mount({ attach: false })
+    const execution = await bench.ctx.commands.execute(bench.agent, '/model mock-pro', [], signal())
+    expect(execution?.result).toEqual({ kind: 'success', text: 'Switched to mock-pro (mock) · thinking high' })
+    expect(bench.saveSelection).toHaveBeenCalledWith({ provider: 'mock', model: 'mock-pro' })
+    const effort = await bench.ctx.commands.execute(bench.agent, '/effort low', [], signal())
+    expect(effort?.result).toEqual({ kind: 'success', text: 'Thinking set to low' })
+    expect(bench.saveSelection).toHaveBeenLastCalledWith({ provider: 'mock', model: 'mock', reasoningEffort: 'low' })
+  })
+
+  it('names a provider default only when the model advertises one', async () => {
+    const llm = fakeLlm({ reasoning: { efforts: [{ id: 'low', name: 'Low' }, { id: 'high', name: 'High' }], defaultEffort: undefined } as never })
+    const preset = fakeModelRef({ provider: 'mock', model: 'mock', reasoningEffort: 'high' as never })
+    const bench = await mount({ llm, modelRef: preset.ref })
+    const direct = await bench.ctx.commands.execute(bench.agent, '/effort default', [], signal())
+    expect(direct?.result).toEqual({ kind: 'success', text: 'Thinking set to provider default' })
+    await bench.ctx.commands.execute(bench.agent, '/effort', [], signal())
+    const node = JSON.stringify(bench.ctx.mayflyUiInteraction.get('overlay', 'mayfly.effort')!.node)
+    expect(node).toContain('Mock/mock')
+    expect(node).not.toContain('provider default:')
+  })
+
+  it('rejects a filter provider that vanished between the wait and the catalog read', async () => {
+    let reads = 0
+    const llm = { ...fakeLlm(), listProviders: () => ++reads <= 1 ? [{ id: 'mock', name: 'Mock' }] : [] } as unknown as LlmRuntime
+    const bench = await mount({ llm })
+    expect(await openModelPicker(bench.ctx, signal(), 'mock')).toEqual({ kind: 'error', text: 'provider "mock" is not registered' })
+  })
+
+  it('commits a pick with no shared editor to report through', async () => {
+    const bench = await mount()
+    setSharedEditor(bench.ctx, undefined as never)
+    await bench.ctx.commands.execute(bench.agent, '/model', [], signal())
+    const picker = selectModel(bench.ctx, 'mock', 'mock-pro')
+    acceptFocused(picker)
+    await vi.waitFor(() => { expect(bench.writes).toHaveLength(1) })
+  })
+
   it('reports an Agent lost after effort metadata resolves', async () => {
     const bench = await mount()
     let reads = 0

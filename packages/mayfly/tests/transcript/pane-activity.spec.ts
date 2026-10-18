@@ -137,6 +137,10 @@ async function bootFacts(initial: Partial<Facts>, settings: Record<string, unkno
       facts = { ...facts, ...next }
       listener?.(facts)
     },
+    /** Replace the current facts in place without notifying: the next tick publishes from the changed value. */
+    mutateFacts(next: Partial<Facts>) {
+      Object.assign(facts, next)
+    },
     advance(ms: number) { now += ms },
     settings(value: Record<string, unknown>) {
       section.value = value
@@ -488,6 +492,90 @@ describe('mayfly-pane-activity', () => {
   it('tells a resumed session how long ago it was last active, by the clock the row keeps', async () => {
     const harness = await bootFacts({ active: false, phase: 'idle', turn: 2, endedAt: NOW - 120_000 }, {}, false, 'idle')
     expect(harness.reported).toContain('Resumed session · 2 turns · last active 2m ago')
+    await harness.dispose()
+  })
+
+  it('falls back to the first thinking stage when the phase clock is not a number', async () => {
+    const harness = await bootFacts({ phase: 'thinking', outputProgress: { chars: 0, initialChars: 0, startedAt: Number.NaN, updatedAt: NOW } })
+    expect(rows(harness.screen)[0]).toMatch(/^ {2}\S Pondering/u)
+    await harness.dispose()
+  })
+
+  it('compares the call ids, lengths, and presence of the in-flight list without repainting equal shapes', async () => {
+    const harness = await bootFacts({ phase: 'tool', inFlight: [] })
+    const revision = (): number => harness.ctx.mayflyPanes.list().find(entry => entry.id === 'mayfly.pane.activity')!.revision
+    const before = revision()
+    // A first call grows the list: the row repaints.
+    harness.push({ inFlight: [{ callId: 'c1', name: 'bash', detail: 'one' }] })
+    expect(revision()).toBeGreaterThan(before)
+    const afterFirst = revision()
+    // A new array of the same length with the same call ids is the same row shape.
+    harness.push({ inFlight: [{ callId: 'c1', name: 'bash', detail: 'two' }] })
+    expect(revision()).toBe(afterFirst)
+    // A different call id is a row change.
+    harness.push({ inFlight: [{ callId: 'c2', name: 'read', detail: 'two' }] })
+    expect(revision()).toBeGreaterThan(afterFirst)
+    // A disappeared in-flight list is a row change too.
+    harness.push({ inFlight: undefined })
+    expect(revision()).toBeGreaterThan(afterFirst)
+    await harness.dispose()
+  })
+
+  it('repaints when the in-flight call id changes in a same-length list', async () => {
+    const harness = await bootFacts({ phase: 'tool', inFlight: [{ callId: 'c1', name: 'bash', detail: 'one' }] })
+    const revision = (): number => harness.ctx.mayflyPanes.list().find(entry => entry.id === 'mayfly.pane.activity')!.revision
+    const before = revision()
+    harness.push({ inFlight: [{ callId: 'c2', name: 'read', detail: 'two' }] })
+    expect(revision()).toBeGreaterThan(before)
+    expect(rows(harness.screen)[0]).toContain('Reading')
+    await harness.dispose()
+  })
+
+  it('repaints when a later call id changes behind a matching first call', async () => {
+    const harness = await bootFacts({ phase: 'tool', inFlight: [{ callId: 'a', name: 'bash', detail: 'one' }, { callId: 'b', name: 'read', detail: 'two' }] })
+    const revision = (): number => harness.ctx.mayflyPanes.list().find(entry => entry.id === 'mayfly.pane.activity')!.revision
+    const before = revision()
+    harness.push({ inFlight: [{ callId: 'a', name: 'bash', detail: 'one' }, { callId: 'c', name: 'write', detail: 'three' }] })
+    expect(revision()).toBeGreaterThan(before)
+    await harness.dispose()
+  })
+
+  it('reads a missing in-flight list defensively when a tick republishes the tool row', async () => {
+    const harness = await bootFacts({ phase: 'tool', inFlight: [{ callId: 'c1', name: 'bash', detail: 'one' }] })
+    harness.mutateFacts({ inFlight: undefined })
+    harness.tick.fire(NOW + 1_000)
+    expect(rows(harness.screen)[0]).toContain('Running commands')
+    await harness.dispose()
+  })
+
+  it('draws the fallback idle facts when a thin host has no current facts value', async () => {
+    const agent = fakeAgent([])
+    const harness = await bootPanePlugin(activity, agent, {
+      mayflyTick: new FakeTick(),
+      mayflyUiInteraction: { notificationSnapshot: (): readonly never[] => [], subscribe: () => () => {}, createNotificationOwner: () => ({ report() {}, clear() {}, clearAll() {}, dispose() {} }) },
+      mayflySessionFacts: {
+        current: undefined, currentAgent: null, currentGoal: null,
+        subscribe() { return () => {} },
+        subscribeGoal() { return () => {} },
+        subscribeAgent() { return () => {} },
+      },
+    })
+    expect(harness.ctx.mayflyPanes.list().some(entry => entry.id === 'mayfly.pane.activity')).toBe(true)
+    expect(rows(harness.screen)).toEqual([])
+    await harness.dispose()
+  })
+
+  it('drops preparing, missing, and empty call details and keeps the readable ones', async () => {
+    const harness = await bootFacts({
+      phase: 'tool',
+      inFlight: [
+        { callId: 'a', name: 'bash', preparing: true, detail: 'streaming arguments' },
+        { callId: 'b', name: 'bash' },
+        { callId: 'c', name: 'bash', detail: '' },
+        { callId: 'd', name: 'bash', detail: 'kept detail' },
+      ],
+    })
+    expect(rows(harness.screen)[1]).toBe('    ⎿ kept detail')
     await harness.dispose()
   })
 })

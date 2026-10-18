@@ -76,3 +76,15 @@ describe('child agent model', () => {
     expect(changes).toBe(4)
   })
 })
+
+describe('activation and snapshot edges', () => {
+  it('rejects JSON values that are not objects', () => {
+    for (const text of ['42', 'null', 'true', '"activation"', '[]']) expect(parseActivationResult(text)).toBeUndefined()
+  })
+
+  it('omits a model and effort the child does not report', () => {
+    expect(childLiveSnapshot({ ...child, model: undefined, effort: undefined })).toEqual({
+      phase: 'running', tokens: 125, toolCount: 2, liveChars: 2_048, activity: 'Using read',
+    })
+  })
+})

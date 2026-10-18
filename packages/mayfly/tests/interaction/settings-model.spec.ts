@@ -188,3 +188,18 @@ describe('native settings projections', () => {
     ])
   })
 })
+
+describe('labelled settings options', () => {
+  it('labels theme and startup options through their translators instead of raw values', () => {
+    const schema = Schema.object({ theme: Schema.union(['auto', 'light']), startup: Schema.union(['splash', 'conversation']) })
+    const t = (key: string): string => `[${key}]`
+    const projection = settingsProjection({
+      ns: 'mayfly' as never, revision: 0, applies: 'live', autoGenerate: false,
+      schema: schema.toJSON(), value: { theme: 'auto', startup: 'splash' },
+    }, true, {}, t)
+    const theme = projection.bindings.get(settingsField('theme').fieldId)!.field
+    expect('options' in theme ? theme.options : []).toEqual(expect.arrayContaining([{ id: '"auto"', label: '[Auto]' }]))
+    const startup = projection.bindings.get(settingsField('startup').fieldId)!.field
+    expect('options' in startup ? startup.options : []).toEqual(expect.arrayContaining([{ id: '"splash"', label: '[Splash]' }]))
+  })
+})

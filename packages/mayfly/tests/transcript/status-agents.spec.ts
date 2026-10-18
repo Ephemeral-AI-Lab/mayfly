@@ -310,9 +310,22 @@ function handConversations() {
   }
 }
 
+function handViews(active: string | undefined, isEntered: boolean) {
+  let current = { active, isEntered }
+  const listeners = new Set<() => void>()
+  return {
+    get active() { return current.active },
+    get isEntered() { return current.isEntered },
+    subscribe(listener: () => void) { listeners.add(listener); return () => { listeners.delete(listener) } },
+    set(next: { readonly active: string | undefined, readonly isEntered: boolean }) { current = next; for (const listener of listeners) listener() },
+  }
+}
+
 async function bootAgents(options: {
   readonly isOwnSeq?: (seq: unknown) => boolean
   readonly resident?: readonly string[]
+  readonly views?: ReturnType<typeof handViews>
+  readonly catalogValue?: unknown
 } = {}) {
   const base = fakeAgent([]) as unknown as Agent & { session: { isOwnSeq?: (seq: unknown) => boolean } }
   base.session.isOwnSeq = options.isOwnSeq ?? (() => true)
@@ -320,7 +333,7 @@ async function bootAgents(options: {
   const facts = handFacts(base)
   const conversations = handConversations()
   const tick = new HandTick()
-  const screen = { leaveViews: vi.fn(), enterViews: vi.fn() }
+  const screen = { leaveViews: vi.fn(), enterViews: vi.fn(), ...(options.views === undefined ? {} : { views: options.views }) }
   const resident = new Map<string, Agent>([[String(base.id), base]])
   const catalog: SubagentCatalogEntry[] = []
   const timing = new Map<string, SubagentTimingProjection>()
@@ -330,7 +343,7 @@ async function bootAgents(options: {
   let projectionListener: ((session: unknown, key: string, value: unknown) => void) | undefined
   const projections = {
     snapshot: (session: { readonly id?: unknown }, _keys?: readonly string[]) => session === base.session
-      ? { asOfSeq: 0, values: { subagentCatalog: [...catalog] } }
+      ? { asOfSeq: 0, values: { subagentCatalog: options.catalogValue ?? [...catalog] } }
       : {
           asOfSeq: 0,
           values: {
@@ -366,7 +379,7 @@ async function bootAgents(options: {
     return spans.map(span => span.text).join('')
   }
   return {
-    ...harness, base, selected, facts, conversations, tick, screen, listChildren, pane, act, open, key, summaryText, resident, catalog, timing, identity,
+    ...harness, base, selected, facts, conversations, tick, screen, listChildren, pane, act, open, key, summaryText, resident, catalog, timing, identity, views: options.views,
     pushProjection(session: unknown, key: string) { projectionListener?.(session, key, undefined) },
   }
 }
@@ -558,5 +571,190 @@ describe('mayfly-status-agents', () => {
     bare.facts.setFacts({ turn: 1, active: true, agentCalls: [call('own', { seq: 9, startedAt: Date.now() })] })
     expect(bare.summaryText()).toMatch(/^● agents 0\/1/u)
     await bare.dispose()
+  })
+})
+
+describe('mayfly-status-agents edge paths', () => {
+  it('bounds the spawn-fact cache while keeping every row', () => {
+    const calls = Array.from({ length: 520 }, (_, index) => call(`evict-${String(index)}`, { seq: index + 1, arguments: JSON.stringify({ description: `task ${String(index)}` }) }))
+    const rows = agentsItem.agentRows(native({ calls }))
+    expect(rows).toHaveLength(520)
+    expect(rows.at(-1)).toMatchObject({ id: 'evict-519', label: 'task 519' })
+  })
+
+  it('answers a key that is neither open nor stop, and asks for a selection without one', async () => {
+    const harness = await bootAgents()
+    harness.facts.setFacts({ turn: 1, active: true, agentCalls: [call('audit', { startedAt: Date.now(), result: done(activation('child-1')) })] })
+    await expect(harness.act({ kind: 'activate', actionId: 'some-other-action' })).resolves.toEqual({ kind: 'completed' })
+    await expect(harness.act({ kind: 'activate', actionId: 'agents-stop' })).resolves.toMatchObject({ kind: 'failed', message: 'Select a subagent first' })
+    await harness.dispose()
+  })
+
+  it('refuses a child its catalog no longer lists, then opens one whose catalog row has no label', async () => {
+    const harness = await bootAgents()
+    harness.facts.setFacts({ turn: 1, active: true, agentCalls: [call('audit', { startedAt: Date.now(), result: done(activation('child-1')) })] })
+    await expect(harness.open('audit')).resolves.toMatchObject({ kind: 'failed', message: 'This subagent cannot be opened' })
+    harness.catalog.push(entry('child-1', 'continuable'))
+    harness.facts.setChildren([child('child-1')])
+    harness.facts.setFacts({ turn: 1, active: true, agentCalls: [call('audit', { startedAt: Date.now(), result: done(activation('child-1')) })] })
+    await expect(harness.open('audit')).resolves.toEqual({ kind: 'completed' })
+    expect(harness.conversations.service.open).toHaveBeenCalledWith(expect.objectContaining({ label: 'task of audit' }))
+    await harness.dispose()
+  })
+
+  it('answers a non-Error catalog rejection with its text', async () => {
+    const harness = await bootAgents()
+    harness.listChildren.mockRejectedValueOnce('catalog offline')
+    harness.facts.setFacts({ turn: 1, active: true, agentCalls: [call('audit', { startedAt: Date.now(), result: done(activation('child-1')) })] })
+    await expect(harness.open('audit')).resolves.toMatchObject({ kind: 'failed', message: 'catalog offline' })
+    await harness.dispose()
+  })
+
+  it('explains that a live one-shot child cannot be stopped', async () => {
+    const harness = await bootAgents({ resident: ['child-1'] })
+    harness.catalog.push(entry('child-1', 'one-shot', 'one shot'))
+    harness.facts.setFacts({ turn: 1, active: true, agentCalls: [call('audit', { startedAt: Date.now(), result: done(activation('child-1')) })] })
+    harness.facts.setChildren([child('child-1')])
+    expect(JSON.stringify(harness.pane().node)).toContain('Only continuable subagents can be stopped')
+    await harness.dispose()
+  })
+
+  it('drops native catalog facts when no Agent is selected, and treats a non-array catalog as empty', async () => {
+    const harness = await bootAgents()
+    harness.catalog.push(entry('child-1', 'continuable', 'catalog label'))
+    harness.facts.setFacts({ turn: 1, active: true, agentCalls: [call('audit', { startedAt: Date.now(), result: done(activation('child-1')) })] })
+    expect(JSON.stringify(harness.pane().node)).toContain('catalog label')
+    harness.selected.switchTo(null)
+    harness.facts.setFacts({ turn: 1, active: false, agentCalls: [call('audit', { startedAt: Date.now(), result: done(activation('child-1')) })] })
+    expect(JSON.stringify(harness.pane().node)).not.toContain('catalog label')
+    await harness.dispose()
+
+    const broken = await bootAgents({ catalogValue: 'not a catalog' })
+    broken.facts.setFacts({ turn: 1, active: true, agentCalls: [call('audit', { startedAt: Date.now(), result: done(activation('child-1')) })] })
+    expect(broken.summaryText()).toMatch(/^✓ agents 1\/1/u)
+    await broken.dispose()
+  })
+
+  it('reads a resident child\'s native timing and identity from its exact Agent', async () => {
+    const harness = await bootAgents({ resident: ['child-1'] })
+    harness.catalog.push(entry('child-1', 'continuable', 'native task'))
+    harness.facts.setFacts({ turn: 1, active: true, agentCalls: [call('audit', { startedAt: Date.now(), result: done(activation('child-1')) })] })
+    harness.timing.set('child-1', { settledMs: 0, active: { since: T0, through: T0 + 1_000 } })
+    harness.pushProjection(harness.base.session, 'subagentCatalog')
+    expect(harness.summaryText()).toMatch(/^● agents 0\/1/u)
+    harness.identity.set('child-1', { mode: 'continuable', label: 'identity label', seq: 1 as never })
+    harness.pushProjection({ id: 'child-1' } as never, 'subagent')
+    expect(JSON.stringify(harness.pane().node)).toContain('identity label')
+    // A projection for another child, or one the view does not read, refreshes nothing.
+    const revision = harness.pane().revision
+    harness.pushProjection({ id: 'someone-else' } as never, 'subagentTiming')
+    harness.pushProjection(harness.base.session, 'title')
+    expect(harness.pane().revision).toBe(revision)
+    await harness.dispose()
+  })
+
+  it('stays out of the view when the opened child was left for another conversation', async () => {
+    const harness = await bootAgents({ resident: ['child-1'] })
+    harness.catalog.push(entry('child-1', 'continuable', 'label child-1'))
+    harness.facts.setFacts({ turn: 1, active: true, agentCalls: [call('audit', { startedAt: Date.now(), result: done(activation('child-1')) })] })
+    harness.facts.setChildren([child('child-1')])
+    await harness.open('audit')
+    harness.conversations.closeBehind()
+    harness.conversations.close()
+    await new Promise<void>(resolve => { setImmediate(resolve) })
+    expect(harness.screen.enterViews).not.toHaveBeenCalled()
+    await harness.dispose()
+  })
+
+  it('follows entry into the views lane when it paints the hidden panel cadence', async () => {
+    const views = handViews('mayfly.view.agents', false)
+    const harness = await bootAgents({ views })
+    harness.facts.setFacts({ turn: 1, active: true, agentCalls: [call('fg', { startedAt: Date.now() })] })
+    expect(harness.pane().node).not.toBeNull()
+    views.set({ active: 'mayfly.view.agents', isEntered: true })
+    views.set({ active: 'mayfly.view.agents', isEntered: false })
+    views.set({ active: 'other.view', isEntered: true })
+    expect(harness.summaryText()).toMatch(/^● agents 0\/1/u)
+    await harness.dispose()
+  })
+
+
+})
+
+describe('mayfly-status-agents additional edges', () => {
+  it('carries a live child activity and truncates a long spawn task', () => {
+    const callId = 'activity'
+    const long = 'x'.repeat(100)
+    const [row] = rowsOf({
+      calls: [call(callId, { result: done(activation('child-1')), arguments: JSON.stringify({ name: 'agent', description: long }) })],
+      catalog: [entry('child-1', 'continuable')],
+      children: [child('child-1', { activity: 'Using bash' })],
+    })
+    expect(row).toMatchObject({ activity: 'Using bash' })
+    expect(row!.task).toHaveLength(80)
+    expect(row!.task!.endsWith('…')).toBe(true)
+    const [plain] = rowsOf({ calls: [call('short', { arguments: JSON.stringify({ name: 'agent', description: 'short task' }) })] })
+    expect(plain).toMatchObject({ task: 'short task' })
+  })
+
+  it('draws a live row\'s activity as its brief and an unended settled row against the passed now', () => {
+    const row = (id: string, extra: Partial<AgentRow> = {}): AgentRow => ({
+      id, label: id, task: `task of ${id}`, mode: 'continuable', external: false, live: false, failed: false, stopped: false,
+      inputTokens: 0, outputTokens: 0, liveChars: 0, startedAt: T0, ...extra,
+    })
+    const items = (node: unknown): MayflyListItem[] => {
+      const found: MayflyListItem[] = []
+      const walk = (value: unknown): void => {
+        if (value === null || typeof value !== 'object') return
+        const record = value as { readonly kind?: string, readonly items?: MayflyListItem[] }
+        if (record.kind === 'list') found.push(...record.items!)
+        for (const child of Object.values(value)) walk(child)
+      }
+      walk(node)
+      return found.filter(item => !item.id.includes('-pad-'))
+    }
+    const cells = (item: MayflyListItem): string[] => (item.cells ?? []).map(cell => cell.spans.map(span => span.text).join(''))
+    const live = row('live', { live: true, activity: 'Using bash' })
+    delete (live as { endedAt?: number }).endedAt
+    const settled = row('settled')
+    delete (settled as { endedAt?: number }).endedAt
+    const [liveItem, settledItem] = items(agentsItem.agentsPanel({ rows: [live, settled], now: T0 + 5_000 }, transcriptTranslatorFake, () => ({})))
+    expect(cells(liveItem!)[1]).toBe('Using bash')
+    expect(liveItem!.cells![1]!.spans[0]).toMatchObject({ tone: 'default' })
+    expect(settledItem!.right!.at(-1)).toEqual({ text: '5s', tone: 'muted' })
+    expect(settledItem!.cells![1]!.spans[0]).toMatchObject({ tone: 'muted' })
+  })
+
+  it('ignores projection changes after unload', async () => {
+    const harness = await bootAgents()
+    await harness.dispose()
+    expect(() => { harness.pushProjection(harness.base.session, 'subagentCatalog') }).not.toThrow()
+  })
+
+  it('keeps the opened view when its own display republishes and leaves it after F7', async () => {
+    const harness = await bootAgents({ resident: ['child-1'] })
+    harness.catalog.push(entry('child-1', 'continuable', 'label child-1'))
+    harness.facts.setFacts({ turn: 1, active: true, agentCalls: [call('audit', { startedAt: Date.now(), result: done(activation('child-1')) })] })
+    harness.facts.setChildren([child('child-1')])
+    await harness.open('audit')
+    // A republish while the child stays displayed keeps the view's claim on it.
+    harness.conversations.touch()
+    harness.conversations.switchAway()
+    harness.conversations.close()
+    await new Promise<void>(resolve => { setImmediate(resolve) })
+    expect(harness.screen.enterViews).not.toHaveBeenCalled()
+    await harness.dispose()
+  })
+
+  it('does not re-enter the view when the pane unloaded before the closed child settled', async () => {
+    const harness = await bootAgents({ resident: ['child-1'] })
+    harness.catalog.push(entry('child-1', 'continuable', 'label child-1'))
+    harness.facts.setFacts({ turn: 1, active: true, agentCalls: [call('audit', { startedAt: Date.now(), result: done(activation('child-1')) })] })
+    harness.facts.setChildren([child('child-1')])
+    await harness.open('audit')
+    harness.conversations.close()
+    await harness.dispose()
+    await new Promise<void>(resolve => { setImmediate(resolve) })
+    expect(harness.screen.enterViews).not.toHaveBeenCalled()
   })
 })

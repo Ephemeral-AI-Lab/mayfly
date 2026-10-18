@@ -368,3 +368,24 @@ describe('mayfly-status-goal', () => {
     })
   })
 })
+
+describe('goal activation edges', () => {
+  it('reads a projected goal as disarmed when the registry has no entry for the Agent', async () => {
+    const agent = fakeAgent([]) as unknown as Agent
+    const harness = await bootGoal(agent, { mayflyCurrentAgent: currentAgentService(agent).service, goals: { get: () => undefined } }, goal('active'))
+    expect(fullText(harness.entry().summary)).toBe('○ goal 2/8')
+    await harness.dispose()
+  })
+
+  it('ignores an activation change published for a foreign session', async () => {
+    const agent = fakeAgent([]) as unknown as Agent
+    const get = vi.fn(() => goal('active'))
+    const harness = await bootGoal(agent, { mayflyCurrentAgent: currentAgentService(agent).service, goals: { get } }, goal('active'))
+    const reads = get.mock.calls.length
+    harness.ctx.emit('goal/activation-changed', { sessionId: 'another-session' } as never)
+    // The durable read is not repeated for a session that is not the current Agent's.
+    expect(get).toHaveBeenCalledTimes(reads)
+    expect(fullText(harness.entry().summary)).toBe('● goal 2/8')
+    await harness.dispose()
+  })
+})

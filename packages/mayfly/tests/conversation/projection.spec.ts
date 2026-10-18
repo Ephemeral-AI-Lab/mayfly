@@ -949,3 +949,136 @@ describe('SessionProjectionRegistry integration', () => {
     await ctx.fiber.dispose()
   })
 })
+
+describe('mayflyConversation projection stale and defensive folds', () => {
+  it('drops a foreign settled key when a later step settles', () => {
+    const state: ConversationProjectionState = { ...initialConversationState(), finalizedSteps: ['foreign'] }
+    const next = foldConversationProjection(state, event('assistant/message', {
+      turn: 2, step: 0, message: assistantMessage([{ type: 'text', text: 'answer' }]),
+    }, { append: true }))
+    expect(next.finalizedSteps).toEqual(['2:0'])
+  })
+
+  it('ignores a compaction end whose open record matches no transaction', () => {
+    const state = fold([
+      event('compaction/start', { compactionId: 'cmp-open' as never, turn: null }),
+    ])
+    expect(foldConversationProjection(state, event('compaction/end', { compactionId: 'cmp-other' as never, turn: null }))).toBe(state)
+  })
+
+  it('ignores compactions whose open record lost its running entry, kind, or state', () => {
+    const state = fold([event('compaction/start', { compactionId: 'cmp-lost' as never, turn: null })])
+    const end = event('compaction/end', { compactionId: 'cmp-lost' as never, turn: null })
+    const missing = { ...state, entries: [] }
+    expect(foldConversationProjection(missing, end)).toBe(missing)
+    const wrongKind = { ...state, entries: state.entries.map(entry => entry.kind === 'compaction' ? { ...entry, kind: 'user' as const, text: 'not a compaction', images: [] } : entry) }
+    expect(foldConversationProjection(wrongKind, end)).toBe(wrongKind)
+    const settled = { ...state, entries: state.entries.map(entry => entry.kind === 'compaction' ? { ...entry, state: 'ok' as const } : entry) }
+    expect(foldConversationProjection(settled, end)).toBe(settled)
+  })
+
+  it('splices a retried attempt past the tool rows of the same step', () => {
+    let state = fold([
+      event('turn/start', { turn: 2 }),
+      event('tool/call', { turn: 2, step: 0, callId: ToolCallId('call-retry'), name: 'read', arguments: '{}' }),
+    ])
+    state = foldConversationProjection(state, attemptEvent(2, 0, 'text', 'draft'))
+    expect(state.entries.filter(entry => entry.kind === 'tool')).toHaveLength(1)
+    expect(state.entries.filter(entry => entry.kind === 'assistant')).toHaveLength(1)
+  })
+
+  it('drops the open compaction record of a retracted turn', () => {
+    const state = fold([
+      event('turn/start', { turn: 3 }),
+      event('compaction/start', { compactionId: 'cmp-retract' as never, turn: null }),
+    ])
+    expect(state.openCompactions).toHaveLength(1)
+    const retracted = foldConversationProjection(state, retractionMarker(state.currentTurn, 0))
+    expect(retracted.entries.some(entry => entry.kind === 'compaction')).toBe(false)
+    expect(retracted.openCompactions).toEqual([])
+  })
+
+  it('leaves a session/end-seed fold unchanged when no compaction is open', () => {
+    const state = fold([event('user/message', userMessage('nothing open'), { append: true })])
+    expect(foldConversationProjection(state, event('session/end-seed', {}, { time: 1 }))).toBe(state)
+  })
+
+  it('settles the stale open records of a session/end-seed that lost their entries', () => {
+    const state = fold([event('compaction/start', { compactionId: 'cmp-stale' as never, turn: null })])
+    const stale = { ...state, entries: [] }
+    const next = foldConversationProjection(stale, event('session/end-seed', {}, { time: 2 }))
+    expect(next.entries).toEqual([])
+    expect(next.openCompactions).toEqual([])
+  })
+
+  it('folds a goal round only when it is appended at a positive round', () => {
+    const base = fold([event('turn/start', { turn: 1 })])
+    const goal = (round: number, append: boolean) => event('user/message', {
+      ...userMessage('goal prompt'),
+      source: { kind: 'goal', round },
+    } as never, append ? { append: true } : {})
+    expect(foldConversationProjection(base, goal(0, true))).toBe(base)
+    expect(foldConversationProjection(base, goal(1, false))).toBe(base)
+    const round = foldConversationProjection(base, goal(1, true))
+    expect(round.entries.at(-1)).toMatchObject({ kind: 'goal-round', round: 1 })
+  })
+
+  it('folds a goal change as a clear row or a full lifecycle row', () => {
+    const base = fold([event('turn/start', { turn: 4 })])
+    const change = (operation: string, blockedReason?: { code: string, message: string }) => event('goal/change', {
+      operation,
+      goal: { objective: 'ship it', ...(blockedReason === undefined ? {} : { blockedReason }) },
+      roundsStarted: 2, createdAt: 10, updatedAt: 20,
+    } as never)
+    const cleared = foldConversationProjection(base, change('clear'))
+    expect(cleared.entries.at(-1)).toMatchObject({ kind: 'goal-change', operation: 'clear' })
+    const full = foldConversationProjection(base, change('blocked', { code: 'needs-input', message: 'answer first' }))
+    expect(full.entries.at(-1)).toMatchObject({
+      kind: 'goal-change', operation: 'blocked', objective: 'ship it', roundsStarted: 2,
+      blockedReason: { code: 'needs-input', message: 'answer first' },
+    })
+    const unblocked = foldConversationProjection(base, change('resume'))
+    expect(unblocked.entries.at(-1)).not.toHaveProperty('blockedReason')
+  })
+
+  it('keeps a goal change out of a retracted current turn', () => {
+    const state = fold([
+      event('turn/start', { turn: 5 }),
+      event('developer/message', {
+        turn: 5, step: 0,
+        message: { id: MessageId('retract-5'), role: 'developer', content: [], source: { kind: 'mayfly-retraction' } },
+      }, { replace: true }),
+    ])
+    expect(state.retractedTurns).toEqual([5])
+    expect(foldConversationProjection(state, event('goal/change', {
+      operation: 'clear', goal: { objective: 'x' }, roundsStarted: 0, createdAt: 0, updatedAt: 0,
+    } as never))).toBe(state)
+  })
+
+  it('keeps the reasoning progress of a thinking attempt', () => {
+    const next = foldConversationProjection(initialConversationState(), attemptEvent(1, 0, 'reasoning', 'thinking...'))
+    const thinking = next.entries.find(entry => entry.kind === 'thinking')
+    expect(thinking).toMatchObject({ streaming: true })
+    expect(thinking).toHaveProperty('outputProgress')
+  })
+
+  it('keeps the reasoning row of a thinking-then-composing retry without its progress', () => {
+    const next = foldConversationProjection(initialConversationState(), event('assistant/attempt', {
+      turn: 1, step: 0, stream: [
+        { type: 'reasoning-chunks', time0: 1_000, index: 0, dt: [], texts: ['considered'] },
+        { type: 'text-chunks', time0: 1_500, index: 1, dt: [], texts: ['answer'] },
+      ],
+    }))
+    const thinking = next.entries.find(entry => entry.kind === 'thinking')
+    expect(thinking).toMatchObject({ text: 'considered', streaming: false })
+    expect(thinking).not.toHaveProperty('outputProgress')
+  })
+
+  it('rejects non-object wire views through the strict schema', () => {
+    const schema = conversationProjectionDefinition.wire.viewSchema
+    expect(schema.safeParse(null).success).toBe(false)
+    expect(schema.safeParse([]).success).toBe(false)
+    expect(schema.safeParse({ streaming: false }).success).toBe(false)
+    expect(schema.safeParse({ streaming: false, entries: [], settledSteps: [], turns: [] }).success).toBe(true)
+  })
+})

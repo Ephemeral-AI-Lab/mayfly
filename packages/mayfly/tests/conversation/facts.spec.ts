@@ -408,3 +408,35 @@ describe('mayflyConversationFacts projection', () => {
     await ctx.fiber.dispose()
   })
 })
+
+describe('compaction marks without measurements', () => {
+  it('uses zero when no prompt-side usage has been measured yet', () => {
+    let state = foldConversationFacts(initialConversationFacts(), event('compaction/start', { compactionId: 'fresh' }))
+    expect(state.compactions).toEqual([{ id: 'fresh', before: 0 }])
+    // An orphan summary with no start and no usage measures the same zero.
+    state = foldConversationFacts(state, event('compaction/summary', {
+      compactionId: 'orphan', summary: [], shadowedRange: { start: 1, end: 1 }, shadowedSeqs: [1], shadowedTokenCount: 5,
+      provider: 'p', model: 'm',
+    }))
+    expect(state.compactions?.at(-1)).toEqual({ id: 'orphan', before: 0, after: 0 })
+  })
+
+  it('reads a streamed step whose usage record is absent as unmeasured', () => {
+    let state = foldConversationFacts(initialConversationFacts(), attempt(1, 1, 'text', 'streamed'))
+    state = foldConversationFacts(state, event('compaction/start', { compactionId: 'stream-only' }))
+    expect(state.compactions).toEqual([{ id: 'stream-only', before: 0 }])
+    // A retained output map without the matching prompt-side usage record is unmeasured too.
+    const streamedOnly = { ...initialConversationFacts(), outputByStep: { '1:0': 5 } }
+    expect(foldConversationFacts(streamedOnly, event('compaction/start', { compactionId: 'no-usage' })).compactions)
+      .toEqual([{ id: 'no-usage', before: 0 }])
+  })
+})
+
+describe('repeated spawn calls', () => {
+  it('pairs a result with the first spawn call for one call id', () => {
+    let state = foldConversationFacts(initialConversationFacts(), event('tool/call', { turn: 1, step: 0, callId: 'dup', name: 'subagent', arguments: '{}' }))
+    state = foldConversationFacts(state, event('tool/call', { turn: 1, step: 0, callId: 'dup', name: 'subagent', arguments: '{}' }))
+    state = foldConversationFacts(state, event('tool/result', toolResult('dup', [{ type: 'text', text: 'once' }]), 5_000))
+    expect(state.agentCalls[0]?.result).toEqual({ text: 'once', isError: false, endedAt: 5_000 })
+  })
+})

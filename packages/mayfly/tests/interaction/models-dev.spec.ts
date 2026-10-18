@@ -189,3 +189,63 @@ describe('loadModelsDevIndex', () => {
     reset(undefined)
   })
 })
+
+describe('models.dev list prices', () => {
+  /** One provider whose models carry prices, partial prices, and junk rates. */
+  function pricedPayload(): unknown {
+    return {
+      'z-ai': {
+        models: {
+          'glm-4.6': {
+            limit: { context: 200_000, output: 32_768 },
+            cost: { input: 0.6, output: 2.2, cache_read: 0.11, cache_write: 0.5 },
+          },
+          'glm-free': { cost: { input: 0, output: 0, cache_read: 0, cache_write: 0 } },
+        },
+      },
+      openai: {
+        models: {
+          'gpt-partial-input': { cost: { input: 1 } },
+          'gpt-partial-output': { cost: { output: 2 } },
+          'gpt-no-rates': { limit: { context: 8_000 }, cost: { input: 1, output: 2 } },
+          'gpt-junk-rates': { cost: { input: '1', output: Number.POSITIVE_INFINITY } },
+          'gpt-junk-cache': { cost: { input: 1, output: 2, cache_read: 'x', cache_write: -1 } },
+        },
+      },
+    }
+  }
+
+  it('carries complete prices and ignores partial or non-numeric ones', () => {
+    const index = buildIndex(pricedPayload())
+    expect(index.lookup('glm-4.6')?.cost).toEqual({ input: 0.6, output: 2.2, cacheRead: 0.11, cacheWrite: 0.5 })
+    // Zero is a price, not a missing field.
+    expect(index.lookup('glm-free')?.cost).toEqual({ input: 0, output: 0, cacheRead: 0, cacheWrite: 0 })
+    // A price needs both an input and an output rate.
+    expect(index.lookup('gpt-partial-input')).toBeUndefined()
+    expect(index.lookup('gpt-partial-output')).toBeUndefined()
+    expect(index.lookup('gpt-no-rates')?.cost).toEqual({ input: 1, output: 2 })
+    // Non-numbers, infinities, and negatives are dropped; a bad cache rate
+    // does not discard the input/output price.
+    expect(index.lookup('gpt-junk-rates')).toBeUndefined()
+    expect(index.lookup('gpt-junk-cache')?.cost).toEqual({ input: 1, output: 2 })
+  })
+
+  it('resolves a route price by provider, bare id, and catalog fallback', () => {
+    const index = buildIndex(pricedPayload())
+    const glm = { input: 0.6, output: 2.2, cacheRead: 0.11, cacheWrite: 0.5 }
+    expect(index.lookupCost('z-ai', 'glm-4.6')).toEqual(glm)
+    expect(index.lookupCost('Z-AI', 'GLM-4.6')).toEqual(glm)
+    // The provider route misses with the caller's prefixed id, so the bare
+    // id route answers.
+    expect(index.lookupCost('z-ai', 'other/glm-4.6')).toEqual(glm)
+    // No route at all: the model's own catalog price is the fallback.
+    expect(index.lookupCost('elsewhere', 'z-ai/glm-4.6')).toEqual(glm)
+    expect(index.lookupCost('elsewhere', 'missing-model')).toBeUndefined()
+  })
+
+  it('treats an empty provider record and a non-object payload as an empty index', () => {
+    expect(buildIndex(42).lookupCost('p', 'm')).toBeUndefined()
+    expect(buildIndex(undefined).lookup('m')).toBeUndefined()
+    expect(buildIndex({ empty: {}, other: { models: {} } }).lookupCost('other', 'm')).toBeUndefined()
+  })
+})

@@ -7,7 +7,7 @@ import { JobId, type JobView } from '@deepseek-ai/dsh-jobs'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { textOf, ui, type MayflyUiEvent, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import * as agentOverlay from '../../src/interaction/agent-overlay.ts'
-import { JOB_OUTPUT_FEED_CHUNKS, formatJobDuration, isLiveJob, jobDetailsNode, jobItems, jobOutputNode, openJobOutput, sortJobs } from '../../src/interaction/jobs.ts'
+import { JOB_OUTPUT_FEED_CHUNKS, formatJobDuration, isLiveJob, jobDetailsNode, jobHistory, jobItems, jobOutputNode, openJobOutput, sortJobs } from '../../src/interaction/jobs.ts'
 import type { UiSurfaceModel } from '../../src/core/ui-interaction-surface.ts'
 import { validateMayflyUiNode } from '../../src/core/ui-validator.ts'
 import { jobsFixture } from './jobs-fixture.ts'
@@ -658,5 +658,64 @@ describe('jobs readonly projections', () => {
       }
     }
     expect(validateMayflyUiNode(jobDetailsNode(job('done', 'completed'), key => key)).ok).toBe(true)
+  })
+})
+
+describe('durable job history', () => {
+  const session = (events: readonly unknown[]) => ({ snapshotEvents: () => events } as never)
+
+  it('ignores unrelated events and keeps a settlement that precedes its registration out of the list', () => {
+    const jobs = jobHistory(session([
+      { type: 'turn/start', data: {} },
+      { type: 'job/settled', data: { jobId: 'early', status: 'completed', finishedAt: 5 } },
+      { type: 'job/registered', data: { jobId: 'early', kind: 'bash', label: 'Early', owner: 'o', startedAt: 1 } },
+    ]))
+    // The later registration replaced the settlement, so the recorded job stays incomplete.
+    expect(jobs).toEqual([])
+  })
+
+  it('carries a settlement detail into the durable view and omits an absent one', () => {
+    const jobs = jobHistory(session([
+      { type: 'job/registered', data: { jobId: 'done', kind: 'bash', label: 'Done', owner: 'o', startedAt: 1 } },
+      { type: 'job/settled', data: { jobId: 'done', status: 'completed', finishedAt: 5, detail: 'built in 4s' } },
+      { type: 'job/registered', data: { jobId: 'quiet', kind: 'bash', label: 'Quiet', owner: 'o', startedAt: 2 } },
+      { type: 'job/settled', data: { jobId: 'quiet', status: 'killed', finishedAt: 6 } },
+    ]))
+    expect(jobs).toMatchObject([
+      { id: 'done', label: 'Done', status: 'completed', detail: 'built in 4s' },
+      { id: 'quiet', label: 'Quiet', status: 'killed' },
+    ])
+    expect(jobs[1]).not.toHaveProperty('detail')
+  })
+
+  it('does not call back when the signal ends while the reader opens', async () => {
+    const bench = await setup()
+    const source = bench.start()
+    const abort = new AbortController()
+    vi.spyOn(agentOverlay, 'openAgentOverlay').mockImplementationOnce(async () => {
+      abort.abort()
+      return undefined
+    })
+    const onClose = vi.fn()
+    await openJobOutput(bench.ctx, bench.agent, source.id, abort.signal, t => t, onClose)
+    expect(onClose).not.toHaveBeenCalled()
+  })
+})
+
+describe('job detail readiness', () => {
+  it('refuses to read the output after the exact Agent changed', async () => {
+    const bench = await setup()
+    const source = bench.start({ output: 'built' })
+    await bench.run('/jobs')
+    select(bench.model('mayfly.jobs'), source.id)
+    await flushRequests()
+    const detail = bench.ctx.mayflyOverlays.list().find(entry => entry.id === 'mayfly.jobs.detail')!
+    bench.ctx.mayflyConversations.selectPrimary(bench.other)
+    // The handler is called with the surface still holding its own event: the selected Agent moved on.
+    expect(detail.definition.onEvent!.action!(
+      { kind: 'activate', pagePath: [], controlId: 'job-actions', actionId: 'read' },
+      { signal: new AbortController().signal } as never,
+    )).toMatchObject({ kind: 'cancelled' })
+    expect(bench.ctx.mayflyOverlays.list().some(entry => entry.id === 'mayfly.jobs.output')).toBe(false)
   })
 })

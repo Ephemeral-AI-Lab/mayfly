@@ -2186,3 +2186,20 @@ describe('reader position under a shrinking content tail', () => {
     await runtime.stop()
   })
 })
+
+describe('mayfly terminal main-screen delegation edges', () => {
+  it('has no content tail, follows nothing, and counts dock rows from the mounted children', async () => {
+    const terminal = new FakeTerminal(40, 12)
+    const runtime = startMayflyTerminal(terminal)
+    try {
+      expect(runtime.contentTail()).toBeUndefined()
+      expect(() => runtime.followContent()).not.toThrow()
+      expect(runtime.dockRows()).toBe(0)
+      runtime.addDockChild(textComponent('dock-row'))
+      await waitForRender()
+      expect(runtime.dockRows()).toBe(1)
+    } finally {
+      await runtime.stop()
+    }
+  })
+})

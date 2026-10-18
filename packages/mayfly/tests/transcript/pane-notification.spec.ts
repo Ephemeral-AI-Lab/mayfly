@@ -243,4 +243,25 @@ describe('mayfly-pane-notification: the prompt row while the prompt waits', () =
     expect(nodeOf(harness)).toContain('waiting on approval')
     await harness.dispose()
   })
+
+  it('teaches the queued and steering rows their own verbs in conversation focus', async () => {
+    const harness = await boot()
+    const keys = (): string[] => partsOf(harness).map(part => part.text.replace(/^· /u, ''))
+    harness.ctx.emit('mayfly/focus-mode-changed', 'conversation')
+    harness.ctx.emit('mayfly/focus-row-changed', 'queued')
+    expect(keys()).toEqual(['e edit', 's send now', 'd cancel', 'Enter expand', 'c copy', '↑/↓ select', 'Esc back'])
+    harness.ctx.emit('mayfly/focus-row-changed', 'steering')
+    expect(keys()).toEqual(['e edit', 'd cancel', 'Enter expand', 'c copy', '↑/↓ select', 'Esc back'])
+    await harness.dispose()
+  })
+
+  it('stows the row while an editor panel is open and restores it when the panel closes', async () => {
+    const harness = await boot()
+    expect(nodeOf(harness)).not.toBe('null')
+    harness.ctx.emit('mayfly/panel-open-changed', true)
+    expect(nodeOf(harness)).toBe('null')
+    harness.ctx.emit('mayfly/panel-open-changed', false)
+    expect(nodeOf(harness)).toContain('Alt+↑ conversation')
+    await harness.dispose()
+  })
 })

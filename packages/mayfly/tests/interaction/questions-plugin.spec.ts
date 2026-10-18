@@ -159,3 +159,36 @@ describe('native questions provider', () => {
     await expect(pending).resolves.toEqual({ answers: [{ id: 'plan', selected: ['Keep planning'] }] })
   })
 })
+
+it('routes a non-open plan action through the review action handler', async () => {
+  const bench = await setup()
+  const pending = bench.ctx.userQuestions.ask({ questions: [plan] })
+  // Copy is not the editor key: the card's own action handler keeps the review open.
+  bench.model().emit({ kind: 'activate', actionId: 'copy', controlId: 'actions', pagePath: [] })
+  await flushRequests()
+  expect(bench.ctx.mayflyOverlays.list().some(entry => entry.id.startsWith('mayfly.questions.'))).toBe(true)
+  bench.model().requestClose()
+  await expect(pending).resolves.toEqual({ answers: [{ id: 'plan', selected: ['Keep planning'] }] })
+})
+
+it('publishes a call-id plan without a header and runs its auxiliary actions', async () => {
+  const bench = await setup()
+  const seen = plans(bench.ctx)
+  const { header: _header, ...headerless } = plan
+  const withCall: AskUserQuestionItem = {
+    ...headerless,
+    intent: { kind: 'plan-review', approve: 'Start implementation', callId: 'call-9' as never },
+  }
+  const pending = bench.ctx.userQuestions.ask({ questions: [withCall] })
+  await flushRequests()
+  expect(seen.at(-1)).toEqual([{ type: 'plan', toolName: 'plan', callId: 'call-9' }])
+  const entry = bench.ctx.mayflyOverlays.list().find(candidate => candidate.id.startsWith('mayfly.questions.'))!
+  const reply = await entry.definition.onEvent!.action!(
+    { kind: 'activate', actionId: 'copy', controlId: 'actions', pagePath: [] },
+    { signal: new AbortController().signal } as never,
+  )
+  expect(reply).toMatchObject({ kind: 'completed' })
+  bench.model().requestClose()
+  await expect(pending).resolves.toEqual({ answers: [{ id: 'plan', selected: ['Keep planning'] }] })
+})
+
