@@ -54,9 +54,8 @@ Mayfly code writes `$DSH_HOME/cordis.patch.yml`.
 
 Every delegation is one managed activation. A start returns a child id
 immediately; the child runs independently and the parent receives the native
-completion notice. There is no foreground/background mode, no
-`run_in_background` argument, and no `started subagent` acknowledgement to
-parse.
+completion notice. It is one mode, with no `run_in_background` argument and no
+`started subagent` acknowledgement to parse.
 
 Mayfly reads the parent's durable `subagentCatalog`, the child's `subagent`
 and `subagentTiming` projections, and the native `subagent/start` /
@@ -86,8 +85,8 @@ write a Markdown export.
 ## Commands and surfaces
 
 - `/save [full] [path]` writes the projected transcript, or the full event
-  stream, as Markdown. The old `/export` name is not Mayfly's; it belongs to
-  the Web download command.
+  stream, as Markdown. The native `/export` belongs to the Web download; it is
+  not Mayfly's export.
 - `/permissions` is Mayfly's preset panel; the native `/permission` command
   keeps its name and argument form.
 - `/rename` writes a user-pinned title through the Session Controller.

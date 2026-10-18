@@ -17,12 +17,16 @@ to that release and run:
 ```sh
 VERSION=0.1.3-rc.2
 pnpm run check
+pnpm run check:agent-docs
 pnpm run check:lib
 pnpm run check:examples
 pnpm release:preflight "$VERSION"
 pnpm run check:pack
 pnpm release:preflight --artifact "$VERSION"
 ```
+
+`check:agent-docs` keeps the root and package instructions, their relative
+links, and the shipped preset skills consistent before the tarballs are cut.
 
 The version bump supports `pnpm release:version <version> --dry-run` and checks
 all release markers before writing. Write a substantive first entry in the

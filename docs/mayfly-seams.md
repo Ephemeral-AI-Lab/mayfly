@@ -1,7 +1,7 @@
 # Mayfly service seams
 
-Mayfly no longer defines a capability facade. Plugins declare and consume the
-dsh services they need directly, per the Harness reference.
+Mayfly declares and consumes the dsh services it needs directly. It adds no
+capability facade and rewrites no native result or error taxonomy.
 
 ## Native dsh services
 
@@ -16,23 +16,17 @@ Common dependencies include:
 | `settings`, `skills` | Native capabilities of the corresponding dsh features |
 | `plan` projection, `/plan` command | Read and modify plan state across Agent realms |
 
-Mayfly does not wrap these interfaces or rewrite them into a different
-result/error taxonomy. A plugin assembled in the same realm as `planMode` can
-still inject that native service directly; a root-level Mayfly plugin does not
-pierce an Agent-private realm but instead uses the projection and command that
-Harness provides for this purpose.
-
 Current state is read from the native projections listed in
 [native-capability-map.md](./native-capability-map.md), through
 `ctx.sessionProjections.snapshot`, `stateOf`, and `onChanged`. A session
-summary from `ctx.sessionController.list()` may carry the same values as hints;
-for a cold or remote Session, `ctx.sessionController.projections({ sessionId })`
-returns a `sequenced` read or `migration-required` cached hints and never starts
-migration. Mayfly's own projection keys are `mayflyConversation`,
-`mayflyConversationFacts`, and `mayflyDeliverables`.
+summary from `ctx.sessionController.list()` may carry the same values as
+hints. For a cold or remote Session,
+`ctx.sessionController.projections({ sessionId })` returns a `sequenced` read or
+`migration-required` cached hints and never starts migration. Mayfly's own projection keys are
+`mayflyConversation`, `mayflyConversationFacts`, and `mayflyDeliverables`.
 
-Schedule is a Host-wide service (`ctx.schedule`), not a session projection; the
-model-facing `schedule_*` tools are the preset-owned `tool-schedule` row.
+Schedule is a Host-wide service (`ctx.schedule`), not a session projection;
+the model-facing `schedule_*` tools are the preset-owned `tool-schedule` row.
 `standard`, `ptc`, `cordis`, and `mayfly-cordis` mount it; `minimal` does not.
 Subagents are managed activations: readers use `subagentCatalog`,
 `subagentTiming`, and the `subagent/start`/`subagent/end` lifecycle, and stops
@@ -47,36 +41,34 @@ go through `ctx.subagents.drainChildren`.
 | `mayflyOverlays` | `open(definition, node)` / `set(node)` | core overlay stack |
 | `mayflyEditorExtensions` | `register(definition, decoration)` / `set(decoration)` | interaction editor |
 
-These services are provided by `@ephemeral-ai/mayfly-ui`. Contributions use the
-renderer-neutral `MayflyUiNode`, which can be constructed from
-`@ephemeral-ai/mayfly-ui`. Core validates schema, quota, control characters,
-and width before rendering.
+These services are provided by `@ephemeral-ai/mayfly-ui`'s provider.
+Contributions use the renderer-neutral `MayflyUiNode` from the same package.
+Core validates schema, quota, control characters, and width before rendering.
 
 Plugins do not choose between eager and lazy modes: a large `list.items` is
-still an ordinary readonly array, and core only validates, compiles, and paints
-the current viewport neighborhood; hidden subtrees gated by `when` enter full
-admission only when first visible. A local error in a list entry is carried by
-the corresponding disabled row, and an error in a reactive branch is confined
-to that branch. Other non-virtualized collections keep using typed quotas.
-Mayfly does not expose range, overscan, cache, measurement, or scroll
-controller APIs, and plugins remain responsible for their own network and
-database fetching.
+still an ordinary readonly array, and core only validates, compiles, and
+paints the current viewport neighborhood; hidden subtrees gated by `when`
+enter full admission only when first visible. A local error in a list entry is
+carried by the corresponding disabled row, and an error in a reactive branch
+is confined to that branch. Other non-virtualized collections keep using typed
+quotas. Mayfly exposes no range, overscan, cache, measurement, or scroll
+controller API; plugins remain responsible for their own network and database
+fetching.
 
 After a snapshot is frozen successfully, the provider generates a monotonic
 revision for each `set()` and notifies the frontend owner and core through
 upsert/remove deltas. `set(node, { reason: 'data', source })` publishes an
 authoritative data refresh; `reason: 'replace'` establishes a new instance
-boundary and is the only update allowed to change `scope`. The old
-`eventRevision` parameter has been removed; plugins cannot fabricate their own
-acks.
+boundary and is the only update allowed to change `scope`.
 
 `onEvent` for panes, overlays, and editor extensions splits into `observe` and
-`action`. `observe` only receives value, selection-toggle, tab-change, and focus-change
-facts, and cannot publish a snapshot, navigate, or close a surface; `action`
-handles activate, selection accept, submit, and dismiss, and every handled
-action must return a structured receipt of `accepted`, `invalid`, `conflict`,
-`failed`, `completed`, or `cancelled`. `MayflyUiEventContext` provides the
-current `source`, operation ID, revision, AbortSignal, and progress reporter.
+`action`. `observe` receives value, selection-toggle, tab-change, and
+focus-change facts, and cannot publish a snapshot, navigate, or close a
+surface. `action` handles activate, selection accept, submit, and dismiss, and
+every handled action returns a structured receipt of `accepted`, `invalid`,
+`conflict`, `failed`, `completed`, or `cancelled`. `MayflyUiEventContext`
+provides the current `source`, operation ID, revision, AbortSignal, and
+progress reporter.
 
 `accepted` and partial failures carrying `acceptedFields` generate a one-shot
 publisher from the registration-bound endpoint. Core admits the reply first,
@@ -85,21 +77,21 @@ data/replace update, unload, abort, or same-name reopen revokes handlers,
 reporters, and publishers that are no longer valid. Form drafts,
 single-flight, conflicts, confirmation, paging, and feedback belong to the
 frontend interaction owner; plugins are not required to echo `set()` calls
-inside their handlers. Keys, focus, confirmations, and per-row action
-availability follow [interaction-model.md](./interaction-model.md).
+inside their handlers.
 
-A null pane/status snapshot occupies no layout. Bottom panes share one dock
-of at most a third of the terminal height: `size.min/max` count rows there,
-every pane keeps its head row, an over-share pane ends in `… +K more rows`,
-and passive panes that open with a plain `divider` share one lane rule.
+A null pane/status snapshot occupies no layout. Bottom panes share one dock of
+at most a third of the terminal height: `size.min/max` count rows there, every
+pane keeps its head row, an over-share pane ends in `… +K more rows`, and
+passive panes that open with a plain `divider` share one lane rule.
 `text`/`rich-text` accept `overflow: 'truncate'` for single-row dock lines.
-Overlays provide `focus/hide/show/close`, and `presentation: 'editor'` uses
-the existing editor host. Even if the caller never disposes manually, Cordis
-Fiber unload cleans up the registration.
+Overlays provide `focus/hide/show/close`, and `presentation: 'editor'` uses the
+existing editor host. Cordis Fiber unload cleans up a registration even when
+the caller never disposes it.
 
 ## Interaction events and the notification lane
 
-The UI events below are declared in `core/types.ts` and are unfiltered. Each has one emitter and the consumers named.
+These events are declared in `core/types.ts` and are unfiltered. Each has one
+emitter and the consumers named.
 
 | Event | Emitted by | Payload | Consumed by |
 | --- | --- | --- | --- |
@@ -108,11 +100,14 @@ The UI events below are declared in `core/types.ts` and are unfiltered. Each has
 | `mayfly/content-tail-changed` | `core/surface-renderer.ts`, on the alternate screen only | `label`: the chip's words while the stream is scrolled away (`Back to bottom · Ctrl+↓`, `2 new turns · Ctrl+↓`, `New messages · Ctrl+↓` while the stream holds a new-messages rule), `undefined` at the tail | `transcript/pane-notification.ts`: the chip on the notification row |
 | `mayfly/request-new-messages` | `interaction/input-plugin.ts`: `Ctrl+↓` (the action `mayfly.interaction.follow-tail`) | none | `transcript/index.ts` → `TranscriptController.jumpNew()`: the view goes to the new-messages rule first, and follows the tail when there is none to go to or it is already there |
 
-The notification lane is the frontend's internal record of notices, not a public service. A producer takes an owner
-from `createInteractionNotificationOwner(ctx, label)` (`interaction/notifications.ts`) and reports or clears its
-records by id; the owner's records retire with its Fiber. `transcript/pane-notification.ts` shows one record on the
-notification row: the most severe, then the newest, for the app or the current session. `✓` and information records leave
-after five seconds of visible time; `⚠` and `✗` records stay until cleared. The notices the session's facts raise
+The notification lane is the frontend's internal record of notices, not a
+public service. A producer takes an owner from
+`createInteractionNotificationOwner(ctx, label)` (`interaction/notifications.ts`)
+and reports or clears its records by id; the owner's records retire with its
+Fiber. `transcript/pane-notification.ts` shows one record on the notification
+row: the most severe, then the newest, for the app or the current session. `✓`
+and information records leave after five seconds of visible time; `⚠` and `✗`
+records stay until cleared. The notices the session's facts raise
 (`transcript/notices.ts`) report into the same lane.
 
 ## Current Agent
@@ -137,41 +132,38 @@ Agent-scoped write or fact reaches the wrong conversation.
 primary plus any number of side conversations. `snapshot()` / `subscribe()`
 expose frozen descriptors (`kind`, `sessionId`, `parentSessionId`, `label`,
 `mode`, `historyFloorSeq`) with derived `access` (`interactive | resumable |
-readonly`) and `residency` (`displayed | retained | listed`), the displayed id,
-and the most-recently-displayed order. `open()` adds or refreshes a BTW or
-subagent conversation and displays it; a new BTW replaces the old one.
-`display()`, `back()` (`F7`), and `close()` (`F8`) move between them; closing a
-BTW releases its temporary Agent, closing a subagent only detaches, and the
-primary never closes. Selecting a new primary closes every side conversation.
-A BTW seed is used only as model context; its `historyFloorSeq` makes the
-stream the user sees start from the BTW's own first question, without
-repeating primary-session history.
+readonly`) and `residency` (`displayed | retained | listed`), the displayed
+id, and the most-recently-displayed order. `open()`, `display()`, `back()`
+(`F7`), and `close()` (`F8`) move between them; closing a BTW releases its
+temporary Agent, closing a subagent only detaches, and the primary never
+closes. A BTW seed is model context only: its `historyFloorSeq` starts the
+visible stream at the BTW's own first question.
 
 `@ephemeral-ai/mayfly/app` declares the `mayfly/request-subagent-reply` event.
-An external plugin can ask for the currently displayed continuable child session to be
-shown with the editor seeded by the given text; the event itself does not send a message
-or resume an Agent. The user sends it from the editor: `Enter` queues, `Ctrl+Enter` steers; the
-write still goes through the native addressed-subagent path and checks the
-exact identities of the primary Agent and the online child Agent. Browsing and
-draft editing of an unloaded child session stay readonly. The event carries an
-optional editor draft: submitting in a resumable conversation opens the form
-seeded with it instead of sending.
+An external plugin can ask for the currently displayed continuable child
+session to be shown with the editor seeded by the given text; the event itself
+does not send a message or resume an Agent. The user sends it from the editor:
+`Enter` queues, `Ctrl+Enter` steers; the write still goes through the native
+addressed-subagent path and checks the exact identities of the primary Agent
+and the online child Agent. Browsing and draft editing of an unloaded child
+session stay readonly. The event carries an optional editor draft: submitting
+in a resumable conversation opens the form seeded with it instead of sending.
 
 `ui.child(..., { tab })` gives a page a stable `pagePath`; hidden pages retain
 list/form state. Viewport matching and visible width remain core's decision;
 use `stack.row` when pages should show side by side in a wide viewport.
 
-When the user interrupts, Mayfly cancels only the displayed Agent's current turn
-(`agent.cancel({ kind: 'user' }, { keepInbox: true })`; a displayed continuable
-child goes through `subagents.interruptByParent`). Running subagents, jobs, and
-the goal are not touched, and the queued and steering messages are kept and run
-as the next turn. See *Interrupt scope* in
+When the user interrupts, Mayfly cancels only the displayed Agent's current
+turn (`agent.cancel({ kind: 'user' }, { keepInbox: true })`; a displayed
+continuable child goes through `subagents.interruptByParent`). Running
+subagents, jobs, and the goal are not touched, and the queued and steering
+messages are kept and run as the next turn. See *Interrupt scope* in
 [interaction-model.md](./interaction-model.md).
 
 Plugins that need Agent identity inject `mayflyCurrentAgent`; plugins that
-show or switch conversations inject `mayflyConversations`. A plugin that
-only contributes static UI should not take this dependency, because Cordis
-unloads consumers by dependency when app or core reloads.
+show or switch conversations inject `mayflyConversations`. A plugin that only
+contributes static UI should not take this dependency, because Cordis unloads
+consumers by dependency when app or core reloads.
 
 ## Lifecycle
 
@@ -183,8 +175,8 @@ or cross-realm proxy. Editor replacement uses an ordinary overlay with
 re-projects the same frontend instance and semantic focus after a theme/input
 host rebuild.
 
-Registry snapshots can still exist while the renderer is temporarily absent;
-after the renderer returns, `subscribe()` replays the current upserts. When an
+Registry snapshots can exist while the renderer is temporarily absent; after
+the renderer returns, `subscribe()` replays the current upserts. When an
 external plugin unloads, the provider publishes a remove delta. An overlay
 registration's title provides the host frame; when the root node is already a
 `chrome: 'overlay'` surface, core merges the two into a single frame. Ordinary
@@ -192,8 +184,3 @@ overlays and `presentation: 'editor'` both honor `maxHeight`. When it is
 undeclared, ordinary overlays take at most one third of the terminal height and
 editor presentations at most half of it, with a ten-row floor; short content
 keeps its natural height.
-
-Cold continuable children use the Harness addressed-subagent API for history
-reads and explicit replies; browsing history does not activate the Agent, and
-only sending a reply resumes it. `resumable` and `readonly` mean resumable and
-readonly respectively.
