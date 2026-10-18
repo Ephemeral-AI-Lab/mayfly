@@ -3,10 +3,9 @@
  */
 import { Service, type Context } from '@deepseek-ai/cordis'
 import type { MayflyFeedbackRecord, MayflyOverlayEntry, MayflyPaneEntry } from '@ephemeral-ai/mayfly-ui'
-import { UiSurfaceModel, type UiSurfaceBindings, type UiSurfaceSnapshot } from './ui-interaction-surface.ts'
+import { UiSurfaceModel, type UiSurfaceBindings, type UiSurfaceSnapshot, type UiTranslate } from './ui-interaction-surface.ts'
 import { UiNotificationOwner, UiNotificationStore } from './ui-interaction-notifications.ts'
 import { contextHintTranslator } from './context-hint-locale.ts'
-import type { UiTranslate } from './ui-interaction-locale.ts'
 
 type UiSurfaceKind = 'pane' | 'overlay' | 'editor-panel' | 'slot'
 

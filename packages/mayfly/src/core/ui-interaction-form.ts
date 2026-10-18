@@ -4,7 +4,7 @@
 import { freezeWire } from '@ephemeral-ai/mayfly-ui'
 import type { MayflyFieldError, MayflyFieldValue, MayflyFormAddress, MayflyFormField, MayflyFormNode, MayflySubmittedField, MayflySubmittedForm } from '@ephemeral-ai/mayfly-ui'
 import { createChoiceState, reconcileChoice, reduceChoice, selectionError, type UiChoiceIntent, type UiChoiceState } from './ui-interaction-choice.ts'
-import { untranslated, type UiTranslate } from './ui-interaction-locale.ts'
+import { untranslated, type UiTranslate } from './ui-interaction-surface.ts'
 import type { FieldDecor } from './ui-form-paint.ts'
 import { patternMatcher } from './ui-validator-form.ts'
 
